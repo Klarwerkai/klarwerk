@@ -394,13 +394,24 @@ async function antwortAufbau(anthropicScheitert: boolean) {
     url: `/api/klara/sessions/${gebunden["x-klara-session"]}/consent`,
     headers: gebunden,
   });
-  const fragen = (headers: Record<string, string>) =>
-    app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers,
-      payload: { question: "Wie wird die Pumpe geschmiert?", questionSource: "manual" },
-    });
+  // R-0700: MIT Klara-Bindung fragt Klara über ihren eigenen Zugang; OHNE (Konsole) über den
+  // allgemeinen Frageweg — dort ohne `questionSource`, das allein der Klara-Zugang kennt.
+  const fragen = (headers: Record<string, string>) => {
+    const sitzung = headers["x-klara-session"];
+    return sitzung
+      ? app.inject({
+          method: "POST",
+          url: `/api/klara/sessions/${sitzung}/execute`,
+          headers,
+          payload: { question: "Wie wird die Pumpe geschmiert?", questionSource: "manual" },
+        })
+      : app.inject({
+          method: "POST",
+          url: "/api/ask",
+          headers,
+          payload: { question: "Wie wird die Pumpe geschmiert?" },
+        });
+  };
   return { app, auth, gebunden, zustimmung, fragen, anthropicAntwort, ersatzAntwort };
 }
 

@@ -327,7 +327,12 @@ import {
   PgLoeschantragRepo,
   offeneLoeschantragMeldungen,
 } from "./loeschantraege";
-import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
+import {
+  gelisteteMeldung,
+  istStapelRahmenListe,
+  nurGelisteteLogfelder,
+  stapelRahmen,
+} from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 import {
@@ -344,7 +349,7 @@ import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
-import { askRoutes } from "./routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
@@ -2535,23 +2540,12 @@ export function pfadOhneAbfrage(url: string): string {
  * FAIL-CLOSED: Nur ein Rahmen, der dem strengen Muster entspricht, wird übernommen; alles andere
  * ergibt `unbekannt`. Ein Stack aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen"
  * tragen. Die erste Stackzeile ist die MELDUNG selbst und wird nie betrachtet.
+ *
+ * Das Muster steht seit arbeit:kos-anlage-500-pg in `stapelRahmen` (log-positivliste.ts), weil der
+ * Auffangzweig von `sendError` dieselben Rahmen als ganze Folge protokolliert — ein Muster, zwei Leser.
  */
 export function herkunftAusStack(stack: unknown): string {
-  if (typeof stack !== "string") {
-    return "unbekannt";
-  }
-  for (const zeile of stack.split("\n").slice(1)) {
-    const treffer =
-      /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/.exec(
-        zeile.trimEnd(),
-      );
-    if (!treffer?.[1]) {
-      continue;
-    }
-    const kurz = treffer[1].replace(/^.*?\/(services|apps|tools|tests|node_modules)\//, "$1/");
-    return `${kurz}:${treffer[2]}:${treffer[3]}`;
-  }
-  return "unbekannt";
+  return stapelRahmen(stack)[0] ?? "unbekannt";
 }
 
 /** Tiefer wird nicht abgestiegen — ein zyklisches Objekt darf den Logger nicht festfahren. */
@@ -2606,12 +2600,25 @@ export function senkeUeberWert(
   for (const [schluessel, inhalt] of Object.entries(wert)) {
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
     // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
-    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
-      ? entferneGeheimeEnvWerte(inhalt, env)
-      : senkeUeberWert(inhalt, env, tiefe + 1);
+    // arbeit:kos-anlage-500-pg: dieselbe Bauform für die Stapelrahmen des Auffangzweigs (`sendError`,
+    // http.ts) — NUR unter `stapel` und NUR in der strengen Rahmenform (`istStapelRahmenListe`).
+    if (istTraceKennung(schluessel, inhalt)) {
+      ergebnis[schluessel] = entferneGeheimeEnvWerte(inhalt, env);
+    } else if (schluessel === STAPEL_FELD && istStapelRahmenListe(inhalt)) {
+      ergebnis[schluessel] = inhalt.map((rahmen) => entferneGeheimeEnvWerte(rahmen, env));
+    } else {
+      ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    }
   }
   return ergebnis;
 }
+
+// Regel 4 von `sanitizeLogText` liest jeden Pfad ab 24 Zeichen aus dem Base64-Alphabet als Token —
+// `services/knowledge-object/src/search-projection-repo-pg.ts:…` wurde damit zu `[redacted].ts:…`,
+// und die Stapelzeile des Auffangzweigs nannte keinen Ort mehr (Prüfung nacharbeit-1, K1). Die
+// Ausnahme ist so eng wie die Trace-Ausnahme darunter: nur dieser eine Feldname, nur Listen in der
+// Form, die `stapelRahmen` erzeugt; Werte secret-benannter Env-Variablen werden auch hier entfernt.
+const STAPEL_FELD = "stapel";
 
 // Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
 // Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
@@ -2897,10 +2904,16 @@ export function buildApp(
   // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
   // dort (oder später vor dem Dienst) während einer Aus-/Wiedereinschaltung wartet, trägt die ALTE
   // Epoche und bleibt entwertet. Nur die beiden D5-Eingänge; synchron, ohne Warten, ohne Inhalt.
+  // R-0700: Klaras eigener Ausführungszugang ist der dritte Frage-Eingang und gehört dazu.
   app.decorateRequest("askKiBeginn", null);
   app.addHook("onRequest", async (request) => {
     const pfad = request.routeOptions.url;
-    if (request.method === "POST" && (pfad === "/api/ask" || pfad === "/api/reasoner")) {
+    if (
+      request.method === "POST" &&
+      (pfad === "/api/ask" ||
+        pfad === "/api/reasoner" ||
+        pfad === "/api/klara/sessions/:sessionId/execute")
+    ) {
       request.askKiBeginn = services.ask.kiStand() ?? null;
     }
   });
@@ -3153,6 +3166,18 @@ export function buildApp(
   app.get("/api/ai-status", async () => {
     services.reasoner.refreshReachabilityIfStale();
     return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
+  });
+  // R-0599 (Ben nacharbeit-2): die KI-Lage der Kopfzeile — ob gerade eine externe, eine hausinterne
+  // oder keine KI arbeitet, WELCHER Anbieter dahintersteht und woher er kommt. Für JEDEN
+  // angemeldeten Nutzer (`ko.read`), nicht anonym: die beiden Statusrouten oben bleiben abstrahiert
+  // (WP-VIP2-GATE). Bewusst OHNE Modellnamen (Admin-Sicht) und ohne Schlüssel — der Anbieter ist
+  // die Datenschutzauskunft, die ein Mensch braucht, bevor seine Inhalte hinausgehen.
+  app.get("/api/ki-lage", async (request, reply) => {
+    const user = await guards.requirePermission("ko.read", request, reply);
+    if (!user) {
+      return;
+    }
+    reply.code(200).send(services.reasoner.kiLage());
   });
 
   // ============================================================================================
@@ -4066,48 +4091,55 @@ export function buildApp(
   // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht
   // dafür Bestand und Konflikte. Beide liegen hier ohnehin — dasselbe Muster wie livewallRoutes und
   // impactRoutes darunter.
-  // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
-  // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
-  // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
-  // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
+  // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
+  const offeneSpaces = async (): Promise<ReadonlySet<string>> =>
+    new Set((await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id));
+  // Was der gemeinsame Antwortlauf beider Zugänge liest (R-0700: allgemeiner Weg UND Klaras
+  // Zugang) — einmal gebaut, damit beide dieselbe Belastbarkeit und denselben Zuschnitt liefern.
+  const antwortDeps = {
+    ask: services.ask,
+    ko: services.ko,
+    conflicts: services.conflicts,
+    offeneSpaces,
+    // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
+    kanten: services.kanten,
+    // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
+    begriffe: async () => services.begriffe.aktuelle(),
+    // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
+    // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
+    personen: {
+      erreichbarkeit: async (ids: readonly string[]) => {
+        const konten = await services.auth.listUsers();
+        const erreichbar = new Map<string, boolean>();
+        const namen = new Map<string, string>();
+        for (const id of ids) {
+          const konto = konten.find((u) => u.id === id);
+          erreichbar.set(id, konto?.approved === true);
+          if (konto) {
+            namen.set(id, konto.name);
+          }
+        }
+        return { erreichbar, namen };
+      },
+    },
+  };
+  // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
+  // Klara-Bindung an.
   app.register(
     askRoutes(
       {
-        ask: services.ask,
-        ko: services.ko,
-        conflicts: services.conflicts,
-        klaraSessions,
-        // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
-        offeneSpaces: async () =>
-          new Set(
-            (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
-          ),
+        ...antwortDeps,
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
-        // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
-        kanten: services.kanten,
-        // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
-        begriffe: async () => services.begriffe.aktuelle(),
-        personen: {
-          erreichbarkeit: async (ids) => {
-            const konten = await services.auth.listUsers();
-            const erreichbar = new Map<string, boolean>();
-            const namen = new Map<string, string>();
-            for (const id of ids) {
-              const konto = konten.find((u) => u.id === id);
-              erreichbar.set(id, konto?.approved === true);
-              if (konto) {
-                namen.set(id, konto.name);
-              }
-            }
-            return { erreichbar, namen };
-          },
-        },
       },
       guards,
     ),
   );
+  // R-0700 (KW-S4-24): Klaras eigener, sitzungsgebundener Ausführungszugang
+  // `POST /api/klara/sessions/{sessionId}/execute`. KW-KA4: `klaraSessions` ist das bestehende
+  // Ausführungstor von oben — DIESELBE Instanz wie am Status-, Zuruf- und Reasoner-Weg.
+  app.register(klaraAusfuehrungRoutes({ ...antwortDeps, klaraSessions }, guards));
   // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
   // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
   // zweite Aufloesung.
