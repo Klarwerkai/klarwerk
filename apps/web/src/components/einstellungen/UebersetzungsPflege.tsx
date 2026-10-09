@@ -22,8 +22,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
-import { ERLAUBTE_SPRACHEN } from "../../lib/htmlLang";
 import { setzeAngelegteSprachen } from "../../lib/instanzSprachen";
+import { OBERFLAECHEN_SPRACHEN } from "../../lib/sprachregister";
 import {
   legeTexteUeber,
   mitgelieferterText,
@@ -82,7 +82,10 @@ export function UebersetzungenDetail({ onZurueck }: { onZurueck: () => void }): 
     queryFn: () => endpoints.i18n.texte(sprache),
   });
 
-  const zusatz = (sprachen.data?.sprachen ?? []).filter((s) => !s.grundsprache);
+  // Angelegte Sprachen, die nicht schon über ihre Ressource mitgeliefert sind (R-0997).
+  const zusatz = (sprachen.data?.sprachen ?? []).filter(
+    (s) => !s.grundsprache && !OBERFLAECHEN_SPRACHEN.includes(s.kennung),
+  );
 
   // FR-I18N-02: jede frische Serverauskunft macht die angelegten Sprachen in Kontomenü und Profil
   // wählbar — auch die eben hier angelegte, ohne Neuladen.
@@ -92,7 +95,7 @@ export function UebersetzungenDetail({ onZurueck }: { onZurueck: () => void }): 
     }
   }, [sprachen.data]);
   const auswahl = [
-    ...ERLAUBTE_SPRACHEN.map((k) => ({ kennung: k, name: t(`lib.facet.lang.${k}`) })),
+    ...OBERFLAECHEN_SPRACHEN.map((k) => ({ kennung: k, name: t(`lib.facet.lang.${k}`) })),
     ...zusatz.map((s) => ({ kennung: s.kennung, name: `${s.name ?? s.kennung} (${s.kennung})` })),
   ];
 

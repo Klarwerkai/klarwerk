@@ -244,7 +244,12 @@ describe("R-0888 / R-1017 · Zuordnung der vorhandenen Hilfen zu Feldern und Abs
     const fehlt: string[] = [];
     for (const [datei, ueberschrift, erklaerung] of ABSCHNITTE) {
       const quelle = lies(datei);
-      if (!quelle.includes(`<SectionLabel>{t("${ueberschrift}"`)) {
+      // Integration mit gesamt-sprache-begriffe (R-0908): sieben Stufe-2-Abschnitte zeigen ihre
+      // Überschrift in Anwendersprache aus `texte/fachwort.ts`; Kennung und Erklärtext bleiben am
+      // alten Schlüssel. Gesucht wird deshalb die Überschrift, die Klara für DENSELBEN Abschnitt
+      // zeigt (`titel` in `lib/klaraRegistry.ts`) — für alle übrigen ist das der Schlüssel selbst.
+      const titel = klaraEntryById(`sec:${ueberschrift}`)?.titleKey ?? ueberschrift;
+      if (!quelle.includes(`<SectionLabel>{t("${titel}"`)) {
         fehlt.push(`${datei}: die Überschrift ${ueberschrift} steht nicht mehr da`);
       }
       if (!quelle.includes(`body={t("${erklaerung}")}`)) {

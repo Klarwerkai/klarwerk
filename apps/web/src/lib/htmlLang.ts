@@ -61,11 +61,13 @@ export type I18nLike = {
 // dort ist die NORMALISIERUNG ausgeschlossen (aus `de-DE` würde `de`), nicht die Prüfung. `de-DE`
 // wird deshalb nicht zurechtgebogen, sondern gar nicht erst geschrieben.
 //
-// GELTUNGSBEREICH (FR-I18N-02, Übersetzungspflege): Die Entscheidung zu JOB 536 beantwortet die
-// Baufrage zu `html lang`. Diese Menge ist deshalb die der MITGELIEFERTEN Sprachen und die des
-// `lang`-Attributs (`applyHtmlLang` bleibt für alles andere ein No-op). WÄHLBAR sind darüber hinaus
-// die im Betrieb angelegten Sprachen (`lib/instanzSprachen.ts`) — ein allgemeines Verbot weiterer
-// Sprachen folgt aus JOB 536 nicht.
+// R-0997 (Aufnahme gesamt-sprache-begriffe): Diese Menge ist seither AUSSCHLIESSLICH die Regel für
+// `<html lang>`. Welche Sprachen die Oberfläche kann und wählen lässt, leitet
+// `lib/sprachregister.ts` aus den Ressourcen ab (`OBERFLAECHEN_SPRACHEN`, heute ebenfalls de|en|nl);
+// dazu kommen die im Betrieb angelegten Sprachen der Übersetzungspflege (FR-I18N-02,
+// `lib/instanzSprachen.ts`). Keine von beiden setzt das Attribut — JOB 536 regelt genau diese drei
+// Werte, und ihn zu erweitern ist eine eigene Entscheidung, die hier nicht vorweggenommen wird. Ein
+// allgemeines Verbot weiterer WÄHLBARER Sprachen folgt aus JOB 536 nicht.
 export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
 
 // ==================================================================================================
@@ -96,8 +98,8 @@ export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
 //   · VERBINDLICH: die Nachführung 2026-09-09T00:21 (aus JOB 3280) vereinbart „nur zulässige Werte
 //     de|en". Eine Vorgabe wird nicht durch eine Bauüberlegung überstimmt.
 //   · SACHLICH: es sind ZWEI VERSCHIEDENE TATSACHEN, nicht eine doppelt aufgeschriebene.
-//     `ERLAUBTE_SPRACHEN` sagt, was die ANWENDUNG kann (de|en|nl — was unter /profil und im
-//     Konto-Menü wählbar ist). Diese Liste hier sagt, was ein LINK VON AUSSEN setzen darf. Das ist
+//     `ERLAUBTE_SPRACHEN` sagt, was als `<html lang>` gilt (de|en|nl; wählbar ist seit R-0997
+//     `OBERFLAECHEN_SPRACHEN`). Diese Liste hier sagt, was ein LINK VON AUSSEN setzen darf. Das ist
 //     eine Schnittstellenzusage gegenüber Klara und darf enger sein: Klara schickt genau diese
 //     beiden Werte, und was von aussen kommt, wird eng geprüft und nicht großzügig ausgelegt.
 //

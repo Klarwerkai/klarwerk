@@ -2,7 +2,8 @@
 // FR-I18N-02 · DIE IM BETRIEB ANGELEGTEN SPRACHEN SIND WÄHLBAR — OHNE CODEÄNDERUNG.
 // ================================================================================================
 //
-// Die Sprachen, die das Bündel mitbringt, stehen fest in `ERLAUBTE_SPRACHEN` (`htmlLang.ts`). Weitere
+// Die Sprachen, die das Bündel mitbringt, leitet `lib/sprachregister.ts` aus den Ressourcen ab
+// (`OBERFLAECHEN_SPRACHEN`, R-0997 — eine neue `woerterbuch/<kürzel>.ts` meldet sich dort an). Weitere
 // Sprachen legt eine Administratorin unter Verwaltung › System › Übersetzungen an
 // (`PUT /api/admin/i18n-sprachen/:locale`); `GET /api/i18n/locales` nennt sie. DIESE Datei ist die
 // eine Wahrheit darüber, welche angelegten Sprachen die Oberfläche zur Wahl stellt: Kontomenü
@@ -20,8 +21,12 @@
 // dort unverändert (`applyHtmlLang`). Ein Verbot weiterer wählbarer Sprachen folgt aus ihr nicht.
 //
 // DOM-frei (über `persistentToggle.ts`), importierbar aus node-env-Tests.
-import { ERLAUBTE_SPRACHEN } from "./htmlLang";
+//
+// ZWEI WEGE, EINE MENGE: Eine Sprache mit eigener Ressource (R-0997) kommt mit dem Bau; eine im
+// Betrieb angelegte Sprache (diese Datei) kommt ohne Bau. Wählbar ist die Vereinigung beider; eine
+// angelegte Kennung, die schon eine Ressource hat, wird nicht doppelt geführt.
 import { readStoredString, safeLocalStorage, writeStoredString } from "./persistentToggle";
+import { OBERFLAECHEN_SPRACHEN } from "./sprachregister";
 
 /** Der Speicherschlüssel der zuletzt vom Server gemeldeten angelegten Sprachen. */
 export const ANGELEGTE_SPRACHEN_KEY = "kw.instanzsprachen";
@@ -45,7 +50,7 @@ function istAngelegteSprache(wert: unknown): wert is AngelegteSprache {
   return (
     typeof roh.kennung === "string" &&
     SPRACHKENNUNG.test(roh.kennung) &&
-    !ERLAUBTE_SPRACHEN.includes(roh.kennung) &&
+    !OBERFLAECHEN_SPRACHEN.includes(roh.kennung) &&
     typeof roh.name === "string" &&
     roh.name.trim().length > 0
   );
@@ -98,13 +103,24 @@ export function abonniereAngelegteSprachen(z: Zuhoerer): () => void {
   };
 }
 
-/** Alle wählbaren Sprachen: die mitgelieferten zuerst, dann die angelegten. */
-export function waehlbareSprachen(): string[] {
-  return [...ERLAUBTE_SPRACHEN, ...angelegteSprachen().map((s) => s.kennung)];
+/**
+ * Alle wählbaren Sprachen: die mitgelieferten zuerst, dann die angelegten. `mitgeliefert` ist für
+ * Tests da, die eine weitere Ressourcensprache nachstellen (wie `sprachwahl.ts`).
+ */
+export function waehlbareSprachen(
+  mitgeliefert: readonly string[] = OBERFLAECHEN_SPRACHEN,
+): string[] {
+  const angelegt = angelegteSprachen()
+    .map((s) => s.kennung)
+    .filter((k) => !mitgeliefert.includes(k));
+  return [...mitgeliefert, ...angelegt];
 }
 
-export function istWaehlbareSprache(sprache: string): boolean {
-  return waehlbareSprachen().includes(sprache);
+export function istWaehlbareSprache(
+  sprache: string,
+  mitgeliefert: readonly string[] = OBERFLAECHEN_SPRACHEN,
+): boolean {
+  return waehlbareSprachen(mitgeliefert).includes(sprache);
 }
 
 /** Der Anzeigename einer angelegten Sprache — `null` für die mitgelieferten (die übersetzt werden). */

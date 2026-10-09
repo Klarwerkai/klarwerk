@@ -19,12 +19,8 @@
 // ihn sich beim ersten Überdecken und gibt ihn der Pflegekarte als Vergleichstext heraus.
 //
 // DOM-frei, strukturell typisiert wie `htmlLang.ts` — prüfbar ohne das große Wörterbuch.
-import {
-  ERLAUBTE_SPRACHEN,
-  I18N_LANGUAGE_CHANGED_EVENT,
-  type I18nLike,
-  type SprachZuhoerer,
-} from "./htmlLang";
+import { I18N_LANGUAGE_CHANGED_EVENT, type I18nLike, type SprachZuhoerer } from "./htmlLang";
+import { OBERFLAECHEN_SPRACHEN } from "./sprachregister";
 
 /** Die Antwort von `GET /api/i18n/:locale`. */
 export interface GepflegteTexte {
@@ -99,12 +95,13 @@ export function mitgelieferterText(
 }
 
 /**
- * Darf jetzt überlegt werden? Eine MITGELIEFERTE Sprache erst, wenn ihr Paket da ist (siehe Kopf).
- * Eine im Betrieb angelegte Sprache (FR-I18N-02) hat nie ein Paket, das ausbleiben könnte — ihre
- * gepflegten Texte SIND ihr Bestand und dürfen immer gelegt werden.
+ * Darf jetzt überlegt werden? Eine MITGELIEFERTE Sprache — de|en|nl und jede über ihre Ressource
+ * angemeldete (R-0997, `OBERFLAECHEN_SPRACHEN`) — erst, wenn ihr Paket da ist (siehe Kopf). Eine im
+ * Betrieb angelegte Sprache (FR-I18N-02) hat nie ein Paket, das ausbleiben könnte — ihre gepflegten
+ * Texte SIND ihr Bestand und dürfen immer gelegt werden.
  */
 function darfUeberlegen(i18n: TextpflegeI18n, sprache: string): boolean {
-  return !ERLAUBTE_SPRACHEN.includes(sprache) || i18n.hasResourceBundle(sprache, NAMENSRAUM);
+  return !OBERFLAECHEN_SPRACHEN.includes(sprache) || i18n.hasResourceBundle(sprache, NAMENSRAUM);
 }
 
 /**
