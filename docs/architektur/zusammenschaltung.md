@@ -140,6 +140,7 @@ im Postgres-Betrieb schon.
 | `brandingSettings` | Speicherablage | `PgBrandingSettingsRepo` |
 | `confluenceImportSchalter` | `InMemoryConfluenceImportSchalterRepo` (Betreiberschalter des Confluence-Imports) | `PgConfluenceImportSchalterRepo` |
 | `bearbeitungen` | Speicherfassung mit Prozessuhr | `PgBearbeitungsRepo` |
+| `uebersetzungen` | `InMemoryUebersetzungRepo` (im Betrieb gepflegte Oberflächentexte und angelegte Sprachen, R-1034) | `PgUebersetzungRepo` |
 
 ## 5 Gemeinsame Klammern
 
