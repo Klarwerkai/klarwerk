@@ -89,6 +89,43 @@ interface ExportOptionen {
   beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
 }
 
+// aufnahme:20260922:gesamt-wissen-export (R-0706): die Quellen eines Objekts, wie die drei
+// menschlichen Ausgaben sie nennen. Der JSON-Export trägt `sources` ohnehin am Objekt; Markdown,
+// MediaWiki und HTML warfen sie bisher weg — wer die Datei erhielt, sah nicht, worauf eine Aussage
+// beruht. Genannt werden Bezeichnung, Anbieter und Adresse; Leserechte der Quelle
+// (`sourceRestrictions`, `readRestriction`) sind Herkunftsangaben für Klarwerk und gehen nicht mit.
+// Die Adresse kommt nur mit, wenn sie http(s) ist — eine andere Form hat die Ablage ohnehin
+// neutralisiert (`sanitizeSources`), hier wird nur nichts Neues behauptet.
+interface ExportQuelle {
+  label: string;
+  provider: string | null;
+  url: string | null;
+  entfernt: boolean;
+}
+
+const EXPORT_QUELLEN_UEBERSCHRIFT = "Quellen";
+const EXPORT_QUELLE_ENTFERNT = "Quellseite gelöscht";
+
+function exportQuellen(ko: KnowledgeObject): ExportQuelle[] {
+  return (ko.sources ?? []).map((s) => ({
+    label: s.label,
+    provider: s.provider && s.provider !== s.label ? s.provider : null,
+    url: s.url && /^https?:\/\//i.test(s.url) ? s.url : null,
+    entfernt: Boolean(s.sourceRemovedAt),
+  }));
+}
+
+function quellenText(q: ExportQuelle): string {
+  const teile = [q.provider ? `${q.label} (${q.provider})` : q.label];
+  if (q.url) {
+    teile.push(q.url);
+  }
+  if (q.entfernt) {
+    teile.push(EXPORT_QUELLE_ENTFERNT);
+  }
+  return teile.join(" — ");
+}
+
 // R-1349: `SEARCH_BACKFILL_LIMIT_PER_QUERY` (= 20) ist entfernt. Seit G27 R1 stößt kein Suchweg den
 // Nachzug mehr an (s. `search`), und die Wartungsläufe nehmen ihren eigenen Schwung.
 
@@ -3758,9 +3795,25 @@ export class LibraryService {
     // allen vier Ausgabewegen hinter dem gesamten Dokument — bei einem langen Export liest ihn
     // dort niemand, und die Vorgabe „wo ein Leser ihn sieht" war damit nicht erfüllt. Die
     // Wiederholung am Ende bleibt (sie kostet nichts und trifft den, der von hinten liest).
+    // R-0706: die Quellen stehen als eigener Unterabschnitt unter der Aussage.
+    const abschnitt = (ko: KnowledgeObject): string => {
+      const quellen = exportQuellen(ko);
+      const kopf = `== ${ko.title} ==\n${ko.statement}`;
+      if (quellen.length === 0) {
+        return kopf;
+      }
+      const liste = quellen
+        .map((q) => {
+          const text = q.provider ? `${q.label} (${q.provider})` : q.label;
+          const verweis = q.url ? `[${q.url} ${text}]` : text;
+          return `* ${verweis}${q.entfernt ? ` — ${EXPORT_QUELLE_ENTFERNT}` : ""}`;
+        })
+        .join("\n");
+      return `${kopf}\n=== ${EXPORT_QUELLEN_UEBERSCHRIFT} ===\n${liste}`;
+    };
     return [
       `''${EXPORT_NO_CHECK_NOTE}''`,
-      items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n"),
+      items.map(abschnitt).join("\n\n"),
       `''${EXPORT_NO_CHECK_NOTE}''`,
     ].join("\n\n");
   }
@@ -3777,6 +3830,15 @@ export class LibraryService {
         }
         if (ko.measures.length > 0) {
           lines.push("", "**Vorgehen**", ...ko.measures.map((m) => `- ${m}`));
+        }
+        // R-0706: die Quellen der Aussage reisen mit.
+        const quellen = exportQuellen(ko);
+        if (quellen.length > 0) {
+          lines.push(
+            "",
+            `**${EXPORT_QUELLEN_UEBERSCHRIFT}**`,
+            ...quellen.map((q) => `- ${quellenText(q)}`),
+          );
         }
         const author =
           ko.author === ko.originalAuthor
@@ -3797,7 +3859,24 @@ export class LibraryService {
     const items = await this.exportJson(opts);
     const esc = (s: string): string =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const escAttr = (s: string): string => esc(s).replace(/"/g, "&quot;");
     const li = (xs: readonly string[]): string => xs.map((x) => `<li>${esc(x)}</li>`).join("");
+    // R-0706: die Quellen als eigene Liste — auch im Browserdruck sichtbar (die Adresse steht
+    // ausgeschrieben neben dem Verweis, weil ein Link auf Papier nichts mehr zeigt).
+    const quellenHtml = (ko: KnowledgeObject): string => {
+      const quellen = exportQuellen(ko);
+      if (quellen.length === 0) {
+        return "";
+      }
+      const zeilen = quellen
+        .map((q) => {
+          const text = esc(q.provider ? `${q.label} (${q.provider})` : q.label);
+          const verweis = q.url ? `<a href="${escAttr(q.url)}">${text}</a> — ${esc(q.url)}` : text;
+          return `<li>${verweis}${q.entfernt ? ` — ${esc(EXPORT_QUELLE_ENTFERNT)}` : ""}</li>`;
+        })
+        .join("");
+      return `<p><strong>${EXPORT_QUELLEN_UEBERSCHRIFT}</strong></p><ul class="quellen">${zeilen}</ul>`;
+    };
     const articles = items
       .map((ko) => {
         const conditions = ko.conditions.length
@@ -3810,7 +3889,7 @@ export class LibraryService {
           ko.author === ko.originalAuthor
             ? esc(ko.author)
             : `${esc(ko.author)} (urspr. ${esc(ko.originalAuthor)})`;
-        return `<article><h2>${esc(ko.title)}</h2><p class="meta">${esc(ko.type)} · ${esc(ko.category)} · Trust ${ko.trust} · ${esc(ko.status)}</p><p>${esc(ko.statement)}</p>${conditions}${measures}<p class="src">Autor: ${author}</p></article>`;
+        return `<article><h2>${esc(ko.title)}</h2><p class="meta">${esc(ko.type)} · ${esc(ko.category)} · Trust ${ko.trust} · ${esc(ko.status)}</p><p>${esc(ko.statement)}</p>${conditions}${measures}${quellenHtml(ko)}<p class="src">Autor: ${author}</p></article>`;
       })
       .join("\n");
     const style =

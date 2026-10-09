@@ -565,6 +565,26 @@ function bildsucheLimit(raw: string | undefined): number {
   return Math.min(n, BILDSUCHE_LIMIT_MAX);
 }
 
+// aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02): die Abfrage des Exports. `ids` ist
+// eine kommagetrennte Kennungsliste (oder der wiederholte Parameter, wie Fastify ihn liefert).
+interface ExportAbfrage {
+  format?: string;
+  ids?: string | string[];
+}
+
+/**
+ * Die Auswahl eines Exports aus der Abfrage. `undefined` heisst „kein Parameter" — dann gilt der
+ * validierte Gesamtbestand. Ein vorhandener, aber leerer Parameter ist eine LEERE Auswahl: er darf
+ * nie still zum Gesamtbestand werden.
+ */
+function exportAuswahl(raw: string | string[] | undefined): string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const teile = (Array.isArray(raw) ? raw : [raw]).flatMap((s) => s.split(","));
+  return [...new Set(teile.map((s) => s.trim()).filter((s) => s.length > 0))];
+}
+
 // JOB 3111 · B1b: die Attributlesart stand hier als lokales `attributIn`. Sie liegt jetzt als
 // `attributWert` im structure-Modul, weil der SCHREIBWEG der Benennungen (searchImageNames) sie
 // ebenfalls braucht — zwei Lesarten wären zwei Wahrheiten darüber, was ein Attributwert ist.
@@ -920,7 +940,7 @@ export function libraryRoutes(
       },
     );
 
-    app.get<{ Querystring: { format?: string } }>("/api/library/export", async (request, reply) => {
+    app.get<{ Querystring: ExportAbfrage }>("/api/library/export", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
@@ -930,9 +950,17 @@ export function libraryRoutes(
       // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
       // nur die validierten, nicht-vertraulichen KOs.
       const includeConfidential = can(user.role, "ko.validate");
+      // aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02 „Export der Auswahl"): `ids`
+      // GRENZT NUR EIN. Die Auswahl läuft durch dieselbe Validiert-/Vertraulichkeitsgrenze wie der
+      // Gesamtexport (`exportJson`) — eine genannte Kennung holt nie etwas hinaus, das der
+      // Gesamtexport derselben Rolle nicht auch enthielte (G6: Exportmenge ⊆ Lesemenge bleibt).
+      // Ohne Parameter: validierter Gesamtbestand wie bisher. Ein leerer Parameter ist eine leere
+      // Auswahl, NICHT „alles".
+      const ids = exportAuswahl(request.query.ids);
       // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
       const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
         includeConfidential,
+        ...(ids ? { ids } : {}),
         beleg: { actor: user.id, format },
       });
       if (request.query.format === "markdown") {
