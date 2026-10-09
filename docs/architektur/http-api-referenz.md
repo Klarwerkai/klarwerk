@@ -331,6 +331,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/categories` | `requireUser` | — | 200 `{ categories }` | — |
 | `GET` | `/api/output/sources` | `ko.read` | — | 200 geeignete Quellen | — |
 | `POST` | `/api/output/generate` | `ko.read` | Rumpf `{ kind, koIds, audienceRole? }` | 200 Dokument | 400 `NO_SOURCES`, `NOT_VALIDATED`, `UNKNOWN_KO`, `UNKNOWN_KIND`, `CONFIDENTIAL` |
+| `GET` | `/api/output/wochenupdate` | `ko.read` | Abfrage `bis?` (`JJJJ-MM-TT`, ohne Angabe heute; Zeitraum sieben Tage) | 200 Wissensupdate `{ title, von, bis, generatedAt, eintraege, markdown, provenance }` (nur validiert, nicht vertraulich; schreibt und verschickt nichts) | 400 `BAD_REQUEST` |
 | `POST` | `/api/output/scorm/pruefen` | `ko.read` | Rumpf `{ koIds, sprache: de \| en, empfaenger, titel? }` | 200 Prüfung `{ exportierbar, format, empfaenger, befunde, fassung }` (erzeugt und schreibt nichts) | 400 `BAD_REQUEST` |
 | `POST` | `/api/output/scorm/paket` | `ko.read` | Rumpf wie `/api/output/scorm/pruefen` | 200 `application/zip` (SCORM-1.2-Paket), Kopf `x-klarwerk-exportfassung`, `x-klarwerk-paket-sha256`; Auditeintrag `output.lms-export` | 400 `BAD_REQUEST`; 422 `EXPORT_BLOCKED` mit Prüfung |
 | `GET` | `/api/management/snapshot` | `ko.read` | — | 200 Lagebild | — |
