@@ -396,6 +396,11 @@ describe("R-0346 · der Zuschnitt verändert die Antwort, quellengebunden", () =
 
   it("nichts zu ergänzen → die Antwort bleibt Zeichen für Zeichen dieselbe", () => {
     const z = schneideAntwortZu(antwort, [ko("a")], antwortZuschnitt("admin", "frage"), [], "de");
-    expect(z).toEqual({ text: antwort, quellengebunden: antwort, ergaenzungen: [] });
+    expect(z).toEqual({
+      text: antwort,
+      quellengebunden: antwort,
+      ergaenzungen: [],
+      abschnitte: [],
+    });
   });
 });

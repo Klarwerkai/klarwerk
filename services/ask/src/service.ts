@@ -34,6 +34,7 @@ import {
 import { TRUST_MAX } from "../../validation";
 import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
 import {
+  type ZuschnittAbschnitt,
   type ZuschnittBegriff,
   type ZuschnittDerAntwort,
   type ZuschnittErgaenzung,
@@ -592,6 +593,11 @@ export interface AskAntwortZuschnitt {
    * werden so nie den Wissensquellen zugeschrieben.
    */
   quellengebundenerText: string;
+  /**
+   * Ben nacharbeit-20: die angehängten Abschnitte samt der Quelle, für die jeder erzeugt wurde, in
+   * der Reihenfolge am Ende der Antwort (`antwort-zuschnitt.ts`). Grundlage der Absatzzuordnung.
+   */
+  abschnitte: ZuschnittAbschnitt[];
 }
 
 /**
@@ -1278,6 +1284,7 @@ export class AskService {
         reihenfolge: [...zuschnitt.reihenfolge],
         ergaenzungen: zugeschnitten.ergaenzungen,
         quellengebundenerText: zugeschnitten.quellengebunden,
+        abschnitte: zugeschnitten.abschnitte,
       };
     }
     const result = { ...resultCore, answer: zugeschnittenerText, captionSources };

@@ -77,6 +77,18 @@ export interface ZugeschnitteneAntwort {
    */
   quellengebunden: string;
   ergaenzungen: ZuschnittErgaenzung[];
+  /**
+   * Ben nacharbeit-20: die TATSÄCHLICH angehängten Abschnitte, in der Reihenfolge, in der sie am
+   * Ende von `text` stehen — je Abschnitt sein genauer Text und die Quelle, für die er erzeugt wurde
+   * (`null` beim Wörterbuchabschnitt). Die Absatzzuordnung liest die Herkunft HIERAUS, an der Stelle
+   * des Abschnitts, statt sie aus gleichlautenden Listenzeilen zu erraten.
+   */
+  abschnitte: ZuschnittAbschnitt[];
+}
+
+export interface ZuschnittAbschnitt {
+  quelleId: string | null;
+  text: string;
 }
 
 const BESCHRIFTUNG: Record<"de" | "en" | "nl", Record<ZuschnittErgaenzung["art"], string>> = {
@@ -199,7 +211,7 @@ export function schneideAntwortZu(
     }
   }
   if (ergaenzungen.length === 0) {
-    return { text: antwort, quellengebunden: antwort, ergaenzungen };
+    return { text: antwort, quellengebunden: antwort, ergaenzungen, abschnitte: [] };
   }
   const titel = new Map(tragende.map((ko): [string, string] => [ko.id, ko.title]));
   const abschnitt = (e: ZuschnittErgaenzung): string => {
@@ -224,5 +236,6 @@ export function schneideAntwortZu(
     text: mitAbschnitten(ergaenzungen),
     quellengebunden: mitAbschnitten(ergaenzungen.filter((e) => e.art !== "begriffe")),
     ergaenzungen,
+    abschnitte: ergaenzungen.map((e) => ({ quelleId: e.quelleId, text: abschnitt(e) })),
   };
 }

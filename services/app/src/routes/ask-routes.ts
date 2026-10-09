@@ -255,33 +255,46 @@ function angehaengteBegriffe(zuschnitt: AskAntwortZuschnitt | undefined): Angeha
 // R-0310 × R-0346 (Integration mit main): `absatzBelege` kennt zwei ausdrückliche Gründe — Marke
 // und Wortlaut der Aussage. Die Abschnitte, die der Zuschnitt angehängt hat, stammen wörtlich aus
 // `conditions`/`measures` EINER tragenden Quelle; das ist ebenso ausdrücklich (`quelleId` am
-// Zuschnitt), nicht aus Lage oder Nachbarschaft. Zugeordnet wird nur ein bisher unbelegter Absatz,
-// dessen Zeilen nach der Kopfzeile GENAU die Einträge dieses Abschnitts sind. Der Wörterbuchabschnitt
-// bekommt KEINE Wissensquelle (Ben nacharbeit-11) und bleibt nach R-0310 unbelegt.
+// Zuschnitt), nicht aus Lage oder Nachbarschaft.
+//
+// Ben nacharbeit-20: die Herkunft kommt aus dem ERZEUGTEN Abschnitt, nicht aus seinen Listenzeilen.
+// Der Zuschnitt hängt seine Abschnitte in bekannter Reihenfolge ans ENDE der Antwort
+// (`AskAntwortZuschnitt.abschnitte`, je mit Text und Quelle). Zugeordnet wird deshalb der Absatz an
+// GENAU der Stelle dieses Abschnitts — und nur, wenn sein Text Zeichen für Zeichen der erzeugte
+// Abschnitt ist (samt Kopfzeile mit Quellentitel). Gleichlautende Ergänzungen zweier Quellen
+// behalten so jede ihre eigene Quelle, und ein anderer Absatz mit denselben Listenzeilen bekommt
+// nichts. Passt ein einziger Abschnitt nicht an seine Stelle (etwa ein Eintrag mit Leerzeile, der
+// den Absatz teilt), wird KEINER zugeordnet — lieber unbelegt als falsch belegt. Der
+// Wörterbuchabschnitt bekommt KEINE Wissensquelle (Ben nacharbeit-11) und bleibt nach R-0310 unbelegt.
 function zuschnittBelege(
   absaetze: AbsatzBeleg[] | undefined,
   zuschnitt: AskAntwortZuschnitt | undefined,
   result: { sources: readonly string[]; citedSources: readonly string[] },
 ): AbsatzBeleg[] | undefined {
-  if (!absaetze || !zuschnitt) {
+  if (!absaetze || !zuschnitt || zuschnitt.abschnitte.length === 0) {
     return absaetze;
   }
-  const quellenAbschnitte = zuschnitt.ergaenzungen.flatMap((e) =>
-    e.art !== "begriffe" &&
-    result.citedSources.includes(e.quelleId) &&
-    result.sources.includes(e.quelleId)
-      ? [{ quelleId: e.quelleId, zeilen: e.eintraege.map((x) => `- ${x}`) }]
-      : [],
+  const beginn = absaetze.length - zuschnitt.abschnitte.length;
+  if (beginn < 0) {
+    return absaetze;
+  }
+  const anIhrerStelle = zuschnitt.abschnitte.every(
+    (s, i) => absaetze[beginn + i]?.text === s.text.trim(),
   );
-  return absaetze.map((a) => {
-    if (a.quellen.length > 0) {
+  if (!anIhrerStelle) {
+    return absaetze;
+  }
+  return absaetze.map((a, i) => {
+    const quelleId = i >= beginn ? zuschnitt.abschnitte[i - beginn]?.quelleId : null;
+    if (
+      a.quellen.length > 0 ||
+      typeof quelleId !== "string" ||
+      !result.citedSources.includes(quelleId) ||
+      !result.sources.includes(quelleId)
+    ) {
       return a;
     }
-    const zeilen = a.text.split("\n").slice(1);
-    const gleich = (soll: readonly string[]): boolean =>
-      soll.length === zeilen.length && soll.every((z, i) => z === zeilen[i]?.trim());
-    const treffer = quellenAbschnitte.find((q) => gleich(q.zeilen));
-    return treffer ? { text: a.text, quellen: [treffer.quelleId] } : a;
+    return { text: a.text, quellen: [quelleId] };
   });
 }
 

@@ -11,6 +11,7 @@ export type {
 export { schneideAntwortZu } from "./src/antwort-zuschnitt";
 export type {
   BegriffHerkunft,
+  ZuschnittAbschnitt,
   ZuschnittBegriff,
   ZuschnittDerAntwort,
   ZuschnittErgaenzung,

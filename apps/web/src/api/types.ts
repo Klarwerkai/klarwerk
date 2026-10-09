@@ -2203,6 +2203,8 @@ export interface AskAntwortZuschnitt {
   )[];
   // Ben nacharbeit-13: die Antwort ohne Wörterbucherklärungen — der Schluss der Kette.
   quellengebundenerText: string;
+  // Ben nacharbeit-20: die angehängten Abschnitte am Ende der Antwort, je mit Text und Quelle.
+  abschnitte: { quelleId: string | null; text: string }[];
 }
 
 // Ben nacharbeit-11: Herkunft einer Begriffserklärung aus dem Firmenwörterbuch (Spiegel von

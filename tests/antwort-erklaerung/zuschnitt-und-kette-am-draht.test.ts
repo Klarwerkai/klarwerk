@@ -61,6 +61,7 @@ interface Antwort {
     reihenfolge: string[];
     ergaenzungen: { art: string; quelleId: string | null; eintraege: string[] }[];
     quellengebundenerText: string;
+    abschnitte: { quelleId: string | null; text: string }[];
   };
   absaetze?: { text: string; quellen: string[] }[];
 }
@@ -178,6 +179,16 @@ describe("R-0346 · Rolle und Anlass wirken auf die Antwort selbst", () => {
       ],
       // Ohne Wörterbuchergänzung ist der quellengebundene Teil die ganze Antwort.
       quellengebundenerText: a.result.answer,
+      abschnitte: [
+        {
+          quelleId: ko,
+          text: `Voraussetzungen (Wartung ${SELTENES_WORT}):\n- Anlage abgeschaltet`,
+        },
+        {
+          quelleId: ko,
+          text: `Maßnahmen (Wartung ${SELTENES_WORT}):\n- Druck am Manometer M2 ablesen`,
+        },
+      ],
     });
     // Integration mit R-0310 (main): die angehängten Abschnitte tragen ihre tragende Quelle
     // ausdrücklich — sonst hielten die Flächen sie als „unbelegt“ zurück.
@@ -190,6 +201,29 @@ describe("R-0346 · Rolle und Anlass wirken auf die Antwort selbst", () => {
       aussage: a.result.answer,
       gestuetztAuf: [ko],
     });
+  });
+
+  it("Ben nacharbeit-20: gleichlautende Voraussetzungen zweier Quellen behalten je ihre Herkunft", async () => {
+    const { app, admin } = await start("zu-f@antwort.test");
+    const a1 = await anlegen(app, admin, `Wartung ${SELTENES_WORT}`, {
+      conditions: ["Anlage abgeschaltet"],
+    });
+    const b1 = await anlegen(app, admin, `Frostschutz ${SELTENES_WORT}`, {
+      statement: `Bei Frost bekommt die ${SELTENES_WORT} zur Wartung nach dem Entlasten eine Matte.`,
+      conditions: ["Anlage abgeschaltet"],
+    });
+    const a = await fragen(app, admin);
+    expect([...a.result.citedSources].sort()).toEqual([a1, b1].sort());
+    // Zwei getrennt erzeugte Abschnitte mit DENSELBEN Listenzeilen, je mit eigener Quelle.
+    const zuschnitt = a.antwortZuschnitt?.abschnitte ?? [];
+    expect(zuschnitt.map((s) => s.quelleId).sort()).toEqual([a1, b1].sort());
+    const absatz = (titel: string) =>
+      a.absaetze?.find((x) => x.text === `Voraussetzungen (${titel}):\n- Anlage abgeschaltet`);
+    // Jeder Absatz trägt die Quelle, für die er erzeugt wurde — nicht den ersten Listentreffer.
+    expect(absatz(`Wartung ${SELTENES_WORT}`)?.quellen).toEqual([a1]);
+    expect(absatz(`Frostschutz ${SELTENES_WORT}`)?.quellen).toEqual([b1]);
+    // Der Antwortabsatz selbst (ohne Marke, ohne Wortlaut einer Aussage) bleibt unbelegt.
+    expect(a.absaetze?.find((x) => x.text === SYNTHESE)?.quellen).toEqual([]);
   });
 
   it("der wörtliche Weg (retrieval-only) bleibt unverändert — kein Zuschnitt an der Antwort", async () => {
