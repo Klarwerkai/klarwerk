@@ -726,6 +726,14 @@ const de = {
   "auth.toSignIn": "Zur Anmeldung",
   "auth.or": "oder",
   "auth.ssoButton": "Mit SSO anmelden",
+  // R-0541: die Anmeldeseite, wenn nur noch der Firmen-Login gilt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Auf dieser Installation meldest du dich mit deinem Firmenkonto an. Ein eigenes Passwort für Klara gibt es hier nicht.",
+  // R-0541 (Nacharbeit 2): das Passwort ist abgeschaltet, der Firmen-Login aber noch nicht da.
+  "auth.ssoOnlyMissing":
+    "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte wende dich an deine IT.",
+  // R-0560: der Firmen-Login über SAML.
+  "auth.samlButton": "Mit Firmenkonto (SAML) anmelden",
   "auth.ssoUnavailable": "SSO ist für diese Instanz nicht konfiguriert.",
   "auth.ssoTitle": "SSO-Anmeldung",
   "auth.ssoBusy": "Anmeldung wird abgeschlossen …",
@@ -2830,6 +2838,12 @@ const de = {
   "ask.export.copy": "Kopieren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Drucken / PDF",
+  // R-0703: Dateien, die die KI-Kennzeichnung in ihren Eigenschaften tragen.
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-Datei",
+  "ask.export.pdfZeichen":
+    "Die PDF-Datei kann diese Zeichen nicht unverändert darstellen: {{zeichen}}. Es wurde nichts heruntergeladen — Word oder Markdown geben den Text verlustfrei weiter.",
   "ask.export.copied": "Antwort inkl. Quellen kopiert.",
   "ask.export.answer": "Antwort",
   "ask.export.footer":
@@ -2842,6 +2856,12 @@ const de = {
     "Die zuerst genannten Quellen haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet.",
   "ask.attribution.unknown":
     "Welche dieser Quellen die Antwort getragen hat, ließ sich nicht zuordnen — die KI hat keine verwertbaren Quellenverweise geliefert. Die Liste zeigt deshalb alle herangezogenen Quellen ohne Kennzeichen, und ein „Hat geholfen“ ist hier nicht möglich.",
+  // R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich kein Absatz einer
+  // Quelle zuordnen ließ. Zuordnung unbekannt macht einen unbelegten Absatz nicht ausgabefähig.
+  // R-0310: der Chip „+N" unter der Antwort — sein zugänglicher Name.
+  "ask.quellen.weitere": "{{count}} weitere Quellen anzeigen",
+  "ask.zuordnungUnbekannt":
+    "Keine Antwort angezeigt: Sie ließ sich keiner Quelle zuordnen. Ein Absatz ohne Beleg wird nicht ausgegeben.",
   // JOB 3267 Q1 — DREI ZUSTÄNDE, DREI WÖRTER, UND EIN VIERTES FÜR DEN PRÜFSTAND.
   // Bis hierher gab es zwei Wörter („trägt"/„angesehen") für eine Frage, die drei Antworten hat;
   // der dritte Zustand („wir wissen es nicht") stand nur als Satz ÜBER der Liste und fehlte an der
@@ -4537,6 +4557,11 @@ const de = {
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
   "lib.lesemodus.listeAusblenden": "Trefferliste ausblenden",
   "lib.lesen.mehr": "Mehr",
+  "lib.lesen.belegstelle.markiert": "Belegstelle hervorgehoben.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "Die zitierte Belegstelle steht in dieser Fassung nicht wörtlich im Text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "Die Belegstelle gehört zu Fassung {{fassung}}; hier steht Fassung {{aktuell}}. Nichts ist hervorgehoben.",
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
   "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",
@@ -5600,6 +5625,10 @@ const de = {
   "klara.aiBusy": "Die KI liest die passenden Hilfe-Einträge …",
   "klara.aiAnswerTitle": "KI-Antwort aus der Hilfe",
   "klara.aiDisclaimer": "KI-generiert — nicht zu 100 % geprüft",
+  // R-0604 (Aufnahme gesamt-ki-kennzeichnung): die Herkunft der Hilfeantwort beim regelbasierten
+  // Rückfall — dort hat kein Modell geschrieben, „KI-Antwort" und „KI-generiert" wären falsch.
+  "klara.helpAnswerTitle": "Antwort aus der Hilfe",
+  "klara.ohneModell": "Regelbasiert, ohne KI-Modell",
   "klara.aiGoto": "Zum Bereich: {{target}}",
   "klara.aiSources": "Grundlage",
   "klara.aiEmpty":
@@ -7219,6 +7248,18 @@ const de = {
   // Fläche anders formuliert wäre, wäre weder klar noch unterscheidbar — und ein zweiter Wortlaut
   // wäre eine zweite Wahrheit über dasselbe Produkt.
   "ai.generatedNotice": "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
+  // R-0603 / R-0604: der DAUERHAFTE Satz an Auslösern und KI-Flächen. Er sagt, dass hier eine KI
+  // mitarbeiten kann — nicht, dass etwas erzeugt wurde. Das sagt `ai.generatedNotice`, und zwar
+  // nur am Ergebnis, das ein Modell wirklich geschrieben hat.
+  "ai.surfaceNotice":
+    "Hier kann eine KI mitarbeiten — von ihr erzeugte Inhalte sind gekennzeichnet.",
+  // R-1020 / R-1695 (Grundsatz G-3): die drei Stufen jedes Ergebnisses. Der Entwurf trägt den
+  // Wortlaut der Quelle. `reasoner.draftLabel` bleibt als Bestandstext unverändert stehen.
+  // Die Empfehlung sagt „ungeprüft" statt „nicht validiert": JOB 2660 hält fest, dass auf einer
+  // Fläche ohne geprüfte Quelle das Wort „validiert" GAR NICHT steht — auch nicht verneint.
+  "ergebnisStufe.entwurf": "Reasoner-Entwurf, nicht validiert",
+  "ergebnisStufe.empfehlung": "Empfehlung, ungeprüft",
+  "ergebnisStufe.validiert": "Validiert",
 
   // ==============================================================================================
   // AUFTRAG-mega62 BLOCK F — DER KOSTENHINWEIS AN JEDER AUSLÖSESTELLE.

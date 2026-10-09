@@ -16,6 +16,7 @@ import {
 } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
+import { absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { schalterAn } from "../feature-flags";
@@ -686,11 +687,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // die Weitergabe eine Eigenschaft der Route, keine Wiederholung.
         //
         // DIE ZWEIGE BLEIBEN DADURCH WÖRTLICH, WAS SIE WAREN. Das ist kein Nebeneffekt, sondern
-        // Absicht: `tests/app/mega52-validiert-zusicherung-sammler.test.ts` liest den Session-
-        // Abschluss `answer(user.id)` AUS DIESEM QUELLTEXT, um zu entscheiden, ob die Anzeigetexte
-        // „Antworten kommen ausschließlich aus validiertem Wissen" versprechen dürfen. Ein zweites
-        // Argument dort hätte den Wächter nicht nur rot gemacht — hätte man ihn „beruhigt", hätte
-        // er ab da geschwiegen und der Text hätte mehr versprechen dürfen als der Weg hält.
+        // Absicht: `tests/app/mega52-validiert-zusicherung-sammler.test.ts` liest die Session-
+        // Abschlüsse `answer(user.id, …)` AUS DIESEM QUELLTEXT, um zu entscheiden, ob die
+        // Anzeigetexte „Antworten kommen ausschließlich aus validiertem Wissen" versprechen dürfen.
+        // Seit R-0278 (Nacharbeit 3) tragen ALLE drei `validatedOnly: true` — der Wächter urteilt
+        // „filtert" und bleibt scharf: ein Abschluss ohne den Filter macht ihn wieder streng.
         //
         // OHNE MARKIERUNG BLEIBT `opts` UNANGETASTET, auch als `undefined`. Ein Zweig, der heute
         // gar keine Optionen übergibt, übergibt weiterhin gar keine (kein leeres Objekt) — daran
@@ -805,7 +806,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             }
             throw fehler;
           }
-          reply.code(200).send({ ...out, result: { ...out.result, evidence } });
+          // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung reist NEBEN `result` (absatz-belege.ts);
+          // ohne beantwortete Frage fehlt sie.
+          const absaetze = absatzBelege(out.result);
+          reply.code(200).send({
+            ...out,
+            result: { ...out.result, evidence },
+            ...(absaetze ? { absaetze } : {}),
+          });
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -828,7 +836,9 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ka4Bestaetigt = true;
             // `gapPolicy` bleibt: die Wissenslücken-Nebenwirkung ist keine Egressfrage und war nie
             // Gegenstand der Einwilligung.
-            await answer(auth.principal.id, { gapPolicy: "count_only" });
+            // R-0278 (Nacharbeit 3, ben): die Einwilligung öffnet das MODELL, nicht den Prüfstand.
+            // `validatedOnly` bleibt — Ungeprüftes wird auf keinem Weg Antwortgrundlage.
+            await answer(auth.principal.id, { validatedOnly: true, gapPolicy: "count_only" });
             return;
           }
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
@@ -874,9 +884,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             (await frageDarfHinaus(user.id))
           ) {
             ka4Bestaetigt = true;
-            // Der normale Answerweg — dieselbe Form wie der Konsolen-Ask darunter, keine
-            // Sonderbehandlung: `validatedOnly`/`retrievalOnly` entfallen, alles andere bleibt.
-            await answer(user.id);
+            // Der Modellweg: `retrievalOnly` entfällt — dafür ist die Einwilligung da.
+            // R-0278 (Nacharbeit 3, ben; Originalquelle: „greift die Einwilligung im Word-Weg, läuft
+            // die Antwort OHNE validatedOnly … das hat niemand beschlossen", Fix-Skizze
+            // `answer(user.id, { validatedOnly: true })`): der Prüfstand bleibt die Grenze.
+            await answer(user.id, { validatedOnly: true });
             return;
           }
           // JOB 1591 D1 (W5) — Pedis Befund um 21:28, und der Weg, auf dem er entstanden ist.
@@ -914,14 +926,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
         // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
         // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
+        // R-0278 (Nacharbeit 3, ben): auch die Web-Ansicht zieht ausschließlich geprüftes Wissen
+        // heran — „für alle Wege gleich". Ohne geprüfte Grundlage antwortet Klara nicht und legt die
+        // Wissenslücke an; die Torlage (`verschlossen`, „Freigabe fehlt") sagt dazu, dass es
+        // ungeprüfte Inhalte gibt. Damit endet die Entscheidung mega52 C für diesen Weg.
         //
-        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet
-        // standardmäßig NUR aus geprüftem Wissen. Bis hierher lief dieser Zweig ohne
-        // `validatedOnly` — der einzige Frageweg, auf dem Ungeprüftes Grundlage einer Antwort werden
-        // konnte. Das ersetzt die Abwägung aus mega52 C (Juli: „Text auf die Wahrheit ziehen statt
-        // Filter") durch den jüngeren Auftrag. Was die Enge verschluckt, wird wie im Panel-Weg
+        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung) kommt unabhängig zum selben
+        // Ergebnis und ergänzt die Meldung: was die Enge verschluckt, wird wie im Panel-Weg
         // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
-        // Der ausdrücklich freigegebene Sonderweg (KA4-Einwilligung, oben) bleibt unverändert.
+        // Den KA4-Einwilligungszweig oben hält R-0278 ebenfalls in der Enge (`validatedOnly`).
         // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
         // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
         fadenErlaubt = true;

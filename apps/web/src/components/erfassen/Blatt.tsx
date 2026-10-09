@@ -72,6 +72,7 @@ import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
 import { kiBremsSatz } from "../../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../../lib/kiHerkunft";
 import { useNetzOnline } from "../../lib/netzzustand";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
@@ -97,6 +98,7 @@ import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
@@ -3635,11 +3637,17 @@ export function Blatt({
           {structureProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020: vom Modell erzeugt → Entwurfsfläche (violett, gestrichelt); der
+              // regelbasierte Rückfall behält die ruhige Karte und heisst „Empfehlung" (R-1695).
+              className={`rounded-[10px] p-3 ${structureProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!structureProposal.demo)}
+                className="ml-1.5"
+              />
               {/* WP-D8 (Pedis Live-ROT B) / WP-D10 Fix 3 / WP-SHIP9-S2: Ein Fallback-Kennzeichen
                   allein erklärt nichts. Hier steht ehrlich, WARUM dieser Vorschlag eine einfache
                   Ableitung ist — kein Modell, Modellfehler, Zeitüberschreitung oder
@@ -3703,8 +3711,10 @@ export function Blatt({
               {/* mega61 Block E: der dauerhaft sichtbare KI-Satz (Art. 50 Abs. 1 und 5 KI-VO). Er
                   stand an der Vordertür und gehört an JEDE Modellfläche — diese Karte IST die
                   Modellfläche des Blattes. Er steht IN der Karte, nicht auf dem ruhenden Blatt:
-                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt.
+                  R-0604: nur, wenn ein Modell ihn geschrieben hat — den regelbasierten Rückfall
+                  benennt die Rückfall-Plakette darüber, „von KI erzeugt" wäre dort falsch. */}
+              {structureProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -3727,11 +3737,16 @@ export function Blatt({
           {assistProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020 / R-1695: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag.
+              className={`rounded-[10px] p-3 ${assistProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!assistProposal.demo)}
+                className="ml-1.5"
+              />
               {assistProposal.demo ? (
                 <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
                   {t("fd.fallback")}
@@ -3758,8 +3773,9 @@ export function Blatt({
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
-              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche.
+                  R-0604: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag. */}
+              {assistProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
