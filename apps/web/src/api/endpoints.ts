@@ -66,6 +66,7 @@ import type {
   ImportExploreResponse,
   ImportGroupResponse,
   ImportItemInput,
+  ImportKandidatBefund,
   ImportKnowledgeResult,
   ImportRunRecord,
   ImportRunStartResponse,
@@ -1186,6 +1187,8 @@ export const endpoints = {
       create: (items: ImportItemInput[]) =>
         api.post<ImportCandidate[]>("/library/import/candidates", { items }),
       list: () => api.get<ImportCandidate[]>("/library/import/candidates"),
+      // R-0179 (Nacharbeit 3): veraltet und schützenswert je Kandidat, vom Server bewertet.
+      befunde: () => api.get<ImportKandidatBefund[]>("/library/import/candidates/befunde"),
       review: (id: string, action: ReviewAction, note?: string) =>
         api.put<ImportCandidate>(`/library/import/candidates/${id}`, { action, note }),
     },

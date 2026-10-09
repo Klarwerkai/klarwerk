@@ -95,6 +95,10 @@ describe("UX-20b-R · eigener Export in einen gefüllten Bestand zusammenführen
       // Nacharbeit 5 (R-0169): die mitgebrachte INTERNE Dokumentkennung, wenn die Datei sie trägt.
       // Der eigene Export trägt sie nicht auf oberster Ebene (sie steht dort in `dokumentHerkunft`).
       "dokumentId",
+      // R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 3): der Stand der Quelle (`updatedAt`,
+      // volle ISO-Zeit), WENN die Datei ihn trägt — nur daraus lässt sich „veraltet" am Kandidaten
+      // bewerten (`services/app/src/import-befunde.ts`). Kein Status, keine Kennung.
+      "updatedAt",
     ]);
     for (const item of parseImportItems(datei)) {
       const fremd = Object.keys(item).filter((k) => !erlaubt.has(k));

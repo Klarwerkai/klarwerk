@@ -123,7 +123,9 @@ export function stepsKeyFor(state: SourceState): string | null {
 export const JSON_UPLOAD_INPUT_ID = "imp-json-upload-input";
 
 // IDs der aktiven JSON-Kacheln (Systeme + Dateien) — beide zeigen auf denselben echten Upload.
-export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
+// R-0179 (Nacharbeit 3): die Excel-Kachel der Import-Fläche ebenso — derselbe Eingang liest .xlsx
+// (`lib/xlsxImport.ts`) und reiht die Zeilen über denselben Weg in die Prüfliste.
+export const JSON_SOURCE_IDS = ["json", "json-file", "xlsx"] as const;
 
 // ================================================================================================
 // JOB 3235 (UX-18-R2) — DIE SYSTEMKACHEL HIESS WIE EINE DATEI UND SAGTE ETWAS ANDERES ALS SIE.
@@ -307,7 +309,8 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
     accept: ACCEPT_IMAGE,
     sample: { name: "a.png", type: "image/png" },
   },
-  // Wirklich (noch) fehlend: Excel — kein Extraktionsweg → kein Dialog, ehrlich geplant.
+  // Excel: im ERFASSEN weiterhin ohne Extraktionsweg (`accept: null`, dort „geplant"). Auf
+  // `/import` liest der Importkasten .xlsx seit R-0179 (Nacharbeit 3) — s. `IMPORT_FILE_STATE`.
   //
   // AUFTRAG-mega14 Block G / mega15 Block D (SCRUM-382) — der Befund und Pedis Entscheidung:
   // Für Audio/Video stimmt „kein Extraktionsweg" NICHT. Das Transkriptionsmodul (`services/media/`)
@@ -320,7 +323,6 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
   // nutzbar. Kein Umhaengen auf ein anderes Eingabefeld, kein neuer Handler: `accept` bleibt null,
   // die Galerie oeffnet fuer diese Kachel weiterhin keinen Dialog.
   //
-  // Excel bleibt „geplant": dort gibt es wirklich keinen Extraktionsweg.
   { id: "xlsx", labelKey: "imp.gallery.file.xlsx", accept: null, sample: { name: "a.xlsx" } },
   {
     id: "avtranscript",
@@ -347,9 +349,9 @@ export type ImportSurface = "capture" | "import";
 // GEBLIEBEN sind genau zwei Eintraege, und beide sind Aussagen, die aus der Weiche nicht folgen:
 //   · `json-file: "active"` — die ausdrueckliche Zusage DIESER Flaeche. Auf `/import` laeuft ein
 //     echter JSON-Upload; die Weiche wuesste davon nichts (sie kennt nur „extrahiert Text").
-//   · `xlsx: "planned"`     — der echte Planwert. Excel hat keinen Extraktionsweg (`accept: null`),
-//     die Weiche gaebe also ohnehin „nicht einlesbar" — der Eintrag steht hier trotzdem, weil
-//     „geplant" die staerkere, ausdrueckliche Aussage ist und nicht der Rueckfall sein soll.
+//   · `xlsx: "active"`      — R-0179 (Nacharbeit 3): auf `/import` liest derselbe Eingang wie JSON
+//     auch Excel (`lib/xlsxImport.ts`). Die Weiche des Erfassens kennt Excel weiterhin nicht
+//     (`accept: null` unten bleibt), dort bleibt die Kachel deshalb „geplant".
 // `avtranscript` steht bewusst NICHT hier: sein Zustand ist auf beiden Oberflaechen derselbe und
 // kommt aus `fixedState` (SCRUM-382).
 //
@@ -358,7 +360,7 @@ export type ImportSurface = "capture" | "import";
 // `tests/import-einstieg/weiche-statt-handtisch.test.ts` rot.
 const IMPORT_FILE_STATE: Record<string, SourceState> = {
   "json-file": "active",
-  xlsx: "planned",
+  xlsx: "active",
 };
 
 // Erfassen: eine Kachel ist AKTIV, wenn ihr Sample über die ECHTE Weiche detectFileKind (die

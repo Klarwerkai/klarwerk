@@ -38,6 +38,13 @@ export const useImportCandidates = () =>
     queryKey: ["import-candidates"],
     queryFn: () => endpoints.library.importCandidates.list(),
   });
+// R-0179 (Nacharbeit 3): die Befunde je Kandidat. Derselbe Schlüsselstamm wie die Liste, damit
+// jede Invalidierung der Prüfliste auch diese Bewertung neu holt. Lazy wie `useConflicts`.
+export const useImportKandidatBefunde = () =>
+  useQuery({
+    queryKey: ["import-candidates", "befunde"],
+    queryFn: () => endpoints.library.importCandidates.befunde(),
+  });
 // F-0140 / K-20 (JOB 2970 D1): der laufende Importlauf, so lange er läuft.
 //
 // Ob nachgefragt wird, entscheidet NICHT dieser Hook, sondern `importRunStateView` — dieselbe reine

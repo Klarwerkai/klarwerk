@@ -120,7 +120,7 @@ Der Wächter prüft die Form der Freigabe, nicht wer sie erteilt hat (Grenze im 
 | --- | --- | --- |
 | Schulungsvideo | Transkription im Erfassen (`services/app/src/routes/media-routes.ts#"/api/media/analyze"`); Importkachel `apps/web/src/lib/importSourceGallery.ts#"avtranscript"` | ohne hinterlegten Dienst nicht nutzbar; kein eigener Importeinstieg (Entscheidung zu SCRUM-382) |
 | Anleitung, Arbeitsanweisung, Servicebericht | als Seite aus Confluence oder SharePoint über die Naht; als Datei (`apps/web/src/lib/importSourceGallery.ts#"docx"`, `apps/web/src/lib/importSourceGallery.ts#"pdf"`) über den Erfassen-Weg | vorhanden; keine eigene Erkennung der Dokumentart |
-| Tabelle | `apps/web/src/lib/importSourceGallery.ts#"csv"` als Text; `apps/web/src/lib/importSourceGallery.ts#"xlsx"` | CSV vorhanden; Excel geplant, kein Extraktionsweg |
+| Tabelle | Excel (.xlsx) im Importkasten der Import-Seite: `apps/web/src/lib/xlsxImport.ts#leseXlsxEintraege` liest das erste Arbeitsblatt (Kopfzeile = Feldnamen des JSON-Formats) und gibt die Zeilen an `apps/web/src/lib/importReview.ts#parseImportItems`; danach derselbe Weg wie JSON (`apps/web/src/pages/Stufe2.tsx#leseXlsxDatei`). CSV als Text über `apps/web/src/lib/importSourceGallery.ts#"csv"` im Erfassen | Excel vorhanden (seit Nacharbeit 3, Kachel `apps/web/src/lib/importSourceGallery.ts#xlsx: "active"`); im Erfassen weiterhin kein Excel-Weg |
 | Wiki-Seite | `apps/web/src/lib/importSourceGallery.ts#"confluence"` | vorhanden, hinter dem Betreiberschalter |
 | PDF | `apps/web/src/lib/importSourceGallery.ts#"pdf"`; Dateien aus `apps/web/src/lib/importSourceGallery.ts#"sharepoint"` | vorhanden |
 | Foto | `apps/web/src/lib/importSourceGallery.ts#"ocr"` mit Bildbeschreibung (`services/app/src/routes/reasoner-routes.ts#/api/reasoner/describe`) | vorhanden, braucht ein freigegebenes Modell |
@@ -129,19 +129,24 @@ Der Wächter prüft die Form der Freigabe, nicht wer sie erteilt hat (Grenze im 
 
 Unter den Pipeline-Stufen der Import-Seite (im standardmäßig eingeklappten Review-Verlauf, sobald
 die Prüfliste Einträge hat) steht eine Zeile mit den sechs Befundarten
-(`apps/web/src/components/ImportFindingsOverview.tsx#IMPORT_FINDING_KINDS`). Jede Zahl stammt aus
-einer vorhandenen Quelle (`apps/web/src/lib/extConcept.ts#importFindingsOverview`):
+(`apps/web/src/components/ImportFindingsOverview.tsx#IMPORT_FINDING_KINDS`). Je Art stehen die
+Treffer und die Kandidaten, die für diese Art nicht bewertet werden konnten, getrennt
+(`apps/web/src/lib/extConcept.ts#importFindingsOverview`). Veraltet und schützenswert bewertet der
+Server je Kandidat, vor der Übernahme
+(`services/app/src/routes/library-routes.ts#"/api/library/import/candidates/befunde"`,
+`services/app/src/import-befunde.ts#importKandidatBefunde`):
 
-| Art | Quelle |
-| --- | --- |
-| Kandidaten | Prüfliste, alle Einträge |
-| Widersprüche | übernommene Kandidaten, deren Wissensobjekt in einem ungelösten Widerspruch steht (`GET /api/conflicts`) |
-| Angaben fehlen | Titel, Aussage oder Kategorie leer — dieselbe Regel wie das Abzeichen am Kandidaten |
-| Veraltet | übernommene Kandidaten, deren Wissensobjekt erneut geprüft werden muss (`GET /api/lifecycle/pending`) |
-| Dubletten | Dublettenbefund der Prüfliste |
-| Schützenswert | Quelle meldet „vertraulich" oder „streng vertraulich" |
+| Art | Treffer | Nicht bewertet |
+| --- | --- | --- |
+| Kandidaten | Prüfliste, alle Einträge | — |
+| Widersprüche | übernommene Kandidaten, deren Wissensobjekt in einem ungelösten Widerspruch steht (`GET /api/conflicts`) | Kandidaten ohne Wissensobjekt |
+| Angaben fehlen | Titel, Aussage oder Kategorie leer — dieselbe Regel wie das Abzeichen am Kandidaten | — |
+| Veraltet | Stand der Quelle (`updatedAt`) älter als `services/library-analytics/src/grouping.ts#STALE_AFTER_DAYS` (dieselbe Regel wie der Qualitätshinweis der Gruppierung), oder das übernommene Wissensobjekt muss erneut geprüft werden (`GET /api/lifecycle/pending`) | weder Quellstand noch übernommenes Objekt |
+| Dubletten | Dublettenbefund der Prüfliste | „Prüfung nicht möglich" |
+| Schützenswert | Einstufung „vertraulich"/„streng vertraulich", Leseschutz der Quelle, Schutzdaten im Text (`services/knowledge-object/src/schutzdaten.ts#erkenneSchutzdaten`), ausdrückliche Kennzeichnung im Text (`services/app/src/import-befunde.ts#SCHUTZKENNZEICHNUNG`) | Kandidat ohne jeden Text; ohne Serverbefund alle nicht eingestuften |
 
-Ist ein Signal nicht abrufbar, steht „nicht ermittelt" da und nie 0.
+Ist ein Signal nicht abrufbar, steht „nicht ermittelt" da und nie 0. Ausgegeben werden nur Gründe,
+nie die gefundenen Werte.
 
 **Beispiel-Importe.** Die Quellen-Galerie verlinkt die Erklärseite mit fiktiven Beispielen
 (`apps/web/src/components/ImportSourceGallery.tsx#/demonstration/importwege.html`, JOB 3138/3194).
@@ -161,10 +166,15 @@ Sie ist ein Ablaufbeispiel und kein Import.
   fehlender Wert werde „konservativ vertraulich". Der Code setzt seit N11 den Übernahme-Standard
   „intern" (`services/library-analytics/src/service.ts#const UEBERNAHME_STANDARD: Confidentiality = "intern"`).
   Es gilt der Code; den Kommentar zu ändern verlangt eine neue Freeze-144-Freigabe.
-- **Schützenswertes Firmenwissen.** Eine eigene IP-Bewertung gibt es nicht
-  (`apps/web/src/lib/extConcept.ts#IpSensitivity`). Gezählt wird die Vertraulichkeit der Quelle.
-- **Veraltet.** Gezählt wird nur die fällige erneute Prüfung am übernommenen Wissensobjekt. Ein
-  Alter der Quelle wird nicht bewertet.
+- **Schützenswertes Firmenwissen.** Die Erkennung (Abschnitt 5) ist regelbasiert: Einstufung,
+  Leseschutz, Schutzdaten und eine Wortliste ausdrücklicher Kennzeichnungen (Deutsch und
+  Englisch). Unmarkiertes Spezialwissen erkennt sie nicht; ein Nullbefund heißt „keiner dieser
+  Gründe". Die Objektsicht `apps/web/src/lib/extConcept.ts#IpSensitivity` bleibt unverändert.
+- **Veraltet.** Bewertet wird nur, wo die Quelle einen Stand liefert (Confluence, SharePoint, eine
+  JSON- oder Excel-Spalte `updatedAt`) oder das Objekt schon übernommen ist. Die Frist ist die
+  vorhandene Importfrist; eine eigene Frist je Wissensart gibt es für Kandidaten nicht.
+- **Excel.** Gelesen wird nur das erste Arbeitsblatt, mit den englischen Feldnamen des
+  JSON-Formats als Kopfzeile; Formeln zählen mit ihrem gespeicherten Wert.
 - **Laufzustände.** Vier der neun Zustände sind festgelegt, werden aber nicht geschrieben
   (Abschnitt 2).
 - **Altquellen.** R-0130 und R-0686 verweisen auf Jobs 761 und 786–868, deren Lieferungen „Einbau

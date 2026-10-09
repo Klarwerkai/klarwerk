@@ -34,6 +34,7 @@ import {
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
+import { importKandidatBefunde } from "../import-befunde";
 import {
   darfSehen,
   sichtbareFuer,
@@ -1004,6 +1005,18 @@ export function libraryRoutes(
       // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
       const kandidaten = await library.listImportCandidates();
       reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
+    });
+
+    // R-0179 / FR-EXT-01 (Nacharbeit 3): veraltete Inhalte und schützenswertes Firmenwissen je
+    // Kandidat — bewertet vor der Übernahme, mit „nicht bewertet" als eigenem Zustand
+    // (`import-befunde.ts`). Dasselbe Tor wie die Liste; ausgegeben werden nur Gründe, nie Werte.
+    app.get("/api/library/import/candidates/befunde", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const kandidaten = await library.listImportCandidates();
+      reply.code(200).send(importKandidatBefunde(kandidaten, Date.now()));
     });
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER

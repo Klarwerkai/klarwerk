@@ -68,8 +68,11 @@ describe("JOB 3190 · R1 — /import nennt den wirklichen Einstieg", () => {
     expect(zustaende("import").get("json-file")).toBe("active");
   });
 
-  it("Excel bleibt `planned` — dort gibt es wirklich keinen Extraktionsweg", () => {
-    expect(zustaende("import").get("xlsx")).toBe("planned");
+  // R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 3): NACHGEFÜHRT. Der Importkasten auf
+  // `/import` liest Excel seither selbst (`lib/xlsxImport.ts`) — die Kachel ist dort `active`. Im
+  // Erfassen gibt es weiterhin keinen Excel-Weg; das hält der Erfassen-Fall unten fest.
+  it("Excel ist auf `/import` `active` — derselbe Eingang wie JSON liest es", () => {
+    expect(zustaende("import").get("xlsx")).toBe("active");
   });
 
   it("das Audio-/Video-Transkript bleibt `unconfigured` — auf BEIDEN Oberflächen", () => {
@@ -96,9 +99,10 @@ describe("JOB 3190 · R1 — /import nennt den wirklichen Einstieg", () => {
       expect(istGeordnet(fileSourcesForSurface(surface)), surface).toBe(true);
     }
     const ids = fileSourcesForSurface("import").map((s) => s.id);
-    // Der aktive JSON-Eintrag steht vor jeder `elsewhere`-Kachel, diese vor dem Transkript.
+    // Die aktiven Einträge (JSON, Excel) stehen vor jeder `elsewhere`-Kachel, diese vor dem
+    // Transkript.
     expect(ids.indexOf("json-file")).toBeLessThan(ids.indexOf("docx"));
+    expect(ids.indexOf("xlsx")).toBeLessThan(ids.indexOf("docx"));
     expect(ids.indexOf("docx")).toBeLessThan(ids.indexOf("avtranscript"));
-    expect(ids.indexOf("avtranscript")).toBeLessThan(ids.indexOf("xlsx"));
   });
 });

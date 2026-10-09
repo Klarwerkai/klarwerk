@@ -61,6 +61,21 @@ function istQuellfassung(value: unknown): boolean {
   );
 }
 
+// R-0179 (Nacharbeit 3, Bens Befund „veraltet"): der STAND der Quelle — wann der Inhalt dort zuletzt
+// geändert wurde. Dieselbe Form wie `istImportZeitpunkt` des Servers
+// (services/library-analytics/src/types.ts): volle ISO-Zeit mit Zone, ein gültiger Tag. Nur daraus
+// kann die Befundübersicht „veraltet" bewerten; ohne Stand bleibt der Eintrag „nicht bewertet".
+// BEWUSST KEIN ABLEHNUNGSGRUND: ein eigener Bibliotheksexport trägt `updatedAt` des Objekts, und
+// ein Altbestandswert in anderer Form darf den Wiederimport nicht abweisen. Ein unbrauchbarer Stand
+// reist nicht mit — der Eintrag ist dann für „veraltet" ehrlich nicht bewertet.
+const IMPORT_ZEITPUNKT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export function istQuellStand(value: unknown): value is string {
+  return (
+    typeof value === "string" && IMPORT_ZEITPUNKT.test(value) && Number.isFinite(Date.parse(value))
+  );
+}
+
 const QUELL_CHECKS: Record<string, (value: unknown) => boolean> = {
   provider: (value) => fehltOderLeer(value) || gefuellt(value),
   externalId: (value) => fehltOderLeer(value) || gefuellt(value),
@@ -208,6 +223,9 @@ export function parseImportItems(text: string): ImportItemInput[] {
     }
     if (gefuellt(o.dokumentId)) {
       item.dokumentId = o.dokumentId.trim();
+    }
+    if (istQuellStand(o.updatedAt)) {
+      item.updatedAt = o.updatedAt;
     }
     return item;
   });

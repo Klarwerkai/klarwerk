@@ -1793,9 +1793,25 @@ export interface ImportItemInput {
   // und damit konnte die Befundübersicht schützenswertes Wissen nicht zählen. FEHLT das Feld, gilt
   // beim Anlegen der Übernahme-Standard „intern" (N11) — das Fehlen ist kein „vertraulich".
   confidentiality?: Confidentiality;
+  // R-0179 (Nacharbeit 3): Stand der Quelle (ISO), wie `ImportItem.updatedAt` des Servers. Fehlt er,
+  // kann „veraltet" für diesen Eintrag nicht bewertet werden.
+  updatedAt?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
+}
+
+// R-0179 (Nacharbeit 3): die Befunde je Importkandidat — Spiegel von
+// `services/app/src/import-befunde.ts` (abgeschrieben, weil der Webbau `services/` nicht einbindet).
+// `bewertet: false` heißt „nicht bewertet", nie „ohne Befund".
+export type ImportSchutzGrund = "einstufung" | "leseschutz" | "schutzdaten" | "kennzeichnung";
+
+export interface ImportKandidatBefund {
+  id: string;
+  schutz:
+    | { bewertet: false }
+    | { bewertet: true; gruende: ImportSchutzGrund[]; schutzdaten: string[] };
+  veraltet: { bewertet: false } | { bewertet: true; veraltet: boolean; stand: string };
 }
 
 // WP-SHIP8-CLOSE-2 (bens F1): "in_bearbeitung" = transienter Claim einer LAUFENDEN Review-Aktion

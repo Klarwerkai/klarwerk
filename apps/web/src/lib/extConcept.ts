@@ -1,7 +1,12 @@
 // SCRUM-90/91/95/96 (EXT-Restblock): DOM-freie, rein abgeleitete Konzept-/Sichtmodelle für
 // den Import-/Wiederverwendungsfluss und Gültigkeit/Schutz. KEINE neue Engine, KEINE
 // Persistenz, KEINE erfundene Bewertung (z. B. kein erfundenes Ablaufdatum, keine IP-Klasse).
-import type { Conflict, ImportCandidate, KnowledgeObject } from "../api/types";
+import type {
+  Conflict,
+  ImportCandidate,
+  ImportKandidatBefund,
+  KnowledgeObject,
+} from "../api/types";
 
 // SCRUM-90: konzeptioneller Import-/Wiederverwendungsfluss (Upload → … → Wiederverwenden).
 export const IMPORT_PIPELINE_STEPS = [
@@ -41,20 +46,24 @@ export function summarizeImportQueue(candidates: readonly ImportCandidate[]): Im
 // ================================================================================================
 //
 // FR-EXT-01 verlangt die Ergebnis-Befunde in sechs Arten: Kandidaten, Konflikte, fehlend, veraltet,
-// Dubletten, IP. Jede Zahl hier stammt aus einer VORHANDENEN Quelle; keine Art bekommt eine eigene,
-// neue Erkennungsregel:
-//   · Kandidaten, Dubletten — die Prüfliste selbst (dieselben Zahlen wie `summarizeImportQueue`).
+// Dubletten, IP. Jede Art zählt zwei Dinge: die TREFFER und die Kandidaten, die für diese Art
+// NICHT BEWERTET werden konnten. Ein Nullbefund heißt damit „bewertet, nichts gefunden" — wer nicht
+// bewertet ist, steht getrennt da (Nacharbeit 3, Bens Befunde).
+//   · Kandidaten — die Prüfliste selbst.
+//   · Dubletten — der Dublettenbefund der Prüfliste; „Prüfung nicht möglich" ist nicht bewertet.
 //   · fehlend — `candidateFindings().missingInfo` (dieselbe Regel wie das Abzeichen am Kandidaten).
 //   · Konflikte — übernommene Kandidaten, deren Wissensobjekt in einem UNGELÖSTEN Konflikt steht
-//     (`GET /api/conflicts`, dieselbe Regel wie `validityProtectionView`).
-//   · veraltet — übernommene Kandidaten, deren Wissensobjekt zur erneuten Prüfung ansteht
-//     (`GET /api/lifecycle/pending`, dort „revalidierung-faellig").
-//   · schützenswert — Kandidaten, deren Quelle „vertraulich" oder „streng vertraulich" meldet. Eine
-//     eigene IP-Bewertung gibt es weiterhin nicht (`IpSensitivity` unten bleibt „nicht-bewertet").
+//     (`GET /api/conflicts`, dieselbe Regel wie `validityProtectionView`). Ein noch nicht
+//     übernommener Kandidat ist für diese Art nicht bewertet.
+//   · veraltet — der Stand der QUELLE liegt jenseits der Importfrist (`GET /api/library/import/
+//     candidates/befunde`, Server-Regel `STALE_AFTER_DAYS`) ODER das übernommene Wissensobjekt steht
+//     zur erneuten Prüfung an (`GET /api/lifecycle/pending`). Ohne Stand und ohne Objekt: nicht
+//     bewertet.
+//   · schützenswert — die Servererkennung (Einstufung, Leseschutz der Quelle, Schutzdaten,
+//     Schutzkennzeichnung im Text). Fehlt sie, zählt allein die Einstufung der Quelle als Treffer;
+//     alle übrigen sind dann nicht bewertet.
 //
-// `null` heißt „nicht ermittelt" (das Signal ist nicht abrufbar) — nie „null Befunde". Ein noch
-// nicht übernommener Kandidat hat kein Wissensobjekt und kann darum weder Konflikt noch Veraltung
-// tragen; das ist eine Grenze der Quelle, keine Entwarnung.
+// `found: null` heißt „nicht ermittelt" (das Signal selbst ist nicht abrufbar) — nie 0.
 export const IMPORT_FINDING_KINDS = [
   "candidates",
   "conflicts",
@@ -65,34 +74,86 @@ export const IMPORT_FINDING_KINDS = [
 ] as const;
 export type ImportFindingKind = (typeof IMPORT_FINDING_KINDS)[number];
 
-export type ImportFindingCounts = Record<ImportFindingKind, number | null>;
+export interface ImportFindingCount {
+  /** Treffer unter den bewerteten Kandidaten; `null` = das Signal ist nicht abrufbar. */
+  found: number | null;
+  /** Kandidaten, die für diese Art nicht bewertet werden konnten. */
+  notAssessed: number;
+}
+
+export type ImportFindingCounts = Record<ImportFindingKind, ImportFindingCount>;
 
 export interface ImportFindingSignals {
   /** Sichtbare Konflikte; `undefined`, solange (oder weil) sie nicht gelesen werden konnten. */
   conflicts?: readonly Conflict[] | undefined;
   /** Kennungen der zur erneuten Prüfung anstehenden Objekte; `undefined` = nicht gelesen. */
   pendingIds?: readonly string[] | undefined;
+  /** Die Serverbefunde je Kandidat (veraltet, schützenswert); `undefined` = nicht gelesen. */
+  befunde?: readonly ImportKandidatBefund[] | undefined;
 }
 
 const SCHUETZENSWERT = new Set(["vertraulich", "streng_vertraulich"]);
+
+type Bewertung = "treffer" | "ohne" | "offen";
+
+function zaehle(bewertungen: readonly Bewertung[]): ImportFindingCount {
+  return {
+    found: bewertungen.filter((b) => b === "treffer").length,
+    notAssessed: bewertungen.filter((b) => b === "offen").length,
+  };
+}
+
+function veraltetBewertung(
+  c: ImportCandidate,
+  befund: ImportKandidatBefund | undefined,
+  pending: ReadonlySet<string> | null,
+): Bewertung {
+  const quelle = befund?.veraltet.bewertet ? befund.veraltet.veraltet : undefined;
+  const objekt = c.koId && pending ? pending.has(c.koId) : undefined;
+  if (quelle === true || objekt === true) {
+    return "treffer";
+  }
+  return quelle === undefined && objekt === undefined ? "offen" : "ohne";
+}
+
+function schutzBewertung(c: ImportCandidate, befund: ImportKandidatBefund | undefined): Bewertung {
+  const eingestuft = SCHUETZENSWERT.has(c.item.confidentiality ?? "");
+  if (befund?.schutz.bewertet) {
+    return eingestuft || befund.schutz.gruende.length > 0 ? "treffer" : "ohne";
+  }
+  // Ohne Servererkennung bleibt allein die Einstufung der Quelle eine belegte Aussage.
+  return eingestuft ? "treffer" : "offen";
+}
+
+/** Die Dublettenfrage konnte nicht entschieden werden — weder Dublette noch keine. */
+function dubletteOffen(c: ImportCandidate): boolean {
+  return c.dublettenbefund?.ergebnis === "pruefung_nicht_moeglich";
+}
 
 export function importFindingsOverview(
   candidates: readonly ImportCandidate[],
   signals: ImportFindingSignals = {},
 ): ImportFindingCounts {
   const queue = summarizeImportQueue(candidates);
-  // Nur übernommene Kandidaten tragen eine Objektkennung.
-  const koIds = candidates.flatMap((c) => (c.koId ? [c.koId] : []));
   const ungeloest = signals.conflicts?.filter((c) => c.status !== "geloest");
   const imKonflikt = ungeloest ? new Set(ungeloest.flatMap((c) => [c.koA, c.koB])) : null;
   const pending = signals.pendingIds ? new Set(signals.pendingIds) : null;
+  const befunde = new Map((signals.befunde ?? []).map((b) => [b.id, b] as const));
+  // Nur übernommene Kandidaten tragen eine Objektkennung — nur sie sind auf Konflikte bewertbar.
+  const ohneObjekt = candidates.filter((c) => !c.koId).length;
   return {
-    candidates: queue.total,
-    conflicts: imKonflikt ? koIds.filter((id) => imKonflikt.has(id)).length : null,
-    missing: candidates.filter((c) => candidateFindings(c).missingInfo).length,
-    outdated: pending ? koIds.filter((id) => pending.has(id)).length : null,
-    duplicates: queue.duplicates,
-    protected: candidates.filter((c) => SCHUETZENSWERT.has(c.item.confidentiality ?? "")).length,
+    candidates: { found: queue.total, notAssessed: 0 },
+    conflicts: {
+      found: imKonflikt ? candidates.filter((c) => c.koId && imKonflikt.has(c.koId)).length : null,
+      notAssessed: ohneObjekt,
+    },
+    missing: {
+      found: candidates.filter((c) => candidateFindings(c).missingInfo).length,
+      notAssessed: 0,
+    },
+    outdated: zaehle(candidates.map((c) => veraltetBewertung(c, befunde.get(c.id), pending))),
+    duplicates: { found: queue.duplicates, notAssessed: candidates.filter(dubletteOffen).length },
+    protected: zaehle(candidates.map((c) => schutzBewertung(c, befunde.get(c.id)))),
   };
 }
 

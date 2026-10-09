@@ -154,9 +154,22 @@ import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
+import {
+  XlsxImportError,
+  type XlsxImportFehler,
+  istXlsxDatei,
+  leseXlsxDatei,
+} from "../lib/xlsxImport";
 
 /** ADMIN-16: die Anker der früheren Paket-Kästen auf `/import` — sie führen in die Verwaltung. */
 const ALTE_PAKET_ANKER: readonly string[] = ["#beispielpakete", "#demopakete"];
+
+/** R-0179 (Nacharbeit 3): die Meldung je Lesefehler einer Excel-Tabelle. */
+const XLSX_FEHLERTEXT: Record<XlsxImportFehler, string> = {
+  unreadable: "importtabelle.unreadable",
+  "too-large": "importtabelle.tooLarge",
+  empty: "importtabelle.empty",
+};
 
 // JOB 691 / D-021: DER INTERNE VORGANGSCHIP IST HIER RAUS.
 //
@@ -1264,14 +1277,27 @@ export function ImportReview(): JSX.Element {
 
   // AUFTRAG-mega1 Block A: der EINE Import-Weg (Dialog UND Drop teilen ihn). Nicht-JSON wird ehrlich
   // abgelehnt (parseImportItems wirft ImportParseError) — kein zweiter Pfad, kein neuer Egress.
+  // R-0179 (Nacharbeit 3): eine Excel-Tabelle wird im Browser zu denselben Einträgen wie eine
+  // JSON-Datei (`lib/xlsxImport.ts`) und geht danach denselben Weg — dieselbe Prüfung, dieselbe
+  // Prüfliste, dieselbe Annahme.
   const processImportFile = async (file: File): Promise<void> => {
     try {
+      if (istXlsxDatei(file)) {
+        const { items, weitereBlaetter } = await leseXlsxDatei(file);
+        createCandidates.mutate(items);
+        if (weitereBlaetter > 0) {
+          push("info", t("importtabelle.weitereBlaetter", { n: weitereBlaetter }));
+        }
+        return;
+      }
       const items = parseImportItems(await file.text());
       createCandidates.mutate(items);
     } catch (err) {
       if (err instanceof ImportParseError) {
         const notice = importParseNotice(err);
         push("error", t(notice.key, notice.params));
+      } else if (err instanceof XlsxImportError) {
+        push("error", t(XLSX_FEHLERTEXT[err.kind]));
       } else {
         push("error", t("state.error"));
       }
@@ -1296,8 +1322,8 @@ export function ImportReview(): JSX.Element {
       return;
     }
     const isJson = file.name.toLowerCase().endsWith(".json") || file.type === "application/json";
-    if (!isJson) {
-      push("error", t("imp.dropReject", { name: file.name }));
+    if (!isJson && !istXlsxDatei(file)) {
+      push("error", t("importtabelle.dropReject", { name: file.name }));
       return;
     }
     void processImportFile(file);
