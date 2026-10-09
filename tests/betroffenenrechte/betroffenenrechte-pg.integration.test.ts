@@ -21,6 +21,7 @@ import {
   istUeberfaellig,
   neuerLoeschantrag,
 } from "../../services/app/src/loeschantraege";
+import { PgNachfolgeRepo } from "../../services/app/src/verantwortung-nachfolge";
 import { PgAnswerSnapshotRepo } from "../../services/ask";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { PgModelRunRepo } from "../../services/model-runs";
@@ -259,5 +260,39 @@ describe("Betroffenenrechte gegen echtes PostgreSQL", () => {
     expect(sitzungen.map((s) => s.sessionId)).toEqual([sessionId]);
     expect(await klara.sitzungenVon(andere)).toEqual([]);
     expect(await klara.consentsVon(nutzer)).toEqual([]);
+  });
+
+  it("P6 · Nachfolge bei Befristung: je Person in jeder Rolle lesbar — fremde Einträge nicht", async () => {
+    const z = randomUUID();
+    const konto = `konto-${z}`;
+    const nachfolger = `nachfolge-${z}`;
+    const setzend = `setzend-${z}`;
+    const fremd = `fremd-${z}`;
+    const nachfolge = new PgNachfolgeRepo(neuerPool());
+    await nachfolge.setze({
+      konto,
+      nachfolger,
+      gesetztVon: setzend,
+      gesetztAm: "2026-10-05T09:00:00.000Z",
+    });
+    await nachfolge.setze({
+      konto: fremd,
+      nachfolger: `anderer-${z}`,
+      gesetztVon: `andere-verwaltung-${z}`,
+      gesetztAm: "2026-10-05T10:00:00.000Z",
+    });
+
+    // Nach dem Neustart über einen frischen Pool.
+    const gelesen = new PgNachfolgeRepo(neuerPool());
+    const erwartet = {
+      konto,
+      nachfolger,
+      gesetztVon: setzend,
+      gesetztAm: "2026-10-05T09:00:00.000Z",
+    };
+    expect(await gelesen.betreffend(konto)).toEqual([erwartet]);
+    expect(await gelesen.betreffend(nachfolger)).toEqual([erwartet]);
+    expect(await gelesen.betreffend(setzend)).toEqual([erwartet]);
+    expect(await gelesen.betreffend(`niemand-${z}`)).toEqual([]);
   });
 });

@@ -29,6 +29,7 @@ import type { Assignment, Rating } from "../../validation";
 import { DATENINVENTAR, type Datenart } from "./dateninventar";
 import type { Kenntnisnahmeeintrag } from "./kenntnisnahme";
 import type { Loeschantrag, LoeschantragRepo } from "./loeschantraege";
+import type { NachfolgeEintrag } from "./verantwortung-nachfolge";
 
 /** Die Quellen der Auskunft — strukturell, damit Tests sie ohne die ganze App stellen können. */
 export interface SelbstauskunftQuellen {
@@ -62,7 +63,12 @@ export interface SelbstauskunftQuellen {
     sitzungenVon?(actorId: string): Promise<readonly KlaraSession[]>;
     consentsVon?(actorId: string): Promise<readonly KlaraConsent[]>;
   };
+  /** Nachfolge bei Befristung: die Einträge, in denen die Person vorkommt (`verantwortung-nachfolge.ts`). */
+  nachfolge: { betreffend?(person: string): Promise<NachfolgeEintrag[]> };
 }
+
+/** In welcher Rolle die Person in einem Nachfolgeeintrag steht. */
+export type NachfolgeBezug = "befristetes-konto" | "nachfolge" | "gesetzt-von";
 
 /**
  * Aktionen des Prüfprotokolls, deren betroffene Person NICHT in `actor`/`target` steht, sondern in
@@ -150,8 +156,19 @@ export interface Selbstauskunft {
     autorVon: number;
     offenePruefzuweisungen: number;
     zugewieseneOffeneFragen: number;
+    /**
+     * Die Nachfolge, die neue Beiträge dieses (befristeten) Kontos verantwortet — `null`: keine
+     * gesetzt; `undefined` gibt es nicht. Fehlt der Leseweg, steht `nachfolge` unten auf `null`.
+     */
+    nachfolgeBeiBefristung: string | null;
   };
   loeschantraege: Loeschantrag[];
+  /**
+   * Nachfolge bei Befristung: jeder gespeicherte Eintrag, in dem die Person als befristetes Konto,
+   * als Nachfolge oder als setzende Person steht — unabhängig davon, ob es schon Beiträge gibt.
+   * Einträge ohne die Person erscheinen nicht. `null`: die Ablage kann sie nicht je Person auflisten.
+   */
+  nachfolge: Array<NachfolgeEintrag & { bezug: NachfolgeBezug[] }> | null;
   /** KI-Läufe, die die Person angefragt hat — Metadaten, keine Inhalte (es gibt keine). `null`: nicht abrufbar. */
   kiLaeufe: ModelRunRecord[] | null;
   /** `null` je Teil: die Ablage kann ihn nicht je Person auflisten — „nicht abrufbar". */
@@ -305,11 +322,34 @@ export async function erstelleSelbstauskunft(
       anzahl: typeof g.askCount === "number" ? g.askCount : null,
     }));
 
-  const [kiLaeufe, klaraSitzungen, klaraZustimmungen] = await Promise.all([
+  const [kiLaeufe, klaraSitzungen, klaraZustimmungen, nachfolgeRoh] = await Promise.all([
     quellen.modelRuns.vonAkteur ? quellen.modelRuns.vonAkteur(nutzerId) : null,
     quellen.klara.sitzungenVon ? quellen.klara.sitzungenVon(nutzerId) : null,
     quellen.klara.consentsVon ? quellen.klara.consentsVon(nutzerId) : null,
+    quellen.nachfolge.betreffend ? quellen.nachfolge.betreffend(nutzerId) : null,
   ]);
+  // Die Ablage filtert bereits auf die Person; hier wird es noch einmal geprüft, damit eine
+  // fehlerhafte Ablage keine fremden Einträge in die Auskunft trägt.
+  const nachfolge: Selbstauskunft["nachfolge"] =
+    nachfolgeRoh === null
+      ? null
+      : nachfolgeRoh.flatMap((e) => {
+          const bezug: NachfolgeBezug[] = [];
+          if (e.konto === nutzerId) {
+            bezug.push("befristetes-konto");
+          }
+          if (e.nachfolger === nutzerId) {
+            bezug.push("nachfolge");
+          }
+          if (e.gesetztVon === nutzerId) {
+            bezug.push("gesetzt-von");
+          }
+          if (bezug.length === 0) {
+            return [];
+          }
+          const { konto: k, nachfolger, gesetztVon, gesetztAm } = e;
+          return [{ konto: k, nachfolger, gesetztVon, gesetztAm, bezug }];
+        });
 
   // Betroffen ist die Person, wenn sie handelt, Ziel ist — oder bei den Löschantragsentscheidungen
   // in `payload.nutzerId` steht (dort ist das Ziel die Antragskennung und die Verwaltung handelt).
@@ -386,8 +426,10 @@ export async function erstelleSelbstauskunft(
       zugewieseneOffeneFragen: luecken.filter(
         (g) => g.assignee === nutzerId && g.status === "offen",
       ).length,
+      nachfolgeBeiBefristung: nachfolge?.find((e) => e.konto === nutzerId)?.nachfolger ?? null,
     },
     loeschantraege: await quellen.loeschantraege.vonNutzer(nutzerId),
+    nachfolge,
     kiLaeufe,
     klara: {
       sitzungen: klaraSitzungen === null ? null : [...klaraSitzungen],
@@ -410,6 +452,7 @@ export async function erstelleSelbstauskunft(
     anhaenge: auskunft.anhaenge.length,
     lernpfade: auskunft.lernpfade.length,
     loeschantraege: auskunft.loeschantraege.length,
+    nachfolge: auskunft.nachfolge?.length ?? -1,
     kiLaeufe: auskunft.kiLaeufe?.length ?? -1,
     klaraSitzungen: auskunft.klara.sitzungen?.length ?? -1,
     klaraZustimmungen: auskunft.klara.zustimmungen?.length ?? -1,

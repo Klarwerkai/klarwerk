@@ -43,6 +43,8 @@ export interface Selbstauskunft {
     autorVon: number;
     offenePruefzuweisungen: number;
     zugewieseneOffeneFragen: number;
+    /** Die Nachfolge, die neue Beiträge dieses befristeten Kontos verantwortet — `null`: keine. */
+    nachfolgeBeiBefristung: string | null;
   };
 }
 

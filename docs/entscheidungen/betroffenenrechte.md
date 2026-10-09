@@ -80,6 +80,13 @@ mit der Veröffentlichung; bis dahin gilt hier: **gebaut und im Prüflauf, nicht
    der anfragenden Person (`actor`). Richtig bleibt nur der Befund aus R-0583 — **keine Inhalte**.
    Inventar und §1 sind korrigiert. Seit Nacharbeit 4 stehen die KI-Läufe der Person auch in der
    Auskunft (neuer Leseweg `vonAkteur`), ebenso Klara-Sitzungen und Zustimmungen.
+8. **Nachfolge bei Befristung** (`verantwortung_nachfolge`, mit main integriert) stand zunächst als
+   „nicht enthalten" im Inventar — mit dem Verweis auf die eigenen Objekte. Das trägt nicht (Ben,
+   Nacharbeit 13): die Zuordnung besteht, bevor es einen Beitrag gibt. Seit Nacharbeit 13 steht sie
+   in Selbst- und Verwaltungsauskunft (Feld `nachfolge`, neuer Leseweg `betreffend` der Ablage):
+   jeder Eintrag, in dem die Person als befristetes Konto, als Nachfolge oder als setzende Person
+   steht, mit ihrer Rolle (`bezug`); Einträge ohne die Person erscheinen nicht. Der Übergabestand
+   (R-1645) nennt dazu die Nachfolge des eigenen Kontos (`nachfolgeBeiBefristung`).
 
 ## Fehlende Belege (benannt, nicht ersetzt)
 

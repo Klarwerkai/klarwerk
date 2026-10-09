@@ -94,8 +94,19 @@ interface Auskunft {
   fragen: Array<{ id: string; frage: string }>;
   antworten: Array<{ antwortId: string }> | null;
   protokoll: Array<{ seq: number; aktion: string; ziel: string; bezug: string }>;
-  uebergabe: { autorVon: number; verantwortlichFuer: number };
+  uebergabe: {
+    autorVon: number;
+    verantwortlichFuer: number;
+    nachfolgeBeiBefristung: string | null;
+  };
   loeschantraege: Array<{ id: string; status: string }>;
+  nachfolge: Array<{
+    konto: string;
+    nachfolger: string;
+    gesetztVon: string;
+    gesetztAm: string;
+    bezug: string[];
+  }> | null;
   kiLaeufe: Array<{ id: string; actor?: string; task: string }> | null;
   klara: {
     sitzungen: Array<{ sessionId: string; actorId: string }> | null;
@@ -563,6 +574,75 @@ describe("N4-1 · KI-Läufe und Klara-Sitzungen stehen in Selbst- und Verwaltung
     expect(verwaltung.kiLaeufe?.map((l) => l.id)).toEqual(["lauf-erik"]);
     expect(verwaltung.klara.sitzungen?.map((s) => s.sessionId)).toEqual(["sitzung-erik"]);
     expect(verwaltung.klara.zustimmungen?.map((z) => z.consentId)).toEqual(["zus-sitzung-erik"]);
+  });
+});
+
+// Nacharbeit 13 (BEN): die Nachfolge bei Befristung (`verantwortung_nachfolge`) ist personenbezogen
+// und besteht schon, bevor es Beiträge gibt — sie gehört selbst in die Auskunft.
+describe("N13 · Nachfolge bei Befristung in Selbst- und Verwaltungsauskunft", () => {
+  it("die Zuordnung steht schon ohne Beiträge darin — je Rolle, fremde Einträge nicht", async () => {
+    // Erik ist befristet, Vera seine Nachfolge, die Verwaltung hat sie gesetzt. Erik hat (noch)
+    // keinen einzigen Beitrag.
+    await services.verantwortungNachfolge.setze({
+      konto: erik.id,
+      nachfolger: vera.id,
+      gesetztVon: admin.id,
+      gesetztAm: "2026-10-05T09:00:00.000Z",
+    });
+    // Ein Eintrag, in dem weder Erik noch Vera vorkommen.
+    await services.verantwortungNachfolge.setze({
+      konto: "konto-fremd",
+      nachfolger: "nachfolge-fremd",
+      gesetztVon: admin.id,
+      gesetztAm: "2026-10-05T10:00:00.000Z",
+    });
+
+    const selbst = (await auf(erik.token, "GET", "/api/me/daten")).json() as Auskunft;
+    expect(selbst.eigeneObjekte).toEqual([]);
+    expect(selbst.nachfolge).toEqual([
+      {
+        konto: erik.id,
+        nachfolger: vera.id,
+        gesetztVon: admin.id,
+        gesetztAm: "2026-10-05T09:00:00.000Z",
+        bezug: ["befristetes-konto"],
+      },
+    ]);
+    expect(selbst.uebergabe.nachfolgeBeiBefristung).toBe(vera.id);
+    expect(selbst.zaehlung.nachfolge).toBe(1);
+    expect(JSON.stringify(selbst)).not.toContain("konto-fremd");
+    expect(JSON.stringify(selbst)).not.toContain("nachfolge-fremd");
+    // Die Datenart steht nicht mehr unter „nicht enthalten“.
+    expect(selbst.nichtEnthalten.map((n) => n.datenart)).not.toContain("verantwortungnachfolge");
+
+    // Vera erfährt, dass sie Nachfolge ist — ohne den fremden Eintrag.
+    const nachfolge = (await auf(vera.token, "GET", "/api/me/daten")).json() as Auskunft;
+    const veraSieht = nachfolge.nachfolge?.map((e) => [e.konto, e.bezug]);
+    expect(veraSieht).toEqual([[erik.id, ["nachfolge"]]]);
+    expect(nachfolge.uebergabe.nachfolgeBeiBefristung).toBeNull();
+    expect(JSON.stringify(nachfolge)).not.toContain("konto-fremd");
+
+    // Die Verwaltung hat beide gesetzt: beide stehen in ihrer Auskunft, als setzende Person.
+    const setzend = (await auf(admin.token, "GET", "/api/me/daten")).json() as Auskunft;
+    expect(setzend.nachfolge?.map((e) => [e.konto, e.bezug])).toEqual([
+      [erik.id, ["gesetzt-von"]],
+      ["konto-fremd", ["gesetzt-von"]],
+    ]);
+
+    // Dieselbe Angabe in der Auskunft der Verwaltung über Erik.
+    const verwaltung = (
+      await auf(admin.token, "GET", `/api/datenschutz/auskunft/${erik.id}`)
+    ).json() as Auskunft;
+    expect(verwaltung.nachfolge?.map((e) => [e.konto, e.nachfolger, e.bezug])).toEqual([
+      [erik.id, vera.id, ["befristetes-konto"]],
+    ]);
+  });
+
+  it("ohne Eintrag: leer statt „nicht abrufbar“, keine Nachfolge im Übergabestand", async () => {
+    const selbst = (await auf(erik.token, "GET", "/api/me/daten")).json() as Auskunft;
+    expect(selbst.nachfolge).toEqual([]);
+    expect(selbst.uebergabe.nachfolgeBeiBefristung).toBeNull();
+    expect(selbst.zaehlung.nachfolge).toBe(0);
   });
 });
 

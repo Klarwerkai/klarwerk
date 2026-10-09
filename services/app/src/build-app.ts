@@ -4309,6 +4309,8 @@ export function buildApp(
           loeschantraege: services.loeschantraege,
           modelRuns: services.modelRuns,
           klara: services.klaraSessions,
+          // R-0663/R-1645: die Nachfolge bei Befristung, in der die Person vorkommt.
+          nachfolge: services.verantwortungNachfolge,
         },
         loeschantraege: services.loeschantraege,
         auth: services.auth,

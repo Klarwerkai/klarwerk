@@ -41,6 +41,7 @@ const BEREICHE = [
   "anhaenge",
   "lernpfade",
   "loeschantraege",
+  "nachfolge",
   "kiLaeufe",
   "klaraSitzungen",
   "klaraZustimmungen",
@@ -125,6 +126,12 @@ export function MeineDatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.
                   <dd className="text-muted-2">{String(zahl)}</dd>
                 </div>
               ))}
+              <div className={LISTENZEILE}>
+                <dt className="text-text">{t("datenschutz.meineDaten.uebergabe.nachfolge")}</dt>
+                <dd className="text-muted-2" data-testid="meine-daten-nachfolge">
+                  {a.uebergabe.nachfolgeBeiBefristung ?? "—"}
+                </dd>
+              </div>
             </dl>
             <Kicker>{t("datenschutz.meineDaten.nichtEnthalten")}</Kicker>
             <ul className="space-y-1.5 text-[12.5px]" data-testid="meine-daten-nicht-enthalten">

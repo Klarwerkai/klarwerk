@@ -31,6 +31,7 @@ export default {
     "datenschutz.meineDaten.bereich.anhaenge": "Hochgeladene Dateien",
     "datenschutz.meineDaten.bereich.lernpfade": "Lernpfade",
     "datenschutz.meineDaten.bereich.loeschantraege": "Löschanträge",
+    "datenschutz.meineDaten.bereich.nachfolge": "Nachfolge bei Befristung",
     "datenschutz.meineDaten.bereich.protokoll": "Protokollzeilen",
     "datenschutz.meineDaten.bereich.kiLaeufe": "Angefragte KI-Läufe",
     "datenschutz.meineDaten.bereich.klaraSitzungen": "Klara-Sitzungen",
@@ -40,6 +41,7 @@ export default {
     "datenschutz.meineDaten.uebergabe.autor": "Als Autor geführt",
     "datenschutz.meineDaten.uebergabe.pruefung": "Offene Prüfzuweisungen",
     "datenschutz.meineDaten.uebergabe.fragen": "Zugewiesene offene Fragen",
+    "datenschutz.meineDaten.uebergabe.nachfolge": "Nachfolge für neue Beiträge",
     "datenschutz.antrag.titel": "Konto löschen lassen",
     "datenschutz.antrag.wirkung":
       "Ein Antrag löscht noch nichts. Er geht als Aufgabe mit Frist an die Verwaltung. Wird er erledigt, werden dein Konto und deine Anmeldesitzungen gelöscht; Beiträge, Kommentare und Protokollzeilen bleiben mit deiner Kennung stehen.",
@@ -118,6 +120,7 @@ export default {
     "datenschutz.meineDaten.bereich.anhaenge": "Uploaded files",
     "datenschutz.meineDaten.bereich.lernpfade": "Learning paths",
     "datenschutz.meineDaten.bereich.loeschantraege": "Deletion requests",
+    "datenschutz.meineDaten.bereich.nachfolge": "Successor for time-limited access",
     "datenschutz.meineDaten.bereich.protokoll": "Log entries",
     "datenschutz.meineDaten.bereich.kiLaeufe": "AI runs you requested",
     "datenschutz.meineDaten.bereich.klaraSitzungen": "Klara sessions",
@@ -127,6 +130,7 @@ export default {
     "datenschutz.meineDaten.uebergabe.autor": "Listed as author",
     "datenschutz.meineDaten.uebergabe.pruefung": "Open review assignments",
     "datenschutz.meineDaten.uebergabe.fragen": "Assigned open questions",
+    "datenschutz.meineDaten.uebergabe.nachfolge": "Successor for new contributions",
     "datenschutz.antrag.titel": "Request account deletion",
     "datenschutz.antrag.wirkung":
       "A request does not delete anything yet. It goes to the administrators as a task with a deadline. Once completed, your account and your sign-in sessions are deleted; contributions, comments and log entries remain with your identifier.",
@@ -205,6 +209,7 @@ export default {
     "datenschutz.meineDaten.bereich.anhaenge": "Geüploade bestanden",
     "datenschutz.meineDaten.bereich.lernpfade": "Leerpaden",
     "datenschutz.meineDaten.bereich.loeschantraege": "Verwijderverzoeken",
+    "datenschutz.meineDaten.bereich.nachfolge": "Opvolging bij tijdelijke toegang",
     "datenschutz.meineDaten.bereich.protokoll": "Logregels",
     "datenschutz.meineDaten.bereich.kiLaeufe": "Aangevraagde AI-runs",
     "datenschutz.meineDaten.bereich.klaraSitzungen": "Klara-sessies",
@@ -215,6 +220,7 @@ export default {
     "datenschutz.meineDaten.uebergabe.autor": "Als auteur vermeld",
     "datenschutz.meineDaten.uebergabe.pruefung": "Open toegewezen controles",
     "datenschutz.meineDaten.uebergabe.fragen": "Toegewezen open vragen",
+    "datenschutz.meineDaten.uebergabe.nachfolge": "Opvolger voor nieuwe bijdragen",
     "datenschutz.antrag.titel": "Account laten verwijderen",
     "datenschutz.antrag.wirkung":
       "Een verzoek verwijdert nog niets. Het gaat als taak met termijn naar de beheerders. Wordt het afgehandeld, dan worden je account en je aanmeldsessies verwijderd; bijdragen, opmerkingen en logregels blijven met je kenmerk staan.",

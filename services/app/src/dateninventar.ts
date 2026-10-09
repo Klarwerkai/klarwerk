@@ -549,11 +549,9 @@ export const DATENINVENTAR: readonly Datenart[] = [
     taetigkeit: "konten",
     loeschung: "Entfällt, sobald das Konto nicht mehr befristet ist.",
     frist: "Bis zum Ende der Befristung.",
-    selbstauskunft: {
-      enthalten: false,
-      grund:
-        "Verwaltungsangabe zur Befristung; die Verantwortung neuer Beiträge steht an den eigenen Objekten der Auskunft.",
-    },
+    // Ben (Nacharbeit 13): die Zuordnung besteht schon, bevor es Beiträge gibt — sie steht deshalb
+    // selbst in der Auskunft, für das befristete Konto, die Nachfolge und die setzende Person.
+    selbstauskunft: { enthalten: true },
   },
   {
     id: "halbwertszeiten",
