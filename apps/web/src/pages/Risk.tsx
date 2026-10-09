@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -21,6 +21,7 @@ import { HelpTip } from "../components/HelpTip";
 import { LueckenAnsprechpartner } from "../components/LueckenAnsprechpartner";
 import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { nurOffeneLuecken, offeneLuecken } from "../lib/adminUebersicht";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import { leseFall } from "../lib/fallAbsprung";
@@ -63,6 +64,15 @@ export function Risk(): JSX.Element {
   // Consultant-System (Experten-Matching): nur berechtigte Rollen fragen die Sicht überhaupt an; ist
   // das Flag serverseitig AUS, kommt 404 → keine Daten → nichts gerendert (exakt heutiges Verhalten).
   const { role } = useRole();
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION · R-1023 (b): gemessen war „Risiken und Lücken" nach der
+  // korrigierten Zählregel die zweitschwerste Fläche (Lauf nacharbeit-7: 135 gleichzeitig sichtbare
+  // Bedienelemente und Zustandsangaben). Rund 85 davon trug die Pflege der Eingänge — je Bereich
+  // Verantwortung, vier Stufen und Speichern, dazu die Ruhestandshorizonte. Sie ist eine
+  // Verwaltungsarbeit, keine Auskunft; sie steht jetzt hinter dem Schalter `risiko-pflege-schalter`
+  // und ist aufgeklappt unverändert dieselbe Fläche (nichts gelöscht, keine Rechte geändert).
+  // Eingeklappt bleibt sie MONTIERT und ist nur verborgen — ungespeicherte Eingaben überleben das
+  // Ein- und Ausklappen (s. unten am Schalter).
+  const [pflegeOffen, setPflegeOffen] = useState(false);
   const expertise = useExpertise(canSeeExpertise(role));
   // R-1663 / R-2178: die Ansprechpartner je Lücke hängen am selben Schalter wie die Expertise-Route,
   // und die Oberfläche erfährt ihn auf demselben Weg — an der Abwesenheit der Route (`null` bei 404,
@@ -103,6 +113,7 @@ export function Risk(): JSX.Element {
   // Sicht, sobald die Liste sie trägt. Ohne Treffer bleibt die Seite, wie sie war.
   const [params] = useSearchParams();
   const zielLuecke = leseFall(params);
+  const nurOffene = nurOffeneLuecken(params);
   const zielZeile = useRef<HTMLDivElement | null>(null);
   const zielGezeigt = useRef(false);
   const lueckenGeladen = gaps.data !== undefined;
@@ -293,7 +304,30 @@ export function Risk(): JSX.Element {
 
       {/* Die Pflege der Eingänge dazu (Bereichsverantwortung, vier eingeschätzte Prioritätsfaktoren,
           Ruhestandshorizonte) — nur die Admin-Rolle; der Server verlangt `users.manage`. */}
-      {role === "admin" ? <BereichsprofilPflege /> : null}
+      {role === "admin" ? (
+        <div>
+          <button
+            type="button"
+            data-testid="risiko-pflege-schalter"
+            data-entlastung-schalter=""
+            aria-expanded={pflegeOffen}
+            aria-controls="risiko-pflege"
+            onClick={() => setPflegeOffen((offen) => !offen)}
+            className="mb-2 inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+          >
+            {t(pflegeOffen ? "navigation.pflegeAusblenden" : "navigation.pflegeZeigen")}
+          </button>
+          {/* VERBORGEN, NICHT AUSGEBAUT (Ben, Nacharbeit 8): die Zeilen halten ihren ungespeicherten
+              Entwurf als lokalen Zustand (`BereichsprofilPflege.tsx`, `ProfilZeile`). Ein
+              bedingtes Rendern hätte ihn beim Einklappen verworfen — Ändern, Einklappen, Aufklappen
+              stand wieder beim gespeicherten Wert. `hidden` nimmt die Fläche aus Sicht und
+              Tabreihenfolge und lässt den Entwurf stehen; gemessen in
+              `tests/gesamt-navigation/risiko-pflege-einklappen-mounted.test.tsx`. */}
+          <div id="risiko-pflege" data-testid="risiko-pflege" hidden={!pflegeOffen}>
+            <BereichsprofilPflege />
+          </div>
+        </div>
+      ) : null}
 
       {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
           als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die
@@ -395,11 +429,30 @@ export function Risk(): JSX.Element {
         {/* SCRUM-283: ehrlich + datensparsam — gespeicherte Fragen sind offene Lücken (keine Antwort/
             kein validiertes Wissen); beim Erfassen keine sensiblen Details, geprüfte Erfahrung ergänzen. */}
         <p className="mb-2 text-[12px] text-muted-2">{t(gapPrivacyNoticeKey())}</p>
+        {/* ADMIN-01: Ziel des Zählers „Offene Wissenslücken" der Verwaltung. Der Filter steht in der
+            Adresse (`?luecken=offen`) und wählt mit DERSELBEN Regel wie der Zähler
+            (`offeneLuecken`) aus DERSELBEN Abfrage (`["gaps"]`). */}
+        {nurOffene ? (
+          <div
+            data-testid="filter-luecken"
+            className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted"
+          >
+            <span>{t("verwaltung.filter.offeneLuecken")}</span>
+            <Link to="/risiko" className="text-text underline underline-offset-2">
+              {t("verwaltung.filter.aufheben")}
+            </Link>
+          </div>
+        ) : null}
         <QueryState query={gaps} emptyText={t("risk.gapsEmpty")}>
           {(items) => (
             <Card className="p-0">
               <div className="divide-y divide-hairline">
-                {sortGapsByPriority(items).map((g) => (
+                {nurOffene && offeneLuecken(items).length === 0 ? (
+                  <div className="px-4 py-2.5 text-[13px] text-muted">
+                    {t("verwaltung.filter.keineOffenen")}
+                  </div>
+                ) : null}
+                {sortGapsByPriority(nurOffene ? offeneLuecken(items) : items).map((g) => (
                   <div
                     key={g.id}
                     data-testid="luecke-zeile"

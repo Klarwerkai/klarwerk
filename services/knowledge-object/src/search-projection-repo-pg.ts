@@ -646,19 +646,54 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
       category_text: [],
       tag_text: [],
     };
+    // R-1134 — die indexgestützte Vorauswahl (Begründung an `vorauswahl` unten). Dieselben
+    // Platzhalter wie die Trefferbedingung: kein Parameter kommt hinzu, keiner verschiebt sich.
+    const vorauswahlInhalt: string[] = [];
+    const vorauswahlEinordnung: string[] = [];
     for (const term of terms) {
       // JOB 2689 D1: der Begriff ist Inhalt, kein Muster — `%`, `_` und `\` werden maskiert.
       params.push(`%${maskiereLikeMuster(term)}%`);
       const p = `$${params.length}`;
       orsSearch.push(ilike("p.search_text", p));
+      vorauswahlInhalt.push(ilike("s.search_text", p));
       for (const feld of Object.keys(feldOrs)) {
         feldOrs[feld]?.push(ilike(`p.${feld}`, p));
       }
       for (const feld of Object.keys(metaOrs)) {
         metaOrs[feld]?.push(ilike(`COALESCE(md.${feld}, '')`, p));
         orsSearch.push(ilike(`COALESCE(md.${feld}, '')`, p));
+        vorauswahlEinordnung.push(ilike(`mt.${feld}`, p));
       }
     }
+    // ============================================================================================
+    // R-1134 — DIE VORAUSWAHL BLEIBT AUCH BEI VIELEN WISSENSOBJEKTEN EIN INDEXZUGRIFF.
+    // ============================================================================================
+    //
+    // DER BEFUND. Die Trefferbedingung verknüpft `p.search_text` per ODER mit
+    // `COALESCE(md.…, '')` aus dem LEFT JOIN. Ein ODER über ZWEI Tabellen kann PostgreSQL nicht
+    // als Indexzugriff auflösen: `idx_ko_search_projections_search_trgm` und die beiden
+    // Trigramm-Indizes der Metadatenprojektion lagen da, aber jede Suche las jede aktive Zeile
+    // und prüfte `search_text` (bis 200.000 Zeichen je Zeile) per ILIKE — ein Aufwand, der mit dem
+    // Bestand wächst.
+    //
+    // DIE FORM. Ein zusätzliches UND-Glied: die Kennungen (ko_id, ko_version), die einer der
+    // Indizes liefert — Inhaltstreffer über `search_text`, Einordnungstreffer über
+    // `category_text`/`tag_text` der Metadatenprojektion, als UNION. Als oberstes UND-Glied wird es
+    // zum Semi-Join, und jeder Arm ist für sich ein Trigramm-Indexzugriff.
+    //
+    // WARUM DIE TREFFERBEDINGUNG DANEBEN STEHEN BLEIBT. Die Vorauswahl liefert genau dieselbe Menge
+    // (die Inhaltszeile ist über (ko_id, ko_version) eindeutig, die Metadatenzeile über ko_id, und
+    // ein fehlendes `md` trifft mit `COALESCE(…, '')` keinen nicht-leeren Begriff). Die alte
+    // Bedingung prüft danach nur noch die vorausgewählten Zeilen — sie bleibt die eine Aussage
+    // darüber, was ein Treffer ist, und Fassung, Generation, Sichtbarkeit und Deckel stehen
+    // unverändert an ihrem Platz.
+    const vorauswahl = `(p.ko_id, p.ko_version) IN (
+           SELECT s.ko_id, s.ko_version FROM ko_search_projections s
+            WHERE ${vorauswahlInhalt.join(" OR ")}
+           UNION
+           SELECT s.ko_id, s.ko_version FROM ko_metadata_projections mt
+             JOIN ko_search_projections s ON s.ko_id = mt.ko_id
+            WHERE ${vorauswahlEinordnung.join(" OR ")})`;
     // Der Fundstellen-Ausdruck je Feld — GENAU EINER, und er wird zweimal gelesen: als `m_*`-Flag
     // (daraus baut der Adapter unten `matched`) und in der Güteleiter der Auswahl. Damit gibt es
     // im Statement keinen zweiten Güte-Ausdruck, der von `matched` abweichen könnte.
@@ -691,7 +726,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     const rumpf = `FROM ko_search_projections p
         JOIN kos k ON ${AKTIVE_VERSION} AND ${K_NICHT_AUFGEGANGEN}
         LEFT JOIN ko_metadata_projections md ON md.ko_id = p.ko_id
-       WHERE ${fassungsBedingung} AND (${orsSearch.join(" OR ")})${trimBedingung}`;
+       WHERE ${fassungsBedingung} AND ${vorauswahl} AND (${orsSearch.join(" OR ")})${trimBedingung}`;
     // Die AUSGABEORDNUNG — unverändert seit G27 und die einzige Aussage darüber, in welcher
     // Reihenfolge Treffer diesen Adapter verlassen.
     const ausgabeordnung = `(k.status='validiert') DESC, (k.data->>'trust')::int DESC NULLS LAST, p.ko_id`;
