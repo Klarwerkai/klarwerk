@@ -6510,9 +6510,15 @@ export class KoService {
   // zweite Veröffentlichung derselben Fassung durchrutschen. Der Vermerk berührt nichts ausser
   // `veroeffentlichungen`: Inhaltsversion, `history`, Status und Sichtbarkeitsfelder bleiben. Vermerk
   // und Beleg `ko.veroeffentlicht` committen gemeinsam (`mutateKo`).
+  //
+  // `nachher` (Ben, Nacharbeit 11): läuft IM Belegschritt — also erst NACH der Prüfung in `bilde` und
+  // mit demselben Transaktionskontext wie Vermerk und Beleg. Mit `withTx` committen Vermerk,
+  // `nachher` und Beleg gemeinsam oder gar nicht; ohne `withTx` nimmt `mutateKo` den Vermerk zurück,
+  // wenn `nachher` oder der Beleg scheitert. Ein abgelehnter Versuch erreicht `nachher` nie.
   async vermerkeVeroeffentlichung(
     id: string,
     bilde: (ko: KnowledgeObject) => KoVeroeffentlichung,
+    nachher?: (vermerk: KoVeroeffentlichung, tx?: TxContext) => Promise<void>,
   ): Promise<{ ko: KnowledgeObject; vermerk: KoVeroeffentlichung }> {
     return this.mutateKo(id, (ko) => {
       const vermerk = bilde(ko);
@@ -6524,6 +6530,7 @@ export class KoService {
         updated,
         value: { ko: updated, vermerk },
         audit: async (tx) => {
+          await nachher?.(vermerk, tx);
           await this.audit?.record(
             {
               actor: vermerk.von,

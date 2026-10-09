@@ -10,6 +10,9 @@
 //   Z2  (K3) Je Konto: ALLE hervorgehobenen und nur die jüngsten `fenster` gewöhnlichen — fremde
 //       Zustellungen zählen nicht gegen das Fenster.
 //   Z3  Die Migration ist wiederholbar.
+//   Z4  (K3, Ben Nacharbeit 11) Im Transaktionskontext des Vermerks: ein Rollback hinterlässt keine
+//       Zustellung.
+//   Z5  Verwaiste Zeilen lassen sich gezielt (je Vermerk und Empfänger) entfernen.
 import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -18,6 +21,7 @@ import {
   PgVeroeffentlichungsZustellungRepo,
   type VeroeffentlichungsZustellung,
 } from "../../services/app/src/veroeffentlichung";
+import { withPgTx } from "../../services/db-tx";
 
 describe("Veröffentlichung · PostgreSQL-Zustellungsablage", () => {
   let container: StartedTestContainer | undefined;
@@ -86,6 +90,31 @@ describe("Veröffentlichung · PostgreSQL-Zustellungsablage", () => {
     expect(geliefert.map((z) => z.vermerkId).sort()).toEqual(
       ["normal-2", "normal-3", "normal-4", "wichtig"].sort(),
     );
+  });
+
+  it("Z4 · im Transaktionskontext: ein Rollback hinterlässt keine Zustellung (Ben, Nacharbeit 11)", async () => {
+    const repo = new PgVeroeffentlichungsZustellungRepo(pool);
+    await expect(
+      withPgTx(pool, async (tx) => {
+        await repo.anlegen([zustellung("abgelehnt", "konto-erik", 0, false)], tx);
+        throw new Error("fachliche Ablehnung nach dem Anlegen");
+      }),
+    ).rejects.toThrow("fachliche Ablehnung");
+    expect(await repo.fuer("konto-erik", 100)).toEqual([]);
+    await withPgTx(pool, (tx) => repo.anlegen([zustellung("gueltig", "konto-erik", 1, false)], tx));
+    expect((await repo.fuer("konto-erik", 100)).map((z) => z.vermerkId)).toEqual(["gueltig"]);
+  });
+
+  it("Z5 · verwaiste Zeilen lassen sich gezielt entfernen", async () => {
+    const repo = new PgVeroeffentlichungsZustellungRepo(pool);
+    await repo.anlegen([
+      zustellung("verwaist", "konto-erik", 0, false),
+      zustellung("gueltig", "konto-erik", 1, false),
+      zustellung("verwaist", "konto-vera", 0, false),
+    ]);
+    await repo.entfernen([{ vermerkId: "verwaist", empfaengerId: "konto-erik" }]);
+    expect((await repo.fuer("konto-erik", 100)).map((z) => z.vermerkId)).toEqual(["gueltig"]);
+    expect((await repo.fuer("konto-vera", 100)).map((z) => z.vermerkId)).toEqual(["verwaist"]);
   });
 
   it("Z3 · die Migration ist wiederholbar", async () => {

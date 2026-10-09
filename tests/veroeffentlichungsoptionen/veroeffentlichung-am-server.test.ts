@@ -421,6 +421,48 @@ describe("K1/K3 · der tatsächliche Kreis ist der angekündigte — und nichts 
   });
 });
 
+// Ben, Nacharbeit 11 — abgelehnte Versuche dürfen gültige Meldungen nicht verdrängen.
+//   GEGENPROBEN (benannt, nicht gefahren):
+//   · Die Zustellungen wieder VOR `vermerkeVeroeffentlichung` schreiben → der erste Fall wird rot
+//     (101 abgelehnte Versuche lassen Eriks gültige Meldung aus dem Fenster fallen).
+//   · Das Entfernen verwaister Zeilen in `meldungenFuer` weglassen → der zweite Fall wird rot.
+describe("K3 · abgelehnte oder gescheiterte Veröffentlichungen verdrängen keine gültige Meldung", () => {
+  it("101 abgelehnte Normal-Veröffentlichungen hinterlassen keine Zustellung", async () => {
+    const gueltige = await gueltigerEintrag("Gültige Meldung Kühlkreislauf");
+    expect((await veroeffentlichen(clara.token, gueltige, 1, "normal")).statusCode).toBe(201);
+    const schon = await gueltigerEintrag("Schon veröffentlichte Fassung");
+    expect((await veroeffentlichen(clara.token, schon, 1, "normal")).statusCode).toBe(201);
+    for (let i = 0; i < 101; i += 1) {
+      versatz += 1_000;
+      const abgelehnt = await veroeffentlichen(clara.token, schon, 1, "normal");
+      expect(abgelehnt.statusCode).toBe(409);
+      expect(abgelehnt.json()).toMatchObject({ grund: "bereits_veroeffentlicht" });
+    }
+    const meldungen = await veroeffentlichungsMeldungen(erik.token);
+    expect(meldungen.map((m) => m.koId).sort()).toEqual([gueltige, schon].sort());
+    // Am Bestand: genau die zwei gültigen Zustellungen — kein abgelehnter Versuch hat geschrieben.
+    expect(await services.veroeffentlichungsZustellungen.fuer(erik.id, 1_000)).toHaveLength(2);
+  });
+
+  it("bereits verwaiste Zeilen werden beim Abruf entfernt und belegen das Fenster nicht", async () => {
+    const gueltige = await gueltigerEintrag("Gültige Meldung Druckluft");
+    expect((await veroeffentlichen(clara.token, gueltige, 1, "normal")).statusCode).toBe(201);
+    // Altbestand eines früheren Fehlers: 101 jüngere Zustellungen ohne Vermerk am Eintrag.
+    await services.veroeffentlichungsZustellungen.anlegen(
+      Array.from({ length: 101 }, (_, i) => ({
+        vermerkId: `verwaist-${i}`,
+        koId: gueltige,
+        empfaengerId: erik.id,
+        am: new Date(Date.now() + versatz + (i + 1) * 1_000).toISOString(),
+        hervorgehoben: false,
+      })),
+    );
+    const meldungen = await veroeffentlichungsMeldungen(erik.token);
+    expect(meldungen.map((m) => m.koId)).toEqual([gueltige]);
+    expect(await services.veroeffentlichungsZustellungen.fuer(erik.id, 1_000)).toHaveLength(1);
+  });
+});
+
 describe("K4 · Entwurf und veröffentlichte Fassung eindeutig; Rechte und Prüfregeln wirken", () => {
   it("nur mit Freigaberecht: Experte und Leser dürfen nicht veröffentlichen", async () => {
     const id = await gueltigerEintrag();

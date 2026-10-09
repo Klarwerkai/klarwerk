@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type {
   KnowledgeObject,
   KoVeroeffentlichung,
@@ -53,6 +54,9 @@ export const MELDUNGEN: readonly VeroeffentlichungsMeldung[] = ["still", "normal
  */
 export const VEROEFFENTLICHUNG_MELDUNGEN_FENSTER = 100;
 
+/** Wie oft ein Abruf verwaiste Zustellungen höchstens entfernt und neu liest. */
+const VERWAIST_RUNDEN = 10;
+
 /** Ein fachlicher Fehler dieses Vorgangs — `grund` ist die maschinenlesbare Ursache. */
 export class VeroeffentlichungFehler extends Error {
   constructor(
@@ -71,6 +75,7 @@ export interface VeroeffentlichungKoZugang {
   vermerkeVeroeffentlichung(
     id: string,
     bilde: (ko: KnowledgeObject) => KoVeroeffentlichung,
+    nachher?: (vermerk: KoVeroeffentlichung, tx?: TxContext) => Promise<void>,
   ): Promise<{ ko: KnowledgeObject; vermerk: KoVeroeffentlichung }>;
 }
 
@@ -89,8 +94,15 @@ export interface VeroeffentlichungsZustellung {
 }
 
 export interface VeroeffentlichungsZustellungRepo {
-  /** Legt die Zustellungen einer Veröffentlichung an; eine Wiederholung legt nichts doppelt an. */
-  anlegen(zustellungen: readonly VeroeffentlichungsZustellung[]): Promise<void>;
+  /**
+   * Legt die Zustellungen einer Veröffentlichung an; eine Wiederholung legt nichts doppelt an.
+   * `tx`: der Transaktionskontext von Vermerk und Beleg — die Zustellungen committen mit ihnen.
+   */
+  anlegen(zustellungen: readonly VeroeffentlichungsZustellung[], tx?: TxContext): Promise<void>;
+  /** Entfernt einzelne Zustellungen (verwaiste: ihr Vermerk steht nicht am Eintrag). */
+  entfernen(
+    zustellungen: readonly Pick<VeroeffentlichungsZustellung, "vermerkId" | "empfaengerId">[],
+  ): Promise<void>;
   /**
    * Die Zustellungen an dieses Konto: ALLE hervorgehobenen und die jüngsten `fenster`
    * gewöhnlichen — ein globaler Bestand fremder oder stiller Veröffentlichungen zählt hier nicht.
@@ -124,6 +136,14 @@ export class InMemoryVeroeffentlichungsZustellungRepo implements Veroeffentlichu
       if (!this.zeilen.has(schluessel)) {
         this.zeilen.set(schluessel, { ...z });
       }
+    }
+  }
+
+  async entfernen(
+    zustellungen: readonly Pick<VeroeffentlichungsZustellung, "vermerkId" | "empfaengerId">[],
+  ): Promise<void> {
+    for (const z of zustellungen) {
+      this.zeilen.delete(JSON.stringify([z.vermerkId, z.empfaengerId]));
     }
   }
 
@@ -176,11 +196,15 @@ function zustellungAus(zeile: ZustellungsZeile): VeroeffentlichungsZustellung {
 export class PgVeroeffentlichungsZustellungRepo implements VeroeffentlichungsZustellungRepo {
   constructor(private readonly pool: Pool) {}
 
-  async anlegen(zustellungen: readonly VeroeffentlichungsZustellung[]): Promise<void> {
+  async anlegen(
+    zustellungen: readonly VeroeffentlichungsZustellung[],
+    tx?: TxContext,
+  ): Promise<void> {
     if (zustellungen.length === 0) {
       return;
     }
-    await this.pool.query(
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await ziel.query(
       `INSERT INTO veroeffentlichung_zustellungen (${ZUSTELLUNG_SPALTEN})
        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::timestamptz[], $5::boolean[])
        ON CONFLICT (vermerk_id, empfaenger_id) DO NOTHING`,
@@ -191,6 +215,20 @@ export class PgVeroeffentlichungsZustellungRepo implements VeroeffentlichungsZus
         zustellungen.map((z) => z.am),
         zustellungen.map((z) => z.hervorgehoben),
       ],
+    );
+  }
+
+  async entfernen(
+    zustellungen: readonly Pick<VeroeffentlichungsZustellung, "vermerkId" | "empfaengerId">[],
+  ): Promise<void> {
+    if (zustellungen.length === 0) {
+      return;
+    }
+    await this.pool.query(
+      `DELETE FROM veroeffentlichung_zustellungen z
+       USING unnest($1::text[], $2::text[]) AS weg(vermerk_id, empfaenger_id)
+       WHERE z.vermerk_id = weg.vermerk_id AND z.empfaenger_id = weg.empfaenger_id`,
+      [zustellungen.map((z) => z.vermerkId), zustellungen.map((z) => z.empfaengerId)],
     );
   }
 
@@ -379,19 +417,10 @@ export class VeroeffentlichungDienst {
     const empfaenger = kreis.length;
     const id = this.deps.kennung();
     const am = new Date(this.deps.jetzt()).toISOString();
-    // Die Zustellungen stehen VOR dem Vermerk in der Ablage. Scheitert danach der Vermerk (etwa
-    // „bereits veröffentlicht"), bleibt eine Zustellung ohne Vermerk zurück — die Glocke liefert
-    // nur Zustellungen, deren Vermerk am Eintrag steht, sie erscheint also nie. Umgekehrt gäbe es
-    // einen Vermerk, dessen angekündigte Meldung nie ankommt.
-    await this.deps.zustellungen.anlegen(
-      kreis.map((empfaengerId) => ({
-        vermerkId: id,
-        koId: ko.id,
-        empfaengerId,
-        am,
-        hervorgehoben: eingabe.meldung === "hervorgehoben",
-      })),
-    );
+    // Ben, Nacharbeit 11: die Zustellungen entstehen ERST im Belegschritt des Vermerks — also nach
+    // der fachlichen Prüfung in `bilde` und mit demselben Transaktionskontext (`nachher`). Ein
+    // abgelehnter Versuch (409) hinterlässt deshalb keine Zeile, die gegen das Abruffenster zählt;
+    // scheitert das Anlegen, gibt es auch keinen Vermerk.
     const { ko: danach, vermerk } = await this.deps.ko.vermerkeVeroeffentlichung(
       ko.id,
       (frisch) => {
@@ -428,6 +457,17 @@ export class VeroeffentlichungDienst {
           empfaenger,
         };
       },
+      (geschrieben, tx) =>
+        this.deps.zustellungen.anlegen(
+          kreis.map((empfaengerId) => ({
+            vermerkId: geschrieben.id,
+            koId: ko.id,
+            empfaengerId,
+            am: geschrieben.am,
+            hervorgehoben: geschrieben.meldung === "hervorgehoben",
+          })),
+          tx,
+        ),
     );
     const namen = await this.deps.kontoNamen();
     return {
@@ -450,33 +490,54 @@ export class VeroeffentlichungDienst {
    * zählt nur, wenn ihr Vermerk am Eintrag steht und nicht „still" ist. Ob das Konto den Eintrag
    * JETZT sehen darf, prüft die Route (`sichtbareEintraege`) — hier wird keine zweite Regel
    * geschrieben.
+   *
+   * VERWAISTE ZEILEN (Ben, Nacharbeit 11): eine Zustellung, deren Eintrag besteht, deren Vermerk
+   * dort aber fehlt, stammt aus einem gescheiterten Versuch (etwa aus der Zeit, als Zustellungen
+   * noch vor der Prüfung geschrieben wurden). Sie wird entfernt und das Fenster neu gelesen, damit
+   * sie keinen Platz einer gültigen Meldung belegt. Eine Zustellung zu einem gerade nicht lesbaren
+   * Eintrag (Papierkorb) bleibt stehen — eine Wiederherstellung soll die Meldung nicht verlieren.
    */
   async meldungenFuer(nutzerId: string): Promise<VeroeffentlichungsMeldungFuerGlocke[]> {
-    const zustellungen = await this.deps.zustellungen.fuer(
-      nutzerId,
-      VEROEFFENTLICHUNG_MELDUNGEN_FENSTER,
-    );
     const kos = new Map<string, KnowledgeObject | undefined>();
-    const meldungen: VeroeffentlichungsMeldungFuerGlocke[] = [];
-    for (const zustellung of zustellungen) {
-      if (!kos.has(zustellung.koId)) {
-        kos.set(zustellung.koId, await this.deps.ko.get(zustellung.koId));
+    for (let runde = 0; ; runde += 1) {
+      const zustellungen = await this.deps.zustellungen.fuer(
+        nutzerId,
+        VEROEFFENTLICHUNG_MELDUNGEN_FENSTER,
+      );
+      const meldungen: VeroeffentlichungsMeldungFuerGlocke[] = [];
+      const verwaist: VeroeffentlichungsZustellung[] = [];
+      for (const zustellung of zustellungen) {
+        if (!kos.has(zustellung.koId)) {
+          kos.set(zustellung.koId, await this.deps.ko.get(zustellung.koId));
+        }
+        const ko = kos.get(zustellung.koId);
+        if (!ko) {
+          continue;
+        }
+        const vermerk = ko.veroeffentlichungen?.find((v) => v.id === zustellung.vermerkId);
+        if (!vermerk) {
+          verwaist.push(zustellung);
+          continue;
+        }
+        if (vermerk.meldung === "still" || vermerk.von === nutzerId) {
+          continue;
+        }
+        meldungen.push({
+          vermerkId: vermerk.id,
+          koId: ko.id,
+          title: ko.title,
+          fassung: vermerk.fassung,
+          art: vermerk.art,
+          hervorgehoben: vermerk.meldung === "hervorgehoben",
+          at: vermerk.am,
+        });
       }
-      const ko = kos.get(zustellung.koId);
-      const vermerk = ko?.veroeffentlichungen?.find((v) => v.id === zustellung.vermerkId);
-      if (!ko || !vermerk || vermerk.meldung === "still" || vermerk.von === nutzerId) {
-        continue;
+      // Jede Runde entfernt alle verwaisten Zeilen ihres Fensters; die Obergrenze verhindert nur,
+      // dass ein fehlerhafter Bestand den Abruf endlos aufhält.
+      if (verwaist.length === 0 || runde >= VERWAIST_RUNDEN) {
+        return meldungen;
       }
-      meldungen.push({
-        vermerkId: vermerk.id,
-        koId: ko.id,
-        title: ko.title,
-        fassung: vermerk.fassung,
-        art: vermerk.art,
-        hervorgehoben: vermerk.meldung === "hervorgehoben",
-        at: vermerk.am,
-      });
+      await this.deps.zustellungen.entfernen(verwaist);
     }
-    return meldungen;
   }
 }
