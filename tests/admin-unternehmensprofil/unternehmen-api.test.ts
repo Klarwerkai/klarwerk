@@ -14,7 +14,14 @@
 //        bleibt unberührt.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { SVG_MIT_SKRIPT, alsLogo, pngLogo } from "../../tests-smoke/support/logo-bild";
+import {
+  SVG_MIT_SKRIPT,
+  alsLogo,
+  jpegKopf,
+  jpegLogo,
+  pngAbgeschnitten,
+  pngLogo,
+} from "../../tests-smoke/support/logo-bild";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = { headers: { authorization: string } };
@@ -127,6 +134,13 @@ describe("K1/K2/K6 · Unternehmensprofil", () => {
       { logo: alsLogo(SVG_MIT_SKRIPT, "image/png"), code: "LOGO_INHALT", text: /Bildformat/ },
       { logo: alsLogo(pngLogo(20, 20), "image/png"), code: "LOGO_MASSE", text: /Pixel/ },
       { logo: alsLogo(pngLogo(500, 40), "image/png"), code: "LOGO_FORMAT", text: /lesbar/ },
+      // BEN, Nacharbeit 5: heile Köpfe ohne darstellbares Bild — erst die Dekodierung weist sie ab.
+      { logo: alsLogo(jpegKopf(300, 80), "image/jpeg"), code: "LOGO_INHALT", text: /beschädigt/ },
+      {
+        logo: alsLogo(pngAbgeschnitten(160, 48), "image/png"),
+        code: "LOGO_INHALT",
+        text: /beschädigt/,
+      },
     ];
     for (const v of versuche) {
       const res = await app.inject({
@@ -157,6 +171,20 @@ describe("K1/K2/K6 · Unternehmensprofil", () => {
     for (const a of stand.json().akzente as { kontrast: number }[]) {
       expect(a.kontrast).toBeGreaterThanOrEqual(7);
     }
+    // Gegenprobe: ein vollständiges JPEG geht durch dieselbe Tür.
+    const jpeg = await app.inject({
+      method: "PUT",
+      url: "/api/admin/unternehmensprofil",
+      ...admin,
+      payload: {
+        version: 0,
+        name: "Nordtal",
+        logo: alsLogo(await jpegLogo(300, 80), "image/jpeg"),
+        akzent: "nachtblau",
+      },
+    });
+    expect(jpeg.statusCode, jpeg.body).toBe(200);
+    expect(jpeg.json().logo).toMatchObject({ typ: "image/jpeg", breite: 300, hoehe: 80 });
   });
 
   it("K6 · nur die Verwaltung ändert; Korrektur ist eine neue Fassung; Protokoll ohne Logodatei", async () => {

@@ -57,6 +57,8 @@ const VERWALTUNG = {
 };
 
 const aufrufe: Aufruf[] = [];
+/** Der Abfragespeicher der zuletzt montierten Fläche — für eine Hintergrundaktualisierung. */
+let letzterQc: QueryClient | null = null;
 let stand: { container: HTMLDivElement; root: Root } | null = null;
 
 const flush = async (): Promise<void> => {
@@ -91,6 +93,7 @@ async function montieren(seite: ReactElement, pfad: string): Promise<HTMLDivElem
   const root = createRoot(container);
   stand = { container, root };
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  letzterQc = qc;
   await act(async () => {
     root.render(
       createElement(
@@ -216,6 +219,79 @@ describe("ADMIN-15 · Verwaltungsfläche /unternehmen", () => {
       { version: 0, name: "Nordtal Werkzeugbau", logo: null, akzent: "tannengruen" },
     ]);
     expect($(c, "profil-gespeichert")?.textContent).toBe("Gespeichert als Fassung 1.");
+  });
+
+  // BEN, Nacharbeit 5: zwei Administratoren, und eine Hintergrundaktualisierung WÄHREND A
+  // bearbeitet. A's Entwurf beruht auf Fassung 1; dass die Abfrage inzwischen Fassung 2 kennt, darf
+  // den Entwurf nicht umetikettieren — sonst nähme der Server ihn als Nachfolger von Bs Fassung an.
+  it("K6 · A's Entwurf behält seine Ausgangsversion; B's Zwischenstand wird nicht still überschrieben", async () => {
+    const fassung = (version: number, name: string, wer: string) => ({
+      version,
+      name,
+      logo: null,
+      akzent: "nachtblau",
+      geaendertVon: wer,
+      geaendertAm: `2026-10-09T0${version}:00:00.000Z`,
+      grund: null,
+      uebernommenAus: null,
+    });
+    const gespeichert = [fassung(1, "Nordtal", "admin-a")];
+    // Ein Server mit echter Versionsregel: geschrieben wird nur auf die jüngste Fassung.
+    server((a) => {
+      if (a.url === "/api/admin/unternehmensprofil" && a.methode === "GET") {
+        return { status: 200, koerper: { ...VERWALTUNG, fassungen: [...gespeichert] } };
+      }
+      if (a.url === "/api/admin/unternehmensprofil" && a.methode === "PUT") {
+        const k = a.koerper as { version: number; name: string };
+        const juengste = gespeichert[gespeichert.length - 1]?.version ?? 0;
+        if (k.version !== juengste) {
+          return {
+            status: 409,
+            koerper: { error: "VERSION_VERALTET", message: "…", aktuelleVersion: juengste },
+          };
+        }
+        const neu = fassung(juengste + 1, k.name, "admin-a");
+        gespeichert.push(neu);
+        return { status: 200, koerper: neu };
+      }
+      if (a.url === "/api/admin/richtlinien" && a.methode === "GET") {
+        return { status: 200, koerper: { richtlinien: [] } };
+      }
+      if (a.url === "/api/directory") {
+        return { status: 200, koerper: [] };
+      }
+      return undefined;
+    });
+    const c = await montieren(createElement(Unternehmen), "/unternehmen");
+    expect(($(c, "profil-name") as HTMLInputElement).value).toBe("Nordtal");
+    await act(async () => {
+      tippe($(c, "profil-name"), "Nordtal Entwurf A");
+      await flush();
+    });
+
+    // Administrator B speichert Fassung 2 an anderer Stelle …
+    gespeichert.push(fassung(2, "Nordtal Fassung B", "admin-b"));
+    // … und bei A aktualisiert eine Hintergrundabfrage die Daten.
+    await act(async () => {
+      await letzterQc?.invalidateQueries();
+      await flush();
+    });
+    expect(
+      aufrufe.filter((a) => a.url === "/api/admin/unternehmensprofil" && a.methode === "GET")
+        .length,
+    ).toBeGreaterThanOrEqual(2);
+    // Der Entwurf bleibt A's Entwurf.
+    expect(($(c, "profil-name") as HTMLInputElement).value).toBe("Nordtal Entwurf A");
+
+    await klick($(c, "profil-speichern"));
+    const puts = aufrufe.filter((a) => a.methode === "PUT");
+    expect(puts.map((a) => (a.koerper as { version: number }).version)).toEqual([1]);
+    expect($(c, "profil-fehler")?.textContent).toContain("neuere Fassung");
+    // B's Fassung steht unangetastet als jüngste da.
+    expect(gespeichert.map((f) => [f.version, f.name])).toEqual([
+      [1, "Nordtal"],
+      [2, "Nordtal Fassung B"],
+    ]);
   });
 
   it("K2 · eine SVG-Datei wird beim Auswählen erklärt abgewiesen; eine Serverabweisung ebenso", async () => {

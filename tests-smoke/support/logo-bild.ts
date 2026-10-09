@@ -5,6 +5,7 @@
 // stammt aus einem echten Unternehmen; „Nordtal" ist erfunden. Genutzt von der Smoke-Sonde und den
 // Vitest-Prüfungen unter `tests/admin-unternehmensprofil/`.
 import { deflateSync } from "node:zlib";
+import sharp from "sharp";
 
 const CRC_TABELLE = (() => {
   const t = new Uint32Array(256);
@@ -65,7 +66,36 @@ export function pngLogo(
   ]);
 }
 
-/** Ein minimaler JPEG-Kopf (SOI, SOF0 mit Massen, EOI) — genug für die Massprüfung des Servers. */
+/** Ein vollständiges, darstellbares JPEG `breite × hoehe` — erzeugt mit derselben Bibliothek wie der Server. */
+export async function jpegLogo(breite: number, hoehe: number): Promise<Buffer> {
+  return sharp({
+    create: { width: breite, height: hoehe, channels: 3, background: { r: 31, g: 58, b: 95 } },
+  })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+}
+
+/** Ein vollständiges JPEG, dem das letzte Drittel fehlt — Kopf und Masse heil, Bilddaten nicht. */
+export async function jpegAbgeschnitten(breite: number, hoehe: number): Promise<Buffer> {
+  const voll = await jpegLogo(breite, hoehe);
+  return voll.subarray(0, Math.floor(voll.length * 0.6));
+}
+
+/** Nur Signatur und IHDR eines PNG (die ersten 33 Bytes) — Kopf heil, kein Bild darin. */
+export function pngNurKopf(breite: number, hoehe: number): Buffer {
+  return pngLogo(breite, hoehe).subarray(0, 33);
+}
+
+/** Ein PNG, dem die zweite Hälfte fehlt — abgeschnitten mitten in den Bilddaten. */
+export function pngAbgeschnitten(breite: number, hoehe: number): Buffer {
+  const voll = pngLogo(breite, hoehe);
+  return voll.subarray(0, Math.floor(voll.length / 2));
+}
+
+/**
+ * Nur ein JPEG-KOPF (SOI, SOF0 mit Massen, EOI) ohne Bilddaten. Seit Nacharbeit 5 ein NEGATIVFALL:
+ * der Kopf nennt Masse, darstellbar ist er nicht.
+ */
 export function jpegKopf(breite: number, hoehe: number): Buffer {
   const sof = Buffer.from([
     0xff, 0xc0, 0x00, 0x11, 0x08, 0, 0, 0, 0, 0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11,

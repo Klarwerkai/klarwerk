@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import sharp from "sharp";
 import type { Role } from "../../auth";
 
 // ================================================================================================
@@ -246,6 +247,44 @@ export function pruefeLogo(roh: unknown): Logo | null {
     );
   }
   return { typ, daten, breite, hoehe, bytes: puffer.length };
+}
+
+// ================================================================================================
+// EIN HEILER DATEIKOPF IST KEIN DARSTELLBARES BILD (BEN, Nacharbeit 5).
+// ================================================================================================
+//
+// `pruefeLogo` liest nur den Kopf: ein PNG aus Signatur und IHDR (24 Bytes) oder ein JPEG aus
+// SOI, SOF und EOI nennt dort brav seine Masse — und wäre gespeichert worden, obwohl kein Browser
+// es zeichnen kann. Deshalb wird das Logo vor dem Speichern WIRKLICH dekodiert, mit derselben
+// Bibliothek und derselben strengen Einstellung wie die Bildableitung des Imports
+// (`import/bildverkleinerung.ts`): `failOn: "warning"` lässt auch ein abgeschnittenes Bild
+// scheitern. Der Speicher ist gedeckelt: höchstens 4000 × 4000 Pixel, die Datei höchstens 200 KB.
+const DEKODIERUNG = {
+  limitInputPixels: LOGO_GRENZEN.maxKante * LOGO_GRENZEN.maxKante,
+  failOn: "warning",
+} as const;
+
+const LOGO_BESCHAEDIGT =
+  "Die Logodatei ist unvollständig oder beschädigt und lässt sich nicht als Bild darstellen.";
+
+/** Dekodiert ein von `pruefeLogo` angenommenes Logo vollständig; sonst `LOGO_INHALT`. */
+export async function pruefeLogoDekodierbar(logo: Logo): Promise<void> {
+  let breite = 0;
+  let hoehe = 0;
+  try {
+    const { info } = await sharp(Buffer.from(logo.daten, "base64"), DEKODIERUNG)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    breite = info.width;
+    hoehe = info.height;
+  } catch {
+    // Absichtlich ohne den Fehlertext der Bibliothek: er wäre englisch und technisch, und die
+    // Unterscheidung, die hier zählt, ist getroffen — dieses Bild ist nicht darstellbar.
+    throw new UnternehmenFehler(400, "LOGO_INHALT", LOGO_BESCHAEDIGT);
+  }
+  if (breite !== logo.breite || hoehe !== logo.hoehe) {
+    throw new UnternehmenFehler(400, "LOGO_INHALT", LOGO_BESCHAEDIGT);
+  }
 }
 
 // ================================================================================================
@@ -815,6 +854,9 @@ export class UnternehmenDienst {
       );
     }
     const eingabe = pruefeProfilEingabe(roh);
+    if (eingabe.logo) {
+      await pruefeLogoDekodierbar(eingabe.logo);
+    }
     const alle = await this.deps.repo.profilFassungen();
     const vorher = alle[alle.length - 1];
     let uebernommenAus: number | null = null;

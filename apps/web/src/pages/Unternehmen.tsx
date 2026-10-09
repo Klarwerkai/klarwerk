@@ -109,6 +109,13 @@ interface Profilformular {
   akzent: AkzentId;
   grund: string;
   uebernommenAus: number | null;
+  /**
+   * Die Fassung, auf der dieser Entwurf beruht — sie reist MIT dem Entwurf (BEN, Nacharbeit 5).
+   * Eine Hintergrundaktualisierung der Abfrage ersetzt sie nicht: hat inzwischen jemand anders
+   * gespeichert, sendet der Entwurf weiter seine alte Version, und der Server antwortet mit 409
+   * statt die fremde Änderung still zu überschreiben.
+   */
+  basisVersion: number;
 }
 
 function formularAus(f: ProfilFassung | undefined): Profilformular {
@@ -118,6 +125,7 @@ function formularAus(f: ProfilFassung | undefined): Profilformular {
     akzent: f?.akzent ?? "neutral",
     grund: "",
     uebernommenAus: null,
+    basisVersion: f?.version ?? 0,
   };
 }
 
@@ -156,7 +164,7 @@ function ProfilBereich({ verwaltung }: { verwaltung: ProfilVerwaltung }): JSX.El
   const speichern = useMutation({
     mutationFn: () =>
       unternehmenApi.profilSpeichern({
-        version: aktuell?.version ?? 0,
+        version: form.basisVersion,
         name: form.name,
         logo: form.logo,
         akzent: form.akzent,
@@ -376,7 +384,14 @@ function ProfilBereich({ verwaltung }: { verwaltung: ProfilVerwaltung }): JSX.El
                   className="mt-1"
                   data-testid="profil-uebernehmen"
                   onClick={() =>
-                    setForm({ ...formularAus(f), uebernommenAus: f.version, grund: "" })
+                    // Die Vorlage ist eine ALTE Fassung; der Entwurf beruht weiter auf derselben
+                    // Ausgangsversion wie bisher.
+                    setForm((alt) => ({
+                      ...formularAus(f),
+                      uebernommenAus: f.version,
+                      grund: "",
+                      basisVersion: alt.basisVersion,
+                    }))
                   }
                 >
                   {t("unternehmen.profil.uebernehmen", { version: f.version })}

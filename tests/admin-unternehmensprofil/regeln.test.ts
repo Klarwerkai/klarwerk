@@ -19,10 +19,20 @@ import {
   berechneWirkung,
   kontrastVerhaeltnis,
   pruefeLogo,
+  pruefeLogoDekodierbar,
   pruefeProfilEingabe,
   pruefeRichtlinieEingabe,
 } from "../../services/app/src/unternehmensprofil";
-import { SVG_MIT_SKRIPT, alsLogo, jpegKopf, pngLogo } from "../../tests-smoke/support/logo-bild";
+import {
+  SVG_MIT_SKRIPT,
+  alsLogo,
+  jpegAbgeschnitten,
+  jpegKopf,
+  jpegLogo,
+  pngAbgeschnitten,
+  pngLogo,
+  pngNurKopf,
+} from "../../tests-smoke/support/logo-bild";
 
 function fehlercode(f: () => unknown): string {
   try {
@@ -64,12 +74,48 @@ describe("K2 · Akzentfarben: feste Auswahl mit lesbarem Kontrast", () => {
 });
 
 describe("K2 · Logodateien: geeignet angenommen, ungeeignet erklärt abgewiesen", () => {
-  it("ein PNG und ein JPEG mit lesbaren Massen werden angenommen; die Masse kommen aus der Datei", () => {
+  it("ein vollständiges PNG und JPEG werden angenommen und dekodiert; die Masse kommen aus der Datei", async () => {
     const png = pruefeLogo(alsLogo(pngLogo(160, 48), "image/png"));
     expect(png).toMatchObject({ typ: "image/png", breite: 160, hoehe: 48 });
-    const jpeg = pruefeLogo(alsLogo(jpegKopf(300, 80), "image/jpeg"));
+    if (!png) {
+      throw new Error("PNG nicht angenommen");
+    }
+    await expect(pruefeLogoDekodierbar(png)).resolves.toBeUndefined();
+    const jpeg = pruefeLogo(alsLogo(await jpegLogo(300, 80), "image/jpeg"));
     expect(jpeg).toMatchObject({ typ: "image/jpeg", breite: 300, hoehe: 80 });
+    if (!jpeg) {
+      throw new Error("JPEG nicht angenommen");
+    }
+    await expect(pruefeLogoDekodierbar(jpeg)).resolves.toBeUndefined();
     expect(pruefeLogo(null)).toBeNull();
+  });
+
+  // BEN, Nacharbeit 5: ein heiler Dateikopf ist kein darstellbares Bild. Jeder dieser Fälle besteht
+  // die Kopfprüfung (die Masse stimmen) und scheitert erst an der vollständigen Dekodierung.
+  it("reine und abgeschnittene Dateiköpfe werden als beschädigt abgewiesen (LOGO_INHALT)", async () => {
+    const faelle = [
+      { name: "JPEG nur SOI/SOF/EOI", logo: alsLogo(jpegKopf(300, 80), "image/jpeg") },
+      { name: "PNG nur Signatur+IHDR", logo: alsLogo(pngNurKopf(160, 48), "image/png") },
+      { name: "PNG abgeschnitten", logo: alsLogo(pngAbgeschnitten(160, 48), "image/png") },
+      {
+        name: "JPEG abgeschnitten",
+        logo: alsLogo(await jpegAbgeschnitten(300, 80), "image/jpeg"),
+      },
+    ];
+    for (const f of faelle) {
+      const kopf = pruefeLogo(f.logo);
+      expect(kopf, `${f.name}: die Kopfprüfung allein lässt ihn durch`).not.toBeNull();
+      if (!kopf) {
+        continue;
+      }
+      const fehler = await pruefeLogoDekodierbar(kopf).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(fehler, f.name).toBeInstanceOf(UnternehmenFehler);
+      expect((fehler as UnternehmenFehler).code, f.name).toBe("LOGO_INHALT");
+      expect((fehler as UnternehmenFehler).message, f.name).toMatch(/beschädigt/);
+    }
   });
 
   it("SVG wird abgewiesen — mit einer Begründung, die SVG und Skripte nennt", () => {
