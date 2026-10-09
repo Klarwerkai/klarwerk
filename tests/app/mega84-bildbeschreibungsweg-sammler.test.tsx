@@ -2203,6 +2203,23 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
     // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     //
+    // ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht): 515 → 516. GENAU EIN Bauteil kommt
+    // dazu:
+    //     + `AdminUebersicht` (`pages/AdminUebersicht.tsx`) — die Startseite der Verwaltung mit
+    //       Aufgabenzählern und den sieben fachlichen Gruppen.
+    // Ihre Zeilenhelfer (`verweis`, `zielZeile`) sind kleingeschrieben und keine Bauteile. Sie
+    // zeigt kein Bild, bietet keine Bildbeschreibung an (kein `CAPTION_AI_TEXT`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop): `anbieter` 1 und `traeger` 2 bleiben. EHRLICH
+    // GESAGT: GERECHNET (515 + 1) — dieser Auftrag durfte keinen Testlauf selbst starten; weicht der
+    // Prüflauf ab, gehört die gemessene Zahl hierher.
+    //
+    // ADMIN-01 Nacharbeit 1: GEMESSEN 530. Der Prüflauf am Kandidaten a9b11511 meldete wörtlich
+    // „gemessen: 530 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 681 Quelldateien". Die
+    // Grundmenge wuchs gegenüber der Messung 515 (657 Dateien) um 24 Quelldateien aus dem
+    // eingemischten Hauptstand; ADMIN-01 trägt davon genau EIN Bauteil (`AdminUebersicht`). Die
+    // übrigen 14 sind ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
     // INTEGRATION (Aufnahme gesamt-ki-kennzeichnung, Nacharbeit 9): Die 515 von gesamt-hilfen ist
     // GEMESSEN (Kandidat 01c730f4) — ohne die Bauteile dieses Auftrags; meine gerechnete 515 aus
     // Nacharbeit 8 kam auf dieselbe Zahl, aber über einen anderen Stand. Der Zusammenschluss:
@@ -2236,8 +2253,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `Verantwortung`. 524 + 7 = 531. EHRLICH GESAGT: GERECHNET, nicht gemessen (dasselbe
     // Diff-Muster lag in Nacharbeit 10 und 11 jeweils genau auf der Messung). Weicht der Prüflauf
     // ab, nennt die Meldung die gemessene Zahl; die gehört dann hierher.
+    //
+    // ZUSAMMENFÜHRUNG ADMIN-01 × Hauptstand 8f83f8ad (ADMIN-01 Nacharbeit 5): beide Reihen zählen
+    // auf DIESELBE Basis 529 (Hauptstand 1322621a). ADMIN-01 hat dort GEMESSEN 530 = 529 + 1
+    // (`AdminUebersicht`); der Hauptstand rechnet 531 = 529 + 2 (`AiSurfaceNotice`,
+    // `ErgebnisStufeMarke`). Zusammen: 529 + 1 + 2 = 532. EHRLICH GESAGT: GERECHNET, nicht
+    // gemessen; weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 531,
+      komponenten: 532,
       anbieter: 1,
       traeger: 2,
     });
