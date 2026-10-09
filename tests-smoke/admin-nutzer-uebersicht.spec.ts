@@ -326,7 +326,13 @@ test.describe("ADMIN-04 · Nutzer mit Zugang und Verantwortung", () => {
     });
     const vorher = await kontoVomServer(page.request, ziel.id);
 
-    // Eine EIGENE Browsersitzung für die Betrachterin — nichts teilt sie mit dem Admin.
+    // Eine EIGENE Browsersitzung für die Betrachterin — nichts teilt sie mit dem Admin. Ohne
+    // Basisadresse wäre jeder relative Aufruf unten ein Fehlgriff statt einer Rechteprobe.
+    if (baseURL === undefined) {
+      throw new Error(
+        "baseURL fehlt in der Smoke-Konfiguration — die Rechteprobe ist nicht prüfbar.",
+      );
+    }
     const fremd = await browser.newContext({ baseURL });
     try {
       const anmeldung = await fremd.request.post("/api/auth/login", {
