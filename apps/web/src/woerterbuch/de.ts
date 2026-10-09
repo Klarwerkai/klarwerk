@@ -2220,6 +2220,13 @@ const de = {
   "capture.saveDraft": "Als Entwurf speichern",
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
+  // entscheidung:8b909a1e (Option A): der Server hat beim erneuten Speichern den vorhandenen
+  // Eintrag erkannt — statt der normalen Erfolgsmeldung, mit Verweis auf genau diesen Eintrag.
+  "capture.bereitsGespeichert":
+    "Dieses Dokument war bereits gespeichert, es wurde kein zweiter Eintrag angelegt.",
+  "capture.bereitsGespeichertFortgeschrieben":
+    "Dieses Dokument war bereits gespeichert, es wurde kein zweiter Eintrag angelegt. Der vorhandene Eintrag trägt jetzt deinen geänderten Stand.",
+  "capture.bereitsGespeichertOeffnen": "Vorhandenen Eintrag öffnen: „{{title}}“",
   // LAUF 6 RUNDE 2 (erfassen-doppelklick, bens B7): der Teilerfolg des gemeinsamen Speicherns.
   "capture.teilerfolg.dateiAusstehend":
     "Noch nicht alles gesichert: Der Entwurf ist gespeichert, die Datei „{{name}}“ wird noch gespeichert.",
