@@ -309,7 +309,8 @@ export function MeldungenListe({
                           : n.kind === "assignment" ||
                               n.kind === "kenntnisnahme" ||
                               n.kind === "frische" ||
-                              n.kind === "return"
+                              n.kind === "return" ||
+                              n.kind === "loeschantrag"
                             ? "bg-ai"
                             : n.kind === "impact"
                               ? "bg-trust-pos-fill"
@@ -359,6 +360,21 @@ export function MeldungenListe({
                             : "kenntnisnahme.meldung",
                       )}
                       {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
+                    </span>
+                  ) : null}
+                  {/* Löschantrag (R-0661): Verwalteraufgabe mit Frist — der Titel ist der Name
+                      der antragstellenden Person. */}
+                  {n.kind === "loeschantrag" ? (
+                    <span className="font-semibold text-ai">
+                      {t(
+                        n.ueberfaellig ? "datenschutz.meldungUeberfaellig" : "datenschutz.meldung",
+                      )}
+                      {n.fristBis
+                        ? ` (${t("datenschutz.meldungFrist", {
+                            datum: new Date(n.fristBis).toLocaleDateString(),
+                          })})`
+                        : ""}
+                      :{" "}
                     </span>
                   ) : null}
                   {/* R-1089: gemeldete Antwort zum eigenen Wissen — Grund vorn, Titel dahinter. */}

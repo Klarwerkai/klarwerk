@@ -1,6 +1,7 @@
 import type { GapView } from "../../ask";
 import type { Conflict, OverlapEntry } from "../../conflicts";
 import type { AssignmentNotice } from "../../validation";
+import type { LoeschantragMeldung } from "./loeschantraege";
 
 // In-App-Benachrichtigungen (Abstimmpunkt 2). Das notifications-Modul versendet
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
@@ -18,6 +19,7 @@ export type NotificationKind =
   | "return"
   | "impact"
   | "kenntnisnahme"
+  | "loeschantrag"
   // aufnahme:20260922:gesamt-wissen-frische: persönliche Zustellung an die verantwortliche Person —
   // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
   // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
@@ -99,6 +101,9 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Löschantrag (R-0661): die Frist der Verwalteraufgabe. Nur bei `kind: "loeschantrag"` gesetzt;
+  // `ueberfaellig` gilt dort ebenso.
+  fristBis?: string;
   // R-1089: Meldegrund und Meldungsnummer (dieselbe, die der Meldende quittiert bekam). Nur bei
   // `kind: "reklamation"` gesetzt.
   grund?: ReklamationNotice["grund"];
@@ -133,6 +138,9 @@ export function buildNotifications(input: {
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
   kenntnisnahmen?: KenntnisnahmeNotice[];
+  // Löschanträge (R-0661): die offenen Anträge als Aufgabe der Verwaltung. Die Route reicht sie NUR
+  // für Betrachter mit `users.manage` herein — hier wird keine Berechtigung nachgeprüft.
+  loeschantraege?: LoeschantragMeldung[];
   reklamationen?: ReklamationNotice[];
   // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
   // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
@@ -140,6 +148,18 @@ export function buildNotifications(input: {
   veroeffentlichungen?: VeroeffentlichungNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  // Je Antrag EIN Eintrag. Wird er überfällig, bekommt er eine neue Kennung, damit er wieder als
+  // ungelesen erscheint — dieselbe Regel wie die Erinnerung der Kenntnisnahme.
+  for (const l of input.loeschantraege ?? []) {
+    items.push({
+      id: l.ueberfaellig ? `loeschantrag-${l.antragId}-ueberfaellig` : `loeschantrag-${l.antragId}`,
+      kind: "loeschantrag",
+      title: l.name,
+      at: l.at,
+      fristBis: l.fristBis,
+      ueberfaellig: l.ueberfaellig,
+    });
+  }
   for (const r of input.reklamationen ?? []) {
     items.push({
       id: `rek-${r.meldungId}`,

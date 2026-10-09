@@ -282,6 +282,7 @@ export interface MeldungZeile {
     | "return"
     | "impact"
     | "kenntnisnahme"
+    | "loeschantrag"
     | "frische"
     | "reklamation"
     | "veroeffentlichung";
@@ -314,6 +315,8 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   return: "today",
   // Eine angeforderte Kenntnisnahme ist Arbeit von heute — wie eine Zuweisung.
   kenntnisnahme: "today",
+  // Ein Löschantrag ist Verwalterarbeit mit gesetzlicher Frist — Arbeit von heute.
+  loeschantrag: "today",
   // R-1089: eine gemeldete falsche Antwort zum eigenen Wissen ist Arbeit von heute.
   reklamation: "today",
   // aufnahme:20260922:gesamt-wissen-frische: bestätigen, ob eigenes Wissen noch stimmt — heute.
@@ -329,6 +332,10 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   // Die Kenntnisnahme bringt ihre Texte im eigenen Textmodul mit (`texte/kenntnisnahme.ts`).
   if (kind === "kenntnisnahme") {
     return "kenntnisnahme.meldungArt";
+  }
+  // Der Löschantrag ebenso (`texte/datenschutz.ts`).
+  if (kind === "loeschantrag") {
+    return "datenschutz.meldungArt";
   }
   // aufnahme:20260922:gesamt-wissen-frische: Texte im Textmodul `texte/frische.ts`.
   if (kind === "frische") {
