@@ -2977,9 +2977,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `wortvergleich.js`, Lage/Konfliktseiten, Absatz-Beleg-Zuordnung, Funktionsschalter) und die drei
     // `sendTooLarge`-Zeilen dieses Auftrags (de/en/nl, Wert-, nicht Zeilenänderung; B3 unberührt).
     // Auslieferungsfolgen: die aller beteiligten Stände — nichts darüber hinaus. Keiner der beiden
-    // gemessenen Werte beschreibt das zusammengefügte Dokument; der Wert unten (main) ist ein
-    // PLATZHALTER, der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
-    const PIN = "4ce94aa20de1657af7515b9a6cadea3c516da35d82fba814921541219462c9fc";
+    // gemessenen Werte beschreibt das zusammengefügte Dokument. NACHARBEIT 20 (gesamt-bildbudget): PIN
+    // BEWUSST AKTUALISIERT (Platzhalter 4ce94aa2… -> c8be910e…). Im Prüflauf zu Kandidat e426a436 am
+    // ZUSAMMENGEFÜGTEN Fenster GEMESSEN („Received", HISTORIE/nacharbeit-20/PRUEFUNG/
+    // panel-inhalts-pin.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung
+    // unberührt.
+    const PIN = "c8be910ecc818e12874cdd9e48eaf9145487d7d2c27b15a365c876f61a8ed1c2";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
