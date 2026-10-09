@@ -668,7 +668,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
 
   // --- Lifecycle / Learning paths (lifecycle-routes.ts) ---
-  "POST /api/lifecycle/couple": { protection: "ko.create" },
+  // R-0477 / R-0082 (aufnahme:20260922:gesamt-wissen-metadaten): gekoppelt wird nur noch an ein
+  // Objekt, das der Aufrufer sehen darf — `sichtbareEintraege` gegen die übergebene Kennung, sonst
+  // 404 wie am Leseweg darunter. Davor koppelte der Weg an jede, auch erfundene Kennung.
+  "POST /api/lifecycle/couple": { protection: "ko.create", zeilenrecht: ["sichtbareEintraege"] },
   "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
   // R-0554 / R-2128: Wissensübergabe beim Ausscheiden — Vorschau und Ausführung, nur Verwaltung.
   "POST /api/lifecycle/handover/preview": { protection: "users.manage" },
