@@ -97,6 +97,7 @@ import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { useSprachaufnahme } from "../sprache/useSprachaufnahme";
 import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
@@ -684,6 +685,16 @@ export function Blatt({
   const [diktatHinweisOffen, setDiktatHinweisOffen] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
+  // R-0104 (Aufnahme gesamt-sprachassistent): Sprechen über das Browser-Diktat hinaus. Die Aufnahme
+  // verschriftlicht die vorhandene Server-Transkription; das Transkript kommt als Absatz in den
+  // Rumpf — derselbe Weg wie ein diktierter Satz. Verschriftlicht wird unter der GEWÄHLTEN Stufe;
+  // ohne Wahl gilt die Aufnahme beim Server als vertraulich (dieselbe Regel wie beim Upload).
+  // Getrennt wird sie an denselben Stellen wie das Diktat (`diktatVomBlattTrennen`).
+  const sprachaufnahme = useSprachaufnahme({
+    anhaengen: (text: string) => setBodyHtml((prev) => diktatAnhaengen(prev, text)),
+    vertraulichkeit: declaredConfidentiality,
+  });
+  const aufnahmeTrennen = sprachaufnahme.trennen;
 
   // ---- Bestand für Bereich, Entwürfe, Beispiel -------------------------------------------------
   const kos = useKos();
@@ -1054,6 +1065,9 @@ export function Blatt({
   // NICHT GETRENNT WIRD BEIM MANUELLEN STOPP über den Diktat-Knopf. Wer selbst anhält, nimmt sich
   // seinen Rumpf ja nicht weg — sein Abschlussergebnis gehört ihm und soll noch ankommen.
   const diktatVomBlattTrennen = useCallback((): void => {
+    // R-0104: auch eine laufende oder schon gesendete Sprachaufnahme gehört ab hier keinem Blatt
+    // mehr — ihr Transkript fiele sonst in den geladenen oder geleerten Rumpf.
+    aufnahmeTrennen();
     const getrennt = recRef.current;
     if (!getrennt) {
       return;
@@ -1062,7 +1076,7 @@ export function Blatt({
     setDiktatLaeuft(false);
     setDiktatZwischen("");
     getrennt.stop();
-  }, []);
+  }, [aufnahmeTrennen]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadNonce erzwingt das Neuladen nach einem Standkonflikt (JOB 2684 D1)
   useEffect(() => {
@@ -2712,6 +2726,43 @@ export function Blatt({
         >
           {t("capture.diktatUnsupported")}
           {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
+        </output>
+      ) : null}
+      {/* R-0104: die Aufnahme mit Server-Transkription — nur, wo der Browser aufnehmen kann. */}
+      {sprachaufnahme.moeglich ? (
+        <button
+          type="button"
+          data-testid="blatt-werkzeug-aufnehmen"
+          disabled={!blattNimmtAn || sprachaufnahme.verarbeitet}
+          title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+          aria-pressed={sprachaufnahme.laeuft}
+          aria-busy={sprachaufnahme.verarbeitet}
+          onClick={() => {
+            setOffenesMenue(null);
+            sprachaufnahme.umschalten();
+          }}
+          className={`inline-flex items-center gap-1.5 text-[13px] ${
+            !blattNimmtAn
+              ? "text-muted-2 opacity-50"
+              : sprachaufnahme.laeuft
+                ? "font-semibold text-text"
+                : "text-muted-2 hover:text-text"
+          }`}
+        >
+          <SymbolMikrofon />
+          {sprachaufnahme.verarbeitet
+            ? t("sprachaufnahme.verarbeitet")
+            : sprachaufnahme.laeuft
+              ? t("sprachaufnahme.stop")
+              : t("sprachaufnahme.start")}
+        </button>
+      ) : null}
+      {sprachaufnahme.meldung ? (
+        <output
+          data-testid="blatt-aufnahme-meldung"
+          className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {sprachaufnahme.meldung}
         </output>
       ) : null}
 

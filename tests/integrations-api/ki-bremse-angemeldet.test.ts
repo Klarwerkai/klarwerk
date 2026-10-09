@@ -173,6 +173,7 @@ describe("R-0842 · angemeldete Sitzungen werden gebremst", () => {
       "POST /api/kos/:id/ai-check",
       "POST /api/help/explain",
       "POST /api/media/analyze",
+      "POST /api/media/transcribe",
     ]);
   });
 });
