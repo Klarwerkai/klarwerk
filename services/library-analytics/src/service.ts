@@ -101,10 +101,22 @@ interface ExportQuelle {
   provider: string | null;
   url: string | null;
   entfernt: boolean;
+  /**
+   * aufnahme:20260922:gesamt-externe-quellen-kennzeichnung (R-0205): die Quelle ist NICHT
+   * peer-validiert und trägt deshalb auch in der Ausgabe „Stufe 2" und „Extern · ungeprüft".
+   * Fail-closed wie die Anzeige (`ExterneQuelleKennung`): nur `peerValidated === true` bleibt ohne
+   * Kennzeichnung — ein fehlendes Feld (Altbestand) ist keine Unbedenklichkeitsbescheinigung.
+   */
+  ungeprueft: boolean;
 }
 
 const EXPORT_QUELLEN_UEBERSCHRIFT = "Quellen";
 const EXPORT_QUELLE_ENTFERNT = "Quellseite gelöscht";
+// R-0205: dieselben Wörter wie an den Quellenflächen der App (`externequelle.stufe`,
+// `ko.sourceExternUnchecked`). Die Textausgaben sind deutsch wie ihr Warnsatz oben.
+const EXPORT_QUELLE_STUFE = "Stufe 2";
+const EXPORT_QUELLE_HERKUNFT = "Extern · ungeprüft";
+const EXPORT_QUELLE_KENNZEICHNUNG = `${EXPORT_QUELLE_STUFE} · ${EXPORT_QUELLE_HERKUNFT}`;
 
 function exportQuellen(ko: KnowledgeObject): ExportQuelle[] {
   return (ko.sources ?? []).map((s) => ({
@@ -112,6 +124,7 @@ function exportQuellen(ko: KnowledgeObject): ExportQuelle[] {
     provider: s.provider && s.provider !== s.label ? s.provider : null,
     url: s.url && /^https?:\/\//i.test(s.url) ? s.url : null,
     entfernt: Boolean(s.sourceRemovedAt),
+    ungeprueft: s.peerValidated !== true,
   }));
 }
 
@@ -119,6 +132,9 @@ function quellenText(q: ExportQuelle): string {
   const teile = [q.provider ? `${q.label} (${q.provider})` : q.label];
   if (q.url) {
     teile.push(q.url);
+  }
+  if (q.ungeprueft) {
+    teile.push(EXPORT_QUELLE_KENNZEICHNUNG);
   }
   if (q.entfernt) {
     teile.push(EXPORT_QUELLE_ENTFERNT);
@@ -3806,7 +3822,10 @@ export class LibraryService {
         .map((q) => {
           const text = q.provider ? `${q.label} (${q.provider})` : q.label;
           const verweis = q.url ? `[${q.url} ${text}]` : text;
-          return `* ${verweis}${q.entfernt ? ` — ${EXPORT_QUELLE_ENTFERNT}` : ""}`;
+          // R-0205: die Kennzeichnung steht AUSSERHALB des Verweises — sie ist eine Aussage über
+          // die Quelle, kein Teil ihres Namens.
+          const kennung = q.ungeprueft ? ` — ${EXPORT_QUELLE_KENNZEICHNUNG}` : "";
+          return `* ${verweis}${kennung}${q.entfernt ? ` — ${EXPORT_QUELLE_ENTFERNT}` : ""}`;
         })
         .join("\n");
       return `${kopf}\n=== ${EXPORT_QUELLEN_UEBERSCHRIFT} ===\n${liste}`;
@@ -3872,7 +3891,11 @@ export class LibraryService {
         .map((q) => {
           const text = esc(q.provider ? `${q.label} (${q.provider})` : q.label);
           const verweis = q.url ? `<a href="${escAttr(q.url)}">${text}</a> — ${esc(q.url)}` : text;
-          return `<li>${verweis}${q.entfernt ? ` — ${esc(EXPORT_QUELLE_ENTFERNT)}` : ""}</li>`;
+          // R-0205: zwei Etiketten als lesbarer Text — auch im Browserdruck sichtbar.
+          const kennung = q.ungeprueft
+            ? ` — <span class="kennung">${esc(EXPORT_QUELLE_STUFE)}</span> · <span class="kennung">${esc(EXPORT_QUELLE_HERKUNFT)}</span>`
+            : "";
+          return `<li>${verweis}${kennung}${q.entfernt ? ` — ${esc(EXPORT_QUELLE_ENTFERNT)}` : ""}</li>`;
         })
         .join("");
       return `<p><strong>${EXPORT_QUELLEN_UEBERSCHRIFT}</strong></p><ul class="quellen">${zeilen}</ul>`;
