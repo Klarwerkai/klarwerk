@@ -814,6 +814,22 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
           return;
         }
+        // Der Abschluss dieses Wegs — derselbe Antwortlauf wie an Klaras Zugang. Als `answer(…)`
+        // benannt, weil `tests/app/mega52-validiert-zusicherung-sammler.test.ts` die Session-
+        // Abschlüsse `answer(user.id, …)` AUS DIESEM QUELLTEXT liest (R-0278: alle mit
+        // `validatedOnly: true`); ein direkter `antwortLauf`-Aufruf wäre für ihn unsichtbar.
+        const answer = (
+          actorId: string,
+          opts: AskOptionen,
+          zusatz?: Partial<AskOptionen>,
+        ): Promise<void> =>
+          antwortLauf(deps, request, reply, {
+            question,
+            locale,
+            actorId,
+            opts,
+            ...(zusatz ? { zusatz } : {}),
+          });
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
           // Aufnahme gesamt-integrations-api (R-0688) × R-0700: ein Schlüsselzugang — Klara- wie
@@ -824,11 +840,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
           // retrievalOnly → der vertrauliche Dokumenttext wird NIE ans Modell/den Embedder gegeben; die
           // Antwort ist rein Retrieval gegen validierte, nicht-vertrauliche KOs (kein Egress).
-          await antwortLauf(deps, request, reply, {
-            question,
-            locale,
-            actorId: auth.principal.id,
-            opts: { validatedOnly: true, gapPolicy: "count_only", retrievalOnly: true },
+          await answer(auth.principal.id, {
+            validatedOnly: true,
+            gapPolicy: "count_only",
+            retrievalOnly: true,
           });
           return;
         }
@@ -852,17 +867,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // die MELDUNG, dass es Ungeprüftes gibt — gefiltert durch die Sichtbarkeit DIESES
           // Nutzers. Der Add-on-Zweig oben bekommt diesen Filter NICHT (kein `SessionUser`; eine
           // Meldung ohne Betrachter wäre das Abfrageorakel, das AUFTRAG-mega77 entfernt hat).
-          await antwortLauf(deps, request, reply, {
-            question,
-            locale,
-            actorId: user.id,
-            opts: {
-              validatedOnly: true,
-              retrievalOnly: true,
-              ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
-              // JOB 2626 D1: derselbe Betrachter, zweite Meldung — die Torlage der Kandidaten.
-              verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
-            },
+          await answer(user.id, {
+            validatedOnly: true,
+            retrievalOnly: true,
+            ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
+            // JOB 2626 D1: derselbe Betrachter, zweite Meldung — die Torlage der Kandidaten.
+            verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
           });
           return;
         }
@@ -870,13 +880,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
         // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
         // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
+        // R-0278 (Nacharbeit 3, ben): auch die Web-Ansicht zieht ausschließlich geprüftes Wissen
+        // heran — „für alle Wege gleich". Ohne geprüfte Grundlage antwortet Klara nicht und legt die
+        // Wissenslücke an; die Torlage (`verschlossen`, „Freigabe fehlt") sagt dazu, dass es
+        // ungeprüfte Inhalte gibt. Damit endet die Entscheidung mega52 C für diesen Weg.
         //
-        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet
-        // standardmäßig NUR aus geprüftem Wissen. Bis hierher lief dieser Zweig ohne
-        // `validatedOnly` — der einzige Frageweg, auf dem Ungeprüftes Grundlage einer Antwort werden
-        // konnte. Das ersetzt die Abwägung aus mega52 C (Juli: „Text auf die Wahrheit ziehen statt
-        // Filter") durch den jüngeren Auftrag. Was die Enge verschluckt, wird wie im Panel-Weg
+        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung) kommt unabhängig zum selben
+        // Ergebnis und ergänzt die Meldung: was die Enge verschluckt, wird wie im Panel-Weg
         // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
+        // Den KA4-Einwilligungszweig an Klaras Zugang (`klaraAusfuehrungRoutes`) hält R-0278
+        // ebenfalls in der Enge (`validatedOnly`).
         // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
         // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
         // R-1633: dieselbe Grenze für den Fragekontext — nur hier, sonst unangetastet.
@@ -884,17 +897,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           ...(faden.length > 0 ? { gespraechsfaden: faden } : {}),
           ...(fragekontext ? { fragekontext } : {}),
         };
-        await antwortLauf(deps, request, reply, {
-          question,
-          locale,
-          actorId: user.id,
-          opts: {
+        await answer(
+          user.id,
+          {
             validatedOnly: true,
             ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
             verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
           },
-          ...(Object.keys(konsolenZusatz).length > 0 ? { zusatz: konsolenZusatz } : {}),
-        });
+          Object.keys(konsolenZusatz).length > 0 ? konsolenZusatz : undefined,
+        );
       },
     );
 
@@ -1276,8 +1287,11 @@ export function klaraAusfuehrungRoutes(
           });
         };
         if (freigegeben) {
-          // Der normale Answerweg — `validatedOnly`/`retrievalOnly` entfallen, alles andere bleibt.
-          await answer(user.id);
+          // Der Modellweg: `retrievalOnly` entfällt — dafür ist die Einwilligung da.
+          // R-0278 (Nacharbeit 3, ben; aus main integriert): die Einwilligung öffnet das MODELL,
+          // nicht den Prüfstand — `validatedOnly` bleibt, Ungeprüftes wird auf keinem Weg
+          // Antwortgrundlage.
+          await answer(user.id, { validatedOnly: true });
           return;
         }
         // JOB 1591 D1 (W5): ohne Freigabe die unveränderte Enge — validiert, ohne Modell; dazu

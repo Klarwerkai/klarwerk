@@ -297,6 +297,9 @@ async function ketteAufbauen(
     category: "Betrieb",
     author: "anna",
   });
+  // R-0278 (Nacharbeit 3): auch mit Einwilligung ist nur Geprüftes Antwortgrundlage. Gemessen wird
+  // hier die EINWILLIGUNG — das Objekt ist deshalb freigegeben, sonst erreichte es den Anbieter nie.
+  await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
 
   const reasoner = new Reasoner(provider);
   // JOB 3588: die GRUNDFREIGABE im Aufbau. V2-E1 („die Antwort kommt vom Anbieter und trägt seinen

@@ -372,8 +372,8 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     // Eine leere/rein weiße Markierung ist keine Markierung (§5.6) — vierter Fall, gleiche Erwartung,
     // jetzt an Klaras Zugang (R-0700), wo die Markierung allein noch reisen darf.
     await m.klara({ selection: "   \n\t  " });
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet standardmäßig
-    // nur aus geprüftem Wissen und meldet, was die Enge verschluckt (ask-routes.ts, Konsolenzweig).
+    // R-0278 (Nacharbeit 3, ben) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): auch die
+    // Konsole antwortet nur aus geprüftem Wissen und meldet, was die Enge verschluckt.
     expect(m.gesehen[0]).toEqual({
       validatedOnly: true,
       ungeprueftSichtbarFuer: expect.any(Function),
@@ -417,8 +417,9 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     const session = await messplatz(true);
     // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
     await session.klara({ selection: PASSAGE, questionSource: "manual" });
-    // Die Freigabe hebt die Enge auf (KA4-Vertrag) — und die Markierung bleibt trotzdem dabei.
-    expect(session.gesehen[0]).toEqual({ selection: PASSAGE });
+    // Die Freigabe hebt `retrievalOnly` auf (KA4-Vertrag), `validatedOnly` bleibt (R-0278,
+    // Nacharbeit 3) — und die Markierung bleibt trotzdem dabei.
+    expect(session.gesehen[0]).toEqual({ validatedOnly: true, selection: PASSAGE });
     await session.app.close();
 
     // R-0700: der frühere Add-on-Zweig mit KA4-Freigabe ist fort — ein Add-on-Schlüssel ist kein
@@ -429,11 +430,11 @@ describe("KA5 · der Serververtrag der Markierung", () => {
     expect(addon.gesehen).toEqual([]);
     await addon.app.close();
 
-    // GEGENPROBE: ohne Markierung übergibt der freigegebene Zweig weiterhin GAR KEINE Optionen —
-    // nicht ein leeres Objekt. Daran hängt `KA4-E1` (`expect(gesehen[0]).toBe(null)`).
+    // GEGENPROBE: ohne Markierung übergibt der freigegebene Zweig genau `validatedOnly` — keine
+    // Markierung, keine weiteren Felder. Daran hängt `KA4-E1` (R-0278, Nacharbeit 3).
     const ohne = await messplatz(true);
     await ohne.klara({ questionSource: "manual" });
-    expect(ohne.gesehen[0]).toBe(null);
+    expect(ohne.gesehen[0]).toEqual({ validatedOnly: true });
     await ohne.app.close();
   });
 

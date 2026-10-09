@@ -101,8 +101,9 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   it("Helpful erhöht Trust nachvollziehbar (+2); unbelegte KO-ID wird abgewiesen", async () => {
     const { app, services, headers } = await adminApp();
     const koId = await createKo(app, headers); // needed=1
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur noch aus
-    // geprüftem Wissen — ein unbewertetes KO liefert keine Antwort und damit keinen Receipt. Bis
+    // R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg
+    // antwortet nur noch aus geprüftem Wissen — ein unbewertetes KO liefert keine Antwort und damit
+    // keinen Receipt. Bis
     // hierher stand das KO auf Trust 0; ein voll validiertes stünde auf dem Deckel 99, an dem +2
     // unsichtbar wäre. „Validiert mit Vorbehalt" (⚠️ + ✅ bei needed=1, trust.ts) ergibt Trust 50 —
     // so bleibt der Schritt von genau +2 messbar.
@@ -791,7 +792,7 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     verschlossenSichtbarFuer: expect.any(Function),
   };
 
-  it("KA4-P1: `erlaubt: true` für exakt diese Bindung → die Enge entfällt", async () => {
+  it("KA4-P1: `erlaubt: true` für exakt diese Bindung → das Modell öffnet, der Prüfstand bleibt", async () => {
     let gesehenBindung: unknown = null;
     const { app, gesehen } = await routeMit({
       pruefeExterneAusfuehrung: async (sessionId: string, bindung: unknown) => {
@@ -801,8 +802,8 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     });
     const res = await frage(app, BINDUNG);
     expect(res.statusCode).toBe(200);
-    // Der normale Answerweg: KEINE erzwungenen Flags mehr.
-    expect(gesehen[0]).toBe(null);
+    // Der Modellweg: `retrievalOnly` entfällt, `validatedOnly` bleibt (R-0278, Nacharbeit 3).
+    expect(gesehen[0]).toEqual({ validatedOnly: true });
     // Und die Bindung wird VOLLSTÄNDIG durchgereicht — Sitzung UND Dokument, nicht nur eines.
     expect(gesehenBindung).toEqual({
       sessionId: "sess-1",

@@ -216,7 +216,7 @@ describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {
   });
 
   nurWennFreigegeben(
-    "KA4-E1 · DER POSITIVE FALL: passende Bindung → BEIDE Flags fallen",
+    "KA4-E1 · DER POSITIVE FALL: passende Bindung → `retrievalOnly` fällt, `validatedOnly` bleibt",
     async () => {
       const a = await aufbauen();
       // Die Einwilligung wird WIRKLICH gespeichert — der Dienst meldet ihren Zustand zurueck.
@@ -224,8 +224,9 @@ describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {
 
       const res = await fragen(a, a.bindung);
       expect(res.statusCode).toBe(200);
-      // Der erlaubte Zweig uebergibt KEINE erzwungenen Flags (`ask-routes.ts:293` bzw. `:330`).
-      expect(a.gesehen[0]).toBe(null);
+      // Der erlaubte Zweig öffnet das Modell (kein `retrievalOnly`), aber NICHT den Prüfstand:
+      // R-0278 (Nacharbeit 3, ben) — Ungeprüftes wird auch mit Einwilligung nie Grundlage.
+      expect(a.gesehen[0]).toEqual({ validatedOnly: true });
       await a.app.close();
     },
   );
