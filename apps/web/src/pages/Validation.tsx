@@ -108,6 +108,13 @@ import {
 import { koAuthorParts } from "../lib/koAuthor";
 import { formatKoTimestamp } from "../lib/koDates";
 import { quellHinweise, quellennachweis, sourceBadgeKey } from "../lib/koSource";
+import {
+  type Objektbezug,
+  gleicherBezug,
+  leseObjektbezug,
+  leserHref,
+  mitObjektbezug,
+} from "../lib/objektbezug";
 import { pruefKonfliktLage } from "../lib/pruefKonflikt";
 import {
   type StapelErgebnis,
@@ -360,7 +367,29 @@ export function Validation(): JSX.Element {
   // Der aktive Eintrag der Warteschlange. `null` heisst „noch keiner gewählt" — dann führt der
   // erste sichtbare. Ein gewählter Eintrag, der aus der Liste fällt (entschieden, weggefiltert),
   // fällt automatisch auf denselben Weg zurück.
-  const [aktivId, setAktivId] = useState<string | null>(null);
+  //
+  // ARBEITSWEGE AM SELBEN ARTIKEL: nennt die Adresse einen Beitrag (`ko=<id>`, z. B. direkt nach
+  // dem Einreichen), ist ER die Wahl — nicht der erste Eintrag einer anders sortierten Liste.
+  //
+  // DIE ADRESSE IST DIE QUELLE, AUCH BEI MONTIERTER SEITE (Nacharbeit 3, bens Befund): eine
+  // Navigation, die `ko` von A auf B ändert (Link, Zurück, Vorwärts), bestimmt die Auswahl NOCH IM
+  // SELBEN Zeichenlauf — React-Muster „Zustand aus geänderter Eingabe ableiten". Erst danach läuft
+  // der Effekt, der die Adresse aus der Auswahl schreibt; er findet dort also schon B vor und
+  // schreibt nicht mehr A zurück. Ein Wegfall von `ko` ändert die Auswahl nicht.
+  //
+  // `angefordertOffen`: die Kennung, die die Adresse verlangt hat und die die Liste noch NICHT
+  // gezeigt hat. Solange sie fehlt, steht rechts KEINE fremde Karte (s. `aktiv` weiter unten).
+  const adressKo = leseObjektbezug(params)?.koId ?? null;
+  const [aktivId, setAktivId] = useState<string | null>(adressKo);
+  const [angefordertOffen, setAngefordertOffen] = useState<string | null>(adressKo);
+  const [gesehenerAdressKo, setGesehenerAdressKo] = useState<string | null>(adressKo);
+  if (adressKo !== gesehenerAdressKo) {
+    setGesehenerAdressKo(adressKo);
+    if (adressKo !== null) {
+      setAktivId(adressKo);
+      setAngefordertOffen(adressKo);
+    }
+  }
   const pruefbereichRef = useRef<HTMLDivElement>(null);
   // JOB 3504: die Warteschlange selbst — Anker für den Radlauf und für „die Auswahl bleibt sichtbar".
   const warteschlangeRef = useRef<HTMLUListElement>(null);
@@ -446,6 +475,7 @@ export function Validation(): JSX.Element {
     stimmen?: Stimmenlage | null;
   } | null>(null);
   const [quittungOffen, setQuittungOffen] = useState(false);
+  const [entschiedenAm, setEntschiedenAm] = useState<number | null>(null);
   useEffect(() => {
     if (!quittungOffen) {
       return;
@@ -465,6 +495,9 @@ export function Validation(): JSX.Element {
     stimmen?: Stimmenlage | null;
   }): void => {
     invalidate();
+    // Arbeitswege am selben Artikel: ab wann eine Board-Antwort NACH dieser Entscheidung kam — nur
+    // sie trägt das tatsächliche Ergebnis (Zeile „Entschieden", `entschiedenStand`).
+    setEntschiedenAm(Date.now());
     setLastDecision(vars);
     setQuittungOffen(true);
     // Auftrag §5.3: „Erfolg = nächster Eintrag wird aktiv". Der entschiedene Eintrag verlässt das
@@ -1002,7 +1035,53 @@ export function Validation(): JSX.Element {
     return visible[i + 1]?.id ?? visible[i - 1]?.id ?? null;
   }
 
-  const aktiv = visible.find((k) => k.id === aktivId) ?? visible[0] ?? null;
+  // ARBEITSWEGE AM SELBEN ARTIKEL — DIE ADRESSE NENNT DEN GEZEIGTEN BEITRAG, IMMER.
+  //
+  // `angefordertFehlt`: die Adresse hat einen Beitrag verlangt, den die Liste (noch) nicht zeigt
+  // (nicht nachgeladen, weggefiltert, schon entschieden). Dann steht rechts KEINE Karte — keine
+  // fremde an seiner Stelle (Nacharbeit 3, bens Befund) —, eine Zeile sagt es, und die Adresse
+  // behält den verlangten Beitrag: Klara und „Fragen" nennen damit genau das, was die Seite meint.
+  // Kommt er mit dem nächsten Abruf, wird er von selbst gezeigt. Ein Klick auf einen anderen
+  // Eintrag beendet die Lage, weil `aktivId` dann nicht mehr die verlangte Kennung ist.
+  //
+  // Sonst gilt die alte Regel: ohne Wahl (oder wenn ein schon gezeigter Eintrag aus der Liste
+  // fällt) führt der erste sichtbare. Und die Adresse trägt DEN GEZEIGTEN Beitrag samt Fassung
+  // auch dann, wenn ihn niemand ausdrücklich gewählt hat — Klara liest ihn von dort.
+  const gewaehlt = visible.find((k) => k.id === aktivId) ?? null;
+  const angefordertFehlt =
+    angefordertOffen !== null && aktivId === angefordertOffen && gewaehlt === null;
+  if (angefordertOffen !== null && gewaehlt !== null && gewaehlt.id === angefordertOffen) {
+    // Gefunden: ab jetzt eine gewöhnliche Wahl (fällt sie später heraus, führt der erste).
+    setAngefordertOffen(null);
+  }
+  const aktiv = gewaehlt ?? (angefordertFehlt ? null : (visible[0] ?? null));
+
+  const adressBezug = leseObjektbezug(params);
+  const sollBezug: Objektbezug | null = aktiv
+    ? { koId: aktiv.id, fassung: typeof aktiv.version === "number" ? aktiv.version : null }
+    : null;
+  useEffect(() => {
+    if (sollBezug === null || gleicherBezug(adressBezug, sollBezug)) {
+      return;
+    }
+    setSearchParams((prev) => mitObjektbezug(prev, sollBezug), { replace: true });
+  });
+
+  // Das tatsächliche Ergebnis der letzten Entscheidung: was die ERSTE Board-Antwort NACH ihr über
+  // diesen Beitrag sagt — nicht die eigene Stimme. Steht er noch im Board, nennt die Zeile seine
+  // Freigaben laut Server; steht er nicht mehr darin, hat er die Prüfung verlassen, und der Weg
+  // „Beitrag öffnen" zeigt seinen Stand. Vor dieser Antwort sagt die Zeile nichts über den Stand.
+  const nachEntscheidungGeladen =
+    entschiedenAm !== null &&
+    typeof query.dataUpdatedAt === "number" &&
+    query.dataUpdatedAt >= entschiedenAm &&
+    !query.isFetching;
+  const entschiedenImBoard =
+    lastDecision && nachEntscheidungGeladen
+      ? (items.find((k) => k.id === lastDecision.id) ?? null)
+      : null;
+  const entschiedenStand: "offen" | "raus" | null =
+    lastDecision && nachEntscheidungGeladen ? (entschiedenImBoard ? "offen" : "raus") : null;
 
   // ================================================================================================
   // R-0246 — MEHRERE AUSWÄHLEN, GESAMMELT BESTÄTIGEN ODER ZUWEISEN.
@@ -1455,7 +1534,10 @@ export function Validation(): JSX.Element {
           type="button"
           data-testid="pruefen-filter-reset"
           onClick={() => {
-            setFilter({ ...EMPTY_VALIDATION_FILTER });
+            // Arbeitswege am selben Artikel: „Zurücksetzen" nimmt die FILTER zurück, nicht den
+            // Suchtext — er steht sichtbar im Feld darüber und wird dort geleert, wenn gewollt.
+            // Dieselbe Regel wie in der Bibliothek (`BibliothekFlaeche.tsx`, `onResetFilters`).
+            setFilter((f) => ({ ...EMPTY_VALIDATION_FILTER, search: f.search }));
             setFacetSel(clearFacetSelection());
             setRailUi(EMPTY_RAIL_UI);
             resetBoardFocus();
@@ -1636,6 +1718,71 @@ export function Validation(): JSX.Element {
     <div className="mx-auto max-w-[1040px] lg:flex lg:h-full lg:flex-col">
       {kopf}
       {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
+      {/* ARBEITSWEGE AM SELBEN ARTIKEL: die angeforderte Prüfung steht hier gerade nicht — offen
+          gesagt, statt still einen fremden Beitrag zu zeigen. Solange die Liste nachlädt, heißt
+          das „wird gesucht"; danach nennt die Zeile den Weg zum Beitrag selbst. */}
+      {angefordertFehlt && angefordertOffen !== null && lage.lage !== "erstfehler" ? (
+        // `<output>` statt `<p role="status">`: dasselbe Statusverhalten über das semantische
+        // Element (Biome a11y/useSemanticElements). `block`, weil `<output>` inline ist.
+        <output
+          data-testid="pruefen-objekt-fehlt"
+          data-ko={angefordertOffen}
+          className="mb-2 block text-[12.5px] text-trust-warn-text"
+        >
+          {query.isFetching || lage.lage === "laedt"
+            ? t("arbeitsweg.pruefen.sucht")
+            : t("arbeitsweg.pruefen.fehlt")}{" "}
+          <Link
+            className="font-semibold underline"
+            to={leserHref({
+              koId: angefordertOffen,
+              fassung: adressBezug?.koId === angefordertOffen ? adressBezug.fassung : null,
+            })}
+          >
+            {t("arbeitsweg.pruefen.lesen")}
+          </Link>
+        </output>
+      ) : null}
+      {/* Nach Freigabe, Rückfrage oder Ablehnung: WELCHER Beitrag entschieden wurde, sein Stand
+          laut Server und wohin die Auswahl gewechselt ist — stehend, nicht nur 3 s im Fuß. */}
+      {lastDecision ? (
+        <p
+          data-testid="pruefen-entschieden"
+          data-ko={lastDecision.id}
+          data-verdict={lastDecision.verdict}
+          data-stand={entschiedenStand ?? undefined}
+          className="mb-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-muted"
+        >
+          <span>
+            {t("arbeitsweg.pruefen.entschieden", { titel: lastDecision.title })}{" "}
+            {t(reviewOutcome(lastDecision.verdict).statusKey)}
+          </span>
+          {entschiedenStand === "offen" && entschiedenImBoard ? (
+            <span data-testid="pruefen-entschieden-stand" className="font-semibold text-text">
+              {t("arbeitsweg.pruefen.standOffen", {
+                gruen: entschiedenImBoard.reviewVotes?.up ?? 0,
+                noetig: entschiedenImBoard.neededValidations,
+              })}
+            </span>
+          ) : entschiedenStand === "raus" ? (
+            <span data-testid="pruefen-entschieden-stand" className="font-semibold text-text">
+              {t("arbeitsweg.pruefen.standRaus")}
+            </span>
+          ) : null}
+          <Link
+            data-testid="pruefen-entschieden-oeffnen"
+            className="font-semibold text-text underline"
+            to={leserHref({ koId: lastDecision.id, fassung: null })}
+          >
+            {t("arbeitsweg.pruefen.oeffnen")}
+          </Link>
+          {aktiv && aktiv.id !== lastDecision.id ? (
+            <span data-testid="pruefen-entschieden-weiter" data-ko={aktiv.id}>
+              · {t("arbeitsweg.pruefen.weiter", { titel: aktiv.title })}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
       {schmal ? facetSchiene : null}
       <div
         data-testid="pruefen-flaeche"
