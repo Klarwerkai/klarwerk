@@ -1561,7 +1561,7 @@
         // (AUFTRAG-JOB507-D4).
         sendError: "Senden fehlgeschlagen ({detail}) — es wurde KEIN Entwurf angelegt.",
         sendOffline: "Keine Verbindung — es wurde KEIN Entwurf angelegt.",
-        sendTooLarge: "Zu groß für die Übertragung — es wurde KEIN Entwurf angelegt.",
+        sendTooLarge: "Zu groß für die Übertragung — es wurde KEIN Entwurf angelegt; erneut senden, sobald das Dokument gekürzt ist, in Teilen gesendet wird oder weniger (höchstens 60) oder kleinere Bilder hat.",
         sendForbidden: "Dein Konto darf keine Entwürfe anlegen — es wurde KEIN Entwurf angelegt.",
         sendRateLimited: "Zu viele Anfragen ({n} s warten) — es wurde KEIN Entwurf angelegt.",
         sendRateLimitedUnknown: "Zu viele Anfragen — es wurde KEIN Entwurf angelegt.",
@@ -2009,7 +2009,7 @@
         // JOB 3057 K2 (§5.6): every failure is ONE sentence (plus ONE button); each keeps the promise: nothing created.
         sendError: "Sending failed ({detail}) — NO draft was created.",
         sendOffline: "No connection — NO draft was created.",
-        sendTooLarge: "Too large to transfer — NO draft was created.",
+        sendTooLarge: "Too large to transfer — NO draft was created; send again once the document is shortened, sent in parts, or has fewer (at most 60) or smaller images.",
         sendForbidden: "Your account may not create drafts — NO draft was created.",
         sendRateLimited: "Too many requests (wait {n} s) — NO draft was created.",
         sendRateLimitedUnknown: "Too many requests — NO draft was created.",
@@ -2355,7 +2355,7 @@
         // JOB 3057 K2 (§5.6): elke fout is EEN zin (plus EEN knop); elke houdt de toezegging vast: niets aangemaakt.
         sendError: "Versturen mislukt ({detail}) — er is GEEN concept aangemaakt.",
         sendOffline: "Geen verbinding — er is GEEN concept aangemaakt.",
-        sendTooLarge: "Te groot voor de overdracht — er is GEEN concept aangemaakt.",
+        sendTooLarge: "Te groot voor de overdracht — er is GEEN concept aangemaakt; opnieuw verzenden zodra het document is ingekort, in delen wordt verzonden of minder (hoogstens 60) of kleinere afbeeldingen heeft.",
         sendForbidden: "Je account mag geen concepten aanmaken — er is GEEN concept aangemaakt.",
         sendRateLimited: "Te veel verzoeken ({n} s wachten) — er is GEEN concept aangemaakt.",
         sendRateLimitedUnknown: "Te veel verzoeken — er is GEEN concept aangemaakt.",
