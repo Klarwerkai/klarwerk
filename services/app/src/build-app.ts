@@ -349,7 +349,7 @@ import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
-import { askRoutes } from "./routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
@@ -2906,10 +2906,16 @@ export function buildApp(
   // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
   // dort (oder später vor dem Dienst) während einer Aus-/Wiedereinschaltung wartet, trägt die ALTE
   // Epoche und bleibt entwertet. Nur die beiden D5-Eingänge; synchron, ohne Warten, ohne Inhalt.
+  // R-0700: Klaras eigener Ausführungszugang ist der dritte Frage-Eingang und gehört dazu.
   app.decorateRequest("askKiBeginn", null);
   app.addHook("onRequest", async (request) => {
     const pfad = request.routeOptions.url;
-    if (request.method === "POST" && (pfad === "/api/ask" || pfad === "/api/reasoner")) {
+    if (
+      request.method === "POST" &&
+      (pfad === "/api/ask" ||
+        pfad === "/api/reasoner" ||
+        pfad === "/api/klara/sessions/:sessionId/execute")
+    ) {
       request.askKiBeginn = services.ask.kiStand() ?? null;
     }
   });
@@ -3162,6 +3168,18 @@ export function buildApp(
   app.get("/api/ai-status", async () => {
     services.reasoner.refreshReachabilityIfStale();
     return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
+  });
+  // R-0599 (Ben nacharbeit-2): die KI-Lage der Kopfzeile — ob gerade eine externe, eine hausinterne
+  // oder keine KI arbeitet, WELCHER Anbieter dahintersteht und woher er kommt. Für JEDEN
+  // angemeldeten Nutzer (`ko.read`), nicht anonym: die beiden Statusrouten oben bleiben abstrahiert
+  // (WP-VIP2-GATE). Bewusst OHNE Modellnamen (Admin-Sicht) und ohne Schlüssel — der Anbieter ist
+  // die Datenschutzauskunft, die ein Mensch braucht, bevor seine Inhalte hinausgehen.
+  app.get("/api/ki-lage", async (request, reply) => {
+    const user = await guards.requirePermission("ko.read", request, reply);
+    if (!user) {
+      return;
+    }
+    reply.code(200).send(services.reasoner.kiLage());
   });
 
   // ============================================================================================
@@ -4075,48 +4093,55 @@ export function buildApp(
   // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht
   // dafür Bestand und Konflikte. Beide liegen hier ohnehin — dasselbe Muster wie livewallRoutes und
   // impactRoutes darunter.
-  // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
-  // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
-  // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
-  // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
+  // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
+  const offeneSpaces = async (): Promise<ReadonlySet<string>> =>
+    new Set((await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id));
+  // Was der gemeinsame Antwortlauf beider Zugänge liest (R-0700: allgemeiner Weg UND Klaras
+  // Zugang) — einmal gebaut, damit beide dieselbe Belastbarkeit und denselben Zuschnitt liefern.
+  const antwortDeps = {
+    ask: services.ask,
+    ko: services.ko,
+    conflicts: services.conflicts,
+    offeneSpaces,
+    // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
+    kanten: services.kanten,
+    // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
+    begriffe: async () => services.begriffe.aktuelle(),
+    // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
+    // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
+    personen: {
+      erreichbarkeit: async (ids: readonly string[]) => {
+        const konten = await services.auth.listUsers();
+        const erreichbar = new Map<string, boolean>();
+        const namen = new Map<string, string>();
+        for (const id of ids) {
+          const konto = konten.find((u) => u.id === id);
+          erreichbar.set(id, konto?.approved === true);
+          if (konto) {
+            namen.set(id, konto.name);
+          }
+        }
+        return { erreichbar, namen };
+      },
+    },
+  };
+  // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
+  // Klara-Bindung an.
   app.register(
     askRoutes(
       {
-        ask: services.ask,
-        ko: services.ko,
-        conflicts: services.conflicts,
-        klaraSessions,
-        // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
-        offeneSpaces: async () =>
-          new Set(
-            (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
-          ),
+        ...antwortDeps,
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
-        // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
-        kanten: services.kanten,
-        // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
-        begriffe: async () => services.begriffe.aktuelle(),
-        personen: {
-          erreichbarkeit: async (ids) => {
-            const konten = await services.auth.listUsers();
-            const erreichbar = new Map<string, boolean>();
-            const namen = new Map<string, string>();
-            for (const id of ids) {
-              const konto = konten.find((u) => u.id === id);
-              erreichbar.set(id, konto?.approved === true);
-              if (konto) {
-                namen.set(id, konto.name);
-              }
-            }
-            return { erreichbar, namen };
-          },
-        },
       },
       guards,
     ),
   );
+  // R-0700 (KW-S4-24): Klaras eigener, sitzungsgebundener Ausführungszugang
+  // `POST /api/klara/sessions/{sessionId}/execute`. KW-KA4: `klaraSessions` ist das bestehende
+  // Ausführungstor von oben — DIESELBE Instanz wie am Status-, Zuruf- und Reasoner-Weg.
+  app.register(klaraAusfuehrungRoutes({ ...antwortDeps, klaraSessions }, guards));
   // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
   // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
   // zweite Aufloesung.
