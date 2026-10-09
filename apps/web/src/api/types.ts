@@ -2527,8 +2527,32 @@ export interface ManagementSnapshot {
   // Optional: ein Server ohne R-1657 liefert das Feld nicht; die Fläche zeigt dann keine Sprints.
   sprints?: MgmtSprint[];
   sprintAnalysis?: MgmtSprintAnalysis;
-  house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
+  house: MgmtHouseFloor[];
+  houseFlow: MgmtHouseFlow;
   pilot: { days: number; created: number; validated: number }[];
+}
+
+// R-0768 / FR-EXT-05: ein Stockwerk je Fachgebiet; `domain: null` = ohne angegebenes Fachgebiet.
+export interface MgmtHouseFloor {
+  domain: string | null;
+  koCount: number;
+  validated: number;
+  validatedRatio: number;
+  authorCount: number;
+  singleSource: boolean;
+  fragile: boolean;
+  imported: number;
+}
+
+// R-0768 / FR-EXT-05: Import → Haus → Ausgabe (Ausgabe = ausgabefähig, d. h. validiert).
+export interface MgmtHouseFlow {
+  imported: number;
+  importedValidated: number;
+  inHouse: number;
+  secured: number;
+  floors: number;
+  fragileFloors: number;
+  outputReady: number;
 }
 
 export interface StructureResult {
