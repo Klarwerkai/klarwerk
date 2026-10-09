@@ -44,6 +44,9 @@ import {
   // `displayStatus` keinen einzigen Aufrufer im Produkt (`git log -S displayStatus -- services/app`:
   // kein Treffer); `discloseDisplayStatus` bildet beide Haelften der Auskunft an EINER Stelle.
   discloseDisplayStatus,
+  // aufnahme:20260922:gesamt-wissen-frische: Frische, Haltbarkeit, Schutz und nächster Schritt —
+  // aus DENSELBEN erhobenen Eingängen (Merker, Konflikt) wie die Anzeigestufe.
+  discloseFrische,
   // R-0658: die eine Lesestelle der Schutzdaten-Quarantäne (Begründung in `schutzdaten.ts`).
   inSchutzdatenQuarantaene,
   // P-WIKI-STELLENBEZUG: die Form einer mitgeschickten Stelle (Prüfung des Inhalts im Dienst).
@@ -70,6 +73,7 @@ import {
 // JOB 2009 D2 (H3): der Einstieg, der die PORTS nimmt — nicht das Lesemodell (C1 bleibt gruen).
 import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
+import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
@@ -452,6 +456,14 @@ type KoAktion =
   | "comment-resolve"
   | "comment-reopen"
   | "revalidate"
+  // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung aus der Bibliothek anstossen
+  // (R-1732), die Anlagenänderung über dieses Objekt an alle Nachbarn melden (R-0203) und
+  // „Stimmt weiterhin" nach dem Anwenden (R-0206, Frische-Signal). Alle drei arbeiten AM Objekt.
+  | "request-revalidation"
+  | "neighbors-changed"
+  | "confirm-fresh"
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (am Objekt).
+  | "schutz-oeffentlich"
   // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — Bewährung, ausdrücklich keine
   // Prüfstimme. Arbeitet AM Objekt unter `:id` und passiert deshalb das Tor.
   | "helpful";
@@ -515,6 +527,12 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "comment-resolve": "tor",
   "comment-reopen": "tor",
   revalidate: "tor",
+  // aufnahme:20260922:gesamt-wissen-frische: nur wer das Objekt sehen darf, kann es zur Prüfung
+  // vorlegen, seine Nachbarn markieren oder bestätigen, dass es weiterhin stimmt.
+  "request-revalidation": "tor",
+  "neighbors-changed": "tor",
+  "confirm-fresh": "tor",
+  "schutz-oeffentlich": "tor",
   // R-0235 / R-0749: nur wer das Objekt sehen darf, kann melden, dass es geholfen hat.
   helpful: "tor",
 };
@@ -1318,11 +1336,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Pruefstandsabfrage. Ein Prueflauf ueber ein unsichtbares Objekt waere eine Existenzauskunft
       // ueber den Umweg der Kosten (gepinnt in L6).
       const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(user, sichtbare);
+      const jetzt = Date.now();
+      // R-1636: die aus der Bewährungs-Historie gelernten Halbwertszeiten — über den Bestand.
+      const gelernt = await ko.gelernteHalbwertszeiten();
       reply.code(200).send(
-        sichtbare.map((item) => ({
-          ...item,
-          ...discloseDisplayStatus(item, eingaengeFuer(item)),
-        })),
+        sichtbare.map((item) => {
+          const eingaenge = eingaengeFuer(item);
+          return {
+            ...item,
+            ...discloseDisplayStatus(item, eingaenge),
+            ...discloseFrische(item, jetzt, eingaenge, gelernt),
+          };
+        }),
       );
     });
 
@@ -1403,10 +1428,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
       const einordnung = await ko.einordnungsstandVon(item.id);
       const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
+      const eingaenge = await anzeigestatusEingaengeFuer(user, item);
       reply.code(200).send({
         ...item,
         ...discloseConfidentiality(item.confidentiality),
-        ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(user, item)),
+        ...discloseDisplayStatus(item, eingaenge),
+        ...discloseFrische(item, Date.now(), eingaenge, await ko.gelernteHalbwertszeiten()),
         ...(einordnung
           ? {
               category: einordnung.category,
@@ -2147,12 +2174,27 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
     // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.
     // done/ohne Feld ist nicht wiederholbar (ehrlicher 409 statt stillem Doppel-Lauf).
+    //
+    // AUFNAHME 20260922 · R-1124: `{ "umfang": "vollstaendig" }` wählt für DIESES Objekt den
+    // Vollabgleich gegen den ganzen Bestand (ohne Deckel, ohne fachlichen Vorfilter; s.
+    // detection-cap.ts). Die Wahl ist auch bei einem aktuellen fertigen Nachweis zulässig — sie
+    // fordert ausdrücklich mehr, als der gedeckelte Lauf belegt hat. Läuft schon ein Job, wird
+    // nichts verdoppelt (409); ein wartender wird hochgestuft. Ohne Angabe gilt alles wie bisher.
     app.post<{ Params: { id: string } }>("/api/kos/:id/ai-check", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
         return;
       }
       try {
+        const gewaehlt = (request.body as { umfang?: unknown } | undefined)?.umfang;
+        if (gewaehlt !== undefined && gewaehlt !== "gedeckelt" && gewaehlt !== "vollstaendig") {
+          reply.code(400).send({
+            error: "AI_CHECK_UMFANG_UNBEKANNT",
+            message: 'Pruefumfang ist "gedeckelt" oder "vollstaendig".',
+          });
+          return;
+        }
+        const umfang: PruefUmfang = gewaehlt === "vollstaendig" ? "vollstaendig" : "gedeckelt";
         const subject = await ko.get(request.params.id);
         if (!subject) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
@@ -2166,6 +2208,38 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         const status = subject.aiCheck?.status;
+        if (umfang === "vollstaendig") {
+          // R-1124 (Bens Befund zu 3e62e335): die Wahl wird SYNCHRON im Worker vorgemerkt, bevor
+          // irgendein Speicherzugriff folgt. Die Vormerkung hält einen wartenden Job dieses Objekts
+          // vom Start zurück, bis er hochgestuft eingereiht ist — der Übergang wartend → laufend
+          // kann die Wahl damit nicht mehr verschlucken. Läuft schon ein Job, gibt es keine
+          // Vormerkung: 409, und der Prüfstatus bleibt unberührt.
+          const vormerkung = aiCheckWorker.vollabgleichVormerken?.(request.params.id);
+          if (vormerkung === undefined) {
+            reply.code(503).send({
+              error: "AI_CHECK_UNAVAILABLE",
+              message: "Die Hintergrund-Pruefung kennt keinen Vollabgleich.",
+            });
+            return;
+          }
+          if (vormerkung === null) {
+            reply.code(409).send({
+              error: "AI_CHECK_LAEUFT",
+              message: "Fuer dieses Wissensobjekt laeuft gerade eine Pruefung.",
+            });
+            return;
+          }
+          try {
+            await ko.markAiCheckPending(request.params.id);
+            const vermerkt = await ko.get(request.params.id);
+            vormerkung.einreihen(vermerkt?.aiCheck?.koVersion);
+          } catch (error) {
+            vormerkung.verwerfen();
+            throw error;
+          }
+          reply.code(200).send({ status: "pending", umfang });
+          return;
+        }
         // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
         // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
         if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
@@ -3643,6 +3717,54 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await lifecycle.confirmStillValid(id, user.id));
+            return;
+          }
+          // R-1732 / R-0206: aus der Bibliothek eine erneute Prüfung anstossen — dasselbe Recht wie
+          // „Noch gültig" (`revalidate`); das Objekt erscheint danach im Reiter „Erneut".
+          case "request-revalidation": {
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            await lifecycle.requestRevalidation(id, user.id);
+            reply.code(204).send();
+            return;
+          }
+          // R-0203: die Anlagenänderung über dieses Objekt melden — dasselbe Recht wie
+          // `POST /api/lifecycle/asset-changed`. Die Antwort nennt nur die ZAHL der markierten
+          // Objekte, keine Kennungen: Nachbarn, die der Meldende nicht sehen darf, bleiben ungenannt.
+          case "neighbors-changed": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            const markiert = await lifecycle.neighborsChanged(id, user.id);
+            reply.code(200).send({ markiert: markiert.length });
+            return;
+          }
+          // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — jeder, der das Objekt lesen
+          // darf. Ein Frische-Signal, keine Prüfstimme: Status und Fassung bleiben unberührt.
+          case "confirm-fresh": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            reply.code(200).send(await ko.bestaetigeFrische(id, user.id));
+            return;
+          }
+          // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" — die Verfeinerung von „intern". Dieselbe
+          // Schwelle wie eine Herabstufung der Vertraulichkeit (`ko.validate`): wer etwas als frei
+          // verwendbar einstuft, senkt den Schutz.
+          case "schutz-oeffentlich": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            const wert = (body as unknown as { oeffentlich?: unknown }).oeffentlich;
+            if (typeof wert !== "boolean") {
+              return badRequest("oeffentlich muss true oder false sein.");
+            }
+            reply.code(200).send(await ko.setOeffentlich(id, wert, user.id));
             return;
           }
           // R-0235 / R-0749: „Hat geholfen" am Objekt selbst. Recht wie beim Antwortfeedback
