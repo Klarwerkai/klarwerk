@@ -4309,6 +4309,8 @@ const nl: typeof de = {
   "prof.correctUnchanged": "Niets gewijzigd.",
   "prof.correctSso": "In plaats daarvan bevestigen met SSO",
   "prof.correctSsoConfirmed": "Identiteit bevestigd via SSO — sla nu je accountgegevens op.",
+  "prof.correctSsoKontoGewechselt":
+    "Tijdens de SSO-bevestiging is een ander account aangemeld. Het concept van het vorige account is verworpen; hier staan de gegevens van het account dat nu is aangemeld.",
   "help.kicker": "Help",
   "help.open": "Help openen",
   "help.openCenter": "In het Help-Center openen",

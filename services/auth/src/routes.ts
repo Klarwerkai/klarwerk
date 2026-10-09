@@ -846,6 +846,13 @@ export function authRoutes(
           return;
         }
         try {
+          // R-0582 (Ben, Nacharbeit 4): das AUSGANGSKONTO der Bestätigung — die Sitzung, aus der das
+          // Profil die Bestätigung gestartet hat. Der Browser schickt ihr Merkmal beim Rückruf noch
+          // mit; erst die Antwort unten ersetzt es. Gelesen VOR der neuen Anmeldung.
+          const ausgangsMerkmal = ausDemProfil ? tokenFromRequest(request) : undefined;
+          const ausgangskonto = ausgangsMerkmal
+            ? await service.authenticate(ausgangsMerkmal)
+            : undefined;
           const idToken = await options.oidc.exchange(request.body.code, verifierCookie);
           const claims = await options.oidc.verify(idToken, nonceCookie);
           const mappedRole = options.oidc.mapRole(claims);
@@ -855,7 +862,10 @@ export function authRoutes(
             mappedRole,
           );
           reply.header("set-cookie", [...clearFlow, sessionCookie(token)]);
-          if (ausDemProfil) {
+          // Nur wenn der Anbieter DASSELBE Konto angemeldet hat, das die Berichtigung begonnen hat.
+          // Meldet er ein anderes an (Kontowechsel beim Anbieter), entsteht KEINE Bestätigung: sie
+          // gälte sonst für ein Konto, dessen Inhaber die Berichtigung nie begonnen hat.
+          if (ausDemProfil && ausgangskonto !== undefined && ausgangskonto.id === user.id) {
             // R-0582: der Anbieter hat DIESES Konto soeben erneut angemeldet. Das ist die
             // Identitätsbestätigung für eine neue E-Mail — gebunden an genau die Sitzung, die hier
             // entsteht, und nur für kurze Zeit. Abgelaufene Einträge fallen beim Setzen.

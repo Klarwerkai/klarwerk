@@ -5541,6 +5541,8 @@ const de = {
   "prof.correctUnchanged": "Nichts geändert.",
   "prof.correctSso": "Stattdessen mit SSO bestätigen",
   "prof.correctSsoConfirmed": "Identität per SSO bestätigt — jetzt die Kontodaten speichern.",
+  "prof.correctSsoKontoGewechselt":
+    "Bei der SSO-Bestätigung wurde ein anderes Konto angemeldet. Der Entwurf des vorherigen Kontos wurde verworfen; hier stehen die Daten des jetzt angemeldeten Kontos.",
   "help.kicker": "Hilfe",
   "help.open": "Hilfe öffnen",
   "help.openCenter": "Im Hilfe-Center öffnen",

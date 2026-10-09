@@ -157,14 +157,33 @@ function PasswortDetail({
 // beim eigenen Anbieter läuft über `ziel=profil`, und der Rückruf führt nach
 // `/profil?kontodaten=sso` zurück — die Karte öffnet sich mit dem Entwurf, der Server nimmt die
 // neue Adresse dann ohne Passwort an (einmal, kurz, nur für diese Sitzung).
+//
+// BEN, NACHARBEIT 4 — ZWEI REGELN DES RÜCKWEGS:
+//   · DER ENTWURF GEHÖRT DEM KONTO, DAS IHN BEGONNEN HAT (`kontoId`). Meldet der Anbieter beim
+//     Rückruf ein ANDERES Konto an, wird er verworfen, die Karte zeigt die Daten des jetzt
+//     angemeldeten Kontos und sagt, warum. Der Server bestätigt in diesem Fall ohnehin nichts.
+//   · EINE ABGELEHNTE BESTÄTIGUNG (abgelaufen, verbraucht, fehlt — Antwort 401/403) setzt den
+//     Bestätigungszustand zurück: Passwortfeld und „Mit SSO bestätigen" sind sofort wieder da, die
+//     Eingaben bleiben stehen.
 export const KONTODATEN_ENTWURF = "kw_kontodaten_entwurf";
 
-function entwurfLesen(): { name: string; email: string } | null {
+interface Entwurf {
+  kontoId: string;
+  name: string;
+  email: string;
+}
+
+function entwurfLesen(): Entwurf | null {
   try {
     const roh = window.sessionStorage.getItem(KONTODATEN_ENTWURF);
-    const wert = roh ? (JSON.parse(roh) as { name?: unknown; email?: unknown }) : null;
-    return wert && typeof wert.name === "string" && typeof wert.email === "string"
-      ? { name: wert.name, email: wert.email }
+    const wert = roh
+      ? (JSON.parse(roh) as { kontoId?: unknown; name?: unknown; email?: unknown })
+      : null;
+    return wert &&
+      typeof wert.kontoId === "string" &&
+      typeof wert.name === "string" &&
+      typeof wert.email === "string"
+      ? { kontoId: wert.kontoId, name: wert.name, email: wert.email }
       : null;
   } catch {
     return null;
@@ -193,15 +212,33 @@ function KontodatenDetail({
       }
     }
   }, [ausSso]);
-  const [name, setName] = useState(entwurf?.name ?? user?.name ?? "");
-  const [email, setEmail] = useState(entwurf?.email ?? user?.email ?? "");
+  const [name, setName] = useState(entwurf ? "" : (user?.name ?? ""));
+  const [email, setEmail] = useState(entwurf ? "" : (user?.email ?? ""));
   const [passwort, setPasswort] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [hinweis, setHinweis] = useState<string | null>(
-    entwurf ? t("prof.correctSsoConfirmed") : null,
-  );
+  const [hinweis, setHinweis] = useState<string | null>(null);
   // Die Bestätigung gilt für genau EINE gelungene Adressänderung (Server verbraucht sie).
-  const [ssoBestaetigt, setSsoBestaetigt] = useState(entwurf !== null);
+  const [ssoBestaetigt, setSsoBestaetigt] = useState(false);
+  // Erst wenn das angemeldete Konto bekannt ist, wird entschieden, wem die Felder gehören.
+  const [vorbelegt, setVorbelegt] = useState(false);
+  useEffect(() => {
+    if (vorbelegt || !user) {
+      return;
+    }
+    setVorbelegt(true);
+    if (entwurf && entwurf.kontoId === user.id) {
+      setName(entwurf.name);
+      setEmail(entwurf.email);
+      setSsoBestaetigt(true);
+      setHinweis(t("prof.correctSsoConfirmed"));
+      return;
+    }
+    setName(user.name ?? "");
+    setEmail(user.email ?? "");
+    if (entwurf) {
+      setErr(t("prof.correctSsoKontoGewechselt"));
+    }
+  }, [vorbelegt, user, entwurf, t]);
   const neueEmail = email.trim() !== (user?.email ?? "");
   const ssoMoeglich = oidcEnabled && Boolean(user?.oidcSubject);
 
@@ -222,15 +259,22 @@ function KontodatenDetail({
       }
       setHinweis(t("prof.correctSaved"));
     },
-    onError: (e: unknown) => setErr(e instanceof ApiError ? e.message : t("state.error")),
+    onError: (e: unknown) => {
+      // Abgelehnte Bestätigung: zurück auf „unbestätigt", damit der Weg erneut bedienbar ist.
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        setSsoBestaetigt(false);
+      }
+      setErr(e instanceof ApiError ? e.message : t("state.error"));
+    },
   });
 
   const mitSsoBestaetigen = (): void => {
+    if (!user) {
+      return;
+    }
     try {
-      window.sessionStorage.setItem(
-        KONTODATEN_ENTWURF,
-        JSON.stringify({ name: name.trim(), email: email.trim() }),
-      );
+      const neu: Entwurf = { kontoId: user.id, name: name.trim(), email: email.trim() };
+      window.sessionStorage.setItem(KONTODATEN_ENTWURF, JSON.stringify(neu));
     } catch {
       // Ohne Tab-Speicher geht der Entwurf verloren; die Bestätigung selbst gilt trotzdem.
     }

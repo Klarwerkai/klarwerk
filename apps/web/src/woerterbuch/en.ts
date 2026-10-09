@@ -4318,6 +4318,8 @@ const en: typeof de = {
   "prof.correctUnchanged": "Nothing changed.",
   "prof.correctSso": "Confirm with SSO instead",
   "prof.correctSsoConfirmed": "Identity confirmed via SSO — now save your account details.",
+  "prof.correctSsoKontoGewechselt":
+    "A different account signed in during the SSO confirmation. The previous account's draft was discarded; the details shown belong to the account that is now signed in.",
   "help.kicker": "Help",
   "help.open": "Open help",
   "help.openCenter": "Open in help center",

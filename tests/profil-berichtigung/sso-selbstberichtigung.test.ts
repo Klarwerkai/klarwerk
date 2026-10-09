@@ -46,13 +46,16 @@ jwk.kid = "test-key";
 jwk.alg = "RS256";
 const JWKS = createLocalJWKSet({ keys: [jwk] });
 
+/** Wen der Anbieter beim NÄCHSTEN Rückruf anmeldet — P7 wechselt das Konto beim Anbieter. */
+let anbieterKonto = { sub: "sso-1", email: ALT, name: "Sina Sso" };
+
 async function idToken(): Promise<string> {
   return new SignJWT({
     nonce: NONCE,
-    sub: "sso-1",
-    email: ALT,
+    sub: anbieterKonto.sub,
+    email: anbieterKonto.email,
     email_verified: true,
-    name: "Sina Sso",
+    name: anbieterKonto.name,
   })
     .setProtectedHeader({ alg: "RS256", kid: "test-key" })
     .setIssuer(ISSUER)
@@ -73,7 +76,6 @@ async function baueApp(): Promise<Buehne> {
     sessions: new InMemorySessionRepo(),
     audit,
   });
-  const ausgegeben = await idToken();
   const provider = createOidcProvider(
     {
       issuer: ISSUER,
@@ -86,7 +88,7 @@ async function baueApp(): Promise<Buehne> {
       autoProvision: true,
       roles: { roleClaim: "roles", adminGroup: "kw-admin", controllerGroup: "kw-ctrl" },
     },
-    { keyResolver: JWKS, tokenExchanger: async () => ausgegeben },
+    { keyResolver: JWKS, tokenExchanger: () => idToken() },
   );
   const app = Fastify();
   await app.register(authRoutes(service, { oidc: provider }));
@@ -100,17 +102,22 @@ function zielCookie(antwort: LightMyRequestResponse): string | undefined {
   return liste.find((c) => c.startsWith("kw_oidc_ziel="));
 }
 
-/** Ein SSO-Rückruf; `ziel` wie vom Start gesetzt (oder keins). Liefert Antwort und Sitzung. */
+/**
+ * Ein SSO-Rückruf; `ziel` wie vom Start gesetzt (oder keins). `ausgang` ist die Sitzung, aus der
+ * das Profil die Bestätigung gestartet hat — der Browser schickt ihr Cookie beim Rückruf mit.
+ */
 async function sso(
   app: FastifyInstance,
   ziel: string | null,
+  ausgang?: string,
 ): Promise<{ antwort: LightMyRequestResponse; token: string }> {
   const zielTeil = ziel === null ? "" : `; kw_oidc_ziel=${ziel}`;
+  const sitzung = ausgang === undefined ? "" : `; kw_session=${ausgang}`;
   const antwort = await app.inject({
     method: "POST",
     url: "/api/auth/oidc",
     headers: {
-      cookie: `kw_oidc_state=${STATE}; kw_oidc_nonce=${NONCE}; kw_oidc_verifier=v${zielTeil}`,
+      cookie: `kw_oidc_state=${STATE}; kw_oidc_nonce=${NONCE}; kw_oidc_verifier=v${zielTeil}${sitzung}`,
     },
     payload: { code: "der-code", state: STATE },
   });
@@ -143,6 +150,7 @@ async function ich(app: FastifyInstance, token: string): Promise<{ id: string; e
 
 afterEach(() => {
   vi.restoreAllMocks();
+  anbieterKonto = { sub: "sso-1", email: ALT, name: "Sina Sso" };
 });
 
 describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit SSO als Bestätigung", () => {
@@ -173,7 +181,7 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
     expect(start.statusCode).toBe(302);
     expect(zielCookie(start) ?? "").toMatch(/^kw_oidc_ziel=profil;.*HttpOnly/);
 
-    const bestaetigt = await sso(app, "profil");
+    const bestaetigt = await sso(app, "profil", vorher.token);
     expect((bestaetigt.antwort.json() as { weiter?: string }).weiter).toBe(
       "/profil?kontodaten=sso",
     );
@@ -201,8 +209,8 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
 
   it("P3 — einmalig: die zweite Adressänderung derselben Sitzung braucht eine neue Bestätigung", async () => {
     const { app } = await baueApp();
-    await sso(app, null);
-    const { token } = await sso(app, "profil");
+    const ausgang = await sso(app, null);
+    const { token } = await sso(app, "profil", ausgang.token);
     expect((await berichtige(app, token, { email: NEU })).statusCode).toBe(200);
     const nochmal = await berichtige(app, token, { email: "dritte@firma.de" });
     expect(nochmal.statusCode).toBe(403);
@@ -211,8 +219,8 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
 
   it("P3b — eine abgelehnte Adresse verbraucht die Bestätigung nicht", async () => {
     const { app } = await baueApp();
-    await sso(app, null);
-    const { token } = await sso(app, "profil");
+    const ausgang = await sso(app, null);
+    const { token } = await sso(app, "profil", ausgang.token);
     const falsch = await berichtige(app, token, { email: "kein-at" });
     expect(falsch.statusCode).toBe(400);
     expect((await berichtige(app, token, { email: NEU })).statusCode).toBe(200);
@@ -220,8 +228,8 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
 
   it("P4 — sitzungsgebunden, und eine gewöhnliche SSO-Anmeldung bestätigt nichts", async () => {
     const { app } = await baueApp();
-    await sso(app, null);
-    const bestaetigt = await sso(app, "profil");
+    const ausgang = await sso(app, null);
+    const bestaetigt = await sso(app, "profil", ausgang.token);
     const andereSitzung = await sso(app, null);
     expect(andereSitzung.token).not.toBe(bestaetigt.token);
     const fremd = await berichtige(app, andereSitzung.token, { email: NEU });
@@ -233,14 +241,41 @@ describe("R-0582 · ein reines SSO-Konto berichtigt seine E-Mail selbst — mit 
 
   it("P5 — befristet: nach fünf Minuten gilt die Bestätigung nicht mehr", async () => {
     const { app } = await baueApp();
-    await sso(app, null);
-    const { token } = await sso(app, "profil");
+    const ausgang = await sso(app, null);
+    const { token } = await sso(app, "profil", ausgang.token);
     const jetzt = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(jetzt + 5 * 60 * 1000 + 1);
     const spaet = await berichtige(app, token, { email: NEU });
     expect(spaet.statusCode, spaet.body).toBe(403);
     vi.restoreAllMocks();
     expect((await ich(app, token)).email).toBe(ALT);
+  });
+
+  it("P7 — Kontowechsel beim Anbieter: Konto B wird angemeldet, bestätigt ist NICHTS, A und B bleiben unverändert", async () => {
+    const { app } = await baueApp();
+    // Konto B existiert (eigenes Subjekt, eigene Adresse).
+    anbieterKonto = { sub: "sso-2", email: "bea@firma.de", name: "Bea Zwei" };
+    const b = await sso(app, null);
+    const kontoB = await ich(app, b.token);
+    // Konto A beginnt die Berichtigung im Profil …
+    anbieterKonto = { sub: "sso-1", email: ALT, name: "Sina Sso" };
+    const a = await sso(app, null);
+    const kontoA = await ich(app, a.token);
+    // … beim Anbieter meldet sich aber B an.
+    anbieterKonto = { sub: "sso-2", email: "bea@firma.de", name: "Bea Zwei" };
+    const rueckruf = await sso(app, "profil", a.token);
+    expect((await ich(app, rueckruf.token)).id, "die neue Sitzung gehört B").toBe(kontoB.id);
+    const versuch = await berichtige(app, rueckruf.token, { email: NEU });
+    expect(versuch.statusCode, "keine Bestätigung für ein fremdes Ausgangskonto").toBe(403);
+    expect((await ich(app, rueckruf.token)).email).toBe("bea@firma.de");
+    expect((await ich(app, a.token)).email, "A ist unberührt").toBe(kontoA.email);
+  });
+
+  it("P7b — ohne Ausgangssitzung (Rückruf ohne angemeldetes Konto) entsteht keine Bestätigung", async () => {
+    const { app } = await baueApp();
+    await sso(app, null);
+    const { token } = await sso(app, "profil");
+    expect((await berichtige(app, token, { email: NEU })).statusCode).toBe(403);
   });
 
   it("P6 — die Anwendung folgt nur den festen Rücksprüngen", () => {
