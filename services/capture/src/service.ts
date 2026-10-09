@@ -949,6 +949,9 @@ export class CaptureService {
           "Der Entwurf wird gerade an anderer Stelle geschrieben — bitte noch einmal versuchen.",
         );
       }
+      // R-1133: neuer Inhalt, neuer Stand — der Index folgt dem GESCHRIEBENEN Stand, wie bei der
+      // Erstanlage und beim Fortsetzen (erst nach gewonnenem Compare-and-Swap, nur eingeplant).
+      this.indexiere(fortgeschrieben);
       return fortgeschrieben;
     });
   }

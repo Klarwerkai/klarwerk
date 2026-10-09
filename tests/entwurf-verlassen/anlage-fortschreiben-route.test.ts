@@ -34,7 +34,7 @@ async function setup() {
     payload: { email: "a@x.de", password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
-  return { app, ablage, headers };
+  return { app, ablage, capture, headers };
 }
 
 const anlegen = (app: App, headers: Record<string, string>, body: Record<string, unknown>) =>
@@ -148,5 +148,46 @@ describe("entscheidung:14ce8681/8b909a1e · POST /api/drafts fortschreiben und A
     const bestand = await ablage.list();
     expect(bestand).toHaveLength(1);
     expect(bestand[0]?.payload.statement).toBe("aktuell");
+  });
+
+  // BEN, nacharbeit-8: das Fortschreiben ist ein Speicherweg wie Anlage und Fortsetzen — der
+  // technische Entwurfsindex (R-1133) muss dem fortgeschriebenen Stand folgen. Sonst fehlt der
+  // Eintrag bei der Duplikatsfrage eines anderen Entwurfs mit demselben neuen Inhalt.
+  it("S6 · Anlage → Fortschreiben unter demselben Vorgang → die Duplikatsfrage eines anderen Entwurfs findet den fortgeschriebenen", async () => {
+    const { app, ablage, capture, headers } = await setup();
+
+    const erst = await anlegen(app, headers, {
+      title: "Ventil",
+      statement: "alt",
+      operationId: "op-1",
+    });
+    const fort = await anlegen(app, headers, {
+      title: "Ventil",
+      statement: "neu",
+      operationId: "op-1",
+      fortschreiben: true,
+    });
+    expect(fort.json().anlage).toBe("fortgeschrieben");
+    const anderer = await anlegen(app, headers, { title: "Ventil", statement: "neu" });
+    expect(anderer.statusCode).toBe(201);
+    // Die Indexarbeit ist entkoppelt eingeplant; wer den Index liest, wartet sie ab.
+    await capture.indexArbeitAbgeschlossen();
+
+    const index = await ablage.entwurfsIndexVon(erst.json().id);
+    expect(index?.stand, "der Index hängt am Stand vor dem Fortschreiben").toBe(
+      fort.json().updatedAt,
+    );
+    expect(index?.text).toContain("neu");
+
+    const frage = await app.inject({
+      method: "GET",
+      url: `/api/drafts/${anderer.json().id}/gleicher-inhalt`,
+      headers,
+    });
+    expect(frage.statusCode, frage.body).toBe(200);
+    expect(
+      (frage.json() as { entwuerfe: { id: string }[] }).entwuerfe.map((e) => e.id),
+      "der fortgeschriebene Entwurf fehlt bei der Duplikatsfrage",
+    ).toEqual([erst.json().id]);
   });
 });
