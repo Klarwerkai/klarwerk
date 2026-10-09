@@ -15,6 +15,7 @@ import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useFeatures } from "../api/hooks";
 import { BRAND_LOGO_ALT, abonniereBranding, aktuellesBranding } from "../lib/brandTheme";
+import { OBERFLAECHEN_SPRACHEN } from "../lib/sprachregister";
 
 // ================================================================================================
 // JOB 3761 — MAN SIEHT DER DEMO AN, DASS SIE DIE DEMO IST.
@@ -147,6 +148,7 @@ export function DemoKennzeichen({ form }: { form: "marke" | "band" }): JSX.Eleme
 
 /** Das Wortzeichen — einmal beschrieben, an drei Stellen verwendet. */
 function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
+  const { t } = useTranslation();
   const stand = useSyncExternalStore(abonniereBranding, aktuellesBranding, aktuellesBranding);
   // Ein Profil OHNE Schalter und ein Schalter OHNE Profil sind beide „aus" — wörtlich die Regel aus
   // `shell/Logo.tsx:39-40`, damit die Anmeldemaske und die Hülle nicht zwei Sichtbarkeitsbegriffe
@@ -171,7 +173,8 @@ function Wortmarke({ hell }: { hell: boolean }): JSX.Element {
             hell ? "text-white/50" : "text-muted-2"
           }`}
         >
-          Reasoning System
+          {/* R-1169: der Markenuntertitel kommt aus dem Katalog (`app.subtitle`). */}
+          {t("app.subtitle")}
         </span>
       </span>
       {profil === null || marke === null ? null : (
@@ -252,17 +255,14 @@ export function BrandCompact(): JSX.Element {
  */
 export function PublicLangSwitch(): JSX.Element {
   const { i18n } = useTranslation();
-  const aktiv = i18n.language.startsWith("en")
-    ? "en"
-    : i18n.language.startsWith("nl")
-      ? "nl"
-      : "de";
+  // R-0997: die Menge aus den Ressourcen (`lib/sprachregister.ts`), Vorgabe Deutsch.
+  const aktiv = OBERFLAECHEN_SPRACHEN.find((l) => i18n.language.startsWith(l)) ?? "de";
   return (
     <div
       data-testid="auth-lang-switch"
       className="flex overflow-hidden rounded-pill border border-hairline text-[12px] font-semibold"
     >
-      {(["de", "en", "nl"] as const).map((l) => (
+      {OBERFLAECHEN_SPRACHEN.map((l) => (
         <button
           key={l}
           type="button"
