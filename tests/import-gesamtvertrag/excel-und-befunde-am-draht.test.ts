@@ -20,7 +20,11 @@ import {
   strToU8,
   zipSync,
 } from "../../apps/web/node_modules/fflate";
-import { ImportParseError } from "../../apps/web/src/lib/importReview";
+import {
+  ImportParseError,
+  einstufungAusDatei,
+  parseImportItems,
+} from "../../apps/web/src/lib/importReview";
 import {
   XlsxImportError,
   budgetedXlsxUnzip,
@@ -298,6 +302,62 @@ describe("D — durch den Draht: Excel → Prüfliste → Befunde je Kandidat", 
       schutzdaten: [],
     });
     expect(befunde[0]?.veraltet).toEqual({ bewertet: false });
+  });
+
+  // Nacharbeit 4 (Bens Befund): D2 sendete direkt an die API und umging den Datei-Parser. Hier
+  // kommt die Einstufung aus dem DATEIINHALT — einmal als Excel-Spalte, einmal als JSON-Feld — und
+  // geht durch `parseImportItems`. Die Texte tragen bewusst kein Schutzwort und keine Schutzdaten:
+  // Schützenswert wird der Eintrag allein durch seine Einstufung.
+  it("D4 · die Einstufung aus Excel und JSON erreicht die Befundantwort", async () => {
+    const { app, headers } = await aufbauen();
+    const tabelle: Zelle[][] = [
+      ["title", "statement", "type", "category", "confidentiality"],
+      [
+        "Prüfplan Linie 4",
+        "Sichtprüfung vor jedem Anfahren.",
+        "best_practice",
+        "Qualität",
+        "Vertraulich",
+      ],
+    ];
+    const ausExcel = leseXlsxEintraege(xlsx(tabelle), unzip).items;
+    expect(ausExcel[0]?.confidentiality).toBe("vertraulich");
+    const ausJson = parseImportItems(
+      JSON.stringify([
+        {
+          title: "Prüfplan Linie 5",
+          statement: "Sichtprüfung nach jedem Stillstand.",
+          type: "best_practice",
+          category: "Qualität",
+          confidentiality: "streng_vertraulich",
+        },
+      ]),
+    );
+    expect(ausJson[0]?.confidentiality).toBe("streng_vertraulich");
+
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/library/import/candidates",
+      headers,
+      payload: { items: [...ausExcel, ...ausJson] },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const { befunde } = await befundeVon(app, headers);
+    expect(befunde).toHaveLength(2);
+    for (const befund of befunde) {
+      expect(befund.schutz).toEqual({ bewertet: true, gruende: ["einstufung"], schutzdaten: [] });
+    }
+  });
+
+  it("D5 · die Einstufungsregel des Parsers entspricht der Ingest-Grenze des Servers", () => {
+    expect(einstufungAusDatei(undefined)).toBeUndefined();
+    expect(einstufungAusDatei("  ")).toBeUndefined();
+    expect(einstufungAusDatei("intern")).toBe("intern");
+    expect(einstufungAusDatei("Streng vertraulich")).toBe("streng_vertraulich");
+    expect(einstufungAusDatei("streng-vertraulich")).toBe("streng_vertraulich");
+    // Unklar gesetzt ist restriktiv, nie herabgestuft und nie verworfen.
+    expect(einstufungAusDatei("geheim")).toBe("vertraulich");
+    expect(einstufungAusDatei(3)).toBe("vertraulich");
   });
 
   it("D3 · ohne Anmeldung kein Zugang", async () => {

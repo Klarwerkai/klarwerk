@@ -17,7 +17,7 @@ export default {
     "importtabelle.grund":
       "Import als JSON oder Excel-Tabelle (.xlsx). Office-Dokumente (DOCX, PDF, PPTX) bitte über „Wissen erfassen → aus Datei“ aufnehmen — dort werden sie real gelesen.",
     "importtabelle.format":
-      "Excel: Gelesen wird das erste Arbeitsblatt. Die erste Zeile trägt die Feldnamen wie im JSON-Format ({{fields}}; optional author, tags, provider, externalId, sourceVersion, url, updatedAt). Jede weitere Zeile ist ein Eintrag; mehrere Schlagworte durch Komma trennen.",
+      "Excel: Gelesen wird das erste Arbeitsblatt. Die erste Zeile trägt die Feldnamen wie im JSON-Format ({{fields}}; optional author, tags, provider, externalId, sourceVersion, url, updatedAt, confidentiality). Jede weitere Zeile ist ein Eintrag; mehrere Schlagworte durch Komma trennen. confidentiality: intern, vertraulich oder streng vertraulich — ein anderer Wert gilt als vertraulich.",
     "importtabelle.dropHint":
       "JSON-Datei oder Excel-Tabelle hierher ziehen und ablegen — oder unten auswählen.",
     "importtabelle.dropActive": "Datei hier ablegen …",
@@ -37,7 +37,7 @@ export default {
     "importtabelle.grund":
       "Import as JSON or Excel spreadsheet (.xlsx). Please add Office documents (DOCX, PDF, PPTX) via “Capture knowledge → from file” — they are actually read there.",
     "importtabelle.format":
-      "Excel: the first worksheet is read. Its first row carries the field names as in the JSON format ({{fields}}; optional author, tags, provider, externalId, sourceVersion, url, updatedAt). Every further row is one entry; separate several tags with commas.",
+      "Excel: the first worksheet is read. Its first row carries the field names as in the JSON format ({{fields}}; optional author, tags, provider, externalId, sourceVersion, url, updatedAt, confidentiality). Every further row is one entry; separate several tags with commas. confidentiality: intern, vertraulich or streng vertraulich — any other value counts as confidential.",
     "importtabelle.dropHint":
       "Drag and drop a JSON file or an Excel spreadsheet here — or choose one below.",
     "importtabelle.dropActive": "Drop the file here …",
@@ -57,7 +57,7 @@ export default {
     "importtabelle.grund":
       "Import als JSON of Excel-tabel (.xlsx). Office-documenten (DOCX, PDF, PPTX) graag via „Kennis vastleggen → uit bestand” opnemen — daar worden ze echt gelezen.",
     "importtabelle.format":
-      "Excel: het eerste werkblad wordt gelezen. De eerste rij bevat de veldnamen zoals in het JSON-formaat ({{fields}}; optioneel author, tags, provider, externalId, sourceVersion, url, updatedAt). Elke volgende rij is één item; meerdere trefwoorden scheiden met komma's.",
+      "Excel: het eerste werkblad wordt gelezen. De eerste rij bevat de veldnamen zoals in het JSON-formaat ({{fields}}; optioneel author, tags, provider, externalId, sourceVersion, url, updatedAt, confidentiality). Elke volgende rij is één item; meerdere trefwoorden scheiden met komma's. confidentiality: intern, vertraulich of streng vertraulich — elke andere waarde geldt als vertrouwelijk.",
     "importtabelle.dropHint":
       "Sleep een JSON-bestand of Excel-tabel hierheen — of kies er hieronder een.",
     "importtabelle.dropActive": "Laat het bestand hier los …",

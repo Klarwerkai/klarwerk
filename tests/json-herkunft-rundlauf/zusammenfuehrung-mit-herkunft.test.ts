@@ -99,6 +99,10 @@ describe("UX-20b-R · eigener Export in einen gefüllten Bestand zusammenführen
       // volle ISO-Zeit), WENN die Datei ihn trägt — nur daraus lässt sich „veraltet" am Kandidaten
       // bewerten (`services/app/src/import-befunde.ts`). Kein Status, keine Kennung.
       "updatedAt",
+      // R-0179 (Nacharbeit 4, Bens Befund): die Einstufung der Quelle, WENN die Datei sie trägt —
+      // nach der Regel der Ingest-Grenze (`einstufungAusDatei`): gültig bleibt sie, unklar wird sie
+      // „vertraulich", nie herabgestuft. Ohne Angabe gilt weiter der Übernahme-Standard.
+      "confidentiality",
     ]);
     for (const item of parseImportItems(datei)) {
       const fremd = Object.keys(item).filter((k) => !erlaubt.has(k));

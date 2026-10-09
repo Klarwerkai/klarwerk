@@ -143,7 +143,7 @@ Server je Kandidat, vor der Übernahme
 | Angaben fehlen | Titel, Aussage oder Kategorie leer — dieselbe Regel wie das Abzeichen am Kandidaten | — |
 | Veraltet | Stand der Quelle (`updatedAt`) älter als `services/library-analytics/src/grouping.ts#STALE_AFTER_DAYS` (dieselbe Regel wie der Qualitätshinweis der Gruppierung), oder das übernommene Wissensobjekt muss erneut geprüft werden (`GET /api/lifecycle/pending`) | weder Quellstand noch übernommenes Objekt |
 | Dubletten | Dublettenbefund der Prüfliste | „Prüfung nicht möglich" |
-| Schützenswert | Einstufung „vertraulich"/„streng vertraulich", Leseschutz der Quelle, Schutzdaten im Text (`services/knowledge-object/src/schutzdaten.ts#erkenneSchutzdaten`), ausdrückliche Kennzeichnung im Text (`services/app/src/import-befunde.ts#SCHUTZKENNZEICHNUNG`) | Kandidat ohne jeden Text; ohne Serverbefund alle nicht eingestuften |
+| Schützenswert | Einstufung „vertraulich"/„streng vertraulich" (aus JSON- und Excel-Dateien über `apps/web/src/lib/importReview.ts#einstufungAusDatei`, dieselbe Regel wie die Ingest-Grenze des Servers: unklar gesetzt wird „vertraulich"), Leseschutz der Quelle, Schutzdaten im Text (`services/knowledge-object/src/schutzdaten.ts#erkenneSchutzdaten`), ausdrückliche Kennzeichnung im Text (`services/app/src/import-befunde.ts#SCHUTZKENNZEICHNUNG`) | Kandidat ohne jeden Text; ohne Serverbefund alle nicht eingestuften |
 
 Ist ein Signal nicht abrufbar, steht „nicht ermittelt" da und nie 0. Ausgegeben werden nur Gründe,
 nie die gefundenen Werte.
