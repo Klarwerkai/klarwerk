@@ -316,10 +316,10 @@ export function createSharePointAdapterFromEnv(
 // HIER STEHT BEWUSST KEIN `adapterFromConfig`.
 // ================================================================================================
 //
-// Das Confluence-Modul führt einen solchen Einstieg (`adapter.ts`, „Test-/Wiederverwendungs-
-// Einstieg mit injizierbarem fetchFn"), und er hat dort bis heute KEINEN Aufrufer ausserhalb der
-// Tests — er steht im ALTBESTAND des Aufrufer-Wächters (`tests/capture/aufrufer-waechter.test.ts`),
-// also in der Liste, die schrumpfen und nicht wachsen soll.
+// Das Confluence-Modul führte einen solchen Einstieg („Test-/Wiederverwendungs-Einstieg mit
+// injizierbarem fetchFn"), und er hatte dort KEINEN Aufrufer ausserhalb der Tests — er stand im
+// ALTBESTAND des Aufrufer-Wächters (`tests/capture/aufrufer-waechter.test.ts`). R-1349 hat ihn aus
+// dem Produkt genommen; die Tests bauen den Adapter seitdem über eine Testhilfe.
 //
 // Dieses Modul macht den Fehler nicht zum zweiten Mal: Ein Test INNERHALB des Moduls kann
 // `SharePointSourceAdapter` und `SharePointGraphClient` direkt zusammensetzen — sie sind beide

@@ -85,52 +85,11 @@ export interface AttachmentFailure {
   reason: AttachmentFailureReason;
 }
 
-export interface AttachmentUploadResult {
-  // Wie viele Anhänge sind vollständig (Upload + Attach) gesichert?
-  attached: number;
-  // Welche Dateien konnten NICHT gesichert werden (mit Grund)?
-  failed: AttachmentFailure[];
-  hasFailures: boolean;
-}
-
-// Lädt alle Anhänge einzeln hoch und referenziert sie am KO. Kein Teilfehler kippt den Gesamt-Save.
-export async function uploadAttachments(
-  koId: string,
-  items: readonly AttachmentUploadItem[],
-  api: AttachmentUploadApi,
-): Promise<AttachmentUploadResult> {
-  let attached = 0;
-  const failed: AttachmentFailure[] = [];
-  for (const item of items) {
-    let ref: UploadedObjectRef;
-    try {
-      ref = await api.upload({
-        name: item.name,
-        mime: item.mime,
-        data: item.data,
-        kind: item.kind,
-      });
-    } catch (error) {
-      // Kein Object → NICHT attachen (keine erfundene objectId, kein Halb-Anhang).
-      // WP-D2: „zu groß" wird vom generischen Upload-Fehler unterschieden (ehrliche Ursache).
-      failed.push({ name: item.name, reason: classifyUploadError(error) });
-      continue;
-    }
-    try {
-      await api.attach(koId, {
-        name: item.name,
-        mime: item.mime,
-        objectId: ref.id,
-        ...(item.thumbnail ? { thumbnail: item.thumbnail } : {}),
-        ...(ref.size != null ? { size: ref.size } : {}),
-      });
-      attached += 1;
-    } catch {
-      failed.push({ name: item.name, reason: "attach" });
-    }
-  }
-  return { attached, failed, hasFailures: failed.length > 0 };
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier standen `uploadAttachments` und sein Ergebnistyp
+// — die erste, serielle Fassung „jede Datei einzeln hochladen und anheften". Kein Produktweg rief
+// sie: das Einreichen läuft über `finalizeCaptureSubmit` unten (Uploads parallel im Pool, KO-Writes
+// seriell, dieselbe Teilfehler-Bilanz; R-0991 Nr. 11). Die Schleife ist entfernt; ihre Zusagen misst
+// `tests/app/capture-attachments.test.ts` jetzt an `finalizeCaptureSubmit`.
 
 // WP-D2 („Original ist heilig"): die hochgeladene QUELLDATEI selbst als Anhang mitführen. Das Original
 // wird höchstens EINMAL in den Object-Store geladen (cache — die Punkte-Queue erzeugt mehrere KOs, alle

@@ -17,10 +17,14 @@
 //
 // Ehrlichkeitslinie: Streitwerte stehen WÖRTLICH in der jeweiligen Aussage — kein Kompromiss,
 // keine erfundenen Werte. Die Tests pinnen genau das fest (demo-corpus.test.ts).
+//
+// R-1349: Bis hierher lag diese Datei unter `services/app/src/`. Kein Produktweg hat sie je
+// geladen — ihre Verbraucher sind Tests und die Probe-Importe unter `demo/testimports/`. Deshalb
+// liegt sie jetzt bei den Tests, unverändert im Inhalt.
 
-import type { KnowledgeType } from "../../knowledge-object";
-import type { ImportItem } from "../../library-analytics";
-import type { DemoLocale } from "./demo-content";
+import type { DemoLocale } from "../../services/app/src/demo-content";
+import type { KnowledgeType } from "../../services/knowledge-object";
+import type { ImportItem } from "../../services/library-analytics";
 
 export type CorpusEffect = "conflict" | "stale" | "unbacked";
 

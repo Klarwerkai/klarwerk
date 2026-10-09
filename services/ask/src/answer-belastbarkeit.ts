@@ -61,14 +61,10 @@ export type AntwortLage =
   | "technischer_fehler"
   | "geschwaerzt";
 
-export const ANTWORT_LAGEN: readonly AntwortLage[] = [
-  "belegt",
-  "belegt_zustaendig_fehlt",
-  "belegt_mit_konflikt",
-  "wissensluecke",
-  "technischer_fehler",
-  "geschwaerzt",
-];
+// R-1349 (Aufnahme gesamt-aufruferwaechter): hier stand `ANTWORT_LAGEN`, die Liste der sechs Lagen
+// als Wert. Kein Produktweg las sie — nur die Fassade reichte sie weiter und ein Prüfstand zählte sie
+// nach. Die Zusage „genau sechs, jede einmal“ hält jetzt der Prüfstand selbst gegen diesen TYP
+// (`tests/antwort-erklaerung/belastbarkeit-regel.test.ts`, `Record<AntwortLage, true>`).
 
 /**
  * Die Begründung der Lage als geschlossene Menge von Gründen. Die Fläche übersetzt sie nur — die

@@ -26,8 +26,7 @@ import type { ReasonerPolicySource, ReasonerTaskChoice } from "./types";
  * Modus, keine zusätzlichen Modi.
  */
 export type KlaraMode = "deterministic" | "internal" | "external";
-
-export const KLARA_MODES: readonly KlaraMode[] = ["deterministic", "internal", "external"];
+// R-1349: die Liste `KLARA_MODES` las niemand; den Vertrag trägt der Typ. Sie ist entfernt.
 
 /**
  * Warum der effektive Modus von der Admin-Vorgabe abweicht — oder warum nicht ausgeführt werden
