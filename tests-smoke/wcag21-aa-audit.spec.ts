@@ -920,14 +920,89 @@ async function fokusAuswertung(page: Page): Promise<Fokusauswertung> {
   });
 }
 
-async function tastaturweg(page: Page): Promise<{ befunde: string[]; fokus: Fokusauswertung }> {
-  const befunde: string[] = [];
+/**
+ * Warum der Tab-Weg endete (nacharbeit-28, ben):
+ *   ende          — der Fokus verließ das Dokument NACH dem letzten tabbaren Element
+ *   umlauf        — der Fokus kam wieder bei der ersten Station an: alles durchlaufen
+ *   schrittgrenze — die Messgrenze von TAB_SCHRITTE Stationen ist erreicht (Messumfang, kein Fehler)
+ *   falle         — 2.1.2, der Fokus kommt weder mit Tab noch mit Escape weiter
+ *   vorzeitig     — der Fokus verließ das Dokument, OBWOHL danach noch tabbare Elemente stehen:
+ *                   die Messung ist unvollständig — ein Befund, kein Grün
+ */
+type TabEnde = "ende" | "umlauf" | "schrittgrenze" | "falle" | "vorzeitig";
+
+/**
+ * Ein DEFINIERTER Anfang: ein nicht tabbarer Anker als erstes Kind von <body> bekommt den Fokus.
+ * Damit steht der Startpunkt der sequenziellen Navigation vor allem anderen — das nächste Tab trifft
+ * das erste tabbare Element der Seite. `blur()` allein ließ den Startpunkt dort, wo der Fokus zuletzt
+ * war (nacharbeit-28: /output klassisch maß so nur 6 statt 19 Stationen).
+ */
+async function setzeTabAnfang(page: Page): Promise<void> {
   await page.evaluate(() => {
-    (document.activeElement as HTMLElement | null)?.blur();
+    document.querySelector("[data-kw-audit-anfang]")?.remove();
+    const anker = document.createElement("span");
+    anker.setAttribute("data-kw-audit-anfang", "");
+    anker.tabIndex = -1;
+    document.body.prepend(anker);
+    anker.focus({ preventScroll: true });
   });
+}
+
+async function entferneTabAnfang(page: Page): Promise<void> {
+  await page.evaluate(() => document.querySelector("[data-kw-audit-anfang]")?.remove());
+}
+
+/** Steht nach der zuletzt fokussierten Station noch ein tabbares Element im Dokument? */
+async function tabbaresDanach(page: Page, stationId: string): Promise<string | null> {
+  return page.evaluate((id) => {
+    const h = (window as unknown as { __kwA11y: Helfer }).__kwA11y;
+    const station = document.querySelector(`[data-kw-audit-nr="${id}"]`);
+    if (!station) {
+      return null;
+    }
+    const kandidaten = document.querySelectorAll<HTMLElement>(
+      "a[href], button, input, select, textarea, summary, iframe, [tabindex], [contenteditable='true']",
+    );
+    for (const k of kandidaten) {
+      const gesperrt =
+        (k as HTMLButtonElement).disabled === true ||
+        k.tabIndex < 0 ||
+        k.closest("[inert]") !== null ||
+        (k instanceof HTMLInputElement && k.type === "hidden");
+      if (gesperrt || !h.sichtbar(k) || station.contains(k) || k.contains(station)) {
+        continue;
+      }
+      if (station.compareDocumentPosition(k) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        return h.beschreibe(k);
+      }
+    }
+    return null;
+  }, stationId);
+}
+
+async function tastaturweg(
+  page: Page,
+): Promise<{ befunde: string[]; fokus: Fokusauswertung; stationen: number; ende: TabEnde }> {
+  const befunde: string[] = [];
+  await setzeTabAnfang(page);
   const erreicht = new Set<string>();
+  let erste = "";
   let vorher = "";
+  let vorherWer = "";
   let gleich = 0;
+  const lauf: { ende: TabEnde } = { ende: "schrittgrenze" };
+  /** Fokus hat das Dokument verlassen: reguläres Ende oder unvollständige Messung? */
+  const ausgetreten = async (): Promise<void> => {
+    const offen = vorher ? await tabbaresDanach(page, vorher) : "(keine Station erreicht)";
+    if (offen) {
+      lauf.ende = "vorzeitig";
+      befunde.push(
+        `2.1.1: Messweg unvollständig — der Fokus verließ das Dokument nach ${erreicht.size} Stationen (zuletzt ${vorherWer || "keine"}), obwohl danach noch ${offen} tabbar ist`,
+      );
+    } else {
+      lauf.ende = "ende";
+    }
+  };
   for (let i = 0; i < TAB_SCHRITTE; i++) {
     await page.keyboard.press("Tab");
     const schritt = await fokusSchritt(page);
@@ -935,10 +1010,17 @@ async function tastaturweg(page: Page): Promise<{ befunde: string[]; fokus: Foku
       continue;
     }
     if (schritt.ausserhalb) {
-      // Die Tab-Reihenfolge ist durchlaufen: der Fokus ist aus dem Dokument hinausgegangen.
+      await ausgetreten();
       break;
     }
+    if (schritt.id === erste && erreicht.size > 1) {
+      // Wieder bei der ersten Station: die ganze Reihenfolge ist durchlaufen.
+      lauf.ende = "umlauf";
+      break;
+    }
+    erste ||= schritt.id;
     erreicht.add(schritt.id);
+    vorherWer = schritt.wer;
     // 1.4.13: ein beim Fokussieren erschienener Hinweis muss sich mit Escape schließen lassen.
     if (schritt.tooltips > 0) {
       await page.keyboard.press("Escape");
@@ -957,21 +1039,24 @@ async function tastaturweg(page: Page): Promise<{ befunde: string[]; fokus: Foku
       await page.keyboard.press("Tab");
       const danach = await fokusSchritt(page);
       if (danach?.ausserhalb) {
+        await ausgetreten();
         break;
       }
       if (danach?.id === vorher) {
         befunde.push(`2.1.2: Tastaturfalle an ${schritt.wer}`);
+        lauf.ende = "falle";
         break;
       }
       gleich = 0;
     }
   }
-  if (erreicht.size < 3) {
+  if (erreicht.size < 3 && lauf.ende !== "vorzeitig") {
     befunde.push(`2.1.1: der Tab-Weg erreicht nur ${erreicht.size} Elemente`);
   }
+  await entferneTabAnfang(page);
   const fokus = await fokusAuswertung(page);
   befunde.push(...fokus.befunde);
-  return { befunde: [...new Set(befunde)], fokus };
+  return { befunde: [...new Set(befunde)], fokus, stationen: erreicht.size, ende: lauf.ende };
 }
 
 /** 1.4.13 beim Überfahren: jedes auf dem Tab-Weg erreichte Element wird einmal überfahren. */
@@ -1138,6 +1223,9 @@ async function pruefeFlaeche(page: Page, wo: string, testInfo: TestInfo): Promis
       symboleGemessen: grenzen.symbole,
       fokusGemessen: weg.fokus.gemessen,
       fokusUnbestimmt: weg.fokus.unbestimmt,
+      // Erreichte Stationen und Grund, warum der Tab-Weg endete — je Thema nachvollziehbar.
+      tabStationen: weg.stationen,
+      tabEnde: weg.ende,
     };
     if (voll) {
       const hover = await hoverInhalte(page);
@@ -1309,6 +1397,44 @@ test("KALIBRIERUNG · jede Messart schlägt an einer fehlerhaften Fixture an —
   expect(text).not.toMatch(/(2\.4\.7|1\.4\.11) \[\w+\]: .*„f-gut“/);
   expect(text).not.toContain("Schwarz auf Weiß");
   expect(text).not.toContain("Platzhalter „Klar“");
+});
+
+// ================================================================================================
+// KALIBRIERUNG DES TAB-WEGS (nacharbeit-28, ben): reguläres Ende, vorzeitiger Fokusverlust und
+// echte Falle werden unterschieden — ein Teilweg darf nicht als vollständig gelten.
+// ================================================================================================
+test("KALIBRIERUNG · Tab-Weg: vollständiges Ende, vorzeitiger Fokusverlust und echte Falle", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const lauf = async (body: string) => {
+    await page.setContent(
+      `<html lang="de"><head><title>Tab-Weg</title></head><body>${body}</body></html>`,
+    );
+    await page.evaluate(installiereHelfer);
+    return tastaturweg(page);
+  };
+
+  // A · drei Knöpfe: alle drei Stationen erreicht, regulär beendet, kein 2.1-Befund.
+  const a = await lauf("<button>Eins</button><button>Zwei</button><button>Drei</button>");
+  expect(a.stationen, `A: ${a.ende}`).toBe(3);
+  expect(["ende", "umlauf", "schrittgrenze"]).toContain(a.ende);
+  expect(a.befunde.filter((b) => b.startsWith("2.1"))).toEqual([]);
+
+  // B · vorzeitiger Fokusverlust: beim Fokussieren von „Zwei" meldet das Dokument, es habe den
+  // Fokus verloren — „Drei" steht danach noch tabbar da. Das ist eine UNVOLLSTÄNDIGE Messung.
+  const b = await lauf(
+    '<button>Eins</button><button onfocus="document.hasFocus = () => false">Zwei</button><button>Drei</button>',
+  );
+  expect(b.ende).toBe("vorzeitig");
+  expect(b.befunde.join("\n")).toMatch(/2\.1\.1: Messweg unvollständig .*nach 1 Stationen/);
+
+  // C · echte Falle: das Feld fängt Tab und Escape — der Fokus bleibt IM Dokument.
+  const c = await lauf(
+    "<button>Eins</button><input aria-label=\"Falle\" onkeydown=\"if (event.key === 'Tab' || event.key === 'Escape') event.preventDefault()\"><button>Drei</button>",
+  );
+  expect(c.ende).toBe("falle");
+  expect(c.befunde.join("\n")).toMatch(/2\.1\.2: Tastaturfalle an input „Falle“/);
 });
 
 // ================================================================================================
