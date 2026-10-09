@@ -24,16 +24,20 @@ import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "..
 import {
   AuthService,
   InMemoryPasswordResetRepo,
+  InMemorySecondFactorRepo,
   InMemorySessionRepo,
   InMemoryUserRepo,
   type PasswordResetRepo,
   PgPasswordResetRepo,
+  PgSecondFactorRepo,
   PgSessionRepo,
   PgUserRepo,
+  type SecondFactorRepo,
   type SessionRepo,
   type UserRepo,
   authRoutes,
   createOidcProviderFromEnv,
+  createSamlProviderFromEnv,
   sprache,
 } from "../../auth";
 import {
@@ -52,13 +56,17 @@ import {
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
+  InMemoryPaarpflichtRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  type PaarpflichtRepo,
+  PaarpflichtService,
   PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
+  PgPaarpflichtRepo,
 } from "../../conflicts";
 import { createConfluenceAdapterFromEnv } from "../../confluence";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
@@ -315,8 +323,11 @@ import {
 import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
-// AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
-import type { ObjectReferenceSources } from "./object-references";
+import {
+  type PaarpflichtAusfuehrung,
+  createPaarpflichtAusfuehrung,
+  paarpflichtPrueferFuer,
+} from "./paarpflicht-ausfuehrung";
 import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
@@ -373,6 +384,7 @@ import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
+import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
@@ -382,6 +394,11 @@ import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
 import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
+import {
+  lesePruefzustaendigkeit,
+  scimSchluessel,
+  verzeichnisRoutes,
+} from "./routes/verzeichnis-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
@@ -588,6 +605,11 @@ export interface AppServices {
   answerSnapshots: AnswerSnapshotRepo;
   validation: ValidationService;
   conflicts: ConflictService;
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): der Pflichtendienst und seine
+  // Hintergrundausführung (fassungsgebundener Prüfer über den Reasoner). Die Ausführung erstellt
+  // buildApp — wie `aiCheckWorker`; ein vorab gesetzter Wert hat Vorrang.
+  paarpflichten: PaarpflichtService;
+  paarpflichtAusfuehrung?: PaarpflichtAusfuehrung;
   // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
   overlaps: OverlapService;
   // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin) — schmale Repo-Schnittstelle.
@@ -604,12 +626,10 @@ export interface AppServices {
   wissensuebergabe: Wissensuebergabe;
   i18n: I18nService;
   objects: ObjectStore;
-  // AUFTRAG-mega20 Block C: die MODULÜBERGREIFENDE Referenzprüfung — verdrahtet mit den echten
-  // Beständen (Wissensobjekte inkl. Papierkorb, Versions-Snapshots, Belegkette, Entwürfe). Sie
-  // gehört in die Composition-Root, weil nur sie alle Module kennen darf; die ausgeschriebene
-  // Begründung und die fünf Fundorte stehen in object-references.ts. Sie ENTSCHEIDET nichts und
-  // löscht nichts — der Waisen-Sweep ist ausdrücklich nicht Teil dieses Blocks.
-  objectReferences: ObjectReferenceSources;
+  // R-1349: Hier stand `objectReferences`, die Quellen der Referenzprüfung aus mega20 Block C. Kein
+  // Produktweg fragte sie ab; den Waisenlauf trägt `datenintegritaet.ts::ermittleWaisen` (Betreiber-
+  // werkzeug `tools/datenintegritaet.ts`) als Obermenge derselben Fundorte. Feld und Verdrahtung
+  // sind entfernt.
   media: MediaAnalysisService;
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
@@ -668,6 +688,8 @@ export interface AppRepos {
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens: PasswordResetRepo;
+  // R-0562: der eigene zweite Faktor (TOTP) je Konto.
+  secondFactors: SecondFactorRepo;
   drafts: DraftRepo;
   gaps: GapRepo;
   ratings: RatingRepo;
@@ -675,6 +697,8 @@ export interface AppRepos {
   conflictsRepo: ConflictRepo;
   // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
   conflictMemory: ConflictMemoryRepo;
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Laufköpfe und Aussage-Paarpflichten.
+  paarpflichten: PaarpflichtRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -1231,6 +1255,10 @@ export function assembleServices(
     currentVersion: koVersion,
     memory: repos.conflictMemory,
   });
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): der Pflichtendienst über der Ablage. Seine
+  // Hintergrundausführung entsteht in `buildApp` (wie der KI-Prüf-Worker), damit sie den dort
+  // gültigen Reasoner benutzt.
+  const paarpflichten = new PaarpflichtService({ repo: repos.paarpflichten });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
   // `services/knowledge-object` nicht kennen (dependency-cruiser). Die Regel selbst wohnt im
@@ -1373,6 +1401,7 @@ export function assembleServices(
     audit,
     wissensuebergabe,
     reasoner,
+    paarpflichten,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
     lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
@@ -1434,6 +1463,7 @@ export function assembleServices(
       users: repos.users,
       sessions: repos.sessions,
       resetTokens: repos.resetTokens,
+      secondFactors: repos.secondFactors,
       audit,
       // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
       canChangeRole,
@@ -1612,16 +1642,6 @@ export function assembleServices(
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
     objects,
-    // AUFTRAG-mega20 Block C: die Quellen der Referenzprüfung, direkt an den REPOS — nicht an den
-    // Diensten. Der Unterschied ist tragend: `ko.list()` blendet getrashte Wissensobjekte aus
-    // (SCRUM-422), und ein Aufräumlauf, der den Papierkorb übersieht, macht aus „gelöscht"
-    // ein „unwiederbringlich". Hier wird deshalb bewusst der ROHE Bestand befragt.
-    objectReferences: {
-      kos: () => repos.koRepo.list({}),
-      drafts: () => repos.drafts.list(),
-      versions: (koId) => repos.koVersions.listByKo(koId),
-      evidence: (koId) => repos.evidence.listByKo(koId),
-    },
     // JOB 2706 D1 (R2-30): nur, wenn das Repo die Traegersuche an der Datenquelle kann. Die
     // Methoden sind am `KoRepo` optional (Begruendung dort); hier werden sie durchgereicht, nicht
     // geraten. Ebenso der Schreibstand aus der Ablage.
@@ -1703,12 +1723,14 @@ export function inMemoryRepos(): AppRepos {
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
     resetTokens: new InMemoryPasswordResetRepo(),
+    secondFactors: new InMemorySecondFactorRepo(),
     drafts: new InMemoryDraftRepo(),
     gaps: new InMemoryGapRepo(),
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
     conflictMemory: new InMemoryConflictMemoryRepo(),
+    paarpflichten: new InMemoryPaarpflichtRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
@@ -1780,12 +1802,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
       resetTokens: new PgPasswordResetRepo(pool),
+      secondFactors: new PgSecondFactorRepo(pool),
       drafts: new PgDraftRepo(pool),
       gaps: new PgGapRepo(pool),
       ratings: new PgRatingRepo(pool),
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
       conflictMemory: new PgConflictMemoryRepo(pool),
+      // G2: Paarpflichten überleben den Neustart und werden danach wiederaufgenommen.
+      paarpflichten: new PgPaarpflichtRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
@@ -2177,7 +2202,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "KantenError",
   "KoError",
   "LibraryError",
-  "LifecycleError",
+  // R-1349: `LifecycleError` ist gestrichen — die Klasse warf niemand und ist entfernt.
   // R-0163 / K3 (Ben, Nacharbeit 15): der Fehler eines ungültigen Management-Profils
   // (`services/management/src/profiles.ts`). ENTSCHEIDUNG: der Name darf ins Protokoll — nur der
   // Klassenname, keine Profilwerte.
@@ -2695,6 +2720,8 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
+    verzeichnisAbgleichWiederholungMs?: number;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -2764,8 +2791,26 @@ export function buildApp(
   // zweiter Weg, keine zweite Zustandsmaschine: `stelleSuchprojektionBereit` ist der EINE Einstieg
   // für App-Ready und `runSeed()`. Er wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht — die App
   // wird dann nie ready und die Suche bleibt fail-closed.
+  // R-1133: eingeplante Indexschreibvorgänge der Entwürfe laufen ausserhalb des Speicherwegs
+  // (`CaptureService.indexiere`). Beim Schliessen werden sie abgewartet, damit der Aufrufer den Pool
+  // nicht mitten in einem Schreibvorgang beendet. Optional gerufen: Prüfattrappen ersetzen
+  // `capture` teils durch Doppel ohne diese Methode.
+  app.addHook("onClose", async () => {
+    await services.capture.indexArbeitAbgeschlossen?.();
+  });
   app.addHook("onReady", async () => {
     await stelleSuchprojektionBereit(services.ko);
+    // R-1133 — DER ABGLEICH DES ENTWURFSINDEX, BEWUSST NICHT ABGEWARTET. Anders als die
+    // Suchprojektion oben ist dieser Index kein Bereitschaftsmerkmal: er ist ausdrücklich nicht die
+    // Wahrheit und darf den Eingabefluss nicht blockieren (R-1133). Ein Altbestand ohne Index macht
+    // die App also nicht unbereit; der Lauf zieht ihn im Hintergrund nach, jedes Speichern
+    // indiziert ohnehin selbst. Ein Fehler geht über den `err`-Serializer ins Protokoll — auch der
+    // einer Prüfattrappe ohne diese Methode: der Aufruf steht deshalb IN der Zusage, nicht davor.
+    void Promise.resolve()
+      .then(() => services.capture.gleicheEntwurfsIndexAb())
+      .catch((fehler: unknown) => {
+        app.log.warn({ err: fehler, event: "entwurfsindex_abgleich" }, "Entwurfsindex-Abgleich");
+      });
     // JOB 3655 — DER STARTBERICHT. Er ist BEWUSST erst hier angesiedelt und BEWUSST nicht
     // start-entscheidend: ein Bericht ist kein Betriebsmittel. Scheitert der Bestandsbefund, sagt
     // er „unbekannt" (nie „leer") und der Start geht weiter. Die start-entscheidende Prüfung ist
@@ -3217,6 +3262,8 @@ export function buildApp(
       mailer: services.mailer,
       resetBaseUrl,
       oidc: createOidcProviderFromEnv(),
+      // R-0560: SAML als zweiter Firmen-Login; nur bei vollständiger Konfiguration gesetzt.
+      saml: createSamlProviderFromEnv(),
       // R-0554: der Auslöser aus der Verzeichnispflege — Konto entfernen mit Nachfolger fährt
       // zuerst die Wissensübergabe (dieselbe Instanz wie `/api/lifecycle/handover`).
       //
@@ -3251,6 +3298,163 @@ export function buildApp(
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
   const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // R-0571: wer laut Verzeichnis für die Prüfung in einem Space zuständig ist. Ohne Zuordnung bleibt
+  // das Einreichen, wie es war (nur die genannten Prüfenden).
+  const pruefzustaendigkeit = lesePruefzustaendigkeit(process.env.KLARWERK_PRUEFZUSTAENDIGKEIT);
+  // Gleicht die aus dem Verzeichnis abgeleiteten Zuweisungen EINES Objekts mit dem heutigen Stand
+  // ab (Space des Objekts × Gruppen der Konten) und benachrichtigt neu Zuständige. Ein validiertes
+  // oder gelöschtes Objekt ist kein Prüfanlass mehr und bleibt unberührt.
+  //
+  // Eine gescheiterte Benachrichtigung (Mailserver weg) bricht den Abgleich NICHT ab: die Zuweisung
+  // steht schon, ihr Benachrichtigungsstand bleibt dauerhaft „ausstehend" (`Assignment`), und jeder
+  // spätere Lauf holt genau sie nach. `unvollstaendig` sagt dem Aufrufer, dass es noch etwas gibt.
+  const zustaendigkeitAbgleichen = async (
+    koId: string,
+    akteur: string,
+    jeSpace = new Map<string, Promise<string[]>>(),
+  ): Promise<{ soll: string[]; unvollstaendig: boolean } | undefined> => {
+    const ko = await services.ko.get(koId);
+    if (!ko || ko.deletedAt || ko.status === "validiert") {
+      return undefined;
+    }
+    const space = typeof ko.spaceId === "string" ? ko.spaceId : undefined;
+    if (space && !jeSpace.has(space)) {
+      jeSpace.set(space, services.auth.pruefzustaendigeFuer(space, pruefzustaendigkeit));
+    }
+    const soll = space ? ((await jeSpace.get(space))?.filter((id) => id !== ko.author) ?? []) : [];
+    await services.validation.verzeichnisAbgleichen(koId, soll, akteur);
+    const offen = await services.validation.nochZuBenachrichtigen(koId, soll, {
+      altbestandBenachrichtigt: true,
+    });
+    let unvollstaendig = false;
+    for (const prueferin of offen) {
+      try {
+        await notifyAssignment(koId, [prueferin]);
+        await services.validation.benachrichtigungErledigt(koId, prueferin);
+      } catch (fehler) {
+        unvollstaendig = true;
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-benachrichtigung", koId },
+          "Benachrichtigung über eine Prüfzuweisung gescheitert — wird nachgeholt",
+        );
+      }
+    }
+    return { soll, unvollstaendig };
+  };
+  // Nach jeder Verzeichnisänderung (Eintritt, Austritt, Gruppenwechsel): ALLE betroffenen Objekte —
+  // die in zugeordneten Spaces und die, an denen noch eine offene Verzeichnis-Zuweisung hängt.
+  // Jedes Objekt für sich: scheitert eines, laufen die übrigen weiter. `true` = vollständig.
+  const alleZustaendigkeitenAbgleichen = async (): Promise<boolean> => {
+    const spaces = new Set([...pruefzustaendigkeit.values()].flat());
+    const ids = new Set(await services.validation.koMitVerzeichnisZuweisung());
+    for (const ko of await services.ko.list()) {
+      if (typeof ko.spaceId === "string" && spaces.has(ko.spaceId)) {
+        ids.add(ko.id);
+      }
+    }
+    // Die Zuständigen je Space einmal je Lauf lesen, nicht einmal je Objekt.
+    const jeSpace = new Map<string, Promise<string[]>>();
+    let vollstaendig = true;
+    for (const koId of ids) {
+      try {
+        const ergebnis = await zustaendigkeitAbgleichen(koId, "system", jeSpace);
+        if (ergebnis?.unvollstaendig) {
+          vollstaendig = false;
+        }
+      } catch (fehler) {
+        vollstaendig = false;
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-abgleich", koId },
+          "Verzeichnisabgleich eines Wissensobjekts gescheitert — wird wiederholt",
+        );
+      }
+    }
+    return vollstaendig;
+  };
+  // ==============================================================================================
+  // R-0571 · DER ABGLEICH IST WIEDERAUFNEHMBAR (Ben, nacharbeit-8).
+  // ==============================================================================================
+  //
+  // Die Kontoanlage aus dem Verzeichnis ist gespeichert, BEVOR der Abgleich läuft. Hinge der Abgleich
+  // an der Antwort, endete ein Mailfehler in einem SCIM-Fehler, das Verzeichnis wiederholte die
+  // Anlage, bekäme 409 — und der Abgleich liefe nie wieder. Deshalb:
+  //   · Der Abgleich wirft nie in die SCIM-Antwort; die Antwort sagt, was gespeichert ist.
+  //   · Sein Arbeitsauftrag ist kein eigener Merker, sondern der dauerhafte Stand selbst: Gruppen der
+  //     Konten, Spaces der Objekte, Zuweisungen samt „Benachrichtigung ausstehend". Jeder Lauf leitet
+  //     daraus neu ab, was fehlt — idempotent, auch nach einem Absturz mitten im Lauf.
+  //   · Angestoßen wird er nach jeder Verzeichnisänderung, beim Start der Instanz (holt nach, was ein
+  //     Absturz zwischen Kontoanlage und Abgleich liegen liess) und — war ein Lauf unvollständig —
+  //     erneut nach `verzeichnisAbgleichWiederholungMs`, bis einer vollständig ist.
+  //   · Läufe reihen sich hintereinander ein; zwei gleichzeitige Verzeichnisaufrufe benachrichtigen
+  //     dieselbe Person nicht doppelt.
+  // Die 409 auf eine wiederholte Anlage bleibt: ein bestehendes Konto wird nie stillschweigend als
+  // „dieselbe Anlage noch einmal" übernommen.
+  const abgleichWartezeitMs = opts.verzeichnisAbgleichWiederholungMs ?? 60_000;
+  let abgleichKette: Promise<void> = Promise.resolve();
+  let abgleichWiederholung: ReturnType<typeof setTimeout> | undefined;
+  let abgleichBeendet = false;
+  const abgleichWiederholen = (): void => {
+    if (abgleichWiederholung || abgleichBeendet) {
+      return;
+    }
+    abgleichWiederholung = setTimeout(() => {
+      abgleichWiederholung = undefined;
+      void abgleichAnstossen();
+    }, abgleichWartezeitMs);
+    abgleichWiederholung.unref?.();
+  };
+  const abgleichAnstossen = (): Promise<void> => {
+    const lauf = abgleichKette.then(async () => {
+      if (abgleichBeendet) {
+        return;
+      }
+      let vollstaendig = false;
+      try {
+        vollstaendig = await alleZustaendigkeitenAbgleichen();
+      } catch (fehler) {
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-abgleich" },
+          "Verzeichnisabgleich gescheitert — wird wiederholt",
+        );
+      }
+      if (vollstaendig) {
+        clearTimeout(abgleichWiederholung);
+        abgleichWiederholung = undefined;
+      } else {
+        abgleichWiederholen();
+      }
+    });
+    abgleichKette = lauf;
+    return lauf;
+  };
+  if (pruefzustaendigkeit.size > 0) {
+    app.addHook("onReady", async () => {
+      // Nicht abwarten: der Start hängt nicht am Mailserver.
+      void abgleichAnstossen();
+    });
+    app.addHook("onClose", async () => {
+      abgleichBeendet = true;
+      clearTimeout(abgleichWiederholung);
+      await abgleichKette;
+    });
+  }
+  // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM). Ohne gültigen
+  // Verzeichnisschlüssel gibt es die Routen nicht — der Startbericht sagt, warum.
+  const verzeichnisSchluessel = scimSchluessel();
+  if (verzeichnisSchluessel) {
+    app.register(
+      verzeichnisRoutes({
+        auth: services.auth,
+        schluessel: verzeichnisSchluessel,
+        rollen: {
+          adminGroup: process.env.OIDC_GROUP_ADMIN,
+          controllerGroup: process.env.OIDC_GROUP_CONTROLLER,
+          expertGroup: process.env.OIDC_GROUP_EXPERTE,
+        },
+        ...(pruefzustaendigkeit.size > 0 ? { nachAenderung: abgleichAnstossen } : {}),
+      }),
+    );
+  }
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
   // R-0470: im Postgres-Betrieb der dauerhafte Vektorspeicher, sonst der In-Memory-Speicher.
@@ -3692,6 +3896,28 @@ export function buildApp(
   // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
   // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
   app.register(aiCheckCoverageRoutes(services.ko, guards));
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): ausdrücklich gewählte Läufe anlegen, lesen und
+  // fortsetzen. Die Ausführung prüft fassungsgebunden über DENSELBEN Reasoner und DENSELBEN
+  // KO-Dienst wie die Konflikterkennung. Gespeicherte Läufe mit offener Arbeit (z. B. nach einem
+  // Neustart) werden beim Bau der App wieder eingereiht — die Ausführung meldet ihre Fehler selbst.
+  const paarpflichtAusfuehrung =
+    services.paarpflichtAusfuehrung ??
+    createPaarpflichtAusfuehrung({
+      service: services.paarpflichten,
+      pruefer: paarpflichtPrueferFuer({ ko: services.ko, reasoner: services.reasoner }),
+    });
+  services.paarpflichtAusfuehrung = paarpflichtAusfuehrung;
+  app.register(
+    paarpflichtenRoutes(
+      {
+        ko: services.ko,
+        paarpflichten: services.paarpflichten,
+        ausfuehrung: paarpflichtAusfuehrung,
+      },
+      guards,
+    ),
+  );
+  void paarpflichtAusfuehrung.wiederaufnehmen();
   // JOB 4151 (WG-PERSISTENZ): die kuratierten Beziehungen. Der Bestand kommt aus `services`
   // (Postgres oder Speicher, s. dort); `services.ko` erfüllt den SCHMALEN Port `KantenKoLeser`
   // (`kanten-service.ts:178-180`) — die Route kennt den KO-Dienst deshalb nicht als Ganzes. Die
@@ -3798,6 +4024,8 @@ export function buildApp(
   // impactRoutes darunter.
   // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
   // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
+  // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
+  // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
   app.register(
     askRoutes(
       {
@@ -3813,6 +4041,25 @@ export function buildApp(
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
+        // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
+        kanten: services.kanten,
+        // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
+        begriffe: async () => services.begriffe.aktuelle(),
+        personen: {
+          erreichbarkeit: async (ids) => {
+            const konten = await services.auth.listUsers();
+            const erreichbar = new Map<string, boolean>();
+            const namen = new Map<string, string>();
+            for (const id of ids) {
+              const konto = konten.find((u) => u.id === id);
+              erreichbar.set(id, konto?.approved === true);
+              if (konto) {
+                namen.set(id, konto.name);
+              }
+            }
+            return { erreichbar, namen };
+          },
+        },
       },
       guards,
     ),
@@ -3982,11 +4229,11 @@ export function buildApp(
   app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
   // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
-  // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.
+  // (Modulgrenze des Objektspeichers); die Kompositionswurzel reicht den Zugang.
   //
   // AUFTRAG-mega76 BLOCK B: dazu kommen die drei Herkünfte, die bis mega76 durchfielen —
-  // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie in
-  // object-references.ts, dort gegen Datenverlust, hier gegen Auskunft.
+  // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie im Waisenlauf
+  // (`datenintegritaet.ts`), dort gegen Datenverlust, hier gegen Auskunft.
   //
   // JOB 2021 (G8): EINE Aufzählung für BEIDE Wege in den Objektspeicher. `POST /api/media/analyze`
   // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
@@ -4075,7 +4322,30 @@ export function buildApp(
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
     spacesRoutes(
-      { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      {
+        spaces: services.spaces,
+        ko: services.ko,
+        auth: services.auth,
+        audit: services.audit,
+        // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
+        // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
+        // Verzeichnis-Zuweisung.
+        ...(pruefzustaendigkeit.size > 0
+          ? {
+              pruefzustaendigkeit: {
+                // Unvollständig (Benachrichtigung nicht verschickt): die Zuweisung steht, die
+                // Benachrichtigung holt der wiederholte Gesamtabgleich nach.
+                abgleichen: async (koId: string, akteur: string) => {
+                  const ergebnis = await zustaendigkeitAbgleichen(koId, akteur);
+                  if (ergebnis?.unvollstaendig) {
+                    abgleichWiederholen();
+                  }
+                  return ergebnis?.soll;
+                },
+              },
+            }
+          : {}),
+      },
       guards,
     ),
   );

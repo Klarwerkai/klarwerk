@@ -12,7 +12,6 @@ import type { KnowledgeRef } from "../../services/reasoner";
 import {
   DeterministicProvider,
   MIN_ANSWER_SUBSTANCE,
-  keywordSelect,
   queryTokens,
   rankCandidates,
 } from "../../services/reasoner";
@@ -20,6 +19,8 @@ import {
 // der öffentlichen Modulfläche (services/reasoner/index.ts). Der Zugriff läuft white-box relativ —
 // dasselbe dokumentierte Muster wie `refMatchText` daneben, das sechs Testdateien schon fahren.
 import { meetsAnswerSubstance, refMatchText } from "../../services/reasoner/src/provider";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 function ref(id: string, title: string, statement: string): KnowledgeRef {
   return { id, title, statement, status: "validiert", trust: 70 };
