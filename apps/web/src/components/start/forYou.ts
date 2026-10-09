@@ -282,7 +282,8 @@ export interface MeldungZeile {
     | "return"
     | "impact"
     | "kenntnisnahme"
-    | "loeschantrag";
+    | "loeschantrag"
+    | "frische";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -314,6 +315,8 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   kenntnisnahme: "today",
   // Ein Löschantrag ist Verwalterarbeit mit gesetzlicher Frist — Arbeit von heute.
   loeschantrag: "today",
+  // aufnahme:20260922:gesamt-wissen-frische: bestätigen, ob eigenes Wissen noch stimmt — heute.
+  frische: "today",
   gap: "later",
   impact: "later",
 };
@@ -327,6 +330,10 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   // Der Löschantrag ebenso (`texte/datenschutz.ts`).
   if (kind === "loeschantrag") {
     return "datenschutz.meldungArt";
+  }
+  // aufnahme:20260922:gesamt-wissen-frische: Texte im Textmodul `texte/frische.ts`.
+  if (kind === "frische") {
+    return "frische.meldungArt";
   }
   // R-0894: die beiden neueren Arten tragen ihren Namen im Textmodul `texte/meldungsart.ts`.
   if (kind === "escalation") {

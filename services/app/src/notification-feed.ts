@@ -19,7 +19,23 @@ export type NotificationKind =
   | "return"
   | "impact"
   | "kenntnisnahme"
-  | "loeschantrag";
+  | "loeschantrag"
+  // aufnahme:20260922:gesamt-wissen-frische: persönliche Zustellung an die verantwortliche Person —
+  // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
+  // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
+  | "frische";
+
+/** aufnahme:20260922:gesamt-wissen-frische — eine persönliche Frische-Meldung (s. frische-meldungen.ts). */
+export interface FrischeNotice {
+  art: "frist" | "vorlage" | "anlage";
+  /** Eindeutig je Anlass — ein neuer Anlass (neue Frist, neue Woche, neue Markierung) ist ungelesen. */
+  schluessel: string;
+  koId: string;
+  title: string;
+  at: string;
+  /** Nur bei `frist`: die Haltbarkeit ist bereits abgelaufen. */
+  ueberfaellig?: boolean;
+}
 
 // Kenntnisnahme: eine offene Anforderung an die aktuelle Person. Bereits auf den Betrachter UND
 // über die Sichtbarkeit gefiltert (Route) — hier wird nichts nachgeprüft und nichts erfunden.
@@ -61,6 +77,8 @@ export interface Notification {
   // Löschantrag (R-0661): die Frist der Verwalteraufgabe. Nur bei `kind: "loeschantrag"` gesetzt;
   // `ueberfaellig` gilt dort ebenso.
   fristBis?: string;
+  // aufnahme:20260922:gesamt-wissen-frische: die Unterart einer `frische`-Meldung.
+  frischeArt?: FrischeNotice["art"];
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
@@ -88,6 +106,9 @@ export function buildNotifications(input: {
   // Löschanträge (R-0661): die offenen Anträge als Aufgabe der Verwaltung. Die Route reicht sie NUR
   // für Betrachter mit `users.manage` herein — hier wird keine Berechtigung nachgeprüft.
   loeschantraege?: LoeschantragMeldung[];
+  // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
+  // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
+  frische?: FrischeNotice[];
 }): Notification[] {
   const items: Notification[] = [];
   // Je Antrag EIN Eintrag. Wird er überfällig, bekommt er eine neue Kennung, damit er wieder als
@@ -100,6 +121,17 @@ export function buildNotifications(input: {
       at: l.at,
       fristBis: l.fristBis,
       ueberfaellig: l.ueberfaellig,
+    });
+  }
+  for (const f of input.frische ?? []) {
+    items.push({
+      id: `frische-${f.schluessel}`,
+      kind: "frische",
+      title: f.title,
+      at: f.at,
+      koId: f.koId,
+      frischeArt: f.art,
+      ...(f.ueberfaellig ? { ueberfaellig: true } : {}),
     });
   }
   // Je Anforderung EIN Eintrag. Eine Erinnerung bekommt eine neue Kennung (mit ihrem Zeitpunkt),

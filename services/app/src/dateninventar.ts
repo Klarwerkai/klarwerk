@@ -519,6 +519,37 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "verantwortungnachfolge",
+    name: "Nachfolge bei Befristung",
+    inhalt:
+      "Je befristetem Konto die Kennung der Nachfolge, die neue Beiträge verantwortet, mit setzender Kennung und Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennungen des befristeten Kontos, der Nachfolge und der setzenden Person.",
+    ablage: { ort: DATENBANK, tabellen: ["verantwortung_nachfolge"] },
+    taetigkeit: "konten",
+    loeschung: "Entfällt, sobald das Konto nicht mehr befristet ist.",
+    frist: "Bis zum Ende der Befristung.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Verwaltungsangabe zur Befristung; die Verantwortung neuer Beiträge steht an den eigenen Objekten der Auskunft.",
+    },
+  },
+  {
+    id: "embeddings",
+    name: "Vektoren des Textprüfungs-Vorfilters",
+    inhalt:
+      "Je Wissensobjekt ein Zahlenvektor des Texts mit Modellfassung, Dimension und Prüfsumme des eingebetteten Texts (kein Text).",
+    personenbezug: "moeglich",
+    personenbezugGrund:
+      "Aus dem Freitext der Wissensobjekte abgeleitet; der Text selbst wird nicht gespeichert.",
+    ablage: { ort: DATENBANK, tabellen: ["ko_embeddings"] },
+    taetigkeit: "wissen",
+    loeschung: "Mit der Endlöschung des Wissensobjekts.",
+    frist: "Wie das Wissensobjekt.",
+    selbstauskunft: { enthalten: false, grund: "Ableitung der Wissensobjekte." },
+  },
+  {
     id: "loeschantraege",
     name: "Löschanträge",
     inhalt:

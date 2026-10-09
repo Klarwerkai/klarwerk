@@ -77,7 +77,8 @@ export interface Zeile {
    * vier Routen, die `buildApp` selbst anlegt, steht hier `DIREKT`.
    */
   gruppe: string;
-  methode: "GET" | "POST" | "PUT" | "DELETE";
+  // R-0556: PATCH für die Verzeichnispflege (SCIM ändert Konten per PatchOp).
+  methode: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Die URL, die `app.inject` wirklich fährt — mit eingesetzter Kennung, wo die Route eine fordert. */
   pfad: string;
   /**
@@ -675,6 +676,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
+  // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
+  {
+    gruppe: "askRoutes",
+    methode: "GET",
+    pfad: "/api/gaps/gibt-es-nicht/ansprechpartner",
+    route: "/api/gaps/:id/ansprechpartner",
+    belegstelle: "services/app/src/routes/ask-routes.ts:867",
+    tor: "ko.assign",
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "auditRoutes",
     methode: "GET",
@@ -785,6 +797,17 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/kenntnisnahme-routes.ts:205",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-1644 · Wissensauskunft zum Zeitpunkt. Dieselbe Einsichtsstufe wie das Audit-Protokoll
+  // (`ko.validate`, Controller/Admin). Ohne Zeitpunkt endet die Tür hinter dem Tor im 400.
+  {
+    gruppe: "wissensauskunftRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/wissensauskunft",
+    route: "/api/kos/:id/wissensauskunft",
+    belegstelle: "services/app/src/routes/wissensauskunft-routes.ts:31",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
   },
   {
     gruppe: "brandingRoutes",
@@ -1396,9 +1419,31 @@ export const TABELLE: Zeile[] = [
     gruppe: "lifecycleRoutes",
     methode: "GET",
     pfad: "/api/lifecycle/pending",
-    belegstelle: "services/app/src/routes/lifecycle-routes.ts:98",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:100",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Gemessen wird das Rechtetor mit einem
+  // LEEREN Rumpf: der Admin kommt durch und bekommt 400 (`INVALID`, kein Paar) — vor jedem Lesen
+  // und Schreiben, also ohne Wirkung auf die Bühne. Vorschau und Zug mit echten Konten misst
+  // `tests/wissen-verantwortung/routen.test.ts`.
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "POST",
+    pfad: "/api/lifecycle/handover/preview",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:178",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "POST",
+    pfad: "/api/lifecycle/handover",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:193",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "livewallRoutes",
@@ -1768,6 +1813,86 @@ export const TABELLE: Zeile[] = [
       "Der Authorization-Code-Ablauf beginnt notwendig unangemeldet. Ohne konfiguriertes OIDC antwortet die Route allen fünf Akteuren gleich mit 501 `OIDC_DISABLED` (`routes.ts:681-686`) — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
     ),
   },
+  // R-0556 / R-0571: die Verzeichnispflege (SCIM). Ihr Tor ist der Verzeichnisschlüssel, KEIN
+  // Rollenrecht — keine der fünf Sitzungen, auch nicht die des Admins, öffnet sie. Gemessen an
+  // ALLEN sieben Türen, lesend wie schreibend: die Schlüsselprüfung steht vor jedem Lesen und
+  // Schreiben (`requireVerzeichnisSchluessel`), eine abgewiesene Messung ändert also nichts. Das
+  // Anlegen, Ändern und Sperren MIT Schlüssel fährt `tests/firmenanmeldung/verzeichnis-pflege.test.ts`.
+  ...(
+    [
+      ["GET", "/scim/v2/ServiceProviderConfig", undefined, 357],
+      ["GET", "/scim/v2/Users", undefined, 375],
+      ["GET", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 407],
+      ["POST", "/scim/v2/Users", undefined, 417],
+      ["PUT", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 437],
+      ["PATCH", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 457],
+      ["DELETE", "/scim/v2/Users/gibt-es-nicht", "/scim/v2/Users/:id", 478],
+    ] as const
+  ).map(
+    ([methode, pfad, route, zeile]): Zeile => ({
+      gruppe: "verzeichnisRoutes",
+      methode,
+      pfad,
+      ...(route ? { route } : {}),
+      belegstelle: `services/app/src/routes/verzeichnis-routes.ts:${zeile}`,
+      tor: "Verzeichnisschlüssel (KLARWERK_SCIM_TOKEN) — kein Rollenrecht",
+      codes: { "401": "SCIM_UNAUTHORIZED" },
+      erwartet: {
+        anonym: "401",
+        viewer: "401",
+        experte: "401",
+        controller: "401",
+        admin: "401",
+      },
+    }),
+  ),
+  // R-0560: die zwei lesenden SAML-Türen — dieselbe Lage wie der OIDC-Einstieg darüber.
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/start",
+    belegstelle: "services/auth/src/routes.ts:906",
+    tor: "keines — der Einstieg in den SAML-Ablauf",
+    erwartet: OEFFENTLICH(
+      "Die SAML-Anmeldung beginnt notwendig unangemeldet. Ohne SAML-Konfiguration antwortet die Route allen fünf Akteuren gleich mit 501 `SAML_DISABLED` — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
+    ),
+  },
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/metadata",
+    belegstelle: "services/auth/src/routes.ts:928",
+    tor: "keines — die Metadaten für die Einrichtung beim Anbieter",
+    erwartet: OEFFENTLICH(
+      "Die Dienstanbieter-Metadaten trägt die IT beim Anbieter ein, bevor es irgendeine Anmeldung gibt. Sie nennen nur Kennung und Rücksprungadresse dieser Instanz; ohne SAML-Konfiguration antwortet die Route allen gleich mit 501 `SAML_DISABLED`.",
+    ),
+  },
+  // Der SAML-Rücksprung: der Anbieter schickt ihn als Seitennavigation, notwendig ohne Sitzung.
+  // Gemessen ist hier, dass keine Rolle ihn öffnet oder sperrt — ohne Konfiguration antwortet er
+  // allen fünf gleich 501 `SAML_DISABLED`. Die Signaturprüfung misst `saml-anmeldung.test.ts`.
+  {
+    gruppe: "authRoutes",
+    methode: "POST",
+    pfad: "/api/auth/saml/acs",
+    belegstelle: "services/auth/src/routes.ts:982",
+    tor: "keines — der Nachweis ist die signierte Antwort des Anbieters",
+    payload: { SAMLResponse: "keine-echte-saml-antwort" },
+    erwartet: OEFFENTLICH(
+      "Der Rücksprung des SAML-Anbieters kommt notwendig ohne Klarwerk-Sitzung (fremd ausgelöster Formular-POST). Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Prüfung der signierten Antwort selbst steht in `tests/firmenanmeldung/saml-anmeldung.test.ts`.",
+    ),
+  },
+  // Der SAML-Abschluss: erst hier entsteht die Sitzung, und nur mit dem Nachweis des startenden
+  // Browsers (S10/S13 in `saml-anmeldung.test.ts`). Ohne Konfiguration allen fünf gleich 501.
+  {
+    gruppe: "authRoutes",
+    methode: "GET",
+    pfad: "/api/auth/saml/abschluss",
+    belegstelle: "services/auth/src/routes.ts:1031",
+    tor: "keines — der Nachweis sind Abschlusscode und Browsernachweis des startenden Browsers",
+    erwartet: OEFFENTLICH(
+      "Der Abschluss folgt unmittelbar auf den Rücksprung des Anbieters, also notwendig vor jeder Klarwerk-Sitzung. Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Bindung an den startenden Browser steht in `tests/firmenanmeldung/saml-anmeldung.test.ts` (S10, S13).",
+    ),
+  },
   // ----------------------------------------------------------------------------------------------
   // JOB 4076 (OFFICE-WEB-ANMELDUNG) — DIE AUSGABE DES ÜBERGABECODES, UND WARUM JEDE ROLLE DARF.
   // ----------------------------------------------------------------------------------------------
@@ -2035,7 +2160,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/lifecycle/couplings/gibt-es-nicht",
     route: "/api/lifecycle/couplings/:koId",
-    belegstelle: "services/app/src/routes/lifecycle-routes.ts:47",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:49",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

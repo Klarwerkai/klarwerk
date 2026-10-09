@@ -16,10 +16,14 @@ import { readdirSync } from "node:fs";
 //  - <Permission>         : serverseitige Rechteprüfung (requirePermission).
 //  - "action-dispatched"  : ein Endpunkt mit mehreren Aktionen, jede mit eigener Rechteprüfung
 //                           (z. B. PUT /api/kos/:id) — nie öffentlich.
+//  - "verzeichnis"        : R-0556 — nur mit dem Verzeichnisschlüssel des Unternehmensverzeichnisses
+//                           (requireVerzeichnisSchluessel, SCIM). Kein Nutzerkonto, aber auch nie
+//                           öffentlich: ohne Schlüssel 401, ohne konfigurierten Schlüssel gar keine Route.
 export type Protection =
   | "public"
   | "auth"
   | "admin"
+  | "verzeichnis"
   | "ko.read"
   | "ko.create"
   | "ko.validate"
@@ -85,6 +89,8 @@ export function scanRouteFile(text: string, file: string): ScannedRoute[] {
       protection = "admin";
     } else if (/requireUser\(/.test(block)) {
       protection = "auth";
+    } else if (/requireVerzeichnisSchluessel\(/.test(block)) {
+      protection = "verzeichnis";
     } else if (/resolveAskUser\(/.test(block)) {
       // Add-on-API (KLARWERK_ADDON_API): resolveAskUser erzwingt in BEIDEN Zweigen ko.read — Flag AN +
       // gültiger Add-in-Key liefert einen synthetischen viewer (RBAC viewer = EXAKT ko.read), sonst
@@ -191,6 +197,35 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "SSO-Start (Authorization-Code-Flow).",
   },
   "POST /api/auth/oidc": { protection: "public", reason: "SSO-Callback; prüft state/nonce/PKCE." },
+  // R-0560: der SAML-Weg — dieselbe Rolle wie die beiden OIDC-Türen darüber.
+  "GET /api/auth/saml/start": {
+    protection: "public",
+    reason: "SAML-Start (AuthnRequest per Redirect); merkt sich nur die Anfragekennung.",
+  },
+  "GET /api/auth/saml/metadata": {
+    protection: "public",
+    reason: "Dienstanbieter-Metadaten für die Einrichtung beim Anbieter; keine Nutzerdaten.",
+  },
+  "POST /api/auth/saml/acs": {
+    protection: "public",
+    reason:
+      "SAML-Rücksprung des Anbieters; prüft Signatur gegen das konfigurierte Zertifikat, " +
+      "InResponseTo (einmalig), Audience, Recipient und Zeitfenster. Vergibt KEINE Sitzung.",
+  },
+  "GET /api/auth/saml/abschluss": {
+    protection: "public",
+    reason:
+      "SAML-Abschluss; Sitzung nur mit einmaligem Abschlusscode UND dem Browsernachweis, " +
+      "den der Start in den startenden Browser gelegt hat.",
+  },
+  // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM 2.0) — Verzeichnisschlüssel.
+  "GET /scim/v2/ServiceProviderConfig": { protection: "verzeichnis" },
+  "GET /scim/v2/Users": { protection: "verzeichnis" },
+  "GET /scim/v2/Users/:id": { protection: "verzeichnis" },
+  "POST /scim/v2/Users": { protection: "verzeichnis" },
+  "PUT /scim/v2/Users/:id": { protection: "verzeichnis" },
+  "PATCH /scim/v2/Users/:id": { protection: "verzeichnis" },
+  "DELETE /scim/v2/Users/:id": { protection: "verzeichnis" },
   "POST /api/auth/users/:id/approve": { protection: "admin" },
   "POST /api/auth/users/:id/reset": { protection: "admin" },
   "DELETE /api/auth/users/:id": { protection: "admin" },
@@ -318,6 +353,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["darfSehen"],
   },
+  // R-1644: die Wissensauskunft zum Zeitpunkt — Einsichtsstufe des Audit-Protokolls (`ko.validate`),
+  // der Eintrag wird vor der Antwort gegen `darfSehen` gehalten (sonst 404).
+  "GET /api/kos/:id/wissensauskunft": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür
@@ -453,6 +491,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/check-text": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "GET /api/gaps/summary": { protection: "ko.read" },
   "GET /api/gaps": { protection: "ko.read" },
+  // R-1663 / R-2178: Ansprechpartner zu einer Lücke — hinter Schalter `expertMatching`, Objekt-
+  // grundlage je Zeile über `sichtbarkeitsfilterFuer` begrenzt.
+  "GET /api/gaps/:id/ansprechpartner": {
+    protection: "ko.assign",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "PUT /api/gaps/:id": { protection: "ko.assign" },
   "DELETE /api/gaps/:id": { protection: "ko.validate" },
 
@@ -580,6 +624,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Lifecycle / Learning paths (lifecycle-routes.ts) ---
   "POST /api/lifecycle/couple": { protection: "ko.create" },
   "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
+  // R-0554 / R-2128: Wissensübergabe beim Ausscheiden — Vorschau und Ausführung, nur Verwaltung.
+  "POST /api/lifecycle/handover/preview": { protection: "users.manage" },
+  "POST /api/lifecycle/handover": { protection: "users.manage" },
   // AUFTRAG-JOB2020 (G7b): die Liste faellliger Kennungen faehrt seit heute ein Zeilenrecht —
   // `sichtbareEintraege` ueber die Kennungen aus `pendingRevalidation()` (`lifecycle-routes.ts:98`).
   // Davor gingen die Kennungen vertraulicher Objekte an jeden `ko.read`-Inhaber, obwohl
@@ -787,6 +834,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+
+  // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
+  // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
+  // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.
+  "GET /api/verantwortung/person/:id": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "GET /api/verantwortung/ungeklaert": { protection: "users.manage" },
+  "POST /api/verantwortung/vorschau": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/verantwortung/uebergabe": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/verantwortung/deaktivierung": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
 
   // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
   // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit

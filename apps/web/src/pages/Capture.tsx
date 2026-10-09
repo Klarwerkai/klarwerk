@@ -69,6 +69,7 @@ import { ExternalUrlText } from "../components/ExternalUrlText";
 import { FileFormatInfo } from "../components/FileFormatInfo";
 // R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
 import { FotoInterviewStart } from "../components/FotoInterviewStart";
+import { HelpTip } from "../components/HelpTip";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
@@ -249,6 +250,7 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
+import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
@@ -6894,6 +6896,9 @@ export function CaptureArbeitsraum({
                       {canSearchExternal(extPolicyStage) ? (
                         <div className="mt-3 space-y-2 border-t border-hairline pt-3">
                           <SectionLabel>{t("ext.title")}</SectionLabel>
+                          {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der
+                              Seitenhilfe, solange die Suche freigegeben ist. */}
+                          <HelpTip title={t("ext.title")} body={t("shelp.ext.title")} />
                           <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
                           {/* AUFTRAG-mega14 Block D (SCRUM-414): bis mega14 erschien der Anhängen-Knopf
                             auf JEDER Stufe außer „blocked" — auch auf „suchen, aber nicht anhängen",
@@ -7440,7 +7445,8 @@ export function CaptureArbeitsraum({
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     <span aria-hidden>✦</span>
-                    {t("reasoner.draftLabel")}
+                    {/* R-1020: Wortlaut der Quelle, aus derselben Stufentabelle wie überall. */}
+                    {t(ERGEBNIS_STUFE_TEXT.entwurf)}
                   </span>
                   <button
                     type="button"

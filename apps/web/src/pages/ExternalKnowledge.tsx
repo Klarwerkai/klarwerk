@@ -102,6 +102,12 @@ export function ExternalKnowledge(): JSX.Element {
         {view.kind === "results" ? (
           <div className="space-y-3">
             <SectionLabel>{t("extpage.resultsTitle", { n: view.results.length })}</SectionLabel>
+            {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der Seitenhilfe,
+                solange Treffer dastehen. */}
+            <HelpTip
+              title={t("extpage.resultsTitle", { n: view.results.length })}
+              body={t("shelp.extpage.resultsTitle")}
+            />
             <ul className="space-y-2">
               {view.results.map((r) => (
                 <li key={r.url} className="rounded-input border border-hairline p-3">
