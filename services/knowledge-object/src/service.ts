@@ -245,12 +245,11 @@ export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
 // Muster und dieselbe Größenordnung wie der Fußnoten-Backfill der Bibliothek
 // (SEARCH_BACKFILL_LIMIT_PER_QUERY = 20): die Suche darf nie zum Bestands-Durchlauf werden, und
 // der Rest wird von der nächsten Anfrage bzw. vom ausdrücklichen Lauf abgearbeitet (konvergiert).
-// G27 R1 (Entscheidung 04 §5): DER DECKEL BLEIBT, SEIN AUFRUFORT NICHT. Der gedeckelte Nachzug ist
-// weiterhin Hintergrundhilfe und Optimierung — aber KEIN Suchweg stößt ihn mehr an. „Der reguläre
+// G27 R1 (Entscheidung 04 §5): KEIN Suchweg stößt den gedeckelten Nachzug mehr an. „Der reguläre
 // Suchpfad darf funktional nicht von ihm abhängen"; er aktiviert nichts, gibt keine Readiness frei
-// und bestätigt keine Konsistenz. Der Wert bleibt die Schwunggröße für ausdrückliche
-// Wartungsläufe und ist Teil der öffentlichen Modulfläche.
-export const SEARCH_PROJECTION_BACKFILL_PER_QUERY = 20;
+// und bestätigt keine Konsistenz. R-1349: Damit las auch niemand mehr den Deckel je Anfrage
+// `SEARCH_PROJECTION_BACKFILL_PER_QUERY` (= 20); er ist entfernt. Ausdrückliche Läufe nehmen ihren
+// eigenen Schwung (`backfillSearchProjections`, Vorgabe 500; der Abgleich `RECONCILE_SCHWUNG`).
 
 // Der Schwung des UNGEDECKELTEN Abgleichs. Groß genug, dass der Bestand in wenigen Runden
 // abgearbeitet ist; endlich, damit eine einzelne Abfrage nicht unbegrenzt Zeilen zieht.
@@ -3435,6 +3434,52 @@ export class KoService {
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
               },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // R-0507 — DER EIGENTÜMER GIBT SEINE VERANTWORTUNG ZURÜCK.
+  // ==============================================================================================
+  //
+  // Die offene Frage aus `setOwnership` („wem darf man die Verantwortung wieder wegnehmen?") ist
+  // hier enger beantwortet: NIEMANDEM wird sie weggenommen — der benannte Eigentümer gibt sie
+  // SELBST ab. Deshalb prüft der Dienst `actor === owner` und kein Rollenrecht: das ist keine
+  // Rechtevergabe aus `owner` (ownership.ts), sondern das Zurückgeben der eigenen Zusage.
+  //
+  // WAS BLEIBT: die Spur `reviewers`/`validators` — wer geprüft und freigegeben hat, ist eine
+  // Tatsache, die das Zurückgeben nicht ungeschehen macht. Nur `owner` entfällt; danach gilt
+  // wieder der benannte Rückfall auf den Autor (`responsibleOf`). Bleibt gar nichts übrig, steht
+  // kein Aggregat mehr am Objekt — „keine Angabe" statt eines leeren Aggregats (normalizeOwnership).
+  async releaseOwnership(id: string, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const previous = ownershipOf(ko);
+      if (previous?.owner === undefined || previous.owner !== actor) {
+        throw new KoError(
+          "NOT_OWNER",
+          "Nur der benannte Eigentümer kann die Verantwortung für dieses Wissensobjekt zurückgeben.",
+        );
+      }
+      const next = normalizeOwnership({
+        reviewers: previous.reviewers,
+        validators: previous.validators,
+      });
+      const { ownership: _bisher, ...ohne } = ko;
+      const updated: KnowledgeObject = next === null ? ohne : { ...ohne, ownership: next };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership-released",
+              target: id,
+              payload: { previousOwner: previous.owner ?? null },
             },
             tx,
           );

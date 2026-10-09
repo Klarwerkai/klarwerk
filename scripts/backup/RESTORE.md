@@ -489,9 +489,30 @@ Exitcodes des Drills (dieselben wie in der Betriebsanleitung und im Skriptkopf):
 | `71` | `unresolvedDeviations ≠ 0` |
 | `72` | `uncheckedDeviations ≠ 0` |
 | `73` | Wissensnachweis: Befund — eine Belegzeile zeigt auf einen Anhang, den `objects` nicht führt, oder Objekt, Beleg bzw. Anhangsinhalt kam nicht zurück, obwohl die Datenbank sie führt |
+| `74` | Rechte: die Rollenverteilung der Konten (`users.role`/`approved`) weicht zwischen Dump und Datenbank ab |
 | `80` | Reaping-/PID-Identitätsprüfung fehlgeschlagen |
 
 Vollständige Anleitung und Grenzen: `docs/operations/restore-drill.md`.
+
+### Das Protokoll der Probe: `letzter-drill.json` (ADMIN-13)
+
+Jeder Drill, der einen vorhandenen Dump bekommen hat, legt neben ihm `letzter-drill.json` ab — der
+gescheiterte genauso wie der bestandene, atomar geschrieben. Darin: Beginn und Ende (UTC),
+`ergebnis`, `exitcode`, ein fester `grund` je Exitcode, der verwendete Sicherungsstand
+(`sicherung`), der Prüfsummenbefund (`passt`/`abweichend`/`fehlt`/`ungueltig`/`nicht_geprueft`
+samt nachgerechnetem Hash), das isolierte Ziel (`RESTORE_DB`) und der Vergleich in vier Kategorien:
+
+| Kategorie | Tabellen | Zusatzprüfung |
+| --- | --- | --- |
+| Beiträge | `kos`, `ko_versions` | — |
+| Anhänge | `objects`, `ko_evidence` | Belegzeilen ohne Anhang (Glied 7b) |
+| Beziehungen | `ko_kanten`, `ko_kanten_beitrag` | — |
+| Rechte | `users` | Rollenverteilung `rolle/freigabe=anzahl` (Glied 3b, Exit 74) |
+
+Was nicht gemessen wurde, steht als `null` bzw. `nicht_gemessen` darin. **Keine Zugangsdaten:**
+weder `DRILL_LOGIN_EMAIL` noch das Kennwort noch das Sitzungstoken gehen in die Datei. Die
+Verwaltung zeigt das Protokoll unter *System → Sicherung → Restore-Nachweis*; grün wird es dort nur
+bei Exit 0, nachgerechneter Prüfsumme, genanntem Ziel und `gleich` in allen vier Kategorien.
 
 ## Hinweise
 - Der Dump ist konsistent (pg_dump snapshot). Für Point-in-Time-Recovery bräuchte es zusätzlich WAL-
