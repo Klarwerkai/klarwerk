@@ -335,6 +335,7 @@ describe("R-0104 · Wissen per Aufnahme ins Blatt", () => {
 
     await klick(knopf("blatt-werkzeug-mehr"));
     await klick(menueEintrag(i18n.t("fd.discardInput")));
+    await klick(knopf("blatt-rueckfrage-ja"));
     expect(schreibfeld().textContent ?? "").not.toContain("Vorher getippt.");
 
     await act(async () => {
@@ -410,6 +411,7 @@ describe("R-0104 · Nacharbeit 3: getrennt während des Einlesens heisst nicht g
 
     await klick(knopf("blatt-werkzeug-mehr"));
     await klick(menueEintrag(i18n.t("fd.discardInput")));
+    await klick(knopf("blatt-rueckfrage-ja"));
     await leserFreigeben();
 
     expect(box.transcribe, "die verworfene Aufnahme wurde trotzdem gesendet").toEqual([]);
