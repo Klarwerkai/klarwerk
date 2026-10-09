@@ -14,6 +14,7 @@ import {
   ConfidentialCloudBlockedError,
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
   type ModelRunSubject,
+  REASONER_ZWEITMEINUNG_WAHLEN,
   type Reasoner,
   type ReasonerLocale,
   ReasonerPolicyLockedError,
@@ -340,6 +341,25 @@ function istErweiterung(vorher: Schalterstand, nachher: Schalterstand): boolean 
 
 function gleicherStand(a: Schalterstand, b: Schalterstand): boolean {
   return a.oeffentlicheKi === b.oeffentlicheKi && a.vertraulicheInhalte === b.vertraulicheInhalte;
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 (R-0305, R-1099) · DIE WAHL DER ZWEITMEINUNG — PROTOKOLLIERT WIE DIE FREIGABE.
+// ================================================================================================
+//
+// Ein Modell für die Zweitmeinung zu wählen, gibt Frage und Grundlage an einen ZWEITEN Empfänger.
+// Das ist dieselbe Art Entscheidung wie die Freigabe oben und folgt derselben Regel: ein neuer
+// Empfänger wird nur wirksam, wenn er belegt ist (fail-closed, 503); das Ausschalten führt in die
+// sichere Richtung und wird protokolliert, ohne daran zu scheitern.
+const ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR = "REASONER_ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR";
+const ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR_MELDUNG =
+  "Die Wahl des Zweitmodells konnte nicht protokolliert werden und wurde deshalb NICHT gesetzt. " +
+  "Bitte später erneut versuchen.";
+const ZWEITMEINUNG_ZIEL = "reasoner.zweitmeinung";
+
+// Der Stand im Protokoll: das gewählte Modell oder „aus" — nie ein leerer Wert.
+function zweitmeinungsStand(wahl: string | null | undefined): string {
+  return typeof wahl === "string" ? wahl : "aus";
 }
 
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
@@ -885,12 +905,31 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // JOB 3549: WEGLASSEN LÄSST DIE FREIGABE UNVERÄNDERT (Vertrag §3) — die Bestands-Oberfläche
         // speichert nur `global`/`perTask` und darf eine erteilte Freigabe dabei nicht löschen.
         kiFreigabe?: { oeffentlicheKi?: boolean; vertraulicheInhalte?: boolean };
+        // R-0305/R-1099: das Modell der Zweitmeinung. Weglassen lässt es unverändert, `null` = aus.
+        zweitmeinung?: string | null;
       };
     }>("/api/reasoner/config", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
       }
+      // R-0305/R-1099: ein unbekannter Wert ist ein Eingabefehler — abgewiesen, BEVOR irgendetwas
+      // protokolliert oder geschrieben wird.
+      const zweitEingabe = request.body.zweitmeinung;
+      if (
+        zweitEingabe !== undefined &&
+        zweitEingabe !== null &&
+        !(REASONER_ZWEITMEINUNG_WAHLEN as readonly unknown[]).includes(zweitEingabe)
+      ) {
+        const meldung = "Ungültige Wahl für die Zweitmeinung.";
+        reply.code(400).send({ error: "BAD_REQUEST", message: meldung });
+        return;
+      }
+      const zweitVorher = zweitmeinungsStand(reasoner.configStatus().taskConfig.zweitmeinung);
+      const zweitNachher =
+        zweitEingabe === undefined ? zweitVorher : zweitmeinungsStand(zweitEingabe);
+      // Ein NEUER Empfänger (aus → Modell oder Modell → anderes Modell) ist belegpflichtig.
+      const zweitNeu = zweitNachher !== "aus" && zweitNachher !== zweitVorher;
       // Der VORHER-Stand, gelesen bevor irgendetwas passiert — er ist die eine Hälfte des
       // Protokolleintrags und zugleich der Vergleichspunkt für „ist das eine Erweiterung?".
       const vorher = schalterstand(reasoner.configStatus().taskConfig.kiFreigabe);
@@ -929,6 +968,45 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         }
       }
 
+      if (zweitNeu) {
+        let belegt = false;
+        if (audit) {
+          try {
+            await audit.record({
+              actor: user.id,
+              action: "reasoner.zweitmeinung",
+              target: ZWEITMEINUNG_ZIEL,
+              payload: { vorher: zweitVorher, nachher: zweitNachher },
+            });
+            belegt = true;
+          } catch (fehler) {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.zweitmeinung konnte nicht protokolliert werden — Wahl abgelehnt",
+            );
+          }
+        }
+        if (!belegt) {
+          // Die schon belegte Freigabe-Erweiterung wird nun doch nicht wirksam — dieselbe
+          // Korrektur wie beim Schreibfehler unten, best-effort.
+          if (erweiterung) {
+            await audit
+              ?.record({
+                actor: user.id,
+                action: "reasoner.ki-freigabe-nicht-wirksam",
+                target: FREIGABE_ZIEL,
+                payload: { vorher, nachher },
+              })
+              .catch(() => undefined);
+          }
+          reply.code(503).send({
+            error: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR,
+            message: ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR_MELDUNG,
+          });
+          return;
+        }
+      }
+
       try {
         // Laufzeit-Validierung übernimmt setTaskConfig (wirft bei ungültigen Werten).
         // SCRUM-525 P.5 (WP6): setTaskConfig persistiert jetzt → die Zuordnung überlebt Neustart/Deploy.
@@ -936,8 +1014,21 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           global: request.body.global ?? "auto",
           perTask: request.body.perTask ?? {},
           ...(request.body.kiFreigabe === undefined ? {} : { kiFreigabe: request.body.kiFreigabe }),
+          ...(zweitEingabe === undefined ? {} : { zweitmeinung: zweitEingabe }),
         } as Parameters<typeof reasoner.setTaskConfig>[0]);
       } catch (error) {
+        // R-0305/R-1099: der Beleg des neuen Empfängers steht schon in der Kette, die Wahl ist aber
+        // nicht wirksam geworden — ein zweiter Eintrag korrigiert, best-effort (sichere Richtung).
+        if (zweitNeu) {
+          await audit
+            ?.record({
+              actor: user.id,
+              action: "reasoner.zweitmeinung-nicht-wirksam",
+              target: ZWEITMEINUNG_ZIEL,
+              payload: { vorher: zweitVorher, nachher: zweitNachher },
+            })
+            .catch(() => undefined);
+        }
         // JOB 3549: der Beleg steht schon in der Kette, die Freigabe ist aber NICHT wirksam
         // geworden (ENV-Sperre, Persistenzfehler, ungültige Zuordnung). Das Audit ist append-only —
         // die Korrektur ist deshalb ein ZWEITER Eintrag, kein Zurücknehmen des ersten. Er ist
@@ -994,6 +1085,33 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             request.log.error(
               { err: fehler instanceof Error ? fehler.name : "unknown" },
               "reasoner.ki-freigabe (Rücknahme) konnte nicht protokolliert werden — sie gilt trotzdem",
+            );
+          });
+      }
+      // R-0305/R-1099: dieselben zwei Nachläufe für die Wahl der Zweitmeinung.
+      const zweitWirksam = zweitmeinungsStand(status.taskConfig.zweitmeinung);
+      if (zweitNeu && zweitWirksam !== zweitNachher) {
+        await audit
+          ?.record({
+            actor: user.id,
+            action: "reasoner.zweitmeinung-nicht-wirksam",
+            target: ZWEITMEINUNG_ZIEL,
+            payload: { vorher: zweitVorher, nachher: zweitNachher },
+          })
+          .catch(() => undefined);
+      } else if (!zweitNeu && zweitVorher !== zweitNachher) {
+        // Das Ausschalten gilt bereits — protokolliert, aber nie daran gescheitert.
+        await audit
+          ?.record({
+            actor: user.id,
+            action: "reasoner.zweitmeinung",
+            target: ZWEITMEINUNG_ZIEL,
+            payload: { vorher: zweitVorher, nachher: zweitNachher },
+          })
+          .catch((fehler: unknown) => {
+            request.log.error(
+              { err: fehler instanceof Error ? fehler.name : "unknown" },
+              "reasoner.zweitmeinung (Ausschalten) konnte nicht protokolliert werden — es gilt trotzdem",
             );
           });
       }
