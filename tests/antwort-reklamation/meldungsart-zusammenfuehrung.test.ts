@@ -3,7 +3,7 @@
 // ================================================================================================
 //
 // `components/start/forYou.ts` war Konfliktstelle zwischen dieser Arbeit (Art `reklamation`) und
-// main (Arten `escalation`, `return`). Geprüft wird, dass BEIDE Seiten wirken: jede Art behält ihren
+// main (Arten `escalation`, `return`; seit Nacharbeit 14 zusätzlich `frische`). Geprüft wird, dass BEIDE Seiten wirken: jede Art behält ihren
 // Bereichsnamen und ihre Dringlichkeit; keine fällt still auf den Rückfall `start.fuerdich.art.*`.
 import { describe, expect, it } from "vitest";
 import {
@@ -22,19 +22,28 @@ describe("Meldungsarten nach der Zusammenführung", () => {
     expect(meldungMetaKey("escalation")).toBe("meldungsart.eskalation.art");
     expect(meldungMetaKey("return")).toBe("meldungsart.rueckgabe.art");
     expect(meldungMetaKey("kenntnisnahme")).toBe("kenntnisnahme.meldungArt");
+    // Zweite Zusammenführung (Nacharbeit 14): die Frische-Meldung aus main steht daneben.
+    expect(meldungMetaKey("frische")).toBe("frische.meldungArt");
     expect(meldungMetaKey("impact")).toBe("start.fuerdich.art.impact");
   });
 
   it("Dringlichkeit: Eskalation kritisch, Antwortmeldung und Rückgabe heute, Wirkung später", () => {
     const zeilen = forYouZeilen({
       arbeit: [],
-      meldungen: [zeile("impact"), zeile("reklamation"), zeile("return"), zeile("escalation")],
+      meldungen: [
+        zeile("impact"),
+        zeile("reklamation"),
+        zeile("frische"),
+        zeile("return"),
+        zeile("escalation"),
+      ],
       kollision: null,
     });
     const stufe = Object.fromEntries(zeilen.map((z) => [z.id, z.severity]));
     expect(stufe).toEqual({
       "meldung-n-escalation": "critical",
       "meldung-n-reklamation": "today",
+      "meldung-n-frische": "today",
       "meldung-n-return": "today",
       "meldung-n-impact": "later",
     });

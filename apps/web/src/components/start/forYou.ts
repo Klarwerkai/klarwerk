@@ -282,6 +282,7 @@ export interface MeldungZeile {
     | "return"
     | "impact"
     | "kenntnisnahme"
+    | "frische"
     | "reklamation";
   title: string;
   seen?: boolean;
@@ -314,6 +315,8 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   kenntnisnahme: "today",
   // R-1089: eine gemeldete falsche Antwort zum eigenen Wissen ist Arbeit von heute.
   reklamation: "today",
+  // aufnahme:20260922:gesamt-wissen-frische: bestätigen, ob eigenes Wissen noch stimmt — heute.
+  frische: "today",
   gap: "later",
   impact: "later",
 };
@@ -323,6 +326,10 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   // Die Kenntnisnahme bringt ihre Texte im eigenen Textmodul mit (`texte/kenntnisnahme.ts`).
   if (kind === "kenntnisnahme") {
     return "kenntnisnahme.meldungArt";
+  }
+  // aufnahme:20260922:gesamt-wissen-frische: Texte im Textmodul `texte/frische.ts`.
+  if (kind === "frische") {
+    return "frische.meldungArt";
   }
   // R-0894: die beiden neueren Arten tragen ihren Namen im Textmodul `texte/meldungsart.ts`.
   if (kind === "escalation") {

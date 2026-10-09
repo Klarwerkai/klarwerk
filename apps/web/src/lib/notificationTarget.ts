@@ -38,5 +38,10 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "reklamation") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
+  // aufnahme:20260922:gesamt-wissen-frische: das eigene Wissensobjekt — dort stehen „Stimmt
+  // weiterhin" und die Frist.
+  if (n.kind === "frische") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
   return null;
 }
