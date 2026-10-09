@@ -260,12 +260,22 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "befunde",
     name: "Widerspruchs- und Dublettenbefunde",
     inhalt:
-      "Befund zu zwei Wissensobjekten mit Begründung, Stand, Entscheidung und entscheidender Kennung; dazu das Prüfgedächtnis der Erkennung je Objektpaar (Paarkennung, Hash des geprüften Textstands, Ausgang, Zeitpunkt — kein Text, keine Personenkennung).",
+      "Befund zu zwei Wissensobjekten mit Begründung, Stand, Entscheidung und entscheidender Kennung; dazu das Prüfgedächtnis der Erkennung je Objektpaar (Paarkennung, Hash des geprüften Textstands, Ausgang, Zeitpunkt — kein Text, keine Personenkennung) und die Paarpflichten je Prüflauf (Objektkennungen, Fassungen, Fingerabdrücke von Quelle und Kontext, Zustand, Modellurteil mit Modellname — kein Text, keine Personenkennung).",
     personenbezug: "moeglich",
     personenbezugGrund: "Kennung der entscheidenden Person; Begründung zitiert Freitext.",
-    ablage: { ort: DATENBANK, tabellen: ["conflicts", "ko_overlaps", "conflict_pair_memory"] },
+    ablage: {
+      ort: DATENBANK,
+      tabellen: [
+        "conflicts",
+        "ko_overlaps",
+        "conflict_pair_memory",
+        "conflict_pair_obligation_runs",
+        "conflict_pair_obligations",
+      ],
+    },
     taetigkeit: "pruefung",
-    loeschung: "Offene Befunde werden bei der Endlöschung eines beteiligten Objekts geschlossen.",
+    loeschung:
+      "Offene Befunde werden bei der Endlöschung eines beteiligten Objekts geschlossen; Paarpflichten haben keinen eigenen Löschweg (nur der Bestandsreset).",
     frist: BETREIBERFRIST,
     selbstauskunft: {
       enthalten: false,
