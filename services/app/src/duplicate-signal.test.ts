@@ -15,7 +15,6 @@ import {
   A28_SIGNAL_GRENZE,
   type BefundPaar,
   type Deckung,
-  befundFuerEigenesKo,
   eigeneBefunde,
 } from "./duplicate-signal";
 
@@ -80,21 +79,8 @@ describe("A28 · Signal am eigenen Objekt", () => {
     expect(befunde.every((b) => b.dublette)).toBe(true);
   });
 
-  it("P-6 · Einzelabfrage liefert den Befund des eigenen Objekts", () => {
-    const befund = befundFuerEigenesKo(
-      "ko-mein-1",
-      MEINE,
-      [paar("ko-mein-1", "ko-fremd-9")],
-      [],
-      KEINE_LAGE,
-    );
-    expect(befund).toEqual({
-      koId: "ko-mein-1",
-      dublette: true,
-      konflikt: false,
-      deckung: OHNE_AUSKUNFT,
-    });
-  });
+  // R-1349: P-6 prüfte die Einzelabfrage `befundFuerEigenesKo`, die kein Produktweg rief. Sie ist
+  // entfernt; die Route liest `eigeneBefunde`, das P-1 bis P-5 prüfen.
 });
 
 describe('A28 · die GESPERRTE Richtung — „ein fremdes Objekt dupliziert meines"', () => {
@@ -173,7 +159,6 @@ describe("A28 · die Grenze: Vorhandensein und Art, nie die Gegenseite", () => {
     // JOB 3032 (N5) ändert daran NICHTS: die Deckung hängt an einem Befund, sie erzeugt keinen.
     // Ein vollständig geprüftes eigenes Objekt ohne Befund erscheint deshalb weiterhin nicht.
     expect(eigeneBefunde(MEINE, [], [], KEINE_LAGE)).toEqual([]);
-    expect(befundFuerEigenesKo("ko-mein-1", MEINE, [], [], KEINE_LAGE)).toBeNull();
     const geprueft = new Map<string, Deckung>([
       ["ko-mein-1", { lage: "vollstaendig", geprueft: 7, bestand: 7 }],
     ]);

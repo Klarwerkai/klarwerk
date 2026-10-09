@@ -17,7 +17,6 @@
 // Was das Doppel NICHT belegt: dass PostgreSQL den Index auch wählt — das steht im Integrationstest
 // (`tests/audit/job2698-findby.integration.test.ts`, läuft nur mit erreichbarem PostgreSQL).
 import { describe, expect, it } from "vitest";
-import { klassifiziereStufe } from "../../services/app/src/migrationsbeleg";
 import {
   type AuditRepo,
   InMemoryAuditRepo,
@@ -33,6 +32,7 @@ import {
 } from "../../services/audit/src/repo-pg";
 import { AuditService } from "../../services/audit/src/service";
 import type { AuditEntry, AuditFilter } from "../../services/audit/src/types";
+import { klassifiziereStufe } from "../support/migrationsmodell";
 
 // ------------------------------------------------------------------------------------------------
 // Ein Bestand, der die Fallen trägt: gleiche Wörter in anderer Schreibung, leere Filterwerte,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryKoRepo, KoService } from "../../knowledge-object";
-import { LibraryService } from "../../library-analytics";
-import type { DemoLocale } from "./demo-content";
+import type { DemoLocale } from "../../services/app/src/demo-content";
+import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
+import { LibraryService } from "../../services/library-analytics";
 import {
   DEMO_CORPUS,
   DEMO_CORPUS_PAGE_COUNT,
