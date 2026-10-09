@@ -69,6 +69,7 @@ import { useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hooks";
 import type { PublicUser } from "../api/types";
+import { UNTERNEHMEN_PFAD } from "../api/unternehmen";
 import { type KontoVerantwortung, verantwortungApi } from "../api/verantwortung";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
@@ -1146,6 +1147,16 @@ export function Admin(): JSX.Element {
                       className="accent-brand"
                     />
                   }
+                />
+              </Zeilenkarte>
+              {/* ADMIN-15: Unternehmensprofil und interne Richtlinien haben ihren eigenen Bedienort
+                  (`/unternehmen`); hier steht nur der Verweis dorthin. Die feste Markenwahl unter
+                  „Vorführdaten" bleibt davon unberührt. */}
+              <Zeilenkarte>
+                <Kurzlink
+                  label={t("unternehmen.verwaltung.zeile")}
+                  to={UNTERNEHMEN_PFAD}
+                  testId="zeile-unternehmen"
                 />
               </Zeilenkarte>
               {/* „Werkseinstellungen in eindeutigem eigenen Abschnitt" (Vorlage): eine eigene Karte,
