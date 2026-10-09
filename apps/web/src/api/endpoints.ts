@@ -3,6 +3,8 @@ import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
 import type { AufnahmeRumpf, SprachTranskriptAntwort } from "../lib/sprachaufnahme";
+// R-1034 / FR-I18N-02: der Drahtvertrag der Übersetzungspflege.
+import type { GepflegteTexte, InstanzSprache, InstanzSprachen } from "../lib/textpflege";
 import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
@@ -1560,5 +1562,24 @@ export const endpoints = {
         version,
         aufVersion,
       }),
+  },
+  // R-1034 / FR-I18N-02: Oberflächentexte im laufenden Betrieb pflegen (i18n-routes.ts).
+  i18n: {
+    sprachen: () => api.get<InstanzSprachen>("/i18n/locales"),
+    texte: (sprache: string) => api.get<GepflegteTexte>(`/i18n/${encodeURIComponent(sprache)}`),
+    setzeText: (sprache: string, schluessel: string, text: string) =>
+      api.put<{ sprache: string; schluessel: string; text: string }>(
+        `/admin/i18n/${encodeURIComponent(sprache)}/${encodeURIComponent(schluessel)}`,
+        { text },
+      ),
+    entferneText: (sprache: string, schluessel: string) =>
+      api.del<{ sprache: string; schluessel: string; entfernt: boolean }>(
+        `/admin/i18n/${encodeURIComponent(sprache)}/${encodeURIComponent(schluessel)}`,
+      ),
+    setzeSprache: (kennung: string, name: string) =>
+      api.put<Pick<InstanzSprache, "kennung"> & { name: string }>(
+        `/admin/i18n-sprachen/${encodeURIComponent(kennung)}`,
+        { name },
+      ),
   },
 };
