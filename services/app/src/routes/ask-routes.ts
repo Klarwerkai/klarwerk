@@ -8,10 +8,18 @@ import {
   redactGapForViewer,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
-import type { KnowledgeObject, KoService } from "../../../knowledge-object";
+import {
+  GELTUNG_TEXT_MAX,
+  type KnowledgeObject,
+  type KoService,
+  normalizeFragekontext,
+} from "../../../knowledge-object";
+import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
+import { absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
+import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
@@ -77,6 +85,18 @@ const askBodySchema = {
       maxItems: GESPRAECHSFADEN_MAX_FRAGEN,
       items: { type: "string", maxLength: 8_000 },
     },
+    // R-1633 — WOFÜR GEFRAGT WIRD: Werk, Schicht, Rolle (je optional, ≤ GELTUNG_TEXT_MAX). Wirkt
+    // wie der Faden NUR im Konsolenzweig: es ordnet gleich relevante Quellen nach ihrer Geltung und
+    // liefert die Auskunft `geltung`. Add-on- und Word-Wege lassen es liegen.
+    fragekontext: {
+      type: "object",
+      properties: {
+        werk: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        schicht: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        rolle: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+      },
+      additionalProperties: false,
+    },
   },
 } as const;
 
@@ -125,6 +145,50 @@ export interface AskRouteDeps {
    * werden. Fehlt die Quelle, fällt dort JEDES Objekt mit führendem Space weg (fail-closed).
    */
   offeneSpaces?: (() => Promise<ReadonlySet<string>>) | undefined;
+  /**
+   * R-1649: legt den abweichenden Weg aus „nicht hilfreich, ich habe es so gemacht …" als Entwurf
+   * an. Eine schmale Funktion statt des Erfassungsdienstes (dieselbe Bauart wie `hilfreich` in
+   * `ko-routes.ts`); die Composition-Root verdrahtet `CaptureService.createDraft`. Fehlt sie, wird
+   * ein mitgeschickter Weg ehrlich mit 400 abgewiesen statt still verworfen.
+   */
+  alternativeAlsEntwurf?:
+    | ((entwurf: { title: string; statement: string }, author: string) => Promise<{ id: string }>)
+    | undefined;
+}
+
+// R-1649: Hülle von POST /api/ask/not-helpful — der abweichende Weg und der Titelvorschlag im selben
+// Maß wie eine Frage (der Titel wird danach gekürzt). Geprüft im Handler, NACH dem Rechtetor (ein
+// Fastify-Schema liefe davor und antwortete Unangemeldeten mit 400 statt 401).
+interface NichtHilfreichRumpf {
+  koId: string;
+  receipt?: string;
+  alternative?: string;
+  entwurfTitel?: string;
+}
+
+function nichtHilfreichRumpf(roh: unknown): NichtHilfreichRumpf | null {
+  if (!roh || typeof roh !== "object" || Array.isArray(roh)) {
+    return null;
+  }
+  const { koId, receipt, alternative, entwurfTitel } = roh as Record<string, unknown>;
+  const text = (wert: unknown, max: number): boolean =>
+    wert === undefined || (typeof wert === "string" && [...wert].length <= max);
+  if (typeof koId !== "string" || koId.length === 0 || koId.length > 200) {
+    return null;
+  }
+  // Der Beleg ist opak und wird vom Dienst geprüft; hier zählt nur, dass er Text ist.
+  if (!text(receipt, Number.POSITIVE_INFINITY)) {
+    return null;
+  }
+  if (!text(alternative, 8_000) || !text(entwurfTitel, 8_000)) {
+    return null;
+  }
+  return {
+    koId,
+    ...(typeof receipt === "string" ? { receipt } : {}),
+    ...(typeof alternative === "string" ? { alternative } : {}),
+    ...(typeof entwurfTitel === "string" ? { entwurfTitel } : {}),
+  };
 }
 
 // ================================================================================================
@@ -548,6 +612,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         selectionConfidentiality?: string;
         questionSource?: string;
         thread?: string[];
+        fragekontext?: unknown;
       };
     }>(
       "/api/ask",
@@ -637,6 +702,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // Konsolenzweig; ohne Faden bleibt `opts` dort wie bisher unangetastet.
         const faden = (request.body.thread ?? []).filter((frage) => frage.trim().length > 0);
         let fadenErlaubt = false;
+        // R-1633: der Fragekontext — geprüft hier, wirksam nur dort, wo auch der Faden wirkt.
+        const fragekontext = normalizeFragekontext(request.body.fragekontext);
+        if (fragekontext === null) {
+          reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
+          return;
+        }
         // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
         // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
         // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
@@ -674,11 +745,28 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ))
               ? { dokumenttextFreigegeben: true as const }
               : {};
-          const mitAuswahl = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
-          const mitMarkierung =
+          // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): geht vertraulich markierter Dokumenttext
+          // hinaus — als Markierung oder als Frage selbst —, dann nur, weil die zweite zentrale
+          // Adminfreigabe ihn gedeckt hat. Die EINSTUFUNG reist dann mit bis in den Reasoner, damit der
+          // Kern und der Chokepoint dieselbe Freigabe noch einmal fragen. Sonst fehlt das Feld.
+          const vertraulichHinaus =
+            markierungVertraulich(request.body.selectionConfidentiality) &&
+            ("dokumenttextFreigegeben" in dokumenttextFeld || (ka4Bestaetigt && frageIstDokument));
+          const vertraulichFeld = vertraulichHinaus
+            ? { dokumenttextVertraulich: true as const }
+            : {};
+          const mitAuswahl = markierung
+            ? { ...opts, ...markierung, ...dokumenttextFeld, ...vertraulichFeld }
+            : vertraulichHinaus
+              ? { ...opts, ...vertraulichFeld }
+              : opts;
+          const mitFaden =
             fadenErlaubt && faden.length > 0
               ? { ...mitAuswahl, gespraechsfaden: faden }
               : mitAuswahl;
+          // R-1633: dieselbe Grenze wie der Faden — nur im Konsolenzweig, sonst unangetastet.
+          const mitMarkierung =
+            fadenErlaubt && fragekontext ? { ...mitFaden, fragekontext } : mitFaden;
           const betrachter = request.askSessionUser;
           let grundlage: (ko: KnowledgeObject) => boolean;
           if (betrachter) {
@@ -718,7 +806,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             }
             throw fehler;
           }
-          reply.code(200).send({ ...out, result: { ...out.result, evidence } });
+          // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung reist NEBEN `result` (absatz-belege.ts);
+          // ohne beantwortete Frage fehlt sie.
+          const absaetze = absatzBelege(out.result);
+          reply.code(200).send({
+            ...out,
+            result: { ...out.result, evidence },
+            ...(absaetze ? { absaetze } : {}),
+          });
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -867,6 +962,59 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       },
     );
 
+    // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die Negativ-
+    // Bewährung an der tragenden Quelle, optional verbunden mit dem abweichenden Weg als Entwurf.
+    // Erkannt wird der Satz in der Fläche (Diktat ins Fragefeld, `apps/web/src/lib/nichtHilfreich.ts`);
+    // hier gilt dieselbe Bindung wie beim „Danke": Recht `ko.read` und der Answer-Receipt. Wer einen
+    // Weg mitschickt, legt einen Entwurf an und braucht dafür dasselbe Recht wie jeder Entwurfsweg
+    // (`ko.create`) — fehlt es, wird VOR jedem Schreiben abgewiesen, auch der Vermerk entsteht nicht.
+    app.post<{ Body: unknown }>("/api/ask/not-helpful", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      // Die Gestalt erst NACH dem Tor: ein Unangemeldeter erfährt 401, nichts über den Rumpf.
+      const body = nichtHilfreichRumpf(request.body);
+      if (!body) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "koId fehlt, oder receipt, alternative oder entwurfTitel ist ungültig.",
+        });
+        return;
+      }
+      const alternative = body.alternative?.trim() ?? "";
+      if (alternative && !can(user.role, "ko.create")) {
+        reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "Einen Entwurf anlegen darf diese Rolle nicht.",
+        });
+        return;
+      }
+      const anlegen = deps.alternativeAlsEntwurf;
+      if (alternative && !anlegen) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "Ein Entwurf aus der Rückmeldung ist in diesem Aufbau nicht verfügbar.",
+        });
+        return;
+      }
+      // Der Titel nennt die Quelle, deren Titel beliebig lang sein kann — gekürzt, nicht abgewiesen.
+      const titel = [...(body.entwurfTitel?.trim() || alternative)].slice(0, 200).join("");
+      try {
+        const ergebnis = await ask.markNotHelpful(
+          body.receipt ?? "",
+          body.koId,
+          user.id,
+          alternative && anlegen
+            ? async () => (await anlegen({ title: titel, statement: alternative }, user.id)).id
+            : undefined,
+        );
+        reply.code(200).send(ergebnis);
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
     // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).
     app.get("/api/gaps/summary", async (request, reply) => {
@@ -891,6 +1039,31 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       }
       const gaps = await ask.listGaps();
       reply.code(200).send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id })));
+    });
+
+    // R-1663 / R-2178: passende Ansprechpartner zu EINER Lücke, begründet aus Wissensspuren
+    // (Regeln in `services/ask/src/ansprechpartner.ts`). Dieselben Grenzen wie das Consultant-System
+    // (`GET /api/analytics/expertise`): hinter dem Schalter `expertMatching` — Personen-Matching ist
+    // datenschutzsensibel (BetrVG §87(1)6, DSGVO) und bleibt bis zur BR/DSB-Freigabe aus; ohne ihn
+    // gibt es die Route nicht (404 vor dem Rechtetor). Und nur `ko.assign` — wer real entscheidet,
+    // wen er einbezieht. Die Objektgrundlage begrenzt die Sichtbarkeit DIESES Betrachters.
+    app.get<{ Params: { id: string } }>("/api/gaps/:id/ansprechpartner", async (request, reply) => {
+      if (!schalterAn("expertMatching")) {
+        reply.code(404).send({ error: "not_found" });
+        return;
+      }
+      const user = await guards.requirePermission("ko.assign", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const auskunft = await ask.ansprechpartnerZuLuecke(request.params.id, {
+          sichtbar: sichtbarkeitsfilterFuer(user),
+        });
+        reply.code(200).send(auskunft);
+      } catch (error) {
+        sendError(reply, error);
+      }
     });
 
     app.put<{

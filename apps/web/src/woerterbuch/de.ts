@@ -381,6 +381,13 @@ const de = {
   "topbar.plain.external":
     "Zeigt, ob Klarwerk beim Antworten auch im offenen Internet nachsehen darf. „Blockiert“ heißt: nein, es bleibt bei eurem eigenen Wissen.",
   // AUFTRAG-mega51 BLOCK G1: „KI-Modus" ist eine Einstellung; gemeint ist der ORT.
+  // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
+  // öffentliche KI, sichtbar über der Kopfzeile (`shell/ExternStatus.tsx`).
+  "topbar.extern.blockiert": "Extern: Blockiert",
+  "topbar.extern.frei": "Extern: Freigegeben",
+  "topbar.extern.freiVertraulich": "Extern: Freigegeben, auch Vertrauliches",
+  "topbar.extern.hinweis":
+    "Ob Inhalte an eine öffentliche KI gehen dürfen, legt der Administrator fest. Vorgabe: blockiert.",
   "topbar.kiExternal": "KI rechnet in der Cloud",
   "topbar.kiInternal": "KI rechnet im eigenen Haus",
   "topbar.kiMixed": "KI rechnet in der Cloud und im eigenen Haus",
@@ -2835,6 +2842,12 @@ const de = {
     "Die zuerst genannten Quellen haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet.",
   "ask.attribution.unknown":
     "Welche dieser Quellen die Antwort getragen hat, ließ sich nicht zuordnen — die KI hat keine verwertbaren Quellenverweise geliefert. Die Liste zeigt deshalb alle herangezogenen Quellen ohne Kennzeichen, und ein „Hat geholfen“ ist hier nicht möglich.",
+  // R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich kein Absatz einer
+  // Quelle zuordnen ließ. Zuordnung unbekannt macht einen unbelegten Absatz nicht ausgabefähig.
+  // R-0310: der Chip „+N" unter der Antwort — sein zugänglicher Name.
+  "ask.quellen.weitere": "{{count}} weitere Quellen anzeigen",
+  "ask.zuordnungUnbekannt":
+    "Keine Antwort angezeigt: Sie ließ sich keiner Quelle zuordnen. Ein Absatz ohne Beleg wird nicht ausgegeben.",
   // JOB 3267 Q1 — DREI ZUSTÄNDE, DREI WÖRTER, UND EIN VIERTES FÜR DEN PRÜFSTAND.
   // Bis hierher gab es zwei Wörter („trägt"/„angesehen") für eine Frage, die drei Antworten hat;
   // der dritte Zustand („wir wissen es nicht") stand nur als Satz ÜBER der Liste und fehlte an der
@@ -3758,6 +3771,7 @@ const de = {
   "ko.attachmentOriginalUnavailable": "Original nicht verfügbar",
   // JOB 3061 · H2 — die gemeinsame Prüffläche (vier Reiter, vier Menüorte).
   "pruefen.title": "Prüfen",
+  "pruefen.handeltAls": "Du prüfst als {{role}}",
   "pruefen.tab.offen": "Offen",
   "pruefen.tab.konflikte": "Konflikte",
   "pruefen.tab.duplikate": "Duplikate",
@@ -4159,6 +4173,8 @@ const de = {
   "con.openKo": "Objekt öffnen",
   "con.compareOpen": "Beide gegenüberstellen",
   "con.readonlyCompare": "Read-only-Vergleich",
+  // Aufnahme gesamt-konfliktboard (FR-CON-04): Name des Menüs mit allen offenen Fällen.
+  "con.caseList": "Alle offenen Konflikte ({{count}})",
   "con.detectedOn": "Erkannt am {{date}}",
   "con.evidenceSideLabel": "Beleg dieser Seite",
   // ==============================================================================================
@@ -4490,6 +4506,11 @@ const de = {
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
   "lib.lesemodus.listeAusblenden": "Trefferliste ausblenden",
   "lib.lesen.mehr": "Mehr",
+  "lib.lesen.belegstelle.markiert": "Belegstelle hervorgehoben.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "Die zitierte Belegstelle steht in dieser Fassung nicht wörtlich im Text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "Die Belegstelle gehört zu Fassung {{fassung}}; hier steht Fassung {{aktuell}}. Nichts ist hervorgehoben.",
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
   "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",
@@ -6017,6 +6038,24 @@ const de = {
   "mob.photo": "Foto",
   "mob.interview": "Interview",
   "mob.lookup": "Nachschlagen",
+  // FR-MOB-02 / FR-CAP-04: Erfassungsart Notiz/Interview und Fotos am Handy. Die Interviewfragen
+  // sind wörtlich die feste Folge des Servers (services/reasoner/src/provider.ts, INTERVIEW_QUESTIONS).
+  "mob.modusGruppe": "Erfassungsart",
+  "mob.modusGesperrt": "Erst speichern oder leeren, dann die Erfassungsart wechseln.",
+  "mob.iv.frage1": "Worum geht es? Formuliere die Kernaussage in einem Satz.",
+  "mob.iv.frage2": "Unter welchen Bedingungen oder ab wann gilt das?",
+  "mob.iv.frage3": "Welche Maßnahme oder Konsequenz folgt daraus?",
+  "mob.iv.frage4": "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
+  "mob.iv.fortschritt": "Frage {{nummer}} von {{gesamt}}",
+  "mob.iv.weiter": "Nächste Frage",
+  "mob.iv.zurueck": "Vorige Frage",
+  "mob.iv.hinweis": "Jede Antwort steht sofort im Entwurf — speichern geht nach jeder Frage.",
+  "mob.foto.kamera": "Kamera",
+  "mob.foto.mediathek": "Mediathek",
+  "mob.foto.entfernen": "Foto entfernen",
+  "mob.foto.fehler": "Das Foto konnte nicht gelesen werden.",
+  "mob.foto.max": "Höchstens {{max}} Fotos je Entwurf.",
+  "mob.foto.inArbeit": "Foto wird vorbereitet … gespeichert werden kann gleich.",
   "mob.editing": "Entwurf wird fortgesetzt.",
   "mob.formTitle": "Kernaussage",
   "mob.formStatement": "Was ist passiert / was gilt?",

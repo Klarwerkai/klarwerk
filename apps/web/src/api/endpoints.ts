@@ -5,6 +5,7 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnsprechpartnerAuskunft,
   AnswerResult,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
@@ -31,6 +32,7 @@ import type {
   Conflict,
   ConflictSelfTestResult,
   ConflictType,
+  ConflictWorkKind,
   DemoPackageListResponse,
   DemoPackagePreview,
   DemoPackageResult,
@@ -48,6 +50,7 @@ import type {
   ExternalResult,
   ExtractResult,
   FeatureFlags,
+  Fragekontext,
   Gap,
   GapPriority,
   GapSummary,
@@ -71,6 +74,7 @@ import type {
   KnowledgeCheckResult,
   KnowledgeObject,
   KoComment,
+  KoGeltung,
   KoVersionSnapshot,
   KuratierteKanteAnsicht,
   KuratierteKanten,
@@ -116,6 +120,8 @@ import type {
   ValidationBoardKo,
   ValidationSettings,
   Verdict,
+  VorrangAmPunkt,
+  VorrangWahl,
   // R-1107: der Drahtvertrag des Zusammenführens.
   ZusammenfuehrungsAuftrag,
   ZusammenfuehrungsErgebnis,
@@ -227,12 +233,17 @@ export interface KoDiskussionsbeitrag extends KoComment {
 /** P-WIKI-STELLENBEZUG — Spiegel von `KoCommentStelle` (`services/knowledge-object/src/types.ts`). */
 export interface KoDiskussionsStelle {
   koVersion: number;
-  art: "absatz" | "tabelle" | "bild";
+  /** `anhang`: eine hochgeladene Zeichnung (PDF, CAD, Bild); `text` ist dann ihre `objectId`. */
+  art: "absatz" | "tabelle" | "bild" | "anhang";
   abschnitt: string;
   /** Gekürzt — nur Anzeige. Die Identität trägt `fingerabdruck`. */
   text: string;
   /** SHA-256 über Art, vollständigen Abschnitt und vollständigen Inhalt (`lib/stellenabdruck`). */
   fingerabdruck: string;
+  /** PLAN-SPRACHANMERKUNG: Seite eines mehrseitigen Anhangs (PDF), ab 1. Nur bei `anhang`. */
+  seite?: number;
+  /** PLAN-SPRACHANMERKUNG: Position in einer Zeichnung (nur `bild`), relativ, je 0..1. */
+  punkt?: { x: number; y: number };
 }
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
@@ -345,13 +356,23 @@ export type KoAction =
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
   | { action: "domain"; domain: string }
+  // R-1632 / R-1633: die Geltung setzen; `null` entfernt sie (ko-routes.ts `geltung`).
+  | { action: "geltung"; geltung: KoGeltung | null }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {
       action: "conflict";
-      conflict: { koA: string; koB: string; type: ConflictType; description: string };
+      // R-0252: `arbeitsart` optional — fehlt sie, leitet die Konfliktseite sie aus `type` ab.
+      conflict: {
+        koA: string;
+        koB: string;
+        type: ConflictType;
+        arbeitsart?: ConflictWorkKind;
+        description: string;
+      };
     }
-  | { action: "resolve-conflict"; conflictId: string; decision: string }
+  // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
+  | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
@@ -426,7 +447,11 @@ export type KoAction =
       note?: string;
       expectedVersion?: number;
     }
-  | { action: "revalidate" };
+  | { action: "revalidate" }
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
+  | { action: "confirm-fresh" }
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
+  | { action: "schutz-oeffentlich"; oeffentlich: boolean };
 
 /**
  * AUFTRAG-mega18 Block A-1 — Nutzlast der Verbund-Operation.
@@ -655,6 +680,13 @@ export const endpoints = {
     // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
     // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
     helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),
+    // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung aus der Bibliothek anstossen (R-1732,
+    // 204 ohne Objekt) und die Anlagenänderung über dieses Objekt an die Nachbarn melden (R-0203,
+    // Antwort nur mit der Zahl der markierten Objekte).
+    requestRevalidation: (id: string) =>
+      api.put<void>(`/kos/${id}`, { action: "request-revalidation" }),
+    neighborsChanged: (id: string) =>
+      api.put<{ markiert: number }>(`/kos/${id}`, { action: "neighbors-changed" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
     appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
@@ -710,6 +742,11 @@ export const endpoints = {
     // Berater-Konzept 04.07. (Stufe 4): „Fehlalarm — kein Widerspruch" schließt den Konflikt.
     dismiss: (id: string, note?: string) =>
       api.post<Conflict>(`/conflicts/${id}/dismiss`, note ? { note } : {}),
+    // R-0252: der Einordnungsweg — Arbeitsart eines noch nicht eingeordneten Konflikts festlegen.
+    einordnen: (id: string, arbeitsart: ConflictWorkKind) =>
+      api.post<Conflict>(`/conflicts/${id}/arbeitsart`, { arbeitsart }),
+    // R-0263: der festgelegte Vorrang am einzelnen Punkt (`koId` = Wissensobjekt).
+    vorrang: (koId: string) => api.get<VorrangAmPunkt[]>(`/conflicts/vorrang/${koId}`),
   },
   // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Board. Liste + Detail
   // lesen alle Leseberechtigten; die menschlichen Abschlüsse sind kuratorische Entscheidungen.
@@ -759,6 +796,9 @@ export const endpoints = {
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
     remove: (id: string) => api.del<void>(`/gaps/${id}?confirm=true`),
+    // R-1663 / R-2178: begründete Ansprechpartner nach Wissensspuren (Schalter expertMatching).
+    ansprechpartner: (id: string) =>
+      api.get<AnsprechpartnerAuskunft>(`/gaps/${encodeURIComponent(id)}/ansprechpartner`),
   },
   // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
   slides: {
@@ -862,15 +902,30 @@ export const endpoints = {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
     // R-0348: `thread` = die vorangegangenen Fragen der Fragestrecke (lib/gespraechsfaden.ts).
     // Ohne Faden bleibt der Körper wie bisher.
-    ask: (question: string, locale?: ReasonerLocale, thread?: readonly string[]) =>
+    // R-1633: `fragekontext` = Werk/Schicht/Rolle des Fragenden; ohne Angabe bleibt der Körper.
+    ask: (
+      question: string,
+      locale?: ReasonerLocale,
+      thread?: readonly string[],
+      fragekontext?: Fragekontext,
+    ) =>
       api.post<AskResponse>("/ask", {
         question,
         ...(locale ? { locale } : {}),
         ...(thread && thread.length > 0 ? { thread } : {}),
+        ...(fragekontext ? { fragekontext } : {}),
       }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
+    // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
+    notHelpful: (body: {
+      koId: string;
+      receipt: string;
+      alternative?: string;
+      entwurfTitel?: string;
+    }) => api.post<{ vermerkt: boolean; entwurfId: string | null }>("/ask/not-helpful", body),
   },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
@@ -932,11 +987,14 @@ export const endpoints = {
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
+      // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
+      imageContext?: string,
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+        ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE

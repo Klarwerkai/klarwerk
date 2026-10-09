@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 // AUFTRAG-mega48 Block A: die Modalgrenze der ganzen App. Sie entsteht hier, weil hier der
 // Hintergrund entsteht — modale Flächen HOLEN sie sich (useModalBoundary), sie bekommen sie nicht
@@ -12,6 +12,10 @@ import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext"
 import { NavGuardModalBoundaryBridge } from "../app/NavGuardContext";
 // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
 import { KlaraAssistant } from "../components/KlaraAssistant";
+// KLARA-VORSCHAU (produkt:20261007:klara-vorschau): bei eingeschalteter Vorschau tritt die
+// bewegliche Klara an die Stelle des Hilfeknopfs. Der Schalter ist winzig und statisch; die Figur
+// selbst wird erst nachgeladen, wenn jemand die Vorschau eingeschaltet hat.
+import { useKlaraVorschauAktiv } from "../components/klara-vorschau/aktiv";
 // AUFTRAG-mega61 Block A/B: Hinweisbanner auf derselben Ebene wie Kopfband und Meldungsfläche —
 // bewusst NICHT im Torwächter, damit der Anmeldeweg unberührt bleibt. Der Fußbereich (LegalFooter)
 // steht seit JOB 3060 in der Hülle als Zeile „Rechtliches" im Zahnrad-Menü (shell/ZahnradMenue.tsx);
@@ -24,9 +28,31 @@ import { TutorialEinstieg, TutorialFlaeche, TutorialProvider } from "../tutorial
 import { CommandPalette } from "./CommandPalette";
 import { Kopfband } from "./Kopfband";
 import { MobileNavDrawer } from "./MobileNavDrawer";
+// N-0028: der Vorschauhinweis samt Rückweg steht während einer Rollenvorschau oben im Inhalt —
+// nicht nur im Zahnrad-Menü. Auf gesperrten Seiten bleibt er leer, dort spricht die Sperrkarte.
+import { VorschauHinweis } from "./RollenVorschau";
 import { SeitenhilfeProvider } from "./SeitenhilfeContext";
 import { ToastViewport } from "./ToastViewport";
 import { NARROW_QUERY, useMediaQuery } from "./useMediaQuery";
+
+const KlaraVorschau = lazy(() =>
+  import("../components/klara-vorschau/KlaraVorschau").then((m) => ({
+    default: m.KlaraVorschau,
+  })),
+);
+
+/** Hilfeknopf oder — bei eingeschalteter Vorschau — die bewegliche Klara. Nie beide. */
+function KlaraEbene(): JSX.Element {
+  const vorschau = useKlaraVorschauAktiv();
+  if (!vorschau) {
+    return <KlaraAssistant />;
+  }
+  return (
+    <Suspense fallback={null}>
+      <KlaraVorschau />
+    </Suspense>
+  );
+}
 
 // ================================================================================================
 // JOB 3060 · H1 — DIE HÜLLE: EIN KOPFBAND, SONST NICHTS.
@@ -113,6 +139,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                 <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
                   <ModalRegion>
                     <TutorialFlaeche />
+                    <VorschauHinweis flaeche="seite" />
                     {children}
                   </ModalRegion>
                 </main>
@@ -124,7 +151,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                 <ModalRegion>
                   <CommandPalette />
                   <ToastViewport />
-                  <KlaraAssistant />
+                  <KlaraEbene />
                 </ModalRegion>
               </div>
               <MobileNavDrawer
@@ -159,6 +186,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
                 <ModalRegion>
                   <TutorialFlaeche />
+                  <VorschauHinweis flaeche="seite" />
                   <div className="kw-inhalt h-full w-full">{children}</div>
                 </ModalRegion>
               </main>
@@ -169,7 +197,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             <ModalRegion>
               <CommandPalette />
               <ToastViewport />
-              <KlaraAssistant />
+              <KlaraEbene />
             </ModalRegion>
           </ModalBoundaryProvider>
         </div>
