@@ -726,6 +726,14 @@ const de = {
   "auth.toSignIn": "Zur Anmeldung",
   "auth.or": "oder",
   "auth.ssoButton": "Mit SSO anmelden",
+  // R-0541: die Anmeldeseite, wenn nur noch der Firmen-Login gilt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Auf dieser Installation meldest du dich mit deinem Firmenkonto an. Ein eigenes Passwort für Klara gibt es hier nicht.",
+  // R-0541 (Nacharbeit 2): das Passwort ist abgeschaltet, der Firmen-Login aber noch nicht da.
+  "auth.ssoOnlyMissing":
+    "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte wende dich an deine IT.",
+  // R-0560: der Firmen-Login über SAML.
+  "auth.samlButton": "Mit Firmenkonto (SAML) anmelden",
   "auth.ssoUnavailable": "SSO ist für diese Instanz nicht konfiguriert.",
   "auth.ssoTitle": "SSO-Anmeldung",
   "auth.ssoBusy": "Anmeldung wird abgeschlossen …",
