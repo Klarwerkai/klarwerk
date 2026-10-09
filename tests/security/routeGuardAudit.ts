@@ -354,6 +354,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "KI-Verfügbarkeitsflag (§2.1); keine Nutzerdaten.",
   },
+  // R-0599 (Auftrag ki-modus-wahrheit): die KI-Lage der Kopfzeile — Modus, Anbieter, Herkunft. Nur
+  // für Angemeldete (`ko.read`), anders als die zwei abstrahierten Statusrouten darüber; ohne
+  // Modellnamen und ohne Schlüssel.
+  "GET /api/ki-lage": { protection: "ko.read" },
   // SCRUM-490 H: statisches Add-in-Bundle (nur bei KLARWERK_ADDON_API). Bewusst öffentlich lesbar (kein
   // Key nötig); explizite Datei-Map (traversal-sicher), kein Directory-Listing, keine Nutzer-/Wissensdaten.
   "GET /addin": {
@@ -690,6 +694,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Sitzung und Dokument (pruefeExterneAusfuehrung), nicht RBAC. Sie schreibt nichts.
   // R-1175 (Nacharbeit 3): die Quellen fahren zusätzlich die EINE Sichtbarkeitsentscheidung.
   "POST /api/klara/sessions/:sessionId/zuruf": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  // R-0700 (KW-S4-24): Klaras eigener Ausführungszugang. `ko.read` wie alle Klara-Endpunkte, dazu
+  // die Sitzungsbindung (getSession) und das Einwilligungstor; die Grundlage wird wie am
+  // allgemeinen Frageweg je Betrachter gefiltert.
+  "POST /api/klara/sessions/:sessionId/execute": {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },

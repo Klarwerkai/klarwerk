@@ -519,6 +519,18 @@ const REGISTER: Record<string, Eintrag> = {
       "output/src/zuruf.ts:384/389 — nur validierte KOs, dropConfidential auf der Quellenliste; " +
       "Einwilligung (zuruf.ts:250) vor jedem Bestandszugriff.",
   },
+  // R-0700: Klaras eigener Ausführungszugang ruft DENSELBEN Fragedienst wie `POST /api/ask`.
+  // R-0700 (aus main) · Nacharbeit 28: Klaras Zugang läuft über DENSELBEN `antwortLauf` wie
+  // POST /api/ask — dieselbe nachgeprüfte Kette statt einer Prosabegründung.
+  "POST /api/klara/sessions/:sessionId/execute": {
+    urteil: "DIENST_FILTERT",
+    entscheidung: "sichtbarkeitsfilterFuer",
+    kette: [{ datei: "services/ask/src/service.ts", funktion: "ask", filter: { index: 4 } }],
+    anwendung: "grundlageSichtbarFuer",
+    grund:
+      "antwortLauf: sichtbarkeitsfilterFuer(betrachter) bzw. (schluesselBetrachter(offen)) als " +
+      "Grundlage an ask; dropConfidential bleibt daneben (ask/src/service.ts).",
+  },
   "POST /api/knowledge/check": {
     // produkt:20261007:spaces: zusätzlich zu dropConfidential filtert die Route die Kandidaten
     // mit `sichtbarkeitsfilterFuer` (führender Space) — nachgeprüft statt nur behauptet.
@@ -804,6 +816,8 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/reasoner/status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
+  // R-0599: Modus, Anbieter und Herkunft des arbeitenden KI-Zugangs — Konfigurationslage, kein KO.
+  "GET /api/ki-lage": { urteil: "KEIN_KO_INHALT", grund: "KI-Lage (Modus, Anbieter, Herkunft)." },
   "GET /api/features": { urteil: "KEIN_KO_INHALT", grund: "Schalter als Ja/Nein." },
   // R-1064: Supportweg der Installation — Zustand, geprüftes Ziel und Beschriftung aus zwei
   // Betreiberwerten (support-routes.ts:119), kein Feld aus einem Wissensobjekt.
