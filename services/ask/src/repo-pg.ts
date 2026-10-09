@@ -277,6 +277,21 @@ export class PgAnswerSnapshotRepo implements AnswerSnapshotRepo {
     return res.rows[0]?.data;
   }
 
+  // Betroffenenrechte (R-0663): nur lesend. Dieselbe Eigentumsregel wie `gehoertNutzer` — ein
+  // Altbestandsrecord ohne `owner` und eine Systemantwort gehören keinem Konto und fallen heraus.
+  async listRecordsByOwner(userId: string): Promise<AnswerRecord[]> {
+    if (userId.trim().length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<AnswerRecordRow>(
+      `SELECT data FROM answer_records
+        WHERE data->'owner'->>'kind' = 'user' AND data->'owner'->>'userId' = $1
+        ORDER BY data->>'createdAt' ASC`,
+      [userId],
+    );
+    return res.rows.map((z) => z.data);
+  }
+
   // D5 (KI aus): `vorInhaltsabruf` vor JEDER der vier Anweisungen (s. `AnswerSnapshotRepo`) —
   // Bens Befund Lauf 3 Runde 1: nach `findRecord` angehalten, lief der Rest nach der Abschaltung.
   async appendSnapshot(
