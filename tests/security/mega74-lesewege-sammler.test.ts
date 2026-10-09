@@ -544,6 +544,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "requireVisibleDraft (capture-routes.ts) — und die Antwort führt nur Feldnamen.",
   },
+  // R-1133: Entwürfe, keine Wissensobjekte. Der gefragte über requireVisibleDraft, jeder Treffer
+  // über canSeeDraft — die Antwort trägt Kennung und Titel nur sichtbarer Entwürfe.
+  "GET /api/drafts/:id/gleicher-inhalt": {
+    urteil: "EIGENER_BESTAND",
+    grund: "requireVisibleDraft + canSeeDraft je Treffer (capture-routes.ts).",
+  },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
   "GET /api/livewall/consent": {
     urteil: "EIGENER_BESTAND",
@@ -857,6 +863,9 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",
     "POST /api/ask/helpful": "Rückmeldung des Aufrufers.",
+    // R-1089: die Quittung nennt nur den Titel einer Quelle, die DIESEM Aufrufer im eigenen
+    // Antwortvorgang ausgeliefert wurde (Beleg-Bindung), nie die verantwortliche Person.
+    "POST /api/ask/report": "Rückmeldung des Aufrufers — Quittung zur eigenen Quelle.",
     // R-1649: Antwort nur `{ vermerkt, entwurfId }` — der eigene Vermerk und der eigene Entwurf.
     "POST /api/ask/not-helpful": "Rückmeldung des Aufrufers; optional eigener Entwurf.",
     "PUT /api/validation/settings": "users.manage.",

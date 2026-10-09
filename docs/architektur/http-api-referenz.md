@@ -97,7 +97,12 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/auth/register` | keines (Schalter Selbstregistrierung) | Rumpf `{ name, email, password }` | 201 Konto | 403 `REGISTRATION_DISABLED`; 429 `RATE_LIMITED`; 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 409 `EMAIL_TAKEN` |
-| `POST` | `/api/auth/login` | keines | Rumpf `{ email, password }` | 200 `{ user, token }`, setzt `kw_session` | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `POST` | `/api/auth/login` | keines | Rumpf `{ email, password }` | 200 `{ user, token }`, setzt `kw_session`; bei eigenem zweiten Faktor stattdessen 200 `{ secondFactorRequired: true, challenge, expiresInMs }` ohne Cookie | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `POST` | `/api/auth/login/second-factor` | keines (Anmeldeanfrage + Code sind der Nachweis) | Rumpf `{ challenge, code }` | 200 `{ user, token }`, setzt `kw_session` | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `GET` | `/api/auth/second-factor` | `requireUser` (Modul) | — | 200 `{ active }` | 401 |
+| `POST` | `/api/auth/second-factor/setup` | `requireUser` (Modul) | Rumpf `{ password }` | 200 `{ secret, otpauthUri }` (einmalig) | 401; 403 `FORBIDDEN` (schon eingerichtet / SSO-Konto) |
+| `POST` | `/api/auth/second-factor/confirm` | `requireUser` (Modul) | Rumpf `{ code }` | 200 `{ active: true }` | 401; 403 `FORBIDDEN` (keine offene Einrichtung) |
+| `POST` | `/api/auth/second-factor/disable` | `requireUser` (Modul) | Rumpf `{ password, code }` | 200 `{ active: false }` | 401; 403 `FORBIDDEN` (nicht eingerichtet) |
 | `POST` | `/api/auth/logout` | keines (Token, falls vorhanden) | — | 204, löscht `kw_session` | — |
 | `GET` | `/api/auth/me` | `requireUser` (Modul) | — | 200 eigenes Konto | 401 `INVALID_CREDENTIALS` |
 | `POST` | `/api/auth/office-handover` | `requireUser` (Modul) | — | 201 `{ code, expiresInMs }` (Einmalcode für das Word-Add-in) | 401 `INVALID_CREDENTIALS` |
@@ -109,7 +114,11 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/auth/reset` | keines | Rumpf `{ token, newPassword }` | 204 | 429 `RATE_LIMITED`; Dienstfehler |
 | `GET` | `/api/auth/oidc/start` | keines | — | Weiterleitung zum Anbieter, setzt die Ablauf-Cookies (state, nonce, PKCE) | 501 `OIDC_DISABLED` |
 | `POST` | `/api/auth/oidc` | keines | Rumpf `{ code, state }` | 200 `{ user, token }`, setzt `kw_session` | 501 `OIDC_DISABLED`; 400 `OIDC_INVALID` (state passt nicht); 401 `OIDC_INVALID` (Anmeldung gescheitert) |
-| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, selfRegistrationEnabled }` | — |
+| `GET` | `/api/auth/saml/start` | keines | — | Weiterleitung zum Anbieter mit AuthnRequest (Anfragekennung 10 min, einmalig), setzt den Browsernachweis `kw_saml_bindung` (HttpOnly, Pfad `/api/auth/saml`) | 501 `SAML_DISABLED` |
+| `GET` | `/api/auth/saml/metadata` | keines | — | 200 SP-Metadaten (`application/samlmetadata+xml`) | 501 `SAML_DISABLED` |
+| `POST` | `/api/auth/saml/acs` | keines (signierte SAML-Antwort ist der Nachweis) | Formularfeld `SAMLResponse` | 303 nach `/api/auth/saml/abschluss?code=…` (Abschlusscode 2 min, einmalig) — noch keine Sitzung | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` |
+| `GET` | `/api/auth/saml/abschluss` | keines (Abschlusscode und Browsernachweis des startenden Browsers) | Abfrage `code`, Cookie `kw_saml_bindung` | 303 nach `/` bzw. ins Word-Anmeldefenster, setzt `kw_session` | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` (Nachweis fehlt/passt nicht, Code unbekannt/verbraucht) bzw. dem Kontogrund |
+| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, samlEnabled, selfRegistrationEnabled, passwordLoginEnabled }` | — |
 | `POST` | `/api/auth/setup` | keines (nur auf leerer Instanz) | Rumpf `{ name, email, password }` | 201 `{ user, token }`, setzt `kw_session` — erstes Konto, Admin | 409 `ALREADY_SETUP`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/approve` | `requireAdmin` | — | 200 freigegebenes Konto | 401; 403 `FORBIDDEN`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/reset` | `requireAdmin` | Rumpf `{ password }` | 204 | 401; 403; Dienstfehler |
@@ -118,10 +127,33 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
 | `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt? }` | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
+| `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
 | `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
 `401 INVALID_CREDENTIALS`, nicht `UNAUTHENTICATED`.
+
+Bei `KLARWERK_SSO_ONLY=1` antworten `register`, `login`, `forgot` und `reset` mit
+403 `PASSWORD_LOGIN_DISABLED` (Satz `PASSWORD_LOGIN_DISABLED`, ohne eingerichteten Firmen-Login
+`SSO_ONLY_NOT_CONFIGURED`).
+
+#### 3.2a Verzeichnispflege (SCIM 2.0, `verzeichnisRoutes`, nur mit `KLARWERK_SCIM_TOKEN`)
+
+Diese Routen registriert `buildApp` nur, wenn ein Verzeichnisschlüssel (mindestens 32 Zeichen)
+gesetzt ist. Recht: Bearer mit dem Verzeichnisschlüssel (`requireVerzeichnisSchluessel`), keine
+Sitzungsrolle öffnet sie. Antworten als `application/scim+json`; Fehler im SCIM-Format mit
+zusätzlichem Feld `error`. Der letzte Administrator kann über diesen Weg nicht gesperrt oder
+herabgestuft werden (409 `mutability`).
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/scim/v2/ServiceProviderConfig` | Verzeichnisschlüssel | — | 200 Fähigkeiten (PATCH ja, Filter `userName eq`, kein Bulk) | 401 `SCIM_UNAUTHORIZED` |
+| `GET` | `/scim/v2/Users` | Verzeichnisschlüssel | Query `filter` (`userName eq "…"`), `startIndex`, `count` | 200 `ListResponse` | 401 `SCIM_UNAUTHORIZED`; 400 `invalidFilter` |
+| `GET` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 200 SCIM-User | 401 `SCIM_UNAUTHORIZED`; 404 |
+| `POST` | `/scim/v2/Users` | Verzeichnisschlüssel | SCIM-User (`userName`, `displayName`, `active`, `roles`) | 201 angelegtes Konto (Rolle aus `roles`) | 401 `SCIM_UNAUTHORIZED`; 400; 409 `uniqueness` |
+| `PUT` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | SCIM-User (ersetzt Name, Adresse, `active`, `roles`) | 200 Konto | 401 `SCIM_UNAUTHORIZED`; 404; 409 |
+| `PATCH` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | PatchOp für `active`, `userName`, `displayName`, `roles` und den gefilterten Pfad `roles[value eq "…"]` (`remove`/`replace` nur dieses Eintrags) | 200 Konto; gleicht danach die Prüfzuweisungen bestehender Objekte ab | 401 `SCIM_UNAUTHORIZED`; 400 (`invalidPath` für jeden anderen Rollenpfad); 404; 409 |
+| `DELETE` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 204 — Austritt: Konto GESPERRT (nicht gelöscht), Sitzungen enden | 401 `SCIM_UNAUTHORIZED`; 404; 409 `mutability` |
 
 ### 3.3 Wissensobjekte (`koRoutes`, `lesevarianten`, `kanten`, `bearbeitung`, `provenance`)
 
@@ -201,6 +233,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf) |
 | `PUT` | `/api/drafts/:id/pool` | `ko.create`, nur Autor | Rumpf `{ imPool: boolean }` | 200 Entwurf (`imPool: true` im gemeinsamen Pool, ohne Feld privat) | 400 `BAD_REQUEST`; 404; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor) |
 | `GET` | `/api/drafts/:id/naechster-schritt` | `ko.create` | — | 200 `{ naechsterSchritt }` oder `{}` | 404; 403 |
+| `GET` | `/api/drafts/:id/gleicher-inhalt` | `ko.create` | — | 200 `{ indexStatus, entwuerfe: [{ id, titel }] }` — nur sichtbare Entwürfe mit gleichem Inhaltshash des technischen Index | 404; 403 |
 | `POST` | `/api/drafts/:id/restore` | `ko.create` | — | 200 wiederhergestellter Entwurf | 404 |
 | `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf); 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
 | `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
@@ -249,6 +282,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
+| `POST` | `/api/ask/report` | `ko.read` | Rumpf `{ koId, receipt, grund: "antwort-falsch" \| "quelle-passt-nicht" }` | 200 Quittung `{ meldungId, koId, koTitle, grund, at, zugestelltAn, bereitsGemeldet }` | 400 `BAD_REQUEST`; 403 `FORBIDDEN`; 404 `NOT_FOUND` |
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |

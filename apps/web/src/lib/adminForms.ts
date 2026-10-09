@@ -25,9 +25,9 @@ export function newUserIssues(form: {
   return issues;
 }
 
-export function isNewUserValid(form: { name: string; email: string; password: string }): boolean {
-  return newUserIssues(form).length === 0;
-}
+// R-1349: Hier stand `isNewUserValid` (Ja/Nein über `newUserIssues`). Die Nutzeranlage fragt
+// `newUserIssues` selbst und nennt die fehlenden Felder einzeln (R-0991 Nr. 1); das Ja/Nein las
+// niemand und ist entfernt.
 
 // SCRUM-455 (Pedi 06.07.): Passwort-Reset verlangt jetzt eine Wiederholung — beide müssen
 // die Mindestlänge erfüllen UND identisch sein (ein Vertipper würde sonst den Nutzer aussperren).

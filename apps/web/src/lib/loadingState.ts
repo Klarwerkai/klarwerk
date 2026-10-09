@@ -61,9 +61,9 @@ export function groupLoadPhase(sources: readonly HasData[]): LoadPhase {
   return "loading";
 }
 
-export function isGroupLoaded(sources: readonly HasData[]): boolean {
-  return groupLoadPhase(sources) === "loaded";
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isGroupLoaded`. Die Flächen fragen die
+// Ladephase über `groupLoadPhase` (`=== "loaded"`) bzw. `gruppenlage` (`pages/MyTasks.tsx`,
+// R-0991 Nr. 48); das Prädikat rief niemand und ist entfernt.
 
 export function isGroupLoading(sources: readonly HasData[]): boolean {
   return groupLoadPhase(sources) === "loading";
@@ -117,7 +117,7 @@ export function gruppeAngehalten(sources: readonly HasData[], online: boolean): 
 // ERFOLGREICHER Abruf sie deckt und dieser jünger als die Frist ist. Beurteilt wird ATOMAR wie in
 // `groupLoadPhase`: die Gruppe ist so frisch wie ihre ÄLTESTE Quelle.
 //
-// Die Funktionen darüber (`groupLoadPhase`, `isGroupLoaded/Loading/Error`, `isGroupStale`) bleiben
+// Die Funktionen darüber (`groupLoadPhase`, `isGroupLoading/Error`, `isGroupStale`) bleiben
 // in Signatur UND Verhalten unangetastet — Start, Analytics und Bereitschaft teilen diese Datei.
 
 /**
