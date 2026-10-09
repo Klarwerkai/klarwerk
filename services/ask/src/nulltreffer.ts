@@ -28,7 +28,7 @@ import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 // je Person und Begriff EIN Eintrag mit Zähler und letztem Zeitpunkt — kein Verlauf jeder Eingabe.
 
 /** Längenbegrenzung des gespeicherten Begriffs (dieselbe Kürzungsregel wie beim Lückentext). */
-export const NULLTREFFER_BEGRIFF_MAX = 120;
+const NULLTREFFER_BEGRIFF_MAX = 120;
 
 /** So viele Einträge liefert die eigene Liste höchstens — die jüngsten zuerst. */
 export const NULLTREFFER_DECKEL = 20;
@@ -55,7 +55,7 @@ export interface NulltrefferSuche {
 const BEGRENZUNG = NULLTREFFER_BEGRIFF_MAX;
 
 /** Die Filterfelder der Bibliothekssuche (`KoFilter`), in fester Reihenfolge. */
-export const NULLTREFFER_FILTERFELDER = ["type", "status", "category", "tag"] as const;
+const NULLTREFFER_FILTERFELDER =["type", "status", "category", "tag"] as const;
 
 /**
  * Die Eingrenzung einer Suche in kanonischer Form: nur bekannte Filterfelder mit nicht-leerem

@@ -17,6 +17,8 @@ import {
   haltbarkeitAbgelaufen,
   isConfidential,
   normalizeSearchTerms,
+  responsibleKindOf,
+  responsibleOf,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -33,6 +35,13 @@ import {
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
 import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
+import {
+  ANTWORT_MELDUNG_ACTION,
+  type AntwortMeldungQuittung,
+  antwortMeldungEventId,
+  antwortMeldungId,
+  isAntwortMeldeGrund,
+} from "./antwort-meldung";
 import {
   type ZuschnittAbschnitt,
   type ZuschnittBegriff,
@@ -230,7 +239,7 @@ function fadenfragen(faden?: readonly string[]): string[] {
 //
 // DIE UMRECHNUNG GEHÖRT HIERHER UND NICHT IN DIE TABELLE. Ein zweiter, gebeugter Eintrag je Wort
 // wäre eine erfundene Setzung ohne Fundstelle (genau der Fehler, gegen den `s2-synonyme.test.ts`
-// Fall Z1 steht), und `expandSearchTerms` darf nichts ableiten (`S2_ERWEITERUNG_GRENZE.leitetAb`).
+// Fall Z1 steht), und `expandSearchTerms` darf nichts ableiten (S2-Grenze, `search-projection.ts`).
 // Hier dagegen ist nichts abzuleiten: die Grundform der DEKLARIERTEN Wörter entsteht durch genau
 // dieselbe Zerlegung, durch die auch die Frage läuft. Es wird keine Regel erfunden, sondern die
 // vorhandene auf beide Seiten desselben Vergleichs angewandt.
@@ -313,7 +322,7 @@ export function zugeordneteSuchterme(
   // `bekannt` wächst mit den Ergänzungen und entdoppelt sie über alle Paare hinweg; `getippt`
   // wächst NICHT. Das ist der Unterschied zwischen Entdopplung und Ableitung: ein ergänztes Wort
   // darf nie selbst wieder als getippt gelten und eine zweite Ergänzung auslösen (Kettenbildung),
-  // denn das wäre genau die Ableitung, die `S2_ERWEITERUNG_GRENZE.leitetAb` ausschließt.
+  // denn das wäre genau die Ableitung, die die S2-Grenze („nichts wird abgeleitet") ausschließt.
   const bekannt = new Set(getippt);
   const paare: ZuordnungsPaar[] = [];
   for (const zuordnung of zuordnungen) {
@@ -1804,6 +1813,68 @@ export class AskService {
       return;
     }
     await this.koService.bumpTrust(koId, HELPFUL_TRUST_STEP, TRUST_MAX);
+  }
+
+  // R-1089 / R-1721: „Antwort falsch" bzw. „Quelle passt nicht" melden. Dieselbe Beleg-Bindung wie
+  // `markHelpful` — nur eine in DIESEM Antwortvorgang ausgelieferte Quelle ist meldbar. Zugestellt
+  // wird an `responsibleOf(ko)`; die Glocke dieser Person liest den Eintrag (notifications-routes).
+  // Kein Trust-Abzug: eine Meldung ist ein Hinweis an einen Menschen, kein Urteil über das Objekt.
+  async reportAnswer(
+    receipt: string,
+    koId: string,
+    grund: unknown,
+    actor: string,
+  ): Promise<AntwortMeldungQuittung> {
+    if (!isAntwortMeldeGrund(grund)) {
+      throw new AskError("BAD_REQUEST", "Unbekannter Meldegrund.");
+    }
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    // Ohne Protokoll gibt es keinen Weg zum Verantwortlichen — dann wird nichts quittiert, was
+    // niemand je sehen würde. In Produktion ist das Protokoll immer verdrahtet.
+    const audit = this.audit;
+    if (!audit) {
+      throw new AskError("NOT_FOUND", "Meldeweg nicht verfügbar.");
+    }
+    const eventId = antwortMeldungEventId(actor, koId, grund, receipt);
+    const meldungId = antwortMeldungId(eventId);
+    const won = await audit.recordOnce(eventId, {
+      actor,
+      action: ANTWORT_MELDUNG_ACTION,
+      target: koId,
+      payload: {
+        meldungId,
+        grund,
+        koTitle: ko.title,
+        responsible: responsibleOf(ko),
+        responsibleKind: responsibleKindOf(ko),
+      },
+    });
+    // Ben (Nacharbeit 3): die Quittung beschreibt die Zustellung, die TATSÄCHLICH gilt — und das
+    // ist die gespeicherte. Bei einer Wiederholung hat `recordOnce` das erste Ereignis behalten;
+    // wurde inzwischen ein Eigentümer benannt oder der Titel geändert, liegt die Meldung trotzdem
+    // beim damaligen Empfänger (die Glocke liest `responsible` aus genau diesem Ereignis). Zustellart
+    // und Titel kommen deshalb aus dem Ereignis, nicht aus dem heutigen Objekt.
+    const eintrag = (await audit.list({ action: ANTWORT_MELDUNG_ACTION, target: koId })).find(
+      (e) => e.eventId === eventId,
+    );
+    const gespeichert = eintrag?.payload ?? {};
+    const kind = gespeichert.responsibleKind;
+    return {
+      meldungId,
+      koId,
+      koTitle: typeof gespeichert.koTitle === "string" ? gespeichert.koTitle : ko.title,
+      grund,
+      at: eintrag?.at ?? new Date(this.now()).toISOString(),
+      zugestelltAn: kind === "owner" || kind === "author-fallback" ? kind : responsibleKindOf(ko),
+      bereitsGemeldet: !won,
+    };
   }
 
   // FR-ASK-05: Wissenslücken verwalten.

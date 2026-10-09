@@ -31,6 +31,8 @@ import { HelpTip } from "../components/HelpTip";
 // Weg — dasselbe EINE Tor wie auf Start/Library/Capture (mega51/mega70), keine zweite
 // Rollenlogik; erhoben wird das vom mega70-Rohlink-Sammler, der seit mega71 auch hier hinsieht.
 import { RoleLink } from "../components/RoleLink";
+// R-1089: „Antwort melden" mit Quittung an die verantwortliche Person der Quelle.
+import { AntwortMelden } from "../components/fragen/AntwortMelden";
 // FE-003: die Bausteine, die das Tutorial „Fragen“ mit dieser Seite TEILT — Fragefeld, Quellenchip
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
@@ -2685,6 +2687,18 @@ export function Ask(): JSX.Element {
                       t("ask.thanked"),
                     )}
                   </button>
+                  {/* R-1089: „Antwort melden" — an die verantwortliche Person der gewählten
+                      Quelle, mit Quittung. Meldbar ist, was der Beleg trägt (`citedSources`), in
+                      der Reihenfolge der Quellenliste; `key` setzt die Fläche je Antwort neu auf. */}
+                  <AntwortMelden
+                    key={receipt}
+                    quellen={quellenAuskunft.filter((s) =>
+                      (result.citedSources ?? []).includes(s.id),
+                    )}
+                    receipt={receipt}
+                    belegGueltig={belegGueltig}
+                    onFehler={rueckmeldungAbgelehnt}
+                  />
                   {/* Ben R1, F8: eine nicht ausführbare Aktion wird erklärt, nicht bloss gesperrt. */}
                   {belegGueltig || helpful.isSuccess ? null : (
                     <p

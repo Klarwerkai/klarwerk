@@ -233,6 +233,7 @@ herabgestuft werden (409 `mutability`).
 | `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf) |
 | `PUT` | `/api/drafts/:id/pool` | `ko.create`, nur Autor | Rumpf `{ imPool: boolean }` | 200 Entwurf (`imPool: true` im gemeinsamen Pool, ohne Feld privat) | 400 `BAD_REQUEST`; 404; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor) |
 | `GET` | `/api/drafts/:id/naechster-schritt` | `ko.create` | — | 200 `{ naechsterSchritt }` oder `{}` | 404; 403 |
+| `GET` | `/api/drafts/:id/gleicher-inhalt` | `ko.create` | — | 200 `{ indexStatus, entwuerfe: [{ id, titel }] }` — nur sichtbare Entwürfe mit gleichem Inhaltshash des technischen Index | 404; 403 |
 | `POST` | `/api/drafts/:id/restore` | `ko.create` | — | 200 wiederhergestellter Entwurf | 404 |
 | `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf); 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
 | `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
@@ -278,6 +279,7 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
+| `POST` | `/api/ask/report` | `ko.read` | Rumpf `{ koId, receipt, grund: "antwort-falsch" \| "quelle-passt-nicht" }` | 200 Quittung `{ meldungId, koId, koTitle, grund, at, zugestelltAn, bereitsGemeldet }` | 400 `BAD_REQUEST`; 403 `FORBIDDEN`; 404 `NOT_FOUND` |
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |

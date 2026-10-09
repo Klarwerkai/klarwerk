@@ -840,18 +840,10 @@ export function wholeDocumentDraftPayload(input: {
   };
 }
 
-export async function createWholeDocumentDraft<TDraft>(
-  input: {
-    fileName: string;
-    text: string;
-    html?: string;
-    sourceKind?: WholeDocumentSourceKind;
-    locale?: string | null;
-  },
-  create: (payload: DraftPayload) => Promise<TDraft>,
-): Promise<TDraft> {
-  return create(wholeDocumentDraftPayload(input));
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `createWholeDocumentDraft(input, create)`,
+// eine Hülle um `create(wholeDocumentDraftPayload(input))`. Erfassen baut die Ladung über
+// `wholeDocumentDraftPayload` und legt den Entwurf selbst an (R-0991 Nr. 13); die Hülle rief
+// niemand und ist entfernt.
 
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (Muster CAPTURE_WIZARD_TEXT).
 export const CAPTURE_FILE_TEXT = {
@@ -1010,66 +1002,18 @@ export const CAPTURE_FILE_TEXT = {
   purgeUnselectedKeep: "capture.file.purgeUnselectedKeep",
 } as const;
 
-// WP-D11b (bens GELB c): PURE Meldungswahl des bildreinen Imports über die GEMEINSAME Bild-Bilanz —
-// eingebettete Bilder UND konvertierte Folien (der Aufrufer merged Letztere via mergeSlideImageInfo).
-// „Alle Bilder verworfen" erscheint NUR, wenn wirklich nichts im Beitrag gelandet ist; behaltene
-// Folien zählen als Bilder. Mit Text → keine Meldung (null).
-export function imagesOnlyNoticeKey(
-  text: string,
-  imageInfo: { total: number; dropped: number } | null,
-): string | null {
-  if (text.trim().length > 0) {
-    return null;
-  }
-  const keptImages = imageInfo ? imageInfo.total - imageInfo.dropped : 0;
-  return keptImages > 0 ? CAPTURE_FILE_TEXT.imagesOnlyNoText : CAPTURE_FILE_TEXT.imagesAllDropped;
-}
-
-// WP-D1d (Fix 4): PURE Auswahl der ehrlichen Bild-Meldung aus den EXPLIZITEN Zählern. „Original im
-// Anhang" wird NUR bei originalAttached === true behauptet (echter Upload-Erfolg). Ohne gesichertes
-// Original sind weggelassene Bilder VERLOREN — dann wird das klar benannt. Kein Bild → null.
-export interface ImportImageNoticeInput {
-  total: number;
-  compressed: number;
-  dropped: number;
-  originalAttached: boolean;
-}
-
-export interface ImportImageNotice {
-  key: string; // i18n-Schlüssel (aus CAPTURE_FILE_TEXT)
-  // WP-D1e (bens Fix 1): die drei Zahlen sauber getrennt. `kept` = tatsächlich übernommene Bilder
-  // (= total − dropped); `compressed` = davon re-encodierte; `dropped` = als Notbremse weggelassene.
-  // Alle drei reisen als eigene Platzhalter in die Meldung, damit z. B. total=4/compressed=0/dropped=0
-  // NICHT irreführend als „0 Bilder komprimiert" erscheint, sondern ehrlich „4 übernommen, davon 0 …".
-  params: { kept: number; compressed: number; dropped: number };
-}
-
-export function importImageNotice(input: ImportImageNoticeInput): ImportImageNotice | null {
-  if (input.total <= 0) {
-    return null;
-  }
-  // WP-D1e (bens Fix 1): `kept` explizit führen — nicht komprimierte, aber unverändert übernommene
-  // Bilder (klein/leicht, in files.ts BEHALTEN) zählen so sichtbar mit, statt zu verschwinden.
-  const kept = input.total - input.dropped;
-  const params = { kept, compressed: input.compressed, dropped: input.dropped };
-  if (input.originalAttached) {
-    return {
-      key: input.dropped > 0 ? CAPTURE_FILE_TEXT.imagesKeptDropped : CAPTURE_FILE_TEXT.imagesKept,
-      params,
-    };
-  }
-  return {
-    key: input.dropped > 0 ? CAPTURE_FILE_TEXT.imagesLost : CAPTURE_FILE_TEXT.imagesNoOriginal,
-    params,
-  };
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier standen `imagesOnlyNoticeKey` und
+// `importImageNotice` (samt Eingabe- und Ergebnistyp) — die Meldungswahl auf der alten
+// `imageInfo`-Bilanz. Seit JOB 513/D3B wählt der Arbeitsraum über den Bildtransfer-Vertrag
+// (`imageTransferSummary`, `imageTransferCauseNotices` weiter unten; `pages/Capture.tsx` sagt das an
+// seinem Import ausdrücklich). Beide hatten keinen Produktaufrufer mehr und sind entfernt.
 
 // ==================================================================================================
 // JOB 3254/M5c-UI — DIE BESCHRIFTUNGSBILANZ DER IMPORT-QUITTUNG.
 // ==================================================================================================
 // Sie steht hier und nicht in `pages/Capture.tsx`: die Schlüssel gehören zu `CAPTURE_FILE_TEXT`
 // (EINE Quelle für Komponente und Test), und dieses Modul ist die Stelle, an der die übrigen
-// Import-Bausteine entstehen (`importImageNotice`, `imageTransferSummary`). Ein zweiter Bauort für
+// Import-Bausteine entstehen (`imageTransferSummary`). Ein zweiter Bauort für
 // dieselbe Sorte Satz wäre eine zweite Auslegung derselben Regel.
 //
 // BAUSTEIN, NIE FERTIGER SATZ: Schlüssel plus die beiden Zahlen. Den Satz bildet allein `meldungText`

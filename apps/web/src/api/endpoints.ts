@@ -7,6 +7,8 @@ import type {
   Analytics,
   AnsprechpartnerAuskunft,
   AnswerResult,
+  AntwortMeldeGrund,
+  AntwortMeldungQuittung,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
   AnweisungEntscheidung,
@@ -925,6 +927,9 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
+    report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
+      api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),
     // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
     // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
     notHelpful: (body: {

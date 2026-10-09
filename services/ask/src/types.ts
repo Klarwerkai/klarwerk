@@ -6,8 +6,10 @@ export type GapPriority = "hoch" | "mittel" | "niedrig";
 
 export const GAP_PRIORITIES: readonly GapPriority[] = ["hoch", "mittel", "niedrig"];
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): die Prüfung liest die EINE Liste oben, statt die drei
+// Werte ein zweites Mal auszuschreiben — bis hierher hatte `GAP_PRIORITIES` keinen Leser.
 export function isGapPriority(value: unknown): value is GapPriority {
-  return value === "hoch" || value === "mittel" || value === "niedrig";
+  return (GAP_PRIORITIES as readonly unknown[]).includes(value);
 }
 
 /**
@@ -26,14 +28,6 @@ export function isGapPriority(value: unknown): value is GapPriority {
  * Es sind nur Kategorien — keine Objektkennung, kein Titel.
  */
 export type GapBelegbedarf = "wissensobjekt" | "freigabe" | "stufe" | "volltext" | "unbestimmt";
-
-export const GAP_BELEGBEDARF: readonly GapBelegbedarf[] = [
-  "wissensobjekt",
-  "freigabe",
-  "stufe",
-  "volltext",
-  "unbestimmt",
-];
 
 export interface Gap {
   id: string;
