@@ -11,13 +11,17 @@
 //       unverändert.
 //
 // WAS ECHT IST: Profilkarte (`pages/Profile.tsx`), Rückrufseite (`auth/SsoCallback.tsx`), Client
-// (`api/auth.ts`), Auth-Routen samt OIDC-Prüfung (lokales JWKS, echte Signatur). Ersetzt sind der
-// Transport (`fetch` → `app.inject`, mit einem kleinen Cookie-Speicher wie im Browser) und
-// `window.location` (jsdom kann nicht navigieren — mitgeschrieben wird, WOHIN die Seite will).
+// (`api/auth.ts`), Auth-Routen mit Start, state-/nonce-Cookies, Rückruf, Sitzung und Bestätigung.
+// Ersetzt sind der Transport (`fetch` → `app.inject`, mit einem kleinen Cookie-Speicher wie im
+// Browser), `window.location` (jsdom kann nicht navigieren — mitgeschrieben wird, WOHIN die Seite
+// will) und die SIGNATURPRÜFUNG des Anbieters: `jose` lehnt unter jsdom ab, weil `TextEncoder`/
+// `Uint8Array` dort aus einem anderen Realm als Node-`crypto` stammen (Nacharbeit 5: beide Fälle
+// rot mit OIDC_LOGIN_FAILED schon in `anmelden`). Der Testanbieter prüft deshalb die nonce selbst
+// und liefert das gewählte Konto; die echte Signaturprüfung desselben Wegs belegt
+// `sso-selbstberichtigung.test.ts` in der Node-Umgebung (P1–P7b).
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Fastify, { type FastifyInstance, type LightMyRequestResponse } from "fastify";
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import {
   QueryClient,
   QueryClientProvider,
@@ -37,8 +41,9 @@ import {
   AuthService,
   InMemorySessionRepo,
   InMemoryUserRepo,
+  type OidcConfig,
+  type OidcProvider,
   authRoutes,
-  createOidcProvider,
 } from "../../services/auth";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -49,30 +54,48 @@ const KONTO_A = { sub: "sso-a", email: "anna@firma.de", name: "Anna Alt" };
 const KONTO_B = { sub: "sso-b", email: "bea@firma.de", name: "Bea Zwei" };
 const NEU = "anna.neu@firma.de";
 
-const { publicKey, privateKey } = await generateKeyPair("RS256");
-const jwk = await exportJWK(publicKey);
-jwk.kid = "test-key";
-jwk.alg = "RS256";
-const JWKS = createLocalJWKSet({ keys: [jwk] });
-
 /** Wen der Anbieter beim nächsten Rückruf anmeldet. */
 let anbieterKonto = KONTO_A;
 /** Die nonce des laufenden Ablaufs — der Anbieter spiegelt sie im id_token. */
 let nonce = "";
 
-async function idToken(): Promise<string> {
-  return new SignJWT({
-    nonce,
-    sub: anbieterKonto.sub,
-    email: anbieterKonto.email,
-    email_verified: true,
-    name: anbieterKonto.name,
-  })
-    .setProtectedHeader({ alg: "RS256", kid: "test-key" })
-    .setIssuer(ISSUER)
-    .setAudience(AUDIENCE)
-    .setExpirationTime("1h")
-    .sign(privateKey);
+/**
+ * Der Testanbieter: dieselbe Schnittstelle wie `createOidcProvider`, ohne Signatur (s. Kopf). Er
+ * gibt beim Tausch die nonce des laufenden Ablaufs aus und verlangt sie beim Prüfen zurück —
+ * ein Rückruf mit fremder oder fehlender nonce scheitert wie beim echten Anbieter.
+ */
+function testAnbieter(): OidcProvider {
+  return {
+    autoProvision: true,
+    config: {
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      jwksUri: "x",
+      authorizeUrl: "https://idp.example.com/authorize",
+      tokenUrl: "https://idp.example.com/token",
+      clientId: AUDIENCE,
+      redirectUri: "https://app.klarwerk.ai/sso/callback",
+      autoProvision: true,
+      roles: { roleClaim: "roles", adminGroup: "kw-admin", controllerGroup: "kw-ctrl" },
+    } as OidcConfig,
+    authorizeUrl: (p) => `https://idp.example.com/authorize?state=${p.state}`,
+    exchange: async () => `nonce:${nonce}`,
+    verify: async (idToken, erwartet) => {
+      if (idToken !== `nonce:${erwartet}`) {
+        throw new Error("nonce passt nicht");
+      }
+      return {
+        sub: anbieterKonto.sub,
+        email: anbieterKonto.email,
+        name: anbieterKonto.name,
+        roles: [],
+        iss: ISSUER,
+        emailVerified: true,
+        rolesClaimPresent: false,
+      };
+    },
+    mapRole: () => "viewer",
+  };
 }
 
 let app: FastifyInstance | null = null;
@@ -134,22 +157,8 @@ async function baueApp(): Promise<void> {
     sessions: new InMemorySessionRepo(),
     audit: new AuditService({ repo: new InMemoryAuditRepo() }),
   });
-  const provider = createOidcProvider(
-    {
-      issuer: ISSUER,
-      audience: AUDIENCE,
-      jwksUri: "x",
-      authorizeUrl: "https://idp.example.com/authorize",
-      tokenUrl: "https://idp.example.com/token",
-      clientId: AUDIENCE,
-      redirectUri: "https://app.klarwerk.ai/sso/callback",
-      autoProvision: true,
-      roles: { roleClaim: "roles", adminGroup: "kw-admin", controllerGroup: "kw-ctrl" },
-    },
-    { keyResolver: JWKS, tokenExchanger: () => idToken() },
-  );
   app = Fastify();
-  await app.register(authRoutes(service, { oidc: provider }));
+  await app.register(authRoutes(service, { oidc: testAnbieter() }));
   await app.ready();
 }
 
