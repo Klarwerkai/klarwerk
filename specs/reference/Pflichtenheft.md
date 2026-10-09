@@ -31,7 +31,7 @@ Referenz-Implementierung definiert; technische Umsetzung ist frei.
 | ID | Anforderung | Prio | Abnahmekriterium |
 |---|---|---|---|
 | FR-AUTH-01 | Ersteinrichtung: erstes Konto einer leeren Instanz wird Admin. | MUSS | Leere Instanz → Setup-Maske; erstes Konto hat Admin-Rechte. |
-| FR-AUTH-02 | Selbstregistrierung (Name, E-Mail, Passwort ≥ 8 Zeichen), Konto bis Admin-Freigabe gesperrt. | MUSS | Registrierter Nutzer kann sich erst nach Freigabe anmelden; vorher Hinweis-Bildschirm. |
+| FR-AUTH-02 | Selbstregistrierung (Name, E-Mail, Passwort ≥ 8 Zeichen), Konto bis Admin-Freigabe gesperrt. **Historisch — abgelöst durch „Registrierung nur per Einladung" (Ship 8, 23.07.2026): Konten legt nur der Admin an, Selbstregistrierung ist im Auslieferungszustand abgewiesen.** | MUSS | Registrierter Nutzer kann sich erst nach Freigabe anmelden; vorher Hinweis-Bildschirm. |
 | FR-AUTH-03 | Login per E-Mail+Passwort; sichere, ablaufende Sitzung. | MUSS | Korrekte Daten → Sitzung; falsche/nicht freigegebene → klare Abweisung. |
 | FR-AUTH-04 | Logout beendet Sitzung serverseitig. | MUSS | Nach Logout kein Zugriff mit altem Token. |
 | FR-AUTH-05 | Passwörter nur **gehasht** speichern (kein Klartext, kein reversibles Verfahren). | MUSS | Datenbank enthält ausschließlich Salt+Hash. |
