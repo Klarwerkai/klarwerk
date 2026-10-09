@@ -190,6 +190,9 @@ test.describe("R-0177/R-0205 · externe Quelle im echten Browser gekennzeichnet"
 // NACHARBEIT 6 — BESTAND UND DIE ÜBRIGEN AUFRUFER
 // ================================================================================================
 
+/** Der Weg „Formular (Experten)" im Menü „Datei" des Blatts — DE und EN (`erfassen.weg.formular`). */
+const FORMULAR_EINTRAG = /^(Formular \(Experten\)|Form \(experts\))$/;
+
 interface Angelegt {
   id: string;
   titel: string;
@@ -376,13 +379,14 @@ test.describe("Nacharbeit 6 · Bestand und übrige Aufrufer im echten Browser", 
     await ensureLoggedIn(page);
     const marke = frischeMarke();
     const label = `Entwurfsquelle Altbestand ${marke}`;
+    const titel = `Entwurf mit Quelle ${marke}`;
     // Ein frisch geladener Entwurf ist nicht verändert; sollte eine Verlassen-Wache dennoch fragen,
     // wird sie bestätigt — der Fall misst die Kennzeichnung, nicht die Wache.
     page.on("dialog", (dialog) => dialog.accept());
 
     const anlage = await page.request.post("/api/drafts", {
       data: {
-        title: `Entwurf mit Quelle ${marke}`,
+        title: titel,
         statement: `Künstlicher Entwurf ${marke} für Speichern, Wiederöffnen und Reload.`,
         type: "best_practice",
         category: "Betrieb",
@@ -408,7 +412,20 @@ test.describe("Nacharbeit 6 · Bestand und übrige Aufrufer im echten Browser", 
       await pruefeDeEnTastaturReload(
         page,
         `/capture/frontdoor?draft=${encodeURIComponent(entwurfId)}&weg=formular`,
-        async (p) => {
+        async (p, nachReload) => {
+          if (nachReload) {
+            // Prüflauf d344eef3 (Nacharbeit 8): der erste Aufruf war grün, rot war erst das
+            // Neuladen. Ursache: `?weg=formular` ist ein EINMALIGER Befehl — das Blatt nimmt ihn nach
+            // dem Öffnen des Arbeitsraums aus der Adresse (`Blatt.tsx`, Weg-Effekt). Neu geladen wird
+            // also `?draft=<id>` — DERSELBE gespeicherte Entwurf, im Blatt. Ins Formular geht es
+            // danach wie für einen Menschen: „Datei ▾" → „Formular (Experten)", nur per Tastatur.
+            expect(new URL(p.url()).searchParams.get("draft")).toBe(entwurfId);
+            await expect(p.getByTestId("blatt-titel")).toHaveValue(titel, { timeout: 20_000 });
+            await tabUndEnter(p, p.getByTestId("blatt-werkzeug-datei"), "Menü „Datei“");
+            const eintraege = p.getByTestId("blatt-menue-datei").getByRole("menuitem");
+            const formular = eintraege.filter({ hasText: FORMULAR_EINTRAG });
+            await tabUndEnter(p, formular, "Eintrag „Formular (Experten)“");
+          }
           const eintrag = p.locator("li").filter({ hasText: label });
           await expect(eintrag, "der gespeicherte Entwurf zeigt seine Quelle nicht").toBeVisible({
             timeout: 20_000,

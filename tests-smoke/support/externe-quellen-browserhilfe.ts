@@ -72,12 +72,17 @@ export async function kennzeichnung(eintrag: Locator, sprache: Sprache): Promise
 
 /**
  * Je Sprache: Adresse öffnen, Quellenbereich per Tastatur erschliessen, Kennzeichnung lesen —
- * dann DIESELBE Adresse neu laden und dasselbe noch einmal. Am Ende steht die Sprache wieder auf DE.
+ * dann die Seite neu laden und dasselbe noch einmal. Am Ende steht die Sprache wieder auf DE.
+ *
+ * `nachReload` sagt `erschliesse`, ob es nach dem Neuladen läuft. Neu geladen wird die Adresse, die
+ * die Seite DANN trägt — und das ist nicht immer die angefahrene: das Erfassungsblatt nimmt einen
+ * einmaligen Befehl wie `?weg=formular` nach dem Ausführen aus der Adresse (`Blatt.tsx`, Weg-Effekt).
+ * Wer nach dem Neuladen dorthin will, geht den Bedienweg eines Menschen.
  */
 export async function pruefeDeEnTastaturReload(
   page: Page,
   url: string,
-  erschliesse: (page: Page) => Promise<void>,
+  erschliesse: (page: Page, nachReload: boolean) => Promise<void>,
   quellen: (page: Page) => Locator[],
 ): Promise<void> {
   try {
@@ -85,14 +90,14 @@ export async function pruefeDeEnTastaturReload(
       await test.step(`${sprache}: Tastatur und sichtbare Quellenkennzeichnung`, async () => {
         await stelleSpracheEin(page, sprache);
         await page.goto(url);
-        await erschliesse(page);
+        await erschliesse(page, false);
         for (const quelle of quellen(page)) {
           await kennzeichnung(quelle, sprache);
         }
       });
       await test.step(`${sprache}: dieselbe Quelle nach Reload`, async () => {
         await page.reload();
-        await erschliesse(page);
+        await erschliesse(page, true);
         for (const quelle of quellen(page)) {
           await kennzeichnung(quelle, sprache);
         }
