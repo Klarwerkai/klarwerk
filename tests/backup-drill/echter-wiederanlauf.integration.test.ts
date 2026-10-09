@@ -1,12 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildApp, buildPgServices } from "../../services/app/src/build-app";
+import { buildApp, buildPgServices, buildServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
@@ -349,6 +349,58 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
       );
       expect(belege.rows[0].n, "ko_evidence trägt keine Anhangszuordnung").toBeGreaterThan(0);
 
+      // ==========================================================================================
+      // ADMIN-13 — BEZIEHUNGEN UND RECHTE GEHÖREN ZUM BESTAND DER PROBE.
+      // ==========================================================================================
+      //
+      // Ein zweites, fiktives Konto mit anderer Rolle (Rechte) und eine kuratierte Beziehung
+      // zwischen zwei Wissensobjekten (`ko_kanten`). Ohne sie verglich das Protokoll in diesen
+      // beiden Kategorien nur 1 = 1 bzw. 0 = 0 — wahr, aber ohne Aussagekraft.
+      const zweitesKonto = await app.inject({
+        method: "POST",
+        url: "/api/users",
+        headers: kopf,
+        payload: {
+          name: "Drill Experte",
+          email: "drill-experte@example.test",
+          password: "drill-experte-123",
+          role: "experte",
+        },
+      });
+      expect(zweitesKonto.statusCode, zweitesKonto.body).toBe(201);
+      const enden: { id: string; version: number }[] = [];
+      for (const titel of ["Pumpe prüfen", "Pumpe tauschen"]) {
+        const ende = await app.inject({
+          method: "POST",
+          url: "/api/kos",
+          headers: kopf,
+          payload: {
+            confidentiality: "intern",
+            title: titel,
+            statement: `${titel} — fiktiver Prüfbestand.`,
+            type: "best_practice",
+            category: "Anlage 1",
+          },
+        });
+        expect(ende.statusCode, ende.body).toBe(201);
+        enden.push(ende.json() as { id: string; version: number });
+      }
+      const quelle = enden[0] as { id: string; version: number };
+      const ziel = enden[1] as { id: string; version: number };
+      const beziehung = await app.inject({
+        method: "POST",
+        url: `/api/kos/${quelle.id}/beziehungen`,
+        headers: kopf,
+        payload: {
+          zielId: ziel.id,
+          art: "ergaenzt",
+          richtung: "gerichtet",
+          beitragSchluessel: "admin13-drill-beziehung",
+          gesehen: { quelleVersion: quelle.version, zielVersion: ziel.version },
+        },
+      });
+      expect(beziehung.statusCode, beziehung.body).toBe(201);
+
       // Der Bestand muss in den Tabellen stehen, die Glied 7b braucht — sonst prüfte es nichts.
       for (const tabelle of ["kos", "users", "audit", "objects", "ko_evidence"]) {
         const zahl = await quellPool.query(`SELECT count(*)::int AS n FROM public."${tabelle}"`);
@@ -382,6 +434,92 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
     // nennt die Belegzeile, an der er gemessen wurde — nicht nur ein Textvorkommen.
     expect(ausgabe).toContain("Bestandsscan: keine Belegzeile ohne ihren Anhang in objects");
     expect(ausgabe).toMatch(/\(Belegzeile [^)]+\)/);
+
+    // ---------------------------------------------------------------------------------------------
+    // 3b. ADMIN-13 — DAS DATIERTE PROTOKOLL DER PROBE, AM ECHTEN DUMP.
+    // ---------------------------------------------------------------------------------------------
+    expect(ausgabe).toContain("Glied 3b — Rechte: Rollenverteilung der Konten wie im Dump");
+    const ordner = dump.slice(0, dump.lastIndexOf("/"));
+    const rohProtokoll = readFileSync(join(ordner, "letzter-drill.json"), "utf8");
+    const protokoll = JSON.parse(rohProtokoll) as {
+      ergebnis: string;
+      exitcode: number;
+      beginn: string;
+      zeit: string;
+      sicherung: string;
+      ziel: string;
+      pruefsumme: { zustand: string; sha256: string };
+      vergleich: Record<
+        string,
+        {
+          zustand: string;
+          tabellen: { tabelle: string; dump: number; datenbank: number }[];
+          rollenDump?: string;
+        }
+      >;
+    };
+    expect(protokoll.ergebnis).toBe("erfolg");
+    expect(protokoll.exitcode).toBe(0);
+    expect(protokoll.beginn).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(protokoll.sicherung).toBe(dump.slice(dump.lastIndexOf("/") + 1));
+    expect(protokoll.ziel).toBe(zielDb);
+    expect(protokoll.pruefsumme.zustand).toBe("passt");
+    expect(protokoll.pruefsumme.sha256).toBe(
+      createHash("sha256").update(readFileSync(dump)).digest("hex"),
+    );
+    for (const k of ["beitraege", "anhaenge", "beziehungen", "rechte"]) {
+      expect(protokoll.vergleich[k]?.zustand, k).toBe("gleich");
+    }
+    // Der Bestand ist wirklich da: drei Beiträge, eine Beziehung, zwei Konten mit zwei Rollen.
+    const zahl = (k: string, t: string) =>
+      protokoll.vergleich[k]?.tabellen.find((e) => e.tabelle === t)?.dump;
+    expect(zahl("beitraege", "kos")).toBe(3);
+    expect(zahl("beziehungen", "ko_kanten")).toBe(1);
+    expect(zahl("rechte", "users")).toBe(2);
+    expect(protokoll.vergleich.rechte?.rollenDump).toBe("admin/t=1 experte/t=1");
+    // Keine Zugangsdaten im Nachweis.
+    expect(rohProtokoll).not.toContain(PASSWORT);
+    expect(rohProtokoll).not.toContain(EMAIL);
+    expect(rohProtokoll).not.toContain("drill-experte-123");
+
+    // DIE VERWALTUNG LIEST DIESELBE PROBE — über die echte Route, mit BACKUP_DIR auf diesen Ordner.
+    const backupDirVorher = process.env.BACKUP_DIR;
+    process.env.BACKUP_DIR = ordner;
+    try {
+      const verwaltung = buildApp(buildServices());
+      await verwaltung.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: {
+          name: "Admin Probe",
+          email: "admin-probe@example.test",
+          password: "probe-123456",
+        },
+      });
+      const anmeldung = await verwaltung.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "admin-probe@example.test", password: "probe-123456" },
+      });
+      const auskunft = await verwaltung.inject({
+        url: "/api/admin/sicherungen",
+        headers: { authorization: `Bearer ${anmeldung.json().token}` },
+      });
+      expect(auskunft.statusCode, auskunft.body).toBe(200);
+      const wege = auskunft.json().schutzwege;
+      expect(wege.restore.zustand).toBe("erfolg");
+      expect(wege.restore.ziel).toBe(zielDb);
+      expect(wege.restore.sicherung).toBe(protokoll.sicherung);
+      // `backup.sh` hat seinen eigenen Lauf hinterlegt — der zweite Schutzweg aus derselben Lesung.
+      expect(wege.letzterLauf.zustand).toBe("erfolg");
+      expect(auskunft.body).not.toContain(PASSWORT);
+    } finally {
+      if (backupDirVorher === undefined) {
+        delete process.env.BACKUP_DIR;
+      } else {
+        process.env.BACKUP_DIR = backupDirVorher;
+      }
+    }
 
     // ---------------------------------------------------------------------------------------------
     // 4. DER INHALTSBELEG — gegen die WIEDERHERGESTELLTE Datenbank, ohne eine Migration.
@@ -449,9 +587,17 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
       await quellPool.end();
     }
 
-    const { status, ausgabe } = fahreDrill(v, sichere(v, "w2"), zielDbBefund);
+    const dumpW2 = sichere(v, "w2");
+    const { status, ausgabe } = fahreDrill(v, dumpW2, zielDbBefund);
     expect(status, ausgabe).toBe(73);
     expect(ausgabe).toContain("ABBRUCH (73)");
+    // ADMIN-13: auch der Befund hinterlässt sein Protokoll — Fehler, Exit 73, Anhänge abweichend.
+    const befund = JSON.parse(
+      readFileSync(join(dumpW2.slice(0, dumpW2.lastIndexOf("/")), "letzter-drill.json"), "utf8"),
+    ) as { ergebnis: string; exitcode: number; vergleich: { anhaenge: { zustand: string } } };
+    expect(befund.ergebnis).toBe("fehler");
+    expect(befund.exitcode).toBe(73);
+    expect(befund.vergleich.anhaenge.zustand).toBe("abweichend");
     expect(ausgabe).toContain(objektId);
     expect(ausgabe).not.toContain("DRILL BESTANDEN");
     // Und der Beweis, dass die Zählung diesen Schaden NICHT gesehen hätte: sie war grün.
