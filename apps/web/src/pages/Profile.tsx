@@ -523,9 +523,9 @@ export function Profile(): JSX.Element {
   const [busy, setBusy] = useState(false);
   // R-0582: Rücksprung aus der SSO-Bestätigung (`/profil?kontodaten=sso`) öffnet die Karte wieder.
   const ausSso = new URLSearchParams(useLocation().search).get("kontodaten") === "sso";
-  const [detail, setDetail] = useState<
-    null | "passwort" | "wirkung" | "kontodaten" | "zweifaktor"
-  >(ausSso ? "kontodaten" : null);
+  const [detail, setDetail] = useState<null | "passwort" | "wirkung" | "kontodaten" | "zweifaktor">(
+    ausSso ? "kontodaten" : null,
+  );
   const zweiFaktor = useQuery({ queryKey: ZWEI_FAKTOR_KEY, queryFn: authApi.secondFactorStatus });
   const zurueck = (): void => setDetail(null);
   // JOB 3742 · DIE SEITENHILFE DIESER FLÄCHE — und warum hier der HAKEN steht und nicht der
