@@ -8,8 +8,10 @@ import {
 import type { AuditService } from "../../../audit";
 import type { ConflictService, OverlapService } from "../../../conflicts";
 import type { NotificationSeenRepo } from "../../../notifications";
+import { can } from "../../../rbac";
 import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
+import type { LoeschantragMeldung } from "../loeschantraege";
 import {
   type FrischeNotice,
   type ImpactNotice,
@@ -44,6 +46,9 @@ export interface NotificationRoutesDeps {
   // Optional, weil der Feed auch ohne diesen Dienst gebaut werden kann; die Sichtbarkeit läuft
   // unten in jedem Fall über dieselbe Prüfung wie bei den Zuweisungen.
   kenntnisnahmen?: { meldungenFuer(nutzerId: string): Promise<KenntnisnahmeNotice[]> };
+  // Löschanträge (R-0661): die offenen Anträge als Verwalteraufgabe mit Frist. Optional wie die
+  // Kenntnisnahme; abgefragt wird nur für Betrachter mit `users.manage`.
+  loeschantraege?: { offene(): Promise<LoeschantragMeldung[]> };
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung (R-0248), Wochenvorlage (R-0266) und
   // Prüfanforderung an Autor bzw. Nachfolger (R-1635) — `frische-meldungen.ts`. Optional wie die
   // Kenntnisnahme; die Sichtbarkeit läuft unten über dieselbe Prüfung.
@@ -160,6 +165,10 @@ async function loadFeed(
   // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
   const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
   const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
+  // Löschanträge sind Arbeit der Verwaltung: nur wer Konten löschen darf, sieht sie — und damit
+  // die Namen der Antragsteller.
+  const loeschantraege =
+    deps.loeschantraege && can(user.role, "users.manage") ? await deps.loeschantraege.offene() : [];
   // R-1089: dieselbe Prüfung — wer das Objekt (inzwischen) nicht öffnen darf, sieht den Titel nicht.
   const sichtbareReklamationen = await sichtbareEintraege(
     user,
@@ -187,6 +196,7 @@ async function loadFeed(
     assignments: sichtbareZuweisungen,
     impacts,
     kenntnisnahmen: sichtbareKenntnisnahmen,
+    loeschantraege,
     reklamationen: sichtbareReklamationen,
     frische: sichtbareFrische,
   }).map((n) => ({
