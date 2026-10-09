@@ -14,7 +14,17 @@ weitere Konten erst nach Freigabe nutzbar. Passwörter nur gehasht, Sitzungen se
 - [ ] **Gegeben** eine Instanz ohne Nutzer, **wenn** ich die App öffne, **dann** erscheint die Setup-Maske.
 - [ ] **Gegeben** ich lege das erste Konto an, **dann** hat es Admin-Rechte.
 
-### FR-AUTH-02 · Selbstregistrierung mit Freigabe (MUSS)
+### FR-AUTH-02 · Selbstregistrierung mit Freigabe (MUSS) — historisch, abgelöst
+> **Abgelöst durch „Registrierung nur per Einladung" (R-0527, Ship 8 vom 23.07.2026).** Niemand
+> legt sich selbst ein Konto an; `POST /api/auth/register` antwortet im Auslieferungszustand 403
+> `REGISTRATION_DISABLED` und legt nichts an (`services/auth/src/routes.ts`, Schalter
+> `KLARWERK_SELF_REGISTRATION`, Vorgabe AUS — nur für Entwicklungs-/Testaufbauten). Zugang entsteht
+> über die kontrollierte Ersteinrichtung (FR-AUTH-01) und danach ausschließlich über die persönliche
+> Kontoanlage durch den Admin (`POST /api/users`, optional als befristeter Gast). Dort gelten Name,
+> E-Mail und Passwort ≥ 8 Zeichen weiter. Der Wartebildschirm bleibt nur für den eingeschalteten
+> Entwicklungsweg bestehen. Messung: `tests/registrierung-einladung/`, `tests/security/vip2-gate.test.ts`.
+> Der Originalwortlaut unten bleibt als historische Anforderung erhalten.
+
 - Als neue Person möchte ich mich registrieren (Name, E-Mail, Passwort ≥ 8 Zeichen).
 - [ ] **Gegeben** ein registriertes, nicht freigegebenes Konto, **wenn** ich mich anmelde, **dann** sehe ich einen Hinweis-Bildschirm und keinen Zugriff.
 - [ ] **Gegeben** Admin gibt frei, **dann** ist Anmeldung möglich.
