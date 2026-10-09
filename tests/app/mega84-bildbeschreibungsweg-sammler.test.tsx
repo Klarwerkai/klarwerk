@@ -2500,8 +2500,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `documentTitle`. Dieser Auftrag hat seit 476c51a3 kein Bauteil hinzugefügt. 527 + 8 = 535.
     // EHRLICH GESAGT: GERECHNET, nicht gemessen — der Sammler muss am Kandidaten erneut laufen;
     // weicht er ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 18: GEMESSEN 536. Am Kandidaten ca505431 meldete der
+    // Sammler wörtlich „gemessen: 536 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 699
+    // Quelldateien … expected { komponenten: 536, … } to deeply equal { komponenten: 535, … }".
+    // Dieser Auftrag hat seit Nacharbeit 17 keine Quelldatei der Grundmenge geändert; die EINE
+    // Komponente über der gerechneten 535 kam mit dem Basisstand dieses Kandidaten und ist ohne
+    // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind
+    // unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 535,
+      komponenten: 536,
       anbieter: 1,
       traeger: 2,
     });
