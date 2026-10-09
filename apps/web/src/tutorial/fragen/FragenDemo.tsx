@@ -49,6 +49,7 @@ import {
   QuellenChipInhalt,
   chipPunkt,
 } from "../../components/fragen/Quellenplaketten";
+import { ANTWORT_MENUEPUNKTE } from "../../components/fragen/antwortMenue";
 import { FRAGEN_ZIEL } from "../../components/fragen/ziele";
 import { AntwortText } from "../../components/start/AntwortText";
 import { OverflowMenu } from "../../components/start/OverflowMenu";
@@ -241,11 +242,7 @@ function DemoAntwortKarte({
           label={t("ask.menu.label")}
           testId="tutorial-demo-menue"
           griffRef={griffRef}
-          punkte={[
-            { id: "print", label: t("ask.export.print") },
-            { id: "download", label: t("ask.export.download") },
-            { id: "mehr", label: t("ask.menu.mehr") },
-          ]}
+          punkte={ANTWORT_MENUEPUNKTE.map((p) => ({ id: p.id, label: t(p.labelKey) }))}
           onWahl={(id) => {
             if (id === "mehr") {
               setMenueHinweis(false);

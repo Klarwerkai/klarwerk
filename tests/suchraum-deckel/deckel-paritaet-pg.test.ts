@@ -100,6 +100,11 @@ async function suchanweisung(query: KoSearchQuery, rows = []) {
 // lebend. Zweite Abweichung, ebenso bewusst: seit Aufnahme gesamt-suchindex-aktualitaet (R-0483)
 // schliesst derselbe JOIN in einem Führungsartikel aufgegangene Artikel aus (`mergedInto`).
 // Auswahl, Ordnung und Parameter sind unverändert.
+//
+// Dritte bewusste Abweichung (Suchprojektion, R-1134): vor der unveränderten Trefferbedingung steht
+// die indexgestützte Vorauswahl `(p.ko_id, p.ko_version) IN (… UNION …)` als weiteres UND-Glied. Sie
+// liefert dieselbe Menge über die Trigramm-Indizes; Treffer, Ordnung, Deckel und Parameter bleiben
+// die des Basisstands (Begründung in search-projection-repo-pg.ts an `vorauswahl`).
 const SQL_VORGABE = `
       SELECT p.ko_id, p.ko_version, p.projection_version, p.content_hash, p.status, p.language,
              (p.title_text ILIKE $3 ESCAPE '\\') AS m_title_text, (p.statement_text ILIKE $3 ESCAPE '\\') AS m_statement_text, (COALESCE(md.category_text, '') ILIKE $3 ESCAPE '\\') AS m_category_text,
@@ -107,7 +112,13 @@ const SQL_VORGABE = `
         FROM ko_search_projections p
         JOIN kos k ON k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1) = p.ko_version AND (NOT (k.data ? 'deletedAt') OR k.data->'deletedAt' IN ('null'::jsonb, '""'::jsonb, 'false'::jsonb, '0'::jsonb)) AND COALESCE(jsonb_typeof(k.data->'mergedInto'), 'null') = 'null'
         LEFT JOIN ko_metadata_projections md ON md.ko_id = p.ko_id
-       WHERE p.projection_version = $1 AND p.generation = $2 AND (p.search_text ILIKE $3 ESCAPE '\\' OR COALESCE(md.category_text, '') ILIKE $3 ESCAPE '\\' OR COALESCE(md.tag_text, '') ILIKE $3 ESCAPE '\\')
+       WHERE p.projection_version = $1 AND p.generation = $2 AND (p.ko_id, p.ko_version) IN (
+           SELECT s.ko_id, s.ko_version FROM ko_search_projections s
+            WHERE s.search_text ILIKE $3 ESCAPE '\\'
+           UNION
+           SELECT s.ko_id, s.ko_version FROM ko_metadata_projections mt
+             JOIN ko_search_projections s ON s.ko_id = mt.ko_id
+            WHERE mt.category_text ILIKE $3 ESCAPE '\\' OR mt.tag_text ILIKE $3 ESCAPE '\\') AND (p.search_text ILIKE $3 ESCAPE '\\' OR COALESCE(md.category_text, '') ILIKE $3 ESCAPE '\\' OR COALESCE(md.tag_text, '') ILIKE $3 ESCAPE '\\')
        ORDER BY (k.status='validiert') DESC, (k.data->>'trust')::int DESC NULLS LAST, p.ko_id`;
 
 describe("JOB 3048 · P1 — wer die Güte nicht anfordert, bekommt die Anweisung des Basisstands", () => {
