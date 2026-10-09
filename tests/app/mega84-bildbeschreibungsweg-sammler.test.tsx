@@ -2303,8 +2303,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `WeiterUntenHinweis` dieses Auftrags: 532 + 6 + 1 = 539 deckt sich mit der Messung. Kein
     // Bauteil bietet eine Bildbeschreibung an oder trägt `documentTitle`: `anbieter` 1 und
     // `traeger` 2 sind unverändert (beide Seiten der Meldung nennen 1 und 2).
+    //
+    // gesamt-navigation Nacharbeit 15: GEMESSEN 540. Am Kandidaten 15ec8596 meldete der Sammler
+    // wörtlich „gemessen: 540 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 690 Quelldateien …
+    // expected { komponenten: 540, … } to deeply equal { komponenten: 539, … }". Erneut kam ein
+    // Hauptstand dazu (85f3f691d, darin „Eigene Zwei-Faktor-Anmeldung konkretisieren" fb1b3cae7);
+    // laut Diff 0532195b..15ec8596 bringt er genau EINE Komponente mit — `ZweiFaktorDetail` — und
+    // eine Quelldatei (`texte/zweifaktor.ts`, 689 → 690), entfernt keine. 539 + 1 = 540 deckt sich
+    // mit der Messung. Dieser Auftrag hat dabei kein Bauteil hinzugefügt. `anbieter` 1 und
+    // `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 539,
+      komponenten: 540,
       anbieter: 1,
       traeger: 2,
     });
