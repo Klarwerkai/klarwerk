@@ -1,4 +1,6 @@
 import type { DokumentHerkunft } from "./dokumentakte";
+import type { KoGeltung } from "./geltung";
+import type { NegativwissenAngaben } from "./negativwissen";
 
 // FR-KO-02: fünf Wissensarten (Pflichtenheft §3.5).
 export type KnowledgeType =
@@ -15,6 +17,13 @@ export const KNOWLEDGE_TYPES: readonly KnowledgeType[] = [
   "technik",
   "negativwissen",
 ];
+
+// R-0086 (aufnahme:20260922:gesamt-wissen-metadaten): ob die Aussage eine TATSACHE festhält oder eine
+// HANDLUNGSANWEISUNG gibt. Eine eigene Angabe neben der Wissensart — sie sagt nicht, woher das Wissen
+// kommt (Bauchgefühl … Negativwissen), sondern was der Leser damit tun soll.
+export type KoAussageart = "tatsache" | "handlungsanweisung";
+
+export const KO_AUSSAGEARTEN: readonly KoAussageart[] = ["tatsache", "handlungsanweisung"];
 
 export type KoStatus = "offen" | "validiert";
 
@@ -243,12 +252,36 @@ export interface KoComment {
 // `text` IST GEKÜRZT UND DESHALB NUR ANZEIGE (BEN, Nacharbeit 3). Die Identität trägt
 // `fingerabdruck`: SHA-256 über Art, VOLLSTÄNDIGEN Abschnitt und VOLLSTÄNDIGEN normalisierten
 // Inhalt (`stellen-fingerabdruck.ts`). Zwei Absätze mit demselben Anfang sind damit zwei Stellen.
+//
+// PLAN-SPRACHANMERKUNG, NACHARBEIT 2 (BEN) — DIE VIERTE ART `anhang`: eine HOCHGELADENE Zeichnung
+// (PDF, CAD-Datei, Bild) am Wissensobjekt, nicht ein Bild im Text. `text` ist die `objectId` des
+// Anhangs (seine Identität, wie beim Bild die `data-image-id`), `abschnitt` bleibt leer, `seite` nennt
+// bei mehrseitigen Dokumenten (PDF) die Seite. Geprüft wird gegen die Anhangsliste der Fassung
+// (`stelleAmAnhang`), nicht gegen den Text.
 export interface KoCommentStelle {
   koVersion: number;
-  art: "absatz" | "tabelle" | "bild";
+  art: "absatz" | "tabelle" | "bild" | "anhang";
   abschnitt: string;
   text: string;
   fingerabdruck: string;
+  /** PLAN-SPRACHANMERKUNG — die Seite eines mehrseitigen Anhangs (ab 1). Nur bei `art: "anhang"`. */
+  seite?: number;
+  /**
+   * PLAN-SPRACHANMERKUNG (R-1625, R-2177) — WO IN DER ZEICHNUNG die Notiz hängt. Nur bei `art: "bild"`
+   * und `art: "anhang"`.
+   *
+   * Fehlt das Feld, gilt die Rückfrage dem ganzen Bild — wie jede Bildrückfrage vor dieser Regel.
+   * Die Position ist RELATIV zum Bild (0 = links/oben, 1 = rechts/unten) und damit unabhängig von der
+   * Anzeigegrösse. Sie gehört NICHT zur Identität der Stelle (`fingerabdruck`): das Bild wird über
+   * seinen Anker wiedergefunden, die Position reist unverändert mit.
+   */
+  punkt?: KoStellenPunkt;
+}
+
+/** PLAN-SPRACHANMERKUNG — eine Position im Bild, relativ zu Breite (`x`) und Höhe (`y`), je 0..1. */
+export interface KoStellenPunkt {
+  x: number;
+  y: number;
 }
 
 // ================================================================================================
@@ -467,6 +500,12 @@ export interface KoAppendOp {
   sourceIds: string[];
 }
 
+/** R-0206 / R-0248: wer wann bestätigt hat, dass das Wissen weiterhin stimmt (s. `frische.ts`). */
+export interface KoFrischeSignal {
+  at: string;
+  by: string;
+}
+
 /** R-0658: welche Art Schutzdaten erkannt wurde — nie der Wert selbst. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
@@ -531,6 +570,19 @@ export interface KnowledgeObject {
   // abgeleitet oder nachgetragen; der Altbestand erscheint in der Facette als „ohne Wert".
   // Gesetzt wird es beim Anlegen (`CreateKoInput.domain`) oder nachträglich über `setDomain`.
   domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung, gesetzt beim Erfassen (`CreateKoInput.aussageart`).
+  // Optional und ohne Migration (Voll-JSONB); FEHLT das Feld, ist es nicht angegeben — es wird
+  // weder aus Maßnahmen noch aus dem Text abgeleitet.
+  aussageart?: KoAussageart;
+  // ============================================================================================
+  // R-1632 / R-1633 (aufnahme:20260922:gesamt-standortwissen) — WO DIESER PUNKT GILT.
+  // ============================================================================================
+  //
+  // Konzern-Standard, Werks-Praxis oder schichtspezifisch, optional mit Rolle; Regel und Vererbung
+  // in `geltung.ts`. Gesetzt nur über `setGeltung`; die Anlage- und Überarbeitungswege übernehmen es
+  // nicht aus dem Rumpf. Optional, keine Migration; fehlt es, ist die Geltung UNBEKANNT und wird
+  // nicht abgeleitet.
+  geltung?: KoGeltung;
   // ============================================================================================
   // produkt:20261007:spaces — DER FÜHRENDE SPACE. ER BESTIMMT, WER DIESES OBJEKT SEHEN DARF.
   // ============================================================================================
@@ -560,6 +612,17 @@ export interface KnowledgeObject {
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
   confidentiality?: Confidentiality;
+  // R-1664 / R-2179 / R-2180: die geführt erfassten Angaben eines Negativwissen-Falls (Auslöser,
+  // falsche Annahme, Warnsignale, Vermeidungsregel …) und die Art seines Bezugs. Nur bei der
+  // Wissensart `negativwissen`; Begründung und Stufenregel in `negativwissen.ts`. Optional, keine
+  // Migration — fehlt das Feld, wurde der Fall nicht geführt erfasst.
+  negativwissen?: NegativwissenAngaben;
+  // aufnahme:20260922:gesamt-wissen-frische (R-0652 / FR-EXT-06): Schutzbedarf „öffentlich" — eine
+  // VERFEINERUNG von „intern", keine vierte Zugriffsstufe: Sichtbarkeit und Egress richten sich
+  // weiter allein nach `confidentiality`. Wirksam nur, solange das Objekt intern ist; eine
+  // Höherstufung entfernt die Marke (`KoService.setConfidentiality`). Gesetzt nur über
+  // `KoService.setOeffentlich`. Optional, keine Migration; fehlt es, ist das Objekt nicht öffentlich.
+  oeffentlich?: true;
   // ============================================================================================
   // JOB 679 / D2 (K1.2, Weg A) — WO DAS WISSEN HERKOMMT, UND WARUM ES HIER STEHT.
   // ============================================================================================
@@ -628,7 +691,40 @@ export interface KnowledgeObject {
   // Ein stiller `owner = author`-Default beim Anlegen ist ausdrücklich verworfen: er wäre genau die
   // Gleichsetzung von Erzeuger und Verantwortlichem, die Pedis Entscheidung zurückgewiesen hat.
   ownership?: KnowledgeOwnership;
+  // ============================================================================================
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-0248) — „STIMMT WEITERHIN", OHNE NEUE PRÜFUNG.
+  // ============================================================================================
+  //
+  // `frischeSignal`: wer das Wissen zuletzt angewendet und bestätigt hat, dass es weiterhin stimmt.
+  // `fristBestaetigung`: dasselbe, wenn es der Verantwortliche (`responsibleOf`) war — nur das
+  // verlängert die Haltbarkeit. Gesetzt ausschliesslich über `KoService.bestaetigeFrische`; keine
+  // neue Fassung, kein Statuswechsel. Optional, keine Migration; fehlt es, gab es kein Signal.
+  // Regel und Ableitung in `frische.ts`.
+  frischeSignal?: KoFrischeSignal;
+  fristBestaetigung?: KoFrischeSignal;
+  // R-0248 (Nacharbeit 7): die Kategorie, mit der der laufende Stand begann (`ab` = Beginn des
+  // Stands), festgehalten beim ersten Kategoriewechsel innerhalb dieses Stands — damit ein reines
+  // Umkategorisieren eine abgelaufene Frist nicht verlängert. Gesetzt nur von
+  // `KoService.updateCategory`; Regel in `frische.ts` (`fristKategorie`). Optional, keine Migration.
+  fristGrundlage?: { kategorie: string; ab: string };
+  // ============================================================================================
+  // R-0082 / R-0477 (aufnahme:20260922:gesamt-wissen-metadaten) — MEHRERE ANLAGEN, EINE QUELLE.
+  // ============================================================================================
+  //
+  // Die Anlagen dieses Objekts stehen allein HIER am Objekt, nicht in den Lebenszyklus-Kopplungen;
+  // eine Kennung kann an mehreren Objekten hängen und ein Objekt an mehreren Kennungen. Gelesen
+  // wird ausschliesslich über `anlagenVon` (asset.ts), geschrieben über `anlagenFelder`:
+  //   · keine oder EINE Anlage → nur `asset`, genau wie vor dieser Regel (Altbestand unverändert);
+  //   · ZWEI und mehr → `assets` trägt die Liste (Normalform, ohne Doppelte, Erfassungsreihenfolge)
+  //     und `asset` spiegelt deren erste für die Leser, die eine einzelne Anlage erwarten
+  //     (Konflikterkennung `sameAsset`, Word-Add-in, Export). Der Spiegel ist keine zweite Quelle:
+  //     er entsteht nur zusammen mit der Liste.
   asset: string | null;
+  assets?: string[];
+  // R-1690 / FE-CAP-08: der beim Erfassen gesetzte Re-Validierungstermin (Kalendertag
+  // `JJJJ-MM-TT`) — bis wann der Inhalt erneut geprüft werden soll. Optional, keine Migration;
+  // fehlt er, ist kein Termin angegeben und es wird keiner abgeleitet.
+  revalidierungAm?: string;
   createdAt: string;
   history: HistoryEntry[];
   comments: KoComment[];
@@ -744,6 +840,28 @@ export interface KnowledgeObject {
   // Frist automatisch endgültig entfernt. Demo-Daten landen NIE hier (immer hart).
   deletedAt?: string;
   deletedBy?: string;
+  // ============================================================================================
+  // R-1107 (Aufnahme gesamt-dublettenvergleich) — DER AUFGEGANGENE ARTIKEL BLEIBT, MIT VERWEIS.
+  // ============================================================================================
+  //
+  // Gesetzt ausschliesslich vom Zusammenführen-Assistenten (`KoService.markMergedInto`), wenn der
+  // Inhalt dieses Objekts in einen Führungsartikel übernommen wurde. Das Objekt wird dabei NICHT
+  // gelöscht und nicht in den Papierkorb gelegt (der endlöscht nach Frist und nähme Quellen,
+  // Kommentare und Historie mit): es bleibt dauerhaft lesbar und nennt den verbleibenden Artikel.
+  // Additiv im JSONB, keine Migration; fehlt das Feld, ist das Objekt in nichts aufgegangen.
+  mergedInto?: KoMergedInto;
+}
+
+/** R-1107: wohin ein aufgegangener Artikel zusammengeführt wurde (s. `KnowledgeObject.mergedInto`). */
+export interface KoMergedInto {
+  /** Der verbleibende Führungsartikel. */
+  koId: string;
+  /** Seine Fassung, die den Inhalt aufgenommen hat (eine neue, ungeprüfte Fassung). */
+  version: number;
+  /** Der Dublettenbefund, über den zusammengeführt wurde. */
+  overlapId: string;
+  at: string;
+  by: string;
 }
 
 // SCRUM-422: Papierkorb-Zeile für den Admin — nur Metadaten, keine Inhalte.
@@ -866,6 +984,9 @@ export type KoErrorCode =
   // ein Löschen darf nicht die Nebenwirkung eines Tippfehlers sein (fail-closed, wie
   // INVALID_CONFIDENTIALITY daneben).
   | "INVALID_OWNERSHIP"
+  // R-0507: nur der benannte Eigentümer selbst kann seine Verantwortung zurückgeben. Wer nicht
+  // Eigentümer ist (oder wo keiner benannt ist), bekommt diesen Code — an der Route ein 403.
+  | "NOT_OWNER"
   // SCRUM-509 R2: Herabstufung ohne Prüfer-/Admin-Rolle (atomar an der Datenschicht geprüft).
   | "DOWNGRADE_FORBIDDEN"
   // SCRUM-509 R3: optimistische Concurrency — der Voll-Objekt-Write war veraltet (rowVersion-Konflikt).

@@ -81,6 +81,7 @@ Die Kernregel ist eine Architekturregel und wird geprüft: `.dependency-cruiser.
 | `services/provenance` | Herkunftskette (`provenanceRoutes`) |
 | `services/confluence` | Confluence-Quelladapter (`createConfluenceAdapterFromEnv`), Zugangsstand |
 | `services/sharepoint` | SharePoint-Quelladapter, Zugangsstand |
+| `services/jira` | Jira-Quelladapter (`createJiraAdapterFromEnv`: Vorgänge und Epics eines Projekts, Projektrollen als Leserechte), Zugangsstand |
 
 ## 4 Ablagen: ein Port, zwei Adapter
 
@@ -97,6 +98,7 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `users` | `InMemoryUserRepo` | `PgUserRepo` |
 | `sessions` | `InMemorySessionRepo` | `PgSessionRepo` |
 | `resetTokens` | `InMemoryPasswordResetRepo` | `PgPasswordResetRepo` |
+| `secondFactors` | `InMemorySecondFactorRepo` | `PgSecondFactorRepo` |
 | `drafts` | `InMemoryDraftRepo` | `PgDraftRepo` |
 | `gaps` | `InMemoryGapRepo` | `PgGapRepo` |
 | `ratings` | `InMemoryRatingRepo` | `PgRatingRepo` |

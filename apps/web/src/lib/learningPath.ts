@@ -17,9 +17,6 @@ export function completedCount(path: LearningPath, done: readonly string[]): num
   return path.steps.filter((s) => done.includes(s.id)).length;
 }
 
-export function nextOpenStep(
-  path: LearningPath,
-  done: readonly string[],
-): LearningPath["steps"][number] | null {
-  return path.steps.find((s) => !done.includes(s.id)) ?? null;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `nextOpenStep` (erster offener Lernschritt).
+// Der Start zeigt die offenen Schritte über `learningOpenSteps` (`pages/Start.tsx`, R-0991 Nr. 39);
+// die Funktion rief niemand und ist entfernt.

@@ -1,16 +1,36 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  type AntwortBelastbarkeit,
+  type AntwortZuschnitt,
+  type AskAntwortZuschnitt,
   AskError,
   type AskService,
+  type BegriffHerkunft,
+  type BelegteBeziehung,
+  type FrageAnlass,
+  GESPRAECHSFADEN_MAX_FRAGEN,
+  type ZuschnittBegriff,
   answerEvidence,
+  antwortBelastbarkeit,
+  antwortZuschnitt,
   isGapPriority,
+  konfliktGegenseiten,
   redactGapForViewer,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
-import type { KnowledgeObject, KoService } from "../../../knowledge-object";
+import {
+  GELTUNG_TEXT_MAX,
+  type KnowledgeObject,
+  type KoService,
+  normalizeFragekontext,
+  responsibleOf,
+} from "../../../knowledge-object";
+import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
+import { type AbsatzBeleg, absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
+import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
@@ -67,6 +87,27 @@ const askBodySchema = {
     // Dokumenttext (Bens Befund B1, Runde 2: ältere Fenster melden nichts). Begründung an
     // `frageAusDokument`.
     questionSource: { type: "string" },
+    // R-0348 — DER GESPRÄCHSFADEN: die vorangegangenen Fragen derselben Fragestrecke, älteste
+    // zuerst, je Frage dasselbe Maß wie `question`. Mehr als `GESPRAECHSFADEN_MAX_FRAGEN` ist 400
+    // aus dem Schema. Wirksam NUR im Konsolenzweig (s. `fadenErlaubt` im Handler); Add-on- und
+    // Word-Wege lassen ihn liegen, ihre Egress-Verträge bleiben damit unverändert.
+    thread: {
+      type: "array",
+      maxItems: GESPRAECHSFADEN_MAX_FRAGEN,
+      items: { type: "string", maxLength: 8_000 },
+    },
+    // R-1633 — WOFÜR GEFRAGT WIRD: Werk, Schicht, Rolle (je optional, ≤ GELTUNG_TEXT_MAX). Wirkt
+    // wie der Faden NUR im Konsolenzweig: es ordnet gleich relevante Quellen nach ihrer Geltung und
+    // liefert die Auskunft `geltung`. Add-on- und Word-Wege lassen es liegen.
+    fragekontext: {
+      type: "object",
+      properties: {
+        werk: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        schicht: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+        rolle: { type: "string", maxLength: GELTUNG_TEXT_MAX },
+      },
+      additionalProperties: false,
+    },
   },
 } as const;
 
@@ -115,6 +156,193 @@ export interface AskRouteDeps {
    * werden. Fehlt die Quelle, fällt dort JEDES Objekt mit führendem Space weg (fail-closed).
    */
   offeneSpaces?: (() => Promise<ReadonlySet<string>>) | undefined;
+  /**
+   * R-1649: legt den abweichenden Weg aus „nicht hilfreich, ich habe es so gemacht …" als Entwurf
+   * an. Eine schmale Funktion statt des Erfassungsdienstes (dieselbe Bauart wie `hilfreich` in
+   * `ko-routes.ts`); die Composition-Root verdrahtet `CaptureService.createDraft`. Fehlt sie, wird
+   * ein mitgeschickter Weg ehrlich mit 400 abgewiesen statt still verworfen.
+   */
+  alternativeAlsEntwurf?:
+    | ((entwurf: { title: string; statement: string }, author: string) => Promise<{ id: string }>)
+    | undefined;
+  /**
+   * AUFNAHME 20260922 · R-0322: wer ist als Verantwortlicher erreichbar? OPTIONAL und additiv —
+   * fehlt die Auskunft oder scheitert sie, gilt die Erreichbarkeit als UNBEKANNT, nie als gegeben.
+   */
+  personen?: PersonenAuskunft | undefined;
+  /**
+   * AUFNAHME 20260922 · R-1627 (Ben nacharbeit-9): die kuratierten Kanten — menschlich gesetzte
+   * fachliche Beziehungen — der tragenden Quellen. OPTIONAL: fehlt die Auskunft oder scheitert sie,
+   * steht in der Argumentation keine Beziehung, und die Aussagen bleiben ausdrücklich unabhängig.
+   */
+  kanten?: { fuerKos(koIds: readonly string[]): Promise<readonly BelegteBeziehung[]> } | undefined;
+  /**
+   * AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): das gepflegte Firmenwörterbuch für die
+   * Begriffserklärungen einer allgemeinsprachlichen Antwort. Gelesen NUR für Sitzungsnutzer — der
+   * Katalog verlangt `ko.read`, das der Add-on-Principal nicht hat (mega77). OPTIONAL: fehlt die
+   * Quelle oder scheitert sie, wird nichts erklärt.
+   */
+  begriffe?: (() => Promise<readonly WoerterbuchEintrag[]>) | undefined;
+}
+
+/**
+ * Die schmale Sicht auf einen Eintrag des Firmenwörterbuchs (`BegriffFassung`) — samt der Angaben,
+ * die seine Herkunft ausmachen (Ben nacharbeit-11): Identität, Fassung, Geltungsbereich,
+ * Verantwortung und Stand. Die Kennung dessen, der zuletzt geändert hat, wird NICHT übernommen.
+ */
+export interface WoerterbuchEintrag {
+  id: string;
+  version: number;
+  geltungsbereich?: string;
+  verantwortlich?: string;
+  geaendertAm?: string;
+  definition: Partial<Record<string, string>>;
+  bezeichnungen: Partial<Record<string, { vorzug: string; synonyme: string[] }>>;
+}
+
+const leerZuNull = (wert: string | undefined): string | null => wert?.trim() || null;
+
+// R-0346: das Wörterbuch in der Antwortsprache — je Vorzugsbenennung und Synonym ein Begriff mit der
+// Definition DIESER Sprache. Ohne Definition in der Sprache wird nichts erklärt (nichts übersetzt).
+// Jeder Begriff trägt die Herkunft seines Eintrags; was der Eintrag nicht ausweist, bleibt `null`.
+function zuschnittBegriffe(
+  eintraege: readonly WoerterbuchEintrag[],
+  locale: string,
+): ZuschnittBegriff[] {
+  return eintraege.flatMap((e) => {
+    const definition = e.definition[locale]?.trim();
+    const benennung = e.bezeichnungen[locale];
+    if (!definition || !benennung) {
+      return [];
+    }
+    const herkunft = {
+      eintragId: e.id,
+      fassung: e.version,
+      geltungsbereich: leerZuNull(e.geltungsbereich),
+      verantwortlich: leerZuNull(e.verantwortlich),
+      geaendertAm: leerZuNull(e.geaendertAm),
+    };
+    return [benennung.vorzug, ...benennung.synonyme]
+      .filter((b) => b.trim().length > 0)
+      .map((b) => ({ benennung: b, definition, herkunft }));
+  });
+}
+
+// Ben nacharbeit-11: die tatsächlich angehängten Begriffserklärungen samt Herkunft — für den
+// abgegrenzten Abschnitt der Belastbarkeit.
+interface AngehaengterBegriff {
+  benennung: string;
+  definition: string;
+  herkunft: BegriffHerkunft;
+}
+
+function angehaengteBegriffe(zuschnitt: AskAntwortZuschnitt | undefined): AngehaengterBegriff[] {
+  return (zuschnitt?.ergaenzungen ?? []).flatMap((e) =>
+    e.art === "begriffe"
+      ? e.herkunft.map((herkunft, i) => {
+          const benennung = e.benennungen[i] ?? "";
+          // Der Eintrag lautet „Benennung: Definition“ (antwort-zuschnitt.ts).
+          const eintrag = e.eintraege[i] ?? "";
+          const definition = eintrag.startsWith(`${benennung}: `)
+            ? eintrag.slice(benennung.length + 2)
+            : eintrag;
+          return { benennung, definition, herkunft };
+        })
+      : [],
+  );
+}
+
+// R-0310 × R-0346 (Integration mit main): `absatzBelege` kennt zwei ausdrückliche Gründe — Marke
+// und Wortlaut der Aussage. Die Abschnitte, die der Zuschnitt angehängt hat, stammen wörtlich aus
+// `conditions`/`measures` EINER tragenden Quelle; das ist ebenso ausdrücklich (`quelleId` am
+// Zuschnitt), nicht aus Lage oder Nachbarschaft.
+//
+// Ben nacharbeit-20: die Herkunft kommt aus dem ERZEUGTEN Abschnitt, nicht aus seinen Listenzeilen.
+// Der Zuschnitt hängt seine Abschnitte in bekannter Reihenfolge ans ENDE der Antwort
+// (`AskAntwortZuschnitt.abschnitte`, je mit Text und Quelle). Zugeordnet wird deshalb der Absatz an
+// GENAU der Stelle dieses Abschnitts — und nur, wenn sein Text Zeichen für Zeichen der erzeugte
+// Abschnitt ist (samt Kopfzeile mit Quellentitel). Gleichlautende Ergänzungen zweier Quellen
+// behalten so jede ihre eigene Quelle, und ein anderer Absatz mit denselben Listenzeilen bekommt
+// nichts. Passt ein einziger Abschnitt nicht an seine Stelle (etwa ein Eintrag mit Leerzeile, der
+// den Absatz teilt), wird KEINER zugeordnet — lieber unbelegt als falsch belegt. Der
+// Wörterbuchabschnitt bekommt KEINE Wissensquelle (Ben nacharbeit-11) und bleibt nach R-0310 unbelegt.
+function zuschnittBelege(
+  absaetze: AbsatzBeleg[] | undefined,
+  zuschnitt: AskAntwortZuschnitt | undefined,
+  result: { sources: readonly string[]; citedSources: readonly string[] },
+): AbsatzBeleg[] | undefined {
+  if (!absaetze || !zuschnitt || zuschnitt.abschnitte.length === 0) {
+    return absaetze;
+  }
+  const beginn = absaetze.length - zuschnitt.abschnitte.length;
+  if (beginn < 0) {
+    return absaetze;
+  }
+  const anIhrerStelle = zuschnitt.abschnitte.every(
+    (s, i) => absaetze[beginn + i]?.text === s.text.trim(),
+  );
+  if (!anIhrerStelle) {
+    return absaetze;
+  }
+  return absaetze.map((a, i) => {
+    const quelleId = i >= beginn ? zuschnitt.abschnitte[i - beginn]?.quelleId : null;
+    if (
+      a.quellen.length > 0 ||
+      typeof quelleId !== "string" ||
+      !result.citedSources.includes(quelleId) ||
+      !result.sources.includes(quelleId)
+    ) {
+      return a;
+    }
+    return { text: a.text, quellen: [quelleId] };
+  });
+}
+
+/**
+ * Die schmale Sicht auf das Nutzerverzeichnis. „Erreichbar" heisst hier genau: es gibt ein
+ * freigegebenes Konto mit dieser Kennung. Ein gelöschtes oder gesperrtes Konto ist nicht
+ * erreichbar — mehr (Urlaub, Vertretung) weiss das Verzeichnis nicht, und es wird nicht geraten.
+ */
+export interface PersonenAuskunft {
+  erreichbarkeit(ids: readonly string[]): Promise<{
+    erreichbar: ReadonlyMap<string, boolean>;
+    namen: ReadonlyMap<string, string>;
+  }>;
+}
+
+// R-1649: Hülle von POST /api/ask/not-helpful — der abweichende Weg und der Titelvorschlag im selben
+// Maß wie eine Frage (der Titel wird danach gekürzt). Geprüft im Handler, NACH dem Rechtetor (ein
+// Fastify-Schema liefe davor und antwortete Unangemeldeten mit 400 statt 401).
+interface NichtHilfreichRumpf {
+  koId: string;
+  receipt?: string;
+  alternative?: string;
+  entwurfTitel?: string;
+}
+
+function nichtHilfreichRumpf(roh: unknown): NichtHilfreichRumpf | null {
+  if (!roh || typeof roh !== "object" || Array.isArray(roh)) {
+    return null;
+  }
+  const { koId, receipt, alternative, entwurfTitel } = roh as Record<string, unknown>;
+  const text = (wert: unknown, max: number): boolean =>
+    wert === undefined || (typeof wert === "string" && [...wert].length <= max);
+  if (typeof koId !== "string" || koId.length === 0 || koId.length > 200) {
+    return null;
+  }
+  // Der Beleg ist opak und wird vom Dienst geprüft; hier zählt nur, dass er Text ist.
+  if (!text(receipt, Number.POSITIVE_INFINITY)) {
+    return null;
+  }
+  if (!text(alternative, 8_000) || !text(entwurfTitel, 8_000)) {
+    return null;
+  }
+  return {
+    koId,
+    ...(typeof receipt === "string" ? { receipt } : {}),
+    ...(typeof alternative === "string" ? { alternative } : {}),
+    ...(typeof entwurfTitel === "string" ? { entwurfTitel } : {}),
+  };
 }
 
 // ================================================================================================
@@ -450,6 +678,44 @@ export function kiAbgeschaltetSenden(
   return true;
 }
 
+// AUFNAHME 20260922 · Antwort-Erklärung — WER DARF WAS VON DER BELASTBARKEIT SEHEN.
+//
+// Die Gegenseite eines Konflikts ist ein Wissensobjekt, das der Aufrufer NICHT als Quelle bekommen
+// hat. Sie wird deshalb nach derselben Regel gezeigt wie jedes andere Objekt: auf dem Sitzungsweg
+// nach `sichtbarkeitsfilterFuer` (dem bestehenden Prädikat), auf dem Add-on-Weg NUR validiert —
+// der Add-on-Principal besitzt `ask.validated` und kein allgemeines Leserecht (mega77). Namen der
+// Verantwortlichen gehen nur an Sitzungsnutzer; der Add-on-Weg erfährt Art und Erreichbarkeit.
+// R-0346: dazu der Zuschnitt — die Rolle aus der Sitzung (Add-on-Weg: `unbekannt`), der Anlass aus
+// dem Anfragezusammenhang (`dokument`, wenn die Frage aus dem Dokument stammt oder die Anfrage an ein
+// Word-Dokument gebunden ist). Der Dokumenttext selbst geht dafür nirgends hin (KA5).
+export interface BelastbarkeitsSicht {
+  seiteSichtbar: (ko: KnowledgeObject) => boolean;
+  mitPersonen: boolean;
+  zuschnitt: AntwortZuschnitt;
+}
+
+// produkt:20261007:spaces (Integration mit main e04ae5ea): ohne Sitzungsnutzer gilt für die
+// Gegenseite ZUSÄTZLICH dieselbe Space-Grundlage wie für die Antwort (`grundlage`: kein Space oder
+// ein offener) — sonst nennte die Belastbarkeit Inhalt aus einem geschlossenen Space.
+export function belastbarkeitsSicht(
+  user: SessionUser | null,
+  anlass: FrageAnlass,
+  grundlage: (ko: KnowledgeObject) => boolean,
+): BelastbarkeitsSicht {
+  if (!user) {
+    return {
+      seiteSichtbar: (ko) => ko.status === "validiert" && grundlage(ko),
+      mitPersonen: false,
+      zuschnitt: antwortZuschnitt("unbekannt", anlass),
+    };
+  }
+  return {
+    seiteSichtbar: sichtbarkeitsfilterFuer(user),
+    mitPersonen: true,
+    zuschnitt: antwortZuschnitt(user.role, anlass),
+  };
+}
+
 // AUFTRAG-mega53 B4 — DIE ZWEITE DER VIER STELLEN.
 //
 // Diese Route beschafft nur die Eingaben; entschieden wird in `answerEvidence`. Neu ist, dass sie
@@ -460,6 +726,8 @@ export function kiAbgeschaltetSenden(
 // ein Nachschlagewerk, und die Regel greift daraus die tragende Teilmenge. So bleibt der
 // Auflösungs-Warnpfad für jede ausgelieferte Quelle erhalten, ohne dass eine bloß angesehene
 // Quelle die Einstufung berührt.
+// AUFNAHME 20260922: daneben entsteht die Belastbarkeit (`antwortBelastbarkeit`) aus denselben
+// Eingaben, ergänzt um die Gegenseiten offener Konflikte und die Erreichbarkeit der Verantwortlichen.
 async function evidenceFor(
   deps: AskRouteDeps,
   result: {
@@ -467,33 +735,40 @@ async function evidenceFor(
     knowledgeClass: string;
     sources: string[];
     citedSources: string[];
+    steps?: { sourceId: string | null; snippet: string | null }[];
+    answer?: string | null;
   },
   log: { warn: (obj: unknown, msg: string) => void },
   // D5 (KI aus): vor jedem Lesevorgang gerufen, AUSSERHALB der Fangzweige unten — eine Abschaltung
   // ist kein „nicht auflösbar" und kein „Konfliktabruf gescheitert", sie wird durchgereicht.
   pruefen: () => void,
-): Promise<ReturnType<typeof answerEvidence>> {
+  sicht: BelastbarkeitsSicht,
+  // Ben nacharbeit-11: die angehängten Wörterbucherklärungen — getrennt von der Quellenbilanz.
+  woerterbuch: readonly AngehaengterBegriff[] = [],
+): Promise<{
+  evidence: ReturnType<typeof answerEvidence>;
+  belastbarkeit: AntwortBelastbarkeit;
+}> {
   const sourceKos = new Map<string, KnowledgeObject>();
+  const lies = async (id: string, ziel: Map<string, KnowledgeObject>): Promise<void> => {
+    pruefen();
+    try {
+      // D5: die Sperre auch IN `get` — nach dem Objekt liest dessen Lesefassung noch weiter.
+      const ko = await deps.ko.get(id, pruefen);
+      if (ko) {
+        ziel.set(id, ko);
+      }
+    } catch (err) {
+      if (err instanceof AskError && err.code === "KI_ABGESCHALTET") {
+        throw err;
+      }
+      // Nicht auflösbar ⇒ die Regel führt sie als `unknown`. Genau das ist gewollt.
+      log.warn({ err, koId: id }, "ask.evidence: Quell-KO nicht auflösbar");
+    }
+  };
   // Höchstens DEFAULT_TOP_K Quellen (8) — dieselbe N+1-Runde, die das Add-in heute schon für
   // Titel und Datum fährt, nur einmal statt clientseitig.
-  await Promise.all(
-    result.sources.map(async (id) => {
-      pruefen();
-      try {
-        // D5: die Sperre auch IN `get` — nach dem Objekt liest dessen Lesefassung noch weiter.
-        const ko = await deps.ko.get(id, pruefen);
-        if (ko) {
-          sourceKos.set(id, ko);
-        }
-      } catch (err) {
-        if (err instanceof AskError && err.code === "KI_ABGESCHALTET") {
-          throw err;
-        }
-        // Nicht auflösbar ⇒ die Regel führt sie als `unknown`. Genau das ist gewollt.
-        log.warn({ err, koId: id }, "ask.evidence: Quell-KO nicht auflösbar");
-      }
-    }),
-  );
+  await Promise.all(result.sources.map((id) => lies(id, sourceKos)));
   let openConflicts: Awaited<ReturnType<ConflictService["unresolved"]>> | null = null;
   pruefen();
   try {
@@ -507,11 +782,66 @@ async function evidenceFor(
     }
     log.warn({ err }, "ask.evidence: Konfliktabruf gescheitert — Einstufung bleibt unbelegt");
   }
-  return answerEvidence({
+  const evidence = answerEvidence({
     answer: result as Parameters<typeof answerEvidence>[0]["answer"],
     sourceKos,
     openConflicts,
   });
+  // R-0321: die Gegenseiten offener Konflikte über DENSELBEN Leseweg. Eine Seite, die sich nicht
+  // auflösen lässt, bleibt „nicht einsehbar" — der Konflikt wird trotzdem benannt.
+  const kos = new Map(sourceKos);
+  await Promise.all(
+    konfliktGegenseiten(result.citedSources, openConflicts).map((id) => lies(id, kos)),
+  );
+  // R-1627 (Ben nacharbeit-9): die kuratierten Kanten der TRAGENDEN Quellen. Gelesen werden nur
+  // Kanten zu Objekten, die der Aufrufer bereits als Quelle bekommen hat; welche davon zwischen zwei
+  // tragenden Quellen liegen und aktiv sind, entscheidet `antwortBelastbarkeit`. Scheitert der Abruf,
+  // steht keine Beziehung da — und die Aussagen gelten ehrlich als unabhängig.
+  let beziehungen: readonly BelegteBeziehung[] = [];
+  if (deps.kanten && result.answered && result.citedSources.length > 1) {
+    pruefen();
+    try {
+      beziehungen = await deps.kanten.fuerKos(result.citedSources);
+    } catch (err) {
+      log.warn({ err }, "ask.belastbarkeit: Beziehungen nicht lesbar");
+    }
+  }
+  // R-0322: Erreichbarkeit der Verantwortlichen. Scheitert die Auskunft, bleibt sie UNBEKANNT —
+  // eine Störung des Verzeichnisses darf weder eine Lücke erfinden noch eine verschweigen. Dieselbe
+  // Abfrage liefert die Namen derer, die eine gezeigte Beziehung gesetzt haben.
+  let personen: Awaited<ReturnType<PersonenAuskunft["erreichbarkeit"]>> | null = null;
+  if (deps.personen && result.answered && result.citedSources.length > 0) {
+    const ids = [
+      ...new Set([
+        ...result.citedSources.flatMap((id) => {
+          const ko = sourceKos.get(id);
+          return ko ? [responsibleOf(ko)] : [];
+        }),
+        ...beziehungen.map((k) => k.urheber),
+      ]),
+    ];
+    pruefen();
+    try {
+      personen = await deps.personen.erreichbarkeit(ids);
+    } catch (err) {
+      log.warn({ err }, "ask.belastbarkeit: Erreichbarkeit nicht ermittelbar");
+    }
+  }
+  const belastbarkeit = antwortBelastbarkeit({
+    answer: result,
+    evidence,
+    kos,
+    openConflicts,
+    seiteSichtbar: sicht.seiteSichtbar,
+    zuschnitt: sicht.zuschnitt,
+    beziehungen,
+    woerterbuch,
+    ...(result.steps ? { steps: result.steps } : {}),
+    ...(personen ? { erreichbar: personen.erreichbar } : {}),
+    // Sitzungsnutzer sehen die Kennung auch ohne Verzeichnis (Name dann `null`); der Add-on-Weg nie.
+    namen: sicht.mitPersonen ? (personen?.namen ?? new Map<string, string>()) : null,
+  });
+  return { evidence, belastbarkeit };
 }
 
 // Fragen & Wissenslücken (§2.4 / FR-ASK).
@@ -537,6 +867,8 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         selection?: string;
         selectionConfidentiality?: string;
         questionSource?: string;
+        thread?: string[];
+        fragekontext?: unknown;
       };
     }>(
       "/api/ask",
@@ -611,17 +943,27 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // die Weitergabe eine Eigenschaft der Route, keine Wiederholung.
         //
         // DIE ZWEIGE BLEIBEN DADURCH WÖRTLICH, WAS SIE WAREN. Das ist kein Nebeneffekt, sondern
-        // Absicht: `tests/app/mega52-validiert-zusicherung-sammler.test.ts` liest den Session-
-        // Abschluss `answer(user.id)` AUS DIESEM QUELLTEXT, um zu entscheiden, ob die Anzeigetexte
-        // „Antworten kommen ausschließlich aus validiertem Wissen" versprechen dürfen. Ein zweites
-        // Argument dort hätte den Wächter nicht nur rot gemacht — hätte man ihn „beruhigt", hätte
-        // er ab da geschwiegen und der Text hätte mehr versprechen dürfen als der Weg hält.
+        // Absicht: `tests/app/mega52-validiert-zusicherung-sammler.test.ts` liest die Session-
+        // Abschlüsse `answer(user.id, …)` AUS DIESEM QUELLTEXT, um zu entscheiden, ob die
+        // Anzeigetexte „Antworten kommen ausschließlich aus validiertem Wissen" versprechen dürfen.
+        // Seit R-0278 (Nacharbeit 3) tragen ALLE drei `validatedOnly: true` — der Wächter urteilt
+        // „filtert" und bleibt scharf: ein Abschluss ohne den Filter macht ihn wieder streng.
         //
         // OHNE MARKIERUNG BLEIBT `opts` UNANGETASTET, auch als `undefined`. Ein Zweig, der heute
         // gar keine Optionen übergibt, übergibt weiterhin gar keine (kein leeres Objekt) — daran
         // hängt der Vertrag von `KA4-E1`.
         // R-0639: gesetzt ausschliesslich in den beiden Zweigen, deren KA4-Freigabe bestätigt ist.
         let ka4Bestaetigt = false;
+        // R-0348: der Gesprächsfaden der Konsole. Gesetzt ausschliesslich unmittelbar vor dem
+        // Konsolenzweig; ohne Faden bleibt `opts` dort wie bisher unangetastet.
+        const faden = (request.body.thread ?? []).filter((frage) => frage.trim().length > 0);
+        let fadenErlaubt = false;
+        // R-1633: der Fragekontext — geprüft hier, wirksam nur dort, wo auch der Faden wirkt.
+        const fragekontext = normalizeFragekontext(request.body.fragekontext);
+        if (fragekontext === null) {
+          reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
+          return;
+        }
         // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
         // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
         // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
@@ -659,7 +1001,28 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ))
               ? { dokumenttextFreigegeben: true as const }
               : {};
-          const mitMarkierung = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
+          // gesamt-ki-freigaberegeln (Ben Nacharbeit 2): geht vertraulich markierter Dokumenttext
+          // hinaus — als Markierung oder als Frage selbst —, dann nur, weil die zweite zentrale
+          // Adminfreigabe ihn gedeckt hat. Die EINSTUFUNG reist dann mit bis in den Reasoner, damit der
+          // Kern und der Chokepoint dieselbe Freigabe noch einmal fragen. Sonst fehlt das Feld.
+          const vertraulichHinaus =
+            markierungVertraulich(request.body.selectionConfidentiality) &&
+            ("dokumenttextFreigegeben" in dokumenttextFeld || (ka4Bestaetigt && frageIstDokument));
+          const vertraulichFeld = vertraulichHinaus
+            ? { dokumenttextVertraulich: true as const }
+            : {};
+          const mitAuswahl = markierung
+            ? { ...opts, ...markierung, ...dokumenttextFeld, ...vertraulichFeld }
+            : vertraulichHinaus
+              ? { ...opts, ...vertraulichFeld }
+              : opts;
+          const mitFaden =
+            fadenErlaubt && faden.length > 0
+              ? { ...mitAuswahl, gespraechsfaden: faden }
+              : mitAuswahl;
+          // R-1633: dieselbe Grenze wie der Faden — nur im Konsolenzweig, sonst unangetastet.
+          const mitMarkierung =
+            fadenErlaubt && fragekontext ? { ...mitFaden, fragekontext } : mitFaden;
           const betrachter = request.askSessionUser;
           let grundlage: (ko: KnowledgeObject) => boolean;
           if (betrachter) {
@@ -675,6 +1038,17 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           const pruefen = (): void => ask.kiSperreVorAuslieferung(kiBeginn);
           let out: Awaited<ReturnType<AskService["ask"]>>;
           let evidence: ReturnType<typeof answerEvidence>;
+          let belastbarkeit: AntwortBelastbarkeit;
+          // Die Sicht folgt dem Anmeldeweg dieser Anfrage — der Add-on-Principal hat keinen
+          // `SessionUser` und bekommt die enge Sicht (Begründung an `belastbarkeitsSicht`).
+          const sicht = belastbarkeitsSicht(
+            request.authContext?.authKind === "addon" ? null : (request.askSessionUser ?? null),
+            // Anlass `dokument`: die Frage stammt aus dem Dokument oder die Anfrage ist an ein
+            // Word-Dokument gebunden. Bewusst NICHT die bloße Markierung — eine Markierung ohne
+            // Suchbegriffe darf den Antwortkörper nicht verändern (KA5-R2, ka5-markierung.test.ts).
+            frageIstDokument || gebunden ? "dokument" : "frage",
+            grundlage,
+          );
           try {
             // D5 (Bens B1): nach dem letzten Warten VOR dem Dienst gegen die Eingangsepoche prüfen.
             // Zwischen dieser Prüfung und dem Einstieg in `ask.ask` (der dort seine eigene Epoche
@@ -684,12 +1058,38 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             // (`darfSehen` samt führendem Space). Ohne Sitzungsnutzer (Add-on-Schlüssel) nur Inhalt
             // ohne Space oder aus offenen Spaces. Erhoben NACH der letzten Sperrprüfung oben wäre ein
             // `await` im Fenster — deshalb VOR `kiSperreVorFrage` vorbereitet (`grundlage`).
-            out = await ask.ask(question, actorId, locale, mitMarkierung, grundlage);
+            // R-0346 (Ben nacharbeit-9): derselbe Zuschnitt wirkt auf die Antwort selbst (Regel und
+            // Grenzen in `services/ask/src/antwort-zuschnitt.ts`; der wörtliche Weg bleibt unberührt).
+            // Das Wörterbuch nur mit Sitzungsnutzer — dieselbe Grenze wie die Personennamen.
+            const lexikon = deps.begriffe;
+            out = await ask.ask(question, actorId, locale, mitMarkierung, grundlage, {
+              tiefe: sicht.zuschnitt.tiefe,
+              fachsprache: sicht.zuschnitt.fachsprache,
+              reihenfolge: sicht.zuschnitt.reihenfolge,
+              ...(sicht.mitPersonen && lexikon
+                ? {
+                    begriffe: async (sprache: string) =>
+                      zuschnittBegriffe(await lexikon(), sprache),
+                  }
+                : {}),
+            });
             // D5: `evidenceFor` liest die Quellobjekte und die offenen Konflikte nach — vor JEDEM
             // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
             // einmal, bevor irgendetwas davon hinausgeht.
             pruefen();
-            evidence = await evidenceFor(deps, out.result, request.log, pruefen);
+            // Ben nacharbeit-13: der Schluss der Kette ist der QUELLENGEBUNDENE Text — ohne die
+            // Wörterbucherklärungen, die allein im abgegrenzten Abschnitt `woerterbuch` stehen.
+            const schlussGrundlage = out.antwortZuschnitt
+              ? { ...out.result, answer: out.antwortZuschnitt.quellengebundenerText }
+              : out.result;
+            ({ evidence, belastbarkeit } = await evidenceFor(
+              deps,
+              schlussGrundlage,
+              request.log,
+              pruefen,
+              sicht,
+              angehaengteBegriffe(out.antwortZuschnitt),
+            ));
             pruefen();
           } catch (fehler) {
             // D5: ALLE Zweige dieser Route laufen hier durch — Konsole, Word-Panel mit und ohne
@@ -699,14 +1099,32 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             }
             throw fehler;
           }
-          reply.code(200).send({ ...out, result: { ...out.result, evidence } });
+          // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung reist NEBEN `result` (absatz-belege.ts);
+          // ohne beantwortete Frage fehlt sie. R-0346: die Abschnitte, die der Zuschnitt wörtlich
+          // aus einer tragenden Quelle angehängt hat, tragen diese Quelle ausdrücklich.
+          const absaetze = zuschnittBelege(
+            absatzBelege(out.result),
+            out.antwortZuschnitt,
+            out.result,
+          );
+          // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
+          // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
+          reply.code(200).send({
+            ...out,
+            result: { ...out.result, evidence, belastbarkeit },
+            ...(absaetze ? { absaetze } : {}),
+          });
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
           // KW-KA4: NUR eine serverbestätigte Einwilligung für exakt diese Sitzung UND dieses
           // Dokument hebt die Enge auf. Ohne sie fällt der Ablauf in den unveränderten Zweig
           // darunter — Zeile für Zeile derselbe wie vor KA4.
+          // Aufnahme gesamt-integrations-api (R-0688): ein DIENST-Schlüssel hat keine Klara-Sitzung
+          // und nie eine Einwilligung — er bekommt ausschließlich den engen Zweig darunter
+          // (validiertes Wissen, kein Modell), auch wenn er Klara-Köpfe mitschickt.
           if (
+            !auth.principal.dienst &&
             (await ka4Freigabe(
               deps.klaraSessions,
               request.headers,
@@ -718,7 +1136,9 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             ka4Bestaetigt = true;
             // `gapPolicy` bleibt: die Wissenslücken-Nebenwirkung ist keine Egressfrage und war nie
             // Gegenstand der Einwilligung.
-            await answer(auth.principal.id, { gapPolicy: "count_only" });
+            // R-0278 (Nacharbeit 3, ben): die Einwilligung öffnet das MODELL, nicht den Prüfstand.
+            // `validatedOnly` bleibt — Ungeprüftes wird auf keinem Weg Antwortgrundlage.
+            await answer(auth.principal.id, { validatedOnly: true, gapPolicy: "count_only" });
             return;
           }
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
@@ -764,9 +1184,11 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             (await frageDarfHinaus(user.id))
           ) {
             ka4Bestaetigt = true;
-            // Der normale Answerweg — dieselbe Form wie der Konsolen-Ask darunter, keine
-            // Sonderbehandlung: `validatedOnly`/`retrievalOnly` entfallen, alles andere bleibt.
-            await answer(user.id);
+            // Der Modellweg: `retrievalOnly` entfällt — dafür ist die Einwilligung da.
+            // R-0278 (Nacharbeit 3, ben; Originalquelle: „greift die Einwilligung im Word-Weg, läuft
+            // die Antwort OHNE validatedOnly … das hat niemand beschlossen", Fix-Skizze
+            // `answer(user.id, { validatedOnly: true })`): der Prüfstand bleibt die Grenze.
+            await answer(user.id, { validatedOnly: true });
             return;
           }
           // JOB 1591 D1 (W5) — Pedis Befund um 21:28, und der Weg, auf dem er entstanden ist.
@@ -804,14 +1226,18 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
         // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
         // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
+        // R-0278 (Nacharbeit 3, ben): auch die Web-Ansicht zieht ausschließlich geprüftes Wissen
+        // heran — „für alle Wege gleich". Ohne geprüfte Grundlage antwortet Klara nicht und legt die
+        // Wissenslücke an; die Torlage (`verschlossen`, „Freigabe fehlt") sagt dazu, dass es
+        // ungeprüfte Inhalte gibt. Damit endet die Entscheidung mega52 C für diesen Weg.
         //
-        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung): auch die Konsole antwortet
-        // standardmäßig NUR aus geprüftem Wissen. Bis hierher lief dieser Zweig ohne
-        // `validatedOnly` — der einzige Frageweg, auf dem Ungeprüftes Grundlage einer Antwort werden
-        // konnte. Das ersetzt die Abwägung aus mega52 C (Juli: „Text auf die Wahrheit ziehen statt
-        // Filter") durch den jüngeren Auftrag. Was die Enge verschluckt, wird wie im Panel-Weg
+        // R-0584 (DS10, Auftrag gesamt-datenschutz-voreinstellung) kommt unabhängig zum selben
+        // Ergebnis und ergänzt die Meldung: was die Enge verschluckt, wird wie im Panel-Weg
         // (JOB 1591 W5) GEMELDET, nicht verwendet — gefiltert durch die Sichtbarkeit DIESES Nutzers.
-        // Der ausdrücklich freigegebene Sonderweg (KA4-Einwilligung, oben) bleibt unverändert.
+        // Den KA4-Einwilligungszweig oben hält R-0278 ebenfalls in der Enge (`validatedOnly`).
+        // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
+        // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
+        fadenErlaubt = true;
         await answer(user.id, {
           validatedOnly: true,
           ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
@@ -841,6 +1267,79 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       },
     );
 
+    // R-1089 / R-1721: „Antwort falsch" / „Quelle passt nicht" — an den Verantwortlichen des
+    // zitierten Wissensobjekts, mit Quittung. Dieselbe Beleg-Bindung wie „Hat geholfen".
+    app.post<{ Body: { koId?: string; receipt?: string; grund?: string } }>(
+      "/api/ask/report",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const body = request.body ?? {};
+          reply
+            .code(200)
+            .send(await ask.reportAnswer(body.receipt ?? "", body.koId ?? "", body.grund, user.id));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
+    // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die Negativ-
+    // Bewährung an der tragenden Quelle, optional verbunden mit dem abweichenden Weg als Entwurf.
+    // Erkannt wird der Satz in der Fläche (Diktat ins Fragefeld, `apps/web/src/lib/nichtHilfreich.ts`);
+    // hier gilt dieselbe Bindung wie beim „Danke": Recht `ko.read` und der Answer-Receipt. Wer einen
+    // Weg mitschickt, legt einen Entwurf an und braucht dafür dasselbe Recht wie jeder Entwurfsweg
+    // (`ko.create`) — fehlt es, wird VOR jedem Schreiben abgewiesen, auch der Vermerk entsteht nicht.
+    app.post<{ Body: unknown }>("/api/ask/not-helpful", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      // Die Gestalt erst NACH dem Tor: ein Unangemeldeter erfährt 401, nichts über den Rumpf.
+      const body = nichtHilfreichRumpf(request.body);
+      if (!body) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "koId fehlt, oder receipt, alternative oder entwurfTitel ist ungültig.",
+        });
+        return;
+      }
+      const alternative = body.alternative?.trim() ?? "";
+      if (alternative && !can(user.role, "ko.create")) {
+        reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "Einen Entwurf anlegen darf diese Rolle nicht.",
+        });
+        return;
+      }
+      const anlegen = deps.alternativeAlsEntwurf;
+      if (alternative && !anlegen) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "Ein Entwurf aus der Rückmeldung ist in diesem Aufbau nicht verfügbar.",
+        });
+        return;
+      }
+      // Der Titel nennt die Quelle, deren Titel beliebig lang sein kann — gekürzt, nicht abgewiesen.
+      const titel = [...(body.entwurfTitel?.trim() || alternative)].slice(0, 200).join("");
+      try {
+        const ergebnis = await ask.markNotHelpful(
+          body.receipt ?? "",
+          body.koId,
+          user.id,
+          alternative && anlegen
+            ? async () => (await anlegen({ title: titel, statement: alternative }, user.id)).id
+            : undefined,
+        );
+        reply.code(200).send(ergebnis);
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
     // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).
     app.get("/api/gaps/summary", async (request, reply) => {
@@ -867,9 +1366,40 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       reply.code(200).send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id })));
     });
 
+    // R-1663 / R-2178: passende Ansprechpartner zu EINER Lücke, begründet aus Wissensspuren
+    // (Regeln in `services/ask/src/ansprechpartner.ts`). Dieselben Grenzen wie das Consultant-System
+    // (`GET /api/analytics/expertise`): hinter dem Schalter `expertMatching` — Personen-Matching ist
+    // datenschutzsensibel (BetrVG §87(1)6, DSGVO) und bleibt bis zur BR/DSB-Freigabe aus; ohne ihn
+    // gibt es die Route nicht (404 vor dem Rechtetor). Und nur `ko.assign` — wer real entscheidet,
+    // wen er einbezieht. Die Objektgrundlage begrenzt die Sichtbarkeit DIESES Betrachters.
+    app.get<{ Params: { id: string } }>("/api/gaps/:id/ansprechpartner", async (request, reply) => {
+      if (!schalterAn("expertMatching")) {
+        reply.code(404).send({ error: "not_found" });
+        return;
+      }
+      const user = await guards.requirePermission("ko.assign", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const auskunft = await ask.ansprechpartnerZuLuecke(request.params.id, {
+          sichtbar: sichtbarkeitsfilterFuer(user),
+        });
+        reply.code(200).send(auskunft);
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
     app.put<{
       Params: { id: string };
-      Body: { expertId?: string; close?: boolean; action?: string; priority?: string };
+      Body: {
+        expertId?: string;
+        close?: boolean;
+        action?: string;
+        priority?: string;
+        koId?: unknown;
+      };
     }>("/api/gaps/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.assign", request, reply);
       if (!user) {
@@ -889,7 +1419,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         }
         // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).
         if (request.body.close === true || request.body.action === "close") {
-          reply.code(200).send(await ask.closeGap(request.params.id));
+          // R-0846 / L6: der Objektbezug. Hier wird nur die Form geprüft; ob das Objekt existiert
+          // und ob ohne mitgeschickten Bezug ein gültiger an der Lücke steht, entscheidet
+          // `AskService.closeGap` — fehlt beides, bleibt die Lücke offen (400).
+          const roh = request.body.koId;
+          if (roh !== undefined && (typeof roh !== "string" || roh.trim() === "")) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
+            return;
+          }
+          const bezug = typeof roh === "string" ? roh.trim() : undefined;
+          reply.code(200).send(await ask.closeGap(request.params.id, bezug));
           return;
         }
         if (request.body.expertId) {

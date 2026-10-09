@@ -7,9 +7,7 @@ import {
   DEMO_TAG,
   type DemoKnowledgeFilter,
   countByDemoKnowledge,
-  demoKnowledgeBadge,
   demoKnowledgeFilterLabelKey,
-  filterByDemoKnowledge,
   isDemoKnowledge,
   libraryOriginHref,
   matchesDemoKnowledgeFilter,
@@ -36,14 +34,8 @@ describe("SCRUM-308: demoKnowledge", () => {
     );
   });
 
-  it("demoKnowledgeBadge: Badge nur für Demo-KOs, mit korrekten Keys und neutraler Tönung", () => {
-    expect(demoKnowledgeBadge(ko(["x", DEMO_TAG]))).toEqual({
-      labelKey: "demo.badge.label",
-      hintKey: "demo.badge.hint",
-      tone: "neutral",
-    });
-    expect(demoKnowledgeBadge(ko(["x"]))).toBeNull();
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `demoKnowledgeBadge` ist mit dem Baustein
+  // entfallen — er hatte keinen Produktleser; die Flächen zeigen die Marke über `isDemoKnowledge`.
 
   it("Cross-Surface-Konsistenz: Ask-Quellen (sourceRefs.demo) nutzen dieselbe Erkennung", () => {
     const demoKo = {
@@ -93,20 +85,21 @@ describe("SCRUM-309: demoKnowledge filter", () => {
     expect(DEMO_KNOWLEDGE_FILTERS).toEqual<DemoKnowledgeFilter[]>(["all", "demo", "non-demo"]);
   });
 
-  it("'all' gibt die Liste unverändert zurück (keine stille Ausblendung)", () => {
-    const out = filterByDemoKnowledge(items, "all");
-    expect(out).toHaveLength(3);
-    expect(out).toEqual(items);
-    expect(out).not.toBe(items); // neue Liste, Eingabe unverändert
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Die Listenfassung `filterByDemoKnowledge` hatte keinen
+  // Produktleser und ist entfernt. Prüfboard und Bibliothek filtern je Eintrag über
+  // `matchesDemoKnowledgeFilter` — genau so wird hier gefiltert.
+  const gefiltert = (filter: DemoKnowledgeFilter) =>
+    items.filter((it) => matchesDemoKnowledgeFilter(it.ko, filter));
+
+  it("'all' lässt jede Zeile durch (keine stille Ausblendung)", () => {
+    expect(gefiltert("all")).toEqual(items);
   });
 
   it("'demo' enthält nur Demo-KOs, 'non-demo' nur Wissen ohne Demo-Tag", () => {
-    expect(filterByDemoKnowledge(items, "demo").every((it) => isDemoKnowledge(it.ko))).toBe(true);
-    expect(filterByDemoKnowledge(items, "demo")).toHaveLength(2);
-    expect(filterByDemoKnowledge(items, "non-demo").every((it) => !isDemoKnowledge(it.ko))).toBe(
-      true,
-    );
-    expect(filterByDemoKnowledge(items, "non-demo")).toHaveLength(1);
+    expect(gefiltert("demo").every((it) => isDemoKnowledge(it.ko))).toBe(true);
+    expect(gefiltert("demo")).toHaveLength(2);
+    expect(gefiltert("non-demo").every((it) => !isDemoKnowledge(it.ko))).toBe(true);
+    expect(gefiltert("non-demo")).toHaveLength(1);
   });
 
   it("countByDemoKnowledge: ehrliche Zähler, demo + non-demo = all", () => {

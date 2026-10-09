@@ -202,11 +202,12 @@ export function Analytics(): JSX.Element {
         </Card>
       </div>
 
-      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar */}
+      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar. R-0908: die Überschrift kommt aus
+          `texte/fachwort.ts` („Zustand der Wissensbasis“), `health.title` sagte „Knowledge Health“. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("health.title")}</SectionLabel>
-          <HelpTip title={t("health.title")} body={t("ana.help.health")} />
+          <SectionLabel>{t("fachwort.gesundheit.titel")}</SectionLabel>
+          <HelpTip title={t("fachwort.gesundheit.titel")} body={t("ana.help.health")} />
         </div>
         {healthUnknown ? (
           <Card data-testid="health-unknown" className="flex items-center gap-4">
@@ -328,6 +329,9 @@ export function Analytics(): JSX.Element {
 
               <Card>
                 <SectionLabel>{t("ana.byType")}</SectionLabel>
+                {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die vorhandene Abschnittserklärung
+                    (`shelp.*`) in der Seitenhilfe — bis hierher nur über Klaras Suche erreichbar. */}
+                <HelpTip title={t("ana.byType")} body={t("shelp.ana.byType")} />
                 <div className="space-y-2">
                   {Object.entries(a.byType).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-3">
@@ -369,6 +373,7 @@ export function Analytics(): JSX.Element {
                 {weeks.length > 0 ? (
                   <Card>
                     <SectionLabel>{t("ana.weekly")}</SectionLabel>
+                    <HelpTip title={t("ana.weekly")} body={t("shelp.ana.weekly")} />
                     <div className="space-y-2">
                       {weeks.map((w) => (
                         <div key={w.week} className="flex items-center gap-3">

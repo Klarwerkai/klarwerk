@@ -64,6 +64,7 @@
 // diesen Dienst (BEN7s Prüflücke 2), das Prüfprotokoll entsteht an derselben Stelle wie die Auskunft.
 import type { AuditService } from "../../../audit";
 import { confluenceCredentialState } from "../../../confluence";
+import { jiraCredentialState } from "../../../jira";
 import type { ImportRunRepo } from "../../../library-analytics";
 import { sharepointCredentialState } from "../../../sharepoint";
 import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
@@ -73,6 +74,8 @@ import { schalterAn } from "../feature-flags";
 const SYSTEM = "confluence";
 /** Dasselbe für SharePoint — wortgleich mit `ImportRun.sourceSystem` der Übernahme-Läufe. */
 const SYSTEM_SHAREPOINT = "sharepoint";
+/** R-0170: dasselbe für Jira — wortgleich mit `ImportRun.sourceSystem` der Jira-Übernahmen. */
+const SYSTEM_JIRA = "jira";
 
 export interface ImportAccessDeps {
   /** Die Laufablage. NICHT optional: ein zweiter, zeitloser Pfad waere die Luecke selbst. */
@@ -100,8 +103,15 @@ export interface ImportAccessStatus {
   readonly betreiber?: { readonly freigegeben: boolean; readonly an: boolean };
   readonly credentials: { name: string; present: boolean }[];
   readonly credentialsUsable: boolean;
-  // R-0166: `invalid-auth-mode` nur bei Confluence (KLARWERK_CONFLUENCE_AUTH mit unbekanntem Wert).
-  readonly blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
+  // R-0166: `invalid-auth-mode` bei Confluence (KLARWERK_CONFLUENCE_AUTH mit unbekanntem Wert) und
+  // bei Jira (KLARWERK_JIRA_AUTH). R-0170: `invalid-project-key` nur bei Jira — der Projektschlüssel
+  // steht in der Abfrage und muss die Jira-Schlüsselform haben.
+  readonly blocker:
+    | "missing"
+    | "insecure-base-url"
+    | "invalid-auth-mode"
+    | "invalid-project-key"
+    | null;
   /**
    * Der letzte belegte erfolgreiche Import — ISO-Zeichenkette, wie sie in der Ablage steht, oder
    * `null`. `null` ist eine AUSSAGE („dazu ist nichts belegt") und kein Platzhalter.
@@ -175,6 +185,23 @@ export class ImportAccessService {
       credentialsUsable: credentials.usable,
       blocker: credentials.blocker,
       lastConnectedAt: await this.letzteVerbindung(SYSTEM_SHAREPOINT),
+    };
+  }
+
+  /**
+   * R-0170: derselbe Satz Zustände für Jira. KEIN AUFRUF AN JIRA — Schalter und Variablenzustand
+   * sind lokal ablesbar, `lastConnectedAt` kommt aus der eigenen Laufablage.
+   */
+  async jiraZugangsstatus(): Promise<ImportAccessStatus> {
+    const credentials = jiraCredentialState();
+    return {
+      system: SYSTEM_JIRA,
+      // Schalter aus ⇒ die Import-Routen existieren gar nicht. Diese Auskunft steht bewusst davor.
+      enabled: schalterAn("jiraImport"),
+      credentials: credentials.vars,
+      credentialsUsable: credentials.usable,
+      blocker: credentials.blocker,
+      lastConnectedAt: await this.letzteVerbindung(SYSTEM_JIRA),
     };
   }
 

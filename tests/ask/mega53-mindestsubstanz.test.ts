@@ -4,13 +4,14 @@ import {
   DeterministicProvider,
   type KnowledgeRef,
   MIN_ANSWER_SUBSTANCE,
-  keywordSelect,
   queryTokens,
   rankCandidates,
 } from "../../services/reasoner";
 // AUFTRAG-mega59 BLOCK I: innere Regel, white-box relativ (s. services/reasoner/index.ts).
 import { meetsRelevanceThreshold, refMatchText } from "../../services/reasoner/src/provider";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 // ================================================================================================
 // AUFTRAG-mega53 BLOCK A — EIN SCHWACHER BESTTREFFER TRÄGT KEINE ANTWORT.

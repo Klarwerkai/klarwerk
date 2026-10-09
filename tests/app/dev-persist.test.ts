@@ -9,10 +9,13 @@ import {
   MUTATING_METHODS,
   buildDevPersistServices,
   journaledRepos,
-  readJournal,
   readJournalLines,
   replayJournal,
 } from "../../services/app/src/dev-persist";
+
+// R-1349: die Projektion ohne Zeilennummer lebt hier statt als Produktexport `readJournal`, den
+// kein Produktcode las. Der Betrieb liest über `readJournalLines` — genau diese Lesung wird geprüft.
+const readJournal = (file: string): JournalEntry[] => readJournalLines(file).map((l) => l.entry);
 
 // SCRUM-387: Dev-Persistenz der Desktop-App — Mutations-Journal über die öffentlichen
 // Repo-Interfaces (kein Modul-Eingriff), Replay beim Start. Netz- und DOM-frei.

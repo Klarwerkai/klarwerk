@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Trash2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -18,8 +18,10 @@ import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
 import { HelpTip } from "../components/HelpTip";
+import { LueckenAnsprechpartner } from "../components/LueckenAnsprechpartner";
 import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { nurOffeneLuecken, offeneLuecken } from "../lib/adminUebersicht";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import { leseFall } from "../lib/fallAbsprung";
@@ -62,11 +64,29 @@ export function Risk(): JSX.Element {
   // Consultant-System (Experten-Matching): nur berechtigte Rollen fragen die Sicht überhaupt an; ist
   // das Flag serverseitig AUS, kommt 404 → keine Daten → nichts gerendert (exakt heutiges Verhalten).
   const { role } = useRole();
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION · R-1023 (b): gemessen war „Risiken und Lücken" nach der
+  // korrigierten Zählregel die zweitschwerste Fläche (Lauf nacharbeit-7: 135 gleichzeitig sichtbare
+  // Bedienelemente und Zustandsangaben). Rund 85 davon trug die Pflege der Eingänge — je Bereich
+  // Verantwortung, vier Stufen und Speichern, dazu die Ruhestandshorizonte. Sie ist eine
+  // Verwaltungsarbeit, keine Auskunft; sie steht jetzt hinter dem Schalter `risiko-pflege-schalter`
+  // und ist aufgeklappt unverändert dieselbe Fläche (nichts gelöscht, keine Rechte geändert).
+  // Eingeklappt bleibt sie MONTIERT und ist nur verborgen — ungespeicherte Eingaben überleben das
+  // Ein- und Ausklappen (s. unten am Schalter).
+  const [pflegeOffen, setPflegeOffen] = useState(false);
   const expertise = useExpertise(canSeeExpertise(role));
+  // R-1663 / R-2178: die Ansprechpartner je Lücke hängen am selben Schalter wie die Expertise-Route,
+  // und die Oberfläche erfährt ihn auf demselben Weg — an der Abwesenheit der Route (`null` bei 404,
+  // JOB 577; `expertMatching` steht nach R-1975 bewusst NICHT in `FeatureName`, Leserregister
+  // tests/funktionsschalter/schalter-leser.test.ts). Geprüft wird „Antwort ist eine Liste", nicht
+  // „Liste ist nicht leer": ein leerer Themenüberblick heisst nicht, dass zu einer Frage keine Spur
+  // existiert.
+  const ansprechpartnerSichtbar = canSeeExpertise(role) && Array.isArray(expertise.data);
   const qc = useQueryClient();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
+  // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Der Server
+  // prüft den Bezug; scheitert er, bleibt die Lücke offen und die Zeile sagt es.
   const close = useMutation({
-    mutationFn: (id: string) => endpoints.gaps.close(id),
+    mutationFn: ({ id, koId }: { id: string; koId: string }) => endpoints.gaps.close(id, koId),
     onSuccess: invalidate,
   });
   const assign = useMutation({
@@ -93,6 +113,7 @@ export function Risk(): JSX.Element {
   // Sicht, sobald die Liste sie trägt. Ohne Treffer bleibt die Seite, wie sie war.
   const [params] = useSearchParams();
   const zielLuecke = leseFall(params);
+  const nurOffene = nurOffeneLuecken(params);
   const zielZeile = useRef<HTMLDivElement | null>(null);
   const zielGezeigt = useRef(false);
   const lueckenGeladen = gaps.data !== undefined;
@@ -283,7 +304,30 @@ export function Risk(): JSX.Element {
 
       {/* Die Pflege der Eingänge dazu (Bereichsverantwortung, vier eingeschätzte Prioritätsfaktoren,
           Ruhestandshorizonte) — nur die Admin-Rolle; der Server verlangt `users.manage`. */}
-      {role === "admin" ? <BereichsprofilPflege /> : null}
+      {role === "admin" ? (
+        <div>
+          <button
+            type="button"
+            data-testid="risiko-pflege-schalter"
+            data-entlastung-schalter=""
+            aria-expanded={pflegeOffen}
+            aria-controls="risiko-pflege"
+            onClick={() => setPflegeOffen((offen) => !offen)}
+            className="mb-2 inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+          >
+            {t(pflegeOffen ? "navigation.pflegeAusblenden" : "navigation.pflegeZeigen")}
+          </button>
+          {/* VERBORGEN, NICHT AUSGEBAUT (Ben, Nacharbeit 8): die Zeilen halten ihren ungespeicherten
+              Entwurf als lokalen Zustand (`BereichsprofilPflege.tsx`, `ProfilZeile`). Ein
+              bedingtes Rendern hätte ihn beim Einklappen verworfen — Ändern, Einklappen, Aufklappen
+              stand wieder beim gespeicherten Wert. `hidden` nimmt die Fläche aus Sicht und
+              Tabreihenfolge und lässt den Entwurf stehen; gemessen in
+              `tests/gesamt-navigation/risiko-pflege-einklappen-mounted.test.tsx`. */}
+          <div id="risiko-pflege" data-testid="risiko-pflege" hidden={!pflegeOffen}>
+            <BereichsprofilPflege />
+          </div>
+        </div>
+      ) : null}
 
       {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
           als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die
@@ -385,11 +429,30 @@ export function Risk(): JSX.Element {
         {/* SCRUM-283: ehrlich + datensparsam — gespeicherte Fragen sind offene Lücken (keine Antwort/
             kein validiertes Wissen); beim Erfassen keine sensiblen Details, geprüfte Erfahrung ergänzen. */}
         <p className="mb-2 text-[12px] text-muted-2">{t(gapPrivacyNoticeKey())}</p>
+        {/* ADMIN-01: Ziel des Zählers „Offene Wissenslücken" der Verwaltung. Der Filter steht in der
+            Adresse (`?luecken=offen`) und wählt mit DERSELBEN Regel wie der Zähler
+            (`offeneLuecken`) aus DERSELBEN Abfrage (`["gaps"]`). */}
+        {nurOffene ? (
+          <div
+            data-testid="filter-luecken"
+            className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted"
+          >
+            <span>{t("verwaltung.filter.offeneLuecken")}</span>
+            <Link to="/risiko" className="text-text underline underline-offset-2">
+              {t("verwaltung.filter.aufheben")}
+            </Link>
+          </div>
+        ) : null}
         <QueryState query={gaps} emptyText={t("risk.gapsEmpty")}>
           {(items) => (
             <Card className="p-0">
               <div className="divide-y divide-hairline">
-                {sortGapsByPriority(items).map((g) => (
+                {nurOffene && offeneLuecken(items).length === 0 ? (
+                  <div className="px-4 py-2.5 text-[13px] text-muted">
+                    {t("verwaltung.filter.keineOffenen")}
+                  </div>
+                ) : null}
+                {sortGapsByPriority(nurOffene ? offeneLuecken(items) : items).map((g) => (
                   <div
                     key={g.id}
                     data-testid="luecke-zeile"
@@ -439,6 +502,15 @@ export function Risk(): JSX.Element {
                             {t(`risk.gapNext.${gapNextStep(g)}`)}
                           </span>
                         </div>
+                      ) : null}
+                      {/* R-1663 / R-2178: begründete Ansprechpartner nach Wissensspuren — nur mit
+                          ko.assign UND eingeschaltetem Schalter (dieselben Tore wie die Route). */}
+                      {g.status === "offen" && ansprechpartnerSichtbar ? (
+                        <LueckenAnsprechpartner
+                          gapId={g.id}
+                          assignPending={assign.isPending}
+                          onAssign={(expertId) => assign.mutate({ id: g.id, expertId })}
+                        />
                       ) : null}
                     </div>
                     <span className="shrink-0 font-mono text-[10.5px] uppercase text-muted-2">
@@ -490,14 +562,31 @@ export function Risk(): JSX.Element {
                             </option>
                           ))}
                         </select>
-                        <button
-                          type="button"
-                          title={t("risk.close")}
-                          onClick={() => close.mutate(g.id)}
-                          className="grid h-8 w-8 place-items-center rounded-btn text-trust-pos-text hover:bg-trust-pos-bg"
+                        <select
+                          value=""
+                          data-testid="luecke-schliessen"
+                          disabled={close.isPending || (kos.data ?? []).length === 0}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              close.mutate({ id: g.id, koId: e.target.value });
+                            }
+                          }}
+                          title={t("risk.closeWithTitle")}
+                          aria-label={t("risk.closeWithTitle")}
+                          className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
                         >
-                          <Check size={15} />
-                        </button>
+                          <option value="">{t("risk.close")}</option>
+                          {(kos.data ?? []).map((k) => (
+                            <option key={k.id} value={k.id}>
+                              {k.title}
+                            </option>
+                          ))}
+                        </select>
+                        {close.isError && close.variables?.id === g.id ? (
+                          <span role="alert" className="text-[11px] text-trust-crit-text">
+                            {t("risk.closeFailed")}
+                          </span>
+                        ) : null}
                       </>
                     ) : null}
                     <button

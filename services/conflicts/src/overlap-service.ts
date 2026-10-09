@@ -167,7 +167,8 @@ export class OverlapService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[overlaps] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[overlaps] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
   }
 
@@ -792,6 +793,82 @@ export class OverlapService {
       case "dismissed":
         return this.dismiss(id, by, note);
     }
+  }
+
+  // ============================================================================================
+  // R-1107 / R-0201 (Aufnahme gesamt-dublettenvergleich) — DER ABSCHLUSS „ZUSAMMENGEFÜHRT".
+  // ============================================================================================
+  //
+  // `merged` stand seit D3 als Typwert da und hatte bis hierher keinen Schreiber. Er gehört dem
+  // Zusammenführen-Assistenten und steht deshalb NICHT unter den wählbaren Gründen
+  // (`HUMAN_OVERLAP_CLOSE_REASONS`): geschrieben wird er nur, nachdem der Führungsartikel seine neue
+  // Fassung UND der aufgehende Artikel seinen Verweis tatsächlich trägt — der Aufrufer reicht beide
+  // Angaben herein, dieser Dienst kennt keine Wissensobjekte.
+  //
+  // DER REST DES AUFGEHENDEN ARTIKELS: andere noch offene Befunde, an denen er beteiligt ist, sind
+  // gegenstandslos — er wird nicht mehr gepflegt, sein Inhalt lebt im Führungsartikel weiter. Sie
+  // schliessen systemisch als `superseded` (dieselbe mengenbasierte Anweisung wie beim Löschen),
+  // je mit Beleg. Befunde des FÜHRUNGSartikels bleiben hier unberührt; für sie gilt nach der neuen
+  // Fassung der gewöhnliche Revisions-Sweep (`onKoRevised`), den der Aufrufer danach fährt.
+  async closeAsMerged(
+    id: string,
+    by: string,
+    ergebnis: { survivorKoId: string; survivorVersion: number; retiredKoId: string },
+    note?: string,
+  ): Promise<OverlapEntry> {
+    const entry = await this.requireOpen(id);
+    const paar = [entry.koA, entry.koB];
+    if (
+      ergebnis.survivorKoId === ergebnis.retiredKoId ||
+      !paar.includes(ergebnis.survivorKoId) ||
+      !paar.includes(ergebnis.retiredKoId)
+    ) {
+      throw new OverlapError(
+        "INVALID_STATUS",
+        "Führungsartikel und aufgehender Artikel müssen die beiden Seiten dieses Befunds sein.",
+      );
+    }
+    const at = this.iso();
+    const saved: OverlapEntry = {
+      ...entry,
+      status: "geschlossen",
+      resolution: {
+        reason: "merged",
+        by,
+        note: note ?? null,
+        at,
+        mergedIntoKoId: ergebnis.survivorKoId,
+        mergedVersion: ergebnis.survivorVersion,
+      },
+      closedAt: at,
+    };
+    await this.repo.update(saved);
+    await this.audit?.record({
+      actor: by,
+      action: "overlap.merge-completed",
+      target: id,
+      payload: {
+        koIds: [entry.koA, entry.koB],
+        resolutionReason: "merged",
+        survivorKoId: ergebnis.survivorKoId,
+        survivorVersion: ergebnis.survivorVersion,
+        retiredKoId: ergebnis.retiredKoId,
+      },
+    });
+    const gegenstandslos = await this.repo.closeOpenForKo(ergebnis.retiredKoId, {
+      status: "geschlossen",
+      resolution: { reason: "superseded", by: null, note: null, at },
+      closedAt: at,
+    });
+    for (const rest of gegenstandslos) {
+      await this.audit?.record({
+        actor: by,
+        action: "overlap.superseded",
+        target: rest.id,
+        payload: { koId: ergebnis.retiredKoId, via: "merged", overlapId: id },
+      });
+    }
+    return saved;
   }
 
   private async close(
