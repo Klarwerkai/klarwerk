@@ -1,7 +1,6 @@
 import {
   AlertTriangle,
   BarChart3,
-  Bell,
   BookOpen,
   Building2,
   CheckSquare,
@@ -18,10 +17,8 @@ import {
   MessageSquare,
   Plus,
   RefreshCw,
-  Search,
   Share2,
   ShieldCheck,
-  Smartphone,
   User,
   Users,
 } from "lucide-react";
@@ -632,13 +629,14 @@ function pathMatches(muster: string, pfad: string): boolean {
 // DIE Antwort des Routers, nicht eine zweite Meinung darüber: gibt es für den Pfad ein Gate,
 // entscheidet dessen `minRole`; gibt es keins (z. B. `/wissen/:id`, `/hilfe`), lässt der Router
 // jede Rolle durch — dann ist „erreichbar" die WAHRE Auskunft und nicht ein vorsichtiges Nein.
-// (Bewusst anders als `canActOn` in lib/workCenter.ts: dort geht es um eine EMPFEHLUNG, und die
-// bleibt fail-closed — ein unbelegtes Ziel wird nicht empfohlen. Beide lesen dieselbe Registry.)
+// (Bewusst anders als das frühere `canActOn` in lib/workCenter.ts, das eine EMPFEHLUNG fail-closed
+// hielt — ein unbelegtes Ziel wurde nicht empfohlen. Es ist mit der Empfehlung selbst entfernt, R-1349.)
 export function routePathAllows(to: string, role: Role): boolean {
   const pfad = routePathOf(to);
   const gate = GUARDED_ITEMS.find((i) => pathMatches(i.path, pfad));
   return gate ? roleAllows(gate, role) : true;
 }
 
-// Topbar-Icons hier mit re-exportieren, damit die Shell eine Quelle hat.
-export const TopbarIcons = { Search, Bell, Smartphone, HelpCircle } as const;
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `TopbarIcons` (Suche, Glocke, Mobil, Hilfe als
+// gemeinsame Quelle der Topbar). Die Hülle bezieht ihre Symbole seit dem Kopfband-Umbau selbst; die
+// Sammlung las niemand und ist entfernt, mit ihr die drei nur dafür importierten Symbole.

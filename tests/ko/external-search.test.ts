@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExternalResult } from "../../apps/web/src/api/types";
-import { isAttachable, toSourcePayload } from "../../apps/web/src/lib/externalSearch";
+import { toSourcePayload } from "../../apps/web/src/lib/externalSearch";
 
 const result = (over: Partial<ExternalResult> = {}): ExternalResult => ({
   title: "Druckbehälter",
@@ -25,8 +25,6 @@ describe("SCRUM-118 / FR-EXT-02: externalSearch-Mapping", () => {
     expect(toSourcePayload(result({ snippet: `  ${long}  ` })).excerpt).toHaveLength(300);
   });
 
-  it("isAttachable: nur mit nicht-leerem Titel", () => {
-    expect(isAttachable(result())).toBe(true);
-    expect(isAttachable(result({ title: "   " }))).toBe(false);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `isAttachable` ist mit der Prüfung
+  // entfallen — sie hatte keinen Produktleser; Treffer ohne Titel verwirft der Server.
 });

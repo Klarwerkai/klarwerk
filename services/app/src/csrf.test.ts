@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "./build-app";
 import {
-  COOKIE_STRATEGY,
   SESSION_COOKIE,
   UNSAFE_METHODS,
   csrfAssessment,
@@ -14,15 +13,29 @@ import {
 // cookie-CSRF-anfällig, Cookie-Sessions sind durch SameSite=Lax begrenzt, und die unsicheren Methoden
 // sind klar benannt. Restrisiken werden ehrlich als Schlüssel transportiert (kein Sicherheitsversprechen).
 describe("SCRUM-367: CSRF/Cookie strategy", () => {
-  it("Cookie-Strategie ist dokumentiert (HttpOnly, Path=/, SameSite=Lax, Secure-konfigurierbar)", () => {
-    expect(COOKIE_STRATEGY).toEqual({
-      name: "kw_session",
-      httpOnly: true,
-      path: "/",
-      sameSite: "Lax",
-      secureWhenConfigured: true,
-    });
+  // R-1349: gemessen am echten `Set-Cookie` der Anmeldung statt an einer Abschrift der Eigenschaften.
+  it("Cookie-Strategie am echten Set-Cookie: HttpOnly, Path=/, SameSite=Lax", async () => {
     expect(SESSION_COOKIE).toBe("kw_session");
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "c@x.de", password: "secret123" },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "c@x.de", password: "secret123" },
+    });
+    const roh = res.headers["set-cookie"];
+    const cookie = (Array.isArray(roh) ? roh : [roh ?? ""]).find((c) =>
+      c.startsWith(`${SESSION_COOKIE}=`),
+    );
+    expect(cookie, "die Anmeldung setzt kein Session-Cookie").toBeDefined();
+    const teile = (cookie ?? "").split(";").map((t) => t.trim());
+    expect(teile).toContain("HttpOnly");
+    expect(teile).toContain("Path=/");
+    expect(teile).toContain("SameSite=Lax");
   });
 
   it("unsichere (zustandsändernde) Methoden sind genau POST/PUT/DELETE/PATCH", () => {
