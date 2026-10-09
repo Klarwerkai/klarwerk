@@ -47,7 +47,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hooks";
+import { useAnalytics, useAuditSeite, useUsers, useValidationBoard } from "../api/hooks";
 import type { PublicUser } from "../api/types";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
@@ -71,7 +71,7 @@ import {
   useIstOnline,
   wertBefund,
 } from "../components/einstellungen/zeilenWert";
-import { isUserAuditAction } from "../lib/adminForms";
+import { KONTO_AUDIT_AKTIONEN } from "../lib/adminForms";
 import {
   ADMIN_SECTIONS,
   type AdminSectionId,
@@ -114,6 +114,77 @@ import {
   DatenschutzDetail,
   PruefprotokollDetail,
 } from "./AdminSicherheitDetails";
+
+/** Der Zeilenwert der Fläche (`wert` in `Admin`) — als Typ, damit Teilbereiche ihn nutzen können. */
+type ZeilenWertFn = (
+  q: {
+    data: unknown;
+    isError: boolean;
+    isFetching: boolean;
+    fetchStatus: string;
+    dataUpdatedAt: number;
+  },
+  fachwert: string | null,
+  leer?: boolean,
+) => string;
+
+/**
+ * Die Zeilen des Reiters „Sicherheit und Nachweise".
+ *
+ * produkt:20261009:admin-audit-verstaendlich (ADMIN-03): beide Protokollzeilen lesen nur noch den
+ * JÜNGSTEN Eintrag über den Seitenweg (`limit: 1`) statt der ganzen Kette. Die Benutzeränderungen
+ * nennen deshalb den Tag ihres letzten Eintrags statt einer Gesamtzahl — eine Zahl über alle
+ * Einträge hieße, alle zu laden. Die Zeilen stehen in einem eigenen Bauteil, damit die Abrufe nur
+ * laufen, wenn dieser Reiter offen ist.
+ */
+function SicherheitsZeilen({
+  wert,
+  oeffne,
+}: {
+  wert: ZeilenWertFn;
+  oeffne: (karte: string) => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const protokoll = useAuditSeite({ limit: 1 });
+  const konten = useAuditSeite({ actions: KONTO_AUDIT_AKTIONEN, limit: 1 });
+  const tagDesJuengsten = (seite: typeof protokoll.data): string | null => {
+    const juengster = seite?.entries[0];
+    return juengster ? new Date(juengster.at).toLocaleDateString() : null;
+  };
+  return (
+    <Zeilenkarte>
+      <Zeile
+        label={t("adm.ziel.protokoll")}
+        wert={wert(
+          protokoll,
+          tagDesJuengsten(protokoll.data),
+          protokoll.data !== undefined && protokoll.data.entries.length === 0,
+        )}
+        onOeffnen={() => oeffne("protokoll")}
+        testId="zeile-pruefprotokoll"
+      />
+      <Zeile
+        label={t("adm.sich.dataTitle")}
+        wert={t("einst.sich.punkte", { count: SECURITY_POINTS.length })}
+        onOeffnen={() => oeffne("datenschutz")}
+        testId="zeile-datenschutz"
+      />
+      {/* Die Vorlage verlangt ausdrücklich, die zwei Protokollumfänge NICHT
+          zusammenzuwerfen: oben das hash-verkettete Prüfprotokoll, hier die
+          Benutzeränderungen aus dem Audit-Log. Zwei Zeilen, zwei Karten, zwei Namen. */}
+      <Zeile
+        label={t("adm.auditTitle")}
+        wert={wert(
+          konten,
+          tagDesJuengsten(konten.data),
+          konten.data !== undefined && konten.data.entries.length === 0,
+        )}
+        onOeffnen={() => oeffne("audit")}
+        testId="zeile-audit"
+      />
+    </Zeilenkarte>
+  );
+}
 
 /**
  * Eine Zeile, die AUS der Verwaltung hinausführt (Kurzlink).
@@ -295,7 +366,6 @@ export function Admin(): JSX.Element {
       .filter((teil): teil is string => teil !== null)
       .join(" · ");
 
-  const audit = useAudit();
   const analytics = useAnalytics();
   const board = useValidationBoard();
   const aiConfig = useQuery({ queryKey: ["reasonerConfig"], queryFn: endpoints.reasoner.config });
@@ -428,9 +498,6 @@ export function Admin(): JSX.Element {
     sicherungAnzahl === 0,
     t("adm.backup.row.none"),
   );
-
-  const auditNutzer = audit.data?.filter((e) => isUserAuditAction(e.action)) ?? [];
-  const letzterEintrag = audit.data?.[audit.data.length - 1];
 
   const berichteAus = useModulAusHinweis(["output", "graph", "kapital"]);
   const quellenAus = useModulAusHinweis(["import"]);
@@ -756,37 +823,7 @@ export function Admin(): JSX.Element {
           ) : null}
 
           {section === "sicherheit" ? (
-            <Zeilenkarte>
-              <Zeile
-                label={t("adm.ziel.protokoll")}
-                wert={wert(
-                  audit,
-                  letzterEintrag ? new Date(letzterEintrag.at).toLocaleDateString() : null,
-                  audit.data !== undefined && letzterEintrag === undefined,
-                )}
-                onOeffnen={() => geheZu("sicherheit", "protokoll")}
-                testId="zeile-pruefprotokoll"
-              />
-              <Zeile
-                label={t("adm.sich.dataTitle")}
-                wert={t("einst.sich.punkte", { count: SECURITY_POINTS.length })}
-                onOeffnen={() => geheZu("sicherheit", "datenschutz")}
-                testId="zeile-datenschutz"
-              />
-              {/* Die Vorlage verlangt ausdrücklich, die zwei Protokollumfänge NICHT
-                  zusammenzuwerfen: oben das hash-verkettete Prüfprotokoll, hier die
-                  Benutzeränderungen aus dem Audit-Log. Zwei Zeilen, zwei Karten, zwei Namen. */}
-              <Zeile
-                label={t("adm.auditTitle")}
-                wert={wert(
-                  audit,
-                  audit.data ? String(auditNutzer.length) : null,
-                  audit.data !== undefined && auditNutzer.length === 0,
-                )}
-                onOeffnen={() => geheZu("sicherheit", "audit")}
-                testId="zeile-audit"
-              />
-            </Zeilenkarte>
+            <SicherheitsZeilen wert={wert} oeffne={(karte) => geheZu("sicherheit", karte)} />
           ) : null}
 
           {/* Berichte und Analyse: ausschließlich Kurzlinks auf vorhandene Bereiche — kein Ziel

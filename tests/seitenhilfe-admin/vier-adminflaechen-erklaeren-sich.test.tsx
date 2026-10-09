@@ -183,7 +183,9 @@ const BILDSCHIRME: readonly Bildschirm[] = [
     query: "?bereich=sicherheit&detail=audit",
     datei: "apps/web/src/pages/AdminDatenDetails.tsx",
     titelKey: "seitenhilfe.admin.audit.titel",
-    textKey: "seitenhilfe.admin.audit.text",
+    // produkt:20261009:admin-audit-verstaendlich: die Auth-Ansicht teilt jetzt die Darstellung des
+    // Prüfprotokolls (Filter, Seiten, Namen); ihr Hilfetext beschreibt das unter eigenem Schlüssel.
+    textKey: "auditprotokoll.hilfe.konten",
   },
   // ---- AdminSicherheitDetails.tsx --------------------------------------------------------------
   {

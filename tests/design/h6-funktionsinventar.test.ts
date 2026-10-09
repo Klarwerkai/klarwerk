@@ -310,7 +310,9 @@ function inventarAdmin(): Posten[] {
       reiter: t("adm.sec.sicherheit"),
       klick: '[data-testid="zeile-audit"]',
       detail: "detail-audit",
-      erwartet: [{ einesVon: ["auth.", "user.", t("adm.auditEmpty")] }],
+      // produkt:20261009:admin-audit-verstaendlich: der Vorgang steht beim Namen da; der Rohcode
+      // (`auth.login`) nur noch eingeklappt in den technischen Angaben.
+      erwartet: [{ einesVon: [t("audit.action.auth_login"), t("adm.auditEmpty")] }],
     },
     // ---- Sicherheit (§5a 20–22) ----------------------------------------------------------------------
     {

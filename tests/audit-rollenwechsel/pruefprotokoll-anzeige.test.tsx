@@ -31,7 +31,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
-      audit: { list: ok([] as unknown[]), verify: ok({ ok: true, count: 0 }) },
+      // produkt:20261009:admin-audit-verstaendlich: die Karte liest SEITENWEISE (`audit.seite`).
+      audit: { seite: ok({} as unknown), verify: ok({ ok: true, count: 0 }) },
       directory: {
         list: vi.fn(async () => {
           if (verzeichnis.art === "haengt") {
@@ -61,6 +62,7 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -138,9 +140,45 @@ interface Vorbestand {
   readonly alterMs: number;
 }
 
-async function mount(eintraege: readonly unknown[], vorbestand?: Vorbestand): Promise<void> {
-  (endpoints.audit.list as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-    async () => eintraege,
+/**
+ * produkt:20261009:admin-audit-verstaendlich: die Einträge als EINE Seite, wie `GET /api/audit/seite`
+ * sie liefert — jüngster zuerst, keine ältere Seite, kein freigegebenes Objekt, keine Namensbelege.
+ */
+function alsSeite(eintraege: readonly unknown[]): {
+  entries: unknown[];
+  nextBefore: number | null;
+  limit: number;
+  objekte: Record<string, { titel: string }>;
+  namensbelege: unknown[];
+} {
+  return {
+    entries: [...eintraege].reverse(),
+    nextBefore: null,
+    limit: 25,
+    objekte: {},
+    namensbelege: [],
+  };
+}
+
+/** Der Seitentext OHNE die eingeklappten technischen Angaben — das, was in den Spalten steht. */
+function spaltentext(): string {
+  const kopie = container.cloneNode(true) as HTMLElement;
+  for (const technik of kopie.querySelectorAll("[data-audit-technik]")) {
+    technik.remove();
+  }
+  return kopie.textContent ?? "";
+}
+
+/** Was der Seitenweg auf eine Anfrage antwortet — Vorgabe: alle Einträge als eine Seite. */
+type Seitenantwort = (anfrage: { before?: number }) => unknown;
+
+async function mount(
+  eintraege: readonly unknown[],
+  vorbestand?: Vorbestand,
+  antwort?: Seitenantwort,
+): Promise<void> {
+  (endpoints.audit.seite as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+    async (anfrage: { before?: number } = {}) => (antwort ? antwort(anfrage) : alsSeite(eintraege)),
   );
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -161,7 +199,12 @@ async function mount(eintraege: readonly unknown[], vorbestand?: Vorbestand): Pr
         createElement(
           ToastProvider,
           null,
-          createElement(PruefprotokollDetail, { onZurueck: () => undefined }),
+          // produkt:20261009:admin-audit-verstaendlich: Filter und Seite stehen in der Adresse.
+          createElement(
+            MemoryRouter,
+            { initialEntries: ["/admin?bereich=sicherheit&detail=protokoll"] },
+            createElement(PruefprotokollDetail, { onZurueck: () => undefined }),
+          ),
         ),
       ),
     );
@@ -225,8 +268,12 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
     await mount([ALT, FRISCH]);
     expect(text(eintrag(2))).toContain(i18n.t("audit.action.user_role_change"));
     expect(i18n.t("audit.action.user_role_change")).toBe("Rolle geändert");
-    // Nirgends auf der Fläche steht noch der rohe Code.
-    expect(container.textContent).not.toContain("user.role-change");
+    // In keiner Spalte steht der rohe Code.
+    expect(spaltentext()).not.toContain("user.role-change");
+    // produkt:20261009:admin-audit-verstaendlich (K2): für die Prüfung bleibt er erreichbar — in
+    // den technischen Angaben des Eintrags, zusammen mit dem gespeicherten Zeitpunkt in UTC.
+    expect(text(kennung(2, "action"))).toBe("user.role-change");
+    expect(text(kennung(2, "at"))).toBe("2026-09-06T10:00:00.000Z");
   });
 
   it("2 DE · der frische Eintrag nennt beide Namen und beide Rollen", async () => {
@@ -501,8 +548,10 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
       // Das Ziel ist ein Objekt, kein Konto — keine Löschaussage.
       expect(text(zeile(10 + i, "audit.detail.targetObject"))).toContain("ko-existiert");
     });
+    // In den Spalten kein Rohcode und keine Humanisierung — der Rohcode steht nur noch in den
+    // technischen Angaben (K2, produkt:20261009:admin-audit-verstaendlich).
     for (const code of codes) {
-      expect(container.textContent).not.toContain(code);
+      expect(spaltentext()).not.toContain(code);
       expect(container.textContent).not.toContain(code.replace(/[._-]/g, " "));
     }
     expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
@@ -521,11 +570,15 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
       },
     ]);
     expect(text(zeile(20, "audit.detail.event"))).toBe("Für Lernplattform exportiert (SCORM)");
-    expect(text(zeile(20, "audit.detail.actor"))).toBe("Lea Lebt");
+    // produkt:20261009:admin-audit-verstaendlich (K3): der Eintrag hat keinen Namen gespeichert —
+    // „Lea Lebt“ ist der HEUTIGE Name aus dem Verzeichnis und steht ausdrücklich so da.
+    expect(text(zeile(20, "audit.detail.actor"))).toBe(
+      `Lea Lebt ${i18n.t("auditprotokoll.name.heute")}`,
+    );
     // Das Paket ist kein Konto — Objektzeile, keine Löschaussage.
     expect(text(zeile(20, "audit.detail.targetObject"))).toContain("lms-export:EXP-1");
     expect(container.textContent).not.toContain("output lms export");
-    expect(container.textContent).not.toContain("output.lms-export");
+    expect(spaltentext()).not.toContain("output.lms-export");
     expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
     // Und EN ist eine eigene Fassung, kein deutscher Rest.
     await i18n.changeLanguage("en");
@@ -533,7 +586,10 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
     await i18n.changeLanguage("de");
   });
 
-  it("V5 R-1085 · letzte Aktionen mit Gesamtzahl und Knopf zur Kettenprüfung", async () => {
+  // produkt:20261009:admin-audit-verstaendlich (K4): statt „die 12 jüngsten von insgesamt N" aus der
+  // geladenen Gesamtliste liest die Karte SEITENWEISE. Die ältere Seite kommt über den Zeiger des
+  // Servers (`nextBefore`), nicht über einen Ausschnitt im Browser.
+  it("V5 R-1085 · jüngste Aktionen seitenweise, ältere über den Zeiger, Knopf zur Kettenprüfung", async () => {
     const viele = Array.from({ length: 14 }, (_, i) => ({
       ...kette(i + 1),
       actor: "lebt-1",
@@ -541,19 +597,47 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
       action: "auth.login",
       payload: {},
     }));
-    await mount(viele);
+    // Der Server liefert zwölf Einträge (14 … 3) und den Zeiger 3; die ältere Seite enthält 2 und 1.
+    await mount(viele, undefined, (anfrage) =>
+      anfrage.before === undefined
+        ? { ...alsSeite(viele.slice(2)), nextBefore: 3 }
+        : alsSeite(viele.filter((e) => e.seq < (anfrage.before ?? 0))),
+    );
+    const seite = endpoints.audit.seite as unknown as ReturnType<typeof vi.fn>;
+    // Die Karte fordert die erste Seite OHNE Zeiger an — nie eine Gesamtliste.
+    expect(seite.mock.calls[0]?.[0]).toEqual({});
     expect(container.querySelectorAll("[data-audit-eintrag]")).toHaveLength(12);
     // Die jüngste Aktion steht oben.
     expect(
       container.querySelector("[data-audit-eintrag]")?.getAttribute("data-audit-eintrag"),
     ).toBe("14");
     expect(text(container.querySelector("caption"))).toBe(
-      "Die 12 jüngsten Aktionen von insgesamt 14",
+      i18n.t("auditprotokoll.tabelle.seite", { shown: 12 }),
     );
-    expect(container.textContent).toContain(i18n.t("adm.sich.auditCount", { count: 14 }));
     const knopf = [...container.querySelectorAll("button")].find(
       (b) => text(b) === i18n.t("adm.sich.verify.button"),
     );
     expect(knopf, "Knopf zur Kettenprüfung fehlt").toBeDefined();
+
+    // Ältere Einträge: derselbe Weg, jetzt mit dem Zeiger des Servers.
+    const aelter = [...container.querySelectorAll("button")].find(
+      (b) => text(b) === i18n.t("auditprotokoll.seite.aelter"),
+    );
+    expect(aelter, "Knopf „Ältere Einträge“ fehlt").toBeDefined();
+    await act(async () => {
+      aelter?.click();
+      await flush();
+    });
+    expect(seite.mock.calls.at(-1)?.[0]).toEqual({ before: 3 });
+    expect(
+      [...container.querySelectorAll("[data-audit-eintrag]")].map((e) =>
+        e.getAttribute("data-audit-eintrag"),
+      ),
+    ).toEqual(["2", "1"]);
+    expect(container.textContent).toContain(i18n.t("auditprotokoll.seite.ende"));
+    const neueste = [...container.querySelectorAll("button")].find(
+      (b) => text(b) === i18n.t("auditprotokoll.seite.neueste"),
+    );
+    expect(neueste, "Rückweg zu den neuesten Einträgen fehlt").toBeDefined();
   });
 });

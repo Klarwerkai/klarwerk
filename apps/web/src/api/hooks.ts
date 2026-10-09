@@ -7,7 +7,7 @@ import { importRunStateView } from "../lib/importResultView";
 import { LIVEWALL_TAKT_MS } from "../lib/livewallTakt";
 import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
-import type { BeziehungSetzenBody } from "./types";
+import type { AuditSeitenAnfrage, BeziehungSetzenBody } from "./types";
 
 /** Nachfragetakt für einen laufenden Import — ruhig genug fürs Netz, schnell genug fürs Auge. */
 const IMPORT_RUN_TAKT_MS = 2000;
@@ -225,6 +225,13 @@ export const useImportAccessConfluence = (enabled = true) =>
     retry: false,
   });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
+// produkt:20261009:admin-audit-verstaendlich: eine Seite der Kette. Der Schlüssel beginnt mit
+// „audit", damit jede bestehende Invalidierung von `["audit"]` (etwa nach dem Export) sie mitnimmt.
+export const useAuditSeite = (anfrage: AuditSeitenAnfrage) =>
+  useQuery({
+    queryKey: ["audit", "seite", anfrage],
+    queryFn: () => endpoints.audit.seite(anfrage),
+  });
 // JOB 2600 D1: die Themenkarte kommt als Teil der Sichtmetrik — eine Route, eine Rechte-Naht.
 export const useWissensnetz = () =>
   useQuery({ queryKey: ["wissensnetz", "luecken"], queryFn: endpoints.wissensnetz.luecken });

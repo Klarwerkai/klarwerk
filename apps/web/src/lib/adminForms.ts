@@ -45,3 +45,29 @@ export function passwordRepeatMismatch(password: string, repeat: string): boolea
 export function isUserAuditAction(action: string): boolean {
   return action.startsWith("user.") || action.startsWith("auth.");
 }
+
+/**
+ * produkt:20261009:admin-audit-verstaendlich: dieselbe Menge als AUSDRÜCKLICHE Liste — der
+ * Seitenweg (`GET /api/audit/seite?actions=…`) filtert am Server, und ein Präfix kennt er nicht.
+ * Abschließend aus `services/auth/src/service.ts` gelesen; `tests/admin-audit-verstaendlich/
+ * konto-aktionen-vollstaendig.test.ts` hält die Liste gegen den Schreibweg fest.
+ */
+export const KONTO_AUDIT_AKTIONEN: readonly string[] = [
+  "auth.login",
+  "auth.logout",
+  "user.created",
+  "user.approve",
+  "user.role-change",
+  "user.delete",
+  "user.password-reset",
+  "user.password-changed",
+  "user.password-reset-email",
+  "user.access-expired",
+  "user.access-expiry-unreadable",
+  "user.access-expiry-set",
+  "user.oidc-provisioned",
+  "user.oidc-linked",
+  "user.oidc-linked-unverified",
+  "user.role-claim-missing",
+  "user.role-synced",
+];

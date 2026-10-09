@@ -390,6 +390,9 @@ describe("auditEventDetail", () => {
         value: "Gerd Gelöscht",
         id: "weg-1",
         hinweisKey: "audit.detail.accountGone",
+        // produkt:20261009:admin-audit-verstaendlich (K3): der Name stammt aus einem ANDEREN
+        // Eintrag der Kette — die Zeile sagt das, statt ihn wie einen eigenen auszugeben.
+        herkunft: "protokoll",
       });
       expect(JSON.stringify(zeilen)).not.toContain("Lea Lebt");
     });

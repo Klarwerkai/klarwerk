@@ -102,6 +102,18 @@ export interface DetailZeile {
    * Protokoll, dessen Konto im frisch geladenen Verzeichnis fehlt („Konto nicht mehr vorhanden").
    */
   readonly hinweisKey?: string;
+  /**
+   * produkt:20261009:admin-audit-verstaendlich (K3) — WOHER EIN NAME STAMMT, bei `kind: "text"`
+   * mit wörtlichem Namen:
+   *
+   *   gespeichert .. im Eintrag selbst gespeichert (`actorName`/`targetName`) — der Stand von damals;
+   *   protokoll .... von einem ANDEREN Eintrag derselben Kette gespeichert (etwa bei der Löschung);
+   *   verzeichnis .. HEUTE aus dem Verzeichnis aufgelöst — der Eintrag selbst kennt keinen Namen.
+   *
+   * Die Fläche kennzeichnet die beiden letzten, damit ein heute aufgelöster Name nie wie ein
+   * historisch gespeicherter aussieht.
+   */
+  readonly herkunft?: "gespeichert" | "protokoll" | "verzeichnis";
 }
 
 /** Die vier gültigen Rollenwerte (`services/auth/src/routes.ts`, Rollennamen aus JOB 3124). */
@@ -141,6 +153,13 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
  */
 const SYSTEM_AKTEUR = "system";
 
+/**
+ * produkt:20261009:admin-audit-verstaendlich (K1): ein Dienstschlüssel handelt als Akteur
+ * `dienst:<id>` (`services/app/src/dienst-schluessel.ts`). Er ist kein Konto und steht deshalb nie im
+ * Verzeichnis — als Konto gelesen hieße er dauerhaft „Konto nicht mehr vorhanden", was nie stimmt.
+ */
+const DIENST_PRAEFIX = "dienst:";
+
 /** Die Antwort von `GET /api/directory` als Zuordnung über die Kennung — nie über die Position. */
 export function verzeichnisNamen(
   eintraege: readonly { id: string; name: string }[] | undefined,
@@ -175,6 +194,30 @@ export function protokollNamen(
   return namen;
 }
 
+/**
+ * produkt:20261009:admin-audit-verstaendlich (K1): Namen, die zu MEHR ALS EINER Kennung gehören —
+ * aus dem Verzeichnis und aus den von der Kette gespeicherten Namen zusammen. Steht ein solcher Name
+ * in einer Spalte, zeigt die Fläche eine Kurzkennung daneben, damit zwei „Anna Meier“ unterscheidbar
+ * bleiben. Zugeordnet wird auch hier nur über die Kennung.
+ */
+export function mehrdeutigeNamen(
+  ...quellen: readonly ReadonlyMap<string, string>[]
+): ReadonlySet<string> {
+  const kennungenJeName = new Map<string, Set<string>>();
+  for (const quelle of quellen) {
+    for (const [id, name] of quelle) {
+      const schluessel = name.trim();
+      if (schluessel === "") {
+        continue;
+      }
+      const ids = kennungenJeName.get(schluessel) ?? new Set<string>();
+      ids.add(id);
+      kennungenJeName.set(schluessel, ids);
+    }
+  }
+  return new Set([...kennungenJeName].filter(([, ids]) => ids.size > 1).map(([name]) => name));
+}
+
 /** Ein Zeichenkettenfeld aus der Nutzlast — leer oder falsch getippt zählt als nicht vorhanden. */
 function textfeld(payload: Record<string, unknown>, feld: string): string | undefined {
   const wert = payload[feld];
@@ -191,7 +234,13 @@ function kontoZeile(
 ): DetailZeile {
   if (gespeicherterName !== undefined) {
     // Der Stand von DAMALS schlägt jedes heutige Verzeichnis — und kennt keinen Ladezustand.
-    return { labelKey, kind: "text", value: gespeicherterName, ...(id === "" ? {} : { id }) };
+    return {
+      labelKey,
+      kind: "text",
+      value: gespeicherterName,
+      herkunft: "gespeichert",
+      ...(id === "" ? {} : { id }),
+    };
   }
   if (id === "") {
     return { labelKey, kind: "missing" };
@@ -208,6 +257,7 @@ function kontoZeile(
       kind: "text",
       value: protokollName,
       id,
+      herkunft: "protokoll",
       ...(belegtWeg ? { hinweisKey: "audit.detail.accountGone" } : {}),
     };
   }
@@ -219,7 +269,8 @@ function kontoZeile(
   }
   const name = verzeichnis.namen.get(id);
   if (name !== undefined && name.trim() !== "") {
-    return { labelKey, kind: "text", value: name, id };
+    // K3: der HEUTIGE Name — der Eintrag selbst hat keinen gespeichert. Die Herkunft reist mit.
+    return { labelKey, kind: "text", value: name, id, herkunft: "verzeichnis" };
   }
   if (verzeichnis.stand === "laeuftNach") {
     // Bestand sichtbar, aber die aktuelle Antwort ist noch unterwegs — sie kann die Kennung
@@ -271,20 +322,27 @@ export function auditEventDetail(
   protokoll: ReadonlyMap<string, string> = new Map(),
 ): DetailZeile[] {
   const payload = eintrag.payload ?? {};
-  const akteur =
+  const akteur: DetailZeile =
     eintrag.actor === SYSTEM_AKTEUR
-      ? ({
+      ? {
           labelKey: "audit.detail.actor",
           kind: "text",
           valueKey: "audit.detail.systemActor",
-        } as const)
-      : kontoZeile(
-          "audit.detail.actor",
-          eintrag.actor,
-          textfeld(payload, "actorName"),
-          verzeichnis,
-          protokoll,
-        );
+        }
+      : eintrag.actor.startsWith(DIENST_PRAEFIX)
+        ? {
+            labelKey: "audit.detail.actor",
+            kind: "text",
+            valueKey: "auditprotokoll.akteur.dienst",
+            id: eintrag.actor,
+          }
+        : kontoZeile(
+            "audit.detail.actor",
+            eintrag.actor,
+            textfeld(payload, "actorName"),
+            verzeichnis,
+            protokoll,
+          );
   const ziel = KONTO_ZIEL_AKTIONEN.has(eintrag.action)
     ? kontoZeile(
         "audit.detail.target",

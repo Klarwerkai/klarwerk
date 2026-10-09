@@ -249,18 +249,21 @@ function matrixAdmin(): Quelle[] {
       behaelter: "detail-papierkorb",
       inhalt: t("adm.trash.empty"),
     },
+    // produkt:20261009:admin-audit-verstaendlich: beide Karten lesen die Kette seitenweise über
+    // `/api/audit/seite` (statt der Gesamtliste `/api/audit`), und die Auth-Ansicht nennt den
+    // Vorgang beim Namen („Angemeldet“) statt beim Rohcode `auth.login`.
     {
-      id: "Audit-Liste · /api/audit",
-      pfad: "/api/audit",
+      id: "Audit-Liste · /api/audit/seite",
+      pfad: "/api/audit/seite",
       // JOB 3337: Benutzeränderungen unter „Sicherheit und Nachweise".
       reiter: t("adm.sec.sicherheit"),
       zeile: '[data-testid="zeile-audit"]',
       behaelter: "detail-audit",
-      inhalt: "auth.",
+      inhalt: t("audit.action.auth_login"),
     },
     {
-      id: "Prüfprotokoll · /api/audit",
-      pfad: "/api/audit",
+      id: "Prüfprotokoll · /api/audit/seite",
+      pfad: "/api/audit/seite",
       reiter: t("adm.sec.sicherheit"),
       zeile: '[data-testid="zeile-pruefprotokoll"]',
       behaelter: "detail-pruefprotokoll",
@@ -1863,7 +1866,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     "endpoints.admin.sicherungen": "/api/admin/sicherungen",
     "endpoints.ko.trash": "/api/kos/trash",
     useUsers: "/api/users",
-    useAudit: "/api/audit",
+    // produkt:20261009:admin-audit-verstaendlich: Prüfprotokoll, Auth-Ansicht und ihre zwei Zeilen
+    // lesen die Kette seitenweise — die Gesamtliste `/api/audit` ruft keine dieser Seiten mehr ab.
+    useAuditSeite: "/api/audit/seite",
     // JOB 3140 (UX-11): die NACHRANGIGE Quelle des Prüfprotokolls — die Namen zu den Kennungen.
     // Bewusst `/api/directory` (jeder Angemeldete) und nicht `/api/users` (Admin): das Protokoll
     // steht auch einem Controller offen, und die Fläche darf ihm nicht wegbrechen. Ihr Fall in
