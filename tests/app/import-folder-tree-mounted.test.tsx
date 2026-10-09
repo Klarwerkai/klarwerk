@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // AUFTRAG-mega27 A5 (Mounted): die REKURSIVE Ordner-Darstellung. Belegt am ECHTEN Demo-Bestand
-// (services/app/src/demo-corpus.ts, seit A6 mit mehrstufiger Elternkette), dass
+// (tests/demo-korpus/demo-corpus.ts, seit A6 mit mehrstufiger Elternkette), dass
 //   • der Baum tiefer als zwei Ebenen gezeichnet wird,
 //   • der Haken eines Ordners den GESAMTEN Teilbaum erfasst (nicht nur die direkten Kinder),
 //   • Einträge ohne Elternkette sichtbar direkt unter der Wurzel hängen,
@@ -18,8 +18,8 @@ import {
   groupRowsTree,
   setRowsSelected,
 } from "../../apps/web/src/lib/importSelectView";
-import { corpusImportItems } from "../../services/app/src/demo-corpus";
 import { toPreviewEntry } from "../../services/library-analytics/src/select";
+import { corpusImportItems } from "../demo-korpus/demo-corpus";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

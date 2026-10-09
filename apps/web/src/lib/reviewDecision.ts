@@ -72,3 +72,97 @@ const OUTCOMES: Record<ReviewVerdict, ReviewOutcome> = {
 export function reviewOutcome(verdict: ReviewVerdict): ReviewOutcome {
   return OUTCOMES[verdict];
 }
+
+// ================================================================================================
+// STATUS-FREIGABE (produkt:20261007) · WAS EINE EINZELNE ZUSTIMMUNG WIRKLICH BEWIRKT HAT.
+// ================================================================================================
+//
+// Die Bewertung antwortet mit der Stimmenlage NACH der eigenen Stimme (`ValidationService.rate`:
+// `up`, `warn`, `down`, `status`). Bisher warf die Fläche diese Antwort weg und sagte allgemein
+// „automatisch validiert wird dadurch nichts" — auch dann, wenn genau diese Stimme die letzte
+// erforderliche war. Hier entsteht der Satz aus der Antwort: die eigene Stimme, wie viele positive
+// Bewertungen erforderlich sind und wie viele noch fehlen. „Validiert" sagt er NUR, wenn der Server
+// `status: "validiert"` gemeldet hat — die Zählung hier rechnet nichts frei, sie liest ab.
+// Die erforderliche Zahl kommt aus der Prüfzeile (`neededValidations`), dieselbe wie bei den Punkten.
+
+export interface Stimmenlage {
+  readonly up: number;
+  readonly down: number;
+  readonly validiert: boolean;
+  /** `null` = die erforderliche Zahl ist nicht bekannt. */
+  readonly needed: number | null;
+}
+
+function zahl(wert: unknown): number | null {
+  return typeof wert === "number" && Number.isInteger(wert) && wert >= 0 ? wert : null;
+}
+
+/** Die Stimmenlage aus der Serverantwort — `null`, wenn die Antwort keine trägt. */
+export function stimmenlageAus(antwort: unknown, needed: number | undefined): Stimmenlage | null {
+  if (typeof antwort !== "object" || antwort === null) {
+    return null;
+  }
+  const roh = antwort as Record<string, unknown>;
+  const up = zahl(roh.up);
+  const down = zahl(roh.down);
+  if (up === null || down === null || (roh.status !== "offen" && roh.status !== "validiert")) {
+    return null;
+  }
+  const bedarf = typeof needed === "number" && needed >= 1 ? needed : null;
+  return { up, down, validiert: roh.status === "validiert", needed: bedarf };
+}
+
+export interface Zustimmungsquittung {
+  readonly art: "validiert" | "offen" | "blockiert" | "unbekannt";
+  readonly schluessel: string;
+  readonly werte: Record<string, number>;
+}
+
+/** Der Quittungssatz einer Zustimmung — ohne Stimmenlage ehrlich „unbekannt", nie „validiert". */
+export function zustimmungsquittung(lage: Stimmenlage | null): Zustimmungsquittung {
+  if (!lage) {
+    return { art: "unbekannt", schluessel: "statusfreigabe.zustimmung.unbekannt", werte: {} };
+  }
+  if (lage.validiert) {
+    return lage.needed === null
+      ? { art: "validiert", schluessel: "statusfreigabe.zustimmung.validiert", werte: {} }
+      : {
+          art: "validiert",
+          schluessel: "statusfreigabe.zustimmung.validiertZahl",
+          werte: { have: lage.up, need: lage.needed },
+        };
+  }
+  const rest = lage.needed === null ? 0 : Math.max(0, lage.needed - lage.up);
+  if (lage.down > 0) {
+    // Ben (nacharbeit-2): auch blockiert bleiben Bedarf und Rest sichtbar, sofern bekannt — die
+    // rote Bewertung kommt HINZU, sie ersetzt die Zahlen nicht. Validiert wird nichts behauptet.
+    if (lage.needed === null) {
+      return {
+        art: "blockiert",
+        schluessel: "statusfreigabe.zustimmung.blockiert",
+        werte: { count: lage.down, have: lage.up },
+      };
+    }
+    return {
+      art: "blockiert",
+      schluessel:
+        rest > 0
+          ? "statusfreigabe.zustimmung.blockiertRest"
+          : "statusfreigabe.zustimmung.blockiertGenug",
+      werte: { count: lage.down, have: lage.up, need: lage.needed, rest },
+    };
+  }
+  if (lage.needed === null || rest === 0) {
+    // Offen, aber keine fehlende Zahl ablesbar: dann wird keine erfunden.
+    return {
+      art: "offen",
+      schluessel: "statusfreigabe.zustimmung.offenOhneRest",
+      werte: { have: lage.up },
+    };
+  }
+  return {
+    art: "offen",
+    schluessel: "statusfreigabe.zustimmung.offen",
+    werte: { count: rest, have: lage.up, need: lage.needed },
+  };
+}

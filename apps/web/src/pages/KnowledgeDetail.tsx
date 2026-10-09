@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
+import { SpaceZeile } from "../components/SpaceZeile";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
+import { FASSUNG_PARAM, STELLE_PARAM } from "../lib/belegstelle";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
 
 // ==================================================================================================
@@ -53,6 +56,10 @@ export function KnowledgeDetail(): JSX.Element {
   const naechsteSuche = (() => {
     const p = new URLSearchParams(params);
     p.delete("edit");
+    // R-0326/R-0329: Belegstelle und Abschnittssprung gehören ebenso nur zu DIESEM Eintrag.
+    p.delete(STELLE_PARAM);
+    p.delete(FASSUNG_PARAM);
+    p.delete("abschnitt");
     return p.toString();
   })();
 
@@ -130,6 +137,12 @@ export function KnowledgeDetail(): JSX.Element {
           {t("lesevariante.abrufFehler")}
         </p>
       ) : null}
+      {/* produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
+          getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
+          die Zeile zeichnet dann nichts. */}
+      <SpaceZeile koId={id} />
+      {/* R-1107: ist dieser Eintrag in einem Führungsartikel aufgegangen, sagt die Zeile worin. */}
+      <AufgegangenHinweis koId={id} />
       <BibliothekFlaeche vorgewaehlt={id} beiWahl={beiWahl} beiLoeschung={beiLoeschung} />
     </div>
   );

@@ -32,7 +32,9 @@ import { classifyProvenanceConfidential } from "./reasoner-routes";
 
 // SCRUM-491 Slice 5/6: POST /api/check-text, KEINE Persistenz (kein KO/Gap/Board/Inhalts-Audit —
 // Dry-Run-Kern-Garantie). Reichweite seit JOB 3020 je Weg: der Add-in-Pfad prüft nur gegen den
-// VALIDIERTEN Bestand, der Session-Pfad auch gegen Ungeprüftes (siehe Handler, `includeUnvalidated`).
+// VALIDIERTEN Bestand, der Session-Pfad auch gegen Ungeprüftes (siehe Handler, `includeUnvalidated`)
+// — außer der Prüfweg des Word-Fensters schickt ohne Zustimmung `ungeprueftEinbeziehen: false`
+// (R-0708).
 // Nur registriert bei Flag AN (build-app.ts)
 // → Flag AUS = Endpunkt existiert nicht = bit-identisch.
 //   Stufe 1 (want fehlend / != "deep"): rein deterministisch — KEIN Modell, KEIN embed, kein
@@ -70,6 +72,9 @@ const bodySchema = {
     koId: { type: "string" },
     confidentiality: { type: "string" },
     nichtEingestuft: { type: "boolean" },
+    // R-0708 (E31): die ausdrückliche Zustimmung des Word-Prüfwegs, auch noch nicht validierten
+    // Bestand einzubeziehen. Optional — fehlt sie, gilt die Reichweite des Wegs (siehe Handler).
+    ungeprueftEinbeziehen: { type: "boolean" },
   },
 } as const;
 
@@ -233,12 +238,18 @@ function neuerKonfliktlauf(): Konfliktlauf {
 // dasselbe Modellurteil wie bisher (`judgeConflictOutcome` ist der Ausgang, aus dem `judgeConflict`
 // seinen Wert zieht — reasoner/src/service.ts), nur wird mitgeschrieben statt weggeworfen. Wirft der
 // Aufruf, wird er GEZÄHLT und dann unverändert weitergeworfen — der Dienst behandelt ihn wie zuvor.
-function konfliktJudge(reasoner: Reasoner, locale: "de" | "en", lauf: Konfliktlauf) {
+function konfliktJudge(
+  reasoner: Reasoner,
+  locale: "de" | "en",
+  lauf: Konfliktlauf,
+  // gesamt-ki-freigaberegeln: die Einstufung des geprüften Texts (s. Aufrufer).
+  confidential = false,
+) {
   return async (a: string, b: string): Promise<ConflictVerdict | null> => {
     lauf.kandidaten += 1;
     let ausgang: Awaited<ReturnType<Reasoner["judgeConflictOutcome"]>>;
     try {
-      ausgang = await reasoner.judgeConflictOutcome(a, b, locale);
+      ausgang = await reasoner.judgeConflictOutcome(a, b, locale, confidential);
     } catch (err) {
       lauf.ausgefallen += 1;
       lauf.ausfall = lauf.ausfall ?? "model-error";
@@ -553,6 +564,7 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         koId?: string;
         confidentiality?: string;
         nichtEingestuft?: unknown;
+        ungeprueftEinbeziehen?: boolean;
       };
     }>(
       "/api/check-text",
@@ -609,11 +621,20 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         // `checktext.validated` (addon-principal.ts) und dieselbe Linie zieht der Fragepfad
         // (ask/src/service.ts): ein Add-on-Principal darf nie aus unvalidierten Inhalten antworten.
         //
-        // ES GIBT BEWUSST KEIN RUMPF-FELD DAFÜR: käme die Reichweite aus dem Body, könnte sich der
+        // KEIN RUMPF-FELD ERWEITERT DIE REICHWEITE: käme sie aus dem Body, könnte sich der
         // Add-in-Client sie selbst geben — der Riegel wäre eine Bitte. Sie hängt deshalb am
         // authentifizierten Weg, den der Client nicht wählen kann.
+        //
+        // R-0708 (E31, Pedi 13.08.: „Opt-in auf /api/check-text"): der Prüfweg des Word-Fensters
+        // („Dokument prüfen" / „Markierung prüfen") fragt „ist das durch das Haus gedeckt?" und
+        // schickt dafür seine AUSDRÜCKLICHE Zustimmung mit: `ungeprueftEinbeziehen: false` heißt
+        // „nur Validiertes", `true` „auch noch nicht Validiertes". Das Feld kann am Sitzungsweg
+        // die Reichweite nur VERENGEN oder bestätigen, nie über die des Wegs hinaus öffnen: am
+        // Add-in-Schlüssel bleibt es wirkungslos. Fehlt es, gilt wie bisher die Reichweite des
+        // Wegs — so behält der Weg der Erfassung („gibt es das schon, auch ungeprüft?", JOB 3020)
+        // seine eigene Frage, getrennt vom Prüfweg.
         const istAddon = request.authContext?.authKind === "addon";
-        const includeUnvalidated = !istAddon;
+        const includeUnvalidated = !istAddon && request.body.ungeprueftEinbeziehen !== false;
         // ==========================================================================================
         // JOB 3216 — DIE QUELLENFUNDE ERBEN DIE SICHTBARKEITSREGEL DER BIBLIOTHEK, WÖRTLICH.
         // ==========================================================================================
@@ -643,7 +664,10 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           ...quellenSicht,
         };
         // Der vertrauliche Rückfall bleibt deterministisch; weder Judge noch Embedder erhalten Text.
-        const wantDeep = request.body.want === "deep";
+        // Aufnahme gesamt-integrations-api: ein DIENST-Schlüssel bekommt nur Stufe 1 — kein
+        // Modell-Judge, kein Textabfluss, keine Modellkosten (wie sein Fragezweig, ask-routes.ts).
+        const wantDeep =
+          request.body.want === "deep" && request.authContext?.principal?.dienst === undefined;
         const gebunden = klaraBindungVorhanden(request.headers);
         const actorId = istAddon
           ? request.authContext?.principal?.id
@@ -660,10 +684,28 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
             // Bens B3: die Urteile folgen der GLOBALEN Wahl, nicht der Aufgabe `answer`.
             "global",
           ));
-        const confidential =
-          (gebunden && !dokumentZustimmung) ||
+        // Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): ZWEI GRÜNDE, GETRENNT.
+        //   · `ausleitungGesperrt` — mit Klara-Bindung fehlt die Dokumentzustimmung. Das sperrt immer;
+        //     keine Adminfreigabe hebt es auf.
+        //   · `eingestuftVertraulich` — der Text IST vertraulich (oder im Zweifel so behandelt). Das
+        //     hebt die zweite zentrale Adminfreigabe auf (Pedi 10.09.: „ohne widersprüchliche
+        //     Zusatzsperren"); entschieden im Reasoner, hier nur gefragt.
+        // `confidential` bleibt die Vereinigung beider, wie bisher.
+        // Ben Nacharbeit 3: auch die HERKUNFT sperrt unabhängig von jeder Freigabe — ein Text, der
+        // nicht über einen Client-Text-Weg kommt („draft"/„transient-document"), wird nie
+        // freigegeben (dieselbe Regel wie `classifyProvenanceConfidential` und `reasoner-routes.ts`).
+        const herkunftUnbelegt =
+          request.body.source !== "draft" && request.body.source !== "transient-document";
+        const ausleitungGesperrt = (gebunden && !dokumentZustimmung) || herkunftUnbelegt;
+        const eingestuftVertraulich =
+          !ausleitungGesperrt &&
           (await resolveCheckedTextConfidential(request.body, deps.ko, dokumentZustimmung));
-        const deepAllowed = wantDeep && !confidential;
+        const confidential = ausleitungGesperrt || eingestuftVertraulich;
+        const vertraulichFreigegeben =
+          eingestuftVertraulich &&
+          typeof deps.reasoner.vertraulicheAusleitungFreigegeben === "function" &&
+          deps.reasoner.vertraulicheAusleitungFreigegeben() === true;
+        const deepAllowed = wantDeep && (!confidential || vertraulichFreigegeben);
         // JOB 3094 (KA7): der Mitschnitt dieses Laufs — Urteile je Quellen-Kerntext, Zähler, Ausfall.
         const konfliktlauf = neuerKonfliktlauf();
         // Stufe 2 (want:"deep", nicht vertraulich): derselbe Kern MIT Modell-Judge + Prefilter → findet
@@ -679,10 +721,14 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
               // Dienst ohne Judge sofort `[]` liefert (conflicts/src/service.ts:481-483), ersetzt
               // die Zusicherung „null Dienstaufrufe" nicht.
               ...(deps.conflicts ? { conflicts: deps.conflicts } : {}),
-              duplicateJudge: (a: string, b: string) => deps.reasoner.judgeDuplicate(a, b, locale),
+              // gesamt-ki-freigaberegeln: die Einstufung reist mit — ist der Text vertraulich, stehen
+              // die Urteile nur durch die zweite Freigabe hier, und Kern wie Chokepoint fragen sie
+              // noch einmal.
+              duplicateJudge: (a: string, b: string) =>
+                deps.reasoner.judgeDuplicate(a, b, locale, confidential),
               // JOB 3094 (KA7): dasselbe Urteil wie zuvor (`judgeConflict` liest seinen Wert aus
               // genau diesem Ausgang), jetzt mit der Sprache des Fensters und mitgeschrieben.
-              conflictJudge: konfliktJudge(deps.reasoner, locale, konfliktlauf),
+              conflictJudge: konfliktJudge(deps.reasoner, locale, konfliktlauf, confidential),
               semanticPrefilter: deps.semanticPrefilter,
             }
           : stage1Deps;
@@ -692,7 +738,7 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         // und schließen sich nicht aus — treffen beide zu, stehen auch beide da (JOB 3020: der
         // Vertraulichkeits-Hinweis aus SCRUM-502 darf durch den neuen Satz nicht verloren gehen).
         const hinweise: string[] = [];
-        if (wantDeep && confidential) {
+        if (wantDeep && !deepAllowed) {
           hinweise.push(
             locale === "en"
               ? "Confidential content is checked deterministically only — no cloud AI or embedder was used."
@@ -722,7 +768,11 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         // Audit: Lesen ist Lesen, der Dry-Run bleibt einer.
         const konflikte = await mitStellen(result.conflicts, deps.ko, konfliktlauf);
         const konfliktpruefung = konfliktpruefungVon(
-          { wantDeep, confidential, dienstDa: deps.conflicts !== undefined },
+          {
+            wantDeep,
+            confidential: confidential && !deepAllowed,
+            dienstDa: deps.conflicts !== undefined,
+          },
           konfliktlauf,
           result.conflicts.length,
         );

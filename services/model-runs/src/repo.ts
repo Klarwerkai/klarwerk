@@ -9,6 +9,10 @@ export interface ModelRunRepo {
   // höchstens `limit`. Optional, damit schlanke Test-Attrappen gültig bleiben; die Auswertung
   // fällt ohne sie auf `recent` zurück (s. ModelRunService.auswertung).
   zwischen?(von: string, bis: string, limit: number): Promise<ModelRunRecord[]>;
+  // Betroffenenrechte (R-0663): ALLE Läufe, die eine Person angefragt hat (`actor`), ältester
+  // zuerst — für die Auskunft. Nur lesend. Optional wie `zwischen`; fehlt sie, meldet die Auskunft
+  // den Bereich als „nicht abrufbar" statt als leer.
+  vonAkteur?(actor: string): Promise<ModelRunRecord[]>;
 }
 
 export class InMemoryModelRunRepo implements ModelRunRepo {
@@ -29,5 +33,16 @@ export class InMemoryModelRunRepo implements ModelRunRepo {
       .filter((r) => r.startedAt >= von && r.startedAt < bis)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     return Promise.resolve(treffer.slice(0, Math.max(0, limit)));
+  }
+
+  vonAkteur(actor: string): Promise<ModelRunRecord[]> {
+    if (actor.trim().length === 0) {
+      return Promise.resolve([]);
+    }
+    return Promise.resolve(
+      this.items
+        .filter((r) => r.actor === actor)
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+    );
   }
 }

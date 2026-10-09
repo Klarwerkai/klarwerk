@@ -279,7 +279,9 @@ function inventarAdmin(): Posten[] {
       klick: '[data-testid="zeile-demodaten"]',
       detail: "detail-demodaten",
       erwartet: [{ text: t("adm.seedButton") }, { text: t("adm.purgeButton") }],
-      hilfeText: t("adm.seedHint"),
+      // R-0908: derselbe Hilfekörper, seit der Aufnahme gesamt-sprache-begriffe ohne „KOs" und
+      // „KI-Reasoner" (`texte/fachwort.ts`).
+      hilfeText: t("fachwort.demodaten.hinweis"),
     },
     {
       zeile5a: 17,

@@ -70,9 +70,11 @@ import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { ScormUebergabe } from "../components/ScormUebergabe";
 import { WissensPriorisierung } from "../components/WissensPriorisierung";
+import { WissensSprints } from "../components/WissensSprints";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
+import { WochenupdateTeamgespraech } from "../components/WochenupdateTeamgespraech";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 // JOB 4086: der SharePoint-/OneDrive-Weg. Er haengt an DIESER Seite und nicht an einem eigenen
@@ -249,6 +251,10 @@ export function Output(): JSX.Element {
 
       <Card className="mb-4">
         <SectionLabel>{t("out.kindTitle")}</SectionLabel>
+        {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): jede Abschnittsüberschrift dieser Datei
+            meldet ihre vorhandene Erklärung (`shelp.*`, Berater-Lieferung 05.07.) bei der
+            Seitenhilfe an — bis hierher nur über Klaras Suche erreichbar. */}
+        <HelpTip title={t("out.kindTitle")} body={t("shelp.out.kindTitle")} />
         <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {OUTPUT_KIND_OPTIONS.map((o) => (
             <button
@@ -268,6 +274,7 @@ export function Output(): JSX.Element {
 
       <Card className="mb-4">
         <SectionLabel>{t("out.sourcesTitle")}</SectionLabel>
+        <HelpTip title={t("out.sourcesTitle")} body={t("shelp.out.sourcesTitle")} />
         <QueryState query={sources} emptyText={t("out.noValidated")}>
           {(list) => (
             <ul className="mt-2 space-y-1.5">
@@ -295,6 +302,7 @@ export function Output(): JSX.Element {
       {preview.items.length > 0 ? (
         <Card className="mb-4">
           <SectionLabel>{t("out.composeTitle")}</SectionLabel>
+          <HelpTip title={t("out.composeTitle")} body={t("shelp.out.composeTitle")} />
           <p className="mb-2 mt-1 text-[11.5px] text-muted">{t("out.composeHint")}</p>
           <ol className="space-y-1.5">
             {preview.items.map((it, i) => (
@@ -389,6 +397,7 @@ export function Output(): JSX.Element {
         <Card>
           <div className="mb-2 flex items-center justify-between">
             <SectionLabel>{t("out.previewTitle")}</SectionLabel>
+            <HelpTip title={t("out.previewTitle")} body={t("shelp.out.previewTitle")} />
             <div className="flex gap-2">
               <Button variant="ghost" onClick={copy}>
                 <Copy size={14} />
@@ -405,6 +414,7 @@ export function Output(): JSX.Element {
           </pre>
           <div className="mt-3">
             <SectionLabel>{t("out.provenanceTitle")}</SectionLabel>
+            <HelpTip title={t("out.provenanceTitle")} body={t("shelp.out.provenanceTitle")} />
             <ul className="mt-1.5 space-y-1">
               {/* AUFTRAG-mega59 BLOCK E: hier stand die rohe Kennung in Monospace, obwohl `p.title`
                   im SELBEN Datensatz liegt (serverseitig gefüllt in output/src/render.ts, und der
@@ -426,6 +436,12 @@ export function Output(): JSX.Element {
           </div>
         </Card>
       ) : null}
+
+      {/* RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — eigener Weg ohne
+          Quellenauswahl (der Zeitraum wählt), auf Abruf und ohne Versand. */}
+      <div className="mt-4">
+        <WochenupdateTeamgespraech />
+      </div>
     </div>
   );
 }
@@ -1073,7 +1089,7 @@ function ImportKandidatKarte({
               ) : null}
               {f.acceptedKo ? (
                 <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
-                  {t("ext.finding.acceptedKo")}
+                  {t("fachwort.fund.angelegt")}
                 </span>
               ) : null}
               {/* JOB 3116 (Q2c): WORAUF dieser Wiederimport getroffen ist — mit der
@@ -1337,6 +1353,7 @@ export function ImportReview(): JSX.Element {
         {/* SCRUM-90/91: konzeptioneller Pipeline-Fluss + ehrliche Queue-Zusammenfassung. */}
         <Card className="mb-4">
           <SectionLabel>{t("ext.pipeline.title")}</SectionLabel>
+          <HelpTip title={t("ext.pipeline.title")} body={t("shelp.ext.pipeline.title")} />
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {IMPORT_PIPELINE_STEPS.map((step, i) => (
               <span key={step} className="flex items-center gap-1.5">
@@ -1367,6 +1384,7 @@ export function ImportReview(): JSX.Element {
         </Card>
 
         <SectionLabel>{t("imp.queueTitle")}</SectionLabel>
+        <HelpTip title={t("imp.queueTitle")} body={t("shelp.imp.queueTitle")} />
         {/* ══ JOB 4293 R2 (§ 9) · WAS HÄNGT AN `data`, NICHT AN `isError` ═══════════════════════
             Bis hierher stand hier `QueryState`. Der prüft `isError` VOR den Daten
             (`components/ui.tsx:225-229`) — eine gescheiterte HINTERGRUND-Auffrischung liess damit
@@ -1457,6 +1475,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* SCRUM-227: Sprungmarken zu den konsolidierten Alt-App-Management-Sektionen. */}
       <Card>
         <SectionLabel>{t("mgmt.jumpTitle")}</SectionLabel>
+        <HelpTip title={t("mgmt.jumpTitle")} body={t("shelp.mgmt.jumpTitle")} />
         <nav aria-label={t("mgmt.jumpTitle")} className="mt-2 flex flex-wrap gap-1.5">
           {CAPITAL_SECTIONS.map((s) => (
             <a
@@ -1473,6 +1492,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-01: operativer Snapshot */}
       <Card id={sectionAnchor("overview")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.overview")}</SectionLabel>
+        <HelpTip title={t("mgmt.overview")} body={t("shelp.mgmt.overview")} />
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <MgmtKpi label={t("mgmt.kpiTotal")} value={o.totalKos} />
           <MgmtKpi label={t("mgmt.kpiValidated")} value={o.validated} />
@@ -1486,6 +1506,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-03: Knowledge Capital Score */}
       <Card id={sectionAnchor("capital")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.capital")}</SectionLabel>
+        <HelpTip title={t("mgmt.capital")} body={t("shelp.mgmt.capital")} />
         <div className="mt-2 flex items-baseline gap-2">
           <span className={`text-4xl font-bold ${BAND_TEXT[snap.capital.band] ?? "text-ink"}`}>
             {snap.capital.score}
@@ -1512,6 +1533,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-04: Valuation als Schätzmodell */}
       <Card id={sectionAnchor("valuation")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.valuation")}</SectionLabel>
+        <HelpTip title={t("mgmt.valuation")} body={t("shelp.mgmt.valuation")} />
         <div className="mt-2 rounded-card bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
           {t("mgmt.valuationDisclaimer")}
         </div>
@@ -1559,6 +1581,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-05: Knowledge Statement */}
       <Card id={sectionAnchor("statement")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.statement")}</SectionLabel>
+        <HelpTip title={t("mgmt.statement")} body={t("shelp.mgmt.statement")} />
         <div className="mt-2 grid grid-cols-3 gap-2">
           <MgmtKpi label={t("mgmt.assets")} value={snap.statement.assets} />
           <MgmtKpi label={t("mgmt.risks")} value={snap.statement.riskItems} />
@@ -1577,6 +1600,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-06: Maturity Journey */}
       <Card id={sectionAnchor("maturity")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.maturity")}</SectionLabel>
+        <HelpTip title={t("mgmt.maturity")} body={t("shelp.mgmt.maturity")} />
         <div className="mt-2 flex items-center gap-2">
           <span className="text-sm font-semibold text-ink">
             {t("mgmt.stage")} {snap.maturity.stage}/5 ·{" "}
@@ -1594,6 +1618,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-08: Knowledge House */}
       <Card id={sectionAnchor("house")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.house")}</SectionLabel>
+        <HelpTip title={t("mgmt.house")} body={t("shelp.mgmt.house")} />
         {snap.house.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
         ) : (
@@ -1620,6 +1645,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       {/* FE-MGMT-07: Hero Assist / Empfehlungen */}
       <Card id={sectionAnchor("recommendations")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.recommendations")}</SectionLabel>
+        <HelpTip title={t("mgmt.recommendations")} body={t("shelp.mgmt.recommendations")} />
         {snap.recommendations.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.noRecs")}</p>
         ) : (
@@ -1640,12 +1666,17 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
             ))}
           </ul>
         )}
+        {/* R-1657 (ROADMAP 9.3): Wissens-Sprints je Bereich (components/WissensSprints). */}
+        {snap.sprints ? (
+          <WissensSprints sprints={snap.sprints} analyse={snap.sprintAnalysis} />
+        ) : null}
       </Card>
 
       {/* FE-MGMT-09 / FR-EXT-04: Wissens-Priorisierung — die neun Faktoren der Quelle, gerankt,
           mit Filtern, Flags und Faktor-Detail (Nacharbeit 1; components/WissensPriorisierung). */}
       <Card id={sectionAnchor("priorities")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.priorities")}</SectionLabel>
+        <HelpTip title={t("mgmt.priorities")} body={t("shelp.mgmt.priorities")} />
         {snap.priorities.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
         ) : (
@@ -1657,6 +1688,7 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
       <Card id={sectionAnchor("pilot")} className="scroll-mt-4">
         <div className="flex items-center justify-between">
           <SectionLabel>{t("mgmt.pilot")}</SectionLabel>
+          <HelpTip title={t("mgmt.pilot")} body={t("shelp.mgmt.pilot")} />
           <Button variant="ghost" onClick={() => window.print()}>
             <Printer size={14} />
             {t("mgmt.print")}
@@ -1756,7 +1788,8 @@ function ReasonerRunsCard(): JSX.Element {
   }));
   return (
     <Card className="mt-4" data-testid="mrun-card">
-      <SectionLabel>{t("mrun.title")}</SectionLabel>
+      <SectionLabel>{t("fachwort.kiLaeufe.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.kiLaeufe.titel")} body={t("shelp.mrun.title")} />
       <WindowNote loaded={geladen?.length ?? 0} limit={50} source="modelRuns" />
       {geladen === undefined ? (
         // Noch nie Daten gesehen: nur hier darf ein Zustandstext die Karte ersetzen. Offline zählt
@@ -1770,7 +1803,7 @@ function ReasonerRunsCard(): JSX.Element {
         <>
           {/* Eine erfolgreiche Antwort liegt vor: die Störung ersetzt nichts, sie sagt nur, warum
               der Stand nicht aktuell sein muss. Sie steht ÜBER beiden Fällen — auch das leere
-              „Noch keine Reasoner-Läufe protokolliert." wäre offline sonst eine Tatsachenaussage
+              „Noch keine KI-Läufe protokolliert." wäre offline sonst eine Tatsachenaussage
               über einen Bestand, der gerade gar nicht abgefragt werden kann. Offline und
               gescheiterte Auffrischung sind zwei Auskünfte und werden nicht zu einer verschmolzen. */}
           {stoerung === "offline" ? (
@@ -1783,7 +1816,7 @@ function ReasonerRunsCard(): JSX.Element {
             </p>
           ) : null}
           {records.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("mrun.empty")}</p>
+            <p className="text-[13px] text-muted">{t("fachwort.kiLaeufe.leer")}</p>
           ) : (
             <>
               <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2110,7 +2143,8 @@ function ReasonerConfigCard(): JSX.Element {
   const config = useReasonerConfig();
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("rcfg.title")}</SectionLabel>
+      <SectionLabel>{t("fachwort.kiEinstellung.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.kiEinstellung.titel")} body={t("shelp.rcfg.title")} />
       {config.isLoading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : config.isError || !config.data ? (
@@ -2173,14 +2207,15 @@ function EvidenceIndexCard(): JSX.Element {
   const summary = summarizeEvidence(index.data ?? []);
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("evx.title")}</SectionLabel>
+      <SectionLabel>{t("fachwort.belegIndex.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.belegIndex.titel")} body={t("shelp.evx.title")} />
       <WindowNote loaded={index.data?.length ?? 0} limit={500} source="evidence" />
       {index.isLoading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : index.isError ? (
         <p className="text-[13px] text-danger">{t("state.error")}</p>
       ) : records.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("evx.empty")}</p>
+        <p className="text-[13px] text-muted">{t("fachwort.belegIndex.leer")}</p>
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2203,7 +2238,7 @@ function EvidenceIndexCard(): JSX.Element {
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[12px] text-text">{r.label}</span>
                 <span className="font-mono text-[10px] text-muted-2">
-                  {t("evx.koRef", { id: r.koId })}
+                  {t("fachwort.belegIndex.objekt", { id: r.koId })}
                 </span>
                 {r.provider ? (
                   <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
@@ -2251,7 +2286,8 @@ function ProvenanceIndexCard(): JSX.Element {
   const rows = index.rows.slice(0, 12);
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("prov.title")}</SectionLabel>
+      <SectionLabel>{t("fachwort.herkunft.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.herkunft.titel")} body={t("shelp.prov.title")} />
       {/* SCRUM-177: Provenance nutzt den Evidence-Stand als bekannt → Fenster-Hinweis. */}
       <WindowNote loaded={evidence.data?.length ?? 0} limit={500} source="evidence" />
       {loading ? (
@@ -2263,14 +2299,14 @@ function ProvenanceIndexCard(): JSX.Element {
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
-            <span>{t("prov.total", { n: index.summary.totalKOs })}</span>
+            <span>{t("fachwort.herkunft.gesamt", { n: index.summary.totalKOs })}</span>
             <span>{t("prov.transfer", { n: index.summary.withTransfer })}</span>
             <span>{t("prov.multiVersion", { n: index.summary.multiVersion })}</span>
-            <span>{t("prov.withEvidence", { n: index.summary.withEvidence })}</span>
+            <span>{t("fachwort.herkunft.mitBeleg", { n: index.summary.withEvidence })}</span>
             <span
               className={index.summary.withoutEvidence > 0 ? "text-trust-warn-text" : undefined}
             >
-              {t("prov.noEvidence", { n: index.summary.withoutEvidence })}
+              {t("fachwort.herkunft.ohneBeleg", { n: index.summary.withoutEvidence })}
             </span>
           </div>
           <ul className="divide-y divide-hairline">
@@ -2286,7 +2322,7 @@ function ProvenanceIndexCard(): JSX.Element {
                   {t("prov.version", { n: String(r.version) })}
                 </span>
                 <span className="font-mono text-[10px] text-muted-2">
-                  {t("prov.counts", {
+                  {t("fachwort.herkunft.zaehler", {
                     sources: String(r.sourceCount),
                     attachments: String(r.attachmentCount),
                     evidence: String(r.evidenceCount),
@@ -2301,7 +2337,9 @@ function ProvenanceIndexCard(): JSX.Element {
                         : "bg-ai-surface-1 text-ai"
                     }`}
                   >
-                    {t(`prov.badge.${w}`)}
+                    {t(
+                      w === "no-evidence" ? "fachwort.herkunft.markeOhneBeleg" : `prov.badge.${w}`,
+                    )}
                   </span>
                 ))}
               </li>
@@ -2398,7 +2436,8 @@ function KnowledgeOsHintsCard(): JSX.Element {
   return (
     <Card className="mt-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <SectionLabel>{t("readiness.title")}</SectionLabel>
+        <SectionLabel>{t("fachwort.bereitschaft.titel")}</SectionLabel>
+        <HelpTip title={t("fachwort.bereitschaft.titel")} body={t("shelp.readiness.title")} />
         <span
           className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
             READINESS_TONE_CLASS[readiness.readiness] ?? "bg-hairline-soft text-muted-2"
@@ -2412,7 +2451,8 @@ function KnowledgeOsHintsCard(): JSX.Element {
           {readiness.reasons.map((r) => t(`readiness.reason.${r}`)).join(" · ")}
         </p>
       ) : null}
-      <SectionLabel>{t("kos.hintsTitle")}</SectionLabel>
+      <SectionLabel>{t("fachwort.qm.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.qm.titel")} body={t("shelp.kos.hintsTitle")} />
       {loading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : (
@@ -2482,8 +2522,9 @@ function EvidenceFreshnessCard(): JSX.Element {
   });
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("evFresh.title")}</SectionLabel>
-      <p className="mb-1 text-[12px] text-muted">{t("evFresh.subtitle")}</p>
+      <SectionLabel>{t("fachwort.belegFrische.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.belegFrische.titel")} body={t("shelp.evFresh.title")} />
+      <p className="mb-1 text-[12px] text-muted">{t("fachwort.belegFrische.untertitel")}</p>
       <WindowNote loaded={evidence.data?.length ?? 0} limit={500} source="evidence" />
       {loading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
@@ -2502,7 +2543,7 @@ function EvidenceFreshnessCard(): JSX.Element {
             <span>{t("evFresh.summary.neutral", { n: index.summary.neutral })}</span>
           </div>
           {index.affected.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("evFresh.empty")}</p>
+            <p className="text-[13px] text-muted">{t("fachwort.belegFrische.leer")}</p>
           ) : (
             <ul className="divide-y divide-hairline">
               {index.affected.map((r) => (
@@ -2840,18 +2881,25 @@ function GraphObjektliste({
 // gekürzt, steht die Lieferzahl neben der Gesamtzahl. Standardmäßig zugeklappt: eine Vorführsicht
 // wird geöffnet, sie drängt sich nicht vor das Bild. Gemessen in
 // `tests/wissensnetz-flaeche/netz-verwaltung.test.tsx` (S1–S4).
-function SoArbeitetKlarwerk({
+//
+// R-0443 (Aufnahme gesamt-hilfen): dieselbe Sicht steht auch auf der eigenen Seite „So arbeitet
+// Klarwerk“ (`pages/Arbeitsweise.tsx`). Dort gibt es kein Bild — die drei Sätze über Punkte und
+// Linien „im Bild“ entfallen deshalb mit `mitBildschritten={false}`; die Seite erklärt den Aufbau
+// selbst. Liste, Leer- und Kürzungszustände bleiben dieselben.
+export function SoArbeitetKlarwerk({
   kanten,
   gesamt,
   gekuerzt,
   titelVon,
   bekannt,
+  mitBildschritten = true,
 }: {
   kanten: readonly GraphKuratierteKante[] | undefined;
   gesamt: number | undefined;
   gekuerzt: boolean | undefined;
   titelVon: ReadonlyMap<string, string>;
   bekannt: ReadonlySet<string>;
+  mitBildschritten?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   const [offen, setOffen] = useState(false);
@@ -2889,11 +2937,13 @@ function SoArbeitetKlarwerk({
       {offen ? (
         <div id="graph-sicht-inhalt" data-testid="graph-sicht-inhalt" className="mt-2 text-sm">
           <h2 className="font-semibold text-text">{t("wissensgraph.sicht.titel")}</h2>
-          <ol className="mt-1 list-decimal pl-5 text-[12.5px] text-muted">
-            <li>{t("wissensgraph.sicht.schritt1")}</li>
-            <li>{t("wissensgraph.sicht.schritt2")}</li>
-            <li>{t("wissensgraph.sicht.schritt3")}</li>
-          </ol>
+          {mitBildschritten ? (
+            <ol className="mt-1 list-decimal pl-5 text-[12.5px] text-muted">
+              <li>{t("wissensgraph.sicht.schritt1")}</li>
+              <li>{t("wissensgraph.sicht.schritt2")}</li>
+              <li>{t("wissensgraph.sicht.schritt3")}</li>
+            </ol>
+          ) : null}
           {kanten === undefined ? (
             <p data-testid="graph-sicht-nicht-geliefert" className="mt-2 text-muted">
               {t("wissensgraph.sicht.nichtGeliefert")}

@@ -497,7 +497,9 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       titel={t("adm.seedTitle")}
       onZurueck={onZurueck}
       testId="detail-demodaten"
-      hilfe={demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }] : []}
+      hilfe={
+        demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("fachwort.demodaten.hinweis") }] : []
+      }
     >
       {/* JOB 3670: die Seitenhilfe dieses Bildschirms. Sie sagt, was das „?"-Menü der Karte nicht
           sagt: dass hier ZWEI verschiedene Bestände wohnen (Kommentar unten, Z. 252-253), dass die
@@ -512,6 +514,10 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           Schlüssel, damit die Karte später „Allgemeine Demodaten" heissen kann, ohne dass sich die
           Beschriftung des Knopfes mit ändert (s. RUECKGABE, ABWEICHUNGEN: die Textlieferung gehört
           nach `i18n.ts` und damit in einen eigenen Auftrag).
+
+          R-0908: der Hilfekörper kommt seit der Aufnahme gesamt-sprache-begriffe aus
+          `fachwort.demodaten.hinweis` (`texte/fachwort.ts`) — `adm.seedHint` sagte „KOs" und
+          „KI-Reasoner". Die Begründung unten gilt für ihn unverändert.
 
           WARUM HIER KEIN ERKLÄRSATZ STEHT, obwohl der Auftrag einen verlangt: `adm.seedHint` ist
           der Hilfekörper DIESER Karte (`hilfe` oben, verlangt von
@@ -790,10 +796,17 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
       push("success", t("adm.factoryDone"));
     },
     // SCRUM-450: Falsches Passwort → zurück zur Eingabe (Passwort leeren) mit klarer Meldung.
-    onError: () => {
+    // R-0537: nur `INVALID_PASSWORD` heißt „falsches Passwort"; jede andere Absage (etwa 403 „nur
+    // Desktop" oder eine abgelaufene Sitzung) nennt ihren eigenen Grund, statt fälschlich das
+    // Passwort zu beschuldigen.
+    onError: (e) => {
       setFactoryStep("armed");
       setFactoryPw("");
-      push("error", t("adm.factory.wrongPassword"));
+      if (e instanceof ApiError && e.code === "INVALID_PASSWORD") {
+        push("error", t("adm.factory.wrongPassword"));
+        return;
+      }
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
     },
   });
 
@@ -1037,10 +1050,7 @@ export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Eleme
       {/* JOB 3670: Diese Karte hatte bisher überhaupt keine Hilfequelle — weder ein „?"-Menü noch
           einen Eintrag im Zahnrad. Der Text sagt das Wichtigste zuerst: hier wird nur gelesen, und
           die vollständige Kette samt Prüfknopf wohnt woanders. */}
-      <HelpTip
-        title={t("seitenhilfe.admin.audit.titel")}
-        body={t("seitenhilfe.admin.audit.text")}
-      />
+      <HelpTip title={t("seitenhilfe.admin.audit.titel")} body={t("knopfzitat.admin.audit")} />
       <Abfragehuelle abfrage={audit}>
         {(entries) => {
           const userEntries = entries

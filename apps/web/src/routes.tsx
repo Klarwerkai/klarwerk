@@ -83,6 +83,14 @@ import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const Ask = lazy(() => import("./pages/Ask").then((m) => ({ default: m.Ask })));
+// R-0443 (Aufnahme gesamt-hilfen): die Seite „So arbeitet Klarwerk“ — nachgeladen wie jede andere.
+const Arbeitsweise = lazy(() =>
+  import("./pages/Arbeitsweise").then((m) => ({ default: m.Arbeitsweise })),
+);
+// R-1646: die Ausgangsprüfung — nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Ausgangspruefung = lazy(() =>
+  import("./pages/Ausgangspruefung").then((m) => ({ default: m.Ausgangspruefung })),
+);
 const Capture = lazy(() => import("./pages/Capture").then((m) => ({ default: m.Capture })));
 const CaptureFrontDoor = lazy(() =>
   import("./pages/CaptureFrontDoor").then((m) => ({ default: m.CaptureFrontDoor })),
@@ -90,6 +98,11 @@ const CaptureFrontDoor = lazy(() =>
 const Conflicts = lazy(() => import("./pages/Conflicts").then((m) => ({ default: m.Conflicts })));
 const DuplicateCompare = lazy(() =>
   import("./pages/DuplicateCompare").then((m) => ({ default: m.DuplicateCompare })),
+);
+// R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent — nachgeladen wie jede
+// andere Seite (Regel oben, JOB 3503).
+const DuplicateMerge = lazy(() =>
+  import("./pages/DuplicateMerge").then((m) => ({ default: m.DuplicateMerge })),
 );
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
@@ -116,6 +129,10 @@ const GesamtanweisungBereich = lazy(() =>
   })),
 );
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
+// KLARA-VORSCHAU (produkt:20261007:klara-vorschau): der dokumentierte Einstieg `/klara-vorschau`.
+const KlaraVorschauSeite = lazy(() =>
+  import("./pages/KlaraVorschau").then((m) => ({ default: m.KlaraVorschauSeite })),
+);
 const KnowledgeDetail = lazy(() =>
   import("./pages/KnowledgeDetail").then((m) => ({ default: m.KnowledgeDetail })),
 );
@@ -124,6 +141,9 @@ const KnowledgeIntake = lazy(() =>
 );
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
 const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default: m.Lifecycle })));
+const LiveWallBeamer = lazy(() =>
+  import("./pages/LiveWallBeamer").then((m) => ({ default: m.LiveWallBeamer })),
+);
 // JOB 3503: nachgeladen wie jede andere Seite — die Regel oben kennt keine Ausnahme, und der
 // Wächter `tests/erstladezeit/` erhebt seine Sollmenge aus dem Dateisystem.
 const MeineEntwuerfe = lazy(() =>
@@ -140,6 +160,8 @@ const PlaceholderPage = lazy(() =>
 );
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
+// produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
 const Start = lazy(() => import("./pages/Start").then((m) => ({ default: m.Start })));
 const Capital = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Capital })));
 const GraphView = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.GraphView })));
@@ -187,6 +209,7 @@ const PAGES: Record<string, ComponentType> = {
   konflikte: Conflicts,
   duplikate: Duplicates,
   duplicateCompare: DuplicateComparePage,
+  duplicateMerge: DuplicateMerge,
   conflictCompare: ConflictComparePage,
   risiko: Risk,
   lebenszyklus: Lifecycle,
@@ -273,6 +296,11 @@ export function AppRoutes(): JSX.Element {
             OHNE `Guarded`: die Ansicht erklärt nur und öffnet nichts; das Rollen-Tor sitzt an ihrer
             Übergabe (`RoleLink`) und am Ziel selbst. Ein unbekanntes Thema führt auf die Startseite. */}
         <Route path="/einstieg/:thema" element={<Einstieg />} />
+        {/* R-0443 (Aufnahme gesamt-hilfen): „So arbeitet Klarwerk“ — wie das Wissensnetz aufgebaut
+            ist und wie gearbeitet wird. OHNE `Guarded`, wie `/einstieg/:thema`: die Seite erklärt
+            und öffnet nichts; ihre Wege laufen über `RoleLink`, und die Daten dahinter fordern
+            `ko.read` am Server (`/api/graph`). Einstieg: oben auf der Hilfeseite. */}
+        <Route path="/so-arbeitet-klarwerk" element={<Arbeitsweise />} />
         {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
             Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
         <Route path="/erfassen/neu" element={<KnowledgeIntake />} />
@@ -307,6 +335,40 @@ export function AppRoutes(): JSX.Element {
             aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
             dieser Lieferung. */}
         <Route path="/begriffe" element={<Firmenwoerterbuch />} />
+        {/* KLARA-VORSCHAU: Einstieg und fiktiver Artikel. Ohne `Guarded` und ohne Serverabruf —
+            die Seite zeigt nur Demodaten und schaltet Klara für die Sitzung ein
+            (docs/klara/klara-vorschau.md). Eigene Fehlergrenze: ein Fehler nimmt die Hülle nicht mit. */}
+        <Route
+          path="/klara-vorschau"
+          element={
+            <ErrorBoundary key="klara-vorschau">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/klara-vorschau/artikel/:id"
+          element={
+            <ErrorBoundary key="klara-vorschau-artikel">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        {/* R-0740: die Live-Wand als Beamer-Ansicht. Ohne `Guarded`, wie `/wissen/:id`: die Tür
+            dahinter fordert ihr Recht am Server (`ko.read`, `services/app/src/routes/
+            livewall-routes.ts`) und filtert nach den Sichtrechten der angemeldeten Person.
+            Erreichbar aus dem Blatt „Was gerade passiert". */}
+        <Route path="/livewall" element={<LiveWallBeamer />} />
+        {/* R-1646 · Ausgangsprüfung: der ausgehende Text vor der Freigabe. Ohne `Guarded`, wie
+            `/begriffe`: die Türen dahinter fordern `ko.validate` am Server
+            (`services/app/src/routes/ausgangspruefung-routes.ts`). */}
+        <Route path="/ausgangspruefung" element={<Ausgangspruefung />} />
+        {/* Spaces (produkt:20261007:spaces): Arbeitsräume und ihre Inhalte. Ohne `Guarded`, wie
+            `/begriffe`: die Türen dahinter fordern ihr Recht am Server (`ko.read`, `ko.validate`
+            zum Anlegen, Zuständigkeit/Schreibrecht am Space, `services/app/src/routes/
+            spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
+        <Route path="/spaces" element={<Spaces />} />
+        <Route path="/spaces/:id" element={<Spaces />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />

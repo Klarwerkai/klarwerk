@@ -67,6 +67,9 @@ import { EditorGuidance } from "../components/EditorGuidance";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
+// R-1624: Foto-zu-Wissen — Einstieg ins geführte Interview über ein Foto.
+import { FotoInterviewStart } from "../components/FotoInterviewStart";
+import { HelpTip } from "../components/HelpTip";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { Modal } from "../components/Modal";
@@ -76,6 +79,7 @@ import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
+import { NegativwissenFuehrung } from "../components/erfassen/NegativwissenFuehrung";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -96,7 +100,12 @@ import {
 // (und mit ihr der dreiwertige Ausgang) bleibt der Weg für ein BESTEHENDES Wissensobjekt: KO-Detail
 // und „An Artikel anfügen" — s. lib/appendToArticle.ts.
 import { GAP_RESCUE_STEPS, GAP_RESCUE_TEXT } from "../lib/askGapRescue";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../lib/bodyAiAssist";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../lib/bodyExtract";
 import { fileLinkHtml } from "../lib/bodyFileLink";
 import { ADVANCED_FIELDS_KEYS, advancedFieldsSummary } from "../lib/captureAdvancedFields";
@@ -182,7 +191,7 @@ import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentialit
 // AUFTRAG-mega20 Block A: der Wiederholschlüssel der Erstanlage (stabil über Wiederholungen).
 import {
   type AnlageVorgang,
-  anlageVorgangFuer,
+  anlageVorgangWiederholen,
   createConflictOffersRestart,
   createOperationIsSettled,
   newCreateOperationId,
@@ -197,7 +206,7 @@ import {
 } from "../lib/docx";
 // AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
 import { draftBodyPatch } from "../lib/draftBody";
-import { draftTitle } from "../lib/draftForm";
+import { adoptProposedKnowledgeType, draftTitle } from "../lib/draftForm";
 // AUFTRAG-mega6 Block D: sichtbare Eingabegrenzen aus DERSELBEN Quelle wie die Servernormalisierung.
 import { DRAFT_LIMITS } from "../lib/draftLimits";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
@@ -233,6 +242,7 @@ import {
   readTextFile,
   runImageOcr,
 } from "../lib/files";
+import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
   CLEARED_DRAFT_INTERVIEW,
   appendAnswer,
@@ -241,6 +251,7 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
+import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
@@ -249,6 +260,16 @@ import {
   toAddSourceRequest,
   unsavableSourceUrls,
 } from "../lib/koSource";
+// R-1664/R-2179/R-2180: der geführte Lerneffekt (Wissensart Negativwissen) und seine Stufenregel.
+import {
+  LEERE_NEGATIVWISSEN_FORM,
+  type NegativwissenForm,
+  angabenZuForm,
+  formZuAngaben,
+  negativwissenUeberschreitungen,
+  stufeNachBezug,
+  stufeWaehlbar,
+} from "../lib/negativwissen";
 // JOB 2700 D1: die Groessenkante des PDF-Weges ist die Grenze des Original-Anhangs (dieselbe
 // Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler.
 import { PdfTimeoutError } from "../lib/pdf";
@@ -724,6 +745,9 @@ export function CaptureArbeitsraum({
 
   // Metadaten (vorab erfassbar, FR-CAP-08)
   const [type, setType] = useState<KnowledgeType>(CAPTURE_FIELD_DEFAULTS.type);
+  // FR-STR-01: ist die Wissensart ENTSCHIEDEN (vom Menschen gewählt oder aus einem Entwurf
+  // geladen)? Dann überschreibt kein KI-Vorschlag sie — auch nicht, wenn sie dem Standard gleicht.
+  const typeEntschiedenRef = useRef(false);
   const [category, setCategory] = useState("");
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
@@ -751,6 +775,44 @@ export function CaptureArbeitsraum({
   // Feld bereits angezeigt hat — es hebt die Sperre nie auf.
   const vertraulichkeitOffen = declaredConfidentiality === undefined;
   const [vertraulichkeitMarkiert, setVertraulichkeitMarkiert] = useState(false);
+  // R-1664/R-2179: der geführte Lerneffekt-Block der Wissensart Negativwissen. Er reist nur mit,
+  // solange die Wissensart „negativwissen" gewählt ist (`negativAngaben`).
+  const [negativForm, setNegativForm] = useState<NegativwissenForm>(LEERE_NEGATIVWISSEN_FORM);
+  const negativAngaben = type === "negativwissen" ? formZuAngaben(negativForm) : undefined;
+  const negativBezug = type === "negativwissen" ? negativForm.bezug : [];
+  // BEN, Nacharbeit 2: überschreitet der Lerneffekt eine Obergrenze, gehen weder Sichern noch
+  // Einreichen hinaus (`speicherTor`, `requestSubmit`); der Block nennt die Stelle am Feld.
+  const negativUeberschritten =
+    type === "negativwissen" && negativwissenUeberschreitungen(negativForm).length > 0;
+  // R-2180: ein angegebener Bezug hebt die gewählte Stufe auf mindestens „vertraulich" an — sichtbar
+  // in der Auswahl, und der Server wendet dieselbe Regel beim Anlegen noch einmal an.
+  const hebeStufeFuerBezugAn = (bezug: NegativwissenForm["bezug"]): void => {
+    const stufe = stufeNachBezug(bezug, declaredConfidentiality);
+    if (stufe !== undefined && stufe !== declaredConfidentiality) {
+      setConfidentiality(stufe);
+      setDeclaredConfidentiality(stufe);
+      setVertraulichkeitMarkiert(false);
+    }
+  };
+  const aendereNegativForm = (next: NegativwissenForm): void => {
+    setNegativForm(next);
+    hebeStufeFuerBezugAn(next.bezug);
+  };
+  // Nach einem Wechsel der Wissensart: wird es Negativwissen, gilt ein angegebener Bezug sofort.
+  const stufeNachWissensart = (k: KnowledgeType): void => {
+    if (k === "negativwissen") {
+      hebeStufeFuerBezugAn(negativForm.bezug);
+    }
+  };
+  // Der Einstieg „Lerneffekt dokumentieren". FR-STR-01: auch er ist eine menschliche Wahl — danach
+  // überschreibt kein KI-Vorschlag die Wissensart. Die Auswahlliste trägt dieselben drei Schritte
+  // in ihrem `onChange` (dort in der Form, die tests/strukturierung/fr-str-01-wissensart.test.ts
+  // festhält).
+  const waehleWissensart = (k: KnowledgeType): void => {
+    typeEntschiedenRef.current = true;
+    setType(k);
+    stufeNachWissensart(k);
+  };
   const vertraulichkeitRef = useRef<HTMLSelectElement | null>(null);
   // JOB 3082 (Q3 a): der abgewiesene Einreichversuch klappt die erweiterten Felder auf; erst DANACH
   // steht die Auswahl im Dokument und kann den Fokus annehmen. Deshalb ein Effekt und kein Aufruf
@@ -1069,6 +1131,11 @@ export function CaptureArbeitsraum({
   // die aktuelle ist — eine SPÄTE Antwort eines vor dem Speichern gestarteten Requests kann den
   // danach geltenden Zustand damit nicht wieder einschreiben.
   const ivRunRef = useRef(0);
+  // R-1624: der bestätigte Bildbefund des laufenden Foto-Interviews. null = normales Interview.
+  // Der Befund reist mit jedem Turn als Klartext mit und wird mit dem Interviewfortschritt
+  // gesichert und wiederhergestellt; das Foto selbst steht als Bild-Anker im Rumpf (beim Start
+  // eingefügt, mit dem Entwurf gesichert) und wird nicht erneut gesendet.
+  const [ivBefund, setIvBefund] = useState<string | null>(null);
 
   // PMO-FEA-0006: „Aus Datei" — Dokumenttext, optionaler Suchauftrag, KI-Punkteliste,
   // sichtbare Entwurfs-Warteschlange. Nichts wird automatisch gespeichert.
@@ -1317,6 +1384,9 @@ export function CaptureArbeitsraum({
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
+      // FR-STR-01: vorgeschlagene Wissensart nur in eine noch nicht entschiedene Auswahl.
+      const typeEntschieden = typeEntschiedenRef.current;
+      setType((prev) => adoptProposedKnowledgeType(prev, typeEntschieden, r.knowledgeType));
       setErr(null);
       // SCRUM-384: direkt zur Wissensseite — Artikel-Vorschlag einmalig erzeugen
       // (leerer Body ⇒ setzen; vorhandener Inhalt wird NIE still überschrieben).
@@ -1332,11 +1402,12 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: der Turn reist mit seiner Laufnummer (`run`); veraltete Läufe werden im
   // Erfolgs- UND im Fehlerpfad verworfen, statt den inzwischen gültigen Zustand zu überschreiben.
   const interview = useMutation({
-    mutationFn: (v: { answers: string[]; run: number }) =>
+    mutationFn: (v: { answers: string[]; run: number; imageContext?: string }) =>
       endpoints.reasoner.interview(
         v.answers,
         locale,
         draftProvenance(confidentiality, undefined, draftId ?? undefined),
+        v.imageContext,
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -1347,11 +1418,17 @@ export function CaptureArbeitsraum({
       if (isInterviewDone(res)) {
         setDraft(res.draft);
         setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
-        // SCRUM-384: Interview fertig → gleiche Wissensseiten-Führung wie beim Freitext.
+        const articleLocale = normalizeDraftArticleLocale(i18n.language);
+        // R-1624: beim Foto-Interview steht der Bild-Anker schon im Rumpf — die Seite (Fehlerbild,
+        // Ursache, Lösung) wird darunter ANGEHÄNGT, nie überschrieben.
+        // SCRUM-384: sonst wie bisher — Interview fertig → gleiche Wissensseiten-Führung wie beim
+        // Freitext, nur in einen leeren Rumpf.
         setBodyHtml((prev) =>
-          prev.trim()
-            ? prev
-            : applyDraftArticle(prev, res.draft, normalizeDraftArticleLocale(i18n.language)),
+          v.imageContext
+            ? applyFotoArtikel(prev, res.draft, articleLocale)
+            : prev.trim()
+              ? prev
+              : applyDraftArticle(prev, res.draft, articleLocale),
         );
         setWizStep("refine");
       }
@@ -1367,9 +1444,15 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: EINZIGER Einstieg in einen Interview-Turn. Vergibt die neue Laufnummer
   // und macht damit jeden vorher gestarteten Turn ungültig — es gibt keinen zweiten Weg, der die
   // Mutation ohne gültige Nummer auslösen könnte.
-  const runInterview = (answers: string[]): void => {
+  // R-1624: `befund` ist der Bildbefund des laufenden Foto-Interviews; der Start reicht ihn
+  // ausdrücklich herein, weil der eben gesetzte Zustand in diesem Render noch nicht gilt.
+  const runInterview = (answers: string[], befund: string | null = ivBefund): void => {
     ivRunRef.current += 1;
-    interview.mutate({ answers, run: ivRunRef.current });
+    interview.mutate({
+      answers,
+      run: ivRunRef.current,
+      ...(befund ? { imageContext: befund } : {}),
+    });
   };
 
   // SCRUM-312: KI-Nachbearbeitung über die sichtbare AiAssistBox (Vorschau + bewusste Übernahme);
@@ -1509,7 +1592,12 @@ export function CaptureArbeitsraum({
   // Schlüssel, kein neuer Upload, kein neuer Nutzlastbau. Der Server liefert dann den schon
   // angelegten Entwurf zurück. Die Upload-Lage des ersten Versuchs reist mit — ein fehlendes Original
   // wird weiterhin ehrlich gemeldet und nicht durch den Wiederholversuch verdeckt. Der Vorgang fällt
-  // bei Erfolg, bei eindeutiger Ablehnung und wenn eine andere Datei eingelesen wird.
+  // bei Erfolg, bei eindeutiger Ablehnung und beim Verwerfen oder Öffnen eines anderen Entwurfs.
+  //
+  // entscheidung:14ce8681 (Option A): HAT DER MENSCH INZWISCHEN ETWAS GEÄNDERT (eine andere Datei
+  // eingelesen, den Text per OCR neu geholt), wird die Nutzlast neu gebaut — aber unter DEMSELBEN
+  // Schlüssel und mit `fortschreiben`. Der Server schreibt dann denselben Entwurf fort, statt einen
+  // zweiten anzulegen; war der erste nie angekommen, legt er jetzt genau einen an.
   const ganzdokumentOffenRef = useRef<{
     eingabeAbdruck: string;
     payload: DraftPayload;
@@ -1547,6 +1635,32 @@ export function CaptureArbeitsraum({
     lage: "ausstehend" | "gescheitert";
     datei: string;
   } | null>(null);
+  // entscheidung:8b909a1e (Option A): HAT DER SERVER BEIM ERNEUTEN SPEICHERN DEN VORHANDENEN
+  // EINTRAG ERKANNT (`Draft.anlage` in seiner Antwort), steht statt der normalen Erfolgsmeldung
+  // dieser Hinweis da — mit Verweis auf genau diesen Eintrag. Je Anlageweg einer (Eintrag aus dem
+  // Formular, Datei als Ganzdokument), weil der gemeinsame Speicherknopf beide auf einmal schreibt.
+  // Jeder Weg räumt seinen eigenen Hinweis beim nächsten Versuch; eine echte Erstspeicherung setzt
+  // keinen.
+  type BereitsGespeichert = { id: string; titel: string; fortgeschrieben: boolean };
+  const [bereitsGespeichert, setBereitsGespeichert] = useState<{
+    eintrag: BereitsGespeichert | null;
+    datei: BereitsGespeichert | null;
+  }>({ eintrag: null, datei: null });
+  const bereitsGespeichertAus = (d: Draft, titel: string): BereitsGespeichert | null =>
+    d.anlage && typeof d.id === "string" && d.id.length > 0
+      ? { id: d.id, titel, fortgeschrieben: d.anlage === "fortgeschrieben" }
+      : null;
+  const bereitsGespeichertSatz = (b: BereitsGespeichert): string =>
+    t(
+      b.fortgeschrieben
+        ? "capture.bereitsGespeichertFortgeschrieben"
+        : "capture.bereitsGespeichert",
+    );
+  // entscheidung:14ce8681: der Server hat das Fortschreiben ABGELEHNT — der Entwurf des unklaren
+  // Vorgangs wurde inzwischen anderswo bearbeitet oder ist nicht mehr da. Der Schlüssel hilft dann
+  // nicht mehr; hielte der Client ihn fest, endete jeder weitere Druck im selben 409.
+  const fortschreibenAbgelehnt = (e: unknown): boolean =>
+    e instanceof ApiError && e.status === 409 && e.code === "IDEMPOTENCY_PAYLOAD_MISMATCH";
   // Beide Anteile sind gesichert: der zurückgehaltene Erfolgssatz des Entwurfs gilt jetzt, und der
   // Teilerfolg ist erledigt. EIN Abschluss für alle Wege — `fileWholeDraft.onSuccess` (jeder Knopf),
   // und `manuellSichern`/Wache für den Fall, dass `ganzdokumentSichern` einen schon gesicherten
@@ -1582,7 +1696,9 @@ export function CaptureArbeitsraum({
       const offen = ganzdokumentOffenRef.current;
       if (offen && offen.eingabeAbdruck === eingabeAbdruck) {
         return {
-          draft: await endpoints.drafts.create(offen.payload, offen.vorgang.id),
+          draft: await endpoints.drafts.create(offen.payload, offen.vorgang.id, undefined, {
+            fortschreiben: true,
+          }),
           originalFailure: offen.originalFailure,
           originalAttached: offen.originalAttached,
         };
@@ -1661,7 +1777,12 @@ export function CaptureArbeitsraum({
       if (!draftPayloadWithinLimit(payload)) {
         throw new DraftPayloadTooLargeError();
       }
-      const vorgang = anlageVorgangFuer(null, JSON.stringify(payload));
+      // entscheidung:14ce8681: ein noch offener (unklarer) Vorgang behält seinen Schlüssel, auch
+      // wenn die Eingabe inzwischen eine andere ist — derselbe Entwurf wird fortgeschrieben.
+      const { vorgang, fortschreiben } = anlageVorgangWiederholen(
+        offen?.vorgang ?? null,
+        JSON.stringify(payload),
+      );
       ganzdokumentOffenRef.current = {
         eingabeAbdruck,
         payload,
@@ -1670,14 +1791,22 @@ export function CaptureArbeitsraum({
         originalAttached,
       };
       return {
-        draft: await endpoints.drafts.create(payload, vorgang.id),
+        draft: fortschreiben
+          ? await endpoints.drafts.create(payload, vorgang.id, undefined, { fortschreiben })
+          : await endpoints.drafts.create(payload, vorgang.id),
         originalFailure,
         originalAttached,
       };
     },
+    onMutate: () => {
+      setBereitsGespeichert((b) => ({ ...b, datei: null }));
+    },
     onSuccess: ({ draft, originalFailure, originalAttached }, input) => {
       // R-0020: der Vorgang ist abgeschlossen.
       ganzdokumentOffenRef.current = null;
+      // entscheidung:8b909a1e: der Server hat den vorhandenen Eintrag erkannt — Hinweis statt Erfolg.
+      const bereits = bereitsGespeichertAus(draft, draftTitle(draft, input.fileName));
+      setBereitsGespeichert((b) => ({ ...b, datei: bereits }));
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const savedDraftId =
@@ -1700,7 +1829,9 @@ export function CaptureArbeitsraum({
       setFileOriginal(null);
       fileOriginalRef.current = { ref: null };
       setFileQuery("");
-      const savedNote = t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName });
+      const savedNote = bereits
+        ? bereitsGespeichertSatz(bereits)
+        : t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName });
       // ==========================================================================================
       // JOB 513/D3B — DIE GENUTZTE PRODUKTKANTE (Ownerentscheidung Option b).
       // ==========================================================================================
@@ -1716,7 +1847,9 @@ export function CaptureArbeitsraum({
       const imageNote = summary
         ? summary.notices.map((n) => ` ${t(n.key, n.params)}`).join("")
         : "";
-      setNotice(`${savedNote}${imageNote}`);
+      // entscheidung:8b909a1e: bei einer erkannten Wiederholung trägt der Hinweiskasten den Satz
+      // (samt Verweis); der grüne Kasten behält nur die Bildbilanz, damit nichts doppelt dasteht.
+      setNotice(bereits ? imageNote.trim() || null : `${savedNote}${imageNote}`);
       // LAUF 6 RUNDE 2 (bens B7): war vorher der Entwurf gesichert und die Datei ausstehend oder
       // gescheitert, ist der gemeinsame Auftrag JETZT erledigt — egal über welchen Knopf die Datei
       // kam (manueller Knopf, Kartenknopf, Wache). Erst hier gilt der zurückgehaltene Erfolgssatz.
@@ -1742,7 +1875,10 @@ export function CaptureArbeitsraum({
     onError: (error: unknown) => {
       // R-0020: den Schlüssel NUR fallen lassen, wenn der Server eindeutig „nichts entstanden"
       // geantwortet hat — bei Netzabbruch oder 5xx ist der nächste Druck eine Wiederholung.
-      if (createOperationIsSettled(error instanceof ApiError ? error.status : undefined)) {
+      if (
+        createOperationIsSettled(error instanceof ApiError ? error.status : undefined) ||
+        fortschreibenAbgelehnt(error)
+      ) {
         ganzdokumentOffenRef.current = null;
       }
       if (error instanceof DraftPayloadTooLargeError) {
@@ -2046,6 +2182,10 @@ export function CaptureArbeitsraum({
         // nicht gewählt ⇒ weglassen. Gelesen wird deshalb `declaredConfidentiality` und NICHT der
         // geglättete Formularwert `confidentiality` — nur der erste kennt den Unterschied.
         ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
+        // R-1664/R-2179: die geführten Lerneffekt-Angaben (nur bei Wissensart Negativwissen). Dieser
+        // Rumpf AKTUALISIERT einen Entwurf — ein geleerter Lerneffekt reist deshalb als `null` mit,
+        // sonst holte der partielle Merge die alten Angaben zurück.
+        negativwissen: negativAngaben ?? null,
         // AUFTRAG-mega20 Block D: der Entwurf wird unmittelbar vor der Anlage auf den AKTUELLEN
         // Stand gebracht — inklusive Belegstellen und gesicherter Originale. Ohne sie prüfte der
         // Server beim Einreichen noch die Anker eines überholten Zwischenstands; ein inzwischen
@@ -2066,6 +2206,7 @@ export function CaptureArbeitsraum({
         ...(n ? { neededValidations: n } : {}),
         // JOB 3082 (Q3 a): gewählt ⇒ mitschicken (auch „intern"), nicht gewählt ⇒ weglassen.
         ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
+        ...(negativAngaben ? { negativwissen: negativAngaben } : {}),
       };
       let ko: KnowledgeObject;
       // AUFTRAG-mega21 Block C-1: die nach dem Commit GESCHEITERTEN Nacharbeiten. Der Server sammelt
@@ -2333,6 +2474,8 @@ export function CaptureArbeitsraum({
       setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
       setDeclaredConfidentiality(undefined);
       setVertraulichkeitMarkiert(false);
+      // R-1664: der Lerneffekt gehörte zu DIESEM Wissensobjekt.
+      setNegativForm(LEERE_NEGATIVWISSEN_FORM);
       // SCRUM-395: Prüfer-Auswahl gehört zum abgeschickten KO — für das nächste leeren.
       setReviewerIds([]);
       setDraftId(null);
@@ -2411,13 +2554,27 @@ export function CaptureArbeitsraum({
   // zweite Druck dieselbe Nutzlast und denselben Schlüssel, und der Server gibt den schon
   // angelegten Entwurf zurück. Dasselbe gilt für die Wache, wenn sie dieselbe Nutzlast gleichzeitig
   // schickt.
+  //
+  // entscheidung:14ce8681 (Option A): HAT DER MENSCH NACH DER VERLORENEN ANTWORT ETWAS GEÄNDERT,
+  // bleibt der Schlüssel trotzdem derselbe und der Aufruf trägt `fortschreiben` — der Server
+  // schreibt denselben Entwurf mit dem neuen Inhalt fort (oder legt ihn jetzt an, wenn der erste
+  // Versuch nie angekommen war). Es gibt immer nur einen Eintrag. Der offene Vorgang endet bei
+  // Erfolg, bei eindeutiger Ablehnung, beim Verwerfen und beim Öffnen eines anderen Entwurfs.
   const eintragVorgangRef = useRef<AnlageVorgang | null>(null);
   const anlegenMitVorgang = (payload: DraftPayload): Promise<Draft> => {
-    const vorgang = anlageVorgangFuer(eintragVorgangRef.current, JSON.stringify(payload));
+    const { vorgang, fortschreiben } = anlageVorgangWiederholen(
+      eintragVorgangRef.current,
+      JSON.stringify(payload),
+    );
     eintragVorgangRef.current = vorgang;
-    return endpoints.drafts.create(payload, vorgang.id);
+    return fortschreiben
+      ? endpoints.drafts.create(payload, vorgang.id, undefined, { fortschreiben })
+      : endpoints.drafts.create(payload, vorgang.id);
   };
   const saveDraft = useMutation({
+    onMutate: () => {
+      setBereitsGespeichert((b) => ({ ...b, eintrag: null }));
+    },
     mutationFn: () => {
       const n = parsedValidations();
       // AUFTRAG-mega5 Block A (bens Verlustpfade 1+2): Interviewfortschritt (Antworten, getippte
@@ -2428,6 +2585,9 @@ export function CaptureArbeitsraum({
         answers: ivAnswers,
         answer: ivAnswer,
         result: ivResult,
+        // R-1624: der Foto-Kontext gehört zum Fortschritt — sonst liefe das Interview nach dem
+        // Wiederöffnen als normales weiter.
+        imageContext: ivBefund,
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
@@ -2450,6 +2610,10 @@ export function CaptureArbeitsraum({
         // — der Entwurf trägt dann kein Feld `confidentiality`, und genau daran fragt ihn das
         // Fortsetzen wieder danach. Die Pflicht greift am Einreichen, nicht am Zwischenstand.
         ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
+        // R-1664/R-2179: die geführten Lerneffekt-Angaben überstehen Sichern und Fortsetzen. Beim
+        // Aktualisieren geht ein geleerter Lerneffekt als `null` mit (dieselbe Leerwert-Semantik wie
+        // die Felder darunter).
+        ...(isDraftUpdate || negativAngaben ? { negativwissen: negativAngaben ?? null } : {}),
         // AUFTRAG-mega4/mega5 Block A (bens Auflage A): ALLE inhaltlichen, textuell sicherbaren
         // Dirty-Felder mitsichern — sonst behauptet „Entwurf speichern" eine Vollsicherung und verliert
         // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage oder den Interviewfortschritt
@@ -2500,7 +2664,18 @@ export function CaptureArbeitsraum({
       eintragVorgangRef.current = null;
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
-      const msg = draftId ? t("capture.draftUpdated") : t("capture.draftSaved");
+      // entscheidung:8b909a1e (Option A): erkannte der Server den vorhandenen Eintrag, steht statt
+      // der normalen Erfolgsmeldung der Hinweis „war bereits gespeichert" mit Verweis auf ihn. Der
+      // Titel kommt aus der SERVERANTWORT — der Formularzustand wird gleich geräumt.
+      const bereits = draftId
+        ? null
+        : bereitsGespeichertAus(_d, _d.payload?.title?.trim() || t("capture.draftFallbackTitle"));
+      setBereitsGespeichert((b) => ({ ...b, eintrag: bereits }));
+      const msg = bereits
+        ? bereitsGespeichertSatz(bereits)
+        : draftId
+          ? t("capture.draftUpdated")
+          : t("capture.draftSaved");
       // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
       // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
       setRaw("");
@@ -2522,6 +2697,7 @@ export function CaptureArbeitsraum({
       // ihn getroffen hat.
       setDeclaredConfidentiality(undefined);
       setVertraulichkeitMarkiert(false);
+      setNegativForm(LEERE_NEGATIVWISSEN_FORM);
       setReviewerIds([]);
       setPendingSources([]);
       // AUFTRAG-mega4 Block A: der Erfolgspfad räumt jetzt AUCH Quellenformular und externe Suche —
@@ -2558,8 +2734,15 @@ export function CaptureArbeitsraum({
         setNotice(null);
         setTeilerfolg({ lage: "ausstehend", datei: ausstehend });
       } else {
-        setNotice(msg);
+        // entscheidung:8b909a1e: bei erkannter Wiederholung trägt der Hinweiskasten den Satz.
+        setNotice(bereits ? null : msg);
         push("success", msg);
+      }
+      // entscheidung:8b909a1e: der Hinweis gehört ins Erfassen-Formular. Ein Blattwechsel baute
+      // den Arbeitsraum samt Hinweis ab; der Verweis im Hinweis öffnet den Eintrag auf Wunsch.
+      if (bereits) {
+        blattWechselRef.current.entwurfId = null;
+        return;
       }
       // JOB 3062 · H3: DAS ERGEBNIS LANDET IM BLATT. Interview, Dateiimport und Expertenformular
       // sind Ansichten des Blattes; was sie erarbeitet haben, ist nach dem Sichern ein Entwurf.
@@ -2580,7 +2763,11 @@ export function CaptureArbeitsraum({
     },
     onError: (e) => {
       // R-0020: bei eindeutiger Ablehnung ist nichts entstanden — der nächste Versuch ist neu.
-      if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
+      // entscheidung:14ce8681: ebenso, wenn der Server das Fortschreiben abgelehnt hat.
+      if (
+        createOperationIsSettled(e instanceof ApiError ? e.status : undefined) ||
+        fortschreibenAbgelehnt(e)
+      ) {
         eintragVorgangRef.current = null;
       }
       // JOB 2684 D2 (R2-17): 409 `DRAFT_STALE` — der Entwurf wurde inzwischen an anderer Stelle
@@ -2612,6 +2799,10 @@ export function CaptureArbeitsraum({
     // JOB 3106 (UX-01): wer einen Entwurf fortsetzt, arbeitet nicht mehr an der letzten Sicherung
     // — die Plakette „gerade gespeichert" wäre ab hier eine Auskunft über eine vergangene Runde.
     setGeradeGesicherterEntwurf(null);
+    // entscheidung:14ce8681/8b909a1e: ein geöffneter Entwurf wird aktualisiert, nicht angelegt —
+    // ein offener Anlagevorgang des Formulars gehört nicht mehr zu dieser Eingabe.
+    eintragVorgangRef.current = null;
+    setBereitsGespeichert((b) => ({ ...b, eintrag: null }));
     // AUFTRAG-mega21 Block C-2: DER SERVER WEISS ES — JETZT SAGT ES AUCH DIE OBERFLÄCHE.
     //
     // `listDraftsForResume` prüft für jeden Entwurf, ob seine gesicherten Originale noch im
@@ -2637,6 +2828,8 @@ export function CaptureArbeitsraum({
     }
     // gemeinsame Metadaten (erweiterte Felder)
     setType(p.type ?? "best_practice");
+    // FR-STR-01: eine gespeicherte Wissensart ist entschieden; fehlt sie, darf die KI vorbelegen.
+    typeEntschiedenRef.current = p.type !== undefined && p.type !== null;
     setCategory(p.category ?? "");
     setTags(p.tags ?? []);
     setAsset(p.asset ?? "");
@@ -2657,6 +2850,8 @@ export function CaptureArbeitsraum({
     setConfidentiality(confidentialityOf(geladeneStufe));
     setDeclaredConfidentiality(geladeneStufe);
     setVertraulichkeitMarkiert(false);
+    // R-1664/R-2179: der geführte Lerneffekt kehrt mit dem Entwurf zurück.
+    setNegativForm(angabenZuForm(p.negativwissen));
     // AUFTRAG-mega4/mega5 Block A: die mitgesicherten inhaltlichen Dirty-Felder 1:1 wiederherstellen —
     // Prüferauswahl, offene Quellen (sourceProvider → provider, s. fromDraftSources), teilweise
     // ausgefülltes Quellenformular und die externe SUCHANFRAGE. Die Trefferliste selbst wird nach
@@ -2735,6 +2930,9 @@ export function CaptureArbeitsraum({
       setIvAnswer(iv.answer);
       setIvResult(iv.result);
       setIvStarted(iv.started);
+      // R-1624: Foto-Interview bleibt Foto-Interview — weitere Turns tragen den Befund, und die
+      // Wissensseite wird beim Abschluss unter dem gesicherten Bild-Anker ergänzt.
+      setIvBefund(iv.imageContext);
       // JOB 3414: der Fortschritt kommt IMMER zurück (nichts geht verloren) — die ANSICHT wechselt
       // nur dann von selbst ins Interview, wenn der Mensch keine ausdrücklich gewählt hat. Sonst
       // stünde er nach „Formular (Experten)" im Interview, und der Modus-Abgleich weiter unten
@@ -2842,6 +3040,7 @@ export function CaptureArbeitsraum({
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(false);
+    setIvBefund(null);
   };
 
   // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
@@ -2856,6 +3055,7 @@ export function CaptureArbeitsraum({
     setBodyHtml("");
     setStudioApplied(false);
     setType(CAPTURE_FIELD_DEFAULTS.type);
+    typeEntschiedenRef.current = false;
     setCategory("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -2863,6 +3063,7 @@ export function CaptureArbeitsraum({
     // von `declaredConfidentiality` und zugleich der Grund, warum es keinen Default dafür gibt.
     setDeclaredConfidentiality(undefined);
     setVertraulichkeitMarkiert(false);
+    setNegativForm(LEERE_NEGATIVWISSEN_FORM);
     setNeededValidations(CAPTURE_FIELD_DEFAULTS.neededValidations);
     setTags([]);
     setReviewerIds([]);
@@ -2885,6 +3086,12 @@ export function CaptureArbeitsraum({
     // JOB 3106 (UX-01): der Leerzustand trägt keine Markierung. Sie zeigte sonst auf einen
     // Entwurf, mit dem dieses Formular nichts mehr zu tun hat.
     setGeradeGesicherterEntwurf(null);
+    // entscheidung:14ce8681/8b909a1e: verworfen heisst auch — kein offener Anlagevorgang mehr, an
+    // den der nächste, ganz neue Beitrag sich anhängte, und kein Hinweis über eine alte Runde.
+    eintragVorgangRef.current = null;
+    ganzdokumentOffenRef.current = null;
+    ganzdokumentGesichertRef.current = null;
+    setBereitsGespeichert({ eintrag: null, datei: null });
     setWizStep("tell");
     clearInterviewState();
     clearFileImportState();
@@ -3055,6 +3262,7 @@ export function CaptureArbeitsraum({
     // ausdrücklich „Öffentlich-intern" wählte, machte das Formular damit nicht schmutzig, und
     // „Verwerfen" blieb gesperrt, obwohl es etwas zu verwerfen gab.
     declaredConfidentiality !== undefined ||
+    negativAngaben !== undefined ||
     neededValidations !== CAPTURE_FIELD_DEFAULTS.neededValidations ||
     reviewerIds.length > 0 ||
     isSourceFormDirty(sourceForm) ||
@@ -3484,8 +3692,13 @@ export function CaptureArbeitsraum({
     if (entwurfLaedt) {
       return { erlaubt: false, grund: t("state.loading") };
     }
+    // BEN, Nacharbeit 2 (R-1664/R-2179): ein Lerneffekt über seinen Obergrenzen. Der Server würde
+    // ihn abweisen; hier geht er gar nicht erst hinaus, und die Eingabe bleibt vollständig stehen.
+    if (negativUeberschritten) {
+      return { erlaubt: false, grund: t("negativwissen.obergrenze.gesperrt") };
+    }
     return { erlaubt: true, grund: null };
-  }, [resumeAnchorsMissing, entwurfLaedt, t]);
+  }, [resumeAnchorsMissing, entwurfLaedt, negativUeberschritten, t]);
 
   // Bug (Pedi 04.07./05.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
@@ -4509,8 +4722,9 @@ export function CaptureArbeitsraum({
       }
       setFileText(text);
       // R-0020: eine NEU eingelesene Datei ist ein neuer Stand — auch wenn sie gleich heisst.
+      // entscheidung:14ce8681: ein noch UNKLARER Vorgang (`ganzdokumentOffenRef`) bleibt dagegen
+      // stehen — der neue Stand schreibt denselben Entwurf fort, statt einen zweiten anzulegen.
       ganzdokumentGesichertRef.current = null;
-      ganzdokumentOffenRef.current = null;
       setFileRich(rich);
       setFileImageInfo(imageInfo);
       setFileImageTransfer(imageTransfer);
@@ -4625,8 +4839,8 @@ export function CaptureArbeitsraum({
       const res = await runImageOcr(fileImageUrl);
       if (res.status === "success" && res.text.length > 0) {
         setFileText(res.text);
+        // entscheidung:14ce8681: ein unklarer Vorgang bleibt stehen (s. Datei-Einlesen).
         ganzdokumentGesichertRef.current = null;
-        ganzdokumentOffenRef.current = null;
         // JOB 3196: derselbe Befund wie beim Datei-Einlesen — auch der OCR-Text bekommt die
         // Quittung der GEWÄHLTEN Importart, gebildet beim Rendern. Ohne formatabhängige Zusätze.
         setNotice({
@@ -4758,12 +4972,18 @@ export function CaptureArbeitsraum({
 
   // E2E-008: bewusster Start des geführten Interviews — erst hier (nicht beim Tabwechsel) geht der
   // erste Turn an das Modell. Vorher wurde nichts gesendet und kein ModelRun ausgelöst.
-  const startInterview = (): void => {
+  // R-1624: mit Foto setzt der Start zuerst den Bild-Anker in den Rumpf (sichtbar im Blatt und mit
+  // dem Entwurf gesichert) und fragt danach mit der Foto-Fragenfolge.
+  const startInterview = (foto: FotoAnker | null = null): void => {
     setIvAnswers([]);
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(true);
-    runInterview([]);
+    setIvBefund(foto ? foto.befund : null);
+    if (foto) {
+      setBodyHtml((prev) => applyFotoAnker(prev, foto));
+    }
+    runInterview([], foto ? foto.befund : null);
   };
 
   // SCRUM-132: Antwort senden → nächster reasoner-getriebener Turn.
@@ -4831,6 +5051,13 @@ export function CaptureArbeitsraum({
       setVertraulichkeitMarkiert(true);
       // Den Fokus setzt der Effekt unten — das eben aufgeklappte Feld steht in DIESEM Zug noch
       // nicht im Dokument.
+      return;
+    }
+    // BEN, Nacharbeit 2 (R-1664/R-2179): ein Lerneffekt über seinen Obergrenzen geht nicht hinaus.
+    // Der Block zeigt die Stelle am Feld; hier steht derselbe Satz als Meldung, damit der Klick
+    // nicht wortlos ausbleibt. Nichts wird geleert oder gekürzt.
+    if (negativUeberschritten) {
+      setErr(t("negativwissen.obergrenze.gesperrt"));
       return;
     }
     const schritt = beispielEinreichSchritt({
@@ -4909,9 +5136,13 @@ export function CaptureArbeitsraum({
             {t("conf.confirmPending")}
           </option>
         )}
+        {/* R-2180: ein Lerneffekt mit Bezug lässt Stufen unter „vertraulich" nicht zu — sichtbar
+            gesperrt statt still angehoben. */}
         {CONFIDENTIALITY_LEVELS.map((lvl) => (
-          <option key={lvl} value={lvl}>
-            {t(`conf.level.${lvl}`)}
+          <option key={lvl} value={lvl} disabled={!stufeWaehlbar(negativBezug, lvl)}>
+            {stufeWaehlbar(negativBezug, lvl)
+              ? t(`conf.level.${lvl}`)
+              : `${t(`conf.level.${lvl}`)} — ${t("negativwissen.stufeGesperrt")}`}
           </option>
         ))}
       </select>
@@ -4931,6 +5162,32 @@ export function CaptureArbeitsraum({
       ) : null}
     </Field>
   );
+
+  // R-1664/R-2179 — DER GEFÜHRTE LERNEFFEKT: bei Wissensart Negativwissen der Fragenblock. Dieselbe
+  // Bauform wie `vertraulichkeitsWahl`: zwei einander ausschliessende Aufrufstellen
+  // (Erzählen/Expertenansicht und Wissensseite), ein Zustand.
+  const lerneffektBereich = (): JSX.Element | null =>
+    type === "negativwissen" ? (
+      <NegativwissenFuehrung form={negativForm} onChange={aendereNegativForm} />
+    ) : null;
+  // Der Einstieg steht bei der Wissensart in den erweiterten Details — Schritt 1 bleibt nach dem
+  // Aufräum-Pass 02.07. „Erzählen + ein Knopf"; ein zusätzlicher Knopf dort wäre gegen diese Wahl.
+  const lerneffektEinstieg = (): JSX.Element | null =>
+    type === "negativwissen" ? null : (
+      <div className="col-span-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-testid="negativwissen-einstieg"
+          onClick={() => waehleWissensart("negativwissen")}
+          className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+        >
+          {t("negativwissen.einstieg")}
+        </button>
+        <span className="text-[11.5px] leading-relaxed text-muted-2">
+          {t("negativwissen.einstiegHinweis")}
+        </span>
+      </div>
+    );
 
   // F-0007: die sichtbare Hälfte. Der Zustand darf nicht nur intern geführt werden — wer ein
   // Beispiel geladen hat, sieht das bis zum Schluss. Herkunfts-Kennzeichnung im Muster von
@@ -5135,8 +5392,9 @@ export function CaptureArbeitsraum({
         if (blattWechselRef.current.meldung !== null) {
           setTeilerfolg({ lage: "ausstehend", datei: traeger.eingabe.fileName });
         }
+        let dateiErgebnis: Awaited<ReturnType<typeof ganzdokumentSichern>> | undefined;
         try {
-          await ganzdokumentSichern(traeger.eingabe);
+          dateiErgebnis = await ganzdokumentSichern(traeger.eingabe);
         } catch {
           // Auch hier hat `fileWholeDraft.onError` den Grund bereits gemeldet (samt dem eigenen Satz
           // für „zu groß für den Import"). Der Dateizustand bleibt stehen: ein zweiter Druck ist der
@@ -5156,7 +5414,9 @@ export function CaptureArbeitsraum({
         // Beide Anteile sind gesichert: jetzt erst der Wechsel ins Blatt, zum Eintrag dieses Weges.
         const entwurfId = blattWechselRef.current.entwurfId;
         blattWechselRef.current.entwurfId = null;
-        if (entwurfId) {
+        // entscheidung:8b909a1e: war die Datei bereits gespeichert, bleibt der Hinweis samt Verweis
+        // im Erfassen-Formular stehen — kein Blattwechsel, der ihn abbaute.
+        if (entwurfId && !dateiErgebnis?.draft?.anlage) {
           onEntwurfInsBlatt?.(entwurfId);
         }
       }
@@ -5876,13 +6136,22 @@ export function CaptureArbeitsraum({
                   // E2E-008: bewusster Start VOR jedem Cloud-Lauf. Provider-/Region-/Kostenhinweis
                   // (AiModelInfo) steht am Knopf; erst der Klick löst den ersten ModelRun aus.
                   <div data-help="cap:interview" className="space-y-3">
+                    {/* R-0957 / R-1926: das Lehrlingsbild — an das gebunden, was der Weg wirklich
+                        tut (Rückfragen, Einreichen, Teamprüfung) und ausdrücklich OHNE Lernzusage
+                        (`texte/lehrling.ts`, bewacht von `tests/app/learning-claim-guard.test.ts`). */}
+                    <p className="text-[13px] text-muted" data-testid="interview-lehrling">
+                      {t("lehrling.interview.rahmen")}
+                    </p>
                     <p className="text-[13px] text-muted">{t("capture.ivStartLead")}</p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button variant="primary" onClick={startInterview}>
+                      <Button variant="primary" onClick={() => startInterview()}>
                         {t("capture.ivStart")}
                       </Button>
                       <AiModelInfo task="interview" />
                     </div>
+                    {/* R-1624: derselbe bewusste Start, aber über ein Foto — erst „Bild
+                      auswerten" sendet das Bild, erst „Foto-Interview starten" die erste Frage. */}
+                    <FotoInterviewStart onStart={(foto) => startInterview(foto)} />
                   </div>
                 ) : ivResult && isInterviewDone(ivResult) ? (
                   <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
@@ -5899,7 +6168,15 @@ export function CaptureArbeitsraum({
                           {t(interviewSourceKey(ivResult))}
                         </span>
                       ) : null}
+                      {ivBefund ? (
+                        <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                          {t("fotowissen.laeuft")}
+                        </span>
+                      ) : null}
                     </div>
+                    {/* R-1624: der Kontext, auf den sich die Rückfragen beziehen — sichtbar, nicht
+                      nur im Prompt. */}
+                    {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
                     {/* AUFTRAG-mega5 Block A: liegt (nach Fortsetzen eines Entwurfs ohne gesicherte
@@ -6432,6 +6709,8 @@ export function CaptureArbeitsraum({
                 </div>
               ) : null}
 
+              {lerneffektBereich()}
+
               {/* SCRUM-375 / AG-12: erweiterte/technische Felder als Progressive Disclosure — standardmäßig
               eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt. NICHTS entfernt; bei
               vorhandenem Inhalt (Entwurf/Beispiel) automatisch aufgeklappt; Badge zeigt Ausgefülltes an. */}
@@ -6485,7 +6764,11 @@ export function CaptureArbeitsraum({
                     >
                       <select
                         value={type}
-                        onChange={(e) => setType(e.target.value as KnowledgeType)}
+                        onChange={(e) => {
+                          typeEntschiedenRef.current = true;
+                          setType(e.target.value as KnowledgeType);
+                          stufeNachWissensart(e.target.value as KnowledgeType);
+                        }}
                         className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
                       >
                         {KNOWLEDGE_TYPES.map((k) => (
@@ -6536,6 +6819,7 @@ export function CaptureArbeitsraum({
                     <div data-help="cap:tagsField">
                       <TagEditor tags={tags} onChange={setTags} />
                     </div>
+                    {lerneffektEinstieg()}
                   </div>
 
                   {/* SCRUM-395: Prüfer direkt beim Einreichen vorschlagen (optional). */}
@@ -6832,6 +7116,9 @@ export function CaptureArbeitsraum({
                       {canSearchExternal(extPolicyStage) ? (
                         <div className="mt-3 space-y-2 border-t border-hairline pt-3">
                           <SectionLabel>{t("ext.title")}</SectionLabel>
+                          {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der
+                              Seitenhilfe, solange die Suche freigegeben ist. */}
+                          <HelpTip title={t("ext.title")} body={t("shelp.ext.title")} />
                           <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
                           {/* AUFTRAG-mega14 Block D (SCRUM-414): bis mega14 erschien der Anhängen-Knopf
                             auf JEDER Stufe außer „blocked" — auch auf „suchen, aber nicht anhängen",
@@ -6995,6 +7282,35 @@ export function CaptureArbeitsraum({
                   {t("capture.teilerfolg.dateiGescheitert", { name: teilerfolg.datei })}
                 </output>
               ) : null}
+              {/* entscheidung:8b909a1e (Option A): der Server hat beim erneuten Speichern den
+                vorhandenen Eintrag erkannt — statt der normalen Erfolgsmeldung dieser Hinweis, mit
+                Verweis auf genau diesen Eintrag. Im Blatt öffnet der Verweis ihn dort (derselbe Weg
+                wie nach dem Speichern), sonst über die Adresse der Vordertür. */}
+              {[bereitsGespeichert.eintrag, bereitsGespeichert.datei].map((b) =>
+                b ? (
+                  <output
+                    key={b.id}
+                    data-testid="capture-bereits-gespeichert"
+                    data-entwurf={b.id}
+                    aria-live="polite"
+                    className="block rounded-btn border border-hairline px-3 py-2 text-[12.5px] text-ink"
+                  >
+                    <span>{bereitsGespeichertSatz(b)}</span>{" "}
+                    <GuardedLink
+                      to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(b.id)}`}
+                      onClick={(e) => {
+                        if (onEntwurfInsBlatt) {
+                          e.preventDefault();
+                          onEntwurfInsBlatt(b.id);
+                        }
+                      }}
+                      className="font-semibold underline"
+                    >
+                      {t("capture.bereitsGespeichertOeffnen", { title: b.titel })}
+                    </GuardedLink>
+                  </output>
+                ) : null,
+              )}
 
               {/* JOB 3029 (U1): der Unterschied der zwei Knöpfe steht offen an der Entscheidung.
                 Im Expertenweg trägt ihn die Entwurfskarte weiter unten (dieser Zweig läuft auch
@@ -7205,6 +7521,9 @@ export function CaptureArbeitsraum({
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
                         }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
+                        }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"
                         extraApplyActions={EDITOR_BLOCKS.map((block) => ({
@@ -7375,7 +7694,8 @@ export function CaptureArbeitsraum({
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     <span aria-hidden>✦</span>
-                    {t("reasoner.draftLabel")}
+                    {/* R-1020: Wortlaut der Quelle, aus derselben Stufentabelle wie überall. */}
+                    {t(ERGEBNIS_STUFE_TEXT.entwurf)}
                   </span>
                   <button
                     type="button"
@@ -7430,6 +7750,9 @@ export function CaptureArbeitsraum({
                         runAssist={runAssist}
                         applyFn={(mode, _original, suggestion) =>
                           applyBodyAssist(mode, bodyHtml, suggestion)
+                        }
+                        applySpelling={(suggestion) =>
+                          spellingAssistHtmlOrNull(bodyHtml, suggestion)
                         }
                         onApply={setBodyHtml}
                         hintKey="capture.ai.bodyHint"
@@ -7640,6 +7963,9 @@ export function CaptureArbeitsraum({
                   Stelle hätte der Mensch hier eine Pflicht ohne Feld — der Knopf spärrte, und nichts
                   auf dem Schirm könnte die Sperre auflösen. Dieselbe Auswahl, dieselben Zustände,
                   eine Definition (`vertraulichkeitsWahl`). */}
+                {/* R-1664/R-2179: der Lerneffekt steht auch an der Einreich-Entscheidung — im
+                  geführten Weg sind die Felder des Schritts „Erzählen" hier nicht sichtbar. */}
+                {lerneffektBereich()}
                 <div className="max-w-xs">{vertraulichkeitsWahl()}</div>
                 {/* SCRUM-370 / AG-P2-4: Beitragswert an der Einreich-Entscheidung — ehrlich. */}
                 <p className="text-[11.5px] leading-relaxed text-muted">

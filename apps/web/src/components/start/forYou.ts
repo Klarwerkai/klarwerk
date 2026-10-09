@@ -273,7 +273,18 @@ export interface ArbeitZeile {
 /** Was eine Meldung beisteuert — strukturell wie `api/types.ts:Notification`. */
 export interface MeldungZeile {
   id: string;
-  kind: "conflict" | "duplicate" | "gap" | "assignment" | "impact" | "kenntnisnahme";
+  kind:
+    | "conflict"
+    | "escalation"
+    | "duplicate"
+    | "gap"
+    | "assignment"
+    | "return"
+    | "impact"
+    | "kenntnisnahme"
+    | "loeschantrag"
+    | "frische"
+    | "reklamation";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -295,10 +306,20 @@ const RANG: Record<ForYouSeverity, number> = { critical: 0, today: 1, later: 2 }
 // Arbeitsübersicht, damit eine Reihung über beide Quellen überhaupt bedeutet, was sie sagt.
 const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   conflict: "critical",
+  // R-0894: eine Eskalation wartet auf eine menschliche Entscheidung — kritisch wie ein Konflikt;
+  // eine Rückgabe ist eigene Arbeit von heute — wie eine Zuweisung.
+  escalation: "critical",
   duplicate: "today",
   assignment: "today",
+  return: "today",
   // Eine angeforderte Kenntnisnahme ist Arbeit von heute — wie eine Zuweisung.
   kenntnisnahme: "today",
+  // Ein Löschantrag ist Verwalterarbeit mit gesetzlicher Frist — Arbeit von heute.
+  loeschantrag: "today",
+  // R-1089: eine gemeldete falsche Antwort zum eigenen Wissen ist Arbeit von heute.
+  reklamation: "today",
+  // aufnahme:20260922:gesamt-wissen-frische: bestätigen, ob eigenes Wissen noch stimmt — heute.
+  frische: "today",
   gap: "later",
   impact: "later",
 };
@@ -308,6 +329,25 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   // Die Kenntnisnahme bringt ihre Texte im eigenen Textmodul mit (`texte/kenntnisnahme.ts`).
   if (kind === "kenntnisnahme") {
     return "kenntnisnahme.meldungArt";
+  }
+  // Der Löschantrag ebenso (`texte/datenschutz.ts`).
+  if (kind === "loeschantrag") {
+    return "datenschutz.meldungArt";
+  }
+  // aufnahme:20260922:gesamt-wissen-frische: Texte im Textmodul `texte/frische.ts`.
+  if (kind === "frische") {
+    return "frische.meldungArt";
+  }
+  // R-0894: die beiden neueren Arten tragen ihren Namen im Textmodul `texte/meldungsart.ts`.
+  if (kind === "escalation") {
+    return "meldungsart.eskalation.art";
+  }
+  if (kind === "return") {
+    return "meldungsart.rueckgabe.art";
+  }
+  // R-1089: die Antwortmeldung bringt ihren Namen im Textmodul `texte/antwortmeldung.ts` mit.
+  if (kind === "reklamation") {
+    return "antwortmeldung.meldungArt";
   }
   return `start.fuerdich.art.${kind}`;
 }

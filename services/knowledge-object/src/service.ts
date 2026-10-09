@@ -46,15 +46,40 @@ import {
   type EffectiveSearchDocument,
   composeEffectiveSearchDocument,
 } from "./effective-search-document";
+// R-1632 / R-1633: die Geltungsregel (Konzern/Werk/Schicht) — eine Fassung, Begründung dort.
+import {
+  type GelernteHalbwertszeiten,
+  beobachtungenAus,
+  fristGrundlageBeiKategoriewechsel,
+  halbwertszeitenAusVerlauf,
+} from "./frische";
+import { normalizeGeltung } from "./geltung";
+import {
+  type HalbwertszeitVerlaufRepo,
+  InMemoryHalbwertszeitVerlauf,
+} from "./halbwertszeit-verlauf";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
   metadataTextsOf,
 } from "./metadata-projection";
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
+// R-1664/R-2179/R-2180: die geführten Negativwissen-Angaben und ihre Mindeststufe (Regel dort).
+import {
+  negativwissenGrenzfehler,
+  normalizeNegativwissen,
+  stufeFuerNegativwissen,
+  unterschreitetNegativwissenStufe,
+} from "./negativwissen";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
-import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
+import {
+  normalizeOwnership,
+  ownershipOf,
+  responsibleOf,
+  sameOwnership,
+  withRole,
+} from "./ownership";
 // AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
 import {
   bestandsStempelVon,
@@ -101,6 +126,8 @@ import {
 import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
+// P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text — Prüfung und Vergleich.
+import { gleicheStelle, stelleAmAnhang, stelleImInhalt } from "./stellen-anker";
 import {
   type AiCheckBasis,
   type AiCheckCoverage,
@@ -117,8 +144,11 @@ import {
   type KoComment,
   // JOB 4146: der Klärungsstand eines Diskussionsfadens (geklärt, nicht freigegeben).
   type KoCommentResolution,
+  type KoCommentStelle,
   type KoCreateOperation,
   KoError,
+  // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
+  type KoMergedInto,
   // JOB 3667 R2: der gebundene Änderungsvorschlag (Fall 2 der Accountregel).
   type KoProposal,
   type KoRepairNote,
@@ -153,6 +183,7 @@ export interface CreateOperationRequester {
  * DIESELBE ABSENDUNG IST DAHER: gleicher Schlüssel · gleicher Verfasser · gleicher Text · gleicher
  * Antwortbezug. Der Bezug gehört dazu, weil dieselben Worte an einem anderen Faden eine andere
  * Aussage sind. Fehlender und leerer Bezug sind dabei dasselbe — beides heisst „Wurzelbeitrag".
+ * P-WIKI-STELLENBEZUG: aus demselben Grund gehört die Stelle im Text dazu.
  */
 function gleicheAbsendung(
   vorhanden: KoComment,
@@ -160,12 +191,14 @@ function gleicheAbsendung(
   text: string,
   replyTo: string | undefined,
   clientKey: string,
+  stelle: KoCommentStelle | undefined,
 ): boolean {
   return (
     vorhanden.clientKey === clientKey &&
     vorhanden.author === author &&
     vorhanden.text === text &&
-    (vorhanden.replyTo ?? "") === (replyTo ?? "")
+    (vorhanden.replyTo ?? "") === (replyTo ?? "") &&
+    gleicheStelle(vorhanden.stelle, stelle)
   );
 }
 
@@ -219,12 +252,11 @@ export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
 // Muster und dieselbe Größenordnung wie der Fußnoten-Backfill der Bibliothek
 // (SEARCH_BACKFILL_LIMIT_PER_QUERY = 20): die Suche darf nie zum Bestands-Durchlauf werden, und
 // der Rest wird von der nächsten Anfrage bzw. vom ausdrücklichen Lauf abgearbeitet (konvergiert).
-// G27 R1 (Entscheidung 04 §5): DER DECKEL BLEIBT, SEIN AUFRUFORT NICHT. Der gedeckelte Nachzug ist
-// weiterhin Hintergrundhilfe und Optimierung — aber KEIN Suchweg stößt ihn mehr an. „Der reguläre
+// G27 R1 (Entscheidung 04 §5): KEIN Suchweg stößt den gedeckelten Nachzug mehr an. „Der reguläre
 // Suchpfad darf funktional nicht von ihm abhängen"; er aktiviert nichts, gibt keine Readiness frei
-// und bestätigt keine Konsistenz. Der Wert bleibt die Schwunggröße für ausdrückliche
-// Wartungsläufe und ist Teil der öffentlichen Modulfläche.
-export const SEARCH_PROJECTION_BACKFILL_PER_QUERY = 20;
+// und bestätigt keine Konsistenz. R-1349: Damit las auch niemand mehr den Deckel je Anfrage
+// `SEARCH_PROJECTION_BACKFILL_PER_QUERY` (= 20); er ist entfernt. Ausdrückliche Läufe nehmen ihren
+// eigenen Schwung (`backfillSearchProjections`, Vorgabe 500; der Abgleich `RECONCILE_SCHWUNG`).
 
 // Der Schwung des UNGEDECKELTEN Abgleichs. Groß genug, dass der Bestand in wenigen Runden
 // abgearbeitet ist; endlich, damit eine einzelne Abfrage nicht unbegrenzt Zeilen zieht.
@@ -304,6 +336,9 @@ interface ErstanlageMeldung {
 export interface KoServiceDeps {
   repo: KoRepo;
   audit?: AuditService;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Fehlt er, hält der Dienst ihn im Speicher (Tests, Aufbau ohne Datenbank).
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   // SCRUM-159: optionales Versions-Repo. Ist es gesetzt, werden bei create/revise
   // vollständige, unveränderliche Snapshots geschrieben (Knowledge-OS-Foundation).
   versions?: KoVersionRepo;
@@ -326,6 +361,12 @@ export interface KoServiceDeps {
   // Überschneidungen, Embedding-Vektor) nicht verwaisen. Als injizierte Funktion — KEIN Import über die
   // Modulgrenze; die App (Composition-Root) verdrahtet conflicts/overlaps/Embedding-Cleanup dahinter.
   onPurge?: (koId: string, actor: string) => Promise<void>;
+  // produkt:20261007:ownership-uebergabe (Nacharbeit 4): wer die Hauptverantwortung für ein NEUES
+  // Objekt dieses Autors trägt, wenn es nicht der Autor selbst sein kann (befristeter Zugang).
+  // `undefined` = kein Eingriff (Rückfall auf den Autor wie bisher). Wirft der Lieferant, entsteht
+  // kein Objekt. Als injizierte Funktion — KEIN Import über die Modulgrenze.
+  // Nacharbeit 6: gefragt wird mit dem fertig aufgebauten Objekt (Autor, Stufe, Space).
+  verantwortungBeiAnlage?: (ko: KnowledgeObject) => Promise<string | undefined>;
   // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
   withTx?: WithTx;
   // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): die Klammer des Rücknahme-Wegs
@@ -426,6 +467,9 @@ export interface CreateKoInput {
   demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
   // SCRUM-415: optionale Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // R-1664/R-2179/R-2180: die geführten Angaben eines Negativwissen-Falls. `unknown`, weil die
+  // Form allein `normalizeNegativwissen` entscheidet; bei jeder anderen Wissensart verworfen.
+  negativwissen?: unknown;
   // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg des Entwurfs, aus dem dieses KO entsteht.
   // Bewusst ein VERWEIS auf die Wertmenge am Modell statt einer zweiten Aufzaehlung — so koennen
   // Eingabe und Objekt nicht auseinanderlaufen. Die Pruefung ist bereits am Entwurf gefallen
@@ -736,7 +780,14 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
  */
 const HASH_PRUEFBLOCK = 100;
 
+/** R-1636: so lange gilt eine gelernte Halbwertszeitentabelle, bevor sie neu gerechnet wird. */
+const HALBWERTSZEIT_LERNEN_TTL_MS = 10 * 60 * 1000;
+
 export class KoService {
+  // R-1636: zuletzt gelernte Halbwertszeiten samt Ablauf (s. `gelernteHalbwertszeiten`).
+  private halbwertszeitSpeicher: { bis: number; tabelle: GelernteHalbwertszeiten } | undefined;
+  // R-1636 / R-0248 (Nacharbeit 5): der festgehaltene Lernverlauf (s. `gelernteHalbwertszeiten`).
+  private readonly halbwertszeitVerlauf: HalbwertszeitVerlaufRepo;
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
   private readonly versions: KoVersionRepo | undefined;
@@ -749,6 +800,8 @@ export class KoService {
   // SCRUM-523 P.3 (WP2): Purge-Aufräum-Hook. Spät bindbar (setPurgeCleanup), da die Composition-Root
   // conflicts/overlaps/Embedding-Cleanup erst NACH dem KoService erstellt (Reihenfolge in assembleServices).
   private onPurge: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // R-0195 / R-0470: s. `setAenderungsNachlauf`.
+  private nachAenderung: ((koId: string, stand?: KnowledgeObject) => void) | undefined;
   // JOB 1104 (S0-TX): der transaktionsgebundene Haken. Ebenfalls spät bindbar, aus demselben Grund.
   private onPurgeTx: PurgeTxCleanup | undefined;
   // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
@@ -759,6 +812,9 @@ export class KoService {
   private readonly onError: (context: string, error: unknown) => void;
   // R-0098: s. KoServiceDeps.bildObjektDaten.
   private readonly bildObjektDaten: BildObjektDaten | undefined;
+  private readonly verantwortungBeiAnlage:
+    | ((ko: KnowledgeObject) => Promise<string | undefined>)
+    | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
   // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
@@ -766,6 +822,7 @@ export class KoService {
   private readonly koWriteLocks = new Map<string, Promise<unknown>>();
 
   constructor(deps: KoServiceDeps) {
+    this.halbwertszeitVerlauf = deps.halbwertszeitVerlauf ?? new InMemoryHalbwertszeitVerlauf();
     this.repo = deps.repo;
     this.audit = deps.audit;
     this.versions = deps.versions;
@@ -789,9 +846,11 @@ export class KoService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[kos] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[kos] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
     this.bildObjektDaten = deps.bildObjektDaten;
+    this.verantwortungBeiAnlage = deps.verantwortungBeiAnlage;
   }
 
   // R-0098 (inhaltskennung-zweitbegriff): die Inhaltskennungen der Bilder eines Rumpfes — das
@@ -804,6 +863,29 @@ export class KoService {
   // Embedding-Cleanup erst nach dem KoService). Nur EIN Hook — er ist die zentrale Aufräum-Kaskade.
   setPurgeCleanup(hook: (koId: string, actor: string) => Promise<void>): void {
     this.onPurge = hook;
+  }
+
+  // R-0195 / R-0470 (Aufnahme gesamt-suchindex-aktualitaet): der Nachlauf JEDER gespeicherten
+  // Objektänderung — Überarbeitung, Stufenwechsel, Zusammenführen, Papierkorb und Wiederherstellen.
+  // Er läuft NACH dem Schreiben, ist synchron und darf nur einreihen (die Kompositionswurzel reicht
+  // die Reindex-Warteschlange herein); das Neuindizieren selbst geschieht nicht im Aufruf. Die
+  // Suchprojektion braucht ihn nicht — sie entsteht im selben Schreibvorgang wie die neue Fassung.
+  // Nur EIN Haken, aus demselben Grund wie bei `setPurgeCleanup`.
+  //
+  // `stand` (Ben, Nacharbeit 3) ist das soeben GESPEICHERTE Objekt, wo der Schreibweg es kennt. Mit
+  // ihm entscheidet die Kompositionswurzel SOFORT, ob ein Vektor nicht mehr stehen darf
+  // (Heraufstufung, Papierkorb, Zusammenführen) — unabhängig vom Rückstau der Warteschlange.
+  setAenderungsNachlauf(hook: (koId: string, stand?: KnowledgeObject) => void): void {
+    this.nachAenderung = hook;
+  }
+
+  // Ein Nachlauf, der wirft, darf die bereits gespeicherte Änderung nicht nachträglich kippen.
+  private meldeAenderung(id: string, stand?: KnowledgeObject): void {
+    try {
+      this.nachAenderung?.(id, stand);
+    } catch (err) {
+      this.onError("Änderungsnachlauf", err);
+    }
   }
 
   // JOB 1104 (S0-TX): den transaktionsgebundenen Haken spät verdrahten — exakt analog zu
@@ -849,6 +931,7 @@ export class KoService {
       audit?: (tx?: TxContext) => Promise<void>;
     },
   ): Promise<T> {
+    let gespeichert: KnowledgeObject | undefined;
     const value = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       const { updated, value, audit } = apply(ko);
@@ -860,8 +943,10 @@ export class KoService {
         () => this.rollbackKo(ko),
         id,
       );
+      gespeichert = updated;
       return value;
     });
+    this.meldeAenderung(id, gespeichert);
     return this.lesefassungWert(value);
   }
 
@@ -953,7 +1038,15 @@ export class KoService {
     },
   ): Promise<T> {
     // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
-    return this.lesefassungWert(await this.mutateKoTxRoh(id, build));
+    let gespeichert: KnowledgeObject | undefined;
+    const value = await this.mutateKoTxRoh(id, (ko) => {
+      const gebaut = build(ko);
+      gespeichert = gebaut.updated;
+      return gebaut;
+    });
+    // R-0195 / R-0470: erst NACH dem Speichern — ein Wurf endet vorher, dann reiht nichts ein.
+    this.meldeAenderung(id, gespeichert);
+    return this.lesefassungWert(value);
   }
 
   private async mutateKoTxRoh<T>(
@@ -2213,6 +2306,7 @@ export class KoService {
     if (needed < 1 || needed > 5) {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }
+    const ownership = normalizeOwnership(input.ownership);
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
@@ -2220,6 +2314,24 @@ export class KoService {
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
     // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
     const domain = normalizeDomain(input.domain);
+    // R-1664/R-2179: die geführten Angaben gehören allein zur Wissensart `negativwissen`.
+    // R-2180: ein Fall mit Personen-, Kunden-, Produktions- oder Qualitätsbezug liegt nie unter
+    // „vertraulich" — die Stufe wird angehoben, nie gesenkt (Regel in negativwissen.ts).
+    // BEN, Nacharbeit 2: eine Überschreitung wird abgewiesen (400 mit Grund), nie still gekürzt.
+    // Der allgemeine Eingabecode `INVALID` — dieselbe Wahl und Begründung wie bei JOB 4213 (types.ts).
+    const grenzfehler =
+      input.type === "negativwissen" ? negativwissenGrenzfehler(input.negativwissen) : undefined;
+    if (grenzfehler !== undefined) {
+      throw new KoError("INVALID", grenzfehler);
+    }
+    const negativwissen =
+      input.type === "negativwissen" ? normalizeNegativwissen(input.negativwissen) : undefined;
+    const stufe = stufeFuerNegativwissen(
+      input.confidentiality !== undefined
+        ? normalizeConfidentiality(input.confidentiality)
+        : undefined,
+      negativwissen,
+    );
     const ko: KnowledgeObject = {
       id: this.genId(),
       title: input.title,
@@ -2281,9 +2393,8 @@ export class KoService {
       // zu benutzen. Wer das zurückdreht, macht V1 in
       // tests/vertraulichkeit-intern/explizit-intern-ueberlebt.test.ts rot; wer stattdessen einen
       // Default einführt, V2.
-      ...(input.confidentiality !== undefined
-        ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
-        : {}),
+      ...(stufe !== undefined ? { confidentiality: stufe } : {}),
+      ...(negativwissen ? { negativwissen } : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),
       // JOB 679 / D2 (K1.2, Weg A): die Herkunft nur setzen, wenn der Entwurf eine MITBRINGT —
       // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
@@ -2303,9 +2414,7 @@ export class KoService {
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
       // das liest `responsibleOf` als Rückfall statt als Eigentum.
-      ...(normalizeOwnership(input.ownership)
-        ? { ownership: normalizeOwnership(input.ownership) as KnowledgeOwnership }
-        : {}),
+      ...(ownership ? { ownership } : {}),
       // AUFTRAG-mega20 Block A: DB-unique erzwungen (kos_create_operation_uq) — der Insert eines
       // zweiten KO desselben Erzeugungs-Vorgangs scheitert am Index/Guard und wird adoptiert.
       ...(extras?.createOperationId ? { createOperationId: extras.createOperationId } : {}),
@@ -2321,9 +2430,29 @@ export class KoService {
       // SCRUM-527 (WP2): jede übernommene Quell-URL durch die Allowlist (nur absolute http/https).
       sources: sanitizeSources([...(input.sources ?? []), ...(extras?.sources ?? [])]),
     };
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4/6): nennt der Aufrufer keinen Eigentümer
+    // und kann der Autor selbst die Verantwortung nicht über sein Kontoende hinaus tragen
+    // (befristeter Zugang), trägt sie ab der Anlage die benannte Nachfolge. Gefragt wird mit dem
+    // FERTIGEN Objekt — die Zulässigkeit hängt an Vertraulichkeit und Space genau dieses Beitrags
+    // (Nacharbeit 6). Prüfende/Validierende einer mitgebrachten Angabe bleiben; die Autorschaft
+    // bleibt beim Autor.
+    const nachfolge =
+      !ownership?.owner && this.verantwortungBeiAnlage
+        ? await this.verantwortungBeiAnlage(ko)
+        : undefined;
+    const mitNachfolge: KnowledgeObject = nachfolge
+      ? {
+          ...ko,
+          ownership: {
+            owner: nachfolge,
+            reviewers: ownership?.reviewers ?? [],
+            validators: ownership?.validators ?? [],
+          },
+        }
+      : ko;
     // R-0658: VOR der ersten Suchprojektion (finishCreated) — trägt der Inhalt Schutzdaten, liegt
     // das Objekt ab seiner Entstehung in Quarantäne und wird nie mit diesem Text durchsuchbar.
-    return mitSchutzdatenBefund(ko, at);
+    return mitSchutzdatenBefund(mitNachfolge, at);
   }
 
   // ============================================================================================
@@ -3251,6 +3380,14 @@ export class KoService {
           "Die Vertraulichkeit dieses aus Word übernommenen Eintrags kann nur angehoben werden.",
         );
       }
+      // R-2180: ein Negativwissen-Fall mit Bezug bleibt mindestens „vertraulich" — auch für Prüfer
+      // und Administratoren. Wer ihn öffnen will, muss den Bezug am Fall selbst ändern.
+      if (unterschreitetNegativwissenStufe(ko.negativwissen, level)) {
+        throw new KoError(
+          "DOWNGRADE_FORBIDDEN",
+          "Ein Lerneffekt mit Personen-, Kunden-, Produktions- oder Qualitätsbezug bleibt mindestens vertraulich.",
+        );
+      }
       // SCRUM-509 R2/R3: Downgrade-Autorisierung gegen die GERADE gelesene Stufe (atomar). R3 FAIL-SAFE:
       // fehlt `mayDowngrade`, gilt es als NICHT erlaubt (`!opts...`) — ein Downgrade rutscht nie aus einem
       // fehlenden Recht durch, auch bei programmatischen Aufrufern.
@@ -3260,7 +3397,14 @@ export class KoService {
           "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
         );
       }
-      const updated: KnowledgeObject = { ...ko, confidentiality: level };
+      // aufnahme:20260922:gesamt-wissen-frische (R-0652): „öffentlich" verfeinert nur „intern" —
+      // eine Höherstufung nimmt die Marke mit weg, damit sie bei einer späteren Rückstufung nicht
+      // ungeprüft wiederauflebt.
+      const { oeffentlich: _marke, ...ohneMarke } = ko;
+      const updated: KnowledgeObject =
+        level === "intern"
+          ? { ...ko, confidentiality: level }
+          : { ...ohneMarke, confidentiality: level };
       return {
         updated,
         value: updated,
@@ -3331,6 +3475,127 @@ export class KoService {
         },
       };
     });
+  }
+
+  // ==============================================================================================
+  // R-0507 — DER EIGENTÜMER GIBT SEINE VERANTWORTUNG ZURÜCK.
+  // ==============================================================================================
+  //
+  // Die offene Frage aus `setOwnership` („wem darf man die Verantwortung wieder wegnehmen?") ist
+  // hier enger beantwortet: NIEMANDEM wird sie weggenommen — der benannte Eigentümer gibt sie
+  // SELBST ab. Deshalb prüft der Dienst `actor === owner` und kein Rollenrecht: das ist keine
+  // Rechtevergabe aus `owner` (ownership.ts), sondern das Zurückgeben der eigenen Zusage.
+  //
+  // WAS BLEIBT: die Spur `reviewers`/`validators` — wer geprüft und freigegeben hat, ist eine
+  // Tatsache, die das Zurückgeben nicht ungeschehen macht. Nur `owner` entfällt; danach gilt
+  // wieder der benannte Rückfall auf den Autor (`responsibleOf`). Bleibt gar nichts übrig, steht
+  // kein Aggregat mehr am Objekt — „keine Angabe" statt eines leeren Aggregats (normalizeOwnership).
+  async releaseOwnership(id: string, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const previous = ownershipOf(ko);
+      if (previous?.owner === undefined || previous.owner !== actor) {
+        throw new KoError(
+          "NOT_OWNER",
+          "Nur der benannte Eigentümer kann die Verantwortung für dieses Wissensobjekt zurückgeben.",
+        );
+      }
+      const next = normalizeOwnership({
+        reviewers: previous.reviewers,
+        validators: previous.validators,
+      });
+      const { ownership: _bisher, ...ohne } = ko;
+      const updated: KnowledgeObject = next === null ? ohne : { ...ohne, ownership: next };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership-released",
+              target: id,
+              payload: { previousOwner: previous.owner ?? null },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // produkt:20261007:ownership-uebergabe — DIE ÜBERGABE EINES BEITRAGS, VERGLEICHEND UND GESPERRT.
+  // ==============================================================================================
+  //
+  // Nacharbeit 4 (Ben): die Übergabe urteilt über einen vorab geladenen Bestand, geschrieben wird
+  // aber erst später. Dieser Weg entscheidet deshalb UNTER der Objektsperre am AKTUELLEN Stand:
+  //   · liegt die Verantwortung schon beim Nachfolger → `erledigt` (nichts geschrieben),
+  //   · liegt sie nicht mehr bei der erwarteten Person → `konflikt` (nichts geschrieben) — zwei
+  //     überlappende Übergaben desselben Beitrags können so nicht beide Erfolg melden,
+  //   · sonst wird AUSSCHLIESSLICH `owner` des aktuellen Aggregats ersetzt; Prüfende und
+  //     Validierende kommen aus DIESEM Stand, zwischenzeitlich ergänzte bleiben also erhalten.
+  // Der Schreibvorgang selbst vergleicht zusätzlich die `rowVersion` (Ablage, Compare-and-Set).
+  //
+  // Der Weg erreicht auch Beiträge im Papierkorb: `restore` übernimmt die Verantwortung unverändert,
+  // also muss auch wiederherstellbarer Bestand übergeben werden. Papierkorbvermerk, Fassung und
+  // Historie bleiben, wie sie sind. Derselbe Beleg `ko.ownership` wie `setOwnership`.
+  async uebertrageVerantwortung(
+    id: string,
+    erwartet: string,
+    nachfolger: string,
+    actor: string,
+  ): Promise<"uebertragen" | "erledigt" | "konflikt"> {
+    return this.withKoLock(id, async () => {
+      const ko = await this.repo.findById(id);
+      if (!ko) {
+        throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+      }
+      const jetzt = responsibleOf(ko);
+      if (jetzt === nachfolger) {
+        return "erledigt";
+      }
+      if (jetzt !== erwartet) {
+        return "konflikt";
+      }
+      const previous = ownershipOf(ko);
+      const next: KnowledgeOwnership = {
+        owner: nachfolger,
+        reviewers: previous?.reviewers ?? [],
+        validators: previous?.validators ?? [],
+      };
+      const updated: KnowledgeObject = { ...ko, ownership: next };
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership",
+              target: id,
+              payload: {
+                owner: nachfolger,
+                reviewers: next.reviewers,
+                validators: next.validators,
+                previousOwner: previous?.owner ?? null,
+                ...(ko.deletedAt ? { imPapierkorb: true } : {}),
+              },
+            },
+            tx,
+          );
+        },
+        () => this.rollbackKo(ko),
+      );
+      return "uebertragen";
+    });
+  }
+
+  /**
+   * produkt:20261007:ownership-uebergabe — der GANZE Bestand einschliesslich wiederherstellbarer
+   * Objekte im Papierkorb. Nur für die Frage „wer trägt die Verantwortung für was" — ein
+   * Leseweg für Inhalte ist das nicht (dort gilt weiterhin `list`/`get`).
+   */
+  async listEinschliesslichPapierkorb(): Promise<KnowledgeObject[]> {
+    return this.lesefassungen(await this.repo.list({}));
   }
 
   // ==============================================================================================
@@ -3418,14 +3683,27 @@ export class KoService {
   // KENNUNG UND ZEITPUNKT ENTSTEHEN EINMAL, VOR DEM ERSTEN VERSUCH: ein Wiederholversuch mit neuer
   // Kennung könnte denselben Beitrag zweimal in den Bestand legen, wenn der erste Schreibvorgang
   // doch noch durchging.
+  //
+  // P-WIKI-STELLENBEZUG — `stelle` (Form bereits an der Route geprüft, `leseStelle`) wird NUR
+  // gegen die GERADE GESPEICHERTE Fassung angenommen. Wurde die Stelle in einer älteren Fassung
+  // gewählt, antwortet der Dienst `KO_STALE` und schreibt nichts: sie an die neue Fassung zu
+  // binden hiesse, sie still an einen Text zu hängen, den der Verfasser nie gesehen hat. Steht die
+  // Textstelle nicht im Inhalt dieser Fassung, ist sie erfunden (`INVALID`, 400).
   async addComment(
     id: string,
     author: string,
     text: string,
-    opts: { replyTo?: string; clientKey?: string } = {},
+    opts: { replyTo?: string; clientKey?: string; stelle?: KoCommentStelle } = {},
   ): Promise<KnowledgeObject> {
     const replyTo = opts.replyTo?.trim();
     const clientKey = opts.clientKey?.trim();
+    const stelle = opts.stelle;
+    if (stelle && replyTo) {
+      throw new KoError(
+        "INVALID",
+        "Eine Antwort gehört zur Stelle ihres Fadens und trägt keine eigene.",
+      );
+    }
     const neu: KoComment = {
       id: this.genId(),
       author,
@@ -3433,6 +3711,7 @@ export class KoService {
       at: new Date(this.now()).toISOString(),
       ...(replyTo ? { replyTo } : {}),
       ...(clientKey ? { clientKey } : {}),
+      ...(stelle ? { stelle } : {}),
     };
 
     const versuch = async (): Promise<{ ko: KnowledgeObject; geschrieben: boolean }> => {
@@ -3446,8 +3725,34 @@ export class KoService {
       // wer nach einer verlorenen Antwort seinen Text nachbesserte und erneut sendete, bekam ein
       // HTTP 200 über den ALTEN Beitrag, während der neue nirgends landete (BEN, Runde 4).
       // Dieselbe Absendung heisst: derselbe Verfasser, derselbe Text, derselbe Antwortbezug.
-      if (clientKey && bestand.some((c) => gleicheAbsendung(c, author, text, replyTo, clientKey))) {
+      if (
+        clientKey &&
+        bestand.some((c) => gleicheAbsendung(c, author, text, replyTo, clientKey, stelle))
+      ) {
         return { ko, geschrieben: false };
+      }
+      if (stelle) {
+        if (stelle.koVersion !== ko.version) {
+          throw new KoError(
+            "KO_STALE",
+            `Die Stelle wurde in Fassung v${stelle.koVersion} gewählt; der Eintrag steht inzwischen auf v${ko.version}. Der Beitrag wurde nicht angefügt — bitte die Stelle in der aktuellen Fassung neu wählen.`,
+          );
+        }
+        // PLAN-SPRACHANMERKUNG: eine Stelle an einer hochgeladenen Zeichnung (PDF, CAD, Bild) hängt
+        // an der Anhangsliste dieser Fassung, nicht am Text.
+        if (stelle.art === "anhang") {
+          if (!stelleAmAnhang(ko.attachments, stelle)) {
+            throw new KoError(
+              "INVALID",
+              "Die gewählte Zeichnung ist in dieser Fassung kein eindeutiger Anhang des Eintrags.",
+            );
+          }
+        } else if (!stelleImInhalt(ko.bodyHtml, stelle)) {
+          throw new KoError(
+            "INVALID",
+            "Die gewählte Stelle bestimmt in dieser Fassung keinen eindeutigen Block (Art, Abschnitt und Inhalt müssen zusammen passen).",
+          );
+        }
       }
       if (replyTo && !bestand.some((c) => c.id === replyTo)) {
         throw new KoError(
@@ -5779,6 +6084,9 @@ export class KoService {
         throw err;
       }
     });
+    // R-0195 / R-0470: die Dokumentübernahme ist eine Überarbeitung am eigenen Schreibweg. Eine
+    // Wiederholung ohne Änderung reiht auch ein — der Eintrag erkennt den unveränderten Kerntext.
+    this.meldeAenderung(id);
     return this.lesefassungWert(commit);
   }
 
@@ -5990,7 +6298,12 @@ export class KoService {
       id,
       actor,
       { action: "ko.category-changed", grund: "ko.updateCategory" },
-      (ko) => ({ ...ko, category }),
+      // R-0248 (Nacharbeit 7): die Kategorie des laufenden Stands bleibt Grundlage seiner Frist.
+      (ko) => {
+        const grundlage =
+          ko.category === category ? ko.fristGrundlage : fristGrundlageBeiKategoriewechsel(ko);
+        return { ...ko, category, ...(grundlage ? { fristGrundlage: grundlage } : {}) };
+      },
       opts,
     );
   }
@@ -6036,6 +6349,188 @@ export class KoService {
             target: id,
             payload: { vorher, nachher },
           });
+        },
+      };
+    });
+  }
+
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-1746): „Stimmt weiterhin" nach dem Anwenden —
+  // ein Frische-Signal, KEINE neue Prüfung. Bauform wie `setDomain`: per KO serialisiert, Beleg im
+  // Audit, keine neue Inhaltsversion, kein Statuswechsel. Nur geprüftes Wissen kann so bestätigt
+  // werden. Bestätigt der Verantwortliche (`responsibleOf`), verlängert das zugleich die Haltbarkeit
+  // (`fristBestaetigung`, R-0248); jede andere Person frischt nur das Signal auf.
+  async bestaetigeFrische(id: string, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (ko.status !== "validiert") {
+        throw new KoError(
+          "INVALID",
+          "Nur geprüftes Wissen kann als weiterhin gültig bestätigt werden.",
+        );
+      }
+      const signal = { at: new Date(this.now()).toISOString(), by: actor };
+      const verantwortlich = responsibleOf(ko) === actor;
+      const updated: KnowledgeObject = {
+        ...ko,
+        frischeSignal: signal,
+        ...(verantwortlich ? { fristBestaetigung: signal } : {}),
+      };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.freshness-confirmed",
+              target: id,
+              payload: { version: ko.version, verantwortlich },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // aufnahme:20260922:gesamt-wissen-frische (R-0652 / FR-EXT-06): den Schutzbedarf „öffentlich"
+  // setzen oder zurücknehmen. Nur an internen Objekten — an einem vertraulichen wäre die Marke ein
+  // Widerspruch (400 `INVALID`). Keine neue Fassung, kein Statuswechsel; das Recht prüft die Route
+  // (`ko.validate`, dieselbe Schwelle wie eine Herabstufung der Vertraulichkeit).
+  async setOeffentlich(id: string, oeffentlich: boolean, actor: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (oeffentlich && normalizeConfidentiality(ko.confidentiality) !== "intern") {
+        throw new KoError(
+          "INVALID",
+          "Nur ein internes Wissensobjekt kann als öffentlich eingestuft werden.",
+        );
+      }
+      const vorher = ko.oeffentlich === true;
+      if (vorher === oeffentlich) {
+        return { updated: ko, value: ko };
+      }
+      const { oeffentlich: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = oeffentlich ? { ...ohne, oeffentlich: true } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.oeffentlich-changed",
+              target: id,
+              payload: { vorher, nachher: oeffentlich },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // R-1636: die aus der Bewährungs-Historie gelernten Halbwertszeiten je Kategorie. Über den GANZEN
+  // Bestand gerechnet (nicht über die Sicht eines Lesers — sonst hinge die Frist eines Objekts an
+  // der Rolle des Betrachters) und für `HALBWERTSZEIT_LERNEN_TTL_MS` zwischengespeichert: der
+  // Bestand ändert seine Fassungsfolge nicht im Sekundentakt, und die Leserouten fragen oft.
+  //
+  // Nacharbeit 5 (R-0248, Bens Befund): der Lernstand kommt aus dem FESTGEHALTENEN Verlauf. Neue
+  // Beobachtungen des heutigen Bestands werden zuerst dauerhaft ergänzt (mit Kategorie und
+  // Erfassungszeitpunkt), und erst danach zählen sie. Eine Beobachtung, die nicht festgehalten
+  // werden konnte, zählt nicht — sonst hinge eine Frist an einem Stand, der nach dem nächsten
+  // Löschen eines anderen Objekts nicht mehr rekonstruierbar wäre.
+  async gelernteHalbwertszeiten(): Promise<GelernteHalbwertszeiten> {
+    const jetzt = this.now();
+    if (this.halbwertszeitSpeicher && this.halbwertszeitSpeicher.bis > jetzt) {
+      return this.halbwertszeitSpeicher.tabelle;
+    }
+    const bekannt = await this.halbwertszeitVerlauf.alle();
+    const vorhanden = new Set(bekannt.map((e) => `${e.koId}\u0000${e.ende}`));
+    const erfasst = new Date(jetzt).toISOString();
+    const neu = beobachtungenAus(await this.repo.list({}))
+      .filter((b) => !vorhanden.has(`${b.koId}\u0000${b.ende}`))
+      .map((b) => ({ ...b, erfasst }));
+    let verlauf = bekannt;
+    if (neu.length > 0) {
+      try {
+        await this.halbwertszeitVerlauf.ergaenze(neu);
+        verlauf = [...bekannt, ...neu];
+      } catch {
+        // Nicht festgehalten → nicht verwendet; beim nächsten Lernen wird es erneut versucht.
+      }
+    }
+    const tabelle = halbwertszeitenAusVerlauf(verlauf);
+    this.halbwertszeitSpeicher = { bis: jetzt + HALBWERTSZEIT_LERNEN_TTL_MS, tabelle };
+    return tabelle;
+  }
+
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen, ändern oder mit
+  // `null` entfernen. Bauform wie `setDomain`: per KO serialisiert, Beleg im Audit, keine neue
+  // Inhaltsversion. Die Prüfung steht in `normalizeGeltung`; ein ungültiger Wert ist `INVALID` (400).
+  async setGeltung(id: string, roh: unknown, actor: string): Promise<KnowledgeObject> {
+    const eingang = normalizeGeltung(roh);
+    if (!eingang.ok) {
+      throw new KoError("INVALID", eingang.grund);
+    }
+    const nachher = eingang.geltung;
+    return this.mutateKo(id, (ko) => {
+      const vorher = ko.geltung;
+      if (JSON.stringify(vorher ?? null) === JSON.stringify(nachher ?? null)) {
+        return { updated: ko, value: ko };
+      }
+      const { geltung: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, geltung: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.geltung-changed",
+            target: id,
+            payload: { vorher: vorher ?? null, nachher: nachher ?? null },
+          });
+        },
+      };
+    });
+  }
+
+  // produkt:20261007:spaces — den führenden Space wechseln. Die Rechte prüft die Route (Schreibrecht
+  // in Quell- und Zielspace, bestätigte Rechtevorschau). Der Dienst sichert nur zweierlei: der
+  // Wechsel geht von GENAU dem Space aus, den die Vorschau gezeigt hat (`erwartet`, sonst
+  // SPACE_STAND_VERALTET), und er berührt nichts ausser `spaceId` — Inhaltsversion, `history`,
+  // `author`, `originalAuthor` und `ownership` bleiben, wie sie sind. `null` löst die Zuordnung.
+  async setLeadingSpace(
+    id: string,
+    spaceId: string | null,
+    actor: string,
+    erwartet: string | null,
+  ): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const vorher = typeof ko.spaceId === "string" ? ko.spaceId : null;
+      if (vorher !== erwartet) {
+        throw new KoError(
+          "SPACE_STAND_VERALTET",
+          "Der Space dieses Wissensobjekts hat sich seit der Vorschau geändert.",
+        );
+      }
+      if (vorher === spaceId) {
+        return { updated: ko, value: ko };
+      }
+      const { spaceId: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = spaceId ? { ...ohne, spaceId } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.space-changed",
+              target: id,
+              payload: { vorher, nachher: spaceId, version: ko.version },
+            },
+            tx,
+          );
         },
       };
     });
@@ -6316,6 +6811,65 @@ export class KoService {
     });
   }
 
+  // ==============================================================================================
+  // R-1107 (Aufnahme gesamt-dublettenvergleich) — DEN AUFGEGANGENEN ARTIKEL KENNZEICHNEN.
+  // ==============================================================================================
+  //
+  // Der letzte Inhaltsschritt des Zusammenführen-Assistenten: der Führungsartikel hat seine neue
+  // Fassung bereits (`revise`), dieses Objekt bekommt den Verweis darauf. Es ändert sich NUR das
+  // Feld `mergedInto` — keine Inhaltsversion, kein Text, keine Quelle, kein Kommentar, keine
+  // Historie. Das Objekt bleibt im Bestand und dauerhaft lesbar.
+  //
+  // Bedingt wie `revise` mit `expectedVersion`: hat sich das Objekt seit der Vorschau bewegt, wird
+  // nichts geschrieben (`KO_STALE`). Ein zweites Zusammenführen desselben Objekts wird ebenso
+  // abgewiesen, statt den ersten Verweis zu überschreiben. WER das darf, entscheidet der Aufrufer
+  // (kuratorisch, R-0565) — dieser Dienst kennt keine Rechte.
+  async markMergedInto(
+    id: string,
+    ziel: Omit<KoMergedInto, "at" | "by">,
+    actor: string,
+    expectedVersion: number,
+  ): Promise<KnowledgeObject> {
+    if (ziel.koId === id) {
+      throw new KoError("INVALID", "Ein Wissensobjekt kann nicht in sich selbst aufgehen.");
+    }
+    return this.mutateKo(id, (ko) => {
+      this.pruefeErwarteteVersion(ko, expectedVersion);
+      if (ko.mergedInto) {
+        throw new KoError(
+          "KO_STALE",
+          "Dieses Wissensobjekt ist bereits in einem anderen Artikel aufgegangen. Es wurde nichts überschrieben.",
+        );
+      }
+      const mergedInto: KoMergedInto = {
+        ...ziel,
+        at: new Date(this.now()).toISOString(),
+        by: actor,
+      };
+      const updated: KnowledgeObject = { ...ko, mergedInto };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.merged-into",
+              target: id,
+              payload: {
+                koId: ziel.koId,
+                version: ziel.version,
+                overlapId: ziel.overlapId,
+                eigeneVersion: ko.version,
+              },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
   // FR-RBAC-02: KO löschen (nur Controller/Admin/Autor, serverseitig erzwungen) mit Audit.
   // SCRUM-422: normales Löschen = Papierkorb (Soft-Delete, wiederherstellbar, Auto-Endlöschung
   // nach TRASH_RETENTION_DAYS). HART gelöscht wird nur: Demo-Daten (immer) oder auf
@@ -6439,6 +6993,8 @@ export class KoService {
         await this.repo.update(neu, tx);
         await audit.record(beleg(zusatz), tx);
       });
+      // R-0483: Papierkorb und Wiederherstellen ändern, ob das Objekt im Index stehen darf.
+      this.meldeAenderung(neu.id, neu);
       return;
     }
     // Nur ein KoService, den jemand OHNE Kompositionswurzel und ohne Klammer baut (Einzeltests
@@ -6454,6 +7010,7 @@ export class KoService {
       },
       () => this.rollbackKo(vorher),
     );
+    this.meldeAenderung(neu.id, neu);
   }
 
   // ==============================================================================================

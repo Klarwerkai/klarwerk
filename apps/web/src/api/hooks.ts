@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
 // eine Stelle und nicht in drei Hook-Kommentare (s. api/abwesenheit.ts).
 import { importRunStateView } from "../lib/importResultView";
+import { LIVEWALL_TAKT_MS } from "../lib/livewallTakt";
 import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
 import type { BeziehungSetzenBody } from "./types";
@@ -149,6 +150,15 @@ export const useGaps = () => useQuery({ queryKey: ["gaps"], queryFn: endpoints.g
 // FUNKE-FIX2 P0 (bens Erforderlich 1): nur aggregierte Zähler für die Startseite (kein Volltext-Fetch).
 export const useGapsSummary = () =>
   useQuery({ queryKey: ["gaps", "summary"], queryFn: endpoints.gaps.summary });
+// R-1663 / R-2178: Ansprechpartner zu EINER Lücke — erst auf ausdrückliches Aufklappen angefragt
+// (`enabled`), nie für die ganze Liste beim Laden der Seite. Kein Retry, wie bei useExpertise.
+export const useGapAnsprechpartner = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["gaps", id, "ansprechpartner"],
+    queryFn: () => endpoints.gaps.ansprechpartner(id),
+    enabled,
+    retry: false,
+  });
 export const useDrafts = () => useQuery({ queryKey: ["drafts"], queryFn: endpoints.drafts.list });
 export const useAnalytics = () =>
   useQuery({ queryKey: ["analytics"], queryFn: endpoints.analytics.overview });
@@ -189,10 +199,13 @@ export const useExpertise = (enabled: boolean) =>
 // ein 404 jetzt `data === null`, und die optionale Verkettung dort greift aus einem DATENzustand
 // statt aus einem übergangenen Fehler. Dass die Fläche dabei unsichtbar bleibt, ist ab jetzt
 // gemessen (tests/app/577-abwesenheit-verbraucher-mounted.test.tsx).
+// R-1663 / R-2178: der Abruf ist LAZY wie bei `useConflicts` — ein teilweise gesetztes
+// `endpoints`-Objekt darf eine Fläche nicht schon beim Rendern abreissen (fail-closed bleibt:
+// Fehler = aus).
 export const useFeatures = () =>
   useQuery({
     queryKey: ["features"],
-    queryFn: alsAbwesenheit(endpoints.features.get),
+    queryFn: alsAbwesenheit(() => endpoints.features.get()),
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
@@ -331,8 +344,47 @@ export const useBeziehungWiderrufen = (koId: string) => {
 export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });
 // Audit-P4 (SCRUM-398): Live-Wall („frisch gesichert / hat heute geholfen").
-export const useLiveWall = () =>
-  useQuery({ queryKey: ["livewall"], queryFn: endpoints.livewall.get });
+// R-0740 („zeigt LAUFEND"): die Wand holt sich im festen Takt neu (`lib/livewallTakt.ts`) — neue
+// Einträge, geänderte Sichtrechte und andernorts erklärte Widerrufe erreichen so auch eine offen
+// stehende Wand. `imHintergrund` setzt nur die Beamer-Ansicht: eine Projektion hat oft keinen Fokus
+// und muss trotzdem weiterlaufen; die Startseite pausiert in einem verdeckten Tab.
+export const useLiveWall = (imHintergrund = false) =>
+  useQuery({
+    queryKey: ["livewall"],
+    queryFn: endpoints.livewall.get,
+    refetchInterval: LIVEWALL_TAKT_MS,
+    refetchIntervalInBackground: imHintergrund,
+  });
+// PMO-FEA-0003: die eigene Zustimmung (Name, Foto) zur Wand. Im selben Takt wie die Wand, damit ein
+// in einem anderen Tab erklärter Widerruf auch hier als „aus" erscheint. Nach dem Setzen/Widerrufen
+// wird alles unter „livewall" neu geholt — der Widerruf wirkt sofort, nicht erst beim nächsten Takt.
+export const useLiveWallConsent = () =>
+  useQuery({
+    queryKey: ["livewall", "consent"],
+    queryFn: endpoints.livewall.consent,
+    refetchInterval: LIVEWALL_TAKT_MS,
+  });
+export const useSetLiveWallConsent = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (nameConsent: boolean) => endpoints.livewall.setConsent(nameConsent),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["livewall"] }),
+  });
+};
+export const useSetLiveWallPhoto = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (photo: string) => endpoints.livewall.setPhoto(photo),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["livewall"] }),
+  });
+};
+export const useDeleteLiveWallPhoto = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => endpoints.livewall.deletePhoto(),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["livewall"] }),
+  });
+};
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
@@ -351,5 +403,8 @@ export const useExternalPolicy = () =>
 
 // AUFTRAG-mega14 Block E (SCRUM-421): EINE Quelle für die geltenden Upload-Grenzen — dieselbe, die
 // der Server erzwingt. Jede Auswahlstelle liest hierüber; React Query bündelt die Abfrage.
+// Der Endpunkt wird erst IN der Abfrage gelesen: der Hinweis ist eine Nebenauskunft und darf seine
+// Fläche nie abstürzen lassen (`UploadLimitsHint.tsx`) — ein Fehler landet als Abfragefehler, und
+// der Hinweis zeigt dann nichts.
 export const useUploadLimits = () =>
-  useQuery({ queryKey: ["upload-limits"], queryFn: endpoints.uploadLimits.get });
+  useQuery({ queryKey: ["upload-limits"], queryFn: () => endpoints.uploadLimits.get() });

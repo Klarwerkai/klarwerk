@@ -1,13 +1,22 @@
 // Öffentliche API des Moduls auth. Andere Module/der Composition-Root importieren NUR von hier.
 export { AuthService } from "./src/service";
-export type { AuthServiceDeps, RegisterInput, LoginInput } from "./src/service";
+export type { AuthServiceDeps, RegisterInput, LoginInput, LoginResult } from "./src/service";
 // WP-VIP2-GATE (bens P1, Token-at-Rest): Hash-Format + Einmal-Migration des Klartext-Bestands.
 export { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./src/service";
 // JOB 2686 (R2-8): die Sitzungsdauer für SSO-Anmeldungen als eigener, prüfbarer Schalter.
 // Vorgabe ist das heutige Verhalten (14 Tage); die Zahl ist eine offene Frage bei Pedi.
 export { oidcSessionTtlMs } from "./src/service";
 export { migrateAuthTokensAtRest } from "./src/repo-pg";
-export { authRoutes } from "./src/routes";
+export { authRoutes, passwordLoginEnabled, ssoOnlyRequested } from "./src/routes";
+// R-0560: der SAML-Weg (Firmen-Login über das ältere Unternehmensverfahren).
+export {
+  createSamlProvider,
+  createSamlProviderFromEnv,
+  samlSchluesselAus,
+  SAML_PFLICHTSATZ,
+  type SamlKonfig,
+  type SamlProvider,
+} from "./src/saml";
 // WP-VIP2-GATE (bens P1): Registrierungs-Schalter + Cookie-Start-Wächter (testbar exportiert).
 export {
   assertCookieSecurityConfig,
@@ -21,11 +30,22 @@ export {
   InMemoryUserRepo,
   InMemorySessionRepo,
   InMemoryPasswordResetRepo,
+  InMemorySecondFactorRepo,
   type UserRepo,
   type SessionRepo,
   type PasswordResetRepo,
+  type SecondFactor,
+  type SecondFactorRepo,
 } from "./src/repo";
-export { PgUserRepo, PgSessionRepo, PgPasswordResetRepo, AUTH_SCHEMA } from "./src/repo-pg";
+export {
+  PgUserRepo,
+  PgSessionRepo,
+  PgPasswordResetRepo,
+  PgSecondFactorRepo,
+  AUTH_SCHEMA,
+} from "./src/repo-pg";
+// R-0562: das TOTP-Verfahren — exportiert, damit Prüfungen einen echten Code erzeugen können.
+export { totpCode, totpSchritt } from "./src/totp";
 export {
   createOidcVerifier,
   createOidcProvider,
@@ -44,9 +64,9 @@ export {
   type TokenExchanger,
 } from "./src/oidc";
 // JOB 3568 (Q9-FREMDE-FLÄCHEN): der Meldungskatalog und der EINE Kopfleser werden über die
-// Modulgrenze erreichbar. Grund: `services/app/src/http.ts` und `services/rbac/src/guard.ts` senden
-// dieselben drei Sätze (`NOT_SIGNED_IN`, `INTERNAL`) und trugen sie bis hierher als deutsche
-// Literale im Code. Sie brauchen den Katalog, keinen eigenen — ein zweiter `accept-language`-Parser
+// Modulgrenze erreichbar. Grund: `services/app/src/http.ts` und (bis R-1349, dort entfernt)
+// `services/rbac/src/guard.ts` senden dieselben drei Sätze (`NOT_SIGNED_IN`, `INTERNAL`) und
+// trugen sie bis hierher als deutsche Literale im Code. Sie brauchen den Katalog, keinen eigenen — ein zweiter `accept-language`-Parser
 // oder eine Kopie der Texte wäre genau die Doppelquelle, die JOB 3449 beseitigt hat.
 // `sprache` bleibt deshalb die eine Lesestelle (`./src/routes:94-95`) und wird exportiert, nicht
 // nachgebaut. Die Modulkante ist nicht neu: beide Dateien importieren schon heute `Role` von hier.

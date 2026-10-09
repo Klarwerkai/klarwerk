@@ -378,7 +378,7 @@ export function GesamtanweisungSeite({
   );
 
   return (
-    <div data-testid={SEITE_MARKE} className="space-y-5 pb-10">
+    <div data-testid={SEITE_MARKE} data-objekt="anleitung" className="space-y-5 pb-10">
       <header className="space-y-2">
         <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">
           {t("ga.titel")}
@@ -399,6 +399,7 @@ export function GesamtanweisungSeite({
               geaendertAm: stand.geaendertAm,
               abschnitte: stand.bausteine.length + stand.verborgeneBausteine,
               unvollstaendig,
+              entscheidung: stand.entscheidung,
             }}
             rechte={rechte}
           />
