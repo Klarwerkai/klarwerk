@@ -181,6 +181,10 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
 | `revalidate` | `ko.create` | — |
+| `request-revalidation` | `ko.create` | — (antwortet 204; setzt den Merker „Stimmt das noch?" für dieses Objekt — erneute Prüfung aus der Bibliothek, R-1732) |
+| `neighbors-changed` | `ko.validate` | — (antwortet 200 `{ markiert }`; meldet die Änderung aller an dieses Objekt gekoppelten Anlagen und markiert alle Objekte daran, R-0203; nur die Zahl, keine Kennungen) |
+| `confirm-fresh` | `ko.read` | — (antwortet 200 Objekt; „Stimmt weiterhin" — Frische-Signal ohne neue Fassung und ohne Statuswechsel, nur an validierten Objekten, sonst 400 `INVALID`; vom Verantwortlichen verlängert es die Haltbarkeit; Audit `ko.freshness-confirmed`, R-0206/R-0248) |
+| `schutz-oeffentlich` | `ko.validate` | `oeffentlich` (boolean; Schutzbedarf „öffentlich", nur an internen Objekten, sonst 400 `INVALID`; Audit `ko.oeffentlich-changed`, R-0652) |
 | `helpful` | `ko.read` | — (antwortet 204; „Hat geholfen" am Objekt, Trust-Schritt + Audit `answer.helpful`, genau einmal je Person und Objekt, keine Prüfstimme) |
 
 ### 3.4 Entwürfe und Erfassung (`captureRoutes`, `slidesRoutes`, `objectRoutes`, `mediaRoutes`)
@@ -245,6 +249,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
+| `GET` | `/api/gaps/:id/ansprechpartner` | `ko.assign` (Schalter `KLARWERK_EXPERT_MATCHING`) | — | 200 Ansprechpartner nach Wissensspuren | 404 `not_found` ohne Schalter, vor dem Rechtetor; 404 `NOT_FOUND` unbekannte Lücke |
 | `PUT` | `/api/gaps/:id` | `ko.assign` | Rumpf `{ expertId? \| close? \| priority? }` | 200 Lücke | 400 `BAD_REQUEST` |
 | `DELETE` | `/api/gaps/:id` | `ko.validate` | Abfrage `confirm` | 204 | Dienstfehler |
 | `GET` | `/api/klara/ai-status` | `ko.read` | Bindung aus Kopfzeilen des Add-ins | 200 Klara-Status der Sitzung | — |

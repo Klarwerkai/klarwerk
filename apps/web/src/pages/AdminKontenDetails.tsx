@@ -18,6 +18,7 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 // JE KARTE EIN EIGENER TEXT: die vier Karten sind vier Bildschirme, und ein gemeinsamer Satz an der
 // Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
 import { HelpTip } from "../components/HelpTip";
+import { VerantwortungUebergabe } from "../components/VerantwortungUebergabe";
 import { UebergabeVorschauInhalt, Wissensuebergabe } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
@@ -559,8 +560,14 @@ export function NutzerDetail({
               </button>
             )}
 
-            {/* R-0554 / R-2128: bevor ein Konto geht, wandert sein Wissen — vor dem Löschen, an
-                derselben Karte. Nachfolger kann nur ein freigeschaltetes Konto sein. */}
+            {/* produkt:20261007:ownership-uebergabe — Hauptverantwortung einzeln oder gesammelt an
+                Nachfolger übergeben, mit Vorschau; Zugang erst ohne Restbestand beenden. Für jedes
+                Konto, auch ein gesperrtes: gerade dort liegt Bestand, der eine Vertretung braucht. */}
+            <VerantwortungUebergabe personId={nutzer.id} personName={nutzer.name} />
+
+            {/* R-0554 / R-2128: bevor ein Konto geht, wandert sein Wissen — Autorschaft, Entwürfe,
+                offene Lücken und Prüfaufgaben, nicht nur die Hauptverantwortung. Nachfolger kann nur
+                ein freigeschaltetes Konto sein. */}
             <Wissensuebergabe
               von={nutzer.id}
               kandidaten={(users.data ?? []).filter((u) => u.approved && u.id !== nutzer.id)}

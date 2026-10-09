@@ -253,15 +253,36 @@ describe("R-0554 / R-2128 · Wissensübergabe am Draht", () => {
       return (res.json() as { id: string }[]).map((u) => u.id);
     };
 
-    // Unbekannter Nachfolger: nichts übergeben, nichts entfernt.
+    // Unbekannter Nachfolger: nach der gemeinsamen Nachfolgeregel (`kannVerantworten`,
+    // produkt:20261007:ownership-uebergabe) unzulässig — nichts übergeben, nichts entfernt.
     const unbekannt = await app.inject({
       method: "DELETE",
       url: `/api/users/${gerd.id}?nachfolger=gibt-es-nicht`,
       headers: admin.headers,
     });
-    expect(unbekannt.statusCode, unbekannt.body).toBe(404);
+    expect(unbekannt.statusCode, unbekannt.body).toBe(400);
+    expect(unbekannt.json().error).toBe("NACHFOLGE_UNZULAESSIG");
     expect(await konten()).toContain(gerd.id);
     expect((await lesen(app, admin.headers, koId)).json().author).toBe(gerd.id);
+
+    // Ohne Nachfolger bleibt die Sperre aus produkt:20261007:ownership-uebergabe unverändert.
+    const gesperrt = await app.inject({
+      method: "DELETE",
+      url: `/api/users/${gerd.id}`,
+      headers: admin.headers,
+    });
+    expect(gesperrt.statusCode, gesperrt.body).toBe(409);
+    expect(gesperrt.json().error).toBe("BESTAND_OFFEN");
+
+    // Ein Beitrag im Papierkorb: die Wissensübergabe (lebender Bestand) erreicht ihn nicht, die
+    // Hauptverantwortung muss trotzdem vor dem Entfernen wandern (Wiederherstellen behält sie).
+    const imPapierkorb = await anlegen(app, gerd.headers, "Alte Schmieranweisung Linie 2");
+    const geloescht = await app.inject({
+      method: "DELETE",
+      url: `/api/kos/${imPapierkorb}`,
+      headers: admin.headers,
+    });
+    expect(geloescht.statusCode, geloescht.body).toBeLessThan(300);
 
     const entfernt = await app.inject({
       method: "DELETE",
@@ -275,5 +296,14 @@ describe("R-0554 / R-2128 · Wissensübergabe am Draht", () => {
     const ko = (await lesen(app, admin.headers, koId)).json();
     expect(ko.author).toBe(carla.id);
     expect(ko.originalAuthor).toBe(gerd.id);
+
+    // Der wiederhergestellte Papierkorb-Beitrag trägt Carla als Hauptverantwortliche.
+    const zurueck = await app.inject({
+      method: "POST",
+      url: `/api/kos/${imPapierkorb}/restore`,
+      headers: admin.headers,
+    });
+    expect(zurueck.statusCode, zurueck.body).toBeLessThan(300);
+    expect((await lesen(app, admin.headers, imPapierkorb)).json().ownership?.owner).toBe(carla.id);
   });
 });
