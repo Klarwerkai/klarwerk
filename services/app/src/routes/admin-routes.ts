@@ -258,6 +258,10 @@ type PruefsummenZustand = "passt" | "abweichend" | "fehlt" | "ungueltig" | "nich
 /** Die letzte Restore-Probe. `erfolg` nur bei vollständigem Nachweis, `teilweise` bei Exit 0 mit Lücke. */
 interface DrillBefund {
   zustand: "erfolg" | "teilweise" | "fehler";
+  /** Nachweise, die eine bestandene Probe nicht trägt (Kennungen) — Grund für `teilweise`. */
+  luecken: string[];
+  /** Widersprüche im Protokoll (Kennungen) — Grund für `fehler` trotz behauptetem Erfolg. */
+  widersprueche: string[];
   beginnUtc: string | null;
   zeitUtc: string | null;
   exitcode: number;
@@ -476,17 +480,88 @@ async function restoreBefund(verzeichnis: string): Promise<DrillBefund | Unbekan
   };
   const sicherung = textOderNull(w.sicherung);
   const ziel = textOderNull(w.ziel);
-  const bestanden = w.ergebnis === "erfolg" && w.exitcode === 0;
-  const vollstaendig =
-    pruefsumme.zustand === "passt" &&
-    ziel !== null &&
-    [vergleich.beitraege, vergleich.anhaenge, vergleich.beziehungen, vergleich.rechte].every(
-      (k) => k.zustand === "gleich",
-    );
+  const beginnUtc = zeitAusSpur(w.beginn);
+  const zeitUtc = zeitAusSpur(w.zeit);
+
+  // ADMIN-13 · NACHARBEIT 2 (Bens Befund): die Zusatzvergleiche werden AUSGEWERTET, nicht nur
+  // durchgereicht. Eine behauptete Gleichheit trägt nur, wenn ihr eigener Beleg sie trägt.
+  const { rollenDump, rollenDatenbank } = vergleich.rechte;
+  const rollenFehlen = rollenDump === null || rollenDatenbank === null;
+  const rollenAbweichend = !rollenFehlen && rollenDump !== rollenDatenbank;
+  if (rollenAbweichend) {
+    vergleich.rechte.zustand = "abweichend";
+  } else if (vergleich.rechte.zustand === "gleich" && rollenFehlen) {
+    vergleich.rechte.zustand = "nicht_gemessen";
+  }
+  const waisen = vergleich.anhaenge.belegeOhneAnhang;
+  if (waisen !== null && waisen > 0) {
+    vergleich.anhaenge.zustand = "abweichend";
+  } else if (vergleich.anhaenge.zustand === "gleich" && waisen === null) {
+    vergleich.anhaenge.zustand = "nicht_gemessen";
+  }
+
+  // FEHLENDE NACHWEISE machen eine bestandene Probe „teilweise"; WIDERSPRÜCHE machen sie zum
+  // Fehler. Beides als Kennung, damit die Fläche es benennen kann. Ein regulär gescheiterter Lauf
+  // (Ergebnis fehler, Exitcode ≠ 0) bleibt ein Fehler mit dem Schritt seines Exitcodes.
+  const luecken: string[] = [];
+  const widersprueche: string[] = [];
+  const kategorien = [
+    ["beitraege", vergleich.beitraege],
+    ["anhaenge", vergleich.anhaenge],
+    ["beziehungen", vergleich.beziehungen],
+    ["rechte", vergleich.rechte],
+  ] as const;
+  if ((w.ergebnis === "erfolg") !== (w.exitcode === 0)) {
+    widersprueche.push("exitcode");
+  }
+  if (w.ergebnis === "erfolg") {
+    for (const [name, wert] of [
+      ["beginn", beginnUtc],
+      ["zeit", zeitUtc],
+      ["sicherung", sicherung],
+      ["ziel", ziel],
+    ] as const) {
+      if (wert === null) {
+        luecken.push(name);
+      }
+    }
+    if (pruefsumme.zustand === "nicht_geprueft") {
+      luecken.push("pruefsumme");
+    } else if (pruefsumme.zustand !== "passt") {
+      widersprueche.push("pruefsumme");
+    } else if (pruefsumme.sha256 === null) {
+      luecken.push("sha256");
+    }
+    for (const [name, k] of kategorien) {
+      if (k.zustand === "abweichend") {
+        widersprueche.push(name);
+      } else if (k.zustand === "nicht_gemessen") {
+        luecken.push(name);
+      }
+    }
+    if (waisen === null) {
+      luecken.push("belege_ohne_anhang");
+    } else if (waisen > 0) {
+      widersprueche.push("belege_ohne_anhang");
+    }
+    if (rollenFehlen) {
+      luecken.push("rollen");
+    } else if (rollenAbweichend) {
+      widersprueche.push("rollen");
+    }
+  }
+  const zustand: DrillBefund["zustand"] =
+    w.ergebnis !== "erfolg" || widersprueche.length > 0
+      ? "fehler"
+      : luecken.length > 0
+        ? "teilweise"
+        : "erfolg";
   return {
-    zustand: !bestanden ? "fehler" : vollstaendig ? "erfolg" : "teilweise",
-    beginnUtc: zeitAusSpur(w.beginn),
-    zeitUtc: zeitAusSpur(w.zeit),
+    zustand,
+    luecken,
+    widersprueche,
+    beginnUtc,
+    zeitUtc,
     exitcode: w.exitcode,
     grund: textOderNull(w.grund) ?? "",
     sicherung,

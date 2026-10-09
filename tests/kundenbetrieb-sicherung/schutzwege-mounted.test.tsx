@@ -76,6 +76,8 @@ const BELEGT: SicherungenAuskunft = {
     },
     restore: {
       zustand: "erfolg",
+      luecken: [],
+      widersprueche: [],
       beginnUtc: "2026-10-09T04:00:00.000Z",
       zeitUtc: "2026-10-09T04:03:12.000Z",
       exitcode: 0,
@@ -131,6 +133,8 @@ const BESCHAEDIGT: SicherungenAuskunft = {
     ...(BELEGT.schutzwege as NonNullable<SicherungenAuskunft["schutzwege"]>),
     restore: {
       zustand: "fehler",
+      luecken: [],
+      widersprueche: [],
       beginnUtc: "2026-10-09T04:00:00.000Z",
       zeitUtc: "2026-10-09T04:00:01.000Z",
       exitcode: 11,
@@ -302,6 +306,70 @@ describe("ADMIN-13 · F3 · beschädigte Sicherung: sichtbarer Fehlbefund mit n�
     expect(s.container.querySelector('[data-testid="sicherung-marke"]')?.textContent).toBe(
       t("adm.backup.certified"),
     );
+  });
+});
+
+// Nacharbeit 2 (Bens Befund): ein Protokoll, das „erfolg“ behauptet, dem aber Nachweise fehlen
+// oder das sich selbst widerspricht, ist nie grün — und die Fläche sagt, was fehlt bzw. was
+// widerspricht, samt passendem nächstem Schritt.
+describe("ADMIN-13 · F3b · unvollständiges und widersprüchliches Protokoll", () => {
+  const basis = BELEGT.schutzwege as NonNullable<SicherungenAuskunft["schutzwege"]>;
+  const belegt = basis.restore as Extract<typeof basis.restore, { luecken: string[] }>;
+
+  it("Lücken: Teilweise-Marke, Liste der fehlenden Nachweise, Teilweise-Schritt", async () => {
+    const s = await karte({
+      ...BELEGT,
+      schutzwege: {
+        ...basis,
+        restore: {
+          ...belegt,
+          zustand: "teilweise",
+          luecken: ["beginn", "sicherung", "sha256"],
+          beginnUtc: null,
+          sicherung: null,
+          pruefsumme: { zustand: "passt", sha256: null },
+        },
+      },
+    });
+    const r = weg(s, "restore");
+    expect(marke(r)).toBe("teilweise");
+    const luecken = r.querySelector('[data-testid="restore-luecken"]')?.textContent ?? "";
+    expect(luecken).toContain(t("sicherungsnachweise.restore.nachweis.beginn"));
+    expect(luecken).toContain(t("sicherungsnachweise.restore.nachweis.sicherung"));
+    expect(luecken).toContain(t("sicherungsnachweise.restore.nachweis.sha256"));
+    expect(r.querySelector('[data-testid="weg-schritt"]')?.textContent).toContain(
+      t("sicherungsnachweise.restore.schritt.teilweise"),
+    );
+  });
+
+  it("Widerspruch: Fehler-Marke, benannter Widerspruch, Widerspruchs-Schritt statt Exit-0-Aufbau", async () => {
+    const s = await karte({
+      ...BELEGT,
+      schutzwege: {
+        ...basis,
+        restore: {
+          ...belegt,
+          zustand: "fehler",
+          widersprueche: ["rechte", "rollen"],
+          vergleich: {
+            ...belegt.vergleich,
+            rechte: {
+              ...belegt.vergleich.rechte,
+              zustand: "abweichend",
+              rollenDatenbank: "admin/t=2",
+            },
+          },
+        },
+      },
+    });
+    const r = weg(s, "restore");
+    expect(marke(r)).toBe("fehler");
+    expect(r.querySelector('[data-testid="restore-widersprueche"]')?.textContent).toContain(
+      t("sicherungsnachweise.restore.nachweis.rollen"),
+    );
+    const schritt = r.querySelector('[data-testid="weg-schritt"]')?.textContent ?? "";
+    expect(schritt).toContain(t("sicherungsnachweise.restore.schritt.widerspruch"));
+    expect(schritt).not.toContain(t("sicherungsnachweise.restore.schritt.aufbau"));
   });
 });
 

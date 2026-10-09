@@ -3215,6 +3215,10 @@ export type PruefsummenZustand = "passt" | "abweichend" | "fehlt" | "ungueltig" 
 
 export interface RestoreDrillBefund {
   zustand: "erfolg" | "teilweise" | "fehler";
+  /** Fehlende Nachweise einer bestandenen Probe (Kennungen) — Grund für `teilweise`. */
+  luecken: string[];
+  /** Widersprüche im Protokoll (Kennungen) — Grund für `fehler` trotz behauptetem Erfolg. */
+  widersprueche: string[];
   beginnUtc: string | null;
   zeitUtc: string | null;
   exitcode: number;

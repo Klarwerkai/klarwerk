@@ -444,6 +444,83 @@ describe("ADMIN-13 · W8 · berechtigt, protokolliert, gegen eine unberechtigte 
   });
 });
 
+// ------------------------------------------------------------------------------------------------
+// W10 · NACHARBEIT 2 (Bens Befund): behaupteter Erfolg ohne Nachweis oder mit Widerspruch.
+// ------------------------------------------------------------------------------------------------
+describe("ADMIN-13 · W10 · Erfolg nur mit vollständigem, widerspruchsfreiem Protokoll", () => {
+  async function restoreAus(p: Record<string, unknown>) {
+    const ort = await frischesVerzeichnis();
+    await writeFile(join(ort, "letzter-drill.json"), JSON.stringify(p));
+    return (await frage(alsAdmin)).koerper.schutzwege?.restore;
+  }
+
+  it("W1-Protokoll ohne beginn, zeit, sicherung und sha256 ist `teilweise` mit benannten Lücken", async () => {
+    const p = drillProtokoll({ pruefsumme: { zustand: "passt", sha256: null } });
+    p.beginn = undefined;
+    p.zeit = undefined;
+    p.sicherung = undefined;
+    const restore = await restoreAus(p);
+    expect(restore?.zustand).toBe("teilweise");
+    expect(restore?.luecken).toEqual(["beginn", "zeit", "sicherung", "sha256"]);
+    expect(restore?.widersprueche).toEqual([]);
+  });
+
+  it("abweichende Rollenverteilung bei behauptetem `gleich` ist ein Fehler, kein Grün", async () => {
+    const p = drillProtokoll();
+    (p.vergleich as Record<string, unknown>).rechte = {
+      ...kategorie([["users", 2, 2]]),
+      rollenDump: "admin/t=1 experte/t=1",
+      rollenDatenbank: "admin/t=2",
+    };
+    const restore = await restoreAus(p);
+    expect(restore?.zustand).toBe("fehler");
+    expect(restore?.vergleich?.rechte?.zustand).toBe("abweichend");
+    expect(restore?.widersprueche).toEqual(["rechte", "rollen"]);
+  });
+
+  it("fehlende Rollenverteilung bei behauptetem `gleich` ist eine Lücke", async () => {
+    const p = drillProtokoll();
+    (p.vergleich as Record<string, unknown>).rechte = {
+      ...kategorie([["users", 2, 2]]),
+      rollenDump: null,
+      rollenDatenbank: null,
+    };
+    const restore = await restoreAus(p);
+    expect(restore?.zustand).toBe("teilweise");
+    expect(restore?.luecken).toEqual(["rechte", "rollen"]);
+  });
+
+  it("belegeOhneAnhang > 0 bei behauptetem `gleich` ist ein Fehler", async () => {
+    const p = drillProtokoll();
+    (p.vergleich as Record<string, unknown>).anhaenge = {
+      ...kategorie([
+        ["objects", 1, 1],
+        ["ko_evidence", 1, 1],
+      ]),
+      belegeOhneAnhang: 2,
+    };
+    const restore = await restoreAus(p);
+    expect(restore?.zustand).toBe("fehler");
+    expect(restore?.vergleich?.anhaenge?.zustand).toBe("abweichend");
+    expect(restore?.widersprueche).toEqual(["anhaenge", "belege_ohne_anhang"]);
+  });
+
+  it("`erfolg` mit Exitcode ≠ 0 und abweichender Prüfsumme sind Widersprüche", async () => {
+    const restore = await restoreAus(
+      drillProtokoll({ exitcode: 3, pruefsumme: { zustand: "abweichend", sha256: HASH } }),
+    );
+    expect(restore?.zustand).toBe("fehler");
+    expect(restore?.widersprueche).toEqual(["exitcode", "pruefsumme"]);
+  });
+
+  it("das vollständige Protokoll bleibt grün und ohne Lücken", async () => {
+    const restore = await restoreAus(drillProtokoll());
+    expect(restore?.zustand).toBe("erfolg");
+    expect(restore?.luecken).toEqual([]);
+    expect(restore?.widersprueche).toEqual([]);
+  });
+});
+
 describe("ADMIN-13 · W9 · Nachweise enthalten keine Zugangsdaten", () => {
   it("eine Anmeldung in einer Adresse im Protokoll wird maskiert", async () => {
     const ort = await frischesVerzeichnis();

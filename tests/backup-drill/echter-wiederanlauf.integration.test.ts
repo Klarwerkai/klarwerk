@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Pool } from "pg";
@@ -114,6 +114,34 @@ function pgUrl(v: Verbindung, datenbank: string): string {
   }
   const anmeldung = `${encodeURIComponent(v.user)}:${encodeURIComponent(v.passwort)}`;
   return `${PG_SCHEMA}//${anmeldung}@${v.host}:${v.port}/${datenbank}`;
+}
+
+/**
+ * ADMIN-13 · NACHARBEIT 2 — das erzeugte `letzter-drill.json` als Lieferbeleg erhalten.
+ *
+ * Die Bytes werden UNVERÄNDERT abgelegt; daneben eine Begleitdatei mit Kandidat (Commit des
+ * Arbeitsbaums, sonst „unbekannt"), Ablagezeit und SHA-256 der Originalbytes. Dieselben Angaben und
+ * das Protokoll selbst stehen als eine Zeile `[ADMIN-13 DRILLPROTOKOLL]` in der Testausgabe, damit
+ * der Beleg auch dann erhalten bleibt, wenn der Prüfweg nur das Protokoll des Laufs aufbewahrt.
+ */
+function sichereOriginalprotokoll(roh: string, fall: string): void {
+  const git = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" });
+  const kandidat =
+    git.status === 0 && /^[0-9a-f]{40}$/.test(git.stdout.trim()) ? git.stdout.trim() : "unbekannt";
+  const sha256 = createHash("sha256").update(roh, "utf8").digest("hex");
+  const abgelegt = new Date().toISOString();
+  const ziel = join(root, "test-results", "admin13-restore-drill");
+  mkdirSync(ziel, { recursive: true });
+  writeFileSync(join(ziel, `letzter-drill-${fall}.json`), roh, "utf8");
+  const begleit = { fall, kandidat, abgelegt, datei: `letzter-drill-${fall}.json`, sha256 };
+  writeFileSync(
+    join(ziel, `letzter-drill-${fall}.beleg.json`),
+    `${JSON.stringify(begleit, null, 2)}\n`,
+    "utf8",
+  );
+  process.stdout.write(
+    `[ADMIN-13 DRILLPROTOKOLL] ${JSON.stringify({ ...begleit, protokoll: JSON.parse(roh) })}\n`,
+  );
 }
 
 describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQL", () => {
@@ -481,6 +509,12 @@ describe("JOB 4010 · Wiederanlauf aus einem echten Dump in eine echte PostgreSQ
     expect(rohProtokoll).not.toContain(PASSWORT);
     expect(rohProtokoll).not.toContain(EMAIL);
     expect(rohProtokoll).not.toContain("drill-experte-123");
+    // ADMIN-13 · NACHARBEIT 2 (Bens Befund): das ORIGINALPROTOKOLL dieses Laufs bleibt erhalten.
+    // `afterAll` löscht den Arbeitsordner; vorher geht die unveränderte, geheimnisfreie Datei (die
+    // drei Zeilen darüber halten Kennwörter und Adresse draußen) auf zwei Wegen hinaus: als Datei
+    // unter `test-results/admin13-restore-drill/` und wörtlich in die Testausgabe, beide mit
+    // Kandidat, Zeitpunkt und SHA-256 der Originalbytes. Nichts davon wird aus Erwartungen gebaut.
+    sichereOriginalprotokoll(rohProtokoll, "w1-bestanden");
 
     // DIE VERWALTUNG LIEST DIESELBE PROBE — über die echte Route, mit BACKUP_DIR auf diesen Ordner.
     const backupDirVorher = process.env.BACKUP_DIR;

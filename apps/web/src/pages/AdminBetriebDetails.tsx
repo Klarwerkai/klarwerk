@@ -377,6 +377,21 @@ function restoreSchritt(exitcode: number): string {
   return "sicherungsnachweise.restore.schritt.aufbau";
 }
 
+/**
+ * ADMIN-13 · Nacharbeit 2: der Schritt richtet sich zuerst nach dem Widerspruch im Protokoll — ein
+ * behaupteter Erfolg, dem das eigene Protokoll widerspricht, ist kein Aufbaufehler mit Exit 0 —,
+ * dann nach der Lücke, sonst nach der Familie des Exitcodes.
+ */
+function restoreSchrittFuer(r: RestoreDrillBefund): string {
+  if (r.widersprueche.length > 0) {
+    return "sicherungsnachweise.restore.schritt.widerspruch";
+  }
+  if (r.zustand === "teilweise") {
+    return "sicherungsnachweise.restore.schritt.teilweise";
+  }
+  return restoreSchritt(r.exitcode);
+}
+
 function vergleichZeile(t: Uebersetzer, name: string, kategorie: VergleichKategorie): JSX.Element {
   const zahlen = kategorie.tabellen
     .map((z) =>
@@ -457,14 +472,26 @@ function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
           {t("sicherungsnachweise.restore.gelesen", { text: r.wissensnachweis })}
         </p>
       )}
+      {r.widersprueche.length === 0 ? null : (
+        <p data-testid="restore-widersprueche">
+          {t("sicherungsnachweise.restore.widersprueche", {
+            liste: r.widersprueche
+              .map((k) => t(`sicherungsnachweise.restore.nachweis.${k}`))
+              .join(", "),
+          })}
+        </p>
+      )}
+      {r.luecken.length === 0 ? null : (
+        <p data-testid="restore-luecken">
+          {t("sicherungsnachweise.restore.luecken", {
+            liste: r.luecken.map((k) => t(`sicherungsnachweise.restore.nachweis.${k}`)).join(", "),
+          })}
+        </p>
+      )}
       {r.zustand === "erfolg" ? null : (
         <p data-testid="weg-schritt">
           {t("sicherungsnachweise.schritt", {
-            schritt: t(
-              r.zustand === "teilweise"
-                ? "sicherungsnachweise.restore.schritt.teilweise"
-                : restoreSchritt(r.exitcode),
-            ),
+            schritt: t(restoreSchrittFuer(r)),
           })}
         </p>
       )}
