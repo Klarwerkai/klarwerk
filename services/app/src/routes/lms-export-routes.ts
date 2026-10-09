@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
 import { type LmsExportService, leseScormEingabe } from "../../../output";
 import { type Guards, sendError } from "../http";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // produkt:wettbewerb:20261003:lernplattform — Übergabe an eine Lernplattform (SCORM 1.2).
 //
@@ -28,7 +29,9 @@ export function lmsExportRoutes(
         return;
       }
       try {
-        reply.code(200).send(await lmsExport.pruefe(leseScormEingabe(request.body)));
+        // R-1175: die EINE Sichtbarkeitsentscheidung dieses Betrachters reist in den Dienst.
+        const eingabe = leseScormEingabe(request.body);
+        reply.code(200).send(await lmsExport.pruefe(eingabe, sichtbarkeitsfilterFuer(user)));
       } catch (error) {
         sendError(reply, error);
       }
@@ -41,7 +44,7 @@ export function lmsExportRoutes(
       }
       try {
         const eingabe = leseScormEingabe(request.body);
-        const ergebnis = await lmsExport.exportiere(eingabe);
+        const ergebnis = await lmsExport.exportiere(eingabe, sichtbarkeitsfilterFuer(user));
         if (!("daten" in ergebnis)) {
           reply.code(422).send({ error: "EXPORT_BLOCKED", pruefung: ergebnis.pruefung });
           return;
