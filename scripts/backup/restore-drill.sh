@@ -506,6 +506,7 @@ PFLICHTTABELLEN=(
   livewall_fotos
   interaktions_gedaechtnis
   ko_embeddings
+  loeschantraege
   ui_uebersetzungen
   ui_sprachen
 )
