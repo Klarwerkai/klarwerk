@@ -103,7 +103,7 @@ import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
-import { leseObjektbezug, leserHref } from "../lib/objektbezug";
+import { leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -1451,13 +1451,11 @@ export function Ask(): JSX.Element {
       quelle?.carrying && zitiert.trim() !== ""
         ? { passage: zitiert, fassung: ko?.version ?? null }
         : null;
-    // Arbeitswege am selben Artikel (Quellrückweg): ohne tragende Passage führt die Quelle, die
-    // zugleich der Beitrag ist, aus dem gefragt wurde, mit DERSELBEN Kennung und Fassung zurück
-    // (`lib/objektbezug.ts`). Mit Passage gilt die genauere Belegstelle samt deren Fassung.
-    if (stelle === null && objektbezug && id === objektbezug.koId) {
-      return demoHref(leserHref(objektbezug), params);
-    }
-    return demoHref(belegstelleHref(id, stelle), params);
+    // Arbeitswege am selben Artikel (Quellrückweg, Nacharbeit 8): bleibt von der Belegstelle KEIN
+    // Anker übrig — keine tragende Passage ODER eine zu lange, die `belegstelleHref` samt Fassung
+    // verwirft —, führt die Quelle, die zugleich der gefragte Beitrag ist, mit DERSELBEN Kennung und
+    // Fassung zurück (`quellenRueckwegHref`). Mit Anker gilt die genauere Belegstelle.
+    return demoHref(quellenRueckwegHref(id, belegstelleHref(id, stelle), objektbezug), params);
   };
   const buildExport = (): { markdown: string; filename: string } | null => {
     if (!result?.answered || !effective) {

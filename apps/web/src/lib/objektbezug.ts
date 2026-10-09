@@ -134,6 +134,31 @@ export function leserHref(bezug: Objektbezug): string {
 }
 
 /**
+ * Der Weg aus einer Antwortquelle zurück in die Lesefläche (Quellrückweg, K3).
+ *
+ * `belegAdresse` ist, was `belegstelleHref` (R-0326, `lib/belegstelle.ts`) für diese Quelle
+ * gebaut hat — Passage samt deren Fassung. Sie wird hier hereingereicht statt hier gebaut, weil
+ * `lib/belegstelle.ts` DOM-Typen braucht und diese Datei auch im Node-reinen Root-Typcheck steht.
+ *
+ * Trägt die Belegadresse KEINEN Anker — keine tragende Passage, oder eine, die `belegstelleHref` als
+ * zu lang verwirft (dann fällt dort auch `fassung` weg) —, und ist die Quelle der Beitrag, aus dem
+ * gefragt wurde, führt der Weg mit DERSELBEN Kennung und Fassung zurück wie der Rückweg der Zeile
+ * „Frage zum Beitrag …". Die Passage wird dafür nicht abgeschnitten: ein gekürzter Anker fände
+ * nichts Wörtliches (Begründung in `lib/belegstelle.ts`). Mit Anker gilt die genauere Belegstelle.
+ */
+export function quellenRueckwegHref(
+  koId: string,
+  belegAdresse: string,
+  bezug: Objektbezug | null,
+): string {
+  const ankerUebrig = belegAdresse.includes("?");
+  if (!ankerUebrig && bezug && bezug.koId === koId) {
+    return leserHref(bezug);
+  }
+  return belegAdresse;
+}
+
+/**
  * Hängt den Bezug an eine fertige `/fragen?…`-Adresse an (`askAnswerHref`/
  * `askConfidentialQuestionHref` bauen den Rest). Vorhandene Parameter bleiben unberührt.
  */
