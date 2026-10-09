@@ -327,7 +327,12 @@ import {
   PgLoeschantragRepo,
   offeneLoeschantragMeldungen,
 } from "./loeschantraege";
-import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
+import {
+  gelisteteMeldung,
+  istStapelRahmenListe,
+  nurGelisteteLogfelder,
+  stapelRahmen,
+} from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 import {
@@ -2561,23 +2566,12 @@ export function pfadOhneAbfrage(url: string): string {
  * FAIL-CLOSED: Nur ein Rahmen, der dem strengen Muster entspricht, wird übernommen; alles andere
  * ergibt `unbekannt`. Ein Stack aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen"
  * tragen. Die erste Stackzeile ist die MELDUNG selbst und wird nie betrachtet.
+ *
+ * Das Muster steht seit arbeit:kos-anlage-500-pg in `stapelRahmen` (log-positivliste.ts), weil der
+ * Auffangzweig von `sendError` dieselben Rahmen als ganze Folge protokolliert — ein Muster, zwei Leser.
  */
 export function herkunftAusStack(stack: unknown): string {
-  if (typeof stack !== "string") {
-    return "unbekannt";
-  }
-  for (const zeile of stack.split("\n").slice(1)) {
-    const treffer =
-      /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/.exec(
-        zeile.trimEnd(),
-      );
-    if (!treffer?.[1]) {
-      continue;
-    }
-    const kurz = treffer[1].replace(/^.*?\/(services|apps|tools|tests|node_modules)\//, "$1/");
-    return `${kurz}:${treffer[2]}:${treffer[3]}`;
-  }
-  return "unbekannt";
+  return stapelRahmen(stack)[0] ?? "unbekannt";
 }
 
 /** Tiefer wird nicht abgestiegen — ein zyklisches Objekt darf den Logger nicht festfahren. */
@@ -2632,12 +2626,25 @@ export function senkeUeberWert(
   for (const [schluessel, inhalt] of Object.entries(wert)) {
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
     // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
-    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
-      ? entferneGeheimeEnvWerte(inhalt, env)
-      : senkeUeberWert(inhalt, env, tiefe + 1);
+    // arbeit:kos-anlage-500-pg: dieselbe Bauform für die Stapelrahmen des Auffangzweigs (`sendError`,
+    // http.ts) — NUR unter `stapel` und NUR in der strengen Rahmenform (`istStapelRahmenListe`).
+    if (istTraceKennung(schluessel, inhalt)) {
+      ergebnis[schluessel] = entferneGeheimeEnvWerte(inhalt, env);
+    } else if (schluessel === STAPEL_FELD && istStapelRahmenListe(inhalt)) {
+      ergebnis[schluessel] = inhalt.map((rahmen) => entferneGeheimeEnvWerte(rahmen, env));
+    } else {
+      ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    }
   }
   return ergebnis;
 }
+
+// Regel 4 von `sanitizeLogText` liest jeden Pfad ab 24 Zeichen aus dem Base64-Alphabet als Token —
+// `services/knowledge-object/src/search-projection-repo-pg.ts:…` wurde damit zu `[redacted].ts:…`,
+// und die Stapelzeile des Auffangzweigs nannte keinen Ort mehr (Prüfung nacharbeit-1, K1). Die
+// Ausnahme ist so eng wie die Trace-Ausnahme darunter: nur dieser eine Feldname, nur Listen in der
+// Form, die `stapelRahmen` erzeugt; Werte secret-benannter Env-Variablen werden auch hier entfernt.
+const STAPEL_FELD = "stapel";
 
 // Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
 // Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
@@ -4502,6 +4509,8 @@ export function buildApp(
         spaces: services.spaces,
         nachfolge: services.verantwortungNachfolge,
         audit: services.audit,
+        // ADMIN-04: die Zahlen der Kontenliste aus derselben Erhebung wie die Wissensübergabe.
+        offeneVorgaenge: (personen) => services.wissensuebergabe.offeneVorgaenge(personen),
       },
       guards,
     ),

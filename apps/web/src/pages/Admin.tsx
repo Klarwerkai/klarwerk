@@ -56,15 +56,21 @@
 // Der Filter der Kontenliste („wartet auf Freigabe", Ziel des gleichnamigen Zählers) steht in der
 // Adresse (`&filter=wartet`) und reist beim Öffnen und Schliessen einer Kontokarte mit — Zurück,
 // Vorwärts und Neuladen landen wieder in der gefilterten Liste.
+//
+// ADMIN-04 (produkt:20261009:admin-nutzer-uebersicht): dazu Suche nach Name/E-Mail, Rolle und
+// Zugang (`lib/nutzerliste.ts`) — gemeinsam wirkend, ebenfalls in der Adresse. Ohne Treffer nennt
+// die Filterkarte die aktiven Filter und setzt sie mit einem Knopf zurück. Je Zeile stehen
+// Beiträge und andere offene Vorgänge, sobald der Server sie erhoben hat.
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hooks";
 import type { PublicUser } from "../api/types";
 import { UNTERNEHMEN_PFAD } from "../api/unternehmen";
+import { type KontoVerantwortung, verantwortungApi } from "../api/verantwortung";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { ALL_ITEMS, ROLES, type Role, anzeigeNameKey, canSee, roleAllows } from "../app/navigation";
@@ -96,14 +102,19 @@ import {
   adminSectionFuerDetail,
   isAdminSectionId,
 } from "../lib/adminSections";
-import {
-  KONTEN_FILTER_PARAM,
-  KONTEN_FILTER_WARTET,
-  nurWartendeKonten,
-  wartendeKonten,
-} from "../lib/adminUebersicht";
+import { nurWartendeKonten, wartendeKonten } from "../lib/adminUebersicht";
 import { aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
 import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
+import {
+  type KontenFilter,
+  type KontoZugang,
+  ZUGAENGE,
+  filterAktiv,
+  filtereKonten,
+  kontenFilterAus,
+  kontenFilterQuery,
+  kontoZugang,
+} from "../lib/nutzerliste";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { readinessRows } from "../lib/vipReadiness";
 // JOB 4025 (KUNDENBETRIEB-BACKUP): die Betriebs-Auskünfte des Reiters „System" — bisher genau eine,
@@ -116,6 +127,7 @@ import {
   PapierkorbDetail,
   WerkseinstellungenDetail,
 } from "./AdminDatenDetails";
+import { DemopaketeDetail, TestimporteDetail } from "./AdminDemoDetails";
 import {
   KiDetail,
   KiDupDetail,
@@ -131,6 +143,7 @@ import {
   RolleDetail,
   lesbarerAblauf,
 } from "./AdminKontenDetails";
+import { Sammelbearbeitung } from "./AdminKontenSammel";
 import {
   BereitschaftDetail,
   DatenschutzDetail,
@@ -204,35 +217,21 @@ function Kurzlink({
  *                               wird NICHTS still aktiviert.
  *   Beides an           → Kurzlink auf den bisherigen Bedienort.
  *
- * `anker` und `label` gibt es für den EINEN Fall, den Codex in Runde 2 gefunden hat: die
- * Beispiel-/Demopakete wohnen als Kasten AUF `/import` (`components/ExamplePackages.tsx`, Anker
- * `#demopakete`). Sie standen bis dahin als unbedingt aktiver Kurzlink im Thema „Vorführdaten" —
- * also wurde bei ausgeschalteter Stufe 2 ein gesperrtes Ziel angeboten, während dieselbe Datei
- * einen Zeilenabstand weiter oben denselben Bereich korrekt als „Modul aus" erklärte. Jetzt gehen
- * beide durch DIESE eine Regel; der Anker hängt nur hinten an derselben Route.
+ * ADMIN-16: der frühere Sonderfall mit Anker (die Demopakete als Kasten auf `/import#demopakete`)
+ * ist weg — die Pakete haben jetzt eine eigene Karte unter „Vorführdaten".
  */
-function BereichsZeile({
-  id,
-  testId,
-  anker,
-  label,
-}: {
-  id: string;
-  testId: string;
-  anker?: string;
-  label?: string;
-}): JSX.Element | null {
+function BereichsZeile({ id, testId }: { id: string; testId: string }): JSX.Element | null {
   const { t } = useTranslation();
   const { role, stufe2 } = useRole();
   const item = ALL_ITEMS.find((i) => i.id === id);
   if (!item || !roleAllows(item, role)) {
     return null;
   }
-  const name = label ?? t(anzeigeNameKey(item));
+  const name = t(anzeigeNameKey(item));
   if (!canSee(item, role, stufe2)) {
     return <Zeile label={name} wert={t("einst.modul.aus")} testId={testId} />;
   }
-  return <Kurzlink label={name} to={`${item.path}${anker ?? ""}`} testId={testId} />;
+  return <Kurzlink label={name} to={item.path} testId={testId} />;
 }
 
 /** Sieht diese Rolle den Bereich, hat er aber Stufe 2 aus? Dann gehört der Aktivierungsweg darunter. */
@@ -252,7 +251,7 @@ export function Admin(): JSX.Element {
   // Jeder Wechsel von Thema und Karte ist ab jetzt eine Navigation — und läuft deshalb durch
   // denselben Ungespeichert-Wächter wie jeder andere Weg der Anwendung (mega39 B).
   const navigate = useGuardedNavigate();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
 
   // ------------------------------------------------------------------------------------------------
   // DER ZUSTAND KOMMT AUS DER ADRESSE — und zwar nur, was durch die Weiche passt.
@@ -270,13 +269,24 @@ export function Admin(): JSX.Element {
   // ADMIN-01: der Filter „wartet auf Freigabe" gilt nur in „Benutzer und Rollen" und bleibt beim
   // Öffnen und Schliessen einer Karte dieses Themas in der Adresse.
   const nurWartende = section === "konten" && nurWartendeKonten(params);
+  // ADMIN-04: Suche, Rolle und Zugang reisen genauso mit — wer aus einer gefilterten Liste ein
+  // Konto öffnet, kommt mit „Zurück" in dieselbe Liste.
+  const kontenFilter: KontenFilter =
+    section === "konten" ? kontenFilterAus(params) : { suche: "", rolle: null, zugang: null };
   const geheZu = (ziel: AdminSectionId, karte?: string): void => {
     const href = adminHref(ziel, karte);
-    navigate(
-      ziel === "konten" && nurWartende
-        ? `${href}&${KONTEN_FILTER_PARAM}=${KONTEN_FILTER_WARTET}`
-        : href,
-    );
+    const filterQuery = ziel === "konten" ? kontenFilterQuery(kontenFilter) : "";
+    navigate(filterQuery === "" ? href : `${href}&${filterQuery}`);
+  };
+  /**
+   * Einen Filter der Kontenliste setzen. Getippte Suche ERSETZT den Verlaufseintrag (sonst hiesse
+   * jeder Buchstabe einen Zurück-Schritt); Rolle und Zugang legen einen neuen an.
+   */
+  const setzeKontenFilter = (neu: KontenFilter, ersetzen: boolean): void => {
+    const query = kontenFilterQuery(neu);
+    setParams(new URLSearchParams(`bereich=konten${query === "" ? "" : `&${query}`}`), {
+      replace: ersetzen,
+    });
   };
   // Ein offenes Detail hat immer ein Thema (`adminSectionFuerDetail`); der Rückfall ist nur für
   // den Typ da.
@@ -321,15 +331,72 @@ export function Admin(): JSX.Element {
       : t("einst.konten.befristet", { datum });
   };
 
+  // ================================================================================================
+  // ADMIN-04 · VERANTWORTUNG AN DER ZEILE — vom Server gezählt, nie geschätzt.
+  // ================================================================================================
+  // Beiträge (Hauptverantwortung, `GET /api/verantwortung/uebersicht`) und andere offene Vorgänge
+  // (Entwürfe, zugewiesene Lücken, Prüfaufgaben) stehen GETRENNT; ein Vorgang gehört genau einer
+  // Ablage an und wird darum nicht doppelt gezählt. Fehlt die Antwort, steht an der Zeile nichts
+  // dazu — die Filterkarte sagt dann „nicht abrufbar", statt still eine Null zu zeigen.
+  const verantwortung = useQuery({
+    queryKey: ["verantwortung", "uebersicht"],
+    queryFn: verantwortungApi.uebersicht,
+    enabled: section === "konten" && detail === null,
+  });
+  const verantwortungPersonen = verantwortung.data?.personen;
+  const verantwortungJe = new Map<string, KontoVerantwortung>(
+    (Array.isArray(verantwortungPersonen) ? verantwortungPersonen : []).map((p) => [p.id, p]),
+  );
+  const offeneVorgaenge = (v: KontoVerantwortung): number | null =>
+    v.vorgaenge === null
+      ? null
+      : v.vorgaenge.entwuerfe + v.vorgaenge.luecken + v.vorgaenge.pruefaufgaben;
+
   /** Was rechts an einer Nutzerzeile steht: Rolle · (wartet auf Freigabe) · (Befristung). */
-  const nutzerWert = (u: PublicUser): string =>
-    [
+  const nutzerWert = (u: PublicUser): string => {
+    const v = verantwortungJe.get(u.id);
+    const vorgaenge = v === undefined ? null : offeneVorgaenge(v);
+    return [
       t(`role.name.${u.role}`),
       u.approved ? null : t("einst.konten.wartet"),
       fristKurz(u.accessExpiresAt),
+      v !== undefined && v.beitraege > 0
+        ? t("nutzerliste.zeile.beitraege", { anzahl: v.beitraege })
+        : null,
+      vorgaenge !== null && vorgaenge > 0
+        ? t("nutzerliste.zeile.vorgaenge", { anzahl: vorgaenge })
+        : null,
     ]
       .filter((teil): teil is string => teil !== null)
       .join(" · ");
+  };
+
+  // Eine Uhr je Zeichnen — dieselbe Lesart wie `fristKurz` (ohne Wecker, s. dort).
+  const jetzt = Date.now();
+  const zugangVon = (u: PublicUser): KontoZugang =>
+    kontoZugang(u.approved, lesbarerAblauf(u.accessExpiresAt), jetzt);
+  const gefilterteKonten = filtereKonten(users.data ?? [], kontenFilter, zugangVon);
+  const [sammelOffen, setSammelOffen] = useState(false);
+  /** Die aktiven Filter in Worten — für die Trefferzeile und die Leermeldung. */
+  const filterWorte = [
+    kontenFilter.suche.trim() === ""
+      ? null
+      : t("nutzerliste.filter.suche", { suche: kontenFilter.suche.trim() }),
+    kontenFilter.rolle === null
+      ? null
+      : t("nutzerliste.filter.rolle", { rolle: t(`role.name.${kontenFilter.rolle}`) }),
+    kontenFilter.zugang === null
+      ? null
+      : t("nutzerliste.filter.zugang", {
+          zugang: t(`nutzerliste.zugang.${kontenFilter.zugang}`),
+        }),
+  ]
+    .filter((w): w is string => w !== null)
+    .join(" · ");
+  // Der Zähler „wartet auf Freigabe" hat seit ADMIN-01 seine eigene Karte; die Trefferzeile steht
+  // erst da, wenn mehr als dieser eine Filter wirkt.
+  const nurWartefilter =
+    nurWartende && kontenFilter.suche.trim() === "" && kontenFilter.rolle === null;
 
   const audit = useAudit();
   const analytics = useAnalytics();
@@ -506,6 +573,11 @@ export function Admin(): JSX.Element {
         return <KiDupDetail onZurueck={zurueck} />;
       case "demo":
         return <DemodatenDetail onZurueck={zurueck} />;
+      // ADMIN-16: bis hierher Kästen auf der Importseite — jetzt eigene Karten unter Vorführdaten.
+      case "pakete":
+        return <DemopaketeDetail onZurueck={zurueck} />;
+      case "testimporte":
+        return <TestimporteDetail onZurueck={zurueck} />;
       case "werk":
         return <WerkseinstellungenDetail onZurueck={zurueck} />;
       case "papierkorb":
@@ -631,6 +703,121 @@ export function Admin(): JSX.Element {
                   />
                 </Zeilenkarte>
               ) : null}
+              {/* ADMIN-04 · SUCHE UND FILTER — alle drei wirken gemeinsam und stehen in der
+                  Adresse. Die Auswahlfelder tragen `data-einst="wert"`: was sie zeigen, ist der
+                  gesetzte Wert des Filters, kein Erklärtext (Textmesser H6). */}
+              <Zeilenkarte testId="nutzer-filter">
+                <Zeile
+                  label={t("nutzerliste.suche")}
+                  testId="zeile-nutzer-suche"
+                  steuerung={
+                    <input
+                      type="search"
+                      data-testid="nutzer-suche"
+                      aria-label={t("nutzerliste.sucheHilfe")}
+                      value={kontenFilter.suche}
+                      onChange={(e) =>
+                        setzeKontenFilter({ ...kontenFilter, suche: e.target.value }, true)
+                      }
+                      className="h-8 w-[14rem] min-w-0 max-w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
+                    />
+                  }
+                />
+                <Zeile
+                  label={t("nutzerliste.rolleTitel")}
+                  testId="zeile-nutzer-rolle"
+                  steuerung={
+                    <span data-einst="wert" className="min-w-0">
+                      <select
+                        data-testid="nutzer-filter-rolle"
+                        aria-label={t("nutzerliste.rolleTitel")}
+                        value={kontenFilter.rolle ?? ""}
+                        onChange={(e) =>
+                          setzeKontenFilter(
+                            {
+                              ...kontenFilter,
+                              rolle: e.target.value === "" ? null : (e.target.value as Role),
+                            },
+                            false,
+                          )
+                        }
+                        className="h-8 max-w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
+                      >
+                        <option value="">{t("nutzerliste.alle")}</option>
+                        {ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {t(`role.name.${r}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  }
+                />
+                <Zeile
+                  label={t("nutzerliste.zugangTitel")}
+                  testId="zeile-nutzer-zugang"
+                  steuerung={
+                    <span data-einst="wert" className="min-w-0">
+                      <select
+                        data-testid="nutzer-filter-zugang"
+                        aria-label={t("nutzerliste.zugangTitel")}
+                        value={kontenFilter.zugang ?? ""}
+                        onChange={(e) => {
+                          const wert = e.target.value as KontoZugang | "";
+                          setzeKontenFilter(
+                            { ...kontenFilter, zugang: wert === "" ? null : wert },
+                            false,
+                          );
+                        }}
+                        className="h-8 max-w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
+                      >
+                        <option value="">{t("nutzerliste.alle")}</option>
+                        {ZUGAENGE.map((z) => (
+                          <option key={z} value={z}>
+                            {t(`nutzerliste.zugang.${z}`)}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
+                  }
+                />
+                {filterAktiv(kontenFilter) && !nurWartefilter && users.data !== undefined ? (
+                  <Zeile
+                    label={
+                      gefilterteKonten.length === 0
+                        ? t("nutzerliste.leer")
+                        : t("nutzerliste.treffer", {
+                            anzahl: gefilterteKonten.length,
+                            gesamt: users.data.length,
+                          })
+                    }
+                    wert={filterWorte}
+                    ton={gefilterteKonten.length === 0 ? "kritisch" : "ruhig"}
+                    testId={
+                      gefilterteKonten.length === 0 ? "nutzer-filter-leer" : "nutzer-filter-stand"
+                    }
+                    steuerung={
+                      <button
+                        type="button"
+                        data-testid="nutzer-filter-zuruecksetzen"
+                        onClick={() => navigate(adminHref("konten"))}
+                        className="rounded-[8px] border border-hairline px-2.5 py-1 text-[13px] text-text hover:bg-hairline-soft"
+                      >
+                        {t("nutzerliste.zuruecksetzen")}
+                      </button>
+                    }
+                  />
+                ) : null}
+                {/* Nur lesbar und nur, wenn die Liste selbst steht: scheitert schon `/api/users`,
+                    trägt die Fehlerbox der Liste den einen Ausweg („Erneut"). */}
+                {verantwortung.isError && users.data !== undefined ? (
+                  <Zeile
+                    label={t("nutzerliste.verantwortung")}
+                    wert={t("einst.wert.nichtAbrufbar")}
+                    testId="zeile-verantwortung-fehler"
+                  />
+                ) : null}
+              </Zeilenkarte>
               <Zeilenkarte testId="flaeche-nutzer">
                 {nutzerOhneAusweg ? (
                   <div className="px-4 py-[13px]">
@@ -647,7 +834,9 @@ export function Admin(): JSX.Element {
                     testId="zeile-nutzer-stand"
                   />
                 ) : null}
-                {(nurWartende ? wartendeKonten(users.data ?? []) : (users.data ?? [])).map((u) => (
+                {/* `filter=wartet` ist der Zugang „gesperrt" — dieselbe Auswahl wie
+                    `wartendeKonten` (`!approved`), mit Suche und Rolle darüber. */}
+                {gefilterteKonten.map((u) => (
                   <Zeile
                     key={u.id}
                     label={u.name}
@@ -662,6 +851,30 @@ export function Admin(): JSX.Element {
               >
                 {t("einst.konten.hinzufuegen")}
               </Flaechenknopf>
+              {/* ADMIN-04 · MEHRERE KONTEN — nur für die echte Verwaltungsrolle (in einer
+                  Vorschaurolle ist diese Seite ohnehin gesperrt), und der Server prüft jeden
+                  einzelnen Aufruf. Ein Schalter, kein Chevron: hier öffnet sich keine Karte. */}
+              {role === "admin" && users.data !== undefined ? (
+                <>
+                  <Zeilenkarte testId="nutzer-sammel">
+                    <Zeile
+                      label={t("nutzerliste.sammel.titel")}
+                      testId="zeile-sammel"
+                      steuerung={
+                        <input
+                          type="checkbox"
+                          data-testid="sammel-schalter"
+                          aria-label={t("nutzerliste.sammel.titel")}
+                          checked={sammelOffen}
+                          onChange={(e) => setSammelOffen(e.target.checked)}
+                          className="accent-brand"
+                        />
+                      }
+                    />
+                  </Zeilenkarte>
+                  {sammelOffen ? <Sammelbearbeitung konten={gefilterteKonten} /> : null}
+                </>
+              ) : null}
               {canPreview ? (
                 <Zeilenkarte>
                   <Zeile
@@ -796,34 +1009,39 @@ export function Admin(): JSX.Element {
             </>
           ) : null}
 
-          {/* Vorführdaten: EIN Auffindeort für die allgemeinen Demodaten und die Pakete aus
-              JOB 3277/3326. Die Pakete werden hier NICHT zweitgebaut — ihr maßgeblicher Bedienort
-              bleibt der Kasten auf /import (`#demopakete`), und der Verweis dorthin geht durch
-              dieselbe Modulregel wie jeder andere Bereichsverweis (Codex, Runde 2, Befund 7). */}
+          {/* Vorführdaten: EIN Auffindeort für die allgemeinen Demodaten, die Pakete aus
+              JOB 3277/3326 und das Aufräumen von Testimporten. ADMIN-16: Pakete und Aufräumen
+              standen bis hierher als Kästen auf /import und wurden von hier nur VERWIESEN; jetzt
+              ist dies ihr einziger Bedienort. Sie hängen damit auch nicht mehr am Schalter
+              „Erweiterte Module" — das Recht prüft weiterhin der Server (`users.manage`). Der Wert
+              rechts sagt vor dem Öffnen, worum es geht: erfundene Daten bzw. ALLE Importe. */}
           {section === "vorfuehrdaten" ? (
-            <>
-              <Zeilenkarte>
-                <Zeile
-                  label={t("adm.ziel.demo")}
-                  wert={wert(
-                    demoStatus,
-                    demoStatus.data?.present
-                      ? t("einst.daten.demoDa", { count: demoStatus.data.count })
-                      : null,
-                    demoStatus.data !== undefined && !demoStatus.data.present,
-                  )}
-                  onOeffnen={() => geheZu("vorfuehrdaten", "demo")}
-                  testId="zeile-demodaten"
-                />
-                <BereichsZeile
-                  id="import"
-                  anker="#demopakete"
-                  label={t("dpk.title")}
-                  testId="zeile-demopakete"
-                />
-              </Zeilenkarte>
-              {quellenAus ? <Kicker>{t("einst.modul.weg")}</Kicker> : null}
-            </>
+            <Zeilenkarte>
+              <Zeile
+                label={t("adm.ziel.demo")}
+                wert={wert(
+                  demoStatus,
+                  demoStatus.data?.present
+                    ? t("einst.daten.demoDa", { count: demoStatus.data.count })
+                    : null,
+                  demoStatus.data !== undefined && !demoStatus.data.present,
+                )}
+                onOeffnen={() => geheZu("vorfuehrdaten", "demo")}
+                testId="zeile-demodaten"
+              />
+              <Zeile
+                label={t("betriebdemo.ziel.pakete")}
+                wert={t("betriebdemo.wert.fiktiv")}
+                onOeffnen={() => geheZu("vorfuehrdaten", "pakete")}
+                testId="zeile-demopakete"
+              />
+              <Zeile
+                label={t("betriebdemo.ziel.testimporte")}
+                wert={t("betriebdemo.wert.alleImporte")}
+                onOeffnen={() => geheZu("vorfuehrdaten", "testimporte")}
+                testId="zeile-testimporte"
+              />
+            </Zeilenkarte>
           ) : null}
 
           {section === "sicherheit" ? (
