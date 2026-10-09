@@ -48,6 +48,7 @@
       "services/app/addin-static",
       "apps/web/public/word-addin/rueckweg.js",
       "apps/web/public/word-addin/marke.js",
+      "apps/web/public/word-addin/wortvergleich.js",
       "apps/web/public/word-addin/begriffe.js",
       "apps/web/public/word-addin/taskpane.js",
       "apps/web/public/word-addin/taskpane.css",
