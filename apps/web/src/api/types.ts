@@ -3160,7 +3160,7 @@ export interface SicherungsEintrag {
   folgeNummer: number | null;
 }
 
-export type SicherungenAuskunft =
+export type SicherungenAuskunft = (
   | {
       zustand: "gelesen";
       verzeichnis: string;
@@ -3168,7 +3168,103 @@ export type SicherungenAuskunft =
       sicherungen: SicherungsEintrag[];
     }
   | { zustand: "kein_verzeichnis"; verzeichnis: string; gelesenUtc: string }
-  | { zustand: "unlesbar"; verzeichnis: string; gelesenUtc: string; grund: string };
+  | { zustand: "unlesbar"; verzeichnis: string; gelesenUtc: string; grund: string }
+) & {
+  /**
+   * ADMIN-13 — die vier Schutzwege derselben Lesung. Optional nur, damit ältere Prüfstände ohne das
+   * Feld weiter gelten; der Server sendet es in jedem der drei Zustände.
+   */
+  schutzwege?: Schutzwege;
+};
+
+// ================================================================================================
+// ADMIN-13 · DIE VIER SCHUTZWEGE — Spiegel von `services/app/src/routes/admin-routes.ts`.
+// ================================================================================================
+//
+// Exportdatei, Backup-Lauf, Papierkorb und Restore-Nachweis sind verschiedene Schutzwege mit
+// verschiedenen Belegen. Jeder hat hier seinen eigenen Befund; `unbekannt` trägt immer einen Grund.
+// Grün für einen Restore heißt `restore.zustand === "erfolg"` und entsteht am Server allein aus einem
+// vollständigen Drillprotokoll — nie aus einem Archiv oder einer Prüfsummendatei.
+export type SchutzwegUnbekanntGrund =
+  | "kein_verzeichnis"
+  | "unlesbar"
+  | "fehlt"
+  | "ungueltig"
+  | "kein_protokoll"
+  | "protokoll_unlesbar";
+export interface SchutzwegUnbekannt {
+  zustand: "unbekannt";
+  grund: SchutzwegUnbekanntGrund;
+}
+
+export interface SicherungsLaufBefund {
+  zustand: "erfolg" | "fehler";
+  zeitUtc: string | null;
+  exitcode: number | null;
+  /** Der Satz aus `letzter-lauf.json` (Skriptsprache Deutsch), am Server von Zugangsdaten befreit. */
+  grund: string;
+  datei: string | null;
+}
+
+export type VergleichZustand = "gleich" | "abweichend" | "nicht_gemessen";
+export interface VergleichKategorie {
+  zustand: VergleichZustand;
+  tabellen: { tabelle: string; dump: number | null; datenbank: number | null }[];
+}
+export type PruefsummenZustand = "passt" | "abweichend" | "fehlt" | "ungueltig" | "nicht_geprueft";
+
+export interface RestoreDrillBefund {
+  zustand: "erfolg" | "teilweise" | "fehler";
+  /** Fehlende Nachweise einer bestandenen Probe (Kennungen) — Grund für `teilweise`. */
+  luecken: string[];
+  /** Widersprüche im Protokoll (Kennungen) — Grund für `fehler` trotz behauptetem Erfolg. */
+  widersprueche: string[];
+  beginnUtc: string | null;
+  zeitUtc: string | null;
+  exitcode: number;
+  grund: string;
+  sicherung: string | null;
+  sicherungZeitpunktUtc: string | null;
+  pruefsumme: { zustand: PruefsummenZustand; sha256: string | null };
+  ziel: string | null;
+  vergleich: {
+    beitraege: VergleichKategorie;
+    anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
+    beziehungen: VergleichKategorie;
+    rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+  };
+  wissensnachweis: string | null;
+}
+
+export interface ExportSpur {
+  zeitUtc: string;
+  format: string | null;
+  anzahl: number | null;
+  gesamt: number;
+}
+export interface ExportBefund {
+  zustand: "vorhanden" | "keiner";
+  bibliothek: ExportSpur | null;
+  auditkette: ExportSpur | null;
+}
+
+export interface PapierkorbBefund {
+  zustand: "gelesen";
+  anzahl: number;
+  aufbewahrungTage: number;
+  naechsteEndloeschungUtc: string | null;
+  ereignisseProtokolliert: boolean;
+  letzteWiederherstellungUtc: string | null;
+  letzteEndloeschungUtc: string | null;
+}
+
+export interface Schutzwege {
+  verzeichnisQuelle: "BACKUP_DIR" | "vorgabe";
+  letzterLauf: SicherungsLaufBefund | SchutzwegUnbekannt;
+  restore: RestoreDrillBefund | SchutzwegUnbekannt;
+  export: ExportBefund | SchutzwegUnbekannt;
+  papierkorb: PapierkorbBefund | SchutzwegUnbekannt;
+}
 
 // ==================================================================================================
 // JOB 4154 · WIKI-GESAMTANWEISUNG — DER DRAHTVERTRAG DER ANWEISUNG.
