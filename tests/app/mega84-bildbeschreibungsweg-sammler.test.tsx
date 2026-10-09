@@ -2218,8 +2218,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // deshalb die von main: 515. EHRLICH GESAGT: an DIESEM Kandidaten nicht gemessen; hat main seit
     // 01c730f4 weitere Bauteile gebracht, nennt die Meldung oben die gemessene Zahl, und DIE gehört
     // hierher. `anbieter` 1 und `traeger` 2 sind auf beiden Seiten gleich und bleiben exakt geprüft.
+    //
+    // Nacharbeit 13: GEMESSEN 522. Am zusammengeführten Kandidaten 58bf2cb0 meldete der Sammler
+    // wörtlich „gemessen: 522 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 671 Quelldateien …
+    // expected { komponenten: 522, … } to deeply equal { komponenten: 515, … }"; die übrigen 43
+    // Fälle der Datei grün. Dieser Auftrag hat seit der Zusammenführung nur diesen Sollwert geändert;
+    // die 7 Komponenten über 515 kamen mit main (Grundmenge 657 → 671), namentlich ohne Git-Verlauf
+    // nicht bestimmt. `anbieter` 1 und `traeger` 2 unverändert — keine neue Bildbeschreibungsfläche.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 515,
+      komponenten: 522,
       anbieter: 1,
       traeger: 2,
     });
