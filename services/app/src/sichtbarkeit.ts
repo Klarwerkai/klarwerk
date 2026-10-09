@@ -527,7 +527,14 @@ export interface KonfliktFelder {
   koA: string;
   koB: string;
   description: string;
-  detector?: { rationale?: string; quotes?: { a: string; b: string } } | undefined;
+  detector?:
+    | {
+        rationale?: string;
+        quotes?: { a: string; b: string };
+        // R-0263: Klaras vorgeschlagener Geltungsbereich ist Modelltext über den Inhalt.
+        vorschlag?: { geltungsbereich?: string } | undefined;
+      }
+    | undefined;
 }
 
 export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
@@ -549,10 +556,20 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
     return konflikt;
   }
   const detector = konflikt.detector;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klaras vorgeschlagener Geltungsbereich ist
+  // Modelltext über den Inhalt beider Seiten — er geht den Weg von `rationale`. Art und Seite des
+  // Vorschlags bleiben stehen: sie sagen nicht mehr als die Existenz des Konflikts selbst.
+  const vorschlag = detector?.vorschlag;
+  const vorschlagSicht =
+    vorschlag?.geltungsbereich !== undefined
+      ? { vorschlag: { ...vorschlag, geltungsbereich: "" } }
+      : {};
   return {
     ...konflikt,
     description: "",
-    ...(detector ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" } } } : {}),
+    ...(detector
+      ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" }, ...vorschlagSicht } }
+      : {}),
     redacted: true,
   };
 }
@@ -600,7 +617,8 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
 // ZWEI ÄNDERUNGEN, und die zweite ist die wichtigere:
 //
 //   1. Die Trägersuche kennt jetzt alle fünf Orte, an denen eine Referenz stehen kann — dieselbe
-//      Aufzählung wie in object-references.ts, dort für den Datenverlust, hier für den Schutz.
+//      Aufzählung wie im Waisenlauf (`datenintegritaet.ts`), dort für den Datenverlust, hier für
+//      den Schutz.
 //   2. Der TRÄGERLOSE Fall ist fail-closed: eine FEHLENDE Stufe ist keine Aussage „intern",
 //      sondern „unbekannt" — und Unbekanntes wird nicht ausgeliefert. Sichtbar bleibt es nur für
 //      die, die auch ein vertrauliches Objekt sehen dürften: den Hochladenden selbst (das
@@ -733,8 +751,7 @@ export interface AnhangEntwurf {
 
 /**
  * Die Quellen, die die Trägersuche befragt. BEWUSST als Funktionen injiziert und nicht als Module
- * importiert — dasselbe Muster und dieselbe Begründung wie `ObjectReferenceSources`: der
- * Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
+ * importiert: der Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
  */
 export interface AnhangQuellen {
   /**
@@ -927,7 +944,7 @@ function zuordnungInFassung(
  * Darf dieser Mensch diesen Anhang sehen? (G2 — der Anhang erbt die Stufe seines Objekts.)
  *
  * `traeger` ist der AKTUELLE Bestand der Wissensobjekte; der Aufrufer liefert ihn, damit diese
- * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (Muster `ObjectReferenceSources`).
+ * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (injizierte Quellen, s. oben).
  */
 export interface AnhangUrteil {
   /** Darf dieser Mensch die Bytes bekommen? */

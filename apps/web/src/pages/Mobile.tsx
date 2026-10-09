@@ -2,9 +2,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
+  Camera,
   Check,
   CloudOff,
   FilePlus2,
+  ImagePlus,
   RefreshCw,
   RotateCcw,
   Search,
@@ -12,7 +14,7 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -43,12 +45,19 @@ import { AnswerMarkdown } from "../components/AnswerMarkdown";
 // beim Sammler an (`shell/SeitenhilfeContext.tsx`), und das Zahnrad-Menü listet sie unter
 // „Seitenhilfe". Pedi (04.09.): „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld."
 import { HelpTip } from "../components/HelpTip";
-import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
+import { UploadLimitsHint } from "../components/UploadLimitsHint";
+import {
+  ConfidenceBar,
+  ErgebnisStufeMarke,
+  KnowledgeTypeTag,
+  StatusPill,
+} from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
 import { conflictImpact } from "../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../lib/displayStatus";
 import {
   type DraftFeld,
+  type DraftFormFoto,
   type DraftFormState,
   EMPTY_DRAFT_FORM,
   abweichendeFelder,
@@ -60,6 +69,13 @@ import {
   isDraftFormFillable,
 } from "../lib/draftForm";
 import { conflictKnowledge } from "../lib/effectiveAnswer";
+import { fileToThumbDataUrl } from "../lib/files";
+import { internerPfad } from "../lib/internerPfad";
+import {
+  REASONER_ENTWURF_FLAECHE,
+  ergebnisStufeFuerAntwort,
+  kiHerkunftAus,
+} from "../lib/kiHerkunft";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 // D-036 (JOB 1118): derselbe Dreiphasenvertrag, den Start und Analytics schon fahren —
 // `loading | loaded | error`. Er ist der Grund, warum unten keine Leerbehauptung mehr aus
@@ -73,6 +89,12 @@ import {
   isPending,
   requestConfirm,
 } from "../lib/mobileConfirm";
+import {
+  LEERE_INTERVIEW_ANTWORTEN,
+  MOBIL_INTERVIEW_FRAGEN,
+  interviewBegonnen,
+  interviewZuForm,
+} from "../lib/mobileInterview";
 import type { QueueStatus } from "../lib/offlineQueue";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 // JOB 4333: die Zahl der noch nicht übertragenen Vorgänge auf DIESEM Gerät — kontounabhängig und
@@ -83,6 +105,15 @@ import { offeneVorgaengeAmGeraet } from "../lib/sessionState";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 type MobileTab = "capture" | "ask" | "lookup";
+
+/** FR-MOB-02: die zwei Erfassungsarten am Handy. */
+type ErfassungsModus = "notiz" | "interview";
+
+/**
+ * FR-CAP-04: Fotos je neuem Entwurf. Sie reisen als verkleinertes JPEG im Body (wie am Desktop) und
+ * liegen offline in der Warteschlange im Gerätespeicher — die Grenze hält beides klein genug.
+ */
+const MOBIL_FOTOS_MAX = 5;
 
 const EVIDENCE_TONE: Record<EvidenceTone, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
@@ -163,7 +194,10 @@ export function Mobile(): JSX.Element {
   // WP-SAMMEL20-FIX (bens Fix 4, B1b): der Rückweg führt zur VORHERIGEN Route zurück (die der
   // Topbar-Hinweg als state.from mitgibt) — nur bei Direkteinstieg (Deep-Link/Reload ohne State)
   // fällt er auf die Startseite zurück.
-  const backTo = (location.state as { from?: string } | null)?.from ?? HOME_ROUTE;
+  const vorherigeRoute = (location.state as { from?: string } | null)?.from ?? HOME_ROUTE;
+  // R-1398: der Wert stammt aus `location.pathname` (History-State) — nur ein interner Pfad wird
+  // Navigationsziel (lib/internerPfad.ts, GHSA-wrjc/GHSA-jjmj).
+  const backTo = internerPfad(vorherigeRoute, HOME_ROUTE);
   const { setGuard, guard } = useNavGuard();
   const [tab, setTab] = useState<MobileTab>("capture");
 
@@ -306,11 +340,42 @@ export function Mobile(): JSX.Element {
    * kein Ausweg.
    */
   const [beiseite, setBeiseite] = useState<{ titel: string; text: string } | null>(null);
+  // FR-MOB-02: Notiz oder Interview. Die Wahl bleibt über das Speichern hinaus stehen — wer an der
+  // Anlage drei Dinge nacheinander festhält, wählt nicht jedes Mal neu.
+  const [modus, setModus] = useState<ErfassungsModus>("notiz");
+  const [ivAntworten, setIvAntworten] = useState<readonly string[]>(LEERE_INTERVIEW_ANTWORTEN);
+  const [ivSchritt, setIvSchritt] = useState(0);
+  const kameraRef = useRef<HTMLInputElement>(null);
+  const mediathekRef = useRef<HTMLInputElement>(null);
+  // FR-CAP-04 (BEN, Nacharbeit 2): WELCHEM Formular gehört eine laufende Fotoumwandlung? Jede
+  // Ablösung des Formulars (Zurücksetzen nach dem Speichern, Fortsetzen eines anderen Entwurfs)
+  // zählt diese Generation hoch. Ein Foto, dessen Umwandlung unter einer älteren Generation begann,
+  // wird verworfen — es gehört zu einem Formular, das es nicht mehr gibt, und darf in keinen
+  // anderen Entwurf geraten.
+  const formGenRef = useRef(0);
+  /** Die laufenden Umwandlungen. Jeder Speicherweg wartet sie ab, bevor er die Nutzlast baut. */
+  const fotoLaeufeRef = useRef(new Set<Promise<void>>());
+  /** Je laufender Umwandlung die Formular-Generation, unter der sie begann. */
+  const [fotoLaufGenerationen, setFotoLaufGenerationen] = useState<readonly number[]>([]);
+  const fotosInArbeit = fotoLaufGenerationen.length;
+  const formAbloesen = (): void => {
+    formGenRef.current += 1;
+  };
+  // BEN (Nacharbeit 3): eine Fotoauswahl, deren Umwandlung noch läuft, IST ungesicherte Eingabe —
+  // auch wenn das Formular das Foto noch nicht trägt. Ohne sie fragte der Weggeh-Wächter bei einer
+  // alleinigen Fotoauswahl nicht nach, und auch Neuladen warnte nicht: das Foto ging verloren.
+  // Gezählt wird nur, was zum AKTUELLEN Formular gehört; ein abgelöster Lauf wird ohnehin verworfen.
+  // Ein Prädikat für beide Wächter (Navigation und beforeunload) — keine zweite Autorität.
+  const fotoAuswahlLaeuft = fotoLaufGenerationen.includes(formGenRef.current);
+  const ungesichert = isDirty || fotoAuswahlLaeuft;
   const resetForm = (): void => {
+    formAbloesen();
     setForm({ ...EMPTY_DRAFT_FORM });
     setBaseline({ ...EMPTY_DRAFT_FORM });
     setEditingId(null);
     setKonflikt(null);
+    setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+    setIvSchritt(0);
   };
   const invalidateDrafts = (): void => void qc.invalidateQueries({ queryKey: ["drafts"] });
   const fail = (e: unknown): void =>
@@ -333,6 +398,122 @@ export function Mobile(): JSX.Element {
   // Der Schalter dafür ist `form.segments` und NICHTS daneben: er reist im Formularzustand mit,
   // damit es keinen Speicherweg geben kann, der ihn vergisst (s. `formToPayload`).
   const bodyMode = form.segments !== undefined;
+
+  // ============================================================================================
+  // FR-MOB-02 / R-0092 — NOTIZ UND INTERVIEW, „ALS ENTWURF SPEICHERN" BLEIBT DIE HAUPTAKTION.
+  // ============================================================================================
+  //
+  // Beide Arten schreiben in DASSELBE Formular und speichern über DENSELBEN Weg (Knopf, Wächter,
+  // Warteschlange) — das Interview füllt es nur Frage für Frage (`interviewZuForm`). Angeboten wird
+  // die Wahl nur beim NEUEN Erfassen: ein fortgesetzter Entwurf hat seinen Text schon (JOB 3377).
+  //
+  // GEWECHSELT WIRD NUR OHNE TEXTEINGABE. Sonst stünde Getipptes in einem Feld, das die andere Art
+  // gar nicht zeigt — und würde unsichtbar mitgespeichert. Fotos zeigen beide Arten, sie sperren
+  // daher nicht.
+  const erfassungsartWaehlbar = !editingId;
+  const interviewAktiv = modus === "interview" && erfassungsartWaehlbar;
+  const modusGesperrt =
+    form.title.trim().length > 0 ||
+    form.statement.trim().length > 0 ||
+    interviewBegonnen(ivAntworten);
+  const modusWaehlen = (neu: ErfassungsModus): void => {
+    if (neu === modus || modusGesperrt) {
+      return;
+    }
+    setModus(neu);
+    setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+    setIvSchritt(0);
+  };
+  const antwortSetzen = (wert: string): void => {
+    const neu = ivAntworten.map((a, i) => (i === ivSchritt ? wert : a));
+    setIvAntworten(neu);
+    setForm((f) => interviewZuForm(neu, f));
+  };
+
+  // ============================================================================================
+  // FR-CAP-04 — FOTO AUS KAMERA ODER MEDIATHEK, ENTFERNBAR.
+  // ============================================================================================
+  //
+  // Zwei getrennte Quellen, weil ein einziges Dateifeld je nach Gerät die Kamera nicht anbietet:
+  // `capture="environment"` öffnet die Rückkamera, das Feld ohne `capture` die Mediathek.
+  // Verkleinert wird wie am Desktop-Editor (`fileToThumbDataUrl`), gespeichert im Body
+  // (`draftBodyMitFotos`). Nur beim NEUEN Erfassen — an einem fortgesetzten Entwurf stehen Bilder
+  // als feste Blöcke im Text.
+  const fotosMoeglich = !editingId;
+  const fotos = form.fotos ?? [];
+  //
+  // BEN (Nacharbeit 2): die Umwandlung ist asynchron. Bis hierher ergänzte sie nach dem Warten
+  // einfach den DANN aktuellen Formularzustand — wer währenddessen speicherte, speicherte ohne das
+  // Foto, und das Foto landete danach im leeren oder schon in einem anderen Entwurf. Jetzt gilt:
+  //   · die Umwandlung gehört der Generation, unter der sie begann (`formGenRef`); ist das Formular
+  //     inzwischen abgelöst, wird ihr Ergebnis verworfen;
+  //   · jeder Speicherweg (Knopf UND Weggeh-Wächter) wartet laufende Umwandlungen ab
+  //     (`fotosAbwarten`) und baut die Nutzlast erst danach;
+  //   · solange eine läuft, ist der Knopf gesperrt und die Fläche sagt, warum.
+  const fotosHinzufuegen = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const dateien = Array.from(e.target.files ?? []).filter((d) => d.type.startsWith("image/"));
+    // Dasselbe Foto noch einmal wählen soll wieder ein Ereignis auslösen.
+    e.target.value = "";
+    const frei = MOBIL_FOTOS_MAX - fotos.length;
+    if (dateien.length > frei) {
+      push("error", t("mob.foto.max", { max: MOBIL_FOTOS_MAX }));
+    }
+    const auswahl = dateien.slice(0, Math.max(0, frei));
+    if (auswahl.length === 0) {
+      return;
+    }
+    const generation = formGenRef.current;
+    const lauf = (async (): Promise<void> => {
+      const neu: DraftFormFoto[] = [];
+      for (const datei of auswahl) {
+        try {
+          neu.push({
+            id: crypto.randomUUID(),
+            name: datei.name,
+            dataUrl: await fileToThumbDataUrl(datei),
+          });
+        } catch {
+          push("error", t("mob.foto.fehler"));
+        }
+      }
+      if (neu.length === 0 || formGenRef.current !== generation) {
+        return;
+      }
+      // Der Ref wird SOFORT nachgeführt: ein Speicherweg, der gerade auf diesen Lauf wartet, liest
+      // danach `formRef.current` — vor dem nächsten Rendern.
+      const naechst: DraftFormState = {
+        ...formRef.current,
+        fotos: [...(formRef.current.fotos ?? []), ...neu].slice(0, MOBIL_FOTOS_MAX),
+      };
+      formRef.current = naechst;
+      setForm(naechst);
+    })();
+    fotoLaeufeRef.current.add(lauf);
+    setFotoLaufGenerationen((g) => [...g, generation]);
+    try {
+      await lauf;
+    } finally {
+      fotoLaeufeRef.current.delete(lauf);
+      setFotoLaufGenerationen((g) => {
+        const i = g.indexOf(generation);
+        return i < 0 ? g : [...g.slice(0, i), ...g.slice(i + 1)];
+      });
+    }
+  };
+  /**
+   * Wartet alle laufenden Fotoumwandlungen ab und gibt das Formular MIT ihren Fotos zurück — oder
+   * `null`, wenn das Formular währenddessen abgelöst wurde (dann wird nichts gespeichert).
+   */
+  const fotosAbwarten = async (): Promise<DraftFormState | null> => {
+    const generation = formGenRef.current;
+    while (fotoLaeufeRef.current.size > 0) {
+      await Promise.all([...fotoLaeufeRef.current]);
+    }
+    return formGenRef.current === generation ? formRef.current : null;
+  };
+  const fotoEntfernen = (id: string): void => {
+    setForm((f) => ({ ...f, fotos: (f.fotos ?? []).filter((x) => x.id !== id) }));
+  };
 
   // JOB 4193: der Anzeigetitel wird jetzt zu einer ÜBERGEBENEN Fassung gebildet und nicht mehr nur
   // zum aktuellen Formular — die Auflösung eines Konflikts beschriftet den Warteschlangeneintrag
@@ -363,8 +544,31 @@ export function Mobile(): JSX.Element {
   // der EINZIGE Ort, der `drafts.update` ruft — hier kann kein Aufrufer mehr vorbei, auch kein
   // künftiger. Fehlt die Voraussetzung, wird nicht geschrieben, sondern der Vergleich ANGESTOSSEN
   // (`speicherfehler` → `konfliktOeffnen`): dieselbe eine Konfliktlogik, kein zweiter Mechanismus.
+  // ============================================================================================
+  // Prüfung Nacharbeit 4 — EIN NEUER ENTWURF OHNE TITEL UND OHNE AUSSAGE (nur Foto, oder ein
+  // Interview ohne Kernaussage) WIRD VOM SERVER ABGEWIESEN.
+  // ============================================================================================
+  //
+  // `createDraftVorgang` (services/capture/src/service.ts, E2E-004) verlangt Titel ODER Aussage
+  // und antwortet sonst mit EMPTY_DRAFT. Eine alleinige Fotoerfassung schickte nur `bodyHtml` —
+  // am Knopf, im Weggeh-Dialog und beim Nachsenden aus der Warteschlange. Beim NEUEN Erfassen
+  // bekommt sie deshalb den Titel, den diese Fläche ohnehin für titellose Entwürfe anzeigt
+  // (`capture.draftFallbackTitle`, s. `titelVon`). Fortgesetzte Entwürfe bleiben unberührt: dort
+  // steht der Titel schon am Server, und der partielle Merge lässt ihn stehen.
+  const vorgangVon = (f: DraftFormState): ReturnType<typeof formToUpdate> => {
+    const vorgang = formToUpdate(f);
+    const { title, statement } = vorgang.payload;
+    if (!editingId && !title?.trim() && !statement?.trim()) {
+      return {
+        ...vorgang,
+        payload: { ...vorgang.payload, title: t("capture.draftFallbackTitle") },
+      };
+    }
+    return vorgang;
+  };
+
   const sendeEntwurf = (f: DraftFormState): Promise<unknown> => {
-    const { payload, expectedUpdatedAt } = formToUpdate(f);
+    const { payload, expectedUpdatedAt } = vorgangVon(f);
     if (!editingId) {
       return endpoints.drafts.create(payload);
     }
@@ -380,7 +584,7 @@ export function Mobile(): JSX.Element {
    * beim Nachsenden wieder nach „letzter Schreiber gewinnt" raus.
    */
   const neuerVorgang = (f: DraftFormState): NeuerVorgang => {
-    const { payload, expectedUpdatedAt } = formToUpdate(f);
+    const { payload, expectedUpdatedAt } = vorgangVon(f);
     return {
       id: crypto.randomUUID(),
       kind: editingId ? "draft.update" : "draft.create",
@@ -548,9 +752,15 @@ export function Mobile(): JSX.Element {
         ? { art: "fehler" }
         : konflikt.lage;
 
-  const onSave = (): void => {
+  const onSave = async (): Promise<void> => {
     if (schreibenGesperrt) {
       push("error", t("mob.stand.erstAufloesen"));
+      return;
+    }
+    // FR-CAP-04 (BEN, Nacharbeit 2): laufende Fotoumwandlungen gehören zu DIESEM Speichern. Ohne
+    // laufende Umwandlung bleibt der Weg zeitgleich wie bisher (kein zusätzliches Warten).
+    const f = fotoLaeufeRef.current.size > 0 ? await fotosAbwarten() : form;
+    if (!f) {
       return;
     }
     wiederholtRef.current = false;
@@ -559,7 +769,7 @@ export function Mobile(): JSX.Element {
       // als ungebundener Rest da, den niemand mehr senden darf. Steht das Konto nicht fest, wird
       // NICHT angenommen; der getippte Text bleibt im Feld stehen (kein `resetForm`), und der
       // Mensch erfährt den Grund. Nichts wird still weggeworfen.
-      if (!queue.enqueue(neuerVorgang(form))) {
+      if (!queue.enqueue(neuerVorgang(f))) {
         push("error", t("mob.konto.speichernWartet"));
         return;
       }
@@ -568,7 +778,7 @@ export function Mobile(): JSX.Element {
       resetForm();
       return;
     }
-    save.mutate(form);
+    save.mutate(f);
   };
 
   // WP-SAMMEL20-FIX bleibt erhalten: der bestehende NavGuard schützt ungespeicherte Eingaben und
@@ -585,7 +795,9 @@ export function Mobile(): JSX.Element {
   // gewechselt, und die Rückfrage steht auf der Seite, die man gerade behalten hat.
   useEffect(() => {
     setGuard({
-      isDirty: () => isDirty,
+      // BEN (Nacharbeit 3): `ungesichert` statt `isDirty` — eine laufende Fotoauswahl öffnet den
+      // Dialog, und dessen Speichern wartet sie unten ab.
+      isDirty: () => ungesichert,
       save: async () => {
         // JOB 4193 R5 (BEN Korrekturpflicht 2): auch der Weggeh-Wächter schreibt nicht an einer
         // ungelösten Rückfrage vorbei. Der GRUND reist in der Hülle mit (`NavGuardSaveError`,
@@ -594,6 +806,17 @@ export function Mobile(): JSX.Element {
         // wird nicht gewechselt, und nichts wird geschrieben.
         if (schreibenGesperrt) {
           throw new NavGuardSaveError(t("mob.stand.erstAufloesen"));
+        }
+        // FR-CAP-04 (BEN, Nacharbeit 2): dasselbe Abwarten wie am Knopf. Wurde das Formular
+        // währenddessen abgelöst, wird nichts geschrieben und nicht gewechselt.
+        const f = fotoLaeufeRef.current.size > 0 ? await fotosAbwarten() : form;
+        if (!f) {
+          throw new NavGuardSaveError(t("mob.foto.inArbeit"));
+        }
+        // Ist die einzige Eingabe eine Fotoauswahl, deren Umwandlung gescheitert ist (die Fläche
+        // hat das gemeldet), gibt es beim NEUEN Erfassen nichts zu sichern — kein leerer Entwurf.
+        if (!editingId && !isDraftFormFillable(f)) {
+          return;
         }
         wiederholtRef.current = false;
         if (!queue.online) {
@@ -604,7 +827,7 @@ export function Mobile(): JSX.Element {
           // dem Seitenwechsel weg. Der Grund reist im `NavGuardSaveError` mit (JOB 3572 R2).
           let angenommen = false;
           flushSync(() => {
-            angenommen = queue.enqueue(neuerVorgang(form));
+            angenommen = queue.enqueue(neuerVorgang(f));
           });
           if (!angenommen) {
             throw new NavGuardSaveError(t("mob.konto.speichernWartet"));
@@ -615,7 +838,7 @@ export function Mobile(): JSX.Element {
           return;
         }
         try {
-          await sendeEntwurf(form);
+          await sendeEntwurf(f);
         } catch (e) {
           await speicherfehler(e);
           // JOB 4193 R6: fehlt die Voraussetzung, steht jetzt der Vergleich auf der Fläche. Der
@@ -639,8 +862,9 @@ export function Mobile(): JSX.Element {
   // Vorrichtung wie in Erfassen (`Capture.tsx:1790`) und Vordertür (`CaptureFrontDoor.tsx:591`),
   // keine zweite Autorität: `useUnloadGuard` hängt genau einen `beforeunload`-Handler ans Fenster
   // und nimmt ihn wieder ab. Dasselbe Dirty-Prädikat wie der In-App-Wächter — beide können nicht
-  // auseinanderlaufen.
-  useUnloadGuard(isDirty);
+  // auseinanderlaufen. BEN (Nacharbeit 3): dasselbe `ungesichert` wie oben, samt laufender
+  // Fotoauswahl.
+  useUnloadGuard(ungesichert);
 
   // SCRUM-87 / FR-MOB-03: Inline-Bestätigung statt nativem Dialog.
   const [confirm, setConfirm] = useState<ConfirmState>(NO_CONFIRM);
@@ -697,10 +921,15 @@ export function Mobile(): JSX.Element {
         ...draftToForm({ payload: op.payload }),
         ...(op.seenUpdatedAt ? { gesehenerStand: op.seenUpdatedAt } : {}),
       };
+      // BEN (Nacharbeit 2): ein anderer Entwurf übernimmt das Formular — eine noch laufende
+      // Fotoumwandlung des neuen Erfassens darf nicht in ihn geraten.
+      formAbloesen();
       setForm(offline);
       setBaseline(offline);
       setEditingId(id);
       setBeiseite(null);
+      setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+      setIvSchritt(0);
       if (queue.online) {
         void konfliktOeffnen(id, "wiedereroeffnen", op);
       } else {
@@ -711,11 +940,14 @@ export function Mobile(): JSX.Element {
     const d = serverEntwuerfe.find((x) => x.id === id);
     if (d) {
       const resumed = draftToForm(d);
+      formAbloesen();
       setForm(resumed);
       setBaseline(resumed);
       setEditingId(id);
       setKonflikt(null);
       setBeiseite(null);
+      setIvAntworten(LEERE_INTERVIEW_ANTWORTEN);
+      setIvSchritt(0);
     }
   };
 
@@ -829,7 +1061,12 @@ export function Mobile(): JSX.Element {
         <ArrowLeft size={15} />
         {t("topbar.toDesktop")}
       </button>
-      <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
+      {/* R-1026 (Aufnahme 20260922 · antwort-quellenanzeige): der Telefonrahmen ist 340 px breit,
+          die Hülle hält je 24 px Rand — zusammen 388 px. Auf einem 320-px-Telefon lief die Seite
+          deshalb seitlich über (gemessen: 10 px, tests/r1026-quellentitel-telefon/
+          telefon-fragen-chromium.test.ts T2). `max-w-full` lässt ihn dort auf die verfügbare
+          Breite schrumpfen; ab der vollen Breite bleibt er unverändert 340 px. */}
+      <div className="w-[340px] max-w-full overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>
           {queue.online ? (
@@ -888,30 +1125,188 @@ export function Mobile(): JSX.Element {
             <p className="mb-2 text-[13px] text-muted">
               {editingId ? t("mob.editing") : t("mob.sub")}
             </p>
-            <div className="space-y-2">
-              <input
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder={t("mob.formTitle")}
-                className="h-10 w-full rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
-              />
-              {/* JOB 3377: EIN Textfeld, zwei mögliche Quellen. Trägt der fortgesetzte Entwurf
-                  einen Body, steht hier DERSELBE Fliesstext, den die Vollversion im Editor zeigt
-                  (feste Blöcke als nummerierte Platzhalter an ihrer Stelle); sonst wie bisher die
-                  Kernaussage. Die gespeicherte Kernaussage wird dabei nicht überschrieben — sie
-                  bleibt aus der Nutzlast (`formToPayload`). */}
-              <textarea
-                data-testid={bodyMode ? "mob-body" : "mob-statement"}
-                value={bodyMode ? (form.body ?? "") : form.statement}
-                onChange={(e) =>
-                  setForm((f) =>
-                    bodyMode ? { ...f, body: e.target.value } : { ...f, statement: e.target.value },
-                  )
-                }
-                placeholder={t("mob.formStatement")}
-                rows={bodyMode ? 6 : 3}
-                className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
-              />
+            <div data-testid="mob-erfassung" className="space-y-2">
+              {/* FR-MOB-02: die Wahl der Erfassungsart — bewusst ZURÜCKHALTEND gezeichnet (Umriss,
+                  keine Füllung). Die einzige gefüllte Fläche dieses Bereichs ist und bleibt
+                  „Als Entwurf speichern". */}
+              {erfassungsartWaehlbar ? (
+                <fieldset
+                  data-testid="mob-modus"
+                  title={modusGesperrt ? t("mob.modusGesperrt") : undefined}
+                  className="flex gap-1 rounded-btn border border-hairline p-0.5"
+                >
+                  <legend className="sr-only">{t("mob.modusGruppe")}</legend>
+                  {(["notiz", "interview"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={modus === m}
+                      disabled={modus !== m && modusGesperrt}
+                      onClick={() => modusWaehlen(m)}
+                      className={`flex-1 rounded-btn py-1 text-[12px] font-semibold disabled:opacity-40 ${
+                        modus === m ? "border border-hairline bg-page text-text" : "text-muted"
+                      }`}
+                    >
+                      {m === "notiz" ? t("mob.note") : t("mob.interview")}
+                    </button>
+                  ))}
+                </fieldset>
+              ) : null}
+              {interviewAktiv ? (
+                <div data-testid="mob-interview" className="space-y-1.5">
+                  <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                    {t("mob.iv.fortschritt", {
+                      nummer: ivSchritt + 1,
+                      gesamt: MOBIL_INTERVIEW_FRAGEN.length,
+                    })}
+                  </div>
+                  <label className="block text-[13px] leading-snug text-text">
+                    {t(MOBIL_INTERVIEW_FRAGEN[ivSchritt] ?? MOBIL_INTERVIEW_FRAGEN[0])}
+                    <textarea
+                      data-testid="mob-interview-antwort"
+                      value={ivAntworten[ivSchritt] ?? ""}
+                      onChange={(e) => antwortSetzen(e.target.value)}
+                      rows={3}
+                      className="mt-1.5 w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
+                    />
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={ivSchritt === 0}
+                      onClick={() => setIvSchritt((s) => Math.max(0, s - 1))}
+                      className="flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      <ArrowLeft size={13} />
+                      {t("mob.iv.zurueck")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={ivSchritt >= MOBIL_INTERVIEW_FRAGEN.length - 1}
+                      onClick={() =>
+                        setIvSchritt((s) => Math.min(MOBIL_INTERVIEW_FRAGEN.length - 1, s + 1))
+                      }
+                      className="ml-auto flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      {t("mob.iv.weiter")}
+                      <ArrowRight size={13} />
+                    </button>
+                  </div>
+                  <p className="text-[11.5px] leading-relaxed text-muted">{t("mob.iv.hinweis")}</p>
+                </div>
+              ) : (
+                <>
+                  <input
+                    value={form.title}
+                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                    placeholder={t("mob.formTitle")}
+                    className="h-10 w-full rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
+                  />
+                  {/* JOB 3377: EIN Textfeld, zwei mögliche Quellen. Trägt der fortgesetzte Entwurf
+                      einen Body, steht hier DERSELBE Fliesstext, den die Vollversion im Editor zeigt
+                      (feste Blöcke als nummerierte Platzhalter an ihrer Stelle); sonst wie bisher die
+                      Kernaussage. Die gespeicherte Kernaussage wird dabei nicht überschrieben — sie
+                      bleibt aus der Nutzlast (`formToPayload`). */}
+                  <textarea
+                    data-testid={bodyMode ? "mob-body" : "mob-statement"}
+                    value={bodyMode ? (form.body ?? "") : form.statement}
+                    onChange={(e) =>
+                      setForm((f) =>
+                        bodyMode
+                          ? { ...f, body: e.target.value }
+                          : { ...f, statement: e.target.value },
+                      )
+                    }
+                    placeholder={t("mob.formStatement")}
+                    rows={bodyMode ? 6 : 3}
+                    className="w-full resize-y rounded-input border border-hairline bg-page p-2.5 text-sm outline-none focus:border-ink/30"
+                  />
+                </>
+              )}
+              {/* FR-CAP-04: zwei Quellen, zwei Knöpfe. Die Dateifelder sind unsichtbar; bedient
+                  werden sie über die Knöpfe, damit Tastatur und Vorlesehilfe einen benannten
+                  Bedienpunkt haben. */}
+              {fotosMoeglich ? (
+                <div data-testid="mob-fotos" className="space-y-1.5">
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={fotos.length >= MOBIL_FOTOS_MAX}
+                      onClick={() => kameraRef.current?.click()}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-btn border border-hairline py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      <Camera size={14} />
+                      {t("mob.foto.kamera")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={fotos.length >= MOBIL_FOTOS_MAX}
+                      onClick={() => mediathekRef.current?.click()}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-btn border border-hairline py-1.5 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-40"
+                    >
+                      <ImagePlus size={14} />
+                      {t("mob.foto.mediathek")}
+                    </button>
+                    <input
+                      ref={kameraRef}
+                      data-testid="mob-foto-kamera"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      className="hidden"
+                      onChange={(e) => void fotosHinzufuegen(e)}
+                    />
+                    <input
+                      ref={mediathekRef}
+                      data-testid="mob-foto-mediathek"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      className="hidden"
+                      onChange={(e) => void fotosHinzufuegen(e)}
+                    />
+                  </div>
+                  {/* SCRUM-421: an jeder Auswahlstelle dieselbe Anzeige aus derselben Serverquelle
+                      (tests/app/upload-limits-visible.test.ts). Ohne Netz bleibt sie leer, statt
+                      eine Zahl zu behaupten — und ohne bestätigte Sitzung steht sie gar nicht da
+                      (JOB 4333 R2: nichts, was vom Server kam). */}
+                  {serverInhalteGesperrt ? null : <UploadLimitsHint />}
+                  {/* BEN (Nacharbeit 2): solange ein Foto umgewandelt wird, ist Speichern gesperrt
+                      — und die Fläche sagt, warum. */}
+                  {fotosInArbeit > 0 ? (
+                    <p data-testid="mob-foto-in-arbeit" className="text-[11.5px] text-muted">
+                      {t("mob.foto.inArbeit")}
+                    </p>
+                  ) : null}
+                  {fotos.length > 0 ? (
+                    <ul className="grid grid-cols-4 gap-1.5">
+                      {fotos.map((foto) => (
+                        <li key={foto.id} className="relative">
+                          <img
+                            src={foto.dataUrl}
+                            alt={foto.name}
+                            className="h-14 w-full rounded-input border border-hairline object-cover"
+                          />
+                          {/* Am Telefon gibt es kein Überfahren mit der Maus — der Knopf steht
+                              deshalb IMMER da, nicht erst beim Hover wie am Desktop. */}
+                          <button
+                            type="button"
+                            aria-label={`${t("mob.foto.entfernen")}: ${foto.name}`}
+                            onClick={() => fotoEntfernen(foto.id)}
+                            className="absolute right-0.5 top-0.5 grid h-6 w-6 place-items-center rounded-full bg-ink/70 text-white"
+                          >
+                            <X size={12} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex gap-2">
                 {/* JOB 4193 R5 (BEN Korrekturpflicht 2): AN BEIDEN ENDEN gesperrt — sichtbar hier
                     und wirksam im Handler (`onSave`), aus EINEM Wahrheitsort (`schreibenGesperrt`).
@@ -919,9 +1314,21 @@ export function Mobile(): JSX.Element {
                     dem BEN die fremde Fassung überschrieben hat. */}
                 <button
                   type="button"
-                  disabled={save.isPending || !isDraftFormFillable(form) || schreibenGesperrt}
-                  title={schreibenGesperrt ? t("mob.stand.erstAufloesen") : undefined}
-                  onClick={onSave}
+                  data-testid="mob-primaer"
+                  disabled={
+                    save.isPending ||
+                    !isDraftFormFillable(form) ||
+                    schreibenGesperrt ||
+                    fotosInArbeit > 0
+                  }
+                  title={
+                    schreibenGesperrt
+                      ? t("mob.stand.erstAufloesen")
+                      : fotosInArbeit > 0
+                        ? t("mob.foto.inArbeit")
+                        : undefined
+                  }
+                  onClick={() => void onSave()}
                   className="flex flex-1 items-center justify-center gap-1.5 rounded-btn bg-ink py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
                 >
                   <Check size={15} />
@@ -1417,7 +1824,7 @@ export function Mobile(): JSX.Element {
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("ask.placeholder")}
+                    placeholder={t("beispielfragen.platzhalter")}
                     className="h-10 flex-1 rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
                   />
                   <button
@@ -1441,8 +1848,18 @@ export function Mobile(): JSX.Element {
                         kos.data ?? [],
                         conflictKnowledge(conflicts),
                       );
+                      // R-1020 / R-1695: dieselbe Stufe wie auf dem Desktop — aus belegter Herkunft
+                      // und belegter Einstufung. Ein Modelltext steht als Reasoner-Entwurf da.
+                      const stufe = ergebnisStufeFuerAntwort(
+                        kiHerkunftAus(answer),
+                        s.grade === "verified",
+                      );
                       return s.answered ? (
-                        <div className="mt-3 rounded-card border border-hairline p-3">
+                        <div
+                          data-testid="mob-antwort"
+                          className={`mt-3 rounded-card p-3 ${stufe === "entwurf" ? REASONER_ENTWURF_FLAECHE : "border border-hairline"}`}
+                        >
+                          <ErgebnisStufeMarke stufe={stufe} className="mb-2" />
                           <div className="mb-2 flex items-center justify-between gap-2">
                             {/* AUFTRAG-mega33 A2: die EFFEKTIVE Evidenz — dieselbe Einstufung wie
                                 auf dem Desktop, nicht mehr die rohe Klasse. */}
@@ -1500,8 +1917,12 @@ export function Mobile(): JSX.Element {
                                 {t("ask.sources")}
                               </span>
                               {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
-                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist);
-                                  line-clamp gegen Überlauf, Volltitel im Tooltip. */}
+                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist).
+                                  Aufnahme 20260922 · antwort-quellenanzeige (R-1026): auf dem
+                                  Telefon bleibt der Titel LESBAR — er bricht um (auch lange
+                                  Dateinamen, `[overflow-wrap:anywhere]`, `min-w-0` als Flex-Kind)
+                                  statt auf eine Zeile mit „…" gekappt zu werden; ein Tooltip gibt
+                                  es auf Touch nicht. Der Tooltip bleibt für die Maus. */}
                               {s.sources.map((ref) => (
                                 // AUFTRAG-mega12 Block C (echter Treffer, gefunden beim Bauen der
                                 // Architekturprüfung): Mobile MELDET einen Wächter an
@@ -1514,7 +1935,7 @@ export function Mobile(): JSX.Element {
                                   key={ref.id}
                                   to={`/wissen/${ref.id}`}
                                   title={ref.label}
-                                  className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand-text hover:underline"
+                                  className="min-w-0 max-w-full whitespace-normal text-[12px] font-semibold text-brand-text hover:underline [overflow-wrap:anywhere]"
                                 >
                                   {ref.label}
                                 </GuardedLink>

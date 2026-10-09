@@ -87,6 +87,17 @@ Das Mitfahrerverzeichnis `tests/klara-zerlegung/schnitt-pins.test.ts` führt daf
   unter jeder Kennung die Datei, die gerade auf der Platte liegt (`probeschnitt.test.ts` B4). Der
   Fassungskopf `X-KW-Available-Version` steht weiter nur an der HTML-Antwort.
 
+## Nachtrag: weitere Geschwisterdateien
+
+Seither sind zwei weitere Abschnitte vom Ende des Fensterskripts Zeile für Zeile in eigene
+klassische Skripte gewandert, die `panelQuelle()` an ihrer früheren Stelle wieder einsetzt:
+`marke.js` (KW-MARKE) und — mit dem Auftrag „Geschriebene Behauptungen gegen den Wissensbestand
+prüfen“ (R-0336, R-0708) — `wortvergleich.js` (KW-WORDVERGLEICH). `wortvergleich.js` wird
+unmittelbar nach `taskpane.js` geladen (Verweis in derselben Zeile, damit `taskpane.html` unter 500
+Zeilen bleibt) und vor `marke.js`. Der Schnitt selbst ändert am zusammengefügten Dokument kein Byte;
+geprüft in `probeschnitt.test.ts` (A1–A3, C2, D2) und `schnitt-echt.test.ts` (E5). Daneben steht
+`begriffe.js` (KW-BEGRIFFE) als eigenständige Datei im Kopf der Seite; sie ist kein Teil des Schnitts.
+
 ## Was als Nächstes kommt (nicht Teil dieser Lieferung)
 
 `taskpane.js` ist mit 12.497 Zeilen noch selbst eine Sammeldatei. Der Schnittplan

@@ -5,18 +5,22 @@
 // Suche über alle Hilfetexte. Stufe 2 (geerdete LLM-Antworten) folgt auf dieser Basis.
 import { useMutation } from "@tanstack/react-query";
 import { HelpCircle, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
+import { useReasonerStatus } from "../api/hooks";
+import { aiSperrHinweisKey } from "../lib/aiAvailability";
+import { kiBremsSatz } from "../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../lib/kiHerkunft";
 import {
   type ResolvedKlaraEntry,
   allFaqEntries,
   allKlaraEntries,
   klaraEntryById,
+  klaraGrundlage,
   pageEntryFor,
   pageTitleKeyForRoute,
-  rankKlara,
   resolveKlaraEntries,
   searchKlara,
 } from "../lib/klaraRegistry";
@@ -25,6 +29,7 @@ import { knowledgeClassMeta } from "../lib/knowledgeClass";
 // JOB 3980: EINE Quelle für die Abbildung UI-Sprache → Reasoner-Sprache. Die Zuordnung von Hand,
 // die hier bis heute in `askAi()` stand, ist abgelöst (s. dort).
 import { type ReasonerLocale, toReasonerLocale } from "../lib/reasonerLocale";
+import { type Objektstatus, objektstatusAus } from "../lib/statusFreigabe";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { cleanForSpeech, pickVoice } from "../lib/vorlesen";
 import { AiModelInfo } from "./AiModelInfo";
@@ -32,20 +37,33 @@ import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
+import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 
 // Stimmwahl und Textbereinigung fürs Vorlesen stehen seit FE-003 in `lib/vorlesen.ts` — das
 // Seitentutorial liest mit denselben Hilfen vor.
 
 // Ein Hilfe-Ergebnis im Panel — Titel, Text, Absprung zur Route des Themas.
+// R-0941: auch ein über die Beschriftung gefundenes Element zeigt sein Beispiel, falls es eines hat
+// — das Panel reicht es herein, weil die Beispiele nachgeladen werden (siehe `beispiel` unten).
 function KlaraResult({
   entry,
+  beispiel,
   onNavigate,
-}: { entry: ResolvedKlaraEntry; onNavigate: () => void }): JSX.Element {
+}: { entry: ResolvedKlaraEntry; beispiel: string | null; onNavigate: () => void }): JSX.Element {
   const { t } = useTranslation();
   return (
     <div className="rounded-card border border-hairline bg-page px-3 py-2.5">
       <div className="text-[12.5px] font-semibold text-text">{entry.title}</div>
       <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{entry.body}</p>
+      {beispiel ? (
+        <p
+          data-testid="klara-beispiel-treffer"
+          className="mt-1 text-[12px] leading-relaxed text-text"
+        >
+          <span className="font-semibold">{t("klarabeispiel.titel")}: </span>
+          {beispiel}
+        </p>
+      ) : null}
       <Link
         to={entry.route}
         onClick={onNavigate}
@@ -61,17 +79,44 @@ export function KlaraAssistant(): JSX.Element {
   const { t, i18n } = useTranslation();
   const location = useLocation();
   const [open, setOpen] = useState(false);
+  // R-0942: Klara ist eine aufklappende Fläche, kein sperrendes Fenster. Der Auslöser meldet seinen
+  // Zustand (`aria-expanded`/`aria-controls`), beim Öffnen springt der Fokus hinein, und beim
+  // Schließen kehrt er NUR dann zum Auslöser zurück, wenn er noch im Panel stand — wer inzwischen
+  // anderswo auf der Seite arbeitet, wird nicht zurückgerissen.
+  const panelId = useId();
+  const ausloeserRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const schliessen = (): void => {
+    const fokusDrin = panelRef.current?.contains(document.activeElement) ?? false;
+    setOpen(false);
+    if (fokusDrin) {
+      ausloeserRef.current?.focus();
+    }
+  };
   const [query, setQuery] = useState("");
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — Klaras Registry-Suche (ohne KI) bleibt davon unberührt bedienbar.
   const answerAi = useAiAvailable("answer");
+  // R-1040: WARUM der Knopf gesperrt ist — „vom Administrator abgeschaltet" ist etwas anderes als
+  // „kein Modell aktiv". Die EINE Regel steht in `lib/aiAvailability.ts` (`aiSperrHinweisKey`);
+  // gelesen wird derselbe öffentliche Status wie in `useAiAvailable`, mit derselben Unbekannt-Regel
+  // (JOB 3220: nur ohne erfolgreiche Daten ist der Status unbekannt).
+  const reasonerStatus = useReasonerStatus();
+  const answerSperrHinweis = aiSperrHinweisKey(
+    reasonerStatus.data,
+    "answer",
+    reasonerStatus.isError && !reasonerStatus.data,
+  );
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [selectionNote, setSelectionNote] = useState(false);
   // Zeige-Modus (Pedi 05.07.): beliebiges Element anklicken → erklären, ohne die Aktion auszulösen.
   const [inspecting, setInspecting] = useState(false);
-  const [inspected, setInspected] = useState<{ label: string; entryId: string | null } | null>(
-    null,
-  );
+  const [inspected, setInspected] = useState<{
+    label: string;
+    entryId: string | null;
+    /** STATUS-FREIGABE: der gezeichnete Status des Objekts, auf das gezeigt wurde — sonst `null`. */
+    objektstatus: Objektstatus | null;
+  } | null>(null);
   // Klara Stufe 2 (Pedi 05.07.): „Mit KI-Unterstützung suchen" — die Frage + die best-passenden
   // Hilfe-Schnipsel gehen an den Reasoner-Task answer; Antwort NUR daraus, sonst ehrliche Lücke.
   const [askedFor, setAskedFor] = useState<string | null>(null);
@@ -83,6 +128,9 @@ export function KlaraAssistant(): JSX.Element {
       locale?: ReasonerLocale;
     }) => endpoints.help.explain(body),
   });
+  // R-0604 (Ben Nacharbeit 4): nur ein ausdrückliches `demo: false` belegt, dass ein Modell die
+  // Hilfeantwort geschrieben hat. Erst dann darf die Fläche „KI-Antwort" und „KI-generiert" sagen.
+  const hilfeVomModell = aiAsk.data?.demo === false;
 
   // Vorlesen (Pedi 05.07., Muster SCRUM-403): Browser-Sprachausgabe, nur auf Klick, kein Auto-Play.
   const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
@@ -156,9 +204,17 @@ export function KlaraAssistant(): JSX.Element {
       setSpeakingId(null);
       return;
     }
+    // R-0942: beim Öffnen springt der Fokus in die Fläche (die Fläche selbst, nicht das Suchfeld —
+    // auf dem Telefon würde ein fokussiertes Feld sofort die Bildschirmtastatur öffnen).
+    panelRef.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") {
+        // Dieselbe Regel wie `schliessen`, hier über die Refs, damit der Effekt an `open` hängt.
+        const fokusDrin = panelRef.current?.contains(document.activeElement) ?? false;
         setOpen(false);
+        if (fokusDrin) {
+          ausloeserRef.current?.focus();
+        }
       }
     };
     document.addEventListener("keydown", onKey);
@@ -219,7 +275,9 @@ export function KlaraAssistant(): JSX.Element {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 60);
-      setInspected({ label, entryId });
+      // STATUS-FREIGABE: liegt das Element in einem Objekt, übernimmt Klara dessen GEZEICHNETEN
+      // Status wörtlich (`objektstatusAus`) — keine eigene Statusableitung neben der Fläche.
+      setInspected({ label, entryId, objektstatus: objektstatusAus(target) });
       setInspecting(false);
       setOpen(true);
     };
@@ -249,22 +307,68 @@ export function KlaraAssistant(): JSX.Element {
     ],
     [t, i18n.language],
   );
+  // R-0890 / R-0935: die Bibliotheksartikel sind in Klaras SICHTBARER Suche auffindbar (Suchfeld
+  // und Zeige-Modus über die Beschriftung) — hinter den Registry- und FAQ-Treffern. R-0943
+  // (Nacharbeit 7): in die KI-Grundlage gehen sie als Auszüge je Artikelteil (`klaraGrundlage`).
+  // Nachgeladen beim ersten Öffnen (`lib/klaraBibliothek.ts`): statisch eingebunden hoben die
+  // Artikel den ersten geladenen Brocken über den Deckel aus R-0801.
+  // Nacharbeit 14 (gesamt-hilfen): aus demselben Grund kommen die Elementbeispiele (R-0941,
+  // `lib/klaraBeispiele.ts`, 49 Beispiele in drei Sprachen) mit — gemessen stand der Eintritt mit
+  // ihnen 3567 B über dem Deckel. Sie werden nur im offenen Panel gezeigt, also erst dort gebraucht.
+  const [bibliothek, setBibliothek] = useState<{
+    artikel: ResolvedKlaraEntry[];
+    auszuege: ResolvedKlaraEntry[];
+    beispiel: (entryId: string, lng: string) => string | null;
+  }>({ artikel: [], auszuege: [], beispiel: () => null });
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    let aktuell = true;
+    const laden = Promise.all([import("../lib/klaraBibliothek"), import("../lib/klaraBeispiele")]);
+    void laden.then(([modul, beispiele]) => {
+      if (aktuell) {
+        const uebersetzen = (key: string): string => t(key);
+        setBibliothek({
+          artikel: modul.allBibliothekEntries(i18n.language, uebersetzen),
+          auszuege: modul.bibliothekAuszuege(i18n.language, uebersetzen),
+          beispiel: beispiele.klaraBeispiel,
+        });
+      }
+    });
+    return () => {
+      aktuell = false;
+    };
+  }, [open, t, i18n.language]);
+  const auffindbar = useMemo(
+    () => [...resolved, ...bibliothek.artikel],
+    [resolved, bibliothek.artikel],
+  );
 
   const page = pageEntryFor(location.pathname);
   const fieldEntry = fieldId ? klaraEntryById(fieldId) : null;
-  const results = searchKlara(resolved, query);
+  const results = searchKlara(auffindbar, query);
   // „Zum Bereich"-Link unter der KI-Antwort (Pedi 05.07.): beste Quelle → direkter Absprung.
   // Lookup über den AUFGELÖSTEN Bestand, damit auch FAQ-Quellen (faq:*) Titel + Route liefern.
   const aiFirstSourceId = aiAsk.data?.answered ? aiAsk.data.sources[0] : undefined;
+  // R-0943: auch ein Bibliotheksauszug als Quelle führt in seinen Bereich.
+  const quellen = [...resolved, ...bibliothek.auszuege];
   const aiTargetEntry = aiFirstSourceId
-    ? (resolved.find((e) => e.id === aiFirstSourceId) ?? null)
+    ? (quellen.find((e) => e.id === aiFirstSourceId) ?? null)
     : null;
 
   // Zeige-Modus-Auflösung: exakter Anker gewinnt; sonst Beschriftung als tolerante Suche.
   const inspectedEntry = inspected?.entryId ? klaraEntryById(inspected.entryId) : null;
+  // R-0941: das konkrete Beispiel zur Elementerklärung (`lib/klaraBeispiele.ts`) — es steht unter
+  // dem Text und wird mit vorgelesen. Ohne Beispiel bleibt die Erklärung, wie sie war.
+  const klaraBeispiel = bibliothek.beispiel;
+  const fieldBeispiel = fieldEntry ? klaraBeispiel(fieldEntry.id, i18n.language) : null;
+  const inspectedBeispiel = inspectedEntry ? klaraBeispiel(inspectedEntry.id, i18n.language) : null;
+  const mitBeispiel = (body: string, beispiel: string | null): string =>
+    beispiel ? `${body} ${t("klarabeispiel.titel")}: ${beispiel}` : body;
   const inspectedHits =
     inspected && !inspectedEntry && inspected.label.length > 1
-      ? searchKlara(resolved, inspected.label)
+      ? searchKlara(auffindbar, inspected.label)
       : [];
 
   // KI-Suche: beste Hilfe-Schnipsel als einzige Antwort-Grundlage mitgeben; ohne Treffer
@@ -274,7 +378,9 @@ export function KlaraAssistant(): JSX.Element {
     if (question.length < 3 || aiAsk.isPending) {
       return;
     }
-    const grounding = rankKlara(resolved, question, 12);
+    // R-0943 (Nacharbeit 7): Registry + FAQ wie bisher, dazu passende Bibliotheksauszüge — ohne
+    // eine FAQ-Antwort zu verdrängen (Regel an `klaraGrundlage`).
+    const grounding = klaraGrundlage(resolved, bibliothek.auszuege, question, 12);
     setAskedFor(question);
     if (grounding.length === 0) {
       setAiNoGrounding(true);
@@ -322,20 +428,26 @@ export function KlaraAssistant(): JSX.Element {
   return (
     <>
       <button
+        ref={ausloeserRef}
         type="button"
         data-klara="1"
         aria-label={t("klara.open")}
         title={t("klara.open")}
-        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => (open ? schliessen() : setOpen(true))}
         className="fixed bottom-5 right-5 z-40 grid h-11 w-11 place-items-center rounded-full border border-hairline bg-ink text-page shadow-popover transition-opacity hover:opacity-85"
       >
         <HelpCircle size={20} />
       </button>
       {open ? (
         <section
+          ref={panelRef}
+          id={panelId}
+          tabIndex={-1}
           data-klara="1"
           aria-label={t("klara.title")}
-          className="fixed bottom-20 right-5 z-40 flex max-h-[68vh] w-[min(340px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover"
+          className="fixed bottom-20 right-5 z-40 flex max-h-[68vh] w-[min(340px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover outline-none"
         >
           <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
             <div>
@@ -347,7 +459,7 @@ export function KlaraAssistant(): JSX.Element {
             <button
               type="button"
               aria-label={t("cmd.close")}
-              onClick={() => setOpen(false)}
+              onClick={schliessen}
               className="grid h-7 w-7 place-items-center rounded-btn text-muted-2 hover:bg-hairline-soft hover:text-text"
             >
               <X size={15} />
@@ -384,7 +496,20 @@ export function KlaraAssistant(): JSX.Element {
                   <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
                     {t(fieldEntry.bodyKey)}
                   </p>
-                  {speakButton("field", t(fieldEntry.titleKey), t(fieldEntry.bodyKey))}
+                  {fieldBeispiel ? (
+                    <p
+                      data-testid="klara-beispiel-feld"
+                      className="mt-1 rounded-input bg-page px-2 py-1.5 text-[12px] leading-relaxed text-text"
+                    >
+                      <span className="font-semibold">{t("klarabeispiel.titel")}: </span>
+                      {fieldBeispiel}
+                    </p>
+                  ) : null}
+                  {speakButton(
+                    "field",
+                    t(fieldEntry.titleKey),
+                    mitBeispiel(t(fieldEntry.bodyKey), fieldBeispiel),
+                  )}
                 </div>
               ) : (
                 <p className="text-[12px] leading-relaxed text-muted-2">{t("klara.fieldHint")}</p>
@@ -397,6 +522,31 @@ export function KlaraAssistant(): JSX.Element {
                 <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
                   {t("klara.inspectFor", { label: inspected.label || "…" })}
                 </div>
+                {inspected.objektstatus ? (
+                  <div
+                    data-testid="klara-objektstatus"
+                    data-objekt={inspected.objektstatus.art}
+                    className="mb-2 rounded-card border border-hairline bg-page px-3 py-2.5"
+                  >
+                    <div className="text-[12.5px] font-semibold text-text">
+                      {t("statusfreigabe.klara.titel")}
+                    </div>
+                    <p
+                      data-testid="klara-objektstatus-text"
+                      className="mt-0.5 text-[12px] leading-relaxed text-text"
+                    >
+                      {inspected.objektstatus.text}
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
+                      {t("statusfreigabe.klara.hinweis")}
+                    </p>
+                    {speakButton(
+                      "objektstatus",
+                      t("statusfreigabe.klara.titel"),
+                      inspected.objektstatus.text,
+                    )}
+                  </div>
+                ) : null}
                 {inspectedEntry ? (
                   <div>
                     <div className="text-[12.5px] font-semibold text-text">
@@ -405,16 +555,30 @@ export function KlaraAssistant(): JSX.Element {
                     <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
                       {t(inspectedEntry.bodyKey)}
                     </p>
+                    {inspectedBeispiel ? (
+                      <p
+                        data-testid="klara-beispiel-element"
+                        className="mt-1 rounded-input bg-page px-2 py-1.5 text-[12px] leading-relaxed text-text"
+                      >
+                        <span className="font-semibold">{t("klarabeispiel.titel")}: </span>
+                        {inspectedBeispiel}
+                      </p>
+                    ) : null}
                     {speakButton(
                       "inspected",
                       t(inspectedEntry.titleKey),
-                      t(inspectedEntry.bodyKey),
+                      mitBeispiel(t(inspectedEntry.bodyKey), inspectedBeispiel),
                     )}
                   </div>
                 ) : inspectedHits.length > 0 ? (
                   <div className="space-y-2">
                     {inspectedHits.slice(0, 3).map((entry) => (
-                      <KlaraResult key={entry.id} entry={entry} onNavigate={() => setOpen(false)} />
+                      <KlaraResult
+                        key={entry.id}
+                        entry={entry}
+                        beispiel={klaraBeispiel(entry.id, i18n.language)}
+                        onNavigate={() => setOpen(false)}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -467,7 +631,7 @@ export function KlaraAssistant(): JSX.Element {
                   type="button"
                   // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „answer" nutzbar ist.
                   disabled={query.trim().length < 3 || aiAsk.isPending || !answerAi.available}
-                  title={!answerAi.available ? t("ai.unavailable.hint") : undefined}
+                  title={!answerAi.available ? t(answerSperrHinweis) : undefined}
                   onClick={askAi}
                   className="inline-flex h-8 items-center gap-1.5 rounded-btn border border-ai bg-ai-surface-2 px-2.5 text-[12px] font-semibold text-ai hover:bg-ai-surface-1 disabled:opacity-50"
                 >
@@ -475,26 +639,56 @@ export function KlaraAssistant(): JSX.Element {
                 </button>
                 <AiModelInfo task="answer" />
               </div>
-              <AiUnavailableHint show={!answerAi.available} />
+              <AiUnavailableHint show={!answerAi.available} hinweisKey={answerSperrHinweis} />
               {askedFor && !aiAsk.isPending ? (
                 aiNoGrounding ? (
                   <p className="rounded-card border border-dashed border-hairline px-3 py-2.5 text-[12px] leading-relaxed text-muted">
                     {t("klara.noResults")}
                   </p>
                 ) : aiAsk.isError ? (
-                  <p className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text">
-                    {t("state.error")}
+                  // R-0842: bei gebremster KI-Anfrage der Satz des Servers mit Wartezeit.
+                  <p
+                    data-testid="klara-ai-fehler"
+                    className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
+                  >
+                    {kiBremsSatz(aiAsk.error) ?? t("state.error")}
                   </p>
                 ) : aiAsk.data ? (
-                  <div className="rounded-card border border-ai/30 bg-ai-surface-2 px-3 py-2.5">
+                  <div
+                    // R-1020 / R-1695: hat ein Modell geantwortet (`demo: false`), ist die Antwort
+                    // ein Reasoner-Entwurf — gestrichelt, mit Beschriftung. Der regelbasierte
+                    // Rückfall ist eine Empfehlung. Validiert ist eine Hilfeantwort nie.
+                    className={`rounded-card px-3 py-2.5 ${hilfeVomModell ? REASONER_ENTWURF_FLAECHE : "border border-ai/30 bg-ai-surface-2"}`}
+                  >
                     <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
-                        {t("klara.aiAnswerTitle")}
+                      {/* R-0604 (Ben Nacharbeit 4): Titel und Erzeugungsbehauptung hängen an der
+                        BELEGTEN Modellbeteiligung (`demo === false`). Beim regelbasierten Rückfall
+                        (`demo === true`) steht die zutreffende Herkunft; ist sie nicht belegt, wird
+                        keine von beiden behauptet. */}
+                      <span
+                        data-testid="klara-ai-herkunft"
+                        className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai"
+                      >
+                        {t(hilfeVomModell ? "klara.aiAnswerTitle" : "klara.helpAnswerTitle")}
                       </span>
-                      {/* Pedi 05.07.: jede KI-Antwort klar gekennzeichnet — generiert, nicht voll geprüft. */}
-                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text">
-                        {t("klara.aiDisclaimer")}
-                      </span>
+                      <ErgebnisStufeMarke stufe={ergebnisStufeFuerVorschlag(hilfeVomModell)} />
+                      {/* Pedi 05.07.: jede KI-Antwort klar gekennzeichnet — generiert, nicht voll
+                        geprüft. Seit Nacharbeit 4 nur dort, wo wirklich ein Modell generiert hat. */}
+                      {hilfeVomModell ? (
+                        <span
+                          data-testid="klara-ai-disclaimer"
+                          className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
+                        >
+                          {t("klara.aiDisclaimer")}
+                        </span>
+                      ) : aiAsk.data.demo === true ? (
+                        <span
+                          data-testid="klara-ohne-modell"
+                          className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+                        >
+                          {t("klara.ohneModell")}
+                        </span>
+                      ) : null}
                       {/* JOB 2660 D2 — DIE EINSTUFUNG DIESER ANTWORT, SICHTBAR.
                         Pedis Frage lautete: „Sehe ich in der Hilfe, dass mein eigener Text nicht
                         geprüft ist?" Bis hierher war sie mit NEIN zu beantworten. Der Server
@@ -565,13 +759,17 @@ export function KlaraAssistant(): JSX.Element {
                             <span aria-hidden="true">→</span>
                           </Link>
                         ) : null}
-                        {speakButton("ai", t("klara.aiAnswerTitle"), aiAsk.data.answer)}
+                        {speakButton(
+                          "ai",
+                          t(hilfeVomModell ? "klara.aiAnswerTitle" : "klara.helpAnswerTitle"),
+                          aiAsk.data.answer,
+                        )}
                         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                             {t("klara.aiSources")}:
                           </span>
                           {aiAsk.data.sources.map((sourceId) => {
-                            const src = resolved.find((e) => e.id === sourceId);
+                            const src = quellen.find((e) => e.id === sourceId);
                             return src ? (
                               <Link
                                 key={sourceId}
@@ -601,7 +799,12 @@ export function KlaraAssistant(): JSX.Element {
                     {t("klara.resultsFor", { q: query.trim() })}
                   </div>
                   {results.slice(0, 6).map((entry) => (
-                    <KlaraResult key={entry.id} entry={entry} onNavigate={() => setOpen(false)} />
+                    <KlaraResult
+                      key={entry.id}
+                      entry={entry}
+                      beispiel={klaraBeispiel(entry.id, i18n.language)}
+                      onNavigate={() => setOpen(false)}
+                    />
                   ))}
                 </div>
               ) : (

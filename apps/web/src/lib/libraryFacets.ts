@@ -7,6 +7,7 @@
 // Dazu: GESPEICHERTE SICHTEN — benannt, LOKAL je Nutzer (localStorage, wie die Board-Checkboxen;
 // bewusst KEIN Server-Speicher — ehrlich dokumentiert: die Sicht lebt nur in diesem Browser).
 import type { Conflict, KnowledgeObject } from "../api/types";
+import { anlagenVon } from "./anlagen";
 import { confidentialityOf } from "./confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "./conflictImpact";
 import { isDemoKnowledge } from "./demoKnowledge";
@@ -122,6 +123,11 @@ export function libraryFilterValues(
     // Kategorie. Nur der am Objekt gespeicherte Wert — ohne Angabe bleibt die Achse leer; aus
     // Kategorie, Titel oder Inhalt wird nichts abgeleitet.
     domain: ko.domain?.trim() ? [ko.domain.trim()] : [],
+    // R-0477 / R-0082 (aufnahme:20260922:gesamt-wissen-metadaten): die Anlage als Achse — vom Gerät
+    // aus zum passenden Wissen. Quelle ist allein das kanonische Feld am Objekt (JOB 593, Option A);
+    // die Lebenszyklus-Kopplungen sind keine zweite Quelle. Ohne Angabe bleibt die Achse leer.
+    // R-0082: ein Objekt mit mehreren Anlagen steht unter JEDER davon (`anlagenVon`).
+    asset: anlagenVon(ko),
   };
 }
 

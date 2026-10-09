@@ -1,11 +1,14 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
-import type {
-  ConflictInput,
-  ConflictService,
-  ConflictType,
-  OverlapService,
-  OverlapSettingsRepo,
+import { meldung, sprache } from "../../../auth";
+import {
+  type ConflictInput,
+  type ConflictService,
+  type ConflictType,
+  type OverlapService,
+  type OverlapSettingsRepo,
+  isConflictWorkKind,
+  isVorrangWahl,
 } from "../../../conflicts";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
@@ -41,8 +44,13 @@ import {
   // `displayStatus` keinen einzigen Aufrufer im Produkt (`git log -S displayStatus -- services/app`:
   // kein Treffer); `discloseDisplayStatus` bildet beide Haelften der Auskunft an EINER Stelle.
   discloseDisplayStatus,
+  // aufnahme:20260922:gesamt-wissen-frische: Frische, Haltbarkeit, Schutz und nächster Schritt —
+  // aus DENSELBEN erhobenen Eingängen (Merker, Konflikt) wie die Anzeigestufe.
+  discloseFrische,
   // R-0658: die eine Lesestelle der Schutzdaten-Quarantäne (Begründung in `schutzdaten.ts`).
   inSchutzdatenQuarantaene,
+  // P-WIKI-STELLENBEZUG: die Form einer mitgeschickten Stelle (Prüfung des Inhalts im Dienst).
+  leseStelle,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 // JOB 3054: `RevalidierungMerkerLeser` ist die SCHREIBFREIE Haelfte desselben Dienstes — sie kommt
@@ -65,6 +73,7 @@ import {
 // JOB 2009 D2 (H3): der Einstieg, der die PORTS nimmt — nicht das Lesemodell (C1 bleibt gruen).
 import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
+import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
@@ -138,6 +147,11 @@ export interface KoRoutesDeps {
   // OPTIONAL BLEIBT OPTIONAL: ein direkt konstruierter Routentest ohne Port bekommt weiterhin die
   // ehrliche Auslassung mit ihrem Grund — keine 0, keine erfundene Verknuepfungszahl.
   kanten?: WissensnetzDeps["kanten"];
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Wissensobjekt — ohne vorausgehende Antwort.
+  // Eine schmale Funktion statt des Ask-Dienstes (dieselbe Bauart wie `draftPromotion`); die
+  // Composition-Root verdrahtet `AskService.markKoHelpful`. Fehlt sie, antwortet die Aktion ehrlich
+  // mit 400 statt halb zu laufen.
+  hilfreich?: ((koId: string, actor: string) => Promise<void>) | undefined;
 }
 
 /**
@@ -356,16 +370,12 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
 
 // R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
 // Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
-// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) wird sie verworfen wie
-// `sources` und `importCandidateId` — sonst könnte jeder mit `ko.create` ein Objekt als importiert
-// ausgeben. Die übrigen Herkunftswerte bleiben unverändert erhalten.
-export function ohneImportHerkunft<T extends { origin?: unknown }>(rumpf: T): T {
-  if (rumpf.origin !== "import") {
-    return rumpf;
-  }
-  const { origin: _verworfen, ...ohne } = rumpf;
-  return ohne as unknown as T;
-}
+// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) fällt sie mit `origin` weg — die
+// Destrukturierung dort verwirft JEDE Herkunft (R-0139), also auch `import`.
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand der Helfer `ohneImportHerkunft`, der nur
+// `import` verwarf. Keine Route rief ihn (auf einem Rumpf ohne `origin` wäre er wirkungslos); er ist
+// entfernt. Die Zusage misst `tests/import-kandidaten-echt/annahme-in-validierung.test.ts` (W6) jetzt
+// am echten `POST /api/kos`.
 
 interface KoQuery {
   type?: KnowledgeType;
@@ -423,9 +433,15 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen oder entfernen.
+  | "geltung"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (Prüfung im Dienst).
+  | "ownership-release"
+  // R-0507: der benannte Eigentümer gibt das Objekt inhaltlich frei (Recht `ko.validate`).
+  | "owner-validate"
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
@@ -439,7 +455,18 @@ type KoAktion =
   // AM Objekt unter `:id` — sie passieren das Tor, mit demselben Gate wie `comment`.
   | "comment-resolve"
   | "comment-reopen"
-  | "revalidate";
+  | "revalidate"
+  // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung aus der Bibliothek anstossen
+  // (R-1732), die Anlagenänderung über dieses Objekt an alle Nachbarn melden (R-0203) und
+  // „Stimmt weiterhin" nach dem Anwenden (R-0206, Frische-Signal). Alle drei arbeiten AM Objekt.
+  | "request-revalidation"
+  | "neighbors-changed"
+  | "confirm-fresh"
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (am Objekt).
+  | "schutz-oeffentlich"
+  // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — Bewährung, ausdrücklich keine
+  // Prüfstimme. Arbeitet AM Objekt unter `:id` und passiert deshalb das Tor.
+  | "helpful";
 
 /**
  * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
@@ -483,9 +510,15 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1632 / R-1633: arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `domain`.
+  geltung: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
+  // R-0507: arbeitet AM Objekt unter `:id` — wer es nicht sehen darf, gibt daran auch nichts zurück.
+  "ownership-release": "tor",
+  // R-0507: die Eigentümerfreigabe arbeitet AM Objekt unter `:id` — wie `admin-validate`.
+  "owner-validate": "tor",
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
@@ -498,6 +531,14 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "comment-resolve": "tor",
   "comment-reopen": "tor",
   revalidate: "tor",
+  // aufnahme:20260922:gesamt-wissen-frische: nur wer das Objekt sehen darf, kann es zur Prüfung
+  // vorlegen, seine Nachbarn markieren oder bestätigen, dass es weiterhin stimmt.
+  "request-revalidation": "tor",
+  "neighbors-changed": "tor",
+  "confirm-fresh": "tor",
+  "schutz-oeffentlich": "tor",
+  // R-0235 / R-0749: nur wer das Objekt sehen darf, kann melden, dass es geholfen hat.
+  helpful: "tor",
 };
 
 /** Die Grundmenge als Datum — der Wächter liest sie, statt sie noch einmal abzuschreiben. */
@@ -580,6 +621,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1632 / R-1633: die Geltung (`action: "geltung"`); `null` entfernt sie. Geprüft im Dienst. */
+  geltung?: unknown;
   conflict?: ConflictInput;
   /**
    * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
@@ -595,6 +638,8 @@ interface PutBody {
   fortsetzungFuerFassung?: unknown;
   conflictId?: string;
   decision?: string;
+  /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
+  vorrang?: unknown;
   newAuthor?: string;
   text?: string;
   /**
@@ -606,10 +651,13 @@ interface PutBody {
    * `clientKey` — der Beitragsschlüssel des Aufrufers (Vertrag Fall 5): reine Deduplizierung einer
    *   Wiederholung nach unklarer Übertragung, ohne Autorität über irgendetwas.
    * `commentId` — welcher Faden geklärt oder wieder geöffnet wird.
+   * `stelle` — P-WIKI-STELLENBEZUG: Absatz, Tabelle oder Bild, an dem eine neue Rückfrage hängt
+   *   (Form: `leseStelle`; Fassung und Textstelle prüft der Dienst).
    */
   replyTo?: unknown;
   clientKey?: unknown;
   commentId?: unknown;
+  stelle?: unknown;
   attachment?: {
     name?: string;
     mime?: string;
@@ -1292,11 +1340,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Pruefstandsabfrage. Ein Prueflauf ueber ein unsichtbares Objekt waere eine Existenzauskunft
       // ueber den Umweg der Kosten (gepinnt in L6).
       const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(user, sichtbare);
+      const jetzt = Date.now();
+      // R-1636: die aus der Bewährungs-Historie gelernten Halbwertszeiten — über den Bestand.
+      const gelernt = await ko.gelernteHalbwertszeiten();
       reply.code(200).send(
-        sichtbare.map((item) => ({
-          ...item,
-          ...discloseDisplayStatus(item, eingaengeFuer(item)),
-        })),
+        sichtbare.map((item) => {
+          const eingaenge = eingaengeFuer(item);
+          return {
+            ...item,
+            ...discloseDisplayStatus(item, eingaenge),
+            ...discloseFrische(item, jetzt, eingaenge, gelernt),
+          };
+        }),
       );
     });
 
@@ -1377,10 +1432,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
       const einordnung = await ko.einordnungsstandVon(item.id);
       const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
+      const eingaenge = await anzeigestatusEingaengeFuer(user, item);
       reply.code(200).send({
         ...item,
         ...discloseConfidentiality(item.confidentiality),
-        ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(user, item)),
+        ...discloseDisplayStatus(item, eingaenge),
+        ...discloseFrische(item, Date.now(), eingaenge, await ko.gelernteHalbwertszeiten()),
         ...(einordnung
           ? {
               category: einordnung.category,
@@ -1492,9 +1549,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
           // (Capture.tsx `createPayload`).
           // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
-          // menschlichen Annahme eines Importkandidaten (s. `ohneImportHerkunft`). Die Destrukturierung
-          // darunter verwirft `origin` VOLLSTÄNDIG — damit auch jedes `import`; `ohneImportHerkunft`
-          // auf einem Rumpf ohne `origin` wäre wirkungslos und steht deshalb hier nicht.
+          // menschlichen Annahme eines Importkandidaten. Die Destrukturierung darunter verwirft
+          // `origin` VOLLSTÄNDIG — damit auch jedes `import` (am Draht gemessen: W6 in
+          // `tests/import-kandidaten-echt/annahme-in-validierung.test.ts`).
           const {
             reviewerIds,
             sources: _ignoredSources,
@@ -1545,6 +1602,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // keinen zweiten Wortlaut erfinden. An der PRÜFUNG ändert das nichts.
           if (input.confidentiality === undefined) {
             sendMissingConfidentiality(reply);
+            return;
+          }
+          // R-0034 / FR-CAP-08: das Fachgebiet beim Anlegen trägt dieselbe Grenze wie die Aktion
+          // `domain` — ein Nicht-Text oder ein überlanger Wert ist ein 400, nichts wird gekürzt.
+          if (
+            input.domain !== undefined &&
+            input.domain !== null &&
+            (typeof input.domain !== "string" || input.domain.trim().length > DOMAIN_MAX_LENGTH)
+          ) {
+            reply.code(400).send({
+              error: "INVALID",
+              message: `domain muss Text mit höchstens ${DOMAIN_MAX_LENGTH} Zeichen sein.`,
+            });
             return;
           }
           const created = await ko.create({ ...input, author: user.id });
@@ -1781,12 +1851,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (loaded.reason === "invalid") {
               return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
             }
+            // Aufnahme gesamt-fehlermeldungen (P-Q9): dieselben zwei Katalogsätze wie die
+            // Entwurfsrouten (`capture-routes.ts`, JOB 3956) — bis hierher sprach dieser Weg in
+            // einer EN/NL-Sitzung als einziger noch Deutsch. Status und Code bleiben unverändert.
             reply.code(loaded.reason === "not-found" ? 404 : 403).send({
               error: loaded.reason === "not-found" ? "NOT_FOUND" : "FORBIDDEN",
-              message:
-                loaded.reason === "not-found"
-                  ? "Entwurf nicht gefunden."
-                  : "Entwurf nicht verfuegbar.",
+              message: meldung(
+                loaded.reason === "not-found" ? "DRAFT_NOT_FOUND" : "DRAFT_NOT_VISIBLE",
+                sprache(request),
+              ),
             });
             return;
           }
@@ -1796,7 +1869,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
           // Dokumenten — nicht aus diesem Feld.
           // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
-          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
+          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import`.
           const {
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
@@ -2118,12 +2191,27 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
     // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.
     // done/ohne Feld ist nicht wiederholbar (ehrlicher 409 statt stillem Doppel-Lauf).
+    //
+    // AUFNAHME 20260922 · R-1124: `{ "umfang": "vollstaendig" }` wählt für DIESES Objekt den
+    // Vollabgleich gegen den ganzen Bestand (ohne Deckel, ohne fachlichen Vorfilter; s.
+    // detection-cap.ts). Die Wahl ist auch bei einem aktuellen fertigen Nachweis zulässig — sie
+    // fordert ausdrücklich mehr, als der gedeckelte Lauf belegt hat. Läuft schon ein Job, wird
+    // nichts verdoppelt (409); ein wartender wird hochgestuft. Ohne Angabe gilt alles wie bisher.
     app.post<{ Params: { id: string } }>("/api/kos/:id/ai-check", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
         return;
       }
       try {
+        const gewaehlt = (request.body as { umfang?: unknown } | undefined)?.umfang;
+        if (gewaehlt !== undefined && gewaehlt !== "gedeckelt" && gewaehlt !== "vollstaendig") {
+          reply.code(400).send({
+            error: "AI_CHECK_UMFANG_UNBEKANNT",
+            message: 'Pruefumfang ist "gedeckelt" oder "vollstaendig".',
+          });
+          return;
+        }
+        const umfang: PruefUmfang = gewaehlt === "vollstaendig" ? "vollstaendig" : "gedeckelt";
         const subject = await ko.get(request.params.id);
         if (!subject) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
@@ -2137,6 +2225,38 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         const status = subject.aiCheck?.status;
+        if (umfang === "vollstaendig") {
+          // R-1124 (Bens Befund zu 3e62e335): die Wahl wird SYNCHRON im Worker vorgemerkt, bevor
+          // irgendein Speicherzugriff folgt. Die Vormerkung hält einen wartenden Job dieses Objekts
+          // vom Start zurück, bis er hochgestuft eingereiht ist — der Übergang wartend → laufend
+          // kann die Wahl damit nicht mehr verschlucken. Läuft schon ein Job, gibt es keine
+          // Vormerkung: 409, und der Prüfstatus bleibt unberührt.
+          const vormerkung = aiCheckWorker.vollabgleichVormerken?.(request.params.id);
+          if (vormerkung === undefined) {
+            reply.code(503).send({
+              error: "AI_CHECK_UNAVAILABLE",
+              message: "Die Hintergrund-Pruefung kennt keinen Vollabgleich.",
+            });
+            return;
+          }
+          if (vormerkung === null) {
+            reply.code(409).send({
+              error: "AI_CHECK_LAEUFT",
+              message: "Fuer dieses Wissensobjekt laeuft gerade eine Pruefung.",
+            });
+            return;
+          }
+          try {
+            await ko.markAiCheckPending(request.params.id);
+            const vermerkt = await ko.get(request.params.id);
+            vormerkung.einreihen(vermerkt?.aiCheck?.koVersion);
+          } catch (error) {
+            vormerkung.verwerfen();
+            throw error;
+          }
+          reply.code(200).send({ status: "pending", umfang });
+          return;
+        }
         // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
         // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
         if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
@@ -2528,7 +2648,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // Eine unbekannte Aktion wird hier abgewiesen, bevor das Tor greift: sie fasst kein Objekt
         // an und verrät deshalb auch keine Existenz — ein 400 ist die ehrlichere Antwort als ein
         // 404, das ein „gibt es nicht" über ein Objekt behauptet, nach dem gar nicht gefragt wurde.
-        const torurteil = ZIELOBJEKT_TOR[body.action as KoAktion] as Torurteil | undefined;
+        // R-1349: gelesen wird die benannte Grundmenge, die auch die Sicherheitswächter lesen —
+        // vorher las die Route die Tabelle unter einem zweiten Namen, und der Export hatte keinen
+        // Produktleser.
+        const torurteil = KO_AKTIONEN_MIT_TORURTEIL[body.action as KoAktion] as
+          | Torurteil
+          | undefined;
         if (!torurteil) {
           return badRequest(`Unbekannte Aktion: ${body.action}`);
         }
@@ -2967,12 +3092,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 );
               }
             }
+            // P-WIKI-STELLENBEZUG: eine unlesbare Stelle ist ein Formfehler — sie still fallen zu
+            // lassen machte aus der Rückfrage an einen Absatz lautlos eine an das ganze Dokument.
+            const stelle = leseStelle(body.stelle);
+            if (stelle === "unlesbar") {
+              return badRequest(
+                "stelle muss Fassung (koVersion), Art (absatz, tabelle, bild, anhang), Abschnitt und Textstelle tragen; eine Position (punkt, x und y je 0..1) gibt es nur bei Bild oder Anhang, eine Seite (ganzzahlig ab 1) nur bei einem Anhang.",
+              );
+            }
             reply.code(200).send(
               await ko.addComment(id, user.id, body.text.trim(), {
                 ...(typeof body.replyTo === "string" ? { replyTo: body.replyTo.trim() } : {}),
                 ...(typeof body.clientKey === "string"
                   ? { clientKey: body.clientKey.trim() }
                   : {}),
+                ...(stelle ? { stelle } : {}),
               }),
             );
             return;
@@ -3467,6 +3601,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
             return;
           }
+          case "geltung": {
+            // R-1632 / R-1633: dasselbe Recht wie das Fachgebiet (`ko.create`). Das Feld muss im
+            // Rumpf stehen — `null` entfernt die Angabe, ein fehlendes Feld ist kein Entfernen.
+            // Form und Vererbungsregel prüft der Dienst (`normalizeGeltung`, ungültig → 400).
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!("geltung" in body)) {
+              return badRequest("geltung fehlt.");
+            }
+            reply.code(200).send(await ko.setGeltung(id, body.geltung, user.id));
+            return;
+          }
           case "tags": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
@@ -3533,6 +3681,41 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             reply.code(200).send(await ko.setOwnership(id, body.ownership, user.id));
             return;
           }
+          // R-0507: „Der Eigentümer kann es zurückgeben." Das Recht ist hier nur `ko.read` — die
+          // tragende Prüfung („bist du der benannte Eigentümer?") steht im Dienst und wirft sonst
+          // `NOT_OWNER` (403). Wer Verantwortung trägt, muss sie abgeben können, ohne Prüferrolle.
+          case "ownership-release": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            reply.code(200).send(await ko.releaseOwnership(id, user.id));
+            return;
+          }
+          // R-0507: „… oder freigeben." Der BESTEHENDE Freigabeweg: das Freigaberecht `ko.validate`
+          // (wie `rate`), dasselbe Dublettentor wie `rate`/`admin-validate`, dann prüft der Dienst,
+          // ob der Anfragende der benannte Eigentümer ist (sonst 403 `NOT_OWNER`). Eigentum allein
+          // verleiht keine Freigabebefugnis.
+          case "owner-validate": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "owner-validate",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            reply.code(200).send(await validation.ownerValidate(id, user.id));
+            return;
+          }
           case "conflict": {
             const user = await guards.requirePermission("ko.validate", request, reply);
             if (!user) {
@@ -3540,6 +3723,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             }
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
+            }
+            // R-0252: die Arbeitsart ist optional; steht sie da, muss sie eine der drei sein. Ein
+            // unbekannter Wert würde sonst als Auskunft „Art der Arbeit" am Konflikt stehen.
+            if (
+              body.conflict.arbeitsart !== undefined &&
+              !isConflictWorkKind(body.conflict.arbeitsart)
+            ) {
+              return badRequest("conflict.arbeitsart muss eines von regel, sache, version sein.");
             }
             reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
             return;
@@ -3552,7 +3743,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflictId || !body.decision) {
               return badRequest("conflictId/decision fehlt.");
             }
-            reply.code(200).send(await conflicts.resolve(body.conflictId, user.id, body.decision));
+            // R-0263: optional — welcher der beiden Punkte gilt bzw. einschränkt. Hier nur die Form;
+            // ob `gilt` zum Konflikt gehört und der Geltungsbereich steht, prüft der Dienst.
+            const roh = body.vorrang;
+            const vorrang = isVorrangWahl(roh) ? roh : undefined;
+            if (roh !== undefined && vorrang === undefined) {
+              return badRequest(
+                "vorrang muss { art: ueberstimmt|schraenkt_ein, gilt, geltungsbereich? } sein.",
+              );
+            }
+            const konfliktId = body.conflictId;
+            const text = body.decision;
+            reply.code(200).send(await conflicts.resolve(konfliktId, user.id, text, vorrang));
             return;
           }
           case "transfer-author": {
@@ -3572,6 +3774,71 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await lifecycle.confirmStillValid(id, user.id));
+            return;
+          }
+          // R-1732 / R-0206: aus der Bibliothek eine erneute Prüfung anstossen — dasselbe Recht wie
+          // „Noch gültig" (`revalidate`); das Objekt erscheint danach im Reiter „Erneut".
+          case "request-revalidation": {
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            await lifecycle.requestRevalidation(id, user.id);
+            reply.code(204).send();
+            return;
+          }
+          // R-0203: die Anlagenänderung über dieses Objekt melden — dasselbe Recht wie
+          // `POST /api/lifecycle/asset-changed`. Die Antwort nennt nur die ZAHL der markierten
+          // Objekte, keine Kennungen: Nachbarn, die der Meldende nicht sehen darf, bleiben ungenannt.
+          case "neighbors-changed": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            const markiert = await lifecycle.neighborsChanged(id, user.id);
+            reply.code(200).send({ markiert: markiert.length });
+            return;
+          }
+          // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — jeder, der das Objekt lesen
+          // darf. Ein Frische-Signal, keine Prüfstimme: Status und Fassung bleiben unberührt.
+          case "confirm-fresh": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            reply.code(200).send(await ko.bestaetigeFrische(id, user.id));
+            return;
+          }
+          // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" — die Verfeinerung von „intern". Dieselbe
+          // Schwelle wie eine Herabstufung der Vertraulichkeit (`ko.validate`): wer etwas als frei
+          // verwendbar einstuft, senkt den Schutz.
+          case "schutz-oeffentlich": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            const wert = (body as unknown as { oeffentlich?: unknown }).oeffentlich;
+            if (typeof wert !== "boolean") {
+              return badRequest("oeffentlich muss true oder false sein.");
+            }
+            reply.code(200).send(await ko.setOeffentlich(id, wert, user.id));
+            return;
+          }
+          // R-0235 / R-0749: „Hat geholfen" am Objekt selbst. Recht wie beim Antwortfeedback
+          // (`ko.read`, POST /api/ask/helpful); die Sichtbarkeit hat das Tor oben entschieden.
+          // Wirkung: ein leichter Trust-Schritt + Audit `answer.helpful` (genau einmal je Person und
+          // Objekt, über beide Wege gemeinsam), Rückmeldung an Autor und Urheber über die Glocke.
+          // Keine Prüfstimme: Status, Fassung und Validierungen bleiben unberührt.
+          case "helpful": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            if (!deps.hilfreich) {
+              return badRequest("„Hat geholfen“ ist in diesem Aufbau nicht verfügbar.");
+            }
+            await deps.hilfreich(id, user.id);
+            reply.code(204).send();
             return;
           }
           default:

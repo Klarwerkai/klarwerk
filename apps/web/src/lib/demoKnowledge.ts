@@ -19,19 +19,9 @@ export function isDemoKnowledge(
   return ko.demoSeed === true || (ko.tags ?? []).includes(DEMO_TAG);
 }
 
-export interface DemoKnowledgeBadge {
-  labelKey: string;
-  hintKey: string;
-  // bewusst neutral: Herkunft, KEIN Qualitäts-/Status-/Trust-Signal.
-  tone: "neutral";
-}
-
-// Liefert das Demo-Badge nur für Demo-/Seed-Wissen, sonst null (normale KOs bleiben unmarkiert).
-export function demoKnowledgeBadge(ko: Pick<KnowledgeObject, "tags">): DemoKnowledgeBadge | null {
-  return isDemoKnowledge(ko)
-    ? { labelKey: "demo.badge.label", hintKey: "demo.badge.hint", tone: "neutral" }
-    : null;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `demoKnowledgeBadge` (samt Typ). Bibliothek,
+// Quellenliste und Erfassen zeigen die Marke `demo.badge.label` über `isDemoKnowledge` selbst
+// (R-0991 Nr. 16); der Baustein hatte keinen Produktleser und ist entfernt.
 
 // SCRUM-309: client-seitiger HERKUNFTS-Filter für die Bibliothek — ERGÄNZEND zum Reife-/Maturity-
 // Filter und zur Suche, NICHT als Ersatz für Status/Trust/Nutzbarkeit. Nutzt dieselbe Erkennung wie
@@ -49,17 +39,9 @@ export function matchesDemoKnowledgeFilter(
   return filter === "all" ? true : isDemoKnowledge(ko) === (filter === "demo");
 }
 
-// Filtert eine Trefferliste (alles mit `.ko`) nach Herkunft. „all" lässt unverändert (keine stille
-// Ausblendung); „demo" nur Demo-/Seed-Wissen; „non-demo" nur produktiv/eigenes Wissen (ohne Demo-Tag).
-export function filterByDemoKnowledge<T extends { ko: Pick<KnowledgeObject, "tags"> }>(
-  items: readonly T[],
-  filter: DemoKnowledgeFilter,
-): T[] {
-  if (filter === "all") {
-    return [...items];
-  }
-  return items.filter((item) => matchesDemoKnowledgeFilter(item.ko, filter));
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `filterByDemoKnowledge` (eine Trefferliste
+// nach Herkunft filtern). Prüfboard und Bibliotheksfacette filtern je Eintrag über
+// `matchesDemoKnowledgeFilter` oben (R-0991 Nr. 17); die Listenfassung rief niemand und ist entfernt.
 
 // Ehrliche Zähler je Herkunft (für die Chips). „all" = Gesamtzahl; demo + non-demo = all.
 export function countByDemoKnowledge<T extends { ko: Pick<KnowledgeObject, "tags"> }>(

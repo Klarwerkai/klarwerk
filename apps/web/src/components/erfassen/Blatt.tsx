@@ -10,6 +10,7 @@ import type {
   AssistResult,
   Confidentiality,
   DraftPayload,
+  KnowledgeType,
   SchutzdatenArt,
   StructureResult,
 } from "../../api/types";
@@ -24,11 +25,20 @@ import {
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
+  type AuswahlModus,
+  type TextAuswahl,
+  auswahlImFeld,
+  auswahlNochGueltig,
+  auswahlUebernehmen,
+} from "../../lib/auswahlAssist";
+import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
   applyStructureProposal,
   bodyTextForAssist,
+  structureCardKnowledgeType,
   structureProposalTitleOnly,
+  withDecidedKnowledgeType,
 } from "../../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
@@ -55,10 +65,13 @@ import {
 import { isDemoContext } from "../../lib/demoPilotPath";
 import { deriveStatus } from "../../lib/displayStatus";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
+import { KNOWLEDGE_TYPES_DRAFT } from "../../lib/draftForm";
 import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+import { kiBremsSatz } from "../../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../../lib/kiHerkunft";
 import { useNetzOnline } from "../../lib/netzzustand";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
@@ -84,10 +97,12 @@ import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Button } from "../ui";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
+import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
   SymbolBild,
   SymbolDatei,
@@ -174,6 +189,8 @@ interface Speicherauftrag {
   readonly confidentiality: Confidentiality;
   readonly gewaehlteVertraulichkeit: Confidentiality | undefined;
   readonly kategorie: string;
+  // FR-STR-01: die entschiedene Wissensart (aus dem Ordnen-Vorschlag übernommen oder geladen).
+  readonly wissensart: KnowledgeType | undefined;
   readonly activeDraftId: string | null;
   readonly bodyNieGeliefert: boolean;
   readonly fallbackTitle: string;
@@ -185,12 +202,14 @@ function abgesendetAus(auftrag: Speicherauftrag): {
   bodyHtml: string;
   confidentiality: Confidentiality;
   kategorie: string;
+  wissensart: KnowledgeType | undefined;
 } {
   return {
     title: auftrag.title,
     bodyHtml: auftrag.bodyHtml,
     confidentiality: auftrag.confidentiality,
     kategorie: auftrag.kategorie,
+    wissensart: auftrag.wissensart,
   };
 }
 
@@ -263,7 +282,14 @@ type LetzteAktion =
 // bisherigen Satz; die Fläche deutet nichts um, was der Server nicht ausdrücklich benannt hat.
 const CLOUD_GESPERRT_CODE = "CONFIDENTIAL_CLOUD_BLOCKED";
 
+// Aufnahme gesamt-integrations-api (R-0842): die ZWEITE ausdrücklich benannte Kennung. Hat die
+// KI-Bremse des Servers abgewiesen (`KI_ANFRAGEN_GEBREMST`), steht ihr Satz mit Wartezeit da —
+// für Strukturierung und Assistent gleichermassen (`kiBremsSatz`, apps/web/src/lib/kiBremse.ts).
 function kiFehlerMeldung(err: unknown, rueckfall: string): string {
+  const bremsSatz = kiBremsSatz(err);
+  if (bremsSatz) {
+    return bremsSatz;
+  }
   return err instanceof ApiError && err.code === CLOUD_GESPERRT_CODE ? err.message : rueckfall;
 }
 
@@ -383,6 +409,11 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [title]);
   const [kategorie, setKategorie] = useState("");
+  // FR-STR-01 (R-0315): die ENTSCHIEDENE Wissensart dieses Blatts. `undefined` = noch keine
+  // Entscheidung — dann reist sie nicht mit, und ein KI-Vorschlag darf sie in der Karte vorbelegen.
+  // Gesetzt wird sie nur durch bewusste Übernahme eines Ordnen-Vorschlags oder durch Laden eines
+  // Entwurfs, der eine Wissensart trägt.
+  const [wissensart, setWissensart] = useState<KnowledgeType | undefined>(undefined);
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
   // trug KEINE Stufe". Er steuert die Modell-Provenienz und wird bewusst NICHT geglättet.
@@ -561,7 +592,15 @@ export function Blatt({
     // geänderte Bereichswahl nicht als ungespeicherte Änderung — der Navigationswächter liess den
     // Menschen ziehen, und die Wahl war weg.
     kategorie: string;
-  }>({ title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" });
+    // FR-STR-01: eine übernommene, noch nicht gesicherte Wissensart ist eine ungespeicherte Änderung.
+    wissensart: KnowledgeType | undefined;
+  }>({
+    title: "",
+    bodyHtml: "",
+    confidentiality: "intern",
+    kategorie: "",
+    wissensart: undefined,
+  });
 
   // ---- KI --------------------------------------------------------------------------------------
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
@@ -569,9 +608,20 @@ export function Blatt({
   const [structureAccepted, setStructureAccepted] = useState(false);
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
+  // FR-STR-01: die Wissensart-Auswahl IN der Vorschlagskarte — vorbelegt nach
+  // `structureCardKnowledgeType`, vom Menschen korrigierbar, übernommen erst mit „Übernehmen".
+  const [structureCardType, setStructureCardType] = useState<KnowledgeType | undefined>(undefined);
+  // R-0300: `auswahl` ist die Markierung, auf die sich der Vorschlag bezieht — `null` heisst
+  // „ganzer Text" (der bisherige Weg, unverändert).
   const [assistProposal, setAssistProposal] = useState<
-    (AssistResult & { action: AssistRequest }) | null
+    (AssistResult & { action: AssistRequest; auswahl: TextAuswahl | null }) | null
   >(null);
+  // R-0300: die zuletzt im Schreibfeld markierte Stelle. Ein Ref, kein Zustand: sie wird bei jeder
+  // Auswahländerung gelesen und erst beim Auslösen einer KI-Aktion gebraucht — ein Rendern je
+  // Mausbewegung wäre reiner Aufwand.
+  const markierungRef = useRef<TextAuswahl | null>(null);
+  // Die Markierung DER laufenden Anfrage — gesetzt in `onMutate`, gelesen in `mutationFn`.
+  const anfrageAuswahlRef = useRef<TextAuswahl | null>(null);
   const [assistErr, setAssistErr] = useState<string | null>(null);
   const [assistAccepted, setAssistAccepted] = useState(false);
 
@@ -743,6 +793,28 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [ansicht]);
 
+  // R-0300 — DIE MARKIERUNG IM SCHREIBFELD MERKEN, solange sie dort steht. Wandert die Auswahl
+  // AUS dem Feld (Klick in das KI-Menü), bleibt die gemerkte Stelle stehen: genau sie soll die
+  // Aktion bearbeiten. Wird IM Feld nur noch ein Cursor gesetzt, gilt wieder der ganze Text.
+  // Das Bildbeschreibungsformular hat ein eigenes Textfeld (`#caption-form-text`) — es zählt nicht.
+  useEffect(() => {
+    const lesen = (): void => {
+      const feld = editorHuelleRef.current?.querySelector<HTMLElement>(
+        '[role="textbox"]:not(#caption-form-text)',
+      );
+      const auswahl = document.getSelection();
+      if (!feld || !auswahl || auswahl.rangeCount === 0) {
+        return;
+      }
+      if (!feld.contains(auswahl.getRangeAt(0).startContainer)) {
+        return;
+      }
+      markierungRef.current = auswahlImFeld(feld, auswahl);
+    };
+    document.addEventListener("selectionchange", lesen);
+    return () => document.removeEventListener("selectionchange", lesen);
+  }, []);
+
   // Die stille Live-Reaktion (§5): sie hört auf den Klartext des Blattes, nicht auf ein zweites Feld.
   const liveText = useMemo(() => bodyTextForAssist(bodyHtml), [bodyHtml]);
   // ================================================================================================
@@ -772,7 +844,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -830,6 +902,7 @@ export function Blatt({
     setStructureAccepted(false);
     setStructureKeptRichBody(false);
     setStructureTitleAdopted(false);
+    setStructureCardType(undefined);
   }, []);
 
   const clearAssistState = useCallback((): void => {
@@ -858,10 +931,14 @@ export function Blatt({
   // liest der Merge einen mitgeschickten Leerwert als LÖSCHUNG (`services/capture/src/service.ts`,
   // zitiert in `captureFrontDoor.ts`) — ein Blatt ohne Bereichswahl würde sonst die Kategorie eines
   // fremden Entwurfs beim ersten Speichern austragen.
+  // FR-STR-01: die entschiedene Wissensart reist an DERSELBEN Stelle mit (Regel am Helfer).
   const mitBereich = useCallback(
     (rumpf: DraftPayload): DraftPayload =>
-      kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
-    [kategorie],
+      withDecidedKnowledgeType(
+        kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
+        wissensart,
+      ),
+    [kategorie, wissensart],
   );
 
   const changeKategorie = (next: string): void => {
@@ -923,7 +1000,14 @@ export function Blatt({
     setDeclaredConfidentiality(undefined);
     setVertraulichkeitMarkiert(false);
     setKategorie("");
-    savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+    setWissensart(undefined);
+    savedStateRef.current = {
+      title: "",
+      bodyHtml: "",
+      confidentiality: "intern",
+      kategorie: "",
+      wissensart: undefined,
+    };
     bodyNieGeliefertRef.current = false;
     // JOB 3633: Ein neues Blatt trägt keinen Befund über den Entwurf, den es gerade verlassen hat —
     // derselbe Grund wie beim Merker eine Zeile darüber.
@@ -1091,11 +1175,17 @@ export function Blatt({
           ? (draft.payload.confidentiality as Confidentiality)
           : undefined;
         const loadedConfidentiality = confidentialityOf(declared);
+        // FR-STR-01: eine gespeicherte, gültige Wissensart ist eine bestehende Entscheidung — sie
+        // wird geschützt (kein KI-Vorschlag ersetzt sie ungefragt). Fehlt sie, bleibt sie offen.
+        const loadedWissensart = KNOWLEDGE_TYPES_DRAFT.includes(draft.payload.type as KnowledgeType)
+          ? (draft.payload.type as KnowledgeType)
+          : undefined;
         setActiveDraftId(draft.id);
         setGeladenVon({ id: draft.id, autor: draft.originalAuthor, imPool: draft.imPool === true });
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
         setKategorie(draft.payload.category ?? "");
+        setWissensart(loadedWissensart);
         loadedUpdatedAtRef.current = draft.updatedAt ?? null;
         // JOB 3556 R3: ab hier steht ein anderer gespeicherter Stand hinter diesem Blatt.
         setGespeicherterStand((n) => n + 1);
@@ -1114,6 +1204,7 @@ export function Blatt({
           bodyHtml: loadedBody,
           confidentiality: loadedConfidentiality,
           kategorie: draft.payload.category ?? "",
+          wissensart: loadedWissensart,
         };
         setSubmitValidation(false);
         setSubmittedKo(null);
@@ -1199,6 +1290,8 @@ export function Blatt({
     },
     onSuccess: (proposal) => {
       setStructureProposal(proposal);
+      // FR-STR-01: eine entschiedene Wissensart geht vor; sonst steht der KI-Vorschlag vorbelegt.
+      setStructureCardType(structureCardKnowledgeType(wissensart, proposal));
       setStructureErr(null);
     },
     onError: (e: unknown) => {
@@ -1212,7 +1305,8 @@ export function Blatt({
   const assist = useMutation({
     mutationFn: (action: AssistRequest) =>
       endpoints.reasoner.assist(
-        assistInput,
+        // R-0300: die markierte Stelle, wenn es eine gibt — sonst wie bisher der ganze Text.
+        anfrageAuswahlRef.current?.text ?? assistInput,
         locale,
         typeof action === "string" ? t(assistActionInstructionKey(action)) : action.instruction,
         // JOB 3353 A: dieselbe fehlende Kennung wie bei `structure` eine Ebene höher — und dies
@@ -1230,9 +1324,16 @@ export function Blatt({
       setStructureProposal(null);
       setStructureErr(null);
       setStructureAccepted(false);
+      // Eine Markierung zählt nur, wenn der Rumpf sie noch trägt (Entwurfswechsel, Weiterschreiben
+      // ohne Cursor im Feld); sonst gilt der ganze Text.
+      const markierung = markierungRef.current;
+      const auswahl =
+        markierung !== null && auswahlNochGueltig(bodyHtml, markierung) ? markierung : null;
+      anfrageAuswahlRef.current = auswahl;
+      return { auswahl };
     },
-    onSuccess: (proposal, action) => {
-      setAssistProposal({ ...proposal, action });
+    onSuccess: (proposal, action, kontext) => {
+      setAssistProposal({ ...proposal, action, auswahl: kontext?.auswahl ?? null });
       setAssistErr(null);
     },
     onError: (e: unknown) => {
@@ -1274,8 +1375,12 @@ export function Blatt({
         wartendVerworfenRef.current = false;
         return Promise.reject(new WartendesSpeichernVerworfen());
       }
+      // FR-STR-01: die eingefrorene Wissensart reist an derselben Stelle wie der Bereich.
       const mitAuftragsBereich = (rumpf: DraftPayload): DraftPayload =>
-        auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf;
+        withDecidedKnowledgeType(
+          auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf,
+          auftrag.wissensart,
+        );
       if (auftrag.activeDraftId) {
         // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
         // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Rumpf als Löschmarker
@@ -1493,7 +1598,14 @@ export function Blatt({
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
       setKategorie("");
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality, kategorie: "" };
+      setWissensart(undefined);
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality,
+        kategorie: "",
+        wissensart: undefined,
+      };
       setSubmitValidation(false);
       setSearchParams({}, { replace: true });
       clearStructureState();
@@ -1605,6 +1717,7 @@ export function Blatt({
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(false);
+    setStructureCardType(undefined);
   };
 
   const discardAssistProposal = (): void => {
@@ -1628,16 +1741,43 @@ export function Blatt({
     setBodyHtml(result.bodyHtml);
     setStructureKeptRichBody(result.preserved);
     setStructureTitleAdopted(result.titleAdopted);
+    // FR-STR-01: übernommen wird genau die Wissensart, die beim Klick in der Kartenauswahl steht —
+    // vorbelegt, aber vom Menschen bestätigt oder korrigiert. Keine Auswahl ⇒ nichts ändert sich.
+    if (structureCardType !== undefined) {
+      setWissensart(structureCardType);
+    }
+    setStructureCardType(undefined);
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(true);
   };
 
-  const acceptAssistProposal = (): void => {
+  const acceptAssistProposal = (modus: AuswahlModus = "ersetzen"): void => {
     if (!assistProposal) {
       return;
     }
-    if (assistProposal.action === "spelling") {
+    if (assistProposal.auswahl !== null) {
+      // R-0300: nur die markierte Stelle wird ersetzt bzw. hinter ihr eingefügt; alles andere —
+      // Text wie Formatierung — bleibt, wie es ist.
+      const rechtschreibung = assistProposal.action === "spelling";
+      const neu = auswahlUebernehmen(bodyHtml, assistProposal.auswahl, assistProposal.text, {
+        modus,
+        rechtschreibung,
+      });
+      if (neu === null) {
+        // Zwei Gründe, zwei Sätze: die Stelle hat sich geändert — oder (Rechtschreibung) die
+        // Wörter des Vorschlags lassen sich nicht sicher auf die Formatierung verteilen.
+        let grund = rechtschreibung ? "fd.errSpelling" : "fd.errAssist";
+        if (!auswahlNochGueltig(bodyHtml, assistProposal.auswahl)) {
+          grund = "schreibhilfe.auswahlVeraltet";
+        }
+        setAssistErr(t(grund));
+        setAssistAccepted(false);
+        return;
+      }
+      setBodyHtml(neu);
+      markierungRef.current = null;
+    } else if (assistProposal.action === "spelling") {
       const result = applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text);
       if (!result.applied) {
         setAssistErr(t("fd.errSpelling"));
@@ -1665,7 +1805,9 @@ export function Blatt({
     bodyHtml !== savedStateRef.current.bodyHtml ||
     confidentiality !== savedStateRef.current.confidentiality ||
     // JOB 3062 R6 (bens Befund 1): eine geänderte Bereichswahl IST eine ungespeicherte Änderung.
-    kategorie !== savedStateRef.current.kategorie;
+    kategorie !== savedStateRef.current.kategorie ||
+    // FR-STR-01: ebenso eine übernommene, noch nicht gesicherte Wissensart.
+    wissensart !== savedStateRef.current.wissensart;
   const istSchmutzig = inhaltWeichtAb || hasPendingProposal;
 
   // JOB 3106 (UX-01): die Bestätigungszeile steht, SOLANGE das Blatt dem gesicherten Stand
@@ -1694,6 +1836,7 @@ export function Blatt({
       confidentiality,
       gewaehlteVertraulichkeit: declaredConfidentiality,
       kategorie,
+      wissensart,
       activeDraftId,
       bodyNieGeliefert: bodyNieGeliefertRef.current,
       fallbackTitle,
@@ -2117,7 +2260,13 @@ export function Blatt({
       setGesicherterEntwurf(null);
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality: "intern",
+        kategorie: "",
+        wissensart: undefined,
+      };
       if (resumeDraftId === id) {
         setSearchParams({}, { replace: true });
       }
@@ -2818,7 +2967,8 @@ export function Blatt({
               </MenueEintrag>
               <MenueTrenner />
               <MenueEintrag onClick={() => setMehrFlaeche("klara")}>
-                {t("erfassen.mehr.klara")}
+                {/* N-0042: dieselbe Vorschau wie auf Start, derselbe Name (`texte/wordvorschau.ts`). */}
+                {t("wordvorschau.menu")}
               </MenueEintrag>
               {/* Der Knopf „Eingabe verwerfen" der Vordertür. Er bleibt ein BEWUSSTER Schritt mit
                   Rückfrage — nur seine Prominenz auf der Fläche ist weg (Auftrag §5a: „Zurück"
@@ -3161,7 +3311,9 @@ export function Blatt({
                Titel ableiten". Ihre FUNKTION ist nicht verschwunden, sie ist UMGEZOGEN: das
                Titel-Menü des Blattes bietet denselben Vorschlag aus derselben Rangfolge an
                (`titelVorschlag`, oben). Das hier ist die zweite Hälfte desselben Umzugs — ohne sie
-               stünde die Karte doppelt da.
+               stünde die Karte doppelt da. R-0071 (Ben, Nacharbeit 4): verborgen bleibt NUR die
+               gerahmte Karte des Editors; die immer sichtbare Titelzeile mit Herkunft steht als
+               eigene, knappe Zeile des Blattes über dem Schreibfeld (`blatt-titelzeile`).
             2. DER ABLAGEHINWEIS „Bilder hierher ziehen oder einfügen" in der Fußzeile des Editors.
                Sein TEXT ist nicht gelöscht: er steht als eigener Eintrag im „?"-Menü, mit DEMSELBEN
                i18n-Schlüssel — der Ort, an den §5 alle Erklärtexte verweist.
@@ -3252,24 +3404,34 @@ export function Blatt({
                 data-testid="blatt-menue-titel"
                 className="absolute left-0 top-full z-40 mt-1 min-w-[260px] rounded-[10px] border border-hairline bg-surface p-1 shadow-tile"
               >
+                {/* R-0071: „die Herkunft des Vorschlags nennt" — SICHTBAR am Eintrag, nicht nur als
+                    `title`-Tooltip: den gibt es ohne Zeiger (Telefon, Tastatur) nicht. Die Zeile
+                    steht im Menü, also erst, wenn jemand den Titel anfasst (JOB 3062 R6). */}
                 {titelVorschlag ? (
                   <MenueEintrag
-                    titel={t(
-                      titelVorschlag.quelle === "objekttext"
-                        ? "editor.titleSuggest.sourceText"
-                        : "editor.titleSuggest.sourceImage",
-                    )}
                     onClick={() => {
                       changeTitle(titelVorschlag.titel);
                       setOffenesMenue(null);
                     }}
                   >
-                    <span
-                      data-testid="blatt-titelvorschlag"
-                      data-quelle={titelVorschlag.quelle}
-                      className="truncate"
-                    >
-                      {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span
+                        data-testid="blatt-titelvorschlag"
+                        data-quelle={titelVorschlag.quelle}
+                        className="truncate"
+                      >
+                        {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                      </span>
+                      <span
+                        data-testid="blatt-titelvorschlag-herkunft"
+                        className="truncate text-[11px] text-muted-2"
+                      >
+                        {t(
+                          titelVorschlag.quelle === "objekttext"
+                            ? "editor.titleSuggest.sourceText"
+                            : "editor.titleSuggest.sourceImage",
+                        )}
+                      </span>
                     </span>
                   </MenueEintrag>
                 ) : null}
@@ -3289,6 +3451,54 @@ export function Blatt({
               </div>
             ) : null}
           </div>
+
+          {/* ======================================================================================
+              R-0071 (Ben, Nacharbeit 4) — DIE TITELZEILE ÜBER DEM SCHREIBFELD, IMMER SICHTBAR.
+              ======================================================================================
+              „Über dem Schreibfeld steht dafür eine Titelzeile, die immer sichtbar bleibt und die
+              Herkunft des Vorschlags nennt. Lässt sich nichts ableiten, wird nichts erfunden; ein
+              selbst geschriebener Titel wird nie verdrängt." Dazu Pedi 27.08.: „die Titelzeile
+              immer sichtbar lassen, so ist es richtig" — kein hidden, keine Höhe 0.
+
+              JOB 3062 R6 hatte die Karte des Editors verborgen und den Vorschlag ins Titel-Menü
+              gelegt. Eine Entscheidung, die R-0071 für das Blatt aufhebt, ist nicht zugeordnet;
+              der Kommentar dort belegt keine. Deshalb steht die Zeile wieder hier — AUS DERSELBEN
+              QUELLE wie das Menü (`titelVorschlag`, die geprüfte Entscheidung des Editors), also
+              ohne zweite Rangfolge und ohne zweiten Wortlaut.
+
+              WARUM EIN KNOPF UND KEIN ABSATZ: Die Zeile IST die Übernahme — ein Klick setzt den
+              Vorschlag ins Titelfeld, sonst geschieht nichts (kein selbst geschriebener Titel wird
+              verdrängt). Ohne Vorschlag ist sie gesperrt und sagt in drei Wörtern, dass keiner da
+              ist — sie verschwindet nicht. */}
+          <button
+            type="button"
+            data-testid="blatt-titelzeile"
+            data-quelle={titelVorschlag?.quelle ?? "keine"}
+            disabled={titelVorschlag === null || !blattNimmtAn}
+            onClick={() => {
+              if (titelVorschlag) {
+                changeTitle(titelVorschlag.titel);
+              }
+            }}
+            className="-mt-2 flex w-full min-w-0 flex-wrap items-baseline gap-x-1.5 rounded-[8px] px-0 py-0.5 text-left text-[12.5px] leading-snug text-muted enabled:hover:text-text disabled:cursor-default"
+          >
+            {titelVorschlag ? (
+              <>
+                <span className="break-words font-semibold text-ai">
+                  {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                </span>
+                <span data-testid="blatt-titelzeile-herkunft" className="text-muted-2">
+                  {t(
+                    titelVorschlag.quelle === "objekttext"
+                      ? "editor.titleSuggest.sourceText"
+                      : "editor.titleSuggest.sourceImage",
+                  )}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-2">{t("schreibhilfe.titelKeiner")}</span>
+            )}
+          </button>
 
           {/* §5.4: Fehlt der Inhalt beim Einreichversuch, bekommt das FELD den Rand — hier ohne
               Erklärsatz. Das war bis JOB 3114 auch beim Vertraulichkeits-Menü so; dort trägt die
@@ -3378,6 +3588,11 @@ export function Blatt({
               onUebernehmen={changeBodyHtml}
             />
           ) : null}
+
+          {/* AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnelt der Text einem dokumentierten
+              Fehlschlag, steht das OFFEN da — nicht im zugeklappten Chip darunter. Ohne Treffer
+              rendert nichts. */}
+          <NegativwissenHinweis treffer={negativwissen} />
 
           {/* ==========================================================================================
               §5 — EIN STILLER CHIP UNTER DEM BLATT, NUR IM FALL, AUFKLAPPBAR.
@@ -3470,11 +3685,17 @@ export function Blatt({
           {structureProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020: vom Modell erzeugt → Entwurfsfläche (violett, gestrichelt); der
+              // regelbasierte Rückfall behält die ruhige Karte und heisst „Empfehlung" (R-1695).
+              className={`rounded-[10px] p-3 ${structureProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!structureProposal.demo)}
+                className="ml-1.5"
+              />
               {/* WP-D8 (Pedis Live-ROT B) / WP-D10 Fix 3 / WP-SHIP9-S2: Ein Fallback-Kennzeichen
                   allein erklärt nichts. Hier steht ehrlich, WARUM dieser Vorschlag eine einfache
                   Ableitung ist — kein Modell, Modellfehler, Zeitüberschreitung oder
@@ -3507,11 +3728,41 @@ export function Blatt({
               <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
                 {proposalTitleOnly ? t("fd.structureRichTitleOnly") : structureProposal.statement}
               </p>
+              {/* FR-STR-01 (R-0315): die Wissensart des Vorschlags — vorbelegt, korrigierbar,
+                  übernommen erst mit „Übernehmen". Eine bereits entschiedene Wissensart steht
+                  vorne; der abweichende KI-Vorschlag wird daneben genannt, nicht eingesetzt. */}
+              {structureCardType !== undefined ? (
+                <div data-testid="blatt-ki-vorschlag-wissensart" className="mt-2">
+                  <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                    {t("capture.fType")}
+                    <select
+                      value={structureCardType}
+                      onChange={(e) => setStructureCardType(e.target.value as KnowledgeType)}
+                      className="rounded-[8px] border border-hairline bg-page px-2 py-1 text-[13px] text-text"
+                    >
+                      {KNOWLEDGE_TYPES_DRAFT.map((art) => (
+                        <option key={art} value={art} label={t(`ktype.${art}`)} />
+                      ))}
+                    </select>
+                  </label>
+                  {structureProposal.knowledgeType &&
+                  structureProposal.knowledgeType !== structureCardType ? (
+                    <p
+                      data-testid="blatt-ki-vorschlag-wissensart-ki"
+                      className="mt-1 text-[12px] text-muted"
+                    >
+                      {t("fd.aiProposal")}: {t(`ktype.${structureProposal.knowledgeType}`)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {/* mega61 Block E: der dauerhaft sichtbare KI-Satz (Art. 50 Abs. 1 und 5 KI-VO). Er
                   stand an der Vordertür und gehört an JEDE Modellfläche — diese Karte IST die
                   Modellfläche des Blattes. Er steht IN der Karte, nicht auf dem ruhenden Blatt:
-                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt.
+                  R-0604: nur, wenn ein Modell ihn geschrieben hat — den regelbasierten Rückfall
+                  benennt die Rückfall-Plakette darüber, „von KI erzeugt" wäre dort falsch. */}
+              {structureProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -3534,11 +3785,16 @@ export function Blatt({
           {assistProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020 / R-1695: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag.
+              className={`rounded-[10px] p-3 ${assistProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!assistProposal.demo)}
+                className="ml-1.5"
+              />
               {assistProposal.demo ? (
                 <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
                   {t("fd.fallback")}
@@ -3552,19 +3808,40 @@ export function Blatt({
                       : assistProposal.action.instruction,
                 })}
               </p>
+              {/* R-0300: Bezieht sich der Vorschlag auf eine Markierung, steht sie hier — wer
+                  übernimmt, soll sehen, WELCHE Stelle ersetzt wird. */}
+              {assistProposal.auswahl !== null ? (
+                <p
+                  data-testid="blatt-ki-auswahl"
+                  className="mt-1.5 line-clamp-2 whitespace-pre-wrap text-[12px] leading-relaxed text-muted"
+                >
+                  {t("schreibhilfe.auswahlBezug", { text: assistProposal.auswahl.text })}
+                </p>
+              ) : null}
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
-              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche.
+                  R-0604: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag. */}
+              {assistProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={acceptAssistProposal}
+                  onClick={() => acceptAssistProposal("ersetzen")}
                   className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
                 >
                   {t("fd.accept")}
                 </button>
+                {assistProposal.auswahl !== null ? (
+                  <button
+                    type="button"
+                    data-testid="blatt-ki-einfuegen"
+                    onClick={() => acceptAssistProposal("einfuegen")}
+                    className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
+                  >
+                    {t("schreibhilfe.einfuegen")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={discardAssistProposal}

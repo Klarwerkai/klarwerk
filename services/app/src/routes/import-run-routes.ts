@@ -50,8 +50,9 @@ import {
   type ImportRunItemRef,
   type ImportRunRepo,
   importProviderKey,
+  pruefeGapBindung,
+  pruefeInhaltsreferenzBindung,
 } from "../../../library-analytics";
-import { can } from "../../../rbac";
 import type { Guards } from "../http";
 import {
   type ImportRunSourceSync,
@@ -137,6 +138,11 @@ function laufNachAussen(run: ImportRun, abgleich: ImportRunSourceSync | undefine
  */
 function quelleNachAussen(satz: ExternalSourceRecord) {
   const referenz = satz.rawOrRenderedContentReference;
+  const contentReferenceState =
+    referenz === null ? ("NOT_CAPTURED" as const) : ("AVAILABLE" as const);
+  // R-1349: die kanonische Paarregel wird hier am Ausgang WIRKLICH geprüft — bis dahin nannte der
+  // Kommentar sie, aufgerufen wurde sie nicht. Eine leere Referenz mit `AVAILABLE` geht nicht hinaus.
+  pruefeInhaltsreferenzBindung({ contentReferenceState, rawOrRenderedContentReference: referenz });
   return {
     sourceRecordId: satz.sourceRecordId,
     sourceSystem: satz.sourceSystem,
@@ -145,7 +151,7 @@ function quelleNachAussen(satz: ExternalSourceRecord) {
     url: satz.url,
     title: satz.title,
     rawOrRenderedContentReference: referenz,
-    contentReferenceState: referenz === null ? ("NOT_CAPTURED" as const) : ("AVAILABLE" as const),
+    contentReferenceState,
     importedAt: satz.importedAt,
   };
 }
@@ -162,6 +168,9 @@ const KEIN_LUECKENBEZUG: LueckenPaar = {
 
 /** Eine Elementreferenz auf der Leitung, samt des ehrlichen Gap-Paares (siehe Kopf). */
 function elementNachAussen(ref: ImportRunItemRef, luecken: LueckenPaar = KEIN_LUECKENBEZUG) {
+  // R-1349: das Lückenpaar wird am Ausgang geprüft (s. Kopf: „`pruefeGapBindung` erzwingt das
+  // Paar") — eine Liste ohne Relation oder eine leere Kennung geht nicht hinaus.
+  pruefeGapBindung(luecken);
   return {
     importId: ref.importId,
     ordinal: ref.ordinal,
@@ -236,7 +245,8 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
       return { ...nichts, unavailableReason: kiAus ? "KI_ABGESCHALTET" : "LUECKENBEZUG_FEHLER" };
     }
     const { bezug, geprueft, offen } = erhoben;
-    const betrachter = { viewerId: user.id, maySeeDetail: can(user.role, "ko.validate") };
+    // R-0585: Fragetext nur für Fragende und Zuständige — kein Rollenrecht (gap-visibility.ts).
+    const betrachter = { viewerId: user.id };
     return {
       paar: (koId) =>
         sichtbar.has(koId)

@@ -25,9 +25,13 @@ Codes, die die Route **selbst** setzt; dazu kommen immer die allgemeinen Fälle 
 aus diesem Cookie (`tokenFromRequest`, `services/app/src/http.ts`). Der Web-Client nutzt nur das
 Cookie; der Token im Rumpf ist der Weg für Clients ohne Cookies.
 
-**CSRF.** Kein eigener Anti-CSRF-Token. Zustandsändernde Methoden mit Cookie sind durch
-`SameSite=Lax` begrenzt, mit Bearer nicht cookie-gefährdet; Einschätzung und Restrisiko stehen in
-`csrfAssessment` (`csrf.ts`).
+**CSRF.** Kein eigener Anti-CSRF-Token, sondern eine Herkunftsprüfung (`registerHerkunftspruefung`,
+`csrf.ts`; R-0544, R-0797): ein `POST`/`PUT`/`DELETE`/`PATCH` mit Cookie wird nur angenommen, wenn
+`Sec-Fetch-Site` `same-origin` oder `none` meldet — ohne diesen Kopf, wenn `Origin` auf den eigenen
+Host zeigt. Fremde Herkunft, auch eine Nachbar-Unteradresse derselben Site, bekommt `403 FORBIDDEN`,
+bevor Anmeldung oder Rumpf ausgewertet werden. Ohne beide Köpfe (Programmclients) gilt nur
+`SameSite=Lax`. Mit Bearer ist ein Aufruf nicht cookie-gefährdet und wird nicht geprüft;
+Einschätzung und Restrisiko stehen in `csrfAssessment`.
 
 **Rollen und Rechte** (`services/rbac`):
 
@@ -56,7 +60,7 @@ Jede Fehlerantwort ist JSON `{ "error": "<CODE>", "message": "<Text>" }`. Der Te
 | --- | --- | --- |
 | 401 | `UNAUTHENTICATED` | Gemeinsamer Wächter (`makeGuards`, `http.ts`): kein oder ungültiger Token. |
 | 401 | `INVALID_CREDENTIALS` | Dasselbe an den Routen des Anmeldemoduls (eigener `requireUser`), dazu falsche Zugangsdaten. |
-| 403 | `FORBIDDEN` | Recht fehlt (`requirePermission`; die Meldung nennt das fehlende Recht) oder Rolle ist nicht `admin` (`requireAdmin`). |
+| 403 | `FORBIDDEN` | Recht fehlt (`requirePermission`; die Meldung nennt das fehlende Recht) oder Rolle ist nicht `admin` (`requireAdmin`). Ausserdem: schreibender Cookie-Aufruf fremder Herkunft (`registerHerkunftspruefung`, s. §1 CSRF). |
 | 404 | `NOT_FOUND` | Unbekannte Route (Fastify) oder Objekt fehlt bzw. ist für den Anfragenden nicht sichtbar — bewusst dieselbe Antwort. |
 | 400 | Domänencode | `sendError`: jeder Dienstfehler mit Code aus Grossbuchstaben/Unterstrich, Status aus `STATUS_BY_CODE`, sonst 400. |
 | 409 | `CONFLICT`, `STAND_VERALTET`, `EMAIL_TAKEN`, `CLEANUP_DRIFT`, `CREATE_ANCHOR_TAKEN`, `IDEMPOTENCY_PAYLOAD_MISMATCH`, `CREATE_REPAIR_REQUIRED` | `STATUS_BY_CODE` — der Stand hat sich bewegt oder der Schlüssel ist belegt. |
@@ -93,7 +97,12 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/auth/register` | keines (Schalter Selbstregistrierung) | Rumpf `{ name, email, password }` | 201 Konto | 403 `REGISTRATION_DISABLED`; 429 `RATE_LIMITED`; 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 409 `EMAIL_TAKEN` |
-| `POST` | `/api/auth/login` | keines | Rumpf `{ email, password }` | 200 `{ user, token }`, setzt `kw_session` | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `POST` | `/api/auth/login` | keines | Rumpf `{ email, password }` | 200 `{ user, token }`, setzt `kw_session`; bei eigenem zweiten Faktor stattdessen 200 `{ secondFactorRequired: true, challenge, expiresInMs }` ohne Cookie | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `POST` | `/api/auth/login/second-factor` | keines (Anmeldeanfrage + Code sind der Nachweis) | Rumpf `{ challenge, code }` | 200 `{ user, token }`, setzt `kw_session` | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `GET` | `/api/auth/second-factor` | `requireUser` (Modul) | — | 200 `{ active }` | 401 |
+| `POST` | `/api/auth/second-factor/setup` | `requireUser` (Modul) | Rumpf `{ password }` | 200 `{ secret, otpauthUri }` (einmalig) | 401; 403 `FORBIDDEN` (schon eingerichtet / SSO-Konto) |
+| `POST` | `/api/auth/second-factor/confirm` | `requireUser` (Modul) | Rumpf `{ code }` | 200 `{ active: true }` | 401; 403 `FORBIDDEN` (keine offene Einrichtung) |
+| `POST` | `/api/auth/second-factor/disable` | `requireUser` (Modul) | Rumpf `{ password, code }` | 200 `{ active: false }` | 401; 403 `FORBIDDEN` (nicht eingerichtet) |
 | `POST` | `/api/auth/logout` | keines (Token, falls vorhanden) | — | 204, löscht `kw_session` | — |
 | `GET` | `/api/auth/me` | `requireUser` (Modul) | — | 200 eigenes Konto | 401 `INVALID_CREDENTIALS` |
 | `POST` | `/api/auth/office-handover` | `requireUser` (Modul) | — | 201 `{ code, expiresInMs }` (Einmalcode für das Word-Add-in) | 401 `INVALID_CREDENTIALS` |
@@ -105,7 +114,11 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/auth/reset` | keines | Rumpf `{ token, newPassword }` | 204 | 429 `RATE_LIMITED`; Dienstfehler |
 | `GET` | `/api/auth/oidc/start` | keines | — | Weiterleitung zum Anbieter, setzt die Ablauf-Cookies (state, nonce, PKCE) | 501 `OIDC_DISABLED` |
 | `POST` | `/api/auth/oidc` | keines | Rumpf `{ code, state }` | 200 `{ user, token }`, setzt `kw_session` | 501 `OIDC_DISABLED`; 400 `OIDC_INVALID` (state passt nicht); 401 `OIDC_INVALID` (Anmeldung gescheitert) |
-| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, selfRegistrationEnabled }` | — |
+| `GET` | `/api/auth/saml/start` | keines | — | Weiterleitung zum Anbieter mit AuthnRequest (Anfragekennung 10 min, einmalig), setzt den Browsernachweis `kw_saml_bindung` (HttpOnly, Pfad `/api/auth/saml`) | 501 `SAML_DISABLED` |
+| `GET` | `/api/auth/saml/metadata` | keines | — | 200 SP-Metadaten (`application/samlmetadata+xml`) | 501 `SAML_DISABLED` |
+| `POST` | `/api/auth/saml/acs` | keines (signierte SAML-Antwort ist der Nachweis) | Formularfeld `SAMLResponse` | 303 nach `/api/auth/saml/abschluss?code=…` (Abschlusscode 2 min, einmalig) — noch keine Sitzung | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` |
+| `GET` | `/api/auth/saml/abschluss` | keines (Abschlusscode und Browsernachweis des startenden Browsers) | Abfrage `code`, Cookie `kw_saml_bindung` | 303 nach `/` bzw. ins Word-Anmeldefenster, setzt `kw_session` | 501 `SAML_DISABLED`; 401 HTML-Seite mit `SAML_LOGIN_FAILED` (Nachweis fehlt/passt nicht, Code unbekannt/verbraucht) bzw. dem Kontogrund |
+| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, samlEnabled, selfRegistrationEnabled, passwordLoginEnabled }` | — |
 | `POST` | `/api/auth/setup` | keines (nur auf leerer Instanz) | Rumpf `{ name, email, password }` | 201 `{ user, token }`, setzt `kw_session` — erstes Konto, Admin | 409 `ALREADY_SETUP`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/approve` | `requireAdmin` | — | 200 freigegebenes Konto | 401; 403 `FORBIDDEN`; Dienstfehler |
 | `POST` | `/api/auth/users/:id/reset` | `requireAdmin` | Rumpf `{ password }` | 204 | 401; 403; Dienstfehler |
@@ -114,10 +127,33 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
 | `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt? }` | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
+| `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
 | `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
 `401 INVALID_CREDENTIALS`, nicht `UNAUTHENTICATED`.
+
+Bei `KLARWERK_SSO_ONLY=1` antworten `register`, `login`, `forgot` und `reset` mit
+403 `PASSWORD_LOGIN_DISABLED` (Satz `PASSWORD_LOGIN_DISABLED`, ohne eingerichteten Firmen-Login
+`SSO_ONLY_NOT_CONFIGURED`).
+
+#### 3.2a Verzeichnispflege (SCIM 2.0, `verzeichnisRoutes`, nur mit `KLARWERK_SCIM_TOKEN`)
+
+Diese Routen registriert `buildApp` nur, wenn ein Verzeichnisschlüssel (mindestens 32 Zeichen)
+gesetzt ist. Recht: Bearer mit dem Verzeichnisschlüssel (`requireVerzeichnisSchluessel`), keine
+Sitzungsrolle öffnet sie. Antworten als `application/scim+json`; Fehler im SCIM-Format mit
+zusätzlichem Feld `error`. Der letzte Administrator kann über diesen Weg nicht gesperrt oder
+herabgestuft werden (409 `mutability`).
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/scim/v2/ServiceProviderConfig` | Verzeichnisschlüssel | — | 200 Fähigkeiten (PATCH ja, Filter `userName eq`, kein Bulk) | 401 `SCIM_UNAUTHORIZED` |
+| `GET` | `/scim/v2/Users` | Verzeichnisschlüssel | Query `filter` (`userName eq "…"`), `startIndex`, `count` | 200 `ListResponse` | 401 `SCIM_UNAUTHORIZED`; 400 `invalidFilter` |
+| `GET` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 200 SCIM-User | 401 `SCIM_UNAUTHORIZED`; 404 |
+| `POST` | `/scim/v2/Users` | Verzeichnisschlüssel | SCIM-User (`userName`, `displayName`, `active`, `roles`) | 201 angelegtes Konto (Rolle aus `roles`) | 401 `SCIM_UNAUTHORIZED`; 400; 409 `uniqueness` |
+| `PUT` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | SCIM-User (ersetzt Name, Adresse, `active`, `roles`) | 200 Konto | 401 `SCIM_UNAUTHORIZED`; 404; 409 |
+| `PATCH` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | PatchOp für `active`, `userName`, `displayName`, `roles` und den gefilterten Pfad `roles[value eq "…"]` (`remove`/`replace` nur dieses Eintrags) | 200 Konto; gleicht danach die Prüfzuweisungen bestehender Objekte ab | 401 `SCIM_UNAUTHORIZED`; 400 (`invalidPath` für jeden anderen Rollenpfad); 404; 409 |
+| `DELETE` | `/scim/v2/Users/:id` | Verzeichnisschlüssel | — | 204 — Austritt: Konto GESPERRT (nicht gelöscht), Sitzungen enden | 401 `SCIM_UNAUTHORIZED`; 404; 409 `mutability` |
 
 ### 3.3 Wissensobjekte (`koRoutes`, `lesevarianten`, `kanten`, `bearbeitung`, `provenance`)
 
@@ -171,17 +207,24 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `category`, `tags` | `ko.create` | `category` bzw. `tags`, `expectedMetadataRevision?` |
 | `confidentiality` | `ko.create` | Stufe |
 | `ownership` | `ko.validate` | `ownership` |
+| `owner-validate` | `ko.validate`; nur der benannte Eigentümer (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.owner-validated`; Eigentümer in `ownership.validators`) |
+| `ownership-release` | `ko.read`; nur der benannte Eigentümer selbst (sonst 403 `NOT_OWNER`) | — (Spur `reviewers`/`validators` bleibt; Audit `ko.ownership-released`) |
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
 | `revalidate` | `ko.create` | — |
+| `request-revalidation` | `ko.create` | — (antwortet 204; setzt den Merker „Stimmt das noch?" für dieses Objekt — erneute Prüfung aus der Bibliothek, R-1732) |
+| `neighbors-changed` | `ko.validate` | — (antwortet 200 `{ markiert }`; meldet die Änderung aller an dieses Objekt gekoppelten Anlagen und markiert alle Objekte daran, R-0203; nur die Zahl, keine Kennungen) |
+| `confirm-fresh` | `ko.read` | — (antwortet 200 Objekt; „Stimmt weiterhin" — Frische-Signal ohne neue Fassung und ohne Statuswechsel, nur an validierten Objekten, sonst 400 `INVALID`; vom Verantwortlichen verlängert es die Haltbarkeit; Audit `ko.freshness-confirmed`, R-0206/R-0248) |
+| `schutz-oeffentlich` | `ko.validate` | `oeffentlich` (boolean; Schutzbedarf „öffentlich", nur an internen Objekten, sonst 400 `INVALID`; Audit `ko.oeffentlich-changed`, R-0652) |
+| `helpful` | `ko.read` | — (antwortet 204; „Hat geholfen" am Objekt, Trust-Schritt + Audit `answer.helpful`, genau einmal je Person und Objekt, keine Prüfstimme) |
 
 ### 3.4 Entwürfe und Erfassung (`captureRoutes`, `slidesRoutes`, `objectRoutes`, `mediaRoutes`)
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/drafts` | `ko.create` | — | 200 eigene/sichtbare Entwürfe | — |
-| `POST` | `/api/drafts` | `ko.create` | Rumpf `DraftPayload` (`title?`, `statement?`, `type?`, `category?`, `tags?`, `bodyHtml?`, `confidentiality?`, …), `operationId?`, `expectedOwner?` | 201 Entwurf; 200 bei Wiederholung derselben `operationId` | 400 `BAD_REQUEST`; 409 `DRAFT_OWNER_MISMATCH`, `IDEMPOTENCY_PAYLOAD_MISMATCH`; 413 `PAYLOAD_TOO_LARGE` |
+| `POST` | `/api/drafts` | `ko.create` | Rumpf `DraftPayload` (`title?`, `statement?`, `type?`, `category?`, `tags?`, `bodyHtml?`, `confidentiality?`, …), `operationId?`, `expectedOwner?`, `fortschreiben?` (mit `operationId`: geänderter Inhalt schreibt den Entwurf desselben Vorgangs fort, solange er unverändert ist) | 201 Entwurf; 200 bei Wiederholung derselben `operationId`, dann mit `anlage: "bestehend" \| "fortgeschrieben"` | 400 `BAD_REQUEST`; 409 `DRAFT_OWNER_MISMATCH`, `IDEMPOTENCY_PAYLOAD_MISMATCH`; 413 `PAYLOAD_TOO_LARGE` |
 | `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
 | `GET` | `/api/drafts/trash` | `ko.create` | — | 200 gelöschte, sichtbare Entwürfe | — |
 | `DELETE` | `/api/drafts/trash/:id` | `ko.create` | — | 204 | 404 `NOT_FOUND` |
@@ -190,13 +233,14 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf) |
 | `PUT` | `/api/drafts/:id/pool` | `ko.create`, nur Autor | Rumpf `{ imPool: boolean }` | 200 Entwurf (`imPool: true` im gemeinsamen Pool, ohne Feld privat) | 400 `BAD_REQUEST`; 404; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor) |
 | `GET` | `/api/drafts/:id/naechster-schritt` | `ko.create` | — | 200 `{ naechsterSchritt }` oder `{}` | 404; 403 |
+| `GET` | `/api/drafts/:id/gleicher-inhalt` | `ko.create` | — | 200 `{ indexStatus, entwuerfe: [{ id, titel }] }` — nur sichtbare Entwürfe mit gleichem Inhaltshash des technischen Index | 404; 403 |
 | `POST` | `/api/drafts/:id/restore` | `ko.create` | — | 200 wiederhergestellter Entwurf | 404 |
 | `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf); 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
 | `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
 | `POST` | `/api/capture/slides` | `ko.create` (vor dem Einlesen) | Rumpf `{ data }` (Base64 PPTX) | 200 Folienbilder | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE`; 415 `SLIDES_INVALID`; 422 `SLIDES_TIMEOUT`; 429 `RATE_LIMITED`, `CONVERSION_BUSY`; 408 `CLIENT_ABORTED`; 503 `SLIDES_UNAVAILABLE`; 500 `SLIDES_FAILED` |
 | `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |
-| `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt | 404 `NOT_FOUND` |
-| `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp | 404; 415 `UNSUPPORTED` |
+| `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt (`Cache-Control` nach Trägerurteil: vertraulich `no-store`, sonst `private, no-cache, must-revalidate`; `Vary: Cookie, Authorization`) | 404 `NOT_FOUND` (`no-store`) |
+| `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp (Cachevertrag wie oben) | 404; 415 `UNSUPPORTED` (beide `no-store`) |
 | `GET` | `/api/media/status` | `requireUser` | — | 200 Engine-Auskunft | — |
 | `POST` | `/api/media/analyze` | `ko.read` | Rumpf `{ objectId, locale?, confidentiality? }` | 200 Analyse | 404 `NOT_FOUND` |
 
@@ -210,7 +254,9 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
+| `GET` | `/api/conflicts/vorrang/:id` | `ko.read`, Paar sichtbar | Pfad `:id` = Wissensobjekt | 200 Liste festgelegter Vorrang-Beziehungen (R-0263) | — |
 | `POST` | `/api/conflicts/:id/escalate` | `conflict.resolve` | — | 200 Konflikt | Dienstfehler |
+| `POST` | `/api/conflicts/:id/arbeitsart` | `conflict.resolve` | Rumpf `{ arbeitsart: regel\|sache\|version }` | 200 Konflikt (R-0252) | 400 `BAD_REQUEST`, Dienstfehler |
 | `POST` | `/api/conflicts/:id/dismiss` | `conflict.resolve` | Rumpf `{ note? }` | 200 Konflikt | Dienstfehler |
 | `POST` | `/api/conflicts/:id/second-opinion` | `ko.validate` | Rumpf `{ opinion }` | 200 Konflikt | Dienstfehler |
 | `GET` | `/api/duplicate-signal` | `ko.read` | — | 200 eigene Objekte mit offenem Befund | — |
@@ -222,6 +268,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/duplicates/:id/keep-separate` | `ko.validate` | Rumpf `{ note? }` | 200 | Dienstfehler |
 | `POST` | `/api/duplicates/:id/link-related` | `ko.validate` | Rumpf `{ note? }` | 200 | Dienstfehler |
 | `POST` | `/api/duplicates/:id/status` | `ko.validate` | Rumpf `{ status?, reason?, note? }` | 200 | Dienstfehler |
+| `POST` | `/api/duplicates/:id/merge` | `ko.validate`, kein Autor einer Seite, beide Inhalte lesbar, gleicher Space | Rumpf `{ fuehrend: { id, version }, aufgehend: { id, version }, titel, kernaussage, bedingungen[], massnahmen[], quellen[], bestaetigt: true, vermerk? }` | 200 `{ befund, fuehrend, aufgehend }` | 400 `INVALID`, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `CONFLICT` |
 | `GET` | `/api/ai-check/coverage-summary` | `ko.read` | — | 200 Abdeckung der KI-Prüfung | — |
 | `GET` | `/api/audit` | `ko.validate` | Abfrage `actor?`, `action?`, `target?` | 200 Protokolleinträge | — |
 | `GET` | `/api/audit/verify` | `ko.validate` | — | 200 Prüfbericht der Protokollkette | — |
@@ -232,8 +279,11 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | --- | --- | --- | --- | --- | --- |
 | `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
+| `POST` | `/api/ask/report` | `ko.read` | Rumpf `{ koId, receipt, grund: "antwort-falsch" \| "quelle-passt-nicht" }` | 200 Quittung `{ meldungId, koId, koTitle, grund, at, zugestelltAn, bereitsGemeldet }` | 400 `BAD_REQUEST`; 403 `FORBIDDEN`; 404 `NOT_FOUND` |
+| `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
+| `GET` | `/api/gaps/:id/ansprechpartner` | `ko.assign` (Schalter `KLARWERK_EXPERT_MATCHING`) | — | 200 Ansprechpartner nach Wissensspuren | 404 `not_found` ohne Schalter, vor dem Rechtetor; 404 `NOT_FOUND` unbekannte Lücke |
 | `PUT` | `/api/gaps/:id` | `ko.assign` | Rumpf `{ expertId? \| close? \| priority? }` | 200 Lücke | 400 `BAD_REQUEST` |
 | `DELETE` | `/api/gaps/:id` | `ko.validate` | Abfrage `confirm` | 204 | Dienstfehler |
 | `GET` | `/api/klara/ai-status` | `ko.read` | Bindung aus Kopfzeilen des Add-ins | 200 Klara-Status der Sitzung | — |
@@ -245,8 +295,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/klara/sessions/:sessionId/close` | `ko.read` | — | 200 geschlossene Sitzung | Dienstfehler |
 | `POST` | `/api/klara/sessions/:sessionId/zuruf` | `ko.read` | Rumpf `{ text, koIds, art }` | 200 Vorschlag (schreibt nichts) | 503 `NO_FORMULIERER`; Dienstfehler |
 | `GET` | `/api/klara/answers/:answerId/explanation` | `ko.read` | — | 200 Erklärung der Antwort | 404 `NOT_FOUND` |
-| `POST` | `/api/knowledge/check` | `ko.read` | Rumpf `{ text, source?, koId?, draftId?, confidentiality?, nichtEingestuft? }` | 200 Ähnlichkeits-/Widerspruchsbefund | — |
-| `POST` | `/api/check-text` | `ko.read` oder Add-in-Fähigkeit (Schalter `KLARWERK_ADDON_API`) | Rumpf `{ text, title?, locale?, want?, source?, koId?, confidentiality?, nichtEingestuft? }` | 200 Prüfergebnis | 403 `FORBIDDEN`; 400 Formfehler |
+| `POST` | `/api/knowledge/check` | `ko.read` | Rumpf `{ text, source?, koId?, draftId?, confidentiality?, nichtEingestuft? }` | 200 Ähnlichkeits-/Widerspruchsbefund; bei ähnlichem Negativwissen zusätzlich `negativwissen[]` | — |
+| `POST` | `/api/check-text` | `ko.read` oder Add-in-Fähigkeit (Schalter `KLARWERK_ADDON_API`) | Rumpf `{ text, title?, locale?, want?, source?, koId?, confidentiality?, nichtEingestuft?, ungeprueftEinbeziehen? }` — `ungeprueftEinbeziehen: false` beschränkt den Sitzungsweg auf validierten Bestand, `true`/fehlend lässt ihn wie bisher auch Eingereichtes einbeziehen; am Add-in-Schlüssel wirkungslos (immer nur validiert) | 200 Prüfergebnis | 403 `FORBIDDEN`; 400 Formfehler |
 | `POST` | `/api/reasoner` | `ko.read` | Rumpf `{ task, text?, answers?, locale?, instruction?, query?, outputLanguage?, source?, koId?, confidentiality?, nichtEingestuft?, draftId? }` | 200 Ergebnis der Aufgabe | 400 `BAD_REQUEST`; 409 `CONFIDENTIAL_CLOUD_BLOCKED` (mit `reason`); 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/reasoner/describe` | `ko.read` (vor dem Einlesen) | Rumpf `{ dataUrl, locale?, source?, koId?, confidentiality?, nichtEingestuft?, draftId?, context? }` | 200 Bildbeschreibung | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE` |
 | `POST` | `/api/reasoner/enrich` | `ko.create` | Rumpf `{ query, locale? }` | 200 Anreicherung | 400 `BAD_REQUEST`; 403 `PUBLIC_AI_ENRICHMENT_BLOCKED` |
@@ -281,6 +331,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/categories` | `requireUser` | — | 200 `{ categories }` | — |
 | `GET` | `/api/output/sources` | `ko.read` | — | 200 geeignete Quellen | — |
 | `POST` | `/api/output/generate` | `ko.read` | Rumpf `{ kind, koIds, audienceRole? }` | 200 Dokument | 400 `NO_SOURCES`, `NOT_VALIDATED`, `UNKNOWN_KO`, `UNKNOWN_KIND`, `CONFIDENTIAL` |
+| `GET` | `/api/output/wochenupdate` | `ko.read` | Abfrage `bis?` (`JJJJ-MM-TT`, ohne Angabe heute; Zeitraum sieben Tage) | 200 Wissensupdate `{ title, von, bis, generatedAt, eintraege, markdown, provenance }` (nur validiert, nicht vertraulich; schreibt und verschickt nichts) | 400 `BAD_REQUEST` |
 | `POST` | `/api/output/scorm/pruefen` | `ko.read` | Rumpf `{ koIds, sprache: de \| en, empfaenger, titel? }` | 200 Prüfung `{ exportierbar, format, empfaenger, befunde, fassung }` (erzeugt und schreibt nichts) | 400 `BAD_REQUEST` |
 | `POST` | `/api/output/scorm/paket` | `ko.read` | Rumpf wie `/api/output/scorm/pruefen` | 200 `application/zip` (SCORM-1.2-Paket), Kopf `x-klarwerk-exportfassung`, `x-klarwerk-paket-sha256`; Auditeintrag `output.lms-export` | 400 `BAD_REQUEST`; 422 `EXPORT_BLOCKED` mit Prüfung |
 | `GET` | `/api/management/snapshot` | `ko.read` | — | 200 Lagebild | — |
@@ -294,6 +345,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/lifecycle/couple` | `ko.create` | Rumpf `{ assetRef, koId }` | 204 | Dienstfehler |
 | `GET` | `/api/lifecycle/couplings/:koId` | `ko.read`, sichtbar | — | 200 Kopplungen | 404 |
 | `POST` | `/api/lifecycle/asset-changed` | `ko.validate` | Rumpf `{ assetRef }` | 200 betroffene Objekte | Dienstfehler |
+| `POST` | `/api/lifecycle/handover/preview` | `users.manage` | Rumpf `{ from, to }` | 200 Vorschau der Wissensübergabe (Wissensobjekte mit Titel, Eigentum, Hauptverantwortung im Papierkorb mit Titel, Entwürfe/Lücken/Prüfaufgaben als Kennung — derselbe Umfang wie die Ausführung); schreibt nichts | 400 `INVALID` (leer/gleiche Person); 404 `NOT_FOUND` (Nachfolger kein freigeschaltetes Konto) |
+| `POST` | `/api/lifecycle/handover` | `users.manage` | Rumpf `{ from, to }` | 200 `{ uebergeben, fehlgeschlagen }`; Protokoll `lifecycle.handover`, je Objekt `ko.author-transferred`/`ko.ownership` | wie Vorschau |
 | `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |
 | `POST` | `/api/learning-paths` | `ko.create` | Rumpf `{ role, steps: [{ title }] }` | 201 Lernpfad | Dienstfehler |
 | `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
@@ -301,7 +354,11 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/learning-paths/:pathId/progress` | `ko.read` | — | 200 Fortschritt | — |
 | `GET` | `/api/notifications` | `requireUser` | — | 200 Glockenliste | — |
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
-| `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand | — |
+| `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand (`saved`, `helped`, `helpedToday`, `validated` — Name/Foto nur mit Zustimmung) | — |
+| `GET` | `/api/livewall/consent` | `requireUser` | — | 200 `{ nameConsent, photoConsent, photo? }` — eigenes Konto | — |
+| `PUT` | `/api/livewall/photo` | `requireUser` | Rumpf `{ photo }` (PNG/JPEG/WebP als Daten-URL, begrenzt) | 200 `{ photoConsent: true }` — eigenes Foto, Hochladen ist die Zustimmung | 400 `BAD_REQUEST`, 503 `UNAVAILABLE` |
+| `DELETE` | `/api/livewall/photo` | `requireUser` | — | 200 `{ photoConsent: false }` — Widerruf löscht die Bilddaten | — |
+| `PUT` | `/api/livewall/consent` | `requireUser` | Rumpf `{ nameConsent: boolean }` | 200 `{ nameConsent }` — Zustimmung/Widerruf als Prüfprotokoll-Ereignis | 400 `BAD_REQUEST` |
 | `GET` | `/api/me/impact` | `requireUser` | — | 200 eigene Wirkung | — |
 | `GET` | `/api/gesamtanweisungen` | `ko.read` | — | 200 sichtbare Anweisungen | — |
 | `POST` | `/api/gesamtanweisungen` | `ko.create` | Rumpf `{ titel?, zweck?, geltungsbereich?, voraussetzungen? }` | 201 Anweisung | Dienstfehler |
@@ -315,7 +372,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/gesamtanweisungen/:id/vorlegen` | `ko.create` | Rumpf `{ version }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 | `POST` | `/api/gesamtanweisungen/:id/entscheiden` | `ko.validate` | Rumpf `{ version, entscheidung: angenommen \| abgelehnt }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 
-### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`)
+### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
@@ -335,6 +392,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/import/confluence/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
 | `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `GET` | `/api/import/jira/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
 | `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |
 | `POST` | `/api/admin/import/confluence/select` | `users.manage` (Schalter wie oben) | Rumpf `{ prompt?, criteria?, locale?, promptConfidential? }` | 200 Auswahlvorschau | 400 `BAD_REQUEST`; 503 `IMPORT_UNAVAILABLE`; `SELECT_FAILED` |
@@ -346,6 +404,9 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/admin/import/sharepoint/files` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, ids? }` | 200 `{ dateien, truncated, nurBefunde, befunde }` | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_TOO_MANY`; 403/404/502 `SHAREPOINT_*` |
 | `POST` | `/api/admin/import/sharepoint/folder-apply` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, fortsetzung? }` | 200 Übernahmebilanz eines Ordners (in Losen) | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`, `FORTSETZUNG_ORDNER`; 409 `FORTSETZUNG_UNBEKANNT`, `FORTSETZUNG_BELEGT` |
 | `POST` | `/api/admin/import/sharepoint/apply` | `users.manage` (Schalter wie oben) | Rumpf `{ ids }` | 200 Übernahmebilanz | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_EMPTY_SELECTION`, `APPLY_TOO_MANY` |
+| `POST` | `/api/admin/import/jira/issues` | `users.manage` (Schalter `KLARWERK_JIRA_IMPORT`) | Rumpf `{ fortsetzung? }` | 200 `{ projekt, vorgaenge, fortsetzung }` (lesend) | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`; 403/404/502 `JIRA_*` |
+| `POST` | `/api/admin/import/jira/apply` | `users.manage` (Schalter wie oben) | Rumpf `{ keys }` | 200 Übernahmebilanz `{ imported, alreadyQueued, failed, notFound, vorgaenge, importId? }` | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_EMPTY_SELECTION`, `APPLY_TOO_MANY`; 403 `JIRA_FORBIDDEN`, `JIRA_ROLES_FORBIDDEN`; 404/502 `JIRA_*` |
+| `POST` | `/api/admin/import/jira/project-apply` | `users.manage` (Schalter wie oben) | Rumpf `{ fortsetzung? }` | 200 Übernahmebilanz einer Projektseite samt `fortsetzung`, `projektAbgeschlossen` | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`; 403 `JIRA_FORBIDDEN`, `JIRA_ROLES_FORBIDDEN`; 404/502 `JIRA_*` |
 
 ### 3.9 Älteres Klara-Add-in (`addinStaticRoutes`, Schalter `KLARWERK_ADDON_API`)
 
