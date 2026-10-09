@@ -51,10 +51,27 @@ async function bild(page: Page, name: string): Promise<void> {
   });
 }
 
+/**
+ * Die Lage im FORMULAR, nicht im Blickfeld. `boundingBox()` misst relativ zum sichtbaren
+ * Ausschnitt — und `click()` scrollt den Knopf vorher ins Bild. Nacharbeit 5: der rote Lauf maß
+ * damit 879 px „Sprung", der in Wahrheit der Bildlauf des Klicks war (Fehlerbild: Knöpfe über der
+ * Meldung, an ihrer Stelle). Gemessen wird deshalb der Abstand zur Oberkante des Pflichtüberblicks
+ * am Kopf desselben Formulars — beide Ränder im selben Augenblick gelesen. Ein Bildlauf (Fenster
+ * oder innerer Bereich) verschiebt beide gleich; nur was im Formular darüber wächst, zählt.
+ */
+const BEZUG = "bib-pflicht-ueberblick";
+
 async function oben(page: Page, testId: string): Promise<number> {
-  const box = await page.getByTestId(testId).boundingBox();
-  expect(box, `${testId} hat keine Fläche`).not.toBeNull();
-  return box?.y ?? Number.NaN;
+  await expect(page.getByTestId(testId), `${testId} fehlt`).toHaveCount(1);
+  await expect(page.getByTestId(BEZUG), `${BEZUG} fehlt`).toHaveCount(1);
+  return page.evaluate(
+    ([ziel, bezug]) => {
+      const rand = (id: string): number =>
+        document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect().top ?? Number.NaN;
+      return rand(ziel) - rand(bezug);
+    },
+    [testId, BEZUG] as const,
+  );
 }
 
 async function formularOeffnen(page: Page, id: string): Promise<void> {
