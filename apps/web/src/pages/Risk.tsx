@@ -21,6 +21,7 @@ import { HelpTip } from "../components/HelpTip";
 import { LueckenAnsprechpartner } from "../components/LueckenAnsprechpartner";
 import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { nurOffeneLuecken, offeneLuecken } from "../lib/adminUebersicht";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import { leseFall } from "../lib/fallAbsprung";
@@ -112,6 +113,7 @@ export function Risk(): JSX.Element {
   // Sicht, sobald die Liste sie trägt. Ohne Treffer bleibt die Seite, wie sie war.
   const [params] = useSearchParams();
   const zielLuecke = leseFall(params);
+  const nurOffene = nurOffeneLuecken(params);
   const zielZeile = useRef<HTMLDivElement | null>(null);
   const zielGezeigt = useRef(false);
   const lueckenGeladen = gaps.data !== undefined;
@@ -427,11 +429,30 @@ export function Risk(): JSX.Element {
         {/* SCRUM-283: ehrlich + datensparsam — gespeicherte Fragen sind offene Lücken (keine Antwort/
             kein validiertes Wissen); beim Erfassen keine sensiblen Details, geprüfte Erfahrung ergänzen. */}
         <p className="mb-2 text-[12px] text-muted-2">{t(gapPrivacyNoticeKey())}</p>
+        {/* ADMIN-01: Ziel des Zählers „Offene Wissenslücken" der Verwaltung. Der Filter steht in der
+            Adresse (`?luecken=offen`) und wählt mit DERSELBEN Regel wie der Zähler
+            (`offeneLuecken`) aus DERSELBEN Abfrage (`["gaps"]`). */}
+        {nurOffene ? (
+          <div
+            data-testid="filter-luecken"
+            className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted"
+          >
+            <span>{t("verwaltung.filter.offeneLuecken")}</span>
+            <Link to="/risiko" className="text-text underline underline-offset-2">
+              {t("verwaltung.filter.aufheben")}
+            </Link>
+          </div>
+        ) : null}
         <QueryState query={gaps} emptyText={t("risk.gapsEmpty")}>
           {(items) => (
             <Card className="p-0">
               <div className="divide-y divide-hairline">
-                {sortGapsByPriority(items).map((g) => (
+                {nurOffene && offeneLuecken(items).length === 0 ? (
+                  <div className="px-4 py-2.5 text-[13px] text-muted">
+                    {t("verwaltung.filter.keineOffenen")}
+                  </div>
+                ) : null}
+                {sortGapsByPriority(nurOffene ? offeneLuecken(items) : items).map((g) => (
                   <div
                     key={g.id}
                     data-testid="luecke-zeile"
