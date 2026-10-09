@@ -2506,8 +2506,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Quelldateien (707 → 712) kamen mit dem eingemischten Hauptstand und sind ohne Git-Verlauf hier
     // nicht namentlich bestimmt. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
     // `traeger` 2 sind unverändert.
+    //
+    // ADMIN-02 Nacharbeit 21 · GEMESSEN 548. Am Kandidaten 6f186539 meldete der Sammler wörtlich
+    // „gemessen: 548 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 713 Quelldateien …
+    // expected { komponenten: 548, … } to deeply equal { komponenten: 547, … }". `git diff --stat
+    // 22afabdb 6f1865396 -- apps/web/src` nennt ausschließlich Dateien der eingemischten Aufträge
+    // „Dialoggrenzen, Tastaturfokus und Vorleseansagen" und „Inhaltsqualität ohne Personenwertung"
+    // (u. a. ModalBoundaryContext, erfassen/Blatt, erfassen/Menue, texte/tragfaehigkeit); keine
+    // Quelldatei dieses Auftrags. Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und
+    // `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 547,
+      komponenten: 548,
       anbieter: 1,
       traeger: 2,
     });
