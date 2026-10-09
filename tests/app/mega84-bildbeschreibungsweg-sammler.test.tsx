@@ -2540,8 +2540,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // berührte nur das Smoke-Mengenmanifest); die ZWEI Komponenten und drei Quelldateien
     // (709 → 712) kamen mit dem Basisstand dieses Kandidaten und sind ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 27: GEMESSEN 548. Am Kandidaten e1a84f27 (nach dem
+    // Basiswechsel 26 auf main 5308f426) meldete der Sammler wörtlich „gemessen: 548 Komponenten ·
+    // 1 Anbieter · 2 Traeger · Grundmenge 712 Quelldateien … expected { komponenten: 548, … } to
+    // deeply equal { komponenten: 546, … }". Die Grundmenge blieb bei 712; die ZWEI Komponenten
+    // kamen also in bereits gezählten Quelldateien mit dem Basisstand hinzu. Dieser Auftrag hat seit
+    // Nacharbeit 17 keine Quelldatei der Grundmenge geändert; namentlich sind die zwei ohne
+    // Git-Verlauf an diesem Arbeitsbaum nicht bestimmt. `anbieter` 1 und `traeger` 2 unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 546,
+      komponenten: 548,
       anbieter: 1,
       traeger: 2,
     });
