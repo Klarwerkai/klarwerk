@@ -110,6 +110,7 @@ am Konflikt, **nicht** im Protokoll.
 | `examples.load`, `demoPackage.*` | Zähler | Z |
 | `upload.limits.set` | Grenzwerte | Z |
 | `branding.set` | `vorherProfil`, `vorherAktiv`, `profil`, `aktiv`, `version` | Z |
+| `i18n.text-set`, `i18n.text-reset`, `i18n.language-set` | `sprache`, `schluessel` (nur bei Texten) | M — der gepflegte Text steht **nicht** im Protokoll (nachgetragen mit R-1034) |
 | `begriff.angelegt`, `begriff.geaendert` | `version`/`vorherVersion`, `geltungsbereich` | Z, M — der Begriffstext steht **nicht** im Protokoll |
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
