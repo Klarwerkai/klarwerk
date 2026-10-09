@@ -19,6 +19,9 @@ import { tokenFromRequest } from "./http";
 /** Die Routen, deren Aufruf ein Modell (und damit Kosten) auslösen kann — kanonische Fastify-Pfade. */
 export const KI_ROUTEN: readonly { readonly methode: "POST"; readonly pfad: string }[] = [
   { methode: "POST", pfad: "/api/ask" },
+  // R-0700: Klaras eigener, sitzungsgebundener Ausführungszugang — die Klara-Fragen, die bis dahin
+  // über `/api/ask` liefen (und dort gebremst wurden), laufen jetzt hier.
+  { methode: "POST", pfad: "/api/klara/sessions/:sessionId/execute" },
   { methode: "POST", pfad: "/api/reasoner" },
   { methode: "POST", pfad: "/api/reasoner/describe" },
   { methode: "POST", pfad: "/api/reasoner/enrich" },
