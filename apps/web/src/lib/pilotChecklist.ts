@@ -51,7 +51,9 @@ export const PILOT_CHECKLIST: readonly PilotCheckItem[] = [
   { id: "validation", n: 4, labelKey: "pilot.check.validation", to: "/validierung" },
   { id: "use", n: 5, labelKey: "pilot.check.use", to: "/fragen" },
   { id: "gap", n: 6, labelKey: "pilot.check.gap", to: "/risiko" },
-  { id: "maintain", n: 7, labelKey: "pilot.check.maintain", to: "/lebenszyklus" },
+  // R-1176: der Text zitiert den Knopf „Aktuell halten“ in allen drei Sprachen zeichengleich
+  // (`texte/knopfzitat.ts`); `pilot.check.maintain` nannte ihn englisch „Keep current“.
+  { id: "maintain", n: 7, labelKey: "knopfzitat.pilot.pflegen", to: "/lebenszyklus" },
 ];
 
 // R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `pilotChecklist()`, das die Tabelle oben
