@@ -21,8 +21,10 @@ import {
 // InMemory-Dedupe, Pending-Abgleiche/Statuskarten und (gespiegelt) das Pg-Index-Prädikat.
 export const OPEN_REVIEW_STATUSES = ["neu", "in_bearbeitung"] as const;
 
+// R-1349: die EINE Definition oben wird hier gelesen, statt die beiden Zustände ein zweites Mal
+// als Literal zu führen — vorher war die Liste gebaut, aber von niemandem gelesen.
 export function isOpenReviewStatus(status: ReviewStatus): boolean {
-  return status === "neu" || status === "in_bearbeitung";
+  return (OPEN_REVIEW_STATUSES as readonly ReviewStatus[]).includes(status);
 }
 
 // SCRUM-157: Persistenz-Schnittstelle der Import-/Source-Review-Queue. Einziger Unterschied

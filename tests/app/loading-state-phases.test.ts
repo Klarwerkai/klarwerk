@@ -3,7 +3,6 @@ import {
   type HasData,
   groupLoadPhase,
   isGroupError,
-  isGroupLoaded,
   isGroupLoading,
   isGroupStale,
 } from "../../apps/web/src/lib/loadingState";
@@ -19,8 +18,8 @@ const refetchError = (v: unknown): HasData => ({ data: v, isError: true });
 
 describe("Block B: loadingState — loading | loaded | error + stale", () => {
   it("alle Quellen mit Daten ⇒ loaded", () => {
+    // R-1349: `isGroupLoaded` ist entfernt (kein Produktleser) — die Flächen fragen die Phase.
     expect(groupLoadPhase([ready([]), ready(0)])).toBe("loaded");
-    expect(isGroupLoaded([ready([]), ready(0)])).toBe(true);
   });
 
   it("noch keine Daten, kein Fehler ⇒ loading (nicht error)", () => {

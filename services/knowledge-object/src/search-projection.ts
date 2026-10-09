@@ -253,10 +253,8 @@ export function reconstructedClassification(ko: KnowledgeObject): Classification
   };
 }
 
-/** Ist der Wert eine bestätigte historische Aussage — oder nur ein rekonstruierter Hinweis? */
-export function isReconstructedClassification(snapshot: ClassificationSnapshot): boolean {
-  return snapshot.provenance === "reconstructed_from_current_ko";
-}
+// R-1349: Das Prädikat `isReconstructedClassification` (provenance === rekonstruiert) rief kein
+// Produktweg; keine Entscheidung hängt an der Herkunft. Es ist entfernt; die Tests prüfen das Feld.
 
 // Kanonische Serialisierung für die Persistenz UND für den `content_hash` (Detailentscheidung J):
 // FESTE Schlüsselreihenfolge, damit dieselbe Aussage nie zwei verschiedene Textfassungen hat (und
@@ -373,34 +371,11 @@ export interface KoSearchProjection {
   updatedAt: string;
 }
 
-// Der Feldvertrag als Datum — damit ein Test ihn prüfen kann, statt ihn abzuschreiben. Die
-// Reihenfolge ist die der Architekturentscheidung und die der Tabellenspalten.
-export const SEARCH_PROJECTION_FIELDS = [
-  "koId",
-  "koVersion",
-  "projectionVersion",
-  "searchText",
-  "titleText",
-  "statementText",
-  "captionText",
-  "bodyText",
-  "language",
-  "contentHash",
-  "status",
-  "classificationSnapshot",
-  "createdAt",
-  "updatedAt",
-] as const;
-
-// Die INHALTLICHEN Felder DIESER Projektion, aus denen ein Treffer entstehen kann. `searchText` ist
-// ihre Vereinigung und steht deshalb nicht in der Liste. Kategorie und Schlagwörter fehlen hier
-// nicht aus Versehen: sie sind kein Inhalt dieser Revision (s. Kopf).
-export const SEARCH_PROJECTION_MATCH_FIELDS = [
-  "titleText",
-  "statementText",
-  "captionText",
-  "bodyText",
-] as const;
+// R-1349: Der Feldvertrag stand hier zusätzlich als Liste `SEARCH_PROJECTION_FIELDS` (für Tests) und
+// die Trefferfelder als `SEARCH_PROJECTION_MATCH_FIELDS` (titleText, statementText, captionText,
+// bodyText — Kategorie und Schlagwörter sind kein Inhalt dieser Revision). Keine las ein Produktweg;
+// den Vertrag trägt der Typ oben. Die Feldliste liegt in `tests/support/projektion-feldvertrag.ts`,
+// die Trefferliste las niemand und ist entfernt.
 
 // ------------------------------------------------------------------------------------------------
 // SICHTBARER TEXT AUS bodyHtml
@@ -1112,17 +1087,11 @@ export const SUCH_ZUORDNUNGEN: readonly SuchZuordnung[] = [
   },
 ];
 
-/** Was diese Erweiterung zusichert — als Datum, damit ein Test es lesen kann. */
-export const S2_ERWEITERUNG_GRENZE = {
-  /** Kein Modellaufruf, kein Egress, keine Netzverbindung. */
-  brauchtNetz: false,
-  /** Der semantische Vorfilter bleibt unberuehrt und AUS. */
-  ruehrtVorfilterAn: false,
-  /** Nur deklarierte Paare — nichts wird abgeleitet oder uebersetzt. */
-  leitetAb: false,
-  /** Die Eingabeterme bleiben erhalten; es wird nur ergaenzt. */
-  entferntTerme: false,
-} as const;
+// Was diese Erweiterung zusichert: kein Modellaufruf und kein Netz, der semantische Vorfilter
+// bleibt unberuehrt, nur deklarierte Paare (nichts wird abgeleitet), die Eingabeterme bleiben
+// erhalten. R-1349: Diese Zusicherung stand bis hierher zusaetzlich als Konstante
+// `S2_ERWEITERUNG_GRENZE`, die kein Produktweg las; gemessen wird sie in `s2-synonyme.test.ts`
+// (E1–E6, G1–G2) und am Fragepfad (`n2-klara-versteht-zusammensetzungen.test.ts`, F4/F5).
 
 /** Der Index: Begriff -> die anderen Begriffe derselben Zuordnung. Einmal gebaut, nicht je Abfrage. */
 const ZUORDNUNGS_INDEX: ReadonlyMap<string, readonly string[]> = (() => {

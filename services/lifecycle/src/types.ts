@@ -9,14 +9,5 @@ export interface LearningPath {
   steps: LearningStep[];
 }
 
-export type LifecycleErrorCode = "NOT_FOUND";
-
-export class LifecycleError extends Error {
-  readonly code: LifecycleErrorCode;
-
-  constructor(code: LifecycleErrorCode, message: string) {
-    super(message);
-    this.code = code;
-    this.name = "LifecycleError";
-  }
-}
+// R-1349: Die Fehlerklasse `LifecycleError` (Code NOT_FOUND) warf kein Produktweg; der Lebenszyklus
+// meldet über die Fehler seiner Nachbardienste. Sie ist entfernt.

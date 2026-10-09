@@ -372,6 +372,8 @@ export function authRoutes(
     recoveryRateLimiter?: LoginRateLimiter | undefined;
     // WP-VIP2-GATE: injizierbarer Registrierungs-Limiter (Tests mit eigener Uhr/Schwelle).
     registerRateLimiter?: LoginRateLimiter | undefined;
+    // R-0562: injizierbarer Limiter für den zweiten Anmeldeschritt (falsche Codes je IP).
+    secondFactorRateLimiter?: LoginRateLimiter | undefined;
     /**
      * R-0554 — DER AUSLÖSER AUS DER VERZEICHNISPFLEGE. Entfernt die Verwaltung ein Konto und nennt
      * dabei einen Nachfolger (`DELETE /api/users/:id?nachfolger=…`), läuft VOR dem Entfernen die
@@ -404,6 +406,8 @@ export function authRoutes(
       maxAttempts: REGISTER_MAX_ATTEMPTS_PER_MINUTE,
       windowMs: REGISTER_WINDOW_MS,
     });
+  const secondFactorLimiter =
+    options.secondFactorRateLimiter ?? new LoginRateLimiter({ maxAttempts: 10 });
   return async (app) => {
     const requireUser = async (
       request: FastifyRequest,
@@ -550,7 +554,20 @@ export function authRoutes(
           return;
         }
         try {
-          const { token, user } = await service.login(request.body);
+          const ergebnis = await service.anmelden(request.body);
+          // R-0562: Passwort richtig, aber das Konto hat einen eigenen zweiten Faktor. KEINE
+          // Sitzung, KEIN Cookie — nur die kurzlebige Anmeldeanfrage für den zweiten Schritt.
+          // Der Fehlversuchszähler bleibt stehen: zurückgesetzt wird erst nach vollständiger
+          // Anmeldung, sonst setzte jedes richtige Passwort auch das Raten am Code zurück.
+          if ("secondFactor" in ergebnis) {
+            reply.code(200).send({
+              secondFactorRequired: true,
+              challenge: ergebnis.secondFactor.challenge,
+              expiresInMs: ergebnis.secondFactor.expiresInMs,
+            });
+            return;
+          }
+          const { token, user } = ergebnis;
           // Erfolg → Fehlversuchszähler für diesen Schlüssel zurücksetzen (risikoarm).
           loginLimiter.reset(limiterKey);
           reply.header("set-cookie", sessionCookie(token));
@@ -567,6 +584,118 @@ export function authRoutes(
           if (error instanceof AuthError && error.code === "INVALID_CREDENTIALS") {
             loginLimiter.registerFailure(limiterKey);
           }
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    // R-0562: der zweite Anmeldeschritt — Anmeldeanfrage + Code vom zweiten Gerät ⇒ Sitzung.
+    // Gedrosselt je IP (zusätzlich zur Grenze von fünf Versuchen je Anfrage im Dienst); nur falsche
+    // Codes zählen, wie beim Passwort.
+    app.post<{ Body: { challenge?: unknown; code?: unknown } }>(
+      "/api/auth/login/second-factor",
+      async (request, reply) => {
+        // R-0541 × R-0562: der Codeschritt ist die Fortsetzung des Passwortwegs. Wird die Anmeldung
+        // mit Passwort abgeschaltet, stellt auch eine noch offene Anmeldeanfrage keine Sitzung aus.
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
+        const limiterKey = secondFactorLimiter.keyFor(request.ip, "second-factor");
+        const limit = secondFactorLimiter.check(limiterKey);
+        if (limit.limited) {
+          reply.header("Retry-After", String(limit.retryAfterSeconds));
+          reply.code(429).send({
+            error: "RATE_LIMITED",
+            message: meldung("SECOND_FACTOR_RATE_LIMITED", sprache(request)),
+          });
+          return;
+        }
+        const body = (request.body ?? {}) as { challenge?: unknown; code?: unknown };
+        try {
+          const { token, user } = await service.anmeldenMitZweitemFaktor(
+            typeof body.challenge === "string" ? body.challenge : "",
+            typeof body.code === "string" ? body.code : "",
+          );
+          secondFactorLimiter.reset(limiterKey);
+          reply.header("set-cookie", sessionCookie(token));
+          reply.code(200).send({ user, token });
+        } catch (error) {
+          if (error instanceof AuthError && error.code === "INVALID_CREDENTIALS") {
+            secondFactorLimiter.registerFailure(limiterKey);
+          }
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    // R-0562: Einrichten und Abschalten des eigenen zweiten Faktors — nur für das EIGENE Konto
+    // (der Nutzer kommt aus der Sitzung, nie aus dem Pfad).
+    app.get("/api/auth/second-factor", async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await service.secondFactorStatus(user.id));
+    });
+
+    app.post<{ Body: { password?: unknown } }>(
+      "/api/auth/second-factor/setup",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { password?: unknown };
+        try {
+          const einrichtung = await service.secondFactorSetupStart(
+            user.id,
+            typeof body.password === "string" ? body.password : "",
+          );
+          // Das Geheimnis verlässt den Server genau hier und nur einmal; nicht protokolliert.
+          reply.header("cache-control", "no-store");
+          reply.code(200).send(einrichtung);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    app.post<{ Body: { code?: unknown } }>(
+      "/api/auth/second-factor/confirm",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { code?: unknown };
+        try {
+          const stand = await service.secondFactorSetupConfirm(
+            user.id,
+            typeof body.code === "string" ? body.code : "",
+          );
+          reply.code(200).send(stand);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    app.post<{ Body: { password?: unknown; code?: unknown } }>(
+      "/api/auth/second-factor/disable",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { password?: unknown; code?: unknown };
+        try {
+          const stand = await service.secondFactorDisable(
+            user.id,
+            typeof body.password === "string" ? body.password : "",
+            typeof body.code === "string" ? body.code : "",
+          );
+          reply.code(200).send(stand);
+        } catch (error) {
           sendError(reply, error, sprache(request));
         }
       },
@@ -1557,6 +1686,23 @@ export function authRoutes(
         sendError(reply, error, sprache(request));
       }
     });
+
+    // R-0562: der Weg zurück bei verlorenem zweiten Gerät — der Admin nimmt den zweiten Faktor weg.
+    app.delete<{ Params: { id: string } }>(
+      "/api/users/:id/second-factor",
+      async (request, reply) => {
+        const admin = await requireAdmin(request, reply);
+        if (!admin) {
+          return;
+        }
+        try {
+          await service.secondFactorReset(request.params.id, admin.id);
+          reply.code(204).send();
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
 
     app.delete<{
       Params: { id: string };
