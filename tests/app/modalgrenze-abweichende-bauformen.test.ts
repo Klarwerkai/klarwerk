@@ -1581,6 +1581,30 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(2);
   });
 
+  it("Nacharbeit 27: berechnete Marke aus einem inline typisierten Parameter (Bauform GrenzDialog)", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Marke.tsx": [
+          "export function Offen({ marke }: { marke?: string | undefined }): JSX.Element {",
+          '  return <div {...(marke ? { [marke]: "" } : {})} />;',
+          "}",
+          "export function Daten({ marke }: { marke?: `data-${string}` | undefined }): JSX.Element {",
+          '  return <div {...(marke ? { [marke]: "" } : {})} />;',
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // Ein beliebiger String kann `role` sein — das bleibt rot (Sollwert unverändert).
+    expect(an("components/Marke.tsx:2")[0]).toContain("statisch nicht bestimmbar");
+    // Der Datenattribut-Vertrag schliesst jeden Modalmarker aus.
+    expect(an("components/Marke.tsx:5"), "data-${string} setzt weder role noch aria-modal").toEqual(
+      [],
+    );
+    expect(rot).toHaveLength(1);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({
