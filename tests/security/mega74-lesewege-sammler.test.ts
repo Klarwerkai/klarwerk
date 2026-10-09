@@ -2242,6 +2242,406 @@ function pruefeDienstweg(
 
 const LIES_AUS_DEM_BAUM = (datei: string): string => readFileSync(join(REPO_WURZEL, datei), "utf8");
 
+// ================================================================================================
+// NACHARBEIT 9 (Befund ben, R-1175) — AUSGÄNGE AUSSERHALB DER ROUTEN.
+// ================================================================================================
+//
+// Bis hierher erhob der Sammler ausschliesslich Routenregistrierungen. Der integrierte Hauptstand
+// hat mit `WissensereignisMelder` (services/app/src/wissensereignisse.ts) einen Weg, der Kennungen,
+// Fassungen und Ereignisse von Wissensobjekten SELBST an Fremdwerkzeuge schickt — ohne Route. Er
+// war für den Wächter unsichtbar.
+//
+// Jetzt erhebt der Sammler zusätzlich jede AUSGANGSSTELLE in `services/**` selbst, ohne Dateiliste:
+//   · jeder Aufruf eines Bezeichners, dessen Name `fetch` enthält (`fetch`, `fetchFn`, `doFetch`,
+//     `fetchMitSignal` …), und `globalThis.fetch(…)`;
+//   · jeder Aufruf einer aus `http`/`https`/`http2`/`net`/`tls` eingeführten Netzfunktion (`request`,
+//     `get`, `connect`, `createConnection` — auch umbenannt oder über den Namensraum);
+//   · jedes `….sendMail(…)`, jedes `new WebSocket(…)`/`new EventSource(…)`.
+// Jede Datei mit Ausgangsstellen braucht GENAU EIN Urteil in `AUSGAENGE`; eine neue ist rot mit
+// Datei und Zeile, ein Urteil ohne Ausgangsstelle ebenfalls. Das Urteil SCHUTZ_VOR_VERSAND wird
+// nachgegangen: die Ausgangsfunktion ist nur über die genannte Verbindung erreichbar, jeder Versand
+// über sie steht hinter einer Abbruchprüfung durch den Wächter, und der Wächter ruft über eine
+// Kette die zentrale Entscheidung.
+//
+// BENANNTE GRENZEN: Eine Ausgangsstelle wird über die Bauform des Aufrufs erkannt. Ein Netzaufruf
+// über einen Bezeichner ohne `fetch` im Namen, der nicht aus einem Netzmodul eingeführt ist (etwa
+// eine weitergereichte Funktion unter anderem Namen), bleibt unerkannt. KEIN_KO_INHALT und
+// AUFTRAGSVERARBEITER sind LESEURTEILE mit Fundstelle, keine Messungen.
+
+type Ausgangsurteil =
+  // Der Ausgang trägt keinen Inhalt eines Wissensobjekts (Abruf an eine Quelle, Anmeldung, Mail
+  // mit Kontotext oder blosser Kennung). LESEURTEIL.
+  | "KEIN_KO_INHALT"
+  // Empfänger ist ein vom Betreiber konfigurierter Verarbeiter (KI-Anbieter, Transkription), keine
+  // Person mit eigener Sicht. Die Personensichtbarkeit entscheidet der Weg, der das Ergebnis
+  // ausgibt (Routenwächter); Vertrauliches sperrt der Egress-Chokepoint. LESEURTEIL.
+  | "AUFTRAGSVERARBEITER"
+  // Der Ausgang geht an Fremdwerkzeuge und steht hinter der zentralen Entscheidung. NACHGEPRÜFT.
+  | "SCHUTZ_VOR_VERSAND";
+
+interface Ausgangseintrag {
+  urteil: Ausgangsurteil;
+  grund: string;
+  /** Bei SCHUTZ_VOR_VERSAND: die Funktion, in der die Ausgangsstellen stehen. */
+  ausgangsfunktion?: string;
+  /** … der Name, unter dem sie gerufen wird (`this.zusteller = … ?? fetchZusteller`). */
+  verbindung?: string;
+  /** … die Funktion, die über die Verbindung versendet. */
+  versand?: string;
+  /** … der Wächter, der jeden Versand vorher abbrechen kann. */
+  waechter?: string;
+  /** … der Weg vom Wächter zur zentralen Entscheidung (erstes Glied = Wächter). */
+  kette?: readonly Glied[];
+  entscheidung?: string;
+}
+
+const AUSGAENGE: Record<string, Ausgangseintrag> = {
+  "services/app/src/wissensereignisse.ts": {
+    urteil: "SCHUTZ_VOR_VERSAND",
+    ausgangsfunktion: "fetchZusteller",
+    verbindung: "zusteller",
+    versand: "stelleZu",
+    waechter: "nochMeldbar",
+    kette: [
+      { datei: "services/app/src/wissensereignisse.ts", funktion: "nochMeldbar" },
+      { datei: "services/app/src/wissensereignisse.ts", funktion: "meldbar" },
+    ],
+    entscheidung: "darfSehen",
+    grund:
+      "Webhook-Versand: jede Zustellung prüft unmittelbar davor frisch nochMeldbar → meldbar → " +
+      "darfSehen (Betrachter viewer ohne Spaces) und bricht sonst ab.",
+  },
+  "services/notifications/src/smtp.ts": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Mailversand: Kontotexte (Rücksetzen, Freigabe) und bei der Prüfzuweisung nur die Kennung " +
+      "des Objekts an die zugewiesene Person (notify.ts) — kein Titel, keine Aussage.",
+  },
+  "services/confluence/src/rest-client.ts": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Eingehender Import: Abrufe an Confluence mit Space-/Seitenkennungen, kein Bestand.",
+  },
+  "services/jira/src/rest-client.ts": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Eingehender Import: Abrufe an Jira mit Projekt-/Vorgangskennungen, kein Bestand.",
+  },
+  "services/sharepoint/src/graph-client.ts": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Eingehender Import: Abrufe an Microsoft Graph (Bibliothek, Dateien), kein Bestand.",
+  },
+  "services/auth/src/oidc.ts": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "SSO-Token-Tausch mit dem Identitätsanbieter (Code, PKCE), kein Bestand.",
+  },
+  "services/external-search/src/wikipedia.ts": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Externe Suche: geht nur der Suchbegriff des Fragenden hinaus, kein Bestand.",
+  },
+  "services/reasoner/src/model-client.ts": {
+    urteil: "AUFTRAGSVERARBEITER",
+    grund:
+      "KI-Anbieter des Betreibers; Inhalte stellen die aufrufenden Wege zusammen (deren Ausgabe " +
+      "prüft der Routenwächter), Vertrauliches sperrt der Chokepoint (rejectsConfidential).",
+  },
+  "services/media/src/transcriber.ts": {
+    urteil: "AUFTRAGSVERARBEITER",
+    grund:
+      "Transkription eines Anhangs beim konfigurierten Anbieter; die Route POST /api/media/analyze " +
+      "entscheidet vorher mit beurteileAnhang.",
+  },
+};
+
+const NETZMODULE = /^(node:)?(http|https|http2|net|tls)$/;
+const NETZFUNKTIONEN = new Set(["request", "get", "connect", "createConnection"]);
+
+interface Ausgangsstelle {
+  datei: string;
+  zeile: number;
+  /** Name der umgebenden Funktion, Methode oder Pfeilfunktions-Konstante; sonst "(Modul)". */
+  funktion: string;
+  knoten: ts.Node;
+}
+
+/** Der Name der Funktion, in der dieser Knoten steht. */
+function umgebendeFunktion(n: ts.Node): string {
+  for (let p: ts.Node | undefined = n.parent; p; p = p.parent) {
+    if ((ts.isFunctionDeclaration(p) || ts.isMethodDeclaration(p)) && p.name) {
+      return p.name.getText();
+    }
+    if (
+      (ts.isArrowFunction(p) || ts.isFunctionExpression(p)) &&
+      ts.isVariableDeclaration(p.parent) &&
+      ts.isIdentifier(p.parent.name)
+    ) {
+      return p.parent.name.text;
+    }
+  }
+  return "(Modul)";
+}
+
+/** Alle Ausgangsstellen einer Datei (Bauformen s. Kopf dieses Abschnitts). */
+function erhebeAusgaenge(datei: string, text: string): Ausgangsstelle[] {
+  const sf = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, true);
+  const netzBindungen = new Set<string>();
+  const netzNamensraeume = new Set<string>();
+  for (const anweisung of sf.statements) {
+    if (
+      !ts.isImportDeclaration(anweisung) ||
+      !ts.isStringLiteral(anweisung.moduleSpecifier) ||
+      !NETZMODULE.test(anweisung.moduleSpecifier.text) ||
+      anweisung.importClause?.isTypeOnly
+    ) {
+      continue;
+    }
+    const klausel = anweisung.importClause;
+    if (klausel?.name) {
+      netzNamensraeume.add(klausel.name.text);
+    }
+    const gebunden = klausel?.namedBindings;
+    if (gebunden && ts.isNamespaceImport(gebunden)) {
+      netzNamensraeume.add(gebunden.name.text);
+    }
+    if (gebunden && ts.isNamedImports(gebunden)) {
+      for (const el of gebunden.elements) {
+        const eingefuehrt = (el.propertyName ?? el.name).text;
+        if (!el.isTypeOnly && NETZFUNKTIONEN.has(eingefuehrt)) {
+          netzBindungen.add(el.name.text);
+        }
+      }
+    }
+  }
+  const stellen: Ausgangsstelle[] = [];
+  const merke = (n: ts.Node): void => {
+    stellen.push({
+      datei,
+      zeile: sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1,
+      funktion: umgebendeFunktion(n),
+      knoten: n,
+    });
+  };
+  const besuche = (n: ts.Node): void => {
+    if (ts.isCallExpression(n)) {
+      const e = n.expression;
+      if (ts.isIdentifier(e) && (/fetch/i.test(e.text) || netzBindungen.has(e.text))) {
+        merke(n);
+      } else if (ts.isPropertyAccessExpression(e)) {
+        const name = e.name.text;
+        const empfaenger = e.expression;
+        const imNamensraum =
+          ts.isIdentifier(empfaenger) &&
+          netzNamensraeume.has(empfaenger.text) &&
+          NETZFUNKTIONEN.has(name);
+        const globalesFetch =
+          name === "fetch" &&
+          ts.isIdentifier(empfaenger) &&
+          ["globalThis", "window", "self"].includes(empfaenger.text);
+        if (name === "sendMail" || imNamensraum || globalesFetch) {
+          merke(n);
+        }
+      }
+    }
+    if (
+      ts.isNewExpression(n) &&
+      ts.isIdentifier(n.expression) &&
+      (n.expression.text === "WebSocket" || n.expression.text === "EventSource")
+    ) {
+      merke(n);
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(sf);
+  return stellen;
+}
+
+const AUSGANGSHINWEIS =
+  /fetch|sendMail|WebSocket|EventSource|from\s+["'](node:)?(http|https|http2|net|tls)["']/i;
+
+function produktdateienUnter(verzeichnis: string): string[] {
+  const liste: string[] = [];
+  for (const eintrag of readdirSync(join(REPO_WURZEL, verzeichnis), { withFileTypes: true })) {
+    if (eintrag.name === "node_modules" || eintrag.name === "dist") {
+      continue;
+    }
+    const pfad = `${verzeichnis}/${eintrag.name}`;
+    if (eintrag.isDirectory()) {
+      liste.push(...produktdateienUnter(pfad));
+    } else if (
+      eintrag.name.endsWith(".ts") &&
+      !eintrag.name.endsWith(".test.ts") &&
+      !eintrag.name.endsWith(".d.ts")
+    ) {
+      liste.push(pfad);
+    }
+  }
+  return liste;
+}
+
+const AUSGANGSSTELLEN: Ausgangsstelle[] = produktdateienUnter("services").flatMap((datei) => {
+  const text = LIES_AUS_DEM_BAUM(datei);
+  return AUSGANGSHINWEIS.test(text) ? erhebeAusgaenge(datei, text) : [];
+});
+
+// Gemessene Untergrenze am integrierten Stand (Quelleninspektion): neun Dateien mit mindestens elf
+// Ausgangsstellen. Sie darf steigen, aber nie unbemerkt fallen.
+const MINDESTZAHL_AUSGANGSDATEIEN = 9;
+
+/** Steht der Aufruf hinter einer Abbruchprüfung durch `waechter` (frühere Geschwisteranweisung)? */
+function hinterWaechter(aufruf: ts.Node, waechter: string): boolean {
+  let anweisung: ts.Node = aufruf;
+  while (anweisung.parent && !ts.isBlock(anweisung.parent)) {
+    anweisung = anweisung.parent;
+  }
+  const block = anweisung.parent;
+  if (!block || !ts.isBlock(block)) {
+    return false;
+  }
+  const vorher = block.statements.slice(0, block.statements.indexOf(anweisung as ts.Statement));
+  const bricht = (s: ts.Statement): boolean => {
+    if (
+      ts.isContinueStatement(s) ||
+      ts.isReturnStatement(s) ||
+      ts.isThrowStatement(s) ||
+      ts.isBreakStatement(s)
+    ) {
+      return true;
+    }
+    const letzte = ts.isBlock(s) ? s.statements[s.statements.length - 1] : undefined;
+    return letzte !== undefined && bricht(letzte);
+  };
+  return vorher.some((s) => {
+    if (!ts.isIfStatement(s) || !bricht(s.thenStatement)) {
+      return false;
+    }
+    let ruft = false;
+    const suche = (x: ts.Node): void => {
+      if (ts.isCallExpression(x) && aufgerufenerName(x.expression) === waechter) {
+        ruft = true;
+      }
+      ts.forEachChild(x, suche);
+    };
+    suche(s.expression);
+    return ruft;
+  });
+}
+
+/** Geht ein SCHUTZ_VOR_VERSAND-Urteil nach. Leer = belegt; sonst je Mangel Datei:Zeile. */
+function pruefeVersandschutz(
+  datei: string,
+  e: Ausgangseintrag,
+  stellen: readonly Ausgangsstelle[],
+  lies: (datei: string) => string,
+): string[] {
+  const { ausgangsfunktion, verbindung, versand, waechter, kette, entscheidung } = e;
+  if (!ausgangsfunktion || !verbindung || !versand || !waechter || !kette || !entscheidung) {
+    return [`${datei}:1 — SCHUTZ_VOR_VERSAND ohne vollständigen Nachweisweg.`];
+  }
+  if (!ZENTRALE_ENTSCHEIDUNGEN.has(entscheidung)) {
+    return [`${datei}:1 — „${entscheidung}“ ist nicht die zentrale Sichtbarkeitsentscheidung.`];
+  }
+  const fremd = stellen.filter((s) => s.funktion !== ausgangsfunktion);
+  if (fremd.length > 0) {
+    return fremd.map(
+      (s) =>
+        `${s.datei}:${s.zeile} — Ausgangsstelle ausserhalb von ${ausgangsfunktion} (${s.funktion}).`,
+    );
+  }
+  const sf = ts.createSourceFile(datei, lies(datei), ts.ScriptTarget.Latest, true);
+  // (1) Die Ausgangsfunktion ist NUR über die Verbindung erreichbar: jede Erwähnung ausserhalb ihrer
+  // Deklaration steht rechts in einer Zuweisung an `verbindung`.
+  const maengel: string[] = [];
+  let verbunden = false;
+  const besuche = (n: ts.Node): void => {
+    if (ts.isIdentifier(n) && n.text === ausgangsfunktion) {
+      const eltern = n.parent;
+      const istDeklaration = ts.isVariableDeclaration(eltern) && eltern.name === n;
+      if (!istDeklaration) {
+        let zuweisung: ts.Node | undefined = eltern;
+        while (zuweisung && !istZuweisung(zuweisung)) {
+          zuweisung = zuweisung.parent;
+        }
+        const ziel = zuweisung && istZuweisung(zuweisung) ? zuweisung.left : undefined;
+        const zielName =
+          ziel && ts.isPropertyAccessExpression(ziel)
+            ? ziel.name.text
+            : ziel && ts.isIdentifier(ziel)
+              ? ziel.text
+              : undefined;
+        if (zielName === verbindung) {
+          verbunden = true;
+        } else {
+          maengel.push(
+            `${datei}:${zeileVon(n)} — ${ausgangsfunktion} wird ausserhalb der Verbindung ${verbindung} verwendet.`,
+          );
+        }
+      }
+    }
+    ts.forEachChild(n, besuche);
+  };
+  besuche(sf);
+  if (!verbunden) {
+    maengel.push(`${datei}:1 — ${ausgangsfunktion} ist nicht an ${verbindung} gebunden.`);
+  }
+  if (maengel.length > 0) {
+    return maengel;
+  }
+  // (2) Jeder Versand über die Verbindung steht hinter dem Wächter.
+  const f = funktionsRumpf(sf, versand);
+  if (!f) {
+    return [`${datei}:1 — Versandfunktion ${versand} nicht gefunden.`];
+  }
+  const versandAufrufe = ausgefuehrteAufrufeIn(f.rumpf, benannteHelfer(sf)).filter(
+    (c) => aufgerufenerName(c.expression) === verbindung,
+  );
+  if (versandAufrufe.length === 0) {
+    return [`${datei}:${f.zeile} — ${versand} versendet nicht über ${verbindung}.`];
+  }
+  for (const c of versandAufrufe) {
+    if (!hinterWaechter(c, waechter)) {
+      maengel.push(
+        `${datei}:${zeileVon(c)} — Versand über ${verbindung} ohne vorherige Abbruchprüfung durch ${waechter}.`,
+      );
+    }
+  }
+  // Ein Aufruf der Verbindung AUSSERHALB der Versandfunktion wäre ein Weg am Wächter vorbei.
+  const ueberall: ts.CallExpression[] = [];
+  const sammle = (n: ts.Node): void => {
+    if (ts.isCallExpression(n) && aufgerufenerName(n.expression) === verbindung) {
+      ueberall.push(n);
+    }
+    ts.forEachChild(n, sammle);
+  };
+  sammle(sf);
+  for (const c of ueberall) {
+    if (umgebendeFunktion(c) !== versand) {
+      maengel.push(
+        `${datei}:${zeileVon(c)} — ${verbindung} wird ausserhalb von ${versand} gerufen.`,
+      );
+    }
+  }
+  if (maengel.length > 0) {
+    return maengel;
+  }
+  // (3) Der Wächter führt über die Kette zur zentralen Entscheidung.
+  let rufe: ReadonlySet<string> = new Set([waechter]);
+  let stelle = `${datei}:${f.zeile}`;
+  for (const glied of kette) {
+    if (!rufe.has(glied.funktion)) {
+      return [`${stelle} — ruft das Glied ${glied.funktion} nicht auf.`];
+    }
+    const gsf = ts.createSourceFile(glied.datei, lies(glied.datei), ts.ScriptTarget.Latest, true);
+    const g = funktionsRumpf(gsf, glied.funktion);
+    if (!g) {
+      return [`${glied.datei}:1 — Funktion ${glied.funktion} nicht gefunden.`];
+    }
+    rufe = aufrufeIn(g.rumpf, benannteHelfer(gsf));
+    stelle = `${glied.datei}:${g.zeile}`;
+  }
+  if (!rufe.has(entscheidung)) {
+    return [`${stelle} — ruft die Entscheidung ${entscheidung} nicht auf.`];
+  }
+  return [];
+}
+
 /** Kalibrierhilfe (Nacharbeit 5): ein Dienstweg-Eintrag über `probe/dienst.ts::liste(sichtbar)`. */
 function probeEintrag(): Eintrag {
   return {
@@ -2792,6 +3192,105 @@ sahen die vier Fail-open-Zweige aus mega74 aus — und der Sammler war dabei gr�
 //
 // Dieser Fall schliesst das, nach dem Muster der Kalibrierung bei `:949`: an einem synthetischen
 // Baum, nicht am Bestand, damit er unabhaengig davon traegt, ob `routes/` je Unterordner bekommt.
+describe("R-1175 · Nacharbeit 9: Ausgänge ausserhalb der Routen", () => {
+  it("jede Ausgangsstelle in services/** trägt ein Urteil — eine neue ist rot", () => {
+    const ohneUrteil = AUSGANGSSTELLEN.filter((s) => !AUSGAENGE[s.datei]).map(
+      (s) => `${s.datei}:${s.zeile} — Ausgangsstelle in ${s.funktion} ohne Urteil`,
+    );
+    expect(
+      ohneUrteil,
+      `Diese Stellen sprechen nach außen und sind nicht beurteilt:\n${ohneUrteil.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  it("kein verwaistes Ausgangsurteil, und die Erhebung ist nicht geschrumpft", () => {
+    const erhoben = new Set(AUSGANGSSTELLEN.map((s) => s.datei));
+    expect(Object.keys(AUSGAENGE).filter((d) => !erhoben.has(d))).toEqual([]);
+    expect(erhoben.size).toBeGreaterThanOrEqual(MINDESTZAHL_AUSGANGSDATEIEN);
+  });
+
+  it("SCHUTZ_VOR_VERSAND ist bis zur zentralen Entscheidung nachgegangen (Webhook-Melder)", () => {
+    const maengel = Object.entries(AUSGAENGE)
+      .filter(([, e]) => e.urteil === "SCHUTZ_VOR_VERSAND")
+      .flatMap(([datei, e]) =>
+        pruefeVersandschutz(
+          datei,
+          e,
+          AUSGANGSSTELLEN.filter((s) => s.datei === datei),
+          LIES_AUS_DEM_BAUM,
+        ),
+      );
+    expect(maengel).toEqual([]);
+    // Der Webhook-Melder MUSS dabei sein — sonst prüfte dieser Fall nichts.
+    expect(AUSGAENGE["services/app/src/wissensereignisse.ts"]?.urteil).toBe("SCHUTZ_VOR_VERSAND");
+  });
+
+  it("KALIBRIERUNG — die Ausgangserhebung erkennt die Bauformen und nur sie", () => {
+    const quelle = [
+      'import { request as r } from "node:https";',
+      'import type { IncomingMessage } from "node:http";',
+      'export function a() { r("x"); }',
+      'const b = () => fetch("u");',
+      "transport.sendMail({});",
+      'new WebSocket("w");',
+      'globalThis.fetch("u");',
+      'adapter.fetchItem("id");',
+      "net.isIP('1');",
+    ].join("\n");
+    const stellen = erhebeAusgaenge("probe/ausgang.ts", quelle);
+    expect(stellen.map((s) => s.zeile)).toEqual([3, 4, 5, 6, 7]);
+    expect(stellen.map((s) => s.funktion).slice(0, 2)).toEqual(["a", "b"]);
+  });
+
+  it("KALIBRIERUNG — Versandschutz: grün nur mit Wächter vor jedem Versand und zentraler Kette", () => {
+    const datei = "probe/melder.ts";
+    const bau = (versand: string, extra = "", meldbar = "darfSehen(B, ko)"): string =>
+      [
+        `function meldbar(ko) { return ${meldbar}; }`,
+        "export const sender = async (a) => { await fetch(a.url); };",
+        "class M {",
+        "  constructor(d) { this.zusteller = d.z ?? sender; }",
+        "  async nochOk(m) { if (!meldbar(m)) { return false; } return true; }",
+        `  async versende() {\n    for (const e of this.q) {\n${versand}\n    }\n  }`,
+        `  ${extra}`,
+        "}",
+      ].join("\n");
+    const mitWaechter =
+      "      if (!(await this.nochOk(e))) { continue; }\n      await this.zusteller(e);";
+    const eintrag: Ausgangseintrag = {
+      urteil: "SCHUTZ_VOR_VERSAND",
+      ausgangsfunktion: "sender",
+      verbindung: "zusteller",
+      versand: "versende",
+      waechter: "nochOk",
+      kette: [
+        { datei, funktion: "nochOk" },
+        { datei, funktion: "meldbar" },
+      ],
+      entscheidung: "darfSehen",
+      grund: "Probe.",
+    };
+    const pruefe = (text: string): string[] =>
+      pruefeVersandschutz(datei, eintrag, erhebeAusgaenge(datei, text), () => text);
+
+    expect(pruefe(bau(mitWaechter))).toEqual([]);
+    // Ohne Wächter: rot.
+    expect(pruefe(bau("      await this.zusteller(e);"))).not.toEqual([]);
+    // Wächter NACH dem Versand: rot.
+    const danach =
+      "      await this.zusteller(e);\n      if (!(await this.nochOk(e))) { continue; }";
+    expect(pruefe(bau(danach))).not.toEqual([]);
+    // Ein Weg an der Verbindung vorbei (direkter Aufruf der Ausgangsfunktion): rot.
+    expect(pruefe(bau(mitWaechter, "async direkt(x) { await sender(x); }"))).not.toEqual([]);
+    // Ein zweiter Versand über die Verbindung ausserhalb der Versandfunktion: rot.
+    expect(pruefe(bau(mitWaechter, "async heimlich(x) { await this.zusteller(x); }"))).not.toEqual(
+      [],
+    );
+    // Der Wächter ruft die zentrale Entscheidung nicht: rot.
+    expect(pruefe(bau(mitWaechter, "", "!ko.deletedAt"))).not.toEqual([]);
+  });
+});
+
 describe("JOB 1561 · B52/C Grenze 1: die Erhebung steigt wirklich ab", () => {
   it("KALIBRIERUNG — eine Datei in einem Unterverzeichnis wird erhoben", () => {
     const wurzel = mkdtempSync(join(tmpdir(), "kw-b52c-"));
