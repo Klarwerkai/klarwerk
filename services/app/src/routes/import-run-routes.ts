@@ -50,6 +50,8 @@ import {
   type ImportRunItemRef,
   type ImportRunRepo,
   importProviderKey,
+  pruefeGapBindung,
+  pruefeInhaltsreferenzBindung,
 } from "../../../library-analytics";
 import type { Guards } from "../http";
 import { istLaufListe } from "../import-lauf-liste";
@@ -137,6 +139,11 @@ function laufNachAussen(run: ImportRun, abgleich: ImportRunSourceSync | undefine
  */
 function quelleNachAussen(satz: ExternalSourceRecord) {
   const referenz = satz.rawOrRenderedContentReference;
+  const contentReferenceState =
+    referenz === null ? ("NOT_CAPTURED" as const) : ("AVAILABLE" as const);
+  // R-1349: die kanonische Paarregel wird hier am Ausgang WIRKLICH geprüft — bis dahin nannte der
+  // Kommentar sie, aufgerufen wurde sie nicht. Eine leere Referenz mit `AVAILABLE` geht nicht hinaus.
+  pruefeInhaltsreferenzBindung({ contentReferenceState, rawOrRenderedContentReference: referenz });
   return {
     sourceRecordId: satz.sourceRecordId,
     sourceSystem: satz.sourceSystem,
@@ -145,7 +152,7 @@ function quelleNachAussen(satz: ExternalSourceRecord) {
     url: satz.url,
     title: satz.title,
     rawOrRenderedContentReference: referenz,
-    contentReferenceState: referenz === null ? ("NOT_CAPTURED" as const) : ("AVAILABLE" as const),
+    contentReferenceState,
     importedAt: satz.importedAt,
   };
 }
@@ -162,6 +169,9 @@ const KEIN_LUECKENBEZUG: LueckenPaar = {
 
 /** Eine Elementreferenz auf der Leitung, samt des ehrlichen Gap-Paares (siehe Kopf). */
 function elementNachAussen(ref: ImportRunItemRef, luecken: LueckenPaar = KEIN_LUECKENBEZUG) {
+  // R-1349: das Lückenpaar wird am Ausgang geprüft (s. Kopf: „`pruefeGapBindung` erzwingt das
+  // Paar") — eine Liste ohne Relation oder eine leere Kennung geht nicht hinaus.
+  pruefeGapBindung(luecken);
   return {
     importId: ref.importId,
     ordinal: ref.ordinal,
