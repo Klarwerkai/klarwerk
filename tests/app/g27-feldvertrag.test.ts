@@ -16,8 +16,8 @@ import {
   InMemoryKoRepo,
   InMemoryKoSearchProjectionRepo,
   KoService,
-  SEARCH_PROJECTION_FIELDS,
 } from "../../services/knowledge-object";
+import { SEARCH_PROJECTION_FIELDS } from "../support/projektion-feldvertrag";
 
 function lies(pfad: string): string {
   return readFileSync(pfad, "utf8");

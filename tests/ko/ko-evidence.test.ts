@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EvidenceRecord } from "../../apps/web/src/api/types";
-import { evidenceKindLabel, evidenceRows } from "../../apps/web/src/lib/koEvidence";
+import { evidenceRows } from "../../apps/web/src/lib/koEvidence";
 
 function rec(overrides: Partial<EvidenceRecord>): EvidenceRecord {
   return {
@@ -39,8 +39,6 @@ describe("koEvidence", () => {
     });
   });
 
-  it("liefert stabile Kind-Labels", () => {
-    expect(evidenceKindLabel("source")).toBe("source");
-    expect(evidenceKindLabel("attachment")).toBe("attachment");
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `evidenceKindLabel` ist mit der Funktion
+  // entfallen — sie hatte keinen Produktleser; die Art steht an der Zeile (`kind`, oben gemessen).
 });
