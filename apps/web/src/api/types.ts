@@ -2321,6 +2321,26 @@ export interface OutputDocument {
   provenance: OutputProvenance[];
 }
 
+// RECHERCHE:pmo-fea-0004 — Spiegel von services/output/src/wochenupdate.ts.
+export interface WochenupdateEintrag {
+  koId: string;
+  title: string;
+  art: "neu" | "ueberarbeitet";
+  am: string;
+  version: number;
+  uncertain: boolean;
+}
+
+export interface Wochenupdate {
+  title: string;
+  von: string;
+  bis: string;
+  generatedAt: string;
+  eintraege: WochenupdateEintrag[];
+  markdown: string;
+  provenance: OutputProvenance[];
+}
+
 // produkt:wettbewerb:20261003:lernplattform — Spiegel von services/output/src/scorm.ts.
 export type ScormSprache = "de" | "en";
 
