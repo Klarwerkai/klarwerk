@@ -1047,7 +1047,12 @@ export function Mobile(): JSX.Element {
         <ArrowLeft size={15} />
         {t("topbar.toDesktop")}
       </button>
-      <div className="w-[340px] overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
+      {/* R-1026 (Aufnahme 20260922 · antwort-quellenanzeige): der Telefonrahmen ist 340 px breit,
+          die Hülle hält je 24 px Rand — zusammen 388 px. Auf einem 320-px-Telefon lief die Seite
+          deshalb seitlich über (gemessen: 10 px, tests/r1026-quellentitel-telefon/
+          telefon-fragen-chromium.test.ts T2). `max-w-full` lässt ihn dort auf die verfügbare
+          Breite schrumpfen; ab der vollen Breite bleibt er unverändert 340 px. */}
+      <div className="w-[340px] max-w-full overflow-hidden rounded-[34px] border-4 border-ink bg-surface p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-sans text-[15px] font-bold tracking-[2px] text-ink">KLARWERK</span>
           {queue.online ? (
@@ -1888,8 +1893,12 @@ export function Mobile(): JSX.Element {
                                 {t("ask.sources")}
                               </span>
                               {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
-                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist);
-                                  line-clamp gegen Überlauf, Volltitel im Tooltip. */}
+                                  vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist).
+                                  Aufnahme 20260922 · antwort-quellenanzeige (R-1026): auf dem
+                                  Telefon bleibt der Titel LESBAR — er bricht um (auch lange
+                                  Dateinamen, `[overflow-wrap:anywhere]`, `min-w-0` als Flex-Kind)
+                                  statt auf eine Zeile mit „…" gekappt zu werden; ein Tooltip gibt
+                                  es auf Touch nicht. Der Tooltip bleibt für die Maus. */}
                               {s.sources.map((ref) => (
                                 // AUFTRAG-mega12 Block C (echter Treffer, gefunden beim Bauen der
                                 // Architekturprüfung): Mobile MELDET einen Wächter an
@@ -1902,7 +1911,7 @@ export function Mobile(): JSX.Element {
                                   key={ref.id}
                                   to={`/wissen/${ref.id}`}
                                   title={ref.label}
-                                  className="line-clamp-1 max-w-[220px] text-[12px] font-semibold text-brand-text hover:underline"
+                                  className="min-w-0 max-w-full whitespace-normal text-[12px] font-semibold text-brand-text hover:underline [overflow-wrap:anywhere]"
                                 >
                                   {ref.label}
                                 </GuardedLink>
