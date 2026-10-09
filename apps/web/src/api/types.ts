@@ -2225,6 +2225,8 @@ export interface AskResponse {
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // AUFNAHME 20260922 (R-0305, R-1099): nur, wenn die Frage mit `zweitmeinung: true` gestellt wurde.
+  zweitmeinung?: ZweitmeinungErgebnis;
   // R-0346 (Ben nacharbeit-9): wie die Antwort selbst zugeschnitten wurde und was angehängt ist
   // (Spiegel von `AskAntwortZuschnitt`); fehlt das Feld, ist die Antwort unverändert.
   antwortZuschnitt?: AskAntwortZuschnitt;
@@ -2293,6 +2295,39 @@ export interface AskGeltungsauskunft {
   fragekontext: Fragekontext;
   quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
+
+// R-0305/R-1099: Spiegel von `ZweitmeinungErgebnis` in `services/reasoner/src/types.ts` (der
+// webbuild kopiert nur `apps/web`, ein Import von dort bräche den Produktionsbau). `stufe` statt
+// Anbieter- oder Modellname — die Antwort geht an jeden Fragenden.
+export type ZweitmeinungStufe = "cloud" | "local" | "deterministic";
+export type ZweitmeinungGrund =
+  | "nicht_eingerichtet"
+  | "nicht_verfuegbar"
+  | "nicht_freigegeben"
+  | "nicht_unabhaengig"
+  | "fehlgeschlagen";
+export type ZweitmeinungAbweichung = "beantwortet" | "quellen" | "zahlen";
+export interface ZweitmeinungAntwort {
+  answered: boolean;
+  answer: string | null;
+  sources: string[];
+  citedSources: string[];
+  demo: boolean;
+  // Ben (Nacharbeit 17): die Herkunftsmarke, nur bei Modellherkunft (Regel `kiHerkunftAus`).
+  aiGenerated?: unknown;
+}
+export type ZweitmeinungErgebnis =
+  | {
+      status: "verglichen";
+      ersteStufe: ZweitmeinungStufe;
+      zweiteStufe: ZweitmeinungStufe;
+      // Ben (Nacharbeit 17): Antwort A, wie sie verglichen wurde (vor jedem Zuschnitt).
+      erste: ZweitmeinungAntwort;
+      zweite: ZweitmeinungAntwort;
+      abweichend: boolean;
+      abweichungen: ZweitmeinungAbweichung[];
+    }
+  | { status: "nicht_moeglich"; grund: ZweitmeinungGrund };
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
 export type OutputKind =
@@ -3075,6 +3110,10 @@ export interface ReasonerStatus {
   // `tasks`/`reachable`, die auch bei einer Störung `false` werden — die Fläche sagt die beiden
   // Lagen verschieden. Fehlt es (alter Server), behauptet die Oberfläche keine Abschaltung.
   kiAbgeschaltet?: boolean;
+  // R-0305/R-1099 (Ben, Nacharbeit 2): das separat gewählte Zweitmodell KANN die Gegenüberstellung
+  // kostenpflichtig machen — auch bei lokaler Erstantwort. Dieselbe Lesart wie `billable`; fehlt es
+  // (alter Server), behauptet die Oberfläche dafür nichts.
+  zweitmeinungBillable?: boolean;
   // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
   // öffentliche KI — `blockiert` (Vorgabe), `frei` (Grundfreigabe) oder `frei_vertraulich` (beide
   // Freigaben). Gelesen von der Kopfzeile. Fehlt es (alter Server), zeigt sie nichts an.
