@@ -79,6 +79,7 @@ import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
+import { NegativwissenFuehrung } from "../components/erfassen/NegativwissenFuehrung";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -259,6 +260,16 @@ import {
   toAddSourceRequest,
   unsavableSourceUrls,
 } from "../lib/koSource";
+// R-1664/R-2179/R-2180: der geführte Lerneffekt (Wissensart Negativwissen) und seine Stufenregel.
+import {
+  LEERE_NEGATIVWISSEN_FORM,
+  type NegativwissenForm,
+  angabenZuForm,
+  formZuAngaben,
+  negativwissenUeberschreitungen,
+  stufeNachBezug,
+  stufeWaehlbar,
+} from "../lib/negativwissen";
 // JOB 2700 D1: die Groessenkante des PDF-Weges ist die Grenze des Original-Anhangs (dieselbe
 // Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler.
 import { PdfTimeoutError } from "../lib/pdf";
@@ -764,6 +775,44 @@ export function CaptureArbeitsraum({
   // Feld bereits angezeigt hat — es hebt die Sperre nie auf.
   const vertraulichkeitOffen = declaredConfidentiality === undefined;
   const [vertraulichkeitMarkiert, setVertraulichkeitMarkiert] = useState(false);
+  // R-1664/R-2179: der geführte Lerneffekt-Block der Wissensart Negativwissen. Er reist nur mit,
+  // solange die Wissensart „negativwissen" gewählt ist (`negativAngaben`).
+  const [negativForm, setNegativForm] = useState<NegativwissenForm>(LEERE_NEGATIVWISSEN_FORM);
+  const negativAngaben = type === "negativwissen" ? formZuAngaben(negativForm) : undefined;
+  const negativBezug = type === "negativwissen" ? negativForm.bezug : [];
+  // BEN, Nacharbeit 2: überschreitet der Lerneffekt eine Obergrenze, gehen weder Sichern noch
+  // Einreichen hinaus (`speicherTor`, `requestSubmit`); der Block nennt die Stelle am Feld.
+  const negativUeberschritten =
+    type === "negativwissen" && negativwissenUeberschreitungen(negativForm).length > 0;
+  // R-2180: ein angegebener Bezug hebt die gewählte Stufe auf mindestens „vertraulich" an — sichtbar
+  // in der Auswahl, und der Server wendet dieselbe Regel beim Anlegen noch einmal an.
+  const hebeStufeFuerBezugAn = (bezug: NegativwissenForm["bezug"]): void => {
+    const stufe = stufeNachBezug(bezug, declaredConfidentiality);
+    if (stufe !== undefined && stufe !== declaredConfidentiality) {
+      setConfidentiality(stufe);
+      setDeclaredConfidentiality(stufe);
+      setVertraulichkeitMarkiert(false);
+    }
+  };
+  const aendereNegativForm = (next: NegativwissenForm): void => {
+    setNegativForm(next);
+    hebeStufeFuerBezugAn(next.bezug);
+  };
+  // Nach einem Wechsel der Wissensart: wird es Negativwissen, gilt ein angegebener Bezug sofort.
+  const stufeNachWissensart = (k: KnowledgeType): void => {
+    if (k === "negativwissen") {
+      hebeStufeFuerBezugAn(negativForm.bezug);
+    }
+  };
+  // Der Einstieg „Lerneffekt dokumentieren". FR-STR-01: auch er ist eine menschliche Wahl — danach
+  // überschreibt kein KI-Vorschlag die Wissensart. Die Auswahlliste trägt dieselben drei Schritte
+  // in ihrem `onChange` (dort in der Form, die tests/strukturierung/fr-str-01-wissensart.test.ts
+  // festhält).
+  const waehleWissensart = (k: KnowledgeType): void => {
+    typeEntschiedenRef.current = true;
+    setType(k);
+    stufeNachWissensart(k);
+  };
   const vertraulichkeitRef = useRef<HTMLSelectElement | null>(null);
   // JOB 3082 (Q3 a): der abgewiesene Einreichversuch klappt die erweiterten Felder auf; erst DANACH
   // steht die Auswahl im Dokument und kann den Fokus annehmen. Deshalb ein Effekt und kein Aufruf
@@ -2133,6 +2182,10 @@ export function CaptureArbeitsraum({
         // nicht gewählt ⇒ weglassen. Gelesen wird deshalb `declaredConfidentiality` und NICHT der
         // geglättete Formularwert `confidentiality` — nur der erste kennt den Unterschied.
         ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
+        // R-1664/R-2179: die geführten Lerneffekt-Angaben (nur bei Wissensart Negativwissen). Dieser
+        // Rumpf AKTUALISIERT einen Entwurf — ein geleerter Lerneffekt reist deshalb als `null` mit,
+        // sonst holte der partielle Merge die alten Angaben zurück.
+        negativwissen: negativAngaben ?? null,
         // AUFTRAG-mega20 Block D: der Entwurf wird unmittelbar vor der Anlage auf den AKTUELLEN
         // Stand gebracht — inklusive Belegstellen und gesicherter Originale. Ohne sie prüfte der
         // Server beim Einreichen noch die Anker eines überholten Zwischenstands; ein inzwischen
@@ -2153,6 +2206,7 @@ export function CaptureArbeitsraum({
         ...(n ? { neededValidations: n } : {}),
         // JOB 3082 (Q3 a): gewählt ⇒ mitschicken (auch „intern"), nicht gewählt ⇒ weglassen.
         ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
+        ...(negativAngaben ? { negativwissen: negativAngaben } : {}),
       };
       let ko: KnowledgeObject;
       // AUFTRAG-mega21 Block C-1: die nach dem Commit GESCHEITERTEN Nacharbeiten. Der Server sammelt
@@ -2420,6 +2474,8 @@ export function CaptureArbeitsraum({
       setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
       setDeclaredConfidentiality(undefined);
       setVertraulichkeitMarkiert(false);
+      // R-1664: der Lerneffekt gehörte zu DIESEM Wissensobjekt.
+      setNegativForm(LEERE_NEGATIVWISSEN_FORM);
       // SCRUM-395: Prüfer-Auswahl gehört zum abgeschickten KO — für das nächste leeren.
       setReviewerIds([]);
       setDraftId(null);
@@ -2554,6 +2610,10 @@ export function CaptureArbeitsraum({
         // — der Entwurf trägt dann kein Feld `confidentiality`, und genau daran fragt ihn das
         // Fortsetzen wieder danach. Die Pflicht greift am Einreichen, nicht am Zwischenstand.
         ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
+        // R-1664/R-2179: die geführten Lerneffekt-Angaben überstehen Sichern und Fortsetzen. Beim
+        // Aktualisieren geht ein geleerter Lerneffekt als `null` mit (dieselbe Leerwert-Semantik wie
+        // die Felder darunter).
+        ...(isDraftUpdate || negativAngaben ? { negativwissen: negativAngaben ?? null } : {}),
         // AUFTRAG-mega4/mega5 Block A (bens Auflage A): ALLE inhaltlichen, textuell sicherbaren
         // Dirty-Felder mitsichern — sonst behauptet „Entwurf speichern" eine Vollsicherung und verliert
         // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage oder den Interviewfortschritt
@@ -2637,6 +2697,7 @@ export function CaptureArbeitsraum({
       // ihn getroffen hat.
       setDeclaredConfidentiality(undefined);
       setVertraulichkeitMarkiert(false);
+      setNegativForm(LEERE_NEGATIVWISSEN_FORM);
       setReviewerIds([]);
       setPendingSources([]);
       // AUFTRAG-mega4 Block A: der Erfolgspfad räumt jetzt AUCH Quellenformular und externe Suche —
@@ -2789,6 +2850,8 @@ export function CaptureArbeitsraum({
     setConfidentiality(confidentialityOf(geladeneStufe));
     setDeclaredConfidentiality(geladeneStufe);
     setVertraulichkeitMarkiert(false);
+    // R-1664/R-2179: der geführte Lerneffekt kehrt mit dem Entwurf zurück.
+    setNegativForm(angabenZuForm(p.negativwissen));
     // AUFTRAG-mega4/mega5 Block A: die mitgesicherten inhaltlichen Dirty-Felder 1:1 wiederherstellen —
     // Prüferauswahl, offene Quellen (sourceProvider → provider, s. fromDraftSources), teilweise
     // ausgefülltes Quellenformular und die externe SUCHANFRAGE. Die Trefferliste selbst wird nach
@@ -3000,6 +3063,7 @@ export function CaptureArbeitsraum({
     // von `declaredConfidentiality` und zugleich der Grund, warum es keinen Default dafür gibt.
     setDeclaredConfidentiality(undefined);
     setVertraulichkeitMarkiert(false);
+    setNegativForm(LEERE_NEGATIVWISSEN_FORM);
     setNeededValidations(CAPTURE_FIELD_DEFAULTS.neededValidations);
     setTags([]);
     setReviewerIds([]);
@@ -3198,6 +3262,7 @@ export function CaptureArbeitsraum({
     // ausdrücklich „Öffentlich-intern" wählte, machte das Formular damit nicht schmutzig, und
     // „Verwerfen" blieb gesperrt, obwohl es etwas zu verwerfen gab.
     declaredConfidentiality !== undefined ||
+    negativAngaben !== undefined ||
     neededValidations !== CAPTURE_FIELD_DEFAULTS.neededValidations ||
     reviewerIds.length > 0 ||
     isSourceFormDirty(sourceForm) ||
@@ -3627,8 +3692,13 @@ export function CaptureArbeitsraum({
     if (entwurfLaedt) {
       return { erlaubt: false, grund: t("state.loading") };
     }
+    // BEN, Nacharbeit 2 (R-1664/R-2179): ein Lerneffekt über seinen Obergrenzen. Der Server würde
+    // ihn abweisen; hier geht er gar nicht erst hinaus, und die Eingabe bleibt vollständig stehen.
+    if (negativUeberschritten) {
+      return { erlaubt: false, grund: t("negativwissen.obergrenze.gesperrt") };
+    }
     return { erlaubt: true, grund: null };
-  }, [resumeAnchorsMissing, entwurfLaedt, t]);
+  }, [resumeAnchorsMissing, entwurfLaedt, negativUeberschritten, t]);
 
   // Bug (Pedi 04.07./05.07.): In-App-Seitenwechsel (Menü, Command-Palette) fängt jetzt der Navigations-
   // Wächter ab — Nachfrage „Bleiben · Verwerfen · Entwurf speichern", bevor Inhalt verloren geht.
@@ -4983,6 +5053,13 @@ export function CaptureArbeitsraum({
       // nicht im Dokument.
       return;
     }
+    // BEN, Nacharbeit 2 (R-1664/R-2179): ein Lerneffekt über seinen Obergrenzen geht nicht hinaus.
+    // Der Block zeigt die Stelle am Feld; hier steht derselbe Satz als Meldung, damit der Klick
+    // nicht wortlos ausbleibt. Nichts wird geleert oder gekürzt.
+    if (negativUeberschritten) {
+      setErr(t("negativwissen.obergrenze.gesperrt"));
+      return;
+    }
     const schritt = beispielEinreichSchritt({
       beispielImFormular: exampleInForm,
       bestaetigt,
@@ -5059,9 +5136,13 @@ export function CaptureArbeitsraum({
             {t("conf.confirmPending")}
           </option>
         )}
+        {/* R-2180: ein Lerneffekt mit Bezug lässt Stufen unter „vertraulich" nicht zu — sichtbar
+            gesperrt statt still angehoben. */}
         {CONFIDENTIALITY_LEVELS.map((lvl) => (
-          <option key={lvl} value={lvl}>
-            {t(`conf.level.${lvl}`)}
+          <option key={lvl} value={lvl} disabled={!stufeWaehlbar(negativBezug, lvl)}>
+            {stufeWaehlbar(negativBezug, lvl)
+              ? t(`conf.level.${lvl}`)
+              : `${t(`conf.level.${lvl}`)} — ${t("negativwissen.stufeGesperrt")}`}
           </option>
         ))}
       </select>
@@ -5081,6 +5162,32 @@ export function CaptureArbeitsraum({
       ) : null}
     </Field>
   );
+
+  // R-1664/R-2179 — DER GEFÜHRTE LERNEFFEKT: bei Wissensart Negativwissen der Fragenblock. Dieselbe
+  // Bauform wie `vertraulichkeitsWahl`: zwei einander ausschliessende Aufrufstellen
+  // (Erzählen/Expertenansicht und Wissensseite), ein Zustand.
+  const lerneffektBereich = (): JSX.Element | null =>
+    type === "negativwissen" ? (
+      <NegativwissenFuehrung form={negativForm} onChange={aendereNegativForm} />
+    ) : null;
+  // Der Einstieg steht bei der Wissensart in den erweiterten Details — Schritt 1 bleibt nach dem
+  // Aufräum-Pass 02.07. „Erzählen + ein Knopf"; ein zusätzlicher Knopf dort wäre gegen diese Wahl.
+  const lerneffektEinstieg = (): JSX.Element | null =>
+    type === "negativwissen" ? null : (
+      <div className="col-span-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          data-testid="negativwissen-einstieg"
+          onClick={() => waehleWissensart("negativwissen")}
+          className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+        >
+          {t("negativwissen.einstieg")}
+        </button>
+        <span className="text-[11.5px] leading-relaxed text-muted-2">
+          {t("negativwissen.einstiegHinweis")}
+        </span>
+      </div>
+    );
 
   // F-0007: die sichtbare Hälfte. Der Zustand darf nicht nur intern geführt werden — wer ein
   // Beispiel geladen hat, sieht das bis zum Schluss. Herkunfts-Kennzeichnung im Muster von
@@ -6596,6 +6703,8 @@ export function CaptureArbeitsraum({
                 </div>
               ) : null}
 
+              {lerneffektBereich()}
+
               {/* SCRUM-375 / AG-12: erweiterte/technische Felder als Progressive Disclosure — standardmäßig
               eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt. NICHTS entfernt; bei
               vorhandenem Inhalt (Entwurf/Beispiel) automatisch aufgeklappt; Badge zeigt Ausgefülltes an. */}
@@ -6652,6 +6761,7 @@ export function CaptureArbeitsraum({
                         onChange={(e) => {
                           typeEntschiedenRef.current = true;
                           setType(e.target.value as KnowledgeType);
+                          stufeNachWissensart(e.target.value as KnowledgeType);
                         }}
                         className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
                       >
@@ -6703,6 +6813,7 @@ export function CaptureArbeitsraum({
                     <div data-help="cap:tagsField">
                       <TagEditor tags={tags} onChange={setTags} />
                     </div>
+                    {lerneffektEinstieg()}
                   </div>
 
                   {/* SCRUM-395: Prüfer direkt beim Einreichen vorschlagen (optional). */}
@@ -7846,6 +7957,9 @@ export function CaptureArbeitsraum({
                   Stelle hätte der Mensch hier eine Pflicht ohne Feld — der Knopf spärrte, und nichts
                   auf dem Schirm könnte die Sperre auflösen. Dieselbe Auswahl, dieselben Zustände,
                   eine Definition (`vertraulichkeitsWahl`). */}
+                {/* R-1664/R-2179: der Lerneffekt steht auch an der Einreich-Entscheidung — im
+                  geführten Weg sind die Felder des Schritts „Erzählen" hier nicht sichtbar. */}
+                {lerneffektBereich()}
                 <div className="max-w-xs">{vertraulichkeitsWahl()}</div>
                 {/* SCRUM-370 / AG-P2-4: Beitragswert an der Einreich-Entscheidung — ehrlich. */}
                 <p className="text-[11.5px] leading-relaxed text-muted">

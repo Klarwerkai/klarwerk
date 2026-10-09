@@ -296,7 +296,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/klara/sessions/:sessionId/zuruf` | `ko.read` | Rumpf `{ text, koIds, art }` | 200 Vorschlag (schreibt nichts) | 503 `NO_FORMULIERER`; Dienstfehler |
 | `GET` | `/api/klara/answers/:answerId/explanation` | `ko.read` | — | 200 Erklärung der Antwort | 404 `NOT_FOUND` |
 | `POST` | `/api/knowledge/check` | `ko.read` | Rumpf `{ text, source?, koId?, draftId?, confidentiality?, nichtEingestuft? }` | 200 Ähnlichkeits-/Widerspruchsbefund; bei ähnlichem Negativwissen zusätzlich `negativwissen[]` | — |
-| `POST` | `/api/check-text` | `ko.read` oder Add-in-Fähigkeit (Schalter `KLARWERK_ADDON_API`) | Rumpf `{ text, title?, locale?, want?, source?, koId?, confidentiality?, nichtEingestuft? }` | 200 Prüfergebnis | 403 `FORBIDDEN`; 400 Formfehler |
+| `POST` | `/api/check-text` | `ko.read` oder Add-in-Fähigkeit (Schalter `KLARWERK_ADDON_API`) | Rumpf `{ text, title?, locale?, want?, source?, koId?, confidentiality?, nichtEingestuft?, ungeprueftEinbeziehen? }` — `ungeprueftEinbeziehen: false` beschränkt den Sitzungsweg auf validierten Bestand, `true`/fehlend lässt ihn wie bisher auch Eingereichtes einbeziehen; am Add-in-Schlüssel wirkungslos (immer nur validiert) | 200 Prüfergebnis | 403 `FORBIDDEN`; 400 Formfehler |
 | `POST` | `/api/reasoner` | `ko.read` | Rumpf `{ task, text?, answers?, locale?, instruction?, query?, outputLanguage?, source?, koId?, confidentiality?, nichtEingestuft?, draftId? }` | 200 Ergebnis der Aufgabe | 400 `BAD_REQUEST`; 409 `CONFIDENTIAL_CLOUD_BLOCKED` (mit `reason`); 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/reasoner/describe` | `ko.read` (vor dem Einlesen) | Rumpf `{ dataUrl, locale?, source?, koId?, confidentiality?, nichtEingestuft?, draftId?, context? }` | 200 Bildbeschreibung | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE` |
 | `POST` | `/api/reasoner/enrich` | `ko.create` | Rumpf `{ query, locale? }` | 200 Anreicherung | 400 `BAD_REQUEST`; 403 `PUBLIC_AI_ENRICHMENT_BLOCKED` |
@@ -331,6 +331,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/categories` | `requireUser` | — | 200 `{ categories }` | — |
 | `GET` | `/api/output/sources` | `ko.read` | — | 200 geeignete Quellen | — |
 | `POST` | `/api/output/generate` | `ko.read` | Rumpf `{ kind, koIds, audienceRole? }` | 200 Dokument | 400 `NO_SOURCES`, `NOT_VALIDATED`, `UNKNOWN_KO`, `UNKNOWN_KIND`, `CONFIDENTIAL` |
+| `GET` | `/api/output/wochenupdate` | `ko.read` | Abfrage `bis?` (`JJJJ-MM-TT`, ohne Angabe heute; Zeitraum sieben Tage) | 200 Wissensupdate `{ title, von, bis, generatedAt, eintraege, markdown, provenance }` (nur validiert, nicht vertraulich; schreibt und verschickt nichts) | 400 `BAD_REQUEST` |
 | `POST` | `/api/output/scorm/pruefen` | `ko.read` | Rumpf `{ koIds, sprache: de \| en, empfaenger, titel? }` | 200 Prüfung `{ exportierbar, format, empfaenger, befunde, fassung }` (erzeugt und schreibt nichts) | 400 `BAD_REQUEST` |
 | `POST` | `/api/output/scorm/paket` | `ko.read` | Rumpf wie `/api/output/scorm/pruefen` | 200 `application/zip` (SCORM-1.2-Paket), Kopf `x-klarwerk-exportfassung`, `x-klarwerk-paket-sha256`; Auditeintrag `output.lms-export` | 400 `BAD_REQUEST`; 422 `EXPORT_BLOCKED` mit Prüfung |
 | `GET` | `/api/management/snapshot` | `ko.read` | — | 200 Lagebild | — |
