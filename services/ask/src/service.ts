@@ -171,9 +171,11 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 //
 // WAS AUSDRÜCKLICH BLEIBT (R-0345, kein offener Chatbot):
 //   · Die Antwort bleibt quellengebunden; der Faden schafft keine Grundlage, er findet sie nur.
-//   · GEBUNDEN wird weiter NUR die getippte Frage (`decktAlleFragebegriffe(question, …)`): jede
-//     Quelle muss alle Begriffe der Nachfrage tragen. Ein früheres Thema kann deshalb keine Quelle
-//     zur Antwort machen, die zur neuen Frage nichts sagt.
+//   · GEBUNDEN werden die getippte Frage UND der Themenanker (`decktAlleFragebegriffe` für beide):
+//     jede Quelle muss alle Begriffe der Nachfrage tragen — ein früheres Thema kann keine Quelle
+//     zur Antwort machen, die zur neuen Frage nichts sagt — und die sachlichen Einschränkungen des
+//     Ankers gelten weiter (R-0278, Nacharbeit 12: eine Quelle zu Ventil F4 trägt keine Nachfrage
+//     zu Ventil F3).
 //   · `frageterme` bleibt das Getippte — jede Aussage ÜBER die Antwort (Fundstelle, Etikett)
 //     rechnet weiter darauf (s. die Trennung an `erweiterteSuchterme`).
 //   · Die Fadenterme hängen in der Vorauswahl HINTER den Termen der Frage, der Markierung und
@@ -258,7 +260,7 @@ function fadenfragen(faden?: readonly string[]): string[] {
 // `citedSources` und das Prüfprotokoll rechnen unverändert auf dem, wonach wirklich gesucht wurde.
 // R-0348 ist die eine benannte Ausnahme, und sie ist keine Ableitung: eine Nachfrage reist mit den
 // vorher GETIPPTEN Fragen ihrer Fragestrecke als Frage im Zusammenhang (`fadenfragen`). Gebunden
-// bleibt dabei allein die neue Frage; ohne Faden gilt der Satz oben wörtlich.
+// bleiben dabei die neue Frage und der Themenanker; ohne Faden gilt der Satz oben wörtlich.
 //
 // WARUM PAARE UND NICHT DIE GEWEITETE FRAGE — das ist der ganze Unterschied zu der Bauform, die
 // JOB 3039 gemessen und zurückgebaut hat (Zahlen in `tests/suche-zuordnung/…`):
@@ -1075,20 +1077,27 @@ export class AskService {
     const ordnung = new Map<string, string[]>(
       prefiltered.map((ko): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
     );
-    const vollstaendig = refs.filter((ref) =>
-      decktAlleFragebegriffe(
-        question,
-        [
-          ref.title,
-          ref.statement,
-          ...(ref.captionTexts ?? []),
-          ref.bodyText ?? "",
-          ...(ordnung.get(ref.id) ?? []),
-        ].join(" "),
-        relevanz,
-      ),
-    );
-    // R-0348: gebunden hat oben die getippte Frage; gewählt und beantwortet wird im Zusammenhang.
+    // R-0278 (Nacharbeit 12, ben): bei einer anknüpfenden Nachfrage gelten die sachlichen
+    // Einschränkungen des THEMENANKERS (erste Fadenfrage, s. `fadenfragen`) weiter. Gebunden wird
+    // deshalb die Nachfrage UND der Anker: nach „Welche maximale Temperatur gilt am Ventil F3?" darf
+    // „Und bei Dauerbetrieb?" keine Quelle zu Ventil F4 tragen. Zwischenfragen binden nicht — sie
+    // sind die Nachfragen, die der Anker einrahmt. Ohne Faden ist der Ablauf der bisherige.
+    const anker = faden[0];
+    const vollstaendig = refs.filter((ref) => {
+      const durchsuchbar = [
+        ref.title,
+        ref.statement,
+        ...(ref.captionTexts ?? []),
+        ref.bodyText ?? "",
+        ...(ordnung.get(ref.id) ?? []),
+      ].join(" ");
+      return (
+        decktAlleFragebegriffe(question, durchsuchbar, relevanz) &&
+        (anker === undefined || decktAlleFragebegriffe(anker, durchsuchbar, relevanz))
+      );
+    });
+    // R-0348: gebunden haben oben die getippte Frage und ihr Anker; gewählt und beantwortet wird im
+    // Zusammenhang.
     const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
