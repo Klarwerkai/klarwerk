@@ -13,6 +13,32 @@ export {
   InMemoryConflictMemoryRepo,
   PgConflictMemoryRepo,
 } from "./src/pair-memory";
+// Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): jede ungeordnete Aussage-Paarprüfung als
+// gespeicherte, wiederaufnehmbare Pflicht (Vertrag: docs/entscheidungen/paarpflichten-dauerhaft.md).
+export {
+  type Paarpflicht,
+  type PaarpflichtAussage,
+  type PaarpflichtBilanz,
+  type PaarpflichtErgebnis,
+  type PaarpflichtKontext,
+  type PaarpflichtLauf,
+  type PaarpflichtPlanung,
+  type PaarpflichtPruefer,
+  type PaarpflichtRepo,
+  type PaarpflichtSchritt,
+  type PaarpflichtZustand,
+  InMemoryPaarpflichtRepo,
+  PAARPFLICHT_FRIST_MS,
+  PAARPFLICHT_MAX_FEHLVERSUCHE,
+  PaarpflichtFehler,
+  PaarpflichtService,
+  PgPaarpflichtRepo,
+  ergebnisAusKonfliktUrteil,
+  gleicheLaufbindung,
+  paarpflichtBilanz,
+  paarpflichtLaufkopf,
+  paarpflichtenPlanen,
+} from "./src/paarpflichten";
 export { ConflictError } from "./src/types";
 // R-0252: die Arbeitsart (Regel/Sache/Version) — das Prädikat prüft den Drahtwert der Anlage-Route.
 export { isConflictWorkKind } from "./src/types";
