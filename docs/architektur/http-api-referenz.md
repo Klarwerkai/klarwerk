@@ -237,6 +237,7 @@ herabgestuft werden (409 `mutability`).
 | `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf) |
 | `PUT` | `/api/drafts/:id/pool` | `ko.create`, nur Autor | Rumpf `{ imPool: boolean }` | 200 Entwurf (`imPool: true` im gemeinsamen Pool, ohne Feld privat) | 400 `BAD_REQUEST`; 404; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor) |
 | `GET` | `/api/drafts/:id/naechster-schritt` | `ko.create` | — | 200 `{ naechsterSchritt }` oder `{}` | 404; 403 |
+| `GET` | `/api/drafts/:id/gleicher-inhalt` | `ko.create` | — | 200 `{ indexStatus, entwuerfe: [{ id, titel }] }` — nur sichtbare Entwürfe mit gleichem Inhaltshash des technischen Index | 404; 403 |
 | `POST` | `/api/drafts/:id/restore` | `ko.create` | — | 200 wiederhergestellter Entwurf | 404 |
 | `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf); 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
 | `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
