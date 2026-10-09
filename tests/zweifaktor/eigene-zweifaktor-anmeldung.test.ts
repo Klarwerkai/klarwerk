@@ -325,6 +325,42 @@ describe("Z8 · HTTP-Wege", () => {
     await k.server.close();
   });
 
+  it("R-0541 × R-0562: ist die Passwortanmeldung abgeschaltet, stellt auch der Codeschritt keine Sitzung aus", async () => {
+    const k = await app();
+    const erster = await k.server.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "anna@x.de", password: PW },
+    });
+    const challenge = (erster.json() as { challenge: string }).challenge;
+    const vorher = process.env.KLARWERK_SSO_ONLY;
+    process.env.KLARWERK_SSO_ONLY = "1";
+    try {
+      const zweiter = await k.server.inject({
+        method: "POST",
+        url: "/api/auth/login/second-factor",
+        payload: { challenge, code: code(k.secret, k.uhr.jetzt()) },
+      });
+      expect(zweiter.statusCode).toBe(403);
+      expect((zweiter.json() as { error: string }).error).toBe("PASSWORD_LOGIN_DISABLED");
+      expect(zweiter.headers["set-cookie"]).toBeUndefined();
+    } finally {
+      if (vorher === undefined) {
+        delete process.env.KLARWERK_SSO_ONLY;
+      } else {
+        process.env.KLARWERK_SSO_ONLY = vorher;
+      }
+    }
+    // Kalibrierung: mit Passwortanmeldung trägt dieselbe Anfrage mit demselben Code.
+    const danach = await k.server.inject({
+      method: "POST",
+      url: "/api/auth/login/second-factor",
+      payload: { challenge, code: code(k.secret, k.uhr.jetzt()) },
+    });
+    expect(danach.statusCode).toBe(200);
+    await k.server.close();
+  });
+
   it("Einrichten/Abschalten nur angemeldet; Rücksetzen nur als Admin", async () => {
     const k = await app();
     for (const [method, url] of [

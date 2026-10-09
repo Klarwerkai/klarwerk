@@ -18,6 +18,11 @@ export interface AuthStatus {
   // UNBEKANNT — nicht „aus". Wer es zu `false` verrechnet, lässt die Maske über eine Instanz
   // urteilen, die dazu nichts gesagt hat (s. `AuthContext`).
   selfRegistrationEnabled?: boolean;
+  // R-0541: `false` heißt „nur Firmen-Login" (KLARWERK_SSO_ONLY bei aktivem SSO). Optional aus
+  // demselben Grund wie oben.
+  passwordLoginEnabled?: boolean;
+  // R-0560: der Firmen-Login über SAML ist eingerichtet.
+  samlEnabled?: boolean;
 }
 
 // AUFTRAG-mega61 Block C: der Vermerk am Konto. `due` entscheidet der SERVER — die Oberfläche
@@ -57,6 +62,8 @@ export const authApi = {
   logout: (): Promise<void> => api.post<void>("/auth/logout"),
   // FR-AUTH-07: SSO-Start liegt als GET-Redirect auf dem Server (Full-Page-Navigation).
   ssoStartUrl: "/api/auth/oidc/start",
+  // R-0560: der Einstieg in die SAML-Anmeldung (Weiterleitung zum Anbieter).
+  samlStartUrl: "/api/auth/saml/start",
   // FR-AUTH-07: Callback — Code+State gegen Session tauschen (PKCE serverseitig).
   // Aufnahme m365-anmeldung: `weiter` nennt der Server nur, wenn der Anmeldedialog des Word-Add-ins
   // das SSO gestartet hat — dann geht es zurück auf die Dialogseite (s. `ssoWeiterziel`).

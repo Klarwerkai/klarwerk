@@ -23,8 +23,39 @@ type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent"
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
   const { t } = useTranslation();
-  const { refresh, oidcEnabled, selfRegistrationEnabled } = useSession();
+  const { refresh, oidcEnabled, samlEnabled, selfRegistrationEnabled, passwordLoginEnabled } =
+    useSession();
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
+  // R-0560: Firmen-Login heisst OIDC ODER SAML.
+  const firmenLogin = oidcEnabled || samlEnabled;
+  // R-0541: NUR FIRMEN-LOGIN. Sagt der Server AUSDRÜCKLICH `false`, verschwinden Passwortformular,
+  // „Passwort vergessen" und „Registrieren" — sie führten alle in eine 403. Seit Bens Befund
+  // (Nacharbeit 2) gilt das auch ohne eingerichteten Firmen-Login: dann steht statt des Knopfes,
+  // dass der Zugang erst eingerichtet werden muss. Unbekannt (`undefined`) ändert nichts; die
+  // Ersteinrichtung bleibt unberührt.
+  const nurFirmenLogin = !needsSetup && passwordLoginEnabled === false;
+  const firmenLoginKnoepfe = (variante: "primary" | "ghost") => (
+    <>
+      {oidcEnabled ? (
+        <Button
+          variant={variante}
+          className="w-full"
+          onClick={() => window.location.assign(authApi.ssoStartUrl)}
+        >
+          {t("auth.ssoButton")}
+        </Button>
+      ) : null}
+      {samlEnabled ? (
+        <Button
+          variant={variante}
+          className="w-full"
+          onClick={() => window.location.assign(authApi.samlStartUrl)}
+        >
+          {t("auth.samlButton")}
+        </Button>
+      ) : null}
+    </>
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -253,6 +284,25 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                 {t("auth.backToLogin")}
               </Button>
             </div>
+          ) : nurFirmenLogin ? (
+            // R-0541: kein Passwortfeld, das in eine 403 führt — der eine Weg, der gilt, und warum.
+            <div data-testid="auth-sso-only" className="mt-6 space-y-4">
+              {firmenLogin ? (
+                <>
+                  <p className="rounded-card border border-hairline p-3 text-[12.5px] text-muted">
+                    {t("auth.ssoOnlyNote")}
+                  </p>
+                  {firmenLoginKnoepfe("primary")}
+                </>
+              ) : (
+                <p
+                  data-testid="auth-sso-only-missing"
+                  className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text"
+                >
+                  {t("auth.ssoOnlyMissing")}
+                </p>
+              )}
+            </div>
           ) : (
             <form
               className="mt-6 space-y-4"
@@ -410,27 +460,21 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               Nicht-Funktion — und `oidcEnabled` hat den Vorgabewert `false`, das stand auf einer
               Instanz ohne OIDC also DAUERHAFT da. Ein „oder"-Trenner, auf den nichts folgt, ist
               zudem ein Trenner ohne zweite Seite. */}
-          {mode === "login" && !needsSetup && oidcEnabled ? (
-            <div className="mt-5">
+          {mode === "login" && !needsSetup && firmenLogin && !nurFirmenLogin ? (
+            <div className="mt-5 space-y-2">
               <div className="mb-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-muted-2">
                 <span className="h-px flex-1 bg-hairline" />
                 {t("auth.or")}
                 <span className="h-px flex-1 bg-hairline" />
               </div>
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => window.location.assign(authApi.ssoStartUrl)}
-              >
-                {t("auth.ssoButton")}
-              </Button>
+              {firmenLoginKnoepfe("ghost")}
             </div>
           ) : null}
 
           {/* D-025 (b): Reihenfolge und Gewicht getauscht. „Passwort vergessen?" ist der
               Alltagsfall und stand vorher unten und leise; „Registrieren" trifft die meisten
               Besucher genau einmal und stand oben und halbfett. */}
-          {!needsSetup && mode === "login" ? (
+          {!needsSetup && mode === "login" && !nurFirmenLogin ? (
             <div className="mt-5 space-y-2 text-center text-[13px] text-muted">
               <button type="button" className="font-semibold text-ink" onClick={() => go("forgot")}>
                 {t("auth.toForgot")}

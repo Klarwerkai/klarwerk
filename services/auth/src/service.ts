@@ -294,7 +294,7 @@ export class AuthService {
 
   private async belegeKontoanlage(
     user: User,
-    via: "bootstrap" | "self" | "admin",
+    via: "bootstrap" | "self" | "admin" | "verzeichnis",
     actorId: string | undefined,
   ): Promise<void> {
     try {
@@ -1115,7 +1115,158 @@ export class AuthService {
     if (await this.zugangAbgelaufen(user)) {
       return undefined;
     }
+    // R-0556 (Ben, Nacharbeit 2): EINE SPERRE WIRKT SOFORT. Bis hierher prüfte diese Methode die
+    // Freigabe nicht — ein Konto, das das Verzeichnis beim Austritt sperrt, hätte mit seiner
+    // laufenden Sitzung bis zu 14 Tage weiterarbeiten können. Die Sitzungen werden beim Sperren
+    // gelöscht (`verzeichnisAendern`); diese Zeile ist die zweite Tür für jede, die das Löschen
+    // überlebt hätte.
+    if (!user.approved) {
+      return undefined;
+    }
     return toPublic(user);
+  }
+
+  // ==============================================================================================
+  // R-0556 / R-0571 — DIE PFLEGE AUS DEM UNTERNEHMENSVERZEICHNIS (SCIM, `verzeichnis-routes.ts`).
+  // ==============================================================================================
+  //
+  // Eintritt legt an, Austritt SPERRT, Wechsel passt Rolle und Gruppen an — ohne Handgriff. Der
+  // Handelnde ist das Verzeichnis (`system`, Nutzlast `quelle: verzeichnis`); kein Konto spricht.
+  //
+  // AUSTRITT LÖSCHT NICHT. Das Konto bleibt bestehen und gesperrt: seine Wissensobjekte, seine
+  // Prüfvermerke und die Spuren im Prüfprotokoll behalten ihren Urheber. Die Quelle nennt die
+  // Eigentumsübergabe als Voraussetzung der Verzeichnispflege — an WEN Eigentum und offene
+  // Prüfaufträge eines Ausgetretenen gehen, ist eine Produktentscheidung, die hier nicht getroffen
+  // wird. Das Sperren hält dafür alles unverändert an seinem Platz und gibt nichts frei.
+  //
+  // DER LETZTE ADMIN BLEIBT, derselbe Schutz wie bei Rollenwechsel und Löschen: das Verzeichnis kann
+  // die Instanz nicht aussperren.
+
+  async kontoLesen(userId: string): Promise<PublicUser | undefined> {
+    const user = await this.users.findById(userId);
+    return user ? toPublic(user) : undefined;
+  }
+
+  async kontoPerAdresse(email: string): Promise<PublicUser | undefined> {
+    const user = await this.users.findByEmail(email);
+    return user ? toPublic(user) : undefined;
+  }
+
+  async verzeichnisAnlegen(eingabe: {
+    email: string;
+    name: string;
+    aktiv: boolean;
+    rolle?: Role | undefined;
+    gruppen?: readonly string[] | undefined;
+  }): Promise<PublicUser> {
+    if (await this.users.findByEmail(eingabe.email)) {
+      throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
+    }
+    const user: User = {
+      id: this.genId(),
+      name: eingabe.name,
+      email: eingabe.email,
+      passwordSalt: "", // Verzeichniskonto: angemeldet wird über den Firmen-Login.
+      passwordHash: "",
+      role: eingabe.rolle ?? "viewer",
+      approved: eingabe.aktiv,
+      createdAt: new Date(this.now()).toISOString(),
+      ...(eingabe.gruppen ? { verzeichnisGruppen: [...eingabe.gruppen] } : {}),
+    };
+    await this.users.insert(user);
+    if (user.verzeichnisGruppen) {
+      await this.users.setzeVerzeichnisGruppen?.(user.id, user.verzeichnisGruppen);
+    }
+    await this.belegeKontoanlage(user, "verzeichnis", "system");
+    return toPublic(user);
+  }
+
+  async verzeichnisAendern(
+    userId: string,
+    aenderung: {
+      email?: string | undefined;
+      name?: string | undefined;
+      aktiv?: boolean | undefined;
+      rolle?: Role | undefined;
+      gruppen?: readonly string[] | undefined;
+    },
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    if (aenderung.email !== undefined && aenderung.email !== user.email) {
+      const vergeben = await this.users.findByEmail(aenderung.email);
+      if (vergeben && vergeben.id !== userId) {
+        throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
+      }
+    }
+    const neu: User = {
+      ...user,
+      ...(aenderung.email !== undefined ? { email: aenderung.email } : {}),
+      ...(aenderung.name !== undefined ? { name: aenderung.name } : {}),
+      ...(aenderung.aktiv !== undefined ? { approved: aenderung.aktiv } : {}),
+      ...(aenderung.rolle !== undefined ? { role: aenderung.rolle } : {}),
+      ...(aenderung.gruppen !== undefined ? { verzeichnisGruppen: [...aenderung.gruppen] } : {}),
+    };
+    const felder = (["email", "name", "approved", "role", "verzeichnisGruppen"] as const).filter(
+      (feld) => JSON.stringify(neu[feld]) !== JSON.stringify(user[feld]),
+    );
+    if (felder.length === 0) {
+      return toPublic(user);
+    }
+    const gesperrt = user.approved && !neu.approved;
+    await this.users.withAdminGuard(async (tx) => {
+      const verliertAdmin = user.role === "admin" && (neu.role !== "admin" || !neu.approved);
+      if (user.approved && verliertAdmin && (await this.isLastApprovedAdmin(userId, tx))) {
+        throw new AuthError("FORBIDDEN", "LAST_ADMIN_DEMOTION" satisfies Meldungsschluessel);
+      }
+      // Keine Adresse, kein Name, keine Gruppennamen in der Nutzlast: das Prüfprotokoll belegt, DASS
+      // und WAS sich geändert hat, und wird kein zweites Verzeichnis.
+      await this.record(
+        "system",
+        "user.directory-sync",
+        userId,
+        {
+          quelle: "verzeichnis",
+          felder,
+          ...(neu.role !== user.role ? { previousRole: user.role, role: neu.role } : {}),
+          ...(gesperrt ? { gesperrt: true } : {}),
+          ...(!user.approved && neu.approved ? { entsperrt: true } : {}),
+        },
+        tx,
+      );
+      await this.users.update(neu, tx);
+      if (felder.includes("verzeichnisGruppen")) {
+        await this.users.setzeVerzeichnisGruppen?.(userId, neu.verzeichnisGruppen ?? [], tx);
+      }
+    });
+    if (gesperrt) {
+      await this.sessions.deleteByUser(userId);
+    }
+    return toPublic(neu);
+  }
+
+  /**
+   * R-0571: wer laut Verzeichnis für die Prüfung von Wissen in diesem Space zuständig ist.
+   * `zuordnung` bildet Verzeichnisgruppen auf Space-Kennungen ab (`KLARWERK_PRUEFZUSTAENDIGKEIT`).
+   * Gesperrte und abgelaufene Konten sind nie zuständig.
+   */
+  async pruefzustaendigeFuer(
+    spaceId: string,
+    zuordnung: ReadonlyMap<string, readonly string[]>,
+  ): Promise<string[]> {
+    const gruppen = [...zuordnung].filter(([, spaces]) => spaces.includes(spaceId)).map(([g]) => g);
+    if (gruppen.length === 0) {
+      return [];
+    }
+    const nun = this.now();
+    return (await this.users.list())
+      .filter(
+        (u) =>
+          u.approved &&
+          (u.accessExpiresAt === undefined ||
+            (ablaufZeitpunkt(u.accessExpiresAt) ?? Number.POSITIVE_INFINITY) > nun) &&
+          (u.verzeichnisGruppen ?? []).some((g) => gruppen.includes(g)),
+      )
+      .map((u) => u.id);
   }
 
   // SCRUM-450: reine Passwort-Prüfung eines Nutzers (Re-Authentifizierung vor kritischen,
