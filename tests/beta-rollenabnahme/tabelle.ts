@@ -675,6 +675,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
+  // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
+  {
+    gruppe: "askRoutes",
+    methode: "GET",
+    pfad: "/api/gaps/gibt-es-nicht/ansprechpartner",
+    route: "/api/gaps/:id/ansprechpartner",
+    belegstelle: "services/app/src/routes/ask-routes.ts:867",
+    tor: "ko.assign",
+    erwartet: AB_CONTROLLER,
+  },
   {
     gruppe: "auditRoutes",
     methode: "GET",
@@ -785,6 +796,17 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/kenntnisnahme-routes.ts:205",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-1644 · Wissensauskunft zum Zeitpunkt. Dieselbe Einsichtsstufe wie das Audit-Protokoll
+  // (`ko.validate`, Controller/Admin). Ohne Zeitpunkt endet die Tür hinter dem Tor im 400.
+  {
+    gruppe: "wissensauskunftRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/wissensauskunft",
+    route: "/api/kos/:id/wissensauskunft",
+    belegstelle: "services/app/src/routes/wissensauskunft-routes.ts:31",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
   },
   {
     gruppe: "brandingRoutes",

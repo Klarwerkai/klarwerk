@@ -2136,6 +2136,22 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Welche es sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt.
     // `anbieter` 1 und `traeger` 2 sind in derselben Meldung unverändert.
     //
+    // Aufnahme gesamt-hilfen, Nacharbeit 5 (R-0443): 451 → 452. GENAU EIN Bauteil kommt dazu:
+    //     + `Arbeitsweise` (`pages/Arbeitsweise.tsx`) — die eigene Seite „So arbeitet Klarwerk“
+    // Kein Bild, kein `documentTitle`, kein `CAPTION_AI_TEXT`; sie verwendet die vorhandene Sicht
+    // `SoArbeitetKlarwerk` wieder (dort nur ein optionaler Schalter, kein neues Bauteil).
+    // `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 452 ist GERECHNET (451 + 1), nicht
+    // gemessen; weicht der Prüflauf ab, nennt die Meldung oben die gemessene Zahl.
+    //
+    // Nacharbeit 6: GEMESSEN 495. Am Kandidaten 33aad029 meldete der Sammler wörtlich „gemessen:
+    // 495 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 621 Quelldateien … expected
+    // { komponenten: 495, … } to deeply equal { komponenten: 452, … }". Dieser Auftrag trägt genau
+    // EIN Bauteil (`Arbeitsweise`) bei; die 43 Komponenten über 452 kamen mit dem eingemischten
+    // Hauptstand (Grundmenge 559 → 621; aus diesem Auftrag `pages/Arbeitsweise.tsx`,
+    // `texte/arbeitsweise.ts`). Welche es sind, ist ohne Git-Verlauf an diesem Arbeitsbaum nicht
+    // namentlich bestimmt. Die danach ergänzte `lib/klaraBibliothek.ts` enthält kein Bauteil (nur
+    // die Funktion `allBibliothekEntries`). `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
     // PLAN-SPRACHANMERKUNG (R-1625, R-2177): 451 → 452. GENAU EIN Bauteil kommt dazu:
     //     + `Zeichnung` (`components/bibliothek/Zeichnung.tsx`) — die Zeichnung einer Rückfrage
     //       mit ihrer Marke; antippbar beim Schreiben, nur lesend am gespeicherten Beitrag.
@@ -2176,8 +2192,34 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Seit 2100605a änderte dieser Auftrag nur diesen Sollwert (eine Testdatei, keine Quelldatei der
     // Grundmenge); die eine Komponente kam mit main (Grundmenge 644 → 647), namentlich ohne
     // Git-Verlauf nicht bestimmt. `anbieter` 1 und `traeger` 2 unverändert.
+    //
+    // ZUSAMMENFÜHRUNG beider Stände (gesamt-hilfen Nacharbeit 11, Kandidat 96b9e3a0): 497.
+    // Grundlage ist die GEMESSENE 495 von gesamt-hilfen (Kandidat 33aad029; sie enthält
+    // `Arbeitsweise` und den Hauptstand von damals, der hier noch 451 trug — `Zeichnung` und
+    // `AnhangZeichnung` waren darin also noch nicht enthalten). Dazu die zwei Bauteile der
+    // Plan-Sprachanmerkung: 495 + 2 = 497. EHRLICH GESAGT: GERECHNET, nicht gemessen; was der
+    // Hauptstand seit 33aad029 sonst an Bauteilen gebracht hat, ist darin nicht enthalten. Weicht
+    // der Prüflauf ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-hilfen Nacharbeit 12: GEMESSEN 515. Am Kandidaten 01c730f4 meldete der Sammler
+    // wörtlich „gemessen: 515 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 657 Quelldateien …
+    // expected { komponenten: 515, … } to deeply equal { komponenten: 497, … }". Seit der Messung 495
+    // (33aad029, Grundmenge 621) hat gesamt-hilfen KEIN Bauteil hinzugefügt: dazugekommen sind
+    // nur `lib/klaraBibliothek.ts` (Funktionen, kein Bauteil) und ein Testfall. Die 20 Komponenten
+    // über 495 kommen also aus dem eingemischten Hauptstand (Grundmenge 621 → 657), darunter laut
+    // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
+    // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ZUSAMMENFÜHRUNG (gesamt-bildbeschreibung-bedienung Nacharbeit 12, Kandidat 5613867b mit main
+    // bc2b75e7): hier GEMESSEN 513 (85661d72, Grundmenge 647), auf main GEMESSEN 515 (01c730f4,
+    // Grundmenge 657, samt `Arbeitsweise`, `Zeichnung`, `AnhangZeichnung`). Dieser Auftrag trägt
+    // KEIN Bauteil bei — seine Quellbeiträge sind `BodyImageGallery.tsx` (Zustand/Markup der
+    // vorhandenen Großansicht) und das Datenmodul `texte/bildergalerie.ts`. Die erwartete Zahl ist
+    // deshalb die von main: 515. EHRLICH GESAGT: an DIESEM Kandidaten nicht gemessen; hat main seit
+    // 01c730f4 weitere Bauteile gebracht, nennt die Meldung oben die gemessene Zahl, und DIE gehört
+    // hierher. `anbieter` 1 und `traeger` 2 sind auf beiden Seiten gleich und bleiben exakt geprüft.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 513,
+      komponenten: 515,
       anbieter: 1,
       traeger: 2,
     });
