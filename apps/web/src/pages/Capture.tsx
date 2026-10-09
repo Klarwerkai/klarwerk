@@ -193,7 +193,7 @@ import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentialit
 // AUFTRAG-mega20 Block A: der Wiederholschlüssel der Erstanlage (stabil über Wiederholungen).
 import {
   type AnlageVorgang,
-  anlageVorgangFuer,
+  anlageVorgangWiederholen,
   createConflictOffersRestart,
   createOperationIsSettled,
   newCreateOperationId,
@@ -1553,7 +1553,12 @@ export function CaptureArbeitsraum({
   // Schlüssel, kein neuer Upload, kein neuer Nutzlastbau. Der Server liefert dann den schon
   // angelegten Entwurf zurück. Die Upload-Lage des ersten Versuchs reist mit — ein fehlendes Original
   // wird weiterhin ehrlich gemeldet und nicht durch den Wiederholversuch verdeckt. Der Vorgang fällt
-  // bei Erfolg, bei eindeutiger Ablehnung und wenn eine andere Datei eingelesen wird.
+  // bei Erfolg, bei eindeutiger Ablehnung und beim Verwerfen oder Öffnen eines anderen Entwurfs.
+  //
+  // entscheidung:14ce8681 (Option A): HAT DER MENSCH INZWISCHEN ETWAS GEÄNDERT (eine andere Datei
+  // eingelesen, den Text per OCR neu geholt), wird die Nutzlast neu gebaut — aber unter DEMSELBEN
+  // Schlüssel und mit `fortschreiben`. Der Server schreibt dann denselben Entwurf fort, statt einen
+  // zweiten anzulegen; war der erste nie angekommen, legt er jetzt genau einen an.
   const ganzdokumentOffenRef = useRef<{
     eingabeAbdruck: string;
     payload: DraftPayload;
@@ -1591,6 +1596,32 @@ export function CaptureArbeitsraum({
     lage: "ausstehend" | "gescheitert";
     datei: string;
   } | null>(null);
+  // entscheidung:8b909a1e (Option A): HAT DER SERVER BEIM ERNEUTEN SPEICHERN DEN VORHANDENEN
+  // EINTRAG ERKANNT (`Draft.anlage` in seiner Antwort), steht statt der normalen Erfolgsmeldung
+  // dieser Hinweis da — mit Verweis auf genau diesen Eintrag. Je Anlageweg einer (Eintrag aus dem
+  // Formular, Datei als Ganzdokument), weil der gemeinsame Speicherknopf beide auf einmal schreibt.
+  // Jeder Weg räumt seinen eigenen Hinweis beim nächsten Versuch; eine echte Erstspeicherung setzt
+  // keinen.
+  type BereitsGespeichert = { id: string; titel: string; fortgeschrieben: boolean };
+  const [bereitsGespeichert, setBereitsGespeichert] = useState<{
+    eintrag: BereitsGespeichert | null;
+    datei: BereitsGespeichert | null;
+  }>({ eintrag: null, datei: null });
+  const bereitsGespeichertAus = (d: Draft, titel: string): BereitsGespeichert | null =>
+    d.anlage && typeof d.id === "string" && d.id.length > 0
+      ? { id: d.id, titel, fortgeschrieben: d.anlage === "fortgeschrieben" }
+      : null;
+  const bereitsGespeichertSatz = (b: BereitsGespeichert): string =>
+    t(
+      b.fortgeschrieben
+        ? "capture.bereitsGespeichertFortgeschrieben"
+        : "capture.bereitsGespeichert",
+    );
+  // entscheidung:14ce8681: der Server hat das Fortschreiben ABGELEHNT — der Entwurf des unklaren
+  // Vorgangs wurde inzwischen anderswo bearbeitet oder ist nicht mehr da. Der Schlüssel hilft dann
+  // nicht mehr; hielte der Client ihn fest, endete jeder weitere Druck im selben 409.
+  const fortschreibenAbgelehnt = (e: unknown): boolean =>
+    e instanceof ApiError && e.status === 409 && e.code === "IDEMPOTENCY_PAYLOAD_MISMATCH";
   // Beide Anteile sind gesichert: der zurückgehaltene Erfolgssatz des Entwurfs gilt jetzt, und der
   // Teilerfolg ist erledigt. EIN Abschluss für alle Wege — `fileWholeDraft.onSuccess` (jeder Knopf),
   // und `manuellSichern`/Wache für den Fall, dass `ganzdokumentSichern` einen schon gesicherten
@@ -1626,7 +1657,9 @@ export function CaptureArbeitsraum({
       const offen = ganzdokumentOffenRef.current;
       if (offen && offen.eingabeAbdruck === eingabeAbdruck) {
         return {
-          draft: await endpoints.drafts.create(offen.payload, offen.vorgang.id),
+          draft: await endpoints.drafts.create(offen.payload, offen.vorgang.id, undefined, {
+            fortschreiben: true,
+          }),
           originalFailure: offen.originalFailure,
           originalAttached: offen.originalAttached,
         };
@@ -1705,7 +1738,12 @@ export function CaptureArbeitsraum({
       if (!draftPayloadWithinLimit(payload)) {
         throw new DraftPayloadTooLargeError();
       }
-      const vorgang = anlageVorgangFuer(null, JSON.stringify(payload));
+      // entscheidung:14ce8681: ein noch offener (unklarer) Vorgang behält seinen Schlüssel, auch
+      // wenn die Eingabe inzwischen eine andere ist — derselbe Entwurf wird fortgeschrieben.
+      const { vorgang, fortschreiben } = anlageVorgangWiederholen(
+        offen?.vorgang ?? null,
+        JSON.stringify(payload),
+      );
       ganzdokumentOffenRef.current = {
         eingabeAbdruck,
         payload,
@@ -1714,14 +1752,22 @@ export function CaptureArbeitsraum({
         originalAttached,
       };
       return {
-        draft: await endpoints.drafts.create(payload, vorgang.id),
+        draft: fortschreiben
+          ? await endpoints.drafts.create(payload, vorgang.id, undefined, { fortschreiben })
+          : await endpoints.drafts.create(payload, vorgang.id),
         originalFailure,
         originalAttached,
       };
     },
+    onMutate: () => {
+      setBereitsGespeichert((b) => ({ ...b, datei: null }));
+    },
     onSuccess: ({ draft, originalFailure, originalAttached }, input) => {
       // R-0020: der Vorgang ist abgeschlossen.
       ganzdokumentOffenRef.current = null;
+      // entscheidung:8b909a1e: der Server hat den vorhandenen Eintrag erkannt — Hinweis statt Erfolg.
+      const bereits = bereitsGespeichertAus(draft, draftTitle(draft, input.fileName));
+      setBereitsGespeichert((b) => ({ ...b, datei: bereits }));
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const savedDraftId =
@@ -1744,7 +1790,9 @@ export function CaptureArbeitsraum({
       setFileOriginal(null);
       fileOriginalRef.current = { ref: null };
       setFileQuery("");
-      const savedNote = t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName });
+      const savedNote = bereits
+        ? bereitsGespeichertSatz(bereits)
+        : t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName });
       // ==========================================================================================
       // JOB 513/D3B — DIE GENUTZTE PRODUKTKANTE (Ownerentscheidung Option b).
       // ==========================================================================================
@@ -1760,7 +1808,9 @@ export function CaptureArbeitsraum({
       const imageNote = summary
         ? summary.notices.map((n) => ` ${t(n.key, n.params)}`).join("")
         : "";
-      setNotice(`${savedNote}${imageNote}`);
+      // entscheidung:8b909a1e: bei einer erkannten Wiederholung trägt der Hinweiskasten den Satz
+      // (samt Verweis); der grüne Kasten behält nur die Bildbilanz, damit nichts doppelt dasteht.
+      setNotice(bereits ? imageNote.trim() || null : `${savedNote}${imageNote}`);
       // LAUF 6 RUNDE 2 (bens B7): war vorher der Entwurf gesichert und die Datei ausstehend oder
       // gescheitert, ist der gemeinsame Auftrag JETZT erledigt — egal über welchen Knopf die Datei
       // kam (manueller Knopf, Kartenknopf, Wache). Erst hier gilt der zurückgehaltene Erfolgssatz.
@@ -1786,7 +1836,10 @@ export function CaptureArbeitsraum({
     onError: (error: unknown) => {
       // R-0020: den Schlüssel NUR fallen lassen, wenn der Server eindeutig „nichts entstanden"
       // geantwortet hat — bei Netzabbruch oder 5xx ist der nächste Druck eine Wiederholung.
-      if (createOperationIsSettled(error instanceof ApiError ? error.status : undefined)) {
+      if (
+        createOperationIsSettled(error instanceof ApiError ? error.status : undefined) ||
+        fortschreibenAbgelehnt(error)
+      ) {
         ganzdokumentOffenRef.current = null;
       }
       if (error instanceof DraftPayloadTooLargeError) {
@@ -2468,13 +2521,27 @@ export function CaptureArbeitsraum({
   // zweite Druck dieselbe Nutzlast und denselben Schlüssel, und der Server gibt den schon
   // angelegten Entwurf zurück. Dasselbe gilt für die Wache, wenn sie dieselbe Nutzlast gleichzeitig
   // schickt.
+  //
+  // entscheidung:14ce8681 (Option A): HAT DER MENSCH NACH DER VERLORENEN ANTWORT ETWAS GEÄNDERT,
+  // bleibt der Schlüssel trotzdem derselbe und der Aufruf trägt `fortschreiben` — der Server
+  // schreibt denselben Entwurf mit dem neuen Inhalt fort (oder legt ihn jetzt an, wenn der erste
+  // Versuch nie angekommen war). Es gibt immer nur einen Eintrag. Der offene Vorgang endet bei
+  // Erfolg, bei eindeutiger Ablehnung, beim Verwerfen und beim Öffnen eines anderen Entwurfs.
   const eintragVorgangRef = useRef<AnlageVorgang | null>(null);
   const anlegenMitVorgang = (payload: DraftPayload): Promise<Draft> => {
-    const vorgang = anlageVorgangFuer(eintragVorgangRef.current, JSON.stringify(payload));
+    const { vorgang, fortschreiben } = anlageVorgangWiederholen(
+      eintragVorgangRef.current,
+      JSON.stringify(payload),
+    );
     eintragVorgangRef.current = vorgang;
-    return endpoints.drafts.create(payload, vorgang.id);
+    return fortschreiben
+      ? endpoints.drafts.create(payload, vorgang.id, undefined, { fortschreiben })
+      : endpoints.drafts.create(payload, vorgang.id);
   };
   const saveDraft = useMutation({
+    onMutate: () => {
+      setBereitsGespeichert((b) => ({ ...b, eintrag: null }));
+    },
     mutationFn: () => {
       const n = parsedValidations();
       // AUFTRAG-mega5 Block A (bens Verlustpfade 1+2): Interviewfortschritt (Antworten, getippte
@@ -2565,7 +2632,18 @@ export function CaptureArbeitsraum({
       eintragVorgangRef.current = null;
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
-      const msg = draftId ? t("capture.draftUpdated") : t("capture.draftSaved");
+      // entscheidung:8b909a1e (Option A): erkannte der Server den vorhandenen Eintrag, steht statt
+      // der normalen Erfolgsmeldung der Hinweis „war bereits gespeichert" mit Verweis auf ihn. Der
+      // Titel kommt aus der SERVERANTWORT — der Formularzustand wird gleich geräumt.
+      const bereits = draftId
+        ? null
+        : bereitsGespeichertAus(_d, _d.payload?.title?.trim() || t("capture.draftFallbackTitle"));
+      setBereitsGespeichert((b) => ({ ...b, eintrag: bereits }));
+      const msg = bereits
+        ? bereitsGespeichertSatz(bereits)
+        : draftId
+          ? t("capture.draftUpdated")
+          : t("capture.draftSaved");
       // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
       // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
       setRaw("");
@@ -2626,8 +2704,15 @@ export function CaptureArbeitsraum({
         setNotice(null);
         setTeilerfolg({ lage: "ausstehend", datei: ausstehend });
       } else {
-        setNotice(msg);
+        // entscheidung:8b909a1e: bei erkannter Wiederholung trägt der Hinweiskasten den Satz.
+        setNotice(bereits ? null : msg);
         push("success", msg);
+      }
+      // entscheidung:8b909a1e: der Hinweis gehört ins Erfassen-Formular. Ein Blattwechsel baute
+      // den Arbeitsraum samt Hinweis ab; der Verweis im Hinweis öffnet den Eintrag auf Wunsch.
+      if (bereits) {
+        blattWechselRef.current.entwurfId = null;
+        return;
       }
       // JOB 3062 · H3: DAS ERGEBNIS LANDET IM BLATT. Interview, Dateiimport und Expertenformular
       // sind Ansichten des Blattes; was sie erarbeitet haben, ist nach dem Sichern ein Entwurf.
@@ -2648,7 +2733,11 @@ export function CaptureArbeitsraum({
     },
     onError: (e) => {
       // R-0020: bei eindeutiger Ablehnung ist nichts entstanden — der nächste Versuch ist neu.
-      if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
+      // entscheidung:14ce8681: ebenso, wenn der Server das Fortschreiben abgelehnt hat.
+      if (
+        createOperationIsSettled(e instanceof ApiError ? e.status : undefined) ||
+        fortschreibenAbgelehnt(e)
+      ) {
         eintragVorgangRef.current = null;
       }
       // JOB 2684 D2 (R2-17): 409 `DRAFT_STALE` — der Entwurf wurde inzwischen an anderer Stelle
@@ -2680,6 +2769,10 @@ export function CaptureArbeitsraum({
     // JOB 3106 (UX-01): wer einen Entwurf fortsetzt, arbeitet nicht mehr an der letzten Sicherung
     // — die Plakette „gerade gespeichert" wäre ab hier eine Auskunft über eine vergangene Runde.
     setGeradeGesicherterEntwurf(null);
+    // entscheidung:14ce8681/8b909a1e: ein geöffneter Entwurf wird aktualisiert, nicht angelegt —
+    // ein offener Anlagevorgang des Formulars gehört nicht mehr zu dieser Eingabe.
+    eintragVorgangRef.current = null;
+    setBereitsGespeichert((b) => ({ ...b, eintrag: null }));
     // AUFTRAG-mega21 Block C-2: DER SERVER WEISS ES — JETZT SAGT ES AUCH DIE OBERFLÄCHE.
     //
     // `listDraftsForResume` prüft für jeden Entwurf, ob seine gesicherten Originale noch im
@@ -2968,6 +3061,12 @@ export function CaptureArbeitsraum({
     // JOB 3106 (UX-01): der Leerzustand trägt keine Markierung. Sie zeigte sonst auf einen
     // Entwurf, mit dem dieses Formular nichts mehr zu tun hat.
     setGeradeGesicherterEntwurf(null);
+    // entscheidung:14ce8681/8b909a1e: verworfen heisst auch — kein offener Anlagevorgang mehr, an
+    // den der nächste, ganz neue Beitrag sich anhängte, und kein Hinweis über eine alte Runde.
+    eintragVorgangRef.current = null;
+    ganzdokumentOffenRef.current = null;
+    ganzdokumentGesichertRef.current = null;
+    setBereitsGespeichert({ eintrag: null, datei: null });
     setWizStep("tell");
     clearInterviewState();
     clearFileImportState();
@@ -4603,8 +4702,9 @@ export function CaptureArbeitsraum({
       }
       setFileText(text);
       // R-0020: eine NEU eingelesene Datei ist ein neuer Stand — auch wenn sie gleich heisst.
+      // entscheidung:14ce8681: ein noch UNKLARER Vorgang (`ganzdokumentOffenRef`) bleibt dagegen
+      // stehen — der neue Stand schreibt denselben Entwurf fort, statt einen zweiten anzulegen.
       ganzdokumentGesichertRef.current = null;
-      ganzdokumentOffenRef.current = null;
       setFileRich(rich);
       setFileImageInfo(imageInfo);
       setFileImageTransfer(imageTransfer);
@@ -4719,8 +4819,8 @@ export function CaptureArbeitsraum({
       const res = await runImageOcr(fileImageUrl);
       if (res.status === "success" && res.text.length > 0) {
         setFileText(res.text);
+        // entscheidung:14ce8681: ein unklarer Vorgang bleibt stehen (s. Datei-Einlesen).
         ganzdokumentGesichertRef.current = null;
-        ganzdokumentOffenRef.current = null;
         // JOB 3196: derselbe Befund wie beim Datei-Einlesen — auch der OCR-Text bekommt die
         // Quittung der GEWÄHLTEN Importart, gebildet beim Rendern. Ohne formatabhängige Zusätze.
         setNotice({
@@ -5235,8 +5335,9 @@ export function CaptureArbeitsraum({
         if (blattWechselRef.current.meldung !== null) {
           setTeilerfolg({ lage: "ausstehend", datei: traeger.eingabe.fileName });
         }
+        let dateiErgebnis: Awaited<ReturnType<typeof ganzdokumentSichern>> | undefined;
         try {
-          await ganzdokumentSichern(traeger.eingabe);
+          dateiErgebnis = await ganzdokumentSichern(traeger.eingabe);
         } catch {
           // Auch hier hat `fileWholeDraft.onError` den Grund bereits gemeldet (samt dem eigenen Satz
           // für „zu groß für den Import"). Der Dateizustand bleibt stehen: ein zweiter Druck ist der
@@ -5256,7 +5357,9 @@ export function CaptureArbeitsraum({
         // Beide Anteile sind gesichert: jetzt erst der Wechsel ins Blatt, zum Eintrag dieses Weges.
         const entwurfId = blattWechselRef.current.entwurfId;
         blattWechselRef.current.entwurfId = null;
-        if (entwurfId) {
+        // entscheidung:8b909a1e: war die Datei bereits gespeichert, bleibt der Hinweis samt Verweis
+        // im Erfassen-Formular stehen — kein Blattwechsel, der ihn abbaute.
+        if (entwurfId && !dateiErgebnis?.draft?.anlage) {
           onEntwurfInsBlatt?.(entwurfId);
         }
       }
@@ -7157,6 +7260,35 @@ export function CaptureArbeitsraum({
                   {t("capture.teilerfolg.dateiGescheitert", { name: teilerfolg.datei })}
                 </output>
               ) : null}
+              {/* entscheidung:8b909a1e (Option A): der Server hat beim erneuten Speichern den
+                vorhandenen Eintrag erkannt — statt der normalen Erfolgsmeldung dieser Hinweis, mit
+                Verweis auf genau diesen Eintrag. Im Blatt öffnet der Verweis ihn dort (derselbe Weg
+                wie nach dem Speichern), sonst über die Adresse der Vordertür. */}
+              {[bereitsGespeichert.eintrag, bereitsGespeichert.datei].map((b) =>
+                b ? (
+                  <output
+                    key={b.id}
+                    data-testid="capture-bereits-gespeichert"
+                    data-entwurf={b.id}
+                    aria-live="polite"
+                    className="block rounded-btn border border-hairline px-3 py-2 text-[12.5px] text-ink"
+                  >
+                    <span>{bereitsGespeichertSatz(b)}</span>{" "}
+                    <GuardedLink
+                      to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(b.id)}`}
+                      onClick={(e) => {
+                        if (onEntwurfInsBlatt) {
+                          e.preventDefault();
+                          onEntwurfInsBlatt(b.id);
+                        }
+                      }}
+                      className="font-semibold underline"
+                    >
+                      {t("capture.bereitsGespeichertOeffnen", { title: b.titel })}
+                    </GuardedLink>
+                  </output>
+                ) : null,
+              )}
 
               {/* JOB 3029 (U1): der Unterschied der zwei Knöpfe steht offen an der Entscheidung.
                 Im Expertenweg trägt ihn die Entwurfskarte weiter unten (dieser Zweig läuft auch
