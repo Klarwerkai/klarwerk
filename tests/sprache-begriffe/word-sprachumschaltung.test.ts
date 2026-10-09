@@ -16,7 +16,8 @@
 //     t(key) = STRINGS[lang][key] || STRINGS.de[key] || key
 // — fehlt ein Schlüssel im englischen oder niederländischen Wörterbuch, steht dort STILL der
 // deutsche Text. Kein vorhandener Test vergleicht die Schlüsselmengen; nur der Block Wortvergleich
-// hat eine eigene Paritätsprüfung (`tests/app/word-addin-wortvergleich.test.ts` V5).
+// hat eine eigene Paritätsprüfung (`tests/app/word-addin-wortvergleich.test.ts` V5; der Block
+// wohnt seit main 13984aac in `wortvergleich.js` und wird dort mitgelesen).
 //
 // DIESER WÄCHTER liest die ausgelieferten Dateien mit dem TypeScript-Parser (ohne sie auszuführen)
 // und prüft JEDES Wörterbuch — erkannt an mindestens einem Sprachblock `de`/`en`/`nl` als Objekt —
@@ -179,8 +180,14 @@ const QUELLEN: ReadonlyArray<{ datei: string; text: string; erwartet: readonly s
       "KA6_TEXTE",
       "KA6_MEMO_TEXTE",
       "KA7_TEXTE",
-      "WV_TEXTE",
     ],
+  },
+  // Integration mit main 13984aac: der Block KW-WORDVERGLEICH (samt `WV_TEXTE`) wohnt seit dem
+  // Auftrag „Geschriebene Behauptungen …" in einer eigenen Datei — dieselbe Parität gilt dort.
+  {
+    datei: `${ADDIN}/wortvergleich.js`,
+    text: lies(`${ADDIN}/wortvergleich.js`),
+    erwartet: ["WV_TEXTE"],
   },
   {
     datei: `${ADDIN}/begriffe.js`,
