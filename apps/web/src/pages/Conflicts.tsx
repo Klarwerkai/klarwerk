@@ -56,6 +56,7 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { SourceEvidence } from "../components/ko/SourceEvidence";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
@@ -372,6 +373,9 @@ export function Conflicts(): JSX.Element {
         {lage.lage === "leer" ? <PruefenSatz kennung="leer">{t("con.empty")}</PruefenSatz> : null}
         {aktiv ? konfliktFlaeche(aktiv) : null}
       </div>
+      {/* R-0956 (Nacharbeit 7): unter der Brettfläche die Einordnung in den Wissenskreis — die
+          Fläche selbst trägt im Leerfall weiter genau ihren Satz (con.empty). */}
+      {lage.lage === "leer" ? leerzustandsZeile(t, "conflicts") : null}
     </div>
   );
 

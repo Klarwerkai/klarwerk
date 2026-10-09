@@ -253,6 +253,7 @@ const nl: typeof de = {
   "cmd.treffer_other": "{{count}} doelen",
   "cmd.audit": "Audit-log (in Analytics)",
   "toast.dismiss": "Sluiten",
+  "einblendung.erledigt": "Gereed.",
   "page.placeholder":
     "Dit scherm wordt in een latere taak gebouwd. App-shell, navigatie en rollogica staan er al.",
   "status.entwurf": "Concept",
@@ -3194,6 +3195,10 @@ const nl: typeof de = {
   "start.livewall.photoRevoke": "Foto verwijderen",
   "start.livewall.photoError":
     "De foto kon niet worden opgeslagen. Kies een PNG-, JPEG- of WebP-afbeelding.",
+  "start.livewall.consentError":
+    "De naamtoestemming is niet opgeslagen — de getoonde stand blijft gelden. Schakel opnieuw om.",
+  "start.livewall.photoRevokeError":
+    "De foto is niet verwijderd — hij blijft gedeeld. Trek de toestemming opnieuw in.",
   "start.livewall.photoAlt": "Foto van de auteur",
   "start.livewall.photoOwnAlt": "Mijn foto voor de wand",
   "start.livewall.beamerOpen": "Als beamerweergave openen",
@@ -4201,6 +4206,14 @@ const nl: typeof de = {
   "risk.pflege.retirementTitle": "Pensioenhorizonten",
   "risk.pflege.retirement": "Pensioenhorizon van {{name}}",
   "risk.pflege.noRetirement": "Geen pensioen ingevoerd",
+  "risk.pflege.retirementSaved": "Pensioenhorizon van {{name}} opgeslagen.",
+  "risk.pflege.retirementNotRefreshed":
+    "Opgeslagen. De weergave voor {{name}} is nog niet ververst — de keuze toont de opgeslagen waarde.",
+  "risk.pflege.profileSaved": "Gebiedsprofiel „{{category}}” opgeslagen.",
+  "risk.pflege.profileError":
+    "Gebiedsprofiel „{{category}}” is niet opgeslagen. Je invoer blijft staan — „Opslaan” probeert het opnieuw.",
+  "risk.pflege.retirementError":
+    "Pensioenhorizon van {{name}} is niet opgeslagen. Je keuze blijft staan — „Opnieuw proberen” slaat die nog een keer op.",
   "risk.busLegendSingle": "rood = enkele bron (uitvalrisico)",
   "risk.busLegendOk": "groen = meerdere bronnen",
   "risk.help.summary":
@@ -4262,6 +4275,13 @@ const nl: typeof de = {
   "risk.close": "Sluiten",
   "risk.closeWithTitle": "Sluiten met het kennisobject dat dit hiaat beantwoordt",
   "risk.closeFailed": "Niet gesloten — het kennisobject ontbreekt of staat in de prullenbak.",
+  "risk.gapToast.closed": "Lacune gesloten.",
+  "risk.gapToast.assigned": "Lacune toegewezen.",
+  "risk.gapToast.assignFailed": "Niet toegewezen — kies opnieuw.",
+  "risk.gapToast.removed": "Lacune verwijderd.",
+  "risk.gapToast.removeFailed": "Niet verwijderd — de lacune blijft bestaan. Probeer het opnieuw.",
+  "risk.gapToast.prioritySaved": "Prioriteit opgeslagen.",
+  "risk.gapToast.priorityFailed": "Prioriteit niet opgeslagen — kies opnieuw.",
   "risk.assign": "Expert …",
   "risk.delete": "Verwijderen",
   "risk.gapNextLabel": "Volgende stap",
@@ -4283,6 +4303,9 @@ const nl: typeof de = {
   "lcy.assetPlaceholder": "Installatie-/procesreferentie (bijv. Pers-P2)",
   "lcy.assetTrigger": "Hervalidatie starten",
   "lcy.assetMarked": "{{n}} object(en) voor „{{asset}}“ ter controle gemarkeerd.",
+  "lcy.toast.revalidateFailed": "Niet bevestigd — het item blijft openstaan. Probeer het opnieuw.",
+  "lcy.toast.stepDone": "Leerstap als afgerond opgeslagen.",
+  "lcy.toast.stepFailed": "Leerstap niet opgeslagen — vink opnieuw aan.",
   "lcy.pendingTitle": "Voor hervalidatie",
   "lcy.revalAsset": "Installatieverwijzing",
   "lcy.revalNextLabel": "Volgende stap",
@@ -4403,6 +4426,8 @@ const nl: typeof de = {
   "empty.cta.library": "Naar de bibliotheek",
   "empty.cta.validation": "Naar de validatie",
   "empty.cta.tasks": "Naar mijn taken",
+  "empty.cta.wissensnetz": "Naar het kennisnetwerk",
+  "empty.cta.ask": "Een vraag stellen",
   "story.rescue.title": "Klarwerk borgt ervaringskennis voordat ze verloren gaat.",
   "story.honest":
     "Niets wordt automatisch gevalideerd — kennis geldt pas na de controle in het team als geborgd.",
@@ -4414,6 +4439,48 @@ const nl: typeof de = {
     "Nog geen kennis om op te zoeken. Leg de eerste bijdrage vast — na de controle is die hier met bronvermelding bruikbaar.",
   "story.surface.validation.lead":
     "Niets te controleren. Vastgelegde kennis verschijnt hier voor teamcontrole, voordat ze als geborgd geldt en gebruikt kan worden.",
+  "story.surface.gaps.lead":
+    "Een lacune ontstaat wanneer een vraag geen geborgd antwoord vindt. Er staat er nu geen open — wie vraagt, brengt nieuwe aan het licht; wie vastlegt, sluit ze.",
+  "story.surface.lifecycle.lead":
+    "Bijdragen worden hier opnieuw te controleren wanneer hun controletermijn afloopt of een gemelde installatiewijziging ze raakt. Er staat nu niets open — een installatiewijziging kan hieronder worden gemeld.",
+  "story.surface.duplicates.lead":
+    "Een overlapping ontstaat wanneer twee bijdragen hetzelfde zeggen. Er staat er nu geen open — nieuwe verschijnen hier zodra vastgelegde kennis wordt gecontroleerd.",
+  "story.surface.audit.lead":
+    "Nog geen vastgelegde acties. Het logboek houdt bij wie in de kenniscyclus vastlegt, controleert en wijzigt — het vult zich met de eerste vastgelegde of gecontroleerde bijdrage.",
+  "story.surface.neighborhood.lead":
+    "Deze bijdrage deelt nog geen betekenisvolle tag met een andere. Het kennisnetwerk toont welke thema's al verbonden zijn; nieuwe kennis met passende tags verbindt haar met buren.",
+  "story.surface.risk.lead":
+    "Nog geen risicogegevens — daarvoor is vastgelegde kennis per gebied nodig. Leg ervaringskennis vast of importeer die; daarna toont deze lijst waar die van één persoon afhangt.",
+  "story.surface.objekt.lead":
+    "Bij deze bijdrage staat hier nog niets. Aanvullingen zoals bronnen, bijlagen en opmerkingen maken haar betrouwbaarder — open haar om aan te vullen of vraag wat ontbreekt.",
+  "story.surface.entwuerfe.lead":
+    "Nog geen concepten. Een concept bewaart wat je vastlegt voordat het team het controleert — begin met een nieuwe bijdrage.",
+  "story.surface.verwaltung.lead":
+    "Hier is nog niets ingericht. Het beheer houdt Klarwerk actueel — items verschijnen zodra er iets wordt ingericht, geback-upt of verwijderd.",
+  "story.surface.auswertung.lead":
+    "Voor deze analyse is nog niets beschikbaar. Ze ontstaat uit gecontroleerde kennis — de volgende stap is bijdragen vastleggen en laten controleren.",
+  "story.surface.import.lead":
+    "Nog niets om over te nemen. Een import haalt bestaande kennis uit een bron in de cyclus — kies een bron of upload een bestand.",
+  "story.surface.anleitung.lead":
+    "Hier staat nog geen inhoud. Werkinstructies bundelen gecontroleerde kennis tot stappen — vul ze aan met bouwstenen uit de bibliotheek.",
+  "story.surface.spaces.lead":
+    "Deze ruimte is nog leeg. Ruimtes ordenen bijdragen naar verantwoordelijkheid — verplaats een bijdrage hierheen of leg een nieuwe vast.",
+  "story.surface.ausgang.lead":
+    "Er wacht niets op de uitgaande controle. Hier komt terecht wat Klarwerk naar buiten moet geven — zodra iemand een bijdrage ter vrijgave voorlegt.",
+  "story.surface.wissensnetz.lead":
+    "Nog geen verbindingen. Het kennisnetwerk toont hoe bijdragen via tags samenhangen — geef bij het vastleggen passende tags.",
+  "story.surface.meldungen.lead":
+    "Op dit moment niets te melden. Hier verschijnt wat je aandacht nodig heeft — conflicten, lacunes en geplande controles.",
+  "story.surface.horizont.lead":
+    "In de gekozen periode gaat niemand met unieke kennis met pensioen. Houd de pensioenhorizonten in het beheer actueel, zodat dit overzicht klopt.",
+  "story.surface.lernpfad.lead":
+    "Voor jouw rol is nog geen leerpad ingesteld. Het leidt door de belangrijkste gecontroleerde kennis — tot die tijd helpt de bibliotheek.",
+  "story.surface.hilfe.lead":
+    "Voor deze pagina is nog geen eigen paginahulp. De hulp legt Klarwerk stap voor stap uit — je bereikt haar via het hulphoofdstuk in het menu.",
+  "story.surface.gliederung.lead":
+    "Deze bijdrage heeft nog geen koppen. Koppen structureren kennis, zodat anderen die snel vinden — voeg ze toe in de editor.",
+  "story.surface.conflicts.lead":
+    "Conflicten lost het team op bij het controleren. Er staat er nu geen open — nieuwe verschijnen hier zodra twee bijdragen elkaar tegenspreken.",
   "adm.auditTitle": "Recente gebruikers-/auth-activiteiten (audit)",
   "adm.auditEmpty": "Geen gebruikers-auditvermeldingen.",
   "prof.kicker": "Account",
