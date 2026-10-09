@@ -116,7 +116,8 @@ export interface Aussage {
 
 export interface AussagenBeleg {
   readonly schema: number;
-  readonly answerId: string | null;
+  // Bewusst KEINE `answerId`: sie ist je Lauf frisch und steht schon oben im Antwortkörper. Der Beleg
+  // bindet die Antwort über ihren INHALT — dieselbe Antwort ergibt denselben Beleg (KA5-R2).
   /** `sha256:` über den Antworttext, auf dem die Aussagen gebildet wurden. */
   readonly antwortFingerabdruck: string;
   readonly aussagen: readonly Aussage[];
@@ -146,7 +147,6 @@ export interface BindungsQuelle {
 }
 
 export interface BindeAussagenEingabe {
-  readonly answerId?: string | null;
   readonly antwort: string;
   readonly sources: readonly string[];
   readonly citedSources: readonly string[];
@@ -476,16 +476,8 @@ function fundstellenFuer(
   return gefunden;
 }
 
-function belegFingerabdruckVon(
-  antwortFp: string,
-  answerId: string | null,
-  aussagen: readonly Aussage[],
-): string {
-  const material: string[] = [
-    `schema=${AUSSAGEN_BELEG_SCHEMA}`,
-    `answerId=${answerId ?? "\u0000null"}`,
-    `antwort=${antwortFp}`,
-  ];
+function belegFingerabdruckVon(antwortFp: string, aussagen: readonly Aussage[]): string {
+  const material: string[] = [`schema=${AUSSAGEN_BELEG_SCHEMA}`, `antwort=${antwortFp}`];
   for (const a of aussagen) {
     material.push(`aussage=${a.aussageId}|${a.deckung}`);
     for (const t of a.teile) {
@@ -505,18 +497,13 @@ function deckungVon(teile: readonly Teilaussage[]): Aussage["deckung"] {
   return belegt === teile.length ? "belegt" : belegt === 0 ? "unbelegt" : "teilweise";
 }
 
-function belegAus(
-  answerId: string | null,
-  antwortFp: string,
-  aussagen: readonly Aussage[],
-): AussagenBeleg {
+function belegAus(antwortFp: string, aussagen: readonly Aussage[]): AussagenBeleg {
   return {
     schema: AUSSAGEN_BELEG_SCHEMA,
-    answerId,
     antwortFingerabdruck: antwortFp,
     aussagen,
     fehlendeDeckung: aussagen.filter((a) => a.deckung !== "belegt").map((a) => a.aussageId),
-    belegFingerabdruck: belegFingerabdruckVon(antwortFp, answerId, aussagen),
+    belegFingerabdruck: belegFingerabdruckVon(antwortFp, aussagen),
   };
 }
 
@@ -600,7 +587,7 @@ export function bindeAussagen(eingabe: BindeAussagenEingabe): AussagenBeleg {
       aussagen.push({ aussageId, text, teile, deckung: deckungVon(teile), modellangaben });
     }
   }
-  return belegAus(eingabe.answerId ?? null, fingerabdruck(antwort), aussagen);
+  return belegAus(fingerabdruck(antwort), aussagen);
 }
 
 /**
@@ -623,7 +610,7 @@ export function aufKernaussagenBeschraenkt(beleg: AussagenBeleg): AussagenBeleg 
     });
     return { ...a, teile, deckung: deckungVon(teile) };
   });
-  return belegAus(beleg.answerId, beleg.antwortFingerabdruck, aussagen);
+  return belegAus(beleg.antwortFingerabdruck, aussagen);
 }
 
 // ------------------------------------------------------------------------------------------------

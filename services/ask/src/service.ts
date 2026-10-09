@@ -1393,7 +1393,6 @@ export class AskService {
       result.answered && typeof bindungsText === "string" && bindungsText.trim() !== ""
         ? {
             aussagen: bindeAussagen({
-              answerId,
               antwort: bindungsText,
               sources: result.sources,
               citedSources: result.citedSources,

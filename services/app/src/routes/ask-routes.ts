@@ -900,7 +900,7 @@ function fundstellenLeser(ko: KoService): FundstellenLeser<KnowledgeObject> {
   };
 }
 
-type AskOptionen =NonNullable<Parameters<AskService["ask"]>[3]>;
+type AskOptionen = NonNullable<Parameters<AskService["ask"]>[3]>;
 
 /**
  * R-0700: DER EINE ANTWORTLAUF beider Zugänge — des allgemeinen Fragewegs und des Klara-Zugangs.

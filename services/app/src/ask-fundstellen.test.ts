@@ -108,7 +108,9 @@ describe("REF-01 · Aussage → Quellenversion → Passage über HTTP", () => {
     expect(body.result.answered).toBe(true);
     expect(body.result.citedSources).toContain(koId);
     const beleg = body.aussagen as AussagenBeleg;
-    expect(beleg.answerId).toBe(body.answerId);
+    // Der Beleg bindet die Antwort über ihren Inhalt, nicht über die je Lauf frische Kennung.
+    expect(beleg.antwortFingerabdruck).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(Object.keys(beleg)).not.toContain("answerId");
     expect(beleg.fehlendeDeckung).toEqual([]);
     const fs = beleg.aussagen
       .flatMap((a) => a.teile.flatMap((t) => t.fundstellen))

@@ -63,7 +63,6 @@ function quellen(...qs: BindungsQuelle[]): ReadonlyMap<string, BindungsQuelle> {
 
 function binde(antwort: string, sources: string[], qs: BindungsQuelle[]) {
   return bindeAussagen({
-    answerId: "antwort-fiktiv-1",
     antwort,
     sources,
     citedSources: sources,
