@@ -56,6 +56,8 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+// R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
+import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
 import { ANTWORT_MENUEPUNKTE } from "../components/fragen/antwortMenue";
 import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
@@ -68,6 +70,8 @@ import { Seitenblatt } from "../components/start/Seitenblatt";
 import { useDiktat } from "../components/start/useDiktat";
 import { ConfidenceBar, ErgebnisStufeMarke } from "../components/trust";
 import { Button, Card, SectionLabel } from "../components/ui";
+// R-0305/R-1099: der Kostenhinweis der Zweitmeinung kennt beide Modellwege.
+import { deriveZweitmeinungBillable } from "../lib/aiAvailability";
 import {
   type AnswerExportInput,
   answerExportFilename,
@@ -746,6 +750,16 @@ export function Ask(): JSX.Element {
   // gespeichert.
   const [fragekontext, setFragekontext] = useState<Fragekontext>({});
   const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
+  // R-0305/R-1099 (Ben, Nacharbeit 9): der Fragekontext, mit dem die STEHENDE Antwort gestellt
+  // wurde — gesetzt beim Eintreffen der Antwort, nicht aus der aktuellen Auswahl gelesen. Die
+  // Zweitmeinung stellt dieselbe Frage mit genau diesem Kontext, auch wenn die Auswahl inzwischen
+  // geändert wurde; sonst bezöge sie sich auf eine anders gewichtete Frage.
+  // Ben (Nacharbeit 10): der Kontext reist mit der Antwort durch den Arbeitsstand. Drei Lesarten —
+  // ein Objekt (mit Kontext gefragt), `null` (ohne Kontext gefragt), `undefined` (UNBEKANNT: ein
+  // Altstand von vor dieser Ablage). Unbekannt behauptet keine kontextgleiche Zweitmeinung.
+  const [antwortKontext, setAntwortKontext] = useState<Fragekontext | null | undefined>(() =>
+    anfang?.antwort ? anfang.antwort.fragekontext : null,
+  );
   // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
   // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
   // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
@@ -954,9 +968,11 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
       setGeltungsAuskunft(null);
+      // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
+      setAntwortKontext(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
-    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
+    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand, kontext }) => {
       // Ben R1, F1: die Antwort eines anderen (früheren) Kontos berührt nichts.
       if (generation !== kontoGeneration.current) {
         return;
@@ -986,6 +1002,8 @@ export function Ask(): JSX.Element {
       setPruefrahmen(r.pruefrahmen ?? null);
       // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
       setGeltungsAuskunft(r.geltung ?? null);
+      // R-0305/R-1099 (Ben, Nacharbeit 9): der Kontext DIESER Anfrage, nicht der aktuellen Auswahl.
+      setAntwortKontext(kontext ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -1068,6 +1086,9 @@ export function Ask(): JSX.Element {
               angezeigtAm: antwortAm ?? new Date().toISOString(),
               ...(quellenStand ? { serverQuellenStand: quellenStand } : {}),
               ...(beobachtet ? { beobachtet } : {}),
+              // R-0305/R-1099 (Ben, Nacharbeit 10): der Kontext der Antwort reist mit; ein
+              // unbekannter (Altstand) bleibt unbekannt und wird nicht zu „ohne Kontext".
+              ...(antwortKontext === undefined ? {} : { fragekontext: antwortKontext }),
             }
           : null,
       startadressen: gemerkteStartadressen,
@@ -1083,6 +1104,7 @@ export function Ask(): JSX.Element {
     antwortAm,
     quellenStand,
     beobachtet,
+    antwortKontext,
     gemerkteStartadressen,
   ]);
 
@@ -1134,6 +1156,9 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
+      // R-0305/R-1099 (Ben, Nacharbeit 10): der gespeicherte Kontext DIESER Antwort — fehlt er
+      // (Altstand), ist er unbekannt (`undefined`), nicht „ohne Kontext".
+      setAntwortKontext(antwort ? antwort.fragekontext : null);
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
@@ -2830,6 +2855,19 @@ export function Ask(): JSX.Element {
                     />
                   </Seitenblatt>
                 ) : null}
+                {/* R-0305/R-1099: die Zweitmeinung — eigene Anfrage, eigener Zustand (Begründung im
+                  Baustein). `key` bindet sie an genau diese Frage und ihren Kontext: eine neue
+                  Frage oder eine im anderen Kontext neu gestellte Antwort beginnt leer. */}
+                <Zweitmeinung
+                  key={`${asked}\u0000${JSON.stringify(antwortKontext ?? String(antwortKontext))}`}
+                  frage={asked}
+                  faden={fadenFuerAnfrage(faden, asked)}
+                  kontext={antwortKontext ?? undefined}
+                  kontextUnbekannt={antwortKontext === undefined}
+                  onNeuFragen={() => submitAsk(asked)}
+                  billable={deriveZweitmeinungBillable(reasonerStatus.data)}
+                  titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
+                />
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">
