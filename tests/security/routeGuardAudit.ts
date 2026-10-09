@@ -481,6 +481,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // JOB 1171 D1: die ableitende Auskunft. Dasselbe Recht und derselbe Torwaechter wie die
   // uebrigen Entwurfsrouten (`requireVisibleDraft`) — sie liest denselben Entwurf.
   "GET /api/drafts/:id/naechster-schritt": { protection: "ko.create" },
+  // R-1133: die Duplikatsfrage über den Entwurfsindex. Dasselbe Recht und derselbe Torwächter
+  // (`requireVisibleDraft`), jeder Treffer zusätzlich über `canSeeDraft`.
+  "GET /api/drafts/:id/gleicher-inhalt": { protection: "ko.create" },
   "PUT /api/drafts/:id": { protection: "ko.create" },
   "DELETE /api/drafts/:id": { protection: "ko.create" },
   "POST /api/drafts/:id/promote": { protection: "ko.create" },
