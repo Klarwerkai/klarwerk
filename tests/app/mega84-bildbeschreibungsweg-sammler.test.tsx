@@ -2491,8 +2491,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Dieser Auftrag trägt weiterhin genau EIN Bauteil bei (`VermaechtnisBuch`); die 2 über 525
     // kamen mit dem eingemischten Hauptstand (Grundmenge 678 → 681), namentlich ohne Git-Verlauf
     // nicht bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // gesamt-wissensvermaechtnis Nacharbeit 11: GEMESSEN 533. Am Kandidaten f39d7736 meldete der
+    // Sammler wörtlich „gemessen: 533 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 685
+    // Quelldateien … expected { komponenten: 533, … } to deeply equal { komponenten: 527, … }"; die
+    // übrigen 43 Fälle der Datei grün (HISTORIE/nacharbeit-11/PRUEFUNG/vermaechtnis-zaehler.log).
+    // Dieser Auftrag hat seit Nacharbeit 2 kein Bauteil hinzugefügt (weiter genau `VermaechtnisBuch`);
+    // die 6 über 527 kamen mit dem eingemischten Hauptstand (Grundmenge 681 → 685), namentlich
+    // ohne Git-Verlauf nicht bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 527,
+      komponenten: 533,
       anbieter: 1,
       traeger: 2,
     });
