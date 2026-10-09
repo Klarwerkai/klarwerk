@@ -25,7 +25,8 @@
 //     ist (er beantwortet „welcher Baustein?", das Register beantwortet „wessen Objekt?").
 //
 // (2) DAS ZURÜCKSETZEN SETZTE NUR DEN HALBEN ZUSTAND ZURÜCK. Es schrieb Titel und `statement` —
-//     die LESEANSICHT zeigt aber `bodyHtml`, wenn es da ist (apps/web/src/components/ko/KoRead.tsx).
+//     die LESEANSICHT zeigt aber `bodyHtml`, wenn es da ist (damals `components/ko/KoRead.tsx`,
+//     heute die Lesefläche `apps/web/src/components/bibliothek/BibliothekLesen.tsx`).
 //     Wer im Editor arbeitete, sah nach dem „Zurücksetzen" weiter seinen eigenen Text. Ebenso blieb
 //     eine geänderte Kategorie stehen, und ein Objekt, das nur seine Freigabe verloren hatte, galt
 //     als „unverändert". AUSGANGSZUSTAND HEISST JETZT ALLES, WAS DAS LADEN GESETZT HAT: Titel,
@@ -522,6 +523,11 @@ async function schliesseFolgeeintraege(
       continue;
     }
     try {
+      // R-0215/R-1714: der verbindliche Pfad gilt auch beim Aufräumen — ein offener
+      // Wahrheitskonflikt wird vor dem Schliessen eskaliert, sonst weist `resolve` ihn ab (409).
+      if (konflikt.type === "truth" && konflikt.status === "offen") {
+        await services.conflicts.escalate(konflikt.id, actor);
+      }
       await services.conflicts.resolve(konflikt.id, actor, grund);
       ergebnis.closedConflicts += 1;
     } catch (ursache) {
@@ -586,7 +592,7 @@ async function anlegen(
   const ko = await services.ko.create({
     title: baselineTitle(item),
     statement: baselineStatement(item),
-    // Der Rumpf ist das, was die Leseansicht zeigt (KoRead) — er gehört zum Ausgangszustand.
+    // Der Rumpf ist das, was die Leseansicht zeigt (BibliothekLesen) — er gehört zum Ausgangszustand.
     bodyHtml: baselineBody(item),
     type: item.type,
     category: item.area,

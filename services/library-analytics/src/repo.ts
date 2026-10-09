@@ -21,8 +21,10 @@ import {
 // InMemory-Dedupe, Pending-Abgleiche/Statuskarten und (gespiegelt) das Pg-Index-Prädikat.
 export const OPEN_REVIEW_STATUSES = ["neu", "in_bearbeitung"] as const;
 
+// R-1349: die EINE Definition oben wird hier gelesen, statt die beiden Zustände ein zweites Mal
+// als Literal zu führen — vorher war die Liste gebaut, aber von niemandem gelesen.
 export function isOpenReviewStatus(status: ReviewStatus): boolean {
-  return status === "neu" || status === "in_bearbeitung";
+  return (OPEN_REVIEW_STATUSES as readonly ReviewStatus[]).includes(status);
 }
 
 // SCRUM-157: Persistenz-Schnittstelle der Import-/Source-Review-Queue. Einziger Unterschied
@@ -560,9 +562,10 @@ export function externalSourceRevisionKey(
  * Grenze, nicht erst in der Datenbank.
  *
  * FUENFZEHN STELLEN (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung, R-1653): der
- * SharePoint-Mapper schreibt den Quellstand als Sekunden seit 1970 (`sharepointQuellstand`,
- * zehn Stellen seit 2001-09-09). Die fruehere Grenze von neun Stellen wies damit JEDE aktuelle
- * SharePoint-Datei ab. 15 Stellen liegen sicher unter `Number.MAX_SAFE_INTEGER` (die Zahl bleibt
+ * SharePoint-Mapper schrieb den Quellstand als Sekunden seit 1970 (zehn Stellen seit 2001-09-09);
+ * die fruehere Grenze von neun Stellen wies damit JEDE aktuelle SharePoint-Datei ab. Seit R-0144
+ * (main) zaehlt der Mapper ab 2025-01-01 und bleibt bis 2056 in neun Stellen — beide Korrekturen
+ * stehen nebeneinander; die weitere Grenze ist damit Reserve, keine Voraussetzung mehr. 15 Stellen liegen sicher unter `Number.MAX_SAFE_INTEGER` (die Zahl bleibt
  * im JSON und in JavaScript exakt) und unter `2^63-1` (`bigint` in `import_candidates`); die
  * Versionsregel im Schema (`^[0-9]{1,15}$`, repo-pg.ts) ist wortgleich. Jede bisher gueltige
  * Fassung (0..999 999 999) bleibt gueltig und behaelt ihre numerische Reihenfolge.

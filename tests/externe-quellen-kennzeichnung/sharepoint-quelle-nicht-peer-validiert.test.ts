@@ -19,7 +19,8 @@
 // KORREKTUR (Nacharbeit 3, Bens Vorgabe): `MAX_SOURCE_VERSION` hat fünfzehn Stellen, Kandidaten-
 // spalte und Revisions-CHECK in PostgreSQL ziehen mit (repo.ts, repo-pg.ts); Bestandswerte und
 // ihre Reihenfolge bleiben. Der PG-Nachweis steht daneben in `sharepoint-quellstand-pg.integration.test.ts`.
-// Diese Datei ist unverändert die Gegenprobe des Weges bis zum Wissensobjekt.
+// Diese Datei ist unverändert die Gegenprobe des Weges bis zum Wissensobjekt. Seit R-0144 (main)
+// zählt der Mapper ab 2025-01-01; die Prüfungen hier hängen am Wert nicht und gelten unverändert.
 //
 // Die Gegenprobe zu Confluence steht in `services/library-analytics/src/service.test.ts`
 // („SCRUM-470: Accept einer pageId legt KO mit Herkunfts-Anker an").

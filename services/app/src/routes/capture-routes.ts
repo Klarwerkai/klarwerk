@@ -11,8 +11,8 @@ import JSZip from "jszip";
 // Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
 import { extractDocxRich, isDocxDocumentLike } from "../../../../apps/web/src/lib/docx";
 // JOB 3956 (Q9): der Meldungskatalog und die EINE Lesestelle des Sprachkopfes — derselbe Zugang,
-// den `services/app/src/http.ts:2` und `services/rbac/src/guard.ts:2` schon nehmen. Kein zweiter
-// Katalog und keine eigene Sprachermittlung in diesem Modul.
+// den `services/app/src/http.ts:2` schon nimmt (der RBAC-Wächter ist seit R-1349 entfernt).
+// Kein zweiter Katalog und keine eigene Sprachermittlung in diesem Modul.
 import { meldung, sprache } from "../../../auth";
 import {
   type CaptureService,
@@ -766,6 +766,8 @@ export type DraftCreateRequest = DraftPayload & {
   operationId?: string;
   expectedOwner?: string;
   dokumentId?: string;
+  /** entscheidung:14ce8681: einen unklar gebliebenen Vorgang mit geändertem Inhalt fortschreiben. */
+  fortschreiben?: boolean;
 };
 
 /**
@@ -1094,6 +1096,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           expectedOwner: rohEigentuemer,
           // R-0169 (Nacharbeit 5): Transport wie `operationId`, nie Payload.
           dokumentId: rohDokumentId,
+          // entscheidung:14ce8681: Transport wie `operationId`, nie Payload.
+          fortschreiben: rohFortschreiben,
           ...nutzlast
         } = request.body ?? {};
         const gestalt = validateDraftPayloadShape(nutzlast);
@@ -1162,11 +1166,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `IDEMPOTENCY_PAYLOAD_MISMATCH` aus dem Dienst und wird von `sendError` auf 409
           // abgebildet (`http.ts:65`). Ohne Kennung ist `angelegt` immer `true` — der
           // Bestandspfad antwortet unverändert mit 201.
-          const { draft, angelegt } = await capture.createDraftVorgang(
+          // entscheidung:14ce8681 (Option A): `fortschreiben` erlaubt dem Dienst, einen unklar
+          // gebliebenen ersten Vorgang mit dem geänderten Inhalt fortzuschreiben, statt mit 409 zu
+          // antworten. Nur ein ausdrückliches `true` zählt; alles andere ist der Bestandsweg.
+          const { draft, angelegt, fortgeschrieben } = await capture.createDraftVorgang(
             // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
             mitKanonischerAussage(neuerEntwurf),
             user.id,
             vorgangsId,
+            { fortschreiben: rohFortschreiben === true },
           );
           // R-0169 (Nacharbeit 5): ein Word-Entwurf wird an eine Fassung gebunden.
           // NACHARBEIT 8 (bens F2): nicht mehr nur beim NEU angelegten Entwurf. Scheiterte das
@@ -1180,7 +1188,17 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             ausWord && !draft.dokumentHerkunft
               ? await anWordDokumentBinden({ capture, dokumente }, draft, dokumentId, user.id)
               : draft;
-          reply.code(angelegt ? 201 : 200).send(antwort);
+          // entscheidung:8b909a1e (Option A): die Oberfläche soll sagen können „war bereits
+          // gespeichert, kein zweiter Eintrag". Der Statuscode allein erreicht sie nicht (der Client
+          // liefert nur den Rumpf aus), deshalb steht die Auskunft als TRANSPORTFELD neben dem
+          // Entwurf — nur bei einer Wiederholung, nie im gespeicherten Dokument.
+          reply
+            .code(angelegt ? 201 : 200)
+            .send(
+              angelegt
+                ? antwort
+                : { ...antwort, anlage: fortgeschrieben ? "fortgeschrieben" : "bestehend" },
+            );
         } catch (error) {
           sendError(reply, error);
         }
@@ -1498,6 +1516,34 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         }
         const schritt = await capture.naechsterSchrittFuerEntwurf(request.params.id);
         reply.code(200).send(schritt ? { naechsterSchritt: schritt } : {});
+      },
+    );
+
+    // ============================================================================================
+    // R-1133 — DIE DUPLIKATSFRAGE ÜBER DEN TECHNISCHEN ENTWURFSINDEX.
+    // ============================================================================================
+    //
+    // Welche anderen Entwürfe tragen genau denselben Inhalt? Beantwortet über den Inhaltshash des
+    // Index (`CaptureService.entwuerfeMitGleichemInhalt`), nicht über einen Rumpfvergleich.
+    //
+    // DIESELBE BERECHTIGUNG UND DIESELBE SICHTBARKEIT wie die übrigen Entwurfsrouten: erst
+    // `requireVisibleDraft` für den gefragten Entwurf, dann `canSeeDraft` für JEDEN Treffer — ein
+    // fremder privater Entwurf erscheint nicht, auch nicht als Zahl. Reine Lesung: die Antwort
+    // führt Kennung und Titel und entscheidet nichts.
+    app.get<{ Params: { id: string } }>(
+      "/api/drafts/:id/gleicher-inhalt",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+          return;
+        }
+        const antwort = await capture.entwuerfeMitGleichemInhalt(request.params.id, (draft) =>
+          canSeeDraft(user, draft),
+        );
+        reply.code(200).send(antwort);
       },
     );
 

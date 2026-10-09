@@ -18,10 +18,9 @@ export function interviewSourceKey(result: Pick<InterviewResult, "demo">): strin
   return result.demo ? "capture.ivFallback" : "capture.ivModel";
 }
 
-// Anzahl bisher beantworteter Turns (für Fortschrittsanzeige).
-export function answeredTurns(answers: readonly string[]): number {
-  return answers.length;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `answeredTurns` (= `answers.length`). Das
+// Interview zeigt „Frage n" direkt aus der Antwortliste (`pages/Capture.tsx`, R-0991 Nr. 32); der
+// Zähler rief niemand und ist entfernt.
 
 // AUFTRAG-mega5 Block A (bens Verlustpfade 1+2): der Interviewfortschritt reist als reine
 // Textstruktur im Entwurf mit — gegebene Antworten, die gerade getippte (noch nicht gesendete)
@@ -34,6 +33,9 @@ export interface DraftInterviewState {
   question?: string;
   done?: boolean;
   demo?: boolean;
+  // R-1624: der bestätigte Bildbefund eines Foto-Interviews. Ohne ihn liefe ein fortgesetztes
+  // Foto-Interview als normales Interview weiter (andere Fragen, keine Foto-Wissensseite).
+  imageContext?: string;
 }
 
 // AUFTRAG-mega6 Block B (bens ROT 2, Weg zwei): der ausdrückliche LÖSCHMARKER für einen zuvor
@@ -49,17 +51,20 @@ export function interviewForDraft(input: {
   answers: readonly string[];
   answer: string;
   result: InterviewResult | null;
+  imageContext?: string | null;
 }): DraftInterviewState | null {
   const { started, answers, answer, result } = input;
   if (!started && answers.length === 0 && answer.trim().length === 0 && !result) {
     return null;
   }
+  const imageContext = input.imageContext?.trim() ?? "";
   return {
     started: true,
     answers: [...answers],
     ...(answer.trim().length > 0 ? { answer } : {}),
     ...(result?.question ? { question: result.question } : {}),
     ...(result ? { done: isInterviewDone(result), demo: result.demo } : {}),
+    ...(imageContext.length > 0 ? { imageContext } : {}),
   };
 }
 
@@ -74,13 +79,19 @@ export function interviewFromDraft(
   answers: string[];
   answer: string;
   result: InterviewResult | null;
+  imageContext: string | null;
 } {
   const answers = (state.answers ?? []).filter((a) => typeof a === "string");
   const hasResult = typeof state.question === "string" || state.done === true;
+  const imageContext =
+    typeof state.imageContext === "string" && state.imageContext.trim().length > 0
+      ? state.imageContext.trim()
+      : null;
   return {
     started: true,
     answers,
     answer: typeof state.answer === "string" ? state.answer : "",
+    imageContext,
     result: hasResult
       ? {
           question: typeof state.question === "string" ? state.question : null,

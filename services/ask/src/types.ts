@@ -6,8 +6,10 @@ export type GapPriority = "hoch" | "mittel" | "niedrig";
 
 export const GAP_PRIORITIES: readonly GapPriority[] = ["hoch", "mittel", "niedrig"];
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): die Prüfung liest die EINE Liste oben, statt die drei
+// Werte ein zweites Mal auszuschreiben — bis hierher hatte `GAP_PRIORITIES` keinen Leser.
 export function isGapPriority(value: unknown): value is GapPriority {
-  return value === "hoch" || value === "mittel" || value === "niedrig";
+  return (GAP_PRIORITIES as readonly unknown[]).includes(value);
 }
 
 export interface Gap {
@@ -52,6 +54,12 @@ export interface Gap {
   // und die Auskunft ärmer. Fehlt bei Altbeständen; die Oberfläche zeigt dann NICHTS, statt eine
   // Häufigkeit zu behaupten, die nie gezählt wurde.
   askCount?: number;
+  // R-0846 / L6 — DER OBJEKTBEZUG. Das Wissensobjekt, das diese Lücke geschlossen hat. Pflicht beim
+  // Schliessen (`closeGap(id, koId)`, PUT /api/gaps/:id mit `koId`): der Dienst prüft, dass das
+  // Objekt existiert und nicht im Papierkorb liegt, sonst bleibt die Lücke offen. Fehlen kann er nur
+  // noch bei Altbeständen — der Integritätsbericht (services/app/src/datenintegritaet.ts) zählt sie
+  // als Befund und meldet einen Bezug, dessen Objekt inzwischen endgelöscht ist.
+  koId?: string;
 }
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden

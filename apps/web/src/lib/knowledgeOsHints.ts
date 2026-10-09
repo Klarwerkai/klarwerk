@@ -3,6 +3,10 @@
 // zu kompakten QM-Hinweisen. Rein ableitend aus bereits berechneten Helper-Ergebnissen —
 // KEIN neues Backend-Modell, kein Alerting, keine Datenänderung. Nicht geladene Signale
 // werden als „unbekannt" geführt und NICHT als Fehler gezählt.
+//
+// R-0908 (Aufnahme gesamt-sprache-begriffe): Titel und Text jedes Hinweises kommen aus
+// `texte/fachwort.ts` (`fachwort.qm.<id>.titel|text`). Die früheren `kos.hint.*`-Texte sagten
+// „Reasoner", „ModelRun", „KOs" und „Evidence"; die `id` der Hinweise bleibt unverändert.
 import type { ReasonerConfigStatus } from "../api/types";
 import type { EvidenceFreshnessResult } from "./evidenceFreshness";
 import type { EvidenceIndexSummary } from "./evidenceIndex";
@@ -69,8 +73,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "modelrun-errors",
       severity: "critical",
-      titleKey: "kos.hint.modelrun-errors.title",
-      detailKey: "kos.hint.modelrun-errors.detail",
+      titleKey: "fachwort.qm.modelrun-errors.titel",
+      detailKey: "fachwort.qm.modelrun-errors.text",
       count: input.modelRunSummary.errors,
       source: "modelRuns",
     });
@@ -93,8 +97,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "health-detection-unproven",
       severity: "critical",
-      titleKey: "kos.hint.health-detection-unproven.title",
-      detailKey: "kos.hint.health-detection-unproven.detail",
+      titleKey: "fachwort.qm.health-detection-unproven.titel",
+      detailKey: "fachwort.qm.health-detection-unproven.text",
       count: input.knowledgeHealth.score,
       source: "health",
     });
@@ -104,8 +108,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "health-critical",
       severity: "critical",
-      titleKey: "kos.hint.health-critical.title",
-      detailKey: "kos.hint.health-critical.detail",
+      titleKey: "fachwort.qm.health-critical.titel",
+      detailKey: "fachwort.qm.health-critical.text",
       count: input.knowledgeHealth.score,
       source: "health",
     });
@@ -115,8 +119,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "reasoner-demo",
       severity: "warning",
-      titleKey: "kos.hint.reasoner-demo.title",
-      detailKey: "kos.hint.reasoner-demo.detail",
+      titleKey: "fachwort.qm.reasoner-demo.titel",
+      detailKey: "fachwort.qm.reasoner-demo.text",
       source: "reasonerConfig",
     });
   }
@@ -125,8 +129,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "modelrun-fallbacks",
       severity: "warning",
-      titleKey: "kos.hint.modelrun-fallbacks.title",
-      detailKey: "kos.hint.modelrun-fallbacks.detail",
+      titleKey: "fachwort.qm.modelrun-fallbacks.titel",
+      detailKey: "fachwort.qm.modelrun-fallbacks.text",
       count: input.modelRunSummary.fallbacks,
       source: "modelRuns",
     });
@@ -136,8 +140,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "provenance-no-evidence",
       severity: "warning",
-      titleKey: "kos.hint.provenance-no-evidence.title",
-      detailKey: "kos.hint.provenance-no-evidence.detail",
+      titleKey: "fachwort.qm.provenance-no-evidence.titel",
+      detailKey: "fachwort.qm.provenance-no-evidence.text",
       count: input.provenance.summary.withoutEvidence,
       source: "provenance",
     });
@@ -147,8 +151,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "evidence-outdated",
       severity: "warning",
-      titleKey: "kos.hint.evidence-outdated.title",
-      detailKey: "kos.hint.evidence-outdated.detail",
+      titleKey: "fachwort.qm.evidence-outdated.titel",
+      detailKey: "fachwort.qm.evidence-outdated.text",
       count: input.evidenceFreshness.summary.outdated,
       source: "evidenceFreshness",
     });
@@ -158,8 +162,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "evidence-missing",
       severity: "warning",
-      titleKey: "kos.hint.evidence-missing.title",
-      detailKey: "kos.hint.evidence-missing.detail",
+      titleKey: "fachwort.qm.evidence-missing.titel",
+      detailKey: "fachwort.qm.evidence-missing.text",
       count: input.evidenceFreshness.summary.missing,
       source: "evidenceFreshness",
     });
@@ -169,8 +173,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "health-mittel",
       severity: "warning",
-      titleKey: "kos.hint.health-mittel.title",
-      detailKey: "kos.hint.health-mittel.detail",
+      titleKey: "fachwort.qm.health-mittel.titel",
+      detailKey: "fachwort.qm.health-mittel.text",
       count: input.knowledgeHealth.score,
       source: "health",
     });
@@ -182,8 +186,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
       hints.push({
         id: "provenance-lineage",
         severity: "info",
-        titleKey: "kos.hint.provenance-lineage.title",
-        detailKey: "kos.hint.provenance-lineage.detail",
+        titleKey: "fachwort.qm.provenance-lineage.titel",
+        detailKey: "fachwort.qm.provenance-lineage.text",
         count: lineage,
         source: "provenance",
       });
@@ -194,8 +198,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "evidence-empty",
       severity: "info",
-      titleKey: "kos.hint.evidence-empty.title",
-      detailKey: "kos.hint.evidence-empty.detail",
+      titleKey: "fachwort.qm.evidence-empty.titel",
+      detailKey: "fachwort.qm.evidence-empty.text",
       source: "evidence",
     });
   }
@@ -230,8 +234,8 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
     hints.push({
       id: "all-clear",
       severity: "ok",
-      titleKey: "kos.hint.all-clear.title",
-      detailKey: "kos.hint.all-clear.detail",
+      titleKey: "fachwort.qm.all-clear.titel",
+      detailKey: "fachwort.qm.all-clear.text",
       source: "provenance",
     });
   }

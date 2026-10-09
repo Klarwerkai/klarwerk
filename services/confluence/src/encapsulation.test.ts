@@ -11,6 +11,8 @@ describe("SCRUM-510 R2a: Confluence-Egress gekapselt (kein Roh-Client/Resolver v
       "confluenceRestConfigFromEnv", // R2a entfernt/ersetzt — darf nicht wiederauftauchen
       "confluenceClientFromEnv",
       "adapterFromConfig",
+      // R-1349: der Bau aus einem fertigen Client ist modul-intern exportiert, nicht von außen.
+      "adapterFromClient",
       "assertAllowedConfluenceUrl",
     ]) {
       expect(forbidden in confluence).toBe(false);
