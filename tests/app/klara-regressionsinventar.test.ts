@@ -203,6 +203,14 @@ const INVENTAR: readonly string[] = [
   // K2 hat beide gemeldet; keine traegt „klara" im Pfad, sie kommen ueber die Achse `taskpane`.
   "tests/addin-bildbilanz/bildbilanz-im-panel.test.ts",
   "tests/addin-bildbilanz/bildbilanz-woerterbuch.test.ts",
+  // AUFNAHME 20260922 GESAMT-BILDBUDGET: die Obergrenze des Dokument-Wegs (`/api/drafts/from-docx`)
+  // und ihr Gleichlauf mit den Grenzen des Aufgabenfensters (Fall C1 liest `taskpane.js`). Kein
+  // „klara" im Pfad — die Datei kommt über die Achse `taskpane`. Aus der Achsenregel abgeleitet,
+  // nicht gemessen (kein Testlauf in diesem Durchgang; der Cloud-Lauf ist der Beleg).
+  "tests/m5c-b-bildbudget/dokumentgrenze.test.ts",
+  // Nacharbeit 3 (R-0021): die textbedingte 413 des Dokument-Wegs am gemounteten Panel. Kommt über
+  // die Achse `komponente` (`KlaraPanel` aus der Fixture); aus der Achsenregel abgeleitet.
+  "tests/m5c-b-bildbudget/panel-rumpfgrenze.test.ts",
   // JOB 3281 WORD-VERGLEICH: der Vertragsblock an der ausgelieferten Datei und die drei
   // ausfuehrenden Pruefungen des Absatzvergleichs. K2 hat alle vier gemeldet; keine traegt
   // „klara" im Pfad — sie kommen ueber die Achse `taskpane` herein, also genau ueber den blinden

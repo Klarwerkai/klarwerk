@@ -251,6 +251,53 @@ describe("JOB 511 D1 · 413 mit Verlustwahrheit", () => {
     expect(Object.keys(res.json()).sort()).toEqual(["error", "message"]);
   });
 
+  // JOB 511 D3, Korrekturpflicht 3 (Aufnahme gesamt-bildbudget, Nacharbeit 7): DIE KANTE SELBST,
+  // BYTEGENAU. Die Fälle oben liegen 1024 Bytes neben der Grenze und können eine um wenige Bytes
+  // verschobene Kante nicht sehen. Hier geht der Rumpf als ROHER JSON-Text über die Leitung — genau
+  // `DRAFTS_BODY_LIMIT − 1`, `DRAFTS_BODY_LIMIT` und `DRAFTS_BODY_LIMIT + 1` Bytes —, und jede Seite
+  // der Kante trägt ihren vollständigen Vertrag: angenommen = 201, genau ein Anlagevorgang, ein
+  // Entwurf; abgewiesen = 413 mit Verlustvertrag, null Anlagevorgänge, leere Entwurfsliste.
+  const kante = [
+    { name: "Limit − 1", bytes: DRAFTS_BODY_LIMIT - 1, status: 201, creates: 1, entwuerfe: 1 },
+    { name: "Limit", bytes: DRAFTS_BODY_LIMIT, status: 201, creates: 1, entwuerfe: 1 },
+    { name: "Limit + 1", bytes: DRAFTS_BODY_LIMIT + 1, status: 413, creates: 0, entwuerfe: 0 },
+  ] as const;
+
+  for (const fall of kante) {
+    it(`Kante bytegenau · ${fall.name} → ${fall.status}, ${fall.creates} Anlagevorgang`, async () => {
+      const { app, headers, createAufrufe } = await adminAppMitCreateZaehler();
+      const rumpf = payloadMitGenauerGroesse(fall.bytes);
+      // Die Größe ist gemessen, nicht angenommen: genau diese Bytes gehen über die Leitung.
+      expect(Buffer.byteLength(rumpf, "utf8")).toBe(fall.bytes);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/drafts",
+        headers,
+        payload: rumpf,
+      });
+      expect(res.statusCode, res.body.slice(0, 200)).toBe(fall.status);
+      expect(createAufrufe()).toBe(fall.creates);
+      if (fall.status === 413) {
+        const body = res.json();
+        expect(body.error).toBe(DRAFT_BODY_TOO_LARGE);
+        expect(body.draftCreated).toBe(false);
+        expect(body.imageTransfer).toBe("not_completed");
+        expect(typeof body.message).toBe("string");
+        expect(body.message.length).toBeGreaterThan(20);
+        expect(Object.keys(body).sort()).toEqual([
+          "draftCreated",
+          "error",
+          "imageTransfer",
+          "message",
+        ]);
+        expect(res.body).not.toContain("FST_ERR");
+      }
+      const liste = await app.inject({ method: "GET", url: "/api/drafts", headers });
+      expect(liste.statusCode).toBe(200);
+      expect(liste.json()).toHaveLength(fall.entwuerfe);
+    });
+  }
+
   it("malformt klein bleibt der unveraenderte 400-Formfehler", async () => {
     const { app, headers } = await adminAppMitCreateZaehler();
     const res = await app.inject({
