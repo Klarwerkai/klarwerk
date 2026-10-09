@@ -1553,6 +1553,34 @@ describe("Register A17b · das Tor selbst meldet, was der Sammler nicht lesen ka
     expect(rot).toHaveLength(5);
   });
 
+  it("Nacharbeit 26: Standardwerte von Parametern gehören zur Wirkung des Empfängers", () => {
+    const { rot } = pruefeModalgrenze(
+      legeBaum({
+        ...ABGEGRENZT,
+        "apps/web/src/components/Standardwert.tsx": [
+          "function aendere(x: {}, y = Object.assign(x, { role: holeRolle() })): void {}",
+          "function ueberArguments(x: {}, { a = mach(arguments[0]) } = {}): void {}",
+          "function liest(x: { id?: string }, y = x.id): string | undefined { return y; }",
+          "export function F(): JSX.Element {",
+          "  const p: { role?: string } = {};",
+          "  aendere(p);",
+          "  ueberArguments(p);",
+          "  liest(p);",
+          "  return <div {...p} />;",
+          "}",
+        ],
+      }),
+    );
+    const an = (stelle: string): string[] => rot.filter((z) => z.includes(stelle));
+    // bens Fall wörtlich: der leere Rumpf ändert nichts, der Standardwert von y schon.
+    expect(an("components/Standardwert.tsx:6")[0]).toContain("kann dort verändert werden");
+    // Dasselbe über arguments im Initialisierer eines Bindungsmusters.
+    expect(an("components/Standardwert.tsx:7")[0]).toContain("kann dort verändert werden");
+    // Ein Standardwert, der nur liest, stellt den Empfänger nicht unter Verdacht.
+    expect(an("components/Standardwert.tsx:8"), "y = x.id liest nur").toEqual([]);
+    expect(rot).toHaveLength(2);
+  });
+
   it("eine nicht abrechenbare Erwähnung (destrukturiertes showModal) macht das TOR rot", () => {
     const { rot } = pruefeModalgrenze(
       legeBaum({

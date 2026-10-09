@@ -2153,6 +2153,11 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
       }
       ts.forEachChild(n, gehe);
     };
+    // Nacharbeit 26 (ben): auch die Parameterliste — Standardwerte (`y = f(arguments[0])`) laufen
+    // bei jedem Aufruf mit.
+    for (const parameter of funktion.parameters) {
+      gehe(parameter);
+    }
     if (funktion.body !== undefined) {
       gehe(funktion.body);
     }
@@ -2255,6 +2260,12 @@ export function erhebeDatei(quelle: Quelle, leser: Modulleser = bestandsLeser): 
     };
     if (funktion.body === undefined) {
       return true;
+    }
+    // Nacharbeit 26 (ben): Standardwerte der Parameter und Initialisierer in Bindungsmustern
+    // (`y = Object.assign(x, …)`, `{ a = mach(x) }`) werden beim Aufruf ausgeführt — sie gehören
+    // zur Wirkung der Funktion wie ihr Rumpf. Die Parameternamen selbst sind nur Namen.
+    for (const parameter of funktion.parameters) {
+      gehe(parameter);
     }
     gehe(funktion.body);
     return veraendert;
