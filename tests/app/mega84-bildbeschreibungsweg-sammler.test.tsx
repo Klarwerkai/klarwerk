@@ -2565,8 +2565,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // trägt. Der Konflikt in `BibliothekLesen.tsx` (Reihenfolge der Lesespalte) fügt kein Bauteil
     // hinzu. 554 + 1 = 555. EHRLICH GESAGT: GERECHNET, nicht gemessen; weicht der Prüflauf ab,
     // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // R-1656 Nacharbeit 29 · GEMESSEN 556. Am Kandidaten c0091802 meldete der Sammler wörtlich
+    // „gemessen: 556 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 727 Quelldateien …
+    // expected { komponenten: 556, … } to deeply equal { komponenten: 555, … }"; die übrigen 43
+    // Fälle grün (HISTORIE/nacharbeit-29/PRUEFUNG/komponentenzaehler-konfliktstelle.log). Dieser
+    // Auftrag hat seit der Rechnung 555 kein Bauteil hinzugefügt; Beitrag unverändert EINS
+    // (`Wissensempfehlung`). Die eine Komponente darüber kam mit dem Hauptstand und ist ohne
+    // Git-Verlauf hier nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 555,
+      komponenten: 556,
       anbieter: 1,
       traeger: 2,
     });
