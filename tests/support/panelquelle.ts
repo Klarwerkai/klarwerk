@@ -287,8 +287,12 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * beschreibt das zusammengefügte Dokument. Der Wert unten ist der von main und damit ein
  * PLATZHALTER bis zur Messung — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er
  * wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 57 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat 88250be0 am
+ * ZUSAMMENGEFÜHRTEN Panel (`e73efa0f…`, „Received" von E2,
+ * HISTORIE/nacharbeit-57/PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "c2a57caf99bfc2cb4ca8248c6b583e3fe9a409cf";
+export const PANEL_VOR_SCHNITT_BLOB = "e73efa0f7d84439d12e07c01511ce652223eaafb";
 
 export interface PanelTeile {
   html: string;
