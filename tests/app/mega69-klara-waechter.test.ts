@@ -2820,6 +2820,37 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // schnitt-wortvergleich-und-panelwaechter.log) und unverändert übernommen; die Panel-Dateien sind
     // seit dieser Messung unberührt.
     // Auf `main` lief parallel (die Zeilen unten stammen von dort):
+    // AUFNAHME 20260922 · ANTWORT-ERKLÄRUNG (Ben nacharbeit-2, R-0321/R-0335) — DER PIN MUSS WANDERN.
+    // `taskpane.js`: `performAsk` liest `result.belastbarkeit` (Lage und Konfliktseiten); ein Körper
+    // ohne Ergebnis, eine unbekannte/gestörte oder zur Antwortform widersprüchliche Lage wird
+    // `{kind:"error",detail:"lage"}`, `geschwaerzt` wird `{kind:"redacted"}`; `renderAskLage` zeichnet
+    // Lage und beide Seiten unter „Mehr"; neun Wörterbuchschlüssel je Sprache in EINER Zeile; Kommentare
+    // im Antwortzweig verdichtet (B3: 12496 Zeilen). `taskpane.html`: `#ask-lage-line` und
+    // `#ask-konflikt-seiten` auf der Zeile von `#ask-conflict-line` (498 Zeilen). Auslieferungsfolgen:
+    // kein neues Abrufziel, keine Nutzlaständerung (der Rumpf von POST /api/ask ist byte-gleich), CSP,
+    // Recht und Manifest unverändert, kein Sideload. Ohne zugelassenes Hash-Werkzeug ist der neue Wert
+    // hier nicht berechenbar — der Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 4 (dieser Auftrag): gemessen zu Kandidat 64095a2e war `264cf053…9a2028` — NICHT
+    // übernommen, weil `taskpane.js` danach erneut geändert wurde: drei Lage-Schlüssel sind ohne
+    // ASCII-Umschrift umbenannt (askLageVerantwortungFehlt, askKonfliktTragend, askLageGesperrt), denn
+    // der Umlaut-Wächter (mega69 C) erntet die einzeilige Schlüsselreihe als EINEN Text und traf die
+    // Namen. Gleiche Zeilenzahl, kein Ausdruck sonst geändert. Rechenversuch erneut nicht zugelassen;
+    // der Prüflauf meldet den Wert der endgültigen Fassung als „Received".
+    // NACHARBEIT 5 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (eefba3bd… -> 3a0471fa…). Im Prüflauf zu
+    // Kandidat 0bd4f3cb GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/word-fenster-pins.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt
+    // (`git diff 0bd4f3cb -- apps/web/public/word-addin/` leer).
+    // INTEGRATION Antwort-Erklärung × gesamt-funktionsschalter (main d8717621, nacharbeit-6): BEIDE
+    // Änderungen stehen jetzt in `taskpane.js` — `ki-abgeschaltet` (R-1040) und Lage/Konfliktseiten
+    // (R-0321/R-0335); die Statuszeile in `renderAskOutcome` trägt beide Fälle in EINEM Ausdruck (kein
+    // „Erneut versuchen" bei Abschaltung oder Schwärzung). B3: 12497 Zeilen. Keiner der beiden
+    // gemessenen Werte (3a0471fa… dieser Auftrag, dce012c0… main) beschreibt das zusammengefügte
+    // Fenster. Der Wert unten ist der von main und damit ein PLATZHALTER bis zur Messung; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet ihn als „Received".
+    // NACHARBEIT 8 (Antwort-Erklärung): PIN BEWUSST AKTUALISIERT (dce012c0… -> 9464e051…). Im Prüflauf
+    // zu Kandidat 7e98d5c4 GEMESSEN („Received", HISTORIE/nacharbeit-8/PRUEFUNG/
+    // integration-word-fenster.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt (`git diff 7e98d5c4 -- apps/web/public/word-addin/` leer).
     // INTEGRATION antwort-quellenanzeige × gesamt-funktionsschalter (Kandidat d9fe11c3, Nacharbeit 8):
     // BEIDE Änderungen stehen jetzt in `taskpane.js` — die Quellenanzeige dieses Auftrags (tragende
     // Quellen, Stand je Quelle, Einschub, Belegstelle, Wissensnetz-Sprung) UND die Auswertung von
@@ -2882,7 +2913,30 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Im Prüflauf zu Kandidat 3b7914f4 am zusammengeführten Panel GEMESSEN („Received",
     // HISTORIE/nacharbeit-4/PRUEFUNG/panel-nach-integration-pins-und-schnitt.log) und unverändert
     // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "c1007d1d5249e17649059693ac02f254a45925d8611ca910e2dac91496f423d1";
+    // Auf `main` lief parallel (die Zeilen unten stammen von dort):
+    // INTEGRATION Antwort-Erklärung (9464e051…) × antwort-quellenanzeige (main 3d9cdf45…), Nacharbeit 17
+    // der Antwort-Erklärung — DER PIN MUSS WANDERN. `taskpane.js` trägt jetzt BEIDES: Lage und
+    // Konfliktseiten (R-0321/R-0335, `renderAskLage`, `detail: "lage"`, `redacted`) UND die
+    // Absatz-Beleg-Zuordnung (R-0310, `askAbsaetzeLesen`, `zuordnungUnbekannt`). In `performAsk`
+    // wird die Lage weiter am Antwortkörper geprüft; ausgegeben wird nur mit mindestens einem belegten
+    // Absatz. Drei KA4-/Ask-Kommentarköpfe sind ohne Wortverlust verdichtet (B3: 12490 Zeilen).
+    // Auslieferungsfolgen: die beider Aufträge — kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte-
+    // oder Manifeständerung, kein Sideload. Keiner der beiden Werte beschreibt das zusammengeführte
+    // Fenster; der Wert unten (main) ist ein PLATZHALTER, der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 19 (Antwort-Erklärung): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… ->
+    // 9667e18b…). Im Prüflauf zu Kandidat d96bc621 am ZUSAMMENGEFÜHRTEN Fenster GEMESSEN
+    // („Received", HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION „Geschriebene Behauptungen …" × main ab5f3c95 (Nacharbeit 8 dieses Auftrags) — DER
+    // PIN MUSS WANDERN. Im zusammengefügten Dokument stehen BEIDE Änderungen: Lage/Konfliktseiten und
+    // Absatz-Beleg-Zuordnung von main (R-0321/R-0335/R-0310) und der Wortvergleich dieses Auftrags
+    // (`wortvergleich.js`, R-0336/R-0708). Git hat die Panel-Dateien ohne Konflikt zusammengeführt
+    // (Block nur in `wortvergleich.js`, `taskpane.js` 11537 Zeilen, `taskpane.html` 498). Keine der
+    // Messungen (c1007d1d… hier, 9667e18b… auf main) beschreibt dieses Dokument; der Wert unten ist der
+    // von main und damit ein PLATZHALTER. Auslieferungsfolgen: die beider Stände, wie oben je Stand
+    // benannt — nichts darüber hinaus. Der Prüflauf meldet den Ist-Wert als „Received".
+    const PIN = "9667e18b2978687c255ef32953ba9ce6e3d0d7a7583aeee60d1b7f7948204c28";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
@@ -3118,7 +3172,19 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
     // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
     //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
-    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
+    // AUFNAHME gesamt-sso NACHARBEIT 2 (08.10.2026) — DATEI BEWUSST GEAENDERT, PIN STEHT NOCH AUS.
+    // Bens Befund: das Fenster bot bei `KLARWERK_SSO_ONLY` weiter ein Kennwortfeld an, das nur in
+    // eine 403 fuehrte. Jetzt liest es `passwordLoginEnabled` und `samlEnabled` aus
+    // `/api/auth/status`, blendet den Kennwortbereich (`#passwortweg`) aus und bietet den
+    // Firmen-Login an (gemessen: dialogseite.test.ts F1–F4). Auslieferungsfolgen:
+    //   · Abrufziel:  keines neu (`/api/auth/status` wie bisher). Neu ist ein Seitenwechsel auf
+    //                 `/api/auth/saml/start?ziel=word-addin` — dieselbe Herkunft, dieselbe EINE
+    //                 Zielkennung wie beim OIDC-Weg; der SAML-Ruecksprung fuehrt hierher zurueck.
+    //   · CSP, Recht, Manifest: unveraendert. · Sideload: keiner noetig.
+    // PIN BEWUSST AKTUALISIERT (f63ac6bc… -> 17aa296a…): der Wert ist der vom Prüflauf
+    // (Nacharbeit 4, Kandidat 925c95e2) an genau dieser Datei gemessene — die Datei ist seitdem
+    // unverändert.
+    const PIN = "17aa296aea1dff56a58f6b1f922e9c1b735737f3f5c80e9cf35399daf8a59476";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

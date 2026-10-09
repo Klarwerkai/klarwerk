@@ -617,7 +617,8 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
 // ZWEI ÄNDERUNGEN, und die zweite ist die wichtigere:
 //
 //   1. Die Trägersuche kennt jetzt alle fünf Orte, an denen eine Referenz stehen kann — dieselbe
-//      Aufzählung wie in object-references.ts, dort für den Datenverlust, hier für den Schutz.
+//      Aufzählung wie im Waisenlauf (`datenintegritaet.ts`), dort für den Datenverlust, hier für
+//      den Schutz.
 //   2. Der TRÄGERLOSE Fall ist fail-closed: eine FEHLENDE Stufe ist keine Aussage „intern",
 //      sondern „unbekannt" — und Unbekanntes wird nicht ausgeliefert. Sichtbar bleibt es nur für
 //      die, die auch ein vertrauliches Objekt sehen dürften: den Hochladenden selbst (das
@@ -750,8 +751,7 @@ export interface AnhangEntwurf {
 
 /**
  * Die Quellen, die die Trägersuche befragt. BEWUSST als Funktionen injiziert und nicht als Module
- * importiert — dasselbe Muster und dieselbe Begründung wie `ObjectReferenceSources`: der
- * Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
+ * importiert: der Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
  */
 export interface AnhangQuellen {
   /**
@@ -944,7 +944,7 @@ function zuordnungInFassung(
  * Darf dieser Mensch diesen Anhang sehen? (G2 — der Anhang erbt die Stufe seines Objekts.)
  *
  * `traeger` ist der AKTUELLE Bestand der Wissensobjekte; der Aufrufer liefert ihn, damit diese
- * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (Muster `ObjectReferenceSources`).
+ * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (injizierte Quellen, s. oben).
  */
 export interface AnhangUrteil {
   /** Darf dieser Mensch die Bytes bekommen? */
