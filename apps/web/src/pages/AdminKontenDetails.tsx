@@ -217,6 +217,11 @@ export function NutzerDetail({
     },
     onError: fail,
   });
+  const zweiFaktorEntfernen = useMutation({
+    mutationFn: (id: string) => endpoints.users.resetSecondFactor(id),
+    onSuccess: () => push("success", t("zweifaktor.admin.entfernt")),
+    onError: fail,
+  });
   /**
    * JOB 4021: Befristung setzen, verlängern und beenden — EIN Weg, EIN Aufruf.
    *
@@ -584,6 +589,16 @@ export function NutzerDetail({
               >
                 <KeyRound size={15} />
                 {t("adm.reset")}
+              </Button>
+              {/* R-0562: der Weg zurück bei verlorenem zweiten Gerät. Der Server antwortet mit
+                  „nicht eingerichtet", wenn es nichts zu entfernen gibt — die Meldung zeigt `fail`. */}
+              <Button
+                variant="ghost"
+                data-testid="admin-zweifaktor-entfernen"
+                disabled={zweiFaktorEntfernen.isPending}
+                onClick={() => zweiFaktorEntfernen.mutate(nutzer.id)}
+              >
+                {t("zweifaktor.admin.entfernen")}
               </Button>
               {confirmRemove ? (
                 <span className="inline-flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">

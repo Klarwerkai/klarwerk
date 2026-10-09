@@ -7,9 +7,7 @@ import {
   deterministicOverlapDecision,
   exhaustiveOverlapCandidacy,
   lexicalOverlapScore,
-  overlapCandidacy,
   overlapPairKey,
-  overlapScorePercent,
   relationCreatesEntry,
   verifiedAspects,
 } from "./duplicate-detect";
@@ -121,14 +119,8 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D1): Erkennungskern", () => {
     expect(lexicalOverlapScore(a, cUnrelated)).toBeLessThan(0.45);
   });
 
-  it("overlapCandidacy: ≥0,85 deterministisch · mittel → Modell · niedrig → keiner", () => {
-    expect(overlapCandidacy(0.9, 1)).toBe("deterministic");
-    expect(overlapCandidacy(0.6, 0.3)).toBe("model");
-    expect(overlapCandidacy(0.2, 0.2)).toBe("none");
-    // Gleicher Titel, wenig Textdeckung → trotzdem Modell-Kandidat (klassisches Duplikat-Muster).
-    expect(overlapCandidacy(0.3, 0.85)).toBe("model");
-  });
-
+  // R-1349: der Fall zur dreistufigen `overlapCandidacy` ist mit ihr entfallen — sie ist seit
+  // „jeder gegen jeden" (Pedi 04.07.) durch `exhaustiveOverlapCandidacy` ersetzt (Fall darunter).
   it("exhaustiveOverlapCandidacy (jeder gegen jeden): ≥0,85 deterministisch, sonst IMMER Modell", () => {
     // Pedi 04.07.: kein „none" mehr — auch weit entfernte Paare gehen an die inhaltliche KI-Prüfung.
     expect(exhaustiveOverlapCandidacy(0.9)).toBe("deterministic");
@@ -243,8 +235,6 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D1): Erkennungskern", () => {
     expect(overlapPairKey("ko-b", "ko-a")).toBe(overlapPairKey("ko-a", "ko-b"));
     expect(overlapPairKey("ko-a", "ko-b")).toContain("dup|");
   });
-
-  it("overlapScorePercent liefert einen ehrlichen Anzeigewert", () => {
-    expect(overlapScorePercent(0.723)).toBe(72);
-  });
+  // R-1349: `overlapScorePercent` (Anzeigeprozent fürs Board) rief keine Fläche; der Fall ist mit
+  // der Funktion entfallen.
 });

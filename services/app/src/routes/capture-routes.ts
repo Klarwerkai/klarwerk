@@ -11,8 +11,8 @@ import JSZip from "jszip";
 // Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
 import { extractDocxRich, isDocxDocumentLike } from "../../../../apps/web/src/lib/docx";
 // JOB 3956 (Q9): der Meldungskatalog und die EINE Lesestelle des Sprachkopfes — derselbe Zugang,
-// den `services/app/src/http.ts:2` und `services/rbac/src/guard.ts:2` schon nehmen. Kein zweiter
-// Katalog und keine eigene Sprachermittlung in diesem Modul.
+// den `services/app/src/http.ts:2` schon nimmt (der RBAC-Wächter ist seit R-1349 entfernt).
+// Kein zweiter Katalog und keine eigene Sprachermittlung in diesem Modul.
 import { meldung, sprache } from "../../../auth";
 import {
   type CaptureService,
@@ -1498,6 +1498,34 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         }
         const schritt = await capture.naechsterSchrittFuerEntwurf(request.params.id);
         reply.code(200).send(schritt ? { naechsterSchritt: schritt } : {});
+      },
+    );
+
+    // ============================================================================================
+    // R-1133 — DIE DUPLIKATSFRAGE ÜBER DEN TECHNISCHEN ENTWURFSINDEX.
+    // ============================================================================================
+    //
+    // Welche anderen Entwürfe tragen genau denselben Inhalt? Beantwortet über den Inhaltshash des
+    // Index (`CaptureService.entwuerfeMitGleichemInhalt`), nicht über einen Rumpfvergleich.
+    //
+    // DIESELBE BERECHTIGUNG UND DIESELBE SICHTBARKEIT wie die übrigen Entwurfsrouten: erst
+    // `requireVisibleDraft` für den gefragten Entwurf, dann `canSeeDraft` für JEDEN Treffer — ein
+    // fremder privater Entwurf erscheint nicht, auch nicht als Zahl. Reine Lesung: die Antwort
+    // führt Kennung und Titel und entscheidet nichts.
+    app.get<{ Params: { id: string } }>(
+      "/api/drafts/:id/gleicher-inhalt",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+          return;
+        }
+        const antwort = await capture.entwuerfeMitGleichemInhalt(request.params.id, (draft) =>
+          canSeeDraft(user, draft),
+        );
+        reply.code(200).send(antwort);
       },
     );
 

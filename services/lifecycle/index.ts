@@ -9,5 +9,4 @@ export { REVALIDIERUNG_ANGEFORDERT } from "./src/service";
 export type { LifecycleServiceDeps, RevalidierungMerkerLeser } from "./src/service";
 export { InMemoryLifecycleRepo, type LifecycleRepo } from "./src/repo";
 export { PgLifecycleRepo, LIFECYCLE_SCHEMA } from "./src/repo-pg";
-export { LifecycleError } from "./src/types";
-export type { LearningPath, LearningStep, LifecycleErrorCode } from "./src/types";
+export type { LearningPath, LearningStep } from "./src/types";
