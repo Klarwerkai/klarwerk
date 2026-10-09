@@ -38,8 +38,13 @@ const ALLOWED_TAGS = new Set([
 const VOID_TAGS = new Set(["br", "img"]);
 
 // WP-D6b (bens ROT-Fix 1): der AUTORITATIVE Rich-Text-Tag-Vertrag wird exportiert, damit abgeleitete
-// Entscheidungen (z. B. shouldPreserveRichBody) NICHT eine zweite, driftanfällige Liste führen. Kommt ein
-// neues erlaubtes Struktur-/Formatier-Tag dazu, schützt der Vorschlags-Guard es automatisch mit.
+// Entscheidungen NICHT eine zweite, driftanfällige Liste führen. Kommt ein neues erlaubtes Struktur-/
+// Formatier-Tag dazu, schützt der Vorschlags-Guard es automatisch mit.
+// R-1349 (Aufnahme gesamt-aufruferwaechter), gemessen: die Produktentscheidungen (`shouldPreserveRichBody`,
+// `draftBody.ts`, `editorFigures.ts`) lesen `FLAT_BODY_TAGS` darunter; DIESEN Export liest allein
+// `tests/capture/huelle-tagbewusste-grenze.test.ts`, der daraus seine Grundmenge erhebt. Er bleibt
+// deshalb mit Grund stehen (Register `BEWUSST_WEB` des Aufrufer-Wächters): eine Abschrift der Liste im
+// Test wäre genau die Drift, gegen die er steht.
 export const RICH_TEXT_ALLOWED_TAGS: ReadonlySet<string> = ALLOWED_TAGS;
 // R-1160: die Lesehülle (SanitizedHtml) zerlegt die AUSGABE dieses Sanitizers nach Tiefe und muss
 // wissen, welche Tags kein Schließ-Tag bekommen — aus derselben Liste, nicht aus einer Abschrift.

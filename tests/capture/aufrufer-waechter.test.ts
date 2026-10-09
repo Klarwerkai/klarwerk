@@ -62,7 +62,10 @@
 //   Ein Export MIT Aufrufer                   -> grün (sonst wird der Wächter abgeschaltet)
 //   Ein Registereintrag, der behoben wurde    -> rot mit „entfernen", damit das Register schrumpft
 //
-// Er behebt den Altbestand NICHT (Auftrag §4) — er friert ihn ein und sperrt den Neuzugang.
+// Er behob den Altbestand anfangs NICHT (Auftrag §4) — er fror ihn ein und sperrte den Neuzugang.
+// R-1349 (Nacharbeit 4): der Altbestand ist inzwischen Fall für Fall abgebaut; geduldet ist nur noch,
+// was einen geprüften Grund trägt (Register `BEWUSST`, `BEWUSST_WEB`) oder als UNERLEDIGTER Rest
+// mit belegter Sperre bzw. gesondertem Auftrag abgegrenzt ist (`OFFENER_REST`, Nacharbeit 6).
 //
 // GRENZE, ausdrücklich benannt: Die Zuordnung läuft über den NAMEN, nicht über die aufgelöste
 // Modulkante. Zwei gleichnamige Exporte in verschiedenen Paketen decken sich dadurch gegenseitig.
@@ -248,7 +251,12 @@ function bindungenVon(n: ts.Node): string[] {
     for (const p of n.parameters) {
       ausBindung(p.name);
     }
-    if (!ts.isArrowFunction(n) && "name" in n && n.name && ts.isIdentifier(n.name)) {
+    // Nur eine Funktionsdeklaration oder ein benannter Funktionsausdruck bindet ihren Namen im
+    // eigenen Rumpf. Ein METHODEN- oder Accessor-Name bindet nichts: in
+    // `async riskHorizon() { return riskHorizon(…); }` (services/management/src/service.ts) ruft
+    // der Rumpf den IMPORT. Vorher galt der Methodenname als Verdeckung, und der Wächter meldete
+    // den gerufenen Export `horizon.ts::riskHorizon` fälschlich als ohne Aufrufer (A7).
+    if ((ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n)) && n.name) {
       namen.push(n.name.text);
     }
   }
@@ -319,9 +327,16 @@ function verwendungen(sf: ts.SourceFile): Set<string> {
     const neue = bindungenVon(n);
     const jetzt = neue.length === 0 ? verdeckt : new Set([...verdeckt, ...neue]);
     ts.forEachChild(n, (k) => {
+      // R-1349 (Nacharbeit 4): übersprungen wird nur der deklarierte BEZEICHNER. Ein
+      // Destrukturierungsmuster (`const { x = WERT } = o`) wird betreten: seine Namen sind
+      // Eigenschafts- bzw. Bindungsnamen (`istEigenschaftsname`) und zählen nicht, seine
+      // Vorgabewerte sind echte Leseoperationen. Vorher fiel das ganze Muster weg, und
+      // `facetRail.ts::FACET_SEARCH_THRESHOLD` (gelesen als `searchThreshold =
+      // FACET_SEARCH_THRESHOLD`) stand als „ohne Aufrufer" im Altbestand — ein Fehlalarm (A9).
       if (
         (ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n) || ts.isVariableDeclaration(n)) &&
-        k === n.name
+        k === n.name &&
+        ts.isIdentifier(k)
       ) {
         return;
       }
@@ -568,8 +583,91 @@ function dynamischeZugriffeAus(sf: ts.SourceFile): DynamischerZugriff[] {
       if (roh && ts.isVariableDeclaration(roh) && roh.initializer) {
         ausNamensraum(roh.name, sf, spezifikator);
       }
+      // Form 3 (R-1349, Nacharbeit 7): mehrere Module gemeinsam — `Promise.all([import("./a"),
+      // import("./b")])`. Der Namensraum steht dann an DERSELBEN STELLE der Ergebnisliste, an der
+      // der Import in der Liste steht; nur diese Bindung wird gelesen, sonst deckte `a` den Export
+      // von `b`. Gemessen an `apps/web/src/components/KlaraAssistant.tsx` (Klaras Bibliothek und
+      // Elementbeispiele, `laden.then(([modul, beispiele]) => …)`).
+      if (zugriff && ts.isArrayLiteralExpression(zugriff)) {
+        zugriffeAusPromiseAll(zugriff, zugriff.elements.indexOf(n), spezifikator);
+      }
     }
     ts.forEachChild(n, gehe);
+  };
+
+  /** Ein `.then(fn)` bzw. `.then(function …)` an `ausdruck` — sein erster Parameter und Rumpf. */
+  const handlerVon = (aufruf: ts.Node): { name: ts.BindingName; rumpf: ts.Node } | undefined => {
+    if (!ts.isCallExpression(aufruf)) {
+      return undefined;
+    }
+    const fn = aufruf.arguments[0];
+    if (!fn || !(ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) {
+      return undefined;
+    }
+    const erster = fn.parameters[0];
+    return erster ? { name: erster.name, rumpf: fn.body } : undefined;
+  };
+
+  const zugriffeAusPromiseAll = (
+    liste: ts.ArrayLiteralExpression,
+    stelle: number,
+    spezifikator: string,
+  ): void => {
+    const alle = liste.parent;
+    if (
+      !alle ||
+      !ts.isCallExpression(alle) ||
+      alle.arguments[0] !== liste ||
+      !ts.isPropertyAccessExpression(alle.expression) ||
+      !ts.isIdentifier(alle.expression.expression) ||
+      alle.expression.expression.text !== "Promise" ||
+      alle.expression.name.text !== "all"
+    ) {
+      return;
+    }
+    const ausListe = (bindung: ts.BindingName, rumpf: ts.Node): void => {
+      const element = ts.isArrayBindingPattern(bindung) ? bindung.elements[stelle] : undefined;
+      if (element && ts.isBindingElement(element)) {
+        ausNamensraum(element.name, rumpf, spezifikator);
+      }
+    };
+    const thenAn = (ziel: ts.Node): ts.Node | undefined => {
+      const zugriff = ziel.parent;
+      return zugriff &&
+        ts.isPropertyAccessExpression(zugriff) &&
+        zugriff.expression === ziel &&
+        zugriff.name.text === "then"
+        ? zugriff.parent
+        : undefined;
+    };
+    // `Promise.all([...]).then(([a, b]) => …)`
+    const direkt = thenAn(alle);
+    const h = direkt ? handlerVon(direkt) : undefined;
+    if (h) {
+      ausListe(h.name, h.rumpf);
+    }
+    // `const [a, b] = await Promise.all([...])` bzw. `const laden = Promise.all([...])` und später
+    // `laden.then(([a, b]) => …)`.
+    const oben =
+      alle.parent && ts.isAwaitExpression(alle.parent) ? alle.parent.parent : alle.parent;
+    if (oben && ts.isVariableDeclaration(oben) && oben.initializer) {
+      if (ts.isArrayBindingPattern(oben.name)) {
+        ausListe(oben.name, sf);
+      } else if (ts.isIdentifier(oben.name) && oben.initializer === alle) {
+        const lokal = oben.name.text;
+        const suche = (k: ts.Node): void => {
+          if (ts.isIdentifier(k) && k.text === lokal && k !== oben.name) {
+            const spaeter = thenAn(k);
+            const hs = spaeter ? handlerVon(spaeter) : undefined;
+            if (hs) {
+              ausListe(hs.name, hs.rumpf);
+            }
+          }
+          ts.forEachChild(k, suche);
+        };
+        ts.forEachChild(sf, suche);
+      }
+    }
   };
   ts.forEachChild(sf, gehe);
   return raus;
@@ -617,6 +715,306 @@ function loeseModul(
   return undefined;
 }
 
+// ------------------------------------------------------------------------------------------------
+// R-1349 — LESER AUSSERHALB VON TYPESCRIPT: GEMESSEN, NICHT GEDULDET.
+// ------------------------------------------------------------------------------------------------
+//
+// Zwei Produktwege lesen TypeScript-Exporte, ohne sie zu importieren:
+//   · das Word-Add-in lädt `lib/wordAddin.ts` nicht, sondern trägt dieselben Bausteine als Spiegel
+//     in `public/word-addin/taskpane.js` (Kopf dort: „Äquivalenz per Test gepinnt") und ruft sie;
+//   · das Release-Werkzeug `scripts/insel/schema-vertrag.mjs` läuft mit blossem `node` und liest
+//     die beiden Migrationslisten aus dem QUELLTEXT von `migrationsbeleg.ts` (`stufenAusQuelle`).
+// Bis hierher standen diese Exporte als eingefrorener Altbestand oder als Ausnahme mit Grund im
+// Register — der Wächter konnte den Aufruf nicht sehen und musste ihn glauben. Jetzt misst er ihn,
+// je Name und bei jedem Lauf, und eine bloße Erwähnung deckt nichts:
+//   spiegel   — der Leser DEKLARIERT den Namen und VERWEIST ausserhalb der Deklaration auf das
+//               Symbol (Syntaxbaum, kein Texttreffer). Eine Definition allein ist ein Spiegel, den
+//               niemand ruft — genau der halbe Einbau, um den es geht; eine Zeichenkette oder ein
+//               Kommentar mit dem Namen ist kein Verweis.
+//   quelltext — der Leser LIEST das Modul (`readFileSync` mit dessen Pfad), gibt das Gelesene an
+//               eine eigene Auswertung, und die wendet den Exportnamen auf genau diesen Text an.
+//               Pfad und Name als lose Zeichenketten decken nichts.
+interface FremdLeser {
+  /** Das TypeScript-Modul, dessen Exporte gelesen werden (relativ zur Wurzel). */
+  readonly modul: string;
+  /** Die Nicht-TypeScript-Dateien, die sie lesen. */
+  readonly leser: readonly string[];
+  readonly art: "spiegel" | "quelltext";
+  readonly grund: string;
+}
+
+const FREMDLESER: readonly FremdLeser[] = [
+  {
+    modul: "apps/web/src/lib/wordAddin.ts",
+    leser: ["apps/web/public/word-addin/taskpane.js"],
+    art: "spiegel",
+    grund:
+      "Das Aufgabenfenster lädt das TypeScript-Modul nicht; `taskpane.js` (eingebunden von " +
+      "`taskpane.html`) trägt dieselben Bausteine als Spiegel und ruft sie. Die Gleichheit beider " +
+      "Fassungen halten die Paritätstests des Add-ins fest.",
+  },
+  {
+    modul: "services/app/src/migrationsbeleg.ts",
+    leser: ["scripts/insel/schema-vertrag.mjs"],
+    art: "quelltext",
+    grund:
+      "Der Schema-Vertrag jedes Insel-Release entsteht aus den beiden Listen dieses Moduls; " +
+      "`schema-vertrag.mjs` liest sie aus dem Quelltext, weil der Bau ohne `tsx` läuft.",
+  },
+];
+
+// Nacharbeit 6 (BEN): bis hierher massen beide Arten ZEILEN — im Spiegel genügte nach der
+// Definition eine weitere Zeile wie `console.log("name")`, im Quelltextleser genügten zwei ungenutzte
+// Zeichenketten mit Modulpfad und Name. Beides ist eine Nennung, keine Verwendung. Jetzt wird der
+// Leser als JavaScript geparst und am Syntaxbaum gemessen; Zeichenketten und Kommentare sind dort
+// keine Bezeichner und decken nichts.
+
+//
+// Nacharbeit 9 (BEN): auch das genügte für den Spiegel nicht. Gesammelt wurden Bezeichner nach ihrem
+// TEXT; ein gleichnamiger Parameter (`function fremd(ziel) { ziel(); }`) oder eine lokale
+// Schattenbindung deckte damit den ungerufenen Spiegel `ziel`. Jetzt löst der TypeScript-Prüfer
+// jeden Verweis zu SEINER Deklaration auf (`getSymbolAtLocation`); es zählt nur, was an das Symbol
+// des Spiegels gebunden ist. Der Prüfer läuft ohne Standardbibliothek und ohne Modulauflösung — für
+// die Bindung lokaler Namen braucht er beides nicht.
+interface JsLeser {
+  readonly sf: ts.SourceFile;
+  readonly pruefer: ts.TypeChecker;
+}
+
+function jsBaum(pfad: string): JsLeser {
+  const programm = ts.createProgram({
+    rootNames: [pfad],
+    options: {
+      allowJs: true,
+      checkJs: false,
+      noEmit: true,
+      noLib: true,
+      noResolve: true,
+      types: [],
+      target: ts.ScriptTarget.Latest,
+    },
+  });
+  const sf = programm.getSourceFile(pfad);
+  if (!sf) {
+    throw new Error(`Fremdleser ${pfad} liess sich nicht als JavaScript lesen`);
+  }
+  return { sf, pruefer: programm.getTypeChecker() };
+}
+
+function besucheAlle(wurzel: ts.Node, tu: (n: ts.Node) => void): void {
+  const geh = (n: ts.Node): void => {
+    tu(n);
+    ts.forEachChild(n, geh);
+  };
+  geh(wurzel);
+}
+
+/** Ein Bezeichner, der auf ein Symbol VERWEIST — kein Eigenschafts-, Schlüssel- oder Parametername. */
+function istVerweis(id: ts.Identifier): boolean {
+  const p = id.parent;
+  if (ts.isPropertyAccessExpression(p) && p.name === id) {
+    return false;
+  }
+  if (
+    (ts.isPropertyAssignment(p) ||
+      ts.isMethodDeclaration(p) ||
+      ts.isPropertyDeclaration(p) ||
+      ts.isGetAccessorDeclaration(p) ||
+      ts.isSetAccessorDeclaration(p) ||
+      ts.isParameter(p)) &&
+    p.name === id
+  ) {
+    return false;
+  }
+  return !(ts.isBindingElement(p) && p.propertyName === id);
+}
+
+/**
+ * Art `spiegel`: der Leser DEKLARIERT den Namen (Funktion, Klasse, Variable) und VERWEIST ausserhalb
+ * dieser Deklaration auf GENAU DIESES Symbol. Ein Selbstaufruf im eigenen Rumpf ist kein Aufrufer;
+ * ein gleichnamiger Parameter oder eine lokale Schattenbindung ist ein anderes Symbol.
+ */
+function spiegelVerwendet({ sf, pruefer }: JsLeser, name: string): boolean {
+  const kandidaten: { dekl: ts.Node; bezeichner: ts.Identifier; tiefe: number }[] = [];
+  besucheAlle(sf, (n) => {
+    if (
+      (ts.isFunctionDeclaration(n) || ts.isClassDeclaration(n) || ts.isVariableDeclaration(n)) &&
+      n.name !== undefined &&
+      ts.isIdentifier(n.name) &&
+      n.name.text === name
+    ) {
+      kandidaten.push({ dekl: n, bezeichner: n.name, tiefe: funktionsTiefe(n) });
+    }
+  });
+  if (kandidaten.length === 0) {
+    return false;
+  }
+  // Der SPIEGEL ist die äußerste gleichnamige Deklaration (im Aufgabenfenster: die Ebene der Hülle).
+  // Eine tiefer liegende gleichnamige Bindung in einem Funktionsrumpf ist ein Schatten — ihre
+  // Verwendungen gehören zu ihr, nicht zum Spiegel.
+  const aussen = Math.min(...kandidaten.map((k) => k.tiefe));
+  const deklarationen: ts.Node[] = [];
+  const spiegel = new Set<ts.Symbol>();
+  for (const k of kandidaten.filter((k) => k.tiefe === aussen)) {
+    const symbol = pruefer.getSymbolAtLocation(k.bezeichner);
+    if (symbol) {
+      deklarationen.push(k.dekl);
+      spiegel.add(symbol);
+    }
+  }
+  if (spiegel.size === 0) {
+    return false;
+  }
+  const innerhalb = (v: ts.Node): boolean =>
+    deklarationen.some((d) => v.getStart() >= d.getStart() && v.getEnd() <= d.getEnd());
+  let gebunden = false;
+  besucheAlle(sf, (n) => {
+    if (gebunden || !ts.isIdentifier(n) || n.text !== name || !istVerweis(n) || innerhalb(n)) {
+      return;
+    }
+    // `{ ziel }` als Kurzschreibweise: das Symbol am Ort ist die Eigenschaft, gelesen wird der Wert.
+    const symbol = ts.isShorthandPropertyAssignment(n.parent)
+      ? pruefer.getShorthandAssignmentValueSymbol(n.parent)
+      : pruefer.getSymbolAtLocation(n);
+    gebunden = symbol !== undefined && spiegel.has(symbol);
+  });
+  return gebunden;
+}
+
+/** Wie viele Funktionen umschließen diesen Knoten? Die eigene Deklaration zählt nicht mit. */
+function funktionsTiefe(knoten: ts.Node): number {
+  let tiefe = 0;
+  for (let p = knoten.parent; p !== undefined; p = p.parent) {
+    if (ts.isFunctionLike(p)) {
+      tiefe++;
+    }
+  }
+  return tiefe;
+}
+
+/**
+ * Art `quelltext`: die Kette muss im Leser stehen, nicht nur ihre Wörter —
+ *   1. LESEN:      `readFileSync(…)` mit dem Modulpfad (direkt oder über eine Variable);
+ *   2. AUSWERTEN:  das Gelesene geht als Argument an eine Funktion DIESES Lesers;
+ *   3. AUSWÄHLEN:  dort wird der Exportname auf genau diesen Parameter angewandt
+ *                  (`text.indexOf(…NAME…)`, direkt oder über eine Schleife über die Namensliste).
+ */
+function quelltextAusgewertet(sf: ts.SourceFile, modul: string, name: string): boolean {
+  const funktionen = new Map<string, ts.FunctionDeclaration>();
+  const belegung = new Map<string, ts.Expression[]>();
+  besucheAlle(sf, (n) => {
+    if (ts.isFunctionDeclaration(n) && n.name) {
+      funktionen.set(n.name.text, n);
+    }
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+      belegung.set(n.name.text, [...(belegung.get(n.name.text) ?? []), n.initializer]);
+    }
+  });
+  const enthaelt = (n: ts.Node, treffer: (k: ts.Node) => boolean): boolean => {
+    let ja = false;
+    besucheAlle(n, (k) => {
+      ja = ja || treffer(k);
+    });
+    return ja;
+  };
+  const traegtPfad = (e: ts.Node): boolean =>
+    enthaelt(e, (k) => ts.isStringLiteralLike(k) && k.text === modul) ||
+    (ts.isIdentifier(e) && (belegung.get(e.text) ?? []).some((b) => traegtPfad(b)));
+  const istLesen = (e: ts.Node): boolean => {
+    if (ts.isIdentifier(e)) {
+      return (belegung.get(e.text) ?? []).some((b) => istLesen(b));
+    }
+    if (!ts.isCallExpression(e)) {
+      return false;
+    }
+    const ziel = ts.isPropertyAccessExpression(e.expression) ? e.expression.name : e.expression;
+    const erstes = e.arguments[0];
+    return (
+      ts.isIdentifier(ziel) &&
+      ziel.text === "readFileSync" &&
+      erstes !== undefined &&
+      traegtPfad(erstes)
+    );
+  };
+  const wort = new RegExp(`(^|\\W)${name.replace(/[$]/g, "\\$&")}($|\\W)`);
+  const nenntNamen = (k: ts.Node): boolean => ts.isStringLiteralLike(k) && wort.test(k.text);
+  const waehltAus = (g: ts.FunctionDeclaration, parameter: string): boolean => {
+    if (!g.body) {
+      return false;
+    }
+    // Schleifenvariablen, die über eine Namensliste mit genau diesem Namen laufen.
+    const schleife = new Set<string>();
+    besucheAlle(g.body, (n) => {
+      if (
+        ts.isForOfStatement(n) &&
+        ts.isArrayLiteralExpression(n.expression) &&
+        n.expression.elements.some((el) => ts.isStringLiteralLike(el) && el.text === name) &&
+        ts.isVariableDeclarationList(n.initializer)
+      ) {
+        for (const d of n.initializer.declarations) {
+          if (ts.isIdentifier(d.name)) {
+            schleife.add(d.name.text);
+          }
+        }
+      }
+    });
+    return enthaelt(
+      g.body,
+      (n) =>
+        ts.isCallExpression(n) &&
+        ts.isPropertyAccessExpression(n.expression) &&
+        ts.isIdentifier(n.expression.expression) &&
+        n.expression.expression.text === parameter &&
+        n.arguments.some((a) =>
+          enthaelt(
+            a,
+            (k) => nenntNamen(k) || (ts.isIdentifier(k) && istVerweis(k) && schleife.has(k.text)),
+          ),
+        ),
+    );
+  };
+  return enthaelt(sf, (n) => {
+    if (!ts.isCallExpression(n) || !ts.isIdentifier(n.expression)) {
+      return false;
+    }
+    const g = funktionen.get(n.expression.text);
+    if (!g) {
+      return false;
+    }
+    return n.arguments.some((a, i) => {
+      const p = g.parameters[i]?.name;
+      return istLesen(a) && p !== undefined && ts.isIdentifier(p) && waehltAus(g, p.text);
+    });
+  });
+}
+
+/** Liest eine Nicht-TypeScript-Datei des Produkts WIRKLICH diesen Export? (siehe Kopf oben) */
+function fremdGelesen(
+  f: Fund,
+  wurzel: string,
+  fremdleser: readonly FremdLeser[],
+  baeume: Map<string, JsLeser> = new Map(),
+): boolean {
+  for (const eintrag of fremdleser.filter((e) => e.modul === f.datei)) {
+    for (const datei of eintrag.leser) {
+      const pfad = join(wurzel, datei);
+      if (!existsSync(pfad)) {
+        continue;
+      }
+      const leser = baeume.get(pfad) ?? jsBaum(pfad);
+      baeume.set(pfad, leser);
+      if (
+        eintrag.art === "spiegel"
+          ? spiegelVerwendet(leser, f.name)
+          : quelltextAusgewertet(leser.sf, eintrag.modul, f.name)
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 interface Erhebung {
   readonly ohneAufrufer: Fund[];
   readonly exporte: number;
@@ -636,6 +1034,7 @@ function erhebe(
   ueberwacht: readonly string[] = UEBERWACHT,
   suchbaeume: readonly string[] = SUCHBAEUME,
   suchdateien: readonly string[] = SUCHDATEIEN,
+  fremdleser: readonly FremdLeser[] = FREMDLESER,
 ): Erhebung {
   const dateien = [
     ...suchbaeume.flatMap((b) => quelldateien(b, wurzel)),
@@ -767,9 +1166,11 @@ function erhebe(
     return false;
   };
 
+  const leserbaeume = new Map<string, JsLeser>();
   const ohneAufrufer = exporte
     .filter((f) => !fremdGenutzt(f))
     .filter((f) => !(nutzung.get(f.datei)?.has(f.name) ?? false))
+    .filter((f) => !fremdGelesen(f, wurzel, fremdleser, leserbaeume))
     .sort((a, b) => a.datei.localeCompare(b.datei) || a.name.localeCompare(b.name));
   return { ohneAufrufer, exporte: exporte.length, gelesen: dateien.length, fremdGenutzt };
 }
@@ -821,17 +1222,44 @@ const BEWUSST: readonly Ausnahme[] = [
       "hiermit auf sein Ende, statt zu schlafen. Ein Produktaufrufer waere der alte Fehler: " +
       "eine Route, die auf den Lauf wartet, bevor sie antwortet.",
   },
+  // R-1349 (Nacharbeit 4): Hier stand `ko-routes.ts::ohneImportHerkunft` mit dem Vermerk, Streichen
+  // oder ein Routenfall gehöre dem Importauftrag. Beides ist geschehen: der Helfer ist entfernt, und
+  // W6 (`tests/import-kandidaten-echt/annahme-in-validierung.test.ts`) misst die Zusage am echten
+  // `POST /api/kos`.
   {
-    schluessel: "services/app/src/routes/ko-routes.ts::ohneImportHerkunft",
+    schluessel: "services/knowledge-object/src/kanten-service.ts::InMemoryKantenRepo",
     grund:
-      "Seit 1d1cc373 (R-0180/R-2108, Importkandidaten) ohne Produktaufrufer, am Code geprueft: die " +
-      "Urheber schreiben an beiden oeffentlichen Schreibwegen selbst, warum er dort NICHT steht — " +
-      "die Destrukturierung verwirft `origin` vollstaendig, `ohneImportHerkunft` auf einem Rumpf " +
-      "ohne `origin` waere wirkungslos (ko-routes.ts, POST /api/kos und Dokumentweg, Kommentare " +
-      "„R-0180/R-2108“). Gelesen wird er nur in tests/import-kandidaten-echt/" +
-      "annahme-in-validierung.test.ts W6 — der Fall prueft damit den Helfer, NICHT die Routen. " +
-      "Eingetragen von einem fremden Auftrag (Suchraum/Facetten), dessen Zielpfade ko-routes.ts " +
-      "nicht umfassen; Streichen des Helfers oder ein Routenfall gehoert dem Importauftrag.",
+      "R-1349 (Nacharbeit 4), am Code geprueft: der Pruefstand des Kanten-Lesewegs. Er legt je " +
+      "KENNUNG ab statt je Beziehung und ist deshalb als Ablage der Anwendung falsch — die " +
+      "Kompositionswurzel nimmt ausdruecklich `DeduplizierenderKantenBestand` (JOB 4151). Er teilt " +
+      "modulprivate Hilfen mit dem Lesedienst; ein Umzug nach `tests/` braeche diese Bindung auf " +
+      "oder verdoppelte sie. Ein Produktaufrufer waere hier der Fehler, kein Anschluss.",
+  },
+  // R-1349 (Nacharbeit 2): drei Vertragspruefhilfen der Integrationsschnittstelle, mit dem
+  // Hauptstand 1.0.0-beta.1.771 hereingekommen und am Code geprueft. Ihr einziger Leser ist der
+  // Vertragstest; das ist ihre Aufgabe und keine Luecke.
+  {
+    schluessel: "services/app/src/integrations-vertrag.ts::integrationsOpenApi",
+    grund:
+      "Erzeugt die OpenAPI-Beschreibung aus der Zustandstabelle. Ausgeliefert wird sie als Datei " +
+      "`docs/generated/integrations-openapi.json`, nicht ueber eine HTTP-Route — so festgehalten in " +
+      "`docs/architektur/integrations-schnittstelle.md` (Grenzen). Der Vertragstest " +
+      "`tests/integrations-api/zustandstabelle-am-draht.test.ts` (O1) verlangt Gleichheit von Datei " +
+      "und Erzeugung. Eine Route waere eine eigene Produktentscheidung, kein Anschluss.",
+  },
+  {
+    schluessel: "services/app/src/integrations-vertrag.ts::vertragUndRoutenGleich",
+    grund:
+      "Prueft, dass Vertragstabelle und `DIENST_ROUTEN` dieselben Routen mit denselben Rechten " +
+      "fuehren. Das ist eine Gleichlaufpruefung fuer den Vertragstest; ein Aufruf im Betrieb " +
+      "aenderte nichts, weil beide Tabellen zur Bauzeit feststehen.",
+  },
+  {
+    schluessel: "services/app/src/integrations-vertrag.ts::zustandErlaubt",
+    grund:
+      "Fragt, ob eine beobachtete Antwort (Status und `error`) in der Zustandstabelle steht — der " +
+      "Massstab, an dem der Vertragstest jede Routenantwort misst. Die Routen selbst setzen ihre " +
+      "Zustaende; eine Durchsetzung zur Laufzeit waere eine eigene Produktentscheidung.",
   },
   // JOB 3110 (06.09.2026): Der Eintrag fuer `klara-session-routes.ts::klaraZurufRoutes` ist
   // GESTRICHEN und nicht umformuliert — er war ausdruecklich selbstauslaufend („sobald build-app.ts
@@ -853,97 +1281,134 @@ const BEWUSST: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
-// REGISTER 2 · DER ALTBESTAND, EINGEFROREN AM 27.08.2026
+// REGISTER 2 · UNERLEDIGTER REST VON R-1349 — abgegrenzt, nicht abgeschlossen
 // ------------------------------------------------------------------------------------------------
-// Diese Einträge sind NICHT freigesprochen. Sie sind der gemessene Ist-Zustand an dem Tag, an dem
-// dieser Wächter entstand — der Auftrag verbietet ausdrücklich, sie in diesem Durchgang zu beheben
-// (§4: „Was du NICHT tust: die vier Altfälle beheben").
+// HIER STAND DER ALTBESTAND, eingefroren am 27.08.2026 (am Kandidaten b7be5168 nach BENs Zählung
+// 174 eingefrorene Altfälle über Server und Web). R-1349 verlangt: „Jeder Fall soll entweder
+// angeschlossen oder begründet entfernt werden." Jeder Eintrag ist einzeln abgeglichen und
+// angeschlossen, entfernt, als Prüfzeug nach `tests/` gezogen oder als gemessene Fremdlesekante
+// (`FREMDLESER`) belegt worden. Die Aufstellung je Fall steht in
+// `docs/qm/aufnahme-20260922-gesamt-aufruferwaechter.md`. Ein eingefrorenes Register gibt es nicht.
 //
-// Wozu die Liste dann? Sie sperrt den NEUZUGANG: ab jetzt macht jeder weitere Export ohne Aufrufer
-// das Tor rot. Und sie ist ein Arbeitsvorrat, der schrumpfen soll — wird ein Eintrag verdrahtet
-// oder entfernt, meldet A3 ihn als „nicht mehr zutreffend" und verlangt seine Streichung. Eine
-// Liste, die nur wächst, wäre der Anfang vom Ende dieses Wächters.
-const ALTBESTAND: readonly string[] = [
-  "services/app/src/addon-principal.ts::ADDON_CAPABILITY",
-  "services/app/src/addon-principal.ts::isLiteralAskPath",
-  "services/app/src/csrf.ts::COOKIE_STRATEGY",
-  "services/app/src/csrf.ts::csrfAssessment",
-  "services/app/src/demo-content.ts::DEMO_GAP_QUESTIONS",
-  "services/app/src/demo-corpus.ts::DEMO_CORPUS_PAGE_COUNT",
-  "services/app/src/demo-corpus.ts::corpusConflictPairs",
-  "services/app/src/demo-corpus.ts::corpusImportItems",
-  "services/app/src/dev-persist.ts::readJournal",
-  "services/app/src/duplicate-signal.ts::A28_SIGNAL_GRENZE",
-  "services/app/src/duplicate-signal.ts::befundFuerEigenesKo",
-  "services/app/src/example-packages.ts::EXAMPLE_PACKAGE_IDS",
-  "services/app/src/feature-flags.ts::vorgabeAn",
-  "services/app/src/migrationsbeleg.ts::IRREVERSIBLE_DATENMIGRATIONEN",
-  "services/app/src/migrationsbeleg.ts::MIGRATIONS_SOLLLISTE",
-  "services/app/src/migrationsbeleg.ts::erzeugeStrukturbeleg",
-  "services/app/src/migrationsbeleg.ts::istStrukturstufe",
-  "services/app/src/object-references.ts::isObjectReferenced",
-  "services/app/src/reindex-queue.ts::REINDEX_CONCURRENCY",
-  // `createReindexQueue` gestrichen: seit Aufnahme gesamt-suchindex-aktualitaet (R-0470) in
-  // build-app.ts verdrahtet.
-  "services/app/src/routes/ko-routes.ts::KO_AKTIONEN_MIT_TORURTEIL",
-  "services/app/src/routes/naechster-schritt-entwurf.ts::naechsterSchrittEntwurfRoutes",
-  "services/app/src/seed-demo.ts::DEMO_GAP_QUESTION",
-  "services/audit/src/repo.ts::pruefeValidationDecisionRef",
-  "services/capture/src/interview.ts::InterviewSession",
-  "services/conflicts/src/coverage.ts::singleRunBalances",
-  "services/conflicts/src/duplicate-detect.ts::overlapCandidacy",
-  "services/conflicts/src/duplicate-detect.ts::overlapScorePercent",
-  "services/confluence/src/adapter.ts::adapterFromConfig",
-  "services/db-tx/src/bestandsreset-audit.ts::SQL_SCHEMA_BESTANDSRESET",
-  "services/db-tx/src/bestandsreset-audit.ts::bestandsresetBefund",
-  "services/db-tx/src/bestandsreset.ts::fuehreBestandsresetAus",
-  "services/db-tx/src/reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN",
-  "services/db-tx/src/write-fence.ts::PgWriteFence",
-  "services/db-tx/src/write-fence.ts::fenceKey",
-  // JOB 3024 · GESTRICHEN, WEIL BEHOBEN: `displayStatus` stand hier seit dem 27.08.2026 — die
-  // Ableitung war gebaut, exportiert und hatte im ganzen Produkt keinen einzigen Aufrufer
-  // (`git log -S "displayStatus" -- services/app`: kein Treffer ueber die gesamte Historie). Seit
-  // JOB 3024 ruft `services/app/src/routes/ko-routes.ts` sie am Detailabruf `GET /api/kos/:id`.
-  // Genau dafuer ist dieses Register da: es soll schrumpfen.
-  "services/knowledge-object/src/effective-search-document.ts::EFFECTIVE_SEARCH_DOCUMENT_FIELDS",
-  // JOB 4151 · GESTRICHEN, WEIL BEHOBEN: `DeduplizierenderKantenBestand` stand hier seit dem
-  // 27.08.2026 — der Bestand war gebaut, deduplizierend, getestet und hatte im ganzen Produkt
-  // keinen einzigen Aufrufer. Seit JOB 4151 wählt ihn die Kompositionswurzel
-  // (`services/app/src/build-app.ts`, `assembleServices`) als Kantenablage für den Betrieb ohne
-  // Datenbank. Genau dafür ist dieses Register da: es soll schrumpfen.
+// WAS HIER STEHT, IST NICHT ERLEDIGT (Nacharbeit 6, BEN): R-1349 ist für diese Bausteine NICHT
+// erfüllt — sie haben weiterhin keinen Aufrufer. Ein Eintrag mit Entscheider allein wäre keine
+// Abgrenzung. Hier steht deshalb nur, was eine ausdrückliche SPERRE trägt oder einem belegten
+// GESONDERTEN AUFTRAG gehört, und jeder Eintrag nennt diesen Beleg. Ohne eine solche Einschränkung
+// wurde abgeschlossen: in Nacharbeit 6 sind `PgWriteFence`, `fenceKey` und `netzQualitaet`
+// entfernt worden, in Nacharbeit 10 `ImportResultView` und die fünf Wissensraum-Bausteine — dort
+// trugen die angeführten „Sperren“ und der „gesonderte Auftrag“ nicht mehr; `createReindexQueue` ist
+// inzwischen ANGESCHLOSSEN (Kommentare an den früheren Stellen). A3 verlangt die Streichung, sobald
+// ein Baustein einen Aufrufer hat oder entfernt ist, und prüft, dass jede genannte Belegdatei
+// existiert.
+interface OffenerRest extends Ausnahme {
+  /** Warum dieser Auftrag den Fall nicht abschliesst. */
+  readonly abgrenzung: "sperre" | "gesonderter-auftrag";
+  /** Die Sperre bzw. der Auftrag, mit Fundstelle — keine bloße Zuständigkeit. */
+  readonly beleg: string;
+  /** Die Datei im Baum, in der die Sperre steht (wenn sie im Baum steht). */
+  readonly belegdatei?: string;
+  /** Wer die ausstehende Entscheidung trifft — eine Rolle oder ein benannter Auftrag. */
+  readonly entscheidet: string;
+}
+
+const AUFTRAG_BESTANDSRESET =
+  "Auftrag aufnahme:20260922:gesamt-bestandsreset — R-0774: offene Owner-Punkte OV-1 bis OV-5 " +
+  "(Sperrrichtung, Löschgraph, Auditwahrheit bei Absturz, Zielpfade, zweiter Server); " +
+  "R-1911: E9 OFFEN";
+// R-1349 (Nacharbeit 10, BEN; Integration mit main): hier stand
+// `services/app/src/reindex-queue.ts::createReindexQueue` als „Sperre“ — begründet mit BENs Satz aus
+// JOB 1163, die Anschlusswahl sei „weiterhin nicht freigegeben“. Das war eine historische
+// Schnittgrenze, keine heute wirksame Nutzersperre. Nacharbeit 10 hatte die Schlange deshalb
+// entfernt. Im selben Zeitraum hat die Aufnahme gesamt-suchindex-aktualitaet (R-0470) sie auf main
+// ANGESCHLOSSEN: `build-app.ts` reiht über `KoService.setAenderungsNachlauf` jede gespeicherte
+// Objektänderung ein, der Eintrag ist `reindexKoForDuplicatePrefilter`, und der Abgleich beim Start
+// (`nachfuehrungNachStart`) schliesst die Neustart-Grenze. Bei der Zusammenführung gilt dieser
+// Anschluss: die Schlange und ihr Prüfstand stehen wieder, der Eintrag hier entfällt, weil der
+// Baustein einen Aufrufer hat. Von Nacharbeit 4 bleibt nur der Abbau von `REINDEX_CONCURRENCY`, das
+// auch auf main niemand liest.
+
+const OFFENER_REST: readonly OffenerRest[] = [
+  {
+    schluessel: "services/audit/src/repo.ts::pruefeValidationDecisionRef",
+    grund:
+      "Prueft eine Validierungs-Entscheidungsreferenz (Hash vor Action und Subject, Kette als " +
+      "Pflichtparameter). Der Anschlussort steht fest: `AnswerExplanationService` " +
+      "(services/app/src/services/answer-explanation.ts) liefert `evidenceValidationRefStates` heute " +
+      "nicht. Den Leseweg zu bauen ist die Auflösungserklärung des Antwortbelegs selbst.",
+    abgrenzung: "gesonderter-auftrag",
+    beleg:
+      "Auftrag aufnahme:20260922:gesamt-antwortbeleg („Antwortbelege dauerhaft speichern und ihre " +
+      "Auflösung erklären“), R-0308: je Wissenseinheit eine Prüfreferenz auf den Eintrag im Prüfbuch",
+    entscheidet: "Auftrag gesamt-antwortbeleg (Leseweg der Antwortbelege mit Kettenpruefung)",
+  },
+  // R-1349 (Nacharbeit 6): `services/db-tx/src/write-fence.ts` (`PgWriteFence`, `fenceKey`) stand hier
+  // als „Betriebs-/Architekturentscheidung“. Eine Sperre oder ein gesonderter Auftrag dazu ist nicht
+  // belegt; die Sperre war nie scharf (keine Tabelle, kein Dienst). Sie ist samt ihren zwei
+  // Prüfständen entfernt (Grund am Kopf von `services/db-tx/index.ts`).
+  {
+    schluessel: "services/db-tx/src/bestandsreset.ts::fuehreBestandsresetAus",
+    grund:
+      "Der aufrufbare Postgres-Bestandsreset aus JOB 596 D8 (drei Transaktionen, Auditautomat). Sein " +
+      "Loeschgraph ist dort ausdruecklich „Vorschlag, nicht Entscheidung“ (Rueckgabe D8, V-1); ohne " +
+      "diese Entscheidung bekommt der Reset keinen Betreiber- oder Adminweg.",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
+  },
+  {
+    schluessel: "services/db-tx/src/bestandsreset-audit.ts::bestandsresetBefund",
+    grund:
+      "Teil des Bestandsresets (Auswertung des Laufzustands); offen mit derselben Entscheidung wie " +
+      "`fuehreBestandsresetAus`.",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
+  },
+  {
+    schluessel: "services/db-tx/src/bestandsreset-audit.ts::SQL_SCHEMA_BESTANDSRESET",
+    grund:
+      "Das Schema der Reset-Laufakte; es kommt erst mit dem Betreiberweg des Resets in die " +
+      "Migrationsliste. Offen mit derselben Entscheidung wie `fuehreBestandsresetAus`.",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
+  },
+  {
+    schluessel: "services/db-tx/src/reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN",
+    grund:
+      "Die beobachtende Sperrabfrage des Reset-Auditautomaten (`pg_locks`); offen mit derselben " +
+      "Entscheidung wie `fuehreBestandsresetAus`.",
+    abgrenzung: "gesonderter-auftrag",
+    beleg: AUFTRAG_BESTANDSRESET,
+    entscheidet: "Owner (OV-1 bis OV-5) im Auftrag gesamt-bestandsreset",
+  },
+  // R-1349 (Nacharbeit 6): `kanten-service.ts::netzQualitaet` stand hier, weil „ob und wo“ die Zahl
+  // gezeigt werde, offen sei. Das ist entschieden: der Qualitätsblick ist ohne neuen Server-Weg
+  // geliefert (`apps/web/src/lib/netzQualitaet.ts`, R-0744). Die Funktion ist entfernt.
   //
-  // `InMemoryKantenRepo` bleibt stehen, und zwar mit Grund: er ist der PRÜFSTAND des Lesewegs
-  // (`kanten-service.ts:86-90`) und legt je KENNUNG ab statt je Beziehung — als Ablage der
-  // Anwendung wäre er falsch, und die Wurzel nimmt ihn deshalb ausdrücklich nicht.
-  "services/knowledge-object/src/kanten-service.ts::InMemoryKantenRepo",
-  "services/knowledge-object/src/kanten-service.ts::netzQualitaet",
-  "services/knowledge-object/src/metadata-projection.ts::METADATA_PROJECTION_FIELDS",
-  "services/knowledge-object/src/metadata-projection.ts::METADATA_PROJECTION_MATCH_FIELDS",
-  "services/knowledge-object/src/search-projection-repo.ts::freigegebeneProjektionsfassung",
-  "services/knowledge-object/src/search-projection.ts::S2_ERWEITERUNG_GRENZE",
-  "services/knowledge-object/src/search-projection.ts::SEARCH_PROJECTION_FIELDS",
-  "services/knowledge-object/src/search-projection.ts::SEARCH_PROJECTION_MATCH_FIELDS",
-  "services/knowledge-object/src/search-projection.ts::isReconstructedClassification",
-  "services/knowledge-object/src/service.ts::SEARCH_PROJECTION_BACKFILL_PER_QUERY",
-  "services/knowledge-object/src/types.ts::MAX_ATTACHMENTS",
-  "services/knowledge-object/src/types.ts::MAX_ATTACHMENT_BYTES",
-  "services/library-analytics/src/repo.ts::OPEN_REVIEW_STATUSES",
-  "services/library-analytics/src/search-captions.ts::captionsMatchQuery",
-  "services/library-analytics/src/service.ts::SEARCH_BACKFILL_LIMIT_PER_QUERY",
-  "services/library-analytics/src/types.ts::pruefeGapBindung",
-  "services/library-analytics/src/types.ts::pruefeInhaltsreferenzBindung",
-  "services/lifecycle/src/types.ts::LifecycleError",
-  "services/model-runs/src/types.ts::KI_ERZEUGENDE_AUFGABEN",
-  // R-0846 / L6 · GESTRICHEN, WEIL BEHOBEN: `isTransientMedia` und `isWithinRetention` standen hier
-  // seit mega20 — der Lebenszyklus-Vertrag war gebaut, der Waisen-Sweep ausdrücklich nicht. Seit
-  // R-0846 ruft `services/app/src/datenintegritaet.ts` (`ermittleWaisen`) beide.
-  // ERLEDIGT, JOB 3091 (06.09.2026): `services/output/src/zuruf.ts::ZurufService` stand hier seit
-  // JOB 2605 — der Erzeuger des KA6-Zurufs hatte keinen Aufrufer ausserhalb der Tests. Seit der
-  // Route `POST /api/klara/sessions/{id}/zuruf` (`klara-session-routes.ts`) baut ihn eine
-  // Nicht-Test-Datei; A3 hat die Streichung verlangt. Die Liste ist geschrumpft, nicht gewachsen.
-  "services/reasoner/src/klara-policy.ts::KLARA_MODES",
-  "services/reasoner/src/provider.ts::keywordSelect",
+  // R-1349 (Nacharbeit 10, BEN): `ImportResultView` stand hier als Rest des gesonderten Auftrags
+  // gesamt-confluence-import. Der ist geliefert (1.0.0-beta.1.723, `a173f5fe`, Vorfahr des
+  // Kandidaten); sein Weg R-0142 ist `components/bibliothek/ImportErgebnis.tsx`, montiert in
+  // `MehrAbschnitte.tsx`. Die Altfläche blieb unverbunden und ist mit `SourceRecordCard`,
+  // `KnowledgeItemList`, ihren Ableitungen in `lib/importResultView.ts` und den Prüfständen, die nur
+  // sie maßen, entfernt. Was beide teilen (Laufzustände, `RunStateBanner`), bleibt.
+  //
+  // R-1349 (Nacharbeit 10, BEN): die fünf Wissensraum-Bausteine (`LibraryScopeBar`, `KoHomeLine` und
+  // aus `lib/librarySpace.ts` `koHomePath`, `serializeSpace`, `spaceFromParams`) standen hier als
+  // „Sperre“ aus PLAN PRO 378 (B-1, B-2, B-3, B-6 — tatsächlich §10, nicht §9). Das waren historische
+  // Planfragen, keine heute belegte Nutzersperre. Am heutigen Produkt abgeglichen: das Raummodell ist
+  // geliefert (produkt:20261007:spaces) als flacher führender Space je Artikel (`SpaceZeile.tsx` in
+  // der Wissensdetailansicht, `/spaces`, `/spaces/:id`) mit eigener Sprache in DE/EN/NL („Space“,
+  // „Ohne Space“, „Alle Spaces“). Es braucht weder die `home`-Kette, die der Server nie lieferte,
+  // noch die `lib.raum.*`-Texte, die nie geschrieben wurden. Die Bausteine waren nie montiert und
+  // sind samt `librarySpace.ts` und den Prüfständen, die nur sie maßen, entfernt; die
+  // Bewahrungsanker der Bibliothek (`wissensraum381-bewahrung-*`) gelten unverändert.
 ];
+
+// Frühere Erledigungen aus der Zeit des eingefrorenen Altbestands, unverändert zur Herkunft:
+// JOB 3024 (`displayStatus` am Detailabruf angeschlossen), JOB 4151 (`DeduplizierenderKantenBestand`
+// als Kantenablage gewählt), R-0846 / L6 (`isTransientMedia`, `isWithinRetention` im Waisen-Sweep),
+// JOB 3091 (`ZurufService` hinter der Zuruf-Route).
 
 // ------------------------------------------------------------------------------------------------
 // REGISTER 3 · ERST DURCH DIE VERSCHÄRFUNG SICHTBAR (JOB 2605 D2 und D3)
@@ -958,30 +1423,17 @@ const ALTBESTAND: readonly string[] = [
 // jeden" gibt es die Stufe nicht mehr). A3 hat ihre Streichung aus diesem Register verlangt, sobald
 // es den Export nicht mehr gibt; genau das ist hier geschehen. Die Liste ist geschrumpft, nicht
 // gewachsen.
-const DURCH_VERSCHAERFUNG_SICHTBAR: readonly Ausnahme[] = [
-  {
-    schluessel: "services/rbac/src/guard.ts::requirePermission",
-    grund:
-      "Gedeckt war er von `guards.requirePermission(...)` — einem OBJEKTFELD in `build-app.ts:1507` " +
-      "und zwei Routen — sowie von einer eigenen lokalen Funktion gleichen Namens in " +
-      "`services/app/src/http.ts:159`. Der rbac-Export selbst wird nirgends importiert. NICHT " +
-      "behoben (Auftrag §4): das ist eigene Arbeit und betrifft eine Rechtepruefung.",
-  },
-  {
-    schluessel: "services/conflicts/src/detect.ts::pairKey",
-    grund:
-      "Gedeckt war er von `const pairKey = ...` in `services/app/src/example-packages.ts:471` und " +
-      "von `pairKey:` als OBJEKT-EIGENSCHAFT in `overlap-service.ts:120` und `overlap-types.ts:50`. " +
-      "Kein Import, keine Verwendung des Exports. NICHT behoben (Auftrag §4).",
-  },
-  {
-    schluessel: "services/ask/src/types.ts::GAP_PRIORITIES",
-    grund:
-      "Nur Definition und Barrel-Re-Export (`services/ask/index.ts:59`), kein Verbraucher. Bis D2 " +
-      "deckte ihn der Re-Export selbst, weil dessen Bezeichner als Verwendung zaehlte. NICHT " +
-      "behoben (Auftrag §4).",
-  },
-];
+//
+// R-1349 (Nacharbeit 4) · DIESES REGISTER IST ABGEBAUT. Seine drei letzten Einträge standen als
+// „NICHT behoben (Auftrag §4)" da und sind jetzt einzeln erledigt:
+//   · `services/rbac/src/guard.ts::requirePermission` — entfernt samt Datei. Jede Route prüft über
+//     `makeGuards().requirePermission` in `services/app/src/http.ts`; den 403-Satz
+//     `PERMISSION_DENIED` misst `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` (G) an
+//     der Route, die ihn im Produkt sendet.
+//   · `services/conflicts/src/detect.ts::pairKey` — entfernt. Die Anlegestelle entdoppelt
+//     typunabhängig über Kennungen und Fassungen (`service.ts`, `hasOpenPair`); der Typ-Schlüssel
+//     beschrieb eine Regel, die das Produkt nicht anwendet.
+//   · `services/ask/src/types.ts::GAP_PRIORITIES` — angeschlossen: `isGapPriority` liest die Liste.
 
 // ------------------------------------------------------------------------------------------------
 // REGISTER 4 · NEUZUGANG, BEIM EINBAU GEFANGEN (JOB 2605 D2)
@@ -990,8 +1442,8 @@ const DURCH_VERSCHAERFUNG_SICHTBAR: readonly Ausnahme[] = [
 // an keinen Aufrufer. **Das ist der erste echte Fang dieses Wächters im Betrieb** — er hat beim
 // ersten Kontakt mit einem frischen Einbau angeschlagen, wofuer er gebaut wurde.
 //
-// Sie stehen hier und nicht im `ALTBESTAND`, damit sichtbar bleibt, dass sie NEU sind: Der
-// Altbestand ist eingefroren und soll schrumpfen; ein Neuzugang gehoert gemeldet, nicht abgelegt.
+// Sie standen hier und nicht im damaligen `ALTBESTAND`, damit sichtbar blieb, dass sie NEU waren: ein
+// Neuzugang gehoert gemeldet, nicht abgelegt.
 //
 // R-1437 / I10 · ERLEDIGT: `pruefbefehl` und `bewerte` (idle-in-transaction.ts) standen hier seit
 // JOB 2605 D2. Seit R-1437 urteilt `bewerte` vor jeder begrenzten Prüfung
@@ -1000,125 +1452,38 @@ const DURCH_VERSCHAERFUNG_SICHTBAR: readonly Ausnahme[] = [
 const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [];
 
 // ------------------------------------------------------------------------------------------------
-// REGISTER 4b · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3015 D5)
+// R-1349 · DIE REGISTER 4b UND 4c SIND ABGEBAUT, NICHT LEER STEHEN GEBLIEBEN
 // ------------------------------------------------------------------------------------------------
-// JOB 3015 D5 macht die Startseite zur Konsole (Zielbild KonsoleStart.dc.html): Die beiden
-// CTA-Knoepfe des Seitenkopfs („Frage stellen"/„Wissen erfassen" und „Validierung oeffnen") sind
-// durch die drei Karten Suchen/Pruefen/Hinzufuegen ersetzt, deren Ziele als Literale in
-// `pages/Start.tsx` stehen. Damit hat die Tabelle `lib/startCtas.ts` ihren einzigen Produkt-Leser
-// verloren. Die Datei liegt AUSSERHALB der Zielpfade des Auftrags (Start.tsx, i18n.ts, der neue
-// Design-Test) und darf von der Bahn nicht angefasst werden; ihr Abbau (Datei, die Schluessel
-// `start.ctaAsk/ctaCapture/ctaValidate`, die Regel `.kw-cta-primary` im modernen Thema (Block D
-// der Werkbank-Regeln) und der Import im mega51-Sammler) ist in der Rueckgabe zu JOB 3015 als
-// Folgeauftrag benannt. Gemeldet, nicht abgelegt — A3 streicht die Eintraege, sobald die Datei weg
-// ist. (Der Pfad des Stylesheets steht hier absichtlich nicht: das Deckungsregister der
-// Theme-Waechter, tests/app/theme-deckungsregister.test.ts, sammelt jeden Test, der ihn nennt,
-// und dieser Test deckt das Thema nicht.)
-const ERSETZT_JOB3015: readonly Ausnahme[] = [
-  {
-    schluessel: "apps/web/src/lib/startCtas.ts::startCta",
-    grund:
-      "Seit JOB 3015 D5 ohne Produktaufrufer: der Haupt-CTA der Startseite ist durch die Karten " +
-      "Suchen (/fragen) und Hinzufuegen (/erfassen) ersetzt. Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE JOB 3015).",
-  },
-  {
-    schluessel: "apps/web/src/lib/startCtas.ts::startQueueCta",
-    grund:
-      "Seit JOB 3015 D5 ohne Produktaufrufer: der Warteschlangen-Link der Startseite ist durch " +
-      "die Karte Pruefen (/validierung) mit der Pille „N offen“ ersetzt. Abbau ausserhalb der " +
-      "Zielpfade, Folgeauftrag benannt (RUECKGABE JOB 3015).",
-  },
-];
-
-// ------------------------------------------------------------------------------------------------
-// REGISTER 4c · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3061 H2)
-// ------------------------------------------------------------------------------------------------
-// JOB 3061 baut die vier Pruefseiten auf die Mockups vom 04.09. um (Pruefen/Konflikte/Duplikate
-// unter einem gemeinsamen Reiterkopf). Zwei Praesentations-Bauteile haben dabei ihren einzigen
-// Produkt-Aufrufer verloren, weil die FLAECHE ihre Aufgabe uebernommen hat:
-//
-//   FindingCard / FindingGroupHeader — die Befundkarte mit Gruppen-Ueberschrift. Ihre INHALTE sind
-//     nicht entfallen: die ehrliche Benennung von WAS und ERKENNUNGSWEG kommt weiterhin aus
-//     `lib/findingGroups.ts` (`conflictFinding` / `overlapFinding`) und steht im „Mehr" beider
-//     Karten; die Ordnung „je Beitrag, neueste zuerst" kommt weiterhin aus
-//     `groupFindingsByBeitrag`, der Gruppentitel aus `resolveKo`. Nur die KARTE ist ersetzt.
-//   ConflictKoSide — die Belegkachel je Konfliktseite. Ihr Beleg (klickbare Quelle, Quelldatum,
-//     KO-Konfidenz) steht jetzt im „Mehr" der jeweiligen Karte, aus DERSELBEN geteilten Komponente
-//     `components/ko/SourceEvidence` mit denselben Feldern.
-//
-// Die zwei Dateien liegen AUSSERHALB der Zielpfade des Auftrags (`pages/Validation*.tsx`,
-// `pages/Conflicts*.tsx`, `pages/Duplicate*.tsx`, `pages/Lifecycle*.tsx`,
-// `components/pruefen/**`, `i18n.ts`, `tests/**`) und duerfen von der Bahn nicht geloescht werden;
-// ihr Abbau (die zwei Dateien samt der mitgehenden Schluessel `finding.*` und
-// `con.evidenceSideLabel`, soweit dann ungenutzt) ist in der RUECKGABE zu JOB 3061 als
-// Folgeauftrag benannt. Gemeldet, nicht abgelegt — A3 streicht die Eintraege, sobald sie weg sind.
-const ERSETZT_JOB3061: readonly Ausnahme[] = [
-  {
-    schluessel: "apps/web/src/components/FindingCard.tsx::FindingCard",
-    grund:
-      "Seit JOB 3061 H2 ohne Produktaufrufer: die Befundkarte ist durch das Kartenpaar der " +
-      "Pruefflaeche ersetzt (design/klarwerk/Konflikte.dc.html, Duplikate.dc.html). Ihre Inhalte " +
-      "leben ueber `lib/findingGroups.ts` im Mehr-Aufklapper weiter. Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE JOB 3061).",
-  },
-  {
-    schluessel: "apps/web/src/components/FindingCard.tsx::FindingGroupHeader",
-    grund:
-      "Seit JOB 3061 H2 ohne Produktaufrufer: die Gruppen-Ueberschrift ist entfallen (es steht " +
-      "genau ein Befund da, mit der Pille k von n); die Gruppierung selbst wirkt weiter als " +
-      "REIHENFOLGE ueber `groupFindingsByBeitrag`. Abbau ausserhalb der Zielpfade " +
-      "(RUECKGABE JOB 3061).",
-  },
-  {
-    schluessel: "apps/web/src/components/conflicts/ConflictKoSide.tsx::ConflictKoSide",
-    grund:
-      "Seit JOB 3061 H2 ohne Produktaufrufer: der Beleg je Konfliktseite steht jetzt im " +
-      "Mehr-Aufklapper der jeweiligen Karte, aus derselben geteilten Komponente " +
-      "`components/ko/SourceEvidence`. " +
-      "Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE JOB 3061).",
-  },
-];
+// Sie fuehrten Bausteine, die durch einen Umbau ersetzt waren und deren Abbau ausserhalb der
+// damaligen Zielpfade lag:
+//   · 4b (JOB 3015 D5) — `lib/startCtas.ts` (`startCta`, `startQueueCta`): die Startseite fuehrt
+//     ihre Wege seit der Konsole ueber Karten mit Literalzielen.
+//   · 4c (JOB 3061 H2) — `components/FindingCard.tsx` (`FindingCard`, `FindingGroupHeader`) und
+//     `components/conflicts/ConflictKoSide.tsx`: Befund und Beleg stehen seither im „Mehr" der
+//     Kartenpaare, aus `lib/findingGroups.ts` und `components/ko/SourceEvidence`.
+// Der Auftrag „Gebauten Code ohne tatsaechliche Verwendung erkennen" (R-1349: „Jeder Fall soll
+// entweder angeschlossen oder begruendet entfernt werden") hat die Pfade und hat die Dateien samt
+// ihrer reinen Komponententests entfernt. Die Woerterbuchschluessel bleiben stehen: der Textbestand
+// ist durch `tests/i18n-textmodule/bestand-unveraendert.test.ts` Wert fuer Wert festgehalten.
 
 // ------------------------------------------------------------------------------------------------
 // REGISTER 4d · SEIT JOB 3063 (H4) OHNE PRODUKTAUFRUFER — GEMELDET, NICHT ABGELEGT
 // ------------------------------------------------------------------------------------------------
 // JOB 3063 macht aus der Bibliothek eine Flaeche (Liste links, Lesefläche rechts) und aus der
-// Detailseite mit dreizehn Karten deren rechte Haelfte. Zwei Bausteine der ABGELOESTEN Flaechen
-// verlieren dabei ihren einzigen Produktleser. Beide Dateien liegen AUSSERHALB der Zielpfade des
-// Auftrags (`pages/Library*.tsx`, `pages/KnowledgeDetail*.tsx`, `components/bibliothek/**`,
-// `i18n.ts`, `tests/**`) und duerfen von der Bahn nicht angefasst werden; ihr Abbau ist in der
-// RUECKGABE zu JOB 3063 unter ABWEICHUNGEN als Folgeauftrag benannt. A3 streicht die Eintraege,
-// sobald die Dateien weg sind.
-const ERSETZT_JOB3063: readonly Ausnahme[] = [
-  {
-    schluessel: "apps/web/src/components/ko/KoReadView.tsx::KoReadView",
-    grund:
-      "Seit JOB 3063 ohne Produktaufrufer: die Zonen-Leseansicht (Rahmen „Was in diesem Beitrag " +
-      "steht“, Belegzone, Schlusshinweis) ist durch die Lesefläche der Bibliothek ersetzt — Titel, " +
-      "Text, Quellen-Chips, sonst nichts (Pedi 04.09.: Erklärtext gehört hinter Menüs). Abbau " +
-      "ausserhalb der Zielpfade, Folgeauftrag benannt.",
-  },
-  {
-    schluessel: "apps/web/src/lib/koCta.ts::koCta",
-    grund:
-      "Seit JOB 3063 ohne Produktaufrufer: die „nächste Handlung“ der alten Detailseite ist durch " +
-      "den Knopf „Fragen“ der Lesefläche ersetzt, der aus `components/bibliothek/fragen.ts::" +
-      "fragenHref` kommt. Zwei Wege nebeneinander waeren genau die zweite Wahrheit, die dieser " +
-      "Umbau abschafft. Abbau ausserhalb der Zielpfade.",
-  },
-  {
-    schluessel: "apps/web/src/lib/libraryMaturity.ts::libraryUseCta",
-    grund:
-      "Seit JOB 3063 Runde 5 ohne Produktaufrufer: diese Regel verzweigte die verbindliche Aktion " +
-      "ueber die REIFE — nur ein validierter Eintrag bekam „Fragen“, alles andere „Pruefen“ und " +
-      "das Ziel /validierung. Pedis Vorgabe vom 04.09. (Auftrag §5.3/§5a) verlangt fuer JEDEN " +
-      "gewaehlten Eintrag dieselbe Aktion „Fragen“ mit Bezug auf den Eintrag (`ko=<id>`); die " +
-      "Lesefläche zieht ihre Adresse deshalb aus `components/bibliothek/fragen.ts::fragenHref`. " +
-      "Die uebrigen Exporte der Datei (libraryMaturity, filterByMaturity, …) tragen weiter. Abbau " +
-      "ausserhalb der Zielpfade (`apps/web/src/lib/**`), Folgeauftrag benannt.",
-  },
-];
+// Detailseite mit dreizehn Karten deren rechte Haelfte. Drei Bausteine der ABGELOESTEN Flaechen
+// verloren dabei ihren einzigen Produktleser.
+//
+// R-1349: `lib/koCta.ts::koCta` und `lib/libraryMaturity.ts::libraryUseCta` sind entfernt — beide
+// sind durch `components/bibliothek/fragen.ts::fragenHref` ersetzt.
+//
+// R-1349 (Nacharbeit 4) · DIESES REGISTER IST ABGEBAUT. Sein letzter Eintrag, `KoReadView`, stand als
+// „eigener Schnitt" da. Der Schnitt ist gemacht: `components/ko/KoReadView.tsx` und
+// `components/ko/KoRead.tsx` sind samt ihrer Komponententests entfernt. Die drei fremden Prüfstände,
+// die an der toten Leseansicht maßen, messen ihre Zusage jetzt an der Lesefläche der Bibliothek:
+// mega34 C1 (`tests/ko/mega34-gesichert-eindeutig.test.tsx`, Balken von `MehrAbschnitte.tsx`),
+// WP-BILD-1d (`tests/ko/body-image-gallery.test.ts`, Galerie in `BibliothekLesen.tsx`) und UX-27
+// (`tests/ux27-pruefstand/ux27-weitere-leseflaechen.test.tsx`, Fall „lesen" entfällt). Mit der
+// Leseansicht fiel `lib/bodyReadMode.ts::BODY_READ_NOTE_KEY`, dessen einziger Leser sie war.
 
 // ------------------------------------------------------------------------------------------------
 // REGISTER 4e · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3062 · H3)
@@ -1143,128 +1508,29 @@ const ERSETZT_JOB3063: readonly Ausnahme[] = [
 // Fall aus, ist aber KEINER — seine Leistung (das domaenennahe Beispiel) hat im Blatt keinen
 // Ersatz. Ihn hier einzutragen haette einen stillen Funktionsverlust als „ersetzt" getarnt; er ist
 // stattdessen in `Blatt.tsx` wieder verdrahtet (Menue „…" -> „Beispiel ansehen").
-const ERSETZT_JOB3062: readonly Ausnahme[] = [
-  {
-    schluessel: "apps/web/src/components/capture/intake/IntakeEmptyState.tsx::IntakeEmptyState",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: der Leerzustand der Intake-Flaeche ist durch das leere " +
-      "Blatt ersetzt. Seine Starter-Chips leben im Titel-Menue, sein Beispiel-KO im Menue „…“ -> " +
-      "„Beispiel ansehen“. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/components/capture/intake/IntakeCompletion.tsx::IntakeCompletion",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die Abschlusskarte „Geschafft“ ist durch die EINE " +
-      "Erfolgszeile „Eingereicht“ mit Link zum Objekt ersetzt (Zustandsmodell §9). Abbau " +
-      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel:
-      "apps/web/src/components/capture/intake/StructureSuggestionChips.tsx::StructureSuggestionChips",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die Struktur-Chips sind auf ihre Orte verteilt — Titel " +
-      "ins Blatt, Kategorie ins Menue „Bereich“, Quelle in „…“ -> „Status“. Abbau ausserhalb der " +
-      "Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/components/KnowledgeRescueIntro.tsx::KnowledgeRescueIntro",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: der Erklaerkasten ueber dem Erfassen ist von der " +
-      "Flaeche genommen (Auftrag §5); sein Text bleibt ueber das „?“-Werkzeug erreichbar. Abbau " +
-      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  // JOB 3062 R6 — DIESER EINTRAG IST GEFALLEN, UND ZWAR WEIL DER WAECHTER RECHT HATTE.
-  //
-  // In R5 stand hier `intakeSuggestion.ts::deriveIntakeSuggestion` mit der Begruendung, die Quelle
-  // sei „die Autorenzeile in ,…' -> ,Status'". Das war eine Umdeutung: die Autorenzeile ist der
-  // AUTOR, die Struktur-Chip-Zeile war die VERMUTETE QUELLE — zwei Aussagen, die zufaellig
-  // denselben Namen tragen. ben hat den Verlust gemessen („Eine Quellenzeile im Status fehlt").
-  // Seit R6 ruft `Blatt.tsx` die Ableitung wirklich auf (`quellenVorschlag`), der Export hat damit
-  // einen Produktaufrufer, und A3 hat den Eintrag zu Recht als Leiche gemeldet.
-  {
-    schluessel: "apps/web/src/lib/captureWizard.ts::wizardChips",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die sichtbare Schritt-Leiste ist von der Flaeche " +
-      "genommen. Der Zustand selbst bleibt verdrahtet (`resolveWizardStep` hat weiter Aufrufer). " +
-      "Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::isRecommendedMode",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: das Empfehlungs-Badge der Modus-Leiste ist fort, weil " +
-      "der empfohlene Weg jetzt das Blatt SELBST ist statt einer Auszeichnung an einem von fuenf " +
-      "Knoepfen. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::CAPTURE_ENTRY_TEXT",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die Schluesseltabelle bediente Kicker, Experten-" +
-      "Umschalter und Rueckweg der Modus-Leiste; alle drei sind von der Flaeche genommen, der " +
-      "Expertenweg liegt im Menue „Datei ▾“. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::initialCaptureWorkspaceOpen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: der Arbeitsraum, den diese Funktion auf- oder " +
-      "zugeklappt startete, existiert nicht mehr — das Blatt ist immer offen. Abbau ausserhalb " +
-      "der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::isCaptureFirstRun",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die geführte Erstnutzer-Einfuehrung ist von der " +
-      "Flaeche genommen (Auftrag §5, „keine Erklaerabsaetze“). Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::markCaptureIntroSeen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: Gegenstueck zu `isCaptureFirstRun`, merkte den " +
-      "gesehenen Erstbesuch. Ohne Einfuehrung gibt es nichts zu merken. Abbau ausserhalb der " +
-      "Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::FRONT_DOOR_OPTION_MODES",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: die aufklappbare Optionsliste „Weitere Wege“ der " +
-      "Vordertuer ist durch das Menue „Datei ▾“ ersetzt, dessen Wege `BLATT_WEGE` fuehrt (von " +
-      "Blatt.tsx gerufen). Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::FRONT_DOOR_OPTIONS_TEXT",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: Schluesseltabelle derselben Optionsliste wie " +
-      "`FRONT_DOOR_OPTION_MODES`; das Menue „Datei ▾“ fuehrt seine Beschriftungen ueber " +
-      "`blattWegLabelKey`. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionLabelKey",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: abgeloest durch `blattWegLabelKey`, das dieselbe " +
-      "Aufgabe fuer das Menue „Datei ▾“ erfuellt. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionHintKey",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: der Zusatzsatz je Option ist ersatzlos von der Flaeche " +
-      "genommen — ein Menueeintrag nach Pages-Art traegt sein Wort allein (Auftrag §5). Abbau " +
-      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionsOpen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: merkte den Aufklapp-Zustand der Optionsliste. Ein " +
-      "Pages-Menue merkt sich nichts, es oeffnet auf Klick. Abbau ausserhalb der Zielpfade, " +
-      "Folgeauftrag benannt (RUECKGABE 3062).",
-  },
-  {
-    schluessel: "apps/web/src/lib/captureEntry.ts::rememberFrontDoorOptionsOpen",
-    grund:
-      "Seit JOB 3062 ohne Produktaufrufer: Schreib-Gegenstueck zu `frontDoorOptionsOpen`, " +
-      "dieselbe Lage und derselbe Grund. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt " +
-      "(RUECKGABE 3062).",
-  },
-];
+//
+// R-1349 · ABGEBAUT: `IntakeEmptyState`, `IntakeCompletion`, `StructureSuggestionChips` (samt ihrer
+// Komponententests), `captureWizard.ts::wizardChips` und die elf Exporte der alten Modus-Leiste,
+// Erstnutzer-Fuehrung und Vordertuer-Optionsliste in `lib/captureEntry.ts` (dazu die drei Helfer,
+// die nur sie lasen: `RECOMMENDED_NARRATE_MODE`, `CAPTURE_INTRO_SEEN_KEY`,
+// `CAPTURE_FRONT_DOOR_OPTIONS_OPEN_KEY`).
+//
+// R-1349 (Nacharbeit 4) · DIESES REGISTER IST ABGEBAUT. Sein letzter Eintrag,
+// `KnowledgeRescueIntro`, ist samt `lib/knowledgeRescue.ts` und dessen Test entfernt: der
+// Erklärkasten ist seit JOB 3062 von der Fläche genommen (Auftrag §5), seine Schritte und sein
+// Wertbeitrag hatten keinen anderen Leser. Der Beleg R-0991 Nr. 33 ist im Bedarfsabgleich als
+// „mit R-1349 entfernt" geführt.
+//
+// Zur Herkunft, unverändert:
+// JOB 3062 R6 — DER EINTRAG `intakeSuggestion.ts::deriveIntakeSuggestion` FIEL, WEIL DER WAECHTER
+// RECHT HATTE.
+//
+// In R5 stand hier `intakeSuggestion.ts::deriveIntakeSuggestion` mit der Begruendung, die Quelle
+// sei „die Autorenzeile in ,…' -> ,Status'". Das war eine Umdeutung: die Autorenzeile ist der
+// AUTOR, die Struktur-Chip-Zeile war die VERMUTETE QUELLE — zwei Aussagen, die zufaellig
+// denselben Namen tragen. ben hat den Verlust gemessen („Eine Quellenzeile im Status fehlt").
+// Seit R6 ruft `Blatt.tsx` die Ableitung wirklich auf (`quellenVorschlag`), der Export hat damit
+// einen Produktaufrufer, und A3 hat den Eintrag zu Recht als Leiche gemeldet.
 
 // ------------------------------------------------------------------------------------------------
 // JOB 3556: Das Duldungsregister aus JOB 3427 R2 ist GESTRICHEN, nicht leer stehen geblieben. Sein
@@ -1303,26 +1569,9 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
   // HIER STAND `imageResize.ts::imageWidthPercent` UND IST GESTRICHEN — von A3 erzwungen. Die
   // Breitenanzeige der Bildleiste (`RichTextEditor.tsx`, `bildgroesse-gezogen`) liest die Zahl
   // seither über diesen Export statt per Zeichenkettenersetzung am Attribut.
-  {
-    schluessel: "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_DOKUMENT_SETTING",
-    grund:
-      "Seit 4a88a5ef (R-0169, Dokumentkennung im Word-Dokument) am Code geprueft: der Produktweg " +
-      "ist das statische Panel `apps/web/public/word-addin/taskpane.html` — es fuehrt dieselbe " +
-      "Konstante und dieselben zwei Funktionen als Skript-Spiegel (Kommentar „Spiegel von " +
-      "wordAddin.ts“, Lesen/Schreiben der Dokumenteinstellung, Aufruf `mitDokumentkennung` beim " +
-      "Senden). Dieser Waechter liest nur TypeScript und sieht den Aufrufer deshalb nicht; die " +
-      "TS-Fassung ist die getestete Referenz (tests/json-herkunft-rundlauf/" +
-      "herkunft-identitaet-importeur.test.ts). Dieselbe Lage wie die wordAddin-Eintraege im " +
-      "Altbestand — hier mit Grund statt eingefroren.",
-  },
-  {
-    schluessel: "apps/web/src/lib/wordAddin.ts::mitDokumentkennung",
-    grund: "Derselbe Grund wie `WORD_ADDIN_DOKUMENT_SETTING`: Aufrufer ist der Skript-Spiegel.",
-  },
-  {
-    schluessel: "apps/web/src/lib/wordAddin.ts::dokumentkennungAusAntwort",
-    grund: "Derselbe Grund wie `WORD_ADDIN_DOKUMENT_SETTING`: Aufrufer ist der Skript-Spiegel.",
-  },
+  // R-1349: Hier standen `WORD_ADDIN_DOKUMENT_SETTING`, `mitDokumentkennung` und
+  // `dokumentkennungAusAntwort` mit dem Grund „Aufrufer ist der Skript-Spiegel". Der Wächter misst
+  // diesen Aufruf seitdem selbst (`FREMDLESER`, Art `spiegel`); die Ausnahme ist überflüssig.
   {
     schluessel: "apps/web/src/lib/captureAdvancedFields.ts::ADVANCED_FIELDS_TOTAL",
     grund:
@@ -1334,198 +1583,64 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
       "`tests/capture/job2683-d2-suche-flaeche.test.tsx` als Pruefhilfe dafuer, dass der Zaehler alle neun Angaben erreicht. Ein erfundener " +
       "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
   },
+  {
+    schluessel: "apps/web/src/components/klara-vorschau/avatar.ts::KLARA_AVATAR_SHA256",
+    grund:
+      "R-1349 (Nacharbeit 2), mit dem Hauptstand 1.0.0-beta.1.771 hereingekommen und am Code " +
+      "geprueft: die Pruefsumme der freigegebenen Figur `klara/klara-avatar-v1.png`. Gelesen wird " +
+      "sie in `tests/klara-vorschau/avatar.test.ts`, das Datei und Summe gegen die Freigabe haelt. " +
+      "Die Oberflaeche laedt die Figur ueber `klaraAvatarUrl()`; ein Produktaufruf der Summe waere " +
+      "eine Laufzeitpruefung im Browser, die niemand beschlossen hat.",
+  },
   // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
   // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt
   // `apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx`, und der haengt ueber
   // `apps/web/src/routes.tsx` (`PAGES.gesamtanweisungen`) an einem Menuepunkt.
-];
-
-// ------------------------------------------------------------------------------------------------
-// REGISTER 6 · DER ALTBESTAND AUF `apps/web/src`, EINGEFROREN AM 27.08.2026 (JOB 2611 D1)
-// ------------------------------------------------------------------------------------------------
-// 117 Eintraege. Sie sind NICHT freigesprochen — sie sind der gemessene Ist-Zustand der
-// Flaeche an dem Tag, an dem sie in die Ueberwachung kam.
-//
-// WARUM EINGEFROREN UND NICHT BEHOBEN — die Entscheidung aus Auftrag §3.2, hier begruendet:
-// Die Probe VOR jeder Aenderung ergab 122 Exporte ohne Aufrufer (Protokoll
-// `arbeit/protokoll_messen2.txt`). Das ist keine Handvoll, sondern ein Arbeitsvorrat von Tagen.
-// Wer sie in EINEM Durchgang beheben wollte, muesste in 60 Dateien eingreifen — quer durch
-// Bibliothek, Erfassung, Ask und Verwaltung, in Flaechen, an denen gerade drei andere Bahnen
-// arbeiten. Der Auftrag benennt die Gefahr wortgleich: „Ein Waechter, der das Haus blockiert,
-// wird abgeschaltet — und dann ist er nichts mehr wert."
-//
-// Deshalb dasselbe Verfahren wie bei `ALTBESTAND` fuer `services`: Die Flaeche kommt SOFORT in
-// die Ueberwachung, der Bestand wird eingefroren, und ab jetzt macht **jeder weitere** Export
-// ohne Aufrufer auf `apps/web/src` das Tor rot. Der Neuzugang ist gesperrt, der Altbestand ist
-// Arbeitsvorrat — und A3 verlangt die Streichung jedes Eintrags, sobald er nicht mehr zutrifft.
-// Eine Liste, die nur waechst, waere der Anfang vom Ende dieses Waechters.
-//
-// ZWEI BEOBACHTUNGEN, die den Vorrat sortieren:
-//   · 110 der 122 Funde liegen in `apps/web/src/lib` — dem Verzeichnis der reinen Hilfsfunktionen.
-//     Dort sammelt sich, was einmal fuer einen Weg gebaut und beim naechsten Umbau umgangen wurde.
-//   · KEIN einziger Fund liegt in einer der sieben Dateien, die die Lease gesperrt hat. Es war
-//     also nichts zu unterlassen — die Trennung zu den drei anderen Bahnen haelt von selbst.
-const ALTBESTAND_WEB: readonly string[] = [
-  // JOB 3062 R8 WIEDER EINGETRAGEN: In R7 hatte `ImageDescribeValueProvider` kurzzeitig einen
-  // Produktaufrufer — den Mithörer im Blatt, der die describe-Antwort vor der Gültigkeitsprüfung
-  // des Editors las. ben hat ihn als Fehler gemessen; er ist entfallen, und damit ist der Export
-  // wieder das, was er vorher war: die Naht für isoliert montierte Editor-Tests.
-  "apps/web/src/app/ImageDescribeContext.tsx::ImageDescribeValueProvider",
-  // JOB 3060 · H1: der letzte Aufrufer von `GuardedNavLink` war die Seitenleiste (Sidebar.tsx,
-  // Nutzerzeile → /profil); die Hülle navigiert jetzt ausschließlich über `GuardedLink` (EINE
-  // Aktivregel, JOB 562). Der Export bleibt, weil app/NavGuardContext.tsx nicht im Zielpfad des
-  // Auftrags liegt — Folgeabbau, wie `TopbarIcons` darunter.
-  "apps/web/src/app/NavGuardContext.tsx::GuardedNavLink",
-  "apps/web/src/app/navigation.ts::TopbarIcons",
-  "apps/web/src/components/LibraryScopeBar.tsx::LibraryScopeBar",
-  "apps/web/src/components/confluence-import/ImportResultView.tsx::ImportResultView",
-  "apps/web/src/components/d44Struktur.ts::D44_GLIEDERUNG_GRENZE",
-  "apps/web/src/components/ko/KoRead.tsx::KoReadBody",
-  "apps/web/src/components/trust/KoHomeLine.tsx::KoHomeLine",
-  "apps/web/src/lib/adminForms.ts::isNewUserValid",
-  // JOB 3337 gestrichen: `isAdminSectionId` hat einen Aufrufer bekommen. Seit die Verwaltung ihren
-  // Reiterzustand aus der Adresse liest, ist genau diese Funktion die WEICHE, die einen fremden
-  // Querytext prüft, bevor er Zustand wird (`pages/Admin.tsx`). Das Register schrumpft — so ist der
-  // Wächter gedacht.
-  "apps/web/src/lib/answerMarkdown.ts::stripAnswerMarkdown",
-  "apps/web/src/lib/askGapRescue.ts::gapRescueStepLabelKey",
-  "apps/web/src/lib/askGapRescue.ts::gapRescueSteps",
-  "apps/web/src/lib/askResponse.ts::selectGap",
-  "apps/web/src/lib/attachment.ts::attachmentPreview",
-  "apps/web/src/lib/attachment.ts::isObjectAttachment",
-  "apps/web/src/lib/boardCard.ts::BOARD_REMOVED_LABEL_KEY",
-  "apps/web/src/lib/boardCard.ts::conflictLead",
-  "apps/web/src/lib/boardCard.ts::duplicateLead",
-  "apps/web/src/lib/bodyFileLink.ts::applyBodyFileLink",
-  "apps/web/src/lib/captureAiAssist.ts::ASSIST_APPLY_MODES",
-  "apps/web/src/lib/captureAttachments.ts::uploadAttachments",
-  "apps/web/src/lib/captureFlowGuide.ts::captureFlowStepLabelKey",
-  "apps/web/src/lib/captureFlowGuide.ts::captureFlowSteps",
-  "apps/web/src/lib/captureFlowGuide.ts::recommendedFlowStep",
-  "apps/web/src/lib/captureFromFile.ts::createWholeDocumentDraft",
-  "apps/web/src/lib/captureFromFile.ts::imagesOnlyNoticeKey",
-  "apps/web/src/lib/captureFromFile.ts::importImageNotice",
-  "apps/web/src/lib/conflictCollision.ts::conflictDisplayMode",
-  "apps/web/src/lib/conflictImpact.ts::effectiveUsability",
-  "apps/web/src/lib/demoKnowledge.ts::demoKnowledgeBadge",
-  "apps/web/src/lib/demoKnowledge.ts::filterByDemoKnowledge",
-  "apps/web/src/lib/demoPilotPath.ts::demoPilotPath",
-  "apps/web/src/lib/draftForm.ts::KNOWLEDGE_TYPES_DRAFT",
-  "apps/web/src/lib/draftForm.ts::isPromotable",
-  "apps/web/src/lib/draftListView.ts::isDraftSortKey",
-  "apps/web/src/lib/duplicateCompare.ts::DUPLICATE_COMPARE_SAFETY",
-  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_FILES_KEY",
-  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_FILE_HINT_KEY",
-  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_IMAGES_KEY",
-  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_IMAGE_HINT_KEY",
-  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_TITLE_KEY",
-  "apps/web/src/lib/editorGuidance.ts::editorGuidance",
-  "apps/web/src/lib/examplePackages.ts::EXAMPLE_PACKAGES_ALL_KEYS",
-  "apps/web/src/lib/externalAttachGate.ts::externalAttachBlockedKey",
-  "apps/web/src/lib/externalSearch.ts::isAttachable",
-  "apps/web/src/lib/facetRail.ts::FACET_SEARCH_THRESHOLD",
-  "apps/web/src/lib/facets.ts::combinableFacetCounts",
-  "apps/web/src/lib/fileMultiPoint.ts::mergedDraftFromPoints",
-  "apps/web/src/lib/files.ts::isOcrCandidate",
-  "apps/web/src/lib/files.ts::isPptxDocument",
-  "apps/web/src/lib/funke.ts::openGapsView",
-  "apps/web/src/lib/importSelectView.ts::folderTreeSegmentKey",
-  // R-0991 (K3) gestrichen: `ordnerOhneEigeneZeile` hat einen Aufrufer bekommen. Die Importvorschau
-  // (`components/ImportSelect.tsx`) kennzeichnet damit im Ordnerbaum jeden Ordner, dessen
-  // Elternseite nicht in der Vorschau liegt (`components/ImportPreviewTree.tsx`, Marke
-  // „Seite nicht in diesem Import"). A3 verlangt genau diese Streichung.
-  "apps/web/src/lib/intakeSimilarity.ts::classifyIntake",
-  "apps/web/src/lib/interviewFlow.ts::answeredTurns",
-  "apps/web/src/lib/knowledgeRescue.ts::knowledgeRescueImpact",
-  "apps/web/src/lib/knowledgeRescue.ts::knowledgeRescueSteps",
-  "apps/web/src/lib/knowledgeRescue.ts::rescueStepLabelKey",
-  "apps/web/src/lib/knowledgeStory.ts::KNOWLEDGE_STORY_SURFACES",
-  "apps/web/src/lib/knowledgeStudioGuide.ts::studioGuideActiveStep",
-  "apps/web/src/lib/knowledgeStudioGuide.ts::studioGuideSteps",
-  "apps/web/src/lib/knowledgeStudioLayout.ts::knowledgeStudioSections",
-  "apps/web/src/lib/knowledgeStudioTips.ts::knowledgeStudioTips",
-  "apps/web/src/lib/koEvidence.ts::evidenceKindLabel",
-  "apps/web/src/lib/koLabel.ts::hatTitel",
-  "apps/web/src/lib/learningPath.ts::nextOpenStep",
-  "apps/web/src/lib/libraryExport.ts::exportFormatMeta",
-  "apps/web/src/lib/libraryMaturity.ts::MATURITY_FILTERS",
-  "apps/web/src/lib/libraryMaturity.ts::countByMaturity",
-  "apps/web/src/lib/libraryMaturity.ts::filterByMaturity",
-  "apps/web/src/lib/libraryMaturity.ts::maturityFilterLabelKey",
-  "apps/web/src/lib/librarySort.ts::isLibrarySortKey",
-  "apps/web/src/lib/librarySpace.ts::koHomePath",
-  "apps/web/src/lib/librarySpace.ts::serializeSpace",
-  "apps/web/src/lib/librarySpace.ts::spaceFromParams",
-  "apps/web/src/lib/loadingState.ts::isGroupLoaded",
-  "apps/web/src/lib/mobileConfirm.ts::confirmsDelete",
-  "apps/web/src/lib/mobileConfirm.ts::needsConfirmation",
-  // JOB 4193: `offlineQueue.ts::replacePayload` ist hier GESTRICHEN — er hat seit diesem Auftrag
-  // einen Aufrufer: `app/useOfflineQueue.ts` reicht ihn als `replace` heraus, und `pages/Mobile.tsx`
-  // ersetzt damit den liegenden Warteschlangeneintrag mit der Fassung, die der Mensch gewählt hat
-  // (A3 verlangt genau diese Streichung, sobald der Eintrag nicht mehr zutrifft).
-  "apps/web/src/lib/oidcCallback.ts::isCompleteCallback",
-  "apps/web/src/lib/outputDoc.ts::orderedSelection",
-  "apps/web/src/lib/pdf.ts::extractPdfText",
-  "apps/web/src/lib/pilotChecklist.ts::pilotChecklist",
-  "apps/web/src/lib/pilotNextSteps.ts::pilotNextSteps",
-  "apps/web/src/lib/pilotObservationGuide.ts::pilotObservationGuide",
-  "apps/web/src/lib/proofChain.ts::proofChain",
-  "apps/web/src/lib/reasonerStatus.ts::reasonerStatusSummary",
-  "apps/web/src/lib/reviewerMinimum.ts::isNeededValidationsValid",
-  "apps/web/src/lib/richText.ts::RICH_TEXT_ALLOWED_TAGS",
-  // JOB 3064 H5: `START_HELP_TOPICS` steht hier NICHT mehr — die drei ?-Hilfen des Start-Screens
-  // werden seit dem Umbau aus genau dieser Tabelle gerendert (`components/start/StartPanel.tsx`,
-  // Punkt „Hilfe zu dieser Seite"). Der Eintrag träfe nicht mehr zu, und A3 hat das gemeldet.
   //
-  // JOB 3064 H5: `primaryWorkItem` ist neu OHNE Aufrufer. Der „beste nächste Einstieg" war eine
-  // hervorgehobene Zeile ÜBER der Arbeitsliste — das Zielbild `design/klarwerk/Main.dc.html` hat
-  // beides zu EINER Karte zusammengezogen: „FÜR DICH" reiht selbst nach Dringlichkeit (kritisch
-  // vor heute vor später, `components/start/forYou.ts`), und die dringendste Arbeit IST damit die
-  // erste Zeile. Eine zweite Hervorhebung derselben Sache wäre genau die Doppelung, die mega38
-  // Block G2 auf dieser Seite schon einmal beseitigt hat.
-  // Die Funktion selbst steht in `lib/workCenter.ts` und damit AUSSERHALB der Zielpfade dieses
-  // Auftrags; ihr Abbau (samt `canActOn`, das nur sie ruft) ist als Folgeschritt gemeldet.
-  "apps/web/src/lib/workCenter.ts::primaryWorkItem",
-  "apps/web/src/lib/validationStatus.ts::deriveDisplayStatus",
-  "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_ASK_TIMEOUT_MS",
-  "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS",
-  "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_LOGIN_POLL_INTERVAL_MS",
-  "apps/web/src/lib/wordAddin.ts::answerIsLong",
-  "apps/web/src/lib/wordAddin.ts::answerSelectionIsWhole",
-  "apps/web/src/lib/wordAddin.ts::askAiNoticeVisible",
-  "apps/web/src/lib/wordAddin.ts::askEvidenceDetail",
-  "apps/web/src/lib/wordAddin.ts::askLocale",
-  "apps/web/src/lib/wordAddin.ts::askSnippetWorthShowing",
-  "apps/web/src/lib/wordAddin.ts::askSourceRole",
-  "apps/web/src/lib/wordAddin.ts::askSourceStatus",
-  "apps/web/src/lib/wordAddin.ts::canInsertAnswer",
-  "apps/web/src/lib/wordAddin.ts::classifyDraftResponse",
-  "apps/web/src/lib/wordAddin.ts::composeAnswerOutput",
-  "apps/web/src/lib/wordAddin.ts::draftWasCreated",
-  "apps/web/src/lib/wordAddin.ts::fillWordImages",
-  "apps/web/src/lib/wordAddin.ts::klaraTrustHead",
-  "apps/web/src/lib/wordAddin.ts::koDetailUrl",
-  "apps/web/src/lib/wordAddin.ts::loginPollStep",
-  "apps/web/src/lib/wordAddin.ts::openQuestionDraftTitle",
-  "apps/web/src/lib/wordAddin.ts::performAsk",
-  "apps/web/src/lib/wordAddin.ts::performCopy",
-  "apps/web/src/lib/wordAddin.ts::performInsert",
-  "apps/web/src/lib/wordAddin.ts::prepareAskQuestion",
-  "apps/web/src/lib/wordAddin.ts::prepareWordDraftRequest",
-  "apps/web/src/lib/wordAddin.ts::wordHtmlToPlainText",
+  // R-1349 (Nacharbeit 4): zwei Einträge aus dem abgebauten ALTBESTAND_WEB, am Code geprüft und
+  // BEGRÜNDET stehen gelassen — beide sind Prüfnähte am Produktmodul, keine halb eingebaute Funktion.
+  {
+    schluessel: "apps/web/src/app/ImageDescribeContext.tsx::ImageDescribeValueProvider",
+    grund:
+      "Die Naht fuer isoliert montierte Editor-Tests: sie setzt einen Wert in den ECHTEN " +
+      "Bildbeschreibungs-Kontext (`tests/capture/bildbeschreibung-naht.tsx`, " +
+      "`tests/anhaenge-ziehen/buehne.tsx`). Ein Umzug nach `tests/` muesste den modulprivaten " +
+      "Kontext freilegen. JOB 3062 R8 hat einen Produktaufrufer (den Mithoerer im Blatt) als Fehler " +
+      "gemessen und entfernt — ein Produktaufruf waere hier der Befund.",
+  },
+  {
+    schluessel: "apps/web/src/lib/richText.ts::RICH_TEXT_ALLOWED_TAGS",
+    grund:
+      "Die autoritative Tag-Allowlist des Sanitizers, gelesen von " +
+      "`tests/capture/huelle-tagbewusste-grenze.test.ts`, der daraus seine Grundmenge erhebt. Die " +
+      "Produktentscheidungen lesen `FLAT_BODY_TAGS` (gemessen). Eine Abschrift der Liste im Test " +
+      "waere genau die Drift, gegen die er steht; entfaellt der Test, ist der Export zu streichen.",
+  },
 ];
 
+// ------------------------------------------------------------------------------------------------
+// R-1349 (Nacharbeit 4) · REGISTER 6 (ALTBESTAND AUF `apps/web/src`) IST ABGEBAUT
+// ------------------------------------------------------------------------------------------------
+// Eingefroren am 27.08.2026 mit 117 Einträgen (JOB 2611 D1), zuletzt 120 mit den 26 Namen aus
+// `lib/wordAddin.ts`. Diese misst der Wächter seit Nacharbeit 4 selbst (`FREMDLESER`, Art `spiegel`).
+// Jeder übrige Eintrag ist einzeln abgeglichen: angeschlossen, entfernt, als Prüfzeug in den Test
+// gezogen oder — wo eine belegte Sperre oder ein gesonderter Auftrag den Abschluss ausschliesst — als
+// unerledigter Rest in `OFFENER_REST` geführt; zwei Prüfnähte stehen begründet in `BEWUSST_WEB`. Die Aufstellung je Fall
+// steht in `docs/qm/aufnahme-20260922-gesamt-aufruferwaechter.md`.
+//
+// Frühere Erledigungen aus der Zeit des eingefrorenen Registers, unverändert zur Herkunft: JOB 3337
+// (`isAdminSectionId` als Weiche der Verwaltung), R-1349 Nacharbeit 3 (`KNOWLEDGE_TYPES_DRAFT` im
+// Blatt), R-0991 K3 (`ordnerOhneEigeneZeile` in der Importvorschau), JOB 4193 (`replacePayload` in
+// der Offline-Warteschlange), JOB 3064 H5 (`START_HELP_TOPICS` im Start).
+
+// R-1349 (Nacharbeit 4): GEDULDET besteht nur noch aus BEGRÜNDETEN Einträgen — jeder trägt einen
+// Grund, die offenen Entscheidungen zusätzlich ihren Entscheider. Ein eingefrorenes Register ohne
+// Grund gibt es nicht mehr.
 const GEDULDET = new Set<string>([
   ...BEWUSST.map((a) => a.schluessel),
-  ...DURCH_VERSCHAERFUNG_SICHTBAR.map((a) => a.schluessel),
   ...NEUZUGANG_GEMELDET.map((a) => a.schluessel),
-  ...ERSETZT_JOB3015.map((a) => a.schluessel),
-  ...ERSETZT_JOB3061.map((a) => a.schluessel),
-  ...ERSETZT_JOB3063.map((a) => a.schluessel),
-  ...ERSETZT_JOB3062.map((a) => a.schluessel),
-  ...ALTBESTAND,
+  ...OFFENER_REST.map((a) => a.schluessel),
   ...BEWUSST_WEB.map((a) => a.schluessel),
-  ...ALTBESTAND_WEB,
 ]);
 
 describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
@@ -1554,7 +1669,10 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       "  · Verdrahte den Export dort, wo er wirken soll — das ist der Regelfall.",
       "  · Ist er bewusst ohne Aufrufer (Testhilfe, Betriebsbefehl), traegst du ihn mit GRUND",
       "    in `BEWUSST` in dieser Datei ein.",
-      "  · `ALTBESTAND` ist KEIN Ablageort fuer Neues. Diese Liste soll schrumpfen, nicht wachsen.",
+      "  · Sperrt eine belegte Sperre oder ein gesonderter Auftrag seinen Anschluss, gehoert er mit",
+      "    GRUND, BELEG und ENTSCHEIDER in `OFFENER_REST` — als unerledigter Rest, nie als stiller",
+      "    Altbestand (R-1349).",
+      "  · Ist er ueberholt, entferne ihn (R-1349: „angeschlossen oder begruendet entfernt“).",
     ].join("\n");
 
     expect(neu.map(schluessel), meldung).toEqual([]);
@@ -1631,24 +1749,49 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       erledigt,
       [
         "Diese Registereintraege treffen nicht mehr zu — der Export hat inzwischen einen Aufrufer",
-        "oder es gibt ihn nicht mehr. Bitte aus `BEWUSST` beziehungsweise `ALTBESTAND` streichen:",
+        "oder es gibt ihn nicht mehr. Bitte aus `BEWUSST`, `BEWUSST_WEB` beziehungsweise",
+        "`OFFENER_REST` streichen:",
         ...erledigt.map((s) => `  ${s}`),
       ].join("\n"),
     ).toEqual([]);
 
-    // Und jede benannte Ausnahme traegt wirklich einen Grund — in ALLEN drei begruendeten
-    // Registern, nicht nur im ersten. Ein Register ohne diese Zeile waere die Hintertuer, durch
-    // die unbegruendete Eintraege hereinkommen.
-    for (const a of [
-      ...BEWUSST,
-      ...DURCH_VERSCHAERFUNG_SICHTBAR,
-      ...NEUZUGANG_GEMELDET,
-      ...ERSETZT_JOB3015,
-      ...ERSETZT_JOB3061,
-      ...ERSETZT_JOB3062,
-      ...BEWUSST_WEB,
-    ]) {
+    // Und jede benannte Ausnahme traegt wirklich einen Grund — in JEDEM Register, nicht nur im
+    // ersten. Ein Register ohne diese Zeile waere die Hintertuer, durch die unbegruendete Eintraege
+    // hereinkommen.
+    for (const a of [...BEWUSST, ...NEUZUGANG_GEMELDET, ...OFFENER_REST, ...BEWUSST_WEB]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);
+    }
+    // R-1349 (Nacharbeit 4 und 6): ein Rest ohne Entscheider wäre wieder stiller Altbestand, und ein
+    // Rest ohne belegte Sperre bzw. gesonderten Auftrag wäre keine Abgrenzung (BEN, Nacharbeit 6).
+    // Jeder Eintrag nennt beides; eine genannte Belegdatei muss es im Baum geben.
+    for (const a of OFFENER_REST) {
+      const wer = `Rest ${a.schluessel}`;
+      expect(a.entscheidet.trim().length, `${wer} ohne Entscheider`).toBeGreaterThan(5);
+      expect(a.beleg.trim().length, `${wer} ohne Beleg`).toBeGreaterThan(40);
+      if (a.abgrenzung === "gesonderter-auftrag") {
+        expect(a.beleg, `${wer}: der Auftrag ist nicht benannt`).toMatch(
+          /aufnahme:\d{8}:[a-z0-9-]+/,
+        );
+      }
+      if (a.belegdatei !== undefined) {
+        const da = existsSync(join(WURZEL, a.belegdatei));
+        expect(da, `Belegdatei ${a.belegdatei} fehlt`).toBe(true);
+      }
+    }
+    // Kein Schlüssel steht in zwei Registern — sonst trüge er zwei Begründungen, von denen eine
+    // falsch ist.
+    const alle = [...BEWUSST, ...NEUZUGANG_GEMELDET, ...OFFENER_REST, ...BEWUSST_WEB].map(
+      (a) => a.schluessel,
+    );
+    expect(alle.length, "ein Schlüssel steht in mehr als einem Register").toBe(new Set(alle).size);
+    // Und jede gemessene Fremdlesekante trägt ihren Grund — sie ersetzt eine Ausnahme und muss sich
+    // deshalb genauso rechtfertigen.
+    for (const f of FREMDLESER) {
+      expect(f.grund.length, `Fremdleser ${f.modul} ohne Begruendung`).toBeGreaterThan(40);
+      expect(f.leser.length, `Fremdleser ${f.modul} ohne Leserdatei`).toBeGreaterThan(0);
+      for (const datei of f.leser) {
+        expect(existsSync(join(WURZEL, datei)), `Leserdatei ${datei} fehlt`).toBe(true);
+      }
     }
   });
 
@@ -1881,6 +2024,272 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
         namen(),
         "der Spezifikator ist Teil des Vertrags — ein Abgriff am FALSCHEN Modul deckt nichts",
       ).toContain("LazyWaise");
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-1349 (Nacharbeit 1) — EIN METHODENNAME VERDECKT KEINEN IMPORT
+  // ----------------------------------------------------------------------------------------------
+  // Der rote Lauf am Kandidaten meldete `services/management/src/horizon.ts::riskHorizon`, obwohl
+  // `service.ts` ihn in der gleichnamigen Methode `async riskHorizon()` ruft. Beide Richtungen:
+  // der Aufruf im Methodenrumpf deckt, eine bloss gleichnamige Methode ohne Aufruf deckt nicht.
+  it("A7 · GLEICHNAMIGE METHODE: der Aufruf im Rumpf zählt, der Methodenname allein nicht", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw1349-methode-"));
+    try {
+      const src = join(baum, "services", "probe", "src");
+      mkdirSync(src, { recursive: true });
+      const schreib = (name: string, text: string): void =>
+        writeFileSync(join(src, name), text, "utf8");
+      const namen = (): string[] =>
+        erhebe(baum, ["services"], ["services"]).ohneAufrufer.map((f) => f.name);
+
+      schreib("ableitung.ts", "export function ableitung(): number {\n  return 1;\n}\n");
+      schreib("nur-name.ts", "export function nurName(): number {\n  return 2;\n}\n");
+      schreib(
+        "dienst.ts",
+        'import { ableitung } from "./ableitung";\nimport { nurName } from "./nur-name";\n\n' +
+          "export class Dienst {\n" +
+          "  async ableitung(): Promise<number> {\n    return ableitung();\n  }\n" +
+          "  nurName(): number {\n    return 3;\n  }\n" +
+          "}\n" +
+          "export const dienst = new Dienst();\n",
+      );
+      const gefangen = namen();
+      expect(
+        gefangen,
+        "der Aufruf des Imports im Rumpf einer gleichnamigen Methode IST ein Aufruf",
+      ).not.toContain("ableitung");
+      expect(
+        gefangen,
+        "eine gleichnamige Methode ohne Aufruf des Imports deckt den Export NICHT",
+      ).toContain("nurName");
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-1349 (Nacharbeit 4) — A8 · DIE FREMDLESEKANTE IST GEMESSEN, NICHT GEGLAUBT
+  // ----------------------------------------------------------------------------------------------
+  // `FREMDLESER` ersetzt Ausnahmen durch eine Messung. Diese Messung muss in beide Richtungen
+  // tragen: ein wirklich gerufener Spiegel und eine wirklich auswertende Lesekette decken; eine
+  // blosse Definition, ein Kommentar, eine Zeichenkette, ein Eigenschaftsname, ein Selbstaufruf, lose
+  // Pfad- und Namenszeichenketten oder ein Lesen ohne Anwendung des Namens decken NICHT (die letzten
+  // vier seit Nacharbeit 6, BEN). Gefahren wird sie an einem eigenen Baum mit eigener Leserliste —
+  // dieselbe Bauart wie A4.
+  it("A8 · FREMDLESER: gerufener Spiegel und benannter Quelltextleser decken, Nennungen nicht", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw1349-fremdleser-"));
+    try {
+      const src = join(baum, "services", "probe", "src");
+      mkdirSync(src, { recursive: true });
+      mkdirSync(join(baum, "public"), { recursive: true });
+      mkdirSync(join(baum, "werkzeug"), { recursive: true });
+      const schreib = (rel: string, text: string): void =>
+        writeFileSync(join(baum, rel), text, "utf8");
+      // Nacharbeit 6 (BEN): `nurGenannt` steht nach seiner Definition auf einer weiteren Codezeile —
+      // aber nur als Zeichenkette; `nurEigenschaft` nur als Eigenschaftsname; `nurSelbst` ruft nur
+      // sich selbst. Keiner davon ist ein Verweis.
+      schreib(
+        "services/probe/src/spiegelquelle.ts",
+        "export function gerufen(): number {\n  return 1;\n}\n" +
+          "export function nurDefiniert(): number {\n  return 2;\n}\n" +
+          "export function nurKommentiert(): number {\n  return 3;\n}\n" +
+          "export function nurGenannt(): number {\n  return 4;\n}\n" +
+          "export function nurEigenschaft(): number {\n  return 5;\n}\n" +
+          "export function nurSelbst(n: number): number {\n  return n;\n}\n" +
+          "export function nurParameter(): number {\n  return 6;\n}\n" +
+          "export function nurGeschattet(): number {\n  return 7;\n}\n",
+      );
+      schreib(
+        "public/spiegel.js",
+        "function gerufen() { return 1; }\nfunction nurDefiniert() { return 2; }\n" +
+          "function nurKommentiert() { return 3; }\n// nurKommentiert();\n" +
+          'function nurGenannt() { return 4; }\nconsole.log("nurGenannt");\n' +
+          "function nurEigenschaft() { return 5; }\nvar o = { nurEigenschaft: 1 };\n" +
+          "o.nurEigenschaft();\n" +
+          "function nurSelbst(n) { return n > 0 ? nurSelbst(n - 1) : 0; }\n" +
+          // Nacharbeit 9 (BEN): ein gleichnamiger PARAMETER, der im Rumpf gerufen wird …
+          "function nurParameter() { return 6; }\n" +
+          "function fremd(nurParameter) { return nurParameter(); }\n" +
+          "fremd(function () { return 0; });\n" +
+          // … und eine lokale SCHATTENBINDUNG mit Verwendung. Beide sind ein anderes Symbol.
+          "function nurGeschattet() { return 7; }\n" +
+          "function lokal() { var nurGeschattet = 1; return nurGeschattet; }\n" +
+          "lokal();\n" +
+          "console.log(gerufen());\n",
+      );
+      schreib(
+        "services/probe/src/listen.ts",
+        'export const LISTE_A = ["a"];\nexport const LISTE_B = ["b"];\n',
+      );
+      // Die echte Kette: lesen → an die eigene Auswertung geben → den Namen auf den Text anwenden.
+      schreib(
+        "werkzeug/leser.mjs",
+        'import { readFileSync } from "node:fs";\n' +
+          "function auswerten(quelltext) {\n" +
+          '  for (const liste of ["LISTE_A"]) {\n' +
+          '    if (quelltext.indexOf("export const " + liste) === -1) {\n' +
+          "      throw new Error(liste);\n" +
+          "    }\n" +
+          "  }\n" +
+          "}\n" +
+          'const quelle = "services/probe/src/listen.ts";\n' +
+          'auswerten(readFileSync(quelle, "utf8"));\n',
+      );
+      schreib("services/probe/src/pfadlos.ts", 'export const LISTE_C = ["c"];\n');
+      schreib("werkzeug/pfadlos.mjs", 'const name = "LISTE_C";\n');
+      // BENs Fall wörtlich: Modulpfad und Exportname als zwei ungenutzte Zeichenketten.
+      schreib("services/probe/src/lose.ts", 'export const LISTE_D = ["d"];\n');
+      schreib(
+        "werkzeug/lose.mjs",
+        'const quelle = "services/probe/src/lose.ts";\nconst name = "LISTE_D";\n',
+      );
+      // Gelesen, aber der Name wird NICHT auf das Gelesene angewandt.
+      schreib("services/probe/src/blind.ts", 'export const LISTE_E = ["e"];\n');
+      schreib(
+        "werkzeug/blind.mjs",
+        'import { readFileSync } from "node:fs";\n' +
+          "function zaehle(text) {\n" +
+          '  console.log("LISTE_E");\n' +
+          "  return text.length;\n" +
+          "}\n" +
+          'zaehle(readFileSync("services/probe/src/blind.ts", "utf8"));\n',
+      );
+      const leser: readonly FremdLeser[] = [
+        {
+          modul: "services/probe/src/spiegelquelle.ts",
+          leser: ["public/spiegel.js"],
+          art: "spiegel",
+          grund: "Probe",
+        },
+        {
+          modul: "services/probe/src/listen.ts",
+          leser: ["werkzeug/leser.mjs"],
+          art: "quelltext",
+          grund: "Probe",
+        },
+        {
+          modul: "services/probe/src/pfadlos.ts",
+          leser: ["werkzeug/pfadlos.mjs"],
+          art: "quelltext",
+          grund: "Probe",
+        },
+        {
+          modul: "services/probe/src/lose.ts",
+          leser: ["werkzeug/lose.mjs"],
+          art: "quelltext",
+          grund: "Probe",
+        },
+        {
+          modul: "services/probe/src/blind.ts",
+          leser: ["werkzeug/blind.mjs"],
+          art: "quelltext",
+          grund: "Probe",
+        },
+      ];
+      const gefangen = erhebe(baum, ["services"], ["services"], [], leser).ohneAufrufer.map(
+        (f) => f.name,
+      );
+      expect(gefangen, "ein gerufener Spiegel deckt seinen Export").not.toContain("gerufen");
+      expect(gefangen, "eine Definition allein ist kein Aufruf").toContain("nurDefiniert");
+      expect(gefangen, "ein Kommentar ist kein Aufruf").toContain("nurKommentiert");
+      expect(gefangen, "eine Zeichenkette mit dem Namen ist kein Verweis").toContain("nurGenannt");
+      expect(gefangen, "ein Eigenschaftsname ist kein Verweis").toContain("nurEigenschaft");
+      expect(gefangen, "ein Selbstaufruf ist kein Aufrufer").toContain("nurSelbst");
+      expect(gefangen, "ein gleichnamiger Parameter deckt nicht").toContain("nurParameter");
+      expect(gefangen, "eine lokale Schattenbindung deckt nicht").toContain("nurGeschattet");
+      expect(gefangen, "lesen, auswerten, Namen anwenden deckt").not.toContain("LISTE_A");
+      expect(gefangen, "nicht ausgewählt ist nicht gelesen").toContain("LISTE_B");
+      expect(gefangen, "ohne den Modulpfad deckt eine Zeichenkette nichts").toContain("LISTE_C");
+      expect(gefangen, "Pfad und Name als lose Zeichenketten decken nichts").toContain("LISTE_D");
+      expect(gefangen, "gelesen, aber der Name nicht angewandt deckt nichts").toContain("LISTE_E");
+      // Und ohne Leserliste deckt gar nichts — die Kante kommt aus der Liste, nicht aus dem Baum.
+      const ohneListe = erhebe(baum, ["services"], ["services"], [], []).ohneAufrufer.map(
+        (f) => f.name,
+      );
+      expect(ohneListe).toEqual(expect.arrayContaining(["gerufen", "LISTE_A"]));
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-1349 (Nacharbeit 4) — A9 · EIN VORGABEWERT IN DER DESTRUKTURIERUNG IST EINE LESEOPERATION
+  // ----------------------------------------------------------------------------------------------
+  // Gemessen an `facetRail.ts::FACET_SEARCH_THRESHOLD`: gelesen als `searchThreshold =
+  // FACET_SEARCH_THRESHOLD` in einer Destrukturierung — der Wächter übersprang das ganze Muster und
+  // meldete den Export als „ohne Aufrufer". Die Gegenprobe hält die andere Richtung: ein Name, der
+  // im Muster nur als Eigenschafts- oder Bindungsname steht, liest kein Modulsymbol.
+  it("A9 · DESTRUKTURIERUNG: der Vorgabewert zählt, Eigenschafts- und Bindungsnamen nicht", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw1349-muster-"));
+    try {
+      const src = join(baum, "services", "probe", "src");
+      mkdirSync(src, { recursive: true });
+      writeFileSync(
+        join(src, "muster.ts"),
+        "export const SCHWELLE = 3;\n" +
+          "export const breite = 1;\n" +
+          "export const hoehe = 2;\n" +
+          "export function lies(o: { s?: number; breite?: number; h?: number }): number {\n" +
+          "  const { s = SCHWELLE, breite: b = 0, h: hoehe2 = 0 } = o;\n" +
+          "  const { hoehe } = { hoehe: 5 };\n" +
+          "  return s + b + hoehe2 + hoehe;\n" +
+          "}\n",
+        "utf8",
+      );
+      const gefangen = erhebe(baum, ["services"], ["services"], [], []).ohneAufrufer.map(
+        (f) => f.name,
+      );
+      expect(gefangen, "der Vorgabewert liest das Modulsymbol").not.toContain("SCHWELLE");
+      expect(gefangen, "ein Eigenschaftsname im Muster liest nichts").toContain("breite");
+      expect(gefangen, "ein gleichnamiger Bindungsname verdeckt, liest aber nichts").toContain(
+        "hoehe",
+      );
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // R-1349 (Nacharbeit 7) — A10 · MEHRERE DYNAMISCHE IMPORTE GEMEINSAM (`Promise.all`)
+  // ----------------------------------------------------------------------------------------------
+  // Gemessen an `apps/web/src/components/KlaraAssistant.tsx`: `laden.then(([modul, beispiele]) =>
+  // modul.allBibliothekEntries(…))`. Der Wächter kannte nur `import(…).then((m) => …)` und meldete die
+  // drei so geladenen Exporte als „ohne Aufrufer". Die Gegenprobe hält die andere Richtung: ein
+  // Namensraum deckt nur die Exporte SEINES Moduls, nicht die des Nachbarn in derselben Liste.
+  it("A10 · Promise.all: jede Ergebnisstelle deckt genau ihr Modul — direkt, über Variable, mit await", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw1349-promiseall-"));
+    try {
+      const src = join(baum, "services", "probe", "src");
+      mkdirSync(src, { recursive: true });
+      const schreib = (datei: string, text: string): void =>
+        writeFileSync(join(src, datei), text, "utf8");
+      schreib("a.ts", "export const eins = 1;\nexport const zwei = 2;\n");
+      schreib("b.ts", "export const drei = 3;\n");
+      schreib("c.ts", "export const vier = 4;\n");
+      schreib("d.ts", "export const fuenf = 5;\nexport const sechs = 6;\n");
+      schreib(
+        "nutzer.ts",
+        'const laden = Promise.all([import("./a"), import("./b")]);\n' +
+          "void laden.then(([m, n]) => m.eins + n.drei + n.zwei);\n" +
+          'void Promise.all([import("./c")]).then(([k]) => k.vier);\n' +
+          "async function start(): Promise<number> {\n" +
+          '  const [p] = await Promise.all([import("./d")]);\n' +
+          "  return p.fuenf;\n" +
+          "}\n" +
+          "void start();\n",
+      );
+      const gefangen = erhebe(baum, ["services"], ["services"], [], []).ohneAufrufer.map(
+        (f) => f.name,
+      );
+      expect(gefangen, "über eine Variable und `.then`").not.toContain("eins");
+      expect(gefangen, "die zweite Stelle der Liste").not.toContain("drei");
+      expect(gefangen, "direkt an `Promise.all(…).then`").not.toContain("vier");
+      expect(gefangen, "`const [p] = await Promise.all(…)`").not.toContain("fuenf");
+      expect(gefangen, "der Nachbar-Namensraum deckt nicht").toContain("zwei");
+      expect(gefangen, "nicht abgegriffen ist nicht gerufen").toContain("sechs");
     } finally {
       rmSync(baum, { recursive: true, force: true });
     }

@@ -159,6 +159,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "Beendet die Sitzung; löscht nur das Cookie.",
   },
   "GET /api/auth/me": { protection: "auth" },
+  // R-0562: der zweite Anmeldeschritt ist BEWUSST öffentlich — es gibt noch keine Sitzung, der
+  // Nachweis sind Anmeldeanfrage (nur nach richtigem Passwort, 5 min, einmalig, höchstens fünf
+  // Versuche) UND Code vom zweiten Gerät. Einrichten/Abschalten nur für das EIGENE Konto.
+  "POST /api/auth/login/second-factor": {
+    protection: "public",
+    reason:
+      "Zweiter Anmeldeschritt: Anmeldeanfrage aus dem Passwortschritt + TOTP-Code; je IP gedrosselt.",
+  },
+  "GET /api/auth/second-factor": { protection: "auth" },
+  "POST /api/auth/second-factor/setup": { protection: "auth" },
+  "POST /api/auth/second-factor/confirm": { protection: "auth" },
+  "POST /api/auth/second-factor/disable": { protection: "auth" },
   // AUFTRAG-mega61 Block C: die Kenntnisnahme des Hinweises. Beide auf das EIGENE Konto und nur
   // darauf — der Nutzer kommt aus der Sitzung, nicht aus dem Pfad; es gibt keinen Weg, eine fremde
   // Quittung zu lesen oder zu setzen. Kein zusätzliches Recht nötig: Auch eine Betrachterin muss
@@ -242,6 +254,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/users": { protection: "admin" },
   "PUT /api/users/:id": { protection: "admin" },
   "DELETE /api/users/:id": { protection: "admin" },
+  "DELETE /api/users/:id/second-factor": { protection: "admin" },
 
   // --- Composition-Root inline (services/app/src/build-app.ts) ---
   "GET /health": { protection: "public", reason: "Health-Probe; liefert nur { status: ok }." },
@@ -397,6 +410,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
 
+  // --- Paarpflichten (paarpflichten-routes.ts) ---
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): ausdrücklich gewählte Prüfläufe über alle
+  // Aussagepaare. Routenrecht wie die gewählte Vollprüfung eines Objekts (`ko.validate`), dazu je
+  // Aussage `darfSehen` — eine nicht sichtbare Aussage antwortet wie eine fehlende.
+  "POST /api/paarpflichten/laeufe": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/paarpflichten/laeufe/:laufId": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/paarpflichten/laeufe/:laufId/fortsetzen": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+
   // --- Conflicts (conflicts-routes.ts) ---
   // JOB 1546 D2 (A28, OFFEN.md:165): das dauerhafte Signal am EIGENEN Objekt. Routenrecht ist
   // `ko.read` wie bei den beiden Boards; das Zeilenrecht ist `sichtbareFuer` und danach die
@@ -451,6 +481,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // JOB 1171 D1: die ableitende Auskunft. Dasselbe Recht und derselbe Torwaechter wie die
   // uebrigen Entwurfsrouten (`requireVisibleDraft`) — sie liest denselben Entwurf.
   "GET /api/drafts/:id/naechster-schritt": { protection: "ko.create" },
+  // R-1133: die Duplikatsfrage über den Entwurfsindex. Dasselbe Recht und derselbe Torwächter
+  // (`requireVisibleDraft`), jeder Treffer zusätzlich über `canSeeDraft`.
+  "GET /api/drafts/:id/gleicher-inhalt": { protection: "ko.create" },
   "PUT /api/drafts/:id": { protection: "ko.create" },
   "DELETE /api/drafts/:id": { protection: "ko.create" },
   "POST /api/drafts/:id/promote": { protection: "ko.create" },
@@ -477,6 +510,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // R-1089: Meldung „Antwort falsch / Quelle passt nicht" — dasselbe Tor und derselbe Beleg.
+  "POST /api/ask/report": { protection: "ko.read" },
   // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
   "POST /api/ask/not-helpful": { protection: "ko.read" },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
