@@ -2477,8 +2477,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Messung 522 kein weiteres (Nacharbeit 11 änderte nur Dienst, Ablage und Tests). Zusammen:
     // 524 + 1 = 525. EHRLICH GESAGT: GERECHNET, nicht gemessen — weicht der Prüflauf ab, gehört die
     // gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 15: GEMESSEN 527. Am Kandidaten 476c51a3 meldete der
+    // Sammler wörtlich „gemessen: 527 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 682
+    // Quelldateien … expected { komponenten: 527, … } to deeply equal { komponenten: 525, … }"; die
+    // übrigen 43 Fälle der Datei waren grün. Dieser Auftrag trägt weiterhin genau EIN Bauteil bei
+    // (`VeroeffentlichungBereich`, schon in der 525); die 2 Komponenten darüber kamen mit dem
+    // eingemischten Hauptstand (Grundmenge 677 → 682), namentlich ohne Git-Verlauf nicht bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 525,
+      komponenten: 527,
       anbieter: 1,
       traeger: 2,
     });
