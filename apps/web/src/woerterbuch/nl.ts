@@ -6037,6 +6037,24 @@ const nl: typeof de = {
   "ga.liste.geaendert": "Laatst gewijzigd",
   "ga.liste.bausteine": "Onderdelen: {{anzahl}}",
   "ga.liste.unvollstaendig": "Onvolledig voor jou – niet toegankelijke onderdelen: {{anzahl}}",
+  // Werkpaden bij hetzelfde artikel (produkt:20261007:arbeitswege-objekt) — zie de.ts.
+  "arbeitsweg.pruefen.sucht": "Het opgevraagde item wordt in de controlelijst gezocht …",
+  "arbeitsweg.pruefen.fehlt":
+    "Het opgevraagde item staat in deze weergave niet ter controle (al besloten of weggefilterd). Het volgende open item wordt getoond.",
+  "arbeitsweg.pruefen.lesen": "Opgevraagd item openen",
+  "arbeitsweg.pruefen.entschieden": "Besloten: „{{titel}}” –",
+  "arbeitsweg.pruefen.oeffnen": "Item met actuele status openen",
+  "arbeitsweg.pruefen.standOffen":
+    "Status volgens de server: nog in controle, {{gruen}} van {{noetig}} goedkeuringen.",
+  "arbeitsweg.pruefen.standRaus": "Status volgens de server: niet meer in de controlelijst.",
+  "arbeitsweg.pruefen.weiter": "nu in controle: „{{titel}}”",
+  "arbeitsweg.fassung": "Versie {{fassung}}",
+  "arbeitsweg.fragen.bezug": "Vraag over het item „{{titel}}”",
+  "arbeitsweg.fragen.zurueck": "Terug naar het item",
+  "arbeitsweg.lesen.fassungAbweichend":
+    "Je komt van versie {{genannt}}; dit item staat inmiddels op versie {{aktuell}}.",
+  "arbeitsweg.klara.label": "Item",
+  "arbeitsweg.klara.chat": "In „Vragen” verder vragen over dit item",
 };
 
 export { nl };
