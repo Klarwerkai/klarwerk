@@ -124,6 +124,10 @@ export const sprachBereit = i18n
     lng: sprachAusEintritt() ?? gespeicherteSprache(),
     fallbackLng: "de",
     interpolation: { escapeValue: false },
+    // R-1034: im Betrieb gepflegte Texte kommen NACH dem ersten Zeichnen vom Server
+    // (`lib/textpflege.ts`). Ohne diese Bindung zeichnete React sie erst beim nächsten
+    // Sprachwechsel; mit ihr erscheint die Anpassung sofort.
+    react: { bindI18nStore: "added" },
   });
 
 export default i18n;
