@@ -405,6 +405,8 @@ import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
+// ADMIN-15: Unternehmensprofil und interne Richtlinien.
+import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
 import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
 import { veroeffentlichungRoutes } from "./routes/veroeffentlichung-routes";
@@ -437,6 +439,14 @@ import {
   PgUebersetzungRepo,
   type UebersetzungRepo,
 } from "./uebersetzungen";
+// ADMIN-15: Unternehmensprofil und interne Richtlinien — haltbar im Postgres-Betrieb, im Speicher
+// ohne Datenbank.
+import {
+  InMemoryUnternehmenRepo,
+  PgUnternehmenRepo,
+  UnternehmenDienst,
+  type UnternehmenRepo,
+} from "./unternehmensprofil";
 import { verantwortungBeiAnlage } from "./verantwortung";
 import {
   InMemoryNachfolgeRepo,
@@ -624,6 +634,13 @@ export interface AppServices {
   loeschantraege: LoeschantragRepo;
   /** Die Uhr der Betroffenenrechte (Millisekunden) — in Tests stellbar für Frist und Überfälligkeit. */
   datenschutzUhr: () => number;
+  /**
+   * ADMIN-15: Fassungen des Unternehmensprofils, Fassungen der internen Richtlinien und das
+   * Handlungsprotokoll. Aus demselben Grund wie `kenntnisnahmen` NICHT in `AppRepos`. Im
+   * Postgres-Betrieb `PgUnternehmenRepo`; ohne Datenbank die Speicherfassung, die im
+   * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim Neustart zu verlieren.
+   */
+  unternehmen: UnternehmenRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1128,6 +1145,8 @@ export function assembleServices(
     loeschantraege?: LoeschantragRepo;
     // Betroffenenrechte: die Uhr für Antragsfrist und Überfälligkeit — ohne Injektion `Date.now`.
     datenschutzUhr?: () => number;
+    // ADMIN-15: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    unternehmen?: UnternehmenRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1517,6 +1536,10 @@ export function assembleServices(
     loeschantraege:
       opts.loeschantraege ?? new InMemoryLoeschantragRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     datenschutzUhr: opts.datenschutzUhr ?? Date.now,
+    // ADMIN-15: Postgres, wenn injiziert, sonst im Speicher — mit derselben Haltbarkeitsregel wie
+    // die Kenntnisnahme.
+    unternehmen:
+      opts.unternehmen ?? new InMemoryUnternehmenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -2000,6 +2023,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
       // das sie betreffen — sie sind der Nachweis über die Bearbeitung.
       loeschantraege: new PgLoeschantragRepo(pool),
+      // ADMIN-15: Profil- und Richtlinienfassungen samt Handlungsprotokoll überleben Neuladen,
+      // Neustart und Deploy (`UNTERNEHMEN_SCHEMA`, angelegt von `migrate()`).
+      unternehmen: new PgUnternehmenRepo(pool),
     },
   );
 }
@@ -4449,6 +4475,21 @@ export function buildApp(
   // Begründung, warum das nicht in `/api/features` gehört, steht im Kopf von branding-routes.ts.
   app.register(
     brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
+  );
+  // ADMIN-15: Unternehmensprofil und interne Richtlinien. Getrennt von der festen Markenwahl oben
+  // (die bleibt, wie sie ist) und von den Rechtsseiten der Web-App. Die betroffenen Konten kommen
+  // aus der vorhandenen Kontenliste.
+  app.register(
+    unternehmenRoutes(
+      {
+        dienst: new UnternehmenDienst({
+          repo: services.unternehmen,
+          konten: () => services.auth.listUsers(),
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
   );
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.

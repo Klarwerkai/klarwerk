@@ -510,6 +510,9 @@ PFLICHTTABELLEN=(
   loeschantraege
   ui_uebersetzungen
   ui_sprachen
+  unternehmensprofil_fassungen
+  richtlinien_fassungen
+  richtlinien_handlungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

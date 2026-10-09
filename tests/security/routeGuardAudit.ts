@@ -991,6 +991,22 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Umschalten ist Verwaltung — dieselbe Schranke wie jeder Weg in admin-routes.ts.
   "PUT /api/admin/branding": { protection: "users.manage" },
 
+  // --- Unternehmensprofil und interne Richtlinien (unternehmen-routes.ts, ADMIN-15) ---
+  // Lesen und die EIGENE Kenntnisnahme/Zustimmung: jedes angemeldete Konto. Anders als die
+  // Markenwahl NICHT öffentlich — Unternehmensname, Logo und interne Regeln gehören hinter die
+  // Anmeldung. Welche Richtlinie jemand sieht, entscheidet die Geltung der Fassung (404 sonst).
+  "GET /api/unternehmensprofil": { protection: "auth" },
+  "GET /api/richtlinien": { protection: "auth" },
+  "POST /api/richtlinien/:id/handlungen": { protection: "auth" },
+  // Pflege, Wirkungsvorschau und Protokoll: Verwaltung — dieselbe Schranke wie die Markenwahl.
+  "GET /api/admin/unternehmensprofil": { protection: "users.manage" },
+  "PUT /api/admin/unternehmensprofil": { protection: "users.manage" },
+  "GET /api/admin/richtlinien": { protection: "users.manage" },
+  "GET /api/admin/richtlinien/:id/protokoll": { protection: "users.manage" },
+  "POST /api/admin/richtlinien/wirkung": { protection: "users.manage" },
+  "POST /api/admin/richtlinien": { protection: "users.manage" },
+  "POST /api/admin/richtlinien/:id/fassungen": { protection: "users.manage" },
+
   // --- Firmenwörterbuch (begriffe-routes.ts) ---
   // Nachschlagen und der deterministische Abgleich eines eigenen Textes: wer Wissen lesen darf.
   "GET /api/begriffe": { protection: "ko.read" },
