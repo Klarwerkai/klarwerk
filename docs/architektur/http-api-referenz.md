@@ -225,7 +225,7 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/drafts` | `ko.create` | — | 200 eigene/sichtbare Entwürfe | — |
 | `POST` | `/api/drafts` | `ko.create` | Rumpf `DraftPayload` (`title?`, `statement?`, `type?`, `category?`, `tags?`, `bodyHtml?`, `confidentiality?`, …), `operationId?`, `expectedOwner?`, `fortschreiben?` (mit `operationId`: geänderter Inhalt schreibt den Entwurf desselben Vorgangs fort, solange er unverändert ist) | 201 Entwurf; 200 bei Wiederholung derselben `operationId`, dann mit `anlage: "bestehend" \| "fortgeschrieben"` | 400 `BAD_REQUEST`; 409 `DRAFT_OWNER_MISMATCH`, `IDEMPOTENCY_PAYLOAD_MISMATCH`; 413 `PAYLOAD_TOO_LARGE` |
-| `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
+| `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 413 `DOCX_DRAFT_TOO_LARGE`, `PAYLOAD_TOO_LARGE`, `DOCX_BILDGRENZE` (höchstens 60 Bilder je Dokument, 3,5 MB `bodyHtml` nach der Bildverkleinerung und ein serialisierter Einreich-Rumpf `{ draftPayload }` von höchstens 5 MiB − 256 KiB; kein Entwurf, kein Bild weggelassen); 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
 | `GET` | `/api/drafts/trash` | `ko.create` | — | 200 gelöschte, sichtbare Entwürfe | — |
 | `DELETE` | `/api/drafts/trash/:id` | `ko.create` | — | 204 | 404 `NOT_FOUND` |
 | `GET` | `/api/drafts/:id` | `ko.create` | — | 200 Entwurf | 404 `NOT_FOUND`; 403 `FORBIDDEN` (nicht sichtbar) |
