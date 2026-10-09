@@ -578,6 +578,20 @@ export interface ReasonerKiFreigabe {
   vertraulicheInhalte?: boolean;
 }
 
+// ================================================================================================
+// AUFNAHME 20260922 (R-0305, R-1099) · DAS MODELL DER ZWEITMEINUNG — AUSDRÜCKLICH GEWÄHLT.
+// ================================================================================================
+//
+// Eine Zweitmeinung schickt dieselbe Frage samt derselben Grundlage an ein ZWEITES Modell. Wer das
+// ist, entscheidet der Administrator — nicht eine Vorzugsregel und nicht „der andere Anbieter, der
+// zufällig eingerichtet ist". Das ist Pedis Regel aus JOB 3134 („was gewählt ist, bestimmt den
+// Empfänger") auf den zweiten Empfänger angewandt. Ohne Wahl gibt es keine Zweitmeinung und damit
+// keinen zusätzlichen Empfänger. Ein externer Anbieter braucht zusätzlich dieselbe Adminfreigabe wie
+// jeder Cloudweg (`kiFreigabe`); der deterministische Ersatz ist bewusst KEINE Wahl — er ist kein
+// zweites Modell, und eine Gegenüberstellung mit ihm wäre keine zweite Einschätzung.
+export const REASONER_ZWEITMEINUNG_WAHLEN = [...REASONER_CLOUD_ANBIETER, "local"] as const;
+export type ReasonerZweitmeinungWahl = (typeof REASONER_ZWEITMEINUNG_WAHLEN)[number];
+
 // Die WIRKSAME Zuordnung: nach der Normalisierung stehen hier nur noch aktive Werte — kein
 // `cloud`, kein `model` (JOB 3134, s. ReasonerLegacyChoice).
 export interface ReasonerTaskConfig {
@@ -587,7 +601,69 @@ export interface ReasonerTaskConfig {
   // Normalisierung nur da, wenn wenigstens ein Schalter `true` ist (kein `{}`, kein `false`-Rest).
   // Ein fehlendes Feld ist damit dasselbe wie „gesperrt" und kein „noch nicht gefragt".
   kiFreigabe?: ReasonerKiFreigabe;
+  // R-0305/R-1099: das Modell der Zweitmeinung. Fehlt es, ist die Zweitmeinung aus.
+  zweitmeinung?: ReasonerZweitmeinungWahl;
 }
+
+// ================================================================================================
+// AUFNAHME 20260922 (R-0305, R-1099) · DAS ERGEBNIS EINER ZWEITMEINUNG.
+// ================================================================================================
+//
+// `stufe` statt Anbieter- oder Modellname: die Antwort geht an jeden fragenden Nutzer, und Anbieter
+// und Modell sind Infrastrukturangaben der Adminsicht (WP-VIP2-GATE-2). Die Stufe sagt, was der
+// Fragende zum Einordnen braucht — extern, im Haus oder Ersatzmodus ohne Modell.
+export type ZweitmeinungStufe = "cloud" | "local" | "deterministic";
+
+// Warum KEINE Gegenüberstellung entstand — jeder Grund benannt, keiner geraten:
+//   · nicht_eingerichtet — der Administrator hat kein Modell für die Zweitmeinung gewählt;
+//   · nicht_verfuegbar   — das gewählte Modell ist nicht eingerichtet oder nicht erreichbar verdrahtet;
+//   · nicht_freigegeben  — für einen externen Anbieter fehlt die Adminfreigabe (bei vertraulichem
+//                          Kontext die zweite Freigabe), oder eine Anbieterbindung lässt ihn nicht zu;
+//   · nicht_unabhaengig  — die erste Antwort kam bereits von genau diesem Modell; ein zweiter Lauf
+//                          desselben Modells wäre keine unabhängige Einschätzung;
+//   · fehlgeschlagen     — das zweite Modell wurde gefragt und hat keine Antwort geliefert.
+export type ZweitmeinungGrund =
+  | "nicht_eingerichtet"
+  | "nicht_verfuegbar"
+  | "nicht_freigegeben"
+  | "nicht_unabhaengig"
+  | "fehlgeschlagen";
+
+// Woran der Abgleich eine Abweichung festmacht. Bewusst nur Merkmale, die sich OHNE ein drittes
+// Urteil prüfen lassen — der Abgleich bewertet keine Inhalte, er zeigt Warnzeichen:
+//   · beantwortet — das eine Modell antwortet, das andere findet keine belastbare Grundlage;
+//   · quellen     — beide nennen tragende Quellen, aber keine gemeinsame;
+//   · zahlen      — beide nennen Zahlen, aber nicht dieselben.
+export type ZweitmeinungAbweichung = "beantwortet" | "quellen" | "zahlen";
+
+// Die zweite Antwort — dieselben Felder wie die erste, soweit sie für die Gegenüberstellung zählen.
+// Ihre Quellen stammen aus DERSELBEN, bereits gefilterten Kandidatenmenge wie die der ersten.
+export interface ZweitmeinungAntwort {
+  answered: boolean;
+  answer: string | null;
+  sources: string[];
+  citedSources: string[];
+  demo: boolean;
+  aiGenerated?: AiGeneratedMark;
+}
+
+export type ZweitmeinungErgebnis =
+  | {
+      status: "verglichen";
+      ersteStufe: ZweitmeinungStufe;
+      zweiteStufe: ZweitmeinungStufe;
+      // Ben (Nacharbeit 17): die ERSTE Modellantwort, genau so, wie sie verglichen wurde — vor
+      // jedem späteren Zuschnitt durch den Fragedienst (R-0346). Spalte A zeigt diesen Text, damit
+      // Gegenüberstellung und Abgleich sich auf dasselbe Paar beziehen.
+      erste: ZweitmeinungAntwort;
+      zweite: ZweitmeinungAntwort;
+      // `true` genau dann, wenn `abweichungen` nicht leer ist — ein Warnzeichen, dem jemand
+      // nachgehen muss. `false` heißt NICHT „beide stimmen inhaltlich überein", sondern „der Abgleich
+      // hat an seinen drei Merkmalen keinen Unterschied gefunden".
+      abweichend: boolean;
+      abweichungen: ZweitmeinungAbweichung[];
+    }
+  | { status: "nicht_moeglich"; grund: ZweitmeinungGrund };
 
 // Die EINGABE einer Zuordnung (Schreibweg, Datenbankbestand, Deploy-ENV): darf noch die abgelösten
 // Werte tragen; der Reasoner migriert sie und meldet die Migration.
@@ -599,6 +675,10 @@ export interface ReasonerTaskConfigEingabe {
   // der ZUORDNUNG darf eine erteilte Freigabe nicht beiläufig löschen — und eine fehlende nicht
   // beiläufig erteilen. Wer die Freigabe ändern will, nennt sie.
   kiFreigabe?: ReasonerKiFreigabe;
+  // R-0305/R-1099: dieselbe Regel wie bei `kiFreigabe` — WEGLASSEN lässt die Wahl unverändert,
+  // `null` schaltet die Zweitmeinung aus. So kann ein Speichern der Zuordnung, das von diesem Feld
+  // nichts weiß, keinen zweiten Empfänger beiläufig löschen oder hinzufügen.
+  zweitmeinung?: ReasonerZweitmeinungWahl | null;
 }
 
 export interface ReasonerConfigStatus {
