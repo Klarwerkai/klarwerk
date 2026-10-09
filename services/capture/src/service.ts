@@ -6,6 +6,7 @@ import {
   createOperationFingerprint,
   isConfidentialityDowngrade,
   isValidConfidentiality,
+  normalizeNegativwissen,
 } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
 import { normalizeAblauf } from "./ablauf";
@@ -463,6 +464,8 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
     extResults: _extResults,
     // BILDSCHIRMABLÄUFE: der Ablauf läuft durch dieselbe Schleuse (`./ablauf.ts`).
     ablauf: _ablauf,
+    // R-1664/R-2179: die geführten Negativwissen-Angaben ebenfalls (Normalform aus knowledge-object).
+    negativwissen: _negativwissen,
     ...rest
   } = payload as DraftPayload & { extResults?: unknown };
   const next: DraftPayload = normalizeOriginIn(rest);
@@ -494,6 +497,10 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const ablauf = normalizeAblauf(raw.ablauf);
   if (ablauf !== undefined) {
     next.ablauf = ablauf;
+  }
+  const negativwissen = normalizeNegativwissen(raw.negativwissen);
+  if (negativwissen !== undefined) {
+    next.negativwissen = negativwissen;
   }
   return next;
 }
@@ -1566,6 +1573,9 @@ export class CaptureService {
       // SCRUM-509 R2: die Vertraulichkeitsstufe des Entwurfs ans KO durchreichen (kein Verlust beim
       // Promote). ko.create prüft/lehnt ungültige Werte ab — keine stille Intern-Normalisierung.
       ...(p.confidentiality !== undefined ? { confidentiality: p.confidentiality } : {}),
+      // R-1664/R-2179/R-2180: die geführten Negativwissen-Angaben reisen mit; ob sie zur Wissensart
+      // passen und welche Mindeststufe daraus folgt, entscheidet `ko.create`.
+      ...(p.negativwissen ? { negativwissen: p.negativwissen } : {}),
       // JOB 679 / D2 (K1.2, Weg A): DIE HERKUNFT REIST MIT. Genau hier ging sie bis heute verloren:
       // diese Rückgabe zählt die Felder einzeln auf, und `origin` war nicht darunter — ein über das
       // Word-Add-in erfasster Entwurf verlor seinen Erfassungsweg in dem Moment, in dem aus ihm ein

@@ -1,4 +1,9 @@
-import type { Confidentiality, DokumentHerkunft, KnowledgeType } from "../../knowledge-object";
+import type {
+  Confidentiality,
+  DokumentHerkunft,
+  KnowledgeType,
+  NegativwissenAngaben,
+} from "../../knowledge-object";
 import type { DraftAblauf } from "./ablauf";
 
 // Roh-Inhalt eines Entwurfs (wird später zu einem KO strukturiert/eingereicht).
@@ -16,6 +21,10 @@ export interface DraftPayload {
   // SCRUM-509 R2: die im Erfassen gewählte Vertraulichkeit übersteht Entwurf/Resume/Promote —
   // sonst ginge die Stufe beim Promote verloren (fail-open). toKoInput reicht sie ans KO durch.
   confidentiality?: Confidentiality;
+  // R-1664/R-2179: die geführten Angaben eines Negativwissen-Falls überstehen Entwurf/Resume/Promote.
+  // An der Persistenzgrenze normalisiert (`normalizeNegativwissen`); `toKoInput` reicht sie durch.
+  // `null` leert sie ausdrücklich (Merge-Vertrag) und wird dort nicht gespeichert.
+  negativwissen?: NegativwissenAngaben | null;
   // UI-Herkunft fuer Resume-Routing; keine Persistenzlogik, nur Payload-Metadatum.
   origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
   // JOB 512 (R5): Zahl der Bilder in der QUELLDATEI, erhoben beim Import VOR jedem Budget-/
