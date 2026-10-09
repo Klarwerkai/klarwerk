@@ -810,6 +810,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive, dieselbe Tür und derselbe Grund, warum
   // sie VOR ihrem Schalter steht — sie muss „ausgeschaltet" melden können.
   "GET /api/import/sharepoint/zugang": { protection: "users.manage" },
+  // ADMIN-02: der bewusst gestartete Verbindungstest — liest eine Listenseite (nur Merkmale) und
+  // hält das Ergebnis im Prüfprotokoll fest. Dieselbe Tür wie die Auskunft, ebenfalls VOR dem
+  // Schalter, damit „ausgeschaltet"/„nicht eingerichtet" ohne Abruf als Ergebnis kommen.
+  "POST /api/import/sharepoint/verbindungstest": { protection: "users.manage" },
   // JOB 4086: die zwei Türen des SharePoint-Imports (Adapter #2 des quellneutralen
   // Import-Vertrags). `users.manage` wie JEDE Import-Route; nur bei aktivem
   // `KLARWERK_SHAREPOINT_IMPORT` registriert. `files` ist READ-ONLY (Dateiliste der Bibliothek),

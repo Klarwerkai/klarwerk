@@ -29,9 +29,23 @@
 // einen ruhigen, nicht-modalen Hinweis. Kein neuer Egress-Pfad, kein Konnektor-Aufruf an geplante
 // Systeme — das steckt bewusst NICHT in diesem Modell.
 
+//
+// ADMIN-02 — „available" ist dazugekommen: die Anbindung ist GEBAUT (Produktfähigkeit), aber ob sie
+// in DIESER Installation eingerichtet und erreichbar ist, weiss ein statisches Modell nicht. Bis
+// hierher stand SharePoint hier fest auf „active" und sagte damit „aktiv", während der Zugangsbereich
+// derselben Seite „nicht eingeschaltet" meldete (UI-Beobachtung 09.10.2026). „available" ist die
+// schmalere wahre Aussage; den Zustand dieser Installation setzt die Galerie aus der Zugangsauskunft
+// darüber (`systemKachelMitStatus`, gemeinsames Statusmodell `lib/integrationStatus.ts`).
 import { type FileKind, detectFileKind } from "./extract";
+import type { IntegrationStatus } from "./integrationStatus";
 
-export type SourceState = "active" | "elsewhere" | "unconfigured" | "soon" | "planned";
+export type SourceState =
+  | "active"
+  | "elsewhere"
+  | "available"
+  | "unconfigured"
+  | "soon"
+  | "planned";
 
 export interface GallerySource {
   /** Stabile ID — steuert bei "active" den echten Fluss (Argument von onActivate). */
@@ -39,18 +53,27 @@ export interface GallerySource {
   /** i18n-Schluessel des Anzeigenamens (keine hartcodierten Strings im JSX). */
   readonly labelKey: string;
   readonly state: SourceState;
+  /**
+   * ADMIN-02: der Zustand DIESER Installation aus der Zugangsauskunft — nur bei Anbindungen, für
+   * die eine Auskunft vorliegt. Er ersetzt dann Abzeichen und Hinweis des statischen Zustands.
+   */
+  readonly status?: IntegrationStatus;
+  readonly badgeKey?: string;
+  readonly hintKey?: string;
 }
 
 // Reihenfolge der Zustaende: aktiv zuerst, dann anderswo verfuegbar, dann vorhanden-aber-
 // unkonfiguriert, dann bald, dann geplant. JOB 3190: "elsewhere" steht direkt hinter "active" und
 // vor "unconfigured", weil es die staerkste Aussage nach "hier nutzbar" ist — die Faehigkeit
-// existiert und ist von hier aus in einem Schritt erreichbar.
+// existiert und ist von hier aus in einem Schritt erreichbar. ADMIN-02: "available" (gebaut, Stand
+// dieser Installation unbekannt oder ungeprüft) steht zwischen beiden.
 const STATE_RANK: Record<SourceState, number> = {
   active: 0,
   elsewhere: 1,
-  unconfigured: 2,
-  soon: 3,
-  planned: 4,
+  available: 2,
+  unconfigured: 3,
+  soon: 4,
+  planned: 5,
 };
 
 /**
@@ -69,6 +92,7 @@ export const STATE_BADGE_KEY: Record<SourceState, string> = {
   active: "imp.explore.active",
   // JOB 3190: das Badge sagt BEIDES in zwei Woertern — dass es die Funktion gibt und wo sie liegt.
   elsewhere: "imp.gallery.elsewhere",
+  available: "integrationen.galerie.verfuegbar",
   unconfigured: "imp.gallery.unconfigured",
   soon: "imp.explore.soon",
   planned: "imp.gallery.planned",
@@ -80,10 +104,48 @@ export const STATE_HINT_KEY: Record<Exclude<SourceState, "active">, string> = {
   // die Kachel selbst der Weg (ein Link); wo kein Link angeboten wird, bleibt dieser Satz die
   // Auskunft. Ein Text, zwei Tueren — keine zweite Wahrheit.
   elsewhere: "imp.gallery.hintElsewhere",
+  available: "integrationen.galerie.hinweisVerfuegbar",
   unconfigured: "imp.gallery.hintUnconfigured",
   soon: "imp.gallery.hintSoon",
   planned: "imp.gallery.hintPlanned",
 };
+
+// ================================================================================================
+// ADMIN-02 — DIE SYSTEMKACHEL TRÄGT DEN ZUSTAND DIESER INSTALLATION, WENN ER BEKANNT IST.
+// ================================================================================================
+//
+// Je abgeleitetem Zustand (`lib/integrationStatus.ts`) der Kachelzustand, das Abzeichen und der
+// Hinweis. „active" fällt NUR bei einem bestandenen Verbindungstest — hinterlegte Angaben allein
+// ergeben „available" mit dem Abzeichen „eingerichtet, ungeprüft". Ausgeschaltet und ohne Angaben
+// sind „unconfigured": gebaut, hier nicht nutzbar.
+const STATUS_KACHEL: Record<IntegrationStatus, { state: SourceState; badgeKey: string }> = {
+  ausgeschaltet: { state: "unconfigured", badgeKey: "integrationen.status.ausgeschaltet" },
+  "nicht-eingerichtet": {
+    state: "unconfigured",
+    badgeKey: "integrationen.status.nichtEingerichtet",
+  },
+  konfiguriert: { state: "available", badgeKey: "integrationen.status.konfiguriert" },
+  geprueft: { state: "active", badgeKey: "integrationen.status.geprueft" },
+  fehlgeschlagen: { state: "unconfigured", badgeKey: "integrationen.status.fehlgeschlagen" },
+};
+
+/** Eine Systemkachel mit dem Zustand dieser Installation — ohne Auskunft bleibt sie, wie sie ist. */
+export function systemKachelMitStatus(
+  source: GallerySource,
+  status: IntegrationStatus | null,
+): GallerySource {
+  if (status === null) {
+    return source;
+  }
+  const kachel = STATUS_KACHEL[status];
+  return {
+    ...source,
+    state: kachel.state,
+    status,
+    badgeKey: kachel.badgeKey,
+    hintKey: "integrationen.galerie.hinweisStatus",
+  };
+}
 
 /** i18n-Schluessel des ehrlichen Hinweises fuer einen Zustand; null fuer "active" (kein Hinweis). */
 export function hintKeyFor(state: SourceState): string | null {
@@ -225,13 +287,19 @@ export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 // Auskunft, die den Rest sagt. Genau dieselbe Arbeitsteilung traegt die Confluence-Kachel seit
 // mega67, und sie steht aus demselben Grund auf `active`.
 //
-// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import · SharePoint. bald: Jira. geplant: Word- und
-// PDF-Dokumentquelle · MS Teams · Google Drive · DMS · PLM · ServiceNow · SAP · Notion · Slack ·
-// E-Mail.
+// ADMIN-02 — DIESE BEGRÜNDUNG GALT DER FRAGE „GEPLANT ODER NICHT", UND DORT STIMMT SIE WEITER.
+// Für „aktiv" trug sie nicht: eine Kachel, die für JEDEN Betrieb „aktiv" sagt, ist für jeden Betrieb
+// OHNE Zugangsdaten falsch — genau der Widerspruch vom 09.10.2026. Statisch steht SharePoint deshalb
+// auf „available" (gebaut; Stand dieser Installation siehe Zugangsbereich). Den Stand DIESER
+// Installation setzt die Galerie aus der Zugangsauskunft (`systemKachelMitStatus`).
+//
+// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import. verfügbar: SharePoint (Stand dieser
+// Installation aus der Auskunft). bald: Jira. geplant: Word- und PDF-Dokumentquelle · MS Teams ·
+// Google Drive · DMS · PLM · ServiceNow · SAP · Notion · Slack · E-Mail.
 export const SYSTEM_SOURCES: readonly GallerySource[] = orderByState([
   { id: "confluence", labelKey: "imp.gallery.src.confluence", state: "active" },
   { id: "json", labelKey: "imp.gallery.src.jsonImport", state: "active" },
-  { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "active" },
+  { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "available" },
   { id: "jira", labelKey: "imp.gallery.src.jira", state: "soon" },
   // IDs unveraendert: `FileTypePicker.tsx:62/:64` fuehrt Icon-Eintraege unter genau diesen Namen.
   { id: "word-sys", labelKey: "imp.gallery.src.wordSource", state: "planned" },

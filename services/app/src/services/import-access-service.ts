@@ -62,11 +62,30 @@
 //
 // GESETZT wird der Schalter ebenfalls HIER und nicht in der Route: die Route kennt weiterhin nur
 // diesen Dienst (BEN7s Prüflücke 2), das Prüfprotokoll entsteht an derselben Stelle wie die Auskunft.
+//
+// ================================================================================================
+// ADMIN-02 — DER VERBINDUNGSTEST: BEWUSST GESTARTET, LESEND, MIT ZEITPUNKT, UMFANG UND ERGEBNIS.
+// ================================================================================================
+//
+// Die Zusage oben („KEIN AUFRUF AN DIE GEGENSTELLE") gilt für die AUSKUNFT unverändert: sie liest
+// weiterhin nur Lokales. Der Verbindungstest ist eine EIGENE, vom Administrator ausgelöste Handlung
+// (`sharepointVerbindungstest`). Er liest genau eine Listenseite des Wurzelordners — nur Merkmale,
+// kein Inhalt, kein Lauf, kein Kandidat. Damit bleibt „hinterlegt" (Auskunft) von „erreichbar"
+// (Test) getrennt, und beides vom „zuletzt erfolgreich importiert" (Laufablage).
+//
+// FESTGEHALTEN wird das Ergebnis im Prüfprotokoll (`sharepoint-import.verbindungstest`) — das
+// überlebt Neuladen und Neustart, ohne eine neue Ablage einzuführen. Die Nutzlast trägt nur feste
+// Wörter und eine Dauer: keinen Wert, keine Adresse, keinen Dateinamen.
 import type { AuditService } from "../../../audit";
 import { confluenceCredentialState } from "../../../confluence";
 import { jiraCredentialState } from "../../../jira";
 import type { ImportRunRepo } from "../../../library-analytics";
-import { sharepointCredentialState } from "../../../sharepoint";
+import {
+  type SharePointSourceAdapter,
+  createSharePointAdapterFromEnv,
+  sharepointCredentialState,
+  sharepointFehlerlage,
+} from "../../../sharepoint";
 import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
 import { schalterAn } from "../feature-flags";
 
@@ -87,6 +106,102 @@ export interface ImportAccessDeps {
    */
   readonly betreiberSchalter?: ConfluenceImportSchalterRepo;
   readonly audit?: AuditService;
+  /** ADMIN-02: der Adapter des Verbindungstests. Injizierbar für Tests; Standard = Umgebung. */
+  readonly sharepointAdapter?: () => SharePointSourceAdapter | undefined;
+  /** ADMIN-02: die Frist des Verbindungstests in Millisekunden (Standard 10 s). */
+  readonly verbindungstestFristMs?: number;
+}
+
+/** Die Handlung im Prüfprotokoll, unter der ein Verbindungstest festgehalten wird. */
+export const SHAREPOINT_VERBINDUNGSTEST_AKTION = "sharepoint-import.verbindungstest";
+
+/**
+ * Die Frist des Verbindungstests. Bewusst KÜRZER als die Frist des Graph-Clients (15 s): nur so ist
+ * eine Zeitüberschreitung als EIGENES Ergebnis messbar und fällt nicht in „nicht erreichbar".
+ */
+export const SHAREPOINT_VERBINDUNGSTEST_FRIST_MS = 10_000;
+
+/**
+ * Das Ergebnis eines Verbindungstests. Jedes Wort ist ein unterscheidbarer Sachverhalt mit eigenem
+ * nächsten Schritt auf der Fläche — „erreichbar" fällt NUR nach einer wirklich beantworteten Abfrage.
+ */
+export type VerbindungstestErgebnis =
+  | "erreichbar"
+  | "ausgeschaltet"
+  | "nicht-eingerichtet"
+  | "anmeldung-abgewiesen"
+  | "keine-berechtigung"
+  | "nicht-gefunden"
+  | "zeitueberschreitung"
+  | "nicht-erreichbar";
+
+/**
+ * Was geprüft wurde. `konfiguration`: nur lokal (Schalter/Angaben) — ohne Abruf, weil schon das den
+ * Test beendet. `bibliothek-lesen`: eine Listenseite des Wurzelordners, nur Merkmale.
+ */
+export type VerbindungstestUmfang = "konfiguration" | "bibliothek-lesen";
+
+export interface Verbindungsnachweis {
+  readonly geprueftAm: string;
+  readonly umfang: VerbindungstestUmfang;
+  readonly ergebnis: VerbindungstestErgebnis;
+  /** Dauer des Abrufs in ms; `null`, wenn gar kein Abruf hinausging. */
+  readonly dauerMs: number | null;
+}
+
+const VERBINDUNGSTEST_ERGEBNISSE: readonly VerbindungstestErgebnis[] = [
+  "erreichbar",
+  "ausgeschaltet",
+  "nicht-eingerichtet",
+  "anmeldung-abgewiesen",
+  "keine-berechtigung",
+  "nicht-gefunden",
+  "zeitueberschreitung",
+  "nicht-erreichbar",
+];
+
+/** Liest einen Nachweis aus einem Protokolleintrag — Unlesbares wird `null`, nie geraten. */
+function nachweisAus(at: string, payload: Record<string, unknown>): Verbindungsnachweis | null {
+  const ergebnis = payload.ergebnis;
+  const umfang = payload.umfang;
+  const dauer = payload.dauerMs;
+  const geprueftAm = payload.geprueftAm;
+  if (
+    typeof ergebnis !== "string" ||
+    !(VERBINDUNGSTEST_ERGEBNISSE as readonly string[]).includes(ergebnis) ||
+    (umfang !== "konfiguration" && umfang !== "bibliothek-lesen")
+  ) {
+    return null;
+  }
+  return {
+    geprueftAm:
+      typeof geprueftAm === "string" && !Number.isNaN(Date.parse(geprueftAm)) ? geprueftAm : at,
+    umfang,
+    ergebnis: ergebnis as VerbindungstestErgebnis,
+    dauerMs: typeof dauer === "number" && Number.isFinite(dauer) ? dauer : null,
+  };
+}
+
+/** Markiert die Fristablehnung, damit sie von einer Fehlerlage der Gegenstelle unterscheidbar ist. */
+const FRIST_ABGELAUFEN = Symbol("verbindungstest-frist");
+
+/**
+ * Fehlerlage → Testergebnis. Anders als die Importrouten (die `abgelaufen` und `nicht-erreichbar`
+ * in EINEM Ausgang führen) trennt der Test sie: ein 401 heisst „die Anmeldung wurde abgewiesen",
+ * und dafür gibt es einen anderen nächsten Schritt als für eine Gegenstelle, die nicht antwortet.
+ * Was nicht aus dem Modul stammt, fällt ehrlich auf „nicht erreichbar".
+ */
+function testErgebnisAus(err: unknown): VerbindungstestErgebnis {
+  switch (sharepointFehlerlage(err)) {
+    case "abgelaufen":
+      return "anmeldung-abgewiesen";
+    case "keine-berechtigung":
+      return "keine-berechtigung";
+    case "nicht-gefunden":
+      return "nicht-gefunden";
+    default:
+      return "nicht-erreichbar";
+  }
 }
 
 /** Warum das Umlegen nicht geht — die Route macht daraus einen ehrlichen Status. */
@@ -117,9 +232,18 @@ export interface ImportAccessStatus {
    * `null`. `null` ist eine AUSSAGE („dazu ist nichts belegt") und kein Platzhalter.
    */
   readonly lastConnectedAt: string | null;
+  /**
+   * ADMIN-02, nur SharePoint: der zuletzt festgehaltene Verbindungstest — oder `null`, wenn keiner
+   * belegt ist. Getrennt von `lastConnectedAt`: der eine sagt „die Gegenstelle hat geantwortet",
+   * der andere „ein Import ist erfolgreich abgeschlossen worden".
+   */
+  readonly letzterVerbindungstest?: Verbindungsnachweis | null;
 }
 
 export class ImportAccessService {
+  /** ADMIN-02: der jüngste Verbindungstest dieses Prozesses — Rückfall, wenn kein Protokoll trägt. */
+  private letzterTestImProzess: Verbindungsnachweis | null = null;
+
   constructor(private readonly deps: ImportAccessDeps) {}
 
   async zugangsstatus(): Promise<ImportAccessStatus> {
@@ -173,7 +297,9 @@ export class ImportAccessService {
    *
    * KEIN AUFRUF AN MICROSOFT GRAPH — dieselbe Zusage wie oben: Schalter und Variablenzustand sind
    * lokal ablesbar, `lastConnectedAt` kommt aus der eigenen Laufablage. Ob die hinterlegten
-   * Zugangsdaten GÜLTIG sind, wüsste nur ein echter Abruf, und den macht diese Datei nicht.
+   * Zugangsdaten GÜLTIG sind, wüsste nur ein echter Abruf, und den macht die AUSKUNFT nicht.
+   * ADMIN-02: dafür gibt es den bewusst gestarteten Verbindungstest darunter; die Auskunft nennt nur
+   * sein zuletzt festgehaltenes Ergebnis (`letzterVerbindungstest`).
    */
   async sharepointZugangsstatus(): Promise<ImportAccessStatus> {
     const credentials = sharepointCredentialState();
@@ -185,7 +311,116 @@ export class ImportAccessService {
       credentialsUsable: credentials.usable,
       blocker: credentials.blocker,
       lastConnectedAt: await this.letzteVerbindung(SYSTEM_SHAREPOINT),
+      letzterVerbindungstest: await this.letzterSharepointTest(),
     };
+  }
+
+  /**
+   * ADMIN-02 — DER BEWUSST GESTARTETE VERBINDUNGSTEST FÜR SHAREPOINT.
+   *
+   * Reihenfolge = Ehrlichkeitsregel: ausgeschaltet und ohne brauchbare Angaben endet der Test
+   * LOKAL, ohne Abruf. Erst dann geht genau EIN lesender Abruf hinaus (eine Listenseite, nur
+   * Merkmale). Er schreibt keinen Kandidaten, keinen Lauf und kein Wissensobjekt — festgehalten
+   * wird nur das Ergebnis im Prüfprotokoll.
+   */
+  async sharepointVerbindungstest(actor: string): Promise<Verbindungsnachweis> {
+    const nachweis = await this.fuehreSharepointTestAus();
+    try {
+      await this.deps.audit?.record({
+        actor,
+        action: SHAREPOINT_VERBINDUNGSTEST_AKTION,
+        target: `import:${SYSTEM_SHAREPOINT}`,
+        payload: {
+          geprueftAm: nachweis.geprueftAm,
+          ergebnis: nachweis.ergebnis,
+          umfang: nachweis.umfang,
+          dauerMs: nachweis.dauerMs,
+        },
+      });
+    } catch {
+      // Ein Protokollfehler nimmt dem Administrator nicht das Ergebnis, das gerade gemessen wurde.
+      // Der Speicher in diesem Prozess hält es dann wenigstens bis zum Neustart.
+    }
+    this.letzterTestImProzess = nachweis;
+    return nachweis;
+  }
+
+  private async fuehreSharepointTestAus(): Promise<Verbindungsnachweis> {
+    const jetzt = (): string => new Date().toISOString();
+    if (!schalterAn("sharepointImport")) {
+      return {
+        geprueftAm: jetzt(),
+        umfang: "konfiguration",
+        ergebnis: "ausgeschaltet",
+        dauerMs: null,
+      };
+    }
+    const credentials = sharepointCredentialState();
+    const adapter = credentials.usable
+      ? (this.deps.sharepointAdapter ?? (() => createSharePointAdapterFromEnv()))()
+      : undefined;
+    if (!adapter) {
+      return {
+        geprueftAm: jetzt(),
+        umfang: "konfiguration",
+        ergebnis: "nicht-eingerichtet",
+        dauerMs: null,
+      };
+    }
+    const frist = this.deps.verbindungstestFristMs ?? SHAREPOINT_VERBINDUNGSTEST_FRIST_MS;
+    const start = Date.now();
+    let wecker: ReturnType<typeof setTimeout> | undefined;
+    const abgelaufen = new Promise<never>((_, ablehnen) => {
+      wecker = setTimeout(() => ablehnen(FRIST_ABGELAUFEN), frist);
+    });
+    const abruf = adapter.pruefeVerbindung();
+    // Läuft die Frist zuerst ab, endet der Abruf später unbeachtet — seine Ablehnung darf dann
+    // nicht als unbehandelter Fehler den Prozess stören.
+    void abruf.catch(() => undefined);
+    let ergebnis: VerbindungstestErgebnis;
+    try {
+      await Promise.race([abruf, abgelaufen]);
+      ergebnis = "erreichbar";
+    } catch (err) {
+      ergebnis = err === FRIST_ABGELAUFEN ? "zeitueberschreitung" : testErgebnisAus(err);
+    } finally {
+      clearTimeout(wecker);
+    }
+    return {
+      geprueftAm: new Date(start).toISOString(),
+      umfang: "bibliothek-lesen",
+      ergebnis,
+      dauerMs: Date.now() - start,
+    };
+  }
+
+  /**
+   * Der zuletzt festgehaltene Test — aus dem Prüfprotokoll (überlebt Neuladen und Neustart) oder
+   * aus diesem Prozess, je nachdem, welcher jünger ist.
+   */
+  private async letzterSharepointTest(): Promise<Verbindungsnachweis | null> {
+    let ausProtokoll: Verbindungsnachweis | null = null;
+    if (this.deps.audit) {
+      try {
+        const eintraege = await this.deps.audit.list({ action: SHAREPOINT_VERBINDUNGSTEST_AKTION });
+        let letzter: { seq: number; at: string; payload: Record<string, unknown> } | null = null;
+        for (const e of eintraege) {
+          if (letzter === null || e.seq > letzter.seq) {
+            letzter = e;
+          }
+        }
+        ausProtokoll = letzter === null ? null : nachweisAus(letzter.at, letzter.payload);
+      } catch {
+        // Dieselbe Regel wie bei `letzteVerbindung`: die Auskunft antwortet trotzdem.
+      }
+    }
+    const imProzess = this.letzterTestImProzess;
+    if (ausProtokoll === null || imProzess === null) {
+      return ausProtokoll ?? imProzess;
+    }
+    return Date.parse(imProzess.geprueftAm) > Date.parse(ausProtokoll.geprueftAm)
+      ? imProzess
+      : ausProtokoll;
   }
 
   /**

@@ -28,6 +28,7 @@ import {
   toExploreView,
 } from "../lib/importExplore";
 import { JSON_SOURCE_IDS } from "../lib/importSourceGallery";
+import { integrationStatus } from "../lib/integrationStatus";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { usePersistentString } from "../lib/usePersistentValue";
 import { ImportSelect, registriereRahmenTexte } from "./ImportSelect";
@@ -35,6 +36,7 @@ import { ImportSelect, registriereRahmenTexte } from "./ImportSelect";
 import { ImportSourceGallery } from "./ImportSourceGallery";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (1 Quelle · 2 Erkunden) + Meilenstein-Meldung an die Leiste.
 import { ImportStepHeading, useImportSource, useReportImportStage } from "./ImportStepper";
+import { sharepointApi } from "./sharepoint-import/api";
 import { Button, Card, TextInput } from "./ui";
 
 // ================================================================================================
@@ -612,6 +614,19 @@ export function ImportExplore(): JSX.Element {
   const explore = useMutation<ImportExploreResponse>({
     mutationFn: () => endpoints.admin.import.explore(),
   });
+  // ADMIN-02: der Zustand der SharePoint-Anbindung für die Galeriekachel. GELESEN wird nur der
+  // Abfragespeicher, den der SharePoint-Bereich derselben Seite füllt (`enabled: false`) — kein
+  // zweiter Abruf, keine zweite Rechteprüfung. Scheitert die Auskunft oder liegt keine vor, bleibt
+  // die Kachel beim statischen „verfügbar"; eine alte Antwort neben einem Fehler gilt nicht.
+  const sharepointZugang = useQuery({
+    queryKey: ["sharepoint-zugang"],
+    queryFn: sharepointApi.zugang,
+    enabled: false,
+  });
+  const sharepointStatus =
+    sharepointZugang.data && !sharepointZugang.isError
+      ? integrationStatus(sharepointZugang.data)
+      : null;
 
   const view = explore.data ? toExploreView(explore.data.summary) : null;
   const errorMessage = explore.error instanceof ApiError ? explore.error.message : t("state.error");
@@ -757,7 +772,7 @@ export function ImportExplore(): JSX.Element {
           Erkundung, JSON oeffnet den bestehenden Datei-Dialog. „bald"/„geplant" zeigen nur einen
           ehrlichen Hinweis — kein Import, kein Formular, kein Fortschritt. */}
       <div className="mt-2 pl-8" ref={galerieRef} onClickCapture={merkeRueckkehrpunkt}>
-        <ImportSourceGallery onActivate={handleActivate} />
+        <ImportSourceGallery onActivate={handleActivate} sharepointStatus={sharepointStatus} />
       </div>
 
       {/* AUFTRAG-mega32 H2: Was nicht zur gewählten Quelle gehört, verschwindet. Bei JSON tun die

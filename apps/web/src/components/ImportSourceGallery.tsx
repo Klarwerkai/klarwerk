@@ -49,7 +49,14 @@
 // (`:33`) schliesst Admin Experte ein. Wer diese Galerie überhaupt sieht, darf also auch dorthin.
 import { useTranslation } from "react-i18next";
 import { ALL_ITEMS } from "../app/navigation";
-import { FILE_SOURCES, type GallerySource, SYSTEM_SOURCES } from "../lib/importSourceGallery";
+import {
+  FILE_SOURCES,
+  type GallerySource,
+  SYSTEM_SOURCES,
+  orderByState,
+  systemKachelMitStatus,
+} from "../lib/importSourceGallery";
+import type { IntegrationStatus } from "../lib/integrationStatus";
 import { FileTypePicker, systemIcon } from "./FileTypePicker";
 import { BLATT_WEG_DATEI, BLATT_WEG_PARAMETER } from "./erfassen/wege";
 import { SHAREPOINT_BEREICH_ANKER } from "./sharepoint-import/anker";
@@ -108,19 +115,48 @@ function systemZielFuer(source: GallerySource): string | null {
   return source.id === "sharepoint" ? SHAREPOINT_ZIEL : null;
 }
 
+// ================================================================================================
+// ADMIN-02 — DIE SHAREPOINT-KACHEL SAGT DEN ZUSTAND DIESER INSTALLATION, NICHT „AKTIV".
+// ================================================================================================
+//
+// Der Zustand kommt von AUSSEN herein (`sharepointStatus`), abgeleitet aus derselben Zugangsauskunft,
+// die der SharePoint-Bereich darunter zeigt (`lib/integrationStatus.ts`). Die Galerie fragt selbst
+// nichts ab: sie wird auch ohne Abfragespeicher gerendert (SSR-Vorrichtung der Erklärseite), und
+// eine zweite Abfrage hier wäre ein zweiter Leser derselben Auskunft. Ohne Zustand — Auskunft lädt,
+// scheitert oder die Rolle darf sie nicht lesen — bleibt die Kachel beim statischen „verfügbar".
+//
+// „Bald" und „geplant" zählen NICHT als verfügbare Anbindung: die Zählzeile nennt nur, was hier
+// nutzbar oder einrichtbar ist.
+const NICHT_VERFUEGBAR: readonly string[] = ["soon", "planned"];
+
 export function ImportSourceGallery({
   onActivate,
+  sharepointStatus = null,
 }: {
   // Wird AUSSCHLIESSLICH für aktive Kacheln aufgerufen (echter, bestehender Fluss). Für bald/geplant
   // bleibt dieser Callback bewusst unberührt — kein Import, kein Konnektor-Call (das steuert der Picker).
   onActivate: (id: string) => void;
+  /** ADMIN-02: der Zustand der SharePoint-Anbindung in dieser Installation, sofern bekannt. */
+  sharepointStatus?: IntegrationStatus | null;
 }): JSX.Element {
   const { t } = useTranslation();
+  const systeme = SYSTEM_SOURCES.map((s) =>
+    s.id === "sharepoint" ? systemKachelMitStatus(s, sharepointStatus) : s,
+  );
+  const verfuegbar = systeme.filter((s) => !NICHT_VERFUEGBAR.includes(s.state));
+  const inPlanung = systeme.length - verfuegbar.length;
   return (
     <div id="import-source-gallery" className="space-y-4">
+      <p data-testid="import-gallery-verfuegbar" className="text-[12px] text-muted">
+        {t("integrationen.galerie.zaehlung", {
+          n: verfuegbar.length,
+          namen: verfuegbar.map((s) => t(s.labelKey)).join(", "),
+          geplant: inPlanung,
+        })}
+      </p>
       <FileTypePicker
         title={t("imp.gallery.systemsTitle")}
-        sources={SYSTEM_SOURCES}
+        sources={orderByState(systeme)}
         onActivate={onActivate}
         iconFor={systemIcon}
         hrefFor={systemZielFuer}

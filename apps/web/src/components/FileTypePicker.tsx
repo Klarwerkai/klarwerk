@@ -38,6 +38,9 @@ const TILE_CLASS: Record<SourceState, string> = {
   // Faehigkeit existiert und die Kachel fuehrt wirklich dorthin. Deshalb traegt sie die Optik der
   // aktiven Kachel und nicht die gedaempfte der geplanten.
   elsewhere: "border-ink/30 bg-surface text-text hover:border-ink/50 hover:bg-hairline-soft",
+  // ADMIN-02: gebaut, Stand dieser Installation unbekannt oder ungeprüft — die Kachel führt zu der
+  // Auskunft, die es sagt. Optik einer begehbaren Kachel, aber kein „aktiv".
+  available: "border-ink/20 bg-surface text-text hover:border-ink/40 hover:bg-hairline-soft",
   // AUFTRAG-mega15 Block D (SCRUM-382): vorhanden, aber ohne hinterlegten Dienst nicht nutzbar —
   // optisch naeher an „bald" als an „geplant", denn gebaut IST es. Aktivierbar ist es trotzdem nicht.
   unconfigured: "border-hairline bg-page text-muted hover:border-ink/25",
@@ -48,6 +51,7 @@ const TILE_CLASS: Record<SourceState, string> = {
 const BADGE_CLASS: Record<SourceState, string> = {
   active: "bg-trust-pos-bg text-trust-pos-text",
   elsewhere: "bg-trust-pos-bg text-trust-pos-text",
+  available: "bg-hairline-soft text-muted",
   unconfigured: "bg-trust-warn-bg text-trust-warn-text",
   soon: "bg-trust-warn-bg text-trust-warn-text",
   planned: "bg-hairline-soft text-muted-2",
@@ -119,7 +123,8 @@ function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }
           data-tile-badge
           className={`shrink-0 rounded-pill px-1.5 py-0.5 text-[10px] font-medium ${BADGE_CLASS[source.state]}`}
         >
-          {t(STATE_BADGE_KEY[source.state])}
+          {/* ADMIN-02: trägt die Kachel den Zustand dieser Installation, sagt das Abzeichen ihn. */}
+          {t(source.badgeKey ?? STATE_BADGE_KEY[source.state])}
         </span>
       </span>
       {/* Die zwei Schritte, die auf der Zielflaeche noch zu gehen sind — im Wortlaut DIESER Flaeche.
@@ -153,6 +158,7 @@ function Tile({
   const marken = {
     "data-id": source.id,
     "data-state": source.state,
+    ...(source.status ? { "data-status": source.status } : {}),
     onClick,
   };
   // Die KLASSE steht ausdruecklich an beiden Elementen und NICHT im gemeinsamen Attributobjekt:
@@ -164,7 +170,7 @@ function Tile({
     // Das Badge sagt in zwei Woertern, WO es weitergeht; der ausgeschriebene Satz steht am Link.
     // Er ist derselbe, den eine Kachel OHNE Ziel als Hinweis zeigt (`hintKeyFor`) — ein Text, zwei
     // Tueren, keine zweite Formulierung derselben Wahrheit.
-    const hinweis = hintKeyFor(source.state);
+    const hinweis = source.hintKey ?? hintKeyFor(source.state);
     return (
       <a
         href={href}
@@ -286,10 +292,10 @@ export function FileTypePicker({
     // `setHint((prev) => …)` liefe im StrictMode zweimal und meldete den Hinweis doppelt nach oben.
     const naechster = hint?.id === source.id ? null : source;
     setHint(naechster);
-    onHintChange?.(naechster ? hintKeyFor(naechster.state) : null);
+    onHintChange?.(naechster ? (naechster.hintKey ?? hintKeyFor(naechster.state)) : null);
   };
 
-  const hintKey = hint ? hintKeyFor(hint.state) : null;
+  const hintKey = hint ? (hint.hintKey ?? hintKeyFor(hint.state)) : null;
   // Die Reihenfolge innerhalb beider Mengen bleibt die von orderByState — hier wird nur GETRENNT,
   // nicht neu sortiert.
   const visible = collapsePlanned ? sources.filter((s) => s.state !== "planned") : sources;

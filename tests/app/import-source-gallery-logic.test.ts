@@ -18,7 +18,15 @@ import {
 
 // mega15 Block D: „unconfigured" (gebaut, aber kein Dienst hinterlegt) steht zwischen aktiv und bald.
 // JOB 3190 (UX-18): „elsewhere" (anderswo im Produkt wirklich einlesbar) steht direkt hinter aktiv.
-const RANK = { active: 0, elsewhere: 1, unconfigured: 2, soon: 3, planned: 4 } as const;
+// ADMIN-02: „available" (gebaut, Stand dieser Installation unbekannt/ungeprüft) direkt hinter „elsewhere".
+const RANK = {
+  active: 0,
+  elsewhere: 1,
+  available: 2,
+  unconfigured: 3,
+  soon: 4,
+  planned: 5,
+} as const;
 
 function isOrdered(sources: readonly GallerySource[]): boolean {
   for (let i = 1; i < sources.length; i++) {
@@ -89,11 +97,16 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
   // Dass die Kachel das nicht nur behauptet, misst
   // `tests/sharepoint-onedrive-import/katalog-sagt-die-wahrheit.test.ts` an allen drei Stellen —
   // hier steht nur noch der Zustand, den diese Messungen decken.
-  it("Systeme: Confluence, JSON-Import und SharePoint aktiv; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
+  //
+  // ADMIN-02 — NACHGEFÜHRT: die drei Messungen decken „gebaut", nicht „in DIESER Installation aktiv".
+  // Statisch steht SharePoint deshalb auf „available"; den Stand der Installation setzt die Galerie
+  // aus der Zugangsauskunft (`systemKachelMitStatus`, gemessen in
+  // `tests/admin-integrationszustaende/`).
+  it("Systeme: Confluence und JSON-Import aktiv; SharePoint verfuegbar; Jira bald; Word-/PDF-Quelle und die uebrigen geplant", () => {
     const byId = new Map(SYSTEM_SOURCES.map((s) => [s.id, s.state]));
     expect(byId.get("confluence")).toBe("active");
     expect(byId.get("json")).toBe("active");
-    expect(byId.get("sharepoint"), "sharepoint").toBe("active");
+    expect(byId.get("sharepoint"), "sharepoint").toBe("available");
     expect(byId.get("jira"), "jira").toBe("soon");
     for (const id of [
       "word-sys",

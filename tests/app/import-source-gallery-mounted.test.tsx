@@ -11,7 +11,8 @@ import i18n from "../../apps/web/src/i18n";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const RANK: Record<string, number> = { active: 0, soon: 1, planned: 2 };
+// ADMIN-02: „available" (SharePoint ohne Auskunft) steht zwischen aktiv und bald.
+const RANK: Record<string, number> = { active: 0, available: 1, soon: 2, planned: 3 };
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -97,10 +98,11 @@ describe("ic7: Galerie rendert alle drei Zustandsklassen in Reihenfolge", () => 
     await i18n.changeLanguage("de");
     mount();
     expect(tileById("confluence").textContent).toContain("aktiv");
-    // JOB 4086: SharePoint IST jetzt aktiv — die gedeckte Aussage misst
-    // `tests/sharepoint-onedrive-import/katalog-sagt-die-wahrheit.test.ts` an Schalter, Route und
-    // Modul; hier steht nur, dass das Badge es auch sagt.
-    expect(tileById("sharepoint").textContent).toContain("aktiv");
+    // ADMIN-02 — NACHGEFÜHRT: ohne Zugangsauskunft sagt die SharePoint-Kachel „verfügbar", nicht
+    // „aktiv". Gebaut ist sie (Schalter, Route, Modul — `katalog-sagt-die-wahrheit.test.ts`); ob sie
+    // in dieser Installation eingerichtet ist, weiss nur die Auskunft.
+    expect(tileById("sharepoint").textContent).toContain("verfügbar");
+    expect(tileById("sharepoint").textContent).not.toContain("aktiv");
     expect(tileById("jira").textContent).toContain("bald");
     expect(tileById("teams").textContent).toContain("geplant");
   });

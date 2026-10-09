@@ -476,6 +476,13 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
   },
+  // ADMIN-02: der Verbindungstest. Antwortet mit Zeitpunkt, Umfang, Ergebniswort und Dauer — keine
+  // Dateinamen, kein Inhalt, kein Wissensobjekt.
+  "POST /api/import/sharepoint/verbindungstest": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Verbindungstest (feste Ergebniswörter), Admin.",
+  },
   // R-0170: dieselbe Auskunft für Jira (`services/jira/src/credential-state.ts`) — Namen und
   // ja/nein je Variable, nie ein Wert, kein Inhalt eines Wissensobjekts.
   "GET /api/import/jira/zugang": {

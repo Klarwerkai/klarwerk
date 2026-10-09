@@ -975,6 +975,18 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // ADMIN-02: der Verbindungstest. Auf der Bühne stehen keine SharePoint-Angaben; er endet deshalb
+  // LOKAL („ausgeschaltet" bzw. „nicht eingerichtet"), ohne Abruf an eine Gegenstelle — gemessen
+  // wird genau das Rechtetor.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "POST",
+    pfad: "/api/import/sharepoint/verbindungstest",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:170",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
   // JOB 4086 · die zwei Türen des SharePoint-Imports. Sie stehen hier VOLLSTÄNDIG in der Abnahme
   // und nicht in der Restliste, und das geht, weil beide OHNE hinterlegte Zugangsdaten gar nichts
   // anrichten: der Adapter kommt nicht zustande, die Antwort ist ein 503 vor jedem Effekt. Die
