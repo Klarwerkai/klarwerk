@@ -94,6 +94,7 @@ import { Begriffshinweise } from "../Begriffshinweise";
 import { CaptureDraftList } from "../CaptureDraftList";
 import { DemoBanner } from "../DemoBanner";
 import { DraftBodyGallery } from "../DraftBodyGallery";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
@@ -4084,7 +4085,13 @@ function AnhangListe({ bodyHtml }: { bodyHtml: string }): JSX.Element {
   const { t } = useTranslation();
   const anzahl = (bodyHtml.match(/<img\b/gi) ?? []).length;
   if (anzahl === 0) {
-    return <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>;
+    return (
+      <>
+        <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "entwuerfe")}
+      </>
+    );
   }
   return <p className="text-[12.5px] text-text">{t("erfassen.anhaenge.anzahl", { n: anzahl })}</p>;
 }
