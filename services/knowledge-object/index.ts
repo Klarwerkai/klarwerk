@@ -327,7 +327,14 @@ export type {
   AnweisungRepo,
   AnweisungStandAufnahme,
 } from "./src/gesamtanweisung-types";
-export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
+export {
+  KoError,
+  KNOWLEDGE_TYPES,
+  KO_AUSSAGEARTEN,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+} from "./src/types";
+export type { KoAussageart } from "./src/types";
 // R-0169 (herkunft-identitaet): die interne Dokumentakte — eigene Identität und unveränderliche
 // Fassungen für Importe ohne externe Quellenkennung (Word-Zusatz, JSON ohne externalId).
 export {
@@ -439,6 +446,8 @@ export type {
   ConfidentialityDisclosure,
   ConfidentialityProvenance,
 } from "./src/confidentiality";
+// JOB 593 / R-0082: die EINE Normalform der Anlagenkennung — auch für die Lebenszyklus-Kopplung.
+export { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./src/asset";
 // R-1664/R-2179/R-2180: die Normalform der geführten Negativwissen-Angaben. Aufrufer ist die
 // Persistenzgrenze des Entwurfs (services/capture) — dieselbe Form, keine zweite Auslegung.
 // BEN, Nacharbeit 2: dazu die Grenzprüfung — der Entwurfsrand weist Überschreitungen ab, statt zu kürzen.
