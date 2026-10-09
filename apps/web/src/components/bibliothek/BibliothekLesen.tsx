@@ -106,6 +106,7 @@ import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
 import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44Struktur";
 import { ListEditor, TagEditor } from "../editors";
 import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
+import { NegativwissenAnzeige } from "../ko/NegativwissenAnzeige";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
@@ -3747,6 +3748,10 @@ export function BibliothekLesen({
                 </>
               ) : null}
             </div>
+            {/* R-1664/R-2179: der geführt erfasste Lerneffekt (nur, wenn er Angaben trägt). Bewusst
+                AUSSERHALB von `bib-text`: die Lesegliederung sammelt Überschriften aus diesem Knoten,
+                und die Lerneffekt-Überschrift ist kein Abschnitt des Fliesstexts. */}
+            <NegativwissenAnzeige angaben={ko.negativwissen} />
 
             {/* Chips: Quellen und Bilder. Die Zahl steht vorn, wie in der Vorlage („1 · Titel"). */}
             <div

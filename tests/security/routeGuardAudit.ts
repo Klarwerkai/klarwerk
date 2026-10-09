@@ -687,6 +687,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Output (output-routes.ts) ---
   "GET /api/output/sources": { protection: "ko.read" },
   "POST /api/output/generate": { protection: "ko.read" },
+  // RECHERCHE:pmo-fea-0004: Wissensupdate fürs Teamgespräch (read-only, kein Versand).
+  "GET /api/output/wochenupdate": { protection: "ko.read" },
 
   // --- Lernplattform-Übergabe (lms-export-routes.ts) ---
   "POST /api/output/scorm/pruefen": { protection: "ko.read" },
@@ -831,6 +833,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pflegen wirkt auf alle Texte des Hauses — dieselben Rollen, die über fremde Beiträge urteilen.
   "POST /api/begriffe": { protection: "ko.validate" },
   "PUT /api/begriffe/:id": { protection: "ko.validate" },
+
+  // --- Betroffenenrechte (datenschutz-routes.ts) ---
+  // Die EIGENEN Daten und der EIGENE Löschantrag: jede angemeldete Person. Welche Objekttitel in
+  // der Auskunft erscheinen, entscheidet der Sichtbarkeitsfilter des Betrachters.
+  "GET /api/me/daten": { protection: "auth", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  "GET /api/me/loeschantrag": { protection: "auth" },
+  "POST /api/me/loeschantrag": { protection: "auth" },
+  "POST /api/me/loeschantrag/:id/zurueckziehen": { protection: "auth" },
+  // Fremde Konten und das Verzeichnis: dieselbe Schranke wie das Löschen eines Kontos.
+  "GET /api/datenschutz/loeschantraege": { protection: "users.manage" },
+  "POST /api/datenschutz/loeschantraege/:id/erledigen": { protection: "users.manage" },
+  "POST /api/datenschutz/loeschantraege/:id/ablehnen": { protection: "users.manage" },
+  "GET /api/datenschutz/auskunft/:nutzerId": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "GET /api/datenschutz/verarbeitungsverzeichnis": { protection: "users.manage" },
 
   // --- Ausgangsprüfung (ausgangspruefung-routes.ts, R-1646) ---
   // Der ausgehende Text vor der Freigabe und die Entscheidung darüber: wer über fremde Beiträge urteilt.
