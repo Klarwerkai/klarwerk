@@ -119,7 +119,9 @@ describe("WP-BILD-1d: Verdrahtung + i18n", () => {
       resolve(process.cwd(), "apps/web/src/components/bibliothek/BibliothekLesen.tsx"),
       "utf8",
     );
-    const body = src.indexOf('<SanitizedHtml html={ko.bodyHtml} className="prose-kw" />');
+    // Der Lese-Body der Fläche — mit oder ohne weitere Anzeigeoptionen (seit R-1160 `lesehuellen`).
+    const body =
+      /<SanitizedHtml html=\{ko\.bodyHtml\} className="prose-kw"[^>]*\/>/.exec(src)?.index ?? -1;
     expect(body, "der Lese-Body der Fläche").toBeGreaterThan(-1);
     const danach = src.slice(body);
     const treffer = /<BodyImageGallery\s+bodyHtml=\{ko\.bodyHtml\}/.exec(danach);

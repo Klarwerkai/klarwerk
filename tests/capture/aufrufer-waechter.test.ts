@@ -1295,10 +1295,11 @@ const BEWUSST: readonly Ausnahme[] = [
 // Abgrenzung. Hier steht deshalb nur, was eine ausdrückliche SPERRE trägt oder einem belegten
 // GESONDERTEN AUFTRAG gehört, und jeder Eintrag nennt diesen Beleg. Ohne eine solche Einschränkung
 // wurde abgeschlossen: in Nacharbeit 6 sind `PgWriteFence`, `fenceKey` und `netzQualitaet`
-// entfernt worden, in Nacharbeit 10 `createReindexQueue`, `ImportResultView` und die fünf
-// Wissensraum-Bausteine — dort trugen die angeführten „Sperren“ und der „gesonderte Auftrag“ nicht
-// mehr (Kommentare an den früheren Stellen). A3 verlangt die Streichung, sobald ein Baustein einen
-// Aufrufer hat oder entfernt ist, und prüft, dass jede genannte Belegdatei existiert.
+// entfernt worden, in Nacharbeit 10 `ImportResultView` und die fünf Wissensraum-Bausteine — dort
+// trugen die angeführten „Sperren“ und der „gesonderte Auftrag“ nicht mehr; `createReindexQueue` ist
+// inzwischen ANGESCHLOSSEN (Kommentare an den früheren Stellen). A3 verlangt die Streichung, sobald
+// ein Baustein einen Aufrufer hat oder entfernt ist, und prüft, dass jede genannte Belegdatei
+// existiert.
 interface OffenerRest extends Ausnahme {
   /** Warum dieser Auftrag den Fall nicht abschliesst. */
   readonly abgrenzung: "sperre" | "gesonderter-auftrag";
@@ -1314,15 +1315,17 @@ const AUFTRAG_BESTANDSRESET =
   "Auftrag aufnahme:20260922:gesamt-bestandsreset — R-0774: offene Owner-Punkte OV-1 bis OV-5 " +
   "(Sperrrichtung, Löschgraph, Auditwahrheit bei Absturz, Zielpfade, zweiter Server); " +
   "R-1911: E9 OFFEN";
-// R-1349 (Nacharbeit 10, BEN): hier stand `services/app/src/reindex-queue.ts::createReindexQueue`
-// als „Sperre“ — begründet mit BENs Satz aus JOB 1163, die Anschlusswahl sei „weiterhin nicht
-// freigegeben“. Das war eine historische Schnittgrenze des damaligen Baus, keine heute wirksame
-// Nutzersperre. Am heutigen Produktweg abgeglichen: die Suchprojektion entsteht im SELBEN
-// kontrollierten Schreibvorgang wie die neue Inhaltsversion (G27, `persistSearchProjection` in
-// `services/knowledge-object/src/service.ts`; die Metadatenzeile zieht ein `revise` mit), Nachzug
-// und Abgleich laufen über `backfillSearchProjections`/`reconcileSearchProjections`. Für eine
-// Kennungswarteschlange im Speicher ohne Reindex-Funktion und ohne Erzeuger bleibt kein Zweck — sie
-// war zudem nicht „dauerhaft“. Sie ist samt Prüfstand entfernt.
+// R-1349 (Nacharbeit 10, BEN; Integration mit main): hier stand
+// `services/app/src/reindex-queue.ts::createReindexQueue` als „Sperre“ — begründet mit BENs Satz aus
+// JOB 1163, die Anschlusswahl sei „weiterhin nicht freigegeben“. Das war eine historische
+// Schnittgrenze, keine heute wirksame Nutzersperre. Nacharbeit 10 hatte die Schlange deshalb
+// entfernt. Im selben Zeitraum hat die Aufnahme gesamt-suchindex-aktualitaet (R-0470) sie auf main
+// ANGESCHLOSSEN: `build-app.ts` reiht über `KoService.setAenderungsNachlauf` jede gespeicherte
+// Objektänderung ein, der Eintrag ist `reindexKoForDuplicatePrefilter`, und der Abgleich beim Start
+// (`nachfuehrungNachStart`) schliesst die Neustart-Grenze. Bei der Zusammenführung gilt dieser
+// Anschluss: die Schlange und ihr Prüfstand stehen wieder, der Eintrag hier entfällt, weil der
+// Baustein einen Aufrufer hat. Von Nacharbeit 4 bleibt nur der Abbau von `REINDEX_CONCURRENCY`, das
+// auch auf main niemand liest.
 
 const OFFENER_REST: readonly OffenerRest[] = [
   {

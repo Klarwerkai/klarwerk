@@ -58,8 +58,8 @@ Ausgangsmenge sind die **176 Einträge** am Kandidaten ohne Einzelabschluss:
 
 | Ausgang | Anzahl | Bedeutung |
 |---|---|---|
-| entfernt | 109 | überholt; der Weg, den das Produkt wirklich nimmt, ist benannt (3 davon in Nacharbeit 6, 7 in Nacharbeit 10) |
-| angeschlossen | 17 | der Produktweg ruft jetzt genau diesen Baustein statt einer Abschrift daneben |
+| entfernt | 108 | überholt; der Weg, den das Produkt wirklich nimmt, ist benannt (3 davon in Nacharbeit 6, 6 in Nacharbeit 10) |
+| angeschlossen | 18 | der Produktweg ruft jetzt genau diesen Baustein statt einer Abschrift daneben (einer davon, `createReindexQueue`, durch den Auftrag gesamt-suchindex-aktualitaet auf main) |
 | in den Test gezogen | 13 | Prüfzeug; aus dem Produkt nach `tests/` verlegt |
 | gemessene Fremdlesekante | 28 | Word-Spiegel bzw. Schema-Vertrag; der Wächter misst die Verwendung je Name |
 | **unerledigter Rest** | **5** | **nicht** angeschlossen und **nicht** entfernt; je einem gesonderten, noch nicht gelieferten Auftrag zugeordnet, siehe unten |
@@ -120,8 +120,10 @@ Aus den Registern mit Einzelbegründung kommen zwei weitere Ausgänge hinzu:
   (samt `write-fence.test.ts` und `tests/app/write-fence-race.test.ts`) und
   `kanten-service.ts::netzQualitaet` (samt dem Prüfstand `h3-551-netzqualitaet`). Gründe siehe
   „Unerledigter Rest“.
-- **Entfernt in Nacharbeit 10 (1):** `reindex-queue.ts::createReindexQueue` samt
-  `reindex-queue.test.ts`. Gründe siehe „Unerledigter Rest“.
+- **Angeschlossen (durch main, R-0470):** `reindex-queue.ts::createReindexQueue`. Nacharbeit 10
+  hatte die Schlange entfernt. Die Integration mit main (`110348b2`) hat das zurückgenommen, weil die
+  Aufnahme gesamt-suchindex-aktualitaet sie inzwischen angeschlossen hat (siehe „Unerledigter
+  Rest“). Schlange und `reindex-queue.test.ts` stehen wieder.
 - **Unerledigter Rest (5)** und **begründet behalten (1, `InMemoryKantenRepo`):** siehe unten.
 
 ### Web (`ALTBESTAND_WEB`, 114)
@@ -216,7 +218,8 @@ gegen die Quellen abgeglichen worden.
       `tests/app/write-fence-race.test.ts`. Die dynamische Ladestelle dieses Prüfstands ist aus
       `tests/legal/mega61-rechtsseiten.test.tsx` (`BEKANNT_UNAUFLOESBAR`) gestrichen; der
       `verwaist`-Fall dort verlangt genau das.
-- **Nacharbeit 10 (BEN): angeführte Abgrenzung trug nicht ⇒ abgeschlossen (7, entfernt).** Nach
+- **Nacharbeit 10 (BEN): angeführte Abgrenzung trug nicht ⇒ abgeschlossen (7: 6 entfernt, 1 seit
+  der Integration angeschlossen).** Nach
   Nacharbeit 6 standen 12 Fälle hier. Sieben davon waren mit einem gelieferten Auftrag bzw. mit
   historischen Schnittgrenzen und Planfragen begründet, die keine heute belegte Nutzersperre sind.
   Am heutigen Produkt abgeglichen:
@@ -252,7 +255,19 @@ gegen die Quellen abgeglichen worden.
     - Eine Kennungswarteschlange im Speicher ohne Reindex-Funktion und ohne Erzeuger hat daneben
       keinen Zweck. Dauerhaft war sie auch nicht: Laut Quellenhilfe beantwortet J08-JOB556
       „Warteschlange + dauerhaft“.
-    - Entfernt samt `reindex-queue.test.ts`.
+    - Nacharbeit 10 hat sie deshalb samt `reindex-queue.test.ts` entfernt.
+    - **Überholt durch die Integration mit main (`110348b2`, Nacharbeit 12):** Die Aufnahme
+      gesamt-suchindex-aktualitaet (R-0470) hat die Schlange inzwischen **angeschlossen**.
+      - `services/app/src/build-app.ts` baut sie (`createReindexQueue`, Z. 3581) und reiht über
+        `KoService.setAenderungsNachlauf` jede gespeicherte Objektänderung ein.
+      - Der Eintrag ist `reindexKoForDuplicatePrefilter` (`duplicate-detection.ts`). Der Abgleich beim
+        Start (`nachfuehrungNachStart`) gegen den dauerhaften Vektorspeicher schliesst die
+        Neustart-Grenze.
+      - Ihr Prüfstand ist `tests/suchindex-aktualitaet/vektor-nachfuehrung.test.ts`.
+    - Damit ist der Fall **angeschlossen** statt entfernt. Die Datei steht in der Fassung von main,
+      `reindex-queue.test.ts` ist wiederhergestellt. Von diesem Auftrag bleibt nur der Abbau von
+      `REINDEX_CONCURRENCY`, das auch auf main niemand liest. Den Konflikt hat die Integration
+      angezeigt (`HISTORIE/nacharbeit-12/INTEGRATION-KONFLIKT.json`).
   - `LibraryScopeBar`, `KoHomeLine` sowie `librarySpace.ts::koHomePath`, `serializeSpace` und
     `spaceFromParams` (PRO 381).
     - Die angeführte „Sperre“ stand nicht in PLAN PRO 378 §9, sondern in §10 Zeile 408. Sie war
@@ -516,8 +531,13 @@ jetzt an der Stelle, die das Produkt wirklich benutzt. Keiner ist abgeschwächt.
   - Wächter und Bedarfsabgleich 17 von 17 grün, Build und Format grün.
   - Damit sind belegt: die Symbolbindung im Spiegel, A8 mit `nurParameter` und `nurGeschattet`
     sowie A1. Die 29 Word-Namen in `taskpane.js` decken also auch unter der Bindungsprüfung.
-- **Fehlender Beleg:** Die Prüfläufe zu Nacharbeit 10 stehen aus. Es geht um die sieben Abbauten
-  (`ImportResultView` samt Abhängigkeiten, `createReindexQueue`, fünf Wissensraum-Bausteine), das
-  verkleinerte Register und die nachgezogenen Prüfstände. Dieser Arbeitsgang hat keine Tests
-  gestartet.
+- **Fehlender Beleg:** Die Prüfläufe zu Nacharbeit 10 und zur Integration mit main (Nacharbeit 12)
+  stehen aus; im Archiv liegt dafür noch kein Lauf. Zu prüfen sind:
+  - die sechs Abbauten (`ImportResultView` samt Abhängigkeiten, fünf Wissensraum-Bausteine);
+  - die wiederhergestellte, von main angeschlossene Reindex-Schlange;
+  - die aufgelösten Konflikte (`askResponse.ts`: R-0310 aus main ohne `selectGap`; der Wächter;
+    `KoRead.tsx` bleibt entfernt, `r1160` misst an der Bibliotheks-Lesefläche);
+  - die nachgezogenen Prüfstände.
+
+  Dieser Arbeitsgang hat keine Tests gestartet.
   - Der Lieferbeleg (Fassung) entsteht erst mit der Veröffentlichung.

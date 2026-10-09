@@ -56,3 +56,86 @@ describe("SCRUM-138: Ask-Response-Adapter", () => {
     expect(response.gap?.id).toBe("gap-1");
   });
 });
+
+// Aufnahme 20260922 · R-0310 (Ben zu 6cc581b4): `selectAnswer` wendet die Absatz-Beleg-Zuordnung
+// des Servers an — Fragenseite und Mobilseite lesen damit denselben gefilterten Antwortstand.
+describe("R-0310 · selectAnswer gibt nur belegte Absätze aus", () => {
+  const mehrere: AnswerResult = {
+    ...answered,
+    answer: "A gilt [1].\n\nFrei erfunden.\n\nB gilt.\n\nC gilt.",
+    sources: ["ko-1", "ko-2", "ko-3"],
+    citedSources: ["ko-1", "ko-2"],
+  };
+
+  it("S1 · unbelegter Absatz fällt weg; jeder belegte trägt die Marke seiner tragenden Quelle(n)", () => {
+    const a = selectAnswer({
+      result: mehrere,
+      gap: null,
+      receipt: RECEIPT,
+      absaetze: [
+        { text: "A gilt [1].", quellen: ["ko-1"] },
+        { text: "Frei erfunden.", quellen: [] },
+        { text: "B gilt.", quellen: ["ko-2", "ko-1"] },
+        // ko-3 ist nur herangezogen — es belegt nichts.
+        { text: "C gilt.", quellen: ["ko-3"] },
+      ],
+    });
+    expect(a.answered).toBe(true);
+    expect(a.answer).toBe("A gilt [1].\n\nB gilt. [2, 1]");
+  });
+
+  it("S2 · ein einzelner belegter Absatz bleibt wörtlich (die Fläche setzt seine Marke ans Ende)", () => {
+    const a = selectAnswer({
+      result: { ...mehrere, answer: "B gilt.\n\nFrei erfunden." },
+      gap: null,
+      receipt: RECEIPT,
+      absaetze: [
+        { text: "B gilt.", quellen: ["ko-2"] },
+        { text: "Frei erfunden.", quellen: [] },
+      ],
+    });
+    expect(a.answer).toBe("B gilt.");
+  });
+
+  it("S3 · kein Absatz belegt: keine Antwort, sondern die Wissenslücke", () => {
+    const a = selectAnswer({
+      result: mehrere,
+      gap: null,
+      receipt: RECEIPT,
+      absaetze: [
+        { text: "Frei erfunden.", quellen: [] },
+        { text: "C gilt.", quellen: ["ko-3"] },
+      ],
+    });
+    expect(a.answered).toBe(false);
+    expect(a.answer).toBeNull();
+    expect(a.knowledgeClass).toBe("unbekannt");
+    // Tragende Quellen stehen fest — die Zuordnung ist bekannt, nur belegt sie nichts.
+    expect(a.zuordnungUnbekannt).toBeUndefined();
+  });
+
+  it("S3b · Zuordnung unbekannt (keine tragende Quelle): ebenfalls keine Antwort — und der Grund wird benannt", () => {
+    for (const citedSources of [[], ["ko-gibt-es-nicht"], undefined]) {
+      const { citedSources: _weg, ...ohne } = mehrere;
+      const a = selectAnswer({
+        result: citedSources === undefined ? ohne : { ...ohne, citedSources },
+        gap: null,
+        receipt: RECEIPT,
+        absaetze: [
+          { text: "A gilt [1].", quellen: [] },
+          { text: "B gilt.", quellen: [] },
+        ],
+      });
+      expect(a.answered, String(citedSources)).toBe(false);
+      expect(a.answer).toBeNull();
+      expect(a.zuordnungUnbekannt).toBe(true);
+    }
+  });
+
+  it("S4 · ohne das Feld (älterer Server) und bei einer Lücke bleibt alles unverändert", () => {
+    expect(selectAnswer({ result: mehrere, gap: null, receipt: RECEIPT })).toBe(mehrere);
+    expect(selectAnswer({ result: unanswered, gap, receipt: RECEIPT, absaetze: [] })).toBe(
+      unanswered,
+    );
+  });
+});

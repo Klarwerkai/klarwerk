@@ -3,7 +3,8 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyPluginAsync } from "fastify";
-import type { AuditService } from "../../../audit";
+import type { AuditEntry, AuditService } from "../../../audit";
+import { TRASH_RETENTION_DAYS } from "../../../knowledge-object";
 import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
 // JOB 3277: der paketbezogene Weg (wählen · laden · zurücksetzen · entfernen) — additiv neben
 // WP-B6, siehe Kopf von example-packages/demo-pakete.ts.
@@ -96,10 +97,21 @@ const REPO_WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".
 
 /** Dieselbe Auflösung wie `backup.sh:34-36`; eine leere Variable gilt wie eine ungesetzte (`${VAR:-…}`). */
 function sicherungsVerzeichnis(): string {
-  const gesetzt = process.env.BACKUP_DIR;
-  return gesetzt !== undefined && gesetzt !== ""
-    ? resolve(gesetzt)
+  return verzeichnisQuelle() === "BACKUP_DIR"
+    ? resolve(process.env.BACKUP_DIR ?? "")
     : resolve(join(REPO_WURZEL, "backups"));
+}
+
+/**
+ * ADMIN-13 — WOHER der Ort stammt. Ohne `BACKUP_DIR` liest die Auskunft die Vorgabe
+ * `<Wurzel>/backups` (im Produktionsimage `/app/backups`). Die Betriebsanleitung legt den
+ * Zeitplan aber mit `BACKUP_DIR=/data/backups` an (`scripts/backup/RESTORE.md`, „Coolify / Cron").
+ * Ein fehlendes Vorgabeverzeichnis sagt deshalb nichts über Sicherungen an einem anderen Ort — und
+ * die Fläche muss sagen können, dass sie nur an DIESEM Ort nachgesehen hat.
+ */
+function verzeichnisQuelle(): "BACKUP_DIR" | "vorgabe" {
+  const gesetzt = process.env.BACKUP_DIR;
+  return gesetzt !== undefined && gesetzt !== "" ? "BACKUP_DIR" : "vorgabe";
 }
 
 /**
@@ -183,6 +195,475 @@ async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag
     beglaubigt: pruefsumme !== null,
     pruefsumme,
     folgeNummer: folgeNummerAusName(datei),
+  };
+}
+
+// ==================================================================================================
+// ADMIN-13 · VIER SCHUTZWEGE, VIER BEFUNDE — UND KEINER LEIHT SICH DIE AUSSAGE DES ANDEREN.
+// ==================================================================================================
+//
+// Exportdatei, Backup, Papierkorb und Restore-Nachweis schützen vor verschiedenen Schäden, und jeder
+// hat seinen eigenen Beleg. Diese Auskunft LIEST nur Belege, die es schon gibt — sie startet keinen
+// Export, keine Sicherung, keine Endlöschung und keinen Restore:
+//
+//   · Backup-Lauf    `<Verzeichnis>/letzter-lauf.json`, geschrieben von `backup.sh` (sieben Felder)
+//   · Restore-Probe  `<Verzeichnis>/letzter-drill.json`, geschrieben von `restore-drill.sh`
+//   · Exportdatei    die Auditeinträge `library.export` und `audit.exported` (wer, wann, wie viel)
+//   · Papierkorb     `KoService.trashed()` samt Frist `TRASH_RETENTION_DAYS`, dazu `ko.restored` und
+//                    `ko.purged` aus dem Audit
+//
+// DIE GRENZE ZWISCHEN PRÜFSUMME UND WIEDERHERSTELLUNG BLEIBT, WAS SIE WAR: `beglaubigt` an einem
+// Eintrag heißt weiterhin nur „Prüfsummendatei liegt daneben". Grün für einen Restore gibt es
+// AUSSCHLIESSLICH aus einem Drillprotokoll, dessen Lauf mit Exit 0 endete, dessen Prüfsumme
+// nachgerechnet passte, das ein Ziel nennt und in allen vier Vergleichen `gleich` meldet. Ein Archiv,
+// eine Prüfsummendatei oder ein Hashvergleich allein ergeben hier nie `erfolg`.
+//
+// UNBEKANNT IST EIN EIGENER ZUSTAND MIT GRUND: fehlt eine Datei, ist sie unlesbar oder hat sie nicht
+// die zugesagte Form, steht `unbekannt` mit genau diesem Grund da — nie „keine" und nie „in Ordnung".
+
+/** Warum ein Befund nicht feststellbar ist — technische Kennung, Sätze wohnen im Wörterbuch. */
+type UnbekanntGrund =
+  | "kein_verzeichnis"
+  | "unlesbar"
+  | "fehlt"
+  | "ungueltig"
+  | "kein_protokoll"
+  | "protokoll_unlesbar";
+interface Unbekannt {
+  zustand: "unbekannt";
+  grund: UnbekanntGrund;
+}
+
+/** Was der letzte Lauf von `backup.sh` hinterlegt hat (`RESTORE.md`, „Was der letzte Lauf getan hat"). */
+interface LaufBefund {
+  zustand: "erfolg" | "fehler";
+  zeitUtc: string | null;
+  exitcode: number | null;
+  grund: string;
+  datei: string | null;
+}
+
+type VergleichZustand = "gleich" | "abweichend" | "nicht_gemessen";
+interface VergleichTabelle {
+  tabelle: string;
+  dump: number | null;
+  datenbank: number | null;
+}
+interface VergleichKategorie {
+  zustand: VergleichZustand;
+  tabellen: VergleichTabelle[];
+}
+type PruefsummenZustand = "passt" | "abweichend" | "fehlt" | "ungueltig" | "nicht_geprueft";
+
+/** Die letzte Restore-Probe. `erfolg` nur bei vollständigem Nachweis, `teilweise` bei Exit 0 mit Lücke. */
+interface DrillBefund {
+  zustand: "erfolg" | "teilweise" | "fehler";
+  /** Nachweise, die eine bestandene Probe nicht trägt (Kennungen) — Grund für `teilweise`. */
+  luecken: string[];
+  /** Widersprüche im Protokoll (Kennungen) — Grund für `fehler` trotz behauptetem Erfolg. */
+  widersprueche: string[];
+  beginnUtc: string | null;
+  zeitUtc: string | null;
+  exitcode: number;
+  grund: string;
+  sicherung: string | null;
+  sicherungZeitpunktUtc: string | null;
+  pruefsumme: { zustand: PruefsummenZustand; sha256: string | null };
+  ziel: string | null;
+  vergleich: {
+    beitraege: VergleichKategorie;
+    anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
+    beziehungen: VergleichKategorie;
+    rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+  };
+  wissensnachweis: string | null;
+}
+
+interface ExportEintrag {
+  zeitUtc: string;
+  format: string | null;
+  anzahl: number | null;
+  gesamt: number;
+}
+interface ExportBefund {
+  zustand: "vorhanden" | "keiner";
+  bibliothek: ExportEintrag | null;
+  auditkette: ExportEintrag | null;
+}
+
+interface PapierkorbBefund {
+  zustand: "gelesen";
+  anzahl: number;
+  aufbewahrungTage: number;
+  naechsteEndloeschungUtc: string | null;
+  /** `false` = ohne Audit; die beiden Zeitpunkte darunter sind dann unbekannt, nicht „nie". */
+  ereignisseProtokolliert: boolean;
+  letzteWiederherstellungUtc: string | null;
+  letzteEndloeschungUtc: string | null;
+}
+
+interface Schutzwege {
+  verzeichnisQuelle: "BACKUP_DIR" | "vorgabe";
+  letzterLauf: LaufBefund | Unbekannt;
+  restore: DrillBefund | Unbekannt;
+  export: ExportBefund | Unbekannt;
+  papierkorb: PapierkorbBefund | Unbekannt;
+}
+
+/** Größer ist keine der beiden Spuren je; eine größere Datei wird nicht gelesen, sondern abgelehnt. */
+const SPUR_DECKEL_BYTES = 64 * 1024;
+const TEXT_DECKEL = 400;
+
+/**
+ * KEINE ZUGANGSDATEN IN EINER AUSKUNFT. Beide Skripte schreiben nach eigener Zusage keine — diese
+ * Stelle verlässt sich darauf nicht: eine Anmeldung in einer Adresse (`schema://name:kennwort@`)
+ * wird maskiert, Steuerzeichen fallen weg, die Länge ist gedeckelt.
+ */
+function ohneZugangsdaten(wert: string): string {
+  return wert
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, "$1***@")
+    .replace(/\p{Cc}/gu, " ")
+    .slice(0, TEXT_DECKEL);
+}
+
+function textOderNull(wert: unknown): string | null {
+  return typeof wert === "string" && wert.length > 0 ? ohneZugangsdaten(wert) : null;
+}
+
+function zahlOderNull(wert: unknown): number | null {
+  return typeof wert === "number" && Number.isFinite(wert) ? wert : null;
+}
+
+/**
+ * Ein Zeitpunkt aus einer Spur. `backup.sh` schreibt ihn wie im Dateinamen (`20260914T093000Z`),
+ * `restore-drill.sh` als ISO-Zeit. Beide Formen werden gelesen; was keine gültige Zeit ist, bleibt
+ * `null` — kein Datum wird auf einen anderen Tag gebogen.
+ */
+function zeitAusSpur(wert: unknown): string | null {
+  if (typeof wert !== "string") {
+    return null;
+  }
+  const kompakt = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(wert);
+  const iso = kompakt
+    ? `${kompakt[1]}-${kompakt[2]}-${kompakt[3]}T${kompakt[4]}:${kompakt[5]}:${kompakt[6]}.000Z`
+    : wert;
+  const zeit = new Date(iso);
+  if (Number.isNaN(zeit.getTime())) {
+    return null;
+  }
+  return kompakt && zeit.toISOString() !== iso ? null : zeit.toISOString();
+}
+
+type SpurGelesen =
+  | { ok: true; wert: Record<string, unknown> }
+  | { ok: false; grund: "fehlt" | "unlesbar" | "ungueltig" };
+
+async function leseSpur(pfad: string): Promise<SpurGelesen> {
+  let roh: string;
+  try {
+    if ((await stat(pfad)).size > SPUR_DECKEL_BYTES) {
+      return { ok: false, grund: "ungueltig" };
+    }
+    roh = await readFile(pfad, "utf8");
+  } catch (fehler) {
+    return {
+      ok: false,
+      grund: (fehler as NodeJS.ErrnoException).code === "ENOENT" ? "fehlt" : "unlesbar",
+    };
+  }
+  try {
+    const wert: unknown = JSON.parse(roh);
+    return wert !== null && typeof wert === "object" && !Array.isArray(wert)
+      ? { ok: true, wert: wert as Record<string, unknown> }
+      : { ok: false, grund: "ungueltig" };
+  } catch {
+    return { ok: false, grund: "ungueltig" };
+  }
+}
+
+async function letzterLaufBefund(verzeichnis: string): Promise<LaufBefund | Unbekannt> {
+  const spur = await leseSpur(join(verzeichnis, "letzter-lauf.json"));
+  if (!spur.ok) {
+    return { zustand: "unbekannt", grund: spur.grund };
+  }
+  const { ergebnis } = spur.wert;
+  if (ergebnis !== "erfolg" && ergebnis !== "fehler") {
+    return { zustand: "unbekannt", grund: "ungueltig" };
+  }
+  return {
+    zustand: ergebnis,
+    zeitUtc: zeitAusSpur(spur.wert.zeit),
+    exitcode: zahlOderNull(spur.wert.exitcode),
+    grund: textOderNull(spur.wert.grund) ?? "",
+    datei: textOderNull(spur.wert.datei),
+  };
+}
+
+const VERGLEICH_ZUSTAENDE: readonly VergleichZustand[] = ["gleich", "abweichend", "nicht_gemessen"];
+const PRUEFSUMMEN_ZUSTAENDE: readonly PruefsummenZustand[] = [
+  "passt",
+  "abweichend",
+  "fehlt",
+  "ungueltig",
+  "nicht_geprueft",
+];
+
+/**
+ * Eine Vergleichskategorie aus dem Protokoll — NACHGERECHNET, nicht übernommen: `gleich` bleibt nur
+ * stehen, wenn jede Tabelle beide Zahlen trägt und sie übereinstimmen. Weichen zwei gemessene Zahlen
+ * ab, ist die Kategorie `abweichend`, gleich was das Protokoll behauptet.
+ */
+function kategorieAus(wert: unknown): VergleichKategorie {
+  const roh = (wert ?? {}) as { zustand?: unknown; tabellen?: unknown };
+  const tabellen: VergleichTabelle[] = Array.isArray(roh.tabellen)
+    ? roh.tabellen.flatMap((t: unknown) => {
+        const e = (t ?? {}) as { tabelle?: unknown; dump?: unknown; datenbank?: unknown };
+        return typeof e.tabelle === "string"
+          ? [
+              {
+                tabelle: e.tabelle.slice(0, 64),
+                dump: zahlOderNull(e.dump),
+                datenbank: zahlOderNull(e.datenbank),
+              },
+            ]
+          : [];
+      })
+    : [];
+  const behauptet = VERGLEICH_ZUSTAENDE.find((z) => z === roh.zustand) ?? "nicht_gemessen";
+  const abweichung = tabellen.some(
+    (t) => t.dump !== null && t.datenbank !== null && t.dump !== t.datenbank,
+  );
+  const vollstaendig =
+    tabellen.length > 0 && tabellen.every((t) => t.dump !== null && t.dump === t.datenbank);
+  const zustand: VergleichZustand = abweichung
+    ? "abweichend"
+    : behauptet === "gleich" && !vollstaendig
+      ? "nicht_gemessen"
+      : behauptet;
+  return { zustand, tabellen };
+}
+
+async function restoreBefund(verzeichnis: string): Promise<DrillBefund | Unbekannt> {
+  const spur = await leseSpur(join(verzeichnis, "letzter-drill.json"));
+  if (!spur.ok) {
+    return { zustand: "unbekannt", grund: spur.grund };
+  }
+  const w = spur.wert;
+  if (
+    w.format !== "klarwerk-restore-drill" ||
+    (w.ergebnis !== "erfolg" && w.ergebnis !== "fehler") ||
+    typeof w.exitcode !== "number" ||
+    !Number.isInteger(w.exitcode)
+  ) {
+    return { zustand: "unbekannt", grund: "ungueltig" };
+  }
+  const p = (w.pruefsumme ?? {}) as { zustand?: unknown; sha256?: unknown };
+  const pruefsumme = {
+    zustand: PRUEFSUMMEN_ZUSTAENDE.find((z) => z === p.zustand) ?? "nicht_geprueft",
+    sha256: typeof p.sha256 === "string" && /^[0-9a-f]{64}$/.test(p.sha256) ? p.sha256 : null,
+  };
+  const v = (w.vergleich ?? {}) as Record<string, unknown>;
+  const anhaenge = (v.anhaenge ?? {}) as { belegeOhneAnhang?: unknown };
+  const rechte = (v.rechte ?? {}) as { rollenDump?: unknown; rollenDatenbank?: unknown };
+  const vergleich = {
+    beitraege: kategorieAus(v.beitraege),
+    anhaenge: {
+      ...kategorieAus(v.anhaenge),
+      belegeOhneAnhang: zahlOderNull(anhaenge.belegeOhneAnhang),
+    },
+    beziehungen: kategorieAus(v.beziehungen),
+    rechte: {
+      ...kategorieAus(v.rechte),
+      rollenDump: textOderNull(rechte.rollenDump),
+      rollenDatenbank: textOderNull(rechte.rollenDatenbank),
+    },
+  };
+  const sicherung = textOderNull(w.sicherung);
+  const ziel = textOderNull(w.ziel);
+  const beginnUtc = zeitAusSpur(w.beginn);
+  const zeitUtc = zeitAusSpur(w.zeit);
+
+  // ADMIN-13 · NACHARBEIT 2 (Bens Befund): die Zusatzvergleiche werden AUSGEWERTET, nicht nur
+  // durchgereicht. Eine behauptete Gleichheit trägt nur, wenn ihr eigener Beleg sie trägt.
+  const { rollenDump, rollenDatenbank } = vergleich.rechte;
+  const rollenFehlen = rollenDump === null || rollenDatenbank === null;
+  const rollenAbweichend = !rollenFehlen && rollenDump !== rollenDatenbank;
+  if (rollenAbweichend) {
+    vergleich.rechte.zustand = "abweichend";
+  } else if (vergleich.rechte.zustand === "gleich" && rollenFehlen) {
+    vergleich.rechte.zustand = "nicht_gemessen";
+  }
+  const waisen = vergleich.anhaenge.belegeOhneAnhang;
+  if (waisen !== null && waisen > 0) {
+    vergleich.anhaenge.zustand = "abweichend";
+  } else if (vergleich.anhaenge.zustand === "gleich" && waisen === null) {
+    vergleich.anhaenge.zustand = "nicht_gemessen";
+  }
+
+  // FEHLENDE NACHWEISE machen eine bestandene Probe „teilweise"; WIDERSPRÜCHE machen sie zum
+  // Fehler. Beides als Kennung, damit die Fläche es benennen kann. Ein regulär gescheiterter Lauf
+  // (Ergebnis fehler, Exitcode ≠ 0) bleibt ein Fehler mit dem Schritt seines Exitcodes.
+  const luecken: string[] = [];
+  const widersprueche: string[] = [];
+  const kategorien = [
+    ["beitraege", vergleich.beitraege],
+    ["anhaenge", vergleich.anhaenge],
+    ["beziehungen", vergleich.beziehungen],
+    ["rechte", vergleich.rechte],
+  ] as const;
+  if ((w.ergebnis === "erfolg") !== (w.exitcode === 0)) {
+    widersprueche.push("exitcode");
+  }
+  if (w.ergebnis === "erfolg") {
+    for (const [name, wert] of [
+      ["beginn", beginnUtc],
+      ["zeit", zeitUtc],
+      ["sicherung", sicherung],
+      ["ziel", ziel],
+    ] as const) {
+      if (wert === null) {
+        luecken.push(name);
+      }
+    }
+    if (pruefsumme.zustand === "nicht_geprueft") {
+      luecken.push("pruefsumme");
+    } else if (pruefsumme.zustand !== "passt") {
+      widersprueche.push("pruefsumme");
+    } else if (pruefsumme.sha256 === null) {
+      luecken.push("sha256");
+    }
+    for (const [name, k] of kategorien) {
+      if (k.zustand === "abweichend") {
+        widersprueche.push(name);
+      } else if (k.zustand === "nicht_gemessen") {
+        luecken.push(name);
+      }
+    }
+    if (waisen === null) {
+      luecken.push("belege_ohne_anhang");
+    } else if (waisen > 0) {
+      widersprueche.push("belege_ohne_anhang");
+    }
+    if (rollenFehlen) {
+      luecken.push("rollen");
+    } else if (rollenAbweichend) {
+      widersprueche.push("rollen");
+    }
+  }
+  const zustand: DrillBefund["zustand"] =
+    w.ergebnis !== "erfolg" || widersprueche.length > 0
+      ? "fehler"
+      : luecken.length > 0
+        ? "teilweise"
+        : "erfolg";
+  return {
+    zustand,
+    luecken,
+    widersprueche,
+    beginnUtc,
+    zeitUtc,
+    exitcode: w.exitcode,
+    grund: textOderNull(w.grund) ?? "",
+    sicherung,
+    sicherungZeitpunktUtc: sicherung === null ? null : zeitpunktAusName(sicherung),
+    pruefsumme,
+    ziel,
+    vergleich,
+    wissensnachweis: textOderNull(w.wissensnachweis),
+  };
+}
+
+/** Der jüngste Eintrag einer Liste — nach Kettenposition, nicht nach Uhrzeit. */
+function juengster(eintraege: readonly AuditEntry[]): AuditEntry | undefined {
+  return eintraege.reduce<AuditEntry | undefined>(
+    (bisher, e) => (bisher === undefined || e.seq > bisher.seq ? e : bisher),
+    undefined,
+  );
+}
+
+function exportEintrag(
+  eintraege: readonly AuditEntry[],
+  format: string | null,
+): ExportEintrag | null {
+  const letzter = juengster(eintraege);
+  if (!letzter) {
+    return null;
+  }
+  const nutzlast = letzter.payload;
+  return {
+    zeitUtc: letzter.at,
+    format: format ?? textOderNull(nutzlast.format),
+    anzahl: zahlOderNull(nutzlast.count),
+    gesamt: eintraege.length,
+  };
+}
+
+async function exportBefund(audit: AuditService | undefined): Promise<ExportBefund | Unbekannt> {
+  if (!audit) {
+    return { zustand: "unbekannt", grund: "kein_protokoll" };
+  }
+  try {
+    const [bibliothek, kette] = await Promise.all([
+      audit.list({ action: "library.export" }),
+      audit.list({ action: "audit.exported" }),
+    ]);
+    const b = exportEintrag(bibliothek, null);
+    const k = exportEintrag(kette, "json");
+    return { zustand: b || k ? "vorhanden" : "keiner", bibliothek: b, auditkette: k };
+  } catch {
+    return { zustand: "unbekannt", grund: "protokoll_unlesbar" };
+  }
+}
+
+async function papierkorbBefund(
+  ko: DemoSeedServices["ko"],
+  audit: AuditService | undefined,
+): Promise<PapierkorbBefund | Unbekannt> {
+  try {
+    const liste = await ko.trashed();
+    const fristen = liste.map((k) => k.expiresAt).sort();
+    const ereignisse = audit
+      ? await Promise.all([
+          audit.list({ action: "ko.restored" }),
+          audit.list({ action: "ko.purged" }),
+        ])
+      : null;
+    return {
+      zustand: "gelesen",
+      anzahl: liste.length,
+      aufbewahrungTage: TRASH_RETENTION_DAYS,
+      naechsteEndloeschungUtc: fristen[0] ?? null,
+      ereignisseProtokolliert: ereignisse !== null,
+      letzteWiederherstellungUtc: ereignisse ? (juengster(ereignisse[0])?.at ?? null) : null,
+      letzteEndloeschungUtc: ereignisse ? (juengster(ereignisse[1])?.at ?? null) : null,
+    };
+  } catch {
+    return { zustand: "unbekannt", grund: "protokoll_unlesbar" };
+  }
+}
+
+/** Alle vier Befunde. Liegt kein lesbares Verzeichnis vor, sind die beiden Dateispuren unbekannt. */
+async function schutzwegeFuer(
+  services: DemoSeedServices & { audit?: AuditService },
+  verzeichnis: string,
+  lage: "gelesen" | "kein_verzeichnis" | "unlesbar",
+): Promise<Schutzwege> {
+  const ohneOrt: Unbekannt = {
+    zustand: "unbekannt",
+    grund: lage === "kein_verzeichnis" ? "kein_verzeichnis" : "unlesbar",
+  };
+  const [letzterLauf, restore, exporte, papierkorb] = await Promise.all([
+    lage === "gelesen" ? letzterLaufBefund(verzeichnis) : ohneOrt,
+    lage === "gelesen" ? restoreBefund(verzeichnis) : ohneOrt,
+    exportBefund(services.audit),
+    papierkorbBefund(services.ko, services.audit),
+  ]);
+  return {
+    verzeichnisQuelle: verzeichnisQuelle(),
+    letzterLauf,
+    restore,
+    export: exporte,
+    papierkorb,
   };
 }
 
@@ -508,6 +989,21 @@ export function adminRoutes(
       const verzeichnis = sicherungsVerzeichnis();
       const gelesenUtc = new Date().toISOString();
 
+      // ADMIN-13 — DER ZUGRIFF WIRD PROTOKOLLIERT. Die Auskunft nennt Ort, Bestand und Restorestand
+      // der Sicherungen; wer sie liest, steht deshalb in der Auditkette. Je Konto und Stunde EIN
+      // Eintrag (`recordOnce` mit stabiler Kennung): die Karte frischt auf, und eine Kette, die mit
+      // jedem Auffrischen wüchse, wäre ein Lastwerkzeug gegen die eigene Anlage. Die Verweigerung
+      // oben trägt keinen Eintrag — sie hat nichts herausgegeben.
+      await services.audit?.recordOnce(
+        `admin.sicherungen.gelesen:${user.id}:${gelesenUtc.slice(0, 13)}`,
+        {
+          actor: user.id,
+          action: "admin.sicherungen.gelesen",
+          target: "sicherungen",
+          payload: { verzeichnisQuelle: verzeichnisQuelle() },
+        },
+      );
+
       // `Dirent<string>`, nicht `Awaited<ReturnType<typeof readdir>>`: `readdir` ist überladen, und
       // die Ableitung greift dort die Puffer-Überladung — `e.name` wäre dann ein `Buffer`.
       let eintraege: Dirent<string>[];
@@ -516,7 +1012,12 @@ export function adminRoutes(
       } catch (fehler) {
         const code = (fehler as NodeJS.ErrnoException).code;
         if (code === "ENOENT") {
-          reply.code(200).send({ zustand: "kein_verzeichnis", verzeichnis, gelesenUtc });
+          reply.code(200).send({
+            zustand: "kein_verzeichnis",
+            verzeichnis,
+            gelesenUtc,
+            schutzwege: await schutzwegeFuer(services, verzeichnis, "kein_verzeichnis"),
+          });
           return;
         }
         reply.code(200).send({
@@ -524,6 +1025,7 @@ export function adminRoutes(
           verzeichnis,
           gelesenUtc,
           grund: code ?? "UNBEKANNT",
+          schutzwege: await schutzwegeFuer(services, verzeichnis, "unlesbar"),
         });
         return;
       }
@@ -560,7 +1062,13 @@ export function adminRoutes(
         const fb = b.folgeNummer ?? 0;
         return fa === fb ? b.datei.localeCompare(a.datei) : fb - fa;
       });
-      reply.code(200).send({ zustand: "gelesen", verzeichnis, gelesenUtc, sicherungen });
+      reply.code(200).send({
+        zustand: "gelesen",
+        verzeichnis,
+        gelesenUtc,
+        sicherungen,
+        schutzwege: await schutzwegeFuer(services, verzeichnis, "gelesen"),
+      });
     });
   };
 }

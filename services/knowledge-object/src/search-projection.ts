@@ -1077,6 +1077,14 @@ export const SUCH_ZUORDNUNGEN: readonly SuchZuordnung[] = [
     begriffe: ["firmenwagen", "dienstwagen"],
     quelle: "Pedis Diktat 30.07. (PRIORITAETEN.md N2) — ‚Firmenwagen findet Dienstwagenfarbe'",
   },
+  // P-ASK-C02 — Pedis Freitagsfrage nach der Zahlungsfrist („standard invoice payment period") muss
+  // die freigegebene Regel C02 „Standard invoice due date" finden. Seit R-0473 jedes Sachwort
+  // vorkommen muss, fehlte dafür die Brücke zwischen den beiden Wendungen.
+  {
+    begriffe: ["payment period", "due date"],
+    quelle:
+      "PRIORITAETEN.md ASK-C02 (Codex-Livebefund d1710126, JOB 3353) — ‚Frage nach Zahlungsfrist' findet C02 ‚Standard invoice due date'",
+  },
 ];
 
 // Was diese Erweiterung zusichert: kein Modellaufruf und kein Netz, der semantische Vorfilter
