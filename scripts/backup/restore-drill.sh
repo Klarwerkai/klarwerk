@@ -503,6 +503,9 @@ PFLICHTTABELLEN=(
   livewall_fotos
   interaktions_gedaechtnis
   ko_embeddings
+  unternehmensprofil_fassungen
+  richtlinien_fassungen
+  richtlinien_handlungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

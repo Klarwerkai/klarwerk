@@ -287,6 +287,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf
   // ist folgenlos.
   { stufe: "EMBEDDING_SCHEMA", risiko: "ADDITIV" },
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und Handlungsprotokoll. ADDITIV, nachgezählt:
+  // drei `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein
+  // Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "UNTERNEHMEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

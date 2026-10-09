@@ -69,6 +69,8 @@ import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
+// ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
+import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
@@ -277,6 +279,9 @@ export const schemas = [
   // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
   // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
   EMBEDDING_SCHEMA,
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und ihr Handlungsprotokoll. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  UNTERNEHMEN_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

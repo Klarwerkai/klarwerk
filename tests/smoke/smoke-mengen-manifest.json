@@ -1,10 +1,10 @@
 {
-  "version": 15,
+  "version": 16,
   "erhoben_am": "2026-10-08",
-  "nachgefuehrt_von": "produkt:20261009:admin-verwaltung-uebersicht (Version 15): fuenf Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-uebersicht.spec.ts — Lieferbeleg Verwaltung → offene Pruefung → zurueck → Nutzeruebergabe → Vorschau, gefilterte Listen hinter den Zaehlern, Ladefehler/ausstehende Antwort, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
+  "nachgefuehrt_von": "produkt:20261009:admin-unternehmensprofil (Version 16): zwei Faelle mehr je Projekt chromium, firefox und webkit, beide in unternehmensprofil.spec.ts — Vorschau vor dem Speichern, erklaerte Abweisung, Tastatur, Neuladen, Desktop und 390 px; zwei Richtlinienfassungen mit Kenntnisnahme, Zustimmung, Protokoll und unberechtigter Rolle. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Version 15 davor: produkt:20261009:admin-verwaltung-uebersicht (Version 15): fuenf Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-uebersicht.spec.ts — Lieferbeleg Verwaltung → offene Pruefung → zurueck → Nutzeruebergabe → Vorschau, gefilterte Listen hinter den Zaehlern, Ladefehler/ausstehende Antwort, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 237,
+  "gesamt_fallinstanzen": 243,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 73,
+      "soll": 75,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -86,6 +86,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "unternehmensprofil.spec.ts › K1/K2: Vorschau vor dem Speichern, erklärte Abweisung, Tastatur, Neuladen, Desktop und 390 px",
+        "unternehmensprofil.spec.ts › K3–K6: zwei Fassungen, Kenntnisnahme und Zustimmung, Protokoll, unberechtigte Rolle",
         "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
         "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
@@ -97,7 +99,7 @@
       ]
     },
     "firefox": {
-      "soll": 73,
+      "soll": 75,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -164,6 +166,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "unternehmensprofil.spec.ts › K1/K2: Vorschau vor dem Speichern, erklärte Abweisung, Tastatur, Neuladen, Desktop und 390 px",
+        "unternehmensprofil.spec.ts › K3–K6: zwei Fassungen, Kenntnisnahme und Zustimmung, Protokoll, unberechtigte Rolle",
         "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
         "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
@@ -175,7 +179,7 @@
       ]
     },
     "webkit": {
-      "soll": 73,
+      "soll": 75,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -242,6 +246,8 @@
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
         "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "unternehmensprofil.spec.ts › K1/K2: Vorschau vor dem Speichern, erklärte Abweisung, Tastatur, Neuladen, Desktop und 390 px",
+        "unternehmensprofil.spec.ts › K3–K6: zwei Fassungen, Kenntnisnahme und Zustimmung, Protokoll, unberechtigte Rolle",
         "wg-luecken-beziehungen-browser.spec.ts › G1: zwei Einträge verknüpfen — Art, Richtung und Herkunft stehen da, und die Bestätigung überlebt das Neuladen",
         "wg-luecken-beziehungen-browser.spec.ts › G7: dieselbe Beziehung von beiden Seiten — und der Schlagwortgraph bleibt, was er war",
         "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",

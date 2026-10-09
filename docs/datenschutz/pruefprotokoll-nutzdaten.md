@@ -110,6 +110,9 @@ am Konflikt, **nicht** im Protokoll.
 | `upload.limits.set` | Grenzwerte | Z |
 | `branding.set` | `vorherProfil`, `vorherAktiv`, `profil`, `aktiv`, `version` | Z |
 | `begriff.angelegt`, `begriff.geaendert` | `version`/`vorherVersion`, `geltungsbereich` | Z, M — der Begriffstext steht **nicht** im Protokoll |
+| `unternehmensprofil.geaendert` | `vorherVersion`, `version`, `akzent`, `nameGeaendert`, `logoGeaendert`, `uebernommenAus` | Z — weder Name noch Logodatei stehen im Protokoll |
+| `richtlinie.veroeffentlicht` | `fassung`, `anforderung`, `rollen`, `gueltigAb`, `betroffen`, ggf. `erneut`, `bisherigeHandlungen` | Z, M — der Richtlinientext steht **nicht** im Protokoll |
+| `richtlinie.handlung` | `fassung`, `handlung` (Akteur = die handelnde Person) | Z — dieselbe Angabe steht im Handlungsprotokoll der Richtlinie |
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
