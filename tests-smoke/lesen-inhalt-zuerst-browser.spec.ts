@@ -45,13 +45,28 @@ function marke(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** Ein fiktiver Eintrag mit langem Kompositum im Titel — der Umbruchfall. */
-async function legeEintragAn(request: APIRequestContext, m: string): Promise<Eintrag> {
-  const titel = `Druckluftbehälterprüfungsdokumentation vor Inbetriebnahme ${m}`;
-  const regel = [
-    "Regel 1: Vor jeder Inbetriebnahme das Sicherheitsventil des Druckluftbehälters prüfen",
-    `und das Ergebnis im Prüfbuch festhalten (${m}).`,
-  ].join(" ");
+/**
+ * Ein fiktiver Eintrag. `lang` (Vorgabe): langes Kompositum im Titel und eine mehrzeilige Regel —
+ * der Umbruchfall. `kurz`: kurzer Titel, eine kurze Regel — der Fall eines kleinen Testobjekts
+ * (Ben, nacharbeit-6, nach dem Vergleichsbericht P1 · U11/U15; der Bericht selbst liegt ausserhalb
+ * der lesbaren Pfade, die Daten hier sind deshalb eigene, fiktive Werte).
+ */
+async function legeEintragAn(
+  request: APIRequestContext,
+  m: string,
+  art: "lang" | "kurz" = "lang",
+): Promise<Eintrag> {
+  const titel =
+    art === "kurz"
+      ? `Ventil prüfen ${m}`
+      : `Druckluftbehälterprüfungsdokumentation vor Inbetriebnahme ${m}`;
+  const regel =
+    art === "kurz"
+      ? `Regel 1: Ventil vor Arbeitsbeginn schließen (${m}).`
+      : [
+          "Regel 1: Vor jeder Inbetriebnahme das Sicherheitsventil des Druckluftbehälters prüfen",
+          `und das Ergebnis im Prüfbuch festhalten (${m}).`,
+        ].join(" ");
   const antwort = await request.post("/api/kos", {
     data: {
       title: titel,
@@ -75,6 +90,44 @@ async function box(ort: Locator): Promise<Rechteck> {
   const b = await ort.boundingBox();
   expect(b, "das Element hat keine Lage im Bild").not.toBeNull();
   return b as Rechteck;
+}
+
+/**
+ * Nacharbeit 6 (Ben): liegt an MEHREREN Stellen des ganzen Elements (Ecken innen, Mitte) wirklich
+ * dieses Element? Nicht nur die Mitte der ersten Zeile — auch das Ende eines Absatzes darf weder
+ * vom Hilfeknopf noch von einer anderen Fläche verdeckt sein. Punkte ausserhalb des Bildes zählen
+ * als nicht frei (das Element liegt dann nicht vollständig im ersten Bild).
+ */
+async function ganzFrei(ort: Locator): Promise<boolean> {
+  return ort.evaluate((ziel) => {
+    const r = ziel.getBoundingClientRect();
+    const rand = 3;
+    const punkte: Array<[number, number]> = [
+      [r.left + rand, r.top + rand],
+      [r.right - rand, r.top + rand],
+      [r.left + r.width / 2, r.top + r.height / 2],
+      [r.left + rand, r.bottom - rand],
+      [r.right - rand, r.bottom - rand],
+    ];
+    return punkte.every(([x, y]) => {
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+        return false;
+      }
+      const oben = document.elementFromPoint(x, y);
+      return oben !== null && (ziel === oben || ziel.contains(oben));
+    });
+  });
+}
+
+/** Steht `a` im Dokument vor `b`? */
+async function steht(a: Locator, vorB: Locator): Promise<boolean> {
+  const b = await vorB.elementHandle();
+  return a.evaluate((x, y) => {
+    if (!y) {
+      return false;
+    }
+    return (x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  }, b);
 }
 
 function schneiden(a: Rechteck, b: Rechteck): boolean {
@@ -174,6 +227,23 @@ test.describe("Lesen: Inhalt zuerst", () => {
     const hoehe = page.viewportSize()?.height ?? 720;
     expect(t.y + t.height, "der Titel liegt nicht im ersten Bild").toBeLessThan(hoehe);
     expect(await mitteFrei(page, "bib-text", true), "die erste Regel ist verdeckt").toBe(true);
+    // Nacharbeit 6 (Ben): der Text steht vor ALLEN nachgeordneten Flächen — nicht nur vor der
+    // Kenntnisnahme. „Space und Verantwortung" stand bis dahin vor der ganzen Fläche.
+    const space = page.getByTestId("space-zeile");
+    await expect(space, "Space und Verantwortung ist nicht mehr erreichbar").toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("wissensbeziehungen")).toBeVisible({ timeout: 15_000 });
+    for (const [testId, name] of [
+      ["wissensbeziehungen", "die Beziehungen"],
+      ["kenntnisnahme-bereich", "die Kenntnisnahme"],
+      ["space-zeile", "Space und Verantwortung"],
+      ["bib-mehr", "„Mehr“"],
+    ] as const) {
+      const nachher = page.getByTestId(testId).first();
+      expect(await steht(text, nachher), `${name} steht vor dem Text`).toBe(true);
+      expect(await steht(titel, nachher), `${name} steht vor dem Titel`).toBe(true);
+    }
 
     // K2 — keine grosse Bestätigungsfläche ohne Anforderung; Anfordern bleibt erreichbar.
     expect(k.height, `die Kenntnisnahme ist ${k.height}px hoch`).toBeLessThan(80);
@@ -206,46 +276,50 @@ test.describe("Lesen: Inhalt zuerst", () => {
   }) => {
     await page.setViewportSize(SCHMAL);
     await ensureLoggedIn(page);
-    const eintrag = await legeEintragAn(page.request, marke());
-    await page.goto(`/wissen/${eintrag.id}`);
-    const titel = page.getByTestId("bib-titel");
-    await expect(titel).toHaveText(eintrag.titel, { timeout: 15_000 });
-    const text = page.getByTestId("bib-text");
-    await expect(text).toContainText(eintrag.regel);
-    await nutzungshinweisQuittieren(page, "schmal");
-    await belegBild(page, "schmal-390x844");
+    // Nacharbeit 6 (Ben): ZWEI Objekte — das lange (Umbruch) und ein kurzes Testobjekt. Für beide
+    // gilt im ERSTEN Bild, ohne Scrollen: Titel UND der VOLLSTÄNDIGE erste Regelabsatz liegen im
+    // Bild, und an keiner Stelle des Absatzes liegt Klara (Knopf oder Figur) oder eine andere Fläche.
+    for (const art of ["lang", "kurz"] as const) {
+      const eintrag = await legeEintragAn(page.request, marke(), art);
+      await page.goto(`/wissen/${eintrag.id}`);
+      const titel = page.getByTestId("bib-titel");
+      await expect(titel).toHaveText(eintrag.titel, { timeout: 15_000 });
+      const text = page.getByTestId("bib-text");
+      await expect(text).toContainText(eintrag.regel);
+      await nutzungshinweisQuittieren(page, `schmal-${art}`);
+      await belegBild(page, `schmal-390x844-${art}`);
 
-    const t = await box(titel);
-    const regel = await box(text.locator(":scope > *").first());
-    expect(t.y + t.height, "der Titel liegt nicht im ersten Bild").toBeLessThanOrEqual(844);
-    expect(regel.y, "die erste Regel beginnt nicht im ersten Bild").toBeLessThan(844);
-    expect(t.x + t.width, "der Titel ragt über den Bildschirm").toBeLessThanOrEqual(390);
-    expect(t.height, "der lange Titel bricht nicht um").toBeGreaterThan(40);
-    // Umbruch innerhalb der Lesespalte: nichts ragt über die Breite hinaus.
-    for (const id of ["bib-titel", "bib-text", "bib-lesen"]) {
-      const ort = page.getByTestId(id);
-      const ueberlauf = await ort.evaluate((el) => el.scrollWidth - el.clientWidth);
-      expect(ueberlauf, `${id} läuft ${ueberlauf}px über den Rand`).toBeLessThanOrEqual(1);
-    }
-    // Weder Klara noch eine Aktion liegt auf Titel oder erster Regel.
-    expect(await mitteFrei(page, "bib-titel"), "der Titel ist verdeckt").toBe(true);
-    expect(await mitteFrei(page, "bib-text", true), "die erste Regel ist verdeckt").toBe(true);
-    // Klara (Hilfeknopf und bewegliche Figur) in LESEPOSITION: der feste Knopf unten rechts liegt
-    // zwangsläufig über jeder Zeile, die gerade am unteren Bildrand steht. Gemessen wird deshalb,
-    // wenn Titel bzw. erste Regel zum Lesen in der Bildmitte stehen — dort darf nichts darauf liegen.
-    for (const [id, absatz, name] of [
-      ["bib-titel", false, "den Titel"],
-      ["bib-text", true, "die erste Regel"],
-    ] as const) {
-      const ort = absatz ? text.locator(":scope > *").first() : page.getByTestId(id);
-      await ort.evaluate((el) => el.scrollIntoView({ block: "center" }));
-      const lage = await box(ort);
-      for (const k of await klaraFlaechen(page)) {
-        expect(schneiden(k, lage), `Klara liegt auf ${name}`).toBe(false);
+      const ersteRegel = text.locator(":scope > *").first();
+      const t = await box(titel);
+      const regel = await box(ersteRegel);
+      expect(t.y, `${art}: der Titel beginnt über dem Bild`).toBeGreaterThanOrEqual(0);
+      expect(t.y + t.height, `${art}: der Titel liegt nicht im ersten Bild`).toBeLessThanOrEqual(
+        SCHMAL.height,
+      );
+      const regelUnten = regel.y + regel.height;
+      expect(regelUnten, `${art}: die erste Regel endet unter dem Bild`).toBeLessThanOrEqual(
+        SCHMAL.height,
+      );
+      expect(t.x + t.width, `${art}: der Titel ragt über den Bildschirm`).toBeLessThanOrEqual(390);
+      if (art === "lang") {
+        expect(t.height, "der lange Titel bricht nicht um").toBeGreaterThan(40);
       }
-      expect(await mitteFrei(page, id, absatz), `${name} ist in Leseposition verdeckt`).toBe(true);
+      // Umbruch innerhalb der Lesespalte: nichts ragt über die Breite hinaus.
+      for (const id of ["bib-titel", "bib-text", "bib-lesen"]) {
+        const ort = page.getByTestId(id);
+        const ueberlauf = await ort.evaluate((el) => el.scrollWidth - el.clientWidth);
+        expect(ueberlauf, `${art}: ${id} läuft ${ueberlauf}px über den Rand`).toBeLessThanOrEqual(
+          1,
+        );
+      }
+      // Weder Klara noch eine Aktion liegt auf Titel oder auf IRGENDEINER Stelle der ersten Regel.
+      expect(await ganzFrei(titel), `${art}: der Titel ist verdeckt`).toBe(true);
+      expect(await ganzFrei(ersteRegel), `${art}: die erste Regel ist verdeckt`).toBe(true);
+      for (const k of await klaraFlaechen(page)) {
+        expect(schneiden(k, t), `${art}: Klara liegt auf dem Titel`).toBe(false);
+        expect(schneiden(k, regel), `${art}: Klara liegt auf der ersten Regel`).toBe(false);
+      }
     }
-    await belegBild(page, "schmal-390x844-leseposition");
   });
 
   test("K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da", async ({
@@ -285,7 +359,25 @@ test.describe("Lesen: Inhalt zuerst", () => {
     const lesefassung = page.getByTestId("ga-lesestand");
     await expect(lesefassung).toBeVisible({ timeout: 15_000 });
     await nutzungshinweisQuittieren(page, "anleitung");
-    await expect(lesefassung).toContainText(eintrag.regel);
+    // Nacharbeit 6 (Ben): geprüft wird der REGELTEXT des ersten Abschnitts, nicht nur der Container
+    // der Lesefassung — und dass er vor allgemeiner Leseerläuterung, ausführlicher Quellenprüfung
+    // und den Herkunftsvermerken des Abschnitts steht. Freigabestand und Lückenvermerk bleiben da.
+    const ersteRegel = lesefassung.getByTestId("ga-lesestand-text").first();
+    await expect(ersteRegel).toContainText(eintrag.regel);
+    await expect(lesefassung.getByTestId("ga-lesestand-stand")).toHaveText("Freigegeben");
+    expect(await steht(lesefassung.getByTestId("ga-lesestand-stand"), ersteRegel)).toBe(true);
+    const einleitung = lesefassung.getByTestId("ga-lesestand-einleitung");
+    const quellen = lesefassung.getByTestId("ga-lesestand-quellen");
+    await expect(quellen).toHaveCount(1);
+    await expect(quellen.getByTestId("ga-lesestand-quellen-ergebnis")).toHaveAttribute(
+      "data-ergebnis",
+      "aktuell",
+    );
+    expect(await steht(ersteRegel, einleitung), "Leseerläuterung vor der Regel").toBe(true);
+    expect(await steht(ersteRegel, quellen), "Quellenprüfung vor der Regel").toBe(true);
+    const nachweis = lesefassung.getByText("Zu dieser Fassung liegt kein Nachweis vor.").first();
+    expect(await steht(ersteRegel, nachweis), "Nachweisvermerk vor der Regel").toBe(true);
+    await expect(lesefassung.getByTestId("ga-lesestand-pruefanbindung")).toBeVisible();
     await expect(page.getByTestId("ga-seite-stand")).toContainText("Freigegeben");
     const bearbeiten = page.getByTestId("ga-seite-bearbeiten");
     await expect(bearbeiten).toBeVisible();

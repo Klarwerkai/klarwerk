@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Image as ImageIcon, Paperclip, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -938,6 +946,7 @@ export function BibliothekLesen({
   hinweisSchonGesagt,
   lesevarianteSchonGesagt,
   onBearbeiten,
+  nachDemInhalt,
 }: {
   koId: string;
   // Der Text aus dem Suchfeld — er belegt die Frage auf der Fragen-Seite vor (5a: die frühere Karte
@@ -968,6 +977,13 @@ export function BibliothekLesen({
   // AUFNAHME 20260922 · GESAMT-NAVIGATION (R-1023 b): sagt der Fläche, ob gerade bearbeitet wird —
   // sie klappt dann die Trefferliste daneben ein (`BibliothekFlaeche.tsx`, „Entlastung").
   onBearbeiten?: ((aktiv: boolean) => void) | undefined;
+  /**
+   * LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Metadaten der Seite, die NACH dem fachlichen Inhalt
+   * stehen — auf `/wissen/:id` die Fläche „Space und Verantwortung" (`SpaceZeile`). Sie stand vor
+   * der ganzen Fläche und schob Titel und erste Regel mobil um etwa 260 px nach unten. Gezeigt wird
+   * sie unverändert (Funktionen und Rechte gehören ihr), nur an anderer Stelle.
+   */
+  nachDemInhalt?: ReactNode | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
@@ -3376,6 +3392,7 @@ export function BibliothekLesen({
             </div>
             {/* LESEN-INHALT-ZUERST: die Kenntnisnahme steht auch beim Bearbeiten NACH dem Inhalt. */}
             {kenntnisnahmeFlaeche}
+            {nachDemInhalt}
           </div>
         ) : (
           <>
@@ -3786,6 +3803,10 @@ export function BibliothekLesen({
             {/* LESEN-INHALT-ZUERST: die Kenntnisnahme nachgeordnet — nach Inhalt, Quellen und
                 Beziehungen, vor „Mehr". Ohne eigene Anforderung nur eine zugeklappte Zeile. */}
             {kenntnisnahmeFlaeche}
+
+            {/* LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Seitenmetadaten wie „Space und
+                Verantwortung" — nach dem Inhalt, vor „Mehr". */}
+            {nachDemInhalt}
 
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
             <div

@@ -9,6 +9,8 @@
 //   A1  freigegeben („entschieden"): Titel und Status oben, danach die Lesefassung; Schritte,
 //       Kopfangaben, Aufnehmen und Entscheidung liegen in EINER zugeklappten Zeile danach; der
 //       Vergleich der Stände (Historie) steht offen. Die Sperren bleiben, wie sie sind.
+//   A3  Gegenprobe Warnung (nacharbeit-6): eine gescheiterte Quellenprüfung bleibt vor dem
+//       Dokument; eine „aktuelle" steht wie die Leseerläuterung nach dem Regeltext (A1).
 //   A2  Gegenprobe Entwurf: die Arbeitsreihenfolge bleibt unverändert (Schritte, Kopf, Aufnehmen,
 //       Lesefassung, Entscheidung) und es gibt keine zugeklappte Zeile.
 //
@@ -31,7 +33,11 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   },
 }));
 
-import type { AnweisungLesestand, AnweisungStand } from "../../apps/web/src/api/types";
+import type {
+  AnweisungLesestand,
+  AnweisungStand,
+  PruefErgebnis,
+} from "../../apps/web/src/api/types";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { GesamtanweisungBereich } from "../../apps/web/src/components/gesamtanweisung/GesamtanweisungBereich";
@@ -41,8 +47,16 @@ import i18n from "../../apps/web/src/i18n";
 
 const REGEL = "Regel 1: Dockingstation anschließen und Netzteil prüfen.";
 
-function lesestand(stand: AnweisungStand): AnweisungLesestand {
+function lesestand(stand: AnweisungStand, ergebnis: PruefErgebnis = "aktuell"): AnweisungLesestand {
   return {
+    aenderungspruefung: {
+      pruefzeitpunkt: "2026-10-07T10:30:00.000Z",
+      ergebnis,
+      gefundeneAenderungen: 0,
+      fehlgeschlageneQuellen: ergebnis === "fehlgeschlagen" ? 1 : 0,
+      ueberwachung: "nicht_eingerichtet",
+    },
+    uebernommeneAenderungen: [],
     id: "a-1",
     titel: "Start im Homeoffice",
     zweck: "Einarbeitung",
@@ -83,7 +97,7 @@ let container: HTMLDivElement;
 let root: Root;
 let echtesFetch: typeof globalThis.fetch;
 
-function serviere(stand: AnweisungStand): void {
+function serviere(stand: AnweisungStand, ergebnis: PruefErgebnis): void {
   globalThis.fetch = (async (eingabe: unknown) => {
     const adresse = String(eingabe);
     const antwort = (status: number, rumpf: unknown) =>
@@ -94,7 +108,7 @@ function serviere(stand: AnweisungStand): void {
         text: async () => JSON.stringify(rumpf),
       }) as unknown as Response;
     if (adresse === "/api/gesamtanweisungen/a-1") {
-      return antwort(200, lesestand(stand));
+      return antwort(200, lesestand(stand, ergebnis));
     }
     if (adresse === "/api/gesamtanweisungen/a-1/staende") {
       return antwort(200, { staende: [4, 5] });
@@ -122,8 +136,8 @@ afterEach(async () => {
   globalThis.fetch = echtesFetch;
 });
 
-async function zeige(stand: AnweisungStand): Promise<void> {
-  serviere(stand);
+async function zeige(stand: AnweisungStand, ergebnis: PruefErgebnis = "aktuell"): Promise<void> {
+  serviere(stand, ergebnis);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   });
@@ -195,6 +209,20 @@ describe("A1 · freigegeben: die gültige Lesefassung zuerst", () => {
     expect(vor("ga-lesestand", "ga-seite-bearbeiten")).toBe(true);
     expect(vor("ga-seite-bearbeiten", "ga-vergleich")).toBe(true);
 
+    // Nacharbeit 6 (Ben): IN der Lesefassung stehen Freigabestand und Regeltext VOR der
+    // allgemeinen Leseerläuterung und der ausführlichen Quellenprüfung („aktuell" = keine Warnung).
+    expect(marke("ga-lesestand-stand")?.textContent).toBe("Freigegeben");
+    expect(marke("ga-lesestand-text")?.textContent).toContain(REGEL);
+    expect(vor("ga-lesestand-stand", "ga-lesestand-text")).toBe(true);
+    expect(vor("ga-lesestand-text", "ga-lesestand-einleitung")).toBe(true);
+    expect(vor("ga-lesestand-text", "ga-lesestand-quellen")).toBe(true);
+    // Der Regeltext steht vor den Herkunftsdetails des Abschnitts („kein Nachweis").
+    const abschnitt = marke("ga-lesestand-baustein")?.textContent ?? "";
+    expect(abschnitt.indexOf(REGEL)).toBeLessThan(abschnitt.indexOf("kein Nachweis"));
+    // Quellenprüfung und Lückenvermerk bleiben erreichbar.
+    expect(marke("ga-lesestand-quellen-ergebnis")?.getAttribute("data-ergebnis")).toBe("aktuell");
+    expect(marke("ga-lesestand-pruefanbindung")).not.toBeNull();
+
     // Die Bearbeitung ist EINE zugeklappte Zeile mit Namen …
     const zeile = marke("ga-seite-bearbeiten") as HTMLDetailsElement;
     expect(zeile.tagName).toBe("DETAILS");
@@ -217,6 +245,19 @@ describe("A1 · freigegeben: die gültige Lesefassung zuerst", () => {
       zeile.open = true;
     });
     expect(zeile.open).toBe(true);
+  });
+});
+
+describe("A3 · Gegenprobe Warnung: eine gescheiterte Quellenprüfung bleibt vor dem Inhalt", () => {
+  it("fehlgeschlagen → Quellenprüfung vor dem Dokument, Leseerläuterung weiter danach", async () => {
+    await zeige("entschieden", "fehlgeschlagen");
+    expect(marke("ga-lesestand-quellen-ergebnis")?.getAttribute("data-ergebnis")).toBe(
+      "fehlgeschlagen",
+    );
+    expect(vor("ga-lesestand-quellen", "ga-lesestand-dokument")).toBe(true);
+    expect(vor("ga-lesestand-text", "ga-lesestand-einleitung")).toBe(true);
+    // Genau EINE Quellenprüfung — nicht oben und unten zugleich.
+    expect(container.querySelectorAll('[data-testid="ga-lesestand-quellen"]')).toHaveLength(1);
   });
 });
 
