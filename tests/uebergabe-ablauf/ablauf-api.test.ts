@@ -927,8 +927,14 @@ describe("Nacharbeit 2 · N4 (K4): Kontenlesefehler nach den Übertragungen", ()
       }
       return echt();
     });
+    // EINMALIG: nur nach den Übertragungen des ERSTEN Laufs ist der Kontenstand nicht lesbar. Die
+    // Wiederaufnahme läuft ungestört (sonst meldete der Server dort zu Recht erneut `KONTEN`).
+    let schonGestoert = false;
     nachDenUebertragungen(b, () => {
-      stoeren = true;
+      if (!schonGestoert) {
+        schonGestoert = true;
+        stoeren = true;
+      }
     });
 
     const erster = await post(b, "/api/verantwortung/ablauf", vollePlanung(b, "beenden"));
