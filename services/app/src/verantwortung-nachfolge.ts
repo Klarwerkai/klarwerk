@@ -28,6 +28,16 @@ export interface NachfolgeRepo {
   lies(konto: string): Promise<NachfolgeEintrag | undefined>;
   setze(eintrag: NachfolgeEintrag): Promise<void>;
   entferne(konto: string): Promise<void>;
+  /**
+   * Betroffenenrechte (R-0663/R-1645): jeder Eintrag, in dem die Person als befristetes Konto, als
+   * Nachfolge oder als setzende Person steht — für die Auskunft. Optional, damit schmale Attrappen
+   * ihn nicht nachbauen müssen; fehlt er, meldet die Auskunft „nicht abrufbar".
+   */
+  betreffend?(person: string): Promise<NachfolgeEintrag[]>;
+}
+
+function nachGesetzt(a: NachfolgeEintrag, b: NachfolgeEintrag): number {
+  return a.gesetztAm.localeCompare(b.gesetztAm) || a.konto.localeCompare(b.konto);
 }
 
 export class InMemoryNachfolgeRepo implements NachfolgeRepo {
@@ -46,6 +56,14 @@ export class InMemoryNachfolgeRepo implements NachfolgeRepo {
   entferne(konto: string): Promise<void> {
     this.zeilen.delete(konto);
     return Promise.resolve();
+  }
+
+  betreffend(person: string): Promise<NachfolgeEintrag[]> {
+    const treffer = [...this.zeilen.values()]
+      .filter((e) => e.konto === person || e.nachfolger === person || e.gesetztVon === person)
+      .map((e) => ({ ...e }))
+      .sort(nachGesetzt);
+    return Promise.resolve(treffer);
   }
 }
 
@@ -99,5 +117,21 @@ export class PgNachfolgeRepo implements NachfolgeRepo {
 
   async entferne(konto: string): Promise<void> {
     await this.pool.query("DELETE FROM verantwortung_nachfolge WHERE konto=$1", [konto]);
+  }
+
+  async betreffend(person: string): Promise<NachfolgeEintrag[]> {
+    const res = await this.pool.query<NachfolgeZeile>(
+      `SELECT konto, nachfolger, gesetzt_von, gesetzt_am FROM verantwortung_nachfolge
+       WHERE konto=$1 OR nachfolger=$1 OR gesetzt_von=$1`,
+      [person],
+    );
+    return res.rows
+      .map((z) => ({
+        konto: z.konto,
+        nachfolger: z.nachfolger,
+        gesetztVon: z.gesetzt_von,
+        gesetztAm: new Date(z.gesetzt_am).toISOString(),
+      }))
+      .sort(nachGesetzt);
   }
 }

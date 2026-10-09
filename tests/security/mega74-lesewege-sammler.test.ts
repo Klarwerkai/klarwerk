@@ -551,6 +551,30 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "requireVisibleDraft + canSeeDraft je Treffer (capture-routes.ts).",
   },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
+  // Betroffenenrechte (datenschutz-routes.ts). Die Auskunft gibt die EIGENEN Beiträge immer aus
+  // (Kommentartext, Fragetext, Entwurf) — den TITEL eines Objekts nur, wenn der Betrachter es heute
+  // sehen darf: `sichtbarkeitsfilterFuer` des Betrachters geht unbedingt in die Zusammenstellung.
+  "GET /api/me/daten": {
+    urteil: "PRAEDIKAT",
+    grund: "Selbstauskunft — Objekttitel über sichtbarkeitsfilterFuer des Betrachters.",
+  },
+  "GET /api/datenschutz/auskunft/:nutzerId": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "Auskunft durch die Verwaltung — Objekttitel über sichtbarkeitsfilterFuer der Verwaltung.",
+  },
+  "GET /api/me/loeschantrag": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Die eigenen Löschanträge (loeschantraege.ts, vonNutzer).",
+  },
+  "POST /api/me/loeschantrag": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Antwort ist der eigene neue Antrag.",
+  },
+  "POST /api/me/loeschantrag/:id/zurueckziehen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Nur der eigene Antrag; ein fremder ist 404.",
+  },
   "GET /api/livewall/consent": {
     urteil: "EIGENER_BESTAND",
     grund: "nur die eigene Namenszustimmung als Wahrheitswert (livewall-routes.ts, user.id).",
@@ -623,6 +647,25 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/begriffe/pruefen": {
     urteil: "KEIN_KO_INHALT",
     grund: "Hinweise aus Katalog und mitgesendetem Text; liest kein Wissensobjekt.",
+  },
+  // Betroffenenrechte (datenschutz-routes.ts): Anträge, Entscheidungen und das Verzeichnis tragen
+  // Kontonamen, Fristen und das Dateninventar — kein Feld stammt aus einem Wissensobjekt.
+  "GET /api/datenschutz/loeschantraege": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "Anträge mit Name/Adresse des Kontos und Frist (datenschutz-routes.ts, verwaltungssicht).",
+  },
+  "POST /api/datenschutz/loeschantraege/:id/erledigen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist der abgeschlossene Antrag.",
+  },
+  "POST /api/datenschutz/loeschantraege/:id/ablehnen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist der abgelehnte Antrag.",
+  },
+  "GET /api/datenschutz/verarbeitungsverzeichnis": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Dateninventar und Betriebslage (dateninventar.ts); liest keinen Bestand.",
   },
   // R-1646 · Ausgangsprüfung (ausgangspruefung-routes.ts): die Vorschau zeigt den ausgehenden Text,
   // also Frage- und Kandidatentexte — deshalb Kuratorenstufe. Vertrauliches erreicht sie nie: der
