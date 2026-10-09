@@ -345,6 +345,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Kenntnisnahme — nur die eigene Anforderung und nur bei darfSehen, sonst 404.",
   },
+  // --- R-1644: Wissensauskunft zum Zeitpunkt -------------------------------------------------------
+  // Trägt Titel und Kernaussage der damals geltenden Fassung; darfSehen vor jeder Antwort.
+  "GET /api/kos/:id/wissensauskunft": {
+    urteil: "PRAEDIKAT",
+    grund: "Wissensauskunft — darfSehen am Eintrag vor der Ausgabe, sonst 404.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).
@@ -658,6 +664,14 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "GapView ohne Wissensobjekt-Feld; Fragetext redigiert durch redactGapForViewer.",
   },
   "GET /api/gaps/summary": { urteil: "KEIN_KO_INHALT", grund: "Zähler, keine Fragetexte." },
+  // R-1663 / R-2178: gibt Titel der Objekte aus, auf denen die Spuren einer Person liegen — also
+  // KO-Inhalt. Die Grundmenge läuft durch `sichtbarkeitsfilterFuer` (und `dropConfidential`) im
+  // AskService, bevor gezählt wird; dazu Schalter `expertMatching` und `ko.assign`.
+  "GET /api/gaps/:id/ansprechpartner": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "R-2178 — sichtbarkeitsfilterFuer über der Objektgrundlage, Titel nur sichtbarer Objekte.",
+  },
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   // Pool-Auftrag (R-2099): dazu kommen Entwürfe, die ihr Autor BEWUSST in den gemeinsamen Pool
   // gegeben hat — Entwürfe, keine Wissensobjekte; entschieden von derselben einen Regel
@@ -792,6 +806,28 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/spaces/verschiebung": {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
+  },
+  // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
+  // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
+  "GET /api/verantwortung/person/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Bestand einer Person — Titel nur für einsehbare Beiträge.",
+  },
+  "GET /api/verantwortung/ungeklaert": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Anzahl je Person ohne aktive Verantwortung; keine Titel, keine Kennungen.",
+  },
+  "POST /api/verantwortung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Vorschau je Nachfolger — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/uebergabe": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis je Beitrag — Titel nur für einsehbare Beiträge.",
+  },
+  "POST /api/verantwortung/deaktivierung": {
+    urteil: "PRAEDIKAT",
+    grund: "Übergabeergebnis vor der Deaktivierung — Titel nur für einsehbare Beiträge.",
   },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
