@@ -130,6 +130,8 @@ export type OutputErrorCode =
   | "NOT_VALIDATED"
   | "UNKNOWN_KO"
   | "UNKNOWN_KIND"
+  // RECHERCHE:pmo-fea-0004: ungültiger Zeitraum des Wissensupdates (`bis` kein JJJJ-MM-TT).
+  | "BAD_REQUEST"
   // SCRUM-415: vertrauliche KOs dürfen nicht in einen (teilbaren) Output — externe Kontexte tabu.
   | "CONFIDENTIAL";
 

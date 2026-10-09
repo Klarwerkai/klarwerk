@@ -19,6 +19,7 @@ import {
   type OutputPruefnachweis,
   type OutputSource,
 } from "./types";
+import { type Wochenupdate, WochenupdateService } from "./wochenupdate";
 
 export interface OutputServiceDeps {
   koService: KoService;
@@ -121,5 +122,11 @@ export class OutputService {
     ].join("\n");
 
     return { kind: input.kind, title, audienceRole, generatedAt, markdown, provenance };
+  }
+
+  // RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — dieselbe Quelle, dieselbe Uhr.
+  // Auswahl und Format stehen in `wochenupdate.ts`; hier wird nur verdrahtet.
+  async wochenupdate(input: { bis?: unknown } = {}): Promise<Wochenupdate> {
+    return new WochenupdateService({ koService: this.koService, now: this.now }).erzeuge(input);
   }
 }
