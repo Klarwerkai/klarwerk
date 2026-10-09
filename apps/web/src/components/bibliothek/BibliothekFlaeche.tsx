@@ -1321,7 +1321,28 @@ export function BibliothekFlaeche({
   // für sein `aria-expanded` und sagt damit nur, was wirklich im Baum steht. Was er wegklappt,
   // wird — wie schmal — nicht gebaut, nicht bloss versteckt.
   const listeGewuenscht = tablet && tabletListe === "offen";
-  const zeigeListe = gewaehltEffektiv === null || !einspaltig || listeGewuenscht;
+  // ================================================================================================
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION · R-1023 (b) — ENTLASTUNG BEIM BEARBEITEN.
+  // ================================================================================================
+  // Gemessen (`tests/gesamt-navigation/flaechenlast-chromium.test.ts`, Lauf nacharbeit-6, 1280 × 800,
+  // Demobestand): „Wissensobjekt bearbeiten" war mit 129 gleichzeitig sichtbaren Bedienelementen
+  // und Zustandsangaben die zweitschwerste Fläche — rund 60 davon gehörten zur Trefferliste
+  // daneben (Zeilen mit Kurzvorschau, Suche, Filter), die beim Bearbeiten niemand braucht.
+  // Breit klappt die Liste deshalb ein, solange bearbeitet wird; der Schalter
+  // `bib-liste-beim-bearbeiten` holt sie zurück (nichts wird gelöscht). Endet das Bearbeiten, steht
+  // die Liste wieder wie vorher. Telefon und Tablet sind schon einspaltig und bleiben unberührt.
+  const [leseBearbeitet, setLeseBearbeitet] = useState(false);
+  const [listeBeimBearbeiten, setListeBeimBearbeiten] = useState(false);
+  useEffect(() => {
+    if (!leseBearbeitet) {
+      setListeBeimBearbeiten(false);
+    }
+  }, [leseBearbeitet]);
+  const listeEntlastet =
+    !einspaltig && leseBearbeitet && gewaehltEffektiv !== null && !listeBeimBearbeiten;
+  const zeigeListe =
+    (gewaehltEffektiv === null || !einspaltig || listeGewuenscht) && !listeEntlastet;
+  const entlastungsSchalter = !einspaltig && leseBearbeitet && gewaehltEffektiv !== null;
   const zeigeBericht = gewaehltEffektiv !== null || !einspaltig;
   // WIE die Liste steht, sagt ihr die Fläche, WIE BREIT sie dann ist, weiss `BibliothekListe.tsx`
   // selbst (JOB 3335: der Nachfahren-Selektor dieser Datei auf die Listenbreite ist dort
@@ -2531,6 +2552,30 @@ export function BibliothekFlaeche({
                 ) : null}
               </div>
             ) : null}
+            {/* Gesamt-Navigation (R-1023 b): breit, beim Bearbeiten — die eingeklappte Trefferliste
+                zurückholen oder wieder einklappen. Dieselben Wörter wie der Tablet-Schalter. */}
+            {entlastungsSchalter ? (
+              <div className="flex px-4 pt-3">
+                <button
+                  type="button"
+                  data-testid="bib-liste-beim-bearbeiten"
+                  data-entlastung-schalter=""
+                  aria-expanded={zeigeListe}
+                  aria-controls={zeigeListe ? "bib-liste" : undefined}
+                  onClick={() => setListeBeimBearbeiten((offen) => !offen)}
+                  className="inline-flex items-center gap-1.5 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  {zeigeListe ? (
+                    <PanelLeftClose size={15} aria-hidden className="shrink-0" />
+                  ) : (
+                    <PanelLeftOpen size={15} aria-hidden className="shrink-0" />
+                  )}
+                  {t(
+                    zeigeListe ? "lib.lesemodus.listeAusblenden" : "lib.lesemodus.listeEinblenden",
+                  )}
+                </button>
+              </div>
+            ) : null}
             {/* Der Auffrischungssatz gehört auf die Fläche, die gerade da ist — s. `hinweisKnoten`. */}
             {zeigeListe ? null : hinweisKnoten}
             {/* SCRUM-291: Demo-/Pilotpfad bleibt auf der Zielseite wiedererkennbar (nur ?demo=stage1). */}
@@ -2562,6 +2607,7 @@ export function BibliothekFlaeche({
                 // Lesefläche dazu und fragt sie auch nicht ein zweites Mal ab. Auf `/bibliothek`
                 // gibt es diese Karte nicht, und die Lesefläche trägt die Übersetzung selbst.
                 lesevarianteSchonGesagt={vorgewaehlt !== undefined}
+                onBearbeiten={setLeseBearbeitet}
                 // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
                 // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
                 // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;
