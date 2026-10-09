@@ -380,8 +380,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * (`af829859…` hier, `dc94b941…` auf main) beschreibt das zusammengefügte Dokument. Der Wert unten
  * ist der von main und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als
  * „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 75 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat c437ae6e am
+ * ZUSAMMENGEFÜHRTEN Panel (`e9e11524…`, „Received" von E2,
+ * HISTORIE/nacharbeit-75/PRUEFUNG/panel-blob-integration.log) und unverändert übernommen; die fünf
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "dc94b94136c782cfb6c00438317e12821dd3a3bf";
+export const PANEL_VOR_SCHNITT_BLOB = "e9e115249cfcf653dede036c37fa0b44d5f25163";
 
 export interface PanelTeile {
   html: string;
