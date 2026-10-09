@@ -393,6 +393,21 @@ Prüfbeleg vor dieser Änderung (Archiv `HISTORIE/nacharbeit-13/PRUEFUNG`): Wäc
 allein A1 mit diesen zwei Funden. Die Integrationsstellen sind 64 von 64 grün, die Folgen von
 Nacharbeit 10 90 von 90, Build und Format grün.
 
+## Neuzugang aus dem Hauptstand (Nacharbeit 14)
+
+Am Kandidaten `e822e1cb` meldete A1 einen neuen Export ohne Produktaufrufer aus dem Hauptstand
+(Antwort-Erklärung, R-0335):
+
+| Export | Ausgang | Grund |
+|---|---|---|
+| `services/ask/src/answer-belastbarkeit.ts::ANTWORT_LAGEN` | in den Test gezogen | Die sechs Lagen als Wert las kein Produktweg; nur die Fassade `services/ask/index.ts` reichte sie weiter (ein Re-Export ist kein Verbraucher), und `belastbarkeit-regel.test.ts` zählte sie nach. Der Server führt die Lagen nirgends ein zweites Mal. Export und Fassadeneintrag sind entfernt. Der Prüfstand hält „genau sechs, jede einmal“ jetzt gegen den Produkttyp `AntwortLage` über ein `Record<AntwortLage, true>`: eine fehlende oder fremde Lage bricht schon die Typprüfung; der Laufzeitvergleich mit den sechs Namen bleibt. |
+
+Prüfbeleg vor dieser Änderung (Archiv `HISTORIE/nacharbeit-14/PRUEFUNG`): Wächter 16 von 17 grün,
+rot allein A1 mit diesem Fund. Die Folgen von Nacharbeit 13 sind 60 von 60 grün, darunter
+`bedingungswechsel-regel`, `-flaeche`, `r1160`, `d037-sanitizing-huellengrenze` und
+`gliederung-in-der-lesespalte`. Die beiden Anschlüsse aus Nacharbeit 13 sind damit belegt. Build
+und Format grün.
+
 ## Mitgeführte Prüfstände anderer Aufträge
 
 Diese Prüfstände maßen an Bausteinen ohne Produktaufrufer. Sie messen ihre **unveränderte Zusage**

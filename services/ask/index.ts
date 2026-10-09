@@ -86,7 +86,6 @@ export type {
 // AUFNAHME 20260922 · Antwort-Erklärung: Belastbarkeit, Zustandsfamilie und Konfliktseiten an der
 // Antwort — gelesen aus der fertigen Einstufung, nicht neu eingestuft.
 export {
-  ANTWORT_LAGEN,
   antwortBelastbarkeit,
   antwortZuschnitt,
   konfliktGegenseiten,
