@@ -26,7 +26,7 @@
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { askRoutes } from "../../services/app/src/routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "../../services/app/src/routes/ask-routes";
 import { KlaraSessionService } from "../../services/app/src/services/klara-session-service";
 import { AskService, InMemoryGapRepo } from "../../services/ask";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
@@ -165,12 +165,16 @@ async function aufbauen() {
   const fragen = {
     web: (question: string) =>
       app.inject({ method: "POST", url: "/api/ask", headers: kopf, payload: { question } }),
+    // R-0700 (Integration mit Auftrag ki-modus-wahrheit): das Word-Panel fragt über Klaras EIGENEN,
+    // sitzungsgebundenen Zugang; der allgemeine Frageweg weist eine Klara-Bindung ab (400
+    // `KLARA_EIGENER_WEG`). Kopfzeilen und Modus wie zuvor; das Fenster meldet eine getippte Frage
+    // als `manual` (R-0639 Runde 3).
     word: (question: string) =>
       app.inject({
         method: "POST",
-        url: "/api/ask",
+        url: `/api/klara/sessions/${word["x-klara-session"]}/execute`,
         headers: word,
-        payload: { question, mode: "retrieval-only" },
+        payload: { question, mode: "retrieval-only", questionSource: "manual" },
       }),
     schluessel: (question: string) =>
       app.inject({
@@ -361,20 +365,19 @@ describe("R-0278 · alle Wege nebeneinander: Ungeprüftes wird nie Grundlage", (
       return echt(q, a, l as never, o as never);
     }) as typeof echterDienst.ask;
     const app = Fastify();
-    app.register(
-      askRoutes(
-        {
-          ask: echterDienst,
-          ko: koService,
-          conflicts: { unresolved: async () => [] } as never,
-          klaraSessions: dienst as never,
-        },
-        {
-          requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
-          requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
-        } as never,
-      ),
-    );
+    // R-0700: der Einwilligungszweig steht in Klaras EIGENEM Zugang; der allgemeine Weg ist
+    // mitregistriert wie in der App.
+    const basis = {
+      ask: echterDienst,
+      ko: koService,
+      conflicts: { unresolved: async () => [] } as never,
+    };
+    const tor = {
+      requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+      requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+    } as never;
+    app.register(askRoutes(basis, tor));
+    app.register(klaraAusfuehrungRoutes({ ...basis, klaraSessions: dienst as never }, tor));
     await app.ready();
     const sicht = await dienst.createSession("nutzer-1", "inst-1", {
       kind: "saved",
@@ -394,7 +397,7 @@ describe("R-0278 · alle Wege nebeneinander: Ungeprüftes wird nie Grundlage", (
     const frage = (question: string) =>
       app.inject({
         method: "POST",
-        url: "/api/ask",
+        url: `/api/klara/sessions/${sicht.sessionId}/execute`,
         headers: { ...bindung, "content-type": "application/json" },
         payload: { question, locale: "de", mode: "retrieval-only", questionSource: "manual" },
       });
