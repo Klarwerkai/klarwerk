@@ -71,12 +71,18 @@ export type ModelRunStatus = "success" | "error";
 // ------------------------------------------------------------------------------------------------
 
 /** Die vier Aufgaben, deren Ausgabe als KI-erzeugt zu kennzeichnen ist. */
-export const KI_ERZEUGENDE_AUFGABEN: readonly ModelRunTask[] = [
+export const KI_ERZEUGENDE_AUFGABEN = [
   "answer",
   "interview",
   "describe",
   "enrich",
-];
+] as const satisfies readonly ModelRunTask[];
+
+/**
+ * R-1349: die Liste oben IST die Grenze der Kennzeichnung — `aiGeneratedMark` nimmt nur diese
+ * Aufgaben an. Bis hierher las sie niemand im Produkt; jeder Aufrufer nannte seine Aufgabe frei.
+ */
+export type KiErzeugendeAufgabe = (typeof KI_ERZEUGENDE_AUFGABEN)[number];
 
 /**
  * Der Betriebsmodus, in dem die Ausgabe entstand.
@@ -106,7 +112,7 @@ export interface AiGeneratedMark {
  * Reasoner-Wegen aber nicht mehr erzeugt.
  */
 export function aiGeneratedMark(
-  task: ModelRunTask,
+  task: KiErzeugendeAufgabe,
   demo: boolean,
   at: string = new Date().toISOString(),
 ): AiGeneratedMark {
