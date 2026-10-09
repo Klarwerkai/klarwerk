@@ -20,4 +20,4 @@
 //
 // R-1028: Auch das Word-Panel zeigt DIESE Konstante — der Build stempelt sie in „Klara <Stand>"
 // (`apps/web/vite.config.ts`, Plugin `klara-stand`, Text aus `src/lib/klaraStand.ts`).
-export const APP_VERSION = "1.0.0-beta.1.803";
+export const APP_VERSION = "1.0.0-beta.1.804";
