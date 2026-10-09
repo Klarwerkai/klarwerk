@@ -1725,6 +1725,11 @@ const nl: typeof de = {
   "capture.saveDraft": "Als concept opslaan",
   "capture.draftSaved": "Concept opgeslagen.",
   "capture.draftUpdated": "Concept bijgewerkt.",
+  "capture.bereitsGespeichert":
+    "Dit document was al opgeslagen; er is geen tweede vermelding aangemaakt.",
+  "capture.bereitsGespeichertFortgeschrieben":
+    "Dit document was al opgeslagen; er is geen tweede vermelding aangemaakt. De bestaande vermelding bevat nu je gewijzigde versie.",
+  "capture.bereitsGespeichertOeffnen": "Bestaande vermelding openen: “{{title}}”",
   "capture.teilerfolg.dateiAusstehend":
     "Nog niet alles opgeslagen: het concept is opgeslagen, het bestand “{{name}}” wordt nog opgeslagen.",
   "capture.teilerfolg.dateiGescheitert":

@@ -1735,6 +1735,10 @@ const en: typeof de = {
   "capture.saveDraft": "Save as draft",
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
+  "capture.bereitsGespeichert": "This document was already saved; no second entry was created.",
+  "capture.bereitsGespeichertFortgeschrieben":
+    "This document was already saved; no second entry was created. The existing entry now holds your changed version.",
+  "capture.bereitsGespeichertOeffnen": "Open the existing entry: “{{title}}”",
   "capture.teilerfolg.dateiAusstehend":
     "Not everything is saved yet: the draft is saved, the file “{{name}}” is still being saved.",
   "capture.teilerfolg.dateiGescheitert":
