@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import type { PaletteAnfrage } from "./CommandPalette";
 import { WeitereBereicheZeilen } from "./KopfbandPunkte";
 import { MenueFlaeche, MenueTrenner, MenueZeile, useMenue } from "./Menue";
+import { WeiterUntenHinweis } from "./WeiterUnten";
 
 // ================================================================================================
 // FE-002 · DER BESCHRIFTETE EINSTIEG „ARBEITSBEREICHE".
@@ -98,6 +99,8 @@ export function ArbeitsbereicheMenue(): JSX.Element {
         className="kw-menue-links max-h-[calc(100vh-80px)] overflow-y-auto"
       >
         <ArbeitsbereicheEintraege onSchnellzugriff={() => schliessen(true)} />
+        {/* Gesamt-Navigation (R-1045): bei niedrigem Fenster (Tablet quer) scrollt die Übersicht. */}
+        <WeiterUntenHinweis testid="arbeitsbereiche-weiter-unten" />
       </MenueFlaeche>
     </div>
   );
