@@ -90,6 +90,9 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // JOB 2697: zwei generierte Spalten und ein partieller Unique-Index auf `drafts`. Kein DROP,
   // kein DELETE, kein UPDATE an Bestandsdaten — kein Marker aus RISIKOMARKER trifft.
   { stufe: "CAPTURE_CREATE_OPERATION_SCHEMA", risiko: "ADDITIV" },
+  // R-1133: fünf nullbare Indexspalten und zwei Indizes auf `drafts` — nur `ADD COLUMN IF NOT
+  // EXISTS` und `CREATE INDEX IF NOT EXISTS`, kein Marker aus RISIKOMARKER trifft.
+  { stufe: "CAPTURE_INDEX_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ASK_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ANSWER_SNAPSHOT_SCHEMA", risiko: "ADDITIV" },
   { stufe: "VALIDATION_SCHEMA", risiko: "ADDITIV" },
