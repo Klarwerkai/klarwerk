@@ -2207,6 +2207,10 @@ const nl: typeof de = {
     "De eerstgenoemde bronnen hebben het antwoord gedragen; de overige zijn geraadpleegd maar niet gebruikt.",
   "ask.attribution.unknown":
     "Welke van deze bronnen het antwoord gedragen heeft, was niet toe te wijzen — de AI leverde geen bruikbare bronverwijzingen. De lijst toont daarom alle geraadpleegde bronnen zonder markering, en „Heeft geholpen” is hier niet mogelijk.",
+  // R-0310/R-0325: het antwoord wordt achtergehouden omdat geen alinea aan een bron toe te wijzen was.
+  "ask.quellen.weitere": "Nog {{count}} bronnen tonen",
+  "ask.zuordnungUnbekannt":
+    "Er wordt geen antwoord getoond: het kon aan geen enkele bron worden toegewezen. Een alinea zonder bron wordt niet uitgegeven.",
   // JOB 3267 Q1 — drie toestanden, drie woorden, plus een vierde voor de toetsingsstand
   // (zie de Duitse ingang voor de bevinding die hiermee is verholpen).
   "ask.attribution.carrying.badge": "gebruikt",
@@ -3417,6 +3421,11 @@ const nl: typeof de = {
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",
   "lib.lesen.mehr": "Meer",
+  "lib.lesen.belegstelle.markiert": "Bewijspassage gemarkeerd.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "De geciteerde passage staat in deze versie niet letterlijk in de tekst.",
+  "lib.lesen.belegstelle.andereFassung":
+    "De passage hoort bij versie {{fassung}}; dit is versie {{aktuell}}. Er is niets gemarkeerd.",
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",
   "lib.lesen.fehler": "Het item kon niet worden geladen.",

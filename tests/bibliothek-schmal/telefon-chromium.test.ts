@@ -259,6 +259,103 @@ describe("JOB 3121 · UX-14 · die Bibliothek auf dem Telefon (Chromium, gebaute
     expect(nachher.zeilen).toBeGreaterThanOrEqual(vorher.zeilen);
   }, 90_000);
 
+  // ==============================================================================================
+  // C7 · AUFNAHME 20260922 · ANTWORT-QUELLENANZEIGE (N-0037) — DER MOBILE LESEWEG ZU DEN QUELLEN.
+  // ==============================================================================================
+  // Die Gegenprüfung vom 06.09. bestätigte die Kopfsprünge nur am Desktop und liess die schmale
+  // Ansicht ausdrücklich offen („Titel nach Neuladen und Auswahl verborgen"). Gemessen wird hier
+  // genau dieser Rest: Adresse mit gewähltem Bericht NEU laden, 390 px, KEIN Rollvorgang — Titel
+  // und die beschrifteten Sprünge „Quellen" und „Anhänge" stehen im ersten Bild und innerhalb der
+  // Breite; ein Tipp auf den Quellensprung öffnet den Bereich. Die Bezeichnung „Mehr" bleibt
+  // unberührt (Umbenennung ist nur ein Bedienvorschlag).
+  it("C7 · N-0037 · 390 px nach Neuladen: Titel und Sprünge zu Quellen/Anhängen ohne Rollen im Bild; der Quellensprung öffnet den Bereich", async () => {
+    expect(fehler).toBeNull();
+    const s = stand as H4Stand;
+    await s.seite.setViewportSize({ width: 390, height: 844 });
+    await s.seite.goto(`${ORIGIN}/wissen/${s.koId}`, { waitUntil: "load" });
+    await s.seite.waitForFunction(
+      fn(`() => !!document.querySelector('[data-testid="bib-sprung-quellen"]')`),
+      undefined,
+      { timeout: 30_000 },
+    );
+    await s.seite.waitForTimeout(400);
+    type Kante = { top: number; bottom: number; left: number; right: number; text: string };
+    const m = await s.seite.evaluate<{
+      hoehe: number;
+      breite: number;
+      titel: Kante | null;
+      quellen: Kante | null;
+      anhaenge: Kante | null;
+      davor: Array<{ was: string; top: number; hoehe: number }>;
+    }>(
+      fn(`() => {
+        const r = (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) { return null; }
+          const b = el.getBoundingClientRect();
+          return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, text: (el.textContent || '').trim() };
+        };
+        return {
+          hoehe: window.innerHeight,
+          breite: window.innerWidth,
+          titel: r('[data-testid="bib-titel"]'),
+          quellen: r('[data-testid="bib-sprung-quellen"]'),
+          anhaenge: r('[data-testid="bib-sprung-anhaenge"]'),
+          // Diagnose: was in der Lesespalte VOR dem Titel steht und wie hoch es ist.
+          davor: [...(document.querySelector('[data-testid="bib-lesen"]')?.children ?? [])]
+            .map((el) => {
+              const b = el.getBoundingClientRect();
+              return {
+                was: el.getAttribute('data-testid') || el.tagName.toLowerCase(),
+                top: Math.round(b.top),
+                hoehe: Math.round(b.height),
+              };
+            })
+            .filter((x) => x.hoehe > 0),
+        };
+      }`),
+    );
+    console.info(`N-0037 · 390 px nach Neuladen: ${JSON.stringify(m)}`);
+    expect(m.titel?.text).toBe(TITEL_FREI);
+    // Die Ursache des ersten Laufs (Kenntnisnahme-Formular vor dem Titel) ist auf dem Telefon
+    // hinter den Bericht gewandert: VOR dem Titel steht sie nicht mehr.
+    const titelOben = m.titel?.top ?? Number.POSITIVE_INFINITY;
+    expect(m.davor.filter((x) => x.was === "kenntnisnahme-bereich" && x.top < titelOben)).toEqual(
+      [],
+    );
+    for (const [name, k] of [
+      ["Titel", m.titel],
+      ["Quellen", m.quellen],
+      ["Anhänge", m.anhaenge],
+    ] as const) {
+      expect(k, `${name} fehlt`).not.toBeNull();
+      const kante = k as Kante;
+      expect(kante.top, `${name} oberhalb des Bildes`).toBeGreaterThanOrEqual(0);
+      expect(kante.bottom, `${name} erst nach Rollen sichtbar`).toBeLessThanOrEqual(m.hoehe);
+      expect(kante.left, `${name} links abgeschnitten`).toBeGreaterThanOrEqual(0);
+      expect(kante.right, `${name} rechts abgeschnitten`).toBeLessThanOrEqual(m.breite);
+      expect(kante.text.length, `${name} ohne Beschriftung`).toBeGreaterThan(0);
+    }
+    expect(
+      await s.seite.evaluate<boolean>(
+        fn(`() => {
+          const el = document.querySelector('[data-testid="bib-sprung-quellen"]');
+          if (!el) { return false; }
+          el.click();
+          return true;
+        }`),
+      ),
+    ).toBe(true);
+    await s.seite.waitForFunction(
+      fn(`() => {
+        const d = document.querySelector('[data-bib-abschnitt="quellen"]');
+        return !!d && d.open === true;
+      }`),
+      undefined,
+      { timeout: 30_000 },
+    );
+  }, 90_000);
+
   it("C6 · Chromium meldete keinen Seitenfehler", () => {
     expect(fehler).toBeNull();
     expect(stand?.seitenfehler ?? ["nicht gemessen"]).toEqual([]);
