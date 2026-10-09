@@ -223,6 +223,12 @@ const INVENTAR: readonly string[] = [
   // (Codex-Vorpruefung R2). Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
   // Achse `taskpane` herein — dieselbe Lage wie die drei darueber.
   "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts",
+  // Auftrag „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336/R-0708): „Markierung
+  // prüfen" und die Zustimmung zum noch nicht validierten Bestand am laufenden Fenster. Kein „klara"
+  // im Pfad, kein „taskpane" im Text — sie kommt über die Achse `komponente` (`KlaraPanel`) herein;
+  // K5 bleibt unverändert. NICHT GEMESSEN, SONDERN AUS DEN ACHSENMUSTERN ABGELEITET: in dieser Bahn
+  // wurde kein Test gestartet; ob K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/word-vergleich/behauptung-und-zustimmung.test.ts",
   // JOB 3667 (WORD-RUECKWEG): der Weg aus Word ZURUECK auf dasselbe Wissensobjekt, gemessen am
   // laufenden Aufgabenfenster. Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
   // Achse `taskpane` herein — dieselbe Lage wie die vier darueber. Der zweite Beleg desselben Jobs

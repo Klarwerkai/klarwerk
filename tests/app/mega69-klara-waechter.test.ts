@@ -2815,6 +2815,32 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // PIN BEWUSST AKTUALISIERT (dce012c0… -> a6dc7a30…). Im Prüflauf zu Kandidat 1df43d16 GEMESSEN
     // („Received", HISTORIE/nacharbeit-6/PRUEFUNG/panel-inhalts-pin.log) und unverändert übernommen;
     // die Panel-Dateien sind seit dieser Messung unberührt.
+    // AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708) — DER PIN
+    // MUSS WANDERN. Zwei Änderungen, nur EINE bewegt ihn:
+    //   (1) Der Abschnitt KW-WORDVERGLEICH wohnt in einer eigenen Datei `wortvergleich.js`, geladen
+    //       als klassisches Skript UNMITTELBAR NACH `taskpane.js` (Verweis in derselben Zeile) und vor
+    //       `marke.js`; `panelQuelleAus` setzt ihn beim Zusammenfügen wieder an seine Stelle. Grund:
+    //       B3 (`taskpane.js` stand bei 12493 von < 12500 Zeilen). Kein Byte des zusammengefügten
+    //       Dokuments ändert sich dadurch (Rest und Abschnitt mit `cmp` gegen 817d5347 verglichen).
+    //   (2) Im Abschnitt: Knopf „Markierung prüfen" (`#wv-markierung`, liest die Markierung über
+    //       `Word.run`/`getSelection`, LESEND, schreibt weder Text noch Farbe), die Fundstelle eines
+    //       Quellenfunds als Zitat, der Haken „Auch noch nicht validierten Bestand einbeziehen"
+    //       (`#wv-ungeprueft`, AUS bis zum Haken, nur für dieses Fenster, fällt beim Logout) und
+    //       acht neue Wörterbuchschlüssel je Sprache.
+    // Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (`wortvergleich.js`, gleicher Ursprung,
+    // `script-src 'self'`, dieselbe Cachekennung). Abrufziel: keines neu (dieselbe Route
+    // `/api/check-text`). Nutzlast: der Prüfweg des Vergleichs trägt zusätzlich
+    // `ungeprueftEinbeziehen` (true/false); kein Text mehr als vorher, bei „Markierung prüfen" nur die
+    // Markierung statt eines Absatzes. CSP, Recht, Manifest unverändert (WordApi 1.1 deckt
+    // `getSelection`), kein Sideload. Ein alter Server ohne die Datei liefert 404 — das Fenster bleibt
+    // bedienbar, nur ohne Word-Vergleich. Ohne zugelassenes Hash-Werkzeug (`git hash-object` und
+    // `shasum` waren in dieser Bahn gesperrt) ist der neue Wert hier nicht berechenbar; der Prüflauf
+    // meldet ihn als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 1 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (dce012c0… -> 8bd59ad6…). Im Prüflauf
+    // zu Kandidat 12b0b2d6 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // schnitt-wortvergleich-und-panelwaechter.log) und unverändert übernommen; die Panel-Dateien sind
+    // seit dieser Messung unberührt.
+    // Auf `main` lief parallel (die Zeilen unten stammen von dort):
     // AUFNAHME 20260922 · ANTWORT-ERKLÄRUNG (Ben nacharbeit-2, R-0321/R-0335) — DER PIN MUSS WANDERN.
     // `taskpane.js`: `performAsk` liest `result.belastbarkeit` (Lage und Konfliktseiten); ein Körper
     // ohne Ergebnis, eine unbekannte/gestörte oder zur Antwortform widersprüchliche Lage wird
@@ -2895,6 +2921,20 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 17: PIN BEWUSST AKTUALISIERT (Platzhalter f045e108… -> 3d9cdf45…). Im Prüflauf zu
     // Kandidat 2c099872 GEMESSEN („Received", HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log)
     // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION „Geschriebene Behauptungen …" × main 70216f9f (Nacharbeit 3 dieses Auftrags) — DER
+    // PIN MUSS WANDERN. Im zusammengefügten Dokument stehen BEIDE Änderungen: die Quellenanzeige von
+    // main (Absatz-Belege, Fußnoten, `#ask-gap-zuordnung`) und der Wortvergleich dieses Auftrags
+    // („Markierung prüfen", Zitat, Zustimmung; ausgelagert in `wortvergleich.js`). Git hat die
+    // Panel-Dateien ohne Konflikt zusammengeführt (Block nur in `wortvergleich.js`, `taskpane.js` 11544
+    // Zeilen, `taskpane.html` 498). Keine der Messungen (8bd59ad6… hier, 3d9cdf45… auf main) beschreibt
+    // dieses Dokument; der Wert unten ist der von main und damit ein PLATZHALTER. Auslieferungsfolgen:
+    // die beider Stände zusammen, wie oben je Stand benannt — nichts darüber hinaus. Ohne zugelassenes
+    // Hash-Werkzeug hier nicht berechenbar; der Prüflauf meldet den Ist-Wert als „Received".
+    // NACHARBEIT 4 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… -> c1007d1d…).
+    // Im Prüflauf zu Kandidat 3b7914f4 am zusammengeführten Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-4/PRUEFUNG/panel-nach-integration-pins-und-schnitt.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // Auf `main` lief parallel (die Zeilen unten stammen von dort):
     // INTEGRATION Antwort-Erklärung (9464e051…) × antwort-quellenanzeige (main 3d9cdf45…), Nacharbeit 17
     // der Antwort-Erklärung — DER PIN MUSS WANDERN. `taskpane.js` trägt jetzt BEIDES: Lage und
     // Konfliktseiten (R-0321/R-0335, `renderAskLage`, `detail: "lage"`, `redacted`) UND die
@@ -2920,7 +2960,26 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Im Prüflauf zu Kandidat f939185b am ZUSAMMENGEFÜHRTEN Fenster (main 5ed2ded3 + `sendTooLarge`)
     // GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/panel-inhalts-pin.log) und unverändert
     // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "f55e6c65b6209a73e622c07527f727f08d1f90ccc0791be5953f06fe1e5d66f8";
+    // INTEGRATION „Geschriebene Behauptungen …" × main ab5f3c95 (Nacharbeit 8 dieses Auftrags) — DER
+    // PIN MUSS WANDERN. Im zusammengefügten Dokument stehen BEIDE Änderungen: Lage/Konfliktseiten und
+    // Absatz-Beleg-Zuordnung von main (R-0321/R-0335/R-0310) und der Wortvergleich dieses Auftrags
+    // (`wortvergleich.js`, R-0336/R-0708). Git hat die Panel-Dateien ohne Konflikt zusammengeführt
+    // (Block nur in `wortvergleich.js`, `taskpane.js` 11537 Zeilen, `taskpane.html` 498). Keine der
+    // Messungen (c1007d1d… hier, 9667e18b… auf main) beschreibt dieses Dokument; der Wert unten ist der
+    // von main und damit ein PLATZHALTER. Auslieferungsfolgen: die beider Stände, wie oben je Stand
+    // benannt — nichts darüber hinaus. Der Prüflauf meldet den Ist-Wert als „Received".
+    // NACHARBEIT 9 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… -> 4ce94aa2…).
+    // Im Prüflauf zu Kandidat 42f34c5e am zusammengeführten Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-9/PRUEFUNG/panel-nach-integration-ab5f3c95-pins-und-schnitt.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-bildbudget (f55e6c65…) × main (4ce94aa2…), Nacharbeit 19 des Bildbudgets —
+    // DER PIN MUSS WANDERN. Das zusammengefügte Fenster trägt BEIDES: den Stand von main (u. a.
+    // `wortvergleich.js`, Lage/Konfliktseiten, Absatz-Beleg-Zuordnung, Funktionsschalter) und die drei
+    // `sendTooLarge`-Zeilen dieses Auftrags (de/en/nl, Wert-, nicht Zeilenänderung; B3 unberührt).
+    // Auslieferungsfolgen: die aller beteiligten Stände — nichts darüber hinaus. Keiner der beiden
+    // gemessenen Werte beschreibt das zusammengefügte Dokument; der Wert unten (main) ist ein
+    // PLATZHALTER, der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    const PIN = "4ce94aa20de1657af7515b9a6cadea3c516da35d82fba814921541219462c9fc";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
