@@ -1,6 +1,6 @@
 // Reiner, DOM-freier JSON-Parser für den Re-Import (SCRUM-108).
 // Validiert die Eingabe streng → keine stille Übernahme kaputter Daten.
-import type { ImportItemInput, KnowledgeType } from "../api/types";
+import type { Confidentiality, ImportItemInput, KnowledgeType } from "../api/types";
 
 const TYPES: readonly KnowledgeType[] = [
   "bauchgefuehl",
@@ -61,6 +61,54 @@ function istQuellfassung(value: unknown): boolean {
   return (
     typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_QUELLFASSUNG
   );
+}
+
+// R-0179 (Nacharbeit 3, Bens Befund „veraltet"): der STAND der Quelle — wann der Inhalt dort zuletzt
+// geändert wurde. Dieselbe Form wie `istImportZeitpunkt` des Servers
+// (services/library-analytics/src/types.ts): volle ISO-Zeit mit Zone, ein gültiger Tag. Nur daraus
+// kann die Befundübersicht „veraltet" bewerten; ohne Stand bleibt der Eintrag „nicht bewertet".
+// BEWUSST KEIN ABLEHNUNGSGRUND: ein eigener Bibliotheksexport trägt `updatedAt` des Objekts, und
+// ein Altbestandswert in anderer Form darf den Wiederimport nicht abweisen. Ein unbrauchbarer Stand
+// reist nicht mit — der Eintrag ist dann für „veraltet" ehrlich nicht bewertet.
+const IMPORT_ZEITPUNKT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export function istQuellStand(value: unknown): value is string {
+  return (
+    typeof value === "string" && IMPORT_ZEITPUNKT.test(value) && Number.isFinite(Date.parse(value))
+  );
+}
+
+// ================================================================================================
+// R-0179 (Nacharbeit 4, Bens Befund) — DIE EINSTUFUNG DER QUELLE REIST MIT.
+// ================================================================================================
+//
+// Bis hierher fiel `confidentiality` in diesem Parser weg: eine Datei, die „vertraulich" einstufte,
+// kam ohne Einstufung beim Server an — und die Befundübersicht nannte sie „bewertet, ohne
+// Schutzbefund". Jetzt gilt derselbe Vertrag wie an der Ingest-Grenze des Servers
+// (`sanitizeImportConfidentiality`, services/library-analytics/src/service.ts):
+//   · fehlt die Angabe (`undefined`/`null`) → sie fehlt (beim Anlegen gilt „intern", N11);
+//   · ein gültiger Wert bleibt; Gross-/Kleinschreibung und „streng vertraulich" mit Leer- oder
+//     Bindestrich werden auf den Schlüssel gebracht (Tabellen schreiben ihn selten wörtlich);
+//   · jeder andere gesetzte Wert, auch eine leere Zeichenkette, wird RESTRIKTIV „vertraulich" —
+//     nie still verworfen und nie
+//     herabgestuft. Kein Ablehnungsgrund: eine unklare Einstufung ist ein Schutzsignal, kein
+//     Formfehler.
+const EINSTUFUNGEN: readonly Confidentiality[] = ["intern", "vertraulich", "streng_vertraulich"];
+
+export function einstufungAusDatei(value: unknown): Confidentiality | undefined {
+  // Nacharbeit 5 (Bens Befund): wie `sanitizeImportConfidentiality` fehlt die Angabe NUR bei
+  // `undefined`/`null`. Ein gesetzter Leerwert ist eine unklare Angabe und wird restriktiv.
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  const schluessel =
+    typeof value === "string"
+      ? value
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_")
+      : "";
+  return EINSTUFUNGEN.find((e) => e === schluessel) ?? "vertraulich";
 }
 
 const QUELL_CHECKS: Record<string, (value: unknown) => boolean> = {
@@ -210,6 +258,14 @@ export function parseImportItems(text: string): ImportItemInput[] {
     }
     if (gefuellt(o.dokumentId)) {
       item.dokumentId = o.dokumentId.trim();
+    }
+    if (istQuellStand(o.updatedAt)) {
+      item.updatedAt = o.updatedAt;
+    }
+    // R-0179 (Nacharbeit 4): die Einstufung der Quelle — Regel an `einstufungAusDatei`.
+    const einstufung = einstufungAusDatei(o.confidentiality);
+    if (einstufung !== undefined) {
+      item.confidentiality = einstufung;
     }
     return item;
   });
