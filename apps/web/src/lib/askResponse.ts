@@ -1,6 +1,6 @@
 // Reine, DOM-freie Selektoren für den Ask-Response-Wrapper (SCRUM-138).
 // Backend `POST /api/ask` liefert `{ result: AnswerResult, gap: Gap | null }`.
-import type { AbsatzBeleg, AnswerResult, AskResponse, Gap } from "../api/types";
+import type { AbsatzBeleg, AnswerResult, AskResponse } from "../api/types";
 
 // ================================================================================================
 // Aufnahme 20260922 · antwort-quellenanzeige (R-0310, Ben zu 6cc581b4) — NUR BELEGTE ABSÄTZE.
@@ -69,6 +69,5 @@ export function selectAnswer(response: AskResponse): AnswerResult {
   return belegteAntwort(response.result, response.absaetze);
 }
 
-export function selectGap(response: AskResponse): Gap | null {
-  return response.gap;
-}
+// R-1349: Hier stand `selectGap`. Ask liest `r.gap` unmittelbar (R-0991 Nr. 5); der Selektor hatte
+// keinen Produktleser und ist entfernt.
