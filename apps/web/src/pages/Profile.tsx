@@ -3,7 +3,7 @@
 // Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Kontodaten berichtigen, Sprache,
 // Passwort ändern, die eigene Wirkung und das Abmelden — jede Zeile mit ihrem Wert.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { authApi } from "../api/auth";
@@ -12,6 +12,7 @@ import { useMyImpact } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
+import { istAktiv } from "../components/SprachSchalter";
 // Betroffenenrechte (R-0663, R-0661): „Meine Daten" und der eigene Löschantrag.
 import { LoeschantragDetail, MeineDatenDetail } from "../components/datenschutz/MeineDaten";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
@@ -19,6 +20,7 @@ import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
 import { Avatar, Button, Field, TextInput } from "../components/ui";
+import { abonniereAngelegteSprachen, angelegteSprachen } from "../lib/instanzSprachen";
 import { OBERFLAECHEN_SPRACHEN as SPRACHEN } from "../lib/sprachregister";
 import { useSeitenhilfeAnmeldung } from "../shell/SeitenhilfeContext";
 
@@ -53,19 +55,31 @@ function WirkungDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
 // trägt die Zeile keinen zusätzlichen Werttext — er stünde sonst zweimal da.
 const SPRACH_KNOEPFE = "sprach-knoepfe";
 
-function SprachWahl(): JSX.Element {
+// Exportiert für die Gegenprobe mit regionalen Sprachen (`tests/uebersetzungspflege/
+// regionale-sprache-aktiv.test.tsx`); die Seite bleibt ihr einziger Verwender.
+export function SprachWahl(): JSX.Element {
   const { i18n } = useTranslation();
+  // FR-I18N-02: hinter den mitgelieferten die im Betrieb angelegten Sprachen
+  // (`lib/instanzSprachen.ts`) — dieselbe Quelle wie das Kontomenü, ohne Codeänderung wählbar.
+  const angelegt = useSyncExternalStore(
+    abonniereAngelegteSprachen,
+    angelegteSprachen,
+    angelegteSprachen,
+  );
+  // Aktiv ist allein die VOLLSTÄNDIGE Kennung (`istAktiv`, wie im Kontomenü) — mit `startsWith`
+  // wären bei gewähltem `fr-CA` auch `fr` gedrückt und hervorgehoben (BEN, Nacharbeit 5).
   return (
     /* E2E-020: Profil-Sprachwahl auf DE/EN/NL wie im Header — NL war hier zuvor nicht wählbar. */
     <span data-testid={SPRACH_KNOEPFE} className="flex gap-1.5">
-      {SPRACHEN.map((l) => (
+      {[...SPRACHEN, ...angelegt.map((s) => s.kennung)].map((l) => (
         <button
           key={l}
           type="button"
-          aria-pressed={i18n.language.startsWith(l)}
+          aria-label={angelegt.find((s) => s.kennung === l)?.name}
+          aria-pressed={istAktiv(i18n.language, l)}
           onClick={() => void i18n.changeLanguage(l)}
           className={`rounded-btn px-2.5 py-1 text-[13px] font-semibold uppercase ${
-            i18n.language.startsWith(l) ? "bg-ink text-white" : "border border-hairline text-muted"
+            istAktiv(i18n.language, l) ? "bg-ink text-white" : "border border-hairline text-muted"
           }`}
         >
           {l}
