@@ -1,3 +1,4 @@
+import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
@@ -67,6 +68,7 @@ import type {
   ImportGroupResponse,
   ImportItemInput,
   ImportKnowledgeResult,
+  ImportRunListe,
   ImportRunRecord,
   ImportRunStartResponse,
   ImportSelectCriteria,
@@ -104,6 +106,7 @@ import type {
   OverlapSettings,
   PublicUser,
   ReasonerConfigStatus,
+  ReasonerKiLage,
   ReasonerProbeResult,
   ReasonerStatus,
   RetirementEntry,
@@ -1057,6 +1060,8 @@ export const endpoints = {
     enrich: (query: string, locale?: ReasonerLocale) =>
       api.post<EnrichResult>("/reasoner/enrich", { query, ...(locale ? { locale } : {}) }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
+    // R-0599: die KI-Lage der Kopfzeile (Modus, Anbieter, Herkunft) — nur für Angemeldete.
+    kiLage: () => api.get<ReasonerKiLage>("/ki-lage"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
     config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
@@ -1337,6 +1342,8 @@ export const endpoints = {
         };
       },
       run: (importId: string) => api.get<ImportRunRecord>(`/admin/import/runs/${importId}`),
+      // ADMIN-02: die Importliste — die jüngsten Läufe, jüngster zuerst.
+      runs: (limit = 50) => api.get<ImportRunListe>(`/admin/import/runs?limit=${limit}`),
       // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts — Quellrevision, Lauf, Ausgang.
       knowledgeResult: (koId: string) =>
         api.get<ImportKnowledgeResult>(`/admin/import/knowledge/${encodeURIComponent(koId)}`),
@@ -1416,6 +1423,9 @@ export const endpoints = {
     // R-0134 / R-1005: der Betreiberschalter — genau ein Ja/Nein, die Antwort ist die neue Auskunft.
     confluenceSchalter: (an: boolean) =>
       api.put<ImportAccessStatus>("/import/confluence/schalter", { an }),
+    // ADMIN-02: der bewusst gestartete Verbindungstest — eine Seite des Space, ohne Inhalt.
+    confluenceVerbindungstest: () =>
+      api.post<Verbindungsnachweis>("/import/confluence/verbindungstest", {}),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

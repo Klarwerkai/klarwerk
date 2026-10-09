@@ -378,6 +378,11 @@ const REGISTER: Record<string, Eintrag> = {
       "output/src/zuruf.ts:384/389 — nur validierte KOs, dropConfidential auf der Quellenliste; " +
       "Einwilligung (zuruf.ts:250) vor jedem Bestandszugriff.",
   },
+  // R-0700: Klaras eigener Ausführungszugang ruft DENSELBEN Fragedienst wie `POST /api/ask`.
+  "POST /api/klara/sessions/:sessionId/execute": {
+    urteil: "DIENST_FILTERT",
+    grund: "ask/src/service.ts:145 — dropConfidential vor der Auswahl, auf ALLEN Zweigen.",
+  },
   "POST /api/knowledge/check": {
     // produkt:20261007:spaces: zusätzlich zu dropConfidential filtert die Route die Kandidaten
     // mit `sichtbarkeitsfilterFuer` (führender Space) — nachgeprüft statt nur behauptet.
@@ -484,6 +489,26 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KURATORENTOR",
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
+  },
+  // ADMIN-02: der Verbindungstest. Antwortet mit Zeitpunkt, Umfang, Ergebniswort und Dauer — keine
+  // Dateinamen, kein Inhalt, kein Wissensobjekt.
+  "POST /api/import/sharepoint/verbindungstest": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Verbindungstest (feste Ergebniswörter), Admin.",
+  },
+  // ADMIN-02: derselbe Verbindungstest für Confluence — feste Ergebniswörter, kein Seiteninhalt.
+  "POST /api/import/confluence/verbindungstest": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Verbindungstest (feste Ergebniswörter), Admin.",
+  },
+  // ADMIN-02: die Importliste. Je Lauf dieselbe Form wie der Einzelweg (`laufNachAussen`):
+  // Kennungen, Status, Zeitpunkte, Zähler, Fehlercode — und den Scope der Quelle. Rollentor Admin.
+  "GET /api/admin/import/runs": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Laufliste (laufNachAussen), Admin.",
   },
   // R-0170: dieselbe Auskunft für Jira (`services/jira/src/credential-state.ts`) — Namen und
   // ja/nein je Variable, nie ein Wert, kein Inhalt eines Wissensobjekts.
@@ -615,6 +640,8 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/reasoner/status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
+  // R-0599: Modus, Anbieter und Herkunft des arbeitenden KI-Zugangs — Konfigurationslage, kein KO.
+  "GET /api/ki-lage": { urteil: "KEIN_KO_INHALT", grund: "KI-Lage (Modus, Anbieter, Herkunft)." },
   "GET /api/features": { urteil: "KEIN_KO_INHALT", grund: "Schalter als Ja/Nein." },
   // R-1064: Supportweg der Installation — Zustand, geprüftes Ziel und Beschriftung aus zwei
   // Betreiberwerten (support-routes.ts:119), kein Feld aus einem Wissensobjekt.

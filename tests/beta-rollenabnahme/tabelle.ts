@@ -359,6 +359,9 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Schliesst die eigene Sitzung; jeder Folgeaufruf ist danach ein Konflikt. Setzt eine offene, echte Sitzung voraus.",
   },
+  // R-0700: `POST /api/klara/sessions/:sessionId/execute` steht NICHT hier, sondern gemessen in
+  // `TABELLE` (Gruppe `klaraAusfuehrungRoutes`): das Rechtetor (`ko.read`) entscheidet VOR der
+  // Sitzungsbindung, und genau diese Tür misst die Zeile.
 
   // --- Bibliothek, Import, Lebenszyklus, Ausgabe -------------------------------------------------
   {
@@ -1182,6 +1185,39 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
+  // ADMIN-02: der Verbindungstest. Auf der Bühne stehen keine SharePoint-Angaben; er endet deshalb
+  // LOKAL („ausgeschaltet" bzw. „nicht eingerichtet"), ohne Abruf an eine Gegenstelle — gemessen
+  // wird genau das Rechtetor.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "POST",
+    pfad: "/api/import/sharepoint/verbindungstest",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:170",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // ADMIN-02: derselbe Verbindungstest für Confluence. Ohne hinterlegte Confluence-Angaben endet er
+  // lokal, ohne Abruf — gemessen wird das Rechtetor.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "POST",
+    pfad: "/api/import/confluence/verbindungstest",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:181",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // ADMIN-02: die Importliste — die jüngsten Läufe, nur für Verwaltende.
+  {
+    // Nacharbeit 3: eigene, unbedingt registrierte Gruppe (die übrigen Laufwege hängen am Schalter).
+    gruppe: "importLaufListeRoutes",
+    methode: "GET",
+    pfad: "/api/admin/import/runs",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:204",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
   // JOB 4086 · die zwei Türen des SharePoint-Imports. Sie stehen hier VOLLSTÄNDIG in der Abnahme
   // und nicht in der Restliste, und das geht, weil beide OHNE hinterlegte Zugangsdaten gar nichts
   // anrichten: der Adapter kommt nicht zustande, die Antwort ist ein 503 vor jedem Effekt. Die
@@ -1783,6 +1819,31 @@ export const TABELLE: Zeile[] = [
     erwartet: OEFFENTLICH(
       "Dieselbe abstrahierte Auskunft wie `/api/reasoner/status`, nur in der Hülle `{ ai: … }` (§2.1 des Pflichtenhefts). Derselbe Grund, dieselbe Grenze.",
     ),
+  },
+  {
+    // R-0599: die KI-Lage der Kopfzeile (Modus, Anbieter, Herkunft) — anders als die zwei Zeilen
+    // darüber NICHT öffentlich, sondern für jede Rolle mit Leserecht.
+    gruppe: DIREKT,
+    methode: "GET",
+    pfad: "/api/ki-lage",
+    belegstelle: "services/app/src/build-app.ts:2781",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    // R-0700: Klaras eigener, sitzungsgebundener Ausführungszugang. Gemessen wird die TÜR: das
+    // Rechtetor (`ko.read`, ein Add-on-Schlüssel bekommt 403) entscheidet in `preValidation`, VOR
+    // jeder Sitzungsprüfung. Die Kennung ist erfunden und die Bindungskopfzeilen fehlen — der
+    // Berechtigte bekommt deshalb die fachliche 404 der Sitzungszuordnung (`erlaubt`: registriert,
+    // Tor durchgelassen); was die Bindung dahinter prüft, misst `ask-routes.test.ts`.
+    gruppe: "klaraAusfuehrungRoutes",
+    methode: "POST",
+    pfad: "/api/klara/sessions/abnahme-ohne-sitzung/execute",
+    route: "/api/klara/sessions/:sessionId/execute",
+    belegstelle: "services/app/src/routes/ask-routes.ts:984",
+    tor: "ko.read",
+    payload: { question: "Rollenabnahme", locale: "de" },
+    erwartet: NUR_LESEN,
   },
   {
     gruppe: DIREKT,

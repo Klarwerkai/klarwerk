@@ -269,6 +269,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "KI-Verfügbarkeitsflag (§2.1); keine Nutzerdaten.",
   },
+  // R-0599 (Auftrag ki-modus-wahrheit): die KI-Lage der Kopfzeile — Modus, Anbieter, Herkunft. Nur
+  // für Angemeldete (`ko.read`), anders als die zwei abstrahierten Statusrouten darüber; ohne
+  // Modellnamen und ohne Schlüssel.
+  "GET /api/ki-lage": { protection: "ko.read" },
   // SCRUM-490 H: statisches Add-in-Bundle (nur bei KLARWERK_ADDON_API). Bewusst öffentlich lesbar (kein
   // Key nötig); explizite Datei-Map (traversal-sicher), kein Directory-Listing, keine Nutzer-/Wissensdaten.
   // Der Wildcard-Handler GET /addin/* ist ebenfalls „public", wird vom URL-Scanner (kein `*` in der
@@ -286,6 +290,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/import/confluence/explore": { protection: "users.manage" },
   // W2-A/148: der Leseweg der Laufdomaene. Dasselbe Recht wie der Start — waere er weicher,
   // koennte jemand ohne users.manage die Ergebnisse eines Imports lesen, den er nicht ausloesen darf.
+  // ADMIN-02: die Importliste — die jüngsten Läufe in derselben Form wie der Einzelweg.
+  "GET /api/admin/import/runs": { protection: "users.manage" },
   "GET /api/admin/import/runs/:importId": { protection: "users.manage" },
   // R-0142 (Lauf 5 R3): der Lückenbezug je Element wird nur für sichtbare Objekte erhoben.
   "GET /api/admin/import/runs/:importId/result": {
@@ -583,6 +589,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Erzeuger) und erzeugt einen Vorschlag; ob sie das darf, entscheidet das Sitzungstor je
   // Sitzung und Dokument (pruefeExterneAusfuehrung), nicht RBAC. Sie schreibt nichts.
   "POST /api/klara/sessions/:sessionId/zuruf": { protection: "ko.read" },
+  // R-0700 (KW-S4-24): Klaras eigener Ausführungszugang. `ko.read` wie alle Klara-Endpunkte, dazu
+  // die Sitzungsbindung (getSession) und das Einwilligungstor; die Grundlage wird wie am
+  // allgemeinen Frageweg je Betrachter gefiltert.
+  "POST /api/klara/sessions/:sessionId/execute": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
   // JOB 3507: requireUser öffnet die Auskunft; fehlendes ko.read liefert 200 + leere Liste.
@@ -921,6 +934,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive, dieselbe Tür und derselbe Grund, warum
   // sie VOR ihrem Schalter steht — sie muss „ausgeschaltet" melden können.
   "GET /api/import/sharepoint/zugang": { protection: "users.manage" },
+  // ADMIN-02: der bewusst gestartete Verbindungstest — liest eine Listenseite (nur Merkmale) und
+  // hält das Ergebnis im Prüfprotokoll fest. Dieselbe Tür wie die Auskunft, ebenfalls VOR dem
+  // Schalter, damit „ausgeschaltet"/„nicht eingerichtet" ohne Abruf als Ergebnis kommen.
+  "POST /api/import/sharepoint/verbindungstest": { protection: "users.manage" },
+  // ADMIN-02: derselbe Verbindungstest für Confluence — eine Seite des Space, ohne Inhalt.
+  "POST /api/import/confluence/verbindungstest": { protection: "users.manage" },
   // JOB 4086: die zwei Türen des SharePoint-Imports (Adapter #2 des quellneutralen
   // Import-Vertrags). `users.manage` wie JEDE Import-Route; nur bei aktivem
   // `KLARWERK_SHAREPOINT_IMPORT` registriert. `files` ist READ-ONLY (Dateiliste der Bibliothek),
