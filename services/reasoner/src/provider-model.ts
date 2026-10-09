@@ -7,6 +7,7 @@ import {
   type ReasonerProvider,
   answerStanding,
   deterministicInterview,
+  normalizeInterviewImageContext,
   // JOB 3298: DIESELBE Zerlegung, die das Relevanzmaß benutzt — der Auszug wird nach der GLEICHEN
   // Wortauffassung gewählt, nach der die Quelle überhaupt Kandidat wurde. Eine zweite Tokenisierung
   // wäre eine zweite Wahrheit darüber, was ein Wort der Frage ist.
@@ -1078,6 +1079,30 @@ function describeImageSystem(locale: ReasonerLocale): string {
 // überziehen — gekappt wird deterministisch, nicht verhandelt).
 export const MAX_IMAGE_DESCRIPTION_LENGTH = 300;
 
+// R-0046 — EIN GEDECKELTER VORSCHLAG IST KEIN ABGERISSENER. Bis hierher schnitt der Deckel mit
+// `slice(0, 300)` blind, also mitten im Wort oder Satz — ein Fragment, das als fertige Fußnote
+// dastand. Jetzt, in dieser Reihenfolge:
+//   1. passt der Text, bleibt er unverändert;
+//   2. sonst endet er am letzten VOLLSTÄNDIGEN Satz innerhalb der Grenze (ein Satzende ist ein
+//      Satzzeichen, dem Leerraum folgt — „P-12.5 mm" bleibt ein Wort);
+//   3. gibt es keinen, endet er an der letzten Wortgrenze, und die Kürzung ist SICHTBAR („…") —
+//      niemand soll ein gekürztes Stück für das Ganze halten (dasselbe Muster wie service.ts).
+// Er fügt nie Inhalt hinzu und überschreitet die Grenze nie, das Auslassungszeichen eingerechnet.
+export function beschreibungDeckeln(text: string): string {
+  if (text.length <= MAX_IMAGE_DESCRIPTION_LENGTH) {
+    return text;
+  }
+  for (let i = MAX_IMAGE_DESCRIPTION_LENGTH - 1; i > 0; i -= 1) {
+    if (/[.!?]/u.test(text.charAt(i)) && /\s/u.test(text.charAt(i + 1))) {
+      return text.slice(0, i + 1);
+    }
+  }
+  const raum = text.slice(0, MAX_IMAGE_DESCRIPTION_LENGTH - 1);
+  const luecke = raum.lastIndexOf(" ");
+  const stueck = (luecke > 0 ? raum.slice(0, luecke) : raum).replace(/[\s,;:–-]+$/u, "");
+  return `${stueck}…`;
+}
+
 // WP-BILD-1f (Pedi 22.07.): HARTES Größenbudget für den mitgereichten Dokument-Kontext. Der Client
 // kürzt schon bei der Extraktion (MAX_IMAGE_CONTEXT_CHARS, apps/web/src/lib/captionContext.ts) — der
 // Server kappt hier AUTORITATIV und deterministisch nach, egal woher der Kontext stammt. Überschuss
@@ -1655,6 +1680,18 @@ function interviewSystem(locale: ReasonerLocale): string {
   return `${base} ${outputLanguageRule(locale)}`;
 }
 
+// R-1624 (Foto-zu-Wissen): Zusatz zum Interview-Prompt, wenn ein Bildbefund vorliegt. Der Befund
+// dient NUR dazu, Maschine/Bauteil aus dem Bild in der Frage beim Namen zu nennen — er ist keine
+// Antwort des Experten, und das Modell darf daraus keinen Fehler, keine Ursache und keine Lösung
+// vorwegnehmen. Die Leitfrage (Fehler · Ursache · Lösung) bleibt deterministisch.
+function interviewPhotoGuidance(locale: ReasonerLocale): string {
+  return taskInstruction(
+    locale,
+    "Das Interview geht um ein Foto des Experten. Nenne das im Bildbefund erkennbare Objekt (Maschine, Bauteil, Stelle) in der Frage konkret beim Namen. Nimm KEINEN Fehler, KEINE Ursache und KEINE Lösung vorweg — das beantwortet allein der Experte.",
+    "The interview is about a photo taken by the expert. Name the object recognisable in the image finding (machine, component, spot) concretely in the question. Do NOT anticipate any fault, cause or solution — only the expert answers that.",
+  );
+}
+
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
 const LABELS: Record<ReasonerLocale, Record<string, string>> = {
   de: {
@@ -1670,6 +1707,8 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     // F-0295 / R-0639: die markierte Passage aus dem Word-Dokument. Sie steht VOR den Quellen und
     // ohne Nummer: sie ist Kontext der Frage und keine Quelle, die das Modell zitieren dürfte.
     selection: "Markierte Passage im Dokument (Kontext der Frage, keine Quelle)",
+    // R-1624: der vom Menschen bestätigte Bildbefund des Fotos, um das das Interview geht.
+    imageFinding: "Bildbefund (Foto, vom Experten bestätigt)",
   },
   en: {
     question: "Question",
@@ -1679,6 +1718,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     none: "(none yet)",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
+    imageFinding: "Image finding (photo, confirmed by the expert)",
   },
   // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — der Compiler verlangt diesen
   // Zweig jetzt, statt ihn stillschweigend auf Deutsch fallen zu lassen.
@@ -1690,6 +1730,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     none: "(nog geen)",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
+    imageFinding: "Beeldbevinding (foto, door de expert bevestigd)",
   },
 };
 
@@ -2058,14 +2099,26 @@ export class ModelProvider implements ReasonerProvider {
     // Vision-USER-Prompts mit — also durch DENSELBEN Egress-Wächter wie das Bild. Bei vertraulichem
     // Bild wirft cappedModelClient BEVOR dieser Aufruf läuft; Kontext geht dann NIE an die Cloud.
     const trimmedContext = (context ?? "").trim().slice(0, MAX_IMAGE_CONTEXT_LENGTH).trim();
-    const raw = await client.completeVision(
-      describeImageSystem(locale),
-      dataUrl,
-      describeImageUserPrompt(locale, trimmedContext),
-      confidential,
-      256,
+    // R-0046: der Aufruf läuft in der Abbruch-Spur (JOB 3276 R3, wie assist). Eine am Token-Limit
+    // abgerissene Beschreibung ist eine halbe Aussage über das Bild — sie wird nicht Vorschlag,
+    // sondern Fehler; die Kette entscheidet weiter (anderes Modell oder ehrlicher Rückfall).
+    const completeVision = client.completeVision.bind(client);
+    const { wert: raw, abbruch } = await mitAbbruchBefund(() =>
+      completeVision(
+        describeImageSystem(locale),
+        dataUrl,
+        describeImageUserPrompt(locale, trimmedContext),
+        confidential,
+        256,
+      ),
     );
-    const text = raw.trim().slice(0, MAX_IMAGE_DESCRIPTION_LENGTH).trim();
+    if (abbruch !== null) {
+      throw new ModelEmptyResponseError(
+        `${client.model ?? client.name}: Antwort wurde am Token-Limit abgeschnitten (describe, ${abbruch.budgetFeld}=${abbruch.budget}, finish_reason=${abbruch.finishReason}).`,
+        { reason: "truncated", finishReason: abbruch.finishReason, maxTokens: abbruch.budget },
+      );
+    }
+    const text = beschreibungDeckeln(raw.trim()).trim();
     return {
       text: text.length > 0 ? text : null,
       demo: false,
@@ -2136,18 +2189,27 @@ export class ModelProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
     // SCRUM-502 Schicht 2: an den Chokepoint durchgereicht.
     confidential = false,
+    // R-1624: bestätigter Bildbefund (Klartext). Reist im selben complete()-Aufruf und damit durch
+    // denselben Vertraulichkeits-Wächter wie die Antworten — kein neuer Egress-Pfad.
+    imageContext?: string,
   ): Promise<InterviewResult> {
-    const base = deterministicInterview(answers, false, locale);
+    const finding = normalizeInterviewImageContext(imageContext);
+    const photo = finding.length > 0;
+    const base = deterministicInterview(answers, false, locale, photo);
     if (base.done || base.question === null) {
       return base;
     }
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const system = photo
+      ? `${interviewSystem(locale)}\n${interviewPhotoGuidance(locale)}`
+      : interviewSystem(locale);
+    const findingBlock = photo ? `${labels.imageFinding}:\n${finding}\n\n` : "";
     const phrased = (
       await client.complete(
-        interviewSystem(locale),
-        `${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        system,
+        `${findingBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
         confidential,
       )
     ).trim();

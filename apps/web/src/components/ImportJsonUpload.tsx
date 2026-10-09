@@ -25,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { IMPORT_JSON_FORMAT } from "../lib/importReview";
 import { JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
+import { HelpTip } from "./HelpTip";
 import { useFilePickRequest, useImportSource } from "./ImportStepper";
 import { Card, SectionLabel } from "./ui";
 
@@ -68,6 +69,8 @@ export function ImportJsonUpload({
   return (
     <Card className="mb-5" id={IMPORT_JSON_CARD_ID}>
       <SectionLabel>{t("imp.uploadTitle")}</SectionLabel>
+      {/* R-0888 (gesamt-hilfen, Nacharbeit 13): Abschnittserklärung in der Seitenhilfe. */}
+      <HelpTip title={t("imp.uploadTitle")} body={t("shelp.imp.uploadTitle")} />
       <p className="mb-3 text-[13px] text-muted">{t("imp.uploadHint")}</p>
       {/* E2E-010 (KEIN Bug — nur UI): ehrlich WARUM hier nur JSON geht, mit Verweis auf den Weg für
           Office-Dateien. Kein Capability-Umbau. */}
