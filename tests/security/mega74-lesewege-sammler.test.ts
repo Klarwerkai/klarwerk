@@ -2257,7 +2257,8 @@ const LIES_AUS_DEM_BAUM = (datei: string): string => readFileSync(join(REPO_WURZ
 //   · jeder Aufruf einer aus `http`/`https`/`http2`/`net`/`tls` eingeführten Netzfunktion (`request`,
 //     `get`, `connect`, `createConnection` — auch umbenannt oder über den Namensraum);
 //   · jedes `….sendMail(…)`, jedes `new WebSocket(…)`/`new EventSource(…)`.
-// Jede Datei mit Ausgangsstellen braucht GENAU EIN Urteil in `AUSGAENGE`; eine neue ist rot mit
+// Jede Ausgangsstelle braucht ihr EIGENES Urteil in `AUSGAENGE` (Nacharbeit 10: Schlüssel je Stelle,
+// nicht je Datei); eine neue ist rot mit
 // Datei und Zeile, ein Urteil ohne Ausgangsstelle ebenfalls. Das Urteil SCHUTZ_VOR_VERSAND wird
 // nachgegangen: die Ausgangsfunktion ist nur über die genannte Verbindung erreichbar, jeder Versand
 // über sie steht hinter einer Abbruchprüfung durch den Wächter, und der Wächter ruft über eine
@@ -2279,12 +2280,19 @@ type Ausgangsurteil =
   // Der Ausgang geht an Fremdwerkzeuge und steht hinter der zentralen Entscheidung. NACHGEPRÜFT.
   | "SCHUTZ_VOR_VERSAND";
 
+// NACHARBEIT 10 (Befund ben): Bis hierher galt ein Urteil je DATEI — ein zusätzliches `fetch` in
+// einer bereits beurteilten Datei erbte deren Urteil und blieb grün. Jetzt gilt ein Urteil je
+// AUSGANGSSTELLE. Ihr Schlüssel ist `datei::funktion#n`: die n-te erhobene Stelle (Quellreihenfolge)
+// in der umgebenden Funktion. Eine weitere Stelle — in derselben oder einer anderen Funktion —
+// erzeugt einen neuen Schlüssel ohne Urteil und ist rot mit Datei und Zeile. Die Erhebung selbst
+// bleibt automatisch; das Register benennt nur Urteile zu erhobenen Stellen.
 interface Ausgangseintrag {
   urteil: Ausgangsurteil;
   grund: string;
-  /** Bei SCHUTZ_VOR_VERSAND: die Funktion, in der die Ausgangsstellen stehen. */
-  ausgangsfunktion?: string;
-  /** … der Name, unter dem sie gerufen wird (`this.zusteller = … ?? fetchZusteller`). */
+  /**
+   * Bei SCHUTZ_VOR_VERSAND: der Name, unter dem die Funktion dieser Ausgangsstelle gerufen wird
+   * (`this.zusteller = … ?? fetchZusteller`).
+   */
   verbindung?: string;
   /** … die Funktion, die über die Verbindung versendet. */
   versand?: string;
@@ -2296,9 +2304,8 @@ interface Ausgangseintrag {
 }
 
 const AUSGAENGE: Record<string, Ausgangseintrag> = {
-  "services/app/src/wissensereignisse.ts": {
+  "services/app/src/wissensereignisse.ts::fetchZusteller#1": {
     urteil: "SCHUTZ_VOR_VERSAND",
-    ausgangsfunktion: "fetchZusteller",
     verbindung: "zusteller",
     versand: "stelleZu",
     waechter: "nochMeldbar",
@@ -2311,39 +2318,53 @@ const AUSGAENGE: Record<string, Ausgangseintrag> = {
       "Webhook-Versand: jede Zustellung prüft unmittelbar davor frisch nochMeldbar → meldbar → " +
       "darfSehen (Betrachter viewer ohne Spaces) und bricht sonst ab.",
   },
-  "services/notifications/src/smtp.ts": {
+  "services/notifications/src/smtp.ts::send#1": {
     urteil: "KEIN_KO_INHALT",
     grund:
       "Mailversand: Kontotexte (Rücksetzen, Freigabe) und bei der Prüfzuweisung nur die Kennung " +
       "des Objekts an die zugewiesene Person (notify.ts) — kein Titel, keine Aussage.",
   },
-  "services/confluence/src/rest-client.ts": {
+  "services/confluence/src/rest-client.ts::mitFrist#1": {
     urteil: "KEIN_KO_INHALT",
-    grund: "Eingehender Import: Abrufe an Confluence mit Space-/Seitenkennungen, kein Bestand.",
+    grund:
+      "Eingehender Import: der gemeinsame Fristrahmen aller Abrufe an Confluence mit Space-/" +
+      "Seitenkennungen, kein Bestand.",
   },
-  "services/jira/src/rest-client.ts": {
+  "services/jira/src/rest-client.ts::holeJson#1": {
     urteil: "KEIN_KO_INHALT",
     grund: "Eingehender Import: Abrufe an Jira mit Projekt-/Vorgangskennungen, kein Bestand.",
   },
-  "services/sharepoint/src/graph-client.ts": {
+  "services/sharepoint/src/graph-client.ts::gebundenerTransport#1": {
     urteil: "KEIN_KO_INHALT",
-    grund: "Eingehender Import: Abrufe an Microsoft Graph (Bibliothek, Dateien), kein Bestand.",
+    grund: "Eingehender Import: Inhaltsabruf einer Datei aus Microsoft Graph, kein Bestand.",
   },
-  "services/auth/src/oidc.ts": {
+  "services/sharepoint/src/graph-client.ts::holeJson#1": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Eingehender Import: Metadaten (Liste, Merkmale) aus Microsoft Graph, kein Bestand.",
+  },
+  "services/auth/src/oidc.ts::createTokenExchanger#1": {
     urteil: "KEIN_KO_INHALT",
     grund: "SSO-Token-Tausch mit dem Identitätsanbieter (Code, PKCE), kein Bestand.",
   },
-  "services/external-search/src/wikipedia.ts": {
+  "services/external-search/src/wikipedia.ts::search#1": {
     urteil: "KEIN_KO_INHALT",
     grund: "Externe Suche: geht nur der Suchbegriff des Fragenden hinaus, kein Bestand.",
   },
-  "services/reasoner/src/model-client.ts": {
+  "services/reasoner/src/model-client.ts::postMessages#1": {
     urteil: "AUFTRAGSVERARBEITER",
     grund:
-      "KI-Anbieter des Betreibers; Inhalte stellen die aufrufenden Wege zusammen (deren Ausgabe " +
-      "prüft der Routenwächter), Vertrauliches sperrt der Chokepoint (rejectsConfidential).",
+      "KI-Anbieter des Betreibers (Messages-Schnittstelle); Inhalte stellen die aufrufenden Wege " +
+      "zusammen (deren Ausgabe prüft der Routenwächter), Vertrauliches sperrt der Chokepoint " +
+      "(rejectsConfidential).",
   },
-  "services/media/src/transcriber.ts": {
+  "services/reasoner/src/model-client.ts::postChatCompletions#1": {
+    urteil: "AUFTRAGSVERARBEITER",
+    grund:
+      "KI-Anbieter des Betreibers (Chat-Completions-Schnittstelle); Inhalte stellen die " +
+      "aufrufenden Wege zusammen (deren Ausgabe prüft der Routenwächter), Vertrauliches sperrt " +
+      "der Chokepoint (rejectsConfidential).",
+  },
+  "services/media/src/transcriber.ts::transcribe#1": {
     urteil: "AUFTRAGSVERARBEITER",
     grund:
       "Transkription eines Anhangs beim konfigurierten Anbieter; die Route POST /api/media/analyze " +
@@ -2481,11 +2502,233 @@ const AUSGANGSSTELLEN: Ausgangsstelle[] = produktdateienUnter("services").flatMa
   return AUSGANGSHINWEIS.test(text) ? erhebeAusgaenge(datei, text) : [];
 });
 
-// Gemessene Untergrenze am integrierten Stand (Quelleninspektion): neun Dateien mit mindestens elf
+// Gemessene Untergrenze am integrierten Stand (Quelleninspektion): neun Dateien mit elf
 // Ausgangsstellen. Sie darf steigen, aber nie unbemerkt fallen.
 const MINDESTZAHL_AUSGANGSDATEIEN = 9;
+const MINDESTZAHL_AUSGANGSSTELLEN = 11;
 
-/** Steht der Aufruf hinter einer Abbruchprüfung durch `waechter` (frühere Geschwisteranweisung)? */
+/** Je Ausgangsstelle ihr Registerschlüssel `datei::funktion#n` (n zählt je Datei und Funktion). */
+function mitSchluessel(
+  stellen: readonly Ausgangsstelle[],
+): { stelle: Ausgangsstelle; schluessel: string }[] {
+  const gezaehlt = new Map<string, number>();
+  return stellen.map((stelle) => {
+    const basis = `${stelle.datei}::${stelle.funktion}`;
+    const n = (gezaehlt.get(basis) ?? 0) + 1;
+    gezaehlt.set(basis, n);
+    return { stelle, schluessel: `${basis}#${n}` };
+  });
+}
+
+/** Ausgangsstellen ohne eigenes Urteil — je Stelle Datei:Zeile. */
+function unbeurteilteStellen(
+  stellen: readonly Ausgangsstelle[],
+  urteile: Readonly<Record<string, Ausgangseintrag>>,
+): string[] {
+  return mitSchluessel(stellen)
+    .filter(({ schluessel }) => !urteile[schluessel])
+    .map(
+      ({ stelle, schluessel }) =>
+        `${stelle.datei}:${stelle.zeile} — Ausgangsstelle ${schluessel} ohne eigenes Urteil`,
+    );
+}
+
+/** Urteile, zu denen die Erhebung keine Ausgangsstelle mehr findet. */
+function verwaisteUrteile(
+  stellen: readonly Ausgangsstelle[],
+  urteile: Readonly<Record<string, Ausgangseintrag>>,
+): string[] {
+  const erhoben = new Set(mitSchluessel(stellen).map(({ schluessel }) => schluessel));
+  return Object.keys(urteile).filter((k) => !erhoben.has(k));
+}
+
+// ------------------------------------------------------------------------------------------------
+// NACHARBEIT 10 (Befund ben): DIE RICHTUNG DER ENTSCHEIDUNG.
+// ------------------------------------------------------------------------------------------------
+//
+// Bis hierher genügte, dass der Wächter IRGENDWO in der Bedingung einer abbrechenden Anweisung
+// vorkam. `if (await this.nochOk(e)) { continue; } await this.zusteller(e);` war damit grün — und
+// versendete genau dann, wenn die Entscheidung VERWEIGERT. Jetzt wird die Richtung nachgewiesen:
+//   · vor dem Versand steht `if (!wächter(…)) <Abbruch>` (auch als Glied einer `||`-Kette, Klammern
+//     und `await` dürfen dazwischen stehen); jede andere Bedingung ist rot;
+//   · jedes Glied der Kette liefert einen FALSCHEN Wert, sobald das nächste verweigert:
+//     (A) jede Rückgabe ist ein Falschwert oder eine `&&`-Kette, deren Glied den nächsten unmittelbar
+//         aufruft (`return a && darfSehen(b, ko)`), oder
+//     (B) unbedingt erreicht (nur in Blöcken und Schleifen) steht `if (!nächster(…)) return false;`,
+//         und vorher gibt keine Rückgabe einen anderen als einen Falschwert zurück;
+//   · die Entscheidung am Ende ist eine Ja/Nein-Entscheidung (`darfSehen`).
+// `return !darfSehen(b, ko)`, `if (meldbar(m)) return false;` oder eine Bedingung, die sich so nicht
+// auflösen lässt, sind rot — mit Datei und Zeile.
+
+/** Zentrale Entscheidungen mit Ja/Nein-Ergebnis (nur sie tragen einen Richtungsnachweis). */
+const ZENTRALE_JA_NEIN = new Set(["darfSehen"]);
+
+function ohneKlammern(e: ts.Expression): ts.Expression {
+  let x = e;
+  while (ts.isParenthesizedExpression(x)) {
+    x = x.expression;
+  }
+  return x;
+}
+
+/** Ist `e` — ohne Klammern und `await` — ein Aufruf von `name`? */
+function istAufrufVon(e: ts.Expression, name: string): boolean {
+  let x = e;
+  while (ts.isParenthesizedExpression(x) || ts.isAwaitExpression(x)) {
+    x = x.expression;
+  }
+  return ts.isCallExpression(x) && aufgerufenerName(x.expression) === name;
+}
+
+/** Ist die Bedingung sicher wahr, wenn `name` verweigert? (`!name(…)`, auch in einer `||`-Kette) */
+function wahrBeiVerweigerung(bedingung: ts.Expression, name: string): boolean {
+  const x = ohneKlammern(bedingung);
+  if (ts.isBinaryExpression(x) && x.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+    return wahrBeiVerweigerung(x.left, name) || wahrBeiVerweigerung(x.right, name);
+  }
+  return (
+    ts.isPrefixUnaryExpression(x) &&
+    x.operator === ts.SyntaxKind.ExclamationToken &&
+    istAufrufVon(x.operand, name)
+  );
+}
+
+function istFalschwert(e: ts.Expression | undefined): boolean {
+  if (e === undefined) {
+    return true;
+  }
+  const x = ohneKlammern(e);
+  return (
+    x.kind === ts.SyntaxKind.FalseKeyword ||
+    x.kind === ts.SyntaxKind.NullKeyword ||
+    (ts.isIdentifier(x) && x.text === "undefined") ||
+    (ts.isNumericLiteral(x) && Number(x.text) === 0) ||
+    (ts.isStringLiteral(x) && x.text === "")
+  );
+}
+
+/** Alle Rückgaben in `knoten`, ohne in verschachtelte Funktionen abzusteigen. */
+function rueckgabenIn(knoten: ts.Node): ts.ReturnStatement[] {
+  const liste: ts.ReturnStatement[] = [];
+  const besuche = (x: ts.Node): void => {
+    if (ts.isFunctionLike(x) || ts.isClassLike(x)) {
+      return;
+    }
+    if (ts.isReturnStatement(x)) {
+      liste.push(x);
+    }
+    ts.forEachChild(x, besuche);
+  };
+  ts.forEachChild(knoten, besuche);
+  return liste;
+}
+
+/** Bricht die Anweisung ab (Versandseite: continue/break/return/throw am Ende)? */
+function bricht(s: ts.Statement): boolean {
+  if (
+    ts.isContinueStatement(s) ||
+    ts.isReturnStatement(s) ||
+    ts.isThrowStatement(s) ||
+    ts.isBreakStatement(s)
+  ) {
+    return true;
+  }
+  const letzte = ts.isBlock(s) ? s.statements[s.statements.length - 1] : undefined;
+  return letzte !== undefined && bricht(letzte);
+}
+
+/** Endet die Anweisung mit Falschwert oder Ausnahme, ohne vorher anderes zurückzugeben? */
+function liefertFalsch(s: ts.Statement): boolean {
+  if (ts.isReturnStatement(s)) {
+    return istFalschwert(s.expression);
+  }
+  if (ts.isThrowStatement(s)) {
+    return true;
+  }
+  if (!ts.isBlock(s)) {
+    return false;
+  }
+  const letzte = s.statements[s.statements.length - 1];
+  return (
+    letzte !== undefined &&
+    liefertFalsch(letzte) &&
+    rueckgabenIn(s).every((r) => istFalschwert(r.expression))
+  );
+}
+
+/** Die Glieder einer `&&`-Kette (ein einzelner Ausdruck ist eine Kette aus einem Glied). */
+function undGlieder(e: ts.Expression): ts.Expression[] {
+  const x = ohneKlammern(e);
+  if (ts.isBinaryExpression(x) && x.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+    return [...undGlieder(x.left), ...undGlieder(x.right)];
+  }
+  return [x];
+}
+
+/**
+ * Liefert der Rumpf sicher einen Falschwert, sobald `naechster` verweigert (Regel A oder B oben)?
+ * Leer = nachgewiesen; sonst der Mangel.
+ */
+function verweigerungSchlaegtDurch(rumpf: ts.Node, naechster: string): string | undefined {
+  const fuehrt = (e: ts.Expression | undefined): boolean =>
+    istFalschwert(e) || (e !== undefined && undGlieder(e).some((g) => istAufrufVon(g, naechster)));
+  // Pfeilfunktion mit Ausdrucksrumpf: der Ausdruck ist die einzige Rückgabe.
+  if (!ts.isBlock(rumpf)) {
+    return fuehrt(rumpf as ts.Expression)
+      ? undefined
+      : `liefert das Ergebnis von ${naechster} nicht als &&-Glied`;
+  }
+  const rueckgaben = rueckgabenIn(rumpf);
+  // Regel A.
+  if (rueckgaben.length > 0 && rueckgaben.every((r) => fuehrt(r.expression))) {
+    return undefined;
+  }
+  // Regel B.
+  const unbedingt = (n: ts.Node): boolean => {
+    for (let p = n.parent; p && p !== rumpf; p = p.parent) {
+      if (
+        !ts.isBlock(p) &&
+        !ts.isForOfStatement(p) &&
+        !ts.isForInStatement(p) &&
+        !ts.isForStatement(p) &&
+        !ts.isWhileStatement(p) &&
+        !ts.isDoStatement(p)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+  const findeSperre = (x: ts.Node): ts.IfStatement | undefined => {
+    if (ts.isFunctionLike(x) || ts.isClassLike(x)) {
+      return undefined;
+    }
+    if (
+      ts.isIfStatement(x) &&
+      wahrBeiVerweigerung(x.expression, naechster) &&
+      liefertFalsch(x.thenStatement) &&
+      unbedingt(x)
+    ) {
+      return x;
+    }
+    return ts.forEachChild(x, findeSperre);
+  };
+  const sperre = ts.forEachChild(rumpf, findeSperre);
+  if (sperre === undefined) {
+    return `bricht nicht mit einem Falschwert ab, wenn ${naechster} verweigert`;
+  }
+  const vorher = rueckgaben.filter(
+    (r) => r.getStart() < sperre.getStart() && !istFalschwert(r.expression),
+  );
+  return vorher.length === 0
+    ? undefined
+    : `gibt vor der Sperre durch ${naechster} schon etwas anderes als einen Falschwert zurück`;
+}
+
+/**
+ * Steht der Aufruf hinter `if (!waechter(…)) <Abbruch>` (frühere Geschwisteranweisung)? Eine
+ * Bedingung, die den Wächter anders verwendet (unverneint, nur als Teil, nicht auflösbar), zählt nicht.
+ */
 function hinterWaechter(aufruf: ts.Node, waechter: string): boolean {
   let anweisung: ts.Node = aufruf;
   while (anweisung.parent && !ts.isBlock(anweisung.parent)) {
@@ -2496,54 +2739,30 @@ function hinterWaechter(aufruf: ts.Node, waechter: string): boolean {
     return false;
   }
   const vorher = block.statements.slice(0, block.statements.indexOf(anweisung as ts.Statement));
-  const bricht = (s: ts.Statement): boolean => {
-    if (
-      ts.isContinueStatement(s) ||
-      ts.isReturnStatement(s) ||
-      ts.isThrowStatement(s) ||
-      ts.isBreakStatement(s)
-    ) {
-      return true;
-    }
-    const letzte = ts.isBlock(s) ? s.statements[s.statements.length - 1] : undefined;
-    return letzte !== undefined && bricht(letzte);
-  };
-  return vorher.some((s) => {
-    if (!ts.isIfStatement(s) || !bricht(s.thenStatement)) {
-      return false;
-    }
-    let ruft = false;
-    const suche = (x: ts.Node): void => {
-      if (ts.isCallExpression(x) && aufgerufenerName(x.expression) === waechter) {
-        ruft = true;
-      }
-      ts.forEachChild(x, suche);
-    };
-    suche(s.expression);
-    return ruft;
-  });
+  const sperrt = (s: ts.Statement): boolean =>
+    ts.isIfStatement(s) && bricht(s.thenStatement) && wahrBeiVerweigerung(s.expression, waechter);
+  return vorher.some(sperrt);
 }
 
-/** Geht ein SCHUTZ_VOR_VERSAND-Urteil nach. Leer = belegt; sonst je Mangel Datei:Zeile. */
+/** Geht ein SCHUTZ_VOR_VERSAND-Urteil einer Ausgangsstelle nach. Leer = belegt; sonst Datei:Zeile. */
 function pruefeVersandschutz(
-  datei: string,
+  stelle: Ausgangsstelle,
   e: Ausgangseintrag,
-  stellen: readonly Ausgangsstelle[],
   lies: (datei: string) => string,
 ): string[] {
-  const { ausgangsfunktion, verbindung, versand, waechter, kette, entscheidung } = e;
-  if (!ausgangsfunktion || !verbindung || !versand || !waechter || !kette || !entscheidung) {
-    return [`${datei}:1 — SCHUTZ_VOR_VERSAND ohne vollständigen Nachweisweg.`];
+  const { datei, funktion: ausgangsfunktion } = stelle;
+  const { verbindung, versand, waechter, kette, entscheidung } = e;
+  if (!verbindung || !versand || !waechter || !kette || !entscheidung) {
+    return [`${datei}:${stelle.zeile} — SCHUTZ_VOR_VERSAND ohne vollständigen Nachweisweg.`];
   }
   if (!ZENTRALE_ENTSCHEIDUNGEN.has(entscheidung)) {
     return [`${datei}:1 — „${entscheidung}“ ist nicht die zentrale Sichtbarkeitsentscheidung.`];
   }
-  const fremd = stellen.filter((s) => s.funktion !== ausgangsfunktion);
-  if (fremd.length > 0) {
-    return fremd.map(
-      (s) =>
-        `${s.datei}:${s.zeile} — Ausgangsstelle ausserhalb von ${ausgangsfunktion} (${s.funktion}).`,
-    );
+  if (!ZENTRALE_JA_NEIN.has(entscheidung)) {
+    return [`${datei}:1 — „${entscheidung}“ trägt keinen Ja/Nein-Richtungsnachweis.`];
+  }
+  if (ausgangsfunktion === "(Modul)") {
+    return [`${datei}:${stelle.zeile} — Ausgangsstelle ausserhalb einer benannten Funktion.`];
   }
   const sf = ts.createSourceFile(datei, lies(datei), ts.ScriptTarget.Latest, true);
   // (1) Die Ausgangsfunktion ist NUR über die Verbindung erreichbar: jede Erwähnung ausserhalb ihrer
@@ -2621,23 +2840,25 @@ function pruefeVersandschutz(
   if (maengel.length > 0) {
     return maengel;
   }
-  // (3) Der Wächter führt über die Kette zur zentralen Entscheidung.
-  let rufe: ReadonlySet<string> = new Set([waechter]);
-  let stelle = `${datei}:${f.zeile}`;
-  for (const glied of kette) {
-    if (!rufe.has(glied.funktion)) {
-      return [`${stelle} — ruft das Glied ${glied.funktion} nicht auf.`];
-    }
+  // (3) Der Wächter führt über die Kette zur zentralen Entscheidung — und zwar in der richtigen
+  // Richtung: verweigert das nächste Glied, liefert jedes Glied einen Falschwert (Nacharbeit 10).
+  if (kette[0]?.funktion !== waechter) {
+    return [`${datei}:${f.zeile} — die Kette beginnt nicht beim Wächter ${waechter}.`];
+  }
+  for (const [i, glied] of kette.entries()) {
+    const naechster = kette[i + 1]?.funktion ?? entscheidung;
     const gsf = ts.createSourceFile(glied.datei, lies(glied.datei), ts.ScriptTarget.Latest, true);
     const g = funktionsRumpf(gsf, glied.funktion);
     if (!g) {
       return [`${glied.datei}:1 — Funktion ${glied.funktion} nicht gefunden.`];
     }
-    rufe = aufrufeIn(g.rumpf, benannteHelfer(gsf));
-    stelle = `${glied.datei}:${g.zeile}`;
-  }
-  if (!rufe.has(entscheidung)) {
-    return [`${stelle} — ruft die Entscheidung ${entscheidung} nicht auf.`];
+    if (!aufrufeIn(g.rumpf, benannteHelfer(gsf)).has(naechster)) {
+      return [`${glied.datei}:${g.zeile} — ${glied.funktion} ruft ${naechster} nicht auf.`];
+    }
+    const mangel = verweigerungSchlaegtDurch(g.rumpf, naechster);
+    if (mangel) {
+      return [`${glied.datei}:${g.zeile} — ${glied.funktion} ${mangel}.`];
+    }
   }
   return [];
 }
@@ -3193,10 +3414,8 @@ sahen die vier Fail-open-Zweige aus mega74 aus — und der Sammler war dabei gr�
 // Dieser Fall schliesst das, nach dem Muster der Kalibrierung bei `:949`: an einem synthetischen
 // Baum, nicht am Bestand, damit er unabhaengig davon traegt, ob `routes/` je Unterordner bekommt.
 describe("R-1175 · Nacharbeit 9: Ausgänge ausserhalb der Routen", () => {
-  it("jede Ausgangsstelle in services/** trägt ein Urteil — eine neue ist rot", () => {
-    const ohneUrteil = AUSGANGSSTELLEN.filter((s) => !AUSGAENGE[s.datei]).map(
-      (s) => `${s.datei}:${s.zeile} — Ausgangsstelle in ${s.funktion} ohne Urteil`,
-    );
+  it("jede Ausgangsstelle in services/** trägt ein EIGENES Urteil — eine neue ist rot", () => {
+    const ohneUrteil = unbeurteilteStellen(AUSGANGSSTELLEN, AUSGAENGE);
     expect(
       ohneUrteil,
       `Diese Stellen sprechen nach außen und sind nicht beurteilt:\n${ohneUrteil.join("\n")}`,
@@ -3204,25 +3423,50 @@ describe("R-1175 · Nacharbeit 9: Ausgänge ausserhalb der Routen", () => {
   });
 
   it("kein verwaistes Ausgangsurteil, und die Erhebung ist nicht geschrumpft", () => {
-    const erhoben = new Set(AUSGANGSSTELLEN.map((s) => s.datei));
-    expect(Object.keys(AUSGAENGE).filter((d) => !erhoben.has(d))).toEqual([]);
-    expect(erhoben.size).toBeGreaterThanOrEqual(MINDESTZAHL_AUSGANGSDATEIEN);
+    expect(verwaisteUrteile(AUSGANGSSTELLEN, AUSGAENGE)).toEqual([]);
+    expect(new Set(AUSGANGSSTELLEN.map((s) => s.datei)).size).toBeGreaterThanOrEqual(
+      MINDESTZAHL_AUSGANGSDATEIEN,
+    );
+    expect(AUSGANGSSTELLEN.length).toBeGreaterThanOrEqual(MINDESTZAHL_AUSGANGSSTELLEN);
   });
 
   it("SCHUTZ_VOR_VERSAND ist bis zur zentralen Entscheidung nachgegangen (Webhook-Melder)", () => {
-    const maengel = Object.entries(AUSGAENGE)
-      .filter(([, e]) => e.urteil === "SCHUTZ_VOR_VERSAND")
-      .flatMap(([datei, e]) =>
-        pruefeVersandschutz(
-          datei,
-          e,
-          AUSGANGSSTELLEN.filter((s) => s.datei === datei),
-          LIES_AUS_DEM_BAUM,
-        ),
-      );
+    const geschuetzt = mitSchluessel(AUSGANGSSTELLEN).filter(
+      ({ schluessel }) => AUSGAENGE[schluessel]?.urteil === "SCHUTZ_VOR_VERSAND",
+    );
+    const maengel = geschuetzt.flatMap(({ stelle, schluessel }) => {
+      const e = AUSGAENGE[schluessel];
+      return e ? pruefeVersandschutz(stelle, e, LIES_AUS_DEM_BAUM) : [];
+    });
     expect(maengel).toEqual([]);
     // Der Webhook-Melder MUSS dabei sein — sonst prüfte dieser Fall nichts.
-    expect(AUSGAENGE["services/app/src/wissensereignisse.ts"]?.urteil).toBe("SCHUTZ_VOR_VERSAND");
+    expect(geschuetzt.map(({ schluessel }) => schluessel)).toContain(
+      "services/app/src/wissensereignisse.ts::fetchZusteller#1",
+    );
+  });
+
+  it("KALIBRIERUNG (Nacharbeit 10) — eine weitere Stelle in einer beurteilten Datei braucht ihr eigenes Urteil", () => {
+    const datei = "probe/mail.ts";
+    const urteile: Record<string, Ausgangseintrag> = {
+      "probe/mail.ts::send#1": { urteil: "KEIN_KO_INHALT", grund: "Probe." },
+    };
+    const einzeln = "export function send(t) { t.sendMail({}); }";
+    expect(unbeurteilteStellen(erhebeAusgaenge(datei, einzeln), urteile)).toEqual([]);
+    expect(verwaisteUrteile(erhebeAusgaenge(datei, einzeln), urteile)).toEqual([]);
+    // Ein zusätzliches fetch in DERSELBEN Funktion erbt das Urteil nicht: rot mit Datei und Zeile.
+    const gleicheFunktion = "export function send(t) {\n  t.sendMail({});\n  fetch(t.url);\n}";
+    expect(unbeurteilteStellen(erhebeAusgaenge(datei, gleicheFunktion), urteile)).toEqual([
+      "probe/mail.ts:3 — Ausgangsstelle probe/mail.ts::send#2 ohne eigenes Urteil",
+    ]);
+    // … und in einer ANDEREN Funktion derselben Datei ebenso.
+    const andereFunktion = `${einzeln}\nexport function heimlich(u) { fetch(u); }`;
+    expect(unbeurteilteStellen(erhebeAusgaenge(datei, andereFunktion), urteile)).toEqual([
+      "probe/mail.ts:2 — Ausgangsstelle probe/mail.ts::heimlich#1 ohne eigenes Urteil",
+    ]);
+    // Ein Urteil, dessen Stelle verschwunden ist, ist verwaist.
+    expect(verwaisteUrteile(erhebeAusgaenge(datei, "export const a = 1;"), urteile)).toEqual([
+      "probe/mail.ts::send#1",
+    ]);
   });
 
   it("KALIBRIERUNG — die Ausgangserhebung erkennt die Bauformen und nur sie", () => {
@@ -3244,13 +3488,19 @@ describe("R-1175 · Nacharbeit 9: Ausgänge ausserhalb der Routen", () => {
 
   it("KALIBRIERUNG — Versandschutz: grün nur mit Wächter vor jedem Versand und zentraler Kette", () => {
     const datei = "probe/melder.ts";
-    const bau = (versand: string, extra = "", meldbar = "darfSehen(B, ko)"): string =>
+    const NOCH_OK = "if (!meldbar(m)) { return false; } return true;";
+    const bau = (
+      versand: string,
+      extra = "",
+      meldbar = "darfSehen(B, ko)",
+      nochOk = NOCH_OK,
+    ): string =>
       [
         `function meldbar(ko) { return ${meldbar}; }`,
         "export const sender = async (a) => { await fetch(a.url); };",
         "class M {",
         "  constructor(d) { this.zusteller = d.z ?? sender; }",
-        "  async nochOk(m) { if (!meldbar(m)) { return false; } return true; }",
+        `  async nochOk(m) { ${nochOk} }`,
         `  async versende() {\n    for (const e of this.q) {\n${versand}\n    }\n  }`,
         `  ${extra}`,
         "}",
@@ -3259,7 +3509,6 @@ describe("R-1175 · Nacharbeit 9: Ausgänge ausserhalb der Routen", () => {
       "      if (!(await this.nochOk(e))) { continue; }\n      await this.zusteller(e);";
     const eintrag: Ausgangseintrag = {
       urteil: "SCHUTZ_VOR_VERSAND",
-      ausgangsfunktion: "sender",
       verbindung: "zusteller",
       versand: "versende",
       waechter: "nochOk",
@@ -3271,8 +3520,9 @@ describe("R-1175 · Nacharbeit 9: Ausgänge ausserhalb der Routen", () => {
       grund: "Probe.",
     };
     const pruefe = (text: string): string[] =>
-      pruefeVersandschutz(datei, eintrag, erhebeAusgaenge(datei, text), () => text);
+      erhebeAusgaenge(datei, text).flatMap((s) => pruefeVersandschutz(s, eintrag, () => text));
 
+    expect(erhebeAusgaenge(datei, bau(mitWaechter)).map((s) => s.funktion)).toEqual(["sender"]);
     expect(pruefe(bau(mitWaechter))).toEqual([]);
     // Ohne Wächter: rot.
     expect(pruefe(bau("      await this.zusteller(e);"))).not.toEqual([]);
@@ -3288,6 +3538,81 @@ describe("R-1175 · Nacharbeit 9: Ausgänge ausserhalb der Routen", () => {
     );
     // Der Wächter ruft die zentrale Entscheidung nicht: rot.
     expect(pruefe(bau(mitWaechter, "", "!ko.deletedAt"))).not.toEqual([]);
+  });
+
+  it("KALIBRIERUNG (Nacharbeit 10) — eine verweigerte Entscheidung muss den Versand verhindern", () => {
+    const datei = "probe/melder.ts";
+    const bau = (versand: string, nochOk: string, meldbar: string): string =>
+      [
+        `function meldbar(ko) { ${meldbar} }`,
+        "export const sender = async (a) => { await fetch(a.url); };",
+        "class M {",
+        "  constructor(d) { this.zusteller = d.z ?? sender; }",
+        `  async nochOk(m) { ${nochOk} }`,
+        `  async versende() {\n    for (const e of this.q) {\n${versand}\n    }\n  }`,
+        "}",
+      ].join("\n");
+    const eintrag: Ausgangseintrag = {
+      urteil: "SCHUTZ_VOR_VERSAND",
+      verbindung: "zusteller",
+      versand: "versende",
+      waechter: "nochOk",
+      kette: [
+        { datei, funktion: "nochOk" },
+        { datei, funktion: "meldbar" },
+      ],
+      entscheidung: "darfSehen",
+      grund: "Probe.",
+    };
+    const pruefe = (versand: string, nochOk: string, meldbar: string): string[] => {
+      const text = bau(versand, nochOk, meldbar);
+      return erhebeAusgaenge(datei, text).flatMap((s) =>
+        pruefeVersandschutz(s, eintrag, () => text),
+      );
+    };
+    const VERSAND = "      await this.zusteller(e);";
+    const RECHT = "      if (!(await this.nochOk(e))) { continue; }";
+    const NOCH_OK = "for (const id of m.ids) { if (!meldbar(id)) { return false; } } return true;";
+    const MELDBAR = "return ko !== undefined && !ko.deletedAt && darfSehen(B, ko);";
+
+    // Die Bauform des Bestands: grün.
+    expect(pruefe(`${RECHT}\n${VERSAND}`, NOCH_OK, MELDBAR)).toEqual([]);
+    // Bens Fall: die Bedingung ist umgekehrt — versendet, wenn die Entscheidung verweigert. Rot.
+    const umgekehrt = "      if (await this.nochOk(e)) { continue; }";
+    expect(pruefe(`${umgekehrt}\n${VERSAND}`, NOCH_OK, MELDBAR)).toEqual([
+      `${datei}:9 — Versand über zusteller ohne vorherige Abbruchprüfung durch nochOk.`,
+    ]);
+    // Der Wächter steht in der Bedingung, entscheidet sie aber nicht (`&&`): rot.
+    const nurTeil = "      if (!(await this.nochOk(e)) && e.eilig) { continue; }";
+    expect(pruefe(`${nurTeil}\n${VERSAND}`, NOCH_OK, MELDBAR)).not.toEqual([]);
+    // Nicht auflösbar (das Ergebnis läuft über eine Variable): rot.
+    const ueberVariable = "      const ok = await this.nochOk(e);\n      if (!ok) { continue; }";
+    expect(pruefe(`${ueberVariable}\n${VERSAND}`, NOCH_OK, MELDBAR)).not.toEqual([]);
+    // Eine weitere `||`-Bedingung neben der verneinten Entscheidung bricht ebenfalls ab: grün.
+    const oder = "      if (e.gesperrt || !(await this.nochOk(e))) { continue; }";
+    expect(pruefe(`${oder}\n${VERSAND}`, NOCH_OK, MELDBAR)).toEqual([]);
+    // Der Wächter gibt bei Verweigerung WAHR zurück: rot mit Datei und Zeile des Glieds.
+    const nochOkUmgekehrt = "if (meldbar(m)) { return false; } return true;";
+    expect(pruefe(`${RECHT}\n${VERSAND}`, nochOkUmgekehrt, MELDBAR)).toEqual([
+      `${datei}:5 — nochOk bricht nicht mit einem Falschwert ab, wenn meldbar verweigert.`,
+    ]);
+    // Der Wächter ignoriert das Ergebnis: rot.
+    const nochOkIgnoriert = "meldbar(m); return true;";
+    expect(pruefe(`${RECHT}\n${VERSAND}`, nochOkIgnoriert, MELDBAR)).not.toEqual([]);
+    // Die Sperre steht nur unter einer Nebenbedingung: rot.
+    const nochOkBedingt = "if (m.pruefen) { if (!meldbar(m)) { return false; } } return true;";
+    expect(pruefe(`${RECHT}\n${VERSAND}`, nochOkBedingt, MELDBAR)).not.toEqual([]);
+    // Vor der Sperre wird schon WAHR zurückgegeben: rot.
+    const nochOkVorab =
+      "if (m.alt) { return true; } if (!meldbar(m)) { return false; } return true;";
+    expect(pruefe(`${RECHT}\n${VERSAND}`, nochOkVorab, MELDBAR)).not.toEqual([]);
+    // Die Entscheidung wird verneint weitergegeben (`return !darfSehen`): rot mit Datei und Zeile.
+    expect(pruefe(`${RECHT}\n${VERSAND}`, NOCH_OK, "return !darfSehen(B, ko);")).toEqual([
+      `${datei}:1 — meldbar bricht nicht mit einem Falschwert ab, wenn darfSehen verweigert.`,
+    ]);
+    // `||` statt `&&` lässt eine Verweigerung durch: rot.
+    const oderDurch = "return ko.oeffentlich || darfSehen(B, ko);";
+    expect(pruefe(`${RECHT}\n${VERSAND}`, NOCH_OK, oderDurch)).not.toEqual([]);
   });
 });
 
