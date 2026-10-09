@@ -32,12 +32,12 @@ import {
   PgConflictMemoryRepo,
   emptyCoverage,
   isCompleteRun,
-  singleRunBalances,
 } from "../../services/conflicts";
 import { CONFLICTS_SCHEMA } from "../../services/conflicts/src/repo-pg";
 import { BESTANDSRESET_LOESCHGRAPH } from "../../services/db-tx";
 import type { Reasoner } from "../../services/reasoner";
 import { pflichttabellenAusDrill, tabellenAusSchemas } from "../backup-drill/pflichtsatz";
+import { singleRunBalances } from "../support/abdeckung-buchhaltung";
 
 function subject(id: string, farbe: string, version?: number): DetectSubject {
   return {

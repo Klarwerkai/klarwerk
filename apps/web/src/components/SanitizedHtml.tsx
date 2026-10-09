@@ -18,6 +18,10 @@ import { RICH_TEXT_VOID_TAGS, sanitizeHtml } from "../lib/richText";
 /** Kennzeichnung der Lesehülle — steht nur am React-Element, nie im sanitisierten HTML. */
 export const LESEHUELLE_ATTR = "data-kw-lesehuelle";
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): die Hülle unten trug den Namen bis hierher ein zweites
+// Mal als Literal; die Konstante las nur der Prüfstand. Jetzt setzt das Element genau sie.
+const LESEHUELLE_TABELLE = { [LESEHUELLE_ATTR]: "tabelle" } as const;
+
 export interface LeseAbschnitt {
   art: "fluss" | "tabelle";
   html: string;
@@ -94,7 +98,7 @@ export function SanitizedHtml({
           <div
             // biome-ignore lint/suspicious/noArrayIndexKey: die Abschnittsfolge ist eine reine Ableitung von `html`.
             key={i}
-            data-kw-lesehuelle="tabelle"
+            {...LESEHUELLE_TABELLE}
             className="max-w-full overflow-x-auto"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: Teilstück der allowlist-sanitisierten Ausgabe oben.
             dangerouslySetInnerHTML={{ __html: t.html }}

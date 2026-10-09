@@ -12,12 +12,10 @@ import { type KnowledgeOsPhase, phaseLabelKey } from "./taskAction";
 // Die vier Kernflächen mit echten leeren/ersten Zuständen (identisch zu EmptyStateContext).
 export type StorySurface = "start" | "tasks" | "library" | "validation";
 
-export const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
-  "start",
-  "tasks",
-  "library",
-  "validation",
-] as const;
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand die Liste `KNOWLEDGE_STORY_SURFACES`. Kein
+// Produktweg las sie — die Leerzustände holen ihre Zeile je Kontext über `knowledgeStory(context)`
+// (`components/EmptyStateCtas.tsx`, R-0991 Nr. 34). Die Liste war Prüfzeug und steht jetzt im Test
+// (`tests/app/knowledge-story.test.ts`); die Menge der Flächen trägt der Typ oben.
 
 // Jede Fläche steht für eine reale Phase im Knowledge-OS-Kreis — dieselbe Sprache wie Start/MyTasks.
 const SURFACE_PHASE: Record<StorySurface, KnowledgeOsPhase> = {

@@ -13,6 +13,7 @@
 //   B  Die Kennzeichnung kommt NICHT aus dem Inhalt: dieselbe Markierung im HTML fällt weiter, die
 //      Allowlist ist unverändert, Gefährliches in der Tabelle bleibt entfernt.
 //   C  Die Zerlegung verliert und verdoppelt nichts; ohne Tabelle bleibt das Markup das bisherige.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createElement } from "../../apps/web/node_modules/react";
 import {
@@ -20,9 +21,9 @@ import {
   SanitizedHtml,
   zerlegeLesekoerper,
 } from "../../apps/web/src/components/SanitizedHtml";
-import { KoReadStatement } from "../../apps/web/src/components/ko/KoRead";
 import { sanitizeHtml } from "../../apps/web/src/lib/richText";
 import { makeKo, renderMarkup } from "../../apps/web/src/test/render";
+import { repoPfad } from "../support/repoPfad";
 
 const TABELLE = "<table><tbody><tr><td>Ventil V-12</td><td>jährlich</td></tr></tbody></table>";
 const HUELLE = `[${LESEHUELLE_ATTR}="tabelle"]`;
@@ -47,9 +48,32 @@ describe("A · im Lesepfad trägt die Tabelle ihre Hülle", () => {
     expect(huelle?.querySelectorAll("td")).toHaveLength(2);
   });
 
-  it("die echte Leseansicht (KoReadStatement) zeichnet die Hülle", () => {
+  // R-1349 (Aufnahme gesamt-aufruferwaechter, Integration mit main): dieser Fall maß bis hierher
+  // `KoReadStatement` aus `components/ko/KoRead.tsx` als „echte Leseansicht“. Die Datei wird von
+  // keiner Fläche montiert (ihr einziger Einbinder `KoReadView` hat selbst keinen Aufrufer) und ist
+  // mit R-1349 entfernt. Die Leseansicht, die das Produkt zeigt, ist die Lesefläche der Bibliothek;
+  // sie setzt `lesehuellen` an BEIDEN Körperpfaden (gelesene Fassung und aktueller Stand). Der Fall
+  // hält das an ihrer Quelle fest und zeichnet denselben Aufruf.
+  it("die echte Leseansicht (BibliothekLesen) zeichnet die Hülle", () => {
+    const quelle = readFileSync(
+      repoPfad("apps/web/src/components/bibliothek/BibliothekLesen.tsx"),
+      "utf8",
+    );
+    const aufrufe = quelle.match(
+      /<SanitizedHtml html=\{[^}]*\.bodyHtml\} className="prose-kw" lesehuellen \/>/g,
+    );
+    expect(aufrufe, "die Lesefläche gibt einen Körper ohne Lesehülle aus").toHaveLength(2);
+
     const ko = makeKo({ bodyHtml: `<h2>Wartung</h2>${TABELLE}` });
-    const wurzel = baum(renderMarkup(createElement(KoReadStatement, { ko })));
+    const wurzel = baum(
+      renderMarkup(
+        createElement(SanitizedHtml, {
+          html: ko.bodyHtml ?? "",
+          className: "prose-kw",
+          lesehuellen: true,
+        }),
+      ),
+    );
     const prosa = wurzel.querySelector(".prose-kw");
 
     expect(prosa, "der Lesekörper fehlt").not.toBeNull();
