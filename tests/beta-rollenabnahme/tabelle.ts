@@ -2388,6 +2388,15 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_LESEN,
   },
   {
+    // R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 3): Befunde je Importkandidat.
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/import/candidates/befunde",
+    belegstelle: "services/app/src/routes/library-routes.ts:1013",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
     gruppe: "libraryRoutes",
     methode: "GET",
     pfad: "/api/analytics",
