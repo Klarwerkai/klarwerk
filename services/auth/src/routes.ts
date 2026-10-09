@@ -153,6 +153,12 @@ const OIDC_FLOW_MAX_AGE = 600; // 10 Minuten
 const OIDC_ZIEL_COOKIE = "kw_oidc_ziel";
 const OIDC_ZIEL_WORD_ADDIN = "word-addin";
 const OIDC_WEITER_WORD_ADDIN = "/word-addin/anmeldung.html";
+// R-0582: die zweite feste Kennung — die erneute SSO-Anmeldung als Identitätsbestätigung für eine
+// neue E-Mail aus dem Profil. Der Rückruf nennt genau EINE feste Adresse zurück ins Profil, und die
+// Bestätigung gilt kurz, einmal und nur für die Sitzung, die dieser Rückruf ausgibt.
+const OIDC_ZIEL_PROFIL = "profil";
+const OIDC_WEITER_PROFIL = "/profil?kontodaten=sso";
+const SSO_BESTAETIGUNG_MS = 5 * 60 * 1000;
 
 function flowCookie(name: string, value: string): string {
   const base = `${name}=${value}; HttpOnly; Path=/; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
@@ -443,6 +449,53 @@ export function authRoutes(
       return user;
     };
 
+    // R-0582: die SSO-Identitätsbestätigungen für eine neue E-Mail, je App-Instanz im
+    // Arbeitsspeicher wie `officeHandover` (ein Neustart verwirft sie — dann meldet man sich eben
+    // noch einmal an). Schlüssel ist der Hash des Sitzungsmerkmals, nie das Merkmal selbst.
+    const ssoBestaetigung = new Map<string, { userId: string; bis: number }>();
+    const sitzungsSchluessel = (token: string): string =>
+      createHash("sha256").update(token).digest("hex");
+    /** Die EINE Stelle, an der eine Bestätigung entsteht (OIDC-Rückruf und SAML-Abschluss). */
+    const ssoBestaetigungMerken = (token: string, userId: string): void => {
+      const jetzt = Date.now();
+      for (const [schluessel, eintrag] of ssoBestaetigung) {
+        if (eintrag.bis <= jetzt) {
+          ssoBestaetigung.delete(schluessel);
+        }
+      }
+      ssoBestaetigung.set(sitzungsSchluessel(token), { userId, bis: jetzt + SSO_BESTAETIGUNG_MS });
+    };
+
+    // R-0582: die Formwache der Kontodaten-Berichtigung (selbst und durch den Admin). Byte-gleich
+    // zu den Antworten beim Anlegen — fehlende Felder sind „unverändert", ein vorhandenes Feld muss
+    // eine nicht leere Zeichenkette bzw. eine Adresse sein. `null` heisst: die 400 ist gesendet.
+    const kontodatenForm = (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): { name?: string; email?: string } | null => {
+      const body = (request.body ?? {}) as { name?: unknown; email?: unknown };
+      const ergebnis: { name?: string; email?: string } = {};
+      if (body.name !== undefined) {
+        if (typeof body.name !== "string" || body.name.trim().length === 0) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("NAME_REQUIRED", sprache(request)) });
+          return null;
+        }
+        ergebnis.name = body.name.trim();
+      }
+      if (body.email !== undefined) {
+        if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("EMAIL_REQUIRED", sprache(request)) });
+          return null;
+        }
+        ergebnis.email = body.email.trim();
+      }
+      return ergebnis;
+    };
+
     // R-0541: Ist die Anmeldung mit Passwort abgeschaltet, antwortet JEDER Weg, der ein Passwort
     // annimmt oder neu ausstellt (Anmelden, Registrieren, Vergessen, Zurücksetzen), mit 403 — VOR
     // jedem Zähler und jeder Kontoabfrage. Ein „Passwort vergessen", das weiter Mails verschickt,
@@ -717,6 +770,62 @@ export function authRoutes(
       }
     });
 
+    // R-0582 (DS13): DAS EIGENE KONTO BERICHTIGEN — Name und E-Mail, ohne Antrag.
+    //
+    // Fehlende Felder bleiben unverändert. Die Formwache ist dieselbe wie beim Anlegen
+    // (`kontodatenForm`). Wer die ADRESSE ändert, bestätigt seine Identität: an ihr hängt die
+    // Anmeldung und der Weg „Passwort vergessen" — eine offen stehende Sitzung allein soll das Konto
+    // nicht auf ein fremdes Postfach umlenken können. Der Name braucht das nicht.
+    //
+    // ZWEI NACHWEISE, JEDER FÜR SICH GENÜGT: das aktuelle Passwort — oder eine frische erneute
+    // SSO-Anmeldung aus dem Profil (`/api/auth/oidc/start?ziel=profil`), gebunden an DIESE Sitzung,
+    // höchstens `SSO_BESTAETIGUNG_MS` alt und nach einer gelungenen Änderung verbraucht. Ein reines
+    // SSO-Konto hat kein Passwort; ihm bliebe ohne den zweiten Weg nur der Admin.
+    app.put<{ Body: { name?: unknown; email?: unknown; currentPassword?: unknown } }>(
+      "/api/auth/me",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { currentPassword?: unknown };
+        const eingabe = kontodatenForm(request, reply);
+        if (eingabe === null) {
+          return;
+        }
+        try {
+          const token = tokenFromRequest(request);
+          const schluessel = token ? sitzungsSchluessel(token) : "";
+          const sso = ssoBestaetigung.get(schluessel);
+          const ssoBestaetigt = sso !== undefined && sso.userId === user.id && sso.bis > Date.now();
+          const neueEmail = eingabe.email !== undefined && eingabe.email !== user.email;
+          if (neueEmail && !ssoBestaetigt) {
+            if (!(await service.hatLokalesPasswort(user.id))) {
+              throw new AuthError(
+                "FORBIDDEN",
+                "SSO_CONFIRMATION_REQUIRED" satisfies Meldungsschluessel,
+              );
+            }
+            const passwort = typeof body.currentPassword === "string" ? body.currentPassword : "";
+            if (!(await service.verifyUserPassword(user.id, passwort))) {
+              throw new AuthError(
+                "INVALID_CREDENTIALS",
+                "CURRENT_PASSWORD_INCORRECT" satisfies Meldungsschluessel,
+              );
+            }
+          }
+          const stand = await service.correctAccountData(user.id, eingabe, user.id);
+          if (neueEmail && ssoBestaetigt) {
+            // Einmalig: die Bestätigung trägt genau EINE Adressänderung.
+            ssoBestaetigung.delete(schluessel);
+          }
+          reply.code(200).send(stand);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
     // ============================================================================================
     // JOB 4076 — DER ÜBERGABECODE UND SEIN EINLÖSEN. Siehe den Kopfkommentar zu
     // `OFFICE_HANDOVER_TTL_MS` für das Warum; hier steht das Wie.
@@ -954,14 +1063,14 @@ export function authRoutes(
       const { verifier, challenge } = createPkcePair();
       // Das Ziel wird bei JEDEM Start neu gesetzt oder gelöscht — ein alter Dialog-Start darf einen
       // späteren Start aus der Anwendung nicht in die Dialogseite lenken.
-      const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
+      const zielWert = request.query?.ziel;
+      const ziel =
+        zielWert === OIDC_ZIEL_WORD_ADDIN || zielWert === OIDC_ZIEL_PROFIL ? zielWert : null;
       reply.header("set-cookie", [
         flowCookie(OIDC_STATE_COOKIE, state),
         flowCookie(OIDC_NONCE_COOKIE, nonce),
         flowCookie(OIDC_VERIFIER_COOKIE, verifier),
-        ausDemDialog
-          ? flowCookie(OIDC_ZIEL_COOKIE, OIDC_ZIEL_WORD_ADDIN)
-          : clearFlowCookie(OIDC_ZIEL_COOKIE),
+        ziel !== null ? flowCookie(OIDC_ZIEL_COOKIE, ziel) : clearFlowCookie(OIDC_ZIEL_COOKIE),
       ]);
       reply.redirect(options.oidc.authorizeUrl({ state, nonce, codeChallenge: challenge }));
     });
@@ -982,6 +1091,7 @@ export function authRoutes(
         const nonceCookie = readCookie(request, OIDC_NONCE_COOKIE);
         const verifierCookie = readCookie(request, OIDC_VERIFIER_COOKIE);
         const ausDemDialog = readCookie(request, OIDC_ZIEL_COOKIE) === OIDC_ZIEL_WORD_ADDIN;
+        const ausDemProfil = readCookie(request, OIDC_ZIEL_COOKIE) === OIDC_ZIEL_PROFIL;
         const clearFlow = [
           clearFlowCookie(OIDC_STATE_COOKIE),
           clearFlowCookie(OIDC_NONCE_COOKIE),
@@ -1003,6 +1113,13 @@ export function authRoutes(
           return;
         }
         try {
+          // R-0582 (Ben, Nacharbeit 4): das AUSGANGSKONTO der Bestätigung — die Sitzung, aus der das
+          // Profil die Bestätigung gestartet hat. Der Browser schickt ihr Merkmal beim Rückruf noch
+          // mit; erst die Antwort unten ersetzt es. Gelesen VOR der neuen Anmeldung.
+          const ausgangsMerkmal = ausDemProfil ? tokenFromRequest(request) : undefined;
+          const ausgangskonto = ausgangsMerkmal
+            ? await service.authenticate(ausgangsMerkmal)
+            : undefined;
           const idToken = await options.oidc.exchange(request.body.code, verifierCookie);
           const claims = await options.oidc.verify(idToken, nonceCookie);
           const mappedRole = options.oidc.mapRole(claims);
@@ -1012,9 +1129,24 @@ export function authRoutes(
             mappedRole,
           );
           reply.header("set-cookie", [...clearFlow, sessionCookie(token)]);
+          // Nur wenn der Anbieter DASSELBE Konto angemeldet hat, das die Berichtigung begonnen hat.
+          // Meldet er ein anderes an (Kontowechsel beim Anbieter), entsteht KEINE Bestätigung: sie
+          // gälte sonst für ein Konto, dessen Inhaber die Berichtigung nie begonnen hat.
+          if (ausDemProfil && ausgangskonto !== undefined && ausgangskonto.id === user.id) {
+            // R-0582: der Anbieter hat DIESES Konto soeben erneut angemeldet. Das ist die
+            // Identitätsbestätigung für eine neue E-Mail — gebunden an genau die Sitzung, die hier
+            // entsteht, und nur für kurze Zeit. Abgelaufene Einträge fallen beim Setzen.
+            ssoBestaetigungMerken(token, user.id);
+          }
           reply
             .code(200)
-            .send(ausDemDialog ? { user, token, weiter: OIDC_WEITER_WORD_ADDIN } : { user, token });
+            .send(
+              ausDemDialog
+                ? { user, token, weiter: OIDC_WEITER_WORD_ADDIN }
+                : ausDemProfil
+                  ? { user, token, weiter: OIDC_WEITER_PROFIL }
+                  : { user, token },
+            );
         } catch (error) {
           reply.header("set-cookie", clearFlow);
           if (error instanceof AuthError) {
@@ -1039,18 +1171,17 @@ export function authRoutes(
           .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
         return;
       }
-      const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
+      // R-0582: neben dem Word-Dialog die zweite feste Kennung — die Identitätsbestätigung für eine
+      // neue E-Mail aus dem Profil (wie `?ziel=profil` beim OIDC-Weg). Jeder andere Wert: keine.
+      const zielWert = request.query?.ziel;
+      const ziel =
+        zielWert === OIDC_ZIEL_WORD_ADDIN || zielWert === OIDC_ZIEL_PROFIL ? zielWert : undefined;
       // Der einmalige Browsernachweis (s. `SAML_BINDUNG_COOKIE`): der Browser bekommt den Wert,
       // der Anbieter merkt sich nur seine Prüfsumme.
       const nachweis = randomToken();
       reply.header("cache-control", "no-store");
       reply.header("set-cookie", samlBindungCookie(nachweis));
-      reply.redirect(
-        options.saml.anmeldeUrl(
-          ausDemDialog ? OIDC_ZIEL_WORD_ADDIN : undefined,
-          pruefsummeHex(nachweis),
-        ),
-      );
+      reply.redirect(options.saml.anmeldeUrl(ziel, pruefsummeHex(nachweis)));
     });
 
     // R-0560: die Dienstanbieter-Metadaten — das, was die IT beim Anbieter einträgt.
@@ -1070,9 +1201,13 @@ export function authRoutes(
     // Abschlusscode, zwei Minuten lang, genau einmal einlösbar. Nur in diesem Prozess.
     const samlAbschluesse = new Map<
       string,
-      { ergebnis: SamlErgebnis; insDialog: boolean; bis: number }
+      { ergebnis: SamlErgebnis; insDialog: boolean; insProfil: boolean; bis: number }
     >();
-    const samlAbschlussMerken = (ergebnis: SamlErgebnis, insDialog: boolean): string => {
+    const samlAbschlussMerken = (
+      ergebnis: SamlErgebnis,
+      insDialog: boolean,
+      insProfil: boolean,
+    ): string => {
       const nun = Date.now();
       for (const [code, eintrag] of samlAbschluesse) {
         if (eintrag.bis <= nun) {
@@ -1086,7 +1221,12 @@ export function authRoutes(
         }
       }
       const code = randomToken();
-      samlAbschluesse.set(code, { ergebnis, insDialog, bis: nun + SAML_ABSCHLUSS_FRIST_MS });
+      samlAbschluesse.set(code, {
+        ergebnis,
+        insDialog,
+        insProfil,
+        bis: nun + SAML_ABSCHLUSS_FRIST_MS,
+      });
       return code;
     };
 
@@ -1129,7 +1269,10 @@ export function authRoutes(
             }
             // Nur die EINE feste Kennung führt ins Dialogfenster — keine offene Weiterleitung.
             const insDialog = request.body?.RelayState === OIDC_ZIEL_WORD_ADDIN;
-            const code = samlAbschlussMerken(ergebnis, insDialog);
+            // R-0582: RelayState ist unsigniert — er wählt nur das feste Ziel. Ob eine
+            // Bestätigung entsteht, entscheidet allein der Abgleich mit dem Ausgangskonto unten.
+            const insProfil = request.body?.RelayState === OIDC_ZIEL_PROFIL;
+            const code = samlAbschlussMerken(ergebnis, insDialog, insProfil);
             reply.header("cache-control", "no-store");
             reply.redirect(`${SAML_COOKIE_PFAD}/abschluss?code=${encodeURIComponent(code)}`, 303);
           } catch (error) {
@@ -1182,9 +1325,24 @@ export function authRoutes(
             throw new SamlFehler("Browsernachweis fehlt oder passt nicht");
           }
           const { claims, rolle } = eintrag.ergebnis;
-          const { token } = await service.loginWithOidc(claims, saml.autoProvision, rolle);
+          // R-0582: das Ausgangskonto der Profilbestätigung — die Sitzung, die der Browser bei
+          // dieser Seitennavigation noch mitschickt. Gelesen VOR der neuen Anmeldung.
+          const ausgangsMerkmal = eintrag.insProfil ? tokenFromRequest(request) : undefined;
+          const ausgangskonto = ausgangsMerkmal
+            ? await service.authenticate(ausgangsMerkmal)
+            : undefined;
+          const { token, user } = await service.loginWithOidc(claims, saml.autoProvision, rolle);
           reply.header("set-cookie", [samlBindungLoeschen(), sessionCookie(token)]);
           reply.header("cache-control", "no-store");
+          if (eintrag.insProfil) {
+            // Dieselbe Regel wie beim OIDC-Rückruf: nur für DASSELBE Konto, an die neue Sitzung
+            // gebunden, kurz und einmal. Ein Kontowechsel beim Anbieter bestätigt nichts.
+            if (ausgangskonto !== undefined && ausgangskonto.id === user.id) {
+              ssoBestaetigungMerken(token, user.id);
+            }
+            reply.redirect(OIDC_WEITER_PROFIL, 303);
+            return;
+          }
           reply.redirect(eintrag.insDialog ? OIDC_WEITER_WORD_ADDIN : "/", 303);
         } catch (error) {
           request.log.warn(
@@ -1603,6 +1761,9 @@ export function authRoutes(
         approve?: unknown;
         password?: unknown;
         accessExpiresAt?: unknown;
+        // R-0582: der Admin berichtigt Name und E-Mail eines Kontos (ohne dessen Passwort).
+        name?: unknown;
+        email?: unknown;
       };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
@@ -1611,6 +1772,11 @@ export function authRoutes(
       }
       const { id } = request.params;
       const { role, approve, password, accessExpiresAt } = request.body;
+      // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
+      const kontodaten = kontodatenForm(request, reply);
+      if (kontodaten === null) {
+        return;
+      }
       try {
         // ────────────────────────────────────────────────────────────────────────────────────────
         // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
@@ -1655,6 +1821,11 @@ export function authRoutes(
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
         let user: PublicUser | undefined;
+        // R-0582: die Berichtigung ZUERST — ihre einzige inhaltliche Ablehnung (Adresse vergeben,
+        // 409) fällt damit, bevor Freigabe, Rolle oder Passwort geschrieben sind.
+        if (kontodaten.name !== undefined || kontodaten.email !== undefined) {
+          user = await service.correctAccountData(id, kontodaten, admin.id);
+        }
         if (approve === true) {
           user = await service.approveUser(id, admin.id);
         }
