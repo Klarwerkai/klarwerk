@@ -1988,6 +1988,10 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // R-0604 / R-0625: die serverseitige KI-Kennzeichnung (`AiGeneratedMark`, nur gesetzt, wenn ein
+  // Modell geantwortet hat). Bewusst `unknown`: die Fläche castet sie nicht, sondern prüft sie mit
+  // derselben Laufzeitprüfung wie das Word-Panel (`istKiKennzeichnung`, lib/wordAddin.ts).
+  aiGenerated?: unknown;
   // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
   // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
   zuordnungUnbekannt?: true;
