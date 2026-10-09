@@ -8,6 +8,8 @@
   Am 09.10.2026 auf den Stand nach R-1349 nachgezogen (Kandidat `3fb14443`): Die dort entfernten, ungenutzten
   Stellen `services/rbac/src/guard.ts` und `InterviewSession` sind durch die tatsächlichen Produktwege ersetzt;
   alle übrigen Pfade und Testtitel sind gegen diesen Stand erneut abgeglichen.
+  Am 09.10.2026 erneut nachgezogen (Kandidat `e7f626aa`): Der gesonderte Auftrag mobile-erfassung hat FR-CAP-04 und
+  FR-MOB-02 geliefert; beide Zeilen tragen jetzt dessen Testbelege. Alle Pfade und Testtitel sind wieder abgeglichen.
 - **Quelle der Anforderungen:** `specs/reference/Pflichtenheft.md` v1.0 (78 FR + 27 NFR = 105).
 - **Was die Tabelle belegt:** dass der genannte Code und der genannte Testfall (Datei + wörtlicher
   Testtitel) im Bestand stehen. Ob diese Tests grün sind, belegt der Testlauf, nicht diese Tabelle.
@@ -15,14 +17,14 @@
   Pflichtenhefts genau einmal mit ihrer Priorität hier steht, jeder genannte Code- und Testpfad existiert,
   jeder Testtitel in seiner Datei vorkommt und die Quote unten aus den Zeilen gerechnet stimmt.
 
-Nachweisquote: **63 von 105**
+Nachweisquote: **65 von 105**
 
 | Status | Anzahl | Bedeutung |
 |---|---|---|
-| nachgewiesen | 63 | Code und Testfall, der das Abnahmekriterium prüft |
+| nachgewiesen | 65 | Code und Testfall, der das Abnahmekriterium prüft |
 | teilweise | 19 | Code und Test vorhanden, der Test deckt das Abnahmekriterium nur zum Teil |
 | ohne Testnachweis | 0 | Code vorhanden, kein Testfall zum Abnahmekriterium |
-| Code fehlt | 2 | ein Teil des Abnahmekriteriums ist im Code nicht umgesetzt |
+| Code fehlt | 0 | ein Teil des Abnahmekriteriums ist im Code nicht umgesetzt |
 | Abnahme außerhalb Tests | 19 | Abnahmekriterium ist kein Testfall (Review, Audit, Lasttest, SLA, Vertrag, Dokument) — Abnahmeschuld, keine Bauschuld |
 | nicht zugeordnet | 2 | im Abgleich weder tragender Code noch Testfall zugeordnet; Stand ungeklärt |
 
@@ -53,7 +55,7 @@ für den oben genannten Stand.
 | FR-CAP-01 | MUSS | teilweise | `apps/web/src/pages/Capture.tsx` | — | Laut `tests/erfassung-einstieg/README.md` sind alle vier Modi erreichbar, führen aber nicht zu demselben Datenstand (Blatt speichert Rumpf-HTML, Arbeitsraum Formularfelder). |
 | FR-CAP-02 | MUSS | nachgewiesen | `services/reasoner/src/service.ts`<br>`services/reasoner/src/provider.ts`<br>`services/app/src/routes/reasoner-routes.ts` | `services/reasoner/src/service.test.ts` › „eine Frage pro Turn entlang der Fragenfolge“<br>`services/reasoner/src/service.test.ts` › „Abschluss bei ausreichendem Inhalt (Kernaussage + Bedingung + Maßnahme)“<br>`services/reasoner/src/service.test.ts` › „verdichtet die Antworten nachvollziehbar zum Entwurf“ | Das Interview läuft über den Reasoner (Aufgabe `interview`); die frühere, ungenutzte `InterviewSession` in `services/capture` ist mit R-1349 entfernt. Belegt ist der modellfreie Weg; wann ein Modell abschließt, hängt vom Modell ab. |
 | FR-CAP-03 | MUSS | teilweise | `apps/web/src/lib/speechDictation.ts` | — | Diktat-Tests in `tests/diktat-fragefeld/sprechen-und-vorlesen.test.tsx`; „iOS friert nicht ein“ verlangt Bedienung auf einem echten iOS-Gerät, die kein Test ersetzt. |
-| FR-CAP-04 | MUSS | Code fehlt | `apps/web/src/lib/files.ts` | `tests/app/upload-limits-visible.test.ts` › „MOBIL hat gar keine Dateiauswahl“ | Bilder lassen sich am Desktop aus Dateien wählen; eine Kamera-Aufnahme gibt es nicht, und der genannte Test hält fest, dass `/mobile` weder Dateifeld noch Kamera hat. |
+| FR-CAP-04 | MUSS | nachgewiesen | `apps/web/src/pages/Mobile.tsx`<br>`apps/web/src/lib/files.ts` | `tests/mobile-erfassung/notiz-interview-foto-mounted.test.tsx` › „beide Quellen sind wählbar: Kamera öffnet die Rückkamera, Mediathek die Bildauswahl“<br>`tests/mobile-erfassung/notiz-interview-foto-mounted.test.tsx` › „Vorschaubild erscheint, ist entfernbar“ | Geliefert vom gesonderten Auftrag mobile-erfassung (s. Quellenwidersprüche 3). Belegt am gemounteten `/mobile` (Kamera über `capture="environment"`); das tatsächliche Öffnen der Gerätekamera verlangt ein echtes Gerät. |
 | FR-CAP-05 | SOLL | teilweise | `apps/web/src/lib/ocr.ts` | `tests/capture/ocr-extract.test.ts` › „success: liefert getrimmten Text“ | Der OCR-Adapter ist getestet; dass OCR-Text in Strukturierung/Interview einfließt, ist keinem Testfall zugeordnet. |
 | FR-CAP-06 | MUSS | nachgewiesen | `services/app/src/sichtbarkeit.ts` | `tests/entwurf-pool/pool-rechte.test.ts` › „Liste: Otto und Ada sehen den Pool-Entwurf mit Autorangabe“<br>`tests/entwurf-pool/pool-rechte.test.ts` › „Fortsetzen: Otto schreibt im Pool-Entwurf weiter“ | Umgesetzt nach den jüngeren Entscheidungen `debbb8e8`/`297afc57`: Entwurf standardmäßig privat, Pool nur auf bewusste Freigabe durch den Autor (s. Quellenwidersprüche). |
 | FR-CAP-07 | MUSS | nachgewiesen | `services/capture/src/service.ts` | `services/capture/src/service.test.ts` › „FR-CAP-07: KO-Eingabe trägt den Entwurfs-Autor, nicht den Bearbeiter“ | — |
@@ -105,7 +107,7 @@ für den oben genannten Stand.
 | FR-RSN-05 | MUSS | nachgewiesen | `services/reasoner/src/service.ts` | `services/reasoner/src/service.test.ts` › „FR-RSN-05: Status spiegelt verfügbares Modell“<br>`services/reasoner/src/service.test.ts` › „FR-RSN-04/05: ohne Modell deterministischer Fallback, Status offline“ | — |
 | FR-RSN-06 | MUSS | teilweise | `services/reasoner/src/model-client.ts` | `services/reasoner/src/service.test.ts` › „liefert keinerlei Secret-/Key-/Prompt-Felder“<br>`tests/security/egress-encapsulation.test.ts` › „reasoner-Index exportiert keinen rohen Client“ | Statusauskunft und Kapselung sind belegt; eine Prüfung des gebauten Frontend-Bundles auf Schlüssel ist keinem Testfall zugeordnet. |
 | FR-MOB-01 | MUSS | teilweise | `apps/web/public/manifest.webmanifest` | `tests/capture/sw-rules.test.ts` › „Manifest ist installierbar: standalone + 192/512-Icons + maskable“ | Belegt ist die technische Voraussetzung; „Zum Home-Bildschirm liefert Vollbild-App“ verlangt Bedienung auf einem echten Gerät. |
-| FR-MOB-02 | MUSS | Code fehlt | `apps/web/src/pages/Mobile.tsx` | — | Die Mobilfläche hat die Reiter Erfassen/Fragen/Nachschlagen; einen Interview-Modus gibt es dort nicht. Die Abnahme in `specs/stories/mobile.md` ist offen. |
+| FR-MOB-02 | MUSS | nachgewiesen | `apps/web/src/pages/Mobile.tsx` | `tests/mobile-erfassung/notiz-interview-foto-mounted.test.tsx` › „beide Erfassungsarten stehen bereit“<br>`tests/mobile-erfassung/notiz-interview-foto-mounted.test.tsx` › „Interview: vier Fragen nacheinander“ | Geliefert vom gesonderten Auftrag mobile-erfassung (s. Quellenwidersprüche 3). Der erste Fall prüft auch, dass „Als Entwurf speichern“ die einzige gefüllte, also dominante Aktion ist. |
 | FR-MOB-03 | MUSS | teilweise | `apps/web/src/lib/mobileConfirm.ts`<br>`apps/web/src/pages/Mobile.tsx` | `tests/capture/mobile-confirm.test.ts` › „confirm erkennt den finalen Löschschritt nur für den pending-Eintrag“ | Getestet ist nur die Hilfsfunktion. Kein Testfall prüft am mobilen Löschweg, dass Löschen erst nach der Inline-Bestätigung ausgeführt wird. |
 | FR-I18N-01 | MUSS | teilweise | `services/i18n/src/service.ts` | `services/i18n/src/service.test.ts` › „FR-I18N-01: liefert DE und EN je nach Locale“<br>`services/reasoner/src/service.test.ts` › „liefert die nächste Frage auf Englisch bei locale 'en'“ | Belegt sind der Sprachdienst an einem Testschlüssel, englische Interviewfragen und DE/EN-Texte einzelner Flächen. Kein Testfall prüft die komplette Oberfläche (alle Texte, keine fest verdrahteten) und alle KI-Aufgaben in beiden Sprachen. |
 | FR-I18N-02 | SOLL | nachgewiesen | `services/i18n/src/service.ts` | `services/i18n/src/service.test.ts` › „FR-I18N-02: neue Sprache ohne Code-Umbau ergänzbar“ | — |
@@ -157,13 +159,13 @@ für den oben genannten Stand.
    zeigt JEDEM nur die eigenen Entwuerfe“. Bewertet ist nach der jüngeren Entscheidung.
 2. **FR-LIB-02 PDF-Export.** Das Pflichtenheft nennt PDF; `apps/web/src/lib/libraryExport.ts` sagt ausdrücklich
    „kein dedizierter PDF-Export“ (HTML als Druckansicht).
-3. **FR-CAP-04 Kamera.** Das Pflichtenheft verlangt Kamera und Mediathek; `tests/app/upload-limits-visible.test.ts`
-   hält fest, dass `/mobile` keine Datei- oder Kamera-Auswahl hat.
-4. **FR-MOB-02 Interview mobil.** Das Pflichtenheft verlangt Notiz und Interview im Mobile; die Mobilfläche hat
-   keinen Interview-Modus.
-5. **„Jede Anforderung ist test-fähig“.** `specs/README.md` sagt das, aber 19 Abnahmekriterien sind Reviews,
+3. **FR-CAP-04 Kamera und FR-MOB-02 Interview mobil (geschlossen durch gesonderten Auftrag).** Am Ausgangsstand
+   `6ebcf0be` fehlten beide: `/mobile` hatte weder Datei- noch Kamera-Auswahl noch einen Interview-Modus, und ein
+   Test hielt das fest. Der gesonderte Auftrag mobile-erfassung (Aufnahme 20260922) hat beides nachgeliefert; belegt
+   in `tests/mobile-erfassung/`. Dieser Auftrag hat dafür nichts gebaut, sondern nur den Beleg zugeordnet.
+4. **„Jede Anforderung ist test-fähig“.** `specs/README.md` sagt das, aber 19 Abnahmekriterien sind Reviews,
    Audits, Lasttests, SLA-, Vertrags- oder Dokumentnachweise. Das ist die Abnahmeschuld, die R-1137 benennt.
-6. **Altquelle R-1137.** Die Aufnahme führt den Eintrag als `IN_ARBEIT`, laut ihrer eigenen Notiz führte `extract_07`
+5. **Altquelle R-1137.** Die Aufnahme führt den Eintrag als `IN_ARBEIT`, laut ihrer eigenen Notiz führte `extract_07`
    ihn als erledigt. Die damalige Datei und ihr Sichtungsbeleg fehlen (s. oben).
 
 ## Abgrenzung
@@ -171,5 +173,6 @@ für den oben genannten Stand.
 - R-1280 (unabhängige Zweitprüfung gegen ein lebendes Anforderungsregister) ist historisch erledigt belegt. Auf dem
   heutigen Arbeitsweg leistet das die unabhängige Prüfung jeder Lieferung; diese Tabelle ist der feste Stand,
   an dem eine Lücke nur mit Code- und Testbeleg geschlossen wird. Gebaut wird dafür nichts Neues.
-- Diese Tabelle schließt keine der Lücken. Fehlender Code (FR-CAP-04, FR-MOB-02), fehlende Testfälle („teilweise“)
-  und die Abnahmen außerhalb von Tests bleiben eigene Aufgaben.
+- Diese Tabelle schließt keine der Lücken. Fehlende Testfälle („teilweise“), nicht zugeordnete Anforderungen und
+  die Abnahmen außerhalb von Tests bleiben eigene Aufgaben. FR-CAP-04 und FR-MOB-02 hat der gesonderte Auftrag
+  mobile-erfassung geschlossen, nicht dieser.
