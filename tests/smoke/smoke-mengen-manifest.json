@@ -1,10 +1,10 @@
 {
-  "version": 11,
-  "erhoben_am": "2026-10-01",
-  "nachgefuehrt_von": "gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts — Erstnutzer-Huerden U2 (Bibliothek, Meine Entwuerfe) und U3 (Meine Aufgaben, Seitenhilfe) am gebauten Bildschirm. Sonst nichts geaendert.",
+  "version": 12,
+  "erhoben_am": "2026-10-09",
+  "nachgefuehrt_von": "produkt:20261007:lesen-inhalt-zuerst: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in lesen-inhalt-zuerst-browser.spec.ts — Lesereihenfolge Artikel (Desktop und 390 x 844) und freigegebene Arbeitsanleitung am gebauten Bildschirm. Sonst nichts geaendert.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 201,
+  "gesamt_fallinstanzen": 210,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 61,
+      "soll": 64,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -39,6 +39,9 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "lesen-inhalt-zuerst-browser.spec.ts › K1/K2/K5 · Desktop: Inhalt vor der Kenntnisnahme, die Fläche ist eine Zeile",
+        "lesen-inhalt-zuerst-browser.spec.ts › K3 · 390 × 844: Titel und erste Regel im ersten Bild, umbrochen und unverdeckt",
+        "lesen-inhalt-zuerst-browser.spec.ts › K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -85,7 +88,7 @@
       ]
     },
     "firefox": {
-      "soll": 61,
+      "soll": 64,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -105,6 +108,9 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "lesen-inhalt-zuerst-browser.spec.ts › K1/K2/K5 · Desktop: Inhalt vor der Kenntnisnahme, die Fläche ist eine Zeile",
+        "lesen-inhalt-zuerst-browser.spec.ts › K3 · 390 × 844: Titel und erste Regel im ersten Bild, umbrochen und unverdeckt",
+        "lesen-inhalt-zuerst-browser.spec.ts › K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
@@ -151,7 +157,7 @@
       ]
     },
     "webkit": {
-      "soll": 61,
+      "soll": 64,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -171,6 +177,9 @@
         "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "lesen-inhalt-zuerst-browser.spec.ts › K1/K2/K5 · Desktop: Inhalt vor der Kenntnisnahme, die Fläche ist eine Zeile",
+        "lesen-inhalt-zuerst-browser.spec.ts › K3 · 390 × 844: Titel und erste Regel im ersten Bild, umbrochen und unverdeckt",
+        "lesen-inhalt-zuerst-browser.spec.ts › K4 · freigegebene Anleitung: Lesefassung zuerst, Bearbeitung und Historie da",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
         "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",

@@ -247,6 +247,135 @@ export function GesamtanweisungSeite({
     null;
   const geaendertAm = stand ? formatKoTimestamp(stand.geaendertAm, i18n.language) : null;
   const rechte: Freigaberechte = { darfVorlegen, darfEntscheiden };
+  // LESEN-INHALT-ZUERST · Eine FREIGEGEBENE Anleitung („entschieden") wird gelesen, nicht gebaut:
+  // sie öffnet mit Titel, Status und ihrer gültigen Lesefassung. Die Entstehungsschritte, die
+  // Kopfangaben, das Aufnehmen und die Entscheidung liegen danach in EINER zugeklappten Zeile
+  // „Bearbeiten und Freigabe" — erreichbar und unverändert (Sperren und Rechte wie bisher), nur nicht
+  // mehr VOR dem Inhalt. Der Vergleich der Stände (die Historie) bleibt offen darunter. Für Entwurf,
+  // vorgelegt und abgelehnt bleibt die Arbeitsreihenfolge, wie sie ist: dort wird noch gebaut.
+  const freigegeben = stand?.stand === "entschieden";
+
+  const schritte = (
+    <ol
+      className={`${HINWEIS} grid gap-1 sm:grid-cols-2`}
+      aria-label={t("fe001.schritte.titel")}
+      data-testid={`${SEITE_MARKE}-schritte`}
+    >
+      <li>{t("fe001.schritte.eins")}</li>
+      <li>{t("fe001.schritte.zwei")}</li>
+      <li>{t("fe001.schritte.drei")}</li>
+      <li>{t("fe001.schritte.vier")}</li>
+    </ol>
+  );
+
+  const kopfBearbeitung = (
+    <KopfBearbeitung
+      kopf={kopf}
+      gesperrt={bearbeiten.gesperrt || version === null}
+      grund={bearbeiten.grund}
+      fehler={kopfAendern.error ? fehlerSchluessel(kopfAendern.error) : null}
+      meldeUngespeichert={setKopfUngespeichert}
+      speichern={async (eingabe) => {
+        if (version === null) {
+          return false;
+        }
+        try {
+          await kopfAendern.mutateAsync({ version, kopf: eingabe });
+          return true;
+        } catch {
+          // Der Text bleibt im Feld — nichts gilt als gespeichert.
+          return false;
+        }
+      }}
+    />
+  );
+
+  const bausteinAufnahme = (
+    <BausteinAufnahme
+      gesperrt={version === null || bearbeiten.gesperrt}
+      grund={bearbeiten.grund}
+      fehler={aufnahmeFehler ? aufnahmeFehlerSchluessel(aufnahmeFehler) : null}
+      gebunden={stand?.bausteine ?? []}
+      nameVon={nameVon}
+      aufnehmen={async (eingabe) => {
+        if (version === null) {
+          return false;
+        }
+        try {
+          await aufnehmen.mutateAsync({ version, ...eingabe });
+          return true;
+        } catch {
+          // Die Auswahl bleibt stehen — nichts gilt als gespeichert.
+          return false;
+        }
+      }}
+    />
+  );
+
+  const lesefassung = (
+    <LesestandAnsicht
+      lage={lage}
+      stand={stand}
+      zeit={stand?.geaendertAm ?? ""}
+      nameVon={nameVon}
+      bearbeiten={{
+        verschieben: (bausteinId, richtung) => {
+          if (version === null || !stand) {
+            return;
+          }
+          const folge = verschobeneFolge(
+            stand.bausteine.map((b) => b.id),
+            bausteinId,
+            richtung,
+          );
+          ordnen.mutate({ version, reihenfolge: folge });
+        },
+        voraussetzung: (bausteinId, wert) => {
+          if (version !== null) {
+            voraussetzung.mutate({ version, bausteinId, voraussetzung: wert });
+          }
+        },
+        gesperrt: bearbeiten.gesperrt || version === null,
+        meldeUngespeichert: meldeVoraussetzung,
+      }}
+      // QUELLENÄNDERUNGEN: NICHT an `bearbeiten.gesperrt` — die Standsperre „entschieden" gilt
+      // dem Ordnen, nicht der bewussten Übernahme (danach ist die Anleitung wieder Entwurf).
+      // Die RECHTESPERRE gilt dagegen auch hier (Ben, nacharbeit-9): die Übernahme verlangt am
+      // Server `ko.create` wie jeder andere Schreibweg dieser Fläche (`gesamtanweisung-routes.ts`).
+      aenderung={{
+        fassungenLaden: endpoints.ko.versions,
+        uebernehmen: (bausteinId, aufVersion) => {
+          if (version !== null && darfVorlegen) {
+            uebernehmen.mutate({ version, bausteinId, aufVersion });
+          }
+        },
+        gesperrt:
+          mitRechtesperre(schreibSperre(lage), darfVorlegen).gesperrt ||
+          version === null ||
+          uebernehmen.isPending,
+      }}
+    />
+  );
+
+  const entscheidungsVorlage = (
+    <EntscheidungsVorlage
+      stand={stand?.stand ?? "entwurf"}
+      sperre={sperre}
+      darfEntscheiden={darfEntscheiden}
+      darfVorlegen={darfVorlegen}
+      vorlegen={() => {
+        if (version !== null) {
+          vorlegen.mutate({ version });
+        }
+      }}
+      entscheiden={(wahl) => {
+        if (version !== null) {
+          entscheiden.mutate({ version, entscheidung: wahl });
+        }
+      }}
+      fehlerSatz={letzterFehler ? fehlerSchluessel(letzterFehler) : null}
+    />
+  );
 
   return (
     <div data-testid={SEITE_MARKE} className="space-y-5 pb-10">
@@ -254,7 +383,10 @@ export function GesamtanweisungSeite({
         <p className="text-[12px] font-semibold uppercase tracking-wide text-muted">
           {t("ga.titel")}
         </p>
-        <h1 className="text-2xl font-semibold text-ink" data-testid={`${SEITE_MARKE}-titel`}>
+        <h1
+          className="hyphens-auto break-words text-2xl font-semibold text-ink"
+          data-testid={`${SEITE_MARKE}-titel`}
+        >
           {stand?.titel ?? t("ga.titel")}
         </h1>
         {stand ? (
@@ -280,16 +412,7 @@ export function GesamtanweisungSeite({
             </span>
           </p>
         ) : null}
-        <ol
-          className={`${HINWEIS} grid gap-1 sm:grid-cols-2`}
-          aria-label={t("fe001.schritte.titel")}
-          data-testid={`${SEITE_MARKE}-schritte`}
-        >
-          <li>{t("fe001.schritte.eins")}</li>
-          <li>{t("fe001.schritte.zwei")}</li>
-          <li>{t("fe001.schritte.drei")}</li>
-          <li>{t("fe001.schritte.vier")}</li>
-        </ol>
+        {freigegeben ? null : schritte}
       </header>
       {offline || istOhneVerbindung(anweisung.error) ? (
         <p role="alert" className={MELDUNG_FEHLER} data-testid={`${SEITE_MARKE}-offline`}>
@@ -297,106 +420,32 @@ export function GesamtanweisungSeite({
         </p>
       ) : null}
 
-      <KopfBearbeitung
-        kopf={kopf}
-        gesperrt={bearbeiten.gesperrt || version === null}
-        grund={bearbeiten.grund}
-        fehler={kopfAendern.error ? fehlerSchluessel(kopfAendern.error) : null}
-        meldeUngespeichert={setKopfUngespeichert}
-        speichern={async (eingabe) => {
-          if (version === null) {
-            return false;
-          }
-          try {
-            await kopfAendern.mutateAsync({ version, kopf: eingabe });
-            return true;
-          } catch {
-            // Der Text bleibt im Feld — nichts gilt als gespeichert.
-            return false;
-          }
-        }}
-      />
-
-      <BausteinAufnahme
-        gesperrt={version === null || bearbeiten.gesperrt}
-        grund={bearbeiten.grund}
-        fehler={aufnahmeFehler ? aufnahmeFehlerSchluessel(aufnahmeFehler) : null}
-        gebunden={stand?.bausteine ?? []}
-        nameVon={nameVon}
-        aufnehmen={async (eingabe) => {
-          if (version === null) {
-            return false;
-          }
-          try {
-            await aufnehmen.mutateAsync({ version, ...eingabe });
-            return true;
-          } catch {
-            // Die Auswahl bleibt stehen — nichts gilt als gespeichert.
-            return false;
-          }
-        }}
-      />
-
-      <LesestandAnsicht
-        lage={lage}
-        stand={stand}
-        zeit={stand?.geaendertAm ?? ""}
-        nameVon={nameVon}
-        bearbeiten={{
-          verschieben: (bausteinId, richtung) => {
-            if (version === null || !stand) {
-              return;
-            }
-            const folge = verschobeneFolge(
-              stand.bausteine.map((b) => b.id),
-              bausteinId,
-              richtung,
-            );
-            ordnen.mutate({ version, reihenfolge: folge });
-          },
-          voraussetzung: (bausteinId, wert) => {
-            if (version !== null) {
-              voraussetzung.mutate({ version, bausteinId, voraussetzung: wert });
-            }
-          },
-          gesperrt: bearbeiten.gesperrt || version === null,
-          meldeUngespeichert: meldeVoraussetzung,
-        }}
-        // QUELLENÄNDERUNGEN: NICHT an `bearbeiten.gesperrt` — die Standsperre „entschieden" gilt
-        // dem Ordnen, nicht der bewussten Übernahme (danach ist die Anleitung wieder Entwurf).
-        // Die RECHTESPERRE gilt dagegen auch hier (Ben, nacharbeit-9): die Übernahme verlangt am
-        // Server `ko.create` wie jeder andere Schreibweg dieser Fläche (`gesamtanweisung-routes.ts`).
-        aenderung={{
-          fassungenLaden: endpoints.ko.versions,
-          uebernehmen: (bausteinId, aufVersion) => {
-            if (version !== null && darfVorlegen) {
-              uebernehmen.mutate({ version, bausteinId, aufVersion });
-            }
-          },
-          gesperrt:
-            mitRechtesperre(schreibSperre(lage), darfVorlegen).gesperrt ||
-            version === null ||
-            uebernehmen.isPending,
-        }}
-      />
-
-      <EntscheidungsVorlage
-        stand={stand?.stand ?? "entwurf"}
-        sperre={sperre}
-        darfEntscheiden={darfEntscheiden}
-        darfVorlegen={darfVorlegen}
-        vorlegen={() => {
-          if (version !== null) {
-            vorlegen.mutate({ version });
-          }
-        }}
-        entscheiden={(wahl) => {
-          if (version !== null) {
-            entscheiden.mutate({ version, entscheidung: wahl });
-          }
-        }}
-        fehlerSatz={letzterFehler ? fehlerSchluessel(letzterFehler) : null}
-      />
+      {freigegeben ? (
+        <>
+          {lesefassung}
+          <details
+            data-testid={`${SEITE_MARKE}-bearbeiten`}
+            className="rounded-card border border-hairline bg-surface px-4"
+          >
+            <summary className="cursor-pointer py-3 text-[13px] font-semibold text-text">
+              {t("lesereihenfolge.anleitung.bearbeiten")}
+            </summary>
+            <div className="space-y-5 border-t border-hairline-soft py-4">
+              {schritte}
+              {kopfBearbeitung}
+              {bausteinAufnahme}
+              {entscheidungsVorlage}
+            </div>
+          </details>
+        </>
+      ) : (
+        <>
+          {kopfBearbeitung}
+          {bausteinAufnahme}
+          {lesefassung}
+          {entscheidungsVorlage}
+        </>
+      )}
 
       <VergleichAnsicht
         lage={vergleichslage}

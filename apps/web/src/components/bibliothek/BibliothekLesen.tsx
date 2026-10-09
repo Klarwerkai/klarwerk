@@ -83,7 +83,7 @@ import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
 // Sprungziel ist die Elementreferenz selbst. `tests/wiki-orientierung/…` (O9) hält beides fest.
 import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44Struktur";
 import { ListEditor, TagEditor } from "../editors";
-import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
+import { KenntnisnahmeBereich, KenntnisnahmeVerweis } from "../kenntnisnahme/KenntnisnahmeBereich";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
@@ -2295,6 +2295,18 @@ export function BibliothekLesen({
   const rueckzugMoeglich =
     eigenesObjekt && darfLoeschen && (kollision.art === "dublette" || kollision.art === "beides");
   const fb = latestValidationFeedback(ko.comments);
+  // Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick) und —
+  // mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts. `darfAnfordern`
+  // spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden wird am Server.
+  // LESEN-INHALT-ZUERST: EIN Element, gezeigt NACH dem Inhalt — im Lesen wie im Bearbeiten.
+  const kenntnisnahmeZiel = `kenntnisnahme-${koId}`;
+  const kenntnisnahmeFlaeche = (
+    <KenntnisnahmeBereich
+      koId={koId}
+      darfAnfordern={role === "controller" || role === "admin"}
+      zielId={kenntnisnahmeZiel}
+    />
+  );
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
@@ -2303,8 +2315,9 @@ export function BibliothekLesen({
           derselben Quelle — seit JOB 3063 R6 auch in DERSELBEN Bauform (`AuffrischungHinweis`),
           nicht mehr als abgeschriebener Zwilling. Er schweigt, wenn die Liste es schon sagt. */}
         {hinweisSchonGesagt ? null : <AuffrischungHinweis query={query} />}
-        {/* Kopfzeile: Pille · Meta · Fragen · „…" */}
-        <div className="flex items-center gap-2">
+        {/* Kopfzeile: Pille · Meta · Fragen · „…". LESEN-INHALT-ZUERST: bei 390 px Breite bricht
+            die Zeile um, statt die Meta-Zeile zusammenzudrücken. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <span
             data-testid="bib-pille"
             data-bib-text="pille"
@@ -2613,14 +2626,12 @@ export function BibliothekLesen({
           ablaufSekunden={eigeneBearbeitung.ablaufSekunden}
           onFremdesEnde={nachlesen}
         />
-        {/* Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick)
-            und — mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts.
-            `darfAnfordern` spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden
-            wird am Server. */}
-        <KenntnisnahmeBereich
-          koId={koId}
-          darfAnfordern={role === "controller" || role === "admin"}
-        />
+        {/* LESEN-INHALT-ZUERST (07.10.2026): die Kenntnisnahme-Fläche stand hier, VOR dem Titel —
+            bei Controller/Admin eine etwa 280 px hohe Karte an jedem gültigen Eintrag, auch wenn
+            nichts verlangt war. Sie steht jetzt nach dem Inhalt (`kenntnisnahmeFlaeche`); hier
+            bleibt nur der EINE Satz, solange die EIGENE Kenntnisnahme aussteht, mit Sprung zum
+            Bestätigen-Knopf. Die Pflicht bleibt damit oben sichtbar und unten wirksam. */}
+        <KenntnisnahmeVerweis koId={koId} zielId={kenntnisnahmeZiel} />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -3114,6 +3125,8 @@ export function BibliothekLesen({
                 {t("ko.cancelEdit")}
               </Button>
             </div>
+            {/* LESEN-INHALT-ZUERST: die Kenntnisnahme steht auch beim Bearbeiten NACH dem Inhalt. */}
+            {kenntnisnahmeFlaeche}
           </div>
         ) : (
           <>
@@ -3383,7 +3396,9 @@ export function BibliothekLesen({
             <h1
               data-testid="bib-titel"
               data-bib-text="titel"
-              className="text-[24px] font-[650] leading-[1.3] tracking-[-0.3px] text-text"
+              // LESEN-INHALT-ZUERST: lange zusammengesetzte Wörter trennen statt über den Rand zu
+              // laufen (Mobil, 390 px).
+              className="hyphens-auto break-words text-[24px] font-[650] leading-[1.3] tracking-[-0.3px] text-text"
             >
               {gelesen ? gelesen.title : ko.title}
             </h1>
@@ -3409,7 +3424,7 @@ export function BibliothekLesen({
               ref={textKnotenSetzen}
               data-testid="bib-text"
               data-bib-text="text"
-              className="text-[15.5px] leading-[1.7] text-text"
+              className="hyphens-auto break-words text-[15.5px] leading-[1.7] text-text"
             >
               {/* JOB 3362: die übersetzte Lesart des FLIESSTEXTS. Die Bildergalerie darunter bleibt
                   dem Original vorbehalten: sie ist der Weg zum Bearbeiten der Bildunterschriften,
@@ -3492,6 +3507,10 @@ export function BibliothekLesen({
                 der Hülle, s. Kopf dieser Datei). Der Bereich hängt am gelesenen Eintrag; sein
                 Zustandsmodell steht an `Beziehungsbereich` oben. */}
             <Beziehungsbereich key={ko.id} koId={ko.id} />
+
+            {/* LESEN-INHALT-ZUERST: die Kenntnisnahme nachgeordnet — nach Inhalt, Quellen und
+                Beziehungen, vor „Mehr". Ohne eigene Anforderung nur eine zugeklappte Zeile. */}
+            {kenntnisnahmeFlaeche}
 
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
             <div
