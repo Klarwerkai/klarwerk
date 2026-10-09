@@ -63,9 +63,11 @@ export type I18nLike = {
 //
 // R-0997 (Aufnahme gesamt-sprache-begriffe): Diese Menge ist seither AUSSCHLIESSLICH die Regel für
 // `<html lang>`. Welche Sprachen die Oberfläche kann und wählen lässt, leitet
-// `lib/sprachregister.ts` aus den Ressourcen ab (`OBERFLAECHEN_SPRACHEN`, heute ebenfalls de|en|nl).
-// Eine dort neu angemeldete Sprache setzt das Attribut NICHT — JOB 536 regelt genau diese drei
-// Werte, und ihn zu erweitern ist eine eigene Entscheidung, die hier nicht vorweggenommen wird.
+// `lib/sprachregister.ts` aus den Ressourcen ab (`OBERFLAECHEN_SPRACHEN`, heute ebenfalls de|en|nl);
+// dazu kommen die im Betrieb angelegten Sprachen der Übersetzungspflege (FR-I18N-02,
+// `lib/instanzSprachen.ts`). Keine von beiden setzt das Attribut — JOB 536 regelt genau diese drei
+// Werte, und ihn zu erweitern ist eine eigene Entscheidung, die hier nicht vorweggenommen wird. Ein
+// allgemeines Verbot weiterer WÄHLBARER Sprachen folgt aus JOB 536 nicht.
 export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
 
 // ==================================================================================================
