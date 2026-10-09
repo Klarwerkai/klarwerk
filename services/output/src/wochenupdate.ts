@@ -224,13 +224,22 @@ export class WochenupdateService {
     this.now = deps.now ?? (() => Date.now());
   }
 
-  async erzeuge(input: { bis?: unknown } = {}): Promise<Wochenupdate> {
+  // R-1175: `sichtbar` ist die EINE Sichtbarkeitsentscheidung des Abrufenden
+  // (`sichtbarkeitsfilterFuer`, von der Route über `OutputService.wochenupdate` gereicht). Sie
+  // begrenzt die Grundmenge VOR der Auswahl — ein validiertes, nicht vertrauliches Objekt aus einem
+  // fremden Space erscheint nicht mit Titel im Update. Ungesetzt (Dienstaufrufe ohne Betrachter)
+  // bleibt die Auswahl die bisherige.
+  async erzeuge(
+    input: { bis?: unknown } = {},
+    sichtbar: (ko: KnowledgeObject) => boolean = () => true,
+  ): Promise<Wochenupdate> {
     const jetzt = this.now();
     const bis = leseWochenupdateBis(input.bis, jetzt);
     const von = zeitraumVon(bis);
     const generatedAt = new Date(jetzt).toISOString();
+    const grundmenge = await this.koService.list({ status: "validiert" });
     const auswahl = waehleWochenupdate(
-      await this.koService.list({ status: "validiert" }),
+      grundmenge.filter((ko) => sichtbar(ko)),
       von,
       bis,
     );

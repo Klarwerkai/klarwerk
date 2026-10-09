@@ -29,6 +29,7 @@ export const KI_ROUTEN: readonly { readonly methode: "POST"; readonly pfad: stri
   { methode: "POST", pfad: "/api/kos/:id/ai-check" },
   { methode: "POST", pfad: "/api/help/explain" },
   { methode: "POST", pfad: "/api/media/analyze" },
+  { methode: "POST", pfad: "/api/media/transcribe" },
 ];
 
 export const KI_GRENZE_STANDARD: BremsGrenze = { max: 30, fensterMs: 60_000 };
