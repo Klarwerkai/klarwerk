@@ -1336,9 +1336,31 @@ export const TABELLE: Zeile[] = [
     gruppe: "lifecycleRoutes",
     methode: "GET",
     pfad: "/api/lifecycle/pending",
-    belegstelle: "services/app/src/routes/lifecycle-routes.ts:98",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:100",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Gemessen wird das Rechtetor mit einem
+  // LEEREN Rumpf: der Admin kommt durch und bekommt 400 (`INVALID`, kein Paar) — vor jedem Lesen
+  // und Schreiben, also ohne Wirkung auf die Bühne. Vorschau und Zug mit echten Konten misst
+  // `tests/wissen-verantwortung/routen.test.ts`.
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "POST",
+    pfad: "/api/lifecycle/handover/preview",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:178",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "POST",
+    pfad: "/api/lifecycle/handover",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:193",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "livewallRoutes",
@@ -1746,7 +1768,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/saml/start",
-    belegstelle: "services/auth/src/routes.ts:892",
+    belegstelle: "services/auth/src/routes.ts:906",
     tor: "keines — der Einstieg in den SAML-Ablauf",
     erwartet: OEFFENTLICH(
       "Die SAML-Anmeldung beginnt notwendig unangemeldet. Ohne SAML-Konfiguration antwortet die Route allen fünf Akteuren gleich mit 501 `SAML_DISABLED` — gemessen ist damit, dass an dieser Tür weder 401 noch 403 steht.",
@@ -1756,7 +1778,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/saml/metadata",
-    belegstelle: "services/auth/src/routes.ts:914",
+    belegstelle: "services/auth/src/routes.ts:928",
     tor: "keines — die Metadaten für die Einrichtung beim Anbieter",
     erwartet: OEFFENTLICH(
       "Die Dienstanbieter-Metadaten trägt die IT beim Anbieter ein, bevor es irgendeine Anmeldung gibt. Sie nennen nur Kennung und Rücksprungadresse dieser Instanz; ohne SAML-Konfiguration antwortet die Route allen gleich mit 501 `SAML_DISABLED`.",
@@ -1769,7 +1791,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "POST",
     pfad: "/api/auth/saml/acs",
-    belegstelle: "services/auth/src/routes.ts:968",
+    belegstelle: "services/auth/src/routes.ts:982",
     tor: "keines — der Nachweis ist die signierte Antwort des Anbieters",
     payload: { SAMLResponse: "keine-echte-saml-antwort" },
     erwartet: OEFFENTLICH(
@@ -1782,7 +1804,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "authRoutes",
     methode: "GET",
     pfad: "/api/auth/saml/abschluss",
-    belegstelle: "services/auth/src/routes.ts:1017",
+    belegstelle: "services/auth/src/routes.ts:1031",
     tor: "keines — der Nachweis sind Abschlusscode und Browsernachweis des startenden Browsers",
     erwartet: OEFFENTLICH(
       "Der Abschluss folgt unmittelbar auf den Rücksprung des Anbieters, also notwendig vor jeder Klarwerk-Sitzung. Ohne SAML-Konfiguration antwortet er allen fünf Akteuren gleich mit 501 `SAML_DISABLED`; die Bindung an den startenden Browser steht in `tests/firmenanmeldung/saml-anmeldung.test.ts` (S10, S13).",
@@ -2055,7 +2077,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/lifecycle/couplings/gibt-es-nicht",
     route: "/api/lifecycle/couplings/:koId",
-    belegstelle: "services/app/src/routes/lifecycle-routes.ts:47",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:49",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

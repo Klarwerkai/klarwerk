@@ -65,7 +65,12 @@ import { createConfluenceAdapterFromEnv } from "../../confluence";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
 // an den echten, mit PgKoRepo/PgAuditRepo geteilten Pool (s. buildPgServices unten).
 import { gatedPool, withPgTx } from "../../db-tx";
-import { InMemoryEmbeddingStore, createEmbeddingProviderFromEnv } from "../../embedding";
+import {
+  type EmbeddingStore,
+  InMemoryEmbeddingStore,
+  PgEmbeddingStore,
+  createEmbeddingProviderFromEnv,
+} from "../../embedding";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
@@ -92,8 +97,10 @@ import {
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  type HalbwertszeitVerlaufRepo,
   InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
+  InMemoryHalbwertszeitVerlauf,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
@@ -112,6 +119,7 @@ import {
   PgAnweisungRepo,
   PgDokumentaktenRepo,
   PgEvidenceRepo,
+  PgHalbwertszeitVerlauf,
   PgKantenRepo,
   PgKoRepo,
   PgKoSearchProjectionRepo,
@@ -121,6 +129,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  responsibleOf,
 } from "../../knowledge-object";
 import {
   type CandidateRepo,
@@ -251,13 +260,22 @@ import {
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
 import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
-import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
+import {
+  type SemanticPrefilter,
+  entzugNachStart,
+  gesicherterVektorspeicher,
+  nachfuehrungNachStart,
+  reindexKoForDuplicatePrefilter,
+  removeKoFromDuplicatePrefilter,
+  vektorBleibtFuer,
+} from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
+import { frischeMeldungen } from "./frische-meldungen";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import {
   type SessionUser,
@@ -305,6 +323,7 @@ import {
   PgQuellabgleichRepo,
   type QuellabgleichRepo,
 } from "./quellabgleich-ablage";
+import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
@@ -393,6 +412,8 @@ import {
   type NachfolgeRepo,
   PgNachfolgeRepo,
 } from "./verantwortung-nachfolge";
+// R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
+import { Wissensuebergabe } from "./wissensuebergabe";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -516,6 +537,12 @@ export interface AppServices {
    */
   gedaechtnis: GedaechtnisRepo;
   /**
+   * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
+   * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
+   * dann ohne Neustartzusage, und genau so benannt.
+   */
+  vektorSpeicher?: EmbeddingStore;
+  /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
    * `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`buildPgServices`).
@@ -579,6 +606,8 @@ export interface AppServices {
   // SCRUM-118: optionaler externer Such-Proxy (undefined, wenn EXTERNAL_SEARCH=off).
   externalSearch: ExternalSearchService | undefined;
   lifecycle: LifecycleService;
+  // R-0554 / R-2128: Wissensübergabe beim Ausscheiden (Vorschau + Ausführung + Protokoll).
+  wissensuebergabe: Wissensuebergabe;
   i18n: I18nService;
   objects: ObjectStore;
   // AUFTRAG-mega20 Block C: die MODULÜBERGREIFENDE Referenzprüfung — verdrahtet mit den echten
@@ -638,6 +667,9 @@ export interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
   koVersions: KoVersionRepo;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Optional: fehlt er, hält der KoService ihn im Speicher.
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   evidence: EvidenceRepo;
   users: UserRepo;
   sessions: SessionRepo;
@@ -1011,6 +1043,9 @@ export function assembleServices(
     livewallFotos?: LiveWallFotoRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
+    // In-Memory-Speicher an.
+    vektorSpeicher?: EmbeddingStore;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1054,6 +1089,7 @@ export function assembleServices(
       () => Date.now(),
     ),
     versions: repos.koVersions,
+    ...(repos.halbwertszeitVerlauf ? { halbwertszeitVerlauf: repos.halbwertszeitVerlauf } : {}),
     evidence: repos.evidence,
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
@@ -1164,6 +1200,9 @@ export function assembleServices(
     reasoner,
     koService: ko,
     gaps: repos.gaps,
+    // aufnahme:20260922:gesamt-wissen-frische (R-1636): die gelernte Halbwertszeit je Kategorie
+    // bestimmt die Haltbarkeit auch im Fragepfad — dieselbe Tabelle wie an den Leserouten.
+    halbwertszeiten: () => ko.gelernteHalbwertszeiten(),
     // W3-C1 (Auftrag 76): ab hier schreibt der Antwortweg wirklich einen Beleg.
     // W1 Weg A (Auftrag 143): das Repo kommt aus `repos.` — derselbe Satz, den die Dev-Persistenz
     // journaliert. Kein bedingter Key mehr: es ist immer da, und damit läuft der Beleg in JEDER
@@ -1282,7 +1321,9 @@ export function assembleServices(
         }
       : {}),
   });
-  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
+  // aufnahme:20260922:gesamt-wissen-frische (R-1635): jede Markierung hinterlässt einen Beleg im
+  // Prüfprotokoll — die Grundlage der Benachrichtigung an Autor bzw. Nachfolger in der Glocke.
+  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo, audit });
 
   // ==============================================================================================
   // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
@@ -1304,8 +1345,39 @@ export function assembleServices(
   // SCRUM-506.
   policyNahtSchliessen((betrachter) => sichtbarkeitsfilterFuer(betrachter as never) as never);
 
+  // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Sie bekommt dieselben Dienste und
+  // Ablagen wie die übrigen Wege — die Einzelübergabe `setAuthor`, den Eigentumsgeber, die
+  // Entwurfs-, Lücken- und Zuweisungsablagen — und keinen eigenen Bestand.
+  const wissensuebergabe = new Wissensuebergabe({
+    kos: () => ko.list(),
+    // BEN (Nacharbeit 7): Papierkorb in Vorschau UND Ausführung — derselbe Weg wie
+    // produkt:20261007:ownership-uebergabe.
+    kosEinschliesslichPapierkorb: () => ko.listEinschliesslichPapierkorb(),
+    uebertrageVerantwortung: (koId, erwartet, nachfolger, actor) =>
+      ko.uebertrageVerantwortung(koId, erwartet, nachfolger, actor),
+    setAuthor: (koId, to, actor) => lifecycle.transferAuthor(koId, to, actor),
+    setOwnership: (koId, value, actor) => ko.setOwnership(koId, value, actor),
+    drafts: repos.drafts,
+    gaps: () => ask.listGaps(),
+    assignGap: (gapId, to) => ask.assignGap(gapId, to),
+    assignments: {
+      all: () => repos.assignments.all(),
+      find: (koId, userId) => repos.assignments.find(koId, userId),
+      create: (zuweisung) => repos.assignments.create(zuweisung),
+      remove: async (koId, userId) => {
+        if (!repos.assignments.remove) {
+          throw new Error("Diese Zuweisungsablage kann keine Prüfaufgabe entfernen.");
+        }
+        await repos.assignments.remove(koId, userId);
+      },
+    },
+    audit,
+    nachfolgerBekannt: async (id) => (await repos.users.findById(id))?.approved === true,
+  });
+
   return {
     audit,
+    wissensuebergabe,
     reasoner,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
@@ -1340,6 +1412,8 @@ export function assembleServices(
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
+    ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1629,6 +1703,8 @@ export function inMemoryRepos(): AppRepos {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(schreibstand),
     koVersions: new InMemoryKoVersionRepo(schreibstand),
+    // R-1636/R-0248: der Lernverlauf im Speicherbetrieb — hier, damit die Dev-Persistenz ihn journaliert.
+    halbwertszeitVerlauf: new InMemoryHalbwertszeitVerlauf(),
     evidence: new InMemoryEvidenceRepo(schreibstand),
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
@@ -1704,6 +1780,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       auditRepo: new PgAuditRepo(pool),
       koRepo: new PgKoRepo(pool),
       koVersions: new PgKoVersionRepo(pool),
+      // R-1636/R-0248: der Lernverlauf überlebt Neustarts — sonst begänne er nach jedem Start neu.
+      halbwertszeitVerlauf: new PgHalbwertszeitVerlauf(pool),
       evidence: new PgEvidenceRepo(pool),
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
@@ -1799,6 +1877,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
+      // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
+      vektorSpeicher: new PgEmbeddingStore(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -1815,10 +1896,18 @@ export function buildPgServices(rohPool: Pool): AppServices {
 // Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —
 // Standard AUS (heutiges „jeder gegen jeden" bleibt Default). Ohne einsatzbereiten Provider (z. B.
 // Modus cloud/local noch nicht verdrahtet) → ehrlich undefined statt Fake. topK aus
-// KLARWERK_DUP_PREFILTER_TOPK (Default 25). Der In-Memory-Store ist in dieser Ausbaustufe noch nicht
-// befüllt (Befüllung im Einreiche-Pfad ist ein separater Folgeschritt) → der Prefilter fällt bis dahin
-// über den leeren Store auf den Voll-Pool zurück.
-function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
+// KLARWERK_DUP_PREFILTER_TOPK (Default 25).
+//
+// R-0470: der Speicher kommt herein — im Postgres-Betrieb der dauerhafte (`PgEmbeddingStore`),
+// sonst der In-Memory-Speicher. Er wird in `gesicherterVektorspeicher` gehüllt: jede Ablage, auch
+// die des Einreichewegs, prüft danach das lebende Objekt und entfernt einen Vektor, den es nicht
+// mehr tragen darf.
+function createSemanticPrefilterFromEnv(
+  speicher: EmbeddingStore,
+  ko: Pick<KoService, "get">,
+  // Ben, Nacharbeit 5: reiht ein Objekt ein, dessen eben abgelegter Text schon überholt ist.
+  nachfuehren: (koId: string) => void,
+): SemanticPrefilter | undefined {
   const flag = process.env.KLARWERK_DUP_PREFILTER;
   if (flag !== "1" && flag !== "true") {
     return undefined;
@@ -1831,7 +1920,11 @@ function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
   const topK = Number.isInteger(rawTopK) && rawTopK > 0 ? rawTopK : 25;
   // SCRUM-498 B2 (Fix): embed() durch den prozess-globalen Embed-Cap führen, damit der Prefilter den
   // Cap nicht umgeht. Bei Normallast (und mit dem Stub) ein No-Op → Prefilter-Verhalten bit-gleich.
-  return { embedder: cappedEmbeddingProvider(embedder), store: new InMemoryEmbeddingStore(), topK };
+  return {
+    embedder: cappedEmbeddingProvider(embedder),
+    store: gesicherterVektorspeicher(speicher, ko, nachfuehren),
+    topK,
+  };
 }
 
 // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-/Embed-Cap-Überlauf (ModelCapacityError)
@@ -3134,6 +3227,36 @@ export function buildApp(
       oidc: createOidcProviderFromEnv(),
       // R-0560: SAML als zweiter Firmen-Login; nur bei vollständiger Konfiguration gesetzt.
       saml: createSamlProviderFromEnv(),
+      // R-0554: der Auslöser aus der Verzeichnispflege — Konto entfernen mit Nachfolger fährt
+      // zuerst die Wissensübergabe (dieselbe Instanz wie `/api/lifecycle/handover`).
+      //
+      // Integration mit produkt:20261007:ownership-uebergabe (`kontoendeSperre`): kein Konto wird
+      // entfernt, das noch Hauptverantwortung trägt — einschliesslich des Papierkorbs.
+      // BEN (Nacharbeit 7): den Papierkorb überträgt jetzt die Wissensübergabe SELBST (Art
+      // `papierkorb`), damit die Vorschau denselben Umfang zeigt wie die Ausführung. Hier bleibt
+      // nur die PRÜFUNG danach, ohne eigenen Schreibweg: hängt am Konto noch Verantwortung (etwa
+      // durch einen gleichzeitig angelegten Beitrag), wird das als fehlgeschlagen gemeldet und die
+      // Auth-Route entfernt nichts (409). Ein zweiter Lauf mit Vorschau zeigt und übernimmt den Rest.
+      vorDemEntfernen: async (von, nachfolger, adminId) => {
+        const ergebnis = await services.wissensuebergabe.uebergeben(von, nachfolger, adminId);
+        const rest = (await services.ko.listEinschliesslichPapierkorb()).filter(
+          (ko) => responsibleOf(ko) === von,
+        );
+        const bekannt = new Set(ergebnis.fehlgeschlagen.map((f) => f.id));
+        return {
+          ...ergebnis,
+          fehlgeschlagen: [
+            ...ergebnis.fehlgeschlagen,
+            ...rest
+              .filter((ko) => !bekannt.has(ko.id))
+              .map((ko) => ({
+                art: "eigentum" as const,
+                id: ko.id,
+                grund: "Nach der Übergabe noch hauptverantwortlich (nicht in der Vorschau).",
+              })),
+          ],
+        };
+      },
     }),
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
@@ -3297,7 +3420,14 @@ export function buildApp(
   }
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
-  const semanticPrefilter = createSemanticPrefilterFromEnv();
+  // R-0470: im Postgres-Betrieb der dauerhafte Vektorspeicher, sonst der In-Memory-Speicher.
+  const vektorSpeicher = services.vektorSpeicher ?? new InMemoryEmbeddingStore();
+  // Ben, Nacharbeit 5: die Schlange entsteht erst weiter unten; der Speicher reiht über diese späte
+  // Bindung ein, sobald sie steht (vorher ist sie ein No-op — dann gibt es auch keine Schlange).
+  let vektorNachfuehren: (koId: string) => void = () => undefined;
+  const semanticPrefilter = createSemanticPrefilterFromEnv(vektorSpeicher, services.ko, (koId) =>
+    vektorNachfuehren(koId),
+  );
   // ==============================================================================================
   // JOB 3066 — DAS AUFRÄUMEN DER BEFUNDE FÄHRT IN DER LÖSCHTRANSAKTION MIT.
   // ==============================================================================================
@@ -3398,7 +3528,82 @@ export function buildApp(
   // (duplicate-detection.ts:182-183). Was hier steht, ist idempotent und selbstheilend.
   services.ko.setPurgeCleanup(async (koId) => {
     await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
+    // R-0470: der dauerhafte Speicher kann Vektoren aus einer Zeit tragen, in der der Schalter an
+    // war. Die Endlöschung räumt ihn deshalb auch bei abgeschaltetem Vorfilter (idempotent).
+    if (!semanticPrefilter && services.vektorSpeicher) {
+      await services.vektorSpeicher.delete(koId).catch((err: unknown) => {
+        console.warn(
+          `[dup-prefilter] Embedding-Kaskadenlöschung für KO ${koId} fehlgeschlagen`,
+          err instanceof Error ? err.name : typeof err,
+        );
+      });
+    }
   });
+  // ==============================================================================================
+  // R-0195 / R-0470 / R-0483 (Aufnahme gesamt-suchindex-aktualitaet) — DIE REINDEX-WARTESCHLANGE.
+  // ==============================================================================================
+  //
+  // Jede gespeicherte Objektänderung reiht EINEN Eintrag ein (`setAenderungsNachlauf`); die
+  // serielle Schlange aus JOB 1163 arbeitet ihn ausserhalb des Aufrufs ab — die Antwortzeit leidet
+  // nicht. Der Eintrag liest das Objekt frisch und bettet neu ein oder entfernt den Vektor
+  // (heraufgestuft, Papierkorb, aufgegangen). Ohne Vorfilter (Flag aus) wird nichts eingebettet
+  // und damit auch nichts nachgeführt: dann wird die Schlange nicht verdrahtet.
+  //
+  // BEN, NACHARBEIT 3 — ENTFERNEN, SOBALD DIE STUFE STEIGT, NICHT ERST WENN DIE SCHLANGE DRAN IST.
+  // Darf das gespeicherte Objekt keinen Vektor mehr tragen, löscht der Nachlauf ihn SOFORT, vorbei
+  // an jedem Rückstau; der Eintrag in der Schlange folgt trotzdem (er prüft und räumt nach). Eine
+  // laufende Einbettung schreibt danach keinen alten Stand mehr — das sichert
+  // `reindexKoForDuplicatePrefilter` mit seinen Prüfungen vor und nach dem Schreiben.
+  //
+  // R-0470 — NACH EINEM NEUSTART: `nachfuehrungNachStart` hält beim Start den Bestand gegen den
+  // dauerhaften Speicher und reiht alles ein, was vor dem Neustart nicht mehr nachgeführt wurde.
+  // Das läuft im Hintergrund und hält den Start nicht auf.
+  //
+  // Die Suchprojektion von Bibliothek und Klara steht NICHT in dieser Schlange: sie entsteht im
+  // selben Schreibvorgang wie die neue Fassung und ist damit sofort auffindbar.
+  //
+  // BEN, NACHARBEIT 5 — DER ENTZUG HÄNGT NICHT AM SCHALTER. Ist der Vorfilter aus, trägt der
+  // dauerhafte Speicher womöglich noch Vektoren aus einer Zeit, in der er an war. Für sie gilt das
+  // Entfernen weiter: derselbe sofortige Entzug am Nachlauf und ein Abgleich beim Start, der NUR
+  // entfernt (`entzugNachStart`). Eingebettet wird dabei nichts, kein Modell wird gerufen.
+  // Nur die Fehlerklasse, nie der Fehlertext — er könnte Inhalt tragen (wie reindex-queue.ts).
+  const meldeVektorFehler = (was: string, koId: string, fehler: unknown): void => {
+    const klasse = fehler instanceof Error ? fehler.name : typeof fehler;
+    console.warn(`[dup-prefilter] ${was} für KO ${koId} fehlgeschlagen (${klasse})`);
+  };
+  const entziehe = (speicher: EmbeddingStore, koId: string, stand?: KnowledgeObject): void => {
+    if (stand && !vektorBleibtFuer(stand)) {
+      const entzug = speicher.delete(koId);
+      void entzug.catch((e: unknown) => meldeVektorFehler("Sofortiger Entzug", koId, e));
+    }
+  };
+  if (semanticPrefilter) {
+    const reindexQueue = createReindexQueue({
+      reindex: (koId) =>
+        reindexKoForDuplicatePrefilter(koId, { ko: services.ko, semanticPrefilter }),
+      onError: (koId, fehler) => meldeVektorFehler("Neuindizierung", koId, fehler),
+    });
+    vektorNachfuehren = (koId) => reindexQueue.enqueue(koId);
+    services.ko.setAenderungsNachlauf((koId, stand) => {
+      entziehe(semanticPrefilter.store, koId, stand);
+      reindexQueue.enqueue(koId);
+    });
+    app.addHook("onReady", async () => {
+      const abgleich = nachfuehrungNachStart({
+        ko: services.ko,
+        store: semanticPrefilter.store,
+        enqueue: (koId) => reindexQueue.enqueue(koId),
+      });
+      void abgleich.catch((fehler: unknown) => meldeVektorFehler("Nachführung", "-", fehler));
+    });
+  } else if (services.vektorSpeicher) {
+    const speicher = services.vektorSpeicher;
+    services.ko.setAenderungsNachlauf((koId, stand) => entziehe(speicher, koId, stand));
+    app.addHook("onReady", async () => {
+      const abgleich = entzugNachStart({ ko: services.ko, store: speicher });
+      void abgleich.catch((fehler: unknown) => meldeVektorFehler("Entzug", "-", fehler));
+    });
+  }
   // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
   // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
   // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.
@@ -3873,7 +4078,9 @@ export function buildApp(
   );
   // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
   // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
-  app.register(lifecycleRoutes(services.lifecycle, guards, koSichtbarkeit));
+  app.register(
+    lifecycleRoutes(services.lifecycle, guards, koSichtbarkeit, services.wissensuebergabe),
+  );
   app.register(
     notificationsRoutes(
       {
@@ -3889,6 +4096,13 @@ export function buildApp(
         kos: koSichtbarkeit,
         // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
         kenntnisnahmen: kenntnisnahmeDienst,
+        // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage und
+        // Prüfanforderung an Autor bzw. Nachfolger (R-0248 / R-0266 / R-1635).
+        frische: frischeMeldungen({
+          ko: services.ko,
+          lifecycle: services.lifecycle,
+          audit: services.audit,
+        }),
       },
       guards,
     ),
