@@ -294,6 +294,7 @@ PFLICHTTABELLEN=(
   kos
   ko_schreibstand
   ko_versions
+  ko_halbwertszeit_beobachtungen
   ko_search_projections
   ko_metadata_projections
   ko_projection_control
@@ -344,6 +345,7 @@ PFLICHTTABELLEN=(
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
+  ko_embeddings
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

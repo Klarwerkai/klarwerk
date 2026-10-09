@@ -47,7 +47,11 @@ import type {
 //    sondern weil kein quellenbezogener Wert zu rechtfertigen ist. Die Evidenzregel
 //    (services/ask/src/answer-evidence.ts) trägt denselben Fall als benannten Vorbehalt, und die
 //    Oberfläche zeigt neben „Zuordnung unbekannt" gar keine Zahl mehr.
-export function answerStanding(carrying: readonly Pick<KnowledgeRef, "status" | "trust">[]): {
+//  4 aufnahme:20260922:gesamt-wissen-frische (R-0248): eine tragende Quelle mit abgelaufener
+//    Haltbarkeit ist nicht mehr gesichert — validiert allein reicht dann nicht.
+export function answerStanding(
+  carrying: readonly Pick<KnowledgeRef, "status" | "trust" | "haltbarkeitAbgelaufen">[],
+): {
   knowledgeClass: KnowledgeClass;
   trust: number;
 } {
@@ -55,7 +59,9 @@ export function answerStanding(carrying: readonly Pick<KnowledgeRef, "status" | 
     return { knowledgeClass: "ungeprueft", trust: 0 };
   }
   return {
-    knowledgeClass: carrying.every((r) => r.status === "validiert") ? "gesichert" : "ungeprueft",
+    knowledgeClass: carrying.every((r) => r.status === "validiert" && !r.haltbarkeitAbgelaufen)
+      ? "gesichert"
+      : "ungeprueft",
     trust: Math.min(...carrying.map((r) => r.trust)),
   };
 }

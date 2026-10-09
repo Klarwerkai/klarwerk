@@ -988,3 +988,92 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     await app.close();
   });
 });
+
+// ================================================================================================
+// R-0700 × R-0310 (Integration mit main 37d286f3): DIE ABSATZ-BELEGE REISEN AUF BEIDEN ZUGÄNGEN.
+// ================================================================================================
+//
+// main gibt `/api/ask` das Feld `absaetze` neben `result` mit; das Word-Panel liest es
+// (`askAbsaetzeLesen`). Mit Sitzung fragt das Panel seit R-0700 über Klaras EIGENEN Zugang — fehlte
+// das Feld dort, fiele das Panel still auf den Stand „älterer Server" zurück. Beide Zugänge laufen
+// durch `antwortLauf`; dieselbe Antwort ergibt dieselbe Zuordnung.
+describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Frageweg", () => {
+  async function aufbau() {
+    const ask = {
+      kiStand: () => undefined,
+      kiSperreVorFrage: () => undefined,
+      kiSperreVorAuslieferung: () => undefined,
+      ask: async () => ({
+        result: {
+          answered: true,
+          knowledgeClass: "validiert",
+          answer: "Ventil schließen [1].\n\nFrei erfunden.",
+          sources: ["ko-1"],
+          citedSources: ["ko-1"],
+          steps: [],
+          trust: 1,
+        },
+        gap: null,
+      }),
+    };
+    const guards = {
+      requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+      requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+    } as never;
+    const basis = {
+      ask: ask as never,
+      ko: { get: async () => undefined } as never,
+      conflicts: { unresolved: async () => [] } as never,
+    };
+    const app = Fastify();
+    app.register(askRoutes(basis, guards));
+    app.register(
+      klaraAusfuehrungRoutes(
+        {
+          ...basis,
+          klaraSessions: {
+            pruefeBindung: async () => undefined,
+            pruefeExterneAusfuehrung: async () => ({ erlaubt: false }),
+          } as never,
+        },
+        guards,
+      ),
+    );
+    await app.ready();
+    return app;
+  }
+
+  const ERWARTET = [
+    { text: "Ventil schließen [1].", quellen: ["ko-1"] },
+    { text: "Frei erfunden.", quellen: [] },
+  ];
+
+  it("A1: Klaras Zugang liefert die Zuordnung", async () => {
+    const app = await aufbau();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/klara/sessions/sess-1/execute",
+      headers: {
+        "x-klara-session": "sess-1",
+        "x-klara-instance": "inst-1",
+        "x-klara-document": "doc-s-1",
+      },
+      payload: { question: "Wie schließe ich das Ventil?", questionSource: "manual" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().absaetze).toEqual(ERWARTET);
+    await app.close();
+  });
+
+  it("A2: der allgemeine Frageweg liefert dieselbe Zuordnung (Gegenprobe)", async () => {
+    const app = await aufbau();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      payload: { question: "Wie schließe ich das Ventil?" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().absaetze).toEqual(ERWARTET);
+    await app.close();
+  });
+});

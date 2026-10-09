@@ -5,6 +5,7 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnsprechpartnerAuskunft,
   AnswerResult,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
@@ -116,6 +117,8 @@ import type {
   SlideConvertResponse,
   StructureResult,
   TrashedKo,
+  UebergabeErgebnis,
+  UebergabeVorschau,
   UploadLimits,
   ValidationBoardKo,
   ValidationSettings,
@@ -374,6 +377,10 @@ export type KoAction =
   // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
   | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
+  | { action: "ownership-release" }
+  // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
+  | { action: "owner-validate"; duplicateAcknowledged?: true }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -447,7 +454,11 @@ export type KoAction =
       note?: string;
       expectedVersion?: number;
     }
-  | { action: "revalidate" };
+  | { action: "revalidate" }
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
+  | { action: "confirm-fresh" }
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
+  | { action: "schutz-oeffentlich"; oeffentlich: boolean };
 
 /**
  * AUFTRAG-mega18 Block A-1 — Nutzlast der Verbund-Operation.
@@ -676,6 +687,13 @@ export const endpoints = {
     // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
     // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
     helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),
+    // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung aus der Bibliothek anstossen (R-1732,
+    // 204 ohne Objekt) und die Anlagenänderung über dieses Objekt an die Nachbarn melden (R-0203,
+    // Antwort nur mit der Zahl der markierten Objekte).
+    requestRevalidation: (id: string) =>
+      api.put<void>(`/kos/${id}`, { action: "request-revalidation" }),
+    neighborsChanged: (id: string) =>
+      api.put<{ markiert: number }>(`/kos/${id}`, { action: "neighbors-changed" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
     appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
@@ -785,6 +803,9 @@ export const endpoints = {
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
     remove: (id: string) => api.del<void>(`/gaps/${id}?confirm=true`),
+    // R-1663 / R-2178: begründete Ansprechpartner nach Wissensspuren (Schalter expertMatching).
+    ansprechpartner: (id: string) =>
+      api.get<AnsprechpartnerAuskunft>(`/gaps/${encodeURIComponent(id)}/ansprechpartner`),
   },
   // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
   slides: {
@@ -1119,6 +1140,11 @@ export const endpoints = {
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
     assetChanged: (assetRef: string) =>
       api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+    // R-0554: Wissensübergabe beim Ausscheiden — erst Vorschau, dann Ausführung (Recht `users.manage`).
+    uebergabeVorschau: (von: string, an: string) =>
+      api.post<UebergabeVorschau>("/lifecycle/handover/preview", { from: von, to: an }),
+    uebergeben: (von: string, an: string) =>
+      api.post<UebergabeErgebnis>("/lifecycle/handover", { from: von, to: an }),
   },
   // SCRUM-145: vorhandene Learning-Path-API (rollenbasiert, Fortschritt serverseitig).
   learningPaths: {
@@ -1405,7 +1431,12 @@ export const endpoints = {
     ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
     setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
-    remove: (id: string) => api.del<void>(`/users/${id}`),
+    // R-0554: mit `nachfolger` läuft vor dem Entfernen die Wissensübergabe (Auslöser aus der
+    // Verzeichnispflege); bleibt etwas liegen, antwortet der Server 409 und entfernt nichts.
+    remove: (id: string, nachfolger?: string) =>
+      api.del<void>(
+        nachfolger ? `/users/${id}?nachfolger=${encodeURIComponent(nachfolger)}` : `/users/${id}`,
+      ),
     // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
     resetPassword: (id: string, password: string) =>
       api.post<void>(`/auth/users/${id}/reset`, { password }),
