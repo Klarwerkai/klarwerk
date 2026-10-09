@@ -229,8 +229,10 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
   });
 
   // Bens Befunde 1–3: tatsächlicher Verbrauch je Weg, Obergrenze, Neustart.
-  // Bühne: jedes Subjekt hat drei Nachbarn → mindestens drei Konfliktvergleiche je Objekt. Mit
-  // Tagesbudget 10 und Reservierung 8 passt genau ein Objekt; das zweite beginnt nicht.
+  // Bühne: jedes Subjekt hat drei Nachbarn. Der Konfliktweg urteilt seit R-1103 (Paargedächtnis
+  // des Hauptstands) nur über Paare mit neuem Textstand — hier genau das Paar mit „Später"; der
+  // Duplikatweg vergleicht weiter. Mit Tagesbudget 10 und Reservierung 8 passt genau ein Objekt,
+  // sobald ein Objektlauf mindestens drei Vergleiche verbraucht; das zweite beginnt nicht.
   it("das Tagesbudget deckelt die tatsächlichen Vergleiche beider Wege, auch über einen Neustart", async () => {
     const b = await buehne({ tagesbudget: 10, maxJeObjekt: 8 });
     await b.lege("Kandidat", "Pumpenleistung im Betrieb prüfen");
@@ -244,8 +246,11 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     expect(erster).toMatchObject({ abgeglichen: 1, offen: 1, abbruch: "budget" });
     // Gezählt wird, was wirklich beim Modell ankam — beide Wege, kein Minimum.
     expect(erster?.vergleiche).toBe(b.modell.aufrufe - aufrufeVorher);
-    expect(erster?.vergleicheKonflikt).toBeGreaterThanOrEqual(3);
+    // Nur das neue Paar geht im Konfliktweg ans Modell; unveränderte Paare kommen aus dem Gedächtnis.
+    expect(erster?.vergleicheKonflikt).toBe(1);
     expect(erster?.vergleicheDublette).toBeGreaterThanOrEqual(1);
+    // Voraussetzung der Budgetprobe: der Lauf hat mehr verbraucht, als nach ihm noch Platz ließe.
+    expect(erster?.vergleiche).toBeGreaterThanOrEqual(3);
     expect(erster?.vergleiche).toBe(
       (erster?.vergleicheKonflikt ?? 0) + (erster?.vergleicheDublette ?? 0),
     );
