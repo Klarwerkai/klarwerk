@@ -8,13 +8,17 @@ import {
   type BegriffHerkunft,
   type BelegteBeziehung,
   type FrageAnlass,
+  type FundstellenLeser,
   GESPRAECHSFADEN_MAX_FRAGEN,
   type ZuschnittBegriff,
   answerEvidence,
   antwortBelastbarkeit,
   antwortZuschnitt,
+  aufKernaussagenBeschraenkt,
   isGapPriority,
   konfliktGegenseiten,
+  leseFundstellenAnfrage,
+  loeseFundstelleAuf,
   redactGapForViewer,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
@@ -844,6 +848,37 @@ async function evidenceFor(
   return { evidence, belastbarkeit };
 }
 
+// REF-01: die Lesewege der Fundstellenauflösung — ausschliesslich bestehende Lesemethoden des
+// Wissensdienstes. Eine Fassung ist die aktuelle oder ihr unveränderlicher Versionsschnappschuss;
+// der Volltext kommt aus der Suchprojektion GENAU dieser Fassung, aus der auch die Antwort las.
+// Was sich nicht lesen lässt, ist `undefined` — der Auflöser sagt dann „Stand nicht verfügbar".
+function fundstellenLeser(ko: KoService): FundstellenLeser<KnowledgeObject> {
+  return {
+    aktuell: (id) => ko.get(id),
+    imPapierkorb: (id) => ko.papierkorbFassungVon(id),
+    fassung: async (id, version) => {
+      try {
+        const aktuell = await ko.get(id);
+        const stand =
+          aktuell?.version === version
+            ? aktuell
+            : (await ko.versionsOf(id)).find((v) => v.version === version)?.snapshot;
+        if (!stand) {
+          return undefined;
+        }
+        const projektion = await ko.searchProjectionOf(id, version);
+        return {
+          statement: stand.statement,
+          bodyText: projektion?.bodyText,
+          sources: stand.sources,
+        };
+      } catch {
+        return undefined;
+      }
+    },
+  };
+}
+
 // Fragen & Wissenslücken (§2.4 / FR-ASK).
 export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsync {
   const ask = deps.ask;
@@ -1107,10 +1142,18 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             out.antwortZuschnitt,
             out.result,
           );
+          // REF-01: der Add-on-Schlüssel hat kein allgemeines Leserecht (mega77) — er bekommt die
+          // Aussagebindung nur auf den Kernaussagen, die er als Antwort ohnehin erhält; Volltext- und
+          // Belegstellenauszüge bleiben dem Sitzungsweg vorbehalten (`aufKernaussagenBeschraenkt`).
+          const aussagenFeld =
+            out.aussagen && request.authContext?.authKind === "addon"
+              ? { aussagen: aufKernaussagenBeschraenkt(out.aussagen) }
+              : {};
           // AUFNAHME 20260922: `belastbarkeit` steht NEBEN `evidence`, nicht darin — die Einstufung
           // bleibt der unveränderte Vertrag, den Word und die Paritätstafel lesen.
           reply.code(200).send({
             ...out,
+            ...aussagenFeld,
             result: { ...out.result, evidence, belastbarkeit },
             ...(absaetze ? { absaetze } : {}),
           });
@@ -1338,6 +1381,35 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       } catch (error) {
         sendError(reply, error);
       }
+    });
+
+    // produkt:20261009:referenzki-quellenbelege (REF-01) — FUNDSTELLEN MIT AKTUELLEN RECHTEN AUFLÖSEN.
+    //
+    // Der Client legt nur Kennungen vor (Objekt, Fassung, Feld bzw. Belegstelle, Bereich,
+    // Fingerabdruck); den Inhalt liest der Server selbst aus der GEBUNDENEN Fassung. Gesehen wird
+    // nach `sichtbarkeitsfilterFuer` — derselben Regel wie `GET /api/kos/:id`. Unbekannt und nicht
+    // berechtigt sind ununterscheidbar; „gelöscht" erfährt nur, wer das Objekt sehen durfte. Nur
+    // Sitzungsnutzer mit `ko.read`: der Add-on-Schlüssel hat kein allgemeines Leserecht (mega77).
+    app.post<{ Body: unknown }>("/api/ask/fundstellen", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      // Die Gestalt erst NACH dem Tor (dieselbe Reihenfolge wie `/api/ask/not-helpful`).
+      const verweise = leseFundstellenAnfrage(request.body);
+      if (!verweise) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "fundstellen fehlt, ist leer, zu lang oder enthält einen ungültigen Verweis.",
+        });
+        return;
+      }
+      const sichtbar = sichtbarkeitsfilterFuer(user);
+      const leser = fundstellenLeser(deps.ko);
+      const fundstellen = await Promise.all(
+        verweise.map((verweis) => loeseFundstelleAuf(verweis, leser, sichtbar)),
+      );
+      reply.code(200).send({ fundstellen });
     });
 
     // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite

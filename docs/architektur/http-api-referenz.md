@@ -277,10 +277,11 @@ herabgestuft werden (409 `mutability`).
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
+| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen; bei beantworteter Frage zusätzlich `aussagen` (REF-01: je Aussage Kennung, Teilaussagen, Fundstellen mit Objekt, Fassung, Bereich, Auszug, Fingerabdruck; Deckungslücken in `fehlendeDeckung`; Add-in-Schlüssel nur Kernaussagen) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
 | `POST` | `/api/ask/report` | `ko.read` | Rumpf `{ koId, receipt, grund: "antwort-falsch" \| "quelle-passt-nicht" }` | 200 Quittung `{ meldungId, koId, koTitle, grund, at, zugestelltAn, bereitsGemeldet }` | 400 `BAD_REQUEST`; 403 `FORBIDDEN`; 404 `NOT_FOUND` |
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
+| `POST` | `/api/ask/fundstellen` | `ko.read`; je Fundstelle `sichtbarkeitsfilterFuer` | Rumpf `{ fundstellen: [{ art: "intern", koId, koVersion, feld, start, ende, fingerabdruck } \| { art: "extern", koId, koVersion, quelleId, start, ende, fingerabdruck }] }` (1–20) | 200 `{ fundstellen: [{ zustand: "aktuell" \| "geaendert" \| "stand_nicht_verfuegbar" \| "beschaedigt" \| "geloescht" \| "nicht_zugaenglich", hinweis, koId, … }] }` — Auszug nur bei Recht; unbekannt und nicht berechtigt identisch | 400 `BAD_REQUEST`; 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
 | `GET` | `/api/gaps/:id/ansprechpartner` | `ko.assign` (Schalter `KLARWERK_EXPERT_MATCHING`) | — | 200 Ansprechpartner nach Wissensspuren | 404 `not_found` ohne Schalter, vor dem Rechtetor; 404 `NOT_FOUND` unbekannte Lücke |

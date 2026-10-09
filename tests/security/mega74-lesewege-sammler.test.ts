@@ -368,6 +368,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     grund: "ask/src/service.ts:145 — dropConfidential vor der Auswahl, auf ALLEN Zweigen.",
   },
+  // REF-01: Fundstellenauszüge aus Wissensobjekten — je Fundstelle `sichtbarkeitsfilterFuer`,
+  // unbekannt und nicht berechtigt mit derselben inhaltslosen Antwort (aussage-fundstellen.ts).
+  "POST /api/ask/fundstellen": {
+    urteil: "PRAEDIKAT",
+    grund: "REF-01 — sichtbarkeitsfilterFuer vor jedem Auszug; sonst nur „nicht zugänglich“.",
+  },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
   // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`

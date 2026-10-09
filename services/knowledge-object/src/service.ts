@@ -4293,6 +4293,16 @@ export class KoService {
     return ko && !ko.deletedAt ? ko.version : undefined;
   }
 
+  // produkt:20261009:referenzki-quellenbelege (REF-01): das Objekt, WENN es im Papierkorb liegt —
+  // sonst nichts. Einziger Leser ist die Fundstellenauflösung (ask-routes.ts): sie braucht die
+  // Sichtbarkeitsfakten des gelöschten Objekts, um „gelöscht" nur dem zu sagen, der es sehen DURFTE,
+  // und allen anderen dasselbe „nicht zugänglich" wie bei einer unbekannten Kennung. Die Route gibt
+  // davon nichts weiter als den Zustand aus; Inhalt verlässt den Papierkorb hier nicht.
+  async papierkorbFassungVon(id: string): Promise<KnowledgeObject | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko?.deletedAt ? ko : undefined;
+  }
+
   // ==============================================================================================
   // JOB 3071 — DIE EINE PAPIERKORBFÄHIGE AUSKUNFT: HAT DER AUTOR SELBST ZURÜCKGEZOGEN?
   // ==============================================================================================

@@ -49,6 +49,7 @@ import {
   type ZuschnittErgaenzung,
   schneideAntwortZu,
 } from "./antwort-zuschnitt";
+import { type AussagenBeleg, type BindungsQuelle, bindeAussagen } from "./aussage-fundstellen";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -588,6 +589,11 @@ export interface AskResult {
   // Fachsprache, Reihenfolge und GENAU die angehängten Ergänzungen samt ihrer Quelle. Fehlt das
   // Feld, ist die Antwort unverändert (wörtlicher Weg, kein Zuschnitt übergeben, keine Antwort).
   antwortZuschnitt?: AskAntwortZuschnitt;
+  // produkt:20261009:referenzki-quellenbelege (REF-01): je Tatsachenbehauptung der beantworteten
+  // Antwort ihre stabile Kennung und ihre Fundstellen (Objekt, Fassung, Textbereich, Auszug,
+  // Fingerabdruck) — oder die ausdrücklich ausgewiesene Deckungslücke. Gebildet aus DENSELBEN
+  // Objekten, aus denen die Antwort entstand (`aussage-fundstellen.ts`). Fehlt ohne Antwort.
+  aussagen?: AussagenBeleg;
 }
 
 /** R-0346: der angewandte Zuschnitt der Antwort (Regel und Grenzen: `antwort-zuschnitt.ts`). */
@@ -1378,6 +1384,35 @@ export class AskService {
     // D5: nach dem Warten auf die Volltext-Blicke oben — vor dem Beleg, der die Antwort ablegt.
     this.pruefeKiSperre("ergebnis", kiBeginn);
     const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer, kiBeginn);
+    // REF-01: die Aussage-zu-Passagen-Bindung. Grundlage ist der QUELLENGEBUNDENE Text (ohne die
+    // Wörterbucherklärungen des Zuschnitts — sie stammen nicht aus Wissensquellen) und genau die
+    // Objekte dieses Laufs: Fassung und Belegstellen aus `prefiltered`, der Volltext aus denselben
+    // Refs, die an den Antwortweg gingen. Keine Neusuche, kein Modellaufruf.
+    const bindungsText = antwortZuschnitt?.quellengebundenerText ?? result.answer;
+    const aussagenFeld: { aussagen?: AussagenBeleg } =
+      result.answered && typeof bindungsText === "string" && bindungsText.trim() !== ""
+        ? {
+            aussagen: bindeAussagen({
+              answerId,
+              antwort: bindungsText,
+              sources: result.sources,
+              citedSources: result.citedSources,
+              quellen: new Map(
+                prefiltered.map((ko): [string, BindungsQuelle] => [
+                  ko.id,
+                  {
+                    id: ko.id,
+                    version: ko.version,
+                    originalAuthor: ko.originalAuthor,
+                    statement: ko.statement,
+                    bodyText: refs.find((r) => r.id === ko.id)?.bodyText,
+                    sources: ko.sources,
+                  },
+                ]),
+              ),
+            }),
+          }
+        : {};
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -1459,6 +1494,7 @@ export class AskService {
       ...verschlossenFeld,
       ...geltungFeld,
       ...zuschnittFeld,
+      ...aussagenFeld,
       pruefrahmen,
     };
   }
