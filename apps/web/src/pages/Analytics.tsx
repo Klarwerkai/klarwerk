@@ -202,11 +202,12 @@ export function Analytics(): JSX.Element {
         </Card>
       </div>
 
-      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar */}
+      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar. R-0908: die Überschrift kommt aus
+          `texte/fachwort.ts` („Zustand der Wissensbasis“), `health.title` sagte „Knowledge Health“. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("health.title")}</SectionLabel>
-          <HelpTip title={t("health.title")} body={t("ana.help.health")} />
+          <SectionLabel>{t("fachwort.gesundheit.titel")}</SectionLabel>
+          <HelpTip title={t("fachwort.gesundheit.titel")} body={t("ana.help.health")} />
         </div>
         {healthUnknown ? (
           <Card data-testid="health-unknown" className="flex items-center gap-4">
