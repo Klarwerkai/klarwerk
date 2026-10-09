@@ -294,6 +294,7 @@ PFLICHTTABELLEN=(
   kos
   ko_schreibstand
   ko_versions
+  ko_halbwertszeit_beobachtungen
   ko_search_projections
   ko_metadata_projections
   ko_projection_control

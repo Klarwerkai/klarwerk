@@ -70,6 +70,7 @@ import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 import { SPACES_SCHEMA } from "./spaces";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte und zusätzlich angelegte Sprachen.
 import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
+import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -271,6 +272,9 @@ export const schemas = [
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   GEDAECHTNIS_SCHEMA,
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  VERANTWORTUNG_NACHFOLGE_SCHEMA,
   // R-1034 / FR-I18N-02: die Übersetzungspflege. Additiv und wiederholbar (zwei CREATE TABLE IF NOT
   // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   UEBERSETZUNGEN_SCHEMA,
