@@ -11,6 +11,8 @@ import { useMyImpact } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
+// Betroffenenrechte (R-0663, R-0661): „Meine Daten" und der eigene Löschantrag.
+import { LoeschantragDetail, MeineDatenDetail } from "../components/datenschutz/MeineDaten";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
@@ -301,7 +303,9 @@ export function Profile(): JSX.Element {
   const { t } = useTranslation();
   const { user, signOut } = useSession();
   const [busy, setBusy] = useState(false);
-  const [detail, setDetail] = useState<null | "passwort" | "wirkung" | "zweifaktor">(null);
+  const [detail, setDetail] = useState<
+    null | "passwort" | "wirkung" | "zweifaktor" | "meineDaten" | "loeschantrag"
+  >(null);
   const zweiFaktor = useQuery({ queryKey: ZWEI_FAKTOR_KEY, queryFn: authApi.secondFactorStatus });
   const zurueck = (): void => setDetail(null);
   // JOB 3742 · DIE SEITENHILFE DIESER FLÄCHE — und warum hier der HAKEN steht und nicht der
@@ -323,6 +327,8 @@ export function Profile(): JSX.Element {
       ) : null}
       {detail === "wirkung" ? <WirkungDetail onZurueck={zurueck} /> : null}
       {detail === "zweifaktor" ? <ZweiFaktorDetail onZurueck={zurueck} /> : null}
+      {detail === "meineDaten" ? <MeineDatenDetail onZurueck={zurueck} /> : null}
+      {detail === "loeschantrag" ? <LoeschantragDetail onZurueck={zurueck} /> : null}
       {detail === null ? (
         <Zeilenkarte>
           <Zeile
@@ -354,6 +360,17 @@ export function Profile(): JSX.Element {
             label={t("funke.impact.title")}
             onOeffnen={() => setDetail("wirkung")}
             testId="zeile-wirkung"
+          />
+          <Zeile
+            label={t("datenschutz.meineDaten.titel")}
+            wert={t("datenschutz.meineDaten.wert")}
+            onOeffnen={() => setDetail("meineDaten")}
+            testId="zeile-meine-daten"
+          />
+          <Zeile
+            label={t("datenschutz.antrag.titel")}
+            onOeffnen={() => setDetail("loeschantrag")}
+            testId="zeile-loeschantrag"
           />
           <Zeile
             label={t("prof.kicker")}
