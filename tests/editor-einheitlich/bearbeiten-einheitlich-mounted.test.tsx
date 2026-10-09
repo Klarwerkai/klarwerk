@@ -297,6 +297,25 @@ describe("EDITOR-EINHEITLICH · K1 — dieselben Begriffe wie beim Erstellen", (
   });
 });
 
+describe("EDITOR-EINHEITLICH · K1/K2 — das Schreibfeld ist wie beim Erstellen eine Gruppe", () => {
+  // Nacharbeit 3, Smoke-Befund: ein Klick ins Schreibfeld öffnete das Knowledge Studio, weil das
+  // Feld in einem `<label>` mit dem Studio-Knopf stand — das Getippte kam nie im Editor an. jsdom
+  // ahmt die native Label-Aktivierung nicht nach (s. `tests/anhaenge-ziehen/field-gruppen-mounted`);
+  // geprüft wird hier die Ursache im DOM, der echte Klick im Smoke.
+  it("B2 · das Schreibfeld steht in keinem Label, sondern in einem fieldset mit Namen", async () => {
+    const id = await objektAnlegen(ERSTELLT, `<p>${ERSTELLT}</p>`);
+    await mount(id);
+
+    const feld = document.body.querySelector<HTMLElement>(
+      `[role="textbox"][aria-label="${i18n.t("editor.bodyLabel")}"]`,
+    );
+    expect(feld, "das Schreibfeld fehlt").not.toBeNull();
+    expect(feld?.closest("label"), "das Schreibfeld steht in einem Label").toBeNull();
+    const gruppe = feld?.closest("fieldset");
+    expect(gruppe?.querySelector(":scope > legend")?.textContent).toBe(i18n.t("capture.fBody"));
+  });
+});
+
 describe("EDITOR-EINHEITLICH · K2/K5 — einmal pflegen, beabsichtigte Fassung, alte bleibt", () => {
   it("A1 · aus dem Inhalt gebildete Aussage folgt der Inhaltsänderung; Version 1 bleibt lesbar", async () => {
     const id = await objektAnlegen(ERSTELLT, `<p>${ERSTELLT}</p>`);

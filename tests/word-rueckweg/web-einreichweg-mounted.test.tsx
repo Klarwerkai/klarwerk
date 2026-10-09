@@ -784,9 +784,13 @@ describe("JOB 3667 R4 · was übernommen wird, steht vorher da", () => {
 // Maßnahmen und Schlagworte als Eingabe anbietet, verspricht ein „eingereicht", das es nicht gibt.
 
 describe("JOB 3667 R4 · der Prüfweg bietet nur an, was er trägt", () => {
-  /** Die Beschriftungen der Eingabefelder des Formulars — `Field` zeichnet sie als `label > span`. */
+  /**
+   * Die Beschriftungen der Eingabefelder des Formulars — `Field` zeichnet sie als `label > span`,
+   * eine zusammengesetzte Gruppe (`Field gruppe`, z. B. der ausführliche Inhalt) als
+   * `fieldset > legend`.
+   */
   function feldNamen(): string[] {
-    return [...document.body.querySelectorAll("label > span")]
+    return [...document.body.querySelectorAll("label > span, fieldset > legend")]
       .map((s) => (s.textContent ?? "").trim())
       .filter((s) => s.length > 0);
   }

@@ -2974,7 +2974,11 @@ export function BibliothekLesen({
                 {t("editoreinheitlich.aussageEigen")}
               </p>
             ) : null}
-            <Field label={t("capture.fBody")}>
+            {/* EDITOR-EINHEITLICH (Nacharbeit 3, Smoke-Befund): `gruppe` wie im Erstellformular
+                (Capture.tsx). Als `<label>` aktivierte jeder Klick ins Schreibfeld den ersten Knopf
+                darin — das Knowledge Studio ging ungefragt auf, und das Getippte kam nie im Editor
+                an (Bild des roten Laufs). Derselbe Befund war beim Erstellen schon behoben. */}
+            <Field label={t("capture.fBody")} gruppe>
               <button
                 type="button"
                 onClick={() => {
