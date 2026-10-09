@@ -16,8 +16,10 @@ import {
 } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
+import { absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
+import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
@@ -804,7 +806,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             }
             throw fehler;
           }
-          reply.code(200).send({ ...out, result: { ...out.result, evidence } });
+          // R-0310: die ausdrückliche Absatz-Beleg-Zuordnung reist NEBEN `result` (absatz-belege.ts);
+          // ohne beantwortete Frage fehlt sie.
+          const absaetze = absatzBelege(out.result);
+          reply.code(200).send({
+            ...out,
+            result: { ...out.result, evidence },
+            ...(absaetze ? { absaetze } : {}),
+          });
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
@@ -1035,6 +1044,31 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       }
       const gaps = await ask.listGaps();
       reply.code(200).send(gaps.map((gap) => redactGapForViewer(gap, { viewerId: user.id })));
+    });
+
+    // R-1663 / R-2178: passende Ansprechpartner zu EINER Lücke, begründet aus Wissensspuren
+    // (Regeln in `services/ask/src/ansprechpartner.ts`). Dieselben Grenzen wie das Consultant-System
+    // (`GET /api/analytics/expertise`): hinter dem Schalter `expertMatching` — Personen-Matching ist
+    // datenschutzsensibel (BetrVG §87(1)6, DSGVO) und bleibt bis zur BR/DSB-Freigabe aus; ohne ihn
+    // gibt es die Route nicht (404 vor dem Rechtetor). Und nur `ko.assign` — wer real entscheidet,
+    // wen er einbezieht. Die Objektgrundlage begrenzt die Sichtbarkeit DIESES Betrachters.
+    app.get<{ Params: { id: string } }>("/api/gaps/:id/ansprechpartner", async (request, reply) => {
+      if (!schalterAn("expertMatching")) {
+        reply.code(404).send({ error: "not_found" });
+        return;
+      }
+      const user = await guards.requirePermission("ko.assign", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const auskunft = await ask.ansprechpartnerZuLuecke(request.params.id, {
+          sichtbar: sichtbarkeitsfilterFuer(user),
+        });
+        reply.code(200).send(auskunft);
+      } catch (error) {
+        sendError(reply, error);
+      }
     });
 
     app.put<{

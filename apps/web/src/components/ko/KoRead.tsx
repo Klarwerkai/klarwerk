@@ -65,9 +65,11 @@ export function KoReadStatement({
               </span>
             ) : null}
           </div>
+          {/* R-1160 / D-037: breite Tabellen bekommen ihre Scroll-Hülle als Element, nicht im HTML. */}
           <SanitizedHtml
             html={ko.bodyHtml}
             className="prose-kw text-[14.5px] leading-relaxed text-text"
+            lesehuellen
           />
           {/* WP-BILD-1d: Galerie der Beitrags-Bilder (aus den figures des Bodys abgeleitet; erscheint
               nur, wenn mindestens ein verankertes Bild existiert). */}
