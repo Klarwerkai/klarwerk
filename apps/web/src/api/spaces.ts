@@ -38,6 +38,16 @@ export interface SpaceEingabe {
   zugang: SpaceZugang;
   mitglieder: { nutzer: string; recht: SpaceRecht }[];
   ansichten: { id?: string; name: string; tag: string }[];
+  /** produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg. */
+  teams?: { team: string; recht: SpaceRecht }[];
+}
+
+/** Ein für die Spacepflege wählbares (aktives) Team. */
+export interface SpaceTeamWahl {
+  id: string;
+  name: string;
+  zweck: string;
+  mitglieder: number;
 }
 
 export interface SpaceSicht {
@@ -50,6 +60,16 @@ export interface SpaceSicht {
   zugang: SpaceZugang;
   mitglieder: { nutzer: string; recht: SpaceRecht; name: string | null }[];
   ansichten: SpaceAnsicht[];
+  /** Gebundene Teams; ein archiviertes Team steht als Verlauf da und gewährt nichts mehr. */
+  teams?: { team: string; recht: SpaceRecht; name: string | null; archiviert: boolean }[];
+  /** Wer über welches aktive Team dabei ist — getrennt von den direkten Mitgliedern. */
+  teamMitglieder?: {
+    nutzer: string;
+    recht: SpaceRecht;
+    team: string;
+    name: string | null;
+    teamName: string | null;
+  }[];
   angelegtVon: string;
   angelegtAm: string;
   geaendertVon: string;
@@ -125,6 +145,7 @@ const pfad = (id: string): string => `/spaces/${encodeURIComponent(id)}`;
 export const spacesApi = {
   liste: () => api.get<{ spaces: SpaceSicht[]; darfAnlegen: boolean }>("/spaces"),
   konten: () => api.get<{ konten: SpaceKonto[] }>("/spaces/konten"),
+  teams: () => api.get<{ teams: SpaceTeamWahl[] }>("/spaces/teams"),
   eintrag: (id: string) =>
     api.get<{
       space: SpaceSicht;

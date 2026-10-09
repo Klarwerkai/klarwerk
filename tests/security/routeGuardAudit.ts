@@ -874,6 +874,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // produkt:20261009:admin-teams: wählbare Teams für die Spacepflege (ohne Mitgliedernamen).
+  "GET /api/spaces/teams": { protection: "ko.read" },
+
+  // --- Teams (teams-routes.ts, produkt:20261009:admin-teams) ---
+  // Ausschliesslich die Kontoverwaltung: Teams anlegen, ändern, Mitglieder, Wirkung, Archiv.
+  "GET /api/teams": { protection: "users.manage" },
+  "GET /api/teams/:id": { protection: "users.manage" },
+  "POST /api/teams": { protection: "users.manage" },
+  "POST /api/teams/:id/vorschau": { protection: "users.manage" },
+  "PUT /api/teams/:id": { protection: "users.manage" },
+  "POST /api/teams/:id/archivieren": { protection: "users.manage" },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die

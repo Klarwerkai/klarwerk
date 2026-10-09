@@ -36,6 +36,14 @@ export default {
     "spaces.feld.ansichtName": "Name der Ansicht",
     "spaces.feld.ansichtTag": "Tag",
     "spaces.feld.ansichtHinzu": "Ansicht hinzufügen",
+    "spaces.feld.teams": "Teams",
+    "spaces.feld.teamRecht": "Recht für Team {{name}}",
+    "spaces.feld.teamWaehlen": "Team wählen",
+    "spaces.feld.teamHinzu": "Team binden",
+    "spaces.formular.teamHinweis":
+      "Jedes aktive Mitglied eines gebundenen Teams erhält dieses Recht — zusätzlich zu direkten Mitgliedschaften.",
+    "spaces.team.archiviert": "archiviert, gewährt nichts mehr",
+    "spaces.detail.teamMitglieder": "Über Teams",
     "spaces.formular.speichern": "Speichern",
     "spaces.formular.abbrechen": "Abbrechen",
     "spaces.formular.hinweis":
@@ -131,6 +139,14 @@ export default {
     "spaces.feld.ansichtName": "View name",
     "spaces.feld.ansichtTag": "Tag",
     "spaces.feld.ansichtHinzu": "Add view",
+    "spaces.feld.teams": "Teams",
+    "spaces.feld.teamRecht": "Right for team {{name}}",
+    "spaces.feld.teamWaehlen": "Choose team",
+    "spaces.feld.teamHinzu": "Bind team",
+    "spaces.formular.teamHinweis":
+      "Every active member of a bound team receives this right — in addition to direct memberships.",
+    "spaces.team.archiviert": "archived, grants nothing",
+    "spaces.detail.teamMitglieder": "Via teams",
     "spaces.formular.speichern": "Save",
     "spaces.formular.abbrechen": "Cancel",
     "spaces.formular.hinweis":
@@ -224,6 +240,14 @@ export default {
     "spaces.feld.ansichtName": "Naam van de weergave",
     "spaces.feld.ansichtTag": "Tag",
     "spaces.feld.ansichtHinzu": "Weergave toevoegen",
+    "spaces.feld.teams": "Teams",
+    "spaces.feld.teamRecht": "Recht voor team {{name}}",
+    "spaces.feld.teamWaehlen": "Team kiezen",
+    "spaces.feld.teamHinzu": "Team koppelen",
+    "spaces.formular.teamHinweis":
+      "Elk actief lid van een gekoppeld team krijgt dit recht — naast directe lidmaatschappen.",
+    "spaces.team.archiviert": "gearchiveerd, verleent niets meer",
+    "spaces.detail.teamMitglieder": "Via teams",
     "spaces.formular.speichern": "Opslaan",
     "spaces.formular.abbrechen": "Annuleren",
     "spaces.formular.hinweis":

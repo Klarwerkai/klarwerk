@@ -42,6 +42,7 @@ function eingabeAus(s: SpaceSicht): SpaceEingabe {
     zugang: s.zugang,
     mitglieder: s.mitglieder.map((m) => ({ nutzer: m.nutzer, recht: m.recht })),
     ansichten: s.ansichten.map((a) => ({ id: a.id, name: a.name, tag: a.tag })),
+    teams: (s.teams ?? []).map((b) => ({ team: b.team, recht: b.recht })),
   };
 }
 
@@ -55,10 +56,18 @@ function SpaceFormular({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const konten = useQuery({ queryKey: ["spaces", "konten"], queryFn: spacesApi.konten });
+  // produkt:20261009:admin-teams: aktive Teams als zusätzlicher Mitgliedschaftsweg.
+  const teamWahl = useQuery({ queryKey: ["spaces", "teams"], queryFn: spacesApi.teams });
   const [form, setForm] = useState<SpaceEingabe>(() =>
     vorlage ? eingabeAus(vorlage) : leereEingabe(),
   );
   const [neuesMitglied, setNeuesMitglied] = useState("");
+  const [neuesTeam, setNeuesTeam] = useState("");
+  const gebunden = form.teams ?? [];
+  const teamName = (id: string): string =>
+    teamWahl.data?.teams.find((x) => x.id === id)?.name ??
+    vorlage?.teams?.find((b) => b.team === id)?.name ??
+    id;
   const speichern = useMutation({
     mutationFn: () =>
       vorlage ? spacesApi.aendern(vorlage.id, vorlage.version, form) : spacesApi.anlegen(form),
@@ -195,6 +204,74 @@ function SpaceFormular({
       </fieldset>
       <fieldset className="space-y-2 rounded-btn border border-hairline p-3">
         <legend className="px-1 text-[12.5px] font-semibold text-ink">
+          {t("spaces.feld.teams")}
+        </legend>
+        <ul className="space-y-1">
+          {gebunden.map((b, i) => (
+            <li key={b.team} data-testid="space-team" className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-text">
+                {teamName(b.team)}
+                {vorlage?.teams?.find((x) => x.team === b.team)?.archiviert
+                  ? ` · ${t("spaces.team.archiviert")}`
+                  : ""}
+              </span>
+              <select
+                aria-label={t("spaces.feld.teamRecht", { name: teamName(b.team) })}
+                data-testid="space-team-recht"
+                className="rounded-input border border-hairline bg-surface px-2 py-1 text-[12.5px]"
+                value={b.recht}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    teams: gebunden.map((x, j) =>
+                      j === i ? { ...x, recht: e.target.value as SpaceRecht } : x,
+                    ),
+                  })
+                }
+              >
+                <option value="lesen">{t("spaces.recht.lesen")}</option>
+                <option value="schreiben">{t("spaces.recht.schreiben")}</option>
+              </select>
+              <Button
+                onClick={() => setForm({ ...form, teams: gebunden.filter((_, j) => j !== i) })}
+              >
+                {t("spaces.feld.entfernen")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+        <div className="flex gap-2">
+          <select
+            aria-label={t("spaces.feld.teamWaehlen")}
+            data-testid="space-team-waehlen"
+            className={FELD}
+            value={neuesTeam}
+            onChange={(e) => setNeuesTeam(e.target.value)}
+          >
+            <option value="">{t("spaces.feld.teamWaehlen")}</option>
+            {(teamWahl.data?.teams ?? [])
+              .filter((x) => !gebunden.some((b) => b.team === x.id))
+              .map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+          </select>
+          <Button
+            data-testid="space-team-hinzu"
+            disabled={!neuesTeam}
+            onClick={() => {
+              setForm({ ...form, teams: [...gebunden, { team: neuesTeam, recht: "lesen" }] });
+              setNeuesTeam("");
+            }}
+          >
+            {t("spaces.feld.teamHinzu")}
+          </Button>
+        </div>
+        <p className="text-[12px] text-muted-2">{t("spaces.formular.teamHinweis")}</p>
+      </fieldset>
+      <fieldset className="space-y-2 rounded-btn border border-hairline p-3">
+        <legend className="px-1 text-[12.5px] font-semibold text-ink">
           {t("spaces.feld.ansichten")}
         </legend>
         {form.ansichten.map((a, i) => (
@@ -286,6 +363,32 @@ function SpaceKopf({ s }: { s: SpaceSicht }): JSX.Element {
           {t("spaces.feld.mitglieder")}:{" "}
           {s.mitglieder
             .map((m) => `${m.name ?? m.nutzer} (${t(`spaces.recht.${m.recht}`)})`)
+            .join(", ")}
+        </p>
+      ) : null}
+      {/* produkt:20261009:admin-teams: der Teamweg steht GETRENNT von den direkten Mitgliedern —
+          wer über welches Team dabei ist, und welches Team archiviert nichts mehr gewährt. */}
+      {(s.teams ?? []).length > 0 ? (
+        <p className="text-[12px] text-muted-2" data-testid="space-teams-anzeige">
+          {t("spaces.feld.teams")}:{" "}
+          {(s.teams ?? [])
+            .map(
+              (b) =>
+                `${b.name ?? b.team} (${t(`spaces.recht.${b.recht}`)}${
+                  b.archiviert ? ` · ${t("spaces.team.archiviert")}` : ""
+                })`,
+            )
+            .join(", ")}
+        </p>
+      ) : null}
+      {(s.teamMitglieder ?? []).length > 0 ? (
+        <p className="text-[12px] text-muted-2" data-testid="space-teammitglieder-anzeige">
+          {t("spaces.detail.teamMitglieder")}:{" "}
+          {(s.teamMitglieder ?? [])
+            .map(
+              (m) =>
+                `${m.name ?? m.nutzer} (${m.teamName ?? m.team}, ${t(`spaces.recht.${m.recht}`)})`,
+            )
             .join(", ")}
         </p>
       ) : null}

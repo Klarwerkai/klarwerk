@@ -707,6 +707,27 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
   },
+  "GET /api/spaces/teams": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Name, Zweck und Mitgliederzahl aktiver Teams (spaces-routes.ts).",
+  },
+  // Teams (teams-routes.ts, produkt:20261009:admin-teams): Teamfassungen, Konten und Space-Namen —
+  // kein Wissensobjekt wird gelesen oder ausgegeben.
+  "GET /api/teams": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Teamfassungen mit Mitgliedern und Spaces.",
+  },
+  "GET /api/teams/:id": { urteil: "KEIN_KO_INHALT", grund: "Teamfassung und ihr Verlauf." },
+  "POST /api/teams": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Teamfassung." },
+  "POST /api/teams/:id/vorschau": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Rechtewirkung je Person und Space — Rechte, keine Inhalte.",
+  },
+  "PUT /api/teams/:id": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Teamfassung." },
+  "POST /api/teams/:id/archivieren": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die archivierte Teamfassung.",
+  },
   // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
   // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
   "GET /api/verantwortung/person/:id": {

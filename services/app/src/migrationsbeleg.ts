@@ -183,6 +183,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // offen oder in Bearbeitung — Antrag je Konto) und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "LOESCHANTRAG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261009:admin-teams: die Fassungen der Teams. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "TEAMS_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

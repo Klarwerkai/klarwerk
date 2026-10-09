@@ -507,6 +507,7 @@ PFLICHTTABELLEN=(
   interaktions_gedaechtnis
   ko_embeddings
   loeschantraege
+  teams_fassungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

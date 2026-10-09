@@ -39,12 +39,18 @@ import {
   lesbareSpaces,
   pruefeSpaceEingabe,
 } from "../spaces";
+import type { TeamFassung, TeamsRepo } from "../teams";
 
 export interface SpacesRouteDienste {
   spaces: SpacesRepo;
   ko: KoService;
   auth: AuthService;
   audit?: AuditService;
+  /**
+   * produkt:20261009:admin-teams — die Teams, die ein Space als Mitgliedschaftsweg binden kann.
+   * Fehlt die Ablage, lässt sich kein Team neu binden; bestehende Bindungen bleiben stehen.
+   */
+  teams?: TeamsRepo;
   /** Uhr für `geaendertAm` — in Tests stellbar. */
   jetzt?: () => Date;
   /**
@@ -98,11 +104,42 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return fassungen[fassungen.length - 1];
   }
 
-  function spaceSicht(space: SpaceFassung, user: SessionUser, n: Map<string, string>) {
+  async function alleTeams(): Promise<TeamFassung[]> {
+    return dienste.teams ? dienste.teams.aktuelle() : [];
+  }
+
+  /** Neu bindbar sind aktive Teams; eine schon bestehende Bindung bleibt auch archiviert stehen. */
+  async function bindbareTeams(bisher?: SpaceFassung): Promise<Set<string>> {
+    const teams = await alleTeams();
+    return new Set([
+      ...teams.filter((t) => !t.archiviert).map((t) => t.id),
+      ...(bisher?.teams ?? []).map((b) => b.team),
+    ]);
+  }
+
+  function spaceSicht(
+    space: SpaceFassung,
+    user: SessionUser,
+    n: Map<string, string>,
+    teams: readonly TeamFassung[] = [],
+  ) {
+    const team = (id: string) => teams.find((t) => t.id === id);
     return {
       ...space,
       verantwortlichName: n.get(space.verantwortlich) ?? null,
       mitglieder: space.mitglieder.map((m) => ({ ...m, name: n.get(m.nutzer) ?? null })),
+      // produkt:20261009:admin-teams: die Teambindungen und — getrennt von den direkten
+      // Mitgliedern — wer über welches Team dabei ist.
+      teams: (space.teams ?? []).map((b) => ({
+        ...b,
+        name: team(b.team)?.name ?? null,
+        archiviert: team(b.team)?.archiviert ?? false,
+      })),
+      teamMitglieder: (space.teamMitglieder ?? []).map((m) => ({
+        ...m,
+        name: n.get(m.nutzer) ?? null,
+        teamName: team(m.team)?.name ?? null,
+      })),
       eigenesRecht: eigenesSpaceRecht(space, user),
       darfBearbeiten: darfSpaceBearbeiten(space, user),
       darfInhalteLesen: darfSpaceInhalteLesen(space, user.id),
@@ -266,11 +303,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       const spaces = await dienste.spaces.aktuelle();
       const artikel = await sichtbareArtikel(user);
       const n = await namen();
+      const teams = await alleTeams();
       const sichtbar = spaces
         .filter((s) => darfSpaceSehen(s, user))
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
         .map((s) => ({
-          ...spaceSicht(s, user, n),
+          ...spaceSicht(s, user, n, teams),
           artikelSichtbar: artikel.filter((k) => k.spaceId === s.id).length,
         }));
       reply.code(200).send({ spaces: sichtbar, darfAnlegen: can(user.role, "ko.validate") });
@@ -290,6 +328,21 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       });
     });
 
+    // produkt:20261009:admin-teams: die Teams, die als Mitgliedschaftsweg wählbar sind — aktiv,
+    // mit Name, Zweck und Mitgliederzahl; keine Mitgliedernamen (die pflegt die Kontoverwaltung).
+    app.get("/api/spaces/teams", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send({
+        teams: (await alleTeams())
+          .filter((t) => !t.archiviert)
+          .map((t) => ({ id: t.id, name: t.name, zweck: t.zweck, mitglieder: t.mitglieder.length }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      });
+    });
+
     app.get<{ Params: { id: string } }>("/api/spaces/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
@@ -303,7 +356,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       }
       const n = await namen();
       reply.code(200).send({
-        space: spaceSicht(aktuell, user, n),
+        space: spaceSicht(aktuell, user, n, await alleTeams()),
         fassungen: fassungen.map((f) => ({
           version: f.version,
           geaendertVon: f.geaendertVon,
@@ -321,7 +374,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       }
       let eingabe: SpaceEingabe;
       try {
-        eingabe = pruefeSpaceEingabe(request.body, new Set((await konten()).map((u) => u.id)));
+        eingabe = pruefeSpaceEingabe(
+          request.body,
+          new Set((await konten()).map((u) => u.id)),
+          await bindbareTeams(),
+        );
       } catch (e) {
         fehler(reply, e);
         return;
@@ -346,9 +403,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           verantwortlich: fassung.verantwortlich,
           zugang: fassung.zugang,
           mitglieder: fassung.mitglieder.length,
+          teams: (fassung.teams ?? []).map((b) => b.team),
         },
       });
-      reply.code(201).send(spaceSicht(fassung, user, await namen()));
+      const angelegt = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
+      reply.code(201).send(spaceSicht(angelegt, user, await namen(), await alleTeams()));
     });
 
     // Bearbeiten — eine NEUE Fassung. `version` nennt die Fassung, die der Bearbeiter gesehen hat.
@@ -381,7 +440,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         }
         let eingabe: SpaceEingabe;
         try {
-          eingabe = pruefeSpaceEingabe(request.body, new Set((await konten()).map((u) => u.id)));
+          eingabe = pruefeSpaceEingabe(
+            request.body,
+            new Set((await konten()).map((u) => u.id)),
+            await bindbareTeams(aktuell),
+          );
         } catch (e) {
           fehler(reply, e);
           return;
@@ -415,9 +478,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
             vorherVerantwortlich: aktuell.verantwortlich,
             zugang: fassung.zugang,
             mitglieder: fassung.mitglieder.length,
+            teams: (fassung.teams ?? []).map((b) => b.team),
+            vorherTeams: (aktuell.teams ?? []).map((b) => b.team),
           },
         });
-        reply.code(200).send(spaceSicht(fassung, user, await namen()));
+        const gelesen = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
+        reply.code(200).send(spaceSicht(gelesen, user, await namen(), await alleTeams()));
       },
     );
 
