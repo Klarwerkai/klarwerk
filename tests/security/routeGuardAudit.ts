@@ -418,6 +418,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
 
+  // --- Paarpflichten (paarpflichten-routes.ts) ---
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): ausdrücklich gewählte Prüfläufe über alle
+  // Aussagepaare. Routenrecht wie die gewählte Vollprüfung eines Objekts (`ko.validate`), dazu je
+  // Aussage `darfSehen` — eine nicht sichtbare Aussage antwortet wie eine fehlende.
+  "POST /api/paarpflichten/laeufe": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/paarpflichten/laeufe/:laufId": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/paarpflichten/laeufe/:laufId/fortsetzen": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+
   // --- Conflicts (conflicts-routes.ts) ---
   // JOB 1546 D2 (A28, OFFEN.md:165): das dauerhafte Signal am EIGENEN Objekt. Routenrecht ist
   // `ko.read` wie bei den beiden Boards; das Zeilenrecht ist `sichtbareFuer` und danach die
