@@ -252,22 +252,35 @@ describe("JOB 3108 · UX-03 — Quellen und Anhänge sind vom Kopf aus erreichba
   // Aufnahme 20260922 · N-0037 — DAS VERHALTEN DER EXTERNEN ORIGINALQUELLE (Ben zu 8e6c9d73).
   // ==============================================================================================
   // Die Gegenprüfung vom 06.09. (QUELLEN.json, N-0037): „Quellenbereich aktuell leer, daher keine
-  // externe Originalquelle geprüft." Gemessen wird hier genau dieser Rest am langen Bericht: vom
-  // Kopfsprung aus steht die externe Quelle mit Titel und vollständiger Adresse im Bild, ihr Link
-  // führt auf GENAU die gespeicherte Adresse, öffnet in einem NEUEN Tab und gibt keine Herkunft
-  // weiter. Der echte Zeigerklick erreicht den Link; sein Öffnen wird abgefangen — die fremde
-  // Adresse wird in diesem Lauf NIE geladen (kein Netz, keine fremde Seite).
-  it("B5 · N-0037: vom Kopfsprung aus ist die externe Originalquelle erreichbar und öffnet ihre Adresse in einem neuen Tab", async () => {
-    expect(fehler).toBeNull();
+  // externe Originalquelle geprüft." Gemessen wird dieser Rest am langen Bericht, in ZWEI Fällen:
+  //   B5a · LINKZIEL UND ERREICHBARKEIT — vom Kopfsprung aus steht die externe Quelle mit Titel und
+  //         vollständiger Adresse da; ihr Link führt auf GENAU die gespeicherte Adresse, mit
+  //         `target="_blank"` und ohne Herkunftsweitergabe. Das ist KEIN Öffnungsnachweis.
+  //   B5b · TATSÄCHLICHES ÖFFNEN UND LADEN (Ben zu e6eb2409) — der echte Zeigerklick öffnet einen
+  //         NEUEN Tab, und dieser Tab LÄDT genau diese Adresse: Antwort angekommen, Dokument gelesen,
+  //         ohne Referrer und ohne Rückgriff auf das öffnende Fenster.
+  // DIE KONKRET FEHLENDE EXTERNE VORAUSSETZUNG, BENANNT: der Prüfplatz hat kein Internet, und die
+  // Adresse ist eine reservierte Beispieldomain (`*.example.org`) ohne echten Normentext. Die Antwort
+  // des fremden Servers wird deshalb am BROWSERKONTEXT gestellt (`context().route`) — Klick, Tab,
+  // Navigation und Laden sind echt, nur die Gegenstelle ist ersetzt. Das Laden eines echten fremden
+  // Originalservers bleibt eine externe Voraussetzung (Netzzugang und eine reale Quelladresse).
+  async function zurExternenQuelle(): Promise<string> {
     await frisch();
     const s = (stand as H4Stand).seite;
     const sprungText = (await messen()).sprungText;
     console.info(`N-0037 B5 · Sprungzeile: ${sprungText}`);
     await s.click('[data-testid="bib-sprung-quellen"]');
-    const LINK = `[data-bib-abschnitt="quellen"] a[href="${EXTERN_URL}"]`;
-    await s.waitForFunction(fn("(sel) => !!document.querySelector(sel)"), LINK, {
+    const link = `[data-bib-abschnitt="quellen"] a[href="${EXTERN_URL}"]`;
+    await s.waitForFunction(fn("(sel) => !!document.querySelector(sel)"), link, {
       timeout: 20_000,
     });
+    return link;
+  }
+
+  it("B5a · N-0037 · Linkziel und Erreichbarkeit: vom Kopfsprung aus steht die externe Originalquelle mit ihrer gespeicherten Adresse da (kein Öffnungsnachweis)", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    const LINK = await zurExternenQuelle();
     const link = await s.evaluate<{
       text: string;
       target: string | null;
@@ -294,23 +307,49 @@ describe("JOB 3108 · UX-03 — Quellen und Anhänge sind vom Kopf aus erreichba
     expect(link.text).toBe(EXTERN_URL);
     expect(link.target).toBe("_blank");
     expect(link.rel ?? "").toMatch(/noreferrer|noopener/);
-    // Der echte Klick: erreicht er den Link, und mit welchem Ziel? Das Öffnen wird abgefangen.
-    await s.evaluate(
-      fn(`() => {
-        window.__n0037 = null;
-        document.addEventListener('click', (e) => {
-          const a = e.target && e.target.closest ? e.target.closest('a') : null;
-          if (!a) return;
-          e.preventDefault();
-          window.__n0037 = { href: a.href, target: a.getAttribute('target') };
-        }, { capture: true, once: true });
-      }`),
-    );
+  }, 90_000);
+
+  it("B5b · N-0037 · tatsächliches Öffnen: der Klick öffnet einen neuen Tab, der genau die Adresse der Originalquelle lädt (Gegenstelle am Kontext gestellt)", async () => {
+    expect(fehler).toBeNull();
+    const s = (stand as H4Stand).seite;
+    // Die Gegenstelle — NUR für genau diese Adresse; jede andere fremde Anfrage bliebe unbeantwortet.
+    let geladen = 0;
+    await s.context().route(EXTERN_URL, async (route) => {
+      geladen += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: `<!doctype html><html><head><title>${EXTERN_TITEL}</title></head><body><p id="n0037-original">${EXTERN_TITEL} — Originalquelle</p></body></html>`,
+      });
+    });
+    const LINK = await zurExternenQuelle();
+    const fenstervorher = await s.evaluate<string>(fn("() => location.href"));
+    // Erst auf den Tab warten, DANN klicken — der echte Zeigerklick, keine Abfangung.
+    const neuerTab = s.waitForEvent("popup", { timeout: 20_000 });
     await s.click(LINK);
-    const geklickt = await s.evaluate<{ href: string; target: string | null } | null>(
-      fn("() => window.__n0037"),
-    );
-    expect(geklickt).toEqual({ href: EXTERN_URL, target: "_blank" });
+    const tab = await neuerTab;
+    try {
+      await tab.waitForLoadState("load", { timeout: 20_000 });
+      const lage = await tab.evaluate<{ text: string; referrer: string; opener: boolean }>(
+        fn(`() => ({
+          text: (document.getElementById('n0037-original') || {}).textContent || '',
+          referrer: document.referrer,
+          opener: window.opener !== null,
+        })`),
+      );
+      console.info(`N-0037 B5b · Tab ${tab.url()} · ${JSON.stringify(lage)} · Abrufe ${geladen}`);
+      // Der neue Tab hat GENAU die gespeicherte Adresse geladen — einmal, und ihr Dokument steht da.
+      expect(tab.url()).toBe(EXTERN_URL);
+      expect(geladen).toBe(1);
+      expect(lage.text).toBe(`${EXTERN_TITEL} — Originalquelle`);
+      // Keine Herkunftsweitergabe, kein Zugriff zurück auf die Anwendung.
+      expect(lage.referrer).toBe("");
+      expect(lage.opener).toBe(false);
+      // Die Lesefläche bleibt, wo sie war: der Bericht wurde nicht verlassen.
+      expect(await s.evaluate<string>(fn("() => location.href"))).toBe(fenstervorher);
+    } finally {
+      await tab.close();
+    }
   }, 90_000);
 
   it("B4 · Chromium meldete keinen Seitenfehler", () => {
