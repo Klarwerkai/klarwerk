@@ -560,6 +560,22 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/**
+ * R-1664/R-2179/R-2180: die geführt erfassten Angaben eines Negativwissen-Falls — Spiegel von
+ * `NegativwissenAngaben` (services/knowledge-object/src/negativwissen.ts, dort die Begründung).
+ */
+export type NegativwissenBezug = "personen" | "kunden" | "produktion" | "qualitaet";
+
+export interface NegativwissenAngaben {
+  incidentTrigger?: string;
+  mistakePattern?: string;
+  impact?: string;
+  recoveryAction?: string;
+  avoidanceRule?: string;
+  earlyWarningSigns: string[];
+  bezug: NegativwissenBezug[];
+}
+
 /** R-0507 / JOB 557: Spiegel von `KnowledgeOwnership` (services/knowledge-object/src/types.ts). */
 export interface KnowledgeOwnership {
   owner?: string;
@@ -600,6 +616,8 @@ export interface KnowledgeObject {
   id: string;
   title: string;
   statement: string;
+  // R-1664/R-2179: nur bei Negativwissen, das geführt erfasst wurde; fehlt sonst.
+  negativwissen?: NegativwissenAngaben;
   // KW-STR / SCRUM-45/46/48: optionaler WYSIWYG-Body als sanitisiertes HTML.
   bodyHtml?: string | null;
   // WP-BILD-1f (bens P4): die Suchroute liefert die Bild-Fußnoten als KLEINES additives Feld und
@@ -1137,6 +1155,9 @@ export interface DraftPayload {
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // R-1664/R-2179: die geführten Negativwissen-Angaben überstehen Speichern/Fortsetzen/Einreichen.
+  // `null` leert sie ausdrücklich (Merge-Vertrag des Entwurfs, wie `bodyHtml`).
+  negativwissen?: NegativwissenAngaben | null;
   // JOB 3034: dieselbe Herkunftsangabe wie am Wissensobjekt, damit ein Entwurf mit DERSELBEN
   // Auskunftsfunktion gelesen werden kann statt mit einer zweiten Regel. EHRLICH GESAGT: heute
   // schickt KEIN Lesepfad sie für Entwürfe mit — solange sie fehlt, wendet
@@ -2323,6 +2344,26 @@ export interface OutputDocument {
   title: string;
   audienceRole: string | null;
   generatedAt: string;
+  markdown: string;
+  provenance: OutputProvenance[];
+}
+
+// RECHERCHE:pmo-fea-0004 — Spiegel von services/output/src/wochenupdate.ts.
+export interface WochenupdateEintrag {
+  koId: string;
+  title: string;
+  art: "neu" | "ueberarbeitet";
+  am: string;
+  version: number;
+  uncertain: boolean;
+}
+
+export interface Wochenupdate {
+  title: string;
+  von: string;
+  bis: string;
+  generatedAt: string;
+  eintraege: WochenupdateEintrag[];
   markdown: string;
   provenance: OutputProvenance[];
 }
