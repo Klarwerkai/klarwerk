@@ -250,6 +250,7 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
+import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
@@ -7576,7 +7577,8 @@ export function CaptureArbeitsraum({
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center gap-1 rounded-pill border border-dashed border-ai-dashed bg-ai-surface-2 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     <span aria-hidden>✦</span>
-                    {t("reasoner.draftLabel")}
+                    {/* R-1020: Wortlaut der Quelle, aus derselben Stufentabelle wie überall. */}
+                    {t(ERGEBNIS_STUFE_TEXT.entwurf)}
                   </span>
                   <button
                     type="button"
