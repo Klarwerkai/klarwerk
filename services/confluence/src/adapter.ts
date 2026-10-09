@@ -147,6 +147,14 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     private readonly mapOpts: ConfluenceMapOptions,
   ) {}
 
+  /**
+   * ADMIN-02 — der Verbindungstest: eine Seite des Space, nur Kennungen, kein Schreibeffekt.
+   * Fehler reisen unverändert; deuten kann sie `confluenceVerbindungsfehler`.
+   */
+  async pruefeVerbindung(): Promise<{ eintraege: number }> {
+    return { eintraege: await this.client.pruefeVerbindung() };
+  }
+
   async collect(): Promise<ConfluenceImportItem[]> {
     const pages = await this.client.listPages();
     return pages.map((page) => mapConfluencePageToImportItem(page, this.mapOpts));
