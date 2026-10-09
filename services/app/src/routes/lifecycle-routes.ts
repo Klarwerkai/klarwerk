@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { LifecycleService } from "../../../lifecycle";
 import { type Guards, sendError } from "../http";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege } from "../sichtbarkeit";
+import type { Wissensuebergabe } from "../wissensuebergabe";
 
 // Lebenszyklus & Lernpfade (§ FR-LIF). Re-Validierung/Autor-Übergabe laufen über den KO-Dispatcher.
 //
@@ -29,6 +30,7 @@ export function lifecycleRoutes(
   lifecycle: LifecycleService,
   guards: Guards,
   kos: KoSichtbarkeitsZugang,
+  uebergabe: Wissensuebergabe,
 ): FastifyPluginAsync {
   return async (app) => {
     app.post<{ Body: { assetRef: string; koId: string } }>(
@@ -162,6 +164,46 @@ export function lifecycleRoutes(
           return;
         }
         reply.code(200).send(await lifecycle.progress(request.params.pathId, user.id));
+      },
+    );
+
+    // ============================================================================================
+    // R-0554 / R-2128 — WISSENSÜBERGABE BEIM AUSSCHEIDEN: ERST DIE VORSCHAU, DANN DER ZUG.
+    // ============================================================================================
+    //
+    // `users.manage` — dasselbe Recht wie die Einzelübergabe `transfer-author`: wer den Bestand
+    // einer Person umhängt, handelt als Verwaltung, nicht als Fachkollege. Die Vorschau ist ein
+    // POST, weil sie zwei Personenkennungen trägt, die nicht in Adresszeilen und Zugriffsprotokolle
+    // gehören. Sie schreibt nichts.
+    app.post<{ Body: { from?: unknown; to?: unknown } }>(
+      "/api/lifecycle/handover/preview",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          reply.code(200).send(await uebergabe.vorschau(request.body?.from, request.body?.to));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
+    app.post<{ Body: { from?: unknown; to?: unknown } }>(
+      "/api/lifecycle/handover",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          reply
+            .code(200)
+            .send(await uebergabe.uebergeben(request.body?.from, request.body?.to, user.id));
+        } catch (error) {
+          sendError(reply, error);
+        }
       },
     );
   };

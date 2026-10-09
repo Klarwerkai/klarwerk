@@ -5,9 +5,9 @@
 // DIE LAGE, DIE DIESE DATEI BEENDET. Wer die Oberfläche auf Englisch oder Niederländisch gestellt
 // hat und einen Entwurf über einen alten Link fortsetzen will, las bis hierher „Entwurf nicht
 // gefunden." — auf Deutsch, mitten in einer englischen Sitzung. Dasselbe beim fremden Entwurf
-// („Entwurf nicht verfuegbar.", `capture-routes.ts`) und am RBAC-Wächter („Keine Berechtigung.",
-// `services/rbac/src/guard.ts`). Drei Stellen, drei Katalogschlüssel, ein Weg — derselbe, den
-// JOB 3792 für den 403-Satz des Rechtetors gebaut hat.
+// („Entwurf nicht verfuegbar.", `capture-routes.ts`) und am damaligen RBAC-Wächter („Keine
+// Berechtigung.", damals `services/rbac/src/guard.ts`, R-1349 entfernt — siehe G). Drei Stellen,
+// drei Katalogschlüssel, ein Weg — derselbe, den JOB 3792 für den 403-Satz des Rechtetors gebaut hat.
 //
 // GEPRÜFT WIRD AM DRAHT, NICHT AM DIFF (Bauart: `tests/q9-rechtefehler/rechtetor-sprachfaelle.test.ts`):
 // eine echte App aus `buildApp(buildServices())`, echte Konten über die echten Routen, echte
@@ -17,14 +17,13 @@
 // DREI STELLEN, DREI ZUGÄNGE — und warum der dritte anders aussieht:
 //   E  unbekannte Entwurfskennung   → `GET /api/drafts/:id` → 404 NOT_FOUND  (DRAFT_NOT_FOUND)
 //   F  fremder, lebender Entwurf    → `GET /api/drafts/:id` → 403 FORBIDDEN  (DRAFT_NOT_VISIBLE)
-//   G  der RBAC-Wächter             → eigene Fastify-Instanz → 403 FORBIDDEN (PERMISSION_DENIED)
-// `services/rbac`s `requirePermission` hat im Produkt heute KEINEN Aufrufer (gemessen: nur
-// `services/rbac/index.ts` exportiert ihn, die Routen fahren das Rechtetor aus
-// `services/app/src/http.ts`). Es gibt also keine echte Route, an der sein 403 entsteht. Statt eine
-// zu erfinden, wird der Wächter so gefahren, wie ihn ein Einbau fahren WÜRDE — als `preHandler`
-// einer echten Fastify-Route, wörtlich wie `tests/q9-fremde-flaechen/wachter-sprache.test.ts:86-93`.
-// Das ist der ehrliche Zuschnitt: eine echte HTTP-Antwort eines echten Wächters, und keine
-// Behauptung über einen Weg, den es im Produkt nicht gibt.
+//   G  fremder Pool-Entwurf, Verfügen → `PUT /api/drafts/:id/pool` → 403 FORBIDDEN (PERMISSION_DENIED)
+// R-1349 (Aufnahme gesamt-aufruferwaechter): G fuhr bis hierher den `requirePermission`-preHandler
+// aus `services/rbac/src/guard.ts` auf einer eigenen Fastify-Instanz, weil er im Produkt keinen
+// Aufrufer hatte. Der Baustein ist entfernt. `PERMISSION_DENIED` entsteht im Produkt an genau einer
+// Stelle — `requireVisibleDraft(…, { nurAutor: true })` in `services/app/src/routes/capture-routes.ts`
+// —, wenn jemand einen fremden Pool-Entwurf SIEHT, aber über ihn verfügen will. G misst jetzt diese
+// echte Route: die Fremde versucht, den Pool-Entwurf der Eignerin zurückzunehmen.
 //
 // H1–H3 HALTEN DEN DRAHT NACH AUSSEN FEST. Status und `error`-Code sind Vertrag und ändern sich
 // NICHT, weil der Satz übersetzt wird: `toEqual` statt `toMatchObject`, damit auch ein
@@ -35,11 +34,9 @@
 // oder fremder Kennung bis hierher die beiden deutschen Sätze als Literal (`ko-routes.ts`) — in
 // jeder Sitzungssprache. Jetzt dieselben Katalogschlüssel wie E und F, gemessen am echten Draht.
 import { randomUUID } from "node:crypto";
-import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { MELDUNGEN } from "../../services/auth/src/meldungen";
-import { requirePermission } from "../../services/rbac";
 
 type App = ReturnType<typeof buildApp>;
 type Koerper = { error?: unknown; message?: unknown };
@@ -53,10 +50,10 @@ const PASSWORT = "geheim12345";
 const UNBEKANNT = "diese-entwurfskennung-gibt-es-nicht";
 
 let app: App;
-let waechter: FastifyInstance;
 let tokenEignerin = "";
 let tokenFremde = "";
 let eigeneKennung = "";
+let poolKennung = "";
 
 async function anmelden(email: string): Promise<string> {
   const res = await app.inject({
@@ -114,15 +111,19 @@ async function dokumentweg(token: string, draftId: string, sprache?: string): Pr
 }
 
 /**
- * G: der RBAC-Wächter mit einer Rolle, die das Recht NICHT hat. `viewer` trägt nur `ko.read`
- * (`services/rbac/src/policy.ts`), also läuft `can(role, "users.manage")` auf `false` und der
- * 403-Zweig antwortet — derselbe Zweig, den ein Einbau bekäme.
+ * G: die Fremde SIEHT den Pool-Entwurf der Eignerin (`canSeeDraft`), darf aber nicht über ihn
+ * verfügen (`canManageDraft`). Der Rumpf ist gültig (`imPool` ist ein Wahrheitswert), damit die
+ * Antwort aus dem `nurAutor`-Zweig kommt und nicht aus der Eingabeprüfung davor.
  */
 async function waechterabruf(sprache?: string): Promise<Antwort> {
-  const res = await waechter.inject({
-    method: "GET",
-    url: "/probe",
-    ...(sprache ? { headers: { "accept-language": sprache } } : {}),
+  const res = await app.inject({
+    method: "PUT",
+    url: `/api/drafts/${poolKennung}/pool`,
+    headers: {
+      authorization: `Bearer ${tokenFremde}`,
+      ...(sprache ? { "accept-language": sprache } : {}),
+    },
+    payload: { imPool: false },
   });
   return { status: res.statusCode, koerper: res.json() as Koerper };
 }
@@ -169,16 +170,38 @@ beforeAll(async () => {
   }
   eigeneKennung = (angelegt.json() as { id: string }).id;
 
-  waechter = Fastify();
-  waechter.get("/probe", {
-    preHandler: requirePermission("users.manage", () => "viewer"),
-    handler: async (_request, reply) => reply.send({ durchgelassen: true }),
+  // G: ein ZWEITER Entwurf der Eignerin, den sie bewusst in den Pool gibt. Der erste bleibt privat,
+  // sonst wäre F (fremder Entwurf → DRAFT_NOT_VISIBLE) nicht mehr zu erreichen.
+  const imPool = await app.inject({
+    method: "POST",
+    url: "/api/drafts",
+    headers: { authorization: `Bearer ${tokenEignerin}` },
+    payload: {
+      title: "Ventilwartung Suedstrang",
+      statement: "Nach jedem Anlauf die Dichtungen sichten.",
+      type: "best_practice",
+      category: "Fertigung",
+      confidentiality: "intern",
+      bodyHtml: "<p>Kesselhaus Suedstrang Dichtungsliste 3956</p>",
+    },
   });
+  if (imPool.statusCode !== 201) {
+    throw new Error(`Pool-Entwurf nicht angelegt: ${imPool.statusCode} ${imPool.body}`);
+  }
+  poolKennung = (imPool.json() as { id: string }).id;
+  const geteilt = await app.inject({
+    method: "PUT",
+    url: `/api/drafts/${poolKennung}/pool`,
+    headers: { authorization: `Bearer ${tokenEignerin}` },
+    payload: { imPool: true },
+  });
+  if (geteilt.statusCode !== 200) {
+    throw new Error(`Pool-Entwurf nicht geteilt: ${geteilt.statusCode} ${geteilt.body}`);
+  }
 });
 
 afterAll(async () => {
   await app?.close();
-  await waechter?.close();
 });
 
 // ------------------------------------------------------------------------------------------------
@@ -263,10 +286,10 @@ describe("F · `Entwurf nicht verfuegbar.` spricht die Sprache der Sitzung", () 
 });
 
 // ------------------------------------------------------------------------------------------------
-// G · DER RBAC-WÄCHTER
+// G · DER FREMDE POOL-ENTWURF (der Rechtesatz der Entwurfsrouten)
 // ------------------------------------------------------------------------------------------------
 describe("G · `Keine Berechtigung.` spricht die Sprache der Sitzung", () => {
-  it("G1 EN · der RBAC-Wächter: 403 FORBIDDEN mit englischem Satz", async () => {
+  it("G1 EN · fremder Pool-Entwurf, Verfügen: 403 FORBIDDEN mit englischem Satz", async () => {
     const antwort = await waechterabruf("en");
     expect(antwort.status).toBe(403);
     expect(antwort.koerper.error).toBe("FORBIDDEN");
@@ -275,7 +298,7 @@ describe("G · `Keine Berechtigung.` spricht die Sprache der Sitzung", () => {
     expect(String(antwort.koerper.message)).not.toMatch(/Berechtigung|Unerwarteter/);
   });
 
-  it("G2 NL · der RBAC-Wächter: 403 FORBIDDEN mit niederländischem Satz", async () => {
+  it("G2 NL · fremder Pool-Entwurf, Verfügen: 403 FORBIDDEN mit niederländischem Satz", async () => {
     const antwort = await waechterabruf("nl");
     expect(antwort.status).toBe(403);
     expect(antwort.koerper.error).toBe("FORBIDDEN");
@@ -284,7 +307,7 @@ describe("G · `Keine Berechtigung.` spricht die Sprache der Sitzung", () => {
     expect(String(antwort.koerper.message)).not.toMatch(/Berechtigung|Unerwarteter/);
   });
 
-  it("G3 DE · der RBAC-Wächter: zeichengleicher deutscher Wortlaut", async () => {
+  it("G3 DE · fremder Pool-Entwurf, Verfügen: zeichengleicher deutscher Wortlaut", async () => {
     for (const sprache of [undefined, "de", "fr"]) {
       const antwort = await waechterabruf(sprache);
       expect(antwort.status, String(sprache)).toBe(403);
@@ -331,7 +354,7 @@ describe("H · Status und Fehlercode bleiben buchstäblich stehen", () => {
     }
   });
 
-  it("H3 · der Draht des RBAC-Wächters bleibt 403 FORBIDDEN in allen drei Sprachen", async () => {
+  it("H3 · der Draht des Pool-Verfügens bleibt 403 FORBIDDEN in allen drei Sprachen", async () => {
     for (const sprache of ["de", "en", "nl"]) {
       const antwort = await waechterabruf(sprache);
       expect(antwort.status, sprache).toBe(403);
