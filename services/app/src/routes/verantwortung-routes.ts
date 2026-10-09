@@ -60,17 +60,24 @@ import type { SpaceFassung, SpacesRepo } from "../spaces";
 import {
   ABLEHNUNGSTEXT,
   type Ablehnung,
+  UEBERGABE_HOECHSTZAHL,
   type Zuteilung,
   ZuteilungsFehler,
   beurteile,
   kannVerantworten,
   pruefePerson,
   pruefeZuteilungen,
+  vorgangZielGrund,
   zugangsstand,
   zulaessigeZiele,
 } from "../verantwortung";
 import type { NachfolgeEintrag, NachfolgeRepo } from "../verantwortung-nachfolge";
-import type { OffeneVorgaenge } from "../wissensuebergabe";
+import type {
+  OffeneVorgaenge,
+  VorgangArt,
+  VorgangZuteilung,
+  Wissensuebergabe,
+} from "../wissensuebergabe";
 
 export interface VerantwortungDienste {
   ko: KoService;
@@ -85,6 +92,12 @@ export interface VerantwortungDienste {
    * „nicht erhoben" (`null`), nie „keine".
    */
   offeneVorgaenge?: (personen: readonly string[]) => Promise<Map<string, OffeneVorgaenge>>;
+  /**
+   * ADMIN-05: der gemeinsame Übergabeablauf überträgt die offenen Vorgänge über die vorhandene
+   * Wissensübergabe — einzeln zugeteilt, auf mehrere Nachfolger verteilt. Fehlt sie, antwortet der
+   * Ablauf 503, statt Vorgänge stillschweigend auszulassen.
+   */
+  vorgaengeWeg?: Pick<Wissensuebergabe, "vorgaengeUebergeben" | "ausgeschlossen">;
   /** Uhr für Zugangsstand und Deaktivierung — in Tests stellbar. */
   jetzt?: () => number;
 }
@@ -128,6 +141,148 @@ interface Gruppe {
 
 const SCHREIBFEHLER_TEXT =
   "Der Beitrag konnte nicht gespeichert werden. Er ist unverändert und kann erneut übertragen werden.";
+
+// ================================================================================================
+// ADMIN-05 · DER GEMEINSAME ÜBERGABEABLAUF (`POST /api/verantwortung/ablauf[/vorschau]`).
+// ================================================================================================
+//
+// EIN Einstieg für die beiden vorhandenen Wege — kein dritter Übergabeweg. Beiträge laufen über
+// `fuehreAus` (Hauptverantwortung, wie oben), offene Vorgänge über die Wissensübergabe
+// (`Wissensuebergabe.vorgaengeUebergeben`). Neu ist nur, was beide verbindet:
+//   · UMFANG: `gezielt` (nur die zugeteilten Beiträge/Vorgänge, Zugang bleibt) oder `ausscheiden`
+//     (ALLES, was bei der Person liegt, muss zugeteilt sein — sonst ist nichts bestätigbar).
+//   · VORSCHAU je Nachfolger-Paket: Objekte, Anzahl, Rechtewirkung; dazu, was nicht übertragbar
+//     ist (mit Grund), was noch keinem Paket zugeteilt ist und was ausgeschlossen bleibt.
+//   · BESTÄTIGEN prüft der Server selbst: die Ausführung urteilt die Vorschau neu und schreibt
+//     NICHTS, wenn sie nicht bestätigbar ist (409). Eine Oberfläche, die den Knopf freigibt, reicht
+//     dafür nicht.
+//   · ZUGANG: `beenden` nur im Umfang `ausscheiden` und nur, wenn danach weder Beitrag noch
+//     offener Vorgang bei der Person liegt — über denselben Befristungsweg wie die Deaktivierung.
+//   · BILANZ vorher/nachher als EIN Protokolleintrag `verantwortung.ablauf` (nur Kennungen und
+//     Anzahlen), nach einem Neuladen über `GET …/person/:id/ablaeufe` wieder lesbar.
+type Umfang = "gezielt" | "ausscheiden";
+type Zugangsentscheidung = "behalten" | "beenden";
+type EintragArt = "beitrag" | VorgangArt;
+
+interface Ablaufeingabe {
+  von: string;
+  umfang: Umfang;
+  beitraege: Zuteilung[];
+  vorgaenge: VorgangZuteilung[];
+  zugang: Zugangsentscheidung;
+}
+
+/** Eine Zeile des Ablaufs — Beitrag oder Vorgang, mit Ziel. Titel nur, wo er gezeigt werden darf. */
+interface Eintrag {
+  art: EintragArt;
+  id: string;
+  titel: string | null;
+  an: string;
+  anName: string | null;
+}
+
+interface OffenerEintrag extends Eintrag {
+  grund: string;
+  text: string;
+}
+
+interface Bilanz {
+  beitraege: number;
+  entwuerfe: number;
+  luecken: number;
+  pruefaufgaben: number;
+}
+
+interface Paket {
+  an: { id: string; name: string | null; role: PublicUser["role"] | null };
+  anzahl: number;
+  eintraege: Eintrag[];
+  bereitsErledigt: number;
+  /** Je Art die Anzahl — daraus nennt die Oberfläche die Rechtewirkung. */
+  wirkung: Record<EintragArt, number>;
+}
+
+const VORGANGARTEN: readonly VorgangArt[] = ["entwurf", "luecke", "pruefaufgabe"];
+
+function summe(b: Bilanz): number {
+  return b.beitraege + b.entwuerfe + b.luecken + b.pruefaufgaben;
+}
+
+/** Die offenen Vorgänge einer Person als Zuteilungsschlüssel (`art:id`). */
+function vorgangsschluessel(art: VorgangArt, id: string): string {
+  return `${art}:${id}`;
+}
+
+/** Form der Vorgangszuteilung: bekannte Art, Kennungen, je Vorgang höchstens EIN Ziel. */
+function pruefeVorgaenge(roh: unknown): VorgangZuteilung[] {
+  if (roh === undefined) {
+    return [];
+  }
+  if (!Array.isArray(roh)) {
+    throw new ZuteilungsFehler("Die Vorgangszuteilung muss eine Liste sein.");
+  }
+  if (roh.length > UEBERGABE_HOECHSTZAHL) {
+    throw new ZuteilungsFehler(
+      `Höchstens ${UEBERGABE_HOECHSTZAHL} Vorgänge je Übergabe — bitte in Pakete teilen.`,
+    );
+  }
+  const raus = new Map<string, VorgangZuteilung>();
+  for (const eintrag of roh) {
+    const e = (typeof eintrag === "object" && eintrag !== null ? eintrag : {}) as Record<
+      string,
+      unknown
+    >;
+    const art = VORGANGARTEN.find((a) => a === e.art);
+    const id = typeof e.id === "string" && e.id.trim() ? e.id.trim() : null;
+    const an = typeof e.an === "string" && e.an.trim() ? e.an.trim() : null;
+    if (!art || id === null || an === null) {
+      throw new ZuteilungsFehler(
+        "Jeder Vorgang braucht art (entwurf, luecke, pruefaufgabe), id und an.",
+      );
+    }
+    const schluessel = vorgangsschluessel(art, id);
+    const vorhanden = raus.get(schluessel);
+    if (vorhanden && vorhanden.an !== an) {
+      throw new ZuteilungsFehler("Ein Vorgang ist zwei verschiedenen Nachfolgern zugeteilt.");
+    }
+    raus.set(schluessel, { art, id, an });
+  }
+  return [...raus.values()];
+}
+
+function ablaufEingabe(body: unknown): Ablaufeingabe {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const von = pruefePerson(b.person);
+  const umfangRoh = b.umfang;
+  if (umfangRoh !== "gezielt" && umfangRoh !== "ausscheiden") {
+    throw new ZuteilungsFehler("Der Umfang fehlt: gezielt oder ausscheiden.");
+  }
+  const umfang: Umfang = umfangRoh;
+  const zugang: Zugangsentscheidung | null =
+    b.zugang === undefined || b.zugang === "behalten"
+      ? "behalten"
+      : b.zugang === "beenden"
+        ? "beenden"
+        : null;
+  if (zugang === null) {
+    throw new ZuteilungsFehler("Die Zugangsentscheidung ist behalten oder beenden.");
+  }
+  if (zugang === "beenden" && umfang !== "ausscheiden") {
+    throw new ZuteilungsFehler(
+      "Den Zugang beendet nur die vollständige Ausscheidensübergabe — die gezielte Übergabe lässt ihn unverändert.",
+    );
+  }
+  if (b.beitraege !== undefined && !Array.isArray(b.beitraege)) {
+    throw new ZuteilungsFehler("Die Beitragszuteilung muss eine Liste sein.");
+  }
+  const beitraege =
+    Array.isArray(b.beitraege) && b.beitraege.length > 0 ? pruefeZuteilungen(b.beitraege) : [];
+  const vorgaenge = pruefeVorgaenge(b.vorgaenge);
+  if (umfang === "gezielt" && beitraege.length + vorgaenge.length === 0) {
+    throw new ZuteilungsFehler("Es ist nichts zugeteilt.");
+  }
+  return { von, umfang, beitraege, vorgaenge, zugang };
+}
 
 function fehler(reply: FastifyReply, e: unknown, request: FastifyRequest): void {
   if (e instanceof ZuteilungsFehler) {
@@ -303,6 +458,178 @@ export function verantwortungRoutes(
   function eingabe(body: unknown): { von: string; zuteilung: Zuteilung[] } {
     const b = (body ?? {}) as { von?: unknown; zuteilung?: unknown };
     return { von: pruefePerson(b.von), zuteilung: pruefeZuteilungen(b.zuteilung) };
+  }
+
+  /** ADMIN-05: was heute bei der Person liegt — Beiträge (mit Papierkorb) und offene Vorgänge. */
+  async function bilanzVon(von: string): Promise<{ bilanz: Bilanz; vorgaenge: OffeneVorgaenge }> {
+    const [bestand, je] = await Promise.all([
+      dienste.ko.listEinschliesslichPapierkorb(),
+      // `bilanzVon` läuft nur, wenn `offeneVorgaenge` verdrahtet ist (s. `ablauf`).
+      (dienste.offeneVorgaenge as NonNullable<VerantwortungDienste["offeneVorgaenge"]>)([von]),
+    ]);
+    const vorgaenge = je.get(von) ?? { entwuerfe: [], luecken: [], pruefaufgaben: [] };
+    return {
+      bilanz: {
+        beitraege: bestandVon(von, bestand).length,
+        entwuerfe: vorgaenge.entwuerfe.length,
+        luecken: vorgaenge.luecken.length,
+        pruefaufgaben: vorgaenge.pruefaufgaben.length,
+      },
+      vorgaenge,
+    };
+  }
+
+  /**
+   * ADMIN-05 · DIE VORSCHAU DES GEMEINSAMEN ABLAUFS — schreibt nichts. Dieselbe Funktion urteilt vor
+   * der Ausführung erneut; ist sie dann nicht bestätigbar, wird nichts geschrieben.
+   */
+  async function ablaufVorschau(user: SessionUser, e: Ablaufeingabe, log: FastifyRequest["log"]) {
+    const weg = dienste.vorgaengeWeg as NonNullable<VerantwortungDienste["vorgaengeWeg"]>;
+    const { konten, spaces, bestand, zeit } = await lage();
+    const nachKennung = new Map(bestand.map((ko) => [ko.id, ko]));
+    const vorher = await bilanzVon(e.von);
+    // Entwürfe und Lücken nur als Kennung (privat bzw. vertraulich) — wie die Wissensübergabe.
+    const titel = (art: EintragArt, id: string): string | null =>
+      art === "beitrag" || art === "pruefaufgabe" ? titelFuer(user, nachKennung.get(id)) : null;
+    const eintrag = (art: EintragArt, id: string, an: string): Eintrag => ({
+      art,
+      id,
+      titel: titel(art, id),
+      an,
+      anName: name(an, konten),
+    });
+
+    // Die Ziele der Vorgänge — dieselbe Grundregel wie bei Beiträgen, je Art das nötige Recht.
+    const abgelehnt: OffenerEintrag[] = [];
+    const zulaessig: VorgangZuteilung[] = [];
+    for (const z of e.vorgaenge) {
+      const grund: Ablehnung | null =
+        z.an === e.von
+          ? "ZIEL_IST_PERSON"
+          : vorgangZielGrund(
+              z.art,
+              konten.find((k) => k.id === z.an),
+              z.art === "pruefaufgabe" ? nachKennung.get(z.id) : undefined,
+              spaces,
+              zeit,
+            );
+      if (grund === null) {
+        zulaessig.push(z);
+      } else {
+        abgelehnt.push({ ...eintrag(z.art, z.id, z.an), grund, text: ABLEHNUNGSTEXT[grund] });
+      }
+    }
+    const beitraege = await fuehreAus(user, e.von, e.beitraege, false, log);
+    const vorgaenge = await weg.vorgaengeUebergeben(e.von, zulaessig, user.id, false);
+    for (const z of beitraege.abgelehnt) {
+      abgelehnt.push({ ...eintrag("beitrag", z.koId, z.an), grund: z.grund, text: z.text });
+    }
+    for (const z of vorgaenge.abgelehnt) {
+      const grund = "VORGANG_NICHT_MOEGLICH";
+      abgelehnt.push({ ...eintrag(z.art, z.id, z.an), grund, text: z.grund });
+    }
+
+    // Die Pakete: je Nachfolger, was übertragen würde — und was dort schon liegt.
+    const pakete = new Map<string, Paket>();
+    const paket = (an: string): Paket => {
+      const vorhanden = pakete.get(an);
+      if (vorhanden) {
+        return vorhanden;
+      }
+      const konto = konten.find((k) => k.id === an);
+      const neu: Paket = {
+        an: { id: an, name: konto?.name ?? null, role: konto?.role ?? null },
+        anzahl: 0,
+        eintraege: [],
+        bereitsErledigt: 0,
+        wirkung: { beitrag: 0, entwurf: 0, luecke: 0, pruefaufgabe: 0 },
+      };
+      pakete.set(an, neu);
+      return neu;
+    };
+    const bereit = [
+      ...beitraege.gruppen.flatMap((g) =>
+        g.beitraege.map((b) => eintrag("beitrag", b.koId, g.an.id)),
+      ),
+      ...vorgaenge.bereit.map((z) => eintrag(z.art, z.id, z.an)),
+    ];
+    for (const z of bereit) {
+      const p = paket(z.an);
+      p.eintraege.push(z);
+      p.anzahl += 1;
+      p.wirkung[z.art] += 1;
+    }
+    for (const z of [...beitraege.bereitsErledigt, ...vorgaenge.bereitsErledigt]) {
+      paket(z.an).bereitsErledigt += 1;
+    }
+
+    // Was bei der Person liegt, aber keinem Paket zugeteilt ist. Im Umfang `ausscheiden` hindert es.
+    const zugeteilteBeitraege = new Set(e.beitraege.map((z) => z.koId));
+    const zugeteilteVorgaenge = new Set(e.vorgaenge.map((z) => vorgangsschluessel(z.art, z.id)));
+    const offenVorhanden: { art: EintragArt; id: string }[] = [
+      ...bestandVon(e.von, bestand).map((ko) => ({ art: "beitrag" as const, id: ko.id })),
+      ...vorher.vorgaenge.entwuerfe.map((d) => ({ art: "entwurf" as const, id: d.id })),
+      ...vorher.vorgaenge.luecken.map((l) => ({ art: "luecke" as const, id: l.id })),
+      ...vorher.vorgaenge.pruefaufgaben.map((p) => ({ art: "pruefaufgabe" as const, id: p.koId })),
+    ];
+    const nichtZugeteilt = offenVorhanden
+      .filter((x) =>
+        x.art === "beitrag"
+          ? !zugeteilteBeitraege.has(x.id)
+          : !zugeteilteVorgaenge.has(vorgangsschluessel(x.art, x.id)),
+      )
+      .map((x) => ({ art: x.art, id: x.id, titel: titel(x.art, x.id) }));
+
+    const konto = konten.find((k) => k.id === e.von);
+    const hindernisse: string[] = [];
+    if (abgelehnt.length > 0) {
+      hindernisse.push("NICHT_UEBERTRAGBAR");
+    }
+    if (e.umfang === "ausscheiden" && nichtZugeteilt.length > 0) {
+      hindernisse.push("NICHT_ZUGETEILT");
+    }
+    if (e.zugang === "beenden" && e.von === user.id) {
+      hindernisse.push("SELBST");
+    }
+    if (e.zugang === "beenden" && !konto) {
+      hindernisse.push("KONTO_FEHLT");
+    }
+    const uebrig = (art: EintragArt) =>
+      offenVorhanden.filter((x) => x.art === art).length -
+      bereit.filter((x) => x.art === art).length;
+    const prognose: Bilanz = {
+      beitraege: uebrig("beitrag"),
+      entwuerfe: uebrig("entwurf"),
+      luecken: uebrig("luecke"),
+      pruefaufgaben: uebrig("pruefaufgabe"),
+    };
+    const zugangJetzt = zugangsstand(konto, zeit);
+    const vorschau = {
+      person: person(e.von, konten, zeit),
+      umfang: e.umfang,
+      vorher: vorher.bilanz,
+      prognose,
+      pakete: [...pakete.values()].sort((a, b) => (a.an.name ?? "").localeCompare(b.an.name ?? "")),
+      abgelehnt,
+      nichtZugeteilt,
+      ausgeschlossen: await weg.ausgeschlossen(e.von),
+      zugang: {
+        jetzt: zugangJetzt,
+        entscheidung: e.zugang,
+        // Beendet wird nur ohne Restbestand; die Vorschau sagt, was nach Plan gelten würde.
+        danach:
+          e.zugang === "beenden" && summe(prognose) === 0 && zugangJetzt !== "gesperrt"
+            ? ("abgelaufen" as const)
+            : zugangJetzt,
+      },
+      vertretung: vertretung(konten, e.von, zeit),
+      hindernisse,
+      bestaetigbar: hindernisse.length === 0,
+      // Was eine Übergabe NIE ändert — als Aussage der Vorschau, nicht nur als Text der Oberfläche.
+      unveraendert: ["autorschaft", "freigabe", "historie", "rolle", "spacezugang"],
+    };
+    // `zulaessig` bleibt intern: die Ausführung überträgt genau die Vorgänge, deren Ziel hier galt.
+    return { vorschau, zulaessig };
   }
 
   return async (app) => {
@@ -562,6 +889,219 @@ export function verantwortungRoutes(
         fehler(reply, e, request);
       }
     });
+
+    // ADMIN-05 · ohne beide Erhebungen gibt es keinen gemeinsamen Ablauf — gesagt, nicht verschwiegen.
+    const ablaufBereit = (reply: FastifyReply): boolean => {
+      if (dienste.offeneVorgaenge && dienste.vorgaengeWeg) {
+        return true;
+      }
+      reply.code(503).send({
+        error: "NICHT_VERFUEGBAR",
+        message: "Die offenen Vorgänge können hier nicht übergeben werden.",
+      });
+      return false;
+    };
+
+    // ADMIN-05 · Die Vorschau des gemeinsamen Ablaufs. Schreibt nichts — auch kein Protokoll.
+    app.post<{ Body: unknown }>("/api/verantwortung/ablauf/vorschau", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user || !ablaufBereit(reply)) {
+        return;
+      }
+      try {
+        const { vorschau } = await ablaufVorschau(user, ablaufEingabe(request.body), request.log);
+        reply.code(200).send(vorschau);
+      } catch (e) {
+        fehler(reply, e, request);
+      }
+    });
+
+    // ADMIN-05 · Die Ausführung. Urteilt die Vorschau NEU; ist sie nicht bestätigbar, 409 und nichts
+    // geschrieben. Sonst Beiträge und Vorgänge je Zeile, danach die Zugangsentscheidung und EIN
+    // Bilanzvermerk. 200 nur, wenn alles übertragen (oder schon erledigt) ist und die gewählte
+    // Zugangsentscheidung gilt; sonst 207 mit jeder offenen Zeile. Dieselbe Eingabe noch einmal
+    // geschickt holt genau den Rest nach — erledigte Zeilen werden nicht ein zweites Mal geschrieben.
+    app.post<{ Body: unknown }>("/api/verantwortung/ablauf", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user || !ablaufBereit(reply)) {
+        return;
+      }
+      try {
+        const e = ablaufEingabe(request.body);
+        const { vorschau, zulaessig } = await ablaufVorschau(user, e, request.log);
+        if (!vorschau.bestaetigbar) {
+          reply.code(409).send({
+            error: "NICHT_BESTAETIGBAR",
+            message:
+              "Die Zuordnung ist nicht vollständig oder nicht zulässig. Es wurde nichts übertragen und der Zugang nicht verändert.",
+            vorschau,
+          });
+          return;
+        }
+        const weg = dienste.vorgaengeWeg as NonNullable<VerantwortungDienste["vorgaengeWeg"]>;
+        const beitraege =
+          e.beitraege.length > 0
+            ? await fuehreAus(user, e.von, e.beitraege, true, request.log)
+            : null;
+        const vorgaenge = await weg.vorgaengeUebergeben(e.von, zulaessig, user.id, true);
+
+        const konten = await dienste.auth.listUsers();
+        const zeile = (art: EintragArt, id: string, titel: string | null, an: string): Eintrag => ({
+          art,
+          id,
+          titel,
+          an,
+          anName: name(an, konten),
+        });
+        const titelVorgang = (art: VorgangArt, id: string): string | null =>
+          art === "pruefaufgabe"
+            ? (vorschau.pakete.flatMap((p) => p.eintraege).find((x) => x.art === art && x.id === id)
+                ?.titel ?? null)
+            : null;
+        const uebertragen: Eintrag[] = [
+          ...(beitraege?.uebertragen ?? []).map((z) => zeile("beitrag", z.koId, z.titel, z.an)),
+          ...vorgaenge.uebertragen.map((z) => zeile(z.art, z.id, titelVorgang(z.art, z.id), z.an)),
+        ];
+        const bereitsErledigt: Eintrag[] = [
+          ...(beitraege?.bereitsErledigt ?? []).map((z) => zeile("beitrag", z.koId, z.titel, z.an)),
+          ...vorgaenge.bereitsErledigt.map((z) => zeile(z.art, z.id, null, z.an)),
+        ];
+        const offen: OffenerEintrag[] = [
+          ...[...(beitraege?.abgelehnt ?? []), ...(beitraege?.fehlgeschlagen ?? [])].map((z) => ({
+            ...zeile("beitrag", z.koId, z.titel, z.an),
+            grund: z.grund,
+            text: z.text,
+          })),
+          ...vorgaenge.abgelehnt.map((z) => ({
+            ...zeile(z.art, z.id, titelVorgang(z.art, z.id), z.an),
+            grund: "VORGANG_NICHT_MOEGLICH",
+            text: z.grund,
+          })),
+          ...vorgaenge.fehlgeschlagen.map((z) => ({
+            ...zeile(z.art, z.id, titelVorgang(z.art, z.id), z.an),
+            grund: "SCHREIBFEHLER",
+            text: `Der Vorgang ist unverändert und kann erneut übertragen werden. (${z.grund})`,
+          })),
+        ];
+
+        // Die Bilanz NACH dem Schreiben — frisch gelesen, nicht aus dem Plan gerechnet.
+        const nachher = (await bilanzVon(e.von)).bilanz;
+        const konto = konten.find((k) => k.id === e.von);
+        const zugangVorher = zugangsstand(konto, jetzt());
+        let zugangNachher = zugangVorher;
+        let zugangGrund: string | null = null;
+        if (e.zugang === "beenden") {
+          if (summe(nachher) > 0) {
+            zugangGrund = `Bei der Person liegen noch ${summe(nachher)} Beiträge oder Vorgänge — der Zugang bleibt, bis alles übergeben ist.`;
+          } else if (zugangVorher === "aktiv" || zugangVorher === "befristet") {
+            const danach = await dienste.auth.setAccessExpiry(
+              e.von,
+              new Date(jetzt()).toISOString(),
+              user.id,
+            );
+            zugangNachher = zugangsstand(danach, jetzt());
+          }
+        }
+        const zugangErfuellt =
+          e.zugang === "behalten" || zugangNachher === "abgelaufen" || zugangNachher === "gesperrt";
+        const vollstaendig = offen.length === 0 && zugangErfuellt;
+        const nachfolger = vorschau.pakete.map((p) => ({
+          an: p.an.id,
+          beitraege: uebertragen.filter((z) => z.an === p.an.id && z.art === "beitrag").length,
+          vorgaenge: uebertragen.filter((z) => z.an === p.an.id && z.art !== "beitrag").length,
+        }));
+        const zugang = {
+          vorher: zugangVorher,
+          nachher: zugangNachher,
+          entscheidung: e.zugang,
+          beendet: zugangVorher !== zugangNachher,
+          grund: zugangGrund,
+        };
+        // DER BILANZVERMERK: vorher/nachher, je Nachfolger, offene Zeilen und Zugang — Kennungen und
+        // Anzahlen, keine Inhalte. Je Beitrag steht daneben der bindende Beleg `ko.ownership`, je
+        // Vorgangsart `lifecycle.handover`. Scheitert nur dieser Vermerk, gilt die Übergabe; die
+        // Antwort sagt dann `protokolliert: false`, damit niemand eine Bilanz nach Reload erwartet.
+        let protokolliert = false;
+        try {
+          if (dienste.audit) {
+            await dienste.audit.record({
+              actor: user.id,
+              action: "verantwortung.ablauf",
+              target: e.von,
+              payload: {
+                umfang: e.umfang,
+                vorher: vorschau.vorher,
+                nachher,
+                nachfolger,
+                uebertragen: uebertragen.length,
+                bereitsErledigt: bereitsErledigt.length,
+                offen: offen.map((z) => ({ art: z.art, id: z.id, an: z.an, grund: z.grund })),
+                zugang,
+                vollstaendig,
+              },
+            });
+            protokolliert = true;
+          }
+        } catch (err) {
+          request.log.error({ err }, "Übergabeablauf: Bilanz nicht protokolliert");
+        }
+        reply.code(vollstaendig ? 200 : 207).send({
+          person: person(e.von, konten, jetzt()),
+          umfang: e.umfang,
+          vorher: vorschau.vorher,
+          nachher,
+          nachfolger,
+          uebertragen,
+          bereitsErledigt,
+          offen,
+          zugang,
+          vollstaendig,
+          protokolliert,
+        });
+      } catch (e) {
+        fehler(reply, e, request);
+      }
+    });
+
+    // ADMIN-05 · Die Abschlussbilanzen einer Person aus dem Prüfprotokoll — jüngste zuerst. Damit ist
+    // die Bilanz auch nach einem Neuladen nachvollziehbar; sie kommt vom Server, nicht aus dem Zustand
+    // der Seite.
+    app.get<{ Params: { id: string } }>(
+      "/api/verantwortung/person/:id/ablaeufe",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!dienste.audit) {
+          reply.code(503).send({
+            error: "NICHT_VERFUEGBAR",
+            message: "Das Prüfprotokoll ist hier nicht verfügbar.",
+          });
+          return;
+        }
+        const [eintraege, konten] = await Promise.all([
+          dienste.audit.list({ action: "verantwortung.ablauf", target: request.params.id }),
+          dienste.auth.listUsers(),
+        ]);
+        type Nachfolge = { an: string; beitraege: number; vorgaenge: number };
+        reply.code(200).send({
+          ablaeufe: eintraege
+            .slice(-5)
+            .reverse()
+            .map((x) => ({
+              seq: x.seq,
+              at: x.at,
+              actor: { id: x.actor, name: name(x.actor, konten) },
+              ...x.payload,
+              nachfolger: ((x.payload.nachfolger ?? []) as Nachfolge[]).map((n) => ({
+                ...n,
+                name: name(n.an, konten),
+              })),
+            })),
+        });
+      },
+    );
   };
 }
 

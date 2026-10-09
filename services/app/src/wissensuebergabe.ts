@@ -124,6 +124,46 @@ export interface UebergabeErgebnis {
   fehlgeschlagen: { art: UebergabeArt; id: string; grund: string }[];
 }
 
+/**
+ * ADMIN-05 (produkt:20261007:ownership-uebergabe:admin-20261009) — DIE OFFENEN VORGÄNGE EINZELN
+ * ZUGETEILT, auf mehrere Nachfolger verteilt. Dieselben drei Arten und dieselben Schritte wie
+ * `uebergeben`; die Zuteilung nennt je Vorgang sein Ziel. Ob ein Ziel fachlich zulässig ist
+ * (Rolle, Leserecht), urteilt die Route (`verantwortung-routes.ts`) — hier steht nur der Stand.
+ */
+export type VorgangArt = "entwurf" | "luecke" | "pruefaufgabe";
+
+export interface VorgangZuteilung {
+  art: VorgangArt;
+  /** Entwurfs- bzw. Lückenkennung; bei einer Prüfaufgabe die Kennung des Wissensobjekts. */
+  id: string;
+  an: string;
+}
+
+export interface VorgaengeErgebnis {
+  /** Nur bei der Vorschau: würde übergeben. */
+  bereit: VorgangZuteilung[];
+  uebertragen: VorgangZuteilung[];
+  /** Liegt schon beim Ziel — eine Wiederholung schreibt nichts. */
+  bereitsErledigt: VorgangZuteilung[];
+  /** Liegt weder bei der Person noch beim Ziel, oder ist nicht übertragbar (mit Grund). */
+  abgelehnt: (VorgangZuteilung & { grund: string })[];
+  /** Beim Schreiben gescheitert; der Vorgang ist unverändert und kann erneut übertragen werden. */
+  fehlgeschlagen: (VorgangZuteilung & { grund: string })[];
+}
+
+/**
+ * Was zur Person gehört, aber NICHT übergeben wird — dieselben Regeln wie `erhebe`, nur die Kehrseite:
+ * Entwürfe im Papierkorb, geschlossene Lücken, erledigte Prüfaufgaben. Sie bleiben Geschichte.
+ */
+export interface AusgeschlosseneVorgaenge {
+  entwuerfe: { id: string }[];
+  luecken: { id: string }[];
+  pruefaufgaben: { koId: string }[];
+}
+
+const NICHT_MEHR_BEI_PERSON =
+  "Der Vorgang liegt inzwischen bei jemand anderem — er wurde nicht verändert.";
+
 /** Fehlercodes wie die Domänenfehler der übrigen Module — `sendError` mappt sie (400 / 404). */
 class UebergabeFehler extends Error {
   readonly code: "INVALID" | "NOT_FOUND";
@@ -277,45 +317,14 @@ export class Wissensuebergabe {
         }
       });
     }
-    const jetzt = this.now().toISOString();
     for (const draft of m.entwuerfe) {
-      const neu: Draft = {
-        ...draft,
-        originalAuthor: an,
-        urheber: draft.urheber ?? draft.originalAuthor,
-        updatedAt: jetzt,
-      };
-      await schritt("entwurf", draft.id, async () => {
-        // Bedingt auf den gelesenen Stand: hat jemand den Entwurf seit der Erhebung gespeichert,
-        // wird nichts überschrieben — der Schritt ist dann benannt gescheitert, ein zweiter Lauf
-        // übernimmt ihn.
-        if (!(await this.q.drafts.updateWennStand(neu, draft.updatedAt))) {
-          throw new Error("Der Entwurf wurde zwischenzeitlich geändert.");
-        }
-      });
+      await schritt("entwurf", draft.id, () => this.entwurfUebergeben(draft, an));
     }
     for (const gap of m.luecken) {
       await schritt("luecke", gap.id, () => this.q.assignGap(gap.id, an));
     }
     for (const z of m.pruefaufgaben) {
-      await schritt("pruefaufgabe", z.koId, async () => {
-        // Je Objekt und Person gibt es genau EINE Zuweisung (`find` filtert nicht nach Status).
-        //   · keine beim Nachfolger → offene anlegen, dann die der Person entfernen;
-        //   · eine OFFENE beim Nachfolger → die Arbeit steht dort schon, keine zweite;
-        //   · eine ERLEDIGTE beim Nachfolger → nicht auflösbar: sie wieder zu öffnen löschte seine
-        //     erledigte Prüfung aus der Spur, sie zu übergehen verlöre die ausstehende Aufgabe.
-        //     Die Aufgabe der Person bleibt bestehen, der Schritt ist benannt gescheitert.
-        const beimNachfolger = await this.q.assignments.find(z.koId, an);
-        if (beimNachfolger?.status === "done") {
-          throw new Error(
-            "Der Nachfolger hat dieses Objekt bereits geprüft; die offene Prüfaufgabe bleibt bei der ausscheidenden Person.",
-          );
-        }
-        if (!beimNachfolger) {
-          await this.q.assignments.create({ koId: z.koId, userId: an, status: "open" });
-        }
-        await this.q.assignments.remove(z.koId, von);
-      });
+      await schritt("pruefaufgabe", z.koId, () => this.pruefaufgabeUebergeben(z.koId, von, an));
     }
 
     // DAS PROTOKOLL: ein Eintrag für den ganzen Vorgang, mit Mengen und benannten Fehlschlägen.
@@ -332,6 +341,180 @@ export class Wissensuebergabe {
         failed: ergebnis.fehlgeschlagen.map((f) => ({ art: f.art, id: f.id })),
       },
     });
+    return ergebnis;
+  }
+
+  /** Ein Entwurf wandert: `originalAuthor` → Ziel, die Urheberin bleibt in `urheber`. */
+  private async entwurfUebergeben(draft: Draft, an: string): Promise<void> {
+    const neu: Draft = {
+      ...draft,
+      originalAuthor: an,
+      urheber: draft.urheber ?? draft.originalAuthor,
+      updatedAt: this.now().toISOString(),
+    };
+    // Bedingt auf den gelesenen Stand: hat jemand den Entwurf seit der Erhebung gespeichert,
+    // wird nichts überschrieben — der Schritt ist dann benannt gescheitert, ein zweiter Lauf
+    // übernimmt ihn.
+    if (!(await this.q.drafts.updateWennStand(neu, draft.updatedAt))) {
+      throw new Error("Der Entwurf wurde zwischenzeitlich geändert.");
+    }
+  }
+
+  private async pruefaufgabeUebergeben(koId: string, von: string, an: string): Promise<void> {
+    // Je Objekt und Person gibt es genau EINE Zuweisung (`find` filtert nicht nach Status).
+    //   · keine beim Nachfolger → offene anlegen, dann die der Person entfernen;
+    //   · eine OFFENE beim Nachfolger → die Arbeit steht dort schon, keine zweite;
+    //   · eine ERLEDIGTE beim Nachfolger → nicht auflösbar: sie wieder zu öffnen löschte seine
+    //     erledigte Prüfung aus der Spur, sie zu übergehen verlöre die ausstehende Aufgabe.
+    //     Die Aufgabe der Person bleibt bestehen, der Schritt ist benannt gescheitert.
+    const beimNachfolger = await this.q.assignments.find(koId, an);
+    if (beimNachfolger?.status === "done") {
+      throw new Error(
+        "Der Nachfolger hat dieses Objekt bereits geprüft; die offene Prüfaufgabe bleibt bei der ausscheidenden Person.",
+      );
+    }
+    if (!beimNachfolger) {
+      await this.q.assignments.create({ koId, userId: an, status: "open" });
+    }
+    await this.q.assignments.remove(koId, von);
+  }
+
+  /** ADMIN-05: die Kehrseite von `erhebe` — was bei der Person bleibt, weil es keine Arbeit mehr ist. */
+  async ausgeschlossen(von: string): Promise<AusgeschlosseneVorgaenge> {
+    const [drafts, gaps, assignments] = await Promise.all([
+      this.q.drafts.listByAuthor(von),
+      this.q.gaps(),
+      this.q.assignments.all(),
+    ]);
+    return {
+      entwuerfe: drafts.filter((d) => "deletedAt" in d).map((d) => ({ id: d.id })),
+      luecken: gaps
+        .filter((g) => g.status !== "offen" && g.assignee === von)
+        .map((g) => ({ id: g.id })),
+      pruefaufgaben: assignments
+        .filter((z) => z.userId === von && z.status !== "open")
+        .map((z) => ({ koId: z.koId })),
+    };
+  }
+
+  /**
+   * ADMIN-05: die offenen Vorgänge EINZELN an ihr jeweiliges Ziel. `schreiben = false` ist die
+   * Vorschau — sie liest denselben Stand und verändert nichts.
+   *
+   * WIEDERHOLBAR OHNE DOPPEL: liegt ein Vorgang schon beim Ziel, ist er `bereitsErledigt` und wird
+   * nicht noch einmal geschrieben; eine Prüfaufgabe entsteht beim Ziel nie ein zweites Mal
+   * (`pruefaufgabeUebergeben`). Liegt er bei niemandem von beiden, wird nichts überschrieben.
+   */
+  async vorgaengeUebergeben(
+    vonRoh: unknown,
+    zuteilung: readonly VorgangZuteilung[],
+    actor: string,
+    schreiben: boolean,
+  ): Promise<VorgaengeErgebnis> {
+    const von = kennung(vonRoh);
+    if (von === null) {
+      throw new UebergabeFehler("INVALID", "Die ausscheidende Person muss angegeben sein.");
+    }
+    const ergebnis: VorgaengeErgebnis = {
+      bereit: [],
+      uebertragen: [],
+      bereitsErledigt: [],
+      abgelehnt: [],
+      fehlgeschlagen: [],
+    };
+    if (zuteilung.length === 0) {
+      return ergebnis;
+    }
+    const ziele = [...new Set(zuteilung.map((z) => z.an))];
+    const [eigeneEntwuerfe, gaps] = await Promise.all([
+      this.q.drafts.listByAuthor(von),
+      this.q.gaps(),
+    ]);
+    const zielEntwuerfe = await Promise.all(ziele.map((an) => this.q.drafts.listByAuthor(an)));
+    const offeneEntwuerfe = new Map(
+      eigeneEntwuerfe.filter((d) => !("deletedAt" in d)).map((d) => [d.id, d]),
+    );
+    const entwurfBeiZiel = new Map(
+      ziele.map((an, i) => [an, new Set((zielEntwuerfe[i] ?? []).map((d) => d.id))]),
+    );
+    for (const z of zuteilung) {
+      if (z.an === von) {
+        ergebnis.abgelehnt.push({ ...z, grund: "Ziel und bisherige Person sind dasselbe Konto." });
+        continue;
+      }
+      // Der Stand dieses Vorgangs: bei der Person (bereit), schon beim Ziel (erledigt), sonst offen.
+      let stand: "bereit" | "erledigt" | "weg";
+      let tun: () => Promise<void> = async () => undefined;
+      if (z.art === "entwurf") {
+        const draft = offeneEntwuerfe.get(z.id);
+        stand = draft ? "bereit" : entwurfBeiZiel.get(z.an)?.has(z.id) ? "erledigt" : "weg";
+        if (draft) {
+          tun = () => this.entwurfUebergeben(draft, z.an);
+        }
+      } else if (z.art === "luecke") {
+        const gap = gaps.find((g) => g.id === z.id && g.status === "offen");
+        stand = gap?.assignee === von ? "bereit" : gap?.assignee === z.an ? "erledigt" : "weg";
+        tun = async () => {
+          await this.q.assignGap(z.id, z.an);
+        };
+      } else {
+        const [beiPerson, beimZiel] = await Promise.all([
+          this.q.assignments.find(z.id, von),
+          this.q.assignments.find(z.id, z.an),
+        ]);
+        if (beiPerson?.status === "open" && beimZiel?.status === "done") {
+          ergebnis.abgelehnt.push({
+            ...z,
+            grund:
+              "Der Nachfolger hat dieses Objekt bereits geprüft; die offene Prüfaufgabe bleibt bei der ausscheidenden Person.",
+          });
+          continue;
+        }
+        stand =
+          beiPerson?.status === "open"
+            ? "bereit"
+            : beimZiel?.status === "open"
+              ? "erledigt"
+              : "weg";
+        tun = () => this.pruefaufgabeUebergeben(z.id, von, z.an);
+      }
+      if (stand === "erledigt") {
+        ergebnis.bereitsErledigt.push(z);
+      } else if (stand === "weg") {
+        ergebnis.abgelehnt.push({ ...z, grund: NICHT_MEHR_BEI_PERSON });
+      } else if (!schreiben) {
+        ergebnis.bereit.push(z);
+      } else {
+        try {
+          await tun();
+          ergebnis.uebertragen.push(z);
+        } catch (error) {
+          ergebnis.fehlgeschlagen.push({
+            ...z,
+            grund: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
+    if (schreiben && (ergebnis.uebertragen.length > 0 || ergebnis.fehlgeschlagen.length > 0)) {
+      // Derselbe Protokollvorgang wie die Übergabe an einen Nachfolger — Kennungen, keine Inhalte.
+      const menge = (art: VorgangArt) => ergebnis.uebertragen.filter((z) => z.art === art).length;
+      await this.q.audit.record({
+        actor,
+        action: "lifecycle.handover",
+        target: von,
+        payload: {
+          from: von,
+          to: [...new Set(ergebnis.uebertragen.map((z) => z.an))],
+          transferred: {
+            entwurf: menge("entwurf"),
+            luecke: menge("luecke"),
+            pruefaufgabe: menge("pruefaufgabe"),
+          },
+          failed: ergebnis.fehlgeschlagen.map((f) => ({ art: f.art, id: f.id })),
+        },
+      });
+    }
     return ergebnis;
   }
 }

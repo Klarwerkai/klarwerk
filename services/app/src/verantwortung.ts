@@ -103,7 +103,8 @@ export type Ablehnung =
   | "ZIEL_NICHT_AKTIV"
   | "ZIEL_BEFRISTET"
   | "ZIEL_OHNE_SCHREIBRECHT"
-  | "ZIEL_SIEHT_BEITRAG_NICHT";
+  | "ZIEL_SIEHT_BEITRAG_NICHT"
+  | "ZIEL_OHNE_PRUEFRECHT";
 
 export const ABLEHNUNGSTEXT: Record<Ablehnung, string> = {
   NICHT_GEFUNDEN: "Den Beitrag gibt es nicht mehr.",
@@ -118,7 +119,47 @@ export const ABLEHNUNGSTEXT: Record<Ablehnung, string> = {
     "Das gewählte Konto darf kein Wissen bearbeiten und kann keine Verantwortung tragen.",
   ZIEL_SIEHT_BEITRAG_NICHT:
     "Das gewählte Konto darf diesen Beitrag nicht sehen. Eine Übergabe erweitert keine Rechte — erst Zugang klären (Space, Vertraulichkeit).",
+  ZIEL_OHNE_PRUEFRECHT:
+    "Das gewählte Konto darf nicht prüfen (Rolle Controller oder Admin nötig). Eine Übergabe vergibt keine Rolle.",
 };
+
+/**
+ * ADMIN-05: darf dieses Konto DIESEN offenen Vorgang übernehmen? Dieselbe Grundregel wie für
+ * Beiträge (aktiv, unbefristet, nicht die Person selbst) und je Art das Recht, das die Arbeit
+ * verlangt — die Übergabe vergibt es nicht nachträglich:
+ *   · Entwurf, Lücke ... Wissen anlegen (`ko.create`), denn beides endet in einem Beitrag;
+ *   · Prüfaufgabe ...... prüfen (`ko.validate`) UND das Objekt heute schon lesen (`darfSehen`).
+ * Was die Übergabe dem Ziel SICHTBAR neu gibt, nennt die Vorschau als Rechtewirkung: einen privaten
+ * Entwurf darf danach das Ziel lesen und bearbeiten — und nur diesen.
+ */
+export function vorgangZielGrund(
+  art: "entwurf" | "luecke" | "pruefaufgabe",
+  ziel: PublicUser | undefined,
+  ko: KnowledgeObject | undefined,
+  spaces: readonly SpaceFassung[],
+  jetzt: number,
+): Ablehnung | null {
+  if (!ziel) {
+    return "ZIEL_UNBEKANNT";
+  }
+  const zugang = zugangsstand(ziel, jetzt);
+  if (zugang === "befristet") {
+    return "ZIEL_BEFRISTET";
+  }
+  if (zugang !== "aktiv") {
+    return "ZIEL_NICHT_AKTIV";
+  }
+  if (art !== "pruefaufgabe") {
+    return can(ziel.role, "ko.create") ? null : "ZIEL_OHNE_SCHREIBRECHT";
+  }
+  if (!can(ziel.role, "ko.validate")) {
+    return "ZIEL_OHNE_PRUEFRECHT";
+  }
+  if (!ko) {
+    return "NICHT_GEFUNDEN";
+  }
+  return darfSehen(sitzungVon(ziel, spaces), ko) ? null : "ZIEL_SIEHT_BEITRAG_NICHT";
+}
 
 export type Urteil =
   | { art: "bereit" }

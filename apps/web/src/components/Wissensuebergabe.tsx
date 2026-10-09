@@ -8,6 +8,10 @@
 //
 // Das Ergebnis nennt Erfolge UND einzeln gescheiterte Schritte (der Server bricht nicht ab, sondern
 // meldet sie). Was der Server ins Prüfprotokoll schreibt, entscheidet allein er (`lifecycle.handover`).
+//
+// ADMIN-05: In der Kontokarte steht diese Fläche nicht mehr neben der Beitragsübergabe — beide Wege
+// laufen dort über EINEN Einstieg (`UebergabeAblauf.tsx`), der Beiträge und offene Vorgänge auf
+// mehrere Nachfolger verteilt. `UebergabeVorschauInhalt` bleibt die Vorschau beim Konto-Entfernen.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
