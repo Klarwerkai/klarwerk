@@ -27,12 +27,22 @@ import { Button } from "./ui";
 export function VerantwortungUebergabe({
   personId,
   personName,
+  offen: offenVonAussen,
+  onOffen,
 }: {
   personId: string;
   personName: string;
+  /**
+   * ADMIN-04: von aussen gesteuert, wenn die Kontokarte den Bestand über ihren Zähler „Beiträge"
+   * öffnet. Ohne diese Angabe hält der Bereich seinen Zustand selbst (wie bisher).
+   */
+  offen?: boolean;
+  onOffen?: (offen: boolean) => void;
 }): JSX.Element {
   const { t } = useTranslation();
-  const [offen, setOffen] = useState(false);
+  const [offenEigen, setOffenEigen] = useState(false);
+  const offen = offenVonAussen ?? offenEigen;
+  const setOffen = onOffen ?? setOffenEigen;
   return (
     <div data-testid="verantwortung-bereich" className="space-y-2 border-t border-hairline pt-4">
       <div className="text-[12.5px] font-medium text-muted">{t("uebergabe.titel")}</div>
