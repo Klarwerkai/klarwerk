@@ -726,6 +726,14 @@ const de = {
   "auth.toSignIn": "Zur Anmeldung",
   "auth.or": "oder",
   "auth.ssoButton": "Mit SSO anmelden",
+  // R-0541: die Anmeldeseite, wenn nur noch der Firmen-Login gilt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Auf dieser Installation meldest du dich mit deinem Firmenkonto an. Ein eigenes Passwort für Klara gibt es hier nicht.",
+  // R-0541 (Nacharbeit 2): das Passwort ist abgeschaltet, der Firmen-Login aber noch nicht da.
+  "auth.ssoOnlyMissing":
+    "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte wende dich an deine IT.",
+  // R-0560: der Firmen-Login über SAML.
+  "auth.samlButton": "Mit Firmenkonto (SAML) anmelden",
   "auth.ssoUnavailable": "SSO ist für diese Instanz nicht konfiguriert.",
   "auth.ssoTitle": "SSO-Anmeldung",
   "auth.ssoBusy": "Anmeldung wird abgeschlossen …",
@@ -2830,6 +2838,12 @@ const de = {
   "ask.export.copy": "Kopieren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Drucken / PDF",
+  // R-0703: Dateien, die die KI-Kennzeichnung in ihren Eigenschaften tragen.
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-Datei",
+  "ask.export.pdfZeichen":
+    "Die PDF-Datei kann diese Zeichen nicht unverändert darstellen: {{zeichen}}. Es wurde nichts heruntergeladen — Word oder Markdown geben den Text verlustfrei weiter.",
   "ask.export.copied": "Antwort inkl. Quellen kopiert.",
   "ask.export.answer": "Antwort",
   "ask.export.footer":
@@ -2842,6 +2856,12 @@ const de = {
     "Die zuerst genannten Quellen haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet.",
   "ask.attribution.unknown":
     "Welche dieser Quellen die Antwort getragen hat, ließ sich nicht zuordnen — die KI hat keine verwertbaren Quellenverweise geliefert. Die Liste zeigt deshalb alle herangezogenen Quellen ohne Kennzeichen, und ein „Hat geholfen“ ist hier nicht möglich.",
+  // R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich kein Absatz einer
+  // Quelle zuordnen ließ. Zuordnung unbekannt macht einen unbelegten Absatz nicht ausgabefähig.
+  // R-0310: der Chip „+N" unter der Antwort — sein zugänglicher Name.
+  "ask.quellen.weitere": "{{count}} weitere Quellen anzeigen",
+  "ask.zuordnungUnbekannt":
+    "Keine Antwort angezeigt: Sie ließ sich keiner Quelle zuordnen. Ein Absatz ohne Beleg wird nicht ausgegeben.",
   // JOB 3267 Q1 — DREI ZUSTÄNDE, DREI WÖRTER, UND EIN VIERTES FÜR DEN PRÜFSTAND.
   // Bis hierher gab es zwei Wörter („trägt"/„angesehen") für eine Frage, die drei Antworten hat;
   // der dritte Zustand („wir wissen es nicht") stand nur als Satz ÜBER der Liste und fehlte an der
@@ -3008,6 +3028,106 @@ const de = {
     "Keine Quelle passt sicher genug zu dieser Frage, um eine Antwort zu tragen. Das heißt nicht zwingend, dass das Wissen fehlt — vielleicht steht es nur unter anderen Wörtern in der Basis. Beides ist eine Lücke, die ihr schließen könnt, kein Fehler.",
   "ask.contract.trustNote":
     "Vertrauen und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
+  // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit vom Server an der Antwort
+  // (components/fragen/Belastbarkeit.tsx). Die Gründe und Lagen sind die geschlossenen Mengen aus
+  // services/ask/src/answer-belastbarkeit.ts — je Wert genau ein Satz.
+  "ask.belastbarkeit.titel": "Wie belastbar ist das?",
+  "ask.belastbarkeit.lage.belegt": "Belegt",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt":
+    "Belegt — Verantwortliche Person nicht erreichbar",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Belegt — mit Widerspruch",
+  "ask.belastbarkeit.lage.wissensluecke": "Wissenslücke",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technischer Fehler",
+  "ask.belastbarkeit.lage.geschwaerzt": "Geschwärzt",
+  "ask.belastbarkeit.anzahl":
+    "{{tragend}} von {{herangezogen}} herangezogenen Quellen tragen die Antwort",
+  "ask.belastbarkeit.vertrauenswert":
+    "Vertrauenswert {{wert}} — so belastbar wie die schwächste tragende Quelle („{{quelle}}“). Dieselbe Zahl steht in der Bibliothek an diesem Eintrag.",
+  "ask.belastbarkeit.vertrauenswertKeiner":
+    "Kein Vertrauenswert: Es ist keine tragende Quelle bekannt.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Vertrauenswert {{wert}}",
+  "ask.belastbarkeit.stand": "Stand {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "validiert",
+  "ask.belastbarkeit.quelle.nichtValidiert": "nicht validiert",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Verantwortlich",
+  "ask.belastbarkeit.verantwortung.autor":
+    "Keine verantwortliche Person benannt, es gilt der Autor",
+  "ask.belastbarkeit.erreichbar.ja": "erreichbar",
+  "ask.belastbarkeit.erreichbar.nein": "nicht erreichbar",
+  "ask.belastbarkeit.erreichbar.unbekannt": "Erreichbarkeit unbekannt",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "Keine Quelle trägt eine Antwort auf diese Frage.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt":
+    "Welche Quelle die Antwort trägt, ist nicht bekannt.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert":
+    "Alle tragenden Quellen sind validiert.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "Mindestens eine tragende Quelle ist nicht validiert.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "Für mindestens eine tragende Quelle ist die Konfliktprüfung nicht vollständig belegt.",
+  "ask.belastbarkeit.grund.offener_konflikt":
+    "Eine tragende Quelle steht in einem offenen Widerspruch.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "Die Konfliktlage ließ sich nicht abfragen — das heißt nicht, dass keine besteht.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "Die verantwortliche Person ist nicht erreichbar (kein freigegebenes Konto). Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Ob die verantwortliche Person erreichbar ist, ließ sich nicht feststellen.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "Für mindestens eine Quelle ist keine verantwortliche Person benannt; es gilt der Autor.",
+  "ask.belastbarkeit.konflikt.titel": "Widerspruch — beide Seiten",
+  "ask.belastbarkeit.konflikt.seite": "Seite {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "trägt diese Antwort",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "Diese Seite ist für dich nicht einsehbar.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "Es wird keine Seite gewählt. Den Widerspruch entscheiden Menschen unter „Konflikte“.",
+  "ask.belastbarkeit.hinweis":
+    "Der Vertrauenswert sagt, wie belastbar die Quellen sind. Er ist keine Aussage darüber, ob etwas wahr ist.",
+  // R-1627 / R-0346: die aufklappbare Argumentationskette und der Zuschnitt (Belastbarkeit.tsx).
+  "ask.belastbarkeit.argumentation.titel": "So kommt die Antwort zustande",
+  "ask.belastbarkeit.argumentation.belegstelle": "Belegstelle: „{{stelle}}“",
+  "ask.belastbarkeit.argumentation.art.aussage": "Aussage",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Begriffe ergänzt aus dem Firmenwörterbuch — nicht Teil der Quellenbilanz und ohne Vertrauenswert:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Wörterbucheintrag {{id}}, Fassung {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Verantwortlich: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "Keine Verantwortung angegeben",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Belastbarkeit nicht bewertet",
+  "ask.belastbarkeit.argumentation.art.beziehung": "Belegte Beziehung",
+  "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "gehört zu",
+  "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "ergänzt",
+  "ask.belastbarkeit.argumentation.beziehung.ersetzt": "ersetzt",
+  "ask.belastbarkeit.argumentation.beziehung.widerspricht": "widerspricht",
+  "ask.belastbarkeit.argumentation.beziehung.beispiel_fuer": "ist ein Beispiel für",
+  "ask.belastbarkeit.argumentation.gesetztVon": "Beziehung gesetzt von {{wer}}",
+  "ask.belastbarkeit.argumentation.gestuetztAuf": "Gestützt auf: {{quellen}}",
+  "ask.belastbarkeit.argumentation.unabhaengig":
+    "Zwischen diesen Quellen ist keine Beziehung belegt — sie stehen unabhängig nebeneinander.",
+  "ask.belastbarkeit.argumentation.art.einwand": "Einwand aus einem offenen Widerspruch",
+  "ask.belastbarkeit.argumentation.art.vorbehalt": "Vorbehalt",
+  "ask.belastbarkeit.argumentation.art.schluss": "Schluss",
+  "ask.belastbarkeit.argumentation.einstufung.verified": "Einstufung: belegt",
+  "ask.belastbarkeit.argumentation.einstufung.unverified": "Einstufung: nicht vollständig belegt",
+  "ask.belastbarkeit.argumentation.einstufung.gap": "Einstufung: Wissenslücke",
+  "ask.belastbarkeit.wissensart.bauchgefuehl": "Bauchgefühl",
+  "ask.belastbarkeit.wissensart.best_practice": "Bewährte Vorgehensweise",
+  "ask.belastbarkeit.wissensart.lernkurve": "Lernkurve",
+  "ask.belastbarkeit.wissensart.technik": "Technik",
+  "ask.belastbarkeit.wissensart.negativwissen": "Negativwissen",
+  "ask.belastbarkeit.zuschnitt":
+    "Antwort und Erklärung zugeschnitten auf: {{rolle}}, Anlass {{anlass}}.",
+  "ask.belastbarkeit.rolle.viewer": "Lesende",
+  "ask.belastbarkeit.rolle.experte": "Expertin oder Experte",
+  "ask.belastbarkeit.rolle.controller": "Prüfende",
+  "ask.belastbarkeit.rolle.admin": "Verwaltung",
+  "ask.belastbarkeit.rolle.unbekannt": "unbekannte Rolle",
+  "ask.belastbarkeit.anlass.dokument": "Arbeit an einem Dokument",
+  "ask.belastbarkeit.anlass.frage": "freie Frage",
+  "ask.pruefrahmen.satz":
+    "Geprüft gegen {{umfang}}: {{verglichen}} passende Einträge wurden verglichen (höchstens {{hoechstens}} je Frage), keiner trägt eine Antwort.",
+  "ask.pruefrahmen.umfang.validiert": "nur validiertes, nicht vertrauliches Wissen",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "alles nicht vertrauliche Wissen",
+  "ask.pruefrahmen.woertlich": "Gesucht wurde wörtlich, ohne KI-Zusammenfassung.",
   // ==============================================================================================
   // JOB 3366 · KI-FRAGMENT-SICHTBAR — DER EINE SATZ AN EINER ABGESCHNITTENEN ANTWORT.
   // ==============================================================================================
@@ -4500,6 +4620,11 @@ const de = {
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
   "lib.lesemodus.listeAusblenden": "Trefferliste ausblenden",
   "lib.lesen.mehr": "Mehr",
+  "lib.lesen.belegstelle.markiert": "Belegstelle hervorgehoben.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "Die zitierte Belegstelle steht in dieser Fassung nicht wörtlich im Text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "Die Belegstelle gehört zu Fassung {{fassung}}; hier steht Fassung {{aktuell}}. Nichts ist hervorgehoben.",
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
   "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",
@@ -5563,6 +5688,10 @@ const de = {
   "klara.aiBusy": "Die KI liest die passenden Hilfe-Einträge …",
   "klara.aiAnswerTitle": "KI-Antwort aus der Hilfe",
   "klara.aiDisclaimer": "KI-generiert — nicht zu 100 % geprüft",
+  // R-0604 (Aufnahme gesamt-ki-kennzeichnung): die Herkunft der Hilfeantwort beim regelbasierten
+  // Rückfall — dort hat kein Modell geschrieben, „KI-Antwort" und „KI-generiert" wären falsch.
+  "klara.helpAnswerTitle": "Antwort aus der Hilfe",
+  "klara.ohneModell": "Regelbasiert, ohne KI-Modell",
   "klara.aiGoto": "Zum Bereich: {{target}}",
   "klara.aiSources": "Grundlage",
   "klara.aiEmpty":
@@ -7182,6 +7311,18 @@ const de = {
   // Fläche anders formuliert wäre, wäre weder klar noch unterscheidbar — und ein zweiter Wortlaut
   // wäre eine zweite Wahrheit über dasselbe Produkt.
   "ai.generatedNotice": "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
+  // R-0603 / R-0604: der DAUERHAFTE Satz an Auslösern und KI-Flächen. Er sagt, dass hier eine KI
+  // mitarbeiten kann — nicht, dass etwas erzeugt wurde. Das sagt `ai.generatedNotice`, und zwar
+  // nur am Ergebnis, das ein Modell wirklich geschrieben hat.
+  "ai.surfaceNotice":
+    "Hier kann eine KI mitarbeiten — von ihr erzeugte Inhalte sind gekennzeichnet.",
+  // R-1020 / R-1695 (Grundsatz G-3): die drei Stufen jedes Ergebnisses. Der Entwurf trägt den
+  // Wortlaut der Quelle. `reasoner.draftLabel` bleibt als Bestandstext unverändert stehen.
+  // Die Empfehlung sagt „ungeprüft" statt „nicht validiert": JOB 2660 hält fest, dass auf einer
+  // Fläche ohne geprüfte Quelle das Wort „validiert" GAR NICHT steht — auch nicht verneint.
+  "ergebnisStufe.entwurf": "Reasoner-Entwurf, nicht validiert",
+  "ergebnisStufe.empfehlung": "Empfehlung, ungeprüft",
+  "ergebnisStufe.validiert": "Validiert",
 
   // ==============================================================================================
   // AUFTRAG-mega62 BLOCK F — DER KOSTENHINWEIS AN JEDER AUSLÖSESTELLE.

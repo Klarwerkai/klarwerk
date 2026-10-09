@@ -34,13 +34,14 @@ import type {
   ExternalResult,
   KnowledgeObject,
 } from "../../api/types";
+import { useSession } from "../../app/AuthContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { abfrageMitBestand } from "../../lib/abfrageBestand";
 import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
-import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
+import { effectiveUsability } from "../../lib/conflictImpact";
 import { vorrangAmPunkt } from "../../lib/conflictView";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
@@ -115,7 +116,9 @@ import { Button, Field, TextInput, cx } from "../ui";
 import { WissensauskunftBereich } from "../wissensauskunft/WissensauskunftBereich";
 import { AnhangZeichnung } from "./AnhangZeichnung";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
+import { FassungsGegenueberstellung } from "./Fassungsvergleich";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { Verantwortung } from "./Verantwortung";
 import { Zeichnung } from "./Zeichnung";
 
 // ==================================================================================================
@@ -412,6 +415,7 @@ export function MehrAbschnitte({
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
+  const session = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
   const nameOf = useAuthorName();
@@ -562,6 +566,37 @@ export function MehrAbschnitte({
       void qc.invalidateQueries({ queryKey: ["couplings", id] });
       setCoupleAsset("");
       push("success", t("ko.couple.done"));
+    },
+    onError: fehlerToast,
+  });
+
+  // ---- aufnahme:20260922:gesamt-wissen-frische -------------------------------------------------
+  // R-0203: Anlagenänderung über DIESES Objekt an alle Nachbarn an denselben Anlagen melden.
+  const nachbarn = useMutation({
+    mutationFn: () => endpoints.ko.neighborsChanged(id),
+    onSuccess: (antwort) => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.nachbarnGemeldet", { count: antwort.markiert }));
+    },
+    onError: fehlerToast,
+  });
+  // R-1732 / R-0206: erneute Prüfung aus der Bibliothek anstossen.
+  const erneutPruefen = useMutation({
+    mutationFn: () => endpoints.ko.requestRevalidation(id),
+    onSuccess: () => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.erneutPruefenGespeichert"));
+    },
+    onError: fehlerToast,
+  });
+  // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — ein Frische-Signal, keine Prüfung.
+  const stimmtWeiterhin = useMutation({
+    mutationFn: () => endpoints.ko.act(id, { action: "confirm-fresh" }),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("frische.stimmtWeiterhinGespeichert"));
     },
     onError: fehlerToast,
   });
@@ -1178,10 +1213,10 @@ export function MehrAbschnitte({
   // genau die Drift, gegen die `lib/eigeneKollision.ts:15-17` gebaut ist.
 
   // SCRUM-357 / AG-14: ein offener Konflikt begrenzt die Nutzbarkeit ehrlich (ready → in Prüfung).
-  const usability = conflictLimitedUsability(
-    koOverview(ko).usability,
-    conflictImpact(ko.id, conflicts.data ?? []),
-  );
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): über `effectiveUsability`, die EINE Quelle für
+  // „Basis aus `koOverview`, begrenzt durch den Konflikt" — bis hierher stand dieselbe Verkettung
+  // hier ausgeschrieben, und der Baustein dafür lag ohne Aufrufer daneben.
+  const usability = effectiveUsability(ko, conflicts.data ?? []);
   const lineage = lineageSummary(ko, neighborhood.data?.total ?? 0);
   // R-0766: die Kette am Objekt schließt Konflikte und Überschneidungen ein, an denen es beteiligt
   // ist — die offenen aus `useConflicts`, dazu alle (auch abgeschlossene) vom Server.
@@ -1277,6 +1312,22 @@ export function MehrAbschnitte({
   // aus dem geladenen Bestand und ist hier ausdrücklich keine Behauptung.
   const [vergleichVon, setVergleichVon] = useState<number | null>(null);
   const [vergleichBis, setVergleichBis] = useState<number | null>(null);
+  /**
+   * N-0057: DIE ÄNDERUNGSANGABE EINER KARTE FÜHRT DIREKT IN DEN VERGLEICH.
+   *
+   * Kein zweiter Vergleich: die Aktion belegt nur die beiden vorhandenen Auswahlfelder mit
+   * Vorgänger und dieser Fassung und bringt den Fokus auf die Vergleichsfläche — dort steht Feld für
+   * Feld, was sich geändert hat. Die Auswahl bleibt danach frei änderbar.
+   */
+  const mitVorgaengerVergleichen = (von: number, bis: number): void => {
+    setVergleichVon(von);
+    setVergleichBis(bis);
+    const flaeche = wurzel.current?.querySelector<HTMLElement>(
+      "[data-bib-fassung-vergleich-flaeche]",
+    );
+    flaeche?.scrollIntoView?.({ block: "nearest" });
+    flaeche?.focus();
+  };
   /**
    * Was die letzte Übernahme ergeben hat — je Lage ein Satz, und jeder nennt die FOLGE.
    *
@@ -1974,6 +2025,14 @@ export function MehrAbschnitte({
           domain={ko.category}
           version={ko.version}
         />
+        {/* R-0507 / R-0546: wem das Objekt gehört, wer es geprüft und freigegeben hat — und dass
+            Bearbeiternamen keine Verantwortung aussagen. */}
+        <Verantwortung
+          ko={ko}
+          nameOf={nameOf}
+          angemeldet={session.user?.id}
+          darfFreigeben={canReview}
+        />
         {canEdit ? (
           <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
             <span>{t("conf.field")}</span>
@@ -1992,6 +2051,22 @@ export function MehrAbschnitte({
                 </option>
               ))}
             </select>
+          </label>
+        ) : null}
+        {/* R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" — nur an internen Objekten und nur für
+            Prüfer/Admin (dieselbe Schwelle wie eine Herabstufung, Server: `ko.validate`). */}
+        {canReview && confidentialityOf(ko.confidentiality) === "intern" ? (
+          <label className="mt-2 flex items-center gap-2 text-[12px] text-muted">
+            <input
+              type="checkbox"
+              data-testid="frische-oeffentlich"
+              checked={ko.oeffentlich === true}
+              disabled={act.isPending}
+              onChange={(e) =>
+                act.mutate({ action: "schutz-oeffentlich", oeffentlich: e.target.checked })
+              }
+            />
+            <span>{t("frische.oeffentlichFeld")}</span>
           </label>
         ) : null}
         {canTransfer ? (
@@ -2071,6 +2146,21 @@ export function MehrAbschnitte({
               <Link2 size={14} />
               {t("ko.couple.cta")}
             </Button>
+          </div>
+        ) : null}
+        {/* R-0203: der Auslöser über benachbarte Wissensobjekte — dasselbe Recht wie die
+            Anlagenänderung im Reiter „Erneut" (`ko.validate`: Controller und Admin). */}
+        {canReview && couplings.data && couplings.data.length > 0 ? (
+          <div className="mt-2.5 border-t border-hairline pt-2.5">
+            <Button
+              variant="ghost"
+              data-testid="frische-nachbarn"
+              disabled={nachbarn.isPending}
+              onClick={() => nachbarn.mutate()}
+            >
+              {t("frische.nachbarnMelden")}
+            </Button>
+            <p className="mt-1 text-[11.5px] text-muted-2">{t("frische.nachbarnMeldenHinweis")}</p>
           </div>
         ) : null}
       </Abschnitt>
@@ -2197,8 +2287,15 @@ export function MehrAbschnitte({
                   Zahl kommt über den EINEN Draht-Leser (`uebernahmeHerkunft`), denselben, den die
                   Fassungskarte unten benutzt. Der Rückfall auf den Autornamen bleibt Zeichen für
                   Zeichen: er gilt dem leeren Vermerk. */}
+              {/* R-0546: der Name an einer Fassung heisst „hat bearbeitet" — nie „verantwortlich".
+                  Er steht deshalb als „bearbeitet von …" da; ohne Autor steht nichts. */}
               <div data-bib-historie-vermerk={h.version} className="text-[12.5px] text-text">
-                {koHistoryNote(h.note, t) || nameOf(h.author)}
+                {koHistoryNote(h.note, t)}
+                {h.author ? (
+                  <span data-bib-historie-bearbeiter className="ml-1.5 text-muted">
+                    {t("verantwortung.bearbeitetVon", { name: nameOf(h.author) })}
+                  </span>
+                ) : null}
                 {((): JSX.Element | null => {
                   const herkunft = uebernahmeHerkunft(h);
                   return herkunft === null ? null : (
@@ -2285,28 +2382,149 @@ export function MehrAbschnitte({
             <dt className="text-muted">{t("lib.facet.maturity")}</dt>
             <dd className="font-mono text-text">{t(useReadiness(usability).labelKey)}</dd>
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.freshness")}</dt>
-            <dd className="font-mono text-text">
-              {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
-            <dd
-              className={cx(
-                "font-mono",
-                gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
-              )}
-            >
-              {t(gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no")}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.protection.ip")}</dt>
-            <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
-          </div>
+          {/* aufnahme:20260922:gesamt-wissen-frische (R-0207 / R-0652 / FR-EXT-06): zwei Sichten
+              je Objekt — Aktualität und Schutzbedarf — mit Empfehlung, vom Server abgeleitet.
+              Liefert der Lesepfad `frische` nicht, bleibt die bisherige Ableitung stehen. */}
+          {ko.frische ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.stufeLabel")}</dt>
+                <dd data-testid="frische-stufe" className="font-mono text-text">
+                  {t(`frische.stufe.${ko.frische.stufe}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.halbwertszeitLabel")}</dt>
+                <dd data-testid="frische-halbwertszeit" className="text-right font-mono text-text">
+                  {t(
+                    ko.frische.halbwertszeitHerkunft === "gelernt"
+                      ? "frische.halbwertszeitGelernt"
+                      : "frische.halbwertszeitVorgabe",
+                    {
+                      tage: ko.frische.halbwertszeitTage,
+                      anzahl: ko.frische.halbwertszeitBeobachtungen,
+                    },
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.haltbarBis")}</dt>
+                <dd className="font-mono text-text">
+                  {ko.frische.haltbarBis
+                    ? new Date(ko.frische.haltbarBis).toLocaleDateString()
+                    : t("frische.haltbarUnbekannt")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.verantwortlich")}</dt>
+                <dd className="text-right text-text">
+                  {nameOf(ko.frische.verantwortlich)}
+                  {ko.frische.verantwortlichArt === "author-fallback" ? (
+                    <span className="block text-[11px] text-muted-2">
+                      {t("frische.verantwortlichErsatz")}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.inDokumente")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    ko.frische.inDokumente ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(ko.frische.inDokumente ? "frische.ja" : "frische.nein")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.schutzLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.schutz.${ko.frische.schutz ?? "unbekannt"}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.betriebsmodellLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.betriebsmodell.${ko.frische.betriebsmodell}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.naechsterLabel")}</dt>
+                <dd data-testid="frische-naechster" className="text-right text-text">
+                  {t(`frische.naechster.${ko.frische.naechsterSchritt}`)}
+                </dd>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.freshness")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(
+                    gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no",
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.protection.ip")}</dt>
+                <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
+              </div>
+            </>
+          )}
         </dl>
+        {ko.frische && ko.status === "validiert" && !ko.frische.gesichert ? (
+          <p
+            data-testid="frische-nicht-gesichert"
+            className="mb-2 text-[12px] leading-relaxed text-trust-warn-text"
+          >
+            {t("frische.nichtGesichert")}
+          </p>
+        ) : null}
+        {ko.frische?.letztesSignal ? (
+          <p className="mb-2 text-[11.5px] text-muted-2">
+            {t("frische.letztesSignal", {
+              name: nameOf(ko.frische.letztesSignal.by),
+              datum: new Date(ko.frische.letztesSignal.at).toLocaleDateString(),
+            })}
+          </p>
+        ) : null}
+        {/* R-0206 / R-1746: „Stimmt weiterhin" für jeden Leser geprüften Wissens; R-1732: die
+            erneute Prüfung aus der Bibliothek für alle, die erfassen dürfen (`ko.create`). */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {ko.status === "validiert" ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-stimmt-weiterhin"
+              title={t("frische.stimmtWeiterhinHinweis")}
+              disabled={stimmtWeiterhin.isPending}
+              onClick={() => stimmtWeiterhin.mutate()}
+            >
+              {t("frische.stimmtWeiterhin")}
+            </Button>
+          ) : null}
+          {canEdit ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-erneut-pruefen"
+              disabled={erneutPruefen.isPending}
+              onClick={() => erneutPruefen.mutate()}
+            >
+              {t("frische.erneutPruefen")}
+            </Button>
+          ) : null}
+        </div>
         {/* SCRUM-168/175/170: Konsistenz, Frische und Gruppierung nach Fassung — nur bei
             erfolgreich geladenem Bestand, auch bei gescheiterter Auffrischung.
             Ein offline pausierter Erstabruf ist noch kein Bestand. */}
@@ -2584,6 +2802,9 @@ export function MehrAbschnitte({
                 return (
                   <div
                     data-bib-fassung-vergleich-flaeche
+                    // N-0057: Ziel der Vergleichsaktion an der Karte. `-1` nimmt den Fokus
+                    // programmatisch an, ohne ein zusätzlicher Tabulator-Halt zu werden.
+                    tabIndex={-1}
                     className="mb-3 rounded-input border border-hairline bg-surface p-2.5"
                   >
                     <div className="text-[12.5px] font-semibold text-text">
@@ -2609,48 +2830,9 @@ export function MehrAbschnitte({
                     ) : gegenueber.felder.length === 0 ? (
                       <p className="mt-2 text-[12.5px] text-muted">{t("ko.snapshotCompareNone")}</p>
                     ) : (
-                      <dl className="mt-2 grid gap-2">
-                        {gegenueber.felder.map((f) => {
-                          // Die Werte kommen als GESPEICHERTE Werte aus `koVersionDiff.ts`; Art und
-                          // Prüfstand sind dort Schlüssel. Eingesetzt werden sie über DIESELBEN
-                          // Kataloge, die die Karte oben schon benutzt — kein zweites Verzeichnis.
-                          const lesbar = (wert: string): JSX.Element =>
-                            wert.length === 0 ? (
-                              <span className="text-muted-2">{t("ko.snapshotFieldEmpty")}</span>
-                            ) : f.feld === "type" ? (
-                              <>{t(`ktype.${wert}`)}</>
-                            ) : f.feld === "status" ? (
-                              <>{t(`status.${wert}`)}</>
-                            ) : f.feld === "bodyHtml" ? (
-                              // DERSELBE EINE ZEICHENWEG wie am geöffneten Bericht (`:1962-1966`):
-                              // kein `dangerouslySetInnerHTML`, keine zweite Allowlist.
-                              <SanitizedHtml html={wert} className="prose-kw text-[12.5px]" />
-                            ) : (
-                              <>{wert}</>
-                            );
-                          return (
-                            <div key={f.feld} data-bib-fassung-vergleich-feld={f.feld}>
-                              <dt className="font-mono text-[10.5px] text-muted-2">
-                                {t(`ko.snapshotField.${f.feld}`)}
-                              </dt>
-                              <dd className="mt-0.5 grid gap-1 text-[12.5px] text-text">
-                                <div data-bib-vergleich-alt={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
-                                    {`v${gegenueber.von}`}
-                                  </span>
-                                  {lesbar(f.alt)}
-                                </div>
-                                <div data-bib-vergleich-neu={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
-                                    {`v${gegenueber.bis}`}
-                                  </span>
-                                  {lesbar(f.neu)}
-                                </div>
-                              </dd>
-                            </div>
-                          );
-                        })}
-                      </dl>
+                      // R-1055: dieselbe Gegenüberstellung wie im Editor, ältere Fassung links,
+                      // jüngere rechts (`Fassungsvergleich.tsx`). Die Marken bleiben dieselben.
+                      <FassungsGegenueberstellung gegenueber={gegenueber} />
                     )}
                   </div>
                 );
@@ -2710,21 +2892,48 @@ export function MehrAbschnitte({
                         // `koVersionDiff.ts` liest sich die Zeile jetzt als „Aussage · Ausführlicher
                         // Inhalt" — und „Keine Änderung in den Hauptfeldern" steht nur noch da, wenn
                         // ALLE sieben Felder gleich sind, den Bericht eingeschlossen.
+                        //
+                        // N-0057: die Zeile sagt, WAS sie ist („Geänderte Felder: …", „Erste
+                        // gespeicherte Version"), und hat einen Vorgänger, steht daneben die
+                        // Vergleichsaktion. Sie liegt VOR dem Öffnen-Knopf der Karte, damit die
+                        // gemessene Folge „Karte → Rückweg" (JOB 3560 T4) unverändert bleibt.
                         const diff = diffForVersion(fassungen, v.version);
                         if (!diff || diff.fromVersion === null) {
                           return (
-                            <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                              {t("ko.snapshotInitial")}
+                            <p
+                              data-bib-fassung-aenderung={v.key}
+                              className="mt-1 font-mono text-[10.5px] text-muted-2"
+                            >
+                              {t("fassungsangabe.ersteFassung")}
                             </p>
                           );
                         }
-                        return diff.changed.length === 0 ? (
-                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                            {t("ko.snapshotNoChanges")}
-                          </p>
-                        ) : (
-                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                            {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
+                        const von = diff.fromVersion;
+                        const geaendert = diff.changed.map((f) => t(`ko.snapshotField.${f}`));
+                        return (
+                          <p
+                            data-bib-fassung-aenderung={v.key}
+                            className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-2"
+                          >
+                            <span>
+                              {geaendert.length === 0
+                                ? t("ko.snapshotNoChanges")
+                                : t("fassungsangabe.geaenderteFelder", {
+                                    felder: geaendert.join(" · "),
+                                  })}
+                            </span>
+                            <button
+                              type="button"
+                              data-bib-fassung-vergleichen={v.key}
+                              aria-label={t("fassungsangabe.vergleichenName", {
+                                von,
+                                bis: v.version,
+                              })}
+                              onClick={() => mitVorgaengerVergleichen(von, v.version)}
+                              className="inline-flex cursor-pointer items-center rounded-btn border border-hairline px-2 py-0.5 font-sans text-[12px] font-semibold text-muted hover:text-text"
+                            >
+                              {t("fassungsangabe.vergleichen", { von })}
+                            </button>
                           </p>
                         );
                       })()}
