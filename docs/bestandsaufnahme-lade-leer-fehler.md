@@ -18,8 +18,11 @@ läuft durch ihn:
 
 - **Fehler** ⇒ Einblendung mit der Servermeldung (`ApiError`), sonst dem allgemeinen Fehlersatz.
 - **Erfolg** ⇒ die einheitliche Erfolgs-Einblendung („Erledigt.“, DE/EN/NL).
-- **Hat die Fläche ihre Aktion im selben Durchlauf schon selbst eingeblendet** (genauerer Satz,
-  z. B. „Quelle gespeichert“), tritt der zentrale Weg zurück — keine Doppelmeldung.
+- **Hat die Fläche DIESE Aktion in einem ihrer Rückrufe schon selbst eingeblendet** (genauerer
+  Satz, z. B. „Quelle gespeichert“), tritt der zentrale Weg für diese Aktion zurück — keine
+  Doppelmeldung. Die Zuordnung gilt je Aktion (Nacharbeit 11): die Einblendung einer anderen,
+  gleichzeitig abgeschlossenen Aktion unterdrückt nichts, ein Fehler neben einem Erfolg bleibt
+  sichtbar (Gegenprobe `zentrale-einblendung` Z6–Z8).
 - Meldungen am Formular (Erfassen, Anmeldung, Duplikate, Konflikte, …) bleiben an ihrem Ort; die
   Einblendung kommt **zusätzlich**. Damit ist keine Speicheraktion mehr von der einheitlichen
   Einblendung ausgenommen.

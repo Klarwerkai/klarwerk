@@ -44,24 +44,46 @@ const AUTO_DISMISS_MS = 4000;
 // React-Baums. Er erreicht den Bus deshalb über `einblenden`; jeder montierte `ToastProvider` hört
 // zu. Ohne Provider (Testvorrichtungen ohne Bus) verhallt die Meldung, statt abzustürzen.
 //
-// `einblendungsStand` zählt JEDE Einblendung, ob über `push` oder `einblenden`. Daran erkennt der
-// zentrale Weg, ob eine Fläche ihre Aktion im selben Durchlauf schon selbst gemeldet hat — dann
-// tritt er zurück, und es gibt keine Doppelmeldung.
+// DOPPELMELDUNG JE AKTION (Ben, Nacharbeit 11). Bis hierher zählte ein globaler Stand JEDE
+// Einblendung, und der zentrale Weg trat zurück, sobald sich der Stand bewegt hatte — gleich, wer
+// eingeblendet hatte. Schlossen zwei Aktionen zugleich ab, verschluckte die Meldung der einen die
+// der anderen (etwa ein Erfolg einen Fehler). Jetzt zählt eine Einblendung nur für DIE Aktion, in
+// deren Rückruf sie fällt: `inAktion` klammert die Rückrufe einer Mutation, `push` und `einblenden`
+// vermerken die gerade laufende Aktion, und `hatGemeldet` fragt genau diese eine ab. Eine
+// Einblendung ohne laufende Aktion (fremde Fläche, anderer Zeitpunkt) unterdrückt nichts.
 type Melder = (kind: ToastKind, message: string) => void;
 const melder = new Set<Melder>();
-let gezaehlt = 0;
+let laufendeAktion: object | null = null;
+const gemeldet = new WeakSet<object>();
 
-/** Eine Einblendung über den Bus, ohne Haken — für Stellen außerhalb des React-Baums. */
-export function einblenden(kind: ToastKind, message: string): void {
-  gezaehlt += 1;
-  for (const m of melder) {
-    m(kind, message);
+function vermerken(): void {
+  if (laufendeAktion !== null) {
+    gemeldet.add(laufendeAktion);
   }
 }
 
-/** Wie viele Einblendungen bisher ausgelöst wurden (über `push` oder `einblenden`). */
-export function einblendungsStand(): number {
-  return gezaehlt;
+/** Führt `f` als Rückruf der Aktion `aktion` aus — Einblendungen darin zählen für sie. */
+export function inAktion<T>(aktion: object, f: () => T): T {
+  const vorher = laufendeAktion;
+  laufendeAktion = aktion;
+  try {
+    return f();
+  } finally {
+    laufendeAktion = vorher;
+  }
+}
+
+/** Ob die Aktion in einem ihrer Rückrufe selbst eingeblendet hat. */
+export function hatGemeldet(aktion: object): boolean {
+  return gemeldet.has(aktion);
+}
+
+/** Eine Einblendung über den Bus, ohne Haken — für Stellen außerhalb des React-Baums. */
+export function einblenden(kind: ToastKind, message: string): void {
+  vermerken();
+  for (const m of melder) {
+    m(kind, message);
+  }
 }
 
 // ================================================================================================
@@ -98,10 +120,10 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
     timer.current.set(id, laufend);
   }, []);
 
-  // `push` der Flächen zählt mit (s. `einblendungsStand`) und zeigt in DIESEM Provider.
+  // `push` der Flächen vermerkt die laufende Aktion (s. `inAktion`) und zeigt in DIESEM Provider.
   const push = useCallback(
     (kind: ToastKind, message: string) => {
-      gezaehlt += 1;
+      vermerken();
       zeigen(kind, message);
     },
     [zeigen],

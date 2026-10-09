@@ -10,6 +10,9 @@
 //   Z3  meldet die Fläche selbst (eigener Satz), tritt der zentrale Weg zurück — genau EINE
 //   Z4  dasselbe für die Rückrufe aus `mutate(…, { onError })`
 //   Z5  ohne Provider verhallt die Meldung, statt abzustürzen
+//   Z6–Z8 (Ben, Nacharbeit 11) zwei Aktionen schließen zugleich ab — jede behält ihre Rückmeldung,
+//         insbesondere ein Fehler neben einem Erfolg; die Meldung der einen unterdrückt die der
+//         anderen nicht, und keine Aktion meldet sich doppelt
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   QueryClient,
@@ -68,7 +71,43 @@ function Flaeche({ art }: { art: Art }): ReturnType<typeof createElement> {
   );
 }
 
-async function mount(art: Art, mitBus = true): Promise<void> {
+type PaarArt = "erfolgEigenFehlerStumm" | "beideStumm" | "fehlerAmAufrufErfolgStumm";
+
+let ausgangA: () => Promise<unknown> = async () => ({});
+let ausgangB: () => Promise<unknown> = async () => ({});
+
+/** Zwei Aktionen derselben Fläche, die ein Klick zugleich auslöst und die zugleich abschließen. */
+function Paar({ art }: { art: PaarArt }): ReturnType<typeof createElement> {
+  const { push } = useToast();
+  const a = useMutation({
+    mutationFn: () => ausgangA(),
+    ...(art === "erfolgEigenFehlerStumm"
+      ? { onSuccess: () => push("success", "EIGENER ERFOLGSSATZ A") }
+      : {}),
+  });
+  const b = useMutation({ mutationFn: () => ausgangB() });
+  const ausloesen = (): void => {
+    if (art === "fehlerAmAufrufErfolgStumm") {
+      a.mutate(undefined, { onError: () => push("error", "FEHLERSATZ AM AUFRUF A") });
+    } else {
+      a.mutate();
+    }
+    b.mutate();
+  };
+  return createElement("button", {
+    type: "button",
+    "data-testid": "ausloesen",
+    onClick: ausloesen,
+  });
+}
+
+const PAARE: readonly string[] = [
+  "erfolgEigenFehlerStumm",
+  "beideStumm",
+  "fehlerAmAufrufErfolgStumm",
+];
+
+async function mount(art: Art | PaarArt, mitBus = true): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   const neu = createRoot(container);
@@ -77,13 +116,11 @@ async function mount(art: Art, mitBus = true): Promise<void> {
     mutationCache: einblendungsMutationCache(),
     defaultOptions: { mutations: { retry: false } },
   });
+  const flaeche = PAARE.includes(art)
+    ? createElement(Paar, { art: art as PaarArt })
+    : createElement(Flaeche, { art: art as Art });
   const inhalt = mitBus
-    ? createElement(
-        ToastProvider,
-        null,
-        createElement(Flaeche, { art }),
-        createElement(ToastViewport),
-      )
+    ? createElement(ToastProvider, null, flaeche, createElement(ToastViewport))
     : createElement("span", null, "ohne Bus");
   await act(async () => {
     neu.render(createElement(QueryClientProvider, { client: qc }, inhalt));
@@ -104,6 +141,8 @@ const einblendungen = (): string[] =>
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   ausgang = async () => ({});
+  ausgangA = async () => ({});
+  ausgangB = async () => ({});
 });
 
 afterEach(() => {
@@ -165,5 +204,40 @@ describe("R-0953 · der zentrale Weg meldet jede Speicheraktion", () => {
   it("Z5 · ohne Provider verhallt eine Einblendung, statt abzustürzen", async () => {
     await mount("erfolgStumm", false);
     expect(() => einblenden("success", "ohne Empfänger")).not.toThrow();
+  });
+});
+
+describe("R-0953 · zwei Aktionen zugleich — jede behält ihre Rückmeldung (Ben, Nacharbeit 11)", () => {
+  it("Z6 · eigener Erfolg der einen verschluckt den Fehler der anderen nicht", async () => {
+    ausgangB = async () => {
+      throw new ApiError(500, "fehler", "Speichern von B gescheitert.");
+    };
+    await mount("erfolgEigenFehlerStumm");
+    await ausloesen();
+    expect([...einblendungen()].sort()).toEqual(
+      ["EIGENER ERFOLGSSATZ A", "Speichern von B gescheitert."].sort(),
+    );
+  });
+
+  it("Z7 · zwei stumme Aktionen, Erfolg und Fehler ⇒ beide einheitlichen Einblendungen", async () => {
+    ausgangA = async () => {
+      throw new ApiError(409, "konflikt", "A wurde inzwischen geändert.");
+    };
+    await mount("beideStumm");
+    await ausloesen();
+    expect([...einblendungen()].sort()).toEqual(
+      ["A wurde inzwischen geändert.", i18n.t("einblendung.erledigt")].sort(),
+    );
+  });
+
+  it("Z8 · Fehlersatz am Aufruf der einen unterdrückt den Erfolg der anderen nicht — und doppelt sich nicht", async () => {
+    ausgangA = async () => {
+      throw new Error("weg");
+    };
+    await mount("fehlerAmAufrufErfolgStumm");
+    await ausloesen();
+    expect([...einblendungen()].sort()).toEqual(
+      ["FEHLERSATZ AM AUFRUF A", i18n.t("einblendung.erledigt")].sort(),
+    );
   });
 });
