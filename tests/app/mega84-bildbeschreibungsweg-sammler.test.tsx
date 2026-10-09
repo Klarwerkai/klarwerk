@@ -2484,9 +2484,24 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // übrigen 43 Fälle der Datei waren grün. Dieser Auftrag trägt weiterhin genau EIN Bauteil bei
     // (`VeroeffentlichungBereich`, schon in der 525); die 2 Komponenten darüber kamen mit dem
     // eingemischten Hauptstand (Grundmenge 677 → 682), namentlich ohne Git-Verlauf nicht bestimmt.
-    // `anbieter` 1 und `traeger` 2 sind unverändert.
+    // `anbieter` 1 und `traeger` 2 sind unverändert. (Dieser Lauf war ROT — 43 von 44 Fällen grün,
+    // dieser eine rot —, die 527 ist also eine Messung, kein bestandener Nachweis.)
+    //
+    // veroeffentlichungsoptionen Nacharbeit 17 (Ben: die 527 stammt aus einer überholten Grundmenge):
+    // zwischen dem gemessenen Kandidaten 476c51a3 und dem zusammengeführten Kandidaten ab7ec0b9 kamen
+    // mit dem Hauptstand GENAU ACHT Komponentendeklarationen dazu, am Baum nachgezählt:
+    //     + `MeineDatenDetail`, `FruehereAntraege`, `LoeschantragDetail`
+    //       (`components/datenschutz/MeineDaten.tsx`)
+    //     + `AntragZeile`, `AuskunftFuerKonto`, `BetroffenenrechteVerwaltung`
+    //       (`components/datenschutz/Verwaltung.tsx`)
+    //     + `NegativwissenFuehrung` (`components/erfassen/NegativwissenFuehrung.tsx`)
+    //     + `NegativwissenAnzeige` (`components/ko/NegativwissenAnzeige.tsx`)
+    // Keines zeigt ein Bild mit Bildbeschreibungsangebot (kein `CAPTION_AI_TEXT`) oder trägt
+    // `documentTitle`. Dieser Auftrag hat seit 476c51a3 kein Bauteil hinzugefügt. 527 + 8 = 535.
+    // EHRLICH GESAGT: GERECHNET, nicht gemessen — der Sammler muss am Kandidaten erneut laufen;
+    // weicht er ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 527,
+      komponenten: 535,
       anbieter: 1,
       traeger: 2,
     });
