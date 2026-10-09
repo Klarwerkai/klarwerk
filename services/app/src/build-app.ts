@@ -440,6 +440,12 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+// R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
+import {
+  InMemoryUebersetzungRepo,
+  PgUebersetzungRepo,
+  type UebersetzungRepo,
+} from "./uebersetzungen";
 import { verantwortungBeiAnlage } from "./verantwortung";
 import {
   InMemoryNachfolgeRepo,
@@ -563,6 +569,12 @@ export interface AppServices {
    * Dev-Betriebs verloren, verschwindet ein Foto — die sichere Richtung, kein ungefragtes Zeigen.
    */
   livewallFotos: LiveWallFotoRepo;
+  /**
+   * R-1034 / FR-I18N-02: die im Betrieb gepflegten Oberflächentexte und zusätzlich angelegten
+   * Sprachen (`uebersetzungen.ts`). Aus demselben Grund wie `brandingSettings` NICHT in `AppRepos`;
+   * im Postgres-Betrieb haltbar (`PgUebersetzungRepo`), sonst die In-Memory-Ablage.
+   */
+  uebersetzungen: UebersetzungRepo;
   /**
    * R-0466: das Interaktionsgedächtnis (`interaktionsgedaechtnis.ts`) — frühere Fragen, Antworten
    * und Vorlieben je Konto. Aus demselben Grund wie `livewallFotos` NICHT in `AppRepos`; im
@@ -1096,6 +1108,8 @@ export function assembleServices(
     verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     livewallFotos?: LiveWallFotoRepo;
+    // R-1034 / FR-I18N-02: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    uebersetzungen?: UebersetzungRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1476,6 +1490,8 @@ export function assembleServices(
     verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
+    // R-1034 / FR-I18N-02: die Übersetzungspflege — Postgres, wenn injiziert, sonst im Speicher.
+    uebersetzungen: opts.uebersetzungen ?? new InMemoryUebersetzungRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
@@ -1961,6 +1977,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
       // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
       livewallFotos: new PgLiveWallFotoRepo(pool),
+      // R-1034 / FR-I18N-02: gepflegte Oberflächentexte und angelegte Sprachen überleben Neustart
+      // und Deploy (`UEBERSETZUNGEN_SCHEMA`, angelegt von `migrate()`).
+      uebersetzungen: new PgUebersetzungRepo(pool),
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
@@ -4410,7 +4429,14 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
-  app.register(i18nRoutes(services.i18n));
+  // R-1034 / FR-I18N-02: die Oberflächentexte — öffentlich lesbar (die Anmeldemaske braucht sie vor
+  // jeder Sitzung), gepflegt ausschließlich mit `users.manage`.
+  app.register(
+    i18nRoutes(
+      { i18n: services.i18n, uebersetzungen: services.uebersetzungen, audit: services.audit },
+      guards,
+    ),
+  );
   // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).

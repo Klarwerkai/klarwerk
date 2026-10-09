@@ -954,6 +954,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "UI-Sprachstrings sind öffentlich lesbar.",
   },
+  // R-1034 / FR-I18N-02: die im Betrieb gepflegten Texte einer Sprache — dieselbe Klasse wie die
+  // beiden Lesewege darüber; die Anmeldemaske braucht sie vor jeder Sitzung.
+  "GET /api/i18n/:locale": {
+    protection: "public",
+    reason: "Im Betrieb gepflegte UI-Sprachstrings sind öffentlich lesbar wie die mitgelieferten.",
+  },
+  // Pflegen ist Verwaltung — dieselbe Schranke wie die Markenwahl.
+  "PUT /api/admin/i18n/:locale/:key": { protection: "users.manage" },
+  "DELETE /api/admin/i18n/:locale/:key": { protection: "users.manage" },
+  "PUT /api/admin/i18n-sprachen/:locale": { protection: "users.manage" },
 
   // --- Betriebsschalter (features-routes.ts) ---
   // AUFTRAG-mega46 Block F: Ja/Nein je Schalter, sonst nichts. BEWUSST nur „auth" und nicht
