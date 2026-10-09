@@ -115,7 +115,10 @@ describe("WP-UX-WOW-1 U6: Konflikte-Leerzustand erklärt", () => {
     expect(conflicts).toContain('t("con.emptyWhat")');
     expect(conflicts).toContain('t("con.emptyHow")');
     expect(conflicts).toContain('role === "admin"');
-    expect(conflicts).toContain('to="/import#beispielpakete"');
+    // ADMIN-16: die Beispielpakete wohnen in der Verwaltung unter Vorführdaten, nicht mehr auf
+    // `/import`; der alte Anker leitet die Importseite dorthin weiter (`pages/Stufe2.tsx`).
+    expect(conflicts).toContain('to={adminHref("vorfuehrdaten", "pakete")}');
+    expect(conflicts).toContain('t("betriebdemo.konfliktHinweis")');
   });
 
   it("der Beispielpakete-Kasten trägt den Anker und scrollt beim Deep-Link hin", () => {

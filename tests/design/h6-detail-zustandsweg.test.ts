@@ -1682,6 +1682,19 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
    */
   function zusatzOrte(): InhaltsOrt[] {
     return [
+      // ADMIN-16: die beiden früheren Kästen der Importseite, jetzt Karten unter „Vorführdaten".
+      {
+        reiter: t("adm.sec.vorfuehrdaten"),
+        zeile: '[data-testid="zeile-demopakete"]',
+        behaelter: "detail-pakete",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.vorfuehrdaten"),
+        zeile: '[data-testid="zeile-testimporte"]',
+        behaelter: "detail-testimporte",
+        seitenPfad: "/admin",
+      },
       {
         reiter: t("adm.sec.konten"),
         zeile: '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',

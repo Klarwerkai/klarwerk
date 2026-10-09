@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
@@ -51,10 +51,8 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
-import { ExamplePackages } from "../components/ExamplePackages";
 import { HelpTip } from "../components/HelpTip";
 import { ImportAccessPanel } from "../components/ImportAccessPanel";
-import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
 // WP-COCKPIT-LINIE: geführte Schritt-Leiste über dem Cockpit + klar abgegrenzter, eingeklappter
 // Verlauf (Pedis Stör-Befund zur Queue unter dem Cockpit).
@@ -79,6 +77,7 @@ import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 // Rahmen — Begruendung an der Einhaengestelle in `ImportReview`.
 import { SharePointImportBereich } from "../components/sharepoint-import/SharePointImportBereich";
 import { Button, Card, PageHeader, QueryState, SectionLabel, cx } from "../components/ui";
+import { adminHref } from "../lib/adminSections";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
 // JOB 4293 R2 (§ 9): DIE Regel des Hauses darüber, was eine Leseabfrage gerade weiss — dieselbe,
@@ -152,6 +151,9 @@ import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
+
+/** ADMIN-16: die Anker der früheren Paket-Kästen auf `/import` — sie führen in die Verwaltung. */
+const ALTE_PAKET_ANKER: readonly string[] = ["#beispielpakete", "#demopakete"];
 
 // JOB 691 / D-021: DER INTERNE VORGANGSCHIP IST HIER RAUS.
 //
@@ -1192,6 +1194,16 @@ function ImportKandidatKarte({
 export function ImportReview(): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  // ADMIN-16: die alten Direktlinks auf die Paket-Kästen dieser Seite (`/import#beispielpakete`,
+  // `/import#demopakete`) bleiben gültig — sie führen jetzt auf deren Karte in der Verwaltung.
+  // `replace`: der Zurück-Weg soll nicht auf die Weiterleitung selbst zeigen.
+  const navigate = useNavigate();
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (ALTE_PAKET_ANKER.includes(hash)) {
+      navigate(adminHref("vorfuehrdaten", "pakete"), { replace: true });
+    }
+  }, [hash, navigate]);
   const { push } = useToast();
   const query = useImportCandidates();
   // JOB 4293 R2 (§ 9): die Lage der Warteschlange, EINMAL für alle Karten abgeleitet — sie stammen
@@ -1428,11 +1440,10 @@ export function ImportReview(): JSX.Element {
         )}
       </ImportHistorySection>
 
-      {/* WP-B6: kuratierte Beispielpakete für die VIP-2-Tester — gezielte Szenarien statt Datenberg. */}
-      <ExamplePackages />
-
-      {/* WP-D-CLEAN (Pedis Entscheid): klar abgesetzter Aufräum-Kasten — zweistufig, nie automatisch. */}
-      <ImportCleanup />
+      {/* ADMIN-16: Beispiel-/Demopakete (WP-B6, JOB 3277) und das Aufräumen von Testimporten
+          (WP-D-CLEAN) standen hier zwischen Prüfliste und Seitenende. Der produktive Import zeigt
+          jetzt nur noch Quelle, Auswahl, Prüfung und Bilanz; beide Werkzeuge wohnen in der
+          Verwaltung unter „Vorführdaten" (`pages/AdminDemoDetails.tsx`). */}
     </div>
   );
 }
