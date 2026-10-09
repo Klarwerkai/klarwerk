@@ -258,7 +258,8 @@ const ADVISOR_PAKET = "advisor-ict-en-v1";
  * WAS UNBERÜHRT BLEIBT (Auftrag §5): die Rückfrage vor dem frischen Laden (`force`), der
  * Entfernen-Weg samt seiner Bestätigung, das Erscheinungsbild als eigener, ungekoppelter Abschnitt
  * — und die Rücksetzlogik aus JOB 3277. Zurücksetzen und paketbezogenes Entfernen wohnen weiterhin
- * NUR im Demopaket-Kasten auf `/import` (`components/ExamplePackages.tsx`); hier steht der eine
+ * NUR im Demopaket-Kasten (`components/ExamplePackages.tsx`, seit ADMIN-16 in der Nachbarkarte
+ * „Beispiel- und Demopakete" statt auf `/import`); hier steht der eine
  * Handgriff, den Pedi hier verlangt hat. Eine zweite Fassung der Eingriffe wäre eine zweite
  * Wahrheit über denselben Bestand.
  *
@@ -653,10 +654,12 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             const paket = liste.packages.find((p) => p.id === ADVISOR_PAKET);
             if (paket === undefined) {
               // EHRLICHE LÜCKE STATT ERFUNDENER KENNUNG (Auftrag §4): kein Knopf, keine Zusage.
-              // Der Wortlaut ist der, den diese Fläche für „gibt es hier nicht" schon führt.
+              // ADMIN-16: bis hierher stand hier der Satz des Werksresets („… gibt es nur im
+              // Desktop-Betrieb") — ein falscher Grund. Jetzt nennt er den echten Grund und wer
+              // zuständig ist.
               return (
                 <p data-testid="advisor-fehlt" className="mt-1 text-[12.5px] text-muted-2">
-                  {t("adm.factory.unavailable")}
+                  {t("betriebdemo.paketFehlt")}
                 </p>
               );
             }

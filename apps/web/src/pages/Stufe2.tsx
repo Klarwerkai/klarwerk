@@ -4,7 +4,6 @@ import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-quer
 import {
   ArrowDown,
   ArrowUp,
-  Building2,
   ChevronDown,
   Copy,
   Download,
@@ -15,7 +14,7 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
@@ -51,10 +50,8 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
-import { ExamplePackages } from "../components/ExamplePackages";
 import { HelpTip } from "../components/HelpTip";
 import { ImportAccessPanel } from "../components/ImportAccessPanel";
-import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
 // WP-COCKPIT-LINIE: geführte Schritt-Leiste über dem Cockpit + klar abgegrenzter, eingeklappter
 // Verlauf (Pedis Stör-Befund zur Queue unter dem Cockpit).
@@ -74,6 +71,7 @@ import { WissensSprints } from "../components/WissensSprints";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
+import { Wissenshaus } from "../components/Wissenshaus";
 import { WochenupdateTeamgespraech } from "../components/WochenupdateTeamgespraech";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
@@ -81,6 +79,7 @@ import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 // Rahmen — Begruendung an der Einhaengestelle in `ImportReview`.
 import { SharePointImportBereich } from "../components/sharepoint-import/SharePointImportBereich";
 import { Button, Card, PageHeader, QueryState, SectionLabel, cx } from "../components/ui";
+import { adminHref } from "../lib/adminSections";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
 // JOB 4293 R2 (§ 9): DIE Regel des Hauses darüber, was eine Leseabfrage gerade weiss — dieselbe,
@@ -154,6 +153,9 @@ import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
+
+/** ADMIN-16: die Anker der früheren Paket-Kästen auf `/import` — sie führen in die Verwaltung. */
+const ALTE_PAKET_ANKER: readonly string[] = ["#beispielpakete", "#demopakete"];
 
 // JOB 691 / D-021: DER INTERNE VORGANGSCHIP IST HIER RAUS.
 //
@@ -1200,6 +1202,16 @@ function ImportKandidatKarte({
 export function ImportReview(): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  // ADMIN-16: die alten Direktlinks auf die Paket-Kästen dieser Seite (`/import#beispielpakete`,
+  // `/import#demopakete`) bleiben gültig — sie führen jetzt auf deren Karte in der Verwaltung.
+  // `replace`: der Zurück-Weg soll nicht auf die Weiterleitung selbst zeigen.
+  const navigate = useNavigate();
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (ALTE_PAKET_ANKER.includes(hash)) {
+      navigate(adminHref("vorfuehrdaten", "pakete"), { replace: true });
+    }
+  }, [hash, navigate]);
   const { push } = useToast();
   const query = useImportCandidates();
   // JOB 4293 R2 (§ 9): die Lage der Warteschlange, EINMAL für alle Karten abgeleitet — sie stammen
@@ -1436,11 +1448,10 @@ export function ImportReview(): JSX.Element {
         )}
       </ImportHistorySection>
 
-      {/* WP-B6: kuratierte Beispielpakete für die VIP-2-Tester — gezielte Szenarien statt Datenberg. */}
-      <ExamplePackages />
-
-      {/* WP-D-CLEAN (Pedis Entscheid): klar abgesetzter Aufräum-Kasten — zweistufig, nie automatisch. */}
-      <ImportCleanup />
+      {/* ADMIN-16: Beispiel-/Demopakete (WP-B6, JOB 3277) und das Aufräumen von Testimporten
+          (WP-D-CLEAN) standen hier zwischen Prüfliste und Seitenende. Der produktive Import zeigt
+          jetzt nur noch Quelle, Auswahl, Prüfung und Bilanz; beide Werkzeuge wohnen in der
+          Verwaltung unter „Vorführdaten" (`pages/AdminDemoDetails.tsx`). */}
     </div>
   );
 }
@@ -1615,30 +1626,15 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         </div>
       </Card>
 
-      {/* FE-MGMT-08: Knowledge House */}
+      {/* FE-MGMT-08 / FR-EXT-05: Knowledge House — Stockwerke je Fachgebiet, Import → Haus → Ausgabe
+          (R-0768; components/Wissenshaus). */}
       <Card id={sectionAnchor("house")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.house")}</SectionLabel>
         <HelpTip title={t("mgmt.house")} body={t("shelp.mgmt.house")} />
         {snap.house.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
         ) : (
-          <ul className="mt-2 space-y-1.5">
-            {snap.house.map((f) => (
-              <li
-                key={f.category}
-                className={`flex items-center gap-2 rounded-input border px-2.5 py-2 ${
-                  f.fragile ? "border-trust-crit-fill/30 bg-trust-crit-bg" : "border-hairline"
-                }`}
-              >
-                <Building2 size={14} className="text-muted-2" />
-                <span className="min-w-0 flex-1 truncate text-[13px] text-text">{f.category}</span>
-                <span className="font-mono text-[11px] text-muted-2">
-                  {f.koCount} · {f.validatedRatio}% ·{" "}
-                  {t(f.fragile ? "mgmt.fragile" : "mgmt.stable")}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <Wissenshaus floors={snap.house} flow={snap.houseFlow} />
         )}
       </Card>
 

@@ -102,7 +102,30 @@ export interface Ungeklaert {
   vertretung: KontoKurz[];
 }
 
+/** ADMIN-04: je Konto die Zahlen der Kontenliste. `vorgaenge: null` heisst „nicht erhoben". */
+export interface KontoVerantwortung {
+  id: string;
+  zugang: Zugangsstand;
+  beitraege: number;
+  vorgaenge: { entwuerfe: number; luecken: number; pruefaufgaben: number } | null;
+}
+
+export interface Kontenuebersicht {
+  erhobenAm: string;
+  personen: KontoVerantwortung[];
+}
+
+export interface OffeneVorgaenge {
+  entwuerfe: { id: string }[];
+  luecken: { id: string }[];
+  /** `titel: null`, wenn der Handelnde den Beitrag nicht lesen darf. */
+  pruefaufgaben: { koId: string; titel: string | null }[];
+}
+
 export const verantwortungApi = {
+  uebersicht: () => api.get<Kontenuebersicht>("/verantwortung/uebersicht"),
+  vorgaenge: (personId: string) =>
+    api.get<OffeneVorgaenge>(`/verantwortung/person/${encodeURIComponent(personId)}/vorgaenge`),
   bestand: (personId: string) =>
     api.get<Bestand>(`/verantwortung/person/${encodeURIComponent(personId)}`),
   ungeklaert: () => api.get<Ungeklaert>("/verantwortung/ungeklaert"),
