@@ -456,6 +456,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/check-text": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "GET /api/gaps/summary": { protection: "ko.read" },
   "GET /api/gaps": { protection: "ko.read" },
+  // R-1663 / R-2178: Ansprechpartner zu einer Lücke — hinter Schalter `expertMatching`, Objekt-
+  // grundlage je Zeile über `sichtbarkeitsfilterFuer` begrenzt.
+  "GET /api/gaps/:id/ansprechpartner": {
+    protection: "ko.assign",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "PUT /api/gaps/:id": { protection: "ko.assign" },
   "DELETE /api/gaps/:id": { protection: "ko.validate" },
 
@@ -583,6 +589,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Lifecycle / Learning paths (lifecycle-routes.ts) ---
   "POST /api/lifecycle/couple": { protection: "ko.create" },
   "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
+  // R-0554 / R-2128: Wissensübergabe beim Ausscheiden — Vorschau und Ausführung, nur Verwaltung.
+  "POST /api/lifecycle/handover/preview": { protection: "users.manage" },
+  "POST /api/lifecycle/handover": { protection: "users.manage" },
   // AUFTRAG-JOB2020 (G7b): die Liste faellliger Kennungen faehrt seit heute ein Zeilenrecht —
   // `sichtbareEintraege` ueber die Kennungen aus `pendingRevalidation()` (`lifecycle-routes.ts:98`).
   // Davor gingen die Kennungen vertraulicher Objekte an jeden `ko.read`-Inhaber, obwohl
@@ -773,6 +782,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+
+  // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
+  // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
+  // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.
+  "GET /api/verantwortung/person/:id": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "GET /api/verantwortung/ungeklaert": { protection: "users.manage" },
+  "POST /api/verantwortung/vorschau": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/verantwortung/uebergabe": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/verantwortung/deaktivierung": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
 
   // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
   // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit
