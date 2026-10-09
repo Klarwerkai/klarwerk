@@ -11,6 +11,11 @@
 //
 // DIE ENTSCHEIDUNG DAHINTER, in Pedis Worten zu JOB 671: EINE Stelle vergibt Identität. Deshalb
 // steht die Regel hier und nicht an jedem Schreibrand einzeln.
+//
+// R-0082 (aufnahme:20260922:gesamt-wissen-metadaten): seit dieser Regel trägt das Objekt MEHRERE
+// Anlagen in `assets`; `asset` spiegelt die erste. Die drei Helfer unten sind die eine Stelle, die
+// Liste zu bilden (`normalizeAssets`), zu lesen (`anlagenVon`) und auf beide Felder abzubilden
+// (`anlagenFelder`).
 import type { KnowledgeObject } from "./types";
 
 /**
@@ -46,4 +51,53 @@ export function normalizeAsset(value: unknown): KnowledgeObject["asset"] {
   }
   const normalisiert = value.normalize("NFC").replace(/\s+/g, " ").trim();
   return normalisiert.length > 0 ? normalisiert : null;
+}
+
+/**
+ * R-0082: die Normalform einer Anlagenliste — jeder Eintrag durch `normalizeAsset`, leere und
+ * doppelte Einträge fallen weg, die Reihenfolge der Eingabe bleibt. Alles, was keine Liste ist,
+ * ist die leere Liste.
+ */
+export function normalizeAssets(value: unknown): string[] {
+  const liste: string[] = [];
+  if (!Array.isArray(value)) {
+    return liste;
+  }
+  for (const eintrag of value) {
+    const kennung = normalizeAsset(eintrag);
+    if (kennung !== null && !liste.includes(kennung)) {
+      liste.push(kennung);
+    }
+  }
+  return liste;
+}
+
+/**
+ * R-0082: die Anlagen eines Objekts — DIE Lesestelle. Trägt das Objekt `assets`, gilt die Liste;
+ * Altbestand ohne `assets` liefert seine Einzelzuordnung aus `asset` (oder keine).
+ */
+export function anlagenVon(ko: { asset?: string | null; assets?: readonly string[] }): string[] {
+  if (Array.isArray(ko.assets)) {
+    return normalizeAssets(ko.assets);
+  }
+  const einzeln = normalizeAsset(ko.asset);
+  return einzeln === null ? [] : [einzeln];
+}
+
+/**
+ * R-0082: bildet eine kanonische Liste auf die gespeicherten Felder ab. Beide entstehen NUR hier.
+ *
+ * EINE Anlage (oder keine) wird genau so gespeichert wie vor dieser Regel — nur `asset`. Erst ab
+ * ZWEI Anlagen steht die Liste in `assets`, und `asset` spiegelt deren erste. So bleibt jede
+ * vorhandene Einzelzuordnung in ihrer Gestalt erhalten (kein Nebeneinander von `asset` und einer
+ * einelementigen Liste, das auseinanderlaufen könnte), und gelesen wird beides über `anlagenVon`.
+ */
+export function anlagenFelder(liste: readonly string[]): {
+  asset: string | null;
+  assets?: string[];
+} {
+  const anlagen = normalizeAssets(liste);
+  return anlagen.length > 1
+    ? { asset: anlagen[0] ?? null, assets: anlagen }
+    : { asset: anlagen[0] ?? null };
 }
