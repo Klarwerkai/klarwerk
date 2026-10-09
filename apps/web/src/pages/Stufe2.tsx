@@ -74,6 +74,7 @@ import { WissensSprints } from "../components/WissensSprints";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
+import { WochenupdateTeamgespraech } from "../components/WochenupdateTeamgespraech";
 // F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
 import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 // JOB 4086: der SharePoint-/OneDrive-Weg. Er haengt an DIESER Seite und nicht an einem eigenen
@@ -435,6 +436,12 @@ export function Output(): JSX.Element {
           </div>
         </Card>
       ) : null}
+
+      {/* RECHERCHE:pmo-fea-0004: das Wissensupdate fürs Teamgespräch — eigener Weg ohne
+          Quellenauswahl (der Zeitraum wählt), auf Abruf und ohne Versand. */}
+      <div className="mt-4">
+        <WochenupdateTeamgespraech />
+      </div>
     </div>
   );
 }
@@ -1082,7 +1089,7 @@ function ImportKandidatKarte({
               ) : null}
               {f.acceptedKo ? (
                 <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-pos-text">
-                  {t("ext.finding.acceptedKo")}
+                  {t("fachwort.fund.angelegt")}
                 </span>
               ) : null}
               {/* JOB 3116 (Q2c): WORAUF dieser Wiederimport getroffen ist — mit der
@@ -1781,8 +1788,8 @@ function ReasonerRunsCard(): JSX.Element {
   }));
   return (
     <Card className="mt-4" data-testid="mrun-card">
-      <SectionLabel>{t("mrun.title")}</SectionLabel>
-      <HelpTip title={t("mrun.title")} body={t("shelp.mrun.title")} />
+      <SectionLabel>{t("fachwort.kiLaeufe.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.kiLaeufe.titel")} body={t("shelp.mrun.title")} />
       <WindowNote loaded={geladen?.length ?? 0} limit={50} source="modelRuns" />
       {geladen === undefined ? (
         // Noch nie Daten gesehen: nur hier darf ein Zustandstext die Karte ersetzen. Offline zählt
@@ -1796,7 +1803,7 @@ function ReasonerRunsCard(): JSX.Element {
         <>
           {/* Eine erfolgreiche Antwort liegt vor: die Störung ersetzt nichts, sie sagt nur, warum
               der Stand nicht aktuell sein muss. Sie steht ÜBER beiden Fällen — auch das leere
-              „Noch keine Reasoner-Läufe protokolliert." wäre offline sonst eine Tatsachenaussage
+              „Noch keine KI-Läufe protokolliert." wäre offline sonst eine Tatsachenaussage
               über einen Bestand, der gerade gar nicht abgefragt werden kann. Offline und
               gescheiterte Auffrischung sind zwei Auskünfte und werden nicht zu einer verschmolzen. */}
           {stoerung === "offline" ? (
@@ -1809,7 +1816,7 @@ function ReasonerRunsCard(): JSX.Element {
             </p>
           ) : null}
           {records.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("mrun.empty")}</p>
+            <p className="text-[13px] text-muted">{t("fachwort.kiLaeufe.leer")}</p>
           ) : (
             <>
               <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2136,8 +2143,8 @@ function ReasonerConfigCard(): JSX.Element {
   const config = useReasonerConfig();
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("rcfg.title")}</SectionLabel>
-      <HelpTip title={t("rcfg.title")} body={t("shelp.rcfg.title")} />
+      <SectionLabel>{t("fachwort.kiEinstellung.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.kiEinstellung.titel")} body={t("shelp.rcfg.title")} />
       {config.isLoading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : config.isError || !config.data ? (
@@ -2200,15 +2207,15 @@ function EvidenceIndexCard(): JSX.Element {
   const summary = summarizeEvidence(index.data ?? []);
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("evx.title")}</SectionLabel>
-      <HelpTip title={t("evx.title")} body={t("shelp.evx.title")} />
+      <SectionLabel>{t("fachwort.belegIndex.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.belegIndex.titel")} body={t("shelp.evx.title")} />
       <WindowNote loaded={index.data?.length ?? 0} limit={500} source="evidence" />
       {index.isLoading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : index.isError ? (
         <p className="text-[13px] text-danger">{t("state.error")}</p>
       ) : records.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("evx.empty")}</p>
+        <p className="text-[13px] text-muted">{t("fachwort.belegIndex.leer")}</p>
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2231,7 +2238,7 @@ function EvidenceIndexCard(): JSX.Element {
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[12px] text-text">{r.label}</span>
                 <span className="font-mono text-[10px] text-muted-2">
-                  {t("evx.koRef", { id: r.koId })}
+                  {t("fachwort.belegIndex.objekt", { id: r.koId })}
                 </span>
                 {r.provider ? (
                   <span className="rounded-pill bg-surface px-1.5 py-0.5 font-mono text-[9.5px] text-muted-2 ring-1 ring-hairline">
@@ -2279,8 +2286,8 @@ function ProvenanceIndexCard(): JSX.Element {
   const rows = index.rows.slice(0, 12);
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("prov.title")}</SectionLabel>
-      <HelpTip title={t("prov.title")} body={t("shelp.prov.title")} />
+      <SectionLabel>{t("fachwort.herkunft.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.herkunft.titel")} body={t("shelp.prov.title")} />
       {/* SCRUM-177: Provenance nutzt den Evidence-Stand als bekannt → Fenster-Hinweis. */}
       <WindowNote loaded={evidence.data?.length ?? 0} limit={500} source="evidence" />
       {loading ? (
@@ -2292,14 +2299,14 @@ function ProvenanceIndexCard(): JSX.Element {
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
-            <span>{t("prov.total", { n: index.summary.totalKOs })}</span>
+            <span>{t("fachwort.herkunft.gesamt", { n: index.summary.totalKOs })}</span>
             <span>{t("prov.transfer", { n: index.summary.withTransfer })}</span>
             <span>{t("prov.multiVersion", { n: index.summary.multiVersion })}</span>
-            <span>{t("prov.withEvidence", { n: index.summary.withEvidence })}</span>
+            <span>{t("fachwort.herkunft.mitBeleg", { n: index.summary.withEvidence })}</span>
             <span
               className={index.summary.withoutEvidence > 0 ? "text-trust-warn-text" : undefined}
             >
-              {t("prov.noEvidence", { n: index.summary.withoutEvidence })}
+              {t("fachwort.herkunft.ohneBeleg", { n: index.summary.withoutEvidence })}
             </span>
           </div>
           <ul className="divide-y divide-hairline">
@@ -2315,7 +2322,7 @@ function ProvenanceIndexCard(): JSX.Element {
                   {t("prov.version", { n: String(r.version) })}
                 </span>
                 <span className="font-mono text-[10px] text-muted-2">
-                  {t("prov.counts", {
+                  {t("fachwort.herkunft.zaehler", {
                     sources: String(r.sourceCount),
                     attachments: String(r.attachmentCount),
                     evidence: String(r.evidenceCount),
@@ -2330,7 +2337,9 @@ function ProvenanceIndexCard(): JSX.Element {
                         : "bg-ai-surface-1 text-ai"
                     }`}
                   >
-                    {t(`prov.badge.${w}`)}
+                    {t(
+                      w === "no-evidence" ? "fachwort.herkunft.markeOhneBeleg" : `prov.badge.${w}`,
+                    )}
                   </span>
                 ))}
               </li>
@@ -2427,8 +2436,8 @@ function KnowledgeOsHintsCard(): JSX.Element {
   return (
     <Card className="mt-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <SectionLabel>{t("readiness.title")}</SectionLabel>
-        <HelpTip title={t("readiness.title")} body={t("shelp.readiness.title")} />
+        <SectionLabel>{t("fachwort.bereitschaft.titel")}</SectionLabel>
+        <HelpTip title={t("fachwort.bereitschaft.titel")} body={t("shelp.readiness.title")} />
         <span
           className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
             READINESS_TONE_CLASS[readiness.readiness] ?? "bg-hairline-soft text-muted-2"
@@ -2442,8 +2451,8 @@ function KnowledgeOsHintsCard(): JSX.Element {
           {readiness.reasons.map((r) => t(`readiness.reason.${r}`)).join(" · ")}
         </p>
       ) : null}
-      <SectionLabel>{t("kos.hintsTitle")}</SectionLabel>
-      <HelpTip title={t("kos.hintsTitle")} body={t("shelp.kos.hintsTitle")} />
+      <SectionLabel>{t("fachwort.qm.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.qm.titel")} body={t("shelp.kos.hintsTitle")} />
       {loading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
       ) : (
@@ -2513,9 +2522,9 @@ function EvidenceFreshnessCard(): JSX.Element {
   });
   return (
     <Card className="mt-4">
-      <SectionLabel>{t("evFresh.title")}</SectionLabel>
-      <HelpTip title={t("evFresh.title")} body={t("shelp.evFresh.title")} />
-      <p className="mb-1 text-[12px] text-muted">{t("evFresh.subtitle")}</p>
+      <SectionLabel>{t("fachwort.belegFrische.titel")}</SectionLabel>
+      <HelpTip title={t("fachwort.belegFrische.titel")} body={t("shelp.evFresh.title")} />
+      <p className="mb-1 text-[12px] text-muted">{t("fachwort.belegFrische.untertitel")}</p>
       <WindowNote loaded={evidence.data?.length ?? 0} limit={500} source="evidence" />
       {loading ? (
         <p className="text-[13px] text-muted">{t("state.loading")}</p>
@@ -2534,7 +2543,7 @@ function EvidenceFreshnessCard(): JSX.Element {
             <span>{t("evFresh.summary.neutral", { n: index.summary.neutral })}</span>
           </div>
           {index.affected.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("evFresh.empty")}</p>
+            <p className="text-[13px] text-muted">{t("fachwort.belegFrische.leer")}</p>
           ) : (
             <ul className="divide-y divide-hairline">
               {index.affected.map((r) => (

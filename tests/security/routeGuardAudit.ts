@@ -690,6 +690,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Output (output-routes.ts) ---
   "GET /api/output/sources": { protection: "ko.read" },
   "POST /api/output/generate": { protection: "ko.read" },
+  // RECHERCHE:pmo-fea-0004: Wissensupdate fürs Teamgespräch (read-only, kein Versand).
+  "GET /api/output/wochenupdate": { protection: "ko.read" },
 
   // --- Lernplattform-Übergabe (lms-export-routes.ts) ---
   "POST /api/output/scorm/pruefen": { protection: "ko.read" },

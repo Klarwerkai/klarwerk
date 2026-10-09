@@ -6186,6 +6186,12 @@ export function CaptureArbeitsraum({
                   // E2E-008: bewusster Start VOR jedem Cloud-Lauf. Provider-/Region-/Kostenhinweis
                   // (AiModelInfo) steht am Knopf; erst der Klick löst den ersten ModelRun aus.
                   <div data-help="cap:interview" className="space-y-3">
+                    {/* R-0957 / R-1926: das Lehrlingsbild — an das gebunden, was der Weg wirklich
+                        tut (Rückfragen, Einreichen, Teamprüfung) und ausdrücklich OHNE Lernzusage
+                        (`texte/lehrling.ts`, bewacht von `tests/app/learning-claim-guard.test.ts`). */}
+                    <p className="text-[13px] text-muted" data-testid="interview-lehrling">
+                      {t("lehrling.interview.rahmen")}
+                    </p>
                     <p className="text-[13px] text-muted">{t("capture.ivStartLead")}</p>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button variant="primary" onClick={() => startInterview()}>
