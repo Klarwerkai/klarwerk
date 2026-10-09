@@ -1280,6 +1280,13 @@ export class AuthService {
     return verifyPassword(password, user.passwordSalt, user.passwordHash);
   }
 
+  // R-0582: Hat das Konto überhaupt ein lokales Passwort? Reine SSO-Konten nicht (`loginWithOidc`
+  // legt sie mit leerem Hash an) — für sie ist die Identitätsbestätigung die erneute SSO-Anmeldung.
+  async hatLokalesPasswort(userId: string): Promise<boolean> {
+    const user = await this.users.findById(userId);
+    return Boolean(user?.passwordHash);
+  }
+
   /**
    * FR-AUTH-02 / FR-RBAC-02: Admin gibt Konto frei.
    *
@@ -1462,6 +1469,65 @@ export class AuthService {
     await this.users.update(user);
     await this.sessions.deleteByUser(userId);
     await this.record(userId, "user.password-changed", userId);
+  }
+
+  /**
+   * R-0582 (DS13, DSGVO Art. 16): KONTODATEN BERICHTIGEN — Name und E-Mail, selbst oder durch einen
+   * Admin. EIN Weg für beide; ob es die eigene Berichtigung war, sagt `actorId === userId`.
+   *
+   * Die FORM (Zeichenkette, nicht leer, Adressgestalt) prüft die Route, wie beim Anlegen. Hier
+   * urteilt die BEDEUTUNG: ist die Adresse an einem ANDEREN Konto vergeben (gleiche Schreibweise
+   * ohne Gross/Klein, wie `findByEmail` in beiden Ablagen), wird nichts geschrieben.
+   *
+   * DER VERLAUF BLEIBT ERHALTEN: jede wirksame Berichtigung steht als `user.account-corrected` im
+   * Prüfprotokoll — mit den geänderten Feldern, dem Namen von vorher und dem neuen. Die ADRESSEN
+   * selbst stehen dort nicht (dieselbe Grenze wie bei `user.created`: das Protokoll ist
+   * anhängend und keine zweite Ablage für Anschriften); dass die Adresse geändert wurde, steht da.
+   * Vermerk vor Schreiben in EINEM Rahmen, wie `approveUser`. Ohne Änderung kein Eintrag.
+   */
+  async correctAccountData(
+    userId: string,
+    input: { name?: string; email?: string },
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const name = input.name === undefined ? user.name : input.name.trim();
+    const email = input.email === undefined ? user.email : input.email.trim();
+    const felder: ("name" | "email")[] = [];
+    if (name !== user.name) {
+      felder.push("name");
+    }
+    if (email !== user.email) {
+      felder.push("email");
+    }
+    if (felder.length === 0) {
+      return toPublic(user);
+    }
+    if (felder.includes("email")) {
+      const vergeben = await this.users.findByEmail(email);
+      if (vergeben && vergeben.id !== userId) {
+        throw new AuthError("EMAIL_TAKEN", "EMAIL_TAKEN" satisfies Meldungsschluessel);
+      }
+    }
+    const actor = actorId === userId ? user : await this.users.findById(actorId);
+    const aktualisiert: User = { ...user, name, email };
+    await this.gemeinsamSchreiben(async (tx) => {
+      await this.record(
+        actorId,
+        "user.account-corrected",
+        userId,
+        {
+          fields: felder,
+          via: actorId === userId ? "self" : "admin",
+          previousName: user.name,
+          targetName: name,
+          ...(actor ? { actorName: actorId === userId ? name : actor.name } : {}),
+        },
+        tx,
+      );
+      await this.users.update(aktualisiert, tx);
+    });
+    return toPublic(aktualisiert);
   }
 
   // FR-AUTH-08: Reset anfordern — erzeugt einen kurzlebigen Token. Unbekannte E-Mail → undefined
