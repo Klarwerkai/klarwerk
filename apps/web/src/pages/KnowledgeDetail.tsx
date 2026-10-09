@@ -8,6 +8,7 @@ import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SpaceZeile } from "../components/SpaceZeile";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
+import { FASSUNG_PARAM, STELLE_PARAM } from "../lib/belegstelle";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
 
 // ==================================================================================================
@@ -55,6 +56,10 @@ export function KnowledgeDetail(): JSX.Element {
   const naechsteSuche = (() => {
     const p = new URLSearchParams(params);
     p.delete("edit");
+    // R-0326/R-0329: Belegstelle und Abschnittssprung gehören ebenso nur zu DIESEM Eintrag.
+    p.delete(STELLE_PARAM);
+    p.delete(FASSUNG_PARAM);
+    p.delete("abschnitt");
     return p.toString();
   })();
 

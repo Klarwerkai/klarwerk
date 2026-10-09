@@ -5,6 +5,7 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnsprechpartnerAuskunft,
   AnswerResult,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
@@ -446,7 +447,11 @@ export type KoAction =
       note?: string;
       expectedVersion?: number;
     }
-  | { action: "revalidate" };
+  | { action: "revalidate" }
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
+  | { action: "confirm-fresh" }
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
+  | { action: "schutz-oeffentlich"; oeffentlich: boolean };
 
 /**
  * AUFTRAG-mega18 Block A-1 — Nutzlast der Verbund-Operation.
@@ -675,6 +680,13 @@ export const endpoints = {
     // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
     // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
     helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),
+    // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung aus der Bibliothek anstossen (R-1732,
+    // 204 ohne Objekt) und die Anlagenänderung über dieses Objekt an die Nachbarn melden (R-0203,
+    // Antwort nur mit der Zahl der markierten Objekte).
+    requestRevalidation: (id: string) =>
+      api.put<void>(`/kos/${id}`, { action: "request-revalidation" }),
+    neighborsChanged: (id: string) =>
+      api.put<{ markiert: number }>(`/kos/${id}`, { action: "neighbors-changed" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
     appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
@@ -784,6 +796,9 @@ export const endpoints = {
     // SCRUM-115 / FE-RISK-02: Priorität der Wissenslücke setzen.
     setPriority: (id: string, priority: GapPriority) => api.put<Gap>(`/gaps/${id}`, { priority }),
     remove: (id: string) => api.del<void>(`/gaps/${id}?confirm=true`),
+    // R-1663 / R-2178: begründete Ansprechpartner nach Wissensspuren (Schalter expertMatching).
+    ansprechpartner: (id: string) =>
+      api.get<AnsprechpartnerAuskunft>(`/gaps/${encodeURIComponent(id)}/ansprechpartner`),
   },
   // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
   slides: {
@@ -903,6 +918,14 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
+    // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
+    notHelpful: (body: {
+      koId: string;
+      receipt: string;
+      alternative?: string;
+      entwurfTitel?: string;
+    }) => api.post<{ vermerkt: boolean; entwurfId: string | null }>("/ask/not-helpful", body),
   },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler (nur eigene Beiträge, nur Zahlen).
   me: {
@@ -964,11 +987,14 @@ export const endpoints = {
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
+      // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
+      imageContext?: string,
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
+        ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
