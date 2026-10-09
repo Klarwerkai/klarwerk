@@ -60,6 +60,12 @@ export type I18nLike = {
 // behandeln, ausdrücklich nicht normalisieren". Das ist kein Widerspruch zur Notiz im Dateikopf:
 // dort ist die NORMALISIERUNG ausgeschlossen (aus `de-DE` würde `de`), nicht die Prüfung. `de-DE`
 // wird deshalb nicht zurechtgebogen, sondern gar nicht erst geschrieben.
+//
+// R-0997 (Aufnahme gesamt-sprache-begriffe): Diese Menge ist seither AUSSCHLIESSLICH die Regel für
+// `<html lang>`. Welche Sprachen die Oberfläche kann und wählen lässt, leitet
+// `lib/sprachregister.ts` aus den Ressourcen ab (`OBERFLAECHEN_SPRACHEN`, heute ebenfalls de|en|nl).
+// Eine dort neu angemeldete Sprache setzt das Attribut NICHT — JOB 536 regelt genau diese drei
+// Werte, und ihn zu erweitern ist eine eigene Entscheidung, die hier nicht vorweggenommen wird.
 export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
 
 // ==================================================================================================
@@ -90,8 +96,8 @@ export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
 //   · VERBINDLICH: die Nachführung 2026-09-09T00:21 (aus JOB 3280) vereinbart „nur zulässige Werte
 //     de|en". Eine Vorgabe wird nicht durch eine Bauüberlegung überstimmt.
 //   · SACHLICH: es sind ZWEI VERSCHIEDENE TATSACHEN, nicht eine doppelt aufgeschriebene.
-//     `ERLAUBTE_SPRACHEN` sagt, was die ANWENDUNG kann (de|en|nl — was unter /profil und im
-//     Konto-Menü wählbar ist). Diese Liste hier sagt, was ein LINK VON AUSSEN setzen darf. Das ist
+//     `ERLAUBTE_SPRACHEN` sagt, was als `<html lang>` gilt (de|en|nl; wählbar ist seit R-0997
+//     `OBERFLAECHEN_SPRACHEN`). Diese Liste hier sagt, was ein LINK VON AUSSEN setzen darf. Das ist
 //     eine Schnittstellenzusage gegenüber Klara und darf enger sein: Klara schickt genau diese
 //     beiden Werte, und was von aussen kommt, wird eng geprüft und nicht großzügig ausgelegt.
 //
