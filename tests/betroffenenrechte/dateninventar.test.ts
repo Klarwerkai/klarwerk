@@ -22,8 +22,9 @@ import {
 } from "../../services/app/src/dateninventar";
 import { schemas } from "../../services/app/src/db";
 import { LOESCHANTRAG_SCHEMA } from "../../services/app/src/loeschantraege";
-import { MIGRATIONS_SOLLLISTE, klassifiziereStufe } from "../../services/app/src/migrationsbeleg";
+import { MIGRATIONS_SOLLLISTE } from "../../services/app/src/migrationsbeleg";
 import { pflichttabellenAusDrill, tabellenAusSchemas } from "../backup-drill/pflichtsatz";
+import { klassifiziereStufe } from "../support/migrationsmodell";
 
 const WURZEL = join(__dirname, "..", "..");
 const migriert = tabellenAusSchemas(schemas);
