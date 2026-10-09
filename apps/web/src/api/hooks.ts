@@ -410,6 +410,15 @@ export const useDeleteLiveWallPhoto = () => {
 };
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
+// R-0599: die KI-Lage der Kopfzeile. Der Schlüssel liegt UNTER ["reasoner", "status"] — die
+// Invalidierung nach einer Admin-Änderung (`invalidateAiState`, Präfixvergleich) erneuert sie mit.
+// Der Endpunkt wird erst IM Abruf nachgeschlagen: die Zeile hängt in jeder Hülle, und ein Fehlschlag
+// ist dann ein Abfragefehler („unbekannt"), kein Renderfehler.
+export const useKiLage = () =>
+  useQuery({
+    queryKey: ["reasoner", "status", "kiLage"],
+    queryFn: () => endpoints.reasoner.kiLage(),
+  });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
 // WP-VIP2-GATE-2 (bens Fix 3): serverseitig jetzt ECHTE Admin-Sicht (users.manage). Nicht-Admin-
 // Oberflaechen deaktivieren die Query (enabled=false) und fallen auf den oeffentlichen
