@@ -17,6 +17,14 @@ export type {
   ZuschnittErgaenzung,
 } from "./src/antwort-zuschnitt";
 export { InMemoryGapRepo, type GapRepo } from "./src/repo";
+// R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht" — die Glocke liest dieselbe Aktion.
+export {
+  ANTWORT_MELDE_GRUENDE,
+  ANTWORT_MELDUNG_ACTION,
+  isAntwortMeldeGrund,
+  type AntwortMeldeGrund,
+  type AntwortMeldungQuittung,
+} from "./src/antwort-meldung";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
 // W3-A (KW-W3-18): der Repo-Kern der Antwortbelege. Die Fassade wird MITGESCHRIEBEN und nicht
 // nachgereicht — die W2-A-Lehre (Preflight 39 F1): eine exportierte Konstante, die die
