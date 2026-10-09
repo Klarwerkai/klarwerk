@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { normalizeAsset } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
 import { type Guards, sendError } from "../http";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege } from "../sichtbarkeit";
@@ -40,7 +41,32 @@ export function lifecycleRoutes(
         if (!user) {
           return;
         }
-        await lifecycle.couple(request.body.assetRef, request.body.koId);
+        // R-0477 / R-0082 (aufnahme:20260922:gesamt-wissen-metadaten) — GEGEN FEHLKOPPLUNG.
+        //
+        // Bis hierher koppelte dieser Weg JEDE Zeichenkette an JEDE Kennung: an ein Objekt, das es
+        // nicht gibt, an eines, das der Aufrufer nicht sehen darf, und eine leere oder nur anders
+        // geschriebene Anlage („DP-4" neben „DP-4 "). Eine Anlagenänderung (`asset-changed`) traf
+        // dann Objekte, die niemand gekoppelt haben wollte, oder verfehlte die gemeinten.
+        //
+        // Die Kennung durchläuft dieselbe Normalform wie das kanonische Feld am Objekt
+        // (`normalizeAsset`, JOB 593) — so meinen Kopplung und Objekt dieselbe Anlage, wenn sie
+        // gleich aussehen. Das Objekt passiert dasselbe Sichtbarkeitstor wie der Leseweg darunter
+        // (JOB 2017), mit derselben 404-Antwort.
+        const body = (request.body ?? {}) as { assetRef?: unknown; koId?: unknown };
+        const assetRef = normalizeAsset(body.assetRef);
+        if (assetRef === null || typeof body.koId !== "string" || body.koId.length === 0) {
+          reply.code(400).send({
+            error: "INVALID",
+            message: "assetRef (nicht leer) und koId werden benötigt.",
+          });
+          return;
+        }
+        const sichtbar = await sichtbareEintraege(user, [{ koId: body.koId }], kos);
+        if (sichtbar.length === 0) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+          return;
+        }
+        await lifecycle.couple(assetRef, body.koId);
         reply.code(204).send();
       },
     );
