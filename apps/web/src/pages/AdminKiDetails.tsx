@@ -21,6 +21,7 @@ import { BetreiberKarte } from "../components/BetreiberKarte";
 // JOB 3863: der EINE Weg in die Seitenhilfe des Zahnrads — `HelpTip` rendert nichts, er meldet
 // Titel und Text beim Sammler an (`shell/SeitenhilfeContext.tsx`). Derselbe Weg wie bei den vier
 // Karten aus JOB 3670; das „?"-Menü der Karte (`hilfe`-Prop unten) bleibt davon unberührt.
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
@@ -1415,7 +1416,10 @@ export function KiFunktionenDetail({ onZurueck }: { onZurueck: () => void }): JS
         {() => (
           <>
             {effPresets.length === 0 ? (
-              <p className="text-[12.5px] text-muted-2">{t("adm.presets.empty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">{t("adm.presets.empty")}</p>
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
             ) : (
               <ul className="space-y-2">
                 {effPresets.map((p, i) => (
