@@ -184,11 +184,13 @@ interface Zuordnungslage {
   unklareBilder: number;
 }
 
-const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
-  { value: "25", label: "Klein" },
-  { value: "50", label: "Mittel" },
-  { value: "75", label: "Groß" },
-  { value: "100", label: "Volle Breite" },
+// R-1169: die Stufen standen als deutsche Wörter im Code („Klein" … „Volle Breite") und blieben in
+// EN/NL deutsch. Der deutsche Wortlaut in `texte/beschriftung.ts` ist zeichengleich geblieben.
+const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; labelKey: string }> = [
+  { value: "25", labelKey: "beschriftung.editor.stufe.klein" },
+  { value: "50", labelKey: "beschriftung.editor.stufe.mittel" },
+  { value: "75", labelKey: "beschriftung.editor.stufe.gross" },
+  { value: "100", labelKey: "beschriftung.editor.stufe.voll" },
 ];
 
 // R-0014: die vier Griffe an den Ecken des ausgewählten Bildes. Rechte Griffe ziehen die rechte
@@ -2731,7 +2733,9 @@ export function RichTextEditor({
 
       {mode === "edit" && selectedImage ? (
         <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
-          <span className="mr-1 text-[11.5px] font-semibold text-muted">Bildgröße</span>
+          <span className="mr-1 text-[11.5px] font-semibold text-muted">
+            {t("beschriftung.editor.bildgroesse")}
+          </span>
           {IMAGE_SCALE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -2744,7 +2748,7 @@ export function RichTextEditor({
                   : "border-hairline bg-surface text-text hover:bg-hairline-soft"
               }`}
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </button>
           ))}
           {/* R-0014: die frei gezogene Breite als neutrale Größenangabe — keine Stufe ist dann

@@ -19,10 +19,11 @@
 // verboten). Das Menü ist der Ort, den der Auftrag nennt, und der Ort, der den Pin nicht bricht.
 //
 // KEIN ZWEITER WECHSELWEG. Gewechselt wird über `i18n.changeLanguage` — dieselbe eine Funktion, die
-// Profil und Anmeldung rufen. Die ERLAUBTE MENGE wird nicht neu geschrieben, sondern aus
-// `lib/htmlLang.ts` geholt (`ERLAUBTE_SPRACHEN`): dort steht sie seit Auftrag 101 als die eine
-// Wahrheit, und dieselbe Liste prüft auch `applyHtmlLang` und `sprachwahl.ts`. Eine vierte Kopie
-// von `["de","en","nl"]` hätte beim nächsten Sprachzuwachs still auseinanderlaufen können.
+// Profil und Anmeldung rufen. Die MENGE wird nicht neu geschrieben, sondern aus den Ressourcen
+// abgeleitet (`OBERFLAECHEN_SPRACHEN`, `lib/sprachregister.ts`, R-0997): dieselbe Menge prüfen
+// Profil, Anmeldung, `sprachwahl.ts` und `i18n.ts`. Eine neue Sprache erscheint hier, sobald ihre
+// Ressource da ist. `ERLAUBTE_SPRACHEN` (`lib/htmlLang.ts`) ist seither allein die Regel für
+// `<html lang>` (JOB 536) — eine andere Frage als „was kann man wählen".
 //
 // WAS DIESER SCHALTER NICHT TUT, und das ist die eigentliche Zusage des Auftrags:
 //   · Er lädt NICHT neu (kein `location.reload`) und navigiert NICHT (kein Routenwechsel). Er ruft
@@ -43,7 +44,7 @@
 // hätten diesen Wächter stumpf gemacht. Die Auszeichnung ist hier ohnehin die richtigere:
 // `role="menuitemradio"` + `aria-checked` sagt „eine aus drei", `aria-pressed` sagt „an/aus".
 import { useTranslation } from "react-i18next";
-import { ERLAUBTE_SPRACHEN } from "../lib/htmlLang";
+import { OBERFLAECHEN_SPRACHEN } from "../lib/sprachregister";
 
 /**
  * Die aktive Sprache als Element der erlaubten Menge.
@@ -87,7 +88,7 @@ export function SprachSchalter(): JSX.Element {
         data-testid="sprach-schalter"
         className="flex shrink-0 gap-1"
       >
-        {ERLAUBTE_SPRACHEN.map((l) => {
+        {OBERFLAECHEN_SPRACHEN.map((l) => {
           const aktiv = istAktiv(i18n.language, l);
           // ======================================================================================
           // WARUM DIE ENTSCHEIDUNG HIER STEHT UND NICHT IM `className`.

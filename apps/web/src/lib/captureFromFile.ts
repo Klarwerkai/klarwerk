@@ -990,7 +990,9 @@ export const CAPTURE_FILE_TEXT = {
   mergeCta: "capture.file.mergeCta",
   mergedNote: "capture.file.mergedNote",
   // SCRUM-433 (Pedi 03.07., VIP): Erkenntnisse aus dem Dokument auffindbar verbinden.
-  connectHint: "capture.file.connectHint",
+  // R-1176 (gesamt-sprache-begriffe): der Hinweis zitiert die drei Knöpfe darunter zeichengleich
+  // (mergeCta, saveDraftsCta, applyCta); `capture.file.connectHint` nannte „Verbinden"/„Übernehmen".
+  connectHint: "knopfzitat.datei.wege",
   connectDisabledHint: "capture.file.connectDisabledHint",
   // Pedi 04.07.: Alle wählen/abwählen · „Verbinden" bleibt in der Liste · Entwürfe-Löschen-Nachfrage.
   selectAll: "capture.file.selectAll",
