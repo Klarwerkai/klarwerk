@@ -26,6 +26,9 @@ const OBJ = "obj-4097";
 // strukturierten Vergleichs — der Drill verlangt in der Antwort genau diesen Datensatz und an ihm
 // genau diese `objectId`. Ein Textvorkommen irgendwo in der Antwort genügt nicht mehr.
 const EV = "ev-4097";
+// ADMIN-13: das Kennwort der Anmeldefixture — fiktiv, aber unverwechselbar, damit seine
+// Abwesenheit im Protokoll eine Aussage ist.
+const KENNWORT = "drill-kennwort-admin13";
 
 // PATH doubles model only external commands. The real shell script decides all gates.
 const stub = String.raw`
@@ -89,6 +92,13 @@ if (name === 'psql') {
     if (mode !== 'kein-beleg') console.log(EV + ' ' + KO + ' ' + OBJ);
     process.exit(0);
   }
+  // ADMIN-13 · Glied 3b: die Rollenverteilung der wiederhergestellten Konten.
+  if (sql.includes('GROUP BY role')) {
+    if (mode === 'rechte-sql-fehler') process.exit(1);
+    if (mode === 'empty') process.exit(0);
+    console.log(mode === 'rechte-abweichung' ? 'admin/t=2' : 'experte/t=1\nadmin/t=1');
+    process.exit(0);
+  }
   if (sql.includes('information_schema.tables')) {
     const table = sql.match(/table_name='([^']+)'/)?.[1];
     if (!table) {
@@ -127,6 +137,14 @@ if (name === 'pg_restore') {
   if (mode === 'extract-error' && table === STOER) process.exit(1);
   console.log('-- PostgreSQL database dump\nSET statement_timeout = 0;');
   if (ohneBlock.includes(table)) process.exit(0);
+  // ADMIN-13: die Konten tragen Rolle und Freigabe — genau die zwei Spalten, die Glied 3b liest.
+  if (table === 'users') {
+    console.log('COPY public.users (id, name, role, approved) FROM stdin;');
+    if (dumpZeilen(table) > 0) console.log('u1\tAda\tadmin\tt\nu2\tBea\texperte\tt');
+    console.log('\\.\n');
+    console.log('-- PostgreSQL database dump complete');
+    process.exit(0);
+  }
   const bloecke = mode === 'doppelblock' && table === STOER ? 2 : 1;
   for (let i = 0; i < bloecke; i++) {
     console.log('COPY public.' + table + ' (id, body) FROM stdin;');
@@ -215,7 +233,9 @@ function run(mode = "complete", fremdPid?: number) {
         RESTORE_DB: "fixture_drill",
         DRILL_WORKDIR: dir,
         DRILL_LOGIN_EMAIL: "fixture@example.test",
-        DRILL_LOGIN_PASSWORT: "fixture",
+        // ADMIN-13: ein eigener, erkennbarer Wert — der Prüfstand sucht ihn im Protokoll und darf
+        // ihn dort nicht finden.
+        DRILL_LOGIN_PASSWORT: KENNWORT,
         ...(fremdPid === undefined ? {} : { FREMD_PID: String(fremdPid) }),
       },
       encoding: "utf8",
@@ -239,6 +259,8 @@ function run(mode = "complete", fremdPid?: number) {
       pidRemains: existsSync(join(dir, "klarwerk-drill.pid")),
       anhangRemains: existsSync(join(dir, "klarwerk-drill.anhang")),
       belegeRemains: existsSync(join(dir, "klarwerk-drill.belege.json")),
+      // ADMIN-13: das Protokoll der Probe liegt neben dem Dump.
+      protokoll: read("letzter-drill.json"),
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -512,5 +534,157 @@ describe("Restore-Drill: Schema, Dumpabgleich und Aufrufdisziplin", () => {
         /* Already exited. */
       }
     }
+  }, 120_000);
+});
+
+// ==================================================================================================
+// ADMIN-13 — DAS PROTOKOLL DER PROBE (`letzter-drill.json`) UND DIE RECHTEPRÜFUNG (GLIED 3b).
+// ==================================================================================================
+//
+// Jeder Ausgang hinterlässt seine Spur neben dem Dump: der bestandene mit Sicherungsstand, Ziel und
+// Vergleich in vier Kategorien; der gescheiterte mit Exitcode, festem Grund und dem, was bis dahin
+// gemessen war. Gemessen wird am ECHTEN Skript — die Attrappen ersetzen nur die externen Werkzeuge.
+interface Kategorie {
+  zustand: string;
+  tabellen: { tabelle: string; dump: number | null; datenbank: number | null }[];
+}
+interface Protokoll {
+  format: string;
+  beginn: string | null;
+  zeit: string | null;
+  ergebnis: string;
+  exitcode: number;
+  grund: string;
+  sicherung: string;
+  pruefsumme: { zustand: string; sha256: string | null };
+  ziel: string | null;
+  vergleich: {
+    beitraege: Kategorie;
+    anhaenge: Kategorie & { belegeOhneAnhang: number | null };
+    beziehungen: Kategorie;
+    rechte: Kategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+  };
+  wissensnachweis: string | null;
+}
+
+function protokollAus(r: { protokoll: string; output: string }): Protokoll {
+  expect(r.protokoll, `kein Protokoll hinterlegt:\n${r.output}`).not.toBe("");
+  return JSON.parse(r.protokoll) as Protokoll;
+}
+
+describe("ADMIN-13 · Protokoll der Wiederherstellungsprobe", () => {
+  it("P1 bestanden: Datum, Sicherungsstand, isoliertes Ziel, vier Vergleiche — ohne Zugangsdaten", () => {
+    const r = run();
+    expect(r.code, r.output).toBe(0);
+    expect(r.output).toContain("Glied 3b — Rechte: Rollenverteilung der Konten wie im Dump");
+    const p = protokollAus(r);
+    expect(p.format).toBe("klarwerk-restore-drill");
+    expect(p.ergebnis).toBe("erfolg");
+    expect(p.exitcode).toBe(0);
+    expect(p.beginn).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    expect(p.zeit).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    expect(p.sicherung).toBe("input.dump");
+    expect(p.ziel).toBe("fixture_drill");
+    // Die Prüfsumme ist NACHGERECHNET — und steht als eigener Befund neben dem Restore.
+    expect(p.pruefsumme.zustand).toBe("passt");
+    expect(p.pruefsumme.sha256).toMatch(/^[0-9a-f]{64}$/);
+    // Die vier Kategorien, jede mit ihren eigenen Tabellen und beiden Zahlen.
+    expect(p.vergleich.beitraege.zustand).toBe("gleich");
+    expect(p.vergleich.beitraege.tabellen.map((t) => t.tabelle)).toEqual(["kos", "ko_versions"]);
+    expect(p.vergleich.anhaenge.zustand).toBe("gleich");
+    expect(p.vergleich.anhaenge.tabellen.map((t) => t.tabelle)).toEqual(["objects", "ko_evidence"]);
+    expect(p.vergleich.anhaenge.belegeOhneAnhang).toBe(0);
+    expect(p.vergleich.beziehungen.zustand).toBe("gleich");
+    expect(p.vergleich.beziehungen.tabellen).toEqual([
+      { tabelle: "ko_kanten", dump: 2, datenbank: 2 },
+      { tabelle: "ko_kanten_beitrag", dump: 2, datenbank: 2 },
+    ]);
+    expect(p.vergleich.rechte.zustand).toBe("gleich");
+    expect(p.vergleich.rechte.rollenDump).toBe("admin/t=1 experte/t=1");
+    expect(p.vergleich.rechte.rollenDatenbank).toBe("admin/t=1 experte/t=1");
+    expect(p.wissensnachweis).toContain(`Wissensobjekt ${KO} mit Beleg auf ${OBJ}`);
+    // KEINE ZUGANGSDATEN: weder Anmeldeadresse noch Kennwort noch Sitzungstoken.
+    expect(r.protokoll).not.toContain("fixture@example.test");
+    expect(r.protokoll).not.toContain(KENNWORT);
+    expect(r.protokoll).not.toContain("kw_session");
+    expect(r.protokoll).not.toContain('"token"');
+  }, 120_000);
+
+  it("P2 Rechte weichen ab: Exit 74, Befund im Protokoll, die Anwendung startet gar nicht", () => {
+    const r = run("rechte-abweichung");
+    expect(r.code, r.output).toBe(74);
+    expect(r.output).toContain("ABBRUCH (74)");
+    expect(r.output).not.toContain("DRILL BESTANDEN");
+    expect(r.start).toBe("");
+    const p = protokollAus(r);
+    expect(p.ergebnis).toBe("fehler");
+    expect(p.exitcode).toBe(74);
+    expect(p.vergleich.rechte.zustand).toBe("abweichend");
+    expect(p.vergleich.rechte.rollenDump).toBe("admin/t=1 experte/t=1");
+    expect(p.vergleich.rechte.rollenDatenbank).toBe("admin/t=2");
+    // Die Zeilenzahl allein hätte den Schaden nicht gesehen: zwei Konten hier wie dort.
+    expect(p.vergleich.rechte.tabellen).toEqual([{ tabelle: "users", dump: 2, datenbank: 2 }]);
+  }, 120_000);
+
+  it("P3 eine nicht befragbare Rollenverteilung ist nicht messbar (24), kein Befund", () => {
+    const r = run("rechte-sql-fehler");
+    expect(r.code, r.output).toBe(24);
+    expect(r.output).toContain("Rollenverteilung der Datenbank nicht messbar");
+    const p = protokollAus(r);
+    expect(p.vergleich.rechte.zustand).toBe("nicht_gemessen");
+  }, 120_000);
+
+  // K5 — BESCHÄDIGTE ODER UNVOLLSTÄNDIGE SICHERUNG: sichtbarer Fehlbefund, und die Produktion wird
+  // nicht überschrieben — bei 10/11/20 läuft `pg_restore` gar nicht erst.
+  it.each([
+    ["bad-sidecar", 11, "abweichend"],
+    ["no-sidecar", 10, "fehlt"],
+  ] as const)(
+    "P4 beschädigte Sicherung (%s): Exit %i, Prüfsumme %s, kein Restore, alle Vergleiche ungemessen",
+    (mode, code, pruefsumme) => {
+      const r = run(mode);
+      expect(r.code, r.output).toBe(code);
+      expect(r.calls).not.toContain('"pg_restore"');
+      const p = protokollAus(r);
+      expect(p.ergebnis).toBe("fehler");
+      expect(p.exitcode).toBe(code);
+      expect(p.pruefsumme.zustand).toBe(pruefsumme);
+      expect(p.grund).toContain("nichts wiederhergestellt");
+      for (const k of ["beitraege", "anhaenge", "beziehungen", "rechte"] as const) {
+        expect(p.vergleich[k].zustand, k).toBe("nicht_gemessen");
+      }
+    },
+    120_000,
+  );
+
+  it("P5 belegtes Ziel: Exit 20, kein pg_restore, das Protokoll nennt das Ziel", () => {
+    const r = run("occupied");
+    expect(r.code, r.output).toBe(20);
+    expect(r.calls).not.toContain('"pg_restore"');
+    const p = protokollAus(r);
+    expect(p.exitcode).toBe(20);
+    expect(p.ziel).toBe("fixture_drill");
+    expect(p.grund).toContain("nicht leer");
+  }, 120_000);
+
+  it("P6 unvollständige Sicherung (kein Bestand für ko_evidence): Exit 22, Anhänge nicht gemessen", () => {
+    const r = run("toc-missing");
+    expect(r.code, r.output).toBe(22);
+    const p = protokollAus(r);
+    expect(p.ergebnis).toBe("fehler");
+    expect(p.vergleich.anhaenge.zustand).toBe("nicht_gemessen");
+    expect(p.vergleich.anhaenge.tabellen).toContainEqual({
+      tabelle: "ko_evidence",
+      dump: null,
+      datenbank: null,
+    });
+  }, 120_000);
+
+  it("P7 Beleg ohne Anhang: Exit 73, Anhänge abweichend, Zahl im Protokoll", () => {
+    const r = run("waise");
+    expect(r.code, r.output).toBe(73);
+    const p = protokollAus(r);
+    expect(p.vergleich.anhaenge.zustand).toBe("abweichend");
+    expect(p.vergleich.anhaenge.belegeOhneAnhang).toBe(1);
   }, 120_000);
 });
