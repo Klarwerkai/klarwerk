@@ -1,10 +1,10 @@
 {
-  "version": 18,
-  "erhoben_am": "2026-10-08",
-  "nachgefuehrt_von": "produkt:20261007:editor-einheitlich, Nacharbeit 6 (Version 18): ein Fall mehr je Projekt chromium, firefox und webkit in editor-einheitlich-browser.spec.ts — K4: 403 nach zwischenzeitlicher Freigabe, Einreichen und Abbrechen bleiben an ihrer Stelle. NICHT gemessen, aus dem Testtitel nachgetragen. Version 17 davor: produkt:20261007:editor-einheitlich, Nacharbeit 2 (Integration mit main, Version 17): zwei Faelle mehr je Projekt chromium, firefox und webkit, beide in editor-einheitlich-browser.spec.ts — Bearbeiten wie Erstellen (Aussage folgt dem Inhalt, Knoepfe springen bei Konflikt nicht, Pflichtangabe am Feld, Fassungen bleiben); Stand von main (Version 16, unten) vollstaendig erhalten. NICHT gemessen, aus den Testtiteln nachgetragen. Version 16 davor: aufnahme:20260922:gesamt-navigation, Nacharbeit 13 (Integration mit main 956a896c, Version 16): beide Zweige hatten Version 15 eingetragen und sind hier zusammengefuehrt — U3 je Projekt chromium, firefox und webkit von erstnutzer-u2-u3-browser.spec.ts nach gesamt-navigation-u3-browser.spec.ts umgezogen und auf den heutigen Titel umbenannt (Weg Arbeitsbereiche → Offene Aufgaben; Mengen dadurch unveraendert, aus gesamt-navigation Nacharbeit 2) UND die fuenf admin-uebersicht-Faelle je Projekt aus main (Version 15 von main, unten). NICHT gemessen, aus den Testtiteln nachgetragen. Version 15 davor (main): produkt:20261009:admin-verwaltung-uebersicht (Version 15): fuenf Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-uebersicht.spec.ts — Lieferbeleg Verwaltung → offene Pruefung → zurueck → Nutzeruebergabe → Vorschau, gefilterte Listen hinter den Zaehlern, Ladefehler/ausstehende Antwort, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
+  "version": 19,
+  "erhoben_am": "2026-10-09",
+  "nachgefuehrt_von": "produkt:20261007:editor-einheitlich, Nacharbeit 17 (Integration mit main, Version 19): beide Zweige hatten auf Version 16 aufgesetzt (main: Version 17 admin-demo-diagnose, dieser Auftrag: Versionen 17/18 editor-einheitlich) und sind hier zusammengefuehrt — je Projekt chromium, firefox und webkit die vier admin-demo-diagnose-Faelle UND die drei editor-einheitlich-Faelle (73 + 4 + 3 = 80). NICHT gemessen, aus den Testtiteln nachgetragen. Eigene Version 18 davor: produkt:20261007:editor-einheitlich, Nacharbeit 6: ein Fall mehr je Projekt chromium, firefox und webkit in editor-einheitlich-browser.spec.ts — K4: 403 nach zwischenzeitlicher Freigabe, Einreichen und Abbrechen bleiben an ihrer Stelle. Eigene Version 17 davor: produkt:20261007:editor-einheitlich, Nacharbeit 2: zwei Faelle mehr je Projekt chromium, firefox und webkit, beide in editor-einheitlich-browser.spec.ts — Bearbeiten wie Erstellen (Aussage folgt dem Inhalt, Knoepfe springen bei Konflikt nicht, Pflichtangabe am Feld, Fassungen bleiben). Version 17 davor (main): produkt:20261009:admin-demo-diagnose, Nacharbeit 2 (Integration mit main 985cb62c, Version 17): beide Zweige hatten Version 16 eingetragen und sind hier zusammengefuehrt — die vier admin-demo-diagnose-Faelle je Projekt chromium, firefox und webkit UND der Umzug von U3 aus gesamt-navigation (Version 16 von main, unten; Mengen dadurch unveraendert). NICHT gemessen, aus den Testtiteln nachgetragen. Eigene Version 16 davor (produkt:20261009:admin-demo-diagnose): vier Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-demo-diagnose.spec.ts — Startseite mit Vorfuehrwegen nur unter Betrieb, /import ohne Vorfuehrkaesten samt Weiterleitung des alten Ankers, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 16 davor (main): aufnahme:20260922:gesamt-navigation, Nacharbeit 13 (Integration mit main 956a896c, Version 16): beide Zweige hatten Version 15 eingetragen und sind hier zusammengefuehrt — U3 je Projekt chromium, firefox und webkit von erstnutzer-u2-u3-browser.spec.ts nach gesamt-navigation-u3-browser.spec.ts umgezogen und auf den heutigen Titel umbenannt (Weg Arbeitsbereiche → Offene Aufgaben; Mengen dadurch unveraendert, aus gesamt-navigation Nacharbeit 2) UND die fuenf admin-uebersicht-Faelle je Projekt aus main (Version 15 von main, unten). NICHT gemessen, aus den Testtiteln nachgetragen. Version 15 davor (main): produkt:20261009:admin-verwaltung-uebersicht (Version 15): fuenf Faelle mehr je Projekt chromium, firefox und webkit, alle in admin-uebersicht.spec.ts — Lieferbeleg Verwaltung → offene Pruefung → zurueck → Nutzeruebergabe → Vorschau, gefilterte Listen hinter den Zaehlern, Ladefehler/ausstehende Antwort, Tastatur und Fokus bei 390 × 844 und 1280 × 800. NICHT gemessen, aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt); vorgefundene fremde Drift unveraendert gelassen. Version 14 davor: produkt:20261007:klara-vorschau (Integration mit main, Version 13): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in klara-vorschau-browser.spec.ts — Avatar aus dem Bau, Bedienbeleg der beweglichen Klara (Desktop) und schmal mit reduzierter Bewegung, Touch-Zeiger und Bildschirmtastatur. NICHT gemessen, aus den Testtiteln nachgetragen. Version 13 davor: produkt:20261007:speichern-erholung, Nacharbeit 1: ein weiterer Fall je Projekt chromium, firefox und webkit (K2/K3 Nacharbeit: Weiterschreiben waehrend des Wartens). Version 12 davor: drei Faelle mehr je Projekt chromium, firefox und webkit, alle in speichern-erholung-browser.spec.ts — Speicherzustand ohne Netz, Seitenwechsel ohne Netz, Nulltreffer mit Filterruecksetzen. NICHT gemessen, sondern aus den Testtiteln nachgetragen (kein Lauf in diesem Auftragsschritt). Vorgefundene, fremde Drift unveraendert gelassen: firmenwoerterbuch-browser.spec.ts und bildschirmablauf-browser.spec.ts stehen nicht im Manifest. Vorher: gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3), drei Faelle in erstnutzer-u2-u3-browser.spec.ts.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 246,
+  "gesamt_fallinstanzen": 258,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 76,
+      "soll": 80,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -27,6 +27,10 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "admin-demo-diagnose.spec.ts › 1280 × 800 — Tastatur in die Paketkarte und zurück, ohne Überbreite",
+        "admin-demo-diagnose.spec.ts › 390 × 844 — Tastatur in die Paketkarte und zurück, ohne Überbreite",
+        "admin-demo-diagnose.spec.ts › K1 · Startseite: Vorführwege nur unter „Organisation und Betrieb“",
+        "admin-demo-diagnose.spec.ts › K2/K5 · /import ohne Vorführkästen; der alte Anker führt in die Verwaltung",
         "admin-uebersicht.spec.ts › K2/K4: Lücken- und Freigabezähler öffnen ihre gefilterte Liste — auch nach Neuladen",
         "admin-uebersicht.spec.ts › K3: Ladefehler und ausstehende Antwort — unbekannt statt null, die Wege bleiben",
         "admin-uebersicht.spec.ts › K6: 1280 × 800 — Tastatur, sichtbarer Fokus, hin und zurück",
@@ -100,7 +104,7 @@
       ]
     },
     "firefox": {
-      "soll": 76,
+      "soll": 80,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -108,6 +112,10 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "admin-demo-diagnose.spec.ts › 1280 × 800 — Tastatur in die Paketkarte und zurück, ohne Überbreite",
+        "admin-demo-diagnose.spec.ts › 390 × 844 — Tastatur in die Paketkarte und zurück, ohne Überbreite",
+        "admin-demo-diagnose.spec.ts › K1 · Startseite: Vorführwege nur unter „Organisation und Betrieb“",
+        "admin-demo-diagnose.spec.ts › K2/K5 · /import ohne Vorführkästen; der alte Anker führt in die Verwaltung",
         "admin-uebersicht.spec.ts › K2/K4: Lücken- und Freigabezähler öffnen ihre gefilterte Liste — auch nach Neuladen",
         "admin-uebersicht.spec.ts › K3: Ladefehler und ausstehende Antwort — unbekannt statt null, die Wege bleiben",
         "admin-uebersicht.spec.ts › K6: 1280 × 800 — Tastatur, sichtbarer Fokus, hin und zurück",
@@ -181,7 +189,7 @@
       ]
     },
     "webkit": {
-      "soll": 76,
+      "soll": 80,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -189,6 +197,10 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "admin-demo-diagnose.spec.ts › 1280 × 800 — Tastatur in die Paketkarte und zurück, ohne Überbreite",
+        "admin-demo-diagnose.spec.ts › 390 × 844 — Tastatur in die Paketkarte und zurück, ohne Überbreite",
+        "admin-demo-diagnose.spec.ts › K1 · Startseite: Vorführwege nur unter „Organisation und Betrieb“",
+        "admin-demo-diagnose.spec.ts › K2/K5 · /import ohne Vorführkästen; der alte Anker führt in die Verwaltung",
         "admin-uebersicht.spec.ts › K2/K4: Lücken- und Freigabezähler öffnen ihre gefilterte Liste — auch nach Neuladen",
         "admin-uebersicht.spec.ts › K3: Ladefehler und ausstehende Antwort — unbekannt statt null, die Wege bleiben",
         "admin-uebersicht.spec.ts › K6: 1280 × 800 — Tastatur, sichtbarer Fokus, hin und zurück",
