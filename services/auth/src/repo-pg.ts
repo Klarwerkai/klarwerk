@@ -42,6 +42,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject text;
 -- Bestandskonto eine Befristung andichten — und da die Spalte den Zugang SPERRT, waere das keine
 -- kosmetische Unsauberkeit, sondern ein Aussperren der ganzen Instanz bei der naechsten Migration.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at text;
+-- R-0556 / R-0571: die vom Unternehmensverzeichnis gemeldeten Gruppen (JSON-Liste). NULL-bar und
+-- ohne Vorgabe: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verzeichnis_gruppen text;
 -- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
 -- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
 -- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
@@ -151,9 +154,24 @@ interface UserRow {
   // nicht, und `toUser` faellt dann auf „nicht befristet" zurueck. Das ist fuer sie richtig: eine
   // fehlende Spalte darf keinen Zugang sperren.
   access_expires_at?: string | null;
+  verzeichnis_gruppen?: string | null;
+}
+
+/** R-0556: eine unlesbare Spalte ist „keine Gruppen" — sie darf niemandem Zuständigkeit geben. */
+function gruppenAus(roh: string | null | undefined): string[] | undefined {
+  if (!roh) {
+    return undefined;
+  }
+  try {
+    const wert: unknown = JSON.parse(roh);
+    return Array.isArray(wert) ? wert.filter((g): g is string => typeof g === "string") : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function toUser(row: UserRow): User {
+  const verzeichnisGruppen = gruppenAus(row.verzeichnis_gruppen);
   return {
     id: row.id,
     name: row.name,
@@ -185,6 +203,7 @@ function toUser(row: UserRow): User {
     ...(row.access_expires_at === null || row.access_expires_at === undefined
       ? {}
       : { accessExpiresAt: row.access_expires_at }),
+    ...(verzeichnisGruppen ? { verzeichnisGruppen } : {}),
   };
 }
 
@@ -258,6 +277,18 @@ export class PgUserRepo implements UserRepo {
   // er per ON CONFLICT DO NOTHING und bekommt keine Zeile (rowCount 0) → der Service legt ein normales
   // Konto an. Die Konflikt-Zielangabe nennt Spalte + Index-Prädikat, damit NUR der Bootstrap-Index
   // (nicht etwa die E-Mail-Unique) den DO-NOTHING-Pfad auslöst.
+  async setzeVerzeichnisGruppen(
+    id: string,
+    gruppen: readonly string[],
+    tx?: TxContext,
+  ): Promise<void> {
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await ziel.query("UPDATE users SET verzeichnis_gruppen=$2 WHERE id=$1", [
+      id,
+      JSON.stringify(gruppen),
+    ]);
+  }
+
   async tryClaimBootstrapAdmin(user: User): Promise<boolean> {
     const res = await this.pool.query(
       `INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,bootstrap_admin,oidc_issuer,oidc_subject,access_expires_at)

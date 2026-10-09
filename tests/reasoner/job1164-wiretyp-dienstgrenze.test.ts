@@ -122,6 +122,8 @@ describe("JOB 1164 · Dienstgrenze — der Vorschlag kommt aus describeImage her
 
   it("die bestehende Zusage bleibt unangetastet: aiGenerated wird weiter zentral gesetzt", async () => {
     // Das additive Feld darf nichts verdrängen. Beide Rückgabewege der Methode werden geprüft.
+    // R-0604 (G22): seither trägt NUR der Modellweg die Marke — der deterministische Rückfall
+    // liefert keinen Text und ist keine KI-Erzeugung.
     const reasoner = new Reasoner(visionMit("Eine Pumpe."));
     await erteileKiFreigabe(reasoner);
     const mitModell = await reasoner.describeImage(PNG_URL, "de");
@@ -129,7 +131,7 @@ describe("JOB 1164 · Dienstgrenze — der Vorschlag kommt aus describeImage her
 
     expect(mitModell.aiGenerated?.task).toBe("describe");
     expect(mitModell.demo).toBe(false);
-    expect(ohneModell.aiGenerated?.task).toBe("describe");
+    expect(Object.hasOwn(ohneModell, "aiGenerated")).toBe(false);
     expect(ohneModell.fallbackReason).toBe("no-model");
   });
 });

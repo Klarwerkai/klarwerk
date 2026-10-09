@@ -172,17 +172,64 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * „Received" von E2, HISTORIE/nacharbeit-8/PRUEFUNG/panel-integration-pins.log) und unverändert
  * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  *
- * Aufnahme 20260922 · gesamt-sprache-begriffe (K22, Nacharbeit 9): `renderStatics` setzt jetzt den
- * Gruppennamen der Sprachwahl `#einst-sprache-wahl` über `t("einstSprache")` (genau eine Zeile in
- * `taskpane.js`). Schon VOR dieser Änderung stimmte der Wert oben nicht mehr: die technische Hilfe
- * (HILFE/9fc941b647e097d430188be2/BLOB-MESSUNG.json) maß am unveränderten Kandidaten 12e61e0b mit
- * diesem Helfer und `git hash-object --stdin` übereinstimmend `44bde204…`. GEMESSEN am endgültigen
- * Inhalt: die vier Dateien genau nach `fuegePanelZusammen` zusammengesetzt (Teile per `sed`/`cat`),
- * Kennung über `git diff --no-index --full-index`. Kalibrierung: dasselbe Verfahren mit
- * `taskpane.js` aus 12e61e0b ergibt wörtlich `44bde204b953ee540c934d29e23c6b8873a29aee`; mit der
- * Korrektur `44414ac3…` (Beleg CLAUDE/BLOB-MESSUNG-NACHARBEIT-9.json im Auftragsordner).
+ * Aufnahme 20260922 · antwort-quellenanzeige (R-0309/R-0325): `taskpane.js` ändert sich (Stand-Datum
+ * an der Herkunftszeile, tragende Quellen samt Prüfstand/Version in der Dokument-Quellenzeile, ein
+ * verdichteter Kommentarkopf; 12494 Zeilen). Der Wert unten ist damit ein PLATZHALTER bis zur
+ * Messung — ohne zugelassenes Hash-Werkzeug hier nicht berechenbar; E2 meldet den neuen Blob im
+ * Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 1 (antwort-quellenanzeige): GEMESSEN im Prüflauf zu Kandidat 95df9979 (`c8b2ec45…`,
+ * „Received" von E2, HISTORIE/nacharbeit-1/PRUEFUNG/panel-ausgabe-und-waechter.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 3 (antwort-quellenanzeige): `taskpane.js` (tragende Quellen, Stand je Quelle,
+ * Einschub, verdichtete Kommentare; 12495 Zeilen) und `taskpane.css` ändern sich erneut. Der Wert
+ * unten ist damit wieder ein PLATZHALTER bis zur Messung; E2 meldet den neuen Blob als „Received".
+ * NACHARBEIT 4: GEMESSEN im Prüflauf zu Kandidat ca6061e4 (`ebe3b2c0…`, „Received" von E2,
+ * HISTORIE/nacharbeit-3/PRUEFUNG/panel-waechter-und-pins.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 5: `taskpane.js` ändert sich erneut (Belegstelle am Quellenlink, Wissensnetz-Sprung,
+ * 12497 Zeilen). Der Wert unten ist wieder ein PLATZHALTER bis zur Messung („Received" von E2).
+ * NACHARBEIT 6: GEMESSEN im Prüflauf zu Kandidat 300b9834 (`baadfb41…`, „Received" von E2,
+ * HISTORIE/nacharbeit-5/PRUEFUNG/panel-belegstelle-und-wissensnetz.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION mit main (Kandidat d9fe11c3, Nacharbeit 8): `taskpane.js` trägt zusätzlich die
+ * Auswertung von `KI_ABGESCHALTET` (gesamt-funktionsschalter, R-1040; 12498 Zeilen). Der Wert unten
+ * beschreibt das zusammengeführte Dokument nicht mehr und ist ein PLATZHALTER bis zur Messung
+ * („Received" von E2).
+ * NACHARBEIT 10: GEMESSEN im Prüflauf zu Kandidat a54d2eff am zusammengeführten Panel (`96fc81a8…`,
+ * „Received" von E2, HISTORIE/nacharbeit-10/PRUEFUNG/panel-pins-nach-integration.log) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 11 (Ben zu c022ce07, R-0310/R-0326): `taskpane.js` und `taskpane.css` geändert
+ * (Absatz-Belege, Fußnoten je Absatz, Passage als Belegstellen-Link). Der Wert unten ist wieder ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er wird danach
+ * gemessen übernommen.
+ * NACHARBEIT 12: GEMESSEN im Prüflauf zu Kandidat ff6019e3 (`9bee4487…`, „Received" von E2,
+ * HISTORIE/nacharbeit-12/PRUEFUNG/panel-waechter-und-pins.log) und unverändert übernommen; die
+ * vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 13 (Ben zu 6cc581b4): `taskpane.js`/`taskpane.css` geändert (Sichtbarkeit je
+ * Absatzmarke). Der Wert unten ist wieder ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den
+ * Ist-Wert als „Received", er wird danach gemessen übernommen.
+ * NACHARBEIT 14: GEMESSEN im Prüflauf zu Kandidat 966d179e (`3cd14422…`, „Received" von E2,
+ * HISTORIE/nacharbeit-14/PRUEFUNG/r0310-panel-absatzmarken.log) und unverändert übernommen; die
+ * vier Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 15 (Ben zu 8e6c9d73): `taskpane.js`, `taskpane.html` und `taskpane.css` geändert
+ * (Lücke nennt die unbekannte Zuordnung, `#ask-gap-zuordnung`). Der Wert unten ist wieder ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er wird danach
+ * gemessen übernommen.
+ * NACHARBEIT 17: GEMESSEN im Prüflauf zu Kandidat 2c099872 (`cb99796c…`, „Received" von E2,
+ * HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * INTEGRATION gesamt-sprache-begriffe × main 110348b2 (K22): Auf den Stand von `main` kommt GENAU
+ * eine Zeile in `renderStatics` (`taskpane.js`) — der Gruppenname der Sprachwahl
+ * `#einst-sprache-wahl` über `t("einstSprache")` (gesamt-sprache-begriffe Nacharbeit 9, damals
+ * gemessen `44414ac3…` an seinem eigenen Zweig). `taskpane.html`, `taskpane.css` und `marke.js`
+ * sind byte-gleich mit `main`. GEMESSEN am zusammengeführten Inhalt: die vier Dateien genau nach
+ * `fuegePanelZusammen` zusammengesetzt (Teile per `sed`/`cat`), Kennung über
+ * `git diff --no-index --full-index`. Kalibrierung: dasselbe Verfahren mit `taskpane.js` aus
+ * `main` 110348b2 ergibt wörtlich `cb99796c9a3134f0ffd02a97c3c1eb270055e4b8` (der Wert von `main`
+ * oben); mit der Zeile `876b3150…` (Beleg CLAUDE/BLOB-MESSUNG-NACHARBEIT-16.json im Auftragsordner).
  */
-export const PANEL_VOR_SCHNITT_BLOB = "44414ac3fb1537490caf7fe614699db39755fcb4";
+export const PANEL_VOR_SCHNITT_BLOB = "876b315057bd046ca531fffbd01b66e4a07b1ee5";
 
 export interface PanelTeile {
   html: string;
