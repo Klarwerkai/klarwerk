@@ -36,7 +36,7 @@ Strategische Differenzierung: Wissen importieren, priorisieren, als Outputs ausg
 - [ ] **Gegeben** ein Objekt, **dann** zwei Sichten — Aktualität (frisch/altert/fällig/veraltet) und IP-Sensitivität (öffentlich…streng vertraulich) — mit Maßnahme/Deployment-Empfehlung.
 
 ### FR-EXT-07 · Import/Output-Felder (SOLL, Konzept)
-- [ ] **Gegeben** das Datenmodell, **dann** sind `source_type`, `import_status`, `validity_until`, `freshness_status`, `ip_sensitivity`, `output_eligible`, `generated_outputs` u. a. dokumentiert.
+- [x] **Gegeben** das Datenmodell, **dann** sind `source_type`, `import_status`, `validity_until`, `freshness_status`, `ip_sensitivity`, `output_eligible`, `generated_outputs` u. a. dokumentiert. → `specs/reference/Funktionsbeschreibung.md` §18.4 (Konzept; bewusst kein Datenbankfeld).
 
 ## Abgrenzung
 Produktive Pipeline ist **nicht** v1-Scope; v1 liefert die Konzept-Screens + Datenmodell-Vorsorge.
