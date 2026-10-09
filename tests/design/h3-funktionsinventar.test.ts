@@ -252,9 +252,11 @@ const INVENTAR: Zeile[] = [
   {
     funktion: "Klara-Teaser",
     fundstelle: "Capture.tsx:3592",
-    ort: "Menü … → „Klara in Word“",
+    // N-0042 (Aufnahme gesamt-hilfen): der Menüpunkt trägt die Vorschau im Namen
+    // (`texte/wordvorschau.ts`).
+    ort: "Menü … → „Klara in Word (Vorschau)“",
     menue: "blatt-werkzeug-mehr",
-    text: "Klara in Word",
+    text: "Klara in Word (Vorschau)",
   },
   {
     funktion: "Entwurf speichern",
