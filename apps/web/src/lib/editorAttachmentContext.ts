@@ -18,12 +18,11 @@ export interface AttachmentContext {
   hasAny: boolean;
 }
 
-// i18n-Keys (Labels/Hinweise; Zahlen rendert die Komponente direkt).
-export const ATTACH_TITLE_KEY = "editor.attach.title";
-export const ATTACH_IMAGES_KEY = "editor.attach.images";
-export const ATTACH_FILES_KEY = "editor.attach.files";
-export const ATTACH_IMAGE_HINT_KEY = "editor.attach.imageHint";
-export const ATTACH_FILE_HINT_KEY = "editor.attach.fileHint";
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier standen die fünf Textschlüssel `ATTACH_*_KEY`
+// der ersten Anhangskarte. Die Karte rendert seit SCRUM-371 die reichere Medienführung
+// `editorMediaGuide` mit den `MEDIA_*`-Schlüsseln unten (`components/EditorAttachmentContext.tsx`,
+// R-0991 Nr. 20–24); die alten Schlüssel las niemand und sind entfernt. Die Wörterbucheinträge
+// bleiben stehen (Textbestand: `tests/i18n-textmodule/bestand-unveraendert.test.ts`).
 
 export function isImageAttachment(item: AttachmentLike): boolean {
   return typeof item.mime === "string" && item.mime.toLowerCase().startsWith("image/");

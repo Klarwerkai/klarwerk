@@ -41,7 +41,7 @@ import { abfrageMitBestand } from "../../lib/abfrageBestand";
 import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
-import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
+import { effectiveUsability } from "../../lib/conflictImpact";
 import { vorrangAmPunkt } from "../../lib/conflictView";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
@@ -1213,10 +1213,10 @@ export function MehrAbschnitte({
   // genau die Drift, gegen die `lib/eigeneKollision.ts:15-17` gebaut ist.
 
   // SCRUM-357 / AG-14: ein offener Konflikt begrenzt die Nutzbarkeit ehrlich (ready → in Prüfung).
-  const usability = conflictLimitedUsability(
-    koOverview(ko).usability,
-    conflictImpact(ko.id, conflicts.data ?? []),
-  );
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): über `effectiveUsability`, die EINE Quelle für
+  // „Basis aus `koOverview`, begrenzt durch den Konflikt" — bis hierher stand dieselbe Verkettung
+  // hier ausgeschrieben, und der Baustein dafür lag ohne Aufrufer daneben.
+  const usability = effectiveUsability(ko, conflicts.data ?? []);
   const lineage = lineageSummary(ko, neighborhood.data?.total ?? 0);
   // R-0766: die Kette am Objekt schließt Konflikte und Überschneidungen ein, an denen es beteiligt
   // ist — die offenen aus `useConflicts`, dazu alle (auch abgeschlossene) vom Server.
