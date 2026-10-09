@@ -14,24 +14,7 @@ export function reasonerModeTone(status: Pick<ReasonerConfigStatus, "mode">): Re
   return status.mode === "model" ? "pos" : "warn";
 }
 
-export interface ReasonerStatusSummary {
-  configured: boolean;
-  mode: ReasonerConfigStatus["mode"];
-  provider: string;
-  model: string | null;
-  fallbackAvailable: boolean;
-  localeCount: number;
-  taskCount: number;
-}
-
-export function reasonerStatusSummary(status: ReasonerConfigStatus): ReasonerStatusSummary {
-  return {
-    configured: status.configured,
-    mode: status.mode,
-    provider: status.provider,
-    model: status.model ?? null,
-    fallbackAvailable: status.fallbackAvailable,
-    localeCount: status.supportsLocales.length,
-    taskCount: status.tasks.length,
-  };
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `reasonerStatusSummary` (samt Ergebnistyp),
+// eine Zusammenfassung der KI-Konfiguration. Die Konfigurationskarte zeigt Modus, Anbieter, Modell,
+// Sprachen und Aufgaben einzeln (`pages/Stufe2.tsx`, R-0991 Nr. 54); die Zusammenfassung las niemand
+// und ist entfernt.

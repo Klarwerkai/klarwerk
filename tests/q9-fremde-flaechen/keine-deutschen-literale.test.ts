@@ -95,11 +95,12 @@ import { type Quelle, ladeQuelle, quelleAus, zeileVon } from "../../tools/modalg
  * für JOB 3449 beschreibt. Die drei sind übersetzt; die fünf verbleibenden Meldungsstellen der
  * Datei stehen namentlich in AUSNAHMEN, damit die vierte, die morgen jemand dazuschreibt, auffällt.
  */
-const DATEIEN = [
-  "services/app/src/http.ts",
-  "services/app/src/routes/capture-routes.ts",
-  "services/rbac/src/guard.ts",
-] as const;
+//
+// R-1349 (Auftrag aufruferwaechter): `services/rbac/src/guard.ts` stand hier als dritte Datei. Der
+// Wächter darin (`requirePermission` als preHandler) hatte keinen Produktaufrufer — jede Route geht
+// über `makeGuards().requirePermission` in `http.ts`, die weiter überwacht ist. Die Datei ist
+// entfernt, und mit ihr ihr Eintrag; die Fläche ist um genau diese Datei kleiner, nicht still.
+const DATEIEN = ["services/app/src/http.ts", "services/app/src/routes/capture-routes.ts"] as const;
 
 /**
  * BEWUSST STEHENGELASSEN — jede Zeile mit Grund, geprüft am Code.
@@ -403,9 +404,10 @@ describe("R5 · kein neues deutsches Meldungsliteral auf der überwachten Fläch
 // lautlos auf null schrumpfen." Ohne diese Fälle wäre ein Wächter, der aus Versehen keine Datei
 // mehr liest, ein GRÜNER Wächter.
 describe("R6 · die Prüfmenge kann nicht lautlos auf null schrumpfen", () => {
-  it("genau drei Dateien werden geprüft, und alle drei sind wirklich gelesen worden", () => {
-    expect(DATEIEN).toHaveLength(3);
-    expect(ERHEBUNG).toHaveLength(3);
+  // R-1349: zwei statt drei — `rbac/src/guard.ts` ist entfernt (s. `DATEIEN`).
+  it("genau zwei Dateien werden geprüft, und beide sind wirklich gelesen worden", () => {
+    expect(DATEIEN).toHaveLength(2);
+    expect(ERHEBUNG).toHaveLength(2);
     for (const e of ERHEBUNG) {
       expect(e.leseFehler, e.datei).toEqual([]);
       // Eine leere oder unlesbare Datei hätte keine Anweisungen — und fände nie etwas.
@@ -430,7 +432,6 @@ describe("R6 · die Prüfmenge kann nicht lautlos auf null schrumpfen", () => {
   // wären sie es, stünde hier 8.
   it("je überwachter Datei steht die Fundzahl fest — 5 in capture-routes.ts, 0 sonst", () => {
     const erwartet: Record<string, number> = {
-      "services/rbac/src/guard.ts": 0,
       "services/app/src/http.ts": 0,
       "services/app/src/routes/capture-routes.ts": 5,
     };
