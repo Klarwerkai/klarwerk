@@ -1958,7 +1958,12 @@ export function MehrAbschnitte({
         aufWechsel={(o) => abschnittUmschalten("beitrag", o)}
       >
         <div className="space-y-2">
-          <HelpTip title={t("vhelp.contribution.title")} body={t("vhelp.contribution.body")} />
+          {/* R-1176 (gesamt-sprache-begriffe): die Fassung, die „Quelle hinzufügen“ in EN/NL so
+              zitiert, wie der Knopf heißt (`texte/knopfzitat.ts`) — dieselbe wie `reviewHelp`. */}
+          <HelpTip
+            title={t("vhelp.contribution.title")}
+            body={t("knopfzitat.vhelp.contribution")}
+          />
           <textarea
             value={source.contribution}
             onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
