@@ -334,4 +334,34 @@ describe("R-0554 · Wissensübergabe beim Ausscheiden", () => {
     });
     expect((await w.ko.get(w.ids.vonAnna))?.author).toBe(ANNA);
   });
+
+  // ADMIN-04 (produkt:20261009:admin-nutzer-uebersicht): die Zahlen der Kontenliste.
+  it("U7 · offene Vorgänge je Person — dieselben Regeln wie die Vorschau, ohne Beiträge", async () => {
+    const je = await w.uebergabe.offeneVorgaenge([ANNA, BERT, CLARA, ANNA]);
+    expect([...je.keys()]).toEqual([ANNA, BERT, CLARA]);
+    // Anna: gelöschter Entwurf, geschlossene Lücke und erledigte Prüfung zählen nicht.
+    expect(je.get(ANNA)?.entwuerfe).toEqual([{ id: "d-anna" }]);
+    expect(je.get(ANNA)?.luecken).toEqual([{ id: "gap-anna-offen" }]);
+    expect(
+      je
+        .get(ANNA)
+        ?.pruefaufgaben.map((z) => z.koId)
+        .sort(),
+    ).toEqual([w.ids.vonClara, w.ids.annaVerantwortet].sort());
+    // Dieselbe Menge, die die Vorschau der Übergabe nennt — keine zweite Zählweise.
+    const v = await w.uebergabe.vorschau(ANNA, BERT);
+    expect(je.get(ANNA)?.entwuerfe).toEqual(v.entwuerfe);
+    expect(je.get(ANNA)?.luecken).toEqual(v.luecken);
+    expect(je.get(ANNA)?.pruefaufgaben).toEqual(v.pruefaufgaben.map((z) => ({ koId: z.koId })));
+    expect(je.get(BERT)).toEqual({
+      entwuerfe: [],
+      luecken: [],
+      pruefaufgaben: [{ koId: w.ids.annaVerantwortet }],
+    });
+    expect(je.get(CLARA)).toEqual({
+      entwuerfe: [{ id: "d-clara" }],
+      luecken: [{ id: "gap-clara" }],
+      pruefaufgaben: [],
+    });
+  });
 });
