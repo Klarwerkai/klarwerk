@@ -165,13 +165,13 @@ describe("R-1631 · Bauteil, Material und Geltungskontext in der Bibliothek", ()
   });
 
   it("B2 · QR-Pfad mit Kontext: allgemeines und dafür geltendes Wissen, sonst nichts", () => {
-    mount(anlagenPfad(PRESSE, "anlage", { standort: "Werk Nord", schicht: "Früh" }));
+    mount(anlagenPfad(PRESSE, "asset", { standort: "Werk Nord", schicht: "Früh" }));
     expect(sortiert()).toEqual(["k1", "k2", "k5"]);
     abbauen();
-    mount(anlagenPfad(PRESSE, "anlage", { standort: "Werk Süd", schicht: "Nacht" }));
+    mount(anlagenPfad(PRESSE, "asset", { standort: "Werk Süd", schicht: "Nacht" }));
     expect(sortiert()).toEqual(["k1", "k3", "k4", "k5"]);
     abbauen();
-    mount(anlagenPfad(PRESSE, "anlage", { anlagenversion: "Rev B" }));
+    mount(anlagenPfad(PRESSE, "asset", { anlagenversion: "Rev B" }));
     expect(sortiert()).toEqual(["k1", "k2", "k3", "k4"]);
   });
 

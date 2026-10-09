@@ -256,7 +256,7 @@ describe("Anlagenzugang · der QR-Code in der Wissensansicht", () => {
     waehle("anlagen-qr-kontext-anlagenversion", "");
     expect(container.querySelector('[data-testid="anlagen-qr-zu-lang"]')).toBeNull();
     expect(gelesenerInhalt()).toBe(
-      `${window.location.origin}${anlagenPfad(kennung, "anlage", { standort })}`,
+      `${window.location.origin}${anlagenPfad(kennung, "asset", { standort })}`,
     );
 
     // Erneut über die Grenze, dann die sichtbare Rücksetzung: Code ohne Kontext.
