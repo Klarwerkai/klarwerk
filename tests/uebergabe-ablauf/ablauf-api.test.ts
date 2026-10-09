@@ -878,3 +878,209 @@ describe("Nacharbeit 1 · N3 (K6): ein fehlender Abschlussvermerk ist ein offene
     expect(await paulaMeldetSichAn(b)).toBe(403);
   });
 });
+
+// ================================================================================================
+// NACHARBEIT 2 (Ben, Kandidat a0350c3) — die zwei belegten Lücken als Gegenproben.
+// ================================================================================================
+//   N4 · K4: der Kontenstand ist NACH den Übertragungen nicht lesbar — Teilergebnis bleibt, Zugang
+//        und Abschluss sind als offener Schritt ausgewiesen; die Wiederaufnahme schliesst ab.
+//   N5 · K6: Teilübertragung UND fehlender Abschlussvermerk, danach eine geänderte Restzuordnung —
+//        die nachgeholte Bilanz zählt den tatsächlichen Nachfolger, auch nach Reload.
+//   N6 · K6: ist die Verteilung je Nachfolger nicht lesbar, wird keine unvollständige Liste als
+//        Abschluss gespeichert.
+// Die Störungen sind SIMULIERT (vi.spyOn an den echten Diensten der App).
+
+/**
+ * Die Wissensübergabe der App, mit einem Haken: `nachSchreiben` läuft, sobald ein SCHREIBENDER
+ * Aufruf (die Ausführung) zurückkehrt — also genau nach den Übertragungen eines Ablaufs.
+ */
+function nachDenUebertragungen(
+  b: Buehne,
+  nachSchreiben: () => void,
+  vorschauStoeren: () => boolean = () => false,
+): void {
+  const weg = b.services.wissensuebergabe;
+  const echt = weg.vorgaengeUebergeben.bind(weg);
+  vi.spyOn(weg, "vorgaengeUebergeben").mockImplementation(
+    async (von, zuteilung, actor, schreiben) => {
+      if (!schreiben && vorschauStoeren()) {
+        throw new Error("Vorgangsablage vorübergehend nicht lesbar (simuliert)");
+      }
+      const ergebnis = await echt(von, zuteilung, actor, schreiben);
+      if (schreiben) {
+        nachSchreiben();
+      }
+      return ergebnis;
+    },
+  );
+}
+
+describe("Nacharbeit 2 · N4 (K4): Kontenlesefehler nach den Übertragungen", () => {
+  it("Teilergebnis bleibt, Zugang ungeklärt und offen; die Wiederaufnahme beendet und bilanziert", async () => {
+    const b = await buehne();
+    const echt = b.services.auth.listUsers.bind(b.services.auth);
+    let stoeren = false;
+    vi.spyOn(b.services.auth, "listUsers").mockImplementation(async () => {
+      if (stoeren) {
+        stoeren = false;
+        throw new Error("Kontenablage vorübergehend nicht lesbar (simuliert)");
+      }
+      return echt();
+    });
+    nachDenUebertragungen(b, () => {
+      stoeren = true;
+    });
+
+    const erster = await post(b, "/api/verantwortung/ablauf", vollePlanung(b, "beenden"));
+    expect(erster.statusCode, erster.body).toBe(207);
+    const e1 = erster.json() as ErgebnisN1;
+    expect(e1.vollstaendig).toBe(false);
+    expect(e1.uebertragen).toHaveLength(6);
+    expect(e1.offen).toEqual([]);
+    expect(e1.abschlussOffen).toContain("KONTEN");
+    expect(e1.zugang).toMatchObject({ vorher: "aktiv", beendet: false, endeGespeichert: false });
+    expect(e1.zugang.grund).toContain("nicht lesbar");
+    expect(await verantwortlich(b, b.ko.a1)).toBe(b.ids.nora);
+    expect(await paulaMeldetSichAn(b)).toBe(200);
+
+    // Reload: keine Bilanz als „vollständig" gespeichert, der Ablauf steht als ausstehend da.
+    const nachReload = await ablaeufe(b);
+    expect(nachReload.ablaeufe).toEqual([]);
+    expect(nachReload.ausstehend?.vorher).toEqual({
+      beitraege: 3,
+      entwuerfe: 1,
+      luecken: 1,
+      pruefaufgaben: 1,
+    });
+
+    const zweiter = await post(b, "/api/verantwortung/ablauf", vollePlanung(b, "beenden"));
+    expect(zweiter.statusCode, zweiter.body).toBe(200);
+    const e2 = zweiter.json() as ErgebnisN1;
+    expect(e2.nachgeholt).toBe(true);
+    expect(e2.abschlussOffen).toEqual([]);
+    expect(e2.zugang).toMatchObject({ nachher: "abgelaufen", beendet: true });
+    expect(await paulaMeldetSichAn(b)).toBe(403);
+    const [bilanz] = (await ablaeufe(b)).ablaeufe;
+    expect(bilanz).toMatchObject({
+      vorher: { beitraege: 3, entwuerfe: 1, luecken: 1, pruefaufgaben: 1 },
+      nachher: NULL,
+      vollstaendig: true,
+    });
+    expect(bilanz?.nachfolger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ an: b.ids.nora, beitraege: 2, vorgaenge: 1 }),
+        expect.objectContaining({ an: b.ids.otto, beitraege: 1, vorgaenge: 2 }),
+      ]),
+    );
+  });
+});
+
+describe("Nacharbeit 2 · N5 (K6): geänderte Restzuordnung nach Teilübertragung und fehlendem Vermerk", () => {
+  it("die nachgeholte Bilanz zählt den tatsächlichen Nachfolger — auch nach Reload", async () => {
+    const b = await buehne();
+    // Lauf 1: A2 → Nora scheitert beim Schreiben, und der Abschlussvermerk scheitert ebenfalls.
+    const echt = b.services.ko.uebertrageVerantwortung.bind(b.services.ko);
+    let beitragGestoert = false;
+    vi.spyOn(b.services.ko, "uebertrageVerantwortung").mockImplementation(
+      async (koId, erwartet, nachfolger, actor) => {
+        if (koId === b.ko.a2 && !beitragGestoert) {
+          beitragGestoert = true;
+          throw new Error("Ablage vorübergehend nicht erreichbar (simuliert)");
+        }
+        return echt(koId, erwartet, nachfolger, actor);
+      },
+    );
+    protokollStoeren(b, "verantwortung.ablauf");
+    const erster = await post(b, "/api/verantwortung/ablauf", vollePlanung(b, "behalten"));
+    expect(erster.statusCode, erster.body).toBe(207);
+    const e1 = erster.json() as ErgebnisN1;
+    expect(e1.offen.map((z) => z.id)).toEqual([b.ko.a2]);
+    expect(e1.abschlussOffen).toEqual(["BILANZVERMERK"]);
+    expect((await ablaeufe(b)).ausstehend).not.toBeNull();
+
+    // Lauf 2 (nach Reload, neu bestätigt): A2 geht jetzt an Otto statt an Nora.
+    const geaendert = {
+      ...vollePlanung(b, "behalten"),
+      beitraege: [
+        { koId: b.ko.a1, an: b.ids.nora },
+        { koId: b.ko.a2, an: b.ids.otto },
+        { koId: b.ko.v1, an: b.ids.otto },
+      ],
+    };
+    const zweiter = await post(b, "/api/verantwortung/ablauf", geaendert);
+    expect(zweiter.statusCode, zweiter.body).toBe(200);
+    const e2 = zweiter.json() as ErgebnisN1;
+    expect(e2.nachgeholt).toBe(true);
+    expect(e2.uebertragen.map((z) => `${z.id}:${z.an}`)).toEqual([`${b.ko.a2}:${b.ids.otto}`]);
+    expect(await verantwortlich(b, b.ko.a2)).toBe(b.ids.otto);
+
+    // Die Fortsetzung steht mit ihrem Plan im Protokoll, bevor geschrieben wurde.
+    const fortsetzungen = await b.services.audit.list({
+      action: "verantwortung.ablauf-fortgesetzt",
+      target: b.ids.paula,
+    });
+    expect(fortsetzungen).toHaveLength(1);
+
+    // Reload: EINE Bilanz, Vorher-Bilanz aus dem Beginn, A2 bei Otto gezählt, nicht bei Nora.
+    const nachReload = await ablaeufe(b);
+    expect(nachReload.ausstehend).toBeNull();
+    expect(nachReload.ablaeufe).toHaveLength(1);
+    const [bilanz] = nachReload.ablaeufe;
+    expect(bilanz).toMatchObject({
+      vorher: { beitraege: 3, entwuerfe: 1, luecken: 1, pruefaufgaben: 1 },
+      nachher: NULL,
+      vollstaendig: true,
+      nachgeholt: true,
+    });
+    const je = Object.fromEntries(
+      (bilanz?.nachfolger ?? []).map((n) => [
+        n.an,
+        { beitraege: n.beitraege, vorgaenge: n.vorgaenge },
+      ]),
+    );
+    expect(je).toEqual({
+      [b.ids.nora]: { beitraege: 1, vorgaenge: 1 },
+      [b.ids.otto]: { beitraege: 2, vorgaenge: 2 },
+    });
+  });
+});
+
+describe("Nacharbeit 2 · N6 (K6): keine unvollständige Nachfolgerliste als Abschluss", () => {
+  it("ist die Verteilung nicht lesbar, bleibt der Abschluss offen; die Wiederaufnahme zählt richtig", async () => {
+    const b = await buehne();
+    let geschrieben = false;
+    let einmal = true;
+    nachDenUebertragungen(
+      b,
+      () => {
+        geschrieben = true;
+      },
+      () => {
+        // Nur die Zählung NACH den Übertragungen des ersten Laufs scheitert.
+        if (geschrieben && einmal) {
+          einmal = false;
+          return true;
+        }
+        return false;
+      },
+    );
+    const erster = await post(b, "/api/verantwortung/ablauf", vollePlanung(b));
+    expect(erster.statusCode, erster.body).toBe(207);
+    const e1 = erster.json() as ErgebnisN1;
+    expect(e1.uebertragen).toHaveLength(6);
+    expect(e1.abschlussOffen).toEqual(["BILANZ_NACHFOLGER", "BILANZVERMERK"]);
+    const nachReload = await ablaeufe(b);
+    expect(nachReload.ablaeufe).toEqual([]);
+    expect(nachReload.ausstehend).not.toBeNull();
+
+    const zweiter = await post(b, "/api/verantwortung/ablauf", vollePlanung(b));
+    expect(zweiter.statusCode, zweiter.body).toBe(200);
+    const [bilanz] = (await ablaeufe(b)).ablaeufe;
+    expect(bilanz?.nachfolger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ an: b.ids.nora, beitraege: 2, vorgaenge: 1 }),
+        expect.objectContaining({ an: b.ids.otto, beitraege: 1, vorgaenge: 2 }),
+      ]),
+    );
+  });
+});

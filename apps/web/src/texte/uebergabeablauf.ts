@@ -112,6 +112,10 @@ export default {
       "Offen: der Bestand danach war nicht lesbar. Erneut übertragen misst ihn und schliesst ab.",
     "uebergabeablauf.abschlussOffen.BILANZVERMERK":
       "Offen: die Abschlussbilanz steht noch nicht im Prüfprotokoll. Erneut übertragen holt sie mit der ursprünglichen Vorher-Bilanz nach.",
+    "uebergabeablauf.abschlussOffen.KONTEN":
+      "Offen: der Kontenstand war danach nicht lesbar, der Zugang ist ungeklärt. Erneut übertragen klärt ihn und schliesst ab.",
+    "uebergabeablauf.abschlussOffen.BILANZ_NACHFOLGER":
+      "Offen: die Verteilung je Nachfolger war nicht lesbar. Erneut übertragen zählt sie und schliesst ab.",
     "uebergabeablauf.nachgeholt":
       "Abschluss eines früher begonnenen Ablaufs nachgeholt — mit dessen Vorher-Bilanz.",
     "uebergabeablauf.letzte.ausstehend":
@@ -220,6 +224,10 @@ export default {
       "Open: the holdings afterwards could not be read. Transferring again measures them and completes.",
     "uebergabeablauf.abschlussOffen.BILANZVERMERK":
       "Open: the final balance is not yet in the audit log. Transferring again records it with the original before-balance.",
+    "uebergabeablauf.abschlussOffen.KONTEN":
+      "Open: the accounts could not be read afterwards, access is unclear. Transferring again clarifies it and completes.",
+    "uebergabeablauf.abschlussOffen.BILANZ_NACHFOLGER":
+      "Open: the distribution per successor could not be read. Transferring again counts it and completes.",
     "uebergabeablauf.nachgeholt":
       "Completion of an earlier started hand-over recorded — with its before-balance.",
     "uebergabeablauf.letzte.ausstehend":
@@ -328,6 +336,10 @@ export default {
       "Open: het bestand daarna kon niet worden gelezen. Opnieuw overdragen meet het en rondt af.",
     "uebergabeablauf.abschlussOffen.BILANZVERMERK":
       "Open: de eindbalans staat nog niet in het auditlogboek. Opnieuw overdragen legt hem vast met de oorspronkelijke balans vooraf.",
+    "uebergabeablauf.abschlussOffen.KONTEN":
+      "Open: de accounts konden daarna niet worden gelezen, de toegang is onduidelijk. Opnieuw overdragen verheldert hem en rondt af.",
+    "uebergabeablauf.abschlussOffen.BILANZ_NACHFOLGER":
+      "Open: de verdeling per opvolger kon niet worden gelezen. Opnieuw overdragen telt haar en rondt af.",
     "uebergabeablauf.nachgeholt":
       "Afronding van een eerder gestarte overdracht vastgelegd — met de balans vooraf daarvan.",
     "uebergabeablauf.letzte.ausstehend":

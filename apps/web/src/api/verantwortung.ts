@@ -227,7 +227,10 @@ export interface AblaufErgebnis {
   bereitsErledigt: AblaufEintrag[];
   offen: AblaufOffen[];
   zugang: AblaufZugang;
-  /** Offene Abschlussschritte: `ZUGANG`, `BILANZ_NACHHER`, `BILANZVERMERK`. */
+  /**
+   * Offene Abschlussschritte: `KONTEN`, `ZUGANG`, `BILANZ_NACHHER`, `BILANZ_NACHFOLGER`,
+   * `BILANZVERMERK`.
+   */
   abschlussOffen: string[];
   /** Dieser Lauf hat den Abschluss eines früher begonnenen Ablaufs nachgeholt. */
   nachgeholt: boolean;

@@ -217,6 +217,28 @@ interface Ablaufbeginn {
   vorgaenge: VorgangZuteilung[];
 }
 
+/**
+ * Ergänzt einen Plan um Zuteilungen, die er noch nicht WÖRTLICH enthält. Derselbe Eintrag mit einem
+ * anderen Ziel bleibt bewusst als zweite Zeile stehen: welches Ziel ihn heute trägt, entscheidet die
+ * Bilanz (`planStand`) am tatsächlichen Stand.
+ */
+function planErgaenzen<T extends { an: string; koId?: string; art?: string; id?: string }>(
+  plan: T[],
+  neu: readonly T[],
+): void {
+  // Ein fester Schlüssel statt `JSON.stringify`: aus dem Protokoll gelesene Felder können in anderer
+  // Reihenfolge zurückkommen (jsonb).
+  const schluesselVon = (z: T): string => [z.art ?? "beitrag", z.koId ?? z.id, z.an].join("|");
+  const vorhanden = new Set(plan.map(schluesselVon));
+  for (const z of neu) {
+    const schluessel = schluesselVon(z);
+    if (!vorhanden.has(schluessel)) {
+      vorhanden.add(schluessel);
+      plan.push(z);
+    }
+  }
+}
+
 const VORGANGARTEN: readonly VorgangArt[] = ["entwurf", "luecke", "pruefaufgabe"];
 
 function summe(b: Bilanz): number {
@@ -497,8 +519,9 @@ export function verantwortungRoutes(
   /** Nacharbeit 1 (Ben K6): der jüngste Beginn dieser Person ohne Abschlussvermerk — oder `null`. */
   async function offenerAblaufbeginn(von: string): Promise<Ablaufbeginn | null> {
     const audit = dienste.audit as AuditService;
-    const [begonnen, abschluesse] = await Promise.all([
+    const [begonnen, fortsetzungen, abschluesse] = await Promise.all([
       audit.list({ action: "verantwortung.ablauf-begonnen", target: von }),
+      audit.list({ action: "verantwortung.ablauf-fortgesetzt", target: von }),
       audit.list({ action: "verantwortung.ablauf", target: von }),
     ]);
     const geschlossen = new Set(abschluesse.map((x) => x.payload.beginn));
@@ -506,14 +529,27 @@ export function verantwortungRoutes(
     if (!offen) {
       return null;
     }
+    // Nacharbeit 2 (Ben K6): der Plan ist die VEREINIGUNG aus dem Beginn und jeder protokollierten
+    // Fortsetzung — so kennt die Bilanz auch eine Restzuordnung, die ein späterer Lauf geändert hat.
+    const plaene = [offen, ...fortsetzungen.filter((x) => x.payload.beginn === offen.seq)];
+    const beitraege: Zuteilung[] = [];
+    const vorgaenge: VorgangZuteilung[] = [];
+    for (const x of plaene) {
+      if (Array.isArray(x.payload.beitraege)) {
+        planErgaenzen(beitraege, x.payload.beitraege as Zuteilung[]);
+      }
+      if (Array.isArray(x.payload.vorgaenge)) {
+        planErgaenzen(vorgaenge, x.payload.vorgaenge as VorgangZuteilung[]);
+      }
+    }
     const p = offen.payload;
     return {
       seq: offen.seq,
       at: offen.at,
       umfang: p.umfang === "gezielt" ? "gezielt" : "ausscheiden",
       vorher: p.vorher as Bilanz,
-      beitraege: Array.isArray(p.beitraege) ? (p.beitraege as Zuteilung[]) : [],
-      vorgaenge: Array.isArray(p.vorgaenge) ? (p.vorgaenge as VorgangZuteilung[]) : [],
+      beitraege,
+      vorgaenge,
     };
   }
 
@@ -1017,7 +1053,29 @@ export function verantwortungRoutes(
         // übertragen.
         let beginn = await offenerAblaufbeginn(e.von);
         const nachgeholt = beginn !== null;
-        if (!beginn) {
+        if (beginn) {
+          // Nacharbeit 2 (Ben K6): auch eine FORTSETZUNG steht vor dem ersten Schreiben im
+          // Protokoll — mit ihrem Plan. Nur so kann die nachgeholte Bilanz eine geänderte
+          // Restzuordnung zählen. Lässt sie sich nicht festhalten, wird nichts übertragen.
+          try {
+            await audit.record({
+              actor: user.id,
+              action: "verantwortung.ablauf-fortgesetzt",
+              target: e.von,
+              payload: { beginn: beginn.seq, beitraege: e.beitraege, vorgaenge: e.vorgaenge },
+            });
+          } catch (err) {
+            request.log.error({ err }, "Übergabeablauf: Fortsetzung nicht protokolliert");
+            reply.code(503).send({
+              error: "PROTOKOLL_NICHT_VERFUEGBAR",
+              message:
+                "Das Prüfprotokoll nimmt gerade nichts an. Es wurde nichts übertragen und der Zugang nicht verändert.",
+            });
+            return;
+          }
+          planErgaenzen(beginn.beitraege, e.beitraege);
+          planErgaenzen(beginn.vorgaenge, e.vorgaenge);
+        } else {
           try {
             const eintrag = await audit.record({
               actor: user.id,
@@ -1036,8 +1094,8 @@ export function verantwortungRoutes(
               at: eintrag.at,
               umfang: e.umfang,
               vorher: vorschau.vorher,
-              beitraege: e.beitraege,
-              vorgaenge: e.vorgaenge,
+              beitraege: [...e.beitraege],
+              vorgaenge: [...e.vorgaenge],
             };
           } catch (err) {
             request.log.error({ err }, "Übergabeablauf: Beginn nicht protokolliert");
@@ -1075,7 +1133,18 @@ export function verantwortungRoutes(
           };
         }
 
-        const konten = await dienste.auth.listUsers();
+        // Nacharbeit 2 (Ben K4): auch der Kontenstand wird NACH den Übertragungen gelesen. Scheitert
+        // er, bleibt das Teilergebnis; Namen fehlen dann, und Zugang wie Abschluss sind ungeklärt —
+        // ein offener Schritt `KONTEN`, den dieselbe Eingabe noch einmal nachholt.
+        let konten: readonly PublicUser[] = [];
+        let kontenLesbar = true;
+        try {
+          konten = await dienste.auth.listUsers();
+        } catch (err) {
+          request.log.error({ err }, "Übergabeablauf: Kontenstand danach nicht lesbar");
+          kontenLesbar = false;
+          abschlussOffen.push("KONTEN");
+        }
         const zeile = (art: EintragArt, id: string, titel: string | null, an: string): Eintrag => ({
           art,
           id,
@@ -1138,12 +1207,17 @@ export function verantwortungRoutes(
         // Zugangsende nicht. Erfüllt ist die Entscheidung erst, wenn die gespeicherte Befristung
         // erreicht ist (`zugangsendeGespeichert`), nicht schon, weil das Konto gerade zu ist.
         let konto = konten.find((k) => k.id === e.von);
-        const zugangVorher = zugangsstand(konto, jetzt());
-        let endeGespeichert = zugangsendeGespeichert(konto, jetzt());
+        // Ohne lesbaren Kontenstand gilt der zuletzt GELESENE Stand (aus der Vorschau dieses Laufs)
+        // — als Auskunft, nicht als Grundlage einer Zugangsänderung.
+        const zugangVorher = kontenLesbar ? zugangsstand(konto, jetzt()) : vorschau.zugang.jetzt;
+        let endeGespeichert = kontenLesbar && zugangsendeGespeichert(konto, jetzt());
         let geschrieben = false;
         let zugangGrund: string | null = null;
         if (e.zugang === "beenden") {
-          if (nachher === null) {
+          if (!kontenLesbar) {
+            zugangGrund =
+              "Der Kontenstand ist nicht lesbar — der Zugang wurde nicht verändert. Erneut bestätigen klärt und beendet ihn.";
+          } else if (nachher === null) {
             zugangGrund =
               "Der Bestand danach ist nicht lesbar — der Zugang bleibt, bis die Übergabe erneut bestätigt ist.";
           } else if (summe(nachher) > 0) {
@@ -1171,25 +1245,27 @@ export function verantwortungRoutes(
           // Mit gespeichertem Zugangsende heisst der Stand „beendet" — auch wenn das Konto daneben
           // gesperrt ist; die Sperre allein wäre vorübergehend.
           nachher:
-            e.zugang === "beenden" && endeGespeichert ? "abgelaufen" : zugangsstand(konto, jetzt()),
+            e.zugang === "beenden" && endeGespeichert
+              ? "abgelaufen"
+              : kontenLesbar
+                ? zugangsstand(konto, jetzt())
+                : zugangVorher,
           entscheidung: e.zugang,
           beendet: geschrieben,
           endeGespeichert,
           grund: zugangGrund,
         };
 
-        // Je Nachfolger, was aus dem Plan DES BEGINNS jetzt bei ihm liegt — beim Nachholen also
-        // auch, was ein früherer Lauf übertragen hat.
-        let nachfolger: { an: string; beitraege: number; vorgaenge: number }[];
+        // Je Nachfolger, was aus dem Plan DES BEGINNS samt aller protokollierten Fortsetzungen jetzt
+        // bei ihm liegt — beim Nachholen also auch, was ein früherer Lauf übertragen hat, und eine
+        // geänderte Restzuordnung. Lässt sich das nicht lesen (Ben K6, Nacharbeit 2), wird KEINE
+        // unvollständige Liste gespeichert: der Abschluss bleibt offen (`BILANZ_NACHFOLGER`).
+        let nachfolger: { an: string; beitraege: number; vorgaenge: number }[] | null = null;
         try {
           nachfolger = await planStand(user, e.von, beginn, request.log);
         } catch (err) {
           request.log.error({ err }, "Übergabeablauf: Stand je Nachfolger nicht lesbar");
-          nachfolger = [...new Set(uebertragen.map((z) => z.an))].map((an) => ({
-            an,
-            beitraege: uebertragen.filter((z) => z.an === an && z.art === "beitrag").length,
-            vorgaenge: uebertragen.filter((z) => z.an === an && z.art !== "beitrag").length,
-          }));
+          abschlussOffen.push("BILANZ_NACHFOLGER");
         }
 
         // DER BILANZVERMERK: Vorher-Bilanz aus dem Beginn, nachher, je Nachfolger, offene Zeilen
@@ -1198,7 +1274,9 @@ export function verantwortungRoutes(
         // nicht vollständig, 207, und der nächste bestätigte Ablauf holt ihn mit derselben
         // Vorher-Bilanz nach.
         let protokolliert = false;
-        if (nachher !== null) {
+        // Ohne lesbaren Kontenstand ist der Zugang ungeklärt — der Beginn bleibt dann offen, damit
+        // die Wiederaufnahme mit derselben Vorher-Bilanz abschliesst.
+        if (nachher !== null && nachfolger !== null && kontenLesbar) {
           try {
             await audit.record({
               actor: user.id,
@@ -1229,11 +1307,11 @@ export function verantwortungRoutes(
         }
         const vollstaendig = offen.length === 0 && zugangErfuellt && abschlussOffen.length === 0;
         reply.code(vollstaendig ? 200 : 207).send({
-          person: person(e.von, konten, jetzt()),
+          person: kontenLesbar ? person(e.von, konten, jetzt()) : vorschau.person,
           umfang: beginn.umfang,
           vorher: beginn.vorher,
           nachher,
-          nachfolger,
+          nachfolger: nachfolger ?? [],
           uebertragen,
           bereitsErledigt,
           offen,
