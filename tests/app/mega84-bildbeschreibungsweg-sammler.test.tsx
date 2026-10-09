@@ -2321,8 +2321,21 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `texte/antwortmeldung.ts`; 690 → 692), entfernt keine. 540 + 1 = 541 deckt sich mit der
     // Messung. Dieser Auftrag hat dabei kein Bauteil hinzugefügt. `anbieter` 1 und `traeger` 2
     // sind unverändert.
+    //
+    // gesamt-navigation Nacharbeit 18: GEMESSEN 521. Am Kandidaten 26242335 meldete der Sammler
+    // wörtlich „gemessen: 521 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 674 Quelldateien …
+    // expected { komponenten: 521, … } to deeply equal { komponenten: 541, … }". Der eingemischte
+    // Hauptstand (4fae57bef) räumt ungenutzten Code ab: laut Diff ffe93dd8..26242335 entfernt er
+    // ZWANZIG Komponentendeklarationen und fügt keine hinzu — `GuardedNavLink`, `FindingSideLink`,
+    // `FindingCard`, `FindingGroupHeader`, `KnowledgeRescueIntro`, `LibraryScopeBar`,
+    // `IntakeCompletion`, `IntakeEmptyState`, `Chip`, `StructureSuggestionChips`, `ConflictKoSide`,
+    // `ImportResultView`, `KnowledgeItemList`, `SourceRecordCard`, `KoReadHeader`,
+    // `KoReadStatement`, `KoReadDetails`, `KoReadBody`, `KoReadView`, `KoHomeLine` — samt 18
+    // Quelldateien (692 → 674). 541 − 20 = 521 deckt sich mit der Messung. Keine Datei dieses
+    // Auftrags ist betroffen; `WeiterUntenHinweis` bleibt enthalten. `anbieter` 1 und `traeger` 2
+    // sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 541,
+      komponenten: 521,
       anbieter: 1,
       traeger: 2,
     });
