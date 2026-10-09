@@ -5,7 +5,7 @@ import {
   type AddonPrincipal,
   authorizesAsk,
   authorizesCheckText,
-  isLiteralAskPath,
+  isLiteralPath,
   matchAddonRoute,
   principalHasCapability,
   resolveAddonAuth,
@@ -203,14 +203,17 @@ describe("KLARWERK_ADDON_API — Add-on-Principal (Flag AN)", () => {
 // ben-Review-Nachbesserung: Defense-in-Depth-Capability-Check + expliziter Single-Tenant-Vertrag
 // (keine erzwungene Tenant-Grenze am Principal).
 describe("SCRUM-490 D2 (ben-Review): Capability-Check + Single-Tenant-Vertrag", () => {
-  it("isLiteralAskPath: nur der byte-genaue Pfad /api/ask ist literal (Roh-Pfad-Regel)", () => {
-    expect(isLiteralAskPath("/api/ask")).toBe(true);
-    expect(isLiteralAskPath("/api/ask?x=1")).toBe(true);
-    expect(isLiteralAskPath("/api/%61sk")).toBe(false); // %61 = 'a'
-    expect(isLiteralAskPath("/%2e%2e/api/ask")).toBe(false); // %2e%2e = '..'
-    expect(isLiteralAskPath("/api/ask/")).toBe(false); // Trailing-Slash
-    expect(isLiteralAskPath("/API/ASK")).toBe(false); // Groß-/Kleinschreibung
-    expect(isLiteralAskPath(undefined)).toBe(false);
+  // R-1349: geprüft wird `isLiteralPath`, das `matchAddonRoute` im Betrieb ruft. Die frühere
+  // Ask-Hülle `isLiteralAskPath` hatte keinen Produktaufrufer und ist entfernt; die Fälle sind dieselben.
+  it("isLiteralPath: nur der byte-genaue Pfad /api/ask ist literal (Roh-Pfad-Regel)", () => {
+    const ask = (roh: string | undefined): boolean => isLiteralPath(roh, "/api/ask");
+    expect(ask("/api/ask")).toBe(true);
+    expect(ask("/api/ask?x=1")).toBe(true);
+    expect(ask("/api/%61sk")).toBe(false); // %61 = 'a'
+    expect(ask("/%2e%2e/api/ask")).toBe(false); // %2e%2e = '..'
+    expect(ask("/api/ask/")).toBe(false); // Trailing-Slash
+    expect(ask("/API/ASK")).toBe(false); // Groß-/Kleinschreibung
+    expect(ask(undefined)).toBe(false);
   });
 
   it("Capabilities sind getrennte Rechte (Least-Privilege): je Helfer nur das eigene Recht", () => {
@@ -261,7 +264,7 @@ describe("SCRUM-490 D2 (ben-Review): Capability-Check + Single-Tenant-Vertrag", 
 // SCRUM-491 Slice 5: Add-on-Route-Tabelle — Deny-by-default + Least-Privilege je Route. Diese Logik
 // (matchAddonRoute + principalHasCapability) IST der Root-Hook-Entscheid; hier byte-genau/kompositions-
 // getestet, weil der echte Key beide Rechte trägt (die „nur ask → 403 auf check-text"-Grenze ist real
-// nur über einen konstruierten Principal prüfbar — vgl. isLiteralAskPath-Präzedenz).
+// nur über einen konstruierten Principal prüfbar — vgl. isLiteralPath-Präzedenz).
 describe("SCRUM-491 Slice 5: Add-on-Route-Tabelle (Deny-by-default, Least-Privilege)", () => {
   it("matchAddonRoute: nur die exakten Paare matchen; Rohpfad byte-genau", () => {
     expect(matchAddonRoute("POST", "/api/ask", "/api/ask")?.capability).toBe("ask.validated");

@@ -28,11 +28,13 @@
 import { describe, expect, it } from "vitest";
 import {
   MIN_ANSWER_SUBSTANCE,
-  keywordSelect,
   queryTokens,
   rankCandidates,
 } from "../../services/reasoner/src/provider";
 import type { KnowledgeRef } from "../../services/reasoner/src/types";
+// R-1349: `keywordSelect` (provider.ts) ist entfernt — kein Provider rief ihn. Der Zugang misst die
+// Auswahlmenge am Produktweg `rankCandidates` ohne Deckel; die Zusagen unten gelten für sie.
+import { keywordSelect } from "../support/auswahlweg";
 
 const ref = (id: string, title: string, statement: string): KnowledgeRef => ({
   id,
