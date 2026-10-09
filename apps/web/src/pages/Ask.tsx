@@ -9,6 +9,7 @@ import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type {
   AnswerResult,
   AskGeltungsauskunft,
+  AskPruefrahmen,
   Fragekontext,
   VerschlossenHinweis,
 } from "../api/types";
@@ -33,6 +34,7 @@ import { RoleLink } from "../components/RoleLink";
 // FE-003: die Bausteine, die das Tutorial „Fragen“ mit dieser Seite TEILT — Fragefeld, Quellenchip
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
+import { Belastbarkeit, PruefrahmenSatz } from "../components/fragen/Belastbarkeit";
 import { FrageFeld } from "../components/fragen/FrageFeld";
 import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
@@ -682,6 +684,10 @@ export function Ask(): JSX.Element {
   const [verschlossen, setVerschlossen] = useState<VerschlossenHinweis[]>(
     anfang?.antwort?.verschlossen ?? [],
   );
+  // AUFNAHME 20260922 · R-0284: wogegen DIESE Frage geprüft wurde — dieselbe Bindung an genau eine
+  // Frage wie die Torlage. Nicht im Arbeitsstand: nach dem Neuladen steht ehrlich kein Satz, statt
+  // eines Rahmens, den niemand mehr bestätigt hat.
+  const [pruefrahmen, setPruefrahmen] = useState<AskPruefrahmen | null>(null);
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
@@ -899,6 +905,7 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
       // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
       setVerschlossen([]);
+      setPruefrahmen(null);
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
       setGeltungsAuskunft(null);
     },
@@ -930,6 +937,7 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
+      setPruefrahmen(r.pruefrahmen ?? null);
       // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
       setGeltungsAuskunft(r.geltung ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
@@ -1077,6 +1085,7 @@ export function Ask(): JSX.Element {
       setResult(antwort?.result ?? null);
       setReceipt(antwort?.receipt ?? "");
       setVerschlossen(antwort?.verschlossen ?? []);
+      setPruefrahmen(null);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
@@ -2263,6 +2272,15 @@ export function Ask(): JSX.Element {
                       ) : null}
                     </div>
                   ) : null}
+                  {/* AUFNAHME 20260922 · R-0318/R-0321/R-0322/R-0335: die Belastbarkeit VOM SERVER
+                    direkt an der Antwort — Lage, Begründung, Vertrauenswert mit Herleitung, je
+                    tragender Quelle Stand und Verantwortung, bei Widerspruch beide Seiten. Eine zur
+                    Lücke herabgestufte leere Antwort (`leereAntwortAlsLuecke`) trägt sie nicht. */}
+                  {result.answered &&
+                  result.belastbarkeit &&
+                  result.belastbarkeit.lage !== "wissensluecke" ? (
+                    <Belastbarkeit b={result.belastbarkeit} />
+                  ) : null}
                   {/* ==========================================================================
                     DIE QUELLEN-CHIPS (Zielbild Z.42) — „n · Titel", getrennt durch eine Linie.
                     ==========================================================================
@@ -2835,6 +2853,8 @@ export function Ask(): JSX.Element {
                 </span>
                 <p className="mt-2 text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
                 <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
+                {/* R-0284: wogegen geprüft wurde — sonst weiss niemand, ob die Null etwas bedeutet. */}
+                {pruefrahmen ? <PruefrahmenSatz rahmen={pruefrahmen} /> : null}
                 {/* KORREKTURPFLICHT 1 (Ben, Runde 5) / Auftrag §6: DIESE KARTE TRÄGT DEN
                     LÜCKENSATZ, DEN GRUND UND DEN KNOPF. Die Rettungs-Geschichte (Story,
                     Beitragswert, „keine Antwort erfunden", Schrittfolge), der Datenschutzsatz, der
