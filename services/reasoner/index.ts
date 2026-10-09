@@ -26,7 +26,6 @@ export {
 } from "./src/image-validation";
 export {
   DeterministicProvider,
-  keywordSelect,
   type ReasonerProvider,
   // SCRUM-360 / AG-03: begrenzte, status-/trust-bewusste Top-K-Kandidatenauswahl.
   DEFAULT_TOP_K,
@@ -219,7 +218,6 @@ export {
   resolveKlaraPolicy,
   klaraPolicyVersion,
   klaraConfigurationVersion,
-  KLARA_MODES,
   KLARA_RESOLUTION_TTL_MS,
   KLARA_EXTERNAL_EXECUTION_MIGRATED,
   // R-0639: der Dokumenttext als eigene Klasse mit eigenem Riegel — gelesen im App-Layer

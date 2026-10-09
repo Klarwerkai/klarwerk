@@ -61,10 +61,13 @@ import {
   type ResolvedKlaraEntry,
   allFaqEntries,
   allKlaraEntries,
-  rankKlara,
   resolveKlaraEntries,
   searchKlara,
 } from "../../apps/web/src/lib/klaraRegistry";
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): `rankKlara` stand als Export in
+// `klaraRegistry.ts`, den das Produkt nicht mehr rief. Dieselbe Rangliste kommt jetzt über den
+// Produktweg `klaraGrundlage` (ohne Bibliotheksauszüge zeichengleich), Vorgabe weiterhin 6.
+import { rankKlara } from "../support/klara-rangfolge";
 
 // ------------------------------------------------------------------------------------------------
 // L1 · DIE SPRACHLISTE KOMMT AUS DEM PRODUKT.

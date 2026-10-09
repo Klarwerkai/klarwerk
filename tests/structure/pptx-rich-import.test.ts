@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 // namespace-aware Gegenbeispiele und Budget-Tests mit ECHTEM fflate (zipSync-Fixtures).
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from "../../apps/web/node_modules/fflate";
 import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
+import { detectFileKind } from "../../apps/web/src/lib/extract";
 import {
   MAX_PPTX_SLIDES,
   PptxTooLargeError,
@@ -14,7 +15,6 @@ import {
   budgetedPptxUnzip,
   createPptxUnzipBudget,
   extractPptxRich,
-  isPptxDocumentLike,
   resolveSlideOrder,
   slideToHtml,
 } from "../../apps/web/src/lib/pptx";
@@ -71,12 +71,16 @@ function slideXml(opts: {
   return `<?xml version="1.0"?><p:sld xmlns:p="p" xmlns:a="a" xmlns:r="r"><p:cSld><p:spTree>${titleShape}${bodyShape}${pic}</p:spTree></p:cSld></p:sld>`;
 }
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): gemessen an `detectFileKind`, der Erkennung, die der
+// Arbeitsraum fährt — `isPptxDocumentLike` hatte nur einen ungerufenen Wrapper als Leser und ist
+// entfernt. Die Zusage ist dieselbe.
 describe("WP-D5: Erkennung", () => {
   it("erkennt .pptx über Endung und MIME, sonst nicht", () => {
-    expect(isPptxDocumentLike({ name: "Deck.pptx" })).toBe(true);
-    expect(isPptxDocumentLike({ name: "x", type: PPTX_MIME })).toBe(true);
-    expect(isPptxDocumentLike({ name: "text.docx" })).toBe(false);
-    expect(isPptxDocumentLike({ name: "report.pdf" })).toBe(false);
+    expect(detectFileKind({ name: "Deck.pptx" })).toBe("pptx");
+    expect(detectFileKind({ name: "DECK.PPTX" })).toBe("pptx");
+    expect(detectFileKind({ name: "x", type: PPTX_MIME })).toBe("pptx");
+    expect(detectFileKind({ name: "text.docx" })).not.toBe("pptx");
+    expect(detectFileKind({ name: "report.pdf" })).not.toBe("pptx");
   });
 });
 
