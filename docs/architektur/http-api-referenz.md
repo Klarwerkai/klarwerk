@@ -247,6 +247,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
+| `GET` | `/api/gaps/:id/ansprechpartner` | `ko.assign` (Schalter `KLARWERK_EXPERT_MATCHING`) | — | 200 Ansprechpartner nach Wissensspuren | 404 `not_found` ohne Schalter, vor dem Rechtetor; 404 `NOT_FOUND` unbekannte Lücke |
 | `PUT` | `/api/gaps/:id` | `ko.assign` | Rumpf `{ expertId? \| close? \| priority? }` | 200 Lücke | 400 `BAD_REQUEST` |
 | `DELETE` | `/api/gaps/:id` | `ko.validate` | Abfrage `confirm` | 204 | Dienstfehler |
 | `GET` | `/api/klara/ai-status` | `ko.read` | Bindung aus Kopfzeilen des Add-ins | 200 Klara-Status der Sitzung | — |

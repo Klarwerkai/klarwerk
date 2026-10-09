@@ -141,6 +141,13 @@ export function Lifecycle(): JSX.Element {
         <p>{t("lcy.banner")}</p>
       </PruefenHilfeBlock>
       <PruefenMenueTrenner />
+      {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die vorhandene Erklärung des grünen Knopfs „Noch
+          gültig" unten im Fussband (`lib/reviewHelp.ts`, `vhelp.stillValid`) — bis hierher nur über
+          Klaras Suche erreichbar, jetzt im „?"-Menü des Reiters, in dem der Knopf steht. */}
+      <PruefenHilfeBlock titel={t("vhelp.stillValid.title")}>
+        <p>{t("vhelp.stillValid.body")}</p>
+      </PruefenHilfeBlock>
+      <PruefenMenueTrenner />
       <PruefenHilfeBlock titel={t("lcy.pathTitle", { role: t(`role.name.${role}`) })}>
         {path.isLoading ? (
           <p>{t("state.loading")}</p>
