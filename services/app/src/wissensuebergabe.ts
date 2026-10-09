@@ -97,6 +97,18 @@ export interface UebergabeVorschau {
   pruefaufgaben: { koId: string }[];
 }
 
+/**
+ * ADMIN-04 (produkt:20261009:admin-nutzer-uebersicht) — die ANDEREN offenen Vorgänge einer Person,
+ * getrennt von ihren Beiträgen. Drei Arten, jede eine eigene Ablage (Entwurf · Lücke · Zuweisung):
+ * ein Vorgang kann darum nicht in zwei Arten zugleich stehen. Hauptverantwortete Beiträge zählen
+ * hier NICHT mit — sie sind der Bestand der Verantwortungsübergabe (`verantwortung-routes.ts`).
+ */
+export interface OffeneVorgaenge {
+  entwuerfe: { id: string }[];
+  luecken: { id: string }[];
+  pruefaufgaben: { koId: string }[];
+}
+
 export type UebergabeArt =
   | "wissensobjekt"
   | "eigentum"
@@ -177,6 +189,29 @@ export class Wissensuebergabe {
       luecken: gaps.filter((g) => g.status === "offen" && g.assignee === von),
       pruefaufgaben: assignments.filter((z) => z.userId === von && z.status === "open"),
     };
+  }
+
+  /**
+   * ADMIN-04: die offenen Vorgänge je Person — nach DENSELBEN Regeln wie `erhebe` (Entwurf ohne
+   * Papierkorb, offene Lücke mit Zuständigkeit, offene Prüfzuweisung). Lücken und Zuweisungen werden
+   * einmal gelesen, Entwürfe je Person (`listByAuthor`, kein Tabellendurchlauf je Konto).
+   */
+  async offeneVorgaenge(personen: readonly string[]): Promise<Map<string, OffeneVorgaenge>> {
+    const [gaps, assignments] = await Promise.all([this.q.gaps(), this.q.assignments.all()]);
+    const raus = new Map<string, OffeneVorgaenge>();
+    for (const von of new Set(personen)) {
+      const drafts = await this.q.drafts.listByAuthor(von);
+      raus.set(von, {
+        entwuerfe: drafts.filter((d) => !("deletedAt" in d)).map((d) => ({ id: d.id })),
+        luecken: gaps
+          .filter((g) => g.status === "offen" && g.assignee === von)
+          .map((g) => ({ id: g.id })),
+        pruefaufgaben: assignments
+          .filter((z) => z.userId === von && z.status === "open")
+          .map((z) => ({ koId: z.koId })),
+      });
+    }
+    return raus;
   }
 
   async vorschau(vonRoh: unknown, anRoh: unknown): Promise<UebergabeVorschau> {
