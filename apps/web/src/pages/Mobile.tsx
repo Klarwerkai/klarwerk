@@ -1824,7 +1824,7 @@ export function Mobile(): JSX.Element {
                   <input
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
-                    placeholder={t("ask.placeholder")}
+                    placeholder={t("beispielfragen.platzhalter")}
                     className="h-10 flex-1 rounded-input border border-hairline bg-page px-3 text-sm outline-none focus:border-ink/30"
                   />
                   <button
