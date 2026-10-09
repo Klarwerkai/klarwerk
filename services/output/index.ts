@@ -46,6 +46,22 @@ export type {
   ScormPruefung,
 } from "./src/scorm";
 export { SCORM_BESCHRIFTUNG, SCORM_SPRACHEN, type ScormSprache } from "./src/scorm-laufzeit";
+// RECHERCHE:pmo-fea-0004 — das Wissensupdate fürs Teamgespräch (auf Abruf, kein Versand).
+export {
+  WochenupdateService,
+  WOCHENUPDATE_KEIN_VERSAND,
+  WOCHENUPDATE_TAGE,
+  WOCHENUPDATE_TITEL,
+  leseWochenupdateBis,
+  renderWochenupdate,
+  waehleWochenupdate,
+} from "./src/wochenupdate";
+export type {
+  Wochenupdate,
+  WochenupdateArt,
+  WochenupdateEintrag,
+  WochenupdateServiceDeps,
+} from "./src/wochenupdate";
 // KA6 Stufe 1 (JOB 1491 D1): der Zuruf, der einen VORSCHLAG erzeugt und nichts schreibt.
 // KA6 Stufe 2 (JOB 3026): `ZurufBindung` und `Ka6Einwilligungspruefer` kommen dazu — der Riegel
 // liegt im Erzeuger und fragt das Sitzungstor, statt einem Client-Bool zu glauben.
