@@ -127,6 +127,7 @@ import type {
   Verdict,
   VorrangAmPunkt,
   VorrangWahl,
+  Wochenupdate,
   // R-1107: der Drahtvertrag des Zusammenführens.
   ZusammenfuehrungsAuftrag,
   ZusammenfuehrungsErgebnis,
@@ -1212,6 +1213,8 @@ export const endpoints = {
     // produkt:wettbewerb:20261003:lernplattform: Prüfung vor dem Export und das SCORM-1.2-Paket.
     scormPruefen: (body: ScormExportBody) => api.post<ScormPruefung>("/output/scorm/pruefen", body),
     scormPaket: (body: ScormExportBody) => api.postDatei("/output/scorm/paket", body),
+    // RECHERCHE:pmo-fea-0004: Wissensupdate fürs Teamgespräch — nur auf Abruf, kein Versand.
+    wochenupdate: (bis?: string) => api.get<Wochenupdate>(`/output/wochenupdate${qs({ bis })}`),
   },
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {
