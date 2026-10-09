@@ -31,7 +31,13 @@ vi.mock("../../apps/web/src/app/RoleContext", () => ({
 }));
 
 // `vi.hoisted`: die Mock-Fabrik unten wird vor jede Konstante gehoben.
-const { ANTWORT } = vi.hoisted(() => ({
+//
+// Nacharbeit 14: Die tragende Quelle steht im Bestand, und der Server meldet ihre Fassung
+// (`quellenStand`, R-0338). Ohne das ist eine WIEDERAUFGENOMMENE Antwort nach dem Auffrischen-
+// Vertrag (`antwortFrische`, Regel 4: Quelle fehlt im neu geladenen Bestand) zu Recht „überholt"
+// und wird ausgeblendet — dann gibt es auch keine Zweitmeinung zu ihr. Das war die Ursache der
+// roten Fälle B4–B6, nicht die Kontextbindung.
+const { ANTWORT, QUELLE } = vi.hoisted(() => ({
   ANTWORT: {
     result: {
       answered: true,
@@ -45,12 +51,34 @@ const { ANTWORT } = vi.hoisted(() => ({
     },
     gap: null,
     receipt: "beleg-1",
+    quellenStand: { "ko-1": 1 },
+  },
+  QUELLE: {
+    id: "ko-1",
+    title: "Presse anfahren",
+    statement: "Beim Anfahren der Presse wird das Werkzeug auf 60 Grad vorgewärmt.",
+    conditions: [],
+    measures: [],
+    type: "best_practice",
+    category: "Presswerk",
+    tags: [],
+    confidence: 80,
+    trust: 90,
+    status: "validiert",
+    version: 1,
+    originalAuthor: "u9",
+    author: "u9",
+    neededValidations: 1,
+    assignments: [],
+    asset: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    history: [],
   },
 }));
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    ko: { list: vi.fn(async () => []) },
+    ko: { list: vi.fn(async () => [QUELLE]) },
     conflicts: { list: vi.fn(async () => []) },
     directory: { list: vi.fn(async () => []) },
     gaps: { list: vi.fn(async () => []) },
