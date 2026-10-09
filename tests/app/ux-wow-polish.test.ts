@@ -150,6 +150,10 @@ describe("WP-UX-WOW-1 U7: echte Umlaute in Nutzertexten", () => {
     const editor = read("apps/web/src/components/RichTextEditor.tsx");
     expect(editor).toContain("Bildgröße");
     expect(editor).not.toContain("Bildgroesse");
+    // R-1169: die sichtbare Beschriftung kommt seit der Aufnahme gesamt-sprache-begriffe aus dem
+    // Textmodul — die Umlaut-Zusage gilt deshalb auch dort, wo der Text heute wirklich steht.
+    const beschriftung = read("apps/web/src/texte/beschriftung.ts");
+    expect(beschriftung).toContain('"beschriftung.editor.bildgroesse": "Bildgröße"');
     const frontDoorLib = read("apps/web/src/lib/captureFrontDoor.ts");
     expect(frontDoorLib).toContain("Bitte prüfe Bibliothek oder Entwürfe");
   });

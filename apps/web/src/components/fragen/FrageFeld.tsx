@@ -72,7 +72,7 @@ export function FrageFeld({
         value={wert}
         onChange={(e) => onWert(e.target.value)}
         readOnly={nurLesen}
-        placeholder={t("ask.placeholder")}
+        placeholder={t("beispielfragen.platzhalter")}
         aria-invalid={ungueltig}
         aria-describedby={beschreibungId}
         data-tutorial-ziel={FRAGEN_ZIEL.fragefeld}
