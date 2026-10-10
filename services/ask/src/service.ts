@@ -1610,7 +1610,39 @@ export class AskService {
     const suchterme = [...frageterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
-    const kandidaten = dropConfidential(vorauswahl.filter((ko) => grundlageSichtbarFuer(ko)));
+    // BEN (Nacharbeit 4): die heutige Suchprojektion kennt nur heutige Texte. Wurde ein Fragebegriff
+    // seither aus einem noch vorhandenen Objekt entfernt, fände sie es nicht — und die damals
+    // tragende Fassung fehlte. Deshalb zusätzlich die Objekte, deren Fassungen bis zum Stichtag die
+    // Begriffe trugen. Nachgeladen wird über `get` (Papierkorb bleibt draussen); danach gelten
+    // dieselben Filter wie für die Vorauswahl. Ein Objekt in Schutzdaten-Quarantäne bleibt draussen,
+    // wie es die Suche ebenfalls auslässt.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const bekannt = new Set(vorauswahl.map((ko) => ko.id));
+    const fruehereIds = await this.koService.koIdsMitPassenderFassung(
+      suchterme.slice(0, ASK_PREFILTER_MAX_TERMS),
+      new Date(stichtagMs).toISOString(),
+      ASK_CANDIDATE_PREFILTER_LIMIT,
+      () => this.pruefeKiSperre("vorauswahl", kiBeginn),
+    );
+    const nachgeladen = (
+      await Promise.all(
+        fruehereIds
+          .filter((id) => !bekannt.has(id))
+          .map((id) =>
+            this.koService
+              .get(id, () => this.pruefeKiSperre("vorauswahl", kiBeginn))
+              .catch((fehler: unknown) => {
+                if (fehler instanceof AskError) {
+                  throw fehler;
+                }
+                return undefined;
+              }),
+          ),
+      )
+    ).filter((ko): ko is KnowledgeObject => ko !== undefined && !inSchutzdatenQuarantaene(ko));
+    const kandidaten = dropConfidential(
+      [...vorauswahl, ...nachgeladen].filter((ko) => grundlageSichtbarFuer(ko)),
+    );
     // Verlauf, Abbilder und Protokoll lesen Kundeninhalt — dieselbe Sperre wie vor der Vorauswahl.
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const seiten: VergleichsSeiten[] = await Promise.all(

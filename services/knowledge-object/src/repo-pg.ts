@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type {
   EvidenceRepo,
+  FassungsSuche,
   KoCandidateQuery,
   KoFilter,
   KoRepo,
@@ -941,6 +942,35 @@ export class PgKoVersionRepo implements KoVersionRepo {
       await q.query("DELETE FROM ko_versions WHERE ko_id=$1 AND version=$2", [koId, version]);
       await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
     });
+  }
+
+  // R-1630 / R-2176: die Nachsuche über Fassungen bis `bisAt` (Vertrag am Interface). Durchsucht
+  // wird der rohe Dokumentkörper statt des sichtbaren Texts — das kann nur MEHR Kennungen liefern,
+  // nie weniger; ob eine Fassung die Frage wirklich trägt, prüft der Antwortweg danach am sichtbaren
+  // Text. `strpos` statt `LIKE`, damit kein Suchbegriff als Muster gelesen wird. `at` ist ein
+  // ISO-Zeitstempel und vergleicht als Text in Zeitreihenfolge.
+  async findKoIdsInFassungen(query: FassungsSuche): Promise<string[]> {
+    const terms = query.terms.filter((t) => t.length > 0);
+    if (terms.length === 0 || query.limit <= 0) {
+      return [];
+    }
+    const res = await this.pool.query<{ ko_id: string }>(
+      `SELECT ko_id FROM (
+         SELECT v.ko_id,
+           (SELECT count(*) FROM unnest($1::text[]) AS t(term)
+             WHERE strpos(lower(concat_ws(' ', v.snapshot->>'title', v.snapshot->>'statement',
+               v.snapshot->>'category', v.snapshot->>'tags', v.snapshot->>'captionTexts',
+               v.snapshot->>'bodyHtml')), t.term) > 0) AS treffer
+         FROM ko_versions v
+         WHERE v.at <= $2
+       ) s
+       WHERE treffer > 0
+       GROUP BY ko_id
+       ORDER BY max(treffer) DESC, ko_id
+       LIMIT $3`,
+      [terms, query.bisAt, query.limit],
+    );
+    return res.rows.map((row) => row.ko_id);
   }
 }
 

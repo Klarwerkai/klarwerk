@@ -1,4 +1,5 @@
 import type { TxContext } from "../../db-tx";
+import { visibleTextFromBodyHtml } from "./search-projection";
 import {
   type AiCheck,
   type EvidenceRecord,
@@ -713,6 +714,33 @@ export interface KoVersionRepo {
   // Rollback eines noch nicht committeten Mehrschritt-Mutations (mutateKoTx). Im Normalbetrieb bleibt
   // die Versionshistorie append-only; kein Live-Pfad ruft remove für eine committete Version auf.
   remove(koId: string, version: number): Promise<void>;
+  /**
+   * R-1630 / R-2176: die Kennungen der Objekte, von denen mindestens eine BIS `bisAt` geschriebene
+   * Fassung einen der Suchbegriffe trägt — nach Zahl der getroffenen Begriffe geordnet, gedeckelt.
+   *
+   * Wozu: der Antwortvergleich findet sonst nur, was die HEUTIGE Suchprojektion trifft. Wurde ein
+   * Begriff seither aus einem Objekt entfernt, fehlte genau die Fassung, die damals geantwortet
+   * hätte. Gesucht wird in denselben Feldern wie die Kandidatensuche (`koCandidateText`) plus dem
+   * sichtbaren Dokumenttext. Es kommen nur KENNUNGEN zurück; welche Fassung zum Stichtag gilt und
+   * ob sie Grundlage sein darf, entscheidet der Aufrufer an Verlauf, Abbild und Prüfprotokoll.
+   *
+   * OPTIONAL: handgeschriebene Testdoppel bleiben gültig; ohne Methode gibt es keine Nachsuche.
+   */
+  findKoIdsInFassungen?(query: FassungsSuche): Promise<string[]>;
+}
+
+/** Die Nachsuche über Fassungen bis zu einem Zeitpunkt (`KoVersionRepo.findKoIdsInFassungen`). */
+export interface FassungsSuche {
+  /** Kleingeschriebene Inhaltsterme; Treffer ist ein Teilstring wie in `koCandidateScore`. */
+  readonly terms: readonly string[];
+  /** ISO-Zeitpunkt: nur Fassungen mit `at <= bisAt` zählen. */
+  readonly bisAt: string;
+  readonly limit: number;
+}
+
+/** Der durchsuchte Text einer Fassung — Kandidatenfelder plus sichtbarer Dokumenttext. */
+export function fassungsSuchtext(ko: KnowledgeObject): string {
+  return `${koCandidateText(ko)} ${visibleTextFromBodyHtml(ko.bodyHtml).toLowerCase()}`;
 }
 
 export class InMemoryKoVersionRepo implements KoVersionRepo {
@@ -744,6 +772,34 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
       this.schreibstand.geaendert();
     }
     return Promise.resolve();
+  }
+
+  // R-1630 / R-2176: dieselbe Regel wie der PostgreSQL-Adapter (s. Interface).
+  findKoIdsInFassungen(query: FassungsSuche): Promise<string[]> {
+    const terms = query.terms.filter((t) => t.length > 0);
+    if (terms.length === 0 || query.limit <= 0) {
+      return Promise.resolve([]);
+    }
+    const bis = Date.parse(query.bisAt);
+    const treffer = new Map<string, number>();
+    for (const [koId, byVersion] of this.items) {
+      for (const fassung of byVersion.values()) {
+        if (!(Date.parse(fassung.at) <= bis)) {
+          continue;
+        }
+        const text = fassungsSuchtext(fassung.snapshot);
+        const zahl = terms.filter((t) => text.includes(t)).length;
+        if (zahl > (treffer.get(koId) ?? 0)) {
+          treffer.set(koId, zahl);
+        }
+      }
+    }
+    return Promise.resolve(
+      [...treffer.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, query.limit)
+        .map(([koId]) => koId),
+    );
   }
 }
 

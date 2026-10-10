@@ -19,7 +19,7 @@ import {
   InMemoryKoVersionRepo,
   KoService,
 } from "../../services/knowledge-object";
-import { Reasoner } from "../../services/reasoner";
+import { Reasoner, queryTokens } from "../../services/reasoner";
 import {
   InMemoryAssignmentRepo,
   InMemoryRatingRepo,
@@ -116,6 +116,65 @@ describe("R-1630 / R-2176 · Antwort mit dem Wissensstand vor einem Jahr verglei
     expect(quelle?.aussageDamals).toBe("Bei Überdruck Ventil X manuell schließen.");
     expect(quelle?.aussageHeute).toBe("Bei Überdruck Ventil Y automatisch schließen lassen.");
     expect(quelle?.aenderungen.map((a) => a.version)).toEqual([2]);
+  });
+
+  it("BEN Nacharbeit 4: Fragebegriffe seither entfernt — die damals passende Fassung trägt trotzdem", async () => {
+    const b = await aufbau();
+    const ko = await b.koService.create(ventil());
+    b.am("2025-03-02T09:00:00.000Z");
+    await b.validation.adminValidate(ko.id, "admin");
+    b.am("2026-02-01T09:00:00.000Z");
+    await b.koService.revise(
+      ko.id,
+      {
+        title: "Absperrorgan bei Drucküberschreitung schließen",
+        statement: "Absperrorgan Y automatisch schließen lassen.",
+      },
+      "anna",
+    );
+    b.am("2026-02-02T09:00:00.000Z");
+    await b.validation.adminValidate(ko.id, "admin");
+
+    // Kalibrierung: die HEUTIGE Suche findet das Objekt mit dieser Frage nicht mehr.
+    const heuteGesucht = await b.koService.findCandidates({ terms: queryTokens(FRAGE), limit: 50 });
+    expect(heuteGesucht.map((k) => k.id)).not.toContain(ko.id);
+
+    const v = await b.vergleiche();
+    expect(v.damals.answered).toBe(true);
+    expect(v.damals.answer).toContain("Ventil X manuell");
+    expect(v.heute.answered).toBe(false);
+    expect(v.antwortGeaendert).toBe(true);
+    const quelle = v.quellen.find((q) => q.id === ko.id);
+    expect(quelle?.gruende).toEqual(["ueberarbeitet"]);
+    expect(quelle?.inAntwortDamals).toBe(true);
+    expect(quelle?.inAntwortHeute).toBe(false);
+    expect(quelle?.versionDamals).toBe(1);
+    expect(quelle?.titelDamals).toBe("Ventil bei Überdruck schließen");
+  });
+
+  it("BEN Nacharbeit 4: die Nachsuche über Fassungen hält Sichtbarkeit und Vertraulichkeit ein", async () => {
+    const b = await aufbau();
+    const fremd = await b.koService.create(ventil({ author: "bert" }));
+    const vertraulich = await b.koService.create(
+      ventil({ title: "Ventil bei Überdruck — Werk Nord", confidentiality: "vertraulich" }),
+    );
+    b.am("2025-03-02T09:00:00.000Z");
+    await b.validation.adminValidate(fremd.id, "admin");
+    await b.validation.adminValidate(vertraulich.id, "admin");
+    b.am("2026-02-01T09:00:00.000Z");
+    for (const ko of [fremd, vertraulich]) {
+      await b.koService.revise(
+        ko.id,
+        { title: "Absperrorgan", statement: "Ohne Begriff." },
+        "bert",
+      );
+    }
+
+    const v = await b.vergleiche((ko) => ko.author !== "bert");
+    const ids = [...v.damals.sources, ...v.heute.sources, ...v.quellen.map((q) => q.id)];
+    expect(ids).not.toContain(fremd.id);
+    expect(ids).not.toContain(vertraulich.id);
+    expect(v.damals.answered).toBe(false);
   });
 
   it("Freigabe erst nach dem Stichtag: damals keine Grundlage, Grund ist die fehlende Freigabe", async () => {
