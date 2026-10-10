@@ -21,6 +21,7 @@ import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
+import { PgChatRepo } from "../../services/app/src/chat";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
@@ -274,5 +275,54 @@ describe("Interner Chat gegen echtes PostgreSQL", () => {
     });
     expect(fremd.statusCode).toBe(404);
     await beenden(zweite);
+  }, 120_000);
+
+  // Nacharbeit 3 (Ben, K2/K3): die Seitenabfrage mit `vor` am echten SQL — 505 Nachrichten, auch
+  // mit gleichem Zeitstempel, schließen in zwei Seiten lückenlos und ohne Doppel aneinander an.
+  it("ältere Seiten schließen am echten Speicher lückenlos an", async () => {
+    const pool = createPool(url);
+    try {
+      const repo = new PgChatRepo(pool);
+      const gespraechId = `seiten-${Date.now()}`;
+      await repo.legeGespraech({
+        id: gespraechId,
+        art: "gruppe",
+        titel: "Seitentest",
+        teilnehmer: ["konto-a", "konto-b"],
+        angelegtVon: "konto-a",
+        angelegtAm: "2026-10-10T08:00:00.000Z",
+      });
+      const ANZAHL = 505;
+      for (let i = 0; i < ANZAHL; i += 1) {
+        // Je fünf Nachrichten teilen sich einen Zeitstempel: dann entscheidet die Kennung.
+        const sekunde = String(Math.floor(i / 5) % 60).padStart(2, "0");
+        const minute = String(Math.floor(i / 300)).padStart(2, "0");
+        await repo.legeNachricht({
+          id: `n-${String(i).padStart(4, "0")}`,
+          gespraechId,
+          von: "konto-a",
+          text: `Meldung ${i}`,
+          am: `2026-10-10T09:${minute}:${sekunde}.000Z`,
+          sendeKennung: `seiten-sendung-${i}`,
+          erwaehnungen: [],
+          verweise: [],
+          anhaenge: [],
+          uebernahmen: [],
+        });
+      }
+      const seite1 = await repo.nachrichten(gespraechId, 501);
+      expect(seite1).toHaveLength(501);
+      const gezeigt = seite1.slice(1);
+      const aelteste = gezeigt[0];
+      expect(aelteste).toBeDefined();
+      const seite2 = aelteste ? await repo.nachrichten(gespraechId, 501, aelteste) : [];
+      const alle = [...seite2, ...gezeigt].map((n) => n.id);
+      expect(new Set(alle).size).toBe(alle.length);
+      expect(alle).toHaveLength(ANZAHL);
+      expect([...alle].sort()).toEqual(alle);
+      expect(seite2[0]?.text).toBe("Meldung 0");
+    } finally {
+      await pool.end();
+    }
   }, 120_000);
 });

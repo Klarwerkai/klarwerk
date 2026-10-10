@@ -701,3 +701,106 @@ describe("K6 · Wissensübernahme: verantwortlicher, persönlicher Entwurf in pa
     expect(fremd.statusCode).toBe(404);
   });
 });
+
+// ================================================================================================
+// NACHARBEIT 3 (Ben, K2/K3) — mehr als 500 neuere Nachrichten: der ältere Verlauf bleibt erreichbar,
+// die Zielnachricht einer Erwähnung lässt sich eigens öffnen, und beides folgt dem Rechteentzug.
+// ================================================================================================
+describe("K2/K3 · Verlauf über 500 Nachrichten hinaus und Zielnachricht einer alten Erwähnung", () => {
+  it("ältere Seite lückenlos nachladbar, Zielnachricht eigens abrufbar — nach Entzug 404", async () => {
+    const b = await buehne();
+    const space = await werkstatt(b, [
+      { nutzer: b.ids.erik, recht: "schreiben" },
+      { nutzer: b.ids.vera, recht: "lesen" },
+    ]);
+    const g = (await gespraech(b, b.k.erik, { art: "space", spaceId: space.id })).json();
+    const erste = await senden(b, b.k.erik, g.id, { text: "Ganz am Anfang." });
+    expect(erste.statusCode, erste.body).toBe(201);
+    await new Promise((fertig) => setTimeout(fertig, 5));
+    const mit = await senden(b, b.k.erik, g.id, {
+      text: "@Vera Viewer bitte den alten Prüfplan ansehen.",
+      erwaehnungen: [b.ids.vera],
+    });
+    expect(mit.statusCode, mit.body).toBe(201);
+    const erwaehnteId = mit.json().nachricht.id as string;
+    // Eine eigene Millisekunde, damit die Erwähnung eindeutig älter ist als alles Folgende.
+    await new Promise((fertig) => setTimeout(fertig, 5));
+    const NEUERE = 505;
+    for (let i = 0; i < NEUERE; i += 1) {
+      const res = await senden(b, b.k.erik, g.id, { text: `Laufende Meldung ${i}` });
+      expect(res.statusCode).toBe(201);
+    }
+
+    // Erste Seite: die jüngsten 500, ohne die Erwähnung — und der Hinweis, dass es Älteres gibt.
+    const seite1 = await lies(b, b.k.vera, `/api/chat/gespraeche/${g.id}`);
+    expect(seite1.statusCode, seite1.body).toBe(200);
+    const n1 = seite1.json().nachrichten as { id: string; text: string }[];
+    expect(n1).toHaveLength(500);
+    expect(seite1.json().aelterVorhanden).toBe(true);
+    expect(n1.map((n) => n.id)).not.toContain(erwaehnteId);
+    const aeltesteId = n1[0]?.id ?? "";
+
+    // Zweite Seite: alles davor, lückenlos und ohne Doppel; danach gibt es nichts Älteres mehr.
+    const seite2 = await lies(b, b.k.vera, `/api/chat/gespraeche/${g.id}?vor=${aeltesteId}`);
+    expect(seite2.statusCode, seite2.body).toBe(200);
+    const n2 = seite2.json().nachrichten as { id: string; text: string }[];
+    expect(seite2.json().aelterVorhanden).toBe(false);
+    const alle = [...n2, ...n1].map((n) => n.id);
+    expect(new Set(alle).size).toBe(alle.length);
+    expect(alle).toHaveLength(NEUERE + 2);
+    expect(n2.map((n) => n.text).slice(0, 2)).toEqual([
+      "Ganz am Anfang.",
+      "@Vera Viewer bitte den alten Prüfplan ansehen.",
+    ]);
+
+    // Die Erwähnung steht in Veras Liste, und ihr Ziel ist unabhängig vom Verlauf abrufbar.
+    const erwaehnt = await lies(b, b.k.vera, "/api/chat/erwaehnungen");
+    expect(erwaehnt.json().erwaehnungen).toEqual([
+      expect.objectContaining({ nachrichtId: erwaehnteId, gespraechId: g.id }),
+    ]);
+    const ziel = await lies(b, b.k.vera, `/api/chat/nachrichten/${erwaehnteId}`);
+    expect(ziel.statusCode, ziel.body).toBe(200);
+    expect(ziel.json().nachricht).toMatchObject({
+      id: erwaehnteId,
+      gespraechId: g.id,
+      text: "@Vera Viewer bitte den alten Prüfplan ansehen.",
+    });
+    expect(ziel.json().gespraech.id).toBe(g.id);
+
+    // Ein Nichtmitglied bekommt weder Ziel noch ältere Seite.
+    const zielFremd = await lies(b, b.k.fritz, `/api/chat/nachrichten/${erwaehnteId}`);
+    expect(zielFremd.statusCode).toBe(404);
+    const seiteFremd = await lies(b, b.k.fritz, `/api/chat/gespraeche/${g.id}?vor=${aeltesteId}`);
+    expect(seiteFremd.statusCode).toBe(404);
+    // Ein Anker aus einem anderen Gespräch wird nicht angenommen.
+    const neu = await gespraech(b, b.k.erik, { art: "direkt", teilnehmer: [b.ids.vera] });
+    const anderes = neu.json() as { id: string };
+    const fremd = await lies(b, b.k.vera, `/api/chat/gespraeche/${anderes.id}?vor=${erwaehnteId}`);
+    expect(fremd.statusCode).toBe(404);
+
+    // Rechteentzug: Vera wird aus dem Space genommen — Ziel, ältere Seite und Erwähnung sind weg.
+    const aendern = await b.app.inject({
+      method: "PUT",
+      url: `/api/spaces/${space.id}`,
+      headers: b.k.lea,
+      payload: {
+        version: space.version,
+        name: "Werkstatt Nord",
+        zweck: "Bohrwerk und Prüfmittel der Werkstatt Nord.",
+        verantwortlich: b.ids.lea,
+        zugang: "mitglieder",
+        mitglieder: [{ nutzer: b.ids.erik, recht: "schreiben" }],
+        ansichten: [],
+      },
+    });
+    expect(aendern.statusCode, aendern.body).toBe(200);
+    const zielNachher = await lies(b, b.k.vera, `/api/chat/nachrichten/${erwaehnteId}`);
+    expect(zielNachher.statusCode).toBe(404);
+    const seiteNachher = await lies(b, b.k.vera, `/api/chat/gespraeche/${g.id}?vor=${aeltesteId}`);
+    expect(seiteNachher.statusCode).toBe(404);
+    expect((await lies(b, b.k.vera, "/api/chat/erwaehnungen")).json().erwaehnungen).toEqual([]);
+    // Erik (Mitglied) erreicht beides weiterhin.
+    const zielErik = await lies(b, b.k.erik, `/api/chat/nachrichten/${erwaehnteId}`);
+    expect(zielErik.statusCode).toBe(200);
+  }, 180_000);
+});

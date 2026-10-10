@@ -623,6 +623,56 @@ function Verfassen({
   );
 }
 
+function NachrichtZeile({
+  n,
+  hervor,
+  gespraechId,
+}: {
+  n: NachrichtSicht;
+  hervor: string | null;
+  gespraechId: string;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <li
+      tabIndex={-1}
+      data-testid="chat-nachricht"
+      data-nachricht={n.id}
+      data-status={n.eigene ? "gesendet" : "empfangen"}
+      data-hervorgehoben={hervor === n.id ? "ja" : "nein"}
+      className={
+        hervor === n.id
+          ? "rounded-card border border-brand bg-page px-3 py-2 outline-none"
+          : "rounded-card border border-hairline px-3 py-2 outline-none"
+      }
+    >
+      <Verfasser n={n} />
+      <NachrichtInhalt n={n} />
+      {n.eigene ? (
+        <p data-testid="chat-status" className="mt-1 text-[11px] text-muted-2">
+          {t("chat.status.gesendet")}
+        </p>
+      ) : null}
+      <WissenKnopf n={n} gespraechId={gespraechId} />
+    </li>
+  );
+}
+
+/** Führt Verlaufsstücke zusammen: jede Nachricht einmal, die jüngere Fassung gewinnt, nach Zeit. */
+function zusammenfuehren(
+  alt: readonly NachrichtSicht[],
+  neu: readonly NachrichtSicht[],
+): NachrichtSicht[] {
+  const nachId = new Map<string, NachrichtSicht>();
+  for (const n of alt) {
+    nachId.set(n.id, n);
+  }
+  for (const n of neu) {
+    nachId.set(n.id, n);
+  }
+  return [...nachId.values()].sort((a, b) => a.am.localeCompare(b.am) || a.id.localeCompare(b.id));
+}
+
 function GespraechAnsicht({
   id,
   konten,
@@ -673,15 +723,58 @@ function GespraechAnsicht({
     }
   };
 
+  // Nacharbeit 3 (Ben, K2/K3): der Server liefert die jüngsten Nachrichten und sagt, ob es Älteres
+  // gibt. Ältere Seiten werden auf Wunsch nachgeladen und bleiben hier gesammelt — samt der Seite,
+  // die beim Nachladen zu sehen war, damit beim Eintreffen neuer Nachrichten keine Lücke entsteht.
+  const [frueher, setFrueher] = useState<NachrichtSicht[]>([]);
+  const [frueherNoch, setFrueherNoch] = useState<boolean | null>(null);
+  const [laedtFrueher, setLaedtFrueher] = useState(false);
+  const [frueherFehler, setFrueherFehler] = useState(false);
   const daten = abfrage.data;
+  const verlauf = useMemo(
+    () => zusammenfuehren(frueher, daten?.nachrichten ?? []),
+    [frueher, daten],
+  );
+  const zielImVerlauf = hervor ? verlauf.some((n) => n.id === hervor) : true;
+  // Die Zielnachricht einer Erwähnung wird EIGENS geladen, wenn sie nicht im gezeigten Verlauf
+  // steht — gleich, wie viele neuere Nachrichten seither kamen. Dieselbe Leseregel am Server.
+  const ziel = useQuery({
+    queryKey: ["chat", "nachricht", hervor],
+    queryFn: () => chatApi.nachricht(hervor ?? ""),
+    enabled: Boolean(hervor) && Boolean(daten) && !zielImVerlauf,
+    retry: false,
+  });
+  const zielDaten = ziel.data;
   useEffect(() => {
-    if (!hervor || !daten) {
+    if (!hervor || (!daten && !zielDaten)) {
       return;
     }
-    const el = document.querySelector<HTMLElement>(`[data-nachricht="${CSS.escape(hervor)}"]`);
+    // Nur die Nachricht im Verlauf oder im Zielblock — nicht der gleichnamige Erwähnungslink.
+    const el = document.querySelector<HTMLElement>(
+      `[data-testid="chat-nachricht"][data-nachricht="${CSS.escape(hervor)}"]`,
+    );
     el?.scrollIntoView({ block: "center" });
     el?.focus();
-  }, [hervor, daten]);
+  }, [hervor, daten, zielDaten]);
+
+  const frueherLaden = async (): Promise<void> => {
+    const aelteste = verlauf[0];
+    if (!aelteste || !daten) {
+      return;
+    }
+    setLaedtFrueher(true);
+    setFrueherFehler(false);
+    try {
+      const seite = await chatApi.aeltere(id, aelteste.id);
+      const sichtbar = daten.nachrichten;
+      setFrueher((alt) => zusammenfuehren(zusammenfuehren(alt, sichtbar), seite.nachrichten));
+      setFrueherNoch(seite.aelterVorhanden);
+    } catch {
+      setFrueherFehler(true);
+    } finally {
+      setLaedtFrueher(false);
+    }
+  };
 
   if (abfrage.isPending) {
     return <p className="text-sm text-muted">{t("chat.seite.laedt")}</p>;
@@ -693,7 +786,9 @@ function GespraechAnsicht({
       </p>
     );
   }
-  const { gespraech: g, nachrichten } = abfrage.data;
+  const g = abfrage.data.gespraech;
+  const nachrichten = verlauf;
+  const aelterVorhanden = frueherNoch ?? abfrage.data.aelterVorhanden;
   const gespeichert = new Set(nachrichten.map((n) => n.sendeKennung).filter(Boolean));
   const ausstehend = offen.filter((a) => !gespeichert.has(a.eingabe.sendeKennung));
   return (
@@ -736,30 +831,43 @@ function GespraechAnsicht({
       {nachrichten.length === 0 && ausstehend.length === 0 ? (
         <p className="text-[12.5px] text-muted-2">{t("chat.gespraech.leer")}</p>
       ) : null}
+      {hervor && !zielImVerlauf ? (
+        <section data-testid="chat-ziel" className="mb-3">
+          <SectionLabel>{t("chat.ziel.titel")}</SectionLabel>
+          {ziel.isPending ? (
+            <p className="text-[12.5px] text-muted">{t("chat.seite.laedt")}</p>
+          ) : null}
+          {zielDaten ? (
+            <ol className="space-y-2">
+              <NachrichtZeile n={zielDaten.nachricht} hervor={hervor} gespraechId={g.id} />
+            </ol>
+          ) : null}
+          {ziel.isError ? (
+            <p role="alert" data-testid="chat-ziel-fehlt" className="text-[12.5px] text-muted">
+              {t("chat.ziel.fehlt")}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+      {aelterVorhanden ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Button
+            data-testid="chat-aeltere"
+            disabled={laedtFrueher}
+            onClick={() => void frueherLaden()}
+          >
+            {laedtFrueher ? t("chat.seite.laedt") : t("chat.verlauf.aeltere")}
+          </Button>
+          {frueherFehler ? (
+            <span role="alert" className="text-[12px] text-trust-crit-text">
+              {t("chat.fehler.allgemein")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <ol data-testid="chat-verlauf" className="space-y-2">
         {nachrichten.map((n) => (
-          <li
-            key={n.id}
-            tabIndex={-1}
-            data-testid="chat-nachricht"
-            data-nachricht={n.id}
-            data-status={n.eigene ? "gesendet" : "empfangen"}
-            data-hervorgehoben={hervor === n.id ? "ja" : "nein"}
-            className={
-              hervor === n.id
-                ? "rounded-card border border-brand bg-page px-3 py-2 outline-none"
-                : "rounded-card border border-hairline px-3 py-2 outline-none"
-            }
-          >
-            <Verfasser n={n} />
-            <NachrichtInhalt n={n} />
-            {n.eigene ? (
-              <p data-testid="chat-status" className="mt-1 text-[11px] text-muted-2">
-                {t("chat.status.gesendet")}
-              </p>
-            ) : null}
-            <WissenKnopf n={n} gespraechId={g.id} />
-          </li>
+          <NachrichtZeile key={n.id} n={n} hervor={hervor} gespraechId={g.id} />
         ))}
         {ausstehend.map((a) => (
           <li

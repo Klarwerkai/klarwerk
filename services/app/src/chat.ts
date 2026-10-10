@@ -353,8 +353,11 @@ export interface ChatRepo {
   legeGespraech(g: Gespraech): Promise<{ gespraech: Gespraech; neu: boolean }>;
   /** Alle Gespräche, an denen die Person teilnimmt, und alle Space-/Artikelgespräche. */
   gespraecheFuer(nutzerId: string): Promise<Gespraech[]>;
-  /** Die Nachrichten eines Gesprächs, aufsteigend nach Zeit — höchstens die jüngsten `grenze`. */
-  nachrichten(gespraechId: string, grenze: number): Promise<ChatNachricht[]>;
+  /**
+   * Die Nachrichten eines Gesprächs, aufsteigend nach Zeit — höchstens die jüngsten `grenze`. Mit
+   * `vor` nur die, die ÄLTER sind als diese Nachricht (Nachladen des früheren Verlaufs).
+   */
+  nachrichten(gespraechId: string, grenze: number, vor?: ChatNachricht): Promise<ChatNachricht[]>;
   /** Je Gespräch die jüngste Nachricht und die Anzahl. */
   ueberblick(
     gespraechIds: readonly string[],
@@ -406,8 +409,10 @@ export class InMemoryChatRepo implements ChatRepo {
     return Promise.resolve(raus);
   }
 
-  nachrichten(gespraechId: string, grenze: number): Promise<ChatNachricht[]> {
-    const alle = [...this.zeilen.values()].filter((n) => n.gespraechId === gespraechId);
+  nachrichten(gespraechId: string, grenze: number, vor?: ChatNachricht): Promise<ChatNachricht[]> {
+    const alle = [...this.zeilen.values()].filter(
+      (n) => n.gespraechId === gespraechId && (!vor || nachZeit(n, vor) < 0),
+    );
     alle.sort(nachZeit);
     return Promise.resolve(alle.slice(-grenze).map((n) => structuredClone(n)));
   }
@@ -557,15 +562,22 @@ export class PgChatRepo implements ChatRepo {
     return res.rows.map((z) => z.data);
   }
 
-  async nachrichten(gespraechId: string, grenze: number): Promise<ChatNachricht[]> {
+  async nachrichten(
+    gespraechId: string,
+    grenze: number,
+    vor?: ChatNachricht,
+  ): Promise<ChatNachricht[]> {
+    // Mit `vor`: dieselbe Ordnung (am, id) wie unten, nur strikt davor — die Seiten schließen
+    // lückenlos aneinander an.
     const res = await this.pool.query<DataZeile<ChatNachricht>>(
       `SELECT data FROM (
          SELECT data, am, id FROM chat_nachrichten
           WHERE gespraech_id = $1
+            AND ($3::timestamptz IS NULL OR (am, id) < ($3::timestamptz, $4::text))
           ORDER BY am DESC, id DESC
           LIMIT $2
        ) j ORDER BY am ASC, id ASC`,
-      [gespraechId, grenze],
+      [gespraechId, grenze, vor?.am ?? null, vor?.id ?? null],
     );
     return res.rows.map((z) => z.data);
   }

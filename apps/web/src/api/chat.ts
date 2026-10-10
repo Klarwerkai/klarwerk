@@ -97,6 +97,13 @@ export interface NachrichtEingabe {
   ausKlara?: boolean;
 }
 
+export interface VerlaufSeite {
+  gespraech: GespraechSicht;
+  nachrichten: NachrichtSicht[];
+  /** Es gibt ältere Nachrichten als die erste dieser Seite. */
+  aelterVorhanden: boolean;
+}
+
 export interface Erwaehnung {
   nachrichtId: string;
   gespraechId: string;
@@ -122,8 +129,15 @@ export const chatApi = {
       "/chat/gespraeche",
     ),
   anlegen: (eingabe: GespraechAnlage) => api.post<GespraechSicht>("/chat/gespraeche", eingabe),
-  gespraech: (id: string) =>
-    api.get<{ gespraech: GespraechSicht; nachrichten: NachrichtSicht[] }>(pfad(id)),
+  gespraech: (id: string) => api.get<VerlaufSeite>(pfad(id)),
+  /** Die Seite davor: Nachrichten, die älter sind als `vor` (die älteste schon gezeigte). */
+  aeltere: (id: string, vor: string) =>
+    api.get<VerlaufSeite>(`${pfad(id)}?vor=${encodeURIComponent(vor)}`),
+  /** Eine einzelne Nachricht samt Gespräch — der Weg einer Erwähnung zu ihrem Ziel. */
+  nachricht: (id: string) =>
+    api.get<{ gespraech: GespraechSicht; nachricht: NachrichtSicht }>(
+      `/chat/nachrichten/${encodeURIComponent(id)}`,
+    ),
   senden: (id: string, eingabe: NachrichtEingabe) =>
     api.post<{ nachricht: NachrichtSicht; neu: boolean }>(`${pfad(id)}/nachrichten`, eingabe),
   inWissen: (nachrichtId: string) =>

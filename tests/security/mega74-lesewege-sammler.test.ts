@@ -1051,6 +1051,10 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Senden nur mit Artikeln, die der Absender sehen darf; Antwort je Leser getrimmt.",
   },
+  "GET /api/chat/nachrichten/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Einzelne Nachricht nur aus lesbarem Gespräch; Inhalte je Leser gegen darfSehen.",
+  },
   "POST /api/chat/nachrichten/:id/wissen": {
     urteil: "PRAEDIKAT",
     grund: "Übernahme nur aus lesbarem Gespräch; Ausschnitt nur, wenn sichtbar.",

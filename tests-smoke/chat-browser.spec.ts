@@ -439,4 +439,67 @@ test.describe("Interner Chat · zwei Konten in der echten App", () => {
     await anna.page.context().close();
     await bert.page.context().close();
   });
+
+  // Nacharbeit 3 (Ben, K2/K3): nach mehr als 500 neueren Nachrichten öffnet die Erwähnung trotzdem
+  // genau ihre Nachricht, und der ältere Verlauf lässt sich nachladen.
+  test("K2/K3: alte Erwähnung nach über 500 neueren Nachrichten — Ziel öffnet, älterer Verlauf lädt nach", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    await ensureLoggedIn(page);
+    const m = marke();
+    const anna = await person(page, browser, `Anna ${m}`, `anna-${m}@chat.test`);
+    const bert = await person(page, browser, `Bert ${m}`, `bert-${m}@chat.test`);
+    const g = await anna.page.request.post("/api/chat/gespraeche", {
+      data: { art: "direkt", teilnehmer: [bert.id] },
+    });
+    expect(g.status(), await g.text()).toBe(201);
+    const gespraechId = ((await g.json()) as { id: string }).id;
+    const url = `/api/chat/gespraeche/${gespraechId}/nachrichten`;
+    const alt = await anna.page.request.post(url, {
+      data: {
+        text: `Alte Frage ${m} an Bert`,
+        sendeKennung: `alt-${m}-0001`,
+        erwaehnungen: [bert.id],
+      },
+    });
+    expect(alt.status(), await alt.text()).toBe(201);
+    const altId = ((await alt.json()) as { nachricht: { id: string } }).nachricht.id;
+    await new Promise((fertig) => setTimeout(fertig, 10));
+    for (let i = 0; i < 502; i += 1) {
+      const res = await anna.page.request.post(url, {
+        data: { text: `Laufende Meldung ${i}`, sendeKennung: `lauf-${m}-${i}` },
+      });
+      expect(res.status()).toBe(201);
+    }
+
+    await bert.page.goto("/chat");
+    const erwaehnung = bert.page.locator(
+      `[data-testid="chat-erwaehnung"][data-nachricht="${altId}"]`,
+    );
+    await expect(erwaehnung).toBeVisible({ timeout: 15_000 });
+    await erwaehnung.click();
+    const zielblock = bert.page.getByTestId("chat-ziel");
+    const ziel = zielblock.locator(`[data-testid="chat-nachricht"][data-nachricht="${altId}"]`);
+    await expect(ziel).toHaveAttribute("data-hervorgehoben", "ja", { timeout: 15_000 });
+    await expect(ziel).toContainText(`Alte Frage ${m} an Bert`);
+    await beleg(bert.page, "K3 alte Erwähnung öffnet ihre Nachricht");
+
+    // Der ältere Verlauf lädt nach; danach steht die Nachricht im Verlauf selbst.
+    await bert.page.getByTestId("chat-aeltere").click();
+    const imVerlauf = bert.page
+      .getByTestId("chat-verlauf")
+      .locator(`[data-testid="chat-nachricht"][data-nachricht="${altId}"]`);
+    await expect(imVerlauf).toBeVisible({ timeout: 15_000 });
+    await expect(bert.page.getByTestId("chat-ziel")).toHaveCount(0);
+    await expect(bert.page.getByTestId("chat-aeltere")).toHaveCount(0);
+    await expect(bert.page.getByTestId("chat-verlauf").getByTestId("chat-nachricht")).toHaveCount(
+      503,
+    );
+    await beleg(bert.page, "K2 älterer Verlauf nachgeladen");
+
+    await anna.page.context().close();
+    await bert.page.context().close();
+  });
 });

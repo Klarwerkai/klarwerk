@@ -535,23 +535,62 @@ export function chatRoutes(dienste: ChatRouteDienste, guards: Guards): FastifyPl
     });
 
     // Ein Gespräch mit seinem Verlauf — jede Nachricht so, wie DIESE Person sie sehen darf.
-    app.get<{ Params: { id: string } }>("/api/chat/gespraeche/:id", async (request, reply) => {
+    app.get<{ Params: { id: string }; Querystring: { vor?: string } }>(
+      "/api/chat/gespraeche/:id",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const k = await kontextFuer(user);
+        const g = await lesbaresGespraech(k, request.params.id);
+        if (!g) {
+          nichtGefunden(reply, "Gespräch");
+          return;
+        }
+        // Nacharbeit 3 (Ben, K2/K3): der frühere Verlauf ist seitenweise nachladbar. `vor` nennt
+        // die älteste schon gezeigte Nachricht; sie muss zu DIESEM Gespräch gehören. Das Leserecht
+        // ist oben für jede Seite neu entschieden — ein Entzug wirkt auch auf das Nachladen.
+        let vor: ChatNachricht | undefined;
+        const vorId = request.query.vor;
+        if (typeof vorId === "string" && vorId.length > 0) {
+          vor = await dienste.chat.nachricht(vorId);
+          if (!vor || vor.gespraechId !== g.id) {
+            nichtGefunden(reply, "Nachricht");
+            return;
+          }
+        }
+        const grenze = CHAT_GRENZEN.nachrichtenJeAbruf;
+        // Eine Nachricht mehr lesen, als gezeigt wird: so steht fest, ob es noch Älteres gibt.
+        const geladen = await dienste.chat.nachrichten(g.id, grenze + 1, vor);
+        const aelterVorhanden = geladen.length > grenze;
+        const verlauf = aelterVorhanden ? geladen.slice(1) : geladen;
+        const nachrichten = [];
+        for (const n of verlauf) {
+          nachrichten.push(await nachrichtSicht(k, n));
+        }
+        const gespraech = await gespraechSicht(k, g);
+        reply.code(200).send({ gespraech, nachrichten, aelterVorhanden });
+      },
+    );
+
+    // Nacharbeit 3 (Ben, K3): eine einzelne Nachricht mit ihrem Gespräch — der Weg einer Erwähnung
+    // zu ihrer Zielnachricht, unabhängig davon, wie viele neuere Nachrichten seither kamen. Dieselbe
+    // Leseregel wie der Verlauf; unsichtbar ist 404.
+    app.get<{ Params: { id: string } }>("/api/chat/nachrichten/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
       }
+      const n = await dienste.chat.nachricht(request.params.id);
       const k = await kontextFuer(user);
-      const g = await lesbaresGespraech(k, request.params.id);
-      if (!g) {
-        nichtGefunden(reply, "Gespräch");
+      const g = n ? await lesbaresGespraech(k, n.gespraechId) : undefined;
+      if (!n || !g) {
+        nichtGefunden(reply, "Nachricht");
         return;
       }
-      const verlauf = await dienste.chat.nachrichten(g.id, CHAT_GRENZEN.nachrichtenJeAbruf);
-      const nachrichten = [];
-      for (const n of verlauf) {
-        nachrichten.push(await nachrichtSicht(k, n));
-      }
-      reply.code(200).send({ gespraech: await gespraechSicht(k, g), nachrichten });
+      const nachricht = await nachrichtSicht(k, n);
+      reply.code(200).send({ gespraech: await gespraechSicht(k, g), nachricht });
     });
 
     // Senden. Dieselbe Sendekennung ein zweites Mal legt NICHTS Neues an (200 statt 201).

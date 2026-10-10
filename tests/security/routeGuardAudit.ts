@@ -1097,6 +1097,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["darfSehen"],
   },
   "POST /api/chat/nachrichten/:id/wissen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  // Nacharbeit 3: die Zielnachricht einer Erwähnung, unabhängig von der jüngsten Verlaufsseite.
+  "GET /api/chat/nachrichten/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "GET /api/chat/erwaehnungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
