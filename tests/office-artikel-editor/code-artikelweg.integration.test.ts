@@ -23,8 +23,8 @@
 //             die bewusste Übernahme des gesicherten Stands trägt BEIDE Änderungen.          (K4)
 //
 // GRENZEN, ausdrücklich: geändert wird über die Nachrichtenschnittstelle des Editors (Word:
-// `.uno:InsertText`, Excel: `.uno:GoToCell` + `.uno:EnterString`) bzw. für PowerPoint über Maus
-// und Tastatur im iframe. Die Darstellungstreue wird nicht beurteilt. Ohne Docker, ohne Zugriff auf
+// `.uno:InsertText`, Excel: `.uno:GoToCell` + `.uno:EnterString`, PowerPoint: `Action_Paste`).
+// Die Darstellungstreue wird nicht beurteilt. Ohne Docker, ohne Zugriff auf
 // das Abbild oder ohne Chromium scheitert die Datei am Start — dann fehlt ein Prüfmittel, das ist
 // kein Befund am Produkt.
 
@@ -279,19 +279,15 @@ describe(
         });
       },
       powerpoint: async (seite: Page, text: string) => {
-        // Das Textfeld bedeckt fast die ganze Folie; ein Klick in die Folienmitte setzt den Cursor
-        // hinein, dann wird ans Ende getippt und das Feld verlassen.
-        const rahmen = await seite.locator("#editor").boundingBox();
-        if (!rahmen) {
-          throw new Error("Editor-Rahmen ohne Lage");
-        }
-        await seite.mouse.click(rahmen.x + rahmen.width * 0.6, rahmen.y + rahmen.height * 0.5);
-        await seite.waitForTimeout(1_000);
-        await seite.mouse.dblclick(rahmen.x + rahmen.width * 0.6, rahmen.y + rahmen.height * 0.5);
-        await seite.waitForTimeout(1_000);
-        await seite.keyboard.press("End");
-        await seite.keyboard.type(text, { delay: 30 });
-        await seite.keyboard.press("Escape");
+        // Nacharbeit 3: Maus und Tastatur im fremden iframe setzten im Prüflauf keinen Text (die
+        // gespeicherte PPTX trug die Marke nicht). Geändert wird jetzt — wie bei Word und Excel —
+        // über die Nachrichtenschnittstelle: `Action_Paste` mit reinem Text legt in Impress ohne
+        // aktives Textfeld ein neues Textobjekt mit diesem Text auf die Folie.
+        await sende(seite, {
+          MessageId: "Action_Paste",
+          Values: { Mimetype: "text/plain;charset=utf-8", Data: text },
+        });
+        await seite.waitForTimeout(3_000);
       },
     } as const;
 
