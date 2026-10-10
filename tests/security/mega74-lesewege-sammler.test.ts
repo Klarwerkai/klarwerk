@@ -1123,6 +1123,41 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
   },
+  // Interner Chat (chat-routes.ts): Artikelgespräche, Verweise, Ausschnitte und Anhänge laufen je
+  // lesender Person durch `darfSehen` (lokaler Helfer `koFuer`).
+  "GET /api/chat/konten": { urteil: "KEIN_KO_INHALT", grund: "Kennung, Name, Rolle der Konten." },
+  "GET /api/chat/gespraeche": {
+    urteil: "PRAEDIKAT",
+    grund: "Gesprächsliste; Artikelgespräche nur zu sichtbaren Artikeln.",
+  },
+  "POST /api/chat/gespraeche": {
+    urteil: "PRAEDIKAT",
+    grund: "Artikelgespräch nur zu einem sichtbaren Artikel — 404 statt Auskunft.",
+  },
+  "GET /api/chat/gespraeche/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Verlauf; Verweise, Ausschnitte und Anhänge je Leser gegen darfSehen.",
+  },
+  "POST /api/chat/gespraeche/:id/nachrichten": {
+    urteil: "PRAEDIKAT",
+    grund: "Senden nur mit Artikeln, die der Absender sehen darf; Antwort je Leser getrimmt.",
+  },
+  "POST /api/chat/gespraeche/:id/auffrischen": {
+    urteil: "PRAEDIKAT",
+    grund: "Angezeigte Nachrichten neu je Leser gegen darfSehen; fremde Kennungen fehlen.",
+  },
+  "GET /api/chat/nachrichten/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Einzelne Nachricht nur aus lesbarem Gespräch; Inhalte je Leser gegen darfSehen.",
+  },
+  "POST /api/chat/nachrichten/:id/wissen": {
+    urteil: "PRAEDIKAT",
+    grund: "Übernahme nur aus lesbarem Gespräch; Ausschnitt nur, wenn sichtbar.",
+  },
+  "GET /api/chat/erwaehnungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Erwähnungen nur aus Gesprächen, die die Person jetzt lesen darf.",
+  },
   "GET /api/spaces/teams": {
     urteil: "KEIN_KO_INHALT",
     grund: "Name, Zweck und Mitgliederzahl aktiver Teams (spaces-routes.ts).",

@@ -642,6 +642,24 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "chat",
+    name: "Interner Chat",
+    inhalt:
+      "Gespräche (direkt, Gruppe, Space, Artikel) mit Teilnehmenden, Gruppenname und Bezug; Nachrichten mit Absender, Zeitpunkt, Text, Sendekennung, Erwähnungen, Verweisen auf Artikel und Anhänge (nur Kennungen), markiertem Ausschnitt samt Herkunft und Wissensübernahmen (Kennung des Entwurfs).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen von Absendern, Teilnehmenden und Erwähnten; der Nachrichtentext kann Angaben über Personen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["chat_gespraeche", "chat_nachrichten"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg im Code — Nachrichten bleiben im Gespräch zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Noch nicht in der Selbstauskunft; die eigenen Gespräche und Nachrichten sind im Chat einsehbar.",
+    },
+  },
+  {
     id: "teams",
     name: "Teams",
     inhalt:

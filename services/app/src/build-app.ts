@@ -258,6 +258,8 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+// produkt:20261007:interner-chat — Gespräche und Nachrichten; im Postgres-Betrieb haltbar.
+import { type ChatRepo, InMemoryChatRepo, PgChatRepo } from "./chat";
 import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
 // Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
@@ -381,6 +383,7 @@ import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
 import { canManageDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
+import { chatRoutes } from "./routes/chat-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
@@ -619,6 +622,11 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
    */
   spaces: SpacesRepo;
+  /**
+   * produkt:20261007:interner-chat — Gespräche und Nachrichten (`chat.ts`). Wie `spaces` NICHT in
+   * `AppRepos`; im Postgres-Betrieb haltbar (`PgChatRepo`), sonst die In-Memory-Ablage.
+   */
+  chat: ChatRepo;
   /**
    * produkt:20261009:admin-teams — die Fassungen der Teams (`teams.ts`). `spaces` liest sie mit
    * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
@@ -1214,6 +1222,8 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261007:interner-chat: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
+    chat?: ChatRepo;
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
     // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -1641,6 +1651,8 @@ export function assembleServices(
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces,
+    // produkt:20261007:interner-chat — Postgres, wenn injiziert, sonst im Speicher.
+    chat: opts.chat ?? new InMemoryChatRepo(),
     teams,
     // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
     vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
@@ -2145,6 +2157,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261007:interner-chat: Gespräche und Nachrichten überleben Neuladen, Neustart und
+      // Deploy (`CHAT_SCHEMA`, angelegt von `migrate()`).
+      chat: new PgChatRepo(pool),
       // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
@@ -5064,6 +5079,21 @@ export function buildApp(
         offeneVorgaenge: (personen) => services.wissensuebergabe.offeneVorgaenge(personen),
         // ADMIN-05: der gemeinsame Übergabeablauf überträgt offene Vorgänge über dieselbe Instanz.
         vorgaengeWeg: services.wissensuebergabe,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:interner-chat: Direkt-, Gruppen-, Space- und Artikelgespräche. Rechte aus Space
+  // und Artikel (`darfSehen`); die Wissensübernahme legt über den bestehenden Entwurfsweg an.
+  app.register(
+    chatRoutes(
+      {
+        chat: services.chat,
+        ko: services.ko,
+        auth: services.auth,
+        spaces: services.spaces,
+        entwuerfe: services.capture,
+        audit: services.audit,
       },
       guards,
     ),
