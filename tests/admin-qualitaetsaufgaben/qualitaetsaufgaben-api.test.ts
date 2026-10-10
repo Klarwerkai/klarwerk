@@ -37,7 +37,9 @@ import { ANTWORT_MELDUNG_ACTION } from "../../services/ask";
 import {
   InMemoryLifecycleRepo,
   LifecycleService,
+  type MerkerErgebnis,
   REVALIDIERUNG_ANGEFORDERT,
+  type RevalidierungsAnlass,
 } from "../../services/lifecycle";
 
 type App = ReturnType<typeof buildApp>;
@@ -234,12 +236,12 @@ class AusfallRepo extends InMemoryLifecycleRepo {
     super();
   }
 
-  override async markPending(koId: string): Promise<void> {
+  override async markPending(koId: string, anlass?: RevalidierungsAnlass): Promise<MerkerErgebnis> {
     if (this.ausfaelle > 0) {
       this.ausfaelle -= 1;
       throw new Error("Fiktiv: Merkerablage nicht erreichbar");
     }
-    return super.markPending(koId);
+    return super.markPending(koId, anlass);
   }
 }
 
@@ -599,7 +601,12 @@ describe("ADMIN-10 · Z7 · fehlende Datensignale erscheinen nicht als erledigt"
     // Gebunden an den angezeigten Stand und die angezeigte Fassung (aenderungsfolgen-sichtbar, K5).
     const [offen] = await a.services.lifecycle.offeneFaelle([ko]);
     const fassung = (await a.services.ko.get(ko))?.version;
-    const abschluss = a.services.lifecycle.confirmStillValid(ko, a.autorin.id, offen?.stand, fassung);
+    const abschluss = a.services.lifecycle.confirmStillValid(
+      ko,
+      a.autorin.id,
+      offen?.stand,
+      fassung,
+    );
     const uebernahme = uebernimmRueckmeldung(deps, betrachter, filter, m);
     await abschluss;
     const ergebnis = await uebernahme;
