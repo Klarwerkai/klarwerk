@@ -1,13 +1,16 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { KoService } from "../../../knowledge-object";
 import {
+  type AuditLeser,
   type Formulierer,
   type Ka6Einwilligungspruefer,
+  type OutputUnsicherheit,
   ZURUF_ARTEN,
   type ZurufArt,
   type ZurufAuftrag,
   ZurufError,
   type ZurufFehlerCode,
+  type ZurufPassage,
   ZurufService,
   type ZurufVorschlag,
 } from "../../../output";
@@ -82,15 +85,34 @@ export interface KlaraZurufRouteDeps {
   readonly ko: KoService;
   /** Fehlt es, antwortet die Route ehrlich 503 `NO_FORMULIERER` — nie mit erfundenem Text. */
   readonly modell?: ZurufModell | undefined;
+  /**
+   * gesamt-dokumenterzeugung (R-0337, Nacharbeit 7): der Leseweg zum Validierungsnachweis, damit
+   * jede Quelle des Entwurfs ihr GEPRÜFTES Prüfdatum trägt. Fehlt er: „nicht belegt".
+   */
+  readonly audit?: AuditLeser | undefined;
 }
 
-/** Eine Herkunftszeile des Entwurfs — genau die vier Felder, die das Panel zeigt und einfügt. */
+/**
+ * Eine Herkunftszeile des Entwurfs. Die ersten vier Felder sind der Bestand (JOB 3091); seit
+ * gesamt-dokumenterzeugung (Nacharbeit 7, R-0337/R-1739) reisen ALLE Pflichtangaben je Quelle mit,
+ * aus derselben Herkunft wie die Output Factory (`toProvenance`). `null` heißt: am Objekt bzw. im
+ * Audit nicht belegt — `unsicherheiten` nennt es.
+ */
 export interface ZurufHerkunft {
   readonly koId: string;
   readonly titel: string;
   /** Der Prüfstand der Quelle — im Erzeuger immer `validiert`, hier trotzdem gelesen, nie gesetzt. */
   readonly stufe: string;
   readonly version: number;
+  /** Die Marke dieser Quelle in den Passagen („Q1" …). */
+  readonly marke: string;
+  readonly trust: number;
+  readonly geltungsbereich: string | null;
+  readonly verantwortlicheRolle: string | null;
+  readonly verantwortlich: string | null;
+  readonly fassungVom: string | null;
+  readonly letztePruefungAm: string | null;
+  readonly unsicherheiten: readonly OutputUnsicherheit[];
 }
 
 /** Der Drahtvertrag von `POST /api/klara/sessions/{id}/zuruf` bei 200. */
@@ -98,6 +120,11 @@ export interface ZurufAntwort {
   readonly art: ZurufArt;
   readonly entwurf: string;
   readonly herkunft: readonly ZurufHerkunft[];
+  /**
+   * R-0349/R-0414 (Nacharbeit 7): der Entwurf je Passage mit den Marken seiner Quellen. Eine Passage
+   * ohne Marke hat keinen genannten Beleg — das Panel kennzeichnet sie so.
+   */
+  readonly passagen: readonly ZurufPassage[];
   readonly anbieter: string | null;
   readonly modell: string | null;
   /** Immer `true`: ein Zuruf IST eine Formulierung (dieselbe Marke wie im Erzeuger). */
@@ -121,15 +148,22 @@ export function formuliererAusModell(modell: ZurufModell): Formulierer {
       if (auftrag.belege.length === 0) {
         return "";
       }
+      // gesamt-dokumenterzeugung (Nacharbeit 7, R-0349/R-0414): die Belege tragen ihre Marke
+      // (`[Q1]` …), und JEDER Absatz endet mit den Marken der Belege, auf die er sich stützt. Der
+      // Erzeuger liest sie zurück (`passagenAus`) und verwirft jede Marke ohne Beleg. Die Form folgt
+      // dem Auftrag (eine Betriebsmitteilung hat Anrede und Gruß); verlangt er keine, bleibt es beim
+      // schlichten Text wie bisher.
       const system = [
         "Du formulierst für KLARWERK einen kurzen Text ausschließlich aus den mitgegebenen Belegen.",
         "Jede Sachaussage muss sich auf einen Beleg stützen. Erfinde nichts, ergänze kein Weltwissen,",
         "keine Zahlen, Namen oder Fristen, die nicht in den Belegen stehen.",
         "Reichen die Belege für den Auftrag nicht aus, antworte mit einer leeren Zeile und sonst nichts.",
-        "Schreibe in der Sprache des Auftrags. Gib nur den Text zurück — ohne Anrede, Betreff,",
-        "Überschrift oder Quellenangaben; die Herkunft fügt das System selbst an.",
+        "Schreibe in der Sprache des Auftrags und in der Form, die der Auftrag verlangt; verlangt er",
+        "keine, ohne Anrede, Betreff oder Überschrift. Beende jeden Absatz mit den Marken der Belege,",
+        "auf die er sich stützt, z. B. [Q1] oder [Q1, Q2]; ein Absatz ohne Beleg bekommt keine Marke.",
+        "Gib außer diesen Marken keine Quellenangaben aus; die Herkunft fügt das System selbst an.",
       ].join(" ");
-      const belege = auftrag.belege.map((b, i) => `[${i + 1}] ${b.title}\n${b.text}`).join("\n\n");
+      const belege = auftrag.belege.map((b) => `[${b.marke}] ${b.title}\n${b.text}`).join("\n\n");
       const user = `Auftrag (${auftrag.art}): ${auftrag.text}\n\nBelege:\n${belege}`;
       return modell.complete(system, user, false, ZURUF_MAX_TOKENS);
     },
@@ -171,6 +205,14 @@ function herkunftAus(vorschlag: ZurufVorschlag): ZurufHerkunft[] {
     titel: p.title,
     stufe: p.status,
     version: p.version,
+    marke: p.marke,
+    trust: p.trust,
+    geltungsbereich: p.geltungsbereich,
+    verantwortlicheRolle: p.verantwortlicheRolle,
+    verantwortlich: p.verantwortlich,
+    fassungVom: p.fassungVom,
+    letztePruefungAm: p.letztePruefungAm,
+    unsicherheiten: [...p.unsicherheiten],
   }));
 }
 
@@ -226,6 +268,7 @@ export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): Fas
     koService: deps.ko,
     einwilligungspruefer,
     ...(deps.modell ? { formulierer: formuliererAusModell(deps.modell) } : {}),
+    ...(deps.audit ? { audit: deps.audit } : {}),
   });
 
   return async (app) => {
@@ -281,8 +324,14 @@ export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): Fas
         );
         const antwort: ZurufAntwort = {
           art: vorschlag.art,
-          entwurf: vorschlag.vorschlag,
+          // Ohne die Belegmarken (sie stehen zugeordnet in `passagen`): der Memo-Weg zeigt `entwurf`
+          // als Fließtext und soll keine `[Qn]` lesen, deren Zuordnung er nicht darstellt.
+          entwurf:
+            vorschlag.passagen.length > 0
+              ? vorschlag.passagen.map((p) => p.text).join("\n\n")
+              : vorschlag.vorschlag,
           herkunft: herkunftAus(vorschlag),
+          passagen: vorschlag.passagen.map((p) => ({ text: p.text, marken: [...p.marken] })),
           anbieter: vorschlag.anbieter,
           modell: vorschlag.modell,
           aiGenerated: true,
