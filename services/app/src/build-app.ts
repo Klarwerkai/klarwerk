@@ -287,6 +287,12 @@ import { schalterAn } from "./feature-flags";
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
 import { FreigabeRegelDienst } from "./freigaberegel-dienst";
 import { frischeMeldungen } from "./frische-meldungen";
+import {
+  GemeinsamerEntwurfDienst,
+  type GemeinsamerEntwurfRepo,
+  InMemoryGemeinsamerEntwurfRepo,
+  PgGemeinsamerEntwurfRepo,
+} from "./gemeinsamer-entwurf";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
 import {
@@ -383,6 +389,7 @@ import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { freigaberegelnRoutes } from "./routes/freigaberegeln-routes";
 import { gedaechtnisRoutes } from "./routes/gedaechtnis-routes";
+import { gemeinsamRoutes } from "./routes/gemeinsam-routes";
 // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
 // angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
 import { gesamtanweisungRoutes } from "./routes/gesamtanweisung-routes";
@@ -617,6 +624,12 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgChatRepo`), sonst die In-Memory-Ablage.
    */
   chat: ChatRepo;
+  /**
+   * produkt:20261007:artikel-gemeinsam — die gemeinsamen Entwürfe der Artikel
+   * (`gemeinsamer-entwurf.ts`). Wie `chat` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgGemeinsamerEntwurfRepo`), sonst die In-Memory-Ablage.
+   */
+  gemeinsameEntwuerfe: GemeinsamerEntwurfRepo;
   /**
    * produkt:20261009:admin-teams — die Fassungen der Teams (`teams.ts`). `spaces` liest sie mit
    * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
@@ -1209,6 +1222,8 @@ export function assembleServices(
     spaces?: SpacesRepo;
     // produkt:20261007:interner-chat: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     chat?: ChatRepo;
+    // produkt:20261007:artikel-gemeinsam: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
+    gemeinsameEntwuerfe?: GemeinsamerEntwurfRepo;
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
     // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -1636,6 +1651,8 @@ export function assembleServices(
     spaces,
     // produkt:20261007:interner-chat — Postgres, wenn injiziert, sonst im Speicher.
     chat: opts.chat ?? new InMemoryChatRepo(),
+    // produkt:20261007:artikel-gemeinsam — Postgres, wenn injiziert, sonst im Speicher.
+    gemeinsameEntwuerfe: opts.gemeinsameEntwuerfe ?? new InMemoryGemeinsamerEntwurfRepo(),
     teams,
     // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
     vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
@@ -2140,6 +2157,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:interner-chat: Gespräche und Nachrichten überleben Neuladen, Neustart und
       // Deploy (`CHAT_SCHEMA`, angelegt von `migrate()`).
       chat: new PgChatRepo(pool),
+      // produkt:20261007:artikel-gemeinsam: gemeinsame Entwürfe überleben Neuladen, Neustart und
+      // Deploy, und mehrere App-Prozesse sehen denselben (`GEMEINSAMER_ENTWURF_SCHEMA`).
+      gemeinsameEntwuerfe: new PgGemeinsamerEntwurfRepo(pool),
       // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
@@ -5029,6 +5049,21 @@ export function buildApp(
         auth: services.auth,
         spaces: services.spaces,
         entwuerfe: services.capture,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:artikel-gemeinsam: der gemeinsame Entwurf eines Artikels, erreichbar aus dem
+  // Artikelgespräch. Rechte wie `revise` (`ko.create` + `darfSehen`); die Übernahme läuft über den
+  // bestehenden Schreibweg `PUT /api/kos/:id`, nicht über diese Routen.
+  app.register(
+    gemeinsamRoutes(
+      {
+        entwuerfe: new GemeinsamerEntwurfDienst(services.gemeinsameEntwuerfe),
+        kos: services.ko,
+        nutzerName: async (nutzerId) =>
+          (await services.auth.listUsers()).find((u) => u.id === nutzerId)?.name,
         audit: services.audit,
       },
       guards,

@@ -684,6 +684,8 @@ function GespraechAnsicht({
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
+  // Wie am Wissensknopf: wer nur liest, bekommt keinen Bearbeitungsweg angeboten.
+  const darfBearbeiten = useRole().role !== "viewer";
   const [parameter] = useSearchParams();
   const hervor = parameter.get("nachricht");
   const [offen, setOffenRoh] = useState<Ausgehend[]>(() => ausgang.get(id) ?? []);
@@ -840,6 +842,18 @@ function GespraechAnsicht({
               titel: g.artikel.titel,
               fassung: g.artikel.fassung,
             })}
+          </Link>
+        ) : null}
+        {/* produkt:20261007:artikel-gemeinsam: vom Artikelgespräch zum selben Entwurf. Wer nicht
+            bearbeiten darf, bekommt dort die gültige Fassung erklärt (der Server entscheidet). */}
+        {g.artikel && darfBearbeiten ? (
+          <Link
+            data-testid="chat-artikel-gemeinsam"
+            data-ko={g.artikel.koId}
+            to={`/wissen/${encodeURIComponent(g.artikel.koId)}/gemeinsam`}
+            className={`mt-1 block ${KNOPF_LINK}`}
+          >
+            {t("gemeinsam.chat.oeffnen", { titel: g.artikel.titel })}
           </Link>
         ) : null}
         {g.space ? (

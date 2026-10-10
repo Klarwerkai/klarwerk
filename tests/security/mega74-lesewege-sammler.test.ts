@@ -1127,6 +1127,29 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Erwähnungen nur aus Gesprächen, die die Person jetzt lesen darf.",
   },
+  // Gemeinsamer Artikelentwurf (gemeinsam-routes.ts): Entwurf und Lesefassung tragen Titel und Text
+  // des Artikels. Jede Tür hält den Artikel VOR der Antwort gegen `darfSehen` (lokaler Helfer
+  // `sichtbarOder404`), sonst 404 wie GET /api/kos/:id.
+  "GET /api/kos/:id/gemeinsam": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor der Ausgabe, sonst 404.",
+  },
+  "POST /api/kos/:id/gemeinsam": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Anlegen, sonst 404.",
+  },
+  "PUT /api/kos/:id/gemeinsam": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Speichern, sonst 404.",
+  },
+  "POST /api/kos/:id/gemeinsam/angleichen": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Angleichen, sonst 404.",
+  },
+  "POST /api/kos/:id/gemeinsam/abschluss": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Abschluss, sonst 404.",
+  },
   "GET /api/spaces/teams": {
     urteil: "KEIN_KO_INHALT",
     grund: "Name, Zweck und Mitgliederzahl aktiver Teams (spaces-routes.ts).",

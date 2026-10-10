@@ -606,6 +606,24 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "gemeinsame-entwuerfe",
+    name: "Gemeinsame Artikelentwürfe",
+    inhalt:
+      "Je Artikel die gemeinsame Arbeitsfassung (Titel, Text, Basisfassung des Artikels), ihre gespeicherten Arbeitsstände und der Verlauf mit Kennung und Name der speichernden Person und Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennung und Name der speichernden Personen; der Entwurfstext kann Angaben über Personen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["gemeinsame_entwuerfe"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Kein Löschweg im Code — ein übernommener oder eingereichter Entwurf bleibt als Verlauf zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Am gemeinsamen Entwurf des Artikels mit Verlauf einsehbar.",
+    },
+  },
+  {
     id: "teams",
     name: "Teams",
     inhalt:

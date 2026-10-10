@@ -1190,6 +1190,21 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
   "GET /api/chat/erwaehnungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
 
+  // --- Gemeinsamer Artikelentwurf (gemeinsam-routes.ts, produkt:20261007:artikel-gemeinsam) ---
+  // Dasselbe Recht wie Bearbeiten (`ko.create`), nur an einem sichtbaren Artikel (`darfSehen`,
+  // sonst 404). Wer nur liest, sieht den Entwurf nicht.
+  "GET /api/kos/:id/gemeinsam": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/gemeinsam": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "PUT /api/kos/:id/gemeinsam": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/gemeinsam/angleichen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/kos/:id/gemeinsam/abschluss": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+
   // --- Vorlagen (vorlagen-routes.ts, produkt:20261007:templates-default / ADMIN-08) ---
   // Lesen wie Wissen; welche Vorlage erscheint, entscheidet ihre Geltung (persönlich, Space-Lese-
   // recht, unternehmensweit). Anlegen/Ändern/Standard braucht `ko.create`, Space-Vorgaben die
