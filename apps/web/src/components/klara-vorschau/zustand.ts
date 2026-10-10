@@ -94,6 +94,53 @@ export interface Vorschlag {
   status: "offen" | "uebernommen" | "verworfen";
 }
 
+/**
+ * Klara 04 (produkt:20261008:klara-vorschlaege): ein Formulierungsvorschlag im ECHTEN Betrieb — der
+ * markierte Originalwortlaut, Klaras Vorschlag und das Ziel (Objekt, Fassung, Absatz der Markierung).
+ * Das Original ändert sich erst, wenn die Person übernimmt; dann geht der Vorschlag in den Editor
+ * des Objekts (`lib/klaraUebernahme.ts`) und wird dort gespeichert oder eingereicht.
+ *
+ * `stand`:
+ *   · `offen`          — Original und Vorschlag stehen nebeneinander, nichts ist geändert.
+ *   · `rueckfrage`     — Ziel mehrdeutig (`stellen`) oder nicht das geöffnete Objekt; nichts geändert.
+ *   · `wartet`         — an den Editor übergeben, Antwort steht aus.
+ *   · `in_bearbeitung` — steht in der Bearbeitungsfassung (`feld`), noch nicht gespeichert.
+ *   · `gespeichert`    — am Server in der Fassung `gespeichertFassung` nachgelesen.
+ *   · `eingereicht`    — als Änderungsvorschlag am Objekt nachgelesen (Einreichweg).
+ *   · `nicht_gespeichert` — Bearbeitung ohne diese Änderung beendet; das Original gilt weiter.
+ *   · `verworfen`      — von der Person verworfen.
+ *   · `fehler`         — kein Recht, kein Zugriff, Wortlaut nicht mehr da … (`meldung`).
+ */
+export interface Textvorschlag {
+  id: string;
+  original: string;
+  neu: string;
+  herkunft: Herkunft;
+  /** `ki` nur, wenn der Formulierungsweg ein Modell benutzt hat (`demo: false`). */
+  ki: "ki" | "ohne_ki";
+  stand:
+    | "offen"
+    | "rueckfrage"
+    | "wartet"
+    | "in_bearbeitung"
+    | "gespeichert"
+    | "eingereicht"
+    | "nicht_gespeichert"
+    | "verworfen"
+    | "fehler";
+  meldung?: string | undefined;
+  rueckfrage?: "stellen" | "anderes_objekt" | "kein_objekt";
+  stellen?: { nr: number; feld: "aussage" | "inhalt"; davor: string; danach: string }[];
+  /** Der Textstand, an dem die Rückfrage ihre Stellen gezählt hat (`textstand`, klaraUebernahme). */
+  stellenStand?: string | undefined;
+  feld?: "aussage" | "inhalt";
+  /** Die Fassung, die beim Übergeben auf der Lesefläche stand. */
+  basisFassung?: number | null;
+  /** Der Editor hat den Vorschlag gezeigt — erst danach heisst „Bearbeitung zu“ etwas. */
+  bearbeitungGesehen?: boolean;
+  gespeichertFassung?: number | undefined;
+}
+
 export interface Nachricht {
   id: string;
   von: "du" | "klara";
@@ -113,6 +160,11 @@ export interface Entwurf {
   erinnerung: string;
   termin: string;
   gespeichert: boolean;
+  /**
+   * Klara 04: ein ECHTER Notizentwurf aus einer echten Markierung (echter Betrieb, auch im
+   * Produktbetrieb sichtbar). Fehlt das Feld, ist es ein Demo-Entwurf der Vorschau.
+   */
+  echt?: boolean;
 }
 
 export interface Geparkt {
@@ -153,6 +205,8 @@ export interface KlaraZustand {
   artikelText: Record<string, string>;
   status: Status;
   entwurf: Entwurf | null;
+  /** Klara 04: der Formulierungsvorschlag im echten Betrieb (höchstens einer). */
+  textvorschlag: Textvorschlag | null;
   begleiten: boolean;
   betrieb: Betrieb;
   /** Klara 03: der gewählte Bezug der nächsten Frage. */
@@ -183,6 +237,7 @@ export const ANFANG: KlaraZustand = {
   artikelText: {},
   status: "ruhe",
   entwurf: null,
+  textvorschlag: null,
   begleiten: false,
   betrieb: "echt",
   bezug: "seite",
@@ -212,6 +267,7 @@ export function anKontoBinden(z: KlaraZustand, kontoId: string | null): KlaraZus
     auswahl: null,
     verlauf: [],
     entwurf: null,
+    textvorschlag: null,
     artikelText: {},
     bezug: "seite",
     status: "ruhe",
@@ -283,7 +339,19 @@ function laden(): KlaraZustand {
     const bezug = BEZUEGE.includes(gelesen.bezug as Bezug) ? (gelesen.bezug as Bezug) : "seite";
     const kontoId = typeof gelesen.kontoId === "string" ? gelesen.kontoId : null;
     const begleitStand = istBegleitStand(gelesen.begleitStand) ? gelesen.begleitStand : null;
-    return { ...ANFANG, ...gelesen, status, betrieb, bezug, kontoId, begleitStand };
+    // Klara 04: eine Übergabe an den Editor überlebt kein Neuladen — der Vorschlag steht wieder offen.
+    const tv = gelesen.textvorschlag ?? null;
+    const textvorschlag = tv && tv.stand === "wartet" ? { ...tv, stand: "offen" as const } : tv;
+    return {
+      ...ANFANG,
+      ...gelesen,
+      status,
+      betrieb,
+      bezug,
+      kontoId,
+      begleitStand,
+      textvorschlag,
+    };
   } catch {
     return ANFANG;
   }
@@ -333,7 +401,8 @@ export function nachVorschauEnde(z: KlaraZustand): KlaraZustand {
     minimiert: false,
     geparkt: null,
     verlauf: [],
-    entwurf: null,
+    // Klara 04: ein echter Notizentwurf ist persönliche Arbeit, kein Teil der Vorschau.
+    entwurf: z.entwurf?.echt ? z.entwurf : null,
     artikelText: {},
     auswahl,
     bezug,

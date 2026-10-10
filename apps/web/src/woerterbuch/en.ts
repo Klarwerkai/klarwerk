@@ -6146,6 +6146,28 @@ const en: typeof de = {
     "You came from version {{genannt}}; this entry is now at version {{aktuell}}.",
   "arbeitsweg.klara.label": "Entry",
   "arbeitsweg.klara.chat": "Continue in “Ask” about this entry",
+  // produkt:20261010:fragen-pruefen-einstieg — see de.ts.
+  "fragenEinstieg.erklaerung":
+    "Ask your checked knowledge here. Every answer shows its sources and their check status – if there is no basis, the gap is named openly.",
+  "fragenEinstieg.ersterSchritt":
+    "First step: type your question in the field below (or dictate it) and send it with the arrow.",
+  "fragenEinstieg.beispieleZeigen": "Show fictional examples",
+  "fragenEinstieg.beispieleVerbergen": "Hide examples",
+  "fragenEinstieg.fiktiv": "fictional",
+  "fragenEinstieg.fiktivTitel": "Fictional example – made-up situation, no real data.",
+  "fragenEinstieg.optionalTitel": "Optional – only if needed",
+  "pruefgrund.label.warum": "Why you",
+  "pruefgrund.label.was": "What to check",
+  "pruefgrund.label.wirkung": "Effect",
+  "pruefgrund.label.sichtbar": "Visibility",
+  "pruefgrund.anlass.new": "Newly submitted.",
+  "pruefgrund.anlass.revision": "Revised (version {{version}}).",
+  "pruefgrund.warum.mir": "Assigned to you.",
+  "pruefgrund.warum.andere":
+    "Assigned to others ({{anzahl}}) – in the open check list for your role.",
+  "pruefgrund.warum.offen": "Not assigned – in the open check list for your role.",
+  "pruefgrund.wirkung":
+    "Approving is one of {{need}} required votes ({{have}} so far). Query and reject need a reason and lead to rework; nothing is approved automatically.",
 };
 
 export { en };
