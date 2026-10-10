@@ -2388,6 +2388,40 @@ export interface AskResponse {
   absaetze?: AbsatzBeleg[];
 }
 
+// R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
+// und Grenzen. Beide Antworten entstehen zum Zeitpunkt der Anfrage; die damalige aus den Fassungen,
+// die zum Stichtag galten und deren Freigabe belegt ist.
+export type Aenderungsgrund =
+  | "neu_seit_stichtag"
+  | "ueberarbeitet"
+  | "fassung_unbelegt"
+  | "freigabe_damals_unbelegt"
+  | "heute_nicht_freigegeben"
+  | "damals_gesperrt"
+  | "unveraendert";
+
+export interface VergleichsQuelle {
+  id: string;
+  title: string;
+  titelDamals: string | null;
+  versionHeute: number;
+  versionDamals: number | null;
+  inAntwortHeute: boolean;
+  inAntwortDamals: boolean;
+  gruende: Aenderungsgrund[];
+  aenderungen: { version: number; at: string; note: string; restoredFrom?: number }[];
+  aussageDamals: string | null;
+  aussageHeute: string | null;
+}
+
+export interface WissensstandVergleich {
+  stichtag: string;
+  heute: AnswerResult;
+  damals: AnswerResult;
+  antwortGeaendert: boolean;
+  quellen: VergleichsQuelle[];
+}
+
 export interface AbsatzBeleg {
   text: string;
   quellen: string[];
