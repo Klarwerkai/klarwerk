@@ -32,6 +32,39 @@ process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 const FRAGE = "Wie wird der Zyrlax-Kreislauf der Quorbit-Presse nach dem Stillstand eingestellt?";
 const ALLE = (): boolean => true;
 
+/**
+ * Nacharbeit 6 (16 × „terminating connection due to administrator command", 57P01): `Pool.end()`
+ * löst auf, sobald die Verbindungen aus dem Pool ABGEMELDET sind — ihr `client.end()` läuft da noch.
+ * Das gleich danach folgende `DROP DATABASE … WITH (FORCE)` beendete genau diese noch schliessenden
+ * Verbindungen serverseitig; der FATAL-Fehler traf einen Client ohne Abnehmer und wurde zur Uncaught
+ * Exception. Deshalb wird hier gewartet, bis der Pool JEDE Verbindung wirklich geschlossen gemeldet
+ * hat (`remove` kommt erst im Rückruf von `client.end()`). Bleibt eine offen, scheitert der Abbau
+ * sichtbar — nichts wird verschluckt.
+ */
+async function poolSchliessen(pool: Pool): Promise<void> {
+  const offen = pool.totalCount;
+  let geschlossen = 0;
+  const alleZu = new Promise<void>((fertig, scheitern) => {
+    const frist = setTimeout(() => {
+      const rest = offen - geschlossen;
+      scheitern(new Error(`Pool-Abbau: ${rest} von ${offen} Verbindungen nicht geschlossen`));
+    }, 30_000);
+    const pruefen = (): void => {
+      if (geschlossen >= offen) {
+        clearTimeout(frist);
+        fertig();
+      }
+    };
+    pool.on("remove", () => {
+      geschlossen += 1;
+      pruefen();
+    });
+    pruefen();
+  });
+  await pool.end();
+  await alleZu;
+}
+
 describe("Wissenskreislauf gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
@@ -79,13 +112,14 @@ describe("Wissenskreislauf gegen echtes PostgreSQL", () => {
       await migrate(pool);
       await buildPgServices(pool).ko.activateSearchProjectionV2();
     } finally {
-      await pool.end();
+      await poolSchliessen(pool);
     }
   }, 300_000);
 
   afterAll(async () => {
+    // Erst wenn alle Verbindungen der Dienste wirklich geschlossen sind, wird die Datenbank entfernt.
     for (const p of pools) {
-      await p.end().catch(() => undefined);
+      await poolSchliessen(p);
     }
     if (verwaltung) {
       await verwaltung
