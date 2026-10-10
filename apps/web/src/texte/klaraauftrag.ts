@@ -58,6 +58,8 @@ export default {
     "klaraauftrag.stand.teilweise": "Teilweise ausgeführt – nicht alles hat geklappt",
     "klaraauftrag.stand.fehlgeschlagen": "Fehlgeschlagen – nichts davon ist gespeichert",
     "klaraauftrag.stand.abgebrochen": "Abgebrochen – keine weiteren Schritte",
+    "klaraauftrag.stand.unklar":
+      "Stand unklar – die Verbindung brach ab; „Erneut versuchen“ liest den Stand am Server",
     "klaraauftrag.phase.pruefen": "Klara klärt das Ziel …",
     "klaraauftrag.unterbrochen":
       "Dieser Auftrag lief noch, als die Seite neu geladen wurde. Klara führt ihn nicht von selbst weiter – der Stand unten ist der des Servers.",
@@ -76,6 +78,9 @@ export default {
     "klaraauftrag.schrittStand.unklar": "Ergebnis unklar",
     "klaraauftrag.schrittStand.entfallen": "Entfallen",
     "klaraauftrag.schrittStand.nicht_ausgefuehrt": "Nicht ausgeführt",
+    "klaraauftrag.schrittStand.geoeffnet.oeffnen": "Geöffnet",
+    "klaraauftrag.schrittStand.geoeffnet.aufgabe_bearbeiten":
+      "Geöffnet – Klara hat an der Aufgabe nichts entschieden; bearbeitet wird sie von dir",
     "klaraauftrag.zumZiel": "Ziel öffnen",
     "klaraauftrag.zumErgebnis": "Ergebnis „{{titel}}“ öffnen",
     "klaraauftrag.endgueltig":
@@ -144,6 +149,20 @@ export default {
     "klaraauftrag.fehler.vorschritt":
       "Der vorige Schritt hat kein Ergebnis gespeichert – es gibt nichts zu öffnen.",
     "klaraauftrag.fehler.abbrechen": "Abbrechen am Server nicht bestätigt: {{grund}}",
+    "klaraauftrag.fehlerCode.anmeldung":
+      "Deine Anmeldung ist abgelaufen. Klara hat nichts geändert.",
+    "klaraauftrag.fehlerCode.recht": "Dir fehlt das Recht dafür. Klara hat nichts geändert.",
+    "klaraauftrag.fehlerCode.nichtGefunden":
+      "Das Ziel ist nicht (mehr) vorhanden oder für dich nicht sichtbar. Klara hat nichts geändert.",
+    "klaraauftrag.fehlerCode.versionGeaendert":
+      "Das Ziel wurde seit dem Auftrag geändert. Klara schreibt nicht über einen neueren Stand hinweg und hat nichts geändert.",
+    "klaraauftrag.fehlerCode.nichtNachgelesen":
+      "Beim Nachlesen am Server stand die Änderung nicht da – Klara meldet keinen Erfolg.",
+    "klaraauftrag.fehlerCode.nichtVerfuegbar":
+      "Die Aufgabe ist für dich nicht (mehr) verfügbar. Klara hat nichts geöffnet.",
+    "klaraauftrag.fehlerCode.vorschritt":
+      "Der vorige Schritt hat kein Ergebnis gespeichert – es gibt nichts zu öffnen.",
+    "klaraauftrag.fehlerCode.server": "Der Server hat den Schritt abgelehnt. Nichts geändert.",
     "klaraauftrag.ruecknahme.nichtNachgelesen":
       "Beim Nachlesen war die Rücknahme nicht zu sehen – Klara meldet sie nicht als erledigt.",
     "klaraauftrag.ruecknahme.ohneVorher":
@@ -221,6 +240,8 @@ export default {
     "klaraauftrag.stand.teilweise": "Partly carried out – not everything worked",
     "klaraauftrag.stand.fehlgeschlagen": "Failed – none of it is saved",
     "klaraauftrag.stand.abgebrochen": "Cancelled – no further steps",
+    "klaraauftrag.stand.unklar":
+      "Status unclear – the connection dropped; “Try again” reads the status on the server",
     "klaraauftrag.phase.pruefen": "Klara is clarifying the target …",
     "klaraauftrag.unterbrochen":
       "This task was still running when the page was reloaded. Klara does not continue it on its own – the status below is the server's.",
@@ -238,6 +259,9 @@ export default {
     "klaraauftrag.schrittStand.unklar": "Result unclear",
     "klaraauftrag.schrittStand.entfallen": "Dropped",
     "klaraauftrag.schrittStand.nicht_ausgefuehrt": "Not carried out",
+    "klaraauftrag.schrittStand.geoeffnet.oeffnen": "Opened",
+    "klaraauftrag.schrittStand.geoeffnet.aufgabe_bearbeiten":
+      "Opened – Klara decided nothing on the task; you work on it",
     "klaraauftrag.zumZiel": "Open target",
     "klaraauftrag.zumErgebnis": "Open result “{{titel}}”",
     "klaraauftrag.endgueltig":
@@ -301,6 +325,20 @@ export default {
     "klaraauftrag.fehler.vorschritt":
       "The previous step saved no result – there is nothing to open.",
     "klaraauftrag.fehler.abbrechen": "Cancellation not confirmed by the server: {{grund}}",
+    "klaraauftrag.fehlerCode.anmeldung": "Your sign-in has expired. Klara changed nothing.",
+    "klaraauftrag.fehlerCode.recht":
+      "You do not have the permission for this. Klara changed nothing.",
+    "klaraauftrag.fehlerCode.nichtGefunden":
+      "The target no longer exists or is not visible to you. Klara changed nothing.",
+    "klaraauftrag.fehlerCode.versionGeaendert":
+      "The target has changed since the task was given. Klara does not write over a newer state and changed nothing.",
+    "klaraauftrag.fehlerCode.nichtNachgelesen":
+      "Reading back from the server did not show the change – Klara reports no success.",
+    "klaraauftrag.fehlerCode.nichtVerfuegbar":
+      "The task is no longer available to you. Klara opened nothing.",
+    "klaraauftrag.fehlerCode.vorschritt":
+      "The previous step saved no result – there is nothing to open.",
+    "klaraauftrag.fehlerCode.server": "The server refused the step. Nothing changed.",
     "klaraauftrag.ruecknahme.nichtNachgelesen":
       "Reading back did not show the undo – Klara does not report it as done.",
     "klaraauftrag.ruecknahme.ohneVorher":
@@ -378,6 +416,8 @@ export default {
     "klaraauftrag.stand.teilweise": "Gedeeltelijk uitgevoerd – niet alles is gelukt",
     "klaraauftrag.stand.fehlgeschlagen": "Mislukt – niets daarvan is opgeslagen",
     "klaraauftrag.stand.abgebrochen": "Afgebroken – geen verdere stappen",
+    "klaraauftrag.stand.unklar":
+      "Status onduidelijk – de verbinding viel weg; „Opnieuw proberen” leest de status op de server",
     "klaraauftrag.phase.pruefen": "Klara verduidelijkt het doel …",
     "klaraauftrag.unterbrochen":
       "Deze opdracht liep nog toen de pagina opnieuw werd geladen. Klara zet hem niet vanzelf voort – de status hieronder is die van de server.",
@@ -396,6 +436,9 @@ export default {
     "klaraauftrag.schrittStand.unklar": "Resultaat onduidelijk",
     "klaraauftrag.schrittStand.entfallen": "Vervallen",
     "klaraauftrag.schrittStand.nicht_ausgefuehrt": "Niet uitgevoerd",
+    "klaraauftrag.schrittStand.geoeffnet.oeffnen": "Geopend",
+    "klaraauftrag.schrittStand.geoeffnet.aufgabe_bearbeiten":
+      "Geopend – Klara heeft over de taak niets beslist; het werk doe jij",
     "klaraauftrag.zumZiel": "Doel openen",
     "klaraauftrag.zumErgebnis": "Resultaat „{{titel}}” openen",
     "klaraauftrag.endgueltig":
@@ -462,6 +505,19 @@ export default {
     "klaraauftrag.fehler.vorschritt":
       "De vorige stap heeft geen resultaat opgeslagen – er is niets te openen.",
     "klaraauftrag.fehler.abbrechen": "Afbreken niet door de server bevestigd: {{grund}}",
+    "klaraauftrag.fehlerCode.anmeldung": "Je aanmelding is verlopen. Klara heeft niets gewijzigd.",
+    "klaraauftrag.fehlerCode.recht": "Je hebt daar geen recht toe. Klara heeft niets gewijzigd.",
+    "klaraauftrag.fehlerCode.nichtGefunden":
+      "Het doel bestaat niet (meer) of is voor jou niet zichtbaar. Klara heeft niets gewijzigd.",
+    "klaraauftrag.fehlerCode.versionGeaendert":
+      "Het doel is sinds de opdracht gewijzigd. Klara schrijft niet over een nieuwere stand heen en heeft niets gewijzigd.",
+    "klaraauftrag.fehlerCode.nichtNachgelesen":
+      "Bij het nalezen op de server stond de wijziging er niet – Klara meldt geen succes.",
+    "klaraauftrag.fehlerCode.nichtVerfuegbar":
+      "De taak is voor jou niet (meer) beschikbaar. Klara heeft niets geopend.",
+    "klaraauftrag.fehlerCode.vorschritt":
+      "De vorige stap heeft geen resultaat opgeslagen – er is niets te openen.",
+    "klaraauftrag.fehlerCode.server": "De server heeft de stap geweigerd. Niets gewijzigd.",
     "klaraauftrag.ruecknahme.nichtNachgelesen":
       "Bij het nalezen was het terugdraaien niet te zien – Klara meldt het niet als gedaan.",
     "klaraauftrag.ruecknahme.ohneVorher":

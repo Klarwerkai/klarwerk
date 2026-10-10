@@ -574,6 +574,14 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
         600,
       ),
       geplanteSchritte: a.geplant.length,
+      // Nacharbeit 2: der gebundene Plan — der Server führt später nur genau diese Schritte aus.
+      plan: a.geplant.map((s) => ({
+        aktion: s.erkannt.aktion,
+        ziel: s.erkannt.ausSchritt === undefined ? s.ziel : null,
+        ausSchritt: s.erkannt.ausSchritt === undefined ? null : s.erkannt.ausSchritt + 1,
+        ...(s.erkannt.inhalt ? { inhalt: s.erkannt.inhalt } : {}),
+        ...(s.erkannt.aenderung ? { aenderung: s.erkannt.aenderung } : {}),
+      })),
     });
     if (gen !== generation) {
       return;
@@ -597,16 +605,6 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
 // 4. Ausführen — Schritt für Schritt, jeder am Server begonnen, ausgeführt, nachgelesen, gemeldet.
 // ------------------------------------------------------------------------------------------------
 
-type Ausgang =
-  | {
-      art: "ok";
-      stand: "gespeichert" | "abgeschlossen";
-      ergebnis: KlaraAuftragErgebnis;
-      ruecknehmbar: boolean;
-    }
-  | { art: "fehler"; grund: string }
-  | { art: "unklar"; meldung: string };
-
 function uebernimmAuftrag(lokalId: string, auftrag: KlaraAuftrag): void {
   setze(lokalId, (x) => ({ ...x, auftrag }));
 }
@@ -616,7 +614,7 @@ async function melde(
   s: GeplanterSchritt,
   ziel: KlaraAuftragZiel,
   stand: KlaraSchrittStand,
-  extra: { ergebnis?: KlaraAuftragErgebnis; ruecknehmbar?: boolean; grund?: string } = {},
+  extra: { grund?: string } = {},
 ): Promise<KlaraAuftragSchritt> {
   const a = hole(lokalId);
   if (!a?.auftrag || !a.gespraechId) {
@@ -648,129 +646,47 @@ function zielDes(a: Ausfuehrung, s: GeplanterSchritt): KlaraAuftragZiel | null {
   return { art: e.art, id: e.id, titel: e.titel, stand: e.stand, pfad: e.pfad };
 }
 
-function istAngewandt(payload: DraftPayload, e: ErkannterSchritt): boolean {
-  const a = e.aenderung;
-  if (!a) {
+/**
+ * Nacharbeit 2: Öffnen am Bildschirm — erst NACH der Bestätigung des Ziels am Server, und nur mit
+ * dessen Pfad. Danach wird nachgesehen, ob es wirklich offen ist (Ort, beim Wissensobjekt die
+ * Meldung der Lesefläche selbst).
+ */
+async function oeffneBestaetigt(e: KlaraAuftragErgebnis, u: AuftragsUmgebung): Promise<boolean> {
+  if (!e.pfad.startsWith("/") || e.pfad.startsWith("//")) {
     return false;
   }
-  return a.art === "ergaenzen"
-    ? (payload.statement ?? "").includes(a.text)
-    : (payload.title ?? "") === a.titel;
-}
-
-async function wirke(
-  lokalId: string,
-  s: GeplanterSchritt,
-  ziel: KlaraAuftragZiel,
-  u: AuftragsUmgebung,
-): Promise<Ausgang> {
-  const { t } = u;
-  const e = s.erkannt;
-  if (e.aktion === "entwurf_erstellen") {
-    const payload: DraftPayload = { title: e.name, ...(e.inhalt ? { statement: e.inhalt } : {}) };
-    const konto = leseEcht().kontoId ?? undefined;
-    // Derselbe Schrittschlüssel ist der Vorgangsschlüssel: eine Wiederholung legt keinen zweiten an.
-    const d = await endpoints.drafts.create(payload, s.schluessel, konto);
-    const gelesen = await endpoints.drafts.get(d.id);
-    if ((gelesen.payload.title ?? "") !== e.name) {
-      return { art: "fehler", grund: t("klaraauftrag.fehler.nichtNachgelesen") };
-    }
-    return {
-      art: "ok",
-      stand: "gespeichert",
-      ergebnis: {
-        art: "entwurf",
-        id: d.id,
-        titel: e.name,
-        stand: gelesen.updatedAt,
-        pfad: entwurfPfad(d.id),
-      },
-      ruecknehmbar: true,
-    };
-  }
-  if (e.aktion === "entwurf_bearbeiten") {
-    const id = ziel.id as string;
-    // Vorprüfung JETZT: sichtbar, noch derselbe Stand wie beim Auftrag?
-    const jetzt = await endpoints.drafts.get(id);
-    const vorherBekannt = hole(lokalId)?.lokal[s.nr]?.vorher;
-    if (ziel.stand && jetzt.updatedAt !== ziel.stand) {
-      if (!(vorherBekannt && istAngewandt(jetzt.payload, e))) {
-        return { art: "fehler", grund: t("klaraauftrag.fehler.versionGeaendert") };
-      }
-    } else {
-      const vorher: DraftPayload = {
-        title: jetzt.payload.title ?? "",
-        statement: jetzt.payload.statement ?? "",
-      };
-      setzeLokal(lokalId, s.nr, { vorher });
-      const aenderung: DraftPayload =
-        e.aenderung?.art === "ergaenzen"
-          ? { statement: `${(jetzt.payload.statement ?? "").trim()} ${e.aenderung.text}`.trim() }
-          : { title: e.aenderung?.art === "umbenennen" ? e.aenderung.titel : ziel.titel };
-      // Der Stand vom Auftrag geht mit: hat sich der Entwurf seitdem geändert, schreibt der Server
-      // NICHTS (409 DRAFT_STALE) — die autoritative Fassungsprüfung bleibt die des Entwurfswegs.
-      await endpoints.drafts.update(id, aenderung, {
-        expectedUpdatedAt: ziel.stand ?? jetzt.updatedAt,
-      });
-    }
-    const gelesen = await endpoints.drafts.get(id);
-    if (!istAngewandt(gelesen.payload, e)) {
-      return { art: "fehler", grund: t("klaraauftrag.fehler.nichtNachgelesen") };
-    }
-    return {
-      art: "ok",
-      stand: "gespeichert",
-      ergebnis: {
-        art: "entwurf",
-        id,
-        titel: gelesen.payload.title ?? ziel.titel,
-        stand: gelesen.updatedAt,
-        pfad: entwurfPfad(id),
-      },
-      ruecknehmbar: true,
-    };
-  }
-  // Öffnen und Aufgabe bearbeiten: Rechte am Ziel JETZT lesen, dann hinführen und nachsehen.
-  let pfad = ziel.pfad ?? "";
-  let titel = ziel.titel;
-  let stand = ziel.stand;
-  const id = ziel.id as string;
-  if (ziel.art === "wissensobjekt") {
-    const ko = await endpoints.ko.get(encodeURIComponent(id));
-    pfad = leserHref({ koId: id, fassung: null });
-    titel = ko.title;
-    stand = typeof ko.version === "number" ? String(ko.version) : stand;
-  } else if (ziel.art === "entwurf") {
-    const d = await endpoints.drafts.get(id);
-    pfad = entwurfPfad(id);
-    titel = d.payload.title ?? titel;
-    stand = d.updatedAt;
-  }
-  if (!pfad.startsWith("/") || pfad.startsWith("//")) {
-    return { art: "fehler", grund: t("klaraauftrag.fehler.nichtGefunden") };
-  }
-  u.navigiere(pfad);
-  // Nachsehen, ob das Ziel wirklich offen ist: der Ort der Anwendung (ohne Abfrage — eine Seite darf
-  // ihren Absprungparameter verbrauchen) und beim Wissensobjekt die Meldung der Lesefläche selbst.
-  const zielOrt = pfad.split("?")[0] ?? pfad;
+  u.navigiere(e.pfad);
+  const zielOrt = e.pfad.split("?")[0] ?? e.pfad;
   const ortStimmt = (): boolean => (u.ort().split("?")[0] ?? "") === zielOrt;
   const ziehtAuf =
-    ziel.art === "wissensobjekt" ? () => ortStimmt() && leseobjektJetzt()?.koId === id : ortStimmt;
-  if (!(await warte(ziehtAuf, OEFFNEN_WARTEN_MS))) {
-    return { art: "fehler", grund: t("klaraauftrag.fehler.nichtGeoeffnet", { titel }) };
+    e.art === "wissensobjekt" ? () => ortStimmt() && leseobjektJetzt()?.koId === e.id : ortStimmt;
+  return warte(ziehtAuf, OEFFNEN_WARTEN_MS);
+}
+
+/**
+ * Ein Fehler, den der Server nicht selbst festhielt (etwa eine 500 vor dem Beginn): ehrlich als
+ * Fehlschlag melden. Der Browser kann damit nie einen Erfolg behaupten — nur ein Scheitern.
+ */
+async function meldeFehlschlag(lokalId: string, s: GeplanterSchritt, grund: string): Promise<void> {
+  const a = hole(lokalId);
+  if (!a) {
+    return;
   }
-  return {
-    art: "ok",
-    stand: "abgeschlossen",
-    ergebnis: {
-      art: ziel.art === "neuer_entwurf" ? "entwurf" : ziel.art,
-      id,
-      titel,
-      stand,
-      pfad,
-    },
-    ruecknehmbar: false,
-  };
+  const quelle = s.erkannt.ausSchritt === undefined ? null : a.geplant[s.erkannt.ausSchritt];
+  const ziel: KlaraAuftragZiel = zielDes(a, s) ??
+    quelle?.ziel ?? {
+      art: "neuer_entwurf",
+      id: null,
+      titel: s.erkannt.name,
+      stand: null,
+      pfad: null,
+    };
+  try {
+    await melde(lokalId, s, ziel, "begonnen");
+  } catch {
+    // schon begonnen oder ausserhalb — der Fehlschlag unten sagt dann, was der Server zulässt
+  }
+  await melde(lokalId, s, ziel, "fehlgeschlagen", { grund: kuerzen(grund, 300) });
 }
 
 type Weiter = "weiter" | "stopp";
@@ -784,25 +700,20 @@ async function fuehreSchrittAus(
   const { t } = u;
   const a = hole(lokalId);
   const s = a?.geplant.find((x) => x.nr === nr);
-  if (!a || !s) {
+  if (!a || !s || !a.auftrag || !a.gespraechId) {
     return "stopp";
-  }
-  let ziel = zielDes(a, s);
-  // „… und öffne ihn“ ohne Ergebnis des Vorschritts: begonnen unter dem Ziel des Vorschritts
-  // (innerhalb der Grenze) und ehrlich als gescheitert gemeldet — es wird nichts geöffnet.
-  const ohneVorschritt = !ziel && s.erkannt.ausSchritt !== undefined;
-  if (ohneVorschritt) {
-    ziel = { art: "neuer_entwurf", id: null, titel: s.erkannt.name, stand: null, pfad: null };
-  }
-  if (!ziel) {
-    setzeLokal(lokalId, nr, { lage: "entfallen", meldung: t("klaraauftrag.fehler.keinZiel") });
-    return "weiter";
   }
   setzeLokal(lokalId, nr, { lage: "laeuft", meldung: "" });
 
-  // 1. Beginnen: die Grenze am Server entscheidet, ob dieser Schritt überhaupt beginnt.
+  // 1. Nacharbeit 2 (Ben): der SERVER führt den Planschritt aus — er beginnt ihn unter der Grenze,
+  //    ruft die vorhandenen Türen mit der Anmeldung der Person auf und liest nach. Der Browser
+  //    schickt nur Nummer und Fassung und kann kein Ergebnis behaupten.
+  let r: { auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean };
   try {
-    await melde(lokalId, s, ziel, "begonnen");
+    r = await klaraAuftragApi.fuehreAus(a.gespraechId, a.auftrag.id, s.schluessel, {
+      nr: s.nr,
+      auftragFassung: a.auftrag.fassung,
+    });
   } catch (fehler) {
     if (gen !== generation) {
       return "stopp";
@@ -818,53 +729,48 @@ async function fuehreSchrittAus(
       setzeLokal(lokalId, nr, { lage: "entfallen", meldung });
       return grund === "fassung_veraltet" ? "stopp" : "weiter";
     }
-    setzeLokal(lokalId, nr, {
-      lage: istVerbindungsfehler(fehler) ? "unklar" : "nicht_ausgefuehrt",
-      meldung: fehlerGrund(fehler, t),
-    });
-    return "stopp";
-  }
-  if (gen !== generation) {
-    return "stopp";
-  }
-
-  // 2. Ausführen über den vorhandenen Produktweg (mit Vorprüfung und Nachlesen).
-  let ausgang: Ausgang;
-  if (ohneVorschritt) {
-    ausgang = { art: "fehler", grund: t("klaraauftrag.fehler.vorschritt") };
-  } else {
+    if (istVerbindungsfehler(fehler)) {
+      // Ob der Server gehandelt hat, ist unbekannt: „Erneut versuchen“ nutzt denselben Schlüssel,
+      // der Server antwortet dann mit dem festgehaltenen Stand statt neu auszuführen.
+      setzeLokal(lokalId, nr, { lage: "unklar", meldung: t("klaraauftrag.fehler.unklar") });
+      return "stopp";
+    }
     try {
-      ausgang = await wirke(lokalId, s, ziel, u);
-    } catch (fehler) {
-      ausgang = istVerbindungsfehler(fehler)
-        ? { art: "unklar", meldung: t("klaraauftrag.fehler.unklar") }
-        : { art: "fehler", grund: fehlerGrund(fehler, t) };
+      await meldeFehlschlag(lokalId, s, fehlerGrund(fehler, t));
+    } catch {
+      setzeLokal(lokalId, nr, { lage: "unklar", meldung: t("klaraauftrag.fehler.protokoll") });
+      return "stopp";
     }
+    setzeLokal(lokalId, nr, null);
+    return "weiter";
   }
   if (gen !== generation) {
     return "stopp";
   }
-  if (ausgang.art === "unklar") {
-    setzeLokal(lokalId, nr, { lage: "unklar", meldung: ausgang.meldung });
-    return "stopp";
-  }
+  uebernimmAuftrag(lokalId, r.auftrag);
 
-  // 3. Das nachgelesene Ergebnis melden. Geht DAS verloren, bleibt der Schritt „unklar“.
-  try {
-    if (ausgang.art === "ok") {
-      await melde(lokalId, s, ziel, ausgang.stand, {
-        ergebnis: ausgang.ergebnis,
-        ruecknehmbar: ausgang.ruecknehmbar,
-      });
-    } else {
-      await melde(lokalId, s, ziel, "fehlgeschlagen", { grund: kuerzen(ausgang.grund, 300) });
-    }
-  } catch (fehler) {
+  // 2. Öffnen und Aufgabe: der Server hat Zielidentität und aktuelle Berechtigung bestätigt
+  //    (`geprueft`). Erst jetzt wechselt der Bildschirm — und abgeschlossen wird nur dieses Ziel.
+  const schritt = r.schritt;
+  if (schritt.stand === "begonnen" && schritt.geprueft) {
+    const offen = await oeffneBestaetigt(schritt.geprueft, u);
     if (gen !== generation) {
       return "stopp";
     }
-    setzeLokal(lokalId, nr, { lage: "unklar", meldung: t("klaraauftrag.fehler.protokoll") });
-    return "stopp";
+    try {
+      if (offen) {
+        await melde(lokalId, s, schritt.ziel, "abgeschlossen");
+      } else {
+        const grund = t("klaraauftrag.fehler.nichtGeoeffnet", { titel: schritt.geprueft.titel });
+        await melde(lokalId, s, schritt.ziel, "fehlgeschlagen", { grund: kuerzen(grund, 300) });
+      }
+    } catch {
+      if (gen !== generation) {
+        return "stopp";
+      }
+      setzeLokal(lokalId, nr, { lage: "unklar", meldung: t("klaraauftrag.fehler.protokoll") });
+      return "stopp";
+    }
   }
   setzeLokal(lokalId, nr, null);
   return "weiter";
@@ -960,9 +866,17 @@ export async function brecheAuftragAb(lokalId: string, u: AuftragsUmgebung): Pro
 
 /** Welche geplanten Schritte noch nicht begonnen haben — nur sie kann eine Korrektur weglassen. */
 export function offeneSchritte(a: Ausfuehrung): GeplanterSchritt[] {
-  return a.geplant.filter(
-    (s) => !serverSchritt(a, s.schluessel) && a.lokal[s.nr]?.lage !== "entfallen",
-  );
+  // Ein Schritt, der gerade am Server läuft (oder dessen Antwort unklar ist), ist nicht mehr offen:
+  // der Server kann ihn schon ausgeführt haben.
+  return a.geplant.filter((s) => {
+    const lage = a.lokal[s.nr]?.lage;
+    return (
+      !serverSchritt(a, s.schluessel) &&
+      lage !== "entfallen" &&
+      lage !== "laeuft" &&
+      lage !== "unklar"
+    );
+  });
 }
 
 /**
@@ -979,7 +893,9 @@ export async function korrigiereAuftrag(
     return;
   }
   const offen = offeneSchritte(a);
-  const geschehen = a.geplant.filter((s) => serverSchritt(a, s.schluessel));
+  const geschehen = a.geplant.filter(
+    (s) => !offen.includes(s) && a.lokal[s.nr]?.lage !== "entfallen",
+  );
   const bleiben = [...geschehen, ...offen.filter((s) => behalten.includes(s.nr))];
   const ziele = eindeutigeZiele(bleiben).filter((z) =>
     a.auftrag?.erlaubteZiele.some((x) => gleichesZiel(x, z)),
@@ -1032,66 +948,23 @@ export async function nimmZurueck(lokalId: string, nr: number, u: AuftragsUmgebu
   if (!a || !amServer?.ruecknehmbar || !amServer.ergebnis || !a.auftrag || !a.gespraechId) {
     return;
   }
-  const e = amServer.ergebnis;
   setzeLokal(lokalId, nr, { ruecknahme: "laeuft", ruecknahmeMeldung: "" });
   try {
-    if (amServer.aktion === "entwurf_erstellen") {
-      await endpoints.drafts.remove(e.id);
-      let weg = false;
-      try {
-        await endpoints.drafts.get(e.id);
-      } catch (fehler) {
-        weg = fehler instanceof ApiError && fehler.status === 404;
-      }
-      if (!weg) {
-        setzeLokal(lokalId, nr, {
-          ruecknahme: "fehler",
-          ruecknahmeMeldung: t("klaraauftrag.ruecknahme.nichtNachgelesen"),
-        });
-        return;
-      }
-    } else {
-      const vorher = a.lokal[nr]?.vorher;
-      if (!vorher) {
-        setzeLokal(lokalId, nr, {
-          ruecknahme: "fehler",
-          ruecknahmeMeldung: t("klaraauftrag.ruecknahme.ohneVorher"),
-        });
-        return;
-      }
-      await endpoints.drafts.update(e.id, vorher, e.stand ? { expectedUpdatedAt: e.stand } : {});
-      const gelesen = await endpoints.drafts.get(e.id);
-      // Dieselbe Regel wie der Speicherweg (`mitKanonischerAussage`): eine leere Kernaussage nimmt
-      // dort den Titel an.
-      const erwartet = vorher.statement || vorher.title || "";
-      if (
-        (gelesen.payload.title ?? "") !== (vorher.title ?? "") ||
-        (gelesen.payload.statement ?? "") !== erwartet
-      ) {
-        setzeLokal(lokalId, nr, {
-          ruecknahme: "fehler",
-          ruecknahmeMeldung: t("klaraauftrag.ruecknahme.nichtNachgelesen"),
-        });
-        return;
-      }
-    }
-    const r = await klaraAuftragApi.schritt(a.gespraechId, a.auftrag.id, amServer.schluessel, {
-      nr: amServer.nr,
-      aktion: amServer.aktion,
-      ziel: amServer.ziel,
-      auftragFassung: amServer.auftragFassung,
-      stand: "zurueckgenommen",
-    });
+    // Nacharbeit 2 (Ben): die Rücknahme läuft am Server — mit dem nachgelesenen Ergebnisstand als
+    // erwartetem Stand am vorhandenen Lösch- bzw. Speicherweg. Wurde der Entwurf inzwischen
+    // geändert, antwortet der Server 409 und der Entwurf bleibt erhalten.
+    const r = await klaraAuftragApi.nimmZurueck(a.gespraechId, a.auftrag.id, amServer.schluessel);
     uebernimmAuftrag(lokalId, r.auftrag);
     setzeLokal(lokalId, nr, { ruecknahme: null, ruecknahmeMeldung: "" });
   } catch (fehler) {
-    const geaendert = fehler instanceof ApiError && fehler.status === 409;
-    setzeLokal(lokalId, nr, {
-      ruecknahme: "fehler",
-      ruecknahmeMeldung: geaendert
-        ? t("klaraauftrag.ruecknahme.geaendert")
-        : t("klaraauftrag.ruecknahme.fehler", { grund: fehlerGrund(fehler, t) }),
-    });
+    const grund = fehler instanceof ApiError ? String(fehler.details.grund ?? "") : "";
+    let meldung = t("klaraauftrag.ruecknahme.fehler", { grund: fehlerGrund(fehler, t) });
+    if (grund === "geaendert") {
+      meldung = t("klaraauftrag.ruecknahme.geaendert");
+    } else if (grund === "nicht_ruecknehmbar") {
+      meldung = t("klaraauftrag.ruecknahme.ohneVorher");
+    }
+    setzeLokal(lokalId, nr, { ruecknahme: "fehler", ruecknahmeMeldung: meldung });
   }
 }
 

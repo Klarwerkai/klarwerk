@@ -93,8 +93,38 @@ export interface KlaraAuftragSchritt {
   readonly ruecknehmbar: boolean;
   /** Bei `fehlgeschlagen`: der tatsächliche Grund in Worten. */
   readonly grund: string | null;
+  /**
+   * Nacharbeit 2 (Ben): bei `fehlgeschlagen` aus der Serverausführung der Grundschlüssel
+   * (`recht`, `nichtGefunden`, `versionGeaendert`, `nichtNachgelesen`, `nichtVerfuegbar`, …).
+   */
+  readonly fehlerCode?: string | null;
+  /**
+   * Nacharbeit 2 (Ben): beim Öffnen und beim Aufgabe-Öffnen das vom SERVER unter den Rechten der
+   * Person bestätigte Ziel. Nur damit darf der Browser den Schritt danach „abgeschlossen“ melden.
+   */
+  readonly geprueft?: KlaraAuftragErgebnis | null;
+  /** Nacharbeit 2: beim Bearbeiten die Felder vor der Änderung, vom Server gelesen (Rückgängig). */
+  readonly vorher?: { readonly title: string; readonly statement: string } | null;
   readonly begonnenAm: string;
   readonly geaendertAm: string;
+}
+
+export type KlaraAenderung =
+  | { readonly art: "ergaenzen"; readonly text: string }
+  | { readonly art: "umbenennen"; readonly titel: string };
+
+/**
+ * Nacharbeit 2 (Ben): der PLAN eines Auftrags — je Schritt Aktion, Ziel und Inhalt. Der Server führt
+ * nur aus, was hier steht; was der Browser beim Ausführen mitschickt, ist nur die Schrittnummer.
+ * `ausSchritt`: dieser Schritt öffnet das Ergebnis des Schritts mit dieser Nummer.
+ */
+export interface KlaraPlanSchritt {
+  readonly nr: number;
+  readonly aktion: KlaraAktion;
+  readonly ziel: KlaraAuftragZiel | null;
+  readonly ausSchritt: number | null;
+  readonly inhalt: string | null;
+  readonly aenderung: KlaraAenderung | null;
 }
 
 /** Eine Fassung der Grenze. Die aktuelle steht am Auftrag selbst, frühere in `fassungen`. */
@@ -140,6 +170,8 @@ export interface KlaraAuftrag extends KlaraAuftragGrenze {
   readonly stand: KlaraAuftragStand;
   readonly abgebrochenAm: string | null;
   readonly schritte: readonly KlaraAuftragSchritt[];
+  /** Nacharbeit 2: der gebundene Plan (leer bei Aufträgen ohne serverseitige Ausführung). */
+  readonly plan?: readonly KlaraPlanSchritt[];
   /** Frühere Fassungen der Grenze, älteste zuerst. */
   readonly fassungen: readonly KlaraAuftragGrenze[];
   readonly verlauf: readonly KlaraAuftragVerlaufseintrag[];
@@ -163,7 +195,12 @@ export type KlaraAuftragGrund =
   | "erweiterung"
   | "uebergang"
   | "schluessel_belegt"
-  | "voll";
+  | "voll"
+  | "nur_server"
+  | "nicht_geprueft"
+  | "ohne_plan"
+  | "geaendert"
+  | "nicht_ruecknehmbar";
 
 export class KlaraAuftragFehler extends Error {
   constructor(
@@ -392,6 +429,64 @@ export interface KlaraAuftragEingabe {
   erlaubteQuellen?: unknown;
   ergebnis?: unknown;
   geplanteSchritte?: unknown;
+  plan?: unknown;
+}
+
+function pruefeAenderung(roh: unknown, feld: string): KlaraAenderung {
+  const o = objekt(roh, feld);
+  const art = wahl(o.art, ["ergaenzen", "umbenennen"] as const, `${feld}.art`);
+  return art === "ergaenzen"
+    ? { art, text: text(o.text, 2_000, `${feld}.text`) }
+    : { art, titel: text(o.titel, 300, `${feld}.titel`) };
+}
+
+/**
+ * Prüft den Plan gegen die Grenze: jede Aktion erlaubt, jedes Ziel erlaubt (oder das Ergebnis eines
+ * früheren Planschritts), der Inhalt passt zur Aktion. Ohne Plan bleibt die Liste leer.
+ */
+function pruefePlan(
+  roh: unknown,
+  erlaubteAktionen: readonly KlaraAktion[],
+  erlaubteZiele: readonly KlaraAuftragZiel[],
+): KlaraPlanSchritt[] {
+  if (roh === undefined || roh === null) {
+    return [];
+  }
+  const eintraege = liste(roh, KLARA_AUFTRAG_MAX_SCHRITTE, "plan", (x) => x);
+  return eintraege.map((x, i): KlaraPlanSchritt => {
+    const feld = `plan[${i}]`;
+    const o = objekt(x, feld);
+    const nr = i + 1;
+    const aktion = wahl(o.aktion, KLARA_AKTIONEN, `${feld}.aktion`);
+    if (!erlaubteAktionen.includes(aktion)) {
+      throw eingabeFehler(`${feld}.aktion liegt nicht in den erlaubten Aktionen.`);
+    }
+    const ausSchritt =
+      o.ausSchritt === undefined || o.ausSchritt === null
+        ? null
+        : ganzzahl(o.ausSchritt, 1, nr - 1, `${feld}.ausSchritt`);
+    const ziel = ausSchritt === null ? pruefeZiel(o.ziel, `${feld}.ziel`) : null;
+    if (ausSchritt !== null && aktion !== "oeffnen") {
+      throw eingabeFehler(`${feld}: nur „öffnen“ darf das Ergebnis eines Vorschritts nehmen.`);
+    }
+    if (ziel && !erlaubteZiele.some((z) => gleichesZiel(z, ziel))) {
+      throw eingabeFehler(`${feld}.ziel liegt nicht in den erlaubten Zielen.`);
+    }
+    if (aktion === "entwurf_erstellen" && ziel?.art !== "neuer_entwurf") {
+      throw eingabeFehler(`${feld}: ein neuer Entwurf braucht ein Ziel der Art neuer_entwurf.`);
+    }
+    if (aktion === "entwurf_bearbeiten" && (ziel?.art !== "entwurf" || !ziel.stand)) {
+      throw eingabeFehler(`${feld}: Bearbeiten braucht einen Entwurf mit gesehenem Stand.`);
+    }
+    if (aktion === "aufgabe_bearbeiten" && ziel?.art !== "aufgabe") {
+      throw eingabeFehler(`${feld}: eine Aufgabe braucht ein Ziel der Art aufgabe.`);
+    }
+    const inhalt =
+      aktion === "entwurf_erstellen" ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`) : null;
+    const aenderung =
+      aktion === "entwurf_bearbeiten" ? pruefeAenderung(o.aenderung, `${feld}.aenderung`) : null;
+    return { nr, aktion, ziel, ausSchritt, inhalt, aenderung };
+  });
 }
 
 export function neuerAuftrag(
@@ -400,6 +495,18 @@ export function neuerAuftrag(
   id: string,
   jetzt: string,
 ): KlaraAuftrag {
+  const erlaubteAktionen = aktionen(eingabe.erlaubteAktionen);
+  const erlaubteZiele = ziele(eingabe.erlaubteZiele);
+  const plan = pruefePlan(eingabe.plan, erlaubteAktionen, erlaubteZiele);
+  const geplanteSchritte = ganzzahl(
+    eingabe.geplanteSchritte,
+    1,
+    KLARA_AUFTRAG_MAX_SCHRITTE,
+    "geplanteSchritte",
+  );
+  if (plan.length > 0 && plan.length !== geplanteSchritte) {
+    throw eingabeFehler("geplanteSchritte muss der Länge des Plans entsprechen.");
+  }
   const a: KlaraAuftrag = {
     id,
     quelle: wahl(eingabe.quelle, KLARA_QUELLEN_DES_AUFTRAGS, "quelle"),
@@ -407,16 +514,12 @@ export function neuerAuftrag(
     ziel: text(eingabe.ziel, 600, "ziel"),
     verantwortlich,
     fassung: 1,
-    erlaubteAktionen: aktionen(eingabe.erlaubteAktionen),
-    erlaubteZiele: ziele(eingabe.erlaubteZiele),
+    erlaubteAktionen,
+    erlaubteZiele,
     erlaubteQuellen: quellen(eingabe.erlaubteQuellen),
     ergebnis: text(eingabe.ergebnis, 600, "ergebnis"),
-    geplanteSchritte: ganzzahl(
-      eingabe.geplanteSchritte,
-      1,
-      KLARA_AUFTRAG_MAX_SCHRITTE,
-      "geplanteSchritte",
-    ),
+    geplanteSchritte,
+    plan,
     grund: null,
     am: jetzt,
     stand: "vorgeschlagen",
@@ -509,6 +612,22 @@ export function korrigiere(
   }
   // Was schon begonnen wurde, ist geschehen: die geplante Zahl kann nicht darunter fallen.
   const geschehen = a.schritte.length;
+  // Nacharbeit 2: ein gebundener Plan wird mit der Grenze enger — begonnene Schritte bleiben, offene
+  // nur, wenn Aktion und Ziel (bzw. ihr Vorschritt) noch in der neuen Grenze liegen.
+  const begonnen = new Set(a.schritte.map((s) => s.nr));
+  const behalten: KlaraPlanSchritt[] = [];
+  for (const p of a.plan ?? []) {
+    const ziel = p.ziel;
+    const drin =
+      neueAktionen.includes(p.aktion) &&
+      (ziel
+        ? neueZiele.some((z) => gleichesZiel(z, ziel))
+        : behalten.some((b) => b.nr === p.ausSchritt));
+    if (begonnen.has(p.nr) || drin) {
+      behalten.push(p);
+    }
+  }
+  const mitPlan = (a.plan ?? []).length > 0;
   const korrigiert: KlaraAuftrag = {
     ...a,
     fassungen: [...a.fassungen, grenzeAus(a)],
@@ -517,7 +636,10 @@ export function korrigiere(
     erlaubteZiele: neueZiele,
     erlaubteQuellen: neueQuellen,
     ergebnis: eingabe.ergebnis === undefined ? a.ergebnis : text(eingabe.ergebnis, 600, "ergebnis"),
-    geplanteSchritte: Math.max(geplant, geschehen),
+    geplanteSchritte: mitPlan
+      ? Math.max(Math.min(geplant, behalten.length), geschehen)
+      : Math.max(geplant, geschehen),
+    ...(mitPlan ? { plan: behalten } : {}),
     grund: text(eingabe.grund, 300, "grund"),
     am: jetzt,
   };
@@ -534,6 +656,25 @@ export interface KlaraSchrittEingabe {
   ruecknehmbar?: unknown;
   grund?: unknown;
 }
+
+/**
+ * Nacharbeit 2 (Ben): was nur die Serverausführung (`klara-ausfuehrung.ts`) setzen darf — das am
+ * Server bestätigte Ziel beim Öffnen und der Grundschlüssel eines Fehlschlags. Aus dem Netz kommt
+ * nichts davon.
+ */
+export interface KlaraServerZusatz {
+  geprueft?: KlaraAuftragErgebnis;
+  fehlerCode?: string;
+}
+
+/**
+ * Wer einen Übergang meldet. `browser`: die Tür `PUT …/schritte/:schluessel` — sie darf einen
+ * Schritt beginnen, einen Fehlschlag melden und ein vom SERVER bestätigtes Öffnen abschliessen,
+ * aber nie ein Ergebnis behaupten. `server`: die gebundene Ausführung nach tatsächlichem Nachlesen.
+ */
+export type KlaraMelder = "browser" | "server";
+
+const NUR_OEFFNEN: readonly KlaraAktion[] = ["oeffnen", "aufgabe_bearbeiten"];
 
 type Uebergaenge = Readonly<Record<KlaraAuftragSchrittStand, readonly KlaraAuftragSchrittStand[]>>;
 
@@ -556,6 +697,8 @@ export function setzeSchritt(
   schluessel: string,
   eingabe: KlaraSchrittEingabe,
   jetzt: string,
+  melder: KlaraMelder = "server",
+  zusatz: KlaraServerZusatz = {},
 ): { auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean } {
   if (!SCHLUESSEL.test(schluessel)) {
     throw eingabeFehler(
@@ -603,9 +746,26 @@ export function setzeSchritt(
         "Der Auftrag hat keine weiteren geplanten Schritte.",
       );
     }
+    const nr = ganzzahl(eingabe.nr, 1, KLARA_AUFTRAG_MAX_SCHRITTE, "nr");
+    // Nacharbeit 2: mit gebundenem Plan beginnt nur, was der Plan unter dieser Nummer vorsieht.
+    if ((a.plan ?? []).length > 0) {
+      const p = (a.plan ?? []).find((x) => x.nr === nr);
+      const passt =
+        p !== undefined &&
+        p.aktion === aktion &&
+        (p.ziel === null || gleichesZiel(p.ziel, ziel)) &&
+        !a.schritte.some((s) => s.nr === nr);
+      if (!passt) {
+        throw new KlaraAuftragFehler(
+          409,
+          "ausserhalb_auftrag",
+          "Dieser Schritt steht so nicht im Plan des Auftrags und wird nicht ausgeführt.",
+        );
+      }
+    }
     const schritt: KlaraAuftragSchritt = {
       schluessel,
-      nr: ganzzahl(eingabe.nr, 1, KLARA_AUFTRAG_MAX_SCHRITTE, "nr"),
+      nr,
       aktion,
       ziel,
       auftragFassung: fassung,
@@ -613,6 +773,9 @@ export function setzeSchritt(
       ergebnis: null,
       ruecknehmbar: false,
       grund: null,
+      fehlerCode: null,
+      geprueft: null,
+      vorher: null,
       begonnenAm: jetzt,
       geaendertAm: jetzt,
     };
@@ -632,8 +795,25 @@ export function setzeSchritt(
       "Dieser Schrittschlüssel gehört zu einem anderen Schritt.",
     );
   }
-  if (vorhanden.stand === stand) {
+  if (vorhanden.stand === stand && zusatz.geprueft === undefined) {
     return { auftrag: a, schritt: vorhanden, wiederholt: true };
+  }
+  // Nacharbeit 2: der Server hält das bestätigte Ziel fest, ohne den Stand zu ändern.
+  if (vorhanden.stand === stand && melder === "server" && zusatz.geprueft !== undefined) {
+    const bestaetigt: KlaraAuftragSchritt = {
+      ...vorhanden,
+      geprueft: zusatz.geprueft,
+      geaendertAm: jetzt,
+    };
+    return {
+      auftrag: {
+        ...a,
+        schritte: a.schritte.map((s) => (s.schluessel === schluessel ? bestaetigt : s)),
+        geaendertAm: jetzt,
+      },
+      schritt: bestaetigt,
+      wiederholt: false,
+    };
   }
   if (!UEBERGAENGE[vorhanden.stand].includes(stand)) {
     throw new KlaraAuftragFehler(
@@ -642,16 +822,49 @@ export function setzeSchritt(
       `Ein Schritt im Stand „${vorhanden.stand}“ kann nicht „${stand}“ werden.`,
     );
   }
+  // Nacharbeit 2 (Ben): der Browser behauptet keine Wirkung. Gespeichert und zurückgenommen meldet
+  // nur die gebundene Serverausführung; abschliessen darf der Browser nur ein Öffnen, dessen Ziel
+  // der Server vorher bestätigt hat — das Ergebnis ist dann das bestätigte, nicht das gemeldete.
+  if (melder === "browser") {
+    if (stand === "gespeichert" || stand === "zurueckgenommen") {
+      throw new KlaraAuftragFehler(
+        409,
+        "nur_server",
+        "Ein gespeichertes oder zurückgenommenes Ergebnis meldet nur die Ausführung am Server.",
+      );
+    }
+    if (stand === "abgeschlossen" && !NUR_OEFFNEN.includes(vorhanden.aktion)) {
+      throw new KlaraAuftragFehler(
+        409,
+        "nur_server",
+        "Diesen Schritt schliesst nur die Ausführung am Server ab.",
+      );
+    }
+    if (stand === "abgeschlossen" && !vorhanden.geprueft) {
+      throw new KlaraAuftragFehler(
+        409,
+        "nicht_geprueft",
+        "Das Ziel ist am Server nicht bestätigt — der Schritt wird nicht als abgeschlossen geführt.",
+      );
+    }
+  }
   let ergebnis = vorhanden.ergebnis;
   let ruecknehmbar = vorhanden.ruecknehmbar;
   let grund: string | null = null;
+  let fehlerCode: string | null = vorhanden.fehlerCode ?? null;
   if (stand === "gespeichert" || stand === "abgeschlossen") {
     if (vorhanden.stand === "begonnen") {
-      ergebnis = pruefeErgebnis(eingabe.ergebnis);
-      ruecknehmbar = eingabe.ruecknehmbar === true;
+      if (melder === "browser") {
+        ergebnis = vorhanden.geprueft ?? null;
+        ruecknehmbar = false;
+      } else {
+        ergebnis = pruefeErgebnis(eingabe.ergebnis);
+        ruecknehmbar = eingabe.ruecknehmbar === true;
+      }
     }
   } else if (stand === "fehlgeschlagen") {
     grund = text(eingabe.grund, 300, "grund");
+    fehlerCode = melder === "server" ? (zusatz.fehlerCode ?? null) : null;
   } else if (stand === "zurueckgenommen" && !vorhanden.ruecknehmbar) {
     throw new KlaraAuftragFehler(
       409,
@@ -665,6 +878,7 @@ export function setzeSchritt(
     ergebnis,
     ruecknehmbar: stand === "zurueckgenommen" ? false : ruecknehmbar,
     grund,
+    fehlerCode,
     geaendertAm: jetzt,
   };
   const neu = mitVerlauf(
@@ -674,6 +888,22 @@ export function setzeSchritt(
     schritt.nr,
   );
   return { auftrag: abgeleitet(neu, jetzt), schritt, wiederholt: false };
+}
+
+/** Nacharbeit 2: der Server hält die vor einer Bearbeitung gelesenen Felder am Schritt fest. */
+export function merkeVorher(
+  a: KlaraAuftrag,
+  schluessel: string,
+  vorher: { title: string; statement: string },
+  jetzt: string,
+): KlaraAuftrag {
+  return {
+    ...a,
+    schritte: a.schritte.map((s) =>
+      s.schluessel === schluessel ? { ...s, vorher, geaendertAm: jetzt } : s,
+    ),
+    geaendertAm: jetzt,
+  };
 }
 
 /** Abbrechen: kein weiterer Schritt. Schon Gespeichertes bleibt, wie es ist. Wiederholbar. */

@@ -128,6 +128,29 @@ function schrittPfad(gid: string, aid: string, schluessel: string): string {
   return `${BASIS}/gespraeche/${gid}/auftraege/${aid}/schritte/${schluessel}`;
 }
 
+type SchrittAntwort = {
+  auftrag: KlaraAuftrag;
+  schritt: KlaraAuftrag["schritte"][number];
+  wiederholt: boolean;
+};
+
+/** Nacharbeit 2: der Server führt den Planschritt `nr` aus (gebundene Ausführung). */
+async function fuehreAus(
+  wer: string,
+  gid: string,
+  aid: string,
+  schluessel: string,
+  nr: number,
+  fassung = 1,
+): Promise<SchrittAntwort> {
+  const r = await auf(wer, "POST", `${schrittPfad(gid, aid, schluessel)}/ausfuehrung`, {
+    nr,
+    auftragFassung: fassung,
+  });
+  expect(r.statusCode, r.body).toBe(200);
+  return r.json() as SchrittAntwort;
+}
+
 const ERGEBNIS_A = {
   art: "entwurf",
   id: "d-a",
@@ -196,18 +219,18 @@ describe("A1 · K7 — der Auftrag trägt seine Grenze; Teilschritte erben sie",
     expect(fremd.statusCode).toBe(409);
     expect((fremd.json() as { grund: string }).grund).toBe("ausserhalb_auftrag");
 
-    // Innerhalb: anlegen, dann das ERGEBNIS öffnen — die Teilaufgabe erbt die Grenze.
-    const s1 = await auf(erik.token, "PUT", schrittPfad(gid, a.id, "s-1"), {
-      nr: 1,
-      aktion: "entwurf_erstellen",
-      ziel: NEU_A,
-      auftragFassung: 1,
-      stand: "begonnen",
+    // Innerhalb (Nacharbeit 2: über die gebundene Serverausführung): anlegen, dann das ERGEBNIS
+    // öffnen — die Teilaufgabe erbt die Grenze.
+    const geplant = await auftrag(erik.token, gid, {
+      erlaubteZiele: [NEU_A],
+      geplanteSchritte: 2,
+      plan: [
+        { aktion: "entwurf_erstellen", ziel: NEU_A, ausSchritt: null },
+        { aktion: "oeffnen", ziel: null, ausSchritt: 1 },
+      ],
     });
-    expect(s1.statusCode, s1.body).toBe(200);
-    expect((s1.json() as { auftrag: KlaraAuftrag }).auftrag.stand).toBe("laeuft");
     // Öffnen des noch nicht gespeicherten Ergebnisses: ausserhalb.
-    const zuFrueh = await auf(erik.token, "PUT", schrittPfad(gid, a.id, "s-2"), {
+    const zuFrueh = await auf(erik.token, "PUT", schrittPfad(gid, geplant.id, "s-2"), {
       nr: 2,
       aktion: "oeffnen",
       ziel: { art: "entwurf", id: "d-a", titel: "Wartung Presse 4", stand: null, pfad: null },
@@ -215,24 +238,34 @@ describe("A1 · K7 — der Auftrag trägt seine Grenze; Teilschritte erben sie",
       stand: "begonnen",
     });
     expect(zuFrueh.statusCode).toBe(409);
-    const gespeichert = await auf(erik.token, "PUT", schrittPfad(gid, a.id, "s-1"), {
-      nr: 1,
-      aktion: "entwurf_erstellen",
-      ziel: NEU_A,
-      auftragFassung: 1,
-      stand: "gespeichert",
-      ergebnis: ERGEBNIS_A,
-      ruecknehmbar: true,
+    const s1 = await fuehreAus(erik.token, gid, geplant.id, "s-1", 1);
+    expect(s1.schritt.stand, JSON.stringify(s1.schritt)).toBe("gespeichert");
+    const entwurfId = s1.schritt.ergebnis?.id as string;
+    // Das Ergebnis ist ein wirklich gespeicherter Entwurf — am Server nachgelesen.
+    const gelesen = await auf(erik.token, "GET", `/api/drafts/${entwurfId}`);
+    expect(gelesen.statusCode).toBe(200);
+    expect((gelesen.json() as { payload: { title: string } }).payload.title).toBe(
+      "Wartung Presse 4",
+    );
+    const s2 = await fuehreAus(erik.token, gid, geplant.id, "s-2", 2);
+    expect(s2.schritt).toMatchObject({
+      stand: "begonnen",
+      ziel: { art: "entwurf", id: entwurfId },
     });
-    expect(gespeichert.statusCode, gespeichert.body).toBe(200);
-    const oeffnen = await auf(erik.token, "PUT", schrittPfad(gid, a.id, "s-2"), {
+    expect(s2.schritt.geprueft?.id).toBe(entwurfId);
+    const abgeschlossen = await auf(erik.token, "PUT", schrittPfad(gid, geplant.id, "s-2"), {
       nr: 2,
       aktion: "oeffnen",
-      ziel: { art: "entwurf", id: "d-a", titel: "Wartung Presse 4", stand: null, pfad: null },
+      ziel: s2.schritt.ziel,
       auftragFassung: 1,
-      stand: "begonnen",
+      stand: "abgeschlossen",
+      // Behauptet der Browser ein anderes Ergebnis, zählt es nicht — gilt das am Server bestätigte.
+      ergebnis: { ...ERGEBNIS_A, id: "erfunden" },
     });
-    expect(oeffnen.statusCode, oeffnen.body).toBe(200);
+    expect(abgeschlossen.statusCode, abgeschlossen.body).toBe(200);
+    const fertig = (abgeschlossen.json() as { auftrag: KlaraAuftrag }).auftrag;
+    expect(fertig.stand).toBe("abgeschlossen");
+    expect(fertig.schritte[1]?.ergebnis?.id).toBe(entwurfId);
   });
 
   it("eine Ergebnisadresse ausserhalb der Anwendung wird abgewiesen", () => {
@@ -418,7 +451,13 @@ describe("A3 · K9 — Korrektur versioniert, zeigt Geschehenes und erweitert ni
 describe("A4 · K3/K4 — Abbrechen ist nicht Rückgängig", () => {
   it("nach dem Abbruch beginnt nichts mehr; der laufende Schritt meldet sein echtes Ergebnis", async () => {
     const gid = await gespraech(erik.token);
-    const a = await auftrag(erik.token, gid);
+    const a = await auftrag(erik.token, gid, {
+      geplanteSchritte: 2,
+      plan: [
+        { aktion: "entwurf_erstellen", ziel: NEU_A, ausSchritt: null },
+        { aktion: "entwurf_erstellen", ziel: NEU_B, ausSchritt: null },
+      ],
+    });
     const beginne = (schluessel: string, nr: number, ziel: unknown) =>
       auf(erik.token, "PUT", schrittPfad(gid, a.id, schluessel), {
         nr,
@@ -440,22 +479,25 @@ describe("A4 · K3/K4 — Abbrechen ist nicht Rückgängig", () => {
     const danach = await beginne("s-2", 2, NEU_B);
     expect(danach.statusCode).toBe(409);
     expect((danach.json() as { grund: string }).grund).toBe("abgebrochen");
-    // Der schon laufende Schritt meldet, was wirklich geschah — es wird nicht still zurückgenommen.
-    const gemeldet = await auf(erik.token, "PUT", schrittPfad(gid, a.id, "s-1"), {
-      nr: 1,
-      aktion: "entwurf_erstellen",
-      ziel: NEU_A,
+    // Auch die Serverausführung beginnt keinen weiteren Schritt.
+    const zweiter = await auf(erik.token, "POST", `${schrittPfad(gid, a.id, "s-2")}/ausfuehrung`, {
+      nr: 2,
       auftragFassung: 1,
-      stand: "gespeichert",
-      ergebnis: ERGEBNIS_A,
-      ruecknehmbar: true,
     });
-    expect(gemeldet.statusCode, gemeldet.body).toBe(200);
-    const nach = (gemeldet.json() as { auftrag: KlaraAuftrag }).auftrag;
+    expect(zweiter.statusCode).toBe(409);
+    expect((zweiter.json() as { grund: string }).grund).toBe("abgebrochen");
+    // Der schon begonnene Schritt endet mit dem, was wirklich geschah (am Server ausgeführt und
+    // nachgelesen) — es wird nicht still zurückgenommen.
+    const gemeldet = await fuehreAus(erik.token, gid, a.id, "s-1", 1);
+    const nach = gemeldet.auftrag;
     expect(nach.stand).toBe("abgebrochen");
-    expect(nach.schritte.map((s) => [s.nr, s.stand, s.ergebnis?.id])).toEqual([
-      [1, "gespeichert", "d-a"],
-    ]);
+    expect(nach.schritte.map((s) => [s.nr, s.stand])).toEqual([[1, "gespeichert"]]);
+    const entwurf = await auf(erik.token, "GET", `/api/drafts/${nach.schritte[0]?.ergebnis?.id}`);
+    expect(entwurf.statusCode).toBe(200);
+    const alle = (await auf(erik.token, "GET", "/api/drafts")).json() as {
+      payload: { title?: string };
+    }[];
+    expect(alle.map((d) => d.payload.title)).toEqual(["Wartung Presse 4"]);
     // Abbrechen ist wiederholbar und ändert nichts weiter.
     const nochmal = await auf(
       erik.token,
@@ -659,5 +701,253 @@ describe("A7 · K5 — nur das eigene Konto; Prüfprotokoll ohne Inhalt", () => 
     const roh = JSON.stringify(angelegt);
     expect(roh).not.toContain("Notcode");
     expect(roh).not.toContain("Wartung Presse");
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 2 (Bens Befunde) — die Ausführung ist an Auftrag, Plan, Schritt und Ziel gebunden.
+// ================================================================================================
+const kurz = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface Entwurf {
+  id: string;
+  updatedAt: string;
+  payload: { title?: string; statement?: string };
+}
+
+async function entwurf(wer: string, title: string, statement: string): Promise<Entwurf> {
+  const r = await auf(wer, "POST", "/api/drafts", { title, statement });
+  expect(r.statusCode, r.body).toBe(201);
+  return r.json() as Entwurf;
+}
+
+async function entwurfLesen(wer: string, id: string) {
+  return auf(wer, "GET", `/api/drafts/${id}`);
+}
+
+describe("A8 · K1/K2/K5 — der Browser behauptet keine Wirkung; der Server führt aus und liest nach", () => {
+  it("ein vom Browser gemeldetes Ergebnis wird abgewiesen; nur der Plan wird ausgeführt", async () => {
+    const gid = await gespraech(erik.token);
+    const a = await auftrag(erik.token, gid, {
+      erlaubteZiele: [NEU_A],
+      geplanteSchritte: 1,
+      plan: [{ aktion: "entwurf_erstellen", ziel: NEU_A, ausSchritt: null }],
+    });
+    const basis = { nr: 1, aktion: "entwurf_erstellen", ziel: NEU_A, auftragFassung: 1 };
+    expect(
+      (await auf(erik.token, "PUT", schrittPfad(gid, a.id, "s-1"), { ...basis, stand: "begonnen" }))
+        .statusCode,
+    ).toBe(200);
+    for (const stand of ["gespeichert", "abgeschlossen", "zurueckgenommen"]) {
+      const behauptet = await auf(erik.token, "PUT", schrittPfad(gid, a.id, "s-1"), {
+        ...basis,
+        stand,
+        ergebnis: ERGEBNIS_A,
+        ruecknehmbar: true,
+      });
+      expect(behauptet.statusCode, stand).toBe(409);
+    }
+    const zwischen = (
+      (await auf(erik.token, "GET", `${BASIS}/gespraeche/${gid}/auftraege`)).json() as {
+        auftraege: KlaraAuftrag[];
+      }
+    ).auftraege[0];
+    expect(zwischen?.schritte[0]).toMatchObject({ stand: "begonnen", ergebnis: null });
+    expect((await auf(erik.token, "GET", "/api/drafts")).json()).toEqual([]);
+
+    // Nicht im Plan: abgewiesen. Ein Auftrag ohne Plan wird gar nicht ausgeführt.
+    const fremdeNr = await auf(erik.token, "POST", `${schrittPfad(gid, a.id, "s-9")}/ausfuehrung`, {
+      nr: 3,
+      auftragFassung: 1,
+    });
+    expect((fremdeNr.json() as { grund: string }).grund).toBe("ausserhalb_auftrag");
+    const ohnePlan = await auftrag(erik.token, gid);
+    const ohne = await auf(
+      erik.token,
+      "POST",
+      `${schrittPfad(gid, ohnePlan.id, "s-1")}/ausfuehrung`,
+      {
+        nr: 1,
+        auftragFassung: 1,
+      },
+    );
+    expect((ohne.json() as { grund: string }).grund).toBe("ohne_plan");
+
+    // Der Server führt aus, was im Plan steht — ein mitgeschickter anderer Titel zählt nicht.
+    const r = await auf(erik.token, "POST", `${schrittPfad(gid, a.id, "s-1")}/ausfuehrung`, {
+      nr: 1,
+      auftragFassung: 1,
+      title: "Etwas ganz anderes",
+      ziel: { ...NEU_A, titel: "Etwas ganz anderes" },
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    const s = (r.json() as SchrittAntwort).schritt;
+    expect(s.stand).toBe("gespeichert");
+    const d = (await entwurfLesen(erik.token, s.ergebnis?.id as string)).json() as Entwurf;
+    expect(d.payload.title).toBe("Wartung Presse 4");
+    expect(s.ergebnis?.stand).toBe(d.updatedAt);
+    // Wiederholung mit demselben Schlüssel: derselbe Schritt, kein zweiter Entwurf.
+    const wieder = await fuehreAus(erik.token, gid, a.id, "s-1", 1);
+    expect(wieder.wiederholt).toBe(true);
+    expect((await auf(erik.token, "GET", "/api/drafts")).json()).toHaveLength(1);
+  });
+
+  it("K8: Bearbeiten an den gebundenen Stand — eine Änderung davor verhindert das Schreiben", async () => {
+    const gid = await gespraech(erik.token);
+    const d = await entwurf(erik.token, "Ölwechsel", "Basis.");
+    const ziel = { art: "entwurf", id: d.id, titel: "Ölwechsel", stand: d.updatedAt, pfad: null };
+    const a = await auftrag(erik.token, gid, {
+      erlaubteAktionen: ["entwurf_bearbeiten"],
+      erlaubteZiele: [ziel],
+      geplanteSchritte: 1,
+      plan: [
+        {
+          aktion: "entwurf_bearbeiten",
+          ziel,
+          ausSchritt: null,
+          aenderung: { art: "ergaenzen", text: "Filter prüfen" },
+        },
+      ],
+    });
+    await kurz(5);
+    const fremd = await auf(erik.token, "PUT", `/api/drafts/${d.id}`, { statement: "Fremd." });
+    expect(fremd.statusCode, fremd.body).toBe(200);
+    const s = (await fuehreAus(erik.token, gid, a.id, "s-1", 1)).schritt;
+    expect(s).toMatchObject({ stand: "fehlgeschlagen", fehlerCode: "versionGeaendert" });
+    const jetzt = (await entwurfLesen(erik.token, d.id)).json() as Entwurf;
+    expect(jetzt.payload.statement).toBe("Fremd.");
+  });
+
+  it("Bearbeiten und Rückgängig am Server: vorheriger Stand zurück, nachgelesen", async () => {
+    const gid = await gespraech(erik.token);
+    const d = await entwurf(erik.token, "Ölwechsel", "Basis.");
+    const ziel = { art: "entwurf", id: d.id, titel: "Ölwechsel", stand: d.updatedAt, pfad: null };
+    const a = await auftrag(erik.token, gid, {
+      erlaubteAktionen: ["entwurf_bearbeiten"],
+      erlaubteZiele: [ziel],
+      geplanteSchritte: 1,
+      plan: [
+        {
+          aktion: "entwurf_bearbeiten",
+          ziel,
+          ausSchritt: null,
+          aenderung: { art: "ergaenzen", text: "Filter prüfen" },
+        },
+      ],
+    });
+    const s = (await fuehreAus(erik.token, gid, a.id, "s-1", 1)).schritt;
+    expect(s.stand).toBe("gespeichert");
+    expect(((await entwurfLesen(erik.token, d.id)).json() as Entwurf).payload.statement).toContain(
+      "Filter prüfen",
+    );
+    const zurueck = await auf(
+      erik.token,
+      "POST",
+      `${schrittPfad(gid, a.id, "s-1")}/ruecknahme`,
+      {},
+    );
+    expect(zurueck.statusCode, zurueck.body).toBe(200);
+    expect((zurueck.json() as SchrittAntwort).schritt.stand).toBe("zurueckgenommen");
+    expect(((await entwurfLesen(erik.token, d.id)).json() as Entwurf).payload.statement).toBe(
+      "Basis.",
+    );
+  });
+
+  it("S06: Rücknahme einer Anlage nach fremder Änderung — Konflikt, der Entwurf bleibt", async () => {
+    const gid = await gespraech(erik.token);
+    const plan = [
+      { aktion: "entwurf_erstellen", ziel: NEU_A, ausSchritt: null },
+      { aktion: "entwurf_erstellen", ziel: NEU_B, ausSchritt: null },
+    ];
+    const a = await auftrag(erik.token, gid, { geplanteSchritte: 2, plan });
+    const geaendert = (await fuehreAus(erik.token, gid, a.id, "s-1", 1)).schritt;
+    const unberuehrt = (await fuehreAus(erik.token, gid, a.id, "s-2", 2)).schritt;
+    const idA = geaendert.ergebnis?.id as string;
+    const idB = unberuehrt.ergebnis?.id as string;
+    await kurz(5);
+    expect(
+      (await auf(erik.token, "PUT", `/api/drafts/${idA}`, { statement: "Weiter bearbeitet." }))
+        .statusCode,
+    ).toBe(200);
+
+    const konflikt = await auf(
+      erik.token,
+      "POST",
+      `${schrittPfad(gid, a.id, "s-1")}/ruecknahme`,
+      {},
+    );
+    expect(konflikt.statusCode).toBe(409);
+    expect((konflikt.json() as { grund: string }).grund).toBe("geaendert");
+    expect((await entwurfLesen(erik.token, idA)).statusCode).toBe(200);
+    const liste = (await auf(erik.token, "GET", `${BASIS}/gespraeche/${gid}/auftraege`)).json() as {
+      auftraege: KlaraAuftrag[];
+    };
+    expect(liste.auftraege[0]?.schritte[0]?.stand).toBe("gespeichert");
+
+    // Der vorhandene Löschweg selbst prüft den Stand, wenn er mitgegeben wird.
+    const direkt = await auf(
+      erik.token,
+      "DELETE",
+      `/api/drafts/${idA}?expectedUpdatedAt=${encodeURIComponent(geaendert.ergebnis?.stand ?? "")}`,
+    );
+    expect(direkt.statusCode).toBe(409);
+    expect((await entwurfLesen(erik.token, idA)).statusCode).toBe(200);
+
+    // Unverändert: die Rücknahme legt den Entwurf in den Papierkorb, nachgelesen.
+    const ok = await auf(erik.token, "POST", `${schrittPfad(gid, a.id, "s-2")}/ruecknahme`, {});
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect((ok.json() as SchrittAntwort).schritt.stand).toBe("zurueckgenommen");
+    expect((await entwurfLesen(erik.token, idB)).statusCode).toBe(404);
+    const korb = (await auf(erik.token, "GET", "/api/drafts/trash")).json() as { id: string }[];
+    expect(korb.map((x) => x.id)).toContain(idB);
+  });
+
+  it("Aufgabe: Identität und aktuelle Verfügbarkeit am Server, sonst kein Erfolg", async () => {
+    const gid = await gespraech(ada.token);
+    const angelegt = await auf(ada.token, "POST", "/api/kos", {
+      title: "Kühlmittel K9 prüfen",
+      statement: "Das Kühlmittel K9 wird monatlich geprüft.",
+      type: "best_practice",
+      category: "Betrieb",
+      confidentiality: "intern",
+      neededValidations: 1,
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const koId = (angelegt.json() as { id: string }).id;
+    const weg = {
+      art: "aufgabe",
+      id: "gibt-es-nicht",
+      titel: "Gibt es nicht",
+      stand: null,
+      pfad: "/wissen/gibt-es-nicht",
+    };
+    const echt = {
+      art: "aufgabe",
+      id: koId,
+      titel: "Kühlmittel K9 prüfen",
+      stand: null,
+      pfad: `/wissen/${koId}`,
+    };
+    const a = await auftrag(ada.token, gid, {
+      erlaubteAktionen: ["aufgabe_bearbeiten"],
+      erlaubteZiele: [weg, echt],
+      geplanteSchritte: 2,
+      plan: [
+        { aktion: "aufgabe_bearbeiten", ziel: weg, ausSchritt: null },
+        { aktion: "aufgabe_bearbeiten", ziel: echt, ausSchritt: null },
+      ],
+    });
+    const nichtDa = (await fuehreAus(ada.token, gid, a.id, "s-1", 1)).schritt;
+    expect(nichtDa).toMatchObject({ stand: "fehlgeschlagen", fehlerCode: "nichtVerfuegbar" });
+    const board = await auf(ada.token, "GET", "/api/validation/board");
+    const aufDemBoard =
+      board.statusCode === 200 && (board.json() as { id: string }[]).some((k) => k.id === koId);
+    const zweiter = (await fuehreAus(ada.token, gid, a.id, "s-2", 2)).schritt;
+    if (aufDemBoard) {
+      // Bestätigt — abgeschlossen wird er erst, wenn der Browser den Arbeitsort gezeigt hat.
+      expect(zweiter).toMatchObject({ stand: "begonnen", geprueft: { id: koId, art: "aufgabe" } });
+    } else {
+      expect(zweiter).toMatchObject({ stand: "fehlgeschlagen", fehlerCode: "nichtVerfuegbar" });
+    }
   });
 });

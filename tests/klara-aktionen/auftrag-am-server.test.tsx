@@ -27,7 +27,13 @@
 //   U8 · K8        Stand- oder Sichtbarkeitsänderung vor dem Schritt verhindert ihn.
 //   U9 · K9        Korrektur mitten im Lauf: neue Fassung, weggelassener Schritt entfällt.
 //   U10 · K6       Zusammenfassen einer Anleitung mit Versandaufforderung: keine Nachricht, kein
-//                  Auftrag, keine Befugnis — nur der Frageweg.
+//                  Auftrag, keine Befugnis — nur der Frageweg; Inhalt der Zusammenfassung geprüft
+//                  (mit dem kontrollierten Adapter, kein echtes Modell).
+//
+// NACHARBEIT 2 (Bens Befunde): Schreibende Schritte und Erfolgsmeldungen führt der SERVER aus
+// (`POST …/schritte/:schluessel/ausfuehrung`, `…/ruecknahme`). Die Netzeingriffe dieser Datei
+// sitzen deshalb an diesen Türen; der Browser schreibt selbst nicht mehr an `/api/drafts` (U1).
+// Neu: U3b (nicht mehr verfügbare Aufgabe), U5c (Rücknahme nach fremder Änderung).
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   QueryClient,
@@ -103,8 +109,8 @@ let root: ReturnType<typeof createRoot> | null = null;
 let drahtFetch: typeof globalThis.fetch;
 /** Jede schreibende Anfrage des Browsers an die eigene App: „METHODE /api/…“. */
 let schreibend: string[] = [];
-/** Die Antwortcodes der Entwurfsanlage, wie der Browser sie bekam. */
-let anlagen: number[] = [];
+/** Nacharbeit 2: jede Antwort der gebundenen Ausführung am Server (Status, Wiederholung). */
+let ausfuehrungen: { status: number; wiederholt: boolean }[] = [];
 /** Ein Eingriff in genau einen Aufruf — sonst geht alles unverändert an den Server. */
 type Eingriff = (
   url: string,
@@ -148,8 +154,11 @@ function netzMitEingriff(): void {
     }
     const weiter = async (): Promise<Response> => {
       const r = await drahtFetch(eingabe as RequestInfo, init);
-      if (methode === "POST" && url === "/api/drafts") {
-        anlagen.push(r.status);
+      // Nacharbeit 2: jede gebundene Ausführung am Server, wie sie dort antwortete.
+      if (methode === "POST" && url.endsWith("/ausfuehrung")) {
+        const roh = await r.text();
+        const daten = roh ? (JSON.parse(roh) as { wiederholt?: boolean }) : {};
+        ausfuehrungen.push({ status: r.status, wiederholt: daten.wiederholt === true });
       }
       return r;
     };
@@ -168,7 +177,7 @@ beforeEach(async () => {
   setzeKlaraVorschauAktiv(true);
   medienStub();
   schreibend = [];
-  anlagen = [];
+  ausfuehrungen = [];
   eingriff = null;
   RekorderDoppel.letzter = null;
   netzMitEingriff();
@@ -351,7 +360,12 @@ interface AuftragSicht {
   erlaubteZiele: { art: string; id: string | null; titel: string }[];
   quelle: string;
   fassungen: { fassung: number; geplanteSchritte: number }[];
-  schritte: { nr: number; stand: string; ergebnis: { id: string } | null }[];
+  schritte: {
+    nr: number;
+    stand: string;
+    ergebnis: { id: string } | null;
+    fehlerCode?: string | null;
+  }[];
   verlauf: { ereignis: string; nr: number | null }[];
 }
 
@@ -370,8 +384,12 @@ async function auftraegeAmServer(a: Aufbau, k: Konto): Promise<AuftragSicht[]> {
   return (r.json() as { auftraege: AuftragSicht[] }).auftraege;
 }
 
-/** Hält die ZWEITE Entwurfsanlage an, bis `frei()` gerufen wird. */
-function haltBeimZweitenAnlegen(): { angekommen: () => boolean; frei: () => void } {
+/**
+ * Nacharbeit 2: die ZWEITE gebundene Ausführung läuft am Server sofort durch (der Schritt ist dort
+ * ausgeführt und nachgelesen) — ihre ANTWORT erreicht den Browser aber erst nach `frei()`. So läuft
+ * der Schritt „gerade“, während die Person abbricht oder korrigiert.
+ */
+function haltBeimZweitenAusfuehren(): { angekommen: () => boolean; frei: () => void } {
   let zaehler = 0;
   let angekommen = false;
   let frei: () => void = () => {};
@@ -379,11 +397,13 @@ function haltBeimZweitenAnlegen(): { angekommen: () => boolean; frei: () => void
     frei = r;
   });
   eingriff = (url, methode, weiter) => {
-    if (methode === "POST" && url === "/api/drafts") {
+    if (methode === "POST" && url.endsWith("/ausfuehrung")) {
       zaehler += 1;
       if (zaehler === 2) {
-        angekommen = true;
-        return offen.then(weiter);
+        return weiter().then((antwort) => {
+          angekommen = true;
+          return offen.then(() => antwort);
+        });
       }
     }
     return null;
@@ -482,6 +502,10 @@ describe("U1 · K1/K2/K7 — getippter Auftrag: Entwurf anlegen und öffnen", ()
     expect(s2 ? q(s2, "klara-ausfuehrung-rueckgaengig") : null).toBeNull();
     // Kein Frageweg, keine KI: an `/api/ask` ging nichts.
     expect(schreibend.filter((s) => s.includes("/api/ask"))).toEqual([]);
+    // Nacharbeit 2 (Ben): der Browser schreibt selbst NICHTS an den Entwürfen — beide Schritte liefen
+    // über die gebundene Ausführung am Server, die nachlas und das Ergebnis festhielt.
+    expect(schreibend.filter((s) => /^(POST|PUT|DELETE) \/api\/drafts/.test(s))).toEqual([]);
+    expect(ausfuehrungen.map((x) => x.status)).toEqual([200, 200]);
   });
 });
 
@@ -588,6 +612,80 @@ describe("U3 · K1 — eine verfügbare Prüfaufgabe bearbeiten", () => {
     expect(schritte()[0]?.dataset.aktion).toBe("aufgabe_bearbeiten");
     await bis(() => Boolean(q(document, "bib-text")), 240);
     expect(q(document, "bib-text")?.textContent).toContain("Kühlmittel K9");
+    // Nacharbeit 2 (Ben): als ÖFFNEN ausgewiesen — Klara hat an der Aufgabe nichts entschieden.
+    expect(text(schritte()[0], "klara-ausfuehrung-schritt-stand")).toContain("Geöffnet");
+    expect(text(schritte()[0], "klara-ausfuehrung-schritt-stand")).toContain("nichts entschieden");
+    // Das Ergebnis ist das am Server bestätigte Ziel (Identität und aktuelle Verfügbarkeit).
+    const [amServer] = await auftraegeAmServer(a, wer as Konto);
+    expect(amServer?.schritte[0]).toMatchObject({ stand: "abgeschlossen", ergebnis: { id: koId } });
+  });
+
+  it("eine inzwischen nicht mehr verfügbare Aufgabe wird nicht als geöffnet gemeldet", async () => {
+    const a = await app();
+    const angelegt = await a.app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: a.admin.kopf,
+      payload: {
+        title: "Kühlmittel K9 prüfen",
+        statement: "Das Kühlmittel K9 wird monatlich geprüft.",
+        type: "best_practice",
+        category: "Betrieb",
+        confidentiality: "intern",
+        neededValidations: 1,
+      },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const koId = (angelegt.json() as { id: string }).id;
+    const pruefer = await neuesKonto(a.app, "klara-pruefer-2", a.admin);
+    let wer: Konto | null = null;
+    for (const k of [pruefer, a.admin]) {
+      const board = await a.app.inject({
+        method: "GET",
+        url: "/api/validation/board",
+        headers: k.kopf,
+      });
+      if (
+        board.statusCode === 200 &&
+        (board.json() as { id: string }[]).some((x) => x.id === koId)
+      ) {
+        wer = k;
+        break;
+      }
+    }
+    expect(wer, "niemand hat die neue Prüfaufgabe auf dem Board").not.toBeNull();
+    alsKonto(wer as Konto);
+    await klaraOeffnen();
+    // Zwischen Auftrag und Ausführung wird die Prüfung abgeschlossen — die Aufgabe ist weg.
+    let einmal = false;
+    eingriff = (url, methode, weiter) => {
+      if (!einmal && methode === "POST" && url.endsWith("/ausfuehrung")) {
+        einmal = true;
+        return a.app
+          .inject({
+            method: "PUT",
+            url: `/api/kos/${koId}`,
+            headers: a.admin.kopf,
+            payload: { action: "admin-validate" },
+          })
+          .then(weiter);
+      }
+      return null;
+    };
+    await tippeUndSende("Bearbeite die Aufgabe „Kühlmittel K9 prüfen“");
+    await bisPhase("fertig");
+    expect(karte()?.dataset.stand).toBe("fehlgeschlagen");
+    expect(schritte()[0]?.dataset.stand).toBe("fehlgeschlagen");
+    expect(text(schritte()[0], "klara-ausfuehrung-schritt-meldung")).toContain(
+      "nicht (mehr) verfügbar",
+    );
+    // Nichts geöffnet.
+    expect(q(document, "seite-fragen")).not.toBeNull();
+    const [amServer] = await auftraegeAmServer(a, wer as Konto);
+    expect(amServer?.schritte[0]).toMatchObject({
+      stand: "fehlgeschlagen",
+      fehlerCode: "nichtVerfuegbar",
+    });
   });
 });
 
@@ -598,10 +696,10 @@ describe("U4 · K3 — Abbrechen verhindert weitere Schritte, Gespeichertes blei
     const ich = await neuesKonto(a.app, "klara-abbruch", a.admin);
     alsKonto(ich);
     await klaraOeffnen();
-    const h = haltBeimZweitenAnlegen();
+    const h = haltBeimZweitenAusfuehren();
     await tippeUndSende("Lege die Entwürfe „Linie A“, „Linie B“ und „Linie C“ an");
     await bis(h.angekommen, 400);
-    expect(h.angekommen(), "die zweite Anlage kam nie an").toBe(true);
+    expect(h.angekommen(), "die zweite Ausführung kam nie an").toBe(true);
     expect(text(karte(), "klara-ausfuehrung-stand")).toBe("Läuft");
 
     await klick(q(document, "klara-ausfuehrung-abbrechen"));
@@ -611,7 +709,8 @@ describe("U4 · K3 — Abbrechen verhindert weitere Schritte, Gespeichertes blei
 
     const titel = (await entwuerfe(a, ich)).map((d) => d.payload.title).sort();
     expect(titel).toEqual(["Linie A", "Linie B"]);
-    expect(anlagen).toEqual([201, 201]);
+    // Zwei Ausführungen am Server; der dritte Schritt wurde nie angefragt.
+    expect(ausfuehrungen.map((x) => x.status)).toEqual([200, 200]);
     expect(schritte().map((s) => s.dataset.stand)).toEqual([
       "gespeichert",
       "gespeichert",
@@ -673,6 +772,39 @@ describe("U5 · K4 — Rückgängig nimmt tatsächlich zurück und ist nicht Abb
     expect(zurueck.payload.statement).toBe("Alle 500 Stunden.");
     expect(zurueck.payload.title).toBe("Ölwechsel Presse 4");
   });
+
+  it("Nacharbeit 2 · S06: eine inzwischen geänderte Anlage wird nicht still zurückgenommen", async () => {
+    const a = await app();
+    const ich = await neuesKonto(a.app, "klara-rueckgaengig-3", a.admin);
+    alsKonto(ich);
+    await klaraOeffnen();
+    await tippeUndSende("Lege den Entwurf „Weiterbearbeitet“ an");
+    await bisPhase("fertig");
+    const [d] = (await entwuerfe(a, ich)).filter((x) => x.payload.title === "Weiterbearbeitet");
+    expect(d).toBeDefined();
+    // Ein zweiter Tab bearbeitet den angelegten Entwurf weiter.
+    await new Promise((r) => setTimeout(r, 5));
+    const weiter = await a.app.inject({
+      method: "PUT",
+      url: `/api/drafts/${(d as Entwurf).id}`,
+      headers: ich.kopf,
+      payload: { statement: "Inzwischen ausgefüllt." },
+    });
+    expect(weiter.statusCode, weiter.body).toBe(200);
+
+    await klick(q(karte() as HTMLElement, "klara-ausfuehrung-rueckgaengig"));
+    await bis(() => Boolean(q(document, "klara-ausfuehrung-ruecknahme-meldung")), 200);
+    const meldung = q(document, "klara-ausfuehrung-ruecknahme-meldung");
+    expect(meldung?.getAttribute("role")).toBe("alert");
+    expect(meldung?.textContent).toContain("weiter geändert");
+    expect(schritte()[0]?.dataset.stand).toBe("gespeichert");
+    // Der Entwurf bleibt — mit der späteren Änderung.
+    const noch = await entwurfLesen(a, ich, (d as Entwurf).id);
+    expect(noch.statusCode).toBe(200);
+    expect((noch.json() as Entwurf).payload.statement).toBe("Inzwischen ausgefüllt.");
+    const [amServer] = await auftraegeAmServer(a, ich);
+    expect(amServer?.schritte[0]?.stand).toBe("gespeichert");
+  });
 });
 
 // ================================================================================================
@@ -689,7 +821,9 @@ describe("U6 · K5 — keine falsche Erfolgsmeldung, keine Doppelaktion", () => 
     const meldung = q(karte() as HTMLElement, "klara-ausfuehrung-schritt-meldung");
     expect(meldung?.getAttribute("role")).toBe("alert");
     expect(meldung?.textContent).toContain("Dir fehlt das Recht dafür");
-    expect(anlagen).toEqual([403]);
+    // Nacharbeit 2: festgehalten hat das der SERVER — seine Ausführung bekam vom Entwurfsweg 403.
+    const [amServer] = await auftraegeAmServer(a, viewer);
+    expect(amServer?.schritte[0]).toMatchObject({ stand: "fehlgeschlagen", fehlerCode: "recht" });
     expect(text(karte(), "klara-ausfuehrung-stand")).not.toContain("Abgeschlossen");
   });
 
@@ -716,9 +850,10 @@ describe("U6 · K5 — keine falsche Erfolgsmeldung, keine Doppelaktion", () => 
     await klaraOeffnen();
     let anlage = 0;
     eingriff = (url, methode) => {
-      if (methode === "POST" && url === "/api/drafts") {
+      if (methode === "POST" && url.endsWith("/ausfuehrung")) {
         anlage += 1;
         if (anlage === 2) {
+          // Der Server antwortet mit 500, bevor er den Schritt überhaupt beginnt.
           const rumpf = JSON.stringify({ error: "SERVER", message: "Dienst kurz weg." });
           return Promise.resolve({
             status: 500,
@@ -747,7 +882,7 @@ describe("U6 · K5 — keine falsche Erfolgsmeldung, keine Doppelaktion", () => 
     await klaraOeffnen();
     let verloren = false;
     eingriff = (url, methode, weiter) => {
-      if (!verloren && methode === "POST" && url === "/api/drafts") {
+      if (!verloren && methode === "POST" && url.endsWith("/ausfuehrung")) {
         verloren = true;
         // Der Server legt an — die Antwort erreicht den Browser nie.
         return weiter().then(() => {
@@ -760,7 +895,10 @@ describe("U6 · K5 — keine falsche Erfolgsmeldung, keine Doppelaktion", () => 
     await bisPhase("angehalten");
     expect(schritte()[0]?.dataset.stand).toBe("unklar");
     expect(text(schritte()[0], "klara-ausfuehrung-schritt-stand")).toBe("Ergebnis unklar");
-    expect(karte()?.dataset.stand).toBe("laeuft");
+    // Nacharbeit 2: die Antwort der Serverausführung ging verloren — der Browser kennt den Stand
+    // nicht und sagt genau das, statt Erfolg oder einen veralteten Stand zu zeigen.
+    expect(karte()?.dataset.stand).not.toBe("abgeschlossen");
+    expect(text(karte(), "klara-ausfuehrung-stand")).toContain("Stand unklar");
     expect(text(karte(), "klara-ausfuehrung-stand")).not.toContain("Abgeschlossen");
     expect((await entwuerfe(a, ich)).filter((d) => d.payload.title === "Netzprobe")).toHaveLength(
       1,
@@ -769,8 +907,12 @@ describe("U6 · K5 — keine falsche Erfolgsmeldung, keine Doppelaktion", () => 
     await klick(q(document, "klara-ausfuehrung-erneut"));
     await bisPhase("fertig");
     expect(karte()?.dataset.stand).toBe("abgeschlossen");
-    // Derselbe Vorgangsschlüssel: der Server gab den bestehenden Entwurf zurück (200), keinen neuen.
-    expect(anlagen).toEqual([201, 200]);
+    // Derselbe Schrittschlüssel: der Server antwortete beim zweiten Mal mit dem festgehaltenen
+    // Schritt (wiederholt), statt neu auszuführen.
+    expect(ausfuehrungen).toEqual([
+      { status: 200, wiederholt: false },
+      { status: 200, wiederholt: true },
+    ]);
     const netzproben = (await entwuerfe(a, ich)).filter((d) => d.payload.title === "Netzprobe");
     expect(netzproben).toHaveLength(1);
     const [amServer] = await auftraegeAmServer(a, ich);
@@ -819,11 +961,13 @@ describe("U8 · K8 — eine Änderung vor dem Schritt verhindert die unzulässig
     return { a, ich, d };
   }
 
-  it("ein neuerer Stand vor der Vorprüfung: nichts überschrieben", async () => {
+  // Nacharbeit 2: der Browser liest und schreibt den Entwurf nicht mehr selbst — die Änderung
+  // geschieht deshalb unmittelbar VOR der Serverausführung des Schritts.
+  it("ein neuerer Stand vor dem Schritt: der Server schreibt nichts über ihn hinweg", async () => {
     const { a, ich, d } = await vorbereitet("klara-stand-1");
     let einmal = false;
     eingriff = (url, methode, weiter) => {
-      if (!einmal && methode === "GET" && url === `/api/drafts/${d.id}`) {
+      if (!einmal && methode === "POST" && url.endsWith("/ausfuehrung")) {
         einmal = true;
         // Ein zweiter Tab speichert genau jetzt.
         return a.app
@@ -845,20 +989,28 @@ describe("U8 · K8 — eine Änderung vor dem Schritt verhindert die unzulässig
     );
     const jetzt = (await entwurfLesen(a, ich, d.id)).json() as Entwurf;
     expect(jetzt.payload.statement).toBe("Fremd geändert.");
+    const [amServer] = await auftraegeAmServer(a, ich);
+    expect(amServer?.schritte[0]).toMatchObject({
+      stand: "fehlgeschlagen",
+      fehlerCode: "versionGeaendert",
+    });
   });
 
-  it("ein neuerer Stand zwischen Vorprüfung und Speichern: der Entwurfsweg weist ab (409)", async () => {
+  it("die Auftragslage ändert sich vor dem Schritt (anderer Tab bricht ab): nichts ausgeführt", async () => {
     const { a, ich, d } = await vorbereitet("klara-stand-2");
     let einmal = false;
     eingriff = (url, methode, weiter) => {
-      if (!einmal && methode === "PUT" && url === `/api/drafts/${d.id}`) {
+      if (!einmal && methode === "POST" && url.endsWith("/ausfuehrung")) {
         einmal = true;
+        // Dieselbe Person bricht den Auftrag in einem zweiten Tab ab, unmittelbar bevor der
+        // Server den Schritt ausführen soll. Die Grenze am Server lässt ihn nicht mehr beginnen.
+        const [, gid, aid] = /gespraeche\/([^/]+)\/auftraege\/([^/]+)\//.exec(url) ?? [];
         return a.app
           .inject({
             method: "PUT",
-            url: `/api/drafts/${d.id}`,
+            url: `/api/me/klara/gespraeche/${gid}/auftraege/${aid}/abbruch`,
             headers: ich.kopf,
-            payload: { statement: "Fremd geändert." },
+            payload: {},
           })
           .then(weiter);
       }
@@ -866,17 +1018,19 @@ describe("U8 · K8 — eine Änderung vor dem Schritt verhindert die unzulässig
     };
     await tippeUndSende("Ergänze im Entwurf „Standprobe“: Neu dazu");
     await bisPhase("fertig");
-    expect(karte()?.dataset.stand).toBe("fehlgeschlagen");
+    expect(schritte()[0]?.dataset.stand).toBe("nicht_ausgefuehrt");
     const jetzt = (await entwurfLesen(a, ich, d.id)).json() as Entwurf;
-    expect(jetzt.payload.statement).toBe("Fremd geändert.");
-    expect(jetzt.payload.statement).not.toContain("Neu dazu");
+    expect(jetzt.payload.statement).toBe("Ursprung.");
+    const [amServer] = await auftraegeAmServer(a, ich);
+    expect(amServer?.stand).toBe("abgebrochen");
+    expect(amServer?.schritte).toEqual([]);
   });
 
   it("das Ziel ist vor dem Schritt nicht mehr sichtbar: nichts ausgeführt", async () => {
     const { a, ich, d } = await vorbereitet("klara-stand-3");
     let einmal = false;
     eingriff = (url, methode, weiter) => {
-      if (!einmal && methode === "GET" && url === `/api/drafts/${d.id}`) {
+      if (!einmal && methode === "POST" && url.endsWith("/ausfuehrung")) {
         einmal = true;
         return a.app
           .inject({ method: "DELETE", url: `/api/drafts/${d.id}`, headers: ich.kopf })
@@ -899,7 +1053,7 @@ describe("U9 · K9 — Korrektur mitten im Lauf: neue Fassung, keine stille Erwe
     const ich = await neuesKonto(a.app, "klara-korrektur", a.admin);
     alsKonto(ich);
     await klaraOeffnen();
-    const h = haltBeimZweitenAnlegen();
+    const h = haltBeimZweitenAusfuehren();
     await tippeUndSende("Lege die Entwürfe „K-Eins“, „K-Zwei“ und „K-Drei“ an");
     await bis(h.angekommen, 400);
 
@@ -981,6 +1135,26 @@ describe("U10 · K6 — S06: Zusammenfassen erzeugt keine Nachricht und keine Be
         ) && !q(document, "klara-stoppen"),
       240,
     );
+
+    // Nacharbeit 2 (Ben): der INHALT der Zusammenfassung. Sie ist eine Antwort des Fragewegs mit
+    // Quelle, gibt die Sachaussage der Anleitung wieder und behauptet keinen Versand. SIMULATION,
+    // ausdrücklich: an der Stelle des Modells antwortet der kontrollierte Adapter der Kette
+    // (`kette.ts`, `modelladapter`: Wortlaut der Quelle mit Marke) — eine tatsächliche
+    // Modellzusammenfassung belegt dieser Lauf NICHT.
+    const antworten = alle(document, "klara-nachricht").filter((n) => n.dataset.von === "klara");
+    const antwort = antworten[antworten.length - 1];
+    expect(["ki", "ohne_ki"], antwort?.textContent ?? "").toContain(antwort?.dataset.modus);
+    const wortlaut = antwort?.textContent ?? "";
+    expect(wortlaut).toContain("Kühlmittelpumpe P3");
+    expect(wortlaut).toContain("entlüftet");
+    expect(wortlaut).not.toMatch(
+      /(wurde|habe|ist|sind)\s+(\S+\s+){0,4}(gesendet|versandt|verschickt)/i,
+    );
+    expect(
+      draht.lage.generierungen,
+      "der Frageweg hat keinen Adapterlauf ausgelöst",
+    ).toBeGreaterThan(0);
+    expect(draht.lage.vorlagen.join("\n")).toContain("Kühlmittelpumpe P3");
 
     // Gefragt wurde nur der Frageweg (und die eigene Gesprächsablage) — sonst nichts.
     const danach = schreibend.slice(vorher);

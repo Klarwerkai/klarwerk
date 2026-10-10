@@ -933,6 +933,19 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "bricht einen eigenen Auftrag ab; fremd und unbekannt 404.",
   },
+  // Nacharbeit 2: der Server führt den Planschritt über die vorhandenen Türen mit der Anmeldung der
+  // Person aus (klara-ausfuehrung.ts). Die Antwort trägt nur den eigenen Auftrag: Kennungen, Stände
+  // und die Titel, die die Person im Auftrag selbst gewählt hat — kein neu gelesener Objektinhalt.
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ausfuehrung": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "führt einen eigenen Planschritt aus; Antwort ist der eigene Auftrag (klara-ausfuehrung.ts).",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel/ruecknahme": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nimmt einen eigenen gespeicherten Schritt mit Standvergleich zurück; Antwort eigener Auftrag.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },

@@ -53,8 +53,21 @@ export interface KlaraAuftragSchritt {
   ergebnis: KlaraAuftragErgebnis | null;
   ruecknehmbar: boolean;
   grund: string | null;
+  /** Nacharbeit 2: Grundschlüssel eines am Server gescheiterten Schritts. */
+  fehlerCode?: string | null;
+  /** Nacharbeit 2: das am Server bestätigte Ziel eines Öffnens. */
+  geprueft?: KlaraAuftragErgebnis | null;
   begonnenAm: string;
   geaendertAm: string;
+}
+
+/** Nacharbeit 2: ein Schritt des gebundenen Plans — der Server führt nur aus, was hier steht. */
+export interface KlaraPlanSchritt {
+  aktion: KlaraAktion;
+  ziel: KlaraAuftragZiel | null;
+  ausSchritt: number | null;
+  inhalt?: string;
+  aenderung?: { art: "ergaenzen"; text: string } | { art: "umbenennen"; titel: string };
 }
 
 export interface KlaraAuftragGrenze {
@@ -103,6 +116,7 @@ export interface KlaraAuftragEingabe {
   erlaubteQuellen: string[];
   ergebnis: string;
   geplanteSchritte: number;
+  plan: KlaraPlanSchritt[];
 }
 
 export interface KlaraKorrekturEingabe {
@@ -150,6 +164,29 @@ export const klaraAuftragApi = {
         `/${encodeURIComponent(auftragId)}/schritte/${encodeURIComponent(schluessel)}`,
       ),
       eingabe,
+    ),
+  /** Nacharbeit 2: der Server führt den Planschritt `nr` aus, liest nach und meldet den Stand. */
+  fuehreAus: (
+    gespraechId: string,
+    auftragId: string,
+    schluessel: string,
+    eingabe: { nr: number; auftragFassung: number },
+  ) =>
+    api.post<{ auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean }>(
+      pfad(
+        gespraechId,
+        `/${encodeURIComponent(auftragId)}/schritte/${encodeURIComponent(schluessel)}/ausfuehrung`,
+      ),
+      eingabe,
+    ),
+  /** Nacharbeit 2: Rückgängig am Server — mit Standvergleich am vorhandenen Weg. */
+  nimmZurueck: (gespraechId: string, auftragId: string, schluessel: string) =>
+    api.post<{ auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean }>(
+      pfad(
+        gespraechId,
+        `/${encodeURIComponent(auftragId)}/schritte/${encodeURIComponent(schluessel)}/ruecknahme`,
+      ),
+      {},
     ),
   abbrechen: (gespraechId: string, auftragId: string) =>
     api.put<{ auftrag: KlaraAuftrag }>(

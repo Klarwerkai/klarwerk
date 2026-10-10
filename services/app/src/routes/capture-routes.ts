@@ -1866,18 +1866,37 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       },
     );
 
-    app.delete<{ Params: { id: string } }>("/api/drafts/:id", async (request, reply) => {
+    type LoeschAnfrage = { Params: { id: string }; Querystring: { expectedUpdatedAt?: unknown } };
+    app.delete<LoeschAnfrage>("/api/drafts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
       try {
         // Pool-Auftrag (297afc57): Löschen bleibt beim Autor, auch bei einem Pool-Entwurf.
-        if (
-          !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+        const sichtbar = await requireVisibleDraft(
+          capture,
+          request.params.id,
+          user,
+          reply,
+          request,
+          {
             nurAutor: true,
-          }))
-        ) {
+          },
+        );
+        if (!sichtbar) {
+          return;
+        }
+        // produkt:20261008:klara-aktionen (Nacharbeit 2): wahlweise derselbe Standvergleich wie beim
+        // Speichern. Wer den gesehenen Stand mitgibt (Klaras Rückgängig), löscht nichts, was
+        // inzwischen geändert wurde — 409 DRAFT_STALE, der Entwurf bleibt. Ohne Angabe wie bisher.
+        const erwartet = erwarteterStand(request.query?.expectedUpdatedAt);
+        if (erwartet !== undefined && sichtbar.updatedAt !== erwartet) {
+          // Dieselbe Antwort wie der Speicherweg (`antwortBeiVeraltetemStand`), kein zweiter Satz.
+          antwortBeiVeraltetemStand(reply, {
+            code: "DRAFT_STALE",
+            currentUpdatedAt: sichtbar.updatedAt,
+          });
           return;
         }
         // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,

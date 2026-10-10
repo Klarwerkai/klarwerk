@@ -121,7 +121,10 @@ function AusfuehrungKarte({
   const laeuft = a.phase === "laeuft" || a.phase === "pruefen";
   const offen = offeneSchritte(a);
   const zeilen = zeilenAus(a);
-  const geschehen = zeilen.filter((z) => z.server).length;
+  // Begonnen oder gerade am Server in Arbeit — beides kann schon gewirkt haben.
+  const geschehen = zeilen.filter(
+    (z) => z.server || z.lokal?.lage === "laeuft" || z.lokal?.lage === "unklar",
+  ).length;
   const unklar = zeilen.some((z) => z.lokal?.lage === "unklar");
   const zeit = (iso: string): string =>
     new Date(iso).toLocaleTimeString(i18n.language, {
@@ -221,7 +224,13 @@ function AusfuehrungKarte({
             data-stand={stand ?? ""}
             className="font-semibold text-text"
           >
-            {stand ? t(`klaraauftrag.stand.${stand}`) : ""}
+            {/* Nacharbeit 2: ist eine Antwort verloren, kennt dieser Browser den Stand nicht — dann
+                steht genau das da, nicht ein veralteter Stand. */}
+            {unklar
+              ? t("klaraauftrag.stand.unklar")
+              : stand
+                ? t(`klaraauftrag.stand.${stand}`)
+                : ""}
           </dd>
         </dl>
       ) : null}
@@ -288,7 +297,19 @@ function AusfuehrungKarte({
             const s = z.server;
             const ergebnisOffen =
               s?.ergebnis && (s.stand === "gespeichert" || s.stand === "abgeschlossen");
-            const meldung = s?.stand === "fehlgeschlagen" ? s.grund : z.lokal?.meldung;
+            // Nacharbeit 2: ein am Server gescheiterter Schritt trägt seinen Grundschlüssel — der Satz
+            // dazu steht in der Sprache der Fläche, nicht in der des Servers.
+            const meldung =
+              s?.stand === "fehlgeschlagen"
+                ? s.fehlerCode
+                  ? t(`klaraauftrag.fehlerCode.${s.fehlerCode}`, { defaultValue: s.grund ?? "" })
+                  : s.grund
+                : z.lokal?.meldung;
+            // Öffnen bleibt Öffnen: ein abgeschlossener Öffnen-/Aufgabenschritt heisst „geöffnet“.
+            const standText =
+              s?.stand === "abgeschlossen" && UNWIDERRUFLICH.includes(s.aktion)
+                ? t(`klaraauftrag.schrittStand.geoeffnet.${s.aktion}`)
+                : t(`klaraauftrag.schrittStand.${sichtbar}`);
             return (
               <li
                 key={z.nr}
@@ -306,7 +327,7 @@ function AusfuehrungKarte({
                   })}
                   {" · "}
                   <span data-testid="klara-ausfuehrung-schritt-stand" className="font-semibold">
-                    {t(`klaraauftrag.schrittStand.${sichtbar}`)}
+                    {standText}
                   </span>
                 </p>
                 <div className="mt-0.5 flex flex-wrap gap-x-3">

@@ -9,8 +9,11 @@ import {
   type KlaraAuftragSchritt,
   type KlaraSchrittEingabe as KlaraAuftragSchrittEingabe,
   type KlaraKorrekturEingabe,
+  type KlaraMelder,
+  type KlaraServerZusatz,
   brecheAb,
   korrigiere,
+  merkeVorher,
   mitNeuemAuftrag,
   neuerAuftrag,
   setzeSchritt as setzeAuftragSchritt,
@@ -829,16 +832,34 @@ export class KlaraGespraechDienst {
    * Beginnt einen Schritt oder meldet sein Ergebnis. Eine Wiederholung mit demselben Schlüssel und
    * Stand schreibt nichts und antwortet mit dem gespeicherten Schritt (`wiederholt: true`).
    */
+  /** Ein eigener Auftrag — oder 404 wie bei einem unbekannten Gespräch. */
+  async auftrag(kontoId: string, id: string, auftragId: string): Promise<KlaraAuftrag> {
+    return KlaraGespraechDienst.auftragIn(await this.hole(kontoId, id), auftragId);
+  }
+
+  /**
+   * Nacharbeit 2 (Ben): `melder` sagt, wer meldet. Die Tür aus dem Netz meldet immer als `browser`
+   * und kann damit keine Wirkung behaupten; die gebundene Serverausführung meldet als `server`.
+   */
   setzeAuftragsschritt(
     kontoId: string,
     id: string,
     auftragId: string,
     schluessel: string,
     eingabe: KlaraAuftragSchrittEingabe,
+    melder: KlaraMelder = "browser",
+    zusatz: KlaraServerZusatz = {},
   ): Promise<{ auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean }> {
     return this.mitGrenze(async () => {
       const vorab = KlaraGespraechDienst.auftragIn(await this.hole(kontoId, id), auftragId);
-      const probe = setzeAuftragSchritt(vorab, schluessel, eingabe, this.jetztIso());
+      const probe = setzeAuftragSchritt(
+        vorab,
+        schluessel,
+        eingabe,
+        this.jetztIso(),
+        melder,
+        zusatz,
+      );
       if (probe.wiederholt) {
         return probe;
       }
@@ -849,6 +870,8 @@ export class KlaraGespraechDienst {
           schluessel,
           eingabe,
           jetzt,
+          melder,
+          zusatz,
         );
         lage.schritt = r.schritt;
         lage.wiederholt = r.wiederholt;
@@ -862,6 +885,25 @@ export class KlaraGespraechDienst {
         schritt: lage.schritt,
         wiederholt: lage.wiederholt,
       };
+    });
+  }
+
+  /** Nacharbeit 2: die vor einer Bearbeitung am Server gelesenen Felder am Schritt festhalten. */
+  merkeVorher(
+    kontoId: string,
+    id: string,
+    auftragId: string,
+    schluessel: string,
+    vorher: { title: string; statement: string },
+  ): Promise<KlaraAuftrag> {
+    return this.mitGrenze(async () => {
+      const g = await this.aendere(kontoId, id, (alt, jetzt) =>
+        KlaraGespraechDienst.ersetzeAuftrag(
+          alt,
+          merkeVorher(KlaraGespraechDienst.auftragIn(alt, auftragId), schluessel, vorher, jetzt),
+        ),
+      );
+      return KlaraGespraechDienst.auftragIn(g, auftragId);
     });
   }
 
