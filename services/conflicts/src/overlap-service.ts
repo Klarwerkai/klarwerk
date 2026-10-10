@@ -295,7 +295,14 @@ export class OverlapService {
     if (ranked.length === 0) {
       return [];
     }
-    const open = (await this.repo.all()).filter((e) => e.status !== "geschlossen");
+    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): ein GESCHLOSSENER Eintrag blockt das Paar
+    // ebenfalls — aber NUR für genau die Fassungen, die er trägt. Eine menschliche Entscheidung
+    // (Fehlalarm, getrennt lassen, verknüpfen) über unveränderte Inhalte reißt ein Wiederholungslauf
+    // damit nicht wieder auf. Geschlossene Einträge ohne Fassungspaar (Altbestand) blocken nicht.
+    const open = (await this.repo.all()).filter(
+      (e) =>
+        e.status !== "geschlossen" || (e.koAVersion !== undefined && e.koBVersion !== undefined),
+    );
     // D-AISTATE PAKET 4 (bens V5): versionsbewusste Paar-Dedupe (stale-Befund blockt den neuen Lauf nicht).
     const hasOpenPair = (aId: string, bId: string, aVer?: number, bVer?: number): boolean =>
       open.some((e) => {
@@ -307,7 +314,7 @@ export class OverlapService {
           return true; // Altbestand-Eintrag → wie bisher blocken
         }
         if (aVer === undefined || bVer === undefined) {
-          return true; // versionsloser Lauf → konservativ blocken
+          return e.status !== "geschlossen"; // versionsloser Lauf → konservativ blocken (nur offen)
         }
         const verFor = (koId: string): number | undefined =>
           e.koA === koId ? e.koAVersion : e.koBVersion;
