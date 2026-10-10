@@ -255,7 +255,9 @@ Gewichten im Material ist eine offene Entscheidung (`insel-hausbetrieb-anforderu
 Produktentscheidung; der ungepinnte Tag `mistral:latest` taugt nicht als belegte Fassung.
 
 **Referenzkern (für Abnahme und interne Bereitstellung).** Bereitgestellt wird der interne Kern über
-`scripts/deploy/compose-intern.yml`: Modellserver Ollama nur am internen Netz, App nur an ihm. Als
+`scripts/deploy/compose-intern.yml`: Modellserver Ollama nur am internen Netz, App nur an ihm; die
+aus der Basisdatei durchgereichten Cloud-Schlüssel (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) sind im
+Profil ausdrücklich geleert, Schlüsselbund aus — wer externe KI will, nimmt dieses Profil nicht. Als
 Referenzkombination gilt die des Referenzstarters, weil nur sie im Repository schon gefahren ist —
 das entscheidet **nicht** den Lieferumfang:
 
@@ -269,8 +271,10 @@ Ein Tag ist keine Fassung. Die **gebundene** Fassung schreibt
 `node scripts/betrieb/modellbestand-erfassen.mjs http://127.0.0.1:11434 --sprachmodell qwen3:32b
 --embedding bge-m3 --dim 1024` am laufenden Server auf: Laufzeitversion, je Gewicht Digest, Größe,
 Quantisierung und den Lizenztext, den das Gewicht selbst mitbringt (SHA-256 und erste Zeile), dazu eine
-echte Einbettungsprobe mit Dimensionsvergleich. Fehlt ein Gewicht, ein Lizenztext oder stimmt die
-Dimension nicht, endet es mit Exit 1. Gegenprobe ohne echtes Modell:
+echte Einbettungsprobe mit Dimensionsvergleich. Fehlt ein Gewicht oder ein Lizenztext, fehlt die
+Laufzeitversion oder ist sie leer bzw. keine Zeichenkette, fehlt ein Digest oder ist er kein SHA-256,
+oder stimmt die Dimension nicht, endet es mit Exit 1 und dem zugeordneten Fehler. Gegenprobe ohne
+echtes Modell:
 `tests/kundenbetrieb-betriebsmodelle/referenzkern.test.ts`.
 
 **Betriebsvoraussetzungen dieser Kombination:** Linux mit Docker Compose (wie B2) oder macOS mit

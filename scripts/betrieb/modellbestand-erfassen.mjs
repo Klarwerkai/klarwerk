@@ -17,7 +17,8 @@
 // Aufruf: node scripts/betrieb/modellbestand-erfassen.mjs <basis> --sprachmodell <name>
 //           --embedding <name> --dim <n> [--erlaubt <origin>]
 //   <basis> z. B. http://127.0.0.1:11434 (Ollama-Wurzel, NICHT …/v1)
-// Exit 0 Bestand vollständig · 1 Modell fehlt, Probe falsch oder Server nicht erreichbar · 2 Aufruf falsch
+// Exit 0 Bestand vollständig · 1 Modell fehlt, Laufzeitversion oder Digest fehlt/ungültig, Lizenztext
+// fehlt, Probe falsch oder Server nicht erreichbar · 2 Aufruf falsch
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
@@ -38,6 +39,12 @@ export function istInterneHerkunft(basis, erlaubt) {
   } catch {
     return false;
   }
+}
+
+export function gueltigerDigest(roh) {
+  if (typeof roh !== "string") return null;
+  const wert = roh.trim().toLowerCase();
+  return /^(sha256:)?[0-9a-f]{64}$/.test(wert) ? wert : null;
 }
 
 async function frage(fetchImpl, url, rumpf) {
@@ -66,7 +73,14 @@ export async function erfasseModellbestand({ basis, sprachmodell, embedding, dim
   };
   try {
     const version = await frage(fetchImpl, `${wurzel}/api/version`);
-    bestand.laufzeit.version = typeof version?.version === "string" ? version.version : null;
+    // Eine Fassung ohne Fassungsangabe ist keine: fehlt die Version, ist sie leer, nur Leerraum oder
+    // keine Zeichenkette, wird das als Fehler geführt (Exit 1), nie als vollständiger Bestand.
+    const roh = version?.version;
+    if (typeof roh === "string" && roh.trim().length > 0) {
+      bestand.laufzeit.version = roh.trim();
+    } else {
+      fehler.push(`Laufzeitversion fehlt oder ist ungültig (${JSON.stringify(roh ?? null)})`);
+    }
   } catch (f) {
     fehler.push(`Laufzeit nicht erreichbar: ${f instanceof Error ? f.message : f}`);
     return bestand;
@@ -102,11 +116,18 @@ export async function erfasseModellbestand({ basis, sprachmodell, embedding, dim
       fehler.push(`Lizenzangabe zu „${name}" nicht lesbar: ${f instanceof Error ? f.message : f}`);
     }
     if (lizenz === null) fehler.push(`„${name}" bringt keinen Lizenztext mit`);
+    // Der Digest IST die Fassung. Nur ein SHA-256 (64 Hexzeichen, optional mit `sha256:`) zählt.
+    const digest = gueltigerDigest(treffer.digest);
+    if (digest === null) {
+      fehler.push(
+        `${rolle} „${name}": Digest fehlt oder ist ungültig (${JSON.stringify(treffer.digest ?? null)})`,
+      );
+    }
     bestand.modelle.push({
       rolle,
       name,
       vorhanden: true,
-      digest: treffer.digest ?? null,
+      digest,
       groesse: treffer.size ?? null,
       familie: treffer.details?.family ?? null,
       parameter: treffer.details?.parameter_size ?? null,

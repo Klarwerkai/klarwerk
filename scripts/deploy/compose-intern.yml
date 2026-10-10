@@ -34,6 +34,14 @@ services:
       modell:
         condition: service_started
     environment:
+      # Ben, Kandidat aa1b1679: die Basisdatei reicht ANTHROPIC_API_KEY und OPENAI_API_KEY aus der
+      # `.env` durch. Im internen Profil wären damit beide Cloud-Wege trotz lokalem Modell aktiv.
+      # Hier werden sie ausdrücklich geleert — eine Override-Datei ERSETZT den Wert der Basis, und ein
+      # leerer Schlüssel baut keinen Cloud-Client (`resolveCloudApiKey`: leer zählt nicht; im
+      # Container gibt es keinen Schlüsselbund). Wer externe KI will, nimmt dieses Profil nicht.
+      ANTHROPIC_API_KEY: ""
+      OPENAI_API_KEY: ""
+      KLARWERK_SKIP_KEYCHAIN: "1"
       KLARWERK_LOCAL_LLM_URL: http://modell:11434/v1
       KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS: http://modell:11434
       KLARWERK_LOCAL_LLM_MODEL: ${KLARWERK_LOCAL_LLM_MODEL:?KLARWERK_LOCAL_LLM_MODEL setzen}

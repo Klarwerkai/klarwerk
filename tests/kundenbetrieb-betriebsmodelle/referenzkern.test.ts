@@ -36,10 +36,15 @@ interface Bestand {
   fehler: string[];
 }
 
+// Kennzeichen für „Feld weglassen" in den Fehlfällen (JSON kennt kein undefined als Wert).
+const WEG = Symbol("weglassen");
+
 interface Optionen {
   modelle?: string[];
   lizenzFuer?: string[];
   dim?: number;
+  version?: unknown;
+  digests?: Record<string, unknown>;
 }
 
 const offen: Server[] = [];
@@ -65,16 +70,21 @@ async function ollama(o: Optionen = {}): Promise<string> {
     anfrage.on("end", () => {
       const rumpf = text ? (JSON.parse(text) as { model?: string }) : {};
       rueckgabe.setHeader("content-type", "application/json");
+      const version = "version" in o ? o.version : "0.0.0-probe";
       const antworten: Record<string, unknown> = {
-        "/api/version": { version: "0.0.0-probe" },
+        "/api/version": version === WEG ? {} : { version },
         "/api/tags": {
-          models: modelle.map((name) => ({
-            name,
-            model: name,
-            digest: name === "bge-m3" ? DIGEST_EMBED : DIGEST_SPRACHE,
-            size: 1000,
-            details: { family: "probe", parameter_size: "1B", quantization_level: "Q4_K_M" },
-          })),
+          models: modelle.map((name) => {
+            const vorgabe = name === "bge-m3" ? DIGEST_EMBED : DIGEST_SPRACHE;
+            const digest = o.digests && name in o.digests ? o.digests[name] : vorgabe;
+            return {
+              name,
+              model: name,
+              ...(digest === WEG ? {} : { digest }),
+              size: 1000,
+              details: { family: "probe", parameter_size: "1B", quantization_level: "Q4_K_M" },
+            };
+          }),
         },
         "/api/show": { license: lizenzFuer.includes(rumpf.model ?? "") ? LIZENZ : "" },
         "/api/embed": { embeddings: [new Array<number>(o.dim ?? 1024).fill(0.5)] },
@@ -122,6 +132,46 @@ describe("AW-12 · fassungsgebundener Modellbestand", () => {
     const { lauf, bestand } = await erfasse(await ollama({ dim: 768 }));
     expect(lauf.code).toBe(1);
     expect(bestand?.embeddingProbe).toEqual({ erwartet: 1024, geliefert: 768, gleich: false });
+  });
+
+  // Ben, Kandidat aa1b1679 (HILFE/f0e46293…/PROBE-MODELLBESTAND.json): diese neun Fälle lieferten
+  // Exit 0 und fehler=[]. Eine Fassung ohne gültige Fassungsangabe ist kein vollständiger Bestand.
+  const VERSIONSFAELLE: [string, unknown][] = [
+    ["laufzeit-version-fehlt", WEG],
+    ["laufzeit-version-leer", ""],
+    ["laufzeit-version-leerzeichen", "   "],
+    ["laufzeit-version-falscher-typ", 17],
+  ];
+  for (const [fall, version] of VERSIONSFAELLE) {
+    it(`B6 · ${fall}: Exit 1 mit zugeordnetem Fehler`, async () => {
+      const { lauf, bestand } = await erfasse(await ollama({ version }));
+      expect(lauf.code).toBe(1);
+      expect(bestand?.laufzeit.version).toBeNull();
+      expect(bestand?.fehler.join("\n")).toContain("Laufzeitversion fehlt oder ist ungültig");
+    });
+  }
+
+  const DIGESTFAELLE: [string, string, unknown][] = [
+    ["sprachmodell-digest-fehlt", "qwen3:32b", WEG],
+    ["embedding-digest-fehlt", "bge-m3", WEG],
+    ["sprachmodell-digest-leer", "qwen3:32b", ""],
+    ["sprachmodell-digest-ungueltig", "qwen3:32b", "kein-digest"],
+    ["embedding-digest-falscher-typ", "bge-m3", 17],
+  ];
+  for (const [fall, name, digest] of DIGESTFAELLE) {
+    it(`B7 · ${fall}: Exit 1, Digest null, Fehler dem Modell zugeordnet`, async () => {
+      const { lauf, bestand } = await erfasse(await ollama({ digests: { [name]: digest } }));
+      expect(lauf.code).toBe(1);
+      expect(bestand?.modelle.find((m) => m.name === name)?.digest).toBeNull();
+      expect(bestand?.fehler.join("\n")).toContain(`„${name}": Digest fehlt oder ist ungültig`);
+    });
+  }
+
+  it("B8 · ein Digest mit sha256:-Präfix gilt als gültig", async () => {
+    const mitPraefix = `sha256:${DIGEST_EMBED}`;
+    const { lauf, bestand } = await erfasse(await ollama({ digests: { "bge-m3": mitPraefix } }));
+    expect(lauf.code, lauf.stderr).toBe(0);
+    expect(bestand?.modelle.find((m) => m.name === "bge-m3")?.digest).toBe(mitPraefix);
   });
 
   it("B4 · keine interne Adresse: Abbruch vor jeder Anfrage — Exit 2", async () => {
@@ -180,6 +230,45 @@ describe("AW-12 · Referenzbereitstellung compose-intern.yml", () => {
     expect(app).toContain("KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS: http://modell:11434");
     expect(app).toContain("KLARWERK_EMBEDDING_PROVIDER: local");
     expect(app).toMatch(/- intern/);
+  });
+
+  it("R4 · zusammengeführt bleibt kein Cloud-Schlüssel der Basis aktiv", () => {
+    // Ben, Kandidat aa1b1679 (HILFE/f0e46293…/PROBE-COMPOSE.json): `docker compose config` mit
+    // gesetzten Cloud-Markern übernahm beide Schlüssel. Docker läuft hier nicht; nachgebildet wird die
+    // Regel, nach der Compose die `environment`-Abbildungen zusammenführt: der Wert der späteren Datei
+    // ersetzt den der früheren, Schlüssel für Schlüssel.
+    const umgebung = (text: string): Map<string, string> => {
+      const zeilen = text.split("\n");
+      const app = zeilen.findIndex((z) => /^ {2}app:\s*$/.test(z));
+      const rest = zeilen.slice(app + 1);
+      const ende = rest.findIndex((z) => /^ {2}\S/.test(z) || /^\S/.test(z));
+      const werte = new Map<string, string>();
+      let inUmgebung = false;
+      for (const zeile of ende === -1 ? rest : rest.slice(0, ende)) {
+        if (/^ {4}environment:\s*$/.test(zeile)) {
+          inUmgebung = true;
+          continue;
+        }
+        if (/^ {4}\S/.test(zeile)) inUmgebung = false;
+        const treffer = /^ {6}([A-Z][A-Z0-9_]*):\s*(.*)$/.exec(zeile);
+        if (inUmgebung && treffer?.[1] !== undefined) werte.set(treffer[1], treffer[2] ?? "");
+      }
+      return werte;
+    };
+    const basis = umgebung(readFileSync(repoPfad("docker-compose.prod.yml"), "utf8"));
+    const intern = umgebung(yml);
+    const zusammen = new Map([...basis, ...intern]);
+    // Kalibrierung: die Basis reicht die Schlüssel wirklich aus der `.env` durch.
+    expect(basis.get("ANTHROPIC_API_KEY")).toBe("${ANTHROPIC_API_KEY:-}");
+    expect(basis.get("OPENAI_API_KEY")).toBe("${OPENAI_API_KEY:-}");
+    // Jeder Schlüsselname der Basis ist im internen Profil ausdrücklich geleert.
+    const schluessel = [...basis.keys()].filter((name) => /_API_KEY$/.test(name));
+    expect(schluessel.length).toBeGreaterThanOrEqual(2);
+    for (const name of schluessel) {
+      expect(zusammen.get(name), name).toBe('""');
+    }
+    expect(zusammen.get("KLARWERK_SKIP_KEYCHAIN")).toBe('"1"');
+    expect(zusammen.get("KLARWERK_LOCAL_LLM_URL")).toBe("http://modell:11434/v1");
   });
 
   it("R3 · Fassungen sind Pflicht, ohne stille Vorgabe und ohne latest", () => {
