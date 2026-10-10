@@ -2510,7 +2510,7 @@ export function RichTextEditor({
               onMouseDown={haltAuswahl}
               onClick={openLinkPanel}
             >
-              <LinkIcon size={14} />
+              <LinkIcon size={14} aria-hidden="true" />
             </button>
             {sep}
             <div className="relative">
@@ -2520,7 +2520,7 @@ export function RichTextEditor({
                 className={tb}
                 onClick={() => setShowImages((s) => !s)}
               >
-                <ImageIcon size={14} />
+                <ImageIcon size={14} aria-hidden="true" />
                 {t("editor.imageLabel")}
               </button>
               {showImages ? (
@@ -2590,7 +2590,7 @@ export function RichTextEditor({
                   className={tb}
                   onClick={() => setShowFiles((s) => !s)}
                 >
-                  <Paperclip size={14} />
+                  <Paperclip size={14} aria-hidden="true" />
                   {t("editor.fileLabel")}
                 </button>
                 {showFiles ? (
@@ -2685,7 +2685,11 @@ export function RichTextEditor({
             className={tb}
             onClick={() => setMode((m) => (m === "edit" ? "preview" : "edit"))}
           >
-            {mode === "edit" ? <Eye size={14} /> : <Pencil size={14} />}
+            {mode === "edit" ? (
+              <Eye size={14} aria-hidden="true" />
+            ) : (
+              <Pencil size={14} aria-hidden="true" />
+            )}
             {mode === "edit" ? t("editor.preview") : t("editor.edit")}
           </button>
         </div>

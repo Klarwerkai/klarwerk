@@ -34,6 +34,16 @@
     @apply bg-page text-text font-sans antialiased;
   }
 
+  /* WCAG 1.4.3 (Audit nacharbeit-8): Tailwinds Preflight gibt jedem Platzhalter ohne eigene Klasse
+     Grau-400 (#9CA3AF) — auf Weiß 2,54:1. Gemessen an „Ziel filtern …" (/analytics) und „Hilfe
+     durchsuchen …" (/hilfe). Die Grundfarbe ist jetzt Tinte-2 (`muted`, ≥ 4,5:1 auf Weiß und Seite
+     in beiden Themen); eine `placeholder:`-Klasse am Feld geht weiterhin vor. */
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--kw-muted));
+    opacity: 1;
+  }
+
   /* ============================================================================================
      SCHEIBE D-024 — WER MIT DER TASTATUR BEDIENT, SIEHT IMMER, WO ER STEHT.
      ============================================================================================
@@ -61,9 +71,15 @@
 
      DIE FUSSNOTEN-REGEL WEITER UNTEN BLEIBT BEWUSST STEHEN. Sie ist spezifischer (Klasse +
      Attribut + Pseudoklasse) und gewinnt unabhängig von der Reihenfolge; ihre eigene Farbwahl ist
-     dort begründet (sie muss auf dem gestrichelten Rand sichtbar bleiben). */
+     dort begründet (sie muss auf dem gestrichelten Rand sichtbar bleiben).
+
+     WCAG 1.4.11 (Audit nacharbeit-5): der Ring muss sich mit ≥ 3:1 von seiner Umgebung abheben.
+     `ring-brand/60` maß auf der Seitenfläche ~1,85:1 (Marke zu 60 % über Hell), die volle Marke
+     auf Weiß ~2,8:1 — beides zu blass. Das Marken-TEXT-Token (`brand-text`, #9c5009) erreicht auf
+     Seite/Weiß ~5,3–5,9:1. Auf dunklem Grund (Kopfband) trägt der helle Offset-Streifen
+     (`ring-offset-page`) den Kontrast. Gemessen wird beides in tests-smoke/wcag21-aa-audit.spec.ts. */
   *:focus-visible {
-    @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-page;
+    @apply outline-none ring-2 ring-brand-text ring-offset-2 ring-offset-page;
   }
 }
 
@@ -508,4 +524,25 @@ body.klara-inspect * {
   outline: 3px solid rgb(var(--kw-brand));
   outline-offset: 4px;
   border-radius: 8px;
+}
+
+/* ================================================================================================
+   WCAG 1.4.11 — EINGABEFELDER SIND ALS FELD ERKENNBAR (Audit nacharbeit-8).
+   ================================================================================================
+   Befund an allen Navigationsflächen: Eingabefelder, Auswahllisten und Textbereiche tragen die
+   Haarlinie (`border-hairline`, #E4E7EA bzw. #E9E5DE) — 1,24–1,26:1 gegen ihre Umgebung. Wo das
+   Feld liegt, zeigt aber allein seine Grenze; sie braucht ≥ 3:1 (Regel im Audit-Smoke
+   `tests-smoke/wcag21-aa-audit.spec.ts`, `grenzenImBrowser`).
+
+   EINE Regel statt fünfzig Stellen, und sie trifft NUR Felder: das Feld selbst, oder die Hülle, in
+   der es unmittelbar steht (Suchfeld mit Lupe, Fragezeile mit Knöpfen). Die Haarlinie als Trenner
+   und Kartenrand bleibt unberührt. Farbe: Tinte-2 (`muted-2`) zu 80 % — auf Weiß ≈ 3,6:1, auf der
+   Seitenfläche ≈ 3,3:1 (klassisch) bzw. ≈ 4,0:1 (modern).
+
+   Spezifität (0,1,1) schlägt die Utility `.border-hairline` (0,1,0) unabhängig von der
+   Reihenfolge; Zustandsfarben (`focus:border-…`, 0,2,0) und Fehlerfarben anderer Klassen bleiben
+   unberührt, weil sie die Haarlinie ersetzen statt neben ihr zu stehen. */
+:is(input, select, textarea).border-hairline,
+.border-hairline:has(> :is(input, select, textarea)) {
+  border-color: rgb(var(--kw-muted-2) / 0.8);
 }

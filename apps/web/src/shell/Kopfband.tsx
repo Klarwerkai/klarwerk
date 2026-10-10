@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { DemoKennzeichen } from "../auth/BrandPanel";
+import { useKuerzel } from "../lib/tastenkuerzel";
 import { ArbeitsbereicheMenue } from "./ArbeitsbereicheMenue";
 import { ExternStatus } from "./ExternStatus";
 import { KiLageZeile } from "./KiLageZeile";
@@ -188,6 +189,7 @@ export function Kopfband({
   menuButtonRef?: Ref<HTMLButtonElement>;
 } = {}): JSX.Element {
   const { t } = useTranslation();
+  const kuerzel = useKuerzel("K");
   const navigate = useGuardedNavigate();
   const [q, setQ] = useState("");
   // ARBEITSWEGE AM SELBEN ARTIKEL — DAS FELD ZEIGT DIE GELTENDE SUCHE, NICHT EINE ALTE EINGABE.
@@ -401,10 +403,10 @@ export function Kopfband({
               className="kw-kopfband-gehezu flex shrink-0 items-center gap-2 whitespace-nowrap rounded-[9px] border border-hairline/25 px-2.5 py-[6px] text-[13px] leading-normal text-hairline outline-none hover:border-hairline/50 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               <span>{t("fe002.seiteFinden")}</span>
-              {/* Kein neuer Textschlüssel: das Kürzel ist ein Zeichen, keine Übersetzung — genauso
-                steht es in der Zahnrad-Zeile (`ZahnradMenue.tsx`, `wert="⌘K"`). */}
+              {/* R-0987: das Kürzel folgt der Plattform — „⌘K" auf Apple, sonst „Strg+K"/„Ctrl+K"
+                (`lib/tastenkuerzel.ts`, dieselbe Quelle wie die Zeile unter „Arbeitsbereiche"). */}
               <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-[10.5px] text-hairline">
-                ⌘K
+                {kuerzel}
               </span>
             </button>
           )}
