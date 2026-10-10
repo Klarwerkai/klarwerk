@@ -18,6 +18,7 @@ import type { KnowledgeClass } from "../../api/types";
 import { HOME_ROUTE } from "../../app/navigation";
 import { internerPfad } from "../../lib/internerPfad";
 import { KNOWLEDGE_CLASS_META } from "../../lib/knowledgeClass";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
@@ -458,7 +459,7 @@ export function KlaraEchtGespraech({
           className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted"
         >
           {t("klaragespraech.einwilligung.erteilt", {
-            zeit: new Date(g.einwilligungAm).toLocaleString(i18n.language),
+            zeit: formatKoTimestamp(g.einwilligungAm, i18n.language) ?? "—",
           })}
           <button
             type="button"

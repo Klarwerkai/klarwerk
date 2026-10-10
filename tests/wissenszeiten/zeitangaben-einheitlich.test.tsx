@@ -62,6 +62,32 @@ describe("R-1010 · die Erzeuger formatieren nicht mehr selbst", () => {
     });
   }
 
+  // NACHARBEIT 5 (Ben): dreizehn weitere Zeitstempel aus dem integrierten Hauptstand in zehn
+  // Dateien (`QUELLEN-REST-R1010-62a135e6.json`). Geprüft wird gezielt der Zeitstempel
+  // (`new Date(…).toLocaleString(`): `Unternehmen.tsx` formatiert daneben eine ZAHL mit
+  // `toLocaleString` — die ist keine Zeitangabe und bleibt.
+  for (const pfad of [
+    "apps/web/src/components/datenschutz/MeineDaten.tsx",
+    "apps/web/src/pages/Unternehmen.tsx",
+    "apps/web/src/pages/Richtlinien.tsx",
+    "apps/web/src/pages/AdminKontenDetails.tsx",
+    "apps/web/src/components/UebergabeAblauf.tsx",
+    "apps/web/src/components/veroeffentlichung/VeroeffentlichungBereich.tsx",
+    "apps/web/src/components/WissensSprints.tsx",
+    "apps/web/src/components/fragen/AntwortMelden.tsx",
+    "apps/web/src/components/klara-vorschau/KlaraEchtGespraech.tsx",
+    "apps/web/src/components/bibliothek/OfficeImArtikel.tsx",
+  ]) {
+    it(`${pfad} · Zeitstempel über die gemeinsame Regel`, () => {
+      const src = quelle(pfad);
+      expect(src, "eigene Datum+Uhrzeit-Formatierung").not.toMatch(
+        /new Date\([^)]*\)\.toLocaleString\(/,
+      );
+      expect(src, "feste Locale statt Sprache der Oberfläche").not.toContain("Intl.DateTimeFormat");
+      expect(src).toMatch(/formatKoTimestamp\([^)]*, i18n\.language\)/);
+    });
+  }
+
   // NACHARBEIT 2 (Integration): die beiden Audit-Karten formatieren NICHT mehr selbst — sie
   // rendern seit `produkt:20261009:admin-audit-verstaendlich` (ADMIN-03) die gemeinsame
   // `AuditTabelle` (`components/einstellungen/Auditprotokoll.tsx`), deren Zeitpunkt mit Zeitzone
@@ -81,6 +107,13 @@ describe("R-1010 · die Erzeuger formatieren nicht mehr selbst", () => {
   it("KALIBRIERUNG — der Wächter erkennt die alte Bauform wirklich", () => {
     const alt = "{new Date(e.at).toLocaleString()}";
     expect(alt).toMatch(/\.toLocaleString\(/);
+    expect("zeit: new Date(f.geaendertAm).toLocaleString(i18n.language),").toMatch(
+      /new Date\([^)]*\)\.toLocaleString\(/,
+    );
+    // … und hält eine Zahlenformatierung nicht für einen Zeitstempel.
+    expect("wert: a.kontrast.toLocaleString(i18n.language),").not.toMatch(
+      /new Date\([^)]*\)\.toLocaleString\(/,
+    );
   });
 });
 
