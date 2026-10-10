@@ -161,7 +161,7 @@ export default {
     "klaravorschau.vorschauseite.titel": "Klara zuerst ansehen",
     "klaravorschau.vorschauseite.kennzeichen": "Vorschau · fiktive Demodaten",
     "klaravorschau.vorschauseite.intro":
-      "Klara, die orangefarbene Assistentin, bewegt sich frei über die ganze Klarwerk-Oberfläche. Sie erkennt, auf welcher Seite du bist und was du markiert hast. Alles hier ist eine Vorschau mit vorgefertigten Antworten.",
+      "Klara, die orangefarbene Assistentin, bewegt sich frei über die ganze Klarwerk-Oberfläche. Sie erkennt, auf welcher Seite du bist und was du markiert hast. Im echten Betrieb beantwortet sie getippte Fragen über den Frageweg von Klarwerk und speichert das Gespräch unter deinem Konto; im Demo-Betrieb und bei den fiktiven Artikeln sind ihre Antworten vorgefertigt.",
     "klaravorschau.vorschauseite.soGehts": "So probierst du es aus",
     "klaravorschau.vorschauseite.schritt1":
       "Klara ziehen – mit Maus, Finger oder den Pfeiltasten. Nah am Rand dockt sie an.",
@@ -334,7 +334,7 @@ export default {
     "klaravorschau.vorschauseite.titel": "See Klara first",
     "klaravorschau.vorschauseite.kennzeichen": "Preview · fictional demo data",
     "klaravorschau.vorschauseite.intro":
-      "Klara, the orange assistant, moves freely across the whole Klarwerk interface. She recognises which page you are on and what you have selected. Everything here is a preview with prepared answers.",
+      "Klara, the orange assistant, moves freely across the whole Klarwerk interface. She recognises which page you are on and what you have selected. In live mode she answers typed questions through Klarwerk's question path and saves the conversation under your account; in demo mode and for the fictional articles her answers are prepared in advance.",
     "klaravorschau.vorschauseite.soGehts": "How to try it",
     "klaravorschau.vorschauseite.schritt1":
       "Drag Klara – with the mouse, a finger or the arrow keys. Close to the edge she docks.",
@@ -506,7 +506,7 @@ export default {
     "klaravorschau.vorschauseite.titel": "Klara eerst bekijken",
     "klaravorschau.vorschauseite.kennzeichen": "Voorvertoning · fictieve demogegevens",
     "klaravorschau.vorschauseite.intro":
-      "Klara, de oranje assistent, beweegt vrij over de hele Klarwerk-omgeving. Ze herkent op welke pagina je bent en wat je hebt gemarkeerd. Alles hier is een voorvertoning met voorbereide antwoorden.",
+      "Klara, de oranje assistent, beweegt vrij over de hele Klarwerk-omgeving. Ze herkent op welke pagina je bent en wat je hebt gemarkeerd. In de echte modus beantwoordt ze getypte vragen via de vraagroute van Klarwerk en slaat ze het gesprek op onder je account; in de demomodus en bij de fictieve artikelen zijn haar antwoorden voorbereid.",
     "klaravorschau.vorschauseite.soGehts": "Zo probeer je het uit",
     "klaravorschau.vorschauseite.schritt1":
       "Sleep Klara – met muis, vinger of pijltjestoetsen. Dicht bij de rand zet ze zich vast.",

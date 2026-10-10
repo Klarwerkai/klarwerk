@@ -120,7 +120,9 @@ import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
 (globalThis as unknown as { scrollTo: () => void }).scrollTo = () => {};
-// Browser-Schnittstelle, die jsdom nicht bedient — s. `zurueckAufDieErfassenSeite`.
+// Browser-Schnittstelle, die jsdom nicht bedient. Seit FR-MOB-03 fragt das Blatt beim Verwerfen und
+// beim Öffnen eines Entwurfs in der Anwendung (s. `zurueckAufDieErfassenSeite`); die Attrappe bleibt
+// für die übrigen nativen Rückfragen des Blattes (Formularwechsel) stehen.
 window.confirm = () => true;
 
 const BODOS_KENNUNG = "bodo-entwurf";
@@ -311,6 +313,10 @@ async function zurueckAufDieErfassenSeite(): Promise<void> {
   // Menue). Der Knopf selbst, seine Rueckfrage und sein Verhalten sind unveraendert.
   await mehrMenueOeffnen();
   await klicken(knopfMitNamen("Eingabe verwerfen"));
+  // FR-MOB-03: die Rückfrage stellt das Blatt jetzt selbst (Rückfragezeile statt
+  // `window.confirm`) — der Weg führt über ihre Zustimmung, wie vorher über das beantwortete
+  // `confirm`.
+  await klicken(knopfMitPruefnamen("blatt-rueckfrage-ja"));
   // ES GIBT KEINE ZWEITE SEITE MEHR, AUF DIE MAN ZURUECKKAEME. Bis hierher navigierte die
   // Vordertuer nach `/erfassen` — eine ANDERE Flaeche mit der Entwurfsliste. Alle drei Adressen
   // zeigen jetzt dasselbe Blatt (Auftrag §5.1); „zurueck" heisst deshalb: der Entwurf ist nicht

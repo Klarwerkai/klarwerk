@@ -1204,12 +1204,14 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
     erwartet: NUR_LESEN,
     ruesten: async (buehne, akteur) => {
-      // Geantwortet wird nur aus geprüftem Wissen (R-0584); ohne Modell bleibt ein bloß angelegtes
-      // Objekt ungeprüft (KI-Prüfung `no-model`), und die Frage endete in einer Wissenslücke —
-      // gemessen im Prüflauf zu R-1649, Nacharbeit 3. Deshalb: Experte legt an, Admin gibt frei.
+      // Geantwortet wird nur aus geprüftem Wissen (R-0278, Nacharbeit 3; R-0584); ohne Modell bleibt
+      // ein bloß angelegtes Objekt ungeprüft (KI-Prüfung `no-model`), und die Frage endete in einer
+      // Wissenslücke — gemessen im Prüflauf zu R-1649, Nacharbeit 3. Deshalb: Experte legt an, Admin
+      // gibt frei. Eine gemeldete Dublette ist für diesen Belegfall unerheblich und wird bestätigt.
       const ko = await legeKoAn(buehne, "experte");
       await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
         action: "admin-validate",
+        duplicateAcknowledged: true,
       });
       if (akteur === "anonym") {
         // Ohne Sitzung gibt es keinen Beleg — und es braucht auch keinen: `requirePermission`
@@ -1271,6 +1273,49 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
         );
       }
       return { pfad: "/api/ask/not-helpful", payload: { koId: quelle, receipt: antwort.receipt } };
+    },
+  },
+  {
+    // R-1089: „Antwort falsch / Quelle passt nicht" — dasselbe Tor und derselbe Beleg wie „Hat
+    // geholfen"; Erfolg ist hier 200, weil die Antwort die Quittung trägt.
+    gruppe: "askRoutes",
+    methode: "POST",
+    route: "/api/ask/report",
+    belegstelle: "services/app/src/routes/ask-routes.ts:959",
+    erfolg: [200],
+    tor: "ko.read (danach prüft der Dienst den Beleg aus dem echten Antwortvorgang)",
+    erwartet: NUR_LESEN,
+    ruesten: async (buehne, akteur) => {
+      // Geantwortet wird nur aus geprüftem Wissen (R-0584) — dieselbe Vorbereitung wie die
+      // Nachbarzeilen „Hat geholfen" und „nicht hilfreich": Experte legt an, Admin gibt frei.
+      const ko = await legeKoAn(buehne, "experte");
+      await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
+        action: "admin-validate",
+      });
+      if (akteur === "anonym") {
+        return {
+          pfad: "/api/ask/report",
+          payload: {
+            koId: "ohne-sitzung-gibt-es-keinen-beleg",
+            receipt: "",
+            grund: "antwort-falsch",
+          },
+        };
+      }
+      const gefragt = await musterhaft(buehne.app, kopf(buehne, akteur), "POST", "/api/ask", {
+        question: PASSENDE_FRAGE,
+      });
+      const antwort = gefragt.json() as { receipt?: string; result?: { sources?: string[] } };
+      const quelle = antwort.result?.sources?.[0];
+      if (typeof antwort.receipt !== "string" || typeof quelle !== "string") {
+        throw new Error(
+          `Vorbereitung fehlgeschlagen: POST /api/ask lieferte keinen Beleg mit Quelle — ${gefragt.body.slice(0, 300)}`,
+        );
+      }
+      return {
+        pfad: "/api/ask/report",
+        payload: { koId: quelle, receipt: antwort.receipt, grund: "antwort-falsch" },
+      };
     },
   },
   {
@@ -1436,6 +1481,34 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     ruesten: async () => ({
       pfad: "/api/auth/password",
       payload: { oldPassword: PASSWORT, newPassword: "Rollenabnahme-2026-neu!" },
+    }),
+  },
+  {
+    // R-0582: das eigene Konto berichtigen. Jede Anmeldung darf es — und zwar NUR am eigenen Konto:
+    // die Kennung kommt aus der Sitzung, nicht aus dem Pfad. Der Name ist der Fachvorgang (die
+    // Adresse verlangt zusätzlich das aktuelle Passwort und gehört nicht in die Rollenmessung).
+    gruppe: "authRoutes",
+    methode: "PUT",
+    route: "/api/auth/me",
+    belegstelle: "services/auth/src/routes.ts:507",
+    erfolg: [200],
+    tor: "requireUser (eigener Guard des auth-Moduls)",
+    erwartet: ANGEMELDET,
+    codes: { "401": AUTH_401 },
+    ruesten: async (buehne, akteur) => ({
+      pfad: "/api/auth/me",
+      payload: { name: "Rollenabnahme Berichtigt" },
+      bestand: async () => {
+        if (akteur === "anonym") {
+          return "ohne Sitzung";
+        }
+        const ich = await fahre(buehne.app, kopf(buehne, akteur), "GET", "/api/auth/me");
+        return (ich.json() as { name?: string }).name;
+      },
+      wirkung: {
+        beschreibung: "das eigene Konto trägt danach den berichtigten Namen",
+        eingetreten: (bestand) => bestand === "Rollenabnahme Berichtigt",
+      },
     }),
   },
   {

@@ -386,7 +386,7 @@ describe("Wissensdetail · R-0998 · die nächste sinnvolle Handlung", () => {
     expect(a.tagName).toBe("A");
     expect(text(a)).toBe(i18n.t("ko.cta.use"));
     // Herkunft (`ko=<id>`) und Vertraulichkeitsverhalten kommen aus `fragenHref` — dieselbe
-    // Adresse wie der verbindliche Knopf „Fragen“ im Kopf, nicht `koCta`s nackte Frage.
+    // Adresse wie der verbindliche Knopf „Fragen“ im Kopf, keine nackte `/fragen?q=`-Adresse.
     const fragen = teil(c, "bib-fragen") as HTMLAnchorElement;
     expect(a.getAttribute("href")).toBe(fragen.getAttribute("href"));
     expect(a.getAttribute("href")).toContain("ko=ko-1");

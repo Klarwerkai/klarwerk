@@ -216,19 +216,9 @@ export function controlStateLifecycleGueltig(control: ProjectionControlState): b
   );
 }
 
-/**
- * DIE EINE STELLE, an der aus dem Control-State eine Suchentscheidung wird — von BEIDEN Adaptern
- * benutzt. Parität ist dadurch strukturell und nicht bloß zugesichert: es ist dieselbe Funktion.
- *
- * Bei `UNINITIALIZED`, `V2_BUILDING`, `V2_READY`, `FAILED` oder einem beschädigten/inkonsistenten
- * Control-State WIRFT sie (04 §4). Sie liefert weder `[]` als Verfügbarkeitsersatz noch eine
- * Teilmenge: eine leere Treffermenge bedeutet weiterhin fachlich „nichts gefunden" und darf nicht
- * „Suche nicht verfügbar" verschleiern. Der Fehler ist rein intern (`KoError`); Routen und
- * öffentlicher API-Vertrag bleiben unverändert.
- */
-export function freigegebeneProjektionsfassung(control: ProjectionControlState): number {
-  return freigegebeneProjektion(control).fassung;
-}
+// R-1349: Hier stand `freigegebeneProjektionsfassung`, eine Hülle um `freigegebeneProjektion` (nur
+// die Fassung). Beide Adapter rufen seit G27 R1 `freigegebeneProjektion` selbst — DIE EINE STELLE,
+// an der aus dem Control-State eine Suchentscheidung wird (Begründung dort). Die Hülle rief niemand.
 
 /**
  * DIE VIER KONSTANTEN PRÜFUNGEN DER SUCHE (09 §3) — und ihr Ergebnis, das die Abfrage einengt.
@@ -775,6 +765,9 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
       return Boolean(
         ko &&
           !ko.deletedAt &&
+          // R-0483: ein in einem Führungsartikel aufgegangener Artikel ist durch dessen neue Fassung
+          // ERSETZT — verdrängt, nicht ergänzt (SQL-Spiegel `K_NICHT_AUFGEGANGEN` im Pg-Adapter).
+          !ko.mergedInto &&
           ko.version === projection.koVersion &&
           projection.projectionVersion === aktiveFassung &&
           (generation === null ||

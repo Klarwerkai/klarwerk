@@ -41,7 +41,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
 import { InMemoryKlaraSessionRepo, KLARA_EXTERNAL_EXECUTION_MIGRATED } from "../../../reasoner";
 import { KlaraSessionService } from "../services/klara-session-service";
-import { askRoutes } from "./ask-routes";
+import { klaraAusfuehrungRoutes } from "./ask-routes";
 
 const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?";
 
@@ -149,8 +149,10 @@ async function aufbauen(
   };
 
   const app = Fastify();
+  // R-0700: Klaras EIGENER, sitzungsgebundener Zugang — der echte Sitzungsdienst ist zugleich
+  // Bindungs- und Freigabeprüfung.
   app.register(
-    askRoutes(
+    klaraAusfuehrungRoutes(
       {
         ask: ask as never,
         ko: { get: async () => undefined } as never,
@@ -193,13 +195,14 @@ async function einwilligen(a: Aufbau): Promise<string> {
   return sicht.consentState;
 }
 
+// R-0700: die Sitzung steht im PFAD von Klaras eigenem Zugang; die Kopfzeilen reisen mit.
 const fragen = (a: Aufbau, kopf: Record<string, string>) =>
   a.app.inject({
     method: "POST",
-    url: "/api/ask",
+    url: `/api/klara/sessions/${encodeURIComponent(kopf["x-klara-session"] ?? "")}/execute`,
     headers: { ...kopf, "content-type": "application/json" },
     // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
-    payload: { question: FRAGE, locale: "de", mode: "retrieval-only", questionSource: "manual" },
+    payload: { question: FRAGE, locale: "de", questionSource: "manual" },
   });
 
 describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {
@@ -213,7 +216,7 @@ describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {
   });
 
   nurWennFreigegeben(
-    "KA4-E1 · DER POSITIVE FALL: passende Bindung → BEIDE Flags fallen",
+    "KA4-E1 · DER POSITIVE FALL: passende Bindung → `retrievalOnly` fällt, `validatedOnly` bleibt",
     async () => {
       const a = await aufbauen();
       // Die Einwilligung wird WIRKLICH gespeichert — der Dienst meldet ihren Zustand zurueck.
@@ -221,8 +224,9 @@ describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {
 
       const res = await fragen(a, a.bindung);
       expect(res.statusCode).toBe(200);
-      // Der erlaubte Zweig uebergibt KEINE erzwungenen Flags (`ask-routes.ts:293` bzw. `:330`).
-      expect(a.gesehen[0]).toBe(null);
+      // Der erlaubte Zweig öffnet das Modell (kein `retrievalOnly`), aber NICHT den Prüfstand:
+      // R-0278 (Nacharbeit 3, ben) — Ungeprüftes wird auch mit Einwilligung nie Grundlage.
+      expect(a.gesehen[0]).toEqual({ validatedOnly: true });
       await a.app.close();
     },
   );
@@ -235,34 +239,36 @@ describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {
     await a.app.close();
   });
 
-  it("KA4-E3 · GEGENFALL fremde Sitzung: beide Flags bleiben `true`", async () => {
+  // R-0700: an Klaras eigenem, sitzungsgebundenen Zugang ist eine fremde Bindung keine Enge mehr,
+  // sondern GAR KEINE Antwort — der Fragedienst wird nicht einmal gefragt (404, generisch).
+  it("KA4-E3 · GEGENFALL fremde Sitzung: keine Antwort, der Fragedienst wird nicht gefragt", async () => {
     // NICHT VAKUOS: im selben Lauf faellt die Enge fuer die passende Bindung (E1). Der Unterschied
     // haengt also wirklich an der Bindung — genau das war in D2 nicht belegt.
     const a = await aufbauen();
     expect(await einwilligen(a)).toBe("granted");
     const res = await fragen(a, { ...a.bindung, "x-klara-session": "sess-fremd" });
-    expect(res.statusCode).toBe(200);
-    expect(a.gesehen[0]).toEqual(ENGE);
+    expect(res.statusCode).toBe(404);
+    expect(a.gesehen).toEqual([]);
     await a.app.close();
   });
 
-  it("KA4-E4 · GEGENFALL fremdes Dokument: beide Flags bleiben `true`", async () => {
+  it("KA4-E4 · GEGENFALL fremdes Dokument: keine Antwort, der Fragedienst wird nicht gefragt", async () => {
     const a = await aufbauen();
     expect(await einwilligen(a)).toBe("granted");
     const res = await fragen(a, { ...a.bindung, "x-klara-document": "doc-fremd" });
-    expect(res.statusCode).toBe(200);
-    expect(a.gesehen[0]).toEqual(ENGE);
+    expect(res.statusCode).toBe(404);
+    expect(a.gesehen).toEqual([]);
     await a.app.close();
   });
 
-  it("KA4-E5 · GEGENFALL fremde Add-in-Instanz: beide Flags bleiben `true`", async () => {
+  it("KA4-E5 · GEGENFALL fremde Add-in-Instanz: keine Antwort, der Fragedienst wird nicht gefragt", async () => {
     // Die Bindung hat DREI Teile (`KlaraBindung`: actorId, addinInstanceId, documentContextId).
     // D2 hat den dritten nie geprueft — auch das gehoert zu „nur fuer exakt S/D".
     const a = await aufbauen();
     expect(await einwilligen(a)).toBe("granted");
     const res = await fragen(a, { ...a.bindung, "x-klara-instance": "inst-fremd" });
-    expect(res.statusCode).toBe(200);
-    expect(a.gesehen[0]).toEqual(ENGE);
+    expect(res.statusCode).toBe(404);
+    expect(a.gesehen).toEqual([]);
     await a.app.close();
   });
 

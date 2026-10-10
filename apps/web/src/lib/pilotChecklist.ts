@@ -51,12 +51,14 @@ export const PILOT_CHECKLIST: readonly PilotCheckItem[] = [
   { id: "validation", n: 4, labelKey: "pilot.check.validation", to: "/validierung" },
   { id: "use", n: 5, labelKey: "pilot.check.use", to: "/fragen" },
   { id: "gap", n: 6, labelKey: "pilot.check.gap", to: "/risiko" },
-  { id: "maintain", n: 7, labelKey: "pilot.check.maintain", to: "/lebenszyklus" },
+  // R-1176: der Text zitiert den Knopf „Aktuell halten“ in allen drei Sprachen zeichengleich
+  // (`texte/knopfzitat.ts`); `pilot.check.maintain` nannte ihn englisch „Keep current“.
+  { id: "maintain", n: 7, labelKey: "knopfzitat.pilot.pflegen", to: "/lebenszyklus" },
 ];
 
-export function pilotChecklist(): readonly PilotCheckItem[] {
-  return PILOT_CHECKLIST;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `pilotChecklist()`, das die Tabelle oben
+// zurückgab. Die Hilfe liest `pilotSchritte` bzw. `PILOT_CHECKLIST` unmittelbar; der Zugriff rief
+// niemand und ist entfernt.
 
 /**
  * Ein Schritt samt der Auskunft, ob die lesende Rolle ihn gehen darf.
