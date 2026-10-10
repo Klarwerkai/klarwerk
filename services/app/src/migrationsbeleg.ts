@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 // ==================================================================================================
 // JOB 727 · D2 — DIE INVENTUR DER MIGRATIONSSTUFEN. NICHT MEHR, UND DAS AUSDRÜCKLICH.
 // ==================================================================================================
@@ -24,6 +22,14 @@ import { createHash } from "node:crypto";
 // Wächter in `db.migrate.test.ts` vergleicht die untenstehende ausgeschriebene Sollliste gegen die
 // tatsächlich ausgeführte Liste in `db.ts` — in beide Richtungen. Eine vergessene Stufe fällt auf,
 // eine überzählige auch, und eine Stufe, die still destruktiv wird, ebenfalls.
+//
+// R-1349 — WAS HIER GEBLIEBEN IST UND WAS NICHT. Im Produkt stehen nur noch die beiden Listen und
+// ihre Risikoklasse: das Release-Werkzeug `scripts/insel/schema-vertrag.mjs` liest sie aus diesem
+// Quelltext und schreibt daraus den Schema-Vertrag jedes Release. Das Klassifikationsmodell
+// (Risikomarker, `klassifiziereStufe`, `markerVon`, `istStrukturstufe`, `erzeugeStrukturbeleg`)
+// rief kein Produktweg; es ist das Prüfwerkzeug des Migrationswächters und liegt seither
+// unverändert in `tests/support/migrationsmodell.ts`. Wo unten von den „RISIKOMARKERN“ die Rede
+// ist, sind die dort geführten gemeint.
 
 /**
  * Wie weit eine Stufe zurückgenommen werden kann.
@@ -36,124 +42,6 @@ import { createHash } from "node:crypto";
  *   eine Tabelle. Ein Rückweg führt hier über ein Backup oder gar nicht.
  */
 export type Risikoklasse = "ADDITIV" | "TRANSFORMIEREND" | "IRREVERSIBEL";
-
-const RANG: Readonly<Record<Risikoklasse, number>> = {
-  ADDITIV: 0,
-  TRANSFORMIEREND: 1,
-  IRREVERSIBEL: 2,
-};
-
-/**
- * Die Marker, an denen eine Stufe ihr Risiko verrät.
- *
- * JEDER EINZELNE IST AM BESTAND GEPRÜFT, und zwei Kandidaten sind bewusst NICHT dabei:
- *
- *   · `ALTER COLUMN` — steht heute in drei rein additiven Stufen (`ANSWER_SNAPSHOT_SCHEMA`,
- *     `EXTERNAL_SOURCE_SCHEMA`, `IMPORT_RUN_SCHEMA`) und würde sie falsch anklagen.
- *   · `DO UPDATE` — der Rumpf eines `ON CONFLICT`-Upserts ist keine Umschreibung des Bestands.
- *     Das Muster für `UPDATE` verlangt deshalb eine Zielangabe zwischen `UPDATE` und `SET`; in
- *     `DO UPDATE SET` steht dort nichts, und es trifft nicht.
- *
- * Ein Marker, der im Bestand schon vorkäme, würde eine additive Stufe als transformierend melden —
- * und ein Wächter, der bei jedem zweiten Lauf grundlos rot ist, wird abgeschaltet statt gelesen.
- */
-export const RISIKOMARKER: ReadonlyArray<{
-  readonly name: string;
-  readonly muster: RegExp;
-  readonly klasse: Risikoklasse;
-}> = [
-  { name: "DROP TABLE", muster: /\bDROP\s+TABLE\b/i, klasse: "IRREVERSIBEL" },
-  { name: "TRUNCATE", muster: /\bTRUNCATE\b/i, klasse: "IRREVERSIBEL" },
-  { name: "DROP COLUMN", muster: /\bDROP\s+COLUMN\b/i, klasse: "IRREVERSIBEL" },
-  { name: "DELETE FROM", muster: /\bDELETE\s+FROM\b/i, klasse: "IRREVERSIBEL" },
-  { name: "DROP INDEX", muster: /\bDROP\s+INDEX\b/i, klasse: "TRANSFORMIEREND" },
-  { name: "UPDATE", muster: /\bUPDATE\s+[A-Za-z_"][\w".]*\s+SET\b/i, klasse: "TRANSFORMIEREND" },
-];
-
-/** Die Marker, die in diesem Quelltext wirklich vorkommen — in der Reihenfolge oben, stabil. */
-export function markerVon(ddl: string): readonly string[] {
-  return RISIKOMARKER.filter((m) => m.muster.test(ddl)).map((m) => m.name);
-}
-
-/** Die höchste Klasse, die ein vorkommender Marker verlangt. Ohne Marker: `ADDITIV`. */
-export function klassifiziereStufe(ddl: string): Risikoklasse {
-  let klasse: Risikoklasse = "ADDITIV";
-  for (const marker of RISIKOMARKER) {
-    if (marker.muster.test(ddl) && RANG[marker.klasse] > RANG[klasse]) {
-      klasse = marker.klasse;
-    }
-  }
-  return klasse;
-}
-
-/**
- * Trägt dieser Quelltext überhaupt eine Strukturstufe?
- *
- * HIER SASS DIE LÜCKE. Der Wächter fragte bis JOB 727 nur nach `CREATE TABLE` — eine reine
- * ALTER-Stufe fiel schweigend durch, und es gibt vier davon. Die Frage lautet deshalb: legt sie an
- * ODER ändert sie eine bestehende Tabelle.
- */
-export function istStrukturstufe(ddl: string): boolean {
-  return /\bCREATE\s+TABLE\b/i.test(ddl) || /\bALTER\s+TABLE\b/i.test(ddl);
-}
-
-/** Eine Stufe, wie der Aufrufer sie vorlegt: Kennung plus der Quelltext, der wirklich läuft. */
-export interface Stufeneingabe {
-  readonly stufe: string;
-  readonly ddl: string;
-}
-
-/** Eine Stufe im Beleg. `ordinal` ist ihre Stellung in der ausgeführten Reihenfolge, ab 0. */
-export interface Belegstufe {
-  readonly stufe: string;
-  readonly ordinal: number;
-  readonly risiko: Risikoklasse;
-  readonly marker: readonly string[];
-  /** SHA-256 des Quelltextes dieser Stufe. Ändert sich der Text, ändert sich der Hash. */
-  readonly quellhash: string;
-}
-
-/**
- * Der Strukturbeleg. Kein Zustand, kein Zeitpunkt, keine Aussage über Ausführung — siehe Kopf.
- */
-export interface Strukturbeleg {
-  readonly stufen: readonly Belegstufe[];
-  /** SHA-256 über die kanonische Zeile jeder Stufe. Gleiche Eingabe, gleicher Hash. */
-  readonly beleghash: string;
-  /** Die höchste Risikoklasse über alle Stufen — die Klasse des Gesamtlaufs. */
-  readonly hoechstesRisiko: Risikoklasse;
-}
-
-function sha256(text: string): string {
-  return createHash("sha256").update(text, "utf8").digest("hex");
-}
-
-/**
- * Erzeugt den Beleg. Rein: keine Uhr, kein Zufall, keine Ablage, kein Netz.
- *
- * Die kanonische Zeile je Stufe ist `ordinal|stufe|risiko|quellhash`. Sie ist bewusst mager: der
- * Quelltext selbst geht NICHT in den Belegtext ein, nur sein Hash — ein Beleg soll keine DDL
- * transportieren.
- */
-export function erzeugeStrukturbeleg(eingaben: readonly Stufeneingabe[]): Strukturbeleg {
-  const stufen: Belegstufe[] = eingaben.map((eingabe, ordinal) => ({
-    stufe: eingabe.stufe,
-    ordinal,
-    risiko: klassifiziereStufe(eingabe.ddl),
-    marker: markerVon(eingabe.ddl),
-    quellhash: sha256(eingabe.ddl),
-  }));
-  const kanonisch = stufen
-    .map((s) => `${s.ordinal}|${s.stufe}|${s.risiko}|${s.quellhash}`)
-    .join("\n");
-  let hoechstesRisiko: Risikoklasse = "ADDITIV";
-  for (const s of stufen) {
-    if (RANG[s.risiko] > RANG[hoechstesRisiko]) {
-      hoechstesRisiko = s.risiko;
-    }
-  }
-  return { stufen, beleghash: sha256(kanonisch), hoechstesRisiko };
-}
 
 /**
  * DIE AUSGESCHRIEBENE SOLLLISTE — Kennung und erwartete Risikoklasse, in der Reihenfolge von
@@ -181,6 +69,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "KO_METADATA_PROJECTION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_PROJECTION_CONTROL_SCHEMA", risiko: "ADDITIV" },
   { stufe: "KO_EVIDENCE_SCHEMA", risiko: "ADDITIV" },
+  // R-0846 / L6: zwei Fremdschlüssel (`NOT VALID`, hinter Existenzprüfung, `duplicate_object`
+  // abgefangen). ADDITIV, nachgezählt: kein RISIKOMARKER — `ON DELETE CASCADE` ist eine Regel für
+  // künftige Löschungen, kein `DELETE FROM`; der Altbestand wird weder geprüft noch geändert.
+  { stufe: "KO_FREMDSCHLUESSEL_SCHEMA", risiko: "ADDITIV" },
   // JOB 4151: die kuratierten Beziehungen (`ko_kanten`) und die Bindung ihrer Wiederholschlüssel
   // (`ko_kanten_beitrag`, BEN R3). ADDITIV, und zwar nachgezählt statt behauptet: von den sechs
   // RISIKOMARKERN oben trifft KEINER — die Stufe besteht aus ZWEI `CREATE TABLE IF NOT EXISTS`,
@@ -198,6 +90,9 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // JOB 2697: zwei generierte Spalten und ein partieller Unique-Index auf `drafts`. Kein DROP,
   // kein DELETE, kein UPDATE an Bestandsdaten — kein Marker aus RISIKOMARKER trifft.
   { stufe: "CAPTURE_CREATE_OPERATION_SCHEMA", risiko: "ADDITIV" },
+  // R-1133: fünf nullbare Indexspalten und zwei Indizes auf `drafts` — nur `ADD COLUMN IF NOT
+  // EXISTS` und `CREATE INDEX IF NOT EXISTS`, kein Marker aus RISIKOMARKER trifft.
+  { stufe: "CAPTURE_INDEX_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ASK_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ANSWER_SNAPSHOT_SCHEMA", risiko: "ADDITIV" },
   { stufe: "VALIDATION_SCHEMA", risiko: "ADDITIV" },
@@ -239,6 +134,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "KO_BEARBEITUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "OFFICE_ABLAGE_SCHEMA", risiko: "ADDITIV" },
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte. ADDITIV, nachgezählt: ein
   // `CREATE TABLE IF NOT EXISTS` (mit Unique-Schlüssel) und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
@@ -271,6 +170,43 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "LIVEWALL_FOTO_SCHEMA", risiko: "ADDITIV" },
+  // R-0466: das Interaktionsgedächtnis. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und
+  // zwei `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "GEDAECHTNIS_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung. ADDITIV, nachgezählt: ein
+  // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VERANTWORTUNG_NACHFOLGE_SCHEMA", risiko: "ADDITIV" },
+  // R-0470: der dauerhafte Vektorspeicher. ADDITIV, nachgezählt: ein einziges `CREATE TABLE IF NOT
+  // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf
+  // ist folgenlos.
+  { stufe: "EMBEDDING_SCHEMA", risiko: "ADDITIV" },
+  // Betroffenenrechte (R-0661): die Löschanträge. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT
+  // EXISTS`, zwei `CREATE UNIQUE INDEX IF NOT EXISTS` (partiell: ein offener bzw. ein aktiver —
+  // offen oder in Bearbeitung — Antrag je Konto) und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "LOESCHANTRAG_SCHEMA", risiko: "ADDITIV" },
+  // R-1034 / FR-I18N-02: die Übersetzungspflege. ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT
+  // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist
+  // folgenlos.
+  { stufe: "UEBERSETZUNGEN_SCHEMA", risiko: "ADDITIV" },
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und Handlungsprotokoll. ADDITIV, nachgezählt:
+  // drei `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein
+  // Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "UNTERNEHMEN_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. ADDITIV, nachgezählt: ein
+  // `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed,
+  // kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KLARA_GESPRAECH_SCHEMA", risiko: "ADDITIV" },
+  // R-1656: der Co-Reading-Zähler. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein
+  // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "MITGELESEN_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger. ADDITIV,
+  // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VEROEFFENTLICHUNG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

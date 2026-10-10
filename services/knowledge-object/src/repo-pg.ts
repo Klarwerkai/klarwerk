@@ -254,6 +254,16 @@ CREATE TABLE IF NOT EXISTS ko_versions (
   PRIMARY KEY (ko_id, version)
 );
 CREATE INDEX IF NOT EXISTS idx_ko_versions_anhang_traeger ON ko_versions USING gin ((snapshot->'attachments') jsonb_path_ops);
+-- aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+-- Halbwertszeiten, gelernt aus der Fassungsfolge. Nur ergänzend (halbwertszeit-verlauf.ts).
+CREATE TABLE IF NOT EXISTS ko_halbwertszeit_beobachtungen (
+  ko_id text NOT NULL,
+  ende text NOT NULL,
+  kategorie text NOT NULL,
+  tage double precision NOT NULL,
+  erfasst text NOT NULL,
+  PRIMARY KEY (ko_id, ende)
+);
 `;
 
 // SCRUM-160: Evidence-Records für Quellen/Anhänge, separat vom KO-JSON.
@@ -270,6 +280,53 @@ CREATE INDEX IF NOT EXISTS idx_ko_evidence_ko_id ON ko_evidence(ko_id);
 CREATE INDEX IF NOT EXISTS idx_ko_evidence_kind ON ko_evidence(kind);
 CREATE INDEX IF NOT EXISTS idx_ko_evidence_object_id ON ko_evidence ((data->>'objectId'));
 `;
+
+// ================================================================================================
+// R-0846 / L6 — DER FREMDSCHLÜSSEL AUF DIE OBJEKTTABELLE.
+// ================================================================================================
+//
+// Fassungen (`ko_versions`) und Belege (`ko_evidence`) zeigen über `ko_id` auf `kos`. Bis hierher
+// hielt das nur der Code; die Datenbank liess eine Fassung ohne Objekt zu, und nach jeder
+// Endlöschung blieben beide als unerreichbare Zeilen stehen. Jetzt hält es die Datenbank:
+//
+//   ON DELETE CASCADE — die Endlöschung (`PgKoRepo.delete`, nur aus `purgeKo`, der Rücknahme einer
+//     gescheiterten Erstanlage und dem Bestandsreset) nimmt Fassungen und Belege des Objekts in
+//     DERSELBEN Transaktion mit. Die PRÜFSPUR bleibt: `audit` trägt bewusst keinen Fremdschlüssel,
+//     und `ko.purged` belegt die Löschung (s. services/app/src/datenintegritaet.ts).
+//   DEFERRABLE INITIALLY DEFERRED — geprüft wird beim COMMIT, nicht je Anweisung. Eine Transaktion,
+//     die Objekt und Fassung gemeinsam schreibt, hängt damit nicht an der Reihenfolge.
+//   NOT VALID — neue und geänderte Zeilen werden sofort geprüft, der Altbestand NICHT. Eine
+//     Bestandsdatenbank mit verwaisten Zeilen startet also weiter; die Bereinigung und das
+//     anschließende `VALIDATE CONSTRAINT` sind ein ausdrücklicher Betreiberschritt
+//     (`tools/datenintegritaet.ts --bereinigen --ausfuehren`), kein stiller Teil des Starts.
+//
+// ADDITIV und wiederholbar: nur `ALTER TABLE … ADD CONSTRAINT` hinter einer Existenzprüfung; ein
+// gleichzeitiger zweiter Start fängt `duplicate_object` ab. Kein DROP, kein DELETE, kein UPDATE.
+export const KO_FREMDSCHLUESSEL_SCHEMA = `
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ko_versions_ko_fk') THEN
+    ALTER TABLE ko_versions
+      ADD CONSTRAINT ko_versions_ko_fk FOREIGN KEY (ko_id) REFERENCES kos(id)
+      ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED NOT VALID;
+  END IF;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END
+$$;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ko_evidence_ko_fk') THEN
+    ALTER TABLE ko_evidence
+      ADD CONSTRAINT ko_evidence_ko_fk FOREIGN KEY (ko_id) REFERENCES kos(id)
+      ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED NOT VALID;
+  END IF;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END
+$$;
+`;
+
+/** Die Namen der beiden Fremdschlüssel — eine Quelle für DDL, Bericht und Bereinigung. */
+export const KO_FREMDSCHLUESSEL = ["ko_versions_ko_fk", "ko_evidence_ko_fk"] as const;
 
 interface DataRow {
   data: KnowledgeObject;

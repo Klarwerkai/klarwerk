@@ -161,7 +161,8 @@ describe("PRO 337 · der Galerieeinstieg erreicht JEDE Fläche, die eine Bilderg
   it("es gibt überhaupt Aufrufer — eine leere Erhebung wäre kein Beleg", () => {
     const funde = erhebe();
     // Der eigentliche Selbstschutz des Sammlers: fände er nichts, wäre die Zusicherung unten
-    // trivial erfüllt. Vier Einbindungen sind heute belegt (KoRead, Capture ×2, CaptureFrontDoor).
+    // trivial erfüllt. Vier Einbindungen sind heute belegt (Capture ×2, BibliothekLesen, Blatt; die
+    // frühere Leseansicht `KoRead` ist mit R-1349 entfernt).
     expect(funde.length).toBeGreaterThanOrEqual(4);
   });
 

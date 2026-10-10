@@ -48,9 +48,53 @@ export interface ReviewHelpTopic {
   bodyKey: string;
 }
 
+// Aufnahme gesamt-hilfen, Nacharbeit 13 (Ben): die Löschhilfe sagt jetzt, was Löschen wirklich tut
+// (Papierkorb, 30 Tage, Wiederherstellung durch den Admin). Sie steht unter einem NEUEN Schlüssel,
+// weil `vhelp.deleteKo.body` im eingefrorenen Textschnappschuss liegt (Begründung in
+// `texte/loeschhilfe.ts`) — dieselbe Bauform wie `BODY_KEY_ABWEICHEND` in `lib/captureHelp.ts`.
+const BODY_KEY_ABWEICHEND: Partial<Record<ReviewHelpId, string>> = {
+  deleteKo: "loeschhilfe.deleteKo.body",
+  // Nacharbeit 15 (Ben): das Formular verlangt zusätzlich die Art der Arbeit; die berichtigte
+  // Fassung steht in `texte/abschnittshilfe.ts` und gilt an der Fläche wie in Klara.
+  conflictForm: "abschnittshilfe.conflictForm.body",
+  // R-1176 (gesamt-sprache-begriffe): Diese Texte zitierten den Knopf englisch klein geschrieben
+  // („report conflict“ statt „Report conflict“). Der Grundbestand steht unter Prüfsumme; die
+  // berichtigte Fassung liegt in `texte/knopfzitat.ts`, der deutsche Wortlaut ist zeichengleich.
+  reject: "knopfzitat.vhelp.reject",
+  assign: "knopfzitat.vhelp.assign",
+  contribution: "knopfzitat.vhelp.contribution",
+};
+
+// Wo die Handlung zu einem Thema heute lebt — für Klaras „Zum Bereich“ (`lib/klaraRegistry.ts`).
+// Nacharbeit 13 (Ben: „Registry-Zuordnung an die vorhandenen Handlungen anpassen“): bis hierher
+// führte JEDES Prüf-Thema auf `/validierung`, auch die Handlungen am Wissensobjekt und „Noch gültig“,
+// das im Reiter „Erneut“ steht (`pages/Lifecycle.tsx:336-344`). Nicht genannte Themen bleiben bei
+// `/validierung`.
+export const REVIEW_HELP_ROUTE: Partial<Record<ReviewHelpId, string>> = {
+  stillValid: "/lebenszyklus",
+  reportConflict: "/bibliothek",
+  conflictForm: "/bibliothek",
+  sourcesLevel2: "/bibliothek",
+  sourceFields: "/bibliothek",
+  sourceAdd: "/bibliothek",
+  sourceSearch: "/bibliothek",
+  contribution: "/bibliothek",
+  helpful: "/bibliothek",
+  validity: "/bibliothek",
+  transfer: "/bibliothek",
+  deleteKo: "/bibliothek",
+  conflictEscalate: "/konflikte",
+  conflictSecondOpinion: "/konflikte",
+  conflictResolve: "/konflikte",
+};
+
 // Schlüssel-Schema bewusst flach und stabil: vhelp.<id>.title / vhelp.<id>.body.
 export function reviewHelp(id: ReviewHelpId): ReviewHelpTopic {
-  return { id, titleKey: `vhelp.${id}.title`, bodyKey: `vhelp.${id}.body` };
+  return {
+    id,
+    titleKey: `vhelp.${id}.title`,
+    bodyKey: BODY_KEY_ABWEICHEND[id] ?? `vhelp.${id}.body`,
+  };
 }
 
 export const REVIEW_HELP_TOPICS: readonly ReviewHelpTopic[] = REVIEW_HELP_IDS.map(reviewHelp);

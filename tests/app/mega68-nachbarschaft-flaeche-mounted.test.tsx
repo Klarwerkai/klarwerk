@@ -17,6 +17,12 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     ko: { neighbors: vi.fn() },
   },
 }));
+// R-0956: der leere Zustand trägt seit Nacharbeit 3 die rollengefilterten nächsten Schritte
+// (`EmptyStateCtas`), und die lesen die Rolle. In der App liegt die Fläche immer unter dem
+// `RoleProvider`; hier steht die kleinste Rolle, die die Fläche überhaupt sieht.
+vi.mock("../../apps/web/src/app/RoleContext", () => ({
+  useRole: () => ({ role: "viewer", stufe2: false }),
+}));
 
 import {
   QueryClient,
@@ -25,13 +31,13 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
-import "../../apps/web/src/i18n";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import type { Neighborhood } from "../../apps/web/src/api/types";
 import {
   KnowledgeNeighborhood,
   edgeLabel,
 } from "../../apps/web/src/components/KnowledgeNeighborhood";
+import i18n from "../../apps/web/src/i18n";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -181,6 +187,25 @@ describe("mega68 · die Fläche", () => {
     expect(container.querySelector("[data-testid=nb-excluded]")?.textContent).toContain(
       "pilot-demo",
     );
+    // R-0956 (Ben, Nacharbeit 3): der Leerzustand ordnet in den Wissenskreis ein (Phase „Nutzen“)
+    // und nennt einen nächsten Schritt, den diese Rolle wirklich gehen kann.
+    const leer = container.querySelector("[data-testid=nb-leer]");
+    expect(leer?.textContent).toContain(i18n.t("story.surface.neighborhood.lead"));
+    expect(leer?.textContent).toContain(i18n.t("cycle.use.label"));
+    const netz = [...(leer?.querySelectorAll("a") ?? [])].find(
+      (a) => a.textContent === i18n.t("empty.cta.wissensnetz"),
+    );
+    expect(netz?.getAttribute("href")).toBe("/wissensnetz");
+    // Gegenprobe Rolle: ein Betrachter darf nicht erfassen — der Schritt wird ihm nicht angeboten.
+    expect(leer?.textContent).not.toContain(i18n.t("empty.cta.capture"));
+    unmount();
+  });
+
+  it("mit Nachbarn: keine Leer-Einordnung", async () => {
+    neighborsMock.mockImplementation((id: string) => Promise.resolve(NETZ[id]));
+    const { container, unmount } = await mount();
+    expect(container.querySelector("[data-testid=nb-leer]")).toBeNull();
+    expect(container.textContent).not.toContain(i18n.t("story.surface.neighborhood.lead"));
     unmount();
   });
 });

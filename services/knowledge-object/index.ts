@@ -1,8 +1,6 @@
 // Öffentliche API des Moduls knowledge-object.
 export {
   KoService,
-  // G27: Deckel des Altbestands-Backfills je Suchanfrage (die Suche wird nie zum Bestandslauf).
-  SEARCH_PROJECTION_BACKFILL_PER_QUERY,
   normalizeEvidenceLimit,
   DEFAULT_EVIDENCE_LIMIT,
   MAX_EVIDENCE_LIMIT,
@@ -43,8 +41,10 @@ export { confirmedSourceAnchor } from "./src/source-anchor";
 export type { AnchorCandidateAttachment } from "./src/source-anchor";
 // P-WIKI-STELLENBEZUG: die Form einer Stelle im Text (Route) und ihre Prüfung (Dienst).
 export {
+  STELLE_SEITE_MAX,
   STELLE_TEXT_MAX,
   leseStelle,
+  stelleAmAnhang,
   stelleImInhalt,
   stellenbloeckeAusHtml,
 } from "./src/stellen-anker";
@@ -90,6 +90,9 @@ export {
   // an einem eigens benannten Pin (T-M-3, services/app/src/db.migrate.test.ts).
   KO_SICHTBARKEIT_SCHEMA,
   KO_VERSIONS_SCHEMA,
+  // R-0846 / L6: Fremdschlüssel von Fassungen und Belegen auf `kos` (nach KO_EVIDENCE_SCHEMA).
+  KO_FREMDSCHLUESSEL_SCHEMA,
+  KO_FREMDSCHLUESSEL,
   // AUFNAHME 20260922 (B2): der Papierkorb-Ausdruck für den SQL-Trim in services/app.
   sqlDeletedAtLeer,
 } from "./src/repo-pg";
@@ -103,8 +106,6 @@ export {
 export {
   SEARCH_PROJECTION_VERSION,
   SEARCH_PROJECTION_LANGUAGE,
-  SEARCH_PROJECTION_FIELDS,
-  SEARCH_PROJECTION_MATCH_FIELDS,
   MAX_SEARCH_TEXT_LENGTH,
   CLASSIFICATION_SOURCE,
   buildSearchProjection,
@@ -116,9 +117,8 @@ export {
   // der per dependency-cruiser erzwungenen Modulgrenze nicht erreichen und suchte deshalb nur nach
   // dem woertlich Getippten — dieselbe Frage, zwei Ergebnisse. Die Tabelle und die Grenzzusage
   // gehoeren mit heraus: wer erweitert, muss die belegten Paare LESEN koennen (der Fragepfad
-  // rechnet sie in seine Termform um) und seine Zusicherung pruefen koennen.
+  // rechnet sie in seine Termform um). R-1349: die Grenzkonstante ist entfernt (s. search-projection).
   SUCH_ZUORDNUNGEN,
-  S2_ERWEITERUNG_GRENZE,
   expandSearchTerms,
   type SuchZuordnung,
   visibleTextFromBodyHtml,
@@ -126,7 +126,6 @@ export {
   classificationAtVersion,
   classificationFromVersionSnapshot,
   reconstructedClassification,
-  isReconstructedClassification,
   resolveCapturedAt,
   serializeClassificationSnapshot,
   parseClassificationSnapshot,
@@ -149,7 +148,6 @@ export {
   PROJECTION_STATES,
   UNINITIALIZED_CONTROL_STATE,
   controlStateLifecycleGueltig,
-  freigegebeneProjektionsfassung,
   neuerProjektionsSpeicher,
   type InMemoryProjektionsSpeicher,
   type ProjectionAudit,
@@ -176,8 +174,6 @@ export {
 // G27 Welle 1 / S2 — die VERÄNDERLICHE Metadatenprojektion (Schlüssel `ko_id`, eigene
 // `metadata_revision`). Sie ist die zweite Hälfte des Suchvertrags, nicht sein Ersatz.
 export {
-  METADATA_PROJECTION_FIELDS,
-  METADATA_PROJECTION_MATCH_FIELDS,
   METADATA_REVISION_NONE,
   metadataTextsOf,
   metadataTextsEqual,
@@ -195,7 +191,6 @@ export {
 } from "./src/metadata-projection-repo-pg";
 // G27 Welle 1 — die Zusammensetzung beider Projektionsarten zu DER Sicht des Suchkonsumenten.
 export {
-  EFFECTIVE_SEARCH_DOCUMENT_FIELDS,
   composeEffectiveSearchDocument,
   matchEffectiveSearchDocument,
   type EffectiveSearchDocument,
@@ -239,7 +234,6 @@ export {
   // Wissensnetz-Anschluss (`services/library-analytics`) braucht sie, um denselben beurteilten
   // Stand auszuweisen wie die Detailauskunft; eine zweite Ableitung dort wäre die zweite Wahrheit.
   fassungszeitVon,
-  netzQualitaet,
   // JOB 4151 (R6): die Antwortform der SCHREIBWEGE. Sie geht mit heraus, weil die Route sie
   // braucht — ohne sie gäbe der Schreibweg das Aggregat zurück, und die Anzeige (JOB 4153) liest
   // von dieser Antwort `gegenstueck.id`. Zwei Formen für dieselbe Kante am Draht wären die zweite
@@ -262,8 +256,6 @@ export type {
   KanteSetzenEingabe,
   KuratierteKanteAnsicht,
   KuratierteKanten,
-  NetzQualitaet,
-  QualitaetKoBestand,
 } from "./src/kanten-service";
 export {
   KANTEN_ARTEN,
@@ -335,7 +327,14 @@ export type {
   AnweisungRepo,
   AnweisungStandAufnahme,
 } from "./src/gesamtanweisung-types";
-export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
+export {
+  KoError,
+  KNOWLEDGE_TYPES,
+  KO_AUSSAGEARTEN,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+} from "./src/types";
+export type { KoAussageart } from "./src/types";
 // R-0169 (herkunft-identitaet): die interne Dokumentakte — eigene Identität und unveränderliche
 // Fassungen für Importe ohne externe Quellenkennung (Word-Zusatz, JSON ohne externalId).
 export {
@@ -356,6 +355,20 @@ export type {
 } from "./src/dokumentakte";
 // AUFNAHME 20260922 · Prüfbasis-Aktualität: die EINE Regel, wann ein Prüfnachweis überholt ist.
 export { gleichePruefbasis, pruefbasisVon } from "./src/pruefbasis";
+// R-1632 / R-1633 (gesamt-standortwissen): die EINE Geltungsregel für Speichern, Fragen und Erkennung.
+export {
+  GELTUNG_TEXT_MAX,
+  GELTUNGS_EBENEN,
+  geltungFuerFrage,
+  geltungsKollision,
+  geltungsText,
+  normalizeFragekontext,
+  normalizeGeltung,
+  type Fragekontext,
+  type GeltungsEbene,
+  type GeltungsPassung,
+  type KoGeltung,
+} from "./src/geltung";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {
   type UploadLimits,
@@ -381,6 +394,24 @@ export {
   type Eingangsbefund,
   type Erhoben,
 } from "./src/display-status";
+// aufnahme:20260922:gesamt-wissen-frische: die EINE Frische-/Schutzableitung. `discloseFrische` liest
+// die Kompositionswurzel an beiden Lesewegen, `haltbarkeitAbgelaufen` der Fragepfad (R-0248).
+// `fristHinweiseFuer` und `aeltesteVorlageFuer` liest die persönliche Zustellung in der Glocke
+// (R-0248 / R-0266, services/app/src/frische-meldungen.ts).
+// Nacharbeit 5 (R-1636/R-0248): die Postgres-Ablage des festgehaltenen Lernverlaufs — die
+// Kompositionswurzel reicht sie dem KoService herein (Tabelle in `KO_VERSIONS_SCHEMA`).
+export {
+  InMemoryHalbwertszeitVerlauf,
+  PgHalbwertszeitVerlauf,
+  type HalbwertszeitVerlaufRepo,
+} from "./src/halbwertszeit-verlauf";
+export {
+  aeltesteVorlageFuer,
+  discloseFrische,
+  fristHinweiseFuer,
+  haltbarkeitAbgelaufen,
+  type GelernteHalbwertszeiten,
+} from "./src/frische";
 // JOB 557 (Pedi 13.08.2026): das kanonische Eigentümer-Aggregat. OHNE diesen Export bliebe es
 // unerreichbar — und damit genau die unverdrahtete Empfangsstelle, die D5 gerügt hat. Der
 // Validierungsdienst liest `responsibleOf`/`responsibleKindOf` über DIESE Fassade; eine Kante in
@@ -415,10 +446,20 @@ export type {
   ConfidentialityDisclosure,
   ConfidentialityProvenance,
 } from "./src/confidentiality";
+// R-1631 (gesamt-anlagenzugang): Stücklistenbezug und Geltungskontext — die Eingangsprüfung der Route.
+export { anlagenkontextFehler } from "./src/anlagenkontext";
+// JOB 593 / R-0082: die EINE Normalform der Anlagenkennung — auch für die Lebenszyklus-Kopplung.
+export { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./src/asset";
+// R-1664/R-2179/R-2180: die Normalform der geführten Negativwissen-Angaben. Aufrufer ist die
+// Persistenzgrenze des Entwurfs (services/capture) — dieselbe Form, keine zweite Auslegung.
+// BEN, Nacharbeit 2: dazu die Grenzprüfung — der Entwurfsrand weist Überschreitungen ab, statt zu kürzen.
+export { negativwissenGrenzfehler, normalizeNegativwissen } from "./src/negativwissen";
+export type { NegativwissenAngaben } from "./src/negativwissen";
 // R-0658: Schutzdaten vor der Suche — Erkennung und die eine Lesestelle der Quarantäne.
 export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";
 export type { SchutzdatenArt, SchutzdatenQuarantaene } from "./src/types";
 export type {
+  AnlagenKontext,
   EvidenceKind,
   EvidenceRecord,
   KnowledgeObject,
@@ -431,6 +472,8 @@ export type {
   KoComment,
   // P-WIKI-STELLENBEZUG: der Anker einer Rückfrage im Text.
   KoCommentStelle,
+  // PLAN-SPRACHANMERKUNG: die Position einer Notiz in einer Zeichnung.
+  KoStellenPunkt,
   KoAttachment,
   // R-0163: die Quellidentität eines übernommenen Anhangs.
   KoAnhangsquelle,
@@ -441,6 +484,8 @@ export type {
   // AUFTRAG-mega21 Block A: der Vorgangs-Datensatz (Eigentümer, Inhaltsabdruck, Zustand).
   KoCreateOperation,
   KoCreateOperationState,
+  // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
+  KoMergedInto,
   KoSource,
   KoSourceKind,
   KoSourceRestrictions,
@@ -457,4 +502,7 @@ export type {
   AiCheckCoverageSummary,
   // AUFNAHME 20260922: die gespeicherte Basisbindung eines Prüfnachweises.
   AiCheckBasis,
+  // produkt:20261007:veroeffentlichungsoptionen: der Vermerk einer Veröffentlichung samt Meldungswahl.
+  KoVeroeffentlichung,
+  VeroeffentlichungsMeldung,
 } from "./src/types";

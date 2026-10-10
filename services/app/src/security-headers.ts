@@ -1,5 +1,6 @@
 import fastifyHelmet from "@fastify/helmet";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { leseOfficeEditorUmgebung } from "./office-artikel";
 import { leseM365Mandanten, wordAddinFrameAncestors } from "./office-host";
 
 // WP-KLARA-1b (bens Sicherheits-Befunde K1/K2): Security-Header als EXPORTIERTE Produktionsfunktion —
@@ -164,6 +165,12 @@ export async function registerSecurityHeaders(
   const taskpaneCsp = wordAddinCsp(mandanten);
   const ersatzCsp = (rawUrl: string): string =>
     pfadOhneQuery(rawUrl) === TASKPANE_PATH ? taskpaneCsp : WORD_ADDIN_CSP;
+  // produkt:20261007:office-artikel-editor (Plan 3.1): die Artikelseite bettet den Office-Editor
+  // per Formular-POST in ein iframe. Dafür bekommen `frame-src` und `form-action` GENAU die eine
+  // Editor-Herkunft aus KLARWERK_OFFICE_EDITOR_URL — keine Platzhalterfamilie. Ohne vollständige
+  // Einrichtung bleibt alles bei `'self'`.
+  const office = leseOfficeEditorUmgebung(env);
+  const editorHerkunft = office.eingerichtet ? [office.umgebung.editorHerkunft] : [];
 
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: {
@@ -176,7 +183,8 @@ export async function registerSecurityHeaders(
         connectSrc: ["'self'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
-        formAction: ["'self'"],
+        frameSrc: ["'self'", ...editorHerkunft],
+        formAction: ["'self'", ...editorHerkunft],
         frameAncestors: ["'none'"],
         // AUFTRAG-mega15 Block C (bens SB-3): helmets Vorgabe setzt `upgrade-insecure-requests`
         // global. `null` nimmt sie aus der Vorgabemenge heraus; der onSend-Hook unten setzt sie

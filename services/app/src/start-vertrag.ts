@@ -80,11 +80,13 @@
 //      Der Folgesatz selbst bleibt hier unangetastet: er wird woertlich nach `env.demo.beispiel`
 //      gespiegelt (tests/demo-zugang-start/env-beispiel.test.ts C5), und diese Datei liegt nicht in
 //      den Zielpfaden dieses Auftrags. Die Schaerfung ist in der RUECKGABE bestellt.
+import { SAML_PFLICHTSATZ, samlSchluesselAus } from "../../auth";
 import {
   CONFLUENCE_CREDENTIAL_VARS,
   type ConfluenceCredentialState,
   confluenceCredentialState,
 } from "../../confluence";
+import { JIRA_AUTH_VAR, JIRA_CREDENTIAL_VARS } from "../../jira";
 import { SHAREPOINT_CREDENTIAL_VARS } from "../../sharepoint";
 import { SCHALTER_REGISTRY, type SchalterName, schalterAn } from "./feature-flags";
 
@@ -166,6 +168,12 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
     wofuer: "Der SharePoint-/OneDrive-Import (Dateiauswahl und Übernahme).",
     ohneIhn:
       "Die SharePoint-Import-Routen sind nicht registriert; die Zugangs-Auskunft meldet „nicht eingeschaltet“. Vorgabe: aus.",
+  },
+  // R-0170. Eigener Schalter, nicht der von Confluence oder SharePoint.
+  jiraImport: {
+    wofuer: "Der Jira-Import (Vorgänge und Epics eines Projekts, Projektrollen als Leserechte).",
+    ohneIhn:
+      "Die Jira-Import-Routen sind nicht registriert; die Zugangs-Auskunft meldet „nicht eingeschaltet“. Vorgabe: aus.",
   },
   expertMatching: {
     wofuer: "Thema-zu-Personen-Zuordnung (Consultant-System).",
@@ -332,6 +340,60 @@ const SHAREPOINT_WERTE: readonly Startwert[] = SHAREPOINT_CREDENTIAL_VARS.map((n
 }));
 
 // ================================================================================================
+// R-0170 · DER JIRA-ZUGANG — AUS DEM MODUL, NICHT DANEBEN
+// ================================================================================================
+//
+// Dieselbe Regel wie bei Confluence und SharePoint: die Liste, WAS ein Jira-Zugang braucht, gehört
+// `services/jira` (`credential-state.ts`). Dieser Katalog erzeugt seine Einträge daraus.
+const JIRA_ERKLAERUNG: Record<
+  (typeof JIRA_CREDENTIAL_VARS)[number],
+  { geheim: boolean; wofuer: string }
+> = {
+  KLARWERK_JIRA_BASE_URL: {
+    geheim: false,
+    wofuer: "Basisadresse der Jira-Instanz. MUSS https sein, sonst kommt kein Client zustande.",
+  },
+  KLARWERK_JIRA_USER: {
+    geheim: false,
+    wofuer:
+      "Kennung (E-Mail) des Jira-Zugangs. Nur bei der Cloud-Anmeldung nötig; mit KLARWERK_JIRA_AUTH=pat wird sie nicht gelesen.",
+  },
+  KLARWERK_JIRA_TOKEN: {
+    geheim: true,
+    wofuer:
+      "API-Token des Jira-Zugangs (Cloud) bzw. persönliches Zugriffstoken (KLARWERK_JIRA_AUTH=pat). Das Konto braucht Leserecht auf das Projekt und das Recht, seine Projektrollen zu lesen.",
+  },
+  KLARWERK_JIRA_PROJECT: {
+    geheim: false,
+    wofuer: "Der Projektschlüssel, aus dem importiert wird (z. B. WART).",
+  },
+};
+
+const JIRA_WERTE: readonly Startwert[] = [
+  ...JIRA_CREDENTIAL_VARS.map((name) => ({
+    name,
+    bereich: "Jira-Import",
+    // Bewusst KEINE Pflicht — dieselbe Entscheidung wie bei Confluence und SharePoint (Pedi, 30.07.).
+    pflicht: { art: "nie" } as const,
+    geheim: JIRA_ERKLAERUNG[name].geheim,
+    wofuer: JIRA_ERKLAERUNG[name].wofuer,
+    ohneIhn:
+      "Kein Jira-Client. Der Import meldet den Zustand ehrlich (jiraCredentialState) statt zu starten.",
+  })),
+  // Der Anmeldeweg. Kein Geheimnis, keine Pflicht — ungesetzt gilt die Cloud-Anmeldung.
+  {
+    name: JIRA_AUTH_VAR,
+    bereich: "Jira-Import",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "cloud",
+    wofuer:
+      "Anmeldeart an Jira: „cloud“ (E-Mail + API-Token, Atlassian Cloud) oder „pat“ (persönliches Zugriffstoken, Jira Server/Data Center im eigenen Haus). Ein anderer Wert ergibt keinen Zugang.",
+    ohneIhn: "Es gilt die Cloud-Anmeldung mit E-Mail und API-Token.",
+  },
+];
+
+// ================================================================================================
 // DER KATALOG
 // ================================================================================================
 
@@ -432,6 +494,37 @@ const GRUNDWERTE: readonly Startwert[] = [
     vorgabe: "6 Stunden",
     wofuer: "Abstand der periodischen Papierkorb-Endlöschung.",
     ohneIhn: "Es gilt der Abstand von sechs Stunden.",
+  },
+  // R-1657: der Takt der regelmäßigen Lückenerkennung über den Reasoner (Wissens-Sprints).
+  {
+    name: "KLARWERK_WISSENSSPRINT_INTERVAL_MS",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "15 Minuten",
+    wofuer: "Abstand der regelmäßigen Lückenerkennung über den Reasoner (Wissens-Sprints).",
+    ohneIhn: "Es gilt der Abstand von 15 Minuten (mindestens 1 Minute).",
+  },
+  // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Die Liste trägt je Ziel
+  // das Signiergeheimnis — deshalb als Ganzes geheim.
+  {
+    name: "KLARWERK_WEBHOOKS",
+    bereich: "Integration",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer:
+      "Die Ziele, die über validierte Wissensobjekte, fällige Revalidierungen und offene Widersprüche benachrichtigt werden (JSON-Liste mit Kennung, https-Adresse, Ereignissen und Signiergeheimnis).",
+    ohneIhn:
+      "Es werden keine Ereignisse gemeldet; Fremdwerkzeuge können Wissen nur selbst abholen.",
+  },
+  {
+    name: "KLARWERK_WEBHOOKS_TAKT_SEK",
+    bereich: "Integration",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "60 Sekunden",
+    wofuer: "Abstand, in dem der Bestand auf neue Wissensereignisse abgeglichen wird.",
+    ohneIhn: "Es gilt der Abstand von 60 Sekunden (mindestens 10).",
   },
   {
     name: "KLARWERK_SKIP_KEYCHAIN",
@@ -914,6 +1007,114 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Selbstregistrierung neuer Konten.",
     ohneIhn: "Konten legt nur ein Administrator an (nach der Ersteinrichtung).",
   },
+  // R-0541: der Schalter „nur Firmen-Login" (services/auth/src/routes.ts, `passwordLoginEnabled`).
+  {
+    name: "KLARWERK_SSO_ONLY",
+    bereich: "Anmeldung",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "aus",
+    wofuer:
+      "Schaltet die Anmeldung mit Passwort ab (1/true): es gilt nur noch der Firmen-Login (OIDC oder SAML) und damit dessen Zwei-Faktor-Schutz. Die Sperre gilt auch, solange der Firmen-Login noch fehlt.",
+    ohneIhn: "Anmeldung mit Passwort und Firmen-Login stehen beide offen.",
+  },
+  // ----------------------------------------------------------------------------------- SSO (SAML)
+  // R-0560: der SAML-Weg (services/auth/src/saml.ts, `createSamlProviderFromEnv`).
+  ...(
+    [
+      { name: "SAML_IDP_ENTITY_ID", wofuer: "Die Kennung (Entity-ID) des SAML-Anbieters." },
+      { name: "SAML_IDP_SSO_URL", wofuer: "Die Anmeldeadresse des SAML-Anbieters." },
+      {
+        name: "SAML_IDP_CERT",
+        wofuer: "Das Signaturzertifikat des Anbieters (PEM oder Base64) oder sein PEM-Schlüssel.",
+      },
+      { name: "SAML_SP_ENTITY_ID", wofuer: "Die Kennung dieser Anwendung beim SAML-Anbieter." },
+      {
+        name: "SAML_ACS_URL",
+        wofuer: "Die Rücksprungadresse: öffentliche Adresse + /api/auth/saml/acs.",
+      },
+    ] as const
+  ).map(
+    ({ name, wofuer }): Startwert => ({
+      name,
+      bereich: "SSO (SAML)",
+      pflicht: { art: "nie" },
+      geheim: false,
+      wofuer,
+      ohneIhn:
+        "SAML ist AUS. Es ist nur aktiv, wenn IDP_ENTITY_ID, IDP_SSO_URL, IDP_CERT, SP_ENTITY_ID und ACS_URL ALLE stehen.",
+    }),
+  ),
+  {
+    name: "SAML_AUTOPROVISION",
+    bereich: "SSO (SAML)",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "false",
+    wofuer: "Legt beim ersten SAML-Anmelden ein Konto an.",
+    ohneIhn: "Unbekannte SAML-Anmeldungen werden abgewiesen.",
+  },
+  {
+    name: "SAML_ATTR_EMAIL",
+    bereich: "SSO (SAML)",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Das Attribut mit der E-Mail-Adresse.",
+    ohneIhn: "Es gilt das Entra-Standardattribut emailaddress (oder eine NameID im E-Mail-Format).",
+  },
+  {
+    name: "SAML_ATTR_NAME",
+    bereich: "SSO (SAML)",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Das Attribut mit dem Anzeigenamen.",
+    ohneIhn: "Es gilt das Entra-Standardattribut displayname, sonst die E-Mail-Adresse.",
+  },
+  {
+    name: "SAML_ATTR_GROUPS",
+    bereich: "SSO (SAML)",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer: "Das Attribut mit den Gruppen des Anbieters.",
+    ohneIhn: "Es gilt das Entra-Standardattribut groups.",
+  },
+  ...(
+    [
+      ["SAML_GROUP_ADMIN", "Die SAML-Gruppe, die Administratorrechte trägt."],
+      ["SAML_GROUP_CONTROLLER", "Die SAML-Gruppe der Prüferrolle."],
+      ["SAML_GROUP_EXPERTE", "Die SAML-Gruppe der Expertenrolle."],
+    ] as const
+  ).map(
+    ([name, wofuer]): Startwert => ({
+      name,
+      bereich: "SSO (SAML)",
+      pflicht: { art: "nie" },
+      geheim: false,
+      wofuer,
+      ohneIhn: "Keine Zuordnung zu dieser Rolle über SAML.",
+    }),
+  ),
+  // ------------------------------------------------------------------------ Verzeichnispflege (SCIM)
+  // R-0556 / R-0571: services/app/src/routes/verzeichnis-routes.ts.
+  {
+    name: "KLARWERK_SCIM_TOKEN",
+    bereich: "Verzeichnispflege",
+    pflicht: { art: "nie" },
+    geheim: true,
+    wofuer:
+      "Der Verzeichnisschlüssel (mindestens 32 Zeichen), mit dem das Unternehmensverzeichnis Konten über SCIM anlegt, sperrt und anpasst.",
+    ohneIhn:
+      "Keine Verzeichnispflege: Konten, Sperren und Rollen pflegt ein Administrator von Hand.",
+  },
+  {
+    name: "KLARWERK_PRUEFZUSTAENDIGKEIT",
+    bereich: "Verzeichnispflege",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Welche Verzeichnisgruppe für die Prüfung in welchem Space zuständig ist: Gruppe=space-a,space-b;Gruppe2=space-c.",
+    ohneIhn: "Prüfende werden wie bisher von Hand benannt.",
+  },
   // ------------------------------------------------------------------------------- Externe Quellen
   {
     name: "EXTERNAL_SEARCH",
@@ -1133,6 +1334,7 @@ export const STARTVERTRAG: readonly Startwert[] = [
   ...GRUNDWERTE,
   ...CONFLUENCE_WERTE,
   ...SHAREPOINT_WERTE,
+  ...JIRA_WERTE,
   ...SCHALTER_WERTE,
 ];
 
@@ -1408,6 +1610,48 @@ export function startbericht(
     maengel.push({
       befund: "SSO ist unvollständig konfiguriert und damit AUS — diese Werte fehlen:",
       betrifft: oidcFehlt,
+    });
+  }
+  // R-0560: halb konfiguriertes SAML ist AUS und sagt, was fehlt — dieselbe Regel wie bei OIDC.
+  const samlFehlt = SAML_PFLICHTSATZ.filter((name) => !gesetzt(env[name]));
+  if (samlFehlt.length > 0 && samlFehlt.length < SAML_PFLICHTSATZ.length) {
+    maengel.push({
+      befund: "SAML ist unvollständig konfiguriert und damit AUS — diese Werte fehlen:",
+      betrifft: samlFehlt,
+    });
+  }
+  const samlZertifikatLesbar =
+    samlFehlt.length === 0 && samlSchluesselAus(env.SAML_IDP_CERT ?? "") !== undefined;
+  if (samlFehlt.length === 0 && !samlZertifikatLesbar) {
+    maengel.push({
+      befund: "SAML ist AUS: das Zertifikat des Anbieters ist nicht lesbar.",
+      betrifft: ["SAML_IDP_CERT"],
+    });
+  }
+  // R-0541 (Ben, Nacharbeit 2): „nur Firmen-Login" GILT, auch ohne eingerichteten Firmen-Login —
+  // die Anmeldung mit Passwort ist dann gesperrt, und niemand kommt herein. Das muss der Betreiber
+  // beim Start lesen, samt der Werte, die den Firmen-Login einrichten.
+  if (istAn(env.KLARWERK_SSO_ONLY) && oidcFehlt.length > 0 && !samlZertifikatLesbar) {
+    maengel.push({
+      befund:
+        "Nur-Firmen-Login ist eingeschaltet, aber weder OIDC noch SAML ist vollständig eingerichtet — die Anmeldung mit Passwort ist GESPERRT und niemand kommt herein. Für OIDC fehlen:",
+      betrifft: ["KLARWERK_SSO_ONLY", ...oidcFehlt],
+    });
+  }
+  // R-0556: ein gesetzter, aber zu kurzer Verzeichnisschlüssel schaltet die Pflege NICHT ein.
+  const scimRoh = env.KLARWERK_SCIM_TOKEN?.trim() ?? "";
+  if (scimRoh !== "" && scimRoh.length < 32) {
+    maengel.push({
+      befund: "Die Verzeichnispflege ist AUS: der Verzeichnisschlüssel hat weniger als 32 Zeichen.",
+      betrifft: ["KLARWERK_SCIM_TOKEN"],
+    });
+  }
+  // R-0571: die Zuständigkeit hängt an Verzeichnisgruppen — ohne Verzeichnispflege kennt Klara keine.
+  if (gesetzt(env.KLARWERK_PRUEFZUSTAENDIGKEIT) && scimRoh.length < 32) {
+    maengel.push({
+      befund:
+        "Prüfzuständigkeiten sind zugeordnet, aber ohne Verzeichnispflege kennt Klara keine Gruppen — es wird niemand zugewiesen.",
+      betrifft: ["KLARWERK_PRUEFZUSTAENDIGKEIT", "KLARWERK_SCIM_TOKEN"],
     });
   }
   if (istAn(env.KLARWERK_ADDON_API) && !gesetzt(env.KLARWERK_ADDON_API_KEY)) {

@@ -140,6 +140,14 @@ describe("SCRUM-358: Conflict → serverseitige Trust-/Status-Wirkung (HTTP)", (
 
     // 7) RESOLVE blockt nicht dauerhaft: nach dem Lösen bleibt KO-A review-pflichtig (offen), wird aber
     //    über die normale Bewertung wieder validiert (kein Fake-Validate, kein Dauer-Block).
+    //    R-0215 (Aufnahme gesamt-konfliktklassifikation): der Wahrheitskonflikt wird verbindlich
+    //    zuerst eskaliert, danach entschieden.
+    const escalated = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${conflictId}/escalate`,
+      headers: admin,
+    });
+    expect(escalated.statusCode).toBe(200);
     const resolved = await app.inject({
       method: "PUT",
       url: `/api/kos/${koA.id}`,

@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SpaceZeile } from "../components/SpaceZeile";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
+import { STELLE_PARAM } from "../lib/belegstelle";
 import { sprachcode, useFrischeLesevariante } from "../lib/lesevariante";
+import { FASSUNG_PARAM, fassungsLage, leseFassung } from "../lib/objektbezug";
+import { useGelesenerStand } from "../lib/useGelesenerStand";
 
 // ==================================================================================================
 // JOB 3063 · H4 — DAS WISSENSOBJEKT-DETAIL IST DIE LESEFLÄCHE DER BIBLIOTHEK GEWORDEN.
@@ -54,6 +58,12 @@ export function KnowledgeDetail(): JSX.Element {
   const naechsteSuche = (() => {
     const p = new URLSearchParams(params);
     p.delete("edit");
+    // R-0326/R-0329: Belegstelle und Abschnittssprung gehören ebenso nur zu DIESEM Eintrag — und
+    // die Fassung des Rückwegs (Arbeitswege am selben Artikel) ebenso. `fassung` ist EIN Parameter
+    // für beide Wege (`lib/belegstelle.ts` und `lib/objektbezug.ts` nennen denselben Namen).
+    p.delete(STELLE_PARAM);
+    p.delete(FASSUNG_PARAM);
+    p.delete("abschnitt");
     return p.toString();
   })();
 
@@ -79,6 +89,11 @@ export function KnowledgeDetail(): JSX.Element {
   const lage = useFrischeLesevariante(id, sprache);
   const variante = lage.zustand === "da" ? lage.variante : undefined;
   const [zeigtOriginal, setZeigtOriginal] = useState(false);
+  // Arbeitswege am selben Artikel: genannte Fassung (Adresse) gegen die, die die Lesefläche
+  // gerade zeigt (`meldeGelesenenStand` — kein eigener Abruf). Ein anderer Artikel zählt nicht.
+  const genannteFassung = leseFassung(params);
+  const gelesen = useGelesenerStand();
+  const aktuelleFassung = gelesen?.koId === id ? gelesen.fassung : null;
   // Sprachwechsel UND Eintragswechsel setzen die Wahl „Original anzeigen" zurück: sie gehörte zur
   // vorherigen Anzeige. Beim Eintragswechsel bleibt die Fläche darunter montiert — ohne diesen
   // Rückfall trüge der nächste Eintrag die Entscheidung des vorherigen.
@@ -131,11 +146,39 @@ export function KnowledgeDetail(): JSX.Element {
           {t("lesevariante.abrufFehler")}
         </p>
       ) : null}
-      {/* produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
-          getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
-          die Zeile zeichnet dann nichts. */}
-      <SpaceZeile koId={id} />
-      <BibliothekFlaeche vorgewaehlt={id} beiWahl={beiWahl} beiLoeschung={beiLoeschung} />
+      {/* Arbeitswege am selben Artikel: der Rückweg (aus Fragen oder Klara) nennt die Fassung, aus
+          der er kam. Hat sich der Beitrag seitdem geändert, steht das hier — ausserhalb der Fläche,
+          die keinen Erklärtext trägt, und nur dann; bei gleicher Fassung bleibt die Seite still.
+          Trägt die Adresse eine Belegstelle (`stelle`, R-0326), meldet die Lesefläche die andere
+          Fassung schon selbst (`belegLage` „andereFassung“) — dann steht hier nichts doppelt. */}
+      {!params.has(STELLE_PARAM) &&
+      fassungsLage(genannteFassung, aktuelleFassung) === "abweichend" ? (
+        <p
+          data-testid="objektbezug-fassung-abweichend"
+          data-fassung={genannteFassung ?? undefined}
+          data-aktuell={aktuelleFassung ?? undefined}
+          className="mb-3 text-[12.5px] text-trust-warn-text"
+        >
+          {t("arbeitsweg.lesen.fassungAbweichend", {
+            genannt: genannteFassung,
+            aktuell: aktuelleFassung,
+          })}
+        </p>
+      ) : null}
+      {/* R-1107: ist dieser Eintrag in einem Führungsartikel aufgegangen, sagt die Zeile worin. */}
+      <AufgegangenHinweis koId={id} />
+      <BibliothekFlaeche
+        vorgewaehlt={id}
+        beiWahl={beiWahl}
+        beiLoeschung={beiLoeschung}
+        // produkt:20261007:spaces: führender Space, Spacezuständigkeit und Artikelverantwortung
+        // getrennt, dazu der Spacewechsel mit Rechtevorschau. Unsichtbar → der Server sagt 404,
+        // die Zeile zeichnet dann nichts.
+        // LESEN-INHALT-ZUERST (Ben, nacharbeit-6): die Zeile stand VOR der ganzen Fläche und schob
+        // Titel, Status und erste Regel mobil um etwa 260 px nach unten. Sie steht jetzt in der
+        // Lesespalte NACH dem fachlichen Inhalt — dieselbe Komponente, dieselben Rechte.
+        nachDemInhalt={<SpaceZeile koId={id} />}
+      />
     </div>
   );
 }
