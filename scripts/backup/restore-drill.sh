@@ -523,6 +523,7 @@ PFLICHTTABELLEN=(
   chat_nachrichten
   vorlagen_fassungen
   gemeinsame_entwuerfe
+  instanz_bindung
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

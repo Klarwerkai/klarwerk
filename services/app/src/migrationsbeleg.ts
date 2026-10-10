@@ -223,6 +223,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE TABLE IF NOT EXISTS` und ein `CREATE UNIQUE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein
   // Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "GEMEINSAMER_ENTWURF_SCHEMA", risiko: "ADDITIV" },
+  // Instanztrennung: die eine Bindungszeile Datenbank → Anlage. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "INSTANZBINDUNG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**
