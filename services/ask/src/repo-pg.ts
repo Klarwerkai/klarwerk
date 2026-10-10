@@ -1,4 +1,10 @@
 import type { Pool } from "pg";
+import {
+  type NulltrefferErfassung,
+  type NulltrefferRepo,
+  type NulltrefferSuche,
+  leseEingrenzung,
+} from "./nulltreffer";
 import { type AnswerSnapshotRepo, type GapRepo, pruefeSnapshotKette } from "./repo";
 import { type AnswerEvidenceSnapshot, type AnswerRecord, AskError, type Gap } from "./types";
 
@@ -38,7 +44,64 @@ ALTER TABLE gaps
   GENERATED ALWAYS AS (data->>'compareKey') STORED;
 CREATE UNIQUE INDEX IF NOT EXISTS gaps_offener_vergleichsschluessel_uq
   ON gaps (compare_key) WHERE (data->>'status') = 'offen';
+CREATE TABLE IF NOT EXISTS ask_nulltreffer (
+  user_id text NOT NULL,
+  vergleichsschluessel text NOT NULL,
+  begriff text NOT NULL,
+  anzahl integer NOT NULL,
+  zuletzt text NOT NULL,
+  eingrenzung text NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, vergleichsschluessel, eingrenzung)
+);
 `;
+
+interface NulltrefferRow {
+  begriff: string;
+  anzahl: number;
+  zuletzt: string;
+  eingrenzung: string;
+}
+
+// R-0773: die erfolglosen Suchen je Person (Begründung und Grenzen in `nulltreffer.ts`). Additiv
+// im selben Schema wie die Lücken: eine neue Tabelle, kein Eingriff in bestehende. Die Zeile je
+// (Person, Begriff, Eingrenzung) ist durch den Primärschlüssel eindeutig; das Fortschreiben ist
+// EINE Anweisung.
+export class PgNulltrefferRepo implements NulltrefferRepo {
+  constructor(private readonly pool: Pool) {}
+
+  async erfasse(eintrag: NulltrefferErfassung): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ask_nulltreffer(
+         user_id, vergleichsschluessel, begriff, anzahl, zuletzt, eingrenzung)
+       VALUES($1, $2, $3, 1, $4, $5)
+       ON CONFLICT (user_id, vergleichsschluessel, eingrenzung)
+       DO UPDATE SET anzahl = ask_nulltreffer.anzahl + 1,
+                     begriff = EXCLUDED.begriff,
+                     zuletzt = EXCLUDED.zuletzt`,
+      [
+        eintrag.userId,
+        eintrag.vergleichsschluessel,
+        eintrag.begriff,
+        eintrag.zeitpunkt,
+        eintrag.eingrenzung,
+      ],
+    );
+  }
+
+  async fuer(userId: string, deckel: number): Promise<NulltrefferSuche[]> {
+    const res = await this.pool.query<NulltrefferRow>(
+      `SELECT begriff, anzahl, zuletzt, eingrenzung FROM ask_nulltreffer
+       WHERE user_id = $1 ORDER BY zuletzt DESC LIMIT $2`,
+      [userId, Math.max(0, deckel)],
+    );
+    return res.rows.map((r) => ({
+      begriff: r.begriff,
+      anzahl: Number(r.anzahl),
+      zuletzt: r.zuletzt,
+      eingrenzung: leseEingrenzung(r.eingrenzung),
+    }));
+  }
+}
 
 interface GapRow {
   data: Gap;
@@ -212,6 +275,21 @@ export class PgAnswerSnapshotRepo implements AnswerSnapshotRepo {
       [answerId],
     );
     return res.rows[0]?.data;
+  }
+
+  // Betroffenenrechte (R-0663): nur lesend. Dieselbe Eigentumsregel wie `gehoertNutzer` — ein
+  // Altbestandsrecord ohne `owner` und eine Systemantwort gehören keinem Konto und fallen heraus.
+  async listRecordsByOwner(userId: string): Promise<AnswerRecord[]> {
+    if (userId.trim().length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<AnswerRecordRow>(
+      `SELECT data FROM answer_records
+        WHERE data->'owner'->>'kind' = 'user' AND data->'owner'->>'userId' = $1
+        ORDER BY data->>'createdAt' ASC`,
+      [userId],
+    );
+    return res.rows.map((z) => z.data);
   }
 
   // D5 (KI aus): `vorInhaltsabruf` vor JEDER der vier Anweisungen (s. `AnswerSnapshotRepo`) —

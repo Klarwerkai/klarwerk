@@ -40,6 +40,8 @@ export default {
       "Kontoregel: Pflichtprüfung – eingereicht ohne Direktfreigaberecht, von einer anderen Person angenommen",
     "pruefablauf.annahme.regel.freiwilligeZweitpruefung":
       "Kontoregel: freiwillige Zweitprüfung – trotz Freigaberecht zur Prüfung gegeben, von einer anderen Person angenommen",
+    "pruefablauf.annahme.regel.eigentuemerfreigabe":
+      "Kontoregel: Freigabe durch den benannten Eigentümer mit Freigaberecht",
     "pruefablauf.annahme.regel.unbekannt":
       "Kontoregel: im Beleg nicht festgehalten (älterer Beleg)",
   },
@@ -71,6 +73,8 @@ export default {
       "Account rule: mandatory review – submitted without direct approval rights, accepted by another person",
     "pruefablauf.annahme.regel.freiwilligeZweitpruefung":
       "Account rule: voluntary second review – handed to review despite approval rights, accepted by another person",
+    "pruefablauf.annahme.regel.eigentuemerfreigabe":
+      "Account rule: approval by the named owner with approval rights",
     "pruefablauf.annahme.regel.unbekannt":
       "Account rule: not recorded in the record (older record)",
   },
@@ -102,6 +106,8 @@ export default {
       "Accountregel: verplichte beoordeling – ingediend zonder direct goedkeuringsrecht, door een andere persoon aangenomen",
     "pruefablauf.annahme.regel.freiwilligeZweitpruefung":
       "Accountregel: vrijwillige tweede beoordeling – ondanks goedkeuringsrecht ter beoordeling gegeven, door een andere persoon aangenomen",
+    "pruefablauf.annahme.regel.eigentuemerfreigabe":
+      "Accountregel: goedkeuring door de aangewezen eigenaar met goedkeuringsrecht",
     "pruefablauf.annahme.regel.unbekannt":
       "Accountregel: niet vastgelegd in het bewijsstuk (ouder bewijsstuk)",
   },

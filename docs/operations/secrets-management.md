@@ -97,7 +97,12 @@
 
 ## 10. Secret Scanning / Review
 
-- **Pre-Commit/CI-Scan** empfohlen (z. B. `gitleaks`/`trufflehog`) gegen versehentliche Secret-Commits — Einrichtung ist Betreiber-/Ops-Aufgabe (in diesem Ticket nicht installiert).
+- **Geheimnis-Scan im Gesamttor (R-1420):** `tools/geheimnis-scan.ts` (Starter `tools/geheimnis-scan.sh`) läuft als Schritt `▶ geheimnis-scan` in `./tools/check` — damit lokal und im `check`-Job von `.github/workflows/ci.yml`. Gelesen wird alles, was übernommen werden kann (`git ls-files --cached --others --exclude-standard`, also auch neue, noch nicht committete Dateien). Jeder Fund sperrt das Tor und wird nur **maskiert** ausgegeben (Datei:Zeile, Regel, vier Zeichen + Länge).
+  - **Erkannt:** private Schlüssel (PEM/OpenSSH/PGP), AWS-, GitHub-, Anthropic-, OpenAI-, Slack-, Google-API-, Stripe-Live- und npm-Token an ihrem Format; Dateien `.env`/`*.env` (Vorlagen wie `.env.example` ausgenommen) und Schlüsseldateien (`*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `id_rsa` …).
+  - **Bewusste Attrappe** (Testfall): in derselben Zeile `geheimnis-scan: erlaubt` mit Grund.
+  - **Nicht erkannt:** Geheimnisse ohne erkennbares Format (frei gewählte Kennwörter, präfixlose Hex-Token). Eine allgemeine „passwort = …"-Regel wurde am Bestand gemessen und verworfen — sie trifft Dutzende bewusster Testkennwörter. Hier bleibt das PR-Review zuständig.
+  - Von Hand vor einem Commit: `bash tools/geheimnis-scan.sh`. Ein automatischer Git-Hook ist **nicht** eingerichtet (lokale Einrichtung je Arbeitsplatz).
+  - Ein externer Scanner (z. B. `gitleaks`/`trufflehog`, auch über die Git-Historie) bleibt optional — Betreiberentscheidung, nicht installiert.
 - **PR-Review:** `.env.example` enthält nur Platzhalter; keine echten Werte in Diffs/Logs.
 - **Periodischer Review:** Secret-/Zugriffs-Check im **Quartals-Compliance-Review** (`gdpr-compliance-runbook.md` §6) mitführen.
 
@@ -106,7 +111,7 @@
 ## 11. Offene Betreiberpflichten / Nicht-Ziele
 
 - Auswahl/Einrichtung eines **externen Secret-Stores** (Vault/Doppler/Cloud SM) — Empfehlung, **nicht** Teil dieses Tickets/der Sandbox.
-- **Secret-Scanning-Tooling** in CI aktivieren — Ops-Aufgabe.
+- ~~**Secret-Scanning-Tooling** in CI aktivieren~~ — erledigt über den Schritt `geheimnis-scan` in `./tools/check` (§10). Offen bleibt nur: Scan der bestehenden **Git-Historie** und ein lokaler Pre-Commit-Hook — Ops.
 - **Zertifikats-/Key-Lifecycle** (TLS) über Hosting/Reverse-Proxy — Ops.
 - **Rotation tatsächlich terminieren** und Verantwortlichen benennen — organisatorisch.
 

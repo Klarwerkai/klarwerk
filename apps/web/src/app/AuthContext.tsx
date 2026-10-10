@@ -37,6 +37,14 @@ interface AuthState {
    * (die Absage NACH dem Versuch) liegt darunter.
    */
   selfRegistrationEnabled: boolean | undefined;
+  /**
+   * R-0541: Gilt die Anmeldung mit Passwort? `false` heißt: nur noch Firmen-Login. DREIWERTIG wie
+   * `selfRegistrationEnabled` — ein Server, der noch nicht geantwortet hat oder das Feld nicht
+   * kennt, darf der Maske kein Passwortfeld wegnehmen.
+   */
+  passwordLoginEnabled: boolean | undefined;
+  /** R-0560: SAML als Firmen-Login eingerichtet? Wie `oidcEnabled`: unbekannt heisst „nicht zeigen". */
+  samlEnabled: boolean;
   isLoading: boolean;
   /** Status-Abfrage fehlgeschlagen (z. B. Backend im Dev nicht erreichbar). */
   error: boolean;
@@ -340,6 +348,9 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     // der 401-Fall oben ausdrücklich. Ohne Daten (erster Aufbau, Fehler vor der ersten Antwort,
     // älterer Server ohne das Feld) bleibt es `undefined` — unbekannt.
     selfRegistrationEnabled: status.data?.selfRegistrationEnabled,
+    // R-0541: dieselbe Bauform — `undefined` heißt unbekannt, die Maske zeigt dann wie bisher alles.
+    passwordLoginEnabled: status.data?.passwordLoginEnabled,
+    samlEnabled: status.data?.samlEnabled ?? false,
     isLoading: status.isLoading || (status.isSuccess && !needsSetup && me.isLoading),
     error: status.isError,
     sitzungslage,

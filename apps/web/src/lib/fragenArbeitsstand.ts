@@ -22,7 +22,7 @@
 //     „kein Arbeitsstand" — dieselbe fehlertolerante Grenze wie `persistentToggle.ts`.
 //
 // DOM-frei: der Speicher wird hereingereicht, damit die Regeln ohne Browser prüfbar sind.
-import type { AnswerResult, VerschlossenHinweis } from "../api/types";
+import type { AnswerResult, Fragekontext, VerschlossenHinweis } from "../api/types";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -39,6 +39,50 @@ export interface GespeicherteAntwort {
   gapId: string | null;
   /** Zeitpunkt der Antwort (ISO) — die Fläche nennt ihn, damit niemand sie für frisch hält. */
   angezeigtAm: string;
+  /**
+   * R-0338: die Fassung jeder herangezogenen Quelle, wie der SERVER sie zu dieser Antwort meldete
+   * (`AskResponse.quellenStand`) — Grundlage des Auffrischen-Vertrags (`antwortFrische`). Eigener
+   * Schlüsselname: ein früherer, nie ausgelieferter Stand legte unter `quellenStand` einen Wert aus
+   * dem Browserbestand ab; der wird bewusst nicht als Serverstand gelesen.
+   */
+  serverQuellenStand?: QuellenStand;
+  /** R-0338, Regel 4: die Fassungen, die die Fläche beim Eintreffen kannte (`beobachtungAus`). */
+  beobachtet?: QuellenStand;
+  /**
+   * R-0305/R-1099 (Ben, Nacharbeit 10): der Fragekontext (R-1633), mit dem DIESE Antwort gestellt
+   * wurde — die Zweitmeinung nach einer Wiederaufnahme fragt mit genau ihm. Drei Lesarten:
+   *   · ein Objekt — mit diesem Werk/dieser Schicht/Rolle gefragt;
+   *   · `null`     — ausdrücklich OHNE Kontext gefragt;
+   *   · fehlt      — Altstand von vor dieser Ablage: der Kontext ist UNBEKANNT. Dann wird keine
+   *                  kontextgleiche Zweitmeinung behauptet (s. `components/fragen/Zweitmeinung.tsx`).
+   */
+  fragekontext?: Fragekontext | null;
+}
+
+/**
+ * Der gespeicherte Fragekontext — streng gelesen: `null` bleibt „ohne Kontext", ein Objekt nur mit
+ * Zeichenketten in `werk`/`schicht`/`rolle`, alles andere (fehlt, beschädigt) ist `undefined` =
+ * UNBEKANNT. Ein beschädigter Kontext wird nie zu „ohne Kontext" umgedeutet.
+ */
+function fragekontextAus(roh: unknown): Fragekontext | null | undefined {
+  if (roh === null) {
+    return null;
+  }
+  if (!istObjekt(roh)) {
+    return undefined;
+  }
+  const kontext: Fragekontext = {};
+  for (const feld of ["werk", "schicht", "rolle"] as const) {
+    const wert = roh[feld];
+    if (wert === undefined) {
+      continue;
+    }
+    if (typeof wert !== "string") {
+      return undefined;
+    }
+    kontext[feld] = wert;
+  }
+  return kontext;
 }
 
 export interface FragenArbeitsstand {
@@ -91,6 +135,7 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     return null;
   }
   const { frage, result, receipt, verschlossen, gapId, angezeigtAm } = roh;
+  const fragekontext = fragekontextAus(roh.fragekontext);
   if (
     typeof frage !== "string" ||
     frage.trim() === "" ||
@@ -105,6 +150,8 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   ) {
     return null;
   }
+  const serverQuellenStand = quellenStandLesen(roh.serverQuellenStand);
+  const beobachtet = quellenStandLesen(roh.beobachtet);
   return {
     frage,
     result: result as unknown as AnswerResult,
@@ -112,7 +159,190 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     verschlossen: verschlossen as VerschlossenHinweis[],
     gapId,
     angezeigtAm,
+    ...(serverQuellenStand ? { serverQuellenStand } : {}),
+    ...(beobachtet ? { beobachtet } : {}),
+    // Fehlt oder beschädigt: das Feld fehlt auch hier — „unbekannt" hat genau eine Darstellung.
+    ...(fragekontext === undefined ? {} : { fragekontext }),
   };
+}
+
+// Ein beschädigter Stand ist KEIN Grund, die Antwort zu verwerfen — er ist dann bloss unbekannt,
+// und es gilt Regel 4 des Auffrischen-Vertrags (wie für einen Eintrag von vor diesem Feld).
+function quellenStandLesen(roh: unknown): QuellenStand | undefined {
+  if (!istObjekt(roh)) {
+    return undefined;
+  }
+  const eintraege = Object.entries(roh);
+  return eintraege.every(([, v]) => typeof v === "number" && Number.isInteger(v))
+    ? (Object.fromEntries(eintraege) as QuellenStand)
+    : undefined;
+}
+
+// ================================================================================================
+// R-0338 (Aufnahme gesamt-suchindex-aktualitaet) — DER AUFFRISCHEN-VERTRAG DER FRAGENSEITE.
+// ================================================================================================
+//
+// Ändert sich Wissen, zeigt Klara nicht weiter den alten Stand. WANN NEU GELADEN WIRD:
+//   1 Jede gestellte Frage — auch dieselbe noch einmal — holt die Antwort neu vom Server. Der liest
+//     die Suchprojektion, die im selben Schreibvorgang wie jede Überarbeitung entsteht; eine
+//     ersetzte, zurückgezogene oder aufgegangene Fassung ist dort kein Kandidat.
+//   2 Eine STEHENDE Antwort (wiederaufgenommen oder eben angekommen) wird nie von selbst neu
+//     erzeugt — es geht ohne Absenden keine Modellanfrage hinaus (Ergänzung 1). Sie wird aber gegen
+//     den Bestand geprüft, sooft der neu geladen ist (Öffnen der Seite, Fensterfokus, Auffrischung
+//     nach einer Änderung): hat sich eine ihrer Quellen seither geändert, ist sie ÜBERHOLT und wird
+//     nicht mehr gezeigt. Die Fläche sagt das und bietet „Neu fragen" an.
+//   3 MIT QUELLENSTAND. Der Stand kommt vom SERVER (`AskResponse.quellenStand`): die Fassungen, die
+//     die Antwort tatsächlich gelesen hat — nicht der Browserbestand von eben (Ben, Nacharbeit 3).
+//     Überholt ist sie, sobald eine Quelle im Bestand fehlt (Papierkorb, nicht mehr sichtbar — etwa
+//     nach einer Heraufstufung), aufgegangen ist oder eine NEUERE Fassung trägt. Kennt der Browser
+//     nur eine ÄLTERE Fassung als die Antwort, ist sein Bestand der veraltete, nicht die Antwort.
+//   4 OHNE BELASTBAREN QUELLENSTAND (Altbestand, ein älterer Server, eine Quelle fehlt im Stand)
+//     bleibt die Antwort nicht unbegrenzt stehen. Überholt ist sie, sobald eine Quelle fehlt oder
+//     aufgegangen ist — und für jede Quelle sonst:
+//       · kannte die Fläche sie beim Eintreffen der Antwort (`beobachtet`), sobald sie seither eine
+//         neuere Fassung trägt. Das ist KEINE Aussage darüber, was die Antwort gelesen hat, nur eine
+//         Untergrenze: was danach kam, kam nach der Antwort;
+//       · sonst nach ihrem Verlauf: eine Änderung NACH dem Zeitpunkt der Antwort — oder es lässt
+//         sich gar nicht sagen (kein lesbarer Zeitpunkt, eine spätere Fassung ohne Verlauf);
+//       · eine Quelle, die die Fläche beim Eintreffen nicht kannte und die im Bestand fehlt, gilt
+//         nur bis zum nächsten erfolgreichen Laden des Bestands NACH der Antwort als unauffällig;
+//         fehlt sie dann noch, ist die Antwort überholt (Ben, Nacharbeit 5).
+//     Im Zweifel also „Neu fragen", nie still der alte Stand.
+//   5 Ohne geladenen Bestand ist die Antwort UNGEPRÜFT: sie bleibt mit ihrem Zeitpunkt stehen —
+//     der Bestand lädt mit der Seite, das ist ein Augenblick und kein Dauerzustand.
+
+/** Die Fassung jeder herangezogenen Quelle, wie die Antwort sie gelesen hat. */
+export type QuellenStand = Record<string, number>;
+
+export type AntwortFrische = "aktuell" | "ueberholt" | "ungeprueft";
+
+/** Was die Regel vom Bestand braucht — genau die Felder, die eine Änderung verraten. */
+export interface QuellenBestandEintrag {
+  id: string;
+  version: number;
+  mergedInto?: unknown;
+  /** Der Änderungsverlauf (Fassung + Zeitpunkt) — für Antworten ohne Quellenstand (Regel 4). */
+  history?: readonly { version: number; at: string }[];
+}
+
+/**
+ * Den Quellenstand einer eben angekommenen Antwort festhalten — aus dem, was der SERVER zu dieser
+ * Antwort meldet. `undefined`, wenn er keinen oder einen unvollständigen Stand meldet: dann gibt es
+ * keinen Stand, für den die Fläche bürgen könnte, und es gilt Regel 4.
+ */
+export function quellenStandAus(
+  quellen: readonly string[],
+  vomServer: Readonly<Record<string, unknown>> | undefined,
+): QuellenStand | undefined {
+  if (!vomServer) {
+    return undefined;
+  }
+  const stand: QuellenStand = {};
+  for (const id of quellen) {
+    const fassung = vomServer[id];
+    if (typeof fassung !== "number" || !Number.isInteger(fassung)) {
+      return undefined;
+    }
+    stand[id] = fassung;
+  }
+  return stand;
+}
+
+/**
+ * Regel 4, erster Spiegelstrich: die Fassungen, die die FLÄCHE beim Eintreffen der Antwort von
+ * ihren Quellen kannte — nur die, die sie kannte. Ohne geladenen Bestand leer.
+ */
+export function beobachtungAus(
+  quellen: readonly string[],
+  bestand: readonly QuellenBestandEintrag[] | undefined,
+): QuellenStand {
+  const nachId = new Map((bestand ?? []).map((ko) => [ko.id, ko]));
+  const beobachtet: QuellenStand = {};
+  for (const id of quellen) {
+    const ko = nachId.get(id);
+    if (ko) {
+      beobachtet[id] = ko.version;
+    }
+  }
+  return beobachtet;
+}
+
+/** Die Antwort, wie die Regel sie sieht: Quellen, Serverstand, Beobachtung, Zeitpunkt. */
+export interface StehendeAntwort {
+  quellen: readonly string[];
+  stand: QuellenStand | undefined;
+  beobachtet?: QuellenStand | undefined;
+  am: string | null;
+}
+
+/**
+ * Regeln 3–5 des Vertrags (oben). `bestandGeladenAm` ist der Zeitpunkt (ms), zu dem `bestand`
+ * zuletzt erfolgreich geladen wurde — er entscheidet über die eine Ausnahme in Regel 4.
+ */
+export function antwortFrische(
+  antwort: StehendeAntwort,
+  bestand: readonly QuellenBestandEintrag[] | undefined,
+  bestandGeladenAm?: number,
+): AntwortFrische {
+  if (!bestand) {
+    return "ungeprueft";
+  }
+  const nachId = new Map(bestand.map((ko) => [ko.id, ko]));
+  const { stand } = antwort;
+  if (stand) {
+    for (const [id, fassung] of Object.entries(stand)) {
+      const ko = nachId.get(id);
+      if (!ko || ko.mergedInto || ko.version > fassung) {
+        return "ueberholt";
+      }
+    }
+    return "aktuell";
+  }
+  if (antwort.quellen.length === 0) {
+    // Ohne Quelle gibt es nichts, das sich ändern könnte — wie bisher mit Zeitpunkt.
+    return "ungeprueft";
+  }
+  const am = antwort.am === null ? Number.NaN : Date.parse(antwort.am);
+  for (const id of antwort.quellen) {
+    const ko = nachId.get(id);
+    const gesehen = antwort.beobachtet?.[id];
+    if (!ko) {
+      // Fehlte die Quelle der Fläche schon beim Eintreffen, belegt ihr Fehlen nur so lange keine
+      // Änderung, wie der Bestand noch der von damals sein KANN. Ben, Nacharbeit 5: diese Ausnahme
+      // ist nicht dauerhaft — ist der Bestand NACH der Antwort erfolgreich neu geladen und fehlt
+      // die Quelle weiterhin, gibt es keinen Beleg mehr für ihre Aktualität: „Neu fragen".
+      // Ohne Beobachtung (Altbestand) ist Fehlen ohnehin der sichere Grund.
+      const nachDerAntwortGeladen =
+        bestandGeladenAm !== undefined && !Number.isNaN(am) && bestandGeladenAm > am;
+      if (antwort.beobachtet && gesehen === undefined && !nachDerAntwortGeladen) {
+        continue;
+      }
+      return "ueberholt";
+    }
+    if (ko.mergedInto) {
+      return "ueberholt";
+    }
+    if (gesehen !== undefined ? ko.version > gesehen : seitherGeaendert(ko, am)) {
+      return "ueberholt";
+    }
+  }
+  return "ungeprueft";
+}
+
+/** Regel 4: hat sich die Quelle nach `am` geändert — oder lässt sich das nicht ausschliessen? */
+function seitherGeaendert(ko: QuellenBestandEintrag, am: number): boolean {
+  if (Number.isNaN(am)) {
+    return true;
+  }
+  const verlauf = ko.history ?? [];
+  if (verlauf.length === 0) {
+    // Ohne Verlauf ist nur die Erstfassung sicher unverändert.
+    return ko.version > 1;
+  }
+  return verlauf.some((eintrag) => {
+    const zeit = Date.parse(eintrag.at);
+    return Number.isNaN(zeit) || zeit > am;
+  });
 }
 
 /**

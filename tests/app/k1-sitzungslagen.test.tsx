@@ -133,3 +133,30 @@ describe("JOB 3056 R4 · Sitzungslagen — pending, 401, Netzfehler, warten, ang
     expect(mitte().knoepfe).toEqual(["login-btn", "session-retry-btn"]);
   });
 });
+
+// Aufnahme gesamt-sprache-begriffe (K22, Nacharbeit 9): Die Sprachwahlgruppe trug fest
+// aria-label="Sprache" (taskpane.html) und blieb nach dem Wechsel deutsch — Vorleseprogramme
+// nannten sie in EN/NL falsch. `renderStatics` setzt den Gruppennamen jetzt über
+// t("einstSprache"). Gefahren über die ECHTEN Klick-Handler, einschließlich Rückwechsel.
+describe("K22 · Word-Seitenfenster — die Sprachwahl nennt sich in der gewählten Sprache", () => {
+  afterEach(() => {
+    panelAbraeumen();
+  });
+
+  it("DE → EN → NL → DE: Gruppenname und Dokumentsprache folgen jedem Klick", async () => {
+    panelStarten(router(() => ({ status: 200, body: { name: "Synthetische Testperson" } })));
+    await ruhe();
+    const folge: Array<[string, string]> = [
+      ["de", "Sprache"],
+      ["en", "Language"],
+      ["nl", "Taal"],
+      ["de", "Sprache"],
+    ];
+    for (const [sprache, soll] of folge) {
+      el(`lang-${sprache}`).click();
+      await ruhe();
+      expect(document.documentElement.lang, sprache).toBe(sprache);
+      expect(el("einst-sprache-wahl").getAttribute("aria-label"), sprache).toBe(soll);
+    }
+  });
+});

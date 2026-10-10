@@ -48,9 +48,6 @@ export type AddonCapability =
   | "status.read"
   | "mcp.werkzeug";
 
-// Rückwärtskompatibler Alias (SCRUM-490): früher trug der Principal genau diese eine Capability.
-export const ADDON_CAPABILITY = ASK_CAPABILITY;
-
 // Die Capabilities, die der HEUTE per Key aufgelöste Principal trägt: EIN Key bedient beide Endpunkte
 // (ein Tenant), also beide Rechte. Die Enge liegt pro Route (jede verlangt GENAU ihr Recht), nicht am
 // Key — ein künftiger, schmaler ausgestellter Principal (nur eines der Rechte) erreicht den jeweils
@@ -91,10 +88,8 @@ export function authorizesCheckText(principal: AddonPrincipal): boolean {
 export function isLiteralPath(rawUrl: string | undefined, path: string): boolean {
   return (rawUrl ?? "").split("?")[0] === path;
 }
-// Bestehende Ask-Variante (byte-genau getestet) — delegiert an isLiteralPath.
-export function isLiteralAskPath(rawUrl: string | undefined): boolean {
-  return isLiteralPath(rawUrl, ADDON_ASK_PATH);
-}
+// R-1349: Die Hüllen `isLiteralAskPath` und der Alias `ADDON_CAPABILITY` hatten keinen
+// Produktaufrufer und sind entfernt. Der Betrieb prüft über `matchAddonRoute` → `isLiteralPath`.
 
 // SCRUM-491 Slice 5 (D2-Erweiterung): die EINZIGEN Routen, die ein Add-on-Principal erreichen darf.
 // Deny-by-default — was hier nicht steht, ist für den Add-on-Key 403. Jede Route ist an GENAU ein

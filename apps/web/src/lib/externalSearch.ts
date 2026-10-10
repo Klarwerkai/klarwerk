@@ -28,7 +28,7 @@ export function toSourcePayload(result: ExternalResult): SourcePayload {
   };
 }
 
-// Ein Treffer ist anhängbar, wenn er einen Titel hat (Label-Pflichtfeld serverseitig).
-export function isAttachable(result: ExternalResult): boolean {
-  return result.title.trim().length > 0;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isAttachable` („anhängbar nur mit Titel").
+// Der Server verwirft Treffer ohne Titel, bevor sie die Fläche erreichen
+// (`services/external-search/src/wikipedia.ts`, R-0991 Nr. 26); die Prüfung rief niemand und ist
+// entfernt.

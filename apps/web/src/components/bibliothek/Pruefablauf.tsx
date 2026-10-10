@@ -103,6 +103,8 @@ export function kontoregelSchluessel(
       return { schluessel: "pruefablauf.annahme.regel.pflichtpruefung" };
     case "freiwillige-zweitpruefung":
       return { schluessel: "pruefablauf.annahme.regel.freiwilligeZweitpruefung" };
+    case "eigentuemerfreigabe":
+      return { schluessel: "pruefablauf.annahme.regel.eigentuemerfreigabe" };
     default:
       return { schluessel: "pruefablauf.annahme.regel.unbekannt" };
   }

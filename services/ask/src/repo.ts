@@ -1,4 +1,10 @@
-import { type AnswerEvidenceSnapshot, type AnswerRecord, AskError, type Gap } from "./types";
+import {
+  type AnswerEvidenceSnapshot,
+  type AnswerRecord,
+  AskError,
+  type Gap,
+  gehoertNutzer,
+} from "./types";
 
 export interface GapRepo {
   insert(gap: Gap): Promise<void>;
@@ -142,6 +148,14 @@ export interface AnswerSnapshotRepo {
   /** Alle Revisionen EINER Antwort, aufsteigend. */
   listSnapshots(answerId: string): Promise<AnswerEvidenceSnapshot[]>;
   latestSnapshot(answerId: string): Promise<AnswerEvidenceSnapshot | undefined>;
+  /**
+   * Betroffenenrechte (R-0663): alle Antworten, die einem Konto GEHÖREN (`gehoertNutzer`), nach
+   * Zeitpunkt aufsteigend. Nur lesend — die Unveränderlichkeit oben bleibt unberührt.
+   *
+   * OPTIONAL, damit handgeschriebene Test-Doubles und Hüllen ohne diese Methode gültig bleiben. Fehlt
+   * sie, meldet die Selbstauskunft den Bereich ausdrücklich als „nicht abrufbar" statt als leer.
+   */
+  listRecordsByOwner?(userId: string): Promise<AnswerRecord[]>;
 }
 
 /**
@@ -208,6 +222,15 @@ export class InMemoryAnswerSnapshotRepo implements AnswerSnapshotRepo {
   findRecord(answerId: string): Promise<AnswerRecord | undefined> {
     const treffer = this.records.get(answerId);
     return Promise.resolve(treffer === undefined ? undefined : schnappschuss(treffer));
+  }
+
+  listRecordsByOwner(userId: string): Promise<AnswerRecord[]> {
+    return Promise.resolve(
+      [...this.records.values()]
+        .filter((r) => gehoertNutzer(r, userId))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .map(schnappschuss),
+    );
   }
 
   async appendSnapshot(

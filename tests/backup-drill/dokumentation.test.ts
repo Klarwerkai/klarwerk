@@ -13,7 +13,10 @@ it("Skript und beide Anleitungen führen denselben eindeutigen Exitcodesatz und 
   // JOB 4097: 62 (Aufbaufehler des Wissensnachweises) und 73 (Befund am Bestand) kommen dazu — und
   // sie stehen bewusst in ihren Familien: 6x = Aufbaufehler, 7x = Befund. Ein Aufbaufehler darf
   // nicht wie ein Befund aussehen; das ist seit JOB 517 der Kern dieses Skripts.
-  expect(codes).toEqual([0, 1, 10, 11, 20, 21, 22, 23, 24, 30, 31, 60, 61, 62, 70, 71, 72, 73, 80]);
+  // ADMIN-13: 74 (Rechte — Rollenverteilung der Konten weicht ab) gehört in die Befundfamilie 7x.
+  expect(codes).toEqual([
+    0, 1, 10, 11, 20, 21, 22, 23, 24, 30, 31, 60, 61, 62, 70, 71, 72, 73, 74, 80,
+  ]);
   for (const path of ANLEITUNGEN) {
     const doc = read(path);
     expect(
@@ -54,6 +57,20 @@ it("beide Anleitungen verweisen auf den einen Pflichtsatz statt ihn abzuschreibe
     expect(doc, `${path} behauptet weiter vier Kerntabellen`).not.toMatch(/vier Kerntabellen/i);
     // Der konkrete Fall, um den es geht, wird benannt — nicht nur die Regel.
     expect(doc).toContain("ko_evidence");
+  }
+});
+
+// ADMIN-13 — das Protokoll der Probe steht im Skript UND in beiden Anleitungen, samt der Zusage,
+// dass keine Zugangsdaten hineingehen.
+it("Skript und beide Anleitungen nennen letzter-drill.json und die Rechteprüfung", () => {
+  const script = read("scripts/backup/restore-drill.sh");
+  expect(script).toContain("letzter-drill.json");
+  expect(script).toContain("GLIED 3b");
+  for (const path of ANLEITUNGEN) {
+    const doc = read(path);
+    expect(doc, `${path} nennt das Protokoll nicht`).toContain("letzter-drill.json");
+    expect(doc, `${path} verschweigt die Zugangsdaten-Zusage`).toMatch(/Keine Zugangsdaten/);
+    expect(doc, `${path} nennt die Rollenverteilung nicht`).toMatch(/Rollenverteilung/);
   }
 });
 

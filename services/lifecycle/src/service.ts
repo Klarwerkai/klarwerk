@@ -3,10 +3,33 @@ import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import type { LifecycleRepo } from "./repo";
 import type { LearningPath, LearningStep } from "./types";
 
+/** R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde. */
+export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek";
+
+/**
+ * R-1635: der Beleg einer Markierung — eine Zeile je markiertem Objekt im Prüfprotokoll
+ * (`lifecycle.revalidation-requested`). Aus ihm stellt die Glocke dem Autor bzw. seinem
+ * Nachfolger die Benachrichtigung zu (services/app/src/frische-meldungen.ts). Strukturell
+ * getippt, damit dieses Modul den Auditdienst nicht importieren muss.
+ */
+export interface RevalidierungsBeleg {
+  record(input: {
+    actor: string;
+    action: string;
+    target: string;
+    payload: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+/** Der Prüfprotokoll-Vorgang einer Markierung (R-1635). */
+export const REVALIDIERUNG_ANGEFORDERT = "lifecycle.revalidation-requested";
+
 export interface LifecycleServiceDeps {
   koService: KoService;
   repo: LifecycleRepo;
   genId?: () => string;
+  // R-1635: ohne Beleg wird weiter markiert, nur ohne Benachrichtigungsgrundlage (Altaufbau, Tests).
+  audit?: RevalidierungsBeleg;
 }
 
 /**
@@ -25,11 +48,31 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   private readonly koService: KoService;
   private readonly repo: LifecycleRepo;
   private readonly genId: () => string;
+  private readonly audit: RevalidierungsBeleg | undefined;
 
   constructor(deps: LifecycleServiceDeps) {
     this.koService = deps.koService;
     this.repo = deps.repo;
     this.genId = deps.genId ?? (() => randomUUID());
+    this.audit = deps.audit;
+  }
+
+  // R-1635: setzt den Merker und hält je Objekt fest, wer ihn warum gesetzt hat. Der Beleg ist die
+  // Grundlage der Benachrichtigung an Autor bzw. Nachfolger; er trägt keinen Inhalt des Objekts.
+  private async markiere(
+    koIds: readonly string[],
+    actor: string,
+    payload: { grund: RevalidierungsGrund; assetRef?: string; ausgeloestVon?: string },
+  ): Promise<void> {
+    for (const koId of koIds) {
+      await this.repo.markPending(koId);
+      await this.audit?.record({
+        actor,
+        action: REVALIDIERUNG_ANGEFORDERT,
+        target: koId,
+        payload: { ...payload },
+      });
+    }
   }
 
   // FR-LIF-01: Anlagen-/Prozesskopplung.
@@ -42,13 +85,43 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     return this.repo.couplingsForKo(koId);
   }
 
-  // FR-LIF-01: Anlagenänderung markiert gekoppelte KOs „Stimmt das noch?".
-  async assetChanged(assetRef: string): Promise<string[]> {
+  // FR-LIF-01: Anlagenänderung markiert gekoppelte KOs „Stimmt das noch?". R-1635: mit Beleg je
+  // Objekt (`actor` = wer die Änderung gemeldet hat), damit Autor bzw. Nachfolger erfährt, dass
+  // sein Wissen geprüft werden soll.
+  async assetChanged(assetRef: string, actor = "system"): Promise<string[]> {
     const koIds = await this.repo.couplingsFor(assetRef);
-    for (const koId of koIds) {
-      await this.repo.markPending(koId);
-    }
+    await this.markiere(koIds, actor, { grund: "anlage", assetRef });
     return koIds;
+  }
+
+  // aufnahme:20260922:gesamt-wissen-frische (R-0203) — DER AUSLÖSER ÜBER BENACHBARTE WISSENSOBJEKTE.
+  //
+  // Wer an EINEM Wissensobjekt merkt, dass sich seine Anlage geändert hat, meldet das dort einmal:
+  // jede an das Objekt gekoppelte Anlage gilt als geändert, und alle Objekte an diesen Anlagen —
+  // das Objekt selbst und seine Nachbarn — werden mit „Stimmt das noch?" markiert. Derselbe Merker
+  // wie `assetChanged`, kein zweiter Weg. Ohne Kopplung wird nichts markiert (leere Liste).
+  // R-1635: auch dieser Auslöser benachrichtigt — je markiertem Objekt EIN Beleg mit Grund „nachbar"
+  // und dem auslösenden Objekt, auch wenn es über mehrere Anlagen erreicht wird.
+  async neighborsChanged(koId: string, actor = "system"): Promise<string[]> {
+    const markiert = new Set<string>();
+    const anlagen = await this.repo.couplingsForKo(koId);
+    for (const assetRef of anlagen) {
+      for (const betroffen of await this.repo.couplingsFor(assetRef)) {
+        markiert.add(betroffen);
+      }
+    }
+    await this.markiere([...markiert], actor, {
+      grund: "nachbar",
+      ausgeloestVon: koId,
+      ...(anlagen.length === 1 && anlagen[0] !== undefined ? { assetRef: anlagen[0] } : {}),
+    });
+    return [...markiert];
+  }
+
+  // R-0206 / R-1732 / R-1745: eine erneute Prüfung GEZIELT für ein Objekt anstoßen — aus der
+  // Bibliothek heraus, ohne Anlagenänderung. Derselbe Merker; die Bestätigung räumt ihn wie gewohnt.
+  async requestRevalidation(koId: string, actor = "system"): Promise<void> {
+    await this.markiere([koId], actor, { grund: "bibliothek" });
   }
 
   // SCRUM-420 (Pedi 03.07.): Selbstheilung — Marker, deren KO nicht mehr existiert (z. B.

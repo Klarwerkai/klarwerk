@@ -111,16 +111,25 @@ describe("WP-D9c: defensive src-Prüfung (zentrale isSafeImgSrc-Policy)", () => 
 });
 
 describe("WP-BILD-1d: Verdrahtung + i18n", () => {
-  it("KoRead rendert die Galerie unter dem Lese-Body (nur Leseansicht, keine neuen Routen)", () => {
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): bis hierher an `components/ko/KoRead.tsx` gemessen —
+  // einer Leseansicht, die seit JOB 3063 keinen Produktaufrufer mehr hatte und entfernt ist. Die
+  // Leseansicht ist heute die Lesefläche der Bibliothek; dort steht dieselbe Galerie unter dem Body.
+  it("die Lesefläche rendert die Galerie unter dem Lese-Body (nur Leseansicht, keine neuen Routen)", () => {
     const src = readFileSync(
-      resolve(process.cwd(), "apps/web/src/components/ko/KoRead.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/bibliothek/BibliothekLesen.tsx"),
       "utf8",
     );
-    // AUFTRAG-mega69 Block A: die Leseansicht reicht zusätzlich den (seitengesteuerten) Weg zur
-    // Bildbeschreibung durch — ohne Editierrecht bleibt er undefined und die Galerie reine Anzeige.
-    expect(src).toContain(
-      "<BodyImageGallery bodyHtml={ko.bodyHtml} onEditCaption={onEditCaption} />",
-    );
+    // Der Lese-Body der Fläche — mit oder ohne weitere Anzeigeoptionen (seit R-1160 `lesehuellen`).
+    const body =
+      /<SanitizedHtml html=\{ko\.bodyHtml\} className="prose-kw"[^>]*\/>/.exec(src)?.index ?? -1;
+    expect(body, "der Lese-Body der Fläche").toBeGreaterThan(-1);
+    const danach = src.slice(body);
+    const treffer = /<BodyImageGallery\s+bodyHtml=\{ko\.bodyHtml\}/.exec(danach);
+    expect(treffer, "die Galerie unter dem Lese-Body").not.toBeNull();
+    const galerie = body + (treffer?.index ?? 0);
+    // AUFTRAG-mega69 Block A: der (seitengesteuerte) Weg zur Bildbeschreibung reist nur mit
+    // Editierrecht — ohne bleibt er undefined und die Galerie reine Anzeige.
+    expect(src.slice(galerie, galerie + 200)).toContain("canEdit");
   });
 
   it("Galerie-Texte existieren DE/EN/NL (Galerie, Bild n von m, Schließen, Blättern)", () => {

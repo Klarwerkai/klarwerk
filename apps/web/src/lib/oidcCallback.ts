@@ -18,7 +18,7 @@ export function parseOidcCallback(search: string): OidcCallback {
   };
 }
 
-// Gültiger Callback = entweder ein Fehler ODER vollständiges code+state-Paar.
-export function isCompleteCallback(cb: OidcCallback): boolean {
-  return cb.error !== null || (cb.code !== null && cb.state !== null);
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isCompleteCallback` („Fehler ODER code+state
+// vorhanden"). Der SSO-Rückruf prüft code und state selbst und meldet „unvollständig"
+// (`auth/SsoCallback.tsx`, `if (!cb.code || !cb.state)`; R-0991 Nr. 52) — dort zählt auch ein LEERER
+// Wert als fehlend, hier tat er es nicht. Die abweichende Zweitfassung rief niemand; sie ist entfernt.

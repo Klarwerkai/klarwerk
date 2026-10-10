@@ -2,14 +2,21 @@ import { randomUUID } from "node:crypto";
 import {
   type CreateKoInput,
   type DokumentHerkunft,
+  type KoAussageart,
   type KoSource,
   createOperationFingerprint,
   isConfidentialityDowngrade,
   isValidConfidentiality,
+  normalizeNegativwissen,
 } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
 import { normalizeAblauf } from "./ablauf";
 import { DRAFT_LIMITS } from "./draft-limits";
+import {
+  ENTWURFS_INDEX_FASSUNG,
+  type EntwurfsIndexStatus,
+  entwurfsIndexVon,
+} from "./entwurfs-index";
 import type { DraftRepo } from "./repo";
 import {
   CaptureError,
@@ -279,6 +286,9 @@ const MAX_EXT_QUERY_LEN = DRAFT_LIMITS.extQuery;
 const MAX_INTERVIEW_ANSWERS = DRAFT_LIMITS.interviewAnswers;
 const MAX_INTERVIEW_TEXT_LEN = DRAFT_LIMITS.interviewText;
 const MAX_INTERVIEW_QUESTION_LEN = DRAFT_LIMITS.interviewQuestion;
+// R-1624: dieselbe Obergrenze wie der Bildbefund im Reasoner (`MAX_INTERVIEW_IMAGE_CONTEXT_LENGTH`,
+// services/reasoner/src/provider.ts) — hier eigenständig, damit capture nicht vom reasoner abhängt.
+const MAX_INTERVIEW_IMAGE_CONTEXT_LEN = 300;
 
 function cappedString(value: unknown, max: number): string | undefined {
   return typeof value === "string" ? value.slice(0, max) : undefined;
@@ -411,6 +421,12 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
     .slice(0, MAX_INTERVIEW_ANSWERS);
   const answer = cappedString(raw.answer, MAX_INTERVIEW_TEXT_LEN);
   const question = cappedString(raw.question, MAX_INTERVIEW_QUESTION_LEN);
+  // R-1624: Bildbefund nur als nichtleerer, gekappter Text; alles andere fällt weg.
+  const imageContext =
+    typeof raw.imageContext === "string"
+      ? raw.imageContext.trim().slice(0, MAX_INTERVIEW_IMAGE_CONTEXT_LEN).trim()
+      : "";
+  const topic = cappedString(raw.topic, MAX_INTERVIEW_QUESTION_LEN)?.trim();
   const started = raw.started === true;
   // Substanzlose Hülle ({} o. ä.) gar nicht erst speichern — der Resume hätte nichts wiederherzustellen.
   if (!started && answers.length === 0 && answer === undefined && question === undefined) {
@@ -423,6 +439,11 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
     ...(question !== undefined ? { question } : {}),
     ...(typeof raw.done === "boolean" ? { done: raw.done } : {}),
     ...(typeof raw.demo === "boolean" ? { demo: raw.demo } : {}),
+    ...(imageContext.length > 0 ? { imageContext } : {}),
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: nur echte Wahrheitswerte und ein begrenztes Thema.
+    ...(raw.tree === true ? { tree: true } : {}),
+    ...(topic ? { topic } : {}),
+    ...(raw.confirmed === true ? { confirmed: true } : {}),
   };
 }
 
@@ -444,6 +465,8 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
     extResults: _extResults,
     // BILDSCHIRMABLÄUFE: der Ablauf läuft durch dieselbe Schleuse (`./ablauf.ts`).
     ablauf: _ablauf,
+    // R-1664/R-2179: die geführten Negativwissen-Angaben ebenfalls (Normalform aus knowledge-object).
+    negativwissen: _negativwissen,
     ...rest
   } = payload as DraftPayload & { extResults?: unknown };
   const next: DraftPayload = normalizeOriginIn(rest);
@@ -475,6 +498,10 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const ablauf = normalizeAblauf(raw.ablauf);
   if (ablauf !== undefined) {
     next.ablauf = ablauf;
+  }
+  const negativwissen = normalizeNegativwissen(raw.negativwissen);
+  if (negativwissen !== undefined) {
+    next.negativwissen = negativwissen;
   }
   return next;
 }
@@ -596,6 +623,15 @@ export class DraftStaleError extends CaptureError {
  * Prozess — mehr als ein, zwei Anläufe sind dann nicht zu erwarten. */
 const CAS_VERSUCHE = 5;
 
+/** R-1133: wie viele Kennungen der Abgleich je Durchgang aus der Arbeitsliste holt. */
+const INDEX_ABGLEICH_BLOCK = 200;
+
+/** R-1133: die Antwort der Duplikatsfrage — nur Kennung und Titel sichtbarer Entwürfe. */
+export interface GleicherEntwurfsInhalt {
+  indexStatus: EntwurfsIndexStatus;
+  entwuerfe: { id: string; titel: string }[];
+}
+
 export class CaptureService {
   private readonly repo: DraftRepo;
   private readonly now: () => number;
@@ -641,6 +677,120 @@ export class CaptureService {
     }
   }
 
+  // ==============================================================================================
+  // R-1133 — DER TECHNISCHE INDEX DES ENTWURFS (Regel: `./entwurfs-index.ts`).
+  // ==============================================================================================
+  //
+  // ER DARF DEN EINGABEFLUSS NICHT BLOCKIEREN. `indexiere` wird NACH dem gelungenen Schreiben nur
+  // EINGEPLANT und nie abgewartet — weder vom Speicherweg noch unter der Entwurfssperre
+  // (`withDraftLock`). Ein langsamer oder hängender Indexschreibvorgang verzögert deshalb weder die
+  // Speicherantwort noch die nächste Änderung (BEN, Nacharbeit 4). Auch die Ableitung selbst (Hash
+  // über bis zu 200.000 Zeichen) läuft erst im eingeplanten Schritt. Scheitert sie oder die Ablage,
+  // ist der Entwurf trotzdem gespeichert, und der Index bleibt als „offen" in der Arbeitsliste, bis
+  // der Abgleich (`gleicheEntwurfsIndexAb`) oder das nächste Speichern ihn nachzieht. Der Index ist
+  // keine Wahrheit; sein Fehlen kostet eine Beschleunigung, keinen Inhalt.
+  //
+  // ER FOLGT DEM GESPEICHERTEN STAND. Abgeleitet wird aus dem Datensatz, der gerade geschrieben
+  // wurde, und die Ablage nimmt ihn nur, wenn ihr gespeicherter Stand noch dieser ist. Laufen
+  // mehrere eingeplante Indexschreibvorgänge in beliebiger Reihenfolge ein, gewinnt deshalb nur der
+  // des zuletzt gespeicherten Stands; ein verspäteter älterer kann ihn nicht überschreiben.
+  private readonly indexArbeit = new Set<Promise<void>>();
+
+  private indexiere(draft: Draft): void {
+    if (!this.repo.setzeEntwurfsIndex) {
+      return;
+    }
+    const lauf: Promise<void> = Promise.resolve()
+      .then(() => this.repo.setzeEntwurfsIndex?.(draft.id, entwurfsIndexVon(draft)))
+      .then(
+        () => undefined,
+        // Bewusst geschluckt (s. Kopf): der Entwurf ist gespeichert, der Index bleibt offen und
+        // wird nachgezogen. Ein Fehler hier darf das Speichern des Menschen nicht berühren.
+        () => undefined,
+      )
+      .finally(() => {
+        this.indexArbeit.delete(lauf);
+      });
+    this.indexArbeit.add(lauf);
+  }
+
+  /**
+   * R-1133: wartet, bis alle eingeplanten Indexschreibvorgänge dieses Dienstes abgeschlossen sind —
+   * für das Herunterfahren (`onClose` in build-app.ts: der Pool schliesst erst danach) und für
+   * Gegenproben, die den Index lesen. Kein Speicherweg ruft sie.
+   */
+  async indexArbeitAbgeschlossen(): Promise<void> {
+    while (this.indexArbeit.size > 0) {
+      await Promise.all([...this.indexArbeit]);
+    }
+  }
+
+  /**
+   * R-1133 — DER ABGLEICH: zieht jeden lebenden Entwurf ohne gültigen Index nach (Altbestand,
+   * gescheiterte Indexläufe, neue Regelfassung). Wiederholbar: ein zweiter Lauf findet nichts mehr
+   * und schreibt nichts. Er lädt nur die Entwürfe der Arbeitsliste, nie den ganzen Bestand.
+   *
+   * `offenDanach` ist der ehrliche Rest: Entwürfe, die zwischen Lesen und Schreiben gespeichert
+   * wurden (ihr Speichern indiziert sie selbst) oder deren Ablage den Index verweigert hat.
+   */
+  async gleicheEntwurfsIndexAb(): Promise<{ nachgezogen: number; offenDanach: number }> {
+    if (!this.repo.offeneEntwurfsIndizes || !this.repo.setzeEntwurfsIndex) {
+      return { nachgezogen: 0, offenDanach: 0 };
+    }
+    let nachgezogen = 0;
+    for (;;) {
+      const offen = await this.repo.offeneEntwurfsIndizes(INDEX_ABGLEICH_BLOCK);
+      let fortschritt = 0;
+      for (const id of offen) {
+        const draft = await this.repo.findById(id);
+        if (draft && (await this.repo.setzeEntwurfsIndex(id, entwurfsIndexVon(draft)))) {
+          fortschritt += 1;
+        }
+      }
+      nachgezogen += fortschritt;
+      // Kein Fortschritt heisst: der Rest lässt sich in diesem Lauf nicht schliessen — kein
+      // Endlosdurchlauf über dieselben Kennungen.
+      if (offen.length < INDEX_ABGLEICH_BLOCK || fortschritt === 0) {
+        break;
+      }
+    }
+    const offenDanach = (await this.repo.offeneEntwurfsIndizes(INDEX_ABGLEICH_BLOCK)).length;
+    return { nachgezogen, offenDanach };
+  }
+
+  /**
+   * R-1133 — DIE DUPLIKATSFRAGE ÜBER DEN INDEX: welche anderen Entwürfe tragen genau denselben
+   * Inhalt? Beantwortet über den Inhaltshash der Ablage (`drafts_index_hash_idx`), ohne einen
+   * einzigen fremden Rumpf zu laden, um ihn zu vergleichen.
+   *
+   * RECHTE UNVERÄNDERT: `sichtbar` ist die Sichtbarkeitsregel der Route (`canSeeDraft`). Ein
+   * Entwurf, den der Fragende nicht sehen darf, erscheint nicht — auch nicht als Zahl. Die Antwort
+   * entscheidet nichts: kein Zusammenführen, kein Löschen, keine Freigabe.
+   */
+  async entwuerfeMitGleichemInhalt(
+    id: string,
+    sichtbar: (draft: Draft) => boolean,
+  ): Promise<GleicherEntwurfsInhalt> {
+    const draft = await this.require(id);
+    let index = await this.repo.entwurfsIndexVon?.(id);
+    if (!index || index.stand !== draft.updatedAt || index.fassung !== ENTWURFS_INDEX_FASSUNG) {
+      // Der eigene Index ist offen: aus dem gespeicherten Stand ableiten und dabei nachziehen.
+      index = entwurfsIndexVon(draft);
+      this.indexiere(draft);
+    }
+    const kennungen = this.repo.entwuerfeMitInhalt
+      ? await this.repo.entwuerfeMitInhalt(index.inhaltsHash, id)
+      : [];
+    const entwuerfe: GleicherEntwurfsInhalt["entwuerfe"] = [];
+    for (const kennung of kennungen) {
+      const anderer = await this.repo.findById(kennung);
+      if (anderer && sichtbar(anderer)) {
+        entwuerfe.push({ id: anderer.id, titel: anderer.payload.title ?? "" });
+      }
+    }
+    return { indexStatus: index.status, entwuerfe };
+  }
+
   /**
    * Der unveränderte Bestandsweg: legt an und liefert den Entwurf. Alle bisherigen Aufrufer
    * (`POST /api/drafts/from-docx`, Mobil, Offline-Queue) benutzen ihn weiter, ohne etwas zu
@@ -668,7 +818,8 @@ export class CaptureService {
     rawPayload: DraftPayload,
     author: string,
     vorgangsId?: string,
-  ): Promise<{ draft: Draft; angelegt: boolean }> {
+    optionen: { fortschreiben?: boolean } = {},
+  ): Promise<{ draft: Draft; angelegt: boolean; fortgeschrieben?: boolean }> {
     validateMetadata(rawPayload);
     // E2E-004: leere/Whitespace-only Entwürfe ablehnen — ein Entwurf braucht mindestens Titel ODER
     // Aussage. Client sperrt den Knopf zusätzlich; das hier ist die harte Serverkante (auch für API).
@@ -718,6 +869,7 @@ export class CaptureService {
     // eine Attrappe ohne Bestand könnte ohnehin nie eine Wiederholung finden.
     if (!vorgangsId || !this.repo.insertIfOperationAbsent) {
       await this.repo.insert(draft);
+      this.indexiere(draft);
       return { draft, angelegt: true };
     }
     const fingerprint = createOperationFingerprint({ weg: "draft-create", inhalt: payload });
@@ -727,18 +879,94 @@ export class CaptureService {
     };
     const ergebnis = await this.repo.insertIfOperationAbsent(mitVorgang);
     if (ergebnis.angelegt) {
+      this.indexiere(ergebnis.draft);
       return { draft: ergebnis.draft, angelegt: true };
     }
     // DER ABDRUCKVERGLEICH LÄUFT HIER, nicht in der Ablage und nicht in der Route — eine Stelle
     // für eine Frage. Und er läuft NUR auf dem gefundenen EIGENEN Datensatz: ein fremder wird nie
     // geladen (der Schlüssel ist eigentümergebunden), also auch nie verglichen.
     if (ergebnis.bestehend.createOperation?.fingerprint !== fingerprint) {
+      if (optionen.fortschreiben) {
+        const fortgeschrieben = await this.anlageFortschreiben(
+          ergebnis.bestehend.id,
+          payload,
+          author,
+          vorgangsId,
+          fingerprint,
+        );
+        return { draft: fortgeschrieben, angelegt: false, fortgeschrieben: true };
+      }
       throw new CaptureError(
         "IDEMPOTENCY_PAYLOAD_MISMATCH",
         "Unter diesem Vorgang wurde bereits ein anderer Entwurf gespeichert.",
       );
     }
     return { draft: ergebnis.bestehend, angelegt: false };
+  }
+
+  // ==============================================================================================
+  // entscheidung:14ce8681 (Option A) — DER UNKLARE ERSTE VORGANG WIRD FORTGESCHRIEBEN.
+  // ==============================================================================================
+  //
+  // Ging die Antwort auf eine Anlage verloren und hat der Mensch DANACH den Inhalt geändert, kommt
+  // derselbe Vorgangsschlüssel mit einer anderen Nutzlast an. Bis hierher war das ein Abdruck-
+  // konflikt (409), und die Oberfläche begann daraufhin einen neuen Vorgang — zweiter Entwurf.
+  // Pedis Entscheidung: es gibt immer nur EINEN Eintrag, und er trägt den neuen Inhalt.
+  //
+  // NUR AUF AUSDRÜCKLICHEN WUNSCH (`fortschreiben`). Ohne ihn bleibt der Konflikt, wie er war: die
+  // Offline-Warteschlange und die übrigen Aufrufer schicken unter einem Schlüssel nie einen anderen
+  // Inhalt, und für sie ist der 409 weiterhin die ehrliche Antwort.
+  //
+  // NUR, SOLANGE DER ENTWURF NOCH DER STAND DIESES VORGANGS IST. Trägt er nicht mehr den Inhalt, den
+  // der Vorgang geschrieben hat (Abdruck der gespeicherten Nutzlast ≠ Abdruck des Vorgangs), hat ihn
+  // inzwischen jemand bearbeitet — zweiter Tab, Studio. Den überschreibt dieser Weg NICHT; es bleibt
+  // beim Abdruckkonflikt. Dasselbe gilt für einen Entwurf, der nicht mehr da ist (Papierkorb,
+  // eingereicht). Geschrieben wird über denselben Vergleich-und-Tausch wie beim Fortsetzen.
+  private async anlageFortschreiben(
+    id: string,
+    payload: DraftPayload,
+    author: string,
+    vorgangsId: string,
+    fingerprint: string,
+  ): Promise<Draft> {
+    const konflikt = (): CaptureError =>
+      new CaptureError(
+        "IDEMPOTENCY_PAYLOAD_MISMATCH",
+        "Unter diesem Vorgang wurde bereits ein anderer Entwurf gespeichert.",
+      );
+    return this.withDraftLock(id, async () => {
+      const aktuell = await this.repo.findById(id);
+      if (
+        !aktuell ||
+        aktuell.createOperation?.id !== vorgangsId ||
+        aktuell.createOperation.actor !== author ||
+        createOperationFingerprint({ weg: "draft-create", inhalt: aktuell.payload }) !==
+          aktuell.createOperation.fingerprint
+      ) {
+        throw konflikt();
+      }
+      const bisher = Date.parse(aktuell.updatedAt);
+      const jetzt = this.now();
+      const fortgeschrieben: Draft = {
+        ...aktuell,
+        payload,
+        lastEditor: author,
+        createOperation: { id: vorgangsId, actor: author, fingerprint },
+        updatedAt: new Date(
+          Number.isFinite(bisher) ? Math.max(jetzt, bisher + 1) : jetzt,
+        ).toISOString(),
+      };
+      if (!(await this.repo.updateWennStand(fortgeschrieben, aktuell.updatedAt))) {
+        throw new CaptureError(
+          "DRAFT_WRITE_CONTENDED",
+          "Der Entwurf wird gerade an anderer Stelle geschrieben — bitte noch einmal versuchen.",
+        );
+      }
+      // R-1133: neuer Inhalt, neuer Stand — der Index folgt dem GESCHRIEBENEN Stand, wie bei der
+      // Erstanlage und beim Fortsetzen (erst nach gewonnenem Compare-and-Swap, nur eingeplant).
+      this.indexiere(fortgeschrieben);
+      return fortgeschrieben;
+    });
   }
 
   /**
@@ -913,6 +1141,8 @@ export class CaptureService {
           "Der Entwurf wird gerade an anderer Stelle geschrieben — bitte noch einmal versuchen.",
         );
       }
+      // R-1133: der Inhalt ist derselbe, der Stand nicht — der Index wird an den neuen gebunden.
+      this.indexiere(updated);
       return updated;
     });
   }
@@ -1047,6 +1277,9 @@ export class CaptureService {
         };
         // D3: schreiben NUR, wenn der gespeicherte Stand noch der gelesene ist.
         if (await this.repo.updateWennStand(updated, draft.updatedAt)) {
+          // R-1133: der Index folgt dem GESCHRIEBENEN Stand — erst nach gewonnenem Compare-and-Swap.
+          // Ein abgewiesener Schreibversuch erzeugt keinen Index.
+          this.indexiere(updated);
           return updated;
         }
         const inzwischen = await this.repo.findById(id);
@@ -1145,6 +1378,9 @@ export class CaptureService {
     if (!zurueck) {
       throw new CaptureError("NOT_FOUND", "Entwurf nicht im Papierkorb.");
     }
+    // R-1133: im Papierkorb war der Index ausgeblendet, nicht verloren. Ein Altentwurf, der nie
+    // einen trug, bekommt ihn hier; ein vorhandener gültiger wird nur bestätigt.
+    this.indexiere(zurueck);
     return zurueck;
   }
 
@@ -1324,7 +1560,15 @@ export class CaptureService {
       statement: p.statement,
       type: p.type,
       category: p.category,
+      // R-0034 / FR-CAP-08: das beim Erfassen gesetzte Fachgebiet reist ins KO. Fehlt es, bleibt
+      // das Feld weg — `KoService.create` normalisiert und leitet nichts ab.
+      ...(p.domain !== undefined ? { domain: p.domain } : {}),
+      // R-0086: die Aussageart reist mit; ein Leerwert ist keine Angabe. Geprüft wird in
+      // `KoService.create` — ein unbekannter Wert bricht dort ab, statt still zu verschwinden.
+      ...(p.aussageart ? { aussageart: p.aussageart as KoAussageart } : {}),
       author: draft.originalAuthor,
+      // R-0554: ein übergebener Entwurf trägt seine ursprüngliche Urheberin mit (`Draft.urheber`).
+      ...(draft.urheber ? { originalAuthor: draft.urheber } : {}),
       conditions: p.conditions ?? [],
       measures: p.measures ?? [],
       tags: p.tags ?? [],
@@ -1332,10 +1576,17 @@ export class CaptureService {
       // (Admin-Standard-Prüferanzahl, sonst Modul-Default). Explizite Werte bleiben.
       ...(p.neededValidations !== undefined ? { neededValidations: p.neededValidations } : {}),
       asset: p.asset ?? null,
+      // R-0082: die Anlagenliste des Entwurfs reist mit und hat Vorrang vor `asset`.
+      ...(p.assets !== undefined ? { assets: p.assets } : {}),
+      // R-1690: der Re-Validierungstermin reist mit; leer = keiner (geprüft in `KoService.create`).
+      ...(p.revalidierungAm ? { revalidierungAm: p.revalidierungAm } : {}),
       bodyHtml: p.bodyHtml ?? null, // KW-STR: Body in den KO übernehmen (wird dort sanitisiert)
       // SCRUM-509 R2: die Vertraulichkeitsstufe des Entwurfs ans KO durchreichen (kein Verlust beim
       // Promote). ko.create prüft/lehnt ungültige Werte ab — keine stille Intern-Normalisierung.
       ...(p.confidentiality !== undefined ? { confidentiality: p.confidentiality } : {}),
+      // R-1664/R-2179/R-2180: die geführten Negativwissen-Angaben reisen mit; ob sie zur Wissensart
+      // passen und welche Mindeststufe daraus folgt, entscheidet `ko.create`.
+      ...(p.negativwissen ? { negativwissen: p.negativwissen } : {}),
       // JOB 679 / D2 (K1.2, Weg A): DIE HERKUNFT REIST MIT. Genau hier ging sie bis heute verloren:
       // diese Rückgabe zählt die Felder einzeln auf, und `origin` war nicht darunter — ein über das
       // Word-Add-in erfasster Entwurf verlor seinen Erfassungsweg in dem Moment, in dem aus ihm ein

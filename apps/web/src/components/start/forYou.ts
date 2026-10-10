@@ -281,7 +281,11 @@ export interface MeldungZeile {
     | "assignment"
     | "return"
     | "impact"
-    | "kenntnisnahme";
+    | "kenntnisnahme"
+    | "loeschantrag"
+    | "frische"
+    | "reklamation"
+    | "veroeffentlichung";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -311,8 +315,16 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   return: "today",
   // Eine angeforderte Kenntnisnahme ist Arbeit von heute — wie eine Zuweisung.
   kenntnisnahme: "today",
+  // Ein Löschantrag ist Verwalterarbeit mit gesetzlicher Frist — Arbeit von heute.
+  loeschantrag: "today",
+  // R-1089: eine gemeldete falsche Antwort zum eigenen Wissen ist Arbeit von heute.
+  reklamation: "today",
+  // aufnahme:20260922:gesamt-wissen-frische: bestätigen, ob eigenes Wissen noch stimmt — heute.
+  frische: "today",
   gap: "later",
   impact: "later",
+  // Eine Veröffentlichungsmeldung ist Information, keine Arbeit — wie eine Wirkungs-Rückmeldung.
+  veroeffentlichung: "later",
 };
 
 /** Bereichsname je Meldungsart (i18n-Schlüssel) — steht als Meta rechts in der Zeile. */
@@ -321,12 +333,28 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   if (kind === "kenntnisnahme") {
     return "kenntnisnahme.meldungArt";
   }
+  // Der Löschantrag ebenso (`texte/datenschutz.ts`).
+  if (kind === "loeschantrag") {
+    return "datenschutz.meldungArt";
+  }
+  // aufnahme:20260922:gesamt-wissen-frische: Texte im Textmodul `texte/frische.ts`.
+  if (kind === "frische") {
+    return "frische.meldungArt";
+  }
+  // Die Veröffentlichung bringt ihre Texte im eigenen Textmodul mit (`texte/veroeffentlichung.ts`).
+  if (kind === "veroeffentlichung") {
+    return "veroeffentlichung.meldungArt";
+  }
   // R-0894: die beiden neueren Arten tragen ihren Namen im Textmodul `texte/meldungsart.ts`.
   if (kind === "escalation") {
     return "meldungsart.eskalation.art";
   }
   if (kind === "return") {
     return "meldungsart.rueckgabe.art";
+  }
+  // R-1089: die Antwortmeldung bringt ihren Namen im Textmodul `texte/antwortmeldung.ts` mit.
+  if (kind === "reklamation") {
+    return "antwortmeldung.meldungArt";
   }
   return `start.fuerdich.art.${kind}`;
 }

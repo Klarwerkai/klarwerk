@@ -205,7 +205,9 @@ test("Fragen ohne Modell: der Weg ist gesperrt und sagt warum", async ({ page })
   // unmittelbar gefangen hätte (dort war das Problem die andere Richtung: nie ein Aufruf, trotzdem
   // grün) — deshalb liegt sie als geteilte Hilfe unter `support/` und nicht als Einzelfall hier.
   const askZaehler = zaehleAnfragen(page, /\/api\/ask/);
-  const input = page.getByPlaceholder(/Ventil X/);
+  // R-1001 (Aufnahme gesamt-sprache-begriffe): der Platzhalter kommt aus `texte/beispielfragen.ts`
+  // und ist kein Industriebeispiel mehr („Wer muss zustimmen, bevor wir eine Frist verlängern?").
+  const input = page.getByPlaceholder(/Frist verlängern/);
   await expect(input).toBeVisible({ timeout: 15_000 });
   await input.fill("Wie stelle ich den Dosierwert an Linie L4 nach Schichtwechsel ein?");
 
@@ -253,7 +255,7 @@ test("Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @model
 }) => {
   await ensureLoggedIn(page);
   await page.goto("/fragen");
-  const input = page.getByPlaceholder(/Ventil X/);
+  const input = page.getByPlaceholder(/Frist verlängern/);
   await input.fill("Wie stelle ich den Dosierwert an Linie L4 nach Schichtwechsel ein?");
   await input.press("Enter");
   // Ehrliches Ergebnis: entweder eine quellengebundene Antwort ODER die Wissenslücke. Die Anker

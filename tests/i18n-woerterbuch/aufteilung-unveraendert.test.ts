@@ -37,7 +37,7 @@ import {
   WOERTERBUCH_SPRACHEN,
   fuegeWoerterbuchZusammen,
   woerterbuchBlock,
-  woerterbuchQuelle,
+  woerterbuchQuelleHistorisch,
   woerterbuchRelativ,
   woerterbuchTeile,
 } from "../support/woerterbuchquelle";
@@ -50,7 +50,10 @@ describe("I18N-AUFTEILUNG · W — die Wörterbücher sind verschoben, nicht ver
     // Kalibrierung: ein leerer oder halber Bezugspunkt machte den Vergleich wertlos.
     expect(VORHER.split("\n").length).toBeGreaterThan(18_000);
     expect(VORHER).toContain("const nl: typeof de = {");
-    expect(woerterbuchQuelle()).toBe(VORHER);
+    // Aufnahme 20260922 · antwort-quellenanzeige (Ben zu e6eb2409): der Nachweis in seinem
+    // HISTORISCHEN Umfang — ohne die nach der Aufteilung benannt ergänzten Produkttexte
+    // (`ERGAENZTE_SCHLUESSEL` in tests/support/woerterbuchquelle.ts). Jede andere Abweichung bleibt rot.
+    expect(woerterbuchQuelleHistorisch()).toBe(VORHER);
   });
 
   it("W2 · Gegenproben: ein Zeichen, ein fehlender Anker oder ein fremder Vorspann wird ROT", () => {

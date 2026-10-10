@@ -27,7 +27,9 @@ describe("SCRUM-488: ?-Hilfen auf dem Start-Screen", () => {
     expect(new Set(START_HELP_IDS).size).toBe(START_HELP_IDS.length);
     expect(START_HELP_TOPICS.length).toBe(START_HELP_IDS.length);
     const topic = startHelp("cycle");
-    expect(topic.titleKey).toBe("shelp.cycle.title");
+    // R-0908: der Titel heißt seit der Aufnahme gesamt-sprache-begriffe „Der Wissenskreis"
+    // (`texte/fachwort.ts`) statt „Der Knowledge-OS-Kreis"; der Erklärtext bleibt im Namensraum.
+    expect(topic.titleKey).toBe("fachwort.kreis.titel");
     expect(topic.bodyKey).toBe("shelp.cycle.body");
   });
 

@@ -1,5 +1,5 @@
 import type { ReasonerLocale } from "../../reasoner";
-import type { Gap, GapPriority } from "./types";
+import type { Gap, GapBelegbedarf, GapPriority } from "./types";
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): adressatengerechte Sichtbarkeit des Wissenslücken-
 // FREITEXTES (gap.question). Der Fragetext ist Nutzer-Freitext OHNE Vertraulichkeitsstufe und kann
@@ -24,6 +24,13 @@ export interface GapView {
   // GAP-SPRACHHERKUNFT: Sprache, in der die Lücke entstand. Bewusst AUCH in der redigierten Sicht
   // (siehe unten) — eine Sprachangabe ist kein Fragetext und verrät nichts über den Inhalt.
   locale?: ReasonerLocale;
+  // JOB 1111 / D-032 · R-0333: wie oft dieselbe Frage zu dieser Lücke führte. Stand bis zur
+  // Aufnahme gesamt-wissensluecken NICHT in dieser Projektion — die Häufigkeit wurde gezählt und
+  // gespeichert, erreichte die Oberfläche aber nie. In BEIDEN Zweigen: eine Zahl ist kein Fragetext.
+  askCount?: number;
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde. NUR in der berechtigten Sicht —
+  // der Befund gehört zur Frage und wird mit ihr zurückgehalten.
+  belegbedarf?: GapBelegbedarf[];
   // true → der Fragetext wurde für diesen Betrachter zurückgehalten (fail-closed Redaktion).
   redacted?: boolean;
 }
@@ -59,9 +66,14 @@ export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView 
     // sieht nur eine Neutralbezeichnung — ohne die Sprachangabe stünde bei ihm ein unerklärter
     // fremdsprachiger Eintrag. Die Sprache ist datensparsam: sie sagt nichts über den Inhalt.
     ...(gap.locale ? { locale: gap.locale } : {}),
+    ...(typeof gap.askCount === "number" ? { askCount: gap.askCount } : {}),
   };
   if (authorized) {
-    return { ...base, question: gap.question };
+    return {
+      ...base,
+      question: gap.question,
+      ...(gap.belegbedarf?.length ? { belegbedarf: [...gap.belegbedarf] } : {}),
+    };
   }
   return { ...base, redacted: true };
 }

@@ -36,6 +36,14 @@ export default {
     "spaces.feld.ansichtName": "Name der Ansicht",
     "spaces.feld.ansichtTag": "Tag",
     "spaces.feld.ansichtHinzu": "Ansicht hinzufügen",
+    "spaces.feld.teams": "Teams",
+    "spaces.feld.teamRecht": "Recht für Team {{name}}",
+    "spaces.feld.teamWaehlen": "Team wählen",
+    "spaces.feld.teamHinzu": "Team binden",
+    "spaces.formular.teamHinweis":
+      "Jedes aktive Mitglied eines gebundenen Teams erhält dieses Recht — zusätzlich zu direkten Mitgliedschaften.",
+    "spaces.team.archiviert": "archiviert, gewährt nichts mehr",
+    "spaces.detail.teamMitglieder": "Über Teams",
     "spaces.formular.speichern": "Speichern",
     "spaces.formular.abbrechen": "Abbrechen",
     "spaces.formular.hinweis":
@@ -103,6 +111,116 @@ export default {
     "spaces.klara.zustaendigSpace": "Spacezuständigkeit: {{name}}",
     "spaces.klara.antwortGrenze":
       "Meine Antworten aus dem Wissen stützen sich nur auf Artikel, die du nach Space und Stufe sehen darfst.",
+    // ADMIN-07 · produkt:20261007:spaces:admin-20261009
+    "spaces.art.marke": "Space · Wissensbereich",
+    "spaces.art.hinweis":
+      "Ein Space ist ein Wissensbereich mit eigenen Mitgliedern, Regeln und Zuständigen — keine Funktionsseite wie Suche, Prüfung oder Verwaltung.",
+    "spaces.status.aktiv": "Aktiv",
+    "spaces.status.archiviert": "Archiviert",
+    "spaces.feld.gruppe": "Gruppe (optional)",
+    "spaces.feld.gruppeHinweis": "z. B. Produktion — ein Etikett, kein Ordner",
+    "spaces.feld.regeln": "Spaceregeln",
+    "spaces.feld.regelnHinweis": "Was gehört hier hinein, wer pflegt, was gilt beim Prüfen?",
+    "spaces.detail.gruppe": "Gruppe: {{gruppe}}",
+    "spaces.detail.mitgliederZahl": "{{anzahl}} Mitglieder (direkt und über Teams)",
+    "spaces.vorgang.angelegt": "angelegt",
+    "spaces.vorgang.geaendert": "geändert",
+    "spaces.vorgang.archiviert": "archiviert",
+    "spaces.vorgang.wiederaufgenommen": "wiederaufgenommen",
+    "spaces.seite.oeffnenName": "Space {{name}} öffnen",
+    "spaces.filter.titel": "Spaces suchen und filtern",
+    "spaces.filter.suche": "Suche nach Name, Zweck, Zuständigkeit oder Regel",
+    "spaces.filter.status": "Status",
+    "spaces.filter.alle": "Alle",
+    "spaces.filter.gruppieren": "Nach Gruppe gliedern",
+    "spaces.filter.ohneGruppe": "Ohne Gruppe",
+    "spaces.filter.treffer": "{{anzahl}} von {{gesamt}} Spaces",
+    "spaces.fehler.archiviert": "Dieser Space ist archiviert. Erst wiederaufnehmen, dann ändern.",
+    "spaces.fehler.begruendung": "Bitte eine Begründung angeben.",
+    "spaces.fehler.offeneVerantwortung":
+      "Offene Verantwortungsfragen verhindern das Archivieren. Bitte zuerst klären.",
+    "spaces.fehler.vorschauVeraltet":
+      "Die Lage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
+    "spaces.fehler.regelnUngueltig":
+      "Bitte für jede Regel ein Tag und einen aktiven Zielspace wählen.",
+    "spaces.zugriff.titel": "Zugriff und Herkunft",
+    "spaces.zugriff.erklaerung":
+      "Je Person: über welchen Weg der Zugriff kommt und was er zusammen bewirkt. Entfernt man einen Weg, bleiben die anderen bestehen.",
+    "spaces.zugriff.niemand": "Niemand hat einen benannten Zugang.",
+    "spaces.zugriff.offenWeitere":
+      "Offener Zugang: zusätzlich lesen {{anzahl}} weitere Konten mit Leserecht.",
+    "spaces.zugriff.keinAdminDurchgriff":
+      "Die globale Rolle öffnet keinen Space: die Kontoverwaltung pflegt Spaces, liest ihre Inhalte aber nur mit eigenem Zugang.",
+    "spaces.zugriff.weg.zustaendig": "zuständig",
+    "spaces.zugriff.weg.direkt": "direkt",
+    "spaces.zugriff.weg.team": "über Team {{team}}",
+    "spaces.zugriff.weg.offen": "offener Zugang",
+    "spaces.eigenesRechtKurz.zustaendig": "zuständig",
+    "spaces.eigenesRechtKurz.schreiben": "liest und schreibt",
+    "spaces.eigenesRechtKurz.lesen": "liest",
+    "spaces.eigenesRechtKurz.verwalten": "verwaltet, liest nicht",
+    "spaces.eigenesRechtKurz.keins": "kein Zugang",
+    "spaces.archiv.titel": "Archivieren",
+    "spaces.archiv.erklaerung":
+      "Vor dem Archivieren zeigt die Vorschau, wer weiter liest, wer nicht mehr schreiben kann und welche Aufgaben offen sind.",
+    "spaces.archiv.pruefen": "Folgen des Archivierens prüfen",
+    "spaces.archiv.folgenTitel": "Folgen des Archivierens von „{{name}}“",
+    "spaces.archiv.lesen": "Lesen bleibt: {{anzahl}} Konten lesen die Inhalte weiter.",
+    "spaces.archiv.schreiben":
+      "Schreiben entfällt ({{anzahl}}): nichts wird mehr hinein- oder herausbewegt, der Space wird nicht mehr gepflegt",
+    "spaces.archiv.aufgaben":
+      "Offene Aufgaben: {{offen}} von {{gesamt}} Artikeln warten auf Prüfung.",
+    "spaces.archiv.aufgabenVerborgen": "Davon für dich nicht einsehbar: {{anzahl}}",
+    "spaces.archiv.fragenTitel": "Offene Verantwortungsfragen — Archivieren ist gesperrt:",
+    "spaces.archiv.frage.zustaendig_ohne_konto":
+      "Die Spacezuständigkeit nennt kein aktives Konto mehr.",
+    "spaces.archiv.frage.verantwortung_ohne_konto":
+      "{{anzahl}} Artikel: Artikelverantwortung ohne aktives Konto",
+    "spaces.archiv.frage.verantwortung_ohne_zugang":
+      "{{anzahl}} Artikel: die Artikelverantwortung hat keinen Zugang zu diesem Space",
+    "spaces.archiv.bleibt":
+      "Bleibt unverändert: Artikel, Fassungen, Autorschaft, Beziehungen und Prüfprotokoll. Der Space bleibt in der Übersicht (Filter „Archiviert“) und lässt sich wiederaufnehmen.",
+    "spaces.archiv.begruendung": "Begründung (steht im Verlauf)",
+    "spaces.archiv.bestaetigen": "Archivieren bestätigen",
+    "spaces.archiv.erfolg": "Der Space ist archiviert. Die Begründung steht im Verlauf.",
+    "spaces.archiv.hinweis":
+      "Archiviert: Inhalte bleiben für die bisherigen Leser lesbar; nichts wird hinein- oder herausbewegt.",
+    "spaces.archiv.wiederTitel": "Wiederaufnehmen",
+    "spaces.archiv.wiederErklaerung":
+      "Mitglieder, Teams und Regeln gelten danach wieder wie vor dem Archivieren. Die Wiederaufnahme steht mit Begründung im Verlauf.",
+    "spaces.archiv.wiederaufnehmen": "Space wiederaufnehmen",
+    "spaces.archiv.wiederErfolg": "Der Space ist wiederaufgenommen.",
+    "spaces.bestand.titel": "Bestand zuordnen",
+    "spaces.bestand.erklaerung":
+      "Artikel ohne Space erhalten per Tag einen führenden Space. Übernommen wird nur, was danach niemandem mehr Sicht gibt als vorher; alles andere wird als Ausnahme benannt.",
+    "spaces.bestand.tag": "Tag",
+    "spaces.bestand.ziel": "Zielspace",
+    "spaces.bestand.regelHinzu": "Regel hinzufügen",
+    "spaces.bestand.pruefen": "Bilanz prüfen",
+    "spaces.bestand.bilanzTitel": "Bilanz vor der Zuordnung",
+    "spaces.bestand.bilanz":
+      "{{gesamt}} Artikel: {{bereitsZugeordnet}} schon zugeordnet, {{ohneSpace}} ohne Space — davon {{zuordenbar}} zuordenbar, {{ausnahmen}} Ausnahmen, {{ohneRegel}} ohne passende Regel (bleiben unverändert).",
+    "spaces.bestand.zuordnung": "{{titel}} → {{ziel}} (sehen danach nicht mehr: {{anzahl}})",
+    "spaces.bestand.nichtEinsehbar": "nicht einsehbarer Artikel {{id}}",
+    "spaces.bestand.ausnahme.mehrdeutig": "passt zu mehreren Zielspaces",
+    "spaces.bestand.ausnahme.erweitert": "würde mehr Personen Sicht geben",
+    "spaces.bestand.ausnahme.autor_verliert": "der Autor verlöre den Zugang",
+    "spaces.bestand.ausnahme.verantwortung_verliert": "die Artikelverantwortung verlöre den Zugang",
+    "spaces.bestand.ausnahme.verwaist": "nennt einen Space, den es nicht gibt",
+    "spaces.bestand.bleibt":
+      "Fassung, Historie, Autorschaft und Beziehungen bleiben; jede Zuordnung steht im Prüfprotokoll.",
+    "spaces.bestand.uebernehmen": "{{anzahl}} Zuordnungen übernehmen",
+    "spaces.bestand.ergebnis":
+      "Zugeordnet: {{zugeordnet}} · Ausnahmen: {{ausnahmen}} · fehlgeschlagen: {{fehlgeschlagen}}",
+    "spaces.bestand.erfolg": "Die Zuordnung ist übernommen und dokumentiert.",
+    "spaces.bestand.protokoll": "Dokumentierte Zuordnungen",
+    "spaces.bestand.lauf":
+      "{{zeit}}: {{zugeordnet}} zugeordnet, {{ausnahmen}} Ausnahmen, {{ohneRegel}} ohne Regel",
+    "spaces.vorschau.regelnTitel": "Regeln vorher und nachher",
+    "spaces.vorschau.quelle": "Bisher",
+    "spaces.vorschau.ziel": "Danach",
+    "spaces.vorschau.regelnZeile": "{{zugang}}, zuständig: {{zustaendig}}",
+    "spaces.vorschau.ohneRegeln": "kein Space — nur die Vertraulichkeitsstufe gilt",
   },
   en: {
     "spaces.seite.titel": "Spaces",
@@ -131,6 +249,14 @@ export default {
     "spaces.feld.ansichtName": "View name",
     "spaces.feld.ansichtTag": "Tag",
     "spaces.feld.ansichtHinzu": "Add view",
+    "spaces.feld.teams": "Teams",
+    "spaces.feld.teamRecht": "Right for team {{name}}",
+    "spaces.feld.teamWaehlen": "Choose team",
+    "spaces.feld.teamHinzu": "Bind team",
+    "spaces.formular.teamHinweis":
+      "Every active member of a bound team receives this right — in addition to direct memberships.",
+    "spaces.team.archiviert": "archived, grants nothing",
+    "spaces.detail.teamMitglieder": "Via teams",
     "spaces.formular.speichern": "Save",
     "spaces.formular.abbrechen": "Cancel",
     "spaces.formular.hinweis":
@@ -196,6 +322,114 @@ export default {
     "spaces.klara.zustaendigSpace": "Space owner: {{name}}",
     "spaces.klara.antwortGrenze":
       "My answers from the knowledge base only use articles you may see by space and level.",
+    // ADMIN-07 · produkt:20261007:spaces:admin-20261009
+    "spaces.art.marke": "Space · knowledge area",
+    "spaces.art.hinweis":
+      "A space is a knowledge area with its own members, rules and owners — not a function page such as search, review or administration.",
+    "spaces.status.aktiv": "Active",
+    "spaces.status.archiviert": "Archived",
+    "spaces.feld.gruppe": "Group (optional)",
+    "spaces.feld.gruppeHinweis": "e.g. Production — a label, not a folder",
+    "spaces.feld.regeln": "Space rules",
+    "spaces.feld.regelnHinweis": "What belongs here, who maintains it, what applies to reviews?",
+    "spaces.detail.gruppe": "Group: {{gruppe}}",
+    "spaces.detail.mitgliederZahl": "{{anzahl}} members (direct and via teams)",
+    "spaces.vorgang.angelegt": "created",
+    "spaces.vorgang.geaendert": "changed",
+    "spaces.vorgang.archiviert": "archived",
+    "spaces.vorgang.wiederaufgenommen": "reopened",
+    "spaces.seite.oeffnenName": "Open space {{name}}",
+    "spaces.filter.titel": "Search and filter spaces",
+    "spaces.filter.suche": "Search by name, purpose, owner or rule",
+    "spaces.filter.status": "Status",
+    "spaces.filter.alle": "All",
+    "spaces.filter.gruppieren": "Group by label",
+    "spaces.filter.ohneGruppe": "No group",
+    "spaces.filter.treffer": "{{anzahl}} of {{gesamt}} spaces",
+    "spaces.fehler.archiviert": "This space is archived. Reopen it before changing it.",
+    "spaces.fehler.begruendung": "Please give a reason.",
+    "spaces.fehler.offeneVerantwortung":
+      "Open responsibility questions prevent archiving. Please resolve them first.",
+    "spaces.fehler.vorschauVeraltet":
+      "The situation has changed since the preview. Please review the new preview.",
+    "spaces.fehler.regelnUngueltig":
+      "Please choose a tag and an active target space for each rule.",
+    "spaces.zugriff.titel": "Access and origin",
+    "spaces.zugriff.erklaerung":
+      "Per person: which path the access comes from and what it adds up to. Removing one path leaves the others in place.",
+    "spaces.zugriff.niemand": "Nobody has a named access path.",
+    "spaces.zugriff.offenWeitere":
+      "Open access: {{anzahl}} further accounts with read access also read the contents.",
+    "spaces.zugriff.keinAdminDurchgriff":
+      "The global role does not open a space: account administration maintains spaces but reads their contents only with its own access.",
+    "spaces.zugriff.weg.zustaendig": "owner",
+    "spaces.zugriff.weg.direkt": "direct",
+    "spaces.zugriff.weg.team": "via team {{team}}",
+    "spaces.zugriff.weg.offen": "open access",
+    "spaces.eigenesRechtKurz.zustaendig": "owner",
+    "spaces.eigenesRechtKurz.schreiben": "reads and writes",
+    "spaces.eigenesRechtKurz.lesen": "reads",
+    "spaces.eigenesRechtKurz.verwalten": "administers, does not read",
+    "spaces.eigenesRechtKurz.keins": "no access",
+    "spaces.archiv.titel": "Archive",
+    "spaces.archiv.erklaerung":
+      "Before archiving, the preview shows who keeps reading, who can no longer write and which tasks are open.",
+    "spaces.archiv.pruefen": "Check consequences of archiving",
+    "spaces.archiv.folgenTitel": "Consequences of archiving “{{name}}”",
+    "spaces.archiv.lesen": "Reading stays: {{anzahl}} accounts keep reading the contents.",
+    "spaces.archiv.schreiben":
+      "Writing ends ({{anzahl}}): nothing is moved in or out any more, the space is no longer maintained",
+    "spaces.archiv.aufgaben": "Open tasks: {{offen}} of {{gesamt}} articles await review.",
+    "spaces.archiv.aufgabenVerborgen": "Of these not visible to you: {{anzahl}}",
+    "spaces.archiv.fragenTitel": "Open responsibility questions — archiving is blocked:",
+    "spaces.archiv.frage.zustaendig_ohne_konto": "The space owner is no longer an active account.",
+    "spaces.archiv.frage.verantwortung_ohne_konto":
+      "{{anzahl}} articles: article responsibility without an active account",
+    "spaces.archiv.frage.verantwortung_ohne_zugang":
+      "{{anzahl}} articles: the person responsible has no access to this space",
+    "spaces.archiv.bleibt":
+      "Stays unchanged: articles, versions, authorship, relations and audit log. The space stays in the overview (filter “Archived”) and can be reopened.",
+    "spaces.archiv.begruendung": "Reason (recorded in the history)",
+    "spaces.archiv.bestaetigen": "Confirm archiving",
+    "spaces.archiv.erfolg": "The space is archived. The reason is in the history.",
+    "spaces.archiv.hinweis":
+      "Archived: contents stay readable for previous readers; nothing is moved in or out.",
+    "spaces.archiv.wiederTitel": "Reopen",
+    "spaces.archiv.wiederErklaerung":
+      "Members, teams and rules apply again as before archiving. The reopening is recorded in the history with its reason.",
+    "spaces.archiv.wiederaufnehmen": "Reopen space",
+    "spaces.archiv.wiederErfolg": "The space is reopened.",
+    "spaces.bestand.titel": "Assign existing content",
+    "spaces.bestand.erklaerung":
+      "Articles without a space receive a leading space by tag. Only what gives nobody more visibility than before is applied; everything else is named as an exception.",
+    "spaces.bestand.tag": "Tag",
+    "spaces.bestand.ziel": "Target space",
+    "spaces.bestand.regelHinzu": "Add rule",
+    "spaces.bestand.pruefen": "Check balance",
+    "spaces.bestand.bilanzTitel": "Balance before assigning",
+    "spaces.bestand.bilanz":
+      "{{gesamt}} articles: {{bereitsZugeordnet}} already assigned, {{ohneSpace}} without space — of these {{zuordenbar}} assignable, {{ausnahmen}} exceptions, {{ohneRegel}} without a matching rule (stay unchanged).",
+    "spaces.bestand.zuordnung": "{{titel}} → {{ziel}} (no longer visible to: {{anzahl}})",
+    "spaces.bestand.nichtEinsehbar": "article {{id}} not visible to you",
+    "spaces.bestand.ausnahme.mehrdeutig": "matches several target spaces",
+    "spaces.bestand.ausnahme.erweitert": "would give more people visibility",
+    "spaces.bestand.ausnahme.autor_verliert": "the author would lose access",
+    "spaces.bestand.ausnahme.verantwortung_verliert": "the responsible person would lose access",
+    "spaces.bestand.ausnahme.verwaist": "names a space that does not exist",
+    "spaces.bestand.bleibt":
+      "Version, history, authorship and relations stay; every assignment is recorded in the audit log.",
+    "spaces.bestand.uebernehmen": "Apply {{anzahl}} assignments",
+    "spaces.bestand.ergebnis":
+      "Assigned: {{zugeordnet}} · exceptions: {{ausnahmen}} · failed: {{fehlgeschlagen}}",
+    "spaces.bestand.erfolg": "The assignment is applied and documented.",
+    "spaces.bestand.protokoll": "Documented assignments",
+    "spaces.bestand.lauf":
+      "{{zeit}}: {{zugeordnet}} assigned, {{ausnahmen}} exceptions, {{ohneRegel}} without rule",
+    "spaces.vorschau.regelnTitel": "Rules before and after",
+    "spaces.vorschau.quelle": "Before",
+    "spaces.vorschau.ziel": "After",
+    "spaces.vorschau.regelnZeile": "{{zugang}}, owner: {{zustaendig}}",
+    "spaces.vorschau.ohneRegeln": "no space — only the confidentiality level applies",
   },
   nl: {
     "spaces.seite.titel": "Spaces",
@@ -224,6 +458,14 @@ export default {
     "spaces.feld.ansichtName": "Naam van de weergave",
     "spaces.feld.ansichtTag": "Tag",
     "spaces.feld.ansichtHinzu": "Weergave toevoegen",
+    "spaces.feld.teams": "Teams",
+    "spaces.feld.teamRecht": "Recht voor team {{name}}",
+    "spaces.feld.teamWaehlen": "Team kiezen",
+    "spaces.feld.teamHinzu": "Team koppelen",
+    "spaces.formular.teamHinweis":
+      "Elk actief lid van een gekoppeld team krijgt dit recht — naast directe lidmaatschappen.",
+    "spaces.team.archiviert": "gearchiveerd, verleent niets meer",
+    "spaces.detail.teamMitglieder": "Via teams",
     "spaces.formular.speichern": "Opslaan",
     "spaces.formular.abbrechen": "Annuleren",
     "spaces.formular.hinweis":
@@ -291,5 +533,114 @@ export default {
     "spaces.klara.zustaendigSpace": "Verantwoordelijke van de space: {{name}}",
     "spaces.klara.antwortGrenze":
       "Mijn antwoorden uit de kennisbank gebruiken alleen artikelen die je volgens space en niveau mag zien.",
+    // ADMIN-07 · produkt:20261007:spaces:admin-20261009
+    "spaces.art.marke": "Space · kennisgebied",
+    "spaces.art.hinweis":
+      "Een space is een kennisgebied met eigen leden, regels en verantwoordelijken — geen functiepagina zoals zoeken, controle of beheer.",
+    "spaces.status.aktiv": "Actief",
+    "spaces.status.archiviert": "Gearchiveerd",
+    "spaces.feld.gruppe": "Groep (optioneel)",
+    "spaces.feld.gruppeHinweis": "bijv. Productie — een label, geen map",
+    "spaces.feld.regeln": "Spaceregels",
+    "spaces.feld.regelnHinweis": "Wat hoort hier, wie onderhoudt het, wat geldt bij controle?",
+    "spaces.detail.gruppe": "Groep: {{gruppe}}",
+    "spaces.detail.mitgliederZahl": "{{anzahl}} leden (direct en via teams)",
+    "spaces.vorgang.angelegt": "aangemaakt",
+    "spaces.vorgang.geaendert": "gewijzigd",
+    "spaces.vorgang.archiviert": "gearchiveerd",
+    "spaces.vorgang.wiederaufgenommen": "heropend",
+    "spaces.seite.oeffnenName": "Space {{name}} openen",
+    "spaces.filter.titel": "Spaces zoeken en filteren",
+    "spaces.filter.suche": "Zoeken op naam, doel, verantwoordelijke of regel",
+    "spaces.filter.status": "Status",
+    "spaces.filter.alle": "Alle",
+    "spaces.filter.gruppieren": "Indelen per groep",
+    "spaces.filter.ohneGruppe": "Zonder groep",
+    "spaces.filter.treffer": "{{anzahl}} van {{gesamt}} spaces",
+    "spaces.fehler.archiviert": "Deze space is gearchiveerd. Eerst heropenen, dan wijzigen.",
+    "spaces.fehler.begruendung": "Geef een reden op.",
+    "spaces.fehler.offeneVerantwortung":
+      "Open verantwoordelijkheidsvragen verhinderen het archiveren. Los ze eerst op.",
+    "spaces.fehler.vorschauVeraltet":
+      "De situatie is sinds de voorvertoning gewijzigd. Controleer de nieuwe voorvertoning.",
+    "spaces.fehler.regelnUngueltig": "Kies voor elke regel een tag en een actieve doelspace.",
+    "spaces.zugriff.titel": "Toegang en herkomst",
+    "spaces.zugriff.erklaerung":
+      "Per persoon: via welke weg de toegang komt en wat die samen oplevert. Wie één weg verwijdert, laat de andere staan.",
+    "spaces.zugriff.niemand": "Niemand heeft een benoemde toegang.",
+    "spaces.zugriff.offenWeitere":
+      "Open toegang: daarnaast lezen {{anzahl}} andere accounts met leesrecht de inhoud.",
+    "spaces.zugriff.keinAdminDurchgriff":
+      "De globale rol opent geen space: het accountbeheer onderhoudt spaces, maar leest de inhoud alleen met eigen toegang.",
+    "spaces.zugriff.weg.zustaendig": "verantwoordelijk",
+    "spaces.zugriff.weg.direkt": "direct",
+    "spaces.zugriff.weg.team": "via team {{team}}",
+    "spaces.zugriff.weg.offen": "open toegang",
+    "spaces.eigenesRechtKurz.zustaendig": "verantwoordelijk",
+    "spaces.eigenesRechtKurz.schreiben": "leest en schrijft",
+    "spaces.eigenesRechtKurz.lesen": "leest",
+    "spaces.eigenesRechtKurz.verwalten": "beheert, leest niet",
+    "spaces.eigenesRechtKurz.keins": "geen toegang",
+    "spaces.archiv.titel": "Archiveren",
+    "spaces.archiv.erklaerung":
+      "Voor het archiveren toont de voorvertoning wie blijft lezen, wie niet meer kan schrijven en welke taken openstaan.",
+    "spaces.archiv.pruefen": "Gevolgen van archiveren controleren",
+    "spaces.archiv.folgenTitel": "Gevolgen van het archiveren van „{{name}}”",
+    "spaces.archiv.lesen": "Lezen blijft: {{anzahl}} accounts blijven de inhoud lezen.",
+    "spaces.archiv.schreiben":
+      "Schrijven vervalt ({{anzahl}}): er wordt niets meer in- of uitgeplaatst, de space wordt niet meer onderhouden",
+    "spaces.archiv.aufgaben": "Open taken: {{offen}} van {{gesamt}} artikelen wachten op controle.",
+    "spaces.archiv.aufgabenVerborgen": "Daarvan voor jou niet zichtbaar: {{anzahl}}",
+    "spaces.archiv.fragenTitel": "Open verantwoordelijkheidsvragen — archiveren is geblokkeerd:",
+    "spaces.archiv.frage.zustaendig_ohne_konto":
+      "De verantwoordelijke van de space is geen actief account meer.",
+    "spaces.archiv.frage.verantwortung_ohne_konto":
+      "{{anzahl}} artikelen: verantwoordelijkheid zonder actief account",
+    "spaces.archiv.frage.verantwortung_ohne_zugang":
+      "{{anzahl}} artikelen: de verantwoordelijke heeft geen toegang tot deze space",
+    "spaces.archiv.bleibt":
+      "Blijft ongewijzigd: artikelen, versies, auteurschap, relaties en auditlog. De space blijft in het overzicht (filter „Gearchiveerd”) en kan worden heropend.",
+    "spaces.archiv.begruendung": "Reden (staat in het verloop)",
+    "spaces.archiv.bestaetigen": "Archiveren bevestigen",
+    "spaces.archiv.erfolg": "De space is gearchiveerd. De reden staat in het verloop.",
+    "spaces.archiv.hinweis":
+      "Gearchiveerd: de inhoud blijft leesbaar voor de eerdere lezers; er wordt niets in- of uitgeplaatst.",
+    "spaces.archiv.wiederTitel": "Heropenen",
+    "spaces.archiv.wiederErklaerung":
+      "Leden, teams en regels gelden daarna weer zoals voor het archiveren. Het heropenen staat met reden in het verloop.",
+    "spaces.archiv.wiederaufnehmen": "Space heropenen",
+    "spaces.archiv.wiederErfolg": "De space is heropend.",
+    "spaces.bestand.titel": "Bestaande inhoud toewijzen",
+    "spaces.bestand.erklaerung":
+      "Artikelen zonder space krijgen per tag een leidende space. Alleen wat niemand meer zicht geeft dan voorheen wordt overgenomen; al het andere wordt als uitzondering benoemd.",
+    "spaces.bestand.tag": "Tag",
+    "spaces.bestand.ziel": "Doelspace",
+    "spaces.bestand.regelHinzu": "Regel toevoegen",
+    "spaces.bestand.pruefen": "Balans controleren",
+    "spaces.bestand.bilanzTitel": "Balans voor het toewijzen",
+    "spaces.bestand.bilanz":
+      "{{gesamt}} artikelen: {{bereitsZugeordnet}} al toegewezen, {{ohneSpace}} zonder space — daarvan {{zuordenbar}} toewijsbaar, {{ausnahmen}} uitzonderingen, {{ohneRegel}} zonder passende regel (blijven ongewijzigd).",
+    "spaces.bestand.zuordnung": "{{titel}} → {{ziel}} (zien het daarna niet meer: {{anzahl}})",
+    "spaces.bestand.nichtEinsehbar": "niet zichtbaar artikel {{id}}",
+    "spaces.bestand.ausnahme.mehrdeutig": "past bij meerdere doelspaces",
+    "spaces.bestand.ausnahme.erweitert": "zou meer mensen zicht geven",
+    "spaces.bestand.ausnahme.autor_verliert": "de auteur zou de toegang verliezen",
+    "spaces.bestand.ausnahme.verantwortung_verliert":
+      "de verantwoordelijke zou de toegang verliezen",
+    "spaces.bestand.ausnahme.verwaist": "noemt een space die niet bestaat",
+    "spaces.bestand.bleibt":
+      "Versie, historie, auteurschap en relaties blijven; elke toewijzing staat in het auditlog.",
+    "spaces.bestand.uebernehmen": "{{anzahl}} toewijzingen overnemen",
+    "spaces.bestand.ergebnis":
+      "Toegewezen: {{zugeordnet}} · uitzonderingen: {{ausnahmen}} · mislukt: {{fehlgeschlagen}}",
+    "spaces.bestand.erfolg": "De toewijzing is overgenomen en gedocumenteerd.",
+    "spaces.bestand.protokoll": "Gedocumenteerde toewijzingen",
+    "spaces.bestand.lauf":
+      "{{zeit}}: {{zugeordnet}} toegewezen, {{ausnahmen}} uitzonderingen, {{ohneRegel}} zonder regel",
+    "spaces.vorschau.regelnTitel": "Regels voor en na",
+    "spaces.vorschau.quelle": "Voorheen",
+    "spaces.vorschau.ziel": "Daarna",
+    "spaces.vorschau.regelnZeile": "{{zugang}}, verantwoordelijk: {{zustaendig}}",
+    "spaces.vorschau.ohneRegeln": "geen space — alleen het vertrouwelijkheidsniveau geldt",
   },
 } satisfies Textmodul;

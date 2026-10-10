@@ -98,6 +98,13 @@ export const MELDUNGEN = {
     en: "Your current password is incorrect.",
     nl: "Je huidige wachtwoord is onjuist.",
   },
+  // R-0582: ein Konto ohne lokales Passwort (reines SSO) bestätigt eine neue E-Mail über eine
+  // erneute Anmeldung beim eigenen Anbieter — der Satz nennt genau diesen Weg.
+  SSO_CONFIRMATION_REQUIRED: {
+    de: "Bitte bestätige die neue E-Mail zuerst mit einer erneuten SSO-Anmeldung.",
+    en: "Please confirm the new email address by signing in with SSO again first.",
+    nl: "Bevestig het nieuwe e-mailadres eerst door opnieuw via SSO aan te melden.",
+  },
   RESET_TOKEN_INVALID: {
     de: "Reset-Token ungültig oder abgelaufen.",
     en: "The password reset link is invalid or has expired.",
@@ -143,10 +150,11 @@ export const MELDUNGEN = {
     nl: "Ontbrekend recht: %s",
   },
   // JOB 3956: der Nachbar von PERMISSION_MISSING und ausdrücklich nicht dasselbe. Dort FEHLT ein
-  // bestimmtes Recht, und der Satz nennt es; hier sagt der RBAC-Wächter (`services/rbac/src/guard.ts`)
-  // nur, dass die Rolle nicht reicht — er kennt den Rechtenamen zwar, gibt ihn aber seit jeher nicht
-  // heraus. Der deutsche Wortlaut ist zeichengleich mit dem Literal, das bis JOB 3956 in `guard.ts`
-  // stand; gemessen in `tests/q9-entwurfsfehler/` (G3) und in `tests/q9-fremde-flaechen/`.
+  // bestimmtes Recht, und der Satz nennt es; hier fehlt das Recht an DIESER Handlung, ohne Namen.
+  // Der deutsche Wortlaut ist zeichengleich mit dem Literal, das bis JOB 3956 im damaligen
+  // RBAC-Wächter `services/rbac/src/guard.ts` stand. R-1349: der Wächter ist entfernt (kein
+  // Aufrufer); gesendet wird der Satz von `requireVisibleDraft(…, { nurAutor: true })` in
+  // `services/app/src/routes/capture-routes.ts`, gemessen in `tests/q9-entwurfsfehler/` (G1–G4).
   PERMISSION_DENIED: {
     de: "Keine Berechtigung.",
     en: "You do not have permission.",
@@ -260,6 +268,71 @@ export const MELDUNGEN = {
     de: "Anmeldedienst antwortet nicht.",
     en: "The sign-in service is not responding.",
     nl: "De aanmelddienst reageert niet.",
+  },
+  // R-0562: die eigene Zwei-Faktor-Anmeldung (Bestätigungscode vom zweiten Gerät).
+  SECOND_FACTOR_REQUIRED: {
+    de: "Bitte den Bestätigungscode aus der Authenticator-App eingeben.",
+    en: "Please enter the confirmation code from your authenticator app.",
+    nl: "Voer de bevestigingscode uit je authenticator-app in.",
+  },
+  SECOND_FACTOR_INVALID: {
+    de: "Bestätigungscode falsch oder abgelaufen.",
+    en: "The confirmation code is incorrect or has expired.",
+    nl: "De bevestigingscode is onjuist of verlopen.",
+  },
+  SECOND_FACTOR_CHALLENGE_INVALID: {
+    de: "Die Anmeldung ist abgelaufen. Bitte erneut mit E-Mail und Passwort anmelden.",
+    en: "The sign-in has expired. Please sign in again with email and password.",
+    nl: "De aanmelding is verlopen. Meld je opnieuw aan met e-mailadres en wachtwoord.",
+  },
+  SECOND_FACTOR_RATE_LIMITED: {
+    de: "Zu viele falsche Bestätigungscodes. Bitte später erneut versuchen.",
+    en: "Too many incorrect confirmation codes. Please try again later.",
+    nl: "Te veel onjuiste bevestigingscodes. Probeer het later opnieuw.",
+  },
+  SECOND_FACTOR_ALREADY_ACTIVE: {
+    de: "Die Zwei-Faktor-Anmeldung ist bereits eingerichtet.",
+    en: "Two-factor sign-in is already set up.",
+    nl: "Aanmelden in twee stappen is al ingesteld.",
+  },
+  SECOND_FACTOR_NOT_ACTIVE: {
+    de: "Die Zwei-Faktor-Anmeldung ist nicht eingerichtet.",
+    en: "Two-factor sign-in is not set up.",
+    nl: "Aanmelden in twee stappen is niet ingesteld.",
+  },
+  SECOND_FACTOR_SETUP_MISSING: {
+    de: "Die Einrichtung ist abgelaufen. Bitte neu beginnen.",
+    en: "The setup has expired. Please start again.",
+    nl: "De instelling is verlopen. Begin opnieuw.",
+  },
+  SECOND_FACTOR_PASSWORD_ACCOUNT_ONLY: {
+    de: "Die eigene Zwei-Faktor-Anmeldung gibt es nur für Konten mit Passwort.",
+    en: "Two-factor sign-in is only available for accounts with a password.",
+    nl: "Aanmelden in twee stappen is alleen beschikbaar voor accounts met een wachtwoord.",
+  },
+  // R-0541: die Anmeldung mit Passwort ist abgeschaltet, es gilt nur der Firmen-Login.
+  PASSWORD_LOGIN_DISABLED: {
+    de: "Die Anmeldung mit Passwort ist auf dieser Instanz abgeschaltet. Bitte über den Firmen-Login (SSO) anmelden.",
+    en: "Password sign-in is switched off on this instance. Please sign in with your company login (SSO).",
+    nl: "Aanmelden met een wachtwoord is op deze instantie uitgeschakeld. Meld je aan via de bedrijfslogin (SSO).",
+  },
+  // R-0541 (Ben, Nacharbeit 2): das Passwort ist abgeschaltet, der Firmen-Login aber noch nicht
+  // eingerichtet. Die Sperre gilt trotzdem — der Satz sagt, wer das auflöst.
+  SSO_ONLY_NOT_CONFIGURED: {
+    de: "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte die IT bitten, die Anbieterwerte zu ergänzen.",
+    en: "Password sign-in is switched off, but the company login has not been set up yet. Please ask your IT team to add the provider settings.",
+    nl: "Aanmelden met een wachtwoord is uitgeschakeld, maar de bedrijfslogin is nog niet ingericht. Vraag je IT-afdeling de gegevens van de aanbieder aan te vullen.",
+  },
+  // R-0560: die SAML-Anmeldung.
+  SAML_DISABLED: {
+    de: "SAML ist nicht konfiguriert.",
+    en: "SAML is not configured.",
+    nl: "SAML is niet geconfigureerd.",
+  },
+  SAML_LOGIN_FAILED: {
+    de: "Die Anmeldung über den Firmen-Login (SAML) ist fehlgeschlagen. Bitte erneut anmelden.",
+    en: "Signing in with the company login (SAML) failed. Please sign in again.",
+    nl: "Aanmelden via de bedrijfslogin (SAML) is mislukt. Meld je opnieuw aan.",
   },
 } as const satisfies Record<string, Record<Sprache, string>>;
 

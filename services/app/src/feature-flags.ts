@@ -227,7 +227,9 @@ const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>(["rechtsseiten", "hinweisba
  */
 export function schalterAn(name: SchalterName): boolean {
   const wert = process.env[SCHALTER_REGISTRY[name]];
-  if (SCHALTER_VORGABE_AN.has(name)) {
+  // R-1349: die Richtung kommt aus `vorgabeAn` — dieselbe Auskunft, die Tests und Bericht lesen,
+  // statt einer zweiten Abfrage derselben Menge daneben.
+  if (vorgabeAn(name)) {
     return !(wert === "0" || wert === "false");
   }
   return wert === "1" || wert === "true";

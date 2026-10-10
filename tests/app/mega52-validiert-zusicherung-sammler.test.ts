@@ -73,14 +73,17 @@ const ASK_ROUTE = join("services", "app", "src", "routes", "ask-routes.ts");
 
 // ── Stufe 2: das Urteil aus dem Produktcode ──────────────────────────────────────────────────────
 //
-// Der Session-Zweig ist der Aufruf OHNE Optionen (`answer(user.id)`); die validierten Zweige sind
-// der Add-on- und der `retrieval-only`-Pfad. Gefragt ist: filtert der SESSION-Weg auf validiert?
-function sessionWegFiltertValidiert(): boolean {
+// Bis R-0278 (Nacharbeit 3) war der Session-Zweig der Aufruf OHNE Optionen (`answer(user.id)`).
+// Gefragt ist unverändert: filtert JEDER Session-Abschluss der Route auf validiert? Gelesen werden
+// alle `answer(user.id …)`-Aufrufe; trägt einer kein `validatedOnly: true`, ist die Antwort nein.
+function sessionAufrufe(): string[] {
   const quelle = readFileSync(join(WURZEL, ASK_ROUTE), "utf8").replace(/\/\/[^\n]*/g, "");
-  // Der Session-Abschluss der Route ist der letzte, optionslose `answer(...)`-Aufruf. Trägt er
-  // `validatedOnly`, gilt die Zusicherung fortan zu Recht.
-  const sessionAufruf = /await answer\(\s*user\.id\s*\)/.test(quelle);
-  return !sessionAufruf;
+  return [...quelle.matchAll(/await answer\(\s*user\.id\b[^;]*\);/g)].map((m) => m[0]);
+}
+
+function sessionWegFiltertValidiert(): boolean {
+  const aufrufe = sessionAufrufe();
+  return aufrufe.length > 0 && aufrufe.every((a) => /validatedOnly:\s*true/.test(a));
 }
 
 // ── Stufe 1: die Zusicherung am Satz erkennen ────────────────────────────────────────────────────
@@ -187,9 +190,13 @@ describe("mega52 C3: die Erhebung greift", () => {
     // Aufruf umbenannt, stünde hier ein falsches „filtert schon" — deshalb wird beides geprüft.
     const quelle = readFileSync(join(WURZEL, ASK_ROUTE), "utf8");
     expect(quelle).toContain("validatedOnly");
-    expect(quelle, "der Session-Abschluss der Ask-Route ist nicht mehr auffindbar").toMatch(
-      /await answer\(\s*user\.id\s*\)/,
-    );
+    // Drei Session-Abschlüsse: Einwilligungszweig, Panel-Enge, Web-Ansicht.
+    expect(
+      sessionAufrufe().length,
+      "die Session-Abschlüsse der Ask-Route sind nicht mehr auffindbar",
+    ).toBeGreaterThanOrEqual(3);
+    // R-0278 (Nacharbeit 3): alle tragen den Filter — das Urteil lautet damit „filtert".
+    expect(sessionWegFiltertValidiert()).toBe(true);
   });
 });
 

@@ -27,7 +27,6 @@ import {
   confluenceImportRoutes,
   warteAufOffeneImportLaeufe,
 } from "../../services/app/src/routes/confluence-import-routes";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
@@ -41,6 +40,7 @@ import {
   PgImportRunRepo,
 } from "../../services/library-analytics";
 import { InMemoryObjectRepo, ObjectStore } from "../../services/object-store";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const BASIS = "https://acme.atlassian.net/wiki";
 const PNG_V1 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
