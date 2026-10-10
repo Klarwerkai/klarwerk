@@ -644,6 +644,11 @@ export function OEFFENTLICH(grund: string): Erwartungen {
 // DIE TABELLE. Eine Zeile je geprüftem Endpunkt; jede Routengruppe der Erhebung kommt vor.
 // ------------------------------------------------------------------------------------------------
 
+/** produkt:20261007:office-artikel-editor — das Tor der WOPI-Türen ist die Marke, nicht die Sitzung. */
+const WOPI_TOR = "keines aus der Sitzung — die WOPI-Zugangsmarke (HMAC) je Anhang";
+const WOPI_GRUND =
+  "Der eingebettete Office-Editor ruft diese Tür server-zu-server ohne Klarwerk-Sitzung; ein Sitzungstor wäre hier falsch. Ohne gültige Marke endet jede Anfrage VOR dem Parsen mit 401, ohne Editor-Einrichtung (so im Prüfaufbau) mit 404 für alle fünf Akteure — gemessen ist damit, dass die Sitzungsrolle hier nichts öffnet. Marke, Dateibindung und Rechteentzug prüft `tests/office-artikel-editor/office-routes.test.ts` (O6).";
+
 export const TABELLE: Zeile[] = [
   {
     gruppe: "addinStaticRoutes",
@@ -783,6 +788,96 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/bearbeitung-routes.ts:139",
     tor: "ko.create",
     erwartet: AB_EXPERTE,
+  },
+  // produkt:20261007:office-artikel-editor · Office im Artikel. Die Artikelseite fragt Lage und
+  // Sitzung mit `ko.read` an (Ansehen ist Lesen), Übernehmen, Zurückholen und gesicherte Stände mit
+  // `ko.create` — dieselben Rechte wie `revise`; kein neues Recht. Die URLs sind zustandsfrei
+  // (erfundene Kennungen): hinter dem Tor endet jede Tür im 404 und legt nichts an.
+  {
+    gruppe: "officeRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht",
+    route: "/api/kos/:id/office/:anhangId",
+    belegstelle: "services/app/src/routes/office-routes.ts:402",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/sitzung",
+    route: "/api/kos/:id/office/:anhangId/sitzung",
+    belegstelle: "services/app/src/routes/office-routes.ts:439",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/uebernahme",
+    route: "/api/kos/:id/office/:anhangId/uebernahme",
+    belegstelle: "services/app/src/routes/office-routes.ts:506",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/zurueckholen",
+    route: "/api/kos/:id/office/:anhangId/zurueckholen",
+    belegstelle: "services/app/src/routes/office-routes.ts:616",
+    tor: "ko.create",
+    payload: { ausFassung: 1, expectedVersion: 1 },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/gesichert",
+    route: "/api/kos/:id/office/:anhangId/gesichert",
+    belegstelle: "services/app/src/routes/office-routes.ts:664",
+    tor: "ko.create",
+    payload: { objectId: "gibt-es-nicht", expectedVersion: 1 },
+    erwartet: AB_EXPERTE,
+  },
+  // Die WOPI-Türen spricht der Office-Editor SERVER-ZU-SERVER an, ohne Klarwerk-Sitzung. Ihr Tor
+  // ist die signierte Zugangsmarke je Anhang, geprüft VOR dem Parsen (`markenRiegel`), danach die
+  // frisch gelesenen Rechte des Markeninhabers. Eine Sitzungsrolle entscheidet hier nichts.
+  {
+    gruppe: "officeRoutes",
+    methode: "GET",
+    pfad: "/wopi/files/gibt-es-nicht",
+    route: "/wopi/files/:anhangId",
+    belegstelle: "services/app/src/routes/office-routes.ts:396",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "GET",
+    pfad: "/wopi/files/gibt-es-nicht/contents",
+    route: "/wopi/files/:anhangId/contents",
+    belegstelle: "services/app/src/routes/office-routes.ts:397",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/wopi/files/gibt-es-nicht",
+    route: "/wopi/files/:anhangId",
+    belegstelle: "services/app/src/routes/office-routes.ts:398",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/wopi/files/gibt-es-nicht/contents",
+    route: "/wopi/files/:anhangId/contents",
+    belegstelle: "services/app/src/routes/office-routes.ts:399",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
   },
   // Kenntnisnahme einer gültigen Fassung. Anfordern, Übersicht und Erinnern hängen am vorhandenen
   // Zuweisungsrecht `ko.assign` (Controller/Admin), die eigenen Anforderungen und das Bestätigen
