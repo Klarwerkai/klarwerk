@@ -298,12 +298,19 @@ async function erkenneBild(): Promise<void> {
   expect(steuerung.ocr).toHaveBeenCalledTimes(1);
 }
 
+/**
+ * Die Stelle des Bildtext-Kontexts im Aufruf `endpoints.reasoner.interview(answers, locale,
+ * provenance, imageContext, guide, context)` — seit der Integration mit WISSEN-INTERVIEW (R-1624,
+ * R-0088) der sechste Platz.
+ */
+const KONTEXT_ARG = 5;
+
 /** Das Interview bewusst starten und den mitgeschickten Kontext zurückgeben. */
 async function starteInterview(): Promise<string> {
   await waehleModus("interview");
   await klicke(knopf(i18n.t("capture.ivStart")));
   expect(steuerung.interview).toHaveBeenCalledTimes(1);
-  return String(steuerung.interview.mock.calls[0]?.[3] ?? "");
+  return String(steuerung.interview.mock.calls[0]?.[KONTEXT_ARG] ?? "");
 }
 
 describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführten Interviews", () => {
@@ -321,7 +328,7 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
     await klicke(knopf(i18n.t("capture.ivStart")));
 
     expect(steuerung.interview).toHaveBeenCalledTimes(1);
-    const kontext = steuerung.interview.mock.calls[0]?.[3];
+    const kontext = steuerung.interview.mock.calls[0]?.[KONTEXT_ARG];
     expect(typeof kontext).toBe("string");
     expect(kontext as string).toContain(ERKANNT);
     expect(kontext as string).toContain("aushang.png");
@@ -334,7 +341,7 @@ describe("gesamt-ocr · FR-CAP-05 · erkannter Bildtext als Kontext des geführt
 
     expect(steuerung.ocr).not.toHaveBeenCalled();
     expect(steuerung.interview).toHaveBeenCalledTimes(1);
-    expect(steuerung.interview.mock.calls[0]?.[3] ?? "").toBe("");
+    expect(steuerung.interview.mock.calls[0]?.[KONTEXT_ARG] ?? "").toBe("");
   });
 
   it("I3 · Bens Befund: ein korrigiertes Zeichen im erkannten Block landet im Kontext", async () => {

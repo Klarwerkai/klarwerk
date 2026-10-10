@@ -174,6 +174,23 @@ export interface Seite {
   click(selektor: string): Promise<void>;
   /** Eine Auswahl in einem `select` setzen — `belegstelle-ueberlebt-neuladen-chromium.test.ts:259`. */
   selectOption(selektor: string, wert: string): Promise<unknown>;
+
+  // ---- Aufnahme 20260922 · N-0037 (antwort-quellenanzeige, Ben zu e6eb2409) ----------------------
+  // Der ECHTE neue Tab einer externen Originalquelle: `target="_blank"` öffnet ihn im selben Kontext.
+  // `seite.route` gilt nur für DIESE Seite, nicht für den neuen Tab — deshalb die Kontext-Route.
+  // Verbraucher: `tests/berichtskopf-spruenge/kopf-sprung-in-chromium.test.ts` (B5b).
+  /** Die Kontext-Route (gilt auch für Tabs, die diese Seite öffnet). */
+  context(): { route(url: string, handler: (route: Route) => Promise<void>): Promise<void> };
+  /** Auf den Tab warten, den ein Klick auf dieser Seite öffnet. */
+  waitForEvent(ereignis: "popup", opts?: Record<string, unknown>): Promise<NeuerTab>;
+}
+
+/** Ein von der Seite geöffneter Tab — nur, was B5b daran misst (s. `Seite.waitForEvent`). */
+export interface NeuerTab {
+  url(): string;
+  waitForLoadState(zustand?: string, opts?: Record<string, unknown>): Promise<void>;
+  evaluate<T>(fn: BrowserFn, arg?: unknown): Promise<T>;
+  close(): Promise<void>;
 }
 interface Browser {
   version(): string;
@@ -184,6 +201,11 @@ interface Browser {
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript",
+  // PLAN-SPRACHANMERKUNG: der pdfjs-Worker der gebauten Oberfläche ist eine `.mjs`-Datei. Als
+  // `application/octet-stream` verweigert Chromium ihn als Modul — die Bühne mässe dann ihren eigenen
+  // Auslieferungsfehler statt der PDF-Darstellung. Dieselbe Zuordnung wie in den übrigen Bühnen
+  // (`tests/design/h3-blatt-buehne.ts`, `tests/entwurf-pool/pool-tastatur-chromium.test.ts`).
+  ".mjs": "application/javascript",
   ".css": "text/css",
   ".svg": "image/svg+xml",
   ".png": "image/png",

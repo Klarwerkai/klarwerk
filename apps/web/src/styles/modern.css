@@ -34,6 +34,15 @@
 [data-theme="modern"] .rounded-card.border-hairline:not(.border-dashed) {
   box-shadow: var(--kw-shadow-tile);
 }
+/* WCAG 2.4.7 (Audit nacharbeit-8): die Elevation oben setzt `box-shadow` mit Spezifität (0,3,0) —
+   genau die Eigenschaft, die der globale Fokusring (index.css, `*:focus-visible`) benutzt. Eine
+   fokussierbare Karte (Vorlagen auf /output, der Arbeitsweise-Einstieg auf /hilfe) verlor damit im
+   modernen Thema jede Fokuskennzeichnung. Im Fokus trägt sie den Ring der globalen Regel ZUSÄTZLICH
+   zur Elevation: Abstand in Seitenfarbe, dann `brand-text` (≥ 3:1, 1.4.11). */
+[data-theme="modern"] .rounded-card.border-hairline:not(.border-dashed):focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--kw-page)), 0 0 0 4px rgb(var(--kw-brand-text)),
+    var(--kw-shadow-tile);
+}
 
 /* SAMMLER 3: Übergänge im Werkbank-Takt (150–200 ms), wo der Bestand bereits Übergänge hat. */
 [data-theme="modern"] .transition,
@@ -158,12 +167,19 @@
 [data-theme="modern"] .kw-kopfband .kw-kopfband-suche {
   background-color: rgb(var(--kw-night-2));
   color: rgb(var(--kw-shell-muted-2));
+  /* WCAG 1.4.11 (Audit nacharbeit-8): die Suchfläche #16213A hebt sich vom Band #0E1626 nur mit
+     1,13:1 ab — das Feld war als Feld nicht zu erkennen. Ein Innenrand in `shell-muted-2` (≈ 5,0:1
+     gegen das Band) zieht die Grenze, ohne die gemessenen Masse (260 px, Polster) zu verschieben. */
+  box-shadow: inset 0 0 0 1px rgb(var(--kw-shell-muted-2));
 }
 [data-theme="modern"] .kw-kopfband .kw-kopfband-suche input {
   color: rgb(var(--kw-shell-fg));
 }
+/* WCAG 1.4.3 (Audit nacharbeit-6): `shell-muted-2` (#7E879A) maß als Platzhalter auf `night-2`
+   4,43:1, knapp unter AA. Der Platzhalter ist Text, die Lupe daneben nicht; sie behält das Grau des
+   Mockups. `shell-muted` (#B9C1D2) misst auf `night-2` ≈ 8,9:1. */
 [data-theme="modern"] .kw-kopfband .kw-kopfband-suche input::placeholder {
-  color: rgb(var(--kw-shell-muted-2));
+  color: rgb(var(--kw-shell-muted));
 }
 [data-theme="modern"] .kw-kopfband .kw-kopfband-suche button {
   color: rgb(var(--kw-shell-muted-2));
@@ -220,6 +236,12 @@
   opacity: 1;
   transform: translateY(-1px);
   box-shadow: 0 4px 14px -2px rgb(var(--kw-brand) / 0.55);
+}
+/* WCAG 2.4.7: derselbe Fall wie bei den Karten — der eigene Schatten der Hauptaktion verdrängte den
+   globalen Fokusring. Im Fokus steht der Ring vor dem Schatten. */
+[data-theme="modern"] .kw-cta-primary:focus-visible {
+  box-shadow: 0 0 0 2px rgb(var(--kw-page)), 0 0 0 4px rgb(var(--kw-brand-text)), 0 2px 10px -2px
+    rgb(var(--kw-brand) / 0.45);
 }
 
 /* ------------------------------------------------------------------------------------------------

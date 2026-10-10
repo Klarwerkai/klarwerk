@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { RICHTLINIEN_PFAD } from "../api/unternehmen";
 import { useSession } from "../app/AuthContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
@@ -77,6 +78,15 @@ export function KontoEintraege({
       <SprachSchalter />
       <MenueZeile to="/profil" aktiv={location.pathname === "/profil"} testid="konto-profil">
         {t("nav.profile")}
+      </MenueZeile>
+      {/* ADMIN-15: die internen Richtlinien des Unternehmens — getrennt vom persönlichen Profil
+          darüber und von den Rechtsseiten im Fußbereich. */}
+      <MenueZeile
+        to={RICHTLINIEN_PFAD}
+        aktiv={location.pathname === RICHTLINIEN_PFAD}
+        testid="konto-richtlinien"
+      >
+        {t("unternehmen.konto.richtlinien")}
       </MenueZeile>
       <MenueTrenner />
       <MenueZeile onClick={() => void signOut()} testid="konto-abmelden">

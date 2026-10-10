@@ -275,6 +275,8 @@ export interface AddSourceRequest {
   url?: string;
   excerpt?: string;
   objectId?: string;
+  /** REF-01: der Abrufbeleg der Serversuche — geprüft, nicht geglaubt (ko-routes `add-source`). */
+  abrufbeleg?: string;
 }
 
 export function toAddSourceRequest(source: {
@@ -282,6 +284,7 @@ export function toAddSourceRequest(source: {
   url?: string | null;
   excerpt?: string | null;
   objectId?: string | null;
+  abrufbeleg?: string | null;
 }): AddSourceRequest {
   const request: AddSourceRequest = { label: source.label };
   if (source.url) {
@@ -292,6 +295,9 @@ export function toAddSourceRequest(source: {
   }
   if (source.objectId) {
     request.objectId = source.objectId;
+  }
+  if (source.abrufbeleg) {
+    request.abrufbeleg = source.abrufbeleg;
   }
   return request;
 }

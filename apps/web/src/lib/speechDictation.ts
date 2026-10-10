@@ -24,7 +24,8 @@ export interface SpeechRec {
   stop(): void;
   onresult: ((e: SpeechResultEvent) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  /** Der Browser reicht ein Ereignis mit `error` („not-allowed“, „no-speech“ …) — wer will, liest es. */
+  onerror: ((e?: { error?: string }) => void) | null;
 }
 interface SpeechResultEvent {
   resultIndex: number;
@@ -104,12 +105,17 @@ export function diktatSprache(sprache: string): string {
  * Erkennungen sofort zu sehen (`interimResults`). In `append` landet weiterhin NUR Endgültiges —
  * der Zwischenstand ist reine Anzeige und wird beim nächsten Endergebnis und beim Ende geleert, er
  * schreibt nie ins Feld. Ohne `zwischen` bleibt alles wie vorher.
+ *
+ * Klara 02 (produkt:20261008:klara-sprache): Wer `fehlerGrund` mitgibt, erfährt VOR `onDone` den
+ * Grund eines Fehlers aus dem Browser-Ereignis — vor allem „not-allowed“ (Mikrofon abgelehnt), damit
+ * die Fläche das sagen kann statt still zu enden. Ohne `fehlerGrund` bleibt alles wie vorher.
  */
 export function makeRec(
   append: (text: string) => void,
   onDone: (beendet: SpeechRec) => void,
   lang: string,
   zwischen?: (text: string) => void,
+  fehlerGrund?: (grund: string) => void,
 ): SpeechRec | null {
   const Ctor = speechCtor();
   if (!Ctor) {
@@ -141,6 +147,9 @@ export function makeRec(
     onDone(rec);
   };
   rec.onend = beenden;
-  rec.onerror = beenden;
+  rec.onerror = (e) => {
+    fehlerGrund?.(typeof e?.error === "string" ? e.error : "");
+    beenden();
+  };
   return rec;
 }

@@ -1,15 +1,28 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
+  type Fragekontext,
+  type GelernteHalbwertszeiten,
+  type GeltungsPassung,
   type KnowledgeObject,
+  type KnowledgeType,
+  type KoGeltung,
   type KoService,
   SUCH_ZUORDNUNGEN,
   type SuchZuordnung,
   type WithTx,
+  buildSearchProjection,
   dropConfidential,
+  erkenneSchutzdaten,
   expandSearchTerms,
+  geltungFuerFrage,
+  haltbarkeitAbgelaufen,
+  inSchutzdatenQuarantaene,
   isConfidential,
   normalizeSearchTerms,
+  responsibleKindOf,
+  responsibleOf,
+  visibleTextFromBodyHtml,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -20,15 +33,59 @@ import {
   type ReasonerLocale,
   type Relevanztext,
   type ZuordnungsPaar,
+  type ZweitmeinungErgebnis,
   decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
+import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
+import {
+  ANTWORT_MELDUNG_ACTION,
+  type AntwortMeldungQuittung,
+  antwortMeldungEventId,
+  antwortMeldungId,
+  isAntwortMeldeGrund,
+} from "./antwort-meldung";
+import {
+  type ZuschnittAbschnitt,
+  type ZuschnittBegriff,
+  type ZuschnittDerAntwort,
+  type ZuschnittErgaenzung,
+  schneideAntwortZu,
+} from "./antwort-zuschnitt";
+import {
+  type AussagenBeleg,
+  type BindungsQuelle,
+  type ZweitmeinungAussagen,
+  bindeAntworttext,
+  bindungsQuelleAus,
+  volltextDerFassung,
+} from "./aussage-fundstellen";
+import { leiteBelegbedarfAb } from "./gap-belegbedarf";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
+import {
+  type FachlicheNutzbarkeit,
+  GapAbschlussVerweigert,
+  type GapPruefstand,
+  type GapVorgangEintrag,
+  type GapVorgangSicht,
+  type GapVorgangsrolle,
+  abschlussMeldungId,
+  abschlussSicht,
+  fragendeVon,
+  istFragender,
+  istZustaendig,
+  naechsterSchritt,
+  pruefeFachlicheNutzbarkeit,
+  rueckfrageMeldungId,
+  rueckfrageText,
+  vorgangEintrag,
+  vorgangsphase,
+} from "./gap-vorgang";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
-import type { AnswerSnapshotRepo, GapRepo } from "./repo";
+import { type AnswerSnapshotRepo, type GapRepo, gleicherLueckenstand } from "./repo";
 import {
   ANSWER_SNAPSHOT_SCHEMA_VERSION,
   type AnswerEvidenceRef,
@@ -36,13 +93,33 @@ import {
   type AskCaller,
   AskError,
   type Gap,
+  type GapBelegbedarf,
   type GapPriority,
+  type GapRueckfrage,
+  type GapRuecknahmeGrund,
+  type GapZuordnung,
   answerSnapshotStatus,
   hashAnswerSnapshot,
   isGapPriority,
+  isGapRuecknahmeGrund,
 } from "./types";
+import {
+  type VergleichsSeiten,
+  type WissensstandVergleich,
+  antwortGeaendert,
+  fassungZumStichtag,
+  freigabeZumStichtagBelegt,
+  grundlageDamals,
+  vergleichsQuelle,
+} from "./wissensstand-vergleich";
 
 const HELPFUL_TRUST_STEP = 2;
+
+/**
+ * produkt:20261010:wissenskreislauf-schliessen: wie oft ein Vorgangsschritt am frischen Stand neu
+ * gerechnet wird, wenn die Lücke währenddessen geändert wurde (`aendereLuecke`). Danach 409.
+ */
+const LUECKE_SCHREIBVERSUCHE = 8;
 
 /**
  * R-0142: wie viele offene Lücken `offeneLueckenZu` je Aufruf höchstens prüft (die jüngsten). Jede
@@ -164,9 +241,11 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 //
 // WAS AUSDRÜCKLICH BLEIBT (R-0345, kein offener Chatbot):
 //   · Die Antwort bleibt quellengebunden; der Faden schafft keine Grundlage, er findet sie nur.
-//   · GEBUNDEN wird weiter NUR die getippte Frage (`decktAlleFragebegriffe(question, …)`): jede
-//     Quelle muss alle Begriffe der Nachfrage tragen. Ein früheres Thema kann deshalb keine Quelle
-//     zur Antwort machen, die zur neuen Frage nichts sagt.
+//   · GEBUNDEN werden die getippte Frage UND der Themenanker (`decktAlleFragebegriffe` für beide):
+//     jede Quelle muss alle Begriffe der Nachfrage tragen — ein früheres Thema kann keine Quelle
+//     zur Antwort machen, die zur neuen Frage nichts sagt — und die sachlichen Einschränkungen des
+//     Ankers gelten weiter (R-0278, Nacharbeit 12: eine Quelle zu Ventil F4 trägt keine Nachfrage
+//     zu Ventil F3).
 //   · `frageterme` bleibt das Getippte — jede Aussage ÜBER die Antwort (Fundstelle, Etikett)
 //     rechnet weiter darauf (s. die Trennung an `erweiterteSuchterme`).
 //   · Die Fadenterme hängen in der Vorauswahl HINTER den Termen der Frage, der Markierung und
@@ -211,7 +290,7 @@ function fadenfragen(faden?: readonly string[]): string[] {
 //
 // DIE UMRECHNUNG GEHÖRT HIERHER UND NICHT IN DIE TABELLE. Ein zweiter, gebeugter Eintrag je Wort
 // wäre eine erfundene Setzung ohne Fundstelle (genau der Fehler, gegen den `s2-synonyme.test.ts`
-// Fall Z1 steht), und `expandSearchTerms` darf nichts ableiten (`S2_ERWEITERUNG_GRENZE.leitetAb`).
+// Fall Z1 steht), und `expandSearchTerms` darf nichts ableiten (S2-Grenze, `search-projection.ts`).
 // Hier dagegen ist nichts abzuleiten: die Grundform der DEKLARIERTEN Wörter entsteht durch genau
 // dieselbe Zerlegung, durch die auch die Frage läuft. Es wird keine Regel erfunden, sondern die
 // vorhandene auf beide Seiten desselben Vergleichs angewandt.
@@ -251,7 +330,7 @@ function fadenfragen(faden?: readonly string[]): string[] {
 // `citedSources` und das Prüfprotokoll rechnen unverändert auf dem, wonach wirklich gesucht wurde.
 // R-0348 ist die eine benannte Ausnahme, und sie ist keine Ableitung: eine Nachfrage reist mit den
 // vorher GETIPPTEN Fragen ihrer Fragestrecke als Frage im Zusammenhang (`fadenfragen`). Gebunden
-// bleibt dabei allein die neue Frage; ohne Faden gilt der Satz oben wörtlich.
+// bleiben dabei die neue Frage und der Themenanker; ohne Faden gilt der Satz oben wörtlich.
 //
 // WARUM PAARE UND NICHT DIE GEWEITETE FRAGE — das ist der ganze Unterschied zu der Bauform, die
 // JOB 3039 gemessen und zurückgebaut hat (Zahlen in `tests/suche-zuordnung/…`):
@@ -294,7 +373,7 @@ export function zugeordneteSuchterme(
   // `bekannt` wächst mit den Ergänzungen und entdoppelt sie über alle Paare hinweg; `getippt`
   // wächst NICHT. Das ist der Unterschied zwischen Entdopplung und Ableitung: ein ergänztes Wort
   // darf nie selbst wieder als getippt gelten und eine zweite Ergänzung auslösen (Kettenbildung),
-  // denn das wäre genau die Ableitung, die `S2_ERWEITERUNG_GRENZE.leitetAb` ausschließt.
+  // denn das wäre genau die Ableitung, die die S2-Grenze („nichts wird abgeleitet") ausschließt.
   const bekannt = new Set(getippt);
   const paare: ZuordnungsPaar[] = [];
   for (const zuordnung of zuordnungen) {
@@ -363,6 +442,36 @@ function withPriority(gap: Gap): Gap {
   return isGapPriority(gap.priority) ? gap : { ...gap, priority: "mittel" };
 }
 
+/**
+ * produkt:20261010:wissenskreislauf-schliessen — die Lücke, wie sie an DEN FRAGENDEN zurückgeht.
+ *
+ * Bei einer wiederholten Frage kommt die BESTEHENDE Lücke zurück — mit dem Ersteller und den
+ * weiteren Fragenden, also mit fremden Kennungen. Der Fragende erfährt nur sich selbst: ein fremder
+ * Ersteller fällt weg, von den weiteren Fragenden bleibt höchstens er selbst. Zuordnungsverlauf und
+ * Rückfragen gehören nicht in die Antwort auf eine Frage.
+ */
+const PERSONENBEZOGENE_LUECKENFELDER: ReadonlySet<string> = new Set([
+  "createdBy",
+  "weitereFragende",
+  "zuordnungen",
+  "rueckfragen",
+]);
+
+function fuerDenFragenden(gap: Gap, fragender: string): Gap {
+  const { createdBy, weitereFragende } = gap;
+  const rest = Object.fromEntries(
+    Object.entries(gap).filter(([feld]) => !PERSONENBEZOGENE_LUECKENFELDER.has(feld)),
+  ) as unknown as Gap;
+  const selbst = fragender && fragender !== "system" ? fragender : undefined;
+  return {
+    ...rest,
+    ...(createdBy && createdBy === selbst ? { createdBy } : {}),
+    ...(selbst && createdBy !== selbst && weitereFragende?.includes(selbst)
+      ? { weitereFragende: [selbst] }
+      : {}),
+  };
+}
+
 export interface AskServiceDeps {
   reasoner: Reasoner;
   koService: KoService;
@@ -370,6 +479,10 @@ export interface AskServiceDeps {
   audit?: AuditService;
   now?: () => number;
   genId?: () => string;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636): die aus der Bewährungs-Historie gelernten
+  // Halbwertszeiten je Kategorie (`KoService.gelernteHalbwertszeiten`). Fehlt der Zugang, gilt für
+  // die Haltbarkeit (R-0248) die Vorgabe je Wissensart — dieselbe Regel, nur ohne Lernstand.
+  halbwertszeiten?: () => Promise<GelernteHalbwertszeiten>;
   // FUNKE-FIX P0 (bens ROT-1): HMAC-Secret für den opaken Answer-Receipt. Fehlt es, wird ein
   // prozess-lokales Zufalls-Secret erzeugt (single-process Monolith; Belege sind kurzlebig). Für
   // Mehr-Instanz-/deterministische Testläufe kann es injiziert werden (build-app: optional aus ENV).
@@ -405,6 +518,37 @@ export interface AskServiceDeps {
    * unverändert. Die eine Kompositionswurzel (`build-app.ts`) setzt sie immer.
    */
   kiSperre?: AskKiSperre;
+  /**
+   * produkt:20261010:wissenskreislauf-schliessen — DER FACHPRÜFSTAND EINER FASSUNG.
+   *
+   * Die Kompositionswurzel bindet ihn an `ValidationService.pruefstandFuer` — dieselbe Zählung, die
+   * Prüfboard und Detailabruf zeigen (nur Stimmen der übergebenen Fassung). Der Dienst zählt nicht
+   * selbst. FEHLT er, kann keine Lücke fachlich geschlossen werden (`pruefstand_unbekannt`,
+   * fail-closed) — ein Aufbau ohne Prüfstand darf keinen Abschluss behaupten.
+   */
+  pruefstand?: (koId: string, koVersion: number) => Promise<GapPruefstand>;
+}
+
+/**
+ * produkt:20261010:wissenskreislauf-schliessen — wer einen Vorgangsschritt ausführt, mit der FERTIGEN
+ * Sichtbarkeitsentscheidung der Route (`sichtbarkeitsfilterFuer`) und dem Verwaltungsrecht
+ * (`ko.assign`). Der Dienst legt keine Rechte aus; er wendet die mitgebrachte Entscheidung an.
+ */
+export interface GapBeteiligter {
+  readonly id: string;
+  readonly verwaltend: boolean;
+  readonly sichtbar: (ko: KnowledgeObject) => boolean;
+}
+
+/** Eine aus dem Lückenstand abgeleitete Meldung der vorhandenen Glocke (`notification-feed.ts`). */
+export interface GapMeldung {
+  readonly id: string;
+  readonly art: "geloest" | "rueckfrage" | "rueckfrage_beantwortet";
+  readonly gapId: string;
+  readonly at: string;
+  /** Bei `geloest` der Titel des nutzbaren Wissenseintrags, sonst der eigene Fragetext. */
+  readonly title: string;
+  readonly koId?: string;
 }
 
 /** D5: die schmale Sicht auf den Abschaltzustand — mehr braucht der Frageweg nicht zu kennen. */
@@ -444,6 +588,14 @@ export interface AskResult {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über (Nutzer + ausgelieferte Quell-KOs). Der Client
   // reicht ihn beim „Danke" (/api/ask/helpful) zurück; der Server verifiziert die Quellen-Bindung.
   receipt: string;
+  /**
+   * R-0338 (Aufnahme gesamt-suchindex-aktualitaet, Ben Nacharbeit 3): die Fassung JEDER
+   * herangezogenen Quelle (`result.sources`), so wie DIESE Antwort sie gelesen hat — aus denselben
+   * Objekten, die an den Antwortweg gingen, nicht aus einem Bestand des Browsers. Grundlage des
+   * Auffrischen-Vertrags der Fragenseite (`apps/web/src/lib/fragenArbeitsstand.ts`). Optional,
+   * damit ältere Aufrufer und Doubles gültig bleiben; dieser Dienst setzt es immer.
+   */
+  quellenStand?: Record<string, number>;
   // ==============================================================================================
   // AUFTRAG-mega77 BLOCK A — HIER STAND `ungeprueftUnterdrueckt`, UND ER IST ENTFERNT.
   // ==============================================================================================
@@ -537,6 +689,87 @@ export interface AskResult {
   // bleibt fuer ihn die ehrliche Auskunft. Die Sperrlogik selbst ist unberuehrt
   // (E-VERTRAULICHKEIT-OHNE-STUFE-20260828: erklaeren ja, sperren oder entsperren nein).
   verschlossen?: VerschlossenHinweis[];
+  // AUFNAHME 20260922 (R-0305, R-1099): die Gegenüberstellung mit dem Zweitmodell — NUR, wenn die
+  // Frage sie angefordert hat (`opts.zweitmeinung`). Sonst fehlt das Feld vollständig, und der
+  // Antwortkörper ist der bisherige.
+  zweitmeinung?: ZweitmeinungErgebnis;
+  // R-1633 — WOFÜR GEWICHTET WURDE, SICHTBAR. Nur wenn der Fragende einen Fragekontext angegeben
+  // hat (Werk/Schicht/Rolle); sonst fehlt das Feld vollständig. Je herangezogener Quelle
+  // (`result.sources`, also nach Sichtbarkeits-, Vertraulichkeits- und Freigabefilter) ihre Geltung
+  // und wie sie zum Kontext passt — dieselbe Rechnung, die die Rangfolge bestimmt hat.
+  geltung?: AskGeltungsauskunft;
+  // AUFNAHME 20260922 · R-0284 — WOGEGEN GEPRÜFT WURDE. Eine Wissenslücke ohne ihren Rahmen ist
+  // eine nackte Null: niemand weiss, ob sie etwas bedeutet. Der Dienst setzt das Feld auf JEDEM
+  // Rückgabeweg; optional nur, damit Aufrufer mit eigenen Ergebnisattrappen unberührt bleiben.
+  pruefrahmen?: AskPruefrahmen;
+  // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): WIE die Antwort zugeschnitten wurde — Tiefe,
+  // Fachsprache, Reihenfolge und GENAU die angehängten Ergänzungen samt ihrer Quelle. Fehlt das
+  // Feld, ist die Antwort unverändert (wörtlicher Weg, kein Zuschnitt übergeben, keine Antwort).
+  antwortZuschnitt?: AskAntwortZuschnitt;
+  /**
+   * produkt:20261010:wissenskreislauf-schliessen — DIESELBE FRAGE IST SCHON FACHLICH GELÖST.
+   *
+   * Nur bei `answered=false` und nur mit Betrachter: eine fachlich geschlossene Lücke mit derselben
+   * Frage (`compareKey`) verweist auf ihren Wissenseintrag, und dieser trägt HEUTE für diesen
+   * Fragenden (`pruefeFachlicheNutzbarkeit` mit seiner Sichtbarkeit). Dann entsteht keine neue Lücke —
+   * die Wiederholungsfrage nutzt genau den Eintrag, den die Abschlussmeldung nannte. Trägt er nicht
+   * mehr (abgelaufen, gesperrt, kein Zugriff), fehlt das Feld, und die Frage wird wieder eine Lücke.
+   */
+  geloesteLuecke?: { koId: string; koVersion: number; titel: string };
+  // produkt:20261009:referenzki-quellenbelege (REF-01): je Tatsachenbehauptung der beantworteten
+  // Antwort ihre stabile Kennung und ihre Fundstellen (Objekt, Fassung, Textbereich, Auszug,
+  // Fingerabdruck) — oder die ausdrücklich ausgewiesene Deckungslücke. Gebildet aus DENSELBEN
+  // Objekten, aus denen die Antwort entstand (`aussage-fundstellen.ts`). Fehlt ohne Antwort.
+  aussagen?: AussagenBeleg;
+  // REF-01 (Ben nacharbeit-7, K1): die EIGENEN Bindungen der beiden Zweitmeinungsantworten — nur,
+  // wenn eine Gegenüberstellung ausgeliefert wird (`zweitmeinung.status === "verglichen"`).
+  zweitmeinungAussagen?: ZweitmeinungAussagen;
+}
+
+/** R-0346: der angewandte Zuschnitt der Antwort (Regel und Grenzen: `antwort-zuschnitt.ts`). */
+export interface AskAntwortZuschnitt {
+  tiefe: ZuschnittDerAntwort["tiefe"];
+  fachsprache: ZuschnittDerAntwort["fachsprache"];
+  reihenfolge: KnowledgeType[];
+  ergaenzungen: ZuschnittErgaenzung[];
+  /**
+   * Ben nacharbeit-13: die Antwort OHNE Wörterbucherklärungen — der Teil, den die tragenden Quellen
+   * belegen. Die Argumentationskette führt GENAU diesen Text als Schluss; Wörterbuchdefinitionen
+   * werden so nie den Wissensquellen zugeschrieben.
+   */
+  quellengebundenerText: string;
+  /**
+   * Ben nacharbeit-20: die angehängten Abschnitte samt der Quelle, für die jeder erzeugt wurde, in
+   * der Reihenfolge am Ende der Antwort (`antwort-zuschnitt.ts`). Grundlage der Absatzzuordnung.
+   */
+  abschnitte: ZuschnittAbschnitt[];
+}
+
+/**
+ * Der Rahmen einer Suche — eine Aussage über den WEG, nie über den Bestand.
+ *
+ * WARUM DAS KEIN ZWEITES `ungeprueftUnterdrueckt` IST (mega77): gezählt wird nicht die gedeckelte
+ * Vorauswahl und nichts Ungeprüftes neben der Enge, sondern genau die Kandidaten, die dem
+ * Antwortweg vorgelegt wurden — hinter `dropConfidential` und, wo verlangt, hinter `validatedOnly`.
+ * Das ist dieselbe Menge, aus der dieser Aufrufer ohnehin Quellen bekommen hätte; die Zahl verrät
+ * nichts, was er nicht sehen darf. Und sie behauptet nichts über den Bestand: „0 verglichen" heisst
+ * „keine Quelle deckte alle Fragebegriffe", nicht „es gibt nichts".
+ */
+export interface AskPruefrahmen {
+  /** Wogegen gesucht wurde: nur validiertes Wissen, oder jedes nicht vertrauliche. */
+  umfang: "validiert" | "nicht_vertraulich";
+  /** Wie viele passende Einträge (alle Fragebegriffe gedeckt) dem Antwortweg vorlagen. */
+  verglichen: number;
+  /** Höchstzahl je Frage (Top-K). */
+  hoechstens: number;
+  /** `true`: nur wörtliche Übernahme validierter Aussagen, keine Synthese durch ein Modell. */
+  nurWoertlich: boolean;
+}
+
+/** R-1633: der Fragekontext und je Quelle ihre Geltung und Passung (Regel: `geltungFuerFrage`). */
+export interface AskGeltungsauskunft {
+  fragekontext: Fragekontext;
+  quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
 
 /**
@@ -625,12 +858,15 @@ export class AskService {
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
+  private readonly halbwertszeiten: (() => Promise<GelernteHalbwertszeiten>) | undefined;
   private readonly receiptSecret: Buffer;
   private readonly withTx: WithTx | undefined;
   /** W3-C1: der Beleg-Schreibweg. `undefined` heisst: dieser Aufbau schreibt keine Snapshots. */
   private readonly answerSnapshots: AnswerSnapshotRepo | undefined;
   /** D5: die administrative KI-Abschaltung (s. `AskServiceDeps.kiSperre`). */
   private readonly kiSperre: AskKiSperre | undefined;
+  /** Der Fachprüfstand (s. `AskServiceDeps.pruefstand`). */
+  private readonly pruefstand: AskServiceDeps["pruefstand"];
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): serialisiert die gekoppelten „Danke"-Schreibvorgänge (die
   // Audit-Kette ist per Konstruktion ein Single-Writer — ihre seq/prevHash bilden eine Totalordnung).
   // Ohne diese Serialisierung würden zwei gleichzeitige Danke VERSCHIEDENER Nutzer (verschiedene
@@ -646,12 +882,14 @@ export class AskService {
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+    this.halbwertszeiten = deps.halbwertszeiten;
     // FUNKE-FIX P0: ohne injiziertes Secret ein prozess-lokales Zufalls-Secret — Belege sind
     // kurzlebig, das Secret verlässt den Server nie.
     this.receiptSecret = deps.receiptSecret ?? randomBytes(32);
     this.withTx = deps.withTx;
     this.answerSnapshots = deps.answerSnapshots;
     this.kiSperre = deps.kiSperre;
+    this.pruefstand = deps.pruefstand;
   }
 
   /**
@@ -869,6 +1107,32 @@ export class AskService {
        * von der Route, und nur im Konsolenzweig.
        */
       gespraechsfaden?: readonly string[];
+      /**
+       * AUFNAHME 20260922 (R-0305, R-1099): dieselbe Frage zusätzlich vom Zweitmodell beantworten
+       * lassen und gegenüberstellen (`Reasoner.answerMitZweitmeinung`). Beide Modelle bekommen
+       * DIESELBEN Kandidaten — die Sichtbarkeits-, Prüfstands- und Vertraulichkeitsfilter liefen
+       * davor und gelten für beide. Wirkungslos mit `retrievalOnly` (dort fragt kein Modell).
+       * Gesetzt nur von der Route, und nur im Konsolenzweig.
+       */
+      zweitmeinung?: boolean;
+      /**
+       * R-1633: wofür gefragt wird (Werk/Schicht/Rolle), bereits geprüft (`normalizeFragekontext`).
+       * Wirkung: je Kandidat ein `geltungsrang`, der unter GLEICH relevanten Quellen ordnet
+       * (Regel an `rankCandidates`), und die Auskunft `geltung` an der Antwort. Gesetzt nur von
+       * der Route, und nur im Konsolenzweig — wie der Gesprächsfaden.
+       */
+      fragekontext?: Fragekontext;
+      /**
+       * Klara 03 (produkt:20261007:klara-kontext-tutorial): der gewählte Seitenkontext, bereits von
+       * der Route unter den Rechten des Fragenden aufgelöst. Gesetzt nur im Konsolenzweig.
+       *   · `kontext` — ein Satz zum Objekt der Seite (Titel des Artikels, Titel des Entwurfs, die
+       *     aktuelle Frage). Er reist wie eine Fadenfrage als ZUSAMMENHANG: er ergänzt die Suche
+       *     (hinter den Fragetermen) und steht vor der Frage im Zusammenhang — gebunden wird er NICHT.
+       *   · `nurObjekt` — Bezug „Dieser Artikel“: geantwortet wird NUR aus diesem Objekt (sofern es
+       *     die Frage deckt und alle übrigen Filter besteht). `null` heisst: das gewählte Objekt ist
+       *     für den Fragenden nicht zugänglich — dann gibt es keine Grundlage.
+       */
+      seitenkontext?: { kontext: string; nurObjekt?: string | null };
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -876,6 +1140,14 @@ export class AskService {
     // Er wirkt auf die Vorauswahl, VOR `dropConfidential` und `validatedOnly`, und kann damit nur
     // verengen. Ungesetzt (Systemaufrufe, bestehende Aufrufer) bleibt der Ablauf der bisherige.
     grundlageSichtbarFuer?: (ko: KnowledgeObject) => boolean,
+    // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): Rolle und Dokumentanlass für die ANTWORT selbst —
+    // Tiefe (wörtliche Voraussetzungen/Maßnahmen der tragenden Quellen), Fachsprache (Erklärungen
+    // aus dem Firmenwörterbuch) und Reihenfolge der Wissensarten (`antwort-zuschnitt.ts`). Wie
+    // `grundlageSichtbarFuer` ein EIGENER Parameter und nicht Teil von `opts` (KA4-E1, mega52).
+    // Ungesetzt, und auf dem wörtlichen Weg (`retrievalOnly`), bleibt die Antwort unverändert.
+    zuschnitt?: ZuschnittDerAntwort & {
+      begriffe?: (locale: ReasonerLocale) => Promise<readonly ZuschnittBegriff[]>;
+    },
   ): Promise<AskResult> {
     // D5: die Abschalt-Epoche beim Beginn DIESER Frage — jede Prüfung unten vergleicht mit ihr.
     const kiBeginn = this.kiSperre?.stand();
@@ -928,9 +1200,14 @@ export class AskService {
     const vorFaden = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
     // R-0348: der Gesprächsfaden — Begründung und Grenzen an `fadenfragen`.
     const faden = fadenfragen(opts?.gespraechsfaden);
+    // Klara 03: der Seitenkontext steht im Zusammenhang direkt vor der Frage — wie eine Fadenfrage,
+    // aber nie Themenanker (gebunden bleibt allein `faden[0]`). Ohne ihn ist alles wie bisher.
+    const kontextSatz = opts?.seitenkontext?.kontext.trim() ?? "";
+    const zusammenhang = kontextSatz ? [...faden, kontextSatz] : faden;
     const frageImZusammenhang =
-      faden.length > 0 ? [...faden, question].join(FADEN_TRENNER) : question;
-    const suchterme = faden.length > 0 ? erweiterteSuchterme(vorFaden, faden.join(" ")) : vorFaden;
+      zusammenhang.length > 0 ? [...zusammenhang, question].join(FADEN_TRENNER) : question;
+    const suchterme =
+      zusammenhang.length > 0 ? erweiterteSuchterme(vorFaden, zusammenhang.join(" ")) : vorFaden;
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
@@ -970,8 +1247,18 @@ export class AskService {
             .map((ko) => ({ id: ko.id, title: ko.title, status: ko.status })),
         }
       : {};
+    // R-1633: der Fragekontext (Werk/Schicht/Rolle) — ohne ihn ist der Ablauf der bisherige.
+    const fragekontext = opts?.fragekontext;
+    // aufnahme:20260922:gesamt-wissen-frische (R-0248): EIN Zeitpunkt für alle Quellen dieser Frage.
+    const jetzt = this.now();
+    // R-1636: die gelernte Halbwertszeit der Kategorie bestimmt die Frist mit.
+    const gelernt = await this.halbwertszeiten?.();
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
+    // REF-01: der Volltext JE FASSUNG, wie ihn genau diese Lesung gesehen hat. Die Fundstellen
+    // binden ihn nur, wenn die Projektion zur Fassung des Objekts aus der Vorauswahl gehört — sonst
+    // käme ein Auszug aus Fassung N+1 an Fassung N (Revision zwischen beiden Lesungen).
+    const volltexte = new Map<string, { fassung: number; text: string }>();
     const refs: KnowledgeRef[] = await Promise.all(
       prefiltered.map(async (ko) => {
         // JOB 2614 D3 (G27-Anschluss, JOB 1565 Weg A): der DOKUMENTTEXT reist in die Refs — aus der
@@ -984,6 +1271,9 @@ export class AskService {
         // bereits davor, und die Projektion einer hier noch enthaltenen Quelle ist dieselbe
         // Wahrheit, die auch der Kandidatenweg (`findCandidates`) gelesen hat.
         const projektion = await this.suchprojektion(ko.id, "suchprojektion", kiBeginn);
+        if (projektion && typeof projektion.koVersion === "number") {
+          volltexte.set(ko.id, { fassung: projektion.koVersion, text: projektion.bodyText });
+        }
         return {
           id: ko.id,
           title: ko.title,
@@ -994,6 +1284,15 @@ export class AskService {
           // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
           ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
           ...(projektion?.bodyText.trim() ? { bodyText: projektion.bodyText } : {}),
+          // R-1633: nur mit Fragekontext — dann ordnet der Rang an BEIDEN Toren (dieselben Refs).
+          ...(fragekontext
+            ? { geltungsrang: geltungFuerFrage(ko.geltung, fragekontext).rang }
+            : {}),
+          // R-0248: nach Fristende nicht mehr „gesichert" (answerStanding), bis der Verantwortliche
+          // bestätigt. Nur an validierten Quellen gesetzt — ungeprüfte sind ohnehin nicht gesichert.
+          ...(ko.status === "validiert" && haltbarkeitAbgelaufen(ko, jetzt, gelernt)
+            ? { haltbarkeitAbgelaufen: true as const }
+            : {}),
         };
       }),
     );
@@ -1021,21 +1320,40 @@ export class AskService {
     const ordnung = new Map<string, string[]>(
       prefiltered.map((ko): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
     );
-    const vollstaendig = refs.filter((ref) =>
-      decktAlleFragebegriffe(
-        question,
-        [
-          ref.title,
-          ref.statement,
-          ...(ref.captionTexts ?? []),
-          ref.bodyText ?? "",
-          ...(ordnung.get(ref.id) ?? []),
-        ].join(" "),
-        relevanz,
-      ),
-    );
-    // R-0348: gebunden hat oben die getippte Frage; gewählt und beantwortet wird im Zusammenhang.
-    const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
+    // R-0278 (Nacharbeit 12, ben): bei einer anknüpfenden Nachfrage gelten die sachlichen
+    // Einschränkungen des THEMENANKERS (erste Fadenfrage, s. `fadenfragen`) weiter. Gebunden wird
+    // deshalb die Nachfrage UND der Anker: nach „Welche maximale Temperatur gilt am Ventil F3?" darf
+    // „Und bei Dauerbetrieb?" keine Quelle zu Ventil F4 tragen. Zwischenfragen binden nicht — sie
+    // sind die Nachfragen, die der Anker einrahmt. Ohne Faden ist der Ablauf der bisherige.
+    const anker = faden[0];
+    const vollstaendig = refs.filter((ref) => {
+      const durchsuchbar = [
+        ref.title,
+        ref.statement,
+        ...(ref.captionTexts ?? []),
+        ref.bodyText ?? "",
+        ...(ordnung.get(ref.id) ?? []),
+      ].join(" ");
+      return (
+        decktAlleFragebegriffe(question, durchsuchbar, relevanz) &&
+        (anker === undefined || decktAlleFragebegriffe(anker, durchsuchbar, relevanz))
+      );
+    });
+    // R-0348: gebunden haben oben die getippte Frage und ihr Anker; gewählt und beantwortet wird im
+    // Zusammenhang.
+    // Klara 03: Bezug „Dieser Artikel“ — nur dieses Objekt kommt an beide Tore (Tor 2 wählt aus
+    // genau diesen Kandidaten). `null` (nicht zugänglich) lässt keinen Kandidaten übrig.
+    const nurObjekt = opts?.seitenkontext?.nurObjekt;
+    const auswahlBasis =
+      nurObjekt === undefined ? vollstaendig : vollstaendig.filter((ref) => ref.id === nurObjekt);
+    const candidates = waehleKandidaten(frageImZusammenhang, auswahlBasis, DEFAULT_TOP_K, relevanz);
+    // R-0284: der Rahmen dieser Suche, aus genau den Werten, die den Weg bestimmt haben.
+    const pruefrahmen: AskPruefrahmen = {
+      umfang: opts?.validatedOnly ? "validiert" : "nicht_vertraulich",
+      verglichen: candidates.length,
+      hoechstens: DEFAULT_TOP_K,
+      nurWoertlich: opts?.retrievalOnly === true,
+    };
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
@@ -1061,12 +1379,24 @@ export class AskService {
     // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
     // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
     this.pruefeKiSperre("antwortweg", kiBeginn);
+    // R-0305/R-1099: angefordert — dann beantworten beide Modelle dieselbe Frage aus denselben
+    // `candidates` mit denselben Argumenten, und die erste Antwort ist hier die Antwort wie sonst
+    // auch. Der Weg des Add-ins (`retrievalOnly`) bleibt davon unberührt: dort fragt kein Modell.
+    const zweitmeinungFeld: { zweitmeinung?: ZweitmeinungErgebnis } = {};
+    const antworte = async (...args: Parameters<Reasoner["answer"]>): Promise<AnswerResult> => {
+      if (opts?.zweitmeinung !== true) {
+        return this.reasoner.answer(...args);
+      }
+      const beide = await this.reasoner.answerMitZweitmeinung(...args);
+      zweitmeinungFeld.zweitmeinung = beide.zweitmeinung;
+      return beide.erste;
+    };
     const rawResult = await this.mitUebertragungssperre(() =>
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
           this.reasoner.answerRetrievalOnly(frageImZusammenhang, candidates, locale, relevanz)
-        : this.reasoner.answer(
+        : antworte(
             frageImZusammenhang,
             candidates,
             locale,
@@ -1098,7 +1428,12 @@ export class AskService {
     // (`apps/web/src/api/types.ts`) und von dort an die drei Flächen.
     // Das Feld wird WEGGELASSEN, nicht auf `undefined` gesetzt: `exactOptionalPropertyTypes` ist
     // an, und „fehlt" ist auch am Draht die Aussage (JSON kennt kein `undefined`).
-    const { abgeschnitten: _abgeschnittenVerworfen, ...rawOhneAbbruch } = rawResult;
+    // R-1643: dasselbe gilt für die Argumentationskette — ohne Antwort gibt es nichts zu begründen.
+    const {
+      abgeschnitten: _abgeschnittenVerworfen,
+      argumentation: _argumentationVerworfen,
+      ...rawOhneAbbruch
+    } = rawResult;
     const resultCore =
       rawResult.answered && rawResult.sources.length === 0
         ? { ...rawOhneAbbruch, answered: false, answer: null, citedSources: [] }
@@ -1125,7 +1460,66 @@ export class AskService {
         !frageterme.some((t) => core.includes(t))
       );
     });
-    const result = { ...resultCore, captionSources };
+    // AUFNAHME 20260922 · R-0346 (Ben nacharbeit-9): der Zuschnitt verändert die Antwort SELBST —
+    // nur auf dem Antwortweg mit Synthese bzw. Rückfall, NIE auf dem wörtlichen (`retrievalOnly`).
+    // Ergänzt wird ausschließlich Wörtliches aus den TRAGENDEN Quellen und Definitionen aus dem
+    // Firmenwörterbuch; Quellen, Zuordnung und Belegstellen bleiben unberührt.
+    let antwortZuschnitt: AskAntwortZuschnitt | undefined;
+    const basisText = resultCore.answer;
+    let zugeschnittenerText = basisText;
+    if (zuschnitt && opts?.retrievalOnly !== true && resultCore.answered && basisText) {
+      const getragen: readonly string[] = resultCore.citedSources;
+      const tragende = getragen.flatMap((id) => {
+        const ko = prefiltered.find((k) => k.id === id);
+        return ko ? [ko] : [];
+      });
+      const begriffe =
+        zuschnitt.fachsprache === "allgemein" && zuschnitt.begriffe
+          ? await zuschnitt.begriffe(locale).catch(() => [])
+          : [];
+      const zugeschnitten = schneideAntwortZu(basisText, tragende, zuschnitt, begriffe, locale);
+      zugeschnittenerText = zugeschnitten.text;
+      antwortZuschnitt = {
+        tiefe: zuschnitt.tiefe,
+        fachsprache: zuschnitt.fachsprache,
+        reihenfolge: [...zuschnitt.reihenfolge],
+        ergaenzungen: zugeschnitten.ergaenzungen,
+        quellengebundenerText: zugeschnitten.quellengebunden,
+        abschnitte: zugeschnitten.abschnitte,
+      };
+    }
+    const result = { ...resultCore, answer: zugeschnittenerText, captionSources };
+    const zuschnittFeld: { antwortZuschnitt?: AskAntwortZuschnitt } = antwortZuschnitt
+      ? { antwortZuschnitt }
+      : {};
+    // R-0338: die gelesene Fassung jeder herangezogenen Quelle — aus `prefiltered`, den Objekten,
+    // aus denen die Antwort entstand. Eine Quelle ohne Objekt dort (nicht erwartbar) fehlt im Stand;
+    // die Fläche behandelt eine Antwort mit unvollständigem Stand dann wie eine ohne Stand.
+    const quellenStand: Record<string, number> = {};
+    for (const id of result.sources) {
+      const fassung = prefiltered.find((ko) => ko.id === id)?.version;
+      if (fassung !== undefined) {
+        quellenStand[id] = fassung;
+      }
+    }
+    // R-1633 — „Sichtbar im UI": je herangezogener Quelle Geltung und Passung, aus denselben
+    // Objekten (`prefiltered`) und derselben Regel, die den Rang gesetzt hat. Ohne Kontext fehlt
+    // das Feld; eine Quelle ohne Objekt in `prefiltered` gilt als ohne Geltungsangabe.
+    const geltungFeld: { geltung?: AskGeltungsauskunft } = fragekontext
+      ? {
+          geltung: {
+            fragekontext,
+            quellen: result.sources.map((id) => {
+              const g = prefiltered.find((ko) => ko.id === id)?.geltung;
+              return {
+                id,
+                passung: geltungFuerFrage(g, fragekontext).passung,
+                ...(g ? { geltung: g } : {}),
+              };
+            }),
+          },
+        }
+      : {};
     // JOB 2626 D1 — DIE TORLAGE, wenn es keine Antwort gab (Vertrag und Grenzen am Feld
     // `AskResult.verschlossen`). Gerechnet wird auf `dropConfidential(prefilteredRaw)` — derselbe
     // Schnitt wie bei `ungeprueft` eine Seite weiter oben: NIE ueber Vertrauliches, NUR was der
@@ -1176,6 +1570,34 @@ export class AskService {
     // D5: nach dem Warten auf die Volltext-Blicke oben — vor dem Beleg, der die Antwort ablegt.
     this.pruefeKiSperre("ergebnis", kiBeginn);
     const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer, kiBeginn);
+    // REF-01: die Aussage-zu-Passagen-Bindung. Grundlage ist der VOLLSTÄNDIG AUSGELIEFERTE Text —
+    // samt der Wörterbucherklärungen des Zuschnitts. Sie sind Teil der Antwort; was keine Fundstelle
+    // in einer tragenden Quelle hat, steht ausdrücklich als Deckungslücke da, und eine geänderte
+    // Erklärung ändert den Antwortfingerabdruck. Objekte genau dieses Laufs: Fassung und
+    // Belegstellen aus `prefiltered`, der Volltext nur aus der Projektion DERSELBEN Fassung
+    // (`volltexte`). Keine Neusuche, kein Modellaufruf, kein zusätzlicher Lesevorgang.
+    const bindungsQuellen = new Map(
+      prefiltered.map((ko): [string, BindungsQuelle] => [
+        ko.id,
+        bindungsQuelleAus(ko, volltextDerFassung(volltexte.get(ko.id), ko.version)),
+      ]),
+    );
+    const hauptBeleg = bindeAntworttext(result, bindungsQuellen);
+    const aussagenFeld: { aussagen?: AussagenBeleg } = hauptBeleg ? { aussagen: hauptBeleg } : {};
+    // REF-01 (Ben nacharbeit-7, K1): auch die Antworten der Zweitmeinung werden ausgeliefert und
+    // angezeigt — JEDE bekommt ihre EIGENE Bindung aus ihrem eigenen Text und ihren eigenen Quellen
+    // (dieselbe gefilterte Kandidatenmenge, dieselben Fassungen dieses Laufs). Die Bindung der
+    // Hauptantwort wird nie auf einen abweichenden Text übertragen.
+    const vergleich = zweitmeinungFeld.zweitmeinung;
+    const zweitmeinungAussagenFeld: { zweitmeinungAussagen?: ZweitmeinungAussagen } =
+      vergleich?.status === "verglichen"
+        ? {
+            zweitmeinungAussagen: {
+              erste: bindeAntworttext(vergleich.erste, bindungsQuellen) ?? null,
+              zweite: bindeAntworttext(vergleich.zweite, bindungsQuellen) ?? null,
+            },
+          }
+        : {};
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -1201,6 +1623,30 @@ export class AskService {
         prefilterTermLimit: ASK_PREFILTER_TERM_LIMIT,
       },
     });
+    // R-1099: „Weichen sie voneinander ab, ist das ein Warnzeichen, dem jemand nachgehen muss."
+    // Damit dieses Warnzeichen nicht nur auf einem Bildschirm steht, der gleich wieder zu ist, wird
+    // die Gegenüberstellung protokolliert — als eigener Eintrag, damit `ask.query` seine
+    // inventarisierte Feldmenge behält (docs/datenschutz/pruefprotokoll-nutzdaten.md). Ziel ist die
+    // tragende Quelle, an der man der Abweichung nachgeht. Nur Zustände, kein Frage- oder
+    // Antworttext, kein Anbieter- oder Modellname.
+    const zweitmeinung = zweitmeinungFeld.zweitmeinung;
+    if (zweitmeinung) {
+      await this.audit?.record({
+        actor: actorId,
+        action: "ask.zweitmeinung",
+        target: result.citedSources[0] ?? result.sources[0] ?? "-",
+        payload:
+          zweitmeinung.status === "verglichen"
+            ? {
+                status: zweitmeinung.status,
+                abweichend: zweitmeinung.abweichend,
+                abweichungen: zweitmeinung.abweichungen.join(","),
+                ersteStufe: zweitmeinung.ersteStufe,
+                zweiteStufe: zweitmeinung.zweiteStufe,
+              }
+            : { status: zweitmeinung.status, grund: zweitmeinung.grund },
+      });
+    }
     // AUFTRAG-mega77 BLOCK A: hier wurde `ungeprueftUnterdrueckt` berechnet. Die Berechnung ist
     // ERSATZLOS entfernt — Begründung am Feld-Grabstein in `AskResult` oben. Kurz: sie lief ohne
     // Betrachterfilter (Leck ab n = 1, Orakel bei enger Wiederholung) und zählte die gedeckelte
@@ -1211,21 +1657,325 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+        return {
+          result,
+          answerId,
+          gap: null,
+          receipt,
+          quellenStand,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          ...zweitmeinungFeld,
+          ...zweitmeinungAussagenFeld,
+          ...geltungFeld,
+          ...zuschnittFeld,
+          pruefrahmen,
+        };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
       // D5: nach Beleg und Protokoll — vor der Lückensuche, die den Lückenbestand liest.
       this.pruefeKiSperre("ergebnis", kiBeginn);
+      // R-0291: welcher Beleg fehlen würde — aus DERSELBEN Vorauswahl wie die Torlage
+      // (`dropConfidential(prefilteredRaw)`, also nur Sichtbares und nie Vertrauliches) und mit
+      // denselben Tormessungen. Regel und Bedeutung: `gap-belegbedarf.ts`.
+      const belegbedarf = leiteBelegbedarfAb(
+        await Promise.all(
+          dropConfidential(prefilteredRaw).map(async (ko) => {
+            const projektion = await this.suchprojektion(ko.id, "ergebnis", kiBeginn);
+            return {
+              freigabeFehlt: ko.status !== "validiert",
+              stufeFehlt: ko.confidentiality === null || ko.confidentiality === undefined,
+              volltextFehlt: !projektion?.bodyText.trim(),
+            };
+          }),
+        ),
+      );
+      // produkt:20261010:wissenskreislauf-schliessen: dieselbe Frage ist schon fachlich gelöst und
+      // ihr Eintrag trägt HEUTE für diesen Fragenden → keine neue Lücke, sondern genau dieser
+      // Eintrag (Begründung am Feld `geloesteLuecke`). Nur mit Betrachter; ohne ihn ist das Recht
+      // nicht prüfbar, und es bleibt beim bisherigen Weg.
+      if (grundlageSichtbarFuer) {
+        const geloest = await this.geloesterEintragFuer(frageImZusammenhang, grundlageSichtbarFuer);
+        this.pruefeKiSperre("ergebnis", kiBeginn);
+        if (geloest) {
+          return {
+            result,
+            answerId,
+            gap: null,
+            receipt,
+            quellenStand,
+            ...ungeprueftFeld,
+            ...verschlossenFeld,
+            ...zweitmeinungFeld,
+            ...zweitmeinungAussagenFeld,
+            ...geltungFeld,
+            ...zuschnittFeld,
+            pruefrahmen,
+            geloesteLuecke: geloest,
+          };
+        }
+      }
       // R-0348: eine Lücke „Und bei Teilzeit?" wäre für den Experten unlesbar — sie trägt deshalb
       // die Frage im Zusammenhang (ohne Faden ist das die Frage selbst).
-      const gap = await this.createGap(frageImZusammenhang, actorId, opts?.demoSeed, locale, () =>
-        this.pruefeKiSperre("ergebnis", kiBeginn),
+      const gap = await this.createGap(
+        frageImZusammenhang,
+        actorId,
+        opts?.demoSeed,
+        locale,
+        () => this.pruefeKiSperre("ergebnis", kiBeginn),
+        belegbedarf,
       );
-      return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+      return {
+        result,
+        answerId,
+        gap,
+        receipt,
+        quellenStand,
+        ...ungeprueftFeld,
+        ...verschlossenFeld,
+        ...zweitmeinungFeld,
+        ...zweitmeinungAussagenFeld,
+        ...geltungFeld,
+        ...zuschnittFeld,
+        pruefrahmen,
+      };
     }
-    return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
+    return {
+      result,
+      answerId,
+      gap: null,
+      receipt,
+      quellenStand,
+      ...ungeprueftFeld,
+      ...verschlossenFeld,
+      ...zweitmeinungFeld,
+      ...zweitmeinungAussagenFeld,
+      ...geltungFeld,
+      ...zuschnittFeld,
+      ...aussagenFeld,
+      pruefrahmen,
+    };
+  }
+
+  /**
+   * ============================================================================================
+   * R-1630 / R-2176 — DIESELBE FRAGE, BEANTWORTET AUS DEM WISSENSSTAND ZUM STICHTAG.
+   * ============================================================================================
+   *
+   * Regeln und Grenzen stehen in `wissensstand-vergleich.ts`. Hier läuft der Weg selbst:
+   *   1. dieselbe Vorauswahl wie `ask` (heutiger Suchbestand) und derselbe Sichtfilter;
+   *   2. je Kandidat die Fassung zum Stichtag (Verlauf + Versionsabbild) und ihre Freigabe
+   *      (Prüfprotokoll);
+   *   3. ZWEI Antworten über denselben Antwortweg — eine aus den heute freigegebenen Fassungen, eine
+   *      aus den damals belegt freigegebenen Fassungen;
+   *   4. je Quelle beider Antworten der Grund des Unterschieds.
+   *
+   * KEINE NEBENWIRKUNG WIE BEI `ask`: keine Wissenslücke, kein Antwortbeleg, kein Receipt. Der
+   * Vergleich ist eine Auskunft über zwei Bestände, keine neue Frage an das Firmenwissen. Ins
+   * Protokoll geht nur, DASS verglichen wurde (Zahlen, kein Fragetext) — wie `ask.query`.
+   *
+   * DIESELBEN GRENZEN WIE `ask` (Konsolenweg): nur freigegebenes Wissen, nichts Vertrauliches, nur was
+   * der Fragende sehen darf. Eine damalige Fassung muss diese Grenzen HEUTE wie DAMALS einhalten,
+   * sonst bleibt sie draussen; Schutzdaten werden an ihrem Inhalt mit der heutigen Regel geprüft.
+   */
+  async vergleicheWissensstand(
+    question: string,
+    actor: string,
+    locale: ReasonerLocale,
+    stichtagMs: number,
+    grundlageSichtbarFuer: (ko: KnowledgeObject) => boolean,
+  ): Promise<WissensstandVergleich> {
+    const kiBeginn = this.kiSperre?.stand();
+    const frageterme = queryTokens(question);
+    const relevanz = zugeordneteSuchterme(frageterme);
+    const suchterme = [...frageterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
+    // BEN (Nacharbeit 4): die heutige Suchprojektion kennt nur heutige Texte. Wurde ein Fragebegriff
+    // seither aus einem noch vorhandenen Objekt entfernt, fände sie es nicht — und die damals
+    // tragende Fassung fehlte. Deshalb zusätzlich die Objekte, deren Fassungen bis zum Stichtag die
+    // Begriffe trugen. Nachgeladen wird über `get` (Papierkorb bleibt draussen); danach gelten
+    // dieselben Filter wie für die Vorauswahl. Ein Objekt in Schutzdaten-Quarantäne bleibt draussen,
+    // wie es die Suche ebenfalls auslässt.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const bekannt = new Set(vorauswahl.map((ko) => ko.id));
+    const fruehereIds = await this.koService.koIdsMitPassenderFassung(
+      suchterme.slice(0, ASK_PREFILTER_MAX_TERMS),
+      new Date(stichtagMs).toISOString(),
+      ASK_CANDIDATE_PREFILTER_LIMIT,
+      () => this.pruefeKiSperre("vorauswahl", kiBeginn),
+    );
+    const nachgeladen = (
+      await Promise.all(
+        fruehereIds
+          .filter((id) => !bekannt.has(id))
+          .map((id) =>
+            this.koService
+              .get(id, () => this.pruefeKiSperre("vorauswahl", kiBeginn))
+              .catch((fehler: unknown) => {
+                if (fehler instanceof AskError) {
+                  throw fehler;
+                }
+                return undefined;
+              }),
+          ),
+      )
+    ).filter((ko): ko is KnowledgeObject => ko !== undefined && !inSchutzdatenQuarantaene(ko));
+    const kandidaten = dropConfidential(
+      [...vorauswahl, ...nachgeladen].filter((ko) => grundlageSichtbarFuer(ko)),
+    );
+    // Verlauf, Abbilder und Protokoll lesen Kundeninhalt — dieselbe Sperre wie vor der Vorauswahl.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const seiten: VergleichsSeiten[] = await Promise.all(
+      kandidaten.map(async (ko) => {
+        const fassung = fassungZumStichtag(
+          ko,
+          await this.koService.versionsOf(ko.id).catch(() => []),
+          stichtagMs,
+        );
+        // Ohne Protokoll gibt es keinen Freigabebeleg — dann trägt keine damalige Fassung.
+        const protokoll =
+          fassung.art === "fassung" && this.audit
+            ? await this.audit.list({ target: ko.id }).catch(() => [])
+            : [];
+        const frueher = fassung.art === "fassung" ? fassung.ko : null;
+        return {
+          heute: ko,
+          grundlageHeute: ko.status === "validiert",
+          fassung,
+          freigabeDamals:
+            fassung.art === "fassung" &&
+            freigabeZumStichtagBelegt(ko, fassung.version, protokoll, stichtagMs),
+          damalsZulaessig:
+            frueher !== null &&
+            !isConfidential(frueher.confidentiality) &&
+            grundlageSichtbarFuer(frueher) &&
+            !inSchutzdatenQuarantaene(frueher) &&
+            erkenneSchutzdaten([
+              frueher.title,
+              frueher.statement,
+              visibleTextFromBodyHtml(frueher.bodyHtml),
+              ...(frueher.conditions ?? []),
+              ...(frueher.measures ?? []),
+            ]).length === 0,
+        };
+      }),
+    );
+    // Der Vertrauenswert wird nicht historisch geführt — beide Seiten tragen den heutigen, damit er
+    // keinen Unterschied erzeugt, den es im Wissen nicht gibt.
+    const heute = await this.antwortAusFassungen(
+      question,
+      seiten.filter((s) => s.grundlageHeute).map((s) => ({ ko: s.heute, trust: s.heute.trust })),
+      locale,
+      relevanz,
+      actor,
+      kiBeginn,
+    );
+    const damals = await this.antwortAusFassungen(
+      question,
+      seiten.flatMap((s) => {
+        const ko = grundlageDamals(s);
+        return ko ? [{ ko, trust: s.heute.trust }] : [];
+      }),
+      locale,
+      relevanz,
+      actor,
+      kiBeginn,
+    );
+    const heuteQuellen = heute.antwort.sources;
+    const damalsQuellen = damals.antwort.sources;
+    const quellen = seiten
+      .filter((s) => heuteQuellen.includes(s.heute.id) || damalsQuellen.includes(s.heute.id))
+      .map((s) => {
+        const id = s.heute.id;
+        return vergleichsQuelle(s, heuteQuellen.includes(id), damalsQuellen.includes(id));
+      });
+    const geaendert = antwortGeaendert(heute.antwort, damals.antwort);
+    await this.audit?.record({
+      actor,
+      action: "ask.vergleich",
+      target: "-",
+      payload: {
+        stichtag: new Date(stichtagMs).toISOString(),
+        kandidaten: kandidaten.length,
+        grundlageHeute: seiten.filter((s) => s.grundlageHeute).length,
+        grundlageDamals: seiten.filter((s) => grundlageDamals(s) !== null).length,
+        antwortGeaendert: geaendert,
+      },
+    });
+    return {
+      stichtag: new Date(stichtagMs).toISOString(),
+      heute: heute.antwort,
+      damals: damals.antwort,
+      heuteAussagen: heute.aussagen,
+      damalsAussagen: damals.aussagen,
+      antwortGeaendert: geaendert,
+      quellen,
+    };
+  }
+
+  /**
+   * Eine Antwort aus einer festen Menge von Fassungen — derselbe Weg wie in `ask` ab der
+   * Suchprojektion: Volltext aus derselben Projektionsregel, beide Auswahltore, Antwortweg, und
+   * die Quellenpflicht danach. Der Volltext entsteht hier aus dem Inhalt der übergebenen Fassung
+   * (`buildSearchProjection`), weil die gespeicherte Projektion nur die heutige Fassung kennt.
+   */
+  private async antwortAusFassungen(
+    question: string,
+    grundlage: readonly { ko: KnowledgeObject; trust: number }[],
+    locale: ReasonerLocale,
+    relevanz: Relevanztext,
+    actor: string,
+    kiBeginn: number | undefined,
+  ): Promise<{ antwort: AnswerResult; aussagen: AussagenBeleg | null }> {
+    const jetzt = new Date(this.now()).toISOString();
+    // REF-01 (nacharbeit-7, K1): die Bindungsquellen in GENAU den übergebenen Fassungen — derselbe
+    // Volltext, den der Antwortweg dieser Seite gelesen hat.
+    const bindungsQuellen = new Map<string, BindungsQuelle>();
+    const refs = grundlage.map(({ ko, trust }): KnowledgeRef => {
+      const bodyText = buildSearchProjection(ko, jetzt).bodyText;
+      bindungsQuellen.set(ko.id, bindungsQuelleAus(ko, bodyText.trim() ? bodyText : undefined));
+      return {
+        id: ko.id,
+        title: ko.title,
+        statement: ko.statement,
+        status: "validiert",
+        trust,
+        ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
+        ...(bodyText.trim() ? { bodyText } : {}),
+      };
+    });
+    const ordnung = new Map<string, string[]>(
+      grundlage.map(({ ko }): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
+    );
+    const vollstaendig = refs.filter((ref) =>
+      decktAlleFragebegriffe(
+        question,
+        [
+          ref.title,
+          ref.statement,
+          ...(ref.captionTexts ?? []),
+          ref.bodyText ?? "",
+          ...(ordnung.get(ref.id) ?? []),
+        ].join(" "),
+        relevanz,
+      ),
+    );
+    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
+    const kontextVertraulich = grundlage.some(({ ko }) => isConfidential(ko.confidentiality));
+    this.pruefeKiSperre("antwortweg", kiBeginn);
+    const roh = await this.mitUebertragungssperre(() =>
+      this.reasoner.answer(question, candidates, locale, kontextVertraulich, { actor }, relevanz),
+    );
+    this.pruefeKiSperre("ergebnis", kiBeginn);
+    const { abgeschnitten: _abgeschnittenVerworfen, ...ohneAbbruch } = roh;
+    const antwort: AnswerResult =
+      roh.answered && roh.sources.length === 0
+        ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
+        : roh;
+    return { antwort, aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null };
   }
 
   /**
@@ -1461,6 +2211,53 @@ export class AskService {
     );
   }
 
+  // R-1649 (ROADMAP 7.3): „Das war nicht hilfreich, ich habe es so gemacht …" — die NEGATIV-
+  // BEWÄHRUNG zu genau der tragenden Quelle einer Antwort, an die sich ein abweichender Weg als
+  // Wissensentwurf anschliessen kann. Dieselbe Bindung wie `markHelpful`: ohne gültigen Answer-Receipt,
+  // der GENAU dieses KO diesem Nutzer als Quelle belegt, wird nichts geschrieben (403) — auch kein
+  // Entwurf. Erst danach läuft `entwurf` (vom Aufrufer, die Route kennt den Erfassungsdienst), und
+  // seine Kennung reist in den Audit-Beleg: so ist der neue Entwurf mit dem misslungenen Vorschlag
+  // verbunden.
+  // Bewusst KEIN Trust-Abzug und keine Prüfstimme: die Rückmeldung wird registriert, nicht als Urteil
+  // über die Gültigkeit vollzogen. Genau ein Beleg je Person und Objekt (recordOnce); eine spätere
+  // zweite Meldung derselben Person legt ihren Entwurf trotzdem an — neues Wissen geht nicht verloren
+  // —, schreibt aber keinen zweiten Beleg (`vermerkt: false`).
+  async markNotHelpful(
+    receipt: string,
+    koId: string,
+    actor: string,
+    entwurf?: () => Promise<string>,
+  ): Promise<{ vermerkt: boolean; entwurfId: string | null }> {
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko || ko.deletedAt) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const entwurfId = entwurf ? await entwurf() : null;
+    const audit = this.audit;
+    if (!audit) {
+      // Degenerationsfall ohne Audit (Dev/Tests): es gibt keinen Ort, an dem der Vermerk stünde.
+      return { vermerkt: false, entwurfId };
+    }
+    const vermerkt = await this.serializeHelpful(() =>
+      audit.recordOnce(`answer.not_helpful:${actor}:${koId}`, {
+        actor,
+        action: "answer.not_helpful",
+        target: koId,
+        payload: {
+          koTitle: ko.title,
+          koAuthor: ko.author,
+          koOriginalAuthor: ko.originalAuthor || ko.author,
+          ...(entwurfId ? { entwurfId } : {}),
+        },
+      }),
+    );
+    return { vermerkt, entwurfId };
+  }
+
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): der gekoppelte Kern des „Danke". recordOnce (Event-CAS) und
   // der atomare Trust-Inkrement liegen in DERSELBEN Persistenz-Transaktion (gemeinsamer TxContext), so
   // dass entweder BEIDE oder KEINE wirksam werden. Fail-forward: schlägt der Trust-Schritt fehl, rollt
@@ -1511,18 +2308,170 @@ export class AskService {
     await this.koService.bumpTrust(koId, HELPFUL_TRUST_STEP, TRUST_MAX);
   }
 
-  // FR-ASK-05: Wissenslücken verwalten.
-  async assignGap(id: string, expertId: string): Promise<Gap> {
-    const gap = await this.require(id);
-    return this.save({ ...gap, assignee: expertId });
+  // R-1089 / R-1721: „Antwort falsch" bzw. „Quelle passt nicht" melden. Dieselbe Beleg-Bindung wie
+  // `markHelpful` — nur eine in DIESEM Antwortvorgang ausgelieferte Quelle ist meldbar. Zugestellt
+  // wird an `responsibleOf(ko)`; die Glocke dieser Person liest den Eintrag (notifications-routes).
+  // Kein Trust-Abzug: eine Meldung ist ein Hinweis an einen Menschen, kein Urteil über das Objekt.
+  async reportAnswer(
+    receipt: string,
+    koId: string,
+    grund: unknown,
+    actor: string,
+  ): Promise<AntwortMeldungQuittung> {
+    if (!isAntwortMeldeGrund(grund)) {
+      throw new AskError("BAD_REQUEST", "Unbekannter Meldegrund.");
+    }
+    const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
+      throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+    }
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    // Ohne Protokoll gibt es keinen Weg zum Verantwortlichen — dann wird nichts quittiert, was
+    // niemand je sehen würde. In Produktion ist das Protokoll immer verdrahtet.
+    const audit = this.audit;
+    if (!audit) {
+      throw new AskError("NOT_FOUND", "Meldeweg nicht verfügbar.");
+    }
+    const eventId = antwortMeldungEventId(actor, koId, grund, receipt);
+    const meldungId = antwortMeldungId(eventId);
+    const won = await audit.recordOnce(eventId, {
+      actor,
+      action: ANTWORT_MELDUNG_ACTION,
+      target: koId,
+      payload: {
+        meldungId,
+        grund,
+        koTitle: ko.title,
+        responsible: responsibleOf(ko),
+        responsibleKind: responsibleKindOf(ko),
+      },
+    });
+    // Ben (Nacharbeit 3): die Quittung beschreibt die Zustellung, die TATSÄCHLICH gilt — und das
+    // ist die gespeicherte. Bei einer Wiederholung hat `recordOnce` das erste Ereignis behalten;
+    // wurde inzwischen ein Eigentümer benannt oder der Titel geändert, liegt die Meldung trotzdem
+    // beim damaligen Empfänger (die Glocke liest `responsible` aus genau diesem Ereignis). Zustellart
+    // und Titel kommen deshalb aus dem Ereignis, nicht aus dem heutigen Objekt.
+    const eintrag = (await audit.list({ action: ANTWORT_MELDUNG_ACTION, target: koId })).find(
+      (e) => e.eventId === eventId,
+    );
+    const gespeichert = eintrag?.payload ?? {};
+    const kind = gespeichert.responsibleKind;
+    return {
+      meldungId,
+      koId,
+      koTitle: typeof gespeichert.koTitle === "string" ? gespeichert.koTitle : ko.title,
+      grund,
+      at: eintrag?.at ?? new Date(this.now()).toISOString(),
+      zugestelltAn: kind === "owner" || kind === "author-fallback" ? kind : responsibleKindOf(ko),
+      bereitsGemeldet: !won,
+    };
   }
 
-  // R-0846 / L6: eine Lücke schliesst NUR mit Objektbezug — dem Wissensobjekt, das sie beantwortet.
-  // Der Bezug kommt aus dem Aufruf oder, fehlt er dort, aus einem schon an der Lücke stehenden Bezug.
-  // In beiden Fällen muss das Objekt jetzt existieren und darf nicht im Papierkorb liegen
-  // (`koService.get`). Sonst wird NICHTS geschrieben: die Lücke bleibt offen, der Aufrufer bekommt
-  // BAD_REQUEST. Eine geschlossene Lücke ohne Bezug kann auf diesem Weg nicht mehr entstehen.
-  async closeGap(id: string, koId?: string): Promise<Gap> {
+  // FR-ASK-05: Wissenslücken verwalten.
+  //
+  // produkt:20261010:wissenskreislauf-schliessen: jede Zuordnung wird mit Handelndem, Zeitpunkt und
+  // Art festgehalten (`zuordnungen`) — die nachvollziehbare Neuzuordnung, wenn die zuständige Person
+  // nicht mehr verfügbar ist. DIESELBE Person ein zweites Mal zuzuordnen (Doppelklick, Wiederholung)
+  // ändert nichts und schreibt keinen zweiten Eintrag. Eine geschlossene Lücke wird nicht mehr
+  // zugeordnet. Ob die Person BERECHTIGT ist, entscheidet die Route (Konto freigegeben, `ko.create`).
+  async assignGap(
+    id: string,
+    expertId: string,
+    actor?: string,
+    art: "zuordnung" | "uebergabe" = "zuordnung",
+  ): Promise<Gap> {
+    const von = aufruferBeschriftung(aufruferAus(actor));
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (aktuell.status !== "offen") {
+        throw new AskError(
+          "BAD_REQUEST",
+          "Eine geschlossene Wissenslücke wird nicht mehr zugeordnet.",
+        );
+      }
+      if (aktuell.assignee === expertId) {
+        return null;
+      }
+      const zuordnung: GapZuordnung = {
+        an: expertId,
+        von,
+        at: new Date(this.now()).toISOString(),
+        art: aktuell.assignee ? "neuzuordnung" : art,
+      };
+      return {
+        ...aktuell,
+        assignee: expertId,
+        zuordnungen: [...(aktuell.zuordnungen ?? []), zuordnung],
+      };
+    });
+    const geschriebeneArt = gap.zuordnungen?.[gap.zuordnungen.length - 1]?.art;
+    if (geschrieben && geschriebeneArt) {
+      await this.audit?.record({
+        actor: von,
+        action: "gap.assigned",
+        target: id,
+        payload: { an: expertId, art: geschriebeneArt },
+      });
+    }
+    return gap;
+  }
+
+  // ==============================================================================================
+  // R-0846 / L6 → produkt:20261010:wissenskreislauf-schliessen — FACHLICHER ABSCHLUSS NUR MIT
+  // NUTZBAREM, FREIGEGEBENEM WISSEN.
+  // ==============================================================================================
+  //
+  // Der Bezug kommt aus dem Aufruf oder, fehlt er dort, aus dem an der Lücke verknüpften Entwurf.
+  // Bis hierher genügte, dass das Objekt existiert und nicht im Papierkorb liegt — damit schloss ein
+  // ungeprüfter Entwurf die Lücke als „gelöst". Jetzt muss es HEUTE für die abschliessende Person
+  // ein nutzbares Ergebnis sein (`pruefeFachlicheNutzbarkeit`): sichtbar, validiert, vorgeschriebene
+  // Bewertungen der AKTUELLEN Fassung, keine rote Stimme, nicht abgelaufen. Sonst wird NICHTS
+  // geschrieben, die Lücke bleibt offen, der Aufrufer bekommt die Gründe (`GapAbschlussVerweigert`).
+  //
+  // Festgehalten wird die geprüfte FASSUNG (`abschluss.koVersion`). Geschrieben wird nur, solange die
+  // Lücke offen ist: ein Doppelklick, ein zweiter Abschliessender oder ein Neustart erzeugt keinen
+  // zweiten Abschluss und damit keine zweite Meldung. Ein zweiter Aufruf mit demselben Eintrag bekommt
+  // den bestehenden Abschluss zurück.
+  //
+  // Ben, Nacharbeit 3: die Abschlussfelder werden am AKTUELLEN Datensatz gesetzt (`aendereLuecke`,
+  // Vergleichen-und-Setzen), nicht an der Momentaufnahme vom Anfang. Wer während der Fachprüfabfrage
+  // dieselbe Frage stellte, bleibt Fragender — mit Vorgangszugriff und Abschlussmeldung — und der
+  // Zähler bleibt, wie er ist. Zurück kommt der tatsächlich gespeicherte Stand.
+  //
+  // Ohne `sichtbar` (Systemaufruf ohne Betrachter) gilt die Sichtbarkeitsfrage als beantwortet — es
+  // gibt keinen Menschen, dessen Recht zu prüfen wäre. Die Fachprüfung gilt trotzdem vollständig.
+  //
+  // Ben, Nacharbeit 5: Das Vergleichen-und-Setzen schützt nur den Lückendatensatz. Eintrag und
+  // Bewertungen liegen in anderen Ablagen und können sich zwischen Prüfung und Schreiben ändern
+  // (neue Fassung, rote Stimme).
+  //
+  // Ben, Nacharbeit 7/8: Ein Abschluss wird erst gespeichert, wenn er auf dem Stand beruht, der beim
+  // Schreiben gilt — es gibt keinen vorläufigen Zwischenstand, und eine Änderung an Eintrag oder
+  // Bewertungen nach der letzten Prüfung verhindert das Schreiben. Deshalb läuft JEDER Versuch
+  // vollständig in der Schreibklammer des Eintrags (`KoService.unterSchreibsperre`), in der auch
+  // Bewertungen und Überarbeitungen schreiben:
+  //   1. Lücke frisch lesen; Status, Entwurfsbezug und — bei `rolleVerlangt` — das Abschlussrecht
+  //      an der AKTUELLEN Zuordnung prüfen;
+  //   2. Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit frisch erheben;
+  //   3. die Lücke schreiben, nur wenn sie noch genau den Stand aus 1 hält (Vergleichen-und-Setzen).
+  // Während 1–3 wird an diesem Eintrag nichts gespeichert: eine Bewertung oder neue Fassung kommt
+  // vorher (dann sieht 2 sie und verweigert) oder nachher (dann ist sie eine Änderung NACH dem
+  // Abschluss, und Meldung, Vorgang und Wiederholungsfrage prüfen sie bei jedem Abruf). Ein
+  // paralleler Abschlussaufruf wartet auf die Klammer und sieht danach den fertigen Abschluss.
+  // Scheitert ein Schritt oder bricht der Prozess ab, ist nichts geschrieben. Protokolliert wird
+  // erst nach 3.
+  async closeGap(
+    id: string,
+    koId?: string,
+    beteiligter?: {
+      readonly id: string;
+      readonly sichtbar: (ko: KnowledgeObject) => boolean;
+      readonly verwaltend?: boolean;
+    },
+    optionen: { readonly rolleVerlangt?: boolean } = {},
+  ): Promise<Gap> {
     const gap = await this.require(id);
     const bezug = koId?.trim() || gap.koId?.trim();
     if (!bezug) {
@@ -1531,13 +2480,588 @@ export class AskService {
         "Eine Wissenslücke wird mit dem Wissensobjekt geschlossen, das sie beantwortet (koId).",
       );
     }
-    if (!(await this.koService.get(bezug))) {
+    const sichtbar = beteiligter?.sichtbar ?? (() => true);
+    const von = aufruferBeschriftung(aufruferAus(beteiligter?.id));
+    // Am Stand, gegen den geschrieben wird.
+    const vorbedingung = (aktuell: Gap): void => {
+      // Ben, Nacharbeit 5: das Abschlussrecht an der Zuordnung, die JETZT gilt — nicht an der vom
+      // Anfang. Nach einer Neuzuordnung schliesst die frühere zuständige Person nicht mehr ab.
+      if (optionen.rolleVerlangt) {
+        this.verlangeZustaendigOderVerwaltend(aktuell, {
+          id: beteiligter?.id ?? "",
+          verwaltend: beteiligter?.verwaltend === true,
+          sichtbar,
+        });
+      }
+      // Ohne mitgeschickten Bezug trägt der verknüpfte Entwurf — er darf sich seit der Prüfung
+      // nicht geändert haben, sonst schlösse ein ungeprüfter Eintrag.
+      if (!koId?.trim() && aktuell.koId?.trim() !== bezug) {
+        throw new AskError(
+          "CONFLICT",
+          "Der verknüpfte Antwortentwurf hat sich geändert — bitte erneut abschliessen.",
+        );
+      }
+    };
+    for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
+      const ergebnis = await this.unterKoSperre(
+        bezug,
+        async (): Promise<{ gap: Gap; geschrieben: boolean } | null> => {
+          const gelesen = await this.gaps.findById(id);
+          if (!gelesen) {
+            throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
+          }
+          const aktuell = withPriority(gelesen);
+          if (aktuell.status !== "offen") {
+            // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe.
+            if (aktuell.abschluss?.art === "fachlich" && aktuell.abschluss.koId === bezug) {
+              return { gap: aktuell, geschrieben: false };
+            }
+            throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+          }
+          vorbedingung(aktuell);
+          const { ko, nutzbarkeit } = await this.abschlussPruefung(bezug, sichtbar);
+          if (!ko) {
+            throw new AskError(
+              "BAD_REQUEST",
+              "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
+            );
+          }
+          if (!nutzbarkeit.nutzbar) {
+            throw new GapAbschlussVerweigert(nutzbarkeit.gruende);
+          }
+          const neu: Gap = {
+            ...aktuell,
+            status: "geschlossen",
+            koId: bezug,
+            abschluss: {
+              art: "fachlich",
+              koId: bezug,
+              koVersion: ko.version,
+              von,
+              at: new Date(this.now()).toISOString(),
+            },
+          };
+          // Die Lücke hat sich seit 1 geändert (weitere Fragende, Zuordnung …): neu, vollständig.
+          return (await this.ersetzeWenn(gelesen, neu)) ? { gap: neu, geschrieben: true } : null;
+        },
+      );
+      if (ergebnis === null) {
+        continue;
+      }
+      if (ergebnis.geschrieben && ergebnis.gap.abschluss?.art === "fachlich") {
+        await this.audit?.record({
+          actor: von,
+          action: "gap.closed",
+          target: id,
+          payload: { koId: bezug, koVersion: ergebnis.gap.abschluss.koVersion },
+        });
+      }
+      return ergebnis.gap;
+    }
+    throw new AskError(
+      "CONFLICT",
+      "Die Wissenslücke wurde gerade mehrfach geändert — der Abschluss wurde nicht ausgeführt.",
+    );
+  }
+
+  /** Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit — frisch erhoben. */
+  private async abschlussPruefung(
+    koId: string,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<{ ko: KnowledgeObject | undefined; nutzbarkeit: FachlicheNutzbarkeit }> {
+    const ko = await this.koService.get(koId);
+    const stand = await this.pruefstandVon(ko);
+    return { ko, nutzbarkeit: await this.nutzbarkeitMit(ko, stand, sichtbar) };
+  }
+
+  /**
+   * `fn` in der Schreibklammer des Eintrags (`KoService.unterSchreibsperre`) — dieselbe, in der
+   * Bewertungen und Überarbeitungen schreiben. Eine Attrappe ohne die Methode (Testdoppel) läuft
+   * ohne Klammer.
+   */
+  private unterKoSperre<T>(koId: string, fn: () => Promise<T>): Promise<T> {
+    const sperre = (this.koService as Partial<Pick<KoService, "unterSchreibsperre">>)
+      .unterSchreibsperre;
+    return sperre ? this.koService.unterSchreibsperre(koId, fn) : fn();
+  }
+
+  /**
+   * Ein FRAGENDER übergibt seine Lücke an eine Fachzuständigkeit — solange niemand zuständig ist
+   * oder die zuständige Person nicht mehr verfügbar ist. Eine laufende Zuständigkeit nimmt ein
+   * Fragender nicht weg; das bleibt eine Neuzuordnung durch Verwaltende. Dass die Zielperson
+   * berechtigt ist, hat die Route vorher festgestellt.
+   */
+  async handOverGap(
+    id: string,
+    expertId: string,
+    beteiligter: GapBeteiligter,
+    zustaendigVerfuegbar: boolean | null,
+  ): Promise<Gap> {
+    const gap = await this.require(id);
+    if (!istFragender(gap, beteiligter.id)) {
+      throw new AskError("FORBIDDEN", "Übergeben können die Fragenden dieser Lücke.");
+    }
+    if (gap.assignee === expertId) {
+      return gap;
+    }
+    if (gap.assignee !== null && zustaendigVerfuegbar !== false) {
       throw new AskError(
-        "BAD_REQUEST",
-        "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
+        "FORBIDDEN",
+        "Die Lücke hat eine verfügbare zuständige Person — eine Neuzuordnung nehmen Verwaltende vor.",
       );
     }
-    return this.save({ ...gap, status: "geschlossen", koId: bezug });
+    return this.assignGap(id, expertId, beteiligter.id, "uebergabe");
+  }
+
+  /** Der fachliche Abschluss durch die zuständige Person oder Verwaltende (`closeGap`). */
+  async closeGapAlsBeteiligter(
+    id: string,
+    koId: string | undefined,
+    beteiligter: GapBeteiligter,
+  ): Promise<Gap> {
+    // Früh abweisen, was schon jetzt nicht darf — massgeblich ist aber die Prüfung im Schreibschritt
+    // an der dann geltenden Zuordnung (Ben, Nacharbeit 5).
+    this.verlangeZustaendigOderVerwaltend(await this.require(id), beteiligter);
+    return this.closeGap(id, koId, beteiligter, { rolleVerlangt: true });
+  }
+
+  /**
+   * Die ADMINISTRATIVE Rücknahme — ausdrücklich KEIN fachlicher Abschluss. Sie schliesst die Lücke
+   * mit einem geschlossenen Grund (`GAP_RUECKNAHME_GRUENDE`), ohne Wissenseintrag; die Fragenden
+   * sehen „zurückgenommen" mit Grund, nie „gelöst", und es entsteht keine Erfolgsmeldung.
+   */
+  async withdrawGap(id: string, grund: GapRuecknahmeGrund, actor: string): Promise<Gap> {
+    if (!isGapRuecknahmeGrund(grund)) {
+      throw new AskError("BAD_REQUEST", "Unbekannter Grund der Rücknahme.");
+    }
+    const von = aufruferBeschriftung(aufruferAus(actor));
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (aktuell.status !== "offen") {
+        if (aktuell.abschluss?.art === "administrativ" && aktuell.abschluss.grund === grund) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      return {
+        ...aktuell,
+        status: "geschlossen",
+        abschluss: { art: "administrativ", grund, von, at: new Date(this.now()).toISOString() },
+      };
+    });
+    if (geschrieben) {
+      await this.audit?.record({
+        actor: von,
+        action: "gap.withdrawn",
+        target: id,
+        payload: { grund },
+      });
+    }
+    return gap;
+  }
+
+  /**
+   * Die zuständige Person verknüpft ihren Antwortentwurf — das Wissensobjekt, das über die
+   * vorhandene Erfassung entstanden ist und jetzt die vorhandene Fachprüfung durchläuft. Die Lücke
+   * bleibt OFFEN: eine Verknüpfung ist kein Abschluss. Nur die zuständige Person oder Verwaltende,
+   * nur mit einem Objekt, das sie sehen darf. Dieselbe Verknüpfung ein zweites Mal ändert nichts.
+   */
+  async linkGapDraft(id: string, koId: string, beteiligter: GapBeteiligter): Promise<Gap> {
+    const gap = await this.require(id);
+    this.verlangeZustaendigOderVerwaltend(gap, beteiligter);
+    if (gap.status !== "offen") {
+      throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+    }
+    const bezug = koId.trim();
+    const ko = bezug ? await this.koService.get(bezug) : null;
+    if (!ko || !beteiligter.sichtbar(ko)) {
+      throw new AskError(
+        "BAD_REQUEST",
+        "Das Wissensobjekt existiert nicht oder ist für dich nicht zugänglich.",
+      );
+    }
+    // Ben, Nacharbeit 3: Zustand und Rolle werden am AKTUELLEN Datensatz erneut geprüft — eine
+    // verspätete Verknüpfung öffnet keinen inzwischen geschlossenen Vorgang wieder.
+    const ergebnis = await this.aendereLuecke(id, (aktuell) => {
+      this.verlangeZustaendigOderVerwaltend(aktuell, beteiligter);
+      if (aktuell.status !== "offen") {
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      return aktuell.koId === bezug ? null : { ...aktuell, koId: bezug };
+    });
+    if (ergebnis.geschrieben) {
+      await this.audit?.record({
+        actor: beteiligter.id,
+        action: "gap.draft-linked",
+        target: id,
+        payload: { koId: bezug },
+      });
+    }
+    return ergebnis.gap;
+  }
+
+  /**
+   * Eine Rückfrage der zuständigen Person an die Fragenden. Höchstens EINE ist zugleich offen;
+   * dieselbe Rückfrage ein zweites Mal (Doppelklick) ändert nichts. Der Text steht NUR an der Lücke
+   * (Fragende und zuständige Person) — nicht im Prüfprotokoll.
+   */
+  async askGapFollowUp(id: string, beteiligter: GapBeteiligter, frage: string): Promise<Gap> {
+    const text = rueckfrageText(frage);
+    const rueckfrageId = this.genId();
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (!istZustaendig(aktuell, beteiligter.id)) {
+        throw new AskError("FORBIDDEN", "Rückfragen stellt die zuständige Person.");
+      }
+      if (aktuell.status !== "offen") {
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      const offen = (aktuell.rueckfragen ?? []).find((r) => r.antwort === undefined);
+      if (offen) {
+        if (offen.frage === text) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Es ist bereits eine Rückfrage offen.");
+      }
+      const rueckfrage: GapRueckfrage = {
+        id: rueckfrageId,
+        frage: text,
+        von: beteiligter.id,
+        at: new Date(this.now()).toISOString(),
+      };
+      return { ...aktuell, rueckfragen: [...(aktuell.rueckfragen ?? []), rueckfrage] };
+    });
+    if (geschrieben) {
+      await this.audit?.record({
+        actor: beteiligter.id,
+        action: "gap.followup-asked",
+        target: id,
+        payload: { rueckfrageId },
+      });
+    }
+    return gap;
+  }
+
+  /** Ein Fragender beantwortet die offene Rückfrage. Eine beantwortete bleibt beantwortet. */
+  async answerGapFollowUp(
+    id: string,
+    rueckfrageId: string,
+    beteiligter: GapBeteiligter,
+    antwort: string,
+  ): Promise<Gap> {
+    const text = rueckfrageText(antwort);
+    // Ben, Nacharbeit 3: eine VERSPÄTETE Antwort trifft den aktuellen Datensatz. Ist der Vorgang
+    // inzwischen geschlossen, wird nichts geschrieben — Abschluss und Abschlussdaten bleiben.
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (!istFragender(aktuell, beteiligter.id)) {
+        throw new AskError("FORBIDDEN", "Rückfragen beantworten die Fragenden.");
+      }
+      const ziel = (aktuell.rueckfragen ?? []).find((r) => r.id === rueckfrageId);
+      if (!ziel) {
+        throw new AskError("NOT_FOUND", "Rückfrage nicht gefunden.");
+      }
+      if (ziel.antwort !== undefined) {
+        if (ziel.antwort === text) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Die Rückfrage ist bereits beantwortet.");
+      }
+      if (aktuell.status !== "offen") {
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      return {
+        ...aktuell,
+        rueckfragen: (aktuell.rueckfragen ?? []).map((r) =>
+          r.id === rueckfrageId
+            ? {
+                ...r,
+                antwort: text,
+                beantwortetVon: beteiligter.id,
+                beantwortetAm: new Date(this.now()).toISOString(),
+              }
+            : r,
+        ),
+      };
+    });
+    if (geschrieben) {
+      await this.audit?.record({
+        actor: beteiligter.id,
+        action: "gap.followup-answered",
+        target: id,
+        payload: { rueckfrageId },
+      });
+    }
+    return gap;
+  }
+
+  /**
+   * ============================================================================================
+   * DER VORGANG, WIE EIN BETEILIGTER IHN SIEHT — FRISCH AUS DEM HEUTIGEN STAND.
+   * ============================================================================================
+   *
+   * Beteiligt ist, wer gefragt hat, wer zuständig ist, und wer verwaltet (`ko.assign`). Allen
+   * anderen antwortet der Vorgang mit NOT_FOUND — dieselbe Auskunft wie für eine unbekannte
+   * Kennung, damit die Existenz einer fremden Lücke nicht über diesen Weg erfragt werden kann.
+   * Verwaltende ohne eigene Beteiligung bekommen den Ablauf, aber keinen Fragetext und keine
+   * Rückfragetexte (R-0585: das Rollenrecht öffnet keinen Fragetext).
+   *
+   * Ergebnis und Entwurf werden bei JEDEM Abruf neu gegen die Rechte DIESES Betrachters und den
+   * heutigen Fachprüfstand geprüft: ein inzwischen entzogenes Recht zeigt „nicht zugänglich", eine
+   * inzwischen veränderte oder gesperrte Fassung zeigt „nicht nutzbar" — nie ein altes „gelöst".
+   */
+  async gapVorgang(
+    id: string,
+    beteiligter: GapBeteiligter,
+    zustaendigVerfuegbar?: (personId: string) => Promise<boolean | null>,
+  ): Promise<GapVorgangSicht> {
+    const gap = await this.require(id);
+    const rollen: GapVorgangsrolle[] = [];
+    if (istFragender(gap, beteiligter.id)) {
+      rollen.push("fragend");
+    }
+    if (istZustaendig(gap, beteiligter.id)) {
+      rollen.push("zustaendig");
+    }
+    if (beteiligter.verwaltend) {
+      rollen.push("verwaltend");
+    }
+    if (rollen.length === 0) {
+      throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
+    }
+    const textBerechtigt = rollen.includes("fragend") || rollen.includes("zustaendig");
+    const verfuegbar =
+      gap.status === "offen" && gap.assignee !== null && zustaendigVerfuegbar
+        ? await zustaendigVerfuegbar(gap.assignee).catch(() => null)
+        : null;
+    const eintragFuer = async (
+      koId: string,
+    ): Promise<GapVorgangEintrag | { readonly zugaenglich: false }> => {
+      const ko = await this.koService.get(koId);
+      const nutzbarkeit = await this.nutzbarkeitVon(ko, beteiligter.sichtbar);
+      if (!ko || nutzbarkeit.gruende.includes("kein_zugriff")) {
+        return { zugaenglich: false };
+      }
+      return vorgangEintrag(ko, nutzbarkeit);
+    };
+    const entwurf = gap.status === "offen" && gap.koId ? await eintragFuer(gap.koId) : null;
+    const ergebnis =
+      gap.status === "geschlossen" && gap.abschluss?.art === "fachlich"
+        ? await eintragFuer(gap.abschluss.koId)
+        : null;
+    const entwurfNutzbar =
+      entwurf === null ? null : "nutzbarkeit" in entwurf ? entwurf.nutzbarkeit.nutzbar : false;
+    const phase = vorgangsphase(gap, { zustaendigVerfuegbar: verfuegbar, entwurfNutzbar });
+    return {
+      id: gap.id,
+      question: textBerechtigt ? gap.question : "",
+      status: gap.status,
+      phase,
+      rollen,
+      naechsterSchritt: naechsterSchritt(phase, rollen),
+      zustaendig: gap.assignee ? { id: gap.assignee, verfuegbar } : null,
+      fragende: Math.max(1, fragendeVon(gap).length),
+      askCount: typeof gap.askCount === "number" ? gap.askCount : null,
+      zuordnungen: (gap.zuordnungen ?? []).map(({ an, art, at }) => ({ an, art, at })),
+      rueckfragen: (gap.rueckfragen ?? []).map((r) => ({
+        id: r.id,
+        frage: textBerechtigt ? r.frage : "",
+        at: r.at,
+        ...(r.antwort !== undefined ? { antwort: textBerechtigt ? r.antwort : "" } : {}),
+        ...(r.beantwortetAm ? { beantwortetAm: r.beantwortetAm } : {}),
+        ...(r.beantwortetVon === beteiligter.id ? { vonMirBeantwortet: true } : {}),
+      })),
+      entwurf,
+      ergebnis,
+      abschluss: abschlussSicht(gap.abschluss),
+    };
+  }
+
+  /**
+   * ============================================================================================
+   * DIE RÜCKMELDUNGEN AN DIESE PERSON — ABGELEITET, NICHT ZUGESTELLT.
+   * ============================================================================================
+   *
+   * Es gibt keinen zweiten Meldungsspeicher und keinen Versand, der unabhängig vom Abschluss scheitern
+   * könnte: die Meldung ist eine Sicht auf den gespeicherten Lückenstand, gebaut bei jedem Abruf der
+   * Glocke. Daraus folgt, was der Auftrag verlangt:
+   *   · je Lücke, Eintrag und Fassung GENAU EINE Meldung je Fragendem (`abschlussMeldungId`) —
+   *     Wiederholung und Neustart erzeugen keine zweite;
+   *   · eine Erfolgsmeldung NUR, wenn der Eintrag HEUTE für diese Person nutzbar ist. Ein entzogenes
+   *     Recht, eine abgelaufene oder gesperrte Fassung, ein Lesefehler: keine Erfolgsmeldung — der
+   *     Vorgang selbst sagt dann, warum;
+   *   · Rückfragen erscheinen bei den Fragenden, beantwortete Rückfragen bei der zuständigen Person.
+   */
+  async gapMeldungenFuer(
+    nutzerId: string,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<GapMeldung[]> {
+    const meldungen: GapMeldung[] = [];
+    for (const gap of await this.listGaps()) {
+      const fragend = istFragender(gap, nutzerId);
+      if (fragend && gap.status === "geschlossen" && gap.abschluss?.art === "fachlich") {
+        const abschluss = gap.abschluss;
+        try {
+          const ko = await this.koService.get(abschluss.koId);
+          const nutzbarkeit = await this.nutzbarkeitVon(ko, sichtbar);
+          if (ko && nutzbarkeit.nutzbar) {
+            meldungen.push({
+              id: abschlussMeldungId(gap.id, ko.id, ko.version),
+              art: "geloest",
+              gapId: gap.id,
+              at: abschluss.at,
+              title: ko.title,
+              koId: ko.id,
+            });
+          }
+        } catch {
+          // Nicht lesbar heisst nicht gemeldet — kein Erfolg ohne Beleg.
+        }
+      }
+      if (gap.status !== "offen") {
+        continue;
+      }
+      for (const r of gap.rueckfragen ?? []) {
+        if (fragend && r.antwort === undefined) {
+          meldungen.push({
+            id: rueckfrageMeldungId(gap.id, r.id),
+            art: "rueckfrage",
+            gapId: gap.id,
+            at: r.at,
+            title: gap.question,
+          });
+        }
+        if (istZustaendig(gap, nutzerId) && r.antwort !== undefined && r.beantwortetAm) {
+          meldungen.push({
+            id: `${rueckfrageMeldungId(gap.id, r.id)}-antwort`,
+            art: "rueckfrage_beantwortet",
+            gapId: gap.id,
+            at: r.beantwortetAm,
+            title: gap.question,
+          });
+        }
+      }
+    }
+    return meldungen;
+  }
+
+  /** Die fachliche Nutzbarkeit eines Eintrags mit FRISCH erhobenem Prüfstand (fail-closed). */
+  private async nutzbarkeitVon(
+    ko: KnowledgeObject | null | undefined,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<FachlicheNutzbarkeit> {
+    return this.nutzbarkeitMit(ko, await this.pruefstandVon(ko), sichtbar);
+  }
+
+  /** Der Fachprüfstand der Fassung dieses Objekts; nicht ermittelbar → `null` (fail-closed). */
+  private async pruefstandVon(
+    ko: KnowledgeObject | null | undefined,
+  ): Promise<GapPruefstand | null> {
+    if (!ko || !this.pruefstand) {
+      return null;
+    }
+    return this.pruefstand(ko.id, ko.version).catch(() => null);
+  }
+
+  private async nutzbarkeitMit(
+    ko: KnowledgeObject | null | undefined,
+    stand: GapPruefstand | null,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<FachlicheNutzbarkeit> {
+    const gelernt = this.halbwertszeiten
+      ? await this.halbwertszeiten().catch(() => undefined)
+      : undefined;
+    return pruefeFachlicheNutzbarkeit({
+      ko,
+      pruefstand: stand,
+      jetztMs: this.now(),
+      gelernt,
+      sichtbar,
+    });
+  }
+
+  /** Der Eintrag einer fachlich gelösten gleichen Frage — wenn er HEUTE für diesen Betrachter trägt. */
+  private async geloesterEintragFuer(
+    frage: string,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<AskResult["geloesteLuecke"] | null> {
+    const schluessel = gapCompareKey(frage);
+    if (!schluessel) {
+      return null;
+    }
+    const kandidaten = (await this.gaps.all())
+      .filter(
+        (g) =>
+          g.status === "geschlossen" &&
+          g.abschluss?.art === "fachlich" &&
+          g.compareKey === schluessel,
+      )
+      .sort((a, b) => ((a.abschluss?.at ?? "") < (b.abschluss?.at ?? "") ? 1 : -1));
+    for (const g of kandidaten) {
+      if (g.abschluss?.art !== "fachlich") {
+        continue;
+      }
+      const ko = await this.koService.get(g.abschluss.koId);
+      if (ko && (await this.nutzbarkeitVon(ko, sichtbar)).nutzbar) {
+        return { koId: ko.id, koVersion: ko.version, titel: ko.title };
+      }
+    }
+    return null;
+  }
+
+  private verlangeZustaendigOderVerwaltend(gap: Gap, beteiligter: GapBeteiligter): void {
+    if (!istZustaendig(gap, beteiligter.id) && !beteiligter.verwaltend) {
+      throw new AskError("FORBIDDEN", "Diesen Schritt führt die zuständige Person aus.");
+    }
+  }
+
+  /**
+   * ============================================================================================
+   * produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3) — JEDER SCHRITT AM AKTUELLEN STAND.
+   * ============================================================================================
+   *
+   * Bis hierher schrieben die Vorgangsschritte die Lücke als GANZES zurück, so wie sie am Anfang
+   * des Schritts gelesen war. Lag dazwischen ein `await` (Fachprüfabfrage, Ablage), überschrieb
+   * die alte Momentaufnahme, was inzwischen geschehen war: weitere Fragende und Zähler gingen
+   * verloren, und eine verspätete Rückfrageantwort konnte einen fachlichen Abschluss entfernen.
+   *
+   * Jetzt rechnet `schritt` den neuen Stand aus dem GERADE gelesenen, und geschrieben wird nur,
+   * wenn die Ablage noch genau diesen Stand hält (`GapRepo.ersetzeWenn`, Vergleichen-und-Setzen).
+   * Sonst beginnt der Schritt am frischen Stand von vorn — dort greifen seine Prüfungen erneut
+   * (geschlossen bleibt geschlossen). `schritt` gibt `null` zurück, wenn nichts zu schreiben ist;
+   * er darf werfen. Zurück kommt der TATSÄCHLICH gespeicherte Stand.
+   */
+  private async aendereLuecke(
+    id: string,
+    schritt: (aktuell: Gap) => Gap | null,
+  ): Promise<{ gap: Gap; geschrieben: boolean }> {
+    for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
+      const gelesen = await this.gaps.findById(id);
+      if (!gelesen) {
+        throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
+      }
+      const aktuell = withPriority(gelesen);
+      const neu = schritt(aktuell);
+      if (neu === null) {
+        return { gap: aktuell, geschrieben: false };
+      }
+      if (await this.ersetzeWenn(gelesen, neu)) {
+        return { gap: neu, geschrieben: true };
+      }
+    }
+    throw new AskError(
+      "CONFLICT",
+      "Die Wissenslücke wurde gerade mehrfach geändert — der Schritt wurde nicht ausgeführt.",
+    );
+  }
+
+  /** Vergleichen-und-Setzen über die Ablage; ohne die Methode mit Vergleich direkt davor. */
+  private async ersetzeWenn(erwartet: Gap, neu: Gap): Promise<boolean> {
+    if (this.gaps.ersetzeWenn) {
+      return this.gaps.ersetzeWenn(erwartet, neu);
+    }
+    if (!gleicherLueckenstand(await this.gaps.findById(neu.id), erwartet)) {
+      return false;
+    }
+    await this.gaps.update(neu);
+    return true;
   }
 
   // SCRUM-115 / FE-RISK-02: Priorität einer Wissenslücke setzen.
@@ -1550,8 +3074,9 @@ export class AskService {
     if (!isGapPriority(priority)) {
       throw new AskError("BAD_REQUEST", "Ungültige Priorität.");
     }
-    const gap = await this.require(id);
-    const saved = await this.save({ ...gap, priority });
+    // Am aktuellen Stand gesetzt — eine Prioritätsänderung nimmt weder einen Abschluss noch
+    // zwischenzeitliche Fragende zurück.
+    const { gap: saved } = await this.aendereLuecke(id, (aktuell) => ({ ...aktuell, priority }));
     await this.audit?.record({
       actor: aufruferBeschriftung(aufruferAus(actor)),
       action: "gap.priority-changed",
@@ -1617,6 +3142,35 @@ export class AskService {
     return { bezug, geprueft: geprueft.length, offen: offene.length };
   }
 
+  /**
+   * R-1663 / R-2178 — passende Ansprechpartner zu EINER Lücke, begründet aus Wissensspuren
+   * (Regeln in `ansprechpartner.ts`).
+   *
+   * Die Objektgrundlage ist dieselbe Rechnung wie bei `offeneLueckenZu`: die deterministische
+   * Vorauswahl über die Inhaltstoken der Frage — KEIN KI-Aufruf, KEIN Schreiben, keine neue
+   * Zuordnungsregel. Davon zählen nur die `DEFAULT_TOP_K` relevantesten Objekte, die der Betrachter
+   * sehen darf (`sichtbar`, die fertige Entscheidung der Route) und die NICHT vertraulich sind: eine
+   * Person darf nicht deshalb vorgeschlagen werden, weil sie an vertraulichem Wissen beteiligt ist —
+   * schon der Vorschlag verriete dessen Existenz.
+   *
+   * Der Fragetext verlässt diese Methode nicht; die Antwort trägt nur Kennungen, Zahlen und die
+   * Titel sichtbarer Objekte.
+   */
+  async ansprechpartnerZuLuecke(
+    id: string,
+    opts: { readonly sichtbar: (ko: KnowledgeObject) => boolean },
+  ): Promise<AnsprechpartnerAuskunft> {
+    const gap = await this.require(id);
+    const frageterme = queryTokens(gap.question);
+    const objekte = dropConfidential(await this.prefilterCandidates(frageterme, undefined))
+      .filter((ko) => opts.sichtbar(ko))
+      .slice(0, DEFAULT_TOP_K);
+    const geschlosseneLuecken = (await this.listGaps())
+      .filter((g) => g.id !== gap.id && g.status === "geschlossen" && g.assignee)
+      .map((g) => ({ assignee: g.assignee as string, terme: queryTokens(g.question) }));
+    return leiteAnsprechpartnerAb({ frageterme, objekte, geschlosseneLuecken });
+  }
+
   // SCRUM-115 / FE-RISK: aggregierte Zähler der offenen Lücken — NUR Zahlen, KEIN Fragetext. Die
   // Startseite nutzt AUSSCHLIESSLICH diesen Weg (kein Volltext-Fetch mehr, s. gap-visibility).
   async gapsSummary(): Promise<GapSummary> {
@@ -1630,6 +3184,8 @@ export class AskService {
     locale?: ReasonerLocale,
     // D5: die Sperre des Fragewegs — bis vor jede Anweisung der Lückenablage (`insertOrIncrement`).
     vorInhaltsabruf?: () => void,
+    // R-0291: der Belegbedarf aus der Vorauswahl; fehlt nur bei Aufrufern ohne Vorauswahl.
+    belegbedarf?: GapBelegbedarf[],
   ): Promise<Gap> {
     // JOB 1111 / D-032: der Vergleichsschlüssel entsteht HIER, aus demselben Text, der gespeichert
     // wird — nicht aus dem Rohtext. So können Text und Schlüssel niemals auseinanderlaufen.
@@ -1653,6 +3209,7 @@ export class AskService {
       // nicht mit jeder anderen solchen Frage über eine gemeinsame Leere zusammenfallen. Dann
       // wird das Feld weggelassen und die Lücke ist wie ein Altbestand nicht dedupfähig.
       ...(compareKey ? { compareKey, askCount: 1 } : {}),
+      ...(belegbedarf?.length ? { belegbedarf } : {}),
     };
     // ============================================================================================
     // JOB 1111 / D-032 — HIER ENTSCHEIDET SICH: NEUE LÜCKE ODER EINE WEITERE STIMME.
@@ -1675,12 +3232,7 @@ export class AskService {
     // `gap.created` für einen nicht angelegten Datensatz wäre eine falsche Auskunft. Ein eigener
     // Vorgang (`gap.repeated`) bräuchte eine Beschriftung in `apps/web/src/i18n.ts`; diese Datei
     // liegt nicht in der Lease dieses Auftrags. Als kleiner Folgeschritt in der Rückgabe benannt.
-    return gespeichert;
-  }
-
-  private async save(gap: Gap): Promise<Gap> {
-    await this.gaps.update(gap);
-    return gap;
+    return fuerDenFragenden(gespeichert, createdBy);
   }
 
   private async require(id: string): Promise<Gap> {

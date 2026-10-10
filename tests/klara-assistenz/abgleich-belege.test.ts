@@ -20,6 +20,12 @@ const ABGLEICH = lies("docs/klara/aufnahme-20260922-gesamt-klara-assistenz.md");
 const PANEL = panelQuelleAus(join(WURZEL, "apps/web/public/word-addin/taskpane.html"));
 const KA8_PFAD = "/api/drafts/:id/naechster-schritt";
 const GELOESCHT_W5 = "tests/klara-panel/ka5-markierung-reist-mit.test.tsx";
+// R-1349 (Auftrag aufruferwaechter): der KA8-Parallelweg, den W1a als ungerufen belegte, ist mit
+// seinem Test begründet entfernt. Der Abgleich nennt beide weiter als Befund seines Stands .639.
+const GELOESCHT_KA8_PARALLELWEG = [
+  "services/app/src/routes/naechster-schritt-entwurf.ts",
+  "tests/app/ka8-naechster-schritt-entwurf.test.ts",
+];
 
 /** Alle Repo-Pfade, die der Abgleich in Backticks nennt (ohne Zeilenangabe). */
 function genanntePfade(text: string): string[] {
@@ -53,8 +59,9 @@ describe("Aufnahme Gesamt-Klara-Assistenz · Abgleich bleibt am Baum", () => {
     expect(pfade).toContain("tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts");
     expect(pfade.length).toBeGreaterThan(20);
     const fehlend = pfade.filter((pfad) => !existsSync(join(WURZEL, pfad)));
-    // W5 nennt die gelöschte KA5-Panelprüfung bewusst. Sie muss fehlen, alles andere muss stehen.
-    expect(fehlend).toEqual([GELOESCHT_W5]);
+    // W5 nennt die gelöschte KA5-Panelprüfung bewusst, W1a den entfernten KA8-Parallelweg. Genau
+    // diese müssen fehlen, alles andere muss stehen.
+    expect([...fehlend].sort()).toEqual([GELOESCHT_W5, ...GELOESCHT_KA8_PARALLELWEG].sort());
   });
 
   it("die Panelmarken von KA1, KA3, KA4, KA5 und KA7 stehen im ausgelieferten Panel", () => {
@@ -83,10 +90,12 @@ describe("Aufnahme Gesamt-Klara-Assistenz · Abgleich bleibt am Baum", () => {
     expect(aufrufer).toEqual([]);
   });
 
-  it("W1a: der KA8-Parallelweg liegt noch im Baum und ist nicht registriert", () => {
-    expect(lies("services/app/src/routes/naechster-schritt-entwurf.ts")).toContain(
-      "export const NAECHSTER_SCHRITT_PFAD",
-    );
+  // R-1349 (Auftrag aufruferwaechter): Der Parallelweg lag ungerufen im Baum, wie W1a es belegte.
+  // Er ist seitdem begründet entfernt; dieselbe Auskunft liefert die registrierte Bestandsroute (W1).
+  it("W1a: der KA8-Parallelweg ist entfernt und nirgends registriert", () => {
+    for (const pfad of GELOESCHT_KA8_PARALLELWEG) {
+      expect(existsSync(join(WURZEL, pfad)), pfad).toBe(false);
+    }
     expect(lies("services/app/src/build-app.ts")).not.toContain("naechsterSchrittEntwurfRoutes");
   });
 

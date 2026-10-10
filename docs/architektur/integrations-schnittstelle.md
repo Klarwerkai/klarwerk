@@ -189,3 +189,95 @@ Grenzen (ehrlich):
   belegt — sie braucht eine erreichbare Instanz, einen ausgestellten Schlüssel und eine Abnahme im
   Betrieb. Ablauf, fehlende Mittel und die Zuordnung jeder Rechtezusage zu Code und Gegenprobe:
   `docs/abnahme/mcp-fremdclient-abnahme.md`.
+
+## 7. Ereignis-Meldungen an Fremdwerkzeuge (Webhooks, R-0710)
+
+KLARWERK meldet angebundenen Werkzeugen von selbst, wenn
+
+| Ereignis | Bedeutung |
+| --- | --- |
+| `wissen.validiert` | Ein Wissensobjekt ist in dieser Fassung validiert (jeder Weg: Bewertung, Admin-Freigabe, Überarbeitung mit Freigabe, Vorschlagsübernahme). |
+| `wissen.revalidierung_faellig` | Für ein Wissensobjekt steht „Stimmt das noch?" an (gekoppelte Anlage geändert) — der Zustand, den Management und Arbeitsbereich als veraltet zählen. Eine Gültigkeitsfrist nach Datum hat das Produkt nicht. |
+| `widerspruch.offen` | Ein Widerspruch zwischen zwei Wissensobjekten ist neu offen. |
+
+Code: `services/app/src/wissensereignisse.ts`, gestartet in `services/app/src/server.ts`.
+
+**Einrichten (Betrieb).** `KLARWERK_WEBHOOKS` als JSON-Liste; der ganze Wert ist geheim:
+
+```json
+[
+  {
+    "id": "n8n-wissen",
+    "url": "https://<ziel>/webhook/<pfad>",
+    "ereignisse": ["wissen.validiert", "widerspruch.offen"],
+    "geheimnis": "<mindestens 32 Zeichen>"
+  }
+]
+```
+
+- Nur `https`; `http` allein für die eigene Maschine (`localhost`, `127.0.0.1`, `[::1]`). Keine
+  Zugangsdaten in der Adresse. Ein fehlerhafter Eintrag wird beim Start verworfen und ohne Adresse
+  und Geheimnis im Log genannt.
+- Abgeglichen wird im Takt `KLARWERK_WEBHOOKS_TAKT_SEK` (Vorgabe 60 s, mindestens 10 s). Ein
+  Ereignis kommt also spätestens einen Takt nach der Änderung an.
+- Beim allerersten Lauf wird der vorhandene Bestand als **Grundstand** festgehalten und nicht
+  gemeldet. Gemeldet wird, was danach geschieht. Ein später hinzugefügtes Ziel bekommt ebenfalls nur
+  Ereignisse ab seinem Eintrag.
+
+**Die Meldung.** `POST` mit `content-type: application/json`, ohne Weiterleitung, Zeitgrenze 10 s:
+
+```json
+{
+  "format": "klarwerk-wissensereignis",
+  "formatVersion": 1,
+  "kennung": "wissen.validiert:<ko-id>:<fassung>",
+  "ereignis": "wissen.validiert",
+  "zeitpunkt": "2026-10-08T09:00:00.000Z",
+  "wissensobjekt": { "id": "<ko-id>", "version": 3 }
+}
+```
+
+Bei `widerspruch.offen` steht statt `wissensobjekt` das Feld
+`"widerspruch": { "id": "<id>", "art": "truth", "wissensobjekte": ["<ko-a>", "<ko-b>"] }`.
+
+- Köpfe: `x-klarwerk-ereignis`, `x-klarwerk-kennung` und `x-klarwerk-signatur: t=<Unix-Sekunden>,v1=<hex>`.
+  `v1` ist HMAC-SHA-256 mit dem `geheimnis` des Ziels über `"<t>.<Rumpf>"`. Der Empfänger rechnet
+  sie nach und verwirft alte Zeitstempel.
+- Die Meldung trägt **nur Kennungen und Fassung**, keinen Titel und keinen Inhalt. Gemeldet werden
+  nur Objekte, die auch der Export eines Dienst-Schlüssels zeigen darf: nicht vertraulich, ohne
+  führenden Space. Bei einem Widerspruch müssen beide Seiten diese Regel erfüllen. Inhalte holt das
+  Werkzeug über §1–§3 mit eigenem Schlüssel und dessen Rechten.
+- Erfolg ist jede `2xx`-Antwort. Sonst wird die Meldung in den nächsten Takten erneut versucht
+  (höchstens 5 Versuche, dieselbe `kennung`). Der Empfänger muss doppelte Zustellungen anhand der
+  `kennung` erkennen.
+- Unmittelbar vor jedem einzelnen Versuch, auch innerhalb eines Takts, werden die betroffenen
+  Objekte frisch gelesen und ihre Sichtbarkeit geprüft. Ist ein betroffenes Objekt inzwischen
+  vertraulich, einem Space zugeordnet oder gelöscht, wird die Meldung nicht mehr gesendet. Bei einem
+  Widerspruch gilt das für beide Seiten. Der Abbruch wird protokolliert.
+
+**Prüfprotokoll.**
+
+- `wissensereignis.grundstand`: einmal.
+- `wissensereignis.erkannt`: je Ereignis, mit der `kennung` als eindeutiger Ereigniskennung der
+  Kette und den bei der Erkennung abonnierten Zielen.
+- `wissensereignis.zustellversuch`: je erfolglosem Versuch.
+- Je Ziel genau ein Abschluss mit Versuchen und letztem Status: `wissensereignis.zugestellt`,
+  `wissensereignis.zustellung-gescheitert` oder `wissensereignis.zustellung-abgebrochen`.
+
+**Dauerhaft.** Zustellvorgänge ohne Abschluss nimmt der Melder nach einem Neustart aus dem
+Prüfprotokoll wieder auf und zählt dabei die Versuche weiter. Ein erst nach der Erkennung
+eingetragenes Ziel bekommt keine alten Vorgänge.
+
+**Grenzen.**
+
+- Zugestellt wird mindestens einmal. Doppelt gesendet werden kann eine Meldung in zwei Fällen:
+  bei einem Neustart zwischen erfolgreicher Antwort und Abschlusseintrag, oder wenn mehrere
+  Instanzen gleichzeitig neu starten und denselben offenen Vorgang aufnehmen. Wiederaufgenommen
+  wird nur beim Start eines Prozesses; eine weiterlaufende Instanz übernimmt die offenen Vorgänge
+  einer abgestürzten nicht.
+- Jeder Takt liest den Bestand der Wissensobjekte, die Revalidierungsmerker und die offenen
+  Widersprüche einmal vollständig.
+- Ziele werden über die Umgebung verwaltet; eine Änderung braucht einen Neustart. Eine
+  Verwaltungsoberfläche gibt es nicht.
+- Eine echte Zustellung an ein Fremdwerkzeug im Betrieb ist damit **nicht** belegt. Dafür braucht es
+  ein konkretes Zielsystem, einen eingetragenen Eintrag samt Geheimnis und eine Abnahme.

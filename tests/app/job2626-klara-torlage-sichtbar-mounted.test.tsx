@@ -188,7 +188,9 @@ async function seite(serverAntwort: AskResponse): Promise<{
 
 const TOR = {
   freigabe: (): string => i18n.t("ask.verschlossen.freigabe"),
-  stufe: (): string => i18n.t("ask.verschlossen.stufe"),
+  // R-0303: die Fläche rendert seit der Aufnahme gesamt-wissensluecken den Schlüssel mit dem Wort
+  // der Validierung („Vertraulichkeitsstufe fehlt").
+  stufe: (): string => i18n.t("ask.verschlossen.vertraulichkeitsstufe"),
   volltext: (): string => i18n.t("ask.verschlossen.volltext"),
 };
 
@@ -313,9 +315,12 @@ describe("JOB 2626 · S — die Torlage steht dort, wo der Mensch liest", () => 
     // (`Validation.tsx` ist fuer 2623 D3 gesperrt, ein grep nach beiden Texten findet dort nichts)
     // — gepinnt wird deshalb der Wortlaut aus dem Auftrag, nicht eine gemessene Gleichheit mit
     // der Validierungsflaeche. Wer eines der beiden umbenennt, muss es an BEIDEN Stellen tun.
+    // R-0303 (Aufnahme gesamt-wissensluecken): die Validierung beim Anlegen sagt „Vertraulichkeits-
+    // stufe fehlt" (capture/service.ts, ko-routes.ts) — die Antwortflaeche benutzt seitdem DASSELBE
+    // Wort statt „Stufe fehlt". Die Gleichheit misst tests/wissensluecken-etikett/torbegriff-gleich.test.ts.
     await i18n.changeLanguage("de");
     expect(TOR.freigabe()).toBe("Freigabe fehlt");
-    expect(TOR.stufe()).toBe("Stufe fehlt");
+    expect(TOR.stufe()).toBe("Vertraulichkeitsstufe fehlt");
     // Und die drei Saetze aus §2 des Auftrags — woertlich, als Maus-Hinweis je Tor.
     expect(i18n.t("ask.verschlossen.freigabeHint")).toBe(
       "Das Dokument ist noch nicht freigegeben.",

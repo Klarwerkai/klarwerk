@@ -15,6 +15,7 @@ import {
   ausgangspruefungApi,
 } from "../api/ausgangspruefung";
 import { ApiError } from "../api/client";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 
 const ABFRAGE_TAKT_MS = 3000;
@@ -186,9 +187,13 @@ export function Ausgangspruefung(): JSX.Element {
         </p>
       ) : null}
       {lage.isSuccess && lage.data.aktiv && lage.data.offen.length === 0 ? (
-        <p data-testid="ausgang-leer" className="text-sm text-muted">
-          {t("ausgangspruefung.seite.leer")}
-        </p>
+        <>
+          <p data-testid="ausgang-leer" className="text-sm text-muted">
+            {t("ausgangspruefung.seite.leer")}
+          </p>
+          {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+          {leerzustandsZeile(t, "ausgang")}
+        </>
       ) : null}
       <ul className="space-y-3">
         {(lage.data?.offen ?? []).map((eintrag) => (

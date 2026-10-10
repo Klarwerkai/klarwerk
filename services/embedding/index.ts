@@ -7,3 +7,5 @@ export {
 } from "./src/provider";
 export { InMemoryEmbeddingStore } from "./src/store";
 export type { EmbeddingStore, NearestHit } from "./src/store";
+// R-0470: der dauerhafte Vektorspeicher für den Postgres-Betrieb und seine Tabelle.
+export { EMBEDDING_SCHEMA, PgEmbeddingStore } from "./src/store-pg";

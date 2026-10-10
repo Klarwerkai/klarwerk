@@ -183,7 +183,11 @@ describe("gesamt-ocr · FR-CAP-05 · Prompt und Client-Auswahl", () => {
   it("P1 · Kontext vor den Antworten, als Kontext beschriftet und gedeckelt; ohne Kontext kein Block", async () => {
     const mit = aufzeichnend();
     const lang = `${ERKANNT} ${"x".repeat(MAX_INTERVIEW_CONTEXT_LENGTH)}`;
-    await new ModelProvider(mit.client).interview(["Die Kernaussage."], "de", false, lang);
+    // Nach der Integration mit WISSEN-INTERVIEW (R-1624/R-0088) reist der Kontext im Optionsobjekt
+    // (`options.context`) — der vierte Platz gehört dem Bildbefund des Foto-Interviews.
+    await new ModelProvider(mit.client).interview(["Die Kernaussage."], "de", false, undefined, {
+      context: lang,
+    });
     const prompt = mit.user[0] ?? "";
     expect(prompt.startsWith("Im Bild erkannter Text (Kontext, keine Antwort):\n")).toBe(true);
     expect(prompt).toContain(ERKANNT);

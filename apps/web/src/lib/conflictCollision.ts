@@ -13,19 +13,9 @@ export const CONFLICT_COLLISION_TEXT = {
   point: "con.collision.point", // aria-Label des Kollisionspunkts (Marker zwischen den Kacheln)
 } as const;
 
-// Welche Darstellung ein Konflikt bekommt: strukturierte Kollisions-Kacheln, sonst die zwei
-// wörtlichen Zitate (Alt-Auto-Konflikte), sonst die Textbeschreibung (manuelle/Alt-Konflikte).
-export type ConflictDisplayMode = "kollision" | "quotes" | "text";
-
-export function conflictDisplayMode(conflict: Conflict): ConflictDisplayMode {
-  if (conflict.detector?.kollision) {
-    return "kollision";
-  }
-  if (conflict.detector?.quotes) {
-    return "quotes";
-  }
-  return "text";
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `conflictDisplayMode` (Kacheln → Zitate →
+// Text). Das Konflikt-Board entscheidet über `resolveCollision` unten und seine Rückfälle selbst
+// (`pages/Conflicts.tsx`, R-0991 Nr. 14); die Auswahl rief niemand und ist entfernt.
 
 // Eine aufgelöste Kachel-Seite: Titel aus dem KO (Fallback „entfernt", nie die UUID), plus die
 // Modell-Kernaussage/-Streitwert und ob der Streitwert wörtlich im Beleg steht (dann als belegt

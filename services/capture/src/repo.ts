@@ -1,3 +1,4 @@
+import { ENTWURFS_INDEX_FASSUNG, type EntwurfsIndex } from "./entwurfs-index";
 import type { Draft, EntwurfImPapierkorb } from "./types";
 
 /**
@@ -164,8 +165,9 @@ export interface DraftRepo {
    *
    * JOB 3668 — UND DAS HEISST JETZT WÖRTLICH ALLE, EINSCHLIESSLICH PAPIERKORB. Das ist die eine
    * bewusste Abweichung vom Wissensobjekt in diesem Auftrag, und sie ist notwendig, nicht bequem:
-   * `objectReferences.drafts` (`services/app/src/build-app.ts:756`) und die Anhangquellen (`:2339`)
-   * beantworten über diese Liste die Frage „wird dieses gesicherte Original noch gebraucht?".
+   * die Anhangquellen in `services/app/src/build-app.ts` beantworten über diese Liste die Frage
+   * „wird dieses gesicherte Original noch gebraucht?" (R-1349: die frühere zweite Quelle
+   * `objectReferences.drafts` ist mit der ungerufenen Referenzprüfung entfernt).
    * Verschwände ein getrashter Entwurf daraus, dürfte sein Original entfernt werden — und die
    * Wiederherstellung lieferte einen Entwurf mit fehlendem Anker, dessen Rumpf `withAnchorCheck`
    * ausdünnt. Das wäre genau die Hülle, die dieser Auftrag in §4.3 verbietet. Das Wissensobjekt
@@ -201,6 +203,40 @@ export interface DraftRepo {
    * der Dienst auf `list()` mit demselben Prädikat zurück (`CaptureService.listDraftsForResume`).
    */
   listPool?(): Promise<Draft[]>;
+
+  // ==============================================================================================
+  // R-1133 — DER TECHNISCHE INDEX DES ENTWURFS (Regel: `./entwurfs-index.ts`).
+  // ==============================================================================================
+  //
+  // OPTIONAL aus demselben Grund wie `insertIfOperationAbsent`: die Testattrappen dieses Vertrags
+  // bleiben gültig, und eine Ablage ohne Index ist eine Ablage ohne Beschleunigung — kein Fehler.
+  // Beide Betriebsablagen führen alle vier Methoden.
+  //
+  // DIE ZUSAGE ALLER VIER: ein Index zählt nur, wenn sein `stand` dem gespeicherten `updatedAt`
+  // eines LEBENDEN Entwurfs gleicht. Ein Papierkorb-Entwurf ist für sie nicht vorhanden (dieselbe
+  // Regel wie `findById`), ein endgültig gelöschter oder verbrauchter nimmt seinen Index mit.
+
+  /**
+   * Schreibt den Index NUR, wenn der gespeicherte Entwurf lebt und noch genau `index.stand` trägt —
+   * geprüft und geschrieben in einem Schritt. Eine verspätete Ableitung eines älteren Stands
+   * überschreibt deshalb nie einen neueren; `false` heißt „nicht geschrieben".
+   */
+  setzeEntwurfsIndex?(id: string, index: EntwurfsIndex): Promise<boolean>;
+  /** Der gespeicherte Index eines lebenden Entwurfs — auch ein veralteter; der Aufrufer vergleicht. */
+  entwurfsIndexVon?(id: string): Promise<EntwurfsIndex | undefined>;
+  /** Kennungen lebender Entwürfe ohne gültigen Index (fehlend, veralteter Stand, alte Fassung). */
+  offeneEntwurfsIndizes?(limit: number): Promise<string[]>;
+  /** Kennungen lebender Entwürfe mit GÜLTIGEM Index und genau diesem Inhaltshash, ohne `ausser`. */
+  entwuerfeMitInhalt?(inhaltsHash: string, ausser: string): Promise<string[]>;
+}
+
+/** Gilt dieser gespeicherte Index für diesen gespeicherten Entwurf? EINE Stelle für die Ablage im Speicher. */
+function indexGilt(draft: Draft, index: EntwurfsIndex | undefined): index is EntwurfsIndex {
+  return (
+    index !== undefined &&
+    index.stand === draft.updatedAt &&
+    index.fassung === ENTWURFS_INDEX_FASSUNG
+  );
 }
 
 /**
@@ -231,6 +267,8 @@ export class InMemoryDraftRepo implements DraftRepo {
   private readonly drafts = new Map<string, Draft>();
   /** Spiegel des partiellen Pg-Unique-Index: Vorgang auf Entwurfs-Id. */
   private readonly vorgaenge = new Map<string, string>();
+  /** R-1133: Spiegel der Indexspalten an `drafts` (`CAPTURE_INDEX_SCHEMA`). */
+  private readonly indizes = new Map<string, EntwurfsIndex>();
 
   insert(draft: Draft): Promise<void> {
     this.drafts.set(draft.id, draft);
@@ -362,7 +400,51 @@ export class InMemoryDraftRepo implements DraftRepo {
     if (!draft || !(auchLebende || istGetrasht(draft))) {
       return Promise.resolve(false);
     }
+    // R-1133: der Index geht mit der Zeile — in PostgreSQL sind es Spalten derselben Zeile.
+    this.indizes.delete(id);
     return Promise.resolve(this.drafts.delete(id));
+  }
+
+  // R-1133: geprüft und geschrieben ohne `await` dazwischen — dieselbe Unteilbarkeit wie
+  // `updateWennStand`. In PostgreSQL leistet das die Standbedingung im `WHERE`.
+  setzeEntwurfsIndex(id: string, index: EntwurfsIndex): Promise<boolean> {
+    const draft = this.drafts.get(id);
+    if (!draft || istGetrasht(draft) || draft.updatedAt !== index.stand) {
+      return Promise.resolve(false);
+    }
+    this.indizes.set(id, index);
+    return Promise.resolve(true);
+  }
+
+  entwurfsIndexVon(id: string): Promise<EntwurfsIndex | undefined> {
+    const draft = this.drafts.get(id);
+    return Promise.resolve(draft && !istGetrasht(draft) ? this.indizes.get(id) : undefined);
+  }
+
+  offeneEntwurfsIndizes(limit: number): Promise<string[]> {
+    const deckel = Math.max(0, Math.floor(limit));
+    return Promise.resolve(
+      [...this.drafts.values()]
+        .filter((draft) => !istGetrasht(draft) && !indexGilt(draft, this.indizes.get(draft.id)))
+        .slice(0, deckel)
+        .map((draft) => draft.id),
+    );
+  }
+
+  entwuerfeMitInhalt(inhaltsHash: string, ausser: string): Promise<string[]> {
+    return Promise.resolve(
+      [...this.drafts.values()]
+        .filter((draft) => {
+          const index = this.indizes.get(draft.id);
+          return (
+            draft.id !== ausser &&
+            !istGetrasht(draft) &&
+            indexGilt(draft, index) &&
+            index.inhaltsHash === inhaltsHash
+          );
+        })
+        .map((draft) => draft.id),
+    );
   }
 
   // JOB 3668: einschliesslich Papierkorb — die Begründung steht am Vertrag (`DraftRepo.list`).

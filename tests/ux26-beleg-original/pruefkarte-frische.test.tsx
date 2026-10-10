@@ -183,7 +183,9 @@ for (const sprache of SPRACHEN) {
       const t = i18n.getFixedT(sprache);
       stelleFetch();
       const container = await mounten();
-      const karte = pruefkarte(container, t("evFresh.title"));
+      // R-0908: die Prüfkarte trägt seit der Aufnahme gesamt-sprache-begriffe die Überschrift aus
+      // `texte/fachwort.ts` („Aktualität der Belege" statt „Evidence-Aktualität").
+      const karte = pruefkarte(container, t("fachwort.belegFrische.titel"));
 
       const fehlt = zeile(karte, "ko-fehlt");
       expect(fehlt, "der Eintrag ohne Beleg fehlt in der Prüfkarte").not.toBeNull();

@@ -482,19 +482,8 @@ export function parseAnswerMarkdown(answer: string): AnswerSegment[] {
   return segments;
 }
 
-// U1 (Word-Taskpane): dort wird KLARTEXT angezeigt/eingefügt — dieselbe Subset-Logik als STRIP:
-// Markdown-Zeichen entfernen, Inhalt (inkl. Listenpunkte als eigene Zeilen) erhalten. Kein Rendern.
-export function stripAnswerMarkdown(answer: string): string {
-  const lines: string[] = [];
-  for (const segment of parseAnswerMarkdown(answer)) {
-    const flat = (parts: AnswerInlinePart[]): string => parts.map((p) => p.text).join("");
-    if (segment.kind === "list") {
-      segment.items.forEach((item, i) => {
-        lines.push(segment.ordered ? `${i + 1}. ${flat(item)}` : `- ${flat(item)}`);
-      });
-    } else {
-      lines.push(flat(segment.parts));
-    }
-  }
-  return lines.join("\n");
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `stripAnswerMarkdown`, die Klartextfassung
+// für das Word-Aufgabenfenster. Das Aufgabenfenster lädt dieses Modul nicht und trägt seine eigene
+// Fassung (`stripAskAnswerMarkdown` in `public/word-addin/taskpane.js`, R-0991 Nr. 3); im Produkt
+// rief sie niemand. Gelesen wurde sie nur als Maßstab der Darstellungstests — dort steht sie jetzt
+// (`tests/support/antwort-klartext.ts`), gebaut auf `parseAnswerMarkdown` von hier.

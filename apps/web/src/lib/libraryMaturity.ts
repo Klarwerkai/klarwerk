@@ -3,8 +3,6 @@
 // übersetzt sie in eine ehrliche Klartext-Aussage: nutzbar (validiert) · in Prüfung · zu prüfen.
 // Offene KOs erscheinen damit NIE als „nutzbar". Keine neue Suche, keine Mutation, kein Backend.
 import type { KnowledgeObject } from "../api/types";
-import { askAnswerHref, askConfidentialQuestionHref } from "./askQuestion";
-import { isKnownNonConfidential } from "./confidentiality";
 import { type KoUsability, koOverview } from "./koOverview";
 import { useReadiness } from "./useReadiness";
 
@@ -14,12 +12,6 @@ export interface LibraryMaturity {
   usability: KoUsability;
   labelKey: string;
   tone: MaturityTone;
-}
-
-export interface LibraryUseCta {
-  labelKey: string;
-  href: string;
-  kind: "ask" | "review";
 }
 
 // SCRUM-293: Label + Tönung kommen aus der GETEILTEN Use-Readiness-Sprache (useReadiness), damit
@@ -42,70 +34,13 @@ export function libraryMaturity(ko: KnowledgeObject): LibraryMaturity {
   return { usability, ...META[usability] };
 }
 
-// SCRUM-288: In der Bibliothek führt nur nutzbares/validiertes Wissen in den Ask-Flow. Alles,
-// was noch offen oder in Prüfung ist, wird ehrlich Richtung Validierung geführt — keine neue
-// Suche, keine Mutation, nur sichere CTA-Wahl aus der vorhandenen Reife.
-// WP-UX-WOW-1 U5 (Kopfs Befund): der Fragen-Knopf stellt eine ECHTE, lokalisierte Frage (der
-// Aufrufer reicht sie via i18n-Muster „Was gilt zu: <Titel>?" herein) und sendet DIREKT (ein
-// Klick → Antwort, über den bestehenden ?ask=1-Auto-Antwort-Weg der Suche). Ohne question-Parameter
-// bleibt der Titel die Startfrage (Alt-Verhalten der übrigen Aufrufer).
-// WP-POLISH-CLOSE (bens Punkt 1): für VERTRAULICHE/streng vertrauliche KOs (fail-safe: alles, was
-// nicht eindeutig nicht-vertraulich ist) KEIN Auto-Send — Variante (a), die ehrlichere: der Knopf
-// bleibt und befüllt die Frage, aber der Nutzer sendet bewusst selbst; die Ask-Seite zeigt den
-// nüchternen Vertraulichkeits-Hinweis. Ein ganz entfernter Auto-Send-Knopf würde die legitime
-// Frage-Fähigkeit kappen, ohne die Kante ehrlicher zu machen.
-export function libraryUseCta(ko: KnowledgeObject, question?: string): LibraryUseCta {
-  const maturity = libraryMaturity(ko);
-  if (maturity.usability === "ready") {
-    const startQuestion = question ?? ko.title;
-    return isKnownNonConfidential(ko.confidentiality)
-      ? { labelKey: "lib.ask", href: askAnswerHref(startQuestion), kind: "ask" }
-      : { labelKey: "lib.ask", href: askConfidentialQuestionHref(startQuestion), kind: "ask" };
-  }
-  return { labelKey: "lib.review", href: "/validierung", kind: "review" };
-}
-
-// SCRUM-267: einfacher Reife-Filter für die Bibliothek. „all" + die drei Reifearten — dieselbe
-// Logik wie die Plakette (libraryMaturity → koOverview). Arbeitet auf der bereits server-gefilterten
-// und client-seitig gerankten Trefferliste; keine neue Suche, kein Backend.
-export type MaturityFilter = "all" | KoUsability;
-
-export const MATURITY_FILTERS: readonly MaturityFilter[] = [
-  "all",
-  "ready",
-  "in-review",
-  "needs-work",
-];
-
-// i18n-Label je Filter (für die Chips). „all" eigener Key; sonst dasselbe Label wie die Plakette.
-export function maturityFilterLabelKey(filter: MaturityFilter): string {
-  return filter === "all" ? "lib.maturity.all" : META[filter].labelKey;
-}
-
-// Filtert eine Liste von Treffern (alles mit `.ko`) nach Reife. „all" lässt unverändert (keine
-// stille Ausblendung); sonst exakt die Reife der Plakette — „ready" enthält nie offene/ungeprüfte KOs.
-export function filterByMaturity<T extends { ko: KnowledgeObject }>(
-  items: readonly T[],
-  filter: MaturityFilter,
-): T[] {
-  if (filter === "all") {
-    return [...items];
-  }
-  return items.filter((item) => libraryMaturity(item.ko).usability === filter);
-}
-
-// Ehrliche Zähler je Reife (für die Chips). „all" = Gesamtzahl.
-export function countByMaturity<T extends { ko: KnowledgeObject }>(
-  items: readonly T[],
-): Record<MaturityFilter, number> {
-  const counts: Record<MaturityFilter, number> = {
-    all: items.length,
-    ready: 0,
-    "in-review": 0,
-    "needs-work": 0,
-  };
-  for (const item of items) {
-    counts[libraryMaturity(item.ko).usability] += 1;
-  }
-  return counts;
-}
+// Hier stand `libraryUseCta` (SCRUM-288). Seit JOB 3063 Runde 5 zieht die Lesefläche ihre Aktion
+// für JEDEN Eintrag aus `components/bibliothek/fragen.ts::fragenHref` — dort lebt auch der
+// Vertraulichkeitsweg ohne Auto-Senden weiter. Die Reife-Weiche hatte keinen Produktaufrufer mehr
+// und ist mit R-1349 entfernt.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand der SCRUM-267-Reifefilter mit seinen Chips —
+// `MATURITY_FILTERS`, `maturityFilterLabelKey`, `filterByMaturity`, `countByMaturity` samt Typ. Die
+// Chips sind abgelöst: die Bibliothek filtert die Reife als Facette der Facettenschiene über
+// `libraryMaturity(ko).usability` (`lib/libraryFacets.ts`, R-0991 Nr. 40–43). Keiner der vier hatte
+// einen Produktleser; sie sind entfernt.

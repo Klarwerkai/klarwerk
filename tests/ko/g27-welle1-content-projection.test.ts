@@ -19,15 +19,14 @@ import {
   InMemoryKoVersionRepo,
   type KnowledgeObject,
   KoService,
-  SEARCH_PROJECTION_FIELDS,
   SEARCH_PROJECTION_VERSION,
   buildSearchProjection,
   isConfidential,
-  isReconstructedClassification,
   searchProjectionContentHash,
   serializeClassificationSnapshot,
   visibleTextFromBodyHtml,
 } from "../../services/knowledge-object";
+import { SEARCH_PROJECTION_FIELDS } from "../support/projektion-feldvertrag";
 
 const AT = "2026-08-02T09:00:00.000Z";
 
@@ -427,7 +426,7 @@ describe("G27 Welle 1 · AK3 · classification_snapshot", () => {
     expect(snapshot?.provenance).toBe("captured_at_version");
     expect(snapshot?.historicalConfidence).toBe("verified");
     expect(snapshot?.capturedAtSource).toBe("version_event");
-    expect(isReconstructedClassification(snapshot!)).toBe(false);
+    expect(snapshot?.provenance).not.toBe("reconstructed_from_current_ko");
   });
 
   it("HISTORISCH STABIL: eine spätere Herabstufung lässt den alten Snapshot unberührt", async () => {

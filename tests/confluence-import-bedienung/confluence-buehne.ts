@@ -22,8 +22,8 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
 import { confluenceImportRoutes } from "../../services/app/src/routes/confluence-import-routes";
 import { importRunRoutes } from "../../services/app/src/routes/import-run-routes";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 

@@ -19,6 +19,9 @@ import { tokenFromRequest } from "./http";
 /** Die Routen, deren Aufruf ein Modell (und damit Kosten) auslösen kann — kanonische Fastify-Pfade. */
 export const KI_ROUTEN: readonly { readonly methode: "POST"; readonly pfad: string }[] = [
   { methode: "POST", pfad: "/api/ask" },
+  // R-0700: Klaras eigener, sitzungsgebundener Ausführungszugang — die Klara-Fragen, die bis dahin
+  // über `/api/ask` liefen (und dort gebremst wurden), laufen jetzt hier.
+  { methode: "POST", pfad: "/api/klara/sessions/:sessionId/execute" },
   { methode: "POST", pfad: "/api/reasoner" },
   { methode: "POST", pfad: "/api/reasoner/describe" },
   { methode: "POST", pfad: "/api/reasoner/enrich" },
@@ -26,6 +29,7 @@ export const KI_ROUTEN: readonly { readonly methode: "POST"; readonly pfad: stri
   { methode: "POST", pfad: "/api/kos/:id/ai-check" },
   { methode: "POST", pfad: "/api/help/explain" },
   { methode: "POST", pfad: "/api/media/analyze" },
+  { methode: "POST", pfad: "/api/media/transcribe" },
 ];
 
 export const KI_GRENZE_STANDARD: BremsGrenze = { max: 30, fensterMs: 60_000 };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adapterFromConfig } from "./adapter";
+import { adapterFromConfig } from "../../../tests/support/confluence-adapter";
 import { mapConfluenceAttachment, mapConfluencePageToImportItem } from "./mapper";
 import { type ConfluenceAttachment, ConfluenceRestClient } from "./rest-client";
 

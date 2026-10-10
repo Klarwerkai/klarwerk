@@ -33,7 +33,8 @@ export const PILOT_OBSERVATIONS: readonly PilotObservation[] = [
   {
     id: "outdated",
     labelKey: "pilot.obs.outdated.label",
-    mapKey: "pilot.obs.outdated.map",
+    // R-1176: zitiert den Knopf „Aktuell halten“ zeichengleich (`texte/knopfzitat.ts`).
+    mapKey: "knopfzitat.pilot.veraltet",
     to: "/lebenszyklus",
   },
   {
@@ -45,6 +46,6 @@ export const PILOT_OBSERVATIONS: readonly PilotObservation[] = [
   { id: "uxnote", labelKey: "pilot.obs.uxnote.label", mapKey: "pilot.obs.uxnote.map", to: null },
 ];
 
-export function pilotObservationGuide(): readonly PilotObservation[] {
-  return PILOT_OBSERVATIONS;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `pilotObservationGuide()`, das die Tabelle
+// oben zurückgab. Die Hilfe liest `PILOT_OBSERVATIONS` unmittelbar (`pages/Help.tsx`); der Zugriff
+// rief niemand und ist entfernt.

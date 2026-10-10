@@ -148,6 +148,10 @@ export function isAdminDetailId(value: string): boolean {
   if (value.startsWith("nutzer:")) {
     return NUTZER_KENNUNG.test(value.slice("nutzer:".length));
   }
+  // ADMIN-06: `team:<id>` — dieselbe Formregel wie ein Konto; ob es das Team gibt, sagt die Karte.
+  if (value.startsWith("team:")) {
+    return NUTZER_KENNUNG.test(value.slice("team:".length));
+  }
   return ADMIN_DETAILS.some((d) => d.id === value);
 }
 

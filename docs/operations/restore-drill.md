@@ -56,10 +56,51 @@ eigenen Exitcode (61).
 | `71` | `unresolvedDeviations ≠ 0` — unerklärte Hashabweichung |
 | `72` | `uncheckedDeviations ≠ 0` — ungeprüfte Abweichung (Deckel gerissen) |
 | `73` | **Wissensnachweis: Befund** — eine Belegzeile zeigt auf eine Anhangskennung, zu der `objects` keine Zeile führt, **oder** das Wissensobjekt, sein Beleg oder der Anhangsinhalt kam nach dem Restore nicht zurück, obwohl die Datenbank sie führt |
+| `74` | **Rechte: Befund** — die Rollenverteilung der Konten (`users.role`/`approved`, je Paar die Anzahl) weicht zwischen Dump und wiederhergestellter Datenbank ab |
 | `80` | **Zuordnung oder Reaping fehlgeschlagen** — die PID-Datei nennt einen Prozess außerhalb der eigenen Prozessgruppe, die Abstammung ist nicht feststellbar, oder ein Prozess hat SIGKILL überlebt |
 
-Die Trennung von 60/61/62 gegen 70/71/72/73 ist der Kern: **Ein Aufbaufehler darf nicht wie ein
+Die Trennung von 60/61/62 gegen 70/71/72/73/74 ist der Kern: **Ein Aufbaufehler darf nicht wie ein
 Befund am Bestand aussehen.**
+
+## Das Protokoll: `letzter-drill.json` (ADMIN-13)
+
+Bis ADMIN-13 stand das Ergebnis eines Drills nur in seiner Ausgabe; in der Anwendung war nicht zu
+sehen, ob je eine Wiederherstellung geprobt wurde. Jetzt legt **jeder** Lauf, der einen vorhandenen
+Dump bekommen hat, neben dem Dump `letzter-drill.json` ab — auch der, der schon an der Prüfsumme
+scheitert (Exit 10/11), denn gerade dieser Befund gehört sichtbar in die Verwaltung. Geschrieben
+wird atomar (Arbeitsname, dann `mv`) und erst beim Verlassen, mit dem Code, mit dem der Drill
+wirklich endet.
+
+| Feld | Inhalt |
+| --- | --- |
+| `beginn`, `zeit` | Beginn und Ende der Probe (UTC) |
+| `ergebnis`, `exitcode`, `grund` | `erfolg` nur bei Exit 0; `grund` ist ein fester Satz je Exitcode, keine Abbruchmeldung im Wortlaut |
+| `sicherung` | Dateiname des geprobten Dumps |
+| `pruefsumme` | `passt` / `abweichend` / `fehlt` / `ungueltig` / `nicht_geprueft` und der nachgerechnete Hash |
+| `ziel` | der isolierte Zielname (`RESTORE_DB`) |
+| `vergleich` | vier Kategorien mit Dump- und Datenbankzahl je Tabelle: **Beiträge** (`kos`, `ko_versions`), **Anhänge** (`objects`, `ko_evidence`, dazu `belegeOhneAnhang` aus Glied 7b), **Beziehungen** (`ko_kanten`, `ko_kanten_beitrag`), **Rechte** (`users`, dazu die Rollenverteilung aus Glied 3b) |
+| `wissensnachweis` | der Satz aus Glied 7b oder `null` |
+
+Was nicht gemessen wurde, steht als `null` bzw. `nicht_gemessen` darin — nie als 0.
+**Keine Zugangsdaten:** `DRILL_LOGIN_EMAIL`, das Kennwort und das Sitzungstoken gehen nicht in die
+Datei.
+
+**Glied 3b — Rechte.** Eine gleiche Zeilenzahl in `users` sagt nicht, ob die Konten mit ihren
+Rechten zurückkamen. Der Drill zählt deshalb je Paar (Rolle, Freigabe) die Konten im COPY-Block
+des Dumps und in der wiederhergestellten Datenbank; weicht die Verteilung ab, endet er mit 74. Namen,
+Adressen und Kennworthashes werden dabei weder gelesen noch ausgegeben. Führt der Dump keine
+Spalten `role`/`approved`, ist die Verteilung nicht messbar und die Kategorie bleibt
+`nicht_gemessen`.
+
+**Wo es sichtbar wird.** `GET /api/admin/sicherungen` liest die Datei aus dem Sicherungsverzeichnis
+und zeigt sie unter *System → Sicherung → Restore-Nachweis*. Grün („Erfolg") erscheint dort nur
+bei Exit 0, nachgerechneter Prüfsumme, genanntem Ziel und `gleich` in allen vier Kategorien; Exit 0
+mit einer nicht gemessenen Kategorie heißt „Teilweise belegt". Ein Archiv oder eine Prüfsummendatei
+allein ergibt nie eine grüne Restore-Aussage. Belege:
+`tests/backup-drill/restore-drill.test.ts` (Protokoll je Ausgang, PATH-Stubs),
+`tests/kundenbetrieb-sicherung/schutzwege-auskunft.test.ts` (Route) und
+`tests/backup-drill/echter-wiederanlauf.integration.test.ts` (echter Dump, echte PostgreSQL,
+Protokoll und Route).
 
 ## Was ausdrücklich KEIN Abnahmekriterium ist
 
