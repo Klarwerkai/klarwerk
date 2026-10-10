@@ -264,8 +264,12 @@ export function GrenzDialog({
   ausloeser?: (() => HTMLElement | null) | undefined;
   /** Den Fokus beim Öffnen ins erste Bedienelement setzen (Vorgabe) — oder es der Fläche lassen. */
   anfangsfokus?: boolean;
-  /** Ein Datenattribut auf dem Dialog selbst (z. B. `data-navguard-dialog`). */
-  marke?: string | undefined;
+  /**
+   * Ein Datenattribut auf dem Dialog selbst (z. B. `data-navguard-dialog`). Der Typ hält den Vertrag
+   * fest: als berechneter Schlüssel gespreizt, könnte ein beliebiger String sonst auch `role` oder
+   * `aria-modal` setzen (Modalgrenze, Register A17b; dieselbe Eingrenzung wie `Modal.panelMarker`).
+   */
+  marke?: `data-${string}` | undefined;
   className?: string | undefined;
   onKeyDown?: JSX.IntrinsicElements["dialog"]["onKeyDown"];
   children: ReactNode;
