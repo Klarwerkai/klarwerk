@@ -1,4 +1,10 @@
-import { type APIRequestContext, type Page, expect, test } from "@playwright/test";
+import {
+  type APIRequestContext,
+  type APIResponse,
+  type Page,
+  expect,
+  test,
+} from "@playwright/test";
 
 import { ensureLoggedIn } from "./support/auth";
 
@@ -17,9 +23,12 @@ import { ensureLoggedIn } from "./support/auth";
 //   Bedienung   · 390 × 844 und 1280 × 800: ohne Überbreite, Zeitraum und Detailliste per Tastatur
 //                 erreichbar, sichtbarer Fokus, hin und zurück.
 //
-// WAS HIER NICHT GEMESSEN IST: Space- und Teamfilter mit lesbaren Spaces (der Smoke-Bestand hat
-// keine; belegt am Draht in `tests/admin-wissenskennzahlen/kennzahlen-api.test.ts`), ein zweites
-// Verwaltungskonto und ein unvertrauter Mensch.
+//   Filter      · Nacharbeit 3 (Ben): eigener fiktiver Bestand — zwei lesbare Spaces mit je einem
+//                 Team und einem Beitrag, dazu ein Space einer anderen fiktiven Person. Space- und
+//                 Teamwahl per Tastatur, Zahl = Detailliste, fremder Space nicht wählbar, Rückweg
+//                 und Neuladen, auf 1280 × 800 und 390 × 844.
+//
+// WAS HIER NICHT GEMESSEN IST: ein zweites Verwaltungskonto und ein unvertrauter Mensch.
 
 function marke(): string {
   const buchstaben = "abcdefghijklmnopqrstuvwxyz";
@@ -42,6 +51,78 @@ async function zurPruefung(request: APIRequestContext, titel: string): Promise<s
   });
   expect(angelegt.status(), await angelegt.text()).toBe(201);
   return ((await angelegt.json()) as { id: string }).id;
+}
+
+async function json<T>(antwort: APIResponse): Promise<T> {
+  expect(antwort.ok(), await antwort.text()).toBe(true);
+  return (await antwort.json()) as T;
+}
+
+/** Ein fiktives Konto, das nur als Zuständige eines fremden Space dient. */
+async function fremdesKonto(request: APIRequestContext, m: string): Promise<string> {
+  const angelegt = await request.post("/api/users", {
+    data: {
+      name: `Fiktiv Fremd ${m}`,
+      email: `fremd-${m}@wkz.test`,
+      // Fiktives Kennwort eines isolierten Testkontos — kein echtes Geheimnis.
+      password: `fiktiv-${m}-12345`,
+      role: "experte",
+    },
+  });
+  return (await json<{ id: string }>(angelegt)).id;
+}
+
+async function teamAnlegen(request: APIRequestContext, name: string, ich: string) {
+  const res = await request.post("/api/teams", {
+    data: {
+      name,
+      zweck: "Fiktives Team nur für diese Prüfung.",
+      verantwortlich: ich,
+      mitglieder: [],
+    },
+  });
+  return (await json<{ id: string }>(res)).id;
+}
+
+async function spaceAnlegen(
+  request: APIRequestContext,
+  name: string,
+  verantwortlich: string,
+  teams: string[],
+): Promise<string> {
+  const res = await request.post("/api/spaces", {
+    data: {
+      name,
+      zweck: "Fiktiver Space nur für diese Prüfung.",
+      verantwortlich,
+      zugang: "mitglieder",
+      mitglieder: [],
+      ansichten: [],
+      teams: teams.map((team) => ({ team, recht: "lesen" })),
+    },
+  });
+  return (await json<{ id: string }>(res)).id;
+}
+
+/** Ein Beitrag wechselt über den vorhandenen Weg (Vorschau → Bestätigung) in einen Space. */
+async function verschieben(request: APIRequestContext, koId: string, zielSpaceId: string) {
+  type Vorschau = {
+    quelle: { id: string; version: number } | null;
+    ziel: { id: string; version: number } | null;
+    grundlage: string;
+  };
+  const v = await json<Vorschau>(
+    await request.post("/api/spaces/verschiebung/vorschau", { data: { koId, zielSpaceId } }),
+  );
+  const basis = {
+    quelleId: v.quelle?.id ?? null,
+    quelleVersion: v.quelle?.version ?? null,
+    zielId: v.ziel?.id ?? null,
+    zielVersion: v.ziel?.version ?? null,
+    grundlage: v.grundlage,
+  };
+  const r = await request.post("/api/spaces/verschiebung", { data: { koId, zielSpaceId, basis } });
+  await json(r);
 }
 
 async function bild(page: Page, name: string): Promise<void> {
@@ -192,6 +273,127 @@ test.describe("ADMIN-11 · Wissenskennzahlen", () => {
       await page.goBack();
       await expect(page).toHaveURL(/\/analytics\?tage=7$/);
       await expect(page.getByTestId("wkz-filter-tage")).toHaveValue("7");
+    });
+  }
+
+  for (const [breite, hoehe] of [
+    [390, 844],
+    [1280, 800],
+  ] as const) {
+    test(`Filter: ${breite} × ${hoehe} — Space und Team mit fiktivem Bestand, Rechte, Rückweg`, async ({
+      page,
+      browserName,
+    }) => {
+      const tab = browserName === "webkit" ? "Alt+Tab" : "Tab";
+      await page.setViewportSize({ width: breite, height: hoehe });
+      await ensureLoggedIn(page);
+      const r = page.request;
+      const m = marke();
+      const ich = (await json<{ id: string }>(await r.get("/api/auth/me"))).id;
+
+      // Isolierter fiktiver Bestand dieses Laufs.
+      const teamA = await teamAnlegen(r, `Fiktiv Team Montage ${m}`, ich);
+      const teamB = await teamAnlegen(r, `Fiktiv Team Wartung ${m}`, ich);
+      const spaceA = await spaceAnlegen(r, `Fiktiv Montage ${m}`, ich, [teamA]);
+      const spaceB = await spaceAnlegen(r, `Fiktiv Wartung ${m}`, ich, [teamB]);
+      // Ein Space, den die Verwaltung nicht lesen darf: andere Zuständige, nur für Mitglieder.
+      const fremd = await fremdesKonto(r, m);
+      const spaceFremd = await spaceAnlegen(r, `Fiktiv Geschlossen ${m}`, fremd, []);
+      const titelA = `Ventil ${m} vor dem Spülen schließen`;
+      const titelB = `Filter ${m} nach 200 Stunden wechseln`;
+      const koA = await zurPruefung(r, titelA);
+      const koB = await zurPruefung(r, titelB);
+      await verschieben(r, koA, spaceA);
+      await verschieben(r, koB, spaceB);
+
+      const eintrag = (ko: string) =>
+        page.locator(`[data-testid="wkz-eintrag"][data-schluessel="pruefung:${ko}"]`);
+      /** Zahl und Detailliste der Prüfungen sind dieselbe Menge. */
+      const zahlGleichListe = async (): Promise<void> => {
+        const p = karte(page, "pruefung");
+        await p.getByTestId("wkz-liste").click();
+        const zeilen = await p.getByTestId("wkz-eintrag").count();
+        await expect(p.getByTestId("wkz-wert")).toHaveText(String(zeilen));
+      };
+
+      await page.goto("/analytics?tage=7");
+      await expect(karte(page, "pruefung")).toHaveAttribute("data-anzeige", "zahl", {
+        timeout: 15_000,
+      });
+      // Rechte: nur lesbare Spaces stehen zur Wahl — der fremde nicht.
+      const spaceWahl = page.getByTestId("wkz-filter-space");
+      await expect(spaceWahl.locator(`option[value="${spaceA}"]`)).toHaveCount(1);
+      await expect(spaceWahl.locator(`option[value="${spaceB}"]`)).toHaveCount(1);
+      await expect(spaceWahl.locator(`option[value="${spaceFremd}"]`)).toHaveCount(0);
+
+      // Tastatur: die Space-Auswahl ist per Tab erreichbar und trägt sichtbaren Fokus.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      let erreicht = false;
+      for (let i = 0; i < 150 && !erreicht; i += 1) {
+        await page.keyboard.press(tab);
+        erreicht = await spaceWahl.evaluate((el) => el === document.activeElement);
+      }
+      expect(erreicht, "die Space-Auswahl ist per Tab nicht erreichbar").toBe(true);
+      const fokus = await spaceWahl.evaluate((el) => ({
+        ring: getComputedStyle(el).boxShadow,
+        umriss: getComputedStyle(el).outlineStyle,
+        rechts: el.getBoundingClientRect().right,
+      }));
+      expect(fokus.ring !== "none" || fokus.umriss !== "none", "kein sichtbarer Fokus").toBe(true);
+      expect(fokus.rechts).toBeLessThanOrEqual(breite + 1);
+
+      // Space A: Zahl und Liste nur aus Space A; Quellen ohne Space sind „nicht erhoben“.
+      await spaceWahl.selectOption(spaceA);
+      await expect(page).toHaveURL(new RegExp(`space=${spaceA}`));
+      await expect(karte(page, "pruefung")).toHaveAttribute("data-anzeige", "zahl", {
+        timeout: 15_000,
+      });
+      await zahlGleichListe();
+      await expect(eintrag(koA)).toHaveCount(1);
+      await expect(eintrag(koB)).toHaveCount(0);
+      await expect(karte(page, "luecke")).toHaveAttribute("data-anzeige", "nicht_erhoben");
+      await expect(karte(page, "pruefung").getByTestId("wkz-arbeitsliste")).toHaveAttribute(
+        "href",
+        `/qualitaetsaufgaben?typ=pruefung&space=${spaceA}`,
+      );
+      const ueberbreit = await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth + 1,
+      );
+      expect(ueberbreit, "die Kennzahlen sind breiter als das Fenster").toBe(false);
+      await bild(page, `filter-space-${breite}`);
+
+      // Team B statt Space A: die Spaces des Teams; die Liste steht nur hier.
+      await page.getByTestId("wkz-filter-zuruecksetzen").click();
+      await page.getByTestId("wkz-filter-team").selectOption(teamB);
+      await expect(page).toHaveURL(new RegExp(`team=${teamB}`));
+      await expect(karte(page, "pruefung")).toHaveAttribute("data-anzeige", "zahl", {
+        timeout: 15_000,
+      });
+      await zahlGleichListe();
+      await expect(eintrag(koB)).toHaveCount(1);
+      await expect(eintrag(koA)).toHaveCount(0);
+      await expect(karte(page, "pruefung").getByTestId("wkz-arbeitsliste")).toHaveCount(0);
+      await bild(page, `filter-team-${breite}`);
+
+      // Rückweg aus dem Beitrag und Neuladen: dieselbe Auswahl, dieselbe Menge.
+      await eintrag(koB).getByRole("link").click();
+      await expect(page).toHaveURL(new RegExp(`/wissen/${koB}$`));
+      await page.goBack();
+      await expect(page).toHaveURL(new RegExp(`team=${teamB}`));
+      await expect(page.getByTestId("wkz-filter-team")).toHaveValue(teamB, { timeout: 15_000 });
+      await page.reload();
+      await expect(page.getByTestId("wkz-filter-team")).toHaveValue(teamB, { timeout: 15_000 });
+      await zahlGleichListe();
+      await expect(eintrag(koB)).toHaveCount(1);
+
+      // Ein fremder Space über die Adresse: verständlich abgewiesen, mit Weg zurück.
+      await page.goto(`/analytics?tage=7&space=${spaceFremd}`);
+      const zustand = page.getByTestId("wkz-ladezustand");
+      await expect(zustand.getByRole("alert")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(titelA)).toHaveCount(0);
+      await zustand.getByRole("button").click();
+      await expect(page).toHaveURL(/\/analytics\?tage=7$/);
+      await bild(page, `filter-fremd-${breite}`);
     });
   }
 });

@@ -4602,6 +4602,8 @@ export function buildApp(
         konten: () => services.auth.listUsers(),
         spaces: services.spaces,
         teams: services.teams,
+        // Nacharbeit 3: der vorhandene Leseweg der EIGENEN erfolglosen Suchen.
+        nulltreffer: services.nulltreffer,
       },
       guards,
     ),

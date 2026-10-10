@@ -295,10 +295,7 @@ export function Wissenskennzahlen(): JSX.Element {
         ))}
       </div>
 
-      <Card data-testid="wkz-suche" className="text-[12.5px]">
-        <p className="font-semibold text-text">{t("wkz.suche.titel")}</p>
-        <p className="mt-0.5 text-muted">{t("wkz.suche.text")}</p>
-      </Card>
+      <EigeneSuchen daten={daten} />
     </section>
   );
 }
@@ -472,9 +469,74 @@ function Detailliste({
           <ChevronRight size={13} strokeWidth={2} aria-hidden="true" />
         </Link>
       ) : (
-        <p className="mt-1 text-[12px] text-muted-2">{t("wkz.liste.nurHier")}</p>
+        <p className="mt-1 text-[12px] text-muted-2">
+          {t(k.art === "zeitraum" ? "wkz.liste.nurHierZeitraum" : "wkz.liste.nurHier")}
+        </p>
       )}
     </details>
+  );
+}
+
+/**
+ * Nacharbeit 3 (Ben): die EIGENEN Suchen ohne Treffer — der vorhandene Leseweg, nur für diese
+ * Person. Häufigkeit und letzter Zeitpunkt sind kumuliert; es gibt keine Zahl je Zeitraum, keinen
+ * Trend und keinen Space. Passt ein Begriff zu einer offenen Lücke, führt die Zeile dorthin.
+ */
+function EigeneSuchen({ daten }: { daten: Antwort }): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const s = daten.suche;
+  const zeit = (iso: string): string => formatKoTimestamp(iso, i18n.language) ?? iso;
+  const filterText = (e: Record<string, string>): string => {
+    const teile = Object.entries(e).map(([feld, wert]) => `${feld}: ${wert}`);
+    return teile.join(", ");
+  };
+  return (
+    <Card data-testid="wkz-suche" data-lage={s.lage} className="text-[12.5px]">
+      <p className="font-semibold text-text">{t("wkz.suche.titel")}</p>
+      <p className="mt-0.5 text-muted">{t("wkz.suche.text", { deckel: s.deckel })}</p>
+      {s.lage === "gemessen" ? null : (
+        <p data-testid="wkz-suche-lage" className="mt-1 text-muted-2">
+          {t(`wkz.suche.${s.lage}`)}
+        </p>
+      )}
+      {s.lage === "gemessen" && s.eintraege.length === 0 ? (
+        <p className="mt-1 text-muted-2">{t("wkz.suche.leer")}</p>
+      ) : null}
+      {s.eintraege.length > 0 ? (
+        <ul className="mt-2 divide-y divide-hairline-soft">
+          {s.eintraege.map((e) => (
+            <li
+              key={`${e.begriff}|${filterText(e.eingrenzung)}`}
+              data-testid="wkz-suche-eintrag"
+              data-vorgang={e.vorgang?.schluessel ?? ""}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5"
+            >
+              <span className="min-w-0 flex-1 break-words text-text">{e.begriff}</span>
+              <span className="font-mono text-[11px] text-muted-2">
+                {t("wkz.suche.anzahl", { anzahl: e.anzahl, zeit: zeit(e.zuletzt) })}
+              </span>
+              {Object.keys(e.eingrenzung).length > 0 ? (
+                <span className="text-[12px] text-muted-2">
+                  {t("wkz.suche.eingegrenzt", { filter: filterText(e.eingrenzung) })}
+                </span>
+              ) : null}
+              {e.vorgang ? (
+                <Link
+                  to={e.vorgang.arbeitsweg}
+                  aria-label={t("wkz.suche.vorgangLabel", { begriff: e.begriff })}
+                  className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-0.5 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {t("wkz.suche.vorgang")}
+                  <ChevronRight size={12} strokeWidth={2} aria-hidden="true" />
+                </Link>
+              ) : (
+                <span className="text-[12px] text-muted-2">{t("wkz.suche.ohneVorgang")}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Card>
   );
 }
 

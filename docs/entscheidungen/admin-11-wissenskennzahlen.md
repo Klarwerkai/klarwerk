@@ -65,9 +65,25 @@ Lücken mit ihrem vorhandenen Vorgang (`luecke:<id>`, `/risiko?fall=<id>`). Hier
 
 `GET /api/wissenskennzahlen` fordert `users.manage`. Die Vorgänge laufen durch denselben
 Sichtbarkeitsfilter wie ADMIN-10. Fragetexte stehen nur nach `redactGapForViewer`; die Auswertung
-nennt keine fragenden Personen und keine Namen von Zugeordneten. Erfolglose Suchen
-(`nulltreffer.ts`) sind je Person für die eigene Liste geführt; eine Sicht über die Suchbegriffe
-anderer ist dort bewusst nicht gebaut — die Fläche sagt „nicht ausgewertet“.
+nennt keine fragenden Personen und keine Namen von Zugeordneten.
+
+## Suchen ohne Treffer (Nacharbeit 3)
+
+Erfolglose Suchen (`nulltreffer.ts`) sind je Person geführt; eine Sicht über die Suchbegriffe
+anderer ist dort bewusst nicht gebaut. Ausgewertet wird deshalb genau der vorhandene Leseweg
+`NulltrefferRepo.fuer(user.id)`: die EIGENEN Suchen der betrachtenden Person, höchstens
+`NULLTREFFER_DECKEL` Begriffe, je Begriff die Zahl seit der ersten Erfassung, der letzte Zeitpunkt
+und die Eingrenzung. Passt ein Begriff formnormalisiert zu einer offenen Lücke (dieselbe Regel wie
+D-032), führt die Zeile auf diesen Vorgang; es wird nichts angelegt. Weil die Ablage weder Verlauf
+noch Space kennt, gibt es keine Zahl je Zeitraum, keinen Trend und unter Space-/Teamfilter die Lage
+„nicht erhoben“. Fällt die Ablage aus, heißt die Lage „unbekannt“.
+
+## Neue Wissenslücken (Nacharbeit 3)
+
+Die Zahl zählt Lücken mit Entstehung im Zeitraum, offene wie geschlossene. Die Detailliste ist genau
+diese Menge; jeder Eintrag öffnet die Lücke im Risikobereich (`/risiko?fall=<id>`), der beide führt.
+Einen Weg in die Arbeitsliste gibt es hier nicht, weil sie weder Zeitraum noch geschlossene Lücken
+kennt.
 
 ## Export
 

@@ -62,6 +62,14 @@ export interface BedarfEintrag {
   vorgang: string;
 }
 
+export interface SuchEintrag {
+  begriff: string;
+  anzahl: number;
+  zuletzt: string;
+  eingrenzung: Record<string, string>;
+  vorgang: { schluessel: string; arbeitsweg: string } | null;
+}
+
 export interface Wissenskennzahlen {
   stand: string;
   anfrage: KennzahlAnfrage;
@@ -75,7 +83,8 @@ export interface Wissenskennzahlen {
     ohneZaehlung: number | null;
     eintraege: BedarfEintrag[];
   };
-  suche: { lage: "nicht_erhoben" };
+  /** Die EIGENEN erfolglosen Suchen des Betrachters — kumuliert, ohne Zeitraum. */
+  suche: { lage: Messlage; deckel: number; eintraege: SuchEintrag[] };
   filterwerte: {
     spaces: { id: string; name: string }[];
     teams: { id: string; name: string; spaces: string[] }[];

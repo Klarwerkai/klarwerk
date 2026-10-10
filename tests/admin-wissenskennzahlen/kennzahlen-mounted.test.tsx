@@ -161,7 +161,20 @@ function antwort(teil: Partial<Antwort> = {}): Antwort {
         erhobenSeit: null,
         trend: null,
         trendGrund: "vorperiode_unvollstaendig",
-        arbeitsliste: "/qualitaetsaufgaben?typ=luecke",
+        // Nacharbeit 3: dieselbe Menge wie die Zahl, kein Weg in eine anders gefilterte Liste.
+        arbeitsliste: null,
+        eintraege: [
+          {
+            schluessel: "luecke:gap-zu",
+            typ: "luecke",
+            zustand: "erledigt",
+            titel: null,
+            arbeitsweg: "/risiko?fall=gap-zu",
+            spaces: [],
+            seit: "2026-10-05T08:00:00.000Z",
+            ueberfaellig: false,
+          },
+        ],
       },
     ],
     bedarf: {
@@ -180,7 +193,26 @@ function antwort(teil: Partial<Antwort> = {}): Antwort {
         },
       ],
     },
-    suche: { lage: "nicht_erhoben" },
+    suche: {
+      lage: "gemessen",
+      deckel: 20,
+      eintraege: [
+        {
+          begriff: "Fiktiv Anzugswert Mutter M-77",
+          anzahl: 2,
+          zuletzt: "2026-10-08T08:00:00.000Z",
+          eingrenzung: {},
+          vorgang: { schluessel: "luecke:gap-1", arbeitsweg: "/risiko?fall=gap-1" },
+        },
+        {
+          begriff: "Fiktiv Ölwechsel Getriebe G-2",
+          anzahl: 1,
+          zuletzt: "2026-10-07T08:00:00.000Z",
+          eingrenzung: { type: "best_practice" },
+          vorgang: null,
+        },
+      ],
+    },
     filterwerte: {
       spaces: [{ id: "space-a", name: "Fiktiv Montage" }],
       teams: [{ id: "team-1", name: "Fiktiv Team Montage", spaces: ["space-a"] }],
@@ -287,10 +319,23 @@ describe("ADMIN-11 · M1 · Handlungsbedarf zuerst, jede Zahl mit sichtbarer Lag
     // Datenstand der Antwort steht oben; eine teilweise ausgefallene Quelle wird gesagt.
     expect(container.querySelector('[data-testid="wkz-stand"]')?.textContent).toContain("2026");
     expect(container.querySelector('[data-testid="wkz-quelle-teilweise"]')).not.toBeNull();
-    // Suchen: ausdrücklich nicht ausgewertet.
-    expect(container.querySelector('[data-testid="wkz-suche"]')?.textContent).toContain(
-      de("wkz.suche.text"),
-    );
+    // Nacharbeit 3: die eigenen Suchen ohne Treffer — Grenze erklärt, kumuliert, mit Weg zur Lücke.
+    const suche = container.querySelector('[data-testid="wkz-suche"]');
+    expect(suche?.getAttribute("data-lage")).toBe("gemessen");
+    expect(suche?.textContent).toContain(de("wkz.suche.text", { deckel: 20 }));
+    const suchen = suche?.querySelectorAll('[data-testid="wkz-suche-eintrag"]') ?? [];
+    expect(suchen).toHaveLength(2);
+    expect(suchen[0]?.getAttribute("data-vorgang")).toBe("luecke:gap-1");
+    expect(suchen[0]?.querySelector("a")?.getAttribute("href")).toBe("/risiko?fall=gap-1");
+    expect(suchen[1]?.querySelector("a")).toBeNull();
+    expect(suchen[1]?.textContent).toContain(de("wkz.suche.ohneVorgang"));
+    expect(suchen[1]?.textContent).toContain("type: best_practice");
+
+    // „Neue Wissenslücken“: die Detailliste ist dieselbe Menge, ohne Weg in die Arbeitsliste.
+    const neu = karte("neue_luecken");
+    expect(neu?.querySelectorAll('[data-testid="wkz-eintrag"]')).toHaveLength(1);
+    expect(neu?.querySelector('[data-testid="wkz-arbeitsliste"]')).toBeNull();
+    expect(neu?.textContent).toContain(de("wkz.liste.nurHierZeitraum"));
   });
 });
 

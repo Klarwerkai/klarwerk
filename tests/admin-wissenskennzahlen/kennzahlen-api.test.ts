@@ -33,6 +33,7 @@ import {
   anfrageAus,
   ladeWissenskennzahlen,
 } from "../../services/app/src/wissenskennzahlen";
+import type { Gap } from "../../services/ask";
 import type { AuditEntry } from "../../services/audit";
 
 type App = ReturnType<typeof buildApp>;
@@ -184,6 +185,7 @@ function depsVon(
     fragen?: AuditEntry[] | "fehler";
     spaces?: SpaceFassung[];
     teams?: TeamFassung[];
+    luecken?: Gap[];
   } = {},
 ): KennzahlDeps {
   return {
@@ -192,7 +194,7 @@ function depsVon(
     lifecycle: services.lifecycle,
     conflicts: services.conflicts,
     overlaps: services.overlaps,
-    ask: services.ask,
+    ask: opts.luecken ? { listGaps: async () => opts.luecken ?? [] } : services.ask,
     audit: {
       recordOnce: (id, input) => services.audit.recordOnce(id, input),
       list: async (filter) => {
@@ -271,8 +273,8 @@ describe("ADMIN-11 · W1/W2 · fester Ereignisbestand: Nenner, Zeiträume, Lage 
       expect(h.trend).toBeNull();
       expect(["momentaufnahme", "unbekannt", "nicht_erhoben"]).toContain(h.trendGrund);
     }
-    // Suchen werden für die Verwaltung nicht ausgewertet — ausdrücklich, nicht als 0.
-    expect(k.suche).toEqual({ lage: "nicht_erhoben" });
+    // Ohne Leseweg der eigenen Suchen ist die Suche „nicht erhoben“ — ausdrücklich, nicht als 0.
+    expect(k.suche).toEqual({ lage: "nicht_erhoben", deckel: 20, eintraege: [] });
   });
 
   it("Zeitraum beginnt vor dem ersten belegten Ereignis: „unvollständig“, ohne Trend", async () => {
@@ -518,6 +520,144 @@ describe("ADMIN-11 · W3/W4 · Filter gelten für Zahl und Detailliste; Wege in 
     expect(res.body).not.toContain("Fritz");
     // Zweimal gefragt, EINE Lücke entstanden — auch die Zeitraumzahl zählt sie einmal.
     expect(zahl(k, "neue_luecken").wert).toBe(1);
+  });
+});
+
+function luecke(id: string, createdAt: string, status: Gap["status"]): Gap {
+  return {
+    id,
+    question: `Fiktiv: Frage ${id}`,
+    status,
+    assignee: null,
+    priority: "mittel",
+    createdAt,
+  };
+}
+
+describe("ADMIN-11 · Nacharbeit 3 · Detailmenge und eigene Suchen", () => {
+  it("„Neue Wissenslücken“: die Detailliste ist genau die gezählte Zeitraum- und Statusmenge", async () => {
+    const a = await setup();
+    const betrachter = { id: a.admin.id, role: "admin" as const, spaceLesbar: new Set<string>() };
+    const bestand = [
+      luecke("gap-alt", "2026-09-20T08:00:00.000Z", "offen"),
+      luecke("gap-vorher", "2026-09-28T08:00:00.000Z", "geschlossen"),
+      luecke("gap-offen", "2026-10-03T08:00:00.000Z", "offen"),
+      luecke("gap-zu", "2026-10-05T08:00:00.000Z", "geschlossen"),
+    ];
+    const k = await ladeWissenskennzahlen(
+      depsVon(a.services, { fragen: BESTAND, luecken: bestand }),
+      betrachter,
+      sichtbarkeitsfilterFuer(betrachter),
+      anfrage(),
+    );
+    const neu = zahl(k, "neue_luecken");
+    // Offen UND geschlossen, nur aus dem Zeitraum — und die Liste ist genau diese Menge.
+    expect(neu).toMatchObject({ wert: 2, lage: "gemessen", trend: { vorher: 1, differenz: 1 } });
+    expect(neu.eintraege?.map((e) => [e.schluessel, e.zustand])).toEqual([
+      ["luecke:gap-offen", "offen"],
+      ["luecke:gap-zu", "erledigt"],
+    ]);
+    expect(neu.eintraege?.length).toBe(neu.wert);
+    // Jeder Eintrag öffnet die Lücke im vorhandenen Risikobereich; Fragetext nur für Berechtigte.
+    expect(neu.eintraege?.map((e) => e.arbeitsweg)).toEqual([
+      "/risiko?fall=gap-offen",
+      "/risiko?fall=gap-zu",
+    ]);
+    expect(neu.eintraege?.every((e) => e.titel === null)).toBe(true);
+    // Kein Weg in eine Arbeitsliste, die weder Zeitraum noch geschlossene Lücken kennt.
+    expect(neu.arbeitsliste).toBeNull();
+  });
+
+  it("eigene Suchen ohne Treffer: nur die eigenen, kumuliert, mit der offenen Lücke derselben Frage", async () => {
+    const a = await setup();
+    const begriff = "Fiktiv Anzugswert Mutter M-77";
+    const fremd = "Fiktiv Spannung Relais R-5";
+    // Zwei eigene erfolglose Suchen über den vorhandenen Weg, eine fremde.
+    for (const [wer, q] of [
+      [a.admin, begriff],
+      [a.admin, begriff],
+      [a.frager, fremd],
+    ] as const) {
+      const res = await a.app.inject({
+        method: "GET",
+        url: `/api/library/search?q=${encodeURIComponent(q)}`,
+        headers: wer.headers,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+    }
+    // Dieselbe Frage als unbeantwortete Frage: das ist der vorhandene Vorgang (Lücke).
+    await a.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: a.frager.headers,
+      payload: { question: begriff },
+    });
+    const offen = (await a.services.ask.listGaps()).filter((g) => g.status === "offen");
+    expect(offen, "Kalibrierung: die Frage hat eine Lücke angelegt").toHaveLength(1);
+
+    const res = await a.app.inject({
+      method: "GET",
+      url: "/api/wissenskennzahlen?tage=7",
+      headers: a.admin.headers,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const k = res.json() as Wissenskennzahlen;
+    expect(k.suche.lage).toBe("gemessen");
+    expect(k.suche.deckel).toBe(20);
+    expect(k.suche.eintraege).toEqual([
+      expect.objectContaining({
+        begriff,
+        anzahl: 2,
+        eingrenzung: {},
+        vorgang: {
+          schluessel: `luecke:${offen[0]?.id}`,
+          arbeitsweg: `/risiko?fall=${offen[0]?.id}`,
+        },
+      }),
+    ]);
+    // Die Suche einer anderen Person steht nirgends in der Auswertung der Verwaltung.
+    expect(res.body).not.toContain("Relais");
+
+    // Mit Space- oder Teamfilter: Suchen tragen keinen Space — „nicht erhoben“, keine Begriffe.
+    const lesbar = new Set(["space-a"]);
+    const betrachter = { id: a.admin.id, role: "admin" as const, spaceLesbar: lesbar };
+    const mitSpace = depsVon(a.services, { spaces: [space("space-a", "Fiktiv Montage")] });
+    const gefiltert = await ladeWissenskennzahlen(
+      { ...mitSpace, nulltreffer: a.services.nulltreffer },
+      betrachter,
+      sichtbarkeitsfilterFuer(betrachter),
+      anfrage({ space: "space-a" }),
+    );
+    expect(gefiltert.suche).toEqual({ lage: "nicht_erhoben", deckel: 20, eintraege: [] });
+
+    // Die eigene Liste der fragenden Person: ihr Begriff, nicht der der Verwaltung.
+    const fragende = { id: a.frager.id, role: "admin" as const, spaceLesbar: new Set<string>() };
+    const ihre = await ladeWissenskennzahlen(
+      { ...depsVon(a.services), nulltreffer: a.services.nulltreffer },
+      fragende,
+      sichtbarkeitsfilterFuer(fragende),
+      anfrage(),
+    );
+    expect(ihre.suche.eintraege.map((e) => e.begriff)).toEqual([fremd]);
+  });
+
+  it("Ausfall der Suchablage: „unbekannt“, keine erfundene Leere", async () => {
+    const a = await setup();
+    const betrachter = { id: a.admin.id, role: "admin" as const, spaceLesbar: new Set<string>() };
+    const k = await ladeWissenskennzahlen(
+      {
+        ...depsVon(a.services),
+        nulltreffer: {
+          fuer: async () => {
+            throw new Error("Fiktiv: Suchablage nicht erreichbar");
+          },
+        },
+      },
+      betrachter,
+      sichtbarkeitsfilterFuer(betrachter),
+      anfrage(),
+    );
+    expect(k.suche).toEqual({ lage: "unbekannt", deckel: 20, eintraege: [] });
   });
 });
 

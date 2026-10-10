@@ -74,6 +74,8 @@ export default {
     "wkz.liste.arbeitsliste": "In der Arbeitsliste öffnen",
     "wkz.liste.nurHier":
       "Mit Teamfilter steht die Liste nur hier — die Arbeitsliste filtert nach Space, nicht nach Team.",
+    "wkz.liste.nurHierZeitraum":
+      "Die Arbeitsliste kennt weder Zeitraum noch geschlossene Lücken — genau diese Menge steht deshalb nur hier.",
     "wkz.liste.zurueckgehalten": "Fragetext nur für die Zuständigen sichtbar",
     "wkz.liste.ueberfaellig": "überfällig",
     "wkz.k.pruefung.titel": "Offene Prüfungen",
@@ -135,9 +137,18 @@ export default {
     "wkz.bedarf.nicht_erhoben":
       "Lücken tragen keinen Space — mit Space- oder Teamfilter ist der Fragebedarf nicht auswertbar.",
     "wkz.bedarf.unbekannt": "Die Wissenslücken sind gerade nicht abrufbar.",
-    "wkz.suche.titel": "Erfolglose Suchen",
+    "wkz.suche.titel": "Ihre Suchen ohne Treffer",
     "wkz.suche.text":
-      "Nicht ausgewertet: erfolglose Suchen werden je Person nur für die eigene Liste geführt. Eine Sicht auf die Suchbegriffe anderer ist bewusst nicht gebaut.",
+      "Nur Ihre eigenen Suchen: erfolglose Suchen werden je Person geführt, eine Sicht auf die Suchbegriffe anderer ist bewusst nicht gebaut. Gezeigt werden höchstens {{deckel}} Begriffe mit der Zahl seit der ersten Erfassung und dem letzten Zeitpunkt — keine Zahl je Zeitraum, kein Trend, kein Space.",
+    "wkz.suche.nicht_erhoben":
+      "Suchen tragen keinen Space — mit Space- oder Teamfilter sind sie nicht auswertbar.",
+    "wkz.suche.unbekannt": "Ihre Suchen ohne Treffer sind gerade nicht abrufbar.",
+    "wkz.suche.leer": "Keine eigenen Suchen ohne Treffer.",
+    "wkz.suche.anzahl": "{{anzahl}}× gesucht, zuletzt {{zeit}}",
+    "wkz.suche.eingegrenzt": "Mit Filter gesucht: {{filter}}",
+    "wkz.suche.vorgang": "Offene Lücke bearbeiten",
+    "wkz.suche.vorgangLabel": "Offene Lücke zu „{{begriff}}“ bearbeiten",
+    "wkz.suche.ohneVorgang": "Keine offene Lücke mit dieser Frage",
     "wkz.export.knopf": "Als CSV exportieren",
     "wkz.export.hinweis":
       "Der Export enthält genau diese Auswahl und diesen Stand — nur Zahlen, keine Titel oder Fragetexte.",
@@ -240,6 +251,8 @@ export default {
     "wkz.liste.arbeitsliste": "Open in the work list",
     "wkz.liste.nurHier":
       "With a team filter the list is shown only here — the work list filters by space, not by team.",
+    "wkz.liste.nurHierZeitraum":
+      "The work list knows neither periods nor closed gaps — so exactly this set is shown only here.",
     "wkz.liste.zurueckgehalten": "Question text visible only to those responsible",
     "wkz.liste.ueberfaellig": "overdue",
     "wkz.k.pruefung.titel": "Open reviews",
@@ -299,9 +312,18 @@ export default {
     "wkz.bedarf.nicht_erhoben":
       "Gaps carry no space — with a space or team filter the question demand cannot be evaluated.",
     "wkz.bedarf.unbekannt": "The knowledge gaps are currently unavailable.",
-    "wkz.suche.titel": "Unsuccessful searches",
+    "wkz.suche.titel": "Your searches without results",
     "wkz.suche.text":
-      "Not evaluated: unsuccessful searches are kept per person for their own list only. A view of other people's search terms is deliberately not built.",
+      "Only your own searches: unsuccessful searches are kept per person, and a view of other people's search terms is deliberately not built. At most {{deckel}} terms are shown with the count since first recorded and the last time — no count per period, no trend, no space.",
+    "wkz.suche.nicht_erhoben":
+      "Searches carry no space — with a space or team filter they cannot be evaluated.",
+    "wkz.suche.unbekannt": "Your searches without results are currently unavailable.",
+    "wkz.suche.leer": "No searches of yours without results.",
+    "wkz.suche.anzahl": "searched {{anzahl}}×, last {{zeit}}",
+    "wkz.suche.eingegrenzt": "Searched with filter: {{filter}}",
+    "wkz.suche.vorgang": "Work on open gap",
+    "wkz.suche.vorgangLabel": "Work on the open gap for “{{begriff}}”",
+    "wkz.suche.ohneVorgang": "No open gap with this question",
     "wkz.export.knopf": "Export as CSV",
     "wkz.export.hinweis":
       "The export contains exactly this selection and this data status — figures only, no titles or question texts.",
@@ -406,6 +428,8 @@ export default {
     "wkz.liste.arbeitsliste": "In de werklijst openen",
     "wkz.liste.nurHier":
       "Met een teamfilter staat de lijst alleen hier — de werklijst filtert op space, niet op team.",
+    "wkz.liste.nurHierZeitraum":
+      "De werklijst kent geen perioden en geen gesloten lacunes — daarom staat precies deze set alleen hier.",
     "wkz.liste.zurueckgehalten": "Vraagtekst alleen zichtbaar voor de verantwoordelijken",
     "wkz.liste.ueberfaellig": "verlopen",
     "wkz.k.pruefung.titel": "Open controles",
@@ -466,9 +490,18 @@ export default {
     "wkz.bedarf.nicht_erhoben":
       "Lacunes hebben geen space — met een space- of teamfilter is de vraag niet te evalueren.",
     "wkz.bedarf.unbekannt": "De kennislacunes zijn nu niet bereikbaar.",
-    "wkz.suche.titel": "Zoekopdrachten zonder resultaat",
+    "wkz.suche.titel": "Uw zoekopdrachten zonder resultaat",
     "wkz.suche.text":
-      "Niet geëvalueerd: zoekopdrachten zonder resultaat worden per persoon alleen voor de eigen lijst bijgehouden. Een overzicht van zoektermen van anderen is bewust niet gebouwd.",
+      "Alleen uw eigen zoekopdrachten: zoekopdrachten zonder resultaat worden per persoon bijgehouden, een overzicht van zoektermen van anderen is bewust niet gebouwd. Getoond worden hoogstens {{deckel}} termen met het aantal sinds de eerste registratie en het laatste tijdstip — geen aantal per periode, geen trend, geen space.",
+    "wkz.suche.nicht_erhoben":
+      "Zoekopdrachten hebben geen space — met een space- of teamfilter zijn ze niet te evalueren.",
+    "wkz.suche.unbekannt": "Uw zoekopdrachten zonder resultaat zijn nu niet bereikbaar.",
+    "wkz.suche.leer": "Geen eigen zoekopdrachten zonder resultaat.",
+    "wkz.suche.anzahl": "{{anzahl}}× gezocht, laatst {{zeit}}",
+    "wkz.suche.eingegrenzt": "Gezocht met filter: {{filter}}",
+    "wkz.suche.vorgang": "Open lacune bewerken",
+    "wkz.suche.vorgangLabel": "Open lacune bij „{{begriff}}” bewerken",
+    "wkz.suche.ohneVorgang": "Geen open lacune met deze vraag",
     "wkz.export.knopf": "Als CSV exporteren",
     "wkz.export.hinweis":
       "De export bevat precies deze selectie en deze datastand — alleen getallen, geen titels of vraagteksten.",

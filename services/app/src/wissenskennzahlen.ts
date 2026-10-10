@@ -24,15 +24,21 @@
 // vollständig erhoben ist. Momentaufnahmen haben keinen Verlauf — es gibt keine historischen
 // Stände, und es werden keine erfunden.
 //
-// NICHT AUSGEWERTET: erfolglose Suchen (`nulltreffer.ts`) sind je Person geführt und nur für die
-// eigene Liste lesbar; eine Sicht über die Suchen anderer ist dort bewusst nicht gebaut. Die
-// Verwaltung bekommt hier deshalb weder Begriffe noch Zahlen daraus.
+// SUCHEN: erfolglose Suchen (`nulltreffer.ts`) sind je Person geführt und nur für die eigene Liste
+// lesbar; eine Sicht über die Suchen anderer ist dort bewusst nicht gebaut. Ausgewertet wird deshalb
+// genau der vorhandene Leseweg `fuer(user.id)` — die EIGENEN Suchen, kumuliert und ohne Zeitraum —
+// und jeder Begriff mit der offenen Lücke derselben Frage verbunden (Nacharbeit 3, Ben).
 //
 // RECHTE (Kriterium 5): Routenrecht `users.manage`. Vorgänge laufen durch denselben
 // Sichtbarkeitsfilter wie ADMIN-10; Fragetexte nur nach `redactGapForViewer`; Filterwerte sind nur
 // Spaces, deren Inhalte der Betrachter lesen darf, und Teams, die an mindestens einen davon gebunden
 // sind. Ein unbekannter oder nicht lesbarer Filterwert ist ein Eingabefehler — keine Existenzauskunft.
-import { redactGapForViewer } from "../../ask";
+import {
+  NULLTREFFER_DECKEL,
+  type NulltrefferRepo,
+  nulltrefferBegriff,
+  redactGapForViewer,
+} from "../../ask";
 import type { SessionUser } from "./http";
 import {
   type QualitaetsDeps,
@@ -130,6 +136,18 @@ export interface BedarfEintrag {
   vorgang: string;
 }
 
+/** Eine eigene Suche ohne Treffer — so, wie die Ablage sie je Person führt. */
+export interface SuchEintrag {
+  begriff: string;
+  /** Wie oft seit der ersten Erfassung — KEINE Zahl je Zeitraum. */
+  anzahl: number;
+  zuletzt: string;
+  /** Filter der Suche, Feld → Wert; leer heisst: im ganzen sichtbaren Bestand gesucht. */
+  eingrenzung: Record<string, string>;
+  /** Die offene Lücke mit derselben formnormalisierten Frage — der vorhandene Vorgang. */
+  vorgang: { schluessel: string; arbeitsweg: string } | null;
+}
+
 export interface Wissenskennzahlen {
   stand: string;
   anfrage: KennzahlAnfrage;
@@ -145,8 +163,13 @@ export interface Wissenskennzahlen {
     ohneZaehlung: number | null;
     eintraege: BedarfEintrag[];
   };
-  /** Suchereignisse werden für die Verwaltung nicht ausgewertet (s. Kopf). */
-  suche: { lage: "nicht_erhoben" };
+  /** Die EIGENEN erfolglosen Suchen des Betrachters (s. Kopf) — kumuliert, ohne Zeitraum. */
+  suche: {
+    lage: Messlage;
+    /** Höchstzahl, die die Ablage je Person liefert — die Liste ist nie mehr als das. */
+    deckel: number;
+    eintraege: SuchEintrag[];
+  };
   filterwerte: {
     spaces: { id: string; name: string }[];
     teams: { id: string; name: string; spaces: string[] }[];
@@ -158,9 +181,13 @@ export interface Wissenskennzahlen {
   };
 }
 
-/** Dieselben Quellen wie ADMIN-10 — dazu nur die Teams für den Teamfilter. */
+/**
+ * Dieselben Quellen wie ADMIN-10 — dazu die Teams für den Teamfilter und der vorhandene Leseweg
+ * der EIGENEN erfolglosen Suchen (fehlt er, ist die Suche „nicht erhoben").
+ */
 export interface KennzahlDeps extends QualitaetsDeps {
   teams: Pick<TeamsRepo, "aktuelle">;
+  nulltreffer?: Pick<NulltrefferRepo, "fuer">;
 }
 
 export class KennzahlFilterFehler extends Error {
@@ -435,6 +462,41 @@ export async function ladeWissenskennzahlen(
   const lueckenLage = lageVon(luecken !== null, true, lueckenSeit);
   const neu = (a: number, b: number) =>
     (luecken ?? []).filter((g) => imZeitraum(g.createdAt, a, b)).length;
+  // Nacharbeit 3 (Ben): die Detailmenge ist GENAU die gezählte — Zeitraum und Status (offen wie
+  // geschlossen) wie die Zahl. Jeder Eintrag öffnet die Lücke im Risikobereich, der beide führt.
+  const neueLuecken = (luecken ?? [])
+    .filter((g) => imZeitraum(g.createdAt, von, bis))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+    .map((g): KennzahlEintrag => {
+      const sicht = redactGapForViewer(g, { viewerId: user.id });
+      let zustand: VorgangZustand = "erledigt";
+      if (g.status === "offen") {
+        zustand = g.assignee ? "in_arbeit" : "offen";
+      }
+      return {
+        schluessel: `luecke:${g.id}`,
+        typ: "luecke",
+        zustand,
+        titel: sicht.redacted ? null : sicht.question,
+        arbeitsweg: `/risiko?fall=${encodeURIComponent(g.id)}`,
+        spaces: [],
+        seit: g.createdAt,
+        ueberfaellig: false,
+      };
+    });
+  const neueLueckenZahl = anzahlKennzahl(
+    "neue_luecken",
+    lueckenLage,
+    lueckenSeit,
+    neu(von, bis),
+    neu(vorVon, von),
+  );
+  // Kein Weg in die Arbeitsliste: sie kennt weder Zeitraum noch geschlossene Lücken. Die Liste
+  // hier ist dieselbe Menge wie die Zahl — und fehlt, wo die Zahl fehlt (nicht erhoben, unbekannt).
+  let neueLueckenMitListe: Kennzahl = neueLueckenZahl;
+  if (neueLueckenZahl.wert !== null) {
+    neueLueckenMitListe = { ...neueLueckenZahl, eintraege: neueLuecken };
+  }
 
   const nutzung: Kennzahl[] = [
     anzahlKennzahl("fragen", fragenLage, fragenSeit, fragenJetzt.length, fragenVorher.length),
@@ -458,11 +520,52 @@ export async function ladeWissenskennzahlen(
       trendGrund: quoteGrund,
       arbeitsliste: null,
     },
-    {
-      ...anzahlKennzahl("neue_luecken", lueckenLage, lueckenSeit, neu(von, bis), neu(vorVon, von)),
-      arbeitsliste: gefiltert ? null : "/qualitaetsaufgaben?typ=luecke",
-    },
+    neueLueckenMitListe,
   ];
+
+  // ── Eigene Suchen ohne Treffer: der vorhandene Leseweg, nur für DIESEN Betrachter ───────────
+  // Die Ablage führt je Person und Begriff eine kumulierte Anzahl und den letzten Zeitpunkt — keinen
+  // Verlauf. Deshalb gibt es hier weder Zeitraumzahl noch Trend, und ohne Space-Angabe auch keine
+  // Auswertung unter Space- oder Teamfilter. Verbunden wird ein Begriff nur mit einer OFFENEN Lücke
+  // derselben formnormalisierten Frage (dieselbe Regel wie D-032); es entsteht nichts Neues.
+  const offeneNachSchluessel = new Map<string, string>();
+  for (const g of luecken ?? []) {
+    if (g.status === "offen" && g.compareKey && !offeneNachSchluessel.has(g.compareKey)) {
+      offeneNachSchluessel.set(g.compareKey, g.id);
+    }
+  }
+  const vorgangZu = (begriff: string): SuchEintrag["vorgang"] => {
+    const schluessel = nulltrefferBegriff(begriff)?.vergleichsschluessel;
+    const lueckeId = schluessel ? offeneNachSchluessel.get(schluessel) : undefined;
+    if (!lueckeId) {
+      return null;
+    }
+    return {
+      schluessel: `luecke:${lueckeId}`,
+      arbeitsweg: `/risiko?fall=${encodeURIComponent(lueckeId)}`,
+    };
+  };
+  const ablage = deps.nulltreffer;
+  const lies = () => (ablage ? versuche(() => ablage.fuer(user.id, NULLTREFFER_DECKEL)) : null);
+  const eigeneSuchen = await lies();
+  let sucheLage: Messlage = "gemessen";
+  if (!ablage || gefiltert) {
+    sucheLage = "nicht_erhoben";
+  } else if (eigeneSuchen === null) {
+    sucheLage = "unbekannt";
+  }
+  const suchEintraege: SuchEintrag[] = [];
+  if (sucheLage === "gemessen") {
+    for (const s of eigeneSuchen ?? []) {
+      suchEintraege.push({
+        begriff: s.begriff,
+        anzahl: s.anzahl,
+        zuletzt: s.zuletzt,
+        eingrenzung: { ...s.eingrenzung },
+        vorgang: vorgangZu(s.begriff),
+      });
+    }
+  }
 
   // ── Fragebedarf: offene Lücken mit ihrer vorhandenen Häufigkeit ──────────────────────────────
   const offeneLuecken = (luecken ?? []).filter((g) => g.status === "offen");
@@ -514,7 +617,7 @@ export async function ladeWissenskennzahlen(
       ohneZaehlung: bedarfGemessen ? ohneZaehlung : null,
       eintraege: bedarf,
     },
-    suche: { lage: "nicht_erhoben" },
+    suche: { lage: sucheLage, deckel: NULLTREFFER_DECKEL, eintraege: suchEintraege },
     filterwerte: { spaces: spaceWerte, teams: teamWerte },
     quellen: {
       vorgaenge: vorgaengeLage,
