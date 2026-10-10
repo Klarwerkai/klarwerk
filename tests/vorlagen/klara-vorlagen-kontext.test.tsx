@@ -1,8 +1,9 @@
 // produkt:20261007:templates-default — K6: Klara und Editor verwenden dieselben Felder und
 // Anforderungen; freie Eingabe bleibt erreichbar. Klara liest genau den Stand, den die Vorlagenwahl
 // setzt (`lib/aktiveVorlage.ts`) — hier mit der eingebauten Standardvorlage aus dem Server-Katalog.
-import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
+import { createElement } from "../../apps/web/node_modules/react";
+import { renderToStaticMarkup } from "../../apps/web/node_modules/react-dom/server";
 import { KlaraVorlagenKontext } from "../../apps/web/src/components/KlaraVorlagenKontext";
 import { setzeAktiveVorlage } from "../../apps/web/src/lib/aktiveVorlage";
 import { setLanguage } from "../../apps/web/src/test/render";
@@ -27,7 +28,7 @@ describe("Klaras Vorlagenkontext", () => {
       vorgabe: null,
       verbindlich: { ...faq, felder: [...faq.felder] },
     });
-    const html = renderToStaticMarkup(<KlaraVorlagenKontext pfad="/erfassen" />);
+    const html = renderToStaticMarkup(createElement(KlaraVorlagenKontext, { pfad: "/erfassen" }));
     expect(html).toContain("Arbeitsanleitung");
     for (const f of procedure.felder) {
       expect(html).toContain(f.titel);
@@ -40,14 +41,16 @@ describe("Klaras Vorlagenkontext", () => {
 
   it("freie Eingabe: keine Vorlage, der Weg bleibt genannt; ausserhalb des Erfassens schweigt Klara", async () => {
     setzeAktiveVorlage({ vorlage: null, space: null, vorgabe: null, verbindlich: null });
-    expect(renderToStaticMarkup(<KlaraVorlagenKontext pfad="/erfassen" />)).toContain(
-      "ohne Vorlage",
+    expect(
+      renderToStaticMarkup(createElement(KlaraVorlagenKontext, { pfad: "/erfassen" })),
+    ).toContain("ohne Vorlage");
+    expect(renderToStaticMarkup(createElement(KlaraVorlagenKontext, { pfad: "/bibliothek" }))).toBe(
+      "",
     );
-    expect(renderToStaticMarkup(<KlaraVorlagenKontext pfad="/bibliothek" />)).toBe("");
     await setLanguage("en");
-    expect(renderToStaticMarkup(<KlaraVorlagenKontext pfad="/erfassen" />)).toContain(
-      "without a template",
-    );
+    expect(
+      renderToStaticMarkup(createElement(KlaraVorlagenKontext, { pfad: "/erfassen" })),
+    ).toContain("without a template");
   });
 
   it("englische Oberfläche: dieselben Felder in der englischen Fassung", async () => {
@@ -61,7 +64,7 @@ describe("Klaras Vorlagenkontext", () => {
       vorgabe: null,
       verbindlich: null,
     });
-    const html = renderToStaticMarkup(<KlaraVorlagenKontext pfad="/erfassen" />);
+    const html = renderToStaticMarkup(createElement(KlaraVorlagenKontext, { pfad: "/erfassen" }));
     expect(html).toContain("Work instruction");
     expect(html).toContain("Required on submission: Steps.");
   });
