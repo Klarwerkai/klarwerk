@@ -496,6 +496,8 @@ PFLICHTTABELLEN=(
   gesamtanweisung_bausteine
   gesamtanweisung_staende
   ko_bearbeitungen
+  office_sitzungen
+  office_gesichert
   import_run_source_sync
   dokument_fassungen
   confluence_import_schalter

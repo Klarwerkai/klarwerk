@@ -39,6 +39,7 @@ import {
 } from "../api/hooks";
 import type {
   Conflict,
+  Graph,
   GraphKuratierteKante,
   ImportCandidate,
   ImportItemInput,
@@ -157,6 +158,12 @@ import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
+import {
+  WISSENSNETZ_EXPORT_DATEI,
+  WISSENSNETZ_EXPORT_TYP,
+  wissensnetzAlsGraphml,
+  wissensnetzExportGekuerzt,
+} from "../lib/wissensnetzExport";
 import {
   XlsxImportError,
   type XlsxImportFehler,
@@ -3144,6 +3151,40 @@ function Qualitaetsblick({
   );
 }
 
+// ==================================================================================================
+// R-0711 — DAS WISSENSNETZ ALS DATEI IM OFFENEN FORMAT (GraphML).
+// ==================================================================================================
+//
+// Die Datei entsteht aus DERSELBEN `/api/graph`-Antwort, die das Bild zeichnet — ungekürzt um den
+// 60-Knoten-Ausschnitt, aber mit genau der Sichtbarkeit, die der Server für diese Person bestimmt
+// hat. Kein zweiter Leseweg. Format und Inhalt: `lib/wissensnetzExport.ts`.
+function WissensnetzExport({ graph }: { graph: Graph }): JSX.Element {
+  const { t } = useTranslation();
+  const herunterladen = (): void => {
+    const blob = new Blob([wissensnetzAlsGraphml(graph)], { type: WISSENSNETZ_EXPORT_TYP });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = WISSENSNETZ_EXPORT_DATEI;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="mt-4 border-t border-hairline pt-3" data-testid="wissensnetz-export">
+      <Button variant="ghost" onClick={herunterladen}>
+        <Download size={14} />
+        {t("netzexport.knopf")}
+      </Button>
+      <p className="mt-1.5 text-[12px] text-muted">{t("netzexport.erklaerung")}</p>
+      {wissensnetzExportGekuerzt(graph) ? (
+        <p className="mt-1 text-[12px] text-muted" data-testid="wissensnetz-export-gekuerzt">
+          {t("netzexport.gekuerzt")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // SCRUM-119 / FR-ANA-03: echter SVG-Wissensgraph aus Live-Daten. Tag-Kanten aus
 // /api/graph, Knotenstatus per FE-Join, Konfliktkanten aus echten Conflict-Daten.
 //
@@ -3509,6 +3550,7 @@ export function GraphView(): JSX.Element {
                 konflikteLaden={conflictsQ.isPending && !conflictsQ.isError}
                 objekte={kos}
               />
+              <WissensnetzExport graph={raw} />
             </Card>
           );
         }}
