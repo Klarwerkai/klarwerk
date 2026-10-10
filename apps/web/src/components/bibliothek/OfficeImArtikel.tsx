@@ -33,6 +33,7 @@ import {
   leseEditorNachricht,
   speicherNachricht,
 } from "../../lib/officeEditor";
+import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
 
 interface Meldung {
   art: "erfolg" | "fehler" | "hinweis";
@@ -648,6 +649,11 @@ function Belegstellen({ lage }: { lage: OfficeAnhangLage }): JSX.Element {
                 {b.stand === "aktuell"
                   ? t("officeartikel.belegAktuell")
                   : t("officeartikel.belegFrueher", { fassung: b.ausFassung ?? "?" })}
+              </span>{" "}
+              {/* R-0205: der Prüfstand der Quelle, unabhängig vom Dokumentstand — „Stufe 2" und
+                  „Extern · ungeprüft" an jeder nicht peer-validierten Belegstelle. */}
+              <span data-office-beleg-kennung="" className="inline-flex gap-1.5">
+                <ExterneQuelleKennung source={{ peerValidated: b.peerValidated === true }} />
               </span>
             </li>
           ))}
