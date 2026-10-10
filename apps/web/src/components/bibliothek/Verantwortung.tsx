@@ -34,7 +34,9 @@ export function Verantwortung({
   angemeldet,
   darfFreigeben = false,
 }: {
-  ko: Pick<KnowledgeObject, "id" | "author" | "ownership" | "status">;
+  // ADMIN-09: `version`/`spaceId` — im Space nennt die Freigabe die gelesene Fassung.
+  ko: Pick<KnowledgeObject, "id" | "author" | "ownership" | "status"> &
+    Partial<Pick<KnowledgeObject, "version" | "spaceId">>;
   nameOf: (id: string) => string;
   /** Kennung der angemeldeten Person — `undefined`, solange keine Sitzung bekannt ist. */
   angemeldet: string | undefined;
@@ -64,13 +66,15 @@ export function Verantwortung({
     },
     onError: fehler,
   });
+  const fassung =
+    ko.spaceId !== undefined && ko.version !== undefined ? { expectedVersion: ko.version } : {};
   const freigeben = useMutation({
     mutationFn: (dubletteGesehen: boolean) =>
       endpoints.ko.act(
         ko.id,
         dubletteGesehen
-          ? { action: "owner-validate", duplicateAcknowledged: true }
-          : { action: "owner-validate" },
+          ? { action: "owner-validate", duplicateAcknowledged: true, ...fassung }
+          : { action: "owner-validate", ...fassung },
       ),
     onSuccess: () => {
       setDubletteOffen(false);

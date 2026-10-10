@@ -62,7 +62,13 @@ export interface SpaceEingabe {
   regeln?: string;
 }
 
-export type SpaceVorgang = "angelegt" | "geaendert" | "archiviert" | "wiederaufgenommen";
+export type SpaceVorgang =
+  | "angelegt"
+  | "geaendert"
+  | "archiviert"
+  | "wiederaufgenommen"
+  // ADMIN-09: nur die Freigaberegel hat sich geändert (`api/freigaberegeln.ts`).
+  | "freigaberegel";
 
 /** Ein für die Spacepflege wählbares (aktives) Team. */
 export interface SpaceTeamWahl {
