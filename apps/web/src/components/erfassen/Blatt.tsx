@@ -105,6 +105,7 @@ import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Button } from "../ui";
+import { LueckenInterviewAngebot } from "./LueckenInterviewAngebot";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
@@ -227,6 +228,12 @@ const SPEICHERLAGE_TON: Record<Speicherzustand, string> = {
 
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
+  /**
+   * AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema, zu dem das Blatt nach einer Vorschau
+   * ohne Treffer ein Lücken-Interview angeboten hat. `null`, wenn der Arbeitsraum anders geöffnet
+   * wurde.
+   */
+  thema: string | null;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn und kommt zurück. */
   onEntwurfInsBlatt: (entwurfId: string) => void;
   /**
@@ -484,6 +491,8 @@ export function Blatt({
     "entwuerfe" | "anhaenge" | "status" | "beispiel" | "klara" | null
   >(null);
   const [ansicht, setAnsicht] = useState<Ansicht>("blatt");
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): Thema des angebotenen Lücken-Interviews.
+  const [arbeitsraumThema, setArbeitsraumThema] = useState<string | null>(null);
   // JOB 3341 (UX-18-R1): die Arbeitsraum-Fläche, damit der Fokus ihr nach einem Deep-Link folgen
   // kann. Sie ist NUR programmatisch fokussierbar (`tabIndex={-1}`) — der Tab-Lauf der Seite bleibt
   // damit genau der, der er war.
@@ -2397,8 +2406,17 @@ export function Blatt({
   // heisst, die dieses Bauteil nicht bekommen soll.
   const arbeitsraumOeffnen = useCallback((modus: ArbeitsraumModus): void => {
     setOffenesMenue(null);
+    setArbeitsraumThema(null);
     setAnsicht(modus);
   }, []);
+
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — das Blatt bietet an,
+  // das Wissen gleich im Gespräch abzuholen. Thema ist der Titel, sonst der Text des Blattes; der
+  // Arbeitsraum begrenzt es. Derselbe eine Öffnungsweg, danach steht das Thema fest.
+  const lueckenInterviewOeffnen = (): void => {
+    arbeitsraumOeffnen("interview");
+    setArbeitsraumThema(title.trim() || liveText.trim() || null);
+  };
 
   // ==============================================================================================
   // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068) — DAS FORMULAR ÜBERNIMMT DEN
@@ -3382,6 +3400,7 @@ export function Blatt({
         >
           {arbeitsraum({
             modus: ansicht,
+            thema: arbeitsraumThema,
             onEntwurfInsBlatt: entwurfOeffnen,
             onZurueckInsBlatt: arbeitsraumSchliessen,
           })}
@@ -3753,6 +3772,11 @@ export function Blatt({
                 </div>
               ) : null}
             </div>
+          ) : null}
+          {/* AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — abgeschlossen
+              ohne Treffer ODER ohne Konfliktprüfung, aber mit belegtem leeren Ähnlichkeitsumfang. */}
+          {verdict.status === "empty" || liveVorschauSatz !== null ? (
+            <LueckenInterviewAngebot onStart={lueckenInterviewOeffnen} />
           ) : null}
 
           {/* ==========================================================================================
