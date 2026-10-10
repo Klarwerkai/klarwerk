@@ -25,7 +25,7 @@
 // nachvollziehbar in `einstiege`.
 //
 // RÜCKMELDUNG → AUFGABE: Übernehmen legt KEINEN neuen Aufgabentyp an, sondern die vorhandene
-// Prüfanforderung (`requestRevalidationAusRueckmeldung`). Der Übernahmebeleg
+// Prüfanforderung (`LifecycleService.rueckmeldungUebernehmen`). Der Übernahmebeleg
 // (`qualitaet.rueckmeldung-uebernommen`) ist je Meldung genau einmal schreibbar (`recordOnce`) —
 // wiederholtes oder gleichzeitiges Übernehmen erzeugt kein Duplikat. Erledigt ist eine übernommene
 // Rückmeldung erst mit einer Bestätigung `ko.revalidated` NACH der Übernahme; fehlt dieses Signal,
@@ -142,7 +142,7 @@ export interface QualitaetsDeps {
   validation: Pick<ValidationService, "board">;
   lifecycle: Pick<
     LifecycleService,
-    "pendingRevalidation" | "revalidierungAnstehtFuer" | "requestRevalidationAusRueckmeldung"
+    "pendingRevalidation" | "revalidierungAnstehtFuer" | "rueckmeldungUebernehmen"
   >;
   conflicts: Pick<ConflictService, "unresolved">;
   overlaps: Pick<OverlapService, "unresolved">;
@@ -154,6 +154,12 @@ export interface QualitaetsDeps {
 }
 
 interface Zeile {
+  /**
+   * Die Position in der Prüfprotokollkette. Die Reihenfolge „Bestätigung nach Übernahme" wird an
+   * ihr entschieden, nicht an `at`: zwei Belege derselben Millisekunde wären über die Zeit nicht
+   * zu ordnen (Nacharbeit 2).
+   */
+  seq: number;
   at: string;
   actor: string;
   target: string;
@@ -181,6 +187,7 @@ interface Uebernahme {
   koId: string;
   am: string;
   durch: string;
+  seq: number;
 }
 
 function uebernahmenAus(zeilen: readonly Zeile[]): Map<string, Uebernahme> {
@@ -188,28 +195,29 @@ function uebernahmenAus(zeilen: readonly Zeile[]): Map<string, Uebernahme> {
   for (const z of zeilen) {
     const meldungId = z.payload.meldungId;
     if (typeof meldungId === "string" && !out.has(meldungId)) {
-      out.set(meldungId, { meldungId, koId: z.target, am: z.at, durch: z.actor });
+      out.set(meldungId, { meldungId, koId: z.target, am: z.at, durch: z.actor, seq: z.seq });
     }
   }
   return out;
 }
 
-/** Die erste Bestätigung eines Objekts AB einem Zeitpunkt — oder `undefined`. */
-function ersteBestaetigungAb(
+/** Die erste Bestätigung eines Objekts NACH einem Kettenglied — oder `undefined`. */
+function ersteBestaetigungNach(
   bestaetigungen: readonly Zeile[],
   koId: string,
-  ab: string,
+  nachSeq: number,
 ): Zeile | undefined {
   return bestaetigungen
-    .filter((b) => b.target === koId && b.at >= ab)
-    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))[0];
+    .filter((b) => b.target === koId && b.seq > nachSeq)
+    .sort((a, b) => a.seq - b.seq)[0];
 }
 
-function letzteBestaetigung(bestaetigungen: readonly Zeile[], koId: string): string | null {
-  let letzte: string | null = null;
+/** Das Kettenglied der letzten Bestätigung eines Objekts — oder `null`. */
+function letzteBestaetigung(bestaetigungen: readonly Zeile[], koId: string): number | null {
+  let letzte: number | null = null;
   for (const b of bestaetigungen) {
-    if (b.target === koId && (letzte === null || b.at > letzte)) {
-      letzte = b.at;
+    if (b.target === koId && (letzte === null || b.seq > letzte)) {
+      letzte = b.seq;
     }
   }
   return letzte;
@@ -314,7 +322,7 @@ export async function ladeQualitaetsaufgaben(
   /** Übernommene Meldungen je Objekt, deren Revalidierung noch läuft (keine Bestätigung danach). */
   const offenUebernommen = new Map<string, Uebernahme[]>();
   for (const u of uebernahmen.values()) {
-    const bestaetigt = ersteBestaetigungAb(bestaetigungen ?? [], u.koId, u.am);
+    const bestaetigt = ersteBestaetigungNach(bestaetigungen ?? [], u.koId, u.seq);
     if (!bestaetigt && pendingSet.has(u.koId)) {
       offenUebernommen.set(u.koId, [...(offenUebernommen.get(u.koId) ?? []), u]);
     }
@@ -336,10 +344,8 @@ export async function ladeQualitaetsaufgaben(
     // Der laufende Vorgang beginnt mit der ersten Anforderung nach der letzten Bestätigung.
     const seitBestaetigung = letzteBestaetigung(bestaetigungen ?? [], koId);
     const nachBestaetigung = (a: Zeile): boolean =>
-      a.target === koId && (seitBestaetigung === null || a.at > seitBestaetigung);
-    const laufend = (anforderungen ?? [])
-      .filter(nachBestaetigung)
-      .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+      a.target === koId && (seitBestaetigung === null || a.seq > seitBestaetigung);
+    const laufend = (anforderungen ?? []).filter(nachBestaetigung).sort((a, b) => a.seq - b.seq);
     const angehaengt = offenUebernommen.get(koId) ?? [];
     const frist = typeof k.revalidierungAm === "string" ? k.revalidierungAm : null;
     fuegeHinzu({
@@ -461,7 +467,7 @@ export async function ladeQualitaetsaufgaben(
       // Hängt an der laufenden Revalidierung — dort EINMAL gezählt, nicht ein zweites Mal hier.
       continue;
     }
-    const bestaetigt = u ? ersteBestaetigungAb(bestaetigungen ?? [], u.koId, u.am) : undefined;
+    const bestaetigt = u ? ersteBestaetigungNach(bestaetigungen ?? [], u.koId, u.seq) : undefined;
     const fassung = bestaetigt?.payload.version;
     fuegeHinzu({
       schluessel: `rueckmeldung:${meldungId}`,
@@ -526,15 +532,22 @@ export async function ladeQualitaetsaufgaben(
 }
 
 export type UebernahmeErgebnis =
-  | { art: "angelegt" | "angehaengt" | "bereits"; vorgang: string; am: string; durch: Person }
+  | {
+      art: "angelegt" | "angehaengt" | "bereits" | "nachgeholt";
+      vorgang: string;
+      am: string;
+      durch: Person;
+    }
   | { art: "nicht_gefunden" };
 
 /**
  * Eine belegte Rückmeldung als Aufgabe übernehmen. Idempotent: der Übernahmebeleg ist je Meldung
- * genau einmal schreibbar; nur wer ihn schreibt, stösst (falls nötig) die Prüfanforderung an.
+ * genau einmal schreibbar; die Prüfanforderung entsteht nur, wenn nach dem Beleg weder eine
+ * Revalidierung läuft noch eine Bestätigung vorliegt.
  *   angelegt   — es lief keine Revalidierung; sie wird jetzt angefordert,
  *   angehaengt — es lief bereits eine; die Meldung hängt sich an DIESEN Vorgang,
- *   bereits    — jemand hat sie schon übernommen (frischer Stand: wer und wann).
+ *   bereits    — jemand hat sie schon übernommen (frischer Stand: wer und wann),
+ *   nachgeholt — sie war übernommen, aber die Anforderung fehlte; sie ist jetzt nachgeholt.
  * Unbekannte Meldung oder nicht sichtbares Objekt: `nicht_gefunden` (keine Existenzauskunft).
  */
 export async function uebernimmRueckmeldung(
@@ -560,35 +573,45 @@ export async function uebernimmRueckmeldung(
     id,
     name: (konten ?? []).find((k) => k.id === id)?.name ?? null,
   });
-  const laeuft = (await deps.lifecycle.revalidierungAnstehtFuer([koId])).has(koId);
-  const gewonnen = await deps.audit.recordOnce(uebernahmeEventId(meldungId), {
-    actor: user.id,
-    action: RUECKMELDUNG_UEBERNOMMEN,
-    target: koId,
-    payload: { meldungId, vorgang, angehaengt: laeuft },
+  const beleg = async () =>
+    uebernahmenAus(await deps.audit.list({ action: RUECKMELDUNG_UEBERNOMMEN, target: koId })).get(
+      meldungId,
+    );
+  // Ben (Nacharbeit 2): Beleg, Lagelesung und Anforderung laufen unter der Objektsperre des
+  // Lebenszyklus, unter der auch die Bestätigung läuft — die Entscheidung „angehängt" oder „neu"
+  // beruht damit auf der Lage NACH dem Beleg, nicht auf einer Lesung davor. Und ein Aufruf, der den
+  // Beleg nicht mehr gewinnt, holt eine ausgefallene Anforderung nach, statt nur „bereits" zu sagen.
+  const { neu, lage } = await deps.lifecycle.rueckmeldungUebernehmen(koId, user.id, meldungId, {
+    belegen: () =>
+      deps.audit.recordOnce(uebernahmeEventId(meldungId), {
+        actor: user.id,
+        action: RUECKMELDUNG_UEBERNOMMEN,
+        target: koId,
+        payload: { meldungId, vorgang },
+      }),
+    erledigtSeitBeleg: async () => {
+      const u = await beleg();
+      if (!u) {
+        return false;
+      }
+      const bestaetigungen = await deps.audit.list({ action: REVALIDIERT, target: koId });
+      return ersteBestaetigungNach(bestaetigungen, koId, u.seq) !== undefined;
+    },
   });
-  if (!gewonnen) {
-    const frueher = uebernahmenAus(
-      await deps.audit.list({ action: RUECKMELDUNG_UEBERNOMMEN, target: koId }),
-    ).get(meldungId);
-    return {
-      art: "bereits",
-      vorgang,
-      am: frueher?.am ?? "",
-      durch: person(frueher?.durch ?? ""),
-    };
+  const gespeichert = await beleg();
+  const am = gespeichert?.am ?? (deps.jetzt?.() ?? new Date()).toISOString();
+  if (neu) {
+    // `erledigt` direkt nach dem eigenen Beleg ist nur bei gleichem Zeitstempel denkbar; die
+    // Bestätigung kam dann unter der Sperre NACH dem Beleg und hat genau diesen Vorgang geschlossen.
+    const art = lage === "angelegt" ? "angelegt" : "angehaengt";
+    return { art, vorgang, am, durch: person(user.id) };
   }
-  if (!laeuft) {
-    await deps.lifecycle.requestRevalidationAusRueckmeldung(koId, user.id, meldungId);
-  }
-  const jetzt = (deps.jetzt?.() ?? new Date()).toISOString();
-  const eigene = uebernahmenAus(
-    await deps.audit.list({ action: RUECKMELDUNG_UEBERNOMMEN, target: koId }),
-  ).get(meldungId);
+  // Jemand hat schon übernommen. Fehlte die Anforderung (Ausfall nach dem Beleg), ist sie jetzt
+  // nachgeholt — und das wird so gesagt.
   return {
-    art: laeuft ? "angehaengt" : "angelegt",
+    art: lage === "angelegt" ? "nachgeholt" : "bereits",
     vorgang,
-    am: eigene?.am ?? jetzt,
-    durch: person(user.id),
+    am: gespeichert?.am ?? "",
+    durch: person(gespeichert?.durch ?? ""),
   };
 }

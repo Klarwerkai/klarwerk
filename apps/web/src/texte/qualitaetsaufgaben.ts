@@ -82,6 +82,9 @@ export default {
     "qualitaetsaufgaben.oeffnenLabel": "{{typ}} bearbeiten: {{titel}}",
     "qualitaetsaufgaben.uebernehmen": "Als Aufgabe übernehmen",
     "qualitaetsaufgaben.uebernehmenLaeuft": "Wird übernommen …",
+    "qualitaetsaufgaben.uebernahmeFortsetzen": "Übernahme fortsetzen",
+    "qualitaetsaufgaben.uebernahme.nachgeholt":
+      "Fortgesetzt: Die fehlende Revalidierung für „{{titel}}“ ist jetzt angefordert.",
     "qualitaetsaufgaben.uebernahme.angelegt":
       "Übernommen: Für „{{titel}}“ ist jetzt eine Revalidierung angefordert.",
     "qualitaetsaufgaben.uebernahme.angehaengt":
@@ -173,6 +176,9 @@ export default {
     "qualitaetsaufgaben.oeffnenLabel": "Work on {{typ}}: {{titel}}",
     "qualitaetsaufgaben.uebernehmen": "Adopt as task",
     "qualitaetsaufgaben.uebernehmenLaeuft": "Adopting …",
+    "qualitaetsaufgaben.uebernahmeFortsetzen": "Continue adoption",
+    "qualitaetsaufgaben.uebernahme.nachgeholt":
+      "Continued: the missing revalidation for “{{titel}}” is now requested.",
     "qualitaetsaufgaben.uebernahme.angelegt":
       "Adopted: a revalidation is now requested for “{{titel}}”.",
     "qualitaetsaufgaben.uebernahme.angehaengt":
@@ -265,6 +271,9 @@ export default {
     "qualitaetsaufgaben.oeffnenLabel": "{{typ}} bewerken: {{titel}}",
     "qualitaetsaufgaben.uebernehmen": "Als taak overnemen",
     "qualitaetsaufgaben.uebernehmenLaeuft": "Wordt overgenomen …",
+    "qualitaetsaufgaben.uebernahmeFortsetzen": "Overname voortzetten",
+    "qualitaetsaufgaben.uebernahme.nachgeholt":
+      "Voortgezet: de ontbrekende hervalidatie voor ‘{{titel}}’ is nu aangevraagd.",
     "qualitaetsaufgaben.uebernahme.angelegt":
       "Overgenomen: voor ‘{{titel}}’ is nu een hervalidatie aangevraagd.",
     "qualitaetsaufgaben.uebernahme.angehaengt":

@@ -26,6 +26,7 @@ import {
   type Zustaendig,
   qualitaetsaufgabenApi,
 } from "../api/qualitaetsaufgaben";
+import { StaleMarker } from "../components/LoadState";
 import { PageHeader } from "../components/ui";
 import { formatKoTimestamp } from "../lib/koDates";
 import {
@@ -149,8 +150,13 @@ export function Qualitaetsaufgaben(): JSX.Element {
     </>
   );
 
-  if (abfrage.data === undefined) {
-    const recht = abfrage.error instanceof ApiError && abfrage.error.status === 403;
+  // Ben (Nacharbeit 2): ein Rechteentzug gilt AUCH, wenn schon eine Liste geladen war — dann wird
+  // sie ausgeblendet, statt geschützte Inhalte aus dem Zwischenspeicher weiter zu zeigen.
+  const recht =
+    abfrage.isError &&
+    abfrage.error instanceof ApiError &&
+    (abfrage.error.status === 403 || abfrage.error.status === 401);
+  if (abfrage.data === undefined || recht) {
     return (
       <div className="mx-auto max-w-4xl">
         {kopf}
@@ -276,6 +282,14 @@ export function Qualitaetsaufgaben(): JSX.Element {
         </button>
       </div>
 
+      {/* Ben (Nacharbeit 2): eine gescheiterte Aktualisierung bei vorhandener Liste wird gesagt —
+          dieselbe Markierung wie überall im Haus (`StaleMarker`), mit „Erneut versuchen". */}
+      {abfrage.isError ? (
+        <div data-testid="qa-stand-veraltet" className="mb-3">
+          <StaleMarker onRetry={() => void abfrage.refetch()} />
+        </div>
+      ) : null}
+
       {fehlend.length > 0 ? (
         <p
           role="alert"
@@ -364,6 +378,8 @@ export function Qualitaetsaufgaben(): JSX.Element {
           {sichtbar.map((v) => {
             const titel = titelVon(v);
             const typName = t(`qualitaetsaufgaben.typ.${v.typ}`);
+            const uebernehmbar =
+              v.typ === "rueckmeldung" && (v.zustand === "offen" || v.zustand === "unklar");
             return (
               <li
                 key={v.schluessel}
@@ -473,7 +489,9 @@ export function Qualitaetsaufgaben(): JSX.Element {
                   ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {v.typ === "rueckmeldung" && v.zustand === "offen" ? (
+                  {/* Ben (Nacharbeit 2): auch eine „unklare“ Übernahme (Beleg ohne Anforderung)
+                      lässt sich fortsetzen — der Server holt die fehlende Anforderung nach. */}
+                  {uebernehmbar ? (
                     <button
                       type="button"
                       data-testid="qa-uebernehmen"
@@ -483,7 +501,9 @@ export function Qualitaetsaufgaben(): JSX.Element {
                     >
                       {laeuft === v.ursprung.id
                         ? t("qualitaetsaufgaben.uebernehmenLaeuft")
-                        : t("qualitaetsaufgaben.uebernehmen")}
+                        : v.zustand === "unklar"
+                          ? t("qualitaetsaufgaben.uebernahmeFortsetzen")
+                          : t("qualitaetsaufgaben.uebernehmen")}
                     </button>
                   ) : null}
                   <Link

@@ -55,7 +55,7 @@ export interface QualitaetsUebersicht {
 }
 
 export interface UebernahmeErgebnis {
-  art: "angelegt" | "angehaengt" | "bereits";
+  art: "angelegt" | "angehaengt" | "bereits" | "nachgeholt";
   vorgang: string;
   am: string;
   durch: Person;

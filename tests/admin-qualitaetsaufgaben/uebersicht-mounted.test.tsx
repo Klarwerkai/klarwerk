@@ -158,7 +158,8 @@ function bestand(vorgaenge: QualitaetsVorgang[]): QualitaetsUebersicht {
 
 // ---- Das Netz: ein veränderlicher Serverstand, jeder Ruf protokolliert ---------------------------
 interface Server {
-  stand: QualitaetsUebersicht | { status: number; body: unknown };
+  /** `"netzfehler"`: der Abruf scheitert, bevor eine Antwort kommt (wie ohne Verbindung). */
+  stand: QualitaetsUebersicht | { status: number; body: unknown } | "netzfehler";
   uebernahme: (meldungId: string) => unknown;
   rufe: { methode: string; pfad: string }[];
 }
@@ -179,6 +180,9 @@ function netz(server: Server): void {
       });
       if (methode === "GET" && pfad === "/api/qualitaetsaufgaben") {
         const s = server.stand;
+        if (s === "netzfehler") {
+          throw new TypeError("Failed to fetch");
+        }
         return "status" in s ? antwort(s.status, s.body) : antwort(200, s);
       }
       const m = /^\/api\/qualitaetsaufgaben\/rueckmeldungen\/([^/]+)\/uebernehmen$/.exec(pfad);
@@ -492,6 +496,71 @@ describe("ADMIN-10 · U4 · Rückmeldung übernehmen", () => {
     await beruhige();
     expect(text(q(s, "qa-meldung"))).toContain("Bea Verwaltung");
     expect(zeile(s, "rueckmeldung:M-1")).toBeNull();
+  });
+});
+
+describe("ADMIN-10 · U6 · Fehler und Rechteentzug NACH erfolgreichem Laden (Nacharbeit 2)", () => {
+  it("scheitert die Aktualisierung, bleibt die Liste — mit sichtbarer Störungsmarkierung", async () => {
+    const srv = server([KONFLIKT, REVAL]);
+    netz(srv);
+    const s = await oeffne("/qualitaetsaufgaben");
+    expect(zeilen(s)).toHaveLength(2);
+    expect(q(s, "qa-stand-veraltet")).toBeNull();
+
+    srv.stand = "netzfehler";
+    await klicke(q(s, "qa-aktualisieren"));
+    await beruhige();
+    const marke = q(s, "qa-stand-veraltet");
+    expect(marke, "die gescheiterte Aktualisierung ist unsichtbar").not.toBeNull();
+    expect(text(marke)).toContain(t("loadstate.stale"));
+    expect(zeilen(s)).toHaveLength(2);
+
+    // „Erneut versuchen" holt wirklich neu, und mit Erfolg verschwindet die Markierung.
+    srv.stand = bestand([REVAL]);
+    await klicke(marke?.querySelector("button"));
+    await beruhige();
+    expect(q(s, "qa-stand-veraltet")).toBeNull();
+    expect(zeilen(s)).toHaveLength(1);
+  });
+
+  it("antwortet die Aktualisierung mit 403, verschwinden Liste und Inhalte", async () => {
+    const srv = server([KONFLIKT, REVAL]);
+    netz(srv);
+    const s = await oeffne("/qualitaetsaufgaben");
+    expect(zeilen(s)).toHaveLength(2);
+
+    srv.stand = { status: 403, body: { error: "FORBIDDEN", message: "Keine Berechtigung." } };
+    await klicke(q(s, "qa-aktualisieren"));
+    await beruhige();
+    expect(text(q(s, "qa-ladezustand"))).toBe(t("qualitaetsaufgaben.recht"));
+    expect(zeilen(s)).toHaveLength(0);
+    expect(s.container.textContent).not.toContain("Fiktiv: Kühlmittel prüfen");
+    expect(q(s, "qa-filter-typ")).toBeNull();
+  });
+});
+
+describe("ADMIN-10 · U7 · eine unklare Übernahme lässt sich fortsetzen (Nacharbeit 2)", () => {
+  it("die Zeile bietet „Übernahme fortsetzen“; der Server holt die Anforderung nach", async () => {
+    const unklar = v({
+      ...MELDUNG_OFFEN,
+      zustand: "unklar",
+      uebernahme: { am: STAND, durch: bea, vorgang: "revalidierung:k4" },
+    });
+    const srv = server([unklar]);
+    srv.uebernahme = () => {
+      srv.stand = bestand([]);
+      return { art: "nachgeholt", vorgang: "revalidierung:k4", am: STAND, durch: bea };
+    };
+    netz(srv);
+    const s = await oeffne("/qualitaetsaufgaben");
+    const knopf = zeile(s, "rueckmeldung:M-1")?.querySelector('[data-testid="qa-uebernehmen"]');
+    expect(text(knopf)).toBe(t("qualitaetsaufgaben.uebernahmeFortsetzen"));
+    await klicke(knopf);
+    await beruhige();
+    expect(srv.rufe.filter((r) => r.methode === "POST")).toHaveLength(1);
+    expect(text(q(s, "qa-meldung"))).toBe(
+      t("qualitaetsaufgaben.uebernahme.nachgeholt", { titel: "Fiktiv: Spindel reinigen" }),
+    );
   });
 });
 

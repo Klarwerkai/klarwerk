@@ -30,7 +30,7 @@ Quelle für Rückmeldungen direkt aus Artikeln oder aus Klara gibt es im Bestand
 nicht angelegt.
 
 „Als Aufgabe übernehmen" fordert die vorhandene Revalidierung des betroffenen Objekts an
-(`LifecycleService.requestRevalidationAusRueckmeldung`). Neu im gelieferten Umfang sind genau zwei
+(`LifecycleService.rueckmeldungUebernehmen`). Neu im gelieferten Umfang sind genau zwei
 Protokolleinträge, beide Belege und keine eigenen Rückmeldequellen:
 
 1. `qualitaet.rueckmeldung-uebernommen` — je Meldung höchstens einmal (`recordOnce`, Ereignis
@@ -39,6 +39,12 @@ Protokolleinträge, beide Belege und keine eigenen Rückmeldequellen:
 2. Der Grund `rueckmeldung` (mit `meldungId`) am vorhandenen Beleg
    `lifecycle.revalidation-requested`. Läuft die Revalidierung schon, wird nichts neu angefordert;
    die Meldung hängt sich an diesen Vorgang („angehängt").
+
+Nacharbeit 2 (Ben): Beleg, Lagelesung und Anforderung laufen unter derselben Objektsperre wie
+„Stimmt noch" (`LifecycleService.rueckmeldungUebernehmen` / `confirmStillValid`). Die Entscheidung
+„angehängt" oder „neu angefordert" fällt erst nach dem Beleg. Fiel die Anforderung nach dem Beleg
+aus, holt der nächste Übernahmeversuch sie nach und antwortet „nachgeholt". Die Sperre gilt
+innerhalb eines Serverprozesses.
 
 Erledigt ist eine übernommene Rückmeldung erst mit einer Bestätigung `ko.revalidated` **nach** der
 Übernahme. Das Ergebnis (wer, wann, Fassung) und der Rückbezug (Übernahme, Vorgang, Weg zum

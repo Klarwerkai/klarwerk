@@ -30,10 +30,15 @@ import {
   RUECKMELDUNG_UEBERNOMMEN,
   ladeQualitaetsaufgaben,
   uebernahmeEventId,
+  uebernimmRueckmeldung,
 } from "../../services/app/src/qualitaetsaufgaben";
 import { sichtbarkeitsfilterFuer } from "../../services/app/src/sichtbarkeit";
 import { ANTWORT_MELDUNG_ACTION } from "../../services/ask";
-import { REVALIDIERUNG_ANGEFORDERT } from "../../services/lifecycle";
+import {
+  InMemoryLifecycleRepo,
+  LifecycleService,
+  REVALIDIERUNG_ANGEFORDERT,
+} from "../../services/lifecycle";
 
 type App = ReturnType<typeof buildApp>;
 type Services = ReturnType<typeof buildServices>;
@@ -183,6 +188,36 @@ const uebernehmen = (a: Aufbau, wer: Konto, meldungId: string) =>
 
 async function belege(services: Services, action: string, target?: string) {
   return services.audit.list(target === undefined ? { action } : { action, target });
+}
+
+/** Die Abhängigkeiten der Übersicht, wie die Kompositionswurzel sie verdrahtet. */
+function depsVon(services: Services): QualitaetsDeps {
+  return {
+    ko: services.ko,
+    validation: services.validation,
+    lifecycle: services.lifecycle,
+    conflicts: services.conflicts,
+    overlaps: services.overlaps,
+    ask: services.ask,
+    audit: services.audit,
+    konten: () => services.auth.listUsers(),
+    spaces: services.spaces,
+  };
+}
+
+/** Fehlerinjektion: die Merkerablage des Lebenszyklus scheitert die ersten `ausfaelle` Male. */
+class AusfallRepo extends InMemoryLifecycleRepo {
+  constructor(private ausfaelle: number) {
+    super();
+  }
+
+  override async markPending(koId: string): Promise<void> {
+    if (this.ausfaelle > 0) {
+      this.ausfaelle -= 1;
+      throw new Error("Fiktiv: Merkerablage nicht erreichbar");
+    }
+    return super.markPending(koId);
+  }
 }
 
 describe("ADMIN-10 · Z1/Z2 · eine Ansicht auf bestehende Vorgänge, jeder einmal gezählt", () => {
@@ -464,15 +499,112 @@ describe("ADMIN-10 · Z7 · fehlende Datensignale erscheinen nicht als erledigt"
       actor: a.admin.id,
       action: RUECKMELDUNG_UEBERNOMMEN,
       target: ko,
-      payload: { meldungId: m, vorgang: `revalidierung:${ko}`, angehaengt: false },
+      payload: { meldungId: m, vorgang: `revalidierung:${ko}` },
     });
     const u = await uebersicht(a);
     const e = eintrag(u, `rueckmeldung:${m}`);
     expect(e?.zustand).toBe("unklar");
     expect(e?.ergebnis).toBeUndefined();
     expect(u.vorgaenge.some((v) => v.zustand === "erledigt")).toBe(false);
-    // Ein erneutes Übernehmen legt nichts doppelt an — der Beleg gilt.
+    // Ben (Nacharbeit 2): ein erneutes Übernehmen holt die fehlende Anforderung nach — genau einmal.
+    const fortsetzen = await uebernehmen(a, a.admin, m);
+    expect(fortsetzen.json()).toMatchObject({ art: "nachgeholt", durch: { id: a.admin.id } });
+    expect(await belege(a.services, REVALIDIERUNG_ANGEFORDERT, ko)).toHaveLength(1);
+    expect(eintrag(await uebersicht(a), `revalidierung:${ko}`)?.rueckmeldungen).toEqual([
+      expect.objectContaining({ meldungId: m }),
+    ]);
     expect((await uebernehmen(a, a.admin, m)).json()).toMatchObject({ art: "bereits" });
+    expect(await belege(a.services, REVALIDIERUNG_ANGEFORDERT, ko)).toHaveLength(1);
+  });
+
+  it("Ausfall der Anforderung NACH dem Beleg: die Wiederholung legt die Aufgabe doch noch an", async () => {
+    const a = await setup();
+    const ko = await freigegeben(a, TITEL_RUECKMELDUNG);
+    const m = await melden(a, ko, TITEL_RUECKMELDUNG, "antwort-falsch");
+    // Echter Ausfall am Lebenszyklus: die Merkerablage scheitert genau einmal.
+    const repo = new AusfallRepo(1);
+    const lifecycle = new LifecycleService({
+      koService: a.services.ko,
+      repo,
+      audit: a.services.audit,
+    });
+    const deps: QualitaetsDeps = { ...depsVon(a.services), lifecycle };
+    const betrachter = { id: a.admin.id, role: "admin" as const, spaceLesbar: new Set<string>() };
+    const filter = sichtbarkeitsfilterFuer(betrachter);
+
+    await expect(uebernimmRueckmeldung(deps, betrachter, filter, m)).rejects.toThrow(
+      "Merkerablage",
+    );
+    expect(await belege(a.services, RUECKMELDUNG_UEBERNOMMEN, ko)).toHaveLength(1);
+    expect(await belege(a.services, REVALIDIERUNG_ANGEFORDERT, ko)).toHaveLength(0);
+    const halb = await ladeQualitaetsaufgaben(deps, betrachter, filter);
+    expect(eintrag(halb, `rueckmeldung:${m}`)?.zustand).toBe("unklar");
+
+    const wieder = await uebernimmRueckmeldung(deps, betrachter, filter, m);
+    expect(wieder).toMatchObject({ art: "nachgeholt", vorgang: `revalidierung:${ko}` });
+    expect((await lifecycle.revalidierungAnstehtFuer([ko])).has(ko)).toBe(true);
+    const anforderungen = await belege(a.services, REVALIDIERUNG_ANGEFORDERT, ko);
+    expect(anforderungen).toHaveLength(1);
+    expect(anforderungen[0]?.payload).toMatchObject({ grund: "rueckmeldung", meldungId: m });
+    const ganz = await ladeQualitaetsaufgaben(deps, betrachter, filter);
+    expect(eintrag(ganz, `rueckmeldung:${m}`)).toBeUndefined();
+    expect(eintrag(ganz, `revalidierung:${ko}`)?.rueckmeldungen?.map((r) => r.meldungId)).toEqual([
+      m,
+    ]);
+
+    expect(await uebernimmRueckmeldung(deps, betrachter, filter, m)).toMatchObject({
+      art: "bereits",
+    });
+    expect(await belege(a.services, REVALIDIERUNG_ANGEFORDERT, ko)).toHaveLength(1);
+  });
+
+  it("Abschluss überlappt die Übernahme: kein „angehängt“ an einen schon geschlossenen Vorgang", async () => {
+    const a = await setup();
+    const ko = await freigegeben(a, TITEL_RUECKMELDUNG);
+    const m = await melden(a, ko, TITEL_RUECKMELDUNG, "antwort-falsch");
+    const anfordern = await aktion(a.app, a.admin, ko, { action: "request-revalidation" });
+    expect(anfordern.statusCode).toBe(204);
+    const deps = depsVon(a.services);
+    const betrachter = { id: a.admin.id, role: "admin" as const, spaceLesbar: new Set<string>() };
+    const filter = sichtbarkeitsfilterFuer(betrachter);
+
+    // Die Bestätigung beginnt ZUERST (sie nimmt die Objektsperre sofort); die Übernahme startet,
+    // solange die Revalidierung noch als laufend gelesen würde — genau Bens Überlappung.
+    const abschluss = a.services.lifecycle.confirmStillValid(ko, a.autorin.id);
+    const uebernahme = uebernimmRueckmeldung(deps, betrachter, filter, m);
+    await abschluss;
+    const ergebnis = await uebernahme;
+
+    // Die laufende Revalidierung war geschlossen — die Meldung bekommt eine NEUE Aufgabe.
+    expect(ergebnis).toMatchObject({ art: "angelegt", vorgang: `revalidierung:${ko}` });
+    expect((await a.services.lifecycle.revalidierungAnstehtFuer([ko])).has(ko)).toBe(true);
+    const anforderungen = await belege(a.services, REVALIDIERUNG_ANGEFORDERT, ko);
+    expect(anforderungen.map((x) => x.payload.grund)).toEqual(["bibliothek", "rueckmeldung"]);
+    const u = await ladeQualitaetsaufgaben(deps, betrachter, filter);
+    expect(eintrag(u, `rueckmeldung:${m}`)).toBeUndefined();
+    const r = eintrag(u, `revalidierung:${ko}`);
+    expect(r?.rueckmeldungen?.map((x) => x.meldungId)).toEqual([m]);
+    expect(r?.einstiege).toEqual(expect.arrayContaining(["anforderung:rueckmeldung"]));
+    expect(r?.einstiege).not.toContain("anforderung:bibliothek");
+  });
+
+  it("Gegenrichtung: kommt der Abschluss NACH der Übernahme, schliesst er genau diesen Vorgang", async () => {
+    const a = await setup();
+    const ko = await freigegeben(a, TITEL_RUECKMELDUNG);
+    const m = await melden(a, ko, TITEL_RUECKMELDUNG, "antwort-falsch");
+    const anfordern = await aktion(a.app, a.admin, ko, { action: "request-revalidation" });
+    expect(anfordern.statusCode).toBe(204);
+    const deps = depsVon(a.services);
+    const betrachter = { id: a.admin.id, role: "admin" as const, spaceLesbar: new Set<string>() };
+    const filter = sichtbarkeitsfilterFuer(betrachter);
+
+    expect(await uebernimmRueckmeldung(deps, betrachter, filter, m)).toMatchObject({
+      art: "angehaengt",
+    });
+    await a.services.lifecycle.confirmStillValid(ko, a.autorin.id);
+    const u = await ladeQualitaetsaufgaben(deps, betrachter, filter);
+    expect(eintrag(u, `revalidierung:${ko}`)).toBeUndefined();
+    expect(eintrag(u, `rueckmeldung:${m}`)?.zustand).toBe("erledigt");
   });
 
   it("eine gescheiterte Quelle steht als „fehler“ — die übrigen Einträge bleiben", async () => {
