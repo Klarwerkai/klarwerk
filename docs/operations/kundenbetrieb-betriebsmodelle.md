@@ -92,8 +92,15 @@ weder gebaut noch vorgesehen.
 ### 2.4 Datenflussblatt des internen Kerns (AW-12)
 
 Für **eine Instanz einer Firma** (§2.3) im Hausbetrieb oder als eigene Kundeninstanz. Grundlage ist die
-geprüfte Zielliste aller Verbindungen nach außen (`services/app/src/ausgehende-ziele.json`, gehalten
-von `tests/ki-freigaberegeln/ausgehende-ziele.test.ts`): ein Weg, der dort fehlt, existiert nicht.
+Zielliste der Verbindungen nach außen (`services/app/src/ausgehende-ziele.json`, gehalten von
+`tests/ki-freigaberegeln/ausgehende-ziele.test.ts`). **Die Liste ist derzeit nicht vollständig:** ihr
+Wächter ist rot (Fall Z1, Bericht `HISTORIE/nacharbeit-13`), weil zwei Dateien mit Verbindungsmerkmal
+nicht eingetragen sind — `services/app/src/routes/office-routes.ts` (ruft die Discovery des
+Office-Editors des Betreibers ab; als eigene Zeile unten aufgenommen) und
+`services/app/src/transport-tls.ts` (nimmt TLS am App-Port **an**, baut selbst keine Verbindung nach
+außen auf, wird vom Wächter aber als Verbindungsdatei erkannt). Beide stammen aus anderen Aufträgen;
+ihre Einordnung in die Zielliste steht dort aus. Bis dahin gilt: Was dieses Blatt nennt, ist geprüft
+gelistet oder ausdrücklich nachgetragen; dass es **keine weiteren** Wege gibt, ist nicht belegt.
 
 **Interner Kern — verlässt die Instanz nicht:**
 
@@ -112,16 +119,27 @@ einer echten Instanz durchsucht, ist **nicht belegt** (§11).
 
 **Abhängigkeiten, die nur der Betreiber einschaltet — getrennt von der Freigabe:**
 
-| Weg (Kennung in der Zielliste) | Empfänger | Was hinausgeht | Freigabe |
-| --- | --- | --- | --- |
-| `ki-anthropic`, `ki-openai` | Anthropic, OpenAI oder `OPENAI_BASE_URL` | Aufgabentext nach Freigabe; Vertrauliches nur mit zweiter Freigabe | zentrale Adminfreigabe; ohne Schlüssel nicht gebaut |
-| `transkription-openai` (**Sprache**) | OpenAI (Whisper) | die Audio-/Videospur | zentrale Adminfreigabe; ohne Schlüssel nicht gebaut |
-| `wissenssuche-wikipedia` | Wikipedia | Suchbegriffe | Admin-Regler; `EXTERNAL_SEARCH=off` baut den Weg nicht |
-| `import-confluence`, `import-jira`, `import-sharepoint` | das System des Betreibers | Anfragen zum Abholen; Inhalte kommen herein | nur bei vollständiger Konfiguration, Origin gepinnt |
-| `anmeldung-oidc` | Identitätsanbieter des Betreibers | Anmeldevorgang | nur bei vollständiger OIDC-Konfiguration |
-| `mail-smtp` | Postausgangsserver | Benachrichtigungen | nur mit `SMTP_HOST` |
-| `wissensereignisse-webhooks` | eingetragene Ziele | nur Objektkennungen | nur Ziele in `KLARWERK_WEBHOOKS` |
-| `word-addin-officejs` (**M365**) | Microsoft | das Laden von Office.js im Word-Fenster | eigene Abhängigkeit; Word im Browser zusätzlich über `KLARWERK_M365_MANDANTEN` |
+Spalten „Speicherort beim Empfänger" und „Aufbewahrung beim Empfänger" hängen am Vertrag mit dem
+Empfänger, nicht am Produkt; wo das Produkt sie nicht festlegt, steht **Betreiberangabe offen** — das
+ist eine Lücke, die der Betreiber vor dem Einschalten schließen muss, keine Zusage. „In der Instanz"
+nennt, was das Produkt selbst ablegt. „Ausfallgrenze" nennt nur, was am Code feststeht; sonst
+**nicht gemessen**.
+
+| Weg (Kennung) | Empfänger | Was hinausgeht | Speicherort / Aufbewahrung beim Empfänger | In der Instanz | Ausfallgrenze | Freigabe |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ki-anthropic`, `ki-openai` | Anthropic, OpenAI oder `OPENAI_BASE_URL` | Aufgabentext; Vertrauliches nur mit zweiter Freigabe | Betreiberangabe offen (Anbietervertrag, Region) | Ergebnis im Objekt, Laufmetadaten in `model_runs` | Anbieter nicht erreichbar → Fehler bzw. lokaler/deterministischer Weg, sichtbar im KI-Status | zentrale Adminfreigabe; ohne Schlüssel nicht gebaut |
+| `transkription-openai` (**Sprache**) | OpenAI (Whisper) | die Audio-/Videospur | Betreiberangabe offen | Transkript als Text am Objekt | Dienst nicht erreichbar → keine Transkription; Texteingabe bleibt | zentrale Adminfreigabe; ohne Schlüssel nicht gebaut |
+| `wissenssuche-wikipedia` | Wikipedia | Suchbegriffe | Wikimedia; Betreiberangabe offen | angehängte Quellen am Objekt | nicht gemessen | Admin-Regler; `EXTERNAL_SEARCH=off` baut den Weg nicht |
+| `import-confluence`, `import-jira`, `import-sharepoint` | System des Betreibers | Abrufanfragen mit Zugang; Inhalte kommen herein | beim Betreiber selbst | importierte Objekte wie eigene | Lauf bricht mit Meldung ab; nicht gemessen, ob Teilergebnisse bleiben | nur bei vollständiger Konfiguration, Origin gepinnt |
+| `anmeldung-oidc` | Identitätsanbieter des Betreibers | Anmeldevorgang | beim Betreiber selbst | Konto und Sitzung | nicht gemessen | nur bei vollständiger OIDC-Konfiguration |
+| `mail-smtp` | Postausgangsserver | Benachrichtigungen, Kennwort-Links | Betreiberangabe offen | — | nicht gemessen | nur mit `SMTP_HOST` |
+| `wissensereignisse-webhooks` | eingetragene Ziele | nur Objektkennungen | Betreiberangabe offen | — | nicht gemessen | nur Ziele in `KLARWERK_WEBHOOKS` |
+| Office-Editor (**nicht in der Zielliste**, `office-routes.ts`, `office-artikel.ts`) | Editor-Server des Betreibers (`KLARWERK_OFFICE_EDITOR_URL`, `…_INTERN_URL`) | Discovery-Abruf; der Editor holt das Dokument über WOPI | beim Betreiber selbst; Betreiberangabe offen | neue Fassung als Anhang am Objekt | ohne Einrichtung: „nicht eingerichtet"; sonst nicht gemessen | nur mit Editor-Umgebung |
+| `word-addin-officejs` (**M365**) | Microsoft | das Laden von Office.js im Word-Fenster | Microsoft; Betreiberangabe offen | — | ohne Office.js kein Word-Fenster; Web-App unberührt | eigene Abhängigkeit; Word im Browser zusätzlich über `KLARWERK_M365_MANDANTEN` |
+
+**Nicht intern verfügbar und deshalb eigene Abhängigkeiten:** M365 (Word-Fenster), externe Sprache,
+externe Wissenssuche und die Quellsysteme der Importe. Der interne Kern (Tabelle oben) arbeitet ohne
+jede davon.
 
 **Sprache und Textweg.** Eine **interne** Spracherkennung gibt es nicht; Sprache zu Text geht nur über
 den externen Weg `transkription-openai`. Ist er nicht freigegeben, bleibt die **Texteingabe** der
@@ -233,8 +251,33 @@ Gewichten im Material ist eine offene Entscheidung (`insel-hausbetrieb-anforderu
 | Spracherkennung intern | **keine** | — | — | nur extern über `transkription-openai` (§2.4) |
 
 **Widerspruch, ausdrücklich:** Referenzstarter und Paket sehen **verschiedene** Sprachmodelle vor
-(`qwen3:32b` gegen `mistral:latest`). Welches Gewicht zum Lieferumfang gehört, ist eine offene
+(`qwen3:32b` gegen `mistral:latest`). Welches Gewicht zum **Lieferumfang** gehört, ist eine offene
 Produktentscheidung; der ungepinnte Tag `mistral:latest` taugt nicht als belegte Fassung.
+
+**Referenzkern (für Abnahme und interne Bereitstellung).** Bereitgestellt wird der interne Kern über
+`scripts/deploy/compose-intern.yml`: Modellserver Ollama nur am internen Netz, App nur an ihm. Als
+Referenzkombination gilt die des Referenzstarters, weil nur sie im Repository schon gefahren ist —
+das entscheidet **nicht** den Lieferumfang:
+
+| Rolle | Gewicht (Tag) | Lizenzbeleg beim Herausgeber | Fassungsbeleg |
+| --- | --- | --- | --- |
+| Sprachmodell | `qwen3:32b` | Modellkarte `huggingface.co/Qwen/Qwen3-32B` (Apache-2.0) | Digest aus `/api/tags` |
+| Embedding | `bge-m3`, `KLARWERK_EMBEDDING_DIM=1024` | Modellkarte `huggingface.co/BAAI/bge-m3` (MIT) | Digest aus `/api/tags` |
+| Laufzeit | Ollama, Abbild `KLARWERK_OLLAMA_IMAGE` mit fester Fassung (Pflicht, kein `latest`) | `github.com/ollama/ollama` (MIT) | `/api/version` |
+
+Ein Tag ist keine Fassung. Die **gebundene** Fassung schreibt
+`node scripts/betrieb/modellbestand-erfassen.mjs http://127.0.0.1:11434 --sprachmodell qwen3:32b
+--embedding bge-m3 --dim 1024` am laufenden Server auf: Laufzeitversion, je Gewicht Digest, Größe,
+Quantisierung und den Lizenztext, den das Gewicht selbst mitbringt (SHA-256 und erste Zeile), dazu eine
+echte Einbettungsprobe mit Dimensionsvergleich. Fehlt ein Gewicht, ein Lizenztext oder stimmt die
+Dimension nicht, endet es mit Exit 1. Gegenprobe ohne echtes Modell:
+`tests/kundenbetrieb-betriebsmodelle/referenzkern.test.ts`.
+
+**Betriebsvoraussetzungen dieser Kombination:** Linux mit Docker Compose (wie B2) oder macOS mit
+Ollama nativ; Plattenplatz für beide Gewichte im Ordner `KLARWERK_MODELLE_DIR`; Arbeitsspeicher
+beziehungsweise Grafikspeicher für ein 32B-Modell in der vom Gewicht gemeldeten Quantisierung. Konkrete
+Mindestwerte sind **nicht gemessen** — der Bestand eines echten Rechners mit Laufzeit und Speicherbelegung
+ist der erste Beleg dafür (§11).
 
 ---
 
@@ -323,6 +366,24 @@ grün, Ein-Klick-Deploy." Je Modell der eine Weg, woraus er reproduzierbar ist, 
 grünem Tor den Abbildbau mit Laufartefakt. Sie veröffentlicht nicht; ausgeliefert wird je Modell über
 den Weg oben.
 
+### 7.2 AW-12 / Abnahme S07 — Zuordnung je Teil
+
+Je Teil: was bereitsteht, welcher vorhandene Beleg wiederverwendet wird, und was **konkret** fehlt.
+Jeder Lauf wird über `/health` (`commit`, `instanz`) dem Kandidaten und der Instanz zugeordnet und über
+den Modellbestand (§6.1) den Gewichten.
+
+| Teil | Bereitgestellt | Wiederverwendeter Beleg | Konkret fehlende Ressource bzw. Lauf |
+| --- | --- | --- | --- |
+| Getrennte Unternehmensressourcen | eine Firma je Instanz (§2.3): eigene Compose-Instanz, eigene Datenbank, eigene `APP_BASE_URL`; Identität an `/health`, Abgleich `scripts/betrieb/instanzabgleich.mjs` | B2-Prüfstrecke `tests/neuinstallation/kundeninstallation-strecke.integration.test.ts` (eine Instanz auf leerem Linux-Platz); Mehrinstanz-Sperre `docs/operations/mehrinstanz-tor.md` | Ein Lauf mit **zwei** Instanzen zweier Firmen auf demselben Platz: getrennte Volumes und Netze, Konto der einen Firma sieht in der anderen nichts. Ressource: der B2-Linux-Prüfplatz, zweimal `docker compose -p <firma>` |
+| Interne Modelle | `scripts/deploy/compose-intern.yml` (Ollama nur am internen Netz), Bestand `scripts/betrieb/modellbestand-erfassen.mjs` | Referenzstarter mit `qwen3:32b` auf dem Mac Studio (`docs/operations/UEBERGABE-KLARWERK-Insel.md`), kein Bestand mit Digest | Ein Rechner mit den Gewichten `qwen3:32b` und `bge-m3` im Modellordner und genug Speicher für ein 32B-Modell; dort ein Bestand mit Exit 0 |
+| Synthetischer Kernweg | App mit lokalem Sprachmodell und internem Embedding-Weg (`KLARWERK_EMBEDDING_PROVIDER=local`, Dublettenvorauswahl an) | Gegenproben ohne Modell: `interner-embedding-weg.test.ts`, `referenzkern.test.ts` | Auf demselben Rechner: Objekt anlegen, Frage stellen, Dublettenvorschlag erhalten; `/api/ai-status` meldet `local`, gespeicherte Vektoren tragen `intern:bge-m3@1024` |
+| Ausgehende Verbindungen | Zielliste `services/app/src/ausgehende-ziele.json` mit Freigabe je Weg; Egress-Wächter; Modellserver ohne Netz nach außen | `tests/security/egress-chokepoint.test.ts`, `tests/ki-freigaberegeln/ausgehende-ziele.test.ts` (Z1 derzeit rot, §2.4) | Mitschnitt der tatsächlich aufgebauten Verbindungen während des Kernwegs am Host (z. B. Firewall-Protokoll oder `ss`/`conntrack`); erwartet: nur Datenbank und Modellserver |
+| Protokoll- und Sicherungsinhalt | `log-sanitize.ts`; `scripts/backup/backup.sh` mit Prüfsumme | B3-Rückweg `docs/operations/restore-drill.md`; `monitoring-logging.md` (keine Prompt-/Antworttexte) | Nach dem Kernweg: Protokoll auf eingegebene Texte und Geheimnisse durchsuchen; Sicherung erstellen und belegen, dass sie den gesamten Bestand enthält und nur am Sicherungsort liegt |
+
+**Was dieser Auftrag nicht selbst liefern kann:** einen Rechner mit Modellgewichten und den Zugang
+dazu. Die Prüfumgebung dieses Auftrags hat weder Docker noch Gewichte; ein S07-Ergebnis mit Kandidat,
+Rechner, Rollen und Ergebniskennungen entsteht erst dort.
+
 ---
 
 ## 8. Betriebs- und Governance-Leitfäden — Lücken dem Produkt zugeordnet
@@ -409,12 +470,11 @@ Spalten: Punkt · Stand · Ergebnis · Rest.
 - Eine Sichtung der Starter mit Versionsbestätigung auf Pedis Rechner.
 - Eine Einrichtung nach Blaupause durch einen Kunden ohne Beistand.
 - Die Liste der 15 Leitfäden aus der Recherchequelle.
-- **AW-12, Abnahme S07** an einem echten Rechner mit den Modellen aus §6.1: getrennte Ressourcen je
-  Firma, synthetischer Kernweg mit lokalem Sprach- **und** Embedding-Modell, Messung der tatsächlich
-  aufgebauten Verbindungen nach außen sowie Durchsicht von Protokoll- und Sicherungsinhalt — zugeordnet
-  zu Kandidat, Rechner, Rollen und Ergebniskennungen. Belegt sind bisher nur der Weg im Code und
-  Gegenproben ohne echtes Modell (`tests/kundenbetrieb-betriebsmodelle/interner-embedding-weg.test.ts`);
-  ein Prüfplatz mit Modellgewichten steht in diesem Auftrag nicht zur Verfügung.
-- Ein Lizenztext je Modellgewicht und die Entscheidung, welches Sprachmodell zum Lieferumfang gehört
-  (§6.1).
+- **AW-12, Abnahme S07:** je Teil konkret in §7.2 — fehlend sind die Läufe auf einem Rechner mit
+  Modellgewichten (zwei Firmeninstanzen, Kernweg, Verbindungsmitschnitt, Protokoll- und
+  Sicherungsdurchsicht). Bereitgestellt sind Referenzkern, Bestandswerkzeug und Gegenproben ohne Modell.
+- Ein Modellbestand mit Digest und mitgebrachtem Lizenztext von einem echten Rechner (Werkzeug liegt
+  bereit, §6.1) und die Entscheidung, welches Sprachmodell zum Lieferumfang gehört.
+- Die Einordnung von `office-routes.ts` und `transport-tls.ts` in die Zielliste (Aufträge, die sie
+  eingeführt haben; §2.4).
 - Eine interne Spracherkennung und eine OCR — beide im Produkt nicht vorhanden (§2.4).

@@ -1,0 +1,52 @@
+# AW-12 (aufnahme:20260922:gesamt-kundenbetrieb) — REFERENZBEREITSTELLUNG DES INTERNEN KERNS.
+#
+# Ergänzt `docker-compose.prod.yml` (ändert es nicht) um einen Modellserver im Haus und verdrahtet
+# die App ausschließlich mit ihm: Sprachmodell UND Embedding-Modell laufen auf `modell`, die App
+# spricht nur `http://modell:11434` an (bestätigte interne Adresse, `isConfirmedLocalOrigin`).
+#
+#   docker compose -f docker-compose.prod.yml -f scripts/deploy/compose-intern.yml up -d
+#
+# FASSUNGSGEBUNDEN, OHNE STILLE VORGABE: Laufzeitabbild, Modellnamen, Dimension und Gewichtsordner
+# sind Pflichtangaben — fehlt eine, bricht `docker compose` ab und nennt den Namen. Es gibt keinen
+# `latest`-Ersatz. Welche Fassungen tatsächlich liefen, schreibt danach
+# `scripts/betrieb/modellbestand-erfassen.mjs` mit Digest und Lizenzbeleg auf.
+#
+# GEWICHTE OHNE NETZ: Der Modellserver hängt NUR am Netz `intern` (`internal: true`, kein Weg nach
+# außen). Er lädt nichts aus dem Internet; die Gewichte liegen vorab im Ordner
+# `KLARWERK_MODELLE_DIR` (Ollama-Ablage, auf einem Rechner mit Netz per `ollama pull` befüllt und
+# hierher kopiert).
+#
+# GRENZE: Die App selbst bleibt zusätzlich am Standardnetz (Proxy, Datenbank). Eine Sperre aller
+# App-Verbindungen nach außen ist damit NICHT hergestellt; sie ist Sache der Firewall des Hosts.
+services:
+  modell:
+    image: ${KLARWERK_OLLAMA_IMAGE:?KLARWERK_OLLAMA_IMAGE setzen - feste Fassung, kein latest}
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    volumes:
+      - ${KLARWERK_MODELLE_DIR:?KLARWERK_MODELLE_DIR setzen - Ordner mit den Ollama-Gewichten}:/root/.ollama
+    networks:
+      - intern
+
+  app:
+    depends_on:
+      modell:
+        condition: service_started
+    environment:
+      KLARWERK_LOCAL_LLM_URL: http://modell:11434/v1
+      KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS: http://modell:11434
+      KLARWERK_LOCAL_LLM_MODEL: ${KLARWERK_LOCAL_LLM_MODEL:?KLARWERK_LOCAL_LLM_MODEL setzen}
+      KLARWERK_LOCAL_EMBEDDING_MODEL: ${KLARWERK_LOCAL_EMBEDDING_MODEL:?KLARWERK_LOCAL_EMBEDDING_MODEL setzen}
+      KLARWERK_EMBEDDING_PROVIDER: local
+      KLARWERK_EMBEDDING_DIM: ${KLARWERK_EMBEDDING_DIM:?KLARWERK_EMBEDDING_DIM setzen - Ausgabelaenge des Embedding-Modells}
+      # Der Vektorweg wird im Produkt nur über die Dublettenvorauswahl genutzt; ohne sie bliebe das
+      # Embedding-Modell unbenutzt.
+      KLARWERK_DUP_PREFILTER: "1"
+    networks:
+      - default
+      - intern
+
+networks:
+  intern:
+    internal: true

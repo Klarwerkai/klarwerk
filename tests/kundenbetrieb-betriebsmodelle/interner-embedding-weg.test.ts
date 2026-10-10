@@ -155,6 +155,52 @@ describe("AW-12 · interner Embedding-Weg", () => {
     ).toBeUndefined();
   });
 
+  it("E7 · eine Weiterleitung des bestätigten Servers trägt keinen Text weiter", async () => {
+    // Ben, Kandidat af4e3fa6: geprüft war nur die Ausgangsadresse; fetch folgte 307/308 von selbst.
+    // Hier antwortet der bestätigte Server mit 307 auf ein zweites Ziel. Das zweite Ziel darf
+    // KEINE Anfrage sehen, und der Aufruf muss scheitern statt Vektoren zu liefern.
+    let beimZiel = 0;
+    const ziel = createServer((_anfrage, rueckgabe) => {
+      beimZiel += 1;
+      rueckgabe.end(JSON.stringify({ data: [{ index: 0, embedding: [1, 2, 3] }] }));
+    });
+    await new Promise<void>((bereit) => ziel.listen(0, "127.0.0.1", () => bereit()));
+    const zielPort = (ziel.address() as AddressInfo).port;
+    server = createServer((_anfrage, rueckgabe) => {
+      rueckgabe.statusCode = 307;
+      rueckgabe.setHeader("location", `http://127.0.0.1:${zielPort}/v1/embeddings`);
+      rueckgabe.end();
+    });
+    const s = server;
+    await new Promise<void>((bereit) => s.listen(0, "127.0.0.1", () => bereit()));
+    const port = (s.address() as AddressInfo).port;
+    try {
+      const client = createLocalEmbeddingClientFromEnv({
+        KLARWERK_LOCAL_LLM_URL: `http://127.0.0.1:${port}/v1`,
+        KLARWERK_LOCAL_EMBEDDING_MODEL: "bge-m3",
+      });
+      await expect(client?.einbetten(["vertraulicher Satz"])).rejects.toThrow();
+      expect(beimZiel).toBe(0);
+    } finally {
+      await new Promise<void>((zu) => ziel.close(() => zu()));
+    }
+  });
+
+  it("E8 · der Client verlangt beim Versand ausdrücklich redirect: error", async () => {
+    const aufrufe: RequestInit[] = [];
+    const fetchSpion = (async (_url: unknown, optionen?: RequestInit) => {
+      aufrufe.push(optionen ?? {});
+      return new Response(JSON.stringify({ data: [{ index: 0, embedding: [1] }] }));
+    }) as typeof fetch;
+    const client = createLocalEmbeddingClientFromEnv(
+      { KLARWERK_LOCAL_LLM_URL: "http://127.0.0.1:1/v1", KLARWERK_LOCAL_EMBEDDING_MODEL: "m" },
+      fetchSpion,
+    );
+    await client?.einbetten(["a"]);
+    expect(aufrufe).toHaveLength(1);
+    expect(aufrufe[0]?.redirect).toBe("error");
+  });
+
   it("E6 · Startvertrag und Zielliste führen den internen Weg dieses Auftrags", () => {
     // Die globalen Wächter (vertrag-vollstaendig D1, ausgehende-ziele Z1) prüfen das ganze Repo und
     // sind derzeit an fremden, hier nicht geänderten Stellen rot. Dieser Fall hält genau den eigenen

@@ -1064,6 +1064,10 @@ export function createLocalEmbeddingClientFromEnv(
         },
         body: JSON.stringify({ model: modell, input: [...texte] }),
         signal: AbortSignal.timeout(timeoutMs),
+        // Geprüft ist nur die Ausgangsadresse. Eine Weiterleitung (307/308 wiederholt den POST mit
+        // demselben Rumpf) könnte die Texte an ein ungeprüftes Ziel tragen — deshalb wird keiner
+        // gefolgt: `fetch` bricht mit einem Fehler ab, bevor ein zweites Ziel angesprochen wird.
+        redirect: "error",
       });
       if (!antwort.ok) {
         throw new Error(`lokaler Embedding-Server antwortet HTTP ${antwort.status}`);
