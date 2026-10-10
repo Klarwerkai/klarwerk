@@ -1812,6 +1812,17 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: NUR_LESEN,
   },
+  // R-1630 / R-2176: der Antwortvergleich mit dem Wissensstand vor einem Jahr — ein Leseweg der
+  // Konsole mit demselben Recht wie die Frage selbst.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/vergleich",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1364",
+    tor: "ko.read",
+    payload: { question: "Abnahme des Rechtetors am Antwortvergleich" },
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "knowledgeCheckRoutes",
     methode: "POST",

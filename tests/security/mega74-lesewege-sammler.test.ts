@@ -459,10 +459,12 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/kos/:id/provenance": { urteil: "PRAEDIKAT", grund: "Block F — Zentrum + Gegenseite." },
   // --- Egress-Wege, die im Dienst filtern ----------------------------------------------------
+  // ADMIN-07 (K3): zusätzlich zu SCRUM-506 (includeConfidential als Datum) trägt jeder Export die
+  // Sichtregel des Betrachters (`darfSehen`, library-routes.ts) — samt führendem Space.
   "GET /api/library/export": {
-    urteil: "KURATORENTOR",
-    recht: "ko.validate",
-    grund: "SCRUM-506 — includeConfidential als Datum (library-routes.ts:172).",
+    urteil: "PRAEDIKAT",
+    grund:
+      "Export nur über sichtbarkeitsfilterFuer (darfSehen) des Betrachters; Stufe/Status wie SCRUM-506.",
   },
   "GET /api/output/sources": {
     urteil: "DIENST_FILTERT",
@@ -532,6 +534,14 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "Sitzung: sichtbarkeitsfilterFuer(betrachter); Schlüssel: sichtbarkeitsfilterFuer(schluessel" +
       "Betrachter(offeneSpaces)); ask wendet die Grundlage an, dropConfidential bleibt daneben.",
+  },
+  // R-1630 / R-2176: der Antwortvergleich gibt Antworttexte, Titel und (nur freigegebene)
+  // Kernaussagen aus — heutige und damalige Fassung gehen beide durch `sichtbarkeitsfilterFuer`.
+  "POST /api/ask/vergleich": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "Kandidaten und damalige Fassungen durch sichtbarkeitsfilterFuer, danach dropConfidential " +
+      "bzw. !isConfidential an der damaligen Fassung (ask/src/service.ts, vergleicheWissensstand).",
   },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
@@ -1040,6 +1050,57 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/spaces/verschiebung": {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
+  },
+  "GET /api/spaces/teams": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Name, Zweck und Mitgliederzahl aktiver Teams (spaces-routes.ts).",
+  },
+  // ADMIN-07 (spaces-routes.ts, space-verwaltung.ts): Titel nur über `darfSehen` des Betrachters;
+  // unsichtbare Artikel zählen nur mit.
+  "GET /api/spaces/:id/zugriff": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Zugangswege je Konto (zuständig, direkt, Team) — Rechte, keine Inhalte.",
+  },
+  "POST /api/spaces/:id/archivierung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Archivfolgen — Titel offener Artikel nur, wo darfSehen es erlaubt.",
+  },
+  "POST /api/spaces/:id/archivieren": {
+    urteil: "PRAEDIKAT",
+    grund: "Archivierte Space-Fassung; bei 409 die Folgen mit darfSehen-Titeln.",
+  },
+  "POST /api/spaces/:id/wiederaufnehmen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die wiederaufgenommene Space-Fassung.",
+  },
+  "POST /api/spaces/bestand/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Bestandsbilanz — Titel nur, wo darfSehen es erlaubt; sonst nur Kennung und Zahl.",
+  },
+  "POST /api/spaces/bestand/zuordnung": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis der Zuordnung — Ausnahmen mit Titel nur über darfSehen.",
+  },
+  "GET /api/spaces/bestand/protokoll": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Dokumentierte Läufe aus dem Prüfprotokoll — Kennungen und Zahlen, keine Titel.",
+  },
+  // Teams (teams-routes.ts, produkt:20261009:admin-teams): Teamfassungen, Konten und Space-Namen —
+  // kein Wissensobjekt wird gelesen oder ausgegeben.
+  "GET /api/teams": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Teamfassungen mit Mitgliedern und Spaces.",
+  },
+  "GET /api/teams/:id": { urteil: "KEIN_KO_INHALT", grund: "Teamfassung und ihr Verlauf." },
+  "POST /api/teams": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Teamfassung." },
+  "POST /api/teams/:id/vorschau": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Rechtewirkung je Person und Space — Rechte, keine Inhalte.",
+  },
+  "PUT /api/teams/:id": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Teamfassung." },
+  "POST /api/teams/:id/archivieren": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die archivierte Teamfassung.",
   },
   // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
   // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
