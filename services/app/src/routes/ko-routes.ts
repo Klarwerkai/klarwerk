@@ -17,6 +17,7 @@ import {
   classifySourceReach,
   decideExternalAttach,
   externalAttachAllowed,
+  pruefeAbrufbeleg,
 } from "../../../external-search";
 import {
   type AnzeigestatusEingaenge,
@@ -744,7 +745,15 @@ interface PutBody {
   // AUFTRAG-mega16 Block A: `objectId` ist der ANKER einer adresslosen Belegstelle — die Referenz
   // auf ein Dokument, das dieses Wissensobjekt bereits als Anhang trägt. Der Server GLAUBT ihn
   // nicht, er PRÜFT ihn gegen die eigene Anhangsliste; ein erfundener Wert belegt nichts.
-  source?: { label?: string; url?: string; excerpt?: string; objectId?: string };
+  // REF-01 (Ben nacharbeit-7 K2): `abrufbeleg` ist der vom Server bei der externen Suche
+  // ausgestellte Abrufbeleg. Er wird geprüft, nicht geglaubt (`pruefeAbrufbeleg`).
+  source?: {
+    label?: string;
+    url?: string;
+    excerpt?: string;
+    objectId?: string;
+    abrufbeleg?: string;
+  };
   sourceId?: string;
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
   level?: string;
@@ -3502,6 +3511,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
                 // geprüft und vergaß sie beim Speichern.
                 objectId: body.source.objectId ?? null,
+                // REF-01 (Ben nacharbeit-7 K2): eine Abrufzeit NUR mit gültigem Abrufbeleg des
+                // Servers, für genau diese Adresse und einen Anfang des abgerufenen Inhalts.
+                abruf: pruefeAbrufbeleg(body.source.abrufbeleg, {
+                  url: body.source.url,
+                  excerpt: body.source.excerpt,
+                }),
               }),
             );
             return;
