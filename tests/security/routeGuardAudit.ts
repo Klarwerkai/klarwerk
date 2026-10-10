@@ -742,7 +742,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["sichtbareFuer", "darfSehen"],
   },
-  "GET /api/library/export": { protection: "ko.read" },
+  // ADMIN-07 (K3): der Export filtert zusätzlich je Objekt über `darfSehen` (führender Space).
+  "GET /api/library/export": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // R-1165 (Nacharbeit 1): die drei Kandidatenwege antworten über den lokalen Helfer
   // `kandidatenDtosFuer` (library-routes.ts, „NACHARBEIT 3 (bens F3): Trefferkennungen nur für
   // sichtbare Ziele"), dessen Rumpf `darfSehen` ruft — gemessen von g10-herkunft-zentrum-
@@ -1083,6 +1084,30 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // produkt:20261009:admin-teams: wählbare Teams für die Spacepflege (ohne Mitgliedernamen).
+  "GET /api/spaces/teams": { protection: "ko.read" },
+  // produkt:20261007:spaces:admin-20261009 (ADMIN-07): Zugriffsherkunft lesen wie den Space;
+  // Archivieren/Wiederaufnehmen prüfen Zuständigkeit/Kontoverwaltung am Space selbst (403);
+  // die Bestandszuordnung ist der Kontoverwaltung vorbehalten.
+  "GET /api/spaces/:id/zugriff": { protection: "ko.read" },
+  "POST /api/spaces/:id/archivierung/vorschau": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/spaces/:id/archivieren": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/wiederaufnehmen": { protection: "ko.read" },
+  "POST /api/spaces/bestand/vorschau": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/bestand/zuordnung": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "GET /api/spaces/bestand/protokoll": { protection: "users.manage" },
+
+  // --- Teams (teams-routes.ts, produkt:20261009:admin-teams) ---
+  // Ausschliesslich die Kontoverwaltung: Teams anlegen, ändern, Mitglieder, Wirkung, Archiv.
+  "GET /api/teams": { protection: "users.manage" },
+  "GET /api/teams/:id": { protection: "users.manage" },
+  "POST /api/teams": { protection: "users.manage" },
+  "POST /api/teams/:id/vorschau": { protection: "users.manage" },
+  "PUT /api/teams/:id": { protection: "users.manage" },
+  "POST /api/teams/:id/archivieren": { protection: "users.manage" },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die

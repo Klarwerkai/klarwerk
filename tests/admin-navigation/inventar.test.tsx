@@ -116,12 +116,17 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     // ADMIN-16 (produkt:20261009:admin-demo-diagnose): 18 → 20. Neu sind `pakete` und `testimporte`
     // — die bisherigen Kästen der Importseite, jetzt als Karten unter „Vorführdaten".
     //
-    // R-1034 / FR-I18N-02: 20 → 21. Die neue Kennung ist `uebersetzungen` — die Pflege der
+    // ADMIN-06 (produkt:20261009:admin-teams): 20 → 22. Neu sind `teams` (Teamliste und Anlegen)
+    // und das dynamische `team:` (ein einzelnes Team, wie `nutzer:`).
+    //
+    // R-1034 / FR-I18N-02: 22 → 23. Die neue Kennung ist `uebersetzungen` — die Pflege der
     // Oberflächentexte unter „System" (`components/einstellungen/UebersetzungsPflege.tsx`).
-    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(21);
+    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(23);
     for (const pflicht of [
       "nutzer:",
       "rolle:",
+      "team:",
+      "teams",
       "ki",
       "demo",
       "pakete",
@@ -165,8 +170,8 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     const statisch = kennungenAusQuelltext().filter((k) => !k.endsWith(":"));
     const fehlend = statisch.filter((k) => !ziele.some((z) => z.path === adminHref(sekt(k), k)));
     // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0). ADMIN-16: 16 → 18.
-    // R-1034: 18 → 19 (die neue Kennung `uebersetzungen`, siehe A0).
-    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(19);
+    // ADMIN-06: 18 → 19 (`teams`). R-1034: 19 → 20 (die neue Kennung `uebersetzungen`, siehe A0).
+    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(20);
     expect(fehlend, `kein direktes Ziel: ${fehlend.join(" · ")}`).toEqual([]);
   });
 
@@ -181,7 +186,10 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     // Der Doppelpunkt ist der Unterschied: `detail=nutzerNeu` ist die (unbedenkliche) Karte
     // „Nutzer hinzufügen", `detail=nutzer%3A<id>` wäre eine benannte Person.
     const dynamisch = alleZiele().filter(
-      (z) => z.path.includes("detail=nutzer%3A") || z.path.includes("detail=rolle%3A"),
+      (z) =>
+        z.path.includes("detail=nutzer%3A") ||
+        z.path.includes("detail=rolle%3A") ||
+        z.path.includes("detail=team%3A"),
     );
     expect(dynamisch.map((z) => z.label)).toEqual([]);
   });
