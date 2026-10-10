@@ -25,7 +25,7 @@ import {
   kennzahlenCsv,
   trendText,
 } from "../../apps/web/src/lib/wissenskennzahlen";
-import texte from "../../apps/web/src/texte/wissenskennzahlen";
+import texte from "../../apps/web/src/texte/wkz";
 import { repoPfad } from "../support/repoPfad";
 
 const de = i18n.getFixedT("de");

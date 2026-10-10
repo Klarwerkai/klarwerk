@@ -227,7 +227,7 @@ async function mount(start = "/analytics?tage=7"): Promise<void> {
   await act(flush);
 }
 
-const de = (k: string, o?: Record<string, unknown>): string => i18n.getFixedT("de")(k, o);
+const de = (k: string, o: Record<string, unknown> = {}): string => i18n.getFixedT("de")(k, o);
 const karte = (s: string): HTMLElement | null =>
   container.querySelector<HTMLElement>(`[data-testid="wkz-kennzahl"][data-schluessel="${s}"]`);
 
