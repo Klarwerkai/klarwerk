@@ -13,6 +13,7 @@
 // Die Funktionen hier sind REIN (Position klemmen, andocken, Antwort einsortieren) und ohne DOM
 // prüfbar (`tests/klara-vorschau/`).
 import { useSyncExternalStore } from "react";
+import { eingabeZuruecksetzen } from "./eingabe";
 
 export const FIGUR_GROESSE = 72;
 export const RAND_ABSTAND = 12;
@@ -378,8 +379,42 @@ export function aendere(f: (z: KlaraZustand) => KlaraZustand): void {
   }
 }
 
-/** Nur für Tests und „Vorschau beenden“: alles auf Anfang. */
+/**
+ * „Vorschau beenden“ (produkt:20261010:assistenz-produkteinstieg): verworfen wird NUR, was der
+ * Vorschau gehört — Demo-Verlauf, Demo-Entwurf, übernommene Absätze der fiktiven Artikel, ein dort
+ * geparkter Platz, eine Markierung aus einem fiktiven Artikel, Demo-Betrieb und Begleitung. Die
+ * persönliche Arbeit bleibt: gültige Markierung und Bezugsauswahl, Konto, Lage der Figur — und die
+ * angefangene Eingabe (`eingabe.ts`), die hier gar nicht berührt wird. Die Kontotrennung
+ * (`anKontoBinden`) gilt unverändert. Rein, ohne DOM prüfbar.
+ */
+export function nachVorschauEnde(z: KlaraZustand): KlaraZustand {
+  const auswahl = z.auswahl && z.auswahl.herkunft.seite !== "artikel" ? z.auswahl : null;
+  const bezug: Bezug = z.bezug === "markierung" && !auswahl ? "seite" : z.bezug;
+  return {
+    ...z,
+    offen: false,
+    minimiert: false,
+    geparkt: null,
+    verlauf: [],
+    entwurf: null,
+    artikelText: {},
+    auswahl,
+    bezug,
+    status: "ruhe",
+    begleiten: false,
+    begleitStand: null,
+    betrieb: "echt",
+  };
+}
+
+/** Für „Vorschau beenden“: nur den Vorschau-Anteil verwerfen (`nachVorschauEnde`). */
+export function vorschauEndeZustand(): void {
+  aendere(nachVorschauEnde);
+}
+
+/** Nur für Tests: alles auf Anfang — auch die angefangene Eingabe. */
 export function zuruecksetzenGanz(): void {
+  eingabeZuruecksetzen();
   zustand = ANFANG;
   try {
     sessionStorage.removeItem(SITZUNG);

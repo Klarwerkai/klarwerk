@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../../api/endpoints";
 import type { AntwortMeldeGrund, AntwortMeldungQuittung } from "../../api/types";
+import { formatKoTimestamp } from "../../lib/koDates";
 
 const GRUENDE: readonly AntwortMeldeGrund[] = ["antwort-falsch", "quelle-passt-nicht"];
 
@@ -65,7 +66,7 @@ export function AntwortMelden({
         <span className="mt-1 block text-muted">
           {t(`antwortmeldung.quittung.${quittung.zugestelltAn}`, {
             titel: quittung.koTitle,
-            zeit: new Date(quittung.at).toLocaleString(i18n.language),
+            zeit: formatKoTimestamp(quittung.at, i18n.language) ?? "—",
           })}
         </span>
         {quittung.bereitsGemeldet ? (

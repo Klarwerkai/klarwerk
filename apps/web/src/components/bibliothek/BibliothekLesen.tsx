@@ -2534,12 +2534,16 @@ export function BibliothekLesen({
   // fehlt (`vertraulichkeitsAuskunft`). Dieselbe Funktion und derselbe Tönungssatz wie auf jeder
   // anderen Fläche, damit hier keine zweite Auslegung derselben Aussage entsteht.
   const auskunft = vertraulichkeitsAuskunft(ko);
-  const meta = [ko.category, nameOf(ko.author), erstellt].filter(Boolean).join(" · ");
+  // R-0921 (Ausbau „Datum, Uhrzeit UND Ersteller"): neben der Erstellzeit steht der ERSTELLER —
+  // dieselbe Regel wie auf der Validierungskarte (`Validation.tsx`, `originalAuthor` vor `author`).
+  // Nach einer Übertragung nennt die „Herkunftskette" (`MehrAbschnitte.tsx`) den neuen Autor.
+  const erstellerId = ko.originalAuthor?.trim() ? ko.originalAuthor : ko.author;
+  const meta = [ko.category, nameOf(erstellerId), erstellt].filter(Boolean).join(" · ");
   // package:versionen („Aktuelle Version eindeutig", „Änderungszeit sichtbar"): die Fassung, die
   // gerade gelesen wird, und — ab v2 — wann sie entstand. Die Zeit kommt aus dem letzten
   // Historieneintrag des Dienstes (`naechsteFassung` schreibt ihn mit jeder Revision). Bei v1 ist
   // sie die Erstellzeit, die `meta` schon nennt; dieselbe Zeit zweimal stünde hier nur doppelt.
-  // `bib-meta` bleibt unverändert (gemessen in `Library.timestamp.test.tsx`).
+  // Die Fassungszeile ändert `bib-meta` nicht (gemessen in `Library.timestamp.test.tsx`).
   const fassungsNummer = typeof ko.version === "number" ? ko.version : null;
   const verlauf = ko.history ?? [];
   const geaendertAm =

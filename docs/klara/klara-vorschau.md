@@ -11,7 +11,25 @@ Seite und der Markierung.
 3. Ab jetzt begleitet Klara diese Browser-Sitzung auf jeder Seite. Sie ersetzt dabei den runden
    Hilfeknopf unten rechts. **„Vorschau beenden“** in Klaras Gespräch schaltet sie wieder aus.
 
-Ohne diesen Einstieg bleibt die Oberfläche unverändert (Hilfeknopf `KlaraAssistant`).
+## Im normalen Produkt (`produkt:20261010:assistenz-produkteinstieg`)
+
+Ohne Vorschau-Aufruf steht dieselbe Figur auf jeder Seite der Hülle im **Produktbetrieb**
+(`<KlaraVorschau betriebsart="produkt" />` in `shell/AppShell.tsx`):
+
+- sichtbar beschriftet — ohne persönliches Profil neutral **„Deine Assistenz“**, mit Profil dessen
+  Name und Avatar (`klara-vorschau/profil.ts`, nur Leseeinstieg; Einrichtung und Auswahl gehören den
+  Personalisierungs-/Zustandsmotiv-Aufträgen);
+- nur der echte Betrieb: kein Demo-Schalter, keine vorgefertigten Aktionen, kein „Vorschau
+  beenden“; noch nicht freigegebene Ausbaustufen stehen als „Noch nicht verfügbar“ da. Ein Link
+  führt in die getrennte, gekennzeichnete Vorschau;
+- der Hilfeknopf (`KlaraAssistant`) bleibt daneben erreichbar; offen ist immer nur eine der beiden
+  Flächen, und solange die Hilfe offen ist, tritt die Figur zurück (`components/assistenzFlaechen.ts`).
+  Unten bleibt ein Streifen für den Hilfeknopf frei;
+- eine angefangene Eingabe übersteht Schliessen, Verkleinern, Breitenwechsel und Neuladen
+  (`klara-vorschau/eingabe.ts`, Browser-Sitzung, ans Konto gebunden);
+- „Vorschau beenden“ verwirft nur den Vorschau-Anteil (Demo-Verlauf, Demo-Entwurf, Markierung aus
+  einem fiktiven Artikel, Demo-Betrieb — `nachVorschauEnde` in `zustand.ts`); angefangene Frage
+  und gültige Bezugsauswahl bleiben.
 
 ## Echter Betrieb (Klara 01, `produkt:20261008:klara-basis`)
 
@@ -136,3 +154,6 @@ Markierung über eine Formatierung hinweg (fett, Verweis) wird nicht geraten, so
 - `tests/klara-vorschlaege/` — Klara 04: Übernahmeregel (`uebernahme-logik.test.ts`) und der ganze
   Weg Vorschlag → Übernahme → Editor → Speichern → Wiederöffnen, Rückfrage und fehlendes Recht gegen
   den echten Server mit kontrolliertem Modelladapter (`vorschlag-am-server.test.tsx`)
+- `tests/klara-produkt/produkteinstieg-am-server.test.tsx` und
+  `tests-smoke/assistenz-produkteinstieg-browser.spec.ts` (isolierter Kontext) — der normale
+  Produkteinstieg ohne Vorschau: Desktop, 390 × 844 und Tastatur
