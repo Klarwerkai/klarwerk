@@ -51,4 +51,18 @@ describe("Meldungsarten nach der Zusammenführung", () => {
     expect(zeilen[0]?.id).toBe("meldung-n-escalation");
     expect(zeilen[zeilen.length - 1]?.id).toBe("meldung-n-impact");
   });
+
+  // produkt:20261010:wissenskreislauf-schliessen: die Lückenmeldung (Rückfrage oder Ergebnis der
+  // eigenen Frage) steht auch auf der Startseite — mit eigenem Bereichsnamen, nicht über den
+  // Rückfall, und als Arbeit von heute.
+  it("Wissenslücke: eigener Bereichsname und Dringlichkeit heute", () => {
+    expect(meldungMetaKey("luecke")).toBe("lueckenvorgang.meldungArt");
+    const zeilen = forYouZeilen({
+      arbeit: [],
+      meldungen: [zeile("impact"), zeile("luecke")],
+      kollision: null,
+    });
+    const stufe = Object.fromEntries(zeilen.map((z) => [z.id, z.severity]));
+    expect(stufe).toEqual({ "meldung-n-luecke": "today", "meldung-n-impact": "later" });
+  });
 });
