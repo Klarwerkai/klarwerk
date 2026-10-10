@@ -191,18 +191,22 @@ const PAARE: readonly Blockpaar[] = [
   //     Lesefläche hat keine zweite Flaechenfarbe. Inhalt und Regel sind unveraendert.
   //   · 26 Knoten "Anhang-Auswahl": der Knopf steht jetzt in einem Fragment neben dem
   //     Grenzen-Hinweis statt in einer eigenen Karte.
-  {
-    quelle: "BibliothekLesen.tsx",
-    knoten: 42,
-    art: "JsxElement",
-    was: "Das Titelfeld des Formulars — `Field` mit `capture.fTitle` und dem `TextInput` darin.",
-  },
-  {
-    quelle: "BibliothekLesen.tsx",
-    knoten: 36,
-    art: "JsxSelfClosingElement",
-    was: "Das Aussagefeld: die mehrzeilige `textarea` an `statement`.",
-  },
+  //
+  // produkt:20261007:editor-einheitlich (Nacharbeit 7) — NEU GEMESSEN, NICHT ANGEPASST. Zwei weitere
+  // Eintraege fallen weg, beide mit Absicht und beide auf BEIDEN Seiten bearbeitet:
+  //   · 42 Knoten "Titelfeld": beide Seiten tragen jetzt denselben Begriff
+  //     (`capture.wizard.titleLabel`, „Titel"; K1 des Auftrags). Das Feld im BEARBEITEN hat dazu die
+  //     Pflichtauskunft am Feld (`aria-invalid`/`aria-describedby` auf `bib-pflicht-titel`, K3), eine
+  //     Pruefkennung (`bib-titel`) und steht in der Sperr-Huelle nach 403 (`fieldset disabled`, K4).
+  //     Das Expertenformular hat keine Sperre nach 403 und eine eigene Pflichtanzeige (Speicher-
+  //     Check). Die beiden Bloecke sind damit absichtlich verschieden gebaut — die Gleichheit der
+  //     Begriffe haelt jetzt `tests/editor-einheitlich/begriffe-erstellen-bearbeiten.test.ts` fest.
+  //   · 36 Knoten "Aussagefeld": im Bearbeiten koppelt die `textarea` an den Inhalt
+  //     (`aussageFolgtInhalt`, K2) und traegt Pflichtauskunft und Kennung (`bib-aussage`). Der
+  //     Schluessel der Beschriftung bleibt auf beiden Seiten gleich (`capture.fStatement`, dort V2).
+  // Gemessen im Pruefbericht HISTORIE/nacharbeit-7 (G1, „GEMESSEN (6 Paare)"). Die Eintraege 27/25
+  // (`captionRequest`) stehen unveraendert: ihr Wegfall ist NICHT aus diesem Auftrag — `Capture.tsx`
+  // traegt seit „Lauf 5 (Bens Befund R3-1)" das Feld `koerper`, `BibliothekLesen.tsx` nicht.
   {
     quelle: "BibliothekLesen.tsx",
     knoten: 29,

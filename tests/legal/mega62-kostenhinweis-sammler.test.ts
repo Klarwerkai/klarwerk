@@ -34,8 +34,10 @@ const SCHLUESSEL = "ai.costHint";
 
 /** Wer den Kostenhinweis trägt: direkt, oder über die Modellangabe (die ihn seit mega62 enthält). */
 const TRAEGER = ["AiCostHint", "AiModelInfo"];
-/** Wer die KI-Kennzeichnung trägt — der zweite Anker der Erhebung (s. Kopf). */
-const KENNZEICHNUNG = ["AiGeneratedNotice", "AiModelInfo"];
+/** Wer die KI-Kennzeichnung trägt — der zweite Anker der Erhebung (s. Kopf). R-0603: der
+ * Flächensatz am Auslöser (`AiSurfaceNotice`) zählt mit — sonst fielen Gruppieren und
+ * Bildbeschreibung aus der Erhebung, sobald ihr Auslöser nicht mehr „von KI erzeugt" behauptet. */
+const KENNZEICHNUNG = ["AiGeneratedNotice", "AiSurfaceNotice", "AiModelInfo"];
 
 const AUSNAHMEN: Record<string, string> = {
   [join(WEB, "app", "ImageDescribeContext.tsx")]:

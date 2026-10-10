@@ -17,46 +17,91 @@
 // verloren, und niemand wüsste mehr, warum sie einmal getroffen wurde.
 import { describe, expect, it } from "vitest";
 import { KI_ERZEUGENDE_AUFGABEN, aiGeneratedMark } from "../../services/model-runs";
-import { ModelProvider, Reasoner } from "../../services/reasoner";
+import {
+  type AnswerResult,
+  type InterviewResult,
+  ModelProvider,
+  Reasoner,
+  type ReasonerProvider,
+} from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 // Ohne Provider läuft ausschließlich der deterministische Rückfall — kein Modell, kein Egress.
-// Genau das prüft die Betriebsmodus-Angabe unten mit ab.
 const reasoner = (): Reasoner => new Reasoner();
 
-describe("mega61 F1 · die erzeugenden Aufgaben tragen die Kennzeichnung", () => {
-  it("answer", async () => {
-    const res = await reasoner().answer("Was tun bei Überdruck?", [], "de");
-    expect(res.aiGenerated).toBeDefined();
+// R-0604 (G22, mega83 A): ein Anbieter, der WIRKLICH antwortet (`demo: false`) — dieselbe Bauform
+// wie in tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts. Kein Netz, kein Schlüssel.
+const modellAnbieter = {
+  name: "mitschreiber",
+  isAvailable: () => true,
+  answer: async (): Promise<AnswerResult> => ({
+    answered: true,
+    answer: "Ventil schließen und Druck entlasten.",
+    knowledgeClass: "gesichert",
+    trust: 60,
+    sources: [],
+    citedSources: [],
+    steps: [],
+    demo: false,
+  }),
+  interview: async (): Promise<InterviewResult> => ({
+    question: "Welches Ventil ist betroffen?",
+    done: false,
+    draft: {
+      title: "",
+      statement: "",
+      conditions: [],
+      measures: [],
+      tags: [],
+      confidence: 0,
+      demo: false,
+    },
+    demo: false,
+  }),
+} as unknown as ReasonerProvider;
+
+async function mitModell(): Promise<Reasoner> {
+  const r = new Reasoner(modellAnbieter);
+  await erteileKiFreigabe(r);
+  return r;
+}
+
+describe("mega61 F1 · die erzeugenden Aufgaben tragen die Kennzeichnung — wenn ein Modell erzeugt hat", () => {
+  it("answer — Modellweg: gekennzeichnet, Modus „model“", async () => {
+    const res = await (await mitModell()).answer("Was tun bei Überdruck?", [], "de");
+    expect(res.demo, "der Testanbieter hat nicht geantwortet — die Messung wäre wertlos").toBe(
+      false,
+    );
     expect(res.aiGenerated?.aiGenerated).toBe(true);
     expect(res.aiGenerated?.task).toBe("answer");
-    // Ohne Modell in der Kette ist der ehrliche Betriebsmodus „deterministic" — nicht „model".
-    expect(res.aiGenerated?.mode).toBe("deterministic");
+    expect(res.aiGenerated?.mode).toBe("model");
     expect(Number.isNaN(Date.parse(String(res.aiGenerated?.at)))).toBe(false);
   });
 
-  it("interview", async () => {
-    const res = await reasoner().interview([], "de");
+  it("interview — Modellweg: gekennzeichnet, Modus „model“", async () => {
+    const res = await (await mitModell()).interview([], "de");
+    expect(res.demo).toBe(false);
     expect(res.aiGenerated?.aiGenerated).toBe(true);
     expect(res.aiGenerated?.task).toBe("interview");
-    expect(res.aiGenerated?.mode).toBe("deterministic");
+    expect(res.aiGenerated?.mode).toBe("model");
   });
 
-  it("describe — auf BEIDEN Rückgabewegen der Methode", async () => {
-    // describeImage hat zwei Ausgänge (Modell geantwortet / deterministischer Rückfall mit
-    // Ursache). Ohne Provider läuft der zweite — und genau der wurde beim Bauen leicht vergessen.
-    const res = await reasoner().describeImage("data:image/png;base64,AAAA", "de");
-    expect(res.aiGenerated?.aiGenerated).toBe(true);
+  it("describe — Modellweg: gekennzeichnet, Modus „model“", async () => {
+    const vision = new Reasoner(
+      new ModelProvider({
+        name: "anthropic:test",
+        complete: async () => "",
+        completeVision: async () => "Eine Pumpe mit blauem Gehäuse.",
+      }),
+    );
+    await erteileKiFreigabe(vision);
+    const res = await vision.describeImage("data:image/png;base64,AAAA", "de");
+    expect(res.demo).toBe(false);
     expect(res.aiGenerated?.task).toBe("describe");
-    expect(res.aiGenerated?.mode).toBe("deterministic");
-    // Die bestehende Ehrlichkeit bleibt daneben stehen: ohne Vision-Modell gibt es KEINEN Text.
-    expect(res.text).toBeNull();
-    expect(res.fallbackReason).toBe("no-model");
+    expect(res.aiGenerated?.mode).toBe("model");
   });
 
-  it("der Betriebsmodus ist „model“, wenn WIRKLICH ein Modell geantwortet hat", async () => {
-    // Die Gegenprobe zu den drei Fällen oben: ohne sie wäre „deterministic" auch dann grün, wenn
-    // die Ableitung fest verdrahtet wäre.
+  it("der Betriebsmodus folgt dem Rückfall-Merker — die Ableitung ist nicht fest verdrahtet", async () => {
     expect(aiGeneratedMark("answer", false).mode).toBe("model");
     expect(aiGeneratedMark("answer", true).mode).toBe("deterministic");
   });
@@ -68,6 +113,37 @@ describe("mega61 F1 · die erzeugenden Aufgaben tragen die Kennzeichnung", () =>
       "enrich",
       "interview",
     ]);
+  });
+});
+
+// ================================================================================================
+// R-0604 (G22, mega83 A) — DER DETERMINISTISCHE RÜCKFALL IST KEINE KI-ERZEUGUNG.
+// ================================================================================================
+// Bis hierher hängte der Dienst die Marke bedingungslos an — auch an den regelbasierten Rückfall,
+// in dem kein Modell beteiligt war. Diese drei Fälle waren vorher die Positivfälle dieser Datei
+// (mit `mode: "deterministic"`); sie sind jetzt das, was sie inhaltlich immer waren: Ausgaben ohne
+// Modell, und die tragen keine Marke. Die Positivfälle stehen oben, mit wirklich antwortendem Modell.
+describe("R-0604 · der deterministische Rückfall trägt KEINE KI-Kennzeichnung", () => {
+  it("answer ohne Modell", async () => {
+    const res = await reasoner().answer("Was tun bei Überdruck?", [], "de");
+    expect(res.demo).toBe(true);
+    expect(Object.hasOwn(res, "aiGenerated"), "Rückfall als KI-Erzeugnis gekennzeichnet").toBe(
+      false,
+    );
+  });
+
+  it("interview ohne Modell", async () => {
+    const res = await reasoner().interview([], "de");
+    expect(res.demo).toBe(true);
+    expect(Object.hasOwn(res, "aiGenerated")).toBe(false);
+  });
+
+  it("describe ohne Modell — auch der späte Rückgabeweg setzt keine Marke", async () => {
+    const res = await reasoner().describeImage("data:image/png;base64,AAAA", "de");
+    expect(Object.hasOwn(res, "aiGenerated")).toBe(false);
+    // Die bestehende Ehrlichkeit bleibt daneben stehen: ohne Vision-Modell gibt es KEINEN Text.
+    expect(res.text).toBeNull();
+    expect(res.fallbackReason).toBe("no-model");
   });
 });
 

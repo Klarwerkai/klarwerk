@@ -52,6 +52,15 @@ import { beforeAll, describe, expect, it } from "vitest";
  *
  * Was im Tor nachweisbar ist, prüft der Fall „Fragen ohne Modell: der Weg ist gesperrt und sagt
  * warum" — er läuft im Tor mit und ist keine Ausnahme.
+ *
+ * produkt:20261008:klara-basis (Nacharbeit 4) — DIE DRITTE AUSNAHME, mit demselben Grund. K1 des
+ * Auftrags verlangt, dass eine TATSÄCHLICHE KI-Antwort im beweglichen Klara-Gespräch erscheint. Das
+ * lässt sich nur mit einem Modell belegen; im hermetischen Tor (kein Anbieter, kein lokaler Weg)
+ * kann der Fall nicht grün werden. Bis Nacharbeit 3 stand er ohne Marke im Tor und wurde dort mit
+ * `test.skip` übersprungen — still, und damit genau die Form, die dieser Wächter verhindern soll
+ * (Bens Befund, nacharbeit-4). Er trägt jetzt `@modell`, läuft im vollen `npm run smoke:ui` und ist
+ * dort ROT statt übersprungen, wenn kein Modell steht. Alles ohne Modell Nachweisbare an Klara läuft
+ * weiter im Tor (`klara-basis-browser.spec.ts`, übrige Fälle).
  */
 const ERLAUBTE_AUSNAHMEN = [
   {
@@ -61,6 +70,10 @@ const ERLAUBTE_AUSNAHMEN = [
   {
     file: "ui-smoke.spec.ts",
     title: "Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
+  },
+  {
+    file: "klara-basis-browser.spec.ts",
+    title: "Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell",
   },
 ] as const;
 

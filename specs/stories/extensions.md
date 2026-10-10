@@ -24,12 +24,19 @@ Strategische Differenzierung: Wissen importieren, priorisieren, als Outputs ausg
 
 ### FR-EXT-05 · Knowledge House / Company Memory (KANN)
 - [ ] **Gegeben** Domänen als Stockwerke (gesichert vs. fragil), **dann** Screen mit Füllgrad + KPIs (Import→Haus→Output).
+  - Umsetzung (aufnahme:20260922:gesamt-wissenshaus, R-0768/R-1772/R-2111): `/kapital` → Abschnitt
+    „Wissenshaus" (`apps/web/src/components/Wissenshaus.tsx`) aus dem Management-Snapshot
+    (`services/management/src/metrics.ts`, `house`/`houseFlow`). Stockwerk = Fachgebiet
+    (`KnowledgeObject.domain`; ohne Angabe ein eigenes Stockwerk „ohne Fachgebiet"), Füllgrad =
+    Anteil validierter Objekte, fragil = Füllgrad < 50 % oder nur ein Urheber. Import = über einen
+    Importweg markierte Objekte; Ausgabe = ausgabefähig (validiert) — erzeugte Ausgaben werden nicht
+    abgelegt und deshalb nicht gezählt. Abnahme durch Ben/Fachseite offen (Haken bleibt leer).
 
 ### FR-EXT-06 · Validity & Protection (KANN)
 - [ ] **Gegeben** ein Objekt, **dann** zwei Sichten — Aktualität (frisch/altert/fällig/veraltet) und IP-Sensitivität (öffentlich…streng vertraulich) — mit Maßnahme/Deployment-Empfehlung.
 
 ### FR-EXT-07 · Import/Output-Felder (SOLL, Konzept)
-- [ ] **Gegeben** das Datenmodell, **dann** sind `source_type`, `import_status`, `validity_until`, `freshness_status`, `ip_sensitivity`, `output_eligible`, `generated_outputs` u. a. dokumentiert.
+- [x] **Gegeben** das Datenmodell, **dann** sind `source_type`, `import_status`, `validity_until`, `freshness_status`, `ip_sensitivity`, `output_eligible`, `generated_outputs` u. a. dokumentiert. → `specs/reference/Funktionsbeschreibung.md` §18.4 (Konzept; bewusst kein Datenbankfeld).
 
 ## Abgrenzung
 Produktive Pipeline ist **nicht** v1-Scope; v1 liefert die Konzept-Screens + Datenmodell-Vorsorge.

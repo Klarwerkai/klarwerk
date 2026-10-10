@@ -65,7 +65,18 @@
 #  73   Wissensnachweis: BEFUND — eine Belegzeile zeigt auf eine Anhangskennung, zu der `objects`
 #       keine Zeile fuehrt, ODER das Wissensobjekt, sein Beleg oder der Anhangsinhalt kam nach dem
 #       Restore nicht zurueck, obwohl die Datenbank sie fuehrt
+#  74   Rechte: die Rollenverteilung der Konten (users.role/approved) weicht zwischen Dump und
+#       Datenbank ab
 #  80   REAPING fehlgeschlagen (fremde/wiederverwendete PID oder Prozess ueberlebt)
+#
+# ADMIN-13 — DAS PROTOKOLL DER PROBE. Jeder Lauf, der einen vorhandenen Dump erhalten hat, hinterlegt
+# neben dem Dump `letzter-drill.json` — der gescheiterte genauso wie der bestandene, atomar
+# geschrieben (Arbeitsname, dann umbenannt). Darin stehen Beginn, Ende, Ergebnis, Exitcode, ein
+# fester Grund je Exitcode, der verwendete Sicherungsstand, der Pruefsummenbefund, das isolierte Ziel
+# und der Vergleich fuer Beitraege, Anhaenge, Beziehungen und Rechte. Was nicht gemessen wurde, steht
+# als `null` bzw. `nicht_gemessen` darin. KEINE Zugangsdaten: weder DRILL_LOGIN_EMAIL noch das
+# Kennwort noch das Sitzungstoken gehen in die Datei. Die Verwaltung liest sie ueber
+# `GET /api/admin/sicherungen` (services/app/src/routes/admin-routes.ts).
 #
 # WAS AUSDRUECKLICH KEIN ABNAHMEKRITERIUM IST: `report.ok` und `serialisationDeviations`.
 # `ok` ist definiert als `linkageBreaks === 0 && payloadDeviations === 0`. Der Bestand kennt
@@ -87,6 +98,144 @@ if [ ! -f "$DUMP" ]; then
   echo "[drill] ABBRUCH: Dump nicht gefunden: $DUMP" >&2
   exit 1
 fi
+
+# ------------------------------------------------------------------------------------------------
+# ADMIN-13 — DAS PROTOKOLL. Ab hier ist bekannt, WELCHER Sicherungsstand geprobt wird; ab hier
+# hinterlaesst deshalb jeder Ausgang seine Spur, auch die Abbrueche in Glied 1 (Pruefsumme), die vor
+# jedem Restore liegen. Der Zustand der Probe wird unterwegs in den Variablen unten gesammelt und
+# erst beim Verlassen in EINEM Schritt geschrieben (`abschluss`).
+# ------------------------------------------------------------------------------------------------
+PROTOKOLL="$(dirname "$DUMP")/letzter-drill.json"
+DRILL_BEGINN="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+PRUEFSUMME_ZUSTAND="nicht_geprueft"
+PRUEFSUMME_WERT=""
+ANHANG_WAISEN=""
+ROLLEN_ZUSTAND=""
+ROLLEN_DUMP=""
+ROLLEN_DB=""
+WISSENSNACHWEIS=""
+
+# Eine Zeichenkette als JSON-Text: Rueckstrich und Anfuehrungszeichen maskiert, Steuerzeichen weg.
+json_text() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="$(printf '%s' "$s" | tr -d '\000-\037')"
+  printf '"%s"' "$s"
+}
+
+json_text_oder_null() {
+  if [ -z "$1" ]; then
+    printf 'null'
+  else
+    json_text "$1"
+  fi
+}
+
+# Der Grund im Protokoll ist ein FESTER Satz je Exitcode — keine Abbruchmeldung im Wortlaut. So
+# kann keine Meldung, die einen Wert aus der Umgebung zitiert, in die Datei geraten.
+grund_fuer() {
+  case "$1" in
+    0) echo "Drill bestanden: Restore in ein leeres Ziel, Pflichttabellen und Vergleich wie im Dump, Anwendung gestartet, Anmeldung und Auditkette tragen." ;;
+    1) echo "Aufruf- oder Umgebungsfehler: Variable oder Werkzeug fehlt." ;;
+    10) echo "Pruefsummendatei fehlt oder traegt keine 64-Hex-Pruefsumme - es wurde nichts wiederhergestellt." ;;
+    11) echo "Pruefsumme passt nicht zum Dump - die Sicherung ist beschaedigt, es wurde nichts wiederhergestellt." ;;
+    20) echo "Zieldatenbank nicht anlegbar, nicht erreichbar oder nicht leer - es wurde nichts wiederhergestellt." ;;
+    21) echo "pg_restore ist gescheitert - die Sicherung liess sich nicht einspielen." ;;
+    22) echo "Fehlender Bestand: eine Pflichttabelle fehlt nach dem Restore oder der Dump fuehrt fuer sie keinen Bestand." ;;
+    23) echo "Zeilenabweichung zwischen Dump und wiederhergestellter Datenbank." ;;
+    24) echo "Vergleich nicht messbar: Inhaltsverzeichnis, Extraktion, COPY-Format oder SQL-Abfrage." ;;
+    30) echo "Die Anwendung wurde gegen die wiederhergestellte Datenbank nicht lebendig." ;;
+    31) echo "Startwerkzeug node, npx oder lokales tsx fehlt." ;;
+    60) echo "Anmeldung mit dem Konto aus dem Dump gescheitert - Aufbaufehler der Probe." ;;
+    61) echo "Auditverifikation abgelehnt - dem Konto fehlt ko.validate, Aufbaufehler der Probe." ;;
+    62) echo "Wissensnachweis nicht befragbar - Aufbaufehler der Probe, kein Befund am Bestand." ;;
+    70) echo "Auditkette gebrochen (linkageBreaks)." ;;
+    71) echo "Auditkette mit unerklaerter Hashabweichung (unresolvedDeviations)." ;;
+    72) echo "Auditkette mit ungeprueften Abweichungen (uncheckedDeviations)." ;;
+    73) echo "Anhaenge: ein Beleg zeigt ins Leere oder kam nach dem Restore nicht zurueck." ;;
+    74) echo "Rechte: die Rollenverteilung der Konten weicht zwischen Dump und Datenbank ab." ;;
+    80) echo "Zuordnung oder Abraeumen des Probeprozesses fehlgeschlagen." ;;
+    *) echo "Abbruch mit Exitcode $1." ;;
+  esac
+}
+
+# Eine Vergleichskategorie: je Tabelle Dump- und Datenbankzahl aus dem Zeilenabgleich (Glied 3).
+# Fehlt eine Zahl, wurde die Tabelle nicht gemessen — dann ist die Kategorie nie `gleich`. Der erste
+# Parameter traegt den Befund einer Zusatzpruefung (leer = bestanden).
+vergleich_json() {
+  local zusatz="$1"
+  shift
+  local zustand="gleich" eintraege="" tabelle name wert
+  for tabelle in "$@"; do
+    name="VG_${tabelle}"
+    wert="${!name:-}"
+    if [ -z "$wert" ]; then
+      [ "$zustand" = "abweichend" ] || zustand="nicht_gemessen"
+      eintraege="${eintraege}${eintraege:+,}{\"tabelle\":\"${tabelle}\",\"dump\":null,\"datenbank\":null}"
+    else
+      [ "${wert% *}" = "${wert#* }" ] || zustand="abweichend"
+      eintraege="${eintraege}${eintraege:+,}{\"tabelle\":\"${tabelle}\",\"dump\":${wert% *},\"datenbank\":${wert#* }}"
+    fi
+  done
+  case "$zusatz" in
+    abweichend) zustand="abweichend" ;;
+    nicht_gemessen) [ "$zustand" = "abweichend" ] || zustand="nicht_gemessen" ;;
+  esac
+  printf '{"zustand":"%s","tabellen":[%s]' "$zustand" "$eintraege"
+}
+
+schreibe_protokoll() {
+  local code="$1" ergebnis="fehler" ende waisen="null" anhang_zusatz="nicht_gemessen"
+  local rechte_zusatz="nicht_gemessen" arbeitsname="${PROTOKOLL}.partial.$$"
+  [ "$code" = "0" ] && ergebnis="erfolg"
+  ende="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+  if [[ "$ANHANG_WAISEN" =~ ^[0-9]+$ ]]; then
+    waisen="$ANHANG_WAISEN"
+    if [ "$ANHANG_WAISEN" -eq 0 ]; then anhang_zusatz=""; else anhang_zusatz="abweichend"; fi
+  fi
+  # 73 ist immer ein Befund an den Anhaengen — auch der, der erst beim Zuruecklesen auffiel.
+  [ "$code" = "73" ] && anhang_zusatz="abweichend"
+  case "$ROLLEN_ZUSTAND" in
+    gleich) rechte_zusatz="" ;;
+    abweichend) rechte_zusatz="abweichend" ;;
+  esac
+  if ! {
+    printf '{"format":"klarwerk-restore-drill","formatVersion":1,'
+    printf '"beginn":%s,"zeit":%s,' "$(json_text_oder_null "$DRILL_BEGINN")" "$(json_text_oder_null "$ende")"
+    printf '"ergebnis":"%s","exitcode":%s,"grund":%s,' "$ergebnis" "$code" "$(json_text "$(grund_fuer "$code")")"
+    printf '"sicherung":%s,' "$(json_text "$(basename "$DUMP")")"
+    printf '"pruefsumme":{"zustand":"%s","sha256":%s},' "$PRUEFSUMME_ZUSTAND" "$(json_text_oder_null "$PRUEFSUMME_WERT")"
+    printf '"ziel":%s,' "$(json_text_oder_null "${RESTORE_DB:-}")"
+    printf '"vergleich":{'
+    printf '"beitraege":%s},' "$(vergleich_json "" kos ko_versions)"
+    printf '"anhaenge":%s,"belegeOhneAnhang":%s},' "$(vergleich_json "$anhang_zusatz" objects ko_evidence)" "$waisen"
+    printf '"beziehungen":%s},' "$(vergleich_json "" ko_kanten ko_kanten_beitrag)"
+    printf '"rechte":%s,"rollenDump":%s,"rollenDatenbank":%s}' "$(vergleich_json "$rechte_zusatz" users)" \
+      "$(json_text_oder_null "$ROLLEN_DUMP")" "$(json_text_oder_null "$ROLLEN_DB")"
+    printf '},"wissensnachweis":%s}\n' "$(json_text_oder_null "$WISSENSNACHWEIS")"
+  } > "$arbeitsname" 2>/dev/null || ! mv -f "$arbeitsname" "$PROTOKOLL" 2>/dev/null; then
+    rm -f "$arbeitsname" 2>/dev/null || true
+    echo "[drill] HINWEIS: $PROTOKOLL liess sich NICHT schreiben — fuer diesen Lauf liegt kein Protokoll vor." >&2
+    return 0
+  fi
+  echo "[drill] Protokoll hinterlegt: $PROTOKOLL (Exitcode $code)"
+}
+
+# Der Ausgang: erst abraeumen (Glied 8, sobald `reap` definiert ist), dann protokollieren — mit dem
+# Code, mit dem der Drill WIRKLICH endet. Scheitert das Abraeumen, ist das 80 und nicht der Code davor.
+abschluss() {
+  local rc=$?
+  local ende_rc="$rc"
+  set +e
+  if declare -F reap >/dev/null; then
+    reap "$rc"
+    ende_rc=$?
+  fi
+  schreibe_protokoll "$ende_rc"
+  exit "$ende_rc"
+}
+trap abschluss EXIT
 
 RESTORE_DB="${RESTORE_DB:-}"
 if [ -z "$RESTORE_DB" ]; then
@@ -127,12 +276,14 @@ done
 # starten. Ein Dump ohne beglaubigte Pruefsumme ist kein Backup, sondern eine Datei.
 SIDECAR="${DUMP}.sha256"
 if [ ! -f "$SIDECAR" ]; then
+  PRUEFSUMME_ZUSTAND="fehlt"
   echo "[drill] ABBRUCH (10): kein Sidecar zu $DUMP — pg_restore wird nicht gestartet." >&2
   exit 10
 fi
 
 ERWARTET="$(awk '{print $1}' < "$SIDECAR" | tr -d '[:space:]')"
 if ! printf '%s' "$ERWARTET" | grep -Eq '^[0-9a-f]{64}$'; then
+  PRUEFSUMME_ZUSTAND="ungueltig"
   echo "[drill] ABBRUCH (10): Sidecar enthaelt keine 64-Hex-Pruefsumme — pg_restore wird nicht gestartet." >&2
   exit 10
 fi
@@ -146,12 +297,15 @@ else
   exit 1
 fi
 
+PRUEFSUMME_WERT="$IST"
 if [ "$IST" != "$ERWARTET" ]; then
+  PRUEFSUMME_ZUSTAND="abweichend"
   echo "[drill] ABBRUCH (11): Pruefsumme weicht ab — pg_restore wird nicht gestartet." >&2
   echo "[drill]   erwartet $ERWARTET" >&2
   echo "[drill]   gemessen $IST" >&2
   exit 11
 fi
+PRUEFSUMME_ZUSTAND="passt"
 echo "[drill] Glied 1 — Sidecar geprueft: $ERWARTET"
 
 # ------------------------------------------------------------------------------------------------
@@ -208,7 +362,9 @@ gehoert_zur_gruppe() {
 }
 
 reap() {
-  local rc=$?
+  # ADMIN-13: `abschluss` reicht den Ausgang als Parameter herein — in einer Funktion waere `$?`
+  # sonst der Status ihrer eigenen vorigen Anweisung.
+  local rc="${1:-$?}"
   if [ -z "$GESTARTETE_PID" ]; then
     rm -f "$PID_FILE" "$JOBS_DATEI" "$ANHANG_DATEI" "$BELEG_DATEI"
     return $rc
@@ -250,7 +406,8 @@ reap() {
   echo "[drill] Glied 8 — Reaping: Prozessgruppe $GESTARTETE_PID restlos beendet (Serverprozess ${SERVER_PID:-nicht zugeordnet}), PID-Datei geraeumt."
   return $rc
 }
-trap reap EXIT
+# Kein eigener Trap: `abschluss` (oben, seit ADMIN-13) ruft `reap` beim Verlassen auf und schreibt
+# danach das Protokoll mit dem endgueltigen Exitcode.
 
 # ------------------------------------------------------------------------------------------------
 # GLIED 2 — LEERE ZIELDATENBANK
@@ -291,9 +448,11 @@ PFLICHTTABELLEN=(
   users
   sessions
   password_resets
+  user_second_factors
   kos
   ko_schreibstand
   ko_versions
+  ko_halbwertszeit_beobachtungen
   ko_search_projections
   ko_metadata_projections
   ko_projection_control
@@ -309,6 +468,8 @@ PFLICHTTABELLEN=(
   assignments
   conflicts
   conflict_pair_memory
+  conflict_pair_obligation_runs
+  conflict_pair_obligations
   ko_overlaps
   overlap_settings
   lifecycle_couplings
@@ -335,15 +496,27 @@ PFLICHTTABELLEN=(
   gesamtanweisung_bausteine
   gesamtanweisung_staende
   ko_bearbeitungen
+  office_sitzungen
+  office_gesichert
   import_run_source_sync
   dokument_fassungen
   confluence_import_schalter
   begriffe_fassungen
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
+  veroeffentlichung_zustellungen
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
+  ko_embeddings
+  loeschantraege
+  ui_uebersetzungen
+  ui_sprachen
+  unternehmensprofil_fassungen
+  richtlinien_fassungen
+  richtlinien_handlungen
+  klara_gespraeche
+  ko_mitgelesen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
@@ -418,6 +591,8 @@ for tabelle in "${PFLICHTTABELLEN[@]}"; do
     exit 24
   fi
   echo "[drill] $tabelle: Dump=$DUMP_ZEILEN Datenbank=$DB_ZEILEN"
+  # ADMIN-13: dieselben zwei Zahlen fuer das Protokoll (`vergleich_json`).
+  printf -v "VG_${tabelle}" '%s %s' "$DUMP_ZEILEN" "$DB_ZEILEN"
   if [ "$DUMP_ZEILEN" != "$DB_ZEILEN" ]; then
     ABWEICHUNGEN+=("$tabelle: Dump=$DUMP_ZEILEN Datenbank=$DB_ZEILEN")
   fi
@@ -431,6 +606,77 @@ if [ "${#ABWEICHUNGEN[@]}" -ne 0 ]; then
   exit 23
 fi
 echo "[drill] Glied 3 — Restore eingespielt, alle ${#PFLICHTTABELLEN[@]} Pflichttabellen vorhanden und Zeilenzahlen wie im Dump."
+
+# ------------------------------------------------------------------------------------------------
+# GLIED 3b — RECHTE: DIE ROLLENVERTEILUNG DER KONTEN, DUMP GEGEN DATENBANK (ADMIN-13)
+# ------------------------------------------------------------------------------------------------
+#
+# Eine gleiche Zeilenzahl in `users` sagt nichts darueber, ob die Konten mit ihren RECHTEN
+# zurueckkamen: zwei Konten koennen als zwei Konten wiederkommen und dabei ihre Rolle oder ihre
+# Freigabe verloren haben. Verglichen wird deshalb je Paar (Rolle, Freigabe) die Zahl der Konten —
+# im Dump aus dem COPY-Block, in der Datenbank per SQL. Namen, Adressen und Kennworthashes werden
+# dabei weder gelesen noch ausgegeben; im Protokoll steht nur `rolle/freigabe=anzahl`.
+#
+# Fuehrt der Dump fuer `users` keine Spalten `role`/`approved`, ist die Verteilung nicht messbar;
+# das steht dann so im Protokoll, und die Kategorie Rechte ist dort nie `gleich`.
+normalisiere_rollen() {
+  sed '/^$/d' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'
+}
+if ! ROLLEN_DUMP_ROH="$(pg_restore --data-only --schema=public --table=users -f - "$DUMP" |
+  awk -F'\t' '
+    daten {
+      if ($0 == "\\.") { daten = 0; next }
+      if (r > 0 && a > 0) z[$r "/" $a]++
+      next
+    }
+    /^COPY / {
+      kopf = $0
+      sub(/^[^(]*\(/, "", kopf)
+      sub(/\) FROM stdin;$/, "", kopf)
+      n = split(kopf, spalten, ", ")
+      for (i = 1; i <= n; i++) {
+        s = spalten[i]
+        gsub(/"/, "", s)
+        if (s == "role") r = i
+        if (s == "approved") a = i
+      }
+      bloecke++; daten = 1
+    }
+    END {
+      if (daten || bloecke > 1) { print "UNMESSBAR"; exit 0 }
+      if (bloecke == 1 && (r == 0 || a == 0)) { print "OHNE_ROLLENSPALTE"; exit 0 }
+      for (k in z) print k "=" z[k]
+    }
+  ')"; then
+  echo "[drill] ABBRUCH (24): users: Rollenverteilung im Dump nicht messbar (Extraktion)." >&2
+  exit 24
+fi
+case "$ROLLEN_DUMP_ROH" in
+  UNMESSBAR)
+    echo "[drill] ABBRUCH (24): users: Rollenverteilung im Dump nicht messbar (COPY-Format)." >&2
+    exit 24
+    ;;
+  OHNE_ROLLENSPALTE)
+    ROLLEN_ZUSTAND="ohne_spalte"
+    echo "[drill] Glied 3b — Rechte: der Dump fuehrt fuer users keine Spalten role/approved; die Rollenverteilung ist nicht messbar."
+    ;;
+  *)
+    ROLLEN_DUMP="$(printf '%s\n' "$ROLLEN_DUMP_ROH" | normalisiere_rollen)"
+    if ! ROLLEN_DB_ROH="$(psql -X -v ON_ERROR_STOP=1 -d "$RESTORE_DB" -tA -c \
+      "SELECT role || '/' || CASE WHEN approved THEN 't' ELSE 'f' END || '=' || count(*) FROM public.users GROUP BY role, approved;")"; then
+      echo "[drill] ABBRUCH (24): users: Rollenverteilung der Datenbank nicht messbar (SQL-Abfrage)." >&2
+      exit 24
+    fi
+    ROLLEN_DB="$(printf '%s\n' "$ROLLEN_DB_ROH" | normalisiere_rollen)"
+    if [ "$ROLLEN_DUMP" != "$ROLLEN_DB" ]; then
+      ROLLEN_ZUSTAND="abweichend"
+      echo "[drill] ABBRUCH (74): Rollenverteilung der Konten weicht ab: Dump=[${ROLLEN_DUMP}] Datenbank=[${ROLLEN_DB}]" >&2
+      exit 74
+    fi
+    ROLLEN_ZUSTAND="gleich"
+    echo "[drill] Glied 3b — Rechte: Rollenverteilung der Konten wie im Dump (${ROLLEN_DUMP:-keine Konten})."
+    ;;
+esac
 
 # ------------------------------------------------------------------------------------------------
 # GLIED 4 — ANWENDUNG STARTEN, MIT PID-DATEI
@@ -640,6 +886,7 @@ if ! [[ "$WAISEN_ZAHL" =~ ^[0-9]+$ ]]; then
   echo "[drill] Aufbaufehler, KEIN Befund am Bestand." >&2
   exit 62
 fi
+ANHANG_WAISEN="$WAISEN_ZAHL"
 if [ "$WAISEN_ZAHL" -ne 0 ]; then
   echo "[drill] ABBRUCH (73): ${WAISEN_ZAHL} Belegzeile(n) nennen eine Anhangskennung, zu der die" >&2
   echo "[drill] Tabelle objects nach dem Restore keine Zeile fuehrt (Wissensobjekt/Anhang:" >&2

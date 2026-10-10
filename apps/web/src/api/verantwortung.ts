@@ -102,9 +102,184 @@ export interface Ungeklaert {
   vertretung: KontoKurz[];
 }
 
+/** Das Wissens-Vermächtnis-Buch einer Person (`services/output/src/vermaechtnis.ts`). */
+export interface VermaechtnisBuch {
+  person: { id: string; name: string | null };
+  titel: string;
+  erzeugtAm: string;
+  dateiname: string;
+  aufgenommen: number;
+  zeitraum: { von: string; bis: string } | null;
+  themen: { thema: string; anzahl: number }[];
+  ausgelassen: {
+    papierkorb: number;
+    nichtEinsehbar: number;
+    vertraulich: number;
+    nichtValidiert: number;
+  };
+  markdown: string;
+}
+
+/** ADMIN-04: je Konto die Zahlen der Kontenliste. `vorgaenge: null` heisst „nicht erhoben". */
+export interface KontoVerantwortung {
+  id: string;
+  zugang: Zugangsstand;
+  beitraege: number;
+  vorgaenge: { entwuerfe: number; luecken: number; pruefaufgaben: number } | null;
+}
+
+export interface Kontenuebersicht {
+  erhobenAm: string;
+  personen: KontoVerantwortung[];
+}
+
+export interface OffeneVorgaenge {
+  entwuerfe: { id: string }[];
+  luecken: { id: string }[];
+  /** `titel: null`, wenn der Handelnde den Beitrag nicht lesen darf. */
+  pruefaufgaben: { koId: string; titel: string | null }[];
+}
+
+// ADMIN-05 · der gemeinsame Übergabeablauf (`POST /verantwortung/ablauf[/vorschau]`).
+export type Umfang = "gezielt" | "ausscheiden";
+export type Zugangsentscheidung = "behalten" | "beenden";
+export type VorgangArt = "entwurf" | "luecke" | "pruefaufgabe";
+export type EintragArt = "beitrag" | VorgangArt;
+
+export interface VorgangZuteilung {
+  art: VorgangArt;
+  /** Bei einer Prüfaufgabe die Kennung des Wissensobjekts. */
+  id: string;
+  an: string;
+}
+
+export interface AblaufEingabe {
+  person: string;
+  umfang: Umfang;
+  beitraege: Zuteilung[];
+  vorgaenge: VorgangZuteilung[];
+  zugang: Zugangsentscheidung;
+}
+
+export interface AblaufEintrag {
+  art: EintragArt;
+  id: string;
+  /** Nur bei Beiträgen und Prüfaufgaben, und nur, wenn der Handelnde sie lesen darf. */
+  titel: string | null;
+  an: string;
+  anName: string | null;
+}
+
+export interface AblaufOffen extends AblaufEintrag {
+  grund: string;
+  text: string;
+}
+
+export interface Bilanz {
+  beitraege: number;
+  entwuerfe: number;
+  luecken: number;
+  pruefaufgaben: number;
+}
+
+export interface AblaufPaket {
+  an: { id: string; name: string | null; role: Role | null };
+  anzahl: number;
+  eintraege: AblaufEintrag[];
+  bereitsErledigt: number;
+  wirkung: Record<EintragArt, number>;
+}
+
+export interface AblaufVorschau {
+  person: VerantwortungPerson;
+  umfang: Umfang;
+  vorher: Bilanz;
+  prognose: Bilanz;
+  pakete: AblaufPaket[];
+  abgelehnt: AblaufOffen[];
+  nichtZugeteilt: { art: EintragArt; id: string; titel: string | null }[];
+  ausgeschlossen: {
+    entwuerfe: { id: string }[];
+    luecken: { id: string }[];
+    pruefaufgaben: { koId: string }[];
+  };
+  zugang: { jetzt: Zugangsstand; entscheidung: Zugangsentscheidung; danach: Zugangsstand };
+  vertretung: KontoKurz[];
+  hindernisse: string[];
+  bestaetigbar: boolean;
+  unveraendert: string[];
+}
+
+export interface AblaufZugang {
+  vorher: Zugangsstand;
+  nachher: Zugangsstand;
+  entscheidung: Zugangsentscheidung;
+  beendet: boolean;
+  /** Das Zugangsende ist gespeichert und erreicht — unabhängig von einer (vorübergehenden) Sperre. */
+  endeGespeichert?: boolean;
+  grund: string | null;
+}
+
+/** Ein begonnener Ablauf ohne Abschlussbilanz — seine Vorher-Bilanz gilt beim Nachholen. */
+export interface AblaufAusstehend {
+  seq: number;
+  at: string;
+  umfang: Umfang;
+  vorher: Bilanz;
+}
+
+export interface AblaufNachfolge {
+  an: string;
+  beitraege: number;
+  vorgaenge: number;
+}
+
+export interface AblaufErgebnis {
+  person: VerantwortungPerson;
+  umfang: Umfang;
+  vorher: Bilanz;
+  /** `null`, wenn der Bestand nach dem Schreiben nicht lesbar war (offener Abschlussschritt). */
+  nachher: Bilanz | null;
+  nachfolger: AblaufNachfolge[];
+  uebertragen: AblaufEintrag[];
+  bereitsErledigt: AblaufEintrag[];
+  offen: AblaufOffen[];
+  zugang: AblaufZugang;
+  /**
+   * Offene Abschlussschritte: `KONTEN`, `ZUGANG`, `BILANZ_NACHHER`, `BILANZ_NACHFOLGER`,
+   * `BILANZVERMERK`.
+   */
+  abschlussOffen: string[];
+  /** Dieser Lauf hat den Abschluss eines früher begonnenen Ablaufs nachgeholt. */
+  nachgeholt: boolean;
+  vollstaendig: boolean;
+  protokolliert: boolean;
+}
+
+/** Ein Bilanzvermerk aus dem Prüfprotokoll — Kennungen und Anzahlen, keine Inhalte. */
+export interface AblaufVermerk {
+  seq: number;
+  at: string;
+  actor: { id: string; name: string | null };
+  umfang: Umfang;
+  vorher: Bilanz;
+  nachher: Bilanz;
+  nachfolger: (AblaufNachfolge & { name: string | null })[];
+  uebertragen: number;
+  bereitsErledigt: number;
+  offen: { art: EintragArt; id: string; an: string; grund: string }[];
+  zugang: AblaufZugang;
+  vollstaendig: boolean;
+}
+
 export const verantwortungApi = {
+  uebersicht: () => api.get<Kontenuebersicht>("/verantwortung/uebersicht"),
+  vorgaenge: (personId: string) =>
+    api.get<OffeneVorgaenge>(`/verantwortung/person/${encodeURIComponent(personId)}/vorgaenge`),
   bestand: (personId: string) =>
     api.get<Bestand>(`/verantwortung/person/${encodeURIComponent(personId)}`),
+  vermaechtnis: (personId: string) =>
+    api.get<VermaechtnisBuch>(`/verantwortung/person/${encodeURIComponent(personId)}/vermaechtnis`),
   ungeklaert: () => api.get<Ungeklaert>("/verantwortung/ungeklaert"),
   vorschau: (von: string, zuteilung: readonly Zuteilung[]) =>
     api.post<Vorschau>("/verantwortung/vorschau", { von, zuteilung }),
@@ -114,4 +289,13 @@ export const verantwortungApi = {
   /** 409 `BESTAND_OFFEN`, solange danach noch Beiträge bei der Person liegen. */
   deaktivieren: (person: string, zuteilung: readonly Zuteilung[]) =>
     api.post<Deaktivierung>("/verantwortung/deaktivierung", { person, zuteilung }),
+  /** ADMIN-05: schreibt nichts. */
+  ablaufVorschau: (eingabe: AblaufEingabe) =>
+    api.post<AblaufVorschau>("/verantwortung/ablauf/vorschau", eingabe),
+  /** 200 = vollständig, 207 = mit offenen Zeilen; 409 = nicht bestätigbar, nichts geschrieben. */
+  ablauf: (eingabe: AblaufEingabe) => api.post<AblaufErgebnis>("/verantwortung/ablauf", eingabe),
+  ablaeufe: (personId: string) =>
+    api.get<{ ausstehend: AblaufAusstehend | null; ablaeufe: AblaufVermerk[] }>(
+      `/verantwortung/person/${encodeURIComponent(personId)}/ablaeufe`,
+    ),
 };

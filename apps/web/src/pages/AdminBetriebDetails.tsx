@@ -30,7 +30,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
-import type { SicherungenAuskunft, SicherungsEintrag } from "../api/types";
+import type {
+  RestoreDrillBefund,
+  SchutzwegUnbekannt,
+  Schutzwege,
+  SicherungenAuskunft,
+  SicherungsEintrag,
+  VergleichKategorie,
+} from "../api/types";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
@@ -219,9 +227,13 @@ function Befund({
     // Eine BELEGTE Negativaussage: es liegt eine erfolgreiche, vollständige Lesung dieses
     // Verzeichnisses vor. Deshalb steht das Verzeichnis im Satz — die Aussage gilt für genau eines.
     return (
-      <p data-testid="sicherung-leer" className="text-[12.5px] leading-relaxed text-muted">
-        {t("adm.backup.none", { verzeichnis: daten.verzeichnis })}
-      </p>
+      <>
+        <p data-testid="sicherung-leer" className="text-[12.5px] leading-relaxed text-muted">
+          {t("adm.backup.none", { verzeichnis: daten.verzeichnis })}
+        </p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "verwaltung")}
+      </>
     );
   }
   return (
@@ -230,6 +242,411 @@ function Befund({
         <Eintragszeile key={e.datei} eintrag={e} gelesenUtc={daten.gelesenUtc} frisch={frisch} />
       ))}
     </ul>
+  );
+}
+
+// ==================================================================================================
+// ADMIN-13 · DIE VIER SCHUTZWEGE — Exportdatei, Backup-Lauf, Papierkorb, Restore-Nachweis.
+// ==================================================================================================
+//
+// Jeder Weg steht in einem eigenen Abschnitt mit eigener Marke (Erfolg · Fehler · Unbekannt ·
+// Teilweise belegt · Keiner protokolliert), Zeitpunkt, Grund und — wo etwas offen ist — dem nächsten
+// Schritt. Die Daten kommen aus DERSELBEN Lesung wie die Liste darüber (`schutzwege` an
+// `GET /api/admin/sicherungen`); die Karte fragt keine zweite Adresse.
+//
+// BAUFORM, BEWUSST: Renderfunktionen (klein geschrieben) statt neuer Bauteile, und je Zustand ein
+// eigener Knoten mit fester Klassenkette statt einer berechneten Bindung. Die Komponentenzählung
+// (`tests/app/mega84-bildbeschreibungsweg-sammler.test.tsx`) und die Klassenbindungen
+// (`tests/app/mega47-modale-flaechen-sammler.test.tsx`) dieser Datei bleiben dadurch unverändert.
+
+type WegZustand = "erfolg" | "fehler" | "unbekannt" | "teilweise" | "keiner";
+
+/** Die Marke eines Schutzwegs. Grün gibt es nur für `erfolg` — beim Restore bildet der Server ihn. */
+function wegMarke(t: Uebersetzer, zustand: WegZustand): JSX.Element {
+  const text = t(`sicherungsnachweise.zustand.${zustand}`);
+  if (zustand === "erfolg") {
+    return (
+      <span
+        data-testid="weg-zustand"
+        data-zustand={zustand}
+        className="rounded-pill bg-trust-pos-bg px-2.5 py-0.5 text-[11.5px] font-semibold text-trust-pos-text"
+      >
+        {text}
+      </span>
+    );
+  }
+  if (zustand === "fehler") {
+    return (
+      <span
+        data-testid="weg-zustand"
+        data-zustand={zustand}
+        className="rounded-pill bg-trust-crit-bg px-2.5 py-0.5 text-[11.5px] font-semibold text-trust-crit-text"
+      >
+        {text}
+      </span>
+    );
+  }
+  if (zustand === "keiner") {
+    return (
+      <span
+        data-testid="weg-zustand"
+        data-zustand={zustand}
+        className="rounded-pill border border-hairline px-2.5 py-0.5 text-[11.5px] font-semibold text-muted"
+      >
+        {text}
+      </span>
+    );
+  }
+  return (
+    <span
+      data-testid="weg-zustand"
+      data-zustand={zustand}
+      className="rounded-pill bg-trust-warn-bg px-2.5 py-0.5 text-[11.5px] font-semibold text-trust-warn-text"
+    >
+      {text}
+    </span>
+  );
+}
+
+/** Umfang, Aufbewahrung, Zuständigkeit — feste Angaben je Weg, aus dem Wörterbuch. */
+function wegAngaben(t: Uebersetzer, weg: string, aufbewahrung?: string): JSX.Element {
+  return (
+    <div className="space-y-0.5 text-[11.5px] leading-relaxed text-muted-2">
+      <p>{t("sicherungsnachweise.umfang", { text: t(`sicherungsnachweise.${weg}.umfang`) })}</p>
+      <p>
+        {t("sicherungsnachweise.aufbewahrung", {
+          text: aufbewahrung ?? t(`sicherungsnachweise.${weg}.aufbewahrung`),
+        })}
+      </p>
+      <p>
+        {t("sicherungsnachweise.zustaendig", { text: t(`sicherungsnachweise.${weg}.zustaendig`) })}
+      </p>
+    </div>
+  );
+}
+
+/** „Unbekannt" mit Grund und nächstem Schritt — nie wie „keine" formuliert. */
+function wegUnbekannt(t: Uebersetzer, befund: SchutzwegUnbekannt, schritt: string): JSX.Element {
+  return (
+    <div className="space-y-0.5 text-[12.5px] leading-relaxed text-text">
+      <p data-testid="weg-grund">
+        {t("sicherungsnachweise.grund", {
+          grund: t(`sicherungsnachweise.unbekannt.${befund.grund}`),
+        })}
+      </p>
+      <p data-testid="weg-schritt">{t("sicherungsnachweise.schritt", { schritt: t(schritt) })}</p>
+    </div>
+  );
+}
+
+function wegAbschnitt(
+  t: Uebersetzer,
+  weg: string,
+  zustand: WegZustand,
+  befund: JSX.Element,
+  angaben: JSX.Element,
+): JSX.Element {
+  const kopfId = `schutzweg-${weg}-titel`;
+  return (
+    <section
+      data-testid={`schutzweg-${weg}`}
+      aria-labelledby={kopfId}
+      className="space-y-1.5 rounded-card border border-hairline px-3 py-2.5"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 id={kopfId} className="text-[13px] font-semibold text-text">
+          {t(`sicherungsnachweise.${weg}.titel`)}
+        </h3>
+        {wegMarke(t, zustand)}
+      </div>
+      {befund}
+      {angaben}
+    </section>
+  );
+}
+
+/** Der nächste Schritt nach einer gescheiterten Probe — nach der Familie des Exitcodes. */
+function restoreSchritt(exitcode: number): string {
+  if (exitcode === 10 || exitcode === 11) {
+    return "sicherungsnachweise.restore.schritt.pruefsumme";
+  }
+  if (exitcode === 20) {
+    return "sicherungsnachweise.restore.schritt.ziel";
+  }
+  if ([21, 22, 23, 24, 73, 74].includes(exitcode)) {
+    return "sicherungsnachweise.restore.schritt.bestand";
+  }
+  if (exitcode >= 70 && exitcode <= 72) {
+    return "sicherungsnachweise.restore.schritt.audit";
+  }
+  return "sicherungsnachweise.restore.schritt.aufbau";
+}
+
+/**
+ * ADMIN-13 · Nacharbeit 2: der Schritt richtet sich zuerst nach dem Widerspruch im Protokoll — ein
+ * behaupteter Erfolg, dem das eigene Protokoll widerspricht, ist kein Aufbaufehler mit Exit 0 —,
+ * dann nach der Lücke, sonst nach der Familie des Exitcodes.
+ */
+function restoreSchrittFuer(r: RestoreDrillBefund): string {
+  if (r.widersprueche.length > 0) {
+    return "sicherungsnachweise.restore.schritt.widerspruch";
+  }
+  if (r.zustand === "teilweise") {
+    return "sicherungsnachweise.restore.schritt.teilweise";
+  }
+  return restoreSchritt(r.exitcode);
+}
+
+function vergleichZeile(t: Uebersetzer, name: string, kategorie: VergleichKategorie): JSX.Element {
+  const zahlen = kategorie.tabellen
+    .map((z) =>
+      t("sicherungsnachweise.restore.zahlen", {
+        tabelle: z.tabelle,
+        dump: z.dump ?? "–",
+        datenbank: z.datenbank ?? "–",
+      }),
+    )
+    .join(" · ");
+  return (
+    <li data-kategorie={name} data-vergleich={kategorie.zustand}>
+      <span className="font-semibold text-text">
+        {t("sicherungsnachweise.restore.zeile", {
+          kategorie: t(`sicherungsnachweise.restore.kat.${name}`),
+          zustand: t(`sicherungsnachweise.restore.vergleich.${kategorie.zustand}`),
+        })}
+      </span>
+      {zahlen.length > 0 ? <span className="block text-muted-2">{zahlen}</span> : null}
+    </li>
+  );
+}
+
+function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
+  const v = r.vergleich;
+  return (
+    <div className="space-y-1 text-[12.5px] leading-relaxed text-text">
+      <p data-testid="restore-sicherung">
+        {t("sicherungsnachweise.restore.sicherung", {
+          datei: r.sicherung ?? "–",
+          zeit: zeitText(t, r.sicherungZeitpunktUtc),
+        })}
+      </p>
+      <p data-testid="restore-ziel">
+        {t("sicherungsnachweise.restore.ziel", { ziel: r.ziel ?? "–" })}
+      </p>
+      <p data-testid="restore-zeit">
+        {t("sicherungsnachweise.restore.dauer", {
+          beginn: zeitText(t, r.beginnUtc),
+          ende: zeitText(t, r.zeitUtc),
+        })}
+      </p>
+      <p data-testid="weg-grund">
+        {`${t("sicherungsnachweise.exitcode", { code: r.exitcode })} · ${t("sicherungsnachweise.grund", { grund: r.grund })}`}
+      </p>
+      <p data-testid="restore-pruefsumme">
+        {t(`sicherungsnachweise.restore.pruefsumme.${r.pruefsumme.zustand}`)}
+        {r.pruefsumme.sha256 ? (
+          <span className="ml-1 break-all font-mono text-[11.5px] text-muted-2">
+            {r.pruefsumme.sha256}
+          </span>
+        ) : null}
+      </p>
+      <p data-testid="restore-getrennt" className="text-[11.5px] text-muted-2">
+        {t("sicherungsnachweise.restore.getrennt")}
+      </p>
+      <ul data-testid="restore-vergleich" className="space-y-1">
+        {vergleichZeile(t, "beitraege", v.beitraege)}
+        {vergleichZeile(t, "anhaenge", v.anhaenge)}
+        {vergleichZeile(t, "beziehungen", v.beziehungen)}
+        {vergleichZeile(t, "rechte", v.rechte)}
+      </ul>
+      {v.anhaenge.belegeOhneAnhang === null ? null : (
+        <p className="text-[11.5px] text-muted-2">
+          {t("sicherungsnachweise.restore.waisen", { n: v.anhaenge.belegeOhneAnhang })}
+        </p>
+      )}
+      {v.rechte.rollenDump === null && v.rechte.rollenDatenbank === null ? null : (
+        <p className="text-[11.5px] text-muted-2">
+          {t("sicherungsnachweise.restore.rollen", {
+            dump: v.rechte.rollenDump ?? t("sicherungsnachweise.restore.keineKonten"),
+            db: v.rechte.rollenDatenbank ?? t("sicherungsnachweise.restore.keineKonten"),
+          })}
+        </p>
+      )}
+      {r.wissensnachweis === null ? null : (
+        <p className="text-[11.5px] text-muted-2">
+          {t("sicherungsnachweise.restore.gelesen", { text: r.wissensnachweis })}
+        </p>
+      )}
+      {r.widersprueche.length === 0 ? null : (
+        <p data-testid="restore-widersprueche">
+          {t("sicherungsnachweise.restore.widersprueche", {
+            liste: r.widersprueche
+              .map((k) => t(`sicherungsnachweise.restore.nachweis.${k}`))
+              .join(", "),
+          })}
+        </p>
+      )}
+      {r.luecken.length === 0 ? null : (
+        <p data-testid="restore-luecken">
+          {t("sicherungsnachweise.restore.luecken", {
+            liste: r.luecken.map((k) => t(`sicherungsnachweise.restore.nachweis.${k}`)).join(", "),
+          })}
+        </p>
+      )}
+      {r.zustand === "erfolg" ? null : (
+        <p data-testid="weg-schritt">
+          {t("sicherungsnachweise.schritt", {
+            schritt: t(restoreSchrittFuer(r)),
+          })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Alle vier Wege, in fester Reihenfolge — samt dem Satz, WO überhaupt nachgesehen wurde. */
+function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
+  const { letzterLauf: lauf, restore, export: exporte, papierkorb } = wege;
+  const laufZustand: WegZustand = lauf.zustand;
+  const exportZustand: WegZustand =
+    exporte.zustand === "vorhanden"
+      ? "erfolg"
+      : exporte.zustand === "keiner"
+        ? "keiner"
+        : "unbekannt";
+  const papierkorbZustand: WegZustand = papierkorb.zustand === "gelesen" ? "erfolg" : "unbekannt";
+  return (
+    <div data-testid="schutzwege" className="space-y-2.5">
+      <h2 className="text-[13.5px] font-semibold text-text">{t("sicherungsnachweise.titel")}</h2>
+      <p data-testid="schutzwege-ort" className="text-[11.5px] leading-relaxed text-muted-2">
+        {wege.verzeichnisQuelle === "BACKUP_DIR"
+          ? t("sicherungsnachweise.ort.env")
+          : t("sicherungsnachweise.ort.vorgabe")}
+      </p>
+      {wegAbschnitt(
+        t,
+        "export",
+        exportZustand,
+        exporte.zustand === "unbekannt" ? (
+          wegUnbekannt(t, exporte, "sicherungsnachweise.export.schritt.unbekannt")
+        ) : (
+          <div className="space-y-0.5 text-[12.5px] leading-relaxed text-text">
+            {exporte.bibliothek ? (
+              <p data-testid="export-bibliothek">
+                {t("sicherungsnachweise.export.bibliothek", {
+                  zeit: zeitText(t, exporte.bibliothek.zeitUtc),
+                  format: exporte.bibliothek.format ?? "–",
+                  anzahl: exporte.bibliothek.anzahl ?? "–",
+                  gesamt: exporte.bibliothek.gesamt,
+                })}
+              </p>
+            ) : null}
+            {exporte.auditkette ? (
+              <p data-testid="export-auditkette">
+                {t("sicherungsnachweise.export.auditkette", {
+                  zeit: zeitText(t, exporte.auditkette.zeitUtc),
+                  anzahl: exporte.auditkette.anzahl ?? "–",
+                  gesamt: exporte.auditkette.gesamt,
+                })}
+              </p>
+            ) : null}
+            {exporte.zustand === "keiner" ? (
+              <p data-testid="weg-grund">{t("sicherungsnachweise.export.keiner")}</p>
+            ) : null}
+          </div>
+        ),
+        wegAngaben(t, "export"),
+      )}
+      {wegAbschnitt(
+        t,
+        "lauf",
+        laufZustand,
+        lauf.zustand === "unbekannt" ? (
+          wegUnbekannt(t, lauf, "sicherungsnachweise.lauf.schritt.unbekannt")
+        ) : (
+          <div className="space-y-0.5 text-[12.5px] leading-relaxed text-text">
+            <p data-testid="weg-zeit">
+              {t("sicherungsnachweise.zeit", { zeit: zeitText(t, lauf.zeitUtc) })}
+            </p>
+            {lauf.datei ? (
+              <p className="break-all">
+                {t("sicherungsnachweise.lauf.datei", { datei: lauf.datei })}
+              </p>
+            ) : null}
+            <p data-testid="weg-grund">
+              {lauf.exitcode === null
+                ? t("sicherungsnachweise.grund", { grund: lauf.grund })
+                : `${t("sicherungsnachweise.exitcode", { code: lauf.exitcode })} · ${t("sicherungsnachweise.grund", { grund: lauf.grund })}`}
+            </p>
+            {lauf.zustand === "fehler" ? (
+              <p data-testid="weg-schritt">
+                {t("sicherungsnachweise.schritt", {
+                  schritt: t("sicherungsnachweise.lauf.schritt.fehler"),
+                })}
+              </p>
+            ) : null}
+          </div>
+        ),
+        wegAngaben(t, "lauf"),
+      )}
+      {wegAbschnitt(
+        t,
+        "papierkorb",
+        papierkorbZustand,
+        papierkorb.zustand === "unbekannt" ? (
+          wegUnbekannt(t, papierkorb, "sicherungsnachweise.papierkorb.schritt.unbekannt")
+        ) : (
+          <div className="space-y-0.5 text-[12.5px] leading-relaxed text-text">
+            <p data-testid="papierkorb-anzahl">
+              {t("sicherungsnachweise.papierkorb.anzahl", { count: papierkorb.anzahl })}
+            </p>
+            {papierkorb.naechsteEndloeschungUtc ? (
+              <p>
+                {t("sicherungsnachweise.papierkorb.naechste", {
+                  zeit: zeitText(t, papierkorb.naechsteEndloeschungUtc),
+                })}
+              </p>
+            ) : null}
+            {papierkorb.ereignisseProtokolliert ? (
+              <>
+                <p data-testid="papierkorb-wiederhergestellt">
+                  {t("sicherungsnachweise.papierkorb.wiederhergestellt", {
+                    zeit: papierkorb.letzteWiederherstellungUtc
+                      ? zeitText(t, papierkorb.letzteWiederherstellungUtc)
+                      : t("sicherungsnachweise.papierkorb.nie"),
+                  })}
+                </p>
+                <p>
+                  {t("sicherungsnachweise.papierkorb.endgeloescht", {
+                    zeit: papierkorb.letzteEndloeschungUtc
+                      ? zeitText(t, papierkorb.letzteEndloeschungUtc)
+                      : t("sicherungsnachweise.papierkorb.nie"),
+                  })}
+                </p>
+              </>
+            ) : (
+              <p>{t("sicherungsnachweise.papierkorb.ohneProtokoll")}</p>
+            )}
+          </div>
+        ),
+        wegAngaben(
+          t,
+          "papierkorb",
+          t("sicherungsnachweise.papierkorb.aufbewahrung", {
+            tage: papierkorb.zustand === "gelesen" ? papierkorb.aufbewahrungTage : "–",
+          }),
+        ),
+      )}
+      {wegAbschnitt(
+        t,
+        "restore",
+        restore.zustand,
+        restore.zustand === "unbekannt"
+          ? wegUnbekannt(t, restore, "sicherungsnachweise.restore.schritt.unbekannt")
+          : restoreBefundText(t, restore),
+        wegAngaben(t, "restore"),
+      )}
+    </div>
   );
 }
 
@@ -295,6 +712,9 @@ export function SicherungDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
                 {t("adm.backup.readAt", { zeit: zeitText(t, daten.gelesenUtc) })}
               </p>
             </div>
+            {/* ADMIN-13 — die vier Schutzwege aus DERSELBEN Lesung. Ältere Antworten ohne das Feld
+                zeigen den Abschnitt nicht; der Server sendet es in jedem der drei Zustände. */}
+            {daten.schutzwege ? schutzwegeBefund(t, daten.schutzwege) : null}
           </div>
         )}
       </Abfragehuelle>

@@ -360,11 +360,17 @@ describe("JOB 3064 · H5 · der Textmesser — kein Erklärtext im Sichtfeld von
   // verlangt: „Die eigentliche Warnung bleibt vollständig und unübersehbar." Er ist damit kein
   // Erklärtext, sondern Pflichtinhalt an DIESER Antwort und steht nur, wenn eine Warnung zutrifft.
   // Abgezogen wird GENAU dieser Block; ein anderer Satz in der Karte bleibt rot (T3b unverändert).
+  //
+  // R-0603/R-0604: die erste Ausnahme hat sich geteilt, nicht vermehrt. Der Satz VOR der ersten
+  // Frage trug bis dahin dieselbe Kennung `ai-generated-notice` und wurde darüber abgezogen. Er
+  // behauptete aber eine Erzeugung, wo noch keine war, und ist jetzt der dauerhafte Flächensatz
+  // `ai-surface-notice` — dieselbe Pflichtangabe (Artikel 50 Absatz 1), eigene Kennung.
   const ZUSATZ_FRAGEN = [
     '[data-testid="ask-fragezeile"]',
     ".ask-answer-body",
     '[data-testid="ask-quellen-chip"]',
     '[data-testid="ai-generated-notice"]',
+    '[data-testid="ai-surface-notice"]',
     '[data-testid="ask-warnungen"]',
   ];
 

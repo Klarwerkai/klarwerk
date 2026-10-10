@@ -553,9 +553,6 @@ export function demoTexts(locale: DemoLocale): DemoTexts {
   return DEMO_TEXTS[locale];
 }
 
-// Alle drei lokalisierten Wissenslücken-Fragen — der Purge muss sie sprachübergreifend erkennen.
-export const DEMO_GAP_QUESTIONS: readonly string[] = [
-  de.gapQuestion,
-  en.gapQuestion,
-  nl.gapQuestion,
-];
+// R-1349: Hier stand `DEMO_GAP_QUESTIONS`, die Fragenliste eines früheren Purges über den Text. Der
+// Purge erkennt die Demo-Lücke seit Pedi 14.07. über das Herkunftsfeld `demoSeed` (seed-demo.ts);
+// die Liste las niemand mehr und ist entfernt.

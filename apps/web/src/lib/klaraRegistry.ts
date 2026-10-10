@@ -105,7 +105,12 @@ export const KLARA_PAGES: readonly KlaraPage[] = [
 // sind zugleich Teil der KI-Wissensdatenbank (Klara Stufe 2) und Ziel der data-help-Anker.
 // `bodyKey` nur, wo der Text vom Schema `shelp.<key>` abweicht (eingefrorener Altwert, berichtigte
 // Fassung in einem Textmodul) — dann sagen Seitenhilfe und Klara dasselbe.
-const KLARA_SECTIONS: readonly { key: string; route: string; bodyKey?: string }[] = [
+//
+// R-0908: `titel` nur dort, wo die Fläche ihre Überschrift inzwischen aus `texte/fachwort.ts`
+// liest. Kennung (`sec:<key>`) und Erklärtext (`shelp.<key>`) bleiben am alten Schlüssel; Klara
+// zeigt dieselbe Überschrift wie die Fläche, statt „Reasoner-Läufe" oder „Evidence-Index".
+type KlaraSektion = { key: string; route: string; bodyKey?: string; titel?: string };
+const KLARA_SECTIONS: readonly KlaraSektion[] = [
   { key: "adm.seedTitle", route: "/admin" },
   { key: "adm.createTitle", route: "/admin" },
   { key: "adm.auditTitle", route: "/admin" },
@@ -156,13 +161,13 @@ const KLARA_SECTIONS: readonly { key: string; route: string; bodyKey?: string }[
   { key: "mgmt.recommendations", route: "/kapital" },
   { key: "mgmt.priorities", route: "/kapital" },
   { key: "mgmt.pilot", route: "/kapital" },
-  { key: "mrun.title", route: "/kapital" },
-  { key: "rcfg.title", route: "/kapital" },
-  { key: "evx.title", route: "/kapital" },
-  { key: "prov.title", route: "/kapital" },
-  { key: "readiness.title", route: "/kapital" },
-  { key: "kos.hintsTitle", route: "/kapital" },
-  { key: "evFresh.title", route: "/kapital" },
+  { key: "mrun.title", route: "/kapital", titel: "fachwort.kiLaeufe.titel" },
+  { key: "rcfg.title", route: "/kapital", titel: "fachwort.kiEinstellung.titel" },
+  { key: "evx.title", route: "/kapital", titel: "fachwort.belegIndex.titel" },
+  { key: "prov.title", route: "/kapital", titel: "fachwort.herkunft.titel" },
+  { key: "readiness.title", route: "/kapital", titel: "fachwort.bereitschaft.titel" },
+  { key: "kos.hintsTitle", route: "/kapital", titel: "fachwort.qm.titel" },
+  { key: "evFresh.title", route: "/kapital", titel: "fachwort.belegFrische.titel" },
 ] as const;
 
 // Alle Klara-Einträge — Seiten zuerst, dann Feld-Hilfen, dann Sektions-Erklärungen, dann Kapitel.
@@ -192,7 +197,7 @@ export function allKlaraEntries(): readonly KlaraEntry[] {
   const sections: KlaraEntry[] = KLARA_SECTIONS.map((s) => ({
     id: `sec:${s.key}`,
     kind: "field",
-    titleKey: s.key,
+    titleKey: s.titel ?? s.key,
     bodyKey: s.bodyKey ?? `shelp.${s.key}`,
     route: s.route,
   }));
@@ -321,22 +326,18 @@ export function searchKlara(
 // Freigaben?") enthalten Füllwörter, die die strikte Jedes-Wort-Suche leer laufen lassen.
 // Hier zählt stattdessen, WIE VIELE Suchwörter (oder Synonym-Stämme) ein Eintrag trifft —
 // die besten k Einträge werden der KI als einzige Antwort-Grundlage mitgegeben.
-export function rankKlara(
-  entries: readonly ResolvedKlaraEntry[],
-  query: string,
-  limit = 6,
-): ResolvedKlaraEntry[] {
-  return bewerteKlara(entries, query)
-    .slice(0, limit)
-    .map((s) => s.entry);
-}
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): hier stand `rankKlara(entries, query,
+// limit)`, die reine Registry-Rangliste. Das Produkt ruft sie nicht mehr; `askAi` nimmt
+// `klaraGrundlage` (unten), und die ist ohne Bibliotheksauszüge zeichengleich mit ihr. Die
+// Prüfstände messen dieselbe Rangliste deshalb am Produktweg (`tests/support/klara-rangfolge.ts`).
 
 interface BewerteterEintrag {
   entry: ResolvedKlaraEntry;
   score: number;
 }
 
-// Die Wortdeckung hinter `rankKlara`, mit Punktzahl — `klaraGrundlage` braucht sie zum Abwägen.
+// Die Wortdeckung hinter der Rangliste, mit Punktzahl — `klaraGrundlage` braucht sie zum Abwägen.
 function bewerteKlara(
   entries: readonly ResolvedKlaraEntry[],
   query: string,
@@ -370,7 +371,8 @@ export const BIBLIOTHEK_PLAETZE = 3;
 //   · ist kein Platz, verdrängt ein Auszug nur einen Eintrag, der WENIGER Suchwörter trifft als er,
 //     und dann den schwächsten — NIE eine FAQ-Antwort. So bleibt jede FAQ-Antwort, die heute in den
 //     zwölf Schnipseln steht, auch drin (`tests/app/f0304-klara-assistenzflaeche.test.tsx`).
-// Ohne passenden Auszug ist das Ergebnis zeichengleich mit `rankKlara(bestand, query, limit)`.
+// Ohne passenden Auszug ist das Ergebnis zeichengleich mit der reinen Registry-Rangliste
+// (`bewerteKlara(bestand, query)`, die besten `limit`).
 export function klaraGrundlage(
   bestand: readonly ResolvedKlaraEntry[],
   auszuege: readonly ResolvedKlaraEntry[],

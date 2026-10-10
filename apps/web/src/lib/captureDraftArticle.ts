@@ -16,6 +16,10 @@ export interface DraftArticleInput {
   conditions?: readonly string[] | null;
   measures?: readonly string[] | null;
   tags?: readonly string[] | null;
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: die vertiefenden Interviewantworten (Schwelle, Ausnahmen,
+  // Warum, Alternativen, Geltung, Risiken, Herkunft) — je Abschnitt eine fertig übersetzte
+  // Überschrift und die wörtlichen Antworten. Sie stehen nach den Maßnahmen.
+  sections?: readonly { heading: string; items: readonly string[] }[] | null;
 }
 
 const HEADINGS: Record<
@@ -77,6 +81,14 @@ export function draftArticleHtml(
   const measures = listHtml(input.measures);
   if (measures) {
     parts.push(`<h3>${h.measures}</h3>${measures}`);
+  }
+
+  for (const section of input.sections ?? []) {
+    const items = listHtml(section.items);
+    const heading = section.heading.trim();
+    if (items && heading) {
+      parts.push(`<h3>${heading}</h3>${items}`);
+    }
   }
 
   const tags = (input.tags ?? []).map((t) => t.trim()).filter((t) => t.length > 0);

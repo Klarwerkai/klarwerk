@@ -10,7 +10,12 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { type Rechtevorschau, spaceFehlerSchluessel, spacesApi } from "../api/spaces";
+import {
+  type ArtikelKontext,
+  type Rechtevorschau,
+  spaceFehlerSchluessel,
+  spacesApi,
+} from "../api/spaces";
 import { Button, Card, SectionLabel } from "./ui";
 
 const OHNE = "__ohne__";
@@ -66,6 +71,27 @@ function Vorschau({ v }: { v: Rechtevorschau }): JSX.Element {
   );
 }
 
+/**
+ * LESEN-INHALT-ZUERST (nacharbeit-7): trägt die Antwort die Vertragsform? Seit die Zeile IN der
+ * Lesefläche steht (`BibliothekLesen`, nach dem Inhalt), nähme ein Wurf beim Rendern die ganze
+ * Eintragsansicht mit — gemessen in `KnowledgeDetail.owner-chain.test.tsx`, wo eine fremde
+ * Gegenstelle `[]` statt des Kontexts lieferte (`reading 'name'`). Eine unlesbare Antwort wird wie
+ * eine fehlende behandelt: die Zeile zeichnet nichts, der Artikel bleibt lesbar.
+ */
+function istKontext(daten: unknown): daten is ArtikelKontext {
+  if (typeof daten !== "object" || daten === null || Array.isArray(daten)) {
+    return false;
+  }
+  const k = daten as Partial<ArtikelKontext>;
+  return (
+    typeof k.artikelVerantwortung === "object" &&
+    k.artikelVerantwortung !== null &&
+    typeof k.autor === "object" &&
+    k.autor !== null &&
+    Array.isArray(k.ziele)
+  );
+}
+
 export function SpaceZeile({ koId }: { koId: string }): JSX.Element | null {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -116,7 +142,7 @@ export function SpaceZeile({ koId }: { koId: string }): JSX.Element | null {
     },
   });
 
-  if (!kontext.isSuccess) {
+  if (!kontext.isSuccess || !istKontext(kontext.data)) {
     return null;
   }
   const k = kontext.data;

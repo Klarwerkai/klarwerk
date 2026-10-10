@@ -38,6 +38,10 @@
 //   V3  Formular + Datei, Datei-Antwort verloren, zweiter Druck: kein Doppelbestand.
 //   V4  Upload scheitert UND Anlage-Antwort verloren, zweiter Druck ohne Änderung: derselbe
 //       Vorgang (Nutzlast, Schlüssel) wird wiederaufgenommen — ein Entwurf (Runde 3, bens G5).
+//   V5  Formular, Antwort verloren, Inhalt GEÄNDERT, zweiter Druck: derselbe Schlüssel mit
+//       `fortschreiben`, ein Entwurf mit dem neuen Inhalt, Hinweis statt Erfolg (entscheidung:14ce8681,
+//       8b909a1e).
+//   V6  Dasselbe im Dateiweg mit einer neu eingelesenen Datei.
 //   F1  Upload scheitert bei angehaltenem Lauf und Doppelklick: EIN Entwurf mit dem Volltext, der
 //       Fehler ist benannt, keine Originalreferenz behauptet — und der Korrekturweg (Entwurf wieder
 //       öffnen, ergänzen, speichern) ist AUSGEFÜHRT.
@@ -108,7 +112,7 @@ const NEUER_TITEL = "Zahlungsziel neu";
  */
 async function formularUndDatei(): Promise<void> {
   await mount(`/erfassen?draft=${ENTWURF_ID}`, "formular");
-  await tippe(feld(String(i18n.t("capture.fTitle"))), NEUER_TITEL);
+  await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), NEUER_TITEL);
   await ansichtWechseln("datei");
   await dateiAblegen(datei());
 }
@@ -153,6 +157,10 @@ function datei(): File {
 }
 
 const gesichertSatz = (): string => String(i18n.t(CAPTURE_FILE_TEXT.wholeSaved, { name: DATEI }));
+/** entscheidung:8b909a1e: der Hinweis, der bei erkannter Wiederholung statt des Erfolgs steht. */
+const bereitsSatz = (): string => String(i18n.t("capture.bereitsGespeichert"));
+const fortgeschriebenSatz = (): string =>
+  String(i18n.t("capture.bereitsGespeichertFortgeschrieben"));
 
 beforeEach(async () => {
   await grundzustand();
@@ -357,12 +365,14 @@ describe("R-0017/R-0020/R-0156 · Formular und Datei gemeinsam, zweiter Klick be
     expect(erst, "die Anlage trägt keinen Wiederholschlüssel").toMatch(/^create-/);
     expect(zweit, "die Wiederholung trägt einen anderen Schlüssel").toBe(erst);
     expect(bestandJeTitel()[TRAEGER_TITEL], "die Datei liegt doppelt im Bestand").toBe(1);
-    expect(sichtbar()).toContain(gesichertSatz());
+    // entscheidung:8b909a1e: der Server hat den Eintrag erkannt — Hinweis statt Erfolg.
+    expect(sichtbar()).toContain(bereitsSatz());
+    expect(sichtbar()).not.toContain(gesichertSatz());
   });
 
   it("V2 · Formular ohne geöffneten Entwurf: Antwort verloren, zweiter Druck — ein Entwurf", async () => {
     await mount("/erfassen", "formular");
-    await tippe(feld(String(i18n.t("capture.fTitle"))), NEUER_TITEL);
+    await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), NEUER_TITEL);
     await tippe(feld(String(i18n.t("capture.fStatement"))), ENTWURF_AUSSAGE);
 
     lasseNaechsteAnlageAntwortVerlorenGehen();
@@ -376,7 +386,9 @@ describe("R-0017/R-0020/R-0156 · Formular und Datei gemeinsam, zweiter Klick be
     expect(erst).toMatch(/^create-/);
     expect(zweit).toBe(erst);
     expect(bestandJeTitel()[NEUER_TITEL], "der Formularentwurf liegt doppelt im Bestand").toBe(1);
-    expect(sichtbar()).toContain(String(i18n.t("capture.draftSaved")));
+    // entscheidung:8b909a1e: der Server hat den Eintrag erkannt — Hinweis statt Erfolg.
+    expect(sichtbar()).toContain(bereitsSatz());
+    expect(sichtbar()).not.toContain(String(i18n.t("capture.draftSaved")));
   });
 
   it("V3 · Formular und Datei: Datei-Antwort verloren, zweiter Druck — ein Formularstand, eine Datei", async () => {
@@ -393,7 +405,7 @@ describe("R-0017/R-0020/R-0156 · Formular und Datei gemeinsam, zweiter Klick be
       [NEUER_TITEL]: 1,
       [TRAEGER_TITEL]: 1,
     });
-    expect(sichtbar()).toContain(gesichertSatz());
+    expect(sichtbar()).toContain(bereitsSatz());
   });
 
   // RUNDE 3 (bens B1, Gegenprobe G5): Uploadfehler UND verlorene Anlage-Antwort. Der zweite Druck
@@ -422,8 +434,59 @@ describe("R-0017/R-0020/R-0156 · Formular und Datei gemeinsam, zweiter Klick be
     expect(bestandJeTitel()[TRAEGER_TITEL], "Doppelbestand ohne Änderung des Menschen").toBe(1);
     // Die Upload-Lage des ersten Versuchs wird nicht verdeckt: kein Original, und das steht da.
     expect(String(nutzlastJeTitel(TRAEGER_TITEL)?.bodyHtml)).not.toContain("obj-");
-    expect(sichtbar()).toContain(gesichertSatz());
+    expect(sichtbar()).toContain(bereitsSatz());
     expect(sichtbar()).toContain(String(i18n.t("capture.originalAttachFailed", { name: DATEI })));
+  });
+
+  // ==============================================================================================
+  // entscheidung:14ce8681 (Option A) — NACH DER VERLORENEN ANTWORT ÄNDERT DER MENSCH DEN INHALT.
+  // ==============================================================================================
+  //
+  // Bis bf9fcf1c bekam der geänderte Inhalt einen NEUEN Schlüssel, und der Server legte einen
+  // zweiten Entwurf an („Verbleibende Grenze" in 04_AKTUELLER_STAND.md). Jetzt reist derselbe
+  // Schlüssel mit `fortschreiben`, und derselbe Entwurf trägt danach den neuen Inhalt.
+  it("V5 · Formular: Antwort verloren, Titel geändert, zweiter Druck — EIN Entwurf mit dem neuen Titel, Hinweis statt Erfolg", async () => {
+    await mount("/erfassen", "formular");
+    await tippe(feld(String(i18n.t("capture.fTitle"))), NEUER_TITEL);
+    await tippe(feld(String(i18n.t("capture.fStatement"))), ENTWURF_AUSSAGE);
+
+    lasseNaechsteAnlageAntwortVerlorenGehen();
+    await klick(speicherKnopf());
+    expect(bestandJeTitel()[NEUER_TITEL], "der Server hat nicht angelegt").toBe(1);
+
+    await tippe(feld(String(i18n.t("capture.fTitle"))), `${NEUER_TITEL} B`);
+    await klick(speicherKnopf());
+
+    const [erst, zweit] = draftsCreate.mock.calls.map((c) => c[1]);
+    expect(zweit, "der geänderte Inhalt bekam einen neuen Schlüssel").toBe(erst);
+    expect(bestandJeTitel()[NEUER_TITEL], "der alte Stand liegt noch im Bestand").toBeUndefined();
+    expect(bestandJeTitel()[`${NEUER_TITEL} B`], "nicht genau ein Eintrag").toBe(1);
+    expect(sichtbar()).toContain(fortgeschriebenSatz());
+    expect(sichtbar()).not.toContain(String(i18n.t("capture.draftSaved")));
+    const hinweis = flaeche().querySelector('[data-testid="capture-bereits-gespeichert"]');
+    expect(hinweis?.querySelector("a")?.getAttribute("href")).toContain(
+      `draft=${encodeURIComponent("neu-1")}`,
+    );
+  });
+
+  it("V6 · Datei: Antwort verloren, andere Datei eingelesen, zweiter Druck — EIN Entwurf mit dem neuen Dateiinhalt", async () => {
+    await mount("/erfassen", "datei");
+    await dateiAblegen(datei());
+
+    lasseNaechsteAnlageAntwortVerlorenGehen();
+    await klick(speicherKnopf());
+    expect(bestandJeTitel()[TRAEGER_TITEL]).toBe(1);
+
+    const NEU = "Neu: der Filter wird wöchentlich gewechselt.";
+    await dateiAblegen(new File([NEU], DATEI, { type: "text/plain" }));
+    await klick(speicherKnopf());
+
+    const [erst, zweit] = draftsCreate.mock.calls.map((c) => c[1]);
+    expect(zweit, "der geänderte Inhalt bekam einen neuen Schlüssel").toBe(erst);
+    expect(bestandJeTitel()[TRAEGER_TITEL], "zweiter Eintrag nach geändertem Inhalt").toBe(1);
+    expect(String(nutzlastJeTitel(TRAEGER_TITEL)?.statement)).toContain(NEU);
+    expect(String(nutzlastJeTitel(TRAEGER_TITEL)?.statement)).not.toContain(ABSATZ_1);
+    expect(sichtbar()).toContain(fortgeschriebenSatz());
   });
 
   it("F1 · Upload scheitert bei hängendem Lauf und Doppelklick: ein Entwurf mit Volltext, Fehler benannt", async () => {
