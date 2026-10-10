@@ -596,6 +596,7 @@ const REGISTER: Record<string, Eintrag> = {
   // --- Kuratorentore: nur Rollen, die Vertrauliches ohnehin sehen dürfen ---------------------
   "GET /api/kos/trash": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Papierkorb." },
   "GET /api/audit": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  "GET /api/audit/seite": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
   "GET /api/audit/verify": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
   "GET /api/audit/export": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
   "GET /api/audit/ko/:koId/findings": {

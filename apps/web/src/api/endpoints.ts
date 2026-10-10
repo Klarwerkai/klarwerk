@@ -27,6 +27,8 @@ import type {
   AssistResult,
   AuditChainExport,
   AuditEntry,
+  AuditSeite,
+  AuditSeitenAnfrage,
   AuditVerifyReport,
   BearbeitungsLage,
   BearbeitungsMeldung,
@@ -1156,6 +1158,21 @@ export const endpoints = {
   },
   audit: {
     list: () => api.get<AuditEntry[]>("/audit"),
+    // produkt:20261009:admin-audit-verstaendlich: eine Seite der Kette, kombinierbar gefiltert —
+    // die Verwalteransicht lädt damit nie mehr die unbeschränkte Gesamtliste.
+    seite: (anfrage: AuditSeitenAnfrage = {}) =>
+      api.get<AuditSeite>(
+        `/audit/seite${qs({
+          actor: anfrage.actor,
+          action: anfrage.action,
+          actions: anfrage.actions?.join(","),
+          target: anfrage.target,
+          from: anfrage.from,
+          to: anfrage.to,
+          before: anfrage.before?.toString(),
+          limit: anfrage.limit?.toString(),
+        })}`,
+      ),
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Knopf „Integrität geprüft").
     // AUFTRAG-mega14 Block A: der Bericht nennt jetzt auch die URSACHE einer Abweichung.
     verify: () => api.get<AuditVerifyReport>("/audit/verify"),
