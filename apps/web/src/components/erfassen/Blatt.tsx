@@ -14,6 +14,7 @@ import type {
   SchutzdatenArt,
   StructureResult,
 } from "../../api/types";
+import { type VorlagenBezug, befundeAus } from "../../api/vorlagen";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
 import {
@@ -99,6 +100,7 @@ import { leerzustandsZeile } from "../EmptyStateCtas";
 import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
+import { VorlagenWahl, befundText } from "../VorlagenWahl";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
 import { useSprachaufnahme } from "../sprache/useSprachaufnahme";
 import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
@@ -199,6 +201,23 @@ interface Speicherauftrag {
   readonly activeDraftId: string | null;
   readonly bodyNieGeliefert: boolean;
   readonly fallbackTitle: string;
+  // produkt:20261007:templates-default: Vorlage + Fassung + Space, eingefroren wie der Bereich.
+  readonly vorlage: VorlagenBezug | null;
+  /** Trug dieses Blatt je einen Bezug? Nur dann reist `null` als ausdrückliches „frei" mit. */
+  readonly vorlageBekannt: boolean;
+}
+
+/**
+ * produkt:20261007:templates-default — der Vorlagenbezug am Rumpf. Ein Blatt, das nie eine Vorlage
+ * hatte, schickt das Feld NICHT mit (die Nutzlast bleibt wie bisher); hatte es eine und ist jetzt
+ * frei, reist `null`, damit der partielle Merge den alten Bezug wirklich löst.
+ */
+function mitVorlage(
+  rumpf: DraftPayload,
+  vorlage: VorlagenBezug | null,
+  bekannt: boolean,
+): DraftPayload {
+  return vorlage || bekannt ? { ...rumpf, vorlage } : rumpf;
 }
 
 /** Der Vergleichsstand für `savedStateRef` — genau die Felder, die das Dirty-Prädikat liest. */
@@ -472,6 +491,14 @@ export function Blatt({
   // Gesetzt wird sie nur durch bewusste Übernahme eines Ordnen-Vorschlags oder durch Laden eines
   // Entwurfs, der eine Wissensart trägt.
   const [wissensart, setWissensart] = useState<KnowledgeType | undefined>(undefined);
+  // produkt:20261007:templates-default: Vorlage + Fassung + Space dieses Blatts (`null` = frei).
+  // `vorlageBekanntRef`: trug das Blatt je einen Bezug — dann reist auch „frei" (`null`) mit.
+  const [vorlagenBezug, setVorlagenBezug] = useState<VorlagenBezug | null>(null);
+  const vorlageBekanntRef = useRef(false);
+  const vorlageWaehlen = useCallback((bezug: VorlagenBezug | null): void => {
+    vorlageBekanntRef.current = vorlageBekanntRef.current || bezug !== null;
+    setVorlagenBezug(bezug);
+  }, []);
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
   // trug KEINE Stufe". Er steuert die Modell-Provenienz und wird bewusst NICHT geglättet.
@@ -1004,11 +1031,15 @@ export function Blatt({
   // FR-STR-01: die entschiedene Wissensart reist an DERSELBEN Stelle mit (Regel am Helfer).
   const mitBereich = useCallback(
     (rumpf: DraftPayload): DraftPayload =>
-      withDecidedKnowledgeType(
-        kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
-        wissensart,
+      mitVorlage(
+        withDecidedKnowledgeType(
+          kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
+          wissensart,
+        ),
+        vorlagenBezug,
+        vorlageBekanntRef.current,
       ),
-    [kategorie, wissensart],
+    [kategorie, wissensart, vorlagenBezug],
   );
 
   const changeKategorie = (next: string): void => {
@@ -1071,6 +1102,8 @@ export function Blatt({
     setVertraulichkeitMarkiert(false);
     setKategorie("");
     setWissensart(undefined);
+    setVorlagenBezug(null);
+    vorlageBekanntRef.current = false;
     savedStateRef.current = {
       title: "",
       bodyHtml: "",
@@ -1259,6 +1292,9 @@ export function Blatt({
         setBodyHtml(loadedBody);
         setKategorie(draft.payload.category ?? "");
         setWissensart(loadedWissensart);
+        // produkt:20261007:templates-default: der Entwurf behält Vorlage, Fassung und Space.
+        vorlageBekanntRef.current = Boolean(draft.payload.vorlage);
+        setVorlagenBezug(draft.payload.vorlage ?? null);
         loadedUpdatedAtRef.current = draft.updatedAt ?? null;
         // JOB 3556 R3: ab hier steht ein anderer gespeicherter Stand hinter diesem Blatt.
         setGespeicherterStand((n) => n + 1);
@@ -1450,9 +1486,13 @@ export function Blatt({
       }
       // FR-STR-01: die eingefrorene Wissensart reist an derselben Stelle wie der Bereich.
       const mitAuftragsBereich = (rumpf: DraftPayload): DraftPayload =>
-        withDecidedKnowledgeType(
-          auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf,
-          auftrag.wissensart,
+        mitVorlage(
+          withDecidedKnowledgeType(
+            auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf,
+            auftrag.wissensart,
+          ),
+          auftrag.vorlage,
+          auftrag.vorlageBekannt,
         );
       if (auftrag.activeDraftId) {
         // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
@@ -1672,6 +1712,8 @@ export function Blatt({
       setStaleConflict(false);
       setKategorie("");
       setWissensart(undefined);
+      setVorlagenBezug(null);
+      vorlageBekanntRef.current = false;
       savedStateRef.current = {
         title: "",
         bodyHtml: "",
@@ -1701,6 +1743,13 @@ export function Blatt({
       if (e instanceof ApiError && e.code === "DRAFT_STALE") {
         setStaleConflict(true);
         setErr(null);
+        return;
+      }
+      // produkt:20261007:templates-default: fehlende Pflichtangaben in Worten der Oberfläche, je
+      // Feld ein Satz — der Entwurf ist gesichert und bleibt stehen.
+      const befunde = befundeAus(e);
+      if (befunde && befunde.length > 0) {
+        setErr(befunde.map((b) => befundText(t, b)).join(" "));
         return;
       }
       setErr(erfassenFehlersatz(e, t, t("fd.errSaveFailed")));
@@ -1913,6 +1962,8 @@ export function Blatt({
       activeDraftId,
       bodyNieGeliefert: bodyNieGeliefertRef.current,
       fallbackTitle,
+      vorlage: vorlagenBezug,
+      vorlageBekannt: vorlageBekanntRef.current,
     });
   const speicherauftragRef = useRef(speicherauftrag);
   speicherauftragRef.current = speicherauftrag;
@@ -3645,6 +3696,20 @@ export function Blatt({
               Seine Werkzeugleiste (H2 · B · I · Listen · Link · Bild · Callouts) BLEIBT sichtbar —
               sie ist die Formatleiste des Blattes, wie Pages sie hat. Sie zu verbergen hiesse,
               Auszeichnen, Listen und Links ersatzlos zu verlieren. */}
+          {/* produkt:20261007:templates-default: die Vorlage über dem Schreibfeld — eine Zeile, die
+              den vorgewählten Standard (oder die Space-Vorgabe) nennt und sich zur Auswahl öffnet.
+              Nichts wird ohne Klick eingesetzt; freie Eingabe bleibt der unveränderte Normalfall. */}
+          {blattNimmtAn ? (
+            <VorlagenWahl
+              kompakt
+              bodyHtml={bodyHtml}
+              onApply={changeBodyHtml}
+              bezug={vorlagenBezug}
+              onBezug={vorlageWaehlen}
+              category={kategorie}
+              tags={[]}
+            />
+          ) : null}
           <div
             ref={editorHuelleRef}
             data-testid="blatt-text"
