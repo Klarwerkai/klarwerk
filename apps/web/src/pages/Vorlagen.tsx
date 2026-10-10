@@ -995,6 +995,24 @@ function Verwaltung(): JSX.Element {
                 ))}
               </ul>
             ) : null}
+            {plan.vorgaben.length > 0 ? (
+              <ul data-testid="begriff-vorgaben" className="list-disc pl-5">
+                {plan.vorgaben.map((x) => (
+                  <li key={x.spaceId}>
+                    {t(
+                      auftrag.vorgang === "ausmustern"
+                        ? "vorlagen.begriffe.vorgabeBleibt"
+                        : "vorlagen.begriffe.vorgabeZiehtMit",
+                      {
+                        space: x.spaceName ?? x.spaceId,
+                        vorher: x.vorher.join(", "),
+                        nachher: x.nachher.join(", "),
+                      },
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <ul className="mt-1 text-[12px]">
               {plan.betroffen.slice(0, 20).map((z) => (
                 <li key={z.koId}>

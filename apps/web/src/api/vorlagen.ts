@@ -224,6 +224,14 @@ export interface BegriffsPlan {
   jeSpace: { spaceId: string | null; name: string | null; betroffen: number; ausserhalb: number }[];
   unberuehrt: number;
   ansichten: { spaceId: string; spaceName: string; ansicht: string; archiviert: boolean }[];
+  /** Space-Vorgaben (erlaubte Kategorien / vorgeschlagene Tags), die mitziehen. */
+  vorgaben: {
+    spaceId: string;
+    spaceName: string | null;
+    version: number;
+    vorher: string[];
+    nachher: string[];
+  }[];
   wirkung: string;
   grundlage: string;
 }

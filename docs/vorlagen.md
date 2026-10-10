@@ -17,7 +17,9 @@ Auftrag `produkt:20261007:templates-default` (Revision 2, ADMIN-08).
 - **Begriffspflege** (Kontoverwaltung): Tag/Kategorie umbenennen, zusammenführen, ausmustern —
   wahlweise nur in einem Space; Vorschau des betroffenen Bestands je Space vor der Ausführung.
   Gespeicherte Space-Ansichten mit dem Tag ziehen beim Umbenennen/Zusammenführen als neue
-  Spacefassung mit; ein archivierter Space bleibt unverändert und wird so benannt.
+  Spacefassung mit; ein archivierter Space bleibt unverändert und wird so benannt. Ebenso ziehen
+  Space-Vorgaben im Geltungsbereich mit (erlaubte Kategorien bzw. vorgeschlagene Tags, neue
+  Vorgabenfassung, ohne Doppel); Vorgaben anderer Spaces bleiben unverändert.
 
 ## Rechte
 

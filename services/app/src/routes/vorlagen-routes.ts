@@ -50,6 +50,7 @@ import {
   pruefeSpaceVorgabe,
   pruefeVorlageEingabe,
   spaceVorgabe,
+  vorgabeNachher,
   vorlagenFassungen,
   waehleStartvorlage,
 } from "../vorlagen";
@@ -562,8 +563,12 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
     async function plan(user: SessionUser, roh: unknown) {
       const spaces = await dienste.spaces.aktuelle();
       const auftrag = pruefeBegriffsAuftrag(roh, spaces);
-      const p = begriffsPlan(auftrag, await dienste.ko.list({}), spaces, (ko) =>
-        darfSehen(user, ko),
+      const p = begriffsPlan(
+        auftrag,
+        await dienste.ko.list({}),
+        spaces,
+        (ko) => darfSehen(user, ko),
+        await ablage.aktuelle<SpaceVorgabe>("space-vorgabe"),
       );
       if (auftrag.vorgang === "zusammenfuehren" && !p.zielVorhanden) {
         throw new VorlagenFehler(
@@ -676,6 +681,35 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
               }
             }
           }
+          // Space-Vorgaben im Geltungsbereich ziehen mit — als neue Vorgabenfassung je Space, damit
+          // Einreichungen mit dem neuen Begriff gelten. Vorgaben anderer Spaces bleiben, wie sie sind;
+          // ein archivierter Space nimmt keine Änderung an und wird gezählt.
+          const vorgabenGeaendert: string[] = [];
+          const vorgabenUnveraendert: string[] = [];
+          if (a.vorgang !== "ausmustern") {
+            for (const z of p.vorgaben) {
+              const space = (await dienste.spaces.fassungen(z.spaceId)).at(-1);
+              const stand = await ablage.fassungen<SpaceVorgabe>("space-vorgabe", z.spaceId);
+              const vorher = stand.at(-1);
+              if (!space || istArchiviert(space) || !vorher || vorher.version !== z.version) {
+                vorgabenUnveraendert.push(z.spaceId);
+                continue;
+              }
+              const neu: SpaceVorgabe = {
+                ...vorher,
+                ...vorgabeNachher(vorher, a),
+                spaceId: z.spaceId,
+                version: vorher.version + 1,
+                geaendertVon: user.id,
+                geaendertAm: jetzt().toISOString(),
+              };
+              if (await ablage.lege("space-vorgabe", z.spaceId, neu)) {
+                vorgabenGeaendert.push(z.spaceId);
+              } else {
+                vorgabenUnveraendert.push(z.spaceId);
+              }
+            }
+          }
           const schluessel = begriffSchluessel(a.art, a.name, a.spaceId);
           const bisher = await ablage.fassungen<BegriffEintrag>("begriff", schluessel);
           const eintrag: BegriffEintrag = {
@@ -704,6 +738,8 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
             unberuehrt: p.unberuehrt,
             spaceAnsichtenGeaendert: ansichtenGeaendert,
             spaceAnsichtenUnveraendert: ansichtenUnveraendert,
+            spaceVorgabenGeaendert: vorgabenGeaendert,
+            spaceVorgabenUnveraendert: vorgabenUnveraendert,
           };
           await dienste.audit?.record({
             actor: user.id,

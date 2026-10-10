@@ -170,8 +170,28 @@ export function feldFuerTitel(vorlage: StrukturVorlage, titel: string): Struktur
   return vorlage.felder.find((f) => titelVarianten(f).includes(n));
 }
 
-/** Leer heisst: kein Text, oder nur der unveränderte Hinweis der Vorlage. */
+/**
+ * Inhalt ohne Text, den der Editor trägt: Bilder (auch in Abbildungen), Tabellen, Trennlinien,
+ * eingebettete Medien. Dieselbe Regel wie `isEmptyHtml` in `richText.ts` (ein `<img>` ist Inhalt),
+ * erweitert um die übrigen Elemente, die ohne Text etwas aussagen.
+ */
+export function hatNichtTextInhalt(html: string): boolean {
+  return /<(img|figure|table|hr|video|audio|iframe|object|embed|svg)\b/i.test(html);
+}
+
+/** Ohne Text UND ohne Bild, Tabelle oder anderen Nichttext-Inhalt. */
+export function istInhaltLeer(html: string): boolean {
+  return textVon(html).length === 0 && !hatNichtTextInhalt(html);
+}
+
+/**
+ * Leer heisst: kein Text und kein Nichttext-Inhalt, oder nur der unveränderte Hinweis der Vorlage.
+ * Ein Abschnitt mit Bild ist nie Platzhalter — auch wenn er daneben nur den Hinweis trägt.
+ */
 export function istPlatzhalter(inhaltHtml: string, feld?: StrukturFeld): boolean {
+  if (hatNichtTextInhalt(inhaltHtml)) {
+    return false;
+  }
   const text = normiere(textVon(inhaltHtml));
   if (text.length === 0) {
     return true;
@@ -239,7 +259,8 @@ export function wechsleVorlage(
     leerEntfernt: [],
     angefuegt: false,
   };
-  if (textVon(html ?? "").length === 0) {
+  // Nur ein wirklich leerer Beitrag wird ersetzt — ein Beitrag nur mit Bild ist es nicht.
+  if (istInhaltLeer(html ?? "")) {
     return leer;
   }
   if (alt === null) {

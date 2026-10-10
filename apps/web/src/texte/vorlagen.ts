@@ -238,6 +238,10 @@ export default {
       "Ansicht „{{ansicht}}“ im Space „{{space}}“ zieht mit (neue Spacefassung).",
     "vorlagen.begriffe.ansichtBleibt":
       "Ansicht „{{ansicht}}“ im Space „{{space}}“ bleibt unverändert.",
+    "vorlagen.begriffe.vorgabeZiehtMit":
+      "Vorgaben des Space „{{space}}“ ziehen mit (neue Vorgabenfassung): {{vorher}} → {{nachher}}.",
+    "vorlagen.begriffe.vorgabeBleibt":
+      "Vorgaben des Space „{{space}}“ nennen den Begriff und bleiben unverändert: {{vorher}}.",
     "vorlagen.begriffe.wirkung":
       "Nur die genannten Beiträge bekommen den neuen Begriff; Inhalte und Fassungen bleiben. Suche und Filter finden sie unter dem neuen Begriff; neue Eingaben mit dem alten werden darauf hingewiesen.",
     "vorlagen.begriffe.wirkungAusmustern":
@@ -480,6 +484,10 @@ export default {
     "vorlagen.begriffe.ansichtZiehtMit":
       "View “{{ansicht}}” in space “{{space}}” follows (new space version).",
     "vorlagen.begriffe.ansichtBleibt": "View “{{ansicht}}” in space “{{space}}” stays unchanged.",
+    "vorlagen.begriffe.vorgabeZiehtMit":
+      "Requirements of space “{{space}}” follow (new requirements version): {{vorher}} → {{nachher}}.",
+    "vorlagen.begriffe.vorgabeBleibt":
+      "Requirements of space “{{space}}” name the term and stay unchanged: {{vorher}}.",
     "vorlagen.begriffe.wirkung":
       "Only the listed entries get the new term; content and versions remain. Search and filters find them under the new term; new input with the old one is pointed to it.",
     "vorlagen.begriffe.wirkungAusmustern":
@@ -724,6 +732,10 @@ export default {
       "Weergave „{{ansicht}}” in de space „{{space}}” gaat mee (nieuwe spaceversie).",
     "vorlagen.begriffe.ansichtBleibt":
       "Weergave „{{ansicht}}” in de space „{{space}}” blijft ongewijzigd.",
+    "vorlagen.begriffe.vorgabeZiehtMit":
+      "Eisen van de space „{{space}}” gaan mee (nieuwe versie van de eisen): {{vorher}} → {{nachher}}.",
+    "vorlagen.begriffe.vorgabeBleibt":
+      "Eisen van de space „{{space}}” noemen het begrip en blijven ongewijzigd: {{vorher}}.",
     "vorlagen.begriffe.wirkung":
       "Alleen de genoemde bijdragen krijgen het nieuwe begrip; inhoud en versies blijven. Zoeken en filters vinden ze onder het nieuwe begrip; nieuwe invoer met het oude wordt erop gewezen.",
     "vorlagen.begriffe.wirkungAusmustern":

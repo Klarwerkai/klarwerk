@@ -1375,6 +1375,34 @@ export function ansichtenNachher(
   );
 }
 
+/**
+ * Eine Space-Vorgabe nach Umbenennen/Zusammenführen: erlaubte Kategorien bzw. vorgeschlagene Tags
+ * tragen den neuen Begriff (ohne Doppel), damit Einreichungen mit dem neuen Begriff gelten.
+ */
+export function vorgabeNachher(v: SpaceVorgabeEingabe, a: BegriffsAuftrag): SpaceVorgabeEingabe {
+  const ersetze = (liste: readonly string[]) => {
+    const raus: string[] = [];
+    for (const t of liste) {
+      const n = a.ziel !== null && gleich(t, a.name) ? a.ziel : t;
+      if (!raus.some((x) => gleich(x, n))) {
+        raus.push(n);
+      }
+    }
+    return raus;
+  };
+  if (a.vorgang === "ausmustern" || a.ziel === null) {
+    return { ...v, kategorien: [...v.kategorien], tags: [...v.tags] };
+  }
+  return a.art === "kategorie"
+    ? { ...v, kategorien: ersetze(v.kategorien), tags: [...v.tags] }
+    : { ...v, kategorien: [...v.kategorien], tags: ersetze(v.tags) };
+}
+
+/** Nennt die Vorgabe den Begriff (Kategorie: erlaubte Kategorien; Tag: vorgeschlagene Tags)? */
+export function vorgabeNennt(v: SpaceVorgabeEingabe, art: BegriffsArt, name: string): boolean {
+  return (art === "kategorie" ? v.kategorien : v.tags).some((x) => gleich(x, name));
+}
+
 export function begriffNachher(
   ko: KnowledgeObject,
   a: BegriffsAuftrag,
@@ -1416,6 +1444,18 @@ export interface BegriffsPlan {
    * bleibt; ein archivierter Space wird nicht geändert und so benannt.
    */
   ansichten: { spaceId: string; spaceName: string; ansicht: string; archiviert: boolean }[];
+  /**
+   * Space-Vorgaben im Geltungsbereich, die den Begriff nennen (erlaubte Kategorien bzw.
+   * vorgeschlagene Tags). Beim Umbenennen/Zusammenführen erhalten sie eine neue Fassung mit dem
+   * neuen Begriff; Vorgaben anderer Spaces bleiben unverändert.
+   */
+  vorgaben: {
+    spaceId: string;
+    spaceName: string | null;
+    version: number;
+    vorher: string[];
+    nachher: string[];
+  }[];
   /** Ausmustern ändert keinen Inhalt; Umbenennen/Zusammenführen ändern nur die genannten Beiträge. */
   wirkung: string;
   grundlage: string;
@@ -1426,6 +1466,7 @@ export function begriffsPlan(
   alle: readonly KnowledgeObject[],
   spaces: readonly SpaceFassung[],
   sieht: (ko: KnowledgeObject) => boolean,
+  spaceVorgaben: readonly SpaceVorgabe[] = [],
 ): BegriffsPlan {
   const name = (id: string | null) => (id ? (spaces.find((s) => s.id === id)?.name ?? null) : null);
   const imBereich = (ko: KnowledgeObject) =>
@@ -1473,6 +1514,19 @@ export function begriffsPlan(
               })),
           )
       : [];
+  const liste = (v: SpaceVorgabeEingabe) => [...(a.art === "kategorie" ? v.kategorien : v.tags)];
+  const vorgaben = [...spaceVorgaben]
+    .filter(
+      (v) => (a.spaceId === null || v.spaceId === a.spaceId) && vorgabeNennt(v, a.art, a.name),
+    )
+    .sort((x, y) => x.spaceId.localeCompare(y.spaceId))
+    .map((v) => ({
+      spaceId: v.spaceId,
+      spaceName: name(v.spaceId),
+      version: v.version,
+      vorher: liste(v),
+      nachher: liste(vorgabeNachher(v, a)),
+    }));
   return {
     auftrag: a,
     zielVorhanden,
@@ -1480,6 +1534,7 @@ export function begriffsPlan(
     jeSpace: [...zaehler].map(([spaceId, z]) => ({ spaceId, name: name(spaceId), ...z })),
     unberuehrt: tragend.length - betroffen.length,
     ansichten,
+    vorgaben,
     wirkung:
       a.vorgang === "ausmustern"
         ? "Ausmustern entfernt den Begriff aus keinem Beitrag. Neue Eingaben im Geltungsbereich werden auf den ausgemusterten Begriff hingewiesen."
@@ -1491,6 +1546,7 @@ export function begriffsPlan(
           zeilen: zeilen.map((z) => [z.koId, z.version, z.vorher]),
           ausserhalb: tragend.length - betroffen.length,
           ansichten: ansichten.map((x) => [x.spaceId, x.ansicht, x.archiviert]),
+          vorgaben: vorgaben.map((x) => [x.spaceId, x.version, x.vorher]),
         }),
       )
       .digest("hex")

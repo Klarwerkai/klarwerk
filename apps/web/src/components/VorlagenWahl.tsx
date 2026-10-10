@@ -35,6 +35,7 @@ import { sanitizeHtml } from "../lib/richText";
 import {
   type VorlagenWechsel,
   feldText,
+  istInhaltLeer,
   vorlagenName,
   vorlagenSprache,
   wechsleVorlage,
@@ -251,7 +252,9 @@ export function VorlagenWahl({
         </span>
         {vorschlag ? (
           <Button data-testid="vorlage-anwenden" onClick={anwenden}>
-            {bodyHtml.trim() ? t("vorlagen.anwenden.anfuegen") : t("vorlagen.anwenden.setzen")}
+            {istInhaltLeer(bodyHtml)
+              ? t("vorlagen.anwenden.setzen")
+              : t("vorlagen.anwenden.anfuegen")}
           </Button>
         ) : null}
         <button
@@ -436,7 +439,7 @@ export function VorlagenWahl({
           ) : wechsel ? (
             <div data-testid="vorlage-wechsel" className="space-y-1">
               <p className="text-[11.5px] text-muted">
-                {textVonWechsel(t, wechsel, bodyHtml.trim().length === 0)}
+                {textVonWechsel(t, wechsel, istInhaltLeer(bodyHtml))}
               </p>
               <details>
                 <summary className="cursor-pointer text-[11px] text-muted-2">
@@ -459,9 +462,9 @@ export function VorlagenWahl({
               >
                 {bezug
                   ? t("vorlagen.anwenden.wechseln")
-                  : bodyHtml.trim()
-                    ? t("vorlagen.anwenden.anfuegen")
-                    : t("vorlagen.anwenden.setzen")}
+                  : istInhaltLeer(bodyHtml)
+                    ? t("vorlagen.anwenden.setzen")
+                    : t("vorlagen.anwenden.anfuegen")}
               </Button>
             ) : null}
             {gewaehlt.istStandard ? (

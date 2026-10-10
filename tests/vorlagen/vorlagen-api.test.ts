@@ -738,4 +738,120 @@ describe("K7 · K11 · Verwaltung: Nutzungsumfang und Begriffspflege je Space", 
       expect.objectContaining({ art: "begriff_ausgemustert", wert: "Altlast" }),
     ]);
   });
+
+  it("Kategorie umbenennen/zusammenführen zieht die Space-Vorgabe im Geltungsbereich mit; der Nachbar-Space bleibt", async () => {
+    const b = await buehne();
+    const vorgabe = async (spaceId: string) => {
+      const res = await req(b, b.k.carla, "GET", `/api/vorlagen/space-vorgaben/${spaceId}`);
+      return res.json().fassungen as { version: number; kategorien: string[] }[];
+    };
+    for (const [spaceId, kategorien] of [
+      [b.instandhaltung, ["Wartung", "Service"]],
+      [b.labor, ["Wartung"]],
+    ] as const) {
+      const res = await req(b, b.k.carla, "PUT", `/api/vorlagen/space-vorgaben/${spaceId}`, {
+        version: 0,
+        kategorien,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+    }
+    const wartung = await faqBeitrag(b, b.k.erik, "Pumpe warten", [], b.instandhaltung, "Wartung");
+    expect(wartung.statusCode, wartung.body).toBe(201);
+    const service = await faqBeitrag(b, b.k.erik, "Pumpe ölen", [], b.instandhaltung, "Service");
+    expect(service.statusCode, service.body).toBe(201);
+    const imLabor = await faqBeitrag(b, b.k.fritz, "Waage warten", [], b.labor, "Wartung");
+    expect(imLabor.statusCode, imLabor.body).toBe(201);
+
+    // Umbenennen im Space „Instandhaltung“: die Vorschau nennt dessen Vorgabe, nicht die des Labors.
+    const umbenennen = {
+      art: "kategorie",
+      vorgang: "umbenennen",
+      name: "Wartung",
+      ziel: "Instandsetzung",
+      spaceId: b.instandhaltung,
+      begruendung: "Einheitlicher Begriff im Space (fiktiv).",
+    };
+    const plan = await req(b, b.k.admin, "POST", "/api/vorlagen/begriffe/vorschau", umbenennen);
+    expect(plan.statusCode, plan.body).toBe(200);
+    expect(plan.json().vorgaben).toEqual([
+      {
+        spaceId: b.instandhaltung,
+        spaceName: "Instandhaltung",
+        version: 1,
+        vorher: ["Wartung", "Service"],
+        nachher: ["Instandsetzung", "Service"],
+      },
+    ]);
+    const ausgefuehrt = await req(b, b.k.admin, "POST", "/api/vorlagen/begriffe/ausfuehren", {
+      ...umbenennen,
+      grundlage: plan.json().grundlage,
+    });
+    expect(ausgefuehrt.statusCode, ausgefuehrt.body).toBe(200);
+    expect(ausgefuehrt.json().spaceVorgabenGeaendert).toEqual([b.instandhaltung]);
+    // Neue Vorgabenfassung im Space; die vorige bleibt lesbar. Labor unverändert.
+    const iFassungen = await vorgabe(b.instandhaltung);
+    expect(iFassungen.map((f) => f.version)).toEqual([1, 2]);
+    expect(iFassungen.at(-1)?.kategorien).toEqual(["Instandsetzung", "Service"]);
+    expect(iFassungen[0]?.kategorien).toEqual(["Wartung", "Service"]);
+    const lFassungen = await vorgabe(b.labor);
+    expect(lFassungen.map((f) => f.version)).toEqual([1]);
+    expect(lFassungen[0]?.kategorien).toEqual(["Wartung"]);
+
+    // Einreichen mit dem neuen Begriff gelingt im Space; der alte wird abgewiesen und erklärt.
+    const neu = await faqBeitrag(b, b.k.mia, "Lager", [], b.instandhaltung, "Instandsetzung");
+    expect(neu.statusCode, neu.body).toBe(201);
+    const alt = await faqBeitrag(b, b.k.mia, "Lager prüfen", [], b.instandhaltung, "Wartung");
+    expect(alt.statusCode).toBe(400);
+    expect((alt.json().befunde as { art: string }[]).map((x) => x.art)).toEqual(
+      expect.arrayContaining(["kategorie_nicht_erlaubt", "begriff_ersetzt"]),
+    );
+    // Im Labor gilt „Wartung“ weiter.
+    const labor = await faqBeitrag(b, b.k.fritz, "Pipette warten", [], b.labor, "Wartung");
+    expect(labor.statusCode, labor.body).toBe(201);
+    expect((await req(b, b.k.fritz, "GET", `/api/kos/${imLabor.json().id}`)).json().category).toBe(
+      "Wartung",
+    );
+
+    // Zusammenführen „Service“ → „Instandsetzung“: die Vorgabe nennt den Zielbegriff danach einmal.
+    const zusammen = {
+      art: "kategorie",
+      vorgang: "zusammenfuehren",
+      name: "Service",
+      ziel: "Instandsetzung",
+      spaceId: b.instandhaltung,
+      begruendung: "Zwei Begriffe für dieselbe Arbeit (fiktiv).",
+    };
+    const zPlan = await req(b, b.k.admin, "POST", "/api/vorlagen/begriffe/vorschau", zusammen);
+    expect(zPlan.statusCode, zPlan.body).toBe(200);
+    expect(zPlan.json().vorgaben).toEqual([
+      expect.objectContaining({
+        spaceId: b.instandhaltung,
+        version: 2,
+        vorher: ["Instandsetzung", "Service"],
+        nachher: ["Instandsetzung"],
+      }),
+    ]);
+    const zAus = await req(b, b.k.admin, "POST", "/api/vorlagen/begriffe/ausfuehren", {
+      ...zusammen,
+      grundlage: zPlan.json().grundlage,
+    });
+    expect(zAus.statusCode, zAus.body).toBe(200);
+    expect(zAus.json().spaceVorgabenGeaendert).toEqual([b.instandhaltung]);
+    expect((await vorgabe(b.instandhaltung)).at(-1)).toEqual(
+      expect.objectContaining({ version: 3, kategorien: ["Instandsetzung"] }),
+    );
+    expect((await req(b, b.k.erik, "GET", `/api/kos/${service.json().id}`)).json().category).toBe(
+      "Instandsetzung",
+    );
+    const danach = await faqBeitrag(
+      b,
+      b.k.erik,
+      "Pumpe abdichten",
+      [],
+      b.instandhaltung,
+      "Instandsetzung",
+    );
+    expect(danach.statusCode, danach.body).toBe(201);
+    expect((await vorgabe(b.labor)).map((f) => f.version)).toEqual([1]);
+  });
 });

@@ -163,6 +163,46 @@ describe("K2 · Vorlage wechseln, ohne Werte zu verlieren", () => {
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;b&gt;Titel&lt;/b&gt;");
   });
+
+  // Regression (Ben-Befund 9e782b4): der Wechsel bewertete nur Text — Bilder gingen verloren.
+  const BILD = '<img src="/api/assets/fiktiv-skizze.png" alt="Skizze Linie 4 (fiktiv)">';
+
+  it("Beitrag nur mit Bild ist nicht leer: ohne bekannte Vorlage wird angefügt, das Bild bleibt", () => {
+    const html = `<p>${BILD}</p>`;
+    const w = wechsleVorlage(html, null, BESPRECHUNG, "de", "Weitere Inhalte");
+    expect(w.angefuegt).toBe(true);
+    expect(w.html.startsWith(html)).toBe(true);
+  });
+
+  it("Beitrag nur mit Bild und bekannter Vorlage: das Bild bleibt im Ergebnis", () => {
+    const w = wechsleVorlage(`<p>${BILD}</p>`, BESPRECHUNG, PROTOKOLL, "de", "Weitere Inhalte");
+    expect(w.html).toContain(BILD);
+  });
+
+  it("Abschnitte nur mit Bild — auch neben dem unveränderten Hinweis — werden übernommen oder verschoben, nie entfernt", () => {
+    const geschrieben = [
+      "<h2>Besprechung</h2>",
+      `<h3>Anlass</h3><p>Worum ging es? …</p><p>${BILD}</p>`,
+      `<h3>Ergebnisse</h3><figure>${BILD}</figure>`,
+      "<h3>Offen</h3><ul><li>Frage ergänzen …</li></ul>",
+    ].join("");
+    const w = wechsleVorlage(geschrieben, BESPRECHUNG, PROTOKOLL, "de", "Weitere Inhalte");
+    expect(w.uebernommen).toEqual(["Anlass"]);
+    expect(w.verschoben).toEqual(["Ergebnisse"]);
+    expect(w.leerEntfernt).toEqual(["Offen"]);
+    expect(w.html.split(BILD)).toHaveLength(3);
+    expect(w.html).toContain(`<figure>${BILD}</figure>`);
+  });
+
+  it("ein Pflichtfeld, das nur ein Bild trägt, gilt als ausgefüllt", () => {
+    const html = `<h2>Besprechung</h2><h3>Anlass</h3><p>${BILD}</p>`;
+    expect(fehlendePflichtfelder(html, BESPRECHUNG)).toEqual([]);
+    expect(
+      fehlendePflichtfelder("<h2>Besprechung</h2><h3>Anlass</h3><p></p>", BESPRECHUNG).map(
+        (f) => f.titel,
+      ),
+    ).toEqual(["Anlass"]);
+  });
 });
 
 describe("K6 · Editor und Server lesen dieselben Felder — in jeder Sprache", () => {
