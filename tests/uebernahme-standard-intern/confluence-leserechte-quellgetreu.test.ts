@@ -26,11 +26,11 @@ import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { runConfluenceImport } from "../../services/app/src/confluence-import";
 import { darfSehen } from "../../services/app/src/sichtbarkeit";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService, groupingRequiresConfidential } from "../../services/library-analytics";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const OPTS = { baseUrl: "https://acme.atlassian.net/wiki", spaceKey: "K" };
 

@@ -30,7 +30,6 @@ import { createPool, migrate } from "../../services/app/src/db";
 import type { SessionUser } from "../../services/app/src/http";
 import { darfSehen, sqlSichtbarkeitFuer } from "../../services/app/src/sichtbarkeit";
 import type { Role } from "../../services/auth";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
   type Confidentiality,
@@ -38,6 +37,7 @@ import {
   type KoQuellrechte,
   PgKoRepo,
 } from "../../services/knowledge-object";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const LEA = "u-lea";
 const CARL = "u-carl";
