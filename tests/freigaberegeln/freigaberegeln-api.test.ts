@@ -335,7 +335,7 @@ describe("ADMIN-09 · K1/K2 · Übersicht, Vorschau und Regelwechsel bei laufend
         eintraege: { id: string; bisher: number; danach: number }[];
       };
       freigegeben: { gesamt: number };
-      pruefer: { entfaellt: { id: string }[] };
+      pruefer: { entfaellt: { id: string }[]; bereit: { id: string }[] };
     };
     expect(v.alt).toBeNull();
     expect(v.neu).toMatchObject({ zustimmungen: 2, fristTage: 3 });
@@ -345,7 +345,11 @@ describe("ADMIN-09 · K1/K2 · Übersicht, Vorschau und Regelwechsel bei laufend
       expect.objectContaining({ id: laufend, bisher: 1, danach: 2 }),
     ]);
     expect(v.freigegeben.gesamt).toBe(1);
-    expect(v.pruefer.entfaellt.map((p) => p.id)).toEqual([b.ids.ada]);
+    // Ada fällt als Prüferin weg (nicht in der Gruppe). Ulli entscheidet danach nicht mehr sofort:
+    // Paul ist aktiv, Ulli steht nur als Vertretung bereit — dieselbe Bedingung wie am Tor
+    // (Nacharbeit 3). Die Vorschau nennt ihn deshalb ausdrücklich als bereitstehend.
+    expect(v.pruefer.entfaellt.map((p) => p.id).sort()).toEqual([b.ids.ada, b.ids.ulli].sort());
+    expect(v.pruefer.bereit.map((p) => p.id)).toEqual([b.ids.ulli]);
     expect((await ko(b, laufend)).neededValidations, "die Vorschau schreibt nichts").toBe(1);
 
     // --- K2 · Bestätigung nur mit der Grundlage der gezeigten Vorschau ----------------------------

@@ -170,6 +170,8 @@ export interface RegelVorschau {
   pruefer: {
     neu: { id: string; name: string | null }[];
     entfaellt: { id: string; name: string | null; offeneAufgaben: number }[];
+    /** Nach der neuen Regel nur bereitstehende Vertretungen (entscheiden erst nach Übergabe). */
+    bereit: { id: string; name: string }[];
   };
   voraussetzungenDanach: Voraussetzung[];
   grundlage: string;

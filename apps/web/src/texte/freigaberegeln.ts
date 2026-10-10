@@ -146,6 +146,8 @@ export default {
       "Erteilte Freigaben: {{anzahl}} — sie bleiben, wie sie sind; nichts wird rückwirkend freigegeben oder aufgehoben.",
     "freigaberegeln.vorschau.prueferNeu": "Neu prüfberechtigt: {{namen}}",
     "freigaberegeln.vorschau.prueferWeg": "Nicht mehr prüfberechtigt: {{namen}}",
+    "freigaberegeln.vorschau.prueferBereit":
+      "Danach nur als Vertretung bereit (entscheidet erst nach Übergabe): {{namen}}",
     "freigaberegeln.vorschau.prueferWegEintrag": "{{name}} ({{anzahl}} offene Aufgaben)",
     "freigaberegeln.vorschau.danachFehlt": "Danach fehlt:",
     "freigaberegeln.vorschau.bleibt":
@@ -303,6 +305,8 @@ export default {
       "Granted approvals: {{anzahl}} — they stay as they are; nothing is approved or revoked retroactively.",
     "freigaberegeln.vorschau.prueferNeu": "Newly authorised to review: {{namen}}",
     "freigaberegeln.vorschau.prueferWeg": "No longer authorised to review: {{namen}}",
+    "freigaberegeln.vorschau.prueferBereit":
+      "Afterwards only on standby as deputy (decides after hand-over): {{namen}}",
     "freigaberegeln.vorschau.prueferWegEintrag": "{{name}} ({{anzahl}} open tasks)",
     "freigaberegeln.vorschau.danachFehlt": "Missing afterwards:",
     "freigaberegeln.vorschau.bleibt":
@@ -459,6 +463,8 @@ export default {
       "Verleende vrijgaven: {{anzahl}} — ze blijven zoals ze zijn; niets wordt met terugwerkende kracht vrijgegeven of ingetrokken.",
     "freigaberegeln.vorschau.prueferNeu": "Nieuw bevoegd om te controleren: {{namen}}",
     "freigaberegeln.vorschau.prueferWeg": "Niet langer bevoegd om te controleren: {{namen}}",
+    "freigaberegeln.vorschau.prueferBereit":
+      "Daarna alleen paraat als vervanging (beslist na overdracht): {{namen}}",
     "freigaberegeln.vorschau.prueferWegEintrag": "{{name}} ({{anzahl}} open taken)",
     "freigaberegeln.vorschau.danachFehlt": "Daarna ontbreekt:",
     "freigaberegeln.vorschau.bleibt":

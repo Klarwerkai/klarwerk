@@ -351,6 +351,13 @@ function Vorschau({
           {t("freigaberegeln.vorschau.prueferWeg", { namen: weg.join(", ") })}
         </p>
       ) : null}
+      {vorschau.pruefer.bereit.length > 0 ? (
+        <p data-testid="freigabe-vorschau-pruefer-bereit" className="text-text">
+          {t("freigaberegeln.vorschau.prueferBereit", {
+            namen: vorschau.pruefer.bereit.map((p) => p.name).join(", "),
+          })}
+        </p>
+      ) : null}
       {vorschau.voraussetzungenDanach.length > 0 ? (
         <div role="alert" className="text-trust-crit-text">
           <p className="font-semibold">{t("freigaberegeln.vorschau.danachFehlt")}</p>

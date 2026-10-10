@@ -799,6 +799,11 @@ export class FreigabeRegelDienst {
         entfaellt: [...berechtigteAlt]
           .filter((id) => !berechtigteNeu.has(id))
           .map((id) => ({ id, name: name(id), offeneAufgaben: offeneAufgabenVon(id) })),
+        // Nach der neuen Regel nur bereitstehende Vertretungen: berechtigt, aber erst nach
+        // Übergabe entscheidungsbefugt — getrennt genannt, nicht als stiller Wegfall.
+        bereit: kreisNeu
+          .filter((p) => p.berechtigt && !entscheidet(p))
+          .map((p) => ({ id: p.id, name: p.name })),
       },
       voraussetzungenDanach: danach.filter((v) => v.art !== "keine_regel"),
       grundlage,
