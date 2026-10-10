@@ -2747,6 +2747,21 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word) — DER PIN MUSS
+    // WANDERN. `taskpane.html` ändert sich um GENAU einen Verweis im Kopf hinter `begriffe.js`:
+    // `<script src="anleitung.js?v=__KW_FASSUNG__"></script>` (Block KW-ANLEITUNG, eigene Datei wie
+    // KW-BEGRIFFE; `taskpane.js`, `taskpane.css` und `marke.js` bleiben unberührt, Zeilenzahl der
+    // Seite unverändert). Auslieferungsfolgen: neue Abrufziele NUR in `anleitung.js` und nur auf
+    // Klick — `GET /api/output/sources`, `POST /api/output/generate`, `GET /api/kos/:id`, alle
+    // gleichherkünftig (`connect-src 'self'`) und alle mit dem bestehenden Recht `ko.read`; keine
+    // CSP-, Rechte- oder Manifeständerung (`Paragraph.select`/`insertParagraph` WordApi 1.1,
+    // `styleBuiltIn` nur, wenn WordApi 1.3 gemeldet wird), kein Sideload. Ohne zugelassenes
+    // Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Prüflauf meldet ihn als
+    // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 1 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (eefba3bd… -> cf784c5a…). Im
+    // Prüflauf zu Kandidat a757d6c3 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // panel-pins-messung.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung
+    // unberührt.
     // AUFNAHME 20260922 · GESAMT-BILDBUDGET (R-0021, R-0412): in `taskpane.js` ist allein der Wert von
     // `sendTooLarge` je Sprache (de/en/nl) umformuliert — weiter EIN Satz, jetzt mit dem Hinweis, wann
     // erneut zu senden ist, und der benannten Grenze (höchstens 60 Bilder, dieselbe Zahl wie
@@ -2808,6 +2823,19 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat e9529cb7 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/
     // word-addin-auslieferungswaechter.log) und unverändert übernommen; die vier Panel-Dateien sind
     // seit dieser Messung unberührt (Nacharbeit 3 ändert nur Testdateien).
+    // INTEGRATION gesamt-dokumenterzeugung × gesamt-funktionsschalter (main d8717621, Nacharbeit 2):
+    // BEIDE Änderungen stehen jetzt im Fenster — der Verweis auf `anleitung.js` in `taskpane.html`
+    // (gesamt-dokumenterzeugung) UND die Auswertung von 503 `KI_ABGESCHALTET` samt
+    // `askKiAbgeschaltet` in `taskpane.js` (gesamt-funktionsschalter). Keine der beiden Messungen
+    // (`cf784c5a…` zu a757d6c3, `dce012c0…` zu e9529cb7) beschreibt das zusammengefügte Fenster; beide
+    // galten nur für ihren Zweig. Der Wert unten ist der von main und damit ein PLATZHALTER bis zur
+    // Messung: ohne zugelassenes Hash-Werkzeug ist der neue SHA-256 hier nicht berechenbar. Der
+    // Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen
+    // beider Seiten wie in den zwei Absätzen darüber; die Vereinigung fügt keine hinzu.
+    // NACHARBEIT 3 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter dce012c0… ->
+    // a42c4302…). Im Prüflauf zu Kandidat b4a727cc GEMESSEN („Received", HISTORIE/nacharbeit-3/
+    // PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die Panel-Dateien sind seit
+    // dieser Messung unberührt.
     // INTEGRATION gesamt-bildbudget × gesamt-funktionsschalter (Nacharbeit 5): Beide Stände ändern
     // `taskpane.js` an getrennten Stellen (`sendTooLarge` de/en/nl bzw. `askKiAbgeschaltet` und
     // `performAsk`); die Zusammenführung trägt beide. Keiner der beiden gemessenen Werte (852ea03b…
@@ -2941,6 +2969,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 17: PIN BEWUSST AKTUALISIERT (Platzhalter f045e108… -> 3d9cdf45…). Im Prüflauf zu
     // Kandidat 2c099872 GEMESSEN („Received", HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log)
     // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-dokumenterzeugung × antwort-quellenanzeige (main ffd509db, Nacharbeit 32):
+    // BEIDE Änderungen stehen jetzt im Fenster — der Verweis auf `anleitung.js` in `taskpane.html`
+    // (gesamt-dokumenterzeugung) UND die Quellenanzeige samt `#ask-gap-zuordnung`
+    // (antwort-quellenanzeige). Keine der beiden Messungen (`a42c4302…` hier, `3d9cdf45…` auf main)
+    // beschreibt das zusammengefügte Fenster. Der Wert unten ist der von main und damit ein
+    // PLATZHALTER bis zur Messung — DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen. Auslieferungsfolgen: die beider Aufträge
+    // zusammen, wie in den Absätzen darüber; die Vereinigung fügt keine hinzu.
+    // NACHARBEIT 33 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… ->
+    // cec1cf9e…). Im Prüflauf zu Kandidat 38a24dcd am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-33/PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
     // INTEGRATION ki-modus-wahrheit × antwort-quellenanzeige (Kandidat de703240, Nacharbeit 21):
     // BEIDE Änderungen stehen jetzt in den Panel-Dateien — Klaras eigener Zugang in `performAsk`,
     // `#kw-kopf-ki` samt `s4KopfKi` (R-0700/R-0378, dieser Auftrag) UND Absatz-Belege, Fußnoten,
@@ -2985,6 +3025,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // 9667e18b…). Im Prüflauf zu Kandidat d96bc621 am ZUSAMMENGEFÜHRTEN Fenster GEMESSEN
     // („Received", HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log) und unverändert
     // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-dokumenterzeugung × Antwort-Erklärung (main 97440d8a, Nacharbeit 56):
+    // BEIDE Änderungen stehen jetzt im Fenster — der Verweis auf `anleitung.js` in `taskpane.html`
+    // (gesamt-dokumenterzeugung) UND Lage/Konfliktseiten samt `#ask-lage-line` und
+    // `#ask-konflikt-seiten` (Antwort-Erklärung). Keine der beiden Messungen (`cec1cf9e…` hier,
+    // `9667e18b…` auf main) beschreibt das zusammengefügte Fenster. Der Wert unten ist der von main
+    // und damit ein PLATZHALTER bis zur Messung — DER PIN MUSS WANDERN; der Prüflauf meldet den
+    // Ist-Wert als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen: die beider
+    // Aufträge zusammen, wie in den Absätzen darüber; die Vereinigung fügt keine hinzu.
+    // NACHARBEIT 57 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… ->
+    // 478c59c0…). Im Prüflauf zu Kandidat 88250be0 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-57/PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
     // INTEGRATION gesamt-bildbudget (a6dc7a30…) × main (9667e18b…), Nacharbeit 9 des Bildbudgets — DER
     // PIN MUSS WANDERN. `taskpane.js` trägt jetzt BEIDES: den Bildbudget-Satz `sendTooLarge` (de/en/nl,
     // Kürzen, Aufteilen, höchstens 60 Bilder) UND den gesamten Stand von main (Quellenanzeige,
@@ -3022,6 +3074,17 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Im Prüflauf zu Kandidat 42f34c5e am zusammengeführten Panel GEMESSEN („Received",
     // HISTORIE/nacharbeit-9/PRUEFUNG/panel-nach-integration-ab5f3c95-pins-und-schnitt.log) und
     // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-dokumenterzeugung × „Geschriebene Behauptungen …" (main 13984aac,
+    // Nacharbeit 70 dieses Auftrags) — DER PIN MUSS WANDERN. Im Fenster stehen BEIDE Änderungen:
+    // der Verweis auf `anleitung.js` (gesamt-dokumenterzeugung) und der Verweis auf
+    // `wortvergleich.js` samt ausgelagertem Block (R-0336/R-0708). Keine der Messungen (478c59c0…
+    // hier, 4ce94aa2… auf main) beschreibt dieses Fenster; der Wert unten ist der von main und damit
+    // ein PLATZHALTER. Auslieferungsfolgen: die beider Stände, wie oben je Stand benannt — die
+    // Vereinigung fügt keine hinzu. Der Prüflauf meldet den Ist-Wert als „Received".
+    // NACHARBEIT 71 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter 4ce94aa2… ->
+    // 018bb9a8…). Im Prüflauf zu Kandidat 1fb4e6af am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-71/PRUEFUNG/panel-integration-wortvergleich.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
     // INTEGRATION gesamt-bildbudget (f55e6c65…) × main (4ce94aa2…), Nacharbeit 19 des Bildbudgets —
     // DER PIN MUSS WANDERN. Das zusammengefügte Fenster trägt BEIDES: den Stand von main (u. a.
     // `wortvergleich.js`, Lage/Konfliktseiten, Absatz-Beleg-Zuordnung, Funktionsschalter) und die drei
@@ -3057,6 +3120,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // c7a4b5ec…). Im Prüflauf zu Kandidat d3a9f1e2 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
     // HISTORIE/nacharbeit-37/PRUEFUNG/integration-sprachwahl-panel-pins-und-schranken.log) und
     // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // Integration 5eac5f5d + 2b5b685b: Beide fachlichen Änderungen sind erhalten.
+    // Der gemeinsame Inhalt hat einen eigenen, gemessenen Fingerabdruck; die historischen
+    // Werte oben bleiben Herkunft. Keine Produktdatei durch diese Konfliktauflösung geändert.
+    // Beleg: HILFE/4fd4c87b805ee60e13c32720/PANEL-MESSUNG.json im Auftragsordner (d53e68e7…).
     // TECHNISCHE INTEGRATION gesamt-bildbudget (975b314e) × main (4333e511): Beide
     // Prüfhistorien bleiben erhalten. Die Panel-Dateien wurden automatisch zusammengeführt;
     // gegenüber main unterscheiden sich allein die drei `sendTooLarge`-Sätze (de/en/nl).
@@ -3064,7 +3131,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Den PIN über die bestehende `panelQuelle()` am erhaltenen Merge-Arbeitsbaum gemessen:
     // ab97e2bb… . Keine Produktdatei durch die technische Hilfe geändert. Messung und Proben:
     // QUELLEN-HILFE-525ff063-INTEGRATION.json im bestehenden Auftragsordner.
-    const PIN = "ab97e2bb3e2d87df4976077ae56f065d4f9731c9c1e33ae17c67a6edcf565755";
+    // INTEGRATION gesamt-dokumenterzeugung × main b723640f (Nacharbeit 93) — DER PIN MUSS WANDERN.
+    // Im Fenster stehen BEIDE Stände: der Verweis auf `anleitung.js` (gesamt-dokumenterzeugung) und
+    // der Stand von main samt den drei `sendTooLarge`-Sätzen (gesamt-bildbudget). Keine der beiden
+    // Messungen (`d53e68e7…` hier, `ab97e2bb…` auf main) beschreibt das zusammengefügte Fenster; der
+    // Wert unten ist der von main und damit ein PLATZHALTER. Auslieferungsfolgen: die beider Stände,
+    // wie oben je Stand benannt — die Vereinigung fügt keine hinzu. Der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 94 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter ab97e2bb… ->
+    // c3da73f9…). Im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "c3da73f9507f3a2781db3fd160744e7786bbd94dadaa945859f68fc8758083d7";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

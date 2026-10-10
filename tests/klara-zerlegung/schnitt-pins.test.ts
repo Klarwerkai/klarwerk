@@ -595,6 +595,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // das Taskpane-Pfadliteral als Gegenpfad — Griff `pfad`. GEMESSEN, NICHT GESETZT: der Prüflauf
   // am Kandidaten 26e86268 meldete A2 `neu im Baum, aber nicht gepinnt` mit genau diesem Pfad.
   "tests/office-web-anmeldung/dialog-opener-kopf.test.ts": "pfad",
+  // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word): der Prüfstand
+  // des Blocks KW-ANLEITUNG (`anleitung.js`). Er schneidet `#begriffe-block` aus `taskpane.html`
+  // (Pfadliteral, Griff `pfad`) und fährt im Teil R den Rückweg über `createKlaraPanel` (Griff
+  // `fixture`). Die Griffe sind aus den Mustern oben abgelesen, nicht gemessen — kein Lauf hier.
+  "tests/anleitung-word/anleitung-word.test.tsx": "pfad,fixture",
 };
 
 // ------------------------------------------------------------------------------------------------
