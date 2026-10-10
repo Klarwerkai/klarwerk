@@ -47,10 +47,27 @@ function sprachSchnittstellen(lage: Lage): void {
     Object.defineProperty(w, name, { value: wert, configurable: true, writable: true });
   };
   if (lage === "ohne") {
-    setze("SpeechRecognition", undefined);
-    setze("webkitSpeechRecognition", undefined);
-    setze("speechSynthesis", undefined);
-    setze("SpeechSynthesisUtterance", undefined);
+    // Wie ein echter Browser ohne diese Schnittstellen: die Eigenschaften FEHLEN. Ein bloss auf
+    // `undefined` gesetztes `speechSynthesis` gibt es in keinem Browser — `"speechSynthesis" in window`
+    // bliebe wahr (Nacharbeit 2: daran scheiterte die Anmeldung, nicht am Produktweg). Gelöscht wird
+    // am Fenster und entlang der Prototypkette, wo der Browser das Attribut ablegt.
+    for (const name of [
+      "SpeechRecognition",
+      "webkitSpeechRecognition",
+      "speechSynthesis",
+      "SpeechSynthesisUtterance",
+    ]) {
+      let traeger: object | null = w;
+      while (traeger && name in w) {
+        if (Object.prototype.hasOwnProperty.call(traeger, name)) {
+          Reflect.deleteProperty(traeger, name);
+        }
+        traeger = Object.getPrototypeOf(traeger) as object | null;
+      }
+      if (name in w) {
+        throw new Error(`Init-Skript: ${name} lässt sich in diesem Browser nicht entfernen`);
+      }
+    }
     return;
   }
   class Rekorder {
