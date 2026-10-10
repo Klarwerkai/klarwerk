@@ -24,12 +24,21 @@ import type { KnowledgeObject } from "../../apps/web/src/api/types";
 declare global {
   // eslint-disable-next-line no-var
   var __wissensdetailKo: KnowledgeObject;
+  // eslint-disable-next-line no-var
+  var __wissensdetailRolle: string | undefined;
+  // eslint-disable-next-line no-var
+  var __wissensdetailKonflikte: unknown[] | undefined;
 }
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
-    me: vi.fn(async () => ({ id: "u1", name: "Eva", email: "e@x.de", role: "admin" })),
+    me: vi.fn(async () => ({
+      id: "u1",
+      name: "Eva",
+      email: "e@x.de",
+      role: globalThis.__wissensdetailRolle ?? "admin",
+    })),
     logout: vi.fn(async () => ({})),
   },
 }));
@@ -51,7 +60,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         })),
         act: vi.fn(async () => globalThis.__wissensdetailKo),
       },
-      conflicts: { list: leer },
+      conflicts: { list: vi.fn(async () => globalThis.__wissensdetailKonflikte ?? []) },
       duplicateSignal: { list: leer },
       audit: { list: leer },
       directory: { list: vi.fn(async () => [{ id: "u1", name: "Eva" }]) },
@@ -81,6 +90,10 @@ import i18n from "../../apps/web/src/i18n";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// `scrollIntoView` fehlt in jsdom; der Sprung in „Mehr" ruft es (Muster: JOB 3108,
+// `tests/berichtskopf-spruenge/kopf-fuehrt-zu-quellen-und-anhaengen.test.tsx`).
+(Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => undefined;
 
 const TITEL = "Reinigung Spritzzone Linie 3";
 const AUSSAGE = "Die Spritzzone wird nach jeder Schicht nass gereinigt.";
@@ -208,7 +221,17 @@ afterEach(() => {
   unmount();
   vi.clearAllMocks();
   document.title = "KLARWERK · Reasoning System";
+  globalThis.__wissensdetailRolle = undefined;
+  globalThis.__wissensdetailKonflikte = undefined;
 });
+
+async function klick(ziel: HTMLElement): Promise<void> {
+  await act(async () => {
+    ziel.click();
+    await flush();
+  });
+  await act(flush);
+}
 
 describe("Wissensdetail · die Felder stehen benannt auf der Detailseite", () => {
   it("W1 · Aussage, Bedingungen, Maßnahmen, Tags und Anlage stehen unter ihrem Namen", async () => {
@@ -318,5 +341,137 @@ describe("Wissensdetail · die Seite heißt wie ihr Wissen und sagt Status und S
     expect(document.title).toBe(`${TITEL} · KLARWERK · Reasoning System`);
     unmount();
     expect(document.title).toBe("KLARWERK · Reasoning System");
+  });
+});
+
+// ================================================================================================
+// R-0998 · DIE NÄCHSTE SINNVOLLE HANDLUNG — sichtbar UND bedienbar, an den vorhandenen Wegen.
+// ================================================================================================
+const QUELLE = {
+  id: "q1",
+  label: "Reinigungsplan R-7",
+  url: null,
+  excerpt: null,
+  kind: "document",
+  peerValidated: false,
+  author: "u1",
+  at: "2026-08-01T00:00:00.000Z",
+};
+
+function empfehlung(c: HTMLElement): HTMLElement {
+  const e = teil(c, "bib-naechste");
+  if (!e) {
+    throw new Error(`Die Empfehlung fehlt; DOM: ${text(c)}`);
+  }
+  return e;
+}
+
+function ziel(c: HTMLElement): HTMLElement {
+  const e = teil(c, "bib-naechste-ziel");
+  if (!e) {
+    throw new Error("Das Ziel der Empfehlung fehlt");
+  }
+  return e;
+}
+
+describe("Wissensdetail · R-0998 · die nächste sinnvolle Handlung", () => {
+  it("H1 · validiert → „In Fragen nutzen“ über DENSELBEN Fragenweg wie der Knopf „Fragen“", async () => {
+    await i18n.changeLanguage("de");
+    const c = await mount();
+    const e = empfehlung(c);
+    expect(e.getAttribute("data-naechste")).toBe("use");
+    expect(text(e)).toContain(i18n.t("ko.nextLabel"));
+    expect(text(e)).toContain(i18n.t("ko.next.use"));
+    const a = ziel(c);
+    expect(a.tagName).toBe("A");
+    expect(text(a)).toBe(i18n.t("ko.cta.use"));
+    // Herkunft (`ko=<id>`) und Vertraulichkeitsverhalten kommen aus `fragenHref` — dieselbe
+    // Adresse wie der verbindliche Knopf „Fragen“ im Kopf, nicht `koCta`s nackte Frage.
+    const fragen = teil(c, "bib-fragen") as HTMLAnchorElement;
+    expect(a.getAttribute("href")).toBe(fragen.getAttribute("href"));
+    expect(a.getAttribute("href")).toContain("ko=ko-1");
+    // Inhalt, kein Erklärtext (H4-Textmesser).
+    expect(e.getAttribute("data-bib-text")).toBe("naechste");
+  });
+
+  it("H2 · in Prüfung (zugewiesen) → „Bewertung abschließen“, für den Admin ein Weg zur Validierung", async () => {
+    await i18n.changeLanguage("de");
+    const c = await mount({ status: "offen", assignments: ["u2"] } as Partial<KnowledgeObject>);
+    expect(empfehlung(c).getAttribute("data-naechste")).toBe("review");
+    expect(text(empfehlung(c))).toContain(i18n.t("ko.next.review"));
+    const a = ziel(c);
+    expect(a.tagName).toBe("A");
+    expect(a.getAttribute("href")).toBe("/validierung");
+    expect(text(a)).toBe(i18n.t("ko.cta.review"));
+  });
+
+  it("H3 · offen mit Quelle → „Zur Validierung“; ein Viewer sieht die Empfehlung, aber keinen Weg", async () => {
+    await i18n.changeLanguage("de");
+    globalThis.__wissensdetailRolle = "viewer";
+    const c = await mount({ status: "offen", sources: [QUELLE] } as Partial<KnowledgeObject>);
+    expect(empfehlung(c).getAttribute("data-naechste")).toBe("validate");
+    expect(text(empfehlung(c))).toContain(i18n.t("ko.next.validate"));
+    const z = ziel(c);
+    // `RoleLink`: /validierung verlangt controller — kein Link, kein href, sichtbar „Kein Zugriff“.
+    expect(z.tagName).not.toBe("A");
+    expect(z.getAttribute("data-role-no-reach")).toBe("true");
+    expect(empfehlung(c).querySelector('a[href^="/validierung"]')).toBeNull();
+    expect(text(z)).toContain(i18n.t("ko.cta.validate"));
+  });
+
+  it("H4 · offen ohne Quelle und Anhang → „Zu Quellen & Belegen“ öffnet „Mehr“ und den Quellenabschnitt — auch ein zweites Mal", async () => {
+    await i18n.changeLanguage("de");
+    const c = await mount({ status: "offen" } as Partial<KnowledgeObject>);
+    expect(empfehlung(c).getAttribute("data-naechste")).toBe("addSource");
+    const knopf = ziel(c);
+    expect(knopf).toBeInstanceOf(HTMLButtonElement);
+    expect((knopf as HTMLButtonElement).type).toBe("button");
+    expect(text(knopf)).toBe(i18n.t("ko.cta.addSource"));
+    const mehr = teil(c, "bib-mehr") as HTMLButtonElement;
+    expect(mehr.getAttribute("aria-expanded")).toBe("false");
+
+    await klick(knopf);
+    expect(mehr.getAttribute("aria-expanded")).toBe("true");
+    const quellen = () => c.querySelector<HTMLDetailsElement>('[data-bib-abschnitt="quellen"]');
+    expect(quellen()?.open, "der Quellenabschnitt steht nicht offen").toBe(true);
+    expect(document.activeElement).toBe(quellen()?.querySelector("summary"));
+
+    // Zuklappen von Hand verwirft das Sprungziel; der zweite Sprung muss wieder wirken.
+    await klick(mehr);
+    expect(mehr.getAttribute("aria-expanded")).toBe("false");
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    await klick(ziel(c));
+    expect(quellen()?.open, "der zweite Sprung wirkte nicht").toBe(true);
+    expect(document.activeElement).toBe(quellen()?.querySelector("summary"));
+  });
+
+  it("H5 · ein offener Konflikt am validierten Eintrag → nicht „nutzen“, sondern „Bewertung abschließen“", async () => {
+    await i18n.changeLanguage("de");
+    globalThis.__wissensdetailKonflikte = [
+      {
+        id: "c1",
+        koA: "ko-1",
+        koB: "ko-2",
+        type: "truth",
+        description: "Widerspruch zur Reinigungsfolge",
+        status: "offen",
+        secondOpinion: null,
+        decidedBy: null,
+        decision: null,
+        createdAt: "2026-08-02T00:00:00.000Z",
+      },
+    ];
+    const c = await mount();
+    expect(empfehlung(c).getAttribute("data-naechste")).toBe("review");
+    expect(text(empfehlung(c))).not.toContain(i18n.t("ko.next.use"));
+  });
+
+  it("H6 · EN: Empfehlung und Ziel in der Oberflächensprache", async () => {
+    await i18n.changeLanguage("en");
+    const c = await mount();
+    expect(text(empfehlung(c))).toContain(i18n.t("ko.nextLabel"));
+    expect(i18n.t("ko.nextLabel")).toBe("Next action:");
+    expect(text(ziel(c))).toBe(i18n.t("ko.cta.use"));
+    await i18n.changeLanguage("de");
   });
 });

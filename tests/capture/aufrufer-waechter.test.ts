@@ -1098,14 +1098,10 @@ const ERSETZT_JOB3063: readonly Ausnahme[] = [
       "Text, Quellen-Chips, sonst nichts (Pedi 04.09.: Erklärtext gehört hinter Menüs). Abbau " +
       "ausserhalb der Zielpfade, Folgeauftrag benannt.",
   },
-  {
-    schluessel: "apps/web/src/lib/koCta.ts::koCta",
-    grund:
-      "Seit JOB 3063 ohne Produktaufrufer: die „nächste Handlung“ der alten Detailseite ist durch " +
-      "den Knopf „Fragen“ der Lesefläche ersetzt, der aus `components/bibliothek/fragen.ts::" +
-      "fragenHref` kommt. Zwei Wege nebeneinander waeren genau die zweite Wahrheit, die dieser " +
-      "Umbau abschafft. Abbau ausserhalb der Zielpfade.",
-  },
+  // WISSENSDETAIL (R-0998) · GESTRICHEN, WEIL VERDRAHTET: `koCta` stand hier seit JOB 3063. Die
+  // Detailseite zeigt die nächste sinnvolle Handlung wieder (`BibliothekLesen.tsx`, `bib-naechste`)
+  // und zieht Beschriftung und Ziel aus `koCta`. Der Knopf „Fragen" bleibt die verbindliche Aktion
+  // jedes Eintrags; die Empfehlung steht daneben, und ihr Fragenweg ist derselbe `fragenHref`.
   {
     schluessel: "apps/web/src/lib/libraryMaturity.ts::libraryUseCta",
     grund:

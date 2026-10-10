@@ -77,6 +77,7 @@ import { CAPTURE_FRONT_DOOR_ROUTE } from "../../apps/web/src/lib/captureFrontDoo
 import { captureNextSteps } from "../../apps/web/src/lib/captureSuccess";
 import { OWN_KNOWLEDGE_FILTER, ownKnowledgeEmptyHint } from "../../apps/web/src/lib/demoKnowledge";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
+import { koCta } from "../../apps/web/src/lib/koCta";
 import { reworkValidationHref } from "../../apps/web/src/lib/reviewReworkContext";
 
 const WEB_SRC = join(__dirname, "../../apps/web/src");
@@ -221,6 +222,14 @@ const HERKUNFT: Record<(typeof FLAECHEN)[number], Herkunft[]> = {
       muster: /^reworkValidationHref\(\)$/,
       herkunft: "lib/reviewReworkContext.ts · reworkValidationHref",
       ziele: () => [reworkValidationHref()],
+    },
+    {
+      // WISSENSDETAIL (R-0998): die nächste sinnvolle Handlung der Lesefläche. Der Zweig `use`
+      // läuft über `fragen` (oben), `addSource` ist ein Knopf (kein `to=`); über `cta.href`
+      // laufen nur `review` und `validate` — beide hinter `RoleLink`.
+      muster: /^cta\.href$/,
+      herkunft: "lib/koCta.ts · koCta(review|validate).href",
+      ziele: () => [koCta("review").href, koCta("validate").href],
     },
     {
       // A27 · JOB 3025: der Weg der Verfasserin zu ihrer Kollision, jetzt im Abschnitt „Konflikt".

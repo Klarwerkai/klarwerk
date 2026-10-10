@@ -39,12 +39,14 @@ import {
 import type { OriginalDocument, OriginalRefCache } from "../../lib/captureAttachments";
 import { fileSourcePayload } from "../../lib/captureFromFile";
 import { CONF_TONE_CLASS, vertraulichkeitsAuskunft } from "../../lib/confidentiality";
-import { conflictImpact, conflictNotice } from "../../lib/conflictImpact";
+import { conflictImpact, conflictLimitedUsability, conflictNotice } from "../../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../../lib/displayStatus";
 import { studioSaveConfidence } from "../../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
+import { koCta } from "../../lib/koCta";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { koOverview } from "../../lib/koOverview";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
 import {
   lesekontextLesen,
@@ -3648,6 +3650,62 @@ export function BibliothekLesen({
                 der Hülle, s. Kopf dieser Datei). Der Bereich hängt am gelesenen Eintrag; sein
                 Zustandsmodell steht an `Beziehungsbereich` oben. */}
             <Beziehungsbereich key={ko.id} koId={ko.id} />
+
+            {/* WISSENSDETAIL (R-0998) — DIE NÄCHSTE SINNVOLLE HANDLUNG.
+                Die Empfehlung kommt aus der EINEN vorhandenen Ableitung (`koOverview(ko).nextAction`,
+                `lib/koOverview.ts`), Beschriftung und Ziel aus `lib/koCta.ts` — keine zweite
+                Statusrechnung. Angeschlossen an die Wege, die es hier schon gibt:
+                  · use       → derselbe Fragenweg wie „Fragen" oben (`fragen`: Herkunft `ko=<id>`
+                                und Vertraulichkeit bleiben erhalten);
+                  · addSource → derselbe Sprung wie der Quellenknopf im Kopf (`springeZu`), nicht
+                                der alte Anker `#ko-sources`, den es auf dieser Fläche nicht gibt;
+                  · review/validate → die Validierung, über `RoleLink`: wer sie nicht erreicht,
+                                sieht die Empfehlung, aber keinen begehbaren Link. */}
+            {(() => {
+              // Ein offener Konflikt begrenzt die Nutzbarkeit (`conflictLimitedUsability`, dieselbe
+              // Regel wie unter „Mehr" → Belege): die Pille sagt dann „Konflikt", und „In Fragen
+              // nutzen" wäre die falsche Empfehlung. In Prüfung heißt in `koOverview` → `review`.
+              const uebersicht = koOverview(ko);
+              const begrenzt =
+                conflictLimitedUsability(uebersicht.usability, impact) !== uebersicht.usability;
+              const naechste = begrenzt ? "review" : uebersicht.nextAction;
+              const cta = koCta(naechste);
+              const knopfKlassen =
+                "inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text";
+              return (
+                <div
+                  data-testid="bib-naechste"
+                  data-bib-text="naechste"
+                  data-naechste={naechste}
+                  className="flex flex-wrap items-center gap-2 text-[13px] text-text"
+                >
+                  <span>
+                    <span className="font-semibold">{t("ko.nextLabel")}</span>{" "}
+                    {t(`ko.next.${naechste}`)}
+                  </span>
+                  {naechste === "addSource" ? (
+                    <button
+                      type="button"
+                      data-testid="bib-naechste-ziel"
+                      aria-controls={mehrId}
+                      onClick={() => springeZu("quellen")}
+                      className={`${knopfKlassen} hover:bg-hairline-soft`}
+                    >
+                      {t(cta.labelKey)}
+                    </button>
+                  ) : (
+                    <RoleLink
+                      to={naechste === "use" ? fragen : cta.href}
+                      className={knopfKlassen}
+                      hoverClassName="hover:bg-hairline-soft"
+                      testId="bib-naechste-ziel"
+                    >
+                      {() => t(cta.labelKey)}
+                    </RoleLink>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
             <div
