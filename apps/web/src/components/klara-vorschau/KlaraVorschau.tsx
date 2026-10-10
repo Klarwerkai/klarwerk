@@ -35,17 +35,19 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
+// produkt:20261010:assistenz-name-avatar: Name, Motiv und Bewegung aus dem persönlichen Profil.
+import { useAssistenzAnzeige, useAssistenzT } from "../../lib/assistenzProfil";
 import { internerPfad } from "../../lib/internerPfad";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
+import { AvatarBild } from "../assistenz/AvatarBild";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
 import {
   type Absendeergebnis,
@@ -60,7 +62,6 @@ import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./
 import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
-import { klaraAvatarUrl } from "./avatar";
 import {
   type KontextAktion,
   ZIELSPRACHEN,
@@ -244,13 +245,16 @@ interface AuswahlKnopf {
 }
 
 export function KlaraVorschau(): JSX.Element {
-  const { t, i18n } = useTranslation();
+  // produkt:20261010:assistenz-name-avatar: `t` trägt den persönlichen Namen als `{{assistenz}}`.
+  const { t, i18n } = useAssistenzT();
+  const assistenz = useAssistenzAnzeige();
   const z = useKlaraZustand();
   const location = useLocation();
   const navigate = useNavigate();
   const tutorial = useTutorialFuerKlara();
   const schmal = useMedien(SCHMAL);
-  const reduziert = useMedien(REDUZIERT);
+  // Reduzierte Bewegung: Systemeinstellung ODER die eigene Wahl unter „Meine Assistenz".
+  const reduziert = useMedien(REDUZIERT) || assistenz.bewegungReduziert;
   const fenster = useFenster();
   const vollbildEl = useVollbild();
   const hinweisId = useId();
@@ -1343,6 +1347,7 @@ export function KlaraVorschau(): JSX.Element {
           data-angedockt={z.angedockt ?? ""}
           data-geparkt={z.geparkt ? String(z.geparkt.absatz) : ""}
           data-ablage={ablage ? "true" : "false"}
+          data-bewegung={assistenz.bewegungReduziert ? "reduziert" : "standard"}
           aria-label={t("klaravorschau.figur.label")}
           aria-expanded={panelSichtbar}
           aria-describedby={hinweisId}
@@ -1361,14 +1366,14 @@ export function KlaraVorschau(): JSX.Element {
           }`}
           style={{ width: groesse, height: groesse }}
         >
-          <img
-            src={klaraAvatarUrl()}
+          <AvatarBild
+            motiv={assistenz.motiv}
             alt=""
-            draggable={false}
+            ersatzBeschriftung=""
             width={groesse}
             height={groesse}
-            data-testid="klara-avatar"
-            className="pointer-events-none h-full w-full object-cover"
+            testId="klara-avatar"
+            className="pointer-events-none h-full w-full"
           />
         </button>
         {z.status !== "ruhe" ? (
@@ -1425,7 +1430,12 @@ export function KlaraVorschau(): JSX.Element {
             top: Math.max(8, Math.min(auswahlKnopf.y, fenster.hoehe - 48)),
           }}
         >
-          <img src={klaraAvatarUrl()} alt="" className="h-5 w-5 rounded-full" />
+          <AvatarBild
+            motiv={assistenz.motiv}
+            alt=""
+            ersatzBeschriftung=""
+            className="h-5 w-5 rounded-full bg-surface"
+          />
           {t("klaravorschau.auswahl.knopf")}
         </button>
       ) : null}
@@ -1452,7 +1462,13 @@ export function KlaraVorschau(): JSX.Element {
           {/* Kopf */}
           <div className="flex items-start justify-between gap-2 border-b border-hairline px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
-              <img src={klaraAvatarUrl()} alt="" className="h-8 w-8 shrink-0 rounded-full" />
+              <AvatarBild
+                motiv={assistenz.motiv}
+                alt=""
+                ersatzBeschriftung=""
+                testId="klara-gespraech-avatar"
+                className="h-8 w-8 shrink-0 rounded-full"
+              />
               <div className="min-w-0">
                 <h2
                   id={`${hinweisId}-titel`}
@@ -1462,6 +1478,11 @@ export function KlaraVorschau(): JSX.Element {
                 >
                   {t("klaravorschau.panel.titel")}
                 </h2>
+                {assistenz.avatarFehlt ? (
+                  <p data-testid="klara-avatar-fehlt" className="text-[11.5px] text-text">
+                    {t("assistenz.avatar.fehlt")}
+                  </p>
+                ) : null}
                 <p className={KLEINTITEL}>
                   {istEcht ? t("klaragespraech.untertitel") : t("klaravorschau.panel.untertitel")}
                 </p>
@@ -2076,7 +2097,7 @@ export function KlaraVorschau(): JSX.Element {
 // Der Verlauf des Demo-Betriebs — unverändert aus der Vorschau, jede Klara-Antwort als Demo markiert.
 // -------------------------------------------------------------------------------------------------
 function DemoVerlauf({ verlauf }: { verlauf: readonly Nachricht[] }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   return (
     <section data-testid="klara-verlauf" aria-label={t("klaravorschau.verlauf.titel")}>
       <p className={KLEINTITEL}>{t("klaravorschau.verlauf.titel")}</p>
@@ -2139,7 +2160,7 @@ function VorschlagKarte({
   nachrichtId: string;
   vorschlag: Vorschlag;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const uebernehmbar = Boolean(vorschlag.artikelId && vorschlag.absatz);
   return (
     <div
@@ -2208,7 +2229,7 @@ function VorschlagKarte({
 // Notiz- oder Aufgabenentwurf mit Rücklink — Erinnerung, Termin und Speichern sind Demo.
 // -------------------------------------------------------------------------------------------------
 function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const id = useId();
   const artikel = entwurf.herkunft.artikelId ? demoArtikel(entwurf.herkunft.artikelId) : null;
   const setze = (teil: Partial<Entwurf>): void =>

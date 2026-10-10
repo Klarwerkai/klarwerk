@@ -17,8 +17,9 @@
 // Knopf; Mikrofon abgelehnt → ehrlicher Satz; „Aufnahme stoppen“ beendet das Zuhören jederzeit, und
 // das Schliessen der Fläche ebenso (Abbau = Stopp).
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { useDirectory } from "../../api/hooks";
+// produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+import { useAssistenzT } from "../../lib/assistenzProfil";
 import { anfuegen, auftragsArt, klaerungen } from "../../lib/klaraSprache";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
 import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
@@ -106,7 +107,7 @@ export function useKlaraSprache(optionen: {
   /** Das Ziel im Augenblick des Sprechens. */
   ziel: () => SprachZiel;
 }): KlaraSprachSteuerung {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const moeglich = typeof window !== "undefined" && hasSpeechRecognition(window);
   const ios = typeof window !== "undefined" && istIosGeraet(window);
   const [laeuft, setLaeuft] = useState<Aufnahmeart | null>(null);
@@ -252,7 +253,7 @@ export function useKlaraSprache(optionen: {
 // Die Leiste über dem Eingabefeld: Diktieren · Auftrag sprechen · Aufnahme stoppen · Vorlesen stoppen.
 // -------------------------------------------------------------------------------------------------
 export function KlaraSprachLeiste({ s }: { s: KlaraSprachSteuerung }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const vorlesen = useKlaraVorlesen();
   return (
     <div data-testid="klara-sprache" className="w-full space-y-1">
@@ -375,7 +376,7 @@ function AuftragEntwurf({
   sendebereit: boolean;
   absenden: (text: string, ziel: SprachZiel) => Promise<Absendeergebnis>;
 }): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const feldId = useId();
   const personen = useDirectory();
   const bezug = a.ziel.bekannt ? t("klarasprache.bezug", { ziel: zielText(a.ziel) }) : null;
@@ -534,7 +535,7 @@ function AuftragErgebnis({
   a: GesprochenerAuftrag;
   s: KlaraSprachSteuerung;
 }): JSX.Element | null {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const g = a.gesendet;
   if (!g) {
     return null;
@@ -585,7 +586,7 @@ function AuftragErgebnis({
 // Vorlesen: ein Knopf je Antwort, und die Einstellungen.
 // -------------------------------------------------------------------------------------------------
 export function VorlesenKnopf({ id, text }: { id: string; text: string }): JSX.Element | null {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const v = useKlaraVorlesen();
   if (!vorlesenMoeglich()) {
     return null;
@@ -605,7 +606,7 @@ export function VorlesenKnopf({ id, text }: { id: string; text: string }): JSX.E
 }
 
 export function KlaraSprachausgabe(): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const v = useKlaraVorlesen();
   const tempoId = useId();
   if (!vorlesenMoeglich()) {

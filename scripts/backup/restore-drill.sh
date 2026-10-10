@@ -517,6 +517,7 @@ PFLICHTTABELLEN=(
   richtlinien_handlungen
   klara_gespraeche
   ko_mitgelesen
+  assistenz_profile
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

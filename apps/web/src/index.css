@@ -485,14 +485,16 @@ body.klara-inspect * {
   outline: 3px dashed rgb(var(--kw-ai));
   outline-offset: 4px;
 }
+/* produkt:20261010:assistenz-name-avatar: dieselben Zustände für jedes der dreizehn Motive; die
+   eigene Wahl „Bewegung reduzieren“ (`data-bewegung="reduziert"`) schaltet sie ab wie das System. */
 @media (prefers-reduced-motion: no-preference) {
-  .klara-figur {
+  .klara-figur:not([data-bewegung="reduziert"]) {
     transition: width 0.15s ease, height 0.15s ease;
   }
-  .klara-figur[data-status="laeuft"] img {
+  .klara-figur[data-status="laeuft"]:not([data-bewegung="reduziert"]) img {
     animation: kw-klara-denkt 1.4s ease-in-out infinite;
   }
-  .klara-figur[data-status="antwort"] {
+  .klara-figur[data-status="antwort"]:not([data-bewegung="reduziert"]) {
     animation: kw-klara-bereit 1.2s ease-out 2;
   }
 }

@@ -178,7 +178,8 @@ describe("K2/K3 · Tastatur, Öffnen, Schliessen, Verkleinern, Fokus", () => {
     expect(Number.parseFloat(huelle().style.left)).toBe(Number.parseFloat(start.left) - 80);
     await taste(f, "Home");
     expect({ left: huelle().style.left, top: huelle().style.top }).toEqual(start);
-    expect(q(document, "klara-ansage")?.textContent).toBe("Klara ist zurück an ihrem Startplatz.");
+    // produkt:20261010:assistenz-name-avatar: ohne gespeichertes Profil die neutrale Bezeichnung.
+    expect(q(document, "klara-ansage")?.textContent).toBe("Assistenz ist zurück am Startplatz.");
   });
 
   it("Klick öffnet, Escape schliesst, Verkleinern und Wiederöffnen — der Fokus kehrt zurück", async () => {
@@ -186,7 +187,8 @@ describe("K2/K3 · Tastatur, Öffnen, Schliessen, Verkleinern, Fokus", () => {
     await oeffnen();
     const f = await figur();
     expect(f.getAttribute("aria-expanded")).toBe("true");
-    expect(document.activeElement?.textContent).toBe("Klara");
+    // produkt:20261010:assistenz-name-avatar: der Gesprächskopf heisst ohne Profil „Deine Assistenz".
+    expect(document.activeElement?.textContent).toBe("Deine Assistenz");
 
     await taste(q(document, "klara-gespraech") as HTMLElement, "Escape");
     expect(q(document, "klara-gespraech")).toBeNull();

@@ -207,6 +207,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "VEROEFFENTLICHUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil. ADDITIV, nachgezählt:
+  // ein `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "ASSISTENZ_PROFIL_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

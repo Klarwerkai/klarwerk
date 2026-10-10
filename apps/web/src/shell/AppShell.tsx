@@ -12,6 +12,12 @@ import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext"
 import { NavGuardModalBoundaryBridge } from "../app/NavGuardContext";
 // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
 import { KlaraAssistant } from "../components/KlaraAssistant";
+// produkt:20261010:assistenz-name-avatar: Ersteinrichtung der persönlichen Assistenz — wie der
+// Nutzungshinweis als Geschwister des Inhalts, nie modal — und der Lader des bestätigten Profils.
+import {
+  AssistenzEinrichtung,
+  AssistenzProfilLader,
+} from "../components/assistenz/AssistenzEinrichtung";
 // KLARA-VORSCHAU (produkt:20261007:klara-vorschau): bei eingeschalteter Vorschau tritt die
 // bewegliche Klara an die Stelle des Hilfeknopfs. Der Schalter ist winzig und statisch; die Figur
 // selbst wird erst nachgeladen, wenn jemand die Vorschau eingeschaltet hat.
@@ -147,6 +153,8 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                   darüber. Er nimmt echten Layout-Platz und verdeckt deshalb kein Bedienelement. */}
                 <ModalRegion>
                   <NoticeBanner />
+                  <AssistenzProfilLader />
+                  <AssistenzEinrichtung />
                 </ModalRegion>
                 <ModalRegion>
                   <CommandPalette />
@@ -192,6 +200,8 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               </main>
               <ModalRegion>
                 <NoticeBanner />
+                <AssistenzProfilLader />
+                <AssistenzEinrichtung />
               </ModalRegion>
             </div>
             <ModalRegion>

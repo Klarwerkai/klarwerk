@@ -46,6 +46,8 @@ import {
   REASONER_POLICY_SCHEMA,
 } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
+// produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (eine Zeile je Konto).
+import { ASSISTENZ_PROFIL_SCHEMA } from "./assistenz-profil";
 // JOB 3578: die instanzweite Markenwahl (Demo-Firmen-CI). Sie wohnt wie die Lesevarianten im
 // App-Wurzelverzeichnis, weil sie zu keinem Fachmodul gehört: drei Oberflächen lesen sie, und
 // keine davon besitzt sie.
@@ -325,6 +327,10 @@ export const schemas = [
   // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
   // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VEROEFFENTLICHUNG_SCHEMA,
+  // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am
+  // Ende, weil das die lesbare Ordnung ist.
+  ASSISTENZ_PROFIL_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

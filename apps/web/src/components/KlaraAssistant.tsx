@@ -11,6 +11,8 @@ import { Link, useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useReasonerStatus } from "../api/hooks";
 import { aiSperrHinweisKey } from "../lib/aiAvailability";
+// produkt:20261010:assistenz-name-avatar: der persönliche Name, sobald einer gespeichert ist.
+import { useAssistenzAnzeige } from "../lib/assistenzProfil";
 import { kiBremsSatz } from "../lib/kiBremse";
 import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../lib/kiHerkunft";
 import {
@@ -79,6 +81,13 @@ function KlaraResult({
 
 export function KlaraAssistant(): JSX.Element {
   const { t, i18n } = useTranslation();
+  // produkt:20261010:assistenz-name-avatar: Öffnen-Hilfe, Tooltip und Kopf tragen den persönlichen
+  // Namen. Ohne gespeicherten Namen bleiben die bisherigen (eingefrorenen) Grundtexte stehen.
+  const { name: assistenzName } = useAssistenzAnzeige();
+  const oeffnenText = assistenzName
+    ? t("assistenz.hilfe.oeffnen", { assistenz: assistenzName })
+    : t("klara.open");
+  const titelText = assistenzName ?? t("klara.title");
   const location = useLocation();
   const [open, setOpen] = useState(false);
   // R-0942: Klara ist eine aufklappende Fläche, kein sperrendes Fenster. Der Auslöser meldet seinen
@@ -438,8 +447,8 @@ export function KlaraAssistant(): JSX.Element {
         ref={ausloeserRef}
         type="button"
         data-klara="1"
-        aria-label={t("klara.open")}
-        title={t("klara.open")}
+        aria-label={oeffnenText}
+        title={oeffnenText}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => (open ? schliessen() : setOpen(true))}
@@ -454,12 +463,12 @@ export function KlaraAssistant(): JSX.Element {
           id={panelId}
           tabIndex={-1}
           data-klara="1"
-          aria-label={t("klara.title")}
+          aria-label={titelText}
           className="fixed bottom-20 right-5 z-40 flex max-h-[68vh] w-[min(340px,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-popover outline-none"
         >
           <div className="flex items-center justify-between border-b border-hairline px-4 py-3">
             <div>
-              <div className="text-[14px] font-semibold text-ink">{t("klara.title")}</div>
+              <div className="text-[14px] font-semibold text-ink">{titelText}</div>
               <div className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                 {t("klara.subtitle")}
               </div>
