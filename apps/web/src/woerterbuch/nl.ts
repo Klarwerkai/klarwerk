@@ -2327,6 +2327,7 @@ const nl: typeof de = {
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
   "ask.verschlossen.stufe": "Niveau ontbreekt",
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertrouwelijkheidsniveau ontbreekt",
   "ask.verschlossen.stufeHint": "Voor het document is geen vertrouwelijkheidsniveau ingesteld.",
   "ask.verschlossen.volltext": "Geen doorzoekbare tekst",
   "ask.verschlossen.volltextHint": "Van dit document is nog geen doorzoekbare tekst beschikbaar.",
@@ -2474,6 +2475,30 @@ const nl: typeof de = {
     "De bekende tegenstrijdigheden konden niet worden opgehaald. Of een van de bronnen in een open conflict staat, is daarmee onbekend; dit antwoord geldt daarom als ongecontroleerd.",
   "gap.privacyNotice":
     "De vraag wordt als kennishiaat opgeslagen — geen antwoord en geen gevalideerde kennis. Leg alsjeblieft geen gevoelige of persoonsgebonden details vast; vul later gecontroleerde ervaring aan.",
+  "gap.originalfrage": "Oorspronkelijke vraag",
+  "gap.askCount": "{{count}}× gevraagd",
+  "gap.ausgangsfrage": "Vraag achter dit kennishiaat",
+  "gap.belegbedarf.label": "Ontbrekend bewijs",
+  "gap.belegbedarf.wissensobjekt":
+    "Geen passend kennisobject gevonden — er ontbreekt er een dat de vraag beantwoordt",
+  "gap.belegbedarf.unbestimmt": "Onbepaald — welk bewijs ontbreekt, valt niet af te leiden",
+  "nulltreffer.titel": "Jouw zoekopdrachten zonder resultaat",
+  "nulltreffer.hinweis":
+    "Voor deze termen vond je zoekopdracht niets wat je mag zien — een aanwijzing waar kennis kan ontbreken. Alleen jij ziet deze lijst.",
+  "nulltreffer.anzahl": "{{count}}× gezocht",
+  "nulltreffer.erfassen": "Kennis vastleggen",
+  "nulltreffer.eingegrenzt":
+    "Alleen binnen deze afbakening gezocht ({{filter}}) — geen bevinding over het hele bestand.",
+  "nulltreffer.feld.type": "Kennissoort",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Categorie",
+  "nulltreffer.feld.tag": "Trefwoord",
+  "einzelquelle.titel": "Kennis die alleen bij jou ligt",
+  "einzelquelle.satz":
+    "Onderwerpen met busfactor 1 waarvan de zichtbare kennis alleen van jou komt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}” — wil je er nu vijf minuten over vertellen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Onderwerp",
   "ask.toGaps": "Naar de kennishiaten",
   "ask.toCapture": "Kennis vastleggen",
   "ko.use.ready": "Bruikbaar in de praktijk",

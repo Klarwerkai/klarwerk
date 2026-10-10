@@ -232,6 +232,11 @@ const REGISTER: Record<string, Eintrag> = {
       "JOB 3326 — Antwort ist eine Zählbilanz plus Lieferschlüssel (lesevarianten.ts, LadeBilanz).",
   },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
+  // R-0773: nur die EIGENEN Suchbegriffe ohne Treffer — kein Objekt, keine Kennung, kein Titel.
+  "GET /api/library/nulltreffer": {
+    urteil: "EIGENER_BESTAND",
+    grund: "R-0773 — nulltreffer.fuer(user.id) (library-routes.ts), nur die eigene Liste.",
+  },
   "GET /api/categories": {
     urteil: "PRAEDIKAT",
     grund: "JOB 3507 — Kategorien und Zähler erst nach sqlSichtbarkeitFuer + sichtbareFuer.",

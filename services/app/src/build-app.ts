@@ -16,8 +16,11 @@ import {
   type GapRepo,
   InMemoryAnswerSnapshotRepo,
   InMemoryGapRepo,
+  InMemoryNulltrefferRepo,
+  type NulltrefferRepo,
   PgAnswerSnapshotRepo,
   PgGapRepo,
+  PgNulltrefferRepo,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -745,6 +748,8 @@ export interface AppServices {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (nur die eigene Liste ist lesbar).
+  nulltreffer: NulltrefferRepo;
   // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
   slideConverter: SlideConverter;
   // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Von buildApp
@@ -818,6 +823,8 @@ export interface AppRepos {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (Tabelle `ask_nulltreffer` in ASK_SCHEMA).
+  nulltreffer: NulltrefferRepo;
   /**
    * W1 Weg A: der Answer-Beleg-Schreibweg — und zwar HIER, nicht mehr als Option.
    *
@@ -1838,6 +1845,8 @@ export function assembleServices(
     externalKnowledge: repos.externalKnowledge,
     // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
     uploadLimits: repos.uploadLimits,
+    // R-0773: erfolglose Suchen je Person — Repo direkt für die Bibliotheksroute.
+    nulltreffer: repos.nulltreffer,
     // WP-D11: PPTX-Folien → PNG (LibreOffice headless). In Tests/Dev ohne soffice meldet
     // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
     slideConverter: createSofficeSlideConverter(),
@@ -1887,6 +1896,7 @@ export function inMemoryRepos(): AppRepos {
     validationSettings: new InMemoryValidationSettingsRepo(),
     externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
     uploadLimits: new InMemoryUploadLimitsRepo(),
+    nulltreffer: new InMemoryNulltrefferRepo(),
     // W1 Weg A (Auftrag 143): der Answer-Beleg gehört in denselben Repo-Satz wie alles andere —
     // nur so umhüllt ihn die Dev-Persistenz und spielt ihn beim Start aus dem Journal zurück.
     answerSnapshots: new InMemoryAnswerSnapshotRepo(),
@@ -1982,6 +1992,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
       // SCRUM-421: Upload-Grenzen persistent.
       uploadLimits: new PgUploadLimitsRepo(pool),
+      // R-0773: erfolglose Suchen je Person, Tabelle `ask_nulltreffer` (ASK_SCHEMA).
+      nulltreffer: new PgNulltrefferRepo(pool),
       // W3-C1 (Auftrag 76): der Answer-Beleg gegen die echte Datenbank. Die Tabellen
       // `answer_records` und `answer_snapshots` stehen seit Freeze 61 im Migrationsweg.
       // W1 Weg A (Auftrag 143): er steht jetzt bei den übrigen Repos statt in den Optionen —
@@ -4374,14 +4386,20 @@ export function buildApp(
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
   app.register(
-    libraryRoutes(services.library, guards, {
-      ko: services.ko,
-      conflicts: services.conflicts,
-      overlaps: services.overlaps,
-      overlapSettings: services.overlapSettings,
-      reasoner: services.reasoner,
-      semanticPrefilter,
-    }),
+    libraryRoutes(
+      services.library,
+      guards,
+      {
+        ko: services.ko,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        overlapSettings: services.overlapSettings,
+        reasoner: services.reasoner,
+        semanticPrefilter,
+      },
+      // R-0773: erfolglose Suchen je Person.
+      services.nulltreffer,
+    ),
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
