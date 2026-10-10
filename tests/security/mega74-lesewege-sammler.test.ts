@@ -395,6 +395,11 @@ const REGISTER: Record<string, Eintrag> = {
       "Deckungslage des eigenen Prüflaufs.",
   },
   "GET /api/conflicts": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor, wörtliche Zitate." },
+  "GET /api/conflicts/geloest": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "R-1662 — Paar-Tor wie die Liste; bei Redaktion auch Entscheidung und Zweitmeinung leer.",
+  },
   "GET /api/conflicts/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },
   // R-0263 (Aufnahme gesamt-konfliktklassifikation): Vorrang am Punkt — Paar-Tor je Eintrag,
   // der Geltungsbereich (Menschentext) zusätzlich hinter `feldFreigabe`.
@@ -1265,6 +1270,10 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/lifecycle/pending": {
     urteil: "KEIN_KO_INHALT",
     grund: "string[] mit KO-IDs (lifecycle/src/service.ts:46) — kein Inhalt.",
+  },
+  "GET /api/lifecycle/revalidiert": {
+    urteil: "PRAEDIKAT",
+    grund: "R-1662 — sichtbareEintraege vor dem Lesen; nur Kennung, Zeitpunkt und Fassung.",
   },
   "GET /api/lifecycle/couplings/:koId": {
     urteil: "KEIN_KO_INHALT",

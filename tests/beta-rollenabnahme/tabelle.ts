@@ -989,6 +989,14 @@ export const TABELLE: Zeile[] = [
   },
   {
     gruppe: "conflictRoutes",
+    methode: "GET",
+    pfad: "/api/conflicts/geloest",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:252",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "conflictRoutes",
     methode: "POST",
     pfad: "/api/conflicts/gibt-es-nicht/escalate",
     route: "/api/conflicts/:id/escalate",
@@ -1714,6 +1722,14 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/lifecycle/revalidiert",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:152",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
   },
   {
     gruppe: "livewallRoutes",
