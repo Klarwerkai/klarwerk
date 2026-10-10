@@ -135,7 +135,7 @@ function blattTitel(): string {
 async function formularUndDatei(): Promise<void> {
   await mount(`/erfassen?draft=${ENTWURF_ID}`, undefined, false, true);
   await weg("erfassen.weg.formular");
-  await tippe(feld(String(i18n.t("capture.fTitle"))), FORMULARTITEL);
+  await tippe(feld(String(i18n.t("capture.wizard.titleLabel"))), FORMULARTITEL);
   await weg("erfassen.weg.datei");
   await dateiAblegen(new File([DATEITEXT], DATEI, { type: "text/plain" }));
   expect(arbeitsraumSteht()).toBe(true);
