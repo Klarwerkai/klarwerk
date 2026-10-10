@@ -7972,6 +7972,31 @@ const de = {
     "Du kommst aus Fassung {{genannt}}; dieser Beitrag steht inzwischen in Fassung {{aktuell}}.",
   "arbeitsweg.klara.label": "Beitrag",
   "arbeitsweg.klara.chat": "In „Fragen“ zu diesem Beitrag weiterfragen",
+  // produkt:20261010:fragen-pruefen-einstieg — der Einstieg der leeren Fragenfläche
+  // (`components/fragen/FragenEinstieg.tsx`). Der erste Schritt beginnt bewusst NICHT mit „Nächster
+  // Schritt:" — dieser Satzanfang gehört auf /fragen allein dem Antwortvertrag (mega54-Sammler).
+  "fragenEinstieg.erklaerung":
+    "Hier fragst du euer geprüftes Wissen. Jede Antwort zeigt ihre Quellen und deren Prüfstand – fehlt eine Grundlage, wird die Lücke offen benannt.",
+  "fragenEinstieg.ersterSchritt":
+    "Erster Schritt: Frage ins Feld darunter schreiben (oder diktieren) und mit dem Pfeil senden.",
+  "fragenEinstieg.beispieleZeigen": "Fiktive Beispiele zeigen",
+  "fragenEinstieg.beispieleVerbergen": "Beispiele ausblenden",
+  "fragenEinstieg.fiktiv": "fiktiv",
+  "fragenEinstieg.fiktivTitel": "Fiktives Beispiel – erfundene Lage, keine echten Daten.",
+  "fragenEinstieg.optionalTitel": "Optional – nur bei Bedarf",
+  // produkt:20261010:fragen-pruefen-einstieg — der Prüfanlass an der Prüfkarte (`lib/pruefGrund.ts`).
+  "pruefgrund.label.warum": "Warum bei dir",
+  "pruefgrund.label.was": "Was prüfen",
+  "pruefgrund.label.wirkung": "Wirkung",
+  "pruefgrund.label.sichtbar": "Sichtbarkeit",
+  "pruefgrund.anlass.new": "Neu eingereicht.",
+  "pruefgrund.anlass.revision": "Überarbeitet (Fassung {{version}}).",
+  "pruefgrund.warum.mir": "Dir zugewiesen.",
+  "pruefgrund.warum.andere":
+    "Anderen zugewiesen ({{anzahl}}) – steht in der offenen Prüfliste deiner Rolle.",
+  "pruefgrund.warum.offen": "Niemandem zugewiesen – steht in der offenen Prüfliste deiner Rolle.",
+  "pruefgrund.wirkung":
+    "Freigeben ist eine von {{need}} nötigen Stimmen ({{have}} vorhanden). Rückfrage und Ablehnen brauchen eine Begründung und führen in die Nacharbeit; nichts wird automatisch freigegeben.",
 };
 
 export { de };

@@ -84,7 +84,7 @@ export default {
     "klaragespraech.loeschenBestaetigen": "Wirklich löschen",
     "klaragespraech.loeschenAbbrechen": "Behalten",
     "klaragespraech.aktionHinweis":
-      "Umformulieren und Notiz sind vorgefertigt und nur im Demo-Betrieb verfügbar.",
+      "„Umformulieren“ zeigt Original und Vorschlag nebeneinander – geändert wird erst, wenn du übernimmst und im Editor speicherst. Der Notizentwurf bleibt in dieser Sitzung.",
     "klaragespraech.ansage.beantwortet": "{{assistenz}} hat geantwortet.",
     "klaragespraech.ansage.abgebrochen": "Anfrage gestoppt.",
     "klaragespraech.ansage.fehlgeschlagen": "Die Anfrage ist fehlgeschlagen.",
@@ -172,7 +172,7 @@ export default {
     "klaragespraech.loeschenBestaetigen": "Really delete",
     "klaragespraech.loeschenAbbrechen": "Keep",
     "klaragespraech.aktionHinweis":
-      "Rephrase and note are prepared and only available in demo mode.",
+      "“Rephrase” shows original and suggestion side by side – nothing changes until you apply it and save in the editor. The note draft stays in this session.",
     "klaragespraech.ansage.beantwortet": "{{assistenz}} has answered.",
     "klaragespraech.ansage.abgebrochen": "Request stopped.",
     "klaragespraech.ansage.fehlgeschlagen": "The request failed.",
@@ -259,7 +259,7 @@ export default {
     "klaragespraech.loeschenBestaetigen": "Echt verwijderen",
     "klaragespraech.loeschenAbbrechen": "Behouden",
     "klaragespraech.aktionHinweis":
-      "Herformuleren en notitie zijn voorbereid en alleen in de demomodus beschikbaar.",
+      "„Herformuleren” toont origineel en voorstel naast elkaar – er verandert pas iets als je het overneemt en in de editor opslaat. Het notitieconcept blijft in deze sessie.",
     "klaragespraech.ansage.beantwortet": "{{assistenz}} heeft geantwoord.",
     "klaragespraech.ansage.abgebrochen": "Verzoek gestopt.",
     "klaragespraech.ansage.fehlgeschlagen": "Het verzoek is mislukt.",

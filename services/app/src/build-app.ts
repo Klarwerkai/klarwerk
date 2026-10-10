@@ -291,6 +291,7 @@ import { schalterAn } from "./feature-flags";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
+import { FreigabeRegelDienst } from "./freigaberegel-dienst";
 import { frischeMeldungen } from "./frische-meldungen";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
@@ -387,6 +388,7 @@ import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { datenschutzRoutes } from "./routes/datenschutz-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
+import { freigaberegelnRoutes } from "./routes/freigaberegeln-routes";
 import { gedaechtnisRoutes } from "./routes/gedaechtnis-routes";
 // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
 // angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
@@ -426,6 +428,8 @@ import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
+// ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
+import { qualitaetsaufgabenRoutes } from "./routes/qualitaetsaufgaben-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
@@ -2549,6 +2553,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "EXTERNAL_ATTACH_BLOCKED",
   "EXTERNAL_SEARCH_FAILED",
   "FORBIDDEN",
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): eine Freigaberegel mit unzulässiger Einstellung
+  // (`pruefeFreigabeRegel`, freigaberegeln.ts). Darf ins Protokoll: er nennt den Zweig, keine Kennung
+  // und keinen Nutzertext, und er geht als 400 ohnehin an den Client.
+  "FREIGABEREGEL_UNGUELTIG",
   "IDEMPOTENCY_PAYLOAD_MISMATCH",
   "IMPORT_ANCHOR_TAKEN",
   "INCOMPLETE",
@@ -3569,6 +3577,17 @@ export function buildApp(
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
   const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
+  // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
+  const freigaberegeln = new FreigabeRegelDienst({
+    spaces: services.spaces,
+    teams: services.teams,
+    auth: services.auth,
+    ko: services.ko,
+    validation: services.validation,
+    audit: services.audit,
+    notifyAssignment,
+  });
   // R-0571: wer laut Verzeichnis für die Prüfung in einem Space zuständig ist. Ohne Zuordnung bleibt
   // das Einreichen, wie es war (nur die genannten Prüfenden).
   const pruefzustaendigkeit = lesePruefzustaendigkeit(process.env.KLARWERK_PRUEFZUSTAENDIGKEIT);
@@ -4011,6 +4030,8 @@ export function buildApp(
         // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
         // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
         hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
+        // ADMIN-09: der Prüfpunkt der Freigaberegel eines Space vor jeder Entscheidung.
+        freigabeTor: (user, koId, weg, eingabe) => freigaberegeln.tor(user, koId, weg, eingabe),
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
@@ -4171,11 +4192,17 @@ export function buildApp(
     ),
   );
   app.register(
-    validationRoutes(services.validation, guards, {
-      ko: services.ko,
-      worker: aiCheckWorker,
-      conflicts: services.conflicts,
-    }),
+    validationRoutes(
+      services.validation,
+      guards,
+      {
+        ko: services.ko,
+        worker: aiCheckWorker,
+        conflicts: services.conflicts,
+      },
+      // ADMIN-09: die Freigaberegel des führenden Space je Brettzeile.
+      (kos) => freigaberegeln.auskunftFuer(kos),
+    ),
   );
   // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
   // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.
@@ -4562,6 +4589,25 @@ export function buildApp(
       guards,
     ),
   );
+  // ADMIN-10 (produkt:20261009:admin-qualitaetsaufgaben): eine Leseansicht auf die vorhandenen
+  // Vorgänge, keine zweite Aufgabenablage. Übernehmen einer Rückmeldung nutzt die vorhandene
+  // Prüfanforderung des Lebenszyklus.
+  app.register(
+    qualitaetsaufgabenRoutes(
+      {
+        ko: services.ko,
+        validation: services.validation,
+        lifecycle: services.lifecycle,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        ask: services.ask,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        spaces: services.spaces,
+      },
+      guards,
+    ),
+  );
   // Audit-P4 (SCRUM-398): Live-Wall — read-only „frisch gesichert / hat heute geholfen".
   // PMO-FEA-0003: `konten` liefert Anzeigenamen — die Route nennt davon nur zustimmende Konten.
   app.register(
@@ -4803,6 +4849,8 @@ export function buildApp(
         audit: services.audit,
         // produkt:20261009:admin-teams: Teams als bindbarer Mitgliedschaftsweg eines Space.
         teams: services.teams,
+        // ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl sofort.
+        freigaberegelAnwenden: (koId, akteur) => freigaberegeln.anwenden(koId, akteur),
         // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.
@@ -4822,6 +4870,14 @@ export function buildApp(
             }
           : {}),
       },
+      guards,
+    ),
+  );
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): Freigaberegel je Space lesen, mit
+  // Wirkungsvorschau ändern, Fristlauf mit Vertretung.
+  app.register(
+    freigaberegelnRoutes(
+      { dienst: freigaberegeln, auth: services.auth, teams: services.teams },
       guards,
     ),
   );
