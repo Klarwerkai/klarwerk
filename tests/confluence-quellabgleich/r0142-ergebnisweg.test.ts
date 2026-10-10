@@ -363,14 +363,17 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
       expect(geschlossen.gap?.id).toBeTruthy();
       // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Dafür
       // steht hier ein eigenes Objekt, damit der Import unten unberührt bleibt.
-      const antwort = await t.services.ko.create({
+      // produkt:20261010:wissenskreislauf-schliessen: ein ungeprüfter „Abschlussvermerk" schliesst
+      // FACHLICH nicht mehr (keine Fachfreigabe). Was dieser Fall braucht, ist eine geschlossene
+      // Lücke — „anderweitig beantwortet" ist die administrative Rücknahme mit eigenem Grund.
+      await t.services.ko.create({
         title: "Abschlussvermerk Wartungsfrage",
         statement: "Die Frage ist anderweitig beantwortet.",
         type: "best_practice",
         category: "Vermerk",
         author: "admin",
       });
-      await t.services.ask.closeGap(geschlossen.gap?.id ?? "", antwort.id);
+      await t.services.ask.withdrawGap(geschlossen.gap?.id ?? "", "dublette", "admin");
 
       t.bereich.set("P-1", seite("P-1", 1));
       const importId = await t.lauf();

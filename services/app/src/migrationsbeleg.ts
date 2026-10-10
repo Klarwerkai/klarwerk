@@ -211,6 +211,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "VEROEFFENTLICHUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:templates-default: die Fassungen der Vorlagen. ADDITIV, nachgezählt: ein
+  // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VORLAGEN_SCHEMA", risiko: "ADDITIV" },
   // ADMIN-12: Kommunikationsregeln, persönliche Abwahlen und Zustellstatus. ADDITIV, nachgezählt:
   // drei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.

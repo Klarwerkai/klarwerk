@@ -1,4 +1,4 @@
-import type { GapView } from "../../ask";
+import type { GapMeldung, GapView } from "../../ask";
 import type { Conflict, OverlapEntry } from "../../conflicts";
 import type { AssignmentNotice } from "../../validation";
 import type { LoeschantragMeldung } from "./loeschantraege";
@@ -25,7 +25,11 @@ export type NotificationKind =
   // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
   | "frische"
   | "reklamation"
-  | "veroeffentlichung";
+  | "veroeffentlichung"
+  // produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke — fachlich gelöst
+  // (an die Fragenden), Rückfrage (an die Fragenden), Rückfrage beantwortet (an die zuständige
+  // Person). Die Unterart steht in `lueckenArt`.
+  | "luecke";
 
 // R-1089: eine Meldung „Antwort falsch / Quelle passt nicht" an die verantwortliche Person des
 // zitierten Wissensobjekts. Quelle: Audit-Einträge `answer.reported`, deren `responsible` der
@@ -114,6 +118,10 @@ export interface Notification {
   // `kind: "veroeffentlichung"` gesetzt (`fassung` trägt dort die veröffentlichte Fassung).
   art?: "neu" | "aktualisierung";
   hervorgehoben?: boolean;
+  // produkt:20261010:wissenskreislauf-schliessen: Unterart und Lücke einer `luecke`-Meldung. Bei
+  // `geloest` trägt `koId` den nutzbaren Wissenseintrag (Titel = dessen Titel).
+  lueckenArt?: GapMeldung["art"];
+  gapId?: string;
   // ADMIN-12 (`kommunikationsregeln.ts`): die tägliche Zusammenfassung gewöhnlicher
   // Veröffentlichungen eines Tages — eine Meldung `kind: "veroeffentlichung"` ohne `koId`.
   zusammenfassung?: {
@@ -159,8 +167,23 @@ export function buildNotifications(input: {
   // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
   frische?: FrischeNotice[];
   veroeffentlichungen?: VeroeffentlichungNotice[];
+  // produkt:20261010:wissenskreislauf-schliessen: bereits auf den Betrachter beschränkt und — bei
+  // `geloest` — gegen seine heutige Sichtbarkeit und den Fachprüfstand geprüft
+  // (`AskService.gapMeldungenFuer`). Die Kennung ist deterministisch: je Abschluss genau eine.
+  luecken?: readonly GapMeldung[];
 }): Notification[] {
   const items: Notification[] = [];
+  for (const l of input.luecken ?? []) {
+    items.push({
+      id: l.id,
+      kind: "luecke",
+      title: l.title,
+      at: l.at,
+      lueckenArt: l.art,
+      gapId: l.gapId,
+      ...(l.koId ? { koId: l.koId } : {}),
+    });
+  }
   // Je Antrag EIN Eintrag. Wird er überfällig, bekommt er eine neue Kennung, damit er wieder als
   // ungelesen erscheint — dieselbe Regel wie die Erinnerung der Kenntnisnahme.
   for (const l of input.loeschantraege ?? []) {

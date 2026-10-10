@@ -715,6 +715,30 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // REF-01: die Fundstellenauflösung ist ein LESENDER POST (Kennungen im Rumpf, kein Schreiben).
+  // Eine erfundene Kennung ergibt nach dem Tor für jede Rolle dieselbe inhaltslose Auskunft
+  // „nicht zugänglich" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/fundstellen",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1356",
+    tor: "ko.read",
+    payload: {
+      fundstellen: [
+        {
+          art: "intern",
+          koId: "gibt-es-nicht",
+          koVersion: 1,
+          feld: "statement",
+          start: 0,
+          ende: 1,
+          fingerabdruck: `sha256:${"0".repeat(64)}`,
+        },
+      ],
+    },
+    erwartet: NUR_LESEN,
+  },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
   // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
   {
@@ -725,6 +749,69 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/ask-routes.ts:867",
     tor: "ko.assign",
     erwartet: AB_CONTROLLER,
+  },
+  // produkt:20261010:wissenskreislauf-schliessen: die Türen des gemeinsamen Vorgangs. Gemessen wird
+  // das ROUTENrecht; eine erfundene Kennung ergibt nach dem Tor die fachliche 404 (bzw. 400 für ein
+  // unberechtigtes Übergabeziel). Beteiligung, Fachfreigabe und Doppelaktion misst
+  // `tests/wissenskreislauf/vorgang-am-draht.test.ts` am echten Vorgang.
+  {
+    gruppe: "askRoutes",
+    methode: "GET",
+    pfad: "/api/gaps/gibt-es-nicht/vorgang",
+    route: "/api/gaps/:id/vorgang",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1624",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/uebergeben",
+    route: "/api/gaps/:id/uebergeben",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1637",
+    tor: "ko.read",
+    payload: { expertId: "gibt-es-nicht" },
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/rueckfrage",
+    route: "/api/gaps/:id/rueckfrage",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1663",
+    tor: "ko.read",
+    payload: { frage: "Rollenprobe" },
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/rueckfrage/gibt-es-nicht/antwort",
+    route: "/api/gaps/:id/rueckfrage/:rueckfrageId/antwort",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1682",
+    tor: "ko.read",
+    payload: { antwort: "Rollenprobe" },
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/entwurf",
+    route: "/api/gaps/:id/entwurf",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1703",
+    tor: "ko.create",
+    payload: { koId: "gibt-es-nicht" },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/gaps/gibt-es-nicht/abschliessen",
+    route: "/api/gaps/:id/abschliessen",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1724",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
   },
   {
     gruppe: "auditRoutes",
@@ -2059,6 +2146,15 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/qualitaetsaufgaben/rueckmeldungen/M-ABNAHME0000/uebernehmen",
     route: "/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen",
     belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:36",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // ADMIN-11: Wissenskennzahlen auf denselben Quellen wie die Qualitätsaufgaben — Verwaltung.
+    gruppe: "wissenskennzahlenRoutes",
+    methode: "GET",
+    pfad: "/api/wissenskennzahlen",
+    belegstelle: "services/app/src/routes/wissenskennzahlen-routes.ts:22",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },

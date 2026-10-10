@@ -90,8 +90,8 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
 
   it("jeder App-Bereich ist ein vorhandener Menüeintrag; Pfade sind vorhandene Routen", () => {
     // Die Routen ohne Menüeintrag, die die Übersicht anbietet — je eine Zeile in `routes.tsx`:
-    // Spaces (produkt:20261007:spaces), die Qualitätsaufgaben (ADMIN-10) und die
-    // Kommunikationsregeln (ADMIN-12).
+    // Spaces (produkt:20261007:spaces), Vorlagen (produkt:20261007:templates-default, ADMIN-08),
+    // die Qualitätsaufgaben (ADMIN-10) und die Kommunikationsregeln (ADMIN-12).
     const routen = readFileSync(repoPfad("apps/web/src/routes.tsx"), "utf8");
     for (const g of VERWALTUNG_GRUPPEN) {
       for (const z of g.ziele) {
@@ -102,7 +102,9 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
           ).toBe(true);
         }
         if (z.art === "pfad") {
-          expect(["/spaces", "/qualitaetsaufgaben", "/kommunikation"]).toContain(z.pfad);
+          expect(["/spaces", "/vorlagen", "/qualitaetsaufgaben", "/kommunikation"]).toContain(
+            z.pfad,
+          );
           expect(routen, `${z.pfad} hat keine Route`).toContain(`<Route path="${z.pfad}"`);
         }
       }

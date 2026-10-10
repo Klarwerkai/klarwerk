@@ -191,7 +191,7 @@ import {
 } from "../../object-store";
 import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
-import { canChangeRole } from "../../rbac";
+import { can, canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -447,8 +447,12 @@ import {
   scimSchluessel,
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
+// produkt:20261007:templates-default — Vorlagen, Standards, Space-Vorgaben, Nutzung, Begriffe.
+import { vorlagenRoutes } from "./routes/vorlagen-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
+// ADMIN-11: Wissenskennzahlen mit Grundmenge, Datenstand und Weg in die Arbeitsliste.
+import { wissenskennzahlenRoutes } from "./routes/wissenskennzahlen-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -496,6 +500,13 @@ import {
   VeroeffentlichungDienst,
   type VeroeffentlichungsZustellungRepo,
 } from "./veroeffentlichung";
+import {
+  InMemoryVorlagenAblage,
+  PgVorlagenAblage,
+  type VorlagenAblage,
+  type VorlagenEinreichungPort,
+  vorlagenEinreichung,
+} from "./vorlagen";
 // R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
 import {
   InMemoryMitgelesenRepo,
@@ -613,6 +624,11 @@ export interface AppServices {
    * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
    */
   teams: TeamsRepo;
+  /**
+   * produkt:20261007:templates-default — die Fassungen der Vorlagen, Standards, Space-Vorgaben,
+   * Nutzung und Begriffe (`vorlagen.ts`). Im Postgres-Betrieb haltbar (`PgVorlagenAblage`).
+   */
+  vorlagen: VorlagenAblage;
   /**
    * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
    * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
@@ -1200,6 +1216,8 @@ export function assembleServices(
     spaces?: SpacesRepo;
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
+    // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
+    vorlagen?: VorlagenAblage;
     // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
     verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1378,10 +1396,24 @@ export function assembleServices(
         }
       : undefined;
 
+  // produkt:20261010:wissenskreislauf-schliessen: die EINE Validierungsinstanz entsteht jetzt vor dem
+  // Ask-Dienst, weil der fachliche Abschluss einer Wissenslücke ihren Prüfstand liest. Dieselben
+  // Abhängigkeiten wie bisher an `services.validation` (unten), keine zweite Instanz.
+  const validation = new ValidationService({
+    koService: ko,
+    ratings: repos.ratings,
+    assignments: repos.assignments,
+    audit,
+    // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
+    settings: repos.validationSettings,
+  });
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
   // Mehr-Instanz-/reproduzierbare Deployments, sonst prozess-lokal zufällig (Belege sind kurzlebig).
   const ask = new AskService({
+    // produkt:20261010:wissenskreislauf-schliessen: der Fachprüfstand der AKTUELLEN Fassung —
+    // dieselbe Zählung wie Prüfboard und Detailabruf.
+    pruefstand: (koId, koVersion) => validation.pruefstandFuer(koId, koVersion),
     reasoner,
     koService: ko,
     gaps: repos.gaps,
@@ -1598,6 +1630,8 @@ export function assembleServices(
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces,
     teams,
+    // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
+    vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
     verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
@@ -1752,14 +1786,8 @@ export function assembleServices(
     // braucht. Er ist DASSELBE Repo, das der Schreibweg oben benutzt — ein zweites waere ein
     // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
     answerSnapshots: repos.answerSnapshots,
-    validation: new ValidationService({
-      koService: ko,
-      ratings: repos.ratings,
-      assignments: repos.assignments,
-      audit,
-      // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
-      settings: repos.validationSettings,
-    }),
+    // produkt:20261010:wissenskreislauf-schliessen: dieselbe Instanz, die der Ask-Dienst liest (oben).
+    validation,
     conflicts,
     overlaps,
     // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
@@ -2108,6 +2136,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
+      // produkt:20261007:templates-default: Vorlagen, Standards, Space-Vorgaben, Nutzung und
+      // Begriffe überleben Neuladen, Neustart und Deploy (`VORLAGEN_SCHEMA`, angelegt von `migrate()`).
+      vorlagen: new PgVorlagenAblage(pool),
       // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
       // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
       verantwortungNachfolge: new PgNachfolgeRepo(pool),
@@ -3971,6 +4002,22 @@ export function buildApp(
       audit: services.audit,
     }),
   );
+  // produkt:20261007:templates-default — EINE Einreichprüfung für alle drei Anlagewege
+  // (`POST /api/kos`, `/api/kos/from-document`, Promote): Pflichtfelder der Vorlage, Space-Vorgaben,
+  // gepflegte Begriffe. Nach der Anlage vermerkt sie Vorlage und Fassung und legt den Beitrag in den
+  // gewählten Space — über denselben Wechselweg wie die Spaceseite (`setLeadingSpace`).
+  const vorlagenPort: VorlagenEinreichungPort = vorlagenEinreichung({
+    ablage: services.vorlagen,
+    spaces: services.spaces,
+    audit: services.audit,
+    inSpaceLegen: async (koId, spaceId, akteur) => {
+      const ko = await services.ko.get(koId);
+      if (!ko || ko.spaceId === spaceId) {
+        return;
+      }
+      await services.ko.setLeadingSpace(koId, spaceId, akteur, null);
+    },
+  });
   app.register(
     koRoutes(
       {
@@ -4030,6 +4077,8 @@ export function buildApp(
         // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
         // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
         hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
+        // produkt:20261007:templates-default: Pflichtangaben beim Einreichen, Vorlagennutzung danach.
+        vorlagen: vorlagenPort,
         // ADMIN-09: der Prüfpunkt der Freigaberegel eines Space vor jeder Entscheidung.
         freigabeTor: (user, koId, weg, eingabe) => freigaberegeln.tor(user, koId, weg, eingabe),
         draftPromotion: {
@@ -4425,7 +4474,17 @@ export function buildApp(
     ),
   );
   app.register(
-    captureRoutes({ ...services, notifyAssignment, semanticPrefilter, aiCheckWorker }, guards),
+    captureRoutes(
+      {
+        ...services,
+        notifyAssignment,
+        semanticPrefilter,
+        aiCheckWorker,
+        // produkt:20261007:templates-default: dieselbe Einreichprüfung am Promote.
+        vorlagenEinreichung: vorlagenPort,
+      },
+      guards,
+    ),
   );
   // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
   app.register(slidesRoutes(services.slideConverter, guards));
@@ -4473,6 +4532,19 @@ export function buildApp(
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
+        // produkt:20261010:wissenskreislauf-schliessen: berechtigte Fachzuständigkeit heisst HEUTE
+        // ein freigegebenes, nicht abgelaufenes Konto mit Erfassungsrecht (`ko.create`) — aus
+        // demselben Nutzerverzeichnis wie die Erreichbarkeit oben. Unbekannte Kennung: nein.
+        fachzustaendigkeit: async (personId: string) => {
+          const konto = (await services.auth.listUsers()).find((u) => u.id === personId);
+          if (!konto) {
+            return false;
+          }
+          const abgelaufen =
+            typeof konto.accessExpiresAt === "string" &&
+            Date.parse(konto.accessExpiresAt) <= Date.now();
+          return konto.approved === true && !abgelaufen && can(konto.role, "ko.create");
+        },
       },
       guards,
     ),
@@ -4648,6 +4720,27 @@ export function buildApp(
         audit: services.audit,
         konten: () => services.auth.listUsers(),
         spaces: services.spaces,
+      },
+      guards,
+    ),
+  );
+  // ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): Kennzahlen auf denselben Quellen wie
+  // ADMIN-10 plus Frageprotokoll und Lücken — keine neue Erhebung, keine zweite Ablage.
+  app.register(
+    wissenskennzahlenRoutes(
+      {
+        ko: services.ko,
+        validation: services.validation,
+        lifecycle: services.lifecycle,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        ask: services.ask,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        spaces: services.spaces,
+        teams: services.teams,
+        // Nacharbeit 3: der vorhandene Leseweg der EIGENEN erfolglosen Suchen.
+        nulltreffer: services.nulltreffer,
       },
       guards,
     ),
@@ -4872,6 +4965,21 @@ export function buildApp(
   }
   app.register(
     ausgangspruefungRoutes({ pruefung: ausgangspruefung, audit: services.audit }, guards),
+  );
+  // produkt:20261007:templates-default: Vorlagen, persönlicher Standard, Space-Vorgaben, Nutzung,
+  // Begriffspflege (ADMIN-08).
+  app.register(
+    vorlagenRoutes(
+      {
+        ablage: services.vorlagen,
+        spaces: services.spaces,
+        ko: services.ko,
+        auth: services.auth,
+        audit: services.audit,
+        einreichung: vorlagenPort,
+      },
+      guards,
+    ),
   );
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
