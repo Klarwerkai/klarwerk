@@ -164,10 +164,20 @@ describe("R-1864 · E — Egress-Abgleich nach Konzept §7", () => {
     expect(dokument).toContain("**Korrektur, keine Entscheidung.**");
   });
 
-  it("E2: tiefer Zweig nur ohne Vertraulichkeit, Dokumenteinwilligung ueber ka4Freigabe", () => {
+  // Nachgeführt (Auftrag gesamt-ki-freigaberegeln, Ben Nacharbeit 2): Pedis Entscheidung vom 10.09.
+  // lässt Vertrauliches mit der zweiten zentralen Adminfreigabe auch in den tiefen Zweig. Die
+  // fehlende Dokumenteinwilligung sperrt unverändert immer — sie ist jetzt ein eigener Grund.
+  it("E2: tiefer Zweig ohne Vertraulichkeit oder mit zweiter Adminfreigabe; ohne Dokumenteinwilligung nie", () => {
     const route = lies("services/app/src/routes/check-text-routes.ts");
-    expect(route).toContain("const deepAllowed = wantDeep && !confidential;");
-    expect(route).toContain("(gebunden && !dokumentZustimmung)");
+    expect(route).toContain(
+      "const deepAllowed = wantDeep && (!confidential || vertraulichFreigegeben);",
+    );
+    // Ben Nacharbeit 3: neben der fehlenden Einwilligung sperrt auch eine unbelegte Herkunft.
+    expect(route).toContain(
+      "const ausleitungGesperrt = (gebunden && !dokumentZustimmung) || herkunftUnbelegt;",
+    );
+    expect(route).toContain("const confidential = ausleitungGesperrt || eingestuftVertraulich;");
+    expect(route).toMatch(/const vertraulichFreigegeben =\s*eingestuftVertraulich &&/);
     expect(route).toContain("await ka4Freigabe(");
   });
 

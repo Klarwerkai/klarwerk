@@ -13,13 +13,22 @@
 
 ## 1. Datenklassifikation je Datenfläche (belegt aus Code)
 
+> **Maßgeblich ist seit Auftrag „Betroffenenrechte" (R-0583) das Dateninventar im Code:**
+> `services/app/src/dateninventar.ts` (`DATENINVENTAR`). Es führt **jede** Tabelle, die `migrate()`
+> anlegt, genau einer Datenart zu — mit Inhalt, Personenbezug (ja/möglich/nein), Ablage, heutigem
+> Löschweg, heutiger Frist und ob die Datenart in der Selbstauskunft steht. Die Bindung an die
+> Migration prüft `tests/betroffenenrechte/dateninventar.test.ts`. Die Verwaltung lädt das Inventar
+> samt Verarbeitungsverzeichnis unter *Verwaltung → Sicherheit und Nachweise → Datenschutz*
+> herunter (`GET /api/datenschutz/verarbeitungsverzeichnis`). Die Kurztabelle unten bleibt als
+> Überblick stehen; bei Abweichung gilt das Inventar.
+
 | Datenfläche | Inhalt | Klasse | Personenbezug | Speicherort |
 | --- | --- | --- | --- | --- |
 | **Knowledge Objects** | betriebliches Fachwissen (Titel/Statement/Body) | intern (i. d. R.) | möglich in Freitext | Postgres |
 | **Anhänge** (`object-store`) | Original-Dateien/Bilder (Bytes) | intern–**sensibel möglich** | **möglich** (Foto/Dokument) | Postgres (`objects`) |
 | **Quellen** (`KoSource`) | externe Belege (url/excerpt/provider) | öffentlich/extern | gering | Postgres |
 | **Audit-Log** | wer (User-ID), wann, Aktion, Ziel, `payload` | **personenbezogen** | **ja** | append-only Hash-Kette |
-| **ModelRun-Protokoll** | **nur Metadaten** (Provider/Status/Fallback/Timing/generischer Fehler) | technisch | **nein** (per Design **keine** Prompt-/Antworttexte/KO-Inhalte) | Postgres (`model-runs`) |
+| **ModelRun-Protokoll** | **nur Metadaten** (Provider/Status/Fallback/Timing/generischer Fehler) plus Laufkontext: Kennung der anfragenden Person (`actor`) und des Wissensobjekts (`subject`) | technisch | **ja, über die Kennung** (`actor`) — aber per Design **keine** Prompt-/Antworttexte/KO-Inhalte | Postgres (`model-runs`) |
 | **Wissenslücken** (`Gap`) | **die gestellte Frage** (Freitext) + Status/Priorität | intern–**personenbezogen möglich** | **möglich** (Frage als Freitext) | Postgres |
 | **Konto/Auth** | Name, E-Mail, Rolle, Login-Events | **personenbezogen** | **ja** | Postgres + Audit |
 | **Server-/Proxy-Logs** | ggf. IP, Request-Meta (außerhalb App-Audit) | personenbezogen möglich | möglich | Betreiber-Logging (Coolify/Proxy) |
@@ -51,12 +60,12 @@
 
 | Daten | Aufbewahrung | Löschung |
 | --- | --- | --- |
-| **Prompts/Antworten** | **werden nicht gespeichert** (keine Persistenz) | n/a (existieren nicht) |
+| **Prompts/Antworten** | **Texte werden nicht gespeichert.** Gespeichert sind je beantworteter Frage ein Antwortbeleg (`answer_records`/`answer_snapshots`: Kennung, Zeit, Eigentümer-Kennung, zitierte Quellen) und je unbeantworteter Frage die Wissenslücke **mit Fragetext** (`gaps`) | Antwortbelege: kein Löschweg (unveränderlich); Lücken: manuell |
 | **ModelRun-Metadaten** | vom **Betreiber festzulegen** (z. B. 90 Tage, `monitoring-logging.md`); **keine** Inhalte | per Retention-Policy löschbar |
 | **Gap-Fragen (Freitext)** | so lange Lücke offen/relevant | mit KO-/Gap-Lebenszyklus; löschbar (kein Audit) |
 | **KOs/Anhänge** | fachlicher Lebenszyklus; Admin kann **löschen** (`ko.deleted`) | über UI/Admin |
 | **Audit-Log** | **append-only, hash-verkettet** (Abweichungen rechnerisch prüfbar = tamper-evident; kein extern verankerter Kettenkopf) | **bewusst nicht löschbar** → Abwägung *Recht auf Löschung ↔ Nachweispflicht* **dokumentieren** |
-| **Konto** | bis Löschung; Admin `user.delete` | über Admin |
+| **Konto** | bis Löschung; Admin `user.delete` | über Admin; Mitarbeiter stellen im Profil einen **Löschantrag** mit Frist (ein Monat), den die Verwaltung erledigt oder mit Grund ablehnt |
 | **Server-/Proxy-Logs** | **Betreiber-Logging-Policy** (außerhalb App) | Betreiber |
 
 > **Kritisch/offen:** Für ModelRun-Metadaten und Server-/Proxy-Logs ist die **konkrete Retention-Frist** noch **Betreiberentscheidung**; die **Audit-Löschungs-Abwägung** ist organisatorisch zu dokumentieren.
@@ -86,7 +95,7 @@
 | --- | --- |
 | **Betreiber (Verantwortlicher i. S. d. DSGVO)** | Rechtsgrundlagen, VVT, AVV, DSFA, Retention-Fristen, Betriebsvereinbarung |
 | **DSB / juristische Beratung** | rechtliche Bewertung, DSFA-Durchführung, Betroffenenrechte-Prozess |
-| **Admin** | Nutzer-/KO-Löschung, manuelle Auskunft, Rollen/RBAC |
+| **Admin** | Nutzer-/KO-Löschung, Bearbeitung der Löschanträge, Auskunft je Konto (Download), Rollen/RBAC |
 | **Klarwerk (Software)** | technische Schutzmaßnahmen (RBAC, Auth, append-only Audit, kein Prompt-Logging) |
 
 ---
@@ -95,7 +104,11 @@
 
 1. **Retention-Fristen** für ModelRun-Metadaten + Server-/Proxy-Logs — Betreiber festzulegen.
 2. **Audit-Löschungs-Abwägung** (Art. 17 ↔ Integrität) — organisatorisch dokumentieren.
-3. **Self-Service Auskunft/Export & Löschung** — heute **manuell** (Admin/DSB), kein Produktfeature (NFR-PRV-04).
+3. **Self-Service Auskunft/Export & Löschung** — seit Auftrag „Betroffenenrechte" Produktfunktion:
+   „Meine Daten" (Auskunft + JSON-Datenmitnahme) und „Konto löschen lassen" (Antrag mit Frist) im
+   Profil; Auskunft je Konto, Löschanträge und Verarbeitungsverzeichnis in der Verwaltung.
+   **Weiter offen:** Umschreiben der Verweise bei Kontolöschung (R-0642), Löschung im Audit (bewusst
+   nicht), Löschfristen je Datenart (Betreiber).
 4. **Gap-Frage-Freitext** kann PII/sensibles enthalten — Datenminimierung in AUP betonen.
 5. **AVV/DSFA** für Modellmodus/Cloud/RAG/Fine-Tuning — vor Aktivierung.
 

@@ -5,11 +5,12 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
-import { useDrafts, useKos } from "../../api/hooks";
+import { useDrafts, useGaps, useKos } from "../../api/hooks";
 import type {
   AssistResult,
   Confidentiality,
   DraftPayload,
+  KnowledgeType,
   SchutzdatenArt,
   StructureResult,
 } from "../../api/types";
@@ -24,11 +25,20 @@ import {
 import { useToast } from "../../app/ToastContext";
 import { useLiveKnowledgeCheck } from "../../hooks/useLiveKnowledgeCheck";
 import {
+  type AuswahlModus,
+  type TextAuswahl,
+  auswahlImFeld,
+  auswahlNochGueltig,
+  auswahlUebernehmen,
+} from "../../lib/auswahlAssist";
+import {
   applyBodyAssist,
   applySpellingAssistPreservingHtml,
   applyStructureProposal,
   bodyTextForAssist,
+  structureCardKnowledgeType,
   structureProposalTitleOnly,
+  withDecidedKnowledgeType,
 } from "../../lib/bodyAiAssist";
 import {
   ASSIST_ACTIONS,
@@ -36,6 +46,7 @@ import {
   assistActionInstructionKey,
   assistActionLabelKey,
 } from "../../lib/captureAiAssist";
+import { readGapId, resolveGapQuestion } from "../../lib/captureFromGap";
 import {
   FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY,
   buildFrontDoorPayload,
@@ -55,11 +66,15 @@ import {
 import { isDemoContext } from "../../lib/demoPilotPath";
 import { deriveStatus } from "../../lib/displayStatus";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
+import { KNOWLEDGE_TYPES_DRAFT } from "../../lib/draftForm";
 import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
+import { kiBremsSatz } from "../../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../../lib/kiHerkunft";
 import { useNetzOnline } from "../../lib/netzzustand";
+import { pruefHref } from "../../lib/objektbezug";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -80,13 +95,19 @@ import { Begriffshinweise } from "../Begriffshinweise";
 import { CaptureDraftList } from "../CaptureDraftList";
 import { DemoBanner } from "../DemoBanner";
 import { DraftBodyGallery } from "../DraftBodyGallery";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { useSprachaufnahme } from "../sprache/useSprachaufnahme";
+import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
+import { Button } from "../ui";
+import { LueckenInterviewAngebot } from "./LueckenInterviewAngebot";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
+import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
   SymbolBild,
   SymbolDatei,
@@ -126,6 +147,16 @@ import { BLATT_WEGE, BLATT_WEG_PARAMETER, blattWegAusAdresse, blattWegLabelKey }
 
 export type ArbeitsraumModus = "interview" | "datei" | "formular";
 
+// FR-MOB-03 / R-1018 (Aufnahme `gesamt-dialog-bedienung`) — die zwei Verlust-Rückfragen des
+// Blattes. Sie standen als `window.confirm` da, also als Systemdialog des Betriebssystems; auf dem
+// Telefon ist das ein fremdes Fenster ausserhalb der Anwendung. Jetzt fragt das Blatt SELBST, in
+// einer Zeile unter der Werkzeugzeile (`rueckfrageZeile`). `null` heisst „keine Frage offen".
+type BlattRueckfrage = { art: "verwerfen" } | { art: "oeffnen"; entwurfId: string };
+
+// Die Frage benennt die Zeile für Hilfsmittel (`aria-labelledby`) — wer auf „Weiter bearbeiten"
+// landet, hört zuerst, worum es geht.
+const BLATT_RUECKFRAGE_ID = "blatt-rueckfrage-text";
+
 /**
  * JOB 3378 (UX-18-M1): Womit ein Arbeitsraum SEIN Wegziel auszeichnet — den Bedienknopf, den ein
  * über die Adresse hergekommener Mensch als nächsten Schritt sucht. Der Wert ist der Modus
@@ -163,6 +194,8 @@ interface Speicherauftrag {
   readonly confidentiality: Confidentiality;
   readonly gewaehlteVertraulichkeit: Confidentiality | undefined;
   readonly kategorie: string;
+  // FR-STR-01: die entschiedene Wissensart (aus dem Ordnen-Vorschlag übernommen oder geladen).
+  readonly wissensart: KnowledgeType | undefined;
   readonly activeDraftId: string | null;
   readonly bodyNieGeliefert: boolean;
   readonly fallbackTitle: string;
@@ -174,12 +207,14 @@ function abgesendetAus(auftrag: Speicherauftrag): {
   bodyHtml: string;
   confidentiality: Confidentiality;
   kategorie: string;
+  wissensart: KnowledgeType | undefined;
 } {
   return {
     title: auftrag.title,
     bodyHtml: auftrag.bodyHtml,
     confidentiality: auftrag.confidentiality,
     kategorie: auftrag.kategorie,
+    wissensart: auftrag.wissensart,
   };
 }
 
@@ -193,6 +228,12 @@ const SPEICHERLAGE_TON: Record<Speicherzustand, string> = {
 
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
+  /**
+   * AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema, zu dem das Blatt nach einer Vorschau
+   * ohne Treffer ein Lücken-Interview angeboten hat. `null`, wenn der Arbeitsraum anders geöffnet
+   * wurde.
+   */
+  thema: string | null;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn und kommt zurück. */
   onEntwurfInsBlatt: (entwurfId: string) => void;
   /**
@@ -252,7 +293,14 @@ type LetzteAktion =
 // bisherigen Satz; die Fläche deutet nichts um, was der Server nicht ausdrücklich benannt hat.
 const CLOUD_GESPERRT_CODE = "CONFIDENTIAL_CLOUD_BLOCKED";
 
+// Aufnahme gesamt-integrations-api (R-0842): die ZWEITE ausdrücklich benannte Kennung. Hat die
+// KI-Bremse des Servers abgewiesen (`KI_ANFRAGEN_GEBREMST`), steht ihr Satz mit Wartezeit da —
+// für Strukturierung und Assistent gleichermassen (`kiBremsSatz`, apps/web/src/lib/kiBremse.ts).
 function kiFehlerMeldung(err: unknown, rueckfall: string): string {
+  const bremsSatz = kiBremsSatz(err);
+  if (bremsSatz) {
+    return bremsSatz;
+  }
   return err instanceof ApiError && err.code === CLOUD_GESPERRT_CODE ? err.message : rueckfall;
 }
 
@@ -314,6 +362,41 @@ const BLATT_SCHUTZDATEN_WARNUNG_ID = "blatt-schutzdaten-warnung";
 const BLATT_LADEN_HINWEIS_ID = "blatt-laden-hinweis";
 
 /**
+ * N-0084 — DIE AUSGANGSFRAGE ÜBER DEM EDITOR.
+ *
+ * Befund (Seiteninventar 08.09.): „Wissen erfassen" aus einer Lücke öffnete `/erfassen?gap=<id>`,
+ * und seit `/erfassen` das Blatt rendert, stand dort ein leerer Editor ohne den Wortlaut der Frage —
+ * die Karte mit der Ausgangsfrage lag nur im alten Arbeitsraum. Man musste sich die Frage merken.
+ *
+ * Dieselbe Auflösung wie im Arbeitsraum (`resolveGapQuestion`): der Text kommt nur aus der
+ * serverseitig berechtigungsgefilterten Lückenliste; eine redigierte oder unbekannte Lücke zeigt
+ * nichts. Eine eigene Komponente, damit die Lückenliste NUR bei `?gap=` abgefragt wird.
+ */
+/** R-1626: der Adressparameter des Themas (Einstieg aus `lib/meineEinzelquellen.ts`). */
+const BLATT_THEMA_PARAMETER = "thema";
+
+function BlattAusgangsfrage({ gapId }: { gapId: string }): JSX.Element | null {
+  const { t } = useTranslation();
+  const gaps = useGaps();
+  const frage = resolveGapQuestion(gapId, gaps.data);
+  if (!frage) {
+    return null;
+  }
+  return (
+    <section
+      data-testid="blatt-ausgangsfrage"
+      aria-label={t("gap.ausgangsfrage")}
+      className="rounded-[10px] border border-dashed border-hairline bg-surface px-4 py-3"
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-2">
+        {t("gap.ausgangsfrage")}
+      </div>
+      <p className="mt-1 break-words text-[14px] leading-snug text-text">„{frage}“</p>
+    </section>
+  );
+}
+
+/**
  * Die zwei Regeln, mit denen das Blatt den `RichTextEditor` von aussen auf Blatt-Maß bringt.
  * Sie stehen bewusst als benannte Konstante und nicht als Zeichenkette im JSX — was sie tun und
  * warum, steht an ihrer Verwendungsstelle.
@@ -343,6 +426,18 @@ export function Blatt({
   const { setGuard } = useNavGuard();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeDraftId = searchParams.get("draft");
+  const gapId = readGapId(searchParams);
+  // R-1626: aus „Wissen, das nur bei dir liegt" geöffnet — das Thema steht als Kontext über dem
+  // Blatt bzw. dem Interview. Ein Kategoriename, kein Freitext; begrenzt wie ein Lückentitel.
+  const thema = (searchParams.get(BLATT_THEMA_PARAMETER) ?? "").trim().slice(0, 120);
+  const themaZeile = thema ? (
+    <p data-testid="blatt-thema" className="px-1 text-[12.5px] text-muted">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
+        {t("einzelquelle.themaLabel")}:
+      </span>{" "}
+      <span className="break-words text-text">{thema}</span>
+    </p>
+  ) : null;
 
   // ---- Inhalt des Blattes ----------------------------------------------------------------------
   const [title, setTitle] = useState("");
@@ -372,6 +467,11 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [title]);
   const [kategorie, setKategorie] = useState("");
+  // FR-STR-01 (R-0315): die ENTSCHIEDENE Wissensart dieses Blatts. `undefined` = noch keine
+  // Entscheidung — dann reist sie nicht mit, und ein KI-Vorschlag darf sie in der Karte vorbelegen.
+  // Gesetzt wird sie nur durch bewusste Übernahme eines Ordnen-Vorschlags oder durch Laden eines
+  // Entwurfs, der eine Wissensart trägt.
+  const [wissensart, setWissensart] = useState<KnowledgeType | undefined>(undefined);
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
   // trug KEINE Stufe". Er steuert die Modell-Provenienz und wird bewusst NICHT geglättet.
@@ -391,6 +491,8 @@ export function Blatt({
     "entwuerfe" | "anhaenge" | "status" | "beispiel" | "klara" | null
   >(null);
   const [ansicht, setAnsicht] = useState<Ansicht>("blatt");
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): Thema des angebotenen Lücken-Interviews.
+  const [arbeitsraumThema, setArbeitsraumThema] = useState<string | null>(null);
   // JOB 3341 (UX-18-R1): die Arbeitsraum-Fläche, damit der Fokus ihr nach einem Deep-Link folgen
   // kann. Sie ist NUR programmatisch fokussierbar (`tabIndex={-1}`) — der Tab-Lauf der Seite bleibt
   // damit genau der, der er war.
@@ -437,6 +539,10 @@ export function Blatt({
   // derselbe Bestätigungsweg, den `CaptureDraftList` schon für den Arbeitsraum führt (Bugfix Pedi
   // 04.07.: kein stiller Verlust), nicht ein zweiter daneben.
   const [loeschFrageId, setLoeschFrageId] = useState<string | null>(null);
+  // FR-MOB-03: die offene Verlust-Rückfrage des Blattes (Verwerfen, anderen Entwurf öffnen).
+  const [rueckfrage, setRueckfrage] = useState<BlattRueckfrage | null>(null);
+  const rueckfrageRef = useRef<HTMLFieldSetElement | null>(null);
+  const werkzeugzeileRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
   // JOB 3106 (UX-01) — DER ENTWURF, DEN DER SERVER GERADE QUITTIERT HAT.
   // ==============================================================================================
@@ -546,7 +652,15 @@ export function Blatt({
     // geänderte Bereichswahl nicht als ungespeicherte Änderung — der Navigationswächter liess den
     // Menschen ziehen, und die Wahl war weg.
     kategorie: string;
-  }>({ title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" });
+    // FR-STR-01: eine übernommene, noch nicht gesicherte Wissensart ist eine ungespeicherte Änderung.
+    wissensart: KnowledgeType | undefined;
+  }>({
+    title: "",
+    bodyHtml: "",
+    confidentiality: "intern",
+    kategorie: "",
+    wissensart: undefined,
+  });
 
   // ---- KI --------------------------------------------------------------------------------------
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
@@ -554,9 +668,20 @@ export function Blatt({
   const [structureAccepted, setStructureAccepted] = useState(false);
   const [structureKeptRichBody, setStructureKeptRichBody] = useState(false);
   const [structureTitleAdopted, setStructureTitleAdopted] = useState(false);
+  // FR-STR-01: die Wissensart-Auswahl IN der Vorschlagskarte — vorbelegt nach
+  // `structureCardKnowledgeType`, vom Menschen korrigierbar, übernommen erst mit „Übernehmen".
+  const [structureCardType, setStructureCardType] = useState<KnowledgeType | undefined>(undefined);
+  // R-0300: `auswahl` ist die Markierung, auf die sich der Vorschlag bezieht — `null` heisst
+  // „ganzer Text" (der bisherige Weg, unverändert).
   const [assistProposal, setAssistProposal] = useState<
-    (AssistResult & { action: AssistRequest }) | null
+    (AssistResult & { action: AssistRequest; auswahl: TextAuswahl | null }) | null
   >(null);
+  // R-0300: die zuletzt im Schreibfeld markierte Stelle. Ein Ref, kein Zustand: sie wird bei jeder
+  // Auswahländerung gelesen und erst beim Auslösen einer KI-Aktion gebraucht — ein Rendern je
+  // Mausbewegung wäre reiner Aufwand.
+  const markierungRef = useRef<TextAuswahl | null>(null);
+  // Die Markierung DER laufenden Anfrage — gesetzt in `onMutate`, gelesen in `mutationFn`.
+  const anfrageAuswahlRef = useRef<TextAuswahl | null>(null);
   const [assistErr, setAssistErr] = useState<string | null>(null);
   const [assistAccepted, setAssistAccepted] = useState(false);
 
@@ -619,6 +744,16 @@ export function Blatt({
   const [diktatHinweisOffen, setDiktatHinweisOffen] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
+  // R-0104 (Aufnahme gesamt-sprachassistent): Sprechen über das Browser-Diktat hinaus. Die Aufnahme
+  // verschriftlicht die vorhandene Server-Transkription; das Transkript kommt als Absatz in den
+  // Rumpf — derselbe Weg wie ein diktierter Satz. Verschriftlicht wird unter der GEWÄHLTEN Stufe;
+  // ohne Wahl gilt die Aufnahme beim Server als vertraulich (dieselbe Regel wie beim Upload).
+  // Getrennt wird sie an denselben Stellen wie das Diktat (`diktatVomBlattTrennen`).
+  const sprachaufnahme = useSprachaufnahme({
+    anhaengen: (text: string) => setBodyHtml((prev) => diktatAnhaengen(prev, text)),
+    vertraulichkeit: declaredConfidentiality,
+  });
+  const aufnahmeTrennen = sprachaufnahme.trennen;
 
   // ---- Bestand für Bereich, Entwürfe, Beispiel -------------------------------------------------
   const kos = useKos();
@@ -728,6 +863,28 @@ export function Blatt({
     return () => beobachter.disconnect();
   }, [ansicht]);
 
+  // R-0300 — DIE MARKIERUNG IM SCHREIBFELD MERKEN, solange sie dort steht. Wandert die Auswahl
+  // AUS dem Feld (Klick in das KI-Menü), bleibt die gemerkte Stelle stehen: genau sie soll die
+  // Aktion bearbeiten. Wird IM Feld nur noch ein Cursor gesetzt, gilt wieder der ganze Text.
+  // Das Bildbeschreibungsformular hat ein eigenes Textfeld (`#caption-form-text`) — es zählt nicht.
+  useEffect(() => {
+    const lesen = (): void => {
+      const feld = editorHuelleRef.current?.querySelector<HTMLElement>(
+        '[role="textbox"]:not(#caption-form-text)',
+      );
+      const auswahl = document.getSelection();
+      if (!feld || !auswahl || auswahl.rangeCount === 0) {
+        return;
+      }
+      if (!feld.contains(auswahl.getRangeAt(0).startContainer)) {
+        return;
+      }
+      markierungRef.current = auswahlImFeld(feld, auswahl);
+    };
+    document.addEventListener("selectionchange", lesen);
+    return () => document.removeEventListener("selectionchange", lesen);
+  }, []);
+
   // Die stille Live-Reaktion (§5): sie hört auf den Klartext des Blattes, nicht auf ein zweites Feld.
   const liveText = useMemo(() => bodyTextForAssist(bodyHtml), [bodyHtml]);
   // ================================================================================================
@@ -757,7 +914,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang, negativwissen } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -815,6 +972,7 @@ export function Blatt({
     setStructureAccepted(false);
     setStructureKeptRichBody(false);
     setStructureTitleAdopted(false);
+    setStructureCardType(undefined);
   }, []);
 
   const clearAssistState = useCallback((): void => {
@@ -843,10 +1001,14 @@ export function Blatt({
   // liest der Merge einen mitgeschickten Leerwert als LÖSCHUNG (`services/capture/src/service.ts`,
   // zitiert in `captureFrontDoor.ts`) — ein Blatt ohne Bereichswahl würde sonst die Kategorie eines
   // fremden Entwurfs beim ersten Speichern austragen.
+  // FR-STR-01: die entschiedene Wissensart reist an DERSELBEN Stelle mit (Regel am Helfer).
   const mitBereich = useCallback(
     (rumpf: DraftPayload): DraftPayload =>
-      kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
-    [kategorie],
+      withDecidedKnowledgeType(
+        kategorie.trim() ? { ...rumpf, category: kategorie.trim() } : rumpf,
+        wissensart,
+      ),
+    [kategorie, wissensart],
   );
 
   const changeKategorie = (next: string): void => {
@@ -908,7 +1070,14 @@ export function Blatt({
     setDeclaredConfidentiality(undefined);
     setVertraulichkeitMarkiert(false);
     setKategorie("");
-    savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+    setWissensart(undefined);
+    savedStateRef.current = {
+      title: "",
+      bodyHtml: "",
+      confidentiality: "intern",
+      kategorie: "",
+      wissensart: undefined,
+    };
     bodyNieGeliefertRef.current = false;
     // JOB 3633: Ein neues Blatt trägt keinen Befund über den Entwurf, den es gerade verlassen hat —
     // derselbe Grund wie beim Merker eine Zeile darüber.
@@ -955,6 +1124,9 @@ export function Blatt({
   // NICHT GETRENNT WIRD BEIM MANUELLEN STOPP über den Diktat-Knopf. Wer selbst anhält, nimmt sich
   // seinen Rumpf ja nicht weg — sein Abschlussergebnis gehört ihm und soll noch ankommen.
   const diktatVomBlattTrennen = useCallback((): void => {
+    // R-0104: auch eine laufende oder schon gesendete Sprachaufnahme gehört ab hier keinem Blatt
+    // mehr — ihr Transkript fiele sonst in den geladenen oder geleerten Rumpf.
+    aufnahmeTrennen();
     const getrennt = recRef.current;
     if (!getrennt) {
       return;
@@ -963,7 +1135,7 @@ export function Blatt({
     setDiktatLaeuft(false);
     setDiktatZwischen("");
     getrennt.stop();
-  }, []);
+  }, [aufnahmeTrennen]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadNonce erzwingt das Neuladen nach einem Standkonflikt (JOB 2684 D1)
   useEffect(() => {
@@ -1076,11 +1248,17 @@ export function Blatt({
           ? (draft.payload.confidentiality as Confidentiality)
           : undefined;
         const loadedConfidentiality = confidentialityOf(declared);
+        // FR-STR-01: eine gespeicherte, gültige Wissensart ist eine bestehende Entscheidung — sie
+        // wird geschützt (kein KI-Vorschlag ersetzt sie ungefragt). Fehlt sie, bleibt sie offen.
+        const loadedWissensart = KNOWLEDGE_TYPES_DRAFT.includes(draft.payload.type as KnowledgeType)
+          ? (draft.payload.type as KnowledgeType)
+          : undefined;
         setActiveDraftId(draft.id);
         setGeladenVon({ id: draft.id, autor: draft.originalAuthor, imPool: draft.imPool === true });
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
         setKategorie(draft.payload.category ?? "");
+        setWissensart(loadedWissensart);
         loadedUpdatedAtRef.current = draft.updatedAt ?? null;
         // JOB 3556 R3: ab hier steht ein anderer gespeicherter Stand hinter diesem Blatt.
         setGespeicherterStand((n) => n + 1);
@@ -1099,6 +1277,7 @@ export function Blatt({
           bodyHtml: loadedBody,
           confidentiality: loadedConfidentiality,
           kategorie: draft.payload.category ?? "",
+          wissensart: loadedWissensart,
         };
         setSubmitValidation(false);
         setSubmittedKo(null);
@@ -1184,6 +1363,8 @@ export function Blatt({
     },
     onSuccess: (proposal) => {
       setStructureProposal(proposal);
+      // FR-STR-01: eine entschiedene Wissensart geht vor; sonst steht der KI-Vorschlag vorbelegt.
+      setStructureCardType(structureCardKnowledgeType(wissensart, proposal));
       setStructureErr(null);
     },
     onError: (e: unknown) => {
@@ -1197,7 +1378,8 @@ export function Blatt({
   const assist = useMutation({
     mutationFn: (action: AssistRequest) =>
       endpoints.reasoner.assist(
-        assistInput,
+        // R-0300: die markierte Stelle, wenn es eine gibt — sonst wie bisher der ganze Text.
+        anfrageAuswahlRef.current?.text ?? assistInput,
         locale,
         typeof action === "string" ? t(assistActionInstructionKey(action)) : action.instruction,
         // JOB 3353 A: dieselbe fehlende Kennung wie bei `structure` eine Ebene höher — und dies
@@ -1215,9 +1397,16 @@ export function Blatt({
       setStructureProposal(null);
       setStructureErr(null);
       setStructureAccepted(false);
+      // Eine Markierung zählt nur, wenn der Rumpf sie noch trägt (Entwurfswechsel, Weiterschreiben
+      // ohne Cursor im Feld); sonst gilt der ganze Text.
+      const markierung = markierungRef.current;
+      const auswahl =
+        markierung !== null && auswahlNochGueltig(bodyHtml, markierung) ? markierung : null;
+      anfrageAuswahlRef.current = auswahl;
+      return { auswahl };
     },
-    onSuccess: (proposal, action) => {
-      setAssistProposal({ ...proposal, action });
+    onSuccess: (proposal, action, kontext) => {
+      setAssistProposal({ ...proposal, action, auswahl: kontext?.auswahl ?? null });
       setAssistErr(null);
     },
     onError: (e: unknown) => {
@@ -1259,8 +1448,12 @@ export function Blatt({
         wartendVerworfenRef.current = false;
         return Promise.reject(new WartendesSpeichernVerworfen());
       }
+      // FR-STR-01: die eingefrorene Wissensart reist an derselben Stelle wie der Bereich.
       const mitAuftragsBereich = (rumpf: DraftPayload): DraftPayload =>
-        auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf;
+        withDecidedKnowledgeType(
+          auftrag.kategorie.trim() ? { ...rumpf, category: auftrag.kategorie.trim() } : rumpf,
+          auftrag.wissensart,
+        );
       if (auftrag.activeDraftId) {
         // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
         // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Rumpf als Löschmarker
@@ -1478,7 +1671,14 @@ export function Blatt({
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
       setKategorie("");
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality, kategorie: "" };
+      setWissensart(undefined);
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality,
+        kategorie: "",
+        wissensart: undefined,
+      };
       setSubmitValidation(false);
       setSearchParams({}, { replace: true });
       clearStructureState();
@@ -1590,6 +1790,7 @@ export function Blatt({
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(false);
+    setStructureCardType(undefined);
   };
 
   const discardAssistProposal = (): void => {
@@ -1613,16 +1814,43 @@ export function Blatt({
     setBodyHtml(result.bodyHtml);
     setStructureKeptRichBody(result.preserved);
     setStructureTitleAdopted(result.titleAdopted);
+    // FR-STR-01: übernommen wird genau die Wissensart, die beim Klick in der Kartenauswahl steht —
+    // vorbelegt, aber vom Menschen bestätigt oder korrigiert. Keine Auswahl ⇒ nichts ändert sich.
+    if (structureCardType !== undefined) {
+      setWissensart(structureCardType);
+    }
+    setStructureCardType(undefined);
     setStructureProposal(null);
     setStructureErr(null);
     setStructureAccepted(true);
   };
 
-  const acceptAssistProposal = (): void => {
+  const acceptAssistProposal = (modus: AuswahlModus = "ersetzen"): void => {
     if (!assistProposal) {
       return;
     }
-    if (assistProposal.action === "spelling") {
+    if (assistProposal.auswahl !== null) {
+      // R-0300: nur die markierte Stelle wird ersetzt bzw. hinter ihr eingefügt; alles andere —
+      // Text wie Formatierung — bleibt, wie es ist.
+      const rechtschreibung = assistProposal.action === "spelling";
+      const neu = auswahlUebernehmen(bodyHtml, assistProposal.auswahl, assistProposal.text, {
+        modus,
+        rechtschreibung,
+      });
+      if (neu === null) {
+        // Zwei Gründe, zwei Sätze: die Stelle hat sich geändert — oder (Rechtschreibung) die
+        // Wörter des Vorschlags lassen sich nicht sicher auf die Formatierung verteilen.
+        let grund = rechtschreibung ? "fd.errSpelling" : "fd.errAssist";
+        if (!auswahlNochGueltig(bodyHtml, assistProposal.auswahl)) {
+          grund = "schreibhilfe.auswahlVeraltet";
+        }
+        setAssistErr(t(grund));
+        setAssistAccepted(false);
+        return;
+      }
+      setBodyHtml(neu);
+      markierungRef.current = null;
+    } else if (assistProposal.action === "spelling") {
       const result = applySpellingAssistPreservingHtml(bodyHtml, assistProposal.text);
       if (!result.applied) {
         setAssistErr(t("fd.errSpelling"));
@@ -1650,7 +1878,9 @@ export function Blatt({
     bodyHtml !== savedStateRef.current.bodyHtml ||
     confidentiality !== savedStateRef.current.confidentiality ||
     // JOB 3062 R6 (bens Befund 1): eine geänderte Bereichswahl IST eine ungespeicherte Änderung.
-    kategorie !== savedStateRef.current.kategorie;
+    kategorie !== savedStateRef.current.kategorie ||
+    // FR-STR-01: ebenso eine übernommene, noch nicht gesicherte Wissensart.
+    wissensart !== savedStateRef.current.wissensart;
   const istSchmutzig = inhaltWeichtAb || hasPendingProposal;
 
   // JOB 3106 (UX-01): die Bestätigungszeile steht, SOLANGE das Blatt dem gesicherten Stand
@@ -1679,6 +1909,7 @@ export function Blatt({
       confidentiality,
       gewaehlteVertraulichkeit: declaredConfidentiality,
       kategorie,
+      wissensart,
       activeDraftId,
       bodyNieGeliefert: bodyNieGeliefertRef.current,
       fallbackTitle,
@@ -1984,11 +2215,12 @@ export function Blatt({
   // danach nichts mehr da ist,
   // ist die bestätigte Folge seiner Zusage und kein stiller Verlust. Zusammengeführt wird nichts:
   // die Begründung dafür steht bei `blattNimmtAn` und gilt hier gleichlautend.
-  const entwurfOeffnen = (entwurfId: string): void => {
+  //
+  // FR-MOB-03: GEFRAGT WIRD IN DER ANWENDUNG, nicht mehr über `window.confirm`. Die Frage steht in
+  // der Rückfragezeile unter der Werkzeugzeile; erst ihr „Verwerfen" ruft `entwurfOeffnenOhneFrage`.
+  const entwurfOeffnenOhneFrage = (entwurfId: string): void => {
+    setRueckfrage(null);
     setOffenesMenue(null);
-    if (istSchmutzig && !window.confirm(t("fd.confirmOpenDraft"))) {
-      return;
-    }
     // Lieferung 4: auch dieser Weg nimmt dem Blatt den Rumpf — also gilt für eine laufende
     // Diktatsitzung dieselbe Trennung wie im Ladeeffekt, und zwar VOR dem Adresswechsel.
     diktatVomBlattTrennen();
@@ -2003,6 +2235,47 @@ export function Blatt({
       return;
     }
     setSearchParams({ draft: entwurfId }, { replace: true });
+  };
+  const entwurfOeffnen = (entwurfId: string): void => {
+    setOffenesMenue(null);
+    if (istSchmutzig) {
+      setRueckfrage({ art: "oeffnen", entwurfId });
+      return;
+    }
+    entwurfOeffnenOhneFrage(entwurfId);
+  };
+
+  // FR-MOB-03: „Eingabe verwerfen" nach der Zustimmung in der Rückfragezeile. JOB 3256 (CAP-P1-R,
+  // Lieferung 5): ERST TRENNEN, DANN LEEREN. `resetForNewEntry` räumt den Rumpf; eine laufende
+  // Diktatsitzung schrieb bis dahin gleich wieder hinein — auf einem Blatt OHNE `?draft` läuft der
+  // Ladeeffekt nicht, es gab hier also gar keine Trennung. Dieselbe eine Funktion wie dort.
+  const eingabeVerwerfenOhneFrage = (): void => {
+    setRueckfrage(null);
+    diktatVomBlattTrennen();
+    resetForNewEntry();
+  };
+
+  // Die Rückfrage holt den Fokus auf den SICHEREN Knopf („Weiter bearbeiten"): der Menüeintrag, der
+  // sie ausgelöst hat, ist mit dem Menü verschwunden, und ohne diesen Schritt stünde der Fokus auf
+  // `body`. Ein versehentliches Enter verliert so nichts.
+  useEffect(() => {
+    if (rueckfrage === null) {
+      return;
+    }
+    const sicher = rueckfrageRef.current?.querySelector<HTMLButtonElement>(
+      '[data-testid="blatt-rueckfrage-nein"]',
+    );
+    sicher?.focus();
+  }, [rueckfrage]);
+
+  // „Weiter bearbeiten": nichts geht verloren, der Fokus kehrt an das „…"-Werkzeug zurück, von dem
+  // beide Wege ausgehen.
+  const rueckfrageZuruecknehmen = (): void => {
+    setRueckfrage(null);
+    const werkzeug = werkzeugzeileRef.current?.querySelector<HTMLButtonElement>(
+      '[data-testid="blatt-werkzeug-mehr"]',
+    );
+    werkzeug?.focus();
   };
 
   // ==============================================================================================
@@ -2060,7 +2333,13 @@ export function Blatt({
       setGesicherterEntwurf(null);
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
-      savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
+      savedStateRef.current = {
+        title: "",
+        bodyHtml: "",
+        confidentiality: "intern",
+        kategorie: "",
+        wissensart: undefined,
+      };
       if (resumeDraftId === id) {
         setSearchParams({}, { replace: true });
       }
@@ -2127,8 +2406,17 @@ export function Blatt({
   // heisst, die dieses Bauteil nicht bekommen soll.
   const arbeitsraumOeffnen = useCallback((modus: ArbeitsraumModus): void => {
     setOffenesMenue(null);
+    setArbeitsraumThema(null);
     setAnsicht(modus);
   }, []);
+
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — das Blatt bietet an,
+  // das Wissen gleich im Gespräch abzuholen. Thema ist der Titel, sonst der Text des Blattes; der
+  // Arbeitsraum begrenzt es. Derselbe eine Öffnungsweg, danach steht das Thema fest.
+  const lueckenInterviewOeffnen = (): void => {
+    arbeitsraumOeffnen("interview");
+    setArbeitsraumThema(title.trim() || liveText.trim() || null);
+  };
 
   // ==============================================================================================
   // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068) — DAS FORMULAR ÜBERNIMMT DEN
@@ -2438,6 +2726,7 @@ export function Blatt({
 
   const werkzeugzeile = (
     <div
+      ref={werkzeugzeileRef}
       data-testid="blatt-werkzeugzeile"
       // `flex-wrap`, KEIN zweiter Abstand: Die Zeile trägt bei 1280 px alle Werkzeuge nebeneinander
       // (so misst sie `tests/design/zielbild-h3-erfassen.test.ts` V17 gegen das Mockup, gap 22 px in
@@ -2505,6 +2794,43 @@ export function Blatt({
         >
           {t("capture.diktatUnsupported")}
           {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
+        </output>
+      ) : null}
+      {/* R-0104: die Aufnahme mit Server-Transkription — nur, wo der Browser aufnehmen kann. */}
+      {sprachaufnahme.moeglich ? (
+        <button
+          type="button"
+          data-testid="blatt-werkzeug-aufnehmen"
+          disabled={!blattNimmtAn || sprachaufnahme.verarbeitet}
+          title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+          aria-pressed={sprachaufnahme.laeuft}
+          aria-busy={sprachaufnahme.verarbeitet}
+          onClick={() => {
+            setOffenesMenue(null);
+            sprachaufnahme.umschalten();
+          }}
+          className={`inline-flex items-center gap-1.5 text-[13px] ${
+            !blattNimmtAn
+              ? "text-muted-2 opacity-50"
+              : sprachaufnahme.laeuft
+                ? "font-semibold text-text"
+                : "text-muted-2 hover:text-text"
+          }`}
+        >
+          <SymbolMikrofon />
+          {sprachaufnahme.verarbeitet
+            ? t("sprachaufnahme.verarbeitet")
+            : sprachaufnahme.laeuft
+              ? t("sprachaufnahme.stop")
+              : t("sprachaufnahme.start")}
+        </button>
+      ) : null}
+      {sprachaufnahme.meldung ? (
+        <output
+          data-testid="blatt-aufnahme-meldung"
+          className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {sprachaufnahme.meldung}
         </output>
       ) : null}
 
@@ -2760,23 +3086,18 @@ export function Blatt({
               </MenueEintrag>
               <MenueTrenner />
               <MenueEintrag onClick={() => setMehrFlaeche("klara")}>
-                {t("erfassen.mehr.klara")}
+                {/* N-0042: dieselbe Vorschau wie auf Start, derselbe Name (`texte/wordvorschau.ts`). */}
+                {t("wordvorschau.menu")}
               </MenueEintrag>
               {/* Der Knopf „Eingabe verwerfen" der Vordertür. Er bleibt ein BEWUSSTER Schritt mit
                   Rückfrage — nur seine Prominenz auf der Fläche ist weg (Auftrag §5a: „Zurück"
-                  wandert ins Menü). */}
+                  wandert ins Menü). FR-MOB-03: die Rückfrage stellt das Blatt selbst
+                  (`rueckfrageZeile`), nicht mehr das Betriebssystem. */}
               <MenueEintrag
                 gesperrt={!istSchmutzig && !hasSavableContent}
                 onClick={() => {
                   setOffenesMenue(null);
-                  if (window.confirm(t("fd.confirmDiscard"))) {
-                    // JOB 3256 (CAP-P1-R, Lieferung 5): ERST TRENNEN, DANN LEEREN. `resetForNewEntry`
-                    // räumt den Rumpf; eine laufende Diktatsitzung schrieb bis dahin gleich wieder
-                    // hinein — auf einem Blatt OHNE `?draft` läuft der Ladeeffekt nicht, es gab hier
-                    // also gar keine Trennung. Dieselbe eine Funktion wie dort.
-                    diktatVomBlattTrennen();
-                    resetForNewEntry();
-                  }
+                  setRueckfrage({ art: "verwerfen" });
                 }}
               >
                 {t("fd.discardInput")}
@@ -3013,11 +3334,59 @@ export function Blatt({
     </div>
   );
 
+  // ---- Die Rückfragezeile (FR-MOB-03) ----------------------------------------------------------
+  // Steht nur, solange eine Frage offen ist — das ruhende Blatt bleibt zeichengleich. Sie liegt in
+  // BEIDEN Ansichten direkt unter der Werkzeugzeile: „anderen Entwurf öffnen" kann auch aus dem
+  // Arbeitsraum kommen (`onEntwurfInsBlatt`). Die Frage selbst auf neutraler Fläche, die Warnfarbe
+  // nur am verlierenden Knopf (dieselbe Regel wie `destructive-button-colour.test.ts`).
+  // `<fieldset>` trägt die Gruppenrolle nativ; ihr Name ist die Frage (`aria-labelledby`).
+  let rueckfrageZeile: JSX.Element | null = null;
+  if (rueckfrage !== null) {
+    const frage = rueckfrage;
+    rueckfrageZeile = (
+      <fieldset
+        ref={rueckfrageRef}
+        aria-labelledby={BLATT_RUECKFRAGE_ID}
+        data-testid="blatt-rueckfrage"
+        data-rueckfrage={frage.art}
+        className="flex flex-wrap items-center gap-2 rounded-[10px] border border-hairline bg-surface px-3 py-2"
+      >
+        <span id={BLATT_RUECKFRAGE_ID} className="text-[13px] text-text">
+          {t(frage.art === "verwerfen" ? "fd.confirmDiscard" : "fd.confirmOpenDraft")}
+        </span>
+        <span className="ml-auto flex flex-wrap gap-1.5">
+          <Button
+            variant="ghost"
+            data-testid="blatt-rueckfrage-nein"
+            onClick={rueckfrageZuruecknehmen}
+          >
+            {t("studio.confirmDiscard.keep")}
+          </Button>
+          <Button
+            variant="danger"
+            data-testid="blatt-rueckfrage-ja"
+            onClick={() => {
+              if (frage.art === "verwerfen") {
+                eingabeVerwerfenOhneFrage();
+                return;
+              }
+              entwurfOeffnenOhneFrage(frage.entwurfId);
+            }}
+          >
+            {t("studio.confirmDiscard.discard")}
+          </Button>
+        </span>
+      </fieldset>
+    );
+  }
+
   // ---- Der Arbeitsraum als Blatt-Ansicht -------------------------------------------------------
   if (ansicht !== "blatt") {
     return (
       <div className="mx-auto flex w-[820px] max-w-full flex-col gap-3.5 pt-6">
         {werkzeugzeile}
+        {rueckfrageZeile}
+        {themaZeile}
         <div
           data-testid="blatt-arbeitsraum"
           ref={arbeitsraumRef}
@@ -3031,6 +3400,7 @@ export function Blatt({
         >
           {arbeitsraum({
             modus: ansicht,
+            thema: arbeitsraumThema,
             onEntwurfInsBlatt: entwurfOeffnen,
             onZurueckInsBlatt: arbeitsraumSchliessen,
           })}
@@ -3062,7 +3432,9 @@ export function Blatt({
                Titel ableiten". Ihre FUNKTION ist nicht verschwunden, sie ist UMGEZOGEN: das
                Titel-Menü des Blattes bietet denselben Vorschlag aus derselben Rangfolge an
                (`titelVorschlag`, oben). Das hier ist die zweite Hälfte desselben Umzugs — ohne sie
-               stünde die Karte doppelt da.
+               stünde die Karte doppelt da. R-0071 (Ben, Nacharbeit 4): verborgen bleibt NUR die
+               gerahmte Karte des Editors; die immer sichtbare Titelzeile mit Herkunft steht als
+               eigene, knappe Zeile des Blattes über dem Schreibfeld (`blatt-titelzeile`).
             2. DER ABLAGEHINWEIS „Bilder hierher ziehen oder einfügen" in der Fußzeile des Editors.
                Sein TEXT ist nicht gelöscht: er steht als eigener Eintrag im „?"-Menü, mit DEMSELBEN
                i18n-Schlüssel — der Ort, an den §5 alle Erklärtexte verweist.
@@ -3099,6 +3471,10 @@ export function Blatt({
             der Textmesser misst weiterhin das ruhende Blatt. */}
         {isDemoContext(searchParams) ? <DemoBanner surface="capture" /> : null}
         {werkzeugzeile}
+        {rueckfrageZeile}
+        {/* N-0084: aus einer Lücke geöffnet — die Ausgangsfrage steht über dem Blatt. */}
+        {gapId ? <BlattAusgangsfrage gapId={gapId} /> : null}
+        {themaZeile}
 
         <div
           data-testid="blatt"
@@ -3131,7 +3507,12 @@ export function Blatt({
               }}
               placeholder={t("erfassen.platzhalter.titel")}
               aria-label={t("erfassen.platzhalter.titel")}
-              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2/60"
+              // WCAG 1.4.11: die Titelzeile ist Teil des Blattes, wie der Rumpf darunter — eine
+              // Dokument-Schreibfläche, kein Formularfeld. Ihre Lage zeigen der 28-px-Platzhalter
+              // und die Schreibmarke; ein Feldrahmen wäre ein Formular im Dokument. Der Audit nimmt
+              // genau so markierte Flächen von der Feldgrenzen-Regel aus.
+              data-kw-dokumentflaeche=""
+              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2"
             />
             {/* N-0064: die vollständige Titelanzeige, nur bei echtem Überlauf (Messung oben). Für
                 Hilfstechnik verborgen — das Feld selbst trägt den ganzen Wert schon. */}
@@ -3152,24 +3533,34 @@ export function Blatt({
                 data-testid="blatt-menue-titel"
                 className="absolute left-0 top-full z-40 mt-1 min-w-[260px] rounded-[10px] border border-hairline bg-surface p-1 shadow-tile"
               >
+                {/* R-0071: „die Herkunft des Vorschlags nennt" — SICHTBAR am Eintrag, nicht nur als
+                    `title`-Tooltip: den gibt es ohne Zeiger (Telefon, Tastatur) nicht. Die Zeile
+                    steht im Menü, also erst, wenn jemand den Titel anfasst (JOB 3062 R6). */}
                 {titelVorschlag ? (
                   <MenueEintrag
-                    titel={t(
-                      titelVorschlag.quelle === "objekttext"
-                        ? "editor.titleSuggest.sourceText"
-                        : "editor.titleSuggest.sourceImage",
-                    )}
                     onClick={() => {
                       changeTitle(titelVorschlag.titel);
                       setOffenesMenue(null);
                     }}
                   >
-                    <span
-                      data-testid="blatt-titelvorschlag"
-                      data-quelle={titelVorschlag.quelle}
-                      className="truncate"
-                    >
-                      {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span
+                        data-testid="blatt-titelvorschlag"
+                        data-quelle={titelVorschlag.quelle}
+                        className="truncate"
+                      >
+                        {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                      </span>
+                      <span
+                        data-testid="blatt-titelvorschlag-herkunft"
+                        className="truncate text-[11px] text-muted-2"
+                      >
+                        {t(
+                          titelVorschlag.quelle === "objekttext"
+                            ? "editor.titleSuggest.sourceText"
+                            : "editor.titleSuggest.sourceImage",
+                        )}
+                      </span>
                     </span>
                   </MenueEintrag>
                 ) : null}
@@ -3189,6 +3580,54 @@ export function Blatt({
               </div>
             ) : null}
           </div>
+
+          {/* ======================================================================================
+              R-0071 (Ben, Nacharbeit 4) — DIE TITELZEILE ÜBER DEM SCHREIBFELD, IMMER SICHTBAR.
+              ======================================================================================
+              „Über dem Schreibfeld steht dafür eine Titelzeile, die immer sichtbar bleibt und die
+              Herkunft des Vorschlags nennt. Lässt sich nichts ableiten, wird nichts erfunden; ein
+              selbst geschriebener Titel wird nie verdrängt." Dazu Pedi 27.08.: „die Titelzeile
+              immer sichtbar lassen, so ist es richtig" — kein hidden, keine Höhe 0.
+
+              JOB 3062 R6 hatte die Karte des Editors verborgen und den Vorschlag ins Titel-Menü
+              gelegt. Eine Entscheidung, die R-0071 für das Blatt aufhebt, ist nicht zugeordnet;
+              der Kommentar dort belegt keine. Deshalb steht die Zeile wieder hier — AUS DERSELBEN
+              QUELLE wie das Menü (`titelVorschlag`, die geprüfte Entscheidung des Editors), also
+              ohne zweite Rangfolge und ohne zweiten Wortlaut.
+
+              WARUM EIN KNOPF UND KEIN ABSATZ: Die Zeile IST die Übernahme — ein Klick setzt den
+              Vorschlag ins Titelfeld, sonst geschieht nichts (kein selbst geschriebener Titel wird
+              verdrängt). Ohne Vorschlag ist sie gesperrt und sagt in drei Wörtern, dass keiner da
+              ist — sie verschwindet nicht. */}
+          <button
+            type="button"
+            data-testid="blatt-titelzeile"
+            data-quelle={titelVorschlag?.quelle ?? "keine"}
+            disabled={titelVorschlag === null || !blattNimmtAn}
+            onClick={() => {
+              if (titelVorschlag) {
+                changeTitle(titelVorschlag.titel);
+              }
+            }}
+            className="-mt-2 flex w-full min-w-0 flex-wrap items-baseline gap-x-1.5 rounded-[8px] px-0 py-0.5 text-left text-[12.5px] leading-snug text-muted enabled:hover:text-text disabled:cursor-default"
+          >
+            {titelVorschlag ? (
+              <>
+                <span className="break-words font-semibold text-ai">
+                  {t("editor.titleSuggest.label")}: {titelVorschlag.titel}
+                </span>
+                <span data-testid="blatt-titelzeile-herkunft" className="text-muted-2">
+                  {t(
+                    titelVorschlag.quelle === "objekttext"
+                      ? "editor.titleSuggest.sourceText"
+                      : "editor.titleSuggest.sourceImage",
+                  )}
+                </span>
+              </>
+            ) : (
+              <span className="text-muted-2">{t("schreibhilfe.titelKeiner")}</span>
+            )}
+          </button>
 
           {/* §5.4: Fehlt der Inhalt beim Einreichversuch, bekommt das FELD den Rand — hier ohne
               Erklärsatz. Das war bis JOB 3114 auch beim Vertraulichkeits-Menü so; dort trägt die
@@ -3279,6 +3718,11 @@ export function Blatt({
             />
           ) : null}
 
+          {/* AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): ähnelt der Text einem dokumentierten
+              Fehlschlag, steht das OFFEN da — nicht im zugeklappten Chip darunter. Ohne Treffer
+              rendert nichts. */}
+          <NegativwissenHinweis treffer={negativwissen} />
+
           {/* ==========================================================================================
               §5 — EIN STILLER CHIP UNTER DEM BLATT, NUR IM FALL, AUFKLAPPBAR.
               ==========================================================================================
@@ -3334,6 +3778,11 @@ export function Blatt({
               ) : null}
             </div>
           ) : null}
+          {/* AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — abgeschlossen
+              ohne Treffer ODER ohne Konfliktprüfung, aber mit belegtem leeren Ähnlichkeitsumfang. */}
+          {verdict.status === "empty" || liveVorschauSatz !== null ? (
+            <LueckenInterviewAngebot onStart={lueckenInterviewOeffnen} />
+          ) : null}
 
           {/* ==========================================================================================
               §9 — DER KI-FEHLER: EIN SATZ IN DER VORSCHLAGSKARTE, MIT DEM WEG ZURÜCK.
@@ -3370,11 +3819,17 @@ export function Blatt({
           {structureProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020: vom Modell erzeugt → Entwurfsfläche (violett, gestrichelt); der
+              // regelbasierte Rückfall behält die ruhige Karte und heisst „Empfehlung" (R-1695).
+              className={`rounded-[10px] p-3 ${structureProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!structureProposal.demo)}
+                className="ml-1.5"
+              />
               {/* WP-D8 (Pedis Live-ROT B) / WP-D10 Fix 3 / WP-SHIP9-S2: Ein Fallback-Kennzeichen
                   allein erklärt nichts. Hier steht ehrlich, WARUM dieser Vorschlag eine einfache
                   Ableitung ist — kein Modell, Modellfehler, Zeitüberschreitung oder
@@ -3407,11 +3862,41 @@ export function Blatt({
               <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
                 {proposalTitleOnly ? t("fd.structureRichTitleOnly") : structureProposal.statement}
               </p>
+              {/* FR-STR-01 (R-0315): die Wissensart des Vorschlags — vorbelegt, korrigierbar,
+                  übernommen erst mit „Übernehmen". Eine bereits entschiedene Wissensart steht
+                  vorne; der abweichende KI-Vorschlag wird daneben genannt, nicht eingesetzt. */}
+              {structureCardType !== undefined ? (
+                <div data-testid="blatt-ki-vorschlag-wissensart" className="mt-2">
+                  <label className="flex items-center gap-2 text-[12.5px] text-muted">
+                    {t("capture.fType")}
+                    <select
+                      value={structureCardType}
+                      onChange={(e) => setStructureCardType(e.target.value as KnowledgeType)}
+                      className="rounded-[8px] border border-hairline bg-page px-2 py-1 text-[13px] text-text"
+                    >
+                      {KNOWLEDGE_TYPES_DRAFT.map((art) => (
+                        <option key={art} value={art} label={t(`ktype.${art}`)} />
+                      ))}
+                    </select>
+                  </label>
+                  {structureProposal.knowledgeType &&
+                  structureProposal.knowledgeType !== structureCardType ? (
+                    <p
+                      data-testid="blatt-ki-vorschlag-wissensart-ki"
+                      className="mt-1 text-[12px] text-muted"
+                    >
+                      {t("fd.aiProposal")}: {t(`ktype.${structureProposal.knowledgeType}`)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {/* mega61 Block E: der dauerhaft sichtbare KI-Satz (Art. 50 Abs. 1 und 5 KI-VO). Er
                   stand an der Vordertür und gehört an JEDE Modellfläche — diese Karte IST die
                   Modellfläche des Blattes. Er steht IN der Karte, nicht auf dem ruhenden Blatt:
-                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt.
+                  R-0604: nur, wenn ein Modell ihn geschrieben hat — den regelbasierten Rückfall
+                  benennt die Rückfall-Plakette darüber, „von KI erzeugt" wäre dort falsch. */}
+              {structureProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -3434,11 +3919,16 @@ export function Blatt({
           {assistProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020 / R-1695: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag.
+              className={`rounded-[10px] p-3 ${assistProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!assistProposal.demo)}
+                className="ml-1.5"
+              />
               {assistProposal.demo ? (
                 <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
                   {t("fd.fallback")}
@@ -3452,19 +3942,40 @@ export function Blatt({
                       : assistProposal.action.instruction,
                 })}
               </p>
+              {/* R-0300: Bezieht sich der Vorschlag auf eine Markierung, steht sie hier — wer
+                  übernimmt, soll sehen, WELCHE Stelle ersetzt wird. */}
+              {assistProposal.auswahl !== null ? (
+                <p
+                  data-testid="blatt-ki-auswahl"
+                  className="mt-1.5 line-clamp-2 whitespace-pre-wrap text-[12px] leading-relaxed text-muted"
+                >
+                  {t("schreibhilfe.auswahlBezug", { text: assistProposal.auswahl.text })}
+                </p>
+              ) : null}
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
-              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche.
+                  R-0604: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag. */}
+              {assistProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={acceptAssistProposal}
+                  onClick={() => acceptAssistProposal("ersetzen")}
                   className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
                 >
                   {t("fd.accept")}
                 </button>
+                {assistProposal.auswahl !== null ? (
+                  <button
+                    type="button"
+                    data-testid="blatt-ki-einfuegen"
+                    onClick={() => acceptAssistProposal("einfuegen")}
+                    className="rounded-[8px] border border-hairline bg-page px-2.5 py-1 text-[13px] font-semibold text-text"
+                  >
+                    {t("schreibhilfe.einfuegen")}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={discardAssistProposal}
@@ -3655,7 +4166,13 @@ function AnhangListe({ bodyHtml }: { bodyHtml: string }): JSX.Element {
   const { t } = useTranslation();
   const anzahl = (bodyHtml.match(/<img\b/gi) ?? []).length;
   if (anzahl === 0) {
-    return <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>;
+    return (
+      <>
+        <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "entwuerfe")}
+      </>
+    );
   }
   return <p className="text-[12.5px] text-text">{t("erfassen.anhaenge.anzahl", { n: anzahl })}</p>;
 }
@@ -3759,10 +4276,12 @@ function BlattLage({
         <span data-testid="blatt-lage-zustand" data-zustand={erfolg.zustand}>
           <StatusPill status={erfolg.zustand} />
         </span>
+        {/* Arbeitswege am selben Artikel: die Prüfung DIESES Beitrags (`ko=<id>`), nicht der
+            erste Eintrag einer anders sortierten Liste. */}
         <RoleLink
           className="ml-2 inline-flex items-center gap-1 font-semibold underline"
           hoverClassName="hover:opacity-80"
-          to="/validierung"
+          to={pruefHref(erfolg.id)}
         >
           {() => t("fd.openValidation")}
         </RoleLink>

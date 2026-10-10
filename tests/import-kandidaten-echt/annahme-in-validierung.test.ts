@@ -17,13 +17,14 @@
 //   · vom angenommenen Objekt führt der reguläre Zuweisungsweg (`ValidationService.assign`) zu
 //     genau einer offenen Prüfaufgabe der benannten Person (W8, K6).
 //
-// WAS DIESE DATEI NICHT DECKT (ehrlich): echtes HTTP, Postgres, Browser, ein echter Confluence-/
+// WAS DIESE DATEI NICHT DECKT (ehrlich): echtes HTTP (Ausnahme seit R-1349: W6 am `POST /api/kos`),
+// Postgres, Browser, ein echter Confluence-/
 // SharePoint-Lauf und eine menschliche Bedienung. Die Auswahl der Prüferin trifft weiterhin ein
 // Mensch; W8 führt den regulären Zuweisungsschritt aus, wie ihn die Prüfseite auslöst, und
 // erfindet keine automatische Auswahl.
 import { describe, expect, it } from "vitest";
 import { herkunftsAuskunft } from "../../apps/web/src/lib/boardAuskunft";
-import { ohneImportHerkunft } from "../../services/app/src/routes/ko-routes";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { InMemoryCandidateRepo } from "../../services/library-analytics/src/repo";
 import { LibraryService } from "../../services/library-analytics/src/service";
@@ -335,15 +336,46 @@ describe("Importkandidaten · vom angenommenen Objekt zur offenen Prüfaufgabe (
 });
 
 describe("Importkandidaten · die Kennzeichnung ist nicht faelschbar", () => {
-  it("W6: die öffentlichen Schreibrouten verwerfen origin=import und lassen andere Herkunft stehen", () => {
-    const gefaelscht = ohneImportHerkunft({ title: "x", origin: "import" as const });
-    expect("origin" in gefaelscht, "origin=import kam über den öffentlichen Rumpf durch").toBe(
-      false,
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): W6 prüfte bis hierher den Helfer `ohneImportHerkunft`
+  // (`ko-routes.ts`) — den keine Route rief. Die Routen verwerfen `origin` per Destrukturierung
+  // VOLLSTÄNDIG (R-0139), also auch `import`; der Helfer ist deshalb entfernt, und W6 misst die Zusage
+  // jetzt dort, wo sie gilt: am echten `POST /api/kos`. (Der frühere Zusatz „andere Herkunft bleibt
+  // stehen" galt nur für den Helfer, nie für die Route — dort fällt jede Herkunft, R-0139.)
+  it("W6: die öffentliche Schreibroute verwirft origin=import — am echten POST /api/kos", async () => {
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Pedi", email: "w6@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "w6@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${(login.json() as { token: string }).token}` };
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers,
+      payload: {
+        confidentiality: "intern",
+        title: "Gefälschter Import",
+        statement: "Behauptet, aus der Import-Prüfwarteschlange zu stammen.",
+        type: "best_practice",
+        category: "Wartung",
+        origin: "import",
+      },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const angelegt = res.json() as { id: string; origin?: unknown };
+    expect(angelegt.origin, "origin=import kam über den öffentlichen Rumpf durch").not.toBe(
+      "import",
     );
-    expect(gefaelscht.title).toBe("x");
-    expect(ohneImportHerkunft({ title: "y", origin: "word_addin" as const }).origin).toBe(
-      "word_addin",
-    );
+    const gelesen = await app.inject({ method: "GET", url: `/api/kos/${angelegt.id}`, headers });
+    expect(gelesen.statusCode, gelesen.body).toBe(200);
+    expect((gelesen.json() as { origin?: unknown }).origin).not.toBe("import");
+    await app.close();
   });
 
   it("W7: eine normale Anlage ohne Import bleibt ohne Importkennzeichnung", async () => {

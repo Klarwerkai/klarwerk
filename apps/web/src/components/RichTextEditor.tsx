@@ -92,6 +92,8 @@ import {
   imageWidthPercent,
   normalizeImageWidth,
 } from "../lib/imageResize";
+import { kiBremsSatz } from "../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE } from "../lib/kiHerkunft";
 // JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
 import { useNetzOnline } from "../lib/netzzustand";
 import {
@@ -109,16 +111,18 @@ import {
 // weil nur diese Flaeche BEIDE Quellen kennt — den Rumpf im Editor und die Antwort vom Dienst.
 import { objekttextAusRumpf, titelNachRangfolge } from "../lib/titelRangfolge";
 import { AiCostHint } from "./AiCostHint";
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+import { AiGeneratedNotice, AiSurfaceNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // D44 Teil 2, Weg (a): nur der Ereignisname und seine Nutzlast — keine Komponente, kein Zyklus
 // (`BodyImageGallery` importiert nichts aus dieser Datei, gemessen).
 import { type D44BildEreignis, D44_BILD_EREIGNIS } from "./BodyImageGallery";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 // AUFTRAG-mega9 Block F: dieselbe Dialog-Vorrichtung wie überall sonst (Fokusfalle, Escape,
 // Rückgabe des Fokus) — kein eigener Dialog für das Bildbeschreibungs-Formular.
 import { Modal } from "./Modal";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { UploadLimitsHint } from "./UploadLimitsHint";
+import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 import { Button } from "./ui";
 
 export interface EditorImage {
@@ -142,7 +146,9 @@ const BLOCK_BTN_CLASS: Record<EditorBlock, string> = {
 type CaptionAiState =
   | null
   | { status: "loading" }
-  | { status: "fallback"; messageKey: string }
+  // R-0842: `satz` = der Wartesatz des Servers, wenn die KI-Bremse abgewiesen hat. Er steht dann
+  // statt des übersetzten `messageKey`, weil nur er die Wartezeit kennt.
+  | { status: "fallback"; messageKey: string; satz?: string }
   // WP-BILD-1f: withContext = der Vorschlag wurde mit umgebendem Dokument-Kontext erzeugt.
   // JOB 2402 D1 (TV1 Scheibe b): `titelVorschlag` reist im SELBEN Zustand mit — er stammt aus
   // demselben describe-Lauf. `null` heisst „nicht ableitbar" und wird als solches ANGEZEIGT; es
@@ -179,11 +185,13 @@ interface Zuordnungslage {
   unklareBilder: number;
 }
 
-const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
-  { value: "25", label: "Klein" },
-  { value: "50", label: "Mittel" },
-  { value: "75", label: "Groß" },
-  { value: "100", label: "Volle Breite" },
+// R-1169: die Stufen standen als deutsche Wörter im Code („Klein" … „Volle Breite") und blieben in
+// EN/NL deutsch. Der deutsche Wortlaut in `texte/beschriftung.ts` ist zeichengleich geblieben.
+const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; labelKey: string }> = [
+  { value: "25", labelKey: "beschriftung.editor.stufe.klein" },
+  { value: "50", labelKey: "beschriftung.editor.stufe.mittel" },
+  { value: "75", labelKey: "beschriftung.editor.stufe.gross" },
+  { value: "100", labelKey: "beschriftung.editor.stufe.voll" },
 ];
 
 // R-0014: die vier Griffe an den Ecken des ausgewählten Bildes. Rechte Griffe ziehen die rechte
@@ -1281,10 +1289,16 @@ export function RichTextEditor({
             }
           : { status: "fallback", messageKey: outcome.messageKey },
       );
-    } catch {
+    } catch (fehler) {
       // Netz-/Serverfehler (inkl. 413-Größendeckel) → ehrliche Fehlermeldung, kein Pseudo-Text.
+      // R-0842: hat die KI-Bremse abgewiesen, reist ihr Satz mit Wartezeit bis ins Formular.
       if (stillCurrent()) {
-        report({ status: "fallback", messageKey: CAPTION_AI_TEXT.fallbackError });
+        const satz = kiBremsSatz(fehler);
+        report({
+          status: "fallback",
+          messageKey: CAPTION_AI_TEXT.fallbackError,
+          ...(satz ? { satz } : {}),
+        });
       }
     }
   };
@@ -2496,7 +2510,7 @@ export function RichTextEditor({
               onMouseDown={haltAuswahl}
               onClick={openLinkPanel}
             >
-              <LinkIcon size={14} />
+              <LinkIcon size={14} aria-hidden="true" />
             </button>
             {sep}
             <div className="relative">
@@ -2506,7 +2520,7 @@ export function RichTextEditor({
                 className={tb}
                 onClick={() => setShowImages((s) => !s)}
               >
-                <ImageIcon size={14} />
+                <ImageIcon size={14} aria-hidden="true" />
                 {t("editor.imageLabel")}
               </button>
               {showImages ? (
@@ -2536,9 +2550,13 @@ export function RichTextEditor({
                         die Datei gewählt wird. */}
                   <UploadLimitsHint className="mb-1 px-2 text-[11px] text-muted-2" />
                   {images.length === 0 ? (
-                    <p className="border-hairline border-t px-2 pb-1 pt-1.5 text-[11.5px] text-muted-2">
-                      {t("editor.noImages")}
-                    </p>
+                    <>
+                      <p className="border-hairline border-t px-2 pb-1 pt-1.5 text-[11.5px] text-muted-2">
+                        {t("editor.noImages")}
+                      </p>
+                      {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+                      <div className="px-2">{leerzustandsZeile(t, "entwuerfe")}</div>
+                    </>
                   ) : (
                     <div className="border-hairline border-t pt-1">
                       <p className="px-2 pb-0.5 text-[10.5px] text-muted-2">
@@ -2572,7 +2590,7 @@ export function RichTextEditor({
                   className={tb}
                   onClick={() => setShowFiles((s) => !s)}
                 >
-                  <Paperclip size={14} />
+                  <Paperclip size={14} aria-hidden="true" />
                   {t("editor.fileLabel")}
                 </button>
                 {showFiles ? (
@@ -2595,7 +2613,10 @@ export function RichTextEditor({
                       {t("editor.insertFile")}
                     </p>
                     {files.length === 0 ? (
-                      <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
+                      <>
+                        <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
+                        <div className="px-2">{leerzustandsZeile(t, "entwuerfe")}</div>
+                      </>
                     ) : (
                       files.map((file) => (
                         <button
@@ -2664,7 +2685,11 @@ export function RichTextEditor({
             className={tb}
             onClick={() => setMode((m) => (m === "edit" ? "preview" : "edit"))}
           >
-            {mode === "edit" ? <Eye size={14} /> : <Pencil size={14} />}
+            {mode === "edit" ? (
+              <Eye size={14} aria-hidden="true" />
+            ) : (
+              <Pencil size={14} aria-hidden="true" />
+            )}
             {mode === "edit" ? t("editor.preview") : t("editor.edit")}
           </button>
         </div>
@@ -2720,7 +2745,9 @@ export function RichTextEditor({
 
       {mode === "edit" && selectedImage ? (
         <div className="flex flex-wrap items-center gap-1 border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
-          <span className="mr-1 text-[11.5px] font-semibold text-muted">Bildgröße</span>
+          <span className="mr-1 text-[11.5px] font-semibold text-muted">
+            {t("beschriftung.editor.bildgroesse")}
+          </span>
           {IMAGE_SCALE_OPTIONS.map((opt) => (
             <button
               key={opt.value}
@@ -2733,7 +2760,7 @@ export function RichTextEditor({
                   : "border-hairline bg-surface text-text hover:bg-hairline-soft"
               }`}
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </button>
           ))}
           {/* R-0014: die frei gezogene Breite als neutrale Größenangabe — keine Stufe ist dann
@@ -3192,9 +3219,11 @@ export function RichTextEditor({
               {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
               {/* AUFTRAG-mega61 Block E: die Bildbeschreibung erzeugt Text, den es vorher nicht
                   gab — sie trägt den Hinweis dauerhaft, nicht erst am Ergebnis.
-                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund. */}
+                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund.
+                  R-0603/R-0604: am Auslöser der Flächensatz; „von KI erzeugt" steht am Vorschlag
+                  darunter — den gibt es nur aus einem Modelltext (`captionSuggestOutcome`). */}
               <p className="mt-1">
-                <AiGeneratedNotice /> <AiCostHint billable={imageDescribe.billable} />
+                <AiSurfaceNotice /> <AiCostHint billable={imageDescribe.billable} />
               </p>
 
               {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
@@ -3202,11 +3231,13 @@ export function RichTextEditor({
               {captionFormAi?.status === "suggestion" ? (
                 <div
                   data-testid="caption-form-suggestion"
-                  className="mt-2 rounded-card border border-ai/30 bg-surface p-2"
+                  // R-1020: ein Vorschlag entsteht nur aus einem Modelltext — also Entwurfsfläche.
+                  className={`mt-2 rounded-card p-2 ${REASONER_ENTWURF_FLAECHE}`}
                 >
                   <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
                     {t(CAPTION_AI_TEXT.panelTitle)} · {t(CAPTION_AI_TEXT.aiBadge)}
                   </p>
+                  <ErgebnisStufeMarke stufe="entwurf" className="mt-1" />
                   {captionFormAi.withContext ? (
                     <p className="mt-0.5 text-[10.5px] leading-snug text-muted">
                       {t(CAPTION_AI_TEXT.withContext)}
@@ -3215,6 +3246,7 @@ export function RichTextEditor({
                   <p className="mt-1 text-[12.5px] leading-relaxed text-text">
                     {captionFormAi.text}
                   </p>
+                  <AiGeneratedNotice className="mt-1 block" />
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -3261,7 +3293,7 @@ export function RichTextEditor({
                   data-testid="caption-form-fallback"
                   className="mt-2 rounded-btn bg-trust-warn-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text"
                 >
-                  {t(captionFormAi.messageKey)}
+                  {captionFormAi.satz ?? t(captionFormAi.messageKey)}
                 </p>
               ) : null}
               {captionFormAi === null ? (

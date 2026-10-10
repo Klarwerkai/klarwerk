@@ -172,7 +172,6 @@ export async function extractPdfDocument(
   }
 }
 
-// Rückwärtskompatibler String-Vertrag (bestehende Aufrufer/Tests): nur der Text, ohne truncated-Signal.
-export async function extractPdfText(buffer: ArrayBuffer, engine: PdfEngine): Promise<string> {
-  return (await extractPdfDocument(buffer, engine)).text;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `extractPdfText`, der „rückwärtskompatible"
+// String-Vertrag (`(await extractPdfDocument(…)).text`). Bestehende Aufrufer gab es nicht mehr — das
+// Einlesen nutzt `extractPdfDocument` (Text samt Lage, `lib/files.ts`; R-0991 Nr. 53). Er ist entfernt.

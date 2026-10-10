@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, Image as ImageIcon, Paperclip, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
@@ -24,7 +32,18 @@ import {
   commitDocumentAppend,
   newAppendOperationId,
 } from "../../lib/appendToArticle";
-import { applyBodyAssist, applyBodyAssistBlock, bodyTextForAssist } from "../../lib/bodyAiAssist";
+import {
+  aussageFolgtInhalt,
+  fehlendePflichtangaben,
+  mitNeuemInhalt,
+} from "../../lib/aussageAusInhalt";
+import { belegstelleAusAdresse, findePassage, markiereFundstelle } from "../../lib/belegstelle";
+import {
+  applyBodyAssist,
+  applyBodyAssistBlock,
+  bodyTextForAssist,
+  spellingAssistHtmlOrNull,
+} from "../../lib/bodyAiAssist";
 import { appendExtractSections, normalizeExtractLocale } from "../../lib/bodyExtract";
 import {
   bodyFileLinksFromHtml,
@@ -41,12 +60,20 @@ import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
+import {
+  lesekontextLesen,
+  lesekontextVergessen,
+  lesespalteRollbereich,
+} from "../../lib/lesekontext";
+import { meldeLeseobjekt, zieheLeseobjektZurueck } from "../../lib/leseobjekt";
 import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
+import { fragenMitBezug, meldeGelesenenStand } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { canRevalidate } from "../../lib/revalidation";
+import { reviewHelp } from "../../lib/reviewHelp";
 import {
   isReviewReworkContext,
   reworkNextSteps,
@@ -74,6 +101,7 @@ import { BodyImageGallery } from "../BodyImageGallery";
 import { BodyTemplateChooser } from "../BodyTemplateChooser";
 import { EditorAttachmentContext } from "../EditorAttachmentContext";
 import { EditorContentQuality } from "../EditorContentQuality";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeInputStudio } from "../KnowledgeInputStudio";
 import { KoRevisionSummary } from "../KoRevisionSummary";
 import { LesevarianteHinweis } from "../LesevarianteHinweis";
@@ -90,13 +118,17 @@ import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
 // Sprungziel ist die Elementreferenz selbst. `tests/wiki-orientierung/…` (O9) hält beides fest.
 import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44Struktur";
 import { ListEditor, TagEditor } from "../editors";
-import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
+import { KenntnisnahmeBereich, KenntnisnahmeVerweis } from "../kenntnisnahme/KenntnisnahmeBereich";
+import { NegativwissenAnzeige } from "../ko/NegativwissenAnzeige";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { VeroeffentlichungBereich } from "../veroeffentlichung/VeroeffentlichungBereich";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
+import { FassungsvergleichImEditor } from "./Fassungsvergleich";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
+import { Wissensempfehlung } from "./Wissensempfehlung";
 import { fragenHref } from "./fragen";
 import { type ZustandsTon, zustandsTon } from "./zustand";
 
@@ -324,6 +356,9 @@ interface EditState {
   title: string;
   statement: string;
   bodyHtml: string;
+  // EDITOR-EINHEITLICH: die Aussage wurde beim Erstellen aus dem Inhalt gebildet und folgt ihm
+  // deshalb auch hier (`lib/aussageAusInhalt.ts`). Wer selbst in „Aussage" schreibt, hebt das auf.
+  aussageFolgtInhalt: boolean;
   type: KnowledgeType;
   category: string;
   conditions: string[];
@@ -922,6 +957,8 @@ export function BibliothekLesen({
   onGeloescht,
   hinweisSchonGesagt,
   lesevarianteSchonGesagt,
+  onBearbeiten,
+  nachDemInhalt,
 }: {
   koId: string;
   // Der Text aus dem Suchfeld — er belegt die Frage auf der Fragen-Seite vor (5a: die frühere Karte
@@ -949,6 +986,16 @@ export function BibliothekLesen({
   // Restschuld benannt: `pages/KnowledgeDetail.tsx` gehört nicht zu den Zielpfaden dieses Auftrags
   // (REGELN §3). Die Kennzeichnung ist an beiden Orten dieselbe (`LesevarianteHinweis`).
   lesevarianteSchonGesagt?: boolean | undefined;
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION (R-1023 b): sagt der Fläche, ob gerade bearbeitet wird —
+  // sie klappt dann die Trefferliste daneben ein (`BibliothekFlaeche.tsx`, „Entlastung").
+  onBearbeiten?: ((aktiv: boolean) => void) | undefined;
+  /**
+   * LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Metadaten der Seite, die NACH dem fachlichen Inhalt
+   * stehen — auf `/wissen/:id` die Fläche „Space und Verantwortung" (`SpaceZeile`). Sie stand vor
+   * der ganzen Fläche und schob Titel und erste Regel mobil um etwa 260 px nach unten. Gezeigt wird
+   * sie unverändert (Funktionen und Rechte gehören ihr), nur an anderer Stelle.
+   */
+  nachDemInhalt?: ReactNode | undefined;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const [params] = useSearchParams();
@@ -977,10 +1024,21 @@ export function BibliothekLesen({
   const reviewReworkContext = isReviewReworkContext(params);
 
   const [edit, setEdit] = useState<EditState | null>(null);
+  // Gesamt-Navigation (R-1023 b): Beginn und Ende des Bearbeitens melden; beim Abbau (anderer
+  // Eintrag, Seitenwechsel) gilt „nicht mehr bearbeitet".
+  const bearbeitet = edit !== null;
+  useEffect(() => {
+    onBearbeiten?.(bearbeitet);
+  }, [bearbeitet, onBearbeiten]);
+  useEffect(() => () => onBearbeiten?.(false), [onBearbeiten]);
   const [studioOpen, setStudioOpen] = useState(false);
   const [studioApplied, setStudioApplied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [mehrOffen, setMehrOffen] = useState(false);
+  // N-0020: kehrt der Mensch per Browser-Zurück aus dem Herkunftsgraphen zurück, steht hier, wo er
+  // gelesen hat (`lib/lesekontext.ts`). Gelesen EINMAL beim Aufbau — die Adresse kann danach ersetzt
+  // werden, der Kontext gehört zu diesem Öffnen. Ohne Merker bleibt alles wie bisher: „Mehr" zu.
+  const [gemerkt] = useState(() => lesekontextLesen(koId));
+  const [mehrOffen, setMehrOffen] = useState(gemerkt !== null);
   // JOB 3108 · UX-03: wohin die Sprungzeile am Kopf führt. `nonce`, damit derselbe Abschnitt
   // zweimal hintereinander anspringbar bleibt (zwischendurch von Hand zugeklappt).
   const [sprungZiel, setSprungZiel] = useState<Sprungziel | null>(null);
@@ -1024,6 +1082,18 @@ export function BibliothekLesen({
     textRef.current = knoten;
     setTextKnoten(knoten);
   }, []);
+  // Aufnahme 20260922 · antwort-quellenanzeige (R-0326): die Belegstelle aus der Adresse
+  // (`?stelle=…&fassung=…`, lib/belegstelle.ts). Ihre Lage nach dem Auflösen — „markiert" heißt:
+  // wörtlich gefunden, hervorgehoben und angesprungen; die beiden anderen sagen, warum nicht.
+  const belegstelle = belegstelleAusAdresse(params);
+  const belegPassage = belegstelle?.passage ?? "";
+  const belegFassung = belegstelle?.fassung ?? null;
+  const [belegLage, setBelegLage] = useState<
+    "keine" | "markiert" | "nichtGefunden" | "andereFassung"
+  >("keine");
+  const belegErledigt = useRef<string | null>(null);
+  // R-0329: `?abschnitt=nachbarschaft` öffnet die Nachbarschaft (das Wissensnetz des Eintrags).
+  const abschnittErledigt = useRef(false);
   const [loeschenOffen, setLoeschenOffen] = useState(false);
   // Auftrag gesamt-dubletten-rueckzug (R-1615): dieselbe Rückfrage, geöffnet über den Knopf am
   // eigenen Dublettenhinweis — dann spricht sie vom Rückzug der eigenen Seite (Texte: texte/rueckzug.ts).
@@ -2081,6 +2151,7 @@ export function BibliothekLesen({
       title: ko.title,
       statement: ko.statement,
       bodyHtml: ko.bodyHtml ?? "",
+      aussageFolgtInhalt: aussageFolgtInhalt(ko.statement, ko.bodyHtml),
       type: ko.type,
       category: ko.category,
       conditions: [...ko.conditions],
@@ -2128,6 +2199,156 @@ export function BibliothekLesen({
       startEdit(query.data);
     }
   }, [query.data, params, canEdit]);
+
+  // Arbeitswege am selben Artikel: welche Fassung hier gelesen wird — Klara und die Rückweg-Zeile
+  // lesen sie aus `lib/objektbezug.ts`. Gemeldet wird, was ohnehin gezeichnet wird; kein Abruf.
+  const gelesenId = query.data?.id ?? null;
+  const gelesenFassung = typeof query.data?.version === "number" ? query.data.version : null;
+  useEffect(() => {
+    if (gelesenId !== null && gelesenFassung !== null) {
+      meldeGelesenenStand({ koId: gelesenId, fassung: gelesenFassung });
+    }
+  }, [gelesenId, gelesenFassung]);
+
+  // Klara 03 (produkt:20261007:klara-kontext-tutorial): was Klara als „Dieser Artikel“ nennt —
+  // Titel, Fassung, Prüfstatus, Lesen oder Bearbeiten, wie diese Fläche es gerade zeichnet
+  // (`lib/leseobjekt.ts`). Beim Abbau (anderer Eintrag, andere Seite) wird die Meldung zurückgenommen.
+  const gelesenTitel = query.data?.title ?? null;
+  const gelesenGeprueft = query.data?.status === "validiert";
+  const gelesenLesart = !zeigtOriginal && lesevariante ? "uebersetzung" : "original";
+  useEffect(() => {
+    if (gelesenId === null || gelesenTitel === null) {
+      return;
+    }
+    meldeLeseobjekt({
+      koId: gelesenId,
+      titel: gelesenTitel,
+      fassung: gelesenFassung,
+      pruefstatus: gelesenGeprueft ? "geprueft" : "ungeprueft",
+      modus: bearbeitet ? "bearbeiten" : "lesen",
+      darfBearbeiten: canEdit,
+      lesart: gelesenLesart,
+    });
+  }, [
+    gelesenId,
+    gelesenTitel,
+    gelesenFassung,
+    gelesenGeprueft,
+    bearbeitet,
+    canEdit,
+    gelesenLesart,
+  ]);
+  useEffect(() => {
+    if (gelesenId === null) {
+      return;
+    }
+    return () => zieheLeseobjektZurueck(gelesenId);
+  }, [gelesenId]);
+
+  // R-0329: der Einstieg „Im Wissensnetz anzeigen" (Word-Panel) landet in der GEÖFFNETEN
+  // Nachbarschaft dieses Eintrags — derselbe Sprungweg wie die Kopfsprünge (`springeZu`), einmal.
+  // INTEGRATION mit N-0020: kehrt jemand per Browser-Zurück in diesen Verlaufseintrag zurück
+  // (`gemerkt`), gilt SEINE Leseposition — dann springt dieser Einstieg nicht noch einmal.
+  useEffect(() => {
+    if (
+      gemerkt === null &&
+      !abschnittErledigt.current &&
+      params.get("abschnitt") === "nachbarschaft" &&
+      query.data
+    ) {
+      abschnittErledigt.current = true;
+      setMehrOffen(true);
+      setSprungZiel((vorher) => ({
+        schluessel: "nachbarschaft",
+        nonce: (vorher?.nonce ?? 0) + 1,
+      }));
+    }
+  }, [query.data, params, gemerkt]);
+
+  // R-0326: die Belegstelle wird im gezeichneten Text DIESER Fassung wörtlich gesucht, hervorgehoben
+  // und angesprungen — einmal je Eintrag und Passage. Andere Fassung oder kein wörtlicher Fund:
+  // nichts wird markiert, die Lage sagt es (Anzeige über dem Text). INTEGRATION mit N-0020: bei
+  // Browser-Zurück (`gemerkt`) bleibt die Stelle markiert, Rollstand und Fokus gehören aber der
+  // zurückgeholten Leseposition.
+  useEffect(() => {
+    if (!textKnoten || !query.data || belegPassage.length === 0) {
+      return;
+    }
+    const schluessel = `${query.data.id}|${belegPassage}`;
+    if (belegErledigt.current === schluessel) {
+      return;
+    }
+    belegErledigt.current = schluessel;
+    if (belegFassung !== null && query.data.version !== belegFassung) {
+      setBelegLage("andereFassung");
+      return;
+    }
+    const fund = findePassage(textKnoten, belegPassage);
+    if (!fund) {
+      setBelegLage("nichtGefunden");
+      return;
+    }
+    const erste = markiereFundstelle(textKnoten, fund)[0];
+    if (erste) {
+      erste.tabIndex = -1;
+      if (gemerkt === null) {
+        erste.scrollIntoView?.({ block: "center" });
+        erste.focus({ preventScroll: true });
+      }
+    }
+    setBelegLage("markiert");
+  }, [textKnoten, query.data, belegPassage, belegFassung, gemerkt]);
+
+  // ================================================================================================
+  // N-0020 · DIE LESEPOSITION KOMMT ZURÜCK, SOBALD DER BERICHT DA IST.
+  // ================================================================================================
+  // „Mehr" und die gemerkten Abschnitte stehen schon beim Aufbau offen (oben, `gemerkt`); hier
+  // folgt der Rollstand. Der Bericht wächst nach dem ersten Zeichnen weiter (Abschnitte laden ihre
+  // eigenen Daten nach) — ein zu früh gesetzter Rollstand würde an der noch kurzen Spalte gekappt.
+  // Deshalb wird nachgesetzt, solange die Spalte wächst, höchstens fünf Sekunden lang, und nie
+  // gegen den Menschen: rollt, wischt oder tippt er selbst, endet das Nachsetzen sofort.
+  const leseWurzel = useRef<HTMLDivElement | null>(null);
+  const berichtDa = query.data !== undefined;
+  useEffect(() => {
+    if (gemerkt === null || !berichtDa) {
+      return;
+    }
+    lesekontextVergessen();
+    const roll = lesespalteRollbereich(leseWurzel.current);
+    const inhalt = leseWurzel.current;
+    if (roll === null || inhalt === null) {
+      return;
+    }
+    const ziel = gemerkt.rollTop;
+    const setzen = (): boolean => {
+      roll.scrollTop = ziel;
+      return Math.abs(roll.scrollTop - ziel) <= 1;
+    };
+    if (setzen() || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const beobachter = new ResizeObserver(() => {
+      if (setzen()) {
+        aufhoeren();
+      }
+    });
+    const frist = window.setTimeout(() => aufhoeren(), 5_000);
+    const eingriffe = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    // Eine Pfeilfunktion, keine `function`-Deklaration: nur sie behält die Null-Prüfung von `roll`
+    // oben (eine gehobene Deklaration gilt TypeScript als vor der Prüfung entstanden).
+    const aufhoeren = (): void => {
+      beobachter.disconnect();
+      window.clearTimeout(frist);
+      for (const e of eingriffe) {
+        roll.removeEventListener(e, aufhoeren);
+      }
+    };
+    for (const e of eingriffe) {
+      roll.addEventListener(e, aufhoeren, { passive: true });
+    }
+    beobachter.observe(inhalt);
+    return aufhoeren;
+  }, [gemerkt, berichtDa]);
 
   // JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon geholten
   // Eintrags, bleiben Eintrag und Stufenkennzeichen stehen — der Fehler wird als Hinweis über der
@@ -2178,6 +2399,24 @@ export function BibliothekLesen({
   // ist die Liste leer und die Fläche sagt NICHTS über Vorschläge, statt „keine" zu behaupten.
   const einreichPflicht = ko.status === "validiert" && !darfFreigeben;
   const pruefwegAktiv = einreichPflicht || sperreGemeldet || (darfFreigeben && pruefwegHaken);
+  // ================================================================================================
+  // EDITOR-EINHEITLICH (K4, Nacharbeit 6) · DIE SPERRE NACH DEM KLICK VERSCHIEBT NICHTS.
+  // ================================================================================================
+  //
+  // `sperreNachFehler` ist der EINE Fall, in dem der Prüfweg als ANTWORT auf einen Klick kommt
+  // (403 `PROPOSAL_REQUIRED`). Bis hierher verschwanden dann Titel, Listen und Einordnung, und zwei
+  // Sätze erschienen ÜBER den Knöpfen — „Einreichen" und „Abbrechen" standen danach woanders als
+  // der Knopf, der gerade gedrückt worden war. Jetzt bleiben die Felder an ihrer Stelle, sind aber
+  // GESPERRT (sie reisen auf diesem Weg nicht mit — die Regel aus JOB 3667 R4 bleibt), und beide
+  // Sätze stehen unter der Leiste bei den übrigen Meldungen. Fall 2 (von Anfang an Prüfweg) und
+  // Fall 3 (bewusster Haken) bleiben, wie sie sind: dort ist der Wechsel keine Fehlerfolge.
+  //
+  // BEWUSST OHNE `!einreichPflicht`: die Sperre entsteht gerade WEIL der Eintrag inzwischen
+  // freigegeben ist. Liest die Fläche ihn später nach (Fokus, Bearbeitungshinweis), wird
+  // `einreichPflicht` wahr — die Lage darf dann nicht noch einmal umspringen. Fall 2 von Anfang an
+  // bietet kein Speichern an; dort kann `sperreGemeldet` gar nicht entstehen.
+  const sperreNachFehler = sperreGemeldet && !(darfFreigeben && pruefwegHaken);
+  const felderAusgeblendet = pruefwegAktiv && !sperreNachFehler;
   const offeneVorschlaege = (ko.proposals ?? []).filter((p) => p.status === "offen");
   // JOB 3667 R4 · BEFUND 2 — DER FALL, IN DEM DAS VERSTECKEN ALLEIN NICHT REICHT.
   //
@@ -2188,6 +2427,29 @@ export function BibliothekLesen({
   // Feldnamen, die der Änderungsüberblick verwendet.
   const nichtEingereichteAenderungen = koRevisionSummary(ko, edit).items.filter(
     (i) => !EINGEREICHTE_FELDER.includes(i.id),
+  );
+  // EDITOR-EINHEITLICH: welche Pflichtangabe JETZT fehlt — gerechnet, bevor ein Knopf gedrückt
+  // wird, und an genau dem Feld gesagt, das sie betrifft. Dieselbe Regel sperrt den Knopf.
+  const fehlendePflicht = edit ? fehlendePflichtangaben(edit, pruefwegAktiv) : [];
+  const titelFehlt = fehlendePflicht.includes("titel");
+  const aussageFehlt = fehlendePflicht.includes("aussage") || fehlendePflicht.includes("inhalt");
+  // JOB 3667 R4 · der Satz, was der Prüfweg trägt — EIN Wortlaut, je nach Lage über dem Formular
+  // (Fall 2/3) oder unter der Aktionsleiste (`sperreNachFehler`, s. oben).
+  const pruefwegFelderSatz = (
+    <div
+      data-testid="bib-pruefweg-felder"
+      className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+    >
+      {/* EDITOR-EINHEITLICH: derselbe Satz, mit dem Wort des Formulars — „Titel". */}
+      {t("editoreinheitlich.nurFelder")}
+      {nichtEingereichteAenderungen.length > 0 ? (
+        <span data-testid="bib-pruefweg-felder-verworfen" className="mt-1 block text-text">
+          {t("ko.propose.droppedFields", {
+            felder: nichtEingereichteAenderungen.map((i) => t(i.labelKey)).join(", "),
+          })}
+        </span>
+      ) : null}
+    </div>
   );
 
   const impact =
@@ -2234,13 +2496,33 @@ export function BibliothekLesen({
   // fehlt (`vertraulichkeitsAuskunft`). Dieselbe Funktion und derselbe Tönungssatz wie auf jeder
   // anderen Fläche, damit hier keine zweite Auslegung derselben Aussage entsteht.
   const auskunft = vertraulichkeitsAuskunft(ko);
-  const meta = [ko.category, nameOf(ko.author), erstellt].filter(Boolean).join(" · ");
+  // R-0921 (Ausbau „Datum, Uhrzeit UND Ersteller"): neben der Erstellzeit steht der ERSTELLER —
+  // dieselbe Regel wie auf der Validierungskarte (`Validation.tsx`, `originalAuthor` vor `author`).
+  // Nach einer Übertragung nennt die „Herkunftskette" (`MehrAbschnitte.tsx`) den neuen Autor.
+  const erstellerId = ko.originalAuthor?.trim() ? ko.originalAuthor : ko.author;
+  const meta = [ko.category, nameOf(erstellerId), erstellt].filter(Boolean).join(" · ");
+  // package:versionen („Aktuelle Version eindeutig", „Änderungszeit sichtbar"): die Fassung, die
+  // gerade gelesen wird, und — ab v2 — wann sie entstand. Die Zeit kommt aus dem letzten
+  // Historieneintrag des Dienstes (`naechsteFassung` schreibt ihn mit jeder Revision). Bei v1 ist
+  // sie die Erstellzeit, die `meta` schon nennt; dieselbe Zeit zweimal stünde hier nur doppelt.
+  // Die Fassungszeile ändert `bib-meta` nicht (gemessen in `Library.timestamp.test.tsx`).
+  const fassungsNummer = typeof ko.version === "number" ? ko.version : null;
+  const verlauf = ko.history ?? [];
+  const geaendertAm =
+    fassungsNummer !== null && fassungsNummer > 1
+      ? formatKoTimestamp(verlauf[verlauf.length - 1]?.at, i18n.language)
+      : null;
   // Auftrag §5.3/§5a: EINE verbindliche Aktion, für jeden gewählten Eintrag dieselbe — „Fragen",
   // mit der Herkunft dieses Eintrags (`ko=<id>`, ein Marker — kein Filter, s. `fragen.ts`),
   // vorbelegt mit dem aktuellen Suchtext. Der frühere
   // Weg über `libraryUseCta` verzweigte über die Reife und schickte offene Einträge nach
   // `/validierung`; das war die zweite Wahrheit, die dieser Umbau abschafft (Codex an Runde 4).
-  const fragen = fragenHref(ko.id, suchtext.trim() || ko.title, ko.confidentiality);
+  // Arbeitswege am selben Artikel: zur Kennung reist die gelesene FASSUNG mit (`fassung=<n>`) —
+  // Fragen, Klara und der Rückweg nennen damit denselben Stand (`lib/objektbezug.ts`).
+  const fragen = fragenMitBezug(
+    fragenHref(ko.id, suchtext.trim() || ko.title, ko.confidentiality),
+    { koId: ko.id, fassung: typeof ko.version === "number" ? ko.version : null },
+  );
   // JOB 3108 · UX-03 — EINE Zählung, zwei Ansichten, und keine zweite Wahrheit: beide Zahlen
   // kommen aus DEMSELBEN `ko.attachments`, in benachbarten Zeilen.
   //   · Chip: Bilder im Text · Sprung: Anhänge insgesamt.
@@ -2342,10 +2624,32 @@ export function BibliothekLesen({
   const rueckzugMoeglich =
     eigenesObjekt && darfLoeschen && (kollision.art === "dublette" || kollision.art === "beides");
   const fb = latestValidationFeedback(ko.comments);
+  // Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick) und —
+  // mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts. `darfAnfordern`
+  // spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden wird am Server.
+  // LESEN-INHALT-ZUERST: EIN Element, gezeigt NACH dem Inhalt — im Lesen wie im Bearbeiten und auf
+  // JEDER Breite. Damit ist auch die Telefonregel aus N-0037 (Aufnahme 20260922: auf < 760 px nicht
+  // vor dem Titel, `tests/bibliothek-schmal/telefon-chromium.test.ts` C7) erfüllt, ohne eine zweite,
+  // breitenabhängige Stelle.
+  const kenntnisnahmeZiel = `kenntnisnahme-${koId}`;
+  const kenntnisnahmeFlaeche = (
+    <KenntnisnahmeBereich
+      koId={koId}
+      darfAnfordern={role === "controller" || role === "admin"}
+      zielId={kenntnisnahmeZiel}
+    />
+  );
+  // Veröffentlichung (produkt:20261007:veroeffentlichungsoptionen): welche Fassung veröffentlicht
+  // ist — und für Freigebende die Wahl still/normal/hervorgehoben samt Wirkung. Was jemand darf,
+  // entscheidet allein die Serverantwort (`ko.validate`). Mit Freigaberecht ist auch sie ein
+  // Formular; sie steht deshalb wie die Kenntnisnahme (LESEN-INHALT-ZUERST) auf JEDER Breite NACH
+  // dem Inhalt, direkt hinter ihr — im Lesen wie im Bearbeiten.
+  const veroeffentlichung = <VeroeffentlichungBereich koId={koId} />;
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
       <div
+        ref={leseWurzel}
         data-testid="bib-lesen"
         // STATUS-FREIGABE: die Objektgrenze für Klaras Zeige-Modus; der Status ist die Pille unten.
         data-objekt="wissen"
@@ -2355,8 +2659,9 @@ export function BibliothekLesen({
           derselben Quelle — seit JOB 3063 R6 auch in DERSELBEN Bauform (`AuffrischungHinweis`),
           nicht mehr als abgeschriebener Zwilling. Er schweigt, wenn die Liste es schon sagt. */}
         {hinweisSchonGesagt ? null : <AuffrischungHinweis query={query} />}
-        {/* Kopfzeile: Pille · Meta · Fragen · „…" */}
-        <div className="flex items-center gap-2">
+        {/* Kopfzeile: Pille · Meta · Fragen · „…". LESEN-INHALT-ZUERST: bei 390 px Breite bricht
+            die Zeile um, statt die Meta-Zeile zusammenzudrücken. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <span
             data-testid="bib-pille"
             data-bib-text="pille"
@@ -2386,6 +2691,14 @@ export function BibliothekLesen({
           <span data-testid="bib-meta" data-bib-text="meta" className="text-[12.5px] text-muted">
             {meta}
           </span>
+          {fassungsNummer === null ? null : (
+            <span data-testid="bib-fassungsstand" className="text-[12.5px] text-muted">
+              {t("fassungsangabe.kopfFassung", { version: fassungsNummer })}
+              {geaendertAm
+                ? ` · ${t("fassungsangabe.kopfGeaendert", { zeit: geaendertAm })}`
+                : null}
+            </span>
+          )}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             <RoleLink
               to={fragen}
@@ -2395,6 +2708,17 @@ export function BibliothekLesen({
             >
               {() => t("lib.ask")}
             </RoleLink>
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die Erklärungen der Menüpunkte
+                „Hat geholfen" und „Löschen" stehen in der Seitenhilfe, solange die Handlung da ist
+                — angemeldet HIER, weil das Menü erst beim Öffnen gezeichnet wird. Die Löschhilfe
+                kommt über `reviewHelp`, also mit dem berichtigten Text (Papierkorb, 30 Tage). */}
+            <HelpTip title={t("vhelp.helpful.title")} body={t("vhelp.helpful.body")} />
+            {darfLoeschen ? (
+              <HelpTip
+                title={t(reviewHelp("deleteKo").titleKey)}
+                body={t(reviewHelp("deleteKo").bodyKey)}
+              />
+            ) : null}
             <Menue
               beschriftung="…"
               ariaLabel={t("lib.menue.weitere")}
@@ -2676,14 +3000,13 @@ export function BibliothekLesen({
           ablaufSekunden={eigeneBearbeitung.ablaufSekunden}
           onFremdesEnde={nachlesen}
         />
-        {/* Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick)
-            und — mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts.
-            `darfAnfordern` spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden
-            wird am Server. */}
-        <KenntnisnahmeBereich
-          koId={koId}
-          darfAnfordern={role === "controller" || role === "admin"}
-        />
+        {/* LESEN-INHALT-ZUERST (07.10.2026): die Kenntnisnahme-Fläche stand hier, VOR dem Titel —
+            bei Controller/Admin eine etwa 280 px hohe Karte an jedem gültigen Eintrag, auch wenn
+            nichts verlangt war (auf dem Telefon hatte N-0037 sie schon hinter den Bericht gelegt).
+            Sie steht jetzt auf jeder Breite nach dem Inhalt (`kenntnisnahmeFlaeche`); hier bleibt
+            nur der EINE Satz, solange die EIGENE Kenntnisnahme aussteht, mit Sprung zum
+            Bestätigen-Knopf. Die Pflicht bleibt damit oben sichtbar und unten wirksam. */}
+        <KenntnisnahmeVerweis koId={koId} zielId={kenntnisnahmeZiel} />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -2699,46 +3022,94 @@ export function BibliothekLesen({
                 DER ZWEITE SATZ nennt die Änderungen, die beim Umschalten schon im Zustand standen
                 (s. `nichtEingereichteAenderungen`) — sonst verschwänden sie wortlos mit ihren
                 Feldern. */}
-            {pruefwegAktiv ? (
-              <div
-                data-testid="bib-pruefweg-felder"
-                className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
-              >
-                {t("ko.propose.onlyFields")}
-                {nichtEingereichteAenderungen.length > 0 ? (
-                  <span
-                    data-testid="bib-pruefweg-felder-verworfen"
-                    className="mt-1 block text-text"
+            {/* EDITOR-EINHEITLICH (K4): nach einer Sperre steht derselbe Satz unter der Leiste. */}
+            {pruefwegAktiv && !sperreNachFehler ? pruefwegFelderSatz : null}
+            {/* R-1055: zwei gespeicherte Fassungen nebeneinander, direkt im Editor — derselbe
+                Vergleich wie unter Mehr → Schnappschüsse (`Fassungsvergleich.tsx`). */}
+            <FassungsvergleichImEditor koId={koId} />
+            {/* ==========================================================================
+                EDITOR-EINHEITLICH · PFLICHT VOR DEM KNOPF, NICHT ERST DANACH.
+                ==========================================================================
+
+                Der Knopf war schon gesperrt, solange eine Pflichtangabe fehlte — nur sagte niemand,
+                WELCHE. Jetzt steht oben, was Pflicht ist (dieselbe Regel wie der Speicher-Check
+                beim Erstellen), und am Feld selbst, was fehlt. Die Eingaben bleiben dabei stehen:
+                diese Sätze lesen den Zustand, sie leeren nichts. */}
+            <p data-testid="bib-pflicht-ueberblick" className="text-[12px] text-muted">
+              {pruefwegAktiv
+                ? t("editoreinheitlich.pflichtPruefweg")
+                : t("editoreinheitlich.pflichtDirekt")}
+            </p>
+            {felderAusgeblendet ? null : (
+              // EDITOR-EINHEITLICH (K4): nach einer Sperre gesperrt statt entfernt — die Stelle
+              // bleibt, der Wert reist auf dem Prüfweg nicht mit (s. `sperreNachFehler`).
+              <fieldset disabled={sperreNachFehler} className="m-0 min-w-0 space-y-3 border-0 p-0">
+                {/* EDITOR-EINHEITLICH: das Feld heisst wie beim Erstellen „Titel" — nicht
+                    „Kernaussage", ein Wort, das beim Erstellen für etwas anderes steht. */}
+                <Field label={t("capture.wizard.titleLabel")}>
+                  <TextInput
+                    data-testid="bib-titel"
+                    value={edit.title}
+                    aria-invalid={titelFehlt ? true : undefined}
+                    aria-describedby={titelFehlt ? "bib-pflicht-titel" : undefined}
+                    onChange={(e) => setEdit({ ...edit, title: e.target.value })}
+                  />
+                </Field>
+                {titelFehlt ? (
+                  <p
+                    id="bib-pflicht-titel"
+                    data-testid="bib-pflicht-titel"
+                    className="-mt-2 text-[12px] text-trust-warn-text"
                   >
-                    {t("ko.propose.droppedFields", {
-                      felder: nichtEingereichteAenderungen.map((i) => t(i.labelKey)).join(", "),
-                    })}
-                  </span>
+                    {t("editoreinheitlich.fehltTitel")}
+                  </p>
                 ) : null}
-              </div>
-            ) : null}
-            {pruefwegAktiv ? null : (
-              <Field label={t("capture.fTitle")}>
-                <TextInput
-                  value={edit.title}
-                  onChange={(e) => setEdit({ ...edit, title: e.target.value })}
-                />
-              </Field>
+              </fieldset>
             )}
             <Field label={t("capture.fStatement")}>
               <textarea
+                data-testid="bib-aussage"
                 value={edit.statement}
-                onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
+                aria-invalid={aussageFehlt ? true : undefined}
+                aria-describedby={aussageFehlt ? "bib-pflicht-aussage" : undefined}
+                // EDITOR-EINHEITLICH: wer hier selbst schreibt, legt eine EIGENE Aussage fest — sie
+                // folgt dem Inhalt ab jetzt nicht mehr (`lib/aussageAusInhalt.ts`).
+                onChange={(e) =>
+                  setEdit({ ...edit, statement: e.target.value, aussageFolgtInhalt: false })
+                }
                 rows={3}
                 className={textareaCls}
               />
               <AiAssistBox
                 text={edit.statement}
                 runAssist={runAssist}
-                onApply={(next) => setEdit({ ...edit, statement: next })}
+                onApply={(next) => setEdit({ ...edit, statement: next, aussageFolgtInhalt: false })}
               />
             </Field>
-            <Field label={t("capture.fBody")}>
+            {aussageFehlt ? (
+              <p
+                id="bib-pflicht-aussage"
+                data-testid="bib-pflicht-aussage"
+                className="-mt-2 text-[12px] text-trust-warn-text"
+              >
+                {fehlendePflicht.includes("aussage")
+                  ? t("editoreinheitlich.fehltAussage")
+                  : t("editoreinheitlich.fehltInhalt")}
+              </p>
+            ) : edit.aussageFolgtInhalt ? (
+              <p data-testid="bib-aussage-folgt-inhalt" className="-mt-2 text-[12px] text-muted">
+                {t("editoreinheitlich.aussageFolgt")}
+              </p>
+            ) : edit.bodyHtml.trim().length > 0 ? (
+              <p data-testid="bib-aussage-eigen" className="-mt-2 text-[12px] text-muted">
+                {t("editoreinheitlich.aussageEigen")}
+              </p>
+            ) : null}
+            {/* EDITOR-EINHEITLICH (Nacharbeit 3, Smoke-Befund): `gruppe` wie im Erstellformular
+                (Capture.tsx). Als `<label>` aktivierte jeder Klick ins Schreibfeld den ersten Knopf
+                darin — das Knowledge Studio ging ungefragt auf, und das Getippte kam nie im Editor
+                an (Bild des roten Laufs). Derselbe Befund war beim Erstellen schon behoben. */}
+            <Field label={t("capture.fBody")} gruppe>
               <button
                 type="button"
                 onClick={() => {
@@ -2755,7 +3126,7 @@ export function BibliothekLesen({
                 bodyHtml={edit.bodyHtml}
                 documentTitle={edit.title}
                 onApply={(bodyHtml) => {
-                  setEdit({ ...edit, bodyHtml });
+                  setEdit(mitNeuemInhalt(edit, bodyHtml));
                   setStudioApplied(true);
                 }}
                 runAssist={runAssist}
@@ -2774,11 +3145,11 @@ export function BibliothekLesen({
               <EditorContentQuality bodyHtml={edit.bodyHtml} attachments={ko.attachments ?? []} />
               <BodyTemplateChooser
                 bodyHtml={edit.bodyHtml}
-                onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                onApply={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
               />
               <RichTextEditor
                 value={edit.bodyHtml}
-                onChange={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                onChange={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
                 images={(ko.attachments ?? [])
                   .filter((a) => a.objectId && a.mime.startsWith("image/"))
                   .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
@@ -2793,7 +3164,8 @@ export function BibliothekLesen({
                 applyFn={(mode, _original, suggestion) =>
                   applyBodyAssist(mode, edit.bodyHtml, suggestion)
                 }
-                onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                applySpelling={(suggestion) => spellingAssistHtmlOrNull(edit.bodyHtml, suggestion)}
+                onApply={(bodyHtml) => setEdit(mitNeuemInhalt(edit, bodyHtml))}
                 hintKey="capture.ai.bodyHint"
                 extraApplyActions={EDITOR_BLOCKS.map((block) => ({
                   labelKey: `capture.ai.applyAs.${block}`,
@@ -2805,8 +3177,9 @@ export function BibliothekLesen({
             </Field>
             {/* Bedingungen, Maßnahmen, Schlagworte, Art und Kategorie: derselbe Grund wie beim
                 Titel — der Einreich-Aufruf trägt sie nicht, die Übernahme schreibt sie nicht. */}
-            {pruefwegAktiv ? null : (
-              <>
+            {felderAusgeblendet ? null : (
+              // EDITOR-EINHEITLICH (K4): wie beim Titel — nach einer Sperre gesperrt statt entfernt.
+              <fieldset disabled={sperreNachFehler} className="m-0 min-w-0 space-y-3 border-0 p-0">
                 <ListEditor
                   label={t("capture.fConditions")}
                   items={edit.conditions}
@@ -2839,7 +3212,7 @@ export function BibliothekLesen({
                     />
                   </Field>
                 </div>
-              </>
+              </fieldset>
             )}
             <KoRevisionSummary original={ko} edit={edit} />
             {/* SCRUM-344: nach einer Übernahme aus dem Studio ehrlich klarmachen, dass der Inhalt
@@ -2863,23 +3236,6 @@ export function BibliothekLesen({
                   );
                 })()
               : null}
-            {appendUnclear ? (
-              <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                {t("xtr.append.unclear")}
-              </div>
-            ) : null}
-            {/* JOB 4163: der SAMMELZWEIG des Speicherwegs, jetzt benennbar. Er bleibt für alles
-                Übrige unverändert (Netzabbruch vor dem ersten Aufruf, 500 am `revise` selbst) —
-                die Marke steht hier, damit ein Prüfstand belegen kann, dass Teilabbruch und
-                entzogenes Recht ihn NICHT mehr benutzen. */}
-            {err ? (
-              <div
-                data-testid="bib-speichern-fehler"
-                className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
-              >
-                {err}
-              </div>
-            ) : null}
             {/* ==========================================================================
                 JOB 3667 R3 · DIE ACCOUNTREGEL AM BEDIENORT — DREI FÄLLE, DREI BILDER.
                 ==========================================================================
@@ -2889,8 +3245,12 @@ export function BibliothekLesen({
                 nach fremder Freigabe. KEIN HAKEN daneben: hier ist die Prüfung Pflicht, und ein
                 abwählbarer Haken wäre die Unwahrheit.
 
-                FALL 3 (`darfFreigeben`): der Haken. NUR hier ist etwas freiwillig. */}
-            {einreichPflicht || sperreGemeldet ? (
+                FALL 3 (`darfFreigeben`): der Haken. NUR hier ist etwas freiwillig.
+
+                EDITOR-EINHEITLICH (K4): die NACHTRÄGLICH gemeldete Sperre (`sperreNachFehler`)
+                sagt denselben Satz UNTER der Aktionsleiste — hier oben schöbe er die Knöpfe weg,
+                die gerade gedrückt wurden. */}
+            {(einreichPflicht || sperreGemeldet) && !sperreNachFehler ? (
               <p
                 data-testid="bib-einreichen-pflicht"
                 className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
@@ -2913,6 +3273,124 @@ export function BibliothekLesen({
                 />
                 {t("ko.propose.optIn")}
               </label>
+            ) : null}
+            {/* ==========================================================================
+                EDITOR-EINHEITLICH · DIE AKTIONSLEISTE STEHT VOR DEN MELDUNGEN.
+                ==========================================================================
+
+                Bis hierher standen Fehler-, Konflikt- und Einreichsätze ÜBER den Knöpfen. Jede
+                Meldung, die nach einem Klick erschien, schob „Speichern" und „Abbrechen" nach
+                unten — der zweite Griff ging ins Leere (U21). Jetzt stehen die Knöpfe an einer
+                festen Stelle und die Meldungen darunter: dieselbe Ordnung wie im Blatt beim
+                Erstellen (`BlattLage` unter der Knopfleiste). */}
+            <div className="flex gap-2">
+              {/* DER GRIFF WECHSELT MIT DEM WEG, UND ES GIBT IMMER GENAU EINEN.
+
+                  Wo der Einreichweg gilt, wird „Speichern" NICHT angeboten: der Server würde ihn
+                  abweisen (403 `PROPOSAL_REQUIRED`), und ein Knopf, der nur zu einer Absage führen
+                  kann, ist eine Scheinfunktion. Umgekehrt steht „Einreichen" nicht daneben, wo direkt
+                  gespeichert werden darf — sonst wäre die Pflicht aus Fall 2 eine Auswahl. */}
+              {pruefwegAktiv ? (
+                <Button
+                  variant="primary"
+                  data-testid="bib-einreichen"
+                  // EDITOR-EINHEITLICH (K4): beide Griffe gleich breit — der Wechsel „Speichern" →
+                  // „Änderung einreichen" nach einer Sperre schiebt „Abbrechen" nicht seitlich weg.
+                  className="min-w-[12rem]"
+                  disabled={
+                    einreichen.isPending ||
+                    appendDocument.isPending ||
+                    appendUnclear ||
+                    fehlendePflicht.length > 0
+                  }
+                  onClick={() =>
+                    einreichen.mutate({
+                      baseVersion: ko.version,
+                      statement: edit.statement,
+                      bodyHtml: edit.bodyHtml,
+                      bestehenderRumpf: ko.bodyHtml ?? null,
+                    })
+                  }
+                >
+                  {t("ko.propose.submit")}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  data-testid="bib-speichern"
+                  className="min-w-[12rem]"
+                  disabled={
+                    save.isPending ||
+                    appendDocument.isPending ||
+                    appendUnclear ||
+                    fehlendePflicht.length > 0
+                  }
+                  // JOB 4075: die Fassung, die beim Öffnen des Formulars dastand — nicht die, die
+                  // inzwischen geladen wurde. Genau daran erkennt der Dienst, ob jemand
+                  // dazwischengekommen ist.
+                  onClick={() =>
+                    save.mutate({ expectedVersion: edit.version, einordnung: edit.einordnung })
+                  }
+                >
+                  {t("ko.saveEdit")}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                data-testid="bib-bearbeiten-abbrechen"
+                onClick={bearbeitenBeenden}
+              >
+                {t("ko.cancelEdit")}
+              </Button>
+            </div>
+            {/* ==========================================================================
+                EDITOR-EINHEITLICH · WAS DER KNOPF BEWIRKT, STEHT DIREKT AM KNOPF.
+                ==========================================================================
+
+                Speichern legt eine neue Version an (`revise`: Version + 1, Status offen, Eintrag
+                im Verlauf, Vorfassung unter `/api/kos/:id/versions`); Einreichen legt einen
+                Vorschlag an und ändert den geltenden Eintrag noch nicht. Der Satz steht UNTER der
+                Leiste (Nacharbeit 6): er wechselt nach einer Sperre den Wortlaut und damit die
+                Höhe — über den Knöpfen hätte er sie verschoben. */}
+            <p data-testid="bib-wirkung" className="text-[12px] leading-relaxed text-muted">
+              {pruefwegAktiv
+                ? t("editoreinheitlich.wirkungEinreichen")
+                : edit.version === null
+                  ? t("editoreinheitlich.wirkungSpeichernOhneZahl")
+                  : t("editoreinheitlich.wirkungSpeichern", {
+                      neu: String(edit.version + 1),
+                      alt: String(edit.version),
+                    })}
+            </p>
+            {/* EDITOR-EINHEITLICH (K4): die nachträglich gemeldete Sperre — beide Sätze hier,
+                unter den Knöpfen, die an ihrer Stelle bleiben. Derselbe Wortlaut wie oben. */}
+            {sperreNachFehler ? (
+              <>
+                <p
+                  data-testid="bib-einreichen-pflicht"
+                  className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
+                >
+                  {t("ko.propose.mustReview")}
+                </p>
+                {pruefwegFelderSatz}
+              </>
+            ) : null}
+            {appendUnclear ? (
+              <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                {t("xtr.append.unclear")}
+              </div>
+            ) : null}
+            {/* JOB 4163: der SAMMELZWEIG des Speicherwegs, jetzt benennbar. Er bleibt für alles
+                Übrige unverändert (Netzabbruch vor dem ersten Aufruf, 500 am `revise` selbst) —
+                die Marke steht hier, damit ein Prüfstand belegen kann, dass Teilabbruch und
+                entzogenes Recht ihn NICHT mehr benutzen. */}
+            {err ? (
+              <div
+                data-testid="bib-speichern-fehler"
+                className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+              >
+                {err}
+              </div>
             ) : null}
             {/* ==========================================================================
                 JOB 4075 · DER KONFLIKT DES DIREKTEN SPEICHERWEGS — EIN SATZ, ZWEI WEGE.
@@ -2938,7 +3416,7 @@ export function BibliothekLesen({
                 an einer Stelle beantworten.
 
                 KEINE KNÖPFE BEIM TEILABBRUCH. Der Griff, der nachholt, ist der Speicherknopf
-                darunter — er steht schon da und trägt bereits die richtige Beschriftung. Ein
+                darüber (EDITOR-EINHEITLICH: die Leiste steht vor den Meldungen) — er steht schon da und trägt bereits die richtige Beschriftung. Ein
                 zweiter Knopf mit derselben Wirkung wäre die zweite Aussage über dieselbe
                 Tatsache. Beim entzogenen Recht steht gar kein Griff: es gibt keinen Weg, und
                 einen anzubieten wäre die Scheinfunktion. */}
@@ -3121,62 +3599,12 @@ export function BibliothekLesen({
                 ) : null}
               </div>
             ) : null}
-            <div className="flex gap-2">
-              {/* DER GRIFF WECHSELT MIT DEM WEG, UND ES GIBT IMMER GENAU EINEN.
-
-                  Wo der Einreichweg gilt, wird „Speichern" NICHT angeboten: der Server würde ihn
-                  abweisen (403 `PROPOSAL_REQUIRED`), und ein Knopf, der nur zu einer Absage führen
-                  kann, ist eine Scheinfunktion. Umgekehrt steht „Einreichen" nicht daneben, wo direkt
-                  gespeichert werden darf — sonst wäre die Pflicht aus Fall 2 eine Auswahl. */}
-              {pruefwegAktiv ? (
-                <Button
-                  variant="primary"
-                  data-testid="bib-einreichen"
-                  disabled={
-                    einreichen.isPending ||
-                    appendDocument.isPending ||
-                    appendUnclear ||
-                    edit.statement.trim().length === 0
-                  }
-                  onClick={() =>
-                    einreichen.mutate({
-                      baseVersion: ko.version,
-                      statement: edit.statement,
-                      bodyHtml: edit.bodyHtml,
-                      bestehenderRumpf: ko.bodyHtml ?? null,
-                    })
-                  }
-                >
-                  {t("ko.propose.submit")}
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  data-testid="bib-speichern"
-                  disabled={
-                    save.isPending ||
-                    appendDocument.isPending ||
-                    appendUnclear ||
-                    edit.title.trim().length === 0
-                  }
-                  // JOB 4075: die Fassung, die beim Öffnen des Formulars dastand — nicht die, die
-                  // inzwischen geladen wurde. Genau daran erkennt der Dienst, ob jemand
-                  // dazwischengekommen ist.
-                  onClick={() =>
-                    save.mutate({ expectedVersion: edit.version, einordnung: edit.einordnung })
-                  }
-                >
-                  {t("ko.saveEdit")}
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                data-testid="bib-bearbeiten-abbrechen"
-                onClick={bearbeitenBeenden}
-              >
-                {t("ko.cancelEdit")}
-              </Button>
-            </div>
+            {/* LESEN-INHALT-ZUERST: die Kenntnisnahme steht auch beim Bearbeiten NACH dem Inhalt.
+                EDITOR-EINHEITLICH (K4): die Aktionsleiste steht weiter oben VOR den Meldungen; diese
+                Flächen folgen ihr und den Meldungen und verschieben sie damit nicht. */}
+            {kenntnisnahmeFlaeche}
+            {veroeffentlichung}
+            {nachDemInhalt}
           </div>
         ) : (
           <>
@@ -3446,10 +3874,33 @@ export function BibliothekLesen({
             <h1
               data-testid="bib-titel"
               data-bib-text="titel"
-              className="text-[24px] font-[650] leading-[1.3] tracking-[-0.3px] text-text"
+              // LESEN-INHALT-ZUERST: lange zusammengesetzte Wörter trennen statt über den Rand zu
+              // laufen (Mobil, 390 px).
+              className="hyphens-auto break-words text-[24px] font-[650] leading-[1.3] tracking-[-0.3px] text-text"
             >
               {gelesen ? gelesen.title : ko.title}
             </h1>
+            {/* R-0326: die Lage der Belegstelle aus der Adresse. „markiert" wird nur angesagt (die
+                Hervorhebung im Text IST die Auskunft); fehlt der wörtliche Fund oder ist es eine
+                andere Fassung, steht es sichtbar da — markiert wird dann nichts. */}
+            {belegLage === "markiert" ? (
+              <output data-testid="bib-belegstelle-lage" data-lage="markiert" className="sr-only">
+                {t("lib.lesen.belegstelle.markiert")}
+              </output>
+            ) : belegLage === "nichtGefunden" || belegLage === "andereFassung" ? (
+              <output
+                data-testid="bib-belegstelle-lage"
+                data-lage={belegLage}
+                className="block text-[12.5px] text-trust-warn-text"
+              >
+                {belegLage === "nichtGefunden"
+                  ? t("lib.lesen.belegstelle.nichtGefunden")
+                  : t("lib.lesen.belegstelle.andereFassung", {
+                      fassung: belegFassung,
+                      aktuell: ko.version,
+                    })}
+              </output>
+            ) : null}
             {/* JOB 4145 · WIKI-ORIENTIERUNG — DIE GLIEDERUNG STEHT VOR DEM TEXT, DEN SIE ERSCHLIESST.
 
                 SIE STEHT IM DOM VOR `bib-text`, damit sie in der Tabulatorreihenfolge VOR dem
@@ -3472,7 +3923,15 @@ export function BibliothekLesen({
               ref={textKnotenSetzen}
               data-testid="bib-text"
               data-bib-text="text"
-              className="text-[15.5px] leading-[1.7] text-text"
+              // Klara 03: eine Markierung in diesem Text trägt Objekt, Fassung, Prüfstatus und
+              // Lesart dieses Augenblicks mit (`klara-vorschau/kontext.ts`, `herkunftFuer`) — ein
+              // späterer Seitenwechsel kann ihre Herkunft deshalb nicht umdeuten.
+              data-klara-objekt={ko.id}
+              data-klara-titel={ko.title}
+              data-klara-fassung={typeof ko.version === "number" ? ko.version : undefined}
+              data-klara-pruefstatus={ko.status === "validiert" ? "geprueft" : "ungeprueft"}
+              data-klara-lesart={gelesen ? "uebersetzung" : "original"}
+              className="hyphens-auto break-words text-[15.5px] leading-[1.7] text-text"
             >
               {/* JOB 3362: die übersetzte Lesart des FLIESSTEXTS. Die Bildergalerie darunter bleibt
                   dem Original vorbehalten: sie ist der Weg zum Bearbeiten der Bildunterschriften,
@@ -3481,13 +3940,14 @@ export function BibliothekLesen({
                   dieselbe Reihenfolge wie beim Original. */}
               {gelesen ? (
                 gelesen.bodyHtml ? (
-                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" />
+                  <SanitizedHtml html={gelesen.bodyHtml} className="prose-kw" lesehuellen />
                 ) : (
                   <p>{gelesen.statement}</p>
                 )
               ) : ko.bodyHtml ? (
                 <>
-                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" />
+                  {/* R-1160 / D-037: Scroll-Hülle breiter Tabellen als Element (SanitizedHtml). */}
+                  <SanitizedHtml html={ko.bodyHtml} className="prose-kw" lesehuellen />
                   <BodyImageGallery
                     bodyHtml={ko.bodyHtml}
                     onEditCaption={
@@ -3519,6 +3979,10 @@ export function BibliothekLesen({
                 </>
               ) : null}
             </div>
+            {/* R-1664/R-2179: der geführt erfasste Lerneffekt (nur, wenn er Angaben trägt). Bewusst
+                AUSSERHALB von `bib-text`: die Lesegliederung sammelt Überschriften aus diesem Knoten,
+                und die Lerneffekt-Überschrift ist kein Abschnitt des Fliesstexts. */}
+            <NegativwissenAnzeige angaben={ko.negativwissen} />
 
             {/* Chips: Quellen und Bilder. Die Zahl steht vorn, wie in der Vorlage („1 · Titel"). */}
             <div
@@ -3556,6 +4020,20 @@ export function BibliothekLesen({
                 Zustandsmodell steht an `Beziehungsbereich` oben. */}
             <Beziehungsbereich key={ko.id} koId={ko.id} />
 
+            {/* R-1656 „Du solltest auch wissen…": verwandte Einträge mit ihrem Grund — sichtbar
+                ohne Aufklappen, als Teil der Beziehungen direkt nach ihnen; ohne Empfehlung
+                zeichnet die Fläche nichts (`Wissensempfehlung.tsx`, Kopf). */}
+            <Wissensempfehlung key={`empfehlung-${ko.id}`} koId={ko.id} />
+
+            {/* LESEN-INHALT-ZUERST: die Kenntnisnahme nachgeordnet — nach Inhalt, Quellen und
+                Beziehungen, vor „Mehr". Ohne eigene Anforderung nur eine zugeklappte Zeile. */}
+            {kenntnisnahmeFlaeche}
+            {veroeffentlichung}
+
+            {/* LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Seitenmetadaten wie „Space und
+                Verantwortung" — nach dem Inhalt, vor „Mehr". */}
+            {nachDemInhalt}
+
             {/* Die EINE Zeile „Mehr" — dahinter die dreizehn Abschnitte, zugeklappt als Vorgabe. */}
             <div
               id={mehrId}
@@ -3575,7 +4053,11 @@ export function BibliothekLesen({
               </button>
               {mehrOffen ? (
                 <div className="border-t border-hairline-soft">
-                  <MehrAbschnitte ko={ko} sprungZiel={sprungZiel ?? undefined} />
+                  <MehrAbschnitte
+                    ko={ko}
+                    sprungZiel={sprungZiel ?? undefined}
+                    anfangsOffen={gemerkt?.abschnitte}
+                  />
                 </div>
               ) : null}
             </div>
