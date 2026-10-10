@@ -37,7 +37,9 @@ import { ANTWORT_MELDUNG_ACTION } from "../../services/ask";
 import {
   InMemoryLifecycleRepo,
   LifecycleService,
+  type MerkerErgebnis,
   REVALIDIERUNG_ANGEFORDERT,
+  type RevalidierungsAnlass,
 } from "../../services/lifecycle";
 
 type App = ReturnType<typeof buildApp>;
@@ -86,6 +88,29 @@ async function anlegen(app: App, wer: Konto, title: string, extra: Record<string
 
 async function aktion(app: App, wer: Konto, id: string, payload: Record<string, unknown>) {
   return app.inject({ method: "PUT", url: `/api/kos/${id}`, headers: wer.headers, payload });
+}
+
+/**
+ * Integration mit produkt:20261010:aenderungsfolgen-sichtbar (K5): eine offene Folgeprüfung wird
+ * nur mit dem ANGEZEIGTEN Stand und der angezeigten Fassung abgeschlossen — genau so, wie der
+ * Reiter „Erneut" sie aus `GET /api/lifecycle/folgepruefung` sendet.
+ */
+async function gebundenBestaetigen(app: App, wer: Konto, id: string) {
+  const liste = await app.inject({
+    method: "GET",
+    url: "/api/lifecycle/folgepruefung",
+    headers: wer.headers,
+  });
+  expect(liste.statusCode, liste.body).toBe(200);
+  const fall = (liste.json() as { koId: string; stand: number; version: number }[]).find(
+    (f) => f.koId === id,
+  );
+  expect(fall, "der offene Fall steht in der Folgeprüfungsübersicht").toBeDefined();
+  return aktion(app, wer, id, {
+    action: "revalidate",
+    stand: fall?.stand,
+    fassung: fall?.version,
+  });
 }
 
 async function setup() {
@@ -211,12 +236,12 @@ class AusfallRepo extends InMemoryLifecycleRepo {
     super();
   }
 
-  override async markPending(koId: string): Promise<void> {
+  override async markPending(koId: string, anlass?: RevalidierungsAnlass): Promise<MerkerErgebnis> {
     if (this.ausfaelle > 0) {
       this.ausfaelle -= 1;
       throw new Error("Fiktiv: Merkerablage nicht erreichbar");
     }
-    return super.markPending(koId);
+    return super.markPending(koId, anlass);
   }
 }
 
@@ -317,7 +342,10 @@ describe("ADMIN-10 · Z1/Z2 · eine Ansicht auf bestehende Vorgänge, jeder einm
       headers: a.admin.headers,
     });
     expect((pending.json() as string[]).filter((id) => id === reval)).toHaveLength(1);
-    expect(await belege(a.services, REVALIDIERUNG_ANGEFORDERT, reval)).toHaveLength(2);
+    // Integration mit produkt:20261010:aenderungsfolgen-sichtbar (K7): die zweite, identische
+    // Anforderung am offenen Fall ist dasselbe Signal — EIN Merker und EIN Beleg (keine doppelte
+    // Aufgabe, keine zweite Glockenmeldung).
+    expect(await belege(a.services, REVALIDIERUNG_ANGEFORDERT, reval)).toHaveLength(1);
 
     const k = eintrag(u, `konflikt:${konflikt.id}`);
     expect(anzahl(u, `konflikt:${konflikt.id}`)).toBe(1);
@@ -393,7 +421,7 @@ describe("ADMIN-10 · Z3/Z4 · Rückmeldung als Aufgabe, Abschluss am Ursprung",
     expect(eintrag(mitte, `revalidierung:${andere}`)?.zustand).toBe("offen");
 
     // Abschluss im bestehenden Arbeitsweg: „stimmt noch" am Objekt, durch die Autorin.
-    const abschluss = await aktion(a.app, a.autorin, ko, { action: "revalidate" });
+    const abschluss = await gebundenBestaetigen(a.app, a.autorin, ko);
     expect(abschluss.statusCode, abschluss.body).toBe(200);
 
     const nachher = await uebersicht(a);
@@ -570,7 +598,15 @@ describe("ADMIN-10 · Z7 · fehlende Datensignale erscheinen nicht als erledigt"
 
     // Die Bestätigung beginnt ZUERST (sie nimmt die Objektsperre sofort); die Übernahme startet,
     // solange die Revalidierung noch als laufend gelesen würde — genau Bens Überlappung.
-    const abschluss = a.services.lifecycle.confirmStillValid(ko, a.autorin.id);
+    // Gebunden an den angezeigten Stand und die angezeigte Fassung (aenderungsfolgen-sichtbar, K5).
+    const [offen] = await a.services.lifecycle.offeneFaelle([ko]);
+    const fassung = (await a.services.ko.get(ko))?.version;
+    const abschluss = a.services.lifecycle.confirmStillValid(
+      ko,
+      a.autorin.id,
+      offen?.stand,
+      fassung,
+    );
     const uebernahme = uebernimmRueckmeldung(deps, betrachter, filter, m);
     await abschluss;
     const ergebnis = await uebernahme;
@@ -601,7 +637,9 @@ describe("ADMIN-10 · Z7 · fehlende Datensignale erscheinen nicht als erledigt"
     expect(await uebernimmRueckmeldung(deps, betrachter, filter, m)).toMatchObject({
       art: "angehaengt",
     });
-    await a.services.lifecycle.confirmStillValid(ko, a.autorin.id);
+    const [offen] = await a.services.lifecycle.offeneFaelle([ko]);
+    const fassung = (await a.services.ko.get(ko))?.version;
+    await a.services.lifecycle.confirmStillValid(ko, a.autorin.id, offen?.stand, fassung);
     const u = await ladeQualitaetsaufgaben(deps, betrachter, filter);
     expect(eintrag(u, `revalidierung:${ko}`)).toBeUndefined();
     expect(eintrag(u, `rueckmeldung:${m}`)?.zustand).toBe("erledigt");
