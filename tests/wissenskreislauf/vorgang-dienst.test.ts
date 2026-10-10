@@ -16,6 +16,8 @@
 //   F — Wiederholungsfrage nutzt denselben gültigen Eintrag; trägt er nicht mehr, wird sie wieder
 //       eine Lücke (Wiederaufnahme).
 //   G — Rückfrage und Neuzuordnung über die Rollen.
+//   H — Überlappende Schritte am Lückendatensatz.
+//   I — Neue Fassung, Bewertung oder Neuzuordnung zwischen Fachprüfung und Schreiben des Abschlusses.
 import { describe, expect, it } from "vitest";
 import { AskService, type Gap, type GapRepo, InMemoryGapRepo } from "../../services/ask";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
@@ -79,12 +81,40 @@ async function buehne(opts: { now?: () => number } = {}) {
     audit,
   });
   const gaps = new HaltbareAblage();
+  // Ben, Nacharbeit 5: dieselbe Klammer am Fachprüfstand. `halteNachPruefstand(n)` lässt die n-te
+  // folgende Abfrage ihren Stand ERHEBEN und dann warten — das Fenster zwischen geprüftem Eintrag und
+  // Schreiben der Lücke, in dem eine neue Fassung, eine Bewertung oder eine Neuzuordnung landet.
+  let pruefstandHalt: { rest: number; gelesen: () => void; weiter: Promise<void> } | null = null;
+  const halteNachPruefstand = (n: number): { gelesen: Promise<void>; weiter: () => void } => {
+    let weiter: () => void = () => {};
+    let gelesen: () => void = () => {};
+    const weiterP = new Promise<void>((r) => {
+      weiter = r;
+    });
+    const gelesenP = new Promise<void>((r) => {
+      gelesen = r;
+    });
+    pruefstandHalt = { rest: n, gelesen, weiter: weiterP };
+    return { gelesen: gelesenP, weiter };
+  };
   const deps = {
     reasoner: new Reasoner(),
     koService,
     gaps,
     audit,
-    pruefstand: (koId: string, v: number) => validation.pruefstandFuer(koId, v),
+    pruefstand: async (koId: string, v: number) => {
+      const stand = await validation.pruefstandFuer(koId, v);
+      const halt = pruefstandHalt;
+      if (halt) {
+        halt.rest -= 1;
+        if (halt.rest === 0) {
+          pruefstandHalt = null;
+          halt.gelesen();
+          await halt.weiter;
+        }
+      }
+      return stand;
+    },
   };
   const ask = new AskService({ ...deps, ...(opts.now ? { now: opts.now } : {}) });
   // Ein Eintrag, dessen Wortlaut die Frage NICHT trägt — so bleibt die Frage für die Antwortsuche
@@ -107,7 +137,18 @@ async function buehne(opts: { now?: () => number } = {}) {
   };
   const frage = async (wer: string, sichtbar: (ko: KnowledgeObject) => boolean = ALLE) =>
     ask.ask(FRAGE, wer, "de", undefined, sichtbar);
-  return { ask, koService, validation, audit, gaps, antwort, freigeben, frage, deps };
+  return {
+    ask,
+    koService,
+    validation,
+    audit,
+    gaps,
+    antwort,
+    freigeben,
+    frage,
+    deps,
+    halteNachPruefstand,
+  };
 }
 
 const fachmann = { id: "fachmann", verwaltend: false, sichtbar: ALLE };
@@ -489,5 +530,122 @@ describe("H · überlappende Schritte verlieren nichts und öffnen nichts wieder
     const zu = await abschluss;
     expect(zu.weitereFragende).toEqual(["fritz"]);
     expect((await b.gaps.findById(id))?.status).toBe("geschlossen");
+  });
+});
+
+// ================================================================================================
+// I — ÄNDERUNGEN AM EINTRAG, AN DEN BEWERTUNGEN UND AN DER ZUORDNUNG WÄHREND DES ABSCHLUSSES
+// (Ben, Nacharbeit 5). Gehalten wird nach der Fachprüfabfrage und VOR dem Schreiben der Lücke. Vor der
+// Korrektur schloss die Lücke dann mit dem alten positiven Prüfstand bzw. durch die frühere
+// zuständige Person.
+// ================================================================================================
+describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", () => {
+  const geloesteMeldungen = async (b: Awaited<ReturnType<typeof buehne>>, wer: string) =>
+    (await b.ask.gapMeldungenFuer(wer, ALLE)).filter((m) => m.art === "geloest");
+
+  it("I1 eine rote Stimme im Fenster verhindert den Abschluss", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const halt = b.halteNachPruefstand(1);
+    const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    await b.validation.rate(b.antwort.id, "pruefer-rot", "down");
+    halt.weiter();
+    await expect(abschluss).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      gruende: expect.arrayContaining(["negative_bewertung"]),
+    });
+    const danach = await b.gaps.findById(id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.abschluss).toBeUndefined();
+    expect(danach?.koId).toBeUndefined();
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
+    expect(await geloesteMeldungen(b, "frida")).toEqual([]);
+  });
+
+  it("I2 eine neue Fassung im Fenster verhindert den Abschluss mit den alten Bewertungen", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const halt = b.halteNachPruefstand(1);
+    const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    await b.koService.revise(b.antwort.id, { statement: "Geänderte Anweisung." }, "fachmann");
+    halt.weiter();
+    await expect(abschluss).rejects.toMatchObject({
+      gruende: expect.arrayContaining(["bewertungen_fehlen"]),
+    });
+    expect((await b.gaps.findById(id))?.status).toBe("offen");
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
+    // Wiederholungsfrage: kein „gelöst" mit der ungeprüften Fassung — sie bleibt dieselbe offene Lücke.
+    const wieder = await b.frage("fritz");
+    expect(wieder.geloesteLuecke).toBeUndefined();
+    expect(wieder.gap?.id).toBe(id);
+  });
+
+  it("I3 Gegenprobe: bleibt der Eintrag nutzbar, wird vollständig neu geprüft und genau einmal abgeschlossen", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const halt = b.halteNachPruefstand(1);
+    const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    await b.validation.rate(b.antwort.id, "pruefer-zusatz", "up");
+    halt.weiter();
+    const zu = await abschluss;
+    expect(zu.status).toBe("geschlossen");
+    expect(zu.abschluss).toMatchObject({ art: "fachlich", koId: b.antwort.id, koVersion: 1 });
+    expect(await b.gaps.findById(id)).toEqual(zu);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+    expect(await geloesteMeldungen(b, "frida")).toHaveLength(1);
+  });
+
+  it("I4 nach einer Neuzuordnung im Fenster schliesst die frühere zuständige Person nicht ab", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.ask.assignGap(id, "fachmann", "vera");
+    await b.freigeben(b.antwort.id);
+    const halt = b.halteNachPruefstand(1);
+    const abschluss = b.ask.closeGapAlsBeteiligter(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    await b.ask.assignGap(id, "andere", "vera");
+    halt.weiter();
+    await expect(abschluss).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const danach = await b.gaps.findById(id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.assignee).toBe("andere");
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
+    // Ohne Halt ebenso: die frühere zuständige Person ist nicht mehr berechtigt.
+    await expect(b.ask.closeGapAlsBeteiligter(id, b.antwort.id, fachmann)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    // Gegenprobe: die neue zuständige Person und Verwaltende dürfen abschliessen.
+    const andere = { id: "andere", verwaltend: false, sichtbar: ALLE };
+    const zu = await b.ask.closeGapAlsBeteiligter(id, b.antwort.id, andere);
+    expect(zu.status).toBe("geschlossen");
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+  });
+
+  it("I5 Verwaltende behalten ihr Abschlussrecht auch bei einer Neuzuordnung im Fenster", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.ask.assignGap(id, "fachmann", "vera");
+    await b.freigeben(b.antwort.id);
+    const vera = { id: "vera", verwaltend: true, sichtbar: ALLE };
+    const halt = b.halteNachPruefstand(1);
+    const abschluss = b.ask.closeGapAlsBeteiligter(id, b.antwort.id, vera);
+    await halt.gelesen;
+    await b.ask.assignGap(id, "andere", "vera");
+    halt.weiter();
+    const zu = await abschluss;
+    expect(zu.status).toBe("geschlossen");
+    expect(zu.assignee).toBe("andere");
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
   });
 });

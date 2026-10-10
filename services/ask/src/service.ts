@@ -2376,10 +2376,27 @@ export class AskService {
   //
   // Ohne `sichtbar` (Systemaufruf ohne Betrachter) gilt die Sichtbarkeitsfrage als beantwortet — es
   // gibt keinen Menschen, dessen Recht zu prüfen wäre. Die Fachprüfung gilt trotzdem vollständig.
+  //
+  // Ben, Nacharbeit 5: Das Vergleichen-und-Setzen schützt nur den Lückendatensatz. Eintrag und
+  // Bewertungen liegen in anderen Ablagen und können sich zwischen Prüfung und Schreiben ändern
+  // (neue Fassung, rote Stimme). Deshalb läuft JEDER Schreibversuch so:
+  //   1. Lücke frisch lesen; Status, Entwurfsbezug und — bei `rolleVerlangt` — das Abschlussrecht
+  //      an der AKTUELLEN Zuordnung prüfen;
+  //   2. Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit frisch erheben;
+  //   3. schreiben, nur wenn die Lücke noch genau den gelesenen Stand hält;
+  //   4. Eintrag und Prüfstand NACH dem Schreiben noch einmal erheben. Weicht irgendetwas vom
+  //      geprüften Stand ab, wird der eigene Abschluss zurückgenommen und der Versuch beginnt bei 1 —
+  //      eine vollständige erneute Prüfung, die dann verweigert oder an der neuen Fassung abschliesst.
+  // Protokolliert wird erst, wenn Schritt 4 den geprüften Stand bestätigt hat.
   async closeGap(
     id: string,
     koId?: string,
-    beteiligter?: { readonly id: string; readonly sichtbar: (ko: KnowledgeObject) => boolean },
+    beteiligter?: {
+      readonly id: string;
+      readonly sichtbar: (ko: KnowledgeObject) => boolean;
+      readonly verwaltend?: boolean;
+    },
+    optionen: { readonly rolleVerlangt?: boolean } = {},
   ): Promise<Gap> {
     const gap = await this.require(id);
     const bezug = koId?.trim() || gap.koId?.trim();
@@ -2389,31 +2406,29 @@ export class AskService {
         "Eine Wissenslücke wird mit dem Wissensobjekt geschlossen, das sie beantwortet (koId).",
       );
     }
-    if (gap.status !== "offen") {
-      if (gap.abschluss?.art === "fachlich" && gap.abschluss.koId === bezug) {
-        return gap;
-      }
-      throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
-    }
-    const ko = await this.koService.get(bezug);
-    if (!ko) {
-      throw new AskError(
-        "BAD_REQUEST",
-        "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
-      );
-    }
-    const nutzbarkeit = await this.nutzbarkeitVon(ko, beteiligter?.sichtbar ?? (() => true));
-    if (!nutzbarkeit.nutzbar) {
-      throw new GapAbschlussVerweigert(nutzbarkeit.gruende);
-    }
+    const sichtbar = beteiligter?.sichtbar ?? (() => true);
     const von = aufruferBeschriftung(aufruferAus(beteiligter?.id));
-    const ergebnis = await this.aendereLuecke(id, (aktuell) => {
+    for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
+      const gelesen = await this.gaps.findById(id);
+      if (!gelesen) {
+        throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
+      }
+      const aktuell = withPriority(gelesen);
       if (aktuell.status !== "offen") {
         // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe.
         if (aktuell.abschluss?.art === "fachlich" && aktuell.abschluss.koId === bezug) {
-          return null;
+          return aktuell;
         }
         throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      // Ben, Nacharbeit 5: das Abschlussrecht an der Zuordnung, die JETZT gilt — nicht an der vom
+      // Anfang. Nach einer Neuzuordnung schliesst die frühere zuständige Person nicht mehr ab.
+      if (optionen.rolleVerlangt) {
+        this.verlangeZustaendigOderVerwaltend(aktuell, {
+          id: beteiligter?.id ?? "",
+          verwaltend: beteiligter?.verwaltend === true,
+          sichtbar,
+        });
       }
       // Ohne mitgeschickten Bezug trägt der verknüpfte Entwurf — er darf sich seit der Prüfung
       // nicht geändert haben, sonst schlösse ein ungeprüfter Eintrag.
@@ -2423,28 +2438,95 @@ export class AskService {
           "Der verknüpfte Antwortentwurf hat sich geändert — bitte erneut abschliessen.",
         );
       }
-      return {
-        ...aktuell,
-        status: "geschlossen",
+      const geprueft = await this.abschlussPruefung(bezug, sichtbar);
+      if (!geprueft.ko) {
+        throw new AskError(
+          "BAD_REQUEST",
+          "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
+        );
+      }
+      if (!geprueft.nutzbarkeit.nutzbar) {
+        throw new GapAbschlussVerweigert(geprueft.nutzbarkeit.gruende);
+      }
+      const abschluss = {
+        art: "fachlich" as const,
         koId: bezug,
-        abschluss: {
-          art: "fachlich",
-          koId: bezug,
-          koVersion: ko.version,
-          von,
-          at: new Date(this.now()).toISOString(),
-        },
+        koVersion: geprueft.ko.version,
+        von,
+        at: new Date(this.now()).toISOString(),
       };
-    });
-    if (ergebnis.geschrieben) {
+      const neu: Gap = { ...aktuell, status: "geschlossen", koId: bezug, abschluss };
+      if (!(await this.ersetzeWenn(gelesen, neu))) {
+        continue;
+      }
+      const bestaetigt = await this.abschlussPruefung(bezug, sichtbar);
+      if (bestaetigt.signatur !== geprueft.signatur) {
+        // Eintrag oder Prüfstand haben sich im Fenster geändert: dieser Abschluss beruht nicht auf
+        // dem, was jetzt gilt. Zurücknehmen und vollständig neu prüfen.
+        await this.nimmEigenenAbschlussZurueck(id, abschluss, aktuell.koId);
+        continue;
+      }
       await this.audit?.record({
         actor: von,
         action: "gap.closed",
         target: id,
-        payload: { koId: bezug, koVersion: ko.version },
+        payload: { koId: bezug, koVersion: geprueft.ko.version },
       });
+      return neu;
     }
-    return ergebnis.gap;
+    throw new AskError(
+      "CONFLICT",
+      "Die Wissenslücke oder ihr Wissenseintrag wurde gerade mehrfach geändert — der Abschluss wurde nicht ausgeführt.",
+    );
+  }
+
+  /**
+   * Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit — frisch erhoben, mit einer
+   * Signatur, an der `closeGap` erkennt, ob sich zwischen Prüfung und Schreiben etwas geändert hat
+   * (Fassung, Status, Stimmen, Nutzbarkeit samt Gründen).
+   */
+  private async abschlussPruefung(
+    koId: string,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<{
+    ko: KnowledgeObject | undefined;
+    nutzbarkeit: FachlicheNutzbarkeit;
+    signatur: string;
+  }> {
+    const ko = await this.koService.get(koId);
+    const stand = await this.pruefstandVon(ko);
+    const nutzbarkeit = await this.nutzbarkeitMit(ko, stand, sichtbar);
+    const signatur = JSON.stringify({
+      version: ko?.version ?? null,
+      status: ko?.status ?? null,
+      stand,
+      nutzbarkeit,
+    });
+    return { ko, nutzbarkeit, signatur };
+  }
+
+  /**
+   * Nimmt GENAU den eigenen, gerade geschriebenen Abschluss zurück — am aktuellen Stand, damit
+   * zwischenzeitliche Fragende und Zähler bleiben. Hat inzwischen etwas anderes die Lücke
+   * geschlossen, bleibt das unberührt.
+   */
+  private async nimmEigenenAbschlussZurueck(
+    id: string,
+    abschluss: NonNullable<Gap["abschluss"]>,
+    vorherKoId: string | undefined,
+  ): Promise<void> {
+    const eigener = JSON.stringify(abschluss);
+    await this.aendereLuecke(id, (aktuell) => {
+      if (aktuell.status !== "geschlossen" || JSON.stringify(aktuell.abschluss) !== eigener) {
+        return null;
+      }
+      const { abschluss: _zurueckgenommen, koId: _bezug, ...rest } = aktuell;
+      return {
+        ...rest,
+        status: "offen",
+        ...(vorherKoId !== undefined ? { koId: vorherKoId } : {}),
+      };
+    });
   }
 
   /**
@@ -2481,8 +2563,10 @@ export class AskService {
     koId: string | undefined,
     beteiligter: GapBeteiligter,
   ): Promise<Gap> {
+    // Früh abweisen, was schon jetzt nicht darf — massgeblich ist aber die Prüfung im Schreibschritt
+    // an der dann geltenden Zuordnung (Ben, Nacharbeit 5).
     this.verlangeZustaendigOderVerwaltend(await this.require(id), beteiligter);
-    return this.closeGap(id, koId, beteiligter);
+    return this.closeGap(id, koId, beteiligter, { rolleVerlangt: true });
   }
 
   /**
@@ -2807,10 +2891,24 @@ export class AskService {
     ko: KnowledgeObject | null | undefined,
     sichtbar: (ko: KnowledgeObject) => boolean,
   ): Promise<FachlicheNutzbarkeit> {
-    let stand: GapPruefstand | null = null;
-    if (ko && this.pruefstand) {
-      stand = await this.pruefstand(ko.id, ko.version).catch(() => null);
+    return this.nutzbarkeitMit(ko, await this.pruefstandVon(ko), sichtbar);
+  }
+
+  /** Der Fachprüfstand der Fassung dieses Objekts; nicht ermittelbar → `null` (fail-closed). */
+  private async pruefstandVon(
+    ko: KnowledgeObject | null | undefined,
+  ): Promise<GapPruefstand | null> {
+    if (!ko || !this.pruefstand) {
+      return null;
     }
+    return this.pruefstand(ko.id, ko.version).catch(() => null);
+  }
+
+  private async nutzbarkeitMit(
+    ko: KnowledgeObject | null | undefined,
+    stand: GapPruefstand | null,
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<FachlicheNutzbarkeit> {
     const gelernt = this.halbwertszeiten
       ? await this.halbwertszeiten().catch(() => undefined)
       : undefined;
