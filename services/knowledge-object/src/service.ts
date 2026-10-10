@@ -3518,7 +3518,7 @@ export class KoService {
     if (!next) {
       throw new KoError(
         "INVALID_OWNERSHIP",
-        "Ungültige Eigentümerangabe — erwartet werden owner, reviewers oder validators.",
+        "Ungültige Eigentümerangabe — erwartet werden owner, ownerRole, reviewers oder validators.",
       );
     }
     return this.mutateKo(id, (ko) => {
@@ -3537,9 +3537,11 @@ export class KoService {
               // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
               payload: {
                 owner: next.owner ?? null,
+                ownerRole: next.ownerRole ?? null,
                 reviewers: next.reviewers,
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
+                previousOwnerRole: previous?.ownerRole ?? null,
               },
             },
             tx,
@@ -3630,8 +3632,11 @@ export class KoService {
         return "konflikt";
       }
       const previous = ownershipOf(ko);
+      // gesamt-dokumenterzeugung (Integration): die verantwortliche ROLLE ist eine Funktion, keine
+      // Person — sie bleibt bei der Übergabe an eine andere Person erhalten (R-0337).
       const next: KnowledgeOwnership = {
         owner: nachfolger,
+        ...(previous?.ownerRole ? { ownerRole: previous.ownerRole } : {}),
         reviewers: previous?.reviewers ?? [],
         validators: previous?.validators ?? [],
       };
@@ -3646,9 +3651,11 @@ export class KoService {
               target: id,
               payload: {
                 owner: nachfolger,
+                ownerRole: next.ownerRole ?? null,
                 reviewers: next.reviewers,
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
+                previousOwnerRole: previous?.ownerRole ?? null,
                 ...(ko.deletedAt ? { imPapierkorb: true } : {}),
               },
             },

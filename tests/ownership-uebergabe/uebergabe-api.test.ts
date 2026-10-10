@@ -1163,3 +1163,37 @@ describe("Nacharbeit 6 · K5/K6 — Nachfolge bei Anlage: Vertraulichkeit und Sp
     await expect(lieferant([])(ohneSpace)).resolves.toBe("nora");
   });
 });
+
+// ================================================================================================
+// INTEGRATION gesamt-dokumenterzeugung — die verantwortliche ROLLE überlebt die Übergabe.
+// ================================================================================================
+
+describe("Integration gesamt-dokumenterzeugung · ownerRole bei der Übergabe", () => {
+  it("eine Übergabe an eine andere Person behält die verantwortliche Rolle und belegt sie", async () => {
+    const b = await buehne();
+    await b.services.ko.setOwnership(
+      b.ko.a1,
+      { owner: b.ids.paula, ownerRole: "Instandhaltungsleitung" },
+      b.ids.ada,
+    );
+    const res = await post(b, "/api/verantwortung/uebergabe", {
+      von: b.ids.paula,
+      zuteilung: [{ koId: b.ko.a1, an: b.ids.otto }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const nachher = await b.services.ko.get(b.ko.a1);
+    expect(nachher?.ownership?.owner).toBe(b.ids.otto);
+    expect(nachher?.ownership?.ownerRole, "die Rolle ist eine Funktion, keine Person").toBe(
+      "Instandhaltungsleitung",
+    );
+    const belege = (await b.services.audit.list()).filter(
+      (x) => x.action === "ko.ownership" && x.target === b.ko.a1,
+    );
+    expect(belege.at(-1)?.payload).toMatchObject({
+      owner: b.ids.otto,
+      ownerRole: "Instandhaltungsleitung",
+      previousOwner: b.ids.paula,
+      previousOwnerRole: "Instandhaltungsleitung",
+    });
+  });
+});
