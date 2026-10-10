@@ -143,6 +143,21 @@ const zeile = (wo: HTMLElement, testId: string, ereignis: string): HTMLElement |
   alle(wo, testId).find((z) => z.getAttribute("data-ereignis") === ereignis);
 const schreibend = () => aufrufe.filter((a) => a.methode !== "GET");
 
+/**
+ * Wartet, bis `finde` etwas liefert. Die eigenen Einstellungen fragt die Seite erst NACH den Regeln
+ * ab (zweite Abfrage) — ein fester Takt reicht dafür nicht immer.
+ */
+async function warteAuf<T>(finde: () => T | null | undefined, was: string): Promise<T> {
+  for (let i = 0; i < 40; i += 1) {
+    const treffer = finde();
+    if (treffer) {
+      return treffer;
+    }
+    await act(flush);
+  }
+  throw new Error(`nicht erschienen: ${was}`);
+}
+
 async function waehle(feld: HTMLSelectElement, wert: string): Promise<void> {
   await act(async () => {
     const setzer = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set;
@@ -248,11 +263,14 @@ describe("S1 · die Übersicht erklärt Ereignis, Zielgruppe, Kanäle, Häufigke
 describe("S2 · die eigene Abwahl — gespeichert, nach dem Neuladen gesetzt", () => {
   it("normal abwählen; die verbindliche Kenntnisnahme ist gesperrt", async () => {
     let seite = await montieren(veraToken);
-    const kn = zeile(seite, "kommunikation-meine-zeile", "kenntnisnahme");
-    const knFeld = kn?.querySelector<HTMLInputElement>("input");
+    const kn = await warteAuf(
+      () => zeile(seite, "kommunikation-meine-zeile", "kenntnisnahme"),
+      "eigene Einstellung Kenntnisnahme",
+    );
+    const knFeld = kn.querySelector<HTMLInputElement>("input");
     expect(knFeld?.checked).toBe(true);
     expect(knFeld?.disabled).toBe(true);
-    expect(kn?.textContent).toContain("verbindlich — muss bestätigt werden");
+    expect(kn.textContent).toContain("verbindlich — muss bestätigt werden");
 
     const normal = zeile(seite, "kommunikation-meine-zeile", "veroeffentlichung");
     const feld = normal?.querySelector<HTMLInputElement>("input");
@@ -270,8 +288,12 @@ describe("S2 · die eigene Abwahl — gespeichert, nach dem Neuladen gesetzt", (
     expect(el(seite, "kommunikation-meine-gespeichert")?.textContent).toBe("Gespeichert.");
 
     seite = await montieren(veraToken);
-    const danach = zeile(seite, "kommunikation-meine-zeile", "veroeffentlichung");
-    expect(danach?.querySelector<HTMLInputElement>("input")?.checked).toBe(false);
+    const neu = seite;
+    const danach = await warteAuf(
+      () => zeile(neu, "kommunikation-meine-zeile", "veroeffentlichung"),
+      "eigene Einstellung nach dem Neuladen",
+    );
+    expect(danach.querySelector<HTMLInputElement>("input")?.checked).toBe(false);
   });
 });
 

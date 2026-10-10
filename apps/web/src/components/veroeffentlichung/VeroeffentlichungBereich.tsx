@@ -83,6 +83,10 @@ function Zustellstatus({ koId, vermerkId }: { koId: string; vermerkId: string })
     queryKey: schluessel,
     queryFn: () => veroeffentlichungApi.zustellung(koId, vermerkId),
     enabled: offen,
+    // Der Status ändert sich, während die Fläche offen ist (Abruf der Glocke, Lesen, Bestätigen).
+    // Jedes Aufklappen liest deshalb frisch — nicht den bis zu 30 s alten Stand (`main.tsx`).
+    staleTime: 0,
+    refetchOnMount: "always",
     retry: false,
   });
   const fortsetzen = useMutation({

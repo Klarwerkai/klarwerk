@@ -62,3 +62,13 @@ geschrieben, nicht ausgeführt (keine Testausführung erlaubt). Ausgeführt werd
   Die Unterbrechung ist im Servertest **simuliert** (Zeilen ohne Versand angelegt).
 * Veröffentlichungen **vor** ADMIN-12 haben keinen Zustellstatus (die Fläche sagt das).
 * Keine echte Nutzerbeobachtung, ob die Erklärungen verstanden werden.
+
+## Nacharbeit 1 (Kandidat `dee18326`)
+
+* Zustellstatus las beim Wiederaufklappen den 30-s-Zwischenspeicher und blieb nach dem Lesen auf
+  „zugestellt" stehen — jetzt frische Abfrage je Aufklappen. Gegenprobe:
+  `zustellstatus-mounted.test.tsx` (Betriebswerte des Zwischenspeichers).
+* `seite-mounted.test.tsx` S2 wartet auf die zweite Abfrage der eigenen Einstellungen.
+* Komponenten-Pin `mega84`: gemessen 637 (statt gerechnet 612).
+* Rote Inventarfälle mit ausschließlich fremden Basisbeständen sind nicht Teil dieses Auftrags und
+  nicht angefasst.

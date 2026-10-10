@@ -2912,8 +2912,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Editor; `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 612 ist GERECHNET (606 + 6),
     // nicht gemessen — dieser Lauf durfte keine Tests ausführen. Weicht die Messung ab, gehört die
     // gemessene Zahl hierher.
+    //
+    // ADMIN-12 Nacharbeit 1: GEMESSEN 637. Am Kandidaten dee18326 meldete der Sammler wörtlich
+    // „gemessen: 637 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 804 Quelldateien … expected
+    // { komponenten: 637, … } to deeply equal { komponenten: 612, … }". Die 612 war gerechnet
+    // (606 + 6 dieses Auftrags); die 25 Komponenten darüber kamen mit dem Basisstand und sind ohne
+    // Git-Verlauf an diesem Arbeitsbaum nicht namentlich bestimmt. Seitdem hat dieser Auftrag keine
+    // Komponente hinzugefügt oder entfernt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 612,
+      komponenten: 637,
       anbieter: 1,
       traeger: 2,
     });
