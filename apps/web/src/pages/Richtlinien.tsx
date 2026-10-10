@@ -14,6 +14,7 @@ import { type MeineRichtlinie, unternehmenApi } from "../api/unternehmen";
 import { Button, Card, PageHeader } from "../components/ui";
 import { UnternehmensKopf } from "../components/unternehmen/UnternehmensKopf";
 import { LEGAL_PATHS } from "../legal/LegalPages";
+import { formatKoTimestamp } from "../lib/koDates";
 
 function fehlerSchluessel(fehler: unknown): string {
   if (fehler instanceof ApiError) {
@@ -60,7 +61,7 @@ function Handlungsbereich({ r }: { r: MeineRichtlinie }): JSX.Element {
             ? "unternehmen.richtlinien.zugestimmtAm"
             : "unternehmen.richtlinien.kenntnisAm",
           {
-            zeit: new Date(r.meineHandlung.am).toLocaleString(i18n.language),
+            zeit: formatKoTimestamp(r.meineHandlung.am, i18n.language) ?? "—",
             fassung: r.meineHandlung.fassung,
           },
         )}
