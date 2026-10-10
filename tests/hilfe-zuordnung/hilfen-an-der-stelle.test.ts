@@ -121,7 +121,10 @@ const DETAILSEITE_DATEIEN = ["apps/web/src/pages/KnowledgeDetail.tsx", ...DETAIL
 const STUFE2 = "apps/web/src/pages/Stufe2.tsx";
 const ABSCHNITTE: readonly (readonly [string, string, string])[] = [
   ["apps/web/src/pages/Analytics.tsx", "ana.byType", "shelp.ana.byType"],
-  ["apps/web/src/pages/Analytics.tsx", "ana.weekly", "shelp.ana.weekly"],
+  // ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): der Abschnitt „ana.weekly“ ist entfallen.
+  // Er gruppierte heute validierte Objekte nach ihrer ERSTELLUNGSwoche und gab das als Verlauf der
+  // Freigaben aus — ein rückwirkender Trend aus nicht erhobenen Ereignissen. Ohne Fläche gibt es
+  // keine Erklärung an der Stelle mehr zu prüfen.
   ["apps/web/src/pages/Ask.tsx", "ask.steps", "shelp.ask.steps"],
   [
     "apps/web/src/components/CaptureDraftList.tsx",

@@ -437,6 +437,8 @@ import {
 } from "./routes/verzeichnis-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
+// ADMIN-11: Wissenskennzahlen mit Grundmenge, Datenstand und Weg in die Arbeitsliste.
+import { wissenskennzahlenRoutes } from "./routes/wissenskennzahlen-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -4556,6 +4558,25 @@ export function buildApp(
         audit: services.audit,
         konten: () => services.auth.listUsers(),
         spaces: services.spaces,
+      },
+      guards,
+    ),
+  );
+  // ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): Kennzahlen auf denselben Quellen wie
+  // ADMIN-10 plus Frageprotokoll und Lücken — keine neue Erhebung, keine zweite Ablage.
+  app.register(
+    wissenskennzahlenRoutes(
+      {
+        ko: services.ko,
+        validation: services.validation,
+        lifecycle: services.lifecycle,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        ask: services.ask,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        spaces: services.spaces,
+        teams: services.teams,
       },
       guards,
     ),
