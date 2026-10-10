@@ -379,6 +379,14 @@ describe("B5 · PV-04-03 eigener Vorgang des Melders, zulässiger Kontext je Rol
     expect(JSON.stringify(fuerMelda)).not.toContain(GRUND_MELVIN);
     expect(JSON.stringify(fuerMelda)).not.toContain("melvin");
 
+    // Gegenprobe: der zweite Melder (zusammengeführt) sieht ebenso nur seine eigene Meldung.
+    const fuerMelvin = await b.ask.gapVorgang(id, melvin);
+    expect(fuerMelvin.rollen).toEqual(["fragend"]);
+    expect(fuerMelvin.beanstandung?.eigeneMeldungen.map((m) => m.begruendung)).toEqual([
+      GRUND_MELVIN,
+    ]);
+    expect(JSON.stringify(fuerMelvin)).not.toContain(GRUND_MELDA);
+
     const fuerFachmann = await b.ask.gapVorgang(id, fachmann);
     expect(fuerFachmann.rollen).toEqual(["zustaendig"]);
     expect(fuerFachmann.beanstandung?.aussage).toBe(erste.a.text);
