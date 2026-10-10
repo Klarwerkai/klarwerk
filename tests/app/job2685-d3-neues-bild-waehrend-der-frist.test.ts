@@ -20,7 +20,6 @@ import {
   buildApp,
   inMemoryRepos,
 } from "../../services/app/src/build-app";
-import { klassifiziereStufe } from "../../services/app/src/migrationsbeleg";
 import {
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
@@ -37,6 +36,7 @@ import {
   KO_SCHREIBSTAND_LESEN_SQL,
   KO_SCHREIBSTAND_TABELLE_DDL,
 } from "../../services/knowledge-object/src/repo-pg";
+import { klassifiziereStufe } from "../support/migrationsmodell";
 
 type App = ReturnType<typeof buildApp>;
 type Auth = { authorization: string };

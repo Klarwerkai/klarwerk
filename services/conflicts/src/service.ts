@@ -89,6 +89,16 @@ function entscheidungsBeleg(
   return { koIds: [conflict.koA, conflict.koB], resolutionReason };
 }
 
+// R-1662: hat ein Mensch diesen Konflikt abgeschlossen — entschieden oder als Fehlalarm? Genau die
+// zwei Ausgänge, die `entscheidungsBeleg` protokolliert. Altbestand ohne Grund: nur mit einem
+// benannten Entscheider, der nicht das System ist.
+function menschlichAbgeschlossen(c: Conflict): boolean {
+  if (c.resolutionReason !== undefined) {
+    return c.resolutionReason === "decided" || c.resolutionReason === "dismissed";
+  }
+  return typeof c.decidedBy === "string" && c.decidedBy.length > 0 && c.decidedBy !== "system";
+}
+
 /**
  * R-0263: die Wahl des Menschen gegen GENAU diesen Konflikt prüfen und als Beziehung ablegen.
  * `gilt` muss eine der beiden Seiten sein — ein Vorrang über einen dritten Punkt oder ein ganzes
@@ -470,6 +480,9 @@ export class ConflictService {
     if (ranked.length === 0) {
       return [];
     }
+    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): dass ein menschlich geschlossenes Paar bei
+    // unveränderten Fassungen nicht neu angelegt wird, leistet `menschlichAbgeschlossen` (R-1105)
+    // unten — hier bleibt `open` die Menge der ungelösten Konflikte.
     const alle = await this.repo.all();
     const open = alle.filter((c) => c.status !== "geloest");
     // D-AISTATE PAKET 4 (bens V5): Paar-Dedupe nur für die AKTUELLE Versionskombination. Ein Befund zu
@@ -866,6 +879,25 @@ export class ConflictService {
   // das Protokoll, das diese Kennungen ohnehin als Ziel führt.
   async idsForKo(koId: string): Promise<string[]> {
     return (await this.repo.all()).filter((c) => c.koA === koId || c.koB === koId).map((c) => c.id);
+  }
+
+  // R-1662 (geführter Weg vom Problem zur Lösung, Prüfpunkt 5 „gelöste Konflikte"): die von einem
+  // MENSCHEN abgeschlossenen Konflikte, an denen eines der genannten Objekte beteiligt ist. Ein
+  // systemischer Abschluss (`superseded`, `participant_deleted`, `withdrawn`, `edited_no_conflict`)
+  // ist keine fachliche Lösung und bleibt draussen. Altbestand ohne `resolutionReason` zählt nur mit
+  // einem benannten Entscheider. Kein Versionsfilter: ein gelöster Befund ist ein Grabstein und
+  // bleibt lesbar (s. `get`). Die Sichtbarkeit zieht die Route (`sichtbarePaare`).
+  async geloesteFuer(koIds: readonly string[]): Promise<Conflict[]> {
+    const gesucht = new Set(koIds);
+    if (gesucht.size === 0) {
+      return [];
+    }
+    return (await this.repo.all()).filter(
+      (c) =>
+        c.status === "geloest" &&
+        (gesucht.has(c.koA) || gesucht.has(c.koB)) &&
+        menschlichAbgeschlossen(c),
+    );
   }
 
   // R-0263: die festgelegten Vorrang-Beziehungen, an denen dieser Punkt beteiligt ist — aus den

@@ -17,9 +17,11 @@ import type {
   ReasonerProbeResult,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { BetreiberKarte } from "../components/BetreiberKarte";
 // JOB 3863: der EINE Weg in die Seitenhilfe des Zahnrads — `HelpTip` rendert nichts, er meldet
 // Titel und Text beim Sammler an (`shell/SeitenhilfeContext.tsx`). Derselbe Weg wie bei den vier
 // Karten aus JOB 3670; das „?"-Menü der Karte (`hilfe`-Prop unten) bleibt davon unberührt.
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
@@ -35,7 +37,7 @@ import {
 // AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
 import { invalidateAiState } from "../lib/aiStateInvalidate";
 import { type KiTestArt, type KiTestBefund, kiTestBefund } from "../lib/kiTestBefund";
-import { parseNeededValidations } from "../lib/reviewerMinimum";
+import { isNeededValidationsValid, parseNeededValidations } from "../lib/reviewerMinimum";
 import { maxRawAttachmentMb } from "../lib/uploadLimits";
 
 // KI-Verwaltung v1 (Pedi 02.07.): Zuordnung global + je Aufgabe.
@@ -81,6 +83,14 @@ const ACCESS_STATE_TONE: Record<AiAccessState, string> = {
 /** Die Auswahlwerte in Anzeige-Reihenfolge — die beiden Anbieter zwischen Auto und Intern. */
 const ANBIETER_WAHL: readonly ReasonerCloudAnbieter[] = ["openai", "anthropic"];
 
+/**
+ * R-1169: das Ergebnis der beiden Selbsttests stand als „OK"/„FAIL" hart im Code und blieb in jeder
+ * Sprache englisch. Der Wortlaut kommt jetzt aus `texte/beschriftung.ts`.
+ */
+function okKey(ok: boolean): string {
+  return ok ? "beschriftung.selbsttest.ok" : "beschriftung.selbsttest.fehler";
+}
+
 /** Ein Zuordnungs-Entwurf gleicht dem gesendeten, wenn er dieselben Einträge trägt. */
 function gleichePerTask(a: Record<string, string>, b: Record<string, string>): boolean {
   const ka = Object.keys(a).sort();
@@ -95,10 +105,6 @@ function gleichePerTask(a: Record<string, string>, b: Record<string, string>): b
 function WahlOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element {
   const { t } = useTranslation();
   const autoName = konfig.autoAnbieter ? anbieterName(konfig.autoAnbieter) : null;
-  // Älterer Server ohne `cloudProviders`: nur der EINE genannte Cloud-Client ist bekannt.
-  const genannt = konfig.cloudConfigured
-    ? anbieterAusClientName(konfig.model ?? konfig.provider)
-    : undefined;
   return (
     <>
       <option value="auto">
@@ -106,6 +112,36 @@ function WahlOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element
           ? `${t("adm.ai.choice.auto")} — ${t("adm.ai.choice.autoMit", { name: autoName })}`
           : t("adm.ai.choice.auto")}
       </option>
+      <ModellOptionen konfig={konfig} />
+      <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
+    </>
+  );
+}
+
+/**
+ * R-0305/R-1099: die Optionen für das Modell der Zweitmeinung — „aus" und die echten Modelle.
+ * Kein „Auto" (der Empfänger soll ausdrücklich gewählt sein) und kein „deterministisch" (der Ersatz
+ * ist kein zweites Modell). Die Modelle kommen aus DERSELBEN Liste wie bei der Zuordnung.
+ */
+function ZweitmeinungOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <>
+      <option value="aus">{t("zweitmeinung.admin.aus")}</option>
+      <ModellOptionen konfig={konfig} />
+    </>
+  );
+}
+
+/** Die externen Anbieter und das lokale Modell — gemeinsam für Zuordnung und Zweitmeinung. */
+function ModellOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element {
+  const { t } = useTranslation();
+  // Älterer Server ohne `cloudProviders`: nur der EINE genannte Cloud-Client ist bekannt.
+  const genannt = konfig.cloudConfigured
+    ? anbieterAusClientName(konfig.model ?? konfig.provider)
+    : undefined;
+  return (
+    <>
       {ANBIETER_WAHL.map((anbieter) => {
         const status = konfig.cloudProviders?.[anbieter];
         const eingerichtet = status ? status.configured : genannt === anbieter;
@@ -133,7 +169,6 @@ function WahlOptionen({ konfig }: { konfig: ReasonerConfigStatus }): JSX.Element
           {t("adm.ai.choice.localUnavailable")}
         </option>
       )}
-      <option value="deterministic">{t("adm.ai.choice.deterministic")}</option>
     </>
   );
 }
@@ -383,10 +418,36 @@ interface KiStand {
   readonly global: string;
   readonly perTask: Record<string, string>;
   readonly freigabe: KiFreigabeStand;
+  // R-0305/R-1099: das Modell der Zweitmeinung — oder „aus". Gehört aus demselben Grund zum Stand
+  // wie die Freigabe: es wird über denselben Schreibweg gesetzt.
+  readonly zweitmeinung: string;
+}
+
+/** R-0305/R-1099: die gültigen Wahlen der Zweitmeinung — alles andere liest die Karte als „aus". */
+const ZWEITMEINUNG_WAHLEN = ["openai", "anthropic", "local"] as const;
+
+/**
+ * R-0305/R-1099: die Wahl der Zweitmeinung aus einer Serverantwort. Gelesen aus `unknown` wie die
+ * Freigabe (`freigabeAus`): ein älterer Server schickt das Feld nicht, und das heißt „aus".
+ */
+function zweitmeinungAus(konfig: ReasonerConfigStatus | undefined): string {
+  const taskConfig: Record<string, unknown> | undefined = konfig?.taskConfig;
+  const roh = taskConfig?.zweitmeinung;
+  return ZWEITMEINUNG_WAHLEN.find((wahl) => wahl === roh) ?? "aus";
 }
 
 /** Eine stabile leere Zuordnung — sonst bekäme jeder Rendergang ein neues Objekt. */
 const KEINE_AUFGABEN: Record<string, string> = {};
+
+/**
+ * DIE EINE SCHREIBSTELLE der Karte neben `endpoints.reasoner.updateConfig` — für die Freigabe
+ * (JOB 3783) und die Wahl der Zweitmeinung (R-0305/R-1099). Beide gehen über denselben Adminweg;
+ * eine zweite Abschrift desselben `put` wäre ein zweiter Schreibweg im Quelltext
+ * (`tests/admin-ki-oberflaeche/freigabe-texte-und-einziger-weg.test.tsx`, W1).
+ */
+function konfigSchreiben(rumpf: Record<string, unknown>): Promise<ReasonerConfigStatus> {
+  return api.put<ReasonerConfigStatus>("/reasoner/config", rumpf);
+}
 
 /**
  * Die Freigabe aus einer Serverantwort — „nur `true` zählt", wortgleich zur Lesart des Servers
@@ -414,6 +475,7 @@ function standAus(konfig: ReasonerConfigStatus | undefined): KiStand {
     global: konfig?.taskConfig.global ?? "auto",
     perTask: konfig?.taskConfig.perTask ?? KEINE_AUFGABEN,
     freigabe: freigabeAus(konfig),
+    zweitmeinung: zweitmeinungAus(konfig),
   };
 }
 
@@ -441,7 +503,8 @@ function gleicherStand(a: KiStand, b: KiStand): boolean {
   return (
     a.global === b.global &&
     gleichePerTask(a.perTask, b.perTask) &&
-    gleicheFreigabe(a.freigabe, b.freigabe)
+    gleicheFreigabe(a.freigabe, b.freigabe) &&
+    a.zweitmeinung === b.zweitmeinung
   );
 }
 
@@ -645,7 +708,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
   // Zielpfaden dieses Auftrags. Sein Platz dort steht in der Rückgabe unter ABWEICHUNGEN.
   const freigabeSpeichern = useMutation({
     mutationFn: (auftrag: { naechste: KiFreigabeStand; nummer: number }) =>
-      api.put<ReasonerConfigStatus>("/reasoner/config", {
+      konfigSchreiben({
         // Die BESTÄTIGTE Zuordnung, nicht der Entwurf: ein Klick auf einen Freigabeschalter darf
         // keine ungespeicherte Anbieterwahl nebenbei übernehmen — und keine gespeicherte verlieren.
         // RUNDE 2: `basis` ist hier verlässlich, weil der Kanal frei war — es kann kein Schreiben
@@ -688,13 +751,45 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
     }
     freigabeSpeichern.mutate({ naechste, nummer });
   };
+  // R-0305/R-1099: die Wahl des Zweitmodells — DERSELBE Adminweg, derselbe Kanal, dieselbe
+  // Nummernfolge wie Zuordnung und Freigabe (Zusagen A und B oben); kein dritter Schreiber. Mit
+  // geht die BESTÄTIGTE Zuordnung; die Freigabe bleibt weg und damit unverändert (Vertrag §3).
+  // „aus" wird als `null` geschrieben — Weglassen hieße am Server „unverändert".
+  const zweitmeinungSpeichern = useMutation({
+    mutationFn: (auftrag: { wahl: string; nummer: number }) =>
+      konfigSchreiben({
+        global: basis.global,
+        perTask: basis.perTask,
+        zweitmeinung: auftrag.wahl === "aus" ? null : auftrag.wahl,
+      }),
+    onSuccess: (antwort, auftrag) => {
+      kanalFreigeben(auftrag.nummer);
+      uebernehmen(antwort, auftrag.nummer);
+      void qc.invalidateQueries({ queryKey: ["reasonerConfig"] });
+      invalidateAiState(qc);
+      push("success", t("zweitmeinung.admin.gespeichert"));
+    },
+    // 409 (ENV-Sperre), 503 (nicht protokollierbar), 400: die Wahl hat NICHT gewechselt.
+    onError: (e, auftrag) => {
+      kanalFreigeben(auftrag.nummer);
+      push("error", e instanceof ApiError ? e.message : t("state.error"));
+    },
+  });
+  const zweitmeinungWaehlen = (wahl: string): void => {
+    const nummer = schreibnummer();
+    if (nummer === null) {
+      return;
+    }
+    zweitmeinungSpeichern.mutate({ wahl, nummer });
+  };
   // Gescheitertes Nachladen heißt: die Karte kennt den geltenden Stand nicht mehr sicher. Dann wird
   // nicht geraten, sondern gesperrt (Auftrag §7c) — die Hülle hält die Daten daneben sichtbar.
   const nachladenGescheitert = aiConfig.isError;
   // RUNDE 2 (BEN: „Beide Mutationen können gleichzeitig laufen."): solange IRGENDEIN Schreiben auf
   // `reasoner.config` unterwegs ist, ist der geltende Stand offen — dann sperren Freigabe und
   // Zuordnung einander, nicht nur sich selbst.
-  const schreibenLaeuft = aiSave.isPending || freigabeSpeichern.isPending;
+  const schreibenLaeuft =
+    aiSave.isPending || freigabeSpeichern.isPending || zweitmeinungSpeichern.isPending;
   const schalterGesperrt = gesperrt || schreibenLaeuft || nachladenGescheitert;
   /** Der lesbare Name eines Auswahlwerts — für Hinweise neben dem Feld. */
   const wahlName = (wahl: string): string => {
@@ -845,7 +940,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 }`}
               >
                 <p className="font-semibold">
-                  {conflictSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.conflictSelfTest.label")}:{" "}
+                  {t(okKey(conflictSelfTest.data.ok))} · {t("adm.conflictSelfTest.label")}:{" "}
                   {t(conflictSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
@@ -878,7 +973,7 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 }`}
               >
                 <p className="font-semibold">
-                  {dupSelfTest.data.ok ? "OK" : "FAIL"} · {t("adm.dupSelfTest.label")}:{" "}
+                  {t(okKey(dupSelfTest.data.ok))} · {t("adm.dupSelfTest.label")}:{" "}
                   {t(dupSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
@@ -1031,6 +1126,37 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                 >
                   {freigabeSpeichern.error instanceof ApiError
                     ? freigabeSpeichern.error.message
+                    : t("state.error")}
+                </p>
+              ) : null}
+            </div>
+            {/* R-0305/R-1099: DAS MODELL DER ZWEITMEINUNG. Gespeist aus `basis` (dem bestätigten
+              Stand), geschrieben über denselben Kanal wie Zuordnung und Freigabe. Ohne Wahl gibt es
+              keine Zweitmeinung und damit keinen zweiten Empfänger. */}
+            <div className="space-y-1.5 border-t border-hairline pt-2.5">
+              <p className="text-[12.5px] font-semibold text-text">
+                {t("zweitmeinung.admin.titel")}
+              </p>
+              <p className="text-[12px] text-muted-2">{t("zweitmeinung.admin.text")}</p>
+              <label className="block text-[11.5px] font-semibold text-muted">
+                {t("zweitmeinung.admin.label")}
+                <select
+                  data-testid="ki-zweitmeinung"
+                  value={basis.zweitmeinung}
+                  disabled={schalterGesperrt}
+                  onChange={(e) => zweitmeinungWaehlen(e.target.value)}
+                  className="mt-1 h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] font-normal text-text disabled:opacity-60"
+                >
+                  <ZweitmeinungOptionen konfig={konfig} />
+                </select>
+              </label>
+              {zweitmeinungSpeichern.isError ? (
+                <p
+                  data-testid="ki-zweitmeinung-fehler"
+                  className="rounded-btn bg-trust-crit-bg px-2.5 py-1.5 text-[12px] text-trust-crit-text"
+                >
+                  {zweitmeinungSpeichern.error instanceof ApiError
+                    ? zweitmeinungSpeichern.error.message
                     : t("state.error")}
                 </p>
               ) : null}
@@ -1211,26 +1337,31 @@ export function KiZugaengeDetail({ onZurueck }: { onZurueck: () => void }): JSX.
     >
       <Abfragehuelle abfrage={aiConfig}>
         {(konfig) => (
-          <ul className="space-y-2">
-            {aiAccessRows(konfig).map((row) => (
-              <li
-                key={row.id}
-                className="flex flex-wrap items-center gap-2 rounded-card border border-hairline p-2.5"
-              >
-                <span className="text-[13px] font-semibold text-text">
-                  {t(`adm.ai.access.${row.id}`)}
-                </span>
-                {row.detail ? (
-                  <span className="font-mono text-[11px] text-muted-2">{row.detail}</span>
-                ) : null}
-                <span
-                  className={`ml-auto rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${ACCESS_STATE_TONE[row.state]}`}
+          <>
+            <ul className="space-y-2">
+              {aiAccessRows(konfig).map((row) => (
+                <li
+                  key={row.id}
+                  className="flex flex-wrap items-center gap-2 rounded-card border border-hairline p-2.5"
                 >
-                  {t(`adm.ai.state.${row.state}`)}
-                </span>
-              </li>
-            ))}
-          </ul>
+                  <span className="text-[13px] font-semibold text-text">
+                    {t(`adm.ai.access.${row.id}`)}
+                  </span>
+                  {row.detail ? (
+                    <span className="font-mono text-[11px] text-muted-2">{row.detail}</span>
+                  ) : null}
+                  <span
+                    className={`ml-auto rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${ACCESS_STATE_TONE[row.state]}`}
+                  >
+                    {t(`adm.ai.state.${row.state}`)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {/* R-0299: wer das antwortende Modell betreibt und bis wann sein Wissen reicht. Ein
+                älterer Server ohne das Feld bekommt keine Karte statt einer geratenen. */}
+            {konfig.betreiber ? <BetreiberKarte karte={konfig.betreiber} /> : null}
+          </>
         )}
       </Abfragehuelle>
       <p className="text-[11px] text-muted-2">{t("adm.ai.accessNote")}</p>
@@ -1285,7 +1416,10 @@ export function KiFunktionenDetail({ onZurueck }: { onZurueck: () => void }): JS
         {() => (
           <>
             {effPresets.length === 0 ? (
-              <p className="text-[12.5px] text-muted-2">{t("adm.presets.empty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">{t("adm.presets.empty")}</p>
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
             ) : (
               <ul className="space-y-2">
                 {effPresets.map((p, i) => (
@@ -1381,10 +1515,12 @@ export function KiGrenzenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
   });
   // E2E-005 / bens Auflage D4: EXAKT derselbe Vertrag wie der Server — eine ECHTE ganze Zahl 1–5.
   // (`Number.parseInt` nahm „1.5"/„1x" fälschlich als 1 an; eine Quelle: parseNeededValidations.)
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): die Gültigkeit kommt aus `isNeededValidationsValid`,
+  // der EINEN Bedingung neben dem Parser (Band `MIN_/MAX_NEEDED_VALIDATIONS`). Bis hierher stand sie
+  // hier mit den Literalen 1 und 5 ein zweites Mal, und die Funktion lag ohne Aufrufer daneben.
   const neededEffective =
     defaultNeededDraft ?? String(valSettings.data?.defaultNeededValidations ?? "");
-  const neededParsed = parseNeededValidations(neededEffective);
-  const neededValid = Number.isInteger(neededParsed) && neededParsed >= 1 && neededParsed <= 5;
+  const neededValid = isNeededValidationsValid(neededEffective);
 
   const uploadLimitsQ = useQuery({
     queryKey: ["upload-limits"],
