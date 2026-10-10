@@ -5715,6 +5715,43 @@ export class KoService {
   // Objekt nicht benennen. Jetzt wird der Verweis IN DERSELBEN KLAMMER geschrieben, als letzter
   // Schritt des Belegs: zweiter Write auf demselben Transaktionsclient (dieselbe Bauform wie
   // `setValidationStateMitBeleg`, „Zweiter Write DERSELBEN Klammer").
+  /**
+   * AW06-K02 (Ben, Nacharbeit 8) — DER BELEGTE ANNAHMEBEZUG EINES BESTANDSOBJEKTS.
+   *
+   * Objekte, die vor `annahmeRef` validiert wurden, tragen ihre Annahme nur im
+   * `validationDecisionRef`. Bevor ein neuer Beleg diesen Verweis ersetzt, wird er hier geprüft und —
+   * nur wenn er belegt die Annahme dieser Fassung ist — als `annahmeRef` übernommen: derselbe Eintrag
+   * (Nummer UND Hash), eine Annahmeaktion (`ko.admin-validated`, `ko.owner-validated` oder eine
+   * grüne `ko.rated`), dieselbe Fassung, Objekt validiert. Person, Zeitpunkt und Kontoregel bleiben
+   * damit die des bestehenden Belegs; nichts wird ergänzt. Passt etwas nicht, gibt es keinen
+   * Annahmebezug — es wird keiner erfunden.
+   */
+  private async belegteAnnahmeAusVerweis(
+    ko: KnowledgeObject,
+  ): Promise<KnowledgeObject["annahmeRef"] | undefined> {
+    const ref = ko.validationDecisionRef;
+    if (
+      !this.audit ||
+      !ref ||
+      ko.status !== "validiert" ||
+      ko.annahmeRef?.koVersion === ko.version
+    ) {
+      return undefined;
+    }
+    const beleg = (await this.audit.list({ target: ko.id })).find(
+      (e) => e.seq === ref.auditSeq && e.hash === ref.auditHash,
+    );
+    const p = beleg?.payload ?? {};
+    const istAnnahme =
+      beleg?.action === "ko.admin-validated" ||
+      beleg?.action === "ko.owner-validated" ||
+      (beleg?.action === "ko.rated" && p.verdict === "up");
+    if (!beleg || !istAnnahme || p.koVersion !== ko.version) {
+      return undefined;
+    }
+    return { auditSeq: ref.auditSeq, auditHash: ref.auditHash, koVersion: ko.version };
+  }
+
   private async verweisAufAnnahme(
     updated: KnowledgeObject,
     beleg: { seq: number; hash: string } | undefined,
@@ -7143,6 +7180,12 @@ export class KoService {
           return { ko, geschrieben: false, ref };
         }
         const state = await zustand(ko);
+        // AW06-K02 (Ben, Nacharbeit 8): BESTAND ohne `annahmeRef`. Zeigt der bisherige
+        // Entscheidungsverweis belegt auf die Annahme DIESER Fassung, wird er übernommen, BEVOR der
+        // Beleg dieses Vorgangs (etwa die Rückgabe einer gelben Stimme) ihn ersetzt.
+        const bisherigeAnnahme = state.annahme
+          ? undefined
+          : await this.belegteAnnahmeAusVerweis(ko);
         const { vertrauensGrundlage: _bisher, ...ohneGrundlage } = ko;
         const updated: KnowledgeObject = {
           ...ohneGrundlage,
@@ -7151,6 +7194,7 @@ export class KoService {
           ...(state.grundlage
             ? { vertrauensGrundlage: { trust: state.trust, ...state.grundlage } }
             : {}),
+          ...(bisherigeAnnahme ? { annahmeRef: bisherigeAnnahme } : {}),
         };
         const schritte = async (tx?: TxContext) => {
           await this.repo.update(updated, tx);

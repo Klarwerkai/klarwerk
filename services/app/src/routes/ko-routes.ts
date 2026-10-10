@@ -1043,7 +1043,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
    * Fassung. `validationDecisionRef` nennt die NEUESTE Entscheidung und zeigt nach einer gelben
    * Rückfrage an der weiter validierten Fassung auf deren Rückgabe; daraus wird keine Annahme, und
    * die Annahme darf darüber nicht verschwinden. Nur Altbestand ohne `annahmeRef` fällt auf
-   * `validationDecisionRef` zurück (dann mit der alten Grenze: nach einer Rückfrage fehlt sie).
+   * `validationDecisionRef` zurück. Nacharbeit 8: bevor ein neuer Beleg diesen Verweis ersetzt,
+   * übernimmt die Schreibklammer einen belegten Annahmebezug derselben Fassung als `annahmeRef`
+   * (`KoService.belegteAnnahmeAusVerweis`) — die Annahme bleibt also auch im Bestand stehen.
    */
   async function annahmeVon(item: KnowledgeObject) {
     if (item.annahmeRef && item.annahmeRef.koVersion !== item.version) {
