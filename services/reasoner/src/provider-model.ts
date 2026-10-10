@@ -2923,6 +2923,19 @@ export class ModelProvider implements ReasonerProvider {
     return parseDuplicateResponse(raw);
   }
 
+  // REF-02: die Referenzprüfung über das echte Modell — genau ein Aufruf, Rohtext zurück. Der
+  // versionierte Prüfauftrag (System) und die strikte Auswertung stehen im Prüfdienst
+  // (`services/ask/src/referenz-pruefung.ts`); hier wird nichts gedeutet und nichts wiederholt.
+  async pruefeQuellenbeleg(
+    system: string,
+    user: string,
+    confidential: boolean,
+    maxTokens: number,
+  ): Promise<string> {
+    const client = this.requireClient();
+    return client.complete(system, user, confidential, maxTokens);
+  }
+
   // R-1657 (ROADMAP 9.3): Lückenerkennung über das echte Modell — nur Kennzahlen je Bereich gehen
   // hinaus; `confidential` reist wie beim Konflikturteil bis zum Egress-Wächter.
   async judgeKnowledgeGaps(

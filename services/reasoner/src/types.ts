@@ -613,6 +613,19 @@ export interface ReasonerKiFreigabe {
 export const REASONER_ZWEITMEINUNG_WAHLEN = [...REASONER_CLOUD_ANBIETER, "local"] as const;
 export type ReasonerZweitmeinungWahl = (typeof REASONER_ZWEITMEINUNG_WAHLEN)[number];
 
+// ================================================================================================
+// produkt:20261009:referenzki-pruefdienst (REF-02) · DIE ADMINISTRATIV ERLAUBTEN REFERENZ-PRÜFER.
+// ================================================================================================
+//
+// Die Referenz-KI prüft AUSSCHLIESSLICH, ob genannte Fundstellen die Aussagen einer Antwort tragen.
+// Wer das sein darf, legt der Administrator fest — als GEORDNETE Liste erlaubter Optionen, nicht als
+// Vorzugsregel. Gewählt wird je Anfrage die erste Option, die eingerichtet, freigegeben und mit einem
+// ANDEREN tatsächlichen Modell als die Antwort besetzt ist (K7). Ohne Liste gibt es keine
+// Referenzprüfung und damit keinen zusätzlichen Empfänger. Eigene Liste, keine Kopplung an die
+// Zweitmeinung (eigener Auftrag): dieselben Werte, aber eine unabhängige Entscheidung.
+export const REASONER_REFERENZ_WAHLEN = [...REASONER_CLOUD_ANBIETER, "local"] as const;
+export type ReasonerReferenzWahl = (typeof REASONER_REFERENZ_WAHLEN)[number];
+
 // Die WIRKSAME Zuordnung: nach der Normalisierung stehen hier nur noch aktive Werte — kein
 // `cloud`, kein `model` (JOB 3134, s. ReasonerLegacyChoice).
 export interface ReasonerTaskConfig {
@@ -624,7 +637,65 @@ export interface ReasonerTaskConfig {
   kiFreigabe?: ReasonerKiFreigabe;
   // R-0305/R-1099: das Modell der Zweitmeinung. Fehlt es, ist die Zweitmeinung aus.
   zweitmeinung?: ReasonerZweitmeinungWahl;
+  // REF-02: die erlaubten Referenz-Prüfer in Vorzugsreihenfolge, ohne Doppelungen. Fehlt das Feld,
+  // ist die Referenzprüfung aus (nach der Normalisierung nie eine leere Liste).
+  referenzpruefung?: readonly ReasonerReferenzWahl[];
 }
+
+// ================================================================================================
+// REF-02 · DIE ROLLEN EINER REFERENZPRÜFUNG — TATSÄCHLICHER ANBIETER UND TATSÄCHLICHES MODELL.
+// ================================================================================================
+//
+// `anbieter` ist der Clientname (`cloud:openai:…`, `anthropic:…`, `local:…`, `deterministic`),
+// `modell` der reine Modellbezeichner — `null`, wenn kein Modell gearbeitet hat (deterministischer
+// Weg) oder der Client keinen nennt. Beides sind Infrastrukturangaben (WP-VIP2-GATE-2): sie gehen ins
+// Prüfprotokoll, an den Fragenden nur die Stufe.
+export interface ReferenzRolle {
+  readonly anbieter: string;
+  readonly modell: string | null;
+  readonly stufe: ZweitmeinungStufe;
+}
+
+// Warum für DIESE Anfrage kein Referenz-Prüfer bereitsteht — jeder Grund benannt:
+//   · nicht_eingerichtet  — keine Referenz-Option administrativ erlaubt;
+//   · nicht_verfuegbar    — keine erlaubte Option ist eingerichtet bzw. nennt ein Modell;
+//   · nicht_freigegeben   — für die erlaubten externen Optionen fehlt die Adminfreigabe bzw. eine
+//                           Anbieterbindung lässt sie nicht zu;
+//   · nicht_unabhaengig   — jede verbleibende Option ist mit dem Antwortmodell identisch;
+//   · antwortmodell_unbekannt — das tatsächliche Antwortmodell dieser Anfrage ist nicht festgehalten,
+//                           die Unabhängigkeit ist deshalb nicht nachweisbar.
+export type ReferenzPrueferGrund =
+  | "nicht_eingerichtet"
+  | "nicht_verfuegbar"
+  | "nicht_freigegeben"
+  | "nicht_unabhaengig"
+  | "antwortmodell_unbekannt";
+
+/** Das Ergebnis EINES Referenz-Prüfaufrufs — Rohtext, Dauer und gemeldeter Verbrauch. */
+export interface ReferenzAufrufErgebnis {
+  readonly text: string;
+  readonly dauerMs: number;
+  /** Tokenverbrauch, wie der Anbieter ihn meldet — fehlt, wenn keiner gemeldet wurde. */
+  readonly verbrauch?: { readonly eingabe: number; readonly ausgabe: number };
+}
+
+/** Ein für eine konkrete Anfrage gewählter Referenz-Prüfer. Er kann nur prüfen, sonst nichts. */
+export interface ReferenzPruefer {
+  readonly rolle: ReferenzRolle;
+  /** `true`: die Inhalte verlassen das Haus (Cloud oder nicht bestätigter lokaler Endpunkt). */
+  readonly extern: boolean;
+  /** Genau EIN Modellaufruf — kein Wiederholen, kein Ausweichen auf ein anderes Glied. */
+  pruefe(
+    system: string,
+    user: string,
+    vertraulich: boolean,
+    maxTokens: number,
+  ): Promise<ReferenzAufrufErgebnis>;
+}
+
+export type ReferenzPrueferWahl =
+  | { readonly pruefer: ReferenzPruefer }
+  | { readonly grund: ReferenzPrueferGrund };
 
 // ================================================================================================
 // AUFNAHME 20260922 (R-0305, R-1099) · DAS ERGEBNIS EINER ZWEITMEINUNG.
@@ -700,6 +771,8 @@ export interface ReasonerTaskConfigEingabe {
   // `null` schaltet die Zweitmeinung aus. So kann ein Speichern der Zuordnung, das von diesem Feld
   // nichts weiß, keinen zweiten Empfänger beiläufig löschen oder hinzufügen.
   zweitmeinung?: ReasonerZweitmeinungWahl | null;
+  // REF-02: dieselbe Regel — WEGLASSEN lässt die Liste unverändert, `null` oder `[]` schaltet aus.
+  referenzpruefung?: readonly ReasonerReferenzWahl[] | null;
 }
 
 export interface ReasonerConfigStatus {

@@ -3399,6 +3399,8 @@ export const MODEL_RUN_TASKS = [
   "duplicate",
   "probe",
   "gaps",
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung der Quellenbelege.
+  "referenz",
 ] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie

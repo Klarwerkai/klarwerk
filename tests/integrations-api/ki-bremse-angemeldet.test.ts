@@ -174,6 +174,8 @@ describe("R-0842 · angemeldete Sitzungen werden gebremst", () => {
       "POST /api/help/explain",
       "POST /api/media/analyze",
       "POST /api/media/transcribe",
+      // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung ruft ein Modell.
+      "POST /api/ask/referenzpruefung/:pruefId/erneut",
     ]);
   });
 });

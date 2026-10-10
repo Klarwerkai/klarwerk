@@ -10,6 +10,7 @@ import {
   type FrageAnlass,
   type FundstellenLeser,
   GESPRAECHSFADEN_MAX_FRAGEN,
+  type ReferenzPruefdienst,
   type ZuschnittBegriff,
   answerEvidence,
   antwortBelastbarkeit,
@@ -20,6 +21,7 @@ import {
   leseFundstellenAnfrage,
   loeseFundstelleAuf,
   redactGapForViewer,
+  referenzSichtFuerFragende,
   stichtagAus,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
@@ -302,6 +304,13 @@ export interface AskRouteDeps {
    * Quelle oder scheitert sie, wird nichts erklärt.
    */
   begriffe?: (() => Promise<readonly WoerterbuchEintrag[]>) | undefined;
+  /**
+   * produkt:20261009:referenzki-pruefdienst (REF-02): der gemeinsame lesende Referenz-Prüfdienst.
+   * OPTIONAL: fehlt er, gibt es keine Referenzprüfung und kein Feld `referenzpruefung`. Ist er da,
+   * prüft er JEDE beantwortete Frage beider Zugänge (Fragekonsole und Klara) — ob ein Prüfer
+   * bereitsteht, entscheidet die Adminliste; ohne sie steht „nicht prüfbar" mit Grund da.
+   */
+  referenz?: ReferenzPruefdienst | undefined;
 }
 
 /**
@@ -1048,6 +1057,7 @@ async function antwortLauf(
   let out: Awaited<ReturnType<AskService["ask"]>>;
   let evidence: ReturnType<typeof answerEvidence>;
   let belastbarkeit: AntwortBelastbarkeit;
+  let referenzFeld: { referenzpruefung?: ReturnType<typeof referenzSichtFuerFragende> } = {};
   // Die Sicht folgt dem Anmeldeweg dieser Anfrage — der Add-on-Principal hat keinen
   // `SessionUser` und bekommt die enge Sicht (Begründung an `belastbarkeitsSicht`).
   const sicht = belastbarkeitsSicht(
@@ -1091,6 +1101,32 @@ async function antwortLauf(
       angehaengteBegriffe(out.antwortZuschnitt),
     ));
     pruefen();
+    // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung GENAU der Bindung, die
+    // dieser Fragende bekommt (Add-on: nur Kernaussagen), mit SEINER Sicht als Recht, dem
+    // tatsächlichen Antwortmodell dieser Anfrage und dem Abbruch dieser Anfrage. Danach dieselbe
+    // KI-Sperrprüfung wie vor jeder Auslieferung.
+    const pruefBeleg =
+      out.aussagen && request.authContext?.authKind === "addon"
+        ? aufKernaussagenBeschraenkt(out.aussagen)
+        : out.aussagen;
+    if (deps.referenz && pruefBeleg) {
+      const ergebnis = await deps.referenz.pruefe({
+        beleg: pruefBeleg,
+        antwortRolle: ask.antwortRolleVon(out),
+        akteur: lauf.actorId,
+        leser: fundstellenLeser(deps.ko),
+        darfSehen: grundlage,
+        bekannteKonflikte: belastbarkeit.konflikte.map((k) => ({
+          konfliktId: k.konfliktId,
+          koIds: k.seiten.flatMap((s) => (s.einsehbar ? [s.koId] : [])),
+        })),
+        locale: lauf.locale,
+        signal: anfrageAbbruch(reply),
+        modellaufrufAusgeschlossen: optionen?.retrievalOnly === true,
+      });
+      referenzFeld = { referenzpruefung: referenzSichtFuerFragende(ergebnis) };
+      pruefen();
+    }
   } catch (fehler) {
     // D5: beide Zugänge laufen hier durch — die Abschaltauskunft ist überall dieselbe.
     if (kiAbgeschaltetSenden(reply, fehler, lauf.locale)) {
@@ -1117,8 +1153,27 @@ async function antwortLauf(
     ...aussagenFeld,
     result: { ...out.result, evidence, belastbarkeit },
     ...(absaetze ? { absaetze } : {}),
+    ...referenzFeld,
     ...(lauf.beilage ? lauf.beilage(out) : {}),
   });
+}
+
+/**
+ * REF-02: ein Abbruchsignal, das genau dann auslöst, wenn die Verbindung endet, BEVOR die Antwort
+ * vollständig geschrieben ist (Nutzer bricht ab, Netz reißt). `writableFinished` unterscheidet das
+ * vom regulären Ende — das `close` nach einer fertigen Antwort ist kein Abbruch.
+ */
+function anfrageAbbruch(reply: FastifyReply): AbortSignal {
+  const steuerung = new AbortController();
+  const roh = reply.raw;
+  if (roh && typeof roh.once === "function") {
+    roh.once("close", () => {
+      if (!roh.writableFinished) {
+        steuerung.abort();
+      }
+    });
+  }
+  return steuerung.signal;
 }
 
 /** Die Abschalt-Epoche beim Eingang festhalten — nur, wo `buildApp` es nicht schon getan hat. */
@@ -1576,6 +1631,52 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       );
       reply.code(200).send({ fundstellen });
     });
+
+    // produkt:20261009:referenzki-pruefdienst (REF-02) — EINE AUSDRÜCKLICH ANGESTOSSENE ERNEUTE
+    // REFERENZPRÜFUNG, BEGRENZT UND SICHTBAR.
+    //
+    // Kein Inhalt im Rumpf: geprüft wird der serverseitig festgehaltene Prüfkontext (Bindung und
+    // tatsächliches Antwortmodell der ursprünglichen Antwort) — nie ein Text, den der Client
+    // nachreicht. Nur derselbe Nutzer, mit seinen JETZT gültigen Rechten; höchstens
+    // `REFERENZ_ERNEUT_MAX` mal (danach 409 mit der Höchstzahl). Unbekannt, abgelaufen und fremd
+    // sehen gleich aus (404). Die Route zählt in die KI-Anfragebremse (`ki-anfragebremse.ts`).
+    app.post<{ Params: { pruefId: string } }>(
+      "/api/ask/referenzpruefung/:pruefId/erneut",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const nichtGefunden = (): void => {
+          reply.code(404).send({
+            error: "NOT_FOUND",
+            message: "Diese Referenzprüfung ist nicht (mehr) verfügbar.",
+          });
+        };
+        if (!deps.referenz) {
+          nichtGefunden();
+          return;
+        }
+        const ausgang = await deps.referenz.erneut(request.params.pruefId, user.id, {
+          leser: fundstellenLeser(deps.ko),
+          darfSehen: sichtbarkeitsfilterFuer(user),
+          signal: anfrageAbbruch(reply),
+        });
+        if ("fehlt" in ausgang) {
+          nichtGefunden();
+          return;
+        }
+        if ("ausgeschoepft" in ausgang) {
+          reply.code(409).send({
+            error: "REFERENZPRUEFUNG_AUSGESCHOEPFT",
+            message: "Diese Antwort wurde bereits so oft geprüft wie erlaubt.",
+            hoechstens: ausgang.hoechstens,
+          });
+          return;
+        }
+        reply.code(200).send({ referenzpruefung: referenzSichtFuerFragende(ausgang.ergebnis) });
+      },
+    );
 
     // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
     // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).

@@ -227,6 +227,16 @@ export interface ReasonerProvider {
     locale: ReasonerLocale,
     confidential: boolean,
   ): Promise<LueckenBereichsUrteil[] | null>;
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die Referenzprüfung der Quellenbelege. NUR
+  // das echte Modell; der deterministische Fallback bewusst NICHT — eine „Prüfung" ohne Modell wäre
+  // eine Selbstauskunft. Prüfauftrag und Auswertung liegen beim Prüfdienst (`services/ask`), der
+  // Provider reicht genau einen Aufruf durch; `confidential` reist wie überall bis zum Wächter.
+  pruefeQuellenbeleg?(
+    system: string,
+    user: string,
+    confidential: boolean,
+    maxTokens: number,
+  ): Promise<string>;
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): Egress-Politik des dahinterliegenden Clients —
   // `true` = dieser Provider darf vertrauliche Inhalte NICHT sehen (Cloud bzw. ein „lokal"
   // verdrahteter Endpunkt ohne bestätigte On-Prem-Origin). Der Reasoner nimmt ihn dann bei

@@ -21,6 +21,7 @@ import {
   PgAnswerSnapshotRepo,
   PgGapRepo,
   PgNulltrefferRepo,
+  ReferenzPruefdienst,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -139,6 +140,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  isConfidential,
   responsibleOf,
 } from "../../knowledge-object";
 import {
@@ -4401,6 +4403,42 @@ export function buildApp(
         return { erreichbar, namen };
       },
     },
+    // produkt:20261009:referenzki-pruefdienst (REF-02): EIN gemeinsamer Prüfdienst für beide
+    // Zugänge (Fragekonsole und Klara) — derselbe Reasoner, dieselben Freigaben, dasselbe Audit.
+    referenz: new ReferenzPruefdienst({
+      waehlePruefer: (antwort, vertraulich) =>
+        services.reasoner.referenzPruefer(antwort, vertraulich),
+      externErlaubt: (vertraulich) => services.reasoner.externeVerarbeitungErlaubt(vertraulich),
+      istVertraulich: (ko) =>
+        isConfidential(ko.confidentiality as KnowledgeObject["confidentiality"]),
+      // Das Prüfprotokoll: Kennungen, Zustandszahlen, Rollen mit tatsächlichem Anbieter und Modell,
+      // Fingerabdrücke und Messung — kein Antwort-, Aussage- oder Quellentext.
+      protokolliere: async (e) => {
+        await services.audit.record({
+          actor: e.akteur,
+          action: "ask.referenzpruefung",
+          target: e.pruefId,
+          payload: {
+            richtlinie: e.richtlinie,
+            status: e.status,
+            grund: e.grund ?? null,
+            antwortAnbieter: e.antwort?.anbieter ?? null,
+            antwortModell: e.antwort?.modell ?? null,
+            prueferAnbieter: e.pruefer?.anbieter ?? null,
+            prueferModell: e.pruefer?.modell ?? null,
+            antwortFingerabdruck: e.antwortFingerabdruck,
+            paketFingerabdruck: e.paketFingerabdruck,
+            ergebnisFingerabdruck: e.ergebnisFingerabdruck,
+            zustaende: e.zustaende,
+            ausCache: e.ausCache,
+            versuch: e.versuch,
+            dauerMs: e.dauerMs,
+            eingabeToken: e.verbrauch?.eingabe ?? null,
+            ausgabeToken: e.verbrauch?.ausgabe ?? null,
+          },
+        });
+      },
+    }),
   };
   // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
   // Klara-Bindung an.

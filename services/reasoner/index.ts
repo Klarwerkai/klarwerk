@@ -15,6 +15,8 @@ export {
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
   // WP-IC-4: harte Kappung der KI-Gruppierung (Route lehnt darueber ehrlich ab).
   MAX_GROUP_CANDIDATES,
+  // produkt:20261009:referenzki-pruefdienst (REF-02): das tatsächliche Antwortmodell einer Antwort.
+  antwortRolleVon,
 } from "./src/service";
 // WP-BILD-1f (bens P3): strikte, frühe Bild-Validierung der describe-Route (Format, strikte
 // Base64, dekodierte Bytegrenze, Magic-Bytes-Abgleich) — komplett VOR jedem Provider-Aufruf.
@@ -201,6 +203,16 @@ export type {
 } from "./src/types";
 // R-0305/R-1099: die benannten Wahlen (Schreibweg) und der reine Abgleich.
 export { REASONER_ZWEITMEINUNG_WAHLEN } from "./src/types";
+// produkt:20261009:referenzki-pruefdienst (REF-02): die erlaubten Referenz-Prüfer und die Rollen.
+export { REASONER_REFERENZ_WAHLEN } from "./src/types";
+export type {
+  ReasonerReferenzWahl,
+  ReferenzAufrufErgebnis,
+  ReferenzPruefer,
+  ReferenzPrueferGrund,
+  ReferenzPrueferWahl,
+  ReferenzRolle,
+} from "./src/types";
 export { genannteZahlen, vergleicheAntworten } from "./src/zweitmeinung";
 // mega26 Block A: der Laufkontext ist Teil der ÖFFENTLICHEN Reasoner-Fläche — ein gebundener
 // Aufrufer (heute die extract-Route) muss ihn bilden können, ohne model-runs direkt zu kennen.

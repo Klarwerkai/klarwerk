@@ -649,6 +649,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // REF-01: Fundstellen einer Antwort mit aktuellen Rechten auflösen — ko.read und je Fundstelle
   // dasselbe Zeilenrecht wie GET /api/kos/:id; unbekannt und nicht berechtigt sehen gleich aus.
   "POST /api/ask/fundstellen": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  // REF-02: erneute Referenzprüfung eines serverseitig festgehaltenen Prüfkontexts — ko.read, nur
+  // derselbe Nutzer, und jede Fundstelle wird mit SEINER aktuellen Sicht neu aufgelöst.
+  "POST /api/ask/referenzpruefung/:pruefId/erneut": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },

@@ -31,9 +31,11 @@ import {
   type KnowledgeRef,
   type Reasoner,
   type ReasonerLocale,
+  type ReferenzRolle,
   type Relevanztext,
   type ZuordnungsPaar,
   type ZweitmeinungErgebnis,
+  antwortRolleVon,
   decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
@@ -751,7 +753,27 @@ function aufruferBeschriftung(aufrufer: AskCaller): string {
   return aufrufer.kind === "system" ? SYSTEM_ACTOR : aufrufer.userId;
 }
 
+// produkt:20261009:referenzki-pruefdienst (REF-02): das tatsächliche Antwortmodell GENAU DIESER
+// Frage — gebunden an das zurückgegebene Ergebnisobjekt, nicht als Feld darin. Anbieter und Modell
+// sind Adminangaben (WP-VIP2-GATE-2); ein Feld im Ergebnis ginge über `...out` an jeden Fragenden.
+const FRAGE_ROLLEN = new WeakMap<object, ReferenzRolle>();
+
+function mitAntwortRolle<T extends object>(ergebnis: T, rolle: ReferenzRolle | undefined): T {
+  if (rolle) {
+    FRAGE_ROLLEN.set(ergebnis, rolle);
+  }
+  return ergebnis;
+}
+
 export class AskService {
+  /**
+   * REF-02: das Modell, das die Antwort dieses Ergebnisses geschrieben hat — `undefined`, wenn es
+   * nicht festgehalten ist (Rückgabe ohne Antwortlauf, Test-Doppelgänger). Nie geraten.
+   */
+  antwortRolleVon(ergebnis: AskResult): ReferenzRolle | undefined {
+    return FRAGE_ROLLEN.get(ergebnis);
+  }
+
   private readonly reasoner: Reasoner;
   private readonly koService: KoService;
   private readonly gaps: GapRepo;
@@ -1310,6 +1332,11 @@ export class AskService {
             dokumenttext,
           ),
     );
+    // REF-02: wer GENAU DIESE Antwort geschrieben hat. Der wörtliche Weg des Add-ins ist der
+    // deterministische Ersatz ohne Modell — auch das ist eine festgehaltene Rolle, keine Lücke.
+    const antwortRolle: ReferenzRolle | undefined = opts?.retrievalOnly
+      ? { anbieter: "deterministic", modell: null, stufe: "deterministic" }
+      : antwortRolleVon(rawResult);
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung
     // geschrieben bzw. gelesen. Ist inzwischen abgeschaltet, wird nichts davon mehr ausgeliefert.
     this.pruefeKiSperre("ergebnis", kiBeginn);
@@ -1599,10 +1626,29 @@ export class AskService {
         () => this.pruefeKiSperre("ergebnis", kiBeginn),
         belegbedarf,
       );
-      return {
+      return mitAntwortRolle<AskResult>(
+        {
+          result,
+          answerId,
+          gap,
+          receipt,
+          quellenStand,
+          ...ungeprueftFeld,
+          ...verschlossenFeld,
+          ...zweitmeinungFeld,
+          ...zweitmeinungAussagenFeld,
+          ...geltungFeld,
+          ...zuschnittFeld,
+          pruefrahmen,
+        },
+        antwortRolle,
+      );
+    }
+    return mitAntwortRolle<AskResult>(
+      {
         result,
         answerId,
-        gap,
+        gap: null,
         receipt,
         quellenStand,
         ...ungeprueftFeld,
@@ -1611,24 +1657,11 @@ export class AskService {
         ...zweitmeinungAussagenFeld,
         ...geltungFeld,
         ...zuschnittFeld,
+        ...aussagenFeld,
         pruefrahmen,
-      };
-    }
-    return {
-      result,
-      answerId,
-      gap: null,
-      receipt,
-      quellenStand,
-      ...ungeprueftFeld,
-      ...verschlossenFeld,
-      ...zweitmeinungFeld,
-      ...zweitmeinungAussagenFeld,
-      ...geltungFeld,
-      ...zuschnittFeld,
-      ...aussagenFeld,
-      pruefrahmen,
-    };
+      },
+      antwortRolle,
+    );
   }
 
   /**

@@ -559,6 +559,15 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "REF-01 — sichtbarkeitsfilterFuer vor jedem Auszug; sonst nur „nicht zugänglich“.",
   },
+  // REF-02: die erneute Referenzprüfung löst jede Fundstelle mit `sichtbarkeitsfilterFuer(user)`
+  // neu auf, bevor ein Auszug an den Prüfer geht; die Antwort trägt nur Kennungen, Zustände und
+  // Begründungen des Prüfers (referenz-pruefung.ts).
+  "POST /api/ask/referenzpruefung/:pruefId/erneut": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "REF-02 — sichtbarkeitsfilterFuer(user) je Fundstelle vor jedem Auszug (loeseFundstelleAuf); " +
+      "nur derselbe Nutzer, sonst 404.",
+  },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
   // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`

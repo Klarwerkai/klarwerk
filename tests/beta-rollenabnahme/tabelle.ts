@@ -739,6 +739,18 @@ export const TABELLE: Zeile[] = [
     },
     erwartet: NUR_LESEN,
   },
+  // produkt:20261009:referenzki-pruefdienst (REF-02): die erneute Referenzprüfung trägt keinen
+  // Inhalt im Rumpf. Eine erfundene Prüfkennung ergibt nach dem Tor für jede Rolle die fachliche
+  // 404 „nicht (mehr) verfügbar" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/referenzpruefung/gibt-es-nicht/erneut",
+    route: "/api/ask/referenzpruefung/:pruefId/erneut",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1643",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
   // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
   {
