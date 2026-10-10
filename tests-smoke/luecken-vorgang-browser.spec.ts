@@ -106,7 +106,11 @@ test("Wissenskreislauf: Frage bis geprüfte Antwort und Rückmeldung mit getrenn
     await expect(frida.getByTestId("luecke-vorgang-naechster")).toContainText(
       "An eine berechtigte Fachzuständigkeit übergeben",
     );
-    await expect(frida.getByTestId("luecke-klara")).toContainText("keine Fachprüfung durch Klara");
+    // Ohne persönliches Assistenzprofil steht der neutrale Rückfall „Deine Assistenz".
+    await expect(frida.getByTestId("luecke-klara")).toContainText(
+      "Deine Assistenz erklärt den Vorgang",
+    );
+    await expect(frida.getByTestId("luecke-klara")).toContainText("keine Fachprüfung");
     await bild(frida, "1-frida-ohne-zustaendigkeit");
 
     // ---- Übergabe an die Fachzuständigkeit ----------------------------------------------------

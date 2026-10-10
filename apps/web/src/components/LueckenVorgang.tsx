@@ -10,6 +10,7 @@ import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { captureGapHref } from "../lib/captureFromGap";
 import { useAuthorName } from "../lib/useAuthorName";
+import { auftrittAus, useAssistenzProfil } from "./klara-vorschau/profil";
 import { useKlaraZustand } from "./klara-vorschau/zustand";
 
 // ================================================================================================
@@ -101,6 +102,8 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
   const personen = verzeichnis.data ?? [];
   const eintraege = (bestand.data ?? []).map((k) => ({ id: k.id, title: k.title }));
   const klara = useKlaraZustand();
+  // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3): die persönliche Assistenzwahl.
+  const assistenzName = auftrittAus(useAssistenzProfil()).name ?? t("klaraprodukt.name.neutral");
   const qc = useQueryClient();
   const { push } = useToast();
   const [rueckfrage, setRueckfrage] = useState("");
@@ -190,17 +193,27 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
         </ul>
       ) : null}
 
-      {/* Klara erklärt den TATSÄCHLICHEN Stand — wörtlich aus Phase und nächstem Schritt. */}
+      {/* Die persönliche Assistenz erklärt den TATSÄCHLICHEN Stand — wörtlich aus Phase und
+          nächstem Schritt. Ihr Name ist die persönliche Wahl (`useAssistenzProfil`, dieselbe
+          Anbindung wie die Figur in `KlaraVorschau.tsx`), ohne Profil der neutrale Rückfall. */}
       <div
         className="rounded-btn border border-hairline bg-surface px-2.5 py-1.5"
         data-testid="luecke-klara"
       >
-        <div className="text-[11px] font-semibold text-ai">{t("lueckenvorgang.klara.titel")}</div>
+        <div className="text-[11px] font-semibold text-ai">
+          {t("lueckenvorgang.klara.titel", { name: assistenzName })}
+        </div>
         <p className="text-[11.5px]">
-          {t("lueckenvorgang.klara.satz", { phase: phaseText, schritt: schrittText })}
+          {t("lueckenvorgang.klara.satz", {
+            phase: phaseText,
+            schritt: schrittText,
+            name: assistenzName,
+          })}
         </p>
         {klara.betrieb === "demo" ? (
-          <p className="text-[11px] text-muted-2">{t("lueckenvorgang.klara.demo")}</p>
+          <p className="text-[11px] text-muted-2">
+            {t("lueckenvorgang.klara.demo", { name: assistenzName })}
+          </p>
         ) : null}
       </div>
 

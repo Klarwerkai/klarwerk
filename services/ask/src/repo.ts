@@ -56,15 +56,24 @@ export interface GapRepo {
     vorInhaltsabruf?: () => void,
   ): Promise<{ gap: Gap; created: boolean }>;
   /**
-   * produkt:20261010:wissenskreislauf-schliessen — SCHREIBEN NUR, SOLANGE DIE LÜCKE NOCH OFFEN IST.
+   * produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3) — VERGLEICHEN UND SETZEN.
    *
-   * Der Abschluss (fachlich wie administrativ) läuft hierüber: zwei gleichzeitige Abschlüsse, ein
-   * Doppelklick oder ein Neustart mitten im Vorgang schreiben höchstens EINEN. `false` heisst: die
-   * Lücke war nicht mehr offen (oder fehlt), es wurde nichts geschrieben. Optional aus demselben
-   * Grund wie `insertOrIncrement` (speicherlose Testattrappen); ohne die Methode prüft der Dienst den
-   * Stand selbst unmittelbar vor dem Schreiben.
+   * Schreibt `neu` NUR, wenn die gespeicherte Lücke noch genau `erwartet` ist (der Stand, aus dem
+   * der Schritt gerechnet wurde). Jeder Vorgangsschritt — Zuordnung, Rückfrage, Antwort, Entwurf,
+   * Priorität, Abschluss, Rücknahme — läuft hierüber (`AskService.aendereLuecke`): hat sich die
+   * Lücke inzwischen geändert (weitere Fragende, Zähler, Abschluss), wird nichts geschrieben, und
+   * der Dienst rechnet den Schritt am frischen Stand neu. Eine alte Momentaufnahme kann damit weder
+   * zwischenzeitliche Fragende verlieren noch einen Abschluss zurücknehmen.
+   *
+   * Optional aus demselben Grund wie `insertOrIncrement` (speicherlose Testattrappen); ohne die
+   * Methode vergleicht der Dienst den Stand selbst unmittelbar vor dem Schreiben.
    */
-  updateWennOffen?(gap: Gap): Promise<boolean>;
+  ersetzeWenn?(erwartet: Gap, neu: Gap): Promise<boolean>;
+}
+
+/** Inhaltsgleichheit zweier Lückenstände — dieselbe Aussage wie `data = $3::jsonb` in PostgreSQL. */
+export function gleicherLueckenstand(a: Gap | undefined, b: Gap | undefined): boolean {
+  return a !== undefined && b !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Der Zähler einer Lücke; Altbestände ohne Feld gelten als einmal gefragt. */
@@ -117,11 +126,11 @@ export class InMemoryGapRepo implements GapRepo {
   }
 
   // Ohne `await` zwischen Prüfen und Setzen — dieselbe Unteilbarkeit wie `insertOrIncrement`.
-  updateWennOffen(gap: Gap): Promise<boolean> {
-    if (this.gaps.get(gap.id)?.status !== "offen") {
+  ersetzeWenn(erwartet: Gap, neu: Gap): Promise<boolean> {
+    if (!gleicherLueckenstand(this.gaps.get(neu.id), erwartet)) {
       return Promise.resolve(false);
     }
-    this.gaps.set(gap.id, gap);
+    this.gaps.set(neu.id, neu);
     return Promise.resolve(true);
   }
 

@@ -164,7 +164,10 @@ export type AskErrorCode =
   | "CONFIRM_REQUIRED"
   | "BAD_REQUEST"
   | "FORBIDDEN"
-  | "KI_ABGESCHALTET";
+  | "KI_ABGESCHALTET"
+  // produkt:20261010:wissenskreislauf-schliessen: eine Lücke wurde während eines Schritts so oft
+  // gleichzeitig geändert, dass er am frischen Stand nicht gelang — nichts geschrieben (409).
+  | "CONFLICT";
 
 export class AskError extends Error {
   readonly code: AskErrorCode;

@@ -8,10 +8,14 @@
 //   Q1 · Mehrere Fragende derselben offenen Frage — auch GLEICHZEITIG — landen in EINER Zeile:
 //        `askCount` zählt jede Frage, `weitereFragende` nennt jede weitere Person genau einmal und
 //        nie den Ersteller (`INSERT … ON CONFLICT` + `UPDATE … jsonb_set`, eine Anweisung).
-//   Q2 · Zwei gleichzeitige fachliche Abschlüsse schreiben höchstens EINEN (`updateWennOffen`:
-//        `UPDATE … WHERE status = 'offen'`); ein Abschluss ohne vorgeschriebene Fachfreigabe
-//        schreibt nichts. Nach einem Neustart (neuer Pool, neue Dienste) stehen Abschluss, Fassung
-//        und je Fragendem genau eine Erfolgsmeldung da.
+//   Q2 · Zwei gleichzeitige fachliche Abschlüsse schreiben höchstens EINEN (Vergleichen-und-Setzen
+//        `ersetzeWenn`: `UPDATE … WHERE data = <gelesener Stand>`); ein Abschluss ohne
+//        vorgeschriebene Fachfreigabe schreibt nichts. Nach einem Neustart (neuer Pool, neue Dienste)
+//        stehen Abschluss, Fassung und je Fragendem genau eine Erfolgsmeldung da.
+//   Q3 · (Ben, Nacharbeit 3) Abschluss, mehrere Wiederholungsfragen und eine verspätete
+//        Rückfrageantwort GLEICHZEITIG: der Abschluss bleibt, und jede fragende Person ist danach
+//        Fragende der geschlossenen Lücke (mit Meldung), hat das Ergebnis direkt bekommen, oder hat
+//        eine eigene offene Lücke — niemand geht verloren.
 //
 // INFRASTRUKTUR wie `tests/wissensluecken-etikett/pg-speicherweg.integration.test.ts`:
 // `KLARWERK_PG_TEST_URL` (Datenbankname mit `test`), sonst ein Wegwerf-Container. Fehlt beides,
@@ -162,5 +166,76 @@ describe("Wissenskreislauf gegen echtes PostgreSQL", () => {
     const wieder = await zweite.ask.ask(FRAGE, "ida-pg", "de", undefined, ALLE);
     expect(wieder.gap).toBeNull();
     expect(wieder.geloesteLuecke?.koId).toBe(ko.id);
+  }, 180_000);
+
+  it("Q3 · Abschluss, Wiederholungsfragen und verspätete Antwort gleichzeitig — nichts geht verloren", async () => {
+    const { services } = dienste();
+    const frage2 = "Wie wird die Quorbit-Dichtung am Zyrlax-Flansch nachgezogen?";
+    const frage = (wer: string) => services.ask.ask(frage2, wer, "de", undefined, ALLE);
+    const anna = { id: "anna-q3", verwaltend: false, sichtbar: ALLE };
+    const fachmann = { id: "fachmann-q3", verwaltend: false, sichtbar: ALLE };
+    const gapId = (await frage(anna.id)).gap?.id ?? "";
+    expect(gapId, "KALIBRIERUNG: die Frage wird eine Lücke").not.toBe("");
+    await services.ask.handOverGap(gapId, fachmann.id, anna, null);
+    await services.ask.askGapFollowUp(gapId, fachmann, "Welcher Flansch ist gemeint?");
+    const rueckfrageId =
+      (await services.ask.listGaps()).find((g) => g.id === gapId)?.rueckfragen?.[0]?.id ?? "";
+    const ko = await services.ko.create({
+      title: "Kälteanlage im Wiederanlauf hochfahren",
+      statement: "Ventil V7 erst bei Druckausgleich öffnen, dann Pumpe P2 starten.",
+      type: "best_practice",
+      category: "Instandhaltung",
+      author: fachmann.id,
+    });
+    for (let i = 0; i < ko.neededValidations; i++) {
+      await services.validation.rate(ko.id, `pruefer-q3-${i}`, "up");
+    }
+
+    const weitere = ["bert-q3", "carla-q3", "dora-q3", "emil-q3"];
+    const [abschluss, antwort, ...fragen] = await Promise.allSettled([
+      services.ask.closeGap(gapId, ko.id, fachmann),
+      services.ask.answerGapFollowUp(gapId, rueckfrageId, anna, "Flansch B"),
+      ...weitere.map((wer) => frage(wer)),
+    ]);
+    expect(abschluss?.status, String((abschluss as PromiseRejectedResult).reason)).toBe(
+      "fulfilled",
+    );
+
+    // Neustart: gelesen wird, was in PostgreSQL steht.
+    const zweite = dienste().services;
+    const gelesen = (await zweite.ask.listGaps()).find((g) => g.id === gapId);
+    expect(gelesen?.status, "der Abschluss blieb nicht stehen").toBe("geschlossen");
+    expect(gelesen?.abschluss).toMatchObject({ art: "fachlich", koId: ko.id });
+    expect(await zweite.audit.list({ action: "gap.closed", target: gapId })).toHaveLength(1);
+    // Die verspätete Antwort ist entweder vor dem Abschluss eingegangen oder abgewiesen — nie hat
+    // sie den Abschluss überschrieben.
+    if (antwort?.status === "fulfilled") {
+      expect(gelesen?.rueckfragen?.[0]?.antwort).toBe("Flansch B");
+    } else {
+      expect(gelesen?.rueckfragen?.[0]?.antwort).toBeUndefined();
+    }
+    const offene = (await zweite.ask.listGaps()).filter((g) => g.status === "offen");
+    for (const [i, wer] of weitere.entries()) {
+      const r = fragen[i];
+      expect(r?.status, wer).toBe("fulfilled");
+      if (r?.status !== "fulfilled") {
+        continue;
+      }
+      const ergebnis = r.value;
+      if (ergebnis.geloesteLuecke) {
+        expect(ergebnis.geloesteLuecke.koId, wer).toBe(ko.id);
+      } else if (ergebnis.gap?.id === gapId) {
+        expect(gelesen?.weitereFragende ?? [], wer).toContain(wer);
+        const meldung = (await zweite.ask.gapMeldungenFuer(wer, ALLE)).filter(
+          (m) => m.art === "geloest" && m.gapId === gapId,
+        );
+        expect(meldung, wer).toHaveLength(1);
+      } else {
+        expect(
+          offene.some((g) => g.id === ergebnis.gap?.id),
+          `${wer}: weder Fragende der geschlossenen Lücke noch eigene offene Lücke`,
+        ).toBe(true);
+      }
+    }
   }, 180_000);
 });

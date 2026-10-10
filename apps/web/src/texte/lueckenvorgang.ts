@@ -115,11 +115,11 @@ export default {
     "lueckenvorgang.ruecknahme.nicht_beantwortbar": "nicht beantwortbar",
     "lueckenvorgang.ruecknahme.ausser_zustaendigkeit": "außerhalb unserer Zuständigkeit",
     "lueckenvorgang.ruecknahme.zurueckgezogen": "von den Fragenden zurückgezogen",
-    "lueckenvorgang.klara.titel": "Klara erklärt den Vorgang",
+    "lueckenvorgang.klara.titel": "{{name}} erklärt den Vorgang",
     "lueckenvorgang.klara.satz":
-      "Stand: {{phase}}. Als Nächstes: {{schritt}}. Das ist der tatsächliche Stand dieses Vorgangs, keine Fachprüfung durch Klara.",
+      "Stand: {{phase}}. Als Nächstes: {{schritt}}. Das ist der tatsächliche Stand dieses Vorgangs, keine Fachprüfung durch {{name}}.",
     "lueckenvorgang.klara.demo":
-      "Klara steht gerade im Vorschau-Betrieb; diese Erklärung stammt trotzdem aus dem echten Vorgang.",
+      "{{name}} steht gerade im Vorschau-Betrieb; diese Erklärung stammt trotzdem aus dem echten Vorgang.",
     "lueckenvorgang.meldung.geloest": "Deine Frage ist fachlich gelöst",
     "lueckenvorgang.meldung.rueckfrage": "Rückfrage zu deiner Frage",
     "lueckenvorgang.meldung.rueckfrageBeantwortet": "Rückfrage beantwortet",
@@ -235,11 +235,11 @@ export default {
     "lueckenvorgang.ruecknahme.nicht_beantwortbar": "cannot be answered",
     "lueckenvorgang.ruecknahme.ausser_zustaendigkeit": "outside our responsibility",
     "lueckenvorgang.ruecknahme.zurueckgezogen": "withdrawn by the askers",
-    "lueckenvorgang.klara.titel": "Klara explains the process",
+    "lueckenvorgang.klara.titel": "{{name}} explains the process",
     "lueckenvorgang.klara.satz":
-      "Status: {{phase}}. Next: {{schritt}}. This is the actual status of this process, not an expert review by Klara.",
+      "Status: {{phase}}. Next: {{schritt}}. This is the actual status of this process, not an expert review by {{name}}.",
     "lueckenvorgang.klara.demo":
-      "Klara is currently in preview mode; this explanation still comes from the real process.",
+      "{{name}} is currently in preview mode; this explanation still comes from the real process.",
     "lueckenvorgang.meldung.geloest": "Your question has been resolved",
     "lueckenvorgang.meldung.rueckfrage": "Follow-up on your question",
     "lueckenvorgang.meldung.rueckfrageBeantwortet": "Follow-up answered",
@@ -358,11 +358,11 @@ export default {
     "lueckenvorgang.ruecknahme.nicht_beantwortbar": "niet te beantwoorden",
     "lueckenvorgang.ruecknahme.ausser_zustaendigkeit": "buiten onze verantwoordelijkheid",
     "lueckenvorgang.ruecknahme.zurueckgezogen": "door de vragenstellers ingetrokken",
-    "lueckenvorgang.klara.titel": "Klara legt het verloop uit",
+    "lueckenvorgang.klara.titel": "{{name}} legt het verloop uit",
     "lueckenvorgang.klara.satz":
-      "Stand: {{phase}}. Hierna: {{schritt}}. Dit is de werkelijke stand van dit verloop, geen vakinhoudelijke controle door Klara.",
+      "Stand: {{phase}}. Hierna: {{schritt}}. Dit is de werkelijke stand van dit verloop, geen vakinhoudelijke controle door {{name}}.",
     "lueckenvorgang.klara.demo":
-      "Klara staat momenteel in voorbeeldmodus; deze uitleg komt toch uit het echte verloop.",
+      "{{name}} staat momenteel in voorbeeldmodus; deze uitleg komt toch uit het echte verloop.",
     "lueckenvorgang.meldung.geloest": "Je vraag is inhoudelijk opgelost",
     "lueckenvorgang.meldung.rueckfrage": "Wedervraag over je vraag",
     "lueckenvorgang.meldung.rueckfrageBeantwortet": "Wedervraag beantwoord",

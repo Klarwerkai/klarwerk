@@ -64,6 +64,7 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { LueckenVorgang } from "../../apps/web/src/components/LueckenVorgang";
+import { setzeAssistenzProfil } from "../../apps/web/src/components/klara-vorschau/profil";
 import { aendere } from "../../apps/web/src/components/klara-vorschau/zustand";
 import i18n from "../../apps/web/src/i18n";
 import { notificationTarget } from "../../apps/web/src/lib/notificationTarget";
@@ -181,7 +182,11 @@ describe("Vorgangsfläche · zeigt den Serverstand und löst die vorhandenen Sch
     expect(finde("luecke-vorgang-stand")?.textContent).toContain(phase);
     expect(finde("luecke-vorgang-naechster")?.textContent).toContain(schritt);
     expect(finde("luecke-klara")?.textContent).toContain(
-      i18n.t("lueckenvorgang.klara.satz", { phase, schritt }),
+      i18n.t("lueckenvorgang.klara.satz", {
+        phase,
+        schritt,
+        name: i18n.t("klaraprodukt.name.neutral"),
+      }),
     );
     expect(finde("luecke-eintrag")?.dataset.nutzbar).toBe("ja");
     expect(finde("luecke-ergebnis-oeffnen")?.getAttribute("href")).toBe("/wissen/ko-1");
@@ -292,7 +297,32 @@ describe("Vorgangsfläche · zeigt den Serverstand und löst die vorhandenen Sch
   it("V6 · Klara im Vorschau-Betrieb: die Erklärung stammt trotzdem aus dem echten Vorgang", async () => {
     aendere((z) => ({ ...z, betrieb: "demo" }));
     await mount(sicht({}));
-    expect(finde("luecke-klara")?.textContent).toContain(i18n.t("lueckenvorgang.klara.demo"));
+    expect(finde("luecke-klara")?.textContent).toContain(
+      i18n.t("lueckenvorgang.klara.demo", { name: i18n.t("klaraprodukt.name.neutral") }),
+    );
+  });
+
+  // Ben, Nacharbeit 3: die Erklärung trägt die PERSÖNLICHE Assistenzwahl — denselben Namen wie die
+  // Figur (`useAssistenzProfil`) — und ohne Profil den neutralen Rückfall, nie fest „Klara".
+  it("V8 · die persönliche Assistenzwahl erscheint in der Erklärung; ohne Wahl der neutrale Rückfall", async () => {
+    setzeAssistenzProfil({ name: "Mira", avatarUrl: null });
+    try {
+      await mount(sicht({}));
+      const titel = finde("luecke-klara")?.textContent ?? "";
+      expect(titel).toContain(i18n.t("lueckenvorgang.klara.titel", { name: "Mira" }));
+      expect(titel).toContain("Mira");
+      expect(titel).not.toContain("Klara");
+    } finally {
+      setzeAssistenzProfil(null);
+    }
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+    await mount(sicht({}));
+    expect(finde("luecke-klara")?.textContent).toContain(
+      i18n.t("lueckenvorgang.klara.titel", { name: i18n.t("klaraprodukt.name.neutral") }),
+    );
   });
 
   it("V7 · jede Lückenmeldung der Glocke führt in den für Beteiligte erreichbaren Vorgang", async () => {

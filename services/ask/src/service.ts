@@ -73,7 +73,7 @@ import {
   vorgangsphase,
 } from "./gap-vorgang";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
-import type { AnswerSnapshotRepo, GapRepo } from "./repo";
+import { type AnswerSnapshotRepo, type GapRepo, gleicherLueckenstand } from "./repo";
 import {
   ANSWER_SNAPSHOT_SCHEMA_VERSION,
   type AnswerEvidenceRef,
@@ -93,6 +93,12 @@ import {
 } from "./types";
 
 const HELPFUL_TRUST_STEP = 2;
+
+/**
+ * produkt:20261010:wissenskreislauf-schliessen: wie oft ein Vorgangsschritt am frischen Stand neu
+ * gerechnet wird, wenn die Lücke währenddessen geändert wurde (`aendereLuecke`). Danach 409.
+ */
+const LUECKE_SCHREIBVERSUCHE = 8;
 
 /**
  * R-0142: wie viele offene Lücken `offeneLueckenZu` je Aufruf höchstens prüft (die jüngsten). Jede
@@ -2089,34 +2095,39 @@ export class AskService {
     actor?: string,
     art: "zuordnung" | "uebergabe" = "zuordnung",
   ): Promise<Gap> {
-    const gap = await this.require(id);
-    if (gap.status !== "offen") {
-      throw new AskError(
-        "BAD_REQUEST",
-        "Eine geschlossene Wissenslücke wird nicht mehr zugeordnet.",
-      );
-    }
-    if (gap.assignee === expertId) {
-      return gap;
-    }
-    const zuordnung: GapZuordnung = {
-      an: expertId,
-      von: aufruferBeschriftung(aufruferAus(actor)),
-      at: new Date(this.now()).toISOString(),
-      art: gap.assignee ? "neuzuordnung" : art,
-    };
-    const saved = await this.save({
-      ...gap,
-      assignee: expertId,
-      zuordnungen: [...(gap.zuordnungen ?? []), zuordnung],
+    const von = aufruferBeschriftung(aufruferAus(actor));
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (aktuell.status !== "offen") {
+        throw new AskError(
+          "BAD_REQUEST",
+          "Eine geschlossene Wissenslücke wird nicht mehr zugeordnet.",
+        );
+      }
+      if (aktuell.assignee === expertId) {
+        return null;
+      }
+      const zuordnung: GapZuordnung = {
+        an: expertId,
+        von,
+        at: new Date(this.now()).toISOString(),
+        art: aktuell.assignee ? "neuzuordnung" : art,
+      };
+      return {
+        ...aktuell,
+        assignee: expertId,
+        zuordnungen: [...(aktuell.zuordnungen ?? []), zuordnung],
+      };
     });
-    await this.audit?.record({
-      actor: zuordnung.von,
-      action: "gap.assigned",
-      target: id,
-      payload: { an: expertId, art: zuordnung.art },
-    });
-    return saved;
+    const geschriebeneArt = gap.zuordnungen?.[gap.zuordnungen.length - 1]?.art;
+    if (geschrieben && geschriebeneArt) {
+      await this.audit?.record({
+        actor: von,
+        action: "gap.assigned",
+        target: id,
+        payload: { an: expertId, art: geschriebeneArt },
+      });
+    }
+    return gap;
   }
 
   // ==============================================================================================
@@ -2132,9 +2143,14 @@ export class AskService {
   // geschrieben, die Lücke bleibt offen, der Aufrufer bekommt die Gründe (`GapAbschlussVerweigert`).
   //
   // Festgehalten wird die geprüfte FASSUNG (`abschluss.koVersion`). Geschrieben wird nur, solange die
-  // Lücke offen ist (`updateWennOffen`): ein Doppelklick, ein zweiter Abschliessender oder ein
-  // Neustart erzeugt keinen zweiten Abschluss und damit keine zweite Meldung. Ein zweiter Aufruf mit
-  // demselben Eintrag bekommt den bestehenden Abschluss zurück.
+  // Lücke offen ist: ein Doppelklick, ein zweiter Abschliessender oder ein Neustart erzeugt keinen
+  // zweiten Abschluss und damit keine zweite Meldung. Ein zweiter Aufruf mit demselben Eintrag bekommt
+  // den bestehenden Abschluss zurück.
+  //
+  // Ben, Nacharbeit 3: die Abschlussfelder werden am AKTUELLEN Datensatz gesetzt (`aendereLuecke`,
+  // Vergleichen-und-Setzen), nicht an der Momentaufnahme vom Anfang. Wer während der Fachprüfabfrage
+  // dieselbe Frage stellte, bleibt Fragender — mit Vorgangszugriff und Abschlussmeldung — und der
+  // Zähler bleibt, wie er ist. Zurück kommt der tatsächlich gespeicherte Stand.
   //
   // Ohne `sichtbar` (Systemaufruf ohne Betrachter) gilt die Sichtbarkeitsfrage als beantwortet — es
   // gibt keinen Menschen, dessen Recht zu prüfen wäre. Die Fachprüfung gilt trotzdem vollständig.
@@ -2169,33 +2185,44 @@ export class AskService {
       throw new GapAbschlussVerweigert(nutzbarkeit.gruende);
     }
     const von = aufruferBeschriftung(aufruferAus(beteiligter?.id));
-    const geschlossen: Gap = {
-      ...gap,
-      status: "geschlossen",
-      koId: bezug,
-      abschluss: {
-        art: "fachlich",
-        koId: bezug,
-        koVersion: ko.version,
-        von,
-        at: new Date(this.now()).toISOString(),
-      },
-    };
-    if (!(await this.schreibeWennOffen(geschlossen))) {
-      // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe.
-      const jetzt = await this.require(id);
-      if (jetzt.abschluss?.art === "fachlich" && jetzt.abschluss.koId === bezug) {
-        return jetzt;
+    const ergebnis = await this.aendereLuecke(id, (aktuell) => {
+      if (aktuell.status !== "offen") {
+        // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe.
+        if (aktuell.abschluss?.art === "fachlich" && aktuell.abschluss.koId === bezug) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
       }
-      throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
-    }
-    await this.audit?.record({
-      actor: von,
-      action: "gap.closed",
-      target: id,
-      payload: { koId: bezug, koVersion: ko.version },
+      // Ohne mitgeschickten Bezug trägt der verknüpfte Entwurf — er darf sich seit der Prüfung
+      // nicht geändert haben, sonst schlösse ein ungeprüfter Eintrag.
+      if (!koId?.trim() && aktuell.koId?.trim() !== bezug) {
+        throw new AskError(
+          "CONFLICT",
+          "Der verknüpfte Antwortentwurf hat sich geändert — bitte erneut abschliessen.",
+        );
+      }
+      return {
+        ...aktuell,
+        status: "geschlossen",
+        koId: bezug,
+        abschluss: {
+          art: "fachlich",
+          koId: bezug,
+          koVersion: ko.version,
+          von,
+          at: new Date(this.now()).toISOString(),
+        },
+      };
     });
-    return geschlossen;
+    if (ergebnis.geschrieben) {
+      await this.audit?.record({
+        actor: von,
+        action: "gap.closed",
+        target: id,
+        payload: { koId: bezug, koVersion: ko.version },
+      });
+    }
+    return ergebnis.gap;
   }
 
   /**
@@ -2245,29 +2272,29 @@ export class AskService {
     if (!isGapRuecknahmeGrund(grund)) {
       throw new AskError("BAD_REQUEST", "Unbekannter Grund der Rücknahme.");
     }
-    const gap = await this.require(id);
-    if (gap.status !== "offen") {
-      if (gap.abschluss?.art === "administrativ" && gap.abschluss.grund === grund) {
-        return gap;
-      }
-      throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
-    }
     const von = aufruferBeschriftung(aufruferAus(actor));
-    const zurueck: Gap = {
-      ...gap,
-      status: "geschlossen",
-      abschluss: { art: "administrativ", grund, von, at: new Date(this.now()).toISOString() },
-    };
-    if (!(await this.schreibeWennOffen(zurueck))) {
-      throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
-    }
-    await this.audit?.record({
-      actor: von,
-      action: "gap.withdrawn",
-      target: id,
-      payload: { grund },
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (aktuell.status !== "offen") {
+        if (aktuell.abschluss?.art === "administrativ" && aktuell.abschluss.grund === grund) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      return {
+        ...aktuell,
+        status: "geschlossen",
+        abschluss: { art: "administrativ", grund, von, at: new Date(this.now()).toISOString() },
+      };
     });
-    return zurueck;
+    if (geschrieben) {
+      await this.audit?.record({
+        actor: von,
+        action: "gap.withdrawn",
+        target: id,
+        payload: { grund },
+      });
+    }
+    return gap;
   }
 
   /**
@@ -2290,17 +2317,24 @@ export class AskService {
         "Das Wissensobjekt existiert nicht oder ist für dich nicht zugänglich.",
       );
     }
-    if (gap.koId === bezug) {
-      return gap;
-    }
-    const saved = await this.save({ ...gap, koId: bezug });
-    await this.audit?.record({
-      actor: beteiligter.id,
-      action: "gap.draft-linked",
-      target: id,
-      payload: { koId: bezug },
+    // Ben, Nacharbeit 3: Zustand und Rolle werden am AKTUELLEN Datensatz erneut geprüft — eine
+    // verspätete Verknüpfung öffnet keinen inzwischen geschlossenen Vorgang wieder.
+    const ergebnis = await this.aendereLuecke(id, (aktuell) => {
+      this.verlangeZustaendigOderVerwaltend(aktuell, beteiligter);
+      if (aktuell.status !== "offen") {
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      return aktuell.koId === bezug ? null : { ...aktuell, koId: bezug };
     });
-    return saved;
+    if (ergebnis.geschrieben) {
+      await this.audit?.record({
+        actor: beteiligter.id,
+        action: "gap.draft-linked",
+        target: id,
+        payload: { koId: bezug },
+      });
+    }
+    return ergebnis.gap;
   }
 
   /**
@@ -2309,38 +2343,39 @@ export class AskService {
    * (Fragende und zuständige Person) — nicht im Prüfprotokoll.
    */
   async askGapFollowUp(id: string, beteiligter: GapBeteiligter, frage: string): Promise<Gap> {
-    const gap = await this.require(id);
-    if (!istZustaendig(gap, beteiligter.id)) {
-      throw new AskError("FORBIDDEN", "Rückfragen stellt die zuständige Person.");
-    }
-    if (gap.status !== "offen") {
-      throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
-    }
     const text = rueckfrageText(frage);
-    const offen = (gap.rueckfragen ?? []).find((r) => r.antwort === undefined);
-    if (offen) {
-      if (offen.frage === text) {
-        return gap;
+    const rueckfrageId = this.genId();
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (!istZustaendig(aktuell, beteiligter.id)) {
+        throw new AskError("FORBIDDEN", "Rückfragen stellt die zuständige Person.");
       }
-      throw new AskError("BAD_REQUEST", "Es ist bereits eine Rückfrage offen.");
+      if (aktuell.status !== "offen") {
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      const offen = (aktuell.rueckfragen ?? []).find((r) => r.antwort === undefined);
+      if (offen) {
+        if (offen.frage === text) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Es ist bereits eine Rückfrage offen.");
+      }
+      const rueckfrage: GapRueckfrage = {
+        id: rueckfrageId,
+        frage: text,
+        von: beteiligter.id,
+        at: new Date(this.now()).toISOString(),
+      };
+      return { ...aktuell, rueckfragen: [...(aktuell.rueckfragen ?? []), rueckfrage] };
+    });
+    if (geschrieben) {
+      await this.audit?.record({
+        actor: beteiligter.id,
+        action: "gap.followup-asked",
+        target: id,
+        payload: { rueckfrageId },
+      });
     }
-    const rueckfrage: GapRueckfrage = {
-      id: this.genId(),
-      frage: text,
-      von: beteiligter.id,
-      at: new Date(this.now()).toISOString(),
-    };
-    const saved = await this.save({
-      ...gap,
-      rueckfragen: [...(gap.rueckfragen ?? []), rueckfrage],
-    });
-    await this.audit?.record({
-      actor: beteiligter.id,
-      action: "gap.followup-asked",
-      target: id,
-      payload: { rueckfrageId: rueckfrage.id },
-    });
-    return saved;
+    return gap;
   }
 
   /** Ein Fragender beantwortet die offene Rückfrage. Eine beantwortete bleibt beantwortet. */
@@ -2350,41 +2385,49 @@ export class AskService {
     beteiligter: GapBeteiligter,
     antwort: string,
   ): Promise<Gap> {
-    const gap = await this.require(id);
-    if (!istFragender(gap, beteiligter.id)) {
-      throw new AskError("FORBIDDEN", "Rückfragen beantworten die Fragenden.");
-    }
     const text = rueckfrageText(antwort);
-    const ziel = (gap.rueckfragen ?? []).find((r) => r.id === rueckfrageId);
-    if (!ziel) {
-      throw new AskError("NOT_FOUND", "Rückfrage nicht gefunden.");
-    }
-    if (ziel.antwort !== undefined) {
-      if (ziel.antwort === text) {
-        return gap;
+    // Ben, Nacharbeit 3: eine VERSPÄTETE Antwort trifft den aktuellen Datensatz. Ist der Vorgang
+    // inzwischen geschlossen, wird nichts geschrieben — Abschluss und Abschlussdaten bleiben.
+    const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      if (!istFragender(aktuell, beteiligter.id)) {
+        throw new AskError("FORBIDDEN", "Rückfragen beantworten die Fragenden.");
       }
-      throw new AskError("BAD_REQUEST", "Die Rückfrage ist bereits beantwortet.");
+      const ziel = (aktuell.rueckfragen ?? []).find((r) => r.id === rueckfrageId);
+      if (!ziel) {
+        throw new AskError("NOT_FOUND", "Rückfrage nicht gefunden.");
+      }
+      if (ziel.antwort !== undefined) {
+        if (ziel.antwort === text) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Die Rückfrage ist bereits beantwortet.");
+      }
+      if (aktuell.status !== "offen") {
+        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+      }
+      return {
+        ...aktuell,
+        rueckfragen: (aktuell.rueckfragen ?? []).map((r) =>
+          r.id === rueckfrageId
+            ? {
+                ...r,
+                antwort: text,
+                beantwortetVon: beteiligter.id,
+                beantwortetAm: new Date(this.now()).toISOString(),
+              }
+            : r,
+        ),
+      };
+    });
+    if (geschrieben) {
+      await this.audit?.record({
+        actor: beteiligter.id,
+        action: "gap.followup-answered",
+        target: id,
+        payload: { rueckfrageId },
+      });
     }
-    const saved = await this.save({
-      ...gap,
-      rueckfragen: (gap.rueckfragen ?? []).map((r) =>
-        r.id === rueckfrageId
-          ? {
-              ...r,
-              antwort: text,
-              beantwortetVon: beteiligter.id,
-              beantwortetAm: new Date(this.now()).toISOString(),
-            }
-          : r,
-      ),
-    });
-    await this.audit?.record({
-      actor: beteiligter.id,
-      action: "gap.followup-answered",
-      target: id,
-      payload: { rueckfrageId },
-    });
-    return saved;
+    return gap;
   }
 
   /**
@@ -2593,15 +2636,55 @@ export class AskService {
     }
   }
 
-  /** Abschluss nur, solange offen — über die Ablage unteilbar, sonst mit Prüfung direkt davor. */
-  private async schreibeWennOffen(gap: Gap): Promise<boolean> {
-    if (this.gaps.updateWennOffen) {
-      return this.gaps.updateWennOffen(gap);
+  /**
+   * ============================================================================================
+   * produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3) — JEDER SCHRITT AM AKTUELLEN STAND.
+   * ============================================================================================
+   *
+   * Bis hierher schrieben die Vorgangsschritte die Lücke als GANZES zurück, so wie sie am Anfang
+   * des Schritts gelesen war. Lag dazwischen ein `await` (Fachprüfabfrage, Ablage), überschrieb
+   * die alte Momentaufnahme, was inzwischen geschehen war: weitere Fragende und Zähler gingen
+   * verloren, und eine verspätete Rückfrageantwort konnte einen fachlichen Abschluss entfernen.
+   *
+   * Jetzt rechnet `schritt` den neuen Stand aus dem GERADE gelesenen, und geschrieben wird nur,
+   * wenn die Ablage noch genau diesen Stand hält (`GapRepo.ersetzeWenn`, Vergleichen-und-Setzen).
+   * Sonst beginnt der Schritt am frischen Stand von vorn — dort greifen seine Prüfungen erneut
+   * (geschlossen bleibt geschlossen). `schritt` gibt `null` zurück, wenn nichts zu schreiben ist;
+   * er darf werfen. Zurück kommt der TATSÄCHLICH gespeicherte Stand.
+   */
+  private async aendereLuecke(
+    id: string,
+    schritt: (aktuell: Gap) => Gap | null,
+  ): Promise<{ gap: Gap; geschrieben: boolean }> {
+    for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
+      const gelesen = await this.gaps.findById(id);
+      if (!gelesen) {
+        throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
+      }
+      const aktuell = withPriority(gelesen);
+      const neu = schritt(aktuell);
+      if (neu === null) {
+        return { gap: aktuell, geschrieben: false };
+      }
+      if (await this.ersetzeWenn(gelesen, neu)) {
+        return { gap: neu, geschrieben: true };
+      }
     }
-    if ((await this.gaps.findById(gap.id))?.status !== "offen") {
+    throw new AskError(
+      "CONFLICT",
+      "Die Wissenslücke wurde gerade mehrfach geändert — der Schritt wurde nicht ausgeführt.",
+    );
+  }
+
+  /** Vergleichen-und-Setzen über die Ablage; ohne die Methode mit Vergleich direkt davor. */
+  private async ersetzeWenn(erwartet: Gap, neu: Gap): Promise<boolean> {
+    if (this.gaps.ersetzeWenn) {
+      return this.gaps.ersetzeWenn(erwartet, neu);
+    }
+    if (!gleicherLueckenstand(await this.gaps.findById(neu.id), erwartet)) {
       return false;
     }
-    await this.gaps.update(gap);
+    await this.gaps.update(neu);
     return true;
   }
 
@@ -2615,8 +2698,9 @@ export class AskService {
     if (!isGapPriority(priority)) {
       throw new AskError("BAD_REQUEST", "Ungültige Priorität.");
     }
-    const gap = await this.require(id);
-    const saved = await this.save({ ...gap, priority });
+    // Am aktuellen Stand gesetzt — eine Prioritätsänderung nimmt weder einen Abschluss noch
+    // zwischenzeitliche Fragende zurück.
+    const { gap: saved } = await this.aendereLuecke(id, (aktuell) => ({ ...aktuell, priority }));
     await this.audit?.record({
       actor: aufruferBeschriftung(aufruferAus(actor)),
       action: "gap.priority-changed",
@@ -2773,11 +2857,6 @@ export class AskService {
     // Vorgang (`gap.repeated`) bräuchte eine Beschriftung in `apps/web/src/i18n.ts`; diese Datei
     // liegt nicht in der Lease dieses Auftrags. Als kleiner Folgeschritt in der Rückgabe benannt.
     return fuerDenFragenden(gespeichert, createdBy);
-  }
-
-  private async save(gap: Gap): Promise<Gap> {
-    await this.gaps.update(gap);
-    return gap;
   }
 
   private async require(id: string): Promise<Gap> {

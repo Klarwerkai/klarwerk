@@ -17,7 +17,7 @@
 //       eine Lücke (Wiederaufnahme).
 //   G — Rückfrage und Neuzuordnung über die Rollen.
 import { describe, expect, it } from "vitest";
-import { AskService, InMemoryGapRepo } from "../../services/ask";
+import { AskService, type Gap, type GapRepo, InMemoryGapRepo } from "../../services/ask";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, type KnowledgeObject, KoService } from "../../services/knowledge-object";
 import { Reasoner } from "../../services/reasoner";
@@ -31,6 +31,43 @@ const FRAGE = "Wie stelle ich den Kühlkreislauf der Presse Zeta nach dem Stills
 const ALLE = (): boolean => true;
 const ZEHN_JAHRE = 10 * 365 * 24 * 60 * 60 * 1000;
 
+/**
+ * Der echte Speicheradapter — mit einer Klammer für die Überlappungsproben (Ben, Nacharbeit 3):
+ * `halteLesen(n)` lässt das n-te folgende `findById` den Stand lesen und DANN warten, bis `weiter()`
+ * kommt. So lässt sich genau das Fenster zwischen „Stand gelesen" und „geschrieben" öffnen, in dem
+ * eine zweite Änderung landet. Ohne Klammer verhält sich die Ablage wie `InMemoryGapRepo`.
+ */
+class HaltbareAblage extends InMemoryGapRepo {
+  private halt: { rest: number; gelesen: () => void; weiter: Promise<void> } | null = null;
+
+  halteLesen(n: number): { gelesen: Promise<void>; weiter: () => void } {
+    let weiter: () => void = () => {};
+    let gelesen: () => void = () => {};
+    const weiterP = new Promise<void>((r) => {
+      weiter = r;
+    });
+    const gelesenP = new Promise<void>((r) => {
+      gelesen = r;
+    });
+    this.halt = { rest: n, gelesen, weiter: weiterP };
+    return { gelesen: gelesenP, weiter };
+  }
+
+  override async findById(id: string): Promise<Gap | undefined> {
+    const stand = await super.findById(id);
+    const halt = this.halt;
+    if (halt) {
+      halt.rest -= 1;
+      if (halt.rest === 0) {
+        this.halt = null;
+        halt.gelesen();
+        await halt.weiter;
+      }
+    }
+    return stand;
+  }
+}
+
 async function buehne(opts: { now?: () => number } = {}) {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
   await koService.activateSearchProjectionV2();
@@ -41,7 +78,7 @@ async function buehne(opts: { now?: () => number } = {}) {
     assignments: new InMemoryAssignmentRepo(),
     audit,
   });
-  const gaps = new InMemoryGapRepo();
+  const gaps = new HaltbareAblage();
   const deps = {
     reasoner: new Reasoner(),
     koService,
@@ -328,5 +365,129 @@ describe("G · Rückfrage und Neuzuordnung", () => {
     const sicht = await b.ask.gapVorgang(id, frida, async (p) => p === "andere");
     expect(sicht.zuordnungen).toHaveLength(2);
     expect(JSON.stringify(sicht.zuordnungen)).not.toContain("vera");
+  });
+});
+
+// ================================================================================================
+// H — ÜBERLAPPENDE SCHRITTE (Ben, Nacharbeit 3). Jeder Fall öffnet mit `halteLesen` genau das
+// Fenster zwischen „Stand gelesen" und „geschrieben" und lässt darin eine zweite Änderung landen.
+// Vor der Korrektur überschrieb die alte Momentaufnahme diese Änderung.
+// ================================================================================================
+describe("H · überlappende Schritte verlieren nichts und öffnen nichts wieder", () => {
+  it("H1 wer während des Abschlusses dieselbe Frage stellt, bleibt Fragender und wird benachrichtigt", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    // closeGap liest zweimal: Vorprüfung, dann den Stand, an dem geschrieben wird — den hält die Probe.
+    const halt = b.gaps.halteLesen(2);
+    const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    await b.frage("fritz");
+    halt.weiter();
+    const zu = await abschluss;
+    expect(zu.status).toBe("geschlossen");
+    expect(zu.weitereFragende).toEqual(["fritz"]);
+    expect(zu.askCount).toBe(2);
+    // Zurück kommt der GESPEICHERTE Stand.
+    expect(await b.gaps.findById(id)).toEqual(zu);
+    const meldung = (await b.ask.gapMeldungenFuer("fritz", ALLE)).filter(
+      (m) => m.art === "geloest",
+    );
+    expect(meldung).toHaveLength(1);
+    expect((await b.ask.gapVorgang(id, fritz)).phase).toBe("geloest");
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+  });
+
+  it("H2 eine verspätete Rückfrageantwort entfernt keinen fachlichen Abschluss", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.ask.handOverGap(id, "fachmann", frida, null);
+    await b.ask.askGapFollowUp(id, fachmann, "Welche Baureihe?");
+    const rueckfrageId = (await b.gaps.findById(id))?.rueckfragen?.[0]?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    // Die Antwort hat den offenen Stand gelesen; dann schliesst der Fachmann.
+    const halt = b.gaps.halteLesen(1);
+    const spaet = b.ask.answerGapFollowUp(id, rueckfrageId, frida, "Baureihe 4");
+    await halt.gelesen;
+    const zu = await b.ask.closeGap(id, b.antwort.id, fachmann);
+    halt.weiter();
+    await expect(spaet).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const danach = await b.gaps.findById(id);
+    expect(danach?.status).toBe("geschlossen");
+    expect(danach?.abschluss).toEqual(zu.abschluss);
+    // Kein zweiter fachlicher Abschluss möglich, keine zweite Meldung.
+    await b.ask.closeGap(id, b.antwort.id, fachmann);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+    expect(
+      (await b.ask.gapMeldungenFuer("frida", ALLE)).filter((m) => m.art === "geloest"),
+    ).toHaveLength(1);
+  });
+
+  it("H3 eine verspätete Rückfrage öffnet den Vorgang nicht wieder; Priorität behält den Abschluss", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.ask.handOverGap(id, "fachmann", frida, null);
+    await b.freigeben(b.antwort.id);
+
+    const halt = b.gaps.halteLesen(1);
+    const rueckfrage = b.ask.askGapFollowUp(id, fachmann, "Noch eine Frage?");
+    await halt.gelesen;
+    const zu = await b.ask.closeGap(id, b.antwort.id, fachmann);
+    halt.weiter();
+    await expect(rueckfrage).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect((await b.gaps.findById(id))?.rueckfragen ?? []).toEqual([]);
+
+    // Eine Prioritätsänderung nach dem Abschluss behält Abschluss und Fragende.
+    const prio = await b.ask.setGapPriority(id, "hoch", "vera");
+    expect(prio.status).toBe("geschlossen");
+    expect(prio.abschluss).toEqual(zu.abschluss);
+    expect(await b.gaps.findById(id)).toEqual(prio);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+  });
+
+  it("H4 eine verspätete Entwurfsverknüpfung öffnet den Vorgang nicht wieder", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.ask.handOverGap(id, "fachmann", frida, null);
+    await b.freigeben(b.antwort.id);
+    // linkGapDraft liest zweimal (Vorprüfung, Schreibstand) — gehalten wird der Schreibstand.
+    const halt = b.gaps.halteLesen(2);
+    const entwurf = b.ask.linkGapDraft(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    const zu = await b.ask.closeGap(id, b.antwort.id, fachmann);
+    halt.weiter();
+    await expect(entwurf).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const danach = await b.gaps.findById(id);
+    expect(danach?.status).toBe("geschlossen");
+    expect(danach?.abschluss).toEqual(zu.abschluss);
+  });
+
+  it("H5 der Rückfall ohne Vergleichsmethode der Ablage schützt ebenso", async () => {
+    // Eine Ablage OHNE `ersetzeWenn` (Testattrappen): der Dienst vergleicht selbst direkt davor.
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const ohne: GapRepo = {
+      insert: (g) => b.gaps.insert(g),
+      findById: (i) => b.gaps.findById(i),
+      update: (g) => b.gaps.update(g),
+      delete: (i) => b.gaps.delete(i),
+      all: () => b.gaps.all(),
+      insertOrIncrement: (g, v) => b.gaps.insertOrIncrement(g, v),
+    };
+    const ask = new AskService({ ...b.deps, gaps: ohne });
+    const halt = b.gaps.halteLesen(2);
+    const abschluss = ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    await b.frage("fritz");
+    halt.weiter();
+    const zu = await abschluss;
+    expect(zu.weitereFragende).toEqual(["fritz"]);
+    expect((await b.gaps.findById(id))?.status).toBe("geschlossen");
   });
 });
