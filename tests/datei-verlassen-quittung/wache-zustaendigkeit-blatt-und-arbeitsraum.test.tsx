@@ -408,7 +408,7 @@ async function bisZurGeladenenDatei(): Promise<void> {
     "der Entwurf ist im Expertenformular nicht geöffnet",
   ).not.toBeNull();
 
-  await tippe(feld(i18n.t("capture.fTitle")), "");
+  await tippe(feld(i18n.t("capture.wizard.titleLabel")), "");
 
   await menueWeg(i18n.t("erfassen.weg.datei"));
   expect(
