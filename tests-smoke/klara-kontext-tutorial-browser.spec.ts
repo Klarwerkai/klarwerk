@@ -225,9 +225,13 @@ test("Klara 03 · Tutorial „Fragen“: wirklicher Schritt, Zwischenfrage, Paus
   await beleg(p, info, "4b nach Neuladen: Tutorial wieder bei Schritt 2");
 
   // --- K5 · Fehlziel: im Schritt „Antwort“ gibt es auf der echten Seite noch keine Antwort -------
-  for (let i = 0; i < 3; i++) {
+  // Nacharbeit 4 (gemessen): „Antwort“ ist Schritt 4 von 7 (danach „5. Quelle“). Nach dem Neuladen
+  // steht das Tutorial bei Schritt 2 — zwei Schritte weiter, nicht drei.
+  await expect(aktuell).toHaveAttribute("data-schritt", "formulieren");
+  for (let i = 0; i < 2; i++) {
     await p.getByTestId("klara-tutorial-weiter").click();
   }
+  await expect(p.getByTestId("klara-tutorial-schritt")).toContainText("Schritt 4 von 7");
   await expect(aktuell).toHaveAttribute("data-schritt", "antwort");
   await expect(p.getByTestId("klara-tutorial-fehlziel")).toBeVisible();
   await expect(p.getByTestId("klara-tutorial-fehlziel")).toContainText(
