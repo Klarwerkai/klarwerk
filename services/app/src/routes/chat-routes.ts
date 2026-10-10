@@ -593,6 +593,44 @@ export function chatRoutes(dienste: ChatRouteDienste, guards: Guards): FastifyPl
       reply.code(200).send({ gespraech: await gespraechSicht(k, g), nachricht });
     });
 
+    // Nacharbeit 6 (Ben, K4): schon angezeigte ältere Nachrichten JETZT neu ansehen. Die Seite
+    // schickt die Kennungen, die sie zeigt; zurück kommt jede so, wie DIESE Person sie heute sehen
+    // darf (Verweise, Ausschnitte, Anhänge neu gegen `darfSehen`). Was nicht (mehr) zu diesem
+    // Gespräch gehört, fehlt; ist das Gespräch selbst nicht mehr lesbar, 404.
+    app.post<{ Params: { id: string }; Body: unknown }>(
+      "/api/chat/gespraeche/:id/auffrischen",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const roh = (request.body as { ids?: unknown } | null)?.ids;
+        if (
+          !Array.isArray(roh) ||
+          roh.length > CHAT_GRENZEN.nachrichtenJeAbruf ||
+          roh.some((x) => typeof x !== "string" || x.length === 0 || x.length > 80)
+        ) {
+          reply.code(400).send({
+            error: "CHAT_UNGUELTIG",
+            message: `Erwartet werden höchstens ${CHAT_GRENZEN.nachrichtenJeAbruf} Nachrichtenkennungen.`,
+          });
+          return;
+        }
+        const k = await kontextFuer(user);
+        const g = await lesbaresGespraech(k, request.params.id);
+        if (!g) {
+          nichtGefunden(reply, "Gespräch");
+          return;
+        }
+        const gefunden = await dienste.chat.nachrichtenMitKennungen(g.id, roh as string[]);
+        const nachrichten = [];
+        for (const n of gefunden) {
+          nachrichten.push(await nachrichtSicht(k, n));
+        }
+        reply.code(200).send({ nachrichten });
+      },
+    );
+
     // Senden. Dieselbe Sendekennung ein zweites Mal legt NICHTS Neues an (200 statt 201).
     app.post<{ Params: { id: string }; Body: unknown }>(
       "/api/chat/gespraeche/:id/nachrichten",

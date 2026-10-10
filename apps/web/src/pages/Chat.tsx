@@ -731,20 +731,43 @@ function GespraechAnsicht({
   const [laedtFrueher, setLaedtFrueher] = useState(false);
   const [frueherFehler, setFrueherFehler] = useState(false);
   const daten = abfrage.data;
+  // Nacharbeit 6 (Ben, K4): die schon angezeigten älteren Nachrichten werden im selben Takt wie die
+  // jüngste Seite neu gegen die Rechte gehalten. Angezeigt wird immer die JÜNGSTE Antwort des
+  // Servers; was er nicht mehr liefert, fällt weg. Scheitert die Prüfung, bleiben die älteren
+  // Nachrichten ausgeblendet, statt alte Inhaltsansichten weiter zu zeigen.
+  const frueherIds = useMemo(() => frueher.map((n) => n.id), [frueher]);
+  const auffrischung = useQuery({
+    queryKey: ["chat", "frueher", id, frueherIds.join(",")],
+    queryFn: async () => {
+      const raus: NachrichtSicht[] = [];
+      for (let i = 0; i < frueherIds.length; i += 500) {
+        const teil = await chatApi.auffrischen(id, frueherIds.slice(i, i + 500));
+        raus.push(...teil.nachrichten);
+      }
+      return raus;
+    },
+    enabled: frueherIds.length > 0,
+    refetchInterval: 5_000,
+    retry: false,
+  });
+  const frueherSicht = auffrischung.isError ? [] : (auffrischung.data ?? frueher);
   const verlauf = useMemo(
-    () => zusammenfuehren(frueher, daten?.nachrichten ?? []),
-    [frueher, daten],
+    () => zusammenfuehren(frueherSicht, daten?.nachrichten ?? []),
+    [frueherSicht, daten],
   );
   const zielImVerlauf = hervor ? verlauf.some((n) => n.id === hervor) : true;
   // Die Zielnachricht einer Erwähnung wird EIGENS geladen, wenn sie nicht im gezeigten Verlauf
-  // steht — gleich, wie viele neuere Nachrichten seither kamen. Dieselbe Leseregel am Server.
+  // steht — gleich, wie viele neuere Nachrichten seither kamen. Dieselbe Leseregel am Server, und
+  // dieselbe regelmäßige Neuprüfung wie der Verlauf (Nacharbeit 6).
   const ziel = useQuery({
     queryKey: ["chat", "nachricht", hervor],
     queryFn: () => chatApi.nachricht(hervor ?? ""),
     enabled: Boolean(hervor) && Boolean(daten) && !zielImVerlauf,
+    refetchInterval: 5_000,
     retry: false,
   });
-  const zielDaten = ziel.data;
+  // Scheitert die Neuprüfung, wird die alte Ansicht NICHT weiter gezeigt.
+  const zielDaten = ziel.isError ? undefined : ziel.data;
   useEffect(() => {
     if (!hervor || (!daten && !zielDaten)) {
       return;
@@ -766,8 +789,9 @@ function GespraechAnsicht({
     setFrueherFehler(false);
     try {
       const seite = await chatApi.aeltere(id, aelteste.id);
-      const sichtbar = daten.nachrichten;
-      setFrueher((alt) => zusammenfuehren(zusammenfuehren(alt, sichtbar), seite.nachrichten));
+      // Ausgangspunkt ist die zuletzt GEPRÜFTE Ansicht, nicht der Stand des ersten Nachladens.
+      const bisher = zusammenfuehren(frueherSicht, daten.nachrichten);
+      setFrueher(zusammenfuehren(bisher, seite.nachrichten));
       setFrueherNoch(seite.aelterVorhanden);
     } catch {
       setFrueherFehler(true);
@@ -864,6 +888,11 @@ function GespraechAnsicht({
             </span>
           ) : null}
         </div>
+      ) : null}
+      {auffrischung.isError ? (
+        <p role="alert" data-testid="chat-frueher-fehler" className="mb-2 text-[12px] text-muted">
+          {t("chat.verlauf.auffrischenFehler")}
+        </p>
       ) : null}
       <ol data-testid="chat-verlauf" className="space-y-2">
         {nachrichten.map((n) => (

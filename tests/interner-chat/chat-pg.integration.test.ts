@@ -321,6 +321,14 @@ describe("Interner Chat gegen echtes PostgreSQL", () => {
       expect(alle).toHaveLength(ANZAHL);
       expect([...alle].sort()).toEqual(alle);
       expect(seite2[0]?.text).toBe("Meldung 0");
+      // Nacharbeit 6: die Auffrischung liest genau die genannten Nachrichten dieses Gesprächs.
+      const genannt = await repo.nachrichtenMitKennungen(gespraechId, [
+        "n-0003",
+        "n-0001",
+        "gibt-es-nicht",
+      ]);
+      expect(genannt.map((n) => n.id)).toEqual(["n-0001", "n-0003"]);
+      expect(await repo.nachrichtenMitKennungen("anderes-gespraech", ["n-0001"])).toEqual([]);
     } finally {
       await pool.end();
     }

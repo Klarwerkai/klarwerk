@@ -133,6 +133,9 @@ export const chatApi = {
   /** Die Seite davor: Nachrichten, die älter sind als `vor` (die älteste schon gezeigte). */
   aeltere: (id: string, vor: string) =>
     api.get<VerlaufSeite>(`${pfad(id)}?vor=${encodeURIComponent(vor)}`),
+  /** Die genannten, schon angezeigten Nachrichten so, wie die Person sie JETZT sehen darf. */
+  auffrischen: (id: string, ids: readonly string[]) =>
+    api.post<{ nachrichten: NachrichtSicht[] }>(`${pfad(id)}/auffrischen`, { ids }),
   /** Eine einzelne Nachricht samt Gespräch — der Weg einer Erwähnung zu ihrem Ziel. */
   nachricht: (id: string) =>
     api.get<{ gespraech: GespraechSicht; nachricht: NachrichtSicht }>(

@@ -495,6 +495,35 @@ describe("K4 · Verweis, Ausschnitt und Anhang folgen den Rechten — auch nach 
     expect(nNachher.verweise).toEqual([{ sichtbar: false }]);
     expect(nNachher.ausschnitt).toEqual({ sichtbar: false });
     expect(nNachher.anhaenge).toEqual([{ sichtbar: false }]);
+    // Nacharbeit 6: auch die Auffrischung schon angezeigter Nachrichten liefert die neue Lage —
+    // eine fremde Kennung fehlt, zu viele Kennungen sind 400.
+    const nachrichtId = res.json().nachricht.id as string;
+    const frisch = await b.app.inject({
+      method: "POST",
+      url: `/api/chat/gespraeche/${direkt.id}/auffrischen`,
+      headers: b.k.fritz,
+      payload: { ids: [nachrichtId, artikelGespraech.id, "gibt-es-nicht"] },
+    });
+    expect(frisch.statusCode, frisch.body).toBe(200);
+    const fn = frisch.json().nachrichten as { id: string; verweise: unknown[] }[];
+    expect(fn.map((n) => n.id)).toEqual([nachrichtId]);
+    expect(fn[0]?.verweise).toEqual([{ sichtbar: false }]);
+    expect(frisch.body).not.toContain(TITEL);
+    expect(frisch.body).not.toContain(ausschnitt);
+    const zuViele = await b.app.inject({
+      method: "POST",
+      url: `/api/chat/gespraeche/${direkt.id}/auffrischen`,
+      headers: b.k.fritz,
+      payload: { ids: Array.from({ length: 501 }, (_, i) => `n-${i}`) },
+    });
+    expect(zuViele.statusCode).toBe(400);
+    const fremdesGespraech = await b.app.inject({
+      method: "POST",
+      url: `/api/chat/gespraeche/${artikelGespraech.id}/auffrischen`,
+      headers: b.k.fritz,
+      payload: { ids: [nachrichtId] },
+    });
+    expect(fremdesGespraech.statusCode).toBe(404);
     // Nichts vom Artikel steht noch irgendwo in der Antwort.
     expect(nachher.body).not.toContain(TITEL);
     expect(nachher.body).not.toContain(ausschnitt);

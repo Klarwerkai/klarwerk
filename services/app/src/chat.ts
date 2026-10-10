@@ -363,6 +363,8 @@ export interface ChatRepo {
     gespraechIds: readonly string[],
   ): Promise<Map<string, { letzte: ChatNachricht; anzahl: number }>>;
   nachricht(id: string): Promise<ChatNachricht | undefined>;
+  /** Die genannten Nachrichten dieses Gesprächs, aufsteigend nach Zeit; fremde Kennungen fehlen. */
+  nachrichtenMitKennungen(gespraechId: string, ids: readonly string[]): Promise<ChatNachricht[]>;
   /**
    * Legt an — gibt es (Gespräch, Absender, Sendekennung) schon, die gespeicherte Nachricht
    * (`neu: false`). Das ist die Wiederholungsregel.
@@ -441,6 +443,18 @@ export class InMemoryChatRepo implements ChatRepo {
   nachricht(id: string): Promise<ChatNachricht | undefined> {
     const n = this.zeilen.get(id);
     return Promise.resolve(n ? structuredClone(n) : undefined);
+  }
+
+  nachrichtenMitKennungen(gespraechId: string, ids: readonly string[]): Promise<ChatNachricht[]> {
+    const raus: ChatNachricht[] = [];
+    for (const id of new Set(ids)) {
+      const n = this.zeilen.get(id);
+      if (n && n.gespraechId === gespraechId) {
+        raus.push(structuredClone(n));
+      }
+    }
+    raus.sort(nachZeit);
+    return Promise.resolve(raus);
   }
 
   legeNachricht(n: ChatNachricht): Promise<{ nachricht: ChatNachricht; neu: boolean }> {
@@ -609,6 +623,22 @@ export class PgChatRepo implements ChatRepo {
       [id],
     );
     return res.rows[0]?.data;
+  }
+
+  async nachrichtenMitKennungen(
+    gespraechId: string,
+    ids: readonly string[],
+  ): Promise<ChatNachricht[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<DataZeile<ChatNachricht>>(
+      `SELECT data FROM chat_nachrichten
+        WHERE gespraech_id = $1 AND id = ANY($2)
+        ORDER BY am ASC, id ASC`,
+      [gespraechId, [...ids]],
+    );
+    return res.rows.map((z) => z.data);
   }
 
   async legeNachricht(n: ChatNachricht): Promise<{ nachricht: ChatNachricht; neu: boolean }> {

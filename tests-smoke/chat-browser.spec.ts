@@ -505,4 +505,136 @@ test.describe("Interner Chat · zwei Konten in der echten App", () => {
     await anna.page.context().close();
     await bert.page.context().close();
   });
+
+  // Nacharbeit 6 (Ben, K4): Rechteentzug an verlinkten Artikeln, während die Seite OFFEN ist — erst
+  // an der eigens geladenen Zielnachricht, dann an einer nachgeladenen älteren Nachricht. Kein
+  // Neuladen: die Seite muss die alte Inhaltsansicht selbst ersetzen.
+  test("K4: Rechteentzug bei geöffnetem, nachgeladenem Verlauf — Zielnachricht und ältere Nachricht ohne Neuladen gesperrt", async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    await ensureLoggedIn(page);
+    const m = marke();
+    const anna = await person(page, browser, `Anna ${m}`, `anna-${m}@chat.test`);
+    const bert = await person(page, browser, `Bert ${m}`, `bert-${m}@chat.test`);
+
+    async function artikel(titel: string): Promise<string> {
+      const res = await anna.page.request.post("/api/kos", {
+        data: {
+          confidentiality: "intern",
+          title: titel,
+          statement: `${titel} gilt für alle Messschieber.`,
+          type: "best_practice",
+          category: "Prüfmittel",
+        },
+      });
+      expect(res.status(), await res.text()).toBe(201);
+      return ((await res.json()) as { id: string }).id;
+    }
+    const titelA = `Messplan ${m}`;
+    const titelB = `Prüfplan ${m}`;
+    const koA = await artikel(titelA);
+    const koB = await artikel(titelB);
+    const space = await page.request.post("/api/spaces", {
+      data: {
+        name: `Geschlossen ${m}`,
+        zweck: "Nur für Anna.",
+        verantwortlich: anna.id,
+        zugang: "mitglieder",
+        mitglieder: [],
+        ansichten: [],
+      },
+    });
+    expect(space.status(), await space.text()).toBe(201);
+    const spaceId = ((await space.json()) as { id: string }).id;
+    async function entziehen(koId: string): Promise<void> {
+      const v = await anna.page.request.post("/api/spaces/verschiebung/vorschau", {
+        data: { koId, zielSpaceId: spaceId },
+      });
+      expect(v.status(), await v.text()).toBe(200);
+      const vorschau = (await v.json()) as {
+        quelle: { id: string; version: number } | null;
+        ziel: { id: string; version: number } | null;
+        grundlage: string;
+      };
+      const wechsel = await anna.page.request.post("/api/spaces/verschiebung", {
+        data: {
+          koId,
+          zielSpaceId: spaceId,
+          basis: {
+            quelleId: vorschau.quelle?.id ?? null,
+            quelleVersion: vorschau.quelle?.version ?? null,
+            zielId: vorschau.ziel?.id ?? null,
+            zielVersion: vorschau.ziel?.version ?? null,
+            grundlage: vorschau.grundlage,
+          },
+        },
+      });
+      expect(wechsel.status(), await wechsel.text()).toBe(200);
+    }
+
+    const g = await anna.page.request.post("/api/chat/gespraeche", {
+      data: { art: "direkt", teilnehmer: [bert.id] },
+    });
+    expect(g.status(), await g.text()).toBe(201);
+    const gespraechId = ((await g.json()) as { id: string }).id;
+    const url = `/api/chat/gespraeche/${gespraechId}/nachrichten`;
+    const alt = await anna.page.request.post(url, {
+      data: { text: `Ältere Stelle /wissen/${koB}`, sendeKennung: `alt-b-${m}` },
+    });
+    expect(alt.status(), await alt.text()).toBe(201);
+    const altId = ((await alt.json()) as { nachricht: { id: string } }).nachricht.id;
+    await new Promise((fertig) => setTimeout(fertig, 10));
+    const mit = await anna.page.request.post(url, {
+      data: {
+        text: `Erwähnt: /wissen/${koA}`,
+        sendeKennung: `alt-a-${m}`,
+        erwaehnungen: [bert.id],
+      },
+    });
+    expect(mit.status(), await mit.text()).toBe(201);
+    const zielId = ((await mit.json()) as { nachricht: { id: string } }).nachricht.id;
+    await new Promise((fertig) => setTimeout(fertig, 10));
+    for (let i = 0; i < 501; i += 1) {
+      const res = await anna.page.request.post(url, {
+        data: { text: `Laufende Meldung ${i}`, sendeKennung: `lauf-${m}-${i}` },
+      });
+      expect(res.status()).toBe(201);
+    }
+
+    // 1 · Die alte Erwähnung öffnet ihre Nachricht eigens — mit Titel des Artikels A.
+    await bert.page.goto("/chat");
+    await bert.page.locator(`[data-testid="chat-erwaehnung"][data-nachricht="${zielId}"]`).click();
+    const zielblock = bert.page.getByTestId("chat-ziel");
+    const ziel = zielblock.locator(`[data-testid="chat-nachricht"][data-nachricht="${zielId}"]`);
+    await expect(ziel.getByTestId("chat-verweis")).toContainText(titelA, { timeout: 15_000 });
+
+    // 2 · Rechteentzug an A bei offener Seite: die Zielnachricht verliert Titel und Vorschau.
+    await entziehen(koA);
+    await expect(ziel.getByTestId("chat-verweis-gesperrt")).toBeVisible({ timeout: 20_000 });
+    await expect(zielblock).not.toContainText(titelA);
+    await beleg(bert.page, "K4 Zielnachricht nach Entzug ohne Neuladen gesperrt");
+
+    // 3 · Älteren Verlauf nachladen: Nachricht zu B mit Titel; A bleibt gesperrt.
+    await bert.page.getByTestId("chat-aeltere").click();
+    const verlauf = bert.page.getByTestId("chat-verlauf");
+    const aeltere = verlauf.locator(`[data-testid="chat-nachricht"][data-nachricht="${altId}"]`);
+    await expect(aeltere.getByTestId("chat-verweis")).toContainText(titelB, { timeout: 15_000 });
+    const zielImVerlauf = verlauf.locator(
+      `[data-testid="chat-nachricht"][data-nachricht="${zielId}"]`,
+    );
+    await expect(zielImVerlauf.getByTestId("chat-verweis-gesperrt")).toBeVisible();
+
+    // 4 · Rechteentzug an B bei offenem, nachgeladenem Verlauf — ohne Neuladen gesperrt.
+    await entziehen(koB);
+    await expect(aeltere.getByTestId("chat-verweis-gesperrt")).toBeVisible({ timeout: 20_000 });
+    await expect(aeltere.getByTestId("chat-verweis")).toHaveCount(0);
+    await expect(bert.page.getByTestId("chat-gespraech")).not.toContainText(titelB);
+    await expect(bert.page.getByTestId("chat-gespraech")).not.toContainText(titelA);
+    await beleg(bert.page, "K4 nachgeladene ältere Nachricht nach Entzug ohne Neuladen gesperrt");
+
+    await anna.page.context().close();
+    await bert.page.context().close();
+  });
 });

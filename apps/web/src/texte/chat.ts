@@ -44,6 +44,8 @@ export default {
     "chat.gespraech.zumSpace": "Zum Space: {{name}}",
     "chat.gespraech.leer": "Noch keine Nachricht.",
     "chat.verlauf.aeltere": "Ältere Nachrichten laden",
+    "chat.verlauf.auffrischenFehler":
+      "Ältere Nachrichten konnten nicht neu geprüft werden und sind ausgeblendet. Bitte neu laden.",
     "chat.ziel.titel": "Erwähnte Nachricht",
     "chat.ziel.fehlt": "Diese Nachricht ist nicht (mehr) verfügbar.",
     "chat.nachricht.ich": "Du",
@@ -139,6 +141,8 @@ export default {
     "chat.gespraech.zumSpace": "To the space: {{name}}",
     "chat.gespraech.leer": "No message yet.",
     "chat.verlauf.aeltere": "Load older messages",
+    "chat.verlauf.auffrischenFehler":
+      "Older messages could not be checked again and are hidden. Please reload.",
     "chat.ziel.titel": "Mentioned message",
     "chat.ziel.fehlt": "This message is not (or no longer) available.",
     "chat.nachricht.ich": "You",
@@ -234,6 +238,8 @@ export default {
     "chat.gespraech.zumSpace": "Naar de space: {{name}}",
     "chat.gespraech.leer": "Nog geen bericht.",
     "chat.verlauf.aeltere": "Oudere berichten laden",
+    "chat.verlauf.auffrischenFehler":
+      "Oudere berichten konden niet opnieuw worden gecontroleerd en zijn verborgen. Laad opnieuw.",
     "chat.ziel.titel": "Vermeld bericht",
     "chat.ziel.fehlt": "Dit bericht is niet (meer) beschikbaar.",
     "chat.nachricht.ich": "Jij",
