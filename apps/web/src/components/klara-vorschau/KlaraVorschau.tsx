@@ -1459,9 +1459,12 @@ export function KlaraVorschau(): JSX.Element {
           className={`fixed z-[59] flex flex-col overflow-hidden border border-hairline bg-surface shadow-popover ${panelForm}`}
           style={panelStil}
         >
-          {/* Kopf */}
-          <div className="flex items-start justify-between gap-2 border-b border-hairline px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2">
+          {/* Kopf. produkt:20261010:assistenz-name-avatar: der Name der Assistenz muss im Kopf
+              sichtbar bleiben. Vorher hatte die Knopfleiste `shrink-0` und drückte den Titel im
+              360 px breiten Gespräch auf Breite 0; jetzt hat der Titel eine Mindestbreite und die
+              Knöpfe brechen bei Platzmangel in eine eigene Zeile um. */}
+          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-hairline px-3 py-2">
+            <div className="flex min-w-[10rem] flex-1 items-center gap-2">
               <AvatarBild
                 motiv={assistenz.motiv}
                 alt=""
@@ -1469,12 +1472,12 @@ export function KlaraVorschau(): JSX.Element {
                 testId="klara-gespraech-avatar"
                 className="h-8 w-8 shrink-0 rounded-full"
               />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <h2
                   id={`${hinweisId}-titel`}
                   ref={panelTitelRef}
                   tabIndex={-1}
-                  className="text-[14px] font-semibold text-ink outline-none focus-visible:underline"
+                  className="break-words text-[14px] font-semibold text-ink outline-none focus-visible:underline"
                 >
                   {t("klaravorschau.panel.titel")}
                 </h2>
@@ -1496,7 +1499,7 @@ export function KlaraVorschau(): JSX.Element {
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+            <div className="ml-auto flex flex-wrap justify-end gap-1">
               <button
                 type="button"
                 data-testid="klara-ansicht"
