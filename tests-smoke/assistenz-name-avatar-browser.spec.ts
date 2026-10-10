@@ -118,7 +118,11 @@ async function motivAnFigur(page: Page, testId: string, id: string): Promise<voi
   const el = page.getByTestId(testId);
   await expect(el).toHaveAttribute("data-avatar", id);
   if ((await el.evaluate((n) => n.tagName)) === "IMG") {
-    await expect(el).toHaveAttribute("src", `/assistenz/erstauswahl-v1/${id}.png`);
+    // Die Adresse aus dem Katalog: das Original behält seine bisherige Produktdatei (K16), jedes
+    // andere Motiv liegt unter `assistenz/erstauswahl-v1/`.
+    const datei = ASSISTENZ_AVATAR_KATALOG.find((m) => m.id === id)?.datei;
+    expect(datei, `${id}: nicht im Katalog`).toBeTruthy();
+    await expect(el).toHaveAttribute("src", `/${datei}`);
   } else {
     await expect(el).toHaveAttribute("data-avatar-ersatz", "datei");
   }
