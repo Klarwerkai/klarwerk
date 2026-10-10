@@ -123,6 +123,7 @@ import { AnlagenQrCode } from "./AnlagenQrCode";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { FassungsGegenueberstellung } from "./Fassungsvergleich";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { OfficeImArtikel } from "./OfficeImArtikel";
 import { Verantwortung } from "./Verantwortung";
 import { Zeichnung } from "./Zeichnung";
 
@@ -2306,6 +2307,9 @@ export function MehrAbschnitte({
             })}
           </div>
         )}
+        {/* produkt:20261007:office-artikel-editor: Word-, Excel- und PowerPoint-Anhänge im
+            eingebetteten Editor. Rechte und Schreibweg entscheidet der Server. */}
+        <OfficeImArtikel ko={ko} />
         {canEdit ? (
           <>
             {/* JOB 3126 · UX-23: `aria-disabled` STATT `disabled` — ein `disabled`-Knopf fällt aus
