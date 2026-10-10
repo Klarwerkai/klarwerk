@@ -66,7 +66,34 @@ function Vorschau({ v }: { v: Rechtevorschau }): JSX.Element {
           verantwortung: v.bleibt.artikelVerantwortungName ?? v.bleibt.artikelVerantwortung,
         })}
       </p>
+      {v.regeln ? <Regeln v={v} /> : null}
       {v.grund ? <p className="text-[12.5px] text-trust-crit-text">{v.grund}</p> : null}
+    </div>
+  );
+}
+
+/** ADMIN-07 (K4): nach welchen Regeln der Artikel vorher und nachher steht. */
+function Regeln({ v }: { v: Rechtevorschau }): JSX.Element {
+  const { t } = useTranslation();
+  const seiten = [
+    ["quelle", v.regeln?.quelle ?? null],
+    ["ziel", v.regeln?.ziel ?? null],
+  ] as const;
+  return (
+    <div data-testid="space-vorschau-regeln" className="text-[12px] text-text">
+      <p className="font-semibold">{t("spaces.vorschau.regelnTitel")}</p>
+      {seiten.map(([seite, r]) => (
+        <p key={seite} data-seite={seite}>
+          {t(`spaces.vorschau.${seite}`)}:{" "}
+          {r
+            ? t("spaces.vorschau.regelnZeile", {
+                zugang: t(`spaces.zugang.${r.zugang}`),
+                zustaendig: r.verantwortlichName ?? r.verantwortlich,
+              })
+            : t("spaces.vorschau.ohneRegeln")}
+          {r?.regeln ? ` — ${r.regeln}` : ""}
+        </p>
+      ))}
     </div>
   );
 }
