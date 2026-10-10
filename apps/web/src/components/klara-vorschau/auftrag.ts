@@ -605,8 +605,23 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
 // 4. Ausführen — Schritt für Schritt, jeder am Server begonnen, ausgeführt, nachgelesen, gemeldet.
 // ------------------------------------------------------------------------------------------------
 
+/**
+ * Ist dieser Stand des Auftrags mindestens so neu wie der gezeigte? Eine verspätete Antwort (etwa
+ * die eines Schritts, der lief, während die Person abbrach oder korrigierte) trägt den Stand von
+ * damals — sie darf den neueren (abgebrochen, Fassung 2) nicht überschreiben.
+ */
+function nichtAelter(neu: KlaraAuftrag, alt: KlaraAuftrag | null): boolean {
+  if (!alt || alt.id !== neu.id) {
+    return true;
+  }
+  if (neu.geaendertAm !== alt.geaendertAm) {
+    return neu.geaendertAm > alt.geaendertAm;
+  }
+  return neu.verlauf.length >= alt.verlauf.length;
+}
+
 function uebernimmAuftrag(lokalId: string, auftrag: KlaraAuftrag): void {
-  setze(lokalId, (x) => ({ ...x, auftrag }));
+  setze(lokalId, (x) => (nichtAelter(auftrag, x.auftrag) ? { ...x, auftrag } : x));
 }
 
 async function melde(
