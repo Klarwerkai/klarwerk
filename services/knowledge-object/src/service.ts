@@ -5143,6 +5143,23 @@ export class KoService {
     return this.versions?.listByKo(id) ?? [];
   }
 
+  // R-1630 / R-2176: Kennungen der Objekte, deren Fassungen BIS `bisAt` einen der Suchbegriffe
+  // tragen (`KoVersionRepo.findKoIdsInFassungen`). Nur Kennungen — kein Inhalt verlässt diesen Weg;
+  // der Aufrufer lädt die Objekte über `get` (Papierkorb ausgeblendet) und prüft Sichtbarkeit selbst.
+  // Ohne Versionsablage oder ohne Nachsuche dort: ehrlich leer. D5: die Sperre vor dem Lesen.
+  async koIdsMitPassenderFassung(
+    terms: readonly string[],
+    bisAt: string,
+    limit: number,
+    vorInhaltsabruf?: () => void,
+  ): Promise<string[]> {
+    if (!this.versions?.findKoIdsInFassungen) {
+      return [];
+    }
+    vorInhaltsabruf?.();
+    return this.versions.findKoIdsInFassungen({ terms, bisAt, limit });
+  }
+
   // SCRUM-160: minimaler read-only Zugriff für Service-Vertrag/Tests. UI bleibt außerhalb Scope.
   async evidenceOf(id: string) {
     await this.require(id);
