@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useKo } from "../api/hooks";
 import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
@@ -101,6 +102,27 @@ export function KnowledgeDetail(): JSX.Element {
   useEffect(() => {
     setZeigtOriginal(false);
   }, [sprache, id]);
+
+  // WISSENSDETAIL (R-0907/R-1037) — DER BROWSER NENNT DEN EINTRAG, DEN DIE ADRESSE NENNT.
+  // Bis hierher stand im Tab auf jeder `/wissen/:id` derselbe Produktname: wer zwei Einträge in zwei
+  // Tabs offen hatte oder im Verlauf zurücksuchte, fand ihn nicht wieder. Jetzt steht vorn der Titel,
+  // den die Seite gerade zeigt (die Übersetzung, solange sie dasteht), dahinter der bisherige
+  // Dokumenttitel — er wird nicht ersetzt, nur ergänzt, und beim Verlassen zurückgestellt.
+  // `useKo` ist DIESELBE Abfrage, die die Lesefläche stellt (gleicher Schlüssel): kein zweiter Abruf.
+  // Nur hier, nicht auf `/bibliothek`: dort ist die Vorwahl rechts keine getroffene Wahl.
+  const eintrag = useKo(id);
+  const gezeigterTitel = variante && !zeigtOriginal ? variante.title : eintrag.data?.title;
+  const tabTitel = (gezeigterTitel ?? "").trim();
+  useEffect(() => {
+    if (tabTitel.length === 0) {
+      return;
+    }
+    const vorher = document.title;
+    document.title = `${tabTitel} · ${vorher}`;
+    return () => {
+      document.title = vorher;
+    };
+  }, [tabTitel]);
 
   return (
     <div data-testid="page-wissen">
