@@ -31,6 +31,7 @@ import type {
   KlaraAuftragSchritt,
   KlaraAuftragZiel,
   KlaraPlanSchritt,
+  KlaraSchreibwirkung,
 } from "./klara-auftrag";
 import { type KlaraGespraechDienst, KlaraGespraechFehler } from "./klara-gespraech";
 
@@ -45,6 +46,7 @@ type Ergebnis = { auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederhol
 
 interface Entwurf {
   id: string;
+  createdAt?: string;
   updatedAt: string;
   payload: { title?: string; statement?: string };
 }
@@ -184,7 +186,12 @@ export class KlaraAusfuehrung {
     const fassung = begonnen.schritt.auftragFassung;
     const melde = (
       stand: "gespeichert" | "abgeschlossen" | "fehlgeschlagen",
-      zusatz: { ergebnis?: KlaraAuftragErgebnis; ruecknehmbar?: boolean; code?: string } = {},
+      zusatz: {
+        ergebnis?: KlaraAuftragErgebnis;
+        ruecknehmbar?: boolean;
+        code?: string;
+        hinweis?: string;
+      } = {},
     ): Promise<Ergebnis> =>
       this.dienst.setzeAuftragsschritt(
         kontoId,
@@ -202,14 +209,27 @@ export class KlaraAusfuehrung {
             : {}),
         },
         "server",
-        stand === "fehlgeschlagen" ? { fehlerCode: zusatz.code ?? "server" } : {},
+        stand === "fehlgeschlagen"
+          ? { fehlerCode: zusatz.code ?? "server" }
+          : zusatz.hinweis
+            ? { fehlerCode: zusatz.hinweis }
+            : {},
       );
     const scheitert = (code: string): Promise<Ergebnis> => melde("fehlgeschlagen", { code });
     // Nacharbeit 4 (Ben): die Schreibwirkung ist bekannt, das Nachlesen gelang (noch) nicht. Der
     // Schritt bleibt „begonnen“ mit seiner Ergebniskennung (`schreibwirkung`) — ungeklärt, nicht
     // gescheitert. Eine Wiederholung liest nur nach.
-    const merke = (wirkung: { art: "entwurf" | "aufgabe"; id: string; pfad: string }) =>
+    const merke = (wirkung: KlaraSchreibwirkung) =>
       this.dienst.merkeSchreibwirkung(kontoId, gespraechId, auftragId, schluessel, wirkung);
+    // Nacharbeit 5 (Ben): nachgelesen wird gegen den vom Schreibweg BESTÄTIGTEN eigenen Stand. Steht
+    // inzwischen ein anderer Stand da (fremde Änderung zwischen Speichern und Nachlesen) oder ist der
+    // eigene unbekannt, ist die Wirkung gespeichert, aber NICHT rücknehmbar: der fremde Stand wird nie
+    // Rücknahmebasis — Rückgängig könnte sonst eine fremde Änderung überschreiben oder löschen.
+    const fremdstand = (id: string, titel: string, eigenerStand: string | null) =>
+      melde("gespeichert", {
+        ergebnis: { art: "entwurf", id, titel, stand: eigenerStand, pfad: entwurfPfad(id) },
+        hinweis: "fremdstand",
+      });
     const ungeklaert = async (): Promise<Ergebnis> => {
       const jetzt = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
       const schritt = jetzt.schritte.find((s) => s.schluessel === schluessel);
@@ -226,6 +246,7 @@ export class KlaraAusfuehrung {
 
     if (p.aktion === "entwurf_erstellen") {
       let entwurfId = bekannt?.id ?? null;
+      let eigenerStand = bekannt?.stand ?? null;
       if (!entwurfId) {
         const angelegt = await rufe("POST", "/api/drafts", {
           title: ziel.titel,
@@ -239,7 +260,19 @@ export class KlaraAusfuehrung {
           return scheitert(codeAus(angelegt.status));
         }
         entwurfId = angelegt.daten.id;
-        await merke({ art: "entwurf", id: entwurfId, pfad: entwurfPfad(entwurfId) });
+        // Eigener Stand nur, wenn die Antwort die frische Anlage ist (Anlage setzt createdAt =
+        // updatedAt). Liefert der Vorgangsschlüssel einen inzwischen bearbeiteten Entwurf zurück,
+        // ist dessen Stand nicht der eigene.
+        const frisch =
+          typeof angelegt.daten.createdAt === "string" &&
+          angelegt.daten.createdAt === angelegt.daten.updatedAt;
+        eigenerStand = frisch ? angelegt.daten.updatedAt : null;
+        await merke({
+          art: "entwurf",
+          id: entwurfId,
+          pfad: entwurfPfad(entwurfId),
+          stand: eigenerStand,
+        });
       }
       const gelesen = await rufe("GET", `/api/drafts/${encodeURIComponent(entwurfId)}`);
       if (gelesen.status === 404) {
@@ -247,6 +280,9 @@ export class KlaraAusfuehrung {
       }
       if (gelesen.status !== 200 || !istEntwurf(gelesen.daten)) {
         return ungeklaert();
+      }
+      if (eigenerStand === null || gelesen.daten.updatedAt !== eigenerStand) {
+        return fremdstand(entwurfId, ziel.titel, eigenerStand);
       }
       if ((gelesen.daten.payload.title ?? "") !== ziel.titel) {
         return scheitert("nichtNachgelesen");
@@ -268,6 +304,7 @@ export class KlaraAusfuehrung {
       // Der gebundene Stand ist der der GRENZE — nicht, was ein Browser jetzt behauptet.
       const gebunden =
         a.erlaubteZiele.find((z) => gleich(z, ziel as KlaraAuftragZiel))?.stand ?? ziel.stand;
+      let eigenerStand = bekannt?.stand ?? null;
       if (!bekannt) {
         const jetzt = await rufe("GET", `/api/drafts/${encodeURIComponent(id)}`);
         if (jetzt.status !== 200 || !istEntwurf(jetzt.daten)) {
@@ -289,8 +326,11 @@ export class KlaraAusfuehrung {
           if (geschrieben.status !== 200) {
             return scheitert(codeAus(geschrieben.status));
           }
+          // Der vom Speicherweg (Standvergleich) bestätigte eigene Stand.
+          eigenerStand = istEntwurf(geschrieben.daten) ? geschrieben.daten.updatedAt : null;
         }
-        await merke({ art: "entwurf", id, pfad: entwurfPfad(id) });
+        // Schon geschrieben (frühere, abgerissene Ausführung): der eigene Stand ist unbekannt.
+        await merke({ art: "entwurf", id, pfad: entwurfPfad(id), stand: eigenerStand });
       }
       const gelesen = await rufe("GET", `/api/drafts/${encodeURIComponent(id)}`);
       if (gelesen.status === 404) {
@@ -298,6 +338,9 @@ export class KlaraAusfuehrung {
       }
       if (gelesen.status !== 200 || !istEntwurf(gelesen.daten)) {
         return ungeklaert();
+      }
+      if (eigenerStand === null || gelesen.daten.updatedAt !== eigenerStand) {
+        return fremdstand(id, gelesen.daten.payload.title ?? ziel.titel, eigenerStand);
       }
       if (!angewandt(gelesen.daten.payload, p)) {
         return scheitert("nichtNachgelesen");
@@ -340,7 +383,7 @@ export class KlaraAusfuehrung {
         if (geschrieben.status !== 200 && geschrieben.status !== 201) {
           return scheitert(codeAus(geschrieben.status));
         }
-        await merke({ art: "aufgabe", id, pfad });
+        await merke({ art: "aufgabe", id, pfad, stand: null });
       }
       const nachgelesen = await this.liesAufgabeNach(id, aufgabenaktion, rufe);
       if (nachgelesen === "ungeklaert") {

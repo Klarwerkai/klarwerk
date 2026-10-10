@@ -193,6 +193,8 @@ export default {
     "klaraauftrag.fehlerCode.vorschritt":
       "Der vorige Schritt hat kein Ergebnis gespeichert – es gibt nichts zu öffnen.",
     "klaraauftrag.fehlerCode.server": "Der Server hat den Schritt abgelehnt. Nichts geändert.",
+    "klaraauftrag.fehlerCode.fremdstand":
+      "Gespeichert – der Entwurf wurde danach weiter geändert oder der eigene Stand ist nicht bestätigt. Klara nimmt nichts über eine spätere Änderung hinweg zurück.",
     "klaraauftrag.ruecknahme.nichtNachgelesen":
       "Beim Nachlesen war die Rücknahme nicht zu sehen – Klara meldet sie nicht als erledigt.",
     "klaraauftrag.ruecknahme.ohneVorher":
@@ -398,6 +400,8 @@ export default {
     "klaraauftrag.fehlerCode.vorschritt":
       "The previous step saved no result – there is nothing to open.",
     "klaraauftrag.fehlerCode.server": "The server refused the step. Nothing changed.",
+    "klaraauftrag.fehlerCode.fremdstand":
+      "Saved – the draft was changed further afterwards or its own state is not confirmed. Klara undoes nothing over a later change.",
     "klaraauftrag.ruecknahme.nichtNachgelesen":
       "Reading back did not show the undo – Klara does not report it as done.",
     "klaraauftrag.ruecknahme.ohneVorher":
@@ -607,6 +611,8 @@ export default {
     "klaraauftrag.fehlerCode.vorschritt":
       "De vorige stap heeft geen resultaat opgeslagen – er is niets te openen.",
     "klaraauftrag.fehlerCode.server": "De server heeft de stap geweigerd. Niets gewijzigd.",
+    "klaraauftrag.fehlerCode.fremdstand":
+      "Opgeslagen – het concept is daarna verder gewijzigd of de eigen stand is niet bevestigd. Klara draait niets terug over een latere wijziging heen.",
     "klaraauftrag.ruecknahme.nichtNachgelesen":
       "Bij het nalezen was het terugdraaien niet te zien – Klara meldt het niet als gedaan.",
     "klaraauftrag.ruecknahme.ohneVorher":

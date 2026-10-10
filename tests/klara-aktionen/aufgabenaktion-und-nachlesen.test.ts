@@ -510,6 +510,113 @@ describe("B3 · K5 — Nachlesen fällt nach erfolgreichem Schreiben aus: ungekl
     expect(schreibend).toEqual(["PUT /api/gaps/gap-klara-4"]);
     expect(await services.audit.list({ action: "gap.priority-changed" })).toHaveLength(1);
   });
+
+  // Nacharbeit 5 (Ben): zwischen Speichern und wiederholtem Nachlesen ändert jemand den Entwurf.
+  // Der fremde Stand wird NICHT Rücknahmebasis — sonst überschriebe/löschte Rückgängig die Änderung.
+  it("Bearbeiten: fremde Änderung vor dem Nachlesen — gespeichert mit eigenem Stand, nicht rücknehmbar", async () => {
+    const d = (
+      await auf(erik.token, "POST", "/api/drafts", { title: "Kupplung K2", statement: "Basis." })
+    ).json() as Entwurf;
+    const ziel = { art: "entwurf", id: d.id, titel: "Kupplung K2", stand: d.updatedAt, pfad: null };
+    const gid = await gespraech(erik.token);
+    const a = await auftrag(erik.token, gid, ziel, [
+      {
+        aktion: "entwurf_bearbeiten",
+        ziel,
+        ausSchritt: null,
+        aenderung: { art: "ergaenzen", text: "Spiel prüfen" },
+      },
+    ]);
+    const { rufe, schreibend } = rufeMit(erik.token, (url) => url.startsWith("/api/drafts/"));
+    const r = await ausfuehrung().fuehreAus(
+      erik.id,
+      gid,
+      a.id,
+      "s-1",
+      { nr: 1, auftragFassung: 1 },
+      rufe,
+    );
+    // Der vom Speicherweg bestätigte eigene Stand ist festgehalten.
+    const eigenerStand = r.schritt.schreibwirkung?.stand as string;
+    expect(eigenerStand).toEqual(expect.any(String));
+    expect(eigenerStand).not.toBe(d.updatedAt);
+
+    await kurz(5);
+    const fremd = await auf(erik.token, "PUT", `/api/drafts/${d.id}`, {
+      statement: "Fremd weiter bearbeitet.",
+    });
+    expect(fremd.statusCode, fremd.body).toBe(200);
+    const fremderStand = (fremd.json() as Entwurf).updatedAt;
+    expect(fremderStand).not.toBe(eigenerStand);
+
+    const wieder = await fuehreAus(erik.token, gid, a.id, "s-1", 1);
+    expect(wieder.schritt).toMatchObject({
+      stand: "gespeichert",
+      ruecknehmbar: false,
+      fehlerCode: "fremdstand",
+      ergebnis: { id: d.id, stand: eigenerStand },
+    });
+    expect(wieder.schritt.ergebnis?.stand).not.toBe(fremderStand);
+    expect(schreibend).toEqual([`PUT /api/drafts/${d.id}`]);
+
+    // Rückgängig überschreibt die fremde Änderung nicht.
+    const zurueck = await auf(
+      erik.token,
+      "POST",
+      `${schrittPfad(gid, a.id, "s-1")}/ruecknahme`,
+      {},
+    );
+    expect(zurueck.statusCode).toBe(409);
+    expect((zurueck.json() as { grund: string }).grund).toBe("nicht_ruecknehmbar");
+    const jetzt = (await auf(erik.token, "GET", `/api/drafts/${d.id}`)).json() as Entwurf;
+    expect(jetzt.payload.statement).toBe("Fremd weiter bearbeitet.");
+    expect(jetzt.updatedAt).toBe(fremderStand);
+  });
+
+  it("Anlegen: fremde Änderung vor dem Nachlesen — Rückgängig löscht den weiterbearbeiteten Entwurf nicht", async () => {
+    const ziel = { art: "neuer_entwurf", id: null, titel: "Lager L7", stand: null, pfad: null };
+    const gid = await gespraech(erik.token);
+    const a = await auftrag(erik.token, gid, ziel, [
+      { aktion: "entwurf_erstellen", ziel, ausSchritt: null, inhalt: "Fiktiver Inhalt." },
+    ]);
+    const { rufe } = rufeMit(erik.token, (url) => url.startsWith("/api/drafts/"));
+    const r = await ausfuehrung().fuehreAus(
+      erik.id,
+      gid,
+      a.id,
+      "s-1",
+      { nr: 1, auftragFassung: 1 },
+      rufe,
+    );
+    const id = r.schritt.schreibwirkung?.id as string;
+    const eigenerStand = r.schritt.schreibwirkung?.stand as string;
+    expect(eigenerStand).toEqual(expect.any(String));
+
+    await kurz(5);
+    expect(
+      (await auf(erik.token, "PUT", `/api/drafts/${id}`, { statement: "Weiter bearbeitet." }))
+        .statusCode,
+    ).toBe(200);
+
+    const wieder = await fuehreAus(erik.token, gid, a.id, "s-1", 1);
+    expect(wieder.schritt).toMatchObject({
+      stand: "gespeichert",
+      ruecknehmbar: false,
+      fehlerCode: "fremdstand",
+      ergebnis: { id, stand: eigenerStand },
+    });
+    const zurueck = await auf(
+      erik.token,
+      "POST",
+      `${schrittPfad(gid, a.id, "s-1")}/ruecknahme`,
+      {},
+    );
+    expect(zurueck.statusCode).toBe(409);
+    const jetzt = await auf(erik.token, "GET", `/api/drafts/${id}`);
+    expect(jetzt.statusCode).toBe(200);
+    expect((jetzt.json() as Entwurf).payload.statement).toBe("Weiter bearbeitet.");
+    expect((await auf(erik.token, "GET", "/api/drafts")).json()).toHaveLength(1);
+  });
 });
 
 describe("B4 · K4 — Löschen mit erwartetem Stand ist unteilbar", () => {

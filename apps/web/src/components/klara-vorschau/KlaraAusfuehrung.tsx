@@ -376,12 +376,15 @@ function AusfuehrungKarte({
               s?.ergebnis && (s.stand === "gespeichert" || s.stand === "abgeschlossen");
             // Nacharbeit 2: ein am Server gescheiterter Schritt trägt seinen Grundschlüssel — der Satz
             // dazu steht in der Sprache der Fläche, nicht in der des Servers.
+            // Nacharbeit 5: gespeichert, aber inzwischen fremd geändert (`fremdstand`) — steht da.
             const meldung =
               s?.stand === "fehlgeschlagen"
                 ? s.fehlerCode
                   ? t(`klaraauftrag.fehlerCode.${s.fehlerCode}`, { defaultValue: s.grund ?? "" })
                   : s.grund
-                : z.lokal?.meldung;
+                : s?.stand === "gespeichert" && s.fehlerCode
+                  ? t(`klaraauftrag.fehlerCode.${s.fehlerCode}`)
+                  : z.lokal?.meldung;
             // Öffnen bleibt Öffnen: ein abgeschlossener Öffnen-/Aufgabenschritt heisst „geöffnet“.
             // Nacharbeit 4: eine ausgeführte Aufgabenaktion zeigt, was am Server nachgelesen wurde.
             const aufgabeAusgefuehrt =

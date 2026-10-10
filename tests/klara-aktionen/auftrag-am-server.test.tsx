@@ -21,6 +21,8 @@
 //   U3 · K1        eine verfügbare Prüfaufgabe bearbeiten (Arbeitsort öffnen).
 //   U3c · K1/K10   Nacharbeit 4: Priorität einer Lücke über ihren Fachweg setzen und nachlesen;
 //                  ohne genannte Aktion zuerst die Rückfrage, vorher geschieht nichts.
+//   U6b · K3/K5    Nacharbeit 5: abgebrochen mit gespeicherter, nicht nachgelesener Wirkung — nach
+//                  dem Neuladen nur Nachlesen, kein weiterer Schritt.
 //   U4 · K3        Abbrechen mitten im Lauf: kein weiterer Schritt, Gespeichertes bleibt sichtbar.
 //   U5 · K4        Rückgängig nimmt Anlegen (Papierkorb) und Bearbeiten (vorheriger Stand) zurück
 //                  — getrennt von Abbrechen; Öffnen ist als nicht rücknehmbar benannt.
@@ -55,6 +57,8 @@ import i18n from "../../apps/web/src/i18n";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
 import { assembleServices, inMemoryRepos } from "../../services/app/src/build-app";
+import { KlaraAusfuehrung, type KlaraRufe } from "../../services/app/src/klara-ausfuehrung";
+import { KlaraGespraechDienst } from "../../services/app/src/klara-gespraech";
 import { alle, bis, klick, medienStub, q, ruhe, tippe } from "../fe003-tutorial-fragen/huelle";
 import {
   type Aufbau,
@@ -1254,5 +1258,121 @@ describe("U10 · K6 — S06: Zusammenfassen erzeugt keine Nachricht und keine Be
       ich: await benachrichtigungen(a, ich),
     }).toEqual(nachrichtenVorher);
     expect(await entwuerfe(a, ich)).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 5 (Ben): ein abgebrochener Auftrag, dessen erster Schritt gespeichert, aber nicht
+// nachgelesen ist, bleibt nach dem Neuladen nachlesbar — und NUR nachlesbar.
+describe("U6b · K3/K5 — nach Abbruch und Neuladen: nur das Nachlesen, kein weiterer Schritt", () => {
+  it("die geladene Karte bietet „Erneut versuchen“; es liest Schritt 1 nach und beginnt Schritt 2 nicht", async () => {
+    let dienste: ReturnType<typeof assembleServices> | null = null;
+    const a = await appAufbauen(false, () => {
+      dienste = assembleServices(inMemoryRepos());
+      return dienste;
+    });
+    aufbau = a;
+    draht.setzeApp(a.app);
+    const ich = await neuesKonto(a.app, "klara-neuladen", a.admin);
+    const inject = (methode: "GET" | "POST" | "PUT" | "DELETE", url: string, payload?: unknown) =>
+      a.app.inject({
+        method: methode,
+        url,
+        headers: ich.kopf,
+        ...(payload === undefined ? {} : { payload: payload as Record<string, unknown> }),
+      });
+    const kontoId = ((await inject("GET", "/api/auth/me")).json() as { id: string }).id;
+
+    // Ausgangsbestand (fiktiv): ein Auftrag mit zwei Anlageschritten im eigenen Gespräch.
+    const g = await inject("POST", "/api/me/klara/gespraeche", {
+      objektbezug: { pfad: "/fragen", seitenName: "Fragen", objekt: "Noch keine Frage" },
+    });
+    expect(g.statusCode, g.body).toBe(201);
+    const gid = (g.json() as { gespraech: { id: string } }).gespraech.id;
+    const ziel1 = {
+      art: "neuer_entwurf",
+      id: null,
+      titel: "Nachlesen N1",
+      stand: null,
+      pfad: null,
+    };
+    const ziel2 = { ...ziel1, titel: "Nachlesen N2" };
+    const angelegt = await inject("POST", `/api/me/klara/gespraeche/${gid}/auftraege`, {
+      quelle: "getippt",
+      wortlaut: "Lege die Entwürfe „Nachlesen N1“ und „Nachlesen N2“ an",
+      ziel: "Zwei Entwürfe anlegen",
+      erlaubteAktionen: ["entwurf_erstellen"],
+      erlaubteZiele: [ziel1, ziel2],
+      erlaubteQuellen: ["Deine Eingabe (getippt)"],
+      ergebnis: "Entwurf gespeichert und am Server nachgelesen",
+      geplanteSchritte: 2,
+      plan: [
+        { aktion: "entwurf_erstellen", ziel: ziel1, ausSchritt: null },
+        { aktion: "entwurf_erstellen", ziel: ziel2, ausSchritt: null },
+      ],
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const aid = (angelegt.json() as { auftrag: { id: string } }).auftrag.id;
+
+    // Schritt 1 am Server ausgeführt — das Nachlesen fällt aus (gestörte Leseantwort).
+    const rufe: KlaraRufe = async (methode, url, rumpf) => {
+      if (methode === "GET" && url.startsWith("/api/drafts/")) {
+        return { status: 503, daten: null };
+      }
+      const r = await inject(methode, url, rumpf);
+      return { status: r.statusCode, daten: r.body ? (r.json() as unknown) : null };
+    };
+    const ausfuehrung = new KlaraAusfuehrung(
+      new KlaraGespraechDienst({
+        repo: (dienste as unknown as ReturnType<typeof assembleServices>).klaraGespraeche,
+      }),
+    );
+    const s1 = await ausfuehrung.fuehreAus(
+      kontoId,
+      gid,
+      aid,
+      "n-1",
+      { nr: 1, auftragFassung: 1 },
+      rufe,
+    );
+    expect(s1.schritt).toMatchObject({ stand: "begonnen", schreibwirkung: { art: "entwurf" } });
+    const entwurfId = s1.schritt.schreibwirkung?.id as string;
+    // Dann abgebrochen.
+    const abbruch = await inject(
+      "PUT",
+      `/api/me/klara/gespraeche/${gid}/auftraege/${aid}/abbruch`,
+      {},
+    );
+    expect(abbruch.statusCode, abbruch.body).toBe(200);
+
+    // „Neuladen“: Klara frisch, ohne Plan in diesem Browser.
+    alsKonto(ich);
+    await klaraOeffnen();
+    await bis(() => karte()?.dataset.phase === "angehalten", 400);
+    expect(karte()?.dataset.phase).toBe("angehalten");
+    expect(karte()?.dataset.stand).toBe("abgebrochen");
+    expect(schritte()[0]?.dataset.stand).toBe("unklar");
+    expect(q(schritte()[0] as HTMLElement, "klara-ausfuehrung-schritt-wirkung")?.dataset.id).toBe(
+      entwurfId,
+    );
+    const erneut = q(karte() as HTMLElement, "klara-ausfuehrung-erneut");
+    expect(erneut, "kein Wiederholknopf nach Abbruch und Neuladen").not.toBeNull();
+
+    await klick(erneut as HTMLElement);
+    await bis(() => schritte()[0]?.dataset.stand === "gespeichert", 400);
+    expect(schritte()[0]?.dataset.stand).toBe("gespeichert");
+    await bis(() => karte()?.dataset.phase === "fertig", 200);
+    expect(karte()?.dataset.phase).toBe("fertig");
+
+    // Nur nachgelesen: ein Aufruf der Ausführung, für Schritt 1; Schritt 2 beginnt nie.
+    expect(ausfuehrungen).toHaveLength(1);
+    const ausgefuehrt = schreibend.filter((x) => x.endsWith("/ausfuehrung"));
+    expect(ausgefuehrt).toHaveLength(1);
+    expect(ausgefuehrt[0]).toContain(`/auftraege/${aid}/schritte/n-1/ausfuehrung`);
+    const [amServer] = await auftraegeAmServer(a, ich);
+    expect(amServer?.stand).toBe("abgebrochen");
+    expect(amServer?.schritte.map((s) => [s.nr, s.stand])).toEqual([[1, "gespeichert"]]);
+    expect(amServer?.schritte[0]?.ergebnis?.id).toBe(entwurfId);
+    expect((await entwuerfe(a, ich)).map((d) => d.payload.title)).toEqual(["Nachlesen N1"]);
   });
 });

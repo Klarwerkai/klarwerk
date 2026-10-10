@@ -110,13 +110,22 @@ export interface KlaraAuftragSchritt {
    * (Kennung des Entwurfs), das Nachlesen steht aber noch aus. Der Schritt bleibt „begonnen“ und
    * gilt als ungeklärt; eine Wiederholung liest nur nach und schreibt nicht erneut.
    */
-  readonly schreibwirkung?: {
-    readonly art: "entwurf" | "aufgabe";
-    readonly id: string;
-    readonly pfad: string;
-  } | null;
+  readonly schreibwirkung?: KlaraSchreibwirkung | null;
   readonly begonnenAm: string;
   readonly geaendertAm: string;
+}
+
+/**
+ * Nacharbeit 5 (Ben): `stand` ist der Versionsstand, den der SCHREIBWEG selbst bestätigt hat (Antwort
+ * des Anlegens bzw. Speicherns). Nur er darf Rücknahmebasis werden — ein später nachgelesener,
+ * abweichender Stand ist eine fremde Änderung. `null`: kein eigener Stand bestätigt (Aufgabenaktion
+ * oder Wirkung ohne Antwort des Schreibwegs).
+ */
+export interface KlaraSchreibwirkung {
+  readonly art: "entwurf" | "aufgabe";
+  readonly id: string;
+  readonly pfad: string;
+  readonly stand: string | null;
 }
 
 export type KlaraAenderung =
@@ -955,6 +964,8 @@ export function setzeSchritt(
       } else {
         ergebnis = pruefeErgebnis(eingabe.ergebnis);
         ruecknehmbar = eingabe.ruecknehmbar === true;
+        // Nacharbeit 5: gespeichert, aber mit Hinweis (z. B. `fremdstand`) — nur vom Server.
+        fehlerCode = zusatz.fehlerCode ?? null;
       }
     }
   } else if (stand === "fehlgeschlagen") {
@@ -1005,7 +1016,7 @@ export function merkeVorher(
 export function merkeSchreibwirkung(
   a: KlaraAuftrag,
   schluessel: string,
-  schreibwirkung: { art: "entwurf" | "aufgabe"; id: string; pfad: string },
+  schreibwirkung: KlaraSchreibwirkung,
   jetzt: string,
 ): KlaraAuftrag {
   return {

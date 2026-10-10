@@ -10,6 +10,7 @@ import {
   type KlaraSchrittEingabe as KlaraAuftragSchrittEingabe,
   type KlaraKorrekturEingabe,
   type KlaraMelder,
+  type KlaraSchreibwirkung,
   type KlaraServerZusatz,
   brecheAb,
   korrigiere,
@@ -914,7 +915,7 @@ export class KlaraGespraechDienst {
     id: string,
     auftragId: string,
     schluessel: string,
-    schreibwirkung: { art: "entwurf" | "aufgabe"; id: string; pfad: string },
+    schreibwirkung: KlaraSchreibwirkung,
   ): Promise<KlaraAuftrag> {
     return this.mitGrenze(async () => {
       const g = await this.aendere(kontoId, id, (alt, jetzt) =>

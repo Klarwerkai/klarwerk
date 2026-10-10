@@ -58,7 +58,13 @@ export interface KlaraAuftragSchritt {
   /** Nacharbeit 2: das am Server bestätigte Ziel eines Öffnens. */
   geprueft?: KlaraAuftragErgebnis | null;
   /** Nacharbeit 4: bestätigte Schreibwirkung, deren Nachlesen noch aussteht (Schritt ungeklärt). */
-  schreibwirkung?: { art: "entwurf" | "aufgabe"; id: string; pfad: string } | null;
+  schreibwirkung?: {
+    art: "entwurf" | "aufgabe";
+    id: string;
+    pfad: string;
+    /** Nacharbeit 5: der vom Schreibweg bestätigte eigene Stand (`null`: keiner bestätigt). */
+    stand?: string | null;
+  } | null;
   begonnenAm: string;
   geaendertAm: string;
 }

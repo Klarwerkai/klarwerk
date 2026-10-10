@@ -1112,6 +1112,16 @@ async function liesUngeklaerteNach(lokalId: string, u: AuftragsUmgebung): Promis
       return;
     }
   }
+  // Nachgelesen: bleibt nichts offen, ist die Karte fertig — weitere Planschritte beginnt das nicht.
+  setze(lokalId, (x) => {
+    const auftrag = x.auftrag;
+    const nochOffen =
+      (auftrag?.stand === "laeuft" || auftrag?.stand === "vorgeschlagen") && !auftrag.abgebrochenAm;
+    const wirkungOffen = (auftrag?.schritte ?? []).some(
+      (s) => s.stand === "begonnen" && s.schreibwirkung && !s.geprueft,
+    );
+    return { ...x, phase: nochOffen || wirkungOffen ? "angehalten" : "fertig" };
+  });
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1265,12 +1275,18 @@ export async function nimmZurueck(lokalId: string, nr: number, u: AuftragsUmgebu
 
 function ausGeladenem(x: KlaraAuftrag, herkunft: Herkunft, gespraechId: string): Ausfuehrung {
   const offen = x.stand === "laeuft" || x.stand === "vorgeschlagen";
+  // Nacharbeit 5 (Ben): eine gespeicherte, noch nicht nachgelesene Wirkung bleibt nachlesbar —
+  // unabhängig davon, ob der Auftrag abgebrochen wurde. Ohne Plan in diesem Browser holt
+  // „Erneut versuchen“ dann NUR das Nachlesen nach (`liesUngeklaerteNach`); kein weiterer Schritt.
+  const wirkungOffen = x.schritte.some(
+    (s) => s.stand === "begonnen" && s.schreibwirkung && !s.geprueft,
+  );
   return {
     lokalId: `geladen-${x.id}`,
     quelle: x.quelle,
     wortlaut: x.wortlaut,
     herkunft,
-    phase: offen ? "angehalten" : "fertig",
+    phase: offen || wirkungOffen ? "angehalten" : "fertig",
     meldung: null,
     geplant: [],
     auftrag: x,
