@@ -385,7 +385,7 @@ describe("K3 · Quellen mit Fassung und Prüfstatus; fehlende Grundlage in Worte
             { koId: "ko-1", titel: "Dichtung", version: 3, validiert: true },
             { koId: "ko-2", titel: "Ventil", version: 7, validiert: false },
           ],
-        } as unknown as AnswerResult["belastbarkeit"],
+        } as unknown as NonNullable<AnswerResult["belastbarkeit"]>,
       },
       { quellenStand: { "ko-1": 2 } },
     );
