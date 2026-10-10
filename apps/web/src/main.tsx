@@ -9,6 +9,7 @@ import i18n, { sprachBereit } from "./i18n";
 import "./index.css";
 import { initBrandTheme } from "./lib/brandTheme";
 import { initDesignTheme } from "./lib/designTheme";
+import { einblendungsMutationCache } from "./lib/einblendungen";
 import { bindHtmlLang } from "./lib/htmlLang";
 import { gleicheAngelegteSprachenAb } from "./lib/instanzSprachen";
 import { ZAEHLER_FRISCHE_MS } from "./lib/loadingState";
@@ -48,7 +49,10 @@ bindHtmlLang(i18n);
 // hier der `staleTime` — der Zeitpunkt, ab dem react-query die Antwort nicht mehr für frisch hält —
 // und dort die Frist, nach der die Navigation eine ungedeckte Zahl nicht mehr zeigt. Zwei Ausdrücke
 // derselben Zahl wären ein zweites Gehirn; der WERT bleibt unverändert 30 000 ms.
+// R-0953 / R-1015 (Nacharbeit 7): der EINE Ort, an dem jede Speicheraktion ihren Erfolg und ihren
+// Fehler als Einblendung meldet (`lib/einblendungen.ts`).
 const queryClient = new QueryClient({
+  mutationCache: einblendungsMutationCache(),
   defaultOptions: { queries: { staleTime: ZAEHLER_FRISCHE_MS, retry: 1 } },
 });
 

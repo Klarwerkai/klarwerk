@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
 import type { KoPreviewSource } from "../../lib/koPreview";
 import { useLesevariante } from "../../lib/lesevariante";
+import { leerzustandsRahmen } from "../EmptyStateCtas";
 import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
 import { cx } from "../ui";
 import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from "./zustand";
@@ -491,6 +492,10 @@ export function BibliothekListe({
             <p className="text-[12.5px] leading-relaxed text-muted">
               {eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
             </p>
+            {/* R-0956 (Ben, Nacharbeit 7): der WIRKLICH leere Bestand ordnet in den Wissenskreis ein
+                — gemeinsamer Rahmen, ohne zweiten Knopf: der nächste Schritt ist `leerAktion` unten.
+                Der eingegrenzte Bestand (Filter/Suche) bekommt sie nicht; dort ist nichts leer. */}
+            {eingegrenzt ? null : leerzustandsRahmen(t, "library", [], () => null)}
             {/* Der erste Absatz bleibt der Satz selbst (Tests lesen `bib-leer p`); die Ortsangabe
                 folgt als eigener Block darunter. */}
             {eingegrenzt ? (

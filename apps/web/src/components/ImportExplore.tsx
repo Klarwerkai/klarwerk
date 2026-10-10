@@ -31,6 +31,7 @@ import { JSON_SOURCE_IDS } from "../lib/importSourceGallery";
 import { integrationStatus } from "../lib/integrationStatus";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { usePersistentString } from "../lib/usePersistentValue";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 import { ImportSelect, registriereRahmenTexte } from "./ImportSelect";
 // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie (Systeme + Dateien) mit Zustandsbadges.
 import { ImportSourceGallery } from "./ImportSourceGallery";
@@ -534,7 +535,11 @@ function ExploreMap({
       ) : null}
 
       {view.totalCount === 0 ? (
-        <p className="mt-3 text-[12.5px] text-muted-2">{t("imp.explore.empty")}</p>
+        <>
+          <p className="mt-3 text-[12.5px] text-muted-2">{t("imp.explore.empty")}</p>
+          {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+          {leerzustandsZeile(t, "import")}
+        </>
       ) : null}
 
       {/* IC-3: prompt-/filtergesteuerte Auswahl-Vorschau — die Chips der Landkarte sind die Filter.
