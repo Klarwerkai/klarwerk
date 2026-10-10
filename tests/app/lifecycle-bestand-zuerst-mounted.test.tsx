@@ -31,7 +31,12 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  return { pending: mk(), kos: mk() };
+  return {
+    pending: mk(),
+    kos: mk(),
+    // R-0953 (Nacharbeit 4): „Noch gültig“ — damit der bisher stille Fehlerweg messbar ist.
+    bestaetigen: vi.fn(async (_id: string, _body: unknown): Promise<unknown> => ({})),
+  };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -47,7 +52,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   return {
     endpoints: {
       lifecycle: { pending: d.pending.fn, assetChanged: ok([]) },
-      ko: { list: d.kos.fn, act: ok({}) },
+      ko: { list: d.kos.fn, act: d.bestaetigen },
       // JOB 3061 · H2: der gemeinsame Reiterkopf zaehlt alle vier Reiter aus echten Abrufen.
       // Kulisse wie der Lernpfad — sie darf die Messung nur nicht zerreissen.
       validation: { board: ok([]), overview: ok([]) },
@@ -73,8 +78,10 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { Lifecycle } from "../../apps/web/src/pages/Lifecycle";
+import { ToastViewport } from "../../apps/web/src/shell/ToastViewport";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -106,7 +113,14 @@ async function mount(): Promise<void> {
             createElement(
               MemoryRouter,
               { initialEntries: ["/lebenszyklus"] },
-              createElement(Lifecycle),
+              // Die App-Shell trägt den Benachrichtigungs-Bus; `Lifecycle` meldet seit R-0953
+              // Erfolg und Fehler seiner Speicherwege darüber.
+              createElement(
+                ToastProvider,
+                null,
+                createElement(Lifecycle),
+                createElement(ToastViewport),
+              ),
             ),
           ),
         ),
@@ -191,6 +205,16 @@ describe("D-035 Lebenszyklus: fällige Objekte stehen vor dem Meldeformular", ()
 
     expect(stehtVor(bestandsBlock(), meldeZeile())).toBe(true);
     expect(stehtVor(bestandsBlock(), meldeFeld())).toBe(true);
+    // R-0956 (Bestandsabgleich, Nacharbeit 4): der Leersatz bleibt wörtlich, darunter die
+    // Einordnung (Phase „Aktuell halten“) und echte nächste Schritte.
+    expect(container.querySelector('[data-testid="pruefen-satz-leer"]')?.textContent).toBe(
+      i18n.t("lcy.empty"),
+    );
+    expect(container.textContent).toContain(i18n.t("story.surface.lifecycle.lead"));
+    expect(container.textContent).toContain(i18n.t("cycle.maintain.label"));
+    expect(container.querySelector('a[href="/bibliothek"]')?.textContent).toBe(
+      i18n.t("empty.cta.library"),
+    );
   });
 
   it("BELADEN: das fällige Objekt selbst steht vor dem Melde-Formular", async () => {
@@ -217,5 +241,33 @@ describe("D-035 Lebenszyklus: fällige Objekte stehen vor dem Meldeformular", ()
     // Die kausale Zusage: das fällige OBJEKT steht vor dem Eingabefeld der Anlagenänderung.
     expect(stehtVor(bestandsBlock(), meldeFeld())).toBe(true);
     expect(objekt).not.toBeNull();
+  });
+});
+
+// R-0953 (Bestandsabgleich, Nacharbeit 4): „Noch gültig“ scheiterte bis hierher STILL — der Knopf
+// wurde wieder frei, und nichts sagte, dass der Eintrag weiter fällig ist.
+describe("R-0953 · „Noch gültig“ meldet einen Fehler", () => {
+  it("F1 · der Server lehnt ab ⇒ Einblendung „Nicht bestätigt“, der Eintrag bleibt", async () => {
+    d.bestaetigen.mockImplementationOnce(async () => {
+      throw new Error("Pruefstand: Bestaetigung gestoert");
+    });
+    await mount();
+    await act(async () => {
+      d.pending.resolve(["k1"]);
+      d.kos.resolve([{ id: "k1", title: "Druckprüfung Kessel 7", status: "validiert" }]);
+      await flush();
+    });
+    const knopf = Array.from(container.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes(i18n.t("lcy.stillValid")),
+    );
+    expect(knopf, "Vorbedingung: der Knopf „Noch gültig“ steht da").toBeDefined();
+    await act(async () => {
+      knopf?.click();
+      await flush();
+    });
+    expect(d.bestaetigen).toHaveBeenCalledWith("k1", { action: "revalidate" });
+    const einblendungen = Array.from(container.querySelectorAll("output"), (o) => o.textContent);
+    expect(einblendungen).toContain(i18n.t("lcy.toast.revalidateFailed"));
+    expect(container.querySelector('a[href="/wissen/k1"]'), "der Eintrag bleibt").not.toBeNull();
   });
 });
