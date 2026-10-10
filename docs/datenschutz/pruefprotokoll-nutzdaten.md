@@ -68,6 +68,7 @@ wiederholt.
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
 | `verantwortung.uebergabe` (Ziel: bisherige Person; `services/app/src/routes/verantwortung-routes.ts`) | `uebertragen`, `bereitsErledigt`, `abgelehnt`, `fehlgeschlagen`, `verbleibt`, `nachfolger` (je `an` + `anzahl`) | Z, K — keine Titel; je Beitrag steht zusätzlich `ko.ownership` |
+| `vermaechtnis.erzeugt` (Ziel: die Person des Buchs; `services/app/src/routes/verantwortung-routes.ts`) | `aufgenommen`, `ausgelassen` (`papierkorb`, `nichtEinsehbar`, `vertraulich`, `nichtValidiert`) | Z — keine Titel, kein Buchinhalt (nachgetragen mit `gesamt-wissensvermaechtnis`) |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |
 | `ko.source-attachments-synced` | `provider`, `externalId`, `added`, `removed` | M, K |
 | `ko.source-restriction-synced` | `provider`, `externalId`, `groups`/`users` (nur Anzahl) | M, Z |
