@@ -3138,7 +3138,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Wert unten ist der von main und damit ein PLATZHALTER. Auslieferungsfolgen: die beider Stände,
     // wie oben je Stand benannt — die Vereinigung fügt keine hinzu. Der Prüflauf meldet den Ist-Wert
     // als „Received", er wird danach gemessen übernommen.
-    const PIN = "ab97e2bb3e2d87df4976077ae56f065d4f9731c9c1e33ae17c67a6edcf565755";
+    // NACHARBEIT 94 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter ab97e2bb… ->
+    // c3da73f9…). Im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "c3da73f9507f3a2781db3fd160744e7786bbd94dadaa945859f68fc8758083d7";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

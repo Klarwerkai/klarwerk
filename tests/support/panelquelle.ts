@@ -448,8 +448,12 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * im automatisch zusammengeführten Panel erhalten. Die alten Messungen beziehen sich
  * auf ihre jeweiligen Vorfassungen. Der neue Blob wird am gemeinsamen Panel gemessen;
  * Beleg: HILFE/4fd4c87b805ee60e13c32720/PANEL-MESSUNG.json im Auftragsordner.
+ * INTEGRATION mit main b723640f (Nacharbeit 93) und NACHARBEIT 94 (gesamt-dokumenterzeugung):
+ * GEMESSEN im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel (`1e57e17c…`, „Received" von
+ * E2, HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log; vorher `05ff5c13…`) und unverändert
+ * übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "05ff5c13ada5005f13e69c7a04b4010ce080c39d";
+export const PANEL_VOR_SCHNITT_BLOB = "1e57e17c9fe02ca6f04d94e5846ee8a0d98fd794";
 
 export interface PanelTeile {
   html: string;
