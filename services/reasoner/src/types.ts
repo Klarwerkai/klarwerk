@@ -183,6 +183,23 @@ export interface AnswerResult {
   // Deckungsrückfall stattdessen den Wortlaut einer Quelle aus (JOB 2659/3353/3365), fehlt das Feld:
   // dieser Text ist vollständig, und ein Unvollständigkeits-Hinweis daran wäre eine Falschaussage.
   abgeschnitten?: AbbruchBefund;
+  // R-1643 (Entscheidungs-Protokoll): die ARGUMENTATIONSKETTE dieser Antwort — Aussage für Aussage,
+  // mit der Quelle, deren Wortlaut sie belegt. Sie ist kein neu erzeugter Text: es ist genau das,
+  // was `pruefeDeckung` (provider-model.ts) ohnehin prüft, bevor ein Modelltext hinausgeht, bzw.
+  // auf den Rückfallwegen die Zuordnung „dieser Wortlaut stammt aus dieser Quelle". `steps` bleibt
+  // daneben die Liste der herangezogenen Fundstellen und ist KEINE Begründung. Fehlt das Feld, gibt
+  // es keine belegte Kette (keine Antwort, älterer Weg) — weggelassen, nie leer erfunden.
+  argumentation?: ArgumentationsGlied[];
+}
+
+/** R-1643: ein Glied der Argumentationskette. */
+export interface ArgumentationsGlied {
+  /** Die Aussage der Antwort, ohne Fußnotenmarken. */
+  aussage: string;
+  /** Die Quellen, auf die die Aussage verweist (Marken des Modells bzw. die zitierte Quelle). */
+  quellen: string[];
+  /** Die Quelle, deren Wortlaut die Aussage enthält — gemessen, nicht behauptet. */
+  belegtDurch: string;
 }
 
 // FR-STR-01 (R-0315): die Wissensart des Strukturierungsvorschlags. Dieselben fünf Werte wie

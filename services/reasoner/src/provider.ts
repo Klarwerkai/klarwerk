@@ -2380,6 +2380,8 @@ export class DeterministicProvider implements ReasonerProvider {
           snippet: best.statement,
         },
       ],
+      // R-1643: die Kette dieses Weges hat genau ein Glied — die Antwort IST der Wortlaut von `best`.
+      argumentation: [{ aussage: best.statement, quellen: [best.id], belegtDurch: best.id }],
       demo: true,
     };
   }

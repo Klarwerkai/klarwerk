@@ -1268,7 +1268,12 @@ export class AskService {
     // (`apps/web/src/api/types.ts`) und von dort an die drei Flächen.
     // Das Feld wird WEGGELASSEN, nicht auf `undefined` gesetzt: `exactOptionalPropertyTypes` ist
     // an, und „fehlt" ist auch am Draht die Aussage (JSON kennt kein `undefined`).
-    const { abgeschnitten: _abgeschnittenVerworfen, ...rawOhneAbbruch } = rawResult;
+    // R-1643: dasselbe gilt für die Argumentationskette — ohne Antwort gibt es nichts zu begründen.
+    const {
+      abgeschnitten: _abgeschnittenVerworfen,
+      argumentation: _argumentationVerworfen,
+      ...rawOhneAbbruch
+    } = rawResult;
     const resultCore =
       rawResult.answered && rawResult.sources.length === 0
         ? { ...rawOhneAbbruch, answered: false, answer: null, citedSources: [] }

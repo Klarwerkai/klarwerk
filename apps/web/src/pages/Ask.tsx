@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -45,6 +46,7 @@ import { AntwortMelden } from "../components/fragen/AntwortMelden";
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
 import { Belastbarkeit, PruefrahmenSatz } from "../components/fragen/Belastbarkeit";
+import { Entscheidungsprotokoll } from "../components/fragen/Entscheidungsprotokoll";
 import { FrageFeld } from "../components/fragen/FrageFeld";
 import { LoesungswegSchritte, VermeidenWarnung } from "../components/fragen/Loesungsweg";
 import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
@@ -1478,6 +1480,9 @@ export function Ask(): JSX.Element {
   // Schleife: der Zustand ist ein Schlüssel-String, und ein gleicher Wert lässt React abbrechen.
   const antwortRef = useRef<HTMLDivElement | null>(null);
   const [markenSchluessel, setMarkenSchluessel] = useState<string | null>(null);
+  // R-1643: das Entscheidungs-Protokoll für das gedruckte Blatt — nur zwischen Druckauftrag und
+  // `afterprint` gesetzt (s. `printAnswer`).
+  const [druckProtokoll, setDruckProtokoll] = useState<AnswerExportInput | null>(null);
   useLayoutEffect(() => {
     const wurzel = antwortRef.current;
     const naechster =
@@ -1563,6 +1568,8 @@ export function Ask(): JSX.Element {
   };
   // R-0703 / R-0625 (Ben Nacharbeit 2): EINE Exporteingabe für Markdown, Word, PowerPoint und PDF —
   // mit der DREIWERTIGEN Herkunft. Bis hierher machte die Fragenseite aus „unbekannt" ein `false`.
+  // R-1643 (Entscheidungs-Protokoll): dieselbe Eingabe liest auch der Druck — Kopieren, Markdown,
+  // Dateien und Druck tragen damit dasselbe Protokoll (Zeitpunkt, Nutzer-ID, Argumentationskette).
   const exportEingabe = (): AnswerExportInput | null => {
     if (!result?.answered || !effective) {
       return null;
@@ -1628,6 +1635,25 @@ export function Ask(): JSX.Element {
         }),
         ...(zuordnungTragfaehig ? {} : { attributionUnknown: t("ask.attribution.unknown") }),
       },
+      // R-1643: Zeitstempel und Nutzer-ID. Die Kennung ist DIESELBE, unter der die Seite den
+      // Arbeitsstand führt (`useKontoKennung`, Sitzungsabfrage `["auth", "me"]`) — ohne Sitzung
+      // `null`, und das Protokoll sagt dann „nicht angemeldet" statt eine Kennung zu erfinden.
+      protocol: {
+        userId: konto,
+        // R-1643 (Ben, Nacharbeit 2): die Argumentationskette kommt vom Server (gemessene Zuordnung
+        // Aussage → Quelle). Fehlt sie, bleibt sie `null` — `result.steps` springt NICHT ein, denn
+        // das sind Fundstellen und keine Begründung.
+        argumentation: result.argumentation ?? null,
+        labels: {
+          heading: t("ask.export.protocol.heading"),
+          time: t("ask.export.protocol.time"),
+          user: t("ask.export.protocol.user"),
+          userUnknown: t("ask.export.protocol.userUnknown"),
+          argumentation: t("ask.export.protocol.argumentation"),
+          supportedBy: t("ask.export.protocol.supportedBy"),
+          argumentationMissing: t("ask.export.protocol.argumentationMissing"),
+        },
+      },
     };
   };
   const buildExport = (): { markdown: string; filename: string } | null => {
@@ -1688,11 +1714,19 @@ export function Ask(): JSX.Element {
     herunterladen(new Blob([ex.markdown], { type: "text/markdown;charset=utf-8" }), ex.filename);
   };
   // SCRUM-440-Muster: nur den markierten Auszug (.print-area) drucken; Klasse nach dem Druck entfernen.
+  // R-1643: vor dem Druck steht das Entscheidungs-Protokoll IN der Druckfläche — synchron
+  // (`flushSync`), weil `window.print()` sofort das aktuelle DOM abbildet. Nach dem Druck verschwindet
+  // es wieder; auf dem Bildschirm ändert sich nichts.
   const printAnswer = (): void => {
+    const protokoll = exportEingabe();
+    flushSync(() => setDruckProtokoll(protokoll));
     document.body.classList.add("printing-extract");
     window.addEventListener(
       "afterprint",
-      () => document.body.classList.remove("printing-extract"),
+      () => {
+        document.body.classList.remove("printing-extract");
+        setDruckProtokoll(null);
+      },
       {
         once: true,
       },
@@ -2745,6 +2779,9 @@ export function Ask(): JSX.Element {
                       </div>
                     </Seitenblatt>
                   ) : null}
+                  {/* R-1643: das Entscheidungs-Protokoll — nur auf dem gedruckten Blatt, nur
+                    während des Druckauftrags (Begründung am Bauteil). */}
+                  {druckProtokoll ? <Entscheidungsprotokoll eingabe={druckProtokoll} /> : null}
                 </Card>
                 {/* Zielbild Z.44: zwei ruhige Knöpfe, 10/20 Polster, Radius 10, 14 px.
                   „Kopieren" kopiert unverändert die EFFEKTIVE Fassung (`buildExport` → derselbe
