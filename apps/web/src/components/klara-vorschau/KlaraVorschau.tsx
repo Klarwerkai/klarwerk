@@ -28,7 +28,6 @@ import {
   type PointerEvent,
   type DragEvent as ReactDragEvent,
   type MouseEvent as ReactMouseEvent,
-  type RefObject,
   useCallback,
   useEffect,
   useId,
@@ -48,6 +47,15 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
+import {
+  type Absendeergebnis,
+  KlaraAuftragKarte,
+  KlaraSprachLeiste,
+  KlaraSprachausgabe,
+  type SprachZiel,
+  VorlesenKnopf,
+  useKlaraSprache,
+} from "./KlaraSprache";
 import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./KlaraTutorial";
 import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
@@ -73,6 +81,7 @@ import {
   stoppen as echtStoppen,
   vergiss as echtVergessen,
   ladeEcht,
+  leseEcht,
   objektbezugAus,
   useEchtGespraech,
 } from "./echt";
@@ -83,6 +92,7 @@ import {
   seiteAusPfad,
   seitenErklaerung,
 } from "./kontext";
+import { leseVorlesen, stoppeVorlesen, vorlesen as vorlesenStarten } from "./vorlesen";
 import {
   type Aktion,
   type Bezug,
@@ -262,8 +272,9 @@ export function KlaraVorschau(): JSX.Element {
   }, [sitzungBeantwortet, kontoId]);
   useEffect(() => {
     if (!kontoId) {
-      // Abgemeldet: nichts vom Gespräch bleibt im Browser stehen.
+      // Abgemeldet: nichts vom Gespräch bleibt im Browser stehen — und nichts wird mehr vorgelesen.
       echtVergessen();
+      stoppeVorlesen();
       return;
     }
     if (istEcht) {
@@ -699,8 +710,11 @@ export function KlaraVorschau(): JSX.Element {
     duText: string,
     aktion: Aktion,
     erzeugen: () => { text: string; vorschlag?: Vorschlag; entwurf?: Entwurf },
+    fertig?: (antwort: string) => void,
+    bezug?: Herkunft,
   ): void => {
-    const herkunft = kontextRef.current;
+    // Klara 02: ein gesprochener Auftrag bringt sein beim Sprechen bestätigtes Ziel mit.
+    const herkunft = bezug ?? kontextRef.current;
     // Klara 01: im echten Betrieb ist Klaras eingebaute Hilfe (Seite erklären, Tutorial) Teil des
     // gespeicherten Gesprächs — gekennzeichnet als „Klarwerk-Hilfe · ohne KI“, nicht als Demo.
     if (leseZustand().betrieb === "echt" && aktion === "modus") {
@@ -742,6 +756,7 @@ export function KlaraVorschau(): JSX.Element {
           ...(ergebnis.entwurf ? { entwurf: ergebnis.entwurf } : {}),
         };
       });
+      fertig?.(ergebnis.text);
     }, VERZOEGERUNG_MS);
   };
 
@@ -1038,12 +1053,22 @@ export function KlaraVorschau(): JSX.Element {
     echt.laden === "bereit";
   // Klaras Hilfe wird im echten Betrieb Teil des Gesprächs — erst, wenn es gelesen ist.
   const hilfeGesperrt = istEcht && echt.laden !== "bereit";
+  // Klara 02: „Antworten automatisch vorlesen“ — nur, wenn die Person es eingeschaltet hat.
+  const autoVorlesen = (id: string, text: string | null): void => {
+    if (text && leseVorlesen().auto) {
+      vorlesenStarten(id, text, i18n.language);
+    }
+  };
   // Klara 03 · K6: warum eine Markierung gerade nicht an den Frageweg darf — oder `null`.
   const [auswahlSperre, setAuswahlSperre] = useState<{ id: string; text: string } | null>(null);
   const pruefungLaeuft = useRef(false);
   /**
-   * Eine Frage im echten Betrieb. `art` ist die getippte Frage oder eine Aktion mit der Markierung;
-   * `fest` ist „Erneut fragen“: der gespeicherte Wortlaut mit dem Bezug von damals, unverändert.
+   * Eine Frage im echten Betrieb.
+   *   · `art`: die getippte/gesprochene Frage oder eine Aktion mit der Markierung (Klara 03);
+   *   · `fest`: „Erneut fragen“ — der gespeicherte Wortlaut mit dem Bezug von damals, unverändert;
+   *   · `ziel` (Klara 02): der Ort, auf den sich die Frage bezieht. Getippte Fragen nehmen den
+   *     aktuellen Ort; ein gesprochener Auftrag gibt das Ziel mit, das seine Karte zeigt — Anzeige und
+   *     Gesprächsbezug sind damit dasselbe, auch nach einem Seitenwechsel zwischen Sprechen und Senden.
    *
    * Klara 03 · K6: Geht die Markierung mit, prüft Klara sie VORHER gegen den heutigen Stand und die
    * heutigen Rechte (`pruefeAuswahl`). Unsichtbar, vertraulich oder nicht mehr im Text: es geht
@@ -1051,11 +1076,15 @@ export function KlaraVorschau(): JSX.Element {
    */
   const echtFrage = (
     eingabeText: string,
-    art: KontextAktion | "frage" = "frage",
-    fest?: { text: string; bezug: KlaraObjektbezug },
-  ): void => {
+    optionen: {
+      art?: KontextAktion | "frage";
+      fest?: { text: string; bezug: KlaraObjektbezug };
+      ziel?: Herkunft;
+    } = {},
+  ): Promise<Absendeergebnis> => {
+    const { art = "frage", fest, ziel } = optionen;
     if (!echtSendebereit || pruefungLaeuft.current) {
-      return;
+      return Promise.resolve({ stand: "nicht_gesendet", antwort: null });
     }
     if (lageRef.current) {
       pausieren();
@@ -1069,7 +1098,7 @@ export function KlaraVorschau(): JSX.Element {
       auswahlJetzt !== null &&
       (art !== "frage" || wirksamerBezug(z0.bezug, auswahlJetzt) === "markierung");
     pruefungLaeuft.current = true;
-    void (async () => {
+    return (async (): Promise<Absendeergebnis> => {
       try {
         if (mitMarkierung && auswahlJetzt) {
           const grund = sperrgrund(await pruefeAuswahl(auswahlJetzt), t);
@@ -1077,11 +1106,12 @@ export function KlaraVorschau(): JSX.Element {
             setAuswahlSperre({ id: auswahlJetzt.id, text: grund });
             setAnsage(grund);
             aendere((alt) => ({ ...alt, status: "ruhe" }));
-            return;
+            return { stand: "nicht_gesendet", antwort: null };
           }
           setAuswahlSperre(null);
         }
-        const kontextJetzt = kontextRef.current;
+        // Der Ort der Frage: das Ziel eines gesprochenen Auftrags oder die aktuelle Seite.
+        const kontextJetzt = ziel ?? kontextRef.current;
         const text =
           fest?.text ?? frageText(art, eingabeText, z0.bezug, kontextJetzt, auswahlJetzt, t);
         const bezug =
@@ -1092,10 +1122,16 @@ export function KlaraVorschau(): JSX.Element {
         if (stand === "veraltet") {
           // Kontowechsel während der Frage: nichts mehr ansagen, nichts mehr zeigen.
           aendere((alt) => ({ ...alt, status: "ruhe" }));
-          return;
+          return { stand: "nicht_gesendet", antwort: null };
         }
         aendere((alt) => ({ ...alt, status: "antwort" }));
         setAnsage(t(`klaragespraech.ansage.${stand}`));
+        const letzte = [...leseEcht().nachrichten].reverse().find((n) => n.von === "klara");
+        const antwort = letzte?.text ?? null;
+        if (letzte) {
+          autoVorlesen(letzte.id, antwort);
+        }
+        return { stand, antwort };
       } finally {
         pruefungLaeuft.current = false;
       }
@@ -1113,7 +1149,7 @@ export function KlaraVorschau(): JSX.Element {
       return;
     }
     if (aktion !== "uebersetzen") {
-      echtFrage("", aktion);
+      void echtFrage("", { art: aktion });
       return;
     }
     // Übersetzen geht an keine KI: Klara zeigt die vorhandene Leseübersetzung (Klarwerk-Hilfe).
@@ -1130,28 +1166,73 @@ export function KlaraVorschau(): JSX.Element {
       .then((antwort) => echtHilfe(bitte, antwort, bezug))
       .finally(() => aendere((alt) => ({ ...alt, status: "antwort" })));
   };
+  /**
+   * EIN Weg für getippte und gesprochene Fragen (Klara 02): im echten Betrieb der Frageweg mit
+   * Einwilligung, im Demo-Betrieb die vorgefertigte, gekennzeichnete Antwort.
+   */
+  const fragenSenden = (frage: string, ziel?: Herkunft): Promise<Absendeergebnis> => {
+    if (istEcht) {
+      return echtFrage(frage, ziel ? { ziel } : {});
+    }
+    const l = lageRef.current;
+    if (l) {
+      pausieren();
+    }
+    return new Promise((fertig) => {
+      anfrage(
+        frage,
+        "frage",
+        () => ({ text: antwortAufFrage(frage, ziel ?? kontextRef.current, t, l) }),
+        (antwort) => {
+          autoVorlesen(`demo-${Date.now()}`, antwort);
+          fertig({ stand: "demo", antwort });
+        },
+        ziel,
+      );
+    });
+  };
+  /** Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. */
+  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> =>
+    fragenSenden(text, ziel.herkunft);
   const senden = (e: FormEvent): void => {
     e.preventDefault();
     const frage = eingabe.trim();
     if (!frage) {
       return;
     }
-    if (istEcht) {
-      if (echtSendebereit) {
-        setEingabe("");
-        echtFrage(frage);
-      }
+    if (istEcht && !echtSendebereit) {
       return;
     }
     setEingabe("");
-    const l = lageRef.current;
-    if (l) {
-      pausieren();
-    }
-    anfrage(frage, "frage", () => ({
-      text: antwortAufFrage(frage, kontextRef.current, t, l),
-    }));
+    void fragenSenden(frage);
   };
+
+  // Klara 02: Diktieren füllt das Eingabefeld, „Auftrag sprechen“ zeigt die Karte mit Ziel.
+  const objektLeer = [
+    t("klaravorschau.objekt.keins"),
+    t("klaravorschau.objekt.keineFrage"),
+    t("klaravorschau.objekt.neuerEntwurf"),
+  ];
+  const sprechen = useKlaraSprache({
+    setzeEingabe: setEingabe,
+    ziel: (): SprachZiel => {
+      const k = kontextRef.current;
+      return {
+        seitenName: k.seitenName,
+        objekt: k.objekt,
+        bekannt: !objektLeer.includes(k.objekt),
+        herkunft: k,
+      };
+    },
+  });
+  const sprachSendebereit = istEcht ? echtSendebereit : z.status !== "laeuft";
+  // Geschlossen oder verkleinert hört Klara nicht mehr zu — kein Mikrofon ohne sichtbaren Stopp.
+  const aufnahmeAbbrechen = sprechen.abbrechen;
+  useEffect(() => {
+    if (!panelSichtbar) {
+      aufnahmeAbbrechen();
+    }
+  }, [panelSichtbar, aufnahmeAbbrechen]);
 
   // ---------------------------------------------------------------------------------------------
   // Vollbild, Ende der Vorschau.
@@ -1166,6 +1247,7 @@ export function KlaraVorschau(): JSX.Element {
   const vorschauBeenden = (): void => {
     // Eine laufende echte Anfrage endet mit Klara; das gespeicherte Gespräch bleibt am Server.
     echtStoppen();
+    stoppeVorlesen();
     if (document.fullscreenElement) {
       document.exitFullscreen?.()?.catch(() => {});
     }
@@ -1828,30 +1910,45 @@ export function KlaraVorschau(): JSX.Element {
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>
                 <li>{t("klaragespraech.bedienhilfe.demo")}</li>
                 <li>{t("klaragespraech.bedienhilfe.bedienen")}</li>
+                {/* Klara 02: Sprechen, Diktieren und Vorlesen — erklärt, wo es bedient wird. */}
+                <li data-testid="klara-bedienhilfe-sprache">
+                  {t("klarasprache.bedienhilfe.diktieren")}
+                </li>
+                <li>{t("klarasprache.bedienhilfe.auftrag")}</li>
+                <li>{t("klarasprache.bedienhilfe.stoppen")}</li>
+                <li>{t("klarasprache.bedienhilfe.datenschutz")}</li>
+                <li>{t("klarasprache.bedienhilfe.ohneMikrofon")}</li>
               </ul>
             </details>
 
+            <KlaraSprachausgabe />
+
             {/* Verlauf — im echten Betrieb das gespeicherte Gespräch (Klara 01), sonst die Demo. */}
             {istEcht ? (
-              <>
-                <KlaraEchtGespraech
-                  kontext={objektbezugAus(kontext)}
-                  pfad={location.pathname}
-                  ki={ki}
-                  onErneutFragen={(text, bezugDamals) =>
-                    echtFrage(text, "frage", { text, bezug: bezugDamals })
+              <KlaraEchtGespraech
+                kontext={objektbezugAus(kontext)}
+                pfad={location.pathname}
+                ki={ki}
+                // Klara 03: „Erneut fragen“ mit Wortlaut UND Bezug von damals.
+                onErneutFragen={(text, bezugDamals) => {
+                  void echtFrage(text, { fest: { text, bezug: bezugDamals } });
+                }}
+                onNeuLaden={() => {
+                  if (kontoId) {
+                    void ladeEcht(kontoId, t);
                   }
-                  onNeuLaden={() => {
-                    if (kontoId) {
-                      void ladeEcht(kontoId, t);
-                    }
-                  }}
-                />
-                <div ref={endeRef} />
-              </>
+                }}
+              />
             ) : (
-              <DemoVerlauf verlauf={z.verlauf} endeRef={endeRef} />
+              <DemoVerlauf verlauf={z.verlauf} />
             )}
+            {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
+            <KlaraAuftragKarte
+              s={sprechen}
+              sendebereit={sprachSendebereit}
+              absenden={auftragSenden}
+            />
+            <div ref={endeRef} />
           </div>
 
           {/* Eingabe — bleibt am unteren Rand des Gesprächs, auch über der Bildschirmtastatur. */}
@@ -1871,6 +1968,7 @@ export function KlaraVorschau(): JSX.Element {
                 })}
               </p>
             ) : null}
+            <KlaraSprachLeiste s={sprechen} />
             <div className="min-w-0 flex-1">
               <label htmlFor={eingabeId} className={KLEINTITEL}>
                 {t("klaravorschau.eingabe.label")}
@@ -1965,13 +2063,7 @@ export function KlaraVorschau(): JSX.Element {
 // -------------------------------------------------------------------------------------------------
 // Der Verlauf des Demo-Betriebs — unverändert aus der Vorschau, jede Klara-Antwort als Demo markiert.
 // -------------------------------------------------------------------------------------------------
-function DemoVerlauf({
-  verlauf,
-  endeRef,
-}: {
-  verlauf: readonly Nachricht[];
-  endeRef: RefObject<HTMLDivElement>;
-}): JSX.Element {
+function DemoVerlauf({ verlauf }: { verlauf: readonly Nachricht[] }): JSX.Element {
   const { t } = useTranslation();
   return (
     <section data-testid="klara-verlauf" aria-label={t("klaravorschau.verlauf.titel")}>
@@ -2011,12 +2103,16 @@ function DemoVerlauf({
                 ) : null}
               </div>
               <p className="whitespace-pre-line">{n.text}</p>
+              {n.von === "klara" ? (
+                <div className="mt-1">
+                  <VorlesenKnopf id={n.id} text={n.text} />
+                </div>
+              ) : null}
               {n.vorschlag ? <VorschlagKarte nachrichtId={n.id} vorschlag={n.vorschlag} /> : null}
             </li>
           ))}
         </ol>
       )}
-      <div ref={endeRef} />
     </section>
   );
 }

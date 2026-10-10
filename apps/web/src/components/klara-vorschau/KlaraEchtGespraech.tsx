@@ -22,6 +22,7 @@ import { leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
+import { VorlesenKnopf } from "./KlaraSprache";
 import {
   type EchtNachricht,
   einwilligen,
@@ -234,7 +235,14 @@ function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
       ) : (
         <p className="whitespace-pre-line">{n.text}</p>
       )}
+      {/* Klara 03: Quellen mit Titel, Fassung und Prüfstatus (ersetzt die blossen [n]-Verweise). */}
       {istAntwort && n.quellen.length > 0 ? <QuellenZeile n={n} /> : null}
+      {/* Klara 02: jede Antwort und jeder Hilfetext kann vorgelesen werden — nur auf Klick. */}
+      {n.von === "klara" && n.text ? (
+        <div className="mt-1">
+          <VorlesenKnopf id={n.id} text={n.text} />
+        </div>
+      ) : null}
       {n.gespeichert === "laeuft" ? (
         <p data-testid="klara-speicherstand" className="mt-1 text-[10.5px] text-muted-2">
           {t("klaragespraech.gespeichert.laeuft")}
