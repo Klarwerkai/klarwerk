@@ -8,6 +8,7 @@ import {
   fehlendePflichtfelder,
   normiere,
 } from "../../../apps/web/src/lib/vorlagenStruktur";
+import type { AuditService } from "../../audit";
 import type { Role } from "../../auth";
 import type { KnowledgeObject } from "../../knowledge-object";
 import { can } from "../../rbac";
@@ -1656,14 +1657,8 @@ export interface VorlagenDienstDeps {
   spaces: { aktuelle(): Promise<SpaceFassung[]> };
   /** Legt das frische Objekt in den gewählten Space (`KoService.setLeadingSpace`, erwartet: ohne). */
   inSpaceLegen?: (koId: string, spaceId: string, akteur: string) => Promise<void>;
-  audit?: {
-    record(e: {
-      actor: string;
-      action: string;
-      target: string;
-      payload: unknown;
-    }): Promise<unknown>;
-  };
+  /** Derselbe Prüfprotokolldienst wie an den übrigen Routen — kein nachgebauter Typ. */
+  audit?: AuditService;
   jetzt?: () => Date;
 }
 
