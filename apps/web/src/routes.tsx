@@ -166,6 +166,10 @@ const PlaceholderPage = lazy(() =>
   import("./pages/PlaceholderPage").then((m) => ({ default: m.PlaceholderPage })),
 );
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
+// ADMIN-10: Qualitätsaufgaben und Rückmeldungen — nachgeladen wie jede andere Seite (JOB 3503).
+const Qualitaetsaufgaben = lazy(() =>
+  import("./pages/Qualitaetsaufgaben").then((m) => ({ default: m.Qualitaetsaufgaben })),
+);
 // ADMIN-15: interne Richtlinien (alle Konten) und ihre Verwaltung samt Unternehmensprofil —
 // nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Richtlinien = lazy(() =>
@@ -401,6 +405,12 @@ export function AppRoutes(): JSX.Element {
             kommunikation-routes.ts`). Erreichbar über das Profil und die Verwaltung
             („Kommunikation"). */}
         <Route path="/kommunikation" element={<Kommunikation />} />
+        {/* ADMIN-10: Qualitätsaufgaben und Rückmeldungen. Ohne `Guarded`, wie `/unternehmen`: die
+            Türen dahinter fordern `users.manage` am Server und filtern jede Zeile über den
+            Sichtbarkeitsfilter (`services/app/src/routes/qualitaetsaufgaben-routes.ts`). Ohne
+            Recht zeigt die Seite den Hinweis „der Verwaltung vorbehalten". Erreichbar aus der
+            Verwaltung, Gruppe „Qualität". */}
+        <Route path="/qualitaetsaufgaben" element={<Qualitaetsaufgaben />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />

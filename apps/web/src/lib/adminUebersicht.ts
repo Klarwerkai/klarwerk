@@ -75,6 +75,12 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
     labelKey: "verwaltung.gruppe.qualitaet",
     zweckKey: "verwaltung.zweck.qualitaet",
     ziele: [
+      // ADMIN-10: die gemeinsame, deduplizierte Sicht auf die Vorgänge der Zeilen darunter.
+      {
+        art: "pfad",
+        pfad: "/qualitaetsaufgaben",
+        labelKey: "verwaltung.ziel.qualitaetsaufgaben",
+      },
       { art: "bereich", navId: "validierung" },
       { art: "bereich", navId: "konflikte" },
       { art: "bereich", navId: "duplikate" },

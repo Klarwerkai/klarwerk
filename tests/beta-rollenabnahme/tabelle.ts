@@ -2032,6 +2032,26 @@ export const TABELLE: Zeile[] = [
     erwartet: ANGEMELDET,
   },
   {
+    // ADMIN-10: die gemeinsame Übersicht der Qualitätsaufgaben — Verwaltung.
+    gruppe: "qualitaetsaufgabenRoutes",
+    methode: "GET",
+    pfad: "/api/qualitaetsaufgaben",
+    belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:23",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // ADMIN-10: Rückmeldung als Aufgabe übernehmen. Die Kennung ist erfunden — der Berechtigte
+    // bekommt die fachliche 404 (registriert, Tor durchgelassen), und es wird nichts geschrieben.
+    gruppe: "qualitaetsaufgabenRoutes",
+    methode: "POST",
+    pfad: "/api/qualitaetsaufgaben/rueckmeldungen/M-ABNAHME0000/uebernehmen",
+    route: "/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen",
+    belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:36",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
     gruppe: "objectRoutes",
     methode: "GET",
     pfad: "/api/objects/gibt-es-nicht",

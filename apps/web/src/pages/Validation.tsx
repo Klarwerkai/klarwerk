@@ -115,6 +115,8 @@ import {
   leserHref,
   mitObjektbezug,
 } from "../lib/objektbezug";
+// produkt:20261010:fragen-pruefen-einstieg (K4): warum hier, was prüfen, was die Entscheidung bewirkt.
+import { pruefGrund } from "../lib/pruefGrund";
 import { pruefKonfliktLage } from "../lib/pruefKonflikt";
 import {
   type StapelErgebnis,
@@ -587,6 +589,10 @@ export function Validation(): JSX.Element {
       // R-0247: das Kennzeichen steht NUR in der Nutzlast, wenn ausdrücklich bestätigt wurde —
       // ohne offene Dublette bleibt der Aufruf zeichengleich wie bisher.
       const bestaetigung = dubletteBestaetigt ? { duplicateAcknowledged: true as const } : {};
+      // ADMIN-09: trägt der Space eine Freigaberegel, nennt die Zustimmung die geprüfte Fassung —
+      // der Server lehnt sie sonst ab. Ohne Regel bleibt die Nutzlast zeichengleich wie bisher.
+      const zeile = Array.isArray(query.data) ? query.data.find((z) => z.id === id) : undefined;
+      const fassung = zeile?.freigaberegel ? { expectedVersion: zeile.version } : {};
       if (stufe) {
         try {
           await endpoints.ko.act(id, { action: "confidentiality", level: stufe });
@@ -603,10 +609,11 @@ export function Validation(): JSX.Element {
             action: "rate",
             verdict: "up",
             ...bestaetigung,
+            ...fassung,
           });
           return antwort;
         }
-        await endpoints.ko.act(id, { action: "admin-validate", ...bestaetigung });
+        await endpoints.ko.act(id, { action: "admin-validate", ...bestaetigung, ...fassung });
         return undefined;
       } catch (e) {
         // Schritt 2 gescheitert: `stufe` ist genau dann gespeichert, wenn Schritt 1 überhaupt lief.
@@ -1185,7 +1192,12 @@ export function Validation(): JSX.Element {
         return { id: k.id, title: k.title, art: vorab };
       }
       try {
-        await endpoints.ko.act(k.id, { action: "rate", verdict: "up" });
+        // ADMIN-09: in einem Space mit Freigaberegel nennt auch die Sammelzustimmung die Fassung —
+        // die beim Auswählen GESEHENE, nicht die frisch gelesene. Wurde der Beitrag inzwischen
+        // überarbeitet, lehnt der Server ab (409 `KO_STALE`) und der Eintrag bleibt stehen.
+        const gesehen = stapel.find((s) => s.id === k.id)?.version ?? k.version;
+        const fassung = k.freigaberegel ? { expectedVersion: gesehen } : {};
+        await endpoints.ko.act(k.id, { action: "rate", verdict: "up", ...fassung });
         return { id: k.id, title: k.title, art: "bestaetigt" };
       } catch (e) {
         // Der Server kennt eine Dublette, die die Fläche (noch) nicht zeigte: nichts validiert.
@@ -2212,6 +2224,16 @@ export function Validation(): JSX.Element {
     // Die OFFENEN Zuweisungen (die Board-Route reicht nur offene durch, ValidationService
     // `withOpenAssignments`) — „zugewiesen" allein sagte nicht, an wen.
     const zugewiesen = k.assignments ?? [];
+    // produkt:20261010:fragen-pruefen-einstieg (K4): der Prüfanlass an der Karte.
+    const grund = pruefGrund({
+      kind: kontext.kind,
+      version: kontext.version,
+      authorTransferred: sig.authorTransferred,
+      zugewiesen,
+      ich: user?.id ?? null,
+      greenVotes: sig.greenVotes,
+      needed: sig.needed,
+    });
     // Rückfrage/Ablehnung: liegt die Begründung dieses Vorgangs schon am Server?
     const vorgang =
       feedback?.id === k.id ? gespeicherteBegruendung(k.id, feedback.verdict) : undefined;
@@ -2440,6 +2462,43 @@ export function Validation(): JSX.Element {
               ) : null}
             </div>
           ) : null}
+
+          {/* ---- produkt:20261010:fragen-pruefen-einstieg (K4) — DER PRÜFANLASS -------------
+              Direkt unter Inhalt und Quellen, über dem Fußband mit den Entscheidungen: warum der
+              Eintrag hier liegt, was zu prüfen ist, was eine Freigabe bewirkt, und wer ihn sehen
+              darf. Abgeleitet aus vorhandenen Signalen (`lib/pruefGrund.ts`); keine neue Regel.
+              `data-text="text"`: es ist eintragsbezogener Inhalt (Zuweisung, Fassung, Stimmen,
+              Stufe dieses Eintrags), keine allgemeine Erklärung — die steht weiter im „?"-Menü. */}
+          <dl
+            data-testid="pruefen-grund"
+            className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-[10px] bg-page px-[14px] py-[10px] text-[12.5px] leading-snug"
+          >
+            <dt data-text="meta" className="font-semibold text-muted">
+              {t("pruefgrund.label.warum")}
+            </dt>
+            <dd data-text="text" data-testid="pruefen-grund-warum" className="m-0 text-text">
+              {t(grund.anlassKey, { version: grund.version })}{" "}
+              {t(grund.warum.key, grund.warum.params)}
+            </dd>
+            <dt data-text="meta" className="font-semibold text-muted">
+              {t("pruefgrund.label.was")}
+            </dt>
+            <dd data-text="text" data-testid="pruefen-grund-was" className="m-0 text-text">
+              {t(grund.wasKey)}
+            </dd>
+            <dt data-text="meta" className="font-semibold text-muted">
+              {t("pruefgrund.label.wirkung")}
+            </dt>
+            <dd data-text="text" data-testid="pruefen-grund-wirkung" className="m-0 text-text">
+              {t(grund.wirkung.key, grund.wirkung.params)}
+            </dd>
+            <dt data-text="meta" className="font-semibold text-muted">
+              {t("pruefgrund.label.sichtbar")}
+            </dt>
+            <dd data-text="text" data-testid="pruefen-grund-sichtbar" className="m-0 text-text">
+              {t(k.auskunft.stufe.labelKey)}
+            </dd>
+          </dl>
 
           {/* ---- „Mehr" (Auftrag §5.2b/§5.3) ------------------------------------------------- */}
           <PruefenMehr kennung="karte">
