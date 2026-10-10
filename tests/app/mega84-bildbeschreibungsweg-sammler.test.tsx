@@ -2896,8 +2896,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // main kam. 602 + 1 = 603. EHRLICH GESAGT: GERECHNET, nicht gemessen — hat main seit 08ecfe6c
     // weitere Bauteile gebracht, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2
     // sind auf beiden Seiten gleich.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 57: GEMESSEN 606. Am Kandidaten 595d6b72 meldete der
+    // Sammler wörtlich „gemessen: 606 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 784
+    // Quelldateien … expected { komponenten: 606, … } to deeply equal { komponenten: 603, … }".
+    // Die 603 war gerechnet; dieser Auftrag hat in Nacharbeit 56 nur Konflikte in Serverdateien und
+    // in dieser Testdatei gelöst, keine Komponente hinzugefügt. Die DREI Komponenten über der
+    // Rechnung (Grundmenge 777 → 784) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem
+    // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 603,
+      komponenten: 606,
       anbieter: 1,
       traeger: 2,
     });
