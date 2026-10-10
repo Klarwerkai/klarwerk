@@ -45,6 +45,7 @@ interface Optionen {
   dim?: number;
   version?: unknown;
   digests?: Record<string, unknown>;
+  latestTag?: boolean;
 }
 
 const offen: Server[] = [];
@@ -77,9 +78,11 @@ async function ollama(o: Optionen = {}): Promise<string> {
           models: modelle.map((name) => {
             const vorgabe = name === "bge-m3" ? DIGEST_EMBED : DIGEST_SPRACHE;
             const digest = o.digests && name in o.digests ? o.digests[name] : vorgabe;
+            // Wie Ollama: ein ohne Tag geladenes Gewicht steht als `<name>:latest` in der Liste.
+            const gelistet = o.latestTag && !name.includes(":") ? `${name}:latest` : name;
             return {
-              name,
-              model: name,
+              name: gelistet,
+              model: gelistet,
               ...(digest === WEG ? {} : { digest }),
               size: 1000,
               details: { family: "probe", parameter_size: "1B", quantization_level: "Q4_K_M" },
@@ -166,6 +169,19 @@ describe("AW-12 · fassungsgebundener Modellbestand", () => {
       expect(bestand?.fehler.join("\n")).toContain(`„${name}": Digest fehlt oder ist ungültig`);
     });
   }
+
+  it("B9 · `bge-m3` wird als `bge-m3:latest` gelistet und trotzdem gefunden", async () => {
+    // Gemessen im S07-Lauf am Prüfplatz (HISTORIE/nacharbeit-17): Ollama listet das ohne Tag
+    // geladene Gewicht mit `:latest`; das Werkzeug meldete es als „nicht vorhanden".
+    const { lauf, bestand } = await erfasse(await ollama({ latestTag: true }));
+    expect(lauf.code, lauf.stdout).toBe(0);
+    const embedding = bestand?.modelle.find((m) => m.rolle === "embedding");
+    expect(embedding?.vorhanden).toBe(true);
+    expect(embedding?.digest).toBe(DIGEST_EMBED);
+    // Ein ausdrücklich anderer Tag wird NICHT als gleich gewertet.
+    const anders = await erfasse(await ollama({ modelle: ["qwen3:32b", "bge-m3:v2"] }));
+    expect(anders.lauf.code).toBe(1);
+  });
 
   it("B8 · ein Digest mit sha256:-Präfix gilt als gültig", async () => {
     const mitPraefix = `sha256:${DIGEST_EMBED}`;

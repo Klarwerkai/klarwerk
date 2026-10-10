@@ -96,7 +96,11 @@ export async function erfasseModellbestand({ basis, sprachmodell, embedding, dim
     ["sprachmodell", sprachmodell],
     ["embedding", embedding],
   ]) {
-    const treffer = vorhanden.find((m) => m?.name === name || m?.model === name);
+    // Ollama führt ein ohne Tag geladenes Gewicht als `<name>:latest` (gemessen im S07-Lauf am
+    // Prüfplatz: `bge-m3` stand als `bge-m3:latest` in /api/tags). Gemeint ist dasselbe Gewicht;
+    // die Fassung bindet ohnehin erst der Digest, nicht der Tag.
+    const namen = name.includes(":") ? [name] : [name, `${name}:latest`];
+    const treffer = vorhanden.find((m) => namen.includes(m?.name) || namen.includes(m?.model));
     if (!treffer) {
       fehler.push(`${rolle} „${name}" ist auf dem Server nicht vorhanden`);
       bestand.modelle.push({ rolle, name, vorhanden: false });

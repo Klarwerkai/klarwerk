@@ -88,7 +88,7 @@ interface Instanz {
 
 interface Mitschnitt {
   host: string | null;
-  port: number | null;
+  port: number | string | null;
   pfad: string | null;
 }
 
@@ -415,9 +415,15 @@ describe("AW-12 · Abnahme S07 auf dem Prüfplatz", () => {
     if (!verbindung) throw new Error(`${MARKE}: keine Datenbankverbindung`);
     const lokal = new Set([null, "localhost", "127.0.0.1", "::1"]);
     const pg = verbindung;
-    const erlaubt = (z: Mitschnitt): boolean =>
-      (z.port === Number(pg.port) && (z.host === pg.host || lokal.has(z.host))) ||
-      (z.port === modellPort && lokal.has(z.host));
+    // `net.connect` bekommt den Port mal als Zahl, mal als Zeichenkette (im S07-Lauf gemessen:
+    // undici übergibt "44485"). Verglichen wird deshalb der Zahlenwert.
+    const erlaubt = (z: Mitschnitt): boolean => {
+      const port = Number(z.port);
+      return (
+        (port === Number(pg.port) && (z.host === pg.host || lokal.has(z.host))) ||
+        (port === modellPort && lokal.has(z.host))
+      );
+    };
     const befund: Record<string, Mitschnitt[]> = {};
     for (const i of instanzen) {
       const zeilen = readFileSync(i.mitschnitt, "utf8")
