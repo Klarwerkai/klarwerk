@@ -69,11 +69,13 @@ const PORT_ZUSTAND = 3124;
  * `arbeitswege-objekt-browser` reicht Beiträge ein und entscheidet an ihnen; im geteilten Server
  * füllte das das Prüf-Board, das `ui-smoke` leer erwartet. `klara-kontext-artikel-browser`
  * (Klara 03) legt einen freigegebenen Beitrag an und stuft ihn vertraulich.
+ * `assistenz-produkteinstieg-browser` (produkt:20261010:assistenz-produkteinstieg) legt für die
+ * Artikelseite einen fiktiven freigegebenen Beitrag an.
  */
 // produkt:20261010:wissenskreislauf-schliessen: die Lückensonde legt Konten, eine Lücke, einen
 // Eintrag samt Bewertungen und einen Abschluss an — aus demselben Grund im isolierten Kontext.
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser|assistenz-produkteinstieg-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.
