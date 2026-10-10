@@ -3174,6 +3174,18 @@ export function Ask(): JSX.Element {
         ) : null}
       </div>
 
+      {/* R-0347: der Weg zu Fragen an ein EIGENES Dokument — eine ruhige Zeile unter der
+          Ergebnisfläche, damit Feld und Antwort oben unverändert stehen (R-0286). */}
+      <p data-testid="ask-dokumentfragen-einstieg" className="text-[12.5px] text-muted">
+        <Link
+          to="/fragen/dokument"
+          className="font-semibold text-brand-text underline-offset-2 hover:underline"
+        >
+          {t("dokumentfragen.einstieg")}
+        </Link>{" "}
+        · {t("dokumentfragen.einstiegHinweis")}
+      </p>
+
       {/* ============================================================================================
           „MEHR" — DASSELBE SEITENBLATT, WENN ES (NOCH) KEINE ANTWORT GIBT.
           ============================================================================================
