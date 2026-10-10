@@ -1168,6 +1168,28 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/teams/:id": { protection: "users.manage" },
   "POST /api/teams/:id/archivieren": { protection: "users.manage" },
 
+  // --- Interner Chat (chat-routes.ts, produkt:20261007:interner-chat) ---
+  // Jede Tür verlangt `ko.read`; welche Gespräche und Inhalte erscheinen, entscheidet je Zeile
+  // Teilnahme, Space-Leserecht und `darfSehen` (Artikelgespräche, Verweise, Ausschnitte, Anhänge).
+  // Die Wissensübernahme legt einen Entwurf an und verlangt deshalb `ko.create`.
+  "GET /api/chat/konten": { protection: "ko.read" },
+  "GET /api/chat/gespraeche": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/chat/gespraeche": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/chat/gespraeche/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/chat/gespraeche/:id/nachrichten": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/chat/nachrichten/:id/wissen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  // Nacharbeit 3: die Zielnachricht einer Erwähnung, unabhängig von der jüngsten Verlaufsseite.
+  "GET /api/chat/nachrichten/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Nacharbeit 6: angezeigte ältere Nachrichten je Leser neu gegen die Rechte halten.
+  "POST /api/chat/gespraeche/:id/auffrischen": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/chat/erwaehnungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+
   // --- Vorlagen (vorlagen-routes.ts, produkt:20261007:templates-default / ADMIN-08) ---
   // Lesen wie Wissen; welche Vorlage erscheint, entscheidet ihre Geltung (persönlich, Space-Lese-
   // recht, unternehmensweit). Anlegen/Ändern/Standard braucht `ko.create`, Space-Vorgaben die
