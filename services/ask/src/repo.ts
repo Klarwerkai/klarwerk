@@ -1,3 +1,4 @@
+import { mitWeiteremFragenden } from "./gap-vorgang";
 import {
   type AnswerEvidenceSnapshot,
   type AnswerRecord,
@@ -46,10 +47,24 @@ export interface GapRepo {
   // Die Ablage ruft sie vor JEDEM ihrer eigenen Zugriffe — in PostgreSQL liegen zwischen Einfügen
   // und Hochzählen Wartepunkte, an denen der Administrator abschalten kann. Wirft sie, findet der
   // Zugriff nicht statt. Ohne sie unverändert.
+  //
+  // produkt:20261010:wissenskreislauf-schliessen: beim Hochzählen wird der Fragende der übergebenen
+  // Lücke (`gap.createdBy`) der offenen Lücke als weiterer Fragender zugeordnet — in DERSELBEN
+  // unteilbaren Anweisung (`mitWeiteremFragenden`), ohne Doppelte und ohne den Ersteller zweimal.
   insertOrIncrement?(
     gap: Gap,
     vorInhaltsabruf?: () => void,
   ): Promise<{ gap: Gap; created: boolean }>;
+  /**
+   * produkt:20261010:wissenskreislauf-schliessen — SCHREIBEN NUR, SOLANGE DIE LÜCKE NOCH OFFEN IST.
+   *
+   * Der Abschluss (fachlich wie administrativ) läuft hierüber: zwei gleichzeitige Abschlüsse, ein
+   * Doppelklick oder ein Neustart mitten im Vorgang schreiben höchstens EINEN. `false` heisst: die
+   * Lücke war nicht mehr offen (oder fehlt), es wurde nichts geschrieben. Optional aus demselben
+   * Grund wie `insertOrIncrement` (speicherlose Testattrappen); ohne die Methode prüft der Dienst den
+   * Stand selbst unmittelbar vor dem Schreiben.
+   */
+  updateWennOffen?(gap: Gap): Promise<boolean>;
 }
 
 /** Der Zähler einer Lücke; Altbestände ohne Feld gelten als einmal gefragt. */
@@ -79,7 +94,10 @@ export class InMemoryGapRepo implements GapRepo {
     if (gap.compareKey) {
       for (const vorhanden of this.gaps.values()) {
         if (vorhanden.status === "offen" && vorhanden.compareKey === gap.compareKey) {
-          const erhoeht: Gap = { ...vorhanden, askCount: haeufigkeit(vorhanden) + 1 };
+          const erhoeht: Gap = mitWeiteremFragenden(
+            { ...vorhanden, askCount: haeufigkeit(vorhanden) + 1 },
+            gap.createdBy,
+          );
           this.gaps.set(erhoeht.id, erhoeht);
           return Promise.resolve({ gap: erhoeht, created: false });
         }
@@ -96,6 +114,15 @@ export class InMemoryGapRepo implements GapRepo {
   update(gap: Gap): Promise<void> {
     this.gaps.set(gap.id, gap);
     return Promise.resolve();
+  }
+
+  // Ohne `await` zwischen Prüfen und Setzen — dieselbe Unteilbarkeit wie `insertOrIncrement`.
+  updateWennOffen(gap: Gap): Promise<boolean> {
+    if (this.gaps.get(gap.id)?.status !== "offen") {
+      return Promise.resolve(false);
+    }
+    this.gaps.set(gap.id, gap);
+    return Promise.resolve(true);
   }
 
   delete(id: string): Promise<void> {

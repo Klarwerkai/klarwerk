@@ -147,16 +147,31 @@ export class PgGapRepo implements GapRepo {
       return { gap: angelegt.rows[0]?.data ?? gap, created: true };
     }
     vorInhaltsabruf?.();
+    // produkt:20261010:wissenskreislauf-schliessen: in DERSELBEN Anweisung wird der Fragende als
+    // weiterer Fragender zugeordnet — dieselbe Regel wie `mitWeiteremFragenden` (gap-vorgang.ts):
+    // nicht „system", nicht der Ersteller, nicht doppelt.
     const erhoeht = await this.pool.query<GapRow>(
       `UPDATE gaps
           SET data = jsonb_set(
-                data,
-                '{askCount}',
-                to_jsonb(COALESCE((data->>'askCount')::int, 1) + 1)
+                jsonb_set(
+                  data,
+                  '{askCount}',
+                  to_jsonb(COALESCE((data->>'askCount')::int, 1) + 1)
+                ),
+                '{weitereFragende}',
+                CASE
+                  WHEN $2::text IS NULL
+                    OR $2::text = ''
+                    OR $2::text = 'system'
+                    OR (data->>'createdBy') IS NOT DISTINCT FROM $2::text
+                    OR COALESCE(data->'weitereFragende', '[]'::jsonb) ? $2::text
+                  THEN COALESCE(data->'weitereFragende', '[]'::jsonb)
+                  ELSE COALESCE(data->'weitereFragende', '[]'::jsonb) || jsonb_build_array($2::text)
+                END
               )
         WHERE (data->>'compareKey') = $1 AND (data->>'status') = 'offen'
         RETURNING data`,
-      [gap.compareKey],
+      [gap.compareKey, gap.createdBy ?? null],
     );
     const treffer = erhoeht.rows[0]?.data;
     if (!treffer) {
@@ -171,6 +186,16 @@ export class PgGapRepo implements GapRepo {
   async findById(id: string): Promise<Gap | undefined> {
     const res = await this.pool.query<GapRow>("SELECT data FROM gaps WHERE id=$1", [id]);
     return res.rows[0]?.data;
+  }
+
+  // produkt:20261010:wissenskreislauf-schliessen: der Abschluss schreibt nur, solange die Zeile noch
+  // offen ist — Prüfen und Schreiben sind EINE Anweisung, zwei Abschlüsse gewinnen höchstens einmal.
+  async updateWennOffen(gap: Gap): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE gaps SET data=$2 WHERE id=$1 AND (data->>'status') = 'offen'",
+      [gap.id, JSON.stringify(gap)],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async update(gap: Gap): Promise<void> {

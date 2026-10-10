@@ -773,6 +773,13 @@ export function Ask(): JSX.Element {
   // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
   // Einstieg trägt die GAP-ID (kein Fragetext in der URL); Capture lädt den Text nach Berechtigung.
   const [gapId, setGapId] = useState<string | null>(anfang?.antwort?.gapId ?? null);
+  // produkt:20261010:wissenskreislauf-schliessen: dieselbe Frage ist schon fachlich gelöst — der
+  // Server nennt den heute nutzbaren Wissenseintrag, statt eine neue Lücke anzulegen.
+  const [geloesteLuecke, setGeloesteLuecke] = useState<{
+    koId: string;
+    koVersion: number;
+    titel: string;
+  } | null>(null);
   const qc = useQueryClient();
   const guide = knowledgeGuidance("ask");
 
@@ -963,6 +970,7 @@ export function Ask(): JSX.Element {
       setResult(null);
       setReceipt("");
       setGapId(null);
+      setGeloesteLuecke(null);
       setThankedSources(new Set());
       // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
       // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
@@ -1010,6 +1018,7 @@ export function Ask(): JSX.Element {
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
       setGapId(r.gap?.id ?? null);
+      setGeloesteLuecke(r.geloesteLuecke ?? null);
       if (r.gap) {
         void qc.invalidateQueries({ queryKey: ["gaps"] });
       }
@@ -3058,6 +3067,31 @@ export function Ask(): JSX.Element {
                     ) : null}
                   </>
                 ) : null}
+                {/* produkt:20261010:wissenskreislauf-schliessen: die Wiederholungsfrage nutzt den
+                    Eintrag, mit dem dieselbe Frage fachlich geschlossen wurde — der Server hat ihn
+                    eben gegen Fachprüfung, Gültigkeit und die Rechte dieses Fragenden geprüft. */}
+                {geloesteLuecke ? (
+                  <div
+                    data-testid="ask-geloeste-luecke"
+                    className="mb-3 rounded-btn border border-hairline bg-trust-pos-bg px-3 py-2"
+                  >
+                    <p className="text-[13px] font-semibold text-trust-pos-text">
+                      {t("lueckenvorgang.frage.geloestTitel")}
+                    </p>
+                    <p className="mt-0.5 text-[12.5px] text-text">
+                      {t("lueckenvorgang.frage.geloestText", {
+                        titel: geloesteLuecke.titel,
+                        v: geloesteLuecke.koVersion,
+                      })}
+                    </p>
+                    <Link
+                      to={`/wissen/${geloesteLuecke.koId}`}
+                      className="mt-1 inline-block text-[12.5px] font-semibold text-brand-text hover:underline"
+                    >
+                      {t("lueckenvorgang.frage.geloestOeffnen")}
+                    </Link>
+                  </div>
+                ) : null}
                 <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
                   {t("ask.gapBadge")}
                 </span>
@@ -3095,6 +3129,18 @@ export function Ask(): JSX.Element {
                         </>
                       )}
                     </RoleLink>
+                  ) : null}
+                  {/* produkt:20261010:wissenskreislauf-schliessen: der Vorgang dieser Frage —
+                      Zustand, nächster Schritt, Übergabe an eine Fachzuständigkeit, Rückfrage und
+                      Ergebnis (`/luecke/:id`, für die Fragenden erreichbar). */}
+                  {gapId ? (
+                    <Link
+                      to={`/luecke/${encodeURIComponent(gapId)}`}
+                      data-testid="ask-luecke-vorgang"
+                      className="text-[13px] font-semibold text-brand-text hover:underline"
+                    >
+                      {t("lueckenvorgang.frage.vorgangOeffnen")}
+                    </Link>
                   ) : null}
                 </div>
               </Card>

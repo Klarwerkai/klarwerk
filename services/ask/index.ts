@@ -89,8 +89,45 @@ export {
   signAnswerReceipt,
   verifyAnswerReceipt,
 } from "./src/receipt";
-export { AskError, isGapPriority } from "./src/types";
-export type { Gap, GapBelegbedarf, GapPriority, AskErrorCode } from "./src/types";
+export {
+  AskError,
+  GAP_RUECKNAHME_GRUENDE,
+  isGapPriority,
+  isGapRuecknahmeGrund,
+} from "./src/types";
+export type {
+  Gap,
+  GapAbschluss,
+  GapBelegbedarf,
+  GapPriority,
+  GapRueckfrage,
+  GapRuecknahmeGrund,
+  GapZuordnung,
+  AskErrorCode,
+} from "./src/types";
+// produkt:20261010:wissenskreislauf-schliessen: der gemeinsame Vorgang an der einen Lücke — Regeln
+// in `src/gap-vorgang.ts`, Schreibwege und Sicht am `AskService`.
+export {
+  GapAbschlussVerweigert,
+  RUECKFRAGE_MAX_ZEICHEN,
+  abschlussMeldungId,
+  benoetigteBewertungen,
+  pruefeFachlicheNutzbarkeit,
+  rueckfrageMeldungId,
+  vorgangsphase,
+  naechsterSchritt,
+} from "./src/gap-vorgang";
+export type {
+  FachlicheNutzbarkeit,
+  GapNaechsterSchritt,
+  GapPruefstand,
+  GapVorgangEintrag,
+  GapVorgangSicht,
+  GapVorgangsphase,
+  GapVorgangsrolle,
+  NutzbarkeitsGrund,
+} from "./src/gap-vorgang";
+export type { GapBeteiligter, GapMeldung } from "./src/service";
 // AUFTRAG-mega34 B1: der kanonische, quellengebundene Evidenzzustand — die EINE Auslegung der
 // Antwort-Einstufung für alle Verbraucher, die sie nicht selbst bilden können (Word/Klara).
 export { answerCheckState, answerEvidence } from "./src/answer-evidence";

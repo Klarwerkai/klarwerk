@@ -9,11 +9,14 @@ import {
   type BelegteBeziehung,
   type FrageAnlass,
   GESPRAECHSFADEN_MAX_FRAGEN,
+  GapAbschlussVerweigert,
+  type GapBeteiligter,
   type ZuschnittBegriff,
   answerEvidence,
   antwortBelastbarkeit,
   antwortZuschnitt,
   isGapPriority,
+  isGapRuecknahmeGrund,
   konfliktGegenseiten,
   redactGapForViewer,
 } from "../../../ask";
@@ -297,6 +300,15 @@ export interface AskRouteDeps {
    * Quelle oder scheitert sie, wird nichts erklärt.
    */
   begriffe?: (() => Promise<readonly WoerterbuchEintrag[]>) | undefined;
+  /**
+   * produkt:20261010:wissenskreislauf-schliessen — IST DIESE PERSON HEUTE EINE BERECHTIGTE
+   * FACHZUSTÄNDIGKEIT? Gefragt bei jeder Zuordnung und Übergabe (Ziel muss berechtigt sein) und bei
+   * jedem Vorgangsabruf (ist die zuständige Person noch verfügbar?). `null` heisst „nicht
+   * feststellbar" — eine Zuordnung wird dann abgewiesen, nicht durchgewunken. Fehlt die Auskunft
+   * ganz (fremde Aufbauten ohne Nutzerverzeichnis), bleibt die Zuordnung wie bisher ungeprüft und
+   * die Verfügbarkeit unbekannt.
+   */
+  fachzustaendigkeit?: ((personId: string) => Promise<boolean | null>) | undefined;
 }
 
 /**
@@ -1473,6 +1485,58 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       }
     });
 
+    // ============================================================================================
+    // produkt:20261010:wissenskreislauf-schliessen — DER GEMEINSAME VORGANG AN DER EINEN LÜCKE.
+    // ============================================================================================
+    //
+    // Jeder Schritt bekommt den Betrachter aus der SITZUNG mit seiner heutigen Sichtbarkeit
+    // (`sichtbarkeitsfilterFuer`) und seinem heutigen Verwaltungsrecht (`ko.assign`) — eine
+    // Rechteänderung wirkt beim nächsten Zugriff. Ausgeliefert wird nie die rohe Lücke (sie trägt
+    // die Kennungen aller Fragenden und die Rückfragetexte), sondern die Vorgangssicht DIESES
+    // Betrachters bzw. die redigierte Listensicht.
+    const beteiligterAus = (user: SessionUser): GapBeteiligter => ({
+      id: user.id,
+      verwaltend: can(user.role, "ko.assign"),
+      sichtbar: sichtbarkeitsfilterFuer(user),
+    });
+    const fachzustaendig = async (personId: string): Promise<boolean | null> =>
+      deps.fachzustaendigkeit ? deps.fachzustaendigkeit(personId).catch(() => null) : null;
+    // Das Ziel einer Zuordnung muss HEUTE berechtigt sein. Ohne Auskunft (fremder Aufbau) bleibt es
+    // beim bisherigen ungeprüften Weg; eine Auskunft „nicht feststellbar" weist ab.
+    const zielNichtBerechtigt = async (personId: string): Promise<string | null> => {
+      if (!deps.fachzustaendigkeit) {
+        return null;
+      }
+      const urteil = await fachzustaendig(personId);
+      if (urteil === true) {
+        return null;
+      }
+      return urteil === false
+        ? "Diese Person ist keine berechtigte Fachzuständigkeit (freigegebenes Konto mit " +
+            "Erfassungsrecht)."
+        : "Ob diese Person berechtigt ist, ist gerade nicht feststellbar — die Lücke wurde " +
+            "nicht zugeordnet.";
+    };
+    const vorgangSenden = async (
+      reply: FastifyReply,
+      id: string,
+      user: SessionUser,
+    ): Promise<void> => {
+      const verfuegbar = deps.fachzustaendigkeit ? fachzustaendig : undefined;
+      reply.code(200).send(await ask.gapVorgang(id, beteiligterAus(user), verfuegbar));
+    };
+    const vorgangsfehler = (reply: FastifyReply, error: unknown): void => {
+      if (error instanceof GapAbschlussVerweigert) {
+        reply
+          .code(400)
+          .send({ error: "BAD_REQUEST", message: error.message, gruende: error.gruende });
+        return;
+      }
+      sendError(reply, error);
+    };
+    const textFeld = (body: unknown, feld: string): unknown =>
+      body && typeof body === "object" ? (body as Record<string, unknown>)[feld] : undefined;
+
     app.put<{
       Params: { id: string };
       Body: {
@@ -1481,12 +1545,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         action?: string;
         priority?: string;
         koId?: unknown;
+        grund?: unknown;
       };
     }>("/api/gaps/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.assign", request, reply);
       if (!user) {
         return;
       }
+      const sicht = (gap: Parameters<typeof redactGapForViewer>[0]) =>
+        redactGapForViewer(gap, { viewerId: user.id });
       try {
         // SCRUM-115: Priorität setzen.
         if (request.body.priority !== undefined) {
@@ -1496,32 +1563,185 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           }
           reply
             .code(200)
-            .send(await ask.setGapPriority(request.params.id, request.body.priority, user.id));
+            .send(
+              sicht(await ask.setGapPriority(request.params.id, request.body.priority, user.id)),
+            );
+          return;
+        }
+        // produkt:20261010:wissenskreislauf-schliessen: die ADMINISTRATIVE Rücknahme — eigener
+        // Weg, eigener Grund, kein Wissenseintrag, keine Erfolgsmeldung. Nur mit `ko.validate`.
+        if (request.body.action === "withdraw") {
+          if (!can(user.role, "ko.validate")) {
+            reply
+              .code(403)
+              .send({ error: "FORBIDDEN", message: "Zurücknehmen dürfen Prüfberechtigte." });
+            return;
+          }
+          if (!isGapRuecknahmeGrund(request.body.grund)) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: "grund ist ungültig." });
+            return;
+          }
+          reply
+            .code(200)
+            .send(sicht(await ask.withdrawGap(request.params.id, request.body.grund, user.id)));
           return;
         }
         // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).
         if (request.body.close === true || request.body.action === "close") {
-          // R-0846 / L6: der Objektbezug. Hier wird nur die Form geprüft; ob das Objekt existiert
-          // und ob ohne mitgeschickten Bezug ein gültiger an der Lücke steht, entscheidet
-          // `AskService.closeGap` — fehlt beides, bleibt die Lücke offen (400).
+          // R-0846 / L6: der Objektbezug. Hier wird nur die Form geprüft; ob das Objekt existiert,
+          // fachlich freigegeben und für diesen Betrachter nutzbar ist und ob ohne mitgeschickten
+          // Bezug ein gültiger an der Lücke steht, entscheidet `AskService.closeGap` — sonst bleibt
+          // die Lücke offen (400, mit den Gründen).
           const roh = request.body.koId;
           if (roh !== undefined && (typeof roh !== "string" || roh.trim() === "")) {
             reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
             return;
           }
           const bezug = typeof roh === "string" ? roh.trim() : undefined;
-          reply.code(200).send(await ask.closeGap(request.params.id, bezug));
+          reply
+            .code(200)
+            .send(sicht(await ask.closeGap(request.params.id, bezug, beteiligterAus(user))));
           return;
         }
         if (request.body.expertId) {
-          reply.code(200).send(await ask.assignGap(request.params.id, request.body.expertId));
+          const nein = await zielNichtBerechtigt(request.body.expertId);
+          if (nein) {
+            reply.code(400).send({ error: "BAD_REQUEST", message: nein });
+            return;
+          }
+          reply
+            .code(200)
+            .send(sicht(await ask.assignGap(request.params.id, request.body.expertId, user.id)));
           return;
         }
         reply
           .code(400)
           .send({ error: "BAD_REQUEST", message: "expertId, close oder priority erforderlich." });
       } catch (error) {
-        sendError(reply, error);
+        vorgangsfehler(reply, error);
+      }
+    });
+
+    // Der Vorgang, wie DIESER Betrachter ihn sieht. Nicht Beteiligte bekommen 404 (Dienst).
+    app.get<{ Params: { id: string } }>("/api/gaps/:id/vorgang", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        await vorgangSenden(reply, request.params.id, user);
+      } catch (error) {
+        vorgangsfehler(reply, error);
+      }
+    });
+
+    // Ein Fragender übergibt an eine berechtigte Fachzuständigkeit (nur ohne verfügbare Zuständigkeit).
+    app.post<{ Params: { id: string } }>("/api/gaps/:id/uebergeben", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const ziel = textFeld(request.body, "expertId");
+      if (typeof ziel !== "string" || ziel.trim() === "") {
+        reply.code(400).send({ error: "BAD_REQUEST", message: "expertId fehlt." });
+        return;
+      }
+      try {
+        const nein = await zielNichtBerechtigt(ziel.trim());
+        if (nein) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: nein });
+          return;
+        }
+        const vorher = await ask.gapVorgang(request.params.id, beteiligterAus(user));
+        const verfuegbar = vorher.zustaendig ? await fachzustaendig(vorher.zustaendig.id) : null;
+        await ask.handOverGap(request.params.id, ziel.trim(), beteiligterAus(user), verfuegbar);
+        await vorgangSenden(reply, request.params.id, user);
+      } catch (error) {
+        vorgangsfehler(reply, error);
+      }
+    });
+
+    // Die zuständige Person stellt eine Rückfrage an die Fragenden.
+    app.post<{ Params: { id: string } }>("/api/gaps/:id/rueckfrage", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        await ask.askGapFollowUp(
+          request.params.id,
+          beteiligterAus(user),
+          textFeld(request.body, "frage") as string,
+        );
+        await vorgangSenden(reply, request.params.id, user);
+      } catch (error) {
+        vorgangsfehler(reply, error);
+      }
+    });
+
+    // Ein Fragender beantwortet die offene Rückfrage.
+    app.post<{ Params: { id: string; rueckfrageId: string } }>(
+      "/api/gaps/:id/rueckfrage/:rueckfrageId/antwort",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          await ask.answerGapFollowUp(
+            request.params.id,
+            request.params.rueckfrageId,
+            beteiligterAus(user),
+            textFeld(request.body, "antwort") as string,
+          );
+          await vorgangSenden(reply, request.params.id, user);
+        } catch (error) {
+          vorgangsfehler(reply, error);
+        }
+      },
+    );
+
+    // Die zuständige Person verknüpft ihren Antwortentwurf (das eingereichte Wissensobjekt).
+    app.post<{ Params: { id: string } }>("/api/gaps/:id/entwurf", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      const koId = textFeld(request.body, "koId");
+      if (typeof koId !== "string" || koId.trim() === "") {
+        reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
+        return;
+      }
+      try {
+        await ask.linkGapDraft(request.params.id, koId, beteiligterAus(user));
+        await vorgangSenden(reply, request.params.id, user);
+      } catch (error) {
+        vorgangsfehler(reply, error);
+      }
+    });
+
+    // Fachlicher Abschluss durch die zuständige Person (oder Verwaltende) — nur mit nutzbarem,
+    // fachlich freigegebenem Eintrag in der aktuellen Fassung. Das Erfassungsrecht wird HEUTE
+    // verlangt (`ko.create`): wer es inzwischen verloren hat, schliesst nicht mehr ab.
+    app.post<{ Params: { id: string } }>("/api/gaps/:id/abschliessen", async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      const roh = textFeld(request.body, "koId");
+      if (roh !== undefined && (typeof roh !== "string" || roh.trim() === "")) {
+        reply.code(400).send({ error: "BAD_REQUEST", message: "koId muss eine Kennung sein." });
+        return;
+      }
+      try {
+        await ask.closeGapAlsBeteiligter(
+          request.params.id,
+          typeof roh === "string" ? roh.trim() : undefined,
+          beteiligterAus(user),
+        );
+        await vorgangSenden(reply, request.params.id, user);
+      } catch (error) {
+        vorgangsfehler(reply, error);
       }
     });
 

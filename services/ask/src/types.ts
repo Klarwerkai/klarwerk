@@ -73,7 +73,10 @@ export interface Gap {
   askCount?: number;
   // R-0846 / L6 — DER OBJEKTBEZUG. Das Wissensobjekt, das diese Lücke geschlossen hat. Pflicht beim
   // Schliessen (`closeGap(id, koId)`, PUT /api/gaps/:id mit `koId`): der Dienst prüft, dass das
-  // Objekt existiert und nicht im Papierkorb liegt, sonst bleibt die Lücke offen. Fehlen kann er nur
+  // Objekt existiert und nicht im Papierkorb liegt, sonst bleibt die Lücke offen. Seit
+  // produkt:20261010:wissenskreislauf-schliessen prüft er außerdem die Fachfreigabe der AKTUELLEN
+  // Fassung, Gültigkeit und Zugriff (`gap-vorgang.ts`). Bei einer OFFENEN Lücke ist der Bezug der
+  // verknüpfte Antwortentwurf in der Fachprüfung — kein Abschluss. Fehlen kann er nur
   // noch bei Altbeständen — der Integritätsbericht (services/app/src/datenintegritaet.ts) zählt sie
   // als Befund und meldet einen Bezug, dessen Objekt inzwischen endgelöscht ist.
   koId?: string;
@@ -82,7 +85,75 @@ export interface Gap {
   // (zuweisen, priorisieren, schliessen) reist er unverändert mit. Fehlt bei Altbeständen — die
   // Oberfläche zeigt dann „unbestimmt" statt eines erfundenen Bedarfs.
   belegbedarf?: GapBelegbedarf[];
+  // ============================================================================================
+  // produkt:20261010:wissenskreislauf-schliessen — DER GEMEINSAME VORGANG AN DIESER EINEN LÜCKE.
+  // ============================================================================================
+  //
+  // Kein zweites Lückenmodell und keine Aufgabenkopie: Fragende, Zuständigkeit, Rückfrage und
+  // Abschluss stehen an derselben Lücke, die Dublettenzählung (`insertOrIncrement`) und Zuordnung
+  // schon führen. Regeln und Ableitungen in `gap-vorgang.ts`. Alle Felder optional, keine Migration
+  // (Voll-JSONB); Altbestand hat sie schlicht nicht.
+  //
+  // `weitereFragende`: wer DIESELBE offene Frage später ebenfalls gestellt hat (nicht `createdBy`,
+  // ohne Doppelte). Sie sehen den Vorgang wie der Ersteller — dieselbe Sichtbarkeitsregel.
+  weitereFragende?: string[];
+  // Jede Zuordnung mit Zeitpunkt und Handelndem — die nachvollziehbare Neuzuordnung.
+  zuordnungen?: GapZuordnung[];
+  // Rückfragen der zuständigen Person an die Fragenden, samt Antwort.
+  rueckfragen?: GapRueckfrage[];
+  // Wie die Lücke geschlossen wurde. FACHLICH nur mit nutzbarem, freigegebenem Wissenseintrag in
+  // der geprüften Fassung; ADMINISTRATIV ist eine Rücknahme mit geschlossenem Grund — nie „gelöst".
+  // Fehlt bei einer geschlossenen Lücke: Altbestand von vor dieser Regel.
+  abschluss?: GapAbschluss;
 }
+
+/** Eine Zuordnung der Lücke: wer zuständig wurde, durch wen, wann und auf welchem Weg. */
+export interface GapZuordnung {
+  an: string;
+  von: string;
+  at: string;
+  /** `uebergabe`: ein Fragender hat übergeben; `neuzuordnung`: es war schon jemand zuständig. */
+  art: "zuordnung" | "uebergabe" | "neuzuordnung";
+}
+
+/** Eine Rückfrage der zuständigen Person an die Fragenden — und ihre Antwort. */
+export interface GapRueckfrage {
+  id: string;
+  frage: string;
+  von: string;
+  at: string;
+  antwort?: string;
+  beantwortetVon?: string;
+  beantwortetAm?: string;
+}
+
+/**
+ * Warum eine Lücke OHNE fachliche Antwort geschlossen wurde — ein geschlossener Wertebereich, kein
+ * Freitext (dieselbe Begründung wie bei `ANTWORT_MELDE_GRUENDE`: keine personenbezogenen Angaben in
+ * einem Feld, das jeder Berechtigte der Lücke liest).
+ */
+export const GAP_RUECKNAHME_GRUENDE = [
+  "dublette",
+  "nicht_beantwortbar",
+  "ausser_zustaendigkeit",
+  "zurueckgezogen",
+] as const;
+export type GapRuecknahmeGrund = (typeof GAP_RUECKNAHME_GRUENDE)[number];
+
+export function isGapRuecknahmeGrund(value: unknown): value is GapRuecknahmeGrund {
+  return typeof value === "string" && (GAP_RUECKNAHME_GRUENDE as readonly string[]).includes(value);
+}
+
+export type GapAbschluss =
+  | {
+      art: "fachlich";
+      koId: string;
+      /** Die Fassung, deren Fachprüfung beim Abschluss bestanden war. */
+      koVersion: number;
+      von: string;
+      at: string;
+    }
+  | { art: "administrativ"; grund: GapRuecknahmeGrund; von: string; at: string };
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden
 // Antwort-Receipt (unbelegte/fremd gewählte KO-ID) → 403 (sendError-Mapping).
