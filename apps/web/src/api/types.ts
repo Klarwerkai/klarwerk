@@ -740,6 +740,18 @@ export interface KnowledgeObject {
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
   staleVotes?: number;
+  // produkt:20261007:spaces: der führende Space (fehlt = kein Space). ADMIN-09: liegt ein Beitrag in
+  // einem Space, nennt seine Zustimmung die geprüfte Fassung — der Space kann eine Regel tragen.
+  spaceId?: string;
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): Brett-Anreicherung — der führende Space trägt
+  // eine Freigaberegel. Dann nennt jede Zustimmung die geprüfte Fassung (`expectedVersion`).
+  freigaberegel?: {
+    spaceId: string;
+    spaceName: string;
+    regelVersion: number;
+    zustimmungen: number;
+    gruppe: boolean;
+  };
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
