@@ -116,8 +116,11 @@ const ABGELOEST: ReadonlyArray<{ alt: string; neu: string; datei: string; knopf:
     knopf: "start.menu.stufe2",
   },
   {
+    // produkt:20261009:admin-audit-verstaendlich: die Auth-Ansicht hat Filter, Seiten und Namen
+    // bekommen; ihr Hilfetext beschreibt das (`auditprotokoll.hilfe.konten`) und zitiert den Reiter
+    // weiterhin zeichengleich. `knopfzitat.admin.audit` beschrieb die alte Liste ohne Bedienelemente.
     alt: "seitenhilfe.admin.audit.text",
-    neu: "knopfzitat.admin.audit",
+    neu: "auditprotokoll.hilfe.konten",
     datei: "pages/AdminDatenDetails.tsx",
     knopf: "adm.sec.sicherheit",
   },
@@ -365,6 +368,16 @@ describe("R-1176 · zitierte Beschriftungen stimmen in allen drei Sprachen", () 
       if (alt === "stage2.gate.body") {
         expect(de(alt)).toContain("im Haus „Stufe 2“ genannt");
         expect(de(neu)).toBe(de(alt).replace("im Haus „Stufe 2“", "intern „Stufe 2“"));
+        continue;
+      }
+      if (alt === "seitenhilfe.admin.audit.text") {
+        // produkt:20261009:admin-audit-verstaendlich: der alte deutsche Text beschrieb eine Liste
+        // „ohne Bedienelemente“ mit der „Kennung des Ausführenden“ — beides gilt nicht mehr. Der neue
+        // Text nennt Filter und Namen und zitiert den Reiter weiter (Z-3 prüft alle drei Sprachen).
+        expect(de(alt)).toContain("ohne Bedienelemente");
+        expect(de(neu)).not.toContain("ohne Bedienelemente");
+        expect(de(neu)).toContain("„Sicherheit und Nachweise“");
+        expect(de(neu)).toContain("Eingrenzen");
         continue;
       }
       if (alt === "capture.file.connectHint") {
