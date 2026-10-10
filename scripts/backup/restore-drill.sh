@@ -514,6 +514,7 @@ PFLICHTTABELLEN=(
   unternehmensprofil_fassungen
   richtlinien_fassungen
   richtlinien_handlungen
+  klara_gespraeche
   ko_mitgelesen
 )
 FEHLENDE_TABELLEN=()

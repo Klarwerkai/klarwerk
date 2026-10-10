@@ -63,6 +63,8 @@ import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
 import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
+import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -310,6 +312,10 @@ export const schemas = [
   // ADMIN-15: Unternehmensprofil, interne Richtlinien und ihr Handlungsprotokoll. Additiv und
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   UNTERNEHMEN_SCHEMA,
+  // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
+  // lesbare Ordnung ist.
+  KLARA_GESPRAECH_SCHEMA,
   // R-1656: der Co-Reading-Zähler. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS),
   // ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   MITGELESEN_SCHEMA,
