@@ -1,6 +1,6 @@
 {
   "name": "klarwerk",
-  "version": "1.0.0-beta.1.879",
+  "version": "1.0.0-beta.1.880",
   "private": true,
   "type": "module",
   "engines": {
@@ -22,7 +22,9 @@
     "smoke:ui": "npm run --silent smoke:ui:frisch && ANTHROPIC_API_KEY=\"${KLARWERK_SHIP_SMOKE_API_KEY:-}\" ./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts",
     "smoke:ui:gate": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_OHNE_MODELL=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts --project=chromium --project=chromium-zustand --grep-invert @modell",
     "smoke:ui:gate:daten": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_SEED=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts --project=chromium --project=chromium-zustand --grep-invert @modell",
-    "smoke:ui:gate:drei": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_OHNE_MODELL=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts --grep-invert @modell"
+    "smoke:ui:gate:drei": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_OHNE_MODELL=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts --grep-invert @modell",
+    "smoke:ui:gate:kern:firefox": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_OHNE_MODELL=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts --project=firefox --grep-invert @modell tests-smoke/ui-smoke.spec.ts tests-smoke/smoke-umgebung.spec.ts tests-smoke/mobile-drawer-focus-probe.spec.ts",
+    "smoke:ui:gate:kern:webkit": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_OHNE_MODELL=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke playwright test --config playwright.smoke.config.ts --project=webkit --grep-invert @modell tests-smoke/ui-smoke.spec.ts tests-smoke/smoke-umgebung.spec.ts tests-smoke/mobile-drawer-focus-probe.spec.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

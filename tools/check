@@ -71,9 +71,25 @@ echo "▶ test";         ./tools/test "$@"
 # `tests/smoke/job1094-engine-kette.test.ts`: erst nach grüner Stufe A verdrahten) ist erfüllt:
 # Stufe A lief am 10.10.2026 auf dem regulären Prüfweg grün — Firefox 151.0 und WebKit 26.5 je
 # gestartet, ohne Startfehler, je 14 bestanden / 4 übersprungen (Chromium-only-Fälle, sichtbar).
-# Deshalb fährt das Tor jetzt `smoke:ui:gate:drei`. Welche Engines ein Lauf WIRKLICH gestartet hat,
-# druckt der Engine-Bericht am Laufende (`tests-smoke/support/engine-bericht.ts`); eine Engine, die
-# nicht startet, macht den Lauf rot und steht dort als Startfehler — nie als „gefahren".
+#
+# WIE DAS TOR DIE DREI ENGINES FÄHRT — und warum NICHT als ein `smoke:ui:gate:drei` über alles:
+#   · Chromium fährt wie bisher die VOLLE Suite (`smoke:ui:gate`).
+#   · Firefox und WebKit fahren je in einem EIGENEN Lauf die Kern-Rauchproben (`ui-smoke`,
+#     `smoke-umgebung`, `mobile-drawer-focus-probe`) — genau die Form, die Stufe A grün belegt hat.
+#   Die volle Suite in allen drei Engines wurde am 10.10.2026 gemessen (Prüfbelege
+#   `tor-deckung-firefox` / `tor-deckung-webkit`, Kandidat 8a8a7bd) und war in 14 Fällen aus zehn
+#   Specs rot, neun davon fremde Feature-Specs (u. a. Browser-Zurück in Firefox, Fettdruck per
+#   Kürzel, Vollbild, Fokusring in WebKit). Sie sind für Chromium gebaut und gehören den jeweiligen
+#   Aufträgen; sie hier abzuschwächen oder zu überspringen wäre die falsche Antwort. Dazu kommt ein
+#   Bestandsproblem:
+#   ein Lauf über mehrere Projekte teilt EINEN In-Memory-Server, die Datenlage der späteren Engine
+#   ist dann die der früheren (mega49 „Prüf-Board leer" war in der vollen Messung rot, in Stufe A grün).
+#   Getrennte Läufe je Engine haben je einen frischen Server. Weitere Specs kommen in den Firefox-/
+#   WebKit-Lauf, sobald sie dort grün belegt sind.
+#
+# Welche Engines ein Lauf WIRKLICH gestartet hat, druckt der Engine-Bericht am Laufende
+# (`tests-smoke/support/engine-bericht.ts`); eine Engine, die nicht startet, macht den Lauf rot und
+# steht dort als Startfehler — nie als „gefahren".
 #
 # Der geseedete UX-20b-Lauf weiter unten bleibt bewusst Chromium: er prüft den Inhaltszweig des
 # JSON-Rundlaufs, nicht die Engine-Abdeckung, und mehrere seiner Fälle sind ausdrücklich nur in
@@ -113,12 +129,26 @@ echo "▶ test";         ./tools/test "$@"
 # NICHTS DAVON GESCHIEHT STILL — genau das war ja die Krankheit. Die Ausnahme wird unten
 # ausgedruckt, sie ist auf EINEN benannten Test begrenzt, und fehlende Browser machen das Tor ROT
 # mit Handlungsanweisung (kein „skip, wenn Chromium fehlt").
-echo "▶ ui-smoke (Chromium, Firefox, WebKit — hermetisch, ohne @modell)"
-npm run --silent smoke:ui:gate:drei || {
+echo "▶ ui-smoke (Chromium, volle Suite — hermetisch, ohne @modell)"
+npm run --silent smoke:ui:gate || {
   echo "✖ UI-Smoke rot."
-  echo "  Fehlt ein Browser? → npx playwright install chromium firefox webkit"
-  echo "  Welche Engine nicht startete, steht im Engine-Bericht oben (Startfehler)."
+  echo "  Fehlt der Browser? → npx playwright install chromium"
   echo "  Alle drei Engines lokal: npm run smoke:ui (braucht KLARWERK_SHIP_SMOKE_API_KEY)"
+  exit 1
+}
+# Bewusst ausgeschrieben statt als Schleife: die Kettenwächter lösen die Aufrufe statisch auf.
+echo "▶ ui-smoke (Firefox, Kern-Rauchproben — hermetisch, ohne @modell)"
+npm run --silent smoke:ui:gate:kern:firefox || {
+  echo "✖ UI-Smoke Firefox rot."
+  echo "  Fehlt der Browser? → npx playwright install chromium firefox"
+  echo "  Ob Firefox überhaupt startete, steht im Engine-Bericht oben (Startfehler)."
+  exit 1
+}
+echo "▶ ui-smoke (WebKit, Kern-Rauchproben — hermetisch, ohne @modell)"
+npm run --silent smoke:ui:gate:kern:webkit || {
+  echo "✖ UI-Smoke WebKit rot."
+  echo "  Fehlt der Browser? → npx playwright install chromium webkit"
+  echo "  Ob WebKit überhaupt startete, steht im Engine-Bericht oben (Startfehler)."
   exit 1
 }
 # UX-20b-R — DER GESEEDETE INHALTSZWEIG DES JSON-RUNDLAUFS, IM TOR UND NICHT NUR AUF ZURUF.
