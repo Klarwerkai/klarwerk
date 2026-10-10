@@ -64,6 +64,9 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
     zweckKey: "verwaltung.zweck.spaces",
     ziele: [
       { art: "pfad", pfad: "/spaces", labelKey: "verwaltung.ziel.spaces" },
+      // ADMIN-08 (produkt:20261007:templates-default): Vorlagen, Space-Vorgaben, Kategorien und Tags
+      // mit Geltung und Nutzungsumfang — eine vorhandene Route, kein zweiter Bedienort.
+      { art: "pfad", pfad: "/vorlagen", labelKey: "vorlagen.ziel" },
       { art: "bereich", navId: "bibliothek" },
       { art: "bereich", navId: "wissensnetz" },
       { art: "verwaltung", section: "quellen" },

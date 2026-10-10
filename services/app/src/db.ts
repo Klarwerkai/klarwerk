@@ -89,6 +89,9 @@ import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
 // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
 import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// produkt:20261007:templates-default: Vorlagen, persönliche Standards, Space-Vorgaben, Nutzung und
+// Begriffspflege als unveränderliche Fassungen.
+import { VORLAGEN_SCHEMA } from "./vorlagen";
 // R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
 import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
@@ -330,6 +333,10 @@ export const schemas = [
   // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
   // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VEROEFFENTLICHUNG_SCHEMA,
+  // produkt:20261007:templates-default: die Fassungen der Vorlagen samt Standards, Space-Vorgaben,
+  // Nutzung und Begriffspflege. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VORLAGEN_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

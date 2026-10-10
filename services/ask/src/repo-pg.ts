@@ -137,6 +137,29 @@ export class PgGapRepo implements GapRepo {
       await this.insert(gap);
       return { gap, created: true };
     }
+    // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3): wird die offene Lücke
+    // ZWISCHEN Konflikt und Zählung geschlossen, gab es bisher nichts hochzuzählen, und die Frage
+    // ging verloren — der Aufrufer bekam einen nie gespeicherten Datensatz. Jetzt beginnt der Weg
+    // dann von vorn: ohne offene Lücke greift der Index nicht mehr, und die Frage wird eine neue
+    // Lücke (Wiederaufnahme). Höchstens drei Durchläufe; jeder endet entweder mit einer Zeile oder
+    // mit dem Befund, dass gerade wieder eine offene Lücke entstanden ist.
+    for (let versuch = 0; versuch < 3; versuch += 1) {
+      const ergebnis = await this.anlegenOderZaehlen(gap, vorInhaltsabruf);
+      if (ergebnis) {
+        return ergebnis;
+      }
+      vorInhaltsabruf?.();
+    }
+    throw new AskError(
+      "CONFLICT",
+      "Die Wissenslücke wurde gerade mehrfach geändert — die Frage bitte erneut stellen.",
+    );
+  }
+
+  private async anlegenOderZaehlen(
+    gap: Gap,
+    vorInhaltsabruf?: () => void,
+  ): Promise<{ gap: Gap; created: boolean } | null> {
     const angelegt = await this.pool.query<GapRow>(
       `INSERT INTO gaps(id,data) VALUES($1,$2::jsonb)
        ON CONFLICT (compare_key) WHERE (data->>'status') = 'offen'
@@ -147,30 +170,54 @@ export class PgGapRepo implements GapRepo {
       return { gap: angelegt.rows[0]?.data ?? gap, created: true };
     }
     vorInhaltsabruf?.();
+    // produkt:20261010:wissenskreislauf-schliessen: in DERSELBEN Anweisung wird der Fragende als
+    // weiterer Fragender zugeordnet — dieselbe Regel wie `mitWeiteremFragenden` (gap-vorgang.ts):
+    // nicht „system", nicht der Ersteller, nicht doppelt.
     const erhoeht = await this.pool.query<GapRow>(
       `UPDATE gaps
           SET data = jsonb_set(
-                data,
-                '{askCount}',
-                to_jsonb(COALESCE((data->>'askCount')::int, 1) + 1)
+                jsonb_set(
+                  data,
+                  '{askCount}',
+                  to_jsonb(COALESCE((data->>'askCount')::int, 1) + 1)
+                ),
+                '{weitereFragende}',
+                CASE
+                  WHEN $2::text IS NULL
+                    OR $2::text = ''
+                    OR $2::text = 'system'
+                    OR (data->>'createdBy') IS NOT DISTINCT FROM $2::text
+                    OR COALESCE(data->'weitereFragende', '[]'::jsonb) ? $2::text
+                  THEN COALESCE(data->'weitereFragende', '[]'::jsonb)
+                  ELSE COALESCE(data->'weitereFragende', '[]'::jsonb) || jsonb_build_array($2::text)
+                END
               )
         WHERE (data->>'compareKey') = $1 AND (data->>'status') = 'offen'
         RETURNING data`,
-      [gap.compareKey],
+      [gap.compareKey, gap.createdBy ?? null],
     );
     const treffer = erhoeht.rows[0]?.data;
-    if (!treffer) {
-      // Die offene Lücke ist zwischen Konflikt und Zählung verschwunden (geschlossen oder
-      // gelöscht). Ehrlich: dann gibt es nichts hochzuzählen — der Aufrufer bekommt seinen
-      // eigenen Datensatz zurück, ohne dass eine fremde Zeile erfunden wird.
-      return { gap, created: false };
-    }
-    return { gap: treffer, created: false };
+    // Ohne Treffer ist die offene Lücke zwischen Konflikt und Zählung verschwunden (geschlossen
+    // oder gelöscht) — `null` schickt den Aufrufer in den nächsten Durchlauf (s. oben).
+    return treffer ? { gap: treffer, created: false } : null;
   }
 
   async findById(id: string): Promise<Gap | undefined> {
     const res = await this.pool.query<GapRow>("SELECT data FROM gaps WHERE id=$1", [id]);
     return res.rows[0]?.data;
+  }
+
+  // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3): VERGLEICHEN UND SETZEN gegen
+  // den zuletzt gelesenen Stand — Prüfen und Schreiben sind EINE Anweisung. Hat sich die Zeile
+  // inzwischen geändert (weitere Fragende, Zähler, Abschluss, Rückfrage), schreibt sie nichts, und
+  // der Dienst rechnet den Schritt am frischen Stand neu (`AskService.aendereLuecke`). So
+  // überschreibt keine alte Momentaufnahme mehr, was zwischenzeitlich hinzukam.
+  async ersetzeWenn(erwartet: Gap, neu: Gap): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE gaps SET data=$2::jsonb WHERE id=$1 AND data = $3::jsonb",
+      [neu.id, JSON.stringify(neu), JSON.stringify(erwartet)],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async update(gap: Gap): Promise<void> {

@@ -14,6 +14,11 @@ export interface SourcePayload {
   excerpt: string;
   /** Nur Anzeige. Wird nie an add-source geschickt und dort auch nicht gelesen. */
   provider: string;
+  /**
+   * REF-01: der Abrufbeleg des Servers. Er geht unverändert an add-source; der Server prüft ihn
+   * (Signatur, Adresse, Inhalt) und übernimmt nur dann die Abrufzeit. Fehlt er, fehlt das Feld.
+   */
+  abrufbeleg?: string;
 }
 
 const MAX_EXCERPT = 300;
@@ -25,6 +30,7 @@ export function toSourcePayload(result: ExternalResult): SourcePayload {
     url: result.url.trim(),
     excerpt: result.snippet.trim().slice(0, MAX_EXCERPT),
     provider: result.provider.trim(),
+    ...(result.abrufbeleg ? { abrufbeleg: result.abrufbeleg } : {}),
   };
 }
 

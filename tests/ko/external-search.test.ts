@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExternalResult } from "../../apps/web/src/api/types";
 import { toSourcePayload } from "../../apps/web/src/lib/externalSearch";
+import { toAddSourceRequest } from "../../apps/web/src/lib/koSource";
 
 const result = (over: Partial<ExternalResult> = {}): ExternalResult => ({
   title: "Druckbehälter",
@@ -27,4 +28,18 @@ describe("SCRUM-118 / FR-EXT-02: externalSearch-Mapping", () => {
 
   // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `isAttachable` ist mit der Prüfung
   // entfallen — sie hatte keinen Produktleser; Treffer ohne Titel verwirft der Server.
+
+  // REF-01 (Ben nacharbeit-7 K2): der Abrufbeleg des Servers reist unverändert bis zu add-source.
+  it("reicht den Abrufbeleg des Servers unverändert an den add-source-Rumpf weiter", () => {
+    const payload = toSourcePayload(result({ abrufbeleg: "beleg.signatur" }));
+    expect(payload.abrufbeleg).toBe("beleg.signatur");
+    expect(toAddSourceRequest(payload)).toEqual({
+      label: "Druckbehälter",
+      url: "https://de.wikipedia.org/wiki/Druckbeh%C3%A4lter",
+      excerpt: "Ein Behälter unter Druck.",
+      abrufbeleg: "beleg.signatur",
+    });
+    // Ohne Beleg fehlt das Feld ganz — kein leerer Wert, keine Behauptung.
+    expect(toAddSourceRequest(toSourcePayload(result()))).not.toHaveProperty("abrufbeleg");
+  });
 });

@@ -34,6 +34,7 @@ import {
   type KoAussageart,
   type StructureResult,
 } from "../api/types";
+import type { VorlagenBezug } from "../api/vorlagen";
 import { useSession } from "../app/AuthContext";
 import { ImageDescribeProvider } from "../app/ImageDescribeContext";
 import {
@@ -57,7 +58,6 @@ import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import type { BildbeschreibungsBitte } from "../components/BodyImageGallery";
-import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 // AUFTRAG-uxpol1 (PAKET 2): geteiltes, poliertes Dateityp-Kachel-Bauteil + IC-7-Wahrheitsquelle.
 import { CaptureDraftList } from "../components/CaptureDraftList";
 import { CaptureFileImport } from "../components/CaptureFileImport";
@@ -81,6 +81,8 @@ import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
+// produkt:20261007:templates-default: Vorlagen, persönlicher Standard, Space-Vorgaben.
+import { VorlagenWahl } from "../components/VorlagenWahl";
 import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
 import { NegativwissenFuehrung } from "../components/erfassen/NegativwissenFuehrung";
@@ -781,6 +783,16 @@ export function CaptureArbeitsraum({
   const [aussageart, setAussageart] = useState<KoAussageart | "">("");
   // R-1690: Re-Validierungstermin (`JJJJ-MM-TT` aus dem Datumsfeld); "" = keiner.
   const [revalidierungAm, setRevalidierungAm] = useState("");
+  // produkt:20261007:templates-default: Vorlage + Fassung + Space dieses Beitrags; `null` = freie
+  // Eingabe. Reist mit Speichern, Fortsetzen und Einreichen (`DraftPayload.vorlage`).
+  const [vorlagenBezug, setVorlagenBezug] = useState<VorlagenBezug | null>(null);
+  // Trug dieser Beitrag je einen Bezug? Nur dann reist auch „frei" (`null`) als Löschmarker mit —
+  // ein Beitrag, der nie eine Vorlage hatte, schickt seine Nutzlast unverändert wie bisher.
+  const vorlageBekanntRef = useRef(false);
+  const vorlageWaehlen = useCallback((bezug: VorlagenBezug | null): void => {
+    vorlageBekanntRef.current = vorlageBekanntRef.current || bezug !== null;
+    setVorlagenBezug(bezug);
+  }, []);
   const [asset, setAsset] = useState("");
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche KOs gehen nie in
   // externe Kontexte (Output/Export).
@@ -2319,6 +2331,9 @@ export function CaptureArbeitsraum({
         // entfernter Anker hätte die Anlage abgelehnt, obwohl ihn niemand mehr braucht.
         pendingSources: toDraftSources(pendingSources),
         anchorDocuments: anchorDocumentsForDraft(),
+        // produkt:20261007:templates-default: der Vorlagenbezug — nach einer Abwahl auch als `null`
+        // (freie Eingabe), sonst holte der partielle Merge den alten Bezug zurück.
+        ...(vorlagenBezug || vorlageBekanntRef.current ? { vorlage: vorlagenBezug } : {}),
       };
       const createPayload: DraftPayload = {
         title: draft.title,
@@ -2337,6 +2352,8 @@ export function CaptureArbeitsraum({
         // JOB 3082 (Q3 a): gewählt ⇒ mitschicken (auch „intern"), nicht gewählt ⇒ weglassen.
         ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
         ...(negativAngaben ? { negativwissen: negativAngaben } : {}),
+        // produkt:20261007:templates-default: Pflichtfelder/Space-Vorgaben prüft der Server.
+        ...(vorlagenBezug ? { vorlage: vorlagenBezug } : {}),
       };
       let ko: KnowledgeObject;
       // AUFTRAG-mega21 Block C-1: die nach dem Commit GESCHEITERTEN Nacharbeiten. Der Server sammelt
@@ -2598,6 +2615,8 @@ export function CaptureArbeitsraum({
       setDomain("");
       setAussageart("");
       setRevalidierungAm("");
+      setVorlagenBezug(null);
+      vorlageBekanntRef.current = false;
       setAsset("");
       setNeededValidations("");
       // JOB 3082 (Q3 a): die gewählte Stufe gehörte zu DIESEM Wissensobjekt. Bliebe sie stehen,
@@ -2785,6 +2804,9 @@ export function CaptureArbeitsraum({
         ...(isDraftUpdate || ivProgress
           ? { interview: ivProgress ?? CLEARED_DRAFT_INTERVIEW }
           : {}),
+        // produkt:20261007:templates-default: der Vorlagenbezug übersteht Speichern/Fortsetzen;
+        // beim Aktualisieren auch als `null`, damit „freie Eingabe" den alten Bezug wirklich löst.
+        ...(vorlagenBezug || vorlageBekanntRef.current ? { vorlage: vorlagenBezug } : {}),
         // SCRUM-457: Herkunft mitspeichern → „Fortsetzen" öffnet genau hier wieder.
         origin: originForSave({ expert: isExpertMode(mode), wizStep: wizStepRaw }),
       };
@@ -2853,6 +2875,8 @@ export function CaptureArbeitsraum({
       setDomain("");
       setAussageart("");
       setRevalidierungAm("");
+      setVorlagenBezug(null);
+      vorlageBekanntRef.current = false;
       setAsset("");
       setNeededValidations("");
       setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
@@ -3005,6 +3029,9 @@ export function CaptureArbeitsraum({
     // R-0082: die Anlagenliste des Entwurfs; Altentwürfe tragen nur `asset`.
     setAsset(anlagenAlsEingabe(anlagenVon(p)));
     setRevalidierungAm(p.revalidierungAm ?? "");
+    // produkt:20261007:templates-default: der Entwurf behält Vorlage, Fassung und Space.
+    vorlageBekanntRef.current = Boolean(p.vorlage);
+    setVorlagenBezug(p.vorlage ?? null);
     setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
     setBodyHtml(p.bodyHtml ?? "");
     // SCRUM-415: Vertraulichkeitsstufe aus dem Entwurf wiederherstellen.
@@ -3241,6 +3268,8 @@ export function CaptureArbeitsraum({
     setDomain("");
     setAussageart("");
     setRevalidierungAm("");
+    setVorlagenBezug(null);
+    vorlageBekanntRef.current = false;
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
     // JOB 3082 (Q3 a): der Leerzustand hat KEINE gewählte Stufe — das ist der frische Ausgangswert
@@ -3505,6 +3534,8 @@ export function CaptureArbeitsraum({
         domain,
         aussageart,
         revalidierungAm,
+        // produkt:20261007:templates-default: ein Vorlagenwechsel ist eine Änderung.
+        vorlage: vorlagenBezug,
         asset,
         tags,
         neededValidations,
@@ -3535,6 +3566,7 @@ export function CaptureArbeitsraum({
       domain,
       aussageart,
       revalidierungAm,
+      vorlagenBezug,
       asset,
       tags,
       neededValidations,
@@ -7972,8 +8004,16 @@ export function CaptureArbeitsraum({
                         bodyHtml={bodyHtml}
                         attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}
                       />
-                      {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
-                      <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />
+                      {/* SCRUM-319 → produkt:20261007:templates-default: Vorlagen samt persönlichem
+                        Standard, Space-Vorgaben und Wechsel ohne Werteverlust (leer = setzen). */}
+                      <VorlagenWahl
+                        bodyHtml={bodyHtml}
+                        onApply={setBodyHtml}
+                        bezug={vorlagenBezug}
+                        onBezug={vorlageWaehlen}
+                        category={category}
+                        tags={tags}
+                      />
                       <RichTextEditor
                         value={bodyHtml}
                         onChange={setBodyHtml}
@@ -8219,6 +8259,16 @@ export function CaptureArbeitsraum({
 
               <div className="space-y-4">
                 <div>
+                  {/* produkt:20261007:templates-default: die Vorlage steht VOR dem Editor — eine
+                    neue Eingabe findet ihren Standard (oder die Space-Vorgabe) vorgewählt vor. */}
+                  <VorlagenWahl
+                    bodyHtml={bodyHtml}
+                    onApply={setBodyHtml}
+                    bezug={vorlagenBezug}
+                    onBezug={vorlageWaehlen}
+                    category={category}
+                    tags={tags}
+                  />
                   {/* SCRUM-384: die EINE KI-Palette dieses Schritts sitzt IM Editor und öffnet
                     sich erst über den ✨KI-Knopf der Toolbar (ARGUS-Sollbild, Pedi 02.07.). */}
                   <RichTextEditor
@@ -8365,7 +8415,6 @@ export function CaptureArbeitsraum({
                   </div>
                   {showHelpers ? (
                     <div className="space-y-3 border-t border-hairline p-3">
-                      <BodyTemplateChooser bodyHtml={bodyHtml} onApply={setBodyHtml} />
                       <EditorGuidance />
                       <EditorAttachmentContext
                         attachments={[...images, ...docs.map((d) => ({ mime: d.mime }))]}

@@ -63,7 +63,9 @@ import type {
   Fragekontext,
   Gap,
   GapPriority,
+  GapRuecknahmeGrund,
   GapSummary,
+  GapVorgang,
   Graph,
   ImpactReport,
   ImportAccessStatus,
@@ -416,7 +418,13 @@ export type KoAction =
   // erfundener Wert belegt nichts und hebt keine Sperre auf.
   | {
       action: "add-source";
-      source: { label: string; url?: string; excerpt?: string; objectId?: string };
+      source: {
+        label: string;
+        url?: string;
+        excerpt?: string;
+        objectId?: string;
+        abrufbeleg?: string;
+      };
     }
   | { action: "remove-source"; sourceId: string }
   // AUFTRAG-mega18 Block A-1: die VERBUND-OPERATION „Dokumentinhalt übernehmen". Sie ersetzt die
@@ -841,6 +849,25 @@ export const endpoints = {
     // R-1663 / R-2178: begründete Ansprechpartner nach Wissensspuren (Schalter expertMatching).
     ansprechpartner: (id: string) =>
       api.get<AnsprechpartnerAuskunft>(`/gaps/${encodeURIComponent(id)}/ansprechpartner`),
+    // produkt:20261010:wissenskreislauf-schliessen: der gemeinsame Vorgang. Jeder Schritt antwortet
+    // mit der Vorgangssicht DIESES Betrachters (nie mit der rohen Lücke).
+    vorgang: (id: string) => api.get<GapVorgang>(`/gaps/${encodeURIComponent(id)}/vorgang`),
+    uebergeben: (id: string, expertId: string) =>
+      api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/uebergeben`, { expertId }),
+    rueckfrage: (id: string, frage: string) =>
+      api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/rueckfrage`, { frage }),
+    rueckfrageBeantworten: (id: string, rueckfrageId: string, antwort: string) =>
+      api.post<GapVorgang>(
+        `/gaps/${encodeURIComponent(id)}/rueckfrage/${encodeURIComponent(rueckfrageId)}/antwort`,
+        { antwort },
+      ),
+    entwurf: (id: string, koId: string) =>
+      api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/entwurf`, { koId }),
+    abschliessen: (id: string, koId?: string) =>
+      api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/abschliessen`, koId ? { koId } : {}),
+    // Die ADMINISTRATIVE Rücknahme — eigener Grund, kein fachlicher Abschluss.
+    zuruecknehmen: (id: string, grund: GapRuecknahmeGrund) =>
+      api.put<Gap>(`/gaps/${id}`, { action: "withdraw", grund }),
   },
   // WP-D11: PPTX-Folien → PNG je Folie (Server-Konvertierung; base64 konsistent zum Objekt-Upload).
   slides: {

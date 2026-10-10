@@ -21,7 +21,12 @@ import {
   type VeroeffentlichungNotice,
   buildNotifications,
 } from "../notification-feed";
-import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
+import {
+  type KoSichtbarkeitsZugang,
+  sichtbareEintraege,
+  sichtbarePaare,
+  sichtbarkeitsfilterFuer,
+} from "../sichtbarkeit";
 
 // In-App-Benachrichtigungen (U-3): aggregiert aus vorhandenen Signalen. Für jeden
 // angemeldeten Nutzer lesbar; keine eigene Persistenz nötig.
@@ -200,7 +205,17 @@ async function loadFeed(
     veroeffentlichungen,
     deps.kos,
   );
+  // produkt:20261010:wissenskreislauf-schliessen: Abschluss- und Rückfragemeldungen aus dem
+  // Lückenstand. Die Erfolgsmeldung prüft ihren Eintrag HEUTE gegen die Sichtbarkeit und den
+  // Fachprüfstand dieses Betrachters (`AskService.gapMeldungenFuer`) — ein entzogenes Recht oder
+  // eine nicht mehr nutzbare Fassung erzeugt keine. Scheitert die Ableitung, fehlen nur diese
+  // Meldungen: kein Erfolg ohne Beleg, und die übrige Glocke bleibt stehen.
+  const lueckenSicht = sichtbarkeitsfilterFuer(user);
+  const lueckenMeldungen = await Promise.resolve()
+    .then(() => deps.ask.gapMeldungenFuer(user.id, lueckenSicht))
+    .catch(() => []);
   const feed = buildNotifications({
+    luecken: lueckenMeldungen,
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
     gaps: gapViews,

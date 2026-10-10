@@ -39,6 +39,7 @@ import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
+import { KlaraVorlagenKontext } from "./KlaraVorlagenKontext";
 import { meldeFlaeche, useAndereFlaecheSchliesst } from "./assistenzFlaechen";
 import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 
@@ -540,6 +541,8 @@ export function KlaraAssistant(): JSX.Element {
 
             {/* produkt:20261007:spaces — der tatsächliche Spacekontext dieses Orts (vom Server). */}
             <KlaraSpaceKontext pfad={location.pathname} />
+            {/* produkt:20261007:templates-default — dieselben Felder wie im Editor. */}
+            <KlaraVorlagenKontext pfad={location.pathname} />
 
             {/* Aktives Element — data-help-Anker der Seite. */}
             <div>

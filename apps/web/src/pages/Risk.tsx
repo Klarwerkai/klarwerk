@@ -22,6 +22,7 @@ import { EigeneNulltreffer } from "../components/EigeneNulltreffer";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LueckenAnsprechpartner } from "../components/LueckenAnsprechpartner";
+import { LueckenVorgang } from "../components/LueckenVorgang";
 import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { nurOffeneLuecken, offeneLuecken } from "../lib/adminUebersicht";
@@ -606,10 +607,38 @@ export function Risk(): JSX.Element {
                           onAssign={(expertId) => assign.mutate({ id: g.id, expertId })}
                         />
                       ) : null}
+                      {/* produkt:20261010:wissenskreislauf-schliessen: der gemeinsame Vorgang —
+                          Zuständigkeit, Rückfrage, Entwurf, Fachprüfung, Abschluss. Über `?fall=`
+                          (Aufgabenliste) gleich aufgeklappt. Wer nicht beteiligt ist, erfährt nur
+                          das (der Server antwortet 404). */}
+                      <LueckenVorgang gapId={g.id} anfangsOffen={g.id === zielLuecke} />
                     </div>
                     <span className="shrink-0 font-mono text-[10.5px] uppercase text-muted-2">
                       {g.assignee ? `→ ${nameOf(g.assignee)}` : t(`risk.gapStatus.${g.status}`)}
                     </span>
+                    {/* Wie geschlossen wurde — eine Rücknahme sieht nie wie eine Lösung aus. */}
+                    {g.abschlussArt ? (
+                      <span
+                        data-testid="luecke-abschlussart"
+                        data-art={g.abschlussArt}
+                        className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] uppercase ${
+                          g.abschlussArt === "fachlich"
+                            ? "bg-trust-pos-bg text-trust-pos-text"
+                            : "bg-trust-warn-bg text-trust-warn-text"
+                        }`}
+                      >
+                        {t(
+                          g.abschlussArt === "fachlich"
+                            ? "lueckenvorgang.liste.geloest"
+                            : "lueckenvorgang.liste.zurueckgenommen",
+                        )}
+                      </span>
+                    ) : null}
+                    {g.rueckfrageOffen ? (
+                      <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] uppercase text-ai">
+                        {t("lueckenvorgang.liste.rueckfrageOffen")}
+                      </span>
+                    ) : null}
                     {g.status === "offen" ? (
                       <>
                         {/* SCRUM-263 / FUNKE-FIX2 P0 (bens Erforderlich 4): offene Lücke als

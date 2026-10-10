@@ -17,6 +17,7 @@ import {
   classifySourceReach,
   decideExternalAttach,
   externalAttachAllowed,
+  pruefeAbrufbeleg,
 } from "../../../external-search";
 import {
   type AnzeigestatusEingaenge,
@@ -82,7 +83,20 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import type { EinreichEntscheid, VorlagenEinreichungPort } from "../vorlagen";
 import { dublettenTor } from "./validation-routes";
+
+/** produkt:20261007:templates-default — die Absage der Einreichprüfung, wörtlich weitergegeben. */
+function sendeVorlagenAbsage(
+  reply: FastifyReply,
+  e: Extract<EinreichEntscheid, { ok: false }>,
+): void {
+  reply.code(e.status).send({
+    error: e.error,
+    message: e.message,
+    ...(e.befunde ? { befunde: e.befunde } : {}),
+  });
+}
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
 // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
@@ -155,6 +169,10 @@ export interface KoRoutesDeps {
   // Composition-Root verdrahtet `AskService.markKoHelpful`. Fehlt sie, antwortet die Aktion ehrlich
   // mit 400 statt halb zu laufen.
   hilfreich?: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // produkt:20261007:templates-default: die Einreichprüfung der Vorlagen (Pflichtfelder, Space-
+  // Vorgaben, gepflegte Begriffe) und danach der Vermerk von Vorlage und Fassung. Fehlt sie (direkt
+  // konstruierte Routentests), wird ein mitgeschickter Vorlagenbezug verworfen und nichts geprüft.
+  vorlagen?: VorlagenEinreichungPort | undefined;
   /**
    * ADMIN-09 (produkt:20261009:admin-freigaberegeln): der Prüfpunkt der Freigaberegel eines Space
    * (`FreigabeRegelDienst.tor`) vor `rate`, `owner-validate` und `admin-validate` — Mehr-Augen-
@@ -727,7 +745,15 @@ interface PutBody {
   // AUFTRAG-mega16 Block A: `objectId` ist der ANKER einer adresslosen Belegstelle — die Referenz
   // auf ein Dokument, das dieses Wissensobjekt bereits als Anhang trägt. Der Server GLAUBT ihn
   // nicht, er PRÜFT ihn gegen die eigene Anhangsliste; ein erfundener Wert belegt nichts.
-  source?: { label?: string; url?: string; excerpt?: string; objectId?: string };
+  // REF-01 (Ben nacharbeit-7 K2): `abrufbeleg` ist der vom Server bei der externen Suche
+  // ausgestellte Abrufbeleg. Er wird geprüft, nicht geglaubt (`pruefeAbrufbeleg`).
+  source?: {
+    label?: string;
+    url?: string;
+    excerpt?: string;
+    objectId?: string;
+    abrufbeleg?: string;
+  };
   sourceId?: string;
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
   level?: string;
@@ -1616,8 +1642,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             dokumentHerkunft: _ignoredDokumentHerkunft,
             // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
             stufeNurAnheben: _ignoredStufeNurAnheben,
+            // produkt:20261007:templates-default: der Vorlagenbezug ist kein Feld des Objekts; er
+            // geht in die Einreichprüfung und danach in den Nutzungsvermerk (`vorlagen.ts`).
+            vorlage: vorlagenBezug,
             ...input
-          } = request.body;
+          } = request.body as typeof request.body & { vorlage?: unknown };
           // ==========================================================================================
           // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
           // ==========================================================================================
@@ -1679,7 +1708,32 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             });
             return;
           }
-          const created = await ko.create({ ...input, author: user.id });
+          // produkt:20261007:templates-default: Pflichtfelder der Vorlage, Space-Vorgaben und
+          // gepflegte Begriffe — serverseitig, VOR der Anlage. Ein Entwurf bleibt davon unberührt.
+          const vorlagenEntscheid = await deps.vorlagen?.pruefe(
+            vorlagenBezug,
+            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+            user,
+          );
+          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
+            sendeVorlagenAbsage(reply, vorlagenEntscheid);
+            return;
+          }
+          let created = await ko.create({ ...input, author: user.id });
+          // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das gesagt
+          // (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben.
+          let vorlagenVermerk: "fehlgeschlagen" | undefined;
+          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
+            try {
+              await deps.vorlagen?.vermerke(created.id, vorlagenEntscheid.bezug, user);
+              if (vorlagenEntscheid.bezug.spaceId) {
+                created = (await ko.get(created.id)) ?? created;
+              }
+            } catch (fehlerWert) {
+              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+              vorlagenVermerk = "fehlgeschlagen";
+            }
+          }
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
           // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
           // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
@@ -1707,7 +1761,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // reist SYNCHRON mit dem Job — die Overflow-Eviction schließt hart versionsgebunden ab.
             aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
           }
-          reply.code(201).send(submitted);
+          reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
@@ -1854,7 +1908,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
         // ---- DIE INHALTSEINGABE: ENTWURF ODER FRISCH ------------------------------------------
         let input: CreateKoInput;
+        // produkt:20261007:templates-default: der Vorlagenbezug — aus der mitgeschickten
+        // Entwurfsladung bzw. dem frischen Rumpf; er ist kein Feld des Objekts.
+        let vorlagenBezug: unknown;
         if (body.draftId) {
+          vorlagenBezug =
+            typeof body.draftPayload === "object" && body.draftPayload !== null
+              ? (body.draftPayload as { vorlage?: unknown }).vorlage
+              : undefined;
           if (!draftPromotion) {
             // Ehrlich statt halb: ohne verdrahteten Entwurfs-Zugang gibt es diesen Weg nicht.
             return badRequest("Entwurfs-Übernahme ist in dieser Konfiguration nicht verfügbar.");
@@ -1940,8 +2001,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             dokumentHerkunft: _ignoredDokumentHerkunft,
             // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
             stufeNurAnheben: _ignoredStufeNurAnheben,
+            vorlage: frischerBezug,
             ...rest
-          } = body.create ?? ({} as Omit<CreateKoInput, "author">);
+          } = (body.create ?? {}) as Omit<CreateKoInput, "author"> & { vorlage?: unknown };
+          vorlagenBezug = frischerBezug;
           input = { ...rest, author: user.id } as CreateKoInput;
         }
         // ==========================================================================================
@@ -1985,6 +2048,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // zwei Auslegungen. Kein Vorgabewert, kein stilles „intern".
         if (input.confidentiality === undefined) {
           sendMissingConfidentiality(reply);
+          return;
+        }
+        // produkt:20261007:templates-default: dieselbe Einreichprüfung wie `POST /api/kos` — für
+        // BEIDE Zweige, erst hier, wo `input` steht, und unter dem Wiederholungs-Nachschlag.
+        const vorlagenEntscheid = await deps.vorlagen?.pruefe(
+          vorlagenBezug,
+          { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+          user,
+        );
+        if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
+          sendeVorlagenAbsage(reply, vorlagenEntscheid);
           return;
         }
         // ---- KAPAZITÄT: derselbe Anhangs-Vertrag wie `attach` und `append-document` -------------
@@ -2152,6 +2226,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         const draftId = body.draftId;
         if (draftId && draftPromotion) {
           await followUp("draft-discard", () => draftPromotion.discard(draftId));
+        }
+        // produkt:20261007:templates-default: Vorlage und Fassung vermerken, ggf. in den gewählten
+        // Space legen — eine Nacharbeit wie die übrigen, nachholbar und ehrlich gemeldet.
+        const bezug = vorlagenEntscheid?.ok ? vorlagenEntscheid.bezug : null;
+        if (bezug) {
+          await followUp("vorlage", () =>
+            (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user),
+          );
         }
         const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
         if (reviewers.length > 0) {
@@ -3429,6 +3511,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
                 // geprüft und vergaß sie beim Speichern.
                 objectId: body.source.objectId ?? null,
+                // REF-01 (Ben nacharbeit-7 K2): eine Abrufzeit NUR mit gültigem Abrufbeleg des
+                // Servers, für genau diese Adresse und einen Anfang des abgerufenen Inhalts.
+                abruf: pruefeAbrufbeleg(body.source.abrufbeleg, {
+                  url: body.source.url,
+                  excerpt: body.source.excerpt,
+                }),
               }),
             );
             return;

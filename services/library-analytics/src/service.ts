@@ -1468,11 +1468,15 @@ export class LibraryService {
     // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg (auditPending) —
     // das bedingte DELETE lässt sie stehen (einziger Träger des Belegs); hier ehrlich beziffert.
     auditPendingCandidates: number;
+    // Aufnahme gesamt-bestandsbereinigung (R-0124): die erkannten Doppel-Kandidaten der Queue
+    // (`duplicate: true`) — Teil der Zielmenge, in Vorschau UND Bilanz eigens beziffert.
+    duplicateIds: Set<string>;
   }> {
     const candidates = await this.candidates.all();
     const candidateIds = candidates.map((c) => c.id);
     const candidateStatuses = new Map(candidates.map((c) => [c.id, c.status as string]));
     const auditPendingCandidates = candidates.filter((c) => c.auditPending !== undefined).length;
+    const duplicateIds = new Set(candidates.filter((c) => c.duplicate).map((c) => c.id));
     const openClaims = new Set(
       candidates.filter((c) => c.status === "in_bearbeitung").map((c) => c.id),
     );
@@ -1487,6 +1491,7 @@ export class LibraryService {
       targets: provenance.filter((ko) => !claimProtected(ko)),
       claimedKos: provenance.filter(claimProtected).length,
       auditPendingCandidates,
+      duplicateIds,
     };
   }
 
@@ -1504,8 +1509,11 @@ export class LibraryService {
     // lässt sie fail-closed stehen; hier vorab ehrlich beziffert (nicht im Digest: die Ids
     // bleiben Teil der Zielmenge, nur das DELETE verweigert sie).
     auditPendingCandidates: number;
+    // Aufnahme gesamt-bestandsbereinigung (R-0124): davon erkannte Doppel-Kandidaten (Teilmenge
+    // von `candidates`; nicht im Digest — die Ids sind es schon).
+    duplicateCandidates: number;
   }> {
-    const { candidateIds, targets, claimedKos, auditPendingCandidates } =
+    const { candidateIds, targets, claimedKos, auditPendingCandidates, duplicateIds } =
       await this.cleanupTargets();
     return {
       candidates: candidateIds.length,
@@ -1516,6 +1524,7 @@ export class LibraryService {
       ),
       claimedKos,
       auditPendingCandidates,
+      duplicateCandidates: duplicateIds.size,
     };
   }
 
@@ -1554,6 +1563,10 @@ export class LibraryService {
     // DELETE fail-closed verschont und hier ehrlich beziffert (wie claimedKos BEWUSST kein
     // skipped-Eintrag; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab).
     auditPendingCandidates: number;
+    // Aufnahme gesamt-bestandsbereinigung (R-0124): wie viele der tatsächlich entfernten
+    // Kandidaten (Teilmenge von removedCandidates) erkannte Doppel-Kandidaten waren — gezählt aus
+    // dem Ergebnis des bedingten DELETE, nicht aus der Vorschau.
+    removedDuplicateCandidates: number;
   }> {
     // WP-SHIP8-CLOSE-9 (bens Korrektur 1): KEIN Write vor erfolgreicher Digest-Validierung —
     // auch nicht der best-effort Beleg-Retry. Reihenfolge zwingend:
@@ -1576,7 +1589,8 @@ export class LibraryService {
     //  (3) Kandidatenzustand für die Delete-Versuche NEU lesen — der Retry ändert keine Ids/
     //      Stati/KO-Ziele (der bestätigte Digest bleibt stabil); jede SONSTIGE parallele Drift
     //      bricht auch hier fail-closed ab (die KO-Phase unten hat noch nichts geschrieben).
-    const { candidateIds, candidateStatuses, targets, claimedKos } = await this.cleanupTargets();
+    const { candidateIds, candidateStatuses, targets, claimedKos, duplicateIds } =
+      await this.cleanupTargets();
     if (
       cleanupDigest(
         candidateIds,
@@ -1640,6 +1654,7 @@ export class LibraryService {
     // ein Accept im letzten Fenster zwischen Re-Read und Delete verliert nie — der Kandidat
     // überlebt und steht ehrlich in der Bilanz.
     let removedCandidates = 0;
+    let removedDuplicateCandidates = 0;
     if (skipped.length === 0) {
       const preRead = new Map((await this.candidates.all()).map((c) => [c.id, c.status as string]));
       const attempts: { id: string; status: string }[] = [];
@@ -1662,6 +1677,7 @@ export class LibraryService {
       }
       const removedIds = attempts.length > 0 ? await this.candidates.removeByIds(attempts) : [];
       removedCandidates = removedIds.length;
+      removedDuplicateCandidates = removedIds.filter((id) => duplicateIds.has(id)).length;
       // Ehrliche Bilanz für alles, was das BEDINGTE Delete NICHT entfernt hat: der Status hat
       // sich seit der Bestätigung geändert. Für die Begründung den echten Zustand nachlesen
       // (best-effort — ohne Nachlesen konservativ „zwischenzeitlich bearbeitet").
@@ -1718,6 +1734,7 @@ export class LibraryService {
           newCandidates,
           claimedKos,
           auditPendingCandidates,
+          removedDuplicateCandidates,
         },
       });
     } catch (err) {
@@ -1737,6 +1754,7 @@ export class LibraryService {
       newCandidates,
       claimedKos,
       auditPendingCandidates,
+      removedDuplicateCandidates,
     };
   }
 

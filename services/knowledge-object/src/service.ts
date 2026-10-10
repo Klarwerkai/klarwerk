@@ -4274,6 +4274,12 @@ export class KoService {
       excerpt?: string | null;
       provider?: string | null;
       objectId?: string | null;
+      /**
+       * REF-01 (Ben nacharbeit-7 K2): der GEPRÜFTE Abrufnachweis des Servers
+       * (`pruefeAbrufbeleg`, external-search) — oder nichts. Die Route reicht ihn nur weiter, wenn
+       * Signatur, Adresse und Inhalt stimmen; hier wird er nicht neu bewertet, nur gespeichert.
+       */
+      abruf?: { abgerufenAm: string; inhaltFingerabdruck: string } | null;
     },
   ): Promise<KnowledgeObject> {
     const label = input.label?.trim() ?? "";
@@ -4298,6 +4304,14 @@ export class KoService {
       // weggelassenes Feld ist dasselbe wie am Altbestand, und die Fläche liest beides als „keine
       // Datei" (`quellennachweis`).
       ...(anchor ? { objectId: anchor } : {}),
+      // REF-01: die Abrufzeit NUR mit geprüftem Nachweis und nur an einem gespeicherten Auszug —
+      // `at` bleibt die Speicherzeit und wird nie als Abruf ausgegeben.
+      ...(input.abruf && input.excerpt?.trim()
+        ? {
+            abgerufenAm: input.abruf.abgerufenAm,
+            abrufInhaltFingerabdruck: input.abruf.inhaltFingerabdruck,
+          }
+        : {}),
       author,
       at: new Date(this.now()).toISOString(),
     };
@@ -4442,6 +4456,16 @@ export class KoService {
   async aktuelleFassungVon(id: string): Promise<number | undefined> {
     const ko = await this.repo.findById(id);
     return ko && !ko.deletedAt ? ko.version : undefined;
+  }
+
+  // produkt:20261009:referenzki-quellenbelege (REF-01): das Objekt, WENN es im Papierkorb liegt —
+  // sonst nichts. Einziger Leser ist die Fundstellenauflösung (ask-routes.ts): sie braucht die
+  // Sichtbarkeitsfakten des gelöschten Objekts, um „gelöscht" nur dem zu sagen, der es sehen DURFTE,
+  // und allen anderen dasselbe „nicht zugänglich" wie bei einer unbekannten Kennung. Die Route gibt
+  // davon nichts weiter als den Zustand aus; Inhalt verlässt den Papierkorb hier nicht.
+  async papierkorbFassungVon(id: string): Promise<KnowledgeObject | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko?.deletedAt ? ko : undefined;
   }
 
   // ==============================================================================================
@@ -6533,6 +6557,20 @@ export class KoService {
         ...(projektion ? { metadataRevision: projektion.metadataRevision } : {}),
       };
     });
+  }
+
+  // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 8) — DIESELBE KLAMMER FÜR EINEN
+  // SCHRITT, DER SICH AN DEN STAND DIESES OBJEKTS BINDET.
+  //
+  // Der fachliche Abschluss einer Wissenslücke prüft Fassung und Fachprüfstand dieses Objekts und
+  // schreibt danach die Lücke. Liefe dazwischen eine Bewertung (`setValidationStateMitBeleg`) oder
+  // eine Überarbeitung (`revise`), schlösse die Lücke mit einem Stand, der nicht mehr gilt. Beide
+  // schreiben in `withKoLock`; läuft der Abschluss in derselben Klammer, wird an diesem Objekt
+  // nichts gespeichert, solange `fn` läuft — eine Änderung kommt davor (dann sieht die Prüfung sie)
+  // oder danach. Wie `einordnungsstandVon` gilt das je Prozess. `fn` darf keine schreibende Methode
+  // für DASSELBE Objekt rufen: sie wartete auf die Klammer, in der sie selbst steht.
+  async unterSchreibsperre<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    return this.withKoLock(id, fn);
   }
 
   // JOB 4251: `opts` ist der bedingte Schreibzugriff auf die Einordnung (s. `EinordnungsBedingung`).

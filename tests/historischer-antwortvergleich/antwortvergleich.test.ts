@@ -118,6 +118,37 @@ describe("R-1630 / R-2176 · Antwort mit dem Wissensstand vor einem Jahr verglei
     expect(quelle?.aenderungen.map((a) => a.version)).toEqual([2]);
   });
 
+  it("REF-01 (Ben nacharbeit-7): jede Seite trägt ihre EIGENE Aussagebindung in ihrer Fassung", async () => {
+    const b = await aufbau();
+    const ko = await b.koService.create(ventil());
+    b.am("2025-03-02T09:00:00.000Z");
+    await b.validation.adminValidate(ko.id, "admin");
+    b.am("2026-02-01T09:00:00.000Z");
+    await b.koService.revise(
+      ko.id,
+      { statement: "Bei Überdruck Ventil Y automatisch schließen lassen." },
+      "anna",
+    );
+    b.am("2026-02-02T09:00:00.000Z");
+    await b.validation.adminValidate(ko.id, "admin");
+
+    const v = await b.vergleiche();
+    const fundstellen = (beleg: typeof v.heuteAussagen) =>
+      (beleg?.aussagen ?? []).flatMap((a) => a.teile.flatMap((t) => t.fundstellen));
+    const damals = fundstellen(v.damalsAussagen);
+    const heute = fundstellen(v.heuteAussagen);
+    // Damals: Fassung 1 mit ihrem eigenen Wortlaut — heute: Fassung 2. Keine Seite erbt die andere.
+    expect(damals.length).toBeGreaterThan(0);
+    expect(heute.length).toBeGreaterThan(0);
+    expect(damals.every((f) => f.koId === ko.id && f.koVersion === 1)).toBe(true);
+    expect(heute.every((f) => f.koId === ko.id && f.koVersion === 2)).toBe(true);
+    expect(damals.map((f) => f.auszug)).toContain("Bei Überdruck Ventil X manuell schließen.");
+    expect(heute.map((f) => f.auszug)).toContain(
+      "Bei Überdruck Ventil Y automatisch schließen lassen.",
+    );
+    expect(v.damalsAussagen?.antwortFingerabdruck).not.toBe(v.heuteAussagen?.antwortFingerabdruck);
+  });
+
   it("BEN Nacharbeit 4: Fragebegriffe seither entfernt — die damals passende Fassung trägt trotzdem", async () => {
     const b = await aufbau();
     const ko = await b.koService.create(ventil());
