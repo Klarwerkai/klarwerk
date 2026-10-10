@@ -1126,6 +1126,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/teams/:id": { protection: "users.manage" },
   "POST /api/teams/:id/archivieren": { protection: "users.manage" },
 
+  // --- Qualitätsaufgaben (qualitaetsaufgaben-routes.ts, produkt:20261009:admin-qualitaetsaufgaben)
+  // Verwaltung; jede Zeile nur, wenn der Sichtbarkeitsfilter das betroffene Objekt freigibt.
+  "GET /api/qualitaetsaufgaben": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
   // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.

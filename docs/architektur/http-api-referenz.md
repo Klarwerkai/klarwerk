@@ -372,6 +372,8 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/learning-paths/:pathId/progress` | `ko.read` | — | 200 Fortschritt | — |
 | `GET` | `/api/notifications` | `requireUser` | — | 200 Glockenliste | — |
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
+| `GET` | `/api/qualitaetsaufgaben` | `users.manage` | — | 200 `{ stand, vorgaenge, quellen, spaces }` — je Vorgang Typ, Zustand, Ursprung, Arbeitsweg, Zuständigkeit, Frist, Beginn, Einstiege (ADMIN-10); Zeilen nur über den Sichtbarkeitsfilter | — |
+| `POST` | `/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen` | `users.manage` | — | 200 `{ art: angelegt \| angehaengt \| bereits, vorgang, am, durch }` — Prüfanforderung am Objekt der Meldung, je Meldung höchstens einmal | 404 (Meldung unbekannt oder Objekt nicht sichtbar) |
 | `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand (`saved`, `helped`, `helpedToday`, `validated` — Name/Foto nur mit Zustimmung) | — |
 | `GET` | `/api/livewall/consent` | `requireUser` | — | 200 `{ nameConsent, photoConsent, photo? }` — eigenes Konto | — |
 | `PUT` | `/api/livewall/photo` | `requireUser` | Rumpf `{ photo }` (PNG/JPEG/WebP als Daten-URL, begrenzt) | 200 `{ photoConsent: true }` — eigenes Foto, Hochladen ist die Zustimmung | 400 `BAD_REQUEST`, 503 `UNAVAILABLE` |
