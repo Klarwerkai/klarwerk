@@ -2022,6 +2022,15 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_ADMIN,
   },
   {
+    // ADMIN-11: Wissenskennzahlen auf denselben Quellen wie die Qualitätsaufgaben — Verwaltung.
+    gruppe: "wissenskennzahlenRoutes",
+    methode: "GET",
+    pfad: "/api/wissenskennzahlen",
+    belegstelle: "services/app/src/routes/wissenskennzahlen-routes.ts:22",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
     gruppe: "objectRoutes",
     methode: "GET",
     pfad: "/api/objects/gibt-es-nicht",

@@ -1351,6 +1351,9 @@ export interface DraftPayload {
     topic?: string;
     confirmed?: boolean;
   };
+  // produkt:20261007:templates-default: Vorlage und Fassung, mit der der Entwurf geschrieben wird,
+  // und der gewählte Space (Spiegel von services/capture/src/types.ts). `null` = freie Eingabe.
+  vorlage?: { id: string; version: number; spaceId?: string | null } | null;
 }
 
 export interface Draft {

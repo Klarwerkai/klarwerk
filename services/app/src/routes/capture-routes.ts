@@ -47,6 +47,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
 import { autorenrechtAmEntwurf, entwurfSichtbarFuer } from "../sichtbarkeit";
+import type { VorlagenEinreichungPort } from "../vorlagen";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
@@ -960,6 +961,12 @@ export interface CaptureRoutesDeps {
    * Optional wie die Abhängigkeiten darüber; ohne sie bleibt der Word-Weg exakt wie vorher.
    */
   dokumente?: DokumentaktenService | undefined;
+  /**
+   * produkt:20261007:templates-default — dieselbe Einreichprüfung wie an `POST /api/kos`
+   * (Pflichtfelder der Vorlage, Space-Vorgaben, gepflegte Begriffe) und danach der Vermerk von
+   * Vorlage und Fassung. Speichern bleibt frei; geprüft wird erst beim Promote.
+   */
+  vorlagenEinreichung?: VorlagenEinreichungPort | undefined;
 }
 
 // ================================================================================================
@@ -2139,6 +2146,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             await capture.requireFresh(request.params.id, expectedUpdatedAt);
           }
           const input = await capture.toKoInput(request.params.id);
+          // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
+          // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
+          // Scheitert sie, bleibt der Entwurf mit allen Werten stehen — es entsteht nichts.
+          const vorlagenEntscheid = await deps.vorlagenEinreichung?.pruefe(
+            (await capture.getDraft(request.params.id))?.payload.vorlage,
+            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+            user,
+          );
+          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
+            reply.code(vorlagenEntscheid.status).send({
+              error: vorlagenEntscheid.error,
+              message: vorlagenEntscheid.message,
+              ...(vorlagenEntscheid.befunde ? { befunde: vorlagenEntscheid.befunde } : {}),
+            });
+            return;
+          }
           // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
           // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
           // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
@@ -2161,12 +2184,29 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
           // dazu führen, dass der Entwurf aus der Liste verschwindet.
           await capture.entwurfVerbraucht(request.params.id);
+          // produkt:20261007:templates-default: Vorlage/Fassung vermerken, ggf. in den gewählten
+          // Space legen. Eine Nacharbeit: scheitert sie, steht das Objekt trotzdem, und die Antwort
+          // sagt es (`vorlagenVermerk`).
+          let vorlagenVermerk: "fehlgeschlagen" | undefined;
+          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
+            try {
+              await deps.vorlagenEinreichung?.vermerke(created.id, vorlagenEntscheid.bezug, user);
+            } catch (fehlerWert) {
+              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+              vorlagenVermerk = "fehlgeschlagen";
+            }
+          }
           // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
           // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
           // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
           const inQuarantaene = inSchutzdatenQuarantaene(created);
-          const submitted = (await nacharbeiten(created.id, body.reviewerIds)) ?? created;
-          reply.code(201).send(submitted);
+          // Nur wenn der Vermerk den Space gesetzt hat, wird neu gelesen — sonst wie bisher.
+          const imSpace = vorlagenEntscheid?.ok && Boolean(vorlagenEntscheid.bezug?.spaceId);
+          const submitted =
+            (await nacharbeiten(created.id, body.reviewerIds)) ??
+            (imSpace ? await ko.get(created.id) : undefined) ??
+            created;
+          reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
