@@ -7,6 +7,7 @@ import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SpaceZeile } from "../components/SpaceZeile";
+import { VorlagenHerkunft } from "../components/VorlagenHerkunft";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
 import { STELLE_PARAM } from "../lib/belegstelle";
@@ -199,7 +200,13 @@ export function KnowledgeDetail(): JSX.Element {
         // LESEN-INHALT-ZUERST (Ben, nacharbeit-6): die Zeile stand VOR der ganzen Fläche und schob
         // Titel, Status und erste Regel mobil um etwa 260 px nach unten. Sie steht jetzt in der
         // Lesespalte NACH dem fachlichen Inhalt — dieselbe Komponente, dieselben Rechte.
-        nachDemInhalt={<SpaceZeile koId={id} />}
+        nachDemInhalt={
+          <>
+            <SpaceZeile koId={id} />
+            {/* produkt:20261007:templates-default: Vorlage und Fassung, mit der er entstand. */}
+            <VorlagenHerkunft koId={id} />
+          </>
+        }
       />
     </div>
   );

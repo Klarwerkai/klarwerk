@@ -86,7 +86,7 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
     }
   });
 
-  it("jeder App-Bereich ist ein vorhandener Menüeintrag; Spaces ist die vorhandene Route", () => {
+  it("jeder App-Bereich ist ein vorhandener Menüeintrag; Spaces und Vorlagen sind vorhandene Routen", () => {
     for (const g of VERWALTUNG_GRUPPEN) {
       for (const z of g.ziele) {
         if (z.art === "bereich") {
@@ -96,7 +96,9 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
           ).toBe(true);
         }
         if (z.art === "pfad") {
-          expect(z.pfad).toBe("/spaces");
+          // produkt:20261007:templates-default (ADMIN-08): `/vorlagen` ist eine Route aus
+          // `routes.tsx` wie `/spaces` — kein Menüeintrag, deshalb namentlich zugelassen.
+          expect(["/spaces", "/vorlagen"]).toContain(z.pfad);
         }
       }
     }
