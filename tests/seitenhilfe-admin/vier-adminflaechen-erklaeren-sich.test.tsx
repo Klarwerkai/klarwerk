@@ -183,8 +183,10 @@ const BILDSCHIRME: readonly Bildschirm[] = [
     query: "?bereich=sicherheit&detail=audit",
     datei: "apps/web/src/pages/AdminDatenDetails.tsx",
     titelKey: "seitenhilfe.admin.audit.titel",
-    // R-1176 (gesamt-sprache-begriffe): der Text zitiert den Reiter jetzt zeichengleich, auch NL.
-    textKey: "knopfzitat.admin.audit",
+    // produkt:20261009:admin-audit-verstaendlich: die Auth-Ansicht teilt jetzt die Darstellung des
+    // Prüfprotokolls (Filter, Seiten, Namen); ihr Hilfetext beschreibt das unter eigenem Schlüssel.
+    // R-1176 (gesamt-sprache-begriffe): auch dieser Text zitiert den Reiter zeichengleich, auch NL.
+    textKey: "auditprotokoll.hilfe.konten",
   },
   // ---- AdminSicherheitDetails.tsx --------------------------------------------------------------
   {
