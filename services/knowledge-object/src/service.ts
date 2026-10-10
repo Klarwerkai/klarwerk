@@ -17,7 +17,8 @@ import {
 // JOB 593 / Ownerentscheidung Option A: die EINE Normalform der kanonischen Anlagenkennung.
 // Sie steht in einer eigenen Datei und nicht hier, weil BEIDE Schreibränder — Anlegen und
 // Überarbeiten — sie anwenden müssen. Zwei Kopien wären zwei Wahrheiten.
-import { normalizeAsset } from "./asset";
+import { normalizeAnlagenkontext } from "./anlagenkontext";
+import { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./asset";
 // JOB 3076 (Q1): `isConfidential` steht hier NICHT mehr — der Speicherzweig (`buildCreatedKo`) war
 // seine einzige Verwendung in dieser Datei und benutzte es als Speicherbedingung. Die Funktion selbst
 // bleibt unverändert und wird von den Egress-Stellen weiter gezogen (confidentiality.ts:40-42).
@@ -64,6 +65,13 @@ import {
   metadataTextsOf,
 } from "./metadata-projection";
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
+// R-1664/R-2179/R-2180: die geführten Negativwissen-Angaben und ihre Mindeststufe (Regel dort).
+import {
+  negativwissenGrenzfehler,
+  normalizeNegativwissen,
+  stufeFuerNegativwissen,
+  unterschreitetNegativwissenStufe,
+} from "./negativwissen";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
 import {
@@ -125,15 +133,18 @@ import {
   type AiCheckBasis,
   type AiCheckCoverage,
   type AiCheckCoverageSummary,
+  type AnlagenKontext,
   type Confidentiality,
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
+  KO_AUSSAGEARTEN,
   type KnowledgeObject,
   type KnowledgeOwnership,
   type KnowledgeType,
   type KoAnhangsquelle,
   type KoAppendOp,
   type KoAttachment,
+  type KoAussageart,
   type KoComment,
   // JOB 4146: der Klärungsstand eines Diskussionsfadens (geklärt, nicht freigegeben).
   type KoCommentResolution,
@@ -147,6 +158,7 @@ import {
   type KoRepairNote,
   type KoSource,
   type KoStatus,
+  type KoVeroeffentlichung,
   type TrashedKo,
 } from "./types";
 
@@ -245,12 +257,11 @@ export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
 // Muster und dieselbe Größenordnung wie der Fußnoten-Backfill der Bibliothek
 // (SEARCH_BACKFILL_LIMIT_PER_QUERY = 20): die Suche darf nie zum Bestands-Durchlauf werden, und
 // der Rest wird von der nächsten Anfrage bzw. vom ausdrücklichen Lauf abgearbeitet (konvergiert).
-// G27 R1 (Entscheidung 04 §5): DER DECKEL BLEIBT, SEIN AUFRUFORT NICHT. Der gedeckelte Nachzug ist
-// weiterhin Hintergrundhilfe und Optimierung — aber KEIN Suchweg stößt ihn mehr an. „Der reguläre
+// G27 R1 (Entscheidung 04 §5): KEIN Suchweg stößt den gedeckelten Nachzug mehr an. „Der reguläre
 // Suchpfad darf funktional nicht von ihm abhängen"; er aktiviert nichts, gibt keine Readiness frei
-// und bestätigt keine Konsistenz. Der Wert bleibt die Schwunggröße für ausdrückliche
-// Wartungsläufe und ist Teil der öffentlichen Modulfläche.
-export const SEARCH_PROJECTION_BACKFILL_PER_QUERY = 20;
+// und bestätigt keine Konsistenz. R-1349: Damit las auch niemand mehr den Deckel je Anfrage
+// `SEARCH_PROJECTION_BACKFILL_PER_QUERY` (= 20); er ist entfernt. Ausdrückliche Läufe nehmen ihren
+// eigenen Schwung (`backfillSearchProjections`, Vorgabe 500; der Abgleich `RECONCILE_SCHWUNG`).
 
 // Der Schwung des UNGEDECKELTEN Abgleichs. Groß genug, dass der Bestand in wenigen Runden
 // abgearbeitet ist; endlich, damit eine einzelne Abfrage nicht unbegrenzt Zeilen zieht.
@@ -450,6 +461,9 @@ export interface CreateKoInput {
   // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
   // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
   domain?: string | null;
+  // R-0086: Tatsache oder Handlungsanweisung. Fehlend/`null` = nicht angegeben; ein anderer Wert
+  // wird abgewiesen (INVALID), nicht still verworfen.
+  aussageart?: KoAussageart | null;
   author: string;
   conditions?: string[];
   measures?: string[];
@@ -457,10 +471,21 @@ export interface CreateKoInput {
   confidence?: number;
   neededValidations?: number;
   asset?: string | null;
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext; Normalform beim
+  // Anlegen (`anlagenkontext.ts`), die Eingangsprüfung (400) steht an der Route.
+  anlagenkontext?: AnlagenKontext | null;
+  // R-0082: mehrere Anlagen. Ist die Liste da, gilt SIE (auch leer = keine Anlage); sonst wird die
+  // Einzelangabe `asset` zur Liste. Gespeichert wird über `anlagenFelder` (asset.ts).
+  assets?: string[] | null;
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`; fehlend/`null`/leer = keiner, Ungültiges → INVALID.
+  revalidierungAm?: string | null;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body, serverseitig sanitisiert
   demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
   // SCRUM-415: optionale Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // R-1664/R-2179/R-2180: die geführten Angaben eines Negativwissen-Falls. `unknown`, weil die
+  // Form allein `normalizeNegativwissen` entscheidet; bei jeder anderen Wissensart verworfen.
+  negativwissen?: unknown;
   // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg des Entwurfs, aus dem dieses KO entsteht.
   // Bewusst ein VERWEIS auf die Wertmenge am Modell statt einer zweiten Aufzaehlung — so koennen
   // Eingabe und Objekt nicht auseinanderlaufen. Die Pruefung ist bereits am Entwurf gefallen
@@ -525,7 +550,12 @@ export interface ReviseKoInput {
   // wie beim Anlegen. Feld ist `null` → Kennung bewusst entfernt. Deshalb wird unten auf
   // `!== undefined` geprüft und nicht mit `??` gearbeitet: bei `??` wäre „entfernen" nicht
   // ausdrückbar. Dieselbe Bauform wie `bodyHtml` daneben.
+  //
+  // R-0082: seit es mehrere Anlagen gibt, setzt `asset` die ERSTE Anlage (die übrigen bleiben);
+  // `null` entfernt die erste. Die ganze Liste ersetzt `assets` (leer = alle entfernt) — trägt die
+  // Änderung beides, gilt `assets`.
   asset?: string | null;
+  assets?: string[] | null;
 }
 
 // ==============================================================================================
@@ -663,6 +693,40 @@ export interface DocumentAppendCommit {
 function normalizeDomain(domain: string | null | undefined): string | undefined {
   const wert = typeof domain === "string" ? domain.replace(/\s+/g, " ").trim() : "";
   return wert.length > 0 ? wert : undefined;
+}
+
+// R-0082 (Ben, Nacharbeit 5): eine mitgeschickte Anlagenliste wird GEPRÜFT, bevor geschrieben
+// wird. `normalizeAssets` allein machte aus jeder Nichtliste die leere Liste — ein Änderungsaufruf
+// mit `assets: "DP-4"` löschte damit still sämtliche Anlagen. Jetzt gilt: eine Liste aus nicht
+// leeren Texten wird angenommen (leere Liste = alle entfernen); alles andere ist INVALID (400),
+// und der gespeicherte Stand bleibt unberührt. `null` als ausdrücklicher Löschwert behandelt der
+// Aufrufer vorher.
+function gepruefteAnlagenliste(wert: unknown): string[] {
+  if (!Array.isArray(wert)) {
+    throw new KoError("INVALID", "assets muss eine Liste von Anlagenkennungen sein.");
+  }
+  for (const eintrag of wert) {
+    if (normalizeAsset(eintrag) === null) {
+      throw new KoError("INVALID", "assets enthält einen leeren oder ungültigen Eintrag.");
+    }
+  }
+  return normalizeAssets(wert);
+}
+
+// R-1690: der Re-Validierungstermin ist ein KALENDERTAG `JJJJ-MM-TT`, den es wirklich gibt.
+// Fehlend, `null` oder leer = kein Termin. Alles andere (andere Form, 2026-02-30) wird
+// abgewiesen statt still verworfen oder umgedeutet.
+function normalizeRevalidierungAm(wert: string | null | undefined): string | undefined {
+  if (wert === undefined || wert === null || wert.trim() === "") {
+    return undefined;
+  }
+  const tag = wert.trim();
+  const passt = /^(\d{4})-(\d{2})-(\d{2})$/.exec(tag);
+  const datum = passt ? new Date(`${tag}T00:00:00.000Z`) : null;
+  if (!datum || Number.isNaN(datum.getTime()) || datum.toISOString().slice(0, 10) !== tag) {
+    throw new KoError("INVALID", "Re-Validierungstermin muss ein Kalendertag JJJJ-MM-TT sein.");
+  }
+  return tag;
 }
 
 // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
@@ -2297,6 +2361,17 @@ export class KoService {
     if (needed < 1 || needed > 5) {
       throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
     }
+    // R-0086: nur die beiden bekannten Aussagearten; leer heißt „nicht angegeben".
+    const aussageart = input.aussageart ?? undefined;
+    if (aussageart !== undefined && !KO_AUSSAGEARTEN.includes(aussageart)) {
+      throw new KoError("INVALID", "Unbekannte Aussageart (tatsache oder handlungsanweisung).");
+    }
+    const revalidierungAm = normalizeRevalidierungAm(input.revalidierungAm);
+    // R-0082: die kanonische Anlagenliste — die Liste, wenn eine kommt, sonst die Einzelangabe.
+    const anlagen =
+      input.assets !== undefined && input.assets !== null
+        ? gepruefteAnlagenliste(input.assets)
+        : anlagenVon({ asset: input.asset ?? null });
     const ownership = normalizeOwnership(input.ownership);
     const at = new Date(this.now()).toISOString();
     const bodyHtml = cleanBody(input.bodyHtml);
@@ -2305,6 +2380,25 @@ export class KoService {
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
     // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
     const domain = normalizeDomain(input.domain);
+    const anlagenkontext = normalizeAnlagenkontext(input.anlagenkontext);
+    // R-1664/R-2179: die geführten Angaben gehören allein zur Wissensart `negativwissen`.
+    // R-2180: ein Fall mit Personen-, Kunden-, Produktions- oder Qualitätsbezug liegt nie unter
+    // „vertraulich" — die Stufe wird angehoben, nie gesenkt (Regel in negativwissen.ts).
+    // BEN, Nacharbeit 2: eine Überschreitung wird abgewiesen (400 mit Grund), nie still gekürzt.
+    // Der allgemeine Eingabecode `INVALID` — dieselbe Wahl und Begründung wie bei JOB 4213 (types.ts).
+    const grenzfehler =
+      input.type === "negativwissen" ? negativwissenGrenzfehler(input.negativwissen) : undefined;
+    if (grenzfehler !== undefined) {
+      throw new KoError("INVALID", grenzfehler);
+    }
+    const negativwissen =
+      input.type === "negativwissen" ? normalizeNegativwissen(input.negativwissen) : undefined;
+    const stufe = stufeFuerNegativwissen(
+      input.confidentiality !== undefined
+        ? normalizeConfidentiality(input.confidentiality)
+        : undefined,
+      negativwissen,
+    );
     const ko: KnowledgeObject = {
       id: this.genId(),
       title: input.title,
@@ -2325,6 +2419,7 @@ export class KoService {
       // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
       // Ableitung aus der Kategorie.
       ...(domain ? { domain } : {}),
+      ...(aussageart ? { aussageart } : {}),
       tags: input.tags ?? [],
       confidence: input.confidence ?? 0,
       trust: 0,
@@ -2339,7 +2434,11 @@ export class KoService {
       // Vorher legte der Dienst sie roh ab; getrimmt hat allein der Browser. Jeder browserfreie
       // Weg (Word-Add-in, Import, Seed, API) erzeugte damit eine zweite Schreibweise derselben
       // Anlage — und `sameAsset` (conflicts/detect.ts:126) vergleicht zeichengenau.
-      asset: normalizeAsset(input.asset),
+      // R-0082: `assets` (kanonisch) und `asset` (Spiegel der ersten) entstehen zusammen.
+      ...anlagenFelder(anlagen),
+      ...(revalidierungAm ? { revalidierungAm } : {}),
+      // R-1631: nur speichern, wenn wirklich etwas angegeben ist — wie das Fachgebiet oben.
+      ...(anlagenkontext ? { anlagenkontext } : {}),
       // JOB 3076 (Q1) — DIE STUFE NUR SPEICHERN, WENN SIE JEMAND MITBRINGT. ABLÖSUNG VON SCRUM-415.
       //
       // BIS HIERHER GALT (SCRUM-415): „nur speichern, wenn tatsächlich vertraulich" — die Bedingung
@@ -2366,9 +2465,8 @@ export class KoService {
       // zu benutzen. Wer das zurückdreht, macht V1 in
       // tests/vertraulichkeit-intern/explizit-intern-ueberlebt.test.ts rot; wer stattdessen einen
       // Default einführt, V2.
-      ...(input.confidentiality !== undefined
-        ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
-        : {}),
+      ...(stufe !== undefined ? { confidentiality: stufe } : {}),
+      ...(negativwissen ? { negativwissen } : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),
       // JOB 679 / D2 (K1.2, Weg A): die Herkunft nur setzen, wenn der Entwurf eine MITBRINGT —
       // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
@@ -3354,6 +3452,14 @@ export class KoService {
           "Die Vertraulichkeit dieses aus Word übernommenen Eintrags kann nur angehoben werden.",
         );
       }
+      // R-2180: ein Negativwissen-Fall mit Bezug bleibt mindestens „vertraulich" — auch für Prüfer
+      // und Administratoren. Wer ihn öffnen will, muss den Bezug am Fall selbst ändern.
+      if (unterschreitetNegativwissenStufe(ko.negativwissen, level)) {
+        throw new KoError(
+          "DOWNGRADE_FORBIDDEN",
+          "Ein Lerneffekt mit Personen-, Kunden-, Produktions- oder Qualitätsbezug bleibt mindestens vertraulich.",
+        );
+      }
       // SCRUM-509 R2/R3: Downgrade-Autorisierung gegen die GERADE gelesene Stufe (atomar). R3 FAIL-SAFE:
       // fehlt `mayDowngrade`, gilt es als NICHT erlaubt (`!opts...`) — ein Downgrade rutscht nie aus einem
       // fehlenden Recht durch, auch bei programmatischen Aufrufern.
@@ -3926,6 +4032,141 @@ export class KoService {
         },
       };
     });
+    const beleg = geplant.beleg;
+    if (!beleg) {
+      return { ko, belegOffen: false };
+    }
+    try {
+      await this.appendEvidence(beleg);
+      return { ko, belegOffen: false };
+    } catch {
+      return { ko, belegOffen: true };
+    }
+  }
+
+  // ==============================================================================================
+  // produkt:20261007:office-artikel-editor (Plan U3) — EINE OFFICE-SPEICHERUNG WIRD EINE FASSUNG.
+  // ==============================================================================================
+  //
+  // Bis hierher gab es zwei getrennte Wege: `updateAttachment` tauscht den Inhalt OHNE Fassung,
+  // `revise` erhöht die Fassung OHNE Anhangstausch. Der eingebettete Editor braucht beides in EINEM
+  // bedingten Schritt — sonst stünde zwischen den beiden Aufrufen ein neues Dokument an einer alten,
+  // womöglich freigegebenen Fassung.
+  //
+  // DIESELBE BEDEUTUNG WIE `revise` (über `naechsteFassung`): Fassung + 1, Status `offen`, Trust 0,
+  // Bewertungen der Vorfassung zählen nicht mehr. Eine Dokumentänderung stuft den Artikel nie hoch;
+  // es gibt hier keinen Freigabeparameter. Text, Titel, Quellen und Belegstellen bleiben, wie sie sind
+  // — welche Belegstellen am alten Dokumentstand hängen, zeigt die Fläche (`objectId` der Quelle).
+  //
+  // CAS GEGEN `expectedVersion`: wer außerhalb der Editor-Sitzung geschrieben hat, bekommt `KO_STALE`
+  // und nichts wird überschrieben. Der Arbeitsstand bleibt als Objekt im Speicher.
+  //
+  // ZURÜCKHOLEN (`restoredFrom`): dieselbe Anhangskennung bekommt ein Objekt zurück, das sie früher
+  // trug. Das ist eine NEUE Fassung mit `anhangZurueckAus`; gelöscht wird nichts. Dass das Objekt wirklich
+  // ein früherer Stand GENAU DIESES Anhangs war, prüft der Dienst selbst an der append-only Belegkette
+  // (`kind: "attachment"`, geschrieben von `addAttachment` und jeder Übernahme) oder an einem
+  // Fassungs-Snapshot — über diesen Weg gerät kein fremdes Objekt an den Artikel.
+  async uebernimmOfficeFassung(
+    id: string,
+    input: {
+      anhangId: string;
+      objectId: string;
+      size: number;
+      expectedVersion: number;
+      restoredFrom?: number;
+    },
+    actor: string,
+  ): Promise<{ ko: KnowledgeObject; belegOffen: boolean }> {
+    if (input.restoredFrom !== undefined) {
+      const belegt = (await this.evidence?.listByKo(id))?.some(
+        (b) =>
+          b.kind === "attachment" &&
+          b.attachmentId === input.anhangId &&
+          b.objectId === input.objectId,
+      );
+      const imSnapshot = (await this.versions?.listByKo(id))?.some((f) =>
+        f.snapshot.attachments?.some(
+          (a) => a.id === input.anhangId && a.objectId === input.objectId,
+        ),
+      );
+      if (!belegt && !imSnapshot) {
+        throw new KoError(
+          "INVALID",
+          "Dieses Dokument war nie ein Stand dieses Anhangs; es gibt nichts zurückzuholen.",
+        );
+      }
+    }
+    const neu: { objectId: string; size: number; restoredFrom?: number } = {
+      objectId: input.objectId,
+      size: input.size,
+      ...(input.restoredFrom === undefined ? {} : { restoredFrom: input.restoredFrom }),
+    };
+    const geplant: { beleg?: Omit<EvidenceRecord, "id"> } = {};
+    const ko = await this.mutateKoTx(id, (aktuell) => {
+      this.pruefeErwarteteVersion(aktuell, input.expectedVersion);
+      const vorher = (aktuell.attachments ?? []).find((a) => a.id === input.anhangId);
+      if (!vorher?.objectId) {
+        throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+      }
+      const fassung = this.naechsteFassung(aktuell, {}, actor);
+      const version = fassung.version;
+      const nachher: KoAttachment = { ...vorher, objectId: neu.objectId, size: neu.size };
+      const updated: KnowledgeObject = {
+        ...fassung,
+        attachments: (aktuell.attachments ?? []).map((a) =>
+          a.id === input.anhangId ? nachher : a,
+        ),
+        history: fassung.history.map((eintrag) =>
+          eintrag.version === version
+            ? {
+                ...eintrag,
+                anhangGeaendert: input.anhangId,
+                ...(neu.restoredFrom === undefined ? {} : { anhangZurueckAus: neu.restoredFrom }),
+              }
+            : eintrag,
+        ),
+      };
+      geplant.beleg = {
+        koId: id,
+        koVersion: version,
+        kind: "attachment",
+        attachmentId: input.anhangId,
+        objectId: neu.objectId,
+        label: nachher.name,
+        mime: nachher.mime,
+        createdBy: actor,
+        createdAt: new Date(this.now()).toISOString(),
+      };
+      return {
+        updated,
+        value: updated,
+        snapshot: { author: actor, note: "überarbeitet" },
+        audit: async (tx?: TxContext) => {
+          await this.audit?.record(
+            { actor, action: "ko.revised", target: id, payload: { version } },
+            tx,
+          );
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.office-uebernommen",
+              target: id,
+              payload: {
+                version,
+                anhangId: input.anhangId,
+                vorherObjectId: vorher.objectId,
+                objectId: neu.objectId,
+                ...(neu.restoredFrom === undefined ? {} : { restoredFrom: neu.restoredFrom }),
+              },
+            },
+            tx,
+          );
+        },
+      };
+    });
+    // Der Beleg folgt nach der Transaktion, wie bei `updateAttachment`: scheitert er, ist die Fassung
+    // geschrieben, und die Antwort meldet `belegOffen`. Die frühere `objectId` bleibt über den
+    // Snapshot ihrer Fassung referenziert.
     const beleg = geplant.beleg;
     if (!beleg) {
       return { ko, belegOffen: false };
@@ -5010,6 +5251,7 @@ export class KoService {
         "measures",
         "bodyHtml",
         "asset",
+        "assets",
         "sources",
       ] as const
     ).filter((feld) => changes[feld] !== undefined);
@@ -5332,8 +5574,22 @@ export class KoService {
     const nextStatement =
       changes.statement ??
       (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
+    // R-0082: die Anlagenliste nach dieser Fassung. `assets` ersetzt die ganze Liste; `asset`
+    // (Einzelweg, JOB 593 D9) setzt oder entfernt nur die ERSTE Anlage und lässt die übrigen
+    // stehen; ohne beides bleibt die Liste — durch die Normalform geführt (Altbestand heilt).
+    const bisherigeAnlagen = anlagenVon(ko);
+    const neueErste = normalizeAsset(changes.asset);
+    const anlagenNachher =
+      changes.assets !== undefined
+        ? changes.assets === null
+          ? []
+          : gepruefteAnlagenliste(changes.assets)
+        : changes.asset !== undefined
+          ? [...(neueErste === null ? [] : [neueErste]), ...bisherigeAnlagen.slice(1)]
+          : bisherigeAnlagen;
+    const { assets: _bisherigeListe, ...koOhneAnlagenliste } = ko;
     const fassung: KnowledgeObject = {
-      ...ko,
+      ...koOhneAnlagenliste,
       title: changes.title ?? ko.title,
       statement: nextStatement,
       bodyHtml: nextBody,
@@ -5406,7 +5662,10 @@ export class KoService {
       // von `append` nie ersetzt (repo.ts:468). Der einzige Fall, in dem überhaupt Zeichen
       // verschwinden, ist eine Kennung aus reinem Leerraum — sie konnte nie eine Information
       // tragen.
-      asset: normalizeAsset(changes.asset !== undefined ? changes.asset : ko.asset),
+      //
+      // R-0082: seit der Anlagenliste entstehen `asset` und `assets` hier gemeinsam aus der Liste
+      // nach dieser Fassung (s. `anlagenNachher` oben) — dieselbe Normalform, dieselbe Stelle.
+      ...anlagenFelder(anlagenNachher),
     };
     // R-0658: dieselbe Schutzdatenprüfung wie beim Anlegen, an der neuen Fassung — eine
     // Überarbeitung mit Schutzdaten setzt die Quarantäne, eine ohne hebt sie auf.
@@ -6320,6 +6579,34 @@ export class KoService {
     });
   }
 
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext setzen, ändern oder
+  // entfernen. Dieselbe Bauform wie `setDomain` direkt darüber (per KO serialisiert, Beleg im Audit,
+  // Rechte an der Route); der Kontext ersetzt den bisherigen VOLLSTÄNDIG. Ein leerer Kontext
+  // entfernt das Feld; ein unveränderter ändert nichts und erzeugt keinen Beleg.
+  async setAnlagenkontext(id: string, kontext: unknown, actor: string): Promise<KnowledgeObject> {
+    const nachher = normalizeAnlagenkontext(kontext);
+    return this.mutateKo(id, (ko) => {
+      const vorher = normalizeAnlagenkontext(ko.anlagenkontext);
+      if (JSON.stringify(vorher ?? null) === JSON.stringify(nachher ?? null)) {
+        return { updated: ko, value: ko };
+      }
+      const { anlagenkontext: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, anlagenkontext: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.anlagenkontext-changed",
+            target: id,
+            payload: { vorher: vorher ?? null, nachher: nachher ?? null },
+          });
+        },
+      };
+    });
+  }
+
   // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-1746): „Stimmt weiterhin" nach dem Anwenden —
   // ein Frische-Signal, KEINE neue Prüfung. Bauform wie `setDomain`: per KO serialisiert, Beleg im
   // Audit, keine neue Inhaltsversion, kein Statuswechsel. Nur geprüftes Wissen kann so bestätigt
@@ -6494,6 +6781,55 @@ export class KoService {
               action: "ko.space-changed",
               target: id,
               payload: { vorher, nachher: spaceId, version: ko.version },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // produkt:20261007:veroeffentlichungsoptionen — einen Veröffentlichungsvermerk anhängen.
+  //
+  // `bilde` bekommt das FRISCH unter dem KO-Lock gelesene Objekt und entscheidet dort, ob die
+  // Veröffentlichung zulässig ist (gültige Fassung, erwartete Version, nicht schon veröffentlicht) —
+  // es wirft sonst. Damit kann zwischen Vorschau und Schreiben weder eine Überarbeitung noch eine
+  // zweite Veröffentlichung derselben Fassung durchrutschen. Der Vermerk berührt nichts ausser
+  // `veroeffentlichungen`: Inhaltsversion, `history`, Status und Sichtbarkeitsfelder bleiben. Vermerk
+  // und Beleg `ko.veroeffentlicht` committen gemeinsam (`mutateKo`).
+  //
+  // `nachher` (Ben, Nacharbeit 11): läuft IM Belegschritt — also erst NACH der Prüfung in `bilde` und
+  // mit demselben Transaktionskontext wie Vermerk und Beleg. Mit `withTx` committen Vermerk,
+  // `nachher` und Beleg gemeinsam oder gar nicht; ohne `withTx` nimmt `mutateKo` den Vermerk zurück,
+  // wenn `nachher` oder der Beleg scheitert. Ein abgelehnter Versuch erreicht `nachher` nie.
+  async vermerkeVeroeffentlichung(
+    id: string,
+    bilde: (ko: KnowledgeObject) => KoVeroeffentlichung,
+    nachher?: (vermerk: KoVeroeffentlichung, tx?: TxContext) => Promise<void>,
+  ): Promise<{ ko: KnowledgeObject; vermerk: KoVeroeffentlichung }> {
+    return this.mutateKo(id, (ko) => {
+      const vermerk = bilde(ko);
+      const updated: KnowledgeObject = {
+        ...ko,
+        veroeffentlichungen: [...(ko.veroeffentlichungen ?? []), vermerk],
+      };
+      return {
+        updated,
+        value: { ko: updated, vermerk },
+        audit: async (tx) => {
+          await nachher?.(vermerk, tx);
+          await this.audit?.record(
+            {
+              actor: vermerk.von,
+              action: "ko.veroeffentlicht",
+              target: id,
+              payload: {
+                vermerkId: vermerk.id,
+                fassung: vermerk.fassung,
+                art: vermerk.art,
+                meldung: vermerk.meldung,
+                empfaenger: vermerk.empfaenger,
+              },
             },
             tx,
           );

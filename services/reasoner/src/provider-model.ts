@@ -1,12 +1,19 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 // JOB 3276: die leere Modellantwort im assist-Pfad ist ein Fehler mit Grund — dieselbe typisierte
 // Klasse, die der HTTP-Chokepoint (model-client.ts) wirft, damit die Kette EINE Fehlerart kennt.
+import {
+  interviewResearchSubject,
+  normalizeInterviewResearch,
+  normalizeInterviewSources,
+  normalizeInterviewTopic,
+  parseInterviewResearch,
+} from "./interview-tree";
 import { ModelEmptyResponseError, ReasonerMeldungFehler } from "./model-errors";
 import {
   DEFAULT_TOP_K,
   type ReasonerProvider,
   answerStanding,
-  deterministicInterview,
+  guidedInterview,
   normalizeInterviewImageContext,
   // JOB 3298: DIESELBE Zerlegung, die das Relevanzmaß benutzt — der Auszug wird nach der GLEICHEN
   // Wortauffassung gewählt, nach der die Quelle überhaupt Kandidat wurde. Eine zweite Tokenisierung
@@ -18,6 +25,7 @@ import {
 import {
   type AbbruchBefund,
   type AnswerResult,
+  type ArgumentationsGlied,
   type AssistResult,
   type CandidateGroup,
   type ConflictJudgeResult,
@@ -29,11 +37,17 @@ import {
   type ExtractedPoint,
   type GroupCandidateInput,
   type GroupCandidatesResult,
+  type InterviewOptions,
+  type InterviewResearchPoint,
   type InterviewResult,
   type KlaraVorschlagUrteil,
   type KnowledgeRef,
   type Kollision,
   type KollisionSeite,
+  LUECKEN_GRUENDE,
+  type LueckenBereich,
+  type LueckenBereichsUrteil,
+  type LueckenGrund,
   type ReasonerLocale,
   type Relevanztext,
   // FR-STR-01: die gültigen Wissensarten für Vertrag (Prompt) und Rücklesen (Parser) — EINE Liste.
@@ -399,6 +413,40 @@ export function pruefeDeckung(
     aussagen.push({ text: satz, quellen: quellen.map((q) => q.id), zitatVon, nachlauf, gedeckt });
   }
   return { gedeckt: aussagen.every((a) => a.gedeckt), aussagen };
+}
+
+/**
+ * R-1643 · DIE ARGUMENTATIONSKETTE AUS DEM DECKUNGSBEFUND.
+ *
+ * `pruefeDeckung` zerlegt den Modelltext ohnehin in Aussagen und misst je Aussage, welche markierte
+ * Quelle sie im Wortlaut enthält. Genau diese Zuordnung ist die nachvollziehbare Begründung „Aussage
+ * → belegt durch Quelle", die das Entscheidungs-Protokoll verlangt — sie wird hier nur nicht mehr
+ * weggeworfen. Kein neuer Modellaufruf, kein formulierter Text.
+ *
+ * Aufgenommen wird nur, was eine messbare Quelle hat (`zitatVon`). Aussagen ohne Inhalt (ein
+ * nackter Satzpunkt nach der Marke) tragen nichts zur Begründung bei und fallen weg. Ist die Antwort
+ * nicht gedeckt, gibt es KEINE Kette aus diesem Befund — dann geht auch der Modelltext nicht hinaus.
+ */
+export function argumentationAus(befund: DeckungBefund): ArgumentationsGlied[] {
+  if (!befund.gedeckt) {
+    return [];
+  }
+  return befund.aussagen.flatMap((a) =>
+    a.zitatVon === null
+      ? []
+      : [
+          {
+            // Ein Segment beginnt hinter der vorigen Marke — oft mit deren Satzpunkt („[1]. Ventil …").
+            aussage: a.text
+              .replace(MARKE, " ")
+              .replace(/\s+/g, " ")
+              .replace(/^[\s.,;:!?]+/, "")
+              .trim(),
+            quellen: a.quellen,
+            belegtDurch: a.zitatVon,
+          },
+        ],
+  );
 }
 
 /**
@@ -991,7 +1039,12 @@ export function rueckfallStand(
   tragend: readonly KnowledgeRef[],
   kontext: readonly KnowledgeRef[],
   locale: ReasonerLocale,
-): { refs: KnowledgeRef[]; text: string } | null {
+): {
+  refs: KnowledgeRef[];
+  text: string;
+  // R-1643: je ausgegebenem Wortlaut seine Quelle — die Argumentationskette des Rückfalls.
+  stimmen: { ref: KnowledgeRef; text: string }[];
+} | null {
   const gewaehlt = rueckfallAntwort(frage, tragend);
   if (!gewaehlt) {
     return null;
@@ -1015,11 +1068,12 @@ export function rueckfallStand(
     weitere.push({ ref, text });
   }
   if (weitere.length === 0) {
-    return { refs: [gewaehlt.ref], text: gewaehlt.text };
+    return { refs: [gewaehlt.ref], text: gewaehlt.text, stimmen: [gewaehlt] };
   }
   const stimmen = [gewaehlt, ...weitere];
   return {
     refs: stimmen.map((s) => s.ref),
+    stimmen,
     // Absatzweise (Leerzeile), weil die Fläche den Antworttext als Markdown rendert: so steht jede
     // Quelle für sich, statt dass zwei Auskünfte zu einem Fließtext verschmelzen.
     text: [UNGEKLAERT[locale], ...stimmen.map((s) => `${s.ref.title}: ${s.text}`)].join("\n\n"),
@@ -1425,6 +1479,99 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
   };
 }
 
+// ================================================================================================
+// R-1657 (ROADMAP 9.3) — LÜCKENERKENNUNG: DAS URTEIL ÜBER DIE KENNZAHLEN JE BEREICH.
+// ================================================================================================
+//
+// Ins Modell gehen NUR Bereichsname und Zähler (keine Titel, keine Aussagen, keine Personen). Das
+// Modell entscheidet je Bereich, ob ein Wissens-Sprint angezeigt ist, wie lang (1–5 Tage) und welche
+// der vier benannten Gründe ihn tragen. Freitext wird nicht verlangt und nicht übernommen.
+export const LUECKEN_MAX_TAGE = 5;
+
+function lueckenSystem(locale: ReasonerLocale): string {
+  const contract =
+    '{"bereiche":[{"bereich":"...","sprint":true,"tage":1-5,"schwerpunkte":["conflicts","revalidation","lowTrust","thinKnowledge"]}]}';
+  return taskInstruction(
+    locale,
+    `Du bewertest Wissensbereiche einer Organisation anhand von Kennzahlen und schlägst Wissens-Sprints vor. Je Bereich bekommst du: objekte (Zahl der Wissensobjekte), validiert, mittleresVertrauen (0–100), imKonflikt (Objekte in offenen Konflikten; null = unbekannt), revalidierung (Objekte zur Re-Validierung), geringesVertrauen (Objekte mit Vertrauen unter 50). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Nenne JEDEN Bereich genau einmal mit seinem Namen wie geliefert. "sprint" ist true, wenn sich in diesem Bereich ein gebündelter Arbeitseinsatz lohnt (wenig Wissen, geringes Vertrauen oder hohe Konfliktdichte), sonst false. "tage" ist die Sprintlänge von 1 bis 5 nach dem Arbeitsumfang. "schwerpunkte" nennt nur Gründe, die die Kennzahlen tragen: "conflicts" nur bei imKonflikt > 0, "revalidation" nur bei revalidierung > 0, "lowTrust" nur bei geringesVertrauen > 0, "thinKnowledge" bei wenig validiertem Wissen. Erfinde keine Bereiche und keine Zahlen.`,
+    `You assess an organisation's knowledge areas from key figures and suggest knowledge sprints. Per area you get: objekte (number of knowledge objects), validiert, mittleresVertrauen (0–100), imKonflikt (objects in open conflicts; null = unknown), revalidierung (objects due for re-validation), geringesVertrauen (objects with trust below 50). Respond ONLY with JSON: ${contract}. Name EVERY area exactly once, with its name as given. "sprint" is true if a focused effort is worthwhile in this area (little knowledge, low trust or high conflict density), otherwise false. "tage" is the sprint length from 1 to 5 by workload. "schwerpunkte" lists only reasons the figures support: "conflicts" only if imKonflikt > 0, "revalidation" only if revalidierung > 0, "lowTrust" only if geringesVertrauen > 0, "thinKnowledge" for little validated knowledge. Invent no areas and no figures.`,
+  );
+}
+
+/** Die Nutzlast des Urteils: nur Namen und Zähler, als JSON. */
+export function lueckenNutzlast(bereiche: readonly LueckenBereich[]): string {
+  return JSON.stringify({ bereiche });
+}
+
+/** Ist ein genannter Grund durch die Kennzahlen gedeckt? Das Modell darf keinen erfinden. */
+function grundGedeckt(grund: LueckenGrund, b: LueckenBereich): boolean {
+  switch (grund) {
+    case "conflicts":
+      return (b.imKonflikt ?? 0) > 0;
+    case "revalidation":
+      return b.revalidierung > 0;
+    case "lowTrust":
+      return b.geringesVertrauen > 0;
+    case "thinKnowledge":
+      return true;
+  }
+}
+
+// Striktes, defensives Lesen: kein JSON, kein Feld `bereiche` → null (kein Urteil aus kaputten
+// Antworten). Je Eintrag gilt nur, was sich an die gelieferten Kennzahlen binden lässt: ein
+// unbekannter Bereich, ein zweiter Eintrag desselben Bereichs oder ein Sprint ohne gedeckten Grund
+// wird verworfen; die Tage werden auf 1–5 geklemmt.
+export function parseLueckenResponse(
+  raw: string,
+  bereiche: readonly LueckenBereich[],
+): LueckenBereichsUrteil[] | null {
+  const start = raw.indexOf("{");
+  const ende = raw.lastIndexOf("}");
+  if (start < 0 || ende <= start) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.slice(start, ende + 1));
+  } catch {
+    return null;
+  }
+  const liste = (parsed as { bereiche?: unknown } | null)?.bereiche;
+  if (!Array.isArray(liste)) {
+    return null;
+  }
+  const nachName = new Map(bereiche.map((b) => [b.bereich, b]));
+  const gesehen = new Set<string>();
+  const urteile: LueckenBereichsUrteil[] = [];
+  for (const eintrag of liste) {
+    if (typeof eintrag !== "object" || eintrag === null) {
+      continue;
+    }
+    const e = eintrag as Record<string, unknown>;
+    const bereich = typeof e.bereich === "string" ? nachName.get(e.bereich) : undefined;
+    if (!bereich || gesehen.has(bereich.bereich) || typeof e.sprint !== "boolean") {
+      continue;
+    }
+    const schwerpunkte = Array.isArray(e.schwerpunkte)
+      ? LUECKEN_GRUENDE.filter(
+          (g) => (e.schwerpunkte as unknown[]).includes(g) && grundGedeckt(g, bereich),
+        )
+      : [];
+    if (e.sprint && schwerpunkte.length === 0) {
+      continue;
+    }
+    const tage = typeof e.tage === "number" && Number.isFinite(e.tage) ? Math.round(e.tage) : 1;
+    gesehen.add(bereich.bereich);
+    urteile.push({
+      bereich: bereich.bereich,
+      sprint: e.sprint,
+      tage: Math.min(LUECKEN_MAX_TAGE, Math.max(1, tage)),
+      schwerpunkte,
+    });
+  }
+  return urteile;
+}
+
 // Berater-Konzept Duplikate 04.07. (Stufe D2, dup-v1): System-Prompt der „Duplikatprüfung".
 // Beschreibt die Überschneidung als Profil (Beziehung/Grad/gemeinsame Aussagen/Empfehlung); nur was
 // im Text steht; abweichender Geltungsbereich → getrennt lassen; Sprachpaar → nicht zusammenführen.
@@ -1692,6 +1839,29 @@ function interviewPhotoGuidance(locale: ReasonerLocale): string {
   );
 }
 
+// R-0088: die Auswertung der abgerufenen Quellen zum Interviewthema. Ergebnis sind PRÜFPUNKTE für
+// Rückfragen, keine Wissensaussagen: jeder Punkt ist einem Baumknoten zugeordnet, nennt seine
+// Quelle (Nummer) und wird dem Experten als Frage vorgelegt, nie als Tatsache in den Entwurf
+// geschrieben. Nur was in den Quellen steht — kein Modellwissen.
+function interviewResearchSystem(locale: ReasonerLocale): string {
+  const base = taskInstruction(
+    locale,
+    'Du wertest die nummerierten Quellen für ein Experteninterview zum genannten Fachthema aus. Leite AUSSCHLIESSLICH aus diesen Quellen höchstens drei fachliche Prüfpunkte ab, nach denen ein erfahrener Kollege gezielt nachfragen würde: Grenz- oder Schwellenwerte, Ausnahmen, Ursachen, verworfene Alternativen, Geltungsgrenzen, Risiken. Nutze kein eigenes Wissen. Jeder Punkt ist ein kurzer Hinweis (höchstens 25 Wörter), der beim Experten GEPRÜFT werden soll — keine Tatsachenbehauptung. Ordne jeden Punkt genau einem Knoten zu (schwelle, ausnahme, warum, alternativen, geltung oder risiko) und nenne die Nummer der Quelle, aus der er stammt. Antworte AUSSCHLIESSLICH mit JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. Geben die Quellen zum Thema nichts her, antworte {"punkte":[]}.',
+    'You evaluate the numbered sources for an expert interview on the given subject. Derive, EXCLUSIVELY from these sources, at most three technical check points a seasoned colleague would ask about specifically: limits or thresholds, exceptions, causes, rejected alternatives, scope limits, risks. Do not use your own knowledge. Each point is a short hint (at most 25 words) to be CHECKED with the expert — not a statement of fact. Assign each point to exactly one node (schwelle, ausnahme, warum, alternativen, geltung or risiko) and give the number of the source it comes from. Respond ONLY with JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. If the sources yield nothing on the subject, respond {"punkte":[]}.',
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
+}
+
+// R-0088: Zusatz zum Interview-Prompt, wenn Recherchepunkte vorliegen. Sie machen die Frage
+// gezielter — sie werden aber nie als Wissen vorausgesetzt.
+function interviewResearchGuidance(locale: ReasonerLocale): string {
+  return taskInstruction(
+    locale,
+    "Nutze die Recherchehinweise, um gezielter und fachlich tiefer nachzuhaken. Liegt ein Prüfpunkt für diese Frage vor, frag konkret danach, ob und wie er beim Experten gilt. Stelle Recherchehinweise NIE als Tatsache dar und übernimm sie nicht als Antwort.",
+    "Use the research hints to probe more specifically and in more technical depth. If a check point is given for this question, ask concretely whether and how it applies for the expert. NEVER present research hints as fact and do not adopt them as an answer.",
+  );
+}
+
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
 const LABELS: Record<ReasonerLocale, Record<string, string>> = {
   de: {
@@ -1700,6 +1870,11 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Bisherige Antworten",
     guiding: "Leitfrage",
     none: "(noch keine)",
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): das Fachthema des Interviews.
+    topic: "Fachthema des Interviews",
+    // R-0088: die Fachrecherche — ausdrücklich ungeprüft.
+    research: "Recherchehinweise (ungeprüft, keine Fakten)",
+    researchAim: "Prüfpunkt für diese Frage",
     // JOB 3298: die Beschriftung des Dokumenttext-Auszugs im Grounding. Sie ist ein EIGENES Feld
     // und nicht an die Aussage angehängt — der Leser des Prompts (das Modell) soll sehen, dass hier
     // Quelltext steht, den es zitieren darf, und nicht eine zweite Kernaussage.
@@ -1716,6 +1891,9 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Previous answers",
     guiding: "Guiding question",
     none: "(none yet)",
+    topic: "Subject of the interview",
+    research: "Research hints (unverified, not facts)",
+    researchAim: "Check point for this question",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
     imageFinding: "Image finding (photo, confirmed by the expert)",
@@ -1728,6 +1906,9 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Eerdere antwoorden",
     guiding: "Leidende vraag",
     none: "(nog geen)",
+    topic: "Onderwerp van het interview",
+    research: "Onderzoekshints (niet geverifieerd, geen feiten)",
+    researchAim: "Controlepunt voor deze vraag",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
     imageFinding: "Beeldbevinding (foto, door de expert bevestigd)",
@@ -2274,6 +2455,10 @@ export class ModelProvider implements ReasonerProvider {
 
   // SCRUM-132: Modell formuliert nur die nächste Frage; Abschluss + Draft-Verdichtung
   // bleiben deterministisch (kein Erfinden von Inhalt). demo=false, da Modell genutzt.
+  //
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): im Fragebaum bzw. Lücken-Interview steht das
+  // Fachthema mit im Prompt — das Modell richtet die Leitfrage darauf aus, statt allgemein zu fragen.
+  // Baum, Restlückenwert und Entwurf bleiben deterministisch; ersetzt wird nur der Fragetext.
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
@@ -2282,28 +2467,94 @@ export class ModelProvider implements ReasonerProvider {
     // R-1624: bestätigter Bildbefund (Klartext). Reist im selben complete()-Aufruf und damit durch
     // denselben Vertraulichkeits-Wächter wie die Antworten — kein neuer Egress-Pfad.
     imageContext?: string,
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema.
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const finding = normalizeInterviewImageContext(imageContext);
     const photo = finding.length > 0;
-    const base = deterministicInterview(answers, false, locale, photo);
+    const base = guidedInterview(answers, false, locale, imageContext, options);
     if (base.done || base.question === null) {
       return base;
     }
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    // Fragebaum (nicht Foto): nur dort trägt das Ergebnis einen Knoten.
+    const baum = !photo && base.node !== undefined;
+    // Das Fachthema gilt nur für den Fragebaum; das Foto-Interview behält seinen Bildbefund.
+    const topic = baum ? normalizeInterviewTopic(options.topic) : "";
+    const research = baum
+      ? await this.researchInterviewTopic(answers, locale, confidential, options)
+      : [];
+    const aimed = research.find((p) => p.node === base.node);
     const system = photo
       ? `${interviewSystem(locale)}\n${interviewPhotoGuidance(locale)}`
-      : interviewSystem(locale);
+      : research.length > 0
+        ? `${interviewSystem(locale)}\n${interviewResearchGuidance(locale)}`
+        : interviewSystem(locale);
     const findingBlock = photo ? `${labels.imageFinding}:\n${finding}\n\n` : "";
+    const topicLine = topic ? `${labels.topic}: ${topic}\n\n` : "";
+    const researchBlock =
+      research.length > 0
+        ? `${labels.research}:\n${research.map((p) => `- ${p.hint}`).join("\n")}\n\n`
+        : "";
+    const aimLine = aimed ? `\n${labels.researchAim}: ${aimed.hint}` : "";
     const phrased = (
       await client.complete(
         system,
-        `${findingBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        `${findingBlock}${topicLine}${researchBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}${aimLine}`,
         confidential,
       )
     ).trim();
-    return { ...base, question: phrased || base.question };
+    return {
+      ...base,
+      question: phrased || base.question,
+      ...(research.length > 0 ? { research } : {}),
+    };
+  }
+
+  // R-0088 (Bens Befund nacharbeit-4): die gezielte Fachrecherche zum Thema des Interviews. EIN
+  // Modellaufruf je Interview: hat der Client die Recherche eines früheren Turns zurückgereicht, wird
+  // sie (geprüft und gekappt) wiederverwendet. Worüber recherchiert wird, ist das Lücken-Thema, sonst
+  // die Kernaussage — vor ihr gibt es nichts zu recherchieren. Die Punkte sind ungeprüfte Anlässe für
+  // Rückfragen: der Aufrufer zeigt sie als solche, und in den Entwurf kommen sie nie. Scheitert der
+  // Aufruf oder ist die Antwort unlesbar, läuft das Interview ehrlich OHNE Recherche weiter (kein
+  // erfundener Ersatz) — der Fehler einer Vertraulichkeitssperre trifft danach die Frage selbst.
+  //
+  // BENS BEFUND (nacharbeit-6): „Der Prompt ‚Du recherchierst' ersetzt keinen Recherchezugriff."
+  // Jetzt wertet dieser Aufruf nur noch QUELLEN aus, die die Route zum Thema tatsächlich abgerufen
+  // hat (`options.sources`, Quellensuche `services/external-search`). Ohne Quellen: keine Recherche
+  // und kein Modellaufruf. Jeder Prüfpunkt muss eine dieser Quellen nennen, sonst fällt er weg.
+  private async researchInterviewTopic(
+    answers: readonly string[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+    options: InterviewOptions,
+  ): Promise<InterviewResearchPoint[]> {
+    const known = normalizeInterviewResearch(options.research);
+    if (known.length > 0) {
+      return known;
+    }
+    const subject = interviewResearchSubject(answers, options);
+    const sources = normalizeInterviewSources(options.sources);
+    if (!subject || sources.length === 0) {
+      return [];
+    }
+    const labels = LABELS[locale];
+    const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const quellenBlock = sources
+      .map((s, i) => `[${i + 1}] ${s.title} (${s.url})${s.snippet ? `\n${s.snippet}` : ""}`)
+      .join("\n\n");
+    try {
+      const raw = await this.requireClient().complete(
+        interviewResearchSystem(locale),
+        `${labels.topic}: ${subject}\n\n${labels.sources}:\n${quellenBlock}\n\n${labels.priorAnswers}:\n${prior || labels.none}`,
+        confidential,
+      );
+      return parseInterviewResearch(raw, sources);
+    } catch {
+      return [];
+    }
   }
 
   // PMO-FEA-0006: Wissens-Extraktion über das Modell. Die Antwort wird serverseitig gegen den
@@ -2596,6 +2847,13 @@ export class ModelProvider implements ReasonerProvider {
           sourceId: r.id,
           snippet: r.statement,
         })),
+        // R-1643: jeder ausgegebene Wortlaut mit der Quelle, aus der er stammt. Der Begleitsatz
+        // „nicht geklärt" ist keine Aussage über die Sache und gehört nicht in die Kette.
+        argumentation: rueckfall.stimmen.map((s) => ({
+          aussage: s.text,
+          quellen: [s.ref.id],
+          belegtDurch: s.ref.id,
+        })),
         demo: false,
       };
     }
@@ -2618,6 +2876,8 @@ export class ModelProvider implements ReasonerProvider {
         sourceId: r.id,
         snippet: r.statement,
       })),
+      // R-1643: die Argumentationskette — dieselbe Zuordnung, die `pruefeDeckung` oben gemessen hat.
+      argumentation: argumentationAus(deckung),
       demo: false,
     };
   }
@@ -2661,6 +2921,23 @@ export class ModelProvider implements ReasonerProvider {
     const user = `A:\n${coreA}\n\nB:\n${coreB}`;
     const raw = await client.complete(duplicateSystem(locale), user, confidential, 768);
     return parseDuplicateResponse(raw);
+  }
+
+  // R-1657 (ROADMAP 9.3): Lückenerkennung über das echte Modell — nur Kennzahlen je Bereich gehen
+  // hinaus; `confidential` reist wie beim Konflikturteil bis zum Egress-Wächter.
+  async judgeKnowledgeGaps(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+  ): Promise<LueckenBereichsUrteil[] | null> {
+    const client = this.requireClient();
+    const raw = await client.complete(
+      lueckenSystem(locale),
+      lueckenNutzlast(bereiche),
+      confidential,
+      Math.min(4096, 256 + bereiche.length * 64),
+    );
+    return parseLueckenResponse(raw, bereiche);
   }
 
   private requireClient(): ModelClient {

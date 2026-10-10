@@ -133,7 +133,10 @@ async function mount(): Promise<void> {
               null,
               createElement(
                 MemoryRouter,
-                { initialEntries: ["/admin"] },
+                // ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht): `/admin` ohne Thema ist
+                // die Startseite der Verwaltung; die Kontenliste, um die es hier geht, hat ihre
+                // eigene Adresse.
+                { initialEntries: ["/admin?bereich=konten"] },
                 createElement(NavGuardProvider, null, createElement(Admin)),
               ),
             ),
@@ -327,13 +330,16 @@ describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () =>
     );
   });
 
-  it("4 TABSTRUKTUR · sieben Themen, Benutzer und Rollen ist der Startbereich", async () => {
+  it("4 TABSTRUKTUR · sieben Themen, die Kontenadresse zeichnet Benutzer und Rollen aus", async () => {
     await mount();
     // JOB 3337 (Pedi 08.09.): aus den vier Behältern sind die sieben Themen der Vorlage geworden
     // (Benutzer und Rollen · KI · Quellen und Daten · Vorführdaten · Sicherheit und Nachweise ·
     // Berichte und Analyse · System). Die Zusage dieses Falls bleibt dieselbe: die Themenspalte
-    // steht, und der Einstieg ist das erste Thema — die ZAHL wird aus `ADMIN_SECTIONS` gelesen,
-    // nicht mehr abgeschrieben, damit das nächste Thema hier keine zweite Wahrheit braucht.
+    // steht — die ZAHL wird aus `ADMIN_SECTIONS` gelesen, nicht mehr abgeschrieben, damit das
+    // nächste Thema hier keine zweite Wahrheit braucht.
+    // ADMIN-01: der Einstieg `/admin` ist seither die Übersicht (gemessen in
+    // `tests/admin-navigation/adressierbarkeit.test.tsx`, D5); hier steht die Kontenadresse, und
+    // sie zeichnet genau dieses Thema aus.
     const tabs = [...container.querySelectorAll('button[data-einst="reiter"]')];
     expect(tabs).toHaveLength(ADMIN_SECTIONS.length);
     const konten = tabs.find((b) => text(b) === i18n.t("adm.sec.konten"));

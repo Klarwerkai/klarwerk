@@ -26,7 +26,6 @@ export {
 } from "./src/image-validation";
 export {
   DeterministicProvider,
-  keywordSelect,
   type ReasonerProvider,
   // SCRUM-360 / AG-03: begrenzte, status-/trust-bewusste Top-K-Kandidatenauswahl.
   DEFAULT_TOP_K,
@@ -163,6 +162,7 @@ export type {
   ReasonerLocale,
   AnswerResult,
   AnswerStep,
+  ArgumentationsGlied,
   StructureResult,
   AssistResult,
   ConflictJudgeResult,
@@ -182,6 +182,8 @@ export type {
   GroupCandidatesResult,
   ImportCriteriaResult,
   InterviewResult,
+  InterviewOptions,
+  InterviewNodeId,
   ReasonerStatus,
   ReasonerConfigStatus,
   ReasonerConfigMode,
@@ -189,7 +191,17 @@ export type {
   ReasonerTask,
   // SCRUM-525 P.5 (WP-C): Herkunft der aktiven Policy (env|db|default) — Teil von ReasonerConfigStatus.
   ReasonerPolicySource,
+  // R-0305/R-1099: die Zweitmeinung — `services/ask` reicht ihr Ergebnis an die Route weiter.
+  ReasonerZweitmeinungWahl,
+  ZweitmeinungAbweichung,
+  ZweitmeinungAntwort,
+  ZweitmeinungErgebnis,
+  ZweitmeinungGrund,
+  ZweitmeinungStufe,
 } from "./src/types";
+// R-0305/R-1099: die benannten Wahlen (Schreibweg) und der reine Abgleich.
+export { REASONER_ZWEITMEINUNG_WAHLEN } from "./src/types";
+export { genannteZahlen, vergleicheAntworten } from "./src/zweitmeinung";
 // mega26 Block A: der Laufkontext ist Teil der ÖFFENTLICHEN Reasoner-Fläche — ein gebundener
 // Aufrufer (heute die extract-Route) muss ihn bilden können, ohne model-runs direkt zu kennen.
 export type { ModelRunContext, ModelRunSubject } from "../model-runs";
@@ -220,7 +232,6 @@ export {
   resolveKlaraPolicy,
   klaraPolicyVersion,
   klaraConfigurationVersion,
-  KLARA_MODES,
   KLARA_RESOLUTION_TTL_MS,
   KLARA_EXTERNAL_EXECUTION_MIGRATED,
   // R-0639: der Dokumenttext als eigene Klasse mit eigenem Riegel — gelesen im App-Layer

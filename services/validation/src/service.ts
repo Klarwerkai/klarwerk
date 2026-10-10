@@ -806,6 +806,82 @@ export class ValidationService {
     await this.koService.recordOwnershipRole(koId, "reviewers", [...userIds], actor);
   }
 
+  // ==============================================================================================
+  // R-0571 — ZUSTÄNDIGKEIT AUS DEM VERZEICHNIS, ABGEGLICHEN STATT NUR ERGÄNZT.
+  // ==============================================================================================
+  //
+  // `soll` sind die Personen, die laut aktuellem Gruppenstand für dieses Objekt zuständig sind.
+  //   · Fehlt einer davon eine Zuweisung, entsteht sie — markiert als `quelle: "verzeichnis"`,
+  //     Benachrichtigung „ausstehend" (der Aufrufer verschickt sie, s. `nochZuBenachrichtigen`).
+  //   · Eine OFFENE Verzeichnis-Zuweisung an jemanden, der nicht mehr zuständig ist (Gruppe
+  //     verlassen, Austritt, Objekt in einen anderen Space gewechselt), wird zurückgezogen.
+  //   · Unberührt bleiben: jede Zuweisung ohne diese Herkunft (von Hand, beim Einreichen) und jede
+  //     erledigte — eine abgeschlossene Prüfspur verschwindet nicht, weil sich eine Gruppe ändert.
+  //     Ebenso bleibt `reviewers` im Aggregat stehen: es ist die Spur, wer je zugewiesen war.
+  // Idempotent: ein zweiter Lauf mit demselben Stand ändert nichts.
+  async verzeichnisAbgleichen(
+    koId: string,
+    soll: readonly string[],
+    actor = "system",
+  ): Promise<{ neu: string[]; entzogen: string[] }> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      return { neu: [], entzogen: [] };
+    }
+    const vorhanden = await this.assignments.listByKos([koId]);
+    const entzogen: string[] = [];
+    for (const a of vorhanden) {
+      if (a.quelle === "verzeichnis" && a.status === "open" && !soll.includes(a.userId)) {
+        if (!this.assignments.remove) {
+          // Beide Ablagen (Speicher, PostgreSQL) können es; eine ohne darf nicht still nur ergänzen.
+          throw new Error("AssignmentRepo.remove fehlt — Verzeichnisabgleich nicht möglich.");
+        }
+        await this.assignments.remove(koId, a.userId);
+        entzogen.push(a.userId);
+      }
+    }
+    const neu: string[] = [];
+    for (const userId of soll) {
+      if (!vorhanden.some((a) => a.userId === userId)) {
+        await this.assignments.create({
+          koId,
+          userId,
+          status: "open",
+          benachrichtigung: "ausstehend",
+          quelle: "verzeichnis",
+        });
+        neu.push(userId);
+      }
+    }
+    if (neu.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assigned",
+        target: koId,
+        payload: { userIds: neu, quelle: "verzeichnis" },
+      });
+      await this.koService.recordOwnershipRole(koId, "reviewers", neu, actor);
+    }
+    if (entzogen.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assignment-withdrawn",
+        target: koId,
+        payload: { userIds: entzogen, quelle: "verzeichnis" },
+      });
+    }
+    return { neu, entzogen };
+  }
+
+  // R-0571: die Objekte, an denen noch eine OFFENE Verzeichnis-Zuweisung hängt — auch solche, deren
+  // Space inzwischen keiner Gruppe mehr zugeordnet ist. Nur für den Gesamtabgleich nach einer
+  // Verzeichnisänderung.
+  async koMitVerzeichnisZuweisung(): Promise<string[]> {
+    const alle = await this.assignments.all();
+    const offen = alle.filter((a) => a.quelle === "verzeichnis" && a.status === "open");
+    return [...new Set(offen.map((a) => a.koId))];
+  }
+
   // Wer von diesen Personen hat für das KO eine Zuweisung, deren Benachrichtigung noch AUSSTEHT?
   // Reine Lesefrage an die eigene Ablage.
   //
@@ -890,6 +966,24 @@ export class ValidationService {
       );
     }
     return notices;
+  }
+
+  // Betroffenenrechte (R-0663): ALLE Bewertungen und Zuweisungen GENAU dieser Person — für die
+  // Selbstauskunft. Nur lesend. Die Bewertungen kommen über `listByKos` in EINER Abfrage für die
+  // übergebenen Objekte (der Aufrufer kennt den Bestand); die Zuweisungen über `all()`, gefiltert —
+  // dieselbe Grundmenge wie `openAssignmentsFor`, hier aber auch die erledigten.
+  async datenVon(
+    userId: string,
+    koIds: readonly string[],
+  ): Promise<{ bewertungen: Rating[]; zuweisungen: Assignment[] }> {
+    const [bewertungen, zuweisungen] = await Promise.all([
+      this.ratings.listByKos(koIds),
+      this.assignments.all(),
+    ]);
+    return {
+      bewertungen: bewertungen.filter((r) => r.userId === userId),
+      zuweisungen: zuweisungen.filter((a) => a.userId === userId),
+    };
   }
 
   // Zeitpunkt der noch offenen Rückgabe dieses Objekts, sonst undefined (auch ohne Protokoll).

@@ -85,6 +85,8 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
 import { useRole } from "../../app/RoleContext";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { leerzustandsZeile } from "../EmptyStateCtas";
+import { IMPORT_LAUFLISTE_KEY } from "../ImportLaufListe";
 import { Button, Card, SectionLabel } from "../ui";
 import { SharePointZugangKarte } from "./SharePointZugangKarte";
 import { SHAREPOINT_BEREICH_ANKER } from "./anker";
@@ -154,6 +156,21 @@ const NICHT_UEBERNOMMEN_SATZ: Record<string, string> = {
   "zu-gross": "imp.sharepoint.nichtUebernommen.zuGross",
   unlesbar: "imp.sharepoint.nichtUebernommen.unlesbar",
 };
+
+/**
+ * ADMIN-02 — die Bilanz einer Übernahme. `ok` = neu übernommen + schon vorhanden (für die gewählte
+ * Datei erledigt, ohne doppelte Anlage); `gesamt` = alle beauftragten Dateien, aus den disjunkten
+ * Ausgängen der Antwort zusammengezählt.
+ */
+function uebernahmeBilanz(e: SharePointUebernahme): {
+  ok: number;
+  gesamt: number;
+  teilweise: boolean;
+} {
+  const offen = e.failed.length + e.notFound.length + e.ohneInhalt.length;
+  const ok = e.imported + e.alreadyQueued;
+  return { ok, gesamt: ok + offen, teilweise: offen > 0 };
+}
 
 /** Der Satz zu einem Befund aus der gegebenen Abbildung — oder `null`, wenn es keinen gibt. */
 function satzKey(karte: Record<string, string>, befund: string | null | undefined): string | null {
@@ -238,6 +255,8 @@ export function SharePointImportBereich(): JSX.Element | null {
       // Seite ohne Neuladen stimmt.
       void qc.invalidateQueries({ queryKey: ["import-candidates"] });
       void qc.invalidateQueries({ queryKey: ["sharepoint-zugang"] });
+      // ADMIN-02 (Nacharbeit 2): der neue Lauf steht sofort in der Importliste.
+      void qc.invalidateQueries({ queryKey: IMPORT_LAUFLISTE_KEY });
       void liste.refetch();
     },
   });
@@ -374,6 +393,7 @@ export function SharePointImportBereich(): JSX.Element | null {
   const uebernahmeFehler = uebernehmen.isError
     ? t(sharepointFehlertextKey(fehlercode(uebernehmen.error)))
     : null;
+  const bilanz = ergebnis !== null ? uebernahmeBilanz(ergebnis) : null;
 
   return (
     <Card id={SHAREPOINT_BEREICH_ANKER} className="mb-5 scroll-mt-4">
@@ -443,9 +463,13 @@ export function SharePointImportBereich(): JSX.Element | null {
                 </p>
               ) : null}
               {liste.data.dateien.length === 0 ? (
-                <p data-testid="sharepoint-leer" className="mt-2 text-[12.5px] text-muted">
-                  {t("imp.sharepoint.leer")}
-                </p>
+                <>
+                  <p data-testid="sharepoint-leer" className="mt-2 text-[12.5px] text-muted">
+                    {t("imp.sharepoint.leer")}
+                  </p>
+                  {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+                  {leerzustandsZeile(t, "import")}
+                </>
               ) : (
                 <ul className="mt-2 space-y-1.5">
                   {liste.data.dateien.map((datei) => {
@@ -594,6 +618,27 @@ export function SharePointImportBereich(): JSX.Element | null {
               <span className="block font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted-2">
                 {t("imp.sharepoint.ergebnisTitel")}
               </span>
+              {/* ADMIN-02 — DIE BILANZ ZUERST: vollständig oder teilweise, mit dem nächsten Schritt.
+                  Die Zahlen kommen aus der Antwort; „verarbeitet" zählt Neues UND schon Vorhandenes,
+                  denn beides ist für die gewählte Datei erledigt. Teilweise heisst: mindestens eine
+                  Datei scheiterte, fehlte oder trug keinen Inhalt — die Gründe stehen darunter. */}
+              {bilanz?.teilweise ? (
+                <p
+                  data-testid="sharepoint-bilanz"
+                  data-bilanz="teil"
+                  className="mt-1.5 text-[12.5px] font-semibold text-trust-warn-text"
+                >
+                  {t("integrationen.bilanz.teil", { ok: bilanz.ok, gesamt: bilanz.gesamt })}
+                </p>
+              ) : bilanz ? (
+                <p
+                  data-testid="sharepoint-bilanz"
+                  data-bilanz="gesamt"
+                  className="mt-1.5 text-[12.5px] font-semibold text-trust-pos-text"
+                >
+                  {t("integrationen.bilanz.gesamt", { gesamt: bilanz.gesamt })}
+                </p>
+              ) : null}
               {/* JOB 4125 — „NICHTS ÜBERNOMMEN" IST EINE AUSSAGE UND KEINE LEERSTELLE. Beim
                   Wiederholimport einer unveränderten Datei ist `dateien` leer; bis hierher stand
                   unter der Überschrift „Aus SharePoint geholt" dann einfach nichts, und der Mensch

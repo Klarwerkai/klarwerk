@@ -1,14 +1,23 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
+import {
+  useConflicts,
+  useFruehereRevalidierungen,
+  useGeloesteKonflikte,
+  useKos,
+  useLifecyclePendingWenn,
+  useReasonerStatus,
+} from "../api/hooks";
 import type {
   AnswerResult,
   AskGeltungsauskunft,
+  AskPruefrahmen,
   Fragekontext,
   VerschlossenHinweis,
 } from "../api/types";
@@ -17,11 +26,12 @@ import { useToast } from "../app/ToastContext";
 // DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
 // `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
 import { AiCostHint } from "../components/AiCostHint";
-import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
+import { AiGeneratedNotice, AiSurfaceNotice } from "../components/AiGeneratedNotice";
 import { Bedingungswechsel } from "../components/Bedingungswechsel";
 import { DemoBanner } from "../components/DemoBanner";
 import { FragekontextWahl, GeltungsAuskunft, fragekontextZumSenden } from "../components/Geltung";
 import { HelpTip } from "../components/HelpTip";
+import { ObjektbezugZeile } from "../components/ObjektbezugZeile";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
 // Sackgassen-Fehlerklasse FÜNFFACH — zweimal /validierung (Führungskarte + Prüfvorbehalt-CTA),
 // dazu /konflikte, /risiko und /erfassen?gap=… — und kannte keine einzige Rollenabfrage.
@@ -30,10 +40,15 @@ import { HelpTip } from "../components/HelpTip";
 // Weg — dasselbe EINE Tor wie auf Start/Library/Capture (mega51/mega70), keine zweite
 // Rollenlogik; erhoben wird das vom mega70-Rohlink-Sammler, der seit mega71 auch hier hinsieht.
 import { RoleLink } from "../components/RoleLink";
+// R-1089: „Antwort melden" mit Quittung an die verantwortliche Person der Quelle.
+import { AntwortMelden } from "../components/fragen/AntwortMelden";
 // FE-003: die Bausteine, die das Tutorial „Fragen“ mit dieser Seite TEILT — Fragefeld, Quellenchip
 // und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
+import { Belastbarkeit, PruefrahmenSatz } from "../components/fragen/Belastbarkeit";
+import { Entscheidungsprotokoll } from "../components/fragen/Entscheidungsprotokoll";
 import { FrageFeld } from "../components/fragen/FrageFeld";
+import { LoesungswegSchritte, VermeidenWarnung } from "../components/fragen/Loesungsweg";
 import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
 import {
@@ -43,17 +58,34 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+// R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
+import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
+import { ANTWORT_MENUEPUNKTE } from "../components/fragen/antwortMenue";
 import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
+import { useSprachaufnahme } from "../components/sprache/useSprachaufnahme";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
 // HTML-Sink) — mit den Fussnotenmarken des H5-Zielbilds. Derselbe Parser wie `AnswerMarkdown`.
 import { AntwortText } from "../components/start/AntwortText";
 import { OverflowMenu } from "../components/start/OverflowMenu";
 import { Seitenblatt } from "../components/start/Seitenblatt";
 import { useDiktat } from "../components/start/useDiktat";
-import { ConfidenceBar } from "../components/trust";
+import { ConfidenceBar, ErgebnisStufeMarke } from "../components/trust";
 import { Button, Card, SectionLabel } from "../components/ui";
-import { answerExportFilename, buildAnswerMarkdown } from "../lib/answerExport";
+// R-0305/R-1099: der Kostenhinweis der Zweitmeinung kennt beide Modellwege.
+import { deriveZweitmeinungBillable } from "../lib/aiAvailability";
+import {
+  type AnswerExportInput,
+  answerExportFilename,
+  buildAnswerMarkdown,
+} from "../lib/answerExport";
+import {
+  ANTWORT_DATEI_TYP,
+  type AntwortDateiformat,
+  PdfZeichenNichtDarstellbar,
+  antwortDateiname,
+  buildAnswerDatei,
+} from "../lib/antwortDateien";
 import {
   ANSWER_CONTRACT_TRUST_NOTE_KEY,
   answerContract,
@@ -99,9 +131,19 @@ import {
 // R-0348: Nachfragen im Gesprächsfaden statt Einzelschüssen.
 import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
+// R-0625 / R-1020 / R-1695: Herkunft und Stufe der Antwort aus EINER Ableitung.
+import { ergebnisStufeFuerAntwort, kiHerkunftAus } from "../lib/kiHerkunft";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { formatKoTimestamp } from "../lib/koDates";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
+import { leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
+import {
+  fruehereRevalidierungen,
+  geloesteKonflikte,
+  problemloesungsweg,
+  revalidierungsfaelle,
+  wegAbrufAus,
+} from "../lib/problemloesungsweg";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -327,11 +369,9 @@ function MehrFlaechenInfo({
           </span>
         </span>
       </div>
-      {/* AUFTRAG-mega61 Block E: der KI-Kennzeichnungssatz VOR der ersten Frage. Der Satz an der
-          erzeugten Ausgabe selbst (Artikel 50) steht unverändert in der Antwortkarte. */}
-      <p className="mb-3">
-        <AiGeneratedNotice />
-      </p>
+      {/* AUFTRAG-mega61 Block E: hier stand der KI-Hinweis VOR der ersten Frage. Seit JOB 3064 (H5)
+          lag er damit hinter „…" → „Mehr" — genau hinter dem Aufklapp-Knopf, den R-0603
+          ausschliesst. Er steht jetzt dauerhaft über dem Fragefeld (`ask-ki-flaechensatz`). */}
       {/* JOB 3038 · „Ehrlichkeit vor Optik": statt eines toten Mikrofonknopfes der Satz, der den
           Zustand nennt. §6 des Auftrags nimmt ihn aus dem Sichtfeld — ohne Spracherkennung fehlt
           das Mikrofon einfach; WARUM es fehlt, steht hier. */}
@@ -534,6 +574,9 @@ export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
+  // Arbeitswege am selben Artikel: der Beitrag, aus dem gefragt wird (`ko`/`fassung`), gelesen aus
+  // der Adresse bei JEDEM Zeichnen — kein Anfangswert, der nach einem Wechsel stehen bliebe.
+  const objektbezug = leseObjektbezug(params);
   // ==============================================================================================
   // PEDI 28.09.2026 · ERGÄNZUNG 1 — WEITERARBEITEN, WO MAN AUFGEHÖRT HAT.
   // ==============================================================================================
@@ -641,6 +684,15 @@ export function Ask(): JSX.Element {
   // ANGEHÄNGT, und das Stoppen löst KEINE Modellanfrage aus.
   const diktat = useDiktat((text: string) => setQ((prev) => (prev ? `${prev} ${text}` : text)));
   const speechSupported = diktat.moeglich;
+  // R-0104 (Aufnahme gesamt-sprachassistent): Sprechen über das Browser-Diktat hinaus — die Aufnahme
+  // verschriftlicht die vorhandene Server-Transkription, das Ergebnis wird ANGEHÄNGT wie beim Diktat.
+  // Die Stufe ist „intern“: die getippte Frage dieser Fläche geht ebenfalls ohne Vertraulichkeits-
+  // markierung an den Reasoner (markiert wird nur der Dokumenttext des Word-Panels,
+  // `services/ask/src/service.ts` `dokumenttextVertraulich`). Gesendet wird erst auf Klick.
+  const sprachaufnahme = useSprachaufnahme({
+    anhaengen: (text: string) => setQ((prev) => (prev ? `${prev} ${text}` : text)),
+    vertraulichkeit: "intern",
+  });
   // R-1053: die Antwort auf Klick vorlesen — Browser-Sprachausgabe, kein Auto-Play.
   const vorlesen = useVorlesen();
   // JOB 3064 §5: zwei Schalter der Fläche — das Info-Blatt („…" → „Mehr") und die Beispielliste
@@ -653,6 +705,9 @@ export function Ask(): JSX.Element {
   // trifft als Wissenslücke ein). Deshalb hält beide Menüorte derselbe Ref, und das Blatt liest ihn
   // erst beim Schliessen — nicht beim Öffnen.
   const menuGriffRef = useRef<HTMLButtonElement | null>(null);
+  // R-1662: das Blatt „Lösungsweg" an der Antwort und sein Knopf in der Knopfzeile.
+  const [loesungsweg, setLoesungsweg] = useState(false);
+  const loesungswegGriffRef = useRef<HTMLButtonElement | null>(null);
   const [beispiele, setBeispiele] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
   // Eine neue (oder keine) Antwort: was gerade vorgelesen wird, gilt nicht mehr.
@@ -661,6 +716,12 @@ export function Ask(): JSX.Element {
   useEffect(() => {
     vorlesenStoppen();
   }, [result, vorlesenStoppen]);
+  // R-1662: der Lösungsweg gehört zu GENAU der Antwort, an deren Knopf er geöffnet wurde — mit einer
+  // anderen (oder keiner) Antwort geht er zu, statt bei der nächsten von selbst wieder aufzugehen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — genau beim Antwortwechsel schliessen.
+  useEffect(() => {
+    setLoesungsweg(false);
+  }, [result]);
   // Ergänzung 1: welche Antwort aus dem Arbeitsstand kam (s. das Anspringen unter `revealResult`).
   const aufgenommeneAntwort = useRef<AnswerResult | null>(result);
   // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
@@ -670,6 +731,10 @@ export function Ask(): JSX.Element {
   const [verschlossen, setVerschlossen] = useState<VerschlossenHinweis[]>(
     anfang?.antwort?.verschlossen ?? [],
   );
+  // AUFNAHME 20260922 · R-0284: wogegen DIESE Frage geprüft wurde — dieselbe Bindung an genau eine
+  // Frage wie die Torlage. Nicht im Arbeitsstand: nach dem Neuladen steht ehrlich kein Satz, statt
+  // eines Rahmens, den niemand mehr bestätigt hat.
+  const [pruefrahmen, setPruefrahmen] = useState<AskPruefrahmen | null>(null);
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
@@ -687,6 +752,16 @@ export function Ask(): JSX.Element {
   // gespeichert.
   const [fragekontext, setFragekontext] = useState<Fragekontext>({});
   const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
+  // R-0305/R-1099 (Ben, Nacharbeit 9): der Fragekontext, mit dem die STEHENDE Antwort gestellt
+  // wurde — gesetzt beim Eintreffen der Antwort, nicht aus der aktuellen Auswahl gelesen. Die
+  // Zweitmeinung stellt dieselbe Frage mit genau diesem Kontext, auch wenn die Auswahl inzwischen
+  // geändert wurde; sonst bezöge sie sich auf eine anders gewichtete Frage.
+  // Ben (Nacharbeit 10): der Kontext reist mit der Antwort durch den Arbeitsstand. Drei Lesarten —
+  // ein Objekt (mit Kontext gefragt), `null` (ohne Kontext gefragt), `undefined` (UNBEKANNT: ein
+  // Altstand von vor dieser Ablage). Unbekannt behauptet keine kontextgleiche Zweitmeinung.
+  const [antwortKontext, setAntwortKontext] = useState<Fragekontext | null | undefined>(() =>
+    anfang?.antwort ? anfang.antwort.fragekontext : null,
+  );
   // Ben, Nacharbeit 2: „Neues Thema" während einer laufenden Nachfrage. Die später eintreffende
   // Antwort darf ihre Frage nicht wieder in den geleerten Faden tragen — sie gehört zum alten
   // Thema. Jede Anfrage trägt die Generation, unter der sie startete (wie `kontoGeneration`).
@@ -723,6 +798,11 @@ export function Ask(): JSX.Element {
 
   // SCRUM-250: KO-Bestand für lesbare Quellen-Titel (kein neuer Endpoint).
   const kos = useKos();
+  // Arbeitswege am selben Artikel: der Titel des Beitrags, aus dem gefragt wird — aus DEMSELBEN
+  // Bestand wie die Quellentitel, kein eigener Abruf. Fehlt er, nennt die Zeile die Kennung.
+  const objektTitel = objektbezug
+    ? ((kos.data ?? []).find((k) => k.id === objektbezug.koId)?.title ?? null)
+    : null;
   // FUNKE F1 (nacht24): Wissensträger-Namen für die Quellen-Würdigung (Directory EINMAL je Seite;
   // Fallback bleibt ehrlich die Autor-Id).
   // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
@@ -745,6 +825,10 @@ export function Ask(): JSX.Element {
   // seiner Herkunft; unbelegt ⇒ nie „verified", dafür ein benannter Hinweis.
   const conflictKnown = conflictKnowledge(conflicts);
   const effective = result ? effectiveAnswer(result, kos.data ?? [], conflictKnown) : null;
+  // R-0625 / R-1020 / R-1695: belegte Herkunft und daraus die Stufe dieser Antwort. „Validiert"
+  // nur bei belegt modellfreier Herkunft UND belegter Einstufung — nie für einen Modelltext.
+  const antwortHerkunft = result ? kiHerkunftAus(result) : "unbekannt";
+  const antwortStufe = ergebnisStufeFuerAntwort(antwortHerkunft, effective?.grade === "verified");
   // AUFTRAG-mega52 A3: die Quellenliste bekommt eine Ordnung und ein Kennzeichen — tragende zuerst,
   // die übrigen als das, was sie sind. Ist die Zuordnung unbekannt (A5), bleibt alles in Ranking-
   // Reihenfolge und ohne Kennzeichen; der Hinweis darüber sagt dann warum. Eine Quelle, eine Regel
@@ -883,11 +967,14 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
       // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
       setVerschlossen([]);
+      setPruefrahmen(null);
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
       setGeltungsAuskunft(null);
+      // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
+      setAntwortKontext(null);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
-    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand }) => {
+    onSuccess: (r, { frage: question, generation, fadenGeneration: fadenStand, kontext }) => {
       // Ben R1, F1: die Antwort eines anderen (früheren) Kontos berührt nichts.
       if (generation !== kontoGeneration.current) {
         return;
@@ -914,8 +1001,11 @@ export function Ask(): JSX.Element {
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
+      setPruefrahmen(r.pruefrahmen ?? null);
       // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
       setGeltungsAuskunft(r.geltung ?? null);
+      // R-0305/R-1099 (Ben, Nacharbeit 9): der Kontext DIESER Anfrage, nicht der aktuellen Auswahl.
+      setAntwortKontext(kontext ?? null);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -998,6 +1088,9 @@ export function Ask(): JSX.Element {
               angezeigtAm: antwortAm ?? new Date().toISOString(),
               ...(quellenStand ? { serverQuellenStand: quellenStand } : {}),
               ...(beobachtet ? { beobachtet } : {}),
+              // R-0305/R-1099 (Ben, Nacharbeit 10): der Kontext der Antwort reist mit; ein
+              // unbekannter (Altstand) bleibt unbekannt und wird nicht zu „ohne Kontext".
+              ...(antwortKontext === undefined ? {} : { fragekontext: antwortKontext }),
             }
           : null,
       startadressen: gemerkteStartadressen,
@@ -1013,6 +1106,7 @@ export function Ask(): JSX.Element {
     antwortAm,
     quellenStand,
     beobachtet,
+    antwortKontext,
     gemerkteStartadressen,
   ]);
 
@@ -1061,8 +1155,12 @@ export function Ask(): JSX.Element {
       setResult(antwort?.result ?? null);
       setReceipt(antwort?.receipt ?? "");
       setVerschlossen(antwort?.verschlossen ?? []);
+      setPruefrahmen(null);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
+      // R-0305/R-1099 (Ben, Nacharbeit 10): der gespeicherte Kontext DIESER Antwort — fehlt er
+      // (Altstand), ist er unbekannt (`undefined`), nicht „ohne Kontext".
+      setAntwortKontext(antwort ? antwort.fragekontext : null);
       // R-0348: der Faden gehört zum Konto — er beginnt bei der übernommenen Antwort neu.
       setFaden(antwort?.frage ? [antwort.frage] : []);
       setAntwortAm(antwort?.angezeigtAm ?? null);
@@ -1349,6 +1447,24 @@ export function Ask(): JSX.Element {
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
+  // R-1662: der geführte Weg vom Problem zur Lösung — aus denselben Quellen in derselben Ordnung
+  // (tragende zuerst) und derselben Einstufung wie die Antwortkarte; im Lückenfall gibt es ihn nicht.
+  const weg =
+    result?.answered && effective
+      ? problemloesungsweg(effective.grade, answerSources, kosById)
+      : null;
+  // R-1662 Prüfpunkte 5 und 6 (Ben, Nacharbeit 2): gelöste Konflikte und offene Revalidierungsfälle
+  // zu genau diesen Quellen. Geladen wird erst mit offenem Blatt — eine Antwort allein löst keinen
+  // zusätzlichen Abruf aus.
+  const wegGeprueft = loesungsweg && weg !== null;
+  const wegQuellenIds = weg ? answerSources.map((s) => s.id) : [];
+  const geloestAbruf = useGeloesteKonflikte(wegQuellenIds, wegGeprueft);
+  const faelligAbruf = useLifecyclePendingWenn(wegGeprueft);
+  // Ben, Nacharbeit 5: frühere, schon bestätigte Revalidierungen — getrennt von den offenen Fällen.
+  const frueherAbruf = useFruehereRevalidierungen(wegQuellenIds, wegGeprueft);
+  const wegKonflikte = geloesteKonflikte(answerSources, kosById, wegAbrufAus(geloestAbruf));
+  const wegRevalidierung = revalidierungsfaelle(answerSources, wegAbrufAus(faelligAbruf));
+  const wegFrueher = fruehereRevalidierungen(answerSources, wegAbrufAus(frueherAbruf));
   // ==============================================================================================
   // JOB 3267 Q1 — DIE GERENDERTEN FUSSNOTEN, AM DOM GEMESSEN.
   // ==============================================================================================
@@ -1364,6 +1480,9 @@ export function Ask(): JSX.Element {
   // Schleife: der Zustand ist ein Schlüssel-String, und ein gleicher Wert lässt React abbrechen.
   const antwortRef = useRef<HTMLDivElement | null>(null);
   const [markenSchluessel, setMarkenSchluessel] = useState<string | null>(null);
+  // R-1643: das Entscheidungs-Protokoll für das gedruckte Blatt — nur zwischen Druckauftrag und
+  // `afterprint` gesetzt (s. `printAnswer`).
+  const [druckProtokoll, setDruckProtokoll] = useState<AnswerExportInput | null>(null);
   useLayoutEffect(() => {
     const wurzel = antwortRef.current;
     const naechster =
@@ -1441,9 +1560,17 @@ export function Ask(): JSX.Element {
       quelle?.carrying && zitiert.trim() !== ""
         ? { passage: zitiert, fassung: ko?.version ?? null }
         : null;
-    return demoHref(belegstelleHref(id, stelle), params);
+    // Arbeitswege am selben Artikel (Quellrückweg, Nacharbeit 8): bleibt von der Belegstelle KEIN
+    // Anker übrig — keine tragende Passage ODER eine zu lange, die `belegstelleHref` samt Fassung
+    // verwirft —, führt die Quelle, die zugleich der gefragte Beitrag ist, mit DERSELBEN Kennung und
+    // Fassung zurück (`quellenRueckwegHref`). Mit Anker gilt die genauere Belegstelle.
+    return demoHref(quellenRueckwegHref(id, belegstelleHref(id, stelle), objektbezug), params);
   };
-  const buildExport = (): { markdown: string; filename: string } | null => {
+  // R-0703 / R-0625 (Ben Nacharbeit 2): EINE Exporteingabe für Markdown, Word, PowerPoint und PDF —
+  // mit der DREIWERTIGEN Herkunft. Bis hierher machte die Fragenseite aus „unbekannt" ein `false`.
+  // R-1643 (Entscheidungs-Protokoll): dieselbe Eingabe liest auch der Druck — Kopieren, Markdown,
+  // Dateien und Druck tragen damit dasselbe Protokoll (Zeitpunkt, Nutzer-ID, Argumentationskette).
+  const exportEingabe = (): AnswerExportInput | null => {
     if (!result?.answered || !effective) {
       return null;
     }
@@ -1477,7 +1604,7 @@ export function Ask(): JSX.Element {
         ...(zuordnungTragfaehig ? { attributionLabel: t(VERWENDUNG_BADGE[s.verwendung]) } : {}),
       };
     });
-    const markdown = buildAnswerMarkdown({
+    return {
       question: asked || q,
       answer: result.answer ?? "",
       // AUFTRAG-mega33 A2: Kopieren und Markdown-Download exportieren die EFFEKTIVE Einstufung.
@@ -1489,6 +1616,9 @@ export function Ask(): JSX.Element {
       steps: result.steps.map((s) => ({ description: s.description, snippet: s.snippet })),
       sources,
       generatedAt,
+      // R-0625: belegt KI / belegt modellfrei / unbekannt — nur „ohne-ki" schaltet die Kennzeichnung
+      // in der Datei aus (`exportKennzeichnen`).
+      kiHerkunft: kiHerkunftAus(result),
       labels: {
         answer: t("ask.export.answer"),
         evidence: t("ask.evidence"),
@@ -1505,8 +1635,66 @@ export function Ask(): JSX.Element {
         }),
         ...(zuordnungTragfaehig ? {} : { attributionUnknown: t("ask.attribution.unknown") }),
       },
-    });
-    return { markdown, filename: answerExportFilename(generatedAt) };
+      // R-1643: Zeitstempel und Nutzer-ID. Die Kennung ist DIESELBE, unter der die Seite den
+      // Arbeitsstand führt (`useKontoKennung`, Sitzungsabfrage `["auth", "me"]`) — ohne Sitzung
+      // `null`, und das Protokoll sagt dann „nicht angemeldet" statt eine Kennung zu erfinden.
+      protocol: {
+        userId: konto,
+        // R-1643 (Ben, Nacharbeit 2): die Argumentationskette kommt vom Server (gemessene Zuordnung
+        // Aussage → Quelle). Fehlt sie, bleibt sie `null` — `result.steps` springt NICHT ein, denn
+        // das sind Fundstellen und keine Begründung.
+        argumentation: result.argumentation ?? null,
+        labels: {
+          heading: t("ask.export.protocol.heading"),
+          time: t("ask.export.protocol.time"),
+          user: t("ask.export.protocol.user"),
+          userUnknown: t("ask.export.protocol.userUnknown"),
+          argumentation: t("ask.export.protocol.argumentation"),
+          supportedBy: t("ask.export.protocol.supportedBy"),
+          argumentationMissing: t("ask.export.protocol.argumentationMissing"),
+        },
+      },
+    };
+  };
+  const buildExport = (): { markdown: string; filename: string } | null => {
+    const eingabe = exportEingabe();
+    if (!eingabe) {
+      return null;
+    }
+    return {
+      markdown: buildAnswerMarkdown(eingabe),
+      filename: answerExportFilename(eingabe.generatedAt),
+    };
+  };
+  const herunterladen = (inhalt: Blob, dateiname: string): void => {
+    const url = URL.createObjectURL(inhalt);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = dateiname;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  // R-0703: Word, PowerPoint und PDF als echte Dateien — mit der Kennzeichnung in ihren
+  // Eigenschaften (lib/antwortDateien.ts). Der Druckweg bleibt unverändert daneben.
+  const dateiHerunterladen = (format: AntwortDateiformat): void => {
+    const eingabe = exportEingabe();
+    if (!eingabe) {
+      return;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = buildAnswerDatei(eingabe, format);
+    } catch (fehler) {
+      // Ben Nacharbeit 4: lieber KEINE PDF-Datei als eine mit verändertem Inhalt. Die Meldung
+      // nennt die Zeichen und den verlustfreien Weg (Word, Markdown).
+      if (fehler instanceof PdfZeichenNichtDarstellbar) {
+        push("error", t("ask.export.pdfZeichen", { zeichen: fehler.zeichen.join(" ") }));
+        return;
+      }
+      throw fehler;
+    }
+    const inhalt = new Blob([bytes.buffer as ArrayBuffer], { type: ANTWORT_DATEI_TYP[format] });
+    herunterladen(inhalt, antwortDateiname(eingabe.generatedAt, format));
   };
   const copyAnswer = (): void => {
     const ex = buildExport();
@@ -1523,20 +1711,22 @@ export function Ask(): JSX.Element {
     if (!ex) {
       return;
     }
-    const blob = new Blob([ex.markdown], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = ex.filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    herunterladen(new Blob([ex.markdown], { type: "text/markdown;charset=utf-8" }), ex.filename);
   };
   // SCRUM-440-Muster: nur den markierten Auszug (.print-area) drucken; Klasse nach dem Druck entfernen.
+  // R-1643: vor dem Druck steht das Entscheidungs-Protokoll IN der Druckfläche — synchron
+  // (`flushSync`), weil `window.print()` sofort das aktuelle DOM abbildet. Nach dem Druck verschwindet
+  // es wieder; auf dem Bildschirm ändert sich nichts.
   const printAnswer = (): void => {
+    const protokoll = exportEingabe();
+    flushSync(() => setDruckProtokoll(protokoll));
     document.body.classList.add("printing-extract");
     window.addEventListener(
       "afterprint",
-      () => document.body.classList.remove("printing-extract"),
+      () => {
+        document.body.classList.remove("printing-extract");
+        setDruckProtokoll(null);
+      },
       {
         once: true,
       },
@@ -1581,6 +1771,10 @@ export function Ask(): JSX.Element {
           />
         )}
       </div>
+      {/* Arbeitswege am selben Artikel: kam die Frage aus einem Beitrag, steht er hier — mit
+          Fassung und dem Rückweg dorthin, beides aus der Adresse und damit auch nach Neuladen und
+          Zurücknavigation derselbe. Die Anfrage selbst bleibt unverändert (`fragen.ts`). */}
+      {objektbezug ? <ObjektbezugZeile bezug={objektbezug} titel={objektTitel} /> : null}
       {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
           es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
           Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
@@ -1683,6 +1877,12 @@ export function Ask(): JSX.Element {
             </button>
           </div>
         ) : null}
+        {/* R-0603: der KI-Hinweis DIESER Fläche — dauerhaft, ohne Griff, vor der ersten Frage.
+            Er behauptet keine Erzeugung (R-0604); die steht an der Antwort, gebunden an die
+            Servermarke. ÜBER dem Feld, weil zwischen Feld und Antwort nichts stehen darf (R-0286). */}
+        <p data-testid="ask-ki-flaechensatz" className="m-0 mb-2">
+          <AiSurfaceNotice />
+        </p>
         {/* R-1633: „Ich frage für" Werk/Schicht/Rolle — gleich passende Quellen dieses Orts
             stehen vorn; nichts wird ausgeblendet. Zugeklappt, solange niemand es braucht. */}
         <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
@@ -1734,6 +1934,7 @@ export function Ask(): JSX.Element {
           beispieleOffen={beispiele}
           onBeispiele={() => setBeispiele((v) => !v)}
           diktat={speechSupported ? diktat : null}
+          aufnahme={sprachaufnahme.moeglich ? sprachaufnahme : null}
           wartet={ask.isPending}
           gesperrt={!answerAi.available}
           sperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
@@ -1751,6 +1952,14 @@ export function Ask(): JSX.Element {
         >
           {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
         </output>
+        {sprachaufnahme.meldung ? (
+          <output
+            data-testid="ask-sprachaufnahme-meldung"
+            className="mt-3 block text-[12px] text-muted"
+          >
+            {sprachaufnahme.meldung}
+          </output>
+        ) : null}
         {nichtHilfreich ? (
           <NichtHilfreichKarte
             key={`${nichtHilfreich.koId}:${nichtHilfreich.alternative}`}
@@ -2083,6 +2292,7 @@ export function Ask(): JSX.Element {
                   // ausdrücklich gesetzt.
                   className="print-area relative mt-0 flex flex-col gap-4 !rounded-[14px] border-hairline px-7 py-6 shadow-tile"
                   data-testid="ask-answer"
+                  {...(antwortStufe === "entwurf" ? { "data-reasoner-entwurf": "" } : {})}
                 >
                   {/* D-047: die Antwort zuerst — Begründung unmittelbar über dieser Karte. */}
                   <AntwortText
@@ -2101,12 +2311,11 @@ export function Ask(): JSX.Element {
                       {t("ai.truncated.hint")}
                     </p>
                   ) : null}
-                  {/* mega62 Block E: der KI-Satz gehört IN die Druckfläche (sonst fehlt er im PDF).
-                    D-047: er folgt UNMITTELBAR auf die Antwort statt ihr voranzugehen — Artikel 50
-                    verlangt die Kennzeichnung an der erzeugten Ausgabe, nicht vor ihr. Wortlaut,
-                    Bauteil und Druckfläche unverändert. */}
-                  <p className="m-0">
-                    <AiGeneratedNotice />
+                  {/* mega62 E / D-047: Stufe (R-1695) und KI-Satz direkt nach der Antwort, in der
+                    Druckfläche. Der Satz nur mit gültiger Servermarke (R-0604). */}
+                  <p className="m-0 flex flex-wrap items-center gap-1.5">
+                    <ErgebnisStufeMarke stufe={antwortStufe} />
+                    {antwortHerkunft === "ki" ? <AiGeneratedNotice /> : null}
                   </p>
                   {/* ==========================================================================
                     R-0287 / R-0286 — DIE WARNUNG STEHT VOLLSTÄNDIG DIREKT HINTER DER ANTWORT.
@@ -2117,7 +2326,7 @@ export function Ask(): JSX.Element {
                     jetzt hier, jeder zutreffende genau einmal, mit Wortlaut, Ableitung und Ankern
                     wie bisher; im Blatt steht keiner mehr ein zweites Mal. Reihenfolge nach R-0286:
                     Antwort → KI-Kennzeichnung → Warnkästen → Quellen → Werkzeuge. */}
-                  {vorbehalte > 0 ? (
+                  {vorbehalte > 0 || (weg?.vermeiden.length ?? 0) > 0 ? (
                     <div data-testid="ask-warnungen" className="flex flex-col gap-2">
                       {reviewGuard ? (
                         <div
@@ -2201,7 +2410,24 @@ export function Ask(): JSX.Element {
                           </p>
                         </div>
                       ) : null}
+                      {/* R-1662 „Bekannte Fehler / Was vermeiden?": Negativwissen unter den
+                        herangezogenen Quellen ist eine Warnung und steht deshalb hier. */}
+                      {weg && weg.vermeiden.length > 0 ? (
+                        <VermeidenWarnung
+                          vermeiden={weg.vermeiden}
+                          wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                        />
+                      ) : null}
                     </div>
+                  ) : null}
+                  {/* AUFNAHME 20260922 · R-0318/R-0321/R-0322/R-0335: die Belastbarkeit VOM SERVER
+                    direkt an der Antwort — Lage, Begründung, Vertrauenswert mit Herleitung, je
+                    tragender Quelle Stand und Verantwortung, bei Widerspruch beide Seiten. Eine zur
+                    Lücke herabgestufte leere Antwort (`leereAntwortAlsLuecke`) trägt sie nicht. */}
+                  {result.answered &&
+                  result.belastbarkeit &&
+                  result.belastbarkeit.lage !== "wissensluecke" ? (
+                    <Belastbarkeit b={result.belastbarkeit} />
                   ) : null}
                   {/* ==========================================================================
                     DIE QUELLEN-CHIPS (Zielbild Z.42) — „n · Titel", getrennt durch eine Linie.
@@ -2225,6 +2451,7 @@ export function Ask(): JSX.Element {
                         return (
                           <Link
                             key={s.id}
+                            // Quellrückweg samt Belegstelle: `quellenHref` (dort begründet).
                             to={quellenHref(s.id)}
                             data-testid="ask-quellen-chip"
                             data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
@@ -2279,11 +2506,7 @@ export function Ask(): JSX.Element {
                       label={t("ask.menu.label")}
                       testId="ask-menu"
                       griffRef={menuGriffRef}
-                      punkte={[
-                        { id: "print", label: t("ask.export.print") },
-                        { id: "download", label: t("ask.export.download") },
-                        { id: "mehr", label: t("ask.menu.mehr") },
-                      ]}
+                      punkte={ANTWORT_MENUEPUNKTE.map((p) => ({ id: p.id, label: t(p.labelKey) }))}
                       onWahl={(id) => {
                         if (id === "print") {
                           printAnswer();
@@ -2291,6 +2514,10 @@ export function Ask(): JSX.Element {
                         }
                         if (id === "download") {
                           downloadAnswer();
+                          return;
+                        }
+                        if (id === "docx" || id === "pptx" || id === "pdf") {
+                          dateiHerunterladen(id);
                           return;
                         }
                         setMehr(true);
@@ -2552,6 +2779,9 @@ export function Ask(): JSX.Element {
                       </div>
                     </Seitenblatt>
                   ) : null}
+                  {/* R-1643: das Entscheidungs-Protokoll — nur auf dem gedruckten Blatt, nur
+                    während des Druckauftrags (Begründung am Bauteil). */}
+                  {druckProtokoll ? <Entscheidungsprotokoll eingabe={druckProtokoll} /> : null}
                 </Card>
                 {/* Zielbild Z.44: zwei ruhige Knöpfe, 10/20 Polster, Radius 10, 14 px.
                   „Kopieren" kopiert unverändert die EFFEKTIVE Fassung (`buildExport` → derselbe
@@ -2607,6 +2837,31 @@ export function Ask(): JSX.Element {
                       t("ask.thanked"),
                     )}
                   </button>
+                  {/* R-1662: der geführte Weg vom Problem zur Lösung — ein Knopf, kein Erklärtext im
+                      Sichtfeld (H5); Rahmung und Schritte stehen im Blatt darunter. */}
+                  {weg ? (
+                    <button
+                      type="button"
+                      ref={loesungswegGriffRef}
+                      data-testid="ask-loesungsweg"
+                      onClick={() => setLoesungsweg(true)}
+                      className="inline-flex items-center gap-1.5 rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text hover:bg-hairline-soft"
+                    >
+                      {t("loesungsweg.oeffnen")}
+                    </button>
+                  ) : null}
+                  {/* R-1089: „Antwort melden" — an die verantwortliche Person der gewählten
+                      Quelle, mit Quittung. Meldbar ist, was der Beleg trägt (`citedSources`), in
+                      der Reihenfolge der Quellenliste; `key` setzt die Fläche je Antwort neu auf. */}
+                  <AntwortMelden
+                    key={receipt}
+                    quellen={quellenAuskunft.filter((s) =>
+                      (result.citedSources ?? []).includes(s.id),
+                    )}
+                    receipt={receipt}
+                    belegGueltig={belegGueltig}
+                    onFehler={rueckmeldungAbgelehnt}
+                  />
                   {/* Ben R1, F8: eine nicht ausführbare Aktion wird erklärt, nicht bloss gesperrt. */}
                   {belegGueltig || helpful.isSuccess ? null : (
                     <p
@@ -2618,6 +2873,38 @@ export function Ask(): JSX.Element {
                     </p>
                   )}
                 </div>
+                {/* R-1662: das Blatt ist ein Portal und steht damit nicht zwischen Karte und
+                    Knopfzeile im Baum (Zielbild Z.44 misst die Knopfzeile als Nachbarn der Karte). */}
+                {loesungsweg && weg ? (
+                  <Seitenblatt
+                    titel={t("loesungsweg.titel")}
+                    testId="ask-loesungsweg-blatt"
+                    onSchliessen={() => setLoesungsweg(false)}
+                    ausloeser={() => loesungswegGriffRef.current}
+                  >
+                    <LoesungswegSchritte
+                      weg={weg}
+                      konflikte={wegKonflikte}
+                      revalidierung={wegRevalidierung}
+                      frueher={wegFrueher}
+                      wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                      nameVon={authorNameOf}
+                    />
+                  </Seitenblatt>
+                ) : null}
+                {/* R-0305/R-1099: die Zweitmeinung — eigene Anfrage, eigener Zustand (Begründung im
+                  Baustein). `key` bindet sie an genau diese Frage und ihren Kontext: eine neue
+                  Frage oder eine im anderen Kontext neu gestellte Antwort beginnt leer. */}
+                <Zweitmeinung
+                  key={`${asked}\u0000${JSON.stringify(antwortKontext ?? String(antwortKontext))}`}
+                  frage={asked}
+                  faden={fadenFuerAnfrage(faden, asked)}
+                  kontext={antwortKontext ?? undefined}
+                  kontextUnbekannt={antwortKontext === undefined}
+                  onNeuFragen={() => submitAsk(asked)}
+                  billable={deriveZweitmeinungBillable(reasonerStatus.data)}
+                  titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
+                />
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">
@@ -2717,7 +3004,8 @@ export function Ask(): JSX.Element {
                                 aria-label={t("ask.verschlossen.stufeHint")}
                                 className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
                               >
-                                {t("ask.verschlossen.stufe")}
+                                {/* R-0303: dasselbe Wort wie die Validierung beim Anlegen. */}
+                                {t("ask.verschlossen.vertraulichkeitsstufe")}
                               </span>
                             ) : null}
                             {h.volltextFehlt ? (
@@ -2775,6 +3063,8 @@ export function Ask(): JSX.Element {
                 </span>
                 <p className="mt-2 text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
                 <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
+                {/* R-0284: wogegen geprüft wurde — sonst weiss niemand, ob die Null etwas bedeutet. */}
+                {pruefrahmen ? <PruefrahmenSatz rahmen={pruefrahmen} /> : null}
                 {/* KORREKTURPFLICHT 1 (Ben, Runde 5) / Auftrag §6: DIESE KARTE TRÄGT DEN
                     LÜCKENSATZ, DEN GRUND UND DEN KNOPF. Die Rettungs-Geschichte (Story,
                     Beitragswert, „keine Antwort erfunden", Schrittfolge), der Datenschutzsatz, der

@@ -122,6 +122,11 @@ export const api = {
   // zweimal getippt.
   postWithTimeout: <T>(path: string, body: unknown, timeoutMs: number): Promise<T> =>
     mitFrist<T>(path, { method: "POST", body: JSON.stringify(body) }, timeoutMs),
+  // produkt:20261008:klara-basis: POST, den der MENSCH stoppen kann („Anfrage stoppen" in Klara).
+  // Der Abbruch kommt als `AbortError` beim Aufrufer an — er weiss, dass er selbst gestoppt hat, und
+  // sagt das so; ein Ausfall des Servers wird daraus nicht.
+  postAbbrechbar: <T>(path: string, body: unknown, signal: AbortSignal): Promise<T> =>
+    apiFetch<T>(path, { method: "POST", body: JSON.stringify(body), signal }),
   // produkt:wettbewerb:20261003:lernplattform: POST, dessen Erfolg eine DATEI ist (SCORM-Paket).
   // Der Fehlerweg ist derselbe wie bei `apiFetch` — JSON `{ error, message, … }` wird zum ApiError,
   // die übrigen Felder (etwa `pruefung` einer blockierten Übergabe) reisen in `details` mit.

@@ -33,6 +33,7 @@ import {
   type UploadLimitsRepo,
   alsMenge,
   alsSchreibpatch,
+  anlagenkontextFehler,
   // JOB 4077: die EINE Antwort auf „hängt dieser Anker an DIESEM Objekt?". Sie kennt weder Stufe
   // noch Reichweite und kann deshalb keine Erlaubnis erweitern (Begründung: `source-anchor.ts`).
   confirmedSourceAnchor,
@@ -370,16 +371,12 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
 
 // R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
 // Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
-// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) wird sie verworfen wie
-// `sources` und `importCandidateId` — sonst könnte jeder mit `ko.create` ein Objekt als importiert
-// ausgeben. Die übrigen Herkunftswerte bleiben unverändert erhalten.
-export function ohneImportHerkunft<T extends { origin?: unknown }>(rumpf: T): T {
-  if (rumpf.origin !== "import") {
-    return rumpf;
-  }
-  const { origin: _verworfen, ...ohne } = rumpf;
-  return ohne as unknown as T;
-}
+// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) fällt sie mit `origin` weg — die
+// Destrukturierung dort verwirft JEDE Herkunft (R-0139), also auch `import`.
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand der Helfer `ohneImportHerkunft`, der nur
+// `import` verwarf. Keine Route rief ihn (auf einem Rumpf ohne `origin` wäre er wirkungslos); er ist
+// entfernt. Die Zusage misst `tests/import-kandidaten-echt/annahme-in-validierung.test.ts` (W6) jetzt
+// am echten `POST /api/kos`.
 
 interface KoQuery {
   type?: KnowledgeType;
@@ -437,6 +434,8 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext am Objekt.
+  | "anlagenkontext"
   // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen oder entfernen.
   | "geltung"
   | "confidentiality"
@@ -514,6 +513,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1631: arbeitet AM Objekt unter `:id` — dasselbe Tor wie `domain`.
+  anlagenkontext: "tor",
   // R-1632 / R-1633: arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `domain`.
   geltung: "tor",
   confidentiality: "tor",
@@ -625,6 +626,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1631: Bauteile, Materialien, Geltungskontext (`action: "anlagenkontext"`), gelesen an der `case`. */
+  anlagenkontext?: unknown;
   /** R-1632 / R-1633: die Geltung (`action: "geltung"`); `null` entfernt sie. Geprüft im Dienst. */
   geltung?: unknown;
   conflict?: ConflictInput;
@@ -1553,9 +1556,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
           // (Capture.tsx `createPayload`).
           // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
-          // menschlichen Annahme eines Importkandidaten (s. `ohneImportHerkunft`). Die Destrukturierung
-          // darunter verwirft `origin` VOLLSTÄNDIG — damit auch jedes `import`; `ohneImportHerkunft`
-          // auf einem Rumpf ohne `origin` wäre wirkungslos und steht deshalb hier nicht.
+          // menschlichen Annahme eines Importkandidaten. Die Destrukturierung darunter verwirft
+          // `origin` VOLLSTÄNDIG — damit auch jedes `import` (am Draht gemessen: W6 in
+          // `tests/import-kandidaten-echt/annahme-in-validierung.test.ts`).
           const {
             reviewerIds,
             sources: _ignoredSources,
@@ -1606,6 +1609,28 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // keinen zweiten Wortlaut erfinden. An der PRÜFUNG ändert das nichts.
           if (input.confidentiality === undefined) {
             sendMissingConfidentiality(reply);
+            return;
+          }
+          // R-1631 (gesamt-anlagenzugang): derselbe Eingang wie an `action: "anlagenkontext"` —
+          // Unförmiges ist ein 400, nichts wird gekürzt. Fehlt das Feld, ist nichts angegeben.
+          if (input.anlagenkontext !== undefined && input.anlagenkontext !== null) {
+            const fehler = anlagenkontextFehler(input.anlagenkontext);
+            if (fehler) {
+              reply.code(400).send({ error: "BAD_REQUEST", message: fehler });
+              return;
+            }
+          }
+          // R-0034 / FR-CAP-08: das Fachgebiet beim Anlegen trägt dieselbe Grenze wie die Aktion
+          // `domain` — ein Nicht-Text oder ein überlanger Wert ist ein 400, nichts wird gekürzt.
+          if (
+            input.domain !== undefined &&
+            input.domain !== null &&
+            (typeof input.domain !== "string" || input.domain.trim().length > DOMAIN_MAX_LENGTH)
+          ) {
+            reply.code(400).send({
+              error: "INVALID",
+              message: `domain muss Text mit höchstens ${DOMAIN_MAX_LENGTH} Zeichen sein.`,
+            });
             return;
           }
           const created = await ko.create({ ...input, author: user.id });
@@ -1860,7 +1885,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
           // Dokumenten — nicht aus diesem Feld.
           // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
-          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
+          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import`.
           const {
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
@@ -2639,7 +2664,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // Eine unbekannte Aktion wird hier abgewiesen, bevor das Tor greift: sie fasst kein Objekt
         // an und verrät deshalb auch keine Existenz — ein 400 ist die ehrlichere Antwort als ein
         // 404, das ein „gibt es nicht" über ein Objekt behauptet, nach dem gar nicht gefragt wurde.
-        const torurteil = ZIELOBJEKT_TOR[body.action as KoAktion] as Torurteil | undefined;
+        // R-1349: gelesen wird die benannte Grundmenge, die auch die Sicherheitswächter lesen —
+        // vorher las die Route die Tabelle unter einem zweiten Namen, und der Export hatte keinen
+        // Produktleser.
+        const torurteil = KO_AKTIONEN_MIT_TORURTEIL[body.action as KoAktion] as
+          | Torurteil
+          | undefined;
         if (!torurteil) {
           return badRequest(`Unbekannte Aktion: ${body.action}`);
         }
@@ -3585,6 +3615,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest(`domain ist länger als ${DOMAIN_MAX_LENGTH} Zeichen.`);
             }
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
+            return;
+          }
+          case "anlagenkontext": {
+            // R-1631 (gesamt-anlagenzugang): dasselbe Recht wie Fachgebiet und Kategorie
+            // (`ko.create`). Der Kontext ersetzt den bisherigen; Unförmiges ist ein 400.
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            const fehler = anlagenkontextFehler(body.anlagenkontext);
+            if (fehler) {
+              return badRequest(fehler);
+            }
+            reply.code(200).send(await ko.setAnlagenkontext(id, body.anlagenkontext, user.id));
             return;
           }
           case "geltung": {

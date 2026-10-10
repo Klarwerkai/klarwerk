@@ -26,8 +26,9 @@ import {
 import { buildServices } from "../../services/app/src/build-app";
 import { detectDuplicatesForKo } from "../../services/app/src/duplicate-detection";
 import type { DetectionCoverage } from "../../services/conflicts";
-import { isCompleteRun, mergeCoverage, singleRunBalances } from "../../services/conflicts";
+import { isCompleteRun, mergeCoverage } from "../../services/conflicts";
 import { isCompleteAiCheckCoverage } from "../../services/knowledge-object/src/coverage-complete";
+import { singleRunBalances } from "../support/abdeckung-buchhaltung";
 
 // Ein VOLLSTÄNDIGER Lauf: jeder verfügbare Kandidat angesehen, jeder vorgelegte Vergleich geurteilt.
 const COMPLETE: DetectionCoverage = {

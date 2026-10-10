@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
 import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
+import { type SamlErgebnis, SamlFehler, type SamlProvider } from "./saml";
 import { type AuthService, istLesbaresAblaufdatum } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
@@ -152,6 +153,12 @@ const OIDC_FLOW_MAX_AGE = 600; // 10 Minuten
 const OIDC_ZIEL_COOKIE = "kw_oidc_ziel";
 const OIDC_ZIEL_WORD_ADDIN = "word-addin";
 const OIDC_WEITER_WORD_ADDIN = "/word-addin/anmeldung.html";
+// R-0582: die zweite feste Kennung — die erneute SSO-Anmeldung als Identitätsbestätigung für eine
+// neue E-Mail aus dem Profil. Der Rückruf nennt genau EINE feste Adresse zurück ins Profil, und die
+// Bestätigung gilt kurz, einmal und nur für die Sitzung, die dieser Rückruf ausgibt.
+const OIDC_ZIEL_PROFIL = "profil";
+const OIDC_WEITER_PROFIL = "/profil?kontodaten=sso";
+const SSO_BESTAETIGUNG_MS = 5 * 60 * 1000;
 
 function flowCookie(name: string, value: string): string {
   const base = `${name}=${value}; HttpOnly; Path=/; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
@@ -161,6 +168,36 @@ function flowCookie(name: string, value: string): string {
 function clearFlowCookie(name: string): string {
   const base = `${name}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`;
   return cookieSecure() ? `${base}; Secure` : base;
+}
+
+// R-0560 · BROWSERBINDUNG DES SAML-WEGS. Eine gültig signierte Antwort beweist, WER sich beim
+// Anbieter angemeldet hat — nicht, in WELCHEM Browser. Ohne Bindung könnte jemand seine eigene
+// frische Antwort per selbst abschickendem Formular in einen fremden Browser posten und ihn so
+// unter seinem Konto anmelden (Login-CSRF), oder eine abgegriffene Antwort in seinem eigenen Browser
+// einlösen. Deshalb legt der Start einen einmaligen Nachweis in GENAU den startenden Browser
+// (`HttpOnly`, nur unter `/api/auth/saml`), der Anbieter merkt sich dessen Prüfsumme zur Anfrage.
+// Der Rücksprung kommt als Formular-POST von der Seite des Anbieters — dorthin reist ein
+// `SameSite=Lax`-Cookie nicht mit, und `SameSite=None` bleibt ausgeschlossen (s. unten). Der ACS
+// prüft deshalb die Antwort, merkt sich das Ergebnis unter einem einmaligen Abschlusscode und leitet
+// per 303 auf `GET /api/auth/saml/abschluss` — eine Seitennavigation, zu der das Cookie mitreist.
+// ERST dort, nach dem Vergleich in konstanter Zeit, entsteht die Sitzung.
+const SAML_BINDUNG_COOKIE = "kw_saml_bindung";
+const SAML_COOKIE_PFAD = "/api/auth/saml";
+const SAML_ABSCHLUSS_FRIST_MS = 2 * 60 * 1000;
+const SAML_ABSCHLUESSE_MAX = 10_000;
+
+function samlBindungCookie(wert: string): string {
+  const base = `${SAML_BINDUNG_COOKIE}=${wert}; HttpOnly; Path=${SAML_COOKIE_PFAD}; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
+  return cookieSecure() ? `${base}; Secure` : base;
+}
+
+function samlBindungLoeschen(): string {
+  const base = `${SAML_BINDUNG_COOKIE}=; HttpOnly; Path=${SAML_COOKIE_PFAD}; Max-Age=0; SameSite=Lax`;
+  return cookieSecure() ? `${base}; Secure` : base;
+}
+
+function pruefsummeHex(wert: string): string {
+  return createHash("sha256").update(wert).digest("hex");
 }
 
 function readCookie(request: FastifyRequest, wanted: string): string | undefined {
@@ -219,6 +256,25 @@ function sendError(reply: FastifyReply, error: unknown, sprache: Sprache): void 
   reply.code(500).send({ error: "INTERNAL", message: meldung("INTERNAL", sprache) });
 }
 
+/**
+ * R-0560: der SAML-Rücksprung ist eine Seitennavigation des Browsers, kein Abruf der Anwendung —
+ * eine JSON-Antwort stünde als Rohtext im Fenster. Gescheitert, liest der Mensch deshalb eine
+ * kleine Seite mit dem Katalogsatz in seiner Sprache und dem Weg zurück.
+ */
+function samlFehlerseite(reply: FastifyReply, satz: string, sprache: Sprache): void {
+  const sicher = satz.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  reply
+    .code(401)
+    .header("content-type", "text/html; charset=utf-8")
+    .header("cache-control", "no-store")
+    .send(
+      [
+        `<!doctype html><html lang="${sprache}"><head><meta charset="utf-8"><title>Klarwerk</title></head>`,
+        `<body><p data-testid="saml-fehler">${sicher}</p><p><a href="/">Klarwerk</a></p></body></html>`,
+      ].join(""),
+    );
+}
+
 // WP-VIP2-GATE (bens P1): Selbstregistrierung ist ein öffentlicher Schreibpfad und deshalb
 // FAIL-CLOSED hinter einem Schalter — Default AUS; nur ein explizites =1/true schaltet frei
 // (Dev-/Test-Setups setzen es bewusst, z. B. tests/setup-env.ts). Erst-Einrichtung läuft
@@ -228,6 +284,28 @@ export function selfRegistrationEnabled(
 ): boolean {
   const flag = env.KLARWERK_SELF_REGISTRATION;
   return flag === "1" || flag === "true";
+}
+
+// R-0541 (FIRMENANMELDUNG): DIE ANMELDUNG MIT PASSWORT IST ABSCHALTBAR — dann gilt nur der
+// Firmen-Login und damit dessen Zwei-Faktor-Schutz. Dieselbe Schalterform wie
+// `selfRegistrationEnabled` (nur ein ausdrückliches =1/true schaltet), zur LAUFZEIT je Anfrage
+// gelesen.
+//
+// BEN-BEFUND NACHARBEIT 2: DER SCHALTER SPERRT IMMER. Bis hierher öffnete eine unvollständige
+// OIDC-Konfiguration das Passwort wieder — ein gesetzter Schalter galt dann still nicht. Jetzt gilt
+// er unabhängig davon, ob ein Firmen-Login (OIDC oder SAML) eingerichtet ist. Fehlt der, sagen es
+// drei Stellen verständlich: die 403 der Passwortwege (`SSO_ONLY_NOT_CONFIGURED`), die
+// Anmeldeseite und der Startbericht (`services/app/src/start-vertrag.ts`). Die Ersteinrichtung einer
+// Instanz OHNE jedes Konto bleibt der einzige Weg ohne Firmen-Login (s. `passwortwegZu`).
+export function ssoOnlyRequested(env: Record<string, string | undefined> = process.env): boolean {
+  const flag = env.KLARWERK_SSO_ONLY;
+  return flag === "1" || flag === "true";
+}
+
+export function passwordLoginEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return !ssoOnlyRequested(env);
 }
 
 // WP-VIP2-GATE (bens P1): Registrierungs-Rate-Limit (Konstante) — 5 Versuche je Minute je IP;
@@ -291,6 +369,8 @@ export function authRoutes(
     mailer?: Mailer | undefined;
     resetBaseUrl?: string | undefined;
     oidc?: OidcProvider | undefined;
+    // R-0560: der SAML-Weg (services/auth/src/saml.ts) — ohne vollständige Konfiguration nicht gesetzt.
+    saml?: SamlProvider | undefined;
     // SCRUM-356 / AG-06: injizierbarer Login-Brute-Force-Limiter (Default: kleiner In-Memory-Limiter).
     loginRateLimiter?: LoginRateLimiter | undefined;
     // SCRUM-367 / AG-06-RESET: injizierbarer Recovery-Limiter (forgot/reset). Default: eigener
@@ -298,6 +378,8 @@ export function authRoutes(
     recoveryRateLimiter?: LoginRateLimiter | undefined;
     // WP-VIP2-GATE: injizierbarer Registrierungs-Limiter (Tests mit eigener Uhr/Schwelle).
     registerRateLimiter?: LoginRateLimiter | undefined;
+    // R-0562: injizierbarer Limiter für den zweiten Anmeldeschritt (falsche Codes je IP).
+    secondFactorRateLimiter?: LoginRateLimiter | undefined;
     /**
      * R-0554 — DER AUSLÖSER AUS DER VERZEICHNISPFLEGE. Entfernt die Verwaltung ein Konto und nennt
      * dabei einen Nachfolger (`DELETE /api/users/:id?nachfolger=…`), läuft VOR dem Entfernen die
@@ -330,6 +412,8 @@ export function authRoutes(
       maxAttempts: REGISTER_MAX_ATTEMPTS_PER_MINUTE,
       windowMs: REGISTER_WINDOW_MS,
     });
+  const secondFactorLimiter =
+    options.secondFactorRateLimiter ?? new LoginRateLimiter({ maxAttempts: 10 });
   return async (app) => {
     const requireUser = async (
       request: FastifyRequest,
@@ -365,9 +449,85 @@ export function authRoutes(
       return user;
     };
 
+    // R-0582: die SSO-Identitätsbestätigungen für eine neue E-Mail, je App-Instanz im
+    // Arbeitsspeicher wie `officeHandover` (ein Neustart verwirft sie — dann meldet man sich eben
+    // noch einmal an). Schlüssel ist der Hash des Sitzungsmerkmals, nie das Merkmal selbst.
+    const ssoBestaetigung = new Map<string, { userId: string; bis: number }>();
+    const sitzungsSchluessel = (token: string): string =>
+      createHash("sha256").update(token).digest("hex");
+    /** Die EINE Stelle, an der eine Bestätigung entsteht (OIDC-Rückruf und SAML-Abschluss). */
+    const ssoBestaetigungMerken = (token: string, userId: string): void => {
+      const jetzt = Date.now();
+      for (const [schluessel, eintrag] of ssoBestaetigung) {
+        if (eintrag.bis <= jetzt) {
+          ssoBestaetigung.delete(schluessel);
+        }
+      }
+      ssoBestaetigung.set(sitzungsSchluessel(token), { userId, bis: jetzt + SSO_BESTAETIGUNG_MS });
+    };
+
+    // R-0582: die Formwache der Kontodaten-Berichtigung (selbst und durch den Admin). Byte-gleich
+    // zu den Antworten beim Anlegen — fehlende Felder sind „unverändert", ein vorhandenes Feld muss
+    // eine nicht leere Zeichenkette bzw. eine Adresse sein. `null` heisst: die 400 ist gesendet.
+    const kontodatenForm = (
+      request: FastifyRequest,
+      reply: FastifyReply,
+    ): { name?: string; email?: string } | null => {
+      const body = (request.body ?? {}) as { name?: unknown; email?: unknown };
+      const ergebnis: { name?: string; email?: string } = {};
+      if (body.name !== undefined) {
+        if (typeof body.name !== "string" || body.name.trim().length === 0) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("NAME_REQUIRED", sprache(request)) });
+          return null;
+        }
+        ergebnis.name = body.name.trim();
+      }
+      if (body.email !== undefined) {
+        if (typeof body.email !== "string" || !/.+@.+\..+/.test(body.email.trim())) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: meldung("EMAIL_REQUIRED", sprache(request)) });
+          return null;
+        }
+        ergebnis.email = body.email.trim();
+      }
+      return ergebnis;
+    };
+
+    // R-0541: Ist die Anmeldung mit Passwort abgeschaltet, antwortet JEDER Weg, der ein Passwort
+    // annimmt oder neu ausstellt (Anmelden, Registrieren, Vergessen, Zurücksetzen), mit 403 — VOR
+    // jedem Zähler und jeder Kontoabfrage. Ein „Passwort vergessen", das weiter Mails verschickt,
+    // stellte Passwörter für einen Weg aus, den es nicht mehr gibt. Die Ersteinrichtung bleibt
+    // offen: sie greift nur auf einer Instanz ohne ein einziges Konto, dort ist nichts zu schützen.
+    const passwortwegZu = (request: FastifyRequest, reply: FastifyReply): boolean => {
+      if (passwordLoginEnabled()) {
+        return false;
+      }
+      // Derselbe Fehlercode in beiden Fällen; der SATZ sagt, ob der Firmen-Login bereitsteht oder
+      // noch eingerichtet werden muss — sonst schickte die Meldung Menschen auf einen Weg, den es
+      // nicht gibt.
+      if (options.oidc || options.saml) {
+        reply.code(403).send({
+          error: "PASSWORD_LOGIN_DISABLED",
+          message: meldung("PASSWORD_LOGIN_DISABLED", sprache(request)),
+        });
+      } else {
+        reply.code(403).send({
+          error: "PASSWORD_LOGIN_DISABLED",
+          message: meldung("SSO_ONLY_NOT_CONFIGURED", sprache(request)),
+        });
+      }
+      return true;
+    };
+
     app.post<{ Body: { name?: unknown; email?: unknown; password?: unknown } }>(
       "/api/auth/register",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // WP-VIP2-GATE (bens P1): Schalter ZUERST — bei AUS entsteht weder Konto noch Zählung,
         // und die Antwort ist eine ehrliche, generische 403 (kein Hinweis auf Kontenbestand).
         if (!selfRegistrationEnabled()) {
@@ -430,6 +590,9 @@ export function authRoutes(
     app.post<{ Body: { email: string; password: string } }>(
       "/api/auth/login",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // SCRUM-356 / AG-06 / NFR-SEC-04: Brute-Force-Schutz. Schlüssel = IP + normalisierte E-Mail.
         // Bewusst NUR um den Login herum, identisch für bekannte/unbekannte Konten (keine Enumeration).
         const limiterKey = loginLimiter.keyFor(request.ip, request.body?.email);
@@ -444,7 +607,20 @@ export function authRoutes(
           return;
         }
         try {
-          const { token, user } = await service.login(request.body);
+          const ergebnis = await service.anmelden(request.body);
+          // R-0562: Passwort richtig, aber das Konto hat einen eigenen zweiten Faktor. KEINE
+          // Sitzung, KEIN Cookie — nur die kurzlebige Anmeldeanfrage für den zweiten Schritt.
+          // Der Fehlversuchszähler bleibt stehen: zurückgesetzt wird erst nach vollständiger
+          // Anmeldung, sonst setzte jedes richtige Passwort auch das Raten am Code zurück.
+          if ("secondFactor" in ergebnis) {
+            reply.code(200).send({
+              secondFactorRequired: true,
+              challenge: ergebnis.secondFactor.challenge,
+              expiresInMs: ergebnis.secondFactor.expiresInMs,
+            });
+            return;
+          }
+          const { token, user } = ergebnis;
           // Erfolg → Fehlversuchszähler für diesen Schlüssel zurücksetzen (risikoarm).
           loginLimiter.reset(limiterKey);
           reply.header("set-cookie", sessionCookie(token));
@@ -466,6 +642,118 @@ export function authRoutes(
       },
     );
 
+    // R-0562: der zweite Anmeldeschritt — Anmeldeanfrage + Code vom zweiten Gerät ⇒ Sitzung.
+    // Gedrosselt je IP (zusätzlich zur Grenze von fünf Versuchen je Anfrage im Dienst); nur falsche
+    // Codes zählen, wie beim Passwort.
+    app.post<{ Body: { challenge?: unknown; code?: unknown } }>(
+      "/api/auth/login/second-factor",
+      async (request, reply) => {
+        // R-0541 × R-0562: der Codeschritt ist die Fortsetzung des Passwortwegs. Wird die Anmeldung
+        // mit Passwort abgeschaltet, stellt auch eine noch offene Anmeldeanfrage keine Sitzung aus.
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
+        const limiterKey = secondFactorLimiter.keyFor(request.ip, "second-factor");
+        const limit = secondFactorLimiter.check(limiterKey);
+        if (limit.limited) {
+          reply.header("Retry-After", String(limit.retryAfterSeconds));
+          reply.code(429).send({
+            error: "RATE_LIMITED",
+            message: meldung("SECOND_FACTOR_RATE_LIMITED", sprache(request)),
+          });
+          return;
+        }
+        const body = (request.body ?? {}) as { challenge?: unknown; code?: unknown };
+        try {
+          const { token, user } = await service.anmeldenMitZweitemFaktor(
+            typeof body.challenge === "string" ? body.challenge : "",
+            typeof body.code === "string" ? body.code : "",
+          );
+          secondFactorLimiter.reset(limiterKey);
+          reply.header("set-cookie", sessionCookie(token));
+          reply.code(200).send({ user, token });
+        } catch (error) {
+          if (error instanceof AuthError && error.code === "INVALID_CREDENTIALS") {
+            secondFactorLimiter.registerFailure(limiterKey);
+          }
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    // R-0562: Einrichten und Abschalten des eigenen zweiten Faktors — nur für das EIGENE Konto
+    // (der Nutzer kommt aus der Sitzung, nie aus dem Pfad).
+    app.get("/api/auth/second-factor", async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await service.secondFactorStatus(user.id));
+    });
+
+    app.post<{ Body: { password?: unknown } }>(
+      "/api/auth/second-factor/setup",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { password?: unknown };
+        try {
+          const einrichtung = await service.secondFactorSetupStart(
+            user.id,
+            typeof body.password === "string" ? body.password : "",
+          );
+          // Das Geheimnis verlässt den Server genau hier und nur einmal; nicht protokolliert.
+          reply.header("cache-control", "no-store");
+          reply.code(200).send(einrichtung);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    app.post<{ Body: { code?: unknown } }>(
+      "/api/auth/second-factor/confirm",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { code?: unknown };
+        try {
+          const stand = await service.secondFactorSetupConfirm(
+            user.id,
+            typeof body.code === "string" ? body.code : "",
+          );
+          reply.code(200).send(stand);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
+    app.post<{ Body: { password?: unknown; code?: unknown } }>(
+      "/api/auth/second-factor/disable",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { password?: unknown; code?: unknown };
+        try {
+          const stand = await service.secondFactorDisable(
+            user.id,
+            typeof body.password === "string" ? body.password : "",
+            typeof body.code === "string" ? body.code : "",
+          );
+          reply.code(200).send(stand);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
+
     app.post("/api/auth/logout", async (request, reply) => {
       const token = tokenFromRequest(request);
       if (token) {
@@ -481,6 +769,62 @@ export function authRoutes(
         reply.code(200).send(user);
       }
     });
+
+    // R-0582 (DS13): DAS EIGENE KONTO BERICHTIGEN — Name und E-Mail, ohne Antrag.
+    //
+    // Fehlende Felder bleiben unverändert. Die Formwache ist dieselbe wie beim Anlegen
+    // (`kontodatenForm`). Wer die ADRESSE ändert, bestätigt seine Identität: an ihr hängt die
+    // Anmeldung und der Weg „Passwort vergessen" — eine offen stehende Sitzung allein soll das Konto
+    // nicht auf ein fremdes Postfach umlenken können. Der Name braucht das nicht.
+    //
+    // ZWEI NACHWEISE, JEDER FÜR SICH GENÜGT: das aktuelle Passwort — oder eine frische erneute
+    // SSO-Anmeldung aus dem Profil (`/api/auth/oidc/start?ziel=profil`), gebunden an DIESE Sitzung,
+    // höchstens `SSO_BESTAETIGUNG_MS` alt und nach einer gelungenen Änderung verbraucht. Ein reines
+    // SSO-Konto hat kein Passwort; ihm bliebe ohne den zweiten Weg nur der Admin.
+    app.put<{ Body: { name?: unknown; email?: unknown; currentPassword?: unknown } }>(
+      "/api/auth/me",
+      async (request, reply) => {
+        const user = await requireUser(request, reply);
+        if (!user) {
+          return;
+        }
+        const body = (request.body ?? {}) as { currentPassword?: unknown };
+        const eingabe = kontodatenForm(request, reply);
+        if (eingabe === null) {
+          return;
+        }
+        try {
+          const token = tokenFromRequest(request);
+          const schluessel = token ? sitzungsSchluessel(token) : "";
+          const sso = ssoBestaetigung.get(schluessel);
+          const ssoBestaetigt = sso !== undefined && sso.userId === user.id && sso.bis > Date.now();
+          const neueEmail = eingabe.email !== undefined && eingabe.email !== user.email;
+          if (neueEmail && !ssoBestaetigt) {
+            if (!(await service.hatLokalesPasswort(user.id))) {
+              throw new AuthError(
+                "FORBIDDEN",
+                "SSO_CONFIRMATION_REQUIRED" satisfies Meldungsschluessel,
+              );
+            }
+            const passwort = typeof body.currentPassword === "string" ? body.currentPassword : "";
+            if (!(await service.verifyUserPassword(user.id, passwort))) {
+              throw new AuthError(
+                "INVALID_CREDENTIALS",
+                "CURRENT_PASSWORD_INCORRECT" satisfies Meldungsschluessel,
+              );
+            }
+          }
+          const stand = await service.correctAccountData(user.id, eingabe, user.id);
+          if (neueEmail && ssoBestaetigt) {
+            // Einmalig: die Bestätigung trägt genau EINE Adressänderung.
+            ssoBestaetigung.delete(schluessel);
+          }
+          reply.code(200).send(stand);
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
 
     // ============================================================================================
     // JOB 4076 — DER ÜBERGABECODE UND SEIN EINLÖSEN. Siehe den Kopfkommentar zu
@@ -638,6 +982,11 @@ export function authRoutes(
 
     // FR-AUTH-08: Reset anfordern. Antwort immer 204 — die Existenz der E-Mail wird nicht verraten.
     app.post<{ Body: { email: string } }>("/api/auth/forgot", async (request, reply) => {
+      // R-0541: der Schalter ist über `GET /api/auth/status` ohnehin öffentlich lesbar; die 403
+      // verrät deshalb nichts über Konten.
+      if (passwortwegZu(request, reply)) {
+        return;
+      }
       // SCRUM-367 / AG-06-RESET: Anti-Mail-Spam. Schlüssel = IP (NICHT die E-Mail → keine Enumeration,
       // identisch für bekannt/unbekannt). Bei Überschreitung: trotzdem 204, aber KEINE Mail versenden —
       // die 204-immer-Semantik bleibt unverändert (kein Leak von Kontoexistenz oder Limit-Zustand).
@@ -671,6 +1020,9 @@ export function authRoutes(
     app.post<{ Body: { token: string; newPassword: string } }>(
       "/api/auth/reset",
       async (request, reply) => {
+        if (passwortwegZu(request, reply)) {
+          return;
+        }
         // SCRUM-367 / AG-06-RESET: Token-Bruteforce drosseln. Schlüssel = IP (kein Token im Schlüssel →
         // kein Leak, ob ein Token existiert). NUR fehlgeschlagene Einlösungen zählen (wie beim Login);
         // ein legitimer Single-Reset wird nie blockiert. Bei Sperre: 429 + Retry-After, vor der
@@ -711,14 +1063,14 @@ export function authRoutes(
       const { verifier, challenge } = createPkcePair();
       // Das Ziel wird bei JEDEM Start neu gesetzt oder gelöscht — ein alter Dialog-Start darf einen
       // späteren Start aus der Anwendung nicht in die Dialogseite lenken.
-      const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
+      const zielWert = request.query?.ziel;
+      const ziel =
+        zielWert === OIDC_ZIEL_WORD_ADDIN || zielWert === OIDC_ZIEL_PROFIL ? zielWert : null;
       reply.header("set-cookie", [
         flowCookie(OIDC_STATE_COOKIE, state),
         flowCookie(OIDC_NONCE_COOKIE, nonce),
         flowCookie(OIDC_VERIFIER_COOKIE, verifier),
-        ausDemDialog
-          ? flowCookie(OIDC_ZIEL_COOKIE, OIDC_ZIEL_WORD_ADDIN)
-          : clearFlowCookie(OIDC_ZIEL_COOKIE),
+        ziel !== null ? flowCookie(OIDC_ZIEL_COOKIE, ziel) : clearFlowCookie(OIDC_ZIEL_COOKIE),
       ]);
       reply.redirect(options.oidc.authorizeUrl({ state, nonce, codeChallenge: challenge }));
     });
@@ -739,6 +1091,7 @@ export function authRoutes(
         const nonceCookie = readCookie(request, OIDC_NONCE_COOKIE);
         const verifierCookie = readCookie(request, OIDC_VERIFIER_COOKIE);
         const ausDemDialog = readCookie(request, OIDC_ZIEL_COOKIE) === OIDC_ZIEL_WORD_ADDIN;
+        const ausDemProfil = readCookie(request, OIDC_ZIEL_COOKIE) === OIDC_ZIEL_PROFIL;
         const clearFlow = [
           clearFlowCookie(OIDC_STATE_COOKIE),
           clearFlowCookie(OIDC_NONCE_COOKIE),
@@ -760,6 +1113,13 @@ export function authRoutes(
           return;
         }
         try {
+          // R-0582 (Ben, Nacharbeit 4): das AUSGANGSKONTO der Bestätigung — die Sitzung, aus der das
+          // Profil die Bestätigung gestartet hat. Der Browser schickt ihr Merkmal beim Rückruf noch
+          // mit; erst die Antwort unten ersetzt es. Gelesen VOR der neuen Anmeldung.
+          const ausgangsMerkmal = ausDemProfil ? tokenFromRequest(request) : undefined;
+          const ausgangskonto = ausgangsMerkmal
+            ? await service.authenticate(ausgangsMerkmal)
+            : undefined;
           const idToken = await options.oidc.exchange(request.body.code, verifierCookie);
           const claims = await options.oidc.verify(idToken, nonceCookie);
           const mappedRole = options.oidc.mapRole(claims);
@@ -769,9 +1129,24 @@ export function authRoutes(
             mappedRole,
           );
           reply.header("set-cookie", [...clearFlow, sessionCookie(token)]);
+          // Nur wenn der Anbieter DASSELBE Konto angemeldet hat, das die Berichtigung begonnen hat.
+          // Meldet er ein anderes an (Kontowechsel beim Anbieter), entsteht KEINE Bestätigung: sie
+          // gälte sonst für ein Konto, dessen Inhaber die Berichtigung nie begonnen hat.
+          if (ausDemProfil && ausgangskonto !== undefined && ausgangskonto.id === user.id) {
+            // R-0582: der Anbieter hat DIESES Konto soeben erneut angemeldet. Das ist die
+            // Identitätsbestätigung für eine neue E-Mail — gebunden an genau die Sitzung, die hier
+            // entsteht, und nur für kurze Zeit. Abgelaufene Einträge fallen beim Setzen.
+            ssoBestaetigungMerken(token, user.id);
+          }
           reply
             .code(200)
-            .send(ausDemDialog ? { user, token, weiter: OIDC_WEITER_WORD_ADDIN } : { user, token });
+            .send(
+              ausDemDialog
+                ? { user, token, weiter: OIDC_WEITER_WORD_ADDIN }
+                : ausDemProfil
+                  ? { user, token, weiter: OIDC_WEITER_PROFIL }
+                  : { user, token },
+            );
         } catch (error) {
           reply.header("set-cookie", clearFlow);
           if (error instanceof AuthError) {
@@ -782,6 +1157,209 @@ export function authRoutes(
             error: "OIDC_INVALID",
             message: meldung("OIDC_LOGIN_FAILED", sprache(request)),
           });
+        }
+      },
+    );
+
+    // R-0560: SAML-Start — AuthnRequest per Redirect-Bindung zum Anbieter. `?ziel=word-addin`
+    // schickt den Rücksprung zurück ins Anmeldefenster des Word-Add-ins (dieselbe EINE feste Kennung
+    // wie beim OIDC-Weg; jeder andere Wert endet in der Anwendung).
+    app.get<{ Querystring: { ziel?: unknown } }>("/api/auth/saml/start", async (request, reply) => {
+      if (!options.saml) {
+        reply
+          .code(501)
+          .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+        return;
+      }
+      // R-0582: neben dem Word-Dialog die zweite feste Kennung — die Identitätsbestätigung für eine
+      // neue E-Mail aus dem Profil (wie `?ziel=profil` beim OIDC-Weg). Jeder andere Wert: keine.
+      const zielWert = request.query?.ziel;
+      const ziel =
+        zielWert === OIDC_ZIEL_WORD_ADDIN || zielWert === OIDC_ZIEL_PROFIL ? zielWert : undefined;
+      // Der einmalige Browsernachweis (s. `SAML_BINDUNG_COOKIE`): der Browser bekommt den Wert,
+      // der Anbieter merkt sich nur seine Prüfsumme.
+      const nachweis = randomToken();
+      reply.header("cache-control", "no-store");
+      reply.header("set-cookie", samlBindungCookie(nachweis));
+      reply.redirect(options.saml.anmeldeUrl(ziel, pruefsummeHex(nachweis)));
+    });
+
+    // R-0560: die Dienstanbieter-Metadaten — das, was die IT beim Anbieter einträgt.
+    app.get("/api/auth/saml/metadata", async (request, reply) => {
+      if (!options.saml) {
+        reply
+          .code(501)
+          .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+        return;
+      }
+      reply
+        .header("content-type", "application/samlmetadata+xml; charset=utf-8")
+        .send(options.saml.metadaten());
+    });
+
+    // R-0560: geprüfte, aber noch nicht an den Browser gebundene Anmeldungen — je einmaliger
+    // Abschlusscode, zwei Minuten lang, genau einmal einlösbar. Nur in diesem Prozess.
+    const samlAbschluesse = new Map<
+      string,
+      { ergebnis: SamlErgebnis; insDialog: boolean; insProfil: boolean; bis: number }
+    >();
+    const samlAbschlussMerken = (
+      ergebnis: SamlErgebnis,
+      insDialog: boolean,
+      insProfil: boolean,
+    ): string => {
+      const nun = Date.now();
+      for (const [code, eintrag] of samlAbschluesse) {
+        if (eintrag.bis <= nun) {
+          samlAbschluesse.delete(code);
+        }
+      }
+      if (samlAbschluesse.size >= SAML_ABSCHLUESSE_MAX) {
+        const aeltester = samlAbschluesse.keys().next().value;
+        if (aeltester !== undefined) {
+          samlAbschluesse.delete(aeltester);
+        }
+      }
+      const code = randomToken();
+      samlAbschluesse.set(code, {
+        ergebnis,
+        insDialog,
+        insProfil,
+        bis: nun + SAML_ABSCHLUSS_FRIST_MS,
+      });
+      return code;
+    };
+
+    // R-0560: der Rücksprung des Anbieters (HTTP-POST-Bindung, Formularkodierung). Der
+    // Formularparser gilt NUR in diesem eingekapselten Bereich: die übrigen Auth-Routen nehmen
+    // weiter ausschliesslich JSON an — ein Formular einer fremden Seite erreicht dort nichts.
+    // Ein Sitzungscookie reist bei diesem fremd ausgelösten POST nicht mit (`SameSite=Lax`); die
+    // Herkunftsprüfung der App lässt ihn deshalb durch, und es gibt keine Sitzung, in deren Namen
+    // geschrieben würde. Hier entsteht auch KEINE Sitzung: die geprüfte Antwort wartet unter einem
+    // Abschlusscode auf den Browser, der die Anfrage gestellt hat (`/api/auth/saml/abschluss`).
+    app.register(async (app) => {
+      if (!app.hasContentTypeParser("application/x-www-form-urlencoded")) {
+        app.addContentTypeParser(
+          "application/x-www-form-urlencoded",
+          { parseAs: "string", bodyLimit: 1024 * 1024 },
+          (_request, rumpf, fertig) => {
+            fertig(null, Object.fromEntries(new URLSearchParams(String(rumpf))));
+          },
+        );
+      }
+      app.post<{ Body: { SAMLResponse?: unknown; RelayState?: unknown } | null }>(
+        "/api/auth/saml/acs",
+        async (request, reply) => {
+          const saml = options.saml;
+          if (!saml) {
+            reply.code(501).send({
+              error: "SAML_DISABLED",
+              message: meldung("SAML_DISABLED", sprache(request)),
+            });
+            return;
+          }
+          const antwort = request.body?.SAMLResponse;
+          try {
+            if (typeof antwort !== "string" || antwort === "") {
+              throw new SamlFehler("SAMLResponse fehlt");
+            }
+            const ergebnis = saml.pruefeAntwort(antwort);
+            if (ergebnis.bindung === undefined) {
+              throw new SamlFehler("Anfrage ohne Browserbindung");
+            }
+            // Nur die EINE feste Kennung führt ins Dialogfenster — keine offene Weiterleitung.
+            const insDialog = request.body?.RelayState === OIDC_ZIEL_WORD_ADDIN;
+            // R-0582: RelayState ist unsigniert — er wählt nur das feste Ziel. Ob eine
+            // Bestätigung entsteht, entscheidet allein der Abgleich mit dem Ausgangskonto unten.
+            const insProfil = request.body?.RelayState === OIDC_ZIEL_PROFIL;
+            const code = samlAbschlussMerken(ergebnis, insDialog, insProfil);
+            reply.header("cache-control", "no-store");
+            reply.redirect(`${SAML_COOKIE_PFAD}/abschluss?code=${encodeURIComponent(code)}`, 303);
+          } catch (error) {
+            request.log.warn(
+              {
+                event: "saml-anmeldung-abgelehnt",
+                grund: error instanceof SamlFehler ? error.grund : (error as Error)?.name,
+              },
+              "SAML-Anmeldung abgelehnt",
+            );
+            // Ein AuthError trägt einen Katalogschlüssel (Konto fehlt, nicht freigegeben,
+            // abgelaufen) — der Mensch soll genau diesen Grund lesen. Alles andere bleibt
+            // unspezifisch: keine Prüfdetails nach aussen.
+            const satz =
+              error instanceof AuthError
+                ? meldung(error.message, sprache(request))
+                : meldung("SAML_LOGIN_FAILED", sprache(request));
+            samlFehlerseite(reply, satz, sprache(request));
+          }
+        },
+      );
+    });
+
+    // R-0560: der Abschluss — die Sitzung entsteht NUR in dem Browser, der die Anfrage gestellt hat.
+    // Ohne passenden Nachweis (anderer Browser, Cookie fehlt, Code unbekannt, abgelaufen oder schon
+    // eingelöst) endet es auf der Fehlerseite, ohne Sitzung. Der Code verfällt beim ersten Versuch.
+    app.get<{ Querystring: { code?: unknown } }>(
+      "/api/auth/saml/abschluss",
+      async (request, reply) => {
+        const saml = options.saml;
+        if (!saml) {
+          reply
+            .code(501)
+            .send({ error: "SAML_DISABLED", message: meldung("SAML_DISABLED", sprache(request)) });
+          return;
+        }
+        const code = request.query?.code;
+        const eintrag = typeof code === "string" ? samlAbschluesse.get(code) : undefined;
+        if (typeof code === "string") {
+          samlAbschluesse.delete(code);
+        }
+        const nachweis = readCookie(request, SAML_BINDUNG_COOKIE);
+        try {
+          if (!eintrag || eintrag.bis <= Date.now()) {
+            throw new SamlFehler("Abschlusscode unbekannt, abgelaufen oder verbraucht");
+          }
+          const soll = Buffer.from(eintrag.ergebnis.bindung ?? "", "utf8");
+          const ist = Buffer.from(nachweis ? pruefsummeHex(nachweis) : "", "utf8");
+          if (soll.length === 0 || ist.length !== soll.length || !timingSafeEqual(ist, soll)) {
+            throw new SamlFehler("Browsernachweis fehlt oder passt nicht");
+          }
+          const { claims, rolle } = eintrag.ergebnis;
+          // R-0582: das Ausgangskonto der Profilbestätigung — die Sitzung, die der Browser bei
+          // dieser Seitennavigation noch mitschickt. Gelesen VOR der neuen Anmeldung.
+          const ausgangsMerkmal = eintrag.insProfil ? tokenFromRequest(request) : undefined;
+          const ausgangskonto = ausgangsMerkmal
+            ? await service.authenticate(ausgangsMerkmal)
+            : undefined;
+          const { token, user } = await service.loginWithOidc(claims, saml.autoProvision, rolle);
+          reply.header("set-cookie", [samlBindungLoeschen(), sessionCookie(token)]);
+          reply.header("cache-control", "no-store");
+          if (eintrag.insProfil) {
+            // Dieselbe Regel wie beim OIDC-Rückruf: nur für DASSELBE Konto, an die neue Sitzung
+            // gebunden, kurz und einmal. Ein Kontowechsel beim Anbieter bestätigt nichts.
+            if (ausgangskonto !== undefined && ausgangskonto.id === user.id) {
+              ssoBestaetigungMerken(token, user.id);
+            }
+            reply.redirect(OIDC_WEITER_PROFIL, 303);
+            return;
+          }
+          reply.redirect(eintrag.insDialog ? OIDC_WEITER_WORD_ADDIN : "/", 303);
+        } catch (error) {
+          request.log.warn(
+            {
+              event: "saml-anmeldung-abgelehnt",
+              grund: error instanceof SamlFehler ? error.grund : (error as Error)?.name,
+            },
+            "SAML-Anmeldung abgelehnt",
+          );
+          // Wie am ACS: ein AuthError nennt den Grund aus dem Katalog, alles andere bleibt allgemein.
+          // Der Nachweis ist in jedem Fall verbraucht.
+          const satz =
+            error instanceof AuthError
+              ? meldung(error.message, sprache(request))
+              : meldung("SAML_LOGIN_FAILED", sprache(request));
+          reply.header("set-cookie", samlBindungLoeschen());
+          samlFehlerseite(reply, satz, sprache(request));
         }
       },
     );
@@ -845,6 +1423,10 @@ export function authRoutes(
         needsSetup: await service.needsSetup(),
         oidcEnabled: Boolean(options.oidc),
         selfRegistrationEnabled: selfRegistrationEnabled(),
+        // R-0560: SAML als zweiter Firmen-Login.
+        samlEnabled: Boolean(options.saml),
+        // R-0541: derselbe Aufruf, der oben die Passwortwege schliesst — keine zweite Auslegung.
+        passwordLoginEnabled: passwordLoginEnabled(),
       });
     });
 
@@ -1179,6 +1761,9 @@ export function authRoutes(
         approve?: unknown;
         password?: unknown;
         accessExpiresAt?: unknown;
+        // R-0582: der Admin berichtigt Name und E-Mail eines Kontos (ohne dessen Passwort).
+        name?: unknown;
+        email?: unknown;
       };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
@@ -1187,6 +1772,11 @@ export function authRoutes(
       }
       const { id } = request.params;
       const { role, approve, password, accessExpiresAt } = request.body;
+      // R-0582: auch die Kontodaten gehören zur Formwache VOR jedem Schreiben.
+      const kontodaten = kontodatenForm(request, reply);
+      if (kontodaten === null) {
+        return;
+      }
       try {
         // ────────────────────────────────────────────────────────────────────────────────────────
         // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
@@ -1231,6 +1821,11 @@ export function authRoutes(
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
         let user: PublicUser | undefined;
+        // R-0582: die Berichtigung ZUERST — ihre einzige inhaltliche Ablehnung (Adresse vergeben,
+        // 409) fällt damit, bevor Freigabe, Rolle oder Passwort geschrieben sind.
+        if (kontodaten.name !== undefined || kontodaten.email !== undefined) {
+          user = await service.correctAccountData(id, kontodaten, admin.id);
+        }
         if (approve === true) {
           user = await service.approveUser(id, admin.id);
         }
@@ -1262,6 +1857,23 @@ export function authRoutes(
         sendError(reply, error, sprache(request));
       }
     });
+
+    // R-0562: der Weg zurück bei verlorenem zweiten Gerät — der Admin nimmt den zweiten Faktor weg.
+    app.delete<{ Params: { id: string } }>(
+      "/api/users/:id/second-factor",
+      async (request, reply) => {
+        const admin = await requireAdmin(request, reply);
+        if (!admin) {
+          return;
+        }
+        try {
+          await service.secondFactorReset(request.params.id, admin.id);
+          reply.code(204).send();
+        } catch (error) {
+          sendError(reply, error, sprache(request));
+        }
+      },
+    );
 
     app.delete<{
       Params: { id: string };

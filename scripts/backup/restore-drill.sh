@@ -448,6 +448,7 @@ PFLICHTTABELLEN=(
   users
   sessions
   password_resets
+  user_second_factors
   kos
   ko_schreibstand
   ko_versions
@@ -467,6 +468,8 @@ PFLICHTTABELLEN=(
   assignments
   conflicts
   conflict_pair_memory
+  conflict_pair_obligation_runs
+  conflict_pair_obligations
   ko_overlaps
   overlap_settings
   lifecycle_couplings
@@ -493,16 +496,27 @@ PFLICHTTABELLEN=(
   gesamtanweisung_bausteine
   gesamtanweisung_staende
   ko_bearbeitungen
+  office_sitzungen
+  office_gesichert
   import_run_source_sync
   dokument_fassungen
   confluence_import_schalter
   begriffe_fassungen
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
+  veroeffentlichung_zustellungen
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
   ko_embeddings
+  loeschantraege
+  ui_uebersetzungen
+  ui_sprachen
+  unternehmensprofil_fassungen
+  richtlinien_fassungen
+  richtlinien_handlungen
+  klara_gespraeche
+  ko_mitgelesen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

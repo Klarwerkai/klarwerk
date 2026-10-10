@@ -1,4 +1,5 @@
 import { FACHKOMPOSITA, type Fachkompositum } from "./fachkomposita";
+import { normalizeInterviewTopic, treeInterview } from "./interview-tree";
 import type {
   AnswerResult,
   AssistResult,
@@ -10,9 +11,12 @@ import type {
   ExtractResult,
   GroupCandidateInput,
   GroupCandidatesResult,
+  InterviewOptions,
   InterviewResult,
   KnowledgeClass,
   KnowledgeRef,
+  LueckenBereich,
+  LueckenBereichsUrteil,
   ReasonerLocale,
   Relevanztext,
   StructureResult,
@@ -150,11 +154,14 @@ export interface ReasonerProvider {
   // R-1624 (Foto-zu-Wissen): optionaler Bildbefund — der vom Menschen bestätigte Text der
   // vorhandenen Bildbeschreibung. Liegt er vor, gilt die Foto-Fragenfolge (Fehler · Ursache ·
   // Lösung); das Bild selbst reist hier NICHT mit, nur dieser Klartext.
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: `options` schaltet Fragebaum und Lücken-Thema zu;
+  // ohne sie (und ohne Bildbefund) bleibt die bisherige Fragenfolge.
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,
     confidential?: boolean,
     imageContext?: string,
+    options?: InterviewOptions,
   ): Promise<InterviewResult>;
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
   // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich
@@ -212,6 +219,14 @@ export interface ReasonerProvider {
     locale: ReasonerLocale,
     confidential: boolean,
   ): Promise<DuplicateJudgeResult | null>;
+  // R-1657 (ROADMAP 9.3): Lückenerkennung — urteilt über die Kennzahlen je Bereich, ob ein
+  // Wissens-Sprint angezeigt ist. NUR das echte Modell; der deterministische Fallback bewusst NICHT
+  // (die benannte Regel steht beim Aufrufer). Ungültige Antworten → null.
+  judgeKnowledgeGaps?(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+  ): Promise<LueckenBereichsUrteil[] | null>;
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): Egress-Politik des dahinterliegenden Clients —
   // `true` = dieser Provider darf vertrauliche Inhalte NICHT sehen (Cloud bzw. ein „lokal"
   // verdrahteter Endpunkt ohne bestätigte On-Prem-Origin). Der Reasoner nimmt ihn dann bei
@@ -395,6 +410,26 @@ export function deterministicInterview(
     draft: condenseInterview(answers, demo),
     demo,
   };
+}
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die eine Weiche zwischen der bisherigen Fragenfolge, der
+// Foto-Fragenfolge (R-1624) und dem Fragebaum (`interview-tree.ts`). Ein bestätigter Bildbefund
+// behält seine eigene Fragenfolge (Fehler · Ursache · Lösung); sonst schaltet `tree` oder ein Thema
+// den Baum zu.
+export function guidedInterview(
+  answers: readonly string[],
+  demo: boolean,
+  locale: ReasonerLocale = "de",
+  imageContext?: string,
+  options: InterviewOptions = {},
+): InterviewResult {
+  if (normalizeInterviewImageContext(imageContext).length > 0) {
+    return deterministicInterview(answers, demo, locale, true);
+  }
+  if (options.tree || normalizeInterviewTopic(options.topic)) {
+    return treeInterview(answers, demo, locale, options);
+  }
+  return deterministicInterview(answers, demo, locale);
 }
 
 // SCRUM-282: Funktions-/Stoppwörter (DE/EN) aus dem Matching ausschließen. Sonst erscheinen
@@ -1785,7 +1820,8 @@ export function decktAlleFragebegriffe(
 }
 
 // WP-RETEST7 R5: der durchsuchbare Text eines Refs — Titel + Aussage + (falls vorhanden) die
-// persistierten Bild-Fußnoten. EINE Quelle für keywordSelect UND rankCandidates, damit ein KO,
+// persistierten Bild-Fußnoten. EINE Quelle für die Auswahl (`rankCandidates`; bis R-1349 auch
+// für den entfernten `keywordSelect`), damit ein KO,
 // dessen Wissen nur in der Fußnote steht, das Relevanz-Gate passieren kann.
 // G27 (JOB 1565 D1): der Dokumentkörper zählt ab hier mit — ADDITIV und ohne neue Grenze. Bis heute
 // endete der durchsuchbare Ausschnitt faktisch an der Aussage; ein Wort, das nur im Fließtext steht,
@@ -1946,46 +1982,14 @@ export function meetsAnswerSubstance(substanz: number): boolean {
   return substanz >= MIN_ANSWER_SUBSTANCE;
 }
 
-// Semantische Vorauswahl über Keyword-Überschneidung — synchron, modellunabhängig.
-// Von beiden Providern genutzt, damit Antworten immer in echten KOs verankert bleiben.
-// mega52 B1: EINE Schwelle für beide Auswahlwege — `keywordSelect` misst wie `rankCandidates`.
-export function keywordSelect(
-  question: string,
-  candidates: readonly KnowledgeRef[],
-  // JOB 3049: derselbe Relevanztext wie in `rankCandidates` — die Symmetriezusage von mega52 B1
-  // und mega59 B gilt für ihn genauso wie für die Zerlegung.
-  relevanz: Relevanztext = [],
-): KnowledgeRef[] {
-  // mega59 B: dieselbe Zerlegung, zusätzlich mit dem Herkunfts-Merkmal — die Frage EINMAL, jede
-  // Quelle einmal. Beide Seiten laufen durch dieselbe Funktion (Symmetriezusage).
-  const nominalFrage = new Set<string>();
-  const words = tokenize(question, nominalFrage);
-  // mega57 A2: das absolute Tor auf dem Substanzwert, die relative Regel auf dem Überschneidungswert.
-  // mega58 A: und das Tor JE KANDIDAT, vor der relativen Regel — sonst kommt eine substanzlose
-  // Quelle über ihren hohen Überschneidungswert mit und verdrängt den tragenden Treffer.
-  const scored = candidates
-    .map((c) => {
-      const nominalQuelle = new Set<string>();
-      const zieltoken = tokenize(refMatchText(c), nominalQuelle);
-      const { wert, entsprechung, substanz } = ueberschneidung(
-        words,
-        zieltoken,
-        nominalFrage,
-        nominalQuelle,
-        relevanz,
-      );
-      // JOB 3049: `reichweite` ist die Zahl, auf der das Tor und die relative Regel rechnen —
-      // Überschneidung PLUS Entsprechung. Ohne Relevanztext ist sie `wert`.
-      return { c, wert, reichweite: wert + entsprechung, substanz };
-    })
-    .filter((x) => x.reichweite > 0 && meetsAnswerSubstance(x.substanz))
-    .sort((a, b) => b.wert - a.wert);
-  // JOB 3049: Der Bezugspunkt bleibt die DIREKTE Überschneidung des besten Treffers. Ein Kandidat,
-  // der nur über die Entsprechung trifft, kann die Latte damit nicht anheben und keinen tragenden
-  // Treffer aus der Liste drängen — das ist dieselbe Zusage wie in `rankCandidates`.
-  const best = scored.reduce((max, x) => Math.max(max, x.wert), 0);
-  return scored.filter((x) => meetsRelevanceThreshold(x.reichweite, best)).map((x) => x.c);
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `keywordSelect`, ein zweiter Auswahlweg
+// („von beiden Providern genutzt" — gemessen: von keinem). Beide Provider wählen über
+// `rankCandidates` (bzw. `selectCandidates`). `keywordSelect` rechnete dasselbe Tor, dieselbe
+// Substanzschwelle und dieselbe relative Regel auf derselben Zerlegung, nur ohne Deckel und ohne
+// die Gleichstandsordnung — die Menge war per Bauart dieselbe (mega52 B1, mega59 B). Ein zweiter
+// Weg, den niemand ruft, ist genau der halbe Einbau, gegen den R-1349 steht; er ist entfernt. Die
+// Prüfstände, die die Auswahl über ihn maßen, messen sie jetzt am Produktweg
+// (`tests/support/auswahlweg.ts`).
 
 // SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: begrenzte, status-/trust-bewusste Top-K-Kandidaten-
 // auswahl. Ziel ist sichtbarer Beta-Fortschritt OHNE RAG/Embeddings/Suchmaschine/DB-Umbau: Ask reicht
@@ -2291,10 +2295,11 @@ export class DeterministicProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
     _confidential = false,
     imageContext?: string,
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     // R-1624: ohne Modell die feste Foto-Fragenfolge — ehrlich als Fallback markiert.
-    const photo = normalizeInterviewImageContext(imageContext).length > 0;
-    return deterministicInterview(answers, true, locale, photo);
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: ohne Bildbefund Fragebaum bzw. bisherige Folge.
+    return guidedInterview(answers, true, locale, imageContext, options);
   }
 
   // PMO-FEA-0006: ohne Modell KEINE Extraktion — ehrliche Meldung statt Fake-Punkte (G-2).
@@ -2375,6 +2380,8 @@ export class DeterministicProvider implements ReasonerProvider {
           snippet: best.statement,
         },
       ],
+      // R-1643: die Kette dieses Weges hat genau ein Glied — die Antwort IST der Wortlaut von `best`.
+      argumentation: [{ aussage: best.statement, quellen: [best.id], belegtDurch: best.id }],
       demo: true,
     };
   }

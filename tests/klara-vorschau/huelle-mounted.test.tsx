@@ -44,6 +44,10 @@ beforeEach(async () => {
   sessionStorage.clear();
   zuruecksetzenGanz();
   setzeKlaraVorschauAktiv(true);
+  // Klara 01 (produkt:20261008:klara-basis): der echte Betrieb ist jetzt der Anfang. Diese Datei
+  // belegt die gelieferte Vorschau mit ihren vorgefertigten Antworten — also den Demo-Betrieb, den
+  // die Person ausdrücklich wählt. Den echten Betrieb misst `tests/klara-basis/`.
+  aendere((z) => ({ ...z, betrieb: "demo" }));
   netz.anfragen = [];
   netz.lage = { kiAktiv: true, rolle: "experte" };
   medienStub();

@@ -6,6 +6,7 @@ import { endpoints } from "../api/endpoints";
 import { useNotifications } from "../api/hooks";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { useNetzOnline } from "../lib/netzzustand";
 import { notificationTarget } from "../lib/notificationTarget";
 import { MenueAufklapp } from "./Menue";
@@ -273,9 +274,14 @@ export function MeldungenListe({
         </button>
       ) : null}
       {items.length === 0 ? (
-        <p className="py-2 text-[13px] text-muted" data-testid="meldungen-leer">
-          {leer}
-        </p>
+        <>
+          <p className="py-2 text-[13px] text-muted" data-testid="meldungen-leer">
+            {leer}
+          </p>
+          {/* R-0956 (Nacharbeit 7): nur die WIRKLICH leere Liste wird eingeordnet — beim Laden
+              und bei einem Fehler sagt der Satz darüber, was los ist. */}
+          {laedt || fehler ? null : leerzustandsZeile(t, "meldungen")}
+        </>
       ) : (
         <ul className="space-y-0.5">
           {items.slice(0, 8).map((n) => {
@@ -299,14 +305,18 @@ export function MeldungenListe({
                   className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
                     read
                       ? "bg-hairline"
-                      : n.kind === "conflict" || n.kind === "escalation"
+                      : n.kind === "conflict" ||
+                          n.kind === "escalation" ||
+                          n.kind === "reklamation" ||
+                          (n.kind === "veroeffentlichung" && n.hervorgehoben)
                         ? "bg-trust-crit-fill"
                         : n.kind === "duplicate"
                           ? "bg-ai"
                           : n.kind === "assignment" ||
                               n.kind === "kenntnisnahme" ||
                               n.kind === "frische" ||
-                              n.kind === "return"
+                              n.kind === "return" ||
+                              n.kind === "loeschantrag"
                             ? "bg-ai"
                             : n.kind === "impact"
                               ? "bg-trust-pos-fill"
@@ -358,6 +368,32 @@ export function MeldungenListe({
                       {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
                     </span>
                   ) : null}
+                  {/* Löschantrag (R-0661): Verwalteraufgabe mit Frist — der Titel ist der Name
+                      der antragstellenden Person. */}
+                  {n.kind === "loeschantrag" ? (
+                    <span className="font-semibold text-ai">
+                      {t(
+                        n.ueberfaellig ? "datenschutz.meldungUeberfaellig" : "datenschutz.meldung",
+                      )}
+                      {n.fristBis
+                        ? ` (${t("datenschutz.meldungFrist", {
+                            datum: new Date(n.fristBis).toLocaleDateString(),
+                          })})`
+                        : ""}
+                      :{" "}
+                    </span>
+                  ) : null}
+                  {/* R-1089: gemeldete Antwort zum eigenen Wissen — Grund vorn, Titel dahinter. */}
+                  {n.kind === "reklamation" ? (
+                    <span className="font-semibold text-trust-crit-text">
+                      {t(
+                        n.grund === "quelle-passt-nicht"
+                          ? "antwortmeldung.meldung.quelle-passt-nicht"
+                          : "antwortmeldung.meldung.antwort-falsch",
+                      )}
+                      :{" "}
+                    </span>
+                  ) : null}
                   {/* aufnahme:20260922:gesamt-wissen-frische: Frist, Wochenvorlage oder
                       Prüfanforderung — der Titel ist das eigene Wissensobjekt. */}
                   {n.kind === "frische" ? (
@@ -372,6 +408,24 @@ export function MeldungenListe({
                               : "frische.meldungFrist",
                       )}
                       :{" "}
+                    </span>
+                  ) : null}
+                  {/* Veröffentlichung: neu oder aktualisiert; „hervorgehoben" trägt die Markierung
+                      „Wichtig" und steht oben, bis sie gelesen ist (Reihenfolge vom Server). */}
+                  {n.kind === "veroeffentlichung" ? (
+                    <span
+                      className={`font-semibold ${
+                        n.hervorgehoben ? "text-trust-crit-text" : "text-ai"
+                      }`}
+                      data-hervorgehoben={n.hervorgehoben ? "ja" : "nein"}
+                    >
+                      {n.hervorgehoben ? `${t("veroeffentlichung.meldungWichtig")} · ` : ""}
+                      {t(
+                        n.art === "aktualisierung"
+                          ? "veroeffentlichung.meldungAktualisierung"
+                          : "veroeffentlichung.meldungNeu",
+                      )}
+                      {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
                     </span>
                   ) : null}
                   {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}

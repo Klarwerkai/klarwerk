@@ -15,7 +15,7 @@
 // Die Begründungen der einzelnen Entscheidungen (Beispiele im leeren Feld, Mikrofon als Symbol,
 // `type="button"` am Diktat, Spinner im Sendeknopf) stehen seit JOB 3038/3064 an diesen Zeilen und
 // sind mit umgezogen.
-import { ArrowUp, Loader2, Mic } from "lucide-react";
+import { ArrowUp, FileAudio, Loader2, Mic } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { FRAGEN_ZIEL } from "./ziele";
 
@@ -28,6 +28,7 @@ export function FrageFeld({
   beispieleOffen,
   onBeispiele,
   diktat,
+  aufnahme = null,
   wartet,
   gesperrt,
   sperrHinweis,
@@ -45,6 +46,11 @@ export function FrageFeld({
   onBeispiele: () => void;
   /** Ohne Spracherkennung `null` — dann steht KEIN Mikrofon da (JOB 3038). */
   diktat: { laeuft: boolean; umschalten: () => void; zwischen?: string } | null;
+  /**
+   * R-0104: die Sprachaufnahme mit Server-Transkription (`components/sprache/useSprachaufnahme.ts`).
+   * Ohne Aufnahmemöglichkeit `null` — dann steht kein Knopf da. Das Tutorial reicht nichts herein.
+   */
+  aufnahme?: { laeuft: boolean; verarbeitet: boolean; umschalten: () => void } | null;
   /** Eine Anfrage läuft: Spinner im Sendeknopf, Knopf gesperrt. */
   wartet: boolean;
   /** Kein nutzbares Modell (D-AISTATE): der Sendeknopf ist hart gesperrt. */
@@ -72,7 +78,7 @@ export function FrageFeld({
         value={wert}
         onChange={(e) => onWert(e.target.value)}
         readOnly={nurLesen}
-        placeholder={t("ask.placeholder")}
+        placeholder={t("beispielfragen.platzhalter")}
         aria-invalid={ungueltig}
         aria-describedby={beschreibungId}
         data-tutorial-ziel={FRAGEN_ZIEL.fragefeld}
@@ -115,6 +121,29 @@ export function FrageFeld({
           title={diktat.laeuft ? t("ask.diktatStop") : t("ask.diktatStart")}
         >
           <Mic size={18} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      ) : null}
+      {/* R-0104: Aufnahme statt Browser-Erkennung. Das Transkript wird ANGEHÄNGT — gesendet wird
+          erst auf Klick, wie beim Diktat. */}
+      {aufnahme ? (
+        <button
+          type="button"
+          data-testid="ask-sprachaufnahme"
+          className={`shrink-0 rounded-btn p-0.5 transition-colors ${
+            aufnahme.laeuft ? "text-brand-text" : "text-muted-2 hover:text-text"
+          }`}
+          onClick={aufnahme.umschalten}
+          disabled={aufnahme.verarbeitet}
+          aria-pressed={aufnahme.laeuft}
+          aria-busy={aufnahme.verarbeitet}
+          aria-label={aufnahme.laeuft ? t("sprachaufnahme.stop") : t("sprachaufnahme.frage")}
+          title={aufnahme.laeuft ? t("sprachaufnahme.stop") : t("sprachaufnahme.frage")}
+        >
+          {aufnahme.verarbeitet ? (
+            <Loader2 size={18} strokeWidth={1.8} aria-hidden="true" className="animate-spin" />
+          ) : (
+            <FileAudio size={18} strokeWidth={1.8} aria-hidden="true" />
+          )}
         </button>
       ) : null}
       <button

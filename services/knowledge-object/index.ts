@@ -1,8 +1,6 @@
 // Öffentliche API des Moduls knowledge-object.
 export {
   KoService,
-  // G27: Deckel des Altbestands-Backfills je Suchanfrage (die Suche wird nie zum Bestandslauf).
-  SEARCH_PROJECTION_BACKFILL_PER_QUERY,
   normalizeEvidenceLimit,
   DEFAULT_EVIDENCE_LIMIT,
   MAX_EVIDENCE_LIMIT,
@@ -108,8 +106,6 @@ export {
 export {
   SEARCH_PROJECTION_VERSION,
   SEARCH_PROJECTION_LANGUAGE,
-  SEARCH_PROJECTION_FIELDS,
-  SEARCH_PROJECTION_MATCH_FIELDS,
   MAX_SEARCH_TEXT_LENGTH,
   CLASSIFICATION_SOURCE,
   buildSearchProjection,
@@ -121,9 +117,8 @@ export {
   // der per dependency-cruiser erzwungenen Modulgrenze nicht erreichen und suchte deshalb nur nach
   // dem woertlich Getippten — dieselbe Frage, zwei Ergebnisse. Die Tabelle und die Grenzzusage
   // gehoeren mit heraus: wer erweitert, muss die belegten Paare LESEN koennen (der Fragepfad
-  // rechnet sie in seine Termform um) und seine Zusicherung pruefen koennen.
+  // rechnet sie in seine Termform um). R-1349: die Grenzkonstante ist entfernt (s. search-projection).
   SUCH_ZUORDNUNGEN,
-  S2_ERWEITERUNG_GRENZE,
   expandSearchTerms,
   type SuchZuordnung,
   visibleTextFromBodyHtml,
@@ -131,7 +126,6 @@ export {
   classificationAtVersion,
   classificationFromVersionSnapshot,
   reconstructedClassification,
-  isReconstructedClassification,
   resolveCapturedAt,
   serializeClassificationSnapshot,
   parseClassificationSnapshot,
@@ -154,7 +148,6 @@ export {
   PROJECTION_STATES,
   UNINITIALIZED_CONTROL_STATE,
   controlStateLifecycleGueltig,
-  freigegebeneProjektionsfassung,
   neuerProjektionsSpeicher,
   type InMemoryProjektionsSpeicher,
   type ProjectionAudit,
@@ -181,8 +174,6 @@ export {
 // G27 Welle 1 / S2 — die VERÄNDERLICHE Metadatenprojektion (Schlüssel `ko_id`, eigene
 // `metadata_revision`). Sie ist die zweite Hälfte des Suchvertrags, nicht sein Ersatz.
 export {
-  METADATA_PROJECTION_FIELDS,
-  METADATA_PROJECTION_MATCH_FIELDS,
   METADATA_REVISION_NONE,
   metadataTextsOf,
   metadataTextsEqual,
@@ -200,7 +191,6 @@ export {
 } from "./src/metadata-projection-repo-pg";
 // G27 Welle 1 — die Zusammensetzung beider Projektionsarten zu DER Sicht des Suchkonsumenten.
 export {
-  EFFECTIVE_SEARCH_DOCUMENT_FIELDS,
   composeEffectiveSearchDocument,
   matchEffectiveSearchDocument,
   type EffectiveSearchDocument,
@@ -244,7 +234,6 @@ export {
   // Wissensnetz-Anschluss (`services/library-analytics`) braucht sie, um denselben beurteilten
   // Stand auszuweisen wie die Detailauskunft; eine zweite Ableitung dort wäre die zweite Wahrheit.
   fassungszeitVon,
-  netzQualitaet,
   // JOB 4151 (R6): die Antwortform der SCHREIBWEGE. Sie geht mit heraus, weil die Route sie
   // braucht — ohne sie gäbe der Schreibweg das Aggregat zurück, und die Anzeige (JOB 4153) liest
   // von dieser Antwort `gegenstueck.id`. Zwei Formen für dieselbe Kante am Draht wären die zweite
@@ -267,8 +256,6 @@ export type {
   KanteSetzenEingabe,
   KuratierteKanteAnsicht,
   KuratierteKanten,
-  NetzQualitaet,
-  QualitaetKoBestand,
 } from "./src/kanten-service";
 export {
   KANTEN_ARTEN,
@@ -340,7 +327,14 @@ export type {
   AnweisungRepo,
   AnweisungStandAufnahme,
 } from "./src/gesamtanweisung-types";
-export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
+export {
+  KoError,
+  KNOWLEDGE_TYPES,
+  KO_AUSSAGEARTEN,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+} from "./src/types";
+export type { KoAussageart } from "./src/types";
 // R-0169 (herkunft-identitaet): die interne Dokumentakte — eigene Identität und unveränderliche
 // Fassungen für Importe ohne externe Quellenkennung (Word-Zusatz, JSON ohne externalId).
 export {
@@ -452,10 +446,20 @@ export type {
   ConfidentialityDisclosure,
   ConfidentialityProvenance,
 } from "./src/confidentiality";
+// R-1631 (gesamt-anlagenzugang): Stücklistenbezug und Geltungskontext — die Eingangsprüfung der Route.
+export { anlagenkontextFehler } from "./src/anlagenkontext";
+// JOB 593 / R-0082: die EINE Normalform der Anlagenkennung — auch für die Lebenszyklus-Kopplung.
+export { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./src/asset";
+// R-1664/R-2179/R-2180: die Normalform der geführten Negativwissen-Angaben. Aufrufer ist die
+// Persistenzgrenze des Entwurfs (services/capture) — dieselbe Form, keine zweite Auslegung.
+// BEN, Nacharbeit 2: dazu die Grenzprüfung — der Entwurfsrand weist Überschreitungen ab, statt zu kürzen.
+export { negativwissenGrenzfehler, normalizeNegativwissen } from "./src/negativwissen";
+export type { NegativwissenAngaben } from "./src/negativwissen";
 // R-0658: Schutzdaten vor der Suche — Erkennung und die eine Lesestelle der Quarantäne.
 export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";
 export type { SchutzdatenArt, SchutzdatenQuarantaene } from "./src/types";
 export type {
+  AnlagenKontext,
   EvidenceKind,
   EvidenceRecord,
   KnowledgeObject,
@@ -498,4 +502,7 @@ export type {
   AiCheckCoverageSummary,
   // AUFNAHME 20260922: die gespeicherte Basisbindung eines Prüfnachweises.
   AiCheckBasis,
+  // produkt:20261007:veroeffentlichungsoptionen: der Vermerk einer Veröffentlichung samt Meldungswahl.
+  KoVeroeffentlichung,
+  VeroeffentlichungsMeldung,
 } from "./src/types";
