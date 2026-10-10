@@ -161,6 +161,7 @@ export type {
   ReasonerLocale,
   AnswerResult,
   AnswerStep,
+  ArgumentationsGlied,
   StructureResult,
   AssistResult,
   ConflictJudgeResult,

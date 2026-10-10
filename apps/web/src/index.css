@@ -350,6 +350,13 @@
   body.printing-extract .print-hide {
     display: none !important;
   }
+  body.printing-extract .print-only {
+    display: block;
+  }
+}
+/* R-1643: Inhalt nur für das gedruckte Blatt (Entscheidungs-Protokoll) — auf dem Bildschirm nie. */
+.print-only {
+  display: none;
 }
 
 /* Klara Zeige-Modus (Pedi 05.07.: jedes Element erklärbar, auch Buttons/Chips ohne Textmarkierung).
