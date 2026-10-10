@@ -1086,6 +1086,24 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Dokumentierte Läufe aus dem Prüfprotokoll — Kennungen und Zahlen, keine Titel.",
   },
+  // ADMIN-09 (freigaberegeln-routes.ts, freigaberegel-dienst.ts): Vorgänge mit Titel nur über das
+  // `darfSehen`-Urteil des Betrachters, das die Route bildet; unsichtbare zählen nur mit.
+  "GET /api/spaces/:id/freigaberegel": {
+    urteil: "PRAEDIKAT",
+    grund: "Regelübersicht — Vorgangstitel nur, wo darfSehen es erlaubt.",
+  },
+  "POST /api/spaces/:id/freigaberegel/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Wirkungsvorschau — Titel laufender Vorgänge nur über darfSehen.",
+  },
+  "PUT /api/spaces/:id/freigaberegel": {
+    urteil: "PRAEDIKAT",
+    grund: "Neue Regelfassung samt Übersicht — Vorgangstitel nur über darfSehen.",
+  },
+  "POST /api/spaces/:id/freigaberegel/fristlauf": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis des Fristlaufs — Titel nur über darfSehen, sonst Kennung und Zahl.",
+  },
   // Teams (teams-routes.ts, produkt:20261009:admin-teams): Teamfassungen, Konten und Space-Namen —
   // kein Wissensobjekt wird gelesen oder ausgegeben.
   "GET /api/teams": {
