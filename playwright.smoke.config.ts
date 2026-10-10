@@ -61,10 +61,16 @@ const PORT_ZUSTAND = 3124;
 
 /**
  * Die Sonden, die Bestand anlegen — sie laufen ausschliesslich im isolierten Kontext.
+ *
+ * produkt:20261007:veroeffentlichungsoptionen: die Veröffentlichungssonde legt ein zweites Konto,
+ * einen gültigen Eintrag und eine Veröffentlichung an. Im geteilten Bestand sähe die Datenlage-
+ * Zusicherung von `ui-smoke` (mega49) beides; deshalb läuft sie hier, aus demselben Grund wie oben.
+ *
  * `arbeitswege-objekt-browser` reicht Beiträge ein und entscheidet an ihnen; im geteilten Server
  * füllte das das Prüf-Board, das `ui-smoke` leer erwartet.
  */
-const ZUSTAND_SPEC = /(demo-ux-v1-capture-frontdoor|arbeitswege-objekt-browser)\.spec\.ts/;
+const ZUSTAND_SPEC =
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.

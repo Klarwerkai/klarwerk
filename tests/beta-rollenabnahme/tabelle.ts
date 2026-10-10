@@ -927,6 +927,28 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // produkt:20261007:veroeffentlichungsoptionen. Der Stand hängt am Leserecht, das Veröffentlichen
+  // am vorhandenen Freigaberecht `ko.validate` (Controller/Admin). Zustandsfreie URLs: hinter dem
+  // Tor endet der Stand im 404, das Veröffentlichen ohne Rumpf im 400 — „durchgelassen", nichts
+  // wird angelegt.
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
+    route: "/api/kos/:id/veroeffentlichung",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:79",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
+    route: "/api/kos/:id/veroeffentlichung",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:107",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
   // R-1644 · Wissensauskunft zum Zeitpunkt. Dieselbe Einsichtsstufe wie das Audit-Protokoll
   // (`ko.validate`, Controller/Admin). Ohne Zeitpunkt endet die Tür hinter dem Tor im 400.
   {

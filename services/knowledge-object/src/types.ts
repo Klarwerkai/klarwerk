@@ -513,6 +513,44 @@ export interface KoFrischeSignal {
   by: string;
 }
 
+// ================================================================================================
+// produkt:20261007:veroeffentlichungsoptionen — DER VERÖFFENTLICHUNGSVERMERK EINER GÜLTIGEN FASSUNG.
+// ================================================================================================
+//
+// „Veröffentlicht" heisst hier: die fachlich freigegebene Fassung wird den BERECHTIGTEN Lesern
+// bekannt gemacht — intern, nicht im Internet. Drei Dinge bleiben getrennt:
+//   · Sichtbarkeit — entscheidet weiter allein `services/app/src/sichtbarkeit.ts` (Stufe, Space,
+//     Autor). Ein Vermerk öffnet niemandem etwas.
+//   · fachliche Freigabe — `status: "validiert"` an genau dieser Fassung (Prüfweg, unverändert).
+//   · Meldungswirkung — `meldung`: still (keine Meldung), normal, hervorgehoben.
+//
+// `empfaenger` ist die ANZAHL der beim Veröffentlichen benachrichtigten Konten (alle, die den
+// Eintrag in diesem Augenblick lesen durften, ohne die veröffentlichende Person); bei `still` 0.
+// Bewusst keine Kennungen: das Objekt geht an jeden Leser, und eine Liste der Kollegen gehört
+// nicht hinein. Den angekündigten Kreis selbst hält die App in einer eigenen, nicht über das
+// Objekt lesbaren Ablage fest (`services/app/src/veroeffentlichung.ts`, Zustellungen je
+// Empfänger); die Glocke liefert nur dorthin zugestellte Meldungen und prüft zusätzlich die
+// aktuelle Sichtbarkeit (ein späterer Entzug wirkt sofort, eine spätere Rechteerteilung öffnet
+// keine alte Meldung).
+//
+// OPTIONAL UND OHNE MIGRATION, dieselbe Bauform wie `proposals`: das KO liegt als Voll-JSONB
+// (`kos.data`). Nur `KoService.vermerkeVeroeffentlichung` schreibt das Feld; die öffentlichen
+// Anlagewege bauen das Objekt Feld für Feld und übernehmen es nicht aus einem Rumpf.
+export type VeroeffentlichungsMeldung = "still" | "normal" | "hervorgehoben";
+
+export interface KoVeroeffentlichung {
+  id: string;
+  /** Die veröffentlichte Fassung (Inhaltsversion) — zum Zeitpunkt gültig (`validiert`). */
+  fassung: number;
+  /** `neu` = erste Veröffentlichung dieses Eintrags, `aktualisierung` = jede weitere. */
+  art: "neu" | "aktualisierung";
+  meldung: VeroeffentlichungsMeldung;
+  von: string;
+  am: string;
+  /** Wie viele Konten benachrichtigt wurden — bei `still` 0. */
+  empfaenger: number;
+}
+
 /** R-0658: welche Art Schutzdaten erkannt wurde — nie der Wert selbst. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
@@ -764,6 +802,9 @@ export interface KnowledgeObject {
   // Kommentar (der trägt keinen entschiedenen Zustand), sondern ein eigener Datensatz mit
   // Urheber, Grundlage, Zustand und Entscheidung.
   proposals?: KoProposal[];
+  // produkt:20261007:veroeffentlichungsoptionen — die Veröffentlichungen dieses Eintrags, älteste
+  // zuerst. Fehlt das Feld, wurde der Eintrag nie über diesen Weg veröffentlicht.
+  veroeffentlichungen?: KoVeroeffentlichung[];
   attachments: KoAttachment[];
   sources: KoSource[];
   // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —

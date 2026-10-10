@@ -158,6 +158,7 @@ import {
   type KoRepairNote,
   type KoSource,
   type KoStatus,
+  type KoVeroeffentlichung,
   type TrashedKo,
 } from "./types";
 
@@ -6780,6 +6781,55 @@ export class KoService {
               action: "ko.space-changed",
               target: id,
               payload: { vorher, nachher: spaceId, version: ko.version },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // produkt:20261007:veroeffentlichungsoptionen — einen Veröffentlichungsvermerk anhängen.
+  //
+  // `bilde` bekommt das FRISCH unter dem KO-Lock gelesene Objekt und entscheidet dort, ob die
+  // Veröffentlichung zulässig ist (gültige Fassung, erwartete Version, nicht schon veröffentlicht) —
+  // es wirft sonst. Damit kann zwischen Vorschau und Schreiben weder eine Überarbeitung noch eine
+  // zweite Veröffentlichung derselben Fassung durchrutschen. Der Vermerk berührt nichts ausser
+  // `veroeffentlichungen`: Inhaltsversion, `history`, Status und Sichtbarkeitsfelder bleiben. Vermerk
+  // und Beleg `ko.veroeffentlicht` committen gemeinsam (`mutateKo`).
+  //
+  // `nachher` (Ben, Nacharbeit 11): läuft IM Belegschritt — also erst NACH der Prüfung in `bilde` und
+  // mit demselben Transaktionskontext wie Vermerk und Beleg. Mit `withTx` committen Vermerk,
+  // `nachher` und Beleg gemeinsam oder gar nicht; ohne `withTx` nimmt `mutateKo` den Vermerk zurück,
+  // wenn `nachher` oder der Beleg scheitert. Ein abgelehnter Versuch erreicht `nachher` nie.
+  async vermerkeVeroeffentlichung(
+    id: string,
+    bilde: (ko: KnowledgeObject) => KoVeroeffentlichung,
+    nachher?: (vermerk: KoVeroeffentlichung, tx?: TxContext) => Promise<void>,
+  ): Promise<{ ko: KnowledgeObject; vermerk: KoVeroeffentlichung }> {
+    return this.mutateKo(id, (ko) => {
+      const vermerk = bilde(ko);
+      const updated: KnowledgeObject = {
+        ...ko,
+        veroeffentlichungen: [...(ko.veroeffentlichungen ?? []), vermerk],
+      };
+      return {
+        updated,
+        value: { ko: updated, vermerk },
+        audit: async (tx) => {
+          await nachher?.(vermerk, tx);
+          await this.audit?.record(
+            {
+              actor: vermerk.von,
+              action: "ko.veroeffentlicht",
+              target: id,
+              payload: {
+                vermerkId: vermerk.id,
+                fassung: vermerk.fassung,
+                art: vermerk.art,
+                meldung: vermerk.meldung,
+                empfaenger: vermerk.empfaenger,
+              },
             },
             tx,
           );

@@ -426,6 +426,7 @@ import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-route
 import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
 import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
+import { veroeffentlichungRoutes } from "./routes/veroeffentlichung-routes";
 import {
   lesePruefzustaendigkeit,
   scimSchluessel,
@@ -470,6 +471,13 @@ import {
   type NachfolgeRepo,
   PgNachfolgeRepo,
 } from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl still/normal/hervorgehoben.
+import {
+  InMemoryVeroeffentlichungsZustellungRepo,
+  PgVeroeffentlichungsZustellungRepo,
+  VeroeffentlichungDienst,
+  type VeroeffentlichungsZustellungRepo,
+} from "./veroeffentlichung";
 // R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
 import {
   InMemoryMitgelesenRepo,
@@ -655,6 +663,12 @@ export interface AppServices {
   kenntnisnahmen: KenntnisnahmeRepo;
   /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
   kenntnisnahmeUhr: () => number;
+  /**
+   * produkt:20261007:veroeffentlichungsoptionen — die Zustellungen je Empfänger (der angekündigte
+   * Kreis einer Veröffentlichung). Bauform wie `kenntnisnahmen`: Postgres im Betrieb, sonst die
+   * Speicherfassung, die im Desktop-Journal-Betrieb das Anlegen ablehnt.
+   */
+  veroeffentlichungsZustellungen: VeroeffentlichungsZustellungRepo;
   /**
    * Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Aus demselben Grund wie
    * `kenntnisnahmen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgLoeschantragRepo`; ohne Datenbank
@@ -1179,6 +1193,8 @@ export function assembleServices(
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
     kenntnisnahmeUhr?: () => number;
+    // Veröffentlichung: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    veroeffentlichungsZustellungen?: VeroeffentlichungsZustellungRepo;
     // Betroffenenrechte: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     loeschantraege?: LoeschantragRepo;
     // Betroffenenrechte: die Uhr für Antragsfrist und Überfälligkeit — ohne Injektion `Date.now`.
@@ -1570,6 +1586,10 @@ export function assembleServices(
       opts.kenntnisnahmen ??
       new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
+    // Veröffentlichung: dieselbe Haltbarkeitsregel wie die Kenntnisnahme.
+    veroeffentlichungsZustellungen:
+      opts.veroeffentlichungsZustellungen ??
+      new InMemoryVeroeffentlichungsZustellungRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // Betroffenenrechte: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit
     // zu (Desktop-Journal), lehnt die Speicherfassung Anträge ab — ein angenommener und beim
     // Neustart verlorener Löschantrag wäre schlimmer als ein abgelehnter.
@@ -2071,6 +2091,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       officeAblage: new PgOfficeAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
+      // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
+      veroeffentlichungsZustellungen: new PgVeroeffentlichungsZustellungRepo(pool),
       // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
       // das sie betreffen — sie sind der Nachweis über die Bearbeitung.
       loeschantraege: new PgLoeschantragRepo(pool),
@@ -4181,6 +4203,21 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis
+  // ist derselbe wie der Empfängerkreis einer Kenntnisnahme (eine Regel, eine Stelle); der Vermerk
+  // liegt am Eintrag, der Beleg im Prüfprotokoll. Dieselbe Instanz speist die Glocke unten.
+  const veroeffentlichungDienst = new VeroeffentlichungDienst({
+    ko: services.ko,
+    leser: (ko) => kenntnisnahmeDienst.moeglicheEmpfaenger(ko),
+    kontoNamen: () => kenntnisnahmeDienst.kontoNamen(),
+    kenntnisnahmen: (ko) => kenntnisnahmeDienst.uebersicht(ko),
+    zustellungen: services.veroeffentlichungsZustellungen,
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+  });
+  app.register(
+    veroeffentlichungRoutes({ dienst: veroeffentlichungDienst, kos: services.ko }, guards),
+  );
   // R-1644: die Wissensauskunft zum Zeitpunkt — liest Fassungen, Audit-Protokoll und Kenntnisnahmen,
   // schreibt nichts. Dieselbe Uhr wie die Kenntnisnahme, damit „nicht in der Zukunft" zu deren
   // Zeitpunkten passt.
@@ -4462,6 +4499,8 @@ export function buildApp(
           lifecycle: services.lifecycle,
           audit: services.audit,
         }),
+        // Veröffentlichung: Meldungen bei „normal" und „hervorgehoben" — nie bei „still".
+        veroeffentlichungen: veroeffentlichungDienst,
       },
       guards,
     ),

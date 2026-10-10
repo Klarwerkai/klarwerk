@@ -502,4 +502,7 @@ export type {
   AiCheckCoverageSummary,
   // AUFNAHME 20260922: die gespeicherte Basisbindung eines Prüfnachweises.
   AiCheckBasis,
+  // produkt:20261007:veroeffentlichungsoptionen: der Vermerk einer Veröffentlichung samt Meldungswahl.
+  KoVeroeffentlichung,
+  VeroeffentlichungsMeldung,
 } from "./src/types";
