@@ -2250,6 +2250,26 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Kommentar oben `Zeichnung` und `AnhangZeichnung`. Die übrigen 18 sind ohne Git-Verlauf an
     // diesem Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     //
+    // aufnahme:20260922:gesamt-wissensvermaechtnis: 515 → 516. GENAU EIN Bauteil kommt dazu:
+    //     + `VermaechtnisBuch` (`components/VermaechtnisBuch.tsx`) — das Wissens-Vermächtnis-Buch
+    //       einer Person in der Kontokarte (Vorschau als Text, Download, Druck).
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // EHRLICH GESAGT: GERECHNET (515 + 1) — dieser Auftrag durfte keinen Testlauf selbst starten,
+    // und ob 515 den Stand nach `produkt:20261007:ownership-uebergabe` schon trug, ist ungemessen.
+    // Weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
+    // Nacharbeit 2: GEMESSEN 523. Am Kandidaten a7616b41 meldete der Sammler wörtlich „gemessen:
+    // 523 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 670 Quelldateien … expected
+    // { komponenten: 523, … } to deeply equal { komponenten: 516, … }". Dieser Auftrag trägt genau
+    // EIN Bauteil (`VermaechtnisBuch`) bei; die übrigen 7 über 516 stammen aus dem Hauptstand seit
+    // der letzten Messung (darunter `VerantwortungUebergabe`/`Arbeitsflaeche` der Ownership-
+    // Übergabe) und sind ohne Git-Verlauf hier nicht vollständig namentlich bestimmt.
+    // Nacharbeit 4 (Integration mit main, Kandidat 78be699e): 523 → 525. Der eingemischte Hauptstand
+    // bringt `components/Wissensuebergabe.tsx` (R-0554 / R-2128) mit genau zwei Bauteilen —
+    // `UebergabeVorschauInhalt` und `Wissensuebergabe` —, ohne diese Zahl nachzuziehen. EHRLICH
+    // GESAGT: GERECHNET (523 + 2), nicht gemessen; was der Hauptstand sonst an Bauteilen gebracht
+    // hat, ist ohne Git-Verlauf hier nicht bestimmt. Weicht der Prüflauf ab, gehört die gemessene
+    // Zahl hierher.
+    //
     // ZUSAMMENFÜHRUNG (gesamt-bildbeschreibung-bedienung Nacharbeit 12, Kandidat 5613867b mit main
     // bc2b75e7): hier GEMESSEN 513 (85661d72, Grundmenge 647), auf main GEMESSEN 515 (01c730f4,
     // Grundmenge 657, samt `Arbeitsweise`, `Zeichnung`, `AnhangZeichnung`). Dieser Auftrag trägt
@@ -2331,6 +2351,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `Verantwortung`. 524 + 7 = 531. EHRLICH GESAGT: GERECHNET, nicht gemessen (dasselbe
     // Diff-Muster lag in Nacharbeit 10 und 11 jeweils genau auf der Messung). Weicht der Prüflauf
     // ab, nennt die Meldung die gemessene Zahl; die gehört dann hierher.
+    //
+    // ZUSAMMENFÜHRUNG (gesamt-wissensvermaechtnis Nacharbeit 5, Kandidat 77c0f3a1): 531 + 1 = 532.
+    // Die 531 des Hauptstands enthält bereits `UebergabeVorschauInhalt` und `Wissensuebergabe`;
+    // die in Nacharbeit 4 dafür gerechneten +2 (→ 525) entfallen damit. Mit der Messung 523 am
+    // Kandidaten a7616b41 (13bf9f2bd + `VermaechtnisBuch`) und der Messung 524 (13bf9f2bd + die zwei
+    // Bauteile von gesamt-ki-kennzeichnung) ist die Reihe stimmig: Basis 522. Dazu kommt genau
+    // EIN Bauteil dieses Auftrags, das der Hauptstand nicht trägt: `VermaechtnisBuch`.
+    // EHRLICH GESAGT: GERECHNET, nicht gemessen. Weicht der Prüflauf ab, gehört die gemessene
+    // Zahl hierher.
     //
     // ZUSAMMENFÜHRUNG (Aufnahme 20260922 · gesamt-navigation, Nacharbeit 11 — Integration mit main
     // 8f83f8ad): beide Zweige haben diese Zahl unabhängig fortgeschrieben. Die 523 der
@@ -2415,6 +2444,41 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Auftrags ist betroffen; `WeiterUntenHinweis` bleibt enthalten. `anbieter` 1 und `traeger` 2
     // sind unverändert.
     //
+    // R-1656 („Du solltest auch wissen…"), Zusammenführung mit Hauptstand 985cb62c: 521 → 522,
+    // GENAU EIN Bauteil mehr, im Hauptstand nicht enthalten:
+    //     + `Wissensempfehlung` (`components/bibliothek/Wissensempfehlung.tsx`) — verwandte
+    //       Einträge mit ihrem Grund in der Lesespalte; die Grundzeile ist eine Hilfsfunktion
+    //       (`grundText`), kein eigenes Bauteil.
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // EHRLICH GESAGT: GERECHNET (die gemessene 521 des Hauptstands + 1) — dieser Auftrag durfte
+    // keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
+    //
+    // R-1656 Nacharbeit 14: GEMESSEN 525. Am Kandidaten 3564eabb meldete der Sammler wörtlich
+    // „gemessen: 525 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 679 Quelldateien …
+    // expected { komponenten: 525, … } to deeply equal { komponenten: 522, … }"
+    // (HISTORIE/nacharbeit-14/PRUEFUNG/komponentenzaehler-konfliktstelle.log). Dieser Auftrag hat seit
+    // der Rechnung 522 kein Bauteil hinzugefügt; die drei darüber kamen mit dem seither eingemischten
+    // Hauptstand. Namentlich sind sie hier NICHT bestimmt: der Diff gegen 985cb62c war in dieser
+    // Nacharbeit nicht ausführbar. `anbieter` 1 und `traeger` 2 sind unverändert — beide Seiten der
+    // Meldung nennen 1 und 2.
+    //
+    // ZUSAMMENFÜHRUNG gesamt-wissensvermaechtnis × Hauptstand a57e1e8f (Nacharbeit 7, Kandidat
+    // de65d871): die 521 des Hauptstands ist GEMESSEN (Kandidat 26242335) und enthält
+    // `UebergabeVorschauInhalt` und `Wissensuebergabe`, aber nicht `VermaechtnisBuch` — dieser
+    // Auftrag ist im Hauptstand nicht enthalten. Keine der zwanzig dort entfernten Deklarationen
+    // gehört zu diesem Auftrag; `VermaechtnisBuch` ist weiter in `pages/AdminKontenDetails.tsx`
+    // eingebunden. 521 + 1 = 522; meine gerechnete 532 aus Nacharbeit 5 ist damit überholt.
+    // EHRLICH GESAGT: GERECHNET, nicht gemessen. Weicht der Prüflauf ab, gehört die gemessene
+    // Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-wissensvermaechtnis Nacharbeit 8: GEMESSEN 525. Am Kandidaten 877938fb meldete der
+    // Sammler wörtlich „gemessen: 525 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 678
+    // Quelldateien … expected { komponenten: 525, … } to deeply equal { komponenten: 522, … }"
+    // (HISTORIE/nacharbeit-8/PRUEFUNG/vermaechtnis-integration.log). Dieser Auftrag trägt weiterhin
+    // genau EIN Bauteil bei (`VermaechtnisBuch`); die übrigen 3 über 522 kamen mit dem seit der
+    // Messung 521 eingemischten Hauptstand (Grundmenge 674 → 678) und sind ohne Git-Verlauf hier
+    // nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
     // ADMIN-02 (produkt:20261009:admin-integrationszustaende) Nacharbeit 2 — ZWEI neue Bauteile in
     // `components/ImportLaufListe.tsx` (`ImportLaufListe`, die Importliste, und die dateilokale
     // `LaufZeile`). Keines zeigt ein Bild, bietet eine Bildbeschreibung an oder trägt einen eigenen
@@ -2452,6 +2516,52 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Seit der Zusammenführung änderte dieser Auftrag nur diesen Sollwert (keine Quelldatei der
     // Grundmenge); die 3 Komponenten und 3 Quelldateien (674 → 677) kamen mit main, namentlich
     // ohne Git-Verlauf nicht bestimmt. `anbieter` 1 und `traeger` 2 unverändert.
+    //
+    // ZUSAMMENFÜHRUNG R-1656 × Hauptstand 13984aac (R-1656 Nacharbeit 18): beide Reihen decken sich.
+    // Der Hauptstand hat 524 GEMESSEN — ohne `Wissensempfehlung`, die nur dieser Auftrag trägt. R-1656
+    // hat am Kandidaten 3564eabb 525 GEMESSEN — mit `Wissensempfehlung`. 524 + 1 = 525; damit sind
+    // auch die drei in Nacharbeit 14 unbenannten Komponenten dieselben drei, die der Hauptstand
+    // (Nacharbeit 22 oben) mitgebracht hat. An DIESEM Kandidaten nicht gemessen; weicht der Prüflauf
+    // ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 auf beiden Seiten gleich.
+    //
+    // ZUSAMMENFÜHRUNG gesamt-wissensvermaechtnis × Hauptstand 5c72b675 (Nacharbeit 9, Kandidat
+    // 4bc1f2b8): beide Reihen decken sich. Der Hauptstand hat GEMESSEN 524 (Kandidat ca3bb812,
+    // Grundmenge 677) — ohne dieses Auftrags Bauteil; dieser Auftrag hat GEMESSEN 525 (Kandidat
+    // 877938fb, Grundmenge 678) — derselbe Stand plus genau `VermaechtnisBuch`. 524 + 1 = 525.
+    // EHRLICH GESAGT: an DIESEM Kandidaten nicht gemessen; hat main seither weitere Bauteile
+    // gebracht, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // gesamt-wissensvermaechtnis Nacharbeit 10: GEMESSEN 527. Am Kandidaten 4388dfbb meldete der
+    // Sammler wörtlich „gemessen: 527 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 681
+    // Quelldateien … expected { komponenten: 527, … } to deeply equal { komponenten: 525, … }"; die
+    // übrigen 43 Fälle der Datei grün (HISTORIE/nacharbeit-10/PRUEFUNG/vermaechtnis-zaehler.log).
+    // Dieser Auftrag trägt weiterhin genau EIN Bauteil bei (`VermaechtnisBuch`); die 2 über 525
+    // kamen mit dem eingemischten Hauptstand (Grundmenge 678 → 681), namentlich ohne Git-Verlauf
+    // nicht bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // gesamt-wissensvermaechtnis Nacharbeit 11: GEMESSEN 533. Am Kandidaten f39d7736 meldete der
+    // Sammler wörtlich „gemessen: 533 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 685
+    // Quelldateien … expected { komponenten: 533, … } to deeply equal { komponenten: 527, … }"; die
+    // übrigen 43 Fälle der Datei grün (HISTORIE/nacharbeit-11/PRUEFUNG/vermaechtnis-zaehler.log).
+    // Dieser Auftrag hat seit Nacharbeit 2 kein Bauteil hinzugefügt (weiter genau `VermaechtnisBuch`);
+    // die 6 über 527 kamen mit dem eingemischten Hauptstand (Grundmenge 681 → 685), namentlich
+    // ohne Git-Verlauf nicht bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // gesamt-wissensvermaechtnis Nacharbeit 12: GEMESSEN 535. Am Kandidaten cf738404 meldete der
+    // Sammler wörtlich „gemessen: 535 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 688
+    // Quelldateien … expected { komponenten: 535, … } to deeply equal { komponenten: 533, … }"; die
+    // übrigen 43 Fälle der Datei grün (HISTORIE/nacharbeit-12/PRUEFUNG/vermaechtnis-zaehler.log).
+    // Dieser Auftrag hat kein Bauteil hinzugefügt (weiter genau `VermaechtnisBuch`); die 2 über 533
+    // kamen mit dem eingemischten Hauptstand (Grundmenge 685 → 688), namentlich ohne Git-Verlauf
+    // nicht bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // gesamt-wissensvermaechtnis Nacharbeit 13: GEMESSEN 536. Am Kandidaten dd55fc53 meldete der
+    // Sammler wörtlich „gemessen: 536 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 690
+    // Quelldateien … expected { komponenten: 536, … } to deeply equal { komponenten: 535, … }"; die
+    // übrigen 43 Fälle der Datei grün (HISTORIE/nacharbeit-13/PRUEFUNG/vermaechtnis-zaehler.log).
+    // Dieser Auftrag hat kein Bauteil hinzugefügt (weiter genau `VermaechtnisBuch`); das 1 über 535
+    // kam mit dem eingemischten Hauptstand (Grundmenge 688 → 690), namentlich ohne Git-Verlauf
+    // nicht bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     //
     // ZUSAMMENFÜHRUNG ADMIN-02 × main dd82d5df (ADMIN-02 Nacharbeit 10): main hat GEMESSEN 524
     // (Grundmenge 677); `ImportLaufListe` und `LaufZeile` dieses Auftrags gibt es dort nicht.
@@ -2533,8 +2643,36 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // lib/betreiberKarte, lib/kiLageAnzeige, texte/kilage) und „Artikel und Anleitungen mit Inhalt
     // zuerst lesen" (u. a. bibliothek/*, texte/lesereihenfolge); keine Quelldatei dieses Auftrags.
     // Beitrag dieses Auftrags unverändert ZWEI. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ZUSAMMENFÜHRUNG R-1656 × Hauptstand acc92cc2 (R-1656 Nacharbeit 27): die 554 des Hauptstands
+    // ist GEMESSEN und enthält ADMIN-02 samt allen seither eingemischten Aufträgen, aber NICHT
+    // `Wissensempfehlung` (`components/bibliothek/Wissensempfehlung.tsx`), die nur dieser Auftrag
+    // trägt. Der Konflikt in `BibliothekLesen.tsx` (Reihenfolge der Lesespalte) fügt kein Bauteil
+    // hinzu. 554 + 1 = 555. EHRLICH GESAGT: GERECHNET, nicht gemessen; weicht der Prüflauf ab,
+    // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // R-1656 Nacharbeit 29 · GEMESSEN 556. Am Kandidaten c0091802 meldete der Sammler wörtlich
+    // „gemessen: 556 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 727 Quelldateien …
+    // expected { komponenten: 556, … } to deeply equal { komponenten: 555, … }"; die übrigen 43
+    // Fälle grün (HISTORIE/nacharbeit-29/PRUEFUNG/komponentenzaehler-konfliktstelle.log). Dieser
+    // Auftrag hat seit der Rechnung 555 kein Bauteil hinzugefügt; Beitrag unverändert EINS
+    // (`Wissensempfehlung`). Die eine Komponente darüber kam mit dem Hauptstand und ist ohne
+    // Git-Verlauf hier nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // Technische Zusammenführung gesamt-wissensvermaechtnis × main 6b704ec4:
+    // Die dort belegten 554 Komponenten (1e02cb5e; seitdem nur Versionsänderung)
+    // bleiben vollständig erhalten. Dieser Auftrag ergänzt allein `VermaechtnisBuch`;
+    // ADMIN-02 mit `ImportLaufListe` und `LaufZeile` ist in main bereits enthalten.
+    // Gemeinsamer Sollwert: 554 + 1 = 555; Anbieter 1 und Träger 2 bleiben unverändert.
+    //
+    // Technische Integration R-1656 × main 6d50e597 (Hilfe d112387a): GEMESSEN am erhaltenen
+    // Integrationsstand ddef5d1c + main: 598 Komponenten, 1 Anbieter, 2 Träger, 769 Quelldateien.
+    // Der bestehende Sammler meldet genau diese Zahlen; die übrigen 43 Fälle sind grün.
+    // Die bisherigen Sollwerte 556 und 555 gehören zu früheren Beständen. Beide Kommentarreihen
+    // sowie `Wissensempfehlung` und `VermaechtnisBuch` bleiben erhalten. Nur der Komponenten-Pin
+    // folgt der aktuellen Messung; Anbieter, Träger und alle Verhaltensprüfungen bleiben gleich.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 554,
+      komponenten: 598,
       anbieter: 1,
       traeger: 2,
     });

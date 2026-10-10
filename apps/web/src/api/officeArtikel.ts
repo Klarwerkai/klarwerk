@@ -21,6 +21,9 @@ export interface OfficeBelegstelle {
   excerpt: string | null;
   stand: "aktuell" | "frueher";
   ausFassung?: number;
+  // R-0205: Prüfstand der Quelle (services/app/src/office-artikel.ts). Fehlt er in einer Antwort,
+  // gilt die Belegstelle als ungeprüft — dieselbe Regel wie `ExterneQuelleKennung`.
+  peerValidated?: boolean;
 }
 
 export interface OfficeAnhangLage {

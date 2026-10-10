@@ -480,6 +480,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // R-1644: die Wissensauskunft zum Zeitpunkt — Einsichtsstufe des Audit-Protokolls (`ko.validate`),
   // der Eintrag wird vor der Antwort gegen `darfSehen` gehalten (sonst 404).
   "GET /api/kos/:id/wissensauskunft": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
+  // R-1656 „Du solltest auch wissen…": Leserecht wie das Objekt selbst. Beide Türen halten jeden
+  // genannten Eintrag gegen `darfSehen` (sonst 404); die Empfehlung filtert jede Gegenseite über
+  // `sichtbarkeitsfilterFuer`. Das Co-Reading-Signal speichert keine Kontokennung.
+  "GET /api/kos/:id/empfehlungen": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen", "sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/kos/:id/mitgelesen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür
@@ -892,6 +900,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/me/gedaechtnis": { protection: "auth" },
   "DELETE /api/me/gedaechtnis/:id": { protection: "auth" },
   "DELETE /api/me/gedaechtnis": { protection: "auth" },
+  // produkt:20261008:klara-basis: die eigenen Klara-Gespräche — jeweils nur das EIGENE Konto
+  // (user.id aus der Sitzung), fremd und unbekannt 404. Wie das Gedächtnis: kein zusätzliches Recht.
+  "GET /api/me/klara/gespraech": { protection: "auth" },
+  "POST /api/me/klara/gespraeche": { protection: "auth" },
+  "GET /api/me/klara/gespraeche/:id": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/nachrichten": { protection: "auth" },
+  "PUT /api/me/klara/gespraeche/:id/schritt": { protection: "auth" },
+  "PUT /api/me/klara/gespraeche/:id/einwilligung": { protection: "auth" },
+  "DELETE /api/me/klara/gespraeche/:id": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
@@ -1063,6 +1080,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
   // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.
   "GET /api/verantwortung/person/:id": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  // aufnahme:20260922:gesamt-wissensvermaechtnis: das Vermächtnis-Buch einer Person — nur
+  // einsehbare, validierte, nicht vertrauliche Beiträge; der Rest steht nur als Anzahl darin.
+  "GET /api/verantwortung/person/:id/vermaechtnis": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
   "GET /api/verantwortung/ungeklaert": { protection: "users.manage" },
   // ADMIN-04 (aus main): Kontenübersicht nur mit Anzahlen; die Vorgänge einer Person mit Titeln
   // von Prüfaufgaben nur über `titelFuer` → `darfSehen` (verantwortung-routes.ts).
@@ -1077,6 +1100,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "users.manage",
     zeilenrecht: ["darfSehen"],
   },
+  // ADMIN-05: der gemeinsame Übergabeablauf — dieselbe Kontoverwaltung, Titel nur über `darfSehen`;
+  // die Bilanzen aus dem Prüfprotokoll tragen nur Kennungen und Anzahlen.
+  "POST /api/verantwortung/ablauf/vorschau": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/verantwortung/ablauf": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "GET /api/verantwortung/person/:id/ablaeufe": { protection: "users.manage" },
 
   // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
   // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit

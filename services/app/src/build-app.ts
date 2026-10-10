@@ -311,6 +311,14 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
+// Speicher ohne Datenbank.
+import {
+  InMemoryKlaraGespraechRepo,
+  KlaraGespraechDienst,
+  type KlaraGespraechRepo,
+  PgKlaraGespraechRepo,
+} from "./klara-gespraech";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -385,6 +393,8 @@ import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
+import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
@@ -422,6 +432,7 @@ import {
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
+import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -459,6 +470,13 @@ import {
   type NachfolgeRepo,
   PgNachfolgeRepo,
 } from "./verantwortung-nachfolge";
+// R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
+import {
+  InMemoryMitgelesenRepo,
+  type MitgelesenRepo,
+  PgMitgelesenRepo,
+  WissensempfehlungDienst,
+} from "./wissensempfehlung";
 // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
 import { Wissensuebergabe } from "./wissensuebergabe";
 
@@ -589,6 +607,18 @@ export interface AppServices {
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /**
+   * R-1656: der Co-Reading-Zähler (`wissensempfehlung.ts`) — je Paar nur eine Zahl, ohne
+   * Kontokennung. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb
+   * haltbar (`PgMitgelesenRepo`), sonst die In-Memory-Ablage.
+   */
+  mitgelesen: MitgelesenRepo;
+  /**
+   * produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (`klara-gespraech.ts`) je Konto.
+   * Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
+   */
+  klaraGespraeche: KlaraGespraechRepo;
   /**
    * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
    * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
@@ -1130,6 +1160,10 @@ export function assembleServices(
     uebersetzungen?: UebersetzungRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // R-1656: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    mitgelesen?: MitgelesenRepo;
+    // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    klaraGespraeche?: KlaraGespraechRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
     // In-Memory-Speicher an.
     vektorSpeicher?: EmbeddingStore;
@@ -1515,6 +1549,10 @@ export function assembleServices(
     uebersetzungen: opts.uebersetzungen ?? new InMemoryUebersetzungRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // R-1656: der Co-Reading-Zähler — Postgres, wenn injiziert, sonst im Speicher.
+    mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
+    // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
+    klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
     ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
@@ -2013,6 +2051,11 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // R-1656: die Paarzahlen überleben Neustart und Deploy (`MITGELESEN_SCHEMA`).
+      mitgelesen: new PgMitgelesenRepo(pool),
+      // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
+      // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
+      klaraGespraeche: new PgKlaraGespraechRepo(pool),
       // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
       // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
       vektorSpeicher: new PgEmbeddingStore(pool),
@@ -4154,6 +4197,24 @@ export function buildApp(
       guards,
     ),
   );
+  // R-1656: „Du solltest auch wissen…". Themennähe ist die vorhandene Schlagwort-Nachbarschaft
+  // (`library.neighbors`, mega68), Konflikte kommen aus dem Konfliktdienst, Co-Reading aus dem
+  // kontolosen Paarzähler. Die Sichtbarkeit entscheidet die Route je Aufrufer.
+  app.register(
+    wissensempfehlungRoutes(
+      {
+        dienst: new WissensempfehlungDienst({
+          repo: services.mitgelesen,
+          ko: services.ko,
+          thema: async (koId, sichtbar) =>
+            (await services.library.neighbors(koId, { sichtbar })).neighbors,
+          konflikte: services.conflicts,
+        }),
+        kos: services.ko,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -4434,6 +4495,20 @@ export function buildApp(
       guards,
     ),
   );
+  // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
+  // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
+  app.register(
+    klaraGespraechRoutes(
+      {
+        dienst: new KlaraGespraechDienst({
+          repo: services.klaraGespraeche,
+          antworten: services.answerSnapshots,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
   // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
   app.register(
@@ -4654,6 +4729,8 @@ export function buildApp(
         audit: services.audit,
         // ADMIN-04: die Zahlen der Kontenliste aus derselben Erhebung wie die Wissensübergabe.
         offeneVorgaenge: (personen) => services.wissensuebergabe.offeneVorgaenge(personen),
+        // ADMIN-05: der gemeinsame Übergabeablauf überträgt offene Vorgänge über dieselbe Instanz.
+        vorgaengeWeg: services.wissensuebergabe,
       },
       guards,
     ),

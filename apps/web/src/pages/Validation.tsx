@@ -64,6 +64,7 @@ import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { FacetFilter } from "../components/FacetFilter";
 import { ValidationReviewContext } from "../components/ValidationReviewContext";
+import { ExterneQuelleKennung } from "../components/ko/ExterneQuelleKennung";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
 import {
@@ -2523,6 +2524,8 @@ export function Validation(): JSX.Element {
                       <div className="flex flex-wrap items-baseline gap-x-2">
                         <span className="font-semibold text-text">{q.label}</span>
                         <span className="text-muted-2">{t(sourceBadgeKey(q))}</span>
+                        {/* R-0205: wer hier freigibt, sieht, dass diese Quelle keine Prüfstimme ist. */}
+                        <ExterneQuelleKennung source={q} />
                       </div>
                       {/* JOB 4077: DIE DATEI, AUS DER DIESE BELEGSTELLE STAMMT. Sie steht unter dem
                           Label und damit unmittelbar über der Adresse — die drei Angaben

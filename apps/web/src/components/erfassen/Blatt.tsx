@@ -3507,7 +3507,12 @@ export function Blatt({
               }}
               placeholder={t("erfassen.platzhalter.titel")}
               aria-label={t("erfassen.platzhalter.titel")}
-              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2/60"
+              // WCAG 1.4.11: die Titelzeile ist Teil des Blattes, wie der Rumpf darunter — eine
+              // Dokument-Schreibfläche, kein Formularfeld. Ihre Lage zeigen der 28-px-Platzhalter
+              // und die Schreibmarke; ein Feldrahmen wäre ein Formular im Dokument. Der Audit nimmt
+              // genau so markierte Flächen von der Feldgrenzen-Regel aus.
+              data-kw-dokumentflaeche=""
+              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2"
             />
             {/* N-0064: die vollständige Titelanzeige, nur bei echtem Überlauf (Messung oben). Für
                 Hilfstechnik verborgen — das Feld selbst trägt den ganzen Wert schon. */}

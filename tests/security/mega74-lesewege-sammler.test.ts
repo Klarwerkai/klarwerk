@@ -356,6 +356,18 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Wissensauskunft — darfSehen am Eintrag vor der Ausgabe, sonst 404.",
   },
+  // --- R-1656 „Du solltest auch wissen…" ----------------------------------------------------------
+  // Die Empfehlung trägt Titel der Gegenseiten: das Zentrum über darfSehen (sonst 404), jede
+  // Gegenseite über sichtbarkeitsfilterFuer. Das Co-Reading-Signal hält BEIDE Einträge gegen
+  // darfSehen, bevor gezählt wird.
+  "GET /api/kos/:id/empfehlungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Empfehlung — Zentrum über darfSehen, Gegenseiten über sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/kos/:id/mitgelesen": {
+    urteil: "PRAEDIKAT",
+    grund: "Co-Reading — beide Einträge über darfSehen, sonst 404; keine Kontokennung gespeichert.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).
@@ -843,6 +855,34 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur das eigene Gedächtnis (user.id), Antwort nur die Zahl.",
   },
+  "GET /api/me/klara/gespraech": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur das eigene zuletzt geführte Klara-Gespräch (klara-gespraech-routes.ts, user.id).",
+  },
+  "POST /api/me/klara/gespraeche": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur ein eigenes Gespräch an; der Objektbezug kommt vom Bildschirm der Person.",
+  },
+  "GET /api/me/klara/gespraeche/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur ein eigenes Gespräch (user.id), fremd und unbekannt antworten 404.",
+  },
+  "POST /api/me/klara/gespraeche/:id/nachrichten": {
+    urteil: "EIGENER_BESTAND",
+    grund: "hängt an ein eigenes Gespräch an; eine Antwortkennung muss eine eigene Antwort sein.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/schritt": {
+    urteil: "EIGENER_BESTAND",
+    grund: "setzt den letzten Schritt eines eigenen Gesprächs, fremd und unbekannt 404.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/einwilligung": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Einwilligung nur für ein eigenes Gespräch, fremd und unbekannt 404.",
+  },
+  "DELETE /api/me/klara/gespraeche/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur ein eigenes Gespräch (user.id), Antwort nur die Zahl.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
@@ -990,6 +1030,10 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Bestand einer Person — Titel nur für einsehbare Beiträge.",
   },
+  "GET /api/verantwortung/person/:id/vermaechtnis": {
+    urteil: "PRAEDIKAT",
+    grund: "Vermächtnis-Buch — Inhalt nur aus einsehbaren, nicht vertraulichen Beiträgen.",
+  },
   "GET /api/verantwortung/ungeklaert": {
     urteil: "KEIN_KO_INHALT",
     grund: "Anzahl je Person ohne aktive Verantwortung; keine Titel, keine Kennungen.",
@@ -1015,6 +1059,19 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/verantwortung/deaktivierung": {
     urteil: "PRAEDIKAT",
     grund: "Übergabeergebnis vor der Deaktivierung — Titel nur für einsehbare Beiträge.",
+  },
+  // ADMIN-05: der gemeinsame Übergabeablauf. Entwürfe und Lücken nur als Kennung.
+  "POST /api/verantwortung/ablauf/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Pakete je Nachfolger — Titel nur für einsehbare Beiträge und Prüfaufgaben.",
+  },
+  "POST /api/verantwortung/ablauf": {
+    urteil: "PRAEDIKAT",
+    grund: "Bilanz je Zeile — Titel nur für einsehbare Beiträge und Prüfaufgaben.",
+  },
+  "GET /api/verantwortung/person/:id/ablaeufe": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Bilanzvermerke `verantwortung.ablauf`: nur Kennungen, Anzahlen und Zugangsstand.",
   },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },

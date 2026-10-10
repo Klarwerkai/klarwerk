@@ -29,10 +29,12 @@ const FIELD_CHECKS = {
 // Feld, ist es ehrlich „nicht geliefert"; ist es geliefert und unbrauchbar, wird der Eintrag mit
 // dem Feldnamen abgelehnt (gleiche Meldung wie bei den Pflichtfeldern), statt still zu fallen.
 //
-// Die Grenzen sind die des Servers: Quellfassung ganzzahlig 0..999 999 999 (`MAX_SOURCE_VERSION`,
-// services/library-analytics/src/repo.ts — hier abgeschrieben, weil der Webbau `services/` nicht
-// einbindet), Quell-URL absolut http/https (`safeSourceUrl`, knowledge-object/src/source-url.ts).
-const MAX_QUELLFASSUNG = 999_999_999;
+// Die Grenzen sind die des Servers: Quellfassung ganzzahlig 0..999 999 999 999 999
+// (`MAX_SOURCE_VERSION`, services/library-analytics/src/repo.ts — hier abgeschrieben, weil der
+// Webbau `services/` nicht einbindet; seit R-1653 fünfzehn Stellen, damit ein SharePoint-Quellstand
+// in Sekunden seit 1970 durchgeht), Quell-URL absolut http/https (`safeSourceUrl`,
+// knowledge-object/src/source-url.ts).
+const MAX_QUELLFASSUNG = 999_999_999_999_999;
 
 const gefuellt = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;

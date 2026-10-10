@@ -337,7 +337,10 @@ export function Analytics(): JSX.Element {
                 <div className="space-y-2">
                   {Object.entries(a.byType).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-3">
-                      <span className="w-32 truncate text-[13px] text-text">{t(`ktype.${k}`)}</span>
+                      {/* WCAG 1.4.12 (Audit nacharbeit-10): umbrechen statt abschneiden. */}
+                      <span className="w-32 text-[13px] text-text [overflow-wrap:anywhere]">
+                        {t(`ktype.${k}`)}
+                      </span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
                         <div
                           className="h-full rounded-full bg-brand"
@@ -495,7 +498,12 @@ export function Analytics(): JSX.Element {
                             {new Date(e.at).toLocaleString()}
                           </span>
                           <span className="font-semibold text-text">{e.action}</span>
-                          <span className="truncate text-muted">{e.target}</span>
+                          {/* WCAG 1.4.12 (Audit nacharbeit-10): bis hier `truncate` — mit größerem
+                              Textabstand schnitt die Zeile das Ziel ab, und der volle Wert war
+                              nirgends sonst zu lesen. Jetzt bricht er um, auch mitten in einer ID. */}
+                          <span className="min-w-0 text-muted [overflow-wrap:anywhere]">
+                            {e.target}
+                          </span>
                           <span className="ml-auto font-mono text-[11px] text-muted-2">
                             {e.actor}
                           </span>

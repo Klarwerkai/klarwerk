@@ -84,6 +84,7 @@ import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
 import { NegativwissenFuehrung } from "../components/erfassen/NegativwissenFuehrung";
+import { ExterneQuelleKennung } from "../components/ko/ExterneQuelleKennung";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -5324,6 +5325,12 @@ export function CaptureArbeitsraum({
                   {p.source.title}
                 </a>
                 )
+              </span>{" "}
+              {/* R-0205 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): der Hinweis
+                  stammt aus einer EXTERNEN Suche (`externalSearch.search`, reasoner-routes) — er
+                  trägt deshalb wie jede externe Quelle „Stufe 2" und „Extern · ungeprüft". */}
+              <span data-testid="interview-recherche-kennung" className="inline-flex gap-1.5">
+                <ExterneQuelleKennung source={{ peerValidated: false }} />
               </span>
             </li>
           ))}
@@ -6419,7 +6426,7 @@ export function CaptureArbeitsraum({
                     speechSupported ? (
                       <div className="mb-2 flex items-center gap-1">
                         <Button variant={listening ? "primary" : "ghost"} onClick={toggleDictation}>
-                          <Mic size={15} />
+                          <Mic size={15} aria-hidden="true" />
                           {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       </div>
@@ -6440,7 +6447,7 @@ export function CaptureArbeitsraum({
                     Text) fließt sofort in den Freitext, Bilder/Videos werden Anhang (PMO-FEA-0006-Anschluss). */}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                      <FileText size={14} />
+                      <FileText size={14} aria-hidden="true" />
                       {t(CAPTURE_WIZARD_TEXT.upload)}
                       <input
                         type="file"
@@ -6452,7 +6459,7 @@ export function CaptureArbeitsraum({
                     </label>
                     {/* Pedi 04.07.: eigener „beifügen"-Knopf gleich daneben — Datei/Bild NUR anhängen. */}
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                      <Paperclip size={14} />
+                      <Paperclip size={14} aria-hidden="true" />
                       {t(CAPTURE_WIZARD_TEXT.attach)}
                       <input
                         type="file"
@@ -6487,7 +6494,7 @@ export function CaptureArbeitsraum({
                         title={!structureAi.available ? t("ai.unavailable.hint") : undefined}
                         onClick={() => structure.mutate()}
                       >
-                        <Sparkles size={15} />
+                        <Sparkles size={15} aria-hidden="true" />
                         {structure.isPending
                           ? t(CAPTURE_WIZARD_TEXT.structuring)
                           : t("capture.structure")}
@@ -6602,7 +6609,7 @@ export function CaptureArbeitsraum({
                           onClick={toggleReadQuestion}
                           title={ivReading ? t("capture.ivReadStop") : t("capture.ivReadAloud")}
                         >
-                          <Volume2 size={15} />
+                          <Volume2 size={15} aria-hidden="true" />
                           {ivReading ? t("capture.ivReadStop") : t("capture.ivReadAloud")}
                         </Button>
                       ) : null}
@@ -6669,7 +6676,7 @@ export function CaptureArbeitsraum({
                           onClick={toggleIvDictation}
                           disabled={interview.isPending || !ivResult}
                         >
-                          <Mic size={15} />
+                          <Mic size={15} aria-hidden="true" />
                           {ivListening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       ) : (
@@ -6741,7 +6748,7 @@ export function CaptureArbeitsraum({
                   </label>
                   {slidesProgress ? (
                     <p className="mb-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-ai">
-                      <Loader2 size={13} className="animate-spin" />
+                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
                       {slidesProgress}
                     </p>
                   ) : null}
@@ -6769,12 +6776,12 @@ export function CaptureArbeitsraum({
                       }
                       onClick={cancelFileImport}
                     >
-                      <X size={14} />
+                      <X size={14} aria-hidden="true" />
                       {t(CAPTURE_FILE_TEXT.cancel)}
                     </Button>
                     {fileName ? (
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
-                        <FileText size={13} className="text-muted-2" />
+                        <FileText size={13} className="text-muted-2" aria-hidden="true" />
                         {fileName}
                       </span>
                     ) : null}
@@ -6891,9 +6898,9 @@ export function CaptureArbeitsraum({
                               >
                                 {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
                                 {extract.isPending ? (
-                                  <Loader2 size={15} className="animate-spin" />
+                                  <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                                 ) : (
-                                  <Sparkles size={15} />
+                                  <Sparkles size={15} aria-hidden="true" />
                                 )}
                                 {extract.isPending
                                   ? t(CAPTURE_FILE_TEXT.searching)
@@ -6937,9 +6944,9 @@ export function CaptureArbeitsraum({
                               }}
                             >
                               {fileWholeDraft.isPending ? (
-                                <Loader2 size={15} className="animate-spin" />
+                                <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                               ) : (
-                                <Save size={15} />
+                                <Save size={15} aria-hidden="true" />
                               )}
                               {fileWholeDraft.isPending
                                 ? t(CAPTURE_FILE_TEXT.wholeSaving)
@@ -7337,7 +7344,7 @@ export function CaptureArbeitsraum({
                   {/* Dokumente */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                      <FileText size={13} />
+                      <FileText size={13} aria-hidden="true" />
                       {t("capture.documents")}
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
@@ -7363,7 +7370,7 @@ export function CaptureArbeitsraum({
                             key={d.id}
                             className="flex items-center gap-2 text-[12.5px] text-text"
                           >
-                            <FileText size={12} className="text-muted-2" />
+                            <FileText size={12} className="text-muted-2" aria-hidden="true" />
                             <span className="truncate">{d.name}</span>
                             {d.mime.startsWith("video/") || d.mime.startsWith("audio/") ? (
                               <button
@@ -7383,7 +7390,7 @@ export function CaptureArbeitsraum({
                               onClick={() => setDocs((arr) => arr.filter((x) => x.id !== d.id))}
                               className="ml-auto text-muted-2 hover:text-text"
                             >
-                              <X size={12} />
+                              <X size={12} aria-hidden="true" />
                             </button>
                           </li>
                         ))}
@@ -7394,7 +7401,7 @@ export function CaptureArbeitsraum({
                   {/* Bilder */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                      <Paperclip size={13} />
+                      <Paperclip size={13} aria-hidden="true" />
                       {t("capture.images")}
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
@@ -7427,7 +7434,7 @@ export function CaptureArbeitsraum({
                               onClick={() => setImages((arr) => arr.filter((x) => x.id !== img.id))}
                               className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 group-hover:opacity-100"
                             >
-                              <X size={12} />
+                              <X size={12} aria-hidden="true" />
                             </button>
                             {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
                             <button
@@ -7451,7 +7458,7 @@ export function CaptureArbeitsraum({
                   {canSources ? (
                     <div className="rounded-card border border-dashed border-hairline p-3">
                       <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                        <Globe size={13} />
+                        <Globe size={13} aria-hidden="true" />
                         {t("capture.sourcesTitle")}
                       </div>
                       <p className="mb-2 text-[11.5px] leading-relaxed text-muted-2">
@@ -7473,6 +7480,8 @@ export function CaptureArbeitsraum({
                                     <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                                       {t("ko.sourceUnvalidated")}
                                     </span>
+                                    {/* R-0205: eine Warteliste-Quelle ist immer extern und ungeprüft. */}
+                                    <ExterneQuelleKennung source={{ peerValidated: false }} />
                                     {s.provider ? (
                                       <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                                         {s.provider}
@@ -7496,7 +7505,7 @@ export function CaptureArbeitsraum({
                                   }
                                   className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
                                 >
-                                  <X size={14} />
+                                  <X size={14} aria-hidden="true" />
                                 </button>
                               </div>
                             </li>
@@ -7787,7 +7796,7 @@ export function CaptureArbeitsraum({
                   disabled={busy || !canSaveDraft}
                   onClick={requestManualSave}
                 >
-                  <Save size={15} />
+                  <Save size={15} aria-hidden="true" />
                   {t("capture.saveDraft")}
                 </Button>
                 <Button variant="ghost" onClick={loadExample}>
@@ -7847,7 +7856,11 @@ export function CaptureArbeitsraum({
               {draft ? (
                 <ReasonerDraft>
                   <div className="space-y-3">
-                    <Field label={t("capture.fTitle")}>
+                    {/* EDITOR-EINHEITLICH (K1): derselbe Begriff wie im Bearbeiten
+                      (`BibliothekLesen.tsx`), im Blatt (`fd.fieldTitle`) und im geführten Weg —
+                      „Titel". Der Altschlüssel `capture.fTitle` („Kernaussage") benannte hier
+                      das Titelfeld mit einem Wort, das beim Erstellen sonst die Aussage meint. */}
+                    <Field label={t("capture.wizard.titleLabel")}>
                       <TextInput
                         value={draft.title}
                         onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -7896,7 +7909,7 @@ export function CaptureArbeitsraum({
                           }}
                           className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                         >
-                          <Sparkles size={14} /> {t("studio.fromDraft.cta")}
+                          <Sparkles size={14} aria-hidden="true" /> {t("studio.fromDraft.cta")}
                           <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
                             {t(CAPTURE_FLOW_TEXT.studioRecommended)}
                           </span>
@@ -7959,7 +7972,7 @@ export function CaptureArbeitsraum({
                         captionFormRequest={captionRequest ?? undefined}
                         /* JOB 2419 D1 (TV1, letzte Luecke): der Titelvorschlag aus der
                            Bildbeschreibung geht in DASSELBE Feld, das der Nutzer daneben tippt
-                           (`capture.fTitle`, oben in diesem Block). Bewusst wortgleich mit dessen
+                           (`capture.wizard.titleLabel`, oben in diesem Block). Bewusst wortgleich mit dessen
                            `onChange` — eine Uebernahme muss sich verhalten wie eine Eingabe, sonst
                            entstuende ein zweiter, stillerer Weg zum selben Feld. */
                         onTitelVorschlag={(titel) => setDraft({ ...draft, title: titel })}
@@ -8099,7 +8112,7 @@ export function CaptureArbeitsraum({
                           kettet mehrere Netz-Aufrufe; der Text zeigt die aktuelle Phase (inkl. Upload-Größe). */}
                           {submit.isPending ? (
                             <>
-                              <Loader2 size={15} className="animate-spin" />
+                              <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                               {submitBusyLabel}
                             </>
                           ) : (
@@ -8477,7 +8490,7 @@ export function CaptureArbeitsraum({
                     disabled={busy || !canSaveDraft}
                     onClick={requestManualSave}
                   >
-                    <Save size={15} />
+                    <Save size={15} aria-hidden="true" />
                     {t("capture.saveDraft")}
                   </Button>
                   <button
@@ -8504,7 +8517,7 @@ export function CaptureArbeitsraum({
                       {/* WP-D7/D7b (Befund 4/Rot-Fix 1): mehrstufiges Ladefeedback beim Einreichen. */}
                       {submit.isPending ? (
                         <>
-                          <Loader2 size={15} className="animate-spin" />
+                          <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                           {submitBusyLabel}
                         </>
                       ) : (
