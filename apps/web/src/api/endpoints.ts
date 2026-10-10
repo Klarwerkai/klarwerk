@@ -9,6 +9,7 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnlagenKontext,
   AnsprechpartnerAuskunft,
   AnswerResult,
   AntwortMeldeGrund,
@@ -116,6 +117,7 @@ import type {
   ReasonerStatus,
   RetirementEntry,
   RetirementHorizon,
+  RevalidierungBestaetigt,
   ReviewAction,
   RiskHorizonView,
   Role,
@@ -369,6 +371,8 @@ export type KoAction =
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
   | { action: "domain"; domain: string }
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext; ersetzt den bisherigen.
+  | { action: "anlagenkontext"; anlagenkontext: AnlagenKontext }
   // R-1632 / R-1633: die Geltung setzen; `null` entfernt sie (ko-routes.ts `geltung`).
   | { action: "geltung"; geltung: KoGeltung | null }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
@@ -752,6 +756,9 @@ export const endpoints = {
   },
   conflicts: {
     list: () => api.get<Conflict[]>("/conflicts"),
+    // R-1662: die von einem Menschen gelösten Konflikte zu genau diesen Objekten (Lösungsweg).
+    geloest: (koIds: readonly string[]) =>
+      api.get<Conflict[]>(`/conflicts/geloest?ko=${koIds.map(encodeURIComponent).join(",")}`),
     get: (id: string) => api.get<Conflict>(`/conflicts/${id}`),
     escalate: (id: string) => api.post<Conflict>(`/conflicts/${id}/escalate`),
     secondOpinion: (id: string, opinion: string) =>
@@ -1190,6 +1197,11 @@ export const endpoints = {
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),
+    // R-1662: frühere Bestätigungen „stimmt noch" zu genau diesen Objekten (Lösungsweg).
+    revalidiert: (koIds: readonly string[]) =>
+      api.get<RevalidierungBestaetigt[]>(
+        `/lifecycle/revalidiert?ko=${koIds.map(encodeURIComponent).join(",")}`,
+      ),
     // Audit B1 (02.07.2026): Anlagen-Kopplung im KO-Detail — koppeln + gekoppelte Anlagen lesen.
     couple: (assetRef: string, koId: string) =>
       api.post<void>("/lifecycle/couple", { assetRef, koId }),
