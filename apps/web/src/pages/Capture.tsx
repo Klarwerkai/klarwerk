@@ -314,6 +314,7 @@ import {
   buildSubmitTimingEntries,
   submitPhaseSpans,
 } from "../lib/submitTiming";
+import { mitOcrText, mitTranskript, transkriptZiel } from "../lib/transkriptUebernahme";
 import { maxRawAttachmentBytes } from "../lib/uploadLimits";
 import { useAiAvailable } from "../lib/useAiAvailable";
 
@@ -5147,11 +5148,19 @@ export function CaptureArbeitsraum({
       // Die Analyse reicht die Stufe nur noch als optionale HOCHSTUFUNG durch — herabstufen kann sie nicht.
       const res = await endpoints.media.analyze(ref.id, locale, confidentiality);
       if (res.engineActive && res.transcript && res.transcript.length > 0) {
-        setRaw((prev) =>
-          prev
-            ? `${prev}\n\n[Transkript: ${d.name}]\n${res.transcript}`
-            : `[Transkript: ${d.name}]\n${res.transcript}`,
-        );
+        const transkript = res.transcript;
+        // R-0165 (Bens Befund 10.10.): das Transkript geht in das Feld, das in DIESEM Modus zu
+        // sehen ist — im Formular die „Aussage", sonst der Rohtext. Bis hierher ging es immer in
+        // den Rohtext, und das Formular meldete „übernommen" bei leerer Aussage. Die Meldung steht
+        // deshalb erst NACH der Übernahme und nennt kein anderes Ziel als das beschriebene.
+        if (transkriptZiel(mode) === "aussage") {
+          setDraft((dr) => {
+            const basis = dr ?? { ...EMPTY_DRAFT };
+            return { ...basis, statement: mitTranskript(basis.statement, d.name, transkript) };
+          });
+        } else {
+          setRaw((prev) => mitTranskript(prev, d.name, transkript));
+        }
         setNotice(t("capture.videoDone", { name: d.name }));
       } else {
         // AUFTRAG-mega14 Block G (SCRUM-382): der ehrliche Rückfall ist KEIN Fehler.
@@ -5182,9 +5191,17 @@ export function CaptureArbeitsraum({
     try {
       const res = await runImageOcr(img.dataUrl);
       if (res.status === "success" && res.text.length > 0) {
-        setRaw((prev) =>
-          prev ? `${prev}\n\n[OCR: ${img.name}]\n${res.text}` : `[OCR: ${img.name}]\n${res.text}`,
-        );
+        const erkannt = res.text;
+        // R-1688/R-1733 (Bens Befund 10.10., Nacharbeit 2): dasselbe Ziel wie das Transkript — im
+        // Formular die sichtbare „Aussage", sonst der Rohtext. Die Meldung erst nach der Übernahme.
+        if (transkriptZiel(mode) === "aussage") {
+          setDraft((dr) => {
+            const basis = dr ?? { ...EMPTY_DRAFT };
+            return { ...basis, statement: mitOcrText(basis.statement, img.name, erkannt) };
+          });
+        } else {
+          setRaw((prev) => mitOcrText(prev, img.name, erkannt));
+        }
         setNotice(t("capture.ocrDone", { name: img.name }));
       } else if (res.status === "success") {
         setErr(t("capture.ocrEmpty", { name: img.name }));
