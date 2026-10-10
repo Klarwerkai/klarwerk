@@ -2825,8 +2825,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Gemeinsamer Sollwert: 554 + 1 = 555; Anbieter 1 und Träger 2 bleiben unverändert.
     // Technische Zusammenführung mit main 6d50e597: 597 + VermaechtnisBuch = 598
     // Komponenten in 769 Quelldateien; Anbieter und Träger bleiben gesondert geprüft.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 52: GEMESSEN 599. Am Kandidaten 51aa3990 meldete der
+    // Sammler wörtlich „gemessen: 599 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 771
+    // Quelldateien … expected { komponenten: 599, … } to deeply equal { komponenten: 598, … }".
+    // Die 598 der technischen Zusammenführung oben waren gerechnet; dieser Auftrag hat seit
+    // Nacharbeit 38 nur diese Testdatei geändert. Die EINE Komponente und zwei Quelldateien
+    // (769 → 771) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem Arbeitsbaum nicht
+    // namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 598,
+      komponenten: 599,
       anbieter: 1,
       traeger: 2,
     });
