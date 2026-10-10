@@ -36,6 +36,8 @@ const d = vi.hoisted(() => {
     kos: mk(),
     // R-0953 (Nacharbeit 4): „Noch gültig“ — damit der bisher stille Fehlerweg messbar ist.
     bestaetigen: vi.fn(async (_id: string, _body: unknown): Promise<unknown> => ({})),
+    // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsauskunft (Stand je Fall).
+    folgepruefung: vi.fn(async (): Promise<unknown[]> => []),
   };
 });
 
@@ -51,7 +53,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
-      lifecycle: { pending: d.pending.fn, assetChanged: ok([]) },
+      lifecycle: { pending: d.pending.fn, assetChanged: ok([]), folgepruefung: d.folgepruefung },
       ko: { list: d.kos.fn, act: d.bestaetigen },
       // JOB 3061 · H2: der gemeinsame Reiterkopf zaehlt alle vier Reiter aus echten Abrufen.
       // Kulisse wie der Lernpfad — sie darf die Messung nur nicht zerreissen.
@@ -251,6 +253,20 @@ describe("R-0953 · „Noch gültig“ meldet einen Fehler", () => {
     d.bestaetigen.mockImplementationOnce(async () => {
       throw new Error("Pruefstand: Bestaetigung gestoert");
     });
+    // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4): ein offener Fall wird nur mit
+    // seinem angezeigten Stand bestätigt — die Kulisse liefert ihn.
+    d.folgepruefung.mockImplementationOnce(async () => [
+      {
+        koId: "k1",
+        title: "Druckprüfung Kessel 7",
+        status: "validiert",
+        version: 1,
+        stand: 1,
+        seit: null,
+        zustaendig: { id: "u1", name: "Pia", vorhanden: true, art: "owner" },
+        anlaesse: [],
+      },
+    ]);
     await mount();
     await act(async () => {
       d.pending.resolve(["k1"]);
@@ -265,7 +281,7 @@ describe("R-0953 · „Noch gültig“ meldet einen Fehler", () => {
       knopf?.click();
       await flush();
     });
-    expect(d.bestaetigen).toHaveBeenCalledWith("k1", { action: "revalidate" });
+    expect(d.bestaetigen).toHaveBeenCalledWith("k1", { action: "revalidate", stand: 1 });
     const einblendungen = Array.from(container.querySelectorAll("output"), (o) => o.textContent);
     expect(einblendungen).toContain(i18n.t("lcy.toast.revalidateFailed"));
     expect(container.querySelector('a[href="/wissen/k1"]'), "der Eintrag bleibt").not.toBeNull();

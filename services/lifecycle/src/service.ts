@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoService,
+  anlagenVon,
+  normalizeAsset,
+} from "../../knowledge-object";
 import type { LifecycleRepo } from "./repo";
 import {
   type LearningPath,
@@ -57,6 +62,8 @@ export const REVALIDIERUNG_ANGEFORDERT = "lifecycle.revalidation-requested";
 const STAND_GEAENDERT =
   "Seit der Anzeige ist eine weitere Änderung eingegangen. Bitte den aktuellen Stand prüfen.";
 const STAND_ABGESCHLOSSEN = "Diese Folgeprüfung ist bereits abgeschlossen.";
+const STAND_FEHLT =
+  "Für diesen Eintrag ist eine Folgeprüfung offen. Bitte neu laden und den angezeigten Stand prüfen.";
 
 /** Wirft, wenn `fall` nicht genau den gesehenen Stand offen hat. */
 function pruefeStand(fall: OffenerFall | undefined, geprueftStand: number): void {
@@ -164,14 +171,36 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     return ergebnis;
   }
 
-  // FR-LIF-01: Anlagen-/Prozesskopplung.
-  async couple(assetRef: string, koId: string): Promise<void> {
-    await this.repo.addCoupling(assetRef, koId);
+  // ============================================================================================
+  // Nacharbeit 4 (Ben, K1) — DIE KANONISCHE KO-ANLAGENZUORDNUNG IST DIE EINZIGE QUELLE.
+  // ============================================================================================
+  //
+  // Bis hierher entschied `lifecycle_couplings` allein über Betroffenheit — eine zweite Zuordnung
+  // neben `asset`/`assets` am Objekt (JOB 593, R-0082). Ein nur kanonisch zugeordneter Eintrag wurde
+  // übersehen; ein umgehängter oder entkoppelter blieb an der alten Anlage hängen. Jetzt:
+  //   · betroffen ist, wessen `anlagenVon(ko)` die gemeldete Anlage (Normalform) enthält;
+  //   · `couple` schreibt in genau diese Zuordnung (`KoService.ordneAnlageZu`, belegt);
+  //   · die Rück-Richtung fürs Detail liest dieselbe Zuordnung.
+  // `lifecycle_couplings` wird weder gelesen noch geschrieben (Altbestand, s. Rückgabe).
+  private async traegerVon(assetRef: string): Promise<string[]> {
+    const anlage = normalizeAsset(assetRef);
+    if (anlage === null) {
+      return [];
+    }
+    return (await this.koService.list({}))
+      .filter((ko) => anlagenVon(ko).includes(anlage))
+      .map((ko) => ko.id);
+  }
+
+  // FR-LIF-01: Anlagen-/Prozesskopplung — als kanonische Anlagenzuordnung des Objekts.
+  async couple(assetRef: string, koId: string, actor = "system"): Promise<void> {
+    await this.koService.ordneAnlageZu(koId, assetRef, actor);
   }
 
   // FR-LIF-01 / Audit B1: gekoppelte Anlagen eines KOs (fürs KO-Detail sichtbar machen).
-  couplingsForKo(koId: string): Promise<string[]> {
-    return this.repo.couplingsForKo(koId);
+  async couplingsForKo(koId: string): Promise<string[]> {
+    const ko = await this.koService.get(koId);
+    return ko ? anlagenVon(ko) : [];
   }
 
   // FR-LIF-01: Anlagenänderung markiert gekoppelte KOs „Stimmt das noch?". R-1635: mit Beleg je
@@ -183,15 +212,15 @@ export class LifecycleService implements RevalidierungMerkerLeser {
 
   /**
    * produkt:20261010:aenderungsfolgen-sichtbar: dieselbe Anlagenänderung wie `assetChanged`, mit
-   * Auskunft je Eintrag, ob das Signal neu war. Betroffen ist, was an der Anlage GEKOPPELT ist —
-   * dieselbe Quelle wie bisher, keine Ähnlichkeitssuche.
+   * Auskunft je Eintrag, ob das Signal neu war. Betroffen ist, wem die Anlage kanonisch zugeordnet
+   * ist (`asset`/`assets`) — keine Ähnlichkeitssuche, keine zweite Zuordnung.
    */
   async meldeAnlagenaenderung(
     assetRef: string,
     actor = "system",
     aenderung?: string,
   ): Promise<Markierung[]> {
-    const koIds = await this.repo.couplingsFor(assetRef);
+    const koIds = await this.traegerVon(assetRef);
     return this.markiere(
       koIds.map((koId) => ({ koId })),
       actor,
@@ -222,9 +251,9 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     aenderung?: string,
   ): Promise<Markierung[]> {
     const ueber = new Map<string, string>();
-    const anlagen = await this.repo.couplingsForKo(koId);
+    const anlagen = await this.couplingsForKo(koId);
     for (const assetRef of anlagen) {
-      for (const betroffen of await this.repo.couplingsFor(assetRef)) {
+      for (const betroffen of await this.traegerVon(assetRef)) {
         if (!ueber.has(betroffen)) {
           ueber.set(betroffen, assetRef);
         }
@@ -336,16 +365,22 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   // Die Vorprüfung erspart den Revisionsversuch; ENTSCHEIDEND ist das bedingte Löschen im
   // Audit-Schritt (`clearPending(…, stand)`): trifft es nichts, wirft es, und die Revision rollt
   // zurück — auch wenn die neue Änderung genau zwischen Vorprüfung und Löschen eintrifft.
-  // Ohne `geprueftStand` bleibt der bisherige Weg (Bibliothek: Bestätigung des aktuellen Inhalts).
   // Der Beleg `ko.revalidated` nennt dann zusätzlich den bestätigten Stand.
+  //
+  // Nacharbeit 4 (Ben, K5): OHNE `geprueftStand` wird KEINE offene Folgeprüfung abgeschlossen —
+  // steht ein Fall offen, antwortet der Weg 409 `STAND_VERALTET` (Neuladen und mit Stand bestätigen),
+  // auch wenn der Fall erst zwischen Vorprüfung und Revision entsteht. Ohne offenen Fall bleibt die
+  // reine Gültigkeitsbestätigung (Bibliothek „Re-Validierung", Frist) möglich; sie löscht nichts.
   async confirmStillValid(
     koId: string,
     author: string,
     geprueftStand?: number,
   ): Promise<KnowledgeObject> {
+    const [vorab] = await this.repo.offeneFaelle([koId]);
     if (geprueftStand !== undefined) {
-      const [fall] = await this.repo.offeneFaelle([koId]);
-      pruefeStand(fall, geprueftStand);
+      pruefeStand(vorab, geprueftStand);
+    } else if (vorab) {
+      throw new FolgepruefungStandError(STAND_FEHLT, vorab.stand);
     }
     // Nur ohne Transaktion gebraucht: der Fall vor dem Löschversuch, der wieder einzusetzen ist.
     let ohneTxFall: OffenerFall | undefined;
@@ -354,13 +389,18 @@ export class LifecycleService implements RevalidierungMerkerLeser {
         zusatzBeleg: {
           action: "ko.revalidated",
           vorher: async (tx) => {
+            if (geprueftStand === undefined) {
+              // Ohne Stand wird nichts geräumt; entstand inzwischen ein Fall, gibt es keinen Abschluss.
+              const [inzwischen] = await this.repo.offeneFaelle([koId], tx);
+              if (inzwischen) {
+                throw new FolgepruefungStandError(STAND_FEHLT, inzwischen.stand);
+              }
+              return { pendingCleared: false };
+            }
             if (tx === undefined) {
               [ohneTxFall] = await this.repo.offeneFaelle([koId]);
             }
             const pendingCleared = await this.repo.clearPending(koId, tx, geprueftStand);
-            if (geprueftStand === undefined) {
-              return { pendingCleared };
-            }
             if (!pendingCleared) {
               const [jetzt] = await this.repo.offeneFaelle([koId], tx);
               pruefeStand(jetzt, geprueftStand);

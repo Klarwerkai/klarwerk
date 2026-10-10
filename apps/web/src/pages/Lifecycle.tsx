@@ -478,16 +478,25 @@ export function Lifecycle(): JSX.Element {
   function warumBlock(
     fall: FolgepruefungsFall | undefined,
     termin: string | null,
+    ohneStand: boolean,
   ): JSX.Element | null {
     if (!fall) {
-      return folge.isError ? (
-        <p
+      return ohneStand ? (
+        <div
           data-text="meta"
           data-testid="folgepruefung-ladefehler"
-          className="text-[12.5px] text-muted"
+          className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted"
         >
-          {t("folgepruefung.ladefehler")}
-        </p>
+          <span>{t("folgepruefung.ladefehler")}</span>
+          <button
+            type="button"
+            data-testid="folgepruefung-neu-laden"
+            onClick={() => void qc.invalidateQueries({ queryKey: ["lifecycle"] })}
+            className="font-semibold text-text underline-offset-4 hover:underline"
+          >
+            {t("folgepruefung.neuLaden")}
+          </button>
+        </div>
       ) : null;
     }
     const fassungen = fall.anlaesse.map((a) => a.koVersion).filter((v): v is number => v !== null);
@@ -544,6 +553,11 @@ export function Lifecycle(): JSX.Element {
     const cta = revalidationCta(view);
     const frische = kos.data?.find((k) => k.id === id)?.frische;
     const fall = faelle.get(id);
+    // Nacharbeit 4 (Ben, K5): steht für den Eintrag ein Merker, ist der Abschluss NUR mit dem
+    // angezeigten Stand möglich. Fehlt die Folgeprüfungsauskunft (lädt, gescheitert), bleibt
+    // „Noch gültig" gesperrt, und die Karte bietet das Neuladen an. Rein fristfällige Einträge
+    // ohne Merker bestätigen wie bisher (dort gibt es keinen Stand).
+    const ohneStand = (query.data ?? []).includes(id) && !fall;
     return (
       <div
         data-testid="pruefen-karte"
@@ -581,7 +595,7 @@ export function Lifecycle(): JSX.Element {
           >
             {view.title}
           </Link>
-          {warumBlock(fall, frische?.haltbarBis ?? null)}
+          {warumBlock(fall, frische?.haltbarBis ?? null, ohneStand)}
           <PruefenMehr kennung="erneut">
             <PruefenMehrZeile beschriftung={t("lcy.revalNextLabel")}>
               {t(`lcy.revalNext.${view.nextStep}`)}
@@ -629,7 +643,7 @@ export function Lifecycle(): JSX.Element {
           <PruefenKnopf
             ton="gut"
             kennung="noch-gueltig"
-            disabled={confirm.isPending}
+            disabled={confirm.isPending || ohneStand}
             onClick={() =>
               confirm.mutate({
                 id,

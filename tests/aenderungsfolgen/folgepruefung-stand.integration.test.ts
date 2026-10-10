@@ -103,6 +103,7 @@ describe("Folgeprüfung: Stand und Anlässe unter echter Transaktion und Paralle
       "audit",
       "lifecycle_couplings",
       "lifecycle_pending",
+      "lifecycle_verlauf",
       "lifecycle_paths",
       "lifecycle_progress",
     ]) {
@@ -245,6 +246,72 @@ describe("Folgeprüfung: Stand und Anlässe unter echter Transaktion und Paralle
     expect(await w.audit.list({ action: "ko.revalidated" })).toHaveLength(1);
     expect(await w.lifecycle.offeneFaelle([w.ko.id])).toEqual([]);
     expect((await w.audit.verifyReport()).ok).toBe(true);
+  });
+
+  // Nacharbeit 4 (Ben): Stand über Abschlüsse hinweg eindeutig, verarbeitete Änderung dauerhaft.
+  it("K5 · B angezeigt → B abgeschlossen → C eröffnet → verspätetes B: C bleibt offen", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const w = await welt(p);
+    await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. B");
+    await w.lifecycle.confirmStillValid(w.ko.id, "anna", 1);
+    await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. C");
+    const [c] = await w.lifecycle.offeneFaelle([w.ko.id]);
+    expect(c?.stand).toBe(2);
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "bert", 1)).rejects.toMatchObject({
+      code: "STAND_VERALTET",
+      aktuellerStand: 2,
+    });
+    const [nachher] = await w.lifecycle.offeneFaelle([w.ko.id]);
+    expect(nachher?.anlaesse.map((a) => a.aenderung)).toEqual(["Rev. C"]);
+    expect((await w.koService.get(w.ko.id))?.version).toBe(2);
+  });
+
+  it("K5 · ohne Stand kein Abschluss eines offenen Falls (409), Fassung bleibt", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const w = await welt(p);
+    await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. B");
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "anna")).rejects.toMatchObject({
+      code: "STAND_VERALTET",
+    });
+    expect((await w.koService.get(w.ko.id))?.version).toBe(1);
+    expect(await w.lifecycle.offeneFaelle([w.ko.id])).toHaveLength(1);
+  });
+
+  it("K7 · B nach Abschluss erneut (auch parallel): kein Fall, kein Beleg; C eröffnet", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const w = await welt(p);
+    await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. B");
+    await w.lifecycle.confirmStillValid(w.ko.id, "anna", 1);
+    const vorher = (await w.audit.list({ action: "lifecycle.revalidation-requested" })).length;
+    await Promise.all(
+      Array.from({ length: 5 }, () => w.lifecycle.meldeAnlagenaenderung(ANLAGE, "emil", "Rev. B")),
+    );
+    expect(await w.lifecycle.offeneFaelle([w.ko.id])).toEqual([]);
+    expect(await w.audit.list({ action: "lifecycle.revalidation-requested" })).toHaveLength(vorher);
+    const neu = await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. C");
+    expect(neu).toEqual([{ koId: w.ko.id, stand: 2, neu: true }]);
+  });
+
+  it("K1 · kanonisch zugeordnet ohne couple betroffen; umgehängt nicht mehr", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const w = await welt(p);
+    const kanonisch = await w.koService.create({
+      title: "Dosierventil DP-4 tauschen",
+      statement: "Das Dosierventil nach 2000 Betriebsstunden tauschen.",
+      type: "best_practice",
+      category: "Dosierung",
+      author: "anna",
+      asset: ANLAGE,
+    });
+    const markiert = await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. B");
+    expect(markiert.map((m) => m.koId).sort()).toEqual([w.ko.id, kanonisch.id].sort());
+    await w.koService.revise(kanonisch.id, { assets: ["Dosierstation DP-5"] }, "anna");
+    const spaeter = await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. C");
+    expect(spaeter.map((m) => m.koId)).toEqual([w.ko.id]);
   });
 
   it("K5 · Bestätigung des passenden Stands: Fassung, Beleg mit Stand, Fall geräumt", async (ctx) => {

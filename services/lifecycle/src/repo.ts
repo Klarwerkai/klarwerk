@@ -1,5 +1,11 @@
 import type { TxContext } from "../../db-tx";
-import type { LearningPath, MerkerErgebnis, OffenerFall, RevalidierungsAnlass } from "./types";
+import {
+  type LearningPath,
+  type MerkerErgebnis,
+  type OffenerFall,
+  type RevalidierungsAnlass,
+  istDauerhaft,
+} from "./types";
 
 // Modul-interner Speicher für Anlagenkopplungen, Re-Validierungs-Marker, Lernpfade & Fortschritt.
 export interface LifecycleRepo {
@@ -11,9 +17,12 @@ export interface LifecycleRepo {
    * Setzt den Merker bzw. hängt einen Anlass an den offenen Fall (produkt:20261010:
    * aenderungsfolgen-sichtbar). EIN Schritt in der Ablage, damit zwei gleichzeitige Meldungen
    * weder einen Anlass verlieren noch denselben Stand zweimal vergeben:
-   *  - kein offener Fall → er entsteht mit Stand 1;
-   *  - ein Anlass mit derselben `signatur` steht schon da → nichts ändert sich, `neu: false`;
-   *  - sonst → der Anlass wird angehängt und der Stand steigt um 1.
+   *  - der Stand ist je Eintrag über Abschlüsse hinweg eindeutig (Nacharbeit 4): ein neuer Fall
+   *    nach einem Abschluss beginnt beim nächsten unbenutzten Stand, nie wieder bei 1;
+   *  - ein Anlass mit derselben `signatur` steht am offenen Fall → nichts ändert sich, `neu: false`;
+   *  - eine Änderung MIT Änderungsbeleg, die schon einmal verarbeitet wurde (auch vor einem
+   *    Abschluss) → nichts ändert sich, `neu: false`;
+   *  - sonst → der Anlass wird angehängt bzw. der Fall eröffnet, der Stand steigt.
    * Ohne Anlass (Altaufrufer) wird nur ein fehlender Merker gesetzt, ein vorhandener bleibt.
    */
   markPending(koId: string, anlass?: RevalidierungsAnlass): Promise<MerkerErgebnis>;
@@ -65,6 +74,7 @@ export interface LifecycleRepo {
 export class InMemoryLifecycleRepo implements LifecycleRepo {
   private readonly couplings = new Map<string, Set<string>>();
   private readonly faelle = new Map<string, OffenerFall>();
+  private readonly verlauf = new Map<string, { letzter: number; signaturen: Set<string> }>();
   private readonly paths = new Map<string, LearningPath>();
   private readonly progress = new Map<string, string[]>();
 
@@ -89,23 +99,37 @@ export class InMemoryLifecycleRepo implements LifecycleRepo {
     return Promise.resolve(assets);
   }
 
+  // Nacharbeit 4 (Ben): dieselbe Regel wie `PgLifecycleRepo.markPending` — Stand über Abschlüsse
+  // hinweg eindeutig, Änderungen mit Beleg dauerhaft verarbeitet.
   markPending(koId: string, anlass?: RevalidierungsAnlass): Promise<MerkerErgebnis> {
+    const verlauf = this.verlauf.get(koId) ?? { letzter: 0, signaturen: new Set<string>() };
+    this.verlauf.set(koId, verlauf);
     const fall = this.faelle.get(koId);
-    if (!fall) {
+    if (anlass && istDauerhaft(anlass) && verlauf.signaturen.has(anlass.signatur)) {
+      return Promise.resolve({ stand: fall?.stand ?? verlauf.letzter, neu: false });
+    }
+    if (fall && (!anlass || fall.anlaesse.some((a) => a.signatur === anlass.signatur))) {
+      return Promise.resolve({ stand: fall.stand, neu: false });
+    }
+    const stand = Math.max(verlauf.letzter, fall?.stand ?? 0) + 1;
+    verlauf.letzter = stand;
+    if (anlass && istDauerhaft(anlass)) {
+      verlauf.signaturen.add(anlass.signatur);
+    }
+    if (fall) {
+      if (anlass) {
+        fall.anlaesse.push({ ...anlass });
+      }
+      fall.stand = stand;
+    } else {
       this.faelle.set(koId, {
         koId,
-        stand: 1,
+        stand,
         seit: anlass?.am ?? null,
         anlaesse: anlass ? [{ ...anlass }] : [],
       });
-      return Promise.resolve({ stand: 1, neu: true });
     }
-    if (!anlass || fall.anlaesse.some((a) => a.signatur === anlass.signatur)) {
-      return Promise.resolve({ stand: fall.stand, neu: false });
-    }
-    fall.anlaesse.push({ ...anlass });
-    fall.stand += 1;
-    return Promise.resolve({ stand: fall.stand, neu: true });
+    return Promise.resolve({ stand, neu: true });
   }
 
   clearPending(koId: string, _tx?: TxContext, stand?: number): Promise<boolean> {

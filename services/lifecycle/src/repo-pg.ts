@@ -1,12 +1,20 @@
 import type { Pool } from "pg";
-import { type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
+import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type { LifecycleRepo } from "./repo";
-import type { LearningPath, MerkerErgebnis, OffenerFall, RevalidierungsAnlass } from "./types";
+import {
+  type LearningPath,
+  type MerkerErgebnis,
+  type OffenerFall,
+  type RevalidierungsAnlass,
+  istDauerhaft,
+} from "./types";
 
 // produkt:20261010:aenderungsfolgen-sichtbar: drei Spalten am Merker — Stand, Beginn und Anlässe.
 // ADDITIV, nachgezählt: nur `ADD COLUMN IF NOT EXISTS` mit Vorgabe, kein `DROP`, kein `DELETE`, kein
 // `UPDATE … SET`. Ein Altmerker liest sich danach als Fall mit Stand 1, ohne Beginn und ohne Anlass —
 // genau das, was über ihn bekannt ist. Ein zweiter Lauf ist folgenlos.
+// Nacharbeit 4 (Ben): dazu `lifecycle_verlauf` — je Eintrag die Hochwassermarke des Stands und die
+// dauerhaft verarbeiteten Änderungssignaturen; ein `CREATE TABLE IF NOT EXISTS`, ebenfalls ADDITIV.
 export const LIFECYCLE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS lifecycle_couplings (
   asset_ref text NOT NULL,
@@ -19,6 +27,11 @@ CREATE TABLE IF NOT EXISTS lifecycle_pending (
 ALTER TABLE lifecycle_pending ADD COLUMN IF NOT EXISTS stand integer NOT NULL DEFAULT 1;
 ALTER TABLE lifecycle_pending ADD COLUMN IF NOT EXISTS seit text;
 ALTER TABLE lifecycle_pending ADD COLUMN IF NOT EXISTS anlaesse jsonb NOT NULL DEFAULT '[]'::jsonb;
+CREATE TABLE IF NOT EXISTS lifecycle_verlauf (
+  ko_id text PRIMARY KEY,
+  letzter_stand integer NOT NULL DEFAULT 0,
+  signaturen jsonb NOT NULL DEFAULT '[]'::jsonb
+);
 CREATE TABLE IF NOT EXISTS lifecycle_paths (
   id text PRIMARY KEY,
   role text NOT NULL,
@@ -66,44 +79,63 @@ export class PgLifecycleRepo implements LifecycleRepo {
   }
 
   /**
-   * produkt:20261010:aenderungsfolgen-sichtbar: EINE Anweisung je Signal. `ON CONFLICT … DO UPDATE`
-   * sperrt die Zeile; die `WHERE`-Bedingung prüft die Signatur am jüngsten Stand dieser Zeile. Zwei
-   * gleichzeitige Meldungen derselben Änderung ergeben damit genau einen Anlass, zwei verschiedene
-   * genau zwei Anlässe und zwei aufeinanderfolgende Stände — nie einen verlorenen.
+   * produkt:20261010:aenderungsfolgen-sichtbar — EINE Transaktion je Signal, gesperrt über die
+   * Verlaufszeile des Eintrags (`lifecycle_verlauf … FOR UPDATE`). Damit gilt (Ben, Nacharbeit 4):
+   *  - der Stand ist je Eintrag ÜBER ABSCHLÜSSE HINWEG eindeutig (Hochwassermarke `letzter_stand`):
+   *    nach Abschluss von B beginnt C nicht wieder bei 1, eine verspätete Bestätigung von B trifft C
+   *    also nie;
+   *  - eine Änderung mit Änderungsbeleg ist dauerhaft verarbeitet (`signaturen`): ihre Wiederholung
+   *    nach dem Abschluss eröffnet keinen Fall, keinen Beleg und keine Meldung;
+   *  - zwei gleichzeitige Meldungen derselben Änderung ergeben genau einen Anlass, zwei verschiedene
+   *    zwei Anlässe und zwei aufeinanderfolgende Stände.
    */
   async markPending(koId: string, anlass?: RevalidierungsAnlass): Promise<MerkerErgebnis> {
-    if (!anlass) {
-      const res = await this.pool.query(
-        "INSERT INTO lifecycle_pending(ko_id) VALUES($1) ON CONFLICT DO NOTHING",
+    return withPgTx(this.pool, async (tx) => {
+      const q = pgQueryable(tx);
+      await q.query("INSERT INTO lifecycle_verlauf(ko_id) VALUES($1) ON CONFLICT DO NOTHING", [
+        koId,
+      ]);
+      const v = await q.query<{ letzter_stand: number; signaturen: string[] | null }>(
+        "SELECT letzter_stand, signaturen FROM lifecycle_verlauf WHERE ko_id=$1 FOR UPDATE",
         [koId],
       );
-      if ((res.rowCount ?? 0) > 0) {
-        return { stand: 1, neu: true };
+      const letzter = Number(v.rows[0]?.letzter_stand ?? 0);
+      const signaturen = Array.isArray(v.rows[0]?.signaturen) ? (v.rows[0]?.signaturen ?? []) : [];
+      const p = await q.query<FallZeile>(
+        "SELECT ko_id, stand, seit, anlaesse FROM lifecycle_pending WHERE ko_id=$1 FOR UPDATE",
+        [koId],
+      );
+      const offen = p.rows[0];
+      const offenStand = offen ? Number(offen.stand) : undefined;
+      if (anlass && istDauerhaft(anlass) && signaturen.includes(anlass.signatur)) {
+        return { stand: offenStand ?? letzter, neu: false };
       }
-      return { stand: await this.standVon(koId), neu: false };
-    }
-    const res = await this.pool.query<{ stand: number }>(
-      `INSERT INTO lifecycle_pending(ko_id, stand, seit, anlaesse) VALUES($1, 1, $2, $3::jsonb)
-       ON CONFLICT (ko_id) DO UPDATE
-         SET stand = lifecycle_pending.stand + 1,
-             anlaesse = lifecycle_pending.anlaesse || excluded.anlaesse
-         WHERE NOT (lifecycle_pending.anlaesse @> $4::jsonb)
-       RETURNING stand`,
-      [koId, anlass.am, JSON.stringify([anlass]), JSON.stringify([{ signatur: anlass.signatur }])],
-    );
-    const neu = res.rows[0];
-    if (neu) {
-      return { stand: neu.stand, neu: true };
-    }
-    return { stand: await this.standVon(koId), neu: false };
-  }
-
-  private async standVon(koId: string): Promise<number> {
-    const res = await this.pool.query<{ stand: number }>(
-      "SELECT stand FROM lifecycle_pending WHERE ko_id=$1",
-      [koId],
-    );
-    return res.rows[0]?.stand ?? 0;
+      if (
+        offen &&
+        offenStand !== undefined &&
+        (!anlass || (offen.anlaesse ?? []).some((a) => a.signatur === anlass.signatur))
+      ) {
+        return { stand: offenStand, neu: false };
+      }
+      const stand = Math.max(letzter, offenStand ?? 0) + 1;
+      await q.query(
+        "UPDATE lifecycle_verlauf SET letzter_stand=$2, signaturen = signaturen || $3::jsonb WHERE ko_id=$1",
+        [koId, stand, JSON.stringify(anlass && istDauerhaft(anlass) ? [anlass.signatur] : [])],
+      );
+      const neueAnlaesse = JSON.stringify(anlass ? [anlass] : []);
+      if (offen) {
+        await q.query(
+          "UPDATE lifecycle_pending SET stand=$2, anlaesse = anlaesse || $3::jsonb WHERE ko_id=$1",
+          [koId, stand, neueAnlaesse],
+        );
+      } else {
+        await q.query(
+          "INSERT INTO lifecycle_pending(ko_id, stand, seit, anlaesse) VALUES($1, $2, $3, $4::jsonb)",
+          [koId, stand, anlass?.am ?? null, neueAnlaesse],
+        );
+      }
+      return { stand, neu: true };
+    });
   }
 
   async clearPending(koId: string, tx?: TxContext, stand?: number): Promise<boolean> {

@@ -76,6 +76,16 @@ export interface MerkerErgebnis {
   neu: boolean;
 }
 
+/**
+ * Nacharbeit 4 (Ben, K7): trägt ein Signal einen Änderungsbeleg (`aenderung`), hat es eine eigene
+ * Identität über den Abschluss hinaus — seine Wiederholung nach dem Abschluss ist folgenlos. Ein
+ * Signal OHNE Beleg (und eine Anforderung aus der Bibliothek) hat diese Identität nicht: es ist nur
+ * am offenen Fall wiederholt; nach dem Abschluss ist es eine neue Meldung.
+ */
+export function istDauerhaft(anlass: Pick<RevalidierungsAnlass, "aenderung">): boolean {
+  return typeof anlass.aenderung === "string" && anlass.aenderung.length > 0;
+}
+
 /** Die Gleichheit zweier Änderungssignale (s. `RevalidierungsAnlass.signatur`). */
 export function anlassSignatur(
   anlass: Pick<

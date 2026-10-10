@@ -376,6 +376,7 @@ export const DATENINVENTAR: readonly Datenart[] = [
       tabellen: [
         "lifecycle_couplings",
         "lifecycle_pending",
+        "lifecycle_verlauf",
         "lifecycle_paths",
         "lifecycle_progress",
       ],

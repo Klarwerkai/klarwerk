@@ -346,14 +346,44 @@ describe("K5 · „Noch gültig“ gilt dem angezeigten Stand", () => {
     expect(container.querySelector('a[href="/wissen/ka"]'), "der Eintrag bleibt").not.toBeNull();
   });
 
-  it("ohne geladene Anlässe sagt die Karte, was „Noch gültig“ dann bestätigt", async () => {
+  // Nacharbeit 4 (Ben, K5): die frühere Erwartung — ein UNGEBUNDENER Aufruf ohne Stand — war genau
+  // der Fehler. Ohne angezeigten Stand gibt es keinen Abschluss; die Karte bietet das Neuladen an.
+  it("ohne geladene Anlässe: „Noch gültig“ gesperrt, kein ungebundener Aufruf, Neuladen holt den Stand", async () => {
+    let gestoert = true;
     d.folgepruefung.mockImplementation(async () => {
-      throw new Error("Prüfstand: Übersicht gestört");
+      if (gestoert) {
+        throw new Error("Prüfstand: Übersicht gestört");
+      }
+      return [fallA(), fallB()];
     });
     await mount();
-    expect(karte().querySelector('[data-testid="folgepruefung-ladefehler"]')?.textContent).toBe(
-      i18n.t("folgepruefung.ladefehler"),
-    );
+    const hinweis = karte().querySelector('[data-testid="folgepruefung-ladefehler"]');
+    expect(hinweis?.textContent).toContain(i18n.t("folgepruefung.ladefehler"));
+    expect(knopfNochGueltig().disabled).toBe(true);
+    await act(async () => {
+      knopfNochGueltig().click();
+      await flush();
+    });
+    expect(d.act).not.toHaveBeenCalled();
+
+    gestoert = false;
+    await act(async () => {
+      karte().querySelector<HTMLButtonElement>('[data-testid="folgepruefung-neu-laden"]')?.click();
+      await flush();
+    });
+    expect(knopfNochGueltig().disabled).toBe(false);
+    await act(async () => {
+      knopfNochGueltig().click();
+      await flush();
+    });
+    expect(d.act).toHaveBeenCalledWith("ka", { action: "revalidate", stand: 2 });
+  });
+
+  it("GEGENPROBE: rein fristfälliger Eintrag OHNE Merker bestätigt wie bisher ohne Stand", async () => {
+    d.pending = [];
+    d.folgepruefung.mockImplementation(async () => []);
+    await mount();
+    expect(knopfNochGueltig().disabled).toBe(false);
     await act(async () => {
       knopfNochGueltig().click();
       await flush();

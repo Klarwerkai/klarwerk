@@ -142,6 +142,42 @@ test.describe("Änderungsfolgen · der Weg im Reiter „Erneut“", () => {
     expect(wiederholt.status()).toBe(200);
     expect((await faelle(page.request)).find((f) => f.koId === a)?.stand).toBe(2);
 
+    // ---- Nacharbeit 4 (Ben, S02): bewusste Übernahme, Historie, fortbestehende Prüfpflicht ------
+    // Die Anleitung A wird an die geänderte Quelle angepasst (neue Fassung über den vorhandenen
+    // Überarbeitungsweg). Die Vorfassung bleibt in der Historie; die Folgeprüfung bleibt offen, bis
+    // jemand den angezeigten Stand bestätigt; die Karte nennt die Überarbeitung seit der Meldung.
+    const vorUebernahme = (await (await page.request.get(`/api/kos/${a}`)).json()) as {
+      version: number;
+      history?: unknown[];
+    };
+    const uebernahme = await page.request.put(`/api/kos/${a}`, {
+      data: {
+        action: "revise",
+        changes: { statement: `${titelA}: nach Rev. C mit angepasster Dosiermenge (fiktiv).` },
+      },
+    });
+    expect(uebernahme.status(), await uebernahme.text()).toBe(200);
+    const nachUebernahme = (await (await page.request.get(`/api/kos/${a}`)).json()) as {
+      version: number;
+      history?: unknown[];
+    };
+    expect(nachUebernahme.version).toBe(vorUebernahme.version + 1);
+    expect((nachUebernahme.history ?? []).length).toBeGreaterThan(
+      (vorUebernahme.history ?? []).length,
+    );
+    expect(
+      (await faelle(page.request)).find((f) => f.koId === a)?.stand,
+      "Prüfpflicht bleibt",
+    ).toBe(2);
+    // Verborgene Verwendung: der vertrauliche Eintrag D ist ebenso betroffen — sichtbar nur für
+    // Berechtigte (hier: Verwaltung), für die Leserin unten nicht.
+    expect((await faelle(page.request)).map((f) => f.koId)).toContain(d);
+    await page.reload();
+    await zeile(page, titelA).click();
+    await expect(
+      page.getByTestId("pruefen-karte").getByTestId("folgepruefung-warum"),
+    ).toContainText("→", { timeout: 10_000 });
+
     // ---- K4: getrennte Sichtbarkeit (Leserin) --------------------------------------------------
     const leserin = `leserin-${m}@folgen.test`;
     const konto = await page.request.post("/api/users", {

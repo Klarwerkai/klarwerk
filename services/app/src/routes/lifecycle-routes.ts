@@ -164,7 +164,13 @@ export function lifecycleRoutes(
           reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
           return;
         }
-        await lifecycle.couple(assetRef, body.koId);
+        // Nacharbeit 4 (Ben, K1): die Kopplung IST die kanonische Anlagenzuordnung des Objekts.
+        try {
+          await lifecycle.couple(assetRef, body.koId, user.id);
+        } catch (error) {
+          sendError(reply, error);
+          return;
+        }
         reply.code(204).send();
       },
     );

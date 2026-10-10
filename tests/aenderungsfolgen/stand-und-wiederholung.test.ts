@@ -277,14 +277,124 @@ describe("K5 · die Bestätigung gilt genau dem gesehenen Stand", () => {
     expect((await w.ko.get(w.a.id))?.version).toBe(1);
   });
 
-  it("ohne Stand (Bibliothek) bleibt der bisherige Weg: bestätigt den aktuellen Inhalt", async () => {
+  // Nacharbeit 4 (Ben, K5): die frühere Erwartung „ohne Stand bestätigt den aktuellen Inhalt" war
+  // genau der Fehler — eine zwischenzeitliche Änderung wurde ungeprüft gelöscht.
+  it("ohne Stand wird KEINE offene Folgeprüfung abgeschlossen — 409, Fall und Fassung bleiben", async () => {
     const w = await welt();
     await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. B");
     await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. C");
-    expect((await w.lifecycle.confirmStillValid(w.a.id, "anna")).version).toBe(2);
-    expect(await fall(w.lifecycle, w.a.id)).toBeUndefined();
-    const reval = await w.audit.list({ action: "ko.revalidated", target: w.a.id });
-    expect(reval.map((e) => e.payload)).toEqual([{ pendingCleared: true, version: 2 }]);
+    await expect(w.lifecycle.confirmStillValid(w.a.id, "anna")).rejects.toMatchObject({
+      code: "STAND_VERALTET",
+      aktuellerStand: 2,
+    });
+    expect((await w.ko.get(w.a.id))?.version).toBe(1);
+    expect((await fall(w.lifecycle, w.a.id))?.stand).toBe(2);
+    expect(await w.audit.list({ action: "ko.revalidated" })).toEqual([]);
+  });
+
+  it("GEGENPROBE: ohne offenen Fall bleibt die reine Gültigkeitsbestätigung ohne Stand möglich", async () => {
+    const w = await welt();
+    expect((await w.lifecycle.confirmStillValid(w.c.id, "anna")).version).toBe(2);
+    const reval = await w.audit.list({ action: "ko.revalidated", target: w.c.id });
+    expect(reval.map((e) => e.payload)).toEqual([{ pendingCleared: false, version: 2 }]);
+  });
+
+  it("B angezeigt → B abgeschlossen → C eröffnet → verspätetes B bestätigt: C bleibt offen", async () => {
+    const w = await welt();
+    await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. B");
+    const angezeigtB = (await fall(w.lifecycle, w.a.id))?.stand;
+    expect(angezeigtB).toBe(1);
+    // Eine erste Person schließt B ab.
+    await w.lifecycle.confirmStillValid(w.a.id, "anna", angezeigtB);
+    // C wird gemeldet: der neue Fall beginnt NICHT wieder bei Stand 1.
+    await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. C");
+    const c = await fall(w.lifecycle, w.a.id);
+    expect(c?.stand).toBe(2);
+    // Eine zweite Person hatte B noch offen und bestätigt verspätet.
+    await expect(w.lifecycle.confirmStillValid(w.a.id, "bert", angezeigtB)).rejects.toMatchObject({
+      code: "STAND_VERALTET",
+      aktuellerStand: 2,
+    });
+    const nachher = await fall(w.lifecycle, w.a.id);
+    expect(nachher?.stand).toBe(2);
+    expect(nachher?.anlaesse.map((x) => x.aenderung)).toEqual(["Rev. C"]);
+    expect((await w.ko.get(w.a.id))?.version).toBe(2);
+  });
+});
+
+describe("K7 · Wiederholung über den Abschluss hinaus", () => {
+  it("B nach Abschluss erneut gemeldet: kein Fall, kein Beleg, keine Glocke; C eröffnet neu", async () => {
+    const w = await welt();
+    await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. B");
+    await w.lifecycle.confirmStillValid(w.a.id, "anna", 1);
+    await w.lifecycle.confirmStillValid(w.b.id, "anna", 1);
+    const belegeVorher = (await w.audit.list({ action: REVALIDIERUNG_ANGEFORDERT })).length;
+
+    const wiederholt = await w.lifecycle.meldeAnlagenaenderung(
+      "Dosierstation DP-4",
+      "emil",
+      "Rev. B",
+    );
+    expect(wiederholt.every((m) => !m.neu)).toBe(true);
+    expect(await w.lifecycle.offeneFaelle()).toEqual([]);
+    // Kein neuer Prüfprotokolleintrag — damit auch keine neue Glockenmeldung
+    // (`frische-meldungen.ts` stellt nur aus diesem Beleg zu).
+    expect(await w.audit.list({ action: REVALIDIERUNG_ANGEFORDERT })).toHaveLength(belegeVorher);
+
+    const neu = await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. C");
+    expect(neu.every((m) => m.neu && m.stand === 2)).toBe(true);
+    expect((await fall(w.lifecycle, w.a.id))?.anlaesse.map((x) => x.aenderung)).toEqual(["Rev. C"]);
+  });
+
+  it("ohne Änderungsbeleg hat ein Signal keine Identität über den Abschluss hinaus: es eröffnet neu", async () => {
+    const w = await welt();
+    await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla");
+    await w.lifecycle.confirmStillValid(w.a.id, "anna", 1);
+    const wieder = await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla");
+    expect(wieder.find((m) => m.koId === w.a.id)).toMatchObject({ neu: true, stand: 2 });
+  });
+});
+
+describe("K1 · die kanonische KO-Anlagenzuordnung entscheidet", () => {
+  it("ein nur kanonisch zugeordneter Eintrag ist betroffen — ohne couple", async () => {
+    const w = await welt();
+    const kanonisch = await w.ko.create({
+      title: "Dosierventil DP-4 tauschen",
+      statement: "Dosierventil DP-4 tauschen — fiktive Aussage.",
+      type: "best_practice",
+      category: "Dosierung",
+      author: "anna",
+      asset: "Dosierstation DP-4",
+    });
+    const markiert = await w.lifecycle.meldeAnlagenaenderung(
+      "Dosierstation DP-4",
+      "carla",
+      "Rev. B",
+    );
+    expect(markiert.map((m) => m.koId)).toContain(kanonisch.id);
+  });
+
+  it("umgehängt und entkoppelt: die Änderung der alten Anlage trifft sie nicht mehr", async () => {
+    const w = await welt();
+    await w.ko.revise(w.a.id, { assets: ["Dosierstation DP-5"] }, "anna");
+    await w.ko.revise(w.b.id, { assets: [] }, "anna");
+    const markiert = await w.lifecycle.meldeAnlagenaenderung(
+      "Dosierstation DP-4",
+      "carla",
+      "Rev. B",
+    );
+    expect(markiert.map((m) => m.koId)).toEqual([]);
+    const neu = await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-5", "carla", "Rev. A");
+    expect(neu.map((m) => m.koId)).toEqual([w.a.id]);
+  });
+
+  it("couple schreibt die kanonische Zuordnung des Objekts (belegt) und liest sie zurück", async () => {
+    const w = await welt();
+    const gelesen = await w.ko.get(w.a.id);
+    expect(gelesen?.asset).toBe("Dosierstation DP-4");
+    expect(await w.lifecycle.couplingsForKo(w.a.id)).toEqual(["Dosierstation DP-4"]);
+    await w.lifecycle.couple("Dosierstation DP-4", w.a.id, "anna");
+    expect(await w.audit.list({ action: "ko.asset-assigned", target: w.a.id })).toHaveLength(1);
   });
 });
 

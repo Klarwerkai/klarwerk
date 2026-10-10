@@ -9,8 +9,14 @@ import type { Textmodul } from "./intern/pruefung";
 
 export default {
   praefix: "folgepruefung.",
-  legacySchluessel: [],
+  // `audit.action.ko_asset_assigned` ist ein ALTNAME: `lib/auditAction.ts` leitet ihn aus dem
+  // Protokollvorgang `ko.asset-assigned` ab, den `KoService.ordneAnlageZu` schreibt.
+  legacySchluessel: ["audit.action.ko_asset_assigned"],
   de: {
+    "audit.action.ko_asset_assigned": "Anlage zugeordnet",
+    "folgepruefung.neuLaden": "Neu laden",
+    "folgepruefung.bibliothekOffen":
+      "Für diesen Eintrag ist eine Folgeprüfung offen. Bitte im Reiter „Erneut“ den angezeigten Stand prüfen und dort bestätigen.",
     "folgepruefung.warumTitel": "Warum betroffen",
     "folgepruefung.grund.anlage": "Gespeicherte Kopplung an „{{asset}}“ — Änderung gemeldet",
     "folgepruefung.grund.anlageOhne": "Änderung an einer gekoppelten Anlage gemeldet",
@@ -48,12 +54,16 @@ export default {
       "Nicht bestätigt: seit der Anzeige ist eine weitere Änderung eingegangen oder die Prüfung wurde schon abgeschlossen. Die Liste ist neu geladen.",
     "folgepruefung.abgeschlossen": "Folgeprüfung für Stand {{stand}} abgeschlossen — {{titel}}",
     "folgepruefung.ladefehler":
-      "Die Anlässe konnten nicht geladen werden — „Noch gültig“ bestätigt dann den jeweils aktuellen Stand.",
+      "Die Anlässe sind nicht geladen — ohne angezeigten Stand ist kein Abschluss möglich.",
     "folgepruefung.aenderungPlaceholder": "Änderungsbeleg (optional, z. B. Rev. C)",
     "folgepruefung.keineKopplung":
       "Keine gespeicherte Kopplung an „{{asset}}“ — es wurde nichts markiert.",
   },
   en: {
+    "audit.action.ko_asset_assigned": "Asset assigned",
+    "folgepruefung.neuLaden": "Reload",
+    "folgepruefung.bibliothekOffen":
+      "A follow-up review is open for this entry. Please check the state shown in the “Again” tab and confirm it there.",
     "folgepruefung.warumTitel": "Why affected",
     "folgepruefung.grund.anlage": "Stored coupling to “{{asset}}” — change reported",
     "folgepruefung.grund.anlageOhne": "Change reported on a coupled asset",
@@ -89,11 +99,15 @@ export default {
       "Not confirmed: another change arrived since it was shown, or the review was already completed. The list has been reloaded.",
     "folgepruefung.abgeschlossen": "Follow-up review for state {{stand}} completed — {{titel}}",
     "folgepruefung.ladefehler":
-      "The reasons could not be loaded — “Still valid” then confirms whatever state is current.",
+      "The reasons are not loaded — without a displayed state no completion is possible.",
     "folgepruefung.aenderungPlaceholder": "Change reference (optional, e.g. Rev. C)",
     "folgepruefung.keineKopplung": "No stored coupling to “{{asset}}” — nothing was marked.",
   },
   nl: {
+    "audit.action.ko_asset_assigned": "Installatie toegewezen",
+    "folgepruefung.neuLaden": "Opnieuw laden",
+    "folgepruefung.bibliothekOffen":
+      "Voor dit item staat een vervolgcontrole open. Controleer de getoonde stand in het tabblad ‘Opnieuw’ en bevestig daar.",
     "folgepruefung.warumTitel": "Waarom betrokken",
     "folgepruefung.grund.anlage": "Opgeslagen koppeling aan ‘{{asset}}’ — wijziging gemeld",
     "folgepruefung.grund.anlageOhne": "Wijziging gemeld aan een gekoppelde installatie",
@@ -131,7 +145,7 @@ export default {
       "Niet bevestigd: sinds het tonen is er nog een wijziging binnengekomen of de controle was al afgerond. De lijst is opnieuw geladen.",
     "folgepruefung.abgeschlossen": "Vervolgcontrole voor stand {{stand}} afgerond — {{titel}}",
     "folgepruefung.ladefehler":
-      "De aanleidingen konden niet worden geladen — ‘Nog geldig’ bevestigt dan de actuele stand.",
+      "De aanleidingen zijn niet geladen — zonder getoonde stand is afronden niet mogelijk.",
     "folgepruefung.aenderungPlaceholder": "Wijzigingsreferentie (optioneel, bijv. Rev. C)",
     "folgepruefung.keineKopplung":
       "Geen opgeslagen koppeling aan ‘{{asset}}’ — er is niets gemarkeerd.",
