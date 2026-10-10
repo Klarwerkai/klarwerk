@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import { useRiskHorizon } from "../api/hooks";
 import type { RetirementHorizon, RiskHorizonArea } from "../api/types";
 import { useAuthorName } from "../lib/useAuthorName";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 import { Card, QueryState, SectionLabel, cx } from "./ui";
 
 const HORIZONTE: readonly RetirementHorizon[] = [24, 36];
@@ -76,9 +77,13 @@ function Bereich({
           : t("risk.horizon.manager", { name: nameOf(area.managerId) })}
       </p>
       {traeger.length === 0 ? (
-        <p data-testid="horizont-keine-traeger" className="text-[12px] text-muted">
-          {t("risk.horizon.noneInHorizon", { months: horizont })}
-        </p>
+        <>
+          <p data-testid="horizont-keine-traeger" className="text-[12px] text-muted">
+            {t("risk.horizon.noneInHorizon", { months: horizont })}
+          </p>
+          {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+          {leerzustandsZeile(t, "horizont")}
+        </>
       ) : (
         <ul className="space-y-1.5">
           {traeger.map((b) => (
@@ -164,12 +169,15 @@ export function RisikoHorizont(): JSX.Element {
       <QueryState query={sicht}>
         {(v) =>
           v.areas.length === 0 ? (
-            <Card
-              data-testid="horizont-leer"
-              className="border-dashed text-center text-sm text-muted"
-            >
-              {v.seesAll ? t("risk.horizon.noAreas") : t("risk.horizon.noOwnArea")}
-            </Card>
+            <>
+              <Card
+                data-testid="horizont-leer"
+                className="border-dashed text-center text-sm text-muted"
+              >
+                {v.seesAll ? t("risk.horizon.noAreas") : t("risk.horizon.noOwnArea")}
+              </Card>
+              {leerzustandsZeile(t, "horizont")}
+            </>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {v.areas.map((a) => (
