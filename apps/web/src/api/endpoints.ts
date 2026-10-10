@@ -142,6 +142,7 @@ import type {
   VorrangAmPunkt,
   VorrangWahl,
   Wissensempfehlungen,
+  WissensstandVergleich,
   Wochenupdate,
   // R-1107: der Drahtvertrag des Zusammenführens.
   ZusammenfuehrungsAuftrag,
@@ -998,6 +999,14 @@ export const endpoints = {
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1630 / R-2176: dieselbe Frage aus dem Wissensstand zum Stichtag (`JJJJ-MM-TT`; ohne
+    // Angabe vor einem Jahr) — ohne Wissenslücke, ohne Beleg, ohne „Danke".
+    vergleich: (question: string, locale?: ReasonerLocale, stichtag?: string) =>
+      api.post<WissensstandVergleich>("/ask/vergleich", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(stichtag ? { stichtag } : {}),
+      }),
     // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
     report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
       api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),

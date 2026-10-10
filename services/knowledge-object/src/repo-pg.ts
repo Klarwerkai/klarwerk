@@ -1,13 +1,17 @@
 import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
-import type {
-  EvidenceRepo,
-  KoCandidateQuery,
-  KoFilter,
-  KoRepo,
-  KoSichtbarkeitstrim,
-  KoVersionRepo,
+import {
+  type EvidenceRepo,
+  type FassungsSuche,
+  type KoCandidateQuery,
+  type KoFilter,
+  type KoRepo,
+  type KoSichtbarkeitstrim,
+  type KoVersionRepo,
+  ordneFassungstreffer,
+  zaehleFassungstreffer,
 } from "./repo";
+import { normalizeSearchTerms } from "./search-projection";
 import {
   type AiCheck,
   type EvidenceRecord,
@@ -942,7 +946,61 @@ export class PgKoVersionRepo implements KoVersionRepo {
       await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
     });
   }
+
+  // R-1630 / R-2176: die Nachsuche über Fassungen bis `bisAt` (Vertrag am Interface).
+  //
+  // BEN (Nacharbeit 6): bis hierher verglich SQL den rohen Dokumentkörper — ein „V&#101;ntil" blieb
+  // für „ventil" unsichtbar, während der Antwortweg daraus „Ventil" liest. Die Datenbank kennt die
+  // Normalisierung der Suchprojektion nicht (Zeichenreferenzen, NFKC, unsichtbare Zeichen). Deshalb
+  // liest dieser Adapter die Fassungen bis zum Stichtag SEITENWEISE und wendet dieselbe Regel an wie
+  // der Speicheradapter (`zaehleFassungstreffer`/`ordneFassungstreffer` in repo.ts). Der Preis ist
+  // ein Lesen aller Fassungen bis zum Stichtag je Vergleich; er ist in der Rückgabe benannt. `at`
+  // ist ein ISO-Zeitstempel und vergleicht als Text in Zeitreihenfolge.
+  async findKoIdsInFassungen(query: FassungsSuche): Promise<string[]> {
+    const terms = normalizeSearchTerms(query.terms);
+    if (terms.length === 0 || query.limit <= 0) {
+      return [];
+    }
+    const treffer = new Map<string, number>();
+    let nachKo = "";
+    let nachVersion = -1;
+    let weiter = true;
+    while (weiter) {
+      const res = await this.pool.query<SnapshotRow & { ko_id: string }>(
+        `SELECT ko_id, version, at, author, note, snapshot FROM ko_versions
+         WHERE at <= $1::text AND (ko_id, version) > ($2::text, $3::int)
+         ORDER BY ko_id, version
+         LIMIT $4`,
+        [query.bisAt, nachKo, nachVersion, FASSUNGSSUCHE_SEITE],
+      );
+      for (const row of res.rows) {
+        zaehleFassungstreffer(
+          treffer,
+          {
+            koId: row.ko_id,
+            version: row.version,
+            snapshot: row.snapshot,
+            at: row.at,
+            author: row.author,
+            note: row.note,
+          },
+          terms,
+          query.bisAt,
+        );
+      }
+      const letzte = res.rows.at(-1);
+      weiter = res.rows.length === FASSUNGSSUCHE_SEITE && letzte !== undefined;
+      if (letzte) {
+        nachKo = letzte.ko_id;
+        nachVersion = letzte.version;
+      }
+    }
+    return ordneFassungstreffer(treffer, query.limit);
+  }
 }
+
+/** Fassungen je Leseschritt der Nachsuche — begrenzt den Speicher, nicht das Ergebnis. */
+const FASSUNGSSUCHE_SEITE = 500;
 
 interface EvidenceRow {
   data: EvidenceRecord;

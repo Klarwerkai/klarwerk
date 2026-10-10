@@ -162,6 +162,8 @@ export type {
   WoerterbuchErgaenzung,
 } from "./src/answer-belastbarkeit";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
+// R-1630 / R-2176: der Stichtag des Antwortvergleichs — die Route liest ihn mit derselben Regel.
+export { stichtagAus } from "./src/wissensstand-vergleich";
 // R-1663 / R-2178: begründete Ansprechpartner-Vorschläge zu einer Wissenslücke.
 export type {
   AnsprechpartnerAuskunft,
