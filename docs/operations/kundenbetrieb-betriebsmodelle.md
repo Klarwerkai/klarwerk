@@ -58,9 +58,16 @@ Startvertrags (`services/app/src/start-vertrag.ts`); der Code ist in allen Wegen
   behandelt (`createCappedLocalClientFromEnv`).
 - **Ausgangsprüfung.** Mit `KLARWERK_AUSGANGSPRUEFUNG=an` hält das Produkt jeden KI-Aufruf, der das Haus
   verlassen kann, bis zur Freigabe an. Vorgabe ist **aus**.
-- **Einbettung.** `KLARWERK_EMBEDDING_PROVIDER` steht ohne Wert auf `stub`
-  (`services/embedding/src/provider.ts`); `cloud`/`local` sind nicht verdrahtet. Heute verlässt dafür
-  nichts das Haus.
+- **Einbettung.** `KLARWERK_EMBEDDING_PROVIDER` steht ohne Wert auf `stub` — lexikalische
+  Testvektoren, kein Modell, kein Qualitätsbeleg (`services/embedding/src/provider.ts`). Mit `local`
+  nimmt die App den **internen Embedding-Weg** (AW-12): ein Embedding-Modell
+  (`KLARWERK_LOCAL_EMBEDDING_MODEL`) am selben lokalen Server wie das Sprachmodell, mit Pflichtangabe
+  `KLARWERK_EMBEDDING_DIM`. Der Client (`createLocalEmbeddingClientFromEnv` in
+  `services/reasoner/src/model-client.ts`) entsteht **nur** für eine bestätigte interne Adresse; jede
+  andere Adresse ergibt keinen Embedder, nie still den Stub. `cloud` ist nicht verdrahtet. Gespeicherte
+  Vektoren tragen ihre Art in der Version: `stub@<dim>` oder `intern:<modell>@<dim>`
+  (`embeddingArt`). In keinem Fall verlässt dafür etwas das Haus. Gegenprobe:
+  `tests/kundenbetrieb-betriebsmodelle/interner-embedding-weg.test.ts`.
 - **Weitere Ausgänge, die der Betreiber einschaltet:** E-Mail über `SMTP_*`, Firmenanmeldung über
   `OIDC_*`, Word im Browser über `KLARWERK_M365_MANDANTEN`. Sie sind von der Modellwahl unabhängig.
 
@@ -82,7 +89,56 @@ Datenbank, eigene Adresse und eigenen ersten Administrator, wie es
 `docs/operations/kundeninstanz-neuinstallation.md` beschreibt. Mehrere Firmen in einer Instanz sind
 weder gebaut noch vorgesehen.
 
-### 2.4 Grenzen des lokalen Betriebs
+### 2.4 Datenflussblatt des internen Kerns (AW-12)
+
+Für **eine Instanz einer Firma** (§2.3) im Hausbetrieb oder als eigene Kundeninstanz. Grundlage ist die
+geprüfte Zielliste aller Verbindungen nach außen (`services/app/src/ausgehende-ziele.json`, gehalten
+von `tests/ki-freigaberegeln/ausgehende-ziele.test.ts`): ein Weg, der dort fehlt, existiert nicht.
+
+**Interner Kern — verlässt die Instanz nicht:**
+
+| Datenweg | Verarbeitung | Speicherung | Empfänger | Zweck | Aufbewahrung | Ausfallgrenze |
+| --- | --- | --- | --- | --- | --- | --- |
+| Wissensobjekte, Quellen, Anhänge | App-Prozess | PostgreSQL der Instanz (Insel: Journal `state.jsonl`) | nur Konten der Instanz nach Rolle (`services/rbac/src/policy.ts`) | Erfassen, Prüfen, Nutzen | bis zur Löschung; Papierkorb 30 Tage (`TRASH_RETENTION_DAYS`), dann Endlöschung | Datenbank nicht erreichbar → Anfragen scheitern mit Fehler; keine Ersatzspeicherung |
+| KI-Aufgaben am lokalen Sprachmodell | lokaler Modellserver (`KLARWERK_LOCAL_LLM_URL`, nur bestätigte interne Adresse) | vom Produkt keine; was der Modellserver selbst protokolliert, ist seine Konfiguration; in der App nur Laufmetadaten | lokaler Modellserver | Strukturieren, Antworten, Prüfen | Laufmetadaten in `model_runs` ohne Prompt- und Antworttext (`monitoring-logging.md`) | Modell nicht erreichbar → deterministischer Ersatzmodus, sichtbar im KI-Status |
+| Einbettungen (Bedeutungssuche, Dublettenvorfilter) | lokaler Modellserver, Modell `KLARWERK_LOCAL_EMBEDDING_MODEL` | Vektoren in der Instanz (`PgEmbeddingStore`), Version `intern:<modell>@<dim>` | lokaler Modellserver | Ähnlichkeit finden | mit dem Objekt; ein Modell- oder Dimensionswechsel entwertet die Vektoren | Server nicht erreichbar → `embed` wirft, kein Vektor wird gespeichert; Stub ist kein Ersatz für echte Ergebnisse |
+| Protokolle | App-Prozess (`log-sanitize.ts` schwärzt Geheimnisnamen) | Ausgabe des Prozesses bzw. `logs/` der Insel | Betreiber der Instanz | Betrieb, Fehlersuche | Sache des Betreibers; im Produkt nicht begrenzt | — |
+| Sicherungen | `scripts/backup/backup.sh` (`pg_dump`) bzw. Journal-Kopie beim Update | Sicherungsordner der Instanz (`BACKUP_DIR`, Insel `backups/`), je Dump eine `.sha256` | Betreiber der Instanz | Wiederherstellung | `BACKUP_KEEP=<n>` behält n Sicherungen; nicht gesetzt = nichts wird gelöscht | eine Sicherung ohne Prüfsumme wird beim Rückweg nicht angefasst |
+
+**Inhalt von Protokoll und Sicherung.** Sicherungen enthalten den **gesamten** Datenbestand der Instanz
+im Klartext des Dumps — sie sind so schutzbedürftig wie die Datenbank selbst. Protokolle enthalten keine
+Prompt- und Antworttexte und keine Geheimniswerte; ein Messlauf, der Protokoll- und Sicherungsinhalt an
+einer echten Instanz durchsucht, ist **nicht belegt** (§11).
+
+**Abhängigkeiten, die nur der Betreiber einschaltet — getrennt von der Freigabe:**
+
+| Weg (Kennung in der Zielliste) | Empfänger | Was hinausgeht | Freigabe |
+| --- | --- | --- | --- |
+| `ki-anthropic`, `ki-openai` | Anthropic, OpenAI oder `OPENAI_BASE_URL` | Aufgabentext nach Freigabe; Vertrauliches nur mit zweiter Freigabe | zentrale Adminfreigabe; ohne Schlüssel nicht gebaut |
+| `transkription-openai` (**Sprache**) | OpenAI (Whisper) | die Audio-/Videospur | zentrale Adminfreigabe; ohne Schlüssel nicht gebaut |
+| `wissenssuche-wikipedia` | Wikipedia | Suchbegriffe | Admin-Regler; `EXTERNAL_SEARCH=off` baut den Weg nicht |
+| `import-confluence`, `import-jira`, `import-sharepoint` | das System des Betreibers | Anfragen zum Abholen; Inhalte kommen herein | nur bei vollständiger Konfiguration, Origin gepinnt |
+| `anmeldung-oidc` | Identitätsanbieter des Betreibers | Anmeldevorgang | nur bei vollständiger OIDC-Konfiguration |
+| `mail-smtp` | Postausgangsserver | Benachrichtigungen | nur mit `SMTP_HOST` |
+| `wissensereignisse-webhooks` | eingetragene Ziele | nur Objektkennungen | nur Ziele in `KLARWERK_WEBHOOKS` |
+| `word-addin-officejs` (**M365**) | Microsoft | das Laden von Office.js im Word-Fenster | eigene Abhängigkeit; Word im Browser zusätzlich über `KLARWERK_M365_MANDANTEN` |
+
+**Sprache und Textweg.** Eine **interne** Spracherkennung gibt es nicht; Sprache zu Text geht nur über
+den externen Weg `transkription-openai`. Ist er nicht freigegeben, bleibt die **Texteingabe** der
+vollständige Weg: Erfassen, Fragen und Prüfen funktionieren ohne Sprache.
+
+**OCR.** Eine Texterkennung aus Bildern oder gescannten PDFs ist im Produkt **nicht** vorhanden
+(`poppler` im Container dient der Folienausgabe). Bilder versteht nur ein multimodales Modell über den
+KI-Weg; das vorgesehene lokale Sprachmodell (§6.1) ist nicht multimodal.
+
+**Betreiber- und Supportrechte.** Das Produkt hat keinen Fernzugang und kein eingebautes
+Supportkonto. `KLARWERK_SUPPORT_URL` zeigt nur einen Link; es werden keine Daten übertragen.
+Supportzugriff auf Inhalte entsteht nur, wenn der Verwalter der Firma ein Konto mit Rolle anlegt
+(`viewer`, `experte`, `controller`, `admin`). Wer Server, Datenbank, Protokolle und Sicherungen
+betreibt, sieht alles — im Hausbetrieb die Firma selbst, bei einer von KLARWERK betriebenen Instanz
+KLARWERK. Diese Betreiberrolle ist vertraglich zu regeln; das Produkt trennt sie nicht technisch.
+
+### 2.5 Grenzen des lokalen Betriebs
 
 - Eine Insel ist **ein** Rechner; Wiederaufbau und Sicherung der Referenzanlage sind nicht auf einem
   echten Gerät nachgewiesen (R-0809, R-0844 in §9).
@@ -157,6 +213,28 @@ nicht fest. Ohne diese Festlegung wird hier kein Profilinhalt erfunden.
 | Cloud (Hetzner) | Aufsetzweg in `deploy-hetzner.md`; ein Servertyp oder eine Ausstattung ist dort **nicht** genannt | Ausstattungsangabe und Lastmessung — **ungewiss** |
 | Insel | Beispielmatrix für das lokale Modell (`docs/operations/local-hardware-readiness.md`) | Werte am Zielrechner, Erstinventar (`insel-hausbetrieb-anforderungen.md` H2) |
 | App-Server allgemein | braucht keine GPU (`docs/operations/server-hardening-readiness.md` §6) | — |
+
+### 6.1 Modell- und Laufzeitbestand des internen Kerns (AW-12)
+
+Was das Repository für den internen Kern tatsächlich vorsieht, mit Fundstelle. Lizenzangaben sind die
+der Herausgeber; ein Lizenztext liegt **keinem** Artefakt im Repository bei, und die Weitergabe von
+Gewichten im Material ist eine offene Entscheidung (`insel-hausbetrieb-anforderungen.md` H1/H6).
+
+| Bestandteil | Fassung im Repository | Fundstelle | Lizenz (Herausgeber) | Betriebsvoraussetzung |
+| --- | --- | --- | --- | --- |
+| Sprachmodell (Referenz) | `qwen3:32b` (Ollama) bzw. `mlx-community/Qwen3-32B-4bit` (MLX) | `scripts/insel/Insel-App-starten.command` | Apache-2.0 | Apple Silicon mit großem Unified Memory; Werte am Zielrechner nicht gemessen (`docs/operations/local-hardware-readiness.md`) |
+| Sprachmodell (Paketvorgabe) | `mistral:latest` — **ungepinnt**, der Tag kann sich ändern | `scripts/insel/release-texte.mjs` (`start.command`) | Apache-2.0 für Mistral 7B; für einen späteren Tag-Inhalt nicht gesichert | wie oben, geringer |
+| Embedding-Modell | `bge-m3` (Ollama), Dimension 1024 → `KLARWERK_EMBEDDING_DIM=1024` | `scripts/insel/Insel-inventarisieren.command` (prüft das Vorhandensein) | MIT | am selben Ollama-Server; ohne Gewicht kein interner Embedder |
+| Modelllaufzeit | Ollama (`127.0.0.1:11434`) oder MLX-Server (`127.0.0.1:8080`); jeder OpenAI-kompatible Server | `scripts/insel/Insel-App-starten.command` | Ollama MIT, MLX MIT | Vorbedingung beim Kunden, nicht im Paket (H1) |
+| App-Laufzeit | Node.js ≥ 20 (Insel); Container-Laufzeitstufe `node:20-bookworm-slim` (Abhängigkeitsstufe Node 24); CI Node 24 | `scripts/insel/README.md`, `Dockerfile`, `.github/workflows/ci.yml` | MIT | Insel: Homebrew-Node; Container bringt sie mit |
+| Datenbank | PostgreSQL 16 (Compose) oder Journal (Insel) | `docker-compose.prod.yml`, `scripts/insel/release-texte.mjs` | PostgreSQL License | Compose bringt sie mit |
+| Folienausgabe | LibreOffice Impress, poppler im Container | `Dockerfile` | MPL-2.0 bzw. GPL-2.0 | nur im Container |
+| OCR | **keins** | — | — | nicht vorhanden (§2.4) |
+| Spracherkennung intern | **keine** | — | — | nur extern über `transkription-openai` (§2.4) |
+
+**Widerspruch, ausdrücklich:** Referenzstarter und Paket sehen **verschiedene** Sprachmodelle vor
+(`qwen3:32b` gegen `mistral:latest`). Welches Gewicht zum Lieferumfang gehört, ist eine offene
+Produktentscheidung; der ungepinnte Tag `mistral:latest` taugt nicht als belegte Fassung.
 
 ---
 
@@ -331,3 +409,12 @@ Spalten: Punkt · Stand · Ergebnis · Rest.
 - Eine Sichtung der Starter mit Versionsbestätigung auf Pedis Rechner.
 - Eine Einrichtung nach Blaupause durch einen Kunden ohne Beistand.
 - Die Liste der 15 Leitfäden aus der Recherchequelle.
+- **AW-12, Abnahme S07** an einem echten Rechner mit den Modellen aus §6.1: getrennte Ressourcen je
+  Firma, synthetischer Kernweg mit lokalem Sprach- **und** Embedding-Modell, Messung der tatsächlich
+  aufgebauten Verbindungen nach außen sowie Durchsicht von Protokoll- und Sicherungsinhalt — zugeordnet
+  zu Kandidat, Rechner, Rollen und Ergebniskennungen. Belegt sind bisher nur der Weg im Code und
+  Gegenproben ohne echtes Modell (`tests/kundenbetrieb-betriebsmodelle/interner-embedding-weg.test.ts`);
+  ein Prüfplatz mit Modellgewichten steht in diesem Auftrag nicht zur Verfügung.
+- Ein Lizenztext je Modellgewicht und die Entscheidung, welches Sprachmodell zum Lieferumfang gehört
+  (§6.1).
+- Eine interne Spracherkennung und eine OCR — beide im Produkt nicht vorhanden (§2.4).

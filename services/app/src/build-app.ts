@@ -213,6 +213,7 @@ import {
   ausgangspruefungAusEnv,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
+  createLocalEmbeddingClientFromEnv,
   setzeAusgangspruefung,
 } from "../../reasoner";
 import {
@@ -2147,7 +2148,11 @@ function createSemanticPrefilterFromEnv(
   if (flag !== "1" && flag !== "true") {
     return undefined;
   }
-  const embedder = createEmbeddingProviderFromEnv(process.env);
+  // AW-12: `KLARWERK_EMBEDDING_PROVIDER=local` nimmt den internen Weg — er entsteht nur für eine
+  // bestätigte On-Prem-Adresse (`createLocalEmbeddingClientFromEnv`), sonst gibt es keinen Embedder.
+  const embedder = createEmbeddingProviderFromEnv(process.env, {
+    lokal: createLocalEmbeddingClientFromEnv(process.env),
+  });
   if (!embedder) {
     return undefined;
   }
