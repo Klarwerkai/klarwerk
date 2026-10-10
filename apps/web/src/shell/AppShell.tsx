@@ -13,8 +13,10 @@ import { NavGuardModalBoundaryBridge } from "../app/NavGuardContext";
 // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
 import { KlaraAssistant } from "../components/KlaraAssistant";
 // KLARA-VORSCHAU (produkt:20261007:klara-vorschau): bei eingeschalteter Vorschau tritt die
-// bewegliche Klara an die Stelle des Hilfeknopfs. Der Schalter ist winzig und statisch; die Figur
-// selbst wird erst nachgeladen, wenn jemand die Vorschau eingeschaltet hat.
+// bewegliche Klara mit Demo-Betrieb an die Stelle des Hilfeknopfs.
+// ASSISTENZ IM PRODUKT (produkt:20261010:assistenz-produkteinstieg): ohne Vorschau steht dieselbe
+// gelieferte Oberfläche im Produktbetrieb da — echtes Gespräch, kein Demo — neben dem Hilfeknopf.
+// Die Figur wird nachgeladen, damit sie den ersten Seitenaufbau nicht aufhält.
 import { useKlaraVorschauAktiv } from "../components/klara-vorschau/aktiv";
 // AUFTRAG-mega61 Block A/B: Hinweisbanner auf derselben Ebene wie Kopfband und Meldungsfläche —
 // bewusst NICHT im Torwächter, damit der Anmeldeweg unberührt bleibt. Der Fußbereich (LegalFooter)
@@ -28,6 +30,9 @@ import { TutorialEinstieg, TutorialFlaeche, TutorialProvider } from "../tutorial
 import { CommandPalette } from "./CommandPalette";
 import { Kopfband } from "./Kopfband";
 import { MobileNavDrawer } from "./MobileNavDrawer";
+// N-0028: der Vorschauhinweis samt Rückweg steht während einer Rollenvorschau oben im Inhalt —
+// nicht nur im Zahnrad-Menü. Auf gesperrten Seiten bleibt er leer, dort spricht die Sperrkarte.
+import { VorschauHinweis } from "./RollenVorschau";
 import { SeitenhilfeProvider } from "./SeitenhilfeContext";
 import { ToastViewport } from "./ToastViewport";
 import { NARROW_QUERY, useMediaQuery } from "./useMediaQuery";
@@ -38,15 +43,26 @@ const KlaraVorschau = lazy(() =>
   })),
 );
 
-/** Hilfeknopf oder — bei eingeschalteter Vorschau — die bewegliche Klara. Nie beide. */
+/**
+ * Die Assistenz: im normalen Produkt die persönliche Assistenz (Produktbetrieb) UND der Hilfeknopf —
+ * offen ist immer nur eine der beiden Flächen (`components/assistenzFlaechen.ts`). Bei
+ * eingeschalteter Vorschau allein die bewegliche Klara mit ihrem gekennzeichneten Demo-Betrieb.
+ */
 function KlaraEbene(): JSX.Element {
   const vorschau = useKlaraVorschauAktiv();
   if (!vorschau) {
-    return <KlaraAssistant />;
+    return (
+      <>
+        <KlaraAssistant />
+        <Suspense fallback={null}>
+          <KlaraVorschau betriebsart="produkt" />
+        </Suspense>
+      </>
+    );
   }
   return (
     <Suspense fallback={null}>
-      <KlaraVorschau />
+      <KlaraVorschau betriebsart="vorschau" />
     </Suspense>
   );
 }
@@ -136,6 +152,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
                 <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
                   <ModalRegion>
                     <TutorialFlaeche />
+                    <VorschauHinweis flaeche="seite" />
                     {children}
                   </ModalRegion>
                 </main>
@@ -182,6 +199,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
                 <ModalRegion>
                   <TutorialFlaeche />
+                  <VorschauHinweis flaeche="seite" />
                   <div className="kw-inhalt h-full w-full">{children}</div>
                 </ModalRegion>
               </main>

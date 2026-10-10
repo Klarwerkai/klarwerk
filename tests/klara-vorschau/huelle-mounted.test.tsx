@@ -44,6 +44,10 @@ beforeEach(async () => {
   sessionStorage.clear();
   zuruecksetzenGanz();
   setzeKlaraVorschauAktiv(true);
+  // Klara 01 (produkt:20261008:klara-basis): der echte Betrieb ist jetzt der Anfang. Diese Datei
+  // belegt die gelieferte Vorschau mit ihren vorgefertigten Antworten — also den Demo-Betrieb, den
+  // die Person ausdrücklich wählt. Den echten Betrieb misst `tests/klara-basis/`.
+  aendere((z) => ({ ...z, betrieb: "demo" }));
   netz.anfragen = [];
   netz.lage = { kiAktiv: true, rolle: "experte" };
   medienStub();
@@ -148,10 +152,16 @@ describe("K1/K3 · Klara ersetzt bei eingeschalteter Vorschau den Hilfeknopf", (
     expect(document.querySelector(`[aria-label="${i18n.t("klara.open")}"]`)).toBeNull();
   });
 
-  it("ohne Schalter bleibt alles wie bisher", async () => {
+  // produkt:20261010:assistenz-produkteinstieg: ohne Schalter steht dieselbe Figur im
+  // Produktbetrieb da — neben dem Hilfeknopf, ohne Demo-Betrieb. Den Produktweg misst
+  // `tests/klara-produkt/produkteinstieg-am-server.test.tsx`.
+  it("ohne Schalter: Produktbetrieb neben dem Hilfeknopf, kein Demo", async () => {
     setzeKlaraVorschauAktiv(false);
     m = await montiere("/fragen");
-    expect(q(document, "klara-figur")).toBeNull();
+    const f = await figur();
+    expect(f.dataset.betriebsart).toBe("produkt");
+    expect(f.dataset.betrieb).toBe("echt");
+    expect(q(document, "klara-figur-demo")).toBeNull();
     expect(document.querySelector(`[aria-label="${i18n.t("klara.open")}"]`)).not.toBeNull();
   });
 });

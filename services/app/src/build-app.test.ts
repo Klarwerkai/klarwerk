@@ -348,8 +348,8 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
         neededValidations: 1,
       },
     });
-    // R-0584 (Auftrag gesamt-datenschutz-voreinstellung): beantwortbar ist eine Frage nur aus
-    // geprüftem Wissen — das KO wird über die echte Bewertung validiert.
+    // R-0278 (Nacharbeit 3) / R-0584 (Auftrag gesamt-datenschutz-voreinstellung): beantwortbar ist
+    // eine Frage nur aus geprüftem Wissen — das KO wird über die echte Bewertung validiert.
     const bewertet = await app.inject({
       method: "PUT",
       url: `/api/kos/${angelegt.json().id}`,

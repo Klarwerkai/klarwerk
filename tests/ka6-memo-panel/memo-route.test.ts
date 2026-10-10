@@ -196,6 +196,26 @@ async function aufbau(
 
 const KOERPER = { art: "erstellen", text: AUFTRAG, koIds: [KO_ID] };
 
+/**
+ * gesamt-dokumenterzeugung (Nacharbeit 7, R-0337/R-1739): die Herkunft der Quelle mit ALLEN
+ * Pflichtangaben. Das Test-KO trägt weder Geltung noch Eigentum noch Prüfnachweis und hat zu v3
+ * keinen History-Eintrag — genau das steht als `null` und als Unsicherheit da, nicht als Annahme.
+ */
+const HERKUNFT_VOLL = {
+  koId: KO_ID,
+  titel: KO_TITEL,
+  stufe: "validiert",
+  version: 3,
+  marke: "Q1",
+  trust: 80,
+  geltungsbereich: null,
+  verantwortlicheRolle: null,
+  verantwortlich: null,
+  fassungVom: null,
+  letztePruefungAm: null,
+  unsicherheiten: ["geltung_fehlt", "verantwortung_fehlt", "rolle_fehlt", "pruefdatum_fehlt"],
+};
+
 describe("JOB 3091 · E0 · die Lage des Schalters — laut, nicht still", () => {
   it(`KLARA_EXTERNAL_EXECUTION_MIGRATED = ${KLARA_EXTERNAL_EXECUTION_MIGRATED} → R2 am echten Tor ist ${KLARA_EXTERNAL_EXECUTION_MIGRATED ? "WIRKSAM" : "UEBERSPRUNGEN (Stand vor JOB 3079)"}`, () => {
     expect(typeof KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe("boolean");
@@ -246,9 +266,7 @@ describe("JOB 3091 · R2 · mit Zustimmung: Entwurf, Herkunft nicht leer, Anbiet
       expect(res.statusCode, JSON.stringify(res.json())).toBe(200);
       const body = res.json() as ZurufAntwort;
       expect(body.entwurf).toBe(MEMO);
-      expect(body.herkunft).toEqual([
-        { koId: KO_ID, titel: KO_TITEL, stufe: "validiert", version: 3 },
-      ]);
+      expect(body.herkunft).toEqual([HERKUNFT_VOLL]);
       expect(body.anbieter).toBe(CLOUD_ANBIETER);
       expect(body.modell).toBe(CLOUD_MODELL);
       expect(body.aiGenerated).toBe(true);
@@ -272,16 +290,24 @@ describe("JOB 3091 · R2 · mit Zustimmung: Entwurf, Herkunft nicht leer, Anbiet
     const body = res.json() as ZurufAntwort;
     expect(body.entwurf).toBe(MEMO);
     expect(body.herkunft).toHaveLength(1);
-    expect(body.herkunft[0]).toEqual({
-      koId: KO_ID,
-      titel: KO_TITEL,
-      stufe: "validiert",
-      version: 3,
-    });
+    // gesamt-dokumenterzeugung (Nacharbeit 7): die Herkunft trägt alle Pflichtangaben, und der
+    // Entwurf kommt zusätzlich je Passage mit den Marken seiner Quellen. Das Modell dieses Falls
+    // setzt keine Marke — die Passage steht deshalb OHNE Quellenbezug da, nicht mit geratenem.
+    expect(body.herkunft[0]).toEqual(HERKUNFT_VOLL);
+    expect(body.passagen).toEqual([{ text: MEMO, marken: [] }]);
     expect(body.anbieter).toBe("anbieter-x");
     expect(body.modell).toBe("modell-y");
     expect(Object.keys(body).sort()).toEqual(
-      ["aiGenerated", "anbieter", "art", "entwurf", "generatedAt", "herkunft", "modell"].sort(),
+      [
+        "aiGenerated",
+        "anbieter",
+        "art",
+        "entwurf",
+        "generatedAt",
+        "herkunft",
+        "modell",
+        "passagen",
+      ].sort(),
     );
     for (const verboten of [
       "insert",
@@ -372,14 +398,17 @@ describe("JOB 3091 · R4 · der Formulierer ueber dem Modell", () => {
     const auftrag: ZurufAuftrag = {
       art: "erstellen",
       text: AUFTRAG,
-      belege: [{ koId: KO_ID, title: KO_TITEL, text: KO_AUSSAGE }],
+      belege: [{ koId: KO_ID, title: KO_TITEL, text: KO_AUSSAGE, marke: "Q1" }],
     };
     expect(await f.formuliere(auftrag)).toBe("Text");
     expect(spion.aufrufe).toHaveLength(1);
     const a = spion.aufrufe[0];
     expect(a?.system).toContain("ausschließlich aus den mitgegebenen Belegen");
     expect(a?.system).toContain("leeren Zeile");
-    expect(a?.user).toContain(`[1] ${KO_TITEL}`);
+    // gesamt-dokumenterzeugung (Nacharbeit 7): die Belege tragen ihre Marke, und die Auflage
+    // verlangt sie je Absatz — die Grundlage der Passagenzuordnung.
+    expect(a?.user).toContain(`[Q1] ${KO_TITEL}`);
+    expect(a?.system).toContain("Beende jeden Absatz mit den Marken der Belege");
     expect(a?.user).toContain(KO_AUSSAGE);
     expect(a?.user).toContain(AUFTRAG);
     expect(a?.confidential).toBe(false);

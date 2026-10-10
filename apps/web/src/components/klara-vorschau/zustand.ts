@@ -6,11 +6,14 @@
 // (`shell/AppShell.tsx`). Klara wird bei jedem Wechsel der Fensterbreite also NEU montiert — ein
 // `useState` in der Figur verlöre dabei Position, Verlauf und offenen Vorschlag. Hier liegt der
 // Zustand einmal, React liest ihn über `useSyncExternalStore`, und die Sitzung (sessionStorage)
-// hält ihn über ein Neuladen. Nichts davon geht an den Server: die Vorschau speichert nichts.
+// hält ihn über ein Neuladen. Nichts davon geht an den Server: die Vorschau speichert nichts. Das
+// ECHTE Gespräch (Klara 01) liegt NICHT hier, sondern am Server unter dem eigenen Konto (`echt.ts`);
+// hier steht nur, welcher Betrieb gewählt ist.
 //
 // Die Funktionen hier sind REIN (Position klemmen, andocken, Antwort einsortieren) und ohne DOM
 // prüfbar (`tests/klara-vorschau/`).
 import { useSyncExternalStore } from "react";
+import { eingabeZuruecksetzen } from "./eingabe";
 
 export const FIGUR_GROESSE = 72;
 export const RAND_ABSTAND = 12;
@@ -33,9 +36,21 @@ export interface Flaeche {
 
 export type Rand = "links" | "rechts";
 export type Ansicht = "kompakt" | "seitlich";
-export type SeitenArt = "uebersicht" | "artikel" | "erfassung" | "fragen" | "andere";
+/**
+ * Klara 01 (produkt:20261008:klara-basis): ECHTER Betrieb (Frageweg von Klarwerk, Gespräch unter dem
+ * eigenen Konto — `echt.ts`) oder DEMO (die vorgefertigten Antworten der Vorschau). Sichtbar
+ * umschaltbar; der echte Betrieb ist der Anfang.
+ */
+export type Betrieb = "echt" | "demo";
+/** `artikel` ist der fiktive Vorschau-Artikel, `wissen` ein echtes Wissensobjekt (Klara 03). */
+export type SeitenArt = "uebersicht" | "artikel" | "wissen" | "erfassung" | "fragen" | "andere";
 export type Status = "ruhe" | "laeuft" | "antwort" | "entscheidung";
 export type Aktion = "erklaeren" | "zusammenfassen" | "umformulieren" | "notiz" | "frage" | "modus";
+/**
+ * Klara 03 (produkt:20261007:klara-kontext-tutorial): worauf sich eine Frage bezieht — die Seite mit
+ * ihrem Objekt, die gemerkte Markierung oder nichts davon (freies Gespräch). Sichtbar umschaltbar.
+ */
+export type Bezug = "seite" | "markierung" | "frei";
 
 /** Woher etwas stammt: Seite und konkretes Objekt zum Zeitpunkt des Geschehens. */
 export interface Herkunft {
@@ -45,6 +60,24 @@ export interface Herkunft {
   objekt: string;
   artikelId?: string;
   absatz?: number;
+  // Klara 03 — aus dem Appzustand, nicht aus dem Bildschirmtext geraten:
+  /** Das echte Wissensobjekt und die Fassung, die in diesem Augenblick zu sehen war. */
+  koId?: string;
+  fassung?: number;
+  /** Der Titel des Wissensobjekts (ohne Anführungszeichen). */
+  titel?: string;
+  pruefstatus?: "geprueft" | "ungeprueft";
+  modus?: "lesen" | "bearbeiten";
+  lesart?: "original" | "uebersetzung";
+  /** Die Erfassung: Kennung des geöffneten Entwurfs aus der Adresse (`?draft=`). */
+  entwurfId?: string;
+  /**
+   * Nacharbeit 5: der Wortlaut des Seitenobjekts für den Frageweg — Titel des Entwurfs (Erfassung)
+   * bzw. die Frage im echten Fragefeld (Fragen). Ungekürzt bis 300 Zeichen; `objekt` ist die Anzeige.
+   */
+  kontextText?: string;
+  /** Darf die Rolle das Objekt hier bearbeiten? (Anzeige der erlaubten Aktionen) */
+  darfBearbeiten?: boolean;
 }
 
 export interface Auswahl {
@@ -87,6 +120,25 @@ export interface Geparkt {
   absatz: number;
 }
 
+export interface BegleitStand {
+  definitionId: string;
+  schrittIndex: number;
+  spielt: boolean;
+}
+
+function istBegleitStand(roh: unknown): roh is BegleitStand {
+  const s = roh as Partial<BegleitStand> | null;
+  return (
+    typeof s === "object" &&
+    s !== null &&
+    typeof s.definitionId === "string" &&
+    typeof s.schrittIndex === "number" &&
+    Number.isInteger(s.schrittIndex) &&
+    s.schrittIndex >= 0 &&
+    typeof s.spielt === "boolean"
+  );
+}
+
 export interface KlaraZustand {
   /** Obere linke Ecke der Figur im Fenster. `null` = Startplatz (unten rechts). */
   position: Position | null;
@@ -102,6 +154,21 @@ export interface KlaraZustand {
   status: Status;
   entwurf: Entwurf | null;
   begleiten: boolean;
+  betrieb: Betrieb;
+  /** Klara 03: der gewählte Bezug der nächsten Frage. */
+  bezug: Bezug;
+  /**
+   * Klara 03 · K4/K5: der Schritt, an dem die Begleitung zuletzt stand. Nach einem Neuladen steht
+   * das Tutorial geschlossen da; mit diesem Stand öffnet Klara es wieder an DEMSELBEN Schritt
+   * (`KlaraVorschau.tsx`), statt bei Schritt 1. Beim Breitenwechsel behält der Tutorialbereich
+   * seinen Schritt selbst — dort ist nichts wiederherzustellen.
+   */
+  begleitStand: BegleitStand | null;
+  /**
+   * Klara 03: das Konto, dem Markierung, Demo-Verlauf und Entwurf gehören. `null` = noch keinem
+   * zugeordnet. Meldet die Sitzung ein anderes Konto, wird all das verworfen (`anKontoBinden`).
+   */
+  kontoId: string | null;
 }
 
 export const ANFANG: KlaraZustand = {
@@ -117,7 +184,39 @@ export const ANFANG: KlaraZustand = {
   status: "ruhe",
   entwurf: null,
   begleiten: false,
+  betrieb: "echt",
+  bezug: "seite",
+  begleitStand: null,
+  kontoId: null,
 };
+
+const BEZUEGE: readonly Bezug[] = ["seite", "markierung", "frei"];
+
+/**
+ * Klara 03 · K6: Inhalte gehören der Person, die sie markiert hat. Abmelden verwirft Markierung,
+ * Demo-Verlauf und Entwurf; ein anderes Konto (etwa nach Neuladen mit fremder Sitzung im selben Tab)
+ * findet nichts davon vor. Position und Ansicht der Figur bleiben — sie verraten keinen Inhalt.
+ */
+export function anKontoBinden(z: KlaraZustand, kontoId: string | null): KlaraZustand {
+  if (z.kontoId === kontoId) {
+    return z;
+  }
+  const fremd = kontoId === null || (z.kontoId !== null && z.kontoId !== kontoId);
+  if (!fremd) {
+    // Erstes Zuordnen eines noch keinem Konto gehörenden Zustands.
+    return { ...z, kontoId };
+  }
+  return {
+    ...z,
+    kontoId,
+    auswahl: null,
+    verlauf: [],
+    entwurf: null,
+    artikelText: {},
+    bezug: "seite",
+    status: "ruhe",
+  };
+}
 
 // ------------------------------------------------------------------------------------------------
 // Reine Geometrie.
@@ -180,7 +279,11 @@ function laden(): KlaraZustand {
     const gelesen = JSON.parse(roh) as Partial<KlaraZustand>;
     // Eine laufende Anfrage überlebt kein Neuladen — der Zeitgeber dazu ist weg.
     const status = gelesen.status === "laeuft" ? "antwort" : (gelesen.status ?? "ruhe");
-    return { ...ANFANG, ...gelesen, status };
+    const betrieb = gelesen.betrieb === "demo" ? "demo" : "echt";
+    const bezug = BEZUEGE.includes(gelesen.bezug as Bezug) ? (gelesen.bezug as Bezug) : "seite";
+    const kontoId = typeof gelesen.kontoId === "string" ? gelesen.kontoId : null;
+    const begleitStand = istBegleitStand(gelesen.begleitStand) ? gelesen.begleitStand : null;
+    return { ...ANFANG, ...gelesen, status, betrieb, bezug, kontoId, begleitStand };
   } catch {
     return ANFANG;
   }
@@ -213,8 +316,42 @@ export function aendere(f: (z: KlaraZustand) => KlaraZustand): void {
   }
 }
 
-/** Nur für Tests und „Vorschau beenden“: alles auf Anfang. */
+/**
+ * „Vorschau beenden“ (produkt:20261010:assistenz-produkteinstieg): verworfen wird NUR, was der
+ * Vorschau gehört — Demo-Verlauf, Demo-Entwurf, übernommene Absätze der fiktiven Artikel, ein dort
+ * geparkter Platz, eine Markierung aus einem fiktiven Artikel, Demo-Betrieb und Begleitung. Die
+ * persönliche Arbeit bleibt: gültige Markierung und Bezugsauswahl, Konto, Lage der Figur — und die
+ * angefangene Eingabe (`eingabe.ts`), die hier gar nicht berührt wird. Die Kontotrennung
+ * (`anKontoBinden`) gilt unverändert. Rein, ohne DOM prüfbar.
+ */
+export function nachVorschauEnde(z: KlaraZustand): KlaraZustand {
+  const auswahl = z.auswahl && z.auswahl.herkunft.seite !== "artikel" ? z.auswahl : null;
+  const bezug: Bezug = z.bezug === "markierung" && !auswahl ? "seite" : z.bezug;
+  return {
+    ...z,
+    offen: false,
+    minimiert: false,
+    geparkt: null,
+    verlauf: [],
+    entwurf: null,
+    artikelText: {},
+    auswahl,
+    bezug,
+    status: "ruhe",
+    begleiten: false,
+    begleitStand: null,
+    betrieb: "echt",
+  };
+}
+
+/** Für „Vorschau beenden“: nur den Vorschau-Anteil verwerfen (`nachVorschauEnde`). */
+export function vorschauEndeZustand(): void {
+  aendere(nachVorschauEnde);
+}
+
+/** Nur für Tests: alles auf Anfang — auch die angefangene Eingabe. */
 export function zuruecksetzenGanz(): void {
+  eingabeZuruecksetzen();
   zustand = ANFANG;
   try {
     sessionStorage.removeItem(SITZUNG);

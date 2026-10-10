@@ -34,13 +34,14 @@ import type {
   ExternalResult,
   KnowledgeObject,
 } from "../../api/types";
+import { useSession } from "../../app/AuthContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { abfrageMitBestand } from "../../lib/abfrageBestand";
 import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
-import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
+import { effectiveUsability } from "../../lib/conflictImpact";
 import { vorrangAmPunkt } from "../../lib/conflictView";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
@@ -75,6 +76,7 @@ import {
 } from "../../lib/koSource";
 import { diffForVersion, paarDiff } from "../../lib/koVersionDiff";
 import { koVersionRows, uebernahmeHerkunft } from "../../lib/koVersionSnapshots";
+import { lesekontextMerken } from "../../lib/lesekontext";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { nochNichtFachlichGeprueft } from "../../lib/pruefeinordnung";
 import {
@@ -100,19 +102,30 @@ import {
 } from "../../lib/zeichnungsanhang";
 import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichnungspunkt";
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
+import { AnlagenFeld } from "../Anlagen";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { ExternalUrlText } from "../ExternalUrlText";
+import { FachgebietFeld } from "../Fachgebiet";
 import { GeltungFeld } from "../Geltung";
+import { HelpTip } from "../HelpTip";
 import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
 import { UploadLimitsHint } from "../UploadLimitsHint";
+import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
 import { useDiktat } from "../start/useDiktat";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { WissensauskunftBereich } from "../wissensauskunft/WissensauskunftBereich";
 import { AnhangZeichnung } from "./AnhangZeichnung";
+import { AnlagenBezugPflege } from "./AnlagenBezugPflege";
+import { AnlagenQrCode } from "./AnlagenQrCode";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
+import { FassungsGegenueberstellung } from "./Fassungsvergleich";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { OfficeImArtikel } from "./OfficeImArtikel";
+import { Verantwortung } from "./Verantwortung";
 import { Zeichnung } from "./Zeichnung";
 
 // ==================================================================================================
@@ -196,6 +209,21 @@ function Abschnitt({
       </summary>
       {offen ? <div className="pb-4 text-[12.5px] text-text">{children}</div> : null}
     </details>
+  );
+}
+
+/**
+ * LESEN-INHALT-ZUERST · der Kopf einer Gruppe im Bereich „Mehr". Eine echte Überschrift, kein
+ * Erklärsatz: sie benennt, was darunter liegt, und gibt Vorleseprogrammen einen Sprungpunkt.
+ */
+function GruppenKopf({ gruppe, titel }: { gruppe: string; titel: string }): JSX.Element {
+  return (
+    <h3
+      data-bib-gruppe={gruppe}
+      className="pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.3px] text-muted-2"
+    >
+      {titel}
+    </h3>
   );
 }
 
@@ -399,10 +427,17 @@ function diskussionsfaeden(beitraege: readonly KoDiskussionsbeitrag[]): Diskussi
 export function MehrAbschnitte({
   ko,
   sprungZiel,
-}: { ko: KnowledgeObject; sprungZiel?: Sprungziel | undefined }): JSX.Element {
+  anfangsOffen,
+}: {
+  ko: KnowledgeObject;
+  sprungZiel?: Sprungziel | undefined;
+  /** N-0020: die beim Verlassen offenen Abschnitte (`lib/lesekontext.ts`), sonst alle zu. */
+  anfangsOffen?: readonly string[] | undefined;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
+  const session = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
   const nameOf = useAuthorName();
@@ -553,6 +588,37 @@ export function MehrAbschnitte({
       void qc.invalidateQueries({ queryKey: ["couplings", id] });
       setCoupleAsset("");
       push("success", t("ko.couple.done"));
+    },
+    onError: fehlerToast,
+  });
+
+  // ---- aufnahme:20260922:gesamt-wissen-frische -------------------------------------------------
+  // R-0203: Anlagenänderung über DIESES Objekt an alle Nachbarn an denselben Anlagen melden.
+  const nachbarn = useMutation({
+    mutationFn: () => endpoints.ko.neighborsChanged(id),
+    onSuccess: (antwort) => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.nachbarnGemeldet", { count: antwort.markiert }));
+    },
+    onError: fehlerToast,
+  });
+  // R-1732 / R-0206: erneute Prüfung aus der Bibliothek anstossen.
+  const erneutPruefen = useMutation({
+    mutationFn: () => endpoints.ko.requestRevalidation(id),
+    onSuccess: () => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      push("success", t("frische.erneutPruefenGespeichert"));
+    },
+    onError: fehlerToast,
+  });
+  // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — ein Frische-Signal, keine Prüfung.
+  const stimmtWeiterhin = useMutation({
+    mutationFn: () => endpoints.ko.act(id, { action: "confirm-fresh" }),
+    onSuccess: () => {
+      invalidate();
+      push("success", t("frische.stimmtWeiterhinGespeichert"));
     },
     onError: fehlerToast,
   });
@@ -1169,10 +1235,10 @@ export function MehrAbschnitte({
   // genau die Drift, gegen die `lib/eigeneKollision.ts:15-17` gebaut ist.
 
   // SCRUM-357 / AG-14: ein offener Konflikt begrenzt die Nutzbarkeit ehrlich (ready → in Prüfung).
-  const usability = conflictLimitedUsability(
-    koOverview(ko).usability,
-    conflictImpact(ko.id, conflicts.data ?? []),
-  );
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): über `effectiveUsability`, die EINE Quelle für
+  // „Basis aus `koOverview`, begrenzt durch den Konflikt" — bis hierher stand dieselbe Verkettung
+  // hier ausgeschrieben, und der Baustein dafür lag ohne Aufrufer daneben.
+  const usability = effectiveUsability(ko, conflicts.data ?? []);
   const lineage = lineageSummary(ko, neighborhood.data?.total ?? 0);
   // R-0766: die Kette am Objekt schließt Konflikte und Überschneidungen ein, an denen es beteiligt
   // ist — die offenen aus `useConflicts`, dazu alle (auch abgeschlossene) vom Server.
@@ -1186,7 +1252,9 @@ export function MehrAbschnitte({
   const gueltigkeit = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
 
   // ---- JOB 3108 · UX-03: die EINE Menge der offenen Abschnitte, und der Sprung hinein -----------
-  const [offene, setOffene] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const [offene, setOffene] = useState<ReadonlySet<string>>(
+    () => new Set<string>(anfangsOffen ?? []),
+  );
   const wurzel = useRef<HTMLDivElement | null>(null);
   /**
    * Der Sprung läuft in ZWEI Zügen: erst öffnen, dann hinführen. In EINEM Zug ginge es nicht — im
@@ -1266,6 +1334,22 @@ export function MehrAbschnitte({
   // aus dem geladenen Bestand und ist hier ausdrücklich keine Behauptung.
   const [vergleichVon, setVergleichVon] = useState<number | null>(null);
   const [vergleichBis, setVergleichBis] = useState<number | null>(null);
+  /**
+   * N-0057: DIE ÄNDERUNGSANGABE EINER KARTE FÜHRT DIREKT IN DEN VERGLEICH.
+   *
+   * Kein zweiter Vergleich: die Aktion belegt nur die beiden vorhandenen Auswahlfelder mit
+   * Vorgänger und dieser Fassung und bringt den Fokus auf die Vergleichsfläche — dort steht Feld für
+   * Feld, was sich geändert hat. Die Auswahl bleibt danach frei änderbar.
+   */
+  const mitVorgaengerVergleichen = (von: number, bis: number): void => {
+    setVergleichVon(von);
+    setVergleichBis(bis);
+    const flaeche = wurzel.current?.querySelector<HTMLElement>(
+      "[data-bib-fassung-vergleich-flaeche]",
+    );
+    flaeche?.scrollIntoView?.({ block: "nearest" });
+    flaeche?.focus();
+  };
   /**
    * Was die letzte Übernahme ergeben hat — je Lage ein Satz, und jeder nennt die FOLGE.
    *
@@ -1441,105 +1525,11 @@ export function MehrAbschnitte({
 
   return (
     <div data-testid="bib-mehr-abschnitte" ref={wurzel} className="flex flex-col">
-      {/* 1 — Konflikt */}
-      <Abschnitt
-        schluessel="konflikt"
-        titel={t("ko.mehr.konflikt")}
-        offen={offene.has("konflikt")}
-        aufWechsel={(o) => abschnittUmschalten("konflikt", o)}
-      >
-        {/* mega29 C1: die Deckung des KI-Laufs schränkt jede Konfliktaussage ein — sie steht
-            deshalb hier, direkt bei ihr. */}
-        <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
-        {vorrangZeilen.length > 0 ? (
-          <div data-testid="bib-vorrang" className="mt-2 space-y-1 text-[12.5px] text-muted">
-            <span className="block font-medium">{t("konfliktarbeit.amPunkt.titel")}</span>
-            <ul className="space-y-1">
-              {vorrangZeilen.map((z) => (
-                <li key={z.id}>{z.text}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        {canReview ? (
-          <div className="mt-2 space-y-2">
-            <div className="space-y-1.5">
-              <span className="block text-[12.5px] font-medium text-muted">
-                {t("ko.conflictTarget")}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPickOpen(true)}
-                className="flex h-10 w-full items-center justify-between gap-2 rounded-input border border-hairline bg-surface px-3 text-left text-sm hover:border-ink/30"
-              >
-                <span className={conflict.koB ? "truncate text-text" : "text-muted"}>
-                  {conflictTitle || t("ko.conflictTargetPlaceholder")}
-                </span>
-                <span className="shrink-0 font-mono text-[11px] text-muted-2">
-                  {t("ko.conflictTargetChoose")}
-                </span>
-              </button>
-            </div>
-            <Field label={t("ko.conflictType")}>
-              <select
-                value={conflict.type}
-                onChange={(e) => setConflict({ ...conflict, type: e.target.value as ConflictType })}
-                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
-              >
-                {CONFLICT_TYPES.map((ct) => (
-                  <option key={ct} value={ct}>
-                    {t(`con.type.${ct}`)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t("konfliktarbeit.feld")}>
-              <select
-                value={conflict.arbeitsart}
-                onChange={(e) =>
-                  setConflict({ ...conflict, arbeitsart: e.target.value as ConflictWorkKind | "" })
-                }
-                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
-              >
-                {/* R-0252 (Nacharbeit 5): Pflichtwahl — der Platzhalter ist nicht wählbar, und
-                    „Konflikt eröffnen" bleibt gesperrt, bis eine Arbeitsart gewählt ist. */}
-                <option value="" disabled>
-                  {t("konfliktarbeit.feld.offen")}
-                </option>
-                {CONFLICT_WORK_KINDS.map((wk) => (
-                  <option key={wk} value={wk}>
-                    {t(`konfliktarbeit.name.${wk}`)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t("ko.conflictDesc")}>
-              <textarea
-                value={conflict.desc}
-                onChange={(e) => setConflict({ ...conflict, desc: e.target.value })}
-                rows={2}
-                className={textareaCls}
-              />
-            </Field>
-            <Button
-              variant="primary"
-              disabled={report.isPending || !conflict.koB || !conflict.arbeitsart}
-              onClick={() => report.mutate()}
-            >
-              {t("ko.conflictSubmit")}
-            </Button>
-            <ConflictTargetPicker
-              open={pickOpen}
-              onClose={() => setPickOpen(false)}
-              candidates={(koList.data ?? []).filter((k) => k.id !== id)}
-              onSelect={(koId) => {
-                setConflict({ ...conflict, koB: koId });
-                setPickOpen(false);
-              }}
-            />
-          </div>
-        ) : null}
-      </Abschnitt>
+      {/* LESEN-INHALT-ZUERST: die Abschnitte stehen in VIER benannten Gruppen statt in einer
+          ungegliederten Reihe. Die Nummern in den Kommentaren sind die alten Plätze; Inhalt,
+          Schlüssel und Funktionen jedes Abschnitts sind unverändert, nur die Reihenfolge folgt der
+          Gruppe. Die Köpfe sind echte Überschriften — Vorleseprogramme springen von Gruppe zu Gruppe. */}
+      <GruppenKopf gruppe="quellen" titel={t("lesereihenfolge.mehr.gruppe.quellen")} />
 
       {/* 2 — Quellen & Belege */}
       <Abschnitt
@@ -1548,8 +1538,12 @@ export function MehrAbschnitte({
         offen={offene.has("quellen")}
         aufWechsel={(o) => abschnittUmschalten("quellen", o)}
       >
+        <HelpTip title={t("vhelp.sourcesLevel2.title")} body={t("vhelp.sourcesLevel2.body")} />
         {(ko.sources ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-2">
             {(ko.sources ?? []).map((s) => {
@@ -1571,6 +1565,8 @@ export function MehrAbschnitte({
                         <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                           {t(sourceBadgeKey(s))}
                         </span>
+                        {/* R-0205: „Stufe 2" + „Extern · ungeprüft" — derselbe Baustein wie überall. */}
+                        <ExterneQuelleKennung source={s} />
                         {s.provider ? (
                           <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                             {s.provider}
@@ -1705,6 +1701,8 @@ export function MehrAbschnitte({
         <ImportErgebnis ko={ko} />
         {canEdit ? (
           <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.sourceFields.title")} body={t("vhelp.sourceFields.body")} />
+            <HelpTip title={t("vhelp.sourceAdd.title")} body={t("vhelp.sourceAdd.body")} />
             <TextInput
               value={sourceForm.label}
               onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
@@ -1725,7 +1723,10 @@ export function MehrAbschnitte({
                 da, sondern der vorhandene Leersatz: ein Feld ohne Inhalt verspräche einen Weg, den
                 dieses Objekt nicht hat („Ehrlichkeit vor Optik"). */}
             {ankerAnhaenge.length === 0 ? (
-              <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+                {leerzustandsZeile(t, "objekt")}
+              </>
             ) : (
               <Field label={t("ko.mehr.anhaenge")}>
                 <select
@@ -1803,6 +1804,7 @@ export function MehrAbschnitte({
       >
         {canEdit && canSearchExternal(extStage) ? (
           <div className="space-y-2">
+            <HelpTip title={t("vhelp.sourceSearch.title")} body={t("vhelp.sourceSearch.body")} />
             {extAttachAllowed ? null : (
               <p
                 data-testid="ext-attach-blocked"
@@ -1872,314 +1874,6 @@ export function MehrAbschnitte({
         )}
       </Abschnitt>
 
-      {/* 4 — Quelle/Beitrag melden */}
-      <Abschnitt
-        schluessel="beitrag"
-        titel={t("ko.mehr.beitrag")}
-        offen={offene.has("beitrag")}
-        aufWechsel={(o) => abschnittUmschalten("beitrag", o)}
-      >
-        <div className="space-y-2">
-          <textarea
-            value={source.contribution}
-            onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
-            placeholder={t("ko.sourceContribution")}
-            rows={3}
-            className={textareaCls}
-          />
-          <TextInput
-            value={source.source ?? ""}
-            onChange={(e) => setSource((s) => ({ ...s, source: e.target.value }))}
-            placeholder={t("ko.sourceRef")}
-          />
-          <Button
-            variant="primary"
-            disabled={sourceContribution.isPending || !isSourceContributionValid(source)}
-            onClick={() => sourceContribution.mutate()}
-          >
-            {t("ko.sourceSubmit")}
-          </Button>
-        </div>
-      </Abschnitt>
-
-      {/* 5 — Provenienz (samt Herkunfts-Kennzeichnungen, Wissensart, Stufe, Autorenübergabe) */}
-      <Abschnitt
-        schluessel="provenienz"
-        titel={t("ko.mehr.provenienz")}
-        offen={offene.has("provenienz")}
-        aufWechsel={(o) => abschnittUmschalten("provenienz", o)}
-      >
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          <KnowledgeTypeTag type={ko.type} />
-          {isDemoKnowledge(ko) ? (
-            <span
-              title={t("demo.badge.hint")}
-              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
-            >
-              {t("demo.badge.label")}
-            </span>
-          ) : null}
-          {/* SCRUM-438: der Artikel enthält übernommenes externes, ungeprüftes Wissen — ein
-              Herkunfts-Chip, keine Qualitätsaussage. */}
-          {containsExternalUnchecked(ko.bodyHtml) ? (
-            <span
-              title={t("ko.externalUnchecked.hint")}
-              className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
-            >
-              {t("ko.externalUnchecked.label")}
-            </span>
-          ) : null}
-          {/* JOB 679 D2: Herkunfts-Chip „Aus Word" — fehlt `origin`, erscheint nichts. */}
-          {ko.origin === "word_addin" ? (
-            <span
-              data-testid="ko-origin-word-addin"
-              title={t("ko.originWordAddin.hint")}
-              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
-            >
-              {t("ko.originWordAddin.label")}
-            </span>
-          ) : null}
-        </div>
-        <ProvenanceLine
-          author={nameOf(ko.author)}
-          originalAuthor={nameOf(ko.originalAuthor)}
-          domain={ko.category}
-          version={ko.version}
-        />
-        {canEdit ? (
-          <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
-            <span>{t("conf.field")}</span>
-            <select
-              value={confidentialityOf(ko.confidentiality)}
-              disabled={act.isPending}
-              onChange={(e) =>
-                act.mutate({ action: "confidentiality", level: e.target.value as Confidentiality })
-              }
-              aria-label={t("conf.field")}
-              className="rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px] text-text"
-            >
-              {CONFIDENTIALITY_LEVELS.map((lvl) => (
-                <option key={lvl} value={lvl}>
-                  {t(`conf.level.${lvl}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        {canTransfer ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
-            <select
-              aria-label={t("ko.transferTitle")}
-              value={newAuthor}
-              onChange={(e) => setNewAuthor(e.target.value)}
-              className="h-9 flex-1 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
-            >
-              <option value="">{t("ko.transferPick")}</option>
-              {(dir.data ?? [])
-                .filter((d) => d.id !== ko.author)
-                .map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-            </select>
-            <Button
-              variant="primary"
-              disabled={transfer.isPending || !newAuthor}
-              onClick={() => transfer.mutate(newAuthor)}
-            >
-              {t("ko.transfer")}
-            </Button>
-          </div>
-        ) : null}
-        {/* R-1632 / R-1633: wo dieser Punkt gilt — Konzern-Standard, Werks-Praxis oder
-            Schicht-spezifisch. Am Ende des Abschnitts, damit Vertraulichkeit und Übergabe ihren
-            Platz behalten. Der Schlüssel setzt das Formular nach dem Speichern auf den Serverstand. */}
-        <GeltungFeld
-          key={JSON.stringify(ko.geltung ?? null)}
-          geltung={ko.geltung}
-          darfAendern={canEdit}
-          wartet={act.isPending}
-          onSpeichern={(geltung) => act.mutate({ action: "geltung", geltung })}
-        />
-      </Abschnitt>
-
-      {/* 6 — Kopplung und Anlagen */}
-      <Abschnitt
-        schluessel="kopplung"
-        titel={t("ko.mehr.kopplung")}
-        offen={offene.has("kopplung")}
-        aufWechsel={(o) => abschnittUmschalten("kopplung", o)}
-      >
-        {couplings.data && couplings.data.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {couplings.data.map((a) => (
-              <span
-                key={a}
-                className="inline-flex items-center gap-1 rounded-pill bg-page px-2.5 py-1 text-[12px] font-medium text-text"
-              >
-                <Link2 size={12} className="text-muted-2" />
-                {a}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
-        )}
-        {role !== "viewer" ? (
-          <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-2.5">
-            <TextInput
-              value={coupleAsset}
-              onChange={(e) => setCoupleAsset(e.target.value)}
-              placeholder={ko.asset ? ko.asset : t("ko.couple.placeholder")}
-              className="h-9 min-w-[10rem] flex-1"
-            />
-            <Button
-              variant="ghost"
-              disabled={couple.isPending || !(coupleAsset.trim() || ko.asset?.trim())}
-              onClick={() => couple.mutate((coupleAsset.trim() || ko.asset || "").trim())}
-            >
-              <Link2 size={14} />
-              {t("ko.couple.cta")}
-            </Button>
-          </div>
-        ) : null}
-      </Abschnitt>
-
-      {/* 7 — Herkunftskette */}
-      <Abschnitt
-        schluessel="herkunftskette"
-        titel={t("ko.mehr.herkunftskette")}
-        offen={offene.has("herkunftskette")}
-        aufWechsel={(o) => abschnittUmschalten("herkunftskette", o)}
-      >
-        <div className="grid grid-cols-2 gap-2 text-[12.5px]">
-          <div className="rounded-input bg-page p-2">
-            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-              {t("ko.lineageOrigin")}
-            </div>
-            <div className="text-text">{nameOf(ko.originalAuthor)}</div>
-            {lineage.authorTransferred ? (
-              <div className="text-[11px] text-muted">
-                → {nameOf(ko.author)} {t("ko.lineageTransferred")}
-              </div>
-            ) : null}
-          </div>
-          <div className="rounded-input bg-page p-2">
-            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-              {t("ko.lineageVersions")}
-            </div>
-            <div className="text-text">
-              {/* mega51 F1: Zahl und Wort werden NICHT von Hand zusammengesetzt — i18next
-                  pluralisiert über `count`, sonst stünde bei genau einer Änderung „1 Änderungen". */}
-              v{lineage.versions} · {t("ko.lineageChanges", { count: lineage.historyCount })}
-            </div>
-          </div>
-          <div className="rounded-input bg-page p-2">
-            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-              {t("ko.sourcesTitle")}
-            </div>
-            <div className="text-text">{lineage.sourceCount}</div>
-          </div>
-          <div className="rounded-input bg-page p-2">
-            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-              {t("ko.lineageRelated")}
-            </div>
-            <div className="text-text">{lineage.relatedCount}</div>
-          </div>
-        </div>
-        {/* JOB 3384 · UX-26 — AUS DEM STUMMEN `null` WIRD EIN ZUSTAND.
-            Bis hierher stand hier `auditEvents.length > 0 ? <ul> : null`: bei null Ereignissen
-            erschien GAR NICHTS — kein Satz, kein Grund, kein Unterschied zwischen „noch nichts
-            verzeichnet", „wird noch geladen" und „der Abruf ist gescheitert". Die Trennung wird
-            NICHT neu erfunden: sie ist die der Nachbarabschnitte (`:1315-1320`) und die des
-            Belegabschnitts (`:1243-1251`), und die Regel für den überlebenden Bestand wohnt in
-            `abfrageMitBestand` / `AuffrischungHinweis` (JOB 3034/3063/3272) — hier wird sie nur
-            aufgerufen.
-            EIN GESCHEITERTER ABRUF IST KEIN BEWEIS FÜR LEERE: der Leersatz steht ausschliesslich
-            im Erfolgszweig. Nach einer gescheiterten AUFFRISCHUNG bleibt der zuletzt geholte Stand
-            samt Hinweis stehen (REGELN Punkt 7). */}
-        <AuffrischungHinweis query={audit} />
-        {((): JSX.Element => {
-          const ereignisLage = abfrageMitBestand(audit);
-          return ereignisLage.isLoading ? (
-            <p className="mt-2 text-[12.5px] text-muted">{t("state.loading")}</p>
-          ) : ereignisLage.isError ? (
-            <p className="mt-2 text-[12.5px] text-danger">{t("state.error")}</p>
-          ) : auditEvents.length === 0 ? (
-            <p className="mt-2 text-[12.5px] text-muted">{t("ko.lineageEventsEmpty")}</p>
-          ) : (
-            <ul className="mt-2 space-y-1">
-              {auditEvents.map((e) => (
-                <li key={e.seq} className="flex items-center gap-2 text-[11.5px] text-muted">
-                  <span className="font-mono text-muted-2">
-                    {new Date(e.at).toLocaleDateString(i18n.language)}
-                  </span>
-                  {/* Der fachliche Name des Ereignisses — die EINE Beschriftungsfunktion
-                      (`auditAction.ts:16`), die bei unbekanntem Code auf ihre neutrale
-                      Humanisierung zurückfällt. Es entsteht keine zweite daneben. */}
-                  <span className="font-semibold text-text">{auditActionLabel(e.action, t)}</span>
-                  <span className="ml-auto font-mono text-muted-2">{nameOf(e.actor)}</span>
-                </li>
-              ))}
-            </ul>
-          );
-        })()}
-        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil. */}
-        <RoleLink
-          to="/graph"
-          className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-ai"
-          hoverClassName="hover:underline"
-        >
-          {(erreichbar) => (
-            <>
-              {t("ko.lineageGraphLink")}
-              {erreichbar ? <span aria-hidden="true">→</span> : null}
-            </>
-          )}
-        </RoleLink>
-      </Abschnitt>
-
-      {/* 8 — Historie */}
-      <Abschnitt
-        schluessel="historie"
-        titel={t("ko.mehr.historie")}
-        offen={offene.has("historie")}
-        aufWechsel={(o) => abschnittUmschalten("historie", o)}
-      >
-        <ol className="space-y-3">
-          {ko.history.map((h) => (
-            <li key={h.version} className="border-l-2 border-hairline pl-3">
-              <div className="font-mono text-[11px] text-muted-2">
-                v{h.version} · {new Date(h.at).toLocaleDateString(i18n.language)}
-              </div>
-              {/* JOB 3627: der Vermerk geht durch den EINEN Ort, der ihn anzeigbar macht
-                  (`koHistoryNote.ts`) — feste Dienst-Vermerke über den Katalog, fremder Text
-                  wörtlich. Der Rückfall auf den Autornamen bleibt Zeichen für Zeichen: leer
-                  kommt leer zurück. */}
-              {/* JOB 4213 · UND WOHER DIESER STAND KAM, WENN ER ZURÜCKGEHOLT WURDE. Der Vermerk
-                  selbst bleibt unangetastet („überarbeitet", über den Katalog); die Herkunft ist ein
-                  EIGENER Satz mit eigenem Schlüssel, weil sie eine Versionszahl trägt und ein
-                  Vermerk mit Zahl durch den zeichengenauen Vermerkkatalog nicht hindurchkäme. Die
-                  Zahl kommt über den EINEN Draht-Leser (`uebernahmeHerkunft`), denselben, den die
-                  Fassungskarte unten benutzt. Der Rückfall auf den Autornamen bleibt Zeichen für
-                  Zeichen: er gilt dem leeren Vermerk. */}
-              <div data-bib-historie-vermerk={h.version} className="text-[12.5px] text-text">
-                {koHistoryNote(h.note, t) || nameOf(h.author)}
-                {((): JSX.Element | null => {
-                  const herkunft = uebernahmeHerkunft(h);
-                  return herkunft === null ? null : (
-                    <span className="ml-1.5 text-muted">
-                      {t("ko.snapshotRestoredFrom", { version: herkunft })}
-                    </span>
-                  );
-                })()}
-              </div>
-            </li>
-          ))}
-        </ol>
-      </Abschnitt>
-
       {/* 9 — Belege (samt Vertrauen, Konsistenz, Frische, Gültigkeit) */}
       <Abschnitt
         schluessel="belege"
@@ -2228,6 +1922,7 @@ export function MehrAbschnitte({
             </>
           );
         })()}
+        <HelpTip title={t("vhelp.validity.title")} body={t("vhelp.validity.body")} />
         <dl className="mb-3 space-y-1.5 text-[12.5px]">
           <div className="flex items-center justify-between gap-2">
             <dt className="text-muted">{t("ko.ovTrust")}</dt>
@@ -2237,28 +1932,149 @@ export function MehrAbschnitte({
             <dt className="text-muted">{t("lib.facet.maturity")}</dt>
             <dd className="font-mono text-text">{t(useReadiness(usability).labelKey)}</dd>
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.freshness")}</dt>
-            <dd className="font-mono text-text">
-              {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
-            <dd
-              className={cx(
-                "font-mono",
-                gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
-              )}
-            >
-              {t(gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no")}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <dt className="text-muted">{t("ext.protection.ip")}</dt>
-            <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
-          </div>
+          {/* aufnahme:20260922:gesamt-wissen-frische (R-0207 / R-0652 / FR-EXT-06): zwei Sichten
+              je Objekt — Aktualität und Schutzbedarf — mit Empfehlung, vom Server abgeleitet.
+              Liefert der Lesepfad `frische` nicht, bleibt die bisherige Ableitung stehen. */}
+          {ko.frische ? (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.stufeLabel")}</dt>
+                <dd data-testid="frische-stufe" className="font-mono text-text">
+                  {t(`frische.stufe.${ko.frische.stufe}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.halbwertszeitLabel")}</dt>
+                <dd data-testid="frische-halbwertszeit" className="text-right font-mono text-text">
+                  {t(
+                    ko.frische.halbwertszeitHerkunft === "gelernt"
+                      ? "frische.halbwertszeitGelernt"
+                      : "frische.halbwertszeitVorgabe",
+                    {
+                      tage: ko.frische.halbwertszeitTage,
+                      anzahl: ko.frische.halbwertszeitBeobachtungen,
+                    },
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.haltbarBis")}</dt>
+                <dd className="font-mono text-text">
+                  {ko.frische.haltbarBis
+                    ? new Date(ko.frische.haltbarBis).toLocaleDateString()
+                    : t("frische.haltbarUnbekannt")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.verantwortlich")}</dt>
+                <dd className="text-right text-text">
+                  {nameOf(ko.frische.verantwortlich)}
+                  {ko.frische.verantwortlichArt === "author-fallback" ? (
+                    <span className="block text-[11px] text-muted-2">
+                      {t("frische.verantwortlichErsatz")}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.inDokumente")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    ko.frische.inDokumente ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(ko.frische.inDokumente ? "frische.ja" : "frische.nein")}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.schutzLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.schutz.${ko.frische.schutz ?? "unbekannt"}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.betriebsmodellLabel")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`frische.betriebsmodell.${ko.frische.betriebsmodell}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("frische.naechsterLabel")}</dt>
+                <dd data-testid="frische-naechster" className="text-right text-text">
+                  {t(`frische.naechster.${ko.frische.naechsterSchritt}`)}
+                </dd>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.freshness")}</dt>
+                <dd className="font-mono text-text">
+                  {t(`ext.freshness.${gueltigkeit.freshnessStatus}`)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
+                <dd
+                  className={cx(
+                    "font-mono",
+                    gueltigkeit.outputEligible ? "text-trust-pos-text" : "text-muted-2",
+                  )}
+                >
+                  {t(
+                    gueltigkeit.outputEligible ? "ext.outputEligible.yes" : "ext.outputEligible.no",
+                  )}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted">{t("ext.protection.ip")}</dt>
+                <dd className="font-mono text-muted-2">{t("ext.protection.notRated")}</dd>
+              </div>
+            </>
+          )}
         </dl>
+        {ko.frische && ko.status === "validiert" && !ko.frische.gesichert ? (
+          <p
+            data-testid="frische-nicht-gesichert"
+            className="mb-2 text-[12px] leading-relaxed text-trust-warn-text"
+          >
+            {t("frische.nichtGesichert")}
+          </p>
+        ) : null}
+        {ko.frische?.letztesSignal ? (
+          <p className="mb-2 text-[11.5px] text-muted-2">
+            {t("frische.letztesSignal", {
+              name: nameOf(ko.frische.letztesSignal.by),
+              datum: new Date(ko.frische.letztesSignal.at).toLocaleDateString(),
+            })}
+          </p>
+        ) : null}
+        {/* R-0206 / R-1746: „Stimmt weiterhin" für jeden Leser geprüften Wissens; R-1732: die
+            erneute Prüfung aus der Bibliothek für alle, die erfassen dürfen (`ko.create`). */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {ko.status === "validiert" ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-stimmt-weiterhin"
+              title={t("frische.stimmtWeiterhinHinweis")}
+              disabled={stimmtWeiterhin.isPending}
+              onClick={() => stimmtWeiterhin.mutate()}
+            >
+              {t("frische.stimmtWeiterhin")}
+            </Button>
+          ) : null}
+          {canEdit ? (
+            <Button
+              variant="ghost"
+              data-testid="frische-erneut-pruefen"
+              disabled={erneutPruefen.isPending}
+              onClick={() => erneutPruefen.mutate()}
+            >
+              {t("frische.erneutPruefen")}
+            </Button>
+          ) : null}
+        </div>
         {/* SCRUM-168/175/170: Konsistenz, Frische und Gruppierung nach Fassung — nur bei
             erfolgreich geladenem Bestand, auch bei gescheiterter Auffrischung.
             Ein offline pausierter Erstabruf ist noch kein Bestand. */}
@@ -2363,6 +2179,7 @@ export function MehrAbschnitte({
             // Sackgasse, die UX-25 an der Belegkarte beseitigt hat (`:1294-1295`).
             <>
               <p className="text-[12.5px] text-muted">{t("ko.evidenceEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
               {canEdit ? (
                 <button
                   type="button"
@@ -2434,6 +2251,449 @@ export function MehrAbschnitte({
         })()}
       </Abschnitt>
 
+      {/* 12 — Anhänge */}
+      <Abschnitt
+        schluessel="anhaenge"
+        titel={t("ko.mehr.anhaenge")}
+        offen={offene.has("anhaenge")}
+        aufWechsel={(o) => abschnittUmschalten("anhaenge", o)}
+      >
+        {(ko.attachments ?? []).length === 0 ? (
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {(ko.attachments ?? []).map((a) => {
+              const kannOeffnen = Boolean(objectRawHref(a.objectId) || a.dataUrl);
+              const hinweis = t(
+                kannOeffnen ? "ko.attachmentOpenNewTab" : "ko.attachmentOriginalUnavailable",
+              );
+              const vorschau = a.thumbnail || a.dataUrl;
+              return (
+                <div key={a.id} className="min-w-0">
+                  <button
+                    type="button"
+                    // JOB 3272 · UX-25: der ANKER, über den ein Beleg genau diesen Anhang anspringt.
+                    // Rein additiv — Name, `aria-disabled` und der Öffnen-Weg bleiben, wie sie sind.
+                    data-bib-anhang={a.id}
+                    className="block w-full text-left"
+                    aria-label={`${a.name} — ${hinweis}`}
+                    aria-disabled={!kannOeffnen}
+                    onClick={() => {
+                      // Wie beim Upload: fokussierbar bleiben, fehlenden Weg vor dem Aufruf abfangen.
+                      if (!kannOeffnen) {
+                        return;
+                      }
+                      openAttachment(a);
+                    }}
+                  >
+                    <AnhangVorschau key={vorschau} src={vorschau} />
+                    <span className="mt-1 block truncate text-[12px] text-text" title={a.name}>
+                      {a.name}
+                    </span>
+                    <span className="mt-0.5 block text-[12px] text-muted">{hinweis}</span>
+                  </button>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      aria-label={t("ko.attachmentRemove")}
+                      onClick={() => detach.mutate(a.id)}
+                      className="ml-auto mt-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white"
+                    >
+                      <X size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {/* produkt:20261007:office-artikel-editor: Word-, Excel- und PowerPoint-Anhänge im
+            eingebetteten Editor. Rechte und Schreibweg entscheidet der Server. */}
+        <OfficeImArtikel ko={ko} />
+        {canEdit ? (
+          <>
+            {/* JOB 3126 · UX-23: `aria-disabled` STATT `disabled` — ein `disabled`-Knopf fällt aus
+                der Tab-Folge, und wer mit der Tastatur bedient, verlöre mitten im Hochladen seinen
+                Ort. Der Knopf bleibt deshalb fokussierbar und fängt das Auslösen wirkungslos ab;
+                das Dateifeld behält sein echtes `disabled`. */}
+            <button
+              type="button"
+              aria-disabled={attach.isPending}
+              onClick={() => {
+                if (attach.isPending) {
+                  return;
+                }
+                dateiFeld.current?.click();
+              }}
+              className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+            >
+              {/* Zierde, kein Name: das Symbol darf den zugänglichen Namen nicht verfälschen. */}
+              <Paperclip size={14} aria-hidden />
+              {attach.isPending ? t("ko.attachmentUploading") : t("ko.attachmentAdd")}
+            </button>
+            <input
+              ref={dateiFeld}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              disabled={attach.isPending}
+              onChange={(e) => void onPickFile(e)}
+            />
+            {/* PLAN-SPRACHANMERKUNG · NACHARBEIT 2: Pläne und CAD-Zeichnungen (PDF, DXF, DWG) — in
+                derselben Bauform wie der Fotoknopf, mit eigenem, ebenso stummem Dateifeld. */}
+            <button
+              type="button"
+              data-bib-zeichnung-anhaengen=""
+              aria-disabled={attach.isPending}
+              onClick={() => {
+                if (attach.isPending) {
+                  return;
+                }
+                zeichnungsFeld.current?.click();
+              }}
+              className="ml-2 mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+            >
+              <Paperclip size={14} aria-hidden />
+              {t("stellenbezug.anhang.hochladen")}
+            </button>
+            <input
+              ref={zeichnungsFeld}
+              type="file"
+              accept={ZEICHNUNG_ACCEPT}
+              data-bib-zeichnung-datei=""
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              disabled={attach.isPending}
+              onChange={(e) => void onPickZeichnung(e)}
+            />
+            {/* AUFTRAG-mega14 Block E (SCRUM-421): die geltenden Grenzen stehen AN der
+                Auswahlstelle, und sie kommen vom Server. */}
+            <UploadLimitsHint />
+          </>
+        ) : null}
+      </Abschnitt>
+
+      <GruppenKopf gruppe="herkunft" titel={t("lesereihenfolge.mehr.gruppe.herkunft")} />
+
+      {/* 5 — Provenienz (samt Herkunfts-Kennzeichnungen, Wissensart, Stufe, Autorenübergabe) */}
+      <Abschnitt
+        schluessel="provenienz"
+        titel={t("ko.mehr.provenienz")}
+        offen={offene.has("provenienz")}
+        aufWechsel={(o) => abschnittUmschalten("provenienz", o)}
+      >
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <KnowledgeTypeTag type={ko.type} />
+          {isDemoKnowledge(ko) ? (
+            <span
+              title={t("demo.badge.hint")}
+              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+            >
+              {t("demo.badge.label")}
+            </span>
+          ) : null}
+          {/* SCRUM-438: der Artikel enthält übernommenes externes, ungeprüftes Wissen — ein
+              Herkunfts-Chip, keine Qualitätsaussage. */}
+          {containsExternalUnchecked(ko.bodyHtml) ? (
+            <span
+              title={t("ko.externalUnchecked.hint")}
+              className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
+            >
+              {t("ko.externalUnchecked.label")}
+            </span>
+          ) : null}
+          {/* JOB 679 D2: Herkunfts-Chip „Aus Word" — fehlt `origin`, erscheint nichts. */}
+          {ko.origin === "word_addin" ? (
+            <span
+              data-testid="ko-origin-word-addin"
+              title={t("ko.originWordAddin.hint")}
+              className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+            >
+              {t("ko.originWordAddin.label")}
+            </span>
+          ) : null}
+        </div>
+        {/* R-0034: die Herkunftszeile nennt das gespeicherte Fachgebiet — nicht die Kategorie
+            unter fremdem Namen. Fehlt es, steht hier keins. */}
+        <ProvenanceLine
+          author={nameOf(ko.author)}
+          originalAuthor={nameOf(ko.originalAuthor)}
+          {...(ko.domain ? { domain: ko.domain } : {})}
+          version={ko.version}
+        />
+        {/* R-0086: Tatsache oder Handlungsanweisung — nur, wenn beim Erfassen angegeben. */}
+        {ko.aussageart ? (
+          <p data-testid="ko-aussageart" className="mt-1 text-[12px] text-muted">
+            {t("wissensmetadaten.aussageart.feld")}:{" "}
+            {t(`wissensmetadaten.aussageart.${ko.aussageart}`)}
+          </p>
+        ) : null}
+        {/* R-1690: der beim Erfassen gesetzte Re-Validierungstermin. */}
+        <p data-testid="ko-revalidierung" className="mt-1 text-[12px] text-muted">
+          {ko.revalidierungAm
+            ? `${t("wissensmetadaten.revalidierung.feld")}: ${ko.revalidierungAm}`
+            : t("wissensmetadaten.revalidierung.keine")}
+        </p>
+        {/* R-0507 / R-0546: wem das Objekt gehört, wer es geprüft und freigegeben hat — und dass
+            Bearbeiternamen keine Verantwortung aussagen. */}
+        <Verantwortung
+          ko={ko}
+          nameOf={nameOf}
+          angemeldet={session.user?.id}
+          darfFreigeben={canReview}
+        />
+        {canEdit ? (
+          <label className="mt-3 flex items-center gap-2 text-[12px] text-muted">
+            <span>{t("conf.field")}</span>
+            <select
+              value={confidentialityOf(ko.confidentiality)}
+              disabled={act.isPending}
+              onChange={(e) =>
+                act.mutate({ action: "confidentiality", level: e.target.value as Confidentiality })
+              }
+              aria-label={t("conf.field")}
+              className="rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px] text-text"
+            >
+              {CONFIDENTIALITY_LEVELS.map((lvl) => (
+                <option key={lvl} value={lvl}>
+                  {t(`conf.level.${lvl}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {/* R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" — nur an internen Objekten und nur für
+            Prüfer/Admin (dieselbe Schwelle wie eine Herabstufung, Server: `ko.validate`). */}
+        {canReview && confidentialityOf(ko.confidentiality) === "intern" ? (
+          <label className="mt-2 flex items-center gap-2 text-[12px] text-muted">
+            <input
+              type="checkbox"
+              data-testid="frische-oeffentlich"
+              checked={ko.oeffentlich === true}
+              disabled={act.isPending}
+              onChange={(e) =>
+                act.mutate({ action: "schutz-oeffentlich", oeffentlich: e.target.checked })
+              }
+            />
+            <span>{t("frische.oeffentlichFeld")}</span>
+          </label>
+        ) : null}
+        {canTransfer ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3">
+            <HelpTip title={t("vhelp.transfer.title")} body={t("vhelp.transfer.body")} />
+            <select
+              aria-label={t("ko.transferTitle")}
+              value={newAuthor}
+              onChange={(e) => setNewAuthor(e.target.value)}
+              className="h-9 flex-1 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
+            >
+              <option value="">{t("ko.transferPick")}</option>
+              {(dir.data ?? [])
+                .filter((d) => d.id !== ko.author)
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+            </select>
+            <Button
+              variant="primary"
+              disabled={transfer.isPending || !newAuthor}
+              onClick={() => transfer.mutate(newAuthor)}
+            >
+              {t("ko.transfer")}
+            </Button>
+          </div>
+        ) : null}
+        {/* R-1632 / R-1633: wo dieser Punkt gilt — Konzern-Standard, Werks-Praxis oder
+            Schicht-spezifisch. Am Ende des Abschnitts, damit Vertraulichkeit und Übergabe ihren
+            Platz behalten. Der Schlüssel setzt das Formular nach dem Speichern auf den Serverstand. */}
+        {/* R-0034 / R-0465: das Fachgebiet nachträglich setzen oder ändern; leer entfernt es. Der
+            Schlüssel setzt das Feld nach dem Speichern auf den Serverstand. */}
+        <FachgebietFeld
+          key={ko.domain ?? ""}
+          domain={ko.domain}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(domain) => act.mutate({ action: "domain", domain })}
+        />
+        <GeltungFeld
+          key={JSON.stringify(ko.geltung ?? null)}
+          geltung={ko.geltung}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(geltung) => act.mutate({ action: "geltung", geltung })}
+        />
+      </Abschnitt>
+
+      {/* 7 — Herkunftskette */}
+      <Abschnitt
+        schluessel="herkunftskette"
+        titel={t("ko.mehr.herkunftskette")}
+        offen={offene.has("herkunftskette")}
+        aufWechsel={(o) => abschnittUmschalten("herkunftskette", o)}
+      >
+        <div className="grid grid-cols-2 gap-2 text-[12.5px]">
+          <div className="rounded-input bg-page p-2">
+            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+              {t("ko.lineageOrigin")}
+            </div>
+            <div className="text-text">{nameOf(ko.originalAuthor)}</div>
+            {lineage.authorTransferred ? (
+              <div className="text-[11px] text-muted">
+                → {nameOf(ko.author)} {t("ko.lineageTransferred")}
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-input bg-page p-2">
+            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+              {t("ko.lineageVersions")}
+            </div>
+            <div className="text-text">
+              {/* mega51 F1: Zahl und Wort werden NICHT von Hand zusammengesetzt — i18next
+                  pluralisiert über `count`, sonst stünde bei genau einer Änderung „1 Änderungen". */}
+              v{lineage.versions} · {t("ko.lineageChanges", { count: lineage.historyCount })}
+            </div>
+          </div>
+          <div className="rounded-input bg-page p-2">
+            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+              {t("ko.sourcesTitle")}
+            </div>
+            <div className="text-text">{lineage.sourceCount}</div>
+          </div>
+          <div className="rounded-input bg-page p-2">
+            <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+              {t("ko.lineageRelated")}
+            </div>
+            <div className="text-text">{lineage.relatedCount}</div>
+          </div>
+        </div>
+        {/* JOB 3384 · UX-26 — AUS DEM STUMMEN `null` WIRD EIN ZUSTAND.
+            Bis hierher stand hier `auditEvents.length > 0 ? <ul> : null`: bei null Ereignissen
+            erschien GAR NICHTS — kein Satz, kein Grund, kein Unterschied zwischen „noch nichts
+            verzeichnet", „wird noch geladen" und „der Abruf ist gescheitert". Die Trennung wird
+            NICHT neu erfunden: sie ist die der Nachbarabschnitte (`:1315-1320`) und die des
+            Belegabschnitts (`:1243-1251`), und die Regel für den überlebenden Bestand wohnt in
+            `abfrageMitBestand` / `AuffrischungHinweis` (JOB 3034/3063/3272) — hier wird sie nur
+            aufgerufen.
+            EIN GESCHEITERTER ABRUF IST KEIN BEWEIS FÜR LEERE: der Leersatz steht ausschliesslich
+            im Erfolgszweig. Nach einer gescheiterten AUFFRISCHUNG bleibt der zuletzt geholte Stand
+            samt Hinweis stehen (REGELN Punkt 7). */}
+        <AuffrischungHinweis query={audit} />
+        {((): JSX.Element => {
+          const ereignisLage = abfrageMitBestand(audit);
+          return ereignisLage.isLoading ? (
+            <p className="mt-2 text-[12.5px] text-muted">{t("state.loading")}</p>
+          ) : ereignisLage.isError ? (
+            <p className="mt-2 text-[12.5px] text-danger">{t("state.error")}</p>
+          ) : auditEvents.length === 0 ? (
+            <>
+              <p className="mt-2 text-[12.5px] text-muted">{t("ko.lineageEventsEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
+            </>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {auditEvents.map((e) => (
+                <li key={e.seq} className="flex items-center gap-2 text-[11.5px] text-muted">
+                  <span className="font-mono text-muted-2">
+                    {new Date(e.at).toLocaleDateString(i18n.language)}
+                  </span>
+                  {/* Der fachliche Name des Ereignisses — die EINE Beschriftungsfunktion
+                      (`auditAction.ts:16`), die bei unbekanntem Code auf ihre neutrale
+                      Humanisierung zurückfällt. Es entsteht keine zweite daneben. */}
+                  <span className="font-semibold text-text">{auditActionLabel(e.action, t)}</span>
+                  <span className="ml-auto font-mono text-muted-2">{nameOf(e.actor)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        })()}
+        {/* mega70 B3: `/graph` verlangt `admin` — die gesperrte Fassung verliert Link und Pfeil.
+            N-0020: vor dem Wechsel merkt sich die Lesefläche, WO gelesen wurde (Rollstand und
+            offene Abschnitte); Browser-Zurück stellt es wieder her (`lib/lesekontext.ts`). */}
+        <RoleLink
+          to="/graph"
+          testId="bib-herkunft-graph"
+          onClick={() => lesekontextMerken(ko.id, wurzel.current, offene)}
+          className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-ai"
+          hoverClassName="hover:underline"
+        >
+          {(erreichbar) => (
+            <>
+              {t("ko.lineageGraphLink")}
+              {erreichbar ? <span aria-hidden="true">→</span> : null}
+            </>
+          )}
+        </RoleLink>
+      </Abschnitt>
+
+      {/* 8 — Historie */}
+      <Abschnitt
+        schluessel="historie"
+        titel={t("ko.mehr.historie")}
+        offen={offene.has("historie")}
+        aufWechsel={(o) => abschnittUmschalten("historie", o)}
+      >
+        <ol className="space-y-3">
+          {ko.history.map((h) => (
+            <li key={h.version} className="border-l-2 border-hairline pl-3">
+              <div className="font-mono text-[11px] text-muted-2">
+                v{h.version} · {new Date(h.at).toLocaleDateString(i18n.language)}
+              </div>
+              {/* JOB 3627: der Vermerk geht durch den EINEN Ort, der ihn anzeigbar macht
+                  (`koHistoryNote.ts`) — feste Dienst-Vermerke über den Katalog, fremder Text
+                  wörtlich. Der Rückfall auf den Autornamen bleibt Zeichen für Zeichen: leer
+                  kommt leer zurück. */}
+              {/* JOB 4213 · UND WOHER DIESER STAND KAM, WENN ER ZURÜCKGEHOLT WURDE. Der Vermerk
+                  selbst bleibt unangetastet („überarbeitet", über den Katalog); die Herkunft ist ein
+                  EIGENER Satz mit eigenem Schlüssel, weil sie eine Versionszahl trägt und ein
+                  Vermerk mit Zahl durch den zeichengenauen Vermerkkatalog nicht hindurchkäme. Die
+                  Zahl kommt über den EINEN Draht-Leser (`uebernahmeHerkunft`), denselben, den die
+                  Fassungskarte unten benutzt. Der Rückfall auf den Autornamen bleibt Zeichen für
+                  Zeichen: er gilt dem leeren Vermerk. */}
+              {/* R-0546: der Name an einer Fassung heisst „hat bearbeitet" — nie „verantwortlich".
+                  Er steht deshalb als „bearbeitet von …" da; ohne Autor steht nichts. */}
+              <div data-bib-historie-vermerk={h.version} className="text-[12.5px] text-text">
+                {koHistoryNote(h.note, t)}
+                {h.author ? (
+                  <span data-bib-historie-bearbeiter className="ml-1.5 text-muted">
+                    {t("verantwortung.bearbeitetVon", { name: nameOf(h.author) })}
+                  </span>
+                ) : null}
+                {((): JSX.Element | null => {
+                  const herkunft = uebernahmeHerkunft(h);
+                  return herkunft === null ? null : (
+                    <span className="ml-1.5 text-muted">
+                      {t("ko.snapshotRestoredFrom", { version: herkunft })}
+                    </span>
+                  );
+                })()}
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Abschnitt>
+
+      {/* R-1644 — Wer wusste was wann: die Auskunft zu einem Zeitpunkt. Nur mit Prüferecht
+          (`ko.validate`, dieselbe Einsichtsstufe wie das Audit-Protokoll); die Rolle steuert nur
+          die Anzeige, entschieden wird am Server. Abgefragt wird erst auf den Klick. */}
+      {canReview ? (
+        <Abschnitt
+          schluessel="wissensauskunft"
+          titel={t("wissensauskunft.titel")}
+          offen={offene.has("wissensauskunft")}
+          aufWechsel={(o) => abschnittUmschalten("wissensauskunft", o)}
+        >
+          <WissensauskunftBereich koId={ko.id} />
+        </Abschnitt>
+      ) : null}
+
       {/* 10 — Schnappschüsse */}
       <Abschnitt
         schluessel="schnappschuesse"
@@ -2468,7 +2728,10 @@ export function MehrAbschnitte({
           ) : fassungsLage.isError ? (
             <p className="text-[12.5px] text-danger">{t("state.error")}</p>
           ) : zeilen.length === 0 ? (
-            <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
+            <>
+              <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
+            </>
           ) : (
             <>
               {((): JSX.Element => {
@@ -2536,6 +2799,9 @@ export function MehrAbschnitte({
                 return (
                   <div
                     data-bib-fassung-vergleich-flaeche
+                    // N-0057: Ziel der Vergleichsaktion an der Karte. `-1` nimmt den Fokus
+                    // programmatisch an, ohne ein zusätzlicher Tabulator-Halt zu werden.
+                    tabIndex={-1}
                     className="mb-3 rounded-input border border-hairline bg-surface p-2.5"
                   >
                     <div className="text-[12.5px] font-semibold text-text">
@@ -2561,48 +2827,9 @@ export function MehrAbschnitte({
                     ) : gegenueber.felder.length === 0 ? (
                       <p className="mt-2 text-[12.5px] text-muted">{t("ko.snapshotCompareNone")}</p>
                     ) : (
-                      <dl className="mt-2 grid gap-2">
-                        {gegenueber.felder.map((f) => {
-                          // Die Werte kommen als GESPEICHERTE Werte aus `koVersionDiff.ts`; Art und
-                          // Prüfstand sind dort Schlüssel. Eingesetzt werden sie über DIESELBEN
-                          // Kataloge, die die Karte oben schon benutzt — kein zweites Verzeichnis.
-                          const lesbar = (wert: string): JSX.Element =>
-                            wert.length === 0 ? (
-                              <span className="text-muted-2">{t("ko.snapshotFieldEmpty")}</span>
-                            ) : f.feld === "type" ? (
-                              <>{t(`ktype.${wert}`)}</>
-                            ) : f.feld === "status" ? (
-                              <>{t(`status.${wert}`)}</>
-                            ) : f.feld === "bodyHtml" ? (
-                              // DERSELBE EINE ZEICHENWEG wie am geöffneten Bericht (`:1962-1966`):
-                              // kein `dangerouslySetInnerHTML`, keine zweite Allowlist.
-                              <SanitizedHtml html={wert} className="prose-kw text-[12.5px]" />
-                            ) : (
-                              <>{wert}</>
-                            );
-                          return (
-                            <div key={f.feld} data-bib-fassung-vergleich-feld={f.feld}>
-                              <dt className="font-mono text-[10.5px] text-muted-2">
-                                {t(`ko.snapshotField.${f.feld}`)}
-                              </dt>
-                              <dd className="mt-0.5 grid gap-1 text-[12.5px] text-text">
-                                <div data-bib-vergleich-alt={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
-                                    {`v${gegenueber.von}`}
-                                  </span>
-                                  {lesbar(f.alt)}
-                                </div>
-                                <div data-bib-vergleich-neu={f.feld}>
-                                  <span className="mr-1 font-mono text-[10.5px] text-muted-2">
-                                    {`v${gegenueber.bis}`}
-                                  </span>
-                                  {lesbar(f.neu)}
-                                </div>
-                              </dd>
-                            </div>
-                          );
-                        })}
-                      </dl>
+                      // R-1055: dieselbe Gegenüberstellung wie im Editor, ältere Fassung links,
+                      // jüngere rechts (`Fassungsvergleich.tsx`). Die Marken bleiben dieselben.
+                      <FassungsGegenueberstellung gegenueber={gegenueber} />
                     )}
                   </div>
                 );
@@ -2662,21 +2889,48 @@ export function MehrAbschnitte({
                         // `koVersionDiff.ts` liest sich die Zeile jetzt als „Aussage · Ausführlicher
                         // Inhalt" — und „Keine Änderung in den Hauptfeldern" steht nur noch da, wenn
                         // ALLE sieben Felder gleich sind, den Bericht eingeschlossen.
+                        //
+                        // N-0057: die Zeile sagt, WAS sie ist („Geänderte Felder: …", „Erste
+                        // gespeicherte Version"), und hat einen Vorgänger, steht daneben die
+                        // Vergleichsaktion. Sie liegt VOR dem Öffnen-Knopf der Karte, damit die
+                        // gemessene Folge „Karte → Rückweg" (JOB 3560 T4) unverändert bleibt.
                         const diff = diffForVersion(fassungen, v.version);
                         if (!diff || diff.fromVersion === null) {
                           return (
-                            <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                              {t("ko.snapshotInitial")}
+                            <p
+                              data-bib-fassung-aenderung={v.key}
+                              className="mt-1 font-mono text-[10.5px] text-muted-2"
+                            >
+                              {t("fassungsangabe.ersteFassung")}
                             </p>
                           );
                         }
-                        return diff.changed.length === 0 ? (
-                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                            {t("ko.snapshotNoChanges")}
-                          </p>
-                        ) : (
-                          <p className="mt-1 font-mono text-[10.5px] text-muted-2">
-                            {diff.changed.map((f) => t(`ko.snapshotField.${f}`)).join(" · ")}
+                        const von = diff.fromVersion;
+                        const geaendert = diff.changed.map((f) => t(`ko.snapshotField.${f}`));
+                        return (
+                          <p
+                            data-bib-fassung-aenderung={v.key}
+                            className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-2"
+                          >
+                            <span>
+                              {geaendert.length === 0
+                                ? t("ko.snapshotNoChanges")
+                                : t("fassungsangabe.geaenderteFelder", {
+                                    felder: geaendert.join(" · "),
+                                  })}
+                            </span>
+                            <button
+                              type="button"
+                              data-bib-fassung-vergleichen={v.key}
+                              aria-label={t("fassungsangabe.vergleichenName", {
+                                von,
+                                bis: v.version,
+                              })}
+                              onClick={() => mitVorgaengerVergleichen(von, v.version)}
+                              className="inline-flex cursor-pointer items-center rounded-btn border border-hairline px-2 py-0.5 font-sans text-[12px] font-semibold text-muted hover:text-text"
+                            >
+                              {t("fassungsangabe.vergleichen", { von })}
+                            </button>
                           </p>
                         );
                       })()}
@@ -2907,6 +3161,159 @@ export function MehrAbschnitte({
         })()}
       </Abschnitt>
 
+      <GruppenKopf
+        gruppe="zusammenarbeit"
+        titel={t("lesereihenfolge.mehr.gruppe.zusammenarbeit")}
+      />
+
+      {/* 1 — Konflikt */}
+      <Abschnitt
+        schluessel="konflikt"
+        titel={t("ko.mehr.konflikt")}
+        offen={offene.has("konflikt")}
+        aufWechsel={(o) => abschnittUmschalten("konflikt", o)}
+      >
+        {/* mega29 C1: die Deckung des KI-Laufs schränkt jede Konfliktaussage ein — sie steht
+            deshalb hier, direkt bei ihr. */}
+        <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
+        {vorrangZeilen.length > 0 ? (
+          <div data-testid="bib-vorrang" className="mt-2 space-y-1 text-[12.5px] text-muted">
+            <span className="block font-medium">{t("konfliktarbeit.amPunkt.titel")}</span>
+            <ul className="space-y-1">
+              {vorrangZeilen.map((z) => (
+                <li key={z.id}>{z.text}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {canReview ? (
+          <div className="mt-2 space-y-2">
+            {/* R-0888 / R-1017 (gesamt-hilfen, Nacharbeit 13): die vorhandenen Erklärungen dieser
+                Handlung (`lib/reviewHelp.ts`) stehen in der Seitenhilfe, solange die Handlung
+                da ist — der beschlossene Weg (`HelpTip`, Pedi 04.09.), kein „?" im Sichtfeld. */}
+            <HelpTip
+              title={t("vhelp.reportConflict.title")}
+              body={t("vhelp.reportConflict.body")}
+            />
+            {/* Nacharbeit 15: die berichtigte Fassung nennt auch die Pflichtwahl „Art der Arbeit“. */}
+            <HelpTip
+              title={t("vhelp.conflictForm.title")}
+              body={t("abschnittshilfe.conflictForm.body")}
+            />
+            <div className="space-y-1.5">
+              <span className="block text-[12.5px] font-medium text-muted">
+                {t("ko.conflictTarget")}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPickOpen(true)}
+                className="flex h-10 w-full items-center justify-between gap-2 rounded-input border border-hairline bg-surface px-3 text-left text-sm hover:border-ink/30"
+              >
+                <span className={conflict.koB ? "truncate text-text" : "text-muted"}>
+                  {conflictTitle || t("ko.conflictTargetPlaceholder")}
+                </span>
+                <span className="shrink-0 font-mono text-[11px] text-muted-2">
+                  {t("ko.conflictTargetChoose")}
+                </span>
+              </button>
+            </div>
+            <Field label={t("ko.conflictType")}>
+              <select
+                value={conflict.type}
+                onChange={(e) => setConflict({ ...conflict, type: e.target.value as ConflictType })}
+                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+              >
+                {CONFLICT_TYPES.map((ct) => (
+                  <option key={ct} value={ct}>
+                    {t(`con.type.${ct}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t("konfliktarbeit.feld")}>
+              <select
+                value={conflict.arbeitsart}
+                onChange={(e) =>
+                  setConflict({ ...conflict, arbeitsart: e.target.value as ConflictWorkKind | "" })
+                }
+                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+              >
+                {/* R-0252 (Nacharbeit 5): Pflichtwahl — der Platzhalter ist nicht wählbar, und
+                    „Konflikt eröffnen" bleibt gesperrt, bis eine Arbeitsart gewählt ist. */}
+                <option value="" disabled>
+                  {t("konfliktarbeit.feld.offen")}
+                </option>
+                {CONFLICT_WORK_KINDS.map((wk) => (
+                  <option key={wk} value={wk}>
+                    {t(`konfliktarbeit.name.${wk}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t("ko.conflictDesc")}>
+              <textarea
+                value={conflict.desc}
+                onChange={(e) => setConflict({ ...conflict, desc: e.target.value })}
+                rows={2}
+                className={textareaCls}
+              />
+            </Field>
+            <Button
+              variant="primary"
+              disabled={report.isPending || !conflict.koB || !conflict.arbeitsart}
+              onClick={() => report.mutate()}
+            >
+              {t("ko.conflictSubmit")}
+            </Button>
+            <ConflictTargetPicker
+              open={pickOpen}
+              onClose={() => setPickOpen(false)}
+              candidates={(koList.data ?? []).filter((k) => k.id !== id)}
+              onSelect={(koId) => {
+                setConflict({ ...conflict, koB: koId });
+                setPickOpen(false);
+              }}
+            />
+          </div>
+        ) : null}
+      </Abschnitt>
+
+      {/* 4 — Quelle/Beitrag melden */}
+      <Abschnitt
+        schluessel="beitrag"
+        titel={t("ko.mehr.beitrag")}
+        offen={offene.has("beitrag")}
+        aufWechsel={(o) => abschnittUmschalten("beitrag", o)}
+      >
+        <div className="space-y-2">
+          {/* R-1176 (gesamt-sprache-begriffe): die Fassung, die „Quelle hinzufügen“ in EN/NL so
+              zitiert, wie der Knopf heißt (`texte/knopfzitat.ts`) — dieselbe wie `reviewHelp`. */}
+          <HelpTip
+            title={t("vhelp.contribution.title")}
+            body={t("knopfzitat.vhelp.contribution")}
+          />
+          <textarea
+            value={source.contribution}
+            onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
+            placeholder={t("ko.sourceContribution")}
+            rows={3}
+            className={textareaCls}
+          />
+          <TextInput
+            value={source.source ?? ""}
+            onChange={(e) => setSource((s) => ({ ...s, source: e.target.value }))}
+            placeholder={t("ko.sourceRef")}
+          />
+          <Button
+            variant="primary"
+            disabled={sourceContribution.isPending || !isSourceContributionValid(source)}
+            onClick={() => sourceContribution.mutate()}
+          >
+            {t("ko.sourceSubmit")}
+          </Button>
+        </div>
+      </Abschnitt>
+
       {/* 11 — Diskussion (bis JOB 4146: eine flache Kommentarliste) */}
       <Abschnitt
         schluessel="kommentare"
@@ -2918,7 +3325,10 @@ export function MehrAbschnitte({
           // §9: der Leersatz gilt NUR nach einem erfolgreichen Abruf — dieser Abschnitt wird erst
           // gezeichnet, wenn das Wissensobjekt geladen ist (`BibliothekLesen`), und behauptet
           // deshalb nie „keine Beiträge", bevor jemand nachgesehen hat.
-          <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-3">
             {diskussionsFaeden.map((faden) => {
@@ -3186,126 +3596,89 @@ export function MehrAbschnitte({
         ) : null}
       </Abschnitt>
 
-      {/* 12 — Anhänge */}
+      <GruppenKopf
+        gruppe="verknuepfungen"
+        titel={t("lesereihenfolge.mehr.gruppe.verknuepfungen")}
+      />
+
+      {/* 6 — Kopplung und Anlagen */}
       <Abschnitt
-        schluessel="anhaenge"
-        titel={t("ko.mehr.anhaenge")}
-        offen={offene.has("anhaenge")}
-        aufWechsel={(o) => abschnittUmschalten("anhaenge", o)}
+        schluessel="kopplung"
+        titel={t("ko.mehr.kopplung")}
+        offen={offene.has("kopplung")}
+        aufWechsel={(o) => abschnittUmschalten("kopplung", o)}
       >
-        {(ko.attachments ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {(ko.attachments ?? []).map((a) => {
-              const kannOeffnen = Boolean(objectRawHref(a.objectId) || a.dataUrl);
-              const hinweis = t(
-                kannOeffnen ? "ko.attachmentOpenNewTab" : "ko.attachmentOriginalUnavailable",
-              );
-              const vorschau = a.thumbnail || a.dataUrl;
-              return (
-                <div key={a.id} className="min-w-0">
-                  <button
-                    type="button"
-                    // JOB 3272 · UX-25: der ANKER, über den ein Beleg genau diesen Anhang anspringt.
-                    // Rein additiv — Name, `aria-disabled` und der Öffnen-Weg bleiben, wie sie sind.
-                    data-bib-anhang={a.id}
-                    className="block w-full text-left"
-                    aria-label={`${a.name} — ${hinweis}`}
-                    aria-disabled={!kannOeffnen}
-                    onClick={() => {
-                      // Wie beim Upload: fokussierbar bleiben, fehlenden Weg vor dem Aufruf abfangen.
-                      if (!kannOeffnen) {
-                        return;
-                      }
-                      openAttachment(a);
-                    }}
-                  >
-                    <AnhangVorschau key={vorschau} src={vorschau} />
-                    <span className="mt-1 block truncate text-[12px] text-text" title={a.name}>
-                      {a.name}
-                    </span>
-                    <span className="mt-0.5 block text-[12px] text-muted">{hinweis}</span>
-                  </button>
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      aria-label={t("ko.attachmentRemove")}
-                      onClick={() => detach.mutate(a.id)}
-                      className="ml-auto mt-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white"
-                    >
-                      <X size={12} />
-                    </button>
-                  ) : null}
-                </div>
-              );
-            })}
+        {/* R-0082 (JOB 593, Option A): WELCHE Anlagen zu diesem Wissensobjekt gehören, sagt allein
+            die Liste am Objekt (`assets`, Altbestand `asset`). Sie steht deshalb zuerst und ist
+            hier änderbar (Korrekturweg `revise`); die Lebenszyklus-Kopplungen darunter sind nur
+            die Liste für Änderungsmeldungen („Stimmt das noch?") und keine zweite Quelle. Der
+            Schlüssel setzt das Feld nach dem Speichern auf den Serverstand. */}
+        <AnlagenFeld
+          key={JSON.stringify(ko.assets ?? ko.asset ?? null)}
+          ko={ko}
+          darfAendern={canEdit}
+          wartet={act.isPending}
+          onSpeichern={(assets) =>
+            act.mutate({ action: "revise", changes: { assets }, expectedVersion: ko.version })
+          }
+        />
+        <p className="mb-1 text-[11.5px] text-muted-2">{t("wissensmetadaten.anlage.kopplungen")}</p>
+        {couplings.data && couplings.data.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {couplings.data.map((a) => (
+              <span
+                key={a}
+                className="inline-flex items-center gap-1 rounded-pill bg-page px-2.5 py-1 text-[12px] font-medium text-text"
+              >
+                <Link2 size={12} className="text-muted-2" />
+                {a}
+              </span>
+            ))}
           </div>
-        )}
-        {canEdit ? (
+        ) : (
           <>
-            {/* JOB 3126 · UX-23: `aria-disabled` STATT `disabled` — ein `disabled`-Knopf fällt aus
-                der Tab-Folge, und wer mit der Tastatur bedient, verlöre mitten im Hochladen seinen
-                Ort. Der Knopf bleibt deshalb fokussierbar und fängt das Auslösen wirkungslos ab;
-                das Dateifeld behält sein echtes `disabled`. */}
-            <button
-              type="button"
-              aria-disabled={attach.isPending}
-              onClick={() => {
-                if (attach.isPending) {
-                  return;
-                }
-                dateiFeld.current?.click();
-              }}
-              className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
-            >
-              {/* Zierde, kein Name: das Symbol darf den zugänglichen Namen nicht verfälschen. */}
-              <Paperclip size={14} aria-hidden />
-              {attach.isPending ? t("ko.attachmentUploading") : t("ko.attachmentAdd")}
-            </button>
-            <input
-              ref={dateiFeld}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              tabIndex={-1}
-              aria-hidden="true"
-              disabled={attach.isPending}
-              onChange={(e) => void onPickFile(e)}
-            />
-            {/* PLAN-SPRACHANMERKUNG · NACHARBEIT 2: Pläne und CAD-Zeichnungen (PDF, DXF, DWG) — in
-                derselben Bauform wie der Fotoknopf, mit eigenem, ebenso stummem Dateifeld. */}
-            <button
-              type="button"
-              data-bib-zeichnung-anhaengen=""
-              aria-disabled={attach.isPending}
-              onClick={() => {
-                if (attach.isPending) {
-                  return;
-                }
-                zeichnungsFeld.current?.click();
-              }}
-              className="ml-2 mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
-            >
-              <Paperclip size={14} aria-hidden />
-              {t("stellenbezug.anhang.hochladen")}
-            </button>
-            <input
-              ref={zeichnungsFeld}
-              type="file"
-              accept={ZEICHNUNG_ACCEPT}
-              data-bib-zeichnung-datei=""
-              className="hidden"
-              tabIndex={-1}
-              aria-hidden="true"
-              disabled={attach.isPending}
-              onChange={(e) => void onPickZeichnung(e)}
-            />
-            {/* AUFTRAG-mega14 Block E (SCRUM-421): die geltenden Grenzen stehen AN der
-                Auswahlstelle, und sie kommen vom Server. */}
-            <UploadLimitsHint />
+            <p className="text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
+            {leerzustandsZeile(t, "objekt")}
           </>
+        )}
+        {role !== "viewer" ? (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-2.5">
+            <TextInput
+              value={coupleAsset}
+              onChange={(e) => setCoupleAsset(e.target.value)}
+              placeholder={ko.asset ? ko.asset : t("ko.couple.placeholder")}
+              className="h-9 min-w-[10rem] flex-1"
+            />
+            <Button
+              variant="ghost"
+              disabled={couple.isPending || !(coupleAsset.trim() || ko.asset?.trim())}
+              onClick={() => couple.mutate((coupleAsset.trim() || ko.asset || "").trim())}
+            >
+              <Link2 size={14} />
+              {t("ko.couple.cta")}
+            </Button>
+          </div>
         ) : null}
+        {/* R-0203: der Auslöser über benachbarte Wissensobjekte — dasselbe Recht wie die
+            Anlagenänderung im Reiter „Erneut" (`ko.validate`: Controller und Admin). */}
+        {canReview && couplings.data && couplings.data.length > 0 ? (
+          <div className="mt-2.5 border-t border-hairline pt-2.5">
+            <Button
+              variant="ghost"
+              data-testid="frische-nachbarn"
+              disabled={nachbarn.isPending}
+              onClick={() => nachbarn.mutate()}
+            >
+              {t("frische.nachbarnMelden")}
+            </Button>
+            <p className="mt-1 text-[11.5px] text-muted-2">{t("frische.nachbarnMeldenHinweis")}</p>
+          </div>
+        ) : null}
+        {/* R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext pflegen —
+            dasselbe Recht wie die Kopplung darüber. */}
+        {role !== "viewer" ? <AnlagenBezugPflege ko={ko} onGespeichert={invalidate} /> : null}
+        {/* R-1647 / R-2174: der QR-Code der Anlage, eines Bauteils oder Materials dieses Objekts. */}
+        <AnlagenQrCode ko={ko} />
       </Abschnitt>
 
       {/* 13 — Nachbarschaft */}

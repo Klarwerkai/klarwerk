@@ -20,6 +20,11 @@
 // (`components/ImportSelect.tsx` → `components/ImportPreviewTree.tsx`, Wirkungstest
 // `ordner-ohne-seite-mounted.test.tsx`); für alle übrigen trägt die Einzeltabelle die Klausel.
 //
+// NACHTRAG R-1349 (Nacharbeit 4): Die B- und C-Fälle sind seither einzeln abgeschlossen —
+// entfernt, angeschlossen, in den Test gezogen, als Fremdlesekante gemessen oder als offene
+// Produktentscheidung geführt. Die Einstufung oben bleibt das historische R-0991-Ergebnis; der
+// Ausgang je Fall steht in `R1349_AUSGANG` am Ende dieser Datei.
+//
 // Die 25 Word-Add-in-Funde (Nr. 58–82) tragen `beleg: "word-spiegel"`: die Kette TypeScript-Export
 // → ausgelieferter Spiegel (`apps/web/public/word-addin/taskpane.js`, eingebunden von
 // `taskpane.html`) → realer Aufruf im Spiegel prüft der Test je Name einzeln. Die zwei Namen, die
@@ -714,3 +719,162 @@ export const BEDARFSABGLEICH: readonly Bedarf[] = [
   W(81, "WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS", "Zeitgrenze der Anmeldeabfrage"),
   W(82, "wordHtmlToPlainText", "Word-HTML in Klartext"),
 ];
+
+// ================================================================================================
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 4) · WAS AUS JEDEM B- UND C-FALL GEWORDEN IST.
+// ================================================================================================
+//
+// Die Einstufung oben ist das ERGEBNIS von R-0991 und bleibt unverändert stehen (4 A, 73 B, 5 C).
+// R-0991 hat die B- und C-Fälle bewusst NICHT angefasst; sie standen danach im eingefrorenen
+// Altbestand des Aufrufer-Wächters. R-1349 verlangt: „Jeder Fall soll entweder angeschlossen oder
+// begründet entfernt werden." Für B ist die Begründung der Entfernung genau der hier belegte
+// Alternativweg. Diese Tabelle hält je Fall den Ausgang fest; `bedarfsabgleich.test.ts` misst ihn
+// (T3 Export da/weg, T4 Nachweis, T6 Gleichlauf mit dem Wächter, T7 Vollständigkeit).
+export type R1349Ausgang =
+  /** Export entfernt; der Alternativweg aus R-0991 trägt die Fähigkeit. */
+  | "entfernt"
+  /** Der Produktweg ruft jetzt genau diesen Export (statt einer Abschrift daneben). */
+  | "angeschlossen"
+  /** Prüfzeug: aus dem Produkt in den Test gezogen. */
+  | "in-den-test"
+  /** Word-Spiegel: der Wächter misst den Aufruf im Aufgabenfenster selbst (`FREMDLESER`). */
+  | "fremdleser"
+  /** Offene Produktentscheidung, im Wächter mit Grund und Entscheider geführt. */
+  | "offen";
+
+export interface R1349Stand {
+  ausgang: R1349Ausgang;
+  /** Zusätzlicher Nachweis des Ausgangs (Aufrufstelle, neuer Ort im Test). */
+  nachweis?: Beleg;
+  /**
+   * Der R-0991-Beleg trifft seit R-1349 nicht mehr, weil R-1349 seine Fundstelle selbst geändert
+   * oder entfernt hat (abgelöste Datei, ersetzte Abschrift). Dann trägt `nachweis` die Aussage.
+   */
+  alterBelegEntfaellt?: true;
+}
+
+const ENTFERNT: R1349Stand = { ausgang: "entfernt" };
+
+/** Ersetzt durch das gelieferte Space-Modell: die Raumzeile am Wissensobjekt (Nacharbeit 10). */
+const SPACE_ENTFERNT: R1349Stand = {
+  ausgang: "entfernt",
+  nachweis: {
+    datei: "apps/web/src/components/SpaceZeile.tsx",
+    muster: 't\\("spaces\\.artikel\\.fuehrend"\\)',
+  },
+  alterBelegEntfaellt: true,
+};
+
+export const R1349_AUSGANG: Readonly<Record<string, R1349Stand>> = {
+  "adminForms.ts::isNewUserValid": ENTFERNT,
+  "answerMarkdown.ts::stripAnswerMarkdown": {
+    ausgang: "in-den-test",
+    nachweis: {
+      datei: "tests/support/antwort-klartext.ts",
+      muster: "export function stripAnswerMarkdown\\(",
+    },
+  },
+  "askGapRescue.ts::gapRescueStepLabelKey": ENTFERNT,
+  "askResponse.ts::selectGap": ENTFERNT,
+  "attachment.ts::attachmentPreview": ENTFERNT,
+  "attachment.ts::isObjectAttachment": ENTFERNT,
+  "boardCard.ts::BOARD_REMOVED_LABEL_KEY": ENTFERNT,
+  "boardCard.ts::duplicateLead": ENTFERNT,
+  "bodyFileLink.ts::applyBodyFileLink": ENTFERNT,
+  "captureAttachments.ts::uploadAttachments": ENTFERNT,
+  "captureFlowGuide.ts::captureFlowStepLabelKey": ENTFERNT,
+  "captureFromFile.ts::createWholeDocumentDraft": ENTFERNT,
+  "conflictCollision.ts::conflictDisplayMode": ENTFERNT,
+  "conflictImpact.ts::effectiveUsability": {
+    ausgang: "angeschlossen",
+    nachweis: {
+      datei: "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
+      muster: "effectiveUsability\\(ko, conflicts\\.data",
+    },
+    alterBelegEntfaellt: true,
+  },
+  "demoKnowledge.ts::demoKnowledgeBadge": ENTFERNT,
+  "demoKnowledge.ts::filterByDemoKnowledge": ENTFERNT,
+  "draftForm.ts::isPromotable": ENTFERNT,
+  "draftListView.ts::isDraftSortKey": ENTFERNT,
+  "editorAttachmentContext.ts::ATTACH_FILE_HINT_KEY": ENTFERNT,
+  "editorAttachmentContext.ts::ATTACH_FILES_KEY": ENTFERNT,
+  "editorAttachmentContext.ts::ATTACH_IMAGE_HINT_KEY": ENTFERNT,
+  "editorAttachmentContext.ts::ATTACH_IMAGES_KEY": ENTFERNT,
+  "editorAttachmentContext.ts::ATTACH_TITLE_KEY": ENTFERNT,
+  "examplePackages.ts::EXAMPLE_PACKAGES_ALL_KEYS": {
+    ausgang: "in-den-test",
+    nachweis: { datei: "tests/app/example-packages.test.ts", muster: "const alleSchluessel = \\[" },
+  },
+  "externalSearch.ts::isAttachable": ENTFERNT,
+  "fileMultiPoint.ts::mergedDraftFromPoints": ENTFERNT,
+  "funke.ts::openGapsView": ENTFERNT,
+  "importSelectView.ts::folderTreeSegmentKey": {
+    ausgang: "angeschlossen",
+    nachweis: {
+      datei: "apps/web/src/lib/importSelectView.ts",
+      muster: "folder:\\$\\{folderTreeSegmentKey\\(root\\.segment\\)\\}",
+    },
+  },
+  "intakeSimilarity.ts::classifyIntake": ENTFERNT,
+  "interviewFlow.ts::answeredTurns": ENTFERNT,
+  // Der Rettungseinstieg (`KnowledgeRescueIntro`) ist als Ganzes entfernt — seit JOB 3062 von der
+  // Fläche genommen; seine Datei war der R-0991-Beleg.
+  "knowledgeRescue.ts::rescueStepLabelKey": { ausgang: "entfernt", alterBelegEntfaellt: true },
+  "knowledgeStory.ts::KNOWLEDGE_STORY_SURFACES": {
+    ausgang: "in-den-test",
+    nachweis: {
+      datei: "tests/app/knowledge-story.test.ts",
+      muster: "const KNOWLEDGE_STORY_SURFACES: readonly StorySurface\\[\\]",
+    },
+  },
+  "knowledgeStudioGuide.ts::studioGuideActiveStep": ENTFERNT,
+  "knowledgeStudioLayout.ts::knowledgeStudioSections": ENTFERNT,
+  "koEvidence.ts::evidenceKindLabel": ENTFERNT,
+  "koLabel.ts::hatTitel": ENTFERNT,
+  "learningPath.ts::nextOpenStep": ENTFERNT,
+  "libraryMaturity.ts::countByMaturity": ENTFERNT,
+  "libraryMaturity.ts::filterByMaturity": ENTFERNT,
+  "libraryMaturity.ts::MATURITY_FILTERS": ENTFERNT,
+  "libraryMaturity.ts::maturityFilterLabelKey": ENTFERNT,
+  "librarySort.ts::isLibrarySortKey": ENTFERNT,
+  // Nacharbeit 10 (BEN): die drei waren als „offen“ geführt — wartend auf `home` vom Server und eine
+  // Ownerentscheidung zum Wort für den Ort (PLAN PRO 378). Beides ist überholt: das Raummodell ist
+  // geliefert (produkt:20261007:spaces) als FLACHER führender Space je Artikel, mit eigener Sprache
+  // („Space“, „Ohne Space“, „Alle Spaces“, DE/EN/NL). Es kennt weder `home`-Ketten noch den
+  // `raum`-Parameter. Die Wissensraum-Bausteine samt `librarySpace.ts` sind entfernt; der alte Beleg
+  // (`KoHomeLine.tsx`) mit ihnen. Nachweis ist die Raumzeile des gelieferten Wegs.
+  "librarySpace.ts::koHomePath": SPACE_ENTFERNT,
+  "librarySpace.ts::serializeSpace": SPACE_ENTFERNT,
+  "librarySpace.ts::spaceFromParams": SPACE_ENTFERNT,
+  "loadingState.ts::isGroupLoaded": ENTFERNT,
+  "mobileConfirm.ts::confirmsDelete": ENTFERNT,
+  "mobileConfirm.ts::needsConfirmation": ENTFERNT,
+  "oidcCallback.ts::isCompleteCallback": ENTFERNT,
+  "pdf.ts::extractPdfText": ENTFERNT,
+  "reasonerStatus.ts::reasonerStatusSummary": ENTFERNT,
+  "reviewerMinimum.ts::isNeededValidationsValid": {
+    ausgang: "angeschlossen",
+    nachweis: {
+      datei: "apps/web/src/pages/AdminKiDetails.tsx",
+      muster: "const neededValid = isNeededValidationsValid\\(neededEffective\\)",
+    },
+    alterBelegEntfaellt: true,
+  },
+  // Der R-0991-Beleg war die Zonen-Leseansicht `KoReadView.tsx`, die R-1349 entfernt hat (seit
+  // JOB 3063 ohne Produktaufrufer). Dieselbe Ableitung liest heute die Lesefläche der Bibliothek.
+  "validationStatus.ts::deriveDisplayStatus": {
+    ausgang: "entfernt",
+    nachweis: {
+      datei: "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
+      muster: 'from "\\.\\./\\.\\./lib/displayStatus"',
+    },
+    alterBelegEntfaellt: true,
+  },
+  ...Object.fromEntries(
+    BEDARFSABGLEICH.filter((b) => b.beleg === "word-spiegel").map((b) => [
+      `${b.datei}::${b.name}`,
+      { ausgang: "fremdleser" } satisfies R1349Stand,
+    ]),
+  ),
+};
