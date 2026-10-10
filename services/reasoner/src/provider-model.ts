@@ -1,12 +1,19 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 // JOB 3276: die leere Modellantwort im assist-Pfad ist ein Fehler mit Grund — dieselbe typisierte
 // Klasse, die der HTTP-Chokepoint (model-client.ts) wirft, damit die Kette EINE Fehlerart kennt.
+import {
+  interviewResearchSubject,
+  normalizeInterviewResearch,
+  normalizeInterviewSources,
+  normalizeInterviewTopic,
+  parseInterviewResearch,
+} from "./interview-tree";
 import { ModelEmptyResponseError, ReasonerMeldungFehler } from "./model-errors";
 import {
   DEFAULT_TOP_K,
   type ReasonerProvider,
   answerStanding,
-  deterministicInterview,
+  guidedInterview,
   normalizeInterviewImageContext,
   // JOB 3298: DIESELBE Zerlegung, die das Relevanzmaß benutzt — der Auszug wird nach der GLEICHEN
   // Wortauffassung gewählt, nach der die Quelle überhaupt Kandidat wurde. Eine zweite Tokenisierung
@@ -29,6 +36,8 @@ import {
   type ExtractedPoint,
   type GroupCandidateInput,
   type GroupCandidatesResult,
+  type InterviewOptions,
+  type InterviewResearchPoint,
   type InterviewResult,
   type KlaraVorschlagUrteil,
   type KnowledgeRef,
@@ -1789,6 +1798,29 @@ function interviewPhotoGuidance(locale: ReasonerLocale): string {
   );
 }
 
+// R-0088: die Auswertung der abgerufenen Quellen zum Interviewthema. Ergebnis sind PRÜFPUNKTE für
+// Rückfragen, keine Wissensaussagen: jeder Punkt ist einem Baumknoten zugeordnet, nennt seine
+// Quelle (Nummer) und wird dem Experten als Frage vorgelegt, nie als Tatsache in den Entwurf
+// geschrieben. Nur was in den Quellen steht — kein Modellwissen.
+function interviewResearchSystem(locale: ReasonerLocale): string {
+  const base = taskInstruction(
+    locale,
+    'Du wertest die nummerierten Quellen für ein Experteninterview zum genannten Fachthema aus. Leite AUSSCHLIESSLICH aus diesen Quellen höchstens drei fachliche Prüfpunkte ab, nach denen ein erfahrener Kollege gezielt nachfragen würde: Grenz- oder Schwellenwerte, Ausnahmen, Ursachen, verworfene Alternativen, Geltungsgrenzen, Risiken. Nutze kein eigenes Wissen. Jeder Punkt ist ein kurzer Hinweis (höchstens 25 Wörter), der beim Experten GEPRÜFT werden soll — keine Tatsachenbehauptung. Ordne jeden Punkt genau einem Knoten zu (schwelle, ausnahme, warum, alternativen, geltung oder risiko) und nenne die Nummer der Quelle, aus der er stammt. Antworte AUSSCHLIESSLICH mit JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. Geben die Quellen zum Thema nichts her, antworte {"punkte":[]}.',
+    'You evaluate the numbered sources for an expert interview on the given subject. Derive, EXCLUSIVELY from these sources, at most three technical check points a seasoned colleague would ask about specifically: limits or thresholds, exceptions, causes, rejected alternatives, scope limits, risks. Do not use your own knowledge. Each point is a short hint (at most 25 words) to be CHECKED with the expert — not a statement of fact. Assign each point to exactly one node (schwelle, ausnahme, warum, alternativen, geltung or risiko) and give the number of the source it comes from. Respond ONLY with JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. If the sources yield nothing on the subject, respond {"punkte":[]}.',
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
+}
+
+// R-0088: Zusatz zum Interview-Prompt, wenn Recherchepunkte vorliegen. Sie machen die Frage
+// gezielter — sie werden aber nie als Wissen vorausgesetzt.
+function interviewResearchGuidance(locale: ReasonerLocale): string {
+  return taskInstruction(
+    locale,
+    "Nutze die Recherchehinweise, um gezielter und fachlich tiefer nachzuhaken. Liegt ein Prüfpunkt für diese Frage vor, frag konkret danach, ob und wie er beim Experten gilt. Stelle Recherchehinweise NIE als Tatsache dar und übernimm sie nicht als Antwort.",
+    "Use the research hints to probe more specifically and in more technical depth. If a check point is given for this question, ask concretely whether and how it applies for the expert. NEVER present research hints as fact and do not adopt them as an answer.",
+  );
+}
+
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
 const LABELS: Record<ReasonerLocale, Record<string, string>> = {
   de: {
@@ -1797,6 +1829,11 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Bisherige Antworten",
     guiding: "Leitfrage",
     none: "(noch keine)",
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): das Fachthema des Interviews.
+    topic: "Fachthema des Interviews",
+    // R-0088: die Fachrecherche — ausdrücklich ungeprüft.
+    research: "Recherchehinweise (ungeprüft, keine Fakten)",
+    researchAim: "Prüfpunkt für diese Frage",
     // JOB 3298: die Beschriftung des Dokumenttext-Auszugs im Grounding. Sie ist ein EIGENES Feld
     // und nicht an die Aussage angehängt — der Leser des Prompts (das Modell) soll sehen, dass hier
     // Quelltext steht, den es zitieren darf, und nicht eine zweite Kernaussage.
@@ -1813,6 +1850,9 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Previous answers",
     guiding: "Guiding question",
     none: "(none yet)",
+    topic: "Subject of the interview",
+    research: "Research hints (unverified, not facts)",
+    researchAim: "Check point for this question",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
     imageFinding: "Image finding (photo, confirmed by the expert)",
@@ -1825,6 +1865,9 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Eerdere antwoorden",
     guiding: "Leidende vraag",
     none: "(nog geen)",
+    topic: "Onderwerp van het interview",
+    research: "Onderzoekshints (niet geverifieerd, geen feiten)",
+    researchAim: "Controlepunt voor deze vraag",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
     imageFinding: "Beeldbevinding (foto, door de expert bevestigd)",
@@ -2281,6 +2324,10 @@ export class ModelProvider implements ReasonerProvider {
 
   // SCRUM-132: Modell formuliert nur die nächste Frage; Abschluss + Draft-Verdichtung
   // bleiben deterministisch (kein Erfinden von Inhalt). demo=false, da Modell genutzt.
+  //
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): im Fragebaum bzw. Lücken-Interview steht das
+  // Fachthema mit im Prompt — das Modell richtet die Leitfrage darauf aus, statt allgemein zu fragen.
+  // Baum, Restlückenwert und Entwurf bleiben deterministisch; ersetzt wird nur der Fragetext.
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
@@ -2289,28 +2336,94 @@ export class ModelProvider implements ReasonerProvider {
     // R-1624: bestätigter Bildbefund (Klartext). Reist im selben complete()-Aufruf und damit durch
     // denselben Vertraulichkeits-Wächter wie die Antworten — kein neuer Egress-Pfad.
     imageContext?: string,
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema.
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const finding = normalizeInterviewImageContext(imageContext);
     const photo = finding.length > 0;
-    const base = deterministicInterview(answers, false, locale, photo);
+    const base = guidedInterview(answers, false, locale, imageContext, options);
     if (base.done || base.question === null) {
       return base;
     }
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    // Fragebaum (nicht Foto): nur dort trägt das Ergebnis einen Knoten.
+    const baum = !photo && base.node !== undefined;
+    // Das Fachthema gilt nur für den Fragebaum; das Foto-Interview behält seinen Bildbefund.
+    const topic = baum ? normalizeInterviewTopic(options.topic) : "";
+    const research = baum
+      ? await this.researchInterviewTopic(answers, locale, confidential, options)
+      : [];
+    const aimed = research.find((p) => p.node === base.node);
     const system = photo
       ? `${interviewSystem(locale)}\n${interviewPhotoGuidance(locale)}`
-      : interviewSystem(locale);
+      : research.length > 0
+        ? `${interviewSystem(locale)}\n${interviewResearchGuidance(locale)}`
+        : interviewSystem(locale);
     const findingBlock = photo ? `${labels.imageFinding}:\n${finding}\n\n` : "";
+    const topicLine = topic ? `${labels.topic}: ${topic}\n\n` : "";
+    const researchBlock =
+      research.length > 0
+        ? `${labels.research}:\n${research.map((p) => `- ${p.hint}`).join("\n")}\n\n`
+        : "";
+    const aimLine = aimed ? `\n${labels.researchAim}: ${aimed.hint}` : "";
     const phrased = (
       await client.complete(
         system,
-        `${findingBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        `${findingBlock}${topicLine}${researchBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}${aimLine}`,
         confidential,
       )
     ).trim();
-    return { ...base, question: phrased || base.question };
+    return {
+      ...base,
+      question: phrased || base.question,
+      ...(research.length > 0 ? { research } : {}),
+    };
+  }
+
+  // R-0088 (Bens Befund nacharbeit-4): die gezielte Fachrecherche zum Thema des Interviews. EIN
+  // Modellaufruf je Interview: hat der Client die Recherche eines früheren Turns zurückgereicht, wird
+  // sie (geprüft und gekappt) wiederverwendet. Worüber recherchiert wird, ist das Lücken-Thema, sonst
+  // die Kernaussage — vor ihr gibt es nichts zu recherchieren. Die Punkte sind ungeprüfte Anlässe für
+  // Rückfragen: der Aufrufer zeigt sie als solche, und in den Entwurf kommen sie nie. Scheitert der
+  // Aufruf oder ist die Antwort unlesbar, läuft das Interview ehrlich OHNE Recherche weiter (kein
+  // erfundener Ersatz) — der Fehler einer Vertraulichkeitssperre trifft danach die Frage selbst.
+  //
+  // BENS BEFUND (nacharbeit-6): „Der Prompt ‚Du recherchierst' ersetzt keinen Recherchezugriff."
+  // Jetzt wertet dieser Aufruf nur noch QUELLEN aus, die die Route zum Thema tatsächlich abgerufen
+  // hat (`options.sources`, Quellensuche `services/external-search`). Ohne Quellen: keine Recherche
+  // und kein Modellaufruf. Jeder Prüfpunkt muss eine dieser Quellen nennen, sonst fällt er weg.
+  private async researchInterviewTopic(
+    answers: readonly string[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+    options: InterviewOptions,
+  ): Promise<InterviewResearchPoint[]> {
+    const known = normalizeInterviewResearch(options.research);
+    if (known.length > 0) {
+      return known;
+    }
+    const subject = interviewResearchSubject(answers, options);
+    const sources = normalizeInterviewSources(options.sources);
+    if (!subject || sources.length === 0) {
+      return [];
+    }
+    const labels = LABELS[locale];
+    const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const quellenBlock = sources
+      .map((s, i) => `[${i + 1}] ${s.title} (${s.url})${s.snippet ? `\n${s.snippet}` : ""}`)
+      .join("\n\n");
+    try {
+      const raw = await this.requireClient().complete(
+        interviewResearchSystem(locale),
+        `${labels.topic}: ${subject}\n\n${labels.sources}:\n${quellenBlock}\n\n${labels.priorAnswers}:\n${prior || labels.none}`,
+        confidential,
+      );
+      return parseInterviewResearch(raw, sources);
+    } catch {
+      return [];
+    }
   }
 
   // PMO-FEA-0006: Wissens-Extraktion über das Modell. Die Antwort wird serverseitig gegen den
