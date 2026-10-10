@@ -22,6 +22,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useKos, useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
+import { useToast } from "../app/ToastContext";
+import { EmptyStateCtas, leerzustandsZeile } from "../components/EmptyStateCtas";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
 import {
@@ -55,6 +57,7 @@ const QUITTUNG_MS = 3000;
 export function Lifecycle(): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const { push } = useToast();
   const navigate = useNavigate();
   const { user } = useSession();
   const role = user?.role ?? "viewer";
@@ -82,6 +85,9 @@ export function Lifecycle(): JSX.Element {
       void qc.invalidateQueries({ queryKey: ["lifecycle"] });
       setLastRevalidated({ id: vars.id, title: vars.title, found: vars.found });
     },
+    // R-0953 (Bestandsabgleich, Nacharbeit 4): der Erfolg hat seine Quittung oben; der Fehler
+    // blieb bis hierher still.
+    onError: () => push("error", t("lcy.toast.revalidateFailed")),
   });
 
   // SCRUM-146: Asset-Change-Auslöser → markiert gekoppelte KOs „prüfen".
@@ -107,7 +113,11 @@ export function Lifecycle(): JSX.Element {
   // SCRUM-145: Lernpfad-Schritt abhaken (Fortschritt serverseitig).
   const complete = useMutation({
     mutationFn: (stepId: string) => endpoints.learningPaths.complete(pathId ?? "", stepId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["learning-progress", pathId] }),
+    onSuccess: () => {
+      push("success", t("lcy.toast.stepDone"));
+      void qc.invalidateQueries({ queryKey: ["learning-progress", pathId] });
+    },
+    onError: () => push("error", t("lcy.toast.stepFailed")),
   });
 
   // aufnahme:20260922:gesamt-wissen-frische (R-0206): neben den Merkern steht hier auch geprüftes
@@ -196,7 +206,10 @@ export function Lifecycle(): JSX.Element {
             </ol>
           </>
         ) : (
-          <p>{t("lcy.pathEmpty")}</p>
+          <>
+            <p>{t("lcy.pathEmpty")}</p>
+            {leerzustandsZeile(t, "lernpfad")}
+          </>
         )}
       </PruefenHilfeBlock>
       <PruefenMenueTrenner />
@@ -224,6 +237,9 @@ export function Lifecycle(): JSX.Element {
             />
           ) : null}
           {lage.lage === "leer" ? <PruefenSatz kennung="leer">{t("lcy.empty")}</PruefenSatz> : null}
+          {/* R-0956 (Bestandsabgleich, Nacharbeit 4): der Leersatz bleibt wörtlich; darunter die
+              Einordnung in den Wissenskreis und der nächste Schritt. */}
+          {lage.lage === "leer" ? <EmptyStateCtas context="lifecycle" /> : null}
           {bestand && ids.length > 0 ? (
             <ul data-testid="pruefen-warteschlange" className="flex flex-col gap-1">
               {ids.map((id) => {

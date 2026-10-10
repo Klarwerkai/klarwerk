@@ -27,6 +27,7 @@ import type {
   DemoSeedResult,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 // AUFTRAG-mega64 Block A: der Demodaten-Knopf steht hinter dem Betriebsschalter — dieselbe
 // fail-closed Regel wie jede andere geschaltete Fläche (mega46 F2).
 import { FeatureGate } from "../components/FeatureGate";
@@ -975,7 +976,10 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
         {(eintraege) => (
           <>
             {eintraege.length === 0 ? (
-              <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
             ) : (
               <ul className="space-y-2">
                 {eintraege.map((entry) => (
@@ -1061,7 +1065,12 @@ export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Eleme
             .slice(-15)
             .reverse();
           if (userEntries.length === 0) {
-            return <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>;
+            return (
+              <>
+                <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
+            );
           }
           return (
             <div className="divide-y divide-hairline">

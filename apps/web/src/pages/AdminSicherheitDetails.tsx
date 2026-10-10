@@ -16,6 +16,7 @@ import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 // JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { BetroffenenrechteVerwaltung } from "../components/datenschutz/Verwaltung";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
@@ -363,7 +364,10 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                   </p>
                 ) : null}
                 {recent.length === 0 ? (
-                  <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>
+                  <>
+                    <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>
+                    {leerzustandsZeile(t, "verwaltung")}
+                  </>
                 ) : (
                   // Verwalteransicht (N-0027): beschriftete Spalten statt Beschriftungsliste — die
                   // Spaltenköpfe sagen, wer wer ist; die Zellen sind reiner Text. Das einzige
