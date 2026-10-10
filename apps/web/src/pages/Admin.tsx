@@ -150,6 +150,7 @@ import {
   DatenschutzDetail,
   PruefprotokollDetail,
 } from "./AdminSicherheitDetails";
+import { TeamDetail, TeamsDetail } from "./AdminTeams";
 import { AdminUebersicht } from "./AdminUebersicht";
 
 /** Der Zeilenwert der Fläche (`wert` in `Admin`) — als Typ, damit Teilbereiche ihn nutzen können. */
@@ -622,9 +623,22 @@ export function Admin(): JSX.Element {
     if (detail.startsWith("rolle:")) {
       return <RolleDetail rolle={detail.slice("rolle:".length) as Role} onZurueck={zurueck} />;
     }
+    // ADMIN-06: ein Team — der Rückweg führt in die Teamliste, nicht in die Kontenliste.
+    if (detail.startsWith("team:")) {
+      return (
+        <TeamDetail
+          teamId={detail.slice("team:".length)}
+          onZurueck={() => geheZu("konten", "teams")}
+        />
+      );
+    }
     switch (detail) {
       case "nutzerNeu":
         return <NutzerAnlegenDetail onZurueck={zurueck} />;
+      case "teams":
+        return (
+          <TeamsDetail onZurueck={zurueck} onOeffnen={(id) => geheZu("konten", `team:${id}`)} />
+        );
       case "ansichtRolle":
         return <AnsichtAlsRolleDetail onZurueck={zurueck} />;
       case "ki":
@@ -922,6 +936,14 @@ export function Admin(): JSX.Element {
               >
                 {t("einst.konten.hinzufuegen")}
               </Flaechenknopf>
+              {/* ADMIN-06 · TEAMS — ein Mitgliedschaftsweg auf diesen Konten, keine Kopie davon. */}
+              <Zeilenkarte testId="flaeche-teams">
+                <Zeile
+                  label={t("teams.titel")}
+                  onOeffnen={() => geheZu("konten", "teams")}
+                  testId="zeile-teams"
+                />
+              </Zeilenkarte>
               {/* ADMIN-04 · MEHRERE KONTEN — nur für die echte Verwaltungsrolle (in einer
                   Vorschaurolle ist diese Seite ohnehin gesperrt), und der Server prüft jeden
                   einzelnen Aufruf. Ein Schalter, kein Chevron: hier öffnet sich keine Karte. */}
