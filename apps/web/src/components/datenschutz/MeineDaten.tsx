@@ -22,6 +22,7 @@ import {
   dateistempel,
   datenschutzApi,
 } from "../../api/datenschutz";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { Abfragehuelle } from "../einstellungen/Abfragehuelle";
 import { Detailkarte } from "../einstellungen/Detailkarte";
 import { Kicker } from "../einstellungen/Zeilenkarte";
@@ -75,7 +76,7 @@ export const MEINE_DATEN_KEY = ["datenschutz", "meineDaten"] as const;
 export const MEINE_ANTRAEGE_KEY = ["datenschutz", "meineAntraege"] as const;
 
 export function MeineDatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // Jeder Abruf ist eine erteilte Auskunft und steht im Prüfprotokoll — deshalb kein stilles
   // Nachladen beim Fensterwechsel. „Erneut versuchen" und ein neues Öffnen holen frisch.
   const daten = useQuery({
@@ -144,7 +145,7 @@ export function MeineDatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.
             </ul>
             <p className="text-[11.5px] text-muted-2">
               {t("datenschutz.meineDaten.stand", {
-                zeit: new Date(a.erzeugtAm).toLocaleString(),
+                zeit: formatKoTimestamp(a.erzeugtAm, i18n.language) ?? "—",
               })}
             </p>
             <Button

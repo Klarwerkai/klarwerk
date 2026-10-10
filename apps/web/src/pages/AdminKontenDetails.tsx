@@ -29,6 +29,7 @@ import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/ro
 import { Button, Field, TextInput } from "../components/ui";
 import { isPasswordResetValid, newUserIssues, passwordRepeatMismatch } from "../lib/adminForms";
 import { auditActionLabel } from "../lib/auditAction";
+import { formatKoTimestamp } from "../lib/koDates";
 import { kontoZugang, rollenwirkung } from "../lib/nutzerliste";
 
 const EMPTY_NEW_USER = { name: "", email: "", password: "", role: "experte" as Role };
@@ -1051,7 +1052,7 @@ export function NutzerDetail({
                   {kontoVermerke.map((e) => (
                     <li key={e.seq} data-testid="konto-vermerk" data-action={e.action}>
                       <span className="font-mono text-[11px] text-muted-2">
-                        {new Date(e.at).toLocaleString(i18n.language)}
+                        {formatKoTimestamp(e.at, i18n.language)}
                       </span>{" "}
                       <span className="text-text">{auditActionLabel(e.action, t)}</span>
                       {vermerkDetail(e, t, i18n.language)}

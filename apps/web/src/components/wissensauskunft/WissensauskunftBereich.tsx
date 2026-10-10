@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { Button } from "../ui";
 import {
   type Wissensauskunft,
@@ -28,7 +29,7 @@ function fehlerText(t: TFunction, fehler: unknown): string {
 
 function Antwort({ auskunft }: { auskunft: Wissensauskunft }): JSX.Element {
   const { t, i18n } = useTranslation();
-  const datum = (iso: string): string => new Date(iso).toLocaleString(i18n.language);
+  const datum = (iso: string): string => formatKoTimestamp(iso, i18n.language) ?? "—";
   const { fassung, freigabe } = auskunft;
   return (
     <div data-testid="wissensauskunft-antwort" className="space-y-2">
