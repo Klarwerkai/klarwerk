@@ -174,7 +174,7 @@ describe("Z4 · die Darstellung in index.css", () => {
   it.each(BEWEGT_EXPRESSIV)("expressiv · %s ist bewegt — nur ohne reduzierte Bewegung", (z) => {
     const r = regel("expressiv", z);
     expect(r, z).not.toBeNull();
-    expect(r).toContain(':not([data-bewegung="reduziert"])');
+    expect(r).toMatch(/:not\(\s*\[data-bewegung="reduziert"\]\s*\)/);
     expect(r).toMatch(/animation: kw-/);
   });
 
@@ -183,7 +183,7 @@ describe("Z4 · die Darstellung in index.css", () => {
   const BEWEGT_SACHLICH = ["warten", "nachdenken", "zuhoeren", "sprechen", "ratlos", "freude"];
   it.each(BEWEGT_SACHLICH)("zurückhaltend · %s ist Licht oder sparsame Neigung", (z) => {
     const r = regel("zurueckhaltend", z) ?? "";
-    expect(r, z).toContain(':not([data-bewegung="reduziert"])');
+    expect(r, z).toMatch(/:not\(\s*\[data-bewegung="reduziert"\]\s*\)/);
     expect(r, z).toMatch(LICHT);
     expect(r, z).not.toMatch(GESTE);
   });
