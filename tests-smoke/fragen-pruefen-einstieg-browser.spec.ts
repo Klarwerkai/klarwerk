@@ -164,8 +164,9 @@ async function fragenAufgaben(page: Page, rolle: Rolle, aufgaben: Aufgabe[]): Pr
   // F2 — die erste Frage beginnen.
   await messen(aufgaben, "F2-frage-beginnen", async () => {
     const feld = page.locator(FRAGEFELD);
-    let tabSchritte: number | undefined;
-    let sichtbar: boolean | undefined;
+    // `exactOptionalPropertyTypes`: Tastaturwerte nur eintragen, wenn sie gemessen wurden — ein
+    // ausdrückliches `undefined` ist für die optionalen Felder von `Aufgabe` nicht zulässig.
+    const tastatur: Partial<Aufgabe> = {};
     if (rolle === "neu") {
       // Vom Seitenanfang per Tabulator — höchstens 120 Schritte (Seitenleiste und Kopfband liegen
       // davor), sonst gilt das Feld als nicht erreichbar.
@@ -173,15 +174,17 @@ async function fragenAufgaben(page: Page, rolle: Rolle, aufgaben: Aufgabe[]): Pr
         (document.activeElement as HTMLElement | null)?.blur();
         window.scrollTo(0, 0);
       });
-      tabSchritte = 0;
+      let tabSchritte = 0;
       for (let i = 0; i < 120; i += 1) {
         await page.keyboard.press("Tab");
         tabSchritte += 1;
         if (await feld.evaluate((el) => el === document.activeElement)) break;
       }
       await expect(feld, "das Fragefeld ist per Tabulator nicht erreichbar").toBeFocused();
-      sichtbar = await fokusSichtbar(page);
+      const sichtbar = await fokusSichtbar(page);
       expect(sichtbar, "das Fragefeld zeigt keinen sichtbaren Fokus").toBe(true);
+      tastatur.tabSchritte = tabSchritte;
+      tastatur.fokusSichtbar = sichtbar;
       await page.keyboard.type(frage);
     } else {
       await feld.click();
@@ -190,7 +193,7 @@ async function fragenAufgaben(page: Page, rolle: Rolle, aufgaben: Aufgabe[]): Pr
     await expect(feld).toHaveValue(frage);
     // KI-Lage vor dem Senden erkennbar (im Tor ohne Modell).
     await expect(page.getByTestId("ask-ki-flaechensatz")).toBeVisible();
-    return { tabSchritte, fokusSichtbar: sichtbar };
+    return tastatur;
   });
 
   // F3 — optionale Angabe setzen und zuklappen; die Frage bleibt.
