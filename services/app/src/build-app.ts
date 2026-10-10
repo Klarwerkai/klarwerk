@@ -189,7 +189,7 @@ import {
   PgObjectRepo,
   decodeDataUrl,
 } from "../../object-store";
-import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
+import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
 import { canChangeRole } from "../../rbac";
 import {
@@ -739,6 +739,10 @@ export interface AppServices {
   overlapSettings: OverlapSettingsRepo;
   library: LibraryService;
   output: OutputService;
+  // gesamt-dokumenterzeugung (R-0337, Nacharbeit 7): der Leseweg zum Validierungsnachweis für den
+  // Zuruf (KI-Entwurf) — dieselbe Auditablage wie beim `OutputService`. Optional: fehlt er, nennt
+  // der Entwurf das Prüfdatum „nicht belegt".
+  auditLeser?: AuditLeser;
   // produkt:wettbewerb:20261003:lernplattform: SCORM-1.2-Übergabe an eine Lernplattform.
   lmsExport: LmsExportService;
   management: ManagementService;
@@ -1745,7 +1749,10 @@ export function assembleServices(
     // JOB 3363: dieselbe Kandidaten-Ablage, die `library` oben bekommen hat — kein zweiter Bestand.
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
-    output: new OutputService({ koService: ko }),
+    // gesamt-dokumenterzeugung (R-0337): dieselbe Auditablage, damit das Prüfdatum je Quelle aus
+    // dem Validierungsnachweis belegt werden kann.
+    output: new OutputService({ koService: ko, audit: repos.auditRepo }),
+    auditLeser: repos.auditRepo,
     // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
     // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
     // der Betreiber fest (`KLARWERK_LMS_EMPFAENGER`); ohne Eintrag ist kein Export möglich.
@@ -3479,7 +3486,12 @@ export function buildApp(
   // (`services.zurufModell`); fehlt es, antwortet die Route ehrlich 503 `NO_FORMULIERER`.
   app.register(
     klaraZurufRoutes(
-      { sessions: klaraSessions, ko: services.ko, modell: services.zurufModell },
+      {
+        sessions: klaraSessions,
+        ko: services.ko,
+        modell: services.zurufModell,
+        ...(services.auditLeser ? { audit: services.auditLeser } : {}),
+      },
       guards,
     ),
   );

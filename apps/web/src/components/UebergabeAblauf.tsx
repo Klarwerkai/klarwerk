@@ -28,6 +28,7 @@ import {
   type Zugangsentscheidung,
   verantwortungApi,
 } from "../api/verantwortung";
+import { formatKoTimestamp } from "../lib/koDates";
 import { VerantwortungUebergabe } from "./VerantwortungUebergabe";
 import { Button } from "./ui";
 
@@ -775,7 +776,7 @@ function LetzteBilanz({
           className="text-trust-crit-text"
         >
           {t("uebergabeablauf.letzte.ausstehend", {
-            datum: new Date(ausstehend.at).toLocaleString(i18n.language),
+            datum: formatKoTimestamp(ausstehend.at, i18n.language) ?? "—",
           })}{" "}
           <BilanzZeile bilanz={ausstehend.vorher} testId="ablauf-ausstehend-vorher" />
         </div>
@@ -790,7 +791,7 @@ function LetzteBilanz({
         <div data-seq={letzte.seq} data-vollstaendig={letzte.vollstaendig ? "ja" : "nein"}>
           <div className="text-text">
             {t("uebergabeablauf.letzte.kopf", {
-              datum: new Date(letzte.at).toLocaleString(i18n.language),
+              datum: formatKoTimestamp(letzte.at, i18n.language) ?? "—",
               umfang: t(`uebergabeablauf.letzte.umfang.${letzte.umfang}`),
               name: letzte.actor.name ?? t("uebergabeablauf.unbekannt"),
             })}

@@ -36,6 +36,7 @@ import { ROLES, type Role } from "../app/navigation";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { UnternehmensKopf } from "../components/unternehmen/UnternehmensKopf";
 import { adminHref } from "../lib/adminSections";
+import { formatKoTimestamp } from "../lib/koDates";
 
 const FOKUS =
   "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink";
@@ -363,7 +364,7 @@ function ProfilBereich({ verwaltung }: { verwaltung: ProfilVerwaltung }): JSX.El
               <p className="text-text">
                 {t("unternehmen.profil.fassung", {
                   version: f.version,
-                  zeit: new Date(f.geaendertAm).toLocaleString(i18n.language),
+                  zeit: formatKoTimestamp(f.geaendertAm, i18n.language) ?? "—",
                   wer: name(f.geaendertVon),
                 })}
               </p>
@@ -682,7 +683,7 @@ function Protokoll({ id }: { id: string }): JSX.Element {
                   <td className="py-1 pr-3">{e.personName}</td>
                   <td className="py-1 pr-3">{e.fassung}</td>
                   <td className="py-1 pr-3">{t(`unternehmen.art.${e.handlung}`)}</td>
-                  <td className="py-1">{new Date(e.am).toLocaleString(i18n.language)}</td>
+                  <td className="py-1">{formatKoTimestamp(e.am, i18n.language)}</td>
                 </tr>
               ))}
             </tbody>
@@ -817,7 +818,7 @@ function RichtlinienBereich(): JSX.Element {
                   <li key={f.fassung} data-testid="verwaltung-fassung" data-fassung={f.fassung}>
                     {t("unternehmen.richtlinie.fassungZeile", {
                       fassung: f.fassung,
-                      zeit: new Date(f.veroeffentlichtAm).toLocaleString(i18n.language),
+                      zeit: formatKoTimestamp(f.veroeffentlichtAm, i18n.language) ?? "—",
                       verantwortlich: f.verantwortlich,
                       anforderung: t(`unternehmen.anforderung.${f.anforderung}`),
                     })}
