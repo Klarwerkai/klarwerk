@@ -167,13 +167,17 @@ export function freigaberegelnRoutes(
           });
           return;
         }
-        const sieht = (ko: Parameters<typeof darfSehen>[1]) => darfSehen(user, ko);
         try {
           const neu = await regelAus(request.body, space);
-          const ergebnis = await d.dienst.uebernehmen(space, neu, user, sieht, {
-            grundlage: body.grundlage,
-            begruendung: begruendung || null,
-          });
+          // Das Sichtbarkeitsurteil reist als Rückruf direkt in den Dienst — dieselbe Bauform wie an
+          // den anderen drei Routen, damit der Lesewege-Sammler es als ausgeführten Aufruf erkennt.
+          const ergebnis = await d.dienst.uebernehmen(
+            space,
+            neu,
+            user,
+            (ko) => darfSehen(user, ko),
+            { grundlage: body.grundlage, begruendung: begruendung || null },
+          );
           if (!ergebnis.ok) {
             if (ergebnis.grund === "unveraendert") {
               reply.code(400).send({
@@ -198,7 +202,11 @@ export function freigaberegelnRoutes(
             });
             return;
           }
-          const uebersicht = await d.dienst.uebersicht(ergebnis.fassung, sieht, true);
+          const uebersicht = await d.dienst.uebersicht(
+            ergebnis.fassung,
+            (ko) => darfSehen(user, ko),
+            true,
+          );
           reply.code(200).send({ ...uebersicht, angehoben: ergebnis.angehoben });
         } catch (e) {
           fehler(reply, e);

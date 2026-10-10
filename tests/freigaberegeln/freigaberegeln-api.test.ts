@@ -406,7 +406,9 @@ describe("ADMIN-09 · K3/K4/K5 · Prüfpunkt am Server: Prüferkreis, Selbstprü
     const ulli = await bewerte(b, b.k.ulli, koId, "up", 1);
     expect(ulli.statusCode).toBe(403);
     expect(ulli.json().error).toBe("NICHT_PRUEFBERECHTIGT");
-    expect((await bewerte(b, b.k.fritz, koId, "up", 1)).statusCode).toBe(403);
+    // Fritz ist in keinem Space: der Beitrag ist für ihn unsichtbar und antwortet wie ein
+    // unbekannter (404, Tor vor dem Recht) — weder Bewertung noch Existenzauskunft.
+    expect((await bewerte(b, b.k.fritz, koId, "up", 1)).statusCode).toBe(404);
     // Ohne genannte Fassung keine Zustimmung.
     const ohne = await bewerte(b, b.k.carla, koId, "up");
     expect(ohne.statusCode).toBe(400);
