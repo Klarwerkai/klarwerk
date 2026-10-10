@@ -1206,9 +1206,111 @@ export interface Gap {
   // services/ask/src/gap-belegbedarf.ts). Nur in der berechtigten Sicht; fehlt bei redigierten
   // Lücken und beim Altbestand — dann zeigt die Liste „unbestimmt" statt eines erfundenen Bedarfs.
   belegbedarf?: GapBelegbedarf[];
+  // produkt:20261010:wissenskreislauf-schliessen (Spiegel von `GapView`): wie eine geschlossene
+  // Lücke geschlossen wurde — fachlich gelöst oder administrativ zurückgenommen. Fehlt bei offenen
+  // Lücken und beim Altbestand.
+  abschlussArt?: "fachlich" | "administrativ";
+  // Nur in der berechtigten Sicht: eine Rückfrage an die Fragenden ist offen.
+  rueckfrageOffen?: true;
+  // Nur in der berechtigten Sicht: der Betrachter hat diese Frage selbst gestellt.
+  eigeneFrage?: true;
 }
 
 export type GapBelegbedarf = "wissensobjekt" | "freigabe" | "stufe" | "volltext" | "unbestimmt";
+
+// ================================================================================================
+// produkt:20261010:wissenskreislauf-schliessen — DER GEMEINSAME VORGANG EINER WISSENSLÜCKE.
+// ================================================================================================
+// Spiegel von `GapVorgangSicht` (services/ask/src/gap-vorgang.ts) — eigenständig getippt wie der
+// Rest dieser Datei; apps/web importiert nicht über die Modulgrenze nach services.
+export type GapVorgangsphase =
+  | "ohne_zustaendigkeit"
+  | "zustaendigkeit_nicht_verfuegbar"
+  | "rueckfrage_offen"
+  | "in_bearbeitung"
+  | "in_fachpruefung"
+  | "bereit_zum_abschluss"
+  | "geloest"
+  | "zurueckgenommen"
+  | "geschlossen_ohne_nachweis";
+
+export type GapVorgangsrolle = "fragend" | "zustaendig" | "verwaltend";
+
+export type GapNaechsterSchritt =
+  | "zustaendigkeit_uebergeben"
+  | "zustaendigkeit_zuordnen"
+  | "neu_zuordnen"
+  | "rueckfrage_beantworten"
+  | "antwort_auf_rueckfrage_abwarten"
+  | "antwortentwurf_erfassen"
+  | "fachpruefung_abwarten"
+  | "fachlich_abschliessen"
+  | "bearbeitung_abwarten"
+  | "ergebnis_lesen"
+  | "erneut_fragen"
+  | "keiner";
+
+export type NutzbarkeitsGrund =
+  | "nicht_vorhanden"
+  | "kein_zugriff"
+  | "nicht_freigegeben"
+  | "bewertungen_fehlen"
+  | "negative_bewertung"
+  | "abgelaufen"
+  | "quarantaene"
+  | "pruefstand_unbekannt";
+
+export type GapRuecknahmeGrund =
+  | "dublette"
+  | "nicht_beantwortbar"
+  | "ausser_zustaendigkeit"
+  | "zurueckgezogen";
+
+export interface GapVorgangEintrag {
+  koId: string;
+  titel: string;
+  koVersion: number;
+  status: "offen" | "validiert";
+  eigentuemer: string;
+  sichtbarkeit: string;
+  spaceGebunden: boolean;
+  quellen: number;
+  nutzbarkeit: {
+    nutzbar: boolean;
+    gruende: NutzbarkeitsGrund[];
+    koVersion: number | null;
+    benoetigt: number | null;
+    gruen: number | null;
+    rot: number | null;
+  };
+}
+
+export interface GapVorgang {
+  id: string;
+  question: string;
+  status: "offen" | "geschlossen";
+  phase: GapVorgangsphase;
+  rollen: GapVorgangsrolle[];
+  naechsterSchritt: GapNaechsterSchritt;
+  zustaendig: { id: string; verfuegbar: boolean | null } | null;
+  fragende: number;
+  askCount: number | null;
+  zuordnungen: { an: string; art: "zuordnung" | "uebergabe" | "neuzuordnung"; at: string }[];
+  rueckfragen: {
+    id: string;
+    frage: string;
+    at: string;
+    antwort?: string;
+    beantwortetAm?: string;
+    vonMirBeantwortet?: boolean;
+  }[];
+  entwurf: GapVorgangEintrag | { zugaenglich: false } | null;
+  ergebnis: GapVorgangEintrag | { zugaenglich: false } | null;
+  abschluss:
+    | { art: "fachlich"; at: string; koVersion: number }
+    | { art: "administrativ"; at: string; grund: GapRuecknahmeGrund }
+    | null;
+}
 
 // R-0773: eine eigene Suche ohne Treffer (`GET /api/library/nulltreffer`, nur die eigene Liste).
 export interface NulltrefferSuche {
@@ -2413,6 +2515,10 @@ export interface VerschlossenHinweis {
 export interface AskResponse {
   result: AnswerResult;
   gap: Gap | null;
+  // produkt:20261010:wissenskreislauf-schliessen: dieselbe Frage ist schon fachlich gelöst, und ihr
+  // Wissenseintrag trägt HEUTE für diesen Fragenden — dann entsteht keine neue Lücke (Spiegel von
+  // `AskResult.geloesteLuecke`). Fehlt sonst.
+  geloesteLuecke?: { koId: string; koVersion: number; titel: string };
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über die ausgelieferten Quell-KOs. Beim „Danke"
   // (/api/ask/helpful) zurückgereicht — der Server verifiziert die Quellen-Bindung serverseitig.
   receipt: string;
@@ -3708,7 +3814,9 @@ export type NotificationKind =
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
   | "frische"
   | "reklamation"
-  | "veroeffentlichung";
+  | "veroeffentlichung"
+  // produkt:20261010:wissenskreislauf-schliessen: Vorgang einer Wissenslücke (Unterart `lueckenArt`).
+  | "luecke";
 
 // R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht". Eigenständig getippt wie der Rest
 // dieser Datei — apps/web importiert nicht über die Modulgrenze nach services.
@@ -3752,6 +3860,9 @@ export interface Notification {
   // Veröffentlichung: neu oder Aktualisierung, und ob hervorgehoben gemeldet (nur bei diesem `kind`).
   art?: "neu" | "aktualisierung";
   hervorgehoben?: boolean;
+  // produkt:20261010:wissenskreislauf-schliessen: Unterart und Lücke einer `luecke`-Meldung.
+  lueckenArt?: "geloest" | "rueckfrage" | "rueckfrage_beantwortet";
+  gapId?: string;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH

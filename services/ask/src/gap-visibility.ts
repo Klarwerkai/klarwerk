@@ -1,4 +1,5 @@
 import type { ReasonerLocale } from "../../reasoner";
+import { istFragender } from "./gap-vorgang";
 import type { Gap, GapBelegbedarf, GapPriority } from "./types";
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): adressatengerechte Sichtbarkeit des Wissenslücken-
@@ -33,6 +34,15 @@ export interface GapView {
   belegbedarf?: GapBelegbedarf[];
   // true → der Fragetext wurde für diesen Betrachter zurückgehalten (fail-closed Redaktion).
   redacted?: boolean;
+  // produkt:20261010:wissenskreislauf-schliessen: WIE eine geschlossene Lücke geschlossen wurde —
+  // fachlich gelöst oder administrativ zurückgenommen. In BEIDEN Zweigen: die Art verrät keinen
+  // Inhalt, und ohne sie stünde eine Rücknahme in der Liste wie eine Lösung. Fehlt bei offenen
+  // Lücken und bei Altbestand ohne festgehaltenen Abschluss.
+  abschlussArt?: "fachlich" | "administrativ";
+  // Nur in der berechtigten Sicht: eine Rückfrage an die Fragenden ist unbeantwortet.
+  rueckfrageOffen?: true;
+  // Nur in der berechtigten Sicht: der Betrachter ist einer der Fragenden (Ersteller oder Wiederholer).
+  eigeneFrage?: true;
 }
 
 // R-0585 (DS6, Auftrag gesamt-datenschutz-voreinstellung): „Was jemand gefragt hat, sieht nur er
@@ -50,10 +60,13 @@ export interface GapViewerContext {
 // jeder Fall ohne ermittelbare Berechtigung erhalten eine redigierte Sicht (Kategorie/
 // Neutralbezeichnung über die vorhandenen Felder — Priorität/Status/Zeitpunkt bleiben, der
 // Fragetext NICHT).
+//
+// produkt:20261010:wissenskreislauf-schliessen: „der Fragende" ist seit der Dublettenzählung nicht
+// mehr nur der Ersteller — wer DIESELBE offene Frage später stellte, steht in `weitereFragende` und
+// sieht seinen eigenen Fragetext genauso (`istFragender`). Niemand sonst kommt dazu.
 export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView {
-  const authorized =
-    (gap.assignee !== null && gap.assignee === viewer.viewerId) ||
-    (gap.createdBy !== undefined && gap.createdBy === viewer.viewerId);
+  const fragend = istFragender(gap, viewer.viewerId);
+  const authorized = (gap.assignee !== null && gap.assignee === viewer.viewerId) || fragend;
   const base: GapView = {
     id: gap.id,
     question: "",
@@ -67,12 +80,17 @@ export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView 
     // fremdsprachiger Eintrag. Die Sprache ist datensparsam: sie sagt nichts über den Inhalt.
     ...(gap.locale ? { locale: gap.locale } : {}),
     ...(typeof gap.askCount === "number" ? { askCount: gap.askCount } : {}),
+    ...(gap.status === "geschlossen" && gap.abschluss ? { abschlussArt: gap.abschluss.art } : {}),
   };
   if (authorized) {
     return {
       ...base,
       question: gap.question,
       ...(gap.belegbedarf?.length ? { belegbedarf: [...gap.belegbedarf] } : {}),
+      ...((gap.rueckfragen ?? []).some((r) => r.antwort === undefined)
+        ? { rueckfrageOffen: true as const }
+        : {}),
+      ...(fragend ? { eigeneFrage: true as const } : {}),
     };
   }
   return { ...base, redacted: true };
