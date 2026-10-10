@@ -22,6 +22,8 @@ const SCHALTER_VARIABLEN = [
   // `schalterLeeren()` sie stehen, und der VORGABE-Fall unten prüfte die Umgebung des Laufs statt
   // die Vorgabe.
   "KLARWERK_SHAREPOINT_IMPORT",
+  // R-0170: die dritte Quelle (Jira), aus demselben Grund wie SharePoint.
+  "KLARWERK_JIRA_IMPORT",
   "KLARWERK_EXPERT_MATCHING",
   // AUFTRAG-mega61: die zwei Notausschalter. Sie stehen hier, weil auch ihr Wert nie über den
   // Draht gehen darf — und weil `schalterLeeren()` unten sonst die VORGABE nicht prüfen könnte.
@@ -49,6 +51,8 @@ const VORGABE = {
   // JOB 4086: eine zweite Quelle, dieselbe Richtung — eine Fähigkeit, die niemand freigegeben hat,
   // ist AUS. Dass dieser Wert hier `false` steht, ist selbst die Zusage.
   sharepointImport: false,
+  // R-0170: Jira ebenso — eine Fähigkeit, die niemand freigegeben hat, ist AUS.
+  jiraImport: false,
   expertMatching: false,
   rechtsseiten: true,
   hinweisbanner: true,
@@ -123,6 +127,7 @@ describe("mega46 F1 · die Auskunft über die gesetzten Schalter", () => {
     expect(Object.keys(features)).not.toContain("herkunft");
     expect(Object.keys(features)).not.toContain("confluenceImport");
     expect(Object.keys(features)).not.toContain("sharepointImport");
+    expect(Object.keys(features)).not.toContain("jiraImport");
     expect(Object.keys(features)).not.toContain("expertMatching");
     // JOB 3761: und kein Wort über die Werkzeuge — `demodaten` bleibt draußen, obwohl der
     // Nachbarschalter `demoInstanz` jetzt drin ist. Zwei „Demo"-Schalter, zwei Zuständigkeiten.

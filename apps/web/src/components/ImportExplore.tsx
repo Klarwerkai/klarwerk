@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { ImportExploreResponse } from "../api/types";
+import type { ImportAccessStatus, ImportExploreResponse } from "../api/types";
 import { displayImportText } from "../lib/htmlEntities";
 import {
   type ExploreView,
@@ -28,13 +28,16 @@ import {
   toExploreView,
 } from "../lib/importExplore";
 import { JSON_SOURCE_IDS } from "../lib/importSourceGallery";
+import { integrationStatus } from "../lib/integrationStatus";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { usePersistentString } from "../lib/usePersistentValue";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 import { ImportSelect, registriereRahmenTexte } from "./ImportSelect";
 // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie (Systeme + Dateien) mit Zustandsbadges.
 import { ImportSourceGallery } from "./ImportSourceGallery";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (1 Quelle · 2 Erkunden) + Meilenstein-Meldung an die Leiste.
 import { ImportStepHeading, useImportSource, useReportImportStage } from "./ImportStepper";
+import { sharepointApi } from "./sharepoint-import/api";
 import { Button, Card, TextInput } from "./ui";
 
 // ================================================================================================
@@ -532,7 +535,11 @@ function ExploreMap({
       ) : null}
 
       {view.totalCount === 0 ? (
-        <p className="mt-3 text-[12.5px] text-muted-2">{t("imp.explore.empty")}</p>
+        <>
+          <p className="mt-3 text-[12.5px] text-muted-2">{t("imp.explore.empty")}</p>
+          {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+          {leerzustandsZeile(t, "import")}
+        </>
       ) : null}
 
       {/* IC-3: prompt-/filtergesteuerte Auswahl-Vorschau — die Chips der Landkarte sind die Filter.
@@ -612,6 +619,30 @@ export function ImportExplore(): JSX.Element {
   const explore = useMutation<ImportExploreResponse>({
     mutationFn: () => endpoints.admin.import.explore(),
   });
+  // ADMIN-02: der Zustand der SharePoint-Anbindung für die Galeriekachel. GELESEN wird nur der
+  // Abfragespeicher, den der SharePoint-Bereich derselben Seite füllt (`enabled: false`) — kein
+  // zweiter Abruf, keine zweite Rechteprüfung. Scheitert die Auskunft oder liegt keine vor, bleibt
+  // die Kachel beim statischen „verfügbar"; eine alte Antwort neben einem Fehler gilt nicht.
+  const sharepointZugang = useQuery({
+    queryKey: ["sharepoint-zugang"],
+    queryFn: sharepointApi.zugang,
+    enabled: false,
+  });
+  const sharepointStatus =
+    sharepointZugang.data && !sharepointZugang.isError
+      ? integrationStatus(sharepointZugang.data)
+      : null;
+  // ADMIN-02 (Nacharbeit 2): dasselbe für Confluence — gelesen aus dem Abfragespeicher, den der
+  // Zugangskasten derselben Seite füllt (`ImportAccessPanel`, `useImportAccessConfluence`).
+  const confluenceZugang = useQuery<ImportAccessStatus | null>({
+    queryKey: ["import-access", "confluence"],
+    queryFn: () => endpoints.importAccess.confluence(),
+    enabled: false,
+  });
+  const confluenceStatus =
+    confluenceZugang.data && !confluenceZugang.isError
+      ? integrationStatus(confluenceZugang.data)
+      : null;
 
   const view = explore.data ? toExploreView(explore.data.summary) : null;
   const errorMessage = explore.error instanceof ApiError ? explore.error.message : t("state.error");
@@ -758,7 +789,11 @@ export function ImportExplore(): JSX.Element {
           Erkundung, JSON oeffnet den bestehenden Datei-Dialog. „bald"/„geplant" zeigen nur einen
           ehrlichen Hinweis — kein Import, kein Formular, kein Fortschritt. */}
       <div className="mt-2 pl-8" ref={galerieRef} onClickCapture={merkeRueckkehrpunkt}>
-        <ImportSourceGallery onActivate={handleActivate} />
+        <ImportSourceGallery
+          onActivate={handleActivate}
+          sharepointStatus={sharepointStatus}
+          confluenceStatus={confluenceStatus}
+        />
       </div>
 
       {/* AUFTRAG-mega32 H2: Was nicht zur gewählten Quelle gehört, verschwindet. Bei JSON tun die

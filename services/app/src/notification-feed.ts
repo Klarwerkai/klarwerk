@@ -1,18 +1,68 @@
 import type { GapView } from "../../ask";
 import type { Conflict, OverlapEntry } from "../../conflicts";
 import type { AssignmentNotice } from "../../validation";
+import type { LoeschantragMeldung } from "./loeschantraege";
 
 // In-App-Benachrichtigungen (Abstimmpunkt 2). Das notifications-Modul versendet
 // nur E-Mail; die Glocke/Popover-Quelle wird hier aus vorhandenen Signalen mit
 // Zeitstempel aggregiert: offene Konflikte, offene Wissenslücken und — SCRUM-363 —
 // die persönlichen offenen Review-Zuweisungen der aktuellen Person.
+// R-0894: `escalation` (eskalierter Wahrheitskonflikt) und `return` (Rückgabe zur Nacharbeit an die
+// verantwortliche Person) sind eigene Arten — vorher liefen sie als gewöhnlicher Konflikt bzw. als
+// „Review für dich" mit dem Sprungziel der Prüfliste.
 export type NotificationKind =
   | "conflict"
+  | "escalation"
   | "duplicate"
   | "gap"
   | "assignment"
+  | "return"
   | "impact"
-  | "kenntnisnahme";
+  | "kenntnisnahme"
+  | "loeschantrag"
+  // aufnahme:20260922:gesamt-wissen-frische: persönliche Zustellung an die verantwortliche Person —
+  // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
+  // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
+  | "frische"
+  | "reklamation"
+  | "veroeffentlichung";
+
+// R-1089: eine Meldung „Antwort falsch / Quelle passt nicht" an die verantwortliche Person des
+// zitierten Wissensobjekts. Quelle: Audit-Einträge `answer.reported`, deren `responsible` der
+// Betrachter ist. Wer gemeldet hat, steht NICHT darin — die Meldung ist ein Hinweis an das Objekt,
+// keine Anzeige gegen eine Person; der Fragetext reist ebenfalls nicht mit.
+export interface ReklamationNotice {
+  meldungId: string;
+  koId: string;
+  title: string;
+  grund: "antwort-falsch" | "quelle-passt-nicht";
+  at: string;
+}
+
+/** aufnahme:20260922:gesamt-wissen-frische — eine persönliche Frische-Meldung (s. frische-meldungen.ts). */
+export interface FrischeNotice {
+  art: "frist" | "vorlage" | "anlage";
+  /** Eindeutig je Anlass — ein neuer Anlass (neue Frist, neue Woche, neue Markierung) ist ungelesen. */
+  schluessel: string;
+  koId: string;
+  title: string;
+  at: string;
+  /** Nur bei `frist`: die Haltbarkeit ist bereits abgelaufen. */
+  ueberfaellig?: boolean;
+}
+
+// Veröffentlichung (produkt:20261007:veroeffentlichungsoptionen): eine bei „normal" oder
+// „hervorgehoben" veröffentlichte Fassung, deren Empfängerkreis die aktuelle Person enthält. Bereits
+// auf den Betrachter und über die Sichtbarkeit gefiltert (Route) — „still" kommt hier nie an.
+export interface VeroeffentlichungNotice {
+  vermerkId: string;
+  koId: string;
+  title: string;
+  fassung: number;
+  art: "neu" | "aktualisierung";
+  hervorgehoben: boolean;
+  at: string;
+}
 
 // Kenntnisnahme: eine offene Anforderung an die aktuelle Person. Bereits auf den Betrachter UND
 // über die Sichtbarkeit gefiltert (Route) — hier wird nichts nachgeprüft und nichts erfunden.
@@ -51,6 +101,19 @@ export interface Notification {
   fassung?: number;
   erinnerung?: boolean;
   ueberfaellig?: boolean;
+  // Löschantrag (R-0661): die Frist der Verwalteraufgabe. Nur bei `kind: "loeschantrag"` gesetzt;
+  // `ueberfaellig` gilt dort ebenso.
+  fristBis?: string;
+  // R-1089: Meldegrund und Meldungsnummer (dieselbe, die der Meldende quittiert bekam). Nur bei
+  // `kind: "reklamation"` gesetzt.
+  grund?: ReklamationNotice["grund"];
+  meldungId?: string;
+  // aufnahme:20260922:gesamt-wissen-frische: die Unterart einer `frische`-Meldung.
+  frischeArt?: FrischeNotice["art"];
+  // Veröffentlichung: neu oder Aktualisierung, und ob sie hervorgehoben gemeldet wurde. Nur bei
+  // `kind: "veroeffentlichung"` gesetzt (`fassung` trägt dort die veröffentlichte Fassung).
+  art?: "neu" | "aktualisierung";
+  hervorgehoben?: boolean;
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
@@ -75,8 +138,62 @@ export function buildNotifications(input: {
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
   overlaps?: (OverlapEntry & { redacted?: boolean })[];
   kenntnisnahmen?: KenntnisnahmeNotice[];
+  // Löschanträge (R-0661): die offenen Anträge als Aufgabe der Verwaltung. Die Route reicht sie NUR
+  // für Betrachter mit `users.manage` herein — hier wird keine Berechtigung nachgeprüft.
+  loeschantraege?: LoeschantragMeldung[];
+  reklamationen?: ReklamationNotice[];
+  // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
+  // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
+  frische?: FrischeNotice[];
+  veroeffentlichungen?: VeroeffentlichungNotice[];
 }): Notification[] {
   const items: Notification[] = [];
+  // Je Antrag EIN Eintrag. Wird er überfällig, bekommt er eine neue Kennung, damit er wieder als
+  // ungelesen erscheint — dieselbe Regel wie die Erinnerung der Kenntnisnahme.
+  for (const l of input.loeschantraege ?? []) {
+    items.push({
+      id: l.ueberfaellig ? `loeschantrag-${l.antragId}-ueberfaellig` : `loeschantrag-${l.antragId}`,
+      kind: "loeschantrag",
+      title: l.name,
+      at: l.at,
+      fristBis: l.fristBis,
+      ueberfaellig: l.ueberfaellig,
+    });
+  }
+  for (const r of input.reklamationen ?? []) {
+    items.push({
+      id: `rek-${r.meldungId}`,
+      kind: "reklamation",
+      title: r.title,
+      at: r.at,
+      koId: r.koId,
+      grund: r.grund,
+      meldungId: r.meldungId,
+    });
+  }
+  for (const f of input.frische ?? []) {
+    items.push({
+      id: `frische-${f.schluessel}`,
+      kind: "frische",
+      title: f.title,
+      at: f.at,
+      koId: f.koId,
+      frischeArt: f.art,
+      ...(f.ueberfaellig ? { ueberfaellig: true } : {}),
+    });
+  }
+  for (const v of input.veroeffentlichungen ?? []) {
+    items.push({
+      id: `pub-${v.vermerkId}`,
+      kind: "veroeffentlichung",
+      title: v.title,
+      at: v.at,
+      koId: v.koId,
+      fassung: v.fassung,
+      art: v.art,
+      hervorgehoben: v.hervorgehoben,
+    });
+  }
   // Je Anforderung EIN Eintrag. Eine Erinnerung bekommt eine neue Kennung (mit ihrem Zeitpunkt),
   // damit sie wieder als ungelesen erscheint — sie ersetzt den Eintrag, statt einen zweiten
   // daneben zu stellen.
@@ -104,9 +221,12 @@ export function buildNotifications(input: {
   for (const c of input.conflicts) {
     // JOB 1125: `description` beschreibt den Widerspruch zwischen beiden Aussagen — bei redigiertem
     // Konflikt bleibt der Titel leer und der Marker trägt die Aussage.
+    // R-0894: ein eskalierter Konflikt bekommt eine eigene Kennung — die Eskalation ist neu, auch
+    // wenn der Konflikt vorher schon gesehen war, und erscheint deshalb wieder als ungelesen.
+    const eskaliert = c.status === "eskaliert";
     items.push({
-      id: `con-${c.id}`,
-      kind: "conflict",
+      id: eskaliert ? `esc-${c.id}` : `con-${c.id}`,
+      kind: eskaliert ? "escalation" : "conflict",
       title: c.redacted ? "" : c.description,
       at: c.createdAt,
       ...(c.redacted ? { redacted: true } : {}),
@@ -145,9 +265,11 @@ export function buildNotifications(input: {
     }
   }
   for (const a of input.assignments ?? []) {
+    // R-0894: eine Rückgabe trägt ihren Zeitpunkt in der Kennung — eine zweite Rückgabe desselben
+    // Objekts ist ein neuer, ungelesener Hinweis.
     items.push({
-      id: `assign-${a.koId}`,
-      kind: "assignment",
+      id: a.rueckgabe ? `ret-${a.koId}-${a.at}` : `assign-${a.koId}`,
+      kind: a.rueckgabe ? "return" : "assignment",
       title: a.title,
       at: a.at,
       koId: a.koId,

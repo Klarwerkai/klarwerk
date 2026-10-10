@@ -12,6 +12,14 @@
 // Seite in `woerterbuch/`). EN und NL meiden bewusst die Suchschlüssel und Zielstämme der
 // Synonymkarte (`KLARA_SYNONYMS`), deren fremdsprachige Wirkung `tests/help/klara-registry.test.ts`
 // namentlich festhält — ein neuer Eintrag soll dort keine ungezählte Wirkung erzeugen.
+//
+// R-0923 · WO DER SCHALTER WIRKLICH STEHT. Die Sperrkarte (`Stage2Notice.tsx`) und der Startpunkt
+// (`StartPanel.tsx`, Punkt „stufe2") schickten eine Admin-Person „in die Seitenleiste". Die gibt es
+// seit JOB 3060 nicht mehr (`tests/design/zielbild-h1-kein-erklaertext.test.ts`), und das Häkchen
+// „Erweiterte Module" steht seit JOB 3337 unter Admin · System (`pages/Admin.tsx`, `zeile-stufe2`).
+// Die zwei Sätze unten nennen genau diesen Ort, mit denselben Wörtern wie `einst.modul.weg`.
+// Neue Schlüssel statt geänderter Werte: die alten Werte sind im Textschnappschuss
+// (`tests/i18n-textmodule/werte-vorher.json`) samt Prüfsumme festgehalten.
 import type { Textmodul } from "./intern/pruefung";
 
 export default {
@@ -26,6 +34,10 @@ export default {
       "Der Bestand als Bild: jeder Punkt ist ein Wissensobjekt, graue Linien heißen gemeinsames Schlagwort, rot gestrichelte einen gemeldeten Widerspruch. Ein Klick auf einen bekannten Punkt öffnet das Objekt.",
     "zweitestufe.klara.kapital":
       "Der Bestand in Zahlen: wie viel Wissen da ist, wie viel davon geprüft und was offen ist — dazu eine Wertschätzung, deren Annahmen du selbst einträgst, und Übersichten zu Modellläufen und Belegen.",
+    "zweitestufe.gate.adminOnly":
+      "Stufe 2 kann eine Admin-Person unter System · Erweiterte Module einschalten.",
+    "zweitestufe.start.body":
+      "Stufe 2 sind zusätzliche Module über den Kernablauf hinaus. Als Admin stehen dir erweiterte Funktionen zur Verfügung: {{features}}. Schalte dazu „{{toggle}}“ unter System ein.",
   },
   en: {
     "zweitestufe.klara.output":
@@ -36,6 +48,9 @@ export default {
       "The holdings as a picture: every dot is a knowledge object, grey lines mean a shared tag, red dashed lines a reported contradiction. Clicking a known dot opens that object.",
     "zweitestufe.klara.kapital":
       "The holdings in figures: how much knowledge there is, how much has been checked and what is still open — plus a value estimate whose assumptions you enter yourself, and overviews of model runs and evidence.",
+    "zweitestufe.gate.adminOnly": "An admin can turn on stage 2 under System · Advanced modules.",
+    "zweitestufe.start.body":
+      "Stage 2 are additional modules beyond the core flow. As an admin you have advanced features available: {{features}}. Turn on '{{toggle}}' under System to show them.",
   },
   nl: {
     "zweitestufe.klara.output":
@@ -46,5 +61,9 @@ export default {
       "Het bestand als beeld: elk punt is een kennisobject, grijze lijnen betekenen een gedeeld trefwoord, rode stippellijnen een gemelde tegenspraak. Een klik op een bekend punt opent dat object.",
     "zweitestufe.klara.kapital":
       "Het bestand in cijfers: hoeveel kennis er is, hoeveel daarvan gecontroleerd is en wat nog open staat — plus een waardeschatting waarvan je de aannames zelf invult, en overzichten van modelruns en bewijs.",
+    "zweitestufe.gate.adminOnly":
+      "Een admin kan fase 2 inschakelen bij Systeem · Uitgebreide modules.",
+    "zweitestufe.start.body":
+      "Fase 2 zijn extra modules naast de kernstroom. Als admin heb je uitgebreide functies tot je beschikking: {{features}}. Zet daarvoor „{{toggle}}” aan bij Systeem.",
   },
 } satisfies Textmodul;

@@ -38,6 +38,9 @@ const TILE_CLASS: Record<SourceState, string> = {
   // Faehigkeit existiert und die Kachel fuehrt wirklich dorthin. Deshalb traegt sie die Optik der
   // aktiven Kachel und nicht die gedaempfte der geplanten.
   elsewhere: "border-ink/30 bg-surface text-text hover:border-ink/50 hover:bg-hairline-soft",
+  // ADMIN-02: gebaut, Stand dieser Installation unbekannt oder ungeprüft — die Kachel führt zu der
+  // Auskunft, die es sagt. Optik einer begehbaren Kachel, aber kein „aktiv".
+  available: "border-ink/20 bg-surface text-text hover:border-ink/40 hover:bg-hairline-soft",
   // AUFTRAG-mega15 Block D (SCRUM-382): vorhanden, aber ohne hinterlegten Dienst nicht nutzbar —
   // optisch naeher an „bald" als an „geplant", denn gebaut IST es. Aktivierbar ist es trotzdem nicht.
   unconfigured: "border-hairline bg-page text-muted hover:border-ink/25",
@@ -48,6 +51,7 @@ const TILE_CLASS: Record<SourceState, string> = {
 const BADGE_CLASS: Record<SourceState, string> = {
   active: "bg-trust-pos-bg text-trust-pos-text",
   elsewhere: "bg-trust-pos-bg text-trust-pos-text",
+  available: "bg-hairline-soft text-muted",
   unconfigured: "bg-trust-warn-bg text-trust-warn-text",
   soon: "bg-trust-warn-bg text-trust-warn-text",
   planned: "bg-hairline-soft text-muted-2",
@@ -83,8 +87,8 @@ function defaultIconFor(source: GallerySource): ReactNode {
 // („Bei 390 px verdeckt der Status teilweise den Quellnamen").
 //
 // DIE REGEL: unterhalb von `sm` steht das Badge in EIGENER Zeile unter dem Namen, und der Name darf
-// umbrechen statt zu kuerzen (`sm:truncate` statt `truncate`). Ab `sm` bleibt alles, wie es war —
-// dieselbe Reihe, dieselben Abstaende, dieselbe Kuerzung. Die Verschachtelung ist bewusst so
+// umbrechen statt zu kuerzen (damals `sm:truncate` statt `truncate`; seit Audit nacharbeit-11 bricht
+// der Name in jeder Breite um, WCAG 1.4.12). Ab `sm` bleibt die Reihe dieselbe — dieselben Abstaende. Die Verschachtelung ist bewusst so
 // gewaehlt, dass sie ab `sm` geometrisch identisch zur alten ist: aussen eine Reihe aus
 // [Icon+Name] und [Badge] mit `gap-2`, innen Icon und Name mit `gap-2`.
 //
@@ -92,8 +96,11 @@ function defaultIconFor(source: GallerySource): ReactNode {
 // noch Schritte kostet — der sichtbaren Wegzeile. Die Reihe traegt `w-full`, ist also ab `sm`
 // geometrisch dieselbe Reihe wie zuvor (gemessen in `kachel-schmal-chromium.test.ts`, Fall D1:
 // Badge steht weiterhin rechts vom Namen in derselben Zeile).
+// WCAG 1.4.11 (Audit nacharbeit-38): der Fokusring war `ring-brand/40` — Marke zu 40 % maß im
+// modernen Thema auf Weiß 1,62:1. Jetzt das deckende Marken-TEXT-Token wie die globale Fokusregel
+// (index.css), ≥ 5:1 auf hellen Flächen.
 const TILE_LAYOUT =
-  "flex flex-col items-start gap-1 rounded-card border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus:outline-none focus-visible:border-ink/50 focus-visible:ring-2 focus-visible:ring-brand/40";
+  "flex flex-col items-start gap-1 rounded-card border px-3 py-2.5 text-left text-[13px] font-semibold transition-colors focus:outline-none focus-visible:border-ink/50 focus-visible:ring-2 focus-visible:ring-brand-text";
 
 function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }): JSX.Element {
   const { t } = useTranslation();
@@ -109,8 +116,11 @@ function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }
           <span aria-hidden className="shrink-0 text-muted-2">
             {icon}
           </span>
-          {/* Schmal: umbrechen (der volle Name bleibt SICHTBAR). Ab `sm`: kuerzen wie bisher. */}
-          <span data-tile-name className="min-w-0 flex-1 break-words sm:truncate">
+          {/* Der Name bricht in JEDER Breite um, statt gekürzt zu werden: der volle Name bleibt
+              sichtbar. WCAG 1.4.12 (Audit nacharbeit-11): ab `sm` stand hier `truncate` — mit
+              größerem Textabstand endeten „PDF-Datei (.pdf)" und „OCR (Scan/Bild)" in „…", und der
+              volle Name stand nirgends sonst. Das Badge bleibt ab `sm` rechts in derselben Reihe. */}
+          <span data-tile-name className="min-w-0 flex-1 break-words">
             {t(source.labelKey)}
           </span>
         </span>
@@ -119,7 +129,8 @@ function TileInhalt({ source, icon }: { source: GallerySource; icon: ReactNode }
           data-tile-badge
           className={`shrink-0 rounded-pill px-1.5 py-0.5 text-[10px] font-medium ${BADGE_CLASS[source.state]}`}
         >
-          {t(STATE_BADGE_KEY[source.state])}
+          {/* ADMIN-02: trägt die Kachel den Zustand dieser Installation, sagt das Abzeichen ihn. */}
+          {t(source.badgeKey ?? STATE_BADGE_KEY[source.state])}
         </span>
       </span>
       {/* Die zwei Schritte, die auf der Zielflaeche noch zu gehen sind — im Wortlaut DIESER Flaeche.
@@ -153,6 +164,7 @@ function Tile({
   const marken = {
     "data-id": source.id,
     "data-state": source.state,
+    ...(source.status ? { "data-status": source.status } : {}),
     onClick,
   };
   // Die KLASSE steht ausdruecklich an beiden Elementen und NICHT im gemeinsamen Attributobjekt:
@@ -164,7 +176,7 @@ function Tile({
     // Das Badge sagt in zwei Woertern, WO es weitergeht; der ausgeschriebene Satz steht am Link.
     // Er ist derselbe, den eine Kachel OHNE Ziel als Hinweis zeigt (`hintKeyFor`) — ein Text, zwei
     // Tueren, keine zweite Formulierung derselben Wahrheit.
-    const hinweis = hintKeyFor(source.state);
+    const hinweis = source.hintKey ?? hintKeyFor(source.state);
     return (
       <a
         href={href}
@@ -276,7 +288,11 @@ export function FileTypePicker({
     if (hrefFor(source) !== null) {
       return;
     }
-    if (source.state === "active") {
+    // ADMIN-02 (Nacharbeit 2): „verfügbar" (gebaut, eingerichtet oder noch ungeprüft) löst den
+    // vorhandenen Fluss ebenso aus wie „aktiv" — die Kachel behauptet damit nur keine geprüfte
+    // Einsatzbereitschaft mehr. Ausgeschaltete und uneingerichtete Anbindungen tragen
+    // „unconfigured" und zeigen weiterhin nur den Hinweis.
+    if (source.state === "active" || source.state === "available") {
       setHint(null);
       onHintChange?.(null);
       onActivate(source.id);
@@ -286,10 +302,10 @@ export function FileTypePicker({
     // `setHint((prev) => …)` liefe im StrictMode zweimal und meldete den Hinweis doppelt nach oben.
     const naechster = hint?.id === source.id ? null : source;
     setHint(naechster);
-    onHintChange?.(naechster ? hintKeyFor(naechster.state) : null);
+    onHintChange?.(naechster ? (naechster.hintKey ?? hintKeyFor(naechster.state)) : null);
   };
 
-  const hintKey = hint ? hintKeyFor(hint.state) : null;
+  const hintKey = hint ? (hint.hintKey ?? hintKeyFor(hint.state)) : null;
   // Die Reihenfolge innerhalb beider Mengen bleibt die von orderByState — hier wird nur GETRENNT,
   // nicht neu sortiert.
   const visible = collapsePlanned ? sources.filter((s) => s.state !== "planned") : sources;

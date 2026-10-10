@@ -73,6 +73,13 @@ import {
 // Kleinschreibung des restlichen Ausdrucks) — sie matcht NUR die alte, unbegrenzte Variante: die gehärtete
 // Ersatz-Expression `^[0-9]{1,9}$` enthält diese Teilzeichenkette NICHT (nach der `9]` folgt `{1,9}$`,
 // nicht `+$`), die Heilung bleibt also idempotent (kein erneutes Triggern nach der Härtung).
+// R-1653 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): neun Stellen waren zu eng — der
+// SharePoint-Quellstand (Sekunden seit 1970) hat zehn und fiel hier auf den Fallback 1. Damit
+// teilten sich verschiedene Fassungen derselben Datei EINEN Idempotenzplatz, während die
+// InMemory-Ablage sie unterschied. Die Spalte ist deshalb `bigint` mit `^[0-9]{1,15}$` (wortgleich
+// `MAX_SOURCE_VERSION`, repo.ts). Die Heilung erkennt die Neun-Stellen-Fassung an `{1,9}` und baut
+// Spalte und Index neu auf; die neue Fassung enthält weder `{1,9}` noch `[0-9]+$` noch COALESCE,
+// ein zweiter Lauf greift also nicht. Jeder Wert bis neun Stellen ergibt dieselbe Zahl wie vorher.
 // ==================================================================================================
 // JOB 3424 (Q2d) — DIE LEERE KENNUNG WAR AUF BEIDEN SEITEN DERSELBEN REGEL ETWAS ANDERES.
 // ==================================================================================================
@@ -164,22 +171,22 @@ BEGIN
     AND a.attname = 'source_version'
     AND NOT a.attisdropped;
 
-  IF legacy_expr LIKE '%COALESCE%' OR legacy_expr LIKE '%[0-9]+$%' THEN
+  IF legacy_expr LIKE '%COALESCE%' OR legacy_expr LIKE '%[0-9]+$%' OR legacy_expr LIKE '%{1,9}%' THEN
     SELECT string_agg(DISTINCT i.indexrelid::regclass::text, ', ') INTO dependent_indexes
     FROM pg_index i
     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attname = 'source_version'
     WHERE i.indrelid = 'import_candidates'::regclass
       AND a.attnum = ANY(i.indkey);
 
-    RAISE NOTICE 'import_candidates: cast-unsichere/unbegrenzte source_version-Expression erkannt — Spalte wird neu aufgebaut, abhängige Indizes (%) folgen (SCRUM-510 WP-B/WP-B2)', COALESCE(dependent_indexes, '-');
+    RAISE NOTICE 'import_candidates: cast-unsichere/unbegrenzte/zu enge source_version-Expression erkannt — Spalte wird neu aufgebaut, abhängige Indizes (%) folgen (SCRUM-510 WP-B/WP-B2, R-1653)', COALESCE(dependent_indexes, '-');
     ALTER TABLE import_candidates DROP COLUMN source_version CASCADE;
   END IF;
 END $$;
 ALTER TABLE import_candidates
-  ADD COLUMN IF NOT EXISTS source_version integer
+  ADD COLUMN IF NOT EXISTS source_version bigint
   GENERATED ALWAYS AS (
-    CASE WHEN (data->'item'->>'sourceVersion') ~ '^[0-9]{1,9}$'
-         THEN (data->'item'->>'sourceVersion')::int
+    CASE WHEN (data->'item'->>'sourceVersion') ~ '^[0-9]{1,15}$'
+         THEN (data->'item'->>'sourceVersion')::bigint
          ELSE 1 END
   ) STORED;
 ALTER TABLE import_candidates
@@ -564,9 +571,9 @@ ALTER TABLE external_source_records
 -- Die Bedingung ist deshalb ZWEISTUFIG und spiegelt Satz fuer Satz die Anwendungspruefung:
 --   · der CHECK weist einen unvollstaendigen Datensatz schon beim Insert ab (SQLSTATE 23514),
 --   · die drei NOT-NULL-Spalten schliessen die NULL-Luecke des Unique-Index STRUKTURELL.
--- Die Versionsregel ^[0-9]{1,9}$ ist wortgleich die Grenze aus MAX_SOURCE_VERSION (repo.ts):
--- ganzzahlig, nicht negativ, hoechstens neun Stellen — dieselbe Lehre wie bei source_version oben,
--- nur hier ohne jeden Cast.
+-- Die Versionsregel ^[0-9]{1,15}$ ist wortgleich die Grenze aus MAX_SOURCE_VERSION (repo.ts):
+-- ganzzahlig, nicht negativ, hoechstens fuenfzehn Stellen — dieselbe Lehre wie bei source_version
+-- oben, nur hier ohne jeden Cast.
 --
 -- ADDITIV UND WIEDERHOLBAR: der CHECK haengt an einer Existenzpruefung (ADD CONSTRAINT kennt kein
 -- IF NOT EXISTS), SET NOT NULL ist von sich aus ein No-op, wenn die Spalte es schon ist. Nichts
@@ -575,6 +582,26 @@ ALTER TABLE external_source_records
 -- EHRLICH BENANNT: traefe eine Bestandsinstanz wider Erwarten eine Zeile ohne vollstaendige
 -- Identitaet, SCHLUEGE DIESE MIGRATION FEHL statt sie stillschweigend zu loeschen oder zu heilen.
 -- Das ist die Haltung des ganzen Repositorys — lieber laut stehenbleiben als leise etwas erfinden.
+--
+-- R-1653 — DIE REGEL WIRD WEITER, NICHT ENGER. Bestandsinstanzen tragen die Fassung mit {1,9}; sie
+-- wies jeden SharePoint-Quellstand (Sekunden seit 1970, zehn Stellen) ab. Der erste Block erkennt
+-- genau diese Fassung an ihrem Regeltext und nimmt sie weg, der zweite legt sie mit {1,15} unter
+-- demselben Namen neu an. Jede Zeile, die die alte Regel erfuellte, erfuellt die neue — die
+-- Neuanlage kann am Bestand nicht scheitern, und es wird keine Zeile beruehrt. Ein zweiter Lauf
+-- findet {1,9} nicht mehr und tut nichts.
+DO $$
+DECLARE
+  alte_regel text;
+BEGIN
+  SELECT pg_get_constraintdef(c.oid) INTO alte_regel
+    FROM pg_constraint c
+   WHERE c.conname = 'external_source_records_identitaet_ck'
+     AND c.conrelid = 'external_source_records'::regclass;
+  IF alte_regel IS NOT NULL AND alte_regel LIKE '%{1,9}%' THEN
+    RAISE NOTICE 'external_source_records: Versionsregel mit neun Stellen wird auf fuenfzehn erweitert (R-1653)';
+    ALTER TABLE external_source_records DROP CONSTRAINT external_source_records_identitaet_ck;
+  END IF;
+END $$;
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -587,7 +614,7 @@ BEGIN
         btrim(source_record_id) <> ''
         AND btrim(coalesce(data->>'sourceSystem', '')) <> ''
         AND btrim(coalesce(data->>'externalId', '')) <> ''
-        AND coalesce(data->>'sourceVersion', '') ~ '^[0-9]{1,9}$'
+        AND coalesce(data->>'sourceVersion', '') ~ '^[0-9]{1,15}$'
       );
   END IF;
 END $$;
