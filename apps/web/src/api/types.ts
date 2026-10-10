@@ -1155,6 +1155,21 @@ export interface Gap {
   // einen fremdsprachigen Eintrag wie einen Fehler aussehen zu lassen (siehe lib/gapLocaleTag).
   // Fehlt bei Altbeständen; dann wird kein Etikett gezeigt.
   locale?: "de" | "en" | "nl";
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde (Server:
+  // services/ask/src/gap-belegbedarf.ts). Nur in der berechtigten Sicht; fehlt bei redigierten
+  // Lücken und beim Altbestand — dann zeigt die Liste „unbestimmt" statt eines erfundenen Bedarfs.
+  belegbedarf?: GapBelegbedarf[];
+}
+
+export type GapBelegbedarf = "wissensobjekt" | "freigabe" | "stufe" | "volltext" | "unbestimmt";
+
+// R-0773: eine eigene Suche ohne Treffer (`GET /api/library/nulltreffer`, nur die eigene Liste).
+export interface NulltrefferSuche {
+  begriff: string;
+  anzahl: number;
+  zuletzt: string;
+  // Die Filter der Suche (type/status/category/tag → Wert); leer = ohne Eingrenzung gesucht.
+  eingrenzung?: Record<string, string>;
 }
 
 // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler der offenen Wissenslücken — KEIN
@@ -1717,6 +1732,26 @@ export interface Neighborhood {
   total: number;
   truncated: boolean;
   excludedTags: string[];
+}
+
+// R-1656 „Du solltest auch wissen…" — Spiegel von `services/app/src/wissensempfehlung.ts`.
+export type EmpfehlungsGrund =
+  | { art: "mitgelesen"; anzahl: number }
+  | { art: "thema"; schlagwoerter: string[] }
+  | { art: "konflikt"; stand: "offen" | "entschieden" };
+
+export interface Wissensempfehlung {
+  id: string;
+  title: string;
+  status: KoStatus;
+  gruende: EmpfehlungsGrund[];
+}
+
+export interface Wissensempfehlungen {
+  koId: string;
+  empfehlungen: Wissensempfehlung[];
+  total: number;
+  truncated: boolean;
 }
 
 // ==================================================================================================

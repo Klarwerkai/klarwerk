@@ -480,6 +480,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // R-1644: die Wissensauskunft zum Zeitpunkt — Einsichtsstufe des Audit-Protokolls (`ko.validate`),
   // der Eintrag wird vor der Antwort gegen `darfSehen` gehalten (sonst 404).
   "GET /api/kos/:id/wissensauskunft": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
+  // R-1656 „Du solltest auch wissen…": Leserecht wie das Objekt selbst. Beide Türen halten jeden
+  // genannten Eintrag gegen `darfSehen` (sonst 404); die Empfehlung filtert jede Gegenseite über
+  // `sichtbarkeitsfilterFuer`. Das Co-Reading-Signal speichert keine Kontokennung.
+  "GET /api/kos/:id/empfehlungen": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen", "sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/kos/:id/mitgelesen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür
@@ -718,6 +726,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "category-routes.ts: can(ko.read) vor jedem Bestandsabruf; ohne Recht keine Daten.",
   },
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // R-0773: die eigenen Suchen ohne Treffer — gelesen nur unter der eigenen Kennung, kein Objekt.
+  "GET /api/library/nulltreffer": { protection: "ko.read" },
   // JOB 3095 · M5: Bildsuche — Kandidaten über `sichtbareFuer` (plus SQL-Trim), jeder geladene
   // Rumpf zusätzlich über `darfSehen` am vollen Objekt (library-routes.ts, `/api/library/images`).
   "GET /api/library/images": {

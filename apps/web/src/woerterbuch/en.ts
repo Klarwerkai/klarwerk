@@ -2336,6 +2336,7 @@ const en: typeof de = {
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
   "ask.verschlossen.stufe": "Level missing",
+  "ask.verschlossen.vertraulichkeitsstufe": "Confidentiality level missing",
   "ask.verschlossen.stufeHint": "No confidentiality level is set for the document.",
   "ask.verschlossen.volltext": "No searchable text",
   "ask.verschlossen.volltextHint": "No searchable text of this document is available yet.",
@@ -2478,6 +2479,30 @@ const en: typeof de = {
   // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
   "gap.privacyNotice":
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
+  "gap.originalfrage": "Original question",
+  "gap.askCount": "asked {{count}}×",
+  "gap.ausgangsfrage": "Question behind this knowledge gap",
+  "gap.belegbedarf.label": "Missing evidence",
+  "gap.belegbedarf.wissensobjekt":
+    "No matching knowledge object found — one that answers the question is missing",
+  "gap.belegbedarf.unbestimmt": "Undetermined — which evidence is missing cannot be derived",
+  "nulltreffer.titel": "Your searches without results",
+  "nulltreffer.hinweis":
+    "For these terms your search found nothing you are allowed to see — a hint where knowledge may be missing. Only you see this list.",
+  "nulltreffer.anzahl": "searched {{count}}×",
+  "nulltreffer.erfassen": "Capture knowledge",
+  "nulltreffer.eingegrenzt":
+    "Searched only within this filter ({{filter}}) — no finding about the whole collection.",
+  "nulltreffer.feld.type": "Knowledge type",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Category",
+  "nulltreffer.feld.tag": "Keyword",
+  "einzelquelle.titel": "Knowledge only you hold",
+  "einzelquelle.satz":
+    "Topics with bus factor 1 whose visible knowledge comes only from you: {{count}}",
+  "einzelquelle.zeile": "“{{thema}}” — would you like to spend five minutes on it now?",
+  "einzelquelle.einstieg": "Start interview",
+  "einzelquelle.themaLabel": "Topic",
   "ask.toGaps": "To the knowledge gaps",
   "ask.toCapture": "Capture knowledge",
   "ko.use.ready": "Ready to use",

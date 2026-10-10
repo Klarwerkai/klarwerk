@@ -16,8 +16,11 @@ import {
   type GapRepo,
   InMemoryAnswerSnapshotRepo,
   InMemoryGapRepo,
+  InMemoryNulltrefferRepo,
+  type NulltrefferRepo,
   PgAnswerSnapshotRepo,
   PgGapRepo,
+  PgNulltrefferRepo,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -429,6 +432,7 @@ import {
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
+import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -466,6 +470,13 @@ import {
   type NachfolgeRepo,
   PgNachfolgeRepo,
 } from "./verantwortung-nachfolge";
+// R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
+import {
+  InMemoryMitgelesenRepo,
+  type MitgelesenRepo,
+  PgMitgelesenRepo,
+  WissensempfehlungDienst,
+} from "./wissensempfehlung";
 // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
 import { Wissensuebergabe } from "./wissensuebergabe";
 
@@ -596,6 +607,12 @@ export interface AppServices {
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /**
+   * R-1656: der Co-Reading-Zähler (`wissensempfehlung.ts`) — je Paar nur eine Zahl, ohne
+   * Kontokennung. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb
+   * haltbar (`PgMitgelesenRepo`), sonst die In-Memory-Ablage.
+   */
+  mitgelesen: MitgelesenRepo;
   /**
    * produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (`klara-gespraech.ts`) je Konto.
    * Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
@@ -731,6 +748,8 @@ export interface AppServices {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (nur die eigene Liste ist lesbar).
+  nulltreffer: NulltrefferRepo;
   // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
   slideConverter: SlideConverter;
   // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Von buildApp
@@ -804,6 +823,8 @@ export interface AppRepos {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (Tabelle `ask_nulltreffer` in ASK_SCHEMA).
+  nulltreffer: NulltrefferRepo;
   /**
    * W1 Weg A: der Answer-Beleg-Schreibweg — und zwar HIER, nicht mehr als Option.
    *
@@ -1139,6 +1160,8 @@ export function assembleServices(
     uebersetzungen?: UebersetzungRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // R-1656: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    mitgelesen?: MitgelesenRepo;
     // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     klaraGespraeche?: KlaraGespraechRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
@@ -1526,6 +1549,8 @@ export function assembleServices(
     uebersetzungen: opts.uebersetzungen ?? new InMemoryUebersetzungRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // R-1656: der Co-Reading-Zähler — Postgres, wenn injiziert, sonst im Speicher.
+    mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
     // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
     klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
@@ -1820,6 +1845,8 @@ export function assembleServices(
     externalKnowledge: repos.externalKnowledge,
     // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
     uploadLimits: repos.uploadLimits,
+    // R-0773: erfolglose Suchen je Person — Repo direkt für die Bibliotheksroute.
+    nulltreffer: repos.nulltreffer,
     // WP-D11: PPTX-Folien → PNG (LibreOffice headless). In Tests/Dev ohne soffice meldet
     // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
     slideConverter: createSofficeSlideConverter(),
@@ -1869,6 +1896,7 @@ export function inMemoryRepos(): AppRepos {
     validationSettings: new InMemoryValidationSettingsRepo(),
     externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
     uploadLimits: new InMemoryUploadLimitsRepo(),
+    nulltreffer: new InMemoryNulltrefferRepo(),
     // W1 Weg A (Auftrag 143): der Answer-Beleg gehört in denselben Repo-Satz wie alles andere —
     // nur so umhüllt ihn die Dev-Persistenz und spielt ihn beim Start aus dem Journal zurück.
     answerSnapshots: new InMemoryAnswerSnapshotRepo(),
@@ -1964,6 +1992,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
       // SCRUM-421: Upload-Grenzen persistent.
       uploadLimits: new PgUploadLimitsRepo(pool),
+      // R-0773: erfolglose Suchen je Person, Tabelle `ask_nulltreffer` (ASK_SCHEMA).
+      nulltreffer: new PgNulltrefferRepo(pool),
       // W3-C1 (Auftrag 76): der Answer-Beleg gegen die echte Datenbank. Die Tabellen
       // `answer_records` und `answer_snapshots` stehen seit Freeze 61 im Migrationsweg.
       // W1 Weg A (Auftrag 143): er steht jetzt bei den übrigen Repos statt in den Optionen —
@@ -2021,6 +2051,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // R-1656: die Paarzahlen überleben Neustart und Deploy (`MITGELESEN_SCHEMA`).
+      mitgelesen: new PgMitgelesenRepo(pool),
       // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
       // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
       klaraGespraeche: new PgKlaraGespraechRepo(pool),
@@ -4165,6 +4197,24 @@ export function buildApp(
       guards,
     ),
   );
+  // R-1656: „Du solltest auch wissen…". Themennähe ist die vorhandene Schlagwort-Nachbarschaft
+  // (`library.neighbors`, mega68), Konflikte kommen aus dem Konfliktdienst, Co-Reading aus dem
+  // kontolosen Paarzähler. Die Sichtbarkeit entscheidet die Route je Aufrufer.
+  app.register(
+    wissensempfehlungRoutes(
+      {
+        dienst: new WissensempfehlungDienst({
+          repo: services.mitgelesen,
+          ko: services.ko,
+          thema: async (koId, sichtbar) =>
+            (await services.library.neighbors(koId, { sichtbar })).neighbors,
+          konflikte: services.conflicts,
+        }),
+        kos: services.ko,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -4336,14 +4386,20 @@ export function buildApp(
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
   app.register(
-    libraryRoutes(services.library, guards, {
-      ko: services.ko,
-      conflicts: services.conflicts,
-      overlaps: services.overlaps,
-      overlapSettings: services.overlapSettings,
-      reasoner: services.reasoner,
-      semanticPrefilter,
-    }),
+    libraryRoutes(
+      services.library,
+      guards,
+      {
+        ko: services.ko,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        overlapSettings: services.overlapSettings,
+        reasoner: services.reasoner,
+        semanticPrefilter,
+      },
+      // R-0773: erfolglose Suchen je Person.
+      services.nulltreffer,
+    ),
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));

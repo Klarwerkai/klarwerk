@@ -232,6 +232,11 @@ const REGISTER: Record<string, Eintrag> = {
       "JOB 3326 — Antwort ist eine Zählbilanz plus Lieferschlüssel (lesevarianten.ts, LadeBilanz).",
   },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
+  // R-0773: nur die EIGENEN Suchbegriffe ohne Treffer — kein Objekt, keine Kennung, kein Titel.
+  "GET /api/library/nulltreffer": {
+    urteil: "EIGENER_BESTAND",
+    grund: "R-0773 — nulltreffer.fuer(user.id) (library-routes.ts), nur die eigene Liste.",
+  },
   "GET /api/categories": {
     urteil: "PRAEDIKAT",
     grund: "JOB 3507 — Kategorien und Zähler erst nach sqlSichtbarkeitFuer + sichtbareFuer.",
@@ -350,6 +355,18 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/kos/:id/wissensauskunft": {
     urteil: "PRAEDIKAT",
     grund: "Wissensauskunft — darfSehen am Eintrag vor der Ausgabe, sonst 404.",
+  },
+  // --- R-1656 „Du solltest auch wissen…" ----------------------------------------------------------
+  // Die Empfehlung trägt Titel der Gegenseiten: das Zentrum über darfSehen (sonst 404), jede
+  // Gegenseite über sichtbarkeitsfilterFuer. Das Co-Reading-Signal hält BEIDE Einträge gegen
+  // darfSehen, bevor gezählt wird.
+  "GET /api/kos/:id/empfehlungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Empfehlung — Zentrum über darfSehen, Gegenseiten über sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/kos/:id/mitgelesen": {
+    urteil: "PRAEDIKAT",
+    grund: "Co-Reading — beide Einträge über darfSehen, sonst 404; keine Kontokennung gespeichert.",
   },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile

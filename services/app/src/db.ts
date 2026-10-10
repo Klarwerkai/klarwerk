@@ -85,6 +85,8 @@ import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
 // ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
 import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
+// R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
+import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -314,6 +316,9 @@ export const schemas = [
   // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
   // lesbare Ordnung ist.
   KLARA_GESPRAECH_SCHEMA,
+  // R-1656: der Co-Reading-Zähler. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS),
+  // ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  MITGELESEN_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

@@ -938,6 +938,27 @@ export const TABELLE: Zeile[] = [
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
+  // R-1656 „Du solltest auch wissen…": beide Türen am Leserecht. Erfundene Kennung: hinter dem Tor
+  // endet die Empfehlung im 404, das Co-Reading-Signal ohne `zuvor` im 400 — „durchgelassen", und
+  // nichts wird gezählt.
+  {
+    gruppe: "wissensempfehlungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/empfehlungen",
+    route: "/api/kos/:id/empfehlungen",
+    belegstelle: "services/app/src/routes/wissensempfehlung-routes.ts:47",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "wissensempfehlungRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/mitgelesen",
+    route: "/api/kos/:id/mitgelesen",
+    belegstelle: "services/app/src/routes/wissensempfehlung-routes.ts:64",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "brandingRoutes",
     methode: "GET",
@@ -2530,6 +2551,15 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/library/search",
     belegstelle: "services/app/src/routes/library-routes.ts:538",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // R-0773: die eigenen Suchen ohne Treffer — dasselbe Recht wie die Suche selbst.
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/nulltreffer",
+    belegstelle: "services/app/src/routes/library-routes.ts:735",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

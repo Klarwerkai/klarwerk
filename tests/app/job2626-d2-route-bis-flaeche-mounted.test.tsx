@@ -257,7 +257,8 @@ async function fragen(c: HTMLDivElement, frage: string): Promise<void> {
 
 const TOR = {
   freigabe: (): string => i18n.t("ask.verschlossen.freigabe"),
-  stufe: (): string => i18n.t("ask.verschlossen.stufe"),
+  // R-0303 (Aufnahme gesamt-wissensluecken): die Fläche spricht das Wort der Validierung.
+  stufe: (): string => i18n.t("ask.verschlossen.vertraulichkeitsstufe"),
   volltext: (): string => i18n.t("ask.verschlossen.volltext"),
 };
 const torlage = (c: HTMLElement): HTMLElement | null =>
