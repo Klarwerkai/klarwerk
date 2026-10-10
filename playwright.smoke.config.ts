@@ -90,10 +90,11 @@ const PORT_ZUSTAND = 3124;
  * Zusicherung von `ui-smoke` (mega49) beides; deshalb läuft sie hier, aus demselben Grund wie oben.
  *
  * `arbeitswege-objekt-browser` reicht Beiträge ein und entscheidet an ihnen; im geteilten Server
- * füllte das das Prüf-Board, das `ui-smoke` leer erwartet.
+ * füllte das das Prüf-Board, das `ui-smoke` leer erwartet. `klara-kontext-artikel-browser`
+ * (Klara 03) legt einen freigegebenen Beitrag an und stuft ihn vertraulich.
  */
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.
