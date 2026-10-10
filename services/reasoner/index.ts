@@ -181,6 +181,8 @@ export type {
   GroupCandidatesResult,
   ImportCriteriaResult,
   InterviewResult,
+  InterviewOptions,
+  InterviewNodeId,
   ReasonerStatus,
   ReasonerConfigStatus,
   ReasonerConfigMode,

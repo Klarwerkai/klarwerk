@@ -1,4 +1,5 @@
 import { FACHKOMPOSITA, type Fachkompositum } from "./fachkomposita";
+import { normalizeInterviewTopic, treeInterview } from "./interview-tree";
 import type {
   AnswerResult,
   AssistResult,
@@ -10,6 +11,7 @@ import type {
   ExtractResult,
   GroupCandidateInput,
   GroupCandidatesResult,
+  InterviewOptions,
   InterviewResult,
   KnowledgeClass,
   KnowledgeRef,
@@ -152,11 +154,14 @@ export interface ReasonerProvider {
   // R-1624 (Foto-zu-Wissen): optionaler Bildbefund — der vom Menschen bestätigte Text der
   // vorhandenen Bildbeschreibung. Liegt er vor, gilt die Foto-Fragenfolge (Fehler · Ursache ·
   // Lösung); das Bild selbst reist hier NICHT mit, nur dieser Klartext.
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: `options` schaltet Fragebaum und Lücken-Thema zu;
+  // ohne sie (und ohne Bildbefund) bleibt die bisherige Fragenfolge.
   interview(
     answers: readonly string[],
     locale?: ReasonerLocale,
     confidential?: boolean,
     imageContext?: string,
+    options?: InterviewOptions,
   ): Promise<InterviewResult>;
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag des
   // Experten). G-2: NUR was im Text steht — der deterministische Fallback liefert ehrlich
@@ -405,6 +410,26 @@ export function deterministicInterview(
     draft: condenseInterview(answers, demo),
     demo,
   };
+}
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die eine Weiche zwischen der bisherigen Fragenfolge, der
+// Foto-Fragenfolge (R-1624) und dem Fragebaum (`interview-tree.ts`). Ein bestätigter Bildbefund
+// behält seine eigene Fragenfolge (Fehler · Ursache · Lösung); sonst schaltet `tree` oder ein Thema
+// den Baum zu.
+export function guidedInterview(
+  answers: readonly string[],
+  demo: boolean,
+  locale: ReasonerLocale = "de",
+  imageContext?: string,
+  options: InterviewOptions = {},
+): InterviewResult {
+  if (normalizeInterviewImageContext(imageContext).length > 0) {
+    return deterministicInterview(answers, demo, locale, true);
+  }
+  if (options.tree || normalizeInterviewTopic(options.topic)) {
+    return treeInterview(answers, demo, locale, options);
+  }
+  return deterministicInterview(answers, demo, locale);
 }
 
 // SCRUM-282: Funktions-/Stoppwörter (DE/EN) aus dem Matching ausschließen. Sonst erscheinen
@@ -2270,10 +2295,11 @@ export class DeterministicProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
     _confidential = false,
     imageContext?: string,
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     // R-1624: ohne Modell die feste Foto-Fragenfolge — ehrlich als Fallback markiert.
-    const photo = normalizeInterviewImageContext(imageContext).length > 0;
-    return deterministicInterview(answers, true, locale, photo);
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: ohne Bildbefund Fragebaum bzw. bisherige Folge.
+    return guidedInterview(answers, true, locale, imageContext, options);
   }
 
   // PMO-FEA-0006: ohne Modell KEINE Extraktion — ehrliche Meldung statt Fake-Punkte (G-2).
