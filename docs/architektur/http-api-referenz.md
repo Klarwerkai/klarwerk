@@ -300,8 +300,14 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
 | `GET` | `/api/gaps/:id/ansprechpartner` | `ko.assign` (Schalter `KLARWERK_EXPERT_MATCHING`) | — | 200 Ansprechpartner nach Wissensspuren | 404 `not_found` ohne Schalter, vor dem Rechtetor; 404 `NOT_FOUND` unbekannte Lücke |
-| `PUT` | `/api/gaps/:id` | `ko.assign` | Rumpf `{ expertId? \| close? \| priority? }` | 200 Lücke | 400 `BAD_REQUEST` |
+| `PUT` | `/api/gaps/:id` | `ko.assign` (Rücknahme zusätzlich `ko.validate`) | Rumpf `{ expertId? \| close? + koId? \| priority? \| action: "withdraw" + grund }` | 200 Lücke (redigierte Sicht) | 400 `BAD_REQUEST` (beim fachlichen Abschluss mit `gruende`; Ziel keine berechtigte Fachzuständigkeit); 403 Rücknahme ohne `ko.validate` |
 | `DELETE` | `/api/gaps/:id` | `ko.validate` | Abfrage `confirm` | 204 | Dienstfehler |
+| `GET` | `/api/gaps/:id/vorgang` | `ko.read`; nur Fragende, zuständige Person, Verwaltende | — | 200 Vorgangssicht (Phase, nächster Schritt, Rückfragen, Entwurf/Ergebnis frisch gegen heutige Rechte und Fachprüfung) | 404 `NOT_FOUND` für Unbeteiligte |
+| `POST` | `/api/gaps/:id/uebergeben` | `ko.read`; nur Fragende, nur ohne verfügbare Zuständigkeit | Rumpf `{ expertId }` | 200 Vorgangssicht | 400 Ziel nicht berechtigt; 403 verfügbare Zuständigkeit; 404 |
+| `POST` | `/api/gaps/:id/rueckfrage` | `ko.read`; nur die zuständige Person | Rumpf `{ frage }` (1–2000 Zeichen) | 200 Vorgangssicht | 400 Text/offene Rückfrage; 403 |
+| `POST` | `/api/gaps/:id/rueckfrage/:rueckfrageId/antwort` | `ko.read`; nur Fragende | Rumpf `{ antwort }` (1–2000 Zeichen) | 200 Vorgangssicht | 400; 403; 404 |
+| `POST` | `/api/gaps/:id/entwurf` | `ko.create`; zuständige Person oder Verwaltende | Rumpf `{ koId }` (für den Handelnden sichtbar) | 200 Vorgangssicht | 400; 403 |
+| `POST` | `/api/gaps/:id/abschliessen` | `ko.create`; zuständige Person oder Verwaltende | Rumpf `{ koId? }` | 200 Vorgangssicht (fachlich gelöst) | 400 `BAD_REQUEST` mit `gruende` (nicht freigegeben, Bewertungen fehlen, negative Bewertung, abgelaufen, kein Zugriff …); 403 |
 | `GET` | `/api/klara/ai-status` | `ko.read` | Bindung aus Kopfzeilen des Add-ins | 200 Klara-Status der Sitzung | — |
 | `POST` | `/api/klara/sessions` | `ko.read` | Rumpf `{ addinInstanceId?, documentDescriptor? }` | 201 Sitzung | Dienstfehler |
 | `GET` | `/api/klara/sessions/:sessionId` | `ko.read` | — | 200 Sitzung | Dienstfehler |
@@ -375,6 +381,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/notifications` | `requireUser` | — | 200 Glockenliste | — |
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
 | `GET` | `/api/qualitaetsaufgaben` | `users.manage` | — | 200 `{ stand, vorgaenge, quellen, spaces }` — je Vorgang Typ, Zustand, Ursprung, Arbeitsweg, Zuständigkeit, Frist, Beginn, Einstiege (ADMIN-10); Zeilen nur über den Sichtbarkeitsfilter | — |
+| `GET` | `/api/wissenskennzahlen` | `users.manage` | Abfrage `tage` (7/30/90, sonst 30), `space`, `team` (nur wählbare Werte) | 200 `{ stand, anfrage, zeitraum, vorperiode, handlungsbedarf, nutzung, bedarf, suche, filterwerte, quellen }` — je Kennzahl Wert, Lage (gemessen/unvollständig/nicht erhoben/unbekannt), Zähler/Nenner, Erhebungsbeginn, Trend nur bei vollständig erhobenem Vorzeitraum; Handlungsbedarf mit den gezählten Vorgängen aus `/api/qualitaetsaufgaben` (ADMIN-11) | 400 (Space oder Team nicht wählbar) |
 | `POST` | `/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen` | `users.manage` | — | 200 `{ art: angelegt \| angehaengt \| bereits, vorgang, am, durch }` — Prüfanforderung am Objekt der Meldung, je Meldung höchstens einmal | 404 (Meldung unbekannt oder Objekt nicht sichtbar) |
 | `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand (`saved`, `helped`, `helpedToday`, `validated` — Name/Foto nur mit Zustimmung) | — |
 | `GET` | `/api/livewall/consent` | `requireUser` | — | 200 `{ nameConsent, photoConsent, photo? }` — eigenes Konto | — |

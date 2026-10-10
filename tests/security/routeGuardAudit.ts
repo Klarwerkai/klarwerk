@@ -667,8 +667,34 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.assign",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
-  "PUT /api/gaps/:id": { protection: "ko.assign" },
+  // produkt:20261010:wissenskreislauf-schliessen: der fachliche Abschluss prüft den Eintrag gegen
+  // die Sichtbarkeit des Abschliessenden (`sichtbarkeitsfilterFuer` über `beteiligterAus`); die
+  // Rücknahme verlangt im Handler zusätzlich `ko.validate`.
+  "PUT /api/gaps/:id": { protection: "ko.assign", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "DELETE /api/gaps/:id": { protection: "ko.validate" },
+  // Der gemeinsame Vorgang: Beteiligung (fragend/zuständig/verwaltend) prüft der Dienst, Ergebnis
+  // und Entwurf je Abruf über `sichtbarkeitsfilterFuer` des Betrachters.
+  "GET /api/gaps/:id/vorgang": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  "POST /api/gaps/:id/uebergeben": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/rueckfrage": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/rueckfrage/:rueckfrageId/antwort": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/entwurf": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/abschliessen": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Klara Status / Sitzung / Zustimmung (klara-ai-routes.ts, W1 S4) ---
   //
@@ -902,14 +928,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/external/search": { protection: "ko.read" },
   // Der Feed wird über den lokalen Helfer `loadFeed` gebaut; dessen RUMPF ruft beide Prädikate
   // (notifications-routes.ts:116) — nachgeprüft, nicht dem Helfernamen geglaubt.
+  // produkt:20261010:wissenskreislauf-schliessen: die Abschlussmeldungen einer Wissenslücke prüfen
+  // ihren Eintrag je Abruf über `sichtbarkeitsfilterFuer` des Betrachters.
   "GET /api/notifications": {
     protection: "auth",
-    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare"],
+    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare", "sichtbarkeitsfilterFuer"],
   },
   // Audit-P3 (SCRUM-397): eigenen Gelesen-Status markieren — jeder angemeldete Nutzer, nur eigene Sicht.
   "POST /api/notifications/seen": {
     protection: "auth",
-    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare"],
+    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare", "sichtbarkeitsfilterFuer"],
   },
   // Audit-P4 (SCRUM-398): Live-Wall — read-only Aggregation aus KO-Bestand + Wirkungs-Audit.
   "GET /api/livewall": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
@@ -1177,6 +1205,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+
+  // --- Wissenskennzahlen (wissenskennzahlen-routes.ts, produkt:20261009:admin-wissenskennzahlen)
+  // Verwaltung; Detailzeilen sind die Vorgänge aus ADMIN-10 hinter demselben Sichtbarkeitsfilter.
+  "GET /api/wissenskennzahlen": {
     protection: "users.manage",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },

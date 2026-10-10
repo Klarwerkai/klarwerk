@@ -460,6 +460,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "ADMIN-10 — nicht sichtbares Objekt der Meldung endet in 404, ohne Beleg.",
   },
+  // ADMIN-11: die Kennzahlen nennen Titel nur über die Vorgänge aus ADMIN-10 — dieselbe
+  // sichtbarkeitsfilterFuer(user)-Entscheidung, an ladeQualitaetsaufgaben durchgereicht.
+  "GET /api/wissenskennzahlen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-11 — sichtbarkeitsfilterFuer an ladeQualitaetsaufgaben; Lückentext redigiert.",
+  },
   "GET /api/livewall": { urteil: "PRAEDIKAT", grund: "Block E — Titel + Autor je Objekt." },
   "GET /api/validation/board": { urteil: "PRAEDIKAT", grund: "Block E — volle Wissensobjekte." },
   // --- Die vorbereiteten Wege, jetzt scharf (Block F) ---------------------------------------
@@ -779,6 +785,34 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund:
       "R-2178 — sichtbarkeitsfilterFuer über der Objektgrundlage, Titel nur sichtbarer Objekte.",
+  },
+  // produkt:20261010:wissenskreislauf-schliessen: die Vorgangssicht nennt Titel, Fassung und
+  // Prüfstand des verknüpften Entwurfs bzw. Ergebnisses — nur, wenn `sichtbarkeitsfilterFuer` des
+  // Betrachters es heute erlaubt (`beteiligterAus` → `AskService.gapVorgang`), sonst
+  // `{ zugaenglich: false }`. Die Schreibschritte antworten mit derselben Sicht.
+  "GET /api/gaps/:id/vorgang": {
+    urteil: "PRAEDIKAT",
+    grund: "Vorgangssicht — Ergebnis/Entwurf nur über sichtbarkeitsfilterFuer des Betrachters.",
+  },
+  "POST /api/gaps/:id/uebergeben": {
+    urteil: "PRAEDIKAT",
+    grund: "Übergabe durch Fragende; Antwort ist die Vorgangssicht (sichtbarkeitsfilterFuer).",
+  },
+  "POST /api/gaps/:id/rueckfrage": {
+    urteil: "PRAEDIKAT",
+    grund: "Rückfrage der zuständigen Person; Antwort ist die Vorgangssicht.",
+  },
+  "POST /api/gaps/:id/rueckfrage/:rueckfrageId/antwort": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort eines Fragenden; Antwort ist die Vorgangssicht.",
+  },
+  "POST /api/gaps/:id/entwurf": {
+    urteil: "PRAEDIKAT",
+    grund: "Verknüpfung nur mit einem für den Handelnden sichtbaren Eintrag; Vorgangssicht.",
+  },
+  "POST /api/gaps/:id/abschliessen": {
+    urteil: "PRAEDIKAT",
+    grund: "Fachlicher Abschluss nur mit für den Handelnden sichtbarem, nutzbarem Eintrag.",
   },
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   // Pool-Auftrag (R-2099): dazu kommen Entwürfe, die ihr Autor BEWUSST in den gemeinsamen Pool
