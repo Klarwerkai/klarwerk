@@ -41,6 +41,7 @@ import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
+import { meldeFlaeche, useAndereFlaecheSchliesst } from "./assistenzFlaechen";
 import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 
 // Stimmwahl und Textbereinigung fürs Vorlesen stehen seit FE-003 in `lib/vorlesen.ts` — das
@@ -104,6 +105,17 @@ export function KlaraAssistant(): JSX.Element {
       ausloeserRef.current?.focus();
     }
   };
+  // Assistenz im Produkt (produkt:20261010:assistenz-produkteinstieg): neben der persönlichen
+  // Assistenz ist immer nur EINE Fläche offen — öffnet sich diese, schliesst die andere und umgekehrt.
+  useEffect(() => {
+    meldeFlaeche("hilfe", open);
+    return () => {
+      if (open) {
+        meldeFlaeche("hilfe", false);
+      }
+    };
+  }, [open]);
+  useAndereFlaecheSchliesst("hilfe", () => setOpen(false));
   const [query, setQuery] = useState("");
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — Klaras Registry-Suche (ohne KI) bleibt davon unberührt bedienbar.
