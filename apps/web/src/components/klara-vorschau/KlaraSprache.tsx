@@ -89,6 +89,12 @@ export interface KlaraSprachSteuerung {
   moeglich: boolean;
   ios: boolean;
   laeuft: Aufnahmeart | null;
+  /**
+   * produkt:20261010:assistenz-name-avatar: `true` erst, wenn der Browser die Tonaufnahme bestätigt
+   * (`audiostart`) — nicht schon bei der Anforderung (`laeuft`), etwa während die Mikrofonberechtigung
+   * noch aussteht. Ende, Fehler, Stopp und Abbruch setzen es zurück. Grundlage für „Zuhören“ der Figur.
+   */
+  hoert: boolean;
   zwischen: string;
   hinweis: string | null;
   starten: (art: Aufnahmeart) => void;
@@ -111,6 +117,7 @@ export function useKlaraSprache(optionen: {
   const moeglich = typeof window !== "undefined" && hasSpeechRecognition(window);
   const ios = typeof window !== "undefined" && istIosGeraet(window);
   const [laeuft, setLaeuft] = useState<Aufnahmeart | null>(null);
+  const [hoert, setHoert] = useState(false);
   const [zwischen, setZwischen] = useState("");
   const [hinweis, setHinweis] = useState<string | null>(null);
   const [auftrag, setAuftrag] = useState<GesprochenerAuftrag | null>(null);
@@ -127,12 +134,15 @@ export function useKlaraSprache(optionen: {
       rec.onresult = null;
       rec.onend = null;
       rec.onerror = null;
+      rec.onaudiostart = null;
+      rec.onaudioend = null;
       try {
         rec.stop();
       } catch {
         // schon beendet
       }
       setLaeuft(null);
+      setHoert(false);
       setZwischen("");
     }
   }, []);
@@ -167,6 +177,7 @@ export function useKlaraSprache(optionen: {
         }
         recRef.current = null;
         setLaeuft(null);
+        setHoert(false);
         setZwischen("");
         const tt = tRef.current;
         if (grund === "not-allowed" || grund === "service-not-allowed") {
@@ -208,10 +219,23 @@ export function useKlaraSprache(optionen: {
       return;
     }
     vorgang.rec = rec;
+    // produkt:20261010:assistenz-name-avatar: „Zuhören“ erst, wenn der Browser die Tonaufnahme
+    // bestätigt; Ereignisse eines abgelösten Rekorders ändern den neuen Lauf nicht.
+    rec.onaudiostart = () => {
+      if (recRef.current === vorgang.rec) {
+        setHoert(true);
+      }
+    };
+    rec.onaudioend = () => {
+      if (recRef.current === vorgang.rec) {
+        setHoert(false);
+      }
+    };
     if (art === "auftrag") {
       setAuftrag(null);
     }
     recRef.current = rec;
+    setHoert(false);
     try {
       rec.start();
     } catch {
@@ -239,6 +263,7 @@ export function useKlaraSprache(optionen: {
     moeglich,
     ios,
     laeuft,
+    hoert,
     zwischen,
     hinweis,
     starten,

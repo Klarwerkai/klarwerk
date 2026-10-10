@@ -4,7 +4,7 @@
 // bisher, `object-cover` auf seinem quadratischen Bild). Fehlt das Motiv im Katalog
 // oder lädt die Datei nicht, steht eine neutrale Ersatzgrafik da — eine geometrische Form, keine
 // Person — und `data-avatar-ersatz` sagt, warum. Der Name der Assistenz hängt nie an diesem Bild.
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { AssistenzAvatarMotiv } from "../../lib/assistenzAvatare";
 import { klaraAvatarUrl } from "../klara-vorschau/avatar";
 
@@ -51,6 +51,7 @@ export function AvatarBild({
   testId,
   width,
   height,
+  ueberlagerung,
 }: {
   motiv: AssistenzAvatarMotiv | null;
   alt: string;
@@ -60,6 +61,11 @@ export function AvatarBild({
   testId?: string;
   width?: number;
   height?: number;
+  /**
+   * Eine Ebene über dem Bild (die Mimik der Figur) — nur solange das echte Motiv angezeigt wird, nie
+   * über der Ersatzgrafik: sie bekommt keine erfundenen Augen oder Münder.
+   */
+  ueberlagerung?: ReactNode;
 }): JSX.Element {
   const datei = motiv?.datei ?? null;
   const [defekt, setDefekt] = useState<string | null>(null);
@@ -80,18 +86,21 @@ export function AvatarBild({
     );
   }
   return (
-    <img
-      // Dieselbe relative Produktadresse wie die ursprüngliche Figur — nie ein fremder Bilddienst.
-      src={klaraAvatarUrl(datei)}
-      alt={alt}
-      draggable={false}
-      width={width}
-      height={height}
-      data-testid={testId}
-      data-avatar={motiv?.id}
-      onError={() => setDefekt(datei)}
-      // Das Original bleibt wie bisher randfüllend; jedes andere Motiv steht vollständig im Rahmen.
-      className={`${motiv?.id === "original" ? "object-cover" : "object-contain"} ${className}`}
-    />
+    <>
+      <img
+        // Dieselbe relative Produktadresse wie die ursprüngliche Figur — nie ein fremder Bilddienst.
+        src={klaraAvatarUrl(datei)}
+        alt={alt}
+        draggable={false}
+        width={width}
+        height={height}
+        data-testid={testId}
+        data-avatar={motiv?.id}
+        onError={() => setDefekt(datei)}
+        // Das Original bleibt wie bisher randfüllend; jedes andere Motiv steht vollständig im Rahmen.
+        className={`${motiv?.id === "original" ? "object-cover" : "object-contain"} ${className}`}
+      />
+      {ueberlagerung}
+    </>
   );
 }

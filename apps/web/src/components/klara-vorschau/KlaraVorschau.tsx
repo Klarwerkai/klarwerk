@@ -56,6 +56,7 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
 import { AvatarBild } from "../assistenz/AvatarBild";
+import { AvatarMimik } from "../assistenz/AvatarMimik";
 // produkt:20261010:assistenz-name-avatar: die neun Zustände der Figur aus echten Ereignissen.
 import { ermittleZustand, meldeErgebnis, useLetztesErgebnis } from "../assistenz/ausdruck";
 import {
@@ -1430,8 +1431,9 @@ export function KlaraVorschau({
   const letztesErgebnis = useLetztesErgebnis();
   const figurZustand = ermittleZustand({
     minimiert: z.minimiert,
-    hoertZu: sprechen.laeuft !== null,
-    spricht: vorleseLage.liest !== null,
+    // Bestätigte Aktivität, nicht die Anforderung: `hoert` ab `audiostart`, `spielt` ab `start`.
+    hoertZu: sprechen.hoert,
+    spricht: vorleseLage.spielt !== null,
     laeuft: z.status === "laeuft",
     verarbeitet: false,
     rueckfrage: z.status === "entscheidung",
@@ -1556,7 +1558,7 @@ export function KlaraVorschau({
           onDragLeave={() => setAblage(false)}
           onDrop={beiAblegen}
           title={ablage ? t("klaravorschau.figur.ablegen") : figurLabel}
-          className={`klara-figur grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
+          className={`klara-figur relative grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
             ziehPos ? "cursor-grabbing" : "cursor-grab"
           }`}
           style={{ width: groesse, height: groesse }}
@@ -1569,6 +1571,15 @@ export function KlaraVorschau({
             height={groesse}
             testId="klara-avatar"
             className="klara-motiv pointer-events-none h-full w-full"
+            // Die Mimik der Motive mit Gesicht (Lidschlag, Mund/Schnabel), deckungsgleich über dem
+            // unveränderten Bild; sachliche Objekte und die Ersatzgrafik bekommen keine.
+            ueberlagerung={
+              <AvatarMimik
+                motivId={assistenz.motiv?.id}
+                zustand={figurZustand}
+                bewegungReduziert={assistenz.bewegungReduziert}
+              />
+            }
           />
         </button>
         {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen

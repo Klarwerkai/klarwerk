@@ -12,6 +12,8 @@
 //   3. 390 × 844 mit reduzierter Bewegung, nur Tastatur: Einrichtung mit sichtbarem Fokus,
 //      vollständige Vorschauen ohne abgeschnittene Figuren, erkennbare gewählte Option.
 //   4. Das Bildpaket: jedes der dreizehn Motive wird aus dem Bau ausgeliefert (kein Fremddienst).
+//   5. Mimik je Motiv: die acht Gesichter blinzeln deckungsgleich über dem Bild und zeigen Sprechen,
+//      Freude und Rückfrage; die fünf sachlichen Objekte bleiben ohne Gesicht (Bild je Motiv).
 //
 // WAS DIESE SONDEN NICHT ERSETZEN: das Urteil eines Menschen über Bildwirkung und Charaktere, die
 // Abnahme emotionaler Animationen (Basis-PNGs sind keine Animationsabnahme) und eine Prüfung an
@@ -26,7 +28,7 @@ import {
   expect,
   test,
 } from "@playwright/test";
-import { ASSISTENZ_AVATAR_KATALOG } from "../apps/web/src/lib/assistenzAvatare";
+import { ASSISTENZ_AVATAR_KATALOG, animationsStil } from "../apps/web/src/lib/assistenzAvatare";
 import { ensureLoggedIn } from "./support/auth";
 
 const KENNWORT = "Assistenz-Kennwort-1";
@@ -129,6 +131,16 @@ async function motivAnimation(page: Page): Promise<string> {
     .evaluate((el) => getComputedStyle(el).animationName);
 }
 
+/** Die Mimik-Ebene der Figur (nur Motive mit Gesicht). */
+const mimik = (page: Page) => figur(page).getByTestId("klara-mimik");
+
+async function lidAnimation(page: Page): Promise<string> {
+  return mimik(page)
+    .locator(".klara-mimik-lid")
+    .first()
+    .evaluate((el) => getComputedStyle(el).animationName);
+}
+
 /** Liegt `innen` vollständig in `aussen`? (Vorschau nicht abgeschnitten) */
 async function liegtInnen(innen: Locator, aussen: Locator): Promise<boolean> {
   const a = await aussen.boundingBox();
@@ -214,9 +226,13 @@ test("Assistenz · Erstanmeldung → Name/Avatar → Speichern → Neuladen → 
   await expect(figur(p)).toHaveAttribute("data-zustand", "freude");
   expect(await motivAnimation(p)).toBe("kw-assistenz-huepfer");
   await expect(p.getByTestId("klara-figur-zustand")).toHaveText("Erledigt");
+  // Die Mimik der Eule folgt: zusammengezogene Augen bei Freude, danach Lidschlag in Bereit.
+  await expect(mimik(p)).toHaveAttribute("data-mimik", "eule");
+  await expect(mimik(p)).toHaveAttribute("data-zustand", "freude");
   await beleg(p, info, "3a Zustand Freude nach bestätigtem Speichern");
   await expect(figur(p)).toHaveAttribute("data-zustand", "bereit", { timeout: 6_000 });
   expect(await motivAnimation(p)).toBe("kw-assistenz-atmen");
+  expect(await lidAnimation(p)).toBe("kw-mimik-blinzeln");
   await expect(p.getByTestId("klara-figur-zustand")).toHaveCount(0);
 
   await figur(p).click();
@@ -425,6 +441,16 @@ test("Assistenz · 390 × 844, reduzierte Bewegung, nur Tastatur: Fokus sichtbar
   await expect(figur(p)).toHaveAttribute("data-zustand", "freude");
   await expect(p.getByTestId("klara-figur-zustand")).toHaveText("Erledigt");
   expect(await motivAnimation(p)).toBe("none");
+  // Die Mimik des Roboters zeigt den Ausdruck still: kein Lidschlag, aber die Lidstellung der Freude.
+  await expect(mimik(p)).toHaveAttribute("data-bewegung", "reduziert");
+  await expect(mimik(p)).toHaveAttribute("data-zustand", "freude");
+  expect(await lidAnimation(p)).toBe("none");
+  expect(
+    await mimik(p)
+      .locator(".klara-mimik-lid")
+      .first()
+      .evaluate((el) => getComputedStyle(el).transform),
+  ).toBe("matrix(1, 0, 0, 0.42, 0, 0)");
   // Die Figur bleibt im Bild und bedienbar.
   await figur(p).focus();
   await p.keyboard.press("Enter");
@@ -436,6 +462,107 @@ test("Assistenz · 390 × 844, reduzierte Bewegung, nur Tastatur: Fokus sichtbar
     bewegung: "reduziert",
   });
 
+  await kontext.close();
+});
+
+test("Assistenz · Mimik je Motiv: Gesichter blinzeln und sprechen, sachliche Objekte bleiben gesichtslos", async ({
+  page,
+  browser,
+}, info) => {
+  test.setTimeout(240_000);
+  const konto = await fiktivesKonto(page, "mimik");
+  const { kontext, seite: p } = await neuerKontext(browser, konto.email, {
+    width: 1280,
+    height: 800,
+  });
+  const lies = async (r: { json: () => Promise<unknown> }): Promise<number> =>
+    ((await r.json()) as { profil: { fassung: number } }).profil.fassung;
+  const erst = await p.request.put("/api/me/assistenz", {
+    data: { name: "Mia", avatar: "original", einrichtungAbschliessen: true, fassung: 0 },
+  });
+  expect(erst.status(), await erst.text()).toBe(200);
+  let fassung = await lies(erst);
+  await assistenzEinschalten(p, "/start");
+
+  for (const m of ASSISTENZ_AVATAR_KATALOG) {
+    if (m.id !== "original") {
+      const r = await p.request.put("/api/me/assistenz", { data: { avatar: m.id, fassung } });
+      expect(r.status(), await r.text()).toBe(200);
+      fassung = await lies(r);
+    }
+    await p.reload();
+    await expect(figur(p)).toBeVisible({ timeout: 15_000 });
+    await motivAnFigur(p, "klara-avatar", m.id);
+    await expect(figur(p)).toHaveAttribute("data-zustand", "bereit");
+
+    if (animationsStil(m) !== "expressiv") {
+      // Sachliches Objekt: keine erfundenen Augen oder Münder.
+      await expect(mimik(p)).toHaveCount(0);
+      await info.attach(`Mimik — ${m.id}: ohne Gesicht`, {
+        body: await figur(p).screenshot(),
+        contentType: "image/png",
+      });
+      continue;
+    }
+
+    await expect(mimik(p)).toHaveAttribute("data-mimik", m.id);
+    await expect(mimik(p)).toHaveAttribute("data-zustand", "bereit");
+    // Bereit: Lidschlag; die Ebene atmet deckungsgleich mit dem Bild.
+    expect(await lidAnimation(p)).toBe("kw-mimik-blinzeln");
+    expect(await mimik(p).evaluate((el) => getComputedStyle(el).animationName)).toBe(
+      "kw-assistenz-atmen",
+    );
+    const bild = await figur(p).getByTestId("klara-avatar").boundingBox();
+    const ebene = await mimik(p).boundingBox();
+    expect(bild && ebene, `${m.id}: Box fehlt`).toBeTruthy();
+    if (bild && ebene) {
+      const abweichung = Math.max(
+        Math.abs(bild.x - ebene.x),
+        Math.abs(bild.y - ebene.y),
+        Math.abs(bild.width - ebene.width),
+        Math.abs(bild.height - ebene.height),
+      );
+      expect(abweichung, `${m.id}: Ebene nicht deckungsgleich`).toBeLessThanOrEqual(4);
+    }
+    await info.attach(`Mimik — ${m.id}: bereit`, {
+      body: await figur(p).screenshot(),
+      contentType: "image/png",
+    });
+
+    // DARSTELLUNG der übrigen Ausdrücke. Ausgelöst werden sie im Produkt allein durch echte
+    // Ereignisse (gemessen in tests/assistenz-profil/ausdruck.test.ts und sprachaktivitaet.test.tsx;
+    // eine echte Sprachausgabe hat der kopflose Browser nicht). Hier wird nur der Zustand an der
+    // Ebene gesetzt, um zu zeigen, wie jedes Gesicht ihn darstellt.
+    const darstellung: Array<[string, string, string]> = [
+      ["sprechen", ".klara-mimik-mund", "kw-mimik-sprechen"],
+      ["freude", ".klara-mimik-lid", "none"],
+      ["ratlos", ".klara-mimik-lid-r", "none"],
+    ];
+    for (const [zustand, teil, erwartet] of darstellung) {
+      await mimik(p).evaluate((el, z) => el.setAttribute("data-zustand", z), zustand);
+      expect(
+        await mimik(p)
+          .locator(teil)
+          .first()
+          .evaluate((el) => getComputedStyle(el).animationName),
+        `${m.id} · ${zustand}`,
+      ).toBe(erwartet);
+      if (zustand !== "sprechen") {
+        await p.waitForTimeout(300);
+        expect(
+          await mimik(p)
+            .locator(teil)
+            .first()
+            .evaluate((el) => getComputedStyle(el).transform),
+          `${m.id} · ${zustand}: Lid bewegt`,
+        ).not.toBe("matrix(1, 0, 0, 0, 0, 0)");
+      }
+      await info.attach(`Mimik — ${m.id}: ${zustand}`, {
+        body: await figur(p).screenshot(),
+        contentType: "image/png",
+      });
+    }
+  }
   await kontext.close();
 });
 

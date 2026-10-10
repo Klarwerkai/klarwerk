@@ -61,8 +61,8 @@ Vorgabe: `ANIMATIONSZUSTAENDE.json` des Bildpakets. Die Figur trägt einen von n
 | bereit | nichts läuft | neue Aktion |
 | warten | Anfrage gesendet, Antwort steht aus | Antwort, Fehler, Stopp |
 | nachdenken | nur bei gemeldeter laufender Verarbeitung — der Frageweg meldet heute keine solche Phase, der Zustand wird deshalb nicht angezeigt | — |
-| zuhören | Spracherkennung tatsächlich aktiv („Diktieren“/„Auftrag sprechen“) | Aufnahme endet oder wird gestoppt |
-| sprechen | Vorlesen spielt tatsächlich ab | Vorlesen endet oder wird gestoppt |
+| zuhören | Browser bestätigt die Tonaufnahme (`audiostart`) — nicht schon beim Start oder während die Mikrofonberechtigung aussteht | `audioend`, Ende, Fehler (auch verweigerte Berechtigung), Stopp, Schließen |
+| sprechen | Sprachausgabe hat tatsächlich begonnen (`start`, nach Pause `resume`) — nicht schon bei der Anforderung | `end`, `error`, `pause`, Stopp; späte Ereignisse einer abgelösten Ausgabe zählen nicht |
 | ratlos | Entscheidung bzw. Rückfrage der Person nötig | Person entscheidet |
 | freude | Antwort beantwortet und gespeichert, Profil gespeichert | nach 2,4 s von selbst |
 | fehler | Anfrage oder Speichern fehlgeschlagen | Wiederholen, Abbrechen, neue Aktion |
@@ -76,11 +76,34 @@ einmaliger Neigung und Aufhellen, Fehler und Pause gedimmt und still. Bei reduzi
 oder „Bewegung reduzieren“) bleibt ein statischer Ausdruck; jeder Zustand steht zusätzlich als Text
 an der Figur bzw. in der vorgelesenen Beschreibung.
 
+### Mimik der Motive mit Gesicht
+
+Die acht ausdrucksstarken Motive haben ein Gesicht; ihre Mimik liegt als Ebene deckungsgleich über
+dem unveränderten Bild (`components/assistenz/AvatarMimik.tsx`, Lage von Augen und Mund bzw.
+Schnabel je Motiv in `lib/assistenzMimik.ts`, in Pixeln des 1254 × 1254 großen PNGs):
+
+| Zustand | Mimik |
+| --- | --- |
+| bereit | gelegentliches Blinzeln |
+| warten | ruhiges, etwas häufigeres Blinzeln |
+| nachdenken | leicht gesenkte Lider, langsamer Wechsel |
+| zuhören | offene Augen, kein Lidschlag |
+| sprechen | Mund bzw. Schnabelspalt öffnet und schließt sich, solange die Ausgabe spielt |
+| ratlos | ungleich gesenkte Lider (fragender Blick) |
+| freude | das untere Lid hebt sich (freundlich zusammengezogene Augen) |
+| fehler | ruhig gesenkter, bedauernder Blick |
+| pause | halb geschlossene Ruhelider |
+
+Die Ebene bewegt sich mit den Gesten der Figur. Bei reduzierter Bewegung bleibt nur die statische
+Lidstellung (und beim Sprechen ein ruhig halb geöffneter Mund). Sachliche Objekte und die neutrale
+Ersatzgrafik bekommen keine Mimik-Ebene — keine nachträglich erfundenen Gesichter.
+
 ## Grenzen
 
-- Die Zustände bewegen und belichten die gelieferten Standbilder. Mimik im Bild (Blinzeln,
-  Mund-/Schnabelbewegung, Brauen) setzt eigene Animationsdateien je Motiv voraus; das Bildpaket
-  enthält keine („animation files not delivered“, MANIFEST.json).
+- Die Mimik wird über die gelieferten Standbilder gelegt (Lider in der Farbe rund um das Auge, Mund-
+  bzw. Schnabelspalt); eigene Bildfolgen je Motiv hat das Bildpaket nicht. Brauen und Blickrichtung
+  der Bilder bleiben unverändert. Die Lage der Gesichtsteile ist aus den gelieferten Dateien
+  vermessen; Bildwirkung und Passgenauigkeit beurteilt ein Mensch an den Bildschirmbelegen.
 - „Nachdenken“ ist angelegt, aber ohne Auslöser: der Frageweg meldet keine eigene
   Verarbeitungsphase. Zuhören und Sprechen hängen an den vorhandenen Browserfunktionen
   (Spracherkennung, Sprachausgabe); ohne sie treten diese Zustände nicht auf.
@@ -94,6 +117,9 @@ an der Figur bzw. in der vorgelesenen Beschreibung.
 - `tests/assistenz-profil/profil-pg.integration.test.ts` — PostgreSQL (Neustart, zwei Konten, Konflikt).
 - `tests/assistenz-profil/katalog.test.ts`, `bildpaket.test.ts` — Motive, Original, Texte.
 - `tests/assistenz-profil/ausdruck.test.ts` — die neun Zustände: Auslöser, Vorrang, Ende, Stil.
+- `tests/assistenz-profil/mimik.test.tsx` — Mimik nur für Motive mit Gesicht, Regeln je Zustand.
+- `tests/assistenz-profil/sprachaktivitaet.test.tsx` — Zuhören/Sprechen erst bei bestätigter
+  Aufnahme bzw. Wiedergabe; Berechtigung verweigert, Ende, Pause, Stopp, späte Ereignisse.
 - `tests/assistenz-profil/assistenz-mounted.test.tsx` — echte Hülle und Profilseite gegen den Server.
 - `tests-smoke/assistenz-name-avatar-browser.spec.ts` — Bedienbeleg in Chromium (Desktop,
   390 × 844, Tastatur, Speicherfehler, zwei Konten, zweites Gerät, Fremdkonto).
