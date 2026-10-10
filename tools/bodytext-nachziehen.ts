@@ -22,6 +22,8 @@
 //   Trockenlauf (Zahl betroffener KOs):  KLARWERK_DB_URL='postgres://…' tools/bodytext-nachziehen.sh
 //   Nachzug ausführen:                   … tools/bodytext-nachziehen.sh --ausfuehren
 //   Voller Neuaufbau (Eskalation):       … tools/bodytext-nachziehen.sh --ausfuehren --rebuild
+//   Exit: 0 = Trockenlauf oder vollständig · 1 = Rest nach dem Lauf (Gegenprobe, R-1410) ·
+//         2 = gar nicht angefangen.
 //
 // Der Testlauf gegen Testdaten steht in tests/app/job2614-bodytext-kette.test.ts (K2/K3) — er fährt
 // GENAU diese Funktionen gegen einen präparierten Fassung-1-Bestand und misst die Zahlen.
@@ -54,6 +56,15 @@ export interface NachziehZaehlung {
   betroffen: number;
 }
 
+// R-1410 (BEFUND 19): Der Normalweg (`reconcileSearchProjections` → `missingActive`) erfasst die
+// Sorte `leerTrotzBodyHtml` NICHT — eine Zeile in geltender Fassung ist für ihn erledigt
+// (service.ts `ensureSearchArtifacts`, append-only). Bis hierhin stand der Rest nur im Bericht, und
+// der Prozess endete trotzdem mit 0. Seither entscheidet die NACHHER-Zählung als Gegenprobe:
+//   trockenlauf  — nichts geschrieben; Exit 0 (die Vorschau ist kein Fehlschlag),
+//   vollstaendig — die Gegenprobe zählt null Betroffene und der Nachzug keine Rest-Differenz; Exit 0,
+//   rest         — nach dem Lauf ist noch etwas offen; Exit 1, und der Bericht nennt den Grund.
+export type NachziehErgebnis = "trockenlauf" | "vollstaendig" | "rest";
+
 export interface NachziehBericht {
   geltendeFassung: number;
   inventur: { projectionVersion: number; count: number }[];
@@ -64,6 +75,15 @@ export interface NachziehBericht {
   reconcile?: Awaited<ReturnType<KoService["reconcileSearchProjections"]>>;
   rebuildBilanz?: Awaited<ReturnType<KoService["rebuildSearchProjections"]>>;
   nachher?: NachziehZaehlung;
+  // Was der gewählte Weg NICHT erfasst: im Trockenlauf die Vorhersage (ohne --rebuild die Sorte
+  // `leerTrotzBodyHtml`), nach dem Lauf die Gegenprobe (`nachher.betroffen`).
+  nichtErfasst: number;
+  ergebnis: NachziehErgebnis;
+}
+
+/** Exit 1 nur für „rest"; 2 bleibt „gar nicht angefangen" (s. Fänger unten). */
+export function exitCodeFuer(bericht: Pick<NachziehBericht, "ergebnis">): 0 | 1 {
+  return bericht.ergebnis === "rest" ? 1 : 0;
 }
 
 export async function zaehleBetroffene(ko: KoService): Promise<NachziehZaehlung> {
@@ -97,13 +117,16 @@ export async function bodytextNachziehen(
   opts: { ausfuehren: boolean; rebuild?: boolean },
 ): Promise<NachziehBericht> {
   const versionen = await ko.searchProjectionVersions();
+  const vorher = await zaehleBetroffene(ko);
   const bericht: NachziehBericht = {
     geltendeFassung: versionen.geltendeFassung,
     inventur: versionen.zeilen,
     offenV1: versionen.offenV1,
-    vorher: await zaehleBetroffene(ko),
+    vorher,
     ausgefuehrt: opts.ausfuehren,
     rebuild: opts.rebuild === true,
+    nichtErfasst: opts.rebuild === true ? 0 : vorher.leerTrotzBodyHtml,
+    ergebnis: "trockenlauf",
   };
   if (!opts.ausfuehren) {
     return bericht;
@@ -118,7 +141,11 @@ export async function bodytextNachziehen(
     // und meldet die verbleibende Differenz — genau die Zusage, die eine Bestandsreparatur braucht.
     bericht.reconcile = await ko.reconcileSearchProjections();
   }
-  bericht.nachher = await zaehleBetroffene(ko);
+  const nachher = await zaehleBetroffene(ko);
+  bericht.nachher = nachher;
+  bericht.nichtErfasst = nachher.betroffen;
+  bericht.ergebnis =
+    nachher.betroffen === 0 && (bericht.reconcile?.differenz ?? 0) === 0 ? "vollstaendig" : "rest";
   return bericht;
 }
 
@@ -133,6 +160,11 @@ function berichtAusgeben(bericht: NachziehBericht): void {
     zeilen.push(
       "TROCKENLAUF — nichts geschrieben. Ausführen nur mit --ausfuehren (Live: nur auf Pedis Freigabe).",
     );
+    if (bericht.nichtErfasst > 0) {
+      zeilen.push(
+        `VORAUS NICHT ERFASST: ${bericht.nichtErfasst} KO(s) leer trotz bodyHtml in geltender Fassung — der Nachzug erreicht sie nicht, dafür --ausfuehren --rebuild.`,
+      );
+    }
   } else if (bericht.rebuildBilanz) {
     zeilen.push(`REBUILD: ${JSON.stringify(bericht.rebuildBilanz)}`);
   } else if (bericht.reconcile) {
@@ -144,6 +176,13 @@ function berichtAusgeben(bericht: NachziehBericht): void {
     zeilen.push(
       `NACHHER betroffen: ${bericht.nachher.betroffen} (ohne Zeile: ${bericht.nachher.ohneProjektionszeile} · Fassung alt: ${bericht.nachher.fassung1} · leer trotz bodyHtml: ${bericht.nachher.leerTrotzBodyHtml})`,
     );
+  }
+  if (bericht.ergebnis === "rest") {
+    const grund =
+      !bericht.rebuild && (bericht.nachher?.leerTrotzBodyHtml ?? 0) > 0
+        ? "der Nachzug erfasst Zeilen in geltender Fassung mit leerem Text nicht — Eskalation: --ausfuehren --rebuild"
+        : "die Gegenprobe zählt nach dem Lauf noch Betroffene bzw. eine Rest-Differenz";
+    zeilen.push(`UNVOLLSTÄNDIG (Exit 1): ${bericht.nichtErfasst} KO(s) offen — ${grund}.`);
   }
   process.stdout.write(`${zeilen.join("\n")}\n\n${JSON.stringify(bericht, null, 2)}\n`);
 }
@@ -197,7 +236,9 @@ async function main(): Promise<void> {
   const pool = createPool(url);
   try {
     const services = buildPgServices(pool);
-    berichtAusgeben(await bodytextNachziehen(services.ko, { ausfuehren, rebuild }));
+    const bericht = await bodytextNachziehen(services.ko, { ausfuehren, rebuild });
+    berichtAusgeben(bericht);
+    process.exitCode = exitCodeFuer(bericht);
   } finally {
     await pool.end();
   }

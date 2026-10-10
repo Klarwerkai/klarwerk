@@ -1114,6 +1114,20 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/spaces/bestand/zuordnung": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
   "GET /api/spaces/bestand/protokoll": { protection: "users.manage" },
 
+  // --- Freigaberegeln (freigaberegeln-routes.ts, produkt:20261009:admin-freigaberegeln, ADMIN-09) ---
+  // Lesen wie den Space (404 sonst), Vorgangstitel nur über `darfSehen`; Ändern nur die
+  // Kontoverwaltung; Fristlauf prüft Zuständigkeit/Kontoverwaltung am Space selbst (403).
+  "GET /api/spaces/:id/freigaberegel": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/freigaberegel/vorschau": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
+  "PUT /api/spaces/:id/freigaberegel": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/freigaberegel/fristlauf": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+
   // --- Teams (teams-routes.ts, produkt:20261009:admin-teams) ---
   // Ausschliesslich die Kontoverwaltung: Teams anlegen, ändern, Mitglieder, Wirkung, Archiv.
   "GET /api/teams": { protection: "users.manage" },
@@ -1122,6 +1136,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/teams/:id/vorschau": { protection: "users.manage" },
   "PUT /api/teams/:id": { protection: "users.manage" },
   "POST /api/teams/:id/archivieren": { protection: "users.manage" },
+
+  // --- Qualitätsaufgaben (qualitaetsaufgaben-routes.ts, produkt:20261009:admin-qualitaetsaufgaben)
+  // Verwaltung; jede Zeile nur, wenn der Sichtbarkeitsfilter das betroffene Objekt freigibt.
+  "GET /api/qualitaetsaufgaben": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die

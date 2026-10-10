@@ -455,16 +455,18 @@ export function Lifecycle(): JSX.Element {
     const satz =
       anlass.grund === "bibliothek"
         ? t("folgepruefung.grund.bibliothek")
-        : anlass.grund === "nachbar" && anlass.ausloeser
-          ? anlass.assetRef
-            ? t("folgepruefung.grund.nachbar", {
-                titel: anlass.ausloeser.title,
-                asset: anlass.assetRef,
-              })
-            : t("folgepruefung.grund.nachbarOhneAnlage", { titel: anlass.ausloeser.title })
-          : anlass.assetRef
-            ? t("folgepruefung.grund.anlage", { asset: anlass.assetRef })
-            : t("folgepruefung.grund.anlageOhne");
+        : anlass.grund === "rueckmeldung"
+          ? t("folgepruefung.grund.rueckmeldung")
+          : anlass.grund === "nachbar" && anlass.ausloeser
+            ? anlass.assetRef
+              ? t("folgepruefung.grund.nachbar", {
+                  titel: anlass.ausloeser.title,
+                  asset: anlass.assetRef,
+                })
+              : t("folgepruefung.grund.nachbarOhneAnlage", { titel: anlass.ausloeser.title })
+            : anlass.assetRef
+              ? t("folgepruefung.grund.anlage", { asset: anlass.assetRef })
+              : t("folgepruefung.grund.anlageOhne");
     const zusatz = [
       anlass.aenderung ? t("folgepruefung.aenderung", { aenderung: anlass.aenderung }) : null,
       t("folgepruefung.am", { datum: new Date(anlass.am).toLocaleString() }),

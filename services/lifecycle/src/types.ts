@@ -12,8 +12,12 @@ export interface LearningPath {
 // R-1349: Die Fehlerklasse `LifecycleError` (Code NOT_FOUND) warf kein Produktweg; der Lebenszyklus
 // meldet über die Fehler seiner Nachbardienste. Sie ist entfernt.
 
-/** R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde. */
-export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek";
+/**
+ * R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde.
+ * ADMIN-10: „rueckmeldung" — eine belegte Rückmeldung (`answer.reported`) wurde in der
+ * Qualitätsübersicht als Aufgabe übernommen; der Beleg nennt ihre `meldungId`.
+ */
+export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek" | "rueckmeldung";
 
 // ================================================================================================
 // produkt:20261010:aenderungsfolgen-sichtbar — DER ANLASS EINES OFFENEN FALLS UND SEIN STAND.
@@ -49,6 +53,8 @@ export interface RevalidierungsAnlass {
   /** Beim Nachbarauslöser: der Eintrag, an dem die Änderung gemeldet wurde, und seine Fassung. */
   ausgeloestVon?: string;
   ausgeloestVonVersion?: number;
+  /** ADMIN-10: bei Grund „rueckmeldung" die Kennung der übernommenen Rückmeldung. */
+  meldungId?: string;
   /** Die Fassung des betroffenen Eintrags, als das Signal einging. */
   koVersion?: number;
   /**
@@ -90,14 +96,16 @@ export function istDauerhaft(anlass: Pick<RevalidierungsAnlass, "aenderung">): b
 export function anlassSignatur(
   anlass: Pick<
     RevalidierungsAnlass,
-    "grund" | "assetRef" | "aenderung" | "ausgeloestVon" | "ausgeloestVonVersion"
+    "grund" | "assetRef" | "aenderung" | "ausgeloestVon" | "ausgeloestVonVersion" | "meldungId"
   >,
 ): string {
+  // `meldungId` nur, wenn vorhanden — die Signaturen aller übrigen Anlässe bleiben unverändert.
   return JSON.stringify([
     anlass.grund,
     anlass.assetRef ?? null,
     anlass.aenderung ?? null,
     anlass.ausgeloestVon ?? null,
     anlass.ausgeloestVonVersion ?? null,
+    ...(anlass.meldungId !== undefined ? [anlass.meldungId] : []),
   ]);
 }

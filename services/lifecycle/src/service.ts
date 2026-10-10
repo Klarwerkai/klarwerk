@@ -14,6 +14,8 @@ import {
   anlassSignatur,
 } from "./types";
 
+// R-1635 / ADMIN-10: der Grund einer Markierung — die eine Definition steht in `./types`
+// (inzwischen samt „rueckmeldung" aus der Qualitätsübersicht).
 export type { RevalidierungsGrund } from "./types";
 
 /**
@@ -129,6 +131,8 @@ export class LifecycleService implements RevalidierungMerkerLeser {
       ausgeloestVon?: string;
       ausgeloestVonVersion?: number;
       aenderung?: string;
+      // ADMIN-10: die übernommene Rückmeldung (Grund „rueckmeldung").
+      meldungId?: string;
     },
   ): Promise<Markierung[]> {
     const am = new Date(this.uhr()).toISOString();
@@ -144,6 +148,7 @@ export class LifecycleService implements RevalidierungMerkerLeser {
         ...(payload.ausgeloestVonVersion !== undefined
           ? { ausgeloestVonVersion: payload.ausgeloestVonVersion }
           : {}),
+        ...(payload.meldungId !== undefined ? { meldungId: payload.meldungId } : {}),
       };
       const { stand, neu } = await this.repo.markPending(koId, {
         ...kern,
@@ -165,6 +170,8 @@ export class LifecycleService implements RevalidierungMerkerLeser {
           ...(payload.ausgeloestVon !== undefined ? { ausgeloestVon: payload.ausgeloestVon } : {}),
           ...(payload.assetRef !== undefined ? { assetRef: payload.assetRef } : {}),
           ...(payload.aenderung !== undefined ? { aenderung: payload.aenderung } : {}),
+          // ADMIN-10: der Beleg nennt die übernommene Rückmeldung (wie in `main`).
+          ...(payload.meldungId !== undefined ? { meldungId: payload.meldungId } : {}),
         },
       });
     }
@@ -290,6 +297,67 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     return this.repo.offeneFaelle(koIds);
   }
 
+  // ============================================================================================
+  // ADMIN-10 · EINE RÜCKMELDUNG ALS AUFGABE ÜBERNEHMEN — unter derselben Objektsperre wie der Abschluss.
+  // ============================================================================================
+  //
+  // Dieselbe gezielte Prüfanforderung wie `requestRevalidation`, ausgelöst aus einer belegten
+  // Rückmeldung. Kein zweiter Aufgabentyp — der Merker ist derselbe, die Bestätigung räumt ihn.
+  //
+  // Ben (Nacharbeit 2) fand zwei Lücken in der ersten Fassung, die beide hier geschlossen sind:
+  //   1. Der Übernahmebeleg stand dauerhaft, bevor die Anforderung geschrieben war. Fiel sie aus,
+  //      antwortete jede Wiederholung „bereits" und die Aufgabe entstand nie. Jetzt prüft JEDER
+  //      Aufruf — auch der, der den Beleg nicht mehr gewinnt — nach dem Beleg die tatsächliche Lage
+  //      und holt eine fehlende Anforderung nach (idempotente Wiederaufnahme).
+  //   2. „Angehängt" beruhte auf einer Lesung VOR dem Beleg. Schloss jemand die Revalidierung
+  //      dazwischen ab, hing die Meldung an einem Vorgang, den es nicht mehr gab. Jetzt laufen Beleg,
+  //      Lesung und Anforderung unter der Sperre des Objekts, unter der auch `confirmStillValid`
+  //      läuft: entweder ist der Abschluss ganz vorbei (dann wird neu angefordert) oder er kommt
+  //      erst danach (dann schliesst er die Revalidierung, an der die Meldung tatsächlich hängt).
+  //
+  // `belegen` schreibt den Übernahmebeleg (true = neu geschrieben), `erledigtSeitBeleg` sagt, ob
+  // nach diesem Beleg schon eine Bestätigung vorliegt — beides liegt beim Aufrufer, weil dieses
+  // Modul das Prüfprotokoll nur schreibt, nicht liest.
+  async rueckmeldungUebernehmen(
+    koId: string,
+    actor: string,
+    meldungId: string,
+    schritte: {
+      belegen: () => Promise<boolean>;
+      erledigtSeitBeleg: () => Promise<boolean>;
+    },
+  ): Promise<{ neu: boolean; lage: "angelegt" | "angehaengt" | "erledigt" }> {
+    return this.unterSperre(koId, async () => {
+      const neu = await schritte.belegen();
+      if ((await this.repo.pendingFor([koId])).includes(koId)) {
+        return { neu, lage: "angehaengt" as const };
+      }
+      if (await schritte.erledigtSeitBeleg()) {
+        return { neu, lage: "erledigt" as const };
+      }
+      await this.markiere([{ koId }], actor, { grund: "rueckmeldung", meldungId });
+      return { neu, lage: "angelegt" as const };
+    });
+  }
+
+  // Je Objekt eine Warteschlange: Übernahme und Bestätigung desselben Objekts laufen nacheinander.
+  // Grenze: die Sperre gilt innerhalb EINES Serverprozesses.
+  private readonly sperren = new Map<string, Promise<unknown>>();
+
+  private async unterSperre<T>(koId: string, fn: () => Promise<T>): Promise<T> {
+    const vorher = this.sperren.get(koId) ?? Promise.resolve();
+    const lauf = vorher.catch(() => undefined).then(fn);
+    const ende = lauf.catch(() => undefined);
+    this.sperren.set(koId, ende);
+    try {
+      return await lauf;
+    } finally {
+      if (this.sperren.get(koId) === ende) {
+        this.sperren.delete(koId);
+      }
+    }
+  }
+
   // SCRUM-420 (Pedi 03.07.): Selbstheilung — Marker, deren KO nicht mehr existiert (z. B.
   // nach Löschen/Demodaten-Purge), werden beim Lesen ehrlich ENTFERNT statt als Geister-
   // Karten (nackte UUID, „nicht im Bestand") im Arbeitsbereich zu erscheinen. Wirkt für
@@ -371,7 +439,21 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   // steht ein Fall offen, antwortet der Weg 409 `STAND_VERALTET` (Neuladen und mit Stand bestätigen),
   // auch wenn der Fall erst zwischen Vorprüfung und Revision entsteht. Ohne offenen Fall bleibt die
   // reine Gültigkeitsbestätigung (Bibliothek „Re-Validierung", Frist) möglich; sie löscht nichts.
+  //
+  // ADMIN-10: unter derselben Objektsperre wie `rueckmeldungUebernehmen` (Begründung dort). Die
+  // Bindung an Stand und Fassung gilt innerhalb dieser Sperre unverändert.
   async confirmStillValid(
+    koId: string,
+    author: string,
+    geprueftStand?: number,
+    geseheneFassung?: number,
+  ): Promise<KnowledgeObject> {
+    return this.unterSperre(koId, () =>
+      this.bestaetigeUngesperrt(koId, author, geprueftStand, geseheneFassung),
+    );
+  }
+
+  private async bestaetigeUngesperrt(
     koId: string,
     author: string,
     geprueftStand?: number,

@@ -44,6 +44,9 @@ export default {
     "folgepruefung.grundKurz.anlage": "Anlage geändert",
     "folgepruefung.grundKurz.nachbar": "Änderung am gekoppelten Eintrag",
     "folgepruefung.grundKurz.bibliothek": "Prüfung angefordert",
+    "folgepruefung.grundKurz.rueckmeldung": "Rückmeldung übernommen",
+    "folgepruefung.grund.rueckmeldung":
+      "Aus einer belegten Rückmeldung zur Antwort als Prüfung übernommen (keine Quellenänderung)",
     "folgepruefung.grundKurz.unbekannt": "Anlass nicht erfasst",
     "folgepruefung.grundKurz.mehrere": "{{anzahl}} Änderungen",
     "folgepruefung.abdeckung":
@@ -89,6 +92,9 @@ export default {
     "folgepruefung.grundKurz.anlage": "Asset changed",
     "folgepruefung.grundKurz.nachbar": "Change on a coupled entry",
     "folgepruefung.grundKurz.bibliothek": "Review requested",
+    "folgepruefung.grundKurz.rueckmeldung": "Feedback adopted",
+    "folgepruefung.grund.rueckmeldung":
+      "Adopted as a review from documented feedback on an answer (no source change)",
     "folgepruefung.grundKurz.unbekannt": "Reason not recorded",
     "folgepruefung.grundKurz.mehrere": "{{anzahl}} changes",
     "folgepruefung.abdeckung":
@@ -135,6 +141,9 @@ export default {
     "folgepruefung.grundKurz.anlage": "Installatie gewijzigd",
     "folgepruefung.grundKurz.nachbar": "Wijziging aan gekoppeld item",
     "folgepruefung.grundKurz.bibliothek": "Controle aangevraagd",
+    "folgepruefung.grundKurz.rueckmeldung": "Terugmelding overgenomen",
+    "folgepruefung.grund.rueckmeldung":
+      "Als controle overgenomen uit een vastgelegde terugmelding op een antwoord (geen bronwijziging)",
     "folgepruefung.grundKurz.unbekannt": "Aanleiding niet vastgelegd",
     "folgepruefung.grundKurz.mehrere": "{{anzahl}} wijzigingen",
     "folgepruefung.abdeckung":
