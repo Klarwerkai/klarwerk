@@ -29,7 +29,9 @@ describe("LifecycleService", () => {
     expect(affected).toEqual([ctx.ko.id]);
     expect(await ctx.lifecycle.pendingRevalidation()).toContain(ctx.ko.id);
 
-    const confirmed = await ctx.lifecycle.confirmStillValid(ctx.ko.id, "controller");
+    // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4): ein offener Fall wird nur mit
+    // seinem angezeigten Stand abgeschlossen.
+    const confirmed = await ctx.lifecycle.confirmStillValid(ctx.ko.id, "controller", 1);
     expect(confirmed.version).toBe(2);
     expect(await ctx.lifecycle.pendingRevalidation()).not.toContain(ctx.ko.id);
   });
@@ -68,7 +70,7 @@ describe("LifecycleService", () => {
   it("R-1732: erneute Prüfung gezielt anstossen; „Noch gültig“ räumt den Merker", async () => {
     await ctx.lifecycle.requestRevalidation(ctx.ko.id);
     expect(await ctx.lifecycle.pendingRevalidation()).toEqual([ctx.ko.id]);
-    await ctx.lifecycle.confirmStillValid(ctx.ko.id, "controller");
+    await ctx.lifecycle.confirmStillValid(ctx.ko.id, "controller", 1);
     expect(await ctx.lifecycle.pendingRevalidation()).toEqual([]);
   });
 
