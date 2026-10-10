@@ -82,6 +82,22 @@ wird nicht gegen das Original verglichen (sie trägt „aus der Leseübersetzung
 Einwilligung aus Klara 01 gilt weiter; das Mitschicken markierten Textes geschieht nur auf eine
 ausdrückliche Handlung hin, der Hinweis steht an der Markierung.
 
+## Entwürfe und bewusste Übernahme (Klara 04, `produkt:20261008:klara-vorschlaege`)
+
+| Fähigkeit | Wie es tatsächlich geht |
+| --- | --- |
+| Umformulieren | Im echten Betrieb mit einer Markierung: Klara prüft sie wie vor dem Frageweg (`pruefeAuswahl`) und schickt sie über den vorhandenen Formulierungsweg des Editors (`POST /api/reasoner`, Aufgabe `assist`, Anweisung „klarer formulieren“, Objektbezug `koId`). Die Karte zeigt Original (unverändert) und Vorschlag nebeneinander, dazu Ziel (Objekt, Fassung, Prüfstatus, Absatz, Link zur Stelle) und „KI-Formulierung · nicht geprüft“ bzw. „Ohne KI · nur geglättet“, je nachdem, was der Formulierungsweg meldet (`demo`). Am Beitrag ändert sich nichts. |
+| Übernehmen | Nur auf Knopfdruck. Klara prüft vorher: Gehört der Vorschlag zu einem Wissensobjekt, ist genau dieses geöffnet, darf die Rolle es bearbeiten, ist es noch sichtbar und steht der Wortlaut noch da? Dann geht der Vorschlag an den Editor der Lesefläche (`lib/klaraUebernahme.ts` → `BibliothekLesen.tsx`), der ihn in die Bearbeitungsfassung setzt — Kernaussage oder Inhalt, als Text an genau einer Stelle. Gespeichert oder eingereicht wird über die vorhandenen Knöpfe des Editors (Fassungsschutz, Einreichpflicht, Rechteprüfung am Server). Danach liest Klara am Server nach und sagt „Gespeichert – Fassung N“, „Als Änderungsvorschlag eingereicht“ oder „ohne diese Änderung beendet“. |
+| Rückfrage | Steht der Wortlaut mehrmals in Kernaussage und Inhalt, ändert Klara nichts und listet die Stellen (Feld, Umgebung) zur Auswahl; die Wahl gilt nur am Textstand der Rückfrage — hat sich der Beitrag inzwischen geändert, fragt Klara neu. Steht der Wortlaut auch an einer formatierten Stelle (fett, Verweis), ändert Klara nichts und sagt warum. Ist ein anderer Beitrag oder keiner geöffnet, sagt Klara, wozu der Vorschlag gehört, und bietet den Weg dorthin an. Eine Markierung ohne Wissensobjekt oder aus der Leseübersetzung wird nicht übernommen. |
+| Ohne Recht | Rolle ohne Bearbeitungsrecht: verständlicher Fehler an der Karte, nichts geändert, kein Editor geöffnet. |
+| Notizentwurf | Im echten Betrieb wie in der Demo: Entwurf mit Rücklink zur Stelle, nur in dieser Sitzung. |
+| Rechte, Konto | Der Vorschlag liegt wie Markierung und Entwurf im Sitzungszustand des Kontos; Abmelden oder ein anderes Konto verwirft ihn. |
+
+Grenzen: Der Vorschlag selbst wird nicht im Klara-Gespräch am Server abgelegt (die Ablage nimmt
+KI-Antworten nur mit Antwortkennung des Fragewegs an). Übernommen wird nur in Kernaussage und Inhalt
+eines Wissensobjekts — Titel, Bedingungen, Maßnahmen und Entwürfe der Erfassung nicht. Eine
+Markierung über eine Formatierung hinweg (fett, Verweis) wird nicht geraten, sondern abgelehnt.
+
 ## Was man in der Demo ausprobieren kann
 
 | Handlung | Wie |
@@ -135,6 +151,9 @@ ausdrückliche Handlung hin, der Hinweis steht an der Markierung.
   (`kontext-am-server.test.tsx`)
 - `tests-smoke/klara-kontext-tutorial-browser.spec.ts` (alle Engines) und
   `tests-smoke/klara-kontext-artikel-browser.spec.ts` (isolierter Kontext) — Klara 03 im Browser
+- `tests/klara-vorschlaege/` — Klara 04: Übernahmeregel (`uebernahme-logik.test.ts`) und der ganze
+  Weg Vorschlag → Übernahme → Editor → Speichern → Wiederöffnen, Rückfrage und fehlendes Recht gegen
+  den echten Server mit kontrolliertem Modelladapter (`vorschlag-am-server.test.tsx`)
 - `tests/klara-produkt/produkteinstieg-am-server.test.tsx` und
   `tests-smoke/assistenz-produkteinstieg-browser.spec.ts` (isolierter Kontext) — der normale
   Produkteinstieg ohne Vorschau: Desktop, 390 × 844 und Tastatur
