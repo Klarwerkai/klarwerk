@@ -86,6 +86,8 @@ COPY --from=abhaengigkeiten /pruef/abhaengigkeiten-audit.txt ./abhaengigkeiten-a
 EXPOSE 3001
 USER node
 # Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
+# R-2057: mit KLARWERK_TLS_CERT_FILE fragt er über HTTPS mit Zertifikatsprüfung
+# (services/app/healthcheck.mjs, Anleitung docs/operations/tls-bis-zur-anwendung.md).
 HEALTHCHECK --interval=30s --timeout=4s --start-period=15s \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node services/app/healthcheck.mjs
 CMD ["npx", "tsx", "services/app/src/server.ts"]

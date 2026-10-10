@@ -454,6 +454,7 @@ import { speicherVorgang } from "./speicher-vorgang";
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
 // produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg; im Postgres-Betrieb haltbar.
 import { InMemoryTeamsRepo, PgTeamsRepo, TeamAufloesendeSpaces, type TeamsRepo } from "./teams";
+import { type TransportTls, tlsServerFabrik } from "./transport-tls";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
 import {
   InMemoryUebersetzungRepo,
@@ -2937,6 +2938,9 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    // R-2057: TLS am App-Port (`transport-tls.ts`). Nur `server.ts` reicht es durch; ohne Option
+    // bleibt der Aufbau wie bisher (Tests mit `inject`, Klartextbetrieb).
+    tls?: TransportTls | undefined;
     // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: der Nachhol- und Abgleichlauf über DEN
     // Prüf-Worker dieser App (hintergrundpruefung.ts); `server.ts` startet ihn, Tests nicht.
     hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
@@ -2962,6 +2966,7 @@ export function buildApp(
   const app = Fastify({
     trustProxy: resolveTrustProxy(),
     logger: baueLoggerOptionen(opts.log),
+    ...(opts.tls ? { serverFactory: tlsServerFabrik(opts.tls) } : {}),
   });
   // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
   // Betreiber nur, dass alle Drosseln plötzlich gegen die Proxy-IP zählen.
