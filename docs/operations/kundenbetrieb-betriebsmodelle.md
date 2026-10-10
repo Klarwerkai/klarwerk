@@ -397,9 +397,10 @@ Voraussetzung (`KLARWERK_PG_TEST_URL`, `docker`, `pg_dump`/`pg_restore`, Netz zu
 Gewichte), ist der Lauf rot (Zeugenfall Z0), nicht übersprungen. **Modellserver:** Er lädt die
 Gewichte einmalig über das Netz; danach wird er in ein `--internal`-Netz verlegt und vom
 Standardnetz getrennt, die App erreicht ihn nur über seine Adresse dort (als interne Herkunft
-freigegeben). Fall S7 misst die Sperre im Container — TCP nach außen, Namensauflösung und
-Registry-Abruf müssen scheitern — und hält Container-ID, Netze und Kandidat in `NETZSPERRE.json`
-fest. **Grenze des App-Mitschnitts:** Namensauflösung der App-Prozesse ist nicht darin; die App
+freigegeben). Fall S7 misst die Sperre im Container — TCP nach außen und Namensauflösung müssen
+scheitern, und ein Registry-Abruf darf kein Gewicht hinterlassen (gemessen wird die Wirkung über
+`ollama list`; der Exitcode von `ollama pull` war am Prüfplatz auch im gesperrten Netz 0) — und hält
+Container-ID, Netze und Kandidat in `NETZSPERRE.json` fest. **Grenze des App-Mitschnitts:** Namensauflösung der App-Prozesse ist nicht darin; die App
 bekommt keinen Cloud-Schlüssel.
 
 ---

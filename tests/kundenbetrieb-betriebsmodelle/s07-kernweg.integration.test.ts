@@ -116,8 +116,16 @@ interface Sperrprobe {
   netzeNachher: string[];
   tcpNachAussen: number | null;
   namensaufloesung: number | null;
-  registryAbruf: number | null;
+  registryAbruf: {
+    exit: number | null;
+    ausgabe: string;
+    gewichtDanachVorhanden: boolean;
+  };
 }
+
+// Ein Gewicht, das der Prüflauf nie lädt — taucht es nach dem Abrufversuch in der Liste auf, war die
+// Registry erreichbar.
+const PROBEGEWICHT = "all-minilm";
 let netzsperre: Sperrprobe | undefined;
 
 /** Die Netze, an denen ein Container hängt, mit seiner Adresse je Netz. */
@@ -150,7 +158,36 @@ function sperrprobe(name: string, internesNetz: string, vorher: string[]): Sperr
     netzeNachher: nachher,
     tcpNachAussen: exitcode(["exec", name, "bash", "-c", tcp], 30_000),
     namensaufloesung: exitcode(["exec", name, "getent", "hosts", "registry.ollama.ai"], 30_000),
-    registryAbruf: exitcode(["exec", name, "ollama", "pull", "all-minilm"], 180_000),
+    registryAbruf: registryProbe(name),
+  };
+}
+
+/**
+ * Gemessen am realen Prüfplatz (HISTORIE/nacharbeit-19): `ollama pull` endete im gesperrten Netz mit
+ * Exit 0, obwohl TCP nach außen und Namensauflösung scheiterten. Der Exitcode der CLI belegt also
+ * nichts. Maßgeblich ist die WIRKUNG: liegt das Probegewicht danach im Server, war die Registry
+ * erreichbar. Exitcode und Ausgabe bleiben als Beleg erhalten.
+ */
+function registryProbe(name: string): Sperrprobe["registryAbruf"] {
+  const abruf = spawnSync("docker", ["exec", name, "ollama", "pull", PROBEGEWICHT], {
+    encoding: "utf8",
+    stdio: "pipe",
+    timeout: 180_000,
+  });
+  const liste = spawnSync("docker", ["exec", name, "ollama", "list"], {
+    encoding: "utf8",
+    stdio: "pipe",
+    timeout: 60_000,
+  });
+  if (liste.status !== 0) {
+    throw new Error(`${MARKE}: ollama list im Container scheiterte: ${liste.stderr}`);
+  }
+  const namen = (liste.stdout ?? "").split("\n").map((z) => z.trim().split(/\s+/)[0] ?? "");
+  const vorhanden = namen.some((n) => n === PROBEGEWICHT || n.startsWith(`${PROBEGEWICHT}:`));
+  return {
+    exit: abruf.status,
+    ausgabe: `${abruf.stdout ?? ""}${abruf.stderr ?? ""}`.slice(-800),
+    gewichtDanachVorhanden: vorhanden,
   };
 }
 let ablage = "";
@@ -537,7 +574,7 @@ describe("AW-12 · Abnahme S07 auf dem Prüfplatz", () => {
     expect(probe.netzIntern).toBe("true");
     expect(probe.tcpNachAussen, "TCP nach außen kam durch").not.toBe(0);
     expect(probe.namensaufloesung, "externer Name wurde aufgelöst").not.toBe(0);
-    expect(probe.registryAbruf, "Registry war erreichbar").not.toBe(0);
+    expect(probe.registryAbruf.gewichtDanachVorhanden, probe.registryAbruf.ausgabe).toBe(false);
     expect(modellHost).not.toBe("127.0.0.1");
     ergebnis.netzsperre = { kandidat: commit, modellAdresse: modellHost, ...probe };
   });
