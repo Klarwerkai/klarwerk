@@ -17,6 +17,7 @@ import {
 // JOB 593 / Ownerentscheidung Option A: die EINE Normalform der kanonischen Anlagenkennung.
 // Sie steht in einer eigenen Datei und nicht hier, weil BEIDE Schreibränder — Anlegen und
 // Überarbeiten — sie anwenden müssen. Zwei Kopien wären zwei Wahrheiten.
+import { normalizeAnlagenkontext } from "./anlagenkontext";
 import { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./asset";
 // JOB 3076 (Q1): `isConfidential` steht hier NICHT mehr — der Speicherzweig (`buildCreatedKo`) war
 // seine einzige Verwendung in dieser Datei und benutzte es als Speicherbedingung. Die Funktion selbst
@@ -132,6 +133,7 @@ import {
   type AiCheckBasis,
   type AiCheckCoverage,
   type AiCheckCoverageSummary,
+  type AnlagenKontext,
   type Confidentiality,
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
@@ -468,6 +470,9 @@ export interface CreateKoInput {
   confidence?: number;
   neededValidations?: number;
   asset?: string | null;
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext; Normalform beim
+  // Anlegen (`anlagenkontext.ts`), die Eingangsprüfung (400) steht an der Route.
+  anlagenkontext?: AnlagenKontext | null;
   // R-0082: mehrere Anlagen. Ist die Liste da, gilt SIE (auch leer = keine Anlage); sonst wird die
   // Einzelangabe `asset` zur Liste. Gespeichert wird über `anlagenFelder` (asset.ts).
   assets?: string[] | null;
@@ -2374,6 +2379,7 @@ export class KoService {
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
     // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
     const domain = normalizeDomain(input.domain);
+    const anlagenkontext = normalizeAnlagenkontext(input.anlagenkontext);
     // R-1664/R-2179: die geführten Angaben gehören allein zur Wissensart `negativwissen`.
     // R-2180: ein Fall mit Personen-, Kunden-, Produktions- oder Qualitätsbezug liegt nie unter
     // „vertraulich" — die Stufe wird angehoben, nie gesenkt (Regel in negativwissen.ts).
@@ -2430,6 +2436,8 @@ export class KoService {
       // R-0082: `assets` (kanonisch) und `asset` (Spiegel der ersten) entstehen zusammen.
       ...anlagenFelder(anlagen),
       ...(revalidierungAm ? { revalidierungAm } : {}),
+      // R-1631: nur speichern, wenn wirklich etwas angegeben ist — wie das Fachgebiet oben.
+      ...(anlagenkontext ? { anlagenkontext } : {}),
       // JOB 3076 (Q1) — DIE STUFE NUR SPEICHERN, WENN SIE JEMAND MITBRINGT. ABLÖSUNG VON SCRUM-415.
       //
       // BIS HIERHER GALT (SCRUM-415): „nur speichern, wenn tatsächlich vertraulich" — die Bedingung
@@ -6564,6 +6572,34 @@ export class KoService {
             action: "ko.domain-changed",
             target: id,
             payload: { vorher, nachher },
+          });
+        },
+      };
+    });
+  }
+
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext setzen, ändern oder
+  // entfernen. Dieselbe Bauform wie `setDomain` direkt darüber (per KO serialisiert, Beleg im Audit,
+  // Rechte an der Route); der Kontext ersetzt den bisherigen VOLLSTÄNDIG. Ein leerer Kontext
+  // entfernt das Feld; ein unveränderter ändert nichts und erzeugt keinen Beleg.
+  async setAnlagenkontext(id: string, kontext: unknown, actor: string): Promise<KnowledgeObject> {
+    const nachher = normalizeAnlagenkontext(kontext);
+    return this.mutateKo(id, (ko) => {
+      const vorher = normalizeAnlagenkontext(ko.anlagenkontext);
+      if (JSON.stringify(vorher ?? null) === JSON.stringify(nachher ?? null)) {
+        return { updated: ko, value: ko };
+      }
+      const { anlagenkontext: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, anlagenkontext: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.anlagenkontext-changed",
+            target: id,
+            payload: { vorher: vorher ?? null, nachher: nachher ?? null },
           });
         },
       };

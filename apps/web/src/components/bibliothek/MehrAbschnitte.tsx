@@ -118,6 +118,8 @@ import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { WissensauskunftBereich } from "../wissensauskunft/WissensauskunftBereich";
 import { AnhangZeichnung } from "./AnhangZeichnung";
+import { AnlagenBezugPflege } from "./AnlagenBezugPflege";
+import { AnlagenQrCode } from "./AnlagenQrCode";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { FassungsGegenueberstellung } from "./Fassungsvergleich";
 import { ImportErgebnis } from "./ImportErgebnis";
@@ -3669,6 +3671,11 @@ export function MehrAbschnitte({
             <p className="mt-1 text-[11.5px] text-muted-2">{t("frische.nachbarnMeldenHinweis")}</p>
           </div>
         ) : null}
+        {/* R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext pflegen —
+            dasselbe Recht wie die Kopplung darüber. */}
+        {role !== "viewer" ? <AnlagenBezugPflege ko={ko} onGespeichert={invalidate} /> : null}
+        {/* R-1647 / R-2174: der QR-Code der Anlage, eines Bauteils oder Materials dieses Objekts. */}
+        <AnlagenQrCode ko={ko} />
       </Abschnitt>
 
       {/* 13 — Nachbarschaft */}
