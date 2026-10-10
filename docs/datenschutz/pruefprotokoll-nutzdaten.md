@@ -92,6 +92,8 @@ wiederholt.
 | `overlap.superseded`, Schließen/Trennen/Verknüpfen | `koIds`, `resolutionReason` bzw. `koId` | K, Z |
 | **`overlap.in-progress`** | **`note`**, `koIds` | **F** — siehe Befund 1 |
 | `overlap.settings.set` | `minConfidence` | Z |
+| `pruefung.hintergrundlauf` (`services/app/src/hintergrundpruefung.ts`) | `nachgeholt`, `abgeglichen`, `fehlgeschlagen`, `offen`, `vergleiche`, `vergleicheKonflikt`, `vergleicheDublette`, `vergleicheHeute`, `tagesbudget`, ggf. `abbruch` — nur Zähler, Ziel `bestand` | Z |
+| `pruefung.hintergrundlauf.verbrauch` (ebd., Reservierung vor und Abrechnung nach jedem Objektlauf für das Tagesbudget) | `tag`, `art` (`reservierung`/`abrechnung`), `reservierung` (Zufallskennung, kein Objektbezug), `vergleiche`, bei Abrechnung `konflikt`, `dublette` — Ziel `bestand` | Z |
 
 Die Begründung und die Zitate eines automatisch erkannten Konflikts (`rationale`, `quotes`) stehen
 am Konflikt, **nicht** im Protokoll.

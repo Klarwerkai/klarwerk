@@ -104,6 +104,7 @@ import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichn
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { AnlagenFeld } from "../Anlagen";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { ExternalUrlText } from "../ExternalUrlText";
 import { FachgebietFeld } from "../Fachgebiet";
 import { GeltungFeld } from "../Geltung";
@@ -1536,7 +1537,10 @@ export function MehrAbschnitte({
       >
         <HelpTip title={t("vhelp.sourcesLevel2.title")} body={t("vhelp.sourcesLevel2.body")} />
         {(ko.sources ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-2">
             {(ko.sources ?? []).map((s) => {
@@ -1714,7 +1718,10 @@ export function MehrAbschnitte({
                 da, sondern der vorhandene Leersatz: ein Feld ohne Inhalt verspräche einen Weg, den
                 dieses Objekt nicht hat („Ehrlichkeit vor Optik"). */}
             {ankerAnhaenge.length === 0 ? (
-              <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+                {leerzustandsZeile(t, "objekt")}
+              </>
             ) : (
               <Field label={t("ko.mehr.anhaenge")}>
                 <select
@@ -2167,6 +2174,7 @@ export function MehrAbschnitte({
             // Sackgasse, die UX-25 an der Belegkarte beseitigt hat (`:1294-1295`).
             <>
               <p className="text-[12.5px] text-muted">{t("ko.evidenceEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
               {canEdit ? (
                 <button
                   type="button"
@@ -2246,7 +2254,10 @@ export function MehrAbschnitte({
         aufWechsel={(o) => abschnittUmschalten("anhaenge", o)}
       >
         {(ko.attachments ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <div className="grid grid-cols-3 gap-2">
             {(ko.attachments ?? []).map((a) => {
@@ -2577,7 +2588,10 @@ export function MehrAbschnitte({
           ) : ereignisLage.isError ? (
             <p className="mt-2 text-[12.5px] text-danger">{t("state.error")}</p>
           ) : auditEvents.length === 0 ? (
-            <p className="mt-2 text-[12.5px] text-muted">{t("ko.lineageEventsEmpty")}</p>
+            <>
+              <p className="mt-2 text-[12.5px] text-muted">{t("ko.lineageEventsEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
+            </>
           ) : (
             <ul className="mt-2 space-y-1">
               {auditEvents.map((e) => (
@@ -2709,7 +2723,10 @@ export function MehrAbschnitte({
           ) : fassungsLage.isError ? (
             <p className="text-[12.5px] text-danger">{t("state.error")}</p>
           ) : zeilen.length === 0 ? (
-            <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
+            <>
+              <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
+            </>
           ) : (
             <>
               {((): JSX.Element => {
@@ -3303,7 +3320,10 @@ export function MehrAbschnitte({
           // §9: der Leersatz gilt NUR nach einem erfolgreichen Abruf — dieser Abschnitt wird erst
           // gezeichnet, wenn das Wissensobjekt geladen ist (`BibliothekLesen`), und behauptet
           // deshalb nie „keine Beiträge", bevor jemand nachgesehen hat.
-          <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-3">
             {diskussionsFaeden.map((faden) => {
@@ -3611,7 +3631,10 @@ export function MehrAbschnitte({
             ))}
           </div>
         ) : (
-          <p className="text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
+          <>
+            <p className="text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         )}
         {role !== "viewer" ? (
           <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-2.5">

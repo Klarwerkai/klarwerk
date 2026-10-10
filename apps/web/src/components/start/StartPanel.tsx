@@ -28,6 +28,7 @@ import { START_HELP_TOPICS } from "../../lib/startHelp";
 import { START_ORIENTATION_TEXT } from "../../lib/startOrientation";
 import { stufe2FeatureLabelKeys } from "../../lib/stufe2Hint";
 import { AdminFirstRunCard } from "../AdminFirstRunCard";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../FunkeCards";
 import { KlaraPathTeaser } from "../KlaraPathTeaser";
 import { RoleLink } from "../RoleLink";
@@ -372,7 +373,10 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 {t("start.livewall.saved")}
               </div>
               {daten.saved.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-1">
                   {daten.saved.map((s) => (
@@ -404,7 +408,10 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 {t("start.livewall.helped")}
               </div>
               {daten.helped.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-1">
                   {daten.helped.map((h) => (
