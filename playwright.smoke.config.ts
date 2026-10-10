@@ -71,9 +71,12 @@ const PORT_ZUSTAND = 3124;
  * (Klara 03) legt einen freigegebenen Beitrag an und stuft ihn vertraulich.
  * `assistenz-produkteinstieg-browser` (produkt:20261010:assistenz-produkteinstieg) legt für die
  * Artikelseite einen fiktiven freigegebenen Beitrag an.
+ *
+ * produkt:20261010:fragen-pruefen-einstieg: die Rollenprobe reicht fiktive Beiträge ein und stellt
+ * an ihnen Rückfragen — aus demselben Grund wie `arbeitswege-objekt-browser`.
  */
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|assistenz-produkteinstieg-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|fragen-pruefen-einstieg-browser|assistenz-produkteinstieg-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.
