@@ -72,6 +72,7 @@ const BEZUEGE: readonly KlaraBezug[] = ["seite", "markierung", "frei"];
 const MODI_SEITE = ["lesen", "bearbeiten"] as const;
 const PRUEFSTAENDE = ["geprueft", "ungeprueft"] as const;
 const LESARTEN = ["original", "uebersetzung"] as const;
+const KONTEXTARTEN = ["artikel", "entwurf", "frage"] as const;
 export const KLARA_AUSWAHL_MAX = 300;
 
 /** Wo etwas geschah: Seite und Objekt, wie Klara sie auf dem Bildschirm gelesen hat. */
@@ -96,6 +97,13 @@ export interface KlaraObjektbezug {
   readonly bezug?: KlaraBezug;
   /** Der Anfang der Markierung (gekürzt), wenn der Bezug die Markierung war. */
   readonly auswahl?: string;
+  /**
+   * Nacharbeit 6: der Seitenkontext, der mit der Frage TATSÄCHLICH an den Frageweg ging
+   * (`seitenbezug` von `POST /api/ask`) — Art und Wortlaut (Entwurfstitel, aktuelle Frage).
+   * „Erneut fragen“ schickt genau ihn wieder; die Rechte prüft der Frageweg jedes Mal neu.
+   */
+  readonly kontextArt?: (typeof KONTEXTARTEN)[number];
+  readonly kontextText?: string;
 }
 
 /**
@@ -456,6 +464,22 @@ export function pruefeObjektbezug(roh: unknown): KlaraObjektbezug {
       throw eingabeFehler("objektbezug.auswahl gehört nur zum Bezug markierung.");
     }
     bezug.auswahl = auswahl;
+  }
+  // Nacharbeit 6: der gesendete Seitenkontext. Ein Wortlaut gehört zu einer Kontextart, und ein
+  // freies Gespräch hat keinen Seitenkontext.
+  const kontextArt = wahlweiseWahl(o.kontextArt, KONTEXTARTEN, "objektbezug.kontextArt");
+  const kontextText = wahlweiseText(o.kontextText, KLARA_AUSWAHL_MAX, "objektbezug.kontextText");
+  if (kontextArt !== null) {
+    if (gewaehlt === "frei") {
+      throw eingabeFehler("objektbezug.kontextArt gehört nicht zum freien Gespräch.");
+    }
+    bezug.kontextArt = kontextArt;
+  }
+  if (kontextText !== null) {
+    if (kontextArt === null) {
+      throw eingabeFehler("objektbezug.kontextText gehört zu einer kontextArt.");
+    }
+    bezug.kontextText = kontextText;
   }
   return bezug;
 }

@@ -56,6 +56,7 @@ import {
   bezugZeile,
   fehlendeGrundlage,
   frageText,
+  mitSeitenbezug,
   moeglicheAktionen,
   objektbezugFuer,
   pruefeAuswahl,
@@ -577,6 +578,47 @@ describe("K1 · Nacharbeit 5 — welcher Seitenkontext an den Frageweg geht", ()
       herkunft: { pfad: "/erfassen", seite: "erfassung", seitenName: "Erfassen", objekt: "x" },
     };
     expect(seitenbezugFuer("markierung", fragen, ohneObjekt)).toBeUndefined();
+  });
+
+  it("Nacharbeit 6: der gesendete Seitenbezug übersteht Ablage und Wiederholung — Erfassung, Fragen ohne und mit Beitrag", () => {
+    document.body.innerHTML = '<input data-testid="blatt-titel" value="Ölwechsel Presse Vier">';
+    const erfassung = ermittleKontext("/erfassen", t, document, "?draft=d-7", null);
+    document.body.innerHTML =
+      '<input data-tutorial-ziel="fragen.fragefeld" value="Wann ist die Wartung fällig?">';
+    const fragen = ermittleKontext("/fragen", t, document, "", null);
+    const fragenMitBeitrag = ermittleKontext("/fragen", t, document, "?ko=ko-1&fassung=2", null);
+    for (const k of [erfassung, fragen, fragenMitBeitrag]) {
+      const gesendet = seitenbezugFuer("seite", k, null);
+      expect(gesendet, k.pfad).toBeDefined();
+      const gespeichert = mitSeitenbezug(objektbezugFuer("seite", k, null), gesendet);
+      // Die Wiederholung schickt GENAU den damals gesendeten Seitenbezug.
+      expect(seitenbezugAusObjektbezug(gespeichert)).toEqual(gesendet);
+    }
+    const ohneBeitrag = mitSeitenbezug(
+      objektbezugFuer("seite", fragen, null),
+      seitenbezugFuer("seite", fragen, null),
+    );
+    expect(seitenbezugAusObjektbezug(ohneBeitrag)).toEqual({
+      art: "frage",
+      kontext: "Wann ist die Wartung fällig?",
+    });
+    // Ein danach geänderter Seitenzustand ändert die Wiederholung nicht: sie liest nur die Ablage.
+    document.body.innerHTML =
+      '<input data-tutorial-ziel="fragen.fragefeld" value="Etwas anderes?">';
+    const gespeichert = mitSeitenbezug(
+      objektbezugFuer("seite", fragenMitBeitrag, null),
+      seitenbezugFuer("seite", fragenMitBeitrag, null),
+    );
+    expect(seitenbezugAusObjektbezug(gespeichert)).toEqual({
+      art: "frage",
+      koId: "ko-1",
+      fassung: 2,
+      kontext: "Wann ist die Wartung fällig?",
+    });
+    // Frei: kein Seitenbezug — weder gespeichert noch wiederholt.
+    const frei = mitSeitenbezug(objektbezugFuer("frei", fragen, null), undefined);
+    expect(frei.kontextArt).toBeUndefined();
+    expect(seitenbezugAusObjektbezug(frei)).toBeUndefined();
   });
 
   it("„Erneut fragen“ nimmt das Objekt des gespeicherten Bezugs, frei bleibt frei", () => {

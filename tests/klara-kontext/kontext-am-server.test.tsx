@@ -31,7 +31,13 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { Link, MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
+import {
+  Link,
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+} from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
@@ -153,6 +159,29 @@ async function vorrichtung(
   return { a, leser, eintrag, fassung };
 }
 
+const ENTWURF = "Ölwechsel Presse Vier";
+const AKTUELL = "Wann ist die Wartung fällig?";
+
+/**
+ * Die Fragen-Seite als Stub. Mit `?mitfrage=1` trägt sie ein echtes Fragefeld (dasselbe
+ * `data-tutorial-ziel` wie die Seite „Fragen“) mit einer eingegebenen Frage — sonst ist sie leer.
+ */
+function FragenStub() {
+  const { search } = useLocation();
+  const mitFrage = new URLSearchParams(search).has("mitfrage");
+  return createElement(
+    "div",
+    { "data-testid": "seite-fragen" },
+    mitFrage
+      ? createElement("input", {
+          "data-tutorial-ziel": "fragen.fragefeld",
+          "data-testid": "stub-fragefeld",
+          defaultValue: AKTUELL,
+        })
+      : null,
+  );
+}
+
 /** Die echte Hülle mit der echten Lesefläche und einer Fragen-Seite — Link dazwischen. */
 async function montiere(pfad: string): Promise<void> {
   container = document.createElement("div");
@@ -171,9 +200,14 @@ async function montiere(pfad: string): Promise<void> {
       Routes,
       null,
       createElement(Route, { path: "/wissen/:id", element: createElement(KnowledgeDetail) }),
+      createElement(Route, { path: "/fragen", element: createElement(FragenStub) }),
       createElement(Route, {
-        path: "/fragen",
-        element: createElement("div", { "data-testid": "seite-fragen" }),
+        path: "/erfassen",
+        element: createElement(
+          "div",
+          { "data-testid": "seite-erfassen" },
+          createElement("input", { "data-testid": "blatt-titel", defaultValue: ENTWURF }),
+        ),
       }),
     ),
   );
@@ -575,5 +609,90 @@ describe("C4 · K6 — Anweisungen im markierten Inhalt lösen keine Aktion aus"
     expect(text("klara-ort-seite")).toBe("Wissen");
     const amServer = await serverGespraech(a, leser);
     expect(amServer?.nachrichten.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("C5 · K1 · Nacharbeit 6 — „Erneut fragen“ schickt genau den damals gesendeten Seitenkontext", () => {
+  it("Erfassung, Fragen ohne und mit Beitrag — auch wenn sich die Seite inzwischen geändert hat", async () => {
+    const { eintrag, fassung } = await vorrichtung();
+    const faelle: { pfad: string; feld: string; erwartet: Record<string, unknown> }[] = [
+      { pfad: "/erfassen", feld: "blatt-titel", erwartet: { art: "entwurf", kontext: ENTWURF } },
+      {
+        pfad: "/fragen?mitfrage=1",
+        feld: "stub-fragefeld",
+        erwartet: { art: "frage", kontext: AKTUELL },
+      },
+      {
+        pfad: `/fragen?mitfrage=1&ko=${eintrag.koId}&fassung=${fassung}`,
+        feld: "stub-fragefeld",
+        erwartet: { art: "frage", koId: eintrag.koId, fassung, kontext: AKTUELL },
+      },
+    ];
+    // ATTRAPPE nur für `POST /api/ask`: sie hält den gesendeten Seitenbezug fest und scheitert mit
+    // 500 — nur so steht „Erneut fragen“ da. Ablage, Schritt und Gespräch bleiben der echte Server:
+    // die Wiederholung liest den Bezug aus dem dort GESPEICHERTEN Schritt.
+    const gesendet: (Record<string, unknown> | undefined)[] = [];
+    const weiter = globalThis.fetch;
+    const attrappe = (async (eingabe: unknown, init?: RequestInit) => {
+      if (String(eingabe) !== "/api/ask") {
+        return weiter(eingabe as RequestInfo, init);
+      }
+      const rumpf = JSON.parse(String(init?.body ?? "{}")) as {
+        seitenbezug?: Record<string, unknown>;
+      };
+      gesendet.push(rumpf.seitenbezug);
+      return new Response(JSON.stringify({ error: "SERVER", message: "Dienst kurz weg." }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof globalThis.fetch;
+    globalThis.fetch = attrappe;
+    window.fetch = attrappe;
+
+    let eingewilligt = false;
+    for (const fall of faelle) {
+      abbauen();
+      vergiss();
+      await montiere(fall.pfad);
+      await gespraechOeffnen();
+      if (!eingewilligt) {
+        await einwilligen();
+        eingewilligt = true;
+      }
+      await bis(() => text("klara-ort-objekt").includes(String(fall.erwartet.kontext)), 120);
+      expect(text("klara-bezug-zeile"), fall.pfad).not.toBe(
+        "Freies Gespräch – ohne Seite und Markierung",
+      );
+
+      const vorher = gesendet.length;
+      const eingabe = q<HTMLInputElement>(document, "klara-eingabe") as HTMLInputElement;
+      await tippe(eingabe, "Wie lange dauert das?");
+      await klick(q(document, "klara-senden"));
+      // Erst gesendet, dann der NEUE Schritt abgeschlossen (er stand zu Beginn auf „läuft“) — der
+      // fehlgeschlagene Schritt des vorigen Falls zählt nicht.
+      await bis(() => gesendet.length > vorher, 200);
+      await bis(
+        () =>
+          !q(document, "klara-stoppen") &&
+          q(document, "klara-letzter-schritt")?.dataset.stand === "fehlgeschlagen" &&
+          Boolean(q(document, "klara-schritt-nochmal")),
+        200,
+      );
+      const nochmal = q(document, "klara-schritt-nochmal");
+      expect(nochmal, `${fall.pfad}: kein „Erneut fragen“`).not.toBeNull();
+      expect(gesendet[vorher], fall.pfad).toEqual(fall.erwartet);
+
+      // Die Seite ändert sich inzwischen — die Wiederholung darf davon nichts übernehmen.
+      const feld = q<HTMLInputElement>(document, fall.feld);
+      if (!feld) {
+        throw new Error(`${fall.pfad}: Feld ${fall.feld} fehlt`);
+      }
+      await tippe(feld, "Ganz anderer Stand");
+      await bis(() => text("klara-ort-objekt").includes("Ganz anderer Stand"), 120);
+
+      await klick(q(document, "klara-schritt-nochmal"));
+      await bis(() => gesendet.length > vorher + 1, 200);
+      expect(gesendet[vorher + 1], `${fall.pfad}: Wiederholung`).toEqual(fall.erwartet);
+    }
   });
 });

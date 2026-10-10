@@ -215,3 +215,62 @@ describe("B3 · K6 — nur bekannte, gültige Bezugsangaben", () => {
     );
   });
 });
+
+describe("B4 · Nacharbeit 6 — der gesendete Seitenkontext bleibt am Schritt erhalten", () => {
+  it("Erfassung, Fragen ohne und mit Beitrag: Art und Wortlaut kommen unverändert zurück", async () => {
+    const g = await gespraechMitEinwilligung();
+    const faelle: Record<string, unknown>[] = [
+      {
+        pfad: "/erfassen",
+        seitenName: "Erfassung",
+        objekt: "Entwurf „Ölwechsel Presse Vier“",
+        modus: "bearbeiten",
+        bezug: "seite",
+        kontextArt: "entwurf",
+        kontextText: "Ölwechsel Presse Vier",
+      },
+      {
+        ...SEITE_FRAGEN,
+        bezug: "seite",
+        kontextArt: "frage",
+        kontextText: "Wann ist die Wartung fällig?",
+      },
+      {
+        ...SEITE_FRAGEN,
+        koId: "ko-1",
+        fassung: 2,
+        bezug: "seite",
+        kontextArt: "frage",
+        kontextText: "Wann ist die Wartung fällig?",
+      },
+    ];
+    for (const objektbezug of faelle) {
+      const s = await auf("PUT", `${BASIS}/gespraeche/${g.id}/schritt`, {
+        art: "frage",
+        text: "Wie lange dauert das?",
+        objektbezug,
+        stand: "fehlgeschlagen",
+      });
+      expect(s.statusCode, s.body).toBe(200);
+      const gelesen = ((await auf("GET", `${BASIS}/gespraech`)).json() as { gespraech: Sicht })
+        .gespraech;
+      expect(gelesen.letzterSchritt?.objektbezug).toEqual(objektbezug);
+    }
+    // Ungültig: unbekannte Art, Wortlaut ohne Art, Seitenkontext am freien Gespräch, zu lang.
+    const falsch: Record<string, unknown>[] = [
+      { ...SEITE_FRAGEN, bezug: "seite", kontextArt: "alles" },
+      { ...SEITE_FRAGEN, bezug: "seite", kontextText: "ohne Art" },
+      { ...SEITE_FRAGEN, bezug: "frei", kontextArt: "frage", kontextText: "x" },
+      { ...SEITE_FRAGEN, bezug: "seite", kontextArt: "frage", kontextText: "x".repeat(301) },
+    ];
+    for (const objektbezug of falsch) {
+      const r = await auf("PUT", `${BASIS}/gespraeche/${g.id}/schritt`, {
+        art: "frage",
+        text: "x",
+        objektbezug,
+        stand: "fehlgeschlagen",
+      });
+      expect(r.statusCode, JSON.stringify(objektbezug)).toBe(400);
+    }
+  });
+});

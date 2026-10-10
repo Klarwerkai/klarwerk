@@ -244,9 +244,46 @@ export function seitenbezugFuer(
   }
 }
 
-/** „Erneut fragen“: der Seitenbezug aus dem gespeicherten Objektbezug von damals. */
+/**
+ * Nacharbeit 6: der TATSÄCHLICH gesendete Seitenbezug wird am Objektbezug festgehalten (Nachricht
+ * und Schritt). Objekt und Fassung kommen aus dem Seitenbezug selbst, damit die Ablage genau das
+ * zeigt, was an den Frageweg ging; ohne Seitenbezug (frei, Seite ohne Objekt) bleibt er unberührt.
+ */
+export function mitSeitenbezug(
+  o: KlaraObjektbezug,
+  s: KlaraSeitenbezug | undefined,
+): KlaraObjektbezug {
+  if (!s) {
+    return o;
+  }
+  const { koId: _koId, fassung: _fassung, ...ohneObjekt } = o;
+  return {
+    ...ohneObjekt,
+    ...(s.koId ? { koId: s.koId } : {}),
+    ...(s.fassung ? { fassung: s.fassung } : {}),
+    kontextArt: s.art,
+    ...(s.kontext ? { kontextText: s.kontext } : {}),
+  };
+}
+
+/**
+ * „Erneut fragen“: der Seitenbezug von damals — Art, Objekt, Fassung und Wortlaut, wie er gesendet
+ * wurde (`mitSeitenbezug`). Ältere Schritte ohne Kontextart: Artikelbezug aus Objekt und Fassung.
+ * Ob das Objekt (noch) zugänglich ist, prüft der Frageweg bei JEDER Anfrage neu.
+ */
 export function seitenbezugAusObjektbezug(b: KlaraObjektbezug): KlaraSeitenbezug | undefined {
-  if (b.bezug === "frei" || !b.koId) {
+  if (b.bezug === "frei") {
+    return undefined;
+  }
+  if (b.kontextArt) {
+    return {
+      art: b.kontextArt,
+      ...(b.koId ? { koId: b.koId } : {}),
+      ...(b.fassung ? { fassung: b.fassung } : {}),
+      ...(b.kontextText ? { kontext: b.kontextText } : {}),
+    };
+  }
+  if (!b.koId) {
     return undefined;
   }
   return { art: "artikel", koId: b.koId, ...(b.fassung ? { fassung: b.fassung } : {}) };

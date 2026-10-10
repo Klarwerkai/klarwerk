@@ -68,6 +68,7 @@ import {
   bezugZeile,
   frageText,
   herkunftTeile,
+  mitSeitenbezug,
   moeglicheAktionen,
   objektbezugFuer,
   pruefeAuswahl,
@@ -1118,12 +1119,16 @@ export function KlaraVorschau(): JSX.Element {
         const text =
           fest?.text ?? frageText(art, eingabeText, z0.bezug, kontextJetzt, auswahlJetzt, t);
         const gewaehlt = art === "frage" ? z0.bezug : "markierung";
-        const bezug = fest?.bezug ?? objektbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt);
         // Nacharbeit 5: der gewählte Seiten-/Objektkontext geht MIT an den Frageweg — der Server
         // löst das Objekt unter den Rechten auf. Frei: keiner.
+        // Nacharbeit 6: „Erneut fragen“ nimmt GENAU den damals gesendeten Seitenbezug (am
+        // gespeicherten Objektbezug), und jede neue Frage hält ihren Seitenbezug dort fest.
         const seitenbezug = fest
           ? seitenbezugAusObjektbezug(fest.bezug)
           : seitenbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt);
+        const bezug =
+          fest?.bezug ??
+          mitSeitenbezug(objektbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt), seitenbezug);
         pruefungLaeuft.current = false;
         const stand = await echtFragen(text, bezug, sprache, t, seitenbezug);
         if (stand === "veraltet") {

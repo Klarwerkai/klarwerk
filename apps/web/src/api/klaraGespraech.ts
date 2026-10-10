@@ -24,6 +24,9 @@ export interface KlaraObjektbezug {
   bezug?: KlaraBezug;
   /** Der Anfang der Markierung (höchstens 300 Zeichen), nur beim Bezug „markierung". */
   auswahl?: string;
+  /** Nacharbeit 6: der tatsächlich gesendete Seitenkontext — Art und Wortlaut (≤ 300 Zeichen). */
+  kontextArt?: "artikel" | "entwurf" | "frage";
+  kontextText?: string;
 }
 
 /**
