@@ -86,12 +86,18 @@ async function hineinlegen(request: APIRequestContext, koId: string, spaceId: st
     data: { koId, zielSpaceId: spaceId },
   });
   expect(v.status(), await v.text()).toBe(200);
-  const p = (await v.json()) as { ziel: { version: number } };
+  const p = (await v.json()) as { ziel: { version: number }; grundlage: string };
   const w = await request.post("/api/spaces/verschiebung", {
     data: {
       koId,
       zielSpaceId: spaceId,
-      basis: { quelleId: null, quelleVersion: null, zielId: spaceId, zielVersion: p.ziel.version },
+      basis: {
+        quelleId: null,
+        quelleVersion: null,
+        zielId: spaceId,
+        zielVersion: p.ziel.version,
+        grundlage: p.grundlage,
+      },
     },
   });
   expect(w.status(), await w.text()).toBe(200);

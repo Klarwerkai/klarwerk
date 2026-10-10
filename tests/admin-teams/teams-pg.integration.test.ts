@@ -232,6 +232,7 @@ describe("Teams gegen echtes PostgreSQL", () => {
             quelleVersion: null,
             zielId: ziel,
             zielVersion: v.json().ziel.version,
+            grundlage: v.json().grundlage,
           },
         },
       });

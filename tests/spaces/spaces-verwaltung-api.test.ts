@@ -171,7 +171,23 @@ async function verschieben(b: Buehne, kopf: Kopf, koId: string, zielSpaceId: str
   const v = await schicke(b, kopf, "/api/spaces/verschiebung/vorschau", { koId, zielSpaceId });
   expect(v.statusCode, v.body).toBe(200);
   const p = v.json();
-  const res = await schicke(b, kopf, "/api/spaces/verschiebung", {
+  const res = await bestaetigen(b, kopf, koId, zielSpaceId, p);
+  return { vorschau: p, res };
+}
+
+/** Die Übernahme mit genau der Grundlage einer (früher) gezeigten Vorschau. */
+async function bestaetigen(
+  b: Buehne,
+  kopf: Kopf,
+  koId: string,
+  zielSpaceId: string | null,
+  p: {
+    quelle: { id: string; version: number } | null;
+    ziel: { id: string; version: number } | null;
+    grundlage: string;
+  },
+) {
+  return schicke(b, kopf, "/api/spaces/verschiebung", {
     koId,
     zielSpaceId,
     basis: {
@@ -179,9 +195,41 @@ async function verschieben(b: Buehne, kopf: Kopf, koId: string, zielSpaceId: str
       quelleVersion: p.quelle?.version ?? null,
       zielId: p.ziel?.id ?? null,
       zielVersion: p.ziel?.version ?? null,
+      grundlage: p.grundlage,
     },
   });
-  return { vorschau: p, res };
+}
+
+/**
+ * Nacharbeit 3 (Ben): ein bestehendes Konto in ein Team aufnehmen — über den regulären Teamweg
+ * (Wirkungsvorschau, dann Bestätigung mit ihrer Grundlage), als ZWEITE Sitzung (Kontoverwaltung).
+ */
+async function teamMitgliedHinzu(b: Buehne, teamId: string, nutzer: string) {
+  const team = (await lies(b, b.k.admin, `/api/teams/${teamId}`)).json().team as {
+    version: number;
+    name: string;
+    zweck: string;
+    verantwortlich: string;
+    mitglieder: { nutzer: string }[];
+  };
+  const mitglieder = [...team.mitglieder.map((m) => m.nutzer), nutzer];
+  const w = await schicke(b, b.k.admin, `/api/teams/${teamId}/vorschau`, { mitglieder });
+  expect(w.statusCode, w.body).toBe(200);
+  const res = await schicke(
+    b,
+    b.k.admin,
+    `/api/teams/${teamId}`,
+    {
+      version: team.version,
+      name: team.name,
+      zweck: team.zweck,
+      verantwortlich: team.verantwortlich,
+      mitglieder,
+      grundlage: w.json().grundlage,
+    },
+    "PUT",
+  );
+  expect(res.statusCode, res.body).toBe(200);
 }
 
 describe("K1 · Verwaltungsübersicht mit Zweck, Zuständigkeit, Mitgliederzahl, Status, Gruppe, Regeln", () => {
@@ -474,7 +522,103 @@ describe("K4 · Spacewechsel zeigt Rechte UND Regeln vorher; Identität bleibt",
   });
 });
 
+describe("K4 · Nacharbeit 3 (Ben): die Bestätigung ist an die wirksame Rechtelage gebunden", () => {
+  it("Teamaufnahme zwischen Vorschau und Bestätigung (zweite Sitzung) → 409 mit neuer Vorschau, dann erneut bestätigt", async () => {
+    const b = await buehne();
+    const { mess, werkstatt, labor } = await lieferbeleg(b);
+    const koId = await artikelAnlegen(b, b.k.erik, `${WORT} Teamwechsel`, []);
+    // Carla (zuständig im Labor, ko.validate) legt den Artikel ins Labor.
+    expect((await verschieben(b, b.k.carla, koId, labor.id)).res.statusCode).toBe(200);
+    // Lea führt den Wechsel Labor → Werkstatt aus; dafür bekommt sie Schreibrecht im Labor.
+    const laborSpace = (await lies(b, b.k.carla, `/api/spaces/${labor.id}`)).json().space;
+    const lea = await schicke(
+      b,
+      b.k.carla,
+      `/api/spaces/${labor.id}`,
+      {
+        ...laborSpace,
+        mitglieder: [...laborSpace.mitglieder, { nutzer: b.ids.lea, recht: "schreiben" }],
+      },
+      "PUT",
+    );
+    expect(lea.statusCode, lea.body).toBe(200);
+
+    // Sitzung 1 (Lea): Vorschau. Fritz erhält keinen Zugang — so wird es angezeigt.
+    const v1 = await schicke(b, b.k.lea, "/api/spaces/verschiebung/vorschau", {
+      koId,
+      zielSpaceId: werkstatt.id,
+    });
+    expect(v1.statusCode, v1.body).toBe(200);
+    const alt = v1.json();
+    expect(alt.darfAusfuehren).toBe(true);
+    expect(alt.erhalten.map((p: { id: string }) => p.id)).not.toContain(b.ids.fritz);
+
+    // Sitzung 2 (Kontoverwaltung): Fritz kommt in das an die Werkstatt gebundene Team. Keine
+    // Spacefassung ändert sich dabei — nur die wirksame Rechtelage.
+    await teamMitgliedHinzu(b, mess, b.ids.fritz);
+    const werkstattDanach = (await lies(b, b.k.lea, `/api/spaces/${werkstatt.id}`)).json().space;
+    expect(werkstattDanach.version, "die Spacefassung bleibt unverändert").toBe(werkstatt.version);
+
+    // Sitzung 1 bestätigt mit der alten Vorschau: abgelehnt, mit der aktuellen Wirkung.
+    const veraltet = await bestaetigen(b, b.k.lea, koId, werkstatt.id, alt);
+    expect(veraltet.statusCode, veraltet.body).toBe(409);
+    expect(veraltet.json().error).toBe("VORSCHAU_VERALTET");
+    const neu = veraltet.json().vorschau;
+    expect(neu.erhalten.map((p: { id: string }) => p.id)).toContain(b.ids.fritz);
+    expect(neu.grundlage).not.toBe(alt.grundlage);
+    // Nichts geschehen: der Artikel liegt weiter im Labor, Fritz sieht ihn nicht.
+    expect((await lies(b, b.k.lea, `/api/kos/${koId}`)).json().spaceId).toBe(labor.id);
+    expect((await lies(b, b.k.fritz, `/api/kos/${koId}`)).statusCode).toBe(404);
+
+    // Erneute Bestätigung mit der jetzt gezeigten Wirkung: übernommen, die Wirkung tritt ein.
+    const ok = await bestaetigen(b, b.k.lea, koId, werkstatt.id, neu);
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect((await lies(b, b.k.lea, `/api/kos/${koId}`)).json().spaceId).toBe(werkstatt.id);
+    expect((await lies(b, b.k.fritz, `/api/kos/${koId}`)).statusCode).toBe(200);
+  });
+});
+
 describe("K5 · Archivieren erklärt Folgen, sperrt bei offener Verantwortung, Wiederaufnahme ist nachvollziehbar", () => {
+  it("Nacharbeit 3 (Ben): Teamaufnahme zwischen Folgenvorschau und Archivieren → 409 mit neuen Folgen, dann archiviert", async () => {
+    const b = await buehne();
+    const { mess, werkstatt } = await lieferbeleg(b);
+    const vorschauPfad = `/api/spaces/${werkstatt.id}/archivierung/vorschau`;
+
+    // Sitzung 1 (Lea, zuständig): Folgen. Schreiben entfällt für Erik (Team) und Lea.
+    const alt = (await schicke(b, b.k.lea, vorschauPfad, {})).json();
+    expect(alt.schreibenEntfaellt.map((p: { id: string }) => p.id).sort()).toEqual(
+      [b.ids.erik, b.ids.lea].sort(),
+    );
+    expect(alt.leserBleiben).toBe(3);
+
+    // Sitzung 2 (Kontoverwaltung): Fritz — ohne Artikelverantwortung — kommt ins Schreibteam.
+    await teamMitgliedHinzu(b, mess, b.ids.fritz);
+
+    const veraltet = await schicke(b, b.k.lea, `/api/spaces/${werkstatt.id}/archivieren`, {
+      version: alt.version,
+      grundlage: alt.grundlage,
+      begruendung: "Mit alter Folgenvorschau.",
+    });
+    expect(veraltet.statusCode, veraltet.body).toBe(409);
+    expect(veraltet.json().error).toBe("VORSCHAU_VERALTET");
+    const neu = veraltet.json().vorschau;
+    expect(neu.schreibenEntfaellt.map((p: { id: string }) => p.id)).toContain(b.ids.fritz);
+    expect(neu.leserBleiben).toBe(4);
+    expect(neu.grundlage).not.toBe(alt.grundlage);
+    const zwischen = (await lies(b, b.k.lea, `/api/spaces/${werkstatt.id}`)).json();
+    expect(zwischen.space.archiviert).toBe(false);
+    expect(zwischen.fassungen).toHaveLength(1);
+
+    // Erneute Bestätigung mit den jetzt gezeigten Folgen.
+    const ok = await schicke(b, b.k.lea, `/api/spaces/${werkstatt.id}/archivieren`, {
+      version: neu.version,
+      grundlage: neu.grundlage,
+      begruendung: "Mit aktueller Folgenvorschau.",
+    });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json()).toMatchObject({ archiviert: true, vorgang: "archiviert" });
+  });
+
   it("Folgen → Begründung → archiviert; danach Lesen ja, Schreiben nein; Wiederaufnahme im Verlauf", async () => {
     const b = await buehne();
     const { werkstatt, labor } = await lieferbeleg(b);

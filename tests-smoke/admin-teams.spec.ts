@@ -87,7 +87,7 @@ async function artikelIn(request: APIRequestContext, titel: string, spaceId: str
     data: { koId, zielSpaceId: spaceId },
   });
   expect(v.status(), await v.text()).toBe(200);
-  const vorschau = (await v.json()) as { ziel: { version: number } };
+  const vorschau = (await v.json()) as { ziel: { version: number }; grundlage: string };
   const w = await request.post("/api/spaces/verschiebung", {
     data: {
       koId,
@@ -97,6 +97,7 @@ async function artikelIn(request: APIRequestContext, titel: string, spaceId: str
         quelleVersion: null,
         zielId: spaceId,
         zielVersion: vorschau.ziel.version,
+        grundlage: vorschau.grundlage,
       },
     },
   });

@@ -259,6 +259,8 @@ export interface Rechtevorschau {
   regeln?: { quelle: RegelSicht | null; ziel: RegelSicht | null };
   darfAusfuehren: boolean;
   grund: string | null;
+  /** ADMIN-07 Nacharbeit 3 (K4): bindet die Bestätigung an die wirksame Rechtelage. */
+  grundlage: string;
 }
 
 export interface RegelSicht {
@@ -341,6 +343,7 @@ export const spacesApi = {
         quelleVersion: vorschau.quelle?.version ?? null,
         zielId: vorschau.ziel?.id ?? null,
         zielVersion: vorschau.ziel?.version ?? null,
+        grundlage: vorschau.grundlage,
       },
     }),
 };

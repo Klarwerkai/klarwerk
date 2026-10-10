@@ -150,6 +150,7 @@ async function artikelInSpace(b: Buehne, titel: string, spaceId: string): Promis
         quelleVersion: vorschau.quelle?.version ?? null,
         zielId: vorschau.ziel?.id ?? null,
         zielVersion: vorschau.ziel?.version ?? null,
+        grundlage: vorschau.grundlage,
       },
     },
   });

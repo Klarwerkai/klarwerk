@@ -217,11 +217,23 @@ export function archivFolgen(
     verantwortungsfragen: fragen,
     darfArchivieren: grund === null,
     grund,
+    // Nacharbeit 3 (Ben, K5): die Grundlage trägt die WIRKSAMEN Folgen — je Konto Rolle, Wege
+    // (zuständig/direkt/je Team/offen) und Gesamtrecht, dazu die gezeigten Leser- und
+    // Schreiberfolgen. Teams lösen Mitglieder beim Lesen auf; eine Teamänderung zwischen Vorschau
+    // und Bestätigung ändert keine Spacefassung, wohl aber diese Grundlage (→ 409, neue Vorschau).
     grundlage: grundlageAus({
       space: [space.id, space.version],
       artikel: imSpace.map((k) => [k.id, k.version, k.status, responsibleOf(k)]),
-      konten: konten.map((k) => k.id).sort(),
+      konten: [...konten]
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((k) => {
+          const nutzer = { id: k.id, role: k.role };
+          return [k.id, k.role, eigenesSpaceRecht(space, nutzer), zugangswege(space, nutzer)];
+        }),
+      leserBleiben,
+      schreibenEntfaellt: schreibenEntfaellt.map((p) => p.id),
       fragen: fragen.map((f) => [f.art, f.anzahl]),
+      darfBearbeiten,
     }),
   };
 }

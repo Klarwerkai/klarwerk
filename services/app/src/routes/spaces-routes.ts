@@ -13,7 +13,7 @@
 //
 // EIN UNSICHTBARER SPACE ODER ARTIKEL IST 404, NICHT 403: eine Absage, die seine Existenz bestätigt,
 // wäre schon eine Auskunft.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import type { AuthService, PublicUser } from "../../../auth";
@@ -245,6 +245,13 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     regeln: { quelle: RegelSicht | null; ziel: RegelSicht | null };
     darfAusfuehren: boolean;
     grund: string | null;
+    /**
+     * Nacharbeit 3 (Ben, K4): bindet die Bestätigung an die WIRKSAME Rechtelage — wer den Artikel
+     * vorher und nachher sieht, Quell-/Zielstand, Regeln und das eigene Ausführungsrecht. Teams
+     * lösen ihre Mitglieder beim Lesen auf (`teams.ts`); eine Teamänderung ändert keine
+     * Spacefassung, wohl aber diese Grundlage.
+     */
+    grundlage: string;
   }
 
   interface RegelSicht {
@@ -284,10 +291,18 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     const erhalten: Vorschau["erhalten"] = [];
     let unveraendert = 0;
     const alle = await konten();
+    const leserVor: string[] = [];
+    const leserNach: string[] = [];
     for (const u of alle) {
       const sicht = sitzungVon(u, spaces);
       const vor = darfSehen(sicht, ko);
       const nach = darfSehen(sicht, nachher);
+      if (vor) {
+        leserVor.push(u.id);
+      }
+      if (nach) {
+        leserNach.push(u.id);
+      }
       if (vor && !nach) {
         verlieren.push({ id: u.id, name: u.name, role: u.role });
       } else if (!vor && nach) {
@@ -314,6 +329,21 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     } else if (ziel && !darfInSpaceSchreiben(ziel, user)) {
       grund = "Für den Zielspace fehlt das Schreibrecht.";
     }
+    const regeln = { quelle: regelSicht(quelle, alle), ziel: regelSicht(ziel, alle) };
+    const grundlage = createHash("sha256")
+      .update(
+        JSON.stringify({
+          ko: [ko.id, ko.version, responsibleOf(ko)],
+          quelle: quelle ? [quelle.id, quelle.version] : null,
+          ziel: ziel ? [ziel.id, ziel.version] : null,
+          leserVor: [...leserVor].sort(),
+          leserNach: [...leserNach].sort(),
+          regeln,
+          grund,
+        }),
+      )
+      .digest("hex")
+      .slice(0, 32);
     return {
       koId: ko.id,
       version: ko.version,
@@ -333,9 +363,10 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         artikelVerantwortung: responsibleOf(ko),
         artikelVerantwortungName: alle.find((u) => u.id === responsibleOf(ko))?.name ?? null,
       },
-      regeln: { quelle: regelSicht(quelle, alle), ziel: regelSicht(ziel, alle) },
+      regeln,
       darfAusfuehren: grund === null,
       grund,
+      grundlage,
     };
   }
 
@@ -704,6 +735,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           quelleVersion?: unknown;
           zielId?: unknown;
           zielVersion?: unknown;
+          grundlage?: unknown;
         };
       };
       const ko = await sichtbaresKo(user, body.koId);
@@ -740,7 +772,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
         (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
         (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
-        (basis.zielVersion ?? null) === (v.ziel?.version ?? null);
+        (basis.zielVersion ?? null) === (v.ziel?.version ?? null) &&
+        // ADMIN-07 Nacharbeit 3 (Ben, K4): und an die wirksame Rechtelage. Wer zwischen Vorschau und
+        // Bestätigung über ein Team hinzukam oder ging, ändert die Grundlage — dann 409 mit der
+        // neuen Vorschau statt eines Wechsels mit unangezeigten Berechtigten.
+        basis.grundlage === v.grundlage;
       if (!stimmt) {
         reply.code(409).send({
           error: "VORSCHAU_VERALTET",
