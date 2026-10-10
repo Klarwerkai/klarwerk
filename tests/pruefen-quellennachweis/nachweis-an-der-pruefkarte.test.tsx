@@ -429,3 +429,31 @@ describe("JOB 4013 · f: ein Objekt ohne Quellen sagt nichts über Quellen", () 
     expect(einer(ADRESS_MARKE)).toBeNull();
   });
 });
+
+// ================================================================================================
+// g) R-0205 — WER FREIGIBT, SIEHT „STUFE 2" UND „EXTERN · UNGEPRÜFT" AN DER EXTERNEN QUELLE
+// ================================================================================================
+// aufnahme:20260922:gesamt-externe-quellen-kennzeichnung. Die Kennzeichnung kommt aus dem
+// gemeinsamen Baustein `ExterneQuelleKennung`; gemessen wird am Nachweis DIESER Quelle, und die
+// peer-validierte Gegenprobe steht auf derselben Karte.
+describe("R-0205 · g: die externe Quelle trägt Etikett und Herkunfts-Hinweis", () => {
+  it("nur die nicht peer-validierte Quelle trägt „Stufe 2“ und „Extern · ungeprüft“", async () => {
+    await mountMit([
+      zeile({
+        sources: [
+          quelle({ id: "q-extern", label: "DIN 1234" }),
+          quelle({ id: "q-geprueft", label: "Betriebsanweisung", peerValidated: true }),
+        ],
+      }),
+    ]);
+    await aufklappen();
+
+    const [extern, geprueft] = alle(NACHWEIS);
+    expect(extern?.textContent ?? "").toContain("DIN 1234");
+    expect(extern?.textContent ?? "").toContain(de("externequelle.stufe"));
+    expect(extern?.textContent ?? "").toContain(de("ko.sourceExternUnchecked"));
+    expect(geprueft?.textContent ?? "").toContain("Betriebsanweisung");
+    expect(geprueft?.textContent ?? "").not.toContain(de("externequelle.stufe"));
+    expect(geprueft?.textContent ?? "").not.toContain(de("ko.sourceExternUnchecked"));
+  });
+});

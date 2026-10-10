@@ -32,7 +32,7 @@ import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ImportGroups } from "../../apps/web/src/components/ImportGroups";
 import i18n from "../../apps/web/src/i18n";
 import { IMPORT_GROUPS_TEXT, noAiReasonKey } from "../../apps/web/src/lib/importGroups";
-import { hatTitel, koLabel } from "../../apps/web/src/lib/koLabel";
+import { koLabel } from "../../apps/web/src/lib/koLabel";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -180,12 +180,8 @@ describe("AUFTRAG-mega59 E — die eine Regel für den Rückfall (lib/koLabel)",
     }
   });
 
-  it("hatTitel entscheidet, ob die Kennung ZUSÄTZLICH gezeigt werden darf", () => {
-    // Ohne diese Unterscheidung stünde dieselbe Zeichenfolge zweimal in derselben Zeile.
-    expect(hatTitel("Titel")).toBe(true);
-    expect(hatTitel(" ")).toBe(false);
-    expect(hatTitel(undefined)).toBe(false);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `hatTitel` ist mit der Funktion entfallen
+  // — sie hatte keinen Produktleser; die Flächen führen die Kennung immer nachrangig im Tooltip.
 });
 
 describe("AUFTRAG-mega59 F1 — das Abzeichen nennt IMMER einen Grund", () => {

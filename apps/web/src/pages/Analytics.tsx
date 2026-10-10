@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   useAiCheckCoverageSummary,
   useAnalytics,
@@ -14,6 +14,7 @@ import {
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
+import { leerzustandsRahmen } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
@@ -28,8 +29,10 @@ import {
   workloadSummary,
 } from "../lib/analyticsMetrics";
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
+import { emptyStateActions } from "../lib/emptyStateActions";
 import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
+import { formatKoTimestamp } from "../lib/koDates";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 
 const BAND_TONE: Record<HealthBand, string> = {
@@ -65,7 +68,7 @@ function ExecKpi({
 }
 
 export function Analytics(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const analytics = useAnalytics();
   const audit = useAudit();
   const kos = useKos();
@@ -202,11 +205,12 @@ export function Analytics(): JSX.Element {
         </Card>
       </div>
 
-      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar */}
+      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar. R-0908: die Überschrift kommt aus
+          `texte/fachwort.ts` („Zustand der Wissensbasis“), `health.title` sagte „Knowledge Health“. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("health.title")}</SectionLabel>
-          <HelpTip title={t("health.title")} body={t("ana.help.health")} />
+          <SectionLabel>{t("fachwort.gesundheit.titel")}</SectionLabel>
+          <HelpTip title={t("fachwort.gesundheit.titel")} body={t("ana.help.health")} />
         </div>
         {healthUnknown ? (
           <Card data-testid="health-unknown" className="flex items-center gap-4">
@@ -334,7 +338,10 @@ export function Analytics(): JSX.Element {
                 <div className="space-y-2">
                   {Object.entries(a.byType).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-3">
-                      <span className="w-32 truncate text-[13px] text-text">{t(`ktype.${k}`)}</span>
+                      {/* WCAG 1.4.12 (Audit nacharbeit-10): umbrechen statt abschneiden. */}
+                      <span className="w-32 text-[13px] text-text [overflow-wrap:anywhere]">
+                        {t(`ktype.${k}`)}
+                      </span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
                         <div
                           className="h-full rounded-full bg-brand"
@@ -440,7 +447,30 @@ export function Analytics(): JSX.Element {
             className="h-9 min-w-[10rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-[13px] outline-none focus:border-ink/30"
           />
         </div>
-        <QueryState query={audit} emptyText={t("ana.auditEmpty")}>
+        {/* R-0956 (Ben, Nacharbeit 4): der WIRKLICH leere Bestand ordnet in den Wissenskreis ein
+            und nennt den nächsten Schritt. Der Filter-Leerzustand darunter (`ana.auditNoMatch`)
+            bleibt davon getrennt — dort ist der Bestand nicht leer, nur eingegrenzt.
+            Diese Seite ist reine Admin-Fläche (`navigation.ts`, minRole „admin“) und bewusst ohne
+            Rollenzweig gebaut (`tests/seitenhilfe-navkapitel/lesekapitel-am-seitenverhalten`):
+            die Schritte kommen deshalb aus derselben Liste, fest für ihre einzige Rolle. */}
+        <QueryState
+          query={audit}
+          emptyText={t("ana.auditEmpty")}
+          emptyExtra={leerzustandsRahmen(
+            t,
+            "audit",
+            emptyStateActions("audit", "admin", false),
+            (a) => (
+              <Link
+                key={a.to}
+                to={a.to}
+                className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-text hover:border-ink/30 hover:text-ai"
+              >
+                {t(a.labelKey)}
+              </Link>
+            ),
+          )}
+        >
           {(entries) => {
             const filtered = filterAudit(entries, filter);
             return (
@@ -466,10 +496,15 @@ export function Analytics(): JSX.Element {
                           className="flex items-center gap-3 px-4 py-2 text-[12.5px]"
                         >
                           <span className="font-mono text-[11px] text-muted-2">
-                            {new Date(e.at).toLocaleString()}
+                            {formatKoTimestamp(e.at, i18n.language)}
                           </span>
                           <span className="font-semibold text-text">{e.action}</span>
-                          <span className="truncate text-muted">{e.target}</span>
+                          {/* WCAG 1.4.12 (Audit nacharbeit-10): bis hier `truncate` — mit größerem
+                              Textabstand schnitt die Zeile das Ziel ab, und der volle Wert war
+                              nirgends sonst zu lesen. Jetzt bricht er um, auch mitten in einer ID. */}
+                          <span className="min-w-0 text-muted [overflow-wrap:anywhere]">
+                            {e.target}
+                          </span>
                           <span className="ml-auto font-mono text-[11px] text-muted-2">
                             {e.actor}
                           </span>
