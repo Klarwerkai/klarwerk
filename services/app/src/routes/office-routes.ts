@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+import type { Role } from "../../../auth";
 import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "../../../knowledge-object";
 import type { ObjectStore } from "../../../object-store";
-import { type Role, can } from "../../../rbac";
+import { can } from "../../../rbac";
 import type { Guards, SessionUser } from "../http";
 import {
   type OfficeEditorEinrichtung,

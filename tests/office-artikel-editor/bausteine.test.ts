@@ -28,6 +28,7 @@ import {
 import type {
   EvidenceRecord,
   KnowledgeObject,
+  KoSource,
   KoVersionSnapshot,
 } from "../../services/knowledge-object/src/types";
 
@@ -135,14 +136,16 @@ function beleg(koVersion: number, objectId: string, at: string): EvidenceRecord 
   };
 }
 
-function quelle(id: string, label: string, objectId?: string) {
+function quelle(id: string, label: string, objectId?: string): KoSource {
   return {
     id,
     label,
     url: null,
     excerpt: null,
-    kind: "external" as const,
+    kind: "external",
     peerValidated: false,
+    author: "anna",
+    at: "2026-10-01T08:00:00Z",
     ...(objectId === undefined ? {} : { objectId }),
   };
 }
