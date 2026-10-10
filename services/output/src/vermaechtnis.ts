@@ -227,7 +227,11 @@ export function erstelleVermaechtnisBuch(e: VermaechtnisEingabe): VermaechtnisBu
     );
   }
 
-  const provenance = beitraege.map(toProvenance);
+  // gesamt-dokumenterzeugung (Integration): `toProvenance` hat einen optionalen zweiten Parameter
+  // (Marke und Prüfnachweis, R-0337) — als direkter `map`-Rückruf bekäme er den Index. Hier wird
+  // sie bewusst ohne Optionen gerufen: derselbe Aufruf mit EINEM Argument, für den diese Stelle
+  // geschrieben wurde.
+  const provenance = beitraege.map((ko) => toProvenance(ko));
   const herkunft = ["## Herkunft & Nachweis", ""];
   for (const ko of beitraege) {
     herkunft.push(

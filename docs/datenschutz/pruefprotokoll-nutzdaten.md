@@ -49,7 +49,7 @@ wiederholt.
 | `ko.create-rollback-failed` | `at`, `failedStep`, `rollbackFailure` (nur Fehlerklasse/-code), `marked`, `koRemoved`, `searchProjection*` | Z, M |
 | `ko.change-rolled-back` | Nutzlast des zurückgenommenen Schritts + `rolledBackSeqs` | wie Ursprung, K |
 | `ko.confidentiality` | `level`, `previous`, `downgrade` | Z |
-| `ko.ownership` | `owner`, `reviewers`, `validators`, `previousOwner`; bei Übergabe im Papierkorb zusätzlich `imPapierkorb` | K (Nutzer-Ids), Z |
+| `ko.ownership` | `owner`, `ownerRole`, `reviewers`, `validators`, `previousOwner`, `previousOwnerRole`; bei Übergabe im Papierkorb zusätzlich `imPapierkorb` | K (Nutzer-Ids; die Rolle ist eine Funktionsbezeichnung), Z |
 | `ko.ownership-role` | `role`, `added` | K |
 | `ko.ownership-released` | `previousOwner` | K |
 | `ko.owner-validated` | `koVersion` | Z |
