@@ -6,7 +6,14 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
+import {
+  useConflicts,
+  useFruehereRevalidierungen,
+  useGeloesteKonflikte,
+  useKos,
+  useLifecyclePendingWenn,
+  useReasonerStatus,
+} from "../api/hooks";
 import type {
   AnswerResult,
   AskGeltungsauskunft,
@@ -41,6 +48,7 @@ import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antw
 import { Belastbarkeit, PruefrahmenSatz } from "../components/fragen/Belastbarkeit";
 import { Entscheidungsprotokoll } from "../components/fragen/Entscheidungsprotokoll";
 import { FrageFeld } from "../components/fragen/FrageFeld";
+import { LoesungswegSchritte, VermeidenWarnung } from "../components/fragen/Loesungsweg";
 import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
 import {
@@ -129,6 +137,13 @@ import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeG
 import { formatKoTimestamp } from "../lib/koDates";
 import { erkenneNichtHilfreich } from "../lib/nichtHilfreich";
 import { leseObjektbezug, quellenRueckwegHref } from "../lib/objektbezug";
+import {
+  fruehereRevalidierungen,
+  geloesteKonflikte,
+  problemloesungsweg,
+  revalidierungsfaelle,
+  wegAbrufAus,
+} from "../lib/problemloesungsweg";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { istIosGeraet } from "../lib/speechSupport";
@@ -690,6 +705,9 @@ export function Ask(): JSX.Element {
   // trifft als Wissenslücke ein). Deshalb hält beide Menüorte derselbe Ref, und das Blatt liest ihn
   // erst beim Schliessen — nicht beim Öffnen.
   const menuGriffRef = useRef<HTMLButtonElement | null>(null);
+  // R-1662: das Blatt „Lösungsweg" an der Antwort und sein Knopf in der Knopfzeile.
+  const [loesungsweg, setLoesungsweg] = useState(false);
+  const loesungswegGriffRef = useRef<HTMLButtonElement | null>(null);
   const [beispiele, setBeispiele] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
   // Eine neue (oder keine) Antwort: was gerade vorgelesen wird, gilt nicht mehr.
@@ -698,6 +716,12 @@ export function Ask(): JSX.Element {
   useEffect(() => {
     vorlesenStoppen();
   }, [result, vorlesenStoppen]);
+  // R-1662: der Lösungsweg gehört zu GENAU der Antwort, an deren Knopf er geöffnet wurde — mit einer
+  // anderen (oder keiner) Antwort geht er zu, statt bei der nächsten von selbst wieder aufzugehen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — genau beim Antwortwechsel schliessen.
+  useEffect(() => {
+    setLoesungsweg(false);
+  }, [result]);
   // Ergänzung 1: welche Antwort aus dem Arbeitsstand kam (s. das Anspringen unter `revealResult`).
   const aufgenommeneAntwort = useRef<AnswerResult | null>(result);
   // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
@@ -1423,6 +1447,24 @@ export function Ask(): JSX.Element {
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
+  // R-1662: der geführte Weg vom Problem zur Lösung — aus denselben Quellen in derselben Ordnung
+  // (tragende zuerst) und derselben Einstufung wie die Antwortkarte; im Lückenfall gibt es ihn nicht.
+  const weg =
+    result?.answered && effective
+      ? problemloesungsweg(effective.grade, answerSources, kosById)
+      : null;
+  // R-1662 Prüfpunkte 5 und 6 (Ben, Nacharbeit 2): gelöste Konflikte und offene Revalidierungsfälle
+  // zu genau diesen Quellen. Geladen wird erst mit offenem Blatt — eine Antwort allein löst keinen
+  // zusätzlichen Abruf aus.
+  const wegGeprueft = loesungsweg && weg !== null;
+  const wegQuellenIds = weg ? answerSources.map((s) => s.id) : [];
+  const geloestAbruf = useGeloesteKonflikte(wegQuellenIds, wegGeprueft);
+  const faelligAbruf = useLifecyclePendingWenn(wegGeprueft);
+  // Ben, Nacharbeit 5: frühere, schon bestätigte Revalidierungen — getrennt von den offenen Fällen.
+  const frueherAbruf = useFruehereRevalidierungen(wegQuellenIds, wegGeprueft);
+  const wegKonflikte = geloesteKonflikte(answerSources, kosById, wegAbrufAus(geloestAbruf));
+  const wegRevalidierung = revalidierungsfaelle(answerSources, wegAbrufAus(faelligAbruf));
+  const wegFrueher = fruehereRevalidierungen(answerSources, wegAbrufAus(frueherAbruf));
   // ==============================================================================================
   // JOB 3267 Q1 — DIE GERENDERTEN FUSSNOTEN, AM DOM GEMESSEN.
   // ==============================================================================================
@@ -2284,7 +2326,7 @@ export function Ask(): JSX.Element {
                     jetzt hier, jeder zutreffende genau einmal, mit Wortlaut, Ableitung und Ankern
                     wie bisher; im Blatt steht keiner mehr ein zweites Mal. Reihenfolge nach R-0286:
                     Antwort → KI-Kennzeichnung → Warnkästen → Quellen → Werkzeuge. */}
-                  {vorbehalte > 0 ? (
+                  {vorbehalte > 0 || (weg?.vermeiden.length ?? 0) > 0 ? (
                     <div data-testid="ask-warnungen" className="flex flex-col gap-2">
                       {reviewGuard ? (
                         <div
@@ -2367,6 +2409,14 @@ export function Ask(): JSX.Element {
                             })}
                           </p>
                         </div>
+                      ) : null}
+                      {/* R-1662 „Bekannte Fehler / Was vermeiden?": Negativwissen unter den
+                        herangezogenen Quellen ist eine Warnung und steht deshalb hier. */}
+                      {weg && weg.vermeiden.length > 0 ? (
+                        <VermeidenWarnung
+                          vermeiden={weg.vermeiden}
+                          wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                        />
                       ) : null}
                     </div>
                   ) : null}
@@ -2787,6 +2837,19 @@ export function Ask(): JSX.Element {
                       t("ask.thanked"),
                     )}
                   </button>
+                  {/* R-1662: der geführte Weg vom Problem zur Lösung — ein Knopf, kein Erklärtext im
+                      Sichtfeld (H5); Rahmung und Schritte stehen im Blatt darunter. */}
+                  {weg ? (
+                    <button
+                      type="button"
+                      ref={loesungswegGriffRef}
+                      data-testid="ask-loesungsweg"
+                      onClick={() => setLoesungsweg(true)}
+                      className="inline-flex items-center gap-1.5 rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text hover:bg-hairline-soft"
+                    >
+                      {t("loesungsweg.oeffnen")}
+                    </button>
+                  ) : null}
                   {/* R-1089: „Antwort melden" — an die verantwortliche Person der gewählten
                       Quelle, mit Quittung. Meldbar ist, was der Beleg trägt (`citedSources`), in
                       der Reihenfolge der Quellenliste; `key` setzt die Fläche je Antwort neu auf. */}
@@ -2810,6 +2873,25 @@ export function Ask(): JSX.Element {
                     </p>
                   )}
                 </div>
+                {/* R-1662: das Blatt ist ein Portal und steht damit nicht zwischen Karte und
+                    Knopfzeile im Baum (Zielbild Z.44 misst die Knopfzeile als Nachbarn der Karte). */}
+                {loesungsweg && weg ? (
+                  <Seitenblatt
+                    titel={t("loesungsweg.titel")}
+                    testId="ask-loesungsweg-blatt"
+                    onSchliessen={() => setLoesungsweg(false)}
+                    ausloeser={() => loesungswegGriffRef.current}
+                  >
+                    <LoesungswegSchritte
+                      weg={weg}
+                      konflikte={wegKonflikte}
+                      revalidierung={wegRevalidierung}
+                      frueher={wegFrueher}
+                      wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                      nameVon={authorNameOf}
+                    />
+                  </Seitenblatt>
+                ) : null}
                 {/* R-0305/R-1099: die Zweitmeinung — eigene Anfrage, eigener Zustand (Begründung im
                   Baustein). `key` bindet sie an genau diese Frage und ihren Kontext: eine neue
                   Frage oder eine im anderen Kontext neu gestellte Antwort beginnt leer. */}

@@ -261,6 +261,29 @@ export const useQualitaetsblick = (gewaehlt: boolean) => ({
 // kennt diesen Endpunkt nicht überall.
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: () => endpoints.lifecycle.pending() });
+// R-1662: die fälligen Revalidierungsfälle für den Lösungsweg an einer Antwort — derselbe Schlüssel
+// und Endpunkt wie `useLifecyclePending`, aber erst geladen, wenn das Blatt offen ist (`enabled`),
+// und LAZY gelesen wie in `useQualitaetsblick`: Fragen-Tests ohne `lifecycle` reißen nicht ab.
+export const useLifecyclePendingWenn = (aktiv: boolean) =>
+  useQuery({
+    queryKey: ["lifecycle", "pending"],
+    queryFn: () => endpoints.lifecycle.pending(),
+    enabled: aktiv,
+  });
+// R-1662: frühere Revalidierungen zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
+export const useFruehereRevalidierungen = (koIds: readonly string[], aktiv: boolean) =>
+  useQuery({
+    queryKey: ["lifecycle", "revalidiert", [...koIds].sort().join(",")],
+    queryFn: () => endpoints.lifecycle.revalidiert(koIds),
+    enabled: aktiv && koIds.length > 0,
+  });
+// R-1662: die gelösten Konflikte zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
+export const useGeloesteKonflikte = (koIds: readonly string[], aktiv: boolean) =>
+  useQuery({
+    queryKey: ["conflicts", "geloest", [...koIds].sort().join(",")],
+    queryFn: () => endpoints.conflicts.geloest(koIds),
+    enabled: aktiv && koIds.length > 0,
+  });
 export const useLearningPath = (role: string) =>
   useQuery({
     queryKey: ["learning-path", role],
