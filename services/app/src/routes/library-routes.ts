@@ -959,8 +959,13 @@ export function libraryRoutes(
       // Auswahl, NICHT „alles".
       const ids = exportAuswahl(request.query.ids);
       // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
+      // ADMIN-07 K3: zusätzlich die eine Sichtregel des Betrachters — sonst trüge der Export
+      // validierte Artikel geschlossener Spaces an Nichtmitglieder aus. Hier im Rumpf erhoben (wie
+      // `/api/graph`), damit die Entscheidung an der Route selbst ausgeführt wird.
+      const sichtbar = sichtbarkeitsfilterFuer(user);
       const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
         includeConfidential,
+        sichtbar,
         ...(ids ? { ids } : {}),
         beleg: { actor: user.id, format },
       });
