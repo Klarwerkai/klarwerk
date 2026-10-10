@@ -3035,6 +3035,8 @@ export interface ImportCleanupPreview {
   // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — das Löschen lässt
   // sie fail-closed stehen (einziger Träger des Belegs).
   auditPendingCandidates: number;
+  // Aufnahme gesamt-bestandsbereinigung (R-0124): davon erkannte Doppel-Kandidaten.
+  duplicateCandidates: number;
 }
 
 export interface ImportCleanupResult {
@@ -3051,6 +3053,8 @@ export interface ImportCleanupResult {
   // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — nicht entfernt,
   // ehrlich beziffert; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab.
   auditPendingCandidates: number;
+  // Aufnahme gesamt-bestandsbereinigung (R-0124): davon tatsächlich entfernte Doppel-Kandidaten.
+  removedDuplicateCandidates: number;
 }
 
 // WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).
