@@ -1507,6 +1507,18 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // AUFNAHME 20260922 · confluence-import-rechte (R-0549): Quellleser → Klara-Konten über die
+    // Mailadresse, dasselbe Verzeichnis wie die Anmeldung. Nicht gefunden = kein Leserecht.
+    quellLeserAufloesen: async (emails) => {
+      const ids: string[] = [];
+      for (const email of emails) {
+        const konto = await repos.users.findByEmail(email);
+        if (konto) {
+          ids.push(konto.id);
+        }
+      }
+      return ids;
+    },
     // R-0142 (Lauf 5): eine Entscheidung über einen laufgebundenen Kandidaten schreibt ihre
     // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest. Die Quellrevisionen
     // (`externalSources`) reichen R-0169 und R-0142 gemeinsam — EIN Eintrag oben.
@@ -3508,6 +3520,8 @@ export function buildApp(
         ko: services.ko,
         lesevarianten: services.lesevarianten,
         kandidaten: services.candidates,
+        // confluence-import-rechte (Nacharbeit 6, F1): dieselbe Grenze wie die Warteschlange.
+        kandidatenRechte: services.library,
         ...(services.audit ? { audit: services.audit } : {}),
       },
       guards,
@@ -5057,6 +5071,10 @@ export function buildApp(
         koService: services.ko,
         // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
         luecken: services.ask,
+        // confluence-import-rechte (Nacharbeit 16): Quellrevisionen nur für Quellberechtigte —
+        // dieselbe Grenze wie die Warteschlange.
+        kandidaten: services.candidates,
+        kandidatenRechte: services.library,
         guards,
       }),
     );

@@ -588,6 +588,40 @@ export interface AnlagenKontext {
 
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
+/**
+ * Die Leserechte, wie die Quelle sie beim letzten Abgleich geliefert hat.
+ *
+ * `stufe` ist die Vertraulichkeit, die die QUELLE zuletzt ergab. Ob das Objekt ihr folgt, entscheidet
+ * NICHT die Wertgleichheit, sondern `KnowledgeObject.einstufungMenschlich` (Nacharbeit 3).
+ *
+ * `leser` ist GESETZT, wenn die Quelle das Lesen beschränkt (Space, Seite oder Vorfahr): genau diese
+ * Klara-Konten (Kennungen) sehen das Objekt — sonst niemand, auch kein `ko.validate`-Inhaber und
+ * nicht der annehmende Autor. Eine leere Liste heisst „in Klara kein Konto zuordenbar". FEHLT
+ * `leser`, beschränkt die Quelle nicht (Space anonym lesbar, Seite offen).
+ *
+ * `version`/`beobachtetAm`: der Quellstand, zu dem diese Rechte gelten. Ein älterer Stand
+ * überschreibt einen neueren nicht (`setQuellrechte`).
+ */
+export interface KoQuellrechte {
+  stufe: Confidentiality;
+  leser?: string[];
+  version?: number;
+  beobachtetAm?: string;
+  /**
+   * Nacharbeit 6: der Leserkreis der Quelle wurde NICHT vollständig gelesen (Gruppenabruf
+   * abgebrochen oder über der technischen Grenze). `leser` ist dann eine Untermenge der in der
+   * Quelle Berechtigten — nie mehr, aber womöglich weniger. Fehlt das Feld, war die Lesung vollständig.
+   */
+  leserUnvollstaendig?: true;
+}
+
+/** Eine ausdrücklich von einem Menschen gesetzte Vertraulichkeitsstufe (`setConfidentiality`). */
+export interface KoEinstufungMenschlich {
+  stufe: Confidentiality;
+  von: string;
+  am: string;
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string; // Titel als Aussage
@@ -682,6 +716,15 @@ export interface KnowledgeObject {
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
   confidentiality?: Confidentiality;
+  // AUFNAHME 20260922 · confluence-import-rechte (R-0549, R-2197): die aus der Quelle übernommenen
+  // Leserechte. Nur der Import-Accept setzt sie (`KoService.create`-Parameter `quellrechte`,
+  // `setQuellrechte`); keine öffentliche Schreibroute reicht sie durch. FEHLT das Feld, gilt die
+  // Sichtbarkeitsregel wie bisher. Optional im JSONB-Dokument, keine Migration.
+  quellrechte?: KoQuellrechte;
+  // confluence-import-rechte (Nacharbeit 3): die letzte MENSCHLICHE Einstufung. Gesetzt von
+  // `setConfidentiality` (nicht vom Import). Ist sie da, folgt die Stufe der Quelle nicht mehr nach
+  // unten. Optional im JSONB-Dokument; Altbestand hat sie nicht.
+  einstufungMenschlich?: KoEinstufungMenschlich;
   // R-1664 / R-2179 / R-2180: die geführt erfassten Angaben eines Negativwissen-Falls (Auslöser,
   // falsche Annahme, Warnsignale, Vermeidungsregel …) und die Art seines Bezugs. Nur bei der
   // Wissensart `negativwissen`; Begründung und Stufenregel in `negativwissen.ts`. Optional, keine
