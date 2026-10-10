@@ -96,6 +96,9 @@ const CaptureFrontDoor = lazy(() =>
   import("./pages/CaptureFrontDoor").then((m) => ({ default: m.CaptureFrontDoor })),
 );
 const Conflicts = lazy(() => import("./pages/Conflicts").then((m) => ({ default: m.Conflicts })));
+const Dokumentfragen = lazy(() =>
+  import("./pages/Dokumentfragen").then((m) => ({ default: m.Dokumentfragen })),
+);
 const DuplicateCompare = lazy(() =>
   import("./pages/DuplicateCompare").then((m) => ({ default: m.DuplicateCompare })),
 );
@@ -377,6 +380,10 @@ export function AppRoutes(): JSX.Element {
             spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
         <Route path="/spaces" element={<Spaces />} />
         <Route path="/spaces/:id" element={<Spaces />} />
+        {/* R-0347: Fragen an ein hochgeladenes Dokument. Ohne `Guarded` und ohne Server-Tür: die
+            Fläche liest die Datei im Browser und sendet nichts (`pages/Dokumentfragen.tsx`).
+            Erreichbar von der Fragen-Seite; im Menü markiert die Präfixregel „Fragen". */}
+        <Route path="/fragen/dokument" element={<Dokumentfragen />} />
         {/* ADMIN-15: Unternehmensprofil und interne Richtlinien. Ohne `Guarded`, wie `/begriffe`:
             die Türen dahinter fordern ihr Recht am Server (`requireUser` zum Lesen und für die
             eigene Kenntnisnahme/Zustimmung, `users.manage` für die Verwaltung,
