@@ -71,6 +71,8 @@ import {
   moeglicheAktionen,
   objektbezugFuer,
   pruefeAuswahl,
+  seitenbezugAusObjektbezug,
+  seitenbezugFuer,
   sperrgrund,
   uebersetzung,
   wirksamerBezug,
@@ -331,6 +333,7 @@ export function KlaraVorschau(): JSX.Element {
         alt.modus === gemessen.modus &&
         alt.lesart === gemessen.lesart &&
         alt.entwurfId === gemessen.entwurfId &&
+        alt.kontextText === gemessen.kontextText &&
         alt.darfBearbeiten === gemessen.darfBearbeiten
           ? alt
           : gemessen,
@@ -1114,11 +1117,15 @@ export function KlaraVorschau(): JSX.Element {
         const kontextJetzt = ziel ?? kontextRef.current;
         const text =
           fest?.text ?? frageText(art, eingabeText, z0.bezug, kontextJetzt, auswahlJetzt, t);
-        const bezug =
-          fest?.bezug ??
-          objektbezugFuer(art === "frage" ? z0.bezug : "markierung", kontextJetzt, auswahlJetzt);
+        const gewaehlt = art === "frage" ? z0.bezug : "markierung";
+        const bezug = fest?.bezug ?? objektbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt);
+        // Nacharbeit 5: der gewählte Seiten-/Objektkontext geht MIT an den Frageweg — der Server
+        // löst das Objekt unter den Rechten auf. Frei: keiner.
+        const seitenbezug = fest
+          ? seitenbezugAusObjektbezug(fest.bezug)
+          : seitenbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt);
         pruefungLaeuft.current = false;
-        const stand = await echtFragen(text, bezug, sprache, t);
+        const stand = await echtFragen(text, bezug, sprache, t, seitenbezug);
         if (stand === "veraltet") {
           // Kontowechsel während der Frage: nichts mehr ansagen, nichts mehr zeigen.
           aendere((alt) => ({ ...alt, status: "ruhe" }));

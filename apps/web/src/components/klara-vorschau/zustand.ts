@@ -70,6 +70,11 @@ export interface Herkunft {
   lesart?: "original" | "uebersetzung";
   /** Die Erfassung: Kennung des geöffneten Entwurfs aus der Adresse (`?draft=`). */
   entwurfId?: string;
+  /**
+   * Nacharbeit 5: der Wortlaut des Seitenobjekts für den Frageweg — Titel des Entwurfs (Erfassung)
+   * bzw. die Frage im echten Fragefeld (Fragen). Ungekürzt bis 300 Zeichen; `objekt` ist die Anzeige.
+   */
+  kontextText?: string;
   /** Darf die Rolle das Objekt hier bearbeiten? (Anzeige der erlaubten Aktionen) */
   darfBearbeiten?: boolean;
 }

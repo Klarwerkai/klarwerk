@@ -46,6 +46,11 @@ export function seiteAusPfad(pfad: string): { seite: SeitenArt; artikelId?: stri
   return { seite: "andere" };
 }
 
+/** Nacharbeit 5: der Wortlaut für den Frageweg — Leerraum zusammengefasst, höchstens 300 Zeichen. */
+function kontextWortlaut(text: string): string {
+  return [...text.replace(/\s+/g, " ").trim()].slice(0, 300).join("");
+}
+
 function kuerze(text: string, max = 60): string {
   const sauber = text.replace(/\s+/g, " ").trim();
   return sauber.length > max ? `${sauber.slice(0, max - 1)}…` : sauber;
@@ -153,6 +158,7 @@ export function ermittleKontext(
         // Wer erfasst, bearbeitet — der Entwurf ist immer offen zum Schreiben.
         modus: "bearbeiten",
         ...(entwurfId ? { entwurfId } : {}),
+        ...(titel.trim() ? { kontextText: kontextWortlaut(titel) } : {}),
       };
     }
     case "fragen": {
@@ -166,6 +172,7 @@ export function ermittleKontext(
         objekt: frage.trim()
           ? t("klaravorschau.objekt.frage", { frage: kuerze(frage) })
           : t("klaravorschau.objekt.keineFrage"),
+        ...(frage.trim() ? { kontextText: kontextWortlaut(frage) } : {}),
         ...(w ?? {}),
       };
     }

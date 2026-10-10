@@ -310,15 +310,27 @@ async function serverGespraech(a: Aufbau, konto: Konto): Promise<ServerSicht | n
 }
 
 /** Reicht `POST /api/ask` unverändert durch und hält Frage und Antwort fest — keine Attrappe. */
-function frageMitschneiden(): { fragen: string[]; letzte: string } {
-  const mitschnitt = { fragen: [] as string[], letzte: "(Klara hat /api/ask nicht aufgerufen)" };
+function frageMitschneiden(): {
+  fragen: string[];
+  seitenbezuege: (Record<string, unknown> | undefined)[];
+  letzte: string;
+} {
+  const mitschnitt = {
+    fragen: [] as string[],
+    seitenbezuege: [] as (Record<string, unknown> | undefined)[],
+    letzte: "(Klara hat /api/ask nicht aufgerufen)",
+  };
   const weiter = globalThis.fetch;
   const neu = (async (eingabe: unknown, init?: RequestInit) => {
     if (String(eingabe) !== "/api/ask") {
       return weiter(eingabe as RequestInfo, init);
     }
-    const rumpf = JSON.parse(String(init?.body ?? "{}")) as { question?: string };
+    const rumpf = JSON.parse(String(init?.body ?? "{}")) as {
+      question?: string;
+      seitenbezug?: Record<string, unknown>;
+    };
     mitschnitt.fragen.push(rumpf.question ?? "");
+    mitschnitt.seitenbezuege.push(rumpf.seitenbezug);
     const echt = await weiter("/api/ask", init);
     const antwort = await echt.text();
     mitschnitt.letzte = `${echt.status} ${antwort.slice(0, 600)}`;
@@ -403,6 +415,8 @@ describe("C1 · K1/K2/K3 — Artikel, Markierung, Bezugswechsel, Quellen mit Fas
     await klick(q(document, "klara-aktion-erklaeren"));
     const antwort = await bisAntwort(vorher);
     expect(mitschnitt.fragen).toEqual([ERKLAER_FRAGE]);
+    // Nacharbeit 5: der Objektkontext der Markierung ging MIT — Objekt und Fassung, nicht nur Text.
+    expect(mitschnitt.seitenbezuege).toEqual([{ art: "artikel", koId: eintrag.koId, fassung }]);
     expect(antwort.dataset.modus, `Antwort des Servers: ${mitschnitt.letzte}`).toBe("ki");
     expect(antwort.dataset.gespeichert).toBe("ja");
     const quelle = antwort.querySelector<HTMLElement>(
@@ -452,6 +466,8 @@ describe("C1 · K1/K2/K3 — Artikel, Markierung, Bezugswechsel, Quellen mit Fas
     expect(mitschnitt.fragen[mitschnitt.fragen.length - 1]).toBe(
       "Wie hoch ist der Luftdruck im Lager Süd?",
     );
+    // Frei: ohne Seitenkontext.
+    expect(mitschnitt.seitenbezuege[mitschnitt.seitenbezuege.length - 1]).toBeUndefined();
 
     // Neuladen: Quellenangaben und Bezug kommen aus der Ablage zurück.
     abbauen();

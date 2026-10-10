@@ -31,6 +31,7 @@ import type {
   KlaraAskAntwort,
   KlaraObjektbezug,
   KlaraQuellenAngabe,
+  KlaraSeitenbezug,
 } from "../../api/klaraGespraech";
 import type { KnowledgeObject } from "../../api/types";
 import type { Auswahl, Bezug, Herkunft } from "./zustand";
@@ -166,14 +167,16 @@ export function zitat(text: string): string {
 export type KontextAktion = "erklaeren" | "zusammenfassen";
 
 /**
- * Was an den Frageweg geht. Die getippte Frage bleibt wörtlich; der Bezug kommt als Zitat dazu —
- * die Markierung oder der Titel des Artikels. Frei: nur die Frage.
+ * Der Fragetext. Die getippte Frage bleibt wörtlich; beim Bezug „Markierung“ kommt die Markierung
+ * als Zitat dazu. Der SEITENKONTEXT (Artikel, Entwurf, aktuelle Frage) steht nicht im Text — er
+ * reist als eigenes Feld `seitenbezug` (`seitenbezugFuer`), damit der Server das Objekt unter den
+ * Rechten der Person auflöst (Nacharbeit 5). Frei: nur die Frage.
  */
 export function frageText(
   art: KontextAktion | "frage",
   eingabe: string,
   bezug: Bezug,
-  kontext: Herkunft,
+  _kontext: Herkunft,
   auswahl: Auswahl | null,
   t: Uebersetzer,
 ): string {
@@ -185,10 +188,68 @@ export function frageText(
   if (b === "markierung" && auswahl) {
     return t("klarakontext.frage.mitMarkierung", { frage, auswahl: zitat(auswahl.text) });
   }
-  if (b === "seite" && kontext.seite === "wissen" && kontext.titel) {
-    return t("klarakontext.frage.mitArtikel", { frage, titel: zitat(kontext.titel) });
-  }
   return frage;
+}
+
+/**
+ * Nacharbeit 5 (Bens Befund K1): der gewählte Seiten- und Objektkontext für den Frageweg.
+ *   · Seite „Dieser Artikel“ (auch Bibliothek mit Eintrag) → Objekt und Fassung; der Server löst
+ *     sie unter den Rechten auf und antwortet nur aus diesem Objekt.
+ *   · Seite „Dieser Entwurf“ → der Titel des Entwurfs als Zusammenhang.
+ *   · Seite „Diese Frage“ → die Frage im echten Fragefeld als Zusammenhang, dazu ein Beitrag aus
+ *     `?ko=&fassung=` („Frage zum Beitrag“).
+ *   · Markierung aus einem Wissensobjekt → dieses Objekt und die Fassung der Markierung.
+ *   · Frei, andere Seiten, Markierung ohne Objekt → kein Seitenbezug.
+ */
+export function seitenbezugFuer(
+  bezug: Bezug,
+  kontext: Herkunft,
+  auswahl: Auswahl | null,
+): KlaraSeitenbezug | undefined {
+  const b = wirksamerBezug(bezug, auswahl);
+  if (b === "frei") {
+    return undefined;
+  }
+  if (b === "markierung" && auswahl) {
+    const h = auswahl.herkunft;
+    return h.koId
+      ? { art: "artikel", koId: h.koId, ...(h.fassung ? { fassung: h.fassung } : {}) }
+      : undefined;
+  }
+  switch (kontext.seite) {
+    case "wissen":
+      return kontext.koId
+        ? {
+            art: "artikel",
+            koId: kontext.koId,
+            ...(kontext.fassung ? { fassung: kontext.fassung } : {}),
+          }
+        : undefined;
+    case "erfassung":
+      return kontext.kontextText ? { art: "entwurf", kontext: kontext.kontextText } : undefined;
+    case "fragen": {
+      const mitBeitrag = kontext.koId
+        ? { koId: kontext.koId, ...(kontext.fassung ? { fassung: kontext.fassung } : {}) }
+        : {};
+      return kontext.kontextText || kontext.koId
+        ? {
+            art: "frage",
+            ...mitBeitrag,
+            ...(kontext.kontextText ? { kontext: kontext.kontextText } : {}),
+          }
+        : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** „Erneut fragen“: der Seitenbezug aus dem gespeicherten Objektbezug von damals. */
+export function seitenbezugAusObjektbezug(b: KlaraObjektbezug): KlaraSeitenbezug | undefined {
+  if (b.bezug === "frei" || !b.koId) {
+    return undefined;
+  }
+  return { art: "artikel", koId: b.koId, ...(b.fassung ? { fassung: b.fassung } : {}) };
 }
 
 // ------------------------------------------------------------------------------------------------

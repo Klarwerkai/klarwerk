@@ -60,6 +60,8 @@ import {
   objektbezugFuer,
   pruefeAuswahl,
   quellenAngabenAus,
+  seitenbezugAusObjektbezug,
+  seitenbezugFuer,
   sperrgrund,
   uebersetzung,
   wortlautEnthalten,
@@ -283,14 +285,13 @@ describe("K6 · Frage-Rahmen: Markierung als Zitat, kein eigener Begriff am Frag
     expect(undVerknuepfteFragebegriffe("Was gilt für die Presse?").length).toBeGreaterThan(0);
   });
 
-  it("die getippte Frage bleibt wörtlich; Seite eines Artikels hängt den Titel an, frei nichts", () => {
+  it("die getippte Frage bleibt wörtlich; nur die Markierung kommt als Zitat in den Text", () => {
     expect(frageText("frage", "Wann wechseln?", "frei", k, a, t)).toBe("Wann wechseln?");
     expect(frageText("frage", "Wann wechseln?", "markierung", k, a, t)).toBe(
       `Wann wechseln? – „${SATZ}“`,
     );
-    expect(frageText("frage", "Wann wechseln?", "seite", k, a, t)).toBe(
-      `Wann wechseln? – „${LESEOBJEKT.titel}“`,
-    );
+    // Nacharbeit 5: der Artikel reist als `seitenbezug` (Objekt + Fassung), nicht als Titel im Text.
+    expect(frageText("frage", "Wann wechseln?", "seite", k, a, t)).toBe("Wann wechseln?");
   });
 
   it("Anführungszeichen in der Markierung werden neutralisiert — sie verlässt ihr Zitat nicht", () => {
@@ -514,5 +515,88 @@ describe("Mögliche Aktionen aus dem Appzustand; Markierungen gehören dem Konto
       kontoId: "konto-b",
     });
     expect(anKontoBinden(zugeordnet, null)).toMatchObject({ auswahl: null, kontoId: null });
+  });
+});
+
+describe("K1 · Nacharbeit 5 — welcher Seitenkontext an den Frageweg geht", () => {
+  it("Artikel: Objekt und Fassung; Erfassung: Entwurfstitel; Fragen: aktuelle Frage und Beitrag; frei: nichts", () => {
+    const artikel = wissensKontext();
+    expect(seitenbezugFuer("seite", artikel, null)).toEqual({
+      art: "artikel",
+      koId: "ko-1",
+      fassung: 3,
+    });
+
+    document.body.innerHTML = '<input data-testid="blatt-titel" value="Ölwechsel  Presse 4">';
+    const erfassung = ermittleKontext("/erfassen", t, document, "?draft=d-7", null);
+    expect(seitenbezugFuer("seite", erfassung, null)).toEqual({
+      art: "entwurf",
+      kontext: "Ölwechsel Presse 4",
+    });
+
+    document.body.innerHTML =
+      '<input data-tutorial-ziel="fragen.fragefeld" value="Wann ist die Wartung fällig?">';
+    const fragen = ermittleKontext("/fragen", t, document, "?ko=ko-1&fassung=2", null);
+    expect(seitenbezugFuer("seite", fragen, null)).toEqual({
+      art: "frage",
+      koId: "ko-1",
+      fassung: 2,
+      kontext: "Wann ist die Wartung fällig?",
+    });
+
+    // Unterschiedliche Seiten erzeugen unterschiedliche Seitenbezüge — bei derselben Frage.
+    const bezuege = [artikel, erfassung, fragen].map((k) =>
+      JSON.stringify(seitenbezugFuer("seite", k, null)),
+    );
+    expect(new Set(bezuege).size).toBe(3);
+
+    // Frei: kein Seitenkontext, auf keiner Seite.
+    for (const k of [artikel, erfassung, fragen]) {
+      expect(seitenbezugFuer("frei", k, null)).toBeUndefined();
+    }
+    // Seiten ohne Objekt: keiner.
+    expect(seitenbezugFuer("seite", ermittleKontext("/bibliothek", t, null), null)).toBeUndefined();
+    expect(
+      seitenbezugFuer("seite", ermittleKontext("/erfassen", t, null, "", null), null),
+    ).toBeUndefined();
+  });
+
+  it("Markierung: das Objekt und die Fassung der Markierung — auch auf einer anderen Seite", () => {
+    const a = markierung();
+    meldeLeseobjekt(null);
+    document.body.innerHTML = '<input data-tutorial-ziel="fragen.fragefeld" value="Was gilt?">';
+    const fragen = ermittleKontext("/fragen", t, document, "", null);
+    expect(seitenbezugFuer("markierung", fragen, a)).toEqual({
+      art: "artikel",
+      koId: "ko-1",
+      fassung: 3,
+    });
+    const ohneObjekt: Auswahl = {
+      id: "e",
+      text: "Eigener Text",
+      herkunft: { pfad: "/erfassen", seite: "erfassung", seitenName: "Erfassen", objekt: "x" },
+    };
+    expect(seitenbezugFuer("markierung", fragen, ohneObjekt)).toBeUndefined();
+  });
+
+  it("„Erneut fragen“ nimmt das Objekt des gespeicherten Bezugs, frei bleibt frei", () => {
+    expect(
+      seitenbezugAusObjektbezug({
+        pfad: "/wissen/ko-1",
+        seitenName: "Wissen",
+        objekt: "x",
+        koId: "ko-1",
+        fassung: 3,
+        bezug: "seite",
+      }),
+    ).toEqual({ art: "artikel", koId: "ko-1", fassung: 3 });
+    expect(
+      seitenbezugAusObjektbezug({
+        pfad: "/fragen",
+        seitenName: "Fragen",
+        objekt: "x",
+        bezug: "frei",
+      }),
+    ).toBeUndefined();
   });
 });

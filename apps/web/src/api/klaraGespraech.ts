@@ -26,6 +26,29 @@ export interface KlaraObjektbezug {
   auswahl?: string;
 }
 
+/**
+ * Klara 03 (Nacharbeit 5): der gewählte Seitenkontext für den Frageweg (`POST /api/ask`,
+ * `seitenbezug`). Ein Wissensobjekt löst der Server unter den Rechten der Person auf und antwortet
+ * nur aus ihm; Entwurfstitel und aktuelle Frage reisen als Zusammenhang. Freies Gespräch: keiner.
+ */
+export interface KlaraSeitenbezug {
+  art: "artikel" | "entwurf" | "frage";
+  koId?: string;
+  fassung?: number;
+  kontext?: string;
+}
+
+/** Klara 03: was der Server über den verwendeten Seitenbezug sagt (`seitenbezug` der Antwort). */
+export interface KlaraSeitenbezugAuskunft {
+  art: KlaraSeitenbezug["art"];
+  status: "objekt" | "kontext" | "nicht_zugaenglich" | "vertraulich";
+  koId?: string;
+  fassung?: number;
+  angefragteFassung?: number;
+  fassungAbweichend?: boolean;
+  verwendet?: boolean;
+}
+
 /** Klara 03: Titel, Fassung und Prüfstatus einer Antwortquelle, wie der Frageweg sie nannte. */
 export interface KlaraQuellenAngabe {
   koId: string;
@@ -100,6 +123,8 @@ export interface KlaraAskAntwort {
   quellenStand?: Record<string, number>;
   /** Klara 03: Treffer, die nicht antworten durften (ungeprüft, Freigabe fehlt) — nur Kennung/Titel. */
   verschlossen?: VerschlossenHinweis[];
+  /** Klara 03: nur, wenn ein Seitenbezug mitging. */
+  seitenbezug?: KlaraSeitenbezugAuskunft;
 }
 
 const BASIS = "/me/klara";
@@ -131,10 +156,16 @@ export const klaraGespraechApi = {
     locale: ReasonerLocale,
     thread: readonly string[],
     signal: AbortSignal,
+    seitenbezug?: KlaraSeitenbezug,
   ) =>
     api.postAbbrechbar<KlaraAskAntwort>(
       "/ask",
-      { question, locale, ...(thread.length > 0 ? { thread } : {}) },
+      {
+        question,
+        locale,
+        ...(thread.length > 0 ? { thread } : {}),
+        ...(seitenbezug ? { seitenbezug } : {}),
+      },
       signal,
     ),
 };

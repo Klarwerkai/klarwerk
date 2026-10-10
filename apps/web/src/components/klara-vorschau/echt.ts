@@ -28,6 +28,7 @@ import {
   type KlaraObjektbezug,
   type KlaraSchritt,
   type KlaraSchrittStand,
+  type KlaraSeitenbezug,
   klaraGespraechApi,
 } from "../../api/klaraGespraech";
 import { kiBremsSatz } from "../../lib/kiBremse";
@@ -499,6 +500,8 @@ export async function fragen(
   bezug: KlaraObjektbezug,
   locale: ReasonerLocale,
   t: TFunction,
+  /** Klara 03 (Nacharbeit 5): der gewählte Seitenkontext für den Frageweg — frei: keiner. */
+  seitenbezug?: KlaraSeitenbezug,
 ): Promise<Fragestand> {
   if (laufend) {
     return "fehlgeschlagen";
@@ -535,7 +538,7 @@ export async function fragen(
       );
       stand = "fehlgeschlagen";
     } else {
-      stand = await frageStellen(frage, bezug, locale, faden, steuerung, gen, t);
+      stand = await frageStellen(frage, bezug, locale, faden, steuerung, gen, t, seitenbezug);
     }
   } finally {
     if (laufend === steuerung) {
@@ -561,9 +564,16 @@ async function frageStellen(
   steuerung: AbortController,
   gen: number,
   t: TFunction,
+  seitenbezug?: KlaraSeitenbezug,
 ): Promise<Fragestand> {
   try {
-    const antwort = await klaraGespraechApi.frage(frage, locale, faden, steuerung.signal);
+    const antwort = await klaraGespraechApi.frage(
+      frage,
+      locale,
+      faden,
+      steuerung.signal,
+      seitenbezug,
+    );
     if (!gueltig(gen)) {
       return "veraltet";
     }

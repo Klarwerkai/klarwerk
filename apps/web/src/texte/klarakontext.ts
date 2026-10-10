@@ -54,7 +54,6 @@ export default {
     "klarakontext.frage.erklaeren": "Was gilt für „{{auswahl}}“?",
     "klarakontext.frage.zusammenfassen": "Was steht zu „{{auswahl}}“?",
     "klarakontext.frage.mitMarkierung": "{{frage}} – „{{auswahl}}“",
-    "klarakontext.frage.mitArtikel": "{{frage}} – „{{titel}}“",
     "klarakontext.gesperrt.keinZugriff":
       "Diese Markierung geht nicht an den Frageweg: Du hast auf ihre Herkunft keinen Zugriff (mehr).",
     "klarakontext.gesperrt.vertraulich":
@@ -153,7 +152,6 @@ export default {
     "klarakontext.frage.erklaeren": "What is “{{auswahl}}”?",
     "klarakontext.frage.zusammenfassen": "What is there about “{{auswahl}}”?",
     "klarakontext.frage.mitMarkierung": "{{frage}} – “{{auswahl}}”",
-    "klarakontext.frage.mitArtikel": "{{frage}} – “{{titel}}”",
     "klarakontext.gesperrt.keinZugriff":
       "This selection is not sent to the question path: you have no (longer any) access to its origin.",
     "klarakontext.gesperrt.vertraulich":
@@ -253,7 +251,6 @@ export default {
     "klarakontext.frage.erklaeren": "What is “{{auswahl}}”?",
     "klarakontext.frage.zusammenfassen": "What is there about “{{auswahl}}”?",
     "klarakontext.frage.mitMarkierung": "{{frage}} – “{{auswahl}}”",
-    "klarakontext.frage.mitArtikel": "{{frage}} – “{{titel}}”",
     "klarakontext.gesperrt.keinZugriff":
       "Deze markering gaat niet naar de vraagroute: je hebt (niet langer) toegang tot de herkomst.",
     "klarakontext.gesperrt.vertraulich":
