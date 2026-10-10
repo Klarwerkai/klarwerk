@@ -1,10 +1,40 @@
 import { randomUUID } from "node:crypto";
 import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import type { LifecycleRepo } from "./repo";
-import type { LearningPath, LearningStep } from "./types";
+import {
+  type LearningPath,
+  type LearningStep,
+  type OffenerFall,
+  type RevalidierungsGrund,
+  anlassSignatur,
+} from "./types";
 
-/** R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde. */
-export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek";
+export type { RevalidierungsGrund } from "./types";
+
+/**
+ * produkt:20261010:aenderungsfolgen-sichtbar: eine Bestätigung nennt einen Stand, der nicht (mehr)
+ * offen ist. Domänencode `STAND_VERALTET` → 409 (http.ts): der Aufrufer hat nichts falsch gemacht,
+ * er hält nur einen Stand in der Hand, der sich bewegt hat.
+ */
+export class FolgepruefungStandError extends Error {
+  readonly code = "STAND_VERALTET";
+  constructor(
+    message: string,
+    /** Der jetzt offene Stand — `null`, wenn der Fall inzwischen abgeschlossen ist. */
+    readonly aktuellerStand: number | null,
+  ) {
+    super(message);
+    this.name = "FolgepruefungStandError";
+  }
+}
+
+/** Ergebnis einer Markierung je betroffenem Eintrag. */
+export interface Markierung {
+  koId: string;
+  stand: number;
+  /** `false`: dasselbe Signal stand schon am offenen Fall — kein neuer Anlass, kein neuer Beleg. */
+  neu: boolean;
+}
 
 /**
  * R-1635: der Beleg einer Markierung — eine Zeile je markiertem Objekt im Prüfprotokoll
@@ -24,12 +54,28 @@ export interface RevalidierungsBeleg {
 /** Der Prüfprotokoll-Vorgang einer Markierung (R-1635). */
 export const REVALIDIERUNG_ANGEFORDERT = "lifecycle.revalidation-requested";
 
+const STAND_GEAENDERT =
+  "Seit der Anzeige ist eine weitere Änderung eingegangen. Bitte den aktuellen Stand prüfen.";
+const STAND_ABGESCHLOSSEN = "Diese Folgeprüfung ist bereits abgeschlossen.";
+
+/** Wirft, wenn `fall` nicht genau den gesehenen Stand offen hat. */
+function pruefeStand(fall: OffenerFall | undefined, geprueftStand: number): void {
+  if (!fall) {
+    throw new FolgepruefungStandError(STAND_ABGESCHLOSSEN, null);
+  }
+  if (fall.stand !== geprueftStand) {
+    throw new FolgepruefungStandError(STAND_GEAENDERT, fall.stand);
+  }
+}
+
 export interface LifecycleServiceDeps {
   koService: KoService;
   repo: LifecycleRepo;
   genId?: () => string;
   // R-1635: ohne Beleg wird weiter markiert, nur ohne Benachrichtigungsgrundlage (Altaufbau, Tests).
   audit?: RevalidierungsBeleg;
+  /** Zeitquelle der Anlässe (ms). Vorgabe `Date.now`. */
+  uhr?: () => number;
 }
 
 /**
@@ -49,30 +95,73 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   private readonly repo: LifecycleRepo;
   private readonly genId: () => string;
   private readonly audit: RevalidierungsBeleg | undefined;
+  private readonly uhr: () => number;
 
   constructor(deps: LifecycleServiceDeps) {
     this.koService = deps.koService;
     this.repo = deps.repo;
     this.genId = deps.genId ?? (() => randomUUID());
     this.audit = deps.audit;
+    this.uhr = deps.uhr ?? Date.now;
   }
 
   // R-1635: setzt den Merker und hält je Objekt fest, wer ihn warum gesetzt hat. Der Beleg ist die
   // Grundlage der Benachrichtigung an Autor bzw. Nachfolger; er trägt keinen Inhalt des Objekts.
+  //
+  // produkt:20261010:aenderungsfolgen-sichtbar: je Objekt EIN Anlass am offenen Fall — mit der
+  // Fassung, die das Objekt beim Eingang hatte. Ein Signal, das genau so schon am offenen Fall steht
+  // (gleiche Signatur), ändert nichts: kein neuer Stand, kein zweiter Beleg, also auch keine zweite
+  // Glockenmeldung und keine doppelte Aufgabe. Der Prüfprotokolleintrag behält seine bisherige Form;
+  // nur ein mitgegebener Änderungsbeleg (`aenderung`) kommt hinzu.
   private async markiere(
-    koIds: readonly string[],
+    eintraege: readonly { koId: string; assetRef?: string }[],
     actor: string,
-    payload: { grund: RevalidierungsGrund; assetRef?: string; ausgeloestVon?: string },
-  ): Promise<void> {
-    for (const koId of koIds) {
-      await this.repo.markPending(koId);
+    payload: {
+      grund: RevalidierungsGrund;
+      assetRef?: string;
+      ausgeloestVon?: string;
+      ausgeloestVonVersion?: number;
+      aenderung?: string;
+    },
+  ): Promise<Markierung[]> {
+    const am = new Date(this.uhr()).toISOString();
+    const ergebnis: Markierung[] = [];
+    for (const { koId, assetRef } of eintraege) {
+      const anlage = assetRef ?? payload.assetRef;
+      const koVersion = (await this.koService.get(koId))?.version;
+      const kern = {
+        grund: payload.grund,
+        ...(anlage !== undefined ? { assetRef: anlage } : {}),
+        ...(payload.aenderung !== undefined ? { aenderung: payload.aenderung } : {}),
+        ...(payload.ausgeloestVon !== undefined ? { ausgeloestVon: payload.ausgeloestVon } : {}),
+        ...(payload.ausgeloestVonVersion !== undefined
+          ? { ausgeloestVonVersion: payload.ausgeloestVonVersion }
+          : {}),
+      };
+      const { stand, neu } = await this.repo.markPending(koId, {
+        ...kern,
+        am,
+        von: actor,
+        ...(koVersion !== undefined ? { koVersion } : {}),
+        signatur: anlassSignatur(kern),
+      });
+      ergebnis.push({ koId, stand, neu });
+      if (!neu) {
+        continue;
+      }
       await this.audit?.record({
         actor,
         action: REVALIDIERUNG_ANGEFORDERT,
         target: koId,
-        payload: { ...payload },
+        payload: {
+          grund: payload.grund,
+          ...(payload.ausgeloestVon !== undefined ? { ausgeloestVon: payload.ausgeloestVon } : {}),
+          ...(payload.assetRef !== undefined ? { assetRef: payload.assetRef } : {}),
+          ...(payload.aenderung !== undefined ? { aenderung: payload.aenderung } : {}),
+        },
       });
     }
+    return ergebnis;
   }
 
   // FR-LIF-01: Anlagen-/Prozesskopplung.
@@ -88,10 +177,26 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   // FR-LIF-01: Anlagenänderung markiert gekoppelte KOs „Stimmt das noch?". R-1635: mit Beleg je
   // Objekt (`actor` = wer die Änderung gemeldet hat), damit Autor bzw. Nachfolger erfährt, dass
   // sein Wissen geprüft werden soll.
-  async assetChanged(assetRef: string, actor = "system"): Promise<string[]> {
+  async assetChanged(assetRef: string, actor = "system", aenderung?: string): Promise<string[]> {
+    return (await this.meldeAnlagenaenderung(assetRef, actor, aenderung)).map((m) => m.koId);
+  }
+
+  /**
+   * produkt:20261010:aenderungsfolgen-sichtbar: dieselbe Anlagenänderung wie `assetChanged`, mit
+   * Auskunft je Eintrag, ob das Signal neu war. Betroffen ist, was an der Anlage GEKOPPELT ist —
+   * dieselbe Quelle wie bisher, keine Ähnlichkeitssuche.
+   */
+  async meldeAnlagenaenderung(
+    assetRef: string,
+    actor = "system",
+    aenderung?: string,
+  ): Promise<Markierung[]> {
     const koIds = await this.repo.couplingsFor(assetRef);
-    await this.markiere(koIds, actor, { grund: "anlage", assetRef });
-    return koIds;
+    return this.markiere(
+      koIds.map((koId) => ({ koId })),
+      actor,
+      { grund: "anlage", assetRef, ...(aenderung !== undefined ? { aenderung } : {}) },
+    );
   }
 
   // aufnahme:20260922:gesamt-wissen-frische (R-0203) — DER AUSLÖSER ÜBER BENACHBARTE WISSENSOBJEKTE.
@@ -102,26 +207,58 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   // wie `assetChanged`, kein zweiter Weg. Ohne Kopplung wird nichts markiert (leere Liste).
   // R-1635: auch dieser Auslöser benachrichtigt — je markiertem Objekt EIN Beleg mit Grund „nachbar"
   // und dem auslösenden Objekt, auch wenn es über mehrere Anlagen erreicht wird.
-  async neighborsChanged(koId: string, actor = "system"): Promise<string[]> {
-    const markiert = new Set<string>();
+  async neighborsChanged(koId: string, actor = "system", aenderung?: string): Promise<string[]> {
+    return (await this.meldeNachbaraenderung(koId, actor, aenderung)).map((m) => m.koId);
+  }
+
+  /**
+   * produkt:20261010:aenderungsfolgen-sichtbar: der Nachbarauslöser mit Auskunft je Eintrag. Jeder
+   * Anlass nennt die Anlage, über die der Eintrag erreicht wurde (die erste gemeinsame Kopplung),
+   * und die Fassung des auslösenden Eintrags.
+   */
+  async meldeNachbaraenderung(
+    koId: string,
+    actor = "system",
+    aenderung?: string,
+  ): Promise<Markierung[]> {
+    const ueber = new Map<string, string>();
     const anlagen = await this.repo.couplingsForKo(koId);
     for (const assetRef of anlagen) {
       for (const betroffen of await this.repo.couplingsFor(assetRef)) {
-        markiert.add(betroffen);
+        if (!ueber.has(betroffen)) {
+          ueber.set(betroffen, assetRef);
+        }
       }
     }
-    await this.markiere([...markiert], actor, {
-      grund: "nachbar",
-      ausgeloestVon: koId,
-      ...(anlagen.length === 1 && anlagen[0] !== undefined ? { assetRef: anlagen[0] } : {}),
-    });
-    return [...markiert];
+    const ausloeserVersion = (await this.koService.get(koId))?.version;
+    return this.markiere(
+      [...ueber].map(([betroffen, assetRef]) => ({ koId: betroffen, assetRef })),
+      actor,
+      {
+        grund: "nachbar",
+        ausgeloestVon: koId,
+        ...(ausloeserVersion !== undefined ? { ausgeloestVonVersion: ausloeserVersion } : {}),
+        ...(anlagen.length === 1 && anlagen[0] !== undefined ? { assetRef: anlagen[0] } : {}),
+        ...(aenderung !== undefined ? { aenderung } : {}),
+      },
+    );
   }
 
   // R-0206 / R-1732 / R-1745: eine erneute Prüfung GEZIELT für ein Objekt anstoßen — aus der
   // Bibliothek heraus, ohne Anlagenänderung. Derselbe Merker; die Bestätigung räumt ihn wie gewohnt.
   async requestRevalidation(koId: string, actor = "system"): Promise<void> {
-    await this.markiere([koId], actor, { grund: "bibliothek" });
+    await this.markiere([{ koId }], actor, { grund: "bibliothek" });
+  }
+
+  /**
+   * produkt:20261010:aenderungsfolgen-sichtbar: die offenen Fälle mit Stand und Anlässen —
+   * SCHREIBFREI. Anders als `pendingRevalidation()` räumt dieser Weg keine verwaisten Merker: er
+   * beantwortet nur, was die Ablage trägt; wer die Antwort anzeigt, filtert über die Sichtbarkeit
+   * (dort fällt ein Merker ohne Objekt ohnehin heraus). Die Selbstheilung nach SCRUM-420 bleibt der
+   * Arbeitsbereichsweg — und sie ist kein fachlicher Abschluss: sie schreibt keinen `ko.revalidated`.
+   */
+  offeneFaelle(koIds?: readonly string[]): Promise<OffenerFall[]> {
+    return this.repo.offeneFaelle(koIds);
   }
 
   // SCRUM-420 (Pedi 03.07.): Selbstheilung — Marker, deren KO nicht mehr existiert (z. B.
@@ -188,26 +325,59 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   //  - ohne `withTx` (Speicherbetrieb) rollt `KoService` die Fassung zurück, und hier wird der Merker
   //    wieder gesetzt, sobald das Löschen auch nur versucht wurde.
   // `pendingCleared` ist die Antwort des Löschens selbst, nicht eine Lesung davor.
-  async confirmStillValid(koId: string, author: string): Promise<KnowledgeObject> {
-    // Nur ohne Transaktion gebraucht: stand vor dem Löschversuch ein Merker, der wieder zu setzen ist?
-    let ohneTxWarGesetzt = false;
+  //
+  // produkt:20261010:aenderungsfolgen-sichtbar — DIE BESTÄTIGUNG GILT DEM GESEHENEN STAND.
+  // Nennt der Aufrufer `geprueftStand` (die Folgeprüfungsübersicht tut das immer), räumt die
+  // Bestätigung NUR genau diesen Stand:
+  //  - ist seit der Anzeige ein neuer Anlass eingegangen, steht ein höherer Stand da → 409
+  //    `STAND_VERALTET`, keine Fassung, kein Beleg, der offene Fall bleibt;
+  //  - ist der Fall schon abgeschlossen (Wiederholung, zweite Person parallel) → ebenfalls 409,
+  //    keine zweite Fassung.
+  // Die Vorprüfung erspart den Revisionsversuch; ENTSCHEIDEND ist das bedingte Löschen im
+  // Audit-Schritt (`clearPending(…, stand)`): trifft es nichts, wirft es, und die Revision rollt
+  // zurück — auch wenn die neue Änderung genau zwischen Vorprüfung und Löschen eintrifft.
+  // Ohne `geprueftStand` bleibt der bisherige Weg (Bibliothek: Bestätigung des aktuellen Inhalts).
+  // Der Beleg `ko.revalidated` nennt dann zusätzlich den bestätigten Stand.
+  async confirmStillValid(
+    koId: string,
+    author: string,
+    geprueftStand?: number,
+  ): Promise<KnowledgeObject> {
+    if (geprueftStand !== undefined) {
+      const [fall] = await this.repo.offeneFaelle([koId]);
+      pruefeStand(fall, geprueftStand);
+    }
+    // Nur ohne Transaktion gebraucht: der Fall vor dem Löschversuch, der wieder einzusetzen ist.
+    let ohneTxFall: OffenerFall | undefined;
     try {
       return await this.koService.revise(koId, {}, author, {
         zusatzBeleg: {
           action: "ko.revalidated",
           vorher: async (tx) => {
             if (tx === undefined) {
-              ohneTxWarGesetzt = (await this.repo.pendingFor([koId])).includes(koId);
+              [ohneTxFall] = await this.repo.offeneFaelle([koId]);
             }
-            return { pendingCleared: await this.repo.clearPending(koId, tx) };
+            const pendingCleared = await this.repo.clearPending(koId, tx, geprueftStand);
+            if (geprueftStand === undefined) {
+              return { pendingCleared };
+            }
+            if (!pendingCleared) {
+              const [jetzt] = await this.repo.offeneFaelle([koId], tx);
+              pruefeStand(jetzt, geprueftStand);
+              // Derselbe Stand steht noch und wurde trotzdem nicht gelöscht: nie still bestätigen.
+              throw new FolgepruefungStandError(STAND_GEAENDERT, jetzt?.stand ?? null);
+            }
+            return { pendingCleared, geprueftStand };
           },
         },
       });
     } catch (err) {
       // Der ursprüngliche Fehler bleibt der gemeldete; ein Ausfall beim Wiedersetzen darf ihn nicht
-      // verdecken. Mit Transaktion ist nichts zu tun — der Rollback hat den Merker behalten.
-      if (ohneTxWarGesetzt) {
-        await this.repo.markPending(koId).catch(() => undefined);
+      // verdecken. Mit Transaktion ist nichts zu tun — der Rollback hat den Merker behalten. Ohne
+      // Transaktion kommt der Fall mit Stand und Anlässen zurück; ein inzwischen neu entstandener
+      // Fall bleibt, wie er ist.
+      if (ohneTxFall) {
+        await this.repo.restorePending(ohneTxFall).catch(() => undefined);
       }
       throw err;
     }

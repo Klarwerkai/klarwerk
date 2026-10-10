@@ -1839,6 +1839,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht — dasselbe Tor wie
+  // `pending`; die Zeilen filtert `sichtbareEintraege` (gemessen in
+  // `tests/aenderungsfolgen/folgepruefung-route.test.ts`).
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/lifecycle/folgepruefung",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:243",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Gemessen wird das Rechtetor mit einem
   // LEEREN Rumpf: der Admin kommt durch und bekommt 400 (`INVALID`, kein Paar) — vor jedem Lesen
   // und Schreiben, also ohne Wirkung auf die Bühne. Vorschau und Zug mit echten Konten misst

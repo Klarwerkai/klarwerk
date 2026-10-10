@@ -1027,6 +1027,36 @@ export interface RevalidierungBestaetigt {
   version: number | null;
 }
 
+/** produkt:20261010:aenderungsfolgen-sichtbar: ein Anlass eines offenen Falls (ohne meldende Person). */
+export interface FolgepruefungsAnlass {
+  grund: "anlage" | "nachbar" | "bibliothek";
+  am: string;
+  assetRef: string | null;
+  kopplungBesteht: boolean | null;
+  aenderung: string | null;
+  /** Nur, wenn der Betrachter den auslösenden Eintrag sehen darf. */
+  ausloeser: { koId: string; title: string; version: number | null } | null;
+  koVersion: number | null;
+}
+
+/** Eine Zeile von `GET /api/lifecycle/folgepruefung`. Spiegel von `lifecycle-routes.ts`. */
+export interface FolgepruefungsFall {
+  koId: string;
+  title: string;
+  status: string;
+  version: number;
+  /** An diesen Stand bindet sich „Noch gültig" (`revalidate` mit `stand`). */
+  stand: number;
+  seit: string | null;
+  zustaendig: {
+    id: string;
+    name: string | null;
+    vorhanden: boolean;
+    art: "owner" | "author-fallback";
+  };
+  anlaesse: FolgepruefungsAnlass[];
+}
+
 // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Eintrag fürs Board.
 // Spiegelt die öffentliche Form des conflicts-Moduls (OverlapEntry) — schlanker Lebenszyklus als
 // Konflikte: es geht um Redaktion (Zusammenführen), nicht um Wahrheit.

@@ -1,6 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import { normalizeAsset } from "../../../knowledge-object";
-import type { LifecycleService } from "../../../lifecycle";
+import {
+  type KnowledgeObject,
+  normalizeAsset,
+  responsibleKindOf,
+  responsibleOf,
+} from "../../../knowledge-object";
+import type { LifecycleService, RevalidierungsGrund } from "../../../lifecycle";
 import { type Guards, sendError } from "../http";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege } from "../sichtbarkeit";
 import type { Wissensuebergabe } from "../wissensuebergabe";
@@ -52,12 +57,79 @@ export interface RevalidierungBestaetigt {
 /** So viele Objekte nimmt `GET /api/lifecycle/revalidiert` je Anfrage (die Quellen EINER Antwort). */
 const REVALIDIERT_HOECHSTENS_OBJEKTE = 50;
 
+/** Höchstlänge eines Änderungsbelegs (`aenderung`) — eine Kennung, kein Fließtext. */
+const AENDERUNG_HOECHSTENS_ZEICHEN = 200;
+
+/**
+ * produkt:20261010:aenderungsfolgen-sichtbar: was die Folgeprüfungsübersicht über die offenen Fälle
+ * hinaus braucht — das Objekt selbst (Titel, Fassung, Status, Verantwortung) und die Namen der
+ * Personen. Als PORT: fehlt er, wird die Route nicht registriert (404), nie eine leere Liste.
+ */
+export interface FolgepruefungsQuellen {
+  ko: { get(id: string): Promise<KnowledgeObject | undefined> };
+  personen: { listUsers(): Promise<readonly { id: string; name: string }[]> };
+}
+
+/** Ein Anlass, wie er die Route verlässt — ohne meldende Person. */
+export interface FolgepruefungsAnlass {
+  grund: RevalidierungsGrund;
+  am: string;
+  /** Die gekoppelte Anlage/Quelle, über die der Eintrag erreicht wurde — `null` bei Anforderung. */
+  assetRef: string | null;
+  /** Steht die Kopplung an dieser Anlage noch? `null`, wenn der Anlass keine Anlage nennt. */
+  kopplungBesteht: boolean | null;
+  aenderung: string | null;
+  /** Der auslösende Eintrag — NUR, wenn der Betrachter ihn sehen darf; sonst `null`. */
+  ausloeser: { koId: string; title: string; version: number | null } | null;
+  /** Die Fassung des betroffenen Eintrags beim Eingang des Signals. */
+  koVersion: number | null;
+}
+
+/** Eine Zeile von `GET /api/lifecycle/folgepruefung`. */
+export interface FolgepruefungsFall {
+  koId: string;
+  title: string;
+  status: string;
+  version: number;
+  stand: number;
+  seit: string | null;
+  zustaendig: {
+    id: string;
+    name: string | null;
+    vorhanden: boolean;
+    art: "owner" | "author-fallback";
+  };
+  anlaesse: FolgepruefungsAnlass[];
+}
+
+/** Sortierschlüssel „seit" in ms; ohne (lesbaren) Beginn ans Ende. */
+function seitRang(seit: string | null): number {
+  const ms = seit === null ? Number.NaN : Date.parse(seit);
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+}
+
+/** Ein Änderungsbeleg aus dem Rumpf: getrimmt, begrenzt, leer ist keiner. */
+function aenderungAus(wert: unknown): string | undefined | null {
+  if (wert === undefined || wert === null) {
+    return undefined;
+  }
+  if (typeof wert !== "string") {
+    return null;
+  }
+  const text = wert.normalize("NFC").replace(/\s+/g, " ").trim();
+  if (text.length > AENDERUNG_HOECHSTENS_ZEICHEN) {
+    return null;
+  }
+  return text.length > 0 ? text : undefined;
+}
+
 export function lifecycleRoutes(
   lifecycle: LifecycleService,
   guards: Guards,
   kos: KoSichtbarkeitsZugang,
   uebergabe: Wissensuebergabe,
   belege?: RevalidierungsBelege,
+  folge?: FolgepruefungsQuellen,
 ): FastifyPluginAsync {
   return async (app) => {
     app.post<{ Body: { assetRef: string; koId: string } }>(
@@ -115,16 +187,141 @@ export function lifecycleRoutes(
       },
     );
 
-    app.post<{ Body: { assetRef: string } }>(
+    // produkt:20261010:aenderungsfolgen-sichtbar — DIE ANTWORT NENNT NUR, WAS DER MELDENDE SEHEN DARF.
+    //
+    // Bis hierher gingen die Kennungen ALLER gekoppelten Einträge hinaus — auch vertraulicher, die
+    // der Meldende nicht öffnen darf. Markiert wird weiter jeder gekoppelte Eintrag (die Folgeprüfung
+    // gehört an das Objekt, nicht an den Meldenden); hinaus geht nur die sichtbare Teilmenge, ohne
+    // Platzhalter und ohne Gesamtzahl. Die Anlage durchläuft dieselbe Normalform wie die Kopplung;
+    // ein optionaler Änderungsbeleg (`aenderung`, z. B. „Rev. C") unterscheidet eine weitere Änderung
+    // derselben Anlage von der wiederholten Meldung derselben Änderung.
+    app.post<{ Body: { assetRef?: unknown; aenderung?: unknown } }>(
       "/api/lifecycle/asset-changed",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.validate", request, reply);
         if (!user) {
           return;
         }
-        reply.code(200).send(await lifecycle.assetChanged(request.body.assetRef, user.id));
+        const body = (request.body ?? {}) as { assetRef?: unknown; aenderung?: unknown };
+        const assetRef = normalizeAsset(body.assetRef);
+        const aenderung = aenderungAus(body.aenderung);
+        if (assetRef === null || aenderung === null) {
+          reply.code(400).send({
+            error: "INVALID",
+            message: "assetRef (nicht leer) wird benötigt; aenderung ist eine kurze Kennung.",
+          });
+          return;
+        }
+        try {
+          const markiert = await lifecycle.meldeAnlagenaenderung(assetRef, user.id, aenderung);
+          const sichtbar = await sichtbareEintraege(user, markiert, kos);
+          reply.code(200).send(sichtbar.map((eintrag) => eintrag.koId));
+        } catch (error) {
+          sendError(reply, error);
+        }
       },
     );
+
+    // ============================================================================================
+    // produkt:20261010:aenderungsfolgen-sichtbar — DIE FOLGEPRÜFUNGSÜBERSICHT.
+    // ============================================================================================
+    //
+    // Je offenem Fall: Titel, Status, aktuelle Fassung, der STAND (an ihn bindet sich „Noch gültig"),
+    // seit wann, wer zuständig ist (Eigentum, sonst Autor — `responsibleOf`, dieselbe Regel wie die
+    // Frische) und WARUM: jeder Anlass mit Grund, Anlage, Änderungsbeleg, auslösendem Eintrag und der
+    // Fassung beim Eingang. Belegt ist nur, was gespeichert ist — Kopplung oder Anforderung. Eine
+    // Vermutung (Ähnlichkeit o. ä.) erzeugt dieser Weg nicht, und er behauptet keine Vollständigkeit.
+    //
+    // RECHTE WIE `pending`: Routenrecht `ko.read`, Zeilenrecht `sichtbareEintraege` — ein Fall, dessen
+    // Objekt der Betrachter nicht sehen darf, FEHLT (kein Platzhalter, keine Zahl). Ein auslösender
+    // Eintrag, den er nicht sehen darf, steht als `null` da: der Anlass bleibt erklärt (Anlage,
+    // Änderungsbeleg), ohne den fremden Eintrag zu nennen. Die meldende Person geht nicht hinaus.
+    //
+    // SCHREIBFREI: `offeneFaelle()` statt `pendingRevalidation()` — dieser Leseweg räumt nichts, setzt
+    // nichts und schreibt kein Ereignis. Ein Merker ohne Objekt fällt an der Sichtbarkeit heraus.
+    if (folge) {
+      app.get("/api/lifecycle/folgepruefung", async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const faelle = await sichtbareEintraege(user, await lifecycle.offeneFaelle(), kos);
+          const namen = new Map(
+            (await folge.personen.listUsers()).map((p) => [p.id, p.name] as const),
+          );
+          const ausloeserSichtbar = new Map<string, FolgepruefungsAnlass["ausloeser"]>();
+          const aus: FolgepruefungsFall[] = [];
+          for (const fall of faelle) {
+            const ko = await folge.ko.get(fall.koId);
+            if (!ko) {
+              continue;
+            }
+            const kopplungen = await lifecycle.couplingsForKo(fall.koId);
+            const anlaesse: FolgepruefungsAnlass[] = [];
+            for (const a of fall.anlaesse) {
+              let ausloeser: FolgepruefungsAnlass["ausloeser"] = null;
+              if (a.ausgeloestVon !== undefined) {
+                const version = a.ausgeloestVonVersion ?? null;
+                if (a.ausgeloestVon === fall.koId) {
+                  ausloeser = { koId: ko.id, title: ko.title, version };
+                } else {
+                  if (!ausloeserSichtbar.has(a.ausgeloestVon)) {
+                    const [frei] = await sichtbareEintraege(user, [{ koId: a.ausgeloestVon }], kos);
+                    const quelle = frei ? await folge.ko.get(frei.koId) : undefined;
+                    ausloeserSichtbar.set(
+                      a.ausgeloestVon,
+                      quelle ? { koId: quelle.id, title: quelle.title, version: null } : null,
+                    );
+                  }
+                  const bekannt = ausloeserSichtbar.get(a.ausgeloestVon) ?? null;
+                  ausloeser = bekannt ? { ...bekannt, version } : null;
+                }
+              }
+              anlaesse.push({
+                // Ein Nachbarauslöser, dessen auslösenden Eintrag der Betrachter nicht sehen darf,
+                // steht als das da, was er für ihn ist: eine gemeldete Änderung der gekoppelten
+                // Anlage. Sonst verriete schon der Grund „nachbar", dass es einen weiteren,
+                // verborgenen Eintrag an dieser Anlage gibt.
+                grund: a.grund === "nachbar" && ausloeser === null ? "anlage" : a.grund,
+                am: a.am,
+                assetRef: a.assetRef ?? null,
+                kopplungBesteht: a.assetRef === undefined ? null : kopplungen.includes(a.assetRef),
+                aenderung: a.aenderung ?? null,
+                ausloeser,
+                koVersion: a.koVersion ?? null,
+              });
+            }
+            const zustaendigId = responsibleOf(ko);
+            const name = namen.get(zustaendigId) ?? null;
+            aus.push({
+              koId: ko.id,
+              title: ko.title,
+              status: ko.status,
+              version: ko.version,
+              stand: fall.stand,
+              seit: fall.seit,
+              zustaendig: {
+                id: zustaendigId,
+                name,
+                vorhanden: name !== null,
+                art: responsibleKindOf(ko),
+              },
+              anlaesse,
+            });
+          }
+          // Ältester offener Fall zuerst; Altmerker ohne Beginn ans Ende.
+          aus.sort((a, b) => {
+            const x = seitRang(a.seit);
+            const y = seitRang(b.seit);
+            return x === y ? 0 : x < y ? -1 : 1;
+          });
+          reply.code(200).send(aus);
+        } catch (error) {
+          sendError(reply, error);
+        }
+      });
+    }
 
     // ============================================================================================
     // AUFTRAG-JOB2020 (G7b) — DIE KENNUNG ALLEIN IST HIER DIE AUSKUNFT.

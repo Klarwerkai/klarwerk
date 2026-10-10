@@ -1318,6 +1318,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "R-1662 — sichtbareEintraege vor dem Lesen; nur Kennung, Zeitpunkt und Fassung.",
   },
+  "GET /api/lifecycle/folgepruefung": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "aenderungsfolgen-sichtbar — sichtbareEintraege über die offenen Fälle und je auslösendem " +
+      "Eintrag; ohne meldende Person.",
+  },
   "GET /api/lifecycle/couplings/:koId": {
     urteil: "KEIN_KO_INHALT",
     grund: "string[] mit assetRefs (lifecycle/src/service.ts:29).",
@@ -1393,7 +1399,8 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",
-    "POST /api/lifecycle/asset-changed": "ko.validate; Antwort ohne KO-Inhalt.",
+    "POST /api/lifecycle/asset-changed":
+      "ko.validate; Antwort ohne KO-Inhalt, nur sichtbare Kennungen (sichtbareEintraege).",
     // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Die Vorschau nennt Kennung und Titel
     // der Wissensobjekte einer Person — an `users.manage`, also an eine Rolle, für die `darfSehen`
     // ohnehin jedes Objekt freigibt. Entwürfe und Lücken nur als Kennung; die Ausführung antwortet
