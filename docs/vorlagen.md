@@ -19,7 +19,10 @@ Auftrag `produkt:20261007:templates-default` (Revision 2, ADMIN-08).
   Gespeicherte Space-Ansichten mit dem Tag ziehen beim Umbenennen/Zusammenführen als neue
   Spacefassung mit; ein archivierter Space bleibt unverändert und wird so benannt. Ebenso ziehen
   Space-Vorgaben im Geltungsbereich mit (erlaubte Kategorien bzw. vorgeschlagene Tags, neue
-  Vorgabenfassung, ohne Doppel); Vorgaben anderer Spaces bleiben unverändert.
+  Vorgabenfassung, ohne Doppel); Vorgaben anderer Spaces bleiben unverändert. Archivierte Spaces
+  sind schon in der Vorschau als unverändert gekennzeichnet; das Ergebnis nennt geänderte und
+  übersprungene Vorgaben mit Grund. Hat sich der Bestand seit der Vorschau geändert, zeigt die
+  Oberfläche die neue Vorschau statt still auszuführen.
 
 ## Rechte
 

@@ -1447,11 +1447,13 @@ export interface BegriffsPlan {
   /**
    * Space-Vorgaben im Geltungsbereich, die den Begriff nennen (erlaubte Kategorien bzw.
    * vorgeschlagene Tags). Beim Umbenennen/Zusammenführen erhalten sie eine neue Fassung mit dem
-   * neuen Begriff; Vorgaben anderer Spaces bleiben unverändert.
+   * neuen Begriff; Vorgaben anderer Spaces bleiben unverändert. Ein archivierter Space nimmt keine
+   * Änderung an — seine Vorgabe bleibt und ist hier schon so gekennzeichnet (`archiviert`).
    */
   vorgaben: {
     spaceId: string;
     spaceName: string | null;
+    archiviert: boolean;
     version: number;
     vorher: string[];
     nachher: string[];
@@ -1520,13 +1522,19 @@ export function begriffsPlan(
       (v) => (a.spaceId === null || v.spaceId === a.spaceId) && vorgabeNennt(v, a.art, a.name),
     )
     .sort((x, y) => x.spaceId.localeCompare(y.spaceId))
-    .map((v) => ({
-      spaceId: v.spaceId,
-      spaceName: name(v.spaceId),
-      version: v.version,
-      vorher: liste(v),
-      nachher: liste(vorgabeNachher(v, a)),
-    }));
+    .map((v) => {
+      const space = spaces.find((s) => s.id === v.spaceId);
+      const archiviert = space !== undefined && istArchiviert(space);
+      return {
+        spaceId: v.spaceId,
+        spaceName: name(v.spaceId),
+        archiviert,
+        version: v.version,
+        vorher: liste(v),
+        // Ein archivierter Space nimmt keine Änderung an: nachher = vorher, kein Versprechen.
+        nachher: archiviert ? liste(v) : liste(vorgabeNachher(v, a)),
+      };
+    });
   return {
     auftrag: a,
     zielVorhanden,
@@ -1546,7 +1554,7 @@ export function begriffsPlan(
           zeilen: zeilen.map((z) => [z.koId, z.version, z.vorher]),
           ausserhalb: tragend.length - betroffen.length,
           ansichten: ansichten.map((x) => [x.spaceId, x.ansicht, x.archiviert]),
-          vorgaben: vorgaben.map((x) => [x.spaceId, x.version, x.vorher]),
+          vorgaben: vorgaben.map((x) => [x.spaceId, x.version, x.vorher, x.archiviert]),
         }),
       )
       .digest("hex")

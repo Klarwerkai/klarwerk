@@ -242,6 +242,14 @@ export default {
       "Vorgaben des Space „{{space}}“ ziehen mit (neue Vorgabenfassung): {{vorher}} → {{nachher}}.",
     "vorlagen.begriffe.vorgabeBleibt":
       "Vorgaben des Space „{{space}}“ nennen den Begriff und bleiben unverändert: {{vorher}}.",
+    "vorlagen.begriffe.vorgabeArchiviert":
+      "Vorgaben des Space „{{space}}“ bleiben unverändert ({{vorher}}): Der Space ist archiviert und nimmt keine Änderung an.",
+    "vorlagen.begriffe.ergebnisVorgabeGeaendert":
+      "Vorgaben des Space „{{space}}“ tragen jetzt den neuen Begriff (neue Vorgabenfassung).",
+    "vorlagen.begriffe.ergebnisVorgabeArchiviert":
+      "Vorgaben des Space „{{space}}“ wurden nicht geändert: Der Space ist archiviert. Nach einer Wiederaufnahme die Vorgaben dort prüfen.",
+    "vorlagen.begriffe.ergebnisVorgabeZwischendurch":
+      "Vorgaben des Space „{{space}}“ wurden nicht geändert: Sie wurden seit der Vorschau anderweitig geändert. Bitte die Vorgaben dieses Space prüfen und die Begriffspflege bei Bedarf erneut ausführen.",
     "vorlagen.begriffe.wirkung":
       "Nur die genannten Beiträge bekommen den neuen Begriff; Inhalte und Fassungen bleiben. Suche und Filter finden sie unter dem neuen Begriff; neue Eingaben mit dem alten werden darauf hingewiesen.",
     "vorlagen.begriffe.wirkungAusmustern":
@@ -488,6 +496,14 @@ export default {
       "Requirements of space “{{space}}” follow (new requirements version): {{vorher}} → {{nachher}}.",
     "vorlagen.begriffe.vorgabeBleibt":
       "Requirements of space “{{space}}” name the term and stay unchanged: {{vorher}}.",
+    "vorlagen.begriffe.vorgabeArchiviert":
+      "Requirements of space “{{space}}” stay unchanged ({{vorher}}): the space is archived and accepts no changes.",
+    "vorlagen.begriffe.ergebnisVorgabeGeaendert":
+      "Requirements of space “{{space}}” now use the new term (new requirements version).",
+    "vorlagen.begriffe.ergebnisVorgabeArchiviert":
+      "Requirements of space “{{space}}” were not changed: the space is archived. Review them there after it is resumed.",
+    "vorlagen.begriffe.ergebnisVorgabeZwischendurch":
+      "Requirements of space “{{space}}” were not changed: they were changed elsewhere since the preview. Please review this space's requirements and run the term maintenance again if needed.",
     "vorlagen.begriffe.wirkung":
       "Only the listed entries get the new term; content and versions remain. Search and filters find them under the new term; new input with the old one is pointed to it.",
     "vorlagen.begriffe.wirkungAusmustern":
@@ -736,6 +752,14 @@ export default {
       "Eisen van de space „{{space}}” gaan mee (nieuwe versie van de eisen): {{vorher}} → {{nachher}}.",
     "vorlagen.begriffe.vorgabeBleibt":
       "Eisen van de space „{{space}}” noemen het begrip en blijven ongewijzigd: {{vorher}}.",
+    "vorlagen.begriffe.vorgabeArchiviert":
+      "Eisen van de space „{{space}}” blijven ongewijzigd ({{vorher}}): de space is gearchiveerd en neemt geen wijzigingen aan.",
+    "vorlagen.begriffe.ergebnisVorgabeGeaendert":
+      "Eisen van de space „{{space}}” gebruiken nu het nieuwe begrip (nieuwe versie van de eisen).",
+    "vorlagen.begriffe.ergebnisVorgabeArchiviert":
+      "Eisen van de space „{{space}}” zijn niet gewijzigd: de space is gearchiveerd. Controleer ze daar na hervatting.",
+    "vorlagen.begriffe.ergebnisVorgabeZwischendurch":
+      "Eisen van de space „{{space}}” zijn niet gewijzigd: ze zijn sinds de voorvertoning elders gewijzigd. Controleer de eisen van deze space en voer het begripsbeheer zo nodig opnieuw uit.",
     "vorlagen.begriffe.wirkung":
       "Alleen de genoemde bijdragen krijgen het nieuwe begrip; inhoud en versies blijven. Zoeken en filters vinden ze onder het nieuwe begrip; nieuwe invoer met het oude wordt erop gewezen.",
     "vorlagen.begriffe.wirkungAusmustern":

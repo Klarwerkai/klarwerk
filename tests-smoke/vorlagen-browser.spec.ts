@@ -371,4 +371,120 @@ test.describe("Vorlagen · Standard, Wechsel, Teilen, Fassung, Space-Pflicht", (
       await vp.context().close();
     }
   });
+
+  // K7/K11 · Begriffspflege: Vorschau und Ergebnis nennen die tatsächliche Wirkung auf Space-Vorgaben
+  // — mitziehend, archiviert (bleibt) und zwischenzeitlich geändert (neue Vorschau statt stiller
+  // Übernahme).
+  test("Begriffspflege: Space-Vorgaben ziehen mit, archivierte bleiben, zwischenzeitliche Änderung wird erklärt", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await ensureLoggedIn(page);
+    const m = marke();
+    const adminId = await ich(page.request);
+    const kategorie = `Wartung ${m}`;
+    const ziel = `Instandsetzung ${m}`;
+    const service = `Service ${m}`;
+    const neuerSpace = async (name: string): Promise<string> => {
+      const res = await page.request.post("/api/spaces", {
+        data: {
+          name,
+          zweck: "Fiktiver Arbeitsraum für die Begriffspflege im Smoke.",
+          verantwortlich: adminId,
+          zugang: "alle",
+          mitglieder: [],
+          ansichten: [],
+        },
+      });
+      expect(res.status(), await res.text()).toBe(201);
+      return ((await res.json()) as { id: string }).id;
+    };
+    const vorgabeSetzen = async (spaceId: string, version: number, kategorien: string[]) => {
+      const res = await page.request.put(`/api/vorlagen/space-vorgaben/${spaceId}`, {
+        data: { version, kategorien },
+      });
+      expect(res.status(), await res.text()).toBe(200);
+    };
+    const vorgabeLesen = async (spaceId: string) => {
+      const res = await page.request.get(`/api/vorlagen/space-vorgaben/${spaceId}`);
+      expect(res.status(), await res.text()).toBe(200);
+      const daten = (await res.json()) as {
+        fassungen: { version: number; kategorien: string[] }[];
+      };
+      return daten.fassungen;
+    };
+    const halle = await neuerSpace(`Halle ${m}`);
+    const altbau = await neuerSpace(`Altbau ${m}`);
+    await vorgabeSetzen(halle, 0, [kategorie]);
+    await vorgabeSetzen(altbau, 0, [kategorie]);
+    // Der Altbau wird regulär archiviert (Folgenvorschau, Begründung) — er nimmt danach nichts an.
+    const stand = await page.request.get(`/api/spaces/${altbau}`);
+    expect(stand.status(), await stand.text()).toBe(200);
+    const spaceVersion = ((await stand.json()) as { space: { version: number } }).space.version;
+    const folgen = await page.request.post(`/api/spaces/${altbau}/archivierung/vorschau`);
+    expect(folgen.status(), await folgen.text()).toBe(200);
+    const archiv = await page.request.post(`/api/spaces/${altbau}/archivieren`, {
+      data: {
+        version: spaceVersion,
+        grundlage: ((await folgen.json()) as { grundlage: string }).grundlage,
+        begruendung: `Fiktiv (${m}): Gebäude stillgelegt.`,
+      },
+    });
+    expect(archiv.status(), await archiv.text()).toBe(200);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/vorlagen");
+    await expect(page.getByTestId("vorlagen-verwaltung")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("begriff-art").selectOption("kategorie");
+    await page.getByTestId("begriff-vorgang").selectOption("umbenennen");
+    await page.getByTestId("begriff-name").fill(kategorie);
+    await page.getByTestId("begriff-ziel").fill(ziel);
+    await page.getByTestId("begriff-begruendung").fill(`Fiktiv (${m}): einheitlicher Begriff.`);
+    await page.getByTestId("begriff-absenden").click();
+
+    // Vorschau: die Halle zieht mit, der archivierte Altbau ist schon hier als unverändert benannt.
+    const vorschau = page.getByTestId("begriff-vorgaben");
+    const halleZeile = vorschau.locator(`[data-vorgabe="${halle}"]`);
+    const altbauZeile = vorschau.locator(`[data-vorgabe="${altbau}"]`);
+    await expect(halleZeile).toContainText("ziehen mit", { timeout: 15_000 });
+    await expect(halleZeile).toContainText(ziel);
+    await expect(altbauZeile).toContainText("archiviert");
+    await expect(altbauZeile).toContainText("bleiben unverändert");
+    await expect(altbauZeile).not.toContainText(ziel);
+    await bild(page, "k11-vorschau-vorgaben-archiviert");
+
+    // Zwischenzeitlich ändert jemand die Vorgabe der Halle: nichts wird still übernommen; die
+    // Ausführung wird abgelehnt, erklärt, und die neue Vorschau ersetzt die alte.
+    await vorgabeSetzen(halle, 1, [kategorie, service]);
+    await page.getByTestId("begriff-absenden").click();
+    await expect(page.getByTestId("begriff-fehler")).toContainText("seit der Vorschau", {
+      timeout: 15_000,
+    });
+    await expect(halleZeile).toContainText(service);
+    expect((await vorgabeLesen(halle)).map((f) => f.version)).toEqual([1, 2]);
+    await bild(page, "k11-vorschau-nach-zwischenzeitlicher-aenderung");
+
+    // Bestätigt wird die neue Vorschau: das Ergebnis nennt geänderte UND übersprungene Vorgaben.
+    await page.getByTestId("begriff-absenden").click();
+    const ergebnis = page.getByTestId("begriff-ergebnis-vorgaben");
+    await expect(ergebnis.locator(`[data-vorgabe="${halle}"]`)).toContainText("neuen Begriff", {
+      timeout: 15_000,
+    });
+    const altbauErgebnis = ergebnis.locator(`[data-vorgabe="${altbau}"]`);
+    await expect(altbauErgebnis).toContainText("nicht geändert");
+    await expect(altbauErgebnis).toContainText("archiviert");
+    await bild(page, "k11-ergebnis-vorgaben");
+
+    // Der gespeicherte Stand entspricht der Anzeige — auch nach erneutem Laden.
+    const halleNachher = await vorgabeLesen(halle);
+    expect(halleNachher.map((f) => f.version)).toEqual([1, 2, 3]);
+    expect(halleNachher.at(-1)?.kategorien).toEqual([ziel, service]);
+    const altbauNachher = await vorgabeLesen(altbau);
+    expect(altbauNachher.map((f) => f.version)).toEqual([1]);
+    expect(altbauNachher[0]?.kategorien).toEqual([kategorie]);
+    await page.reload();
+    await expect(page.getByTestId("begriffe-register")).toContainText(kategorie, {
+      timeout: 15_000,
+    });
+  });
 });

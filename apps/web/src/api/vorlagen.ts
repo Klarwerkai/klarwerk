@@ -210,6 +210,21 @@ export interface BegriffsAuftrag {
   begruendung: string;
 }
 
+/** Die tatsächliche Wirkung einer ausgeführten Begriffspflege. */
+export interface BegriffsErgebnis {
+  geaendert: number;
+  fehlgeschlagen: number;
+  unberuehrt: number;
+  /** Spaces, deren Vorgabe eine neue Fassung mit dem neuen Begriff erhielt. */
+  spaceVorgabenGeaendert: string[];
+  /** Vorgaben, die NICHT nachgezogen wurden — mit Grund. */
+  spaceVorgabenUebersprungen: {
+    spaceId: string;
+    spaceName: string | null;
+    grund: "archiviert" | "zwischenzeitlich_geaendert";
+  }[];
+}
+
 export interface BegriffsPlan {
   auftrag: BegriffsAuftrag & { ziel: string | null; spaceId: string | null };
   zielVorhanden: boolean;
@@ -228,6 +243,8 @@ export interface BegriffsPlan {
   vorgaben: {
     spaceId: string;
     spaceName: string | null;
+    /** Archivierter Space: die Vorgabe bleibt unverändert (nachher = vorher). */
+    archiviert: boolean;
     version: number;
     vorher: string[];
     nachher: string[];
@@ -267,6 +284,15 @@ export function befundeAus(fehler: unknown): PflichtBefund[] | null {
   if (fehler instanceof ApiError && fehler.code === "PFLICHTANGABEN_FEHLEN") {
     const b = fehler.details.befunde;
     return Array.isArray(b) ? (b as PflichtBefund[]) : [];
+  }
+  return null;
+}
+
+/** Die neue Vorschau einer abgelehnten Begriffspflege (409 `VORSCHAU_VERALTET`) — sonst `null`. */
+export function neueVorschauAus(fehler: unknown): BegriffsPlan | null {
+  if (fehler instanceof ApiError && fehler.code === "VORSCHAU_VERALTET") {
+    const v = fehler.details.vorschau;
+    return typeof v === "object" && v !== null ? (v as BegriffsPlan) : null;
   }
   return null;
 }
@@ -316,8 +342,5 @@ export const vorlagenApi = {
   begriffVorschau: (auftrag: BegriffsAuftrag) =>
     api.post<BegriffsPlan>("/vorlagen/begriffe/vorschau", auftrag),
   begriffAusfuehren: (auftrag: BegriffsAuftrag, grundlage: string) =>
-    api.post<{ geaendert: number; fehlgeschlagen: number; unberuehrt: number }>(
-      "/vorlagen/begriffe/ausfuehren",
-      { ...auftrag, grundlage },
-    ),
+    api.post<BegriffsErgebnis>("/vorlagen/begriffe/ausfuehren", { ...auftrag, grundlage }),
 };

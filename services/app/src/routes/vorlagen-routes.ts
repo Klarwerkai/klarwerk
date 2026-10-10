@@ -683,16 +683,33 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
           }
           // Space-Vorgaben im Geltungsbereich ziehen mit — als neue Vorgabenfassung je Space, damit
           // Einreichungen mit dem neuen Begriff gelten. Vorgaben anderer Spaces bleiben, wie sie sind;
-          // ein archivierter Space nimmt keine Änderung an und wird gezählt.
+          // ein archivierter Space nimmt keine Änderung an. Jede übersprungene Vorgabe wird mit Grund
+          // zurückgemeldet, damit die Oberfläche die tatsächliche Wirkung zeigt.
           const vorgabenGeaendert: string[] = [];
           const vorgabenUnveraendert: string[] = [];
+          const vorgabenUebersprungen: {
+            spaceId: string;
+            spaceName: string | null;
+            grund: "archiviert" | "zwischenzeitlich_geaendert";
+          }[] = [];
+          const ueberspringe = (
+            z: (typeof p.vorgaben)[number],
+            grund: "archiviert" | "zwischenzeitlich_geaendert",
+          ) => {
+            vorgabenUnveraendert.push(z.spaceId);
+            vorgabenUebersprungen.push({ spaceId: z.spaceId, spaceName: z.spaceName, grund });
+          };
           if (a.vorgang !== "ausmustern") {
             for (const z of p.vorgaben) {
               const space = (await dienste.spaces.fassungen(z.spaceId)).at(-1);
               const stand = await ablage.fassungen<SpaceVorgabe>("space-vorgabe", z.spaceId);
               const vorher = stand.at(-1);
-              if (!space || istArchiviert(space) || !vorher || vorher.version !== z.version) {
-                vorgabenUnveraendert.push(z.spaceId);
+              if (!space || istArchiviert(space)) {
+                ueberspringe(z, "archiviert");
+                continue;
+              }
+              if (!vorher || vorher.version !== z.version) {
+                ueberspringe(z, "zwischenzeitlich_geaendert");
                 continue;
               }
               const neu: SpaceVorgabe = {
@@ -706,7 +723,7 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
               if (await ablage.lege("space-vorgabe", z.spaceId, neu)) {
                 vorgabenGeaendert.push(z.spaceId);
               } else {
-                vorgabenUnveraendert.push(z.spaceId);
+                ueberspringe(z, "zwischenzeitlich_geaendert");
               }
             }
           }
@@ -740,6 +757,7 @@ export function vorlagenRoutes(dienste: VorlagenRouteDienste, guards: Guards): F
             spaceAnsichtenUnveraendert: ansichtenUnveraendert,
             spaceVorgabenGeaendert: vorgabenGeaendert,
             spaceVorgabenUnveraendert: vorgabenUnveraendert,
+            spaceVorgabenUebersprungen: vorgabenUebersprungen,
           };
           await dienste.audit?.record({
             actor: user.id,

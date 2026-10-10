@@ -20,6 +20,7 @@ import {
   type VorlageEingabe,
   type VorlageSicht,
   type VorlagenListe,
+  neueVorschauAus,
   vorlagenApi,
   vorlagenFehlerSchluessel,
 } from "../api/vorlagen";
@@ -782,11 +783,21 @@ function Verwaltung(): JSX.Element {
     mutationFn: () => vorlagenApi.begriffVorschau(auftrag),
     onSuccess: setPlan,
   });
+  // Der ausgeführte Plan bleibt als Variable der Mutation erhalten: das Ergebnis nennt damit die
+  // Spaces beim Namen, auch nachdem die Vorschau geschlossen ist.
   const ausfuehren = useMutation({
-    mutationFn: () => vorlagenApi.begriffAusfuehren(auftrag, plan?.grundlage ?? ""),
+    mutationFn: (p: BegriffsPlan) => vorlagenApi.begriffAusfuehren(auftrag, p.grundlage),
     onSuccess: async () => {
       setPlan(null);
       await qc.invalidateQueries({ queryKey: ["vorlagen"] });
+    },
+    // Hat sich der Bestand seit der Vorschau geändert, zeigt der Server die neue Vorschau mit —
+    // sie ersetzt die alte, damit nur bestätigt wird, was jetzt tatsächlich geschieht.
+    onError: (fehler) => {
+      const neu = neueVorschauAus(fehler);
+      if (neu) {
+        setPlan(neu);
+      }
     },
   });
   if (daten.isPending) {
@@ -886,7 +897,7 @@ function Verwaltung(): JSX.Element {
         onSubmit={(e) => {
           e.preventDefault();
           if (plan) {
-            ausfuehren.mutate();
+            ausfuehren.mutate(plan);
           } else {
             vorschau.mutate();
           }
@@ -998,11 +1009,13 @@ function Verwaltung(): JSX.Element {
             {plan.vorgaben.length > 0 ? (
               <ul data-testid="begriff-vorgaben" className="list-disc pl-5">
                 {plan.vorgaben.map((x) => (
-                  <li key={x.spaceId}>
+                  <li key={x.spaceId} data-vorgabe={x.spaceId}>
                     {t(
                       auftrag.vorgang === "ausmustern"
                         ? "vorlagen.begriffe.vorgabeBleibt"
-                        : "vorlagen.begriffe.vorgabeZiehtMit",
+                        : x.archiviert
+                          ? "vorlagen.begriffe.vorgabeArchiviert"
+                          : "vorlagen.begriffe.vorgabeZiehtMit",
                       {
                         space: x.spaceName ?? x.spaceId,
                         vorher: x.vorher.join(", "),
@@ -1057,6 +1070,30 @@ function Verwaltung(): JSX.Element {
               fehlgeschlagen: ausfuehren.data.fehlgeschlagen,
             })}
           </output>
+        ) : null}
+        {ausfuehren.isSuccess &&
+        (ausfuehren.data.spaceVorgabenGeaendert.length > 0 ||
+          ausfuehren.data.spaceVorgabenUebersprungen.length > 0) ? (
+          <ul data-testid="begriff-ergebnis-vorgaben" className="list-disc pl-5 text-[12.5px]">
+            {ausfuehren.data.spaceVorgabenGeaendert.map((id) => (
+              <li key={id} data-vorgabe={id} className="text-trust-pos-text">
+                {t("vorlagen.begriffe.ergebnisVorgabeGeaendert", {
+                  space:
+                    ausfuehren.variables?.vorgaben.find((x) => x.spaceId === id)?.spaceName ?? id,
+                })}
+              </li>
+            ))}
+            {ausfuehren.data.spaceVorgabenUebersprungen.map((x) => (
+              <li key={x.spaceId} data-vorgabe={x.spaceId} className="text-trust-warn-text">
+                {t(
+                  x.grund === "archiviert"
+                    ? "vorlagen.begriffe.ergebnisVorgabeArchiviert"
+                    : "vorlagen.begriffe.ergebnisVorgabeZwischendurch",
+                  { space: x.spaceName ?? x.spaceId },
+                )}
+              </li>
+            ))}
+          </ul>
         ) : null}
       </form>
       {d.begriffe.length > 0 ? (

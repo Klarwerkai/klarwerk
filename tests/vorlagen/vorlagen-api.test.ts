@@ -854,4 +854,59 @@ describe("K7 · K11 · Verwaltung: Nutzungsumfang und Begriffspflege je Space", 
     expect(danach.statusCode, danach.body).toBe(201);
     expect((await vorgabe(b.labor)).map((f) => f.version)).toEqual([1]);
   });
+
+  it("archivierter Space: Vorschau kennzeichnet die Vorgabe als unverändert, das Ergebnis nennt sie mit Grund", async () => {
+    const b = await buehne();
+    for (const spaceId of [b.instandhaltung, b.labor]) {
+      const res = await req(b, b.k.carla, "PUT", `/api/vorlagen/space-vorgaben/${spaceId}`, {
+        version: 0,
+        kategorien: ["Wartung"],
+      });
+      expect(res.statusCode, res.body).toBe(200);
+    }
+    const stand = await req(b, b.k.carla, "GET", `/api/spaces/${b.labor}`);
+    const folgenUrl = `/api/spaces/${b.labor}/archivierung/vorschau`;
+    const folgen = await req(b, b.k.carla, "POST", folgenUrl);
+    expect(folgen.statusCode, folgen.body).toBe(200);
+    const archiv = await req(b, b.k.carla, "POST", `/api/spaces/${b.labor}/archivieren`, {
+      version: stand.json().space.version,
+      grundlage: folgen.json().grundlage,
+      begruendung: "Labor stillgelegt (fiktiv).",
+    });
+    expect(archiv.statusCode, archiv.body).toBe(200);
+
+    const auftrag = {
+      art: "kategorie",
+      vorgang: "umbenennen",
+      name: "Wartung",
+      ziel: "Instandsetzung",
+      begruendung: "Einheitlicher Begriff (fiktiv).",
+    };
+    const plan = await req(b, b.k.admin, "POST", "/api/vorlagen/begriffe/vorschau", auftrag);
+    expect(plan.statusCode, plan.body).toBe(200);
+    const zeilen = plan.json().vorgaben as {
+      spaceId: string;
+      archiviert: boolean;
+      nachher: string[];
+    }[];
+    expect(zeilen.find((z) => z.spaceId === b.labor)).toEqual(
+      expect.objectContaining({ archiviert: true, nachher: ["Wartung"] }),
+    );
+    expect(zeilen.find((z) => z.spaceId === b.instandhaltung)).toEqual(
+      expect.objectContaining({ archiviert: false, nachher: ["Instandsetzung"] }),
+    );
+    const aus = await req(b, b.k.admin, "POST", "/api/vorlagen/begriffe/ausfuehren", {
+      ...auftrag,
+      grundlage: plan.json().grundlage,
+    });
+    expect(aus.statusCode, aus.body).toBe(200);
+    expect(aus.json().spaceVorgabenGeaendert).toEqual([b.instandhaltung]);
+    expect(aus.json().spaceVorgabenUebersprungen).toEqual([
+      { spaceId: b.labor, spaceName: "Labor", grund: "archiviert" },
+    ]);
+    const labor = await req(b, b.k.carla, "GET", `/api/vorlagen/space-vorgaben/${b.labor}`);
+    expect(labor.json().fassungen).toEqual([
+      expect.objectContaining({ version: 1, kategorien: ["Wartung"] }),
+    ]);
+  });
 });
