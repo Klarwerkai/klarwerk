@@ -9,6 +9,7 @@ import {
   type RegelAenderung,
   type TeamStand,
   type Vorgangszustand,
+  entscheidet,
   entscheidungsurteil,
   faelligAm,
   grundlageVon,
@@ -265,24 +266,6 @@ export class FreigabeRegelDienst {
     return raus;
   }
 
-  /** Greift die Vertretung an diesem Objekt — übergebene Aufgabe oder vertretene Person inaktiv? */
-  private async vertretungGreift(
-    koId: string,
-    eintrag: PrueferEintrag,
-    konten: readonly Konto[],
-    jetzt: number,
-  ): Promise<boolean> {
-    const vertreteneInaktiv = eintrag.vertritt.some((fuer) => {
-      const k = konten.find((x) => x.id === fuer);
-      return !k || !istAktiv(k, jetzt);
-    });
-    if (vertreteneInaktiv) {
-      return true;
-    }
-    const zuweisungen = await this.deps.validation.zuweisungenZu([koId]);
-    return zuweisungen.some((a) => a.userId === eintrag.id && a.quelle === "vertretung");
-  }
-
   /** Die Mindestzahl der Regel auf einen laufenden Vorgang anwenden (nur anheben, mit Beleg). */
   private async anwendenAuf(
     ko: KnowledgeObject,
@@ -372,28 +355,20 @@ export class FreigabeRegelDienst {
     }
     const konten = await this.konten();
     const kreis = prueferkreis(space, regel, konten, await this.teamStaende(), jetzt);
+    // Die Zuweisungen DIESES Vorgangs — dieselbe Aktivierungsbedingung (`entscheidet`) wie in der
+    // Übersicht: eine Vertretung entscheidet erst, wenn sie eingesetzt ist.
+    const zuweisungen = await this.deps.validation.zuweisungenZu([ko.id]);
     if (weg !== "admin-validate") {
-      if (!entscheidungsurteil(ko, kreis, user.id).erlaubt) {
-        return {
-          erlaubt: false,
-          status: 403,
-          error: "NICHT_PRUEFBERECHTIGT",
-          message: `Nach der Freigaberegel des Space „${space.name}“ gehören Sie nicht zu den berechtigten Prüfern dieses Beitrags.`,
-        };
-      }
-      // Wer NUR als Vertretung im Kreis steht, prüft erst, wenn die Vertretung greift: die Aufgabe
-      // ist an sie übergeben (Fristlauf) oder die vertretene Person ist nicht aktiv.
-      const eintrag = kreis.find((p) => p.id === user.id);
-      if (
-        eintrag?.wege.every((w) => w === "vertretung") &&
-        !(await this.vertretungGreift(ko.id, eintrag, konten, jetzt))
-      ) {
+      const urteil = entscheidungsurteil(ko, kreis, user.id, zuweisungen);
+      if (!urteil.erlaubt) {
         return {
           erlaubt: false,
           status: 403,
           error: "NICHT_PRUEFBERECHTIGT",
           message:
-            "Als Vertretung prüfen Sie erst, wenn die Prüfaufgabe an Sie übergeben ist oder die vertretene Person nicht aktiv ist.",
+            urteil.grund === "vertretung_ruht"
+              ? "Als Vertretung prüfen Sie erst, wenn die Prüfaufgabe an Sie übergeben ist oder die vertretene Person nicht aktiv ist."
+              : `Nach der Freigaberegel des Space „${space.name}“ gehören Sie nicht zu den berechtigten Prüfern dieses Beitrags.`,
         };
       }
     }
@@ -421,7 +396,7 @@ export class FreigabeRegelDienst {
           regelVersion: space.version,
           zustimmungen: stand.votes.up,
           erforderlich: Math.max(ko.neededValidations, regel.zustimmungen),
-          unabhaengigePruefer: unabhaengigePruefer(ko, kreis),
+          unabhaengigePruefer: unabhaengigePruefer(ko, kreis, zuweisungen),
         },
       });
     };
@@ -473,7 +448,9 @@ export class FreigabeRegelDienst {
     if (istArchiviert(space)) {
       raus.push({ art: "space_archiviert" });
     }
-    const berechtigt = kreis.filter((p) => p.berechtigt).length;
+    // Gezählt wird, wer JETZT entscheiden darf — eine Vertretung erst, wenn sie eingesetzt ist
+    // (dieselbe Bedingung wie am Entscheidungstor). Bereitstehende Vertretungen nennt `pruefer`.
+    const berechtigt = kreis.filter((p) => entscheidet(p)).length;
     if (berechtigt < erforderlich) {
       raus.push({ art: "zu_wenige_pruefer", berechtigt, erforderlich });
     }
@@ -618,7 +595,9 @@ export class FreigabeRegelDienst {
         if (stand.votes.down > 0) {
           luecken.push({ art: "ablehnung_offen", anzahl: stand.votes.down });
         }
-        const verfuegbar = unabhaengigePruefer(ko, kreis);
+        // Mit den Zuweisungen DIESES Vorgangs: eine übergebene Vertretung zählt, eine ruhende nicht.
+        const zuDiesemVorgang = zuweisungen.filter((a) => a.koId === ko.id);
+        const verfuegbar = unabhaengigePruefer(ko, kreis, zuDiesemVorgang);
         if (verfuegbar < erforderlich) {
           luecken.push({ art: "zu_wenige_unabhaengige_pruefer", verfuegbar, erforderlich });
         }
@@ -721,6 +700,11 @@ export class FreigabeRegelDienst {
         aktiv: p.aktiv,
         berechtigt: p.berechtigt,
         hindernis: p.hindernis,
+        // Getrennt sichtbar: `berechtigt` (Voraussetzungen erfüllt) und `entscheidet` (jetzt im
+        // Space entscheidungsbefugt). Eine bereitstehende, noch nicht eingesetzte Vertretung ist
+        // berechtigt, entscheidet aber nur an Vorgängen mit übergebener Aufgabe.
+        entscheidet: entscheidet(p),
+        bereitstehendeVertretung: p.berechtigt && !entscheidet(p),
       })),
       voraussetzungen: this.voraussetzungen(space, regel, kreis, erforderlich, konten, teams),
       vorgaenge: await this.vorgaengeFuer(sichtbar, regel, kreis, konten, jetzt),
@@ -762,8 +746,9 @@ export class FreigabeRegelDienst {
         rot: stimmen.down,
       };
     });
-    const berechtigteAlt = new Set(kreisAlt.filter((p) => p.berechtigt).map((p) => p.id));
-    const berechtigteNeu = new Set(kreisNeu.filter((p) => p.berechtigt).map((p) => p.id));
+    // Dieselbe Bedingung wie Tor und Übersicht: eine ruhende Vertretung wird nicht „neu prüfberechtigt".
+    const berechtigteAlt = new Set(kreisAlt.filter((p) => entscheidet(p)).map((p) => p.id));
+    const berechtigteNeu = new Set(kreisNeu.filter((p) => entscheidet(p)).map((p) => p.id));
     const name = (id: string) => konten.find((k) => k.id === id)?.name ?? null;
     const offeneAufgabenVon = (id: string): number =>
       zuweisungen.filter((a) => a.userId === id && a.status === "open").length;
@@ -919,15 +904,18 @@ export class FreigabeRegelDienst {
         darfSehen(sitzung, ko)
       );
     };
-    const neu: { koId: string; durch: string; fuer: string }[] = [];
+    const neu: { koId: string; durch: string; fuer: string; art: "neu" | "uebergeben" }[] = [];
     const faellig: { koId: string; person: string; grund: "ueberfaellig" | "inaktiv" }[] = [];
     const ohneVertretung: { koId: string; fuer: string }[] = [];
     let bestehend = 0;
+    // Aufgaben, die dieser Lauf eben zur Vertretungsaufgabe gemacht hat — sie stehen in der vorab
+    // gelesenen Liste noch als gewöhnliche Aufgabe und werden nicht ihrerseits weiterdelegiert.
+    const uebergeben = new Set<string>();
     for (const ko of offen) {
       await this.anwendenAuf(ko, space, regel, user.id);
       for (const a of zuweisungen.filter((x) => x.koId === ko.id && x.status === "open")) {
         // Eine Vertretungsaufgabe wird nicht weiterdelegiert — sonst entstünde eine Kette.
-        if (a.quelle === "vertretung") {
+        if (a.quelle === "vertretung" || uebergeben.has(`${ko.id}:${a.userId}`)) {
           continue;
         }
         const konto = konten.find((k) => k.id === a.userId);
@@ -945,10 +933,17 @@ export class FreigabeRegelDienst {
           continue;
         }
         for (const durch of geeignet) {
-          if (await this.deps.validation.vertretungZuweisen(ko.id, durch, a.userId, user.id)) {
-            neu.push({ koId: ko.id, durch, fuer: a.userId });
-          } else {
+          const art = await this.deps.validation.vertretungZuweisen(
+            ko.id,
+            durch,
+            a.userId,
+            user.id,
+          );
+          if (art === "bestehend") {
             bestehend += 1;
+          } else {
+            neu.push({ koId: ko.id, durch, fuer: a.userId, art });
+            uebergeben.add(`${ko.id}:${durch}`);
           }
           await this.benachrichtige(ko.id, durch);
         }
@@ -991,18 +986,24 @@ export class FreigabeRegelDienst {
     };
   }
 
-  /** Gemeldet wird nur, was noch aussteht — eine Wiederholung meldet nichts ein zweites Mal. */
+  /**
+   * Gemeldet wird nur, was noch aussteht — und nur von dem Lauf, der den Versand ÜBERNOMMEN hat
+   * (`benachrichtigungUebernehmen`, ein Schritt der Ablage). Zwei gleichzeitige Fristläufe melden
+   * so nicht doppelt; scheitert der Versand, steht die Meldung wieder aus.
+   */
   private async benachrichtige(koId: string, person: string): Promise<void> {
     const melde = this.deps.notifyAssignment;
     if (!melde) {
       return;
     }
-    const offen = await this.deps.validation.nochZuBenachrichtigen(koId, [person], {
-      altbestandBenachrichtigt: true,
-    });
-    for (const p of offen) {
-      await melde(koId, [p]);
-      await this.deps.validation.benachrichtigungErledigt(koId, p);
+    if (!(await this.deps.validation.benachrichtigungUebernehmen(koId, person))) {
+      return;
+    }
+    try {
+      await melde(koId, [person]);
+    } catch (fehler) {
+      await this.deps.validation.benachrichtigungZuruecknehmen(koId, person);
+      throw fehler;
     }
   }
 }

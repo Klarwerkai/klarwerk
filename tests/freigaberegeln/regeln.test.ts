@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type Konto,
+  entscheidet,
   entscheidungsurteil,
   faelligAm,
   istAktiv,
@@ -156,6 +157,38 @@ describe("ADMIN-09 · K1 · der Prüferkreis", () => {
       berechtigt: true,
     });
     expect(nach("carla"), "ein archiviertes Team trägt niemanden bei").toBeUndefined();
+  });
+
+  it("eine Vertretung entscheidet erst, wenn sie eingesetzt ist — Tor und Zählung lesen dasselbe", () => {
+    const mitVertretung = (fuer: string) =>
+      prueferkreis(
+        space,
+        regel({ pruefer: [fuer], vertretungen: [{ fuer, durch: "ulli" }] }),
+        konten,
+        [],
+        JETZT,
+      );
+    const ko = { author: "erik", originalAuthor: "erik" };
+    // Vertretene Person aktiv: Ulli steht bereit, entscheidet aber nicht.
+    const bereit = mitVertretung("paul");
+    const ulli = bereit.find((p) => p.id === "ulli");
+    expect(ulli).toMatchObject({ berechtigt: true, vertretungGreift: false });
+    expect(ulli && entscheidet(ulli)).toBe(false);
+    expect(entscheidungsurteil(ko, bereit, "ulli")).toEqual({
+      erlaubt: false,
+      grund: "vertretung_ruht",
+    });
+    expect(unabhaengigePruefer(ko, bereit)).toBe(1);
+    // Übergebene Aufgabe an DIESEM Vorgang setzt sie ein.
+    const uebergeben = [{ userId: "ulli", quelle: "vertretung" }];
+    expect(entscheidungsurteil(ko, bereit, "ulli", uebergeben)).toEqual({ erlaubt: true });
+    expect(unabhaengigePruefer(ko, bereit, uebergeben)).toBe(2);
+    // Eine gewöhnliche Aufgabe setzt sie NICHT ein.
+    expect(unabhaengigePruefer(ko, bereit, [{ userId: "ulli" }])).toBe(1);
+    // Vertretene Person nicht aktiv: spaceweit eingesetzt.
+    const eingesetzt = mitVertretung("gast").find((p) => p.id === "ulli");
+    expect(eingesetzt).toMatchObject({ vertretungGreift: true });
+    expect(eingesetzt && entscheidet(eingesetzt)).toBe(true);
   });
 
   it("ein unlesbares Ablaufdatum zählt nicht als aktiv", () => {

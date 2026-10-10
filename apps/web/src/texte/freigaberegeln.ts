@@ -55,6 +55,8 @@ export default {
       "Ausnahmewege: Admin-Kennzeichnung und Eigentümerfreigabe sind Einzelentscheidungen. Sie stehen mit Person, Zeitpunkt und Fassung als Ausnahme im Protokoll.",
     "freigaberegeln.pruefer.titel": "Prüfer nach dieser Regel",
     "freigaberegeln.pruefer.niemand": "Niemand kann nach dieser Regel prüfen.",
+    "freigaberegeln.pruefer.vertretungBereit":
+      "Vertretung bereit — entscheidet erst, wenn die Aufgabe übergeben ist",
     "freigaberegeln.weg.alle": "Prüfrecht",
     "freigaberegeln.weg.konto": "genannt",
     "freigaberegeln.weg.team": "über Team",
@@ -212,6 +214,8 @@ export default {
       "Exception paths: admin marking and owner approval are single decisions. They appear in the audit trail as an exception, with person, time and version.",
     "freigaberegeln.pruefer.titel": "Reviewers under this rule",
     "freigaberegeln.pruefer.niemand": "Nobody can review under this rule.",
+    "freigaberegeln.pruefer.vertretungBereit":
+      "deputy on standby — decides only once the task is handed over",
     "freigaberegeln.weg.alle": "review right",
     "freigaberegeln.weg.konto": "named",
     "freigaberegeln.weg.team": "via team",
@@ -366,6 +370,8 @@ export default {
       "Uitzonderingswegen: beheerdersmarkering en eigenaarsvrijgave zijn losse beslissingen. Ze staan met persoon, tijdstip en versie als uitzondering in het logboek.",
     "freigaberegeln.pruefer.titel": "Controleurs volgens deze regel",
     "freigaberegeln.pruefer.niemand": "Niemand kan volgens deze regel controleren.",
+    "freigaberegeln.pruefer.vertretungBereit":
+      "vervanging paraat — beslist pas als de taak is overgedragen",
     "freigaberegeln.weg.alle": "controlerecht",
     "freigaberegeln.weg.konto": "genoemd",
     "freigaberegeln.weg.team": "via team",

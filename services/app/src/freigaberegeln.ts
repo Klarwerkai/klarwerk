@@ -197,9 +197,46 @@ export interface PrueferEintrag {
   /** Wen sie vertritt. */
   vertritt: string[];
   aktiv: boolean;
+  /** Aktiv, mit Prüfrecht und Spacezugang — die Voraussetzung, nicht schon die Entscheidungsbefugnis. */
   berechtigt: boolean;
   /** Warum sie trotz Nennung nicht prüfen kann — `null`, wenn sie es kann. */
   hindernis: PrueferHindernis | null;
+  /**
+   * Nur für Vertretungen: ist eine vertretene Person nicht aktiv (oder unbekannt)? Dann ist die
+   * Vertretung im ganzen Space eingesetzt. Sonst nur an Vorgängen mit übergebener Aufgabe.
+   */
+  vertretungGreift: boolean;
+}
+
+/** Steht die Person NUR als Vertretung im Kreis (nicht genannt, nicht über Team, nicht „alle")? */
+export function nurVertretung(p: Pick<PrueferEintrag, "wege">): boolean {
+  return p.wege.length > 0 && p.wege.every((w) => w === "vertretung");
+}
+
+/** Die Zuweisungen eines Vorgangs, soweit die Aktivierungsbedingung sie braucht. */
+export interface ZuweisungsStand {
+  userId: string;
+  quelle?: string | undefined;
+}
+
+/**
+ * DIE EINE AKTIVIERUNGSBEDINGUNG — Entscheidungstor, Verfügbarkeit je Vorgang und fehlende
+ * Voraussetzungen fragen alle hierher. Entscheiden darf, wer berechtigt ist und — falls nur als
+ * Vertretung im Kreis — eingesetzt ist: die vertretene Person ist nicht aktiv, oder an DIESEM
+ * Vorgang liegt eine übergebene Vertretungsaufgabe. Ohne Vorgang (`zuweisungen` leer) gilt nur
+ * der spaceweite Einsatz.
+ */
+export function entscheidet(
+  p: PrueferEintrag,
+  zuweisungen: readonly ZuweisungsStand[] = [],
+): boolean {
+  if (!p.berechtigt) {
+    return false;
+  }
+  if (!nurVertretung(p) || p.vertretungGreift) {
+    return true;
+  }
+  return zuweisungen.some((a) => a.userId === p.id && a.quelle === "vertretung");
 }
 
 /**
@@ -238,6 +275,7 @@ export function prueferkreis(
             : !zugang
               ? "ohne_spacezugang"
               : null,
+        vertretungGreift: false,
       };
       eintraege.set(k.id, e);
     }
@@ -282,6 +320,10 @@ export function prueferkreis(
         e.wege.push("vertretung");
       }
       e.vertritt.push(v.fuer);
+      const vertreten = kontoVon.get(v.fuer);
+      if (!vertreten || !istAktiv(vertreten, jetztMs)) {
+        e.vertretungGreift = true;
+      }
     }
   }
   return [...eintraege.values()].sort(
@@ -299,28 +341,40 @@ export function istEigenerBeitrag(
 
 export type Entscheidungsurteil =
   | { erlaubt: true }
-  | { erlaubt: false; grund: "selbstpruefung" | "nicht_berechtigt" };
+  | { erlaubt: false; grund: "selbstpruefung" | "nicht_berechtigt" | "vertretung_ruht" };
 
-/** Darf diese Person über diesen Vorgang entscheiden — nach Mehr-Augen-Prinzip und Prüferkreis? */
+/**
+ * Darf diese Person über diesen Vorgang entscheiden — nach Mehr-Augen-Prinzip, Prüferkreis und
+ * Aktivierung einer Vertretung (`entscheidet`, mit den Zuweisungen DIESES Vorgangs)?
+ */
 export function entscheidungsurteil(
   ko: Pick<KnowledgeObject, "author" | "originalAuthor">,
   kreis: readonly PrueferEintrag[],
   nutzerId: string,
+  zuweisungen: readonly ZuweisungsStand[] = [],
 ): Entscheidungsurteil {
   if (istEigenerBeitrag(ko, nutzerId)) {
     return { erlaubt: false, grund: "selbstpruefung" };
   }
-  return kreis.some((p) => p.id === nutzerId && p.berechtigt)
+  const p = kreis.find((x) => x.id === nutzerId);
+  if (!p?.berechtigt) {
+    return { erlaubt: false, grund: "nicht_berechtigt" };
+  }
+  return entscheidet(p, zuweisungen)
     ? { erlaubt: true }
-    : { erlaubt: false, grund: "nicht_berechtigt" };
+    : { erlaubt: false, grund: "vertretung_ruht" };
 }
 
-/** Die Zahl der berechtigten Prüfer, die über DIESEN Vorgang unabhängig entscheiden können. */
+/**
+ * Die Zahl der Prüfer, die über DIESEN Vorgang jetzt unabhängig entscheiden können — dieselbe
+ * Aktivierungsbedingung wie am Entscheidungstor; eine noch nicht eingesetzte Vertretung zählt nicht.
+ */
 export function unabhaengigePruefer(
   ko: Pick<KnowledgeObject, "author" | "originalAuthor">,
   kreis: readonly PrueferEintrag[],
+  zuweisungen: readonly ZuweisungsStand[] = [],
 ): number {
-  return kreis.filter((p) => p.berechtigt && !istEigenerBeitrag(ko, p.id)).length;
+  return kreis.filter((p) => entscheidet(p, zuweisungen) && !istEigenerBeitrag(ko, p.id)).length;
 }
 
 /**

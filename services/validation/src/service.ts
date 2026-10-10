@@ -738,40 +738,111 @@ export class ValidationService {
 
   /**
    * ADMIN-09: eine Vertretungsaufgabe aus der Freigaberegel — `durch` prüft an Stelle von `fuer`.
-   * WIEDERHOLBAR: besteht für `durch` schon eine Zuweisung an diesem Objekt (gleich welcher
-   * Herkunft), entsteht nichts, kein Beleg und keine neue Benachrichtigung. Die neue Zuweisung trägt
-   * „ausstehend"; der Aufrufer benachrichtigt über `nochZuBenachrichtigen` und hakt ab.
-   * `true` heisst: diese Aufgabe ist eben neu entstanden.
+   *
+   *   · `neu`        — es gab für `durch` noch keine Zuweisung; sie entsteht als Vertretungsaufgabe.
+   *   · `uebergeben` — `durch` hatte schon eine OFFENE gewöhnliche Aufgabe an diesem Objekt; sie wird
+   *                    zur Vertretungsaufgabe (Herkunft, vertretene Person, Beginn, neue Meldung) —
+   *                    sonst bliebe die Vertretung am Entscheidungstor gesperrt.
+   *   · `bestehend`  — schon Vertretungsaufgabe, schon erledigt, oder ein gleichzeitiger Lauf war
+   *                    schneller: nichts geschieht, kein Beleg, keine Meldung.
+   *
+   * GLEICHZEITIGKEIT: Anlage (`createIfAbsent`) und Übergabe (`replaceIf`) sind je EIN Schritt der
+   * Ablage; nur der Aufrufer, dessen Schritt gegriffen hat, schreibt den Beleg. Die Meldung holt der
+   * Aufrufer über `benachrichtigungUebernehmen`.
    */
   async vertretungZuweisen(
     koId: string,
     durch: string,
     fuer: string,
     actor: string,
-  ): Promise<boolean> {
+  ): Promise<"neu" | "uebergeben" | "bestehend"> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
-    if (await this.assignments.find(koId, durch)) {
-      return false;
-    }
-    await this.assignments.create({
+    const seit = new Date(this.now()).toISOString();
+    const vertretung: Assignment = {
       koId,
       userId: durch,
       status: "open",
       benachrichtigung: "ausstehend",
       quelle: "vertretung",
       vertretungFuer: fuer,
-      seit: new Date(this.now()).toISOString(),
-    });
+      seit,
+    };
+    if (await this.legeAnWennFrei(vertretung)) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assigned",
+        target: koId,
+        payload: { userIds: [durch], quelle: "vertretung", fuer },
+      });
+      await this.koService.recordOwnershipRole(koId, "reviewers", [durch], actor);
+      return "neu";
+    }
+    const bisher = await this.assignments.find(koId, durch);
+    if (!bisher || bisher.status !== "open" || bisher.quelle === "vertretung") {
+      return "bestehend";
+    }
+    const uebergeben: Assignment = {
+      ...bisher,
+      quelle: "vertretung",
+      vertretungFuer: fuer,
+      seit,
+      benachrichtigung: "ausstehend",
+    };
+    if (!(await this.ersetzeWenn(bisher, uebergeben))) {
+      return "bestehend";
+    }
     await this.audit?.record({
       actor,
       action: "ko.assigned",
       target: koId,
-      payload: { userIds: [durch], quelle: "vertretung", fuer },
+      payload: { userIds: [durch], quelle: "vertretung", fuer, uebergeben: true },
     });
-    await this.koService.recordOwnershipRole(koId, "reviewers", [durch], actor);
+    return "uebergeben";
+  }
+
+  /**
+   * ADMIN-09: übernimmt den ausstehenden Versand der Meldung über diese Zuweisung — in einem
+   * Schritt („ausstehend" → „erledigt"). Nur wer `true` bekommt, versendet; scheitert der Versand,
+   * gibt `benachrichtigungZuruecknehmen` ihn wieder frei. Zwei gleichzeitige Läufe melden so nie
+   * doppelt.
+   */
+  async benachrichtigungUebernehmen(koId: string, userId: string): Promise<boolean> {
+    const zuweisung = await this.assignments.find(koId, userId);
+    if (!zuweisung || zuweisung.benachrichtigung !== "ausstehend") {
+      return false;
+    }
+    return this.ersetzeWenn(zuweisung, { ...zuweisung, benachrichtigung: "erledigt" });
+  }
+
+  /** ADMIN-09: ein übernommener, aber gescheiterter Versand steht wieder aus. */
+  async benachrichtigungZuruecknehmen(koId: string, userId: string): Promise<void> {
+    const zuweisung = await this.assignments.find(koId, userId);
+    if (zuweisung && zuweisung.benachrichtigung === "erledigt") {
+      await this.ersetzeWenn(zuweisung, { ...zuweisung, benachrichtigung: "ausstehend" });
+    }
+  }
+
+  /** Anlegen nur, wenn frei — atomar, wo die Ablage es kann (beide Produktablagen können es). */
+  private async legeAnWennFrei(a: Assignment): Promise<boolean> {
+    if (this.assignments.createIfAbsent) {
+      return this.assignments.createIfAbsent(a);
+    }
+    if (await this.assignments.find(a.koId, a.userId)) {
+      return false;
+    }
+    await this.assignments.create(a);
+    return true;
+  }
+
+  /** Compare-and-Set, wo die Ablage es kann; ein Test-Double ohne ihn ersetzt unbedingt. */
+  private async ersetzeWenn(alt: Assignment, neu: Assignment): Promise<boolean> {
+    if (this.assignments.replaceIf) {
+      return this.assignments.replaceIf(alt, neu);
+    }
+    await this.assignments.update(neu);
     return true;
   }
 

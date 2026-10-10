@@ -104,6 +104,26 @@ export class PgAssignmentRepo implements AssignmentRepo {
     return res.rows.map((row) => row.data);
   }
 
+  // ADMIN-09: EINE Anweisung — der Primärschlüssel entscheidet, wer anlegt; ein Zweiter überschreibt
+  // nichts (anders als `create`, das bei Konflikt ersetzt).
+  async createIfAbsent(assignment: Assignment): Promise<boolean> {
+    const res = await this.pool.query(
+      "INSERT INTO assignments(ko_id,user_id,data) VALUES($1,$2,$3) ON CONFLICT (ko_id,user_id) DO NOTHING",
+      [assignment.koId, assignment.userId, JSON.stringify(assignment)],
+    );
+    return (res.rowCount ?? 0) === 1;
+  }
+
+  // ADMIN-09: Compare-and-Set über den ganzen Datensatz (jsonb-Gleichheit, unabhängig von der
+  // Feldreihenfolge) — nur wer den Stand `alt` noch vorfindet, ersetzt ihn.
+  async replaceIf(alt: Assignment, neu: Assignment): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE assignments SET data=$4 WHERE ko_id=$1 AND user_id=$2 AND data=$3::jsonb",
+      [alt.koId, alt.userId, JSON.stringify(alt), JSON.stringify(neu)],
+    );
+    return (res.rowCount ?? 0) === 1;
+  }
+
   // PRÜFSTATUS-ANZEIGE (R-1524): gezielt über die Schlüsselspalte `ko_id` (Teil des Primärschlüssels
   // `(ko_id,user_id)`, s. `create`) statt des Vollscans von `all()`. Leere Eingabe fragt nicht.
   async listByKos(koIds: readonly string[]): Promise<Assignment[]> {

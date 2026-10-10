@@ -663,6 +663,7 @@ function PrueferListe({ u }: { u: RegelUebersicht }): JSX.Element {
           data-testid="freigabe-pruefer-person"
           data-konto={p.id}
           data-berechtigt={p.berechtigt ? "ja" : "nein"}
+          data-entscheidet={p.entscheidet ? "ja" : "nein"}
           className="rounded-btn border border-hairline px-2 py-0.5 text-[12px] text-text"
         >
           {verbunden([
@@ -670,6 +671,7 @@ function PrueferListe({ u }: { u: RegelUebersicht }): JSX.Element {
             t(`role.name.${p.role}`),
             p.wege.map((w) => t(`freigaberegeln.weg.${w}`)).join(", "),
             p.berechtigt ? null : t(`freigaberegeln.hindernis.${p.hindernis ?? "inaktiv"}`),
+            p.bereitstehendeVertretung ? t("freigaberegeln.pruefer.vertretungBereit") : null,
           ])}
         </li>
       ))}

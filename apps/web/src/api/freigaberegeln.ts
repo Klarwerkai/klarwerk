@@ -41,6 +41,10 @@ export interface PrueferZeile {
   aktiv: boolean;
   berechtigt: boolean;
   hindernis: PrueferHindernis | null;
+  /** Jetzt im Space entscheidungsbefugt (eine Vertretung erst, wenn sie eingesetzt ist). */
+  entscheidet: boolean;
+  /** Berechtigt, aber nur bereitstehende Vertretung — entscheidet erst nach Übergabe. */
+  bereitstehendeVertretung: boolean;
 }
 
 export type Voraussetzung =

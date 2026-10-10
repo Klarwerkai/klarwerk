@@ -199,7 +199,14 @@ interface Uebersicht {
   schritte: { art: string; anzahl?: number }[];
   selbstpruefung: string;
   ausnahmewege: { art: string }[];
-  pruefer: { id: string; berechtigt: boolean; hindernis: string | null; wege: string[] }[];
+  pruefer: {
+    id: string;
+    berechtigt: boolean;
+    hindernis: string | null;
+    wege: string[];
+    entscheidet: boolean;
+    bereitstehendeVertretung: boolean;
+  }[];
   voraussetzungen: { art: string; personen?: { id: string; name: string; hindernis: string }[] }[];
   vorgaenge: {
     id: string;
@@ -610,5 +617,130 @@ describe("ADMIN-09 · K3/K6 · fehlende aktive Prüfer, Frist und Vertretung", (
       neu: [],
       bestehend: 1,
     });
+  });
+
+  // ==============================================================================================
+  // NACHARBEIT 3 (Bens Befunde) — Übergabe einer vorhandenen Aufgabe, ruhende Vertretung, Gleichzeitigkeit.
+  // ==============================================================================================
+
+  it("eine VORHANDENE gewöhnliche Aufgabe der Vertretung wird bei Übergabe zur Vertretungsaufgabe — einmal", async () => {
+    const b = await buehne();
+    await regelSetzen(b, GRUPPE(b, { fristTage: 2 }));
+    const koId = await beitrag(b, b.k.erik, "Endmass");
+    // Ulli hat schon eine gewöhnliche Aufgabe — sie macht ihn noch nicht zur eingesetzten Vertretung.
+    const zuweisen = await handle(b, b.k.carla, koId, {
+      action: "assign",
+      userIds: [b.ids.paul, b.ids.ulli],
+    });
+    expect(zuweisen.statusCode).toBe(204);
+    const ruhend = await bewerte(b, b.k.ulli, koId, "up", 1);
+    expect(ruhend.statusCode).toBe(403);
+    expect(ruhend.json().error).toBe("NICHT_PRUEFBERECHTIGT");
+    // Drei Tage später ist Pauls Aufgabe überfällig (Paul bleibt aktiv).
+    const spaeter = new FreigabeRegelDienst({
+      spaces: b.services.spaces,
+      teams: b.services.teams,
+      auth: b.services.auth,
+      ko: b.services.ko,
+      validation: b.services.validation,
+      audit: b.services.audit,
+      jetzt: () => new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+    });
+    const space = await spaeter.aktuellerSpace(b.spaceId);
+    if (!space) {
+      throw new Error("Space fehlt");
+    }
+    const ada = { id: b.ids.ada, role: "admin" as const };
+    expect(await spaeter.fristlauf(space, ada, () => true)).toMatchObject({
+      neu: [{ koId, durch: b.ids.ulli, fuer: b.ids.paul, art: "uebergeben" }],
+      bestehend: 0,
+    });
+    const uebergaben = async () => {
+      const liste = await audit(b, "ko.assigned");
+      return liste.filter((e) => e.target === koId && e.payload.quelle === "vertretung");
+    };
+    expect(await uebergaben()).toEqual([
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          userIds: [b.ids.ulli],
+          fuer: b.ids.paul,
+          uebergeben: true,
+        }),
+      }),
+    ]);
+    // Jetzt ist Ulli eingesetzt — das Entscheidungstor lässt ihn zu.
+    expect((await vorgang(b, koId))?.aufgaben).toContainEqual(
+      expect.objectContaining({ person: b.ids.ulli, vertretungFuer: b.ids.paul }),
+    );
+    // Wiederholt: wirkungslos — kein zweiter Beleg, keine zweite Übergabe.
+    expect(await spaeter.fristlauf(space, ada, () => true)).toMatchObject({
+      neu: [],
+      bestehend: 1,
+    });
+    expect(await uebergaben()).toHaveLength(1);
+    const eingesetzt = await bewerte(b, b.k.ulli, koId, "up", 1);
+    expect(eingesetzt.statusCode, eingesetzt.body).toBe(200);
+  });
+
+  it("eine noch nicht eingesetzte Vertretung zählt weder als verfügbarer Prüfer noch in den Voraussetzungen", async () => {
+    const b = await buehne();
+    // Eine reguläre Prüferin, eine bereitstehende Vertretung, zwei Zustimmungen erforderlich.
+    await regelSetzen(b, {
+      zustimmungen: 2,
+      pruefer: [b.ids.carla],
+      prueferTeams: [],
+      fristTage: null,
+      vertretungen: [{ fuer: b.ids.carla, durch: b.ids.ulli }],
+    });
+    const koId = await beitrag(b, b.k.erik, "Lehrdorn");
+    const lage = await uebersicht(b);
+    expect(lage.voraussetzungen).toContainEqual({
+      art: "zu_wenige_pruefer",
+      berechtigt: 1,
+      erforderlich: 2,
+    });
+    // Sichtbar unterschieden: Ulli ist berechtigt, aber nur bereitstehende Vertretung.
+    expect(lage.pruefer.find((p) => p.id === b.ids.ulli)).toMatchObject({
+      wege: ["vertretung"],
+      berechtigt: true,
+      entscheidet: false,
+      bereitstehendeVertretung: true,
+    });
+    expect(lage.pruefer.find((p) => p.id === b.ids.carla)).toMatchObject({
+      entscheidet: true,
+      bereitstehendeVertretung: false,
+    });
+    expect(lage.vorgaenge.find((v) => v.id === koId)?.luecken).toContainEqual({
+      art: "zu_wenige_unabhaengige_pruefer",
+      verfuegbar: 1,
+      erforderlich: 2,
+    });
+    // Dieselbe Bedingung am Entscheidungstor.
+    expect((await bewerte(b, b.k.ulli, koId, "up", 1)).statusCode).toBe(403);
+  });
+
+  it("zwei GLEICHZEITIGE Fristläufe legen eine Aufgabe an, belegen und melden genau einmal", async () => {
+    const b = await buehne();
+    await regelSetzen(b, GRUPPE(b));
+    const koId = await beitrag(b, b.k.erik, "Gewindelehre");
+    const zuweisen = await handle(b, b.k.carla, koId, { action: "assign", userIds: [b.ids.paul] });
+    expect(zuweisen.statusCode).toBe(204);
+    await b.services.auth.setAccessExpiry(b.ids.paul, ABGELAUFEN, b.ids.ada);
+    const mails = (b.services.mailer as ConsoleMailer).sent;
+    const url = `${b.regelUrl}/fristlauf`;
+    const [eins, zwei] = await Promise.all([
+      schicke(b, b.k.ada, url, {}),
+      schicke(b, b.k.ada, url, {}),
+    ]);
+    expect(eins.statusCode, eins.body).toBe(200);
+    expect(zwei.statusCode, zwei.body).toBe(200);
+    const neu = [...eins.json().neu, ...zwei.json().neu];
+    expect(neu, "genau ein Lauf legt die Vertretungsaufgabe an").toHaveLength(1);
+    expect(mails.filter((m) => m.to === "ulli@admin09.test")).toHaveLength(1);
+    const belege = (await audit(b, "ko.assigned")).filter(
+      (e) => e.target === koId && e.payload.quelle === "vertretung",
+    );
+    expect(belege).toHaveLength(1);
+    expect(await audit(b, "freigaberegel.fristlauf")).toHaveLength(1);
   });
 });
