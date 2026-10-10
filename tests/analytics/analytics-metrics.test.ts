@@ -7,7 +7,6 @@ import {
   filterAudit,
   formatRate,
   validationRate,
-  weeklyValidated,
   workloadSummary,
 } from "../../apps/web/src/lib/analyticsMetrics";
 
@@ -41,14 +40,8 @@ describe("SCRUM-140: Impact-Aufbereitung", () => {
     expect(formatRate(0.75)).toBe("75%");
     expect(formatRate(0)).toBe("0%");
   });
-
-  it("weeklyValidated sortiert chronologisch und begrenzt", () => {
-    const out = weeklyValidated({ "2026-06-15": 2, "2026-06-01": 1, "2026-06-08": 3 }, 2);
-    expect(out).toEqual([
-      { week: "2026-06-08", count: 3 },
-      { week: "2026-06-15", count: 2 },
-    ]);
-  });
+  // ADMIN-11: `weeklyValidated` ist entfernt. Sein einziger Aufrufer war der Wochenbalken auf
+  // /analytics, der heute validierte Objekte nach ERSTELLUNGSwoche als Freigabeverlauf zeigte.
 });
 
 describe("SCRUM-143: Audit-Filter über echte Daten", () => {

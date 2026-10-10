@@ -460,6 +460,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "ADMIN-10 — nicht sichtbares Objekt der Meldung endet in 404, ohne Beleg.",
   },
+  // ADMIN-11: die Kennzahlen nennen Titel nur über die Vorgänge aus ADMIN-10 — dieselbe
+  // sichtbarkeitsfilterFuer(user)-Entscheidung, an ladeQualitaetsaufgaben durchgereicht.
+  "GET /api/wissenskennzahlen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-11 — sichtbarkeitsfilterFuer an ladeQualitaetsaufgaben; Lückentext redigiert.",
+  },
   "GET /api/livewall": { urteil: "PRAEDIKAT", grund: "Block E — Titel + Autor je Objekt." },
   "GET /api/validation/board": { urteil: "PRAEDIKAT", grund: "Block E — volle Wissensobjekte." },
   // --- Die vorbereiteten Wege, jetzt scharf (Block F) ---------------------------------------

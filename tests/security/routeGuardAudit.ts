@@ -1177,6 +1177,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
 
+  // --- Wissenskennzahlen (wissenskennzahlen-routes.ts, produkt:20261009:admin-wissenskennzahlen)
+  // Verwaltung; Detailzeilen sind die Vorgänge aus ADMIN-10 hinter demselben Sichtbarkeitsfilter.
+  "GET /api/wissenskennzahlen": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
   // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.
