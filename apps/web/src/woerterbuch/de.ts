@@ -4757,6 +4757,10 @@ const de = {
   "imp.gallery.unconfigured": "nicht konfiguriert",
   "imp.gallery.hintUnconfigured":
     "Vorhanden, aber nicht nutzbar: für die Transkription ist kein Dienst hinterlegt. Ein Administrator kann ihn in der Verwaltung einrichten.",
+  // Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): bei eingerichtetem Dienst nennt die Kachel den
+  // vorhandenen Weg — sie lädt selbst nichts hoch.
+  "imp.gallery.hintAvtranscriptActive":
+    "Der Transkriptionsdienst ist eingerichtet. Im Erfassen die Aufnahme über „Datei oder Bild beifügen“ anhängen und unter „Dokumente (Kontext / Anhang)“ auf „Transkribieren“ klicken. Diese Kachel lädt selbst nichts hoch.",
   // JOB 3190 (UX-18): „bald" war für Word und PDF schlicht falsch — dieselbe Datei wird im Erfassen
   // längst eingelesen. Der Text sagt beides: dass es die Funktion GIBT und WO sie liegt.
   "imp.gallery.elsewhere": "im Erfassen",

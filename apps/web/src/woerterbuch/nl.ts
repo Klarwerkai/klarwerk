@@ -3607,6 +3607,8 @@ const nl: typeof de = {
   "imp.gallery.unconfigured": "niet geconfigureerd",
   "imp.gallery.hintUnconfigured":
     "Aanwezig, maar niet bruikbaar: er is geen dienst ingesteld voor transcriptie. Een beheerder kan die in het beheer inrichten.",
+  "imp.gallery.hintAvtranscriptActive":
+    "De transcriptiedienst is ingericht. Voeg in Vastleggen de opname toe via „Bestand of afbeelding bijvoegen” en klik onder „Documenten (context / bijlage)” op „Transcriberen”. Deze tegel uploadt zelf niets.",
   "imp.gallery.elsewhere": "in Vastleggen",
   "imp.gallery.hintElsewhere":
     "Dit formaat wordt al ingelezen — niet op deze pagina, maar in Kennis vastleggen. Deze pagina zelf importeert alleen JSON.",

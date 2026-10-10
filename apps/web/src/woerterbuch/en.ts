@@ -3621,6 +3621,8 @@ const en: typeof de = {
   "imp.gallery.unconfigured": "not configured",
   "imp.gallery.hintUnconfigured":
     "Present, but not usable: no service is configured for transcription. An administrator can set one up in the admin area.",
+  "imp.gallery.hintAvtranscriptActive":
+    "The transcription service is set up. In Capture, add the recording via “Attach file or image” and click “Transcribe” under “Documents (context / attachment)”. This tile does not upload anything itself.",
   "imp.gallery.elsewhere": "in Capture",
   "imp.gallery.hintElsewhere":
     "This format is already being read in — not on this page, but in Capture Knowledge. This page itself imports JSON only.",

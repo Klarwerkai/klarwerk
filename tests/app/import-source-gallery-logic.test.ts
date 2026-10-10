@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
+  AVTRANSCRIPT_ACTIVE_HINT_KEY,
   FILE_SOURCES,
   type GallerySource,
   JSON_SOURCE_IDS,
@@ -12,6 +13,7 @@ import {
   acceptForFileSource,
   fileSourcesForSurface,
   hintKeyFor,
+  hintKeyForSource,
   openCaptureFileDialog,
   orderByState,
 } from "../../apps/web/src/lib/importSourceGallery";
@@ -127,13 +129,23 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
   });
 
   // AUFTRAG-mega15 Block D (SCRUM-382): das Audio-/Video-Transkript ist NICHT geplant — es ist
-  // gebaut und nur nicht konfiguriert. Genau diese Zeichenkette war die Falschaussage aus dem
-  // Live-Test; sie darf fuer diese Kachel auf KEINER Oberflaeche mehr herauskommen.
-  it("Audio-/Video-Transkript: nicht konfiguriert statt geplant — auf BEIDEN Oberflaechen", () => {
+  // gebaut. Genau „geplant" war die Falschaussage aus dem Live-Test; sie darf fuer diese Kachel auf
+  // KEINER Oberflaeche mehr herauskommen.
+  //
+  // Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): die alte Festschreibung „immer nicht
+  // konfiguriert" hielt die NAECHSTE Falschaussage fest — Bens Browserbeleg zeigte `active=true` und
+  // eine erfolgreiche Transkription, waehrend die Kachel „kein Dienst hinterlegt" sagte. Ersetzt
+  // durch die zwei Faelle, die es gibt: Dienst inaktiv (oder unbekannt) und Dienst aktiv.
+  it("Audio-/Video-Transkript, Dienst inaktiv oder unbekannt: nicht konfiguriert — auf BEIDEN Oberflaechen", () => {
     for (const surface of ["capture", "import"] as const) {
-      const byId = new Map(fileSourcesForSurface(surface).map((s) => [s.id, s.state]));
-      expect(byId.get("avtranscript"), surface).toBe("unconfigured");
-      expect(byId.get("avtranscript"), surface).not.toBe("planned");
+      for (const mediendienst of [{ active: false }, null] as const) {
+        const kachel = fileSourcesForSurface(surface, mediendienst).find(
+          (s) => s.id === "avtranscript",
+        );
+        const fall = `${surface}/${JSON.stringify(mediendienst)}`;
+        expect(kachel?.state, fall).toBe("unconfigured");
+        expect(kachel && hintKeyForSource(kachel), fall).toBe(STATE_HINT_KEY.unconfigured);
+      }
     }
     // Der angezeigte Text sagt es in allen drei Sprachen — kein „geplant" mehr.
     for (const lang of ["de", "en", "nl"] as const) {
@@ -145,6 +157,37 @@ describe("ic7: Datenmodell Systeme + Dateien", () => {
       const geplant = String(bundle[STATE_BADGE_KEY.planned]).toLowerCase();
       expect(String(badge).toLowerCase(), lang).not.toBe(geplant);
       expect(String(hint).toLowerCase(), lang).not.toContain(geplant);
+    }
+  });
+
+  it("Audio-/Video-Transkript, Dienst aktiv: verfuegbar im Erfassen, mit dem vorhandenen Weg als Hinweis", () => {
+    for (const surface of ["capture", "import"] as const) {
+      const kachel = fileSourcesForSurface(surface, { active: true }).find(
+        (s) => s.id === "avtranscript",
+      );
+      expect(kachel?.state, surface).toBe("elsewhere");
+      expect(kachel && hintKeyForSource(kachel), surface).toBe(AVTRANSCRIPT_ACTIVE_HINT_KEY);
+    }
+    // Der Hinweis sagt in allen drei Sprachen NICHT „kein Dienst hinterlegt", sondern nennt den
+    // vorhandenen Weg mit den echten Beschriftungen (Beifuegen, Dokumente, Transkribieren).
+    for (const lang of ["de", "en", "nl"] as const) {
+      const text = (key: string): string =>
+        String(i18n.getResource(lang, "translation", key) ?? "");
+      const hint = text(AVTRANSCRIPT_ACTIVE_HINT_KEY);
+      expect(hint.length, lang).toBeGreaterThan(0);
+      expect(hint, lang).not.toBe(text(STATE_HINT_KEY.unconfigured));
+      for (const key of ["capture.wizard.attach", "capture.documents", "capture.videoTranscribe"]) {
+        expect(text(key).length, `${lang}:${key}`).toBeGreaterThan(0);
+        expect(hint, `${lang}:${key}`).toContain(text(key));
+      }
+    }
+    // Alle anderen Kacheln haengen NICHT am Mediendienst.
+    for (const surface of ["capture", "import"] as const) {
+      const ohne = fileSourcesForSurface(surface).filter((s) => s.id !== "avtranscript");
+      const mit = fileSourcesForSurface(surface, { active: true }).filter(
+        (s) => s.id !== "avtranscript",
+      );
+      expect(mit, surface).toEqual(ohne);
     }
   });
 

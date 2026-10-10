@@ -393,3 +393,10 @@ export const useExternalPolicy = () =>
 // der Server erzwingt. Jede Auswahlstelle liest hierüber; React Query bündelt die Abfrage.
 export const useUploadLimits = () =>
   useQuery({ queryKey: ["upload-limits"], queryFn: endpoints.uploadLimits.get });
+
+// Aufnahme `gesamt-ocr` (R-0121, Nacharbeit 6): der gemeldete Stand des Transkriptionsdienstes
+// (`GET /api/media/status`) — die Transkript-Kachel der Dateigalerien hängt daran. Der Zugriff auf
+// den Endpunkt steht IN der Abfragefunktion: fehlt er (Testaufbauten ohne Mediendienst), scheitert
+// nur diese Abfrage, nicht das Rendern.
+export const useMediaStatus = () =>
+  useQuery({ queryKey: ["media", "status"], queryFn: () => endpoints.media.status() });
