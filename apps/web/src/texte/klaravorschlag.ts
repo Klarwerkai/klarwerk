@@ -58,6 +58,8 @@ export default {
       "Die Markierung reicht über eine Formatierung (z. B. fett oder einen Verweis). Markiere innerhalb eines gleich formatierten Abschnitts oder ändere die Stelle im Editor selbst.",
     "klaravorschlag.fehler.keinEditor":
       "Der Editor dieses Beitrags hat nicht geantwortet. Klara hat nichts geändert.",
+    "klaravorschlag.fehler.formatiertMehrdeutig":
+      "Der markierte Wortlaut steht auch an einer formatierten Stelle im Inhalt (z. B. fett oder mit Verweis). Klara kann nicht sicher sagen, welche Stelle gemeint ist, und hat nichts geändert – ändere die Stelle im Editor selbst.",
     "klaravorschlag.rueckfrage.keinObjekt":
       "Wohin soll der Vorschlag? Die Markierung stammt von „{{seite}}“ und gehört zu keinem Beitrag, den Klara bearbeiten kann. Übernimm den Text selbst, wo er hingehört.",
     "klaravorschlag.rueckfrage.anderesObjekt":
@@ -66,6 +68,8 @@ export default {
       "Der Vorschlag gehört zu „{{titel}}“, dieser Beitrag ist gerade nicht geöffnet. Öffne ihn und übernimm dort.",
     "klaravorschlag.rueckfrage.stellen":
       "Der markierte Wortlaut steht {{anzahl}}-mal im Beitrag. Welche Stelle meinst du?",
+    "klaravorschlag.rueckfrage.veraltet":
+      "Der Beitrag hat sich seit deiner Auswahl geändert – Klara hat nichts geändert. Der Wortlaut steht jetzt {{anzahl}}-mal darin. Welche Stelle meinst du?",
     "klaravorschlag.bedienhilfe.umformulieren":
       "„Umformulieren“: Klara schlägt für den markierten Text eine klarere Formulierung vor (derselbe Formulierungsweg wie die KI-Hilfe im Editor) und zeigt Original und Vorschlag nebeneinander. Am Beitrag ändert sich dabei nichts.",
     "klaravorschlag.bedienhilfe.uebernehmen":
@@ -121,6 +125,8 @@ export default {
       "The selection spans a formatting change (e.g. bold or a link). Select within one evenly formatted passage or change it in the editor yourself.",
     "klaravorschlag.fehler.keinEditor":
       "The editor of this article did not respond. Klara changed nothing.",
+    "klaravorschlag.fehler.formatiertMehrdeutig":
+      "The selected wording also occurs at a formatted passage in the content (e.g. bold or a link). Klara cannot tell for sure which passage is meant and changed nothing – change it in the editor yourself.",
     "klaravorschlag.rueckfrage.keinObjekt":
       "Where should the suggestion go? The selection comes from “{{seite}}” and belongs to no article Klara can edit. Copy the text where it belongs yourself.",
     "klaravorschlag.rueckfrage.anderesObjekt":
@@ -129,6 +135,8 @@ export default {
       "The suggestion belongs to “{{titel}}”, which is not open right now. Open it and apply it there.",
     "klaravorschlag.rueckfrage.stellen":
       "The selected wording occurs {{anzahl}} times in the article. Which passage do you mean?",
+    "klaravorschlag.rueckfrage.veraltet":
+      "The article has changed since your choice – Klara changed nothing. The wording now occurs {{anzahl}} times. Which passage do you mean?",
     "klaravorschlag.bedienhilfe.umformulieren":
       "“Rephrase”: Klara suggests clearer wording for the selected text (the same wording path as the AI help in the editor) and shows original and suggestion side by side. The article does not change.",
     "klaravorschlag.bedienhilfe.uebernehmen":
@@ -184,6 +192,8 @@ export default {
       "De markering loopt over een opmaak heen (bijv. vet of een link). Markeer binnen een gelijk opgemaakte passage of wijzig de plek zelf in de editor.",
     "klaravorschlag.fehler.keinEditor":
       "De editor van dit artikel heeft niet geantwoord. Klara heeft niets gewijzigd.",
+    "klaravorschlag.fehler.formatiertMehrdeutig":
+      "De gemarkeerde tekst staat ook op een opgemaakte plek in de inhoud (bijv. vet of met een link). Klara kan niet zeker zeggen welke plek bedoeld is en heeft niets gewijzigd – wijzig de plek zelf in de editor.",
     "klaravorschlag.rueckfrage.keinObjekt":
       "Waar moet het voorstel heen? De markering komt van „{{seite}}” en hoort bij geen artikel dat Klara kan bewerken. Neem de tekst zelf over waar hij hoort.",
     "klaravorschlag.rueckfrage.anderesObjekt":
@@ -192,6 +202,8 @@ export default {
       "Het voorstel hoort bij „{{titel}}”, dat artikel is nu niet geopend. Open het en neem het daar over.",
     "klaravorschlag.rueckfrage.stellen":
       "De gemarkeerde tekst staat {{anzahl}} keer in het artikel. Welke plek bedoel je?",
+    "klaravorschlag.rueckfrage.veraltet":
+      "Het artikel is sinds je keuze gewijzigd – Klara heeft niets gewijzigd. De tekst staat er nu {{anzahl}} keer in. Welke plek bedoel je?",
     "klaravorschlag.bedienhilfe.umformulieren":
       "„Herformuleren”: Klara stelt voor de gemarkeerde tekst een duidelijkere formulering voor (dezelfde formuleringsroute als de AI-hulp in de editor) en toont origineel en voorstel naast elkaar. Het artikel verandert daarbij niet.",
     "klaravorschlag.bedienhilfe.uebernehmen":

@@ -140,12 +140,24 @@ function ergebnisFolge(e: UebergabeErgebnis, t: TFunction, titel: string): Parti
         stand: "rueckfrage",
         rueckfrage: "stellen",
         stellen: e.stellen.map((s) => ({ ...s })),
+        stellenStand: e.stand,
         meldung: t("klaravorschlag.rueckfrage.stellen", { anzahl: e.stellen.length }),
+      };
+    case "veraltet":
+      // Der Beitrag hat sich seit der Rückfrage geändert: neu fragen, mit den Stellen von JETZT.
+      return {
+        stand: "rueckfrage",
+        rueckfrage: "stellen",
+        stellen: e.stellen.map((s) => ({ ...s })),
+        stellenStand: e.stand,
+        meldung: t("klaravorschlag.rueckfrage.veraltet", { anzahl: e.stellen.length }),
       };
     case "nicht_gefunden":
       return { stand: "fehler", meldung: t("klaravorschlag.fehler.nichtGefunden", { titel }) };
     case "ueber_formatierung":
       return { stand: "fehler", meldung: t("klaravorschlag.fehler.formatierung") };
+    case "formatiert_mehrdeutig":
+      return { stand: "fehler", meldung: t("klaravorschlag.fehler.formatiertMehrdeutig") };
     case "kein_recht":
       return { stand: "fehler", meldung: t("klaravorschlag.fehler.keinRecht", { titel }) };
   }
@@ -159,7 +171,7 @@ export async function uebernehme(
   v: Textvorschlag,
   lese: Leseobjekt | null,
   t: TFunction,
-  wahl?: { nr: number; anzahl: number },
+  wahl?: { nr: number; stand: string },
 ): Promise<void> {
   const vorab = zielVorab(v, lese, t);
   if (vorab) {

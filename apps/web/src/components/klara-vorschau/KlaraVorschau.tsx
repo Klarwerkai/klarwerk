@@ -1233,7 +1233,7 @@ export function KlaraVorschau(): JSX.Element {
       },
     }));
   };
-  const vorschlagUebernehmen = (wahl?: { nr: number; anzahl: number }): void => {
+  const vorschlagUebernehmen = (wahl?: { nr: number; stand: string }): void => {
     const v = leseZustand().textvorschlag;
     if (!v) {
       return;
@@ -2348,7 +2348,7 @@ function TextvorschlagKarte({
   onUebernehmen,
 }: {
   v: Textvorschlag;
-  onUebernehmen: (wahl?: { nr: number; anzahl: number }) => void;
+  onUebernehmen: (wahl?: { nr: number; stand: string }) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const h = v.herkunft;
@@ -2449,7 +2449,7 @@ function TextvorschlagKarte({
                 data-testid="klara-textvorschlag-stelle"
                 data-nr={s.nr}
                 data-feld={s.feld}
-                onClick={() => onUebernehmen({ nr: s.nr, anzahl: v.stellen?.length ?? 0 })}
+                onClick={() => onUebernehmen({ nr: s.nr, stand: v.stellenStand ?? "" })}
                 className="w-full rounded-btn border border-hairline px-2 py-1 text-left text-[11.5px] text-text hover:border-ink/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
               >
                 <span className="font-semibold">{t(`klaravorschlag.feld.${s.feld}`)}:</span>{" "}

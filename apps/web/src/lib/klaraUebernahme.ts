@@ -40,15 +40,26 @@ export interface KlaraUebergabe {
   readonly koId: string;
   readonly original: string;
   readonly neu: string;
-  /** Die in der Rückfrage gewählte Stelle — samt der Anzahl, die die Rückfrage damals zeigte. */
-  readonly wahl?: { readonly nr: number; readonly anzahl: number };
+  /**
+   * Die in der Rückfrage gewählte Stelle — gebunden an den Textstand, an dem die Rückfrage ihre
+   * Stellen gezählt hat (`textstand`). Hat sich Kernaussage oder Inhalt seither geändert, gilt die
+   * Wahl nicht mehr: Klara fragt neu, statt eine andere Stelle zu ersetzen (Bens Befund, Nacharbeit 2).
+   */
+  readonly wahl?: { readonly nr: number; readonly stand: string };
 }
 
 export type UebergabeErgebnis =
   | { readonly art: "uebernommen"; readonly feld: Feld; readonly geoeffnet: boolean }
-  | { readonly art: "mehrdeutig"; readonly stellen: readonly Stelle[] }
+  | { readonly art: "mehrdeutig"; readonly stellen: readonly Stelle[]; readonly stand: string }
+  /** Die gewählte Stelle gehört zu einem überholten Textstand — neue Rückfrage, nichts geändert. */
+  | { readonly art: "veraltet"; readonly stellen: readonly Stelle[]; readonly stand: string }
   | { readonly art: "nicht_gefunden" }
   | { readonly art: "ueber_formatierung" }
+  /**
+   * Der Wortlaut steht (auch) an einer formatierten Stelle im Inhalt, die sich nicht sicher ersetzen
+   * lässt, und zusätzlich anderswo. Welche gemeint ist, lässt sich nicht sicher sagen — nichts geändert.
+   */
+  | { readonly art: "formatiert_mehrdeutig" }
   | { readonly art: "kein_recht" };
 
 const KONTEXT = 32;
@@ -102,18 +113,39 @@ function textknoten(doc: Document): Text[] {
 }
 
 /**
+ * Der Textstand der Bearbeitungsfelder als kurze Kennung (cyrb53 über Kernaussage und Inhalt, dazu
+ * die Länge). Eine Rückfrage merkt sie sich; nur am selben Textstand gilt ihre Stellennummer.
+ */
+export function textstand(f: Bearbeitungsfelder): string {
+  const text = `${f.statement}\u0000${f.bodyHtml}`;
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const wert = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  return `${text.length.toString(36)}-${wert.toString(36)}`;
+}
+
+/**
  * Alle Stellen des Originalwortlauts: zuerst die Kernaussage, dann der Fließtext in Lesereihenfolge.
- * Im Fließtext zählt nur ein Fund INNERHALB eines Textstücks — eine Markierung über eine Formatierung
- * hinweg (fett, Verweis) lässt sich nicht ersetzen, ohne die Formatierung zu raten
- * (`ueberFormatierung`).
+ * Im Fließtext zählt nur ein Fund INNERHALB eines Textstücks als ersetzbare Stelle — eine Fundstelle
+ * über eine Formatierung hinweg (fett, Verweis) lässt sich nicht ersetzen, ohne die Formatierung zu
+ * raten. Sie wird trotzdem GEZÄHLT (`formatiert`), auch wenn es daneben ersetzbare Stellen gibt:
+ * sonst ersetzte die Übernahme ohne Rückfrage eine andere Stelle als die markierte (Bens Befund,
+ * Nacharbeit 2). `ueberFormatierung` heisst: es gibt mindestens eine solche Fundstelle.
  */
 export function findeStellen(
   f: Bearbeitungsfelder,
   original: string,
-): { stellen: Stelle[]; ueberFormatierung: boolean } {
+): { stellen: Stelle[]; formatiert: number; ueberFormatierung: boolean } {
   const re = muster(original);
   if (!re) {
-    return { stellen: [], ueberFormatierung: false };
+    return { stellen: [], formatiert: 0, ueberFormatierung: false };
   }
   const stellen: Stelle[] = [];
   for (const t of treffer(f.statement, re)) {
@@ -121,7 +153,7 @@ export function findeStellen(
     stellen.push({ nr: stellen.length, feld: "aussage", davor, danach });
   }
   const doc = f.bodyHtml.trim().length > 0 ? parse(f.bodyHtml) : null;
-  let ueberFormatierung = false;
+  let formatiert = 0;
   if (doc) {
     const vorher = stellen.length;
     for (const knoten of textknoten(doc)) {
@@ -130,11 +162,11 @@ export function findeStellen(
         stellen.push({ nr: stellen.length, feld: "inhalt", davor, danach });
       }
     }
-    if (stellen.length === vorher) {
-      ueberFormatierung = treffer(doc.body.textContent ?? "", re).length > 0;
-    }
+    // Alle Funde im zusammenhängenden Text des Inhalts minus die ersetzbaren in einem Textstück.
+    const imInhalt = treffer(doc.body.textContent ?? "", re).length;
+    formatiert = Math.max(0, imInhalt - (stellen.length - vorher));
   }
-  return { stellen, ueberFormatierung };
+  return { stellen, formatiert, ueberFormatierung: formatiert > 0 };
 }
 
 /** Ersetzt GENAU die Stelle `nr` (Zählung wie `findeStellen`). `null`, wenn es sie nicht gibt. */
@@ -177,9 +209,12 @@ export function ersetzeStelle(
 }
 
 /**
- * Was eine Übergabe an diesen Feldern bewirken würde — ohne etwas zu ändern. Eindeutig (genau eine
- * Stelle oder die in der Rückfrage gewählte, solange die Zahl der Stellen noch stimmt) ergibt die
- * neuen Felder; sonst den Grund, warum nichts geändert wird.
+ * Was eine Übergabe an diesen Feldern bewirken würde — ohne etwas zu ändern. Eindeutig ist:
+ *   · ohne Wahl genau EINE Fundstelle insgesamt (auch formatierte Fundstellen zählen mit);
+ *   · mit Wahl die gewählte Stelle — nur am SELBEN Textstand, an dem die Rückfrage gezählt hat.
+ * Alles andere ändert nichts und sagt, warum: Rückfrage (`mehrdeutig`), neue Rückfrage nach einer
+ * Änderung (`veraltet`), formatierte Fundstelle (`ueber_formatierung`, `formatiert_mehrdeutig`) oder
+ * nicht gefunden.
  */
 export function pruefeUebergabe(
   f: Bearbeitungsfelder,
@@ -187,18 +222,30 @@ export function pruefeUebergabe(
 ):
   | { art: "eindeutig"; felder: Bearbeitungsfelder; feld: Feld }
   | Exclude<UebergabeErgebnis, { art: "uebernommen" } | { art: "kein_recht" }> {
-  const { stellen, ueberFormatierung } = findeStellen(f, u.original);
-  if (stellen.length === 0) {
-    return ueberFormatierung ? { art: "ueber_formatierung" } : { art: "nicht_gefunden" };
+  const { stellen, formatiert } = findeStellen(f, u.original);
+  const stand = textstand(f);
+  if (formatiert > 0) {
+    // Eine formatierte Fundstelle ist nicht sicher ersetzbar. Gibt es daneben ersetzbare Stellen,
+    // ist unsicher, welche gemeint ist — beides endet ohne Änderung.
+    return stellen.length === 0 ? { art: "ueber_formatierung" } : { art: "formatiert_mehrdeutig" };
   }
-  const nr =
-    stellen.length === 1 ? 0 : u.wahl && u.wahl.anzahl === stellen.length ? u.wahl.nr : null;
-  if (nr === null) {
-    return { art: "mehrdeutig", stellen };
+  if (stellen.length === 0) {
+    return { art: "nicht_gefunden" };
+  }
+  let nr: number;
+  if (u.wahl) {
+    if (u.wahl.stand !== stand || u.wahl.nr < 0 || u.wahl.nr >= stellen.length) {
+      return { art: "veraltet", stellen, stand };
+    }
+    nr = u.wahl.nr;
+  } else if (stellen.length === 1) {
+    nr = 0;
+  } else {
+    return { art: "mehrdeutig", stellen, stand };
   }
   const ergebnis = ersetzeStelle(f, u.original, u.neu, nr);
   if (!ergebnis) {
-    return { art: "mehrdeutig", stellen };
+    return { art: "veraltet", stellen, stand };
   }
   return {
     art: "eindeutig",

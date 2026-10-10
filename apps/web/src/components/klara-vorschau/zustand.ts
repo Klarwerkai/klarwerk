@@ -130,6 +130,8 @@ export interface Textvorschlag {
   meldung?: string | undefined;
   rueckfrage?: "stellen" | "anderes_objekt" | "kein_objekt";
   stellen?: { nr: number; feld: "aussage" | "inhalt"; davor: string; danach: string }[];
+  /** Der Textstand, an dem die Rückfrage ihre Stellen gezählt hat (`textstand`, klaraUebernahme). */
+  stellenStand?: string | undefined;
   feld?: "aussage" | "inhalt";
   /** Die Fassung, die beim Übergeben auf der Lesefläche stand. */
   basisFassung?: number | null;

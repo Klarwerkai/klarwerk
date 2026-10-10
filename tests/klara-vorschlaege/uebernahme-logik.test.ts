@@ -9,10 +9,12 @@
 //   L1 · K1/K2 — eindeutige Stelle in der Kernaussage: nur sie wird ersetzt, der Rest bleibt.
 //   L2 · K2    — Fundstelle im Fliesstext: ersetzt als TEXT im Textknoten, Auszeichnung bleibt.
 //   L3 · K4    — mehrdeutig: nichts ersetzt, alle Stellen mit Feld und Umgebung zurück; mit der
-//                gewählten Stelle genau diese — und bei geänderter Stellenzahl wieder die Rückfrage.
+//                gewählten Stelle (am Textstand der Rückfrage) genau diese.
 //   L4 · K4    — nicht gefunden / über eine Formatierung hinweg: nichts ersetzt, Grund benannt.
 //   L5 · K4    — der Übergabekanal: eine Rückmeldung räumt ab, Zurückziehen nur die eigene.
 //   L6 · Rechte — ein Vorschlag gehört dem Konto, unter dem er entstand.
+//   L7 · K4    — Mischfall formatierte + unformatierte Fundstelle: keine Änderung (Ben, Nacharbeit 2).
+//   L8 · K4    — veraltete Wahl (Stelle weg / umgeordnet): neue Rückfrage (Ben, Nacharbeit 2).
 import { describe, expect, it } from "vitest";
 import { ANFANG, anKontoBinden } from "../../apps/web/src/components/klara-vorschau/zustand";
 import {
@@ -20,6 +22,7 @@ import {
   meldeUebergabe,
   offeneUebergabe,
   pruefeUebergabe,
+  textstand,
   uebergebe,
   zieheUebergabeZurueck,
 } from "../../apps/web/src/lib/klaraUebernahme";
@@ -89,8 +92,9 @@ describe("L3 · mehrdeutiges Ziel", () => {
     expect(lage.stellen[2]?.davor).toBe("Zweitens:");
   });
 
-  it("mit gewählter Stelle genau diese — die übrigen bleiben", () => {
-    const lage = pruefeUebergabe(f, { original: ORIGINAL, neu: NEU, wahl: { nr: 2, anzahl: 3 } });
+  it("mit gewählter Stelle am selben Textstand genau diese — die übrigen bleiben", () => {
+    const wahl = { nr: 2, stand: textstand(f) };
+    const lage = pruefeUebergabe(f, { original: ORIGINAL, neu: NEU, wahl });
     expect(lage.art).toBe("eindeutig");
     if (lage.art !== "eindeutig") {
       return;
@@ -99,9 +103,81 @@ describe("L3 · mehrdeutiges Ziel", () => {
     expect(lage.felder.bodyHtml).toBe(`<p>${ORIGINAL}</p><p>Zweitens: ${NEU}</p>`);
   });
 
-  it("hat sich die Zahl der Stellen seit der Rückfrage geändert, fragt Klara erneut", () => {
-    const lage = pruefeUebergabe(f, { original: ORIGINAL, neu: NEU, wahl: { nr: 1, anzahl: 2 } });
-    expect(lage.art).toBe("mehrdeutig");
+  it("die Rückfrage nennt den Textstand, an dem sie gezählt hat", () => {
+    const lage = pruefeUebergabe(f, { original: ORIGINAL, neu: NEU });
+    expect(lage.art === "mehrdeutig" ? lage.stand : null).toBe(textstand(f));
+  });
+});
+
+// Bens Befund (Nacharbeit 2), Teil 2: die Wahl gilt nur am Textstand der Rückfrage.
+describe("L8 · K4 — veraltete Wahl: neue Rückfrage statt einer anderen Stelle", () => {
+  const damals = {
+    statement: ORIGINAL,
+    bodyHtml: `<p>Erstens: ${ORIGINAL}</p><p>Zweitens: ${ORIGINAL}</p>`,
+  };
+  const wahl = { nr: 2, stand: textstand(damals) };
+
+  it("die gewählte Stelle ist weg, eine andere bleibt allein: keine Ersetzung, neu fragen", () => {
+    const jetzt = {
+      statement: ORIGINAL,
+      bodyHtml: "<p>Erstens: anders.</p><p>Zweitens: weg.</p>",
+    };
+    const lage = pruefeUebergabe(jetzt, { original: ORIGINAL, neu: NEU, wahl });
+    expect(lage.art).toBe("veraltet");
+    if (lage.art !== "veraltet") {
+      return;
+    }
+    expect(lage.stellen.map((s) => s.feld)).toEqual(["aussage"]);
+    expect(lage.stand).toBe(textstand(jetzt));
+  });
+
+  it("gleiche Anzahl, aber umgeordnet: keine Ersetzung, neu fragen", () => {
+    const jetzt = {
+      statement: ORIGINAL,
+      bodyHtml: `<p>Zweitens: ${ORIGINAL}</p><p>Erstens: ${ORIGINAL}</p>`,
+    };
+    expect(findeStellen(jetzt, ORIGINAL).stellen).toHaveLength(3);
+    const lage = pruefeUebergabe(jetzt, { original: ORIGINAL, neu: NEU, wahl });
+    expect(lage.art).toBe("veraltet");
+  });
+
+  it("dieselbe Wahl am neuen Textstand ersetzt dann genau die neu gewählte Stelle", () => {
+    const jetzt = {
+      statement: ORIGINAL,
+      bodyHtml: `<p>Zweitens: ${ORIGINAL}</p><p>Erstens: ${ORIGINAL}</p>`,
+    };
+    const neuGewaehlt = { nr: 1, stand: textstand(jetzt) };
+    const lage = pruefeUebergabe(jetzt, { original: ORIGINAL, neu: NEU, wahl: neuGewaehlt });
+    expect(lage.art).toBe("eindeutig");
+    if (lage.art !== "eindeutig") {
+      return;
+    }
+    expect(lage.felder.bodyHtml).toBe(`<p>Zweitens: ${NEU}</p><p>Erstens: ${ORIGINAL}</p>`);
+  });
+});
+
+// Bens Befund (Nacharbeit 2), Teil 1: formatierte Fundstellen zählen bei der Zielentscheidung mit.
+describe("L7 · K4 — Mischfall formatierte und unformatierte Fundstelle", () => {
+  const FORMATIERT = "<p>Die Pumpe <em>wird</em> vor dem Start entlüftet.</p>";
+
+  it("Kernaussage plus formatierter Inhalt: keine Übernahme in die Kernaussage, Grund benannt", () => {
+    const f = { statement: ORIGINAL, bodyHtml: FORMATIERT };
+    expect(findeStellen(f, ORIGINAL)).toMatchObject({ formatiert: 1, ueberFormatierung: true });
+    expect(pruefeUebergabe(f, { original: ORIGINAL, neu: NEU }).art).toBe("formatiert_mehrdeutig");
+  });
+
+  it("unformatierte Stelle im Inhalt plus formatierte: ebenfalls ohne Änderung", () => {
+    const f = { statement: "Kurz.", bodyHtml: `<p>${ORIGINAL}</p>${FORMATIERT}` };
+    expect(findeStellen(f, ORIGINAL)).toMatchObject({ formatiert: 1 });
+    expect(pruefeUebergabe(f, { original: ORIGINAL, neu: NEU }).art).toBe("formatiert_mehrdeutig");
+  });
+
+  it("auch eine Wahl aus einer Rückfrage ersetzt nicht, solange eine formatierte Stelle besteht", () => {
+    const f = { statement: ORIGINAL, bodyHtml: `<p>${ORIGINAL}</p>${FORMATIERT}` };
+    const wahl = { nr: 0, stand: textstand(f) };
+    expect(pruefeUebergabe(f, { original: ORIGINAL, neu: NEU, wahl }).art).toBe(
+      "formatiert_mehrdeutig",
+    );
   });
 });
 
@@ -119,7 +195,11 @@ describe("L4 · nichts zu ersetzen", () => {
       statement: "",
       bodyHtml: "<p>Die Pumpe <em>wird</em> vor dem Start entlüftet.</p>",
     };
-    expect(findeStellen(f, ORIGINAL)).toEqual({ stellen: [], ueberFormatierung: true });
+    expect(findeStellen(f, ORIGINAL)).toEqual({
+      stellen: [],
+      formatiert: 1,
+      ueberFormatierung: true,
+    });
     expect(pruefeUebergabe(f, { original: ORIGINAL, neu: NEU }).art).toBe("ueber_formatierung");
   });
 });
