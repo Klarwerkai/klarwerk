@@ -7,7 +7,7 @@ import { importRunStateView } from "../lib/importResultView";
 import { LIVEWALL_TAKT_MS } from "../lib/livewallTakt";
 import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
-import type { BeziehungSetzenBody } from "./types";
+import type { AuditSeitenAnfrage, BeziehungSetzenBody } from "./types";
 
 /** Nachfragetakt für einen laufenden Import — ruhig genug fürs Netz, schnell genug fürs Auge. */
 const IMPORT_RUN_TAKT_MS = 2000;
@@ -37,6 +37,13 @@ export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],
     queryFn: () => endpoints.library.importCandidates.list(),
+  });
+// R-0179 (Nacharbeit 3): die Befunde je Kandidat. Derselbe Schlüsselstamm wie die Liste, damit
+// jede Invalidierung der Prüfliste auch diese Bewertung neu holt. Lazy wie `useConflicts`.
+export const useImportKandidatBefunde = () =>
+  useQuery({
+    queryKey: ["import-candidates", "befunde"],
+    queryFn: () => endpoints.library.importCandidates.befunde(),
   });
 // F-0140 / K-20 (JOB 2970 D1): der laufende Importlauf, so lange er läuft.
 //
@@ -225,6 +232,13 @@ export const useImportAccessConfluence = (enabled = true) =>
     retry: false,
   });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
+// produkt:20261009:admin-audit-verstaendlich: eine Seite der Kette. Der Schlüssel beginnt mit
+// „audit", damit jede bestehende Invalidierung von `["audit"]` (etwa nach dem Export) sie mitnimmt.
+export const useAuditSeite = (anfrage: AuditSeitenAnfrage) =>
+  useQuery({
+    queryKey: ["audit", "seite", anfrage],
+    queryFn: () => endpoints.audit.seite(anfrage),
+  });
 // JOB 2600 D1: die Themenkarte kommt als Teil der Sichtmetrik — eine Route, eine Rechte-Naht.
 export const useWissensnetz = () =>
   useQuery({ queryKey: ["wissensnetz", "luecken"], queryFn: endpoints.wissensnetz.luecken });
@@ -250,8 +264,33 @@ export const useQualitaetsblick = (gewaehlt: boolean) => ({
     enabled: gewaehlt,
   }),
 });
+// Lazy wie `useConflicts`: die Import-Seite liest den Hook seit R-0179 mit, und deren Testbestand
+// kennt diesen Endpunkt nicht überall.
 export const useLifecyclePending = () =>
-  useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
+  useQuery({ queryKey: ["lifecycle", "pending"], queryFn: () => endpoints.lifecycle.pending() });
+// R-1662: die fälligen Revalidierungsfälle für den Lösungsweg an einer Antwort — derselbe Schlüssel
+// und Endpunkt wie `useLifecyclePending`, aber erst geladen, wenn das Blatt offen ist (`enabled`),
+// und LAZY gelesen wie in `useQualitaetsblick`: Fragen-Tests ohne `lifecycle` reißen nicht ab.
+export const useLifecyclePendingWenn = (aktiv: boolean) =>
+  useQuery({
+    queryKey: ["lifecycle", "pending"],
+    queryFn: () => endpoints.lifecycle.pending(),
+    enabled: aktiv,
+  });
+// R-1662: frühere Revalidierungen zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
+export const useFruehereRevalidierungen = (koIds: readonly string[], aktiv: boolean) =>
+  useQuery({
+    queryKey: ["lifecycle", "revalidiert", [...koIds].sort().join(",")],
+    queryFn: () => endpoints.lifecycle.revalidiert(koIds),
+    enabled: aktiv && koIds.length > 0,
+  });
+// R-1662: die gelösten Konflikte zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
+export const useGeloesteKonflikte = (koIds: readonly string[], aktiv: boolean) =>
+  useQuery({
+    queryKey: ["conflicts", "geloest", [...koIds].sort().join(",")],
+    queryFn: () => endpoints.conflicts.geloest(koIds),
+    enabled: aktiv && koIds.length > 0,
+  });
 export const useLearningPath = (role: string) =>
   useQuery({
     queryKey: ["learning-path", role],

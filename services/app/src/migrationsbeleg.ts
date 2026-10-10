@@ -134,6 +134,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "KO_BEARBEITUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "OFFICE_ABLAGE_SCHEMA", risiko: "ADDITIV" },
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte. ADDITIV, nachgezählt: ein
   // `CREATE TABLE IF NOT EXISTS` (mit Unique-Schlüssel) und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
@@ -183,6 +187,30 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // offen oder in Bearbeitung — Antrag je Konto) und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "LOESCHANTRAG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261009:admin-teams: die Fassungen der Teams. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "TEAMS_SCHEMA", risiko: "ADDITIV" },
+  // R-1034 / FR-I18N-02: die Übersetzungspflege. ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT
+  // EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist
+  // folgenlos.
+  { stufe: "UEBERSETZUNGEN_SCHEMA", risiko: "ADDITIV" },
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und Handlungsprotokoll. ADDITIV, nachgezählt:
+  // drei `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein
+  // Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "UNTERNEHMEN_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. ADDITIV, nachgezählt: ein
+  // `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed,
+  // kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KLARA_GESPRAECH_SCHEMA", risiko: "ADDITIV" },
+  // R-1656: der Co-Reading-Zähler. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein
+  // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "MITGELESEN_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger. ADDITIV,
+  // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VEROEFFENTLICHUNG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

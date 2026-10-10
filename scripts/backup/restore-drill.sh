@@ -496,17 +496,28 @@ PFLICHTTABELLEN=(
   gesamtanweisung_bausteine
   gesamtanweisung_staende
   ko_bearbeitungen
+  office_sitzungen
+  office_gesichert
   import_run_source_sync
   dokument_fassungen
   confluence_import_schalter
   begriffe_fassungen
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
+  veroeffentlichung_zustellungen
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis
   ko_embeddings
   loeschantraege
+  teams_fassungen
+  ui_uebersetzungen
+  ui_sprachen
+  unternehmensprofil_fassungen
+  richtlinien_fassungen
+  richtlinien_handlungen
+  klara_gespraeche
+  ko_mitgelesen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

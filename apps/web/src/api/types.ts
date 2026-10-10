@@ -567,6 +567,15 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/** R-1631: Bauteile, Materialien und Geltungskontext — Spiegel von `AnlagenKontext` im Dienst. */
+export interface AnlagenKontext {
+  bauteile?: string[];
+  materialien?: string[];
+  versionen?: string[];
+  standorte?: string[];
+  schichten?: string[];
+}
+
 /**
  * R-1664/R-2179/R-2180: die geführt erfassten Angaben eines Negativwissen-Falls — Spiegel von
  * `NegativwissenAngaben` (services/knowledge-object/src/negativwissen.ts, dort die Begründung).
@@ -736,6 +745,9 @@ export interface KnowledgeObject {
   assets?: string[];
   // R-1690: Re-Validierungstermin `JJJJ-MM-TT`, beim Erfassen gesetzt; fehlt = keiner.
   revalidierungAm?: string;
+  // R-1631 (gesamt-anlagenzugang): Spiegel von `services/knowledge-object/src/types.ts` —
+  // Bauteile, Materialien und Geltungskontext (Version, Standort, Schicht). Fehlt = nichts angegeben.
+  anlagenkontext?: AnlagenKontext;
   createdAt: string;
   history: HistoryEntry[];
   comments?: KoComment[];
@@ -882,6 +894,11 @@ export interface AuditVerifyReport {
   unresolvedDeviations: number;
   uncheckedDeviations: number;
   firstDeviation?: { seq: number; at: string; action: string; kind: ChainDeviationKind };
+  /**
+   * produkt:20261009:admin-audit-verstaendlich: Zeitpunkt der Prüfung (ISO, vom Server). Ohne ihn
+   * gilt ein Ergebnis an der Oberfläche nicht als Nachweis (`lib/auditVerifyState.ts`).
+   */
+  checkedAt?: string;
 }
 
 // Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette (GET /api/audit/export). Spiegelt
@@ -894,6 +911,8 @@ export interface AuditChainExport {
   head: { seq: number; hash: string } | null;
   inspection: AuditVerifyReport;
   entries: AuditEntry[];
+  /** produkt:20261009:admin-audit-verstaendlich: Anzahl der für den Exportierenden geschwärzten Einträge. */
+  geschwaerzt?: number;
 }
 
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
@@ -987,6 +1006,25 @@ export interface Conflict {
   // automatische weist sich über origin/detector aus. Altbestand ohne das Feld bleibt gültig.
   createdBy?: string;
   createdAt: string;
+  // R-1662: Spiegel von `services/conflicts/src/types.ts` — warum ein gelöster Konflikt endete. Für
+  // den Lösungsweg zählen nur „decided" und „dismissed"; fehlt das Feld, ist der Grund unbekannt.
+  resolutionReason?:
+    | "decided"
+    | "dismissed"
+    | "participant_deleted"
+    | "edited_no_conflict"
+    | "withdrawn"
+    | "superseded";
+  // Die Feldredaktion des Servers (`redigiereKonflikt`): Inhalt zurückgehalten, Struktur bleibt.
+  redacted?: true;
+}
+
+/** R-1662: eine Zeile von `GET /api/lifecycle/revalidiert` — eine frühere Bestätigung „stimmt
+ *  noch" (Beleg `ko.revalidated`). Spiegel von `services/app/src/routes/lifecycle-routes.ts`. */
+export interface RevalidierungBestaetigt {
+  koId: string;
+  am: string;
+  version: number | null;
 }
 
 // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Eintrag fürs Board.
@@ -1117,6 +1155,21 @@ export interface Gap {
   // einen fremdsprachigen Eintrag wie einen Fehler aussehen zu lassen (siehe lib/gapLocaleTag).
   // Fehlt bei Altbeständen; dann wird kein Etikett gezeigt.
   locale?: "de" | "en" | "nl";
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde (Server:
+  // services/ask/src/gap-belegbedarf.ts). Nur in der berechtigten Sicht; fehlt bei redigierten
+  // Lücken und beim Altbestand — dann zeigt die Liste „unbestimmt" statt eines erfundenen Bedarfs.
+  belegbedarf?: GapBelegbedarf[];
+}
+
+export type GapBelegbedarf = "wissensobjekt" | "freigabe" | "stufe" | "volltext" | "unbestimmt";
+
+// R-0773: eine eigene Suche ohne Treffer (`GET /api/library/nulltreffer`, nur die eigene Liste).
+export interface NulltrefferSuche {
+  begriff: string;
+  anzahl: number;
+  zuletzt: string;
+  // Die Filter der Suche (type/status/category/tag → Wert); leer = ohne Eingrenzung gesucht.
+  eingrenzung?: Record<string, string>;
 }
 
 // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler der offenen Wissenslücken — KEIN
@@ -1246,6 +1299,10 @@ export interface DraftPayload {
     demo?: boolean;
     // R-1624: bestätigter Bildbefund eines Foto-Interviews (Klartext); fehlt = normales Interview.
     imageContext?: string;
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum, Lücken-Thema, Abschlussbestätigung.
+    tree?: boolean;
+    topic?: string;
+    confirmed?: boolean;
   };
 }
 
@@ -1323,6 +1380,17 @@ export interface GraphEdge {
 export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  /**
+   * R-0711 (Wissensnetz-Export): die Grenzen der Schlagwortkanten, die der Server seit JOB 3022
+   * mitsendet (`library-analytics/src/types.ts`, `Graph`). Bis hierhin las der Client sie nicht;
+   * der Export schreibt sie in die Datei, damit eine gekürzte Ausgabe nicht wie der ganze Bestand
+   * aussieht. OPTIONAL aus demselben Grund wie `kuratierteKanten`: fehlt ein Feld, steht in der
+   * Datei keine Aussage dazu — keine erfundene `0` und kein erfundenes „vollständig".
+   */
+  totalEdges?: number;
+  truncated?: boolean;
+  edgeLimit?: number;
+  excludedTags?: string[];
   /**
    * JOB 4153 (WG-ANZEIGE) — DIE KURATIERTEN KANTEN DERSELBEN ANTWORT, UND WARUM SIE OPTIONAL SIND.
    *
@@ -1666,6 +1734,26 @@ export interface Neighborhood {
   excludedTags: string[];
 }
 
+// R-1656 „Du solltest auch wissen…" — Spiegel von `services/app/src/wissensempfehlung.ts`.
+export type EmpfehlungsGrund =
+  | { art: "mitgelesen"; anzahl: number }
+  | { art: "thema"; schlagwoerter: string[] }
+  | { art: "konflikt"; stand: "offen" | "entschieden" };
+
+export interface Wissensempfehlung {
+  id: string;
+  title: string;
+  status: KoStatus;
+  gruende: EmpfehlungsGrund[];
+}
+
+export interface Wissensempfehlungen {
+  koId: string;
+  empfehlungen: Wissensempfehlung[];
+  total: number;
+  truncated: boolean;
+}
+
 // ==================================================================================================
 // JOB 4151 (WG-PERSISTENZ) — DER CLIENT-VERTRAG STEHT WEITER OBEN, UND ZWAR NUR EINMAL.
 // ==================================================================================================
@@ -1703,12 +1791,43 @@ export interface AuditEntry {
   payload: Record<string, unknown>;
   prevHash: string;
   hash: string;
+  /**
+   * produkt:20261009:admin-audit-verstaendlich: die Inhaltsfelder, die der Server für diesen
+   * Betrachter entfernt hat, weil er das betroffene Objekt nicht (mehr) öffnen darf.
+   */
+  geschwaerzt?: string[];
 }
 
 export interface AuditFilter {
   actor?: string;
   action?: string;
   target?: string;
+}
+
+// produkt:20261009:admin-audit-verstaendlich (ADMIN-03): der Seitenweg `GET /api/audit/seite`.
+// Spiegelt die Antwort aus services/app/src/routes/audit-routes.ts.
+export interface AuditSeitenAnfrage {
+  actor?: string;
+  action?: string;
+  /** Mehrere Aktionen zugleich (ODER) — die Auth-Ansicht nutzt das für alle Kontoereignisse. */
+  actions?: readonly string[];
+  target?: string;
+  /** ISO-Zeitpunkte: `from` einschließlich, `to` ausschließlich. */
+  from?: string;
+  to?: string;
+  before?: number;
+  limit?: number;
+}
+
+export interface AuditSeite {
+  /** Jüngster Eintrag zuerst. */
+  entries: AuditEntry[];
+  nextBefore: number | null;
+  limit: number;
+  /** Titel betroffener Objekte — nur solche, die der Betrachter jetzt öffnen darf. */
+  objekte: Record<string, { titel: string }>;
+  /** Einträge, in denen die Kette Namen zu Kennungen dieser Seite gespeichert hat. */
+  namensbelege: Pick<AuditEntry, "seq" | "actor" | "action" | "target" | "payload">[];
 }
 
 // FR-LIF-03: Rollenbasierte Lernpfade (Shape spiegelt services/lifecycle).
@@ -1789,9 +1908,31 @@ export interface ImportItemInput {
   // R-0169 (Nacharbeit 5): die von Klarwerk vergebene INTERNE Dokumentkennung — die nächste
   // Fassung derselben Dokumentakte. Getrennt von `externalId` (Kennung im Quellsystem).
   dokumentId?: string;
+  // Aufnahme 20260922 · import-gesamtvertrag (R-0179): die Vertraulichkeit, die der Server am
+  // `ImportItem` führt (SCRUM-509/515: Erzeuger ist ein Quell-Governance-Signal, an der Ingest-Grenze
+  // `sanitizeImportConfidentiality`). Der Kandidatenweg gibt sie unverändert heraus; hier fehlte sie,
+  // und damit konnte die Befundübersicht schützenswertes Wissen nicht zählen. FEHLT das Feld, gilt
+  // beim Anlegen der Übernahme-Standard „intern" (N11) — das Fehlen ist kein „vertraulich".
+  confidentiality?: Confidentiality;
+  // R-0179 (Nacharbeit 3): Stand der Quelle (ISO), wie `ImportItem.updatedAt` des Servers. Fehlt er,
+  // kann „veraltet" für diesen Eintrag nicht bewertet werden.
+  updatedAt?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
+}
+
+// R-0179 (Nacharbeit 3): die Befunde je Importkandidat — Spiegel von
+// `services/app/src/import-befunde.ts` (abgeschrieben, weil der Webbau `services/` nicht einbindet).
+// `bewertet: false` heißt „nicht bewertet", nie „ohne Befund".
+export type ImportSchutzGrund = "einstufung" | "leseschutz" | "schutzdaten" | "kennzeichnung";
+
+export interface ImportKandidatBefund {
+  id: string;
+  schutz:
+    | { bewertet: false }
+    | { bewertet: true; gruende: ImportSchutzGrund[]; schutzdaten: string[] };
+  veraltet: { bewertet: false } | { bewertet: true; veraltet: boolean; stand: string };
 }
 
 // WP-SHIP8-CLOSE-2 (bens F1): "in_bearbeitung" = transienter Claim einer LAUFENDEN Review-Aktion
@@ -2028,6 +2169,11 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
+  // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
+  // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.
+  // Nicht zu verwechseln mit `belastbarkeit.argumentation` (R-1627, Stufen je tragender Quelle).
+  argumentation?: ArgumentationsGlied[];
   // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit VOM SERVER (Spiegel von
   // `services/ask/src/answer-belastbarkeit.ts`, wo Vertrag und Grenzen stehen). Optional — ein
   // älterer Server sendet sie nicht, dann zeigt die Fläche keine Belastbarkeitszeile und erfindet
@@ -2040,6 +2186,13 @@ export interface AnswerResult {
   // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
   // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
   zuordnungUnbekannt?: true;
+}
+
+/** R-1643: ein Glied der Argumentationskette (Spiegel des Serverfelds). */
+export interface ArgumentationsGlied {
+  aussage: string;
+  quellen: string[];
+  belegtDurch: string;
 }
 
 // Spiegel von `services/ask/src/answer-belastbarkeit.ts` — die Oberfläche LIEST, sie leitet nichts ab.
@@ -2225,12 +2378,48 @@ export interface AskResponse {
   // R-1633: nur wenn ein Fragekontext mitgeschickt wurde — wofür gewichtet wurde und je Quelle
   // ihre Geltung und Passung (Spiegel von `AskGeltungsauskunft`, services/ask/src/service.ts).
   geltung?: AskGeltungsauskunft;
+  // AUFNAHME 20260922 (R-0305, R-1099): nur, wenn die Frage mit `zweitmeinung: true` gestellt wurde.
+  zweitmeinung?: ZweitmeinungErgebnis;
   // R-0346 (Ben nacharbeit-9): wie die Antwort selbst zugeschnitten wurde und was angehängt ist
   // (Spiegel von `AskAntwortZuschnitt`); fehlt das Feld, ist die Antwort unverändert.
   antwortZuschnitt?: AskAntwortZuschnitt;
   // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
+}
+
+// R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
+// und Grenzen. Beide Antworten entstehen zum Zeitpunkt der Anfrage; die damalige aus den Fassungen,
+// die zum Stichtag galten und deren Freigabe belegt ist.
+export type Aenderungsgrund =
+  | "neu_seit_stichtag"
+  | "ueberarbeitet"
+  | "fassung_unbelegt"
+  | "freigabe_damals_unbelegt"
+  | "heute_nicht_freigegeben"
+  | "damals_gesperrt"
+  | "unveraendert";
+
+export interface VergleichsQuelle {
+  id: string;
+  title: string;
+  titelDamals: string | null;
+  versionHeute: number;
+  versionDamals: number | null;
+  inAntwortHeute: boolean;
+  inAntwortDamals: boolean;
+  gruende: Aenderungsgrund[];
+  aenderungen: { version: number; at: string; note: string; restoredFrom?: number }[];
+  aussageDamals: string | null;
+  aussageHeute: string | null;
+}
+
+export interface WissensstandVergleich {
+  stichtag: string;
+  heute: AnswerResult;
+  damals: AnswerResult;
+  antwortGeaendert: boolean;
+  quellen: VergleichsQuelle[];
 }
 
 export interface AbsatzBeleg {
@@ -2293,6 +2482,39 @@ export interface AskGeltungsauskunft {
   fragekontext: Fragekontext;
   quellen: { id: string; passung: GeltungsPassung; geltung?: KoGeltung }[];
 }
+
+// R-0305/R-1099: Spiegel von `ZweitmeinungErgebnis` in `services/reasoner/src/types.ts` (der
+// webbuild kopiert nur `apps/web`, ein Import von dort bräche den Produktionsbau). `stufe` statt
+// Anbieter- oder Modellname — die Antwort geht an jeden Fragenden.
+export type ZweitmeinungStufe = "cloud" | "local" | "deterministic";
+export type ZweitmeinungGrund =
+  | "nicht_eingerichtet"
+  | "nicht_verfuegbar"
+  | "nicht_freigegeben"
+  | "nicht_unabhaengig"
+  | "fehlgeschlagen";
+export type ZweitmeinungAbweichung = "beantwortet" | "quellen" | "zahlen";
+export interface ZweitmeinungAntwort {
+  answered: boolean;
+  answer: string | null;
+  sources: string[];
+  citedSources: string[];
+  demo: boolean;
+  // Ben (Nacharbeit 17): die Herkunftsmarke, nur bei Modellherkunft (Regel `kiHerkunftAus`).
+  aiGenerated?: unknown;
+}
+export type ZweitmeinungErgebnis =
+  | {
+      status: "verglichen";
+      ersteStufe: ZweitmeinungStufe;
+      zweiteStufe: ZweitmeinungStufe;
+      // Ben (Nacharbeit 17): Antwort A, wie sie verglichen wurde (vor jedem Zuschnitt).
+      erste: ZweitmeinungAntwort;
+      zweite: ZweitmeinungAntwort;
+      abweichend: boolean;
+      abweichungen: ZweitmeinungAbweichung[];
+    }
+  | { status: "nicht_moeglich"; grund: ZweitmeinungGrund };
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).
 export type OutputKind =
@@ -3075,6 +3297,10 @@ export interface ReasonerStatus {
   // `tasks`/`reachable`, die auch bei einer Störung `false` werden — die Fläche sagt die beiden
   // Lagen verschieden. Fehlt es (alter Server), behauptet die Oberfläche keine Abschaltung.
   kiAbgeschaltet?: boolean;
+  // R-0305/R-1099 (Ben, Nacharbeit 2): das separat gewählte Zweitmodell KANN die Gegenüberstellung
+  // kostenpflichtig machen — auch bei lokaler Erstantwort. Dieselbe Lesart wie `billable`; fehlt es
+  // (alter Server), behauptet die Oberfläche dafür nichts.
+  zweitmeinungBillable?: boolean;
   // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
   // öffentliche KI — `blockiert` (Vorgabe), `frei` (Grundfreigabe) oder `frei_vertraulich` (beide
   // Freigaben). Gelesen von der Kopfzeile. Fehlt es (alter Server), zeigt sie nichts an.
@@ -3319,6 +3545,9 @@ export interface ExtractResult {
   // Unvollständigkeit aus einem gescheiterten JSON-Parser ab, dieses Feld ist die Meldung des
   // Anbieters selbst. Ist es gesetzt, zeigt die Fläche den belegten Hinweis statt der Ableitung.
   abgeschnitten?: AbbruchBefund;
+  // R-0157/R-1070: nie ausgewertete Dokumentteile. Steht auch in `note`, bleibt aber sichtbar,
+  // wenn die Fläche die abgeleitete `note` wegen `abgeschnitten` ausblendet.
+  ungelesenerRest?: string;
 }
 
 // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; leer + demo=true ohne Modell.
@@ -3334,7 +3563,38 @@ export interface InterviewResult {
   done: boolean;
   draft: StructureResult;
   demo: boolean;
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: nur im Fragebaum gesetzt — Spiegel von
+  // `services/reasoner/src/types.ts` (InterviewResult).
+  node?: InterviewNodeId | null;
+  sufficient?: boolean;
+  gaps?: { value: number; open: InterviewNodeId[] };
+  mirror?: { node: InterviewNodeId; text: string } | null;
+  depth?: { node: InterviewNodeId; text: string }[];
+  // R-0088: ungeprüfte Recherche-Prüfpunkte des Modells zum Fachthema (nur mit KI-Schlüssel).
+  research?: InterviewResearchPoint[];
 }
+
+// R-0088: ein Recherche-Prüfpunkt (Spiegel von services/reasoner/src/types.ts).
+export interface InterviewResearchPoint {
+  node: InterviewNodeId;
+  hint: string;
+  // Bens Befund nacharbeit-6: jeder Prüfpunkt stammt aus einer abgerufenen Quelle.
+  source: { title: string; url: string; snippet?: string };
+}
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums (Spiegel des Servers).
+export type InterviewNodeId =
+  | "kern"
+  | "bedingung"
+  | "massnahme"
+  | "schwelle"
+  | "ausnahme"
+  | "warum"
+  | "alternativen"
+  | "geltung"
+  | "risiko"
+  | "herkunft"
+  | "stichworte";
 
 // SCRUM-181: Rückgabe des admin-getriebenen Demo-Seeds (ehrlich: seeded vs. skipped).
 export interface DemoSeedResult {
@@ -3393,7 +3653,8 @@ export type NotificationKind =
   | "loeschantrag"
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
   | "frische"
-  | "reklamation";
+  | "reklamation"
+  | "veroeffentlichung";
 
 // R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht". Eigenständig getippt wie der Rest
 // dieser Datei — apps/web importiert nicht über die Modulgrenze nach services.
@@ -3434,6 +3695,9 @@ export interface Notification {
   meldungId?: string;
   // aufnahme:20260922:gesamt-wissen-frische: Unterart einer `frische`-Meldung (R-0248/R-0266/R-1635).
   frischeArt?: "frist" | "vorlage" | "anlage";
+  // Veröffentlichung: neu oder Aktualisierung, und ob hervorgehoben gemeldet (nur bei diesem `kind`).
+  art?: "neu" | "aktualisierung";
+  hervorgehoben?: boolean;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH

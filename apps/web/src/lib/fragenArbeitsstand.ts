@@ -22,7 +22,7 @@
 //     „kein Arbeitsstand" — dieselbe fehlertolerante Grenze wie `persistentToggle.ts`.
 //
 // DOM-frei: der Speicher wird hereingereicht, damit die Regeln ohne Browser prüfbar sind.
-import type { AnswerResult, VerschlossenHinweis } from "../api/types";
+import type { AnswerResult, Fragekontext, VerschlossenHinweis } from "../api/types";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
@@ -48,6 +48,41 @@ export interface GespeicherteAntwort {
   serverQuellenStand?: QuellenStand;
   /** R-0338, Regel 4: die Fassungen, die die Fläche beim Eintreffen kannte (`beobachtungAus`). */
   beobachtet?: QuellenStand;
+  /**
+   * R-0305/R-1099 (Ben, Nacharbeit 10): der Fragekontext (R-1633), mit dem DIESE Antwort gestellt
+   * wurde — die Zweitmeinung nach einer Wiederaufnahme fragt mit genau ihm. Drei Lesarten:
+   *   · ein Objekt — mit diesem Werk/dieser Schicht/Rolle gefragt;
+   *   · `null`     — ausdrücklich OHNE Kontext gefragt;
+   *   · fehlt      — Altstand von vor dieser Ablage: der Kontext ist UNBEKANNT. Dann wird keine
+   *                  kontextgleiche Zweitmeinung behauptet (s. `components/fragen/Zweitmeinung.tsx`).
+   */
+  fragekontext?: Fragekontext | null;
+}
+
+/**
+ * Der gespeicherte Fragekontext — streng gelesen: `null` bleibt „ohne Kontext", ein Objekt nur mit
+ * Zeichenketten in `werk`/`schicht`/`rolle`, alles andere (fehlt, beschädigt) ist `undefined` =
+ * UNBEKANNT. Ein beschädigter Kontext wird nie zu „ohne Kontext" umgedeutet.
+ */
+function fragekontextAus(roh: unknown): Fragekontext | null | undefined {
+  if (roh === null) {
+    return null;
+  }
+  if (!istObjekt(roh)) {
+    return undefined;
+  }
+  const kontext: Fragekontext = {};
+  for (const feld of ["werk", "schicht", "rolle"] as const) {
+    const wert = roh[feld];
+    if (wert === undefined) {
+      continue;
+    }
+    if (typeof wert !== "string") {
+      return undefined;
+    }
+    kontext[feld] = wert;
+  }
+  return kontext;
 }
 
 export interface FragenArbeitsstand {
@@ -71,6 +106,56 @@ export interface FragenArbeitsstand {
    * scheitert das Schreiben doch, greift dieselbe stille Grenze wie bei jedem Speicherfehler.
    */
   startadressen: string[];
+  /**
+   * produkt:20261010:fragen-pruefen-einstieg (K2, Ben Nacharbeit 3): die AKTUELLE Auswahl
+   * „Ich frage für" (R-1633) — begonnen, aber noch mit keiner Frage gesendet. Sie ist bewusst
+   * getrennt von `antwort.fragekontext`: der gehört zur stehenden Antwort und ändert sich nicht,
+   * wenn die Auswahl danach geändert wird. Fehlt = nichts gewählt.
+   */
+  fragekontext?: Fragekontext;
+  /** Dieselbe Zusage für die begonnenen Szenarioangaben „Was wäre, wenn …" (R-1628). */
+  szenario?: Szenario;
+}
+
+/** Die drei Eingaben der Gegenüberstellung „Was wäre, wenn …" (`components/Bedingungswechsel.tsx`). */
+export interface Szenario {
+  bisher: string;
+  neu: string;
+  thema: string;
+}
+
+export const LEERES_SZENARIO: Szenario = { bisher: "", neu: "", thema: "" };
+
+/** Trägt die Auswahl „Ich frage für" mindestens eine nicht leere Angabe? */
+export function kontextGesetzt(kontext: Fragekontext | undefined): kontext is Fragekontext {
+  return [kontext?.werk, kontext?.schicht, kontext?.rolle].some(
+    (teil) => typeof teil === "string" && teil.trim() !== "",
+  );
+}
+
+/** Trägt das Szenario mindestens eine nicht leere Eingabe? */
+export function szenarioGesetzt(szenario: Szenario | undefined): szenario is Szenario {
+  return [szenario?.bisher, szenario?.neu, szenario?.thema].some(
+    (teil) => typeof teil === "string" && teil.trim() !== "",
+  );
+}
+
+/** Die gespeicherte aktuelle Auswahl — nur mit Inhalt, sonst `undefined` (= nichts gewählt). */
+function kontextAuswahlAus(roh: unknown): Fragekontext | undefined {
+  const kontext = fragekontextAus(roh);
+  return kontext && kontextGesetzt(kontext) ? kontext : undefined;
+}
+
+function szenarioAus(roh: unknown): Szenario | undefined {
+  if (!istObjekt(roh)) {
+    return undefined;
+  }
+  const { bisher, neu, thema } = roh;
+  if (typeof bisher !== "string" || typeof neu !== "string" || typeof thema !== "string") {
+    return undefined;
+  }
+  const szenario = { bisher, neu, thema };
+  return szenarioGesetzt(szenario) ? szenario : undefined;
 }
 
 /**
@@ -100,6 +185,7 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     return null;
   }
   const { frage, result, receipt, verschlossen, gapId, angezeigtAm } = roh;
+  const fragekontext = fragekontextAus(roh.fragekontext);
   if (
     typeof frage !== "string" ||
     frage.trim() === "" ||
@@ -125,6 +211,8 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     angezeigtAm,
     ...(serverQuellenStand ? { serverQuellenStand } : {}),
     ...(beobachtet ? { beobachtet } : {}),
+    // Fehlt oder beschädigt: das Feld fehlt auch hier — „unbekannt" hat genau eine Darstellung.
+    ...(fragekontext === undefined ? {} : { fragekontext }),
   };
 }
 
@@ -334,10 +422,24 @@ export function arbeitsstandLesen(
       : typeof wert.startfrage === "string"
         ? [wert.startfrage]
         : [];
-    if (wert.entwurf.trim() === "" && antwort === null && startadressen.length === 0) {
+    const fragekontext = kontextAuswahlAus(wert.fragekontext);
+    const szenario = szenarioAus(wert.szenario);
+    if (
+      wert.entwurf.trim() === "" &&
+      antwort === null &&
+      startadressen.length === 0 &&
+      !fragekontext &&
+      !szenario
+    ) {
       return null;
     }
-    return { entwurf: wert.entwurf, antwort, startadressen };
+    return {
+      entwurf: wert.entwurf,
+      antwort,
+      startadressen,
+      ...(fragekontext ? { fragekontext } : {}),
+      ...(szenario ? { szenario } : {}),
+    };
   } catch {
     return null;
   }
@@ -359,11 +461,29 @@ export function arbeitsstandSchreiben(
   }
   try {
     const schluessel = arbeitsstandSchluessel(konto);
-    if (stand.entwurf.trim() === "" && stand.antwort === null && stand.startadressen.length === 0) {
+    const { fragekontext, szenario, ...rest } = stand;
+    const mitKontext = kontextGesetzt(fragekontext);
+    const mitSzenario = szenarioGesetzt(szenario);
+    if (
+      rest.entwurf.trim() === "" &&
+      rest.antwort === null &&
+      rest.startadressen.length === 0 &&
+      !mitKontext &&
+      !mitSzenario
+    ) {
       storage.removeItem(schluessel);
       return;
     }
-    storage.setItem(schluessel, JSON.stringify(stand));
+    // Leere Auswahl und leeres Szenario werden nicht abgelegt — „nichts gewählt" hat genau eine
+    // Darstellung (das Feld fehlt).
+    storage.setItem(
+      schluessel,
+      JSON.stringify({
+        ...rest,
+        ...(mitKontext ? { fragekontext } : {}),
+        ...(mitSzenario ? { szenario } : {}),
+      }),
+    );
   } catch {
     // Speicher voll/verweigert → der Stand lebt dann nur in dieser Sitzung.
   }

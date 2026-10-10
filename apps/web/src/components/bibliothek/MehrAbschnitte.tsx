@@ -104,6 +104,7 @@ import { type Zeichnungspunkt, bildQuelle, punktProzent } from "../../lib/zeichn
 import { AiCheckCoverageNotes } from "../AiCheckCoverageHint";
 import { AnlagenFeld } from "../Anlagen";
 import { ConflictTargetPicker } from "../ConflictTargetPicker";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { ExternalUrlText } from "../ExternalUrlText";
 import { FachgebietFeld } from "../Fachgebiet";
 import { GeltungFeld } from "../Geltung";
@@ -112,14 +113,18 @@ import { KnowledgeNeighborhood } from "../KnowledgeNeighborhood";
 import { RoleLink } from "../RoleLink";
 import { SanitizedHtml } from "../SanitizedHtml";
 import { UploadLimitsHint } from "../UploadLimitsHint";
+import { ExterneQuelleKennung } from "../ko/ExterneQuelleKennung";
 import { useDiktat } from "../start/useDiktat";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { WissensauskunftBereich } from "../wissensauskunft/WissensauskunftBereich";
 import { AnhangZeichnung } from "./AnhangZeichnung";
+import { AnlagenBezugPflege } from "./AnlagenBezugPflege";
+import { AnlagenQrCode } from "./AnlagenQrCode";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { FassungsGegenueberstellung } from "./Fassungsvergleich";
 import { ImportErgebnis } from "./ImportErgebnis";
+import { OfficeImArtikel } from "./OfficeImArtikel";
 import { Verantwortung } from "./Verantwortung";
 import { Zeichnung } from "./Zeichnung";
 
@@ -1535,7 +1540,10 @@ export function MehrAbschnitte({
       >
         <HelpTip title={t("vhelp.sourcesLevel2.title")} body={t("vhelp.sourcesLevel2.body")} />
         {(ko.sources ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.sourcesEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-2">
             {(ko.sources ?? []).map((s) => {
@@ -1557,6 +1565,8 @@ export function MehrAbschnitte({
                         <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                           {t(sourceBadgeKey(s))}
                         </span>
+                        {/* R-0205: „Stufe 2" + „Extern · ungeprüft" — derselbe Baustein wie überall. */}
+                        <ExterneQuelleKennung source={s} />
                         {s.provider ? (
                           <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                             {s.provider}
@@ -1713,7 +1723,10 @@ export function MehrAbschnitte({
                 da, sondern der vorhandene Leersatz: ein Feld ohne Inhalt verspräche einen Weg, den
                 dieses Objekt nicht hat („Ehrlichkeit vor Optik"). */}
             {ankerAnhaenge.length === 0 ? (
-              <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+                {leerzustandsZeile(t, "objekt")}
+              </>
             ) : (
               <Field label={t("ko.mehr.anhaenge")}>
                 <select
@@ -2166,6 +2179,7 @@ export function MehrAbschnitte({
             // Sackgasse, die UX-25 an der Belegkarte beseitigt hat (`:1294-1295`).
             <>
               <p className="text-[12.5px] text-muted">{t("ko.evidenceEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
               {canEdit ? (
                 <button
                   type="button"
@@ -2245,7 +2259,10 @@ export function MehrAbschnitte({
         aufWechsel={(o) => abschnittUmschalten("anhaenge", o)}
       >
         {(ko.attachments ?? []).length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.attachmentsEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <div className="grid grid-cols-3 gap-2">
             {(ko.attachments ?? []).map((a) => {
@@ -2293,6 +2310,9 @@ export function MehrAbschnitte({
             })}
           </div>
         )}
+        {/* produkt:20261007:office-artikel-editor: Word-, Excel- und PowerPoint-Anhänge im
+            eingebetteten Editor. Rechte und Schreibweg entscheidet der Server. */}
+        <OfficeImArtikel ko={ko} />
         {canEdit ? (
           <>
             {/* JOB 3126 · UX-23: `aria-disabled` STATT `disabled` — ein `disabled`-Knopf fällt aus
@@ -2573,7 +2593,10 @@ export function MehrAbschnitte({
           ) : ereignisLage.isError ? (
             <p className="mt-2 text-[12.5px] text-danger">{t("state.error")}</p>
           ) : auditEvents.length === 0 ? (
-            <p className="mt-2 text-[12.5px] text-muted">{t("ko.lineageEventsEmpty")}</p>
+            <>
+              <p className="mt-2 text-[12.5px] text-muted">{t("ko.lineageEventsEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
+            </>
           ) : (
             <ul className="mt-2 space-y-1">
               {auditEvents.map((e) => (
@@ -2705,7 +2728,10 @@ export function MehrAbschnitte({
           ) : fassungsLage.isError ? (
             <p className="text-[12.5px] text-danger">{t("state.error")}</p>
           ) : zeilen.length === 0 ? (
-            <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
+            <>
+              <p className="text-[12.5px] text-muted">{t("ko.snapshotsEmpty")}</p>
+              {leerzustandsZeile(t, "objekt")}
+            </>
           ) : (
             <>
               {((): JSX.Element => {
@@ -3299,7 +3325,10 @@ export function MehrAbschnitte({
           // §9: der Leersatz gilt NUR nach einem erfolgreichen Abruf — dieser Abschnitt wird erst
           // gezeichnet, wenn das Wissensobjekt geladen ist (`BibliothekLesen`), und behauptet
           // deshalb nie „keine Beiträge", bevor jemand nachgesehen hat.
-          <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("ko.commentsEmpty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-3">
             {diskussionsFaeden.map((faden) => {
@@ -3607,7 +3636,10 @@ export function MehrAbschnitte({
             ))}
           </div>
         ) : (
-          <p className="text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
+          <>
+            <p className="text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         )}
         {role !== "viewer" ? (
           <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-2.5">
@@ -3642,6 +3674,11 @@ export function MehrAbschnitte({
             <p className="mt-1 text-[11.5px] text-muted-2">{t("frische.nachbarnMeldenHinweis")}</p>
           </div>
         ) : null}
+        {/* R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext pflegen —
+            dasselbe Recht wie die Kopplung darüber. */}
+        {role !== "viewer" ? <AnlagenBezugPflege ko={ko} onGespeichert={invalidate} /> : null}
+        {/* R-1647 / R-2174: der QR-Code der Anlage, eines Bauteils oder Materials dieses Objekts. */}
+        <AnlagenQrCode ko={ko} />
       </Abschnitt>
 
       {/* 13 — Nachbarschaft */}

@@ -24,7 +24,8 @@ export type NotificationKind =
   // Fristerinnerung (R-0248), wöchentliche Vorlage (R-0266), Prüfanforderung nach Anlagenänderung
   // an Autor bzw. Nachfolger (R-1635). Die Unterart steht in `frischeArt`.
   | "frische"
-  | "reklamation";
+  | "reklamation"
+  | "veroeffentlichung";
 
 // R-1089: eine Meldung „Antwort falsch / Quelle passt nicht" an die verantwortliche Person des
 // zitierten Wissensobjekts. Quelle: Audit-Einträge `answer.reported`, deren `responsible` der
@@ -48,6 +49,19 @@ export interface FrischeNotice {
   at: string;
   /** Nur bei `frist`: die Haltbarkeit ist bereits abgelaufen. */
   ueberfaellig?: boolean;
+}
+
+// Veröffentlichung (produkt:20261007:veroeffentlichungsoptionen): eine bei „normal" oder
+// „hervorgehoben" veröffentlichte Fassung, deren Empfängerkreis die aktuelle Person enthält. Bereits
+// auf den Betrachter und über die Sichtbarkeit gefiltert (Route) — „still" kommt hier nie an.
+export interface VeroeffentlichungNotice {
+  vermerkId: string;
+  koId: string;
+  title: string;
+  fassung: number;
+  art: "neu" | "aktualisierung";
+  hervorgehoben: boolean;
+  at: string;
 }
 
 // Kenntnisnahme: eine offene Anforderung an die aktuelle Person. Bereits auf den Betrachter UND
@@ -96,6 +110,10 @@ export interface Notification {
   meldungId?: string;
   // aufnahme:20260922:gesamt-wissen-frische: die Unterart einer `frische`-Meldung.
   frischeArt?: FrischeNotice["art"];
+  // Veröffentlichung: neu oder Aktualisierung, und ob sie hervorgehoben gemeldet wurde. Nur bei
+  // `kind: "veroeffentlichung"` gesetzt (`fassung` trägt dort die veröffentlichte Fassung).
+  art?: "neu" | "aktualisierung";
+  hervorgehoben?: boolean;
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.
@@ -127,6 +145,7 @@ export function buildNotifications(input: {
   // aufnahme:20260922:gesamt-wissen-frische: bereits auf den Betrachter UND die Sichtbarkeit
   // beschränkt (Route) — hier wird nichts nachgeprüft und nichts erfunden.
   frische?: FrischeNotice[];
+  veroeffentlichungen?: VeroeffentlichungNotice[];
 }): Notification[] {
   const items: Notification[] = [];
   // Je Antrag EIN Eintrag. Wird er überfällig, bekommt er eine neue Kennung, damit er wieder als
@@ -161,6 +180,18 @@ export function buildNotifications(input: {
       koId: f.koId,
       frischeArt: f.art,
       ...(f.ueberfaellig ? { ueberfaellig: true } : {}),
+    });
+  }
+  for (const v of input.veroeffentlichungen ?? []) {
+    items.push({
+      id: `pub-${v.vermerkId}`,
+      kind: "veroeffentlichung",
+      title: v.title,
+      at: v.at,
+      koId: v.koId,
+      fassung: v.fassung,
+      art: v.art,
+      hervorgehoben: v.hervorgehoben,
     });
   }
   // Je Anforderung EIN Eintrag. Eine Erinnerung bekommt eine neue Kennung (mit ihrem Zeitpunkt),

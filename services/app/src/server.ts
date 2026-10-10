@@ -8,6 +8,8 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { waehleWerksreset } from "./factory-reset";
+import { HINTERGRUNDLAUF_INTERVAL_MS, type HintergrundlaufBericht } from "./hintergrundpruefung";
+import { starteHintergrundpruefung } from "./hintergrundpruefung-start";
 import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
@@ -17,6 +19,7 @@ import { registerSecurityHeaders } from "./security-headers";
 import { pruefeStartvertrag } from "./start-vertrag";
 import { startfehlerZeile } from "./startfehler-zeile";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
+import { klartextWarnung, leseTransportTls } from "./transport-tls";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
 import {
@@ -137,6 +140,10 @@ async function start(): Promise<void> {
   if (storageDecision.warning) {
     process.stderr.write(`${storageDecision.warning}\n`);
   }
+  // R-2057: TLS am App-Port, VOR dem Aufbau der Dienste gelesen — eine halbe oder unlesbare
+  // Konfiguration und `KLARWERK_TLS_PFLICHT=1` ohne Zertifikat brechen den Start hier ab, bevor
+  // eine Verbindung zur Datenbank entsteht (transport-tls.ts).
+  const tls = leseTransportTls(process.env);
   const services = databaseUrl
     ? await pgServices(databaseUrl)
     : journal
@@ -147,10 +154,15 @@ async function start(): Promise<void> {
   // R-0609 · Bens B13: der Aufräumlauf der Klara-Sitzungen (Nachtrag fehlender Endeinträge des
   // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
   let klaraAufraeumLauf: (() => Promise<number>) | undefined;
+  let hintergrundLauf: (() => Promise<HintergrundlaufBericht | null>) | undefined;
   const app = buildApp(services, {
     factoryReset,
     klaraAufraeumen: (lauf) => {
       klaraAufraeumLauf = lauf;
+    },
+    tls,
+    hintergrundpruefung: (lauf) => {
+      hintergrundLauf = lauf;
     },
   });
   await configureWebDelivery(app);
@@ -208,6 +220,14 @@ async function start(): Promise<void> {
   // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
   const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
   app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
+  const warnung = klartextWarnung(tls, process.env);
+  if (warnung) {
+    app.log.warn(warnung);
+  } else {
+    app.log.info(
+      `Transport am App-Port: ${tls ? "TLS (mindestens 1.2)" : "Klartext (Entwicklung)"}`,
+    );
+  }
   // SCRUM-523 P.3 (WP2): die abgelaufene-Papierkorb-Endlöschung ist eine EXPLIZITE Operation (nicht mehr
   // lazy beim Lesen — Lesen/Import-Dry-Run bleiben schreibfrei). Einmal beim Start anstoßen, damit die
   // Frist aus `TRASH_RETENTION_DAYS` ohne Cron greift; ein KO-Fehler bricht den Lauf nicht ab (per-KO onSweepError-Log).
@@ -248,6 +268,18 @@ async function start(): Promise<void> {
       log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
+  }
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
+  // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
+  if (hintergrundLauf) {
+    starteHintergrundpruefung({
+      lauf: hintergrundLauf,
+      intervalMs: HINTERGRUNDLAUF_INTERVAL_MS,
+      log: { info: (t) => app.log.info(t), warn: (t) => app.log.warn(t) },
+    });
+    app.log.info(
+      `Hintergrundprüfung aktiv — Intervall ${Math.round(HINTERGRUNDLAUF_INTERVAL_MS / 60000)} min.`,
+    );
   }
   // R-0466: die Aufbewahrungsfrist des Interaktionsgedächtnisses ist eine LÖSCHFRIST. Gelesen wird
   // ein abgelaufener Eintrag ohnehin nicht mehr; dieser Lauf entfernt ihn beim Start und danach im

@@ -39,6 +39,7 @@ import {
 } from "../api/hooks";
 import type {
   Conflict,
+  Graph,
   GraphKuratierteKante,
   ImportCandidate,
   ImportItemInput,
@@ -50,9 +51,11 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { ImportAccessPanel } from "../components/ImportAccessPanel";
 import { ImportExplore } from "../components/ImportExplore";
+import { ImportFindingsOverview } from "../components/ImportFindingsOverview";
 // WP-COCKPIT-LINIE: geführte Schritt-Leiste über dem Cockpit + klar abgegrenzter, eingeklappter
 // Verlauf (Pedis Stör-Befund zur Queue unter dem Cockpit).
 import { ImportHistorySection } from "../components/ImportHistory";
@@ -131,6 +134,7 @@ import {
   estimateValuation,
   formatEur,
 } from "../lib/knowledgeValuation";
+import { formatKoTimestamp } from "../lib/koDates";
 import { koLabel } from "../lib/koLabel";
 // JOB 3363: die Leseübersetzung eines noch NICHT angenommenen Kandidaten — live über die echte
 // Kandidaten-Kennung aufgelöst, ohne KO-Kennung, ohne Schreibvorgang.
@@ -155,9 +159,28 @@ import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
+import {
+  WISSENSNETZ_EXPORT_DATEI,
+  WISSENSNETZ_EXPORT_TYP,
+  wissensnetzAlsGraphml,
+  wissensnetzExportGekuerzt,
+} from "../lib/wissensnetzExport";
+import {
+  XlsxImportError,
+  type XlsxImportFehler,
+  istXlsxDatei,
+  leseXlsxDatei,
+} from "../lib/xlsxImport";
 
 /** ADMIN-16: die Anker der früheren Paket-Kästen auf `/import` — sie führen in die Verwaltung. */
 const ALTE_PAKET_ANKER: readonly string[] = ["#beispielpakete", "#demopakete"];
+
+/** R-0179 (Nacharbeit 3): die Meldung je Lesefehler einer Excel-Tabelle. */
+const XLSX_FEHLERTEXT: Record<XlsxImportFehler, string> = {
+  unreadable: "importtabelle.unreadable",
+  "too-large": "importtabelle.tooLarge",
+  empty: "importtabelle.empty",
+};
 
 // JOB 691 / D-021: DER INTERNE VORGANGSCHIP IST HIER RAUS.
 //
@@ -279,7 +302,11 @@ export function Output(): JSX.Element {
       <Card className="mb-4">
         <SectionLabel>{t("out.sourcesTitle")}</SectionLabel>
         <HelpTip title={t("out.sourcesTitle")} body={t("shelp.out.sourcesTitle")} />
-        <QueryState query={sources} emptyText={t("out.noValidated")}>
+        <QueryState
+          query={sources}
+          emptyText={t("out.noValidated")}
+          emptyExtra={leerzustandsZeile(t, "auswertung")}
+        >
           {(list) => (
             <ul className="mt-2 space-y-1.5">
               {list.map((s) => (
@@ -1265,14 +1292,27 @@ export function ImportReview(): JSX.Element {
 
   // AUFTRAG-mega1 Block A: der EINE Import-Weg (Dialog UND Drop teilen ihn). Nicht-JSON wird ehrlich
   // abgelehnt (parseImportItems wirft ImportParseError) — kein zweiter Pfad, kein neuer Egress.
+  // R-0179 (Nacharbeit 3): eine Excel-Tabelle wird im Browser zu denselben Einträgen wie eine
+  // JSON-Datei (`lib/xlsxImport.ts`) und geht danach denselben Weg — dieselbe Prüfung, dieselbe
+  // Prüfliste, dieselbe Annahme.
   const processImportFile = async (file: File): Promise<void> => {
     try {
+      if (istXlsxDatei(file)) {
+        const { items, weitereBlaetter } = await leseXlsxDatei(file);
+        createCandidates.mutate(items);
+        if (weitereBlaetter > 0) {
+          push("info", t("importtabelle.weitereBlaetter", { n: weitereBlaetter }));
+        }
+        return;
+      }
       const items = parseImportItems(await file.text());
       createCandidates.mutate(items);
     } catch (err) {
       if (err instanceof ImportParseError) {
         const notice = importParseNotice(err);
         push("error", t(notice.key, notice.params));
+      } else if (err instanceof XlsxImportError) {
+        push("error", t(XLSX_FEHLERTEXT[err.kind]));
       } else {
         push("error", t("state.error"));
       }
@@ -1297,8 +1337,8 @@ export function ImportReview(): JSX.Element {
       return;
     }
     const isJson = file.name.toLowerCase().endsWith(".json") || file.type === "application/json";
-    if (!isJson) {
-      push("error", t("imp.dropReject", { name: file.name }));
+    if (!isJson && !istXlsxDatei(file)) {
+      push("error", t("importtabelle.dropReject", { name: file.name }));
       return;
     }
     void processImportFile(file);
@@ -1400,6 +1440,11 @@ export function ImportReview(): JSX.Element {
                 );
               })()
             : null}
+          {/* R-0179 / FR-EXT-01: die sechs Befundarten der Import-Übersicht, aus vorhandenen
+              Signalen gezählt (ImportFindingsOverview). */}
+          {query.data && query.data.length > 0 ? (
+            <ImportFindingsOverview candidates={query.data} />
+          ) : null}
         </Card>
 
         <SectionLabel>{t("imp.queueTitle")}</SectionLabel>
@@ -1432,6 +1477,8 @@ export function ImportReview(): JSX.Element {
              wirklich kam. Vorher trug ihn auch der Fall „nie gelesen". */
           <Card className="border-dashed text-center text-sm text-muted">
             {t("imp.queueEmpty")}
+            {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+            {leerzustandsZeile(t, "import")}
           </Card>
         ) : (
           <div className="space-y-2">
@@ -1639,7 +1686,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <SectionLabel>{t("mgmt.house")}</SectionLabel>
         <HelpTip title={t("mgmt.house")} body={t("shelp.mgmt.house")} />
         {snap.house.length === 0 ? (
-          <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+          <>
+            <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+            {leerzustandsZeile(t, "auswertung")}
+          </>
         ) : (
           <Wissenshaus floors={snap.house} flow={snap.houseFlow} />
         )}
@@ -1650,7 +1700,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <SectionLabel>{t("mgmt.recommendations")}</SectionLabel>
         <HelpTip title={t("mgmt.recommendations")} body={t("shelp.mgmt.recommendations")} />
         {snap.recommendations.length === 0 ? (
-          <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.noRecs")}</p>
+          <>
+            <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.noRecs")}</p>
+            {leerzustandsZeile(t, "auswertung")}
+          </>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {snap.recommendations.map((r) => (
@@ -1681,7 +1734,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <SectionLabel>{t("mgmt.priorities")}</SectionLabel>
         <HelpTip title={t("mgmt.priorities")} body={t("shelp.mgmt.priorities")} />
         {snap.priorities.length === 0 ? (
-          <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+          <>
+            <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+            {leerzustandsZeile(t, "auswertung")}
+          </>
         ) : (
           <WissensPriorisierung priorities={snap.priorities} />
         )}
@@ -1766,7 +1822,7 @@ function WindowNote({
 // eine eigene) — und `isPaused` entfällt ersatzlos, denn ohne Netz ist es nur eine Folge desselben
 // Umstands.
 function ReasonerRunsCard(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const runs = useModelRuns(50);
   const online = useNetzOnline();
   const stoerung: "keine" | "offline" | "fehler" = !online
@@ -1819,7 +1875,10 @@ function ReasonerRunsCard(): JSX.Element {
             </p>
           ) : null}
           {records.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("fachwort.kiLaeufe.leer")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("fachwort.kiLaeufe.leer")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           ) : (
             <>
               <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -1970,7 +2029,7 @@ function ReasonerRunsCard(): JSX.Element {
                       </span>
                     ) : null}
                     <span className="font-mono text-[10px] text-muted-2">
-                      {new Date(r.startedAt).toLocaleString()}
+                      {formatKoTimestamp(r.startedAt, i18n.language)}
                     </span>
                   </li>
                 ))}
@@ -2132,7 +2191,10 @@ function ModelRunAuswertungCard(): JSX.Element {
               ))}
             </ul>
           ) : (
-            <p className="text-[13px] text-muted">{t("mrun.report.empty")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("mrun.report.empty")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           )}
         </div>
       )}
@@ -2218,7 +2280,10 @@ function EvidenceIndexCard(): JSX.Element {
       ) : index.isError ? (
         <p className="text-[13px] text-danger">{t("state.error")}</p>
       ) : records.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("fachwort.belegIndex.leer")}</p>
+        <>
+          <p className="text-[13px] text-muted">{t("fachwort.belegIndex.leer")}</p>
+          {leerzustandsZeile(t, "auswertung")}
+        </>
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2298,7 +2363,10 @@ function ProvenanceIndexCard(): JSX.Element {
       ) : error ? (
         <p className="text-[13px] text-danger">{t("state.error")}</p>
       ) : rows.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("prov.empty")}</p>
+        <>
+          <p className="text-[13px] text-muted">{t("prov.empty")}</p>
+          {leerzustandsZeile(t, "auswertung")}
+        </>
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2470,7 +2538,10 @@ function KnowledgeOsHintsCard(): JSX.Element {
             <span>{t("kos.sevCount.info", { n: result.summary.info })}</span>
           </div>
           {top.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("kos.hints.none")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("kos.hints.none")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           ) : (
             <ul className="space-y-1.5">
               {top.map((h) => (
@@ -2546,7 +2617,10 @@ function EvidenceFreshnessCard(): JSX.Element {
             <span>{t("evFresh.summary.neutral", { n: index.summary.neutral })}</span>
           </div>
           {index.affected.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("fachwort.belegFrische.leer")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("fachwort.belegFrische.leer")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           ) : (
             <ul className="divide-y divide-hairline">
               {index.affected.map((r) => (
@@ -2952,9 +3026,12 @@ export function SoArbeitetKlarwerk({
               {t("wissensgraph.sicht.nichtGeliefert")}
             </p>
           ) : sichtbar.length === 0 ? (
-            <p data-testid="graph-sicht-leer" className="mt-2 text-muted">
-              {t("wissensgraph.sicht.leer")}
-            </p>
+            <>
+              <p data-testid="graph-sicht-leer" className="mt-2 text-muted">
+                {t("wissensgraph.sicht.leer")}
+              </p>
+              {leerzustandsZeile(t, "wissensnetz")}
+            </>
           ) : (
             <ul data-testid="graph-sicht-beziehungen" className="mt-2 flex flex-col gap-1">
               {sichtbar.map((k) => (
@@ -3075,6 +3152,40 @@ function Qualitaetsblick({
   );
 }
 
+// ==================================================================================================
+// R-0711 — DAS WISSENSNETZ ALS DATEI IM OFFENEN FORMAT (GraphML).
+// ==================================================================================================
+//
+// Die Datei entsteht aus DERSELBEN `/api/graph`-Antwort, die das Bild zeichnet — ungekürzt um den
+// 60-Knoten-Ausschnitt, aber mit genau der Sichtbarkeit, die der Server für diese Person bestimmt
+// hat. Kein zweiter Leseweg. Format und Inhalt: `lib/wissensnetzExport.ts`.
+function WissensnetzExport({ graph }: { graph: Graph }): JSX.Element {
+  const { t } = useTranslation();
+  const herunterladen = (): void => {
+    const blob = new Blob([wissensnetzAlsGraphml(graph)], { type: WISSENSNETZ_EXPORT_TYP });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = WISSENSNETZ_EXPORT_DATEI;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="mt-4 border-t border-hairline pt-3" data-testid="wissensnetz-export">
+      <Button variant="ghost" onClick={herunterladen}>
+        <Download size={14} />
+        {t("netzexport.knopf")}
+      </Button>
+      <p className="mt-1.5 text-[12px] text-muted">{t("netzexport.erklaerung")}</p>
+      {wissensnetzExportGekuerzt(graph) ? (
+        <p className="mt-1 text-[12px] text-muted" data-testid="wissensnetz-export-gekuerzt">
+          {t("netzexport.gekuerzt")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // SCRUM-119 / FR-ANA-03: echter SVG-Wissensgraph aus Live-Daten. Tag-Kanten aus
 // /api/graph, Knotenstatus per FE-Join, Konfliktkanten aus echten Conflict-Daten.
 //
@@ -3121,10 +3232,19 @@ export function GraphView(): JSX.Element {
           verspricht den Sprung nur unter seiner Voraussetzung: klickbar ist ein Punkt erst, wenn
           sein Objekt im Bestand bekannt ist (`isNavigableNode`, weiter unten). */}
       <HelpTip title={t("seitenhilfe.graph.titel")} body={t("seitenhilfe.graph.text")} />
-      <QueryState query={graphQ} emptyText={t("s2.graphEmpty")}>
+      <QueryState
+        query={graphQ}
+        emptyText={t("s2.graphEmpty")}
+        emptyExtra={leerzustandsZeile(t, "wissensnetz")}
+      >
         {(raw) => {
           if (raw.nodes.length === 0) {
-            return <Notice textKey="s2.graphEmpty" />;
+            return (
+              <>
+                <Notice textKey="s2.graphEmpty" />
+                {leerzustandsZeile(t, "wissensnetz")}
+              </>
+            );
           }
           // UX-07 Lieferung 6: auf den Bestand MITWARTEN. Ohne ihn wüsste die Zeichnung weder
           // Status (alle Knoten sähen „offen" aus) noch Ziel (kein Knoten wäre ein Link) — beides
@@ -3431,6 +3551,7 @@ export function GraphView(): JSX.Element {
                 konflikteLaden={conflictsQ.isPending && !conflictsQ.isError}
                 objekte={kos}
               />
+              <WissensnetzExport graph={raw} />
             </Card>
           );
         }}

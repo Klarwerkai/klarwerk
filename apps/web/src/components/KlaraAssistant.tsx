@@ -26,17 +26,20 @@ import {
 } from "../lib/klaraRegistry";
 // JOB 2660 D2: dieselbe Einstufungs-Beschriftung wie in der Wissenssuche (SCRUM-137).
 import { knowledgeClassMeta } from "../lib/knowledgeClass";
+import { fassungAmOrt, fragenMitBezug, objektbezugAm } from "../lib/objektbezug";
 // JOB 3980: EINE Quelle für die Abbildung UI-Sprache → Reasoner-Sprache. Die Zuordnung von Hand,
 // die hier bis heute in `askAi()` stand, ist abgelöst (s. dort).
 import { type ReasonerLocale, toReasonerLocale } from "../lib/reasonerLocale";
 import { type Objektstatus, objektstatusAus } from "../lib/statusFreigabe";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { useGelesenerStand } from "../lib/useGelesenerStand";
 import { cleanForSpeech, pickVoice } from "../lib/vorlesen";
 import { AiModelInfo } from "./AiModelInfo";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
 import { KlaraSpaceKontext } from "./KlaraSpaceKontext";
+import { meldeFlaeche, useAndereFlaecheSchliesst } from "./assistenzFlaechen";
 import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 
 // Stimmwahl und Textbereinigung fürs Vorlesen stehen seit FE-003 in `lib/vorlesen.ts` — das
@@ -93,6 +96,17 @@ export function KlaraAssistant(): JSX.Element {
       ausloeserRef.current?.focus();
     }
   };
+  // Assistenz im Produkt (produkt:20261010:assistenz-produkteinstieg): neben der persönlichen
+  // Assistenz ist immer nur EINE Fläche offen — öffnet sich diese, schliesst die andere und umgekehrt.
+  useEffect(() => {
+    meldeFlaeche("hilfe", open);
+    return () => {
+      if (open) {
+        meldeFlaeche("hilfe", false);
+      }
+    };
+  }, [open]);
+  useAndereFlaecheSchliesst("hilfe", () => setOpen(false));
   const [query, setQuery] = useState("");
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — Klaras Registry-Suche (ohne KI) bleibt davon unberührt bedienbar.
@@ -346,6 +360,11 @@ export function KlaraAssistant(): JSX.Element {
   );
 
   const page = pageEntryFor(location.pathname);
+  // Arbeitswege am selben Artikel: Seite, Kennung und Fassung aus der Adresse; fehlt dort die
+  // Fassung, die der Lesefläche — nur für denselben Artikel (`fassungAmOrt`).
+  const objektbezug = objektbezugAm(location.pathname, location.search);
+  const gelesen = useGelesenerStand();
+  const objektFassung = objektbezug ? fassungAmOrt(objektbezug.bezug, gelesen) : null;
   const fieldEntry = fieldId ? klaraEntryById(fieldId) : null;
   const results = searchKlara(auffindbar, query);
   // „Zum Bereich"-Link unter der KI-Antwort (Pedi 05.07.): beste Quelle → direkter Absprung.
@@ -438,7 +457,8 @@ export function KlaraAssistant(): JSX.Element {
         onClick={() => (open ? schliessen() : setOpen(true))}
         className="fixed bottom-5 right-5 z-40 grid h-11 w-11 place-items-center rounded-full border border-hairline bg-ink text-page shadow-popover transition-opacity hover:opacity-85"
       >
-        <HelpCircle size={20} />
+        {/* WCAG 1.1.1: der Name steht am Knopf; das Symbol ist Schmuck. */}
+        <HelpCircle size={20} aria-hidden="true" />
       </button>
       {open ? (
         <section
@@ -462,7 +482,7 @@ export function KlaraAssistant(): JSX.Element {
               onClick={schliessen}
               className="grid h-7 w-7 place-items-center rounded-btn text-muted-2 hover:bg-hairline-soft hover:text-text"
             >
-              <X size={15} />
+              <X size={15} aria-hidden="true" />
             </button>
           </div>
           <div className="space-y-4 overflow-y-auto p-4">
@@ -477,6 +497,44 @@ export function KlaraAssistant(): JSX.Element {
                 <div className="text-[12.5px] font-semibold text-text">{t(page.titleKey)}</div>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-muted">{t(page.bodyKey)}</p>
                 {speakButton("page", t(page.titleKey), t(page.bodyKey))}
+              </div>
+            ) : null}
+
+            {/* ARBEITSWEGE AM SELBEN ARTIKEL — der Beitrag, an dem gerade gearbeitet wird: Kennung
+                und Fassung aus DERSELBEN Quelle wie Prüfen, Lesen und Fragen (`lib/objektbezug.ts`),
+                also auch nach Zurücknavigation und Neuladen derselbe. Der Weg nach „Fragen" trägt
+                genau diesen Bezug weiter. */}
+            {objektbezug ? (
+              <div
+                data-testid="klara-objektbezug"
+                data-seite={objektbezug.seite}
+                data-ko={objektbezug.bezug.koId}
+                data-fassung={objektFassung ?? undefined}
+              >
+                <div className="mb-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+                  {t("arbeitsweg.klara.label")}
+                </div>
+                <div className="break-all font-mono text-[11.5px] text-text">
+                  {objektbezug.bezug.koId}
+                </div>
+                {objektFassung !== null ? (
+                  <div className="text-[12px] text-muted">
+                    {t("arbeitsweg.fassung", { fassung: objektFassung })}
+                  </div>
+                ) : null}
+                {objektbezug.seite !== "fragen" ? (
+                  <Link
+                    data-testid="klara-objektbezug-fragen"
+                    to={fragenMitBezug("/fragen", {
+                      koId: objektbezug.bezug.koId,
+                      fassung: objektFassung,
+                    })}
+                    onClick={() => setOpen(false)}
+                    className="mt-1 inline-flex items-center gap-1 text-[11.5px] font-semibold text-brand-text hover:underline"
+                  >
+                    {t("arbeitsweg.klara.chat")} <span aria-hidden="true">→</span>
+                  </Link>
+                ) : null}
               </div>
             ) : null}
 

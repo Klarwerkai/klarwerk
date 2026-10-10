@@ -50,6 +50,8 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
     ziele: [
       { art: "verwaltung", section: "konten" },
       { art: "verwaltung", section: "konten", detail: "nutzerNeu" },
+      // ADMIN-06: Teams als gemeinsamer Mitgliedschaftsweg auf diesen Konten.
+      { art: "verwaltung", section: "konten", detail: "teams" },
       // Die Übergabe wohnt in der Kontokarte der abgebenden Person (`VerantwortungUebergabe`):
       // der Weg führt deshalb in die Kontenliste, nicht in eine zweite Übergabefläche.
       { art: "verwaltung", section: "konten", labelKey: "verwaltung.ziel.uebergabe" },

@@ -426,6 +426,7 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
     typeof raw.imageContext === "string"
       ? raw.imageContext.trim().slice(0, MAX_INTERVIEW_IMAGE_CONTEXT_LEN).trim()
       : "";
+  const topic = cappedString(raw.topic, MAX_INTERVIEW_QUESTION_LEN)?.trim();
   const started = raw.started === true;
   // Substanzlose Hülle ({} o. ä.) gar nicht erst speichern — der Resume hätte nichts wiederherzustellen.
   if (!started && answers.length === 0 && answer === undefined && question === undefined) {
@@ -439,6 +440,10 @@ function normalizeInterview(value: unknown): DraftPayload["interview"] {
     ...(typeof raw.done === "boolean" ? { done: raw.done } : {}),
     ...(typeof raw.demo === "boolean" ? { demo: raw.demo } : {}),
     ...(imageContext.length > 0 ? { imageContext } : {}),
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: nur echte Wahrheitswerte und ein begrenztes Thema.
+    ...(raw.tree === true ? { tree: true } : {}),
+    ...(topic ? { topic } : {}),
+    ...(raw.confirmed === true ? { confirmed: true } : {}),
   };
 }
 

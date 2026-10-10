@@ -38,11 +38,13 @@ import type {
   SicherungsEintrag,
   VergleichKategorie,
 } from "../api/types";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { abfragelage, useIstOnline, wertBefund } from "../components/einstellungen/zeilenWert";
 import { cx } from "../components/ui";
+import { formatKoTimestamp } from "../lib/koDates";
 
 /**
  * Der Abfrageschlüssel — DIESELBE Kennung, die auch die Zeile im Reiter „System" fährt
@@ -103,13 +105,13 @@ function altersText(t: Uebersetzer, eintrag: SicherungsEintrag, gelesenUtc: stri
   return t("adm.backup.age.days", { count: Math.floor(stunden / 24) });
 }
 
-/** Ein Zeitpunkt in der Sprache des Lesers; `null` bleibt eine Aussage, kein leeres Feld. */
-function zeitText(t: Uebersetzer, iso: string | null): string {
-  if (iso === null) {
-    return t("adm.backup.time.unknown");
-  }
-  const zeit = new Date(iso);
-  return Number.isNaN(zeit.getTime()) ? t("adm.backup.time.unknown") : zeit.toLocaleString();
+/**
+ * Ein Zeitpunkt in der Sprache des Lesers; `null` bleibt eine Aussage, kein leeres Feld.
+ * R-1010: dieselbe Zeitregel wie überall (`formatKoTimestamp`) statt `toLocaleString()` mit der
+ * Sprache des Browsers und Sekunden.
+ */
+function zeitText(t: Uebersetzer, sprache: string, iso: string | null): string {
+  return formatKoTimestamp(iso, sprache) ?? t("adm.backup.time.unknown");
 }
 
 // Drei flache Konstanten statt einer Kette im Attribut — dieselbe Bauform und dieselbe Begründung
@@ -143,7 +145,7 @@ function Eintragszeile({
   /** Nur eine frische, erfolgreiche Lesung darf ein Alter behaupten (Auftrag §9). */
   frisch: boolean;
 }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const alter = frisch ? altersText(t, eintrag, gelesenUtc) : null;
   return (
     <li
@@ -151,7 +153,9 @@ function Eintragszeile({
       className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5"
     >
       <span className="min-w-0 break-all font-mono text-[12.5px] text-text">{eintrag.datei}</span>
-      <span className="text-[12px] text-muted-2">{zeitText(t, eintrag.zeitpunktUtc)}</span>
+      <span className="text-[12px] text-muted-2">
+        {zeitText(t, i18n.language, eintrag.zeitpunktUtc)}
+      </span>
       {/* JOB 4109 — DIE WIEVIELTE SICHERUNG DIESER SEKUNDE. Läuft der Cron zweimal in derselben
           Sekunde, heißt die zweite `klarwerk-<STAMP>_02.dump` (`backup.sh:413`); ohne diese Zeile
           stünden zwei Einträge mit identischem Zeitpunkt untereinander, ohne dass irgendetwas ihre
@@ -226,9 +230,13 @@ function Befund({
     // Eine BELEGTE Negativaussage: es liegt eine erfolgreiche, vollständige Lesung dieses
     // Verzeichnisses vor. Deshalb steht das Verzeichnis im Satz — die Aussage gilt für genau eines.
     return (
-      <p data-testid="sicherung-leer" className="text-[12.5px] leading-relaxed text-muted">
-        {t("adm.backup.none", { verzeichnis: daten.verzeichnis })}
-      </p>
+      <>
+        <p data-testid="sicherung-leer" className="text-[12.5px] leading-relaxed text-muted">
+          {t("adm.backup.none", { verzeichnis: daten.verzeichnis })}
+        </p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "verwaltung")}
+      </>
     );
   }
   return (
@@ -415,14 +423,14 @@ function vergleichZeile(t: Uebersetzer, name: string, kategorie: VergleichKatego
   );
 }
 
-function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
+function restoreBefundText(t: Uebersetzer, sprache: string, r: RestoreDrillBefund): JSX.Element {
   const v = r.vergleich;
   return (
     <div className="space-y-1 text-[12.5px] leading-relaxed text-text">
       <p data-testid="restore-sicherung">
         {t("sicherungsnachweise.restore.sicherung", {
           datei: r.sicherung ?? "–",
-          zeit: zeitText(t, r.sicherungZeitpunktUtc),
+          zeit: zeitText(t, sprache, r.sicherungZeitpunktUtc),
         })}
       </p>
       <p data-testid="restore-ziel">
@@ -430,8 +438,8 @@ function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
       </p>
       <p data-testid="restore-zeit">
         {t("sicherungsnachweise.restore.dauer", {
-          beginn: zeitText(t, r.beginnUtc),
-          ende: zeitText(t, r.zeitUtc),
+          beginn: zeitText(t, sprache, r.beginnUtc),
+          ende: zeitText(t, sprache, r.zeitUtc),
         })}
       </p>
       <p data-testid="weg-grund">
@@ -500,7 +508,7 @@ function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
 }
 
 /** Alle vier Wege, in fester Reihenfolge — samt dem Satz, WO überhaupt nachgesehen wurde. */
-function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
+function schutzwegeBefund(t: Uebersetzer, sprache: string, wege: Schutzwege): JSX.Element {
   const { letzterLauf: lauf, restore, export: exporte, papierkorb } = wege;
   const laufZustand: WegZustand = lauf.zustand;
   const exportZustand: WegZustand =
@@ -529,7 +537,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
             {exporte.bibliothek ? (
               <p data-testid="export-bibliothek">
                 {t("sicherungsnachweise.export.bibliothek", {
-                  zeit: zeitText(t, exporte.bibliothek.zeitUtc),
+                  zeit: zeitText(t, sprache, exporte.bibliothek.zeitUtc),
                   format: exporte.bibliothek.format ?? "–",
                   anzahl: exporte.bibliothek.anzahl ?? "–",
                   gesamt: exporte.bibliothek.gesamt,
@@ -539,7 +547,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
             {exporte.auditkette ? (
               <p data-testid="export-auditkette">
                 {t("sicherungsnachweise.export.auditkette", {
-                  zeit: zeitText(t, exporte.auditkette.zeitUtc),
+                  zeit: zeitText(t, sprache, exporte.auditkette.zeitUtc),
                   anzahl: exporte.auditkette.anzahl ?? "–",
                   gesamt: exporte.auditkette.gesamt,
                 })}
@@ -561,7 +569,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
         ) : (
           <div className="space-y-0.5 text-[12.5px] leading-relaxed text-text">
             <p data-testid="weg-zeit">
-              {t("sicherungsnachweise.zeit", { zeit: zeitText(t, lauf.zeitUtc) })}
+              {t("sicherungsnachweise.zeit", { zeit: zeitText(t, sprache, lauf.zeitUtc) })}
             </p>
             {lauf.datei ? (
               <p className="break-all">
@@ -598,7 +606,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
             {papierkorb.naechsteEndloeschungUtc ? (
               <p>
                 {t("sicherungsnachweise.papierkorb.naechste", {
-                  zeit: zeitText(t, papierkorb.naechsteEndloeschungUtc),
+                  zeit: zeitText(t, sprache, papierkorb.naechsteEndloeschungUtc),
                 })}
               </p>
             ) : null}
@@ -607,14 +615,14 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
                 <p data-testid="papierkorb-wiederhergestellt">
                   {t("sicherungsnachweise.papierkorb.wiederhergestellt", {
                     zeit: papierkorb.letzteWiederherstellungUtc
-                      ? zeitText(t, papierkorb.letzteWiederherstellungUtc)
+                      ? zeitText(t, sprache, papierkorb.letzteWiederherstellungUtc)
                       : t("sicherungsnachweise.papierkorb.nie"),
                   })}
                 </p>
                 <p>
                   {t("sicherungsnachweise.papierkorb.endgeloescht", {
                     zeit: papierkorb.letzteEndloeschungUtc
-                      ? zeitText(t, papierkorb.letzteEndloeschungUtc)
+                      ? zeitText(t, sprache, papierkorb.letzteEndloeschungUtc)
                       : t("sicherungsnachweise.papierkorb.nie"),
                   })}
                 </p>
@@ -638,7 +646,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
         restore.zustand,
         restore.zustand === "unbekannt"
           ? wegUnbekannt(t, restore, "sicherungsnachweise.restore.schritt.unbekannt")
-          : restoreBefundText(t, restore),
+          : restoreBefundText(t, sprache, restore),
         wegAngaben(t, "restore"),
       )}
     </div>
@@ -653,7 +661,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
  * Läufe und Ausgabekanal sind eine eigene Sicherheitsentscheidung mit eigener Abnahme.
  */
 export function SicherungDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // NUR die Erklärung der Karte liegt im „?"-Menü — der Ehrlichkeitssatz NICHT.
   //
   // Runde 1 hatte ihn an BEIDEN Orten: im Menü und sichtbar unten. Genau das war der Befund des
@@ -704,12 +712,12 @@ export function SicherungDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
                 {t("adm.backup.dir", { verzeichnis: daten.verzeichnis })}
               </p>
               <p data-testid="sicherung-gelesen">
-                {t("adm.backup.readAt", { zeit: zeitText(t, daten.gelesenUtc) })}
+                {t("adm.backup.readAt", { zeit: zeitText(t, i18n.language, daten.gelesenUtc) })}
               </p>
             </div>
             {/* ADMIN-13 — die vier Schutzwege aus DERSELBEN Lesung. Ältere Antworten ohne das Feld
                 zeigen den Abschnitt nicht; der Server sendet es in jedem der drei Zustände. */}
-            {daten.schutzwege ? schutzwegeBefund(t, daten.schutzwege) : null}
+            {daten.schutzwege ? schutzwegeBefund(t, i18n.language, daten.schutzwege) : null}
           </div>
         )}
       </Abfragehuelle>

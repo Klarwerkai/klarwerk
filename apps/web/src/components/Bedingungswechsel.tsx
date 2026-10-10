@@ -28,6 +28,7 @@ import {
   bedingungsVorschlaege,
   vergleicheBedingungen,
 } from "../lib/bedingungswechsel";
+import type { Szenario } from "../lib/fragenArbeitsstand";
 import { Button, TextInput } from "./ui";
 
 function FundZeile({
@@ -91,6 +92,8 @@ export function Bedingungswechsel({
   kiVerfuegbar,
   kiSperrHinweis,
   wartet,
+  wert,
+  onWert,
 }: {
   /** `undefined` = noch nicht geladen. */
   kos: readonly KnowledgeObject[] | undefined;
@@ -102,12 +105,24 @@ export function Bedingungswechsel({
   kiSperrHinweis?: string | undefined;
   /** Eine Frage läuft schon. */
   wartet: boolean;
+  /**
+   * produkt:20261010:fragen-pruefen-einstieg (K2, Ben Nacharbeit 3): die Eingaben gehören der
+   * Seite — sie hält sie im Fragenarbeitsstand des Kontos, damit sie einen Ansichtswechsel
+   * überstehen. Bis hierher lebten sie hier lokal und waren beim Wiederöffnen leer.
+   */
+  wert: Szenario;
+  onWert: (szenario: Szenario) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const [offen, setOffen] = useState(false);
-  const [bisher, setBisher] = useState("");
-  const [neu, setNeu] = useState("");
-  const [thema, setThema] = useState("");
+  const { bisher, neu, thema } = wert;
+  const setBisher = (v: string): void => onWert({ ...wert, bisher: v });
+  const setNeu = (v: string): void => onWert({ ...wert, neu: v });
+  const setThema = (v: string): void => onWert({ ...wert, thema: v });
+  // Zugeklappt nennt die Kopfzeile begonnene Angaben — wie „Ich frage für" seinen Kontext. So ist
+  // ein wiederhergestelltes Szenario sichtbar, ohne Eingabefelder vor das Fragefeld zu stellen.
+  const wechsel = [bisher.trim(), neu.trim()].filter((teil) => teil !== "").join(" → ");
+  const zeile = [wechsel, thema.trim()].filter((teil) => teil !== "").join(" · ");
   const vorschlaege = useMemo(() => bedingungsVorschlaege(kos ?? []), [kos]);
   const ergebnis = useMemo(
     () => (kos ? vergleicheBedingungen(kos, { bisher, neu, thema }) : null),
@@ -212,6 +227,14 @@ export function Bedingungswechsel({
       >
         <span className="font-semibold text-text">{t("bedingungswechsel.titel")}</span>{" "}
         <span>{t(offen ? "bedingungswechsel.offen" : "bedingungswechsel.zu")}</span>
+        {!offen && zeile !== "" ? (
+          <>
+            {" "}
+            <span data-testid="bedingungswechsel-zeile" className="font-semibold text-text">
+              {zeile}
+            </span>
+          </>
+        ) : null}
       </button>
       {offen ? (
         <>

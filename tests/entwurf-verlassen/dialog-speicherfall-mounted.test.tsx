@@ -122,7 +122,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
 
   it("D1 · während aus dem Dialog gespeichert wird, ist der Verwerfen-Ausgang zu", async () => {
     await mount(ADRESSE, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
     expect(wacheDialoge()).toBe(1);
 
@@ -147,7 +147,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
   it("D2 · der Satz am Ende gehört zu dem, was wirklich im Bestand steht", async () => {
     await mount(ADRESSE, "formular");
     const vorher = bestand();
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
 
     bremse.halte();
@@ -188,7 +188,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
   // Verlassen-Meldung über einen Wechsel, den er gerade abgesagt hat.
   it("D3 · Hier bleiben während des Speicherns: geschrieben wird, gewechselt nicht", async () => {
     await mount(ADRESSE, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
 
     bremse.halte();
@@ -228,7 +228,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
   it("D4 · der Server lehnt ab: der Dialog steht, nichts wechselt — und der Grund steht da", async () => {
     await mount(ADRESSE, "formular");
     const vorher = bestand();
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
 
     // Die abweisende Fabrik — kein HTTP-500-Ersatz, sondern der Fehler, den der Client wirft.
@@ -258,7 +258,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
     // unübersetzte Servermeldung, die in keiner Oberflächensprache steht.
     await mount(ADRESSE, "formular");
     const vorher = bestand();
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
 
     lasseNaechstesUpdateScheitern(
@@ -286,7 +286,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
     await mount(ADRESSE, "formular");
     const vorher = bestand();
     const grund = i18n.t("capture.anchorsMissingNext");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
 
     await klick(verlassenKnopf() as HTMLButtonElement);
     expect(wacheDialoge()).toBe(1);
@@ -316,7 +316,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
     verlaufAufbauen();
     await mount(ADRESSE, "formular");
     const vorher = bestand();
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
     expect(wacheDialoge()).toBe(1);
 
@@ -337,7 +337,7 @@ describe("JOB 3572 · der Speicherfall IM Wache-Dialog", () => {
   it("D7 · Zurück, WÄHREND aus dem Dialog gespeichert wird: kein Weg, der die Zusage bricht", async () => {
     verlaufAufbauen();
     await mount(ADRESSE, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), "Zahlungsziel (neu gedacht)");
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), "Zahlungsziel (neu gedacht)");
     await klick(verlassenKnopf() as HTMLButtonElement);
 
     bremse.halte();

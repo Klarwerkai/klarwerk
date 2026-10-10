@@ -11,14 +11,18 @@ import {
   SUCH_ZUORDNUNGEN,
   type SuchZuordnung,
   type WithTx,
+  buildSearchProjection,
   dropConfidential,
+  erkenneSchutzdaten,
   expandSearchTerms,
   geltungFuerFrage,
   haltbarkeitAbgelaufen,
+  inSchutzdatenQuarantaene,
   isConfidential,
   normalizeSearchTerms,
   responsibleKindOf,
   responsibleOf,
+  visibleTextFromBodyHtml,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -29,6 +33,7 @@ import {
   type ReasonerLocale,
   type Relevanztext,
   type ZuordnungsPaar,
+  type ZweitmeinungErgebnis,
   decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
@@ -55,6 +60,7 @@ import {
   bindeAussagen,
   volltextDerFassung,
 } from "./aussage-fundstellen";
+import { leiteBelegbedarfAb } from "./gap-belegbedarf";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -66,11 +72,21 @@ import {
   type AskCaller,
   AskError,
   type Gap,
+  type GapBelegbedarf,
   type GapPriority,
   answerSnapshotStatus,
   hashAnswerSnapshot,
   isGapPriority,
 } from "./types";
+import {
+  type VergleichsSeiten,
+  type WissensstandVergleich,
+  antwortGeaendert,
+  fassungZumStichtag,
+  freigabeZumStichtagBelegt,
+  grundlageDamals,
+  vergleichsQuelle,
+} from "./wissensstand-vergleich";
 
 const HELPFUL_TRUST_STEP = 2;
 
@@ -581,6 +597,10 @@ export interface AskResult {
   // bleibt fuer ihn die ehrliche Auskunft. Die Sperrlogik selbst ist unberuehrt
   // (E-VERTRAULICHKEIT-OHNE-STUFE-20260828: erklaeren ja, sperren oder entsperren nein).
   verschlossen?: VerschlossenHinweis[];
+  // AUFNAHME 20260922 (R-0305, R-1099): die Gegenüberstellung mit dem Zweitmodell — NUR, wenn die
+  // Frage sie angefordert hat (`opts.zweitmeinung`). Sonst fehlt das Feld vollständig, und der
+  // Antwortkörper ist der bisherige.
+  zweitmeinung?: ZweitmeinungErgebnis;
   // R-1633 — WOFÜR GEWICHTET WURDE, SICHTBAR. Nur wenn der Fragende einen Fragekontext angegeben
   // hat (Werk/Schicht/Rolle); sonst fehlt das Feld vollständig. Je herangezogener Quelle
   // (`result.sources`, also nach Sichtbarkeits-, Vertraulichkeits- und Freigabefilter) ihre Geltung
@@ -980,12 +1000,31 @@ export class AskService {
        */
       gespraechsfaden?: readonly string[];
       /**
+       * AUFNAHME 20260922 (R-0305, R-1099): dieselbe Frage zusätzlich vom Zweitmodell beantworten
+       * lassen und gegenüberstellen (`Reasoner.answerMitZweitmeinung`). Beide Modelle bekommen
+       * DIESELBEN Kandidaten — die Sichtbarkeits-, Prüfstands- und Vertraulichkeitsfilter liefen
+       * davor und gelten für beide. Wirkungslos mit `retrievalOnly` (dort fragt kein Modell).
+       * Gesetzt nur von der Route, und nur im Konsolenzweig.
+       */
+      zweitmeinung?: boolean;
+      /**
        * R-1633: wofür gefragt wird (Werk/Schicht/Rolle), bereits geprüft (`normalizeFragekontext`).
        * Wirkung: je Kandidat ein `geltungsrang`, der unter GLEICH relevanten Quellen ordnet
        * (Regel an `rankCandidates`), und die Auskunft `geltung` an der Antwort. Gesetzt nur von
        * der Route, und nur im Konsolenzweig — wie der Gesprächsfaden.
        */
       fragekontext?: Fragekontext;
+      /**
+       * Klara 03 (produkt:20261007:klara-kontext-tutorial): der gewählte Seitenkontext, bereits von
+       * der Route unter den Rechten des Fragenden aufgelöst. Gesetzt nur im Konsolenzweig.
+       *   · `kontext` — ein Satz zum Objekt der Seite (Titel des Artikels, Titel des Entwurfs, die
+       *     aktuelle Frage). Er reist wie eine Fadenfrage als ZUSAMMENHANG: er ergänzt die Suche
+       *     (hinter den Fragetermen) und steht vor der Frage im Zusammenhang — gebunden wird er NICHT.
+       *   · `nurObjekt` — Bezug „Dieser Artikel“: geantwortet wird NUR aus diesem Objekt (sofern es
+       *     die Frage deckt und alle übrigen Filter besteht). `null` heisst: das gewählte Objekt ist
+       *     für den Fragenden nicht zugänglich — dann gibt es keine Grundlage.
+       */
+      seitenkontext?: { kontext: string; nurObjekt?: string | null };
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -1053,9 +1092,14 @@ export class AskService {
     const vorFaden = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
     // R-0348: der Gesprächsfaden — Begründung und Grenzen an `fadenfragen`.
     const faden = fadenfragen(opts?.gespraechsfaden);
+    // Klara 03: der Seitenkontext steht im Zusammenhang direkt vor der Frage — wie eine Fadenfrage,
+    // aber nie Themenanker (gebunden bleibt allein `faden[0]`). Ohne ihn ist alles wie bisher.
+    const kontextSatz = opts?.seitenkontext?.kontext.trim() ?? "";
+    const zusammenhang = kontextSatz ? [...faden, kontextSatz] : faden;
     const frageImZusammenhang =
-      faden.length > 0 ? [...faden, question].join(FADEN_TRENNER) : question;
-    const suchterme = faden.length > 0 ? erweiterteSuchterme(vorFaden, faden.join(" ")) : vorFaden;
+      zusammenhang.length > 0 ? [...zusammenhang, question].join(FADEN_TRENNER) : question;
+    const suchterme =
+      zusammenhang.length > 0 ? erweiterteSuchterme(vorFaden, zusammenhang.join(" ")) : vorFaden;
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
@@ -1189,7 +1233,12 @@ export class AskService {
     });
     // R-0348: gebunden haben oben die getippte Frage und ihr Anker; gewählt und beantwortet wird im
     // Zusammenhang.
-    const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
+    // Klara 03: Bezug „Dieser Artikel“ — nur dieses Objekt kommt an beide Tore (Tor 2 wählt aus
+    // genau diesen Kandidaten). `null` (nicht zugänglich) lässt keinen Kandidaten übrig.
+    const nurObjekt = opts?.seitenkontext?.nurObjekt;
+    const auswahlBasis =
+      nurObjekt === undefined ? vollstaendig : vollstaendig.filter((ref) => ref.id === nurObjekt);
+    const candidates = waehleKandidaten(frageImZusammenhang, auswahlBasis, DEFAULT_TOP_K, relevanz);
     // R-0284: der Rahmen dieser Suche, aus genau den Werten, die den Weg bestimmt haben.
     const pruefrahmen: AskPruefrahmen = {
       umfang: opts?.validatedOnly ? "validiert" : "nicht_vertraulich",
@@ -1222,12 +1271,24 @@ export class AskService {
     // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
     // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
     this.pruefeKiSperre("antwortweg", kiBeginn);
+    // R-0305/R-1099: angefordert — dann beantworten beide Modelle dieselbe Frage aus denselben
+    // `candidates` mit denselben Argumenten, und die erste Antwort ist hier die Antwort wie sonst
+    // auch. Der Weg des Add-ins (`retrievalOnly`) bleibt davon unberührt: dort fragt kein Modell.
+    const zweitmeinungFeld: { zweitmeinung?: ZweitmeinungErgebnis } = {};
+    const antworte = async (...args: Parameters<Reasoner["answer"]>): Promise<AnswerResult> => {
+      if (opts?.zweitmeinung !== true) {
+        return this.reasoner.answer(...args);
+      }
+      const beide = await this.reasoner.answerMitZweitmeinung(...args);
+      zweitmeinungFeld.zweitmeinung = beide.zweitmeinung;
+      return beide.erste;
+    };
     const rawResult = await this.mitUebertragungssperre(() =>
       opts?.retrievalOnly
         ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
           // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
           this.reasoner.answerRetrievalOnly(frageImZusammenhang, candidates, locale, relevanz)
-        : this.reasoner.answer(
+        : antworte(
             frageImZusammenhang,
             candidates,
             locale,
@@ -1259,7 +1320,12 @@ export class AskService {
     // (`apps/web/src/api/types.ts`) und von dort an die drei Flächen.
     // Das Feld wird WEGGELASSEN, nicht auf `undefined` gesetzt: `exactOptionalPropertyTypes` ist
     // an, und „fehlt" ist auch am Draht die Aussage (JSON kennt kein `undefined`).
-    const { abgeschnitten: _abgeschnittenVerworfen, ...rawOhneAbbruch } = rawResult;
+    // R-1643: dasselbe gilt für die Argumentationskette — ohne Antwort gibt es nichts zu begründen.
+    const {
+      abgeschnitten: _abgeschnittenVerworfen,
+      argumentation: _argumentationVerworfen,
+      ...rawOhneAbbruch
+    } = rawResult;
     const resultCore =
       rawResult.answered && rawResult.sources.length === 0
         ? { ...rawOhneAbbruch, answered: false, answer: null, citedSources: [] }
@@ -1451,6 +1517,30 @@ export class AskService {
         prefilterTermLimit: ASK_PREFILTER_TERM_LIMIT,
       },
     });
+    // R-1099: „Weichen sie voneinander ab, ist das ein Warnzeichen, dem jemand nachgehen muss."
+    // Damit dieses Warnzeichen nicht nur auf einem Bildschirm steht, der gleich wieder zu ist, wird
+    // die Gegenüberstellung protokolliert — als eigener Eintrag, damit `ask.query` seine
+    // inventarisierte Feldmenge behält (docs/datenschutz/pruefprotokoll-nutzdaten.md). Ziel ist die
+    // tragende Quelle, an der man der Abweichung nachgeht. Nur Zustände, kein Frage- oder
+    // Antworttext, kein Anbieter- oder Modellname.
+    const zweitmeinung = zweitmeinungFeld.zweitmeinung;
+    if (zweitmeinung) {
+      await this.audit?.record({
+        actor: actorId,
+        action: "ask.zweitmeinung",
+        target: result.citedSources[0] ?? result.sources[0] ?? "-",
+        payload:
+          zweitmeinung.status === "verglichen"
+            ? {
+                status: zweitmeinung.status,
+                abweichend: zweitmeinung.abweichend,
+                abweichungen: zweitmeinung.abweichungen.join(","),
+                ersteStufe: zweitmeinung.ersteStufe,
+                zweiteStufe: zweitmeinung.zweiteStufe,
+              }
+            : { status: zweitmeinung.status, grund: zweitmeinung.grund },
+      });
+    }
     // AUFTRAG-mega77 BLOCK A: hier wurde `ungeprueftUnterdrueckt` berechnet. Die Berechnung ist
     // ERSATZLOS entfernt — Begründung am Feld-Grabstein in `AskResult` oben. Kurz: sie lief ohne
     // Betrachterfilter (Leck ab n = 1, Orakel bei enger Wiederholung) und zählte die gedeckelte
@@ -1469,6 +1559,7 @@ export class AskService {
           quellenStand,
           ...ungeprueftFeld,
           ...verschlossenFeld,
+          ...zweitmeinungFeld,
           ...geltungFeld,
           ...zuschnittFeld,
           pruefrahmen,
@@ -1479,10 +1570,30 @@ export class AskService {
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
       // D5: nach Beleg und Protokoll — vor der Lückensuche, die den Lückenbestand liest.
       this.pruefeKiSperre("ergebnis", kiBeginn);
+      // R-0291: welcher Beleg fehlen würde — aus DERSELBEN Vorauswahl wie die Torlage
+      // (`dropConfidential(prefilteredRaw)`, also nur Sichtbares und nie Vertrauliches) und mit
+      // denselben Tormessungen. Regel und Bedeutung: `gap-belegbedarf.ts`.
+      const belegbedarf = leiteBelegbedarfAb(
+        await Promise.all(
+          dropConfidential(prefilteredRaw).map(async (ko) => {
+            const projektion = await this.suchprojektion(ko.id, "ergebnis", kiBeginn);
+            return {
+              freigabeFehlt: ko.status !== "validiert",
+              stufeFehlt: ko.confidentiality === null || ko.confidentiality === undefined,
+              volltextFehlt: !projektion?.bodyText.trim(),
+            };
+          }),
+        ),
+      );
       // R-0348: eine Lücke „Und bei Teilzeit?" wäre für den Experten unlesbar — sie trägt deshalb
       // die Frage im Zusammenhang (ohne Faden ist das die Frage selbst).
-      const gap = await this.createGap(frageImZusammenhang, actorId, opts?.demoSeed, locale, () =>
-        this.pruefeKiSperre("ergebnis", kiBeginn),
+      const gap = await this.createGap(
+        frageImZusammenhang,
+        actorId,
+        opts?.demoSeed,
+        locale,
+        () => this.pruefeKiSperre("ergebnis", kiBeginn),
+        belegbedarf,
       );
       return {
         result,
@@ -1492,6 +1603,7 @@ export class AskService {
         quellenStand,
         ...ungeprueftFeld,
         ...verschlossenFeld,
+        ...zweitmeinungFeld,
         ...geltungFeld,
         ...zuschnittFeld,
         pruefrahmen,
@@ -1505,11 +1617,221 @@ export class AskService {
       quellenStand,
       ...ungeprueftFeld,
       ...verschlossenFeld,
+      ...zweitmeinungFeld,
       ...geltungFeld,
       ...zuschnittFeld,
       ...aussagenFeld,
       pruefrahmen,
     };
+  }
+
+  /**
+   * ============================================================================================
+   * R-1630 / R-2176 — DIESELBE FRAGE, BEANTWORTET AUS DEM WISSENSSTAND ZUM STICHTAG.
+   * ============================================================================================
+   *
+   * Regeln und Grenzen stehen in `wissensstand-vergleich.ts`. Hier läuft der Weg selbst:
+   *   1. dieselbe Vorauswahl wie `ask` (heutiger Suchbestand) und derselbe Sichtfilter;
+   *   2. je Kandidat die Fassung zum Stichtag (Verlauf + Versionsabbild) und ihre Freigabe
+   *      (Prüfprotokoll);
+   *   3. ZWEI Antworten über denselben Antwortweg — eine aus den heute freigegebenen Fassungen, eine
+   *      aus den damals belegt freigegebenen Fassungen;
+   *   4. je Quelle beider Antworten der Grund des Unterschieds.
+   *
+   * KEINE NEBENWIRKUNG WIE BEI `ask`: keine Wissenslücke, kein Antwortbeleg, kein Receipt. Der
+   * Vergleich ist eine Auskunft über zwei Bestände, keine neue Frage an das Firmenwissen. Ins
+   * Protokoll geht nur, DASS verglichen wurde (Zahlen, kein Fragetext) — wie `ask.query`.
+   *
+   * DIESELBEN GRENZEN WIE `ask` (Konsolenweg): nur freigegebenes Wissen, nichts Vertrauliches, nur was
+   * der Fragende sehen darf. Eine damalige Fassung muss diese Grenzen HEUTE wie DAMALS einhalten,
+   * sonst bleibt sie draussen; Schutzdaten werden an ihrem Inhalt mit der heutigen Regel geprüft.
+   */
+  async vergleicheWissensstand(
+    question: string,
+    actor: string,
+    locale: ReasonerLocale,
+    stichtagMs: number,
+    grundlageSichtbarFuer: (ko: KnowledgeObject) => boolean,
+  ): Promise<WissensstandVergleich> {
+    const kiBeginn = this.kiSperre?.stand();
+    const frageterme = queryTokens(question);
+    const relevanz = zugeordneteSuchterme(frageterme);
+    const suchterme = [...frageterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
+    // BEN (Nacharbeit 4): die heutige Suchprojektion kennt nur heutige Texte. Wurde ein Fragebegriff
+    // seither aus einem noch vorhandenen Objekt entfernt, fände sie es nicht — und die damals
+    // tragende Fassung fehlte. Deshalb zusätzlich die Objekte, deren Fassungen bis zum Stichtag die
+    // Begriffe trugen. Nachgeladen wird über `get` (Papierkorb bleibt draussen); danach gelten
+    // dieselben Filter wie für die Vorauswahl. Ein Objekt in Schutzdaten-Quarantäne bleibt draussen,
+    // wie es die Suche ebenfalls auslässt.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const bekannt = new Set(vorauswahl.map((ko) => ko.id));
+    const fruehereIds = await this.koService.koIdsMitPassenderFassung(
+      suchterme.slice(0, ASK_PREFILTER_MAX_TERMS),
+      new Date(stichtagMs).toISOString(),
+      ASK_CANDIDATE_PREFILTER_LIMIT,
+      () => this.pruefeKiSperre("vorauswahl", kiBeginn),
+    );
+    const nachgeladen = (
+      await Promise.all(
+        fruehereIds
+          .filter((id) => !bekannt.has(id))
+          .map((id) =>
+            this.koService
+              .get(id, () => this.pruefeKiSperre("vorauswahl", kiBeginn))
+              .catch((fehler: unknown) => {
+                if (fehler instanceof AskError) {
+                  throw fehler;
+                }
+                return undefined;
+              }),
+          ),
+      )
+    ).filter((ko): ko is KnowledgeObject => ko !== undefined && !inSchutzdatenQuarantaene(ko));
+    const kandidaten = dropConfidential(
+      [...vorauswahl, ...nachgeladen].filter((ko) => grundlageSichtbarFuer(ko)),
+    );
+    // Verlauf, Abbilder und Protokoll lesen Kundeninhalt — dieselbe Sperre wie vor der Vorauswahl.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const seiten: VergleichsSeiten[] = await Promise.all(
+      kandidaten.map(async (ko) => {
+        const fassung = fassungZumStichtag(
+          ko,
+          await this.koService.versionsOf(ko.id).catch(() => []),
+          stichtagMs,
+        );
+        // Ohne Protokoll gibt es keinen Freigabebeleg — dann trägt keine damalige Fassung.
+        const protokoll =
+          fassung.art === "fassung" && this.audit
+            ? await this.audit.list({ target: ko.id }).catch(() => [])
+            : [];
+        const frueher = fassung.art === "fassung" ? fassung.ko : null;
+        return {
+          heute: ko,
+          grundlageHeute: ko.status === "validiert",
+          fassung,
+          freigabeDamals:
+            fassung.art === "fassung" &&
+            freigabeZumStichtagBelegt(ko, fassung.version, protokoll, stichtagMs),
+          damalsZulaessig:
+            frueher !== null &&
+            !isConfidential(frueher.confidentiality) &&
+            grundlageSichtbarFuer(frueher) &&
+            !inSchutzdatenQuarantaene(frueher) &&
+            erkenneSchutzdaten([
+              frueher.title,
+              frueher.statement,
+              visibleTextFromBodyHtml(frueher.bodyHtml),
+              ...(frueher.conditions ?? []),
+              ...(frueher.measures ?? []),
+            ]).length === 0,
+        };
+      }),
+    );
+    // Der Vertrauenswert wird nicht historisch geführt — beide Seiten tragen den heutigen, damit er
+    // keinen Unterschied erzeugt, den es im Wissen nicht gibt.
+    const heute = await this.antwortAusFassungen(
+      question,
+      seiten.filter((s) => s.grundlageHeute).map((s) => ({ ko: s.heute, trust: s.heute.trust })),
+      locale,
+      relevanz,
+      actor,
+      kiBeginn,
+    );
+    const damals = await this.antwortAusFassungen(
+      question,
+      seiten.flatMap((s) => {
+        const ko = grundlageDamals(s);
+        return ko ? [{ ko, trust: s.heute.trust }] : [];
+      }),
+      locale,
+      relevanz,
+      actor,
+      kiBeginn,
+    );
+    const quellen = seiten
+      .filter((s) => heute.sources.includes(s.heute.id) || damals.sources.includes(s.heute.id))
+      .map((s) => {
+        const id = s.heute.id;
+        return vergleichsQuelle(s, heute.sources.includes(id), damals.sources.includes(id));
+      });
+    const geaendert = antwortGeaendert(heute, damals);
+    await this.audit?.record({
+      actor,
+      action: "ask.vergleich",
+      target: "-",
+      payload: {
+        stichtag: new Date(stichtagMs).toISOString(),
+        kandidaten: kandidaten.length,
+        grundlageHeute: seiten.filter((s) => s.grundlageHeute).length,
+        grundlageDamals: seiten.filter((s) => grundlageDamals(s) !== null).length,
+        antwortGeaendert: geaendert,
+      },
+    });
+    return {
+      stichtag: new Date(stichtagMs).toISOString(),
+      heute,
+      damals,
+      antwortGeaendert: geaendert,
+      quellen,
+    };
+  }
+
+  /**
+   * Eine Antwort aus einer festen Menge von Fassungen — derselbe Weg wie in `ask` ab der
+   * Suchprojektion: Volltext aus derselben Projektionsregel, beide Auswahltore, Antwortweg, und
+   * die Quellenpflicht danach. Der Volltext entsteht hier aus dem Inhalt der übergebenen Fassung
+   * (`buildSearchProjection`), weil die gespeicherte Projektion nur die heutige Fassung kennt.
+   */
+  private async antwortAusFassungen(
+    question: string,
+    grundlage: readonly { ko: KnowledgeObject; trust: number }[],
+    locale: ReasonerLocale,
+    relevanz: Relevanztext,
+    actor: string,
+    kiBeginn: number | undefined,
+  ): Promise<AnswerResult> {
+    const jetzt = new Date(this.now()).toISOString();
+    const refs = grundlage.map(({ ko, trust }): KnowledgeRef => {
+      const bodyText = buildSearchProjection(ko, jetzt).bodyText;
+      return {
+        id: ko.id,
+        title: ko.title,
+        statement: ko.statement,
+        status: "validiert",
+        trust,
+        ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
+        ...(bodyText.trim() ? { bodyText } : {}),
+      };
+    });
+    const ordnung = new Map<string, string[]>(
+      grundlage.map(({ ko }): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
+    );
+    const vollstaendig = refs.filter((ref) =>
+      decktAlleFragebegriffe(
+        question,
+        [
+          ref.title,
+          ref.statement,
+          ...(ref.captionTexts ?? []),
+          ref.bodyText ?? "",
+          ...(ordnung.get(ref.id) ?? []),
+        ].join(" "),
+        relevanz,
+      ),
+    );
+    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
+    const kontextVertraulich = grundlage.some(({ ko }) => isConfidential(ko.confidentiality));
+    this.pruefeKiSperre("antwortweg", kiBeginn);
+    const roh = await this.mitUebertragungssperre(() =>
+      this.reasoner.answer(question, candidates, locale, kontextVertraulich, { actor }, relevanz),
+    );
+    this.pruefeKiSperre("ergebnis", kiBeginn);
+    const { abgeschnitten: _abgeschnittenVerworfen, ...ohneAbbruch } = roh;
+    return roh.answered && roh.sources.length === 0
+      ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
+      : roh;
   }
 
   /**
@@ -2052,6 +2374,8 @@ export class AskService {
     locale?: ReasonerLocale,
     // D5: die Sperre des Fragewegs — bis vor jede Anweisung der Lückenablage (`insertOrIncrement`).
     vorInhaltsabruf?: () => void,
+    // R-0291: der Belegbedarf aus der Vorauswahl; fehlt nur bei Aufrufern ohne Vorauswahl.
+    belegbedarf?: GapBelegbedarf[],
   ): Promise<Gap> {
     // JOB 1111 / D-032: der Vergleichsschlüssel entsteht HIER, aus demselben Text, der gespeichert
     // wird — nicht aus dem Rohtext. So können Text und Schlüssel niemals auseinanderlaufen.
@@ -2075,6 +2399,7 @@ export class AskService {
       // nicht mit jeder anderen solchen Frage über eine gemeinsame Leere zusammenfallen. Dann
       // wird das Feld weggelassen und die Lücke ist wie ein Altbestand nicht dedupfähig.
       ...(compareKey ? { compareKey, askCount: 1 } : {}),
+      ...(belegbedarf?.length ? { belegbedarf } : {}),
     };
     // ============================================================================================
     // JOB 1111 / D-032 — HIER ENTSCHEIDET SICH: NEUE LÜCKE ODER EINE WEITERE STIMME.

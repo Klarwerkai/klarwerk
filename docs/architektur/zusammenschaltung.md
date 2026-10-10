@@ -120,6 +120,7 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `validationSettings` | `InMemoryValidationSettingsRepo` | `PgValidationSettingsRepo` |
 | `externalKnowledge` | `InMemoryExternalKnowledgePolicyRepo` | `PgExternalKnowledgePolicyRepo` |
 | `uploadLimits` | `InMemoryUploadLimitsRepo` | `PgUploadLimitsRepo` |
+| `nulltreffer` | `InMemoryNulltrefferRepo` | `PgNulltrefferRepo` |
 | `answerSnapshots` | `InMemoryAnswerSnapshotRepo` | `PgAnswerSnapshotRepo` |
 
 **Einhängestellen ausserhalb von `AppRepos`** — die Optionen von `assembleServices`. Sie stehen
@@ -139,6 +140,8 @@ im Postgres-Betrieb schon.
 | `brandingSettings` | Speicherablage | `PgBrandingSettingsRepo` |
 | `confluenceImportSchalter` | `InMemoryConfluenceImportSchalterRepo` (Betreiberschalter des Confluence-Imports) | `PgConfluenceImportSchalterRepo` |
 | `bearbeitungen` | Speicherfassung mit Prozessuhr | `PgBearbeitungsRepo` |
+| `officeAblage` | `SpeicherOfficeAblage` (kein Neustartschutz) | `PgOfficeAblage` |
+| `uebersetzungen` | `InMemoryUebersetzungRepo` (im Betrieb gepflegte Oberflächentexte und angelegte Sprachen, R-1034) | `PgUebersetzungRepo` |
 
 ## 5 Gemeinsame Klammern
 

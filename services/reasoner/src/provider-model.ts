@@ -1,12 +1,19 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 // JOB 3276: die leere Modellantwort im assist-Pfad ist ein Fehler mit Grund — dieselbe typisierte
 // Klasse, die der HTTP-Chokepoint (model-client.ts) wirft, damit die Kette EINE Fehlerart kennt.
+import {
+  interviewResearchSubject,
+  normalizeInterviewResearch,
+  normalizeInterviewSources,
+  normalizeInterviewTopic,
+  parseInterviewResearch,
+} from "./interview-tree";
 import { ModelEmptyResponseError, ReasonerMeldungFehler } from "./model-errors";
 import {
   DEFAULT_TOP_K,
   type ReasonerProvider,
   answerStanding,
-  deterministicInterview,
+  guidedInterview,
   normalizeInterviewImageContext,
   // JOB 3298: DIESELBE Zerlegung, die das Relevanzmaß benutzt — der Auszug wird nach der GLEICHEN
   // Wortauffassung gewählt, nach der die Quelle überhaupt Kandidat wurde. Eine zweite Tokenisierung
@@ -18,6 +25,7 @@ import {
 import {
   type AbbruchBefund,
   type AnswerResult,
+  type ArgumentationsGlied,
   type AssistResult,
   type CandidateGroup,
   type ConflictJudgeResult,
@@ -29,6 +37,8 @@ import {
   type ExtractedPoint,
   type GroupCandidateInput,
   type GroupCandidatesResult,
+  type InterviewOptions,
+  type InterviewResearchPoint,
   type InterviewResult,
   type KlaraVorschlagUrteil,
   type KnowledgeRef,
@@ -403,6 +413,40 @@ export function pruefeDeckung(
     aussagen.push({ text: satz, quellen: quellen.map((q) => q.id), zitatVon, nachlauf, gedeckt });
   }
   return { gedeckt: aussagen.every((a) => a.gedeckt), aussagen };
+}
+
+/**
+ * R-1643 · DIE ARGUMENTATIONSKETTE AUS DEM DECKUNGSBEFUND.
+ *
+ * `pruefeDeckung` zerlegt den Modelltext ohnehin in Aussagen und misst je Aussage, welche markierte
+ * Quelle sie im Wortlaut enthält. Genau diese Zuordnung ist die nachvollziehbare Begründung „Aussage
+ * → belegt durch Quelle", die das Entscheidungs-Protokoll verlangt — sie wird hier nur nicht mehr
+ * weggeworfen. Kein neuer Modellaufruf, kein formulierter Text.
+ *
+ * Aufgenommen wird nur, was eine messbare Quelle hat (`zitatVon`). Aussagen ohne Inhalt (ein
+ * nackter Satzpunkt nach der Marke) tragen nichts zur Begründung bei und fallen weg. Ist die Antwort
+ * nicht gedeckt, gibt es KEINE Kette aus diesem Befund — dann geht auch der Modelltext nicht hinaus.
+ */
+export function argumentationAus(befund: DeckungBefund): ArgumentationsGlied[] {
+  if (!befund.gedeckt) {
+    return [];
+  }
+  return befund.aussagen.flatMap((a) =>
+    a.zitatVon === null
+      ? []
+      : [
+          {
+            // Ein Segment beginnt hinter der vorigen Marke — oft mit deren Satzpunkt („[1]. Ventil …").
+            aussage: a.text
+              .replace(MARKE, " ")
+              .replace(/\s+/g, " ")
+              .replace(/^[\s.,;:!?]+/, "")
+              .trim(),
+            quellen: a.quellen,
+            belegtDurch: a.zitatVon,
+          },
+        ],
+  );
 }
 
 /**
@@ -995,7 +1039,12 @@ export function rueckfallStand(
   tragend: readonly KnowledgeRef[],
   kontext: readonly KnowledgeRef[],
   locale: ReasonerLocale,
-): { refs: KnowledgeRef[]; text: string } | null {
+): {
+  refs: KnowledgeRef[];
+  text: string;
+  // R-1643: je ausgegebenem Wortlaut seine Quelle — die Argumentationskette des Rückfalls.
+  stimmen: { ref: KnowledgeRef; text: string }[];
+} | null {
   const gewaehlt = rueckfallAntwort(frage, tragend);
   if (!gewaehlt) {
     return null;
@@ -1019,11 +1068,12 @@ export function rueckfallStand(
     weitere.push({ ref, text });
   }
   if (weitere.length === 0) {
-    return { refs: [gewaehlt.ref], text: gewaehlt.text };
+    return { refs: [gewaehlt.ref], text: gewaehlt.text, stimmen: [gewaehlt] };
   }
   const stimmen = [gewaehlt, ...weitere];
   return {
     refs: stimmen.map((s) => s.ref),
+    stimmen,
     // Absatzweise (Leerzeile), weil die Fläche den Antworttext als Markdown rendert: so steht jede
     // Quelle für sich, statt dass zwei Auskünfte zu einem Fließtext verschmelzen.
     text: [UNGEKLAERT[locale], ...stimmen.map((s) => `${s.ref.title}: ${s.text}`)].join("\n\n"),
@@ -1789,6 +1839,29 @@ function interviewPhotoGuidance(locale: ReasonerLocale): string {
   );
 }
 
+// R-0088: die Auswertung der abgerufenen Quellen zum Interviewthema. Ergebnis sind PRÜFPUNKTE für
+// Rückfragen, keine Wissensaussagen: jeder Punkt ist einem Baumknoten zugeordnet, nennt seine
+// Quelle (Nummer) und wird dem Experten als Frage vorgelegt, nie als Tatsache in den Entwurf
+// geschrieben. Nur was in den Quellen steht — kein Modellwissen.
+function interviewResearchSystem(locale: ReasonerLocale): string {
+  const base = taskInstruction(
+    locale,
+    'Du wertest die nummerierten Quellen für ein Experteninterview zum genannten Fachthema aus. Leite AUSSCHLIESSLICH aus diesen Quellen höchstens drei fachliche Prüfpunkte ab, nach denen ein erfahrener Kollege gezielt nachfragen würde: Grenz- oder Schwellenwerte, Ausnahmen, Ursachen, verworfene Alternativen, Geltungsgrenzen, Risiken. Nutze kein eigenes Wissen. Jeder Punkt ist ein kurzer Hinweis (höchstens 25 Wörter), der beim Experten GEPRÜFT werden soll — keine Tatsachenbehauptung. Ordne jeden Punkt genau einem Knoten zu (schwelle, ausnahme, warum, alternativen, geltung oder risiko) und nenne die Nummer der Quelle, aus der er stammt. Antworte AUSSCHLIESSLICH mit JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. Geben die Quellen zum Thema nichts her, antworte {"punkte":[]}.',
+    'You evaluate the numbered sources for an expert interview on the given subject. Derive, EXCLUSIVELY from these sources, at most three technical check points a seasoned colleague would ask about specifically: limits or thresholds, exceptions, causes, rejected alternatives, scope limits, risks. Do not use your own knowledge. Each point is a short hint (at most 25 words) to be CHECKED with the expert — not a statement of fact. Assign each point to exactly one node (schwelle, ausnahme, warum, alternativen, geltung or risiko) and give the number of the source it comes from. Respond ONLY with JSON: {"punkte":[{"knoten":"schwelle","hinweis":"...","quelle":1}]}. If the sources yield nothing on the subject, respond {"punkte":[]}.',
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
+}
+
+// R-0088: Zusatz zum Interview-Prompt, wenn Recherchepunkte vorliegen. Sie machen die Frage
+// gezielter — sie werden aber nie als Wissen vorausgesetzt.
+function interviewResearchGuidance(locale: ReasonerLocale): string {
+  return taskInstruction(
+    locale,
+    "Nutze die Recherchehinweise, um gezielter und fachlich tiefer nachzuhaken. Liegt ein Prüfpunkt für diese Frage vor, frag konkret danach, ob und wie er beim Experten gilt. Stelle Recherchehinweise NIE als Tatsache dar und übernimm sie nicht als Antwort.",
+    "Use the research hints to probe more specifically and in more technical depth. If a check point is given for this question, ask concretely whether and how it applies for the expert. NEVER present research hints as fact and do not adopt them as an answer.",
+  );
+}
+
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
 const LABELS: Record<ReasonerLocale, Record<string, string>> = {
   de: {
@@ -1797,6 +1870,11 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Bisherige Antworten",
     guiding: "Leitfrage",
     none: "(noch keine)",
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): das Fachthema des Interviews.
+    topic: "Fachthema des Interviews",
+    // R-0088: die Fachrecherche — ausdrücklich ungeprüft.
+    research: "Recherchehinweise (ungeprüft, keine Fakten)",
+    researchAim: "Prüfpunkt für diese Frage",
     // JOB 3298: die Beschriftung des Dokumenttext-Auszugs im Grounding. Sie ist ein EIGENES Feld
     // und nicht an die Aussage angehängt — der Leser des Prompts (das Modell) soll sehen, dass hier
     // Quelltext steht, den es zitieren darf, und nicht eine zweite Kernaussage.
@@ -1813,6 +1891,9 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Previous answers",
     guiding: "Guiding question",
     none: "(none yet)",
+    topic: "Subject of the interview",
+    research: "Research hints (unverified, not facts)",
+    researchAim: "Check point for this question",
     excerpt: "Document text (excerpt)",
     selection: "Selected passage in the document (context of the question, not a source)",
     imageFinding: "Image finding (photo, confirmed by the expert)",
@@ -1825,6 +1906,9 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Eerdere antwoorden",
     guiding: "Leidende vraag",
     none: "(nog geen)",
+    topic: "Onderwerp van het interview",
+    research: "Onderzoekshints (niet geverifieerd, geen feiten)",
+    researchAim: "Controlepunt voor deze vraag",
     excerpt: "Documenttekst (fragment)",
     selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
     imageFinding: "Beeldbevinding (foto, door de expert bevestigd)",
@@ -1944,38 +2028,126 @@ export function chunkForExtract(doc: string, size = EXTRACT_CHUNK_LENGTH): strin
   return chunks;
 }
 
-// Whitespace-normalisierter, case-insensitiver Substring-Check: die Belegstelle muss wirklich
-// im Dokument stehen. Das ist der harte G-2-Gate gegen erfundene/paraphrasierte „Zitate".
-function normalizeForMatch(text: string): string {
-  return text.replace(/\s+/g, " ").trim().toLowerCase();
+// G-2-Gate gegen erfundene/paraphrasierte „Zitate": die Belegstelle muss wirklich im Dokument
+// stehen. R-0157/R-1070 (Nacharbeit 1): der frühere Rückfall auf „nur Buchstaben/Ziffern" warf
+// Vorzeichen und Vergleichszeichen weg und nahm so „-20" für „+20" oder „<" für „<=". Toleriert
+// werden jetzt NUR begründete Textartefakte, die keine Bedeutung tragen:
+//  - Leerraum (Folgen, Umbrüche, geschützte Leerzeichen) gilt als ein Leerzeichen;
+//  - Groß-/Kleinschreibung;
+//  - Silbentrennung am Zeilenende (SCRUM-418, PDF): Buchstabe, Trennstrich, Leerraum MIT
+//    Zeilenumbruch, Kleinbuchstabe — „Dosier-\npumpe" ist „Dosierpumpe"; weiche Trennstriche;
+//  - typografische Ligaturen (ﬁ/ﬂ …) und Anführungszeichen-Varianten.
+// Jedes Zeichen der normalisierten Fassung merkt sich seine Position im Ausgangstext, damit die
+// gefundene Stelle im ORIGINALWORTLAUT zurückgegeben werden kann.
+interface MatchText {
+  text: string;
+  pos: number[]; // pos[i] = Index im Ausgangstext, aus dem text[i] stammt
 }
 
-// SCRUM-418: nur Buchstaben/Ziffern, kleingeschrieben. Fällt Silbentrennung (Dosier-\npumpe),
-// Zeilenumbrüche, Bindestriche und Sonderzeichen aus der PDF-Extraktion weg — genau die
-// Artefakte, an denen echte Zitate sonst am G-2-Gate scheiterten.
-function alnumOnly(text: string): string {
-  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+const WEICHER_TRENNSTRICH = 0xad;
+const TRENNSTRICH = 0x2010;
+const SILBENTRENNUNG = /^-[^\S\n\r]*[\n\r]\s*(?=\p{Ll})/u;
+const ANFUEHRUNG_DOPPELT = /[„“”«»]/u;
+const ANFUEHRUNG_EINFACH = /[‚‘’‹›]/u;
+
+function normalizeForMatch(source: string): MatchText {
+  let text = "";
+  const pos: number[] = [];
+  let i = 0;
+  while (i < source.length) {
+    const cp = source.codePointAt(i) ?? 0;
+    const ch = String.fromCodePoint(cp);
+    if (cp === WEICHER_TRENNSTRICH) {
+      i += ch.length;
+      continue;
+    }
+    if (/\s/u.test(ch)) {
+      let j = i;
+      while (j < source.length && /\s/u.test(source[j] ?? "")) {
+        j += 1;
+      }
+      if (text.length > 0 && j < source.length) {
+        text += " ";
+        pos.push(i);
+      }
+      i = j;
+      continue;
+    }
+    if ((ch === "-" || cp === TRENNSTRICH) && /\p{L}$/u.test(text)) {
+      const trennung = SILBENTRENNUNG.exec(`-${source.slice(i + ch.length)}`);
+      if (trennung) {
+        i += trennung[0].length;
+        continue;
+      }
+    }
+    let norm = ch;
+    if (ANFUEHRUNG_DOPPELT.test(ch)) {
+      norm = '"';
+    } else if (ANFUEHRUNG_EINFACH.test(ch)) {
+      norm = "'";
+    } else if (cp >= 0xfb00 && cp <= 0xfb06) {
+      norm = ch.normalize("NFKC");
+    }
+    norm = norm.toLowerCase();
+    text += norm;
+    for (let k = 0; k < norm.length; k += 1) {
+      pos.push(i);
+    }
+    i += ch.length;
+  }
+  return { text, pos };
+}
+
+// Die Fundstelle darf kein Wort, keine Zahl und kein Vorzeichen anschneiden: „20 Grad" ist kein
+// Beleg aus „-20 Grad", „5 bar" keiner aus „1,5 bar" oder „15 bar", „= 20" keiner aus „<= 20".
+const ZEICHENFOLGE = /[\p{L}\p{N}+\-−±<>=≤≥~≈%‰°]/u;
+const ZIFFER = /\p{N}/u;
+
+function schneidetAn(hay: string, needle: string, at: number): boolean {
+  const first = needle[0] ?? "";
+  const last = needle[needle.length - 1] ?? "";
+  const vor = hay[at - 1] ?? "";
+  const nach = hay[at + needle.length] ?? "";
+  if (ZEICHENFOLGE.test(vor) && ZEICHENFOLGE.test(first)) {
+    return true;
+  }
+  if (ZEICHENFOLGE.test(nach) && ZEICHENFOLGE.test(last)) {
+    return true;
+  }
+  // Dezimal-/Tausendertrenner: „5" aus „1,5" bzw. „1" aus „1,5".
+  if (ZIFFER.test(first) && /[.,]/.test(vor) && ZIFFER.test(hay[at - 2] ?? "")) {
+    return true;
+  }
+  return ZIFFER.test(last) && /[.,]/.test(nach) && ZIFFER.test(hay[at + needle.length + 1] ?? "");
+}
+
+// Liefert die Belegstelle im Originalwortlaut des Dokuments — oder null, wenn sie dort nicht steht.
+export function findExcerptInDocument(excerpt: string, documentText: string): string | null {
+  const needle = normalizeForMatch(excerpt).text;
+  if (needle.length === 0) {
+    return null;
+  }
+  const hay = normalizeForMatch(documentText);
+  let at = hay.text.indexOf(needle);
+  while (at >= 0 && schneidetAn(hay.text, needle, at)) {
+    at = hay.text.indexOf(needle, at + 1);
+  }
+  if (at < 0) {
+    return null;
+  }
+  const start = hay.pos[at] ?? 0;
+  const last = hay.pos[at + needle.length - 1] ?? start;
+  const lastCp = documentText.codePointAt(last) ?? 0;
+  return documentText.slice(start, last + String.fromCodePoint(lastCp).length);
 }
 
 export function excerptFoundInDocument(excerpt: string, documentText: string): boolean {
-  const needle = normalizeForMatch(excerpt);
-  if (needle.length === 0) {
-    return false;
-  }
-  if (normalizeForMatch(documentText).includes(needle)) {
-    return true;
-  }
-  // Toleranter Rückfall gegen PDF-Artefakte (Silbentrennung/Umbrüche/Sonderzeichen).
-  // Mindestlänge 12, damit der lockerere Vergleich keine Zufallstreffer erzeugt.
-  const alnumNeedle = alnumOnly(excerpt);
-  if (alnumNeedle.length < 12) {
-    return false;
-  }
-  return alnumOnly(documentText).includes(alnumNeedle);
+  return findExcerptInDocument(excerpt, documentText) !== null;
 }
 
 // Modell-Antwort → geprüfte Punkteliste. Ehrlichkeit vor Vollständigkeit:
 //  - Punkte ohne Titel ODER ohne im Dokument auffindbare Belegstelle werden VERWORFEN.
+//  - sourceExcerpt ist die GEFUNDENE Stelle im Originalwortlaut, nicht die Fassung des Modells.
 //  - Fehlende summary fällt auf den Titel zurück (keine Erfindung, nur Wiederholung).
 //  - Liste und Feldlängen sind gedeckelt (MAX_EXTRACT_POINTS / MAX_EXCERPT_LENGTH).
 // Wirft bei strukturell unbrauchbarer Antwort (kein JSON) — der Reasoner fällt dann auf den
@@ -1994,10 +2166,12 @@ export function parseExtractResponse(raw: string, documentText: string): Extract
     const rec = entry as Record<string, unknown>;
     const title = String(rec.title ?? "").trim();
     const summary = String(rec.summary ?? "").trim();
-    const sourceExcerpt = String(rec.sourceExcerpt ?? "")
+    const modelExcerpt = String(rec.sourceExcerpt ?? "")
       .trim()
       .slice(0, MAX_EXCERPT_LENGTH);
-    if (title.length === 0 || !excerptFoundInDocument(sourceExcerpt, documentText)) {
+    const sourceExcerpt =
+      title.length === 0 ? null : findExcerptInDocument(modelExcerpt, documentText);
+    if (sourceExcerpt === null) {
       continue; // G-2: kein Punkt ohne echte Belegstelle im Dokument
     }
     points.push({ title, summary: summary || title, sourceExcerpt });
@@ -2281,6 +2455,10 @@ export class ModelProvider implements ReasonerProvider {
 
   // SCRUM-132: Modell formuliert nur die nächste Frage; Abschluss + Draft-Verdichtung
   // bleiben deterministisch (kein Erfinden von Inhalt). demo=false, da Modell genutzt.
+  //
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0088): im Fragebaum bzw. Lücken-Interview steht das
+  // Fachthema mit im Prompt — das Modell richtet die Leitfrage darauf aus, statt allgemein zu fragen.
+  // Baum, Restlückenwert und Entwurf bleiben deterministisch; ersetzt wird nur der Fragetext.
   async interview(
     answers: readonly string[],
     locale: ReasonerLocale = "de",
@@ -2289,28 +2467,94 @@ export class ModelProvider implements ReasonerProvider {
     // R-1624: bestätigter Bildbefund (Klartext). Reist im selben complete()-Aufruf und damit durch
     // denselben Vertraulichkeits-Wächter wie die Antworten — kein neuer Egress-Pfad.
     imageContext?: string,
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema.
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const finding = normalizeInterviewImageContext(imageContext);
     const photo = finding.length > 0;
-    const base = deterministicInterview(answers, false, locale, photo);
+    const base = guidedInterview(answers, false, locale, imageContext, options);
     if (base.done || base.question === null) {
       return base;
     }
     const client = this.requireClient();
     const labels = LABELS[locale];
     const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    // Fragebaum (nicht Foto): nur dort trägt das Ergebnis einen Knoten.
+    const baum = !photo && base.node !== undefined;
+    // Das Fachthema gilt nur für den Fragebaum; das Foto-Interview behält seinen Bildbefund.
+    const topic = baum ? normalizeInterviewTopic(options.topic) : "";
+    const research = baum
+      ? await this.researchInterviewTopic(answers, locale, confidential, options)
+      : [];
+    const aimed = research.find((p) => p.node === base.node);
     const system = photo
       ? `${interviewSystem(locale)}\n${interviewPhotoGuidance(locale)}`
-      : interviewSystem(locale);
+      : research.length > 0
+        ? `${interviewSystem(locale)}\n${interviewResearchGuidance(locale)}`
+        : interviewSystem(locale);
     const findingBlock = photo ? `${labels.imageFinding}:\n${finding}\n\n` : "";
+    const topicLine = topic ? `${labels.topic}: ${topic}\n\n` : "";
+    const researchBlock =
+      research.length > 0
+        ? `${labels.research}:\n${research.map((p) => `- ${p.hint}`).join("\n")}\n\n`
+        : "";
+    const aimLine = aimed ? `\n${labels.researchAim}: ${aimed.hint}` : "";
     const phrased = (
       await client.complete(
         system,
-        `${findingBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}`,
+        `${findingBlock}${topicLine}${researchBlock}${labels.priorAnswers}:\n${prior || labels.none}\n\n${labels.guiding}: ${base.question}${aimLine}`,
         confidential,
       )
     ).trim();
-    return { ...base, question: phrased || base.question };
+    return {
+      ...base,
+      question: phrased || base.question,
+      ...(research.length > 0 ? { research } : {}),
+    };
+  }
+
+  // R-0088 (Bens Befund nacharbeit-4): die gezielte Fachrecherche zum Thema des Interviews. EIN
+  // Modellaufruf je Interview: hat der Client die Recherche eines früheren Turns zurückgereicht, wird
+  // sie (geprüft und gekappt) wiederverwendet. Worüber recherchiert wird, ist das Lücken-Thema, sonst
+  // die Kernaussage — vor ihr gibt es nichts zu recherchieren. Die Punkte sind ungeprüfte Anlässe für
+  // Rückfragen: der Aufrufer zeigt sie als solche, und in den Entwurf kommen sie nie. Scheitert der
+  // Aufruf oder ist die Antwort unlesbar, läuft das Interview ehrlich OHNE Recherche weiter (kein
+  // erfundener Ersatz) — der Fehler einer Vertraulichkeitssperre trifft danach die Frage selbst.
+  //
+  // BENS BEFUND (nacharbeit-6): „Der Prompt ‚Du recherchierst' ersetzt keinen Recherchezugriff."
+  // Jetzt wertet dieser Aufruf nur noch QUELLEN aus, die die Route zum Thema tatsächlich abgerufen
+  // hat (`options.sources`, Quellensuche `services/external-search`). Ohne Quellen: keine Recherche
+  // und kein Modellaufruf. Jeder Prüfpunkt muss eine dieser Quellen nennen, sonst fällt er weg.
+  private async researchInterviewTopic(
+    answers: readonly string[],
+    locale: ReasonerLocale,
+    confidential: boolean,
+    options: InterviewOptions,
+  ): Promise<InterviewResearchPoint[]> {
+    const known = normalizeInterviewResearch(options.research);
+    if (known.length > 0) {
+      return known;
+    }
+    const subject = interviewResearchSubject(answers, options);
+    const sources = normalizeInterviewSources(options.sources);
+    if (!subject || sources.length === 0) {
+      return [];
+    }
+    const labels = LABELS[locale];
+    const prior = answers.map((a, i) => `A${i + 1}: ${a}`).join("\n");
+    const quellenBlock = sources
+      .map((s, i) => `[${i + 1}] ${s.title} (${s.url})${s.snippet ? `\n${s.snippet}` : ""}`)
+      .join("\n\n");
+    try {
+      const raw = await this.requireClient().complete(
+        interviewResearchSystem(locale),
+        `${labels.topic}: ${subject}\n\n${labels.sources}:\n${quellenBlock}\n\n${labels.priorAnswers}:\n${prior || labels.none}`,
+        confidential,
+      );
+      return parseInterviewResearch(raw, sources);
+    } catch {
+      return [];
+    }
   }
 
   // PMO-FEA-0006: Wissens-Extraktion über das Modell. Die Antwort wird serverseitig gegen den
@@ -2324,7 +2568,11 @@ export class ModelProvider implements ReasonerProvider {
     confidential = false,
   ): Promise<ExtractResult> {
     const client = this.requireClient();
-    const doc = documentText.trim().slice(0, MAX_EXTRACT_DOCUMENT_LENGTH);
+    const fullDoc = documentText.trim();
+    const doc = fullDoc.slice(0, MAX_EXTRACT_DOCUMENT_LENGTH);
+    // R-0157/R-1070: was über dem Deckel liegt, sieht das Modell nie. Das wird unten ehrlich
+    // gesagt, statt die Liste als Ergebnis des GANZEN Dokuments auszugeben.
+    const documentCut = fullDoc.length > doc.length;
     if (doc.length === 0) {
       return {
         points: [],
@@ -2354,10 +2602,13 @@ export class ModelProvider implements ReasonerProvider {
     // ein eigener Modellaufruf ist. Gehalten wird der ZULETZT gemeldete; die Aussage, die daraus an
     // der Fläche wird, lautet „mindestens ein Abschnitt riss am Limit ab" und ist damit gedeckt.
     let abbruch: ModellAbbruchBefund | null = null;
+    // R-0157: erreicht die Liste den Deckel, bleiben die übrigen Abschnitte ungelesen.
+    let chunksRead = 0;
     for (const chunk of chunks) {
       if (points.length >= MAX_EXTRACT_POINTS) {
         break;
       }
+      chunksRead += 1;
       const { wert: raw, abbruch: abschnittAbbruch } = await mitAbbruchBefund(() =>
         client.complete(system, chunk, confidential, EXTRACT_MAX_TOKENS),
       );
@@ -2397,19 +2648,43 @@ export class ModelProvider implements ReasonerProvider {
       );
     }
     const incomplete = anyIncomplete || hardFailure;
-    return {
-      points,
-      note:
-        points.length > 0
-          ? incomplete
-            ? locale === "en"
-              ? "Note: part of the document could not be fully processed — this list may be incomplete. Every shown point still carries a verified source excerpt."
-              : "Hinweis: Ein Teil des Dokuments konnte nicht vollständig verarbeitet werden — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
-            : null
+    // R-0157/R-1070: nicht gelesene Teile (Dokumentdeckel oder Punktedeckel) werden benannt —
+    // weder „vollständig" noch „nichts gefunden" darf für Text gelten, den niemand ausgewertet hat.
+    const pointCapReached = chunksRead < chunks.length;
+    const unread = documentCut || pointCapReached;
+    const readLength = chunks.slice(0, chunksRead).join("").length;
+    const unreadNote =
+      locale === "en"
+        ? `Note: only the first ${readLength.toLocaleString("en")} of ${fullDoc.length.toLocaleString("en")} characters were analysed${pointCapReached ? ` (the list reached its limit of ${MAX_EXTRACT_POINTS} points)` : ""} — the rest of the document was not examined.`
+        : `Hinweis: Ausgewertet wurden nur die ersten ${readLength.toLocaleString("de")} von ${fullDoc.length.toLocaleString("de")} Zeichen${pointCapReached ? ` (die Liste hat ihre Grenze von ${MAX_EXTRACT_POINTS} Punkten erreicht)` : ""} — der Rest des Dokuments wurde nicht geprüft.`;
+    // Nacharbeit 1: die Verarbeitungswarnung verdrängt den Resthinweis nicht mehr — es sind zwei
+    // verschiedene Tatsachen (Abschnitt nicht sauber verarbeitet / Abschnitt nie gelesen).
+    const processingNote = incomplete
+      ? locale === "en"
+        ? "Note: part of the document could not be fully processed — this list may be incomplete. Every shown point still carries a verified source excerpt."
+        : "Hinweis: Ein Teil des Dokuments konnte nicht vollständig verarbeitet werden — diese Liste ist möglicherweise unvollständig. Jeder angezeigte Punkt trägt weiterhin eine geprüfte Belegstelle."
+      : null;
+    const leadNote =
+      points.length > 0
+        ? processingNote
+        : unread
+          ? locale === "en"
+            ? "No knowledge points with a verifiable source excerpt were found in the analysed part."
+            : "Im ausgewerteten Teil wurden keine Wissenspunkte mit belegbarer Textstelle gefunden."
           : locale === "en"
             ? "No knowledge points with a verifiable source excerpt were found in this document."
-            : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.",
+            : "In diesem Dokument wurden keine Wissenspunkte mit belegbarer Textstelle gefunden.";
+    const noteParts = [leadNote, unread ? unreadNote : null].filter(
+      (teil): teil is string => teil !== null,
+    );
+    return {
+      points,
+      note: noteParts.length > 0 ? noteParts.join(" ") : null,
       demo: false,
+      // Der Resthinweis zusätzlich als eigenes Feld: die Fläche blendet bei belegtem Anbieter-
+      // Abbruch die ABGELEITETE Verarbeitungswarnung aus (JOB 3366), darf dabei aber nicht die
+      // davon unabhängige Tatsache verlieren, dass Teile des Dokuments nie geprüft wurden.
+      ...(unread ? { ungelesenerRest: unreadNote } : {}),
       // JOB 3366: die Meldung des ANBIETERS, getrennt von der abgeleiteten `note` darüber.
       ...abbruchFeld(abbruch),
     };
@@ -2572,6 +2847,13 @@ export class ModelProvider implements ReasonerProvider {
           sourceId: r.id,
           snippet: r.statement,
         })),
+        // R-1643: jeder ausgegebene Wortlaut mit der Quelle, aus der er stammt. Der Begleitsatz
+        // „nicht geklärt" ist keine Aussage über die Sache und gehört nicht in die Kette.
+        argumentation: rueckfall.stimmen.map((s) => ({
+          aussage: s.text,
+          quellen: [s.ref.id],
+          belegtDurch: s.ref.id,
+        })),
         demo: false,
       };
     }
@@ -2594,6 +2876,8 @@ export class ModelProvider implements ReasonerProvider {
         sourceId: r.id,
         snippet: r.statement,
       })),
+      // R-1643: die Argumentationskette — dieselbe Zuordnung, die `pruefeDeckung` oben gemessen hat.
+      argumentation: argumentationAus(deckung),
       demo: false,
     };
   }

@@ -36,6 +36,57 @@ const ToastCtx = createContext<ToastApi | null>(null);
 const AUTO_DISMISS_MS = 4000;
 
 // ================================================================================================
+// R-0953 / R-1015 (Nacharbeit 7) — DER BUS OHNE HAKEN, FÜR DEN EINEN ORT.
+// ================================================================================================
+// Die Quelle von R-0953 sagt: „Die Härtung der Toasts ist Teil der geplanten globalen
+// Fehlerbrücke", R-1015 verlangt den „einheitlichen Rückweg an einer Stelle". Diese Stelle ist der
+// `MutationCache` des QueryClient (`lib/einblendungen.ts`) — und der lebt außerhalb jedes
+// React-Baums. Er erreicht den Bus deshalb über `einblenden`; jeder montierte `ToastProvider` hört
+// zu. Ohne Provider (Testvorrichtungen ohne Bus) verhallt die Meldung, statt abzustürzen.
+//
+// DOPPELMELDUNG JE AKTION (Ben, Nacharbeit 11). Bis hierher zählte ein globaler Stand JEDE
+// Einblendung, und der zentrale Weg trat zurück, sobald sich der Stand bewegt hatte — gleich, wer
+// eingeblendet hatte. Schlossen zwei Aktionen zugleich ab, verschluckte die Meldung der einen die
+// der anderen (etwa ein Erfolg einen Fehler). Jetzt zählt eine Einblendung nur für DIE Aktion, in
+// deren Rückruf sie fällt: `inAktion` klammert die Rückrufe einer Mutation, `push` und `einblenden`
+// vermerken die gerade laufende Aktion, und `hatGemeldet` fragt genau diese eine ab. Eine
+// Einblendung ohne laufende Aktion (fremde Fläche, anderer Zeitpunkt) unterdrückt nichts.
+type Melder = (kind: ToastKind, message: string) => void;
+const melder = new Set<Melder>();
+let laufendeAktion: object | null = null;
+const gemeldet = new WeakSet<object>();
+
+function vermerken(): void {
+  if (laufendeAktion !== null) {
+    gemeldet.add(laufendeAktion);
+  }
+}
+
+/** Führt `f` als Rückruf der Aktion `aktion` aus — Einblendungen darin zählen für sie. */
+export function inAktion<T>(aktion: object, f: () => T): T {
+  const vorher = laufendeAktion;
+  laufendeAktion = aktion;
+  try {
+    return f();
+  } finally {
+    laufendeAktion = vorher;
+  }
+}
+
+/** Ob die Aktion in einem ihrer Rückrufe selbst eingeblendet hat. */
+export function hatGemeldet(aktion: object): boolean {
+  return gemeldet.has(aktion);
+}
+
+/** Eine Einblendung über den Bus, ohne Haken — für Stellen außerhalb des React-Baums. */
+export function einblenden(kind: ToastKind, message: string): void {
+  vermerken();
+  for (const m of melder) {
+    m(kind, message);
+  }
+}
+
+// ================================================================================================
 // JOB 4339 — WARUM DIE TIMER VERWAHRT WERDEN UND NICHT EINFACH LAUFEN.
 // ================================================================================================
 // Bis 18.09. setzte `push` seinen 4-Sekunden-Timer und vergass ihn. Folge: der Timer feuerte auch
@@ -59,7 +110,7 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
     dispatch({ type: "remove", id });
   }, []);
 
-  const push = useCallback((kind: ToastKind, message: string) => {
+  const zeigen = useCallback((kind: ToastKind, message: string) => {
     const id = crypto.randomUUID();
     dispatch({ type: "add", toast: { id, kind, message } });
     const laufend = window.setTimeout(() => {
@@ -68,6 +119,23 @@ export function ToastProvider({ children }: { children: ReactNode }): JSX.Elemen
     }, AUTO_DISMISS_MS);
     timer.current.set(id, laufend);
   }, []);
+
+  // `push` der Flächen vermerkt die laufende Aktion (s. `inAktion`) und zeigt in DIESEM Provider.
+  const push = useCallback(
+    (kind: ToastKind, message: string) => {
+      vermerken();
+      zeigen(kind, message);
+    },
+    [zeigen],
+  );
+
+  // Der Bus ohne Haken erreicht diesen Provider, solange er montiert ist.
+  useEffect(() => {
+    melder.add(zeigen);
+    return () => {
+      melder.delete(zeigen);
+    };
+  }, [zeigen]);
 
   // Der Abbau räumt ALLE offenen Timer — auch die von Toasts, die `MAX_TOASTS` längst aus der
   // Anzeige verdrängt hat und deren Timer deshalb noch auf seine vier Sekunden wartet.
@@ -95,4 +163,12 @@ export function useToast(): ToastApi {
     throw new Error("useToast muss innerhalb von <ToastProvider> verwendet werden.");
   }
   return ctx;
+}
+
+/**
+ * Wie `useToast`, aber ohne Absturz außerhalb eines Providers (`null`). Für die Anzeige der
+ * Einblendungen an Orten, die auch ohne Bus montiert werden können (Anmeldeseiten).
+ */
+export function useToastOptional(): ToastApi | null {
+  return useContext(ToastCtx);
 }

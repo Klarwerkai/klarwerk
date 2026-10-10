@@ -20,12 +20,14 @@ import {
   leseFundstellenAnfrage,
   loeseFundstelleAuf,
   redactGapForViewer,
+  stichtagAus,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
 import {
   GELTUNG_TEXT_MAX,
   type KnowledgeObject,
   type KoService,
+  isConfidential,
   normalizeFragekontext,
   responsibleOf,
 } from "../../../knowledge-object";
@@ -38,7 +40,7 @@ import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
-import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { schluesselBetrachter, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
 // HÜLLE eines Requests:
@@ -82,8 +84,100 @@ const askBodySchema = {
       },
       additionalProperties: false,
     },
+    // AUFNAHME 20260922 (R-0305, R-1099) — DIE ZWEITMEINUNG: dieselbe Frage zusätzlich vom Modell
+    // beantworten lassen, das der Administrator dafür gewählt hat, und beide gegenüberstellen.
+    // Wirksam NUR im Konsolenzweig (wie `thread`); Add-on- und `retrieval-only`-Wege lassen es
+    // liegen, und Klaras eigener Zugang (R-0700) kennt das Feld gar nicht — ihre Egress-Verträge
+    // kennen keinen zweiten Empfänger und bekommen keinen.
+    zweitmeinung: { type: "boolean" },
+    // Klara 03 (produkt:20261007:klara-kontext-tutorial) — DER GEWÄHLTE SEITENKONTEXT. Wirkt wie
+    // Faden und Fragekontext NUR im Konsolenzweig. Ein Wissensobjekt (`koId`) löst die Route unter
+    // den Rechten des Fragenden auf (`seitenbezugAufloesen`); `kontext` ist der Titel des eigenen
+    // Entwurfs bzw. die aktuelle Frage der Seite. Kein Klara-Feld im Sinne von R-0700: es bindet
+    // nichts an ein Word-Dokument und trägt keine Markierung.
+    seitenbezug: {
+      type: "object",
+      properties: {
+        art: { type: "string", enum: ["artikel", "entwurf", "frage"] },
+        koId: { type: "string", minLength: 1, maxLength: 200 },
+        fassung: { type: "integer", minimum: 1 },
+        kontext: { type: "string", maxLength: 300 },
+      },
+      required: ["art"],
+      additionalProperties: false,
+    },
   },
 } as const;
+
+/** Klara 03: der Seitenbezug, wie er am Draht ankommt (Form vom Schema geprüft). */
+interface Seitenbezug {
+  art: "artikel" | "entwurf" | "frage";
+  koId?: string;
+  fassung?: number;
+  kontext?: string;
+}
+
+/** Klara 03: was die Antwort über den verwendeten Seitenbezug sagt — ohne Titel eines fremden Objekts. */
+interface SeitenbezugAuskunft {
+  art: Seitenbezug["art"];
+  /** `objekt`: aus diesem Objekt geantwortet; `kontext`: als Zusammenhang; sonst warum nicht. */
+  status: "objekt" | "kontext" | "nicht_zugaenglich" | "vertraulich";
+  koId?: string;
+  /** Die aktuelle Fassung des Objekts und die, die auf der Seite zu sehen war. */
+  fassung?: number;
+  angefragteFassung?: number;
+  fassungAbweichend?: boolean;
+  /** Hat das Objekt die Antwort tatsächlich getragen (unter den Quellen)? */
+  verwendet?: boolean;
+}
+
+/**
+ * Klara 03 · K1/K6: der Seitenbezug unter den Rechten DIESES Fragenden. Ein Wissensobjekt gilt nur,
+ * wenn es für ihn sichtbar und nicht vertraulich ist — dann reist sein (serverseitiger) Titel als
+ * Zusammenhang, und geantwortet wird nur aus ihm. Sonst gibt es keine Grundlage, und die Auskunft
+ * nennt weder Titel noch Fassung (keine Existenzauskunft über Fremdes).
+ */
+async function seitenbezugAufloesen(
+  ko: KoService,
+  user: SessionUser,
+  b: Seitenbezug,
+): Promise<{
+  zusatz: { kontext: string; nurObjekt?: string | null };
+  auskunft: SeitenbezugAuskunft;
+}> {
+  const kontextText = (b.kontext ?? "").trim();
+  if (!b.koId) {
+    return { zusatz: { kontext: kontextText }, auskunft: { art: b.art, status: "kontext" } };
+  }
+  const objekt = await ko.get(b.koId);
+  if (!objekt || !sichtbarkeitsfilterFuer(user)(objekt)) {
+    return {
+      zusatz: { kontext: "", nurObjekt: null },
+      auskunft: { art: b.art, status: "nicht_zugaenglich" },
+    };
+  }
+  if (isConfidential(objekt.confidentiality)) {
+    return {
+      zusatz: { kontext: "", nurObjekt: null },
+      auskunft: { art: b.art, status: "vertraulich", koId: objekt.id },
+    };
+  }
+  const kontext = [objekt.title, b.art === "frage" ? kontextText : ""]
+    .filter((teil) => teil.length > 0)
+    .join(" · ");
+  return {
+    zusatz: { kontext, nurObjekt: objekt.id },
+    auskunft: {
+      art: b.art,
+      status: "objekt",
+      koId: objekt.id,
+      fassung: objekt.version,
+      ...(b.fassung !== undefined
+        ? { angefragteFassung: b.fassung, fassungAbweichend: b.fassung !== objekt.version }
+        : {}),
+    },
+  };
+}
 
 // ================================================================================================
 // R-0700 · DIE KLARA-FELDER GEHÖREN NICHT MEHR ZUM ALLGEMEINEN FRAGEWEG.
@@ -924,6 +1018,8 @@ async function antwortLauf(
     readonly actorId: string;
     readonly opts?: AskOptionen;
     readonly zusatz?: Partial<AskOptionen>;
+    /** Klara 03: zweigeigene Auskünfte NEBEN der Antwort (z. B. `seitenbezug`). Ohne: wie bisher. */
+    readonly beilage?: (out: Awaited<ReturnType<AskService["ask"]>>) => Record<string, unknown>;
     // R-0346 (aus main integriert): `dokument`, wenn die Frage aus dem Dokument stammt oder die
     // Anfrage an ein Word-Dokument gebunden ist — Klaras Zugang immer; sonst `frage`. Bewusst NICHT
     // die bloße Markierung (KA5-R2).
@@ -939,8 +1035,10 @@ async function antwortLauf(
   if (betrachter) {
     grundlage = sichtbarkeitsfilterFuer(betrachter);
   } else {
+    // R-1175: auch ohne Sitzungsnutzer DIESELBE Entscheidung — `darfSehen` mit dem engsten
+    // Betrachter (keine Kennung, `viewer`, nur offene Spaces), statt einer eigenen Zeile.
     const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
-    grundlage = (ko) => typeof ko.spaceId !== "string" || offen.has(ko.spaceId);
+    grundlage = sichtbarkeitsfilterFuer(schluesselBetrachter(offen));
   }
   // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest). Jede Prüfung bis zur
   // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet die
@@ -1019,6 +1117,7 @@ async function antwortLauf(
     ...aussagenFeld,
     result: { ...out.result, evidence, belastbarkeit },
     ...(absaetze ? { absaetze } : {}),
+    ...(lauf.beilage ? lauf.beilage(out) : {}),
   });
 }
 
@@ -1064,6 +1163,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         locale?: string;
         mode?: string;
         thread?: string[];
+        zweitmeinung?: boolean;
         fragekontext?: unknown;
       } & Record<string, unknown>;
     }>(
@@ -1162,6 +1262,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           actorId: string,
           opts: AskOptionen,
           zusatz?: Partial<AskOptionen>,
+          beilage?: (out: Awaited<ReturnType<AskService["ask"]>>) => Record<string, unknown>,
         ): Promise<void> =>
           antwortLauf(deps, request, reply, {
             question,
@@ -1169,6 +1270,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             actorId,
             opts,
             ...(zusatz ? { zusatz } : {}),
+            ...(beilage ? { beilage } : {}),
             // R-0346: hier kommt eine Klara-Bindung nur noch mit einem Dienst-Schlüssel an (R-0688,
             // Abweisung oben); dann gilt wie bisher der Anlass `dokument`.
             anlass: klaraBindungVorhanden(request.headers) ? "dokument" : "frage",
@@ -1236,9 +1338,17 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // R-0348: nur hier — getippte Fragen eines Sitzungsnutzers ohne Dokumentbezug — reist der
         // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
         // R-1633: dieselbe Grenze für den Fragekontext — nur hier, sonst unangetastet.
+        // R-0305/R-1099: ebenso die Zweitmeinung — nur hier und nur auf ausdrückliche Anforderung.
+        // Klara 03: der gewählte Seitenkontext — nur hier, unter den Rechten dieses Fragenden.
+        const seitenbezug = request.body.seitenbezug as Seitenbezug | undefined;
+        const aufgeloest = seitenbezug
+          ? await seitenbezugAufloesen(deps.ko, user, seitenbezug)
+          : undefined;
         const konsolenZusatz = {
           ...(faden.length > 0 ? { gespraechsfaden: faden } : {}),
           ...(fragekontext ? { fragekontext } : {}),
+          ...(request.body.zweitmeinung === true ? { zweitmeinung: true } : {}),
+          ...(aufgeloest ? { seitenkontext: aufgeloest.zusatz } : {}),
         };
         await answer(
           user.id,
@@ -1248,6 +1358,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
           },
           Object.keys(konsolenZusatz).length > 0 ? konsolenZusatz : undefined,
+          aufgeloest
+            ? (out) => ({
+                seitenbezug: {
+                  ...aufgeloest.auskunft,
+                  ...(aufgeloest.auskunft.koId && aufgeloest.auskunft.status === "objekt"
+                    ? { verwendet: out.result.sources.includes(aufgeloest.auskunft.koId) }
+                    : {}),
+                },
+              })
+            : undefined,
         );
       },
     );
@@ -1269,6 +1389,88 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           reply.code(204).send();
         } catch (error) {
           sendError(reply, error);
+        }
+      },
+    );
+
+    // ============================================================================================
+    // R-1630 / R-2176 — DIESELBE FRAGE, BEANTWORTET AUS DEM WISSENSSTAND ZUM STICHTAG.
+    // ============================================================================================
+    //
+    // Nur die Konsole (Sitzung mit `ko.read`): der Vergleich trägt dieselben Grenzen wie der
+    // Konsolenweg von `/api/ask` — freigegebenes Wissen, nichts Vertrauliches, nur was dieser Mensch
+    // sehen darf (`sichtbarkeitsfilterFuer`). Der Add-on-Schlüssel und das Word-Panel (Klara-Bindung)
+    // haben hier keinen Weg: dort entscheidet die Einwilligung über jeden Modellaufruf, und dieser
+    // Vergleich ist dafür nicht gebaut. `stichtag` ist optional (`JJJJ-MM-TT`); ohne Angabe gilt
+    // „vor einem Jahr".
+    app.post<{ Body: { question?: string; locale?: string; stichtag?: string } }>(
+      "/api/ask/vergleich",
+      {
+        bodyLimit: ASK_BODY_LIMIT,
+        schema: {
+          body: {
+            type: "object",
+            required: ["question"],
+            properties: {
+              question: { type: "string", minLength: 1, maxLength: 8_000 },
+              locale: { type: "string" },
+              stichtag: { type: "string", maxLength: 10 },
+            },
+          },
+        },
+        onRequest: async (request) => {
+          if (request.askKiBeginn == null) {
+            request.askKiBeginn = ask.kiStand() ?? null;
+          }
+        },
+        preValidation: async (request, reply) => {
+          if (request.authContext?.authKind === "addon" || klaraBindungVorhanden(request.headers)) {
+            reply.code(403).send({
+              error: "FORBIDDEN",
+              message: "Der Antwortvergleich ist nur in der Konsole verfügbar.",
+            });
+            return reply;
+          }
+          const user = await guards.requirePermission("ko.read", request, reply);
+          if (!user) {
+            return reply;
+          }
+          request.askSessionUser = user;
+        },
+      },
+      async (request, reply) => {
+        const user = request.askSessionUser;
+        if (!user) {
+          reply.code(401).send({ error: "UNAUTHENTICATED", message: "Session erforderlich." });
+          return;
+        }
+        const locale: "de" | "en" | "nl" =
+          request.body.locale === "en" ? "en" : request.body.locale === "nl" ? "nl" : "de";
+        const stichtag = stichtagAus(request.body.stichtag, Date.now());
+        if (stichtag === null) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "Der Stichtag muss ein gültiger Tag vor heute sein (JJJJ-MM-TT).",
+          });
+          return;
+        }
+        const kiBeginn = request.askKiBeginn ?? undefined;
+        try {
+          ask.kiSperreVorFrage(kiBeginn);
+          const vergleich = await ask.vergleicheWissensstand(
+            request.body.question ?? "",
+            user.id,
+            locale,
+            stichtag,
+            sichtbarkeitsfilterFuer(user),
+          );
+          ask.kiSperreVorAuslieferung(kiBeginn);
+          reply.code(200).send(vergleich);
+        } catch (fehler) {
+          if (kiAbgeschaltetSenden(reply, fehler, locale)) {
+            return;
+          }
+          sendError(reply, fehler);
         }
       },
     );

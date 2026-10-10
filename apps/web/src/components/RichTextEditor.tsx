@@ -116,6 +116,7 @@ import { AiUnavailableHint } from "./AiUnavailableHint";
 // D44 Teil 2, Weg (a): nur der Ereignisname und seine Nutzlast — keine Komponente, kein Zyklus
 // (`BodyImageGallery` importiert nichts aus dieser Datei, gemessen).
 import { type D44BildEreignis, D44_BILD_EREIGNIS } from "./BodyImageGallery";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 // AUFTRAG-mega9 Block F: dieselbe Dialog-Vorrichtung wie überall sonst (Fokusfalle, Escape,
 // Rückgabe des Fokus) — kein eigener Dialog für das Bildbeschreibungs-Formular.
 import { Modal } from "./Modal";
@@ -2509,7 +2510,7 @@ export function RichTextEditor({
               onMouseDown={haltAuswahl}
               onClick={openLinkPanel}
             >
-              <LinkIcon size={14} />
+              <LinkIcon size={14} aria-hidden="true" />
             </button>
             {sep}
             <div className="relative">
@@ -2519,7 +2520,7 @@ export function RichTextEditor({
                 className={tb}
                 onClick={() => setShowImages((s) => !s)}
               >
-                <ImageIcon size={14} />
+                <ImageIcon size={14} aria-hidden="true" />
                 {t("editor.imageLabel")}
               </button>
               {showImages ? (
@@ -2549,9 +2550,13 @@ export function RichTextEditor({
                         die Datei gewählt wird. */}
                   <UploadLimitsHint className="mb-1 px-2 text-[11px] text-muted-2" />
                   {images.length === 0 ? (
-                    <p className="border-hairline border-t px-2 pb-1 pt-1.5 text-[11.5px] text-muted-2">
-                      {t("editor.noImages")}
-                    </p>
+                    <>
+                      <p className="border-hairline border-t px-2 pb-1 pt-1.5 text-[11.5px] text-muted-2">
+                        {t("editor.noImages")}
+                      </p>
+                      {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+                      <div className="px-2">{leerzustandsZeile(t, "entwuerfe")}</div>
+                    </>
                   ) : (
                     <div className="border-hairline border-t pt-1">
                       <p className="px-2 pb-0.5 text-[10.5px] text-muted-2">
@@ -2585,7 +2590,7 @@ export function RichTextEditor({
                   className={tb}
                   onClick={() => setShowFiles((s) => !s)}
                 >
-                  <Paperclip size={14} />
+                  <Paperclip size={14} aria-hidden="true" />
                   {t("editor.fileLabel")}
                 </button>
                 {showFiles ? (
@@ -2608,7 +2613,10 @@ export function RichTextEditor({
                       {t("editor.insertFile")}
                     </p>
                     {files.length === 0 ? (
-                      <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
+                      <>
+                        <p className="px-2 py-1 text-[12px] text-muted">{t("editor.noFiles")}</p>
+                        <div className="px-2">{leerzustandsZeile(t, "entwuerfe")}</div>
+                      </>
                     ) : (
                       files.map((file) => (
                         <button
@@ -2677,7 +2685,11 @@ export function RichTextEditor({
             className={tb}
             onClick={() => setMode((m) => (m === "edit" ? "preview" : "edit"))}
           >
-            {mode === "edit" ? <Eye size={14} /> : <Pencil size={14} />}
+            {mode === "edit" ? (
+              <Eye size={14} aria-hidden="true" />
+            ) : (
+              <Pencil size={14} aria-hidden="true" />
+            )}
             {mode === "edit" ? t("editor.preview") : t("editor.edit")}
           </button>
         </div>

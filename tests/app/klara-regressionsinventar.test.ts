@@ -185,6 +185,16 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  // ARBEITSWEGE AM SELBEN ARTIKEL (produkt:20261007:arbeitswege-objekt): Klara nennt Seite, Kennung
+  // und Fassung aus derselben Quelle wie „Fragen". Die Datei montiert `KlaraAssistant` und kommt
+  // über die Inhaltsachse `komponente` herein; „klara" steht NICHT im Pfad, K5 bleibt deshalb
+  // unverändert. NICHT GEMESSEN, sondern aus den Achsen abgeleitet: in dieser Lieferung wurde kein
+  // Testlauf gestartet; der Prüflauf ist der Beleg.
+  "tests/arbeitswege-objekt/assistentin-fragen-objektbezug-mounted.test.tsx",
+  // Nacharbeit 3 desselben Auftrags: die Prüfflächen-Probe montiert `KlaraAssistant` jetzt neben
+  // der Seite (Klara nennt den gezeigten bzw. verlangten Beitrag) — Achse `komponente`, „klara"
+  // nicht im Pfad, K5 unverändert. Aus den Achsen abgeleitet, kein eigener Testlauf.
+  "tests/arbeitswege-objekt/pruefen-objektbezug-mounted.test.tsx",
   // JOB 3502 ADMIN-KI-FREIGABE VERBRAUCHER: Klara und der Word-Weg folgen der zentralen
   // Adminfreigabe. Beide Pfade tragen „klara" im PFAD (das Verzeichnis war im Auftrag §4
   // abschliessend vorgegeben) und kommen deshalb ueber die NAMENSachse herein — sie zaehlen in K5.
@@ -1329,6 +1339,11 @@ const INVENTAR: readonly string[] = [
   // GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob
   // K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
   "tests/schnellwahl/wissen-in-der-schnellwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word): der Prüfstand des
+  // Blocks KW-ANLEITUNG fährt `anleitung.js` am Word-Panel und im Teil R den Rückweg über das
+  // Aufgabenfenster — er nennt `taskpane.html`, Achse `taskpane`. Kein „klara" im Pfad, K5 bleibt
+  // unverändert. NICHT GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn startet keine Tests.
+  "tests/anleitung-word/anleitung-word.test.tsx",
   // AUFNAHME 20260922 · GESAMT-HILFEN (R-0942): der neue Prüfstand montiert `KlaraAssistant` und
   // misst Auslöserzustand, Fokussprung beim Öffnen und die bedingte Fokusrückkehr — Achse
   // `komponente`. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt unverändert. NICHT GEMESSEN,

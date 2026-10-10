@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatKoTimestamp } from "../../lib/koDates";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { Button, Card, SectionLabel } from "../ui";
 import {
   type EigeneKenntnisnahme,
@@ -51,7 +53,7 @@ function StatusPille({ status }: { status: KenntnisnahmeStatus }): JSX.Element {
 
 function useDatum(): (iso: string) => string {
   const { i18n } = useTranslation();
-  return (iso) => new Date(iso).toLocaleString(i18n.language);
+  return (iso) => formatKoTimestamp(iso, i18n.language) ?? "—";
 }
 
 function fehlerText(t: TFunction, fehler: unknown): string {
@@ -368,7 +370,10 @@ function AnfordernUndUebersicht({ koId }: { koId: string }): JSX.Element | null 
       <div>
         <SectionLabel>{t("kenntnisnahme.uebersicht.titel")}</SectionLabel>
         {daten.anforderungen.length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("kenntnisnahme.uebersicht.leer")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("kenntnisnahme.uebersicht.leer")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-2">
             {daten.anforderungen.map((a) => (

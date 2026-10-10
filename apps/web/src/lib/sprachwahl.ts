@@ -9,17 +9,21 @@
 //    Anwendungswurzel (`main.tsx`), nicht im Umschalter. Sonst merkt sich genau ein Umschalter
 //    die Wahl und der nächste nicht — dieselbe Lehre wie bei `bindHtmlLang` (htmlLang.ts:10-14).
 //  · KEIN LanguageDetector, keine Browsersprache, keine Normalisierung. Was aus dem Speicher kommt,
-//    muss eine angemeldete Oberflächensprache sein (R-0997: `OBERFLAECHEN_SPRACHEN` aus den
-//    Ressourcen, heute de|en|nl), sonst gilt die Vorgabe. `<html lang>` folgt getrennt JOB 536.
+//    muss eine WÄHLBARE Sprache sein, sonst gilt die Vorgabe. Wählbar sind die angemeldeten
+//    Oberflächensprachen (R-0997: `OBERFLAECHEN_SPRACHEN` aus den Ressourcen, heute de|en|nl) UND
+//    die im Betrieb angelegten Sprachen (FR-I18N-02 Übersetzungspflege, `lib/instanzSprachen.ts`).
+//    `<html lang>` folgt getrennt JOB 536 (`htmlLang.ts`).
 // DOM-frei (globalThis über persistentToggle, strukturelle Typen statt lib.dom) — importierbar aus
 // node-env-Tests.
 import { I18N_LANGUAGE_CHANGED_EVENT } from "./htmlLang";
 import type { I18nLike, SprachZuhoerer } from "./htmlLang";
+import { istWaehlbareSprache } from "./instanzSprachen";
 import { readStoredString, safeLocalStorage, writeStoredString } from "./persistentToggle";
 import { OBERFLAECHEN_SPRACHEN } from "./sprachregister";
 
-// Der localStorage-Schlüssel der Wahl. Werte sind angemeldete Oberflächensprachen; alles andere
-// (Alt-/Fremdformat, Regionalcode, leer) fällt in `gespeicherteSprache()` auf die Vorgabe zurück.
+// Der localStorage-Schlüssel der Wahl. Werte sind die wählbaren Sprachen (angemeldet oder angelegt);
+// alles andere (Alt-/Fremdformat, Regionalcode, leer) fällt in `gespeicherteSprache()` auf die
+// Vorgabe zurück.
 export const SPRACHE_STORAGE_KEY = "kw.sprache";
 
 /** Die Vorgabe für jeden Browser ohne gespeicherte Wahl — wie der Startwert in `index.html`. */
@@ -28,14 +32,16 @@ export const STANDARD_SPRACHE = "de";
 /**
  * Die Sprache, die beim Start gilt: die gespeicherte Wahl, sonst die Vorgabe „de".
  *
- * Die Prüfung gegen die angemeldeten Oberflächensprachen steht hier und nicht erst in der
- * Oberfläche: nur so ist zugesichert, dass `lng` — und damit `i18n.language` — nie eine Sprache
- * ohne Wörterbuch wird. R-0997: die Menge kommt aus den Ressourcen (`lib/sprachregister.ts`);
- * der Parameter ist für den Test da, der eine angemeldete weitere Sprache nachstellt.
+ * Die Prüfung gegen die wählbaren Sprachen steht hier und nicht erst in der Oberfläche: nur so ist
+ * zugesichert, dass `lng` — und damit `i18n.language` — die wählbare Menge nie verlässt. R-0997: die
+ * angemeldeten Sprachen kommen aus den Ressourcen (`lib/sprachregister.ts`); der Parameter ist für
+ * den Test da, der eine angemeldete weitere Sprache nachstellt. FR-I18N-02: eine im Betrieb
+ * angelegte Sprache wird zusätzlich angenommen, solange dieser Browser sie aus der letzten
+ * Serverauskunft kennt (`lib/instanzSprachen.ts`).
  */
 export function gespeicherteSprache(sprachen: readonly string[] = OBERFLAECHEN_SPRACHEN): string {
   const gespeichert = readStoredString(safeLocalStorage(), SPRACHE_STORAGE_KEY);
-  if (gespeichert !== null && sprachen.includes(gespeichert)) {
+  if (gespeichert !== null && istWaehlbareSprache(gespeichert, sprachen)) {
     return gespeichert;
   }
   return STANDARD_SPRACHE;
@@ -64,7 +70,7 @@ export function bindSpracheSpeichern(
   sprachen: readonly string[] = OBERFLAECHEN_SPRACHEN,
 ): () => void {
   const zuhoerer: SprachZuhoerer = (sprache) => {
-    if (!sprachen.includes(sprache)) {
+    if (!istWaehlbareSprache(sprache, sprachen)) {
       return;
     }
     writeStoredString(safeLocalStorage(), SPRACHE_STORAGE_KEY, sprache);

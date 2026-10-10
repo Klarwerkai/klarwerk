@@ -644,6 +644,11 @@ export function OEFFENTLICH(grund: string): Erwartungen {
 // DIE TABELLE. Eine Zeile je geprüftem Endpunkt; jede Routengruppe der Erhebung kommt vor.
 // ------------------------------------------------------------------------------------------------
 
+/** produkt:20261007:office-artikel-editor — das Tor der WOPI-Türen ist die Marke, nicht die Sitzung. */
+const WOPI_TOR = "keines aus der Sitzung — die WOPI-Zugangsmarke (HMAC) je Anhang";
+const WOPI_GRUND =
+  "Der eingebettete Office-Editor ruft diese Tür server-zu-server ohne Klarwerk-Sitzung; ein Sitzungstor wäre hier falsch. Ohne gültige Marke endet jede Anfrage VOR dem Parsen mit 401, ohne Editor-Einrichtung (so im Prüfaufbau) mit 404 für alle fünf Akteure — gemessen ist damit, dass die Sitzungsrolle hier nichts öffnet. Marke, Dateibindung und Rechteentzug prüft `tests/office-artikel-editor/office-routes.test.ts` (O6).";
+
 export const TABELLE: Zeile[] = [
   {
     gruppe: "addinStaticRoutes",
@@ -749,7 +754,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit",
-    belegstelle: "services/app/src/routes/audit-routes.ts:17",
+    belegstelle: "services/app/src/routes/audit-routes.ts:116",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -808,6 +813,96 @@ export const TABELLE: Zeile[] = [
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
+  // produkt:20261007:office-artikel-editor · Office im Artikel. Die Artikelseite fragt Lage und
+  // Sitzung mit `ko.read` an (Ansehen ist Lesen), Übernehmen, Zurückholen und gesicherte Stände mit
+  // `ko.create` — dieselben Rechte wie `revise`; kein neues Recht. Die URLs sind zustandsfrei
+  // (erfundene Kennungen): hinter dem Tor endet jede Tür im 404 und legt nichts an.
+  {
+    gruppe: "officeRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht",
+    route: "/api/kos/:id/office/:anhangId",
+    belegstelle: "services/app/src/routes/office-routes.ts:402",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/sitzung",
+    route: "/api/kos/:id/office/:anhangId/sitzung",
+    belegstelle: "services/app/src/routes/office-routes.ts:439",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/uebernahme",
+    route: "/api/kos/:id/office/:anhangId/uebernahme",
+    belegstelle: "services/app/src/routes/office-routes.ts:506",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/zurueckholen",
+    route: "/api/kos/:id/office/:anhangId/zurueckholen",
+    belegstelle: "services/app/src/routes/office-routes.ts:616",
+    tor: "ko.create",
+    payload: { ausFassung: 1, expectedVersion: 1 },
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/office/gibt-es-nicht/gesichert",
+    route: "/api/kos/:id/office/:anhangId/gesichert",
+    belegstelle: "services/app/src/routes/office-routes.ts:664",
+    tor: "ko.create",
+    payload: { objectId: "gibt-es-nicht", expectedVersion: 1 },
+    erwartet: AB_EXPERTE,
+  },
+  // Die WOPI-Türen spricht der Office-Editor SERVER-ZU-SERVER an, ohne Klarwerk-Sitzung. Ihr Tor
+  // ist die signierte Zugangsmarke je Anhang, geprüft VOR dem Parsen (`markenRiegel`), danach die
+  // frisch gelesenen Rechte des Markeninhabers. Eine Sitzungsrolle entscheidet hier nichts.
+  {
+    gruppe: "officeRoutes",
+    methode: "GET",
+    pfad: "/wopi/files/gibt-es-nicht",
+    route: "/wopi/files/:anhangId",
+    belegstelle: "services/app/src/routes/office-routes.ts:396",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "GET",
+    pfad: "/wopi/files/gibt-es-nicht/contents",
+    route: "/wopi/files/:anhangId/contents",
+    belegstelle: "services/app/src/routes/office-routes.ts:397",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/wopi/files/gibt-es-nicht",
+    route: "/wopi/files/:anhangId",
+    belegstelle: "services/app/src/routes/office-routes.ts:398",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
+  },
+  {
+    gruppe: "officeRoutes",
+    methode: "POST",
+    pfad: "/wopi/files/gibt-es-nicht/contents",
+    route: "/wopi/files/:anhangId/contents",
+    belegstelle: "services/app/src/routes/office-routes.ts:399",
+    tor: WOPI_TOR,
+    erwartet: OEFFENTLICH(WOPI_GRUND),
+  },
   // Kenntnisnahme einer gültigen Fassung. Anfordern, Übersicht und Erinnern hängen am vorhandenen
   // Zuweisungsrecht `ko.assign` (Controller/Admin), die eigenen Anforderungen und das Bestätigen
   // am Leserecht. Die URLs sind zustandsfrei (erfundene Kennung): hinter dem Tor endet jede Tür im
@@ -856,6 +951,28 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // produkt:20261007:veroeffentlichungsoptionen. Der Stand hängt am Leserecht, das Veröffentlichen
+  // am vorhandenen Freigaberecht `ko.validate` (Controller/Admin). Zustandsfreie URLs: hinter dem
+  // Tor endet der Stand im 404, das Veröffentlichen ohne Rumpf im 400 — „durchgelassen", nichts
+  // wird angelegt.
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
+    route: "/api/kos/:id/veroeffentlichung",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:79",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
+    route: "/api/kos/:id/veroeffentlichung",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:107",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
   // R-1644 · Wissensauskunft zum Zeitpunkt. Dieselbe Einsichtsstufe wie das Audit-Protokoll
   // (`ko.validate`, Controller/Admin). Ohne Zeitpunkt endet die Tür hinter dem Tor im 400.
   {
@@ -866,6 +983,27 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/wissensauskunft-routes.ts:31",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
+  },
+  // R-1656 „Du solltest auch wissen…": beide Türen am Leserecht. Erfundene Kennung: hinter dem Tor
+  // endet die Empfehlung im 404, das Co-Reading-Signal ohne `zuvor` im 400 — „durchgelassen", und
+  // nichts wird gezählt.
+  {
+    gruppe: "wissensempfehlungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/empfehlungen",
+    route: "/api/kos/:id/empfehlungen",
+    belegstelle: "services/app/src/routes/wissensempfehlung-routes.ts:47",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "wissensempfehlungRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/mitgelesen",
+    route: "/api/kos/:id/mitgelesen",
+    belegstelle: "services/app/src/routes/wissensempfehlung-routes.ts:64",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
   },
   {
     gruppe: "brandingRoutes",
@@ -882,6 +1020,98 @@ export const TABELLE: Zeile[] = [
     methode: "PUT",
     pfad: "/api/admin/branding",
     belegstelle: "services/app/src/routes/branding-routes.ts:53",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // ADMIN-15 · Unternehmensprofil und interne Richtlinien. Lesen und die eigene Handlung: jedes
+  // angemeldete Konto; Pflege, Wirkung und Protokoll: `users.manage`. Die Nutzlasten sind leer bzw.
+  // die Kennungen erfunden — hinter dem Tor endet jede schreibende Tür im 400 bzw. 404 und legt
+  // nichts an.
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "GET",
+    pfad: "/api/unternehmensprofil",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:53",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "GET",
+    pfad: "/api/admin/unternehmensprofil",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:62",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/unternehmensprofil",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:75",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "GET",
+    pfad: "/api/richtlinien",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:107",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "POST",
+    pfad: "/api/richtlinien/gibt-es-nicht/handlungen",
+    route: "/api/richtlinien/:id/handlungen",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:116",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "GET",
+    pfad: "/api/admin/richtlinien",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:141",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "GET",
+    pfad: "/api/admin/richtlinien/gibt-es-nicht/protokoll",
+    route: "/api/admin/richtlinien/:id/protokoll",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:150",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "POST",
+    pfad: "/api/admin/richtlinien/wirkung",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:166",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "POST",
+    pfad: "/api/admin/richtlinien",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:179",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "unternehmenRoutes",
+    methode: "POST",
+    pfad: "/api/admin/richtlinien/gibt-es-nicht/fassungen",
+    route: "/api/admin/richtlinien/:id/fassungen",
+    belegstelle: "services/app/src/routes/unternehmen-routes.ts:206",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
@@ -916,6 +1146,14 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/conflicts",
     belegstelle: "services/app/src/routes/conflicts-routes.ts:222",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "conflictRoutes",
+    methode: "GET",
+    pfad: "/api/conflicts/geloest",
+    belegstelle: "services/app/src/routes/conflicts-routes.ts:252",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -982,11 +1220,52 @@ export const TABELLE: Zeile[] = [
     gruppe: "i18nRoutes",
     methode: "GET",
     pfad: "/api/i18n/locales",
-    belegstelle: "services/app/src/routes/i18n-routes.ts:7",
+    belegstelle: "services/app/src/routes/i18n-routes.ts:44",
     tor: "keines — Oberflächentexte",
     erwartet: OEFFENTLICH(
       "Die Anmeldemaske braucht ihre eigenen Texte, bevor es eine Sitzung gibt (`i18n-routes.ts:4`). Ausgeliefert werden Sprachkennungen und Oberflächentexte, keine Bestandsdaten.",
     ),
+  },
+  // R-1034 / FR-I18N-02 · die Übersetzungspflege: ein öffentlicher Leseweg, drei Adminwege.
+  {
+    gruppe: "i18nRoutes",
+    methode: "GET",
+    pfad: "/api/i18n/de",
+    route: "/api/i18n/:locale",
+    belegstelle: "services/app/src/routes/i18n-routes.ts:61",
+    tor: "keines — Oberflächentexte",
+    erwartet: OEFFENTLICH(
+      "Die im Betrieb gepflegten Texte einer Sprache: dieselben Oberflächentexte wie `/api/i18n/locales`, die die Anmeldemaske vor jeder Sitzung braucht. Keine Bestandsdaten.",
+    ),
+  },
+  {
+    gruppe: "i18nRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/i18n/de/gibt-es-nicht",
+    route: "/api/admin/i18n/:locale/:key",
+    belegstelle: "services/app/src/routes/i18n-routes.ts:81",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "i18nRoutes",
+    methode: "DELETE",
+    pfad: "/api/admin/i18n/de/gibt-es-nicht",
+    route: "/api/admin/i18n/:locale/:key",
+    belegstelle: "services/app/src/routes/i18n-routes.ts:121",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "i18nRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/i18n-sprachen/fr",
+    route: "/api/admin/i18n-sprachen/:locale",
+    belegstelle: "services/app/src/routes/i18n-routes.ts:151",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "impactRoutes",
@@ -1086,6 +1365,76 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/me/gedaechtnis",
     belegstelle: "services/app/src/routes/gedaechtnis-routes.ts:80",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261008:klara-basis — die eigenen Klara-Gespräche. Jede Tür prüft nur die Anmeldung;
+  // das Konto kommt aus der Sitzung. DIE GEFAHRENEN URLs SIND ZUSTANDSFREI: die Lesetür liefert auf
+  // der gemeinsamen Bühne `{ gespraech: null }`; `POST /api/me/klara/gespraeche` mit leerer Nutzlast
+  // scheitert an der Pflichtangabe `objektbezug` (400), BEVOR etwas angelegt wird; alle Türen mit
+  // Kennung tragen eine erfundene und enden in 400 (leere Nutzlast) oder 404 des Dienstes.
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraech",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:97",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht",
+    route: "/api/me/klara/gespraeche/:id",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:121",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/nachrichten",
+    route: "/api/me/klara/gespraeche/:id/nachrichten",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:134",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/schritt",
+    route: "/api/me/klara/gespraeche/:id/schritt",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:154",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/einwilligung",
+    route: "/api/me/klara/gespraeche/:id/einwilligung",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:174",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht",
+    route: "/api/me/klara/gespraeche/:id",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:199",
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
@@ -1465,6 +1814,17 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: NUR_LESEN,
   },
+  // R-1630 / R-2176: der Antwortvergleich mit dem Wissensstand vor einem Jahr — ein Leseweg der
+  // Konsole mit demselben Recht wie die Frage selbst.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/vergleich",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1364",
+    tor: "ko.read",
+    payload: { question: "Abnahme des Rechtetors am Antwortvergleich" },
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "knowledgeCheckRoutes",
     methode: "POST",
@@ -1535,6 +1895,14 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/lifecycle/revalidiert",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:152",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
   },
   {
     gruppe: "livewallRoutes",
@@ -1861,7 +2229,17 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit/verify",
-    belegstelle: "services/app/src/routes/audit-routes.ts:27",
+    belegstelle: "services/app/src/routes/audit-routes.ts:172",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // produkt:20261009:admin-audit-verstaendlich: der Seitenweg der Verwalteransicht — dieselbe Tür
+  // wie `/api/audit`.
+  {
+    gruppe: "auditRoutes",
+    methode: "GET",
+    pfad: "/api/audit/seite",
+    belegstelle: "services/app/src/routes/audit-routes.ts:135",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -1871,7 +2249,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit/export",
-    belegstelle: "services/app/src/routes/audit-routes.ts:62",
+    belegstelle: "services/app/src/routes/audit-routes.ts:213",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -1881,7 +2259,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit/ko/:koId/findings",
-    belegstelle: "services/app/src/routes/audit-routes.ts:39",
+    belegstelle: "services/app/src/routes/audit-routes.ts:185",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -2123,7 +2501,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/i18n/de/gibt-es-nicht",
     route: "/api/i18n/:locale/:key",
-    belegstelle: "services/app/src/routes/i18n-routes.ts:11",
+    belegstelle: "services/app/src/routes/i18n-routes.ts:70",
     tor: "keines — Oberflächentexte",
     erwartet: OEFFENTLICH(
       "Der Einzelabruf derselben Oberflächentexte wie `/api/i18n/locales`: die Anmeldemaske braucht sie, bevor es eine Sitzung gibt. Ausgeliefert werden Textbausteine, keine Bestandsdaten.",
@@ -2233,6 +2611,15 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-0773: die eigenen Suchen ohne Treffer — dasselbe Recht wie die Suche selbst.
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/nulltreffer",
+    belegstelle: "services/app/src/routes/library-routes.ts:735",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "libraryRoutes",
     methode: "GET",
@@ -2254,6 +2641,15 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/library/import/candidates",
     belegstelle: "services/app/src/routes/library-routes.ts:772",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    // R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 3): Befunde je Importkandidat.
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/import/candidates/befunde",
+    belegstelle: "services/app/src/routes/library-routes.ts:1013",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

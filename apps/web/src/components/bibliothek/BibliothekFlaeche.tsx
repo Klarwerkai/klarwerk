@@ -7,6 +7,17 @@ import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/ho
 import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { auffrischungGescheitert } from "../../lib/abfrageBestand";
+import {
+  ANLAGE_FACETTE,
+  BAUTEIL_FACETTE,
+  BEZUG_ARTEN,
+  KONTEXT_ACHSEN,
+  type KontextParam,
+  MATERIAL_FACETTE,
+  bekannteKontextwerte,
+  kontextAusParams,
+  passtZumKontext,
+} from "../../lib/anlagenzugang";
 import { vertraulichkeitsAuskunft } from "../../lib/confidentiality";
 import { conflictImpact } from "../../lib/conflictImpact";
 import {
@@ -48,9 +59,15 @@ import {
 } from "../../lib/facets";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../../lib/libraryDisplay";
 import {
+  EXPORT_AUSWAHL_MAX,
   EXPORT_FORMATS,
+  EXPORT_UMFANG_ARTEN,
+  type ExportUmfangArt,
+  darfVertraulichExportieren,
   exportFilename,
   exportFormatMeta,
+  exportMoeglich,
+  exportUmfang,
   exportUrl,
 } from "../../lib/libraryExport";
 import {
@@ -257,7 +274,13 @@ const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   { key: "domain", labelKey: "lib.facet.domain" },
   // R-0477 / R-0082: vom Gerät zum Wissen — die Anlage als Achse, gelesen allein aus dem
   // kanonischen Feld am Objekt (`asset`), nicht aus den Lebenszyklus-Kopplungen.
-  { key: "asset", labelKey: "wissensmetadaten.anlage.facette" },
+  // R-1631 / R-1647 / R-2174 (gesamt-anlagenzugang): DIESELBE Achse (`ANLAGE_FACETTE` === "asset")
+  // ist der Einstieg des QR-Codes an der Maschine; dazu Bauteil und Material als Achsen. Dieselbe
+  // Liste trägt sie in die Adresse und in gemerkte Sichten. Der Geltungskontext steht NICHT hier
+  // (s. `KontextLeiste`).
+  { key: ANLAGE_FACETTE, labelKey: "wissensmetadaten.anlage.facette" },
+  { key: BAUTEIL_FACETTE, labelKey: "anlagenzugang.bauteil" },
+  { key: MATERIAL_FACETTE, labelKey: "anlagenzugang.material" },
   { key: "tag", labelKey: "lib.facet.tag" },
   { key: "confidentiality", labelKey: "lib.facet.confidentiality" },
   { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },
@@ -454,6 +477,8 @@ export function BibliothekFlaeche({
   // R-0477: die Anlagen×Wissensobjekt-Matrix über den aktuellen (sichtbaren, gefilterten) Treffern.
   const [matrixOffen, setMatrixOffen] = useState(false);
   const [markiert, setMarkiert] = useState<ReadonlySet<string>>(() => new Set());
+  // N-0082: der gewählte Exportumfang (Gesamtbestand, Treffer, Markierte) — s. `umfang` unten.
+  const [exportArt, setExportArt] = useState<ExportUmfangArt>("bestand");
   const { user } = useSession();
   const nameOf = useAuthorName();
   // JOB 3088 · Q1b: die Detailabfrage des gelesenen Eintrags wohnt in `BibliothekLesen`, nicht hier.
@@ -850,9 +875,24 @@ export function BibliothekFlaeche({
     facetValueLabel,
     LIBRARY_FACET_DEPENDENCIES,
   );
+  // R-1631 (gesamt-anlagenzugang): der Geltungskontext aus der Adresse (Version, Standort, Schicht).
+  // Er wirkt wie jede andere Wahl als UND — mit der eigenen Regel „ohne Angabe gilt allgemein"
+  // (`passtZumKontext`). Der Schlüssel ist eine Zeichenkette, damit die Kette nur bei einer echten
+  // Änderung neu rechnet.
+  const kontextSchluessel = JSON.stringify(kontextAusParams(params));
+  const geltungskontext = useMemo(
+    () => JSON.parse(kontextSchluessel) as ReturnType<typeof kontextAusParams>,
+    [kontextSchluessel],
+  );
+  // Die wählbaren Kontextwerte: was im Bestand vorkommt (voller Bestand, sonst die Trefferquelle).
+  const kontextwerte = useMemo(
+    () => bekannteKontextwerte(all.data ?? query.data ?? []),
+    [all.data, query.data],
+  );
   const faceted = useMemo(
     () =>
       applyFacetSelection(ranked, (item) => facetBase.get(item.ko.id) ?? {}, wirksameAuswahl)
+        .filter((item) => passtZumKontext(item.ko, geltungskontext))
         .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
         // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch
         // Punkt und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom
@@ -866,7 +906,7 @@ export function BibliothekFlaeche({
             segment === BIB_SEGMENT_STANDARD ||
             passtZuSegment(auskunftFuer(item.ko).status, segment),
         ),
-    [ranked, facetBase, wirksameAuswahl, range, segment, auskunftFuer],
+    [ranked, facetBase, wirksameAuswahl, geltungskontext, range, segment, auskunftFuer],
   );
   // K16: die Risiko-Sortierung liest denselben angezeigten Zustand wie Punkt, Wort und Segment.
   const sorted = useMemo(
@@ -1631,7 +1671,8 @@ export function BibliothekFlaeche({
     trimmedQ.length > 0 ||
     aktiveFilterZahl > 0 ||
     scope !== DEFAULT_LIBRARY_SCOPE ||
-    verworfeneEingrenzung.length > 0;
+    verworfeneEingrenzung.length > 0 ||
+    Object.keys(geltungskontext).length > 0;
   // ================================================================================================
   // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6) — DER NULLTREFFER NENNT SEINE FILTER UND LÖST SIE.
   // ================================================================================================
@@ -1706,6 +1747,49 @@ export function BibliothekFlaeche({
     setAuswahlModus((an) => !an);
   };
 
+  // N-0082 / R-0681 (aufnahme:20260922:gesamt-wissen-export): der Exportumfang ist eine Wahl, und
+  // er steht VOR dem Download da. „Treffer" nur, wenn die Treffermenge feststeht (dieselbe
+  // Bedingung wie die Trefferzahl der Liste); „Markierte" nur mit Markierung. Fällt eine Wahl weg,
+  // gilt wieder der Gesamtbestand — nie eine unsichtbare Restauswahl.
+  const trefferFest = frisch && !keimBrauchtBestand && !bestandsErstfehler;
+  const exportArten = EXPORT_UMFANG_ARTEN.filter(
+    (art) =>
+      art === "bestand" ||
+      (art === "treffer" && trefferFest) ||
+      (art === "markiert" && auswahlModus && markiertTreffer.size > 0),
+  );
+  const exportArtWirksam = exportArten.includes(exportArt) ? exportArt : "bestand";
+  const umfang = exportUmfang(
+    exportArtWirksam,
+    exportArtWirksam === "markiert"
+      ? sorted.filter((item) => markiertTreffer.has(item.ko.id)).map((item) => item.ko)
+      : exportArtWirksam === "treffer"
+        ? sorted.map((item) => item.ko)
+        : [],
+    // BEN-NACHARBEIT: dieselbe Rolle, an der der Server `includeConfidential` bindet — die
+    // angemeldete, nicht eine angezeigte Rolle.
+    darfVertraulichExportieren(user?.role),
+  );
+  const umfangGruende =
+    umfang.art === "bestand"
+      ? null
+      : {
+          gewaehlt: umfang.gewaehlt,
+          nichtValidiert: umfang.nichtValidiert,
+          vertraulich: umfang.vertraulichOhneRecht,
+        };
+  const umfangSatz =
+    umfang.art === "bestand"
+      ? t("wissenexport.umfang.bestandSatz")
+      : umfang.zuViele
+        ? t("wissenexport.umfang.zuViele", { anzahl: umfang.exportierbar, max: EXPORT_AUSWAHL_MAX })
+        : umfang.exportierbar === 0
+          ? t("wissenexport.umfang.keine", umfangGruende ?? {})
+          : t("wissenexport.umfang.auswahlSatz", {
+              ...umfangGruende,
+              exportierbar: umfang.exportierbar,
+            });
+
   // ================================================================================================
   // JOB 3063 R3/R6 · JOB 3121 — DER SATZ „STAND VON <ZEIT> · AUFFRISCHUNG FEHLGESCHLAGEN".
   // ================================================================================================
@@ -1718,6 +1802,64 @@ export function BibliothekFlaeche({
   // genau einmal auf der Fläche. JOB 3335: im Tablet-Band gilt dieselbe Weiche mit jedem Klappen —
   // Schublade offen → an der Liste, zu → am Bericht; nie zwei, nie null
   // (`tests/ux21-tablet-lesemodus/tablet-lesemodus-mounted.test.tsx` R9).
+  // ================================================================================================
+  // R-1631 (gesamt-anlagenzugang) · DIE KONTEXTLEISTE — VERSION, STANDORT, SCHICHT.
+  // ================================================================================================
+  // Sie steht nur da, wenn der Anlagenzugang aktiv ist: eine Anlage, ein Bauteil oder ein Material
+  // ist gewählt (typisch nach einem QR-Scan), oder die Adresse trägt schon einen Kontext. Ohne
+  // beides bleibt die Fläche, wie H4 sie festgelegt hat (kein zusätzlicher Text). Jede Wahl wohnt
+  // in der Adresse (`?anlagenversion=`, `?standort=`, `?schicht=`), wie Umschalter und Bereich — die
+  // Adresse IST der Speicher, und ein Neuladen behält den Kontext.
+  const bezugGewaehlt = BEZUG_ARTEN.some(
+    (art) => facetSelectedValues(wirksameAuswahl[art]).length > 0,
+  );
+  const setzeKontext = (param: KontextParam, wert: string): void => {
+    resetWindow();
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (wert) {
+          p.set(param, wert);
+        } else {
+          p.delete(param);
+        }
+        return p;
+      },
+      { replace: true },
+    );
+  };
+  const kontextLeiste =
+    bezugGewaehlt || Object.keys(geltungskontext).length > 0 ? (
+      <fieldset
+        data-testid="bib-kontext"
+        aria-label={t("anlagenzugang.kontext.label")}
+        className="flex min-w-0 flex-wrap items-center gap-1.5 border-0 p-0"
+      >
+        {KONTEXT_ACHSEN.map(({ param }) => {
+          const gewaehlt = geltungskontext[param] ?? "";
+          const bekannt = kontextwerte[param];
+          const werte = gewaehlt && !bekannt.includes(gewaehlt) ? [gewaehlt, ...bekannt] : bekannt;
+          return (
+            <select
+              key={param}
+              data-testid={`bib-kontext-${param}`}
+              aria-label={t(`anlagenzugang.kontext.${param}`)}
+              value={gewaehlt}
+              onChange={(e) => setzeKontext(param, e.target.value)}
+              className="h-7 min-w-0 max-w-[12rem] rounded-input border border-hairline bg-surface px-1.5 text-[12px] text-text"
+            >
+              <option value="">{t(`anlagenzugang.kontext.alle.${param}`)}</option>
+              {werte.map((wert) => (
+                <option key={wert} value={wert}>
+                  {wert}
+                </option>
+              ))}
+            </select>
+          );
+        })}
+      </fieldset>
+    ) : null;
+
   const hinweisKnoten = standQuelle ? (
     <>
       <AuffrischungHinweis query={standQuelle} />
@@ -1840,40 +1982,45 @@ export function BibliothekFlaeche({
             //
             // Die Reihenfolge eigene Ablage vor Gesamtbestand ist Pedis Entscheidung
             // (`ENTSCHEIDUNGEN/JOB-381-ORTSZEILE.md`), nicht Geschmack.
-            <div
-              data-testid="library-scope-bar"
-              data-raum={scope}
-              className="flex items-center justify-between gap-2"
-            >
-              <fieldset
-                aria-label={t("lib.ownScope.label")}
-                className="flex min-w-0 items-center gap-1 border-0 p-0"
+            //
+            // R-1631 (gesamt-anlagenzugang): darunter, nur im Anlagenzugang, die Kontextleiste.
+            <>
+              <div
+                data-testid="library-scope-bar"
+                data-raum={scope}
+                className="flex items-center justify-between gap-2"
               >
-                {(
-                  [
-                    { wert: "meine", label: t("lib.ownScope.meine") },
-                    { wert: "alle", label: t("lib.ownScope.alle") },
-                  ] satisfies { wert: LibraryScope; label: string }[]
-                ).map((e) => {
-                  const aktiv = scope === e.wert;
-                  return (
-                    <button
-                      key={e.wert}
-                      type="button"
-                      aria-pressed={aktiv}
-                      data-testid={`bib-scope-${e.wert}`}
-                      onClick={() => setScope(e.wert)}
-                      className={cx(
-                        "truncate rounded-btn px-1.5 py-0.5 text-[12px] outline-none hover:bg-hairline-soft",
-                        aktiv ? "font-semibold text-text" : "text-muted",
-                      )}
-                    >
-                      {e.label}
-                    </button>
-                  );
-                })}
-              </fieldset>
-            </div>
+                <fieldset
+                  aria-label={t("lib.ownScope.label")}
+                  className="flex min-w-0 items-center gap-1 border-0 p-0"
+                >
+                  {(
+                    [
+                      { wert: "meine", label: t("lib.ownScope.meine") },
+                      { wert: "alle", label: t("lib.ownScope.alle") },
+                    ] satisfies { wert: LibraryScope; label: string }[]
+                  ).map((e) => {
+                    const aktiv = scope === e.wert;
+                    return (
+                      <button
+                        key={e.wert}
+                        type="button"
+                        aria-pressed={aktiv}
+                        data-testid={`bib-scope-${e.wert}`}
+                        onClick={() => setScope(e.wert)}
+                        className={cx(
+                          "truncate rounded-btn px-1.5 py-0.5 text-[12px] outline-none hover:bg-hairline-soft",
+                          aktiv ? "font-semibold text-text" : "text-muted",
+                        )}
+                      >
+                        {e.label}
+                      </button>
+                    );
+                  })}
+                </fieldset>
+              </div>
+              {kontextLeiste}
+            </>
           }
           segment={segment}
           onSegment={setSegment}
@@ -2207,18 +2354,47 @@ export function BibliothekFlaeche({
                     </MenuePunkt>
                     <MenueTrenner />
                     <MenueUntermenue beschriftung={t("lib.export")}>
-                      {EXPORT_FORMATS.map((fmt) => (
-                        <MenueZeile key={fmt}>
-                          <a
-                            href={exportUrl(fmt)}
-                            download={exportFilename(fmt)}
-                            data-testid={`bib-export-${fmt}`}
-                            className="block w-full"
-                          >
-                            {t(exportFormatMeta(fmt).labelKey)}
-                          </a>
-                        </MenueZeile>
+                      {/* N-0082: erst der Umfang, dann das Format — der Satz darunter sagt vor
+                          dem Download, welche Menge die Datei enthält. */}
+                      {exportArten.map((art) => (
+                        <MenuePunkt
+                          key={art}
+                          testId={`bib-export-umfang-${art}`}
+                          haken={exportArtWirksam === art}
+                          onClick={() => setExportArt(art)}
+                        >
+                          {art === "bestand"
+                            ? t("wissenexport.umfang.bestand")
+                            : t(`wissenexport.umfang.${art}`, {
+                                anzahl: art === "markiert" ? markiertTreffer.size : sorted.length,
+                              })}
+                        </MenuePunkt>
                       ))}
+                      <MenueZeile>
+                        <span
+                          data-testid="bib-export-umfang-satz"
+                          className="block text-[12px] leading-snug text-muted whitespace-normal [overflow-wrap:anywhere]"
+                        >
+                          {umfangSatz}
+                        </span>
+                      </MenueZeile>
+                      <MenueTrenner />
+                      {exportMoeglich(umfang)
+                        ? EXPORT_FORMATS.map((fmt) => (
+                            <MenueZeile key={fmt}>
+                              <a
+                                href={exportUrl(fmt, umfang.ids)}
+                                download={exportFilename(fmt)}
+                                data-testid={`bib-export-${fmt}`}
+                                className="block w-full"
+                              >
+                                {/* main (Verwendungsprüfung): die Beschriftung kommt aus
+                                    `exportFormatMeta`, nicht aus einem zweiten Schlüsselbau. */}
+                                {t(exportFormatMeta(fmt).labelKey)}
+                              </a>
+                            </MenueZeile>
+                          ))
+                        : null}
                     </MenueUntermenue>
                     <MenueZeile>
                       {/* /import verlangt admin UND Stufe 2 — die gesperrte Fassung bleibt ein Wort,

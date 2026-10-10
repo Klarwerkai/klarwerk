@@ -144,6 +144,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   externalKnowledge: ["setStage"],
   // SCRUM-421: Upload-Grenzen überleben den Neustart (letzter Set gewinnt).
   uploadLimits: ["set"],
+  // R-0773: eine erfolglose Suche überlebt den Neustart. Die args tragen Person, Schlüssel, Begriff
+  // und den fertigen Zeitpunkt — das Replay zählt in derselben Reihenfolge exakt dasselbe hoch.
+  nulltreffer: ["erfasse"],
   // ==============================================================================================
   // W1 WEG A (Pedi, Auftrag 143) — DER ANTWORTBELEG ÜBERLEBT DEN NEUSTART.
   // ==============================================================================================
