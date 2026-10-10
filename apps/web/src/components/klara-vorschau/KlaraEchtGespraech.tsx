@@ -147,7 +147,13 @@ function QuellenZeile({ n }: { n: EchtNachricht }): JSX.Element {
   );
 }
 
-function NachrichtEcht({ n, sprecher }: { n: EchtNachricht; sprecher?: string }): JSX.Element {
+function NachrichtEcht({
+  n,
+  sprecher,
+}: {
+  n: EchtNachricht;
+  sprecher?: string | undefined;
+}): JSX.Element {
   const { t } = useTranslation();
   const klasse =
     n.wissensklasse && n.wissensklasse in KNOWLEDGE_CLASS_META
