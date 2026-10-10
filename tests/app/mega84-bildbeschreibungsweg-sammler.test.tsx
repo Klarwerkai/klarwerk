@@ -2484,6 +2484,24 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `WeiterUntenHinweis`. Zusammen: 521 + 1 = 522 — in veroeffentlichungsoptionen Nacharbeit 10
     // am Kandidaten 6ac9e459 GEMESSEN bestätigt (Sammler grün). `anbieter` 1 und `traeger` 2 bleiben.
     //
+    // R-1656 („Du solltest auch wissen…"), Zusammenführung mit Hauptstand 985cb62c: 521 → 522,
+    // GENAU EIN Bauteil mehr, im Hauptstand nicht enthalten:
+    //     + `Wissensempfehlung` (`components/bibliothek/Wissensempfehlung.tsx`) — verwandte
+    //       Einträge mit ihrem Grund in der Lesespalte; die Grundzeile ist eine Hilfsfunktion
+    //       (`grundText`), kein eigenes Bauteil.
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // EHRLICH GESAGT: GERECHNET (die gemessene 521 des Hauptstands + 1) — dieser Auftrag durfte
+    // keinen Testlauf selbst starten; weicht der Prüflauf ab, gehört die gemessene Zahl hierher.
+    //
+    // R-1656 Nacharbeit 14: GEMESSEN 525. Am Kandidaten 3564eabb meldete der Sammler wörtlich
+    // „gemessen: 525 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 679 Quelldateien …
+    // expected { komponenten: 525, … } to deeply equal { komponenten: 522, … }"
+    // (HISTORIE/nacharbeit-14/PRUEFUNG/komponentenzaehler-konfliktstelle.log). Dieser Auftrag hat seit
+    // der Rechnung 522 kein Bauteil hinzugefügt; die drei darüber kamen mit dem seither eingemischten
+    // Hauptstand. Namentlich sind sie hier NICHT bestimmt: der Diff gegen 985cb62c war in dieser
+    // Nacharbeit nicht ausführbar. `anbieter` 1 und `traeger` 2 sind unverändert — beide Seiten der
+    // Meldung nennen 1 und 2.
+    //
     // ZUSAMMENFÜHRUNG gesamt-wissensvermaechtnis × Hauptstand a57e1e8f (Nacharbeit 7, Kandidat
     // de65d871): die 521 des Hauptstands ist GEMESSEN (Kandidat 26242335) und enthält
     // `UebergabeVorschauInhalt` und `Wissensuebergabe`, aber nicht `VermaechtnisBuch` — dieser
@@ -2624,6 +2642,13 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // fünf Quelldateien (712 → 717) kamen mit dem Basisstand. Dieser Auftrag hat in Nacharbeit 28
     // nur die Lage der vorhandenen `VeroeffentlichungBereich` in `BibliothekLesen.tsx` verschoben —
     // keine Komponente und keine Quelldatei hinzugefügt. `anbieter` 1 und `traeger` 2 unverändert.
+    //
+    // ZUSAMMENFÜHRUNG R-1656 × Hauptstand 13984aac (R-1656 Nacharbeit 18): beide Reihen decken sich.
+    // Der Hauptstand hat 524 GEMESSEN — ohne `Wissensempfehlung`, die nur dieser Auftrag trägt. R-1656
+    // hat am Kandidaten 3564eabb 525 GEMESSEN — mit `Wissensempfehlung`. 524 + 1 = 525; damit sind
+    // auch die drei in Nacharbeit 14 unbenannten Komponenten dieselben drei, die der Hauptstand
+    // (Nacharbeit 22 oben) mitgebracht hat. An DIESEM Kandidaten nicht gemessen; weicht der Prüflauf
+    // ab, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 auf beiden Seiten gleich.
     //
     // ZUSAMMENFÜHRUNG gesamt-wissensvermaechtnis × Hauptstand 5c72b675 (Nacharbeit 9, Kandidat
     // 4bc1f2b8): beide Reihen decken sich. Der Hauptstand hat GEMESSEN 524 (Kandidat ca3bb812,
@@ -2818,6 +2843,21 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // zwei Quelldateien (763 → 765) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     //
+    // ZUSAMMENFÜHRUNG R-1656 × Hauptstand acc92cc2 (R-1656 Nacharbeit 27): die 554 des Hauptstands
+    // ist GEMESSEN und enthält ADMIN-02 samt allen seither eingemischten Aufträgen, aber NICHT
+    // `Wissensempfehlung` (`components/bibliothek/Wissensempfehlung.tsx`), die nur dieser Auftrag
+    // trägt. Der Konflikt in `BibliothekLesen.tsx` (Reihenfolge der Lesespalte) fügt kein Bauteil
+    // hinzu. 554 + 1 = 555. EHRLICH GESAGT: GERECHNET, nicht gemessen; weicht der Prüflauf ab,
+    // gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // R-1656 Nacharbeit 29 · GEMESSEN 556. Am Kandidaten c0091802 meldete der Sammler wörtlich
+    // „gemessen: 556 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 727 Quelldateien …
+    // expected { komponenten: 556, … } to deeply equal { komponenten: 555, … }"; die übrigen 43
+    // Fälle grün (HISTORIE/nacharbeit-29/PRUEFUNG/komponentenzaehler-konfliktstelle.log). Dieser
+    // Auftrag hat seit der Rechnung 555 kein Bauteil hinzugefügt; Beitrag unverändert EINS
+    // (`Wissensempfehlung`). Die eine Komponente darüber kam mit dem Hauptstand und ist ohne
+    // Git-Verlauf hier nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
     // Technische Zusammenführung gesamt-wissensvermaechtnis × main 6b704ec4:
     // Die dort belegten 554 Komponenten (1e02cb5e; seitdem nur Versionsänderung)
     // bleiben vollständig erhalten. Dieser Auftrag ergänzt allein `VermaechtnisBuch`;
@@ -2842,8 +2882,22 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Smoke-Mengenmanifest zusammengeführt; die DREI Komponenten und sechs Quelldateien
     // (771 → 777) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem Arbeitsbaum nicht
     // namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // Technische Integration R-1656 × main 6d50e597 (Hilfe d112387a): GEMESSEN am erhaltenen
+    // Integrationsstand ddef5d1c + main: 598 Komponenten, 1 Anbieter, 2 Träger, 769 Quelldateien.
+    // Der bestehende Sammler meldet genau diese Zahlen; die übrigen 43 Fälle sind grün.
+    // Die bisherigen Sollwerte 556 und 555 gehören zu früheren Beständen. Beide Kommentarreihen
+    // sowie `Wissensempfehlung` und `VermaechtnisBuch` bleiben erhalten. Nur der Komponenten-Pin
+    // folgt der aktuellen Messung; Anbieter, Träger und alle Verhaltensprüfungen bleiben gleich.
+    //
+    // ZUSAMMENFÜHRUNG veroeffentlichungsoptionen × main 8bbb1068 (Nacharbeit 56): dieser Zweig hat
+    // 602 GEMESSEN (Kandidat 54167db0) — mit `VeroeffentlichungBereich` und `VermaechtnisBuch`, aber
+    // ohne `Wissensempfehlung` (`components/bibliothek/Wissensempfehlung.tsx`), die erst mit R-1656 in
+    // main kam. 602 + 1 = 603. EHRLICH GESAGT: GERECHNET, nicht gemessen — hat main seit 08ecfe6c
+    // weitere Bauteile gebracht, gehört die gemessene Zahl hierher. `anbieter` 1 und `traeger` 2
+    // sind auf beiden Seiten gleich.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 602,
+      komponenten: 603,
       anbieter: 1,
       traeger: 2,
     });

@@ -1719,6 +1719,26 @@ export interface Neighborhood {
   excludedTags: string[];
 }
 
+// R-1656 „Du solltest auch wissen…" — Spiegel von `services/app/src/wissensempfehlung.ts`.
+export type EmpfehlungsGrund =
+  | { art: "mitgelesen"; anzahl: number }
+  | { art: "thema"; schlagwoerter: string[] }
+  | { art: "konflikt"; stand: "offen" | "entschieden" };
+
+export interface Wissensempfehlung {
+  id: string;
+  title: string;
+  status: KoStatus;
+  gruende: EmpfehlungsGrund[];
+}
+
+export interface Wissensempfehlungen {
+  koId: string;
+  empfehlungen: Wissensempfehlung[];
+  total: number;
+  truncated: boolean;
+}
+
 // ==================================================================================================
 // JOB 4151 (WG-PERSISTENZ) — DER CLIENT-VERTRAG STEHT WEITER OBEN, UND ZWAR NUR EINMAL.
 // ==================================================================================================
