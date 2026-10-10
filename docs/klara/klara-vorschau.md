@@ -26,7 +26,10 @@ Ohne Vorschau-Aufruf steht dieselbe Figur auf jeder Seite der Hülle im **Produk
   Flächen, und solange die Hilfe offen ist, tritt die Figur zurück (`components/assistenzFlaechen.ts`).
   Unten bleibt ein Streifen für den Hilfeknopf frei;
 - eine angefangene Eingabe übersteht Schliessen, Verkleinern, Breitenwechsel und Neuladen
-  (`klara-vorschau/eingabe.ts`, Browser-Sitzung, ans Konto gebunden).
+  (`klara-vorschau/eingabe.ts`, Browser-Sitzung, ans Konto gebunden);
+- „Vorschau beenden“ verwirft nur den Vorschau-Anteil (Demo-Verlauf, Demo-Entwurf, Markierung aus
+  einem fiktiven Artikel, Demo-Betrieb — `nachVorschauEnde` in `zustand.ts`); angefangene Frage
+  und gültige Bezugsauswahl bleiben.
 
 ## Echter Betrieb (Klara 01, `produkt:20261008:klara-basis`)
 

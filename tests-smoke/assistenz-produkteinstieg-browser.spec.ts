@@ -284,6 +284,21 @@ test("Assistenz im Produkt · Desktop: ohne Vorschau sichtbar auf Start, Fragen 
     timeout: 15_000,
   });
   await einstiegSichtbar(p, "nach Vorschau beenden");
+  // Vorschau-Ende verwirft nur den Vorschau-Anteil: angefangene persönliche Frage und
+  // Bezugsauswahl sind nach der Rückkehr und nach dem Neuladen noch da.
+  await oeffnen(p);
+  await expect(p.getByTestId("klara-eingabe")).toHaveValue(ANGEFANGEN);
+  await expect(p.getByTestId("klara-bezug")).toHaveAttribute("data-bezug", "frei");
+  await expect(nachrichten(p)).toHaveCount(2);
+  await p.reload();
+  await expect(p.getByTestId("klara-figur")).toHaveAttribute("data-betriebsart", "produkt", {
+    timeout: 15_000,
+  });
+  await oeffnen(p);
+  await expect(p.getByTestId("klara-eingabe")).toHaveValue(ANGEFANGEN);
+  await expect(p.getByTestId("klara-bezug")).toHaveAttribute("data-bezug", "frei");
+  await expect(nachrichten(p)).toHaveCount(2, { timeout: 15_000 });
+  await beleg(p, info, "6 nach Vorschau-Ende und Neuladen: Frage und Bezug erhalten");
   await p.context().close();
 });
 

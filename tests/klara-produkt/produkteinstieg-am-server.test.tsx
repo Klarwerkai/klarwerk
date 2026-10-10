@@ -28,7 +28,13 @@ import { setzeKlaraVorschauAktiv } from "../../apps/web/src/components/klara-vor
 import { vergiss } from "../../apps/web/src/components/klara-vorschau/echt";
 import { eingabeZuruecksetzen } from "../../apps/web/src/components/klara-vorschau/eingabe";
 import { setzeAssistenzProfil } from "../../apps/web/src/components/klara-vorschau/profil";
-import { aendere, zuruecksetzenGanz } from "../../apps/web/src/components/klara-vorschau/zustand";
+import {
+  ANFANG,
+  aendere,
+  leseZustand,
+  nachVorschauEnde,
+  zuruecksetzenGanz,
+} from "../../apps/web/src/components/klara-vorschau/zustand";
 import i18n from "../../apps/web/src/i18n";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
 import { alle, bis, klick, medienStub, q, ruhe, tippe } from "../fe003-tutorial-fragen/huelle";
@@ -338,6 +344,54 @@ describe("K2/K6 · nie zwei offene Flächen: Assistenz und Hilfeknopf schliessen
   });
 });
 
+describe("K2/K3 · Vorschau-Ende verwirft nur den Vorschau-Anteil (nachVorschauEnde)", () => {
+  const seite = { pfad: "/wissen/ko-1", seite: "wissen" as const, seitenName: "W", objekt: "O" };
+  const fiktiv = {
+    pfad: "/klara-vorschau/a",
+    seite: "artikel" as const,
+    seitenName: "A",
+    objekt: "F",
+  };
+
+  it("eine echte Markierung, ihr Bezug und das Konto bleiben; Demo-Verlauf, Entwurf und Demo-Betrieb gehen", () => {
+    const z = nachVorschauEnde({
+      ...ANFANG,
+      kontoId: "u-1",
+      betrieb: "demo",
+      bezug: "markierung",
+      auswahl: { id: "a", text: "echt", herkunft: seite },
+      verlauf: [{ id: "d", von: "klara", text: "x", herkunft: fiktiv, demo: true }],
+      entwurf: {
+        id: "e",
+        art: "notiz",
+        inhalt: "x",
+        herkunft: fiktiv,
+        erinnerung: "",
+        termin: "",
+        gespeichert: false,
+      },
+      artikelText: { "a#1": "x" },
+      geparkt: { artikelId: "a", absatz: 1 },
+    });
+    expect(z.kontoId).toBe("u-1");
+    expect(z.auswahl?.text).toBe("echt");
+    expect(z.bezug).toBe("markierung");
+    expect(z.betrieb).toBe("echt");
+    expect(z.verlauf).toEqual([]);
+    expect(z.entwurf).toBeNull();
+    expect(z.artikelText).toEqual({});
+    expect(z.geparkt).toBeNull();
+  });
+
+  it("eine Markierung aus einem fiktiven Artikel geht — der Bezug fällt dann gültig auf „Seite“; „frei“ bleibt „frei“", () => {
+    const mitFiktiv = { ...ANFANG, bezug: "markierung" as const };
+    const z = nachVorschauEnde({ ...mitFiktiv, auswahl: { id: "a", text: "f", herkunft: fiktiv } });
+    expect(z.auswahl).toBeNull();
+    expect(z.bezug).toBe("seite");
+    expect(nachVorschauEnde({ ...ANFANG, bezug: "frei" }).bezug).toBe("frei");
+  });
+});
+
 describe("K3/K4 · Produktbetrieb ohne Demo; offene Ausbaustufen benannt; Vorschau getrennt", () => {
   it("kein Demo-Schalter, kein Vorschau-Ende, keine vorgefertigten Aktionen — dafür ein Link in die gekennzeichnete Vorschau", async () => {
     await vorrichtung();
@@ -384,5 +438,52 @@ describe("K3/K4 · Produktbetrieb ohne Demo; offene Ausbaustufen benannt; Vorsch
     expect(q(document, "klara-figur")?.dataset.betriebsart).toBe("produkt");
     expect(sessionStorage.getItem("klarwerk.klaraVorschau.aktiv")).toBeNull();
     expect(hilfeKnopf()).not.toBeNull();
+  });
+
+  it("Produkt → Vorschau → „Vorschau beenden“: angefangene Frage und Bezugsauswahl bleiben, auch nach Neuladen; Demo-Anteil geht", async () => {
+    await vorrichtung();
+    await montiere("/");
+    await gespraechOeffnen();
+    await klick(q(document, "klara-bezug-frei"));
+    await tippe(eingabe(), "Persönliche Frage, noch nicht gesendet");
+
+    // In die Vorschau wechseln (wie der Link im Fuss) und dort einen Demo-Verlauf anlegen.
+    abbauen();
+    setzeKlaraVorschauAktiv(true);
+    aendere((z) => ({
+      ...z,
+      betrieb: "demo",
+      verlauf: [
+        {
+          id: "demo-1",
+          von: "klara",
+          text: "Demo-Antwort",
+          herkunft: { pfad: "/klara-vorschau", seite: "uebersicht", seitenName: "V", objekt: "O" },
+          demo: true,
+        },
+      ],
+    }));
+    await montiere("/klara-vorschau");
+    await gespraechOeffnen();
+    expect(eingabe().value).toBe("Persönliche Frage, noch nicht gesendet");
+
+    await klick(q(document, "klara-beenden"));
+    await bis(() => q(document, "klara-figur")?.dataset.betriebsart === "produkt", 200);
+    await gespraechOeffnen();
+    expect(eingabe().value).toBe("Persönliche Frage, noch nicht gesendet");
+    expect(q(document, "klara-bezug")?.dataset.bezug).toBe("frei");
+    expect(leseZustand().verlauf).toEqual([]);
+    expect(leseZustand().betrieb).toBe("echt");
+
+    // Neuladen: der Sitzungsspeicher trägt beides weiter.
+    expect(sessionStorage.getItem("klarwerk.assistenz.eingabe")).toContain(
+      "Persönliche Frage, noch nicht gesendet",
+    );
+    abbauen();
+    vergiss();
+    await montiere("/");
+    await gespraechOeffnen();
+    expect(eingabe().value).toBe("Persönliche Frage, noch nicht gesendet");
+    expect(q(document, "klara-bezug")?.dataset.bezug).toBe("frei");
   });
 });

@@ -81,7 +81,10 @@ export function useEingabe(): string {
   return useSyncExternalStore(abonnieren, leseEingabe, leseEingabe);
 }
 
-/** Für Tests und „Vorschau beenden“ (`zuruecksetzenGanz`): alles auf Anfang. */
+/**
+ * Nur für Tests (`zuruecksetzenGanz`): alles auf Anfang. „Vorschau beenden“ berührt die Eingabe
+ * NICHT — sie gehört der Person, nicht der Vorschau.
+ */
 export function eingabeZuruecksetzen(): void {
   stand = { kontoId: null, text: "" };
   sichern();

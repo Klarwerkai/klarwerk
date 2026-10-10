@@ -132,8 +132,8 @@ import {
   neueId,
   statusNachAntwort,
   useKlaraZustand,
+  vorschauEndeZustand,
   wirksamePosition,
-  zuruecksetzenGanz,
 } from "./zustand";
 
 /** So lange „läuft“ eine vorgefertigte Anfrage — sichtbar, aber kurz. */
@@ -1318,7 +1318,8 @@ export function KlaraVorschau({
     if (document.fullscreenElement) {
       document.exitFullscreen?.()?.catch(() => {});
     }
-    zuruecksetzenGanz();
+    // Nur der Vorschau-Anteil geht; angefangene Frage und gültige Bezugsauswahl bleiben.
+    vorschauEndeZustand();
     setzeKlaraVorschauAktiv(false);
     if (location.pathname.startsWith(VORSCHAU_PFAD)) {
       navigate(HOME_ROUTE);
