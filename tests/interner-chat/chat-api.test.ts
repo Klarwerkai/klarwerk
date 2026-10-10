@@ -204,6 +204,8 @@ async function inSpaceVerschieben(b: Buehne, koId: string, spaceId: string) {
         quelleVersion: vorschau.quelle?.version ?? null,
         zielId: vorschau.ziel?.id ?? null,
         zielVersion: vorschau.ziel?.version ?? null,
+        // Die bestätigte Rechtelage der Vorschau (Spaces-Verwaltung, main): ohne sie 409.
+        grundlage: vorschau.grundlage,
       },
     },
   });

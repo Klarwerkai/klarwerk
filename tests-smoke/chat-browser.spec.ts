@@ -335,6 +335,7 @@ test.describe("Interner Chat · zwei Konten in der echten App", () => {
     const vorschau = (await v.json()) as {
       quelle: { id: string; version: number } | null;
       ziel: { id: string; version: number } | null;
+      grundlage: string;
     };
     const wechsel = await anna.page.request.post("/api/spaces/verschiebung", {
       data: {
@@ -345,6 +346,8 @@ test.describe("Interner Chat · zwei Konten in der echten App", () => {
           quelleVersion: vorschau.quelle?.version ?? null,
           zielId: vorschau.ziel?.id ?? null,
           zielVersion: vorschau.ziel?.version ?? null,
+          // Die bestätigte Rechtelage der Vorschau (Spaces-Verwaltung, main): ohne sie 409.
+          grundlage: vorschau.grundlage,
         },
       },
     });
