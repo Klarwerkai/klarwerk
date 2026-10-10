@@ -474,6 +474,7 @@ PFLICHTTABELLEN=(
   overlap_settings
   lifecycle_couplings
   lifecycle_pending
+  lifecycle_verlauf
   lifecycle_paths
   lifecycle_progress
   objects
@@ -518,6 +519,7 @@ PFLICHTTABELLEN=(
   richtlinien_handlungen
   klara_gespraeche
   ko_mitgelesen
+  vorlagen_fassungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

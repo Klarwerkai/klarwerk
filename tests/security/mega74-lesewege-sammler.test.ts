@@ -450,6 +450,22 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Block D — loadFeed, über den Helferrumpf nachgeprüft.",
   },
+  // ADMIN-10: die Qualitätsübersicht nennt Titel und Konfliktbeschreibungen — die Route bildet
+  // sichtbarkeitsfilterFuer(user) unbedingt und reicht ihn an jede Zeile (Paare beidseitig).
+  "GET /api/qualitaetsaufgaben": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-10 — sichtbarkeitsfilterFuer je Objekt; Lückentext über redactGapForViewer.",
+  },
+  "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-10 — nicht sichtbares Objekt der Meldung endet in 404, ohne Beleg.",
+  },
+  // ADMIN-11: die Kennzahlen nennen Titel nur über die Vorgänge aus ADMIN-10 — dieselbe
+  // sichtbarkeitsfilterFuer(user)-Entscheidung, an ladeQualitaetsaufgaben durchgereicht.
+  "GET /api/wissenskennzahlen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-11 — sichtbarkeitsfilterFuer an ladeQualitaetsaufgaben; Lückentext redigiert.",
+  },
   "GET /api/livewall": { urteil: "PRAEDIKAT", grund: "Block E — Titel + Autor je Objekt." },
   "GET /api/validation/board": { urteil: "PRAEDIKAT", grund: "Block E — volle Wissensobjekte." },
   // --- Die vorbereiteten Wege, jetzt scharf (Block F) ---------------------------------------
@@ -542,6 +558,12 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "Kandidaten und damalige Fassungen durch sichtbarkeitsfilterFuer, danach dropConfidential " +
       "bzw. !isConfidential an der damaligen Fassung (ask/src/service.ts, vergleicheWissensstand).",
+  },
+  // REF-01: Fundstellenauszüge aus Wissensobjekten — je Fundstelle `sichtbarkeitsfilterFuer`,
+  // unbekannt und nicht berechtigt mit derselben inhaltslosen Antwort (aussage-fundstellen.ts).
+  "POST /api/ask/fundstellen": {
+    urteil: "PRAEDIKAT",
+    grund: "REF-01 — sichtbarkeitsfilterFuer vor jedem Auszug; sonst nur „nicht zugänglich“.",
   },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
@@ -763,6 +785,34 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund:
       "R-2178 — sichtbarkeitsfilterFuer über der Objektgrundlage, Titel nur sichtbarer Objekte.",
+  },
+  // produkt:20261010:wissenskreislauf-schliessen: die Vorgangssicht nennt Titel, Fassung und
+  // Prüfstand des verknüpften Entwurfs bzw. Ergebnisses — nur, wenn `sichtbarkeitsfilterFuer` des
+  // Betrachters es heute erlaubt (`beteiligterAus` → `AskService.gapVorgang`), sonst
+  // `{ zugaenglich: false }`. Die Schreibschritte antworten mit derselben Sicht.
+  "GET /api/gaps/:id/vorgang": {
+    urteil: "PRAEDIKAT",
+    grund: "Vorgangssicht — Ergebnis/Entwurf nur über sichtbarkeitsfilterFuer des Betrachters.",
+  },
+  "POST /api/gaps/:id/uebergeben": {
+    urteil: "PRAEDIKAT",
+    grund: "Übergabe durch Fragende; Antwort ist die Vorgangssicht (sichtbarkeitsfilterFuer).",
+  },
+  "POST /api/gaps/:id/rueckfrage": {
+    urteil: "PRAEDIKAT",
+    grund: "Rückfrage der zuständigen Person; Antwort ist die Vorgangssicht.",
+  },
+  "POST /api/gaps/:id/rueckfrage/:rueckfrageId/antwort": {
+    urteil: "PRAEDIKAT",
+    grund: "Antwort eines Fragenden; Antwort ist die Vorgangssicht.",
+  },
+  "POST /api/gaps/:id/entwurf": {
+    urteil: "PRAEDIKAT",
+    grund: "Verknüpfung nur mit einem für den Handelnden sichtbaren Eintrag; Vorgangssicht.",
+  },
+  "POST /api/gaps/:id/abschliessen": {
+    urteil: "PRAEDIKAT",
+    grund: "Fachlicher Abschluss nur mit für den Handelnden sichtbarem, nutzbarem Eintrag.",
   },
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   // Pool-Auftrag (R-2099): dazu kommen Entwürfe, die ihr Autor BEWUSST in den gemeinsamen Pool
@@ -1076,6 +1126,24 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Dokumentierte Läufe aus dem Prüfprotokoll — Kennungen und Zahlen, keine Titel.",
   },
+  // ADMIN-09 (freigaberegeln-routes.ts, freigaberegel-dienst.ts): Vorgänge mit Titel nur über das
+  // `darfSehen`-Urteil des Betrachters, das die Route bildet; unsichtbare zählen nur mit.
+  "GET /api/spaces/:id/freigaberegel": {
+    urteil: "PRAEDIKAT",
+    grund: "Regelübersicht — Vorgangstitel nur, wo darfSehen es erlaubt.",
+  },
+  "POST /api/spaces/:id/freigaberegel/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Wirkungsvorschau — Titel laufender Vorgänge nur über darfSehen.",
+  },
+  "PUT /api/spaces/:id/freigaberegel": {
+    urteil: "PRAEDIKAT",
+    grund: "Neue Regelfassung samt Übersicht — Vorgangstitel nur über darfSehen.",
+  },
+  "POST /api/spaces/:id/freigaberegel/fristlauf": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis des Fristlaufs — Titel nur über darfSehen, sonst Kennung und Zahl.",
+  },
   // Teams (teams-routes.ts, produkt:20261009:admin-teams): Teamfassungen, Konten und Space-Namen —
   // kein Wissensobjekt wird gelesen oder ausgegeben.
   "GET /api/teams": {
@@ -1092,6 +1160,60 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/teams/:id/archivieren": {
     urteil: "KEIN_KO_INHALT",
     grund: "Antwort ist die archivierte Teamfassung.",
+  },
+  // Vorlagen (vorlagen-routes.ts, produkt:20261007:templates-default): Vorlagen, Standards und
+  // Space-Vorgaben sind kein Wissensobjekt; Nutzungszahlen sind Zahlen ohne Titel. Begriffsnamen
+  // und Titel nur über `sichtbareFuer`/`darfSehen` des Betrachters.
+  "GET /api/vorlagen": { urteil: "KEIN_KO_INHALT", grund: "Vorlagenfassungen nach Geltung." },
+  "GET /api/vorlagen/start": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Vorrangregel: Vorlage, Space-Vorgabe, Begründung.",
+  },
+  "PUT /api/vorlagen/standard": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die Kennung des neuen Standards.",
+  },
+  "POST /api/vorlagen/pruefung": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Befunde zur mitgeschickten Eingabe — nichts aus dem Bestand (vorlagen.ts).",
+  },
+  "GET /api/vorlagen/nutzung/:koId": {
+    urteil: "PRAEDIKAT",
+    grund: "Vorlagenbezug eines Beitrags — 404 statt Auskunft.",
+  },
+  "GET /api/vorlagen/verwaltung": {
+    urteil: "PRAEDIKAT",
+    grund: "Kategorien/Tags nur aus einsehbaren Beiträgen; sonst blosse Zahlen.",
+  },
+  "GET /api/vorlagen/space-vorgaben/:spaceId": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Fassungen der Space-Vorgaben.",
+  },
+  "PUT /api/vorlagen/space-vorgaben/:spaceId": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die neue Vorgabenfassung.",
+  },
+  "POST /api/vorlagen/begriffe/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Betroffener Bestand — Titel nur, wo darfSehen es erlaubt; sonst Kennung und Zahl.",
+  },
+  "POST /api/vorlagen/begriffe/ausfuehren": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis der Begriffspflege — Kennungen und Zahlen; Vorschau mit darfSehen-Titeln.",
+  },
+  "GET /api/vorlagen/:id": { urteil: "KEIN_KO_INHALT", grund: "Vorlage und ihre Fassungen." },
+  "POST /api/vorlagen": { urteil: "KEIN_KO_INHALT", grund: "Antwort ist die neue Vorlage." },
+  "POST /api/vorlagen/:id/vorschau": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Feldänderungen und Nutzungszahlen je Fassung/Space — keine Titel.",
+  },
+  "PUT /api/vorlagen/:id": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Neue Vorlagenfassung mit Nutzungszahlen — keine Titel.",
+  },
+  "POST /api/vorlagen/:id/ausmustern": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die ausgemusterte Vorlagenfassung.",
   },
   // Hauptverantwortung übergeben (verantwortung-routes.ts): Titel nur über `darfSehen`; für nicht
   // einsehbare Beiträge Kennung, Status und Space, aber kein Inhalt.
@@ -1379,6 +1501,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "R-1662 — sichtbareEintraege vor dem Lesen; nur Kennung, Zeitpunkt und Fassung.",
   },
+  "GET /api/lifecycle/folgepruefung": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "aenderungsfolgen-sichtbar — sichtbareEintraege über die offenen Fälle und je auslösendem " +
+      "Eintrag; ohne meldende Person.",
+  },
   "GET /api/lifecycle/couplings/:koId": {
     urteil: "KEIN_KO_INHALT",
     grund: "string[] mit assetRefs (lifecycle/src/service.ts:29).",
@@ -1454,7 +1582,8 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",
-    "POST /api/lifecycle/asset-changed": "ko.validate; Antwort ohne KO-Inhalt.",
+    "POST /api/lifecycle/asset-changed":
+      "ko.validate; Antwort ohne KO-Inhalt, nur sichtbare Kennungen (sichtbareEintraege).",
     // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Die Vorschau nennt Kennung und Titel
     // der Wissensobjekte einer Person — an `users.manage`, also an eine Rolle, für die `darfSehen`
     // ohnehin jedes Objekt freigibt. Entwürfe und Lücken nur als Kennung; die Ausführung antwortet

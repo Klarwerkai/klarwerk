@@ -493,6 +493,14 @@ export interface KoSource {
   // öffentlichen Schreibrouten verwerfen `sources` ohnehin. Additiv, JSON-persistiert, kein Backfill:
   // Altanker ohne Feld sind vor dieser Regel entstanden.
   sourceRecordId?: string;
+  // REF-01 (Ben nacharbeit-7 K2): der NACHGEWIESENE Abruf des gespeicherten Auszugs — gesetzt nur
+  // mit gültigem Abrufbeleg des Servers (`add-source`, external-search `pruefeAbrufbeleg`).
+  // `abgerufenAm` ist der Zeitpunkt, zu dem der Server den Inhalt unter `url` tatsächlich bekam;
+  // `abrufInhaltFingerabdruck` der Fingerabdruck dieses abgerufenen Inhalts. Fehlt beides, liegt
+  // kein Abrufnachweis vor (Altbestand, Handeingabe) — `at` ist dann NUR die Speicherzeit.
+  // Additiv, JSON-persistiert → keine Migration.
+  abgerufenAm?: string;
+  abrufInhaltFingerabdruck?: string;
   author: string;
   at: string;
 }

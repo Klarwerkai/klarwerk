@@ -285,7 +285,9 @@ export interface MeldungZeile {
     | "loeschantrag"
     | "frische"
     | "reklamation"
-    | "veroeffentlichung";
+    | "veroeffentlichung"
+    // produkt:20261010:wissenskreislauf-schliessen: Rückfrage oder Ergebnis der eigenen Frage.
+    | "luecke";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -325,6 +327,9 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   impact: "later",
   // Eine Veröffentlichungsmeldung ist Information, keine Arbeit — wie eine Wirkungs-Rückmeldung.
   veroeffentlichung: "later",
+  // produkt:20261010:wissenskreislauf-schliessen: eine Rückfrage an die Fragenden oder das Ergebnis
+  // der eigenen Frage wartet auf die Person — Arbeit von heute.
+  luecke: "today",
 };
 
 /** Bereichsname je Meldungsart (i18n-Schlüssel) — steht als Meta rechts in der Zeile. */
@@ -355,6 +360,10 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   // R-1089: die Antwortmeldung bringt ihren Namen im Textmodul `texte/antwortmeldung.ts` mit.
   if (kind === "reklamation") {
     return "antwortmeldung.meldungArt";
+  }
+  // produkt:20261010:wissenskreislauf-schliessen: Textmodul `texte/lueckenvorgang.ts`.
+  if (kind === "luecke") {
+    return "lueckenvorgang.meldungArt";
   }
   return `start.fuerdich.art.${kind}`;
 }

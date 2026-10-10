@@ -109,6 +109,9 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "assignments",
   "lifecycle_progress",
   "lifecycle_pending",
+  // produkt:20261010:aenderungsfolgen-sichtbar: Stand-Hochwassermarke und verarbeitete Signale —
+  // an die Merker gebunden, fallen mit ihnen.
+  "lifecycle_verlauf",
   "lifecycle_paths",
   "lifecycle_couplings",
   "klara_session_consents",

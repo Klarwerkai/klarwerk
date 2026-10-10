@@ -17,6 +17,7 @@ import type { AuditFilter } from "../api/types";
 import { leerzustandsRahmen } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
+import { Wissenskennzahlen } from "../components/Wissenskennzahlen";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
   auditActions,
@@ -25,7 +26,6 @@ import {
   filterAudit,
   formatRate,
   validationRate,
-  weeklyValidated,
   workloadSummary,
 } from "../lib/analyticsMetrics";
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
@@ -41,14 +41,23 @@ const BAND_TONE: Record<HealthBand, string> = {
   kritisch: "bg-trust-crit-bg text-trust-crit-text",
 };
 
-function Kpi({ label, value }: { label: string; value: string | number }): JSX.Element {
+// ADMIN-11: jede Bestandszahl nennt darunter, was sie zählt und wovon (Grundmenge).
+function Kpi({
+  label,
+  value,
+  hint,
+}: { label: string; value: string | number; hint: string }): JSX.Element {
   return (
     <div className="rounded-card bg-page p-4">
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+      <div className="mt-0.5 text-[11px] leading-snug text-muted-2">{hint}</div>
     </div>
   );
 }
+
+/** Eine Quote über eine leere Grundmenge ist nicht 0 %, sondern nicht berechenbar. */
+const OHNE_GRUNDMENGE = "—";
 
 // SCRUM-431: Executive-Kachel mit kurzer Erklärung darunter — jede Zahl ist selbsterklärend.
 // E2E-016: solange die Quelle noch lädt, zeigt die Kachel „—" statt einer echten 0 (unbekannt ≠ 0).
@@ -155,55 +164,19 @@ export function Analytics(): JSX.Element {
     return () => window.clearTimeout(handle);
   }, [location.hash]);
 
+  // ADMIN-11: der Datenstand der Bestandszahlen — der Abruf der Übersicht, nicht „jetzt".
+  const bestandStand =
+    analytics.dataUpdatedAt > 0
+      ? formatKoTimestamp(new Date(analytics.dataUpdatedAt).toISOString(), i18n.language)
+      : null;
+
   return (
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} pageKey="analytics" />
 
-      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
-      <div>
-        <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("ana.exec.title")}</SectionLabel>
-          <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
-        </div>
-        <Card>
-          {execStale ? (
-            <div className="mb-3">
-              <StaleMarker onRetry={retryExec} />
-            </div>
-          ) : null}
-          {execError ? (
-            // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
-            <LoadErrorState onRetry={retryExec} />
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <ExecKpi
-                label={t("ana.exec.validated")}
-                value={exec.validated}
-                hint={t("ana.exec.validatedHint")}
-                loading={execLoading}
-              />
-              <ExecKpi
-                label={t("ana.exec.openReviews")}
-                value={exec.openReviews}
-                hint={t("ana.exec.openReviewsHint")}
-                loading={execLoading}
-              />
-              <ExecKpi
-                label={t("ana.exec.busFactor")}
-                value={exec.singleSourceCategories}
-                hint={t("ana.exec.busFactorHint")}
-                loading={execLoading}
-              />
-              <ExecKpi
-                label={t("ana.exec.rescued")}
-                value={exec.rescuedGaps}
-                hint={t("ana.exec.rescuedHint")}
-                loading={execLoading}
-              />
-            </div>
-          )}
-        </Card>
-      </div>
+      {/* ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): der Handlungsbedarf steht ZUERST —
+          mit Zeitraum, Space- und Teamfilter, Datenstand und dem Weg in die Arbeitslisten. */}
+      <Wissenskennzahlen />
 
       {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar. R-0908: die Überschrift kommt aus
           `texte/fachwort.ts` („Zustand der Wissensbasis“), `health.title` sagte „Knowledge Health“. */}
@@ -263,7 +236,9 @@ export function Analytics(): JSX.Element {
             </div>
             {/* AUFTRAG-mega33 BLOCK B (Pedi 27.07.): bei unbelegter Erkennung rechnet die sichtbare
                 Zahl mit dem VOLLEN Konfliktabzug — der schlechteste Fall steht groß da. Der
-                optimistische Rand steht daneben, benannt als das, was er ist. */}
+                optimistische Rand steht daneben, benannt als das, was er ist.
+                ADMIN-11: die Kennzeichnung (Titelsatz) bleibt sichtbar; Grund und bekannter Abzug
+                stehen mit der übrigen Rechnung im aufklappbaren Teil darunter. */}
             {health.conflictFactor.proven ? null : (
               <div
                 data-testid="health-conflict-unproven"
@@ -276,35 +251,103 @@ export function Analytics(): JSX.Element {
                   })}
                 </p>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                  {t(`health.conflictUnproven.${health.conflictFactor.reason}`)}
-                </p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                  {t("health.conflictUnproven.known", {
-                    count: health.openConflicts,
-                    penalty: health.conflictFactor.knownPenalty,
-                    max: health.conflictFactor.maxPenalty,
-                  })}
+                  {t("wkz.wert.unbelegt")}
                 </p>
               </div>
             )}
-            <div className="space-y-1.5">
-              {health.factors.map((f) => (
-                <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
-                    }`}
-                  />
-                  <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
-                  <span className="font-mono text-muted-2">
-                    {f.value}
-                    {f.unit === "percent" ? "%" : ""}
-                  </span>
+            <details data-testid="health-berechnung" className="text-[12.5px]">
+              <summary className="cursor-pointer font-semibold text-text">
+                {t("wkz.wert.details")}
+              </summary>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                {t("wkz.wert.erklaerung")}
+              </p>
+              {health.conflictFactor.proven ? null : (
+                <div className="mt-1.5 space-y-0.5 text-[12px] leading-relaxed text-muted">
+                  <p>{t(`health.conflictUnproven.${health.conflictFactor.reason}`)}</p>
+                  <p>
+                    {t("health.conflictUnproven.known", {
+                      count: health.openConflicts,
+                      penalty: health.conflictFactor.knownPenalty,
+                      max: health.conflictFactor.maxPenalty,
+                    })}
+                  </p>
                 </div>
-              ))}
-            </div>
+              )}
+              <div className="mt-2 space-y-1.5">
+                {health.factors.map((f) => (
+                  <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
+                      }`}
+                    />
+                    <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
+                    <span className="font-mono text-muted-2">
+                      {f.value}
+                      {f.unit === "percent" ? "%" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
           </Card>
         )}
+      </div>
+
+      {/* ADMIN-11: alles darunter ist Gesamtbestand ohne Zeitraum und ohne Filter — das steht hier,
+          einmal, mit dem Datenstand des Abrufs. */}
+      <div data-testid="bestand-kopf">
+        <SectionLabel>{t("wkz.bestand.titel")}</SectionLabel>
+        <p className="text-[12px] text-muted-2">
+          {t("wkz.bestand.erklaerung", { zeit: bestandStand ?? OHNE_GRUNDMENGE })}
+        </p>
+      </div>
+
+      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
+      <div>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("ana.exec.title")}</SectionLabel>
+          <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
+        </div>
+        <Card>
+          {execStale ? (
+            <div className="mb-3">
+              <StaleMarker onRetry={retryExec} />
+            </div>
+          ) : null}
+          {execError ? (
+            // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
+            <LoadErrorState onRetry={retryExec} />
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <ExecKpi
+                label={t("ana.exec.validated")}
+                value={exec.validated}
+                hint={t("ana.exec.validatedHint")}
+                loading={execLoading}
+              />
+              <ExecKpi
+                label={t("ana.exec.openReviews")}
+                value={exec.openReviews}
+                hint={t("ana.exec.openReviewsHint")}
+                loading={execLoading}
+              />
+              <ExecKpi
+                label={t("ana.exec.busFactor")}
+                value={exec.singleSourceCategories}
+                hint={t("ana.exec.busFactorHint")}
+                loading={execLoading}
+              />
+              <ExecKpi
+                label={t("ana.exec.rescued")}
+                value={exec.rescuedGaps}
+                hint={t("ana.exec.rescuedHint")}
+                loading={execLoading}
+              />
+            </div>
+          )}
+        </Card>
       </div>
 
       <QueryState query={analytics}>
@@ -313,21 +356,56 @@ export function Analytics(): JSX.Element {
           return (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Kpi label={t("ana.total")} value={a.total} />
-                <Kpi label={t("status.offen")} value={a.byStatus.offen ?? 0} />
-                <Kpi label={t("status.validiert")} value={a.byStatus.validiert ?? 0} />
-                <Kpi label={t("ana.categories")} value={Object.keys(a.byCategory).length} />
+                <Kpi label={t("ana.total")} value={a.total} hint={t("wkz.bestand.total")} />
+                <Kpi
+                  label={t("status.offen")}
+                  value={a.byStatus.offen ?? 0}
+                  hint={t("wkz.bestand.offen")}
+                />
+                <Kpi
+                  label={t("status.validiert")}
+                  value={a.byStatus.validiert ?? 0}
+                  hint={t("wkz.bestand.validiert")}
+                />
+                <Kpi
+                  label={t("ana.categories")}
+                  value={Object.keys(a.byCategory).length}
+                  hint={t("wkz.bestand.categories")}
+                />
               </div>
 
-              {/* SCRUM-139: Trust & Arbeitslast */}
+              {/* SCRUM-139: Trust & Arbeitslast. ADMIN-11: über eine leere Grundmenge steht keine 0. */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Kpi label={t("ana.avgTrust")} value={trust} />
+                <Kpi
+                  label={t("ana.avgTrust")}
+                  value={(kos.data ?? []).length > 0 ? trust : OHNE_GRUNDMENGE}
+                  hint={
+                    (kos.data ?? []).length > 0
+                      ? t("wkz.bestand.avgTrust")
+                      : t("wkz.bestand.keineGrundmenge")
+                  }
+                />
                 <Kpi
                   label={t("ana.validationRate")}
-                  value={`${validationRate(a.total, a.byStatus.validiert ?? 0)}%`}
+                  value={
+                    a.total > 0
+                      ? `${validationRate(a.total, a.byStatus.validiert ?? 0)}%`
+                      : OHNE_GRUNDMENGE
+                  }
+                  hint={
+                    a.total > 0 ? t("wkz.bestand.validationRate") : t("wkz.bestand.keineGrundmenge")
+                  }
                 />
-                <Kpi label={t("ana.openTasks")} value={work.openTotal} />
-                <Kpi label={t("ana.doneTasks")} value={work.doneTotal} />
+                <Kpi
+                  label={t("ana.openTasks")}
+                  value={work.openTotal}
+                  hint={t("wkz.bestand.openTasks")}
+                />
+                <Kpi
+                  label={t("ana.doneTasks")}
+                  value={work.doneTotal}
+                  hint={t("wkz.bestand.doneTasks")}
+                />
               </div>
 
               <Card>
@@ -358,47 +436,43 @@ export function Analytics(): JSX.Element {
         }}
       </QueryState>
 
-      {/* SCRUM-140: Wirkungs-/Impact-Metriken aus GET /api/analytics/impact */}
+      {/* SCRUM-140: Fragen und validiertes Wissen gesamt aus GET /api/analytics/impact.
+          ADMIN-11: Überschrift und Hilfe sagen, was die Zahlen sind — Nutzung, keine gemessene
+          Zeit- oder Geldersparnis. Der frühere Wochenbalken ist entfallen: er gruppierte HEUTE
+          validierte Objekte nach ihrer Erstellungswoche, war also kein erhobener Verlauf der
+          Freigaben (Kriterium 3). Belegte Zeitraumvergleiche stehen oben in den Kennzahlen. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("ana.impact")}</SectionLabel>
-          <HelpTip title={t("ana.impact")} body={t("ana.help.impact")} />
+          <SectionLabel>{t("wkz.bestand.fragenTitel")}</SectionLabel>
+          <HelpTip title={t("wkz.bestand.fragenTitel")} body={t("wkz.bestand.fragenHilfe")} />
         </div>
         <QueryState query={impact}>
-          {(im) => {
-            const weeks = weeklyValidated(im.validatedByWeek);
-            const maxWeek = Math.max(1, ...weeks.map((w) => w.count));
-            return (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Kpi label={t("ana.impactValidated")} value={im.validatedTotal} />
-                  <Kpi label={t("ana.impactAsk")} value={im.askTotal} />
-                  <Kpi label={t("ana.impactAnswered")} value={im.answeredWithoutGap} />
-                  <Kpi label={t("ana.impactRate")} value={formatRate(im.answerRate)} />
-                </div>
-                {weeks.length > 0 ? (
-                  <Card>
-                    <SectionLabel>{t("ana.weekly")}</SectionLabel>
-                    <HelpTip title={t("ana.weekly")} body={t("shelp.ana.weekly")} />
-                    <div className="space-y-2">
-                      {weeks.map((w) => (
-                        <div key={w.week} className="flex items-center gap-3">
-                          <span className="w-24 font-mono text-[11px] text-muted-2">{w.week}</span>
-                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
-                            <div
-                              className="h-full rounded-full bg-brand"
-                              style={{ width: `${(w.count / maxWeek) * 100}%` }}
-                            />
-                          </div>
-                          <span className="font-mono text-[11px] text-muted-2">{w.count}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                ) : null}
-              </div>
-            );
-          }}
+          {(im) => (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Kpi
+                label={t("ana.impactValidated")}
+                value={im.validatedTotal}
+                hint={t("wkz.bestand.impactValidated")}
+              />
+              <Kpi
+                label={t("ana.impactAsk")}
+                value={im.askTotal}
+                hint={t("wkz.bestand.impactAsk")}
+              />
+              <Kpi
+                label={t("ana.impactAnswered")}
+                value={im.answeredWithoutGap}
+                hint={t("wkz.bestand.impactAnswered")}
+              />
+              <Kpi
+                label={t("ana.impactRate")}
+                value={im.askTotal > 0 ? formatRate(im.answerRate) : OHNE_GRUNDMENGE}
+                hint={
+                  im.askTotal > 0 ? t("wkz.bestand.impactRate") : t("wkz.bestand.keineGrundmenge")
+                }
+              />
+            </div>
+          )}
         </QueryState>
       </div>
 

@@ -17,6 +17,7 @@ import {
   classifySourceReach,
   decideExternalAttach,
   externalAttachAllowed,
+  pruefeAbrufbeleg,
 } from "../../../external-search";
 import {
   type AnzeigestatusEingaenge,
@@ -68,6 +69,7 @@ import type { Reasoner } from "../../../reasoner";
 import {
   type KoPruefstand,
   TRUST_MAX,
+  ValidationError,
   type ValidationService,
   type Verdict,
 } from "../../../validation";
@@ -76,11 +78,25 @@ import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
 import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
+import type { FreigabeWeg, TorUrteil } from "../freigaberegel-dienst";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import type { EinreichEntscheid, VorlagenEinreichungPort } from "../vorlagen";
 import { dublettenTor } from "./validation-routes";
+
+/** produkt:20261007:templates-default — die Absage der Einreichprüfung, wörtlich weitergegeben. */
+function sendeVorlagenAbsage(
+  reply: FastifyReply,
+  e: Extract<EinreichEntscheid, { ok: false }>,
+): void {
+  reply.code(e.status).send({
+    error: e.error,
+    message: e.message,
+    ...(e.befunde ? { befunde: e.befunde } : {}),
+  });
+}
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
 // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
@@ -153,6 +169,24 @@ export interface KoRoutesDeps {
   // Composition-Root verdrahtet `AskService.markKoHelpful`. Fehlt sie, antwortet die Aktion ehrlich
   // mit 400 statt halb zu laufen.
   hilfreich?: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // produkt:20261007:templates-default: die Einreichprüfung der Vorlagen (Pflichtfelder, Space-
+  // Vorgaben, gepflegte Begriffe) und danach der Vermerk von Vorlage und Fassung. Fehlt sie (direkt
+  // konstruierte Routentests), wird ein mitgeschickter Vorlagenbezug verworfen und nichts geprüft.
+  vorlagen?: VorlagenEinreichungPort | undefined;
+  /**
+   * ADMIN-09 (produkt:20261009:admin-freigaberegeln): der Prüfpunkt der Freigaberegel eines Space
+   * (`FreigabeRegelDienst.tor`) vor `rate`, `owner-validate` und `admin-validate` — Mehr-Augen-
+   * Prinzip, Prüferkreis und geprüfte Fassung, serverseitig. Fehlt er, gilt die bisherige Lage; eine
+   * mitgeschickte Fassung (`expectedVersion`) bindet die Entscheidung trotzdem.
+   */
+  freigabeTor?:
+    | ((
+        user: SessionUser,
+        koId: string,
+        weg: FreigabeWeg,
+        eingabe: { verdict?: Verdict | undefined; expectedVersion?: unknown },
+      ) => Promise<TorUrteil>)
+    | undefined;
 }
 
 /**
@@ -163,6 +197,27 @@ export interface KoRoutesDeps {
  * keinen Export: sie liest die Signatur des einzigen oeffentlichen Weges.
  */
 type WissensnetzDeps = Parameters<typeof wissensnetzMetrikFuer<KnowledgeObject>>[1];
+
+/** ADMIN-09: ohne Regeldienst bindet eine mitgeschickte Fassung die Entscheidung trotzdem. */
+function ohneRegeldienst(roh: unknown): TorUrteil {
+  if (roh === undefined) {
+    return { erlaubt: true, regel: null };
+  }
+  if (typeof roh === "number" && Number.isInteger(roh) && roh >= 1) {
+    return { erlaubt: true, regel: null, erwarteteFassung: roh };
+  }
+  return {
+    erlaubt: false,
+    status: 400,
+    error: "VALIDATION",
+    message: "expectedVersion muss eine Ganzzahl ab 1 sein (die geprüfte Fassung).",
+  };
+}
+
+/** ADMIN-09: die geprüfte Fassung aus dem Urteil des Prüfpunkts — für den Validierungsdienst. */
+function fassungVon(urteil: { erwarteteFassung?: number }): { erwarteteFassung?: number } {
+  return urteil.erwarteteFassung === undefined ? {} : { erwarteteFassung: urteil.erwarteteFassung };
+}
 
 /**
  * AUFTRAG-mega19 Block B — DER ENTWURF ALS EINGABE EINER DOKUMENTÜBERNAHME.
@@ -648,6 +703,15 @@ interface PutBody {
   /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
   vorrang?: unknown;
   newAuthor?: string;
+  /**
+   * produkt:20261010:aenderungsfolgen-sichtbar: an `revalidate` der Stand der Folgeprüfung, den der
+   * Prüfende gesehen hat; an `neighbors-changed` der optionale Änderungsbeleg. Beide `unknown`,
+   * geprüft an der `case`.
+   */
+  stand?: unknown;
+  /** Nacharbeit 6: an `revalidate` die angezeigte Inhaltsfassung (Pflicht zusammen mit `stand`). */
+  fassung?: unknown;
+  aenderung?: unknown;
   text?: string;
   /**
    * JOB 4146 (WIKI-DISKUSSION) — die drei Felder des Fadens. Alle `unknown`, weil sie aus dem Netz
@@ -681,7 +745,15 @@ interface PutBody {
   // AUFTRAG-mega16 Block A: `objectId` ist der ANKER einer adresslosen Belegstelle — die Referenz
   // auf ein Dokument, das dieses Wissensobjekt bereits als Anhang trägt. Der Server GLAUBT ihn
   // nicht, er PRÜFT ihn gegen die eigene Anhangsliste; ein erfundener Wert belegt nichts.
-  source?: { label?: string; url?: string; excerpt?: string; objectId?: string };
+  // REF-01 (Ben nacharbeit-7 K2): `abrufbeleg` ist der vom Server bei der externen Suche
+  // ausgestellte Abrufbeleg. Er wird geprüft, nicht geglaubt (`pruefeAbrufbeleg`).
+  source?: {
+    label?: string;
+    url?: string;
+    excerpt?: string;
+    objectId?: string;
+    abrufbeleg?: string;
+  };
   sourceId?: string;
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
   level?: string;
@@ -1570,8 +1642,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             dokumentHerkunft: _ignoredDokumentHerkunft,
             // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
             stufeNurAnheben: _ignoredStufeNurAnheben,
+            // produkt:20261007:templates-default: der Vorlagenbezug ist kein Feld des Objekts; er
+            // geht in die Einreichprüfung und danach in den Nutzungsvermerk (`vorlagen.ts`).
+            vorlage: vorlagenBezug,
             ...input
-          } = request.body;
+          } = request.body as typeof request.body & { vorlage?: unknown };
           // ==========================================================================================
           // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
           // ==========================================================================================
@@ -1633,7 +1708,32 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             });
             return;
           }
-          const created = await ko.create({ ...input, author: user.id });
+          // produkt:20261007:templates-default: Pflichtfelder der Vorlage, Space-Vorgaben und
+          // gepflegte Begriffe — serverseitig, VOR der Anlage. Ein Entwurf bleibt davon unberührt.
+          const vorlagenEntscheid = await deps.vorlagen?.pruefe(
+            vorlagenBezug,
+            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+            user,
+          );
+          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
+            sendeVorlagenAbsage(reply, vorlagenEntscheid);
+            return;
+          }
+          let created = await ko.create({ ...input, author: user.id });
+          // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das gesagt
+          // (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben.
+          let vorlagenVermerk: "fehlgeschlagen" | undefined;
+          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
+            try {
+              await deps.vorlagen?.vermerke(created.id, vorlagenEntscheid.bezug, user);
+              if (vorlagenEntscheid.bezug.spaceId) {
+                created = (await ko.get(created.id)) ?? created;
+              }
+            } catch (fehlerWert) {
+              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+              vorlagenVermerk = "fehlgeschlagen";
+            }
+          }
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
           // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
           // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
@@ -1661,7 +1761,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // reist SYNCHRON mit dem Job — die Overflow-Eviction schließt hart versionsgebunden ab.
             aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
           }
-          reply.code(201).send(submitted);
+          reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
@@ -1808,7 +1908,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         }
         // ---- DIE INHALTSEINGABE: ENTWURF ODER FRISCH ------------------------------------------
         let input: CreateKoInput;
+        // produkt:20261007:templates-default: der Vorlagenbezug — aus der mitgeschickten
+        // Entwurfsladung bzw. dem frischen Rumpf; er ist kein Feld des Objekts.
+        let vorlagenBezug: unknown;
         if (body.draftId) {
+          vorlagenBezug =
+            typeof body.draftPayload === "object" && body.draftPayload !== null
+              ? (body.draftPayload as { vorlage?: unknown }).vorlage
+              : undefined;
           if (!draftPromotion) {
             // Ehrlich statt halb: ohne verdrahteten Entwurfs-Zugang gibt es diesen Weg nicht.
             return badRequest("Entwurfs-Übernahme ist in dieser Konfiguration nicht verfügbar.");
@@ -1894,8 +2001,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             dokumentHerkunft: _ignoredDokumentHerkunft,
             // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
             stufeNurAnheben: _ignoredStufeNurAnheben,
+            vorlage: frischerBezug,
             ...rest
-          } = body.create ?? ({} as Omit<CreateKoInput, "author">);
+          } = (body.create ?? {}) as Omit<CreateKoInput, "author"> & { vorlage?: unknown };
+          vorlagenBezug = frischerBezug;
           input = { ...rest, author: user.id } as CreateKoInput;
         }
         // ==========================================================================================
@@ -1939,6 +2048,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // zwei Auslegungen. Kein Vorgabewert, kein stilles „intern".
         if (input.confidentiality === undefined) {
           sendMissingConfidentiality(reply);
+          return;
+        }
+        // produkt:20261007:templates-default: dieselbe Einreichprüfung wie `POST /api/kos` — für
+        // BEIDE Zweige, erst hier, wo `input` steht, und unter dem Wiederholungs-Nachschlag.
+        const vorlagenEntscheid = await deps.vorlagen?.pruefe(
+          vorlagenBezug,
+          { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+          user,
+        );
+        if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
+          sendeVorlagenAbsage(reply, vorlagenEntscheid);
           return;
         }
         // ---- KAPAZITÄT: derselbe Anhangs-Vertrag wie `attach` und `append-document` -------------
@@ -2106,6 +2226,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         const draftId = body.draftId;
         if (draftId && draftPromotion) {
           await followUp("draft-discard", () => draftPromotion.discard(draftId));
+        }
+        // produkt:20261007:templates-default: Vorlage und Fassung vermerken, ggf. in den gewählten
+        // Space legen — eine Nacharbeit wie die übrigen, nachholbar und ehrlich gemeldet.
+        const bezug = vorlagenEntscheid?.ok ? vorlagenEntscheid.bezug : null;
+        if (bezug) {
+          await followUp("vorlage", () =>
+            (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user),
+          );
         }
         const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
         if (reviewers.length > 0) {
@@ -2694,16 +2822,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // dort — und genau das, und nur das, ist der Grund für die zwei neuen Namen in dieser
         // Liste. An allen übrigen Aktionen bleibt es beim 400
         // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5).
+        // ADMIN-09: auch die Entscheidungswege vergleichen sie — eine Zustimmung gilt der Fassung,
+        // die geprüft wurde (`FreigabeRegelDienst.tor`, `ValidationService.rate`).
         if (
           body.expectedVersion !== undefined &&
           body.action !== "revise" &&
           body.action !== "revise-release" &&
           body.action !== "decide-proposal" &&
           body.action !== "tags" &&
-          body.action !== "category"
+          body.action !== "category" &&
+          body.action !== "rate" &&
+          body.action !== "owner-validate" &&
+          body.action !== "admin-validate"
         ) {
           return badRequest(
-            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags" und "category".',
+            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate" und "admin-validate".',
           );
         }
         // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
@@ -2719,6 +2852,46 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             'expectedMetadataRevision gilt nur für die Aktionen "tags" und "category".',
           );
         }
+        // ADMIN-09: das Urteil des Freigabe-Prüfpunkts — oder `undefined`, dann ist die Absage
+        // schon gesendet und es wird nichts entschieden.
+        const freigabeUrteil = async (
+          user: SessionUser,
+          weg: FreigabeWeg,
+        ): Promise<Extract<TorUrteil, { erlaubt: true }> | undefined> => {
+          const urteil = deps.freigabeTor
+            ? await deps.freigabeTor(user, id, weg, {
+                verdict: body.verdict,
+                expectedVersion: body.expectedVersion,
+              })
+            : ohneRegeldienst(body.expectedVersion);
+          if (!urteil.erlaubt) {
+            reply.code(urteil.status).send({
+              error: urteil.error,
+              message: urteil.message,
+              ...(urteil.details ?? {}),
+            });
+            return undefined;
+          }
+          return urteil;
+        };
+        // ADMIN-09: hat sich die Fassung zwischen Prüfpunkt und Entscheidung bewegt, entscheidet der
+        // Dienst nichts (KO_STALE) — die Antwort ist dann ein 409 mit der jetzt gültigen Fassung.
+        const fassungsgebunden = async <T>(entscheidung: Promise<T>): Promise<T | undefined> => {
+          try {
+            return await entscheidung;
+          } catch (e) {
+            if (!(e instanceof ValidationError) || e.code !== "KO_STALE") {
+              throw e;
+            }
+            const jetzt = await ko.get(id);
+            reply.code(409).send({
+              error: "KO_STALE",
+              message: e.message,
+              ...(jetzt ? { currentVersion: jetzt.version } : {}),
+            });
+            return undefined;
+          }
+        };
         switch (body.action) {
           case "rate": {
             const user = await guards.requirePermission("ko.validate", request, reply);
@@ -2727,6 +2900,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             }
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
+            }
+            // ADMIN-09: Mehr-Augen-Prinzip, Prüferkreis und geprüfte Fassung — vor allem anderen.
+            const freigabe = await freigabeUrteil(user, "rate");
+            if (!freigabe) {
+              return;
             }
             // R-0238: ein Widerspruch gehört NUR zur Ablehnung, und er wird VOR der Bewertung
             // vollständig geprüft (Form, Gegenüber sichtbar) — sonst stünde eine Bewertung, deren
@@ -2841,7 +3019,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // GENAU diese Fassung gebunden ist. Gelesen vor der Bewertung: überarbeitet jemand in
             // der Lücke, passt sie nicht mehr, und die Fortsetzung lehnt ab (409) statt zu raten.
             const bewerteteFassung = (await ko.get(id))?.version ?? null;
-            const entscheidung = await validation.rate(id, user.id, body.verdict);
+            const entscheidung = await fassungsgebunden(
+              validation.rate(id, user.id, body.verdict, fassungVon(freigabe)),
+            );
+            if (!entscheidung) {
+              return;
+            }
             if (!widerspruch) {
               reply.code(200).send(entscheidung);
               return;
@@ -2866,6 +3049,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
+            // ADMIN-09: auch der Ausnahmeweg kennt das Mehr-Augen-Prinzip und die geprüfte Fassung.
+            const freigabe = await freigabeUrteil(user, "admin-validate");
+            if (!freigabe) {
+              return;
+            }
             if (
               !(await dublettenTor(
                 dublettenTorDeps,
@@ -2878,7 +3066,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
-            reply.code(200).send(await validation.adminValidate(id, user.id));
+            const ergebnis = await fassungsgebunden(
+              validation.adminValidate(id, user.id, fassungVon(freigabe)),
+            );
+            if (!ergebnis) {
+              return;
+            }
+            await freigabe.nachEntscheidung?.(ergebnis);
+            reply.code(200).send(ergebnis);
             return;
           }
           case "revise": {
@@ -3316,6 +3511,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
                 // geprüft und vergaß sie beim Speichern.
                 objectId: body.source.objectId ?? null,
+                // REF-01 (Ben nacharbeit-7 K2): eine Abrufzeit NUR mit gültigem Abrufbeleg des
+                // Servers, für genau diese Adresse und einen Anfang des abgerufenen Inhalts.
+                abruf: pruefeAbrufbeleg(body.source.abrufbeleg, {
+                  url: body.source.url,
+                  excerpt: body.source.excerpt,
+                }),
               }),
             );
             return;
@@ -3731,6 +3932,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
+            // ADMIN-09: Mehr-Augen-Prinzip, Prüferkreis und geprüfte Fassung.
+            const freigabe = await freigabeUrteil(user, "owner-validate");
+            if (!freigabe) {
+              return;
+            }
             if (
               !(await dublettenTor(
                 dublettenTorDeps,
@@ -3743,7 +3949,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
-            reply.code(200).send(await validation.ownerValidate(id, user.id));
+            const ergebnis = await fassungsgebunden(
+              validation.ownerValidate(id, user.id, fassungVon(freigabe)),
+            );
+            if (!ergebnis) {
+              return;
+            }
+            await freigabe.nachEntscheidung?.(ergebnis);
+            reply.code(200).send(ergebnis);
             return;
           }
           case "conflict": {
@@ -3803,7 +4016,28 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            reply.code(200).send(await lifecycle.confirmStillValid(id, user.id));
+            // produkt:20261010:aenderungsfolgen-sichtbar: mit `stand` gilt die Bestätigung genau dem
+            // gesehenen Stand; eine inzwischen eingegangene Änderung ergibt 409 `STAND_VERALTET`.
+            const stand = body.stand;
+            if (stand !== undefined && !(Number.isInteger(stand) && (stand as number) > 0)) {
+              return badRequest("stand muss eine positive ganze Zahl sein.");
+            }
+            // Nacharbeit 6 (Ben, K5): mit dem Stand reist die angezeigte Inhaltsfassung — eine
+            // inzwischen überarbeitete Fassung ergibt 409 `KO_STALE` (samt `currentVersion`).
+            const fassung = body.fassung;
+            if (stand !== undefined && !(Number.isInteger(fassung) && (fassung as number) > 0)) {
+              return badRequest("fassung (die angezeigte Fassung) muss mit stand mitkommen.");
+            }
+            reply
+              .code(200)
+              .send(
+                await lifecycle.confirmStillValid(
+                  id,
+                  user.id,
+                  stand as number | undefined,
+                  stand === undefined ? undefined : (fassung as number),
+                ),
+              );
             return;
           }
           // R-1732 / R-0206: aus der Bibliothek eine erneute Prüfung anstossen — dasselbe Recht wie
@@ -3820,13 +4054,35 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // R-0203: die Anlagenänderung über dieses Objekt melden — dasselbe Recht wie
           // `POST /api/lifecycle/asset-changed`. Die Antwort nennt nur die ZAHL der markierten
           // Objekte, keine Kennungen: Nachbarn, die der Meldende nicht sehen darf, bleiben ungenannt.
+          //
+          // produkt:20261010:aenderungsfolgen-sichtbar: auch die ZAHL ist eine Auskunft — gezählt
+          // werden seither nur die markierten Objekte, die der Meldende sehen darf. Markiert wird
+          // weiter jedes gekoppelte. Ein optionaler Änderungsbeleg unterscheidet eine weitere
+          // Änderung von der wiederholten Meldung derselben.
           case "neighbors-changed": {
             const user = await guards.requirePermission("ko.validate", request, reply);
             if (!user) {
               return;
             }
-            const markiert = await lifecycle.neighborsChanged(id, user.id);
-            reply.code(200).send({ markiert: markiert.length });
+            const roh = body.aenderung;
+            const aenderung =
+              typeof roh === "string" ? roh.normalize("NFC").replace(/\s+/g, " ").trim() : "";
+            if ((roh !== undefined && typeof roh !== "string") || aenderung.length > 200) {
+              return badRequest("aenderung ist eine kurze Kennung (höchstens 200 Zeichen).");
+            }
+            const markiert = await lifecycle.neighborsChanged(
+              id,
+              user.id,
+              aenderung.length > 0 ? aenderung : undefined,
+            );
+            let sichtbar = 0;
+            for (const koId of markiert) {
+              const nachbar = await ko.get(koId);
+              if (nachbar && darfSehen(user, nachbar)) {
+                sichtbar += 1;
+              }
+            }
+            reply.code(200).send({ markiert: sichtbar });
             return;
           }
           // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — jeder, der das Objekt lesen

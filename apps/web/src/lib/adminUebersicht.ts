@@ -64,6 +64,9 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
     zweckKey: "verwaltung.zweck.spaces",
     ziele: [
       { art: "pfad", pfad: "/spaces", labelKey: "verwaltung.ziel.spaces" },
+      // ADMIN-08 (produkt:20261007:templates-default): Vorlagen, Space-Vorgaben, Kategorien und Tags
+      // mit Geltung und Nutzungsumfang — eine vorhandene Route, kein zweiter Bedienort.
+      { art: "pfad", pfad: "/vorlagen", labelKey: "vorlagen.ziel" },
       { art: "bereich", navId: "bibliothek" },
       { art: "bereich", navId: "wissensnetz" },
       { art: "verwaltung", section: "quellen" },
@@ -75,6 +78,12 @@ export const VERWALTUNG_GRUPPEN: readonly UebersichtGruppe[] = [
     labelKey: "verwaltung.gruppe.qualitaet",
     zweckKey: "verwaltung.zweck.qualitaet",
     ziele: [
+      // ADMIN-10: die gemeinsame, deduplizierte Sicht auf die Vorgänge der Zeilen darunter.
+      {
+        art: "pfad",
+        pfad: "/qualitaetsaufgaben",
+        labelKey: "verwaltung.ziel.qualitaetsaufgaben",
+      },
       { art: "bereich", navId: "validierung" },
       { art: "bereich", navId: "konflikte" },
       { art: "bereich", navId: "duplikate" },

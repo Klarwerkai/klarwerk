@@ -646,6 +646,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/ask/report": { protection: "ko.read" },
   // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
   "POST /api/ask/not-helpful": { protection: "ko.read" },
+  // REF-01: Fundstellen einer Antwort mit aktuellen Rechten auflösen — ko.read und je Fundstelle
+  // dasselbe Zeilenrecht wie GET /api/kos/:id; unbekannt und nicht berechtigt sehen gleich aus.
+  "POST /api/ask/fundstellen": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
@@ -664,8 +667,34 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.assign",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
-  "PUT /api/gaps/:id": { protection: "ko.assign" },
+  // produkt:20261010:wissenskreislauf-schliessen: der fachliche Abschluss prüft den Eintrag gegen
+  // die Sichtbarkeit des Abschliessenden (`sichtbarkeitsfilterFuer` über `beteiligterAus`); die
+  // Rücknahme verlangt im Handler zusätzlich `ko.validate`.
+  "PUT /api/gaps/:id": { protection: "ko.assign", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "DELETE /api/gaps/:id": { protection: "ko.validate" },
+  // Der gemeinsame Vorgang: Beteiligung (fragend/zuständig/verwaltend) prüft der Dienst, Ergebnis
+  // und Entwurf je Abruf über `sichtbarkeitsfilterFuer` des Betrachters.
+  "GET /api/gaps/:id/vorgang": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  "POST /api/gaps/:id/uebergeben": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/rueckfrage": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/rueckfrage/:rueckfrageId/antwort": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/entwurf": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/gaps/:id/abschliessen": {
+    protection: "ko.create",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Klara Status / Sitzung / Zustimmung (klara-ai-routes.ts, W1 S4) ---
   //
@@ -816,7 +845,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Objekt, das der Aufrufer sehen darf — `sichtbareEintraege` gegen die übergebene Kennung, sonst
   // 404 wie am Leseweg darunter. Davor koppelte der Weg an jede, auch erfundene Kennung.
   "POST /api/lifecycle/couple": { protection: "ko.create", zeilenrecht: ["sichtbareEintraege"] },
-  "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
+  // produkt:20261010:aenderungsfolgen-sichtbar: markiert wird jedes gekoppelte Objekt, HINAUS geht
+  // nur die Teilmenge, die der Meldende sehen darf (`sichtbareEintraege`).
+  "POST /api/lifecycle/asset-changed": {
+    protection: "ko.validate",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht — dasselbe Tor wie
+  // `pending`, ein auslösender Eintrag nur, wenn auch er sichtbar ist.
+  "GET /api/lifecycle/folgepruefung": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
   // R-0554 / R-2128: Wissensübergabe beim Ausscheiden — Vorschau und Ausführung, nur Verwaltung.
   "POST /api/lifecycle/handover/preview": { protection: "users.manage" },
   "POST /api/lifecycle/handover": { protection: "users.manage" },
@@ -888,14 +928,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/external/search": { protection: "ko.read" },
   // Der Feed wird über den lokalen Helfer `loadFeed` gebaut; dessen RUMPF ruft beide Prädikate
   // (notifications-routes.ts:116) — nachgeprüft, nicht dem Helfernamen geglaubt.
+  // produkt:20261010:wissenskreislauf-schliessen: die Abschlussmeldungen einer Wissenslücke prüfen
+  // ihren Eintrag je Abruf über `sichtbarkeitsfilterFuer` des Betrachters.
   "GET /api/notifications": {
     protection: "auth",
-    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare"],
+    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare", "sichtbarkeitsfilterFuer"],
   },
   // Audit-P3 (SCRUM-397): eigenen Gelesen-Status markieren — jeder angemeldete Nutzer, nur eigene Sicht.
   "POST /api/notifications/seen": {
     protection: "auth",
-    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare"],
+    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare", "sichtbarkeitsfilterFuer"],
   },
   // Audit-P4 (SCRUM-398): Live-Wall — read-only Aggregation aus KO-Bestand + Wirkungs-Audit.
   "GET /api/livewall": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
@@ -1103,6 +1145,20 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/spaces/bestand/zuordnung": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
   "GET /api/spaces/bestand/protokoll": { protection: "users.manage" },
 
+  // --- Freigaberegeln (freigaberegeln-routes.ts, produkt:20261009:admin-freigaberegeln, ADMIN-09) ---
+  // Lesen wie den Space (404 sonst), Vorgangstitel nur über `darfSehen`; Ändern nur die
+  // Kontoverwaltung; Fristlauf prüft Zuständigkeit/Kontoverwaltung am Space selbst (403).
+  "GET /api/spaces/:id/freigaberegel": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/freigaberegel/vorschau": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
+  "PUT /api/spaces/:id/freigaberegel": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/freigaberegel/fristlauf": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+
   // --- Teams (teams-routes.ts, produkt:20261009:admin-teams) ---
   // Ausschliesslich die Kontoverwaltung: Teams anlegen, ändern, Mitglieder, Wirkung, Archiv.
   "GET /api/teams": { protection: "users.manage" },
@@ -1111,6 +1167,50 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/teams/:id/vorschau": { protection: "users.manage" },
   "PUT /api/teams/:id": { protection: "users.manage" },
   "POST /api/teams/:id/archivieren": { protection: "users.manage" },
+
+  // --- Vorlagen (vorlagen-routes.ts, produkt:20261007:templates-default / ADMIN-08) ---
+  // Lesen wie Wissen; welche Vorlage erscheint, entscheidet ihre Geltung (persönlich, Space-Lese-
+  // recht, unternehmensweit). Anlegen/Ändern/Standard braucht `ko.create`, Space-Vorgaben die
+  // Spacezuständigkeit/Kontoverwaltung am Space (403), Verwaltung und Begriffspflege `users.manage`.
+  "GET /api/vorlagen": { protection: "ko.read" },
+  "GET /api/vorlagen/start": { protection: "ko.read" },
+  "PUT /api/vorlagen/standard": { protection: "ko.create" },
+  "POST /api/vorlagen/pruefung": { protection: "ko.read" },
+  "GET /api/vorlagen/nutzung/:koId": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/vorlagen/verwaltung": { protection: "users.manage", zeilenrecht: ["sichtbareFuer"] },
+  "GET /api/vorlagen/space-vorgaben/:spaceId": { protection: "ko.read" },
+  "PUT /api/vorlagen/space-vorgaben/:spaceId": { protection: "ko.read" },
+  "POST /api/vorlagen/begriffe/vorschau": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/vorlagen/begriffe/ausfuehren": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/vorlagen/:id": { protection: "ko.read" },
+  "POST /api/vorlagen": { protection: "ko.create" },
+  "POST /api/vorlagen/:id/vorschau": { protection: "ko.create" },
+  "PUT /api/vorlagen/:id": { protection: "ko.create" },
+  "POST /api/vorlagen/:id/ausmustern": { protection: "ko.create" },
+
+  // --- Qualitätsaufgaben (qualitaetsaufgaben-routes.ts, produkt:20261009:admin-qualitaetsaufgaben)
+  // Verwaltung; jede Zeile nur, wenn der Sichtbarkeitsfilter das betroffene Objekt freigibt.
+  "GET /api/qualitaetsaufgaben": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+
+  // --- Wissenskennzahlen (wissenskennzahlen-routes.ts, produkt:20261009:admin-wissenskennzahlen)
+  // Verwaltung; Detailzeilen sind die Vorgänge aus ADMIN-10 hinter demselben Sichtbarkeitsfilter.
+  "GET /api/wissenskennzahlen": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
