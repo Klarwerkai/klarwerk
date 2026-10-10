@@ -45,6 +45,7 @@ wiederholt.
 | --- | --- | --- |
 | `ko.created`, `ko.commented`, `ko.attached`, `ko.attachment-updated`, `ko.detached`, `ko.source-added`, `ko.source-removed` | — | — |
 | `ko.document-appended` | `created`/`operationId`, `version`, `revised`, `objectId`, `documents`/`sources` (Anzahl) | K, Z |
+| `ko.office-uebernommen` (Office im Artikel, neben `ko.revised`) | `version`, `anhangId`, `vorherObjectId`, `objectId`, optional `restoredFrom` | K, M — **kein Dokumentinhalt, kein Dateiname** |
 | `ko.create-rollback-failed` | `at`, `failedStep`, `rollbackFailure` (nur Fehlerklasse/-code), `marked`, `koRemoved`, `searchProjection*` | Z, M |
 | `ko.change-rolled-back` | Nutzlast des zurückgenommenen Schritts + `rolledBackSeqs` | wie Ursprung, K |
 | `ko.confidentiality` | `level`, `previous`, `downgrade` | Z |
