@@ -59,6 +59,9 @@ const INHALT_JE_AKTION: Readonly<Record<string, readonly string[]>> = {
   "ko.tags-changed": ["vorher", "nachher"],
   "ko.domain-changed": ["vorher", "nachher"],
   "ko.geltung-changed": ["vorher", "nachher"],
+  // Bens Befund Nacharbeit 35: der Anlagenkontext (Bauteil, Material, Version, Standort, Schicht)
+  // ist Inhalt des Beitrags — ohne Leserecht am Objekt bleibt er in Liste, Seite und Export verborgen.
+  "ko.anlagenkontext-changed": ["vorher", "nachher"],
 };
 const TITELFELDER: readonly string[] = ["koTitle", "title", "titel"];
 

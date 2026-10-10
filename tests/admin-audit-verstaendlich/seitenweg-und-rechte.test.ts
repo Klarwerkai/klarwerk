@@ -329,6 +329,48 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
     expect(datei.head).toEqual({ seq: original?.seq, hash: original?.hash });
   });
 
+  // Bens Befund Nacharbeit 35: der Anlagenkontext eines Beitrags (Bauteil, Material, Version,
+  // Standort, Schicht) steht als vorher/nachher im Protokoll und ist Inhalt des Beitrags.
+  it("Anlagenkontext ohne Leserecht: auf Liste, Seite und Export geschwärzt; mit Recht sichtbar", async () => {
+    const b = await buehne();
+    const KONTEXT = "Pumpe P7 · Edelstahl · Rev. C · Halle Z · Nachtschicht (fiktiv)";
+    await b.audit.record({
+      actor: "u-ben",
+      action: "ko.anlagenkontext-changed",
+      target: "ko-geschlossen",
+      payload: { vorher: null, nachher: { bauteil: KONTEXT } },
+    });
+    const vorher = structuredClone(await b.repo.all());
+
+    const s = await seite(b, "?action=ko.anlagenkontext-changed");
+    expect(s.entries).toHaveLength(1);
+    expect(s.entries[0]?.payload).toEqual({});
+    expect(s.entries[0]?.geschwaerzt).toEqual(["vorher", "nachher"]);
+    expect(JSON.stringify(s)).not.toContain(KONTEXT);
+    const liste = await b.app.inject({ method: "GET", url: "/api/audit", headers: CONTROLLER });
+    expect(liste.statusCode).toBe(200);
+    expect(liste.body).not.toContain(KONTEXT);
+    const exp = await b.app.inject({
+      method: "GET",
+      url: "/api/audit/export",
+      headers: CONTROLLER,
+    });
+    expect(exp.statusCode).toBe(200);
+    expect(exp.body).not.toContain(KONTEXT);
+
+    // Kontrollfall: mit Recht am Space bleibt der Kontext lesbar.
+    const mitRecht = await seite(b, "?action=ko.anlagenkontext-changed", CONTROLLER_MIT_SPACE);
+    expect(JSON.stringify(mitRecht.entries[0]?.payload)).toContain(KONTEXT);
+    expect(mitRecht.entries[0]?.geschwaerzt).toBeUndefined();
+
+    // Gespeichert bleibt alles; nur die Ausgabe ist geschwärzt.
+    const nachher = await b.repo.all();
+    expect(nachher.slice(0, vorher.length)).toEqual(vorher);
+    const gespeichert = nachher.find((e) => e.action === "ko.anlagenkontext-changed");
+    expect(JSON.stringify(gespeichert?.payload)).toContain(KONTEXT);
+    expect((await b.audit.verifyReport()).ok).toBe(true);
+  });
+
   it("mit Recht am Space: derselbe Controller sieht Titel und Titelkopie", async () => {
     const b = await buehne();
     const s = await seite(b, "", CONTROLLER_MIT_SPACE);
