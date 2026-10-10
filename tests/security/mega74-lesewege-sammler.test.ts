@@ -1039,6 +1039,19 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Übergabeergebnis vor der Deaktivierung — Titel nur für einsehbare Beiträge.",
   },
+  // ADMIN-05: der gemeinsame Übergabeablauf. Entwürfe und Lücken nur als Kennung.
+  "POST /api/verantwortung/ablauf/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Pakete je Nachfolger — Titel nur für einsehbare Beiträge und Prüfaufgaben.",
+  },
+  "POST /api/verantwortung/ablauf": {
+    urteil: "PRAEDIKAT",
+    grund: "Bilanz je Zeile — Titel nur für einsehbare Beiträge und Prüfaufgaben.",
+  },
+  "GET /api/verantwortung/person/:id/ablaeufe": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Bilanzvermerke `verantwortung.ablauf`: nur Kennungen, Anzahlen und Zugangsstand.",
+  },
   "GET /api/i18n/locales": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   // R-1034 / FR-I18N-02: gepflegte Oberflächentexte und Sprachen (i18n-routes.ts, uebersetzungen.ts).
