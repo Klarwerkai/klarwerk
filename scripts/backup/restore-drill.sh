@@ -519,6 +519,8 @@ PFLICHTTABELLEN=(
   richtlinien_handlungen
   klara_gespraeche
   ko_mitgelesen
+  chat_gespraeche
+  chat_nachrichten
   vorlagen_fassungen
 )
 FEHLENDE_TABELLEN=()

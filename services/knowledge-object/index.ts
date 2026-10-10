@@ -502,6 +502,8 @@ export type {
   AiCheckCoverageSummary,
   // AUFNAHME 20260922: die gespeicherte Basisbindung eines Prüfnachweises.
   AiCheckBasis,
+  // AUFNAHME 20260922 · confluence-import-rechte: die aus der Quelle übernommenen Leserechte.
+  KoQuellrechte,
   // produkt:20261007:veroeffentlichungsoptionen: der Vermerk einer Veröffentlichung samt Meldungswahl.
   KoVeroeffentlichung,
   VeroeffentlichungsMeldung,
