@@ -459,6 +459,61 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn:
       "Alle Drosseln zählen gegen die Proxy-IP statt gegen den Anfragenden — hinter einem Proxy teilen sich damit alle Nutzer ein Kontingent.",
   },
+  // R-2057: TLS vom Proxy bis zur Anwendung (services/app/src/transport-tls.ts,
+  // docs/operations/tls-bis-zur-anwendung.md). Die Dateien selbst sind Geheimnisse der Installation;
+  // die Variablen tragen nur ihre Pfade.
+  {
+    name: "KLARWERK_TLS_CERT_FILE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Pfad zum Serverzertifikat (PEM) des App-Ports; zusammen mit KLARWERK_TLS_KEY_FILE nimmt der Port nur noch TLS an.",
+    ohneIhn:
+      "Der App-Port nimmt Klartext-HTTP an; in Produktion steht eine Warnung im Protokoll. Ist nur eine der beiden Dateien gesetzt, bricht der Start ab.",
+  },
+  {
+    name: "KLARWERK_TLS_KEY_FILE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Pfad zum privaten Schlüssel (PEM) des Serverzertifikats am App-Port; die Datei selbst ist ein Geheimnis der Installation.",
+    ohneIhn:
+      "Kein TLS am App-Port. Ist nur KLARWERK_TLS_CERT_FILE gesetzt, bricht der Start mit beiden Namen ab.",
+  },
+  {
+    name: "KLARWERK_TLS_PFLICHT",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "aus",
+    wofuer:
+      "Mit 1 verweigert die Anwendung den Start ohne TLS-Zertifikat — die Sperre, sobald der Proxy auf https umgestellt ist.",
+    ohneIhn:
+      "Fehlt das Zertifikat, startet die Anwendung im Klartext; ein Neustart kann dann still auf Klartext zurückfallen.",
+  },
+  {
+    name: "KLARWERK_TLS_CA_FILE",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "das Serverzertifikat selbst",
+    wofuer:
+      "Vertrauensanker (PEM), gegen den der Container-Selbsttest (services/app/healthcheck.mjs) das Zertifikat des App-Ports prüft.",
+    ohneIhn:
+      "Der Selbsttest prüft gegen das Serverzertifikat selbst; ist es von einer internen CA ausgestellt, gilt der Container als krank.",
+  },
+  {
+    name: "KLARWERK_TLS_SERVERNAME",
+    bereich: "Betrieb",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "127.0.0.1",
+    wofuer: "Der Name im Serverzertifikat, gegen den der Container-Selbsttest den App-Port prüft.",
+    ohneIhn:
+      "Der Selbsttest prüft gegen 127.0.0.1; ohne diese Adresse im Zertifikat gilt der Container als krank.",
+  },
   {
     name: "KLARWERK_LOG_LEVEL",
     bereich: "Betrieb",
