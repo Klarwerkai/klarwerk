@@ -136,6 +136,8 @@ export interface BedarfEintrag {
   vorgang: string;
 }
 
+export type SuchZuordnung = "bekannt" | "unbekannt";
+
 /** Eine eigene Suche ohne Treffer — so, wie die Ablage sie je Person führt. */
 export interface SuchEintrag {
   begriff: string;
@@ -168,6 +170,8 @@ export interface Wissenskennzahlen {
     lage: Messlage;
     /** Höchstzahl, die die Ablage je Person liefert — die Liste ist nie mehr als das. */
     deckel: number;
+    /** Ob die Zuordnung zu Lücken belegt ist; `unbekannt`, wenn die Lückenquelle ausfiel. */
+    zuordnung: SuchZuordnung;
     eintraege: SuchEintrag[];
   };
   filterwerte: {
@@ -528,9 +532,18 @@ export async function ladeWissenskennzahlen(
   // Verlauf. Deshalb gibt es hier weder Zeitraumzahl noch Trend, und ohne Space-Angabe auch keine
   // Auswertung unter Space- oder Teamfilter. Verbunden wird ein Begriff nur mit einer OFFENEN Lücke
   // derselben formnormalisierten Frage (dieselbe Regel wie D-032); es entsteht nichts Neues.
+  //
+  // Nacharbeit 4 (Ben): zugeordnet wird NUR eine Lücke, deren Fragetext dieser Betrachter nach
+  // `redactGapForViewer` sehen darf. Sonst bestätigte der eigene Suchbegriff zusammen mit der
+  // Lücken-ID einen geschwärzten fremden Fragetext. Ist die Lückenquelle ausgefallen, ist die
+  // Zuordnung „unbekannt“ — nie ein behaupteter Nichttreffer.
+  const zuordnung: SuchZuordnung = luecken ? "bekannt" : "unbekannt";
   const offeneNachSchluessel = new Map<string, string>();
   for (const g of luecken ?? []) {
-    if (g.status === "offen" && g.compareKey && !offeneNachSchluessel.has(g.compareKey)) {
+    if (g.status !== "offen" || !g.compareKey || offeneNachSchluessel.has(g.compareKey)) {
+      continue;
+    }
+    if (!redactGapForViewer(g, { viewerId: user.id }).redacted) {
       offeneNachSchluessel.set(g.compareKey, g.id);
     }
   }
@@ -617,7 +630,7 @@ export async function ladeWissenskennzahlen(
       ohneZaehlung: bedarfGemessen ? ohneZaehlung : null,
       eintraege: bedarf,
     },
-    suche: { lage: sucheLage, deckel: NULLTREFFER_DECKEL, eintraege: suchEintraege },
+    suche: { lage: sucheLage, deckel: NULLTREFFER_DECKEL, zuordnung, eintraege: suchEintraege },
     filterwerte: { spaces: spaceWerte, teams: teamWerte },
     quellen: {
       vorgaenge: vorgaengeLage,

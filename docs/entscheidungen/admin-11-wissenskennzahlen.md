@@ -74,7 +74,12 @@ anderer ist dort bewusst nicht gebaut. Ausgewertet wird deshalb genau der vorhan
 `NulltrefferRepo.fuer(user.id)`: die EIGENEN Suchen der betrachtenden Person, höchstens
 `NULLTREFFER_DECKEL` Begriffe, je Begriff die Zahl seit der ersten Erfassung, der letzte Zeitpunkt
 und die Eingrenzung. Passt ein Begriff formnormalisiert zu einer offenen Lücke (dieselbe Regel wie
-D-032), führt die Zeile auf diesen Vorgang; es wird nichts angelegt. Weil die Ablage weder Verlauf
+D-032), führt die Zeile auf diesen Vorgang; es wird nichts angelegt. Nacharbeit 4: zugeordnet wird
+nur eine Lücke, deren Fragetext die betrachtende Person nach `redactGapForViewer` sehen darf — sonst
+bestätigte der eigene Suchbegriff mit der Lücken-ID einen geschwärzten fremden Fragetext. Ohne
+Treffer heißt es deshalb neutral „keine offene Lücke dazu, deren Frage Sie sehen dürfen“. Fällt die
+Lückenquelle aus, ist die Zuordnung „unbekannt“ (`suche.zuordnung`); Häufigkeit und letzter
+Zeitpunkt der Suchen bleiben stehen. Weil die Ablage weder Verlauf
 noch Space kennt, gibt es keine Zahl je Zeitraum, keinen Trend und unter Space-/Teamfilter die Lage
 „nicht erhoben“. Fällt die Ablage aus, heißt die Lage „unbekannt“.
 

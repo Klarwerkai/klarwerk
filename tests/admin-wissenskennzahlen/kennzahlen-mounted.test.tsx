@@ -196,6 +196,7 @@ function antwort(teil: Partial<Antwort> = {}): Antwort {
     suche: {
       lage: "gemessen",
       deckel: 20,
+      zuordnung: "bekannt",
       eintraege: [
         {
           begriff: "Fiktiv Anzugswert Mutter M-77",
@@ -336,6 +337,39 @@ describe("ADMIN-11 · M1 · Handlungsbedarf zuerst, jede Zahl mit sichtbarer Lag
     expect(neu?.querySelectorAll('[data-testid="wkz-eintrag"]')).toHaveLength(1);
     expect(neu?.querySelector('[data-testid="wkz-arbeitsliste"]')).toBeNull();
     expect(neu?.textContent).toContain(de("wkz.liste.nurHierZeitraum"));
+  });
+});
+
+describe("ADMIN-11 · Nacharbeit 4 · Suchzuordnung: Nichttreffer und unbekannt getrennt", () => {
+  it("ausgefallene Lückenquelle: Häufigkeit und Zeitpunkt bleiben, die Zuordnung heißt unbekannt", async () => {
+    const ohneLuecken = antwort();
+    ohneLuecken.quellen = { ...ohneLuecken.quellen, luecken: "fehler" };
+    ohneLuecken.suche = {
+      ...ohneLuecken.suche,
+      zuordnung: "unbekannt",
+      eintraege: ohneLuecken.suche.eintraege.map((e) => ({ ...e, vorgang: null })),
+    };
+    d.antwort = ohneLuecken;
+    await mount();
+    const zeilen = container.querySelectorAll('[data-testid="wkz-suche-eintrag"]');
+    expect(zeilen).toHaveLength(2);
+    for (const z of zeilen) {
+      expect(z.querySelector("a")).toBeNull();
+      expect(z.querySelector('[data-testid="wkz-suche-zuordnung"]')?.textContent).toBe(
+        de("wkz.suche.zuordnungUnbekannt"),
+      );
+      expect(z.textContent).not.toContain(de("wkz.suche.ohneVorgang"));
+    }
+    // Die bekannte Häufigkeit steht weiter da — nur die Zuordnung fehlt.
+    expect(zeilen[0]?.textContent).toContain("2× gesucht");
+  });
+
+  it("belegter Nichttreffer: neutral auf den sichtbaren Umfang bezogen", async () => {
+    await mount();
+    const zeilen = container.querySelectorAll('[data-testid="wkz-suche-eintrag"]');
+    expect(zeilen[1]?.querySelector('[data-testid="wkz-suche-zuordnung"]')?.textContent).toBe(
+      de("wkz.suche.ohneVorgang"),
+    );
   });
 });
 

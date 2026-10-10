@@ -274,7 +274,12 @@ describe("ADMIN-11 · W1/W2 · fester Ereignisbestand: Nenner, Zeiträume, Lage 
       expect(["momentaufnahme", "unbekannt", "nicht_erhoben"]).toContain(h.trendGrund);
     }
     // Ohne Leseweg der eigenen Suchen ist die Suche „nicht erhoben“ — ausdrücklich, nicht als 0.
-    expect(k.suche).toEqual({ lage: "nicht_erhoben", deckel: 20, eintraege: [] });
+    expect(k.suche).toEqual({
+      lage: "nicht_erhoben",
+      deckel: 20,
+      zuordnung: "bekannt",
+      eintraege: [],
+    });
   });
 
   it("Zeitraum beginnt vor dem ersten belegten Ereignis: „unvollständig“, ohne Trend", async () => {
@@ -568,14 +573,16 @@ describe("ADMIN-11 · Nacharbeit 3 · Detailmenge und eigene Suchen", () => {
     expect(neu.arbeitsliste).toBeNull();
   });
 
-  it("eigene Suchen ohne Treffer: nur die eigenen, kumuliert, mit der offenen Lücke derselben Frage", async () => {
+  it("eigene Suchen ohne Treffer: nur die eigenen, kumuliert, zugeordnet nur bei sichtbarem Fragetext", async () => {
     const a = await setup();
-    const begriff = "Fiktiv Anzugswert Mutter M-77";
+    const eigen = "Fiktiv Anzugswert Mutter M-77";
+    const geschwaerzt = "Fiktiv Drehzahl Lüfter L-12";
     const fremd = "Fiktiv Spannung Relais R-5";
-    // Zwei eigene erfolglose Suchen über den vorhandenen Weg, eine fremde.
+    // Eigene erfolglose Suchen über den vorhandenen Weg, dazu eine fremde.
     for (const [wer, q] of [
-      [a.admin, begriff],
-      [a.admin, begriff],
+      [a.admin, eigen],
+      [a.admin, eigen],
+      [a.admin, geschwaerzt],
       [a.frager, fremd],
     ] as const) {
       const res = await a.app.inject({
@@ -585,15 +592,25 @@ describe("ADMIN-11 · Nacharbeit 3 · Detailmenge und eigene Suchen", () => {
       });
       expect(res.statusCode, res.body).toBe(200);
     }
-    // Dieselbe Frage als unbeantwortete Frage: das ist der vorhandene Vorgang (Lücke).
-    await a.app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers: a.frager.headers,
-      payload: { question: begriff },
-    });
+    // Zwei Lücken mit denselben Fragen: eine der Verwaltung selbst (Fragetext sichtbar), eine der
+    // fragenden Person (für die Verwaltung geschwärzt, R-0585).
+    for (const [wer, q] of [
+      [a.admin, eigen],
+      [a.frager, geschwaerzt],
+    ] as const) {
+      await a.app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers: wer.headers,
+        payload: { question: q },
+      });
+    }
     const offen = (await a.services.ask.listGaps()).filter((g) => g.status === "offen");
-    expect(offen, "Kalibrierung: die Frage hat eine Lücke angelegt").toHaveLength(1);
+    expect(offen, "Kalibrierung: beide Fragen haben eine Lücke angelegt").toHaveLength(2);
+    const eigeneLuecke = offen.find((g) => g.createdBy === a.admin.id);
+    const fremdeLuecke = offen.find((g) => g.createdBy === a.frager.id);
+    expect(eigeneLuecke, "Kalibrierung: Lücke der Verwaltung").toBeDefined();
+    expect(fremdeLuecke, "Kalibrierung: Lücke der fragenden Person").toBeDefined();
 
     const res = await a.app.inject({
       method: "GET",
@@ -602,19 +619,20 @@ describe("ADMIN-11 · Nacharbeit 3 · Detailmenge und eigene Suchen", () => {
     });
     expect(res.statusCode, res.body).toBe(200);
     const k = res.json() as Wissenskennzahlen;
-    expect(k.suche.lage).toBe("gemessen");
-    expect(k.suche.deckel).toBe(20);
-    expect(k.suche.eintraege).toEqual([
-      expect.objectContaining({
-        begriff,
-        anzahl: 2,
-        eingrenzung: {},
-        vorgang: {
-          schluessel: `luecke:${offen[0]?.id}`,
-          arbeitsweg: `/risiko?fall=${offen[0]?.id}`,
-        },
-      }),
-    ]);
+    expect(k.suche).toMatchObject({ lage: "gemessen", deckel: 20, zuordnung: "bekannt" });
+    const zeile = (b: string) => k.suche.eintraege.find((e) => e.begriff === b);
+    // Berechtigt: die eigene Lücke derselben Frage ist der vorhandene Vorgang.
+    expect(zeile(eigen)).toMatchObject({
+      anzahl: 2,
+      eingrenzung: {},
+      vorgang: {
+        schluessel: `luecke:${eigeneLuecke?.id}`,
+        arbeitsweg: `/risiko?fall=${eigeneLuecke?.id}`,
+      },
+    });
+    // Negativfall (Ben, Nacharbeit 4): die Lücke der fragenden Person ist für die Verwaltung
+    // geschwärzt — der eigene Suchbegriff darf ihren Fragetext nicht über die Zuordnung bestätigen.
+    expect(zeile(geschwaerzt)).toMatchObject({ anzahl: 1, vorgang: null });
     // Die Suche einer anderen Person steht nirgends in der Auswertung der Verwaltung.
     expect(res.body).not.toContain("Relais");
 
@@ -628,7 +646,7 @@ describe("ADMIN-11 · Nacharbeit 3 · Detailmenge und eigene Suchen", () => {
       sichtbarkeitsfilterFuer(betrachter),
       anfrage({ space: "space-a" }),
     );
-    expect(gefiltert.suche).toEqual({ lage: "nicht_erhoben", deckel: 20, eintraege: [] });
+    expect(gefiltert.suche).toMatchObject({ lage: "nicht_erhoben", deckel: 20, eintraege: [] });
 
     // Die eigene Liste der fragenden Person: ihr Begriff, nicht der der Verwaltung.
     const fragende = { id: a.frager.id, role: "admin" as const, spaceLesbar: new Set<string>() };
@@ -657,7 +675,57 @@ describe("ADMIN-11 · Nacharbeit 3 · Detailmenge und eigene Suchen", () => {
       sichtbarkeitsfilterFuer(betrachter),
       anfrage(),
     );
-    expect(k.suche).toEqual({ lage: "unbekannt", deckel: 20, eintraege: [] });
+    expect(k.suche).toEqual({ lage: "unbekannt", deckel: 20, zuordnung: "bekannt", eintraege: [] });
+  });
+
+  it("Ausfall der Lückenquelle: Suchen bleiben, die Zuordnung ist „unbekannt“ — kein Nichttreffer", async () => {
+    const a = await setup();
+    const begriff = "Fiktiv Anzugswert Mutter M-77";
+    await a.app.inject({
+      method: "GET",
+      url: `/api/library/search?q=${encodeURIComponent(begriff)}`,
+      headers: a.admin.headers,
+    });
+    // Gegenstück mit gelieferter Quelle: dieselbe Suche ohne passende Lücke ist ein belegter
+    // Nichttreffer (zuordnung „bekannt“, vorgang null).
+    const betrachter = { id: a.admin.id, role: "admin" as const, spaceLesbar: new Set<string>() };
+    const filter = sichtbarkeitsfilterFuer(betrachter);
+    const mitQuelle = await ladeWissenskennzahlen(
+      { ...depsVon(a.services), nulltreffer: a.services.nulltreffer },
+      betrachter,
+      filter,
+      anfrage(),
+    );
+    expect(mitQuelle.suche).toMatchObject({ lage: "gemessen", zuordnung: "bekannt" });
+    expect(mitQuelle.suche.eintraege).toEqual([
+      expect.objectContaining({ begriff, anzahl: 1, vorgang: null }),
+    ]);
+
+    const ohneQuelle = await ladeWissenskennzahlen(
+      {
+        ...depsVon(a.services),
+        ask: {
+          listGaps: async () => {
+            throw new Error("Fiktiv: Lückenablage nicht erreichbar");
+          },
+        },
+        nulltreffer: a.services.nulltreffer,
+      },
+      betrachter,
+      filter,
+      anfrage(),
+    );
+    expect(ohneQuelle.quellen.luecken).toBe("fehler");
+    // Häufigkeit und letzter Zeitpunkt bleiben; nur die Zuordnung ist unbekannt.
+    expect(ohneQuelle.suche).toMatchObject({ lage: "gemessen", zuordnung: "unbekannt" });
+    expect(ohneQuelle.suche.eintraege).toEqual([
+      expect.objectContaining({
+        begriff,
+        anzahl: 1,
+        zuletzt: mitQuelle.suche.eintraege[0]?.zuletzt,
+        vorgang: null,
+      }),
+    ]);
   });
 });
 

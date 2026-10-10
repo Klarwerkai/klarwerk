@@ -530,7 +530,13 @@ function EigeneSuchen({ daten }: { daten: Antwort }): JSX.Element {
                   <ChevronRight size={12} strokeWidth={2} aria-hidden="true" />
                 </Link>
               ) : (
-                <span className="text-[12px] text-muted-2">{t("wkz.suche.ohneVorgang")}</span>
+                <span data-testid="wkz-suche-zuordnung" className="text-[12px] text-muted-2">
+                  {t(
+                    s.zuordnung === "unbekannt"
+                      ? "wkz.suche.zuordnungUnbekannt"
+                      : "wkz.suche.ohneVorgang",
+                  )}
+                </span>
               )}
             </li>
           ))}

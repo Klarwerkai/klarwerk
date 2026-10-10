@@ -84,7 +84,13 @@ export interface Wissenskennzahlen {
     eintraege: BedarfEintrag[];
   };
   /** Die EIGENEN erfolglosen Suchen des Betrachters — kumuliert, ohne Zeitraum. */
-  suche: { lage: Messlage; deckel: number; eintraege: SuchEintrag[] };
+  suche: {
+    lage: Messlage;
+    deckel: number;
+    /** `unbekannt`: die Lückenquelle fiel aus — ein fehlender Vorgang ist dann kein Nichttreffer. */
+    zuordnung: "bekannt" | "unbekannt";
+    eintraege: SuchEintrag[];
+  };
   filterwerte: {
     spaces: { id: string; name: string }[];
     teams: { id: string; name: string; spaces: string[] }[];

@@ -148,7 +148,8 @@ export default {
     "wkz.suche.eingegrenzt": "Mit Filter gesucht: {{filter}}",
     "wkz.suche.vorgang": "Offene Lücke bearbeiten",
     "wkz.suche.vorgangLabel": "Offene Lücke zu „{{begriff}}“ bearbeiten",
-    "wkz.suche.ohneVorgang": "Keine offene Lücke mit dieser Frage",
+    "wkz.suche.ohneVorgang": "Keine offene Lücke dazu, deren Frage Sie sehen dürfen",
+    "wkz.suche.zuordnungUnbekannt": "Zuordnung derzeit unbekannt — Lücken nicht abrufbar",
     "wkz.export.knopf": "Als CSV exportieren",
     "wkz.export.hinweis":
       "Der Export enthält genau diese Auswahl und diesen Stand — nur Zahlen, keine Titel oder Fragetexte.",
@@ -323,7 +324,8 @@ export default {
     "wkz.suche.eingegrenzt": "Searched with filter: {{filter}}",
     "wkz.suche.vorgang": "Work on open gap",
     "wkz.suche.vorgangLabel": "Work on the open gap for “{{begriff}}”",
-    "wkz.suche.ohneVorgang": "No open gap with this question",
+    "wkz.suche.ohneVorgang": "No open gap for this whose question you may see",
+    "wkz.suche.zuordnungUnbekannt": "Assignment currently unknown — gaps unavailable",
     "wkz.export.knopf": "Export as CSV",
     "wkz.export.hinweis":
       "The export contains exactly this selection and this data status — figures only, no titles or question texts.",
@@ -501,7 +503,8 @@ export default {
     "wkz.suche.eingegrenzt": "Gezocht met filter: {{filter}}",
     "wkz.suche.vorgang": "Open lacune bewerken",
     "wkz.suche.vorgangLabel": "Open lacune bij „{{begriff}}” bewerken",
-    "wkz.suche.ohneVorgang": "Geen open lacune met deze vraag",
+    "wkz.suche.ohneVorgang": "Geen open lacune hierbij waarvan u de vraag mag zien",
+    "wkz.suche.zuordnungUnbekannt": "Koppeling momenteel onbekend — lacunes niet bereikbaar",
     "wkz.export.knopf": "Als CSV exporteren",
     "wkz.export.hinweis":
       "De export bevat precies deze selectie en deze datastand — alleen getallen, geen titels of vraagteksten.",

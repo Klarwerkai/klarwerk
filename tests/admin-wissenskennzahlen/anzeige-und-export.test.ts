@@ -93,7 +93,7 @@ const ANTWORT: Wissenskennzahlen = {
     }),
   ],
   bedarf: { lage: "nicht_erhoben", offen: null, ohneZaehlung: null, eintraege: [] },
-  suche: { lage: "nicht_erhoben", deckel: 20, eintraege: [] },
+  suche: { lage: "nicht_erhoben", deckel: 20, zuordnung: "bekannt", eintraege: [] },
   filterwerte: {
     spaces: [{ id: "space-a", name: "Fiktiv Montage" }],
     teams: [],
