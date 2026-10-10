@@ -791,6 +791,12 @@ export interface KnowledgeObject {
   // `KnowledgeObject.trust` ab, hat ein anderer Weg den Wert seither gesetzt (Admin-Freigabe,
   // Übernahme, „Hat geholfen") — dann gilt die Angabe nicht mehr. Additiv, JSON-persistiert.
   vertrauensGrundlage?: { trust: number; ohneKonflikte: number; konflikte: string[] };
+  // AW06-K02 (Ben, Nacharbeit 7): der Verweis auf den Beleg, der DIESE Fassung angenommen hat —
+  // getrennt von `validationDecisionRef`, das immer die NEUESTE Prüfentscheidung nennt. Eine spätere
+  // gelbe Rückfrage an derselben, weiter validierten Fassung ersetzt dort den Verweis durch ihre
+  // Rückgabe; die Annahme bleibt hier stehen. `koVersion` bindet ihn an die angenommene Fassung.
+  // Gesetzt nur beim Übergang nach „validiert" (erste Annahme der Fassung). Additiv, JSON-persistiert.
+  annahmeRef?: { auditSeq: number; auditHash: string; koVersion: number };
   // ============================================================================================
   // JOB 557 (Pedi 13.08.2026) — WEM DAS OBJEKT GEHÖRT, WER ES GEPRÜFT UND WER ES VALIDIERT HAT.
   // ============================================================================================

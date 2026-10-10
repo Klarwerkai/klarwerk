@@ -5728,6 +5728,8 @@ export class KoService {
         ...updated,
         rowVersion: (updated.rowVersion ?? 0) + 1,
         validationDecisionRef: { auditSeq: beleg.seq, auditHash: beleg.hash },
+        // AW06-K02: diese Wege SIND die Annahme der neuen Fassung.
+        annahmeRef: { auditSeq: beleg.seq, auditHash: beleg.hash, koVersion: updated.version },
       },
       tx,
     );
@@ -7102,6 +7104,10 @@ export class KoService {
       // R-0256: die Grundlage dieses Werts (s. `KnowledgeObject.vertrauensGrundlage`). Fehlt sie,
       // wird eine frühere entfernt — sie gälte sonst für einen Wert, den dieser Weg ersetzt.
       grundlage?: { ohneKonflikte: number; konflikte: string[] };
+      // AW06-K02 (Ben, Nacharbeit 7): ist der Beleg dieses Vorgangs die ANNAHME dieser Fassung?
+      // Dann wird er zusätzlich als `annahmeRef` festgehalten. Sonst bleibt ein vorhandener
+      // Annahmeverweis unberührt — eine Rückgabe verdrängt ihn nicht.
+      annahme?: boolean;
     }>,
     opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
     beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
@@ -7157,6 +7163,15 @@ export class KoService {
             ...updated,
             rowVersion: (updated.rowVersion ?? 0) + 1,
             validationDecisionRef: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+            ...(state.annahme
+              ? {
+                  annahmeRef: {
+                    auditSeq: ref.auditSeq,
+                    auditHash: ref.auditHash,
+                    koVersion: updated.version,
+                  },
+                }
+              : {}),
           };
           await this.repo.update(mitVerweis, tx);
           return { ko: mitVerweis, geschrieben: true, ref };

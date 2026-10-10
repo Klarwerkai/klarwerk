@@ -204,6 +204,43 @@ describe("AW06-K02 · die Annahme nennt ihre Kontoregel", () => {
     });
   });
 
+  it("A7 · eine gelbe Stimme an der weiter validierten Fassung verdrängt die Annahme nicht und wird keine", async () => {
+    const b = await buehne();
+    const controller2 = await konto(b.app, b.admin.kopf, "controller", "cleo@aw.test");
+    const id = await anlegen(b.app, b.admin.kopf, 3);
+    await put(b.app, b.controller.kopf, id, { action: "rate", verdict: "up" });
+    await put(b.app, b.admin2.kopf, id, { action: "rate", verdict: "up" });
+    await put(b.app, b.admin.kopf, id, { action: "rate", verdict: "up" });
+    const angenommen = await stand(b.app, b.experte.kopf, id);
+    expect(angenommen.status).toBe("validiert");
+    expect(angenommen.annahme).toMatchObject({
+      person: b.admin.id,
+      kontoregel: "peer-pruefung",
+      benoetigt: 3,
+    });
+
+    // Die zusätzliche gelbe Stimme: Status bleibt validiert (3 grün, 0 rot), der neueste
+    // Entscheidungsverweis zeigt jetzt auf die Rückgabe.
+    await put(b.app, controller2.kopf, id, { action: "rate", verdict: "warn" });
+    const danach = await stand(b.app, b.experte.kopf, id);
+    expect(danach.status).toBe("validiert");
+    expect(danach.version).toBe(angenommen.version);
+    // Die Annahme steht unverändert da — dieselbe Person, derselbe Zeitpunkt, dieselbe Regel.
+    expect(danach.annahme).toEqual(angenommen.annahme);
+    // Gegenprobe: die gelbe Stimme ist NICHT zur Annahme umgedeutet worden.
+    expect(danach.annahme?.person).not.toBe(controller2.id);
+  });
+
+  it("A8 · eine weitere grüne Stimme an der validierten Fassung ersetzt die erste Annahme nicht", async () => {
+    const b = await buehne();
+    const id = await anlegen(b.app, b.admin.kopf, 1);
+    await put(b.app, b.controller.kopf, id, { action: "rate", verdict: "up" });
+    const erst = (await stand(b.app, b.experte.kopf, id)).annahme;
+    expect(erst?.person).toBe(b.controller.id);
+    await put(b.app, b.admin2.kopf, id, { action: "rate", verdict: "up" });
+    expect((await stand(b.app, b.experte.kopf, id)).annahme).toEqual(erst);
+  });
+
   it("A6 · GEGENPROBE: eine Inhaltsänderung übernimmt die frühere Annahme nicht", async () => {
     const b = await buehne();
     const id = await anlegen(b.app, b.experte.kopf);

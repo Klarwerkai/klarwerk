@@ -30,6 +30,8 @@ export default {
     "pruefablauf.status.abgelehnt": "Abgelehnt",
     "pruefablauf.entschieden": "Entschieden von {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Begründung: {{text}}",
+    "pruefablauf.befugnis.keineAnnahme":
+      "Über offene Änderungsvorschläge entscheidet nur ein Konto mit Freigaberecht – deines hat es nicht. Auch die KI-Prüfung nimmt nichts an und gibt nichts frei.",
     "pruefablauf.annahme.zeile": "Angenommen: Fassung {{fassung}} · {{person}} · {{zeit}}",
     "pruefablauf.annahme.regel.peerPruefung":
       "Kontoregel: Peer-Prüfung – erforderliche Freigaben: {{n}}",
@@ -63,6 +65,8 @@ export default {
     "pruefablauf.status.abgelehnt": "Rejected",
     "pruefablauf.entschieden": "Decided by {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Reason: {{text}}",
+    "pruefablauf.befugnis.keineAnnahme":
+      "Only an account with approval rights decides on open change proposals – yours does not have them. The AI check does not accept or approve anything either.",
     "pruefablauf.annahme.zeile": "Accepted: version {{fassung}} · {{person}} · {{zeit}}",
     "pruefablauf.annahme.regel.peerPruefung":
       "Account rule: peer review – approvals required: {{n}}",
@@ -96,6 +100,8 @@ export default {
     "pruefablauf.status.abgelehnt": "Afgewezen",
     "pruefablauf.entschieden": "Besloten door {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Reden: {{text}}",
+    "pruefablauf.befugnis.keineAnnahme":
+      "Over open wijzigingsvoorstellen beslist alleen een account met goedkeuringsrecht – het jouwe heeft dat niet. Ook de AI-controle neemt niets aan en keurt niets goed.",
     "pruefablauf.annahme.zeile": "Aangenomen: versie {{fassung}} · {{person}} · {{zeit}}",
     "pruefablauf.annahme.regel.peerPruefung":
       "Accountregel: collegiale toetsing – vereiste goedkeuringen: {{n}}",

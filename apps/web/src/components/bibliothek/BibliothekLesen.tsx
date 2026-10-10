@@ -3672,6 +3672,18 @@ export function BibliothekLesen({
                 Server (`PROPOSAL_OWN`); diese Fläche bietet nur nichts an, was sicher abgewiesen
                 würde. Ein ausgegrauter Knopf wäre die Scheinfunktion, ein fehlender ohne Satz ein
                 stilles Verschwinden. */}
+            {/* AW06-K04 (Ben, Nacharbeit 7): wer nicht entscheiden darf, bekommt die
+                Entscheidungsfläche weiter nicht (E17) — aber jetzt den Grund, statt sie wortlos zu
+                verlieren. Der Satz nennt auch die KI: sie nimmt nichts an. Eine Weisungsbefugnis
+                gibt es im Produkt nicht (R-1863 offen); dieser Satz erfindet keine. */}
+            {!darfFreigeben && offeneVorschlaege.length > 0 ? (
+              <p
+                data-testid="bib-annahme-befugnis"
+                className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+              >
+                {t("pruefablauf.befugnis.keineAnnahme")}
+              </p>
+            ) : null}
             {darfFreigeben && offeneVorschlaege.length > 0 ? (
               <section
                 data-testid="bib-vorschlaege"

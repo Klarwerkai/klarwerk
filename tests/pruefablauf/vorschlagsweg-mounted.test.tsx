@@ -491,6 +491,33 @@ describe("package:pruefablauf · der Einreicher sieht den Status", () => {
     expect(da("bib-annahme")).toBeNull();
   });
 
+  it("P10 · AW06-K04: ohne Freigaberecht steht der Grund da — samt Abgrenzung zur KI", async () => {
+    globalThis.__pruefablaufKo = ko({ proposals: [vorschlag({ author: "u-fremd" })] });
+    await mount();
+    // Die Entscheidungsfläche bleibt verborgen (wie E17) …
+    expect(da("bib-vorschlaege")).toBeNull();
+    expect(da("bib-vorschlag-uebernehmen")).toBeNull();
+    // … aber nicht wortlos.
+    expect(muss("bib-annahme-befugnis").textContent).toBe(
+      i18n.t("pruefablauf.befugnis.keineAnnahme"),
+    );
+  });
+
+  it("P11 · GEGENPROBE: ohne offenen Vorschlag steht der Hinweis nicht", async () => {
+    globalThis.__pruefablaufKo = ko();
+    await mount();
+    expect(da("bib-annahme-befugnis")).toBeNull();
+  });
+
+  it("P12 · GEGENPROBE: die Prüferin mit Freigaberecht sieht die Fläche, nicht den Hinweis", async () => {
+    box.rolle = "admin";
+    box.ichId = "u-admin";
+    globalThis.__pruefablaufKo = ko({ proposals: [vorschlag({ author: "u-fremd" })] });
+    await mount();
+    expect(da("bib-vorschlaege")).not.toBeNull();
+    expect(da("bib-annahme-befugnis")).toBeNull();
+  });
+
   it("P6 · GEGENPROBE: fremde Vorschläge stehen nicht in der eigenen Statusansicht", async () => {
     globalThis.__pruefablaufKo = ko({ proposals: [vorschlag({ author: "u-fremd" })] });
     await mount();

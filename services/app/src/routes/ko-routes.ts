@@ -1038,9 +1038,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
    *
    * GRENZE: die Kettenprüfung (`/api/audit/verify`) läuft hier nicht mit; die Bindung ist der
    * Hash des einen Eintrags.
+   *
+   * Ben, Nacharbeit 7: gelesen wird zuerst `annahmeRef` — der Verweis auf die ANNAHME dieser
+   * Fassung. `validationDecisionRef` nennt die NEUESTE Entscheidung und zeigt nach einer gelben
+   * Rückfrage an der weiter validierten Fassung auf deren Rückgabe; daraus wird keine Annahme, und
+   * die Annahme darf darüber nicht verschwinden. Nur Altbestand ohne `annahmeRef` fällt auf
+   * `validationDecisionRef` zurück (dann mit der alten Grenze: nach einer Rückfrage fehlt sie).
    */
   async function annahmeVon(item: KnowledgeObject) {
-    const ref = item.validationDecisionRef;
+    if (item.annahmeRef && item.annahmeRef.koVersion !== item.version) {
+      return undefined;
+    }
+    const ref = item.annahmeRef ?? item.validationDecisionRef;
     if (!audit || !ref || item.status !== "validiert") {
       return undefined;
     }

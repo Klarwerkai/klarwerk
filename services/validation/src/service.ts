@@ -409,7 +409,12 @@ export class ValidationService {
       async (aktuell) => {
         rueckwaerts.length = 0;
         const { outcome, grundlage } = await lese(aktuell);
-        return { trust: outcome.trust, status: outcome.status, grundlage };
+        // AW06-K02 (Ben, Nacharbeit 7): die ANNAHME ist die grüne Stimme, mit der die Fassung nach
+        // „validiert" übergeht. Eine weitere Stimme an der schon validierten Fassung — grün oder
+        // gelb — verdrängt sie nicht; eine gelbe wird nie zur Annahme.
+        const annahme =
+          verdict === "up" && outcome.status === "validiert" && aktuell.status !== "validiert";
+        return { trust: outcome.trust, status: outcome.status, grundlage, annahme };
       },
       { expectedVersion: ratedVersion, beiVersionswechsel: "nurBeleg" },
       beleg,
@@ -463,7 +468,8 @@ export class ValidationService {
       ref,
     } = await this.koService.setValidationStateMitBeleg(
       koId,
-      async () => ({ trust: TRUST_MAX, status: "validiert" }),
+      // AW06-K02: die Admin-Freigabe ist eine ausdrückliche Annahme dieser Fassung.
+      async () => ({ trust: TRUST_MAX, status: "validiert", annahme: true }),
       { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
       async (tx) =>
         refAus(
@@ -584,6 +590,8 @@ export class ValidationService {
         return {
           trust: frisch.trust,
           status: "validiert",
+          // AW06-K02: auch die Eigentümerfreigabe ist eine ausdrückliche Annahme.
+          annahme: true,
           ...(g && g.trust === frisch.trust
             ? { grundlage: { ohneKonflikte: g.ohneKonflikte, konflikte: g.konflikte } }
             : {}),
