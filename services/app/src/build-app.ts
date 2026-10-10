@@ -4675,6 +4675,8 @@ export function buildApp(
         audit: services.audit,
         // ADMIN-04: die Zahlen der Kontenliste aus derselben Erhebung wie die Wissensübergabe.
         offeneVorgaenge: (personen) => services.wissensuebergabe.offeneVorgaenge(personen),
+        // ADMIN-05: der gemeinsame Übergabeablauf überträgt offene Vorgänge über dieselbe Instanz.
+        vorgaengeWeg: services.wissensuebergabe,
       },
       guards,
     ),
