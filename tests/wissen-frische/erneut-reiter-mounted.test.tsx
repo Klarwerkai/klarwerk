@@ -56,6 +56,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { Lifecycle } from "../../apps/web/src/pages/Lifecycle";
 
@@ -110,7 +111,9 @@ async function mount(): Promise<void> {
             createElement(
               MemoryRouter,
               { initialEntries: ["/lebenszyklus"] },
-              createElement(Lifecycle),
+              // Die App-Shell trägt den Benachrichtigungs-Bus; `Lifecycle` meldet seit R-0953
+              // darüber (Muster: tests/app/lifecycle-bestand-zuerst-mounted.test.tsx).
+              createElement(ToastProvider, null, createElement(Lifecycle)),
             ),
           ),
         ),

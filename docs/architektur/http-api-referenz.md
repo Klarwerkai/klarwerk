@@ -217,9 +217,9 @@ herabgestuft werden (409 `mutability`).
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
-| `revalidate` | `ko.create` | — |
-| `request-revalidation` | `ko.create` | — (antwortet 204; setzt den Merker „Stimmt das noch?" für dieses Objekt — erneute Prüfung aus der Bibliothek, R-1732) |
-| `neighbors-changed` | `ko.validate` | — (antwortet 200 `{ markiert }`; meldet die Änderung aller an dieses Objekt gekoppelten Anlagen und markiert alle Objekte daran, R-0203; nur die Zahl, keine Kennungen) |
+| `revalidate` | `ko.create` | `stand` und `fassung` (die angezeigte Inhaltsfassung; wurde der Eintrag inzwischen überarbeitet, 409 `KO_STALE` mit `currentVersion`, fehlt sie neben `stand`, 400); `stand` (positive ganze Zahl: der gesehene Stand der Folgeprüfung; Pflicht, solange eine Folgeprüfung offen ist — fehlt er, ist inzwischen eine weitere Änderung eingegangen oder der Fall schon abgeschlossen, 409 `STAND_VERALTET` ohne neue Fassung; ohne offenen Fall bestätigt `revalidate` ohne Stand nur die Gültigkeit) |
+| `request-revalidation` | `ko.create` | — (antwortet 204; setzt den Merker „Stimmt das noch?" für dieses Objekt — erneute Prüfung aus der Bibliothek, R-1732; eine wiederholte Anforderung am offenen Fall legt keinen neuen Anlass an) |
+| `neighbors-changed` | `ko.validate` | `aenderung?` (Änderungsbeleg, höchstens 200 Zeichen) — (antwortet 200 `{ markiert }`; meldet die Änderung aller an dieses Objekt gekoppelten Anlagen und markiert alle Objekte daran, R-0203; nur die Zahl der für den Meldenden sichtbaren markierten Objekte, keine Kennungen) |
 | `confirm-fresh` | `ko.read` | — (antwortet 200 Objekt; „Stimmt weiterhin" — Frische-Signal ohne neue Fassung und ohne Statuswechsel, nur an validierten Objekten, sonst 400 `INVALID`; vom Verantwortlichen verlängert es die Haltbarkeit; Audit `ko.freshness-confirmed`, R-0206/R-0248) |
 | `schutz-oeffentlich` | `ko.validate` | `oeffentlich` (boolean; Schutzbedarf „öffentlich", nur an internen Objekten, sonst 400 `INVALID`; Audit `ko.oeffentlich-changed`, R-0652) |
 | `helpful` | `ko.read` | — (antwortet 204; „Hat geholfen" am Objekt, Trust-Schritt + Audit `answer.helpful`, genau einmal je Person und Objekt, keine Prüfstimme) |
@@ -367,7 +367,8 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/external/search` | `ko.read` | Abfrage `q?` | 200 Treffer | 403 `EXTERNAL_SEARCH_BLOCKED`; 501 `EXTERNAL_SEARCH_DISABLED` |
 | `POST` | `/api/lifecycle/couple` | `ko.create` | Rumpf `{ assetRef, koId }` | 204 | Dienstfehler |
 | `GET` | `/api/lifecycle/couplings/:koId` | `ko.read`, sichtbar | — | 200 Kopplungen | 404 |
-| `POST` | `/api/lifecycle/asset-changed` | `ko.validate` | Rumpf `{ assetRef }` | 200 betroffene Objekte | Dienstfehler |
+| `POST` | `/api/lifecycle/asset-changed` | `ko.validate`, sichtbar | Rumpf `{ assetRef, aenderung? }` (`aenderung`: Änderungsbeleg, höchstens 200 Zeichen) | 200 Kennungen der markierten Objekte, die der Meldende sehen darf; eine wiederholte identische Meldung legt keinen neuen Anlass an | 400 `INVALID` (leere Anlage, ungültiger Änderungsbeleg); Dienstfehler |
+| `GET` | `/api/lifecycle/folgepruefung` | `ko.read`, sichtbar | — | 200 offene Folgeprüfungen `[{ koId, title, status, version, stand, seit, zustaendig: { id, name, vorhanden, art }, anlaesse: [{ grund, am, assetRef, kopplungBesteht, aenderung, ausloeser, koVersion }] }]`, älteste zuerst; ein auslösender Eintrag nur, wenn sichtbar; keine meldende Person; schreibt nichts | — |
 | `POST` | `/api/lifecycle/handover/preview` | `users.manage` | Rumpf `{ from, to }` | 200 Vorschau der Wissensübergabe (Wissensobjekte mit Titel, Eigentum, Hauptverantwortung im Papierkorb mit Titel, Entwürfe/Lücken/Prüfaufgaben als Kennung — derselbe Umfang wie die Ausführung); schreibt nichts | 400 `INVALID` (leer/gleiche Person); 404 `NOT_FOUND` (Nachfolger kein freigeschaltetes Konto) |
 | `POST` | `/api/lifecycle/handover` | `users.manage` | Rumpf `{ from, to }` | 200 `{ uebergeben, fehlgeschlagen }`; Protokoll `lifecycle.handover`, je Objekt `ko.author-transferred`/`ko.ownership` | wie Vorschau |
 | `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |

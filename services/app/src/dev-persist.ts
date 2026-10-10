@@ -113,7 +113,17 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
   // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
   managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
-  lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],
+  // produkt:20261010:aenderungsfolgen-sichtbar: `markPending` trägt den fertigen Anlass (inkl.
+  // Zeitpunkt) in seinen args → Replay exakt; `restorePending` nimmt eine gescheiterte Bestätigung
+  // ohne Transaktion zurück und ist damit ebenfalls eine Mutation.
+  lifecycleRepo: [
+    "addCoupling",
+    "markPending",
+    "clearPending",
+    "restorePending",
+    "savePath",
+    "setProgress",
+  ],
   objects: ["insert"],
   // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
   // sonst überleben so eingereihte Import-Kandidaten den Dev-Neustart nicht.
