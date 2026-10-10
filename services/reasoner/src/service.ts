@@ -70,6 +70,7 @@ import type {
   GroupCandidateInput,
   GroupCandidatesResult,
   ImportCriteriaResult,
+  InterviewOptions,
   InterviewResult,
   JudgeFailure,
   KnowledgeRef,
@@ -2854,11 +2855,13 @@ export class Reasoner {
     confidential = false,
     // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
     imageContext?: string,
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema (ohne Angabe wie bisher).
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential, imageContext),
+      (p) => p.interview(answers, locale, confidential, imageContext, options),
       confidential,
     );
     // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet. R-0604: nur, wenn ein
