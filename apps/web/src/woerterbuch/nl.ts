@@ -6156,6 +6156,28 @@ const nl: typeof de = {
     "Je komt van versie {{genannt}}; dit item staat inmiddels op versie {{aktuell}}.",
   "arbeitsweg.klara.label": "Item",
   "arbeitsweg.klara.chat": "In „Vragen” verder vragen over dit item",
+  // produkt:20261010:fragen-pruefen-einstieg — zie de.ts.
+  "fragenEinstieg.erklaerung":
+    "Hier stel je vragen aan jullie gecontroleerde kennis. Elk antwoord toont zijn bronnen en hun controlestatus – ontbreekt een basis, dan wordt het hiaat open benoemd.",
+  "fragenEinstieg.ersterSchritt":
+    "Eerste stap: typ je vraag in het veld hieronder (of dicteer hem) en verstuur hem met de pijl.",
+  "fragenEinstieg.beispieleZeigen": "Fictieve voorbeelden tonen",
+  "fragenEinstieg.beispieleVerbergen": "Voorbeelden verbergen",
+  "fragenEinstieg.fiktiv": "fictief",
+  "fragenEinstieg.fiktivTitel": "Fictief voorbeeld – verzonnen situatie, geen echte gegevens.",
+  "fragenEinstieg.optionalTitel": "Optioneel – alleen indien nodig",
+  "pruefgrund.label.warum": "Waarom bij jou",
+  "pruefgrund.label.was": "Wat controleren",
+  "pruefgrund.label.wirkung": "Effect",
+  "pruefgrund.label.sichtbar": "Zichtbaarheid",
+  "pruefgrund.anlass.new": "Nieuw ingediend.",
+  "pruefgrund.anlass.revision": "Herzien (versie {{version}}).",
+  "pruefgrund.warum.mir": "Aan jou toegewezen.",
+  "pruefgrund.warum.andere":
+    "Aan anderen toegewezen ({{anzahl}}) – staat in de open controlelijst van je rol.",
+  "pruefgrund.warum.offen": "Niet toegewezen – staat in de open controlelijst van je rol.",
+  "pruefgrund.wirkung":
+    "Goedkeuren is één van {{need}} benodigde stemmen ({{have}} aanwezig). Terugvraag en afwijzen vragen een reden en leiden tot nawerk; niets wordt automatisch goedgekeurd.",
 };
 
 export { nl };
