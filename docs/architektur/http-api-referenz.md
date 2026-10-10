@@ -277,8 +277,11 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/duplicates/:id/status` | `ko.validate` | Rumpf `{ status?, reason?, note? }` | 200 | Dienstfehler |
 | `POST` | `/api/duplicates/:id/merge` | `ko.validate`, kein Autor einer Seite, beide Inhalte lesbar, gleicher Space | Rumpf `{ fuehrend: { id, version }, aufgehend: { id, version }, titel, kernaussage, bedingungen[], massnahmen[], quellen[], bestaetigt: true, vermerk? }` | 200 `{ befund, fuehrend, aufgehend }` | 400 `INVALID`, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `CONFLICT` |
 | `GET` | `/api/ai-check/coverage-summary` | `ko.read` | — | 200 Abdeckung der KI-Prüfung | — |
-| `GET` | `/api/audit` | `ko.validate` | Abfrage `actor?`, `action?`, `target?` | 200 Protokolleinträge | — |
-| `GET` | `/api/audit/verify` | `ko.validate` | — | 200 Prüfbericht der Protokollkette | — |
+| `GET` | `/api/audit` | `ko.validate` | Abfrage `actor?`, `action?`, `target?` | 200 Protokolleinträge (Inhaltsfelder nicht lesbarer Objekte geschwärzt) | — |
+| `GET` | `/api/audit/seite` | `ko.validate` | Abfrage `actor?`, `action?`, `actions?` (Komma-Liste), `target?`, `from?`, `to?` (ISO-Zeitpunkte), `before?`, `limit?` (höchstens 100) | 200 `{ entries, nextBefore, limit, objekte, namensbelege }` — jüngste zuerst; `objekte` nur für Objekte, die der Betrachter öffnen darf | 400 `BAD_REQUEST` (unlesbarer Zeitraum oder Zahl) |
+| `GET` | `/api/audit/verify` | `ko.validate` | — | 200 Prüfbericht der Protokollkette mit Prüfzeitpunkt `checkedAt` | — |
+| `GET` | `/api/audit/ko/:koId/findings` | `ko.validate` | Pfad `koId` | 200 `{ ids }` Kennungen der Konflikte und Überschneidungen des Objekts | — |
+| `GET` | `/api/audit/export` | `ko.validate` | — | 200 Kettendatei `{ format, count, head, inspection, entries, geschwaerzt }` als Anhang; hängt `audit.exported` an; Inhaltsfelder nicht lesbarer Objekte geschwärzt | — |
 
 ### 3.6 Fragen, Klara und KI (`askRoutes`, `klaraAiRoutes`, `klaraZurufRoutes`, `klaraAnswerExplanationRoutes`, `knowledgeCheckRoutes`, `checkTextRoutes`, `reasonerRoutes`, `helpRoutes`, `modelRunRoutes`)
 

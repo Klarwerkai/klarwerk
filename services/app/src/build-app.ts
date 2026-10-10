@@ -4382,7 +4382,11 @@ export function buildApp(
       guards,
     ),
   );
-  app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
+  // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
+  // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
+  app.register(
+    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit),
+  );
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
