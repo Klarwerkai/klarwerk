@@ -8,6 +8,8 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { waehleWerksreset } from "./factory-reset";
+import { HINTERGRUNDLAUF_INTERVAL_MS, type HintergrundlaufBericht } from "./hintergrundpruefung";
+import { starteHintergrundpruefung } from "./hintergrundpruefung-start";
 import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
@@ -147,10 +149,14 @@ async function start(): Promise<void> {
   // R-0609 · Bens B13: der Aufräumlauf der Klara-Sitzungen (Nachtrag fehlender Endeinträge des
   // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
   let klaraAufraeumLauf: (() => Promise<number>) | undefined;
+  let hintergrundLauf: (() => Promise<HintergrundlaufBericht | null>) | undefined;
   const app = buildApp(services, {
     factoryReset,
     klaraAufraeumen: (lauf) => {
       klaraAufraeumLauf = lauf;
+    },
+    hintergrundpruefung: (lauf) => {
+      hintergrundLauf = lauf;
     },
   });
   await configureWebDelivery(app);
@@ -248,6 +254,18 @@ async function start(): Promise<void> {
       log: { info: (t) => app.log.info(t), warn: (felder, t) => app.log.warn(felder, t) },
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
+  }
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
+  // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
+  if (hintergrundLauf) {
+    starteHintergrundpruefung({
+      lauf: hintergrundLauf,
+      intervalMs: HINTERGRUNDLAUF_INTERVAL_MS,
+      log: { info: (t) => app.log.info(t), warn: (t) => app.log.warn(t) },
+    });
+    app.log.info(
+      `Hintergrundprüfung aktiv — Intervall ${Math.round(HINTERGRUNDLAUF_INTERVAL_MS / 60000)} min.`,
+    );
   }
   // R-0466: die Aufbewahrungsfrist des Interaktionsgedächtnisses ist eine LÖSCHFRIST. Gelesen wird
   // ein abgelaufener Eintrag ohnehin nicht mehr; dieser Lauf entfernt ihn beim Start und danach im

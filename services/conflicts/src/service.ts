@@ -470,6 +470,9 @@ export class ConflictService {
     if (ranked.length === 0) {
       return [];
     }
+    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): dass ein menschlich geschlossenes Paar bei
+    // unveränderten Fassungen nicht neu angelegt wird, leistet `menschlichAbgeschlossen` (R-1105)
+    // unten — hier bleibt `open` die Menge der ungelösten Konflikte.
     const alle = await this.repo.all();
     const open = alle.filter((c) => c.status !== "geloest");
     // D-AISTATE PAKET 4 (bens V5): Paar-Dedupe nur für die AKTUELLE Versionskombination. Ein Befund zu
