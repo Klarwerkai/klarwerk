@@ -2576,6 +2576,15 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // R-0773: die eigenen Suchen ohne Treffer — dasselbe Recht wie die Suche selbst.
+  {
+    gruppe: "libraryRoutes",
+    methode: "GET",
+    pfad: "/api/library/nulltreffer",
+    belegstelle: "services/app/src/routes/library-routes.ts:735",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "libraryRoutes",
     methode: "GET",

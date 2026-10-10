@@ -734,6 +734,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "category-routes.ts: can(ko.read) vor jedem Bestandsabruf; ohne Recht keine Daten.",
   },
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // R-0773: die eigenen Suchen ohne Treffer — gelesen nur unter der eigenen Kennung, kein Objekt.
+  "GET /api/library/nulltreffer": { protection: "ko.read" },
   // JOB 3095 · M5: Bildsuche — Kandidaten über `sichtbareFuer` (plus SQL-Trim), jeder geladene
   // Rumpf zusätzlich über `darfSehen` am vollen Objekt (library-routes.ts, `/api/library/images`).
   "GET /api/library/images": {

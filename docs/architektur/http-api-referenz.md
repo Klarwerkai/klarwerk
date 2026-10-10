@@ -327,6 +327,7 @@ herabgestuft werden (409 `mutability`).
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/library/search` | `ko.read` | Abfrage `q?` und Filter wie `GET /api/kos` | 200 Treffer | 500 `INTERNAL`, solange die Suchprojektion nicht bereit ist |
+| `GET` | `/api/library/nulltreffer` | `ko.read` | — | 200 eigene Suchen ohne Treffer | — |
 | `GET` | `/api/library/images` | `ko.read` | Abfrage `q?`, `limit?` | 200 Bildtreffer | 400 `BAD_REQUEST`; 503 `SEARCH_UNAVAILABLE` |
 | `GET` | `/api/library/export` | `ko.read` | Abfrage `format?`, `ids?` (kommagetrennt; grenzt nur ein — validiert/Vertraulichkeit gelten weiter; leer = leere Auswahl) | 200 Export | — |
 | `POST` | `/api/library/import` | `ko.create` | Rumpf `{ items }` | 200 Importbilanz | Dienstfehler |

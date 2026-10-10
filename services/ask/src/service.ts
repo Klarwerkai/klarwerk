@@ -50,6 +50,7 @@ import {
   type ZuschnittErgaenzung,
   schneideAntwortZu,
 } from "./antwort-zuschnitt";
+import { leiteBelegbedarfAb } from "./gap-belegbedarf";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -61,6 +62,7 @@ import {
   type AskCaller,
   AskError,
   type Gap,
+  type GapBelegbedarf,
   type GapPriority,
   answerSnapshotStatus,
   hashAnswerSnapshot,
@@ -1486,10 +1488,30 @@ export class AskService {
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
       // D5: nach Beleg und Protokoll — vor der Lückensuche, die den Lückenbestand liest.
       this.pruefeKiSperre("ergebnis", kiBeginn);
+      // R-0291: welcher Beleg fehlen würde — aus DERSELBEN Vorauswahl wie die Torlage
+      // (`dropConfidential(prefilteredRaw)`, also nur Sichtbares und nie Vertrauliches) und mit
+      // denselben Tormessungen. Regel und Bedeutung: `gap-belegbedarf.ts`.
+      const belegbedarf = leiteBelegbedarfAb(
+        await Promise.all(
+          dropConfidential(prefilteredRaw).map(async (ko) => {
+            const projektion = await this.suchprojektion(ko.id, "ergebnis", kiBeginn);
+            return {
+              freigabeFehlt: ko.status !== "validiert",
+              stufeFehlt: ko.confidentiality === null || ko.confidentiality === undefined,
+              volltextFehlt: !projektion?.bodyText.trim(),
+            };
+          }),
+        ),
+      );
       // R-0348: eine Lücke „Und bei Teilzeit?" wäre für den Experten unlesbar — sie trägt deshalb
       // die Frage im Zusammenhang (ohne Faden ist das die Frage selbst).
-      const gap = await this.createGap(frageImZusammenhang, actorId, opts?.demoSeed, locale, () =>
-        this.pruefeKiSperre("ergebnis", kiBeginn),
+      const gap = await this.createGap(
+        frageImZusammenhang,
+        actorId,
+        opts?.demoSeed,
+        locale,
+        () => this.pruefeKiSperre("ergebnis", kiBeginn),
+        belegbedarf,
       );
       return {
         result,
@@ -2060,6 +2082,8 @@ export class AskService {
     locale?: ReasonerLocale,
     // D5: die Sperre des Fragewegs — bis vor jede Anweisung der Lückenablage (`insertOrIncrement`).
     vorInhaltsabruf?: () => void,
+    // R-0291: der Belegbedarf aus der Vorauswahl; fehlt nur bei Aufrufern ohne Vorauswahl.
+    belegbedarf?: GapBelegbedarf[],
   ): Promise<Gap> {
     // JOB 1111 / D-032: der Vergleichsschlüssel entsteht HIER, aus demselben Text, der gespeichert
     // wird — nicht aus dem Rohtext. So können Text und Schlüssel niemals auseinanderlaufen.
@@ -2083,6 +2107,7 @@ export class AskService {
       // nicht mit jeder anderen solchen Frage über eine gemeinsame Leere zusammenfallen. Dann
       // wird das Feld weggelassen und die Lücke ist wie ein Altbestand nicht dedupfähig.
       ...(compareKey ? { compareKey, askCount: 1 } : {}),
+      ...(belegbedarf?.length ? { belegbedarf } : {}),
     };
     // ============================================================================================
     // JOB 1111 / D-032 — HIER ENTSCHEIDET SICH: NEUE LÜCKE ODER EINE WEITERE STIMME.

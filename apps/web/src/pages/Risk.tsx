@@ -18,6 +18,7 @@ import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
+import { EigeneNulltreffer } from "../components/EigeneNulltreffer";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LueckenAnsprechpartner } from "../components/LueckenAnsprechpartner";
@@ -27,7 +28,8 @@ import { nurOffeneLuecken, offeneLuecken } from "../lib/adminUebersicht";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import { leseFall } from "../lib/fallAbsprung";
-import { gapLocaleTag } from "../lib/gapLocaleTag";
+import { gapBelegbedarfSchluessel } from "../lib/gapBelegbedarf";
+import { gapTitelEtikett } from "../lib/gapLocaleTag";
 import {
   GAP_PRIORITIES,
   type PriorityTone,
@@ -540,15 +542,46 @@ export function Risk(): JSX.Element {
                         <div className="min-w-0 flex-1 truncate text-[13.5px] text-text">
                           {g.redacted ? t("risk.gapRedacted") : g.question}
                         </div>
+                        {/* R-0307 / R-1061: ohne Sprachangabe das neutrale Etikett „Originalfrage". */}
                         {(() => {
-                          const sprache = gapLocaleTag(g.locale, i18n.language);
+                          const sprache = gapTitelEtikett(g, i18n.language, t);
                           return sprache ? (
-                            <span className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                            <span
+                              data-testid="luecke-etikett"
+                              className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2"
+                            >
                               {sprache}
                             </span>
                           ) : null;
                         })()}
+                        {/* R-0333 / R-0753: die Häufigkeit auch auf dem Lücken-Board — dieselbe
+                            Regel wie in „Meine Aufgaben": erst ab zwei, Altbestand ohne Zähler
+                            bleibt still. Eine Zahl ist kein Fragetext, also auch bei redigierten. */}
+                        {typeof g.askCount === "number" && g.askCount > 1 ? (
+                          <span
+                            data-testid="luecke-haeufigkeit"
+                            className="shrink-0 font-mono text-[10.5px] text-muted-2"
+                          >
+                            {t("gap.askCount", { count: g.askCount })}
+                          </span>
+                        ) : null}
                       </div>
+                      {/* R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde — nur in der
+                          berechtigten Sicht (bei redigierten Lücken hält der Server ihn zurück). */}
+                      {(() => {
+                        const bedarf = g.status === "offen" ? gapBelegbedarfSchluessel(g) : null;
+                        return bedarf ? (
+                          <div
+                            data-testid="luecke-belegbedarf"
+                            className="mt-0.5 text-[11px] text-muted"
+                          >
+                            <span className="font-mono uppercase tracking-wider text-muted-2">
+                              {t("gap.belegbedarf.label")}:
+                            </span>{" "}
+                            {bedarf.map((k) => t(k)).join(" · ")}
+                          </div>
+                        ) : null;
+                      })()}
                       {/* SCRUM-253: ehrliche nächste Handlung je offener Lücke (priorisieren/zuweisen/erfassen). */}
                       {g.status === "offen" ? (
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
@@ -712,6 +745,10 @@ export function Risk(): JSX.Element {
           )}
         </QueryState>
       </div>
+
+      {/* R-0773: getrennt von den unbeantworteten Fragen darüber — die eigenen SUCHEN, die nichts
+          Sichtbares fanden (components/EigeneNulltreffer.tsx). */}
+      <EigeneNulltreffer />
     </div>
   );
 }

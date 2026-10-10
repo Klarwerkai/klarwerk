@@ -105,6 +105,7 @@ import type {
   MyImpact,
   Neighborhood,
   Notification,
+  NulltrefferSuche,
   ObjectContent,
   ObjectRef,
   OutputDocument,
@@ -1256,6 +1257,8 @@ export const endpoints = {
     // FE-LIB-01: Server-Volltextsuche + strukturierte Filter (Art/Status/Kategorie/Tag).
     search: (params: KoFilter & { q?: string }) =>
       api.get<KnowledgeObject[]>(`/library/search${qs(params)}`),
+    // R-0773: die EIGENEN Suchen ohne Treffer (Server: services/ask/src/nulltreffer.ts).
+    nulltreffer: () => api.get<NulltrefferSuche[]>("/library/nulltreffer"),
     // JOB 3095 · M5: Bilder anhand ihrer Unterschrift, mit Herkunft; dieselbe Rechte-Naht wie search.
     images: (q: string, limit?: number) =>
       api.get<LibraryImageSearchResponse>(

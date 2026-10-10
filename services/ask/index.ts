@@ -26,6 +26,16 @@ export {
   type AntwortMeldungQuittung,
 } from "./src/antwort-meldung";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
+// R-0773: erfolglose Suchen je Person (Begründung und Grenzen in `src/nulltreffer.ts`).
+export {
+  InMemoryNulltrefferRepo,
+  NULLTREFFER_DECKEL,
+  nulltrefferBegriff,
+  nulltrefferEingrenzung,
+  type NulltrefferRepo,
+  type NulltrefferSuche,
+} from "./src/nulltreffer";
+export { PgNulltrefferRepo } from "./src/repo-pg";
 // W3-A (KW-W3-18): der Repo-Kern der Antwortbelege. Die Fassade wird MITGESCHRIEBEN und nicht
 // nachgereicht — die W2-A-Lehre (Preflight 39 F1): eine exportierte Konstante, die die
 // Modulfassade nicht weiterreicht, ist fuer `services/app` unerreichbar, und der Fehler faellt
@@ -80,7 +90,7 @@ export {
   verifyAnswerReceipt,
 } from "./src/receipt";
 export { AskError, isGapPriority } from "./src/types";
-export type { Gap, GapPriority, AskErrorCode } from "./src/types";
+export type { Gap, GapBelegbedarf, GapPriority, AskErrorCode } from "./src/types";
 // AUFTRAG-mega34 B1: der kanonische, quellengebundene Evidenzzustand — die EINE Auslegung der
 // Antwort-Einstufung für alle Verbraucher, die sie nicht selbst bilden können (Word/Klara).
 export { answerCheckState, answerEvidence } from "./src/answer-evidence";
