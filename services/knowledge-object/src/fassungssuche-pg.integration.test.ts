@@ -50,6 +50,10 @@ const FASSUNGEN = [
   fassung("ko-b", 1, "2025-03-01T09:00:00.000Z", {}),
   fassung("ko-b", 2, "2026-02-01T09:00:00.000Z", { title: "Ventil neu" }),
   fassung("ko-c", 1, "2025-03-01T09:00:00.000Z", { bodyHtml: "<p>bei überdruck melden.</p>" }),
+  // BEN (Nacharbeit 6): „Ventil" steht NUR im früheren Dokumentkörper, und dort als Zeichenreferenz.
+  // Der Antwortweg liest daraus „Ventil" (buildSearchProjection) — die Nachsuche muss es auch.
+  fassung("ko-d", 1, "2025-03-01T09:00:00.000Z", { bodyHtml: "<p>V&#101;ntil pr&uuml;fen.</p>" }),
+  fassung("ko-d", 2, "2026-02-01T09:00:00.000Z", { bodyHtml: "<p>Absperrorgan prüfen.</p>" }),
 ];
 const SUCHE = {
   terms: ["ventil", "überdruck"],
@@ -103,9 +107,14 @@ describe("R-1630 / R-2176 · Nachsuche über Fassungen bis zum Stichtag", () => 
     for (const f of FASSUNGEN) {
       await repo.append(f);
     }
-    expect(await repo.findKoIdsInFassungen(SUCHE)).toEqual(["ko-a", "ko-c"]);
+    expect(await repo.findKoIdsInFassungen(SUCHE)).toEqual(["ko-a", "ko-c", "ko-d"]);
     expect(await repo.findKoIdsInFassungen({ ...SUCHE, limit: 1 })).toEqual(["ko-a"]);
     expect(await repo.findKoIdsInFassungen({ ...SUCHE, terms: [] })).toEqual([]);
+    // Die Zeichenreferenz wird gelesen wie im Antwortweg: „V&#101;ntil" trifft „ventil".
+    expect(await repo.findKoIdsInFassungen({ ...SUCHE, terms: ["ventil"] })).toEqual([
+      "ko-a",
+      "ko-d",
+    ]);
   });
 
   it("PostgreSQL: dieselbe Auswahl wie der Speicheradapter", async (ctx) => {
@@ -124,8 +133,21 @@ describe("R-1630 / R-2176 · Nachsuche über Fassungen bis zum Stichtag", () => 
       );
     }
     const repo = new PgKoVersionRepo(pool);
-    expect(await repo.findKoIdsInFassungen(SUCHE)).toEqual(["ko-a", "ko-c"]);
-    expect(await repo.findKoIdsInFassungen({ ...SUCHE, limit: 1 })).toEqual(["ko-a"]);
+    const speicher = new InMemoryKoVersionRepo();
+    for (const f of FASSUNGEN) {
+      await speicher.append(f);
+    }
+    // Adaptergleichheit: dieselben Fassungen, dieselben Anfragen, dieselbe Antwort.
+    for (const anfrage of [SUCHE, { ...SUCHE, limit: 1 }, { ...SUCHE, terms: ["ventil"] }]) {
+      expect(await repo.findKoIdsInFassungen(anfrage)).toEqual(
+        await speicher.findKoIdsInFassungen(anfrage),
+      );
+    }
+    expect(await repo.findKoIdsInFassungen(SUCHE)).toEqual(["ko-a", "ko-c", "ko-d"]);
+    expect(await repo.findKoIdsInFassungen({ ...SUCHE, terms: ["ventil"] })).toEqual([
+      "ko-a",
+      "ko-d",
+    ]);
     // Ein Suchbegriff mit Musterzeichen wird nicht als Muster gelesen.
     expect(await repo.findKoIdsInFassungen({ ...SUCHE, terms: ["%"] })).toEqual([]);
   });
