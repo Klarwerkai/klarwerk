@@ -546,6 +546,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // kein Feld fuer die Gegenseite, weil `EigenerBefund` keines hat.
   "GET /api/duplicate-signal": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   "GET /api/conflicts": { protection: "ko.read", zeilenrecht: ["sichtbarePaare"] },
+  // R-1662: die gelösten Konflikte zu den Quellen einer Antwort — dasselbe Tor wie die Liste.
+  "GET /api/conflicts/geloest": { protection: "ko.read", zeilenrecht: ["sichtbarePaare"] },
   "GET /api/conflicts/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
   // Aufnahme gesamt-konfliktklassifikation · R-0263: der Vorrang am Punkt — dasselbe Paar-Tor je
   // Eintrag, der Geltungsbereich zusätzlich über `feldFreigabe` (wie `description`).
@@ -801,6 +803,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Davor gingen die Kennungen vertraulicher Objekte an jeden `ko.read`-Inhaber, obwohl
   // `GET /api/kos` dieselben Objekte aus der Liste faellen laesst. Gemessenes Praedikat, nicht Torwache.
   "GET /api/lifecycle/pending": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
+  // R-1662: frühere Bestätigungen (`ko.revalidated`) zu den Quellen einer Antwort — dasselbe Tor
+  // wie `pending`; hinaus gehen nur Kennung, Zeitpunkt und Fassung, nie Akteur oder Nutzlast.
+  "GET /api/lifecycle/revalidiert": {
     protection: "ko.read",
     zeilenrecht: ["sichtbareEintraege"],
   },

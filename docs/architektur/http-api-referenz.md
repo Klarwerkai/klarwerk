@@ -258,6 +258,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
+| `GET` | `/api/conflicts/geloest` | `ko.read` | Abfrage `ko=<id>,<id>` (höchstens 50) | 200 von einem Menschen gelöste Konflikte zu diesen Objekten, sichtbarkeitsgefiltert; bei Redaktion auch `decision`, `secondOpinion` und `vorrang.geltungsbereich` leer | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
 | `GET` | `/api/conflicts/vorrang/:id` | `ko.read`, Paar sichtbar | Pfad `:id` = Wissensobjekt | 200 Liste festgelegter Vorrang-Beziehungen (R-0263) | — |
 | `POST` | `/api/conflicts/:id/escalate` | `conflict.resolve` | — | 200 Konflikt | Dienstfehler |
@@ -357,6 +358,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/lifecycle/handover/preview` | `users.manage` | Rumpf `{ from, to }` | 200 Vorschau der Wissensübergabe (Wissensobjekte mit Titel, Eigentum, Hauptverantwortung im Papierkorb mit Titel, Entwürfe/Lücken/Prüfaufgaben als Kennung — derselbe Umfang wie die Ausführung); schreibt nichts | 400 `INVALID` (leer/gleiche Person); 404 `NOT_FOUND` (Nachfolger kein freigeschaltetes Konto) |
 | `POST` | `/api/lifecycle/handover` | `users.manage` | Rumpf `{ from, to }` | 200 `{ uebergeben, fehlgeschlagen }`; Protokoll `lifecycle.handover`, je Objekt `ko.author-transferred`/`ko.ownership` | wie Vorschau |
 | `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |
+| `GET` | `/api/lifecycle/revalidiert` | `ko.read`, sichtbar | Abfrage `ko=<id>,<id>` (höchstens 50) | 200 frühere Bestätigungen `[{ koId, am, version }]` aus `ko.revalidated`, neueste zuerst; kein Akteur, keine Nutzlast | — |
 | `POST` | `/api/learning-paths` | `ko.create` | Rumpf `{ role, steps: [{ title }] }` | 201 Lernpfad | Dienstfehler |
 | `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
 | `POST` | `/api/learning-paths/:pathId/complete` | `ko.read` | Rumpf `{ stepId }` | 200 Fortschritt | Dienstfehler |

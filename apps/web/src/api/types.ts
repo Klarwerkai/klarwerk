@@ -1006,6 +1006,25 @@ export interface Conflict {
   // automatische weist sich über origin/detector aus. Altbestand ohne das Feld bleibt gültig.
   createdBy?: string;
   createdAt: string;
+  // R-1662: Spiegel von `services/conflicts/src/types.ts` — warum ein gelöster Konflikt endete. Für
+  // den Lösungsweg zählen nur „decided" und „dismissed"; fehlt das Feld, ist der Grund unbekannt.
+  resolutionReason?:
+    | "decided"
+    | "dismissed"
+    | "participant_deleted"
+    | "edited_no_conflict"
+    | "withdrawn"
+    | "superseded";
+  // Die Feldredaktion des Servers (`redigiereKonflikt`): Inhalt zurückgehalten, Struktur bleibt.
+  redacted?: true;
+}
+
+/** R-1662: eine Zeile von `GET /api/lifecycle/revalidiert` — eine frühere Bestätigung „stimmt
+ *  noch" (Beleg `ko.revalidated`). Spiegel von `services/app/src/routes/lifecycle-routes.ts`. */
+export interface RevalidierungBestaetigt {
+  koId: string;
+  am: string;
+  version: number | null;
 }
 
 // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Eintrag fürs Board.
