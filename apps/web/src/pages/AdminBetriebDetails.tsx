@@ -423,14 +423,14 @@ function vergleichZeile(t: Uebersetzer, name: string, kategorie: VergleichKatego
   );
 }
 
-function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
+function restoreBefundText(t: Uebersetzer, sprache: string, r: RestoreDrillBefund): JSX.Element {
   const v = r.vergleich;
   return (
     <div className="space-y-1 text-[12.5px] leading-relaxed text-text">
       <p data-testid="restore-sicherung">
         {t("sicherungsnachweise.restore.sicherung", {
           datei: r.sicherung ?? "–",
-          zeit: zeitText(t, r.sicherungZeitpunktUtc),
+          zeit: zeitText(t, sprache, r.sicherungZeitpunktUtc),
         })}
       </p>
       <p data-testid="restore-ziel">
@@ -438,8 +438,8 @@ function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
       </p>
       <p data-testid="restore-zeit">
         {t("sicherungsnachweise.restore.dauer", {
-          beginn: zeitText(t, r.beginnUtc),
-          ende: zeitText(t, r.zeitUtc),
+          beginn: zeitText(t, sprache, r.beginnUtc),
+          ende: zeitText(t, sprache, r.zeitUtc),
         })}
       </p>
       <p data-testid="weg-grund">
@@ -508,7 +508,7 @@ function restoreBefundText(t: Uebersetzer, r: RestoreDrillBefund): JSX.Element {
 }
 
 /** Alle vier Wege, in fester Reihenfolge — samt dem Satz, WO überhaupt nachgesehen wurde. */
-function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
+function schutzwegeBefund(t: Uebersetzer, sprache: string, wege: Schutzwege): JSX.Element {
   const { letzterLauf: lauf, restore, export: exporte, papierkorb } = wege;
   const laufZustand: WegZustand = lauf.zustand;
   const exportZustand: WegZustand =
@@ -537,7 +537,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
             {exporte.bibliothek ? (
               <p data-testid="export-bibliothek">
                 {t("sicherungsnachweise.export.bibliothek", {
-                  zeit: zeitText(t, exporte.bibliothek.zeitUtc),
+                  zeit: zeitText(t, sprache, exporte.bibliothek.zeitUtc),
                   format: exporte.bibliothek.format ?? "–",
                   anzahl: exporte.bibliothek.anzahl ?? "–",
                   gesamt: exporte.bibliothek.gesamt,
@@ -547,7 +547,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
             {exporte.auditkette ? (
               <p data-testid="export-auditkette">
                 {t("sicherungsnachweise.export.auditkette", {
-                  zeit: zeitText(t, exporte.auditkette.zeitUtc),
+                  zeit: zeitText(t, sprache, exporte.auditkette.zeitUtc),
                   anzahl: exporte.auditkette.anzahl ?? "–",
                   gesamt: exporte.auditkette.gesamt,
                 })}
@@ -569,7 +569,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
         ) : (
           <div className="space-y-0.5 text-[12.5px] leading-relaxed text-text">
             <p data-testid="weg-zeit">
-              {t("sicherungsnachweise.zeit", { zeit: zeitText(t, lauf.zeitUtc) })}
+              {t("sicherungsnachweise.zeit", { zeit: zeitText(t, sprache, lauf.zeitUtc) })}
             </p>
             {lauf.datei ? (
               <p className="break-all">
@@ -606,7 +606,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
             {papierkorb.naechsteEndloeschungUtc ? (
               <p>
                 {t("sicherungsnachweise.papierkorb.naechste", {
-                  zeit: zeitText(t, papierkorb.naechsteEndloeschungUtc),
+                  zeit: zeitText(t, sprache, papierkorb.naechsteEndloeschungUtc),
                 })}
               </p>
             ) : null}
@@ -615,14 +615,14 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
                 <p data-testid="papierkorb-wiederhergestellt">
                   {t("sicherungsnachweise.papierkorb.wiederhergestellt", {
                     zeit: papierkorb.letzteWiederherstellungUtc
-                      ? zeitText(t, papierkorb.letzteWiederherstellungUtc)
+                      ? zeitText(t, sprache, papierkorb.letzteWiederherstellungUtc)
                       : t("sicherungsnachweise.papierkorb.nie"),
                   })}
                 </p>
                 <p>
                   {t("sicherungsnachweise.papierkorb.endgeloescht", {
                     zeit: papierkorb.letzteEndloeschungUtc
-                      ? zeitText(t, papierkorb.letzteEndloeschungUtc)
+                      ? zeitText(t, sprache, papierkorb.letzteEndloeschungUtc)
                       : t("sicherungsnachweise.papierkorb.nie"),
                   })}
                 </p>
@@ -646,7 +646,7 @@ function schutzwegeBefund(t: Uebersetzer, wege: Schutzwege): JSX.Element {
         restore.zustand,
         restore.zustand === "unbekannt"
           ? wegUnbekannt(t, restore, "sicherungsnachweise.restore.schritt.unbekannt")
-          : restoreBefundText(t, restore),
+          : restoreBefundText(t, sprache, restore),
         wegAngaben(t, "restore"),
       )}
     </div>
@@ -717,7 +717,7 @@ export function SicherungDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             </div>
             {/* ADMIN-13 — die vier Schutzwege aus DERSELBEN Lesung. Ältere Antworten ohne das Feld
                 zeigen den Abschnitt nicht; der Server sendet es in jedem der drei Zustände. */}
-            {daten.schutzwege ? schutzwegeBefund(t, daten.schutzwege) : null}
+            {daten.schutzwege ? schutzwegeBefund(t, i18n.language, daten.schutzwege) : null}
           </div>
         )}
       </Abfragehuelle>
