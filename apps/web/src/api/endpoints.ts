@@ -59,6 +59,7 @@ import type {
   ExternalResult,
   ExtractResult,
   FeatureFlags,
+  FolgepruefungsFall,
   Fragekontext,
   Gap,
   GapPriority,
@@ -280,9 +281,12 @@ export type KoAction =
       widerspruch?: { koB: string; type: ConflictType; description: string };
       // R-0238 · Nacharbeit 8: nur die fehlenden Konfliktschritte, ohne neue Bewertung.
       fortsetzungFuerFassung?: number;
+      // ADMIN-09: die geprüfte Fassung. In einem Space mit Freigaberegel Pflicht für die
+      // Zustimmung; hat sich die Fassung bewegt, antwortet der Server 409 `KO_STALE`.
+      expectedVersion?: number;
     }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
-  | { action: "admin-validate"; duplicateAcknowledged?: true }
+  | { action: "admin-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
@@ -399,7 +403,8 @@ export type KoAction =
   // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
   | { action: "ownership-release" }
   // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
-  | { action: "owner-validate"; duplicateAcknowledged?: true }
+  // ADMIN-09: `expectedVersion` = die geprüfte Fassung (in Spaces mit Freigaberegel Pflicht).
+  | { action: "owner-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -411,7 +416,13 @@ export type KoAction =
   // erfundener Wert belegt nichts und hebt keine Sperre auf.
   | {
       action: "add-source";
-      source: { label: string; url?: string; excerpt?: string; objectId?: string };
+      source: {
+        label: string;
+        url?: string;
+        excerpt?: string;
+        objectId?: string;
+        abrufbeleg?: string;
+      };
     }
   | { action: "remove-source"; sourceId: string }
   // AUFTRAG-mega18 Block A-1: die VERBUND-OPERATION „Dokumentinhalt übernehmen". Sie ersetzt die
@@ -473,7 +484,10 @@ export type KoAction =
       note?: string;
       expectedVersion?: number;
     }
-  | { action: "revalidate" }
+  // produkt:20261010:aenderungsfolgen-sichtbar: `stand` bindet die Bestätigung an den gesehenen
+  // Stand der Folgeprüfung (sonst 409 `STAND_VERALTET`).
+  // Nacharbeit 6: `fassung` = die angezeigte Inhaltsfassung (Pflicht zusammen mit `stand`).
+  | { action: "revalidate"; stand?: number; fassung?: number }
   // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
   | { action: "confirm-fresh" }
   // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
@@ -1230,6 +1244,9 @@ export const endpoints = {
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),
+    // produkt:20261010:aenderungsfolgen-sichtbar: offene Folgeprüfungen mit Anlass, Stand und
+    // Zuständigkeit — dieselbe Sichtbarkeitsgrenze wie `pending`.
+    folgepruefung: () => api.get<FolgepruefungsFall[]>("/lifecycle/folgepruefung"),
     // R-1662: frühere Bestätigungen „stimmt noch" zu genau diesen Objekten (Lösungsweg).
     revalidiert: (koIds: readonly string[]) =>
       api.get<RevalidierungBestaetigt[]>(
@@ -1240,8 +1257,12 @@ export const endpoints = {
       api.post<void>("/lifecycle/couple", { assetRef, koId }),
     couplingsFor: (koId: string) => api.get<string[]>(`/lifecycle/couplings/${koId}`),
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
-    assetChanged: (assetRef: string) =>
-      api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+    // produkt:20261010:aenderungsfolgen-sichtbar: optional mit Änderungsbeleg (`aenderung`).
+    assetChanged: (assetRef: string, aenderung?: string) =>
+      api.post<string[]>(
+        "/lifecycle/asset-changed",
+        aenderung ? { assetRef, aenderung } : { assetRef },
+      ),
     // R-0554: Wissensübergabe beim Ausscheiden — erst Vorschau, dann Ausführung (Recht `users.manage`).
     uebergabeVorschau: (von: string, an: string) =>
       api.post<UebergabeVorschau>("/lifecycle/handover/preview", { from: von, to: an }),

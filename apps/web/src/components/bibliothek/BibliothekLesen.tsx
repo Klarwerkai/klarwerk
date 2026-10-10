@@ -58,6 +58,7 @@ import { anzeigestatusAnker, anzeigestatusAus } from "../../lib/displayStatus";
 import { studioSaveConfidence } from "../../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
+import { meldeUebergabe, pruefeUebergabe, useKlaraUebergabe } from "../../lib/klaraUebernahme";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { koOverview } from "../../lib/koOverview";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
@@ -2201,6 +2202,43 @@ export function BibliothekLesen({
     }
   }, [query.data, params, canEdit]);
 
+  // Klara 04 (produkt:20261008:klara-vorschlaege): ein bewusst übernommener Klara-Vorschlag kommt in
+  // DIESES Formular — die Bearbeitungsfassung. Gespeichert oder eingereicht wird er wie jede andere
+  // Änderung über die Knöpfe darunter (`save`/`einreichen`). Ohne Recht, ohne Fundstelle oder mit
+  // mehreren Fundstellen ändert sich nichts; Klara erfährt den Grund (`lib/klaraUebernahme.ts`).
+  const klaraUebergabe = useKlaraUebergabe(koId);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: die Übergabe ist der Auslöser; `edit` wird gelesen.
+  useEffect(() => {
+    const u = klaraUebergabe;
+    const stand = query.data;
+    if (!u || !stand) {
+      return;
+    }
+    if (!canEdit) {
+      meldeUebergabe(u.id, { art: "kein_recht" });
+      return;
+    }
+    const basis = edit ?? { statement: stand.statement, bodyHtml: stand.bodyHtml ?? "" };
+    const lage = pruefeUebergabe(basis, u);
+    if (lage.art !== "eindeutig") {
+      meldeUebergabe(u.id, lage);
+      return;
+    }
+    const geoeffnet = edit === null;
+    if (geoeffnet) {
+      startEdit(stand);
+    }
+    setEdit((vorher) => {
+      if (!vorher) {
+        return vorher;
+      }
+      return lage.feld === "inhalt"
+        ? mitNeuemInhalt(vorher, lage.felder.bodyHtml)
+        : { ...vorher, statement: lage.felder.statement, aussageFolgtInhalt: false };
+    });
+    meldeUebergabe(u.id, { art: "uebernommen", feld: lage.feld, geoeffnet });
+  }, [klaraUebergabe, query.data, canEdit]);
+
   // Arbeitswege am selben Artikel: welche Fassung hier gelesen wird — Klara und die Rückweg-Zeile
   // lesen sie aus `lib/objektbezug.ts`. Gemeldet wird, was ohnehin gezeichnet wird; kein Abruf.
   const gelesenId = query.data?.id ?? null;
@@ -2744,7 +2782,12 @@ export function BibliothekLesen({
                     <>
                       <MenuePunkt
                         onClick={() => {
-                          act.mutate({ action: "rate", verdict: "up" });
+                          // ADMIN-09: im Space nennt die Zustimmung die gelesene Fassung.
+                          act.mutate({
+                            action: "rate",
+                            verdict: "up",
+                            ...(ko.spaceId ? { expectedVersion: ko.version } : {}),
+                          });
                           schliessen();
                         }}
                       >
@@ -2780,8 +2823,21 @@ export function BibliothekLesen({
                       testId="bib-menue-revalidieren"
                       disabled={act.isPending}
                       onClick={() => {
-                        act.mutate({ action: "revalidate" });
-                        push("success", t("lib.revalidateDone"));
+                        // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4, K5): ohne
+                        // angezeigten Stand schließt dieser Weg KEINE offene Folgeprüfung — der
+                        // Server lehnt dann ab (409 `STAND_VERALTET`), und die Meldung führt in
+                        // den Reiter „Erneut". Die Quittung erst nach dem Erfolg.
+                        act.mutate(
+                          { action: "revalidate" },
+                          {
+                            onSuccess: () => push("success", t("lib.revalidateDone")),
+                            onError: (e) => {
+                              if (e instanceof ApiError && e.code === "STAND_VERALTET") {
+                                setErr(t("folgepruefung.bibliothekOffen"));
+                              }
+                            },
+                          },
+                        );
                         schliessen();
                       }}
                     >

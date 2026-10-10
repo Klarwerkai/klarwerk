@@ -142,6 +142,10 @@ export interface ExternalResult {
   url: string;
   snippet: string;
   provider: string;
+  /** REF-01: wann der Server diesen Treffer abgerufen hat. */
+  abgerufenAm?: string;
+  /** REF-01: der signierte Abrufbeleg des Servers — beim Anhängen unverändert zurückgeben. */
+  abrufbeleg?: string;
 }
 
 // SCRUM-414: Admin-Regler „externe Wissensabfrage" (4 Stufen).
@@ -736,6 +740,18 @@ export interface KnowledgeObject {
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
   staleVotes?: number;
+  // produkt:20261007:spaces: der führende Space (fehlt = kein Space). ADMIN-09: liegt ein Beitrag in
+  // einem Space, nennt seine Zustimmung die geprüfte Fassung — der Space kann eine Regel tragen.
+  spaceId?: string;
+  // ADMIN-09 (produkt:20261009:admin-freigaberegeln): Brett-Anreicherung — der führende Space trägt
+  // eine Freigaberegel. Dann nennt jede Zustimmung die geprüfte Fassung (`expectedVersion`).
+  freigaberegel?: {
+    spaceId: string;
+    spaceName: string;
+    regelVersion: number;
+    zustimmungen: number;
+    gruppe: boolean;
+  };
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
@@ -1025,6 +1041,37 @@ export interface RevalidierungBestaetigt {
   koId: string;
   am: string;
   version: number | null;
+}
+
+/** produkt:20261010:aenderungsfolgen-sichtbar: ein Anlass eines offenen Falls (ohne meldende Person). */
+export interface FolgepruefungsAnlass {
+  // ADMIN-10: „rueckmeldung" — aus einer belegten Rückmeldung übernommene Prüfung.
+  grund: "anlage" | "nachbar" | "bibliothek" | "rueckmeldung";
+  am: string;
+  assetRef: string | null;
+  kopplungBesteht: boolean | null;
+  aenderung: string | null;
+  /** Nur, wenn der Betrachter den auslösenden Eintrag sehen darf. */
+  ausloeser: { koId: string; title: string; version: number | null } | null;
+  koVersion: number | null;
+}
+
+/** Eine Zeile von `GET /api/lifecycle/folgepruefung`. Spiegel von `lifecycle-routes.ts`. */
+export interface FolgepruefungsFall {
+  koId: string;
+  title: string;
+  status: string;
+  version: number;
+  /** An diesen Stand bindet sich „Noch gültig" (`revalidate` mit `stand`). */
+  stand: number;
+  seit: string | null;
+  zustaendig: {
+    id: string;
+    name: string | null;
+    vorhanden: boolean;
+    art: "owner" | "author-fallback";
+  };
+  anlaesse: FolgepruefungsAnlass[];
 }
 
 // Berater-Konzept Duplikate 04.07. (Stufe D4): Überschneidungs-/Duplikat-Eintrag fürs Board.
@@ -2988,6 +3035,8 @@ export interface ImportCleanupPreview {
   // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — das Löschen lässt
   // sie fail-closed stehen (einziger Träger des Belegs).
   auditPendingCandidates: number;
+  // Aufnahme gesamt-bestandsbereinigung (R-0124): davon erkannte Doppel-Kandidaten.
+  duplicateCandidates: number;
 }
 
 export interface ImportCleanupResult {
@@ -3004,6 +3053,8 @@ export interface ImportCleanupResult {
   // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — nicht entfernt,
   // ehrlich beziffert; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab.
   auditPendingCandidates: number;
+  // Aufnahme gesamt-bestandsbereinigung (R-0124): davon tatsächlich entfernte Doppel-Kandidaten.
+  removedDuplicateCandidates: number;
 }
 
 // WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).

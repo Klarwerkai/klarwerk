@@ -715,6 +715,30 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // REF-01: die Fundstellenauflösung ist ein LESENDER POST (Kennungen im Rumpf, kein Schreiben).
+  // Eine erfundene Kennung ergibt nach dem Tor für jede Rolle dieselbe inhaltslose Auskunft
+  // „nicht zugänglich" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/fundstellen",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1356",
+    tor: "ko.read",
+    payload: {
+      fundstellen: [
+        {
+          art: "intern",
+          koId: "gibt-es-nicht",
+          koVersion: 1,
+          feld: "statement",
+          start: 0,
+          ende: 1,
+          fingerabdruck: `sha256:${"0".repeat(64)}`,
+        },
+      ],
+    },
+    erwartet: NUR_LESEN,
+  },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
   // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
   {
@@ -1850,6 +1874,17 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht — dasselbe Tor wie
+  // `pending`; die Zeilen filtert `sichtbareEintraege` (gemessen in
+  // `tests/aenderungsfolgen/folgepruefung-route.test.ts`).
+  {
+    gruppe: "lifecycleRoutes",
+    methode: "GET",
+    pfad: "/api/lifecycle/folgepruefung",
+    belegstelle: "services/app/src/routes/lifecycle-routes.ts:243",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Gemessen wird das Rechtetor mit einem
   // LEEREN Rumpf: der Admin kommt durch und bekommt 400 (`INVALID`, kein Paar) — vor jedem Lesen
   // und Schreiben, also ohne Wirkung auf die Bühne. Vorschau und Zug mit echten Konten misst
@@ -1965,6 +2000,26 @@ export const TABELLE: Zeile[] = [
     belegstelle: "services/app/src/routes/notifications-routes.ts:116",
     tor: "requireUser",
     erwartet: ANGEMELDET,
+  },
+  {
+    // ADMIN-10: die gemeinsame Übersicht der Qualitätsaufgaben — Verwaltung.
+    gruppe: "qualitaetsaufgabenRoutes",
+    methode: "GET",
+    pfad: "/api/qualitaetsaufgaben",
+    belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:23",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // ADMIN-10: Rückmeldung als Aufgabe übernehmen. Die Kennung ist erfunden — der Berechtigte
+    // bekommt die fachliche 404 (registriert, Tor durchgelassen), und es wird nichts geschrieben.
+    gruppe: "qualitaetsaufgabenRoutes",
+    methode: "POST",
+    pfad: "/api/qualitaetsaufgaben/rueckmeldungen/M-ABNAHME0000/uebernehmen",
+    route: "/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen",
+    belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:36",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "objectRoutes",

@@ -124,6 +124,45 @@ export type {
   QuellenBelastbarkeit,
   WoerterbuchErgaenzung,
 } from "./src/answer-belastbarkeit";
+// produkt:20261009:referenzki-quellenbelege (REF-01): Aussage → Quellenversion → Passage, die
+// Auflösung mit aktuellen Rechten und die Eingabe der Referenz-Prüfung.
+export {
+  AUSSAGEN_BELEG_SCHEMA,
+  FUNDSTELLEN_AUFLOESEN_MAX,
+  FUNDSTELLEN_HINWEIS,
+  aufKernaussagenBeschraenkt,
+  bestaetigungGilt,
+  bindeAntworttext,
+  bindeAussagen,
+  bindungsQuelleAus,
+  fingerabdruck,
+  leseFundstellenAnfrage,
+  leseFundstellenVerweis,
+  loeseFundstelleAuf,
+  pruefPaket,
+  quellenLink,
+  belegstellenLink,
+  volltextDerFassung,
+} from "./src/aussage-fundstellen";
+export type {
+  Aussage,
+  AussagenBeleg,
+  BindungsQuelle,
+  ExterneFundstelle,
+  Fundstelle,
+  FundstellenAufloesung,
+  FundstellenLeser,
+  FundstellenVerweis,
+  FundstellenZustand,
+  InterneFundstelle,
+  ModellAngabe,
+  PrueferAngabe,
+  PruefPaket,
+  PruefPosten,
+  Teilaussage,
+  ZweitmeinungAussagen,
+  AusgelieferteAntwort,
+} from "./src/aussage-fundstellen";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
 // R-1630 / R-2176: der Stichtag des Antwortvergleichs — die Route liest ihn mit derselben Regel.
 export { stichtagAus } from "./src/wissensstand-vergleich";

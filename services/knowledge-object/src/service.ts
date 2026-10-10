@@ -4274,6 +4274,12 @@ export class KoService {
       excerpt?: string | null;
       provider?: string | null;
       objectId?: string | null;
+      /**
+       * REF-01 (Ben nacharbeit-7 K2): der GEPRÜFTE Abrufnachweis des Servers
+       * (`pruefeAbrufbeleg`, external-search) — oder nichts. Die Route reicht ihn nur weiter, wenn
+       * Signatur, Adresse und Inhalt stimmen; hier wird er nicht neu bewertet, nur gespeichert.
+       */
+      abruf?: { abgerufenAm: string; inhaltFingerabdruck: string } | null;
     },
   ): Promise<KnowledgeObject> {
     const label = input.label?.trim() ?? "";
@@ -4298,6 +4304,14 @@ export class KoService {
       // weggelassenes Feld ist dasselbe wie am Altbestand, und die Fläche liest beides als „keine
       // Datei" (`quellennachweis`).
       ...(anchor ? { objectId: anchor } : {}),
+      // REF-01: die Abrufzeit NUR mit geprüftem Nachweis und nur an einem gespeicherten Auszug —
+      // `at` bleibt die Speicherzeit und wird nie als Abruf ausgegeben.
+      ...(input.abruf && input.excerpt?.trim()
+        ? {
+            abgerufenAm: input.abruf.abgerufenAm,
+            abrufInhaltFingerabdruck: input.abruf.inhaltFingerabdruck,
+          }
+        : {}),
       author,
       at: new Date(this.now()).toISOString(),
     };
@@ -4442,6 +4456,16 @@ export class KoService {
   async aktuelleFassungVon(id: string): Promise<number | undefined> {
     const ko = await this.repo.findById(id);
     return ko && !ko.deletedAt ? ko.version : undefined;
+  }
+
+  // produkt:20261009:referenzki-quellenbelege (REF-01): das Objekt, WENN es im Papierkorb liegt —
+  // sonst nichts. Einziger Leser ist die Fundstellenauflösung (ask-routes.ts): sie braucht die
+  // Sichtbarkeitsfakten des gelöschten Objekts, um „gelöscht" nur dem zu sagen, der es sehen DURFTE,
+  // und allen anderen dasselbe „nicht zugänglich" wie bei einer unbekannten Kennung. Die Route gibt
+  // davon nichts weiter als den Zustand aus; Inhalt verlässt den Papierkorb hier nicht.
+  async papierkorbFassungVon(id: string): Promise<KnowledgeObject | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko?.deletedAt ? ko : undefined;
   }
 
   // ==============================================================================================
@@ -6813,6 +6837,51 @@ export class KoService {
     });
   }
 
+  // produkt:20261009:admin-freigaberegeln (ADMIN-09) — die Freigaberegel eines Space verlangt
+  // mindestens `mindestens` Zustimmungen. Angehoben wird NUR ein laufender Vorgang (`offen`) und nur
+  // nach oben: eine erteilte Freigabe (`validiert`) bleibt, wie sie ist, und eine niedrigere Regel
+  // senkt keine schon gestempelte Anforderung — sonst könnte eine Regeländerung allein eine Freigabe
+  // entstehen lassen, die niemand erteilt hat. Status, Vertrauen, Inhaltsfassung und Historie bleiben
+  // unberührt; neu berechnet wird erst mit der nächsten Entscheidung. Beleg `ko.needed-validations-raised`
+  // mit vorher/nachher und der Regelfassung, die es verlangt.
+  async raiseNeededValidations(
+    id: string,
+    mindestens: number,
+    actor: string,
+    regel: { spaceId: string; version: number },
+  ): Promise<KnowledgeObject> {
+    if (!Number.isInteger(mindestens) || mindestens < 1 || mindestens > 5) {
+      throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
+    }
+    return this.mutateKo(id, (ko) => {
+      if (ko.status !== "offen" || ko.neededValidations >= mindestens) {
+        return { updated: ko, value: ko };
+      }
+      const updated: KnowledgeObject = { ...ko, neededValidations: mindestens };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.needed-validations-raised",
+              target: id,
+              payload: {
+                vorher: ko.neededValidations,
+                nachher: mindestens,
+                version: ko.version,
+                spaceId: regel.spaceId,
+                regelVersion: regel.version,
+              },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
   // produkt:20261007:veroeffentlichungsoptionen — einen Veröffentlichungsvermerk anhängen.
   //
   // `bilde` bekommt das FRISCH unter dem KO-Lock gelesene Objekt und entscheidet dort, ob die
@@ -7113,6 +7182,52 @@ export class KoService {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
     return trust;
+  }
+
+  // ==============================================================================================
+  // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4, Ben K1) — EINE ANLAGE ZUORDNEN.
+  // ==============================================================================================
+  //
+  // Die Kopplung „Anlage ↔ Wissenseintrag" aus dem Lebenszyklus schreibt seither in die KANONISCHE
+  // Anlagenzuordnung (`asset`/`assets`, JOB 593 / R-0082) statt in eine eigene Tabelle — damit gibt es
+  // genau eine Zuordnung, aus der die Betroffenheit einer Anlagenänderung folgt. Normalform und
+  // Feldabbildung über dieselbe eine Stelle (`normalizeAsset`, `anlagenFelder`); eine schon
+  // zugeordnete Anlage ändert nichts (kein Schreiben, kein Beleg). Bauform wie `setAuthor`: per KO
+  // serialisiert, Beleg im selben Schritt, keine neue Inhaltsfassung — die Zuordnung ist Einordnung,
+  // kein Inhalt.
+  async ordneAnlageZu(id: string, assetRef: string, actor = "system"): Promise<KnowledgeObject> {
+    const anlage = normalizeAsset(assetRef);
+    if (anlage === null) {
+      throw new KoError("INVALID", "Anlagenkennung fehlt.");
+    }
+    const vorher = await this.get(id);
+    if (!vorher) {
+      throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    if (anlagenVon(vorher).includes(anlage)) {
+      return vorher;
+    }
+    return this.mutateKo(id, (ko) => {
+      const liste = anlagenVon(ko);
+      const nachher = liste.includes(anlage) ? liste : [...liste, anlage];
+      const { assets: _bisher, ...ohneListe } = ko;
+      const updated: KnowledgeObject = { ...ohneListe, ...anlagenFelder(nachher) };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.asset-assigned",
+              target: id,
+              payload: { asset: anlage, assets: nachher },
+            },
+            tx,
+          );
+        },
+      };
+    });
   }
 
   // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.

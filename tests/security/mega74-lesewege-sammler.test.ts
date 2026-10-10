@@ -450,6 +450,16 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Block D — loadFeed, über den Helferrumpf nachgeprüft.",
   },
+  // ADMIN-10: die Qualitätsübersicht nennt Titel und Konfliktbeschreibungen — die Route bildet
+  // sichtbarkeitsfilterFuer(user) unbedingt und reicht ihn an jede Zeile (Paare beidseitig).
+  "GET /api/qualitaetsaufgaben": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-10 — sichtbarkeitsfilterFuer je Objekt; Lückentext über redactGapForViewer.",
+  },
+  "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-10 — nicht sichtbares Objekt der Meldung endet in 404, ohne Beleg.",
+  },
   "GET /api/livewall": { urteil: "PRAEDIKAT", grund: "Block E — Titel + Autor je Objekt." },
   "GET /api/validation/board": { urteil: "PRAEDIKAT", grund: "Block E — volle Wissensobjekte." },
   // --- Die vorbereiteten Wege, jetzt scharf (Block F) ---------------------------------------
@@ -542,6 +552,12 @@ const REGISTER: Record<string, Eintrag> = {
     grund:
       "Kandidaten und damalige Fassungen durch sichtbarkeitsfilterFuer, danach dropConfidential " +
       "bzw. !isConfidential an der damaligen Fassung (ask/src/service.ts, vergleicheWissensstand).",
+  },
+  // REF-01: Fundstellenauszüge aus Wissensobjekten — je Fundstelle `sichtbarkeitsfilterFuer`,
+  // unbekannt und nicht berechtigt mit derselben inhaltslosen Antwort (aussage-fundstellen.ts).
+  "POST /api/ask/fundstellen": {
+    urteil: "PRAEDIKAT",
+    grund: "REF-01 — sichtbarkeitsfilterFuer vor jedem Auszug; sonst nur „nicht zugänglich“.",
   },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
@@ -1076,6 +1092,24 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Dokumentierte Läufe aus dem Prüfprotokoll — Kennungen und Zahlen, keine Titel.",
   },
+  // ADMIN-09 (freigaberegeln-routes.ts, freigaberegel-dienst.ts): Vorgänge mit Titel nur über das
+  // `darfSehen`-Urteil des Betrachters, das die Route bildet; unsichtbare zählen nur mit.
+  "GET /api/spaces/:id/freigaberegel": {
+    urteil: "PRAEDIKAT",
+    grund: "Regelübersicht — Vorgangstitel nur, wo darfSehen es erlaubt.",
+  },
+  "POST /api/spaces/:id/freigaberegel/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Wirkungsvorschau — Titel laufender Vorgänge nur über darfSehen.",
+  },
+  "PUT /api/spaces/:id/freigaberegel": {
+    urteil: "PRAEDIKAT",
+    grund: "Neue Regelfassung samt Übersicht — Vorgangstitel nur über darfSehen.",
+  },
+  "POST /api/spaces/:id/freigaberegel/fristlauf": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis des Fristlaufs — Titel nur über darfSehen, sonst Kennung und Zahl.",
+  },
   // Teams (teams-routes.ts, produkt:20261009:admin-teams): Teamfassungen, Konten und Space-Namen —
   // kein Wissensobjekt wird gelesen oder ausgegeben.
   "GET /api/teams": {
@@ -1379,6 +1413,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "R-1662 — sichtbareEintraege vor dem Lesen; nur Kennung, Zeitpunkt und Fassung.",
   },
+  "GET /api/lifecycle/folgepruefung": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "aenderungsfolgen-sichtbar — sichtbareEintraege über die offenen Fälle und je auslösendem " +
+      "Eintrag; ohne meldende Person.",
+  },
   "GET /api/lifecycle/couplings/:koId": {
     urteil: "KEIN_KO_INHALT",
     grund: "string[] mit assetRefs (lifecycle/src/service.ts:29).",
@@ -1454,7 +1494,8 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/validation/settings": "users.manage.",
     "PUT /api/external/policy": "users.manage.",
     "POST /api/lifecycle/couple": "ko.create; Antwort ohne KO-Inhalt.",
-    "POST /api/lifecycle/asset-changed": "ko.validate; Antwort ohne KO-Inhalt.",
+    "POST /api/lifecycle/asset-changed":
+      "ko.validate; Antwort ohne KO-Inhalt, nur sichtbare Kennungen (sichtbareEintraege).",
     // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Die Vorschau nennt Kennung und Titel
     // der Wissensobjekte einer Person — an `users.manage`, also an eine Rolle, für die `darfSehen`
     // ohnehin jedes Objekt freigibt. Entwürfe und Lücken nur als Kennung; die Ausführung antwortet

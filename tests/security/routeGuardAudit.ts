@@ -646,6 +646,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/ask/report": { protection: "ko.read" },
   // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
   "POST /api/ask/not-helpful": { protection: "ko.read" },
+  // REF-01: Fundstellen einer Antwort mit aktuellen Rechten auflösen — ko.read und je Fundstelle
+  // dasselbe Zeilenrecht wie GET /api/kos/:id; unbekannt und nicht berechtigt sehen gleich aus.
+  "POST /api/ask/fundstellen": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   // produkt:20261007:spaces: ähnliche Artikel/Widersprüche nur aus dem für den Prüfenden Sichtbaren.
   "POST /api/knowledge/check": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
@@ -816,7 +819,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Objekt, das der Aufrufer sehen darf — `sichtbareEintraege` gegen die übergebene Kennung, sonst
   // 404 wie am Leseweg darunter. Davor koppelte der Weg an jede, auch erfundene Kennung.
   "POST /api/lifecycle/couple": { protection: "ko.create", zeilenrecht: ["sichtbareEintraege"] },
-  "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
+  // produkt:20261010:aenderungsfolgen-sichtbar: markiert wird jedes gekoppelte Objekt, HINAUS geht
+  // nur die Teilmenge, die der Meldende sehen darf (`sichtbareEintraege`).
+  "POST /api/lifecycle/asset-changed": {
+    protection: "ko.validate",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht — dasselbe Tor wie
+  // `pending`, ein auslösender Eintrag nur, wenn auch er sichtbar ist.
+  "GET /api/lifecycle/folgepruefung": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
   // R-0554 / R-2128: Wissensübergabe beim Ausscheiden — Vorschau und Ausführung, nur Verwaltung.
   "POST /api/lifecycle/handover/preview": { protection: "users.manage" },
   "POST /api/lifecycle/handover": { protection: "users.manage" },
@@ -1103,6 +1117,20 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/spaces/bestand/zuordnung": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
   "GET /api/spaces/bestand/protokoll": { protection: "users.manage" },
 
+  // --- Freigaberegeln (freigaberegeln-routes.ts, produkt:20261009:admin-freigaberegeln, ADMIN-09) ---
+  // Lesen wie den Space (404 sonst), Vorgangstitel nur über `darfSehen`; Ändern nur die
+  // Kontoverwaltung; Fristlauf prüft Zuständigkeit/Kontoverwaltung am Space selbst (403).
+  "GET /api/spaces/:id/freigaberegel": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/freigaberegel/vorschau": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
+  "PUT /api/spaces/:id/freigaberegel": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "POST /api/spaces/:id/freigaberegel/fristlauf": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+
   // --- Teams (teams-routes.ts, produkt:20261009:admin-teams) ---
   // Ausschliesslich die Kontoverwaltung: Teams anlegen, ändern, Mitglieder, Wirkung, Archiv.
   "GET /api/teams": { protection: "users.manage" },
@@ -1111,6 +1139,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/teams/:id/vorschau": { protection: "users.manage" },
   "PUT /api/teams/:id": { protection: "users.manage" },
   "POST /api/teams/:id/archivieren": { protection: "users.manage" },
+
+  // --- Qualitätsaufgaben (qualitaetsaufgaben-routes.ts, produkt:20261009:admin-qualitaetsaufgaben)
+  // Verwaltung; jede Zeile nur, wenn der Sichtbarkeitsfilter das betroffene Objekt freigibt.
+  "GET /api/qualitaetsaufgaben": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    protection: "users.manage",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
