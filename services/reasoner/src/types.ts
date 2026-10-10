@@ -245,6 +245,78 @@ export interface InterviewResult {
   // unverändert ohne sie. Deshalb hier optional — die Zusage „immer gesetzt" gilt ab dem
   // Dienst und ist genau dort getestet.
   aiGenerated?: AiGeneratedMark;
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0043/R-0113): nur im Fragebaum gesetzt
+  // (`InterviewOptions.tree`). Ohne Fragebaum bleibt das Ergebnis genau wie bisher.
+  node?: InterviewNodeId | null; // Knoten der aktuellen Frage; null, wenn der Baum durch ist
+  sufficient?: boolean; // Pflichtknoten beantwortet — der Mensch DARF den Abschluss bestätigen
+  gaps?: InterviewGaps; // Maß der verbleibenden Lücken
+  mirror?: InterviewAnswerRef | null; // zuletzt Verstandenes — wörtlich die letzte Antwort
+  depth?: InterviewAnswerRef[]; // vertiefende Antworten (Schwelle, Ausnahme, Warum …), wörtlich
+  // R-0088: die themenbezogene Recherche des Modells — UNGEPRÜFTE Prüfpunkte, an denen die
+  // Rückfragen gezielt nachhaken. Sie gehen NIE in den Entwurf; übernommen wird nur, was der
+  // Mensch darauf antwortet. Ohne Modell (kein gültiger KI-Schlüssel) fehlt das Feld.
+  research?: InterviewResearchPoint[];
+}
+
+// R-0088: ein Recherche-Prüfpunkt — der Knoten, zu dem er nachhakt, der kurze Hinweis und die
+// Quelle, aus der er stammt (Bens Befund nacharbeit-6: ohne Quellenabruf keine Recherche).
+export interface InterviewResearchPoint {
+  node: InterviewNodeId;
+  hint: string;
+  source: InterviewResearchSource;
+}
+
+// R-0088: eine abgerufene Quelle der Recherche (Titel, Adresse, Auszug) — so, wie die
+// Quellensuche (`services/external-search`) sie liefert.
+export interface InterviewResearchSource {
+  title: string;
+  url: string;
+  snippet?: string;
+}
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums. Pflicht sind Kernaussage,
+// Bedingung und Maßnahme; die übrigen holen das, was Erfahrungswissen ausmacht (R-0043: Schwellen
+// und Ausnahmen; Argus-Recherche: Warum, verworfene Alternativen, Geltungsbereich, Risiken und die
+// Herkunft — Erfahrung, Zeitpunkt, Rolle — getrennt von allgemeiner Wahrheit).
+export type InterviewNodeId =
+  | "kern"
+  | "bedingung"
+  | "massnahme"
+  | "schwelle"
+  | "ausnahme"
+  | "warum"
+  | "alternativen"
+  | "geltung"
+  | "risiko"
+  | "herkunft"
+  | "stichworte";
+
+// R-0113: ein Wert für die verbleibenden Lücken. `value` ist der Anteil (0–100) des gewichteten
+// Fragebaums, der noch nicht mit einer Antwort belegt ist; `open` nennt genau diese Knoten.
+export interface InterviewGaps {
+  value: number;
+  open: InterviewNodeId[];
+}
+
+export interface InterviewAnswerRef {
+  node: InterviewNodeId;
+  text: string;
+}
+
+// Steuerung des Interviews. Ohne Angabe: die bisherige feste Fragenfolge (Abwärtskompatibilität).
+export interface InterviewOptions {
+  // R-0113: Fragebaum mit Restlückenwert; der Abschluss wird vom Menschen bestätigt.
+  tree?: boolean;
+  // R-0091 / R-0088: das Thema steht fest (Lücken-Interview). Kurzer Baum mit drei Fragen; ein
+  // Modell richtet die Fragen auf dieses Fachthema aus.
+  topic?: string;
+  // R-0088: die Recherche eines früheren Turns, vom Client zurückgereicht — so wird je Interview
+  // nur einmal recherchiert. Der Reasoner prüft und kappt sie (`normalizeInterviewResearch`).
+  research?: unknown;
+  // R-0088 (Bens Befund nacharbeit-6): die zum Thema ABGERUFENEN Quellen. Gesetzt nur von der
+  // Route, nach Stufen- und Vertraulichkeitsprüfung. Ohne Quellen gibt es keine Recherche — das
+  // Modell leitet Prüfpunkte nur aus ihnen ab, nie aus eigenem Wissen.
+  sources?: unknown;
 }
 
 // PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die
