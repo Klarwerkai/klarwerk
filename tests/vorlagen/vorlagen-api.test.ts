@@ -777,6 +777,7 @@ describe("K7 · K11 · Verwaltung: Nutzungsumfang und Begriffspflege je Space", 
       {
         spaceId: b.instandhaltung,
         spaceName: "Instandhaltung",
+        archiviert: false,
         version: 1,
         vorher: ["Wartung", "Service"],
         nachher: ["Instandsetzung", "Service"],
