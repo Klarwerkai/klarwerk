@@ -445,6 +445,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: false, grund: "Flüchtig, nur während einer Bearbeitung." },
   },
   {
+    id: "office-ablage",
+    name: "Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände",
+    inhalt:
+      "Laufende Editor-Sitzung je Anhang (Sperre, Sitzungsbasis, Arbeitsstand, letzter Schreiber) und Arbeitsstände, die wegen eines Konflikts nicht übernommen, sondern gesichert wurden: Artikel-, Anhang- und Objektkennung, Kennung der speichernden Person, Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung der Person, die zuletzt gespeichert hat.",
+    ablage: { ort: DATENBANK, tabellen: ["office_sitzungen", "office_gesichert"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Sitzung: endet mit dem Entsperren des Editors. Gesicherter Stand: mit seiner Übernahme als Fassung.",
+    frist: "Ende der Editor-Sitzung bzw. Übernahme des gesicherten Stands.",
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Arbeitsstand eines Dokuments, am Artikel als gesicherter Stand sichtbar.",
+    },
+  },
+  {
     id: "lesevarianten",
     name: "Lesevarianten (gekennzeichnete Übersetzungen)",
     inhalt: "Übersetzte Lesefassungen von Wissensobjekten und Import-Kandidaten.",

@@ -134,6 +134,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "KO_BEARBEITUNG_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "OFFICE_ABLAGE_SCHEMA", risiko: "ADDITIV" },
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte. ADDITIV, nachgezählt: ein
   // `CREATE TABLE IF NOT EXISTS` (mit Unique-Schlüssel) und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
