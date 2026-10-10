@@ -161,6 +161,8 @@ interface Anfrage {
   url: string;
   method: string;
   body: unknown;
+  /** Die Kopfzeilen, wie das Panel sie setzt (R-0700: keine Klara-Bindung am Frageweg). */
+  headers: Record<string, string>;
 }
 
 const anfragen: Anfrage[] = [];
@@ -179,9 +181,17 @@ function antwort(status: number, koerper: unknown) {
   return { ok: status >= 200 && status < 300, status, json: () => Promise.resolve(koerper) };
 }
 
-async function serverAntwort(url: string, init?: { method?: string; body?: string }) {
+async function serverAntwort(
+  url: string,
+  init?: { method?: string; body?: string; headers?: Record<string, string> },
+) {
   const method = init?.method ?? "GET";
-  anfragen.push({ url, method, body: init?.body ? JSON.parse(init.body) : undefined });
+  anfragen.push({
+    url,
+    method,
+    body: init?.body ? JSON.parse(init.body) : undefined,
+    headers: { ...(init?.headers ?? {}) },
+  });
   if (url.startsWith("/api/output/")) {
     // Zwei feste Aufrufformen statt eines zusammengesetzten Optionsobjekts: so wählt TypeScript die
     // Promise-Überladung von `inject` (Nacharbeit 1, TS2345/TS2339).
@@ -1183,12 +1193,14 @@ describe("F · Gesprächsfaden: Recherche im Haus, was fehlt, Entwurf auf Zuruf"
     panelStarten();
     await vorhabenFragen(VORHABEN);
     const ask = anfragen.find((a) => a.url === "/api/ask");
+    // R-0700: kein Klara-Feld (questionSource/selection …) und keine Klara-Kopfzeile — sonst
+    // weist der allgemeine Frageweg mit 400 KLARA_EIGENER_WEG ab.
     expect(ask?.body).toEqual({
       question: VORHABEN,
-      questionSource: "manual",
       thread: [],
       locale: "de",
     });
+    expect(Object.keys(ask?.headers ?? {}).filter((k) => /^x-klara-/i.test(k))).toEqual([]);
     expect(fadenZeilen()).toEqual([
       { klasse: "anleitung-faden-sie", text: `Sie: ${VORHABEN}`, geprueft: null },
       {

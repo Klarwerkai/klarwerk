@@ -1539,13 +1539,15 @@
       vorher = vorher.slice(-ANLEITUNG_FADEN_MAX);
       var sitzung = anleitungSitzung();
       var ende = anleitungLaufStarten();
+      // R-0700: der allgemeine Frageweg nimmt keine Klara-Felder mehr an (`questionSource`,
+      // `selection` … → 400 KLARA_EIGENER_WEG). Die Recherche ist eine getippte Frage mit Faden —
+      // genau der Konsolenweg, deshalb ohne diese Felder und ohne Klara-Kopfzeilen.
       fetch("/api/ask", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           question: frage,
-          questionSource: "manual",
           thread: vorher,
           locale: typeof lang === "string" ? lang : "de"
         })

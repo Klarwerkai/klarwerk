@@ -13,7 +13,8 @@
 //   3. Klara-Sitzung für ein SYNTHETISCHES API-Testdokument — keine echte Word-Datei.
 //   4. Einwilligung für genau diese Sitzung und dieses Dokument (`POST …/consent`) — am Ende
 //      widerrufen (`DELETE …/consent`).
-//   5. Recherche wie `anleitungRecherche`: `POST /api/ask` mit `questionSource: "manual"`, `thread`.
+//   5. Recherche wie `anleitungRecherche`: `POST /api/ask` mit Frage und `thread` (Konsolenweg,
+//      seit R-0700 ohne Klara-Felder).
 //   6. KI-Entwurf wie `anleitungKiEntwurf`: `POST /api/klara/sessions/{id}/zuruf`, `art: erstellen`.
 //
 // WANN SIE LÄUFT: nur im VOLLEN Smoke (`npm run smoke:ui`, Modell ausschliesslich aus
@@ -151,7 +152,8 @@ test("Anleitung: Recherche und KI-Entwurf mit Einwilligung, echter Modellantwort
     }>(
       await request.post("/api/ask", {
         headers: auth,
-        data: { question: FRAGE, questionSource: "manual", thread: [], locale: "de" },
+        // R-0700: ohne Klara-Felder und ohne Klara-Kopfzeilen (sonst 400 KLARA_EIGENER_WEG).
+        data: { question: FRAGE, thread: [], locale: "de" },
       }),
       "Recherche",
     );
