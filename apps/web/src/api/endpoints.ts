@@ -855,8 +855,12 @@ export const endpoints = {
     vorgang: (id: string) => api.get<GapVorgang>(`/gaps/${encodeURIComponent(id)}/vorgang`),
     uebergeben: (id: string, expertId: string) =>
       api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/uebergeben`, { expertId }),
-    rueckfrage: (id: string, frage: string) =>
-      api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/rueckfrage`, { frage }),
+    // Bei einer Beanstandung geht die Rückfrage an genau eine Meldung (`meldungId`).
+    rueckfrage: (id: string, frage: string, meldungId?: string) =>
+      api.post<GapVorgang>(
+        `/gaps/${encodeURIComponent(id)}/rueckfrage`,
+        meldungId ? { frage, meldungId } : { frage },
+      ),
     rueckfrageBeantworten: (id: string, rueckfrageId: string, antwort: string) =>
       api.post<GapVorgang>(
         `/gaps/${encodeURIComponent(id)}/rueckfrage/${encodeURIComponent(rueckfrageId)}/antwort`,

@@ -1,5 +1,5 @@
 import type { ReasonerLocale } from "../../reasoner";
-import { istFragender } from "./gap-vorgang";
+import { istFragender, rueckfragePersoenlichFuer } from "./gap-vorgang";
 import type { Gap, GapBelegbedarf, GapPriority } from "./types";
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): adressatengerechte Sichtbarkeit des Wissenslücken-
@@ -91,7 +91,10 @@ export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView 
       ...base,
       question: gap.question,
       ...(gap.belegbedarf?.length ? { belegbedarf: [...gap.belegbedarf] } : {}),
-      ...((gap.rueckfragen ?? []).some((r) => r.antwort === undefined)
+      // Bei einer Beanstandung nur für die zuständige Person und den Adressaten der Rückfrage.
+      ...((gap.rueckfragen ?? []).some(
+        (r) => r.antwort === undefined && rueckfragePersoenlichFuer(gap, r, viewer.viewerId),
+      )
         ? { rueckfrageOffen: true as const }
         : {}),
       ...(fragend ? { eigeneFrage: true as const } : {}),

@@ -112,6 +112,7 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
   const qc = useQueryClient();
   const { push } = useToast();
   const [rueckfrage, setRueckfrage] = useState("");
+  const [rueckfrageMeldung, setRueckfrageMeldung] = useState("");
   const [antwort, setAntwort] = useState("");
   const [zurueckweisung, setZurueckweisung] = useState("");
   const datum = (iso: string) => new Date(iso).toLocaleDateString(i18n.language);
@@ -277,17 +278,36 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
         </form>
       ) : null}
 
-      {offen && zustaendig && !offeneRueckfrage ? (
+      {/* Bei einer Beanstandung geht jede Rückfrage an genau eine Meldung (Ben, Nacharbeit 2); ob für
+          diese Meldung schon eine offen ist, entscheidet der Server. */}
+      {offen && zustaendig && (vorgang.beanstandung || !offeneRueckfrage) ? (
         <form
           className="space-y-1"
           onSubmit={(e) => {
             e.preventDefault();
-            schritt.mutate(() => endpoints.gaps.rueckfrage(vorgang.id, rueckfrage));
+            const ziel = vorgang.beanstandung ? rueckfrageMeldung || undefined : undefined;
+            schritt.mutate(() => endpoints.gaps.rueckfrage(vorgang.id, rueckfrage, ziel));
           }}
         >
           <label className="block text-[11px] text-muted" htmlFor={`rueckfrage-${vorgang.id}`}>
             {t("lueckenvorgang.rueckfrageStellen")}
           </label>
+          {vorgang.beanstandung && vorgang.beanstandung.begruendungen.length > 1 ? (
+            <select
+              value={rueckfrageMeldung}
+              data-testid="luecke-rueckfrage-meldung"
+              aria-label={t("lueckenvorgang.rueckfrageMeldung")}
+              onChange={(e) => setRueckfrageMeldung(e.target.value)}
+              className="h-8 w-56 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
+            >
+              <option value="">{t("lueckenvorgang.rueckfrageMeldungWaehlen")}</option>
+              {vorgang.beanstandung.begruendungen.map((g) => (
+                <option key={g.meldungId} value={g.meldungId}>
+                  {g.meldungId}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <textarea
             id={`rueckfrage-${vorgang.id}`}
             data-testid="luecke-rueckfrage-text"

@@ -1308,6 +1308,8 @@ export interface GapVorgang {
     antwort?: string;
     beantwortetAm?: string;
     vonMirBeantwortet?: boolean;
+    // Nur für die zuständige Person bei einer Beanstandung: die angefragte Meldung.
+    meldungId?: string;
   }[];
   entwurf: GapVorgangEintrag | { zugaenglich: false } | null;
   ergebnis: GapVorgangEintrag | { zugaenglich: false } | null;
@@ -1344,7 +1346,7 @@ export interface GapBeanstandungSicht {
     quelleFehlt: boolean;
     begruendung: string;
   }[];
-  begruendungen: { at: string; text: string }[];
+  begruendungen: { meldungId: string; at: string; text: string }[];
 }
 
 // R-0773: eine eigene Suche ohne Treffer (`GET /api/library/nulltreffer`, nur die eigene Liste).

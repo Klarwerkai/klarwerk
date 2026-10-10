@@ -305,7 +305,7 @@ herabgestuft werden (409 `mutability`).
 | `DELETE` | `/api/gaps/:id` | `ko.validate` | Abfrage `confirm` | 204 | Dienstfehler |
 | `GET` | `/api/gaps/:id/vorgang` | `ko.read`; nur Fragende, zuständige Person, Verwaltende | — | 200 Vorgangssicht (Phase, nächster Schritt, Rückfragen, Entwurf/Ergebnis frisch gegen heutige Rechte und Fachprüfung) | 404 `NOT_FOUND` für Unbeteiligte |
 | `POST` | `/api/gaps/:id/uebergeben` | `ko.read`; nur Fragende, nur ohne verfügbare Zuständigkeit | Rumpf `{ expertId }` | 200 Vorgangssicht | 400 Ziel nicht berechtigt; 403 verfügbare Zuständigkeit; 404 |
-| `POST` | `/api/gaps/:id/rueckfrage` | `ko.read`; nur die zuständige Person | Rumpf `{ frage }` (1–2000 Zeichen) | 200 Vorgangssicht | 400 Text/offene Rückfrage; 403 |
+| `POST` | `/api/gaps/:id/rueckfrage` | `ko.read`; nur die zuständige Person | Rumpf `{ frage, meldungId? }` (1–2000 Zeichen); bei einer Beanstandung geht die Rückfrage an den Melder genau einer Meldung (`meldungId`, bei nur einer Meldung entbehrlich) — nur er sieht, erfährt und beantwortet sie | 200 Vorgangssicht | 400 Text/offene Rückfrage/fehlende oder fremde Meldung; 403 |
 | `POST` | `/api/gaps/:id/rueckfrage/:rueckfrageId/antwort` | `ko.read`; nur Fragende | Rumpf `{ antwort }` (1–2000 Zeichen) | 200 Vorgangssicht | 400; 403; 404 |
 | `POST` | `/api/gaps/:id/entwurf` | `ko.create`; zuständige Person oder Verwaltende | Rumpf `{ koId }` (für den Handelnden sichtbar) | 200 Vorgangssicht | 400; 403 |
 | `POST` | `/api/gaps/:id/abschliessen` | `ko.create`; zuständige Person oder Verwaltende | Rumpf `{ koId? }` | 200 Vorgangssicht (fachlich gelöst) | 400 `BAD_REQUEST` mit `gruende` (nicht freigegeben, Bewertungen fehlen, negative Bewertung, abgelaufen, kein Zugriff …); 403 |

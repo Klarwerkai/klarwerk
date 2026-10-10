@@ -156,13 +156,71 @@ export function mitBeanstandungsMeldung(
   if (vorhanden?.meldungen.some((m) => m.meldungId === meldung.meldungId)) {
     return null;
   }
+  const bisher = vorhanden ?? basis;
   return {
     ...gap,
     beanstandung: {
-      ...(vorhanden ?? basis),
+      ...bisher,
+      // Ben, Nacharbeit 2: die Quellenabhängigkeiten ALLER Meldungen bleiben erhalten — eine spätere
+      // Meldung kann dieselbe Aussage aus einer weiteren (auch vertraulichen) Quelle tragen.
+      aussageKoIds: [
+        ...new Set([...bisher.aussageKoIds, ...basis.aussageKoIds, ...quellenDerMeldung(meldung)]),
+      ],
       meldungen: [...(vorhanden?.meldungen ?? []), meldung],
     },
   };
+}
+
+/** Die Quellen EINER Meldung; Altbestand ohne eigene Angabe → leer (dann gilt die Vorgangsmenge). */
+function quellenDerMeldung(m: GapBeanstandungMeldung): string[] {
+  return m.aussageKoIds ?? [];
+}
+
+/**
+ * Alle Objekte, von denen die Beanstandung abhängt: beanstandete Quelle, Vorgangsmenge und die
+ * Quellen jeder einzelnen Meldung. Konservativ — fehlt eine, gilt der Kontext als nicht frei.
+ */
+export function beanstandungsQuellen(b: GapBeanstandung): string[] {
+  return [
+    ...new Set([
+      ...(b.koId ? [b.koId] : []),
+      ...b.aussageKoIds,
+      ...b.meldungen.flatMap(quellenDerMeldung),
+    ]),
+  ];
+}
+
+/** Die Quellen, die eine einzelne Meldung voraussetzt (Altbestand: die Vorgangsmenge). */
+function quellenFuer(b: GapBeanstandung, m: GapBeanstandungMeldung): string[] {
+  const eigene = m.aussageKoIds ?? b.aussageKoIds;
+  return [...new Set([...(b.koId ? [b.koId] : []), ...eigene])];
+}
+
+/**
+ * produkt:20261010:antwort-beanstandung-korrektur (Ben, Nacharbeit 2) — AN WEN EINE RÜCKFRAGE GEHT.
+ *
+ * Bei einer Beanstandung ist jede Rückfrage an den Melder GENAU EINER Meldung gerichtet. Ohne
+ * gewählte Meldung nur, wenn es genau eine gibt; sonst BAD_REQUEST — es wird kein Melder geraten.
+ */
+export function beanstandungsAdressat(
+  b: GapBeanstandung,
+  meldungId: string | undefined,
+): { readonly von: string; readonly meldungId: string } {
+  const gewaehlt = meldungId?.trim();
+  const meldung = gewaehlt
+    ? b.meldungen.find((m) => m.meldungId === gewaehlt)
+    : b.meldungen.length === 1
+      ? b.meldungen[0]
+      : undefined;
+  if (!meldung) {
+    throw new AskError(
+      "BAD_REQUEST",
+      gewaehlt
+        ? "Diese Meldung gehört nicht zu dieser Beanstandung."
+        : "Die Beanstandung hat mehrere Meldungen — die Rückfrage geht an genau eine (meldungId).",
+    );
+  }
+  return { von: meldung.von, meldungId: meldung.meldungId };
 }
 
 // ================================================================================================
@@ -199,8 +257,15 @@ export interface BeanstandungSicht {
   readonly aussageZurueckgehalten: boolean;
   readonly meldungen: number;
   readonly eigeneMeldungen: readonly BeanstandungEigeneMeldung[];
-  /** Nur für die zuständige Person: die Begründungen, ohne Melderkennung. */
-  readonly begruendungen: readonly { readonly at: string; readonly text: string }[];
+  /**
+   * Nur für die zuständige Person: die Begründungen, ohne Melderkennung. `meldungId` ist die
+   * Meldekennung (keine Person) — an sie richtet sich eine Rückfrage.
+   */
+  readonly begruendungen: readonly {
+    readonly meldungId: string;
+    readonly at: string;
+    readonly text: string;
+  }[];
 }
 
 export function beanstandungSicht(
@@ -215,12 +280,15 @@ export function beanstandungSicht(
 ): BeanstandungSicht {
   const eigene = b.meldungen.filter((m) => m.von === betrachter.id);
   const quelleZugaenglich = b.koId !== null && betrachter.siehtObjekt(b.koId);
-  const kontextFrei = [...b.aussageKoIds, ...(b.koId ? [b.koId] : [])].every((id) =>
-    betrachter.siehtObjekt(id),
-  );
-  // Der Melder bekam die Aussage selbst ausgeliefert; die zuständige Person braucht dafür Zugriff.
-  const aussageFrei =
-    (betrachter.fragend && eigene.length > 0) || (betrachter.zustaendig && kontextFrei);
+  // Ben, Nacharbeit 2: geprüft wird gegen ALLE Quellen aller zugeführten Meldungen (Vereinigung) —
+  // eine weitere, gesperrte Quelle einer späteren Meldung hält Aussage und Begründungen zurück.
+  const kontextFrei = beanstandungsQuellen(b).every((id) => betrachter.siehtObjekt(id));
+  // Der Melder bekam die Aussage selbst ausgeliefert — sie bleibt ihm aber nur, solange er die
+  // Quellen SEINER Meldungen heute noch lesen darf (Rechteentzug wirkt beim nächsten Abruf).
+  const eigeneFrei =
+    eigene.length > 0 &&
+    eigene.every((m) => quellenFuer(b, m).every((id) => betrachter.siehtObjekt(id)));
+  const aussageFrei = (betrachter.fragend && eigeneFrei) || (betrachter.zustaendig && kontextFrei);
   return {
     koId: quelleZugaenglich ? b.koId : null,
     quelleZugaenglich,
@@ -245,7 +313,7 @@ export function beanstandungSicht(
     })),
     begruendungen:
       betrachter.zustaendig && kontextFrei
-        ? b.meldungen.map((m) => ({ at: m.at, text: m.begruendung }))
+        ? b.meldungen.map((m) => ({ meldungId: m.meldungId, at: m.at, text: m.begruendung }))
         : [],
   };
 }

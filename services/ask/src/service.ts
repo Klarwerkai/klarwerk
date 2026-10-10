@@ -44,6 +44,8 @@ import {
   BEANSTANDUNG_FRAGE,
   type BeanstandungEingabe,
   beanstandungSicht,
+  beanstandungsAdressat,
+  beanstandungsQuellen,
   beanstandungsSchluessel,
   bindeBeanstandung,
   istKorrektur,
@@ -90,7 +92,9 @@ import {
   istZustaendig,
   naechsterSchritt,
   pruefeFachlicheNutzbarkeit,
+  rueckfrageAdressat,
   rueckfrageMeldungId,
+  rueckfragePersoenlichFuer,
   rueckfrageText,
   vorgangEintrag,
   vorgangsphase,
@@ -2509,6 +2513,7 @@ export class AskService {
         fundstelleId: eingabe.fundstelleId,
         quelleFehlt: eingabe.quelleFehlt,
         begruendung: eingabe.begruendung,
+        aussageKoIds: [...gebunden.aussageKoIds],
       },
       actor,
     );
@@ -3010,8 +3015,18 @@ export class AskService {
    * Eine Rückfrage der zuständigen Person an die Fragenden. Höchstens EINE ist zugleich offen;
    * dieselbe Rückfrage ein zweites Mal (Doppelklick) ändert nichts. Der Text steht NUR an der Lücke
    * (Fragende und zuständige Person) — nicht im Prüfprotokoll.
+   *
+   * produkt:20261010:antwort-beanstandung-korrektur (Ben, Nacharbeit 2): bei einer Beanstandung geht
+   * die Rückfrage an den Melder GENAU EINER Meldung (`meldungId`, `beanstandungsAdressat`) und wird
+   * mit diesem Adressaten gespeichert. Höchstens eine offene Rückfrage je Adressat. Andere und später
+   * beitretende Melder sehen sie nicht, werden nicht benachrichtigt und können sie nicht beantworten.
    */
-  async askGapFollowUp(id: string, beteiligter: GapBeteiligter, frage: string): Promise<Gap> {
+  async askGapFollowUp(
+    id: string,
+    beteiligter: GapBeteiligter,
+    frage: string,
+    meldungId?: string,
+  ): Promise<Gap> {
     const text = rueckfrageText(frage);
     const rueckfrageId = this.genId();
     const { gap, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
@@ -3021,7 +3036,14 @@ export class AskService {
       if (aktuell.status !== "offen") {
         throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
       }
-      const offen = (aktuell.rueckfragen ?? []).find((r) => r.antwort === undefined);
+      const adressat = aktuell.beanstandung
+        ? beanstandungsAdressat(aktuell.beanstandung, meldungId)
+        : null;
+      const offen = (aktuell.rueckfragen ?? []).find(
+        (r) =>
+          r.antwort === undefined &&
+          (adressat === null || rueckfrageAdressat(aktuell, r) === adressat.von),
+      );
       if (offen) {
         if (offen.frage === text) {
           return null;
@@ -3033,6 +3055,7 @@ export class AskService {
         frage: text,
         von: beteiligter.id,
         at: new Date(this.now()).toISOString(),
+        ...(adressat ? { an: adressat.von, meldungId: adressat.meldungId } : {}),
       };
       return { ...aktuell, rueckfragen: [...(aktuell.rueckfragen ?? []), rueckfrage] };
     });
@@ -3062,7 +3085,9 @@ export class AskService {
         throw new AskError("FORBIDDEN", "Rückfragen beantworten die Fragenden.");
       }
       const ziel = (aktuell.rueckfragen ?? []).find((r) => r.id === rueckfrageId);
-      if (!ziel) {
+      // Beanstandung: eine Rückfrage an einen anderen Melder ist für diesen Melder nicht vorhanden.
+      const adressat = ziel ? rueckfrageAdressat(aktuell, ziel) : null;
+      if (!ziel || (adressat !== null && adressat !== beteiligter.id)) {
         throw new AskError("NOT_FOUND", "Rückfrage nicht gefunden.");
       }
       if (ziel.antwort !== undefined) {
@@ -3155,13 +3180,25 @@ export class AskService {
         : null;
     const entwurfNutzbar =
       entwurf === null ? null : "nutzbarkeit" in entwurf ? entwurf.nutzbarkeit.nutzbar : false;
-    const phase = vorgangsphase(gap, { zustaendigVerfuegbar: verfuegbar, entwurfNutzbar });
+    // produkt:20261010:antwort-beanstandung-korrektur (Ben, Nacharbeit 2): bei einer Beanstandung ist
+    // eine Rückfrage persönlich — nur die zuständige Person und ihr Adressat sehen Text und Antwort.
+    // Verwaltende sehen den Ablauf (ohne Text) wie bisher; andere Melder sehen sie gar nicht, und
+    // ihre Phase richtet sich nur nach den an sie gerichteten Rückfragen.
+    const persoenlich = (r: GapRueckfrage): boolean =>
+      rueckfragePersoenlichFuer(gap, r, beteiligter.id);
+    const sichtbareRueckfragen = (gap.rueckfragen ?? []).filter(
+      (r) => persoenlich(r) || rollen.includes("verwaltend"),
+    );
+    const phase = vorgangsphase(
+      gap.beanstandung ? { ...gap, rueckfragen: sichtbareRueckfragen } : gap,
+      { zustaendigVerfuegbar: verfuegbar, entwurfNutzbar },
+    );
     // produkt:20261010:antwort-beanstandung-korrektur: welche beteiligten Objekte dieser Betrachter
     // HEUTE sehen darf — frisch gelesen, ein gelöschtes oder unbekanntes zählt als nicht sichtbar.
+    // Ben, Nacharbeit 2: die Quellen ALLER zugeführten Meldungen (`beanstandungsQuellen`).
     const zurueckweisung = gap.abschluss?.art === "zurueckgewiesen" ? gap.abschluss : null;
     const objektIds = new Set<string>([
-      ...(gap.beanstandung?.koId ? [gap.beanstandung.koId] : []),
-      ...(gap.beanstandung?.aussageKoIds ?? []),
+      ...(gap.beanstandung ? beanstandungsQuellen(gap.beanstandung) : []),
       ...(zurueckweisung?.koId ? [zurueckweisung.koId] : []),
     ]);
     const sichtbareObjekte = new Set<string>();
@@ -3183,11 +3220,15 @@ export class AskService {
       fragende: Math.max(1, fragendeVon(gap).length),
       askCount: typeof gap.askCount === "number" ? gap.askCount : null,
       zuordnungen: (gap.zuordnungen ?? []).map(({ an, art, at }) => ({ an, art, at })),
-      rueckfragen: (gap.rueckfragen ?? []).map((r) => ({
+      rueckfragen: sichtbareRueckfragen.map((r) => ({
         id: r.id,
-        frage: textBerechtigt ? r.frage : "",
+        frage: textBerechtigt && persoenlich(r) ? r.frage : "",
         at: r.at,
-        ...(r.antwort !== undefined ? { antwort: textBerechtigt ? r.antwort : "" } : {}),
+        ...(r.antwort !== undefined
+          ? { antwort: textBerechtigt && persoenlich(r) ? r.antwort : "" }
+          : {}),
+        // Nur für die zuständige Person: an welche Meldung die Rückfrage ging (keine Person).
+        ...(r.meldungId && rollen.includes("zustaendig") ? { meldungId: r.meldungId } : {}),
         ...(r.beantwortetAm ? { beantwortetAm: r.beantwortetAm } : {}),
         ...(r.beantwortetVon === beteiligter.id ? { vonMirBeantwortet: true } : {}),
       })),
@@ -3263,7 +3304,9 @@ export class AskService {
         continue;
       }
       for (const r of gap.rueckfragen ?? []) {
-        if (fragend && r.antwort === undefined) {
+        // Beanstandung: nur der Adressat wird benachrichtigt (Ben, Nacharbeit 2).
+        const adressat = rueckfrageAdressat(gap, r);
+        if (fragend && r.antwort === undefined && (adressat === null || adressat === nutzerId)) {
           meldungen.push({
             id: rueckfrageMeldungId(gap.id, r.id),
             art: "rueckfrage",

@@ -250,21 +250,37 @@ describe("Beanstandung · von der falschen Aussage zur geprüften Korrektur, am 
     );
     expect(inListe).toMatchObject({ beanstandung: true, question: "" });
 
-    // --- Rückfrage und Antwort -------------------------------------------------------------
+    // --- Rückfrage an GENAU EINE Meldung, und Antwort ---------------------------------------
+    const RUECKFRAGE = "Welche Ausgabe des Wartungsblatts liegt dir vor?";
+    // Zwei Meldungen: ohne gewählte Meldung wird kein Melder geraten.
+    const ungezielt = await post(app, b.fachmann, `/api/gaps/${gapId}/rueckfrage`, {
+      frage: RUECKFRAGE,
+    });
+    expect(ungezielt.statusCode, ungezielt.body).toBe(400);
     const rf = await post(app, b.fachmann, `/api/gaps/${gapId}/rueckfrage`, {
-      frage: "Welche Ausgabe des Wartungsblatts liegt dir vor?",
+      frage: RUECKFRAGE,
+      meldungId: quittung.meldungId,
     });
     expect(rf.statusCode, rf.body).toBe(200);
     expect(
       (await glocke(app, b.melda)).filter((m) => m.kind === "luecke").map((m) => m.lueckenArt),
     ).toEqual(["rueckfrage"]);
-    const antwort = await post(
-      app,
-      b.melda,
-      `/api/gaps/${gapId}/rueckfrage/${rf.json().rueckfragen[0].id}/antwort`,
-      { antwort: "Ausgabe 3 vom Hersteller." },
-    );
+    // Der zweite Melder: keine Benachrichtigung, die Rückfrage fehlt in seinem Vorgang.
+    expect((await glocke(app, b.melvin)).filter((m) => m.kind === "luecke")).toEqual([]);
+    const fuerMelvin = await vorgang(app, b.melvin, gapId);
+    expect(fuerMelvin.json().rueckfragen).toEqual([]);
+    expect(fuerMelvin.body).not.toContain(RUECKFRAGE);
+    expect(fuerMelvin.json().phase).not.toBe("rueckfrage_offen");
+    const rueckfrageUrl = `/api/gaps/${gapId}/rueckfrage/${rf.json().rueckfragen[0].id}/antwort`;
+    const fremdeAntwort = await post(app, b.melvin, rueckfrageUrl, { antwort: "Ich antworte." });
+    expect(fremdeAntwort.statusCode, fremdeAntwort.body).toBe(404);
+    const antwort = await post(app, b.melda, rueckfrageUrl, {
+      antwort: "Ausgabe 3 vom Hersteller.",
+    });
     expect(antwort.statusCode, antwort.body).toBe(200);
+    // Die Antwort der Melderin bleibt bei ihr und der zuständigen Person.
+    expect((await vorgang(app, b.melvin, gapId)).body).not.toContain("Ausgabe 3 vom Hersteller");
+    expect((await vorgang(app, b.fachmann, gapId)).body).toContain("Ausgabe 3 vom Hersteller");
 
     // --- Korrektur: unveränderte Fassung und ungeprüfte neue Fassung schliessen nicht ------------
     const ohneKorrektur = await post(app, b.fachmann, `/api/gaps/${gapId}/abschliessen`, {

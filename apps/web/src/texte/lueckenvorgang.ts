@@ -156,6 +156,9 @@ export default {
     "lueckenvorgang.meldung.zurueckgewiesen": "Deine Beanstandung wurde begründet zurückgewiesen",
     "lueckenvorgang.liste.zurueckgewiesen": "zurückgewiesen",
     "lueckenvorgang.liste.beanstandung": "Beanstandete Aussage einer Antwort",
+    "lueckenvorgang.rueckfrageMeldung": "Rückfrage an die Meldung",
+    "lueckenvorgang.rueckfrageMeldungWaehlen":
+      "Meldung wählen (nur dieser Melder sieht die Rückfrage)",
   },
   en: {
     "lueckenvorgang.oeffnen": "Process",
@@ -296,6 +299,9 @@ export default {
     "lueckenvorgang.meldung.zurueckgewiesen": "Your complaint was rejected with reasons",
     "lueckenvorgang.liste.zurueckgewiesen": "rejected",
     "lueckenvorgang.liste.beanstandung": "Disputed statement of an answer",
+    "lueckenvorgang.rueckfrageMeldung": "Follow-up to the report",
+    "lueckenvorgang.rueckfrageMeldungWaehlen":
+      "Choose report (only this reporter sees the question)",
   },
   nl: {
     "lueckenvorgang.oeffnen": "Verloop",
@@ -439,5 +445,7 @@ export default {
     "lueckenvorgang.meldung.zurueckgewiesen": "Je klacht is met redenen afgewezen",
     "lueckenvorgang.liste.zurueckgewiesen": "afgewezen",
     "lueckenvorgang.liste.beanstandung": "Betwiste uitspraak van een antwoord",
+    "lueckenvorgang.rueckfrageMeldung": "Wedervraag aan de melding",
+    "lueckenvorgang.rueckfrageMeldungWaehlen": "Melding kiezen (alleen deze melder ziet de vraag)",
   },
 } satisfies Textmodul;

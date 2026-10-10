@@ -1845,11 +1845,14 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
       if (!user) {
         return;
       }
+      // Bei einer Beanstandung: an welche Meldung (und damit an welchen Melder) die Rückfrage geht.
+      const meldungId = textFeld(request.body, "meldungId");
       try {
         await ask.askGapFollowUp(
           request.params.id,
           beteiligterAus(user),
           textFeld(request.body, "frage") as string,
+          typeof meldungId === "string" ? meldungId : undefined,
         );
         await vorgangSenden(reply, request.params.id, user);
       } catch (error) {

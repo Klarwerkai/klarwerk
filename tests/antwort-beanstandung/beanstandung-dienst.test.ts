@@ -28,8 +28,10 @@ import {
   type BeanstandungEingabe,
   InMemoryAnswerSnapshotRepo,
   InMemoryGapRepo,
+  redactGapForViewer,
   signAnswerReceipt,
 } from "../../services/ask";
+import { mitBeanstandungsMeldung } from "../../services/ask/src/antwort-beanstandung";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, type KnowledgeObject, KoService } from "../../services/knowledge-object";
 import { Reasoner } from "../../services/reasoner";
@@ -556,7 +558,10 @@ describe("B9 · PV-04-07 Rechteentzug", () => {
     expect(ohneRecht.ergebnis).toEqual({ zugaenglich: false });
     expect(ohneRecht.beanstandung).toMatchObject({ koId: null, quelleZugaenglich: false });
     expect(JSON.stringify(ohneRecht)).not.toContain(RICHTIG);
-    // Die eigene, damals ausgelieferte Aussage und Begründung bleiben dem Melder lesbar.
+    // Ben, Nacharbeit 2: der Aussagetext stammt aus der Quelle — ohne heutiges Leserecht ist er auch
+    // dem Melder zurückgehalten. Seine eigene Begründung (sein eigener Text) bleibt ihm lesbar.
+    expect(ohneRecht.beanstandung).toMatchObject({ aussage: "", aussageZurueckgehalten: true });
+    expect(JSON.stringify(ohneRecht)).not.toContain(FALSCH);
     expect(ohneRecht.beanstandung?.eigeneMeldungen[0]?.begruendung).toBe(GRUND_MELDA);
   });
 
@@ -570,5 +575,210 @@ describe("B9 · PV-04-07 Rechteentzug", () => {
     expect(sicht.rollen).toEqual(["zustaendig"]);
     expect(sicht.beanstandung).toMatchObject({ aussage: "", aussageZurueckgehalten: true });
     expect(sicht.question).toBe(BEANSTANDUNG_FRAGE);
+  });
+});
+
+// ================================================================================================
+// Ben, Nacharbeit 2 — KONTEXTTRENNUNG BEI ZUSAMMENGEFÜHRTEN MELDUNGEN.
+// ================================================================================================
+
+describe("B10 · PV-04-03 eine spätere Meldung mit weiterer (gesperrter) Quelle", () => {
+  it("die Quellen jeder Meldung bleiben erhalten; ohne Zugriff auf eine davon keine Aussage, keine Begründung", async () => {
+    const b = await buehne();
+    const erste = await b.beanstande("melda", GRUND_MELDA);
+    const id = erste.quittung.beanstandung?.vorgangId ?? "";
+    // Eine zweite, VERTRAULICHE Quelle, aus der dieselbe Aussage in einer anderen Antwort stammte.
+    const geheim = await b.koService.create({
+      title: "Schmierplan SP-7 Werk Süd",
+      statement: "Interner Schmierplan.",
+      type: "best_practice",
+      category: "Instandhaltung",
+      author: "fremd",
+      confidentiality: "vertraulich",
+    });
+    const vorher = await b.gaps.findById(id);
+    const basis = vorher?.beanstandung;
+    expect(basis, "KALIBRIERUNG: der Vorgang ist eine Beanstandung").toBeDefined();
+    if (!vorher || !basis) {
+      return;
+    }
+    const vorgangsBasis = {
+      koId: basis.koId,
+      aussageText: basis.aussageText,
+      aussageFingerabdruck: basis.aussageFingerabdruck,
+      aussageKoIds: basis.aussageKoIds,
+    };
+    // Dieselbe Zusammenführung wie im Dienst; melvin wird dabei weiterer Fragender (wie über
+    // `insertOrIncrement`), nur mit einer Antwort, deren Aussage AUCH aus der vertraulichen Quelle kam.
+    const mitMelvin = { ...vorher, weitereFragende: ["melvin"] };
+    const zusammen = mitBeanstandungsMeldung(mitMelvin, vorgangsBasis, {
+      meldungId: "M-ZWEITEQUEL",
+      von: "melvin",
+      at: "2026-10-11T09:00:00.000Z",
+      answerId: null,
+      aussageId: erste.a.aussageId,
+      koVersion: 1,
+      fundstelleId: null,
+      quelleFehlt: false,
+      begruendung: GRUND_MELVIN,
+      aussageKoIds: [b.quelle.id, geheim.id],
+    });
+    expect(zusammen?.beanstandung?.aussageKoIds).toEqual(
+      expect.arrayContaining([b.quelle.id, geheim.id]),
+    );
+    if (!zusammen) {
+      return;
+    }
+    await b.gaps.update(zusammen);
+
+    // Fachzuständig, die vertrauliche Quelle heute NICHT lesbar: weder Aussage noch Begründungen.
+    const ohneGeheim = (ko: KnowledgeObject): boolean => ko.id !== geheim.id;
+    const sicht = await b.ask.gapVorgang(id, { ...fachmann, sichtbar: ohneGeheim });
+    expect(sicht.beanstandung).toMatchObject({
+      aussage: "",
+      aussageZurueckgehalten: true,
+      begruendungen: [],
+      meldungen: 2,
+    });
+    expect(JSON.stringify(sicht)).not.toContain(GRUND_MELVIN);
+    expect(JSON.stringify(sicht)).not.toContain(GRUND_MELDA);
+    // Mit Zugriff auf beide Quellen: beide Begründungen.
+    const mitGeheim = await b.ask.gapVorgang(id, fachmann);
+    expect(mitGeheim.beanstandung?.begruendungen.map((g) => g.text)).toEqual([
+      GRUND_MELDA,
+      GRUND_MELVIN,
+    ]);
+    // Die erste Melderin hängt nur von IHRER Quelle ab — ihre Sicht bleibt, die fremde Begründung nie.
+    const fuerMelda = await b.ask.gapVorgang(id, { ...melda, sichtbar: ohneGeheim });
+    expect(fuerMelda.beanstandung?.aussage).toBe(erste.a.text);
+    expect(JSON.stringify(fuerMelda)).not.toContain(GRUND_MELVIN);
+    // Der zweite Melder ohne Zugriff auf seine vertrauliche Quelle: Aussage zurückgehalten.
+    const fuerMelvin = await b.ask.gapVorgang(id, { ...melvin, sichtbar: ohneGeheim });
+    expect(fuerMelvin.beanstandung).toMatchObject({ aussage: "", aussageZurueckgehalten: true });
+  });
+
+  it("Zusammenführen ist eine Vereinigung: keine Quelle einer früheren Meldung geht verloren", () => {
+    const gap = {
+      id: "g",
+      question: BEANSTANDUNG_FRAGE,
+      status: "offen" as const,
+      assignee: null,
+      priority: "mittel" as const,
+      createdAt: "2026-10-11T08:00:00.000Z",
+      beanstandung: {
+        koId: "ko-a",
+        aussageText: FALSCH,
+        aussageFingerabdruck: "f",
+        aussageKoIds: ["ko-a", "ko-b"],
+        meldungen: [],
+      },
+    };
+    const neu = mitBeanstandungsMeldung(
+      gap,
+      { koId: "ko-a", aussageText: FALSCH, aussageFingerabdruck: "f", aussageKoIds: ["ko-a"] },
+      {
+        meldungId: "M-1",
+        von: "x",
+        at: "2026-10-11T08:00:00.000Z",
+        answerId: null,
+        aussageId: "a",
+        koVersion: 1,
+        fundstelleId: null,
+        quelleFehlt: false,
+        begruendung: "b",
+        aussageKoIds: ["ko-c"],
+      },
+    );
+    expect([...(neu?.beanstandung?.aussageKoIds ?? [])].sort()).toEqual(["ko-a", "ko-b", "ko-c"]);
+  });
+});
+
+describe("B11 · PV-04-03 Rückfragen gehen an genau einen Melder", () => {
+  it("Adressat sieht, beantwortet und wird benachrichtigt — andere und später beitretende Melder nicht", async () => {
+    const b = await buehne();
+    const erste = await b.beanstande("melda", GRUND_MELDA);
+    const id = erste.quittung.beanstandung?.vorgangId ?? "";
+    await b.beanstande("melvin", GRUND_MELVIN);
+    const FRAGE_AN_MELDA = "Welche Ausgabe des Wartungsblatts liegt dir vor?";
+
+    // Zwei Meldungen: ohne gewählte Meldung kein Adressat — nichts gespeichert.
+    await expect(b.ask.askGapFollowUp(id, fachmann, FRAGE_AN_MELDA)).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      b.ask.askGapFollowUp(id, fachmann, FRAGE_AN_MELDA, "M-FREMD00000"),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await b.ask.askGapFollowUp(id, fachmann, FRAGE_AN_MELDA, erste.quittung.meldungId);
+    const gespeichert = (await b.gaps.findById(id))?.rueckfragen?.[0];
+    expect(gespeichert).toMatchObject({ an: "melda", meldungId: erste.quittung.meldungId });
+
+    // Ein dritter Melder tritt SPÄTER bei.
+    await b.beanstande("mira", "Auch ich halte das für falsch.");
+
+    // Adressatin: sieht, wird benachrichtigt, Phase „Rückfrage offen".
+    const fuerMelda = await b.ask.gapVorgang(id, melda);
+    expect(fuerMelda.rueckfragen.map((r) => r.frage)).toEqual([FRAGE_AN_MELDA]);
+    expect(fuerMelda.naechsterSchritt).toBe("rueckfrage_beantworten");
+    expect((await b.ask.gapMeldungenFuer("melda", ALLE)).map((m) => m.art)).toEqual(["rueckfrage"]);
+
+    // Andere und später beitretende Melder: keine Rückfrage, keine Meldung, keine Antwortmöglichkeit.
+    for (const wer of ["melvin", "mira"]) {
+      const beteiligt = { id: wer, verwaltend: false, sichtbar: ALLE };
+      const sicht = await b.ask.gapVorgang(id, beteiligt);
+      expect(sicht.rollen, wer).toEqual(["fragend"]);
+      expect(sicht.rueckfragen, wer).toEqual([]);
+      expect(sicht.phase, wer).not.toBe("rueckfrage_offen");
+      expect(JSON.stringify(sicht), wer).not.toContain(FRAGE_AN_MELDA);
+      expect(await b.ask.gapMeldungenFuer(wer, ALLE), wer).toEqual([]);
+      await expect(
+        b.ask.answerGapFollowUp(id, gespeichert?.id ?? "", beteiligt, "Ich antworte."),
+        wer,
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      const liste = (await b.ask.listGaps()).find((g) => g.id === id);
+      expect(liste, wer).toBeDefined();
+      const listensicht = liste ? redactGapForViewer(liste, { viewerId: wer }) : null;
+      expect(listensicht?.rueckfrageOffen, wer).toBeUndefined();
+    }
+
+    // Die Antwort bleibt bei Adressatin und zuständiger Person.
+    const ANTWORT = "Ausgabe 3 vom Hersteller.";
+    await b.ask.answerGapFollowUp(id, gespeichert?.id ?? "", melda, ANTWORT);
+    expect(JSON.stringify(await b.ask.gapVorgang(id, melvin))).not.toContain(ANTWORT);
+    const fuerFachmann = await b.ask.gapVorgang(id, fachmann);
+    expect(fuerFachmann.rueckfragen[0]).toMatchObject({
+      frage: FRAGE_AN_MELDA,
+      antwort: ANTWORT,
+      meldungId: erste.quittung.meldungId,
+    });
+    expect((await b.ask.gapMeldungenFuer("fachmann", ALLE)).map((m) => m.art)).toEqual([
+      "rueckfrage_beantwortet",
+    ]);
+    // Verwaltende sehen den Ablauf, aber keinen Text.
+    const fuerVera = await b.ask.gapVorgang(id, vera);
+    expect(fuerVera.rueckfragen.map((r) => [r.frage, r.antwort])).toEqual([["", ""]]);
+
+    // Eine eigene Rückfrage an den zweiten Melder ist daneben möglich und nur bei ihm sichtbar.
+    const zweite = (await b.gaps.findById(id))?.beanstandung?.meldungen[1]?.meldungId ?? "";
+    await b.ask.askGapFollowUp(id, fachmann, "Seit wann gilt das bei euch?", zweite);
+    expect((await b.ask.gapVorgang(id, melvin)).rueckfragen.map((r) => r.frage)).toEqual([
+      "Seit wann gilt das bei euch?",
+    ]);
+    expect(JSON.stringify(await b.ask.gapVorgang(id, melda))).not.toContain("Seit wann");
+  });
+
+  it("gewöhnliche Wissenslücken: Rückfrage weiterhin an alle Fragenden (Bestand unverändert)", async () => {
+    const b = await buehne();
+    const FRAGE = "Wie justiere ich den Zyrlax-Taster?";
+    const out = await b.ask.ask(FRAGE, "frida", "de", undefined, ALLE);
+    await b.ask.ask(FRAGE, "fritz", "de", undefined, ALLE);
+    const id = out.gap?.id ?? "";
+    await b.ask.assignGap(id, "fachmann", "vera");
+    await b.ask.askGapFollowUp(id, fachmann, "Welche Baureihe?");
+    for (const wer of ["frida", "fritz"]) {
+      expect(
+        (await b.ask.gapMeldungenFuer(wer, ALLE)).map((m) => m.art),
+        wer,
+      ).toEqual(["rueckfrage"]);
+    }
   });
 });

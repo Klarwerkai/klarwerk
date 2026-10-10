@@ -15,6 +15,7 @@ import {
   AskError,
   type Gap,
   type GapAbschluss,
+  type GapRueckfrage,
   type GapRuecknahmeGrund,
   type GapZuordnung,
 } from "./types";
@@ -206,6 +207,40 @@ export function istZustaendig(gap: Pick<Gap, "assignee">, nutzerId: string): boo
 }
 
 /**
+ * produkt:20261010:antwort-beanstandung-korrektur (Ben, Nacharbeit 2) — DER ADRESSAT EINER RÜCKFRAGE.
+ *
+ * Gewöhnliche Lücke: `null` — die Rückfrage gilt allen Fragenden (unveränderter Bestand). Beanstandung:
+ * genau ein Melder (`an`). Eine Rückfrage aus der Zeit vor dieser Angabe gilt konservativ nur dem
+ * Ersteller — nie einem später beigetretenen Melder.
+ */
+export function rueckfrageAdressat(
+  gap: Pick<Gap, "beanstandung" | "createdBy">,
+  r: Pick<GapRueckfrage, "an">,
+): string | null {
+  if (!gap.beanstandung) {
+    return null;
+  }
+  return r.an ?? gap.createdBy ?? "";
+}
+
+/**
+ * Darf dieser Betrachter Text und Antwort dieser Rückfrage sehen bzw. von ihr benachrichtigt werden?
+ * Gewöhnliche Lücke: jede fragende oder zuständige Person (Bestand). Beanstandung: nur die zuständige
+ * Person und der Adressat.
+ */
+export function rueckfragePersoenlichFuer(
+  gap: Pick<Gap, "beanstandung" | "createdBy" | "assignee">,
+  r: Pick<GapRueckfrage, "an">,
+  nutzerId: string,
+): boolean {
+  const adressat = rueckfrageAdressat(gap, r);
+  if (adressat === null) {
+    return true;
+  }
+  return nutzerId.length > 0 && (adressat === nutzerId || gap.assignee === nutzerId);
+}
+
+/**
  * Den Fragenden einer WIEDERHOLTEN Frage der offenen Lücke zuordnen — ohne Doppelte, ohne „system"
  * und ohne den Ersteller ein zweites Mal. Rein; die Ablage ruft sie unteilbar (`insertOrIncrement`).
  */
@@ -381,6 +416,8 @@ export interface GapVorgangSicht {
     readonly antwort?: string;
     readonly beantwortetAm?: string;
     readonly vonMirBeantwortet?: boolean;
+    /** Nur für die zuständige Person bei einer Beanstandung: die angefragte Meldung. */
+    readonly meldungId?: string;
   }[];
   /** Der verknüpfte Antwortentwurf, solange die Lücke offen ist. `zugaenglich: false` ohne Recht. */
   readonly entwurf: GapVorgangEintrag | { readonly zugaenglich: false } | null;

@@ -11,6 +11,10 @@
 //   P2 · Nach einem Neustart (neuer Pool, neue Dienste) stehen Bindung, Zuständigkeit und Begründungen
 //        unverändert da; eine begründete Zurückweisung ist gespeichert, erzeugt je Melder genau eine
 //        Rückmeldung und lässt das Wissensobjekt unverändert.
+//   P3 · (Ben, Nacharbeit 2) Eine Rückfrage an eine Meldung ist mit Adressat gespeichert; nach
+//        Neustart sieht, erfährt und beantwortet sie nur dieser Melder.
+//   P4 · (Ben, Nacharbeit 2) Eine weitere, heute nicht lesbare Quellenabhängigkeit im gespeicherten
+//        Vorgang hält nach Neustart Aussage und Begründungen vor der Fachzuständigkeit zurück.
 //
 // INFRASTRUKTUR wie `tests/wissenskreislauf/vorgang-pg.integration.test.ts`: `KLARWERK_PG_TEST_URL`
 // (Datenbankname mit `test`), sonst ein Wegwerf-Container. Fehlt beides, SCHEITERT der Lauf. Alle
@@ -170,9 +174,55 @@ describe("Beanstandung gegen echtes PostgreSQL", () => {
     expect(kennungen.sort()).toEqual([a.meldungId, b.meldungId].sort());
     expect(gelesen?.beanstandung?.meldungen.every((m) => m.koVersion === 1)).toBe(true);
 
+    // Jede Meldung trägt ihre eigenen Quellenabhängigkeiten (Ben, Nacharbeit 2).
+    expect(gelesen?.beanstandung?.meldungen.every((m) => m.aussageKoIds?.includes(ko.id))).toBe(
+      true,
+    );
+
     const fachmann = { id: "fachmann-pg", verwaltend: false, sichtbar: ALLE };
     const sicht = await zweite.ask.gapVorgang(gapId, fachmann);
     expect(sicht.beanstandung?.begruendungen).toHaveLength(2);
+
+    // P3 — Rückfrage an GENAU EINE Meldung; nach Neustart nur beim Adressaten (Ben, Nacharbeit 2).
+    const RUECKFRAGE = "Welche Ausgabe des Wartungsblatts liegt dir vor?";
+    await zweite.ask.askGapFollowUp(gapId, fachmann, RUECKFRAGE, a.meldungId);
+    const wieder = dienste().services;
+    const melda = { id: "melda-pg", verwaltend: false, sichtbar: ALLE };
+    const melvin = { id: "melvin-pg", verwaltend: false, sichtbar: ALLE };
+    expect((await wieder.ask.gapVorgang(gapId, melda)).rueckfragen.map((r) => r.frage)).toEqual([
+      RUECKFRAGE,
+    ]);
+    const fuerMelvin = await wieder.ask.gapVorgang(gapId, melvin);
+    expect(fuerMelvin.rueckfragen).toEqual([]);
+    expect(JSON.stringify(fuerMelvin)).not.toContain(RUECKFRAGE);
+    expect(await wieder.ask.gapMeldungenFuer("melvin-pg", ALLE)).toEqual([]);
+    const gespeichert = (await wieder.ask.listGaps()).find((g) => g.id === gapId);
+    const rueckfrage = gespeichert?.rueckfragen?.[0];
+    expect(rueckfrage).toMatchObject({ an: "melda-pg", meldungId: a.meldungId });
+    await expect(
+      wieder.ask.answerGapFollowUp(gapId, rueckfrage?.id ?? "", melvin, "Ich antworte."),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    // P4 — eine zusätzliche, heute nicht lesbare Quelle einer weiteren Meldung, gespeichert und neu
+    // gelesen: die Fachzuständigkeit bekommt weder Aussage noch Begründungen.
+    const zeile = await pool.query<{ data: Record<string, unknown> }>(
+      "SELECT data FROM gaps WHERE id = $1",
+      [gapId],
+    );
+    const daten = zeile.rows[0]?.data as {
+      beanstandung: { aussageKoIds: string[]; meldungen: unknown[] };
+    };
+    daten.beanstandung.aussageKoIds = [...daten.beanstandung.aussageKoIds, "ko-gesperrt-pg"];
+    await pool.query("UPDATE gaps SET data = $2::jsonb WHERE id = $1", [
+      gapId,
+      JSON.stringify(daten),
+    ]);
+    const nachSperre = await dienste().services.ask.gapVorgang(gapId, fachmann);
+    expect(nachSperre.beanstandung).toMatchObject({
+      aussage: "",
+      aussageZurueckgehalten: true,
+      begruendungen: [],
+    });
 
     const BEGRUENDUNG = "Für Baujahr 2024 gilt laut Ausgabe 4 das 40-Stunden-Intervall.";
     await zweite.ask.rejectBeanstandung(gapId, fachmann, BEGRUENDUNG);

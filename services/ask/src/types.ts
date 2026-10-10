@@ -123,7 +123,10 @@ export interface GapBeanstandung {
   /** Der Wortlaut der Aussage, wie die Antwort ihn auslieferte (Fingerabdruck im Beleg geprüft). */
   aussageText: string;
   aussageFingerabdruck: string;
-  /** Alle Objekte, aus denen die Aussage Fundstellen hatte — Grundlage der Kontextfreigabe. */
+  /**
+   * Alle Objekte, aus denen die Aussage in IRGENDEINER zugeführten Meldung Fundstellen hatte — die
+   * Vereinigung über alle Meldungen, Grundlage der Kontextfreigabe (Ben, Nacharbeit 2).
+   */
   aussageKoIds: string[];
   meldungen: GapBeanstandungMeldung[];
 }
@@ -141,6 +144,11 @@ export interface GapBeanstandungMeldung {
   quelleFehlt: boolean;
   /** Die kurze Begründung des Melders. Steht nur hier, nie im Prüfprotokoll. */
   begruendung: string;
+  /**
+   * Die Objekte, aus denen die Aussage in DIESER Antwort Fundstellen hatte. Fehlt nur bei Meldungen
+   * von vor dieser Angabe — dann gilt die Menge am Vorgang (`GapBeanstandung.aussageKoIds`).
+   */
+  aussageKoIds?: string[];
 }
 
 /** Eine Zuordnung der Lücke: wer zuständig wurde, durch wen, wann und auf welchem Weg. */
@@ -158,6 +166,14 @@ export interface GapRueckfrage {
   frage: string;
   von: string;
   at: string;
+  /**
+   * produkt:20261010:antwort-beanstandung-korrektur: bei einer Beanstandung ist eine Rückfrage an
+   * GENAU EINEN Melder gerichtet (den der gewählten Meldung). Nur er und die zuständige Person sehen
+   * und beantworten sie. Fehlt bei gewöhnlichen Lücken (Rückfrage an alle Fragenden).
+   */
+  an?: string;
+  /** Die Meldung, zu der die Rückfrage gestellt wurde (nur bei Beanstandungen). */
+  meldungId?: string;
   antwort?: string;
   beantwortetVon?: string;
   beantwortetAm?: string;
