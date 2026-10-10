@@ -15,6 +15,7 @@ import {
   leseFundstellenAnfrage,
   loeseFundstelleAuf,
   pruefPaket,
+  volltextDerFassung,
 } from "./aussage-fundstellen";
 
 const VENTIL_TEXT =
@@ -91,7 +92,8 @@ describe("REF-01 · Aussage → Quellenversion → Passage", () => {
       fingerabdruck: fingerabdruck(erwartet),
       kontextNach: "Bei Dauerbetrieb gilt 70 °C.",
       originalAutor: "autorin-fiktiv",
-      link: "/wissen/ko-ventil",
+      // Der bedienbare Link trägt die Belegstelle in derselben Form wie der Quellenchip.
+      link: `/wissen/ko-ventil?${new URLSearchParams({ stelle: erwartet, fassung: "4" })}`,
       zuordnung: "marke",
       wortbezug: true,
       unterstuetzung: "nicht_bewertet",
@@ -194,7 +196,7 @@ describe("REF-01 · Aussage → Quellenversion → Passage", () => {
     expect(fs.kontextVor).toBe("Einleitung zur Pumpe.");
   });
 
-  it("K2/K3 · externe Fundstelle: Herkunft, Abrufzeit, gespeicherter Auszug, Fingerabdruck", () => {
+  it("K2/K3 · externe Fundstelle: Herkunft, Speicherzeit, gespeicherter Auszug, Fingerabdruck", () => {
     const beleg = binde("Fiktivmetall schmilzt bei 1234 °C. [1]", ["ko-metall"], [FIKTIVMETALL]);
     const fundstellen = beleg.aussagen[0]!.teile[0]!.fundstellen;
     const extern = fundstellen.filter((f) => f.art === "extern");
@@ -206,7 +208,12 @@ describe("REF-01 · Aussage → Quellenversion → Passage", () => {
       quelleId: "q-lexikon",
       herkunft: "https://de.wikipedia.org/wiki/Fiktivmetall",
       anbieter: "Wikipedia",
-      abgerufenAm: "2026-10-01T08:00:00.000Z",
+      // Ben nacharbeit-4 (K2): der Speicherzeitpunkt ist KEIN Abruf — ohne Abrufnachweis bleibt
+      // `abgerufenAm` leer, und die Fundstelle sagt, dass sie in diesem Punkt unvollständig ist.
+      gespeichertAm: "2026-10-01T08:00:00.000Z",
+      abgerufenAm: null,
+      vollstaendigkeit: "abruf_nicht_belegt",
+      quellRevision: null,
       auszug: "Fiktivmetall schmilzt bei 1234 °C.",
       fingerabdruck: fingerabdruck("Fiktivmetall schmilzt bei 1234 °C."),
       kontextVor: "Fiktivmetall ist erfunden.",
@@ -286,6 +293,123 @@ describe("REF-01 · Aussage → Quellenversion → Passage", () => {
     expect(JSON.stringify(eng)).not.toContain("autor-fiktiv");
     expect(JSON.stringify(uebrig)).not.toContain("Einleitung zur Pumpe");
     expect(eng.belegFingerabdruck).not.toBe(beleg.belegFingerabdruck);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben nacharbeit-4 — die Gegenfälle zu den belegten Befunden.
+  // ----------------------------------------------------------------------------------------------
+
+  it("K1 · kurze Aussagen und Kürzel verschwinden nicht: Kennung und ausgewiesene Deckungslücke", () => {
+    const ohneQuelle = binde("QX ist gesperrt.", ["ko-ventil"], [VENTIL]);
+    expect(ohneQuelle.aussagen.map((a) => a.text)).toEqual(["QX ist gesperrt."]);
+    const aussage = ohneQuelle.aussagen[0]!;
+    expect(aussage.aussageId).toMatch(/^aus_[0-9a-f]{16}$/);
+    expect(aussage.deckung).toBe("unbelegt");
+    expect(ohneQuelle.fehlendeDeckung).toEqual([aussage.aussageId]);
+
+    // Gegenprobe: das Kürzel ist Inhalt — die passende Stelle wird über „QX" gefunden.
+    const sperre: BindungsQuelle = {
+      id: "ko-sperre",
+      version: 3,
+      originalAuthor: "autor-fiktiv",
+      statement: "Die Anlage QX ist seit Montag gesperrt.",
+    };
+    const mitQuelle = binde("QX ist gesperrt.", ["ko-sperre"], [sperre]);
+    expect(mitQuelle.aussagen[0]!.deckung).toBe("belegt");
+    expect(mitQuelle.aussagen[0]!.teile[0]!.fundstellen[0]!.auszug).toBe(sperre.statement);
+  });
+
+  it("K6 · ein kurzes zusätzliches Prädikat ist eine eigene Teilbehauptung", () => {
+    const zu: BindungsQuelle = {
+      id: "ko-zu",
+      version: 1,
+      originalAuthor: "autor-fiktiv",
+      statement: "Das Ventil F3 ist geschlossen.",
+    };
+    const beleg = binde("Das Ventil F3 ist geschlossen und dicht. [1]", ["ko-zu"], [zu]);
+    const aussage = beleg.aussagen[0]!;
+    expect(aussage.teile.map((t) => t.text)).toEqual(["Das Ventil F3 ist geschlossen", "dicht."]);
+    expect(aussage.teile.map((t) => t.deckung)).toEqual(["fundstelle", "keine_fundstelle"]);
+    expect(aussage.deckung).toBe("teilweise");
+    expect(beleg.fehlendeDeckung).toEqual([aussage.aussageId]);
+  });
+
+  it("K1 · Wörterbuchergänzungen sind Teil der gebundenen Antwort — ohne Fundstelle ausgewiesen", () => {
+    const kern = "Die Pumpe P7 vor dem Start vollständig entlüften.";
+    const woerterbuch = (definition: string) =>
+      `${kern}\n\nBegriffe (aus dem Firmenwörterbuch, nicht Teil der Quellenbilanz):\n- Entlüften: ${definition} [Wörterbucheintrag wb-1, Fassung 2]`;
+    const vorher = woerterbuch("Luft aus dem Kreislauf ablassen.");
+    const beleg = binde(vorher, ["ko-pumpe"], [PUMPE]);
+    // Die Überschrift ist keine Behauptung, die Herkunftsangabe des Eintrags auch nicht.
+    expect(beleg.aussagen.map((a) => a.text)).toEqual([
+      kern,
+      "Entlüften: Luft aus dem Kreislauf ablassen.",
+    ]);
+    expect(beleg.aussagen.map((a) => a.deckung)).toEqual(["belegt", "unbelegt"]);
+    expect(beleg.fehlendeDeckung).toEqual([beleg.aussagen[1]!.aussageId]);
+    // Eine geänderte Definition ändert Antwort- und Belegfingerabdruck — kein geerbter Beleg.
+    const nachher = woerterbuch("Wasser aus dem Kreislauf ablassen.");
+    const geaendert = binde(nachher, ["ko-pumpe"], [PUMPE]);
+    expect(geaendert.antwortFingerabdruck).not.toBe(beleg.antwortFingerabdruck);
+    expect(geaendert.belegFingerabdruck).not.toBe(beleg.belegFingerabdruck);
+  });
+
+  it("K4/K5 · eine Belegstelle mit gelöschter Herkunft wird nicht mehr als Fundstelle gebunden", () => {
+    const geloescht: BindungsQuelle = {
+      ...FIKTIVMETALL,
+      sources: (FIKTIVMETALL.sources ?? []).map((s) =>
+        s.id === "q-lexikon" ? { ...s, sourceRemovedAt: "2026-10-05T08:00:00.000Z" } : s,
+      ),
+    };
+    const beleg = binde("Fiktivmetall schmilzt bei 1234 °C. [1]", ["ko-metall"], [geloescht]);
+    const fundstellen = beleg.aussagen[0]!.teile[0]!.fundstellen;
+    expect(fundstellen.filter((f) => f.art === "extern")).toEqual([]);
+    expect(JSON.stringify(fundstellen)).not.toContain("schmilzt bei 1234");
+  });
+
+  it("K3 · öffentliche Prüf-KI ohne Freigabe: auch Aussage- und Teiltext bleiben zurück", () => {
+    // Die wörtliche Antwort IST der Quelltext — ohne Freigabe darf er nicht ins Paket.
+    const woertlich = binde(
+      "Am Ventil F3 gilt eine Höchsttemperatur von 80 °C. [1]",
+      ["ko-ventil"],
+      [VENTIL],
+    );
+    const oeffentlich = { modell: "oeffentlich-fiktiv", oeffentlich: true };
+    const ohne = pruefPaket(woertlich, oeffentlich, () => false);
+    expect(ohne.posten[0]).toMatchObject({
+      zustand: "nicht_pruefbar",
+      aussage: null,
+      teil: null,
+      fundstellen: [],
+    });
+    expect(JSON.stringify(ohne)).not.toContain("Höchsttemperatur");
+    expect(JSON.stringify(ohne)).not.toContain("80 °C");
+    // Lokal (interne Prüf-KI) bleibt der Text erhalten.
+    const intern = { modell: "intern-fiktiv", oeffentlich: false };
+    const lokal = pruefPaket(woertlich, intern, () => false);
+    expect(lokal.posten[0]!.teil).toBe("Am Ventil F3 gilt eine Höchsttemperatur von 80 °C.");
+
+    // Gemischte Aussage: ein freigegebener und ein gesperrter Teil. Der gesperrte Teil und der
+    // Gesamttext bleiben zurück, der freigegebene Teil ist prüfbar.
+    const gemischt = binde(
+      "Am Ventil F3 gilt eine Höchsttemperatur von 80 °C und die Pumpe P7 vor dem Start vollständig entlüften. [1][2]",
+      ["ko-ventil", "ko-pumpe"],
+      [VENTIL, PUMPE],
+    );
+    const paket = pruefPaket(gemischt, oeffentlich, (koId) => koId === "ko-pumpe");
+    expect(paket.posten.map((p) => p.zustand)).toEqual(["nicht_pruefbar", "pruefbar"]);
+    expect(paket.posten.map((p) => p.aussage)).toEqual([null, null]);
+    expect(paket.posten.map((p) => p.teil)).toEqual([
+      null,
+      "die Pumpe P7 vor dem Start vollständig entlüften.",
+    ]);
+    expect(JSON.stringify(paket)).not.toContain("Höchsttemperatur");
+  });
+
+  it("K2/K5 · Volltext nur aus der Projektion derselben Fassung", () => {
+    expect(volltextDerFassung(undefined, 4)).toBeUndefined();
+    expect(volltextDerFassung({ fassung: 5, text: "Neuer Text." }, 4)).toBeUndefined();
+    expect(volltextDerFassung({ fassung: 4, text: "Alter Text." }, 4)).toBe("Alter Text.");
   });
 });
 
@@ -449,25 +573,45 @@ describe("REF-01 · Fundstellen auflösen — aktuelle Rechte, gelöscht, geänd
       aktuell: [{ ...NORD, id: "ko-metall" }],
       fassungen: { "ko-metall": { 1: { statement: "egal", sources: [quelle] } } },
     });
-    const r = await loeseFundstelleAuf(
-      {
-        art: "extern",
-        koId: "ko-metall",
-        koVersion: 1,
-        quelleId: "q-lexikon",
-        start: excerpt.indexOf(auszug),
-        ende: excerpt.indexOf(auszug) + auszug.length,
-        fingerabdruck: fingerabdruck(auszug),
-      },
-      leser,
-      nurNord,
-    );
+    const externerVerweis: FundstellenVerweis = {
+      art: "extern",
+      koId: "ko-metall",
+      koVersion: 1,
+      quelleId: "q-lexikon",
+      start: excerpt.indexOf(auszug),
+      ende: excerpt.indexOf(auszug) + auszug.length,
+      fingerabdruck: fingerabdruck(auszug),
+    };
+    const r = await loeseFundstelleAuf(externerVerweis, leser, nurNord);
     expect(r).toMatchObject({
       zustand: "aktuell",
       auszug,
       herkunft: "https://de.wikipedia.org/wiki/Fiktivmetall",
-      abgerufenAm: "2026-10-01T08:00:00.000Z",
+      // Ben nacharbeit-4 (K2): Speicherzeit ist keine Abrufzeit.
+      gespeichertAm: "2026-10-01T08:00:00.000Z",
+      abgerufenAm: null,
     });
+
+    // Ben nacharbeit-4 (K4/K5): die Herkunft wurde gelöscht (Löschvermerk am AKTUELLEN Anker, ohne
+    // neue Fassung). Der gespeicherte Auszug wird nicht mehr ausgeliefert.
+    const entfernt = bestand({
+      aktuell: [
+        {
+          ...NORD,
+          id: "ko-metall",
+          sources: [{ ...quelle, sourceRemovedAt: "2026-10-05T08:00:00.000Z" }],
+        },
+      ],
+      fassungen: { "ko-metall": { 1: { statement: "egal", sources: [quelle] } } },
+    });
+    const weg = await loeseFundstelleAuf(externerVerweis, entfernt, nurNord);
+    expect(weg).toEqual({
+      zustand: "herkunft_entfernt",
+      hinweis: expect.any(String),
+      koId: "ko-metall",
+      link: "/wissen/ko-metall",
+    });
+    expect(JSON.stringify(weg)).not.toContain("schmilzt");
   });
 
   it("Auflösungsanfrage: nur gültige Verweise, höchstens 20, sonst ganz ungültig", () => {

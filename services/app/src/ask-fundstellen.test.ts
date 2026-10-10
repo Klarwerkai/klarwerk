@@ -127,8 +127,12 @@ describe("REF-01 · Aussage → Quellenversion → Passage über HTTP", () => {
     expect(body.result.sources).toContain(fundstelle.koId);
     expect(typeof body.receipt).toBe("string");
     expect(Array.isArray(body.absaetze)).toBe(true);
-    // Der Quellenlink ist der bestehende direkte Weg der Oberfläche; die Objektroute dahinter liest.
-    expect(fundstelle.link).toBe(`/wissen/${koId}`);
+    // Der Quellenlink ist der bestehende direkte Weg der Oberfläche samt Belegstelle (dieselbe Form
+    // wie der Quellenchip, `?stelle=…&fassung=…`); die Objektroute dahinter liest.
+    const link = new URL(fundstelle.link, "https://klarwerk.test");
+    expect(link.pathname).toBe(`/wissen/${koId}`);
+    expect(link.searchParams.get("stelle")).toBe(PASSAGE);
+    expect(link.searchParams.get("fassung")).toBe(String(fundstelle.koVersion));
     expect(VENTIL.slice(fundstelle.start, fundstelle.ende)).toBe(PASSAGE);
     expect(fundstelle.fingerabdruck).toBe(fingerabdruck(PASSAGE));
     expect(fundstelle.originalAutor).toEqual(expect.any(String));

@@ -129,6 +129,8 @@ export {
   loeseFundstelleAuf,
   pruefPaket,
   quellenLink,
+  belegstellenLink,
+  volltextDerFassung,
 } from "./src/aussage-fundstellen";
 export type {
   Aussage,

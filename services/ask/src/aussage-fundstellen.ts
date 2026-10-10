@@ -74,7 +74,10 @@ export interface InterneFundstelle extends FundstelleBasis {
    * `null` nur im engen Zuschnitt des Add-on-Wegs — der erfährt keine Personenkennungen.
    */
   readonly originalAutor: string | null;
-  /** Der bestehende direkte Quellenweg der Oberfläche (`/wissen/:id`). */
+  /**
+   * Der bestehende direkte Quellenweg der Oberfläche samt Belegstelle
+   * (`/wissen/:id?stelle=<Auszug>&fassung=<Fassung>`, s. `belegstellenLink`).
+   */
   readonly link: string;
 }
 
@@ -85,8 +88,24 @@ export interface ExterneFundstelle extends FundstelleBasis {
   /** Herkunftsadresse der externen Quelle — `null`, wenn die Belegstelle keine Adresse trägt. */
   readonly herkunft: string | null;
   readonly anbieter: string | null;
-  /** Wann die Belegstelle mit ihrem Auszug am Objekt gespeichert wurde (`KoSource.at`). */
-  readonly abgerufenAm: string;
+  /** Wann die Belegstelle mit ihrem Auszug am Objekt GESPEICHERT wurde (`KoSource.at`). */
+  readonly gespeichertAm: string;
+  /**
+   * Wann die externe Quelle tatsächlich ABGERUFEN wurde — `null`, solange kein Abrufnachweis
+   * vorliegt. `KoSource.at` ist der Speicherzeitpunkt der Belegstelle (auch ein von Hand
+   * eingetragener Auszug bekommt ihn) und wird hier ausdrücklich NICHT als Abruf ausgegeben.
+   */
+  readonly abgerufenAm: string | null;
+  /**
+   * `abruf_nicht_belegt`: Herkunft, Passage und Fingerabdruck sind gebunden, der Abrufzeitpunkt
+   * fehlt — die Fundstelle ist in diesem Punkt UNVOLLSTÄNDIG und sagt es.
+   */
+  readonly vollstaendigkeit: "vollstaendig" | "abruf_nicht_belegt";
+  /**
+   * Die festgeschriebene Quellrevision des Imports (`KoSource.sourceRecordId`), über die ein
+   * Abruf nachvollzogen werden kann — `null`, wenn die Belegstelle keine trägt.
+   */
+  readonly quellRevision: string | null;
 }
 
 export type Fundstelle = InterneFundstelle | ExterneFundstelle;
@@ -134,6 +153,18 @@ export interface QuelleBelegstelle {
   readonly excerpt: string | null;
   readonly provider?: string | null | undefined;
   readonly at: string;
+  /** R-0169: die festgeschriebene Quellrevision des Imports — fehlt bei Belegstellen ohne Import. */
+  readonly sourceRecordId?: string | undefined;
+  /** R-0162: die Quellseite ist gelöscht — der Anker trägt dann keinen gültigen Beleg mehr. */
+  readonly sourceRemovedAt?: string | undefined;
+}
+
+/** Der Volltext NUR, wenn seine Projektion zur gebundenen Fassung gehört — sonst keiner. */
+export function volltextDerFassung(
+  volltext: { readonly fassung: number; readonly text: string } | undefined,
+  fassung: number,
+): string | undefined {
+  return volltext !== undefined && volltext.fassung === fassung ? volltext.text : undefined;
 }
 
 /** Die schmale Sicht auf ein Quellobjekt, so wie DIESE Antwort es gelesen hat. */
@@ -170,21 +201,52 @@ export function quellenLink(koId: string): string {
   return `/wissen/${encodeURIComponent(koId)}`;
 }
 
+/** Dieselbe Obergrenze wie `STELLE_MAX` in `apps/web/src/lib/belegstelle.ts`. */
+const STELLE_MAX = 600;
+
+/**
+ * Der bedienbare Link auf GENAU diese Passage dieser Fassung — dieselbe Adressform, die der
+ * Quellenchip der Fragenseite und das Word-Panel tragen (`/wissen/:id?stelle=…&fassung=…`,
+ * `apps/web/src/lib/belegstelle.ts` `belegstelleHref`). Die Lesefläche markiert und fokussiert die
+ * Passage, wenn sie in dieser Fassung wörtlich steht, und sagt es sonst. Eine zu lange Passage
+ * bleibt die blosse Objektadresse (ein abgeschnittener Anker fände nichts Wörtliches).
+ */
+export function belegstellenLink(koId: string, auszug: string, fassung: number): string {
+  const passage = normal(auszug);
+  if (passage.length === 0 || passage.length > STELLE_MAX) {
+    return quellenLink(koId);
+  }
+  const p = new URLSearchParams();
+  p.set("stelle", passage);
+  if (Number.isInteger(fassung) && fassung > 0) {
+    p.set("fassung", String(fassung));
+  }
+  return `${quellenLink(koId)}?${p.toString()}`;
+}
+
 const MARKE = /\[([0-9\s,]+)\]/g;
 const LINK = /https?:\/\/[^\s)\]>"']+/g;
 
 // Füllwörter tragen keine Aussage; ohne sie misst die Überschneidung Inhalt statt Grammatik.
+// Ben nacharbeit-4 (K1): auch zweistellige Kürzel wie „QX" oder „P7" sind Inhalt — deshalb
+// stehen die zweistelligen Füllwörter hier ausdrücklich, statt alles unter drei Zeichen zu streichen.
 const FUELLWORTLISTE =
-  "der die das den dem des ein eine einen einem einer und oder ist sind wird werden wurde mit von vor nach bei für auf aus als auch nicht kein keine sich zum zur dass wie nur noch soll muss darf kann the and are this that with het een zijn met voor van";
+  "der die das den dem des ein eine einen einem einer und oder ist sind wird werden wurde mit von vor nach bei für auf aus als auch nicht kein keine sich zum zur dass wie nur noch soll muss darf kann the and are this that with het een zijn met voor van am an im in zu es er so ob wo um ab da du ja of to is at on by it or be as we he if no";
 const FUELLWOERTER = new Set(FUELLWORTLISTE.split(" "));
 
-function begriffe(text: string): string[] {
+function woerter(text: string): string[] {
   return (
     text
       .normalize("NFKC")
       .toLowerCase()
       .match(/[\p{L}\p{N}]+/gu) ?? []
-  ).filter((w) => /^\p{N}+$/u.test(w) || (w.length >= 3 && !FUELLWOERTER.has(w)));
+  );
+}
+
+function begriffe(text: string): string[] {
+  return woerter(text).filter(
+    (w) => /^\p{N}+$/u.test(w) || (w.length >= 2 && !FUELLWOERTER.has(w)),
+  );
 }
 
 function zahlen(text: string): string[] {
@@ -298,7 +360,7 @@ function interneFundstelle(
     wortbezug,
     unterstuetzung: "nicht_bewertet",
     originalAutor: quelle.originalAuthor,
-    link: quellenLink(quelle.id),
+    link: belegstellenLink(quelle.id, auszug, quelle.version),
   };
 }
 
@@ -309,7 +371,8 @@ function externeFundstellen(
 ): ExterneFundstelle[] {
   return (Array.isArray(quelle.sources) ? quelle.sources : []).flatMap((s) => {
     // Nur ein GESPEICHERTER Auszug ist ein geprüfter Stand. Eine Adresse allein ist kein Inhalt.
-    if (typeof s.excerpt !== "string" || s.excerpt.trim() === "") {
+    // Ben nacharbeit-4 (K4/K5): ein Anker mit Löschvermerk der Herkunft trägt keinen Beleg mehr.
+    if (typeof s.excerpt !== "string" || s.excerpt.trim() === "" || s.sourceRemovedAt) {
       return [];
     }
     const bereich = bestePassage(teil, s.excerpt);
@@ -337,7 +400,12 @@ function externeFundstellen(
         quelleId: s.id,
         herkunft: s.url,
         anbieter: s.provider ?? null,
-        abgerufenAm: s.at,
+        gespeichertAm: s.at,
+        // Ben nacharbeit-4 (K2): `KoSource.at` ist keine Abrufzeit. Ein Abrufnachweis liegt der
+        // Belegstelle nicht bei — die Fundstelle sagt das, statt eine Abrufzeit zu behaupten.
+        abgerufenAm: null,
+        vollstaendigkeit: "abruf_nicht_belegt" as const,
+        quellRevision: s.sourceRecordId ?? null,
         start: bereich.start,
         ende: bereich.ende,
         auszug,
@@ -374,9 +442,17 @@ function markenVon(text: string): string[] {
   return marken;
 }
 
-/** Die Sätze eines Absatzes; ein Satz, der nur aus Marken besteht, gehört zum Satz davor. */
+/**
+ * Die Sätze eines Absatzes; ein Satz, der nur aus Marken besteht, gehört zum Satz davor. Jede Zeile
+ * ist eine eigene Einheit (Listenpunkte der Zuschnittsabschnitte, Wörterbucheinträge); ein
+ * führender Listenstrich gehört nicht zur Aussage.
+ */
 function saetzeVon(absatz: string): Satz[] {
-  const roh = absatz.split(/(?<=[.!?])\s+/).filter((s) => s.trim() !== "");
+  const roh = absatz
+    .split(/\n/)
+    .map((zeile) => zeile.replace(/^\s*[-*•]\s+/, ""))
+    .flatMap((zeile) => zeile.split(/(?<=[.!?])\s+/))
+    .filter((s) => s.trim() !== "");
   const saetze: { text: string; marken: string[] }[] = [];
   for (const stueck of roh) {
     const marken = markenVon(stueck);
@@ -387,27 +463,39 @@ function saetzeVon(absatz: string): Satz[] {
       vorher.marken.push(...marken);
       continue;
     }
+    // Eine reine Herkunftsangabe in Klammern (z. B. „[Wörterbucheintrag wb-1, Fassung 2]" hinter
+    // einer Begriffserklärung) ist keine Behauptung, sondern die Herkunft der Zeile davor.
+    if (/^\[[^\]]*\]$/.test(ohneMarken)) {
+      continue;
+    }
     saetze.push({ text: ohneMarken, marken });
   }
   return saetze;
 }
 
 /**
- * Eine zusammengesetzte Aussage in Teile — an Semikolon und an „und/sowie/and/en", aber nur, wenn
- * jede Seite selbst Inhalt trägt (mindestens zwei Begriffe). „Druck und Temperatur prüfen" bleibt
- * EIN Teil; „Die Dichtung entlasten und das Ventil F3 schließen" sind zwei.
+ * Eine zusammengesetzte Aussage in Teile — an Semikolon und an „und/sowie/and/en", sobald jede Seite
+ * überhaupt Inhalt trägt. Ben nacharbeit-4 (K6): auch ein kurzes zusätzliches Prädikat ist eine
+ * eigene Teilbehauptung — „Das Ventil F3 ist geschlossen und dicht." sind ZWEI Teile, und die
+ * Passage für „geschlossen" deckt „dicht" nicht mit. Lieber eine Teilung zu viel (dann braucht jeder
+ * Teil seine eigene Passage) als eine Deckung, die nur für die Hälfte gilt.
  */
 function teileVon(satz: string): string[] {
   const stuecke = satz.split(/;\s+|,?\s+(?:und|sowie|and|en)\s+/i);
-  if (stuecke.length < 2 || stuecke.some((s) => begriffe(s).length < 2)) {
+  if (stuecke.length < 2 || stuecke.some((s) => begriffe(s).length === 0)) {
     return [satz];
   }
   return stuecke.map((s) => s.trim());
 }
 
-/** Ist der Satz eine Tatsachenbehauptung? Fragen und reine Überleitungen sind es nicht. */
+/**
+ * Ist der Satz eine Tatsachenbehauptung? Fragen und Überschriften (enden auf „:") sind es nicht.
+ * Ben nacharbeit-4 (K1): KEINE Mindestzahl langer Begriffe — „QX ist gesperrt." ist eine
+ * Behauptung, und sie bekommt eine Kennung samt ausgewiesener Deckungslücke statt zu verschwinden.
+ */
 function behauptet(satz: string): boolean {
-  return !satz.trim().endsWith("?") && begriffe(satz.replace(LINK, " ")).length >= 2;
+  const kern = satz.trim();
+  return !kern.endsWith("?") && !kern.endsWith(":") && woerter(kern.replace(LINK, " ")).length > 0;
 }
 
 function absaetzeVon(antwort: string): string[] {
@@ -708,7 +796,7 @@ export interface AufloesbaresObjekt {
   readonly confidentiality?: unknown;
   readonly spaceId?: unknown;
   readonly statement: string;
-  readonly sources?: readonly (QuelleBelegstelle & { sourceRemovedAt?: string | undefined })[];
+  readonly sources?: readonly QuelleBelegstelle[];
 }
 
 /** Die Fassung eines Objekts: Kernaussage, Volltext (falls projiziert) und Belegstellen. */
@@ -733,6 +821,7 @@ export type FundstellenZustand =
   | "stand_nicht_verfuegbar"
   | "beschaedigt"
   | "geloescht"
+  | "herkunft_entfernt"
   | "nicht_zugaenglich";
 
 /** Verständliche Zustände — ohne Inhalt oder Metadaten, die der Leser nicht sehen darf. */
@@ -745,6 +834,8 @@ export const FUNDSTELLEN_HINWEIS: Readonly<Record<FundstellenZustand, string>> =
   beschaedigt:
     "Die Fundstelle passt nicht zum gespeicherten Stand der Quelle und gilt nicht als Beleg.",
   geloescht: "Die Quelle wurde gelöscht. Die Fundstelle ist nicht mehr abrufbar.",
+  herkunft_entfernt:
+    "Die externe Herkunft dieser Fundstelle wurde gelöscht. Der gespeicherte Auszug gilt nicht mehr als Beleg und wird nicht angezeigt.",
   nicht_zugaenglich: "Diese Quelle ist für Sie nicht zugänglich oder existiert nicht.",
 };
 
@@ -759,7 +850,10 @@ export type FundstellenAufloesung =
       readonly originalAutor: string;
       readonly link: string;
       readonly herkunft?: string | null;
-      readonly abgerufenAm?: string;
+      /** Speicherzeitpunkt der Belegstelle — ausdrücklich KEINE Abrufzeit. */
+      readonly gespeichertAm?: string;
+      /** Kein Abrufnachweis an der Belegstelle: `null` statt einer behaupteten Abrufzeit. */
+      readonly abgerufenAm?: null;
     }
   | {
       readonly zustand: "geaendert";
@@ -780,6 +874,13 @@ export type FundstellenAufloesung =
       readonly link: string;
     }
   | {
+      readonly zustand: "herkunft_entfernt";
+      readonly hinweis: string;
+      readonly koId: string;
+      /** Das Wissensobjekt selbst ist sichtbar und bleibt erreichbar — nur der Anker trägt nicht. */
+      readonly link: string;
+    }
+  | {
       readonly zustand: "beschaedigt" | "geloescht" | "nicht_zugaenglich";
       readonly hinweis: string;
       readonly koId: string;
@@ -795,14 +896,14 @@ function ohneInhalt(
 function textDerFassung(
   verweis: FundstellenVerweis,
   fassung: ObjektFassung,
-): { text: string; herkunft?: string | null; abgerufenAm?: string } | undefined {
+): { text: string; herkunft?: string | null; gespeichertAm?: string } | undefined {
   if (verweis.art === "intern") {
     const text = verweis.feld === "statement" ? fassung.statement : fassung.bodyText;
     return typeof text === "string" ? { text } : undefined;
   }
   const quelle = (fassung.sources ?? []).find((s) => s.id === verweis.quelleId);
   return typeof quelle?.excerpt === "string"
-    ? { text: quelle.excerpt, herkunft: quelle.url, abgerufenAm: quelle.at }
+    ? { text: quelle.excerpt, herkunft: quelle.url, gespeichertAm: quelle.at }
     : undefined;
 }
 
@@ -834,6 +935,20 @@ export async function loeseFundstelleAuf<T extends AufloesbaresObjekt>(
     return ohneInhalt("nicht_zugaenglich", verweis.koId);
   }
   const link = quellenLink(ko.id);
+  // Ben nacharbeit-4 (K4/K5): bei einer externen Fundstelle zählt der AKTUELLE Zustand des
+  // konkreten Ankers. Ein Löschvermerk der Herkunft (`sourceRemovedAt`, gesetzt ohne neue Fassung)
+  // macht den gespeicherten Auszug ungültig — er wird nicht mehr ausgeliefert.
+  if (verweis.art === "extern") {
+    const anker = (ko.sources ?? []).find((s) => s.id === verweis.quelleId);
+    if (anker?.sourceRemovedAt) {
+      return {
+        zustand: "herkunft_entfernt",
+        hinweis: FUNDSTELLEN_HINWEIS.herkunft_entfernt,
+        koId: ko.id,
+        link,
+      };
+    }
+  }
   if (verweis.koVersion > ko.version) {
     return ohneInhalt("beschaedigt", verweis.koId);
   }
@@ -863,7 +978,11 @@ export async function loeseFundstelleAuf<T extends AufloesbaresObjekt>(
       originalAutor: ko.originalAuthor,
       link,
       ...(verweis.art === "extern"
-        ? { herkunft: gebunden.herkunft ?? null, abgerufenAm: gebunden.abgerufenAm ?? "" }
+        ? {
+            herkunft: gebunden.herkunft ?? null,
+            gespeichertAm: gebunden.gespeichertAm ?? "",
+            abgerufenAm: null,
+          }
         : {}),
     };
   }
@@ -905,14 +1024,21 @@ export interface PruefPostenFundstelle {
   readonly fingerabdruck: string;
   readonly wortbezug: boolean;
   readonly herkunft?: string | null;
-  readonly abgerufenAm?: string;
+  readonly gespeichertAm?: string;
+  readonly abgerufenAm?: string | null;
+  readonly vollstaendigkeit?: ExterneFundstelle["vollstaendigkeit"];
 }
 
 export interface PruefPosten {
   readonly aussageId: string;
   readonly teilId: string;
-  readonly aussage: string;
-  readonly teil: string;
+  /**
+   * Der Aussagetext — `null`, wenn er an eine öffentliche Prüf-KI ginge und nicht JEDER Teil dieser
+   * Aussage freigegeben ist (gemischte Aussagen: ein gesperrter Teil sperrt den Gesamttext).
+   */
+  readonly aussage: string | null;
+  /** Der Teiltext — `null`, wenn er an eine öffentliche Prüf-KI ginge und nicht freigegeben ist. */
+  readonly teil: string | null;
   readonly zustand: "pruefbar" | "unbelegt" | "nicht_pruefbar";
   readonly grund?: "keine_fundstelle" | "keine_freigabe_externe_verarbeitung";
   readonly fundstellen: readonly PruefPostenFundstelle[];
@@ -935,10 +1061,17 @@ function postenZeile(p: PruefPosten): string {
 /**
  * Baut die Eingabe der Referenz-Prüfung — und versendet NICHTS.
  *
- * Nur aufgelöste Auszüge gehen hinein; Modellangaben (Links, unauflösbare Marken) nie. Für eine
- * öffentliche Prüf-KI zählt bei jeder internen Fundstelle die bestehende Freigabe für externe
- * Verarbeitung (`externeVerarbeitungErlaubt`, vom Aufrufer aus der geltenden Regel); fehlt sie,
- * wird der Posten sichtbar `nicht_pruefbar` und trägt KEINEN Inhalt dieser Quelle.
+ * Nur aufgelöste Auszüge gehen hinein; Modellangaben (Links, unauflösbare Marken) nie.
+ *
+ * Für eine ÖFFENTLICHE Prüf-KI (Ben nacharbeit-4): Aussage- und Teiltexte sind selbst Inhalt der
+ * internen Quellen — bei einer wörtlichen Antwort sind sie der Quelltext. Deshalb gilt die
+ * bestehende Freigabe für externe Verarbeitung (`externeVerarbeitungErlaubt`, vom Aufrufer aus der
+ * geltenden Regel) für den TEXT ebenso wie für die Auszüge:
+ *   · ein Teil geht nur hinaus, wenn er Fundstellen hat und JEDE davon freigegeben ist — sonst ist
+ *     der Posten lokal `nicht_pruefbar` bzw. `unbelegt` und trägt `teil: null`;
+ *   · der Aussagetext geht nur hinaus, wenn das für ALLE Teile der Aussage gilt — eine gemischte
+ *     Aussage trägt `aussage: null`, auch an ihren freigegebenen Teilen.
+ * Für eine interne Prüf-KI bleibt alles, wie es ist. Versendet wird hier nichts.
  */
 export function pruefPaket(
   beleg: AussagenBeleg,
@@ -947,16 +1080,26 @@ export function pruefPaket(
 ): PruefPaket {
   const posten: PruefPosten[] = [];
   for (const a of beleg.aussagen) {
-    for (const t of a.teile) {
-      const basis = { aussageId: a.aussageId, teilId: t.teilId, aussage: a.text, teil: t.text };
+    const teilFrei = a.teile.map(
+      (t) =>
+        !pruefer.oeffentlich ||
+        (t.fundstellen.length > 0 &&
+          t.fundstellen.every((f) => externeVerarbeitungErlaubt(f.koId))),
+    );
+    const aussageFrei = teilFrei.every((frei) => frei);
+    for (const [i, t] of a.teile.entries()) {
+      const frei = teilFrei[i] === true;
+      const basis = {
+        aussageId: a.aussageId,
+        teilId: t.teilId,
+        aussage: aussageFrei ? a.text : null,
+        teil: frei ? t.text : null,
+      };
       if (t.fundstellen.length === 0) {
         posten.push({ ...basis, zustand: "unbelegt", grund: "keine_fundstelle", fundstellen: [] });
         continue;
       }
-      const erlaubt = t.fundstellen.filter(
-        (f) => !pruefer.oeffentlich || externeVerarbeitungErlaubt(f.koId),
-      );
-      if (erlaubt.length === 0) {
+      if (!frei) {
         posten.push({
           ...basis,
           zustand: "nicht_pruefbar",
@@ -968,7 +1111,7 @@ export function pruefPaket(
       posten.push({
         ...basis,
         zustand: "pruefbar",
-        fundstellen: erlaubt.map((f) => ({
+        fundstellen: t.fundstellen.map((f) => ({
           fundstelleId: f.fundstelleId,
           art: f.art,
           koId: f.koId,
@@ -978,7 +1121,14 @@ export function pruefPaket(
           kontextNach: f.kontextNach,
           fingerabdruck: f.fingerabdruck,
           wortbezug: f.wortbezug,
-          ...(f.art === "extern" ? { herkunft: f.herkunft, abgerufenAm: f.abgerufenAm } : {}),
+          ...(f.art === "extern"
+            ? {
+                herkunft: f.herkunft,
+                gespeichertAm: f.gespeichertAm,
+                abgerufenAm: f.abgerufenAm,
+                vollstaendigkeit: f.vollstaendigkeit,
+              }
+            : {}),
         })),
       });
     }

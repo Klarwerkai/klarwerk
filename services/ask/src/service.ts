@@ -49,7 +49,12 @@ import {
   type ZuschnittErgaenzung,
   schneideAntwortZu,
 } from "./antwort-zuschnitt";
-import { type AussagenBeleg, type BindungsQuelle, bindeAussagen } from "./aussage-fundstellen";
+import {
+  type AussagenBeleg,
+  type BindungsQuelle,
+  bindeAussagen,
+  volltextDerFassung,
+} from "./aussage-fundstellen";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
@@ -1098,6 +1103,10 @@ export class AskService {
     const gelernt = await this.halbwertszeiten?.();
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
+    // REF-01: der Volltext JE FASSUNG, wie ihn genau diese Lesung gesehen hat. Die Fundstellen
+    // binden ihn nur, wenn die Projektion zur Fassung des Objekts aus der Vorauswahl gehört — sonst
+    // käme ein Auszug aus Fassung N+1 an Fassung N (Revision zwischen beiden Lesungen).
+    const volltexte = new Map<string, { fassung: number; text: string }>();
     const refs: KnowledgeRef[] = await Promise.all(
       prefiltered.map(async (ko) => {
         // JOB 2614 D3 (G27-Anschluss, JOB 1565 Weg A): der DOKUMENTTEXT reist in die Refs — aus der
@@ -1110,6 +1119,9 @@ export class AskService {
         // bereits davor, und die Projektion einer hier noch enthaltenen Quelle ist dieselbe
         // Wahrheit, die auch der Kandidatenweg (`findCandidates`) gelesen hat.
         const projektion = await this.suchprojektion(ko.id, "suchprojektion", kiBeginn);
+        if (projektion && typeof projektion.koVersion === "number") {
+          volltexte.set(ko.id, { fassung: projektion.koVersion, text: projektion.bodyText });
+        }
         return {
           id: ko.id,
           title: ko.title,
@@ -1384,11 +1396,13 @@ export class AskService {
     // D5: nach dem Warten auf die Volltext-Blicke oben — vor dem Beleg, der die Antwort ablegt.
     this.pruefeKiSperre("ergebnis", kiBeginn);
     const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer, kiBeginn);
-    // REF-01: die Aussage-zu-Passagen-Bindung. Grundlage ist der QUELLENGEBUNDENE Text (ohne die
-    // Wörterbucherklärungen des Zuschnitts — sie stammen nicht aus Wissensquellen) und genau die
-    // Objekte dieses Laufs: Fassung und Belegstellen aus `prefiltered`, der Volltext aus denselben
-    // Refs, die an den Antwortweg gingen. Keine Neusuche, kein Modellaufruf.
-    const bindungsText = antwortZuschnitt?.quellengebundenerText ?? result.answer;
+    // REF-01: die Aussage-zu-Passagen-Bindung. Grundlage ist der VOLLSTÄNDIG AUSGELIEFERTE Text —
+    // samt der Wörterbucherklärungen des Zuschnitts. Sie sind Teil der Antwort; was keine Fundstelle
+    // in einer tragenden Quelle hat, steht ausdrücklich als Deckungslücke da, und eine geänderte
+    // Erklärung ändert den Antwortfingerabdruck. Objekte genau dieses Laufs: Fassung und
+    // Belegstellen aus `prefiltered`, der Volltext nur aus der Projektion DERSELBEN Fassung
+    // (`volltexte`). Keine Neusuche, kein Modellaufruf, kein zusätzlicher Lesevorgang.
+    const bindungsText = result.answer;
     const aussagenFeld: { aussagen?: AussagenBeleg } =
       result.answered && typeof bindungsText === "string" && bindungsText.trim() !== ""
         ? {
@@ -1404,7 +1418,7 @@ export class AskService {
                     version: ko.version,
                     originalAuthor: ko.originalAuthor,
                     statement: ko.statement,
-                    bodyText: refs.find((r) => r.id === ko.id)?.bodyText,
+                    bodyText: volltextDerFassung(volltexte.get(ko.id), ko.version),
                     sources: ko.sources,
                   },
                 ]),
