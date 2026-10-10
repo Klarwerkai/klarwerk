@@ -77,6 +77,7 @@ import type {
   ImportRunStartResponse,
   ImportSelectCriteria,
   ImportSelectResponse,
+  InterviewResearchPoint,
   InterviewResult,
   KandidatenLesevariante,
   KnowledgeCheckResult,
@@ -1028,18 +1029,32 @@ export const endpoints = {
         ...provenanceFields(provenance),
       }),
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: `guide.tree` schaltet den Fragebaum mit Restlückenwert
+    // zu, `guide.topic` das Lücken-Interview (drei Fragen zu einem festen Thema).
     interview: (
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
       // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
       imageContext?: string,
+      guide?: {
+        tree?: boolean;
+        topic?: string | null;
+        // R-0088: die Recherche des ersten Turns — zurückgereicht, damit nur einmal recherchiert wird.
+        research?: readonly InterviewResearchPoint[] | null;
+        // R-0088: ausdrücklicher Wunsch nach Quellenrecherche (Knopf „Zum Thema recherchieren").
+        recherchieren?: boolean;
+      },
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
         ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
+        ...(guide?.tree ? { tree: true } : {}),
+        ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
+        ...(guide?.research && guide.research.length > 0 ? { research: guide.research } : {}),
+        ...(guide?.recherchieren ? { recherchieren: true } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
