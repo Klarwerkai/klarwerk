@@ -176,6 +176,8 @@ const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
 // produkt:20261007:interner-chat: nachgeladen wie jede andere Seite.
 const Chat = lazy(() => import("./pages/Chat").then((m) => ({ default: m.Chat })));
+// produkt:20261007:templates-default: Vorlagen, Standard, Space-Vorgaben, Begriffspflege.
+const Vorlagen = lazy(() => import("./pages/Vorlagen").then((m) => ({ default: m.Vorlagen })));
 const Start = lazy(() => import("./pages/Start").then((m) => ({ default: m.Start })));
 const Capital = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Capital })));
 const GraphView = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.GraphView })));
@@ -393,6 +395,11 @@ export function AppRoutes(): JSX.Element {
             Gesprächsknopf an Artikel und Space und Klaras „Als Nachricht entwerfen". */}
         <Route path="/chat" element={<Chat />} />
         <Route path="/chat/:id" element={<Chat />} />
+        {/* produkt:20261007:templates-default: Vorlagen. Ohne `Guarded`, wie `/spaces`: die Türen
+            dahinter fordern ihr Recht am Server (`ko.read`, `ko.create`, Spacezuständigkeit,
+            `users.manage` für Verwaltung und Begriffspflege, `vorlagen-routes.ts`). Erreichbar aus
+            der Vorlagenwahl im Editor und aus der Verwaltung („Spaces und Wissensordnung"). */}
+        <Route path="/vorlagen" element={<Vorlagen />} />
         {/* R-0347: Fragen an ein hochgeladenes Dokument. Ohne `Guarded` und ohne Server-Tür: die
             Fläche liest die Datei im Browser und sendet nichts (`pages/Dokumentfragen.tsx`).
             Erreichbar von der Fragen-Seite; im Menü markiert die Präfixregel „Fragen". */}

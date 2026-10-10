@@ -521,6 +521,7 @@ PFLICHTTABELLEN=(
   ko_mitgelesen
   chat_gespraeche
   chat_nachrichten
+  vorlagen_fassungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

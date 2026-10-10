@@ -622,6 +622,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "vorlagen",
+    name: "Vorlagen, Standards und Space-Vorgaben",
+    inhalt:
+      "Fassungen eigener Vorlagen (Name, Felder, Geltung, Eigentümerkennung), je Konto der gewählte persönliche Standard, Space-Vorgaben, je Beitrag die verwendete Vorlagenfassung und gepflegte Begriffe, jeweils mit ändernder Kennung und Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen der Eigentümerin, der ändernden Person und des Kontos mit persönlichem Standard.",
+    ablage: { ort: DATENBANK, tabellen: ["vorlagen_fassungen"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg — Vorlagen werden ausgemustert, jede Fassung bleibt zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Eigene Vorlagen und der persönliche Standard sind unter „Vorlagen“ einsehbar.",
+    },
+  },
+  {
     id: "verantwortungnachfolge",
     name: "Nachfolge bei Befristung",
     inhalt:

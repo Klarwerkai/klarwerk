@@ -215,6 +215,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // TABLE IF NOT EXISTS` (mit Unique-Schlüsseln) und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "CHAT_SCHEMA", risiko: "ADDITIV" },
+  // produkt:20261007:templates-default: die Fassungen der Vorlagen. ADDITIV, nachgezählt: ein
+  // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "VORLAGEN_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

@@ -8,6 +8,7 @@ import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import { SpaceZeile } from "../components/SpaceZeile";
+import { VorlagenHerkunft } from "../components/VorlagenHerkunft";
 import { BibliothekFlaeche } from "../components/bibliothek/BibliothekFlaeche";
 import { Card, SectionLabel } from "../components/ui";
 import { STELLE_PARAM } from "../lib/belegstelle";
@@ -204,6 +205,8 @@ export function KnowledgeDetail(): JSX.Element {
         nachDemInhalt={
           <>
             <SpaceZeile koId={id} />
+            {/* produkt:20261007:templates-default: Vorlage und Fassung, mit der er entstand. */}
+            <VorlagenHerkunft koId={id} />
             <div className="mt-3">
               <ChatGespraechKnopf ziel={{ art: "artikel", koId: id }} />
             </div>

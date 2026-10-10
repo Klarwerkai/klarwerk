@@ -142,6 +142,10 @@ export interface ExternalResult {
   url: string;
   snippet: string;
   provider: string;
+  /** REF-01: wann der Server diesen Treffer abgerufen hat. */
+  abgerufenAm?: string;
+  /** REF-01: der signierte Abrufbeleg des Servers — beim Anhängen unverändert zurückgeben. */
+  abrufbeleg?: string;
 }
 
 // SCRUM-414: Admin-Regler „externe Wissensabfrage" (4 Stufen).
@@ -1347,6 +1351,9 @@ export interface DraftPayload {
     topic?: string;
     confirmed?: boolean;
   };
+  // produkt:20261007:templates-default: Vorlage und Fassung, mit der der Entwurf geschrieben wird,
+  // und der gewählte Space (Spiegel von services/capture/src/types.ts). `null` = freie Eingabe.
+  vorlage?: { id: string; version: number; spaceId?: string | null } | null;
 }
 
 export interface Draft {

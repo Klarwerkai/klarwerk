@@ -715,6 +715,30 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // REF-01: die Fundstellenauflösung ist ein LESENDER POST (Kennungen im Rumpf, kein Schreiben).
+  // Eine erfundene Kennung ergibt nach dem Tor für jede Rolle dieselbe inhaltslose Auskunft
+  // „nicht zugänglich" — die Tür ist registriert und gemessen, ohne Bestand vorauszusetzen.
+  {
+    gruppe: "askRoutes",
+    methode: "POST",
+    pfad: "/api/ask/fundstellen",
+    belegstelle: "services/app/src/routes/ask-routes.ts:1356",
+    tor: "ko.read",
+    payload: {
+      fundstellen: [
+        {
+          art: "intern",
+          koId: "gibt-es-nicht",
+          koVersion: 1,
+          feld: "statement",
+          start: 0,
+          ende: 1,
+          fingerabdruck: `sha256:${"0".repeat(64)}`,
+        },
+      ],
+    },
+    erwartet: NUR_LESEN,
+  },
   // R-1663 / R-2178: hinter demselben Schalter wie `GET /api/analytics/expertise` (an dieser Bühne
   // gesetzt). Eine erfundene Kennung ergibt nach dem Tor die fachliche 404 — die Tür ist registriert.
   {
@@ -1994,6 +2018,15 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/qualitaetsaufgaben/rueckmeldungen/M-ABNAHME0000/uebernehmen",
     route: "/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen",
     belegstelle: "services/app/src/routes/qualitaetsaufgaben-routes.ts:36",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // ADMIN-11: Wissenskennzahlen auf denselben Quellen wie die Qualitätsaufgaben — Verwaltung.
+    gruppe: "wissenskennzahlenRoutes",
+    methode: "GET",
+    pfad: "/api/wissenskennzahlen",
+    belegstelle: "services/app/src/routes/wissenskennzahlen-routes.ts:22",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
