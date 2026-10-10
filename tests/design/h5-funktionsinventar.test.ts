@@ -27,6 +27,7 @@ process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 import {
   START_PANEL_IDS,
   type StartPanelId,
+  startPanelLabelKey,
 } from "../../apps/web/src/components/start/startPunkte";
 import i18n from "../../apps/web/src/i18n";
 import { EINSTIEGE } from "../../apps/web/src/lib/einstiege";
@@ -68,7 +69,8 @@ const BEWEIS: Record<StartPanelId, string> = {
   kapital: t("funke.capital.title"),
   kollision: t("kollision.start.title"),
   stufe2: t("start.stufe2.title"),
-  hilfe: t("shelp.cycle.title"),
+  // R-0908: „Der Wissenskreis" statt „Der Knowledge-OS-Kreis" (`texte/fachwort.ts`).
+  hilfe: t("fachwort.kreis.titel"),
 };
 
 type BrowserFn = (arg: unknown) => unknown;
@@ -335,13 +337,15 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
       fn(SICHTBAR),
       '[data-testid="h5-start-menu-liste"]',
     );
+    // Die Beschriftung kommt aus DERSELBEN produktiven Funktion wie auf der Seite — seit N-0042
+    // (Aufnahme gesamt-hilfen) trägt „Klara in Word" einen eigenen Schlüssel mit „Vorschau".
     for (const id of START_PANEL_IDS) {
-      expect(beschriftungen).toContain(t(`start.menu.${id}`));
+      expect(beschriftungen).toContain(t(startPanelLabelKey(id)));
     }
   });
 
   for (const id of START_PANEL_IDS) {
-    it(`I2-${id} · der Punkt „${t(`start.menu.${id}`)}“ oeffnet ein Blatt, das seinen Inhalt WIRKLICH traegt`, async () => {
+    it(`I2-${id} · der Punkt „${t(startPanelLabelKey(id))}“ oeffnet ein Blatt, das seinen Inhalt WIRKLICH traegt`, async () => {
       expect(fehler).toBeNull();
       await aufStart();
       const s = seite as Seite;

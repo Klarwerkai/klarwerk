@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import type { Gap } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
-import { knowledgeCapital, openGapsView } from "../../apps/web/src/lib/funke";
+import { knowledgeCapital } from "../../apps/web/src/lib/funke";
 import { computeMyImpact } from "../../services/app/src/impact";
 
 describe("FUNKE F1: computeMyImpact (Zitat-/Danke-Zähler, pure)", () => {
@@ -53,23 +53,9 @@ function gap(overrides: Partial<Gap>): Gap {
   };
 }
 
-describe("FUNKE F3: openGapsView (Lücken-Liste aus echten Gaps)", () => {
-  it("nur OFFENE Lücken, Priorität hoch→mittel→niedrig, innerhalb neueste zuerst, ehrlicher Rest-Zähler", () => {
-    const gaps = [
-      gap({ id: "alt-mittel", priority: "mittel", createdAt: "2026-07-01T00:00:00.000Z" }),
-      gap({ id: "neu-mittel", priority: "mittel", createdAt: "2026-07-22T00:00:00.000Z" }),
-      gap({ id: "hoch", priority: "hoch" }),
-      gap({ id: "zu", status: "geschlossen", priority: "hoch" }),
-      gap({ id: "niedrig", priority: "niedrig" }),
-    ];
-    const view = openGapsView(gaps, 3);
-    expect(view.total).toBe(4); // die geschlossene zählt nicht
-    expect(view.groups.map((g) => g.priority)).toEqual(["hoch", "mittel"]);
-    expect(view.groups[1]?.items.map((g) => g.id)).toEqual(["neu-mittel", "alt-mittel"]);
-    expect(view.hidden).toBe(1); // „niedrig" fiel unter den Deckel — ehrlich ausgewiesen
-    expect(openGapsView([]).total).toBe(0);
-  });
-});
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Der Block zu F3 `openGapsView` ist mit dem Baustein
+// entfallen — er hatte keinen Produktleser; die Fläche zeigt die offenen Lücken als Zahl
+// (`OpenGapsSummary`), die `knowledgeCapital` unten mitzählt.
 
 describe("FUNKE F5: knowledgeCapital (nur echte Bestandszahlen)", () => {
   it("gesichert/validiert/Themenfelder(validiert)/Wissensträger/offene Lücken", () => {

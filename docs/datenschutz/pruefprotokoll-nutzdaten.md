@@ -37,6 +37,7 @@ wiederholt.
 | `answer.helpful` | `koTitle`, `koAuthor`, `koOriginalAuthor`, `via` (nur `"wissensobjekt"` beim Klick am Objekt) | M, K |
 | `gap.created` | — | — (gemessen: leer; Fragetext steht nur in der Lücke selbst) |
 | `gap.priority-changed` | — | — |
+| `ask.zweitmeinung` (R-0305/R-1099, nur auf Anforderung) | `status`, und entweder `abweichend`, `abweichungen` (Merkmalsnamen, kommagetrennt), `ersteStufe`, `zweiteStufe` (`cloud`/`local`/`deterministic`) oder `grund` | Z — **kein Frage- oder Antworttext, kein Anbieter- oder Modellname**; `target` ist die tragende Quelle (gemessen: `tests/zweitmeinung/fragedienst.test.ts`, `route-und-protokoll.test.ts`) |
 
 ### Wissensobjekte (`services/knowledge-object`, `services/validation`, `services/lifecycle`)
 
@@ -44,11 +45,15 @@ wiederholt.
 | --- | --- | --- |
 | `ko.created`, `ko.commented`, `ko.attached`, `ko.attachment-updated`, `ko.detached`, `ko.source-added`, `ko.source-removed` | — | — |
 | `ko.document-appended` | `created`/`operationId`, `version`, `revised`, `objectId`, `documents`/`sources` (Anzahl) | K, Z |
+| `ko.office-uebernommen` (Office im Artikel, neben `ko.revised`) | `version`, `anhangId`, `vorherObjectId`, `objectId`, optional `restoredFrom` | K, M — **kein Dokumentinhalt, kein Dateiname** |
 | `ko.create-rollback-failed` | `at`, `failedStep`, `rollbackFailure` (nur Fehlerklasse/-code), `marked`, `koRemoved`, `searchProjection*` | Z, M |
 | `ko.change-rolled-back` | Nutzlast des zurückgenommenen Schritts + `rolledBackSeqs` | wie Ursprung, K |
 | `ko.confidentiality` | `level`, `previous`, `downgrade` | Z |
-| `ko.ownership` | `owner`, `reviewers`, `validators`, `previousOwner` | K (Nutzer-Ids) |
+| `ko.ownership` | `owner`, `ownerRole`, `reviewers`, `validators`, `previousOwner`, `previousOwnerRole`; bei Übergabe im Papierkorb zusätzlich `imPapierkorb` | K (Nutzer-Ids; die Rolle ist eine Funktionsbezeichnung), Z |
 | `ko.ownership-role` | `role`, `added` | K |
+| `ko.ownership-released` | `previousOwner` | K |
+| `ko.owner-validated` | `koVersion` | Z |
+| `lifecycle.handover` (Ziel: Kennung der ausscheidenden Person) | `from`, `to`, `transferred` (Anzahl je Art), `failed` (Art und Kennung, kein Inhalt) | K, Z |
 | `ko.purged` | `reason` (geschlossene Menge) + Zusatz des Aufrufers | Z |
 | `ko.restored`, `ko.deleted` | `trash` / leer + Beitrag | Z |
 | `ko.revised` | `version`, ggf. `proposalId` | Z, K |
@@ -57,8 +62,13 @@ wiederholt.
 | `ko.category-changed`, `ko.tags-changed` | `grund`, `vorher`/`nachher` (Kategorie, Schlagworte), `metadataRevision`, `metadataChanged`, `category` | M |
 | `ko.domain-changed` | `vorher`, `nachher` (Fachgebiet, ≤ 120 Zeichen) | M |
 | `ko.geltung-changed` | `vorher`, `nachher` (Geltung: Ebene, Werk, Schicht, Rolle — je ≤ 80 Zeichen; nachgetragen mit `gesamt-standortwissen`) | M |
+| `ko.freshness-confirmed` | `version`, `verantwortlich` (ob der Verantwortliche bestätigt hat; nachgetragen mit `gesamt-wissen-frische`) | Z |
+| `ko.oeffentlich-changed` | `vorher`, `nachher` (Schutzbedarf „öffentlich"; `gesamt-wissen-frische`) | Z |
+| `lifecycle.revalidation-requested` | `grund` (anlage/nachbar/bibliothek), ggf. `assetRef` (Anlagenkennung) und `ausgeloestVon` (auslösendes Objekt); Ziel ist das markierte Objekt (`gesamt-wissen-frische`, R-1635) | Z, M |
 | `ko.conflict-review` | `previousStatus`, `previousTrust`, `trust`, `reason` | Z |
 | `ko.author-transferred` | `author` | K |
+| `verantwortung.uebergabe` (Ziel: bisherige Person; `services/app/src/routes/verantwortung-routes.ts`) | `uebertragen`, `bereitsErledigt`, `abgelehnt`, `fehlgeschlagen`, `verbleibt`, `nachfolger` (je `an` + `anzahl`) | Z, K — keine Titel; je Beitrag steht zusätzlich `ko.ownership` |
+| `vermaechtnis.erzeugt` (Ziel: die Person des Buchs; `services/app/src/routes/verantwortung-routes.ts`) | `aufgenommen`, `ausgelassen` (`papierkorb`, `nichtEinsehbar`, `vertraulich`, `nichtValidiert`) | Z — keine Titel, kein Buchinhalt (nachgetragen mit `gesamt-wissensvermaechtnis`) |
 | `ko.source-removed-in-origin`, `ko.source-restored-in-origin` | `provider`, `externalId`, `at`/`removedAt` | M, K |
 | `ko.source-attachments-synced` | `provider`, `externalId`, `added`, `removed` | M, K |
 | `ko.source-restriction-synced` | `provider`, `externalId`, `groups`/`users` (nur Anzahl) | M, Z |
@@ -66,6 +76,7 @@ wiederholt.
 | `ko.returned-to-owner`, `ko.returned-to-author` | `verdict`, `author`, `responsible`, `responsibleKind`, `koVersion` | Z, K |
 | `ko.assigned` | `userIds` | K |
 | `ko.revalidated` | `pendingCleared`, `version` | Z |
+| `ko.veroeffentlicht` | `vermerkId`, `fassung`, `art`, `meldung` (still/normal/hervorgehoben), `empfaenger` (nur Anzahl) | K, Z — Empfängerkennungen stehen weder hier noch am Wissensobjekt, sondern nur in der eigenen Zustellungstabelle `veroeffentlichung_zustellungen` |
 | `ko.create-followup-failed` | `step`, `reason` (nur Fehlerklasse) | Z |
 | `validation.defaultNeeded.set` | `value` | Z |
 | Dublette bestätigt (`DUBLETTE_BESTAETIGT_AUDIT`) | `overlapIds`, `weg` | K, Z |
@@ -83,6 +94,8 @@ wiederholt.
 | `overlap.superseded`, Schließen/Trennen/Verknüpfen | `koIds`, `resolutionReason` bzw. `koId` | K, Z |
 | **`overlap.in-progress`** | **`note`**, `koIds` | **F** — siehe Befund 1 |
 | `overlap.settings.set` | `minConfidence` | Z |
+| `pruefung.hintergrundlauf` (`services/app/src/hintergrundpruefung.ts`) | `nachgeholt`, `abgeglichen`, `fehlgeschlagen`, `offen`, `vergleiche`, `vergleicheKonflikt`, `vergleicheDublette`, `vergleicheHeute`, `tagesbudget`, ggf. `abbruch` — nur Zähler, Ziel `bestand` | Z |
+| `pruefung.hintergrundlauf.verbrauch` (ebd., Reservierung vor und Abrechnung nach jedem Objektlauf für das Tagesbudget) | `tag`, `art` (`reservierung`/`abrechnung`), `reservierung` (Zufallskennung, kein Objektbezug), `vergleiche`, bei Abrechnung `konflikt`, `dublette` — Ziel `bestand` | Z |
 
 Die Begründung und die Zitate eines automatisch erkannten Konflikts (`rationale`, `quotes`) stehen
 am Konflikt, **nicht** im Protokoll.
@@ -102,9 +115,14 @@ am Konflikt, **nicht** im Protokoll.
 | `examples.load`, `demoPackage.*` | Zähler | Z |
 | `upload.limits.set` | Grenzwerte | Z |
 | `branding.set` | `vorherProfil`, `vorherAktiv`, `profil`, `aktiv`, `version` | Z |
+| `i18n.text-set`, `i18n.text-reset`, `i18n.language-set` | `sprache`, `schluessel` (nur bei Texten) | M — der gepflegte Text steht **nicht** im Protokoll (nachgetragen mit R-1034) |
 | `begriff.angelegt`, `begriff.geaendert` | `version`/`vorherVersion`, `geltungsbereich` | Z, M — der Begriffstext steht **nicht** im Protokoll |
+| `unternehmensprofil.geaendert` | `vorherVersion`, `version`, `akzent`, `nameGeaendert`, `logoGeaendert`, `uebernommenAus` | Z — weder Name noch Logodatei stehen im Protokoll |
+| `richtlinie.veroeffentlicht` | `fassung`, `anforderung`, `rollen`, `gueltigAb`, `betroffen`, ggf. `erneut`, `bisherigeHandlungen` | Z, M — der Richtlinientext steht **nicht** im Protokoll |
+| `richtlinie.handlung` | `fassung`, `handlung` (Akteur = die handelnde Person) | Z — dieselbe Angabe steht im Handlungsprotokoll der Richtlinie |
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
+| `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |
 | `audit.exported` | `count`, `headSeq`, `headHash` | Z |
 
 ### Konten und Anmeldung (`services/auth`)

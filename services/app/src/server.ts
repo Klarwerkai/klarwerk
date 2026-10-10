@@ -3,10 +3,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance } from "fastify";
 import { migrateAuthTokensAtRest } from "../../auth";
+import { WISSENSSPRINT_TAKT_MS } from "../../management";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { waehleWerksreset } from "./factory-reset";
+import { HINTERGRUNDLAUF_INTERVAL_MS, type HintergrundlaufBericht } from "./hintergrundpruefung";
+import { starteHintergrundpruefung } from "./hintergrundpruefung-start";
 import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
@@ -18,6 +21,13 @@ import { startfehlerZeile } from "./startfehler-zeile";
 import { assertPersistentStore, normalizeEnv } from "./storage-guard";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
+import {
+  WEBHOOKS_TAKT_ENV,
+  WissensereignisMelder,
+  ladeWebhookZiele,
+  resolveWebhookTaktMs,
+  starteWissensereignisMelder,
+} from "./wissensereignisse";
 
 // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
 const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
@@ -139,10 +149,14 @@ async function start(): Promise<void> {
   // R-0609 · Bens B13: der Aufräumlauf der Klara-Sitzungen (Nachtrag fehlender Endeinträge des
   // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
   let klaraAufraeumLauf: (() => Promise<number>) | undefined;
+  let hintergrundLauf: (() => Promise<HintergrundlaufBericht | null>) | undefined;
   const app = buildApp(services, {
     factoryReset,
     klaraAufraeumen: (lauf) => {
       klaraAufraeumLauf = lauf;
+    },
+    hintergrundpruefung: (lauf) => {
+      hintergrundLauf = lauf;
     },
   });
   await configureWebDelivery(app);
@@ -241,6 +255,18 @@ async function start(): Promise<void> {
     });
     app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
   }
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
+  // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
+  if (hintergrundLauf) {
+    starteHintergrundpruefung({
+      lauf: hintergrundLauf,
+      intervalMs: HINTERGRUNDLAUF_INTERVAL_MS,
+      log: { info: (t) => app.log.info(t), warn: (t) => app.log.warn(t) },
+    });
+    app.log.info(
+      `Hintergrundprüfung aktiv — Intervall ${Math.round(HINTERGRUNDLAUF_INTERVAL_MS / 60000)} min.`,
+    );
+  }
   // R-0466: die Aufbewahrungsfrist des Interaktionsgedächtnisses ist eine LÖSCHFRIST. Gelesen wird
   // ein abgelaufener Eintrag ohnehin nicht mehr; dieser Lauf entfernt ihn beim Start und danach im
   // Takt des Papierkorb-Sweeps endgültig aus der Ablage.
@@ -260,6 +286,52 @@ async function start(): Promise<void> {
     onSwept: gedaechtnisGeloescht("periodisch"),
     onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
   });
+  // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
+  // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,
+  // `wissenssprintLauf`). Intervall aus KLARWERK_WISSENSSPRINT_INTERVAL_MS, Vorgabe 15 min,
+  // Untergrenze 1 min (dieselbe Auslegung wie beim Papierkorb-Takt).
+  const sprintTakt = resolveTrashSweepIntervalMs(
+    process.env.KLARWERK_WISSENSSPRINT_INTERVAL_MS,
+    WISSENSSPRINT_TAKT_MS,
+  );
+  services.management.regelmaessigeAnalyseAktiv(sprintTakt);
+  startTrashSweepScheduler({
+    intervalMs: sprintTakt,
+    runSweep: () => services.management.wissenssprintLauf(),
+    onError: (error) => app.log.warn({ err: error }, "Lückenerkennung übersprungen"),
+  });
+  app.log.info(
+    `Lückenerkennung über den Reasoner aktiv — Takt ${Math.round(sprintTakt / 60000)} min.`,
+  );
+  // R-0710: Wissensereignisse an Fremdwerkzeuge (`wissensereignisse.ts`). Ohne gültiges Ziel in
+  // KLARWERK_WEBHOOKS läuft nichts — kein Takt, kein Protokolleintrag.
+  const webhooks = ladeWebhookZiele(process.env);
+  for (const fehler of webhooks.fehler) {
+    app.log.warn(`Webhook-Ziel verworfen: ${fehler}`);
+  }
+  if (webhooks.ziele.length > 0) {
+    // R-1349: derselbe Name wie im Modul (`WEBHOOKS_TAKT_ENV`), nicht eine zweite Schreibweise.
+    const melderTakt = resolveWebhookTaktMs(process.env[WEBHOOKS_TAKT_ENV]);
+    const melder = new WissensereignisMelder({
+      quellen: {
+        wissensobjekte: () => services.ko.list({}),
+        revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
+        offeneWidersprueche: () => services.conflicts.unresolved(),
+        wissensobjekt: (id) => services.ko.get(id),
+      },
+      audit: services.audit,
+      ziele: webhooks.ziele,
+      log: { warn: (t) => app.log.warn(t) },
+    });
+    starteWissensereignisMelder({
+      melder,
+      intervalMs: melderTakt,
+      onError: (error) => app.log.warn(`Wissensereignis-Abgleich übersprungen: ${String(error)}`),
+    });
+    app.log.info(
+      `Wissensereignis-Meldungen aktiv — ${webhooks.ziele.length} Ziel(e), Takt ${melderTakt / 1000} s.`,
+    );
+  }
 }
 
 start().catch((error) => {

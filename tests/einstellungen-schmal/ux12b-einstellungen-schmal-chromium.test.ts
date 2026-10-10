@@ -431,7 +431,9 @@ async function setzeSprache(sprache: Sprache): Promise<void> {
     fn("([schluessel, wert]) => { localStorage.setItem(schluessel, wert); return null; }"),
     [SPRACHE_STORAGE_KEY, sprache],
   );
-  await wechsle(stand, "/admin", '[data-einst="seite"]');
+  // ADMIN-01 (produkt:20261009): gemessen wird die Kontenfläche (Tastaturweg endet bei „Pedi");
+  // seit `/admin` die Startseite der Verwaltung ist, hat sie ihre eigene Adresse.
+  await wechsle(stand, "/admin?bereich=konten", '[data-einst="seite"]');
   await pruefeSprache(sprache);
 }
 
@@ -716,7 +718,7 @@ async function erwarteRot(
 
 describe("JOB 3175 UX-12c · unabhängige DE/EN-Einstellungen in Chromium", () => {
   beforeAll(async () => {
-    stand = await starte("/admin", '[data-einst="seite"]', 320, 740);
+    stand = await starte("/admin?bereich=konten", '[data-einst="seite"]', 320, 740);
   }, 240_000);
 
   afterAll(async () => {
