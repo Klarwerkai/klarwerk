@@ -997,6 +997,10 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Bestand einer Person — Titel nur für einsehbare Beiträge.",
   },
+  "GET /api/verantwortung/person/:id/vermaechtnis": {
+    urteil: "PRAEDIKAT",
+    grund: "Vermächtnis-Buch — Inhalt nur aus einsehbaren, nicht vertraulichen Beiträgen.",
+  },
   "GET /api/verantwortung/ungeklaert": {
     urteil: "KEIN_KO_INHALT",
     grund: "Anzahl je Person ohne aktive Verantwortung; keine Titel, keine Kennungen.",
