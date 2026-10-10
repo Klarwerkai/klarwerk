@@ -99,11 +99,25 @@ async function offenerFall(app: App, autor: Auth, kurator: Auth, koId: string, a
 }
 
 async function bestaetigen(app: App, autor: Auth, koId: string): Promise<number> {
+  // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4): eine offene Folgeprüfung wird nur
+  // mit ihrem angezeigten Stand abgeschlossen — derselbe Weg wie im Reiter „Erneut".
+  const uebersicht = await app.inject({
+    method: "GET",
+    url: "/api/lifecycle/folgepruefung",
+    headers: autor,
+  });
+  expect(uebersicht.statusCode, uebersicht.body).toBe(200);
+  const fall = (uebersicht.json() as { koId: string; stand: number; version: number }[]).find(
+    (f) => f.koId === koId,
+  );
   const res = await app.inject({
     method: "PUT",
     url: `/api/kos/${koId}`,
     headers: autor,
-    payload: { action: "revalidate" },
+    payload:
+      fall === undefined
+        ? { action: "revalidate" }
+        : { action: "revalidate", stand: fall.stand, fassung: fall.version },
   });
   expect(res.statusCode, res.body).toBe(200);
   return res.json().version as number;

@@ -816,7 +816,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Objekt, das der Aufrufer sehen darf — `sichtbareEintraege` gegen die übergebene Kennung, sonst
   // 404 wie am Leseweg darunter. Davor koppelte der Weg an jede, auch erfundene Kennung.
   "POST /api/lifecycle/couple": { protection: "ko.create", zeilenrecht: ["sichtbareEintraege"] },
-  "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
+  // produkt:20261010:aenderungsfolgen-sichtbar: markiert wird jedes gekoppelte Objekt, HINAUS geht
+  // nur die Teilmenge, die der Meldende sehen darf (`sichtbareEintraege`).
+  "POST /api/lifecycle/asset-changed": {
+    protection: "ko.validate",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht — dasselbe Tor wie
+  // `pending`, ein auslösender Eintrag nur, wenn auch er sichtbar ist.
+  "GET /api/lifecycle/folgepruefung": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
   // R-0554 / R-2128: Wissensübergabe beim Ausscheiden — Vorschau und Ausführung, nur Verwaltung.
   "POST /api/lifecycle/handover/preview": { protection: "users.manage" },
   "POST /api/lifecycle/handover": { protection: "users.manage" },

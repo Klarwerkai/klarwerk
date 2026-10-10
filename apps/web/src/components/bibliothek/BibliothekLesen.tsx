@@ -2823,8 +2823,21 @@ export function BibliothekLesen({
                       testId="bib-menue-revalidieren"
                       disabled={act.isPending}
                       onClick={() => {
-                        act.mutate({ action: "revalidate" });
-                        push("success", t("lib.revalidateDone"));
+                        // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4, K5): ohne
+                        // angezeigten Stand schließt dieser Weg KEINE offene Folgeprüfung — der
+                        // Server lehnt dann ab (409 `STAND_VERALTET`), und die Meldung führt in
+                        // den Reiter „Erneut". Die Quittung erst nach dem Erfolg.
+                        act.mutate(
+                          { action: "revalidate" },
+                          {
+                            onSuccess: () => push("success", t("lib.revalidateDone")),
+                            onError: (e) => {
+                              if (e instanceof ApiError && e.code === "STAND_VERALTET") {
+                                setErr(t("folgepruefung.bibliothekOffen"));
+                              }
+                            },
+                          },
+                        );
                         schliessen();
                       }}
                     >

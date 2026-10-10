@@ -14,13 +14,29 @@
 // nicht. Deshalb trägt „Noch gültig" unverändert diesen einen Weg (das tat der bisherige Knopf
 // desselben Namens auch), und „Erneut prüfen" führt auf den bereits vorhandenen Weg in den
 // Prüffluss (`revalidationCta`). Zwei Knöpfe mit demselben Serveraufruf wären eine Scheinfunktion.
+//
+// produkt:20261010:aenderungsfolgen-sichtbar — DIESELBE FLÄCHE, JETZT MIT DEM WARUM.
+// Je offenem Fall liefert `GET /api/lifecycle/folgepruefung` Anlass, Stand und Zuständigkeit. Die
+// Liste nennt darunter Grund, zuständige Person, Prüfstatus und Termin; die Karte nennt je Anlass,
+// WARUM der Eintrag betroffen ist (Kopplung, auslösender Eintrag, Änderungsbeleg, Fassung). „Noch
+// gültig" schickt den angezeigten Stand mit — ist inzwischen eine weitere Änderung eingegangen,
+// lehnt der Server ab (409) und der Fall bleibt offen. Ohne diese Auskunft (Ladefehler) bleibt der
+// bisherige Weg, und die Karte sagt das.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, HelpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useKos, useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
+import {
+  useFolgepruefung,
+  useKos,
+  useLearningPath,
+  useLearningProgress,
+  useLifecyclePending,
+} from "../api/hooks";
+import type { FolgepruefungsAnlass, FolgepruefungsFall } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 import { EmptyStateCtas, leerzustandsZeile } from "../components/EmptyStateCtas";
@@ -64,6 +80,10 @@ export function Lifecycle(): JSX.Element {
 
   const query = useLifecyclePending();
   const kos = useKos();
+  const folge = useFolgepruefung();
+  const faelle = new Map<string, FolgepruefungsFall>(
+    (folge.data ?? []).map((fall) => [fall.koId, fall]),
+  );
   const path = useLearningPath(role);
   const pathId = path.data?.id;
   const progress = useLearningProgress(pathId);
@@ -77,21 +97,59 @@ export function Lifecycle(): JSX.Element {
     id: string;
     title: string;
     found: boolean;
+    stand?: number;
   } | null>(null);
   const confirm = useMutation({
-    mutationFn: ({ id }: { id: string; title: string; found: boolean }) =>
-      endpoints.ko.act(id, { action: "revalidate" }),
+    // produkt:20261010:aenderungsfolgen-sichtbar: mit Stand, sobald er bekannt ist.
+    // Nacharbeit 6 (Ben, K5): mit dem Stand reist die angezeigte Inhaltsfassung.
+    mutationFn: ({
+      id,
+      stand,
+      fassung,
+    }: {
+      id: string;
+      title: string;
+      found: boolean;
+      stand?: number;
+      fassung?: number;
+    }) =>
+      endpoints.ko.act(
+        id,
+        stand === undefined || fassung === undefined
+          ? { action: "revalidate" }
+          : { action: "revalidate", stand, fassung },
+      ),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: ["lifecycle"] });
-      setLastRevalidated({ id: vars.id, title: vars.title, found: vars.found });
+      setLastRevalidated({
+        id: vars.id,
+        title: vars.title,
+        found: vars.found,
+        ...(vars.stand !== undefined ? { stand: vars.stand } : {}),
+      });
     },
     // R-0953 (Bestandsabgleich, Nacharbeit 4): der Erfolg hat seine Quittung oben; der Fehler
     // blieb bis hierher still.
-    onError: () => push("error", t("lcy.toast.revalidateFailed")),
+    // produkt:20261010:aenderungsfolgen-sichtbar: ein veralteter Stand ist kein Störfall — die
+    // Meldung sagt, was geschah, und die Liste lädt den neuen Stand.
+    onError: (error) => {
+      // Nacharbeit 6: auch eine inzwischen überarbeitete Inhaltsfassung (`KO_STALE`) ist ein
+      // veralteter Stand — dieselbe Meldung, dasselbe Neuladen.
+      if (
+        error instanceof ApiError &&
+        (error.code === "STAND_VERALTET" || error.code === "KO_STALE")
+      ) {
+        void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+        push("error", t("folgepruefung.standVeraltet"));
+        return;
+      }
+      push("error", t("lcy.toast.revalidateFailed"));
+    },
   });
 
   // SCRUM-146: Asset-Change-Auslöser → markiert gekoppelte KOs „prüfen".
   const [assetRef, setAssetRef] = useState("");
+  const [aenderung, setAenderung] = useState("");
   const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
     if (note === null) {
@@ -101,11 +159,21 @@ export function Lifecycle(): JSX.Element {
     return () => window.clearTimeout(timer);
   }, [note]);
   const assetChanged = useMutation({
-    mutationFn: (ref: string) => endpoints.lifecycle.assetChanged(ref),
+    // produkt:20261010:aenderungsfolgen-sichtbar: der optionale Änderungsbeleg unterscheidet eine
+    // weitere Änderung von der wiederholten Meldung derselben.
+    mutationFn: (ref: string) =>
+      aenderung.trim().length > 0
+        ? endpoints.lifecycle.assetChanged(ref, aenderung.trim())
+        : endpoints.lifecycle.assetChanged(ref),
     onSuccess: (ids) => {
       void qc.invalidateQueries({ queryKey: ["lifecycle"] });
-      setNote(t("lcy.assetMarked", { n: ids.length, asset: assetRef.trim() }));
+      setNote(
+        ids.length === 0
+          ? t("folgepruefung.keineKopplung", { asset: assetRef.trim() })
+          : t("lcy.assetMarked", { n: ids.length, asset: assetRef.trim() }),
+      );
       setAssetRef("");
+      setAenderung("");
     },
     onError: () => setNote(t("state.error")),
   });
@@ -245,6 +313,8 @@ export function Lifecycle(): JSX.Element {
               {ids.map((id) => {
                 const view = revalidationView(id, kos.data ?? []);
                 const ist = aktivIdEffektiv === id;
+                const fall = faelle.get(id);
+                const termin = kos.data?.find((k) => k.id === id)?.frische?.haltbarBis ?? null;
                 return (
                   <li key={id} data-testid="lifecycle-row">
                     <button
@@ -260,6 +330,24 @@ export function Lifecycle(): JSX.Element {
                       )}
                     >
                       <span data-text="titel">{view.title}</span>
+                      {/* produkt:20261010:aenderungsfolgen-sichtbar: Grund, zuständige Person,
+                          Prüfstatus und Termin — nur, wo ein Änderungsfall vorliegt. */}
+                      {fall ? (
+                        <span
+                          data-text="meta"
+                          data-testid="folgepruefung-zeile"
+                          className="mt-0.5 block text-[11.5px] font-normal text-muted-2"
+                        >
+                          {[
+                            grundKurz(fall),
+                            zustaendigText(fall),
+                            t("folgepruefung.statusOffen", { stand: fall.stand }),
+                            termin ? new Date(termin).toLocaleDateString() : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      ) : null}
                     </button>
                   </li>
                 );
@@ -277,6 +365,14 @@ export function Lifecycle(): JSX.Element {
                 onChange={(e) => setAssetRef(e.target.value)}
                 placeholder={t("lcy.assetPlaceholder")}
                 aria-label={t("lcy.assetPlaceholder")}
+                className="h-9 w-full rounded-input border border-hairline bg-surface px-3 text-[12.5px] outline-none focus:border-ink/30"
+              />
+              <input
+                value={aenderung}
+                onChange={(e) => setAenderung(e.target.value)}
+                maxLength={200}
+                placeholder={t("folgepruefung.aenderungPlaceholder")}
+                aria-label={t("folgepruefung.aenderungPlaceholder")}
                 className="h-9 w-full rounded-input border border-hairline bg-surface px-3 text-[12.5px] outline-none focus:border-ink/30"
               />
               <Button
@@ -334,11 +430,154 @@ export function Lifecycle(): JSX.Element {
     </div>
   );
 
+  // produkt:20261010:aenderungsfolgen-sichtbar: der Grund in einem Wort — für die Listenzeile.
+  function grundKurz(fall: FolgepruefungsFall): string {
+    if (fall.anlaesse.length === 0) {
+      return t("folgepruefung.grundKurz.unbekannt");
+    }
+    if (fall.anlaesse.length > 1) {
+      return t("folgepruefung.grundKurz.mehrere", { anzahl: fall.anlaesse.length });
+    }
+    return t(`folgepruefung.grundKurz.${fall.anlaesse[0]?.grund ?? "unbekannt"}`);
+  }
+
+  function zustaendigText(fall: FolgepruefungsFall): string {
+    if (!fall.zustaendig.vorhanden || fall.zustaendig.name === null) {
+      return t("folgepruefung.zustaendigFehlt", { id: fall.zustaendig.id });
+    }
+    return fall.zustaendig.art === "author-fallback"
+      ? `${fall.zustaendig.name} ${t("folgepruefung.zustaendigErsatz")}`
+      : fall.zustaendig.name;
+  }
+
+  // Ein Anlass als Satz: Grund, Änderungsbeleg, Zeitpunkt, Fassungen, fehlende Kopplung.
+  function anlassZeile(fall: FolgepruefungsFall, anlass: FolgepruefungsAnlass): JSX.Element {
+    const satz =
+      anlass.grund === "bibliothek"
+        ? t("folgepruefung.grund.bibliothek")
+        : anlass.grund === "rueckmeldung"
+          ? t("folgepruefung.grund.rueckmeldung")
+          : anlass.grund === "nachbar" && anlass.ausloeser
+            ? anlass.assetRef
+              ? t("folgepruefung.grund.nachbar", {
+                  titel: anlass.ausloeser.title,
+                  asset: anlass.assetRef,
+                })
+              : t("folgepruefung.grund.nachbarOhneAnlage", { titel: anlass.ausloeser.title })
+            : anlass.assetRef
+              ? t("folgepruefung.grund.anlage", { asset: anlass.assetRef })
+              : t("folgepruefung.grund.anlageOhne");
+    const zusatz = [
+      anlass.aenderung ? t("folgepruefung.aenderung", { aenderung: anlass.aenderung }) : null,
+      t("folgepruefung.am", { datum: new Date(anlass.am).toLocaleString() }),
+      anlass.ausloeser && anlass.ausloeser.version !== null && anlass.ausloeser.koId !== fall.koId
+        ? t("folgepruefung.ausloeserFassung", { version: anlass.ausloeser.version })
+        : null,
+      anlass.koVersion !== null
+        ? t("folgepruefung.fassungBeiMeldung", { version: anlass.koVersion })
+        : null,
+    ].filter(Boolean);
+    return (
+      <li
+        key={`${anlass.am}-${anlass.grund}-${anlass.aenderung ?? ""}`}
+        data-testid="folgepruefung-anlass"
+      >
+        <span className="text-text">{satz}</span>
+        <span className="text-muted"> · {zusatz.join(" · ")}</span>
+        {anlass.kopplungBesteht === false && anlass.assetRef ? (
+          <span className="block text-trust-warn-text">
+            {t("folgepruefung.kopplungFehlt", { asset: anlass.assetRef })}
+          </span>
+        ) : null}
+      </li>
+    );
+  }
+
+  // Der Warum-Block der Karte. Ganz als `data-text` ausgezeichnet: er ist Inhalt des Falls, kein
+  // Erklärtext der Fläche (Textmesser, JOB 3061 §5.6).
+  function warumBlock(
+    fall: FolgepruefungsFall | undefined,
+    termin: string | null,
+    ohneStand: boolean,
+  ): JSX.Element | null {
+    if (!fall) {
+      return ohneStand ? (
+        <div
+          data-text="meta"
+          data-testid="folgepruefung-ladefehler"
+          className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted"
+        >
+          <span>{t("folgepruefung.ladefehler")}</span>
+          <button
+            type="button"
+            data-testid="folgepruefung-neu-laden"
+            onClick={() => void qc.invalidateQueries({ queryKey: ["lifecycle"] })}
+            className="font-semibold text-text underline-offset-4 hover:underline"
+          >
+            {t("folgepruefung.neuLaden")}
+          </button>
+        </div>
+      ) : null;
+    }
+    const fassungen = fall.anlaesse.map((a) => a.koVersion).filter((v): v is number => v !== null);
+    const juengsteFassung = fassungen.length > 0 ? Math.max(...fassungen) : null;
+    return (
+      <div data-text="text" data-testid="folgepruefung-warum" className="space-y-1.5 text-[12.5px]">
+        <div className="font-semibold text-text">{t("folgepruefung.warumTitel")}</div>
+        {fall.anlaesse.length === 0 ? (
+          <p className="text-trust-warn-text">{t("folgepruefung.anlassFehlt")}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">{fall.anlaesse.map((a) => anlassZeile(fall, a))}</ul>
+        )}
+        {juengsteFassung !== null && fall.version > juengsteFassung ? (
+          <p className="text-trust-warn-text">
+            {t("folgepruefung.seitMeldungUeberarbeitet", {
+              alt: juengsteFassung,
+              neu: fall.version,
+            })}
+          </p>
+        ) : null}
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          <dt className="text-muted">{t("folgepruefung.zustaendigLabel")}</dt>
+          <dd
+            data-testid="folgepruefung-zustaendig"
+            className={fall.zustaendig.vorhanden ? "text-text" : "text-trust-warn-text"}
+          >
+            {zustaendigText(fall)}
+          </dd>
+          <dt className="text-muted">{t("folgepruefung.statusLabel")}</dt>
+          <dd data-testid="folgepruefung-status" className="text-text">
+            {[
+              t(`status.${fall.status}`, { defaultValue: fall.status }),
+              t("folgepruefung.statusOffen", { stand: fall.stand }),
+            ].join(" · ")}
+          </dd>
+          {termin ? (
+            <>
+              <dt className="text-muted">{t("folgepruefung.terminLabel")}</dt>
+              <dd data-testid="folgepruefung-termin" className="text-text">
+                {new Date(termin).toLocaleDateString()}
+              </dd>
+            </>
+          ) : null}
+        </dl>
+        <p className="text-muted-2">{t("folgepruefung.abdeckung")}</p>
+        <p className="text-muted-2">{t("folgepruefung.bestaetigtHinweis")}</p>
+      </div>
+    );
+  }
+
   // Zeichenfunktion, keine innere Komponente (Begründung: `Validation.tsx`).
   function karte(id: string): JSX.Element {
     const view = revalidationView(id, kos.data ?? []);
     const cta = revalidationCta(view);
     const frische = kos.data?.find((k) => k.id === id)?.frische;
+    const fall = faelle.get(id);
+    // Nacharbeit 4 (Ben, K5): steht für den Eintrag ein Merker, ist der Abschluss NUR mit dem
+    // angezeigten Stand möglich. Fehlt die Folgeprüfungsauskunft (lädt, gescheitert), bleibt
+    // „Noch gültig" gesperrt, und die Karte bietet das Neuladen an. Rein fristfällige Einträge
+    // ohne Merker bestätigen wie bisher (dort gibt es keinen Stand).
+    const ohneStand = (query.data ?? []).includes(id) && !fall;
     return (
       <div
         data-testid="pruefen-karte"
@@ -376,6 +615,7 @@ export function Lifecycle(): JSX.Element {
           >
             {view.title}
           </Link>
+          {warumBlock(fall, frische?.haltbarBis ?? null, ohneStand)}
           <PruefenMehr kennung="erneut">
             <PruefenMehrZeile beschriftung={t("lcy.revalNextLabel")}>
               {t(`lcy.revalNext.${view.nextStep}`)}
@@ -405,7 +645,12 @@ export function Lifecycle(): JSX.Element {
             {lastRevalidated ? (
               <PruefenMehrBlock beschriftung={t("pruefen.lastDecision")}>
                 <span data-testid="pruefen-zuletzt">
-                  {t("lcy.revalSaved")} — {lastRevalidated.title}
+                  {lastRevalidated.stand !== undefined
+                    ? t("folgepruefung.abgeschlossen", {
+                        stand: lastRevalidated.stand,
+                        titel: lastRevalidated.title,
+                      })
+                    : [t("lcy.revalSaved"), lastRevalidated.title].join(" — ")}
                 </span>
               </PruefenMehrBlock>
             ) : null}
@@ -418,8 +663,15 @@ export function Lifecycle(): JSX.Element {
           <PruefenKnopf
             ton="gut"
             kennung="noch-gueltig"
-            disabled={confirm.isPending}
-            onClick={() => confirm.mutate({ id, title: view.title, found: view.found })}
+            disabled={confirm.isPending || ohneStand}
+            onClick={() =>
+              confirm.mutate({
+                id,
+                title: view.title,
+                found: view.found,
+                ...(fall ? { stand: fall.stand, fassung: fall.version } : {}),
+              })
+            }
           >
             <Check size={14} aria-hidden="true" />
             {t("lcy.stillValid")}
