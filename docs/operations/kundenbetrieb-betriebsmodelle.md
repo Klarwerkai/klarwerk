@@ -384,9 +384,19 @@ den Modellbestand (§6.1) den Gewichten.
 | Ausgehende Verbindungen | Zielliste `services/app/src/ausgehende-ziele.json` mit Freigabe je Weg; Egress-Wächter; Modellserver ohne Netz nach außen | `tests/security/egress-chokepoint.test.ts`, `tests/ki-freigaberegeln/ausgehende-ziele.test.ts` (Z1 derzeit rot, §2.4) | Mitschnitt der tatsächlich aufgebauten Verbindungen während des Kernwegs am Host (z. B. Firewall-Protokoll oder `ss`/`conntrack`); erwartet: nur Datenbank und Modellserver |
 | Protokoll- und Sicherungsinhalt | `log-sanitize.ts`; `scripts/backup/backup.sh` mit Prüfsumme | B3-Rückweg `docs/operations/restore-drill.md`; `monitoring-logging.md` (keine Prompt-/Antworttexte) | Nach dem Kernweg: Protokoll auf eingegebene Texte und Geheimnisse durchsuchen; Sicherung erstellen und belegen, dass sie den gesamten Bestand enthält und nur am Sicherungsort liegt |
 
-**Was dieser Auftrag nicht selbst liefern kann:** einen Rechner mit Modellgewichten und den Zugang
-dazu. Die Prüfumgebung dieses Auftrags hat weder Docker noch Gewichte; ein S07-Ergebnis mit Kandidat,
-Rechner, Rollen und Ergebniskennungen entsteht erst dort.
+**Ausführbarer Anschluss:** `tests/kundenbetrieb-betriebsmodelle/s07-kernweg.integration.test.ts`
+fährt S07 auf dem Prüfplatz der regulären Integrationsprüfung (Docker, PostgreSQL): Ollama-Container
+mit fester Fassung (Vorgabe `ollama/ollama:0.32.3`, überschreibbar mit `KLARWERK_S07_OLLAMA_IMAGE`),
+Laden der Referenzgewichte `qwen3:32b` und `bge-m3` (oder vorbefüllter Ordner
+`KLARWERK_S07_MODELLE_DIR`), Modellbestand (S1), zwei Firmeninstanzen mit eigenen Datenbanken (S2),
+Kernweg mit lokalem Sprach- und Embedding-Modell (S3), Mitschnitt jedes TCP-Aufbaus beider
+App-Prozesse (`verbindungsmitschnitt.mjs`, S4), Protokolldurchsicht (S5) und Sicherung mit Prüfsumme
+und Inhaltsprobe (S6). Das Ergebnis mit Kandidat (`/health.commit`), Rechnername, Rollen und
+Kennungen steht in `.local/run/s07/<zeit>/S07-ERGEBNIS.json` und auf stdout. Fehlt eine
+Voraussetzung (`KLARWERK_PG_TEST_URL`, `docker`, `pg_dump`/`pg_restore`, Netz zum Laden der
+Gewichte), ist der Lauf rot (Zeugenfall Z0), nicht übersprungen. **Grenzen des Mitschnitts:**
+Namensauflösung und Verbindungen des Modellservers selbst sind nicht darin; der Modellserver lädt die
+Gewichte einmalig über das Netz, die App bekommt keinen Cloud-Schlüssel.
 
 ---
 
