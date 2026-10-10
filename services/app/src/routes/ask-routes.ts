@@ -16,6 +16,7 @@ import {
   isGapPriority,
   konfliktGegenseiten,
   redactGapForViewer,
+  stichtagAus,
 } from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
 import {
@@ -1345,6 +1346,88 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           reply.code(204).send();
         } catch (error) {
           sendError(reply, error);
+        }
+      },
+    );
+
+    // ============================================================================================
+    // R-1630 / R-2176 — DIESELBE FRAGE, BEANTWORTET AUS DEM WISSENSSTAND ZUM STICHTAG.
+    // ============================================================================================
+    //
+    // Nur die Konsole (Sitzung mit `ko.read`): der Vergleich trägt dieselben Grenzen wie der
+    // Konsolenweg von `/api/ask` — freigegebenes Wissen, nichts Vertrauliches, nur was dieser Mensch
+    // sehen darf (`sichtbarkeitsfilterFuer`). Der Add-on-Schlüssel und das Word-Panel (Klara-Bindung)
+    // haben hier keinen Weg: dort entscheidet die Einwilligung über jeden Modellaufruf, und dieser
+    // Vergleich ist dafür nicht gebaut. `stichtag` ist optional (`JJJJ-MM-TT`); ohne Angabe gilt
+    // „vor einem Jahr".
+    app.post<{ Body: { question?: string; locale?: string; stichtag?: string } }>(
+      "/api/ask/vergleich",
+      {
+        bodyLimit: ASK_BODY_LIMIT,
+        schema: {
+          body: {
+            type: "object",
+            required: ["question"],
+            properties: {
+              question: { type: "string", minLength: 1, maxLength: 8_000 },
+              locale: { type: "string" },
+              stichtag: { type: "string", maxLength: 10 },
+            },
+          },
+        },
+        onRequest: async (request) => {
+          if (request.askKiBeginn == null) {
+            request.askKiBeginn = ask.kiStand() ?? null;
+          }
+        },
+        preValidation: async (request, reply) => {
+          if (request.authContext?.authKind === "addon" || klaraBindungVorhanden(request.headers)) {
+            reply.code(403).send({
+              error: "FORBIDDEN",
+              message: "Der Antwortvergleich ist nur in der Konsole verfügbar.",
+            });
+            return reply;
+          }
+          const user = await guards.requirePermission("ko.read", request, reply);
+          if (!user) {
+            return reply;
+          }
+          request.askSessionUser = user;
+        },
+      },
+      async (request, reply) => {
+        const user = request.askSessionUser;
+        if (!user) {
+          reply.code(401).send({ error: "UNAUTHENTICATED", message: "Session erforderlich." });
+          return;
+        }
+        const locale: "de" | "en" | "nl" =
+          request.body.locale === "en" ? "en" : request.body.locale === "nl" ? "nl" : "de";
+        const stichtag = stichtagAus(request.body.stichtag, Date.now());
+        if (stichtag === null) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "Der Stichtag muss ein gültiger Tag vor heute sein (JJJJ-MM-TT).",
+          });
+          return;
+        }
+        const kiBeginn = request.askKiBeginn ?? undefined;
+        try {
+          ask.kiSperreVorFrage(kiBeginn);
+          const vergleich = await ask.vergleicheWissensstand(
+            request.body.question ?? "",
+            user.id,
+            locale,
+            stichtag,
+            sichtbarkeitsfilterFuer(user),
+          );
+          ask.kiSperreVorAuslieferung(kiBeginn);
+          reply.code(200).send(vergleich);
+        } catch (fehler) {
+          if (kiAbgeschaltetSenden(reply, fehler, locale)) {
+            return;
+          }
+          sendError(reply, fehler);
         }
       },
     );
