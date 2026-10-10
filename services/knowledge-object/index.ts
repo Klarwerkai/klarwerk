@@ -446,6 +446,8 @@ export type {
   KoCreateOperationState,
   // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
   KoMergedInto,
+  // AW06-K02: die Kontoregel einer Annahme (Entscheidungsbeleg und Leseweg).
+  Kontoregel,
   KoSource,
   KoSourceKind,
   KoSourceRestrictions,

@@ -102,7 +102,7 @@ import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
-import { EigeneVorschlaege, PrueferWahl, VorschlagRueckfragen } from "./Pruefablauf";
+import { AnnahmeZeile, EigeneVorschlaege, PrueferWahl, VorschlagRueckfragen } from "./Pruefablauf";
 import { fragenHref } from "./fragen";
 import { type ZustandsTon, zustandsTon } from "./zustand";
 
@@ -2682,6 +2682,8 @@ export function BibliothekLesen({
             {t("ko.returnedBanner")}
           </p>
         ) : null}
+        {/* AW06-K02: die Annahme dieser Fassung samt Kontoregel — aus ihrem Beleg, vom Server. */}
+        <AnnahmeZeile annahme={ko.annahme} nameOf={nameOf} />
 
         {/* WIKI-BEARBEITUNGSRESERVIERUNG: wer gerade (sonst noch) bearbeitet — im Lesen wie im
             Bearbeiten an derselben Stelle, direkt über dem Inhalt. Endet eine fremde Bearbeitung,

@@ -1,6 +1,6 @@
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
-import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
+import type { KnowledgeObject, KoFilter, KoService, Kontoregel } from "../../knowledge-object";
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
 import { responsibleKindOf, responsibleOf } from "../../knowledge-object";
@@ -271,6 +271,8 @@ export class ValidationService {
       all: Rating[];
       outcome: ValidationOutcome;
       grundlage: { ohneKonflikte: number; konflikte: KonfliktArt[] };
+      /** AW06-K02: die zur Entscheidung geltende Freigabezahl der bewerteten Fassung. */
+      benoetigt: number;
       zuweisung: Assignment | undefined;
     }
     let stand: Stimmenlage | undefined;
@@ -318,6 +320,7 @@ export class ValidationService {
           ohneKonflikte: computeOutcome(stimmen, aktuell.neededValidations, { quellenArten }).trust,
           konflikte: [...new Set(offeneKonflikte)],
         },
+        benoetigt: aktuell.neededValidations,
         zuweisung: await this.assignments.find(koId, userId),
       };
       return stand;
@@ -326,7 +329,7 @@ export class ValidationService {
     // Rücknahme für den Weg OHNE Transaktion: was `beleg` unten geschrieben hat, rückwärts zurück.
     const rueckwaerts: Array<() => Promise<void>> = [];
     const beleg = async (tx?: TxContext): Promise<ValidationDecisionRefWert> => {
-      const { vorherige, zuweisung } = stand ?? (await lese());
+      const { vorherige, zuweisung, benoetigt } = stand ?? (await lese());
       await this.ratings.upsert(bewertung, tx);
       rueckwaerts.push(async () => {
         if (vorherige) {
@@ -339,12 +342,21 @@ export class ValidationService {
       // eine spaetere Suche nach „dem passenden Eintrag" ist ausdruecklich verboten.
       // `koVersion` reist bewusst im Payload mit: die Entscheidung gilt fuer die BEWERTETE Fassung,
       // und nur so kann ein Leser spaeter `WRONG_SUBJECT` von „passt" unterscheiden.
+      //
+      // AW06-K02 (Ben, Nacharbeit 4): der Beleg nennt auch die KONTOREGEL, unter der diese Stimme
+      // zählt — der Bewertungsweg mit der Freigabezahl, die für die bewertete Fassung GALT. Der
+      // heutige Objektzustand könnte das nicht ersetzen: die Zahl lässt sich später ändern.
       const eintrag = await this.audit?.record(
         {
           actor: userId,
           action: "ko.rated",
           target: koId,
-          payload: { verdict, koVersion: ratedVersion },
+          payload: {
+            verdict,
+            koVersion: ratedVersion,
+            kontoregel: "peer-pruefung" satisfies Kontoregel,
+            benoetigt,
+          },
         },
         tx,
       );
@@ -460,7 +472,11 @@ export class ValidationService {
               actor: actorId,
               action: "ko.admin-validated",
               target: koId,
-              payload: { koVersion: geleseneFassung },
+              // AW06-K02: die direkte Annahme durch ein Konto mit Freigaberecht.
+              payload: {
+                koVersion: geleseneFassung,
+                kontoregel: "direktannahme" satisfies Kontoregel,
+              },
             },
             tx,
           ),

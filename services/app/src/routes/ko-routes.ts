@@ -988,6 +988,42 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     }
   }
 
+  /**
+   * AW06-K02 (Ben, Nacharbeit 4) — DIE ANNAHME DIESER FASSUNG, AUS IHREM BELEG GELESEN.
+   *
+   * Gelesen wird GENAU der Eintrag, auf den `validationDecisionRef` zeigt — Nummer UND Hash müssen
+   * stimmen, er muss eine Annahme sein (`ko.admin-validated` oder eine grüne `ko.rated`) und für
+   * DIESE Fassung gelten. Dann nennt die Antwort Fassung, Person, Zeitpunkt und die Kontoregel,
+   * die IM BELEG steht — nicht die heutige Einstellung. Ältere Belege ohne Regel liefern
+   * `kontoregel: null` (nicht festgehalten), statt sie zu raten. Passt etwas nicht, fehlt das Feld.
+   *
+   * GRENZE: die Kettenprüfung (`/api/audit/verify`) läuft hier nicht mit; die Bindung ist der
+   * Hash des einen Eintrags.
+   */
+  async function annahmeVon(item: KnowledgeObject) {
+    const ref = item.validationDecisionRef;
+    if (!audit || !ref || item.status !== "validiert") {
+      return undefined;
+    }
+    const beleg = (await audit.list({ target: item.id })).find(
+      (e) => e.seq === ref.auditSeq && e.hash === ref.auditHash,
+    );
+    const p = beleg?.payload ?? {};
+    const istAnnahme =
+      beleg?.action === "ko.admin-validated" ||
+      (beleg?.action === "ko.rated" && p.verdict === "up");
+    if (!beleg || !istAnnahme || p.koVersion !== item.version) {
+      return undefined;
+    }
+    return {
+      fassung: item.version,
+      person: beleg.actor,
+      zeitpunkt: beleg.at,
+      kontoregel: typeof p.kontoregel === "string" ? p.kontoregel : null,
+      ...(typeof p.benoetigt === "number" ? { benoetigt: p.benoetigt } : {}),
+    };
+  }
+
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
     const item = await ko.get(id);
     if (!item || !darfSehen(user, item)) {
@@ -1402,8 +1438,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
       const einordnung = await ko.einordnungsstandVon(item.id);
       const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
+      // AW06-K02: die Annahme dieser Fassung samt Kontoregel — nur aus ihrem Beleg, sonst fehlt sie.
+      const annahme = await annahmeVon(item);
       reply.code(200).send({
         ...item,
+        ...(annahme ? { annahme } : {}),
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(user, item)),
         ...(einordnung
@@ -2920,6 +2959,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               baseVersion: basis,
               ...(typeof vorschlag.origin === "string" ? { origin: vorschlag.origin } : {}),
               ...(typeof pruefer === "string" ? { pruefer: pruefer.trim() } : {}),
+              // AW06-K02: die Kontoregel, unter der dieser Vorschlag entsteht — aus demselben
+              // Recht, das an `revise` den direkten Weg öffnet oder sperrt (`users.manage`).
+              kontoregel: can(user.role, "users.manage")
+                ? "freiwillige-zweitpruefung"
+                : "pflichtpruefung",
             });
             reply.code(200).send(angelegt.ko);
             return;

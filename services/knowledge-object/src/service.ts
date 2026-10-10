@@ -129,6 +129,7 @@ import {
   type KoRepairNote,
   type KoSource,
   type KoStatus,
+  type Kontoregel,
   type TrashedKo,
 } from "./types";
 
@@ -5190,6 +5191,34 @@ export class KoService {
   }
 
   // ==============================================================================================
+  // AW06-K02 (Ben, Nacharbeit 4) — DIE ANNAHME VERWEIST AUF IHREN BELEG.
+  // ==============================================================================================
+  //
+  // Die beiden Freigabewege dieses Dienstes (`reviseUndFreigeben`, Übernahme in `decideProposal`)
+  // schrieben ihren Beleg `ko.admin-validated`, hängten aber keinen `validationDecisionRef` an die
+  // neue Fassung. Damit liess sich die Annahme dieser Fassung — Person, Zeitpunkt, Kontoregel — am
+  // Objekt nicht benennen. Jetzt wird der Verweis IN DERSELBEN KLAMMER geschrieben, als letzter
+  // Schritt des Belegs: zweiter Write auf demselben Transaktionsclient (dieselbe Bauform wie
+  // `setValidationStateMitBeleg`, „Zweiter Write DERSELBEN Klammer").
+  private async verweisAufAnnahme(
+    updated: KnowledgeObject,
+    beleg: { seq: number; hash: string } | undefined,
+    tx?: TxContext,
+  ): Promise<void> {
+    if (!beleg) {
+      return;
+    }
+    await this.repo.update(
+      {
+        ...updated,
+        rowVersion: (updated.rowVersion ?? 0) + 1,
+        validationDecisionRef: { auditSeq: beleg.seq, auditHash: beleg.hash },
+      },
+      tx,
+    );
+  }
+
+  // ==============================================================================================
   // JOB 3667 (WORD-RÜCKWEG, Runde 2) — FALL 1: ÜBERARBEITEN UND FREIGEBEN ALS EIN VORGANG.
   // ==============================================================================================
   //
@@ -5253,10 +5282,18 @@ export class KoService {
             { actor, action: "ko.revised", target: id, payload: { version } },
             tx,
           );
-          await this.audit?.record(
-            { actor, action: "ko.admin-validated", target: id, payload: { koVersion: version } },
+          // AW06-K02: der Beleg nennt die Kontoregel — hier die direkte Annahme durch ein Konto
+          // mit Freigaberecht (die Route lässt diesen Weg nur dafür zu).
+          const annahme = await this.audit?.record(
+            {
+              actor,
+              action: "ko.admin-validated",
+              target: id,
+              payload: { koVersion: version, kontoregel: "direktannahme" satisfies Kontoregel },
+            },
             tx,
           );
+          await this.verweisAufAnnahme(fassung, annahme, tx);
         },
       };
     });
@@ -5290,6 +5327,8 @@ export class KoService {
       origin?: string;
       /** package:pruefablauf: die benannte Prüfperson. Ihr Freigaberecht prüft die Route. */
       pruefer?: string;
+      /** AW06-K02: die Kontoregel des Einreichers; die Route leitet sie aus seinem Recht ab. */
+      kontoregel?: KoProposal["kontoregel"];
     },
   ): Promise<{ ko: KnowledgeObject; proposal: KoProposal }> {
     if (input.pruefer !== undefined && input.pruefer === author) {
@@ -5326,6 +5365,7 @@ export class KoService {
         status: "offen",
         ...(input.origin ? { origin: input.origin } : {}),
         ...(input.pruefer ? { pruefer: input.pruefer } : {}),
+        ...(input.kontoregel ? { kontoregel: input.kontoregel } : {}),
       };
       const updated: KnowledgeObject = { ...ko, proposals: [...(ko.proposals ?? []), proposal] };
       return {
@@ -5341,6 +5381,7 @@ export class KoService {
                 proposalId: proposal.id,
                 baseVersion: proposal.baseVersion,
                 ...(proposal.pruefer ? { pruefer: proposal.pruefer } : {}),
+                ...(proposal.kontoregel ? { kontoregel: proposal.kontoregel } : {}),
               },
             },
             tx,
@@ -5460,7 +5501,11 @@ export class KoService {
                 actor,
                 action: "ko.proposal-rejected",
                 target: id,
-                payload: { proposalId, baseVersion: vorschlag.baseVersion },
+                payload: {
+                  proposalId,
+                  baseVersion: vorschlag.baseVersion,
+                  ...(vorschlag.kontoregel ? { kontoregel: vorschlag.kontoregel } : {}),
+                },
               },
               tx,
             );
@@ -5506,15 +5551,23 @@ export class KoService {
             },
             tx,
           );
-          await this.audit?.record(
+          // AW06-K02: der Beleg nennt die Kontoregel, unter der der Vorschlag entstand —
+          // Pflichtprüfung oder freiwillige Zweitprüfung. Altvorschläge ohne Regel: kein Feld,
+          // statt einer geratenen.
+          const annahme = await this.audit?.record(
             {
               actor,
               action: "ko.admin-validated",
               target: id,
-              payload: { koVersion: fassung.version, proposalId },
+              payload: {
+                koVersion: fassung.version,
+                proposalId,
+                ...(vorschlag.kontoregel ? { kontoregel: vorschlag.kontoregel } : {}),
+              },
             },
             tx,
           );
+          await this.verweisAufAnnahme(updated, annahme, tx);
         },
       };
     });

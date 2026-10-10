@@ -623,6 +623,18 @@ export interface KnowledgeObject {
   // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
   // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  /**
+   * AW06-K02: die Annahme DIESER Fassung, vom Server aus genau dem referenzierten Beleg gelesen —
+   * Fassung, Person, Zeitpunkt und die Kontoregel, die im Beleg steht (`null`: dort nicht
+   * festgehalten). Fehlt das Feld, gibt es für diese Fassung keine belegte Annahme.
+   */
+  annahme?: {
+    fassung: number;
+    person: string;
+    zeitpunkt: string;
+    kontoregel: string | null;
+    benoetigt?: number;
+  };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];

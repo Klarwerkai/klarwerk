@@ -316,7 +316,30 @@ export interface KoProposal {
    * nichts: der Vorschlag bleibt `offen`, und der geprüfte Bestand bleibt unverändert.
    */
   rueckfragen?: KoProposalRueckfrage[];
+  /**
+   * AW06-K02 (Ben, Nacharbeit 4): unter welcher Kontoregel dieser Vorschlag entstand — beim
+   * Einreichen aus dem Recht des Einreichers festgehalten. `pflichtpruefung`: er durfte nicht
+   * direkt freigeben; `freiwillige-zweitpruefung`: er hätte gedurft und hat die fremde Prüfung
+   * gewählt. Fehlt bei Vorschlägen von vor dieser Regel.
+   */
+  kontoregel?: Extract<Kontoregel, "pflichtpruefung" | "freiwillige-zweitpruefung">;
 }
+
+/**
+ * AW06-K02 — DIE KONTOREGEL EINER ANNAHME, wie sie im Entscheidungsbeleg steht.
+ *   · `peer-pruefung`             — Bewertungsweg; der Beleg nennt die erforderliche Freigabezahl.
+ *   · `direktannahme`             — ein Konto mit Freigaberecht nimmt direkt an (Admin-Freigabe,
+ *                                   Überarbeiten-und-Freigeben).
+ *   · `pflichtpruefung`           — Übernahme eines Vorschlags, dessen Einreicher nicht direkt
+ *                                   freigeben durfte.
+ *   · `freiwillige-zweitpruefung` — Übernahme eines Vorschlags, dessen Einreicher hätte freigeben
+ *                                   dürfen und die fremde Prüfung gewählt hat.
+ */
+export type Kontoregel =
+  | "peer-pruefung"
+  | "direktannahme"
+  | "pflichtpruefung"
+  | "freiwillige-zweitpruefung";
 
 export interface KoProposalRueckfrage {
   von: string;

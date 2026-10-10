@@ -437,6 +437,60 @@ describe("package:pruefablauf · der Einreicher sieht den Status", () => {
     expect(teil("p-weg", "bib-eigener-vorschlag-begruendung")).toBe(grund);
   });
 
+  it("P7 · AW06-K02: die Annahme nennt Fassung, Person, Zeitpunkt und Kontoregel", async () => {
+    globalThis.__pruefablaufKo = ko({
+      annahme: {
+        fassung: 3,
+        person: "u-admin",
+        zeitpunkt: "2026-09-15T08:00:00.000Z",
+        kontoregel: "pflichtpruefung",
+      },
+    });
+    await mount();
+    const zeile = muss("bib-annahme-zeile").textContent ?? "";
+    expect(zeile).toContain("3");
+    expect(zeile).toContain("Ada Admin");
+    const regel = muss("bib-annahme-regel");
+    expect(regel.getAttribute("data-kontoregel")).toBe("pflichtpruefung");
+    expect(regel.textContent).toBe(i18n.t("pruefablauf.annahme.regel.pflichtpruefung"));
+  });
+
+  it("P8 · Peer-Prüfung nennt die Freigabezahl, die im Beleg steht", async () => {
+    globalThis.__pruefablaufKo = ko({
+      annahme: {
+        fassung: 3,
+        person: "u-admin",
+        zeitpunkt: "2026-09-15T08:00:00.000Z",
+        kontoregel: "peer-pruefung",
+        benoetigt: 2,
+      },
+    });
+    await mount();
+    expect(muss("bib-annahme-regel").textContent).toBe(
+      i18n.t("pruefablauf.annahme.regel.peerPruefung", { n: "2" }),
+    );
+  });
+
+  it("P8b · ein Beleg ohne Regel (Altbestand) sagt das, statt eine Regel zu raten", async () => {
+    globalThis.__pruefablaufKo = ko({
+      annahme: {
+        fassung: 3,
+        person: "u-admin",
+        zeitpunkt: "2026-09-15T08:00:00.000Z",
+        kontoregel: null,
+      },
+    });
+    await mount();
+    expect(muss("bib-annahme-regel").textContent).toBe(
+      i18n.t("pruefablauf.annahme.regel.unbekannt"),
+    );
+  });
+
+  it("P9 · GEGENPROBE: ohne belegte Annahme steht keine Annahmezeile", async () => {
+    await mount();
+    expect(da("bib-annahme")).toBeNull();
+  });
+
   it("P6 · GEGENPROBE: fremde Vorschläge stehen nicht in der eigenen Statusansicht", async () => {
     globalThis.__pruefablaufKo = ko({ proposals: [vorschlag({ author: "u-fremd" })] });
     await mount();

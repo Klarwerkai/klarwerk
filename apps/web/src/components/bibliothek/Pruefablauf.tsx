@@ -15,7 +15,7 @@
 // etwas anderem als `status`, `rueckfragen`, `decidedBy`/`decidedAt`, `resultVersion` und `note`.
 import { useTranslation } from "react-i18next";
 import { useDirectory } from "../../api/hooks";
-import type { KoProposal } from "../../api/types";
+import type { KnowledgeObject, KoProposal } from "../../api/types";
 import { formatKoTimestamp } from "../../lib/koDates";
 
 type NameOf = (id: string) => string;
@@ -84,6 +84,60 @@ export function VorschlagRueckfragen({
         </li>
       ))}
     </ul>
+  );
+}
+
+/** AW06-K02: der Textschlüssel der Kontoregel, wie sie im Beleg steht. */
+export function kontoregelSchluessel(
+  kontoregel: string | null,
+  benoetigt: number | undefined,
+): { schluessel: string; n?: string } {
+  switch (kontoregel) {
+    case "peer-pruefung":
+      return benoetigt === undefined
+        ? { schluessel: "pruefablauf.annahme.regel.peerPruefungOhneZahl" }
+        : { schluessel: "pruefablauf.annahme.regel.peerPruefung", n: String(benoetigt) };
+    case "direktannahme":
+      return { schluessel: "pruefablauf.annahme.regel.direktannahme" };
+    case "pflichtpruefung":
+      return { schluessel: "pruefablauf.annahme.regel.pflichtpruefung" };
+    case "freiwillige-zweitpruefung":
+      return { schluessel: "pruefablauf.annahme.regel.freiwilligeZweitpruefung" };
+    default:
+      return { schluessel: "pruefablauf.annahme.regel.unbekannt" };
+  }
+}
+
+/**
+ * AW06-K02 — DIE ANNAHME DIESER FASSUNG: Fassung, Person, Zeitpunkt und Kontoregel. Alles kommt
+ * vom Server aus dem referenzierten Beleg (`KnowledgeObject.annahme`); hier wird nur gezeichnet.
+ * Ohne belegte Annahme steht nichts — auch kein „nicht angenommen".
+ */
+export function AnnahmeZeile({
+  annahme,
+  nameOf,
+}: {
+  annahme: NonNullable<KnowledgeObject["annahme"]> | undefined;
+  nameOf: NameOf;
+}): JSX.Element | null {
+  const { t, i18n } = useTranslation();
+  if (!annahme) {
+    return null;
+  }
+  const regel = kontoregelSchluessel(annahme.kontoregel, annahme.benoetigt);
+  return (
+    <div data-testid="bib-annahme" className="text-[11.5px] leading-relaxed text-muted">
+      <p data-testid="bib-annahme-zeile">
+        {t("pruefablauf.annahme.zeile", {
+          fassung: String(annahme.fassung),
+          person: nameOf(annahme.person),
+          zeit: formatKoTimestamp(annahme.zeitpunkt, i18n.language) ?? annahme.zeitpunkt,
+        })}
+      </p>
+      <p data-testid="bib-annahme-regel" data-kontoregel={annahme.kontoregel ?? "unbekannt"}>
+        {t(regel.schluessel, regel.n === undefined ? {} : { n: regel.n })}
+      </p>
+    </div>
   );
 }
 

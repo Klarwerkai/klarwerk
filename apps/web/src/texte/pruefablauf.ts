@@ -30,6 +30,18 @@ export default {
     "pruefablauf.status.abgelehnt": "Abgelehnt",
     "pruefablauf.entschieden": "Entschieden von {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Begründung: {{text}}",
+    "pruefablauf.annahme.zeile": "Angenommen: Fassung {{fassung}} · {{person}} · {{zeit}}",
+    "pruefablauf.annahme.regel.peerPruefung":
+      "Kontoregel: Peer-Prüfung – erforderliche Freigaben: {{n}}",
+    "pruefablauf.annahme.regel.peerPruefungOhneZahl": "Kontoregel: Peer-Prüfung",
+    "pruefablauf.annahme.regel.direktannahme":
+      "Kontoregel: direkte Annahme durch ein Konto mit Freigaberecht",
+    "pruefablauf.annahme.regel.pflichtpruefung":
+      "Kontoregel: Pflichtprüfung – eingereicht ohne Direktfreigaberecht, von einer anderen Person angenommen",
+    "pruefablauf.annahme.regel.freiwilligeZweitpruefung":
+      "Kontoregel: freiwillige Zweitprüfung – trotz Freigaberecht zur Prüfung gegeben, von einer anderen Person angenommen",
+    "pruefablauf.annahme.regel.unbekannt":
+      "Kontoregel: im Beleg nicht festgehalten (älterer Beleg)",
   },
   en: {
     "pruefablauf.pruefer.label": "Reviewer (optional)",
@@ -49,6 +61,18 @@ export default {
     "pruefablauf.status.abgelehnt": "Rejected",
     "pruefablauf.entschieden": "Decided by {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Reason: {{text}}",
+    "pruefablauf.annahme.zeile": "Accepted: version {{fassung}} · {{person}} · {{zeit}}",
+    "pruefablauf.annahme.regel.peerPruefung":
+      "Account rule: peer review – approvals required: {{n}}",
+    "pruefablauf.annahme.regel.peerPruefungOhneZahl": "Account rule: peer review",
+    "pruefablauf.annahme.regel.direktannahme":
+      "Account rule: direct acceptance by an account with approval rights",
+    "pruefablauf.annahme.regel.pflichtpruefung":
+      "Account rule: mandatory review – submitted without direct approval rights, accepted by another person",
+    "pruefablauf.annahme.regel.freiwilligeZweitpruefung":
+      "Account rule: voluntary second review – handed to review despite approval rights, accepted by another person",
+    "pruefablauf.annahme.regel.unbekannt":
+      "Account rule: not recorded in the record (older record)",
   },
   nl: {
     "pruefablauf.pruefer.label": "Beoordelaar (optioneel)",
@@ -68,5 +92,17 @@ export default {
     "pruefablauf.status.abgelehnt": "Afgewezen",
     "pruefablauf.entschieden": "Besloten door {{name}} · {{zeit}}",
     "pruefablauf.begruendung": "Reden: {{text}}",
+    "pruefablauf.annahme.zeile": "Aangenomen: versie {{fassung}} · {{person}} · {{zeit}}",
+    "pruefablauf.annahme.regel.peerPruefung":
+      "Accountregel: collegiale toetsing – vereiste goedkeuringen: {{n}}",
+    "pruefablauf.annahme.regel.peerPruefungOhneZahl": "Accountregel: collegiale toetsing",
+    "pruefablauf.annahme.regel.direktannahme":
+      "Accountregel: directe aanname door een account met goedkeuringsrecht",
+    "pruefablauf.annahme.regel.pflichtpruefung":
+      "Accountregel: verplichte beoordeling – ingediend zonder direct goedkeuringsrecht, door een andere persoon aangenomen",
+    "pruefablauf.annahme.regel.freiwilligeZweitpruefung":
+      "Accountregel: vrijwillige tweede beoordeling – ondanks goedkeuringsrecht ter beoordeling gegeven, door een andere persoon aangenomen",
+    "pruefablauf.annahme.regel.unbekannt":
+      "Accountregel: niet vastgelegd in het bewijsstuk (ouder bewijsstuk)",
   },
 } satisfies Textmodul;
