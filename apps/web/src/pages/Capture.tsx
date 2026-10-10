@@ -84,6 +84,7 @@ import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
 import { NegativwissenFuehrung } from "../components/erfassen/NegativwissenFuehrung";
+import { ExterneQuelleKennung } from "../components/ko/ExterneQuelleKennung";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -5324,6 +5325,12 @@ export function CaptureArbeitsraum({
                   {p.source.title}
                 </a>
                 )
+              </span>{" "}
+              {/* R-0205 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): der Hinweis
+                  stammt aus einer EXTERNEN Suche (`externalSearch.search`, reasoner-routes) — er
+                  trägt deshalb wie jede externe Quelle „Stufe 2" und „Extern · ungeprüft". */}
+              <span data-testid="interview-recherche-kennung" className="inline-flex gap-1.5">
+                <ExterneQuelleKennung source={{ peerValidated: false }} />
               </span>
             </li>
           ))}
@@ -7473,6 +7480,8 @@ export function CaptureArbeitsraum({
                                     <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                                       {t("ko.sourceUnvalidated")}
                                     </span>
+                                    {/* R-0205: eine Warteliste-Quelle ist immer extern und ungeprüft. */}
+                                    <ExterneQuelleKennung source={{ peerValidated: false }} />
                                     {s.provider ? (
                                       <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                                         {s.provider}

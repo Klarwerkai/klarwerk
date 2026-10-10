@@ -323,6 +323,13 @@ export interface BelegstelleZumAnhang {
   readonly stand: "aktuell" | "frueher";
   /** Bei `frueher`: die Fassung, ab der jener Dokumentstand galt (falls im Verlauf zu finden). */
   readonly ausFassung?: number;
+  /**
+   * aufnahme:20260922:gesamt-externe-quellen-kennzeichnung (R-0205): der Prüfstand der Quelle —
+   * UNABHÄNGIG vom Dokumentstand. Nur eine ausdrücklich peer-validierte Quelle trägt `true`; eine
+   * Altquelle ohne Feld ist ungeprüft (`false`) und wird an der Fläche als „Stufe 2" /
+   * „Extern · ungeprüft" gekennzeichnet.
+   */
+  readonly peerValidated: boolean;
 }
 
 /**
@@ -342,12 +349,15 @@ export function belegstellenZumAnhang(
     if (!quelle.objectId) {
       continue;
     }
+    // R-0205: der Prüfstand reist in BEIDEN Zweigen mit — fail-closed, s. `peerValidated`.
+    const peerValidated = quelle.peerValidated === true;
     if (quelle.objectId === aktuell) {
       ergebnis.push({
         quelleId: quelle.id,
         label: quelle.label,
         excerpt: quelle.excerpt,
         stand: "aktuell",
+        peerValidated,
       });
     } else if (fruehere.has(quelle.objectId)) {
       ergebnis.push({
@@ -356,6 +366,7 @@ export function belegstellenZumAnhang(
         excerpt: quelle.excerpt,
         stand: "frueher",
         ausFassung: fruehere.get(quelle.objectId) as number,
+        peerValidated,
       });
     }
   }
