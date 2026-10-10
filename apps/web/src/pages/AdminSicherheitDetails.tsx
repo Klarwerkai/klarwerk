@@ -6,12 +6,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // Auskunft über den Zustand des Hauses und lebt deshalb als Zeile „Bereitschaft" unter Sicherheit
 // weiter — mit derselben Checkliste, denselben Quellen und demselben Druckknopf.
 import { Download, Printer, ShieldCheck } from "lucide-react";
-import { Fragment, useMemo, useRef } from "react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useAnalytics, useAudit, useDirectory, useValidationBoard } from "../api/hooks";
-import type { AuditEntry } from "../api/types";
+import { useAnalytics, useAuditSeite, useDirectory, useValidationBoard } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 // JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
@@ -20,6 +19,14 @@ import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { BetroffenenrechteVerwaltung } from "../components/datenschutz/Verwaltung";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
+import {
+  AuditFilterLeiste,
+  AuditLeer,
+  AuditSeitenleiste,
+  AuditTabelle,
+  useAuditAdressfilter,
+  useVerzeichnislage,
+} from "../components/einstellungen/Auditprotokoll";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Bereitschaftstandhinweis } from "../components/einstellungen/bereitschaftstandhinweis";
 import {
@@ -29,14 +36,8 @@ import {
   wertBefund,
 } from "../components/einstellungen/zeilenWert";
 import { Button } from "../components/ui";
-import { auditActionLabel } from "../lib/auditAction";
-import {
-  type DetailZeile,
-  type VerzeichnisLage,
-  auditEventDetail,
-  protokollNamen,
-  verzeichnisNamen,
-} from "../lib/auditEventDetail";
+import { KONTO_AUDIT_AKTIONEN } from "../lib/adminForms";
+import { auditAnfrage, zeitpunktMitZone } from "../lib/auditFilter";
 import { type AuditVerifyTone, auditVerifyView } from "../lib/auditVerifyState";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { type ReadinessTone, readinessRows } from "../lib/vipReadiness";
@@ -58,24 +59,23 @@ const AUDIT_VERIFY_TONE_CLASS: Record<AuditVerifyTone, string> = {
   crit: "bg-trust-crit-bg text-trust-crit-text",
 };
 
-// Verwalteransicht (N-0027): die Spaltenköpfe des Prüfprotokolls in ihrer Reihenfolge.
-const AUDIT_SPALTEN = [
-  "auditprotokoll.spalte.zeit",
-  "audit.detail.event",
-  "audit.detail.actor",
-  "audit.detail.target",
-  "audit.detail.roleBefore",
-  "audit.detail.roleAfter",
-  "auditprotokoll.spalte.technik",
-] as const;
-
-// Welche Detailzeile (`lib/auditEventDetail.ts`) in welche Spalte fällt. Die Spalte „Betroffen"
-// nimmt ein Konto ebenso wie ein Objekt auf; die Zeile behält ihre eigene Beschriftung als Merkmal.
-const ZEILEN_SPALTEN: readonly (readonly string[])[] = [
-  ["audit.detail.actor"],
-  ["audit.detail.target", "audit.detail.targetObject"],
-  ["audit.detail.roleBefore"],
-  ["audit.detail.roleAfter"],
+// produkt:20261009:admin-audit-verstaendlich: die Vorgänge, nach denen das Prüfprotokoll filtern
+// lässt — Beiträge, Konten und Anmeldung, der Kettenexport. Nur Namen von Vorgängen, nie Objekte.
+const PROTOKOLL_AKTIONEN: readonly string[] = [
+  "ko.created",
+  "ko.revised",
+  "ko.deleted",
+  "ko.restored",
+  "ko.purged",
+  "ko.admin-validated",
+  "ko.rated",
+  "ko.returned-to-owner",
+  "ko.confidentiality",
+  "ko.ownership",
+  "ko.category-changed",
+  "ko.tags-changed",
+  ...KONTO_AUDIT_AKTIONEN,
+  "audit.exported",
 ];
 
 // SCRUM-440: nur den markierten Auszug drucken — eine Body-Klasse isoliert den Druck (via CSS),
@@ -98,88 +98,6 @@ function DruckKnopf(): JSX.Element {
 }
 
 /**
- * JOB 3140 (UX-11): der Wert einer Detailzeile — reiner Text, kein Bedienelement.
- *
- * Drei Formen, drei Bedeutungen: ein Wert; eine Kennung mit dem GRUND, warum kein Name danebensteht;
- * oder die ehrliche Auskunft „nicht gespeichert". Welche davon gilt, entscheidet
- * `lib/auditEventDetail.ts` — hier wird nur gerendert.
- *
- * Verwalteransicht (N-0027): die Kennung eines KONTOS steht nicht mehr in der Spalte, sondern in der
- * Detailansicht „Technische Angaben" desselben Eintrags (`TechnikAngaben`). In der Spalte bleibt der
- * Name oder der Grund, warum keiner dasteht. Nur ein Objektziel hat außer seiner Kennung nichts,
- * was es benennt — dort bleibt sie auch in der Spalte stehen.
- */
-function DetailWert({ zeile }: { zeile: DetailZeile }): JSX.Element {
-  const { t } = useTranslation();
-  if (zeile.kind === "missing") {
-    return <span className="italic text-muted-2">{t("audit.detail.notStored")}</span>;
-  }
-  const kennungInSpalte = zeile.kind === "id" && zeile.hinweisKey === undefined;
-  return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-      {zeile.kind === "text" ? (
-        <span className="text-text">{zeile.valueKey ? t(zeile.valueKey) : zeile.value}</span>
-      ) : null}
-      {/* JOB 3140 R2: der Hinweis steht NUR da, wenn es einen gibt. Ein Objektziel (`ko.created`
-          & Co.) trägt seine Kennung ohne jede Aussage über ein Konto — kein leerer Kursivrest. */}
-      {zeile.hinweisKey === undefined ? null : (
-        <span className="italic text-muted-2">{t(zeile.hinweisKey)}</span>
-      )}
-      {kennungInSpalte && zeile.id !== undefined ? (
-        <span className="truncate font-mono text-[10.5px] text-muted-2">{zeile.id}</span>
-      ) : null}
-    </span>
-  );
-}
-
-/**
- * Verwalteransicht (N-0027): die technischen Kennungen eines Eintrags — ergänzend, eingeklappt.
- *
- * Die Kennungen kommen roh aus dem Eintrag (`actor`, `target`), nicht aus der Namensauflösung:
- * genau sie braucht, wer einen Eintrag mit der exportierten Kette oder einer Rückfrage abgleicht.
- * Der rohe Aktionscode steht hier bewusst nicht — die Spalte „Ereignis" benennt ihn.
- */
-function TechnikAngaben({
-  eintrag,
-  zielLabelKey,
-}: {
-  eintrag: AuditEntry;
-  zielLabelKey: string;
-}): JSX.Element {
-  const { t } = useTranslation();
-  const zeilen: { key: string; labelKey: string; wert: string }[] = [
-    { key: "seq", labelKey: "auditprotokoll.technik.nr", wert: String(eintrag.seq) },
-    { key: "audit.detail.actor", labelKey: "auditprotokoll.technik.akteur", wert: eintrag.actor },
-    {
-      key: zielLabelKey,
-      labelKey:
-        zielLabelKey === "audit.detail.targetObject"
-          ? "auditprotokoll.technik.objekt"
-          : "auditprotokoll.technik.konto",
-      wert: eintrag.target,
-    },
-    { key: "hash", labelKey: "auditprotokoll.technik.hash", wert: eintrag.hash },
-  ];
-  return (
-    <details data-audit-technik={eintrag.seq} className="text-[11px]">
-      <summary className="cursor-pointer text-muted-2 hover:text-text">
-        {t("auditprotokoll.technik.anzeigen")}
-      </summary>
-      <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.5">
-        {zeilen.map((z) => (
-          <Fragment key={z.key}>
-            <dt className="text-muted-2">{t(z.labelKey)}</dt>
-            <dd data-audit-kennung={z.key} className="min-w-0 break-all font-mono text-muted">
-              {z.wert === "" ? t("audit.detail.notStored") : z.wert}
-            </dd>
-          </Fragment>
-        ))}
-      </dl>
-    </details>
-  );
-}
-
-/**
  * SCRUM-432 (Pedi 03.07., VIP-Investor): das hash-verkettete Prüfprotokoll.
  * AUFTRAG-mega15 Block A: die Texte behaupten keine Unveränderbarkeit — belegbar ist die
  * Prüfbarkeit (s. tests/app/chain-claims.test.ts).
@@ -195,42 +113,20 @@ function TechnikAngaben({
  * der `Abfragehuelle` und kann die Karte deshalb weder blockieren noch in einen Fehlerzustand
  * zwingen. Sein Zustand wird über dasselbe Modell gelesen wie jede Einstellungszeile
  * (`zeilenWert.ts`) und als Lage an `auditEventDetail` gereicht — damit die Tatsachenaussage
- * „Konto nicht mehr vorhanden" nur aus einer erfolgreichen, frischen Antwort entstehen kann.
+ * „Konto nicht mehr vorhanden" nur aus einer erfolgreichen, frischen Antwort entstehen kann
+ * (`useVerzeichnislage`, drei Lagen — JOB 3140 R2).
+ *
+ * produkt:20261009:admin-audit-verstaendlich (ADMIN-03): die Karte liest die Kette SEITENWEISE
+ * (`GET /api/audit/seite`, jüngste zuerst) statt der Gesamtliste, gefiltert nach Person, Vorgang,
+ * Betroffenem und Zeitraum aus der Adresse. Darstellung, Filter und Blättern teilt sie mit der
+ * Auth-Ansicht (`components/einstellungen/Auditprotokoll.tsx`).
  */
 export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { push } = useToast();
-  const audit = useAudit();
-  const verzeichnisAbfrage = useDirectory();
-  const online = useIstOnline();
-  const verzeichnisLage = abfragelage(verzeichnisAbfrage, online);
-  const verzeichnisBefund = wertBefund(verzeichnisLage, null);
-  const verzeichnisDaten = verzeichnisAbfrage.data;
-  const verzeichnisLaeuft = verzeichnisLage.laeuft;
-  const verzeichnisVeraltet = verzeichnisBefund.nichtAktualisiert;
-  const verzeichnis: VerzeichnisLage = useMemo(() => {
-    if (verzeichnisBefund.art === "laedt") {
-      return { art: "laedt" };
-    }
-    if (verzeichnisBefund.art === "fehler" || verzeichnisBefund.art === "offline") {
-      return { art: "nichtAbrufbar" };
-    }
-    return {
-      art: "geladen",
-      namen: verzeichnisNamen(verzeichnisDaten),
-      // JOB 3140 R2 (BENs Korrekturpflicht 2) — DREI LAGEN, NICHT ZWEI.
-      //
-      // Bis hierher stand hier `frisch: !nichtAktualisiert`. `nichtAktualisiert` meint aber
-      // ausschließlich „Auffrischung GESCHEITERT oder ruht" (`zeilenWert.ts:93`). Eine LAUFENDE
-      // Auffrischung ist beides nicht — und trotzdem ist der sichtbare Bestand dann der ALTE aus
-      // dem Zwischenspeicher. BENs Messung: 60 s alter, leerer Bestand mit ausstehender Antwort
-      // zeigte „Konto nicht mehr vorhanden", während das Konto in der laufenden Antwort steht.
-      // Deshalb entscheidet jetzt auch `laeuft` mit; belegt ist das Fehlen erst danach.
-      stand: verzeichnisVeraltet ? "veraltet" : verzeichnisLaeuft ? "laeuftNach" : "frisch",
-    };
-  }, [verzeichnisBefund.art, verzeichnisVeraltet, verzeichnisLaeuft, verzeichnisDaten]);
-  // N-0027: Namen, die die Kette selbst gespeichert hat — benennt auch gelöschte Konten.
-  const protokoll = useMemo(() => protokollNamen(audit.data), [audit.data]);
+  const filter = useAuditAdressfilter();
+  const audit = useAuditSeite(auditAnfrage(filter.werte, filter.vor));
+  const verzeichnis = useVerzeichnislage(useDirectory());
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — echte Verifikation statt Aussage.
   const verifyAudit = useMutation({
     mutationFn: () => endpoints.audit.verify(),
@@ -305,15 +201,24 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
           title={t("seitenhilfe.admin.protokoll.titel")}
           body={t("seitenhilfe.admin.protokoll.text")}
         />
+        {/* produkt:20261009:admin-audit-verstaendlich: die Filter stehen AUSSERHALB der Hülle — auch
+            wenn eine Seite nicht abrufbar ist (etwa ein unlesbarer Zeitraum aus der Adresse), bleibt
+            der Weg zurück zu einer gültigen Auswahl offen. */}
+        <AuditFilterLeiste
+          filter={filter}
+          verzeichnis={verzeichnis}
+          aktionen={PROTOKOLL_AKTIONEN}
+          idPraefix="pruefprotokoll-filter"
+        />
         <Abfragehuelle abfrage={audit}>
-          {(entries) => {
-            const recent = entries.slice(-12).reverse();
+          {(seite) => {
             return (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
-                    {t("adm.sich.auditCount", { count: entries.length })}
-                  </span>
+                  {/* produkt:20261009:admin-audit-verstaendlich: die grüne Zählmarke „n Einträge in
+                      der Kette" ist entfallen. Sie zählte die geladene Gesamtliste, die es nicht
+                      mehr gibt — und ein grünes Schild ohne Prüfung las sich wie ein Nachweis (K6).
+                      Grün steht nur noch am Ergebnis einer Prüfung MIT Zeitpunkt. */}
                   {/* SCRUM-439: Knopf print-versteckt, Ergebnis bleibt sichtbar. */}
                   <Button
                     variant="outline"
@@ -328,6 +233,12 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                   {verifyAudit.data
                     ? (() => {
                         const view = auditVerifyView(verifyAudit.data);
+                        // K6: der Prüfzeitpunkt in der Zeitzone dessen, der liest.
+                        const zeitpunkt = view.params.zeitpunkt;
+                        const gelesen =
+                          typeof zeitpunkt === "string"
+                            ? zeitpunktMitZone(zeitpunkt, i18n.language)
+                            : undefined;
                         return (
                           <span
                             data-testid="audit-verify-result"
@@ -337,6 +248,7 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                             {t(view.key, {
                               ...view.params,
                               ...(view.kindKey ? { kind: t(view.kindKey) } : {}),
+                              ...(gelesen ? { zeitpunkt: gelesen } : {}),
                             })}
                           </span>
                         );
@@ -363,79 +275,26 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                     })}
                   </p>
                 ) : null}
-                {recent.length === 0 ? (
+                {/* K5: die Datei sagt selbst, wie viele Einträge für diesen Betrachter geschwärzt
+                    wurden — die Fläche wiederholt es, statt es zu verschweigen. */}
+                {(exportAudit.data?.geschwaerzt ?? 0) > 0 ? (
+                  <p data-testid="audit-export-geschwaerzt" className="text-[11.5px] text-muted">
+                    {t("auditprotokoll.export.geschwaerzt", {
+                      count: exportAudit.data?.geschwaerzt ?? 0,
+                    })}
+                  </p>
+                ) : null}
+                {seite.entries.length === 0 ? (
                   <>
-                    <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>
+                    <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
                     {leerzustandsZeile(t, "verwaltung")}
                   </>
                 ) : (
-                  // Verwalteransicht (N-0027): beschriftete Spalten statt Beschriftungsliste — die
-                  // Spaltenköpfe sagen, wer wer ist; die Zellen sind reiner Text. Das einzige
-                  // Bedienelement je Eintrag ist die eingeklappte Detailansicht mit den Kennungen.
-                  <div className="overflow-x-auto">
-                    <table data-audit-tabelle="" className="w-full text-left text-[12.5px]">
-                      <caption className="pb-1 text-left text-[11.5px] text-muted-2">
-                        {t("auditprotokoll.tabelle.titel", {
-                          shown: recent.length,
-                          count: entries.length,
-                        })}
-                      </caption>
-                      <thead>
-                        <tr className="border-b border-hairline text-[11px] text-muted-2">
-                          {AUDIT_SPALTEN.map((key) => (
-                            <th
-                              key={key}
-                              scope="col"
-                              data-audit-spalte={key}
-                              className="px-2 py-1.5 align-bottom font-semibold"
-                            >
-                              {t(key)}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-hairline">
-                        {recent.map((e) => {
-                          const zeilen = auditEventDetail(e, verzeichnis, protokoll);
-                          const zielZeile = zeilen[1];
-                          return (
-                            <tr key={e.seq} data-audit-eintrag={e.seq} className="align-top">
-                              <td className="whitespace-nowrap px-2 py-2 font-mono text-[11px] text-muted-2">
-                                {new Date(e.at).toLocaleString()}
-                              </td>
-                              <td
-                                data-audit-zeile="audit.detail.event"
-                                className="px-2 py-2 font-semibold text-text"
-                              >
-                                {auditActionLabel(e.action, t)}
-                              </td>
-                              {ZEILEN_SPALTEN.map((spalte) => {
-                                const zeile = zeilen.find((z) => spalte.includes(z.labelKey));
-                                return zeile === undefined ? (
-                                  <td key={spalte[0]} className="px-2 py-2" />
-                                ) : (
-                                  <td
-                                    key={spalte[0]}
-                                    data-audit-zeile={zeile.labelKey}
-                                    className="min-w-0 px-2 py-2 text-muted"
-                                  >
-                                    <DetailWert zeile={zeile} />
-                                  </td>
-                                );
-                              })}
-                              <td className="px-2 py-2">
-                                <TechnikAngaben
-                                  eintrag={e}
-                                  zielLabelKey={zielZeile?.labelKey ?? "audit.detail.target"}
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                  // Verwalteransicht (N-0027): beschriftete Spalten — jetzt als gemeinsame
+                  // Darstellung mit der Auth-Ansicht (`Auditprotokoll.tsx`).
+                  <AuditTabelle seite={seite} verzeichnis={verzeichnis} />
                 )}
+                <AuditSeitenleiste seite={seite} filter={filter} />
               </>
             );
           }}

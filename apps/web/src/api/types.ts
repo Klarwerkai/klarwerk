@@ -894,6 +894,11 @@ export interface AuditVerifyReport {
   unresolvedDeviations: number;
   uncheckedDeviations: number;
   firstDeviation?: { seq: number; at: string; action: string; kind: ChainDeviationKind };
+  /**
+   * produkt:20261009:admin-audit-verstaendlich: Zeitpunkt der Prüfung (ISO, vom Server). Ohne ihn
+   * gilt ein Ergebnis an der Oberfläche nicht als Nachweis (`lib/auditVerifyState.ts`).
+   */
+  checkedAt?: string;
 }
 
 // Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette (GET /api/audit/export). Spiegelt
@@ -906,6 +911,8 @@ export interface AuditChainExport {
   head: { seq: number; hash: string } | null;
   inspection: AuditVerifyReport;
   entries: AuditEntry[];
+  /** produkt:20261009:admin-audit-verstaendlich: Anzahl der für den Exportierenden geschwärzten Einträge. */
+  geschwaerzt?: number;
 }
 
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
@@ -1749,12 +1756,43 @@ export interface AuditEntry {
   payload: Record<string, unknown>;
   prevHash: string;
   hash: string;
+  /**
+   * produkt:20261009:admin-audit-verstaendlich: die Inhaltsfelder, die der Server für diesen
+   * Betrachter entfernt hat, weil er das betroffene Objekt nicht (mehr) öffnen darf.
+   */
+  geschwaerzt?: string[];
 }
 
 export interface AuditFilter {
   actor?: string;
   action?: string;
   target?: string;
+}
+
+// produkt:20261009:admin-audit-verstaendlich (ADMIN-03): der Seitenweg `GET /api/audit/seite`.
+// Spiegelt die Antwort aus services/app/src/routes/audit-routes.ts.
+export interface AuditSeitenAnfrage {
+  actor?: string;
+  action?: string;
+  /** Mehrere Aktionen zugleich (ODER) — die Auth-Ansicht nutzt das für alle Kontoereignisse. */
+  actions?: readonly string[];
+  target?: string;
+  /** ISO-Zeitpunkte: `from` einschließlich, `to` ausschließlich. */
+  from?: string;
+  to?: string;
+  before?: number;
+  limit?: number;
+}
+
+export interface AuditSeite {
+  /** Jüngster Eintrag zuerst. */
+  entries: AuditEntry[];
+  nextBefore: number | null;
+  limit: number;
+  /** Titel betroffener Objekte — nur solche, die der Betrachter jetzt öffnen darf. */
+  objekte: Record<string, { titel: string }>;
+  /** Einträge, in denen die Kette Namen zu Kennungen dieser Seite gespeichert hat. */
+  namensbelege: Pick<AuditEntry, "seq" | "actor" | "action" | "target" | "payload">[];
 }
 
 // FR-LIF-03: Rollenbasierte Lernpfade (Shape spiegelt services/lifecycle).
