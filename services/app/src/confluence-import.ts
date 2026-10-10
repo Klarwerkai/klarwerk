@@ -88,8 +88,36 @@ export interface ImportRunSummary {
   // Adapter ihn geliefert hat; die bereits gelesenen Seiten bleiben davon unberührt.
   abbruch?: NonNullable<CollectResult["abbruch"]>;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
+  // confluence-import-rechte (Nacharbeit 6, Befund F3): Seiten, deren Leserkreis NICHT vollständig
+  // gelesen werden konnte (Gruppenabruf abgebrochen oder über der technischen Grenze). Ihre Leser
+  // sind eine Untermenge der in der Quelle Berechtigten. Fehlt das Feld, gab es keine solche Seite.
+  leserUnvollstaendig?: number;
   // R-0162: der Löschabgleich dieses Laufs (s. `quellAbgleich`). Additiv.
   sourceSync?: SourceSyncSummary;
+}
+
+/** Nacharbeit 6 (Befund F3): trägt der Eintrag den Vermerk „Leserkreis unvollständig gelesen"? */
+function traegtUnvollstaendigeLeser(item: ImportItem): boolean {
+  const rechte = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+  return (
+    rechte !== null &&
+    typeof rechte === "object" &&
+    (rechte as { leserUnvollstaendig?: unknown }).leserUnvollstaendig === true
+  );
+}
+
+/**
+ * Nacharbeit 19 (Ben, K1): trägt der Eintrag die Marke „Leser nicht ermittelt" (die Prüfung je
+ * Konto endete an der Seitengrenze)? Ein solcher Eintrag darf KEINE Rechte setzen — weder als neuer
+ * Kandidat noch im Rechteabgleich eines bestehenden Objekts.
+ */
+export function traegtNichtErmittelteLeser(item: unknown): boolean {
+  const rechte = (item as { readonly quellrechte?: unknown } | null)?.quellrechte;
+  return (
+    rechte !== null &&
+    typeof rechte === "object" &&
+    (rechte as { leserNichtErmittelt?: unknown }).leserNichtErmittelt === true
+  );
 }
 
 // ================================================================================================
@@ -664,8 +692,31 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // Anhänge werden aber abgeglichen (s. unten). Offene Kandidaten gehören nicht dazu: deren Anhänge
   // kommen mit der Annahme.
   const abzugleichen: { item: ImportItem; perPageIdx: number }[] = [];
+  // confluence-import-rechte (Ben, Nacharbeit 6, Befund F2): ALLE übersprungenen Seiten —
+  // bereits importierte UND offen vorgemerkte — bekommen ihre frisch erhobenen Leserechte
+  // nachgezogen. Confluence zählt die Seitenversion bei einer reinen Rechteänderung nicht hoch.
+  const rechteAbzugleichen: { item: ImportItem; perPageIdx: number }[] = [];
+  // Nacharbeit 6 (Befund F3): Seiten, deren Leserkreis nicht vollständig gelesen werden konnte.
+  let leserUnvollstaendig = 0;
+  // Seiten, deren Leserechte nicht abgeglichen bzw. nicht ermittelt wurden (je perPage-Index).
+  const rechteGescheitert = new Set<number>();
   for (const item of items) {
+    if (traegtUnvollstaendigeLeser(item)) {
+      leserUnvollstaendig += 1;
+    }
     const ref = item.externalId ?? item.title;
+    // Nacharbeit 19 (Ben, K1): eine Seite, deren Leser NICHT ermittelt wurden, wird weder
+    // eingereiht noch abgeglichen — sonst ersetzte eine nicht geprüfte, leere Liste die
+    // gespeicherten Leser. Der bisherige Stand bleibt, die Seite zählt als gescheitert.
+    if (traegtNichtErmittelteLeser(item)) {
+      rechteGescheitert.add(perPage.length);
+      perPage.push({
+        ref,
+        status: "failed",
+        note: "Leserechte nicht ermittelt — nichts übernommen, der bisherige Stand bleibt.",
+      });
+      continue;
+    }
     const version = item.sourceVersion ?? 1;
     // bens F3: In-Run-/Pending-/Bestands-Schlüssel sind provider-scoped (wie die Queue selbst).
     const runKey = item.externalId
@@ -686,6 +737,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
       if (!isPending) {
         abzugleichen.push({ item, perPageIdx: perPage.length });
       }
+      rechteAbzugleichen.push({ item, perPageIdx: perPage.length });
       perPage.push({ ref, status: "skipped", note: "unverändert (idempotent)" });
       if (already === version) {
         unveraendert.push(item);
@@ -739,6 +791,34 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         if (entry) {
           entry.status = "skipped";
           entry.note = "Parallelkonflikt (bereits eingereiht)";
+        }
+      }
+    }
+  }
+
+  // ==============================================================================================
+  // confluence-import-rechte (Ben, Nacharbeit 6, Befund F2) — DER RECHTEABGLEICH UNVERÄNDERTER SEITEN.
+  // ==============================================================================================
+  //
+  // Eine Seite gleicher Version geht nicht erneut in die Queue — ihre Leserechte können sich
+  // trotzdem geändert haben. `gleicheQuellrechteFuerAnkerAb` zieht sie am lebenden Objekt über den
+  // geschützten Abgleich nach (`setQuellrechte`, Aktualitätsschutz) und an offenen Kandidaten
+  // derselben Version. Scheitert das, ist die Seite NICHT abgeglichen — sie zählt als gescheitert,
+  // und der Lauf sagt es, statt „unverändert" zu melden (der alte, womöglich offenere Stand bleibt).
+  if (
+    !deps.dryRun &&
+    rechteAbzugleichen.length > 0 &&
+    typeof deps.library.gleicheQuellrechteFuerAnkerAb === "function"
+  ) {
+    for (const { item, perPageIdx } of rechteAbzugleichen) {
+      try {
+        await deps.library.gleicheQuellrechteFuerAnkerAb(item, deps.actor);
+      } catch {
+        rechteGescheitert.add(perPageIdx);
+        const entry = perPage[perPageIdx];
+        if (entry) {
+          entry.status = "failed";
+          entry.note = "Leserechte nicht abgeglichen — der Lauf ist unvollständig.";
         }
       }
     }
@@ -800,7 +880,10 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         abgleich.belegOffen > 0 ||
         abgleich.listeUnvollstaendig
       ) {
-        abgleichUnvollstaendig += 1;
+        // Nacharbeit 6: eine Seite, deren Rechteabgleich schon gescheitert ist, zählt nur einmal.
+        if (!rechteGescheitert.has(perPageIdx)) {
+          abgleichUnvollstaendig += 1;
+        }
         bilanz.unvollstaendigeSeiten.push(item.externalId ?? item.title);
         if (entry) {
           entry.status = "failed";
@@ -867,8 +950,11 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     // Alles Gesehene, das NICHT (real) importiert wurde: In-Run-/Idempotenz-Skips + Parallelkonflikte.
     // R-0163: eine Seite mit unvollständigem Anhangsabgleich zählt nicht mehr als übersprungen,
     // sondern als gescheitert.
-    skipped: items.length - imported - abgleichUnvollstaendig,
-    failed: collectFailed.length + abgleichUnvollstaendig,
+    skipped: items.length - imported - abgleichUnvollstaendig - rechteGescheitert.size,
+    failed: collectFailed.length + abgleichUnvollstaendig + rechteGescheitert.size,
+    // Nacharbeit 6 (Befund F3): nur gesetzt, wenn es solche Seiten gibt — eine fehlende Angabe
+    // heißt „alle Leserkreise vollständig gelesen".
+    ...(leserUnvollstaendig > 0 ? { leserUnvollstaendig } : {}),
     truncated,
     // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(hierarchie ? { hierarchie } : {}),

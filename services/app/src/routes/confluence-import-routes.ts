@@ -36,6 +36,7 @@ import {
   importedAnchorVersions,
   pendingCandidateVersions,
   runConfluenceImport,
+  traegtNichtErmittelteLeser,
 } from "../confluence-import";
 import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
 import type { Guards } from "../http";
@@ -1526,6 +1527,12 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
                 const frisch = await adapter.fetchItem(item.externalId);
                 if (!frisch) {
                   notFound.push(id);
+                  continue;
+                }
+                // Nacharbeit 19 (Ben, K1): Leser nicht ermittelt => nicht einreihen; die Seite
+                // erscheint ehrlich als gescheitert, kein Kandidat mit ungeprüfter Leserliste.
+                if (traegtNichtErmittelteLeser(frisch)) {
+                  failed.push({ id, reason: "LESER_NICHT_ERMITTELT" });
                   continue;
                 }
                 zuSchreiben = frisch;
