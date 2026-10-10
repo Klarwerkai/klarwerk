@@ -18,6 +18,7 @@ import {
   bindeInstanz,
   bindeInstanzVorMigration,
 } from "../../services/app/src/instanzbindung";
+import { startfehlerZeile } from "../../services/app/src/startfehler-zeile";
 
 /** Nachbildung der einen Tabellenzeile; zählt die Anweisungen mit. */
 function attrappe(vorhanden?: string) {
@@ -160,6 +161,24 @@ describe("Instanztrennung · Fehlkonfiguration bricht ab, bevor die Datenbank ge
     const fehler = await bindeInstanz(attrappe().pool, roh).catch((e: unknown) => e);
     expect(fehler).toBeInstanceOf(InstanzadresseError);
     expect((fehler as Error).message).not.toContain("geheimnis-4711");
+  });
+});
+
+// Prüfung Nacharbeit 5: die Startfehlerzeile aus main (R-0623) schreibt nur freigegebene
+// Fehlertypen. Ohne Eintrag stand der Abbruch der Instanzbindung als `UNBEKANNT` da.
+describe("Instanztrennung · die Startfehlerzeile nennt den Abbruch beim Namen", () => {
+  it("InstanzbindungError und InstanzadresseError stehen mit Typ und Herkunft in der Zeile", () => {
+    const bindung = startfehlerZeile(new InstanzbindungError("a.firma.test", "b.firma.test"));
+    expect(bindung).toMatch(/^Serverstart fehlgeschlagen: InstanzbindungError \(code OHNE_CODE, /);
+
+    const adresse = startfehlerZeile(new InstanzadresseError("unlesbar"));
+    expect(adresse).toMatch(/^Serverstart fehlgeschlagen: InstanzadresseError \(code OHNE_CODE, /);
+  });
+
+  it("die Meldung bleibt unterdrückt — keine Hostnamen in der Zeile", () => {
+    const zeile = startfehlerZeile(new InstanzbindungError("a.firma.test", "b.firma.test"));
+    expect(zeile).not.toContain("a.firma.test");
+    expect(zeile).not.toContain("b.firma.test");
   });
 });
 

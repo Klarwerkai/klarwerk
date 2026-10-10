@@ -283,8 +283,11 @@ describe("Instanztrennung · zwei Anlagen an einer Datenbank", () => {
     );
     expect(fremdB.code).toBe(1);
     expect(fremdB.ausgabe).toContain("Serverstart fehlgeschlagen: InstanzbindungError");
-    expect(fremdB.ausgabe).toContain("wissen.firma-a.test");
-    expect(fremdB.ausgabe).toContain("wissen.firma-b.test");
+    // R-0623 (main): die Startfehlerzeile trägt Typ, Code und Herkunft, nie die Meldung — die
+    // Hostnamen stehen deshalb nicht in der Zeile. Welche Anlage gebunden ist, sagt die Datenbank
+    // (`SELECT anlage FROM instanz_bindung`, Betreiberanleitung §7); hier über `herkunft` belegt,
+    // dass der Abbruch aus der Bindungsprüfung kommt.
+    expect(fremdB.ausgabe).toContain("herkunft services/app/src/instanzbindung.ts:");
     // Keine Verbindungszeichenkette in der Meldung — sie trägt das Datenbankkennwort.
     expect(fremdB.ausgabe).not.toContain(url);
 
