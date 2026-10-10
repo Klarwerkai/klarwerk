@@ -326,7 +326,8 @@ async function start(): Promise<void> {
     starteWissensereignisMelder({
       melder,
       intervalMs: melderTakt,
-      onError: (error) => app.log.warn(`Wissensereignis-Abgleich übersprungen: ${String(error)}`),
+      // R-0623: der Fehler geht als `err` über den Erlaubnislisten-Serializer, nicht als Text.
+      onError: (error) => app.log.warn({ err: error }, "Wissensereignis-Abgleich übersprungen"),
     });
     app.log.info(
       `Wissensereignis-Meldungen aktiv — ${webhooks.ziele.length} Ziel(e), Takt ${melderTakt / 1000} s.`,
