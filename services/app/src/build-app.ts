@@ -422,6 +422,7 @@ import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
+import { teamsRoutes } from "./routes/teams-routes";
 // ADMIN-15: Unternehmensprofil und interne Richtlinien.
 import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
@@ -451,6 +452,8 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+// produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg; im Postgres-Betrieb haltbar.
+import { InMemoryTeamsRepo, PgTeamsRepo, TeamAufloesendeSpaces, type TeamsRepo } from "./teams";
 import { type TransportTls, tlsServerFabrik } from "./transport-tls";
 // R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
 import {
@@ -591,6 +594,11 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
    */
   spaces: SpacesRepo;
+  /**
+   * produkt:20261009:admin-teams — die Fassungen der Teams (`teams.ts`). `spaces` liest sie mit
+   * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
+   */
+  teams: TeamsRepo;
   /**
    * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
    * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
@@ -1171,6 +1179,8 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
+    teams?: TeamsRepo;
     // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
     verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1227,7 +1237,10 @@ export function assembleServices(
   // produkt:20261007:spaces — hier schon gebaut, weil die Nachfolge bei Anlage (Nacharbeit 6) das
   // Leserecht der Nachfolge am führenden Space des neuen Beitrags prüft. Dieselbe Instanz geht
   // unten in die Dienste.
-  const spaces = opts.spaces ?? new InMemorySpacesRepo();
+  // produkt:20261009:admin-teams: jede Leserin der Spaces — Rechteerhebung je Anfrage, Nachfolge,
+  // Übergabe, Spaceseiten — sieht die über Teams vermittelten Mitglieder aus dem aktuellen Teamstand.
+  const teams = opts.teams ?? new InMemoryTeamsRepo();
+  const spaces = new TeamAufloesendeSpaces(opts.spaces ?? new InMemorySpacesRepo(), teams);
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
@@ -1563,6 +1576,7 @@ export function assembleServices(
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces,
+    teams,
     verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
@@ -2067,6 +2081,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
+      // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
+      teams: new PgTeamsRepo(pool),
       // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
       // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
       verantwortungNachfolge: new PgNachfolgeRepo(pool),
@@ -4775,6 +4792,8 @@ export function buildApp(
         ko: services.ko,
         auth: services.auth,
         audit: services.audit,
+        // produkt:20261009:admin-teams: Teams als bindbarer Mitgliedschaftsweg eines Space.
+        teams: services.teams,
         // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.
@@ -4793,6 +4812,19 @@ export function buildApp(
               },
             }
           : {}),
+      },
+      guards,
+    ),
+  );
+  // produkt:20261009:admin-teams: Teams anlegen, bearbeiten, Mitglieder mit Wirkungsvorschau,
+  // archivieren — für die Kontoverwaltung (`users.manage`).
+  app.register(
+    teamsRoutes(
+      {
+        teams: services.teams,
+        spaces: services.spaces,
+        auth: services.auth,
+        audit: services.audit,
       },
       guards,
     ),
