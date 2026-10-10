@@ -20,6 +20,8 @@
 //        und nur sie landet nach dem Speichern im Beitrag.
 //   V4 · K4    — anderes Objekt geöffnet bzw. keins: Rückfrage statt Änderung am falschen Objekt.
 //   V5 · K4    — ohne Bearbeitungsrecht (Rolle „viewer“): verständlicher Fehler, nichts geändert.
+//   V6 · K3    — Produktbetrieb: Notizentwurf aus der Markierung sichtbar mit Herkunft; die
+//        Bedienhinweise beschreiben Umformulieren und Notizentwurf als geliefert.
 //
 // Echte Maus, echtes Layout und echte Tastatur misst diese Datei nicht (jsdom); die Fläche einer
 // Markierung (`Range.getBoundingClientRect`) wird mit festen Zahlen ergänzt, sonst nichts.
@@ -540,6 +542,59 @@ describe("V4 · K4 — ein anderes oder kein Objekt geöffnet: Rückfrage, keine
     expect(gemeintNachher.statement).toBe(BELEGSTELLE);
     expect(anderesNachher.version).toBe(anderesVorher.version);
     expect(anderesNachher.statement).toBe(anderesVorher.statement);
+  });
+});
+
+// Bens Befund (Nacharbeit 4): im integrierten Produktbetrieb (`AppShell` ohne Vorschau-Aufruf →
+// `betriebsart="produkt"`) muss der echte Notizentwurf sichtbar sein und die Bedienhilfe die
+// angeschlossenen Funktionen erklären, statt sie „nicht freigegeben“ zu nennen.
+describe("V6 · Produktbetrieb — Markierung → Notizentwurf sichtbar mit Herkunft; Hinweise stimmen", () => {
+  it("der echte Notizentwurf erscheint mit Inhalt, Herkunft und Rücklink; kein Demo-Feld", async () => {
+    setzeKlaraVorschauAktiv(false);
+    const a = await app();
+    const eintrag = await eintragMitOriginal(a.app, a.admin);
+    const leser = await neuesKonto(a.app, "klara-produkt-notiz", a.admin);
+    alsKonto(leser);
+    const vorher = await koLesen(a, leser, eintrag.koId);
+
+    await artikelOeffnen(eintrag);
+    expect(q(document, "klara-figur")?.dataset.betriebsart).toBe("produkt");
+
+    // Die Hinweise im Produktbetrieb beschreiben den gelieferten Umfang.
+    const offen = text("klara-offen");
+    expect(offen).toContain("noch in Arbeit");
+    expect(offen).not.toContain("Umformulieren");
+    expect(offen).not.toContain("Notizen");
+    expect(text("klara-bedienhilfe-vorschlag")).toContain("Umformulieren");
+
+    await markierungUebernehmen(BELEGSTELLE);
+    const hinweis = text("klara-aktion-nur-demo");
+    expect(hinweis).toContain("Umformulieren");
+    expect(hinweis).toContain("Notizentwurf");
+    expect(hinweis).not.toContain("nicht freigegeben");
+    expect(q(document, "klara-aktion-umformulieren")).not.toBeNull();
+
+    await klick(q(document, "klara-aktion-notiz"));
+    await bis(() => Boolean(q(document, "klara-entwurf")), 80);
+    const entwurf = q(document, "klara-entwurf");
+    expect(entwurf, "der Notizentwurf ist im Produktbetrieb unsichtbar").not.toBeNull();
+    expect(entwurf?.dataset.echt).toBe("true");
+    expect(q<HTMLTextAreaElement>(document, "klara-entwurf-inhalt")?.value).toBe(BELEGSTELLE);
+    const herkunft = text("klara-entwurf-herkunft");
+    expect(herkunft).toContain(eintrag.titel);
+    expect(herkunft).toContain(`Fassung ${vorher.version}`);
+    expect(herkunft).toMatch(/Absatz \d+/);
+    expect(q(document, "klara-entwurf-ruecklink")?.getAttribute("href")).toContain(eintrag.koId);
+    expect(text("klara-entwurf-sitzung")).toBe("Nur in dieser Sitzung");
+    // Keine Demo-Felder (Aufgabe, Erinnerung, Termin, Demo-Speichern) im echten Entwurf.
+    expect(q(document, "klara-entwurf-demo")).toBeNull();
+    expect(q(document, "klara-entwurf-erinnerung")).toBeNull();
+    expect(q(document, "klara-entwurf-termin")).toBeNull();
+    expect(q(document, "klara-entwurf-speichern")).toBeNull();
+    // Am Beitrag ändert der Notizentwurf nichts.
+    const nachher = await koLesen(a, leser, eintrag.koId);
+    expect(nachher.version).toBe(vorher.version);
+    expect(nachher.statement).toBe(BELEGSTELLE);
   });
 });
 

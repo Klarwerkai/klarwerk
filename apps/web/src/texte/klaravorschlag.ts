@@ -78,6 +78,12 @@ export default {
       "Steht der Wortlaut mehrmals im Beitrag, fragt Klara nach der Stelle. Ist ein anderer Beitrag geöffnet oder fehlt dir das Bearbeitungsrecht, ändert Klara nichts und sagt warum.",
     "klaravorschlag.bedienhilfe.notiz":
       "„Notizentwurf“ legt einen Entwurf mit Rücklink zur Stelle an; er bleibt in dieser Sitzung.",
+    "klaravorschlag.notiz.titel": "Notizentwurf",
+    "klaravorschlag.notiz.kennzeichen": "Nur in dieser Sitzung",
+    "klaravorschlag.notiz.hinweis":
+      "Der Notizentwurf bleibt nur in dieser Sitzung und wird nicht am Server gespeichert. Am Beitrag ändert er nichts.",
+    "klaravorschlag.notiz.ruecklink": "Zur Stelle in {{objekt}}",
+    "klaravorschlag.notiz.ansage": "Notizentwurf angelegt – mit Herkunft und Rücklink zur Stelle.",
   },
   en: {
     "klaravorschlag.titel": "Wording suggestion",
@@ -145,6 +151,13 @@ export default {
       "If the wording occurs more than once, Klara asks which passage you mean. If another article is open or you lack editing rights, Klara changes nothing and says why.",
     "klaravorschlag.bedienhilfe.notiz":
       "“Note draft” creates a draft with a link back to the passage; it stays in this session.",
+    "klaravorschlag.notiz.titel": "Note draft",
+    "klaravorschlag.notiz.kennzeichen": "This session only",
+    "klaravorschlag.notiz.hinweis":
+      "The note draft stays in this session only and is not saved on the server. It does not change the article.",
+    "klaravorschlag.notiz.ruecklink": "Go to the passage in {{objekt}}",
+    "klaravorschlag.notiz.ansage":
+      "Note draft created – with origin and a link back to the passage.",
   },
   nl: {
     "klaravorschlag.titel": "Formuleringsvoorstel",
@@ -212,5 +225,12 @@ export default {
       "Staat de tekst meerdere keren in het artikel, dan vraagt Klara welke plek je bedoelt. Is een ander artikel geopend of mis je bewerkingsrechten, dan wijzigt Klara niets en zegt waarom.",
     "klaravorschlag.bedienhilfe.notiz":
       "„Notitieconcept” maakt een concept met een link terug naar de passage; het blijft in deze sessie.",
+    "klaravorschlag.notiz.titel": "Notitieconcept",
+    "klaravorschlag.notiz.kennzeichen": "Alleen deze sessie",
+    "klaravorschlag.notiz.hinweis":
+      "Het notitieconcept blijft alleen in deze sessie en wordt niet op de server opgeslagen. Het artikel verandert niet.",
+    "klaravorschlag.notiz.ruecklink": "Naar de passage in {{objekt}}",
+    "klaravorschlag.notiz.ansage":
+      "Notitieconcept aangemaakt – met herkomst en een link naar de passage.",
   },
 } satisfies Textmodul;

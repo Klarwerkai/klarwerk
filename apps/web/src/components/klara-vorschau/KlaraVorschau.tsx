@@ -1285,8 +1285,10 @@ export function KlaraVorschau({
         erinnerung: "",
         termin: "",
         gespeichert: false,
+        echt: true,
       },
     }));
+    setAnsage(t("klaravorschlag.notiz.ansage"));
   };
   const vorschlagUebernehmen = (wahl?: { nr: number; stand: string }): void => {
     const v = leseZustand().textvorschlag;
@@ -2118,8 +2120,11 @@ export function KlaraVorschau({
               </section>
             ) : null}
 
-            {/* Entwurf — ein Demo-Entwurf der Vorschau erscheint nie im Produktbetrieb. */}
-            {z.entwurf && !produkt ? <EntwurfKarte entwurf={z.entwurf} /> : null}
+            {/* Entwurf — ein Demo-Entwurf der Vorschau erscheint nie im Produktbetrieb; ein echter
+                Notizentwurf (Klara 04) erscheint überall, ohne Demo-Felder. */}
+            {z.entwurf && (z.entwurf.echt || !produkt) ? (
+              <EntwurfKarte entwurf={z.entwurf} />
+            ) : null}
 
             {/* Klara 01: Bedienhilfe zu dieser Fähigkeit — von Anfang an über Klara. */}
             <details
@@ -2633,6 +2638,64 @@ function EntwurfKarte({ entwurf }: { entwurf: Entwurf }): JSX.Element {
   const artikel = entwurf.herkunft.artikelId ? demoArtikel(entwurf.herkunft.artikelId) : null;
   const setze = (teil: Partial<Entwurf>): void =>
     aendere((z) => (z.entwurf ? { ...z, entwurf: { ...z.entwurf, ...teil } } : z));
+  if (entwurf.echt) {
+    // Klara 04: der echte Notizentwurf — Inhalt und Herkunft, ohne Demo-Felder (Aufgabe,
+    // Erinnerung, Termin, Demo-Speichern sind nicht freigegeben). Er bleibt in dieser Sitzung.
+    return (
+      <section
+        data-testid="klara-entwurf"
+        data-art={entwurf.art}
+        data-echt="true"
+        className="rounded-card border border-hairline bg-page px-3 py-2.5"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[12.5px] font-semibold text-ink">
+            {t("klaravorschlag.notiz.titel")}
+          </h3>
+          <span
+            data-testid="klara-entwurf-sitzung"
+            className="rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+          >
+            {t("klaravorschlag.notiz.kennzeichen")}
+          </span>
+        </div>
+        <label htmlFor={`${id}-inhalt`} className={`${KLEINTITEL} mt-2 block`}>
+          {t("klaravorschau.entwurf.inhalt")}
+        </label>
+        <textarea
+          id={`${id}-inhalt`}
+          data-testid="klara-entwurf-inhalt"
+          value={entwurf.inhalt}
+          rows={3}
+          onChange={(e) => setze({ inhalt: e.target.value })}
+          className="mt-0.5 w-full rounded-input border border-hairline bg-surface px-2 py-1.5 text-[12.5px] text-text outline-none focus:border-ink/30"
+        />
+        <p data-testid="klara-entwurf-herkunft" className="mt-1 text-[11.5px] text-muted">
+          {herkunftZeile(entwurf.herkunft, t)}
+        </p>
+        <Link
+          to={herkunftZiel(entwurf.herkunft)}
+          data-testid="klara-entwurf-ruecklink"
+          className="mt-1 inline-flex text-[12px] font-semibold text-brand-text hover:underline"
+        >
+          {t("klaravorschlag.notiz.ruecklink", { objekt: entwurf.herkunft.objekt })}
+        </Link>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted-2">
+          {t("klaravorschlag.notiz.hinweis")}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            data-testid="klara-entwurf-verwerfen"
+            onClick={() => aendere((z) => ({ ...z, entwurf: null }))}
+            className={KNOPF}
+          >
+            {t("klaravorschau.entwurf.verwerfen")}
+          </button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section
       data-testid="klara-entwurf"

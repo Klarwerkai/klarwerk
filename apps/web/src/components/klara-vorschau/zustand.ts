@@ -160,6 +160,11 @@ export interface Entwurf {
   erinnerung: string;
   termin: string;
   gespeichert: boolean;
+  /**
+   * Klara 04: ein ECHTER Notizentwurf aus einer echten Markierung (echter Betrieb, auch im
+   * Produktbetrieb sichtbar). Fehlt das Feld, ist es ein Demo-Entwurf der Vorschau.
+   */
+  echt?: boolean;
 }
 
 export interface Geparkt {
@@ -396,7 +401,8 @@ export function nachVorschauEnde(z: KlaraZustand): KlaraZustand {
     minimiert: false,
     geparkt: null,
     verlauf: [],
-    entwurf: null,
+    // Klara 04: ein echter Notizentwurf ist persönliche Arbeit, kein Teil der Vorschau.
+    entwurf: z.entwurf?.echt ? z.entwurf : null,
     artikelText: {},
     auswahl,
     bezug,

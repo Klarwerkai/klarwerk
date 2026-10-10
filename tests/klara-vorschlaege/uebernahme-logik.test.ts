@@ -16,7 +16,11 @@
 //   L7 · K4    — Mischfall formatierte + unformatierte Fundstelle: keine Änderung (Ben, Nacharbeit 2).
 //   L8 · K4    — veraltete Wahl (Stelle weg / umgeordnet): neue Rückfrage (Ben, Nacharbeit 2).
 import { describe, expect, it } from "vitest";
-import { ANFANG, anKontoBinden } from "../../apps/web/src/components/klara-vorschau/zustand";
+import {
+  ANFANG,
+  anKontoBinden,
+  nachVorschauEnde,
+} from "../../apps/web/src/components/klara-vorschau/zustand";
 import {
   findeStellen,
   meldeUebergabe,
@@ -229,6 +233,30 @@ describe("L6 · Vorschläge gehören der Person", () => {
     expect(mit.textvorschlag?.id).toBe("v1");
     expect(anKontoBinden(mit, "konto-b").textvorschlag).toBeNull();
     expect(anKontoBinden(mit, null).textvorschlag).toBeNull();
+  });
+});
+
+describe("L9 · echter Notizentwurf ist persönliche Arbeit, kein Vorschau-Anteil (Ben, Nacharbeit 4)", () => {
+  const herkunft = {
+    pfad: "/wissen/ko-a",
+    seite: "wissen" as const,
+    seitenName: "Wissen",
+    objekt: "„A“",
+  };
+  const entwurf = {
+    id: "e1",
+    art: "notiz" as const,
+    inhalt: ORIGINAL,
+    herkunft,
+    erinnerung: "",
+    termin: "",
+    gespeichert: false,
+  };
+
+  it("„Vorschau beenden“ behält den echten Entwurf und verwirft den Demo-Entwurf", () => {
+    const echt = nachVorschauEnde({ ...ANFANG, entwurf: { ...entwurf, echt: true } });
+    expect(echt.entwurf?.inhalt).toBe(ORIGINAL);
+    expect(nachVorschauEnde({ ...ANFANG, entwurf }).entwurf).toBeNull();
   });
 });
 
