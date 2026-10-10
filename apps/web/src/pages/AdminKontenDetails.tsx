@@ -20,9 +20,9 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 // JE KARTE EIN EIGENER TEXT: die vier Karten sind vier Bildschirme, und ein gemeinsamer Satz an der
 // Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
 import { HelpTip } from "../components/HelpTip";
-import { VerantwortungUebergabe } from "../components/VerantwortungUebergabe";
+import { UebergabeEinstieg } from "../components/UebergabeAblauf";
 import { VermaechtnisBuch } from "../components/VermaechtnisBuch";
-import { UebergabeVorschauInhalt, Wissensuebergabe } from "../components/Wissensuebergabe";
+import { UebergabeVorschauInhalt } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
@@ -532,6 +532,7 @@ export function NutzerDetail({
         e.target === nutzer.id &&
         (e.action.startsWith("user.") ||
           e.action === "verantwortung.uebergabe" ||
+          e.action === "verantwortung.ablauf" ||
           e.action === "lifecycle.handover"),
     )
     .slice(-5)
@@ -873,27 +874,21 @@ export function NutzerDetail({
               </button>
             )}
 
-            {/* produkt:20261007:ownership-uebergabe — Hauptverantwortung einzeln oder gesammelt an
-                Nachfolger übergeben, mit Vorschau; Zugang erst ohne Restbestand beenden. Für jedes
-                Konto, auch ein gesperrtes: gerade dort liegt Bestand, der eine Vertretung braucht. */}
-            <VerantwortungUebergabe
+            {/* ADMIN-05 — EIN Einstieg für beide Übergabewege: die gezielte Beitragsübergabe
+                (produkt:20261007:ownership-uebergabe, unverändert) und die vollständige
+                Ausscheidensübergabe mit Beiträgen UND offenen Vorgängen auf mehrere Nachfolger.
+                Geöffnet ist immer nur einer — keine zwei Nachfolgerformulare nebeneinander. Für
+                jedes Konto, auch ein gesperrtes: gerade dort liegt Bestand, der Vertretung braucht. */}
+            <UebergabeEinstieg
               personId={nutzer.id}
               personName={nutzer.name}
-              offen={beitraegeOffen}
-              onOffen={setBeitraegeOffen}
+              gezieltOffen={beitraegeOffen}
+              onGezieltOffen={setBeitraegeOffen}
             />
 
             {/* aufnahme:20260922:gesamt-wissensvermaechtnis — die Beiträge dieser Person als
                 Wissens-Vermächtnis-Buch, digital oder gedruckt. Ändert kein Wissen. */}
             <VermaechtnisBuch personId={nutzer.id} />
-
-            {/* R-0554 / R-2128: bevor ein Konto geht, wandert sein Wissen — Autorschaft, Entwürfe,
-                offene Lücken und Prüfaufgaben, nicht nur die Hauptverantwortung. Nachfolger kann nur
-                ein freigeschaltetes Konto sein. */}
-            <Wissensuebergabe
-              von={nutzer.id}
-              kandidaten={(users.data ?? []).filter((u) => u.approved && u.id !== nutzer.id)}
-            />
 
             <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
               <Button
