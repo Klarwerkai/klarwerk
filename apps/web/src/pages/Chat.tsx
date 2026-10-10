@@ -964,7 +964,8 @@ export function Chat(): JSX.Element {
   const gespraeche = useMemo(() => liste.data?.gespraeche ?? [], [liste.data]);
   const ich = konten.data?.ich ?? "";
   return (
-    <div data-testid="page-chat">
+    // `page-chat` setzt der Seitenkopf selbst (`PageHeader pageKey`), die Hülle trägt keinen zweiten.
+    <div data-testid="chat-seite">
       <PageHeader
         pageKey="chat"
         kicker={t("chat.seite.titel")}
