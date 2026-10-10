@@ -314,7 +314,7 @@ import {
   buildSubmitTimingEntries,
   submitPhaseSpans,
 } from "../lib/submitTiming";
-import { mitTranskript, transkriptZiel } from "../lib/transkriptUebernahme";
+import { mitOcrText, mitTranskript, transkriptZiel } from "../lib/transkriptUebernahme";
 import { maxRawAttachmentBytes } from "../lib/uploadLimits";
 import { useAiAvailable } from "../lib/useAiAvailable";
 
@@ -5191,9 +5191,17 @@ export function CaptureArbeitsraum({
     try {
       const res = await runImageOcr(img.dataUrl);
       if (res.status === "success" && res.text.length > 0) {
-        setRaw((prev) =>
-          prev ? `${prev}\n\n[OCR: ${img.name}]\n${res.text}` : `[OCR: ${img.name}]\n${res.text}`,
-        );
+        const erkannt = res.text;
+        // R-1688/R-1733 (Bens Befund 10.10., Nacharbeit 2): dasselbe Ziel wie das Transkript — im
+        // Formular die sichtbare „Aussage", sonst der Rohtext. Die Meldung erst nach der Übernahme.
+        if (transkriptZiel(mode) === "aussage") {
+          setDraft((dr) => {
+            const basis = dr ?? { ...EMPTY_DRAFT };
+            return { ...basis, statement: mitOcrText(basis.statement, img.name, erkannt) };
+          });
+        } else {
+          setRaw((prev) => mitOcrText(prev, img.name, erkannt));
+        }
         setNotice(t("capture.ocrDone", { name: img.name }));
       } else if (res.status === "success") {
         setErr(t("capture.ocrEmpty", { name: img.name }));
