@@ -339,9 +339,42 @@ export const schemas = [
   VORLAGEN_SCHEMA,
 ];
 
+// ================================================================================================
+// R-0800 — DER SCHEMAAUFBAU LÄUFT KOORDINIERT: EINE INSTANZ NACH DER ANDEREN.
+// ================================================================================================
+//
+// DER GEMESSENE BEFUND (`tests/pg-erstaufbau-konkurrenz/erstaufbau-konkurrenz.integration.test.ts`,
+// Fall E2, Testserver-Lauf pa-1790428493-d9a9274b): `migrate()` lief ohne Sperre. Starteten zwei
+// Instanzen — oder Server und `seed:demo` — gleichzeitig gegen eine frische Datenbank, fiel die
+// zweite mit einer Eindeutigkeitsverletzung im Katalog aus (`23505`, `pg_type_typname_nsp_index`).
+// `IF NOT EXISTS` schützt nur gegen das, was schon FESTGESCHRIEBEN ist, nicht gegen eine Anlage,
+// die eine andere Sitzung gerade vornimmt.
+//
+// DIE SPERRE IST DATENBANKWEIT UND SITZUNGSGEBUNDEN (`pg_advisory_lock`), und alle Stufen laufen auf
+// DERSELBEN Sitzung, die sie hält. Eine Transaktion um den ganzen Aufbau ist bewusst NICHT gewählt:
+// sie änderte, was eine einzelne Stufe darf (`CONCURRENTLY`, s. `overlap-repo-pg.ts`), und machte
+// aus der Koordination eine zweite Änderung. Wer wartet, wartet an der Sperre und findet danach
+// das fertige Schema vor — seine Stufen laufen dann als das, was sie sind: wiederholbar und folgenlos.
+//
+// DER SCHLÜSSEL folgt dem Muster der übrigen Sperren im Haus (`596000001` Bestandsreset,
+// `613000001` Prüfprotokoll, `3087000001` Importannahme) und ist mit keiner davon gleich.
+export const MIGRATIONSSPERRE = 800000001;
+
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
 export async function migrate(pool: Pool): Promise<void> {
-  for (const ddl of schemas) {
-    await pool.query(ddl);
+  const sitzung = await pool.connect();
+  let sauber = false;
+  try {
+    await sitzung.query("SELECT pg_advisory_lock($1)", [MIGRATIONSSPERRE]);
+    for (const ddl of schemas) {
+      await sitzung.query(ddl);
+    }
+    await sitzung.query("SELECT pg_advisory_unlock($1)", [MIGRATIONSSPERRE]);
+    sauber = true;
+  } finally {
+    // Bricht eine Stufe ab, geht die Sitzung NICHT in den Pool zurück: `release(true)` schließt sie,
+    // und mit ihr endet die Sperre — ohne einen Freigabeaufruf, der auf einer gestörten Verbindung
+    // selbst scheitern und die Sperre bis zum Neustart des Pools festhalten könnte.
+    sitzung.release(!sauber);
   }
 }
