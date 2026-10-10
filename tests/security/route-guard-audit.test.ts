@@ -126,6 +126,59 @@ describe("SCRUM-367: RBAC route guard audit", () => {
     const put = scannedByKey.get("PUT /api/kos/:id");
     expect(put?.protection).toBe("action-dispatched");
   });
+
+  it("POST /api/ask wird nur aus ask-routes.ts erfasst (keine Weiterleitungs-URL als Route)", () => {
+    const ask = scanned.filter((r) => routeKey(r.method, r.url) === "POST /api/ask");
+    expect(ask.map((r) => `${r.file}=${r.protection}`)).toEqual([
+      "services/app/src/routes/ask-routes.ts=ko.read",
+    ]);
+  });
+
+  it("die Routen hinter Dienst-Schlüssel (/mcp) sind erfasst und nicht öffentlich", () => {
+    expect(scannedByKey.get("GET /mcp")?.protection).toBe("dienst-schluessel");
+    expect(scannedByKey.get("POST /mcp")?.protection).toBe("dienst-schluessel");
+  });
+});
+
+// Gegenproben für den Scanner selbst: er darf weder einer URL aus dem Handler-Rumpf glauben noch
+// einer Torwache ihren Namen.
+describe("Route-Guard-Scanner · Pfad aus dem Registrierungskopf, Torwache aus ihrem Rumpf", () => {
+  const WACHE = `
+    const zugang = (request: FastifyRequest, reply: FastifyReply) => {
+      const schluessel = request.headers[DIENST_SCHLUESSEL_HEADER];
+      if (auth?.authKind !== "addon" || !auth.principal.dienst || typeof schluessel !== "string") {
+        reply.code(401).send({ error: "UNAUTHENTICATED" });
+        return null;
+      }
+      return { schluessel };
+    };`;
+
+  it("Konstante als Pfad: die URL einer internen Weiterleitung im Rumpf wird NICHT übernommen", () => {
+    const text = `export const PFAD = "/werkzeug";${WACHE}
+    app.post<{ Body: unknown }>(PFAD, optionen, async (request, reply) => {
+      if (!zugang(request, reply)) { return; }
+      await weiterleiten({ method: "POST", url: "/api/ask" });
+    });`;
+    expect(scanRouteFile(text, "x.ts")).toEqual([
+      { method: "POST", url: "/werkzeug", protection: "dienst-schluessel", file: "x.ts" },
+    ]);
+  });
+
+  it("Gegenprobe: eine gleichnamige Wache OHNE Schlüsselprüfung zählt als öffentlich", () => {
+    const text = `
+    const zugang = (request: FastifyRequest, reply: FastifyReply) => {
+      return { ok: true };
+    };
+    app.get("/werkzeug", async (request, reply) => {
+      zugang(request, reply);
+    });`;
+    expect(scanRouteFile(text, "x.ts")[0]?.protection).toBe("public");
+  });
+
+  it("Gegenprobe: ein unauflösbarer Pfad wird übergangen statt aus dem Rumpf geraten", () => {
+    const text = `app.get(irgendwo(), async () => ({ url: "/api/geraten" }));`;
+    expect(scanRouteFile(text, "x.ts")).toEqual([]);
+  });
 });
 
 // ================================================================================================
