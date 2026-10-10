@@ -857,6 +857,11 @@ function aufruferBeschriftung(aufrufer: AskCaller): string {
 // Frage — gebunden an das zurückgegebene Ergebnisobjekt, nicht als Feld darin. Anbieter und Modell
 // sind Adminangaben (WP-VIP2-GATE-2); ein Feld im Ergebnis ginge über `...out` an jeden Fragenden.
 const FRAGE_ROLLEN = new WeakMap<object, ReferenzRolle>();
+// Dasselbe für die beiden Seiten eines Stichtagsvergleichs (Ben nacharbeit-3).
+const VERGLEICH_ROLLEN = new WeakMap<
+  object,
+  { heute: ReferenzRolle | undefined; damals: ReferenzRolle | undefined }
+>();
 
 function mitAntwortRolle<T extends object>(ergebnis: T, rolle: ReferenzRolle | undefined): T {
   if (rolle) {
@@ -1938,7 +1943,7 @@ export class AskService {
         antwortGeaendert: geaendert,
       },
     });
-    return {
+    const vergleich: WissensstandVergleich = {
       stichtag: new Date(stichtagMs).toISOString(),
       heute: heute.antwort,
       damals: damals.antwort,
@@ -1947,6 +1952,20 @@ export class AskService {
       antwortGeaendert: geaendert,
       quellen,
     };
+    // REF-02: die Rollen beider Seiten neben dem Ergebnis, nicht darin (s. `FRAGE_ROLLEN`).
+    VERGLEICH_ROLLEN.set(vergleich, { heute: heute.rolle, damals: damals.rolle });
+    return vergleich;
+  }
+
+  /**
+   * REF-02 (Ben nacharbeit-3): die tatsächlichen Antwortmodelle beider Seiten eines Stichtags-
+   * vergleichs — je `undefined`, wenn nicht festgehalten. Nie geraten.
+   */
+  antwortRollenDesVergleichs(vergleich: WissensstandVergleich): {
+    heute: ReferenzRolle | undefined;
+    damals: ReferenzRolle | undefined;
+  } {
+    return VERGLEICH_ROLLEN.get(vergleich) ?? { heute: undefined, damals: undefined };
   }
 
   /**
@@ -1962,7 +1981,11 @@ export class AskService {
     relevanz: Relevanztext,
     actor: string,
     kiBeginn: number | undefined,
-  ): Promise<{ antwort: AnswerResult; aussagen: AussagenBeleg | null }> {
+  ): Promise<{
+    antwort: AnswerResult;
+    aussagen: AussagenBeleg | null;
+    rolle: ReferenzRolle | undefined;
+  }> {
     const jetzt = new Date(this.now()).toISOString();
     // REF-01 (nacharbeit-7, K1): die Bindungsquellen in GENAU den übergebenen Fassungen — derselbe
     // Volltext, den der Antwortweg dieser Seite gelesen hat.
@@ -2008,7 +2031,12 @@ export class AskService {
       roh.answered && roh.sources.length === 0
         ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
         : roh;
-    return { antwort, aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null };
+    // REF-02 (Ben nacharbeit-3): das tatsächliche Modell GENAU DIESER Seite des Vergleichs.
+    return {
+      antwort,
+      aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null,
+      rolle: antwortRolleVon(roh),
+    };
   }
 
   /**

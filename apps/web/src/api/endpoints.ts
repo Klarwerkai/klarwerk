@@ -121,6 +121,7 @@ import type {
   ReasonerKiLage,
   ReasonerProbeResult,
   ReasonerStatus,
+  ReferenzPruefung,
   RetirementEntry,
   RetirementHorizon,
   RevalidierungBestaetigt,
@@ -1021,6 +1022,12 @@ export const endpoints = {
         ...(locale ? { locale } : {}),
         ...(stichtag ? { stichtag } : {}),
       }),
+    // REF-02: die begrenzte, ausdrücklich angestoßene erneute Referenzprüfung einer Antwort.
+    referenzErneut: (pruefId: string) =>
+      api.post<{ referenzpruefung: ReferenzPruefung }>(
+        `/ask/referenzpruefung/${encodeURIComponent(pruefId)}/erneut`,
+        {},
+      ),
     // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
     report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
       api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),

@@ -76,13 +76,39 @@ als Hinweis ausgewiesen.
   `scripts/referenzki/beobachtung.ts`. Das Skript läuft nur von Hand mit einem eingerichteten
   Anbieter. Sein Bericht ist ein eigener Beleg und ersetzt keine allgemeine Fehlerfreiheit.
 
+## Oberfläche (Ben nacharbeit-3)
+
+- **KI-Verwaltung** (`pages/AdminKiDetails.tsx`, Karte „KI"): Abschnitt „Referenz-KI für die
+  Quellenprüfung". Er bietet ein Kontrollkästchen je Option (ChatGPT, Claude, eigenes Modell); nicht
+  eingerichtete Optionen sind sichtbar und gesperrt. Die erlaubten Optionen stehen in ihrer
+  Vorzugsreihenfolge vorn und lassen sich mit „nach vorn" umsortieren. Gespeichert wird über
+  denselben Kanal und denselben Adminweg wie Zuordnung, Freigabe und Zweitmeinung.
+- **Fragenseite** (`components/fragen/Referenzpruefung.tsx` an der Antwort): Gesamtstand; je
+  Aussage Zustand, Fundstelle als Link auf die Quelle in ihrer Fassung und Begründung; Teilaussagen
+  aufklappbar. Getrennt davon stehen Aktualität/Konflikte und technische Hinweise. Bei Ausfall,
+  Zeitlimit, verweigerter Freigabe oder fehlender Referenz-KI steht sichtbar „nicht prüfbar" mit
+  Grund. Dazu kommen Grenze, Versuch und, solange erlaubt, „Erneut prüfen". Das Ergebnis reist mit
+  der Antwort im Arbeitsstand: Es steht nach dem Rückweg von der Fundstelle wieder da.
+- **Stichtagsvergleich** (`POST /api/ask/vergleich`, `components/fragen/WissensstandVergleich.tsx`):
+  Beide Antworten werden mit ihrer eigenen Bindung (heute: aktuelle Fassungen, damals: Fassungen
+  zum Stichtag) und ihrem tatsächlichen Antwortmodell geprüft (`referenzpruefung: { heute, damals }`).
+
+## Abbruch bis zum Transport (Ben nacharbeit-3)
+
+Anfrageabbruch und Prüfzeitlimit lösen ein eigenes Abbruchsignal des Prüfdienstes aus
+(`mitGrenzen`). Es reist über `ReferenzPruefer.pruefe` → `ModelProvider.pruefeQuellenbeleg` →
+`cappedModelClient.complete` bis in den Transport-Controller von `anthropicClient` bzw.
+`openAiCompatibleClient` und bricht dort die laufende HTTP-Übertragung ab. Ist schon vor der
+Übertragung abgebrochen, geht nichts hinaus. Der Fehlerlauf steht mit Modell im Laufprotokoll.
+
 ## Offene Grenzen
 
-- Für die Liste der erlaubten Referenz-KIs gibt es noch kein Bedienelement in der Adminfläche. Sie
-  wird über den bestehenden, protokollierten Adminweg `PUT /api/reasoner/config` gesetzt.
-- Die Fragefläche zeigt das Feld `referenzpruefung` noch nicht an. Es steht in der Antwort der
-  Schnittstelle.
-- Geprüft werden die Hauptantwort beider Antwortwege. Nicht geprüft werden die Antworten der
-  Zweitmeinung (eigener Auftrag) und des Stichtagsvergleichs.
-- Ein Anfrageabbruch beendet das Warten des Dienstes. Der bereits gestartete Anbieteraufruf läuft
-  bis zu seinem Client-Zeitlimit weiter und wird protokolliert.
+- Die Antworten der Zweitmeinung (eigener Auftrag) werden nicht referenzgeprüft.
+- Im Stichtagsvergleich lösen damalige Fundstellen aus dem Volltext nur auf, wenn die gespeicherte
+  Suchprojektion dieser Fassung lesbar ist. Sonst verwirft die technische Prüfung sie sichtbar
+  (`fundstelle_verworfen`).
+- Die echte Modellbeobachtung (K10) ist mit `scripts/referenzki/beobachtung.ts` vorbereitet, aber
+  ohne eingerichteten Anbieter nicht ausgeführt. Das Skript nutzt die gewählte Option als aktive
+  Wahl (nicht `deterministic`, das wäre die KI-Abschaltung). Es weist die tatsächlich erfolgten
+  Prüfläufe aus dem Laufprotokoll nach (`modellaufrufeNachweis`), samt Dauer und Kosten nach der
+  Preisliste des Betreibers. Ohne einen einzigen Prüflauf mit Modell endet es mit Fehler.

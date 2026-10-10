@@ -500,36 +500,65 @@ export function grundAusFehler(fehler: unknown): ReferenzGrund {
   }
 }
 
-/** Ein Versprechen mit Zeitlimit und Anfrageabbruch — das ursprüngliche läuft im Client-Limit aus. */
-function mitGrenzen<T>(
-  arbeit: Promise<T>,
+/**
+ * Startet die Arbeit mit EINEM eigenen Abbruchsignal und bindet Zeitlimit und Anfrageabbruch daran.
+ * Ben nacharbeit-3: beides beendet nicht nur das Warten, sondern bricht über das Signal die laufende
+ * Übertragung am Modelladapter ab (Transport-Controller, `model-client.ts`).
+ */
+export function mitGrenzen<T>(
+  starte: (signal: AbortSignal) => Promise<T>,
   zeitlimitMs: number,
   signal: AbortSignal | undefined,
 ): Promise<T> {
   if (signal?.aborted) {
-    arbeit.catch(() => undefined);
     return Promise.reject(new ReferenzAbbruch("abgebrochen"));
   }
+  const steuerung = new AbortController();
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      aufraeumen();
-      reject(new ReferenzZeitlimit("zeitlimit"));
-    }, zeitlimitMs);
-    const beiAbbruch = (): void => {
-      aufraeumen();
-      reject(new ReferenzAbbruch("abgebrochen"));
+    let erledigt = false;
+    const beende = (fehler: Error): void => {
+      if (erledigt) {
+        return;
+      }
+      erledigt = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", beiAbbruch);
+      steuerung.abort();
+      reject(fehler);
     };
+    const beiAbbruch = (): void => beende(new ReferenzAbbruch("abgebrochen"));
+    const timer = setTimeout(() => beende(new ReferenzZeitlimit("zeitlimit")), zeitlimitMs);
+    // Der Hörer steht VOR dem Start: auch ein Abbruch während des Starts wird erkannt.
+    signal?.addEventListener("abort", beiAbbruch, { once: true });
     const aufraeumen = (): void => {
+      erledigt = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", beiAbbruch);
     };
-    signal?.addEventListener("abort", beiAbbruch, { once: true });
+    let arbeit: Promise<T>;
+    try {
+      arbeit = starte(steuerung.signal);
+    } catch (fehler) {
+      beende(fehler instanceof Error ? fehler : new Error(String(fehler)));
+      return;
+    }
+    // Ein verworfenes Ergebnis nach Abbruch oder Zeitlimit wird nicht als unbehandelt gemeldet.
+    arbeit.catch(() => undefined);
+    if (erledigt) {
+      return;
+    }
     arbeit.then(
       (wert) => {
+        if (erledigt) {
+          return;
+        }
         aufraeumen();
         resolve(wert);
       },
       (fehler: unknown) => {
+        if (erledigt) {
+          return;
+        }
         aufraeumen();
         reject(fehler);
       },
@@ -1048,12 +1077,14 @@ export class ReferenzPruefdienst {
     let antwort: Awaited<ReturnType<typeof pruefer.pruefe>>;
     try {
       antwort = await mitGrenzen(
-        pruefer.pruefe(
-          referenzPruefauftrag(eingabe.locale ?? "de"),
-          user,
-          gesendetVertraulich,
-          REFERENZ_ANTWORT_MAX_TOKEN,
-        ),
+        (abbruch) =>
+          pruefer.pruefe(
+            referenzPruefauftrag(eingabe.locale ?? "de"),
+            user,
+            gesendetVertraulich,
+            REFERENZ_ANTWORT_MAX_TOKEN,
+            abbruch,
+          ),
         this.zeitlimitMs,
         eingabe.signal,
       );

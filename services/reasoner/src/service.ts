@@ -2933,7 +2933,13 @@ export class Reasoner {
     return {
       rolle,
       extern,
-      pruefe: async (system, user, vertraulich, maxTokens): Promise<ReferenzAufrufErgebnis> => {
+      pruefe: async (
+        system,
+        user,
+        vertraulich,
+        maxTokens,
+        signal,
+      ): Promise<ReferenzAufrufErgebnis> => {
         const pruefen = provider.pruefeQuellenbeleg?.bind(provider);
         if (!pruefen) {
           throw new Error("Dieses Modell bietet keine Referenzprüfung an.");
@@ -2944,7 +2950,9 @@ export class Reasoner {
         try {
           const text = await lb.versuch(
             provider,
-            () => pruefen(system, user, vertraulich, maxTokens),
+            // Ben nacharbeit-3: das Signal reist bis zum Transport — ein Abbruch beendet die
+            // Übertragung selbst, nicht nur das Warten des Prüfdienstes.
+            () => pruefen(system, user, vertraulich, maxTokens, signal),
             this.pruefungenFuer(provider, vertraulich),
           );
           await this.protokolliereLaufbuch("referenz", undefined, startedAt, lb, {

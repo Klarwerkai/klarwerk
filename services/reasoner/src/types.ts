@@ -690,6 +690,8 @@ export interface ReferenzPruefer {
     user: string,
     vertraulich: boolean,
     maxTokens: number,
+    // Ben nacharbeit-3: Anfrageabbruch UND Prüfzeitlimit — beendet die laufende Übertragung.
+    signal?: AbortSignal,
   ): Promise<ReferenzAufrufErgebnis>;
 }
 

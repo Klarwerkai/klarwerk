@@ -13,6 +13,17 @@ import type { ModelClient } from "./provider-model";
 
 // Backpressure-Signal: KEIN Provider-Fehler (nicht auf den nächsten Provider ausweichen / nicht still
 // schlucken) — die Reasoner-Kette reicht ihn durch, die HTTP-Schicht macht daraus 503 + Retry-After.
+/**
+ * REF-02 (Ben nacharbeit-3): der Aufrufer hat abgebrochen, BEVOR übertragen wurde. Name wie der
+ * Standard-Abbruch (`AbortError`), damit jeder Aufrufer ihn gleich einordnet — es ging nichts hinaus.
+ */
+export class ModellAufrufAbgebrochen extends Error {
+  constructor() {
+    super("Der Modellaufruf wurde vom Aufrufer abgebrochen, bevor etwas übertragen wurde.");
+    this.name = "AbortError";
+  }
+}
+
 export class ModelCapacityError extends Error {
   constructor(message: string) {
     super(message);
@@ -447,11 +458,21 @@ export function cappedModelClient(
     // das Produkt nicht. Nur setzen, wenn der innere Client wirklich einen nennt: ein
     // `model: undefined`-Feld wäre eine Angabe, die keine ist.
     ...(inner.model ? { model: inner.model } : {}),
-    complete: (system: string, user: string, confidential: boolean, maxTokens?: number) => {
+    complete: (
+      system: string,
+      user: string,
+      confidential: boolean,
+      maxTokens?: number,
+      // REF-02 (Ben nacharbeit-3): der Abbruch des Aufrufers reist bis zum Transport.
+      signal?: AbortSignal,
+    ) => {
       // gesamt-ki-freigaberegeln: die zentrale Freigabe für Vertrauliches wirkt bis hierher — aber
       // nur über den Merker, den der Reasoner je Versuch setzt; die Einstufung selbst bleibt `true`.
       if (opts.rejectsConfidential && confidential && !vertraulicheUebertragungFreigegeben()) {
         return Promise.reject(new ConfidentialEgressError());
+      }
+      if (signal?.aborted) {
+        return Promise.reject(new ModellAufrufAbgebrochen());
       }
       return mitAusgangspruefung(
         opts.rejectsConfidential,
@@ -467,8 +488,14 @@ export function cappedModelClient(
             pruefeZustimmungVorUebertragung(opts.rejectsConfidential);
             // Ben Nacharbeit 3: die Vertraulichkeitsfreigabe FRISCH, nach jedem Warten.
             pruefeVertraulichVorUebertragung(opts.rejectsConfidential, confidential);
+            // REF-02: wer nach dem Warten auf den Platz schon abgebrochen hat, überträgt nichts.
+            if (signal?.aborted) {
+              throw new ModellAufrufAbgebrochen();
+            }
             vermerkeModellAufruf();
-            return inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens);
+            return signal
+              ? inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens, signal)
+              : inner.complete(ausgehendSystem, ausgehendUser, confidential, maxTokens);
           }),
       );
     },

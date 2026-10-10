@@ -236,6 +236,8 @@ export interface ReasonerProvider {
     user: string,
     confidential: boolean,
     maxTokens: number,
+    // Anfrageabbruch und Prüfzeitlimit — bis zum Transport durchgereicht (Ben nacharbeit-3).
+    signal?: AbortSignal,
   ): Promise<string>;
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): Egress-Politik des dahinterliegenden Clients —
   // `true` = dieser Provider darf vertrauliche Inhalte NICHT sehen (Cloud bzw. ein „lokal"

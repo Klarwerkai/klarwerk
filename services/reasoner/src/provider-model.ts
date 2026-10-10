@@ -85,6 +85,9 @@ export interface ModelClient {
     user: string,
     confidential: boolean,
     maxTokens?: number,
+    // REF-02 (Ben nacharbeit-3): OPTIONALER Abbruch des Aufrufers. Die Transport-Clients brechen
+    // damit die laufende Übertragung ab (nicht nur das Warten darauf); ohne Signal wie bisher.
+    signal?: AbortSignal,
   ): Promise<string>;
   // WP-BILD-1c: OPTIONALER Bild-Eingang (Vision). Nur Clients, die WIRKLICH Bilder verarbeiten
   // können, implementieren ihn: der Anthropic-Cloud-Client (content als image/text-Block-Array) und
@@ -2931,9 +2934,10 @@ export class ModelProvider implements ReasonerProvider {
     user: string,
     confidential: boolean,
     maxTokens: number,
+    signal?: AbortSignal,
   ): Promise<string> {
     const client = this.requireClient();
-    return client.complete(system, user, confidential, maxTokens);
+    return client.complete(system, user, confidential, maxTokens, signal);
   }
 
   // R-1657 (ROADMAP 9.3): Lückenerkennung über das echte Modell — nur Kennzahlen je Bereich gehen

@@ -26,7 +26,7 @@ import {
   ReferenzPruefdienst,
   type ReferenzPruefErgebnis,
 } from "../../services/ask";
-import { InMemoryModelRunRepo } from "../../services/model-runs";
+import { InMemoryModelRunRepo, kostenEinesLaufs, lesePreisliste } from "../../services/model-runs";
 import {
   InMemoryReasonerPolicyRepo,
   ModelProvider,
@@ -115,8 +115,10 @@ async function main(): Promise<void> {
     },
   );
   // Nur die Grundfreigabe für öffentliche KI — die Fälle sind fiktiv und nicht vertraulich.
+  // Die gewählte Prüfoption aktiv lassen: `deterministic` wäre die administrative Abschaltung.
+  // Die Antwortrolle bleibt unabhängig davon die oben definierte FIXTUR_ROLLE.
   await reasoner.setTaskConfig({
-    global: "deterministic",
+    global: wahl,
     perTask: {},
     kiFreigabe: { oeffentlicheKi: true },
     referenzpruefung: [wahl],
@@ -142,6 +144,9 @@ async function main(): Promise<void> {
     });
     ergebnisse.push(zusammenfassung(fall, e));
   }
+  // Kosten mit DERSELBEN Preisliste des Betreibers wie im Produkt (`KLARWERK_KI_PREISLISTE`);
+  // ohne Preisliste steht `null` — es wird kein Preis erfunden.
+  const preisliste = lesePreisliste(process.env.KLARWERK_KI_PREISLISTE).preisliste;
   const laeufe = (await runs.recent(100)).map((l) => ({
     task: l.task,
     status: l.status,
@@ -149,8 +154,19 @@ async function main(): Promise<void> {
     model: l.model ?? null,
     startedAt: l.startedAt,
     finishedAt: l.finishedAt,
+    dauerMs: Date.parse(l.finishedAt) - Date.parse(l.startedAt),
     verbrauch: l.verbrauch ?? null,
+    kosten: kostenEinesLaufs(l, preisliste) ?? null,
   }));
+  // Ben nacharbeit-3: der Bericht weist die TATSÄCHLICH erfolgten Prüfmodellaufrufe aus — aus dem
+  // Laufprotokoll des Reasoners (Laufart `referenz`, Modell, Verbrauch), nicht aus einer Annahme.
+  const pruefLaeufe = laeufe.filter((l) => l.task === "referenz");
+  const modellaufrufeNachweis = {
+    pruefLaeufe: pruefLaeufe.length,
+    mitModell: pruefLaeufe.filter((l) => l.model !== null).length,
+    erfolgreich: pruefLaeufe.filter((l) => l.status === "success").length,
+    modelle: [...new Set(pruefLaeufe.flatMap((l) => (l.model ? [l.model] : [])))],
+  };
   const inhalt = {
     auftrag: "produkt:20261009:referenzki-pruefdienst",
     art: "echte_modellbeobachtung",
@@ -158,10 +174,18 @@ async function main(): Promise<void> {
       "Sieben fiktive Beispiele mit einem Modell zu einem Zeitpunkt — keine allgemeine Fehlerfreiheit.",
     zeitpunkt: new Date().toISOString(),
     gewaehlteOption: wahl,
+    modellaufrufeNachweis,
     ergebnisse,
     laufprotokoll: laeufe,
   };
   writeFileSync(bericht, `${JSON.stringify(inhalt, null, 2)}\n`, "utf8");
+  // Ohne einen einzigen Prüflauf mit Modell ist das keine Modellbeobachtung — laut scheitern.
+  if (modellaufrufeNachweis.mitModell === 0) {
+    process.stderr.write(
+      "Kein Prüfmodellaufruf erfolgt — Anbieter, Freigabe oder Adminliste prüfen. Der Bericht belegt KEINE Modellbeobachtung.\n",
+    );
+    process.exitCode = 1;
+  }
   process.stdout.write(
     `${ergebnisse.map((r) => `${r.kennung}: erwartet ${r.erwartet.join(",")} · beobachtet ${r.beobachtet.join(",")} (${r.grund ?? r.status})`).join("\n")}\n`,
   );

@@ -189,6 +189,57 @@ describe("REF-02 · Frageweg", () => {
   });
 });
 
+describe("REF-02 · Stichtagsvergleich (Ben nacharbeit-3)", () => {
+  it("H5 · beide Antworten des Vergleichs gehen an den Prüfdienst — je mit eigener Bindung und Rolle", async () => {
+    const { app, services, admin, koId } = await aufbau();
+    const dp = pruefer();
+    const wahl = vi
+      .spyOn(services.reasoner, "referenzPruefer")
+      .mockImplementation(() => ({ pruefer: dp.p }));
+    vi.spyOn(services.reasoner, "externeVerarbeitungErlaubt").mockReturnValue(true);
+    const antwort = await app.inject({
+      method: "POST",
+      url: "/api/ask/vergleich",
+      headers: admin,
+      payload: { question: FRAGE },
+    });
+    expect(antwort.statusCode, antwort.body.slice(0, 300)).toBe(200);
+    const body = antwort.json();
+    expect(body.heute.answered).toBe(true);
+    const heute = body.referenzpruefung?.heute;
+    expect(heute, "die heutige Antwort trägt ihre Referenzprüfung").toBeTruthy();
+    expect(heute.status).toBe("geprueft");
+    expect(heute.bindung.antwortFingerabdruck).toBe(body.heuteAussagen.antwortFingerabdruck);
+    const fundstellen = heute.aussagen.flatMap((a: { fundstellen: { koId: string }[] }) =>
+      a.fundstellen.map((f) => f.koId),
+    );
+    expect(fundstellen).toContain(koId);
+    // Die damalige Seite hat zum Stichtag (vor einem Jahr) keine Grundlage — nichts zu prüfen.
+    expect(body.damals.answered).toBe(false);
+    expect(body.referenzpruefung.damals).toBeNull();
+    // Die Prüferwahl bekam das tatsächliche Antwortmodell der heutigen Seite.
+    expect(wahl).toHaveBeenCalledTimes(1);
+    expect(wahl.mock.calls[0]?.[0]).toMatchObject({ stufe: "deterministic", modell: null });
+    expect(dp.aufrufe()).toBe(1);
+    expect(antwort.body).not.toContain("pruef-fiktiv-9");
+  });
+
+  it("H5b · ohne Prüfer: der Vergleich steht trotzdem, die Prüfung sichtbar „nicht prüfbar“", async () => {
+    const { app, admin } = await aufbau();
+    const antwort = await app.inject({
+      method: "POST",
+      url: "/api/ask/vergleich",
+      headers: admin,
+      payload: { question: FRAGE },
+    });
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json().referenzpruefung.heute).toMatchObject({
+      status: "nicht_pruefbar",
+      grund: "pruefer_nicht_eingerichtet",
+    });
+  });
+});
+
 describe("REF-02 · erneute Prüfung", () => {
   it("H3 · nur der Fragende, höchstens einmal, sichtbar gezählt; Unbekanntes 404", async () => {
     const { app, services, admin, leser } = await aufbau();

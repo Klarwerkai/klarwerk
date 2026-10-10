@@ -1532,7 +1532,46 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             sichtbarkeitsfilterFuer(user),
           );
           ask.kiSperreVorAuslieferung(kiBeginn);
-          reply.code(200).send(vergleich);
+          // produkt:20261009:referenzki-pruefdienst (REF-02, Ben nacharbeit-3): auch die beiden
+          // Antworten des Stichtagsvergleichs sind wissensbezogen. Jede wird mit IHRER Aussagebindung
+          // (heute: aktuelle Fassungen, damals: Fassungen zum Stichtag) und IHREM tatsächlichen
+          // Antwortmodell an denselben Prüfdienst gebunden — mit der Sicht dieses Nutzers und dem
+          // Abbruch dieser Anfrage. Eine Seite ohne beantworteten Text hat nichts zu prüfen (`null`).
+          let referenzFeld: {
+            referenzpruefung?: {
+              heute: ReturnType<typeof referenzSichtFuerFragende> | null;
+              damals: ReturnType<typeof referenzSichtFuerFragende> | null;
+            };
+          } = {};
+          if (deps.referenz) {
+            const dienst = deps.referenz;
+            const rollen = ask.antwortRollenDesVergleichs(vergleich);
+            const abbruch = anfrageAbbruch(reply);
+            const pruefeSeite = async (
+              beleg: typeof vergleich.heuteAussagen,
+              rolle: typeof rollen.heute,
+            ) =>
+              beleg
+                ? referenzSichtFuerFragende(
+                    await dienst.pruefe({
+                      beleg,
+                      antwortRolle: rolle,
+                      akteur: user.id,
+                      leser: fundstellenLeser(deps.ko),
+                      darfSehen: sichtbarkeitsfilterFuer(user),
+                      locale,
+                      signal: abbruch,
+                    }),
+                  )
+                : null;
+            const [heute, damals] = await Promise.all([
+              pruefeSeite(vergleich.heuteAussagen, rollen.heute),
+              pruefeSeite(vergleich.damalsAussagen, rollen.damals),
+            ]);
+            referenzFeld = { referenzpruefung: { heute, damals } };
+            ask.kiSperreVorAuslieferung(kiBeginn);
+          }
+          reply.code(200).send({ ...vergleich, ...referenzFeld });
         } catch (fehler) {
           if (kiAbgeschaltetSenden(reply, fehler, locale)) {
             return;

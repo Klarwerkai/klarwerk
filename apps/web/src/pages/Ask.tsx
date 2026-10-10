@@ -19,6 +19,7 @@ import type {
   AskGeltungsauskunft,
   AskPruefrahmen,
   Fragekontext,
+  ReferenzPruefung,
   VerschlossenHinweis,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
@@ -59,6 +60,8 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+// REF-02 (Ben nacharbeit-3): das Ergebnis der Referenzprüfung an der stehenden Antwort.
+import { Referenzpruefung } from "../components/fragen/Referenzpruefung";
 import { WissensstandVergleichBereich } from "../components/fragen/WissensstandVergleich";
 // R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
 import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
@@ -747,6 +750,15 @@ export function Ask(): JSX.Element {
   // Frage wie die Torlage. Nicht im Arbeitsstand: nach dem Neuladen steht ehrlich kein Satz, statt
   // eines Rahmens, den niemand mehr bestätigt hat.
   const [pruefrahmen, setPruefrahmen] = useState<AskPruefrahmen | null>(null);
+  // REF-02 (Ben nacharbeit-3): das Ergebnis der Referenzprüfung DIESER Antwort samt dem Text je
+  // Aussage — an genau eine Frage gebunden wie Antwort und Receipt und mit ihr im Arbeitsstand, damit
+  // es nach dem Rückweg von einer Fundstelle wieder an der Antwort steht.
+  const [referenzpruefung, setReferenzpruefung] = useState<ReferenzPruefung | null>(
+    anfang?.antwort?.referenzpruefung ?? null,
+  );
+  const [aussageTexte, setAussageTexte] = useState<ReadonlyMap<string, string>>(
+    () => new Map(anfang?.antwort?.aussageTexte ?? []),
+  );
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
@@ -992,6 +1004,8 @@ export function Ask(): JSX.Element {
       // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
       setVerschlossen([]);
       setPruefrahmen(null);
+      setReferenzpruefung(null);
+      setAussageTexte(new Map());
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
       setGeltungsAuskunft(null);
       // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
@@ -1026,6 +1040,9 @@ export function Ask(): JSX.Element {
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
       setPruefrahmen(r.pruefrahmen ?? null);
+      // REF-02: abwesend heißt „kein Prüfdienst oder keine beantwortete Frage" — dann steht nichts.
+      setReferenzpruefung(r.referenzpruefung ?? null);
+      setAussageTexte(new Map((r.aussagen?.aussagen ?? []).map((a) => [a.aussageId, a.text])));
       // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
       setGeltungsAuskunft(r.geltung ?? null);
       // R-0305/R-1099 (Ben, Nacharbeit 9): der Kontext DIESER Anfrage, nicht der aktuellen Auswahl.
@@ -1044,6 +1061,17 @@ export function Ask(): JSX.Element {
   // nicht verschluckt — sonst sah der Klick aus, als sei nichts geschehen.
   const { push } = useToast();
   const rueckmeldungAbgelehnt = (): void => push("error", t("ask.rueckmeldungAbgelehnt"));
+  // REF-02 (Ben nacharbeit-3): die ausdrücklich angestoßene, serverseitig begrenzte erneute Prüfung.
+  // Das Ergebnis gilt nur, solange dieselbe Prüfung noch steht (eine neue Frage hat sie abgeräumt).
+  const referenzErneut = useMutation({
+    mutationFn: (pruefId: string) => endpoints.ask.referenzErneut(pruefId),
+    onSuccess: (antwort, pruefId) =>
+      setReferenzpruefung((vorher) =>
+        vorher && vorher.pruefId === pruefId ? antwort.referenzpruefung : vorher,
+      ),
+    onError: (e) =>
+      push("error", e instanceof ApiError ? e.message : t("referenzpruefung.erneut.fehler")),
+  });
   const helpful = useMutation({
     mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
     onError: rueckmeldungAbgelehnt,
@@ -1116,6 +1144,10 @@ export function Ask(): JSX.Element {
               // R-0305/R-1099 (Ben, Nacharbeit 10): der Kontext der Antwort reist mit; ein
               // unbekannter (Altstand) bleibt unbekannt und wird nicht zu „ohne Kontext".
               ...(antwortKontext === undefined ? {} : { fragekontext: antwortKontext }),
+              // REF-02: die Prüfung dieser Antwort reist mit (Rückweg von der Fundstelle).
+              ...(referenzpruefung
+                ? { referenzpruefung, aussageTexte: [...aussageTexte.entries()] }
+                : {}),
             }
           : null,
       startadressen: gemerkteStartadressen,
@@ -1136,6 +1168,8 @@ export function Ask(): JSX.Element {
     quellenStand,
     beobachtet,
     antwortKontext,
+    referenzpruefung,
+    aussageTexte,
     gemerkteStartadressen,
     fragekontext,
     szenario,
@@ -1209,6 +1243,9 @@ export function Ask(): JSX.Element {
       setReceipt(antwort?.receipt ?? "");
       setVerschlossen(antwort?.verschlossen ?? []);
       setPruefrahmen(null);
+      // REF-02: die Prüfung des neuen Kontos ersetzt die alte vollständig.
+      setReferenzpruefung(antwort?.referenzpruefung ?? null);
+      setAussageTexte(new Map(antwort?.aussageTexte ?? []));
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
       // R-0305/R-1099 (Ben, Nacharbeit 10): der gespeicherte Kontext DIESER Antwort — fehlt er
@@ -2530,6 +2567,21 @@ export function Ask(): JSX.Element {
                   result.belastbarkeit &&
                   result.belastbarkeit.lage !== "wissensluecke" ? (
                     <Belastbarkeit b={result.belastbarkeit} />
+                  ) : null}
+                  {/* REF-02 (Ben nacharbeit-3): die Referenzprüfung der Quellen — je Aussage ein
+                    Zustand mit Fundstelle und Begründung, getrennte Aktualitäts-/Konflikthinweise
+                    und sichtbar „nicht prüfbar" bei Ausfall, Zeitlimit oder verweigerter Freigabe. */}
+                  {referenzpruefung ? (
+                    <Referenzpruefung
+                      ergebnis={referenzpruefung}
+                      aussageTexte={aussageTexte}
+                      titelVon={(id) => (kos.data ?? []).find((k) => k.id === id)?.title}
+                      wissenHref={(id, fassung) =>
+                        demoHref(`/wissen/${encodeURIComponent(id)}?fassung=${fassung}`, params)
+                      }
+                      onErneut={() => referenzErneut.mutate(referenzpruefung.pruefId)}
+                      erneutLaeuft={referenzErneut.isPending}
+                    />
                   ) : null}
                   {/* ==========================================================================
                     DIE QUELLEN-CHIPS (Zielbild Z.42) — „n · Titel", getrennt durch eine Linie.

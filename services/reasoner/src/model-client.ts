@@ -93,6 +93,27 @@ export function parseImageDataUrl(dataUrl: string): { mediaType: string; base64:
   return { mediaType: match[1], base64: match[2] };
 }
 
+/**
+ * REF-02 (Ben nacharbeit-3): verbindet ein Abbruchsignal des Aufrufers mit dem Transport-Controller
+ * eines Aufrufs. Ist es schon ausgelöst, wird sofort abgebrochen. Gibt das Lösen des Hörers zurück,
+ * damit kein Hörer am langlebigen Signal hängen bleibt.
+ */
+function verknuepfeAbbruch(
+  signal: AbortSignal | undefined,
+  controller: AbortController,
+): () => void {
+  if (!signal) {
+    return () => undefined;
+  }
+  if (signal.aborted) {
+    controller.abort();
+    return () => undefined;
+  }
+  const abbrechen = (): void => controller.abort();
+  signal.addEventListener("abort", abbrechen, { once: true });
+  return () => signal.removeEventListener("abort", abbrechen);
+}
+
 export function anthropicClient(config: HttpModelConfig): ModelClient {
   const fetchFn = config.fetchFn ?? fetch;
   const baseUrl = config.baseUrl ?? "https://api.anthropic.com";
@@ -106,6 +127,8 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
   const postMessages = async (
     body: Record<string, unknown>,
     abbruchVermerken = false,
+    // REF-02 (Ben nacharbeit-3): ein Abbruch des Aufrufers beendet die Übertragung selbst.
+    signal?: AbortSignal,
   ): Promise<string> => {
     const controller = new AbortController();
     let timedOut = false;
@@ -113,6 +136,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       timedOut = true;
       controller.abort();
     }, timeoutMs);
+    const loese = verknuepfeAbbruch(signal, controller);
     try {
       const res = await fetchFn(`${baseUrl}/v1/messages`, {
         method: "POST",
@@ -182,6 +206,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       throw err;
     } finally {
       clearTimeout(timer);
+      loese();
     }
   };
   return {
@@ -198,13 +223,18 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       user: string,
       _confidential: boolean,
       maxTokens = 1024,
+      signal?: AbortSignal,
     ): Promise<string> {
-      return postMessages({
-        model: config.model,
-        max_tokens: maxTokens,
-        system,
-        messages: [{ role: "user", content: user }],
-      });
+      return postMessages(
+        {
+          model: config.model,
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: "user", content: user }],
+        },
+        false,
+        signal,
+      );
     },
     // WP-BILD-1c: Vision-Aufruf — content als Block-Array (image + text), exakt der in der
     // WP-BILD-1b-Skizze beschriebene multimodale Pfad. Ungültige/nicht erlaubte Bild-Daten
@@ -607,13 +637,19 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
   // Ausdruck (Basis + Pfad) steht an genau einer Stelle dieser Datei — F12 zählt genau diese
   // Zeichenform und duldet keine zweite, auch nicht als Zitat in einem Kommentar; deshalb ist er
   // hier nicht wiederholt.
-  const postChatCompletions = async (messages: unknown[], maxTokens: number): Promise<string> => {
+  const postChatCompletions = async (
+    messages: unknown[],
+    maxTokens: number,
+    // REF-02 (Ben nacharbeit-3): ein Abbruch des Aufrufers beendet die Übertragung selbst.
+    signal?: AbortSignal,
+  ): Promise<string> => {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
     }, timeoutMs);
+    const loese = verknuepfeAbbruch(signal, controller);
     // AUFTRAG-mega18 Block E (SCRUM-544): wirksames Budget = Aufrufer-Budget, mindestens die
     // konfigurierte Untergrenze (s. maxTokensFloor). Ohne Konfiguration bleibt alles wie bisher.
     const budget = Math.max(maxTokens, config.maxTokensFloor ?? 0);
@@ -677,6 +713,7 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
       throw err;
     } finally {
       clearTimeout(timer);
+      loese();
     }
   };
   return {
@@ -690,6 +727,7 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
       user: string,
       _confidential: boolean,
       maxTokens = 1024,
+      signal?: AbortSignal,
     ): Promise<string> {
       return postChatCompletions(
         [
@@ -697,6 +735,7 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
           { role: "user", content: user },
         ],
         maxTokens,
+        signal,
       );
     },
     // JOB 3100: DER BILDWEG IST FREIGESCHALTET, NICHT EINGEBAUT — er hängt an `bildEingang` (s. dort).
