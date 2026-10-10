@@ -4,12 +4,14 @@ import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useSession } from "../app/AuthContext";
+import { useToastOptional } from "../app/ToastContext";
 import { Button, Field, TextInput } from "../components/ui";
 // AUFTRAG-mega61 Block A/B/D: Fußbereich, Hinweistext und der Satz nach einer Ablehnung. Der
 // ABLAUF dieser Maske — die sechs Zustände, ihre Übergänge, die Mutationen — bleibt unangetastet;
 // hinzu kommen ausschließlich Anzeigeflächen unterhalb des Formulars.
 import { LegalFooter } from "../legal/LegalPages";
 import { NoticeText, takeDeclineMarker } from "../legal/NoticeBanner";
+import { ToastViewport } from "../shell/ToastViewport";
 // JOB 1097 / D-028 + D-027: Markenfläche und Sprachwahl liegen als EINE Quelle daneben. Der
 // Markenblock stand vorher zeichengleich auch in `ResetScreen.tsx` — jede Änderung hätte an beide
 // Stellen gemusst, sonst wären sie auseinandergelaufen.
@@ -23,6 +25,7 @@ type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent"
 // Panel links, Formular rechts. Sub-Zustände inkl. Ersteinrichtung.
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
   const { t } = useTranslation();
+  const einblendungen = useToastOptional();
   const { refresh, oidcEnabled, samlEnabled, selfRegistrationEnabled, passwordLoginEnabled } =
     useSession();
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
@@ -253,6 +256,9 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
 
   return (
     <div className="flex h-full">
+      {/* R-0953 (Nacharbeit 7): vor der Anmeldung gibt es keine App-Hülle und damit keine
+          Anzeige der Einblendungen — Erfolg und Fehler dieser Maske erschienen sonst nirgends. */}
+      {einblendungen ? <ToastViewport /> : null}
       <BrandPanel />
 
       <div className="flex flex-1 items-center justify-center p-6">

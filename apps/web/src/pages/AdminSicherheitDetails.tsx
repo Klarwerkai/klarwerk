@@ -15,6 +15,7 @@ import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 // JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { BetroffenenrechteVerwaltung } from "../components/datenschutz/Verwaltung";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
@@ -284,7 +285,10 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                   </p>
                 ) : null}
                 {seite.entries.length === 0 ? (
-                  <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
+                  <>
+                    <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
+                    {leerzustandsZeile(t, "verwaltung")}
+                  </>
                 ) : (
                   // Verwalteransicht (N-0027): beschriftete Spalten — jetzt als gemeinsame
                   // Darstellung mit der Auth-Ansicht (`Auditprotokoll.tsx`).

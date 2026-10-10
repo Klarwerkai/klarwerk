@@ -27,6 +27,7 @@ import type {
   DemoSeedResult,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 // AUFTRAG-mega64 Block A: der Demodaten-Knopf steht hinter dem Betriebsschalter — dieselbe
 // fail-closed Regel wie jede andere geschaltete Fläche (mega46 F2).
 import { FeatureGate } from "../components/FeatureGate";
@@ -984,7 +985,10 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
         {(eintraege) => (
           <>
             {eintraege.length === 0 ? (
-              <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
             ) : (
               <ul className="space-y-2">
                 {eintraege.map((entry) => (
@@ -1100,7 +1104,10 @@ export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Eleme
         {(seite) => (
           <>
             {seite.entries.length === 0 ? (
-              <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
+              <>
+                <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
             ) : (
               <AuditTabelle seite={seite} verzeichnis={verzeichnis} />
             )}
