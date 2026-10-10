@@ -437,6 +437,8 @@ import {
   scimSchluessel,
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
+// produkt:20261007:templates-default — Vorlagen, Standards, Space-Vorgaben, Nutzung, Begriffe.
+import { vorlagenRoutes } from "./routes/vorlagen-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
 import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
@@ -486,6 +488,13 @@ import {
   VeroeffentlichungDienst,
   type VeroeffentlichungsZustellungRepo,
 } from "./veroeffentlichung";
+import {
+  InMemoryVorlagenAblage,
+  PgVorlagenAblage,
+  type VorlagenAblage,
+  type VorlagenEinreichungPort,
+  vorlagenEinreichung,
+} from "./vorlagen";
 // R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
 import {
   InMemoryMitgelesenRepo,
@@ -603,6 +612,11 @@ export interface AppServices {
    * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
    */
   teams: TeamsRepo;
+  /**
+   * produkt:20261007:templates-default — die Fassungen der Vorlagen, Standards, Space-Vorgaben,
+   * Nutzung und Begriffe (`vorlagen.ts`). Im Postgres-Betrieb haltbar (`PgVorlagenAblage`).
+   */
+  vorlagen: VorlagenAblage;
   /**
    * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
    * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
@@ -1185,6 +1199,8 @@ export function assembleServices(
     spaces?: SpacesRepo;
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
+    // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
+    vorlagen?: VorlagenAblage;
     // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
     verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
@@ -1595,6 +1611,8 @@ export function assembleServices(
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces,
     teams,
+    // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
+    vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
     verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
@@ -2096,6 +2114,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
+      // produkt:20261007:templates-default: Vorlagen, Standards, Space-Vorgaben, Nutzung und
+      // Begriffe überleben Neuladen, Neustart und Deploy (`VORLAGEN_SCHEMA`, angelegt von `migrate()`).
+      vorlagen: new PgVorlagenAblage(pool),
       // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
       // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
       verantwortungNachfolge: new PgNachfolgeRepo(pool),
@@ -3956,6 +3977,22 @@ export function buildApp(
       audit: services.audit,
     }),
   );
+  // produkt:20261007:templates-default — EINE Einreichprüfung für alle drei Anlagewege
+  // (`POST /api/kos`, `/api/kos/from-document`, Promote): Pflichtfelder der Vorlage, Space-Vorgaben,
+  // gepflegte Begriffe. Nach der Anlage vermerkt sie Vorlage und Fassung und legt den Beitrag in den
+  // gewählten Space — über denselben Wechselweg wie die Spaceseite (`setLeadingSpace`).
+  const vorlagenPort: VorlagenEinreichungPort = vorlagenEinreichung({
+    ablage: services.vorlagen,
+    spaces: services.spaces,
+    audit: services.audit,
+    inSpaceLegen: async (koId, spaceId, akteur) => {
+      const ko = await services.ko.get(koId);
+      if (!ko || ko.spaceId === spaceId) {
+        return;
+      }
+      await services.ko.setLeadingSpace(koId, spaceId, akteur, null);
+    },
+  });
   app.register(
     koRoutes(
       {
@@ -4015,6 +4052,8 @@ export function buildApp(
         // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
         // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
         hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
+        // produkt:20261007:templates-default: Pflichtangaben beim Einreichen, Vorlagennutzung danach.
+        vorlagen: vorlagenPort,
         // ADMIN-09: der Prüfpunkt der Freigaberegel eines Space vor jeder Entscheidung.
         freigabeTor: (user, koId, weg, eingabe) => freigaberegeln.tor(user, koId, weg, eingabe),
         draftPromotion: {
@@ -4371,7 +4410,17 @@ export function buildApp(
     ),
   );
   app.register(
-    captureRoutes({ ...services, notifyAssignment, semanticPrefilter, aiCheckWorker }, guards),
+    captureRoutes(
+      {
+        ...services,
+        notifyAssignment,
+        semanticPrefilter,
+        aiCheckWorker,
+        // produkt:20261007:templates-default: dieselbe Einreichprüfung am Promote.
+        vorlagenEinreichung: vorlagenPort,
+      },
+      guards,
+    ),
   );
   // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
   app.register(slidesRoutes(services.slideConverter, guards));
@@ -4829,6 +4878,21 @@ export function buildApp(
   }
   app.register(
     ausgangspruefungRoutes({ pruefung: ausgangspruefung, audit: services.audit }, guards),
+  );
+  // produkt:20261007:templates-default: Vorlagen, persönlicher Standard, Space-Vorgaben, Nutzung,
+  // Begriffspflege (ADMIN-08).
+  app.register(
+    vorlagenRoutes(
+      {
+        ablage: services.vorlagen,
+        spaces: services.spaces,
+        ko: services.ko,
+        auth: services.auth,
+        audit: services.audit,
+        einreichung: vorlagenPort,
+      },
+      guards,
+    ),
   );
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(

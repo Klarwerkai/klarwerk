@@ -54,6 +54,14 @@ import {
   type ZuschnittErgaenzung,
   schneideAntwortZu,
 } from "./antwort-zuschnitt";
+import {
+  type AussagenBeleg,
+  type BindungsQuelle,
+  type ZweitmeinungAussagen,
+  bindeAntworttext,
+  bindungsQuelleAus,
+  volltextDerFassung,
+} from "./aussage-fundstellen";
 import { leiteBelegbedarfAb } from "./gap-belegbedarf";
 import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
@@ -708,6 +716,14 @@ export interface AskResult {
    * mehr (abgelaufen, gesperrt, kein Zugriff), fehlt das Feld, und die Frage wird wieder eine Lücke.
    */
   geloesteLuecke?: { koId: string; koVersion: number; titel: string };
+  // produkt:20261009:referenzki-quellenbelege (REF-01): je Tatsachenbehauptung der beantworteten
+  // Antwort ihre stabile Kennung und ihre Fundstellen (Objekt, Fassung, Textbereich, Auszug,
+  // Fingerabdruck) — oder die ausdrücklich ausgewiesene Deckungslücke. Gebildet aus DENSELBEN
+  // Objekten, aus denen die Antwort entstand (`aussage-fundstellen.ts`). Fehlt ohne Antwort.
+  aussagen?: AussagenBeleg;
+  // REF-01 (Ben nacharbeit-7, K1): die EIGENEN Bindungen der beiden Zweitmeinungsantworten — nur,
+  // wenn eine Gegenüberstellung ausgeliefert wird (`zweitmeinung.status === "verglichen"`).
+  zweitmeinungAussagen?: ZweitmeinungAussagen;
 }
 
 /** R-0346: der angewandte Zuschnitt der Antwort (Regel und Grenzen: `antwort-zuschnitt.ts`). */
@@ -1239,6 +1255,10 @@ export class AskService {
     const gelernt = await this.halbwertszeiten?.();
     // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
     this.pruefeKiSperre("suchprojektion", kiBeginn);
+    // REF-01: der Volltext JE FASSUNG, wie ihn genau diese Lesung gesehen hat. Die Fundstellen
+    // binden ihn nur, wenn die Projektion zur Fassung des Objekts aus der Vorauswahl gehört — sonst
+    // käme ein Auszug aus Fassung N+1 an Fassung N (Revision zwischen beiden Lesungen).
+    const volltexte = new Map<string, { fassung: number; text: string }>();
     const refs: KnowledgeRef[] = await Promise.all(
       prefiltered.map(async (ko) => {
         // JOB 2614 D3 (G27-Anschluss, JOB 1565 Weg A): der DOKUMENTTEXT reist in die Refs — aus der
@@ -1251,6 +1271,9 @@ export class AskService {
         // bereits davor, und die Projektion einer hier noch enthaltenen Quelle ist dieselbe
         // Wahrheit, die auch der Kandidatenweg (`findCandidates`) gelesen hat.
         const projektion = await this.suchprojektion(ko.id, "suchprojektion", kiBeginn);
+        if (projektion && typeof projektion.koVersion === "number") {
+          volltexte.set(ko.id, { fassung: projektion.koVersion, text: projektion.bodyText });
+        }
         return {
           id: ko.id,
           title: ko.title,
@@ -1547,6 +1570,34 @@ export class AskService {
     // D5: nach dem Warten auf die Volltext-Blicke oben — vor dem Beleg, der die Antwort ablegt.
     this.pruefeKiSperre("ergebnis", kiBeginn);
     const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer, kiBeginn);
+    // REF-01: die Aussage-zu-Passagen-Bindung. Grundlage ist der VOLLSTÄNDIG AUSGELIEFERTE Text —
+    // samt der Wörterbucherklärungen des Zuschnitts. Sie sind Teil der Antwort; was keine Fundstelle
+    // in einer tragenden Quelle hat, steht ausdrücklich als Deckungslücke da, und eine geänderte
+    // Erklärung ändert den Antwortfingerabdruck. Objekte genau dieses Laufs: Fassung und
+    // Belegstellen aus `prefiltered`, der Volltext nur aus der Projektion DERSELBEN Fassung
+    // (`volltexte`). Keine Neusuche, kein Modellaufruf, kein zusätzlicher Lesevorgang.
+    const bindungsQuellen = new Map(
+      prefiltered.map((ko): [string, BindungsQuelle] => [
+        ko.id,
+        bindungsQuelleAus(ko, volltextDerFassung(volltexte.get(ko.id), ko.version)),
+      ]),
+    );
+    const hauptBeleg = bindeAntworttext(result, bindungsQuellen);
+    const aussagenFeld: { aussagen?: AussagenBeleg } = hauptBeleg ? { aussagen: hauptBeleg } : {};
+    // REF-01 (Ben nacharbeit-7, K1): auch die Antworten der Zweitmeinung werden ausgeliefert und
+    // angezeigt — JEDE bekommt ihre EIGENE Bindung aus ihrem eigenen Text und ihren eigenen Quellen
+    // (dieselbe gefilterte Kandidatenmenge, dieselben Fassungen dieses Laufs). Die Bindung der
+    // Hauptantwort wird nie auf einen abweichenden Text übertragen.
+    const vergleich = zweitmeinungFeld.zweitmeinung;
+    const zweitmeinungAussagenFeld: { zweitmeinungAussagen?: ZweitmeinungAussagen } =
+      vergleich?.status === "verglichen"
+        ? {
+            zweitmeinungAussagen: {
+              erste: bindeAntworttext(vergleich.erste, bindungsQuellen) ?? null,
+              zweite: bindeAntworttext(vergleich.zweite, bindungsQuellen) ?? null,
+            },
+          }
+        : {};
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -1615,6 +1666,7 @@ export class AskService {
           ...ungeprueftFeld,
           ...verschlossenFeld,
           ...zweitmeinungFeld,
+          ...zweitmeinungAussagenFeld,
           ...geltungFeld,
           ...zuschnittFeld,
           pruefrahmen,
@@ -1657,6 +1709,7 @@ export class AskService {
             ...ungeprueftFeld,
             ...verschlossenFeld,
             ...zweitmeinungFeld,
+            ...zweitmeinungAussagenFeld,
             ...geltungFeld,
             ...zuschnittFeld,
             pruefrahmen,
@@ -1683,6 +1736,7 @@ export class AskService {
         ...ungeprueftFeld,
         ...verschlossenFeld,
         ...zweitmeinungFeld,
+        ...zweitmeinungAussagenFeld,
         ...geltungFeld,
         ...zuschnittFeld,
         pruefrahmen,
@@ -1697,8 +1751,10 @@ export class AskService {
       ...ungeprueftFeld,
       ...verschlossenFeld,
       ...zweitmeinungFeld,
+      ...zweitmeinungAussagenFeld,
       ...geltungFeld,
       ...zuschnittFeld,
+      ...aussagenFeld,
       pruefrahmen,
     };
   }
@@ -1828,13 +1884,15 @@ export class AskService {
       actor,
       kiBeginn,
     );
+    const heuteQuellen = heute.antwort.sources;
+    const damalsQuellen = damals.antwort.sources;
     const quellen = seiten
-      .filter((s) => heute.sources.includes(s.heute.id) || damals.sources.includes(s.heute.id))
+      .filter((s) => heuteQuellen.includes(s.heute.id) || damalsQuellen.includes(s.heute.id))
       .map((s) => {
         const id = s.heute.id;
-        return vergleichsQuelle(s, heute.sources.includes(id), damals.sources.includes(id));
+        return vergleichsQuelle(s, heuteQuellen.includes(id), damalsQuellen.includes(id));
       });
-    const geaendert = antwortGeaendert(heute, damals);
+    const geaendert = antwortGeaendert(heute.antwort, damals.antwort);
     await this.audit?.record({
       actor,
       action: "ask.vergleich",
@@ -1849,8 +1907,10 @@ export class AskService {
     });
     return {
       stichtag: new Date(stichtagMs).toISOString(),
-      heute,
-      damals,
+      heute: heute.antwort,
+      damals: damals.antwort,
+      heuteAussagen: heute.aussagen,
+      damalsAussagen: damals.aussagen,
       antwortGeaendert: geaendert,
       quellen,
     };
@@ -1869,10 +1929,14 @@ export class AskService {
     relevanz: Relevanztext,
     actor: string,
     kiBeginn: number | undefined,
-  ): Promise<AnswerResult> {
+  ): Promise<{ antwort: AnswerResult; aussagen: AussagenBeleg | null }> {
     const jetzt = new Date(this.now()).toISOString();
+    // REF-01 (nacharbeit-7, K1): die Bindungsquellen in GENAU den übergebenen Fassungen — derselbe
+    // Volltext, den der Antwortweg dieser Seite gelesen hat.
+    const bindungsQuellen = new Map<string, BindungsQuelle>();
     const refs = grundlage.map(({ ko, trust }): KnowledgeRef => {
       const bodyText = buildSearchProjection(ko, jetzt).bodyText;
+      bindungsQuellen.set(ko.id, bindungsQuelleAus(ko, bodyText.trim() ? bodyText : undefined));
       return {
         id: ko.id,
         title: ko.title,
@@ -1907,9 +1971,11 @@ export class AskService {
     );
     this.pruefeKiSperre("ergebnis", kiBeginn);
     const { abgeschnitten: _abgeschnittenVerworfen, ...ohneAbbruch } = roh;
-    return roh.answered && roh.sources.length === 0
-      ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
-      : roh;
+    const antwort: AnswerResult =
+      roh.answered && roh.sources.length === 0
+        ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
+        : roh;
+    return { antwort, aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null };
   }
 
   /**

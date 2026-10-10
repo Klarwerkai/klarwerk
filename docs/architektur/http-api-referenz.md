@@ -207,7 +207,7 @@ herabgestuft werden (409 `mutability`).
 | `decide-proposal` | `users.manage` | `proposalId`, `decision` (`uebernehmen`/`ablehnen`), `note?`, `expectedVersion?` |
 | `comment`, `comment-resolve`, `comment-reopen` | `requireUser` | `text` bzw. die Fadenfelder |
 | `attach`, `detach` | `ko.create` | Anhang bzw. `attachmentId` |
-| `add-source`, `remove-source` | `ko.create` | Quelle bzw. `sourceId` |
+| `add-source`, `remove-source` | `ko.create` | Quelle bzw. `sourceId`; optional `source.abrufbeleg` aus der externen Suche — nur ein gültiger Beleg für genau diese Adresse und einen Anfang des abgerufenen Inhalts setzt `abgerufenAm` an der Belegstelle (REF-01) |
 | `append-document` | `ko.create` | Dokument |
 | `category`, `tags` | `ko.create` | `category` bzw. `tags`, `expectedMetadataRevision?` |
 | `confidentiality` | `ko.create` | Stufe |
@@ -291,11 +291,12 @@ herabgestuft werden (409 `mutability`).
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource?, thread?, zweitmeinung? }` — `zweitmeinung: true` wirkt nur im Konsolenzweig (R-0305/R-1099) | 200 Antwort mit Belegen; mit `zweitmeinung` zusätzlich das Feld `zweitmeinung` (Gegenüberstellung oder Grund) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
+| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource?, thread?, zweitmeinung? }` — `zweitmeinung: true` wirkt nur im Konsolenzweig (R-0305/R-1099) | 200 Antwort mit Belegen; mit `zweitmeinung` zusätzlich das Feld `zweitmeinung` (Gegenüberstellung oder Grund); bei beantworteter Frage zusätzlich `aussagen` (REF-01: je Aussage Kennung, Teilaussagen, Fundstellen mit Objekt, Fassung, Bereich, Auszug, Fingerabdruck; Deckungslücken in `fehlendeDeckung`; Add-in-Schlüssel nur Kernaussagen) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
 | `POST` | `/api/ask/vergleich` | `ko.read` (nur Sitzung, nicht Add-in oder Klara-Bindung) | Rumpf `{ question, locale?, stichtag? }` (`JJJJ-MM-TT`, ohne Angabe vor einem Jahr) | 200 Antwort heute, Antwort zum Stichtag, Quellen mit Änderungsgründen | 400 `BAD_REQUEST`; 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/report` | `ko.read` | Rumpf `{ koId, receipt, grund: "antwort-falsch" \| "quelle-passt-nicht" }` | 200 Quittung `{ meldungId, koId, koTitle, grund, at, zugestelltAn, bereitsGemeldet }` | 400 `BAD_REQUEST`; 403 `FORBIDDEN`; 404 `NOT_FOUND` |
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
+| `POST` | `/api/ask/fundstellen` | `ko.read`; je Fundstelle `sichtbarkeitsfilterFuer` | Rumpf `{ fundstellen: [{ art: "intern", koId, koVersion, feld, start, ende, fingerabdruck } \| { art: "extern", koId, koVersion, quelleId, start, ende, fingerabdruck }] }` (1–20) | 200 `{ fundstellen: [{ zustand: "aktuell" \| "geaendert" \| "stand_nicht_verfuegbar" \| "beschaedigt" \| "geloescht" \| "herkunft_entfernt" \| "anker_ersetzt" \| "nicht_zugaenglich", hinweis, koId, … }] }` — Auszug nur bei Recht; unbekannt und nicht berechtigt identisch | 400 `BAD_REQUEST`; 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` |
 | `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
 | `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
 | `GET` | `/api/gaps/:id/ansprechpartner` | `ko.assign` (Schalter `KLARWERK_EXPERT_MATCHING`) | — | 200 Ansprechpartner nach Wissensspuren | 404 `not_found` ohne Schalter, vor dem Rechtetor; 404 `NOT_FOUND` unbekannte Lücke |
@@ -364,7 +365,7 @@ herabgestuft werden (409 `mutability`).
 | `PUT` | `/api/management/profiles/retirement/:userId` | `users.manage` | Rumpf `{ horizonMonths }` | 200 `{ entry }` | 404 `NOT_FOUND` (unbekanntes Konto); Dienstfehler |
 | `GET` | `/api/external/policy` | `ko.read` | — | 200 `{ stage }` | — |
 | `PUT` | `/api/external/policy` | `users.manage` | Rumpf `{ stage }` | 200 `{ stage }` | Dienstfehler |
-| `GET` | `/api/external/search` | `ko.read` | Abfrage `q?` | 200 Treffer | 403 `EXTERNAL_SEARCH_BLOCKED`; 501 `EXTERNAL_SEARCH_DISABLED` |
+| `GET` | `/api/external/search` | `ko.read` | Abfrage `q?` | 200 Treffer; je Treffer `abgerufenAm` und der signierte `abrufbeleg` des Serverabrufs (REF-01) | 403 `EXTERNAL_SEARCH_BLOCKED`; 501 `EXTERNAL_SEARCH_DISABLED` |
 | `POST` | `/api/lifecycle/couple` | `ko.create` | Rumpf `{ assetRef, koId }` | 204 | Dienstfehler |
 | `GET` | `/api/lifecycle/couplings/:koId` | `ko.read`, sichtbar | — | 200 Kopplungen | 404 |
 | `POST` | `/api/lifecycle/asset-changed` | `ko.validate`, sichtbar | Rumpf `{ assetRef, aenderung? }` (`aenderung`: Änderungsbeleg, höchstens 200 Zeichen) | 200 Kennungen der markierten Objekte, die der Meldende sehen darf; eine wiederholte identische Meldung legt keinen neuen Anlass an | 400 `INVALID` (leere Anlage, ungültiger Änderungsbeleg); Dienstfehler |

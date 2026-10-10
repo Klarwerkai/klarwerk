@@ -179,6 +179,8 @@ const Richtlinien = lazy(() =>
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
 // produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
+// produkt:20261007:templates-default: Vorlagen, Standard, Space-Vorgaben, Begriffspflege.
+const Vorlagen = lazy(() => import("./pages/Vorlagen").then((m) => ({ default: m.Vorlagen })));
 const Start = lazy(() => import("./pages/Start").then((m) => ({ default: m.Start })));
 const Capital = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Capital })));
 const GraphView = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.GraphView })));
@@ -394,6 +396,11 @@ export function AppRoutes(): JSX.Element {
             spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
         <Route path="/spaces" element={<Spaces />} />
         <Route path="/spaces/:id" element={<Spaces />} />
+        {/* produkt:20261007:templates-default: Vorlagen. Ohne `Guarded`, wie `/spaces`: die Türen
+            dahinter fordern ihr Recht am Server (`ko.read`, `ko.create`, Spacezuständigkeit,
+            `users.manage` für Verwaltung und Begriffspflege, `vorlagen-routes.ts`). Erreichbar aus
+            der Vorlagenwahl im Editor und aus der Verwaltung („Spaces und Wissensordnung"). */}
+        <Route path="/vorlagen" element={<Vorlagen />} />
         {/* R-0347: Fragen an ein hochgeladenes Dokument. Ohne `Guarded` und ohne Server-Tür: die
             Fläche liest die Datei im Browser und sendet nichts (`pages/Dokumentfragen.tsx`).
             Erreichbar von der Fragen-Seite; im Menü markiert die Präfixregel „Fragen". */}
