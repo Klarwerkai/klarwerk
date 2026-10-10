@@ -41,10 +41,21 @@ import {
 import { TRUST_MAX } from "../../validation";
 import { type AnsprechpartnerAuskunft, leiteAnsprechpartnerAb } from "./ansprechpartner";
 import {
+  BEANSTANDUNG_FRAGE,
+  type BeanstandungEingabe,
+  beanstandungSicht,
+  beanstandungsSchluessel,
+  bindeBeanstandung,
+  istKorrektur,
+  mitBeanstandungsMeldung,
+} from "./antwort-beanstandung";
+import {
   ANTWORT_MELDUNG_ACTION,
+  type AntwortMeldeGrund,
   type AntwortMeldungQuittung,
   antwortMeldungEventId,
   antwortMeldungId,
+  beanstandungEventId,
   isAntwortMeldeGrund,
 } from "./antwort-meldung";
 import {
@@ -83,8 +94,9 @@ import {
   rueckfrageText,
   vorgangEintrag,
   vorgangsphase,
+  zurueckweisungMeldungId,
 } from "./gap-vorgang";
-import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
+import { aussageFingerabdruck, signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
 import { type AnswerSnapshotRepo, type GapRepo, gleicherLueckenstand } from "./repo";
 import {
   ANSWER_SNAPSHOT_SCHEMA_VERSION,
@@ -93,6 +105,8 @@ import {
   type AskCaller,
   AskError,
   type Gap,
+  type GapBeanstandung,
+  type GapBeanstandungMeldung,
   type GapBelegbedarf,
   type GapPriority,
   type GapRueckfrage,
@@ -543,7 +557,7 @@ export interface GapBeteiligter {
 /** Eine aus dem Lückenstand abgeleitete Meldung der vorhandenen Glocke (`notification-feed.ts`). */
 export interface GapMeldung {
   readonly id: string;
-  readonly art: "geloest" | "rueckfrage" | "rueckfrage_beantwortet";
+  readonly art: "geloest" | "rueckfrage" | "rueckfrage_beantwortet" | "zurueckgewiesen";
   readonly gapId: string;
   readonly at: string;
   /** Bei `geloest` der Titel des nutzbaren Wissenseintrags, sonst der eigene Fragetext. */
@@ -1563,7 +1577,9 @@ export class AskService {
     // Beleg leer und ein „Danke" scheitert ehrlich mit 403. Das ist gewollt: wer nicht weiß, welche
     // Quelle getragen hat, darf keiner ein Vertrauensplus zuschreiben. Die Oberfläche bietet den
     // Knopf dann gar nicht erst an (Ask.tsx) — der 403 ist die serverseitige Rückfallebene.
-    const receipt = signAnswerReceipt(this.receiptSecret, actorId, result.citedSources, this.now());
+    //
+    // produkt:20261010:antwort-beanstandung-korrektur: ausgestellt wird er weiter unten, nach
+    // Antwortbeleg und Aussagenbindung — er trägt seitdem auch deren Fassung (`receipt.ts`).
     // W3-C1 (Auftrag 76): der Beleg entsteht GENAU HIER — nach der Antwort, aus derselben
     // Ausfuehrung, vor jeder Verzweigung. So traegt jeder der drei Rueckgabewege dieselbe
     // Identitaet, und keiner kann sie stillschweigend verlieren.
@@ -1584,6 +1600,27 @@ export class AskService {
     );
     const hauptBeleg = bindeAntworttext(result, bindungsQuellen);
     const aussagenFeld: { aussagen?: AussagenBeleg } = hauptBeleg ? { aussagen: hauptBeleg } : {};
+    // PV-04-01: der Beleg bindet zusätzlich Antwortkennung, Quellfassungen und je Aussage ihren
+    // Fingerabdruck samt Fundstellen — damit eine Beanstandung genau DIESE Aussagefassung nennt und
+    // nicht einen Titel, der in einer späteren Fassung gleich lauten kann.
+    const receipt = signAnswerReceipt(
+      this.receiptSecret,
+      actorId,
+      result.citedSources,
+      this.now(),
+      undefined,
+      {
+        answerId,
+        quellenStand,
+        aussagen: (hauptBeleg?.aussagen ?? []).map((a) => ({
+          aussageId: a.aussageId,
+          fingerabdruck: aussageFingerabdruck(a.text),
+          fundstellen: a.teile.flatMap((t) =>
+            t.fundstellen.map((f) => ({ fundstelleId: f.fundstelleId, koId: f.koId })),
+          ),
+        })),
+      },
+    );
     // REF-01 (Ben nacharbeit-7, K1): auch die Antworten der Zweitmeinung werden ausgeliefert und
     // angezeigt — JEDE bekommt ihre EIGENE Bindung aus ihrem eigenen Text und ihren eigenen Quellen
     // (dieselbe gefilterte Kandidatenmenge, dieselben Fassungen dieses Laufs). Die Bindung der
@@ -2312,16 +2349,29 @@ export class AskService {
   // `markHelpful` — nur eine in DIESEM Antwortvorgang ausgelieferte Quelle ist meldbar. Zugestellt
   // wird an `responsibleOf(ko)`; die Glocke dieser Person liest den Eintrag (notifications-routes).
   // Kein Trust-Abzug: eine Meldung ist ein Hinweis an einen Menschen, kein Urteil über das Objekt.
+  //
+  // produkt:20261010:antwort-beanstandung-korrektur: mit `beanstandung` wird daraus die Beanstandung
+  // EINER konkreten Aussage (Regeln: `antwort-beanstandung.ts`). Ohne sie bleibt der Weg unverändert.
   async reportAnswer(
     receipt: string,
     koId: string,
     grund: unknown,
     actor: string,
+    beanstandung?: BeanstandungEingabe,
+    optionen: {
+      readonly zustaendigVerfuegbar?: (personId: string) => Promise<boolean | null>;
+    } = {},
   ): Promise<AntwortMeldungQuittung> {
     if (!isAntwortMeldeGrund(grund)) {
       throw new AskError("BAD_REQUEST", "Unbekannter Meldegrund.");
     }
     const bound = verifyAnswerReceipt(this.receiptSecret, receipt, this.now());
+    if (beanstandung) {
+      if (!bound || bound.userId !== actor) {
+        throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
+      }
+      return this.beanstande(receipt, bound, koId, grund, actor, beanstandung, optionen);
+    }
     if (!bound || bound.userId !== actor || !bound.sources.includes(koId)) {
       throw new AskError("FORBIDDEN", "Kein gültiger Antwort-Beleg für dieses Wissensobjekt.");
     }
@@ -2368,6 +2418,254 @@ export class AskService {
       zugestelltAn: kind === "owner" || kind === "author-fallback" ? kind : responsibleKindOf(ko),
       bereitsGemeldet: !won,
     };
+  }
+
+  // ==============================================================================================
+  // produkt:20261010:antwort-beanstandung-korrektur — DIE BEANSTANDUNG EINER KONKRETEN AUSSAGE.
+  // ==============================================================================================
+  //
+  // Dieselbe Meldung wie oben (Protokolleintrag `answer.reported`, Meldekennung, Zustellung an die
+  // verantwortliche Person), zusätzlich gebunden an die signierte Aussagefassung des Belegs
+  // (`bindeBeanstandung`) und geführt als Wissenslücke mit `beanstandung` — dem bestehenden Vorgang
+  // mit Zuständigkeit, Rückfrage, fachlichem Abschluss und Rückmeldung. Das Protokoll trägt nur
+  // Kennungen und Fingerabdrücke; Aussagetext und Begründung stehen ausschliesslich an der Lücke.
+  //
+  // Reihenfolge: zuerst der idempotente Protokolleintrag (er entscheidet „neu oder Wiederholung"),
+  // dann der Vorgang. Ein Vorgang, der eine Meldekennung schon trägt, wird nicht ein zweites Mal
+  // angelegt; fehlt er nach einem Abbruch, holt die Wiederholung ihn nach.
+  //
+  // Kein Eingriff in den Wissensbestand: kein Trust-Abzug, keine Fassung, kein Status.
+  private async beanstande(
+    receipt: string,
+    bound: NonNullable<ReturnType<typeof verifyAnswerReceipt>>,
+    koIdRoh: string,
+    grund: AntwortMeldeGrund,
+    actor: string,
+    eingabe: BeanstandungEingabe,
+    optionen: {
+      readonly zustaendigVerfuegbar?: (personId: string) => Promise<boolean | null>;
+    },
+  ): Promise<AntwortMeldungQuittung> {
+    const gebunden = bindeBeanstandung(eingabe, bound, koIdRoh);
+    const ko = gebunden.koId ? await this.koService.get(gebunden.koId) : undefined;
+    if (gebunden.koId && !ko) {
+      throw new AskError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const audit = this.audit;
+    if (!audit) {
+      throw new AskError("NOT_FOUND", "Meldeweg nicht verfügbar.");
+    }
+    const eventId = beanstandungEventId(
+      antwortMeldungEventId(actor, gebunden.koId ?? "", grund, receipt),
+      eingabe.aussageId,
+      eingabe.fundstelleId,
+      eingabe.quelleFehlt,
+    );
+    const meldungId = antwortMeldungId(eventId);
+    const target = gebunden.koId ?? gebunden.answerId ?? "-";
+    const won = await audit.recordOnce(eventId, {
+      actor,
+      action: ANTWORT_MELDUNG_ACTION,
+      target,
+      payload: {
+        meldungId,
+        grund,
+        // Ohne Quelle gibt es keine verantwortliche Person — dann fehlt `responsible`, und weder
+        // Glocke noch Rückmeldungsliste erfinden eine. Der Vorgang steht offen ohne Zuständigkeit.
+        ...(ko
+          ? {
+              koTitle: ko.title,
+              responsible: responsibleOf(ko),
+              responsibleKind: responsibleKindOf(ko),
+            }
+          : {}),
+        aussageId: eingabe.aussageId,
+        aussageFingerabdruck: gebunden.aussageFingerabdruck,
+        ...(gebunden.answerId ? { answerId: gebunden.answerId } : {}),
+        ...(gebunden.koVersion !== null ? { koVersion: gebunden.koVersion } : {}),
+        ...(eingabe.fundstelleId ? { fundstelleId: eingabe.fundstelleId } : {}),
+        ...(eingabe.quelleFehlt ? { quelleFehlt: true } : {}),
+      },
+    });
+    const eintrag = (await audit.list({ action: ANTWORT_MELDUNG_ACTION, target })).find(
+      (e) => e.eventId === eventId,
+    );
+    const gespeichert = eintrag?.payload ?? {};
+    const at = eintrag?.at ?? new Date(this.now()).toISOString();
+    const { gap, zusammengefuehrt } = await this.beanstandungsVorgang(
+      {
+        koId: gebunden.koId,
+        aussageText: eingabe.aussageText,
+        aussageFingerabdruck: gebunden.aussageFingerabdruck,
+        aussageKoIds: [...gebunden.aussageKoIds],
+      },
+      {
+        meldungId,
+        von: actor,
+        at,
+        answerId: gebunden.answerId,
+        aussageId: eingabe.aussageId,
+        koVersion: gebunden.koVersion,
+        fundstelleId: eingabe.fundstelleId,
+        quelleFehlt: eingabe.quelleFehlt,
+        begruendung: eingabe.begruendung,
+      },
+      actor,
+    );
+    // PV-04-02: die bestehende Zuständigkeit — die verantwortliche Person der Quelle, wenn sie heute
+    // berechtigt ist. Sonst bleibt der Vorgang sichtbar ohne Zuständigkeit; nichts geht verloren.
+    let vorgang = gap;
+    if (ko && vorgang.status === "offen" && vorgang.assignee === null) {
+      const verantwortlich = responsibleOf(ko);
+      const urteil = optionen.zustaendigVerfuegbar
+        ? await optionen.zustaendigVerfuegbar(verantwortlich).catch(() => null)
+        : true;
+      if (verantwortlich && urteil === true) {
+        vorgang = await this.assignGap(vorgang.id, verantwortlich);
+      }
+    }
+    const kind = gespeichert.responsibleKind;
+    return {
+      meldungId,
+      koId: gebunden.koId ?? "",
+      koTitle: typeof gespeichert.koTitle === "string" ? gespeichert.koTitle : (ko?.title ?? ""),
+      grund,
+      at,
+      zugestelltAn: !ko
+        ? "niemand"
+        : kind === "owner" || kind === "author-fallback"
+          ? kind
+          : responsibleKindOf(ko),
+      bereitsGemeldet: !won,
+      beanstandung: {
+        vorgangId: vorgang.id,
+        answerId: gebunden.answerId,
+        aussageId: eingabe.aussageId,
+        aussageFingerabdruck: gebunden.aussageFingerabdruck,
+        koVersion: gebunden.koVersion,
+        fundstelleId: eingabe.fundstelleId,
+        quelleFehlt: eingabe.quelleFehlt,
+        zusammengefuehrt,
+        zustaendigkeit: vorgang.assignee ? "zugeordnet" : "offen",
+      },
+    };
+  }
+
+  /**
+   * Der Vorgang zu einer Beanstandungsmeldung: der, der diese Meldekennung schon trägt; sonst die
+   * offene Beanstandung derselben Aussage an derselben Quelle (hochgezählt, der Melder als weiterer
+   * Fragender — dieselbe unteilbare Ablage wie bei Fragen); sonst ein neuer.
+   */
+  private async beanstandungsVorgang(
+    basis: Omit<GapBeanstandung, "meldungen">,
+    meldung: GapBeanstandungMeldung,
+    actor: string,
+  ): Promise<{ gap: Gap; zusammengefuehrt: boolean }> {
+    const traegt = (await this.gaps.all()).find((g) =>
+      g.beanstandung?.meldungen.some((m) => m.meldungId === meldung.meldungId),
+    );
+    if (traegt) {
+      return {
+        gap: withPriority(traegt),
+        zusammengefuehrt: traegt.beanstandung?.meldungen[0]?.meldungId !== meldung.meldungId,
+      };
+    }
+    const kandidat: Gap = {
+      id: this.genId(),
+      // Bewusst NICHT der Aussagetext: der Fragetext reist in Listen, Glocke und Aufgabenansicht an
+      // jede zuständige Person — auch nach einer Neuzuordnung an jemanden ohne Zugriff auf die Quelle.
+      // Die Aussage steht in `beanstandung` und wird nur über `beanstandungSicht` ausgeliefert.
+      question: BEANSTANDUNG_FRAGE,
+      status: "offen",
+      assignee: null,
+      priority: "mittel",
+      createdAt: new Date(this.now()).toISOString(),
+      ...(actor && actor !== "system" ? { createdBy: actor } : {}),
+      compareKey: beanstandungsSchluessel(basis.koId, basis.aussageFingerabdruck),
+      askCount: 1,
+      beanstandung: { ...basis, meldungen: [meldung] },
+    };
+    const { gap, created } = this.gaps.insertOrIncrement
+      ? await this.gaps.insertOrIncrement(kandidat)
+      : await (async () => {
+          await this.gaps.insert(kandidat);
+          return { gap: kandidat, created: true };
+        })();
+    if (created) {
+      await this.audit?.record({ actor: "system", action: "gap.created", target: gap.id });
+      return { gap: withPriority(gap), zusammengefuehrt: false };
+    }
+    const { gap: zusammen } = await this.aendereLuecke(gap.id, (aktuell) =>
+      mitBeanstandungsMeldung(aktuell, basis, meldung),
+    );
+    return { gap: zusammen, zusammengefuehrt: true };
+  }
+
+  /**
+   * produkt:20261010:antwort-beanstandung-korrektur (PV-04-04/05) — DIE BEGRÜNDETE ZURÜCKWEISUNG.
+   *
+   * Die zuständige Person (oder Verwaltende) hält fest, dass die beanstandete Aussage nach fachlicher
+   * Prüfung bestehen bleibt — mit einer verständlichen Begründung, die der Melder als Rückmeldung
+   * bekommt. Kein Erfolgs-„gelöst", keine Änderung am Wissen. Festgehalten wird die Fassung der
+   * Quelle, auf die sich die Zurückweisung stützt (sofern die Person sie heute sehen darf). Der Text
+   * steht nur an der Lücke, nicht im Prüfprotokoll. Gilt nur für Beanstandungen — eine gewöhnliche
+   * Lücke wird administrativ zurückgenommen (`withdrawGap`).
+   */
+  async rejectBeanstandung(
+    id: string,
+    beteiligter: GapBeteiligter,
+    begruendung: unknown,
+  ): Promise<Gap> {
+    const text = rueckfrageText(begruendung);
+    const gap = await this.require(id);
+    if (!gap.beanstandung) {
+      throw new AskError(
+        "BAD_REQUEST",
+        "Zurückgewiesen wird nur eine Beanstandung — eine Wissenslücke wird zurückgenommen.",
+      );
+    }
+    this.verlangeZustaendigOderVerwaltend(gap, beteiligter);
+    const bezug = gap.beanstandung.koId;
+    const ko = bezug ? await this.koService.get(bezug) : undefined;
+    const fassung = ko && !ko.deletedAt && beteiligter.sichtbar(ko) ? ko.version : null;
+    const at = new Date(this.now()).toISOString();
+    const { gap: neu, geschrieben } = await this.aendereLuecke(id, (aktuell) => {
+      this.verlangeZustaendigOderVerwaltend(aktuell, beteiligter);
+      if (aktuell.status !== "offen") {
+        const vorher = aktuell.abschluss;
+        if (vorher?.art === "zurueckgewiesen" && vorher.begruendung === text) {
+          return null;
+        }
+        throw new AskError("BAD_REQUEST", "Die Beanstandung ist bereits abgeschlossen.");
+      }
+      return {
+        ...aktuell,
+        status: "geschlossen",
+        // Der Objektbezug der geschlossenen Lücke (`Gap.koId`, Integritätsbericht): die Quelle, auf
+        // die sich die Zurückweisung stützt. Ohne Quelle („Quelle fehlt") bleibt er, wie er war.
+        ...(bezug ? { koId: bezug } : {}),
+        abschluss: {
+          art: "zurueckgewiesen",
+          begruendung: text,
+          koId: bezug,
+          koVersion: fassung,
+          von: beteiligter.id,
+          at,
+        },
+      };
+    });
+    if (geschrieben) {
+      await this.audit?.record({
+        actor: beteiligter.id,
+        action: "gap.beanstandung-zurueckgewiesen",
+        target: id,
+        payload: {
+          ...(bezug ? { koId: bezug } : {}),
+          ...(fassung !== null ? { koVersion: fassung } : {}),
+        },
+      });
+    }
+    return neu;
   }
 
   // FR-ASK-05: Wissenslücken verwalten.
@@ -2524,6 +2822,15 @@ export class AskService {
             throw new AskError(
               "BAD_REQUEST",
               "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
+            );
+          }
+          // produkt:20261010:antwort-beanstandung-korrektur (PV-04-05): eine Beanstandung schliesst
+          // fachlich nur eine Korrektur — dieselbe Quelle in der beanstandeten Fassung ist keine.
+          if (aktuell.beanstandung && !istKorrektur(aktuell.beanstandung, ko)) {
+            throw new AskError(
+              "BAD_REQUEST",
+              "Die Quelle steht noch in der beanstandeten Fassung — das ist keine Korrektur. " +
+                "Bleibt die Aussage richtig, die Beanstandung begründet zurückweisen.",
             );
           }
           if (!nutzbarkeit.nutzbar) {
@@ -2849,6 +3156,22 @@ export class AskService {
     const entwurfNutzbar =
       entwurf === null ? null : "nutzbarkeit" in entwurf ? entwurf.nutzbarkeit.nutzbar : false;
     const phase = vorgangsphase(gap, { zustaendigVerfuegbar: verfuegbar, entwurfNutzbar });
+    // produkt:20261010:antwort-beanstandung-korrektur: welche beteiligten Objekte dieser Betrachter
+    // HEUTE sehen darf — frisch gelesen, ein gelöschtes oder unbekanntes zählt als nicht sichtbar.
+    const zurueckweisung = gap.abschluss?.art === "zurueckgewiesen" ? gap.abschluss : null;
+    const objektIds = new Set<string>([
+      ...(gap.beanstandung?.koId ? [gap.beanstandung.koId] : []),
+      ...(gap.beanstandung?.aussageKoIds ?? []),
+      ...(zurueckweisung?.koId ? [zurueckweisung.koId] : []),
+    ]);
+    const sichtbareObjekte = new Set<string>();
+    for (const koId of objektIds) {
+      const ko = await this.koService.get(koId).catch(() => undefined);
+      if (ko && !ko.deletedAt && beteiligter.sichtbar(ko)) {
+        sichtbareObjekte.add(koId);
+      }
+    }
+    const siehtObjekt = (koId: string): boolean => sichtbareObjekte.has(koId);
     return {
       id: gap.id,
       question: textBerechtigt ? gap.question : "",
@@ -2870,7 +3193,17 @@ export class AskService {
       })),
       entwurf,
       ergebnis,
-      abschluss: abschlussSicht(gap.abschluss),
+      abschluss: abschlussSicht(gap.abschluss, { textBerechtigt, siehtObjekt }),
+      ...(gap.beanstandung
+        ? {
+            beanstandung: beanstandungSicht(gap.beanstandung, {
+              id: beteiligter.id,
+              fragend: rollen.includes("fragend"),
+              zustaendig: rollen.includes("zustaendig"),
+              siehtObjekt,
+            }),
+          }
+        : {}),
     };
   }
 
@@ -2914,6 +3247,17 @@ export class AskService {
         } catch {
           // Nicht lesbar heisst nicht gemeldet — kein Erfolg ohne Beleg.
         }
+      }
+      // produkt:20261010:antwort-beanstandung-korrektur (PV-04-05): die begründete Zurückweisung
+      // erreicht jeden Melder genau einmal — als Rückmeldung, nie als „gelöst".
+      if (fragend && gap.status === "geschlossen" && gap.abschluss?.art === "zurueckgewiesen") {
+        meldungen.push({
+          id: zurueckweisungMeldungId(gap.id),
+          art: "zurueckgewiesen",
+          gapId: gap.id,
+          at: gap.abschluss.at,
+          title: gap.question,
+        });
       }
       if (gap.status !== "offen") {
         continue;

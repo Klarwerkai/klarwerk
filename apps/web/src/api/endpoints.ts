@@ -12,6 +12,7 @@ import type {
   AnlagenKontext,
   AnsprechpartnerAuskunft,
   AnswerResult,
+  AntwortBeanstandung,
   AntwortMeldeGrund,
   AntwortMeldungQuittung,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
@@ -865,6 +866,9 @@ export const endpoints = {
       api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/entwurf`, { koId }),
     abschliessen: (id: string, koId?: string) =>
       api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/abschliessen`, koId ? { koId } : {}),
+    // produkt:20261010:antwort-beanstandung-korrektur: begründete Zurückweisung einer Beanstandung.
+    zurueckweisen: (id: string, begruendung: string) =>
+      api.post<GapVorgang>(`/gaps/${encodeURIComponent(id)}/zurueckweisen`, { begruendung }),
     // Die ADMINISTRATIVE Rücknahme — eigener Grund, kein fachlicher Abschluss.
     zuruecknehmen: (id: string, grund: GapRuecknahmeGrund) =>
       api.put<Gap>(`/gaps/${id}`, { action: "withdraw", grund }),
@@ -1022,8 +1026,20 @@ export const endpoints = {
         ...(stichtag ? { stichtag } : {}),
       }),
     // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
-    report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
-      api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),
+    // produkt:20261010:antwort-beanstandung-korrektur: mit `beanstandung` die konkrete Aussage samt
+    // kurzer Begründung — der Server prüft sie gegen die signierte Aussagefassung des Belegs.
+    report: (
+      koId: string,
+      receipt: string,
+      grund: AntwortMeldeGrund,
+      beanstandung?: AntwortBeanstandung,
+    ) =>
+      api.post<AntwortMeldungQuittung>("/ask/report", {
+        koId,
+        receipt,
+        grund,
+        ...(beanstandung ?? {}),
+      }),
     // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
     // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
     notHelpful: (body: {

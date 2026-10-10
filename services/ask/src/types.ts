@@ -105,6 +105,42 @@ export interface Gap {
   // der geprüften Fassung; ADMINISTRATIV ist eine Rücknahme mit geschlossenem Grund — nie „gelöst".
   // Fehlt bei einer geschlossenen Lücke: Altbestand von vor dieser Regel.
   abschluss?: GapAbschluss;
+  // produkt:20261010:antwort-beanstandung-korrektur — DIESE LÜCKE IST EINE BEANSTANDETE AUSSAGE.
+  // Kein zweites Feedbackmodell: die Beanstandung läuft über genau diesen Vorgang (Zuständigkeit,
+  // Rückfrage, fachlicher Abschluss, Rückmeldung). Der Melder ist Fragender (`createdBy` bzw.
+  // `weitereFragende`), dieselbe Aussage aus weiteren Meldungen zählt hoch (`compareKey`). Regeln in
+  // `antwort-beanstandung.ts`. Fehlt bei jeder gewöhnlichen Lücke.
+  beanstandung?: GapBeanstandung;
+}
+
+/**
+ * Die beanstandete Aussage und jede Meldung dazu — mit dem Versionsbezug, den der Antwortbeleg
+ * damals signiert hat. Wird nie auf einen späteren Stand umgeschrieben.
+ */
+export interface GapBeanstandung {
+  /** Die Quelle, an der die Aussage beanstandet ist; fehlt, wenn eine Quelle gänzlich fehlt. */
+  koId: string | null;
+  /** Der Wortlaut der Aussage, wie die Antwort ihn auslieferte (Fingerabdruck im Beleg geprüft). */
+  aussageText: string;
+  aussageFingerabdruck: string;
+  /** Alle Objekte, aus denen die Aussage Fundstellen hatte — Grundlage der Kontextfreigabe. */
+  aussageKoIds: string[];
+  meldungen: GapBeanstandungMeldung[];
+}
+
+export interface GapBeanstandungMeldung {
+  /** Die bestehende Meldekennung (`answer.reported`, `antwortMeldungId`). */
+  meldungId: string;
+  von: string;
+  at: string;
+  answerId: string | null;
+  aussageId: string;
+  /** Die Fassung der Quelle in DIESER Antwort; `null` ohne Quelle oder ohne gebundene Fassung. */
+  koVersion: number | null;
+  fundstelleId: string | null;
+  quelleFehlt: boolean;
+  /** Die kurze Begründung des Melders. Steht nur hier, nie im Prüfprotokoll. */
+  begruendung: string;
 }
 
 /** Eine Zuordnung der Lücke: wer zuständig wurde, durch wen, wann und auf welchem Weg. */
@@ -153,7 +189,18 @@ export type GapAbschluss =
       von: string;
       at: string;
     }
-  | { art: "administrativ"; grund: GapRuecknahmeGrund; von: string; at: string };
+  | { art: "administrativ"; grund: GapRuecknahmeGrund; von: string; at: string }
+  // produkt:20261010:antwort-beanstandung-korrektur: die fachlich BEGRÜNDETE Zurückweisung einer
+  // Beanstandung — die Aussage bleibt, wie sie ist. Keine Erfolgsmeldung „gelöst", aber eine
+  // Rückmeldung mit der Begründung. `koVersion` ist die Fassung, auf die sich die Zurückweisung stützt.
+  | {
+      art: "zurueckgewiesen";
+      begruendung: string;
+      koId: string | null;
+      koVersion: number | null;
+      von: string;
+      at: string;
+    };
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden
 // Antwort-Receipt (unbelegte/fremd gewählte KO-ID) → 403 (sendError-Mapping).

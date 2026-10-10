@@ -10,6 +10,7 @@ import {
   MAX_NEEDED_VALIDATIONS,
   MIN_NEEDED_VALIDATIONS,
 } from "../../validation";
+import type { BeanstandungSicht } from "./antwort-beanstandung";
 import {
   AskError,
   type Gap,
@@ -236,6 +237,8 @@ export type GapVorgangsphase =
   | "geloest"
   /** Administrativ zurückgenommen — ausdrücklich KEIN fachliches Ergebnis. */
   | "zurueckgenommen"
+  /** Eine Beanstandung, fachlich geprüft und begründet zurückgewiesen — die Aussage bleibt. */
+  | "zurueckgewiesen"
   /** Geschlossen ohne festgehaltenen Abschluss (Altbestand von vor dieser Regel). */
   | "geschlossen_ohne_nachweis";
 
@@ -253,6 +256,7 @@ export type GapNaechsterSchritt =
   | "bearbeitung_abwarten"
   | "ergebnis_lesen"
   | "erneut_fragen"
+  | "begruendung_lesen"
   | "keiner";
 
 export function vorgangsphase(
@@ -270,6 +274,9 @@ export function vorgangsphase(
     }
     if (gap.abschluss?.art === "administrativ") {
       return "zurueckgenommen";
+    }
+    if (gap.abschluss?.art === "zurueckgewiesen") {
+      return "zurueckgewiesen";
     }
     return "geschlossen_ohne_nachweis";
   }
@@ -325,6 +332,8 @@ export function naechsterSchritt(
       return fragend ? "ergebnis_lesen" : "keiner";
     case "zurueckgenommen":
       return fragend ? "erneut_fragen" : "keiner";
+    case "zurueckgewiesen":
+      return fragend ? "begruendung_lesen" : "keiner";
     default:
       return "keiner";
   }
@@ -380,7 +389,21 @@ export interface GapVorgangSicht {
   readonly abschluss:
     | { readonly art: "fachlich"; readonly at: string; readonly koVersion: number }
     | { readonly art: "administrativ"; readonly at: string; readonly grund: GapRuecknahmeGrund }
+    | {
+        readonly art: "zurueckgewiesen";
+        readonly at: string;
+        /** Leer für Betrachter ohne Textrecht (Verwaltende ohne eigene Rolle). */
+        readonly begruendung: string;
+        /** Die Quelle, auf die sich die Zurückweisung stützt — `null` ohne Zugriff oder ohne Quelle. */
+        readonly koId: string | null;
+        readonly koVersion: number | null;
+      }
     | null;
+  /**
+   * produkt:20261010:antwort-beanstandung-korrektur: nur, wenn die Lücke eine beanstandete Aussage
+   * ist — und nur der zulässige Kontext dieses Betrachters (`beanstandungSicht`).
+   */
+  readonly beanstandung?: BeanstandungSicht;
 }
 
 /** Ein Wissenseintrag als Vorgangsauskunft — nur aus einer bereits erteilten Sichtfreigabe. */
@@ -401,13 +424,34 @@ export function vorgangEintrag(
   };
 }
 
-export function abschlussSicht(abschluss: GapAbschluss | undefined): GapVorgangSicht["abschluss"] {
+export function abschlussSicht(
+  abschluss: GapAbschluss | undefined,
+  zurueckweisung: {
+    readonly textBerechtigt: boolean;
+    readonly siehtObjekt: (koId: string) => boolean;
+  } = { textBerechtigt: true, siehtObjekt: () => true },
+): GapVorgangSicht["abschluss"] {
   if (!abschluss) {
     return null;
+  }
+  if (abschluss.art === "zurueckgewiesen") {
+    const zugaenglich = abschluss.koId !== null && zurueckweisung.siehtObjekt(abschluss.koId);
+    return {
+      art: "zurueckgewiesen",
+      at: abschluss.at,
+      begruendung: zurueckweisung.textBerechtigt ? abschluss.begruendung : "",
+      koId: zugaenglich ? abschluss.koId : null,
+      koVersion: zugaenglich ? abschluss.koVersion : null,
+    };
   }
   return abschluss.art === "fachlich"
     ? { art: "fachlich", at: abschluss.at, koVersion: abschluss.koVersion }
     : { art: "administrativ", at: abschluss.at, grund: abschluss.grund };
+}
+
+/** Die Kennung der Rückmeldung „Beanstandung zurückgewiesen" — je Vorgang genau einmal. */
+export function zurueckweisungMeldungId(gapId: string): string {
+  return `gaprej-${gapId}`;
 }
 
 /**

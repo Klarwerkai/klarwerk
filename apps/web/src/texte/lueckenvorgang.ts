@@ -135,6 +135,27 @@ export default {
     "lueckenvorgang.seite.titel": "Vorgang einer Wissenslücke",
     "lueckenvorgang.seite.lead":
       "Wer zuständig ist, was gerade geschieht und was als Nächstes ansteht — so, wie es für dich heute gilt.",
+    // produkt:20261010:antwort-beanstandung-korrektur
+    "lueckenvorgang.phase.zurueckgewiesen":
+      "Fachlich geprüft und begründet zurückgewiesen — die Aussage bleibt",
+    "lueckenvorgang.schritt.begruendung_lesen": "Die Begründung lesen",
+    "lueckenvorgang.abschluss.zurueckgewiesen":
+      "Beanstandung am {{datum}} begründet zurückgewiesen. Das ist keine Korrektur.",
+    "lueckenvorgang.zurueckweisungQuelle": "Geprüfte Quelle öffnen (Fassung {{v}})",
+    "lueckenvorgang.zurueckweisen":
+      "Beanstandung begründet zurückweisen (die Begründung geht an die Meldenden)",
+    "lueckenvorgang.zurueckweisenSenden": "Begründet zurückweisen",
+    "lueckenvorgang.beanstandung.titel": "Beanstandete Aussage",
+    "lueckenvorgang.beanstandung.zurueckgehalten":
+      "Die Aussage ist für dich zurückgehalten — dir fehlt der Zugriff auf eine ihrer Quellen.",
+    "lueckenvorgang.beanstandung.quelleFehlt": "Gemeldet: eine Quelle fehlt",
+    "lueckenvorgang.beanstandung.quelle": "Beanstandet in Fassung {{fassungen}} der Quelle",
+    "lueckenvorgang.beanstandung.quelleNichtZugaenglich": "Quelle für dich nicht zugänglich",
+    "lueckenvorgang.beanstandung.meldungen": "{{count}} Meldung(en)",
+    "lueckenvorgang.beanstandung.quelleOeffnen": "Quelle öffnen",
+    "lueckenvorgang.meldung.zurueckgewiesen": "Deine Beanstandung wurde begründet zurückgewiesen",
+    "lueckenvorgang.liste.zurueckgewiesen": "zurückgewiesen",
+    "lueckenvorgang.liste.beanstandung": "Beanstandete Aussage einer Antwort",
   },
   en: {
     "lueckenvorgang.oeffnen": "Process",
@@ -255,6 +276,26 @@ export default {
     "lueckenvorgang.seite.titel": "Process of a knowledge gap",
     "lueckenvorgang.seite.lead":
       "Who is responsible, what is happening and what comes next — as it applies to you today.",
+    "lueckenvorgang.phase.zurueckgewiesen":
+      "Reviewed on the merits and rejected with reasons — the statement stands",
+    "lueckenvorgang.schritt.begruendung_lesen": "Read the reasons",
+    "lueckenvorgang.abschluss.zurueckgewiesen":
+      "Complaint rejected with reasons on {{datum}}. This is not a correction.",
+    "lueckenvorgang.zurueckweisungQuelle": "Open the reviewed source (version {{v}})",
+    "lueckenvorgang.zurueckweisen":
+      "Reject the complaint with reasons (the reasons go to the reporters)",
+    "lueckenvorgang.zurueckweisenSenden": "Reject with reasons",
+    "lueckenvorgang.beanstandung.titel": "Disputed statement",
+    "lueckenvorgang.beanstandung.zurueckgehalten":
+      "The statement is withheld from you — you lack access to one of its sources.",
+    "lueckenvorgang.beanstandung.quelleFehlt": "Reported: a source is missing",
+    "lueckenvorgang.beanstandung.quelle": "Disputed in version {{fassungen}} of the source",
+    "lueckenvorgang.beanstandung.quelleNichtZugaenglich": "Source not accessible to you",
+    "lueckenvorgang.beanstandung.meldungen": "{{count}} report(s)",
+    "lueckenvorgang.beanstandung.quelleOeffnen": "Open source",
+    "lueckenvorgang.meldung.zurueckgewiesen": "Your complaint was rejected with reasons",
+    "lueckenvorgang.liste.zurueckgewiesen": "rejected",
+    "lueckenvorgang.liste.beanstandung": "Disputed statement of an answer",
   },
   nl: {
     "lueckenvorgang.oeffnen": "Verloop",
@@ -378,5 +419,25 @@ export default {
     "lueckenvorgang.seite.titel": "Verloop van een kennishiaat",
     "lueckenvorgang.seite.lead":
       "Wie verantwoordelijk is, wat er gebeurt en wat hierna komt — zoals het vandaag voor jou geldt.",
+    "lueckenvorgang.phase.zurueckgewiesen":
+      "Inhoudelijk gecontroleerd en met redenen afgewezen — de uitspraak blijft",
+    "lueckenvorgang.schritt.begruendung_lesen": "De motivering lezen",
+    "lueckenvorgang.abschluss.zurueckgewiesen":
+      "Klacht op {{datum}} met redenen afgewezen. Dit is geen correctie.",
+    "lueckenvorgang.zurueckweisungQuelle": "Gecontroleerde bron openen (versie {{v}})",
+    "lueckenvorgang.zurueckweisen":
+      "Klacht met redenen afwijzen (de motivering gaat naar de melders)",
+    "lueckenvorgang.zurueckweisenSenden": "Met redenen afwijzen",
+    "lueckenvorgang.beanstandung.titel": "Betwiste uitspraak",
+    "lueckenvorgang.beanstandung.zurueckgehalten":
+      "De uitspraak wordt voor jou achtergehouden — je hebt geen toegang tot een van de bronnen.",
+    "lueckenvorgang.beanstandung.quelleFehlt": "Gemeld: er ontbreekt een bron",
+    "lueckenvorgang.beanstandung.quelle": "Betwist in versie {{fassungen}} van de bron",
+    "lueckenvorgang.beanstandung.quelleNichtZugaenglich": "Bron niet voor jou toegankelijk",
+    "lueckenvorgang.beanstandung.meldungen": "{{count}} melding(en)",
+    "lueckenvorgang.beanstandung.quelleOeffnen": "Bron openen",
+    "lueckenvorgang.meldung.zurueckgewiesen": "Je klacht is met redenen afgewezen",
+    "lueckenvorgang.liste.zurueckgewiesen": "afgewezen",
+    "lueckenvorgang.liste.beanstandung": "Betwiste uitspraak van een antwoord",
   },
 } satisfies Textmodul;
