@@ -31,14 +31,15 @@ import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Die Erzeuger, die bis hierher ihren Zeitstempel selbst formatierten (elf + Live-Wand). */
+/**
+ * Die Erzeuger, die bis hierher ihren Zeitstempel selbst formatierten (elf + Live-Wand; die zwei
+ * Audit-Karten stehen seit der Integration gesondert, s. unten).
+ */
 const ERZEUGER = [
   "apps/web/src/components/start/StartPanel.tsx",
   "apps/web/src/components/start/LiveWallValidiert.tsx",
   "apps/web/src/pages/LiveWallBeamer.tsx",
   "apps/web/src/pages/AdminBetriebDetails.tsx",
-  "apps/web/src/pages/AdminDatenDetails.tsx",
-  "apps/web/src/pages/AdminSicherheitDetails.tsx",
   "apps/web/src/pages/Analytics.tsx",
   "apps/web/src/pages/Stufe2.tsx",
   "apps/web/src/pages/Firmenwoerterbuch.tsx",
@@ -58,6 +59,22 @@ describe("R-1010 · die Erzeuger formatieren nicht mehr selbst", () => {
       expect(src, "eigene Datum+Uhrzeit-Formatierung").not.toMatch(/\.toLocaleString\(/);
       expect(src, "feste Locale statt Sprache der Oberfläche").not.toContain("Intl.DateTimeFormat");
       expect(src).toMatch(/formatKoTimestamp\([^)]*, (i18n\.language|sprache|locale)\)/);
+    });
+  }
+
+  // NACHARBEIT 2 (Integration): die beiden Audit-Karten formatieren NICHT mehr selbst — sie
+  // rendern seit `produkt:20261009:admin-audit-verstaendlich` (ADMIN-03) die gemeinsame
+  // `AuditTabelle` (`components/einstellungen/Auditprotokoll.tsx`), deren Zeitpunkt mit Zeitzone
+  // jener Auftrag festlegt. Gemessen wird hier nur: keine eigene Formatierung mehr in der Karte.
+  for (const pfad of [
+    "apps/web/src/pages/AdminDatenDetails.tsx",
+    "apps/web/src/pages/AdminSicherheitDetails.tsx",
+  ]) {
+    it(`${pfad} · delegiert an die gemeinsame AuditTabelle`, () => {
+      const src = quelle(pfad);
+      expect(src).not.toMatch(/\.toLocaleString\(/);
+      expect(src).not.toContain("Intl.DateTimeFormat");
+      expect(src).toContain("<AuditTabelle seite={seite} verzeichnis={verzeichnis} />");
     });
   }
 

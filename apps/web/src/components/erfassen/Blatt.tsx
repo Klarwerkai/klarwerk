@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
-import { useDrafts, useKos } from "../../api/hooks";
+import { useDrafts, useGaps, useKos } from "../../api/hooks";
 import type {
   AssistResult,
   Confidentiality,
@@ -46,6 +46,7 @@ import {
   assistActionInstructionKey,
   assistActionLabelKey,
 } from "../../lib/captureAiAssist";
+import { readGapId, resolveGapQuestion } from "../../lib/captureFromGap";
 import {
   FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY,
   buildFrontDoorPayload,
@@ -71,7 +72,9 @@ import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
 import { kiBremsSatz } from "../../lib/kiBremse";
+import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../../lib/kiHerkunft";
 import { useNetzOnline } from "../../lib/netzzustand";
+import { pruefHref } from "../../lib/objektbezug";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -92,12 +95,17 @@ import { Begriffshinweise } from "../Begriffshinweise";
 import { CaptureDraftList } from "../CaptureDraftList";
 import { DemoBanner } from "../DemoBanner";
 import { DraftBodyGallery } from "../DraftBodyGallery";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { useSprachaufnahme } from "../sprache/useSprachaufnahme";
+import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
+import { Button } from "../ui";
+import { LueckenInterviewAngebot } from "./LueckenInterviewAngebot";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
@@ -138,6 +146,16 @@ import { BLATT_WEGE, BLATT_WEG_PARAMETER, blattWegAusAdresse, blattWegLabelKey }
 // würde einen Ring bauen (Capture → Blatt → Capture). Die drei Seiten reichen das Bauteil herein.
 
 export type ArbeitsraumModus = "interview" | "datei" | "formular";
+
+// FR-MOB-03 / R-1018 (Aufnahme `gesamt-dialog-bedienung`) — die zwei Verlust-Rückfragen des
+// Blattes. Sie standen als `window.confirm` da, also als Systemdialog des Betriebssystems; auf dem
+// Telefon ist das ein fremdes Fenster ausserhalb der Anwendung. Jetzt fragt das Blatt SELBST, in
+// einer Zeile unter der Werkzeugzeile (`rueckfrageZeile`). `null` heisst „keine Frage offen".
+type BlattRueckfrage = { art: "verwerfen" } | { art: "oeffnen"; entwurfId: string };
+
+// Die Frage benennt die Zeile für Hilfsmittel (`aria-labelledby`) — wer auf „Weiter bearbeiten"
+// landet, hört zuerst, worum es geht.
+const BLATT_RUECKFRAGE_ID = "blatt-rueckfrage-text";
 
 /**
  * JOB 3378 (UX-18-M1): Womit ein Arbeitsraum SEIN Wegziel auszeichnet — den Bedienknopf, den ein
@@ -210,6 +228,12 @@ const SPEICHERLAGE_TON: Record<Speicherzustand, string> = {
 
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
+  /**
+   * AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema, zu dem das Blatt nach einer Vorschau
+   * ohne Treffer ein Lücken-Interview angeboten hat. `null`, wenn der Arbeitsraum anders geöffnet
+   * wurde.
+   */
+  thema: string | null;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn und kommt zurück. */
   onEntwurfInsBlatt: (entwurfId: string) => void;
   /**
@@ -338,6 +362,41 @@ const BLATT_SCHUTZDATEN_WARNUNG_ID = "blatt-schutzdaten-warnung";
 const BLATT_LADEN_HINWEIS_ID = "blatt-laden-hinweis";
 
 /**
+ * N-0084 — DIE AUSGANGSFRAGE ÜBER DEM EDITOR.
+ *
+ * Befund (Seiteninventar 08.09.): „Wissen erfassen" aus einer Lücke öffnete `/erfassen?gap=<id>`,
+ * und seit `/erfassen` das Blatt rendert, stand dort ein leerer Editor ohne den Wortlaut der Frage —
+ * die Karte mit der Ausgangsfrage lag nur im alten Arbeitsraum. Man musste sich die Frage merken.
+ *
+ * Dieselbe Auflösung wie im Arbeitsraum (`resolveGapQuestion`): der Text kommt nur aus der
+ * serverseitig berechtigungsgefilterten Lückenliste; eine redigierte oder unbekannte Lücke zeigt
+ * nichts. Eine eigene Komponente, damit die Lückenliste NUR bei `?gap=` abgefragt wird.
+ */
+/** R-1626: der Adressparameter des Themas (Einstieg aus `lib/meineEinzelquellen.ts`). */
+const BLATT_THEMA_PARAMETER = "thema";
+
+function BlattAusgangsfrage({ gapId }: { gapId: string }): JSX.Element | null {
+  const { t } = useTranslation();
+  const gaps = useGaps();
+  const frage = resolveGapQuestion(gapId, gaps.data);
+  if (!frage) {
+    return null;
+  }
+  return (
+    <section
+      data-testid="blatt-ausgangsfrage"
+      aria-label={t("gap.ausgangsfrage")}
+      className="rounded-[10px] border border-dashed border-hairline bg-surface px-4 py-3"
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-2">
+        {t("gap.ausgangsfrage")}
+      </div>
+      <p className="mt-1 break-words text-[14px] leading-snug text-text">„{frage}“</p>
+    </section>
+  );
+}
+
+/**
  * Die zwei Regeln, mit denen das Blatt den `RichTextEditor` von aussen auf Blatt-Maß bringt.
  * Sie stehen bewusst als benannte Konstante und nicht als Zeichenkette im JSX — was sie tun und
  * warum, steht an ihrer Verwendungsstelle.
@@ -367,6 +426,18 @@ export function Blatt({
   const { setGuard } = useNavGuard();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeDraftId = searchParams.get("draft");
+  const gapId = readGapId(searchParams);
+  // R-1626: aus „Wissen, das nur bei dir liegt" geöffnet — das Thema steht als Kontext über dem
+  // Blatt bzw. dem Interview. Ein Kategoriename, kein Freitext; begrenzt wie ein Lückentitel.
+  const thema = (searchParams.get(BLATT_THEMA_PARAMETER) ?? "").trim().slice(0, 120);
+  const themaZeile = thema ? (
+    <p data-testid="blatt-thema" className="px-1 text-[12.5px] text-muted">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
+        {t("einzelquelle.themaLabel")}:
+      </span>{" "}
+      <span className="break-words text-text">{thema}</span>
+    </p>
+  ) : null;
 
   // ---- Inhalt des Blattes ----------------------------------------------------------------------
   const [title, setTitle] = useState("");
@@ -420,6 +491,8 @@ export function Blatt({
     "entwuerfe" | "anhaenge" | "status" | "beispiel" | "klara" | null
   >(null);
   const [ansicht, setAnsicht] = useState<Ansicht>("blatt");
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): Thema des angebotenen Lücken-Interviews.
+  const [arbeitsraumThema, setArbeitsraumThema] = useState<string | null>(null);
   // JOB 3341 (UX-18-R1): die Arbeitsraum-Fläche, damit der Fokus ihr nach einem Deep-Link folgen
   // kann. Sie ist NUR programmatisch fokussierbar (`tabIndex={-1}`) — der Tab-Lauf der Seite bleibt
   // damit genau der, der er war.
@@ -466,6 +539,10 @@ export function Blatt({
   // derselbe Bestätigungsweg, den `CaptureDraftList` schon für den Arbeitsraum führt (Bugfix Pedi
   // 04.07.: kein stiller Verlust), nicht ein zweiter daneben.
   const [loeschFrageId, setLoeschFrageId] = useState<string | null>(null);
+  // FR-MOB-03: die offene Verlust-Rückfrage des Blattes (Verwerfen, anderen Entwurf öffnen).
+  const [rueckfrage, setRueckfrage] = useState<BlattRueckfrage | null>(null);
+  const rueckfrageRef = useRef<HTMLFieldSetElement | null>(null);
+  const werkzeugzeileRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
   // JOB 3106 (UX-01) — DER ENTWURF, DEN DER SERVER GERADE QUITTIERT HAT.
   // ==============================================================================================
@@ -667,6 +744,16 @@ export function Blatt({
   const [diktatHinweisOffen, setDiktatHinweisOffen] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
+  // R-0104 (Aufnahme gesamt-sprachassistent): Sprechen über das Browser-Diktat hinaus. Die Aufnahme
+  // verschriftlicht die vorhandene Server-Transkription; das Transkript kommt als Absatz in den
+  // Rumpf — derselbe Weg wie ein diktierter Satz. Verschriftlicht wird unter der GEWÄHLTEN Stufe;
+  // ohne Wahl gilt die Aufnahme beim Server als vertraulich (dieselbe Regel wie beim Upload).
+  // Getrennt wird sie an denselben Stellen wie das Diktat (`diktatVomBlattTrennen`).
+  const sprachaufnahme = useSprachaufnahme({
+    anhaengen: (text: string) => setBodyHtml((prev) => diktatAnhaengen(prev, text)),
+    vertraulichkeit: declaredConfidentiality,
+  });
+  const aufnahmeTrennen = sprachaufnahme.trennen;
 
   // ---- Bestand für Bereich, Entwürfe, Beispiel -------------------------------------------------
   const kos = useKos();
@@ -1037,6 +1124,9 @@ export function Blatt({
   // NICHT GETRENNT WIRD BEIM MANUELLEN STOPP über den Diktat-Knopf. Wer selbst anhält, nimmt sich
   // seinen Rumpf ja nicht weg — sein Abschlussergebnis gehört ihm und soll noch ankommen.
   const diktatVomBlattTrennen = useCallback((): void => {
+    // R-0104: auch eine laufende oder schon gesendete Sprachaufnahme gehört ab hier keinem Blatt
+    // mehr — ihr Transkript fiele sonst in den geladenen oder geleerten Rumpf.
+    aufnahmeTrennen();
     const getrennt = recRef.current;
     if (!getrennt) {
       return;
@@ -1045,7 +1135,7 @@ export function Blatt({
     setDiktatLaeuft(false);
     setDiktatZwischen("");
     getrennt.stop();
-  }, []);
+  }, [aufnahmeTrennen]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadNonce erzwingt das Neuladen nach einem Standkonflikt (JOB 2684 D1)
   useEffect(() => {
@@ -2125,11 +2215,12 @@ export function Blatt({
   // danach nichts mehr da ist,
   // ist die bestätigte Folge seiner Zusage und kein stiller Verlust. Zusammengeführt wird nichts:
   // die Begründung dafür steht bei `blattNimmtAn` und gilt hier gleichlautend.
-  const entwurfOeffnen = (entwurfId: string): void => {
+  //
+  // FR-MOB-03: GEFRAGT WIRD IN DER ANWENDUNG, nicht mehr über `window.confirm`. Die Frage steht in
+  // der Rückfragezeile unter der Werkzeugzeile; erst ihr „Verwerfen" ruft `entwurfOeffnenOhneFrage`.
+  const entwurfOeffnenOhneFrage = (entwurfId: string): void => {
+    setRueckfrage(null);
     setOffenesMenue(null);
-    if (istSchmutzig && !window.confirm(t("fd.confirmOpenDraft"))) {
-      return;
-    }
     // Lieferung 4: auch dieser Weg nimmt dem Blatt den Rumpf — also gilt für eine laufende
     // Diktatsitzung dieselbe Trennung wie im Ladeeffekt, und zwar VOR dem Adresswechsel.
     diktatVomBlattTrennen();
@@ -2144,6 +2235,47 @@ export function Blatt({
       return;
     }
     setSearchParams({ draft: entwurfId }, { replace: true });
+  };
+  const entwurfOeffnen = (entwurfId: string): void => {
+    setOffenesMenue(null);
+    if (istSchmutzig) {
+      setRueckfrage({ art: "oeffnen", entwurfId });
+      return;
+    }
+    entwurfOeffnenOhneFrage(entwurfId);
+  };
+
+  // FR-MOB-03: „Eingabe verwerfen" nach der Zustimmung in der Rückfragezeile. JOB 3256 (CAP-P1-R,
+  // Lieferung 5): ERST TRENNEN, DANN LEEREN. `resetForNewEntry` räumt den Rumpf; eine laufende
+  // Diktatsitzung schrieb bis dahin gleich wieder hinein — auf einem Blatt OHNE `?draft` läuft der
+  // Ladeeffekt nicht, es gab hier also gar keine Trennung. Dieselbe eine Funktion wie dort.
+  const eingabeVerwerfenOhneFrage = (): void => {
+    setRueckfrage(null);
+    diktatVomBlattTrennen();
+    resetForNewEntry();
+  };
+
+  // Die Rückfrage holt den Fokus auf den SICHEREN Knopf („Weiter bearbeiten"): der Menüeintrag, der
+  // sie ausgelöst hat, ist mit dem Menü verschwunden, und ohne diesen Schritt stünde der Fokus auf
+  // `body`. Ein versehentliches Enter verliert so nichts.
+  useEffect(() => {
+    if (rueckfrage === null) {
+      return;
+    }
+    const sicher = rueckfrageRef.current?.querySelector<HTMLButtonElement>(
+      '[data-testid="blatt-rueckfrage-nein"]',
+    );
+    sicher?.focus();
+  }, [rueckfrage]);
+
+  // „Weiter bearbeiten": nichts geht verloren, der Fokus kehrt an das „…"-Werkzeug zurück, von dem
+  // beide Wege ausgehen.
+  const rueckfrageZuruecknehmen = (): void => {
+    setRueckfrage(null);
+    const werkzeug = werkzeugzeileRef.current?.querySelector<HTMLButtonElement>(
+      '[data-testid="blatt-werkzeug-mehr"]',
+    );
+    werkzeug?.focus();
   };
 
   // ==============================================================================================
@@ -2274,8 +2406,17 @@ export function Blatt({
   // heisst, die dieses Bauteil nicht bekommen soll.
   const arbeitsraumOeffnen = useCallback((modus: ArbeitsraumModus): void => {
     setOffenesMenue(null);
+    setArbeitsraumThema(null);
     setAnsicht(modus);
   }, []);
+
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — das Blatt bietet an,
+  // das Wissen gleich im Gespräch abzuholen. Thema ist der Titel, sonst der Text des Blattes; der
+  // Arbeitsraum begrenzt es. Derselbe eine Öffnungsweg, danach steht das Thema fest.
+  const lueckenInterviewOeffnen = (): void => {
+    arbeitsraumOeffnen("interview");
+    setArbeitsraumThema(title.trim() || liveText.trim() || null);
+  };
 
   // ==============================================================================================
   // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068) — DAS FORMULAR ÜBERNIMMT DEN
@@ -2585,6 +2726,7 @@ export function Blatt({
 
   const werkzeugzeile = (
     <div
+      ref={werkzeugzeileRef}
       data-testid="blatt-werkzeugzeile"
       // `flex-wrap`, KEIN zweiter Abstand: Die Zeile trägt bei 1280 px alle Werkzeuge nebeneinander
       // (so misst sie `tests/design/zielbild-h3-erfassen.test.ts` V17 gegen das Mockup, gap 22 px in
@@ -2652,6 +2794,43 @@ export function Blatt({
         >
           {t("capture.diktatUnsupported")}
           {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
+        </output>
+      ) : null}
+      {/* R-0104: die Aufnahme mit Server-Transkription — nur, wo der Browser aufnehmen kann. */}
+      {sprachaufnahme.moeglich ? (
+        <button
+          type="button"
+          data-testid="blatt-werkzeug-aufnehmen"
+          disabled={!blattNimmtAn || sprachaufnahme.verarbeitet}
+          title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+          aria-pressed={sprachaufnahme.laeuft}
+          aria-busy={sprachaufnahme.verarbeitet}
+          onClick={() => {
+            setOffenesMenue(null);
+            sprachaufnahme.umschalten();
+          }}
+          className={`inline-flex items-center gap-1.5 text-[13px] ${
+            !blattNimmtAn
+              ? "text-muted-2 opacity-50"
+              : sprachaufnahme.laeuft
+                ? "font-semibold text-text"
+                : "text-muted-2 hover:text-text"
+          }`}
+        >
+          <SymbolMikrofon />
+          {sprachaufnahme.verarbeitet
+            ? t("sprachaufnahme.verarbeitet")
+            : sprachaufnahme.laeuft
+              ? t("sprachaufnahme.stop")
+              : t("sprachaufnahme.start")}
+        </button>
+      ) : null}
+      {sprachaufnahme.meldung ? (
+        <output
+          data-testid="blatt-aufnahme-meldung"
+          className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {sprachaufnahme.meldung}
         </output>
       ) : null}
 
@@ -2912,19 +3091,13 @@ export function Blatt({
               </MenueEintrag>
               {/* Der Knopf „Eingabe verwerfen" der Vordertür. Er bleibt ein BEWUSSTER Schritt mit
                   Rückfrage — nur seine Prominenz auf der Fläche ist weg (Auftrag §5a: „Zurück"
-                  wandert ins Menü). */}
+                  wandert ins Menü). FR-MOB-03: die Rückfrage stellt das Blatt selbst
+                  (`rueckfrageZeile`), nicht mehr das Betriebssystem. */}
               <MenueEintrag
                 gesperrt={!istSchmutzig && !hasSavableContent}
                 onClick={() => {
                   setOffenesMenue(null);
-                  if (window.confirm(t("fd.confirmDiscard"))) {
-                    // JOB 3256 (CAP-P1-R, Lieferung 5): ERST TRENNEN, DANN LEEREN. `resetForNewEntry`
-                    // räumt den Rumpf; eine laufende Diktatsitzung schrieb bis dahin gleich wieder
-                    // hinein — auf einem Blatt OHNE `?draft` läuft der Ladeeffekt nicht, es gab hier
-                    // also gar keine Trennung. Dieselbe eine Funktion wie dort.
-                    diktatVomBlattTrennen();
-                    resetForNewEntry();
-                  }
+                  setRueckfrage({ art: "verwerfen" });
                 }}
               >
                 {t("fd.discardInput")}
@@ -3161,11 +3334,59 @@ export function Blatt({
     </div>
   );
 
+  // ---- Die Rückfragezeile (FR-MOB-03) ----------------------------------------------------------
+  // Steht nur, solange eine Frage offen ist — das ruhende Blatt bleibt zeichengleich. Sie liegt in
+  // BEIDEN Ansichten direkt unter der Werkzeugzeile: „anderen Entwurf öffnen" kann auch aus dem
+  // Arbeitsraum kommen (`onEntwurfInsBlatt`). Die Frage selbst auf neutraler Fläche, die Warnfarbe
+  // nur am verlierenden Knopf (dieselbe Regel wie `destructive-button-colour.test.ts`).
+  // `<fieldset>` trägt die Gruppenrolle nativ; ihr Name ist die Frage (`aria-labelledby`).
+  let rueckfrageZeile: JSX.Element | null = null;
+  if (rueckfrage !== null) {
+    const frage = rueckfrage;
+    rueckfrageZeile = (
+      <fieldset
+        ref={rueckfrageRef}
+        aria-labelledby={BLATT_RUECKFRAGE_ID}
+        data-testid="blatt-rueckfrage"
+        data-rueckfrage={frage.art}
+        className="flex flex-wrap items-center gap-2 rounded-[10px] border border-hairline bg-surface px-3 py-2"
+      >
+        <span id={BLATT_RUECKFRAGE_ID} className="text-[13px] text-text">
+          {t(frage.art === "verwerfen" ? "fd.confirmDiscard" : "fd.confirmOpenDraft")}
+        </span>
+        <span className="ml-auto flex flex-wrap gap-1.5">
+          <Button
+            variant="ghost"
+            data-testid="blatt-rueckfrage-nein"
+            onClick={rueckfrageZuruecknehmen}
+          >
+            {t("studio.confirmDiscard.keep")}
+          </Button>
+          <Button
+            variant="danger"
+            data-testid="blatt-rueckfrage-ja"
+            onClick={() => {
+              if (frage.art === "verwerfen") {
+                eingabeVerwerfenOhneFrage();
+                return;
+              }
+              entwurfOeffnenOhneFrage(frage.entwurfId);
+            }}
+          >
+            {t("studio.confirmDiscard.discard")}
+          </Button>
+        </span>
+      </fieldset>
+    );
+  }
+
   // ---- Der Arbeitsraum als Blatt-Ansicht -------------------------------------------------------
   if (ansicht !== "blatt") {
     return (
       <div className="mx-auto flex w-[820px] max-w-full flex-col gap-3.5 pt-6">
         {werkzeugzeile}
+        {rueckfrageZeile}
+        {themaZeile}
         <div
           data-testid="blatt-arbeitsraum"
           ref={arbeitsraumRef}
@@ -3179,6 +3400,7 @@ export function Blatt({
         >
           {arbeitsraum({
             modus: ansicht,
+            thema: arbeitsraumThema,
             onEntwurfInsBlatt: entwurfOeffnen,
             onZurueckInsBlatt: arbeitsraumSchliessen,
           })}
@@ -3249,6 +3471,10 @@ export function Blatt({
             der Textmesser misst weiterhin das ruhende Blatt. */}
         {isDemoContext(searchParams) ? <DemoBanner surface="capture" /> : null}
         {werkzeugzeile}
+        {rueckfrageZeile}
+        {/* N-0084: aus einer Lücke geöffnet — die Ausgangsfrage steht über dem Blatt. */}
+        {gapId ? <BlattAusgangsfrage gapId={gapId} /> : null}
+        {themaZeile}
 
         <div
           data-testid="blatt"
@@ -3281,7 +3507,12 @@ export function Blatt({
               }}
               placeholder={t("erfassen.platzhalter.titel")}
               aria-label={t("erfassen.platzhalter.titel")}
-              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2/60"
+              // WCAG 1.4.11: die Titelzeile ist Teil des Blattes, wie der Rumpf darunter — eine
+              // Dokument-Schreibfläche, kein Formularfeld. Ihre Lage zeigen der 28-px-Platzhalter
+              // und die Schreibmarke; ein Feldrahmen wäre ein Formular im Dokument. Der Audit nimmt
+              // genau so markierte Flächen von der Feldgrenzen-Regel aus.
+              data-kw-dokumentflaeche=""
+              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2"
             />
             {/* N-0064: die vollständige Titelanzeige, nur bei echtem Überlauf (Messung oben). Für
                 Hilfstechnik verborgen — das Feld selbst trägt den ganzen Wert schon. */}
@@ -3547,6 +3778,11 @@ export function Blatt({
               ) : null}
             </div>
           ) : null}
+          {/* AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — abgeschlossen
+              ohne Treffer ODER ohne Konfliktprüfung, aber mit belegtem leeren Ähnlichkeitsumfang. */}
+          {verdict.status === "empty" || liveVorschauSatz !== null ? (
+            <LueckenInterviewAngebot onStart={lueckenInterviewOeffnen} />
+          ) : null}
 
           {/* ==========================================================================================
               §9 — DER KI-FEHLER: EIN SATZ IN DER VORSCHLAGSKARTE, MIT DEM WEG ZURÜCK.
@@ -3583,11 +3819,17 @@ export function Blatt({
           {structureProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020: vom Modell erzeugt → Entwurfsfläche (violett, gestrichelt); der
+              // regelbasierte Rückfall behält die ruhige Karte und heisst „Empfehlung" (R-1695).
+              className={`rounded-[10px] p-3 ${structureProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!structureProposal.demo)}
+                className="ml-1.5"
+              />
               {/* WP-D8 (Pedis Live-ROT B) / WP-D10 Fix 3 / WP-SHIP9-S2: Ein Fallback-Kennzeichen
                   allein erklärt nichts. Hier steht ehrlich, WARUM dieser Vorschlag eine einfache
                   Ableitung ist — kein Modell, Modellfehler, Zeitüberschreitung oder
@@ -3651,8 +3893,10 @@ export function Blatt({
               {/* mega61 Block E: der dauerhaft sichtbare KI-Satz (Art. 50 Abs. 1 und 5 KI-VO). Er
                   stand an der Vordertür und gehört an JEDE Modellfläche — diese Karte IST die
                   Modellfläche des Blattes. Er steht IN der Karte, nicht auf dem ruhenden Blatt:
-                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+                  sichtbar, sobald ein Vorschlag da ist, und ohne Erklärtext auf dem leeren Blatt.
+                  R-0604: nur, wenn ein Modell ihn geschrieben hat — den regelbasierten Rückfall
+                  benennt die Rückfall-Plakette darüber, „von KI erzeugt" wäre dort falsch. */}
+              {structureProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -3675,11 +3919,16 @@ export function Blatt({
           {assistProposal ? (
             <div
               data-testid="blatt-ki-vorschlag"
-              className="rounded-[10px] border border-ai/30 bg-surface p-3"
+              // R-1020 / R-1695: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag.
+              className={`rounded-[10px] p-3 ${assistProposal.demo ? "border border-ai/30 bg-surface" : REASONER_ENTWURF_FLAECHE}`}
             >
               <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 text-[10.5px] font-semibold uppercase text-ai">
                 {t("erfassen.ki.pille")}
               </span>
+              <ErgebnisStufeMarke
+                stufe={ergebnisStufeFuerVorschlag(!assistProposal.demo)}
+                className="ml-1.5"
+              />
               {assistProposal.demo ? (
                 <span className="ml-1.5 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold uppercase text-trust-warn-text">
                   {t("fd.fallback")}
@@ -3706,8 +3955,9 @@ export function Blatt({
               <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-text">
                 {assistProposal.text}
               </p>
-              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche. */}
-              <AiGeneratedNotice className="mt-1.5 block" />
+              {/* mega61 Block E — wie oben: auch die KI-Hilfe ist eine Modellfläche.
+                  R-0604: dieselbe Bindung an den Modellweg wie beim Strukturvorschlag. */}
+              {assistProposal.demo ? null : <AiGeneratedNotice className="mt-1.5 block" />}
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
@@ -3916,7 +4166,13 @@ function AnhangListe({ bodyHtml }: { bodyHtml: string }): JSX.Element {
   const { t } = useTranslation();
   const anzahl = (bodyHtml.match(/<img\b/gi) ?? []).length;
   if (anzahl === 0) {
-    return <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>;
+    return (
+      <>
+        <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "entwuerfe")}
+      </>
+    );
   }
   return <p className="text-[12.5px] text-text">{t("erfassen.anhaenge.anzahl", { n: anzahl })}</p>;
 }
@@ -4020,10 +4276,12 @@ function BlattLage({
         <span data-testid="blatt-lage-zustand" data-zustand={erfolg.zustand}>
           <StatusPill status={erfolg.zustand} />
         </span>
+        {/* Arbeitswege am selben Artikel: die Prüfung DIESES Beitrags (`ko=<id>`), nicht der
+            erste Eintrag einer anders sortierten Liste. */}
         <RoleLink
           className="ml-2 inline-flex items-center gap-1 font-semibold underline"
           hoverClassName="hover:opacity-80"
-          to="/validierung"
+          to={pruefHref(erfolg.id)}
         >
           {() => t("fd.openValidation")}
         </RoleLink>

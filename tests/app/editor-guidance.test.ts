@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { EDITOR_BLOCKS } from "../../apps/web/src/lib/editorBlocks";
-import {
-  EDITOR_GUIDANCE,
-  type EditorGuidanceId,
-  editorGuidance,
-} from "../../apps/web/src/lib/editorGuidance";
+import { EDITOR_GUIDANCE, type EditorGuidanceId } from "../../apps/web/src/lib/editorGuidance";
 
 // SCRUM-317: DOM-freie Orientierung am ausführlichen Inhalt (Struktur/Handlung/Blöcke/KI).
+// R-1349: gemessen an `EDITOR_GUIDANCE`, das die Komponente liest — der Zugriff `editorGuidance()`
+// hatte keinen Produktleser und ist entfernt.
 describe("SCRUM-317: editorGuidance", () => {
   it("liefert genau vier Items in fester Reihenfolge mit stabilen IDs", () => {
-    expect(editorGuidance()).toBe(EDITOR_GUIDANCE);
     expect(EDITOR_GUIDANCE.map((i) => i.id)).toEqual<EditorGuidanceId[]>([
       "structure",
       "action",

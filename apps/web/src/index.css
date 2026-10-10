@@ -34,6 +34,16 @@
     @apply bg-page text-text font-sans antialiased;
   }
 
+  /* WCAG 1.4.3 (Audit nacharbeit-8): Tailwinds Preflight gibt jedem Platzhalter ohne eigene Klasse
+     Grau-400 (#9CA3AF) — auf Weiß 2,54:1. Gemessen an „Ziel filtern …" (/analytics) und „Hilfe
+     durchsuchen …" (/hilfe). Die Grundfarbe ist jetzt Tinte-2 (`muted`, ≥ 4,5:1 auf Weiß und Seite
+     in beiden Themen); eine `placeholder:`-Klasse am Feld geht weiterhin vor. */
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--kw-muted));
+    opacity: 1;
+  }
+
   /* ============================================================================================
      SCHEIBE D-024 — WER MIT DER TASTATUR BEDIENT, SIEHT IMMER, WO ER STEHT.
      ============================================================================================
@@ -61,9 +71,15 @@
 
      DIE FUSSNOTEN-REGEL WEITER UNTEN BLEIBT BEWUSST STEHEN. Sie ist spezifischer (Klasse +
      Attribut + Pseudoklasse) und gewinnt unabhängig von der Reihenfolge; ihre eigene Farbwahl ist
-     dort begründet (sie muss auf dem gestrichelten Rand sichtbar bleiben). */
+     dort begründet (sie muss auf dem gestrichelten Rand sichtbar bleiben).
+
+     WCAG 1.4.11 (Audit nacharbeit-5): der Ring muss sich mit ≥ 3:1 von seiner Umgebung abheben.
+     `ring-brand/60` maß auf der Seitenfläche ~1,85:1 (Marke zu 60 % über Hell), die volle Marke
+     auf Weiß ~2,8:1 — beides zu blass. Das Marken-TEXT-Token (`brand-text`, #9c5009) erreicht auf
+     Seite/Weiß ~5,3–5,9:1. Auf dunklem Grund (Kopfband) trägt der helle Offset-Streifen
+     (`ring-offset-page`) den Kontrast. Gemessen wird beides in tests-smoke/wcag21-aa-audit.spec.ts. */
   *:focus-visible {
-    @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-page;
+    @apply outline-none ring-2 ring-brand-text ring-offset-2 ring-offset-page;
   }
 }
 
@@ -275,9 +291,11 @@
      Umbruchregel an `td`/`th` oben — sinken die Spalten auf eine umbrechbare min-content-Breite,
      hält `w-full` wieder, und die Tabelle bleibt in der Spalte.
      KEIN `display: block; overflow-x: auto` an der Tabelle: das zerstörte das Tabellenlayout, und
-     die Scheibe verwirft diesen Behelf ausdrücklich. Die echte Scroll-Hülle gehört in den
-     Renderpfad (`components/ko/KoRead.tsx`) und liegt außerhalb der Zielpfade dieses Auftrags —
-     s. Rückgabe, Abschnitt „Was nicht gebaut ist". */
+     die Scheibe verwirft diesen Behelf ausdrücklich. Die echte Scroll-Hülle steht seit R-1160 im
+     Renderpfad: `SanitizedHtml` mit `lesehuellen` (Bibliothek-Lesefläche) setzt jede
+     Tabelle der obersten Ebene in ein React-Element mit `overflow-x-auto`. Bewusst KEINE eigene
+     Regel für die Hülle in diesem Block — sie ist Oberfläche, kein sanitisierter Inhalt, und eine
+     Klasse hier müsste die Allowlist passieren (tests/web/d037-*). */
   max-width: 100%;
 }
 .prose-kw th,
@@ -309,6 +327,12 @@
 /* SCRUM-438: übernommenes externes, ungeprüftes Wissen — dezenter KI-Akzent (wie „extern · ungeprüft"). */
 .prose-kw .panel-external {
   @apply border-l-4 border-l-ai bg-ai-surface-1;
+}
+/* R-1020: die KI-erzeugte Antwortkarte sieht anders aus als validiertes Wissen — violetter
+   gestrichelter Rahmen, violette Fläche (dieselben Token wie ReasonerDraft). Über ein Attribut,
+   weil die Karte ihre Rahmen-/Grundklassen aus `Card` mitbringt; Attribut + Klasse schlägt sie. */
+.print-area[data-reasoner-entwurf] {
+  @apply border-dashed border-ai-dashed bg-ai-surface-2;
 }
 /* SCRUM-355: sichere Body-Datei-Referenz (Link auf Object-Store-Raw-Pfad) als ruhige Anhang-Zeile. */
 .prose-kw .attachment {
@@ -342,6 +366,13 @@
   body.printing-extract .print-hide {
     display: none !important;
   }
+  body.printing-extract .print-only {
+    display: block;
+  }
+}
+/* R-1643: Inhalt nur für das gedruckte Blatt (Entscheidungs-Protokoll) — auf dem Bildschirm nie. */
+.print-only {
+  display: none;
 }
 
 /* Klara Zeige-Modus (Pedi 05.07.: jedes Element erklärbar, auch Buttons/Chips ohne Textmarkierung).
@@ -493,4 +524,25 @@ body.klara-inspect * {
   outline: 3px solid rgb(var(--kw-brand));
   outline-offset: 4px;
   border-radius: 8px;
+}
+
+/* ================================================================================================
+   WCAG 1.4.11 — EINGABEFELDER SIND ALS FELD ERKENNBAR (Audit nacharbeit-8).
+   ================================================================================================
+   Befund an allen Navigationsflächen: Eingabefelder, Auswahllisten und Textbereiche tragen die
+   Haarlinie (`border-hairline`, #E4E7EA bzw. #E9E5DE) — 1,24–1,26:1 gegen ihre Umgebung. Wo das
+   Feld liegt, zeigt aber allein seine Grenze; sie braucht ≥ 3:1 (Regel im Audit-Smoke
+   `tests-smoke/wcag21-aa-audit.spec.ts`, `grenzenImBrowser`).
+
+   EINE Regel statt fünfzig Stellen, und sie trifft NUR Felder: das Feld selbst, oder die Hülle, in
+   der es unmittelbar steht (Suchfeld mit Lupe, Fragezeile mit Knöpfen). Die Haarlinie als Trenner
+   und Kartenrand bleibt unberührt. Farbe: Tinte-2 (`muted-2`) zu 80 % — auf Weiß ≈ 3,6:1, auf der
+   Seitenfläche ≈ 3,3:1 (klassisch) bzw. ≈ 4,0:1 (modern).
+
+   Spezifität (0,1,1) schlägt die Utility `.border-hairline` (0,1,0) unabhängig von der
+   Reihenfolge; Zustandsfarben (`focus:border-…`, 0,2,0) und Fehlerfarben anderer Klassen bleiben
+   unberührt, weil sie die Haarlinie ersetzen statt neben ihr zu stehen. */
+:is(input, select, textarea).border-hairline,
+.border-hairline:has(> :is(input, select, textarea)) {
+  border-color: rgb(var(--kw-muted-2) / 0.8);
 }

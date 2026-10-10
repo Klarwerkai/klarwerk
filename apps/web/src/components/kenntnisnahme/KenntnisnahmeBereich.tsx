@@ -3,6 +3,7 @@ import type { TFunction } from "i18next";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { Button, Card, SectionLabel } from "../ui";
 import {
   type EigeneKenntnisnahme,
@@ -369,7 +370,10 @@ function AnfordernUndUebersicht({ koId }: { koId: string }): JSX.Element | null 
       <div>
         <SectionLabel>{t("kenntnisnahme.uebersicht.titel")}</SectionLabel>
         {daten.anforderungen.length === 0 ? (
-          <p className="text-[12.5px] text-muted">{t("kenntnisnahme.uebersicht.leer")}</p>
+          <>
+            <p className="text-[12.5px] text-muted">{t("kenntnisnahme.uebersicht.leer")}</p>
+            {leerzustandsZeile(t, "objekt")}
+          </>
         ) : (
           <ul className="space-y-2">
             {daten.anforderungen.map((a) => (
@@ -382,16 +386,59 @@ function AnfordernUndUebersicht({ koId }: { koId: string }): JSX.Element | null 
   );
 }
 
+// ------------------------------------------------------------------------------------------------
+// LESEN-INHALT-ZUERST · die Fläche steht NACH dem Inhalt, und sie ist nur so gross wie ihr Anlass.
+// ------------------------------------------------------------------------------------------------
+//
+// Beobachtet am 07.10.2026: wer das Zuweisungsrecht hat, sah an JEDEM gültigen Eintrag vor dem Titel
+// eine etwa 280 px hohe Karte (Hinweis, Empfängerliste, Frist, Knopf, Übersicht) — ohne dass von ihm
+// irgendetwas verlangt war. Jetzt gilt:
+//   · KEINE eigene Anforderung → eine zugeklappte Zeile „Kenntnisnahme: anfordern und Übersicht".
+//     Anfordern und Übersicht sind unverändert dahinter; gemountet bleiben sie, damit der Stand der
+//     Übersicht beim Aufklappen schon da ist (dieselbe eine Abfrage wie bisher).
+//   · EIGENE Anforderung (Pflicht) → die Karte steht offen mit Status und Bestätigen-Knopf; das
+//     Anfordern für andere liegt darin zugeklappt. Oben in der Lesespalte steht dazu nur EIN Satz
+//     mit Sprung hierher (`KenntnisnahmeVerweis`) — die Pflicht bleibt sichtbar, der Inhalt vorn.
+
+function AnfordernZeile({ koId, hinweis }: { koId: string; hinweis: boolean }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <details data-testid="kenntnisnahme-verwalten" className="group">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-2.5 text-[13px] font-semibold text-text">
+        {t("lesereihenfolge.kenntnisnahme.verwalten")}
+        <span aria-hidden className="text-[11px] text-muted-2 group-open:rotate-180">
+          ▾
+        </span>
+      </summary>
+      <div className="space-y-3 border-t border-hairline-soft py-3">
+        {hinweis ? <p className="text-[12px] text-muted">{t("kenntnisnahme.hinweis")}</p> : null}
+        <AnfordernUndUebersicht koId={koId} />
+      </div>
+    </details>
+  );
+}
+
+const BESTAETIGEN_KNOPF = '[data-testid="kenntnisnahme-bestaetigen"]';
+
+/** Offen heisst: der Empfänger muss noch klicken (ausstehend oder überfällig). */
+function istOffen(e: EigeneKenntnisnahme): boolean {
+  return e.status === "ausstehend" || e.status === "ueberfaellig";
+}
+
 /**
  * Die Kenntnisnahme am gelesenen Eintrag. Ohne eigene Anforderung und ohne Zuweisungsrecht
  * erscheint nichts — die Lesefläche bleibt dann unverändert.
+ *
+ * `zielId` ist der Sprunganker für `KenntnisnahmeVerweis` oben in der Lesespalte.
  */
 export function KenntnisnahmeBereich({
   koId,
   darfAnfordern,
+  zielId,
 }: {
   koId: string;
   darfAnfordern: boolean;
+  zielId?: string;
 }): JSX.Element | null {
   const { t } = useTranslation();
   const meine = useQuery({ queryKey: MEINE, queryFn: kenntnisnahmeApi.meine, retry: false });
@@ -399,14 +446,80 @@ export function KenntnisnahmeBereich({
   if (eigene.length === 0 && !darfAnfordern) {
     return null;
   }
+  if (eigene.length === 0) {
+    // Nur das Zuweisungsrecht, nichts verlangt: eine Zeile, zugeklappt.
+    return (
+      <div
+        id={zielId}
+        data-testid="kenntnisnahme-bereich"
+        data-kenntnisnahme-lage="nur-anfordern"
+        className="rounded-card border border-hairline bg-surface px-4 shadow-tile"
+      >
+        <AnfordernZeile koId={koId} hinweis />
+      </div>
+    );
+  }
   return (
-    <Card interactive={false} className="space-y-3" data-testid="kenntnisnahme-bereich">
+    <Card
+      interactive={false}
+      className="space-y-3"
+      data-testid="kenntnisnahme-bereich"
+      data-kenntnisnahme-lage={eigene.some(istOffen) ? "pflicht-offen" : "eigene"}
+      {...(zielId ? { id: zielId } : {})}
+    >
       <SectionLabel>{t("kenntnisnahme.titel")}</SectionLabel>
       <p className="text-[12px] text-muted">{t("kenntnisnahme.hinweis")}</p>
       {eigene.map((e) => (
         <EigeneAnforderung key={e.anforderungId} eintrag={e} />
       ))}
-      {darfAnfordern ? <AnfordernUndUebersicht koId={koId} /> : null}
+      {darfAnfordern ? <AnfordernZeile koId={koId} hinweis={false} /> : null}
     </Card>
+  );
+}
+
+/**
+ * EIN Satz oben in der Lesespalte, nur solange die EIGENE Kenntnisnahme noch aussteht — mit Sprung
+ * zum Bestätigen-Knopf unten. Dieselbe Abfrage wie die Fläche (`MEINE`): kein zweiter Abruf, kein
+ * zweiter Stand. Er bestätigt nichts; bestätigt wird weiterhin nur durch den Klick unten.
+ */
+export function KenntnisnahmeVerweis({
+  koId,
+  zielId,
+}: {
+  koId: string;
+  zielId: string;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  const meine = useQuery({ queryKey: MEINE, queryFn: kenntnisnahmeApi.meine, retry: false });
+  const offen = (meine.data?.eintraege ?? []).some((e) => e.koId === koId && istOffen(e));
+  if (!offen) {
+    return null;
+  }
+  const springen = (): void => {
+    const ziel = document.getElementById(zielId);
+    if (!ziel) {
+      return;
+    }
+    if (typeof ziel.scrollIntoView === "function") {
+      ziel.scrollIntoView({ block: "center" });
+    }
+    const knopf = ziel.querySelector<HTMLButtonElement>(BESTAETIGEN_KNOPF);
+    (knopf ?? ziel).focus();
+  };
+  return (
+    <p
+      data-testid="kenntnisnahme-verweis"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-btn bg-trust-warn-bg px-3 py-1.5 text-[12.5px] text-trust-warn-text"
+    >
+      <span>{t("lesereihenfolge.kenntnisnahme.offen")}</span>
+      <button
+        type="button"
+        data-testid="kenntnisnahme-verweis-sprung"
+        onClick={springen}
+        className="font-semibold underline"
+      >
+        {t("lesereihenfolge.kenntnisnahme.zumBestaetigen")}
+      </button>
+    </p>
   );
 }

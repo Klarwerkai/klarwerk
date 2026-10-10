@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useLiveWall } from "../api/hooks";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { RoleLink } from "../components/RoleLink";
 import { ValidiertListe } from "../components/start/LiveWallValidiert";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -87,7 +88,10 @@ export function LiveWallBeamer(): JSX.Element {
                 {t("start.livewall.saved")}
               </h2>
               {daten.saved.length === 0 ? (
-                <p className="text-[22px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                <>
+                  <p className="text-[22px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-3">
                   {daten.saved.map((s) => (
@@ -112,7 +116,10 @@ export function LiveWallBeamer(): JSX.Element {
                 {t("start.livewall.helped")}
               </h2>
               {daten.helped.length === 0 ? (
-                <p className="text-[22px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                <>
+                  <p className="text-[22px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-3">
                   {daten.helped.map((h) => (

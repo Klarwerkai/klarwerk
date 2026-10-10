@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useAudit, useFeatures, useUsers } from "../api/hooks";
+import { useAuditSeite, useDirectory, useFeatures, useUsers } from "../api/hooks";
 import type {
   DemoPackageInfo,
   DemoPackageResult,
@@ -27,6 +27,7 @@ import type {
   DemoSeedResult,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 // AUFTRAG-mega64 Block A: der Demodaten-Knopf steht hinter dem Betriebsschalter — dieselbe
 // fail-closed Regel wie jede andere geschaltete Fläche (mega46 F2).
 import { FeatureGate } from "../components/FeatureGate";
@@ -34,9 +35,18 @@ import { FeatureGate } from "../components/FeatureGate";
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
+import {
+  AuditFilterLeiste,
+  AuditLeer,
+  AuditSeitenleiste,
+  AuditTabelle,
+  useAuditAdressfilter,
+  useVerzeichnislage,
+} from "../components/einstellungen/Auditprotokoll";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
-import { isUserAuditAction } from "../lib/adminForms";
+import { KONTO_AUDIT_AKTIONEN, isUserAuditAction } from "../lib/adminForms";
+import { auditAnfrage } from "../lib/auditFilter";
 import type { BrandProfil, BrandingStand, BrandingWunsch } from "../lib/brandTheme";
 import {
   BRAND_PROFIL_ADVISOR,
@@ -46,7 +56,6 @@ import {
   setzeBranding,
   uebernimmBranding,
 } from "../lib/brandTheme";
-import { formatKoTimestamp } from "../lib/koDates";
 import { PILOT_NEXT_STEPS } from "../lib/pilotNextSteps";
 
 /**
@@ -259,7 +268,8 @@ const ADVISOR_PAKET = "advisor-ict-en-v1";
  * WAS UNBERÜHRT BLEIBT (Auftrag §5): die Rückfrage vor dem frischen Laden (`force`), der
  * Entfernen-Weg samt seiner Bestätigung, das Erscheinungsbild als eigener, ungekoppelter Abschnitt
  * — und die Rücksetzlogik aus JOB 3277. Zurücksetzen und paketbezogenes Entfernen wohnen weiterhin
- * NUR im Demopaket-Kasten auf `/import` (`components/ExamplePackages.tsx`); hier steht der eine
+ * NUR im Demopaket-Kasten (`components/ExamplePackages.tsx`, seit ADMIN-16 in der Nachbarkarte
+ * „Beispiel- und Demopakete" statt auf `/import`); hier steht der eine
  * Handgriff, den Pedi hier verlangt hat. Eine zweite Fassung der Eingriffe wäre eine zweite
  * Wahrheit über denselben Bestand.
  *
@@ -498,7 +508,9 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       titel={t("adm.seedTitle")}
       onZurueck={onZurueck}
       testId="detail-demodaten"
-      hilfe={demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }] : []}
+      hilfe={
+        demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("fachwort.demodaten.hinweis") }] : []
+      }
     >
       {/* JOB 3670: die Seitenhilfe dieses Bildschirms. Sie sagt, was das „?"-Menü der Karte nicht
           sagt: dass hier ZWEI verschiedene Bestände wohnen (Kommentar unten, Z. 252-253), dass die
@@ -513,6 +525,10 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           Schlüssel, damit die Karte später „Allgemeine Demodaten" heissen kann, ohne dass sich die
           Beschriftung des Knopfes mit ändert (s. RUECKGABE, ABWEICHUNGEN: die Textlieferung gehört
           nach `i18n.ts` und damit in einen eigenen Auftrag).
+
+          R-0908: der Hilfekörper kommt seit der Aufnahme gesamt-sprache-begriffe aus
+          `fachwort.demodaten.hinweis` (`texte/fachwort.ts`) — `adm.seedHint` sagte „KOs" und
+          „KI-Reasoner". Die Begründung unten gilt für ihn unverändert.
 
           WARUM HIER KEIN ERKLÄRSATZ STEHT, obwohl der Auftrag einen verlangt: `adm.seedHint` ist
           der Hilfekörper DIESER Karte (`hilfe` oben, verlangt von
@@ -648,10 +664,12 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
             const paket = liste.packages.find((p) => p.id === ADVISOR_PAKET);
             if (paket === undefined) {
               // EHRLICHE LÜCKE STATT ERFUNDENER KENNUNG (Auftrag §4): kein Knopf, keine Zusage.
-              // Der Wortlaut ist der, den diese Fläche für „gibt es hier nicht" schon führt.
+              // ADMIN-16: bis hierher stand hier der Satz des Werksresets („… gibt es nur im
+              // Desktop-Betrieb") — ein falscher Grund. Jetzt nennt er den echten Grund und wer
+              // zuständig ist.
               return (
                 <p data-testid="advisor-fehlt" className="mt-1 text-[12.5px] text-muted-2">
-                  {t("adm.factory.unavailable")}
+                  {t("betriebdemo.paketFehlt")}
                 </p>
               );
             }
@@ -967,7 +985,10 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
         {(eintraege) => (
           <>
             {eintraege.length === 0 ? (
-              <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+              <>
+                <p className="text-[12.5px] text-muted-2">{t("adm.trash.empty")}</p>
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
             ) : (
               <ul className="space-y-2">
                 {eintraege.map((entry) => (
@@ -1036,44 +1057,63 @@ export function PapierkorbDetail({ onZurueck }: { onZurueck: () => void }): JSX.
   );
 }
 
-/** SCRUM-149: die kleine echte Audit-Sicht für Nutzer-/Auth-Aktionen. */
+/**
+ * SCRUM-149: die kleine echte Audit-Sicht für Nutzer-/Auth-Aktionen.
+ *
+ * produkt:20261009:admin-audit-verstaendlich (ADMIN-03): bis hierher zeigte diese Karte den ROHEN
+ * Aktionscode und die Kennung des Handelnden — eine zweite, schlechtere Fassung desselben
+ * Protokolls. Jetzt dieselbe Darstellung wie das Prüfprotokoll (`Auditprotokoll.tsx`): Namen,
+ * verständliche Vorgänge, Zeitpunkt mit Zeitzone, Kennungen und Rohaktion in den technischen
+ * Angaben, Filter in der Adresse und seitenweise. Der Ausschnitt bleibt derselbe: nur Konto- und
+ * Anmeldeereignisse (`KONTO_AUDIT_AKTIONEN`, am Server gefiltert).
+ */
 export function AuditDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t, i18n } = useTranslation();
-  const audit = useAudit();
+  const { t } = useTranslation();
+  const filter = useAuditAdressfilter();
+  // Ein Vorgang, der kein Konto- oder Anmeldeereignis ist (etwa aus einer von Hand geänderten
+  // Adresse), gilt hier nicht — die Karte bleibt bei ihrem Ausschnitt, statt leer zu werden.
+  const werte = isUserAuditAction(filter.werte.aktion)
+    ? filter.werte
+    : { ...filter.werte, aktion: "" };
+  const anfrage = auditAnfrage(werte, filter.vor);
+  // Ohne gewählten Vorgang: alle Kontoereignisse, am Server gefiltert. Mit Vorgang: genau dieser.
+  const audit = useAuditSeite(
+    anfrage.action === undefined ? { ...anfrage, actions: KONTO_AUDIT_AKTIONEN } : anfrage,
+  );
+  const verzeichnis = useVerzeichnislage(useDirectory());
   return (
     <Detailkarte titel={t("adm.auditTitle")} onZurueck={onZurueck} testId="detail-audit">
       {/* JOB 3670: Diese Karte hatte bisher überhaupt keine Hilfequelle — weder ein „?"-Menü noch
           einen Eintrag im Zahnrad. Der Text sagt das Wichtigste zuerst: hier wird nur gelesen, und
-          die vollständige Kette samt Prüfknopf wohnt woanders. */}
-      <HelpTip
-        title={t("seitenhilfe.admin.audit.titel")}
-        body={t("seitenhilfe.admin.audit.text")}
+          die vollständige Kette samt Prüfknopf wohnt woanders.
+
+          produkt:20261009:admin-audit-verstaendlich: der Text beschreibt jetzt die gemeinsame
+          Darstellung mit Filtern und Seiten (`auditprotokoll.hilfe.konten`). Der alte Wortlaut
+          („ohne Bedienelemente … die Kennung des Ausführenden") stimmte nicht mehr — auch nicht in
+          seiner zeichengleich zitierenden Fassung `knopfzitat.admin.audit` (R-1176). Der neue Text
+          zitiert den Reiter „Sicherheit und Nachweise“ ebenso zeichengleich in DE, EN und NL
+          (`tests/sprache-begriffe/zitierte-beschriftungen.test.ts`, Z-3). */}
+      <HelpTip title={t("seitenhilfe.admin.audit.titel")} body={t("auditprotokoll.hilfe.konten")} />
+      <AuditFilterLeiste
+        filter={filter}
+        verzeichnis={verzeichnis}
+        aktionen={KONTO_AUDIT_AKTIONEN}
+        idPraefix="audit-filter"
       />
       <Abfragehuelle abfrage={audit}>
-        {(entries) => {
-          const userEntries = entries
-            .filter((e) => isUserAuditAction(e.action))
-            .slice(-15)
-            .reverse();
-          if (userEntries.length === 0) {
-            return <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>;
-          }
-          return (
-            <div className="divide-y divide-hairline">
-              {userEntries.map((e) => (
-                <div key={e.seq} className="flex items-center gap-3 py-2 text-[12.5px]">
-                  <span className="font-mono text-[11px] text-muted-2">
-                    {formatKoTimestamp(e.at, i18n.language)}
-                  </span>
-                  <span className="font-semibold text-text">{e.action}</span>
-                  <span className="ml-auto truncate font-mono text-[11px] text-muted-2">
-                    {e.actor}
-                  </span>
-                </div>
-              ))}
-            </div>
-          );
-        }}
+        {(seite) => (
+          <>
+            {seite.entries.length === 0 ? (
+              <>
+                <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
+                {leerzustandsZeile(t, "verwaltung")}
+              </>
+            ) : (
+              <AuditTabelle seite={seite} verzeichnis={verzeichnis} />
+            )}
+            <AuditSeitenleiste seite={seite} filter={filter} />
+          </>
+        )}
       </Abfragehuelle>
     </Detailkarte>
   );

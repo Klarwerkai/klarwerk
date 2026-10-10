@@ -94,6 +94,7 @@ async function frageMitBeleg(
   if (ko.statusCode !== 201) {
     throw new Error(`KO nicht angelegt: ${ko.statusCode} ${ko.body}`);
   }
+  // R-0278 (Nacharbeit 3) / R-0584: belegfähig ist nur noch, was validiert ist.
   const bewertung = await app.inject({
     method: "PUT",
     url: `/api/kos/${ko.json().id}`,

@@ -9,10 +9,10 @@
 import { describe, expect, it } from "vitest";
 import type { ImportPreviewEntry } from "../../apps/web/src/api/types";
 import { type PreviewTreeGroup, folderTree } from "../../apps/web/src/lib/importSelectView";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService } from "../../services/library-analytics";
 import { toPreviewEntry } from "../../services/library-analytics/src/select";
+import { adapterFromConfig } from "../support/confluence-adapter";
 import { BAUM, BEREICH, blaetternderFetch, erwarteterPfad } from "./bereich";
 
 function adapter(jeSeite = 5) {

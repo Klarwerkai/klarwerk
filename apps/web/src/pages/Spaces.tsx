@@ -18,6 +18,7 @@ import {
   spaceFehlerSchluessel,
   spacesApi,
 } from "../api/spaces";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { formatKoTimestamp } from "../lib/koDates";
 
@@ -479,9 +480,13 @@ function SpaceUebersicht(): JSX.Element {
         </p>
       ) : null}
       {liste.isSuccess && liste.data.spaces.length === 0 ? (
-        <p data-testid="spaces-leer" className="text-sm text-muted">
-          {t("spaces.seite.leer")}
-        </p>
+        <>
+          <p data-testid="spaces-leer" className="text-sm text-muted">
+            {t("spaces.seite.leer")}
+          </p>
+          {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+          {leerzustandsZeile(t, "spaces")}
+        </>
       ) : null}
       <ul className="space-y-3">
         {(liste.data?.spaces ?? []).map((s) => (

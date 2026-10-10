@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -13,18 +13,23 @@ import {
   useKos,
   useLifecyclePending,
 } from "../api/hooks";
-import type { GapPriority } from "../api/types";
+import type { Gap, GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
+import { useToast } from "../app/ToastContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
+import { EigeneNulltreffer } from "../components/EigeneNulltreffer";
+import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LueckenAnsprechpartner } from "../components/LueckenAnsprechpartner";
 import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { nurOffeneLuecken, offeneLuecken } from "../lib/adminUebersicht";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import { leseFall } from "../lib/fallAbsprung";
-import { gapLocaleTag } from "../lib/gapLocaleTag";
+import { gapBelegbedarfSchluessel } from "../lib/gapBelegbedarf";
+import { gapTitelEtikett } from "../lib/gapLocaleTag";
 import {
   GAP_PRIORITIES,
   type PriorityTone,
@@ -63,6 +68,15 @@ export function Risk(): JSX.Element {
   // Consultant-System (Experten-Matching): nur berechtigte Rollen fragen die Sicht überhaupt an; ist
   // das Flag serverseitig AUS, kommt 404 → keine Daten → nichts gerendert (exakt heutiges Verhalten).
   const { role } = useRole();
+  // AUFNAHME 20260922 · GESAMT-NAVIGATION · R-1023 (b): gemessen war „Risiken und Lücken" nach der
+  // korrigierten Zählregel die zweitschwerste Fläche (Lauf nacharbeit-7: 135 gleichzeitig sichtbare
+  // Bedienelemente und Zustandsangaben). Rund 85 davon trug die Pflege der Eingänge — je Bereich
+  // Verantwortung, vier Stufen und Speichern, dazu die Ruhestandshorizonte. Sie ist eine
+  // Verwaltungsarbeit, keine Auskunft; sie steht jetzt hinter dem Schalter `risiko-pflege-schalter`
+  // und ist aufgeklappt unverändert dieselbe Fläche (nichts gelöscht, keine Rechte geändert).
+  // Eingeklappt bleibt sie MONTIERT und ist nur verborgen — ungespeicherte Eingaben überleben das
+  // Ein- und Ausklappen (s. unten am Schalter).
+  const [pflegeOffen, setPflegeOffen] = useState(false);
   const expertise = useExpertise(canSeeExpertise(role));
   // R-1663 / R-2178: die Ansprechpartner je Lücke hängen am selben Schalter wie die Expertise-Route,
   // und die Oberfläche erfährt ihn auf demselben Weg — an der Abwesenheit der Route (`null` bei 404,
@@ -72,27 +86,70 @@ export function Risk(): JSX.Element {
   // existiert.
   const ansprechpartnerSichtbar = canSeeExpertise(role) && Array.isArray(expertise.data);
   const qc = useQueryClient();
+  const { push } = useToast();
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["gaps"] });
+  // R-0953 (Bestandsabgleich, Nacharbeit 4): Zuweisen, Priorisieren und Löschen einer Lücke
+  // scheiterten bis hierher STILL — die Auswahl sprang zurück, und niemand erfuhr, warum. Alle vier
+  // Lückenaktionen melden Erfolg und Fehler jetzt über den Benachrichtigungs-Bus.
+  const gemeldet = (erfolgKey: string) => () => {
+    push("success", t(erfolgKey));
+    invalidate();
+  };
+  const fehlgeschlagen = (fehlerKey: string) => () => push("error", t(fehlerKey));
   // R-0846 / L6: eine Lücke schliesst nur mit dem Wissensobjekt, das sie beantwortet. Der Server
   // prüft den Bezug; scheitert er, bleibt die Lücke offen und die Zeile sagt es.
   const close = useMutation({
     mutationFn: ({ id, koId }: { id: string; koId: string }) => endpoints.gaps.close(id, koId),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.closed"),
+    onError: fehlgeschlagen("risk.closeFailed"),
   });
   const assign = useMutation({
     mutationFn: ({ id, expertId }: { id: string; expertId: string }) =>
       endpoints.gaps.assign(id, expertId),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.assigned"),
+    onError: fehlgeschlagen("risk.gapToast.assignFailed"),
   });
   const remove = useMutation({
     mutationFn: (id: string) => endpoints.gaps.remove(id),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.removed"),
+    onError: fehlgeschlagen("risk.gapToast.removeFailed"),
   });
   const setPriority = useMutation({
     mutationFn: ({ id, priority }: { id: string; priority: GapPriority }) =>
       endpoints.gaps.setPriority(id, priority),
-    onSuccess: invalidate,
+    onSuccess: gemeldet("risk.gapToast.prioritySaved"),
+    onError: fehlgeschlagen("risk.gapToast.priorityFailed"),
   });
+  // R-0956 (Ben, Nacharbeit 7): die WAHL je Lücke bleibt stehen, bis der Server sie übernommen hat.
+  // Bis hierher hing die Priorität am alten Serverwert und Person/Objekt an einem festen `""` —
+  // ein Speicherfehler kostete die Auswahl. Ein Eintrag weicht erst, wenn ein neuer Serverstand sie
+  // bestätigt (Priorität gleich, Person zugewiesen, Lücke geschlossen) oder die Lücke fehlt; nach
+  // einem Fehler steht er weiter da und lässt sich mit „Erneut versuchen“ unverändert senden.
+  const [prioWahl, setPrioWahl] = useState<Record<string, GapPriority>>({});
+  const [personWahl, setPersonWahl] = useState<Record<string, string>>({});
+  const [objektWahl, setObjektWahl] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const liste = gaps.data;
+    if (!liste) {
+      return;
+    }
+    const lueckeVon = new Map(liste.map((g) => [g.id, g]));
+    const offenBis = <W,>(
+      alt: Record<string, W>,
+      bestaetigt: (g: Gap, wert: W) => boolean,
+    ): Record<string, W> => {
+      const neu = Object.fromEntries(
+        Object.entries(alt).filter(([id, wert]) => {
+          const g = lueckeVon.get(id);
+          return g !== undefined && !bestaetigt(g, wert);
+        }),
+      );
+      return Object.keys(neu).length === Object.keys(alt).length ? alt : neu;
+    };
+    setPrioWahl((alt) => offenBis(alt, (g, wert) => g.priority === wert));
+    setPersonWahl((alt) => offenBis(alt, (g, wert) => g.assignee === wert));
+    setObjektWahl((alt) => offenBis(alt, (g) => g.status !== "offen"));
+  }, [gaps.data]);
 
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
   // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
@@ -103,6 +160,7 @@ export function Risk(): JSX.Element {
   // Sicht, sobald die Liste sie trägt. Ohne Treffer bleibt die Seite, wie sie war.
   const [params] = useSearchParams();
   const zielLuecke = leseFall(params);
+  const nurOffene = nurOffeneLuecken(params);
   const zielZeile = useRef<HTMLDivElement | null>(null);
   const zielGezeigt = useRef(false);
   const lueckenGeladen = gaps.data !== undefined;
@@ -180,7 +238,13 @@ export function Risk(): JSX.Element {
           <SectionLabel>{t("risk.cockpit")}</SectionLabel>
           <HelpTip title={t("risk.cockpit")} body={t("risk.help.cockpit")} />
         </div>
-        <QueryState query={kos} emptyText={t("risk.cockpitEmpty")}>
+        {/* R-0956 (Bestandsabgleich, Nacharbeit 4): auch das leere Cockpit ordnet ein — derselbe
+            Grund und derselbe nächste Schritt wie die leere Bus-Faktor-Liste darunter. */}
+        <QueryState
+          query={kos}
+          emptyText={t("risk.cockpitEmpty")}
+          emptyExtra={<EmptyStateCtas context="risk" />}
+        >
           {(items) => {
             const rows = domainRisk(items, bus.data ?? [], pending.data ?? null);
             const werk = plantValidatedRatio(items);
@@ -188,6 +252,7 @@ export function Risk(): JSX.Element {
               return (
                 <Card className="border-dashed text-center text-sm text-muted">
                   {t("risk.cockpitEmpty")}
+                  <EmptyStateCtas context="risk" />
                 </Card>
               );
             }
@@ -293,7 +358,30 @@ export function Risk(): JSX.Element {
 
       {/* Die Pflege der Eingänge dazu (Bereichsverantwortung, vier eingeschätzte Prioritätsfaktoren,
           Ruhestandshorizonte) — nur die Admin-Rolle; der Server verlangt `users.manage`. */}
-      {role === "admin" ? <BereichsprofilPflege /> : null}
+      {role === "admin" ? (
+        <div>
+          <button
+            type="button"
+            data-testid="risiko-pflege-schalter"
+            data-entlastung-schalter=""
+            aria-expanded={pflegeOffen}
+            aria-controls="risiko-pflege"
+            onClick={() => setPflegeOffen((offen) => !offen)}
+            className="mb-2 inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+          >
+            {t(pflegeOffen ? "navigation.pflegeAusblenden" : "navigation.pflegeZeigen")}
+          </button>
+          {/* VERBORGEN, NICHT AUSGEBAUT (Ben, Nacharbeit 8): die Zeilen halten ihren ungespeicherten
+              Entwurf als lokalen Zustand (`BereichsprofilPflege.tsx`, `ProfilZeile`). Ein
+              bedingtes Rendern hätte ihn beim Einklappen verworfen — Ändern, Einklappen, Aufklappen
+              stand wieder beim gespeicherten Wert. `hidden` nimmt die Fläche aus Sicht und
+              Tabreihenfolge und lässt den Entwurf stehen; gemessen in
+              `tests/gesamt-navigation/risiko-pflege-einklappen-mounted.test.tsx`. */}
+          <div id="risiko-pflege" data-testid="risiko-pflege" hidden={!pflegeOffen}>
+            <BereichsprofilPflege />
+          </div>
+        </div>
+      ) : null}
 
       {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
           als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die
@@ -346,7 +434,12 @@ export function Risk(): JSX.Element {
           <SectionLabel>{t("risk.busfactor")}</SectionLabel>
           <HelpTip title={t("risk.busfactor")} body={t("risk.help.busfactor")} />
         </div>
-        <QueryState query={bus} emptyText={t("risk.busEmpty")}>
+        {/* R-0956: die leere Liste ordnet in den Wissenskreis ein und nennt den nächsten Schritt. */}
+        <QueryState
+          query={bus}
+          emptyText={t("risk.busEmpty")}
+          emptyExtra={<EmptyStateCtas context="risk" />}
+        >
           {(items) => (
             <Card className="space-y-2.5">
               {/* Pedi 05.07.: Legende, damit die Balkenfarbe verständlich ist. */}
@@ -395,11 +488,34 @@ export function Risk(): JSX.Element {
         {/* SCRUM-283: ehrlich + datensparsam — gespeicherte Fragen sind offene Lücken (keine Antwort/
             kein validiertes Wissen); beim Erfassen keine sensiblen Details, geprüfte Erfahrung ergänzen. */}
         <p className="mb-2 text-[12px] text-muted-2">{t(gapPrivacyNoticeKey())}</p>
-        <QueryState query={gaps} emptyText={t("risk.gapsEmpty")}>
+        {/* ADMIN-01: Ziel des Zählers „Offene Wissenslücken" der Verwaltung. Der Filter steht in der
+            Adresse (`?luecken=offen`) und wählt mit DERSELBEN Regel wie der Zähler
+            (`offeneLuecken`) aus DERSELBEN Abfrage (`["gaps"]`). */}
+        {nurOffene ? (
+          <div
+            data-testid="filter-luecken"
+            className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted"
+          >
+            <span>{t("verwaltung.filter.offeneLuecken")}</span>
+            <Link to="/risiko" className="text-text underline underline-offset-2">
+              {t("verwaltung.filter.aufheben")}
+            </Link>
+          </div>
+        ) : null}
+        <QueryState
+          query={gaps}
+          emptyText={t("risk.gapsEmpty")}
+          emptyExtra={<EmptyStateCtas context="gaps" />}
+        >
           {(items) => (
             <Card className="p-0">
               <div className="divide-y divide-hairline">
-                {sortGapsByPriority(items).map((g) => (
+                {nurOffene && offeneLuecken(items).length === 0 ? (
+                  <div className="px-4 py-2.5 text-[13px] text-muted">
+                    {t("verwaltung.filter.keineOffenen")}
+                  </div>
+                ) : null}
+                {sortGapsByPriority(nurOffene ? offeneLuecken(items) : items).map((g) => (
                   <div
                     key={g.id}
                     data-testid="luecke-zeile"
@@ -426,15 +542,46 @@ export function Risk(): JSX.Element {
                         <div className="min-w-0 flex-1 truncate text-[13.5px] text-text">
                           {g.redacted ? t("risk.gapRedacted") : g.question}
                         </div>
+                        {/* R-0307 / R-1061: ohne Sprachangabe das neutrale Etikett „Originalfrage". */}
                         {(() => {
-                          const sprache = gapLocaleTag(g.locale, i18n.language);
+                          const sprache = gapTitelEtikett(g, i18n.language, t);
                           return sprache ? (
-                            <span className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                            <span
+                              data-testid="luecke-etikett"
+                              className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2"
+                            >
                               {sprache}
                             </span>
                           ) : null;
                         })()}
+                        {/* R-0333 / R-0753: die Häufigkeit auch auf dem Lücken-Board — dieselbe
+                            Regel wie in „Meine Aufgaben": erst ab zwei, Altbestand ohne Zähler
+                            bleibt still. Eine Zahl ist kein Fragetext, also auch bei redigierten. */}
+                        {typeof g.askCount === "number" && g.askCount > 1 ? (
+                          <span
+                            data-testid="luecke-haeufigkeit"
+                            className="shrink-0 font-mono text-[10.5px] text-muted-2"
+                          >
+                            {t("gap.askCount", { count: g.askCount })}
+                          </span>
+                        ) : null}
                       </div>
+                      {/* R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde — nur in der
+                          berechtigten Sicht (bei redigierten Lücken hält der Server ihn zurück). */}
+                      {(() => {
+                        const bedarf = g.status === "offen" ? gapBelegbedarfSchluessel(g) : null;
+                        return bedarf ? (
+                          <div
+                            data-testid="luecke-belegbedarf"
+                            className="mt-0.5 text-[11px] text-muted"
+                          >
+                            <span className="font-mono uppercase tracking-wider text-muted-2">
+                              {t("gap.belegbedarf.label")}:
+                            </span>{" "}
+                            {bedarf.map((k) => t(k)).join(" · ")}
+                          </div>
+                        ) : null;
+                      })()}
                       {/* SCRUM-253: ehrliche nächste Handlung je offener Lücke (priorisieren/zuweisen/erfassen). */}
                       {g.status === "offen" ? (
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted">
@@ -475,14 +622,13 @@ export function Risk(): JSX.Element {
                           {t("risk.gapCapture")}
                         </Link>
                         <select
-                          value={g.priority}
+                          value={prioWahl[g.id] ?? g.priority}
                           disabled={setPriority.isPending}
-                          onChange={(e) =>
-                            setPriority.mutate({
-                              id: g.id,
-                              priority: e.target.value as GapPriority,
-                            })
-                          }
+                          onChange={(e) => {
+                            const priority = e.target.value as GapPriority;
+                            setPrioWahl((alt) => ({ ...alt, [g.id]: priority }));
+                            setPriority.mutate({ id: g.id, priority });
+                          }}
                           title={t("risk.priorityLabel")}
                           className="h-8 w-28 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
                         >
@@ -493,11 +639,13 @@ export function Risk(): JSX.Element {
                           ))}
                         </select>
                         <select
-                          value=""
+                          value={personWahl[g.id] ?? ""}
                           disabled={assign.isPending}
                           onChange={(e) => {
-                            if (e.target.value) {
-                              assign.mutate({ id: g.id, expertId: e.target.value });
+                            const expertId = e.target.value;
+                            if (expertId) {
+                              setPersonWahl((alt) => ({ ...alt, [g.id]: expertId }));
+                              assign.mutate({ id: g.id, expertId });
                             }
                           }}
                           className="h-8 w-36 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
@@ -510,12 +658,14 @@ export function Risk(): JSX.Element {
                           ))}
                         </select>
                         <select
-                          value=""
+                          value={objektWahl[g.id] ?? ""}
                           data-testid="luecke-schliessen"
                           disabled={close.isPending || (kos.data ?? []).length === 0}
                           onChange={(e) => {
-                            if (e.target.value) {
-                              close.mutate({ id: g.id, koId: e.target.value });
+                            const koId = e.target.value;
+                            if (koId) {
+                              setObjektWahl((alt) => ({ ...alt, [g.id]: koId }));
+                              close.mutate({ id: g.id, koId });
                             }
                           }}
                           title={t("risk.closeWithTitle")}
@@ -534,6 +684,50 @@ export function Risk(): JSX.Element {
                             {t("risk.closeFailed")}
                           </span>
                         ) : null}
+                        {/* R-0956 (Ben, Nacharbeit 7): nach einem Speicherfehler steht die Wahl
+                            weiter im Feld, und derselbe Wert lässt sich erneut senden. */}
+                        {setPriority.isError && setPriority.variables?.id === g.id ? (
+                          <button
+                            type="button"
+                            data-testid="luecke-erneut-prioritaet"
+                            onClick={() => {
+                              if (setPriority.variables) {
+                                setPriority.mutate(setPriority.variables);
+                              }
+                            }}
+                            className="text-[11px] font-semibold text-trust-crit-text underline"
+                          >
+                            {t("loadstate.error.retry")}
+                          </button>
+                        ) : null}
+                        {assign.isError && assign.variables?.id === g.id ? (
+                          <button
+                            type="button"
+                            data-testid="luecke-erneut-person"
+                            onClick={() => {
+                              if (assign.variables) {
+                                assign.mutate(assign.variables);
+                              }
+                            }}
+                            className="text-[11px] font-semibold text-trust-crit-text underline"
+                          >
+                            {t("loadstate.error.retry")}
+                          </button>
+                        ) : null}
+                        {close.isError && close.variables?.id === g.id ? (
+                          <button
+                            type="button"
+                            data-testid="luecke-erneut-schliessen"
+                            onClick={() => {
+                              if (close.variables) {
+                                close.mutate(close.variables);
+                              }
+                            }}
+                            className="text-[11px] font-semibold text-trust-crit-text underline"
+                          >
+                            {t("loadstate.error.retry")}
+                          </button>
+                        ) : null}
                       </>
                     ) : null}
                     <button
@@ -551,6 +745,10 @@ export function Risk(): JSX.Element {
           )}
         </QueryState>
       </div>
+
+      {/* R-0773: getrennt von den unbeantworteten Fragen darüber — die eigenen SUCHEN, die nichts
+          Sichtbares fanden (components/EigeneNulltreffer.tsx). */}
+      <EigeneNulltreffer />
     </div>
   );
 }
