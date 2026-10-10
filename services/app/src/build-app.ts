@@ -191,7 +191,7 @@ import {
 } from "../../object-store";
 import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
-import { canChangeRole } from "../../rbac";
+import { can, canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -1379,10 +1379,24 @@ export function assembleServices(
         }
       : undefined;
 
+  // produkt:20261010:wissenskreislauf-schliessen: die EINE Validierungsinstanz entsteht jetzt vor dem
+  // Ask-Dienst, weil der fachliche Abschluss einer Wissenslücke ihren Prüfstand liest. Dieselben
+  // Abhängigkeiten wie bisher an `services.validation` (unten), keine zweite Instanz.
+  const validation = new ValidationService({
+    koService: ko,
+    ratings: repos.ratings,
+    assignments: repos.assignments,
+    audit,
+    // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
+    settings: repos.validationSettings,
+  });
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
   // Mehr-Instanz-/reproduzierbare Deployments, sonst prozess-lokal zufällig (Belege sind kurzlebig).
   const ask = new AskService({
+    // produkt:20261010:wissenskreislauf-schliessen: der Fachprüfstand der AKTUELLEN Fassung —
+    // dieselbe Zählung wie Prüfboard und Detailabruf.
+    pruefstand: (koId, koVersion) => validation.pruefstandFuer(koId, koVersion),
     reasoner,
     koService: ko,
     gaps: repos.gaps,
@@ -1764,14 +1778,8 @@ export function assembleServices(
     // braucht. Er ist DASSELBE Repo, das der Schreibweg oben benutzt — ein zweites waere ein
     // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
     answerSnapshots: repos.answerSnapshots,
-    validation: new ValidationService({
-      koService: ko,
-      ratings: repos.ratings,
-      assignments: repos.assignments,
-      audit,
-      // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
-      settings: repos.validationSettings,
-    }),
+    // produkt:20261010:wissenskreislauf-schliessen: dieselbe Instanz, die der Ask-Dienst liest (oben).
+    validation,
     conflicts,
     overlaps,
     // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
@@ -4476,6 +4484,19 @@ export function buildApp(
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
+        // produkt:20261010:wissenskreislauf-schliessen: berechtigte Fachzuständigkeit heisst HEUTE
+        // ein freigegebenes, nicht abgelaufenes Konto mit Erfassungsrecht (`ko.create`) — aus
+        // demselben Nutzerverzeichnis wie die Erreichbarkeit oben. Unbekannte Kennung: nein.
+        fachzustaendigkeit: async (personId: string) => {
+          const konto = (await services.auth.listUsers()).find((u) => u.id === personId);
+          if (!konto) {
+            return false;
+          }
+          const abgelaufen =
+            typeof konto.accessExpiresAt === "string" &&
+            Date.parse(konto.accessExpiresAt) <= Date.now();
+          return konto.approved === true && !abgelaufen && can(konto.role, "ko.create");
+        },
       },
       guards,
     ),

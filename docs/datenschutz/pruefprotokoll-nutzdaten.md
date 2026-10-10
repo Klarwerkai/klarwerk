@@ -37,6 +37,11 @@ wiederholt.
 | `answer.helpful` | `koTitle`, `koAuthor`, `koOriginalAuthor`, `via` (nur `"wissensobjekt"` beim Klick am Objekt) | M, K |
 | `gap.created` | — | — (gemessen: leer; Fragetext steht nur in der Lücke selbst) |
 | `gap.priority-changed` | — | — |
+| `gap.assigned` (produkt:20261010:wissenskreislauf-schliessen) | `an` (Nutzer-Id der Fachzuständigkeit), `art` (`zuordnung`/`uebergabe`/`neuzuordnung`) | K, Z |
+| `gap.followup-asked`, `gap.followup-answered` | `rueckfrageId` | K — **kein Rückfrage- oder Antworttext**; der Text steht nur an der Lücke (Fragende und zuständige Person) |
+| `gap.draft-linked` | `koId` | K |
+| `gap.closed` (fachlicher Abschluss) | `koId`, `koVersion` | K, M |
+| `gap.withdrawn` (administrative Rücknahme) | `grund` (geschlossene Auswahl `GAP_RUECKNAHME_GRUENDE`) | Z — **kein Freitext** |
 | `ask.zweitmeinung` (R-0305/R-1099, nur auf Anforderung) | `status`, und entweder `abweichend`, `abweichungen` (Merkmalsnamen, kommagetrennt), `ersteStufe`, `zweiteStufe` (`cloud`/`local`/`deterministic`) oder `grund` | Z — **kein Frage- oder Antworttext, kein Anbieter- oder Modellname**; `target` ist die tragende Quelle (gemessen: `tests/zweitmeinung/fragedienst.test.ts`, `route-und-protokoll.test.ts`) |
 
 ### Wissensobjekte (`services/knowledge-object`, `services/validation`, `services/lifecycle`)
