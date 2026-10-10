@@ -21,6 +21,7 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 // Dateiwurzel stünde auf allen vieren gleich und erklärte keine.
 import { HelpTip } from "../components/HelpTip";
 import { UebergabeEinstieg } from "../components/UebergabeAblauf";
+import { VermaechtnisBuch } from "../components/VermaechtnisBuch";
 import { UebergabeVorschauInhalt } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
@@ -884,6 +885,10 @@ export function NutzerDetail({
               gezieltOffen={beitraegeOffen}
               onGezieltOffen={setBeitraegeOffen}
             />
+
+            {/* aufnahme:20260922:gesamt-wissensvermaechtnis — die Beiträge dieser Person als
+                Wissens-Vermächtnis-Buch, digital oder gedruckt. Ändert kein Wissen. */}
+            <VermaechtnisBuch personId={nutzer.id} />
 
             <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
               <Button
