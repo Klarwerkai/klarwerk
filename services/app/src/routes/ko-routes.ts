@@ -68,6 +68,7 @@ import type { Reasoner } from "../../../reasoner";
 import {
   type KoPruefstand,
   TRUST_MAX,
+  ValidationError,
   type ValidationService,
   type Verdict,
 } from "../../../validation";
@@ -76,6 +77,7 @@ import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
 import type { PruefUmfang } from "../detection-cap";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
+import type { FreigabeWeg, TorUrteil } from "../freigaberegel-dienst";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
@@ -170,6 +172,20 @@ export interface KoRoutesDeps {
   // Vorgaben, gepflegte Begriffe) und danach der Vermerk von Vorlage und Fassung. Fehlt sie (direkt
   // konstruierte Routentests), wird ein mitgeschickter Vorlagenbezug verworfen und nichts geprüft.
   vorlagen?: VorlagenEinreichungPort | undefined;
+  /**
+   * ADMIN-09 (produkt:20261009:admin-freigaberegeln): der Prüfpunkt der Freigaberegel eines Space
+   * (`FreigabeRegelDienst.tor`) vor `rate`, `owner-validate` und `admin-validate` — Mehr-Augen-
+   * Prinzip, Prüferkreis und geprüfte Fassung, serverseitig. Fehlt er, gilt die bisherige Lage; eine
+   * mitgeschickte Fassung (`expectedVersion`) bindet die Entscheidung trotzdem.
+   */
+  freigabeTor?:
+    | ((
+        user: SessionUser,
+        koId: string,
+        weg: FreigabeWeg,
+        eingabe: { verdict?: Verdict | undefined; expectedVersion?: unknown },
+      ) => Promise<TorUrteil>)
+    | undefined;
 }
 
 /**
@@ -180,6 +196,27 @@ export interface KoRoutesDeps {
  * keinen Export: sie liest die Signatur des einzigen oeffentlichen Weges.
  */
 type WissensnetzDeps = Parameters<typeof wissensnetzMetrikFuer<KnowledgeObject>>[1];
+
+/** ADMIN-09: ohne Regeldienst bindet eine mitgeschickte Fassung die Entscheidung trotzdem. */
+function ohneRegeldienst(roh: unknown): TorUrteil {
+  if (roh === undefined) {
+    return { erlaubt: true, regel: null };
+  }
+  if (typeof roh === "number" && Number.isInteger(roh) && roh >= 1) {
+    return { erlaubt: true, regel: null, erwarteteFassung: roh };
+  }
+  return {
+    erlaubt: false,
+    status: 400,
+    error: "VALIDATION",
+    message: "expectedVersion muss eine Ganzzahl ab 1 sein (die geprüfte Fassung).",
+  };
+}
+
+/** ADMIN-09: die geprüfte Fassung aus dem Urteil des Prüfpunkts — für den Validierungsdienst. */
+function fassungVon(urteil: { erwarteteFassung?: number }): { erwarteteFassung?: number } {
+  return urteil.erwarteteFassung === undefined ? {} : { erwarteteFassung: urteil.erwarteteFassung };
+}
 
 /**
  * AUFTRAG-mega19 Block B — DER ENTWURF ALS EINGABE EINER DOKUMENTÜBERNAHME.
@@ -2767,16 +2804,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // dort — und genau das, und nur das, ist der Grund für die zwei neuen Namen in dieser
         // Liste. An allen übrigen Aktionen bleibt es beim 400
         // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5).
+        // ADMIN-09: auch die Entscheidungswege vergleichen sie — eine Zustimmung gilt der Fassung,
+        // die geprüft wurde (`FreigabeRegelDienst.tor`, `ValidationService.rate`).
         if (
           body.expectedVersion !== undefined &&
           body.action !== "revise" &&
           body.action !== "revise-release" &&
           body.action !== "decide-proposal" &&
           body.action !== "tags" &&
-          body.action !== "category"
+          body.action !== "category" &&
+          body.action !== "rate" &&
+          body.action !== "owner-validate" &&
+          body.action !== "admin-validate"
         ) {
           return badRequest(
-            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags" und "category".',
+            'expectedVersion gilt nur für die Aktionen "revise", "revise-release", "decide-proposal", "tags", "category", "rate", "owner-validate" und "admin-validate".',
           );
         }
         // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
@@ -2792,6 +2834,46 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             'expectedMetadataRevision gilt nur für die Aktionen "tags" und "category".',
           );
         }
+        // ADMIN-09: das Urteil des Freigabe-Prüfpunkts — oder `undefined`, dann ist die Absage
+        // schon gesendet und es wird nichts entschieden.
+        const freigabeUrteil = async (
+          user: SessionUser,
+          weg: FreigabeWeg,
+        ): Promise<Extract<TorUrteil, { erlaubt: true }> | undefined> => {
+          const urteil = deps.freigabeTor
+            ? await deps.freigabeTor(user, id, weg, {
+                verdict: body.verdict,
+                expectedVersion: body.expectedVersion,
+              })
+            : ohneRegeldienst(body.expectedVersion);
+          if (!urteil.erlaubt) {
+            reply.code(urteil.status).send({
+              error: urteil.error,
+              message: urteil.message,
+              ...(urteil.details ?? {}),
+            });
+            return undefined;
+          }
+          return urteil;
+        };
+        // ADMIN-09: hat sich die Fassung zwischen Prüfpunkt und Entscheidung bewegt, entscheidet der
+        // Dienst nichts (KO_STALE) — die Antwort ist dann ein 409 mit der jetzt gültigen Fassung.
+        const fassungsgebunden = async <T>(entscheidung: Promise<T>): Promise<T | undefined> => {
+          try {
+            return await entscheidung;
+          } catch (e) {
+            if (!(e instanceof ValidationError) || e.code !== "KO_STALE") {
+              throw e;
+            }
+            const jetzt = await ko.get(id);
+            reply.code(409).send({
+              error: "KO_STALE",
+              message: e.message,
+              ...(jetzt ? { currentVersion: jetzt.version } : {}),
+            });
+            return undefined;
+          }
+        };
         switch (body.action) {
           case "rate": {
             const user = await guards.requirePermission("ko.validate", request, reply);
@@ -2800,6 +2882,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             }
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
+            }
+            // ADMIN-09: Mehr-Augen-Prinzip, Prüferkreis und geprüfte Fassung — vor allem anderen.
+            const freigabe = await freigabeUrteil(user, "rate");
+            if (!freigabe) {
+              return;
             }
             // R-0238: ein Widerspruch gehört NUR zur Ablehnung, und er wird VOR der Bewertung
             // vollständig geprüft (Form, Gegenüber sichtbar) — sonst stünde eine Bewertung, deren
@@ -2914,7 +3001,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // GENAU diese Fassung gebunden ist. Gelesen vor der Bewertung: überarbeitet jemand in
             // der Lücke, passt sie nicht mehr, und die Fortsetzung lehnt ab (409) statt zu raten.
             const bewerteteFassung = (await ko.get(id))?.version ?? null;
-            const entscheidung = await validation.rate(id, user.id, body.verdict);
+            const entscheidung = await fassungsgebunden(
+              validation.rate(id, user.id, body.verdict, fassungVon(freigabe)),
+            );
+            if (!entscheidung) {
+              return;
+            }
             if (!widerspruch) {
               reply.code(200).send(entscheidung);
               return;
@@ -2939,6 +3031,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
+            // ADMIN-09: auch der Ausnahmeweg kennt das Mehr-Augen-Prinzip und die geprüfte Fassung.
+            const freigabe = await freigabeUrteil(user, "admin-validate");
+            if (!freigabe) {
+              return;
+            }
             if (
               !(await dublettenTor(
                 dublettenTorDeps,
@@ -2951,7 +3048,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
-            reply.code(200).send(await validation.adminValidate(id, user.id));
+            const ergebnis = await fassungsgebunden(
+              validation.adminValidate(id, user.id, fassungVon(freigabe)),
+            );
+            if (!ergebnis) {
+              return;
+            }
+            await freigabe.nachEntscheidung?.(ergebnis);
+            reply.code(200).send(ergebnis);
             return;
           }
           case "revise": {
@@ -3804,6 +3908,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
+            // ADMIN-09: Mehr-Augen-Prinzip, Prüferkreis und geprüfte Fassung.
+            const freigabe = await freigabeUrteil(user, "owner-validate");
+            if (!freigabe) {
+              return;
+            }
             if (
               !(await dublettenTor(
                 dublettenTorDeps,
@@ -3816,7 +3925,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
-            reply.code(200).send(await validation.ownerValidate(id, user.id));
+            const ergebnis = await fassungsgebunden(
+              validation.ownerValidate(id, user.id, fassungVon(freigabe)),
+            );
+            if (!ergebnis) {
+              return;
+            }
+            await freigabe.nachEntscheidung?.(ergebnis);
+            reply.code(200).send(ergebnis);
             return;
           }
           case "conflict": {

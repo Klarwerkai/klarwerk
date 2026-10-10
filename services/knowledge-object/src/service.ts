@@ -6813,6 +6813,51 @@ export class KoService {
     });
   }
 
+  // produkt:20261009:admin-freigaberegeln (ADMIN-09) — die Freigaberegel eines Space verlangt
+  // mindestens `mindestens` Zustimmungen. Angehoben wird NUR ein laufender Vorgang (`offen`) und nur
+  // nach oben: eine erteilte Freigabe (`validiert`) bleibt, wie sie ist, und eine niedrigere Regel
+  // senkt keine schon gestempelte Anforderung — sonst könnte eine Regeländerung allein eine Freigabe
+  // entstehen lassen, die niemand erteilt hat. Status, Vertrauen, Inhaltsfassung und Historie bleiben
+  // unberührt; neu berechnet wird erst mit der nächsten Entscheidung. Beleg `ko.needed-validations-raised`
+  // mit vorher/nachher und der Regelfassung, die es verlangt.
+  async raiseNeededValidations(
+    id: string,
+    mindestens: number,
+    actor: string,
+    regel: { spaceId: string; version: number },
+  ): Promise<KnowledgeObject> {
+    if (!Number.isInteger(mindestens) || mindestens < 1 || mindestens > 5) {
+      throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
+    }
+    return this.mutateKo(id, (ko) => {
+      if (ko.status !== "offen" || ko.neededValidations >= mindestens) {
+        return { updated: ko, value: ko };
+      }
+      const updated: KnowledgeObject = { ...ko, neededValidations: mindestens };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.needed-validations-raised",
+              target: id,
+              payload: {
+                vorher: ko.neededValidations,
+                nachher: mindestens,
+                version: ko.version,
+                spaceId: regel.spaceId,
+                regelVersion: regel.version,
+              },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
   // produkt:20261007:veroeffentlichungsoptionen — einen Veröffentlichungsvermerk anhängen.
   //
   // `bilde` bekommt das FRISCH unter dem KO-Lock gelesene Objekt und entscheidet dort, ob die

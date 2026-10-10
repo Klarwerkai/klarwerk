@@ -48,6 +48,7 @@ import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antw
 import { Belastbarkeit, PruefrahmenSatz } from "../components/fragen/Belastbarkeit";
 import { Entscheidungsprotokoll } from "../components/fragen/Entscheidungsprotokoll";
 import { FrageFeld } from "../components/fragen/FrageFeld";
+import { FragenEinstieg } from "../components/fragen/FragenEinstieg";
 import { LoesungswegSchritte, VermeidenWarnung } from "../components/fragen/Loesungsweg";
 import { NichtHilfreichKarte } from "../components/fragen/NichtHilfreichKarte";
 import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
@@ -117,18 +118,28 @@ import { anzeigestatusAus } from "../lib/displayStatus";
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 // Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
 import {
+  LEERES_SZENARIO,
   type QuellenStand,
+  type Szenario,
   antwortFrische,
   arbeitsstandLesen,
   arbeitsstandSchreiben,
   belegNochGueltig,
   beobachtungAus,
   fragenSpeicher,
+  kontextGesetzt,
   quellenStandAus,
   startadresseMarke,
   startadresseMerken,
+  szenarioGesetzt,
   wiederaufnahmeAus,
 } from "../lib/fragenArbeitsstand";
+// produkt:20261010:fragen-pruefen-einstieg: Einstieg der leeren Fläche und fiktive Beispiele.
+import {
+  FRAGEN_EINSTIEG_KEYS,
+  beispielIstFiktiv,
+  zeigeFragenEinstieg,
+} from "../lib/fragenEinstieg";
 // R-0348: Nachfragen im Gesprächsfaden statt Einzelschüssen.
 import { fadenFuerAnfrage, fadenNachAntwort } from "../lib/gespraechsfaden";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
@@ -749,9 +760,13 @@ export function Ask(): JSX.Element {
   // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
   const fadenFrueher = faden.filter((frage) => frage !== asked);
   // R-1633: wofür gefragt wird (Werk/Schicht/Rolle) und die Auskunft des Servers, wofür die
-  // stehende Antwort gewichtet wurde. Die Angabe gilt für diese Sitzung der Seite; sie wird nicht
-  // gespeichert.
-  const [fragekontext, setFragekontext] = useState<Fragekontext>({});
+  // stehende Antwort gewichtet wurde.
+  // produkt:20261010:fragen-pruefen-einstieg (K2, Ben Nacharbeit 3): bis hierher galt die Auswahl
+  // nur für diese Sitzung der Seite und war nach jedem Ansichtswechsel leer. Sie reist jetzt — wie
+  // der Entwurf — im Arbeitsstand des Kontos, ebenso die begonnenen Szenarioangaben. Getrennt davon
+  // bleibt `antwortKontext`: der Kontext, mit dem die STEHENDE Antwort gestellt wurde.
+  const [fragekontext, setFragekontext] = useState<Fragekontext>(() => anfang?.fragekontext ?? {});
+  const [szenario, setSzenario] = useState<Szenario>(() => anfang?.szenario ?? LEERES_SZENARIO);
   const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
   // R-0305/R-1099 (Ben, Nacharbeit 9): der Fragekontext, mit dem die STEHENDE Antwort gestellt
   // wurde — gesetzt beim Eintreffen der Antwort, nicht aus der aktuellen Auswahl gelesen. Die
@@ -1095,6 +1110,10 @@ export function Ask(): JSX.Element {
             }
           : null,
       startadressen: gemerkteStartadressen,
+      // K2 (Ben Nacharbeit 3): die begonnene Auswahl und das begonnene Szenario — leer wird
+      // nichts abgelegt (`arbeitsstandSchreiben`).
+      fragekontext,
+      szenario,
     });
   }, [
     konto,
@@ -1109,6 +1128,8 @@ export function Ask(): JSX.Element {
     beobachtet,
     antwortKontext,
     gemerkteStartadressen,
+    fragekontext,
+    szenario,
   ]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
@@ -1124,8 +1145,22 @@ export function Ask(): JSX.Element {
   //     wird dann bloss nicht geschrieben.
   // Der aktuelle Stand wird über einen Ref gelesen: der Effekt soll auf die KENNUNG reagieren,
   // nicht auf jeden Tastendruck.
-  const flaecheJetzt = useRef({ q, result, wartet: ask.isPending, startfrageGilt });
-  flaecheJetzt.current = { q, result, wartet: ask.isPending, startfrageGilt };
+  const flaecheJetzt = useRef({
+    q,
+    result,
+    wartet: ask.isPending,
+    startfrageGilt,
+    fragekontext,
+    szenario,
+  });
+  flaecheJetzt.current = {
+    q,
+    result,
+    wartet: ask.isPending,
+    startfrageGilt,
+    fragekontext,
+    szenario,
+  };
   const askZuruecksetzen = ask.reset;
   useEffect(() => {
     if (konto === null || konto === standFuer) {
@@ -1149,6 +1184,14 @@ export function Ask(): JSX.Element {
     const antwort = antwortNehmen ? (gelesen?.antwort ?? null) : null;
     if (entwurfNehmen) {
       setQ(entwurf);
+    }
+    // K2 (Ben Nacharbeit 3): dieselbe Regel für Auswahl und Szenario — bei einem Kontowechsel
+    // ersetzt, beim ersten Bekanntwerden der Kennung nur aufgefüllt, wenn noch nichts eingegeben ist.
+    if (wechsel || !kontextGesetzt(jetzt.fragekontext)) {
+      setFragekontext(gelesen?.fragekontext ?? {});
+    }
+    if (wechsel || !szenarioGesetzt(jetzt.szenario)) {
+      setSzenario(gelesen?.szenario ?? LEERES_SZENARIO);
     }
     if (antwortNehmen) {
       antwortFrage.current = antwort?.frage ?? "";
@@ -1878,27 +1921,58 @@ export function Ask(): JSX.Element {
             </button>
           </div>
         ) : null}
+        {/* produkt:20261010:fragen-pruefen-einstieg (K1): solange die Fläche leer ist, sagt sie
+            zuerst, was sie tut und was der erste Schritt ist — und führt zu den fiktiven
+            Beispielen. Mit Antwort, Abruf, Fehler, Faden oder aufgenommener Arbeit entfällt der
+            Block; dann trägt der Antwortvertrag den einen nächsten Schritt. */}
+        {zeigeFragenEinstieg({
+          hatErgebnis: result !== null,
+          wartet: ask.isPending,
+          fehler: ask.isError,
+          fadenLaenge: faden.length,
+          wiederaufnahme: Boolean(wiederaufnahme),
+        }) ? (
+          <FragenEinstieg
+            beispieleOffen={beispiele}
+            onBeispiele={() => setBeispiele((v) => !v)}
+            beispieleId="ask-beispiele"
+            beispielKnopf={q.trim().length === 0}
+          />
+        ) : null}
         {/* R-0603: der KI-Hinweis DIESER Fläche — dauerhaft, ohne Griff, vor der ersten Frage.
             Er behauptet keine Erzeugung (R-0604); die steht an der Antwort, gebunden an die
             Servermarke. ÜBER dem Feld, weil zwischen Feld und Antwort nichts stehen darf (R-0286). */}
         <p data-testid="ask-ki-flaechensatz" className="m-0 mb-2">
           <AiSurfaceNotice />
         </p>
-        {/* R-1633: „Ich frage für" Werk/Schicht/Rolle — gleich passende Quellen dieses Orts
+        {/* produkt:20261010:fragen-pruefen-einstieg (K2): beide Angaben sind ausdrücklich
+            OPTIONAL und als Gruppe so benannt — sie konkurrieren nicht mehr gleichrangig mit der
+            ersten Frage. Beide bleiben zugeklappt eingehängt (ihr Zustand überlebt Auf-/Zuklappen,
+            Fehler und neue Fragen), und ein gesetzter Fragekontext bleibt in der Kopfzeile sichtbar. */}
+        {/* `<fieldset>`/`<legend>` statt `role="group"`: dieselbe Gruppierung über das
+            semantische Element (Biome a11y/useSemanticElements), ohne Browser-Rahmen. */}
+        <fieldset data-testid="ask-optionale-angaben" className="m-0 min-w-0 border-0 p-0">
+          <legend className="mb-1 p-0 font-mono text-micro uppercase tracking-wider text-muted-2">
+            {t(FRAGEN_EINSTIEG_KEYS.optionalTitel)}
+          </legend>
+          {/* R-1633: „Ich frage für" Werk/Schicht/Rolle — gleich passende Quellen dieses Orts
             stehen vorn; nichts wird ausgeblendet. Zugeklappt, solange niemand es braucht. */}
-        <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
-        {/* R-1628: „Was wäre, wenn …" — welche Wissensobjekte an die bisherige Bedingung gebunden
+          <FragekontextWahl wert={fragekontext} onWert={setFragekontext} kos={kos.data ?? []} />
+          {/* R-1628: „Was wäre, wenn …" — welche Wissensobjekte an die bisherige Bedingung gebunden
             sind, welche die neue ausschließen und welche für beide belegt sind (ohne KI, aus dem
             geladenen Bestand; zugeklappt). „Mit Klara durchspielen" stellt den Wechsel als Frage
             über DENSELBEN Submit wie Feld und Chips — Quellenpflicht und KI-Sperre inklusive. */}
-        <Bedingungswechsel
-          kos={kos.data}
-          fehler={kos.isError}
-          onDurchspielen={askExample}
-          kiVerfuegbar={answerAi.available}
-          kiSperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
-          wartet={ask.isPending}
-        />
+          <Bedingungswechsel
+            kos={kos.data}
+            fehler={kos.isError}
+            onDurchspielen={askExample}
+            kiVerfuegbar={answerAi.available}
+            kiSperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
+            wartet={ask.isPending}
+            wert={szenario}
+            onWert={setSzenario}
+          />
+        </fieldset>
         <FrageFeld
           wert={q}
           onWert={setQ}
@@ -2043,6 +2117,7 @@ export function Ask(): JSX.Element {
           `[hidden]`-Regel des Browsers, und der Block bliebe sichtbar. Gemessen: der Textmesser hat
           genau das gefunden („Ein Klick fragt sofort …" stand im Sichtfeld von /fragen). */}
         <div
+          id="ask-beispiele"
           data-testid="ask-beispiele"
           hidden={!beispiele}
           className={`mt-3 flex-wrap items-center gap-1.5 ${beispiele ? "flex" : "hidden"}`}
@@ -2066,19 +2141,36 @@ export function Ask(): JSX.Element {
                 : chip.expectation === "gap"
                   ? askExpectation("gap")
                   : null;
+            // produkt:20261010:fragen-pruefen-einstieg (K1): die festen Beispiele sind erfundene
+            // Lagen und tragen das sichtbar; Vorschläge aus dem validierten Bestand nicht.
+            const fiktiv = beispielIstFiktiv(chip);
             return (
               <button
                 key={question}
                 type="button"
+                data-testid="ask-beispiel"
+                data-fiktiv={fiktiv ? "1" : "0"}
                 disabled={ask.isPending || !answerAi.available}
                 onClick={() => askExample(question)}
-                title={t("ask.examplesSendHint")}
+                title={
+                  fiktiv
+                    ? `${t(FRAGEN_EINSTIEG_KEYS.fiktivTitel)} ${t("ask.examplesSendHint")}`
+                    : t("ask.examplesSendHint")
+                }
                 className="inline-flex min-w-0 items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
               >
                 {/* Das Zeichen sagt vor dem Klick: hier geht etwas raus. */}
                 <span aria-hidden="true" className="shrink-0 text-muted-2">
                   ↵
                 </span>
+                {fiktiv ? (
+                  <span
+                    data-testid="ask-beispiel-fiktiv"
+                    className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2"
+                  >
+                    {t(FRAGEN_EINSTIEG_KEYS.fiktiv)}
+                  </span>
+                ) : null}
                 <span className="min-w-0 max-w-[16rem] truncate">{question}</span>
                 {expect ? (
                   <span

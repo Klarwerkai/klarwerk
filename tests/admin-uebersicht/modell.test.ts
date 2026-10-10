@@ -9,6 +9,7 @@
 //   K2  Jeder Zähler hat einen Weg in eine gefilterte Liste, und Zähler und Liste wählen mit
 //       DERSELBEN Regel aus (`offeneLuecken`, `wartendeKonten`).
 //   „Funktionen ohne Umsetzung nicht als benutzbar anbieten": Kommunikation führt keinen Weg.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ALL_ITEMS } from "../../apps/web/src/app/navigation";
 import { isAdminDetailId } from "../../apps/web/src/app/navigationGliederung";
@@ -28,6 +29,7 @@ import {
   zielKennung,
 } from "../../apps/web/src/lib/adminUebersicht";
 import { aiAccessRows } from "../../apps/web/src/lib/aiOverview";
+import { repoPfad } from "../support/repoPfad";
 
 const verwaltungsziele = VERWALTUNG_GRUPPEN.flatMap((g) =>
   g.ziele.flatMap((z) => (z.art === "verwaltung" ? [z] : [])),
@@ -86,7 +88,11 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
     }
   });
 
-  it("jeder App-Bereich ist ein vorhandener Menüeintrag; Spaces und Vorlagen sind vorhandene Routen", () => {
+  it("jeder App-Bereich ist ein vorhandener Menüeintrag; Pfade sind vorhandene Routen", () => {
+    // Die Routen ohne Menüeintrag, die die Übersicht anbietet — je eine Zeile in `routes.tsx`:
+    // Spaces (produkt:20261007:spaces), Vorlagen (produkt:20261007:templates-default, ADMIN-08)
+    // und die Qualitätsaufgaben (ADMIN-10).
+    const routen = readFileSync(repoPfad("apps/web/src/routes.tsx"), "utf8");
     for (const g of VERWALTUNG_GRUPPEN) {
       for (const z of g.ziele) {
         if (z.art === "bereich") {
@@ -96,9 +102,8 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
           ).toBe(true);
         }
         if (z.art === "pfad") {
-          // produkt:20261007:templates-default (ADMIN-08): `/vorlagen` ist eine Route aus
-          // `routes.tsx` wie `/spaces` — kein Menüeintrag, deshalb namentlich zugelassen.
-          expect(["/spaces", "/vorlagen"]).toContain(z.pfad);
+          expect(["/spaces", "/vorlagen", "/qualitaetsaufgaben"]).toContain(z.pfad);
+          expect(routen, `${z.pfad} hat keine Route`).toContain(`<Route path="${z.pfad}"`);
         }
       }
     }
