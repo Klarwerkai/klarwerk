@@ -267,7 +267,6 @@ import {
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
-import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   type OcrAbschnitt,
   gesicherteOhneRohtext,
@@ -275,6 +274,7 @@ import {
   ocrAbschnittText,
   ocrAbschnitteFuerEntwurf,
 } from "../lib/interviewKontext";
+import { ERGEBNIS_STUFE_TEXT } from "../lib/kiHerkunft";
 import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,

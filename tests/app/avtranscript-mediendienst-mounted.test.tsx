@@ -74,6 +74,10 @@ async function mount(aktiv: boolean): Promise<void> {
     );
     await flush();
   });
+  // Nacharbeit 8: innerhalb des ersten `act` wird erst an dessen Ende festgeschrieben — erst DANN
+  // startet die Statusabfrage (Effekt des Beobachters). Ohne diese zweite Runde stand die Kachel noch
+  // im Ladezustand („nicht konfiguriert"). Dieselbe Bauform wie `upload-limits-hint-mounted`.
+  await act(flush);
 }
 
 afterEach(() => {
