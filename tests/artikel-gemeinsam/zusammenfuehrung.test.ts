@@ -86,6 +86,30 @@ describe("Z4 · Einfügen und Löschen an verschiedenen Stellen", () => {
   });
 });
 
+describe("Z4b · benachbarte Abschnitte ohne gemeinsamen Anker (Nacharbeit 2, Befund S5)", () => {
+  it("die eine Seite ändert Abschnitt 1 und 2, die andere Abschnitt 3 → zusammengeführt", () => {
+    const b0Neu = "Einleitung — neu.";
+    const b1Neu = "Schritt 1: Druck sofort ablassen.";
+    const deren = [b0Neu, b1Neu, B2];
+    const meine = [B0, B1, B2_BERND];
+    const z = fuehreZusammen(BASIS, meine, deren);
+    expect(z.konflikte).toBe(0);
+    expect(z.ergebnis).toEqual([b0Neu, b1Neu, B2_BERND]);
+    // Und andersherum.
+    expect(fuehreZusammen(BASIS, deren, meine).ergebnis).toEqual(z.ergebnis);
+  });
+
+  it("zwei verschiedene Einfügungen an derselben Stelle bleiben ein Konflikt", () => {
+    const z = fuehreZusammen(BASIS, [B0, "A neu.", B1, B2], [B0, "B neu.", B1, B2]);
+    expect(z.ergebnis).toBeNull();
+    expect(z.teile).toEqual([
+      { art: "geloest", abschnitte: [B0] },
+      { art: "konflikt", basis: [], meine: ["A neu."], deren: ["B neu."] },
+      { art: "geloest", abschnitte: [B1, B2] },
+    ]);
+  });
+});
+
 describe("Z5 · der Titel", () => {
   it("eine Seite ändert ihn → übernommen; beide verschieden → Konflikt", () => {
     expect(fuehreWertZusammen("Ventil X", "Ventil X (Anlage 1)", "Ventil X")).toEqual({

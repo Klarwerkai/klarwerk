@@ -245,10 +245,62 @@ const gleich = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
- * Drei-Wege-Zusammenführung über Abschnitte (diff3). Zwischen zwei Abschnitten, die in allen drei
- * Fassungen unverändert stehen, liegt je ein Block: hat ihn nur eine Seite geändert, gilt deren
- * Fassung; haben beide gleich geändert, gilt sie einmal; haben beide verschieden geändert, ist der
- * Block ein Konflikt.
+ * Ein Änderungsbereich einer Seite gegenüber der Basis: `basis[bVon, bBis)` wurde durch
+ * `seite[sVon, sBis)` ersetzt. Ein reines Einfügen hat `bVon === bBis`.
+ */
+interface Bereich {
+  seite: "meine" | "deren";
+  bVon: number;
+  bBis: number;
+  sVon: number;
+  sBis: number;
+}
+
+/** Die Änderungsbereiche einer Seite — die Lücken zwischen den gemeinsamen Abschnitten. */
+function bereiche(
+  basis: readonly string[],
+  seite: readonly string[],
+  name: Bereich["seite"],
+): Bereich[] {
+  const raus: Bereich[] = [];
+  let b = 0;
+  let s = 0;
+  for (const [o, m] of gemeinsameFolge(basis, seite)) {
+    if (o > b || m > s) {
+      raus.push({ seite: name, bVon: b, bBis: o, sVon: s, sBis: m });
+    }
+    b = o + 1;
+    s = m + 1;
+  }
+  if (b < basis.length || s < seite.length) {
+    raus.push({ seite: name, bVon: b, bBis: basis.length, sVon: s, sBis: seite.length });
+  }
+  return raus;
+}
+
+/**
+ * Berühren sich zwei Bereiche an derselben Stelle der Basis? Überlappende Bereiche tun es, ebenso
+ * zwei Einfügungen an derselben Stelle (ihre Reihenfolge wäre geraten). Ein Bereich, der dort
+ * ENDET, wo der andere beginnt, berührt ihn nicht — das sind verschiedene Abschnitte.
+ */
+function beruehren(gVon: number, gBis: number, b: Bereich): boolean {
+  if (b.bVon < gBis && gVon < b.bBis) {
+    return true;
+  }
+  return gVon === gBis && b.bVon === b.bBis && b.bVon === gVon;
+}
+
+/**
+ * Drei-Wege-Zusammenführung über Abschnitte (diff3 nach Änderungsbereichen). Jede Seite wird als
+ * Folge von Änderungsbereichen gegen die Basis gelesen. Bereiche, die sich nicht berühren, gelten
+ * unabhängig voneinander — Änderungen an verschiedenen Abschnitten werden also zusammengeführt,
+ * auch wenn sie unmittelbar nebeneinander liegen. Berühren sich Bereiche beider Seiten, wird die
+ * Gruppe beider Fassungen verglichen: gleich → einmal, verschieden → Konflikt.
+ *
+ * NACHARBEIT 2 (S5, ENTWURF_KONFLIKT bei verschiedenen Abschnitten): die erste Fassung verlangte
+ * zwischen zwei Änderungen einen Abschnitt, der in ALLEN drei Fassungen unverändert steht. Hatte
+ * die eine Seite Abschnitt 1 und 2, die andere Abschnitt 3 geändert, fehlte dieser Anker, und
+ * verschiedene Abschnitte wurden als ein Konflikt gemeldet.
  */
 export function fuehreZusammen(
   basis: readonly string[],
@@ -258,8 +310,9 @@ export function fuehreZusammen(
   if (Math.max(basis.length, meine.length, deren.length) > ENTWURF_ABSCHNITTE_MAX) {
     throw new EntwurfsFehler(400, "ENTWURF_ZU_GROSS", "Der Entwurf hat zu viele Abschnitte.");
   }
-  const zuMeinen = gemeinsameFolge(basis, meine);
-  const zuDeren = gemeinsameFolge(basis, deren);
+  const alle = [...bereiche(basis, meine, "meine"), ...bereiche(basis, deren, "deren")].sort(
+    (a, b) => a.bVon - b.bVon || a.bBis - b.bBis,
+  );
   const teile: ZusammenfuehrungsTeil[] = [];
   const geloest = (stueck: readonly string[]): void => {
     if (stueck.length === 0) {
@@ -272,31 +325,54 @@ export function fuehreZusammen(
       teile.push({ art: "geloest", abschnitte: [...stueck] });
     }
   };
-  const block = (b: string[], m: string[], d: string[]): void => {
-    if (gleich(m, b)) {
-      geloest(d);
-    } else if (gleich(d, b) || gleich(m, d)) {
-      geloest(m);
-    } else {
-      teile.push({ art: "konflikt", basis: b, meine: m, deren: d });
+  /** Der Inhalt einer Seite über `basis[gVon, gBis)`, mit ihren Bereichen darin angewendet. */
+  const fassung = (
+    gruppe: readonly Bereich[],
+    name: Bereich["seite"],
+    gVon: number,
+    gBis: number,
+  ): string[] => {
+    const seite = name === "meine" ? meine : deren;
+    const raus: string[] = [];
+    let pos = gVon;
+    for (const b of gruppe) {
+      if (b.seite !== name) {
+        continue;
+      }
+      raus.push(...basis.slice(pos, b.bVon), ...seite.slice(b.sVon, b.sBis));
+      pos = b.bBis;
     }
+    raus.push(...basis.slice(pos, gBis));
+    return raus;
   };
-  let iB = 0;
-  let iM = 0;
-  let iD = 0;
-  for (let o = 0; o < basis.length; o++) {
-    const m = zuMeinen.get(o);
-    const d = zuDeren.get(o);
-    if (m === undefined || d === undefined || m < iM || d < iD) {
-      continue;
+  let pos = 0;
+  let i = 0;
+  while (i < alle.length) {
+    const erster = alle[i] as Bereich;
+    const gruppe: Bereich[] = [erster];
+    let gVon = erster.bVon;
+    let gBis = erster.bBis;
+    i++;
+    while (i < alle.length && beruehren(gVon, gBis, alle[i] as Bereich)) {
+      const naechster = alle[i] as Bereich;
+      gruppe.push(naechster);
+      gVon = Math.min(gVon, naechster.bVon);
+      gBis = Math.max(gBis, naechster.bBis);
+      i++;
     }
-    block(basis.slice(iB, o), meine.slice(iM, m), deren.slice(iD, d));
-    geloest([basis[o] as string]);
-    iB = o + 1;
-    iM = m + 1;
-    iD = d + 1;
+    geloest(basis.slice(pos, gVon));
+    const m = fassung(gruppe, "meine", gVon, gBis);
+    const d = fassung(gruppe, "deren", gVon, gBis);
+    const vonMir = gruppe.some((b) => b.seite === "meine");
+    const vonIhnen = gruppe.some((b) => b.seite === "deren");
+    if (!(vonMir && vonIhnen) || gleich(m, d)) {
+      geloest(vonMir ? m : d);
+    } else {
+      teile.push({ art: "konflikt", basis: basis.slice(gVon, gBis), meine: m, deren: d });
+    }
+    pos = gBis;
   }
-  block(basis.slice(iB), meine.slice(iM), deren.slice(iD));
+  geloest(basis.slice(pos));
   const konflikte = teile.filter((t) => t.art === "konflikt").length;
   return {
     teile,
