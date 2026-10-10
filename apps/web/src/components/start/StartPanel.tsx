@@ -22,6 +22,7 @@ import {
 import { knowledgeCapital } from "../../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../../lib/knowledgeGuidance";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { PROOF_CHAIN } from "../../lib/proofChain";
 import { START_HELP_TOPICS } from "../../lib/startHelp";
@@ -389,10 +390,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                         <StatusPill status={s.status} />
                       </span>
                       <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
-                        {new Date(s.at).toLocaleString(
-                          i18n.language.startsWith("en") ? "en-GB" : "de-DE",
-                          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
-                        )}
+                        {formatKoTimestamp(s.at, i18n.language)}
                       </span>
                     </li>
                   ))}
@@ -417,10 +415,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                         {() => h.title}
                       </RoleLink>
                       <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
-                        {new Date(h.at).toLocaleString(
-                          i18n.language.startsWith("en") ? "en-GB" : "de-DE",
-                          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
-                        )}
+                        {formatKoTimestamp(h.at, i18n.language)}
                       </span>
                     </li>
                   ))}

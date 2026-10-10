@@ -11,9 +11,14 @@
 // (`toLocaleString()`), mit Sekunden (`toLocaleString(sprache)`) oder fest auf „de-DE"
 // (`Intl.DateTimeFormat`), und ohne Schutz vor einem unlesbaren Wert („Invalid Date").
 //
-// NICHT in diesem Schnitt, ausdrücklich: reine Kalendertage (`toLocaleDateString`), reine Uhrzeiten
-// („Stand 14:03") und die bewusst verdichtete Start-/Beamer-Zeile ohne Jahr. Das sind andere
-// Angaben, keine zweite Schreibweise desselben Zeitstempels.
+// NACHARBEIT 1 (Ben): auch die Live-Wand auf Startseite und Beamer (`StartPanel`, `LiveWallBeamer`,
+// `LiveWallValidiert`) formatierte Datum + Uhrzeit selbst — ohne Jahr und für jede nichtenglische
+// Sprache fest „de-DE". Für diese Ausnahme gibt es keinen Quellenbeleg; sie folgt jetzt derselben
+// Regel.
+//
+// NICHT in diesem Schnitt, ausdrücklich: reine Kalendertage (`toLocaleDateString`) und reine
+// Uhrzeiten („Stand 14:03"). Das sind andere Angaben, keine zweite Schreibweise desselben
+// Zeitstempels.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,8 +31,11 @@ import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Die elf Erzeuger, die bis hierher ihren Zeitstempel selbst formatierten. */
+/** Die Erzeuger, die bis hierher ihren Zeitstempel selbst formatierten (elf + Live-Wand). */
 const ERZEUGER = [
+  "apps/web/src/components/start/StartPanel.tsx",
+  "apps/web/src/components/start/LiveWallValidiert.tsx",
+  "apps/web/src/pages/LiveWallBeamer.tsx",
   "apps/web/src/pages/AdminBetriebDetails.tsx",
   "apps/web/src/pages/AdminDatenDetails.tsx",
   "apps/web/src/pages/AdminSicherheitDetails.tsx",
@@ -43,7 +51,7 @@ const ERZEUGER = [
 
 const quelle = (pfad: string): string => readFileSync(resolve(process.cwd(), pfad), "utf8");
 
-describe("R-1010 · die elf Erzeuger formatieren nicht mehr selbst", () => {
+describe("R-1010 · die Erzeuger formatieren nicht mehr selbst", () => {
   for (const pfad of ERZEUGER) {
     it(pfad, () => {
       const src = quelle(pfad);

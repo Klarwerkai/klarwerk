@@ -2301,7 +2301,11 @@ export function BibliothekLesen({
   // fehlt (`vertraulichkeitsAuskunft`). Dieselbe Funktion und derselbe Tönungssatz wie auf jeder
   // anderen Fläche, damit hier keine zweite Auslegung derselben Aussage entsteht.
   const auskunft = vertraulichkeitsAuskunft(ko);
-  const meta = [ko.category, nameOf(ko.author), erstellt].filter(Boolean).join(" · ");
+  // R-0921 (Ausbau „Datum, Uhrzeit UND Ersteller"): neben der Erstellzeit steht der ERSTELLER —
+  // dieselbe Regel wie auf der Validierungskarte (`Validation.tsx`, `originalAuthor` vor `author`).
+  // Nach einer Übertragung nennt die „Herkunftskette" (`MehrAbschnitte.tsx`) den neuen Autor.
+  const erstellerId = ko.originalAuthor?.trim() ? ko.originalAuthor : ko.author;
+  const meta = [ko.category, nameOf(erstellerId), erstellt].filter(Boolean).join(" · ");
   // Auftrag §5.3/§5a: EINE verbindliche Aktion, für jeden gewählten Eintrag dieselbe — „Fragen",
   // mit der Herkunft dieses Eintrags (`ko=<id>`, ein Marker — kein Filter, s. `fragen.ts`),
   // vorbelegt mit dem aktuellen Suchtext. Der frühere

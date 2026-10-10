@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useLiveWall } from "../api/hooks";
 import { RoleLink } from "../components/RoleLink";
 import { ValidiertListe } from "../components/start/LiveWallValidiert";
+import { formatKoTimestamp } from "../lib/koDates";
 import { LIVEWALL_TAKT_MS, personenAktuell, useJetzt } from "../lib/livewallTakt";
 
 // ================================================================================================
@@ -30,13 +31,8 @@ export function LiveWallBeamer(): JSX.Element {
   // Die eigene Uhr prüft die Frische je Takt neu — auch wenn die Abfrage nichts Neues meldet.
   const jetzt = useJetzt(LIVEWALL_TAKT_MS);
   const personen = personenAktuell(wand.dataUpdatedAt, Math.max(jetzt, Date.now()));
-  const zeit = (at: string): string =>
-    new Date(at).toLocaleString(i18n.language.startsWith("en") ? "en-GB" : "de-DE", {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  // R-1010: dieselbe Zeitregel wie überall (`formatKoTimestamp`), in der Sprache der Oberfläche.
+  const zeit = (at: string): string | null => formatKoTimestamp(at, i18n.language);
 
   return (
     <div

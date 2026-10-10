@@ -7,6 +7,7 @@ import {
   useSetLiveWallPhoto,
 } from "../../api/hooks";
 import type { LiveWall } from "../../api/types";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { FOTO_TYPEN, fotoVorbereiten } from "../../lib/livewallFoto";
 import { LIVEWALL_TAKT_MS, personenAktuell, useJetzt } from "../../lib/livewallTakt";
 import { RoleLink } from "../RoleLink";
@@ -111,12 +112,7 @@ export function ValidiertListe({
                 : "shrink-0 font-mono text-[10.5px] text-muted-2"
             }
           >
-            {new Date(v.at).toLocaleString(i18n.language.startsWith("en") ? "en-GB" : "de-DE", {
-              day: "2-digit",
-              month: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {formatKoTimestamp(v.at, i18n.language)}
           </span>
         </li>
       ))}
