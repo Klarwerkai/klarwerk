@@ -258,6 +258,10 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/validation/overview` | `ko.read` | — | 200 Übersicht | — |
 | `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
+| `GET` | `/api/spaces/:id/freigaberegel` | `ko.read`, Space sichtbar | Pfad `:id` = Space | 200 Regelübersicht: Regel, berechtigte Prüfer, Schritte, fehlende Voraussetzungen, laufende Vorgänge (Titel nur sichtbarer), Regelverlauf (ADMIN-09) | 404 `NOT_FOUND` |
+| `POST` | `/api/spaces/:id/freigaberegel/vorschau` | `users.manage` | Rumpf `{ regel: { zustimmungen, pruefer[], prueferTeams[], fristTage?, vertretungen[] } }` | 200 alte und neue Regel, Wirkung auf laufende Vorgänge und Prüfer, `grundlage`; schreibt nichts | 400 `FREIGABEREGEL_UNGUELTIG`, 404 `NOT_FOUND`, 409 `SPACE_ARCHIVIERT` |
+| `PUT` | `/api/spaces/:id/freigaberegel` | `users.manage` | Rumpf `{ version, regel, grundlage, begruendung? }` | 200 Übersicht der neuen Space-Fassung samt `angehoben` | 400 `FREIGABEREGEL_UNGUELTIG`, `VORSCHAU_FEHLT`, `KEINE_AENDERUNG`; 404; 409 `VERSION_VERALTET`, `VORSCHAU_VERALTET` (mit `vorschau`), `SPACE_ARCHIVIERT` |
+| `POST` | `/api/spaces/:id/freigaberegel/fristlauf` | `ko.read`, Spacezuständigkeit oder `users.manage` | — | 200 `{ regel, neu[], bestehend, faellig[], ohneVertretung[] }` — Vertretungsaufgaben, wiederholbar ohne Doppelung | 403 `FORBIDDEN`, 404 `NOT_FOUND` |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/conflicts/geloest` | `ko.read` | Abfrage `ko=<id>,<id>` (höchstens 50) | 200 von einem Menschen gelöste Konflikte zu diesen Objekten, sichtbarkeitsgefiltert; bei Redaktion auch `decision`, `secondOpinion` und `vorrang.geltungsbereich` leer | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
@@ -368,6 +372,8 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/learning-paths/:pathId/progress` | `ko.read` | — | 200 Fortschritt | — |
 | `GET` | `/api/notifications` | `requireUser` | — | 200 Glockenliste | — |
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
+| `GET` | `/api/qualitaetsaufgaben` | `users.manage` | — | 200 `{ stand, vorgaenge, quellen, spaces }` — je Vorgang Typ, Zustand, Ursprung, Arbeitsweg, Zuständigkeit, Frist, Beginn, Einstiege (ADMIN-10); Zeilen nur über den Sichtbarkeitsfilter | — |
+| `POST` | `/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen` | `users.manage` | — | 200 `{ art: angelegt \| angehaengt \| bereits, vorgang, am, durch }` — Prüfanforderung am Objekt der Meldung, je Meldung höchstens einmal | 404 (Meldung unbekannt oder Objekt nicht sichtbar) |
 | `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand (`saved`, `helped`, `helpedToday`, `validated` — Name/Foto nur mit Zustimmung) | — |
 | `GET` | `/api/livewall/consent` | `requireUser` | — | 200 `{ nameConsent, photoConsent, photo? }` — eigenes Konto | — |
 | `PUT` | `/api/livewall/photo` | `requireUser` | Rumpf `{ photo }` (PNG/JPEG/WebP als Daten-URL, begrenzt) | 200 `{ photoConsent: true }` — eigenes Foto, Hochladen ist die Zustimmung | 400 `BAD_REQUEST`, 503 `UNAVAILABLE` |
