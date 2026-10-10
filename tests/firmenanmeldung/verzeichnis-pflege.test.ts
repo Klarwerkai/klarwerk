@@ -682,6 +682,7 @@ async function appBuehne(opts: Parameters<typeof buildApp>[1] = {}) {
           quelleVersion: v.quelle?.version ?? null,
           zielId: v.ziel?.id ?? null,
           zielVersion: v.ziel?.version ?? null,
+          grundlage: v.grundlage,
         },
       },
     });

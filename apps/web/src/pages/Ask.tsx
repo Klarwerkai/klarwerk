@@ -59,6 +59,7 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+import { WissensstandVergleichBereich } from "../components/fragen/WissensstandVergleich";
 // R-0305/R-1099: die Zweitmeinung zur stehenden Antwort.
 import { Zweitmeinung } from "../components/fragen/Zweitmeinung";
 import { ANTWORT_MENUEPUNKTE } from "../components/fragen/antwortMenue";
@@ -2964,6 +2965,13 @@ export function Ask(): JSX.Element {
                       {t("ask.rueckmeldungAbgelaufen")}
                     </p>
                   )}
+                  {/* R-1630 / R-2176: dieselbe Frage aus dem Wissensstand vor einem Jahr — auf
+                      Wunsch, zur Frage, zu der diese Antwort gehört (`asked`). */}
+                  <WissensstandVergleichBereich
+                    frage={asked}
+                    billable={answerBillable}
+                    wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                  />
                 </div>
                 {/* R-1662: das Blatt ist ein Portal und steht damit nicht zwischen Karte und
                     Knopfzeile im Baum (Zielbild Z.44 misst die Knopfzeile als Nachbarn der Karte). */}
@@ -3211,6 +3219,18 @@ export function Ask(): JSX.Element {
           </>
         ) : null}
       </div>
+
+      {/* R-0347: der Weg zu Fragen an ein EIGENES Dokument — eine ruhige Zeile unter der
+          Ergebnisfläche, damit Feld und Antwort oben unverändert stehen (R-0286). */}
+      <p data-testid="ask-dokumentfragen-einstieg" className="text-[12.5px] text-muted">
+        <Link
+          to="/fragen/dokument"
+          className="font-semibold text-brand-text underline-offset-2 hover:underline"
+        >
+          {t("dokumentfragen.einstieg")}
+        </Link>{" "}
+        · {t("dokumentfragen.einstiegHinweis")}
+      </p>
 
       {/* ============================================================================================
           „MEHR" — DASSELBE SEITENBLATT, WENN ES (NOCH) KEINE ANTWORT GIBT.

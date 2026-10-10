@@ -77,6 +77,9 @@ export interface AdminDetailZiel {
 
 export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
   { id: "nutzerNeu", section: "konten", labelKey: "einst.konten.hinzufuegen" },
+  // ADMIN-06 (produkt:20261009:admin-teams): die Teams. Ein einzelnes Team (`team:<id>`) ist wie
+  // `nutzer:<id>` dynamisch und steht deshalb nicht hier.
+  { id: "teams", section: "konten", labelKey: "teams.titel", synonymKeys: ["teams.syn"] },
   { id: "ansichtRolle", section: "konten", labelKey: "role.viewAs" },
   { id: "ki", section: "ki", labelKey: "adm.ai.title", synonymKeys: ["adm.ziel.ki.syn"] },
   { id: "kiZugaenge", section: "ki", labelKey: "adm.ai.accessTitle" },
@@ -131,7 +134,7 @@ export const ADMIN_DETAILS: readonly AdminDetailZiel[] = [
 
 /** Das Thema, unter dem diese Detailkarte wohnt — oder `null` für eine unbekannte Kennung. */
 export function adminSectionFuerDetail(detail: string): AdminSectionId | null {
-  if (detail.startsWith("nutzer:") || detail.startsWith("rolle:")) {
+  if (detail.startsWith("nutzer:") || detail.startsWith("rolle:") || detail.startsWith("team:")) {
     return "konten";
   }
   return ADMIN_DETAILS.find((d) => d.id === detail)?.section ?? null;
