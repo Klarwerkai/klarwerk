@@ -93,7 +93,33 @@ APP_BASE_URL=
 # OIDC_ISSUER=
 # OIDC_AUDIENCE=
 # OIDC_JWKS_URI=
+# OIDC_AUTHORIZE_URL=
+# OIDC_TOKEN_URL=
+# OIDC_CLIENT_ID=
+# OIDC_REDIRECT_URI=
+# OIDC_CLIENT_SECRET=
 # OIDC_AUTOPROVISION=
+# OIDC_ROLE_CLAIM=
+# OIDC_GROUP_ADMIN=
+# OIDC_GROUP_CONTROLLER=
+# OIDC_GROUP_EXPERTE=
+# OIDC_REQUIRE_EMAIL_VERIFIED=
+# OIDC_SESSION_TTL_HOURS=
+# KLARWERK_SSO_ONLY=
+# SAML_IDP_ENTITY_ID=
+# SAML_IDP_SSO_URL=
+# SAML_IDP_CERT=
+# SAML_SP_ENTITY_ID=
+# SAML_ACS_URL=
+# SAML_AUTOPROVISION=
+# SAML_ATTR_EMAIL=
+# SAML_ATTR_NAME=
+# SAML_ATTR_GROUPS=
+# SAML_GROUP_ADMIN=
+# SAML_GROUP_CONTROLLER=
+# SAML_GROUP_EXPERTE=
+# KLARWERK_SCIM_TOKEN=
+# KLARWERK_PRUEFZUSTAENDIGKEIT=
 # KLARWERK_M365_MANDANTEN=
 ```
 
@@ -267,6 +293,49 @@ Dasselbe gilt nach dem Einspielen einer Sicherung unter einer anderen Adresse. G
 `tests/instanztrennung/zwei-anlagen-eine-datenbank-pg.integration.test.ts`.
 
 ---
+
+### 2.7 Optional: Firmen-Login (OIDC oder SAML), „nur Firmen-Login" und Verzeichnispflege
+
+Der Firmen-Login ist nur aktiv, wenn **alle sieben** Werte stehen: `OIDC_ISSUER`, `OIDC_AUDIENCE`,
+`OIDC_JWKS_URI`, `OIDC_AUTHORIZE_URL`, `OIDC_TOKEN_URL`, `OIDC_CLIENT_ID` und `OIDC_REDIRECT_URI`
+(öffentliche Adresse dieser Instanz + `/sso/callback`). Die Compose-Datei reicht jeden davon durch.
+Fehlt nur ein Teil, ist SSO aus, und der Startbericht im Protokoll nennt **jeden fehlenden Namen**
+(„SSO ist unvollständig konfiguriert …").
+
+Die Rolle in Klara kommt aus den Gruppen des Anmeldedienstes: `OIDC_ROLE_CLAIM` (Vorgabe `roles`)
+nennt das Token-Feld, `OIDC_GROUP_ADMIN`, `OIDC_GROUP_CONTROLLER` und `OIDC_GROUP_EXPERTE` die
+Gruppennamen. Ohne Gruppe wird niemand per SSO Administrator. `OIDC_AUTOPROVISION=true` legt
+unbekannte Mitarbeiter beim ersten Anmelden selbst an.
+
+`KLARWERK_SSO_ONLY=1` schaltet die Anmeldung mit Passwort ab — Anmelden, Registrieren, „Passwort
+vergessen" und Zurücksetzen antworten dann 403, die Anmeldeseite zeigt nur noch den Firmen-Login.
+Die Sperre gilt **immer**, auch solange weder OIDC noch SAML vollständig eingerichtet ist: dann
+kommt niemand herein. Die Anmeldeseite und die 403 sagen das ausdrücklich („der Firmen-Login ist
+noch nicht eingerichtet"), und der Startbericht nennt die fehlenden Werte. Schalter deshalb erst
+setzen, wenn der Firmen-Login steht. Einzige Ausnahme: die Ersteinrichtung einer Instanz ohne ein
+einziges Konto.
+
+**SAML statt OIDC.** Verlangt der Konzern das ältere Verfahren, stehen statt der OIDC-Werte fünf
+SAML-Werte: `SAML_IDP_ENTITY_ID`, `SAML_IDP_SSO_URL`, `SAML_IDP_CERT` (Signaturzertifikat aus den
+Anbieter-Metadaten, PEM oder Base64), `SAML_SP_ENTITY_ID` und `SAML_ACS_URL` (öffentliche Adresse +
+`/api/auth/saml/acs`). Die Metadaten dieser Instanz für die Einrichtung beim Anbieter liefert
+`/api/auth/saml/metadata`. Rollen kommen über `SAML_ATTR_GROUPS` und `SAML_GROUP_ADMIN`,
+`SAML_GROUP_CONTROLLER`, `SAML_GROUP_EXPERTE`. Die Assertion muss signiert sein; verschlüsselte
+Assertions und vom Anbieter selbst angestossene Anmeldungen werden abgelehnt.
+
+**Verzeichnispflege (SCIM).** Mit `KLARWERK_SCIM_TOKEN` (mindestens 32 Zeichen) pflegt das
+Unternehmensverzeichnis die Konten selbst: Eintritt legt an, Austritt sperrt (Sitzungen enden sofort,
+das Konto bleibt mit seinen Spuren bestehen), ein Wechsel passt die Rolle an. In Entra ID trägt man
+als Mandanten-URL die öffentliche Adresse + `/scim/v2` und als geheimes Token diesen Wert ein; die
+Gruppen kommen über App-Rollen (SCIM-Attribut `roles`) und werden mit denselben Namen wie
+`OIDC_GROUP_*` auf Rollen abgebildet. `KLARWERK_PRUEFZUSTAENDIGKEIT=QM-Pruefung=space-qm` macht die
+Mitglieder einer Verzeichnisgruppe zu Prüfenden für die Objekte in diesem Space. Das gilt auch für
+Objekte, die schon dort liegen: Nach jeder Änderung aus dem Verzeichnis (Eintritt, Austritt,
+Gruppenwechsel) und bei jedem Space-Wechsel gleicht Klara die daraus abgeleiteten offenen
+Zuweisungen ab. Von Hand vergebene Zuweisungen und erledigte Prüfungen bleiben bestehen. Scheitert
+dabei etwas (etwa der Mailversand), bleibt die Änderung aus dem Verzeichnis trotzdem gültig. Klara
+wiederholt den Abgleich nach einer Minute und beim nächsten Start, bis alle Benachrichtigungen
+zugestellt sind.
 
 ## 3. Der Start
 
@@ -455,8 +524,10 @@ Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicheru
   übersprungener Lauf ist kein bestandener.
   Auf dem Prüfplatz misst die Strecke aus §9 denselben Abbruch am echten `up` (K6a) — dort ohne
   Übersprung.
-- SSO/OIDC, eine echte Microsoft-365-Anbindung, SMTP im Echtbetrieb, Skalierung und Monitoring sind
-  eigene Themen und hier bewusst nicht beschrieben.
+- Die Anbindung an einen **echten** Anmeldedienst (Entra ID o. ä.) ist nicht gemessen; §2.7
+  beschreibt die Werte, nicht die Einrichtung beim Anbieter. Eine echte Microsoft-365-Anbindung,
+  SMTP im Echtbetrieb, Skalierung und Monitoring sind eigene Themen und hier bewusst nicht
+  beschrieben.
 
 ---
 

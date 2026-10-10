@@ -92,10 +92,12 @@ describe("JOB 3069 · R3 — Server und Oberfläche führen dieselben Aufgabenar
   // die acht Zuordnungsaufgaben plus `enrich`, `conflict`, `duplicate`, `probe`. Gebunden wird
   // deshalb `MODEL_RUN_TASKS` (Laufarten), nicht mehr `REASONER_TASKS` (Zuordnungsaufgaben); die
   // acht Zuordnungsaufgaben stehen unverändert vorne in derselben Reihenfolge (R3i).
-  it("R3a · der Server trägt zwölf Laufarten, und der Quelltext ist lesbar", () => {
+  // R-1657 (aufnahme:20260922:gesamt-wissenssprints): dazu `gaps`, die Lückenerkennung — seither
+  // DREIZEHN Laufarten.
+  it("R3a · der Server trägt dreizehn Laufarten, und der Quelltext ist lesbar", () => {
     // Ohne diesen Fall wäre ein leeres Leseergebnis (verschobene Datei, geänderte Schreibweise)
     // ein still bestandener Wächter: `[] === []`.
-    expect(serverAufgaben(), "die Aufgaben-Union des Servers ist nicht lesbar").toHaveLength(12);
+    expect(serverAufgaben(), "die Aufgaben-Union des Servers ist nicht lesbar").toHaveLength(13);
   });
 
   it("R3b · die Liste der Oberfläche ist Wert für Wert und in derselben Reihenfolge die des Servers", () => {
@@ -123,6 +125,7 @@ describe("JOB 3069 · R3 — Server und Oberfläche führen dieselben Aufgabenar
       "conflict",
       "duplicate",
       "probe",
+      "gaps",
     ]);
   });
 

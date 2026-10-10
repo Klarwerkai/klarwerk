@@ -7,11 +7,11 @@
 // am Wissensobjekt ankommt und was ein späterer Abgleich daran tut.
 import { describe, expect, it } from "vitest";
 import { runConfluenceImport } from "../../services/app/src/confluence-import";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService } from "../../services/library-analytics";
 import type { ImportItemMitQuellangaben } from "../../services/library-analytics/src/quellangaben";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const BASIS = "https://acme.atlassian.net/wiki";
 

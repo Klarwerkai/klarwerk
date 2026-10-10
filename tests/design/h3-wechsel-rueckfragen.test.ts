@@ -34,7 +34,8 @@ const OHNE_SICHERN_FRAGE = einstieg.de["einstieg.formular.ohneSichernFrage"];
 
 /** Sichtbare Beschriftungen — wörtlich aus `apps/web/src/i18n.ts`, DE-Block. */
 const FORMULAR_WEG = "Formular (Experten)"; // erfassen.weg.formular
-const FORMULAR_TITEL = "Kernaussage"; // capture.fTitle
+// EDITOR-EINHEITLICH (K1): das Titelfeld des Expertenformulars heisst wie beim Bearbeiten „Titel".
+const FORMULAR_TITEL = "Titel"; // capture.wizard.titleLabel
 // Nicht „Öffentlich-intern": das ist der Ausgangswert des gesicherten Stands (`Blatt.tsx`,
 // `savedStateRef`) und wäre keine Abweichung — dieselbe Wahl wie im gemounteten N6.
 const VERTRAULICH = "Vertraulich"; // conf.level.vertraulich

@@ -209,6 +209,11 @@ const en: typeof de = {
     "Shows whether the AI is currently answering. “Unverified” only means no answer has come back since startup — it is not an error.",
   "topbar.plain.external":
     "Shows whether Klarwerk may also look things up on the open internet when answering. “Blocked” means: no, it stays with your own knowledge.",
+  "topbar.extern.blockiert": "External: Blocked",
+  "topbar.extern.frei": "External: Allowed",
+  "topbar.extern.freiVertraulich": "External: Allowed, including confidential content",
+  "topbar.extern.hinweis":
+    "The administrator decides whether content may go to a public AI. Default: blocked.",
   "topbar.kiExternal": "AI runs in the cloud",
   "topbar.kiInternal": "AI runs on your own systems",
   "topbar.kiMixed": "AI runs in the cloud and on your own systems",
@@ -251,6 +256,7 @@ const en: typeof de = {
   "cmd.treffer_other": "{{count}} targets",
   "cmd.audit": "Audit log (in Analytics)",
   "toast.dismiss": "Dismiss",
+  "einblendung.erledigt": "Done.",
   "page.placeholder":
     "This screen will be built in a later task. App shell, navigation and role logic are in place.",
   "status.entwurf": "Draft",
@@ -358,6 +364,7 @@ const en: typeof de = {
   // JOB 3140 (UX-11) — see the German block for the reasoning.
   "audit.action.user_role_change": "Role changed",
   "audit.action.user_approve": "Account approved",
+  "audit.action.user_account_corrected": "Account details corrected",
   "audit.action.auth_login": "Signed in",
   "audit.action.auth_logout": "Signed out",
   "audit.action.notice_acknowledged": "Notice acknowledged",
@@ -479,6 +486,14 @@ const en: typeof de = {
   "auth.toSignIn": "Go to sign in",
   "auth.or": "or",
   "auth.ssoButton": "Sign in with SSO",
+  // R-0541: the sign-in page when only the company login applies (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "On this installation you sign in with your company account. There is no separate Klara password here.",
+  // R-0541 (rework 2): password sign-in is off, but the company login is not set up yet.
+  "auth.ssoOnlyMissing":
+    "Password sign-in is switched off, but the company login has not been set up yet. Please contact your IT team.",
+  // R-0560: the company login via SAML.
+  "auth.samlButton": "Sign in with company account (SAML)",
   "auth.ssoUnavailable": "SSO is not configured for this instance.",
   "auth.ssoTitle": "SSO sign-in",
   "auth.ssoBusy": "Completing sign-in …",
@@ -1721,6 +1736,10 @@ const en: typeof de = {
   "capture.saveDraft": "Save as draft",
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
+  "capture.bereitsGespeichert": "This document was already saved; no second entry was created.",
+  "capture.bereitsGespeichertFortgeschrieben":
+    "This document was already saved; no second entry was created. The existing entry now holds your changed version.",
+  "capture.bereitsGespeichertOeffnen": "Open the existing entry: “{{title}}”",
   "capture.teilerfolg.dateiAusstehend":
     "Not everything is saved yet: the draft is saved, the file “{{name}}” is still being saved.",
   "capture.teilerfolg.dateiGescheitert":
@@ -2143,6 +2162,7 @@ const en: typeof de = {
   "ask.error.body":
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
+  "ask.gebremst.titel": "Please wait a moment.",
   "ask.offline": "No connection.",
   "ask.wiederaufnahme.entwurf":
     "Pick up where you left off: your unsent draft is back in the question field.",
@@ -2198,10 +2218,24 @@ const en: typeof de = {
   "ask.export.copy": "Copy",
   "ask.export.download": "As Markdown",
   "ask.export.print": "Print / PDF",
+  "ask.export.docx": "As Word (.docx)",
+  "ask.export.pptx": "As PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "As PDF file",
+  "ask.export.pdfZeichen":
+    "The PDF file cannot show these characters unchanged: {{zeichen}}. Nothing was downloaded — Word or Markdown pass the text on without loss.",
   "ask.export.copied": "Answer incl. sources copied.",
   "ask.export.answer": "Answer",
   "ask.export.footer":
     "Source-bound answer from KLARWERK · generated on {{date}}. Only as reliable as the sources used (status/trust). No promise of truth.",
+  // R-1643: decision record — time and person of the export.
+  "ask.export.protocol.heading": "Decision record",
+  "ask.export.protocol.time": "Time (UTC)",
+  "ask.export.protocol.user": "User ID",
+  "ask.export.protocol.userUnknown": "not signed in – no identifier available",
+  "ask.export.protocol.argumentation": "Chain of reasoning",
+  "ask.export.protocol.supportedBy": "supported by",
+  "ask.export.protocol.argumentationMissing":
+    "No chain of reasoning is available for this answer. The source list does not replace it.",
   "ask.sourcesHint":
     "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Listed are all sources consulted for the question; which of them carried the answer is marked. Open the knowledge object for details.",
   // AUFTRAG-mega52 A3/A5 — the answer says what it rests on. Unusable markers mean "unknown", never a guess.
@@ -2209,6 +2243,10 @@ const en: typeof de = {
     "The sources listed first carried the answer; the rest were consulted but not used.",
   "ask.attribution.unknown":
     "Which of these sources carried the answer could not be determined — the AI returned no usable source references. The list therefore shows all consulted sources without a marker, and “This helped” is not available here.",
+  // R-0310/R-0325: the answer is withheld because no paragraph could be attributed to a source.
+  "ask.quellen.weitere": "Show {{count}} more sources",
+  "ask.zuordnungUnbekannt":
+    "No answer is shown: it could not be attributed to any source. A paragraph without a source is not output.",
   // JOB 3267 Q1 — three states, three words, plus a fourth for the review status (see the German
   // entry for the finding this fixes).
   "ask.attribution.carrying.badge": "used",
@@ -2298,6 +2336,7 @@ const en: typeof de = {
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
   "ask.verschlossen.stufe": "Level missing",
+  "ask.verschlossen.vertraulichkeitsstufe": "Confidentiality level missing",
   "ask.verschlossen.stufeHint": "No confidentiality level is set for the document.",
   "ask.verschlossen.volltext": "No searchable text",
   "ask.verschlossen.volltextHint": "No searchable text of this document is available yet.",
@@ -2320,6 +2359,96 @@ const en: typeof de = {
     "No source matches this question closely enough to carry an answer. That does not necessarily mean the knowledge is missing — it may simply be recorded under different words. Either way it's a gap you can close, not an error.",
   "ask.contract.trustNote":
     "Trust and usability show how reliable a source is — not a guarantee of truth.",
+  // AUFNAHME 20260922 · Antwort-Erklärung (Begründung im deutschen Block).
+  "ask.belastbarkeit.titel": "How reliable is this?",
+  "ask.belastbarkeit.lage.belegt": "Backed by sources",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt": "Backed — responsible person not reachable",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Backed — with a contradiction",
+  "ask.belastbarkeit.lage.wissensluecke": "Knowledge gap",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technical error",
+  "ask.belastbarkeit.lage.geschwaerzt": "Redacted",
+  "ask.belastbarkeit.anzahl": "{{tragend}} of {{herangezogen}} consulted sources carry the answer",
+  "ask.belastbarkeit.vertrauenswert":
+    "Trust value {{wert}} — as reliable as the weakest carrying source (“{{quelle}}”). The library shows the same number on that entry.",
+  "ask.belastbarkeit.vertrauenswertKeiner": "No trust value: no carrying source is known.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Trust value {{wert}}",
+  "ask.belastbarkeit.stand": "As of {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "validated",
+  "ask.belastbarkeit.quelle.nichtValidiert": "not validated",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Responsible",
+  "ask.belastbarkeit.verantwortung.autor": "No responsible person named, the author applies",
+  "ask.belastbarkeit.erreichbar.ja": "reachable",
+  "ask.belastbarkeit.erreichbar.nein": "not reachable",
+  "ask.belastbarkeit.erreichbar.unbekannt": "reachability unknown",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "No source carries an answer to this question.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt": "It is not known which source carries the answer.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert": "All carrying sources are validated.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "At least one carrying source is not validated.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "For at least one carrying source, the conflict check is not fully documented.",
+  "ask.belastbarkeit.grund.offener_konflikt": "A carrying source is part of an open contradiction.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "The conflict status could not be retrieved — that does not mean there is none.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "The responsible person is not reachable (no approved account). The knowledge remains usable; follow-up questions need a new owner.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Whether the responsible person is reachable could not be determined.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "For at least one source no responsible person is named; the author applies.",
+  "ask.belastbarkeit.konflikt.titel": "Contradiction — both sides",
+  "ask.belastbarkeit.konflikt.seite": "Side {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "carries this answer",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "You cannot view this side.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "No side is chosen. People decide the contradiction under “Conflicts”.",
+  "ask.belastbarkeit.hinweis":
+    "The trust value says how reliable the sources are. It says nothing about whether something is true.",
+  "ask.belastbarkeit.argumentation.titel": "How the answer comes about",
+  "ask.belastbarkeit.argumentation.belegstelle": "Evidence passage: “{{stelle}}”",
+  "ask.belastbarkeit.argumentation.art.aussage": "Statement",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Terms added from the company glossary — not part of the source count and without a trust value:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Glossary entry {{id}}, version {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Responsible: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "No responsible party given",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Reliability not assessed",
+  "ask.belastbarkeit.argumentation.art.beziehung": "Documented relation",
+  "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "belongs to",
+  "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "complements",
+  "ask.belastbarkeit.argumentation.beziehung.ersetzt": "replaces",
+  "ask.belastbarkeit.argumentation.beziehung.widerspricht": "contradicts",
+  "ask.belastbarkeit.argumentation.beziehung.beispiel_fuer": "is an example of",
+  "ask.belastbarkeit.argumentation.gesetztVon": "Relation set by {{wer}}",
+  "ask.belastbarkeit.argumentation.gestuetztAuf": "Based on: {{quellen}}",
+  "ask.belastbarkeit.argumentation.unabhaengig":
+    "No relation between these sources is documented — they stand independently side by side.",
+  "ask.belastbarkeit.argumentation.art.einwand": "Objection from an open contradiction",
+  "ask.belastbarkeit.argumentation.art.vorbehalt": "Caveat",
+  "ask.belastbarkeit.argumentation.art.schluss": "Conclusion",
+  "ask.belastbarkeit.argumentation.einstufung.verified": "Rating: backed",
+  "ask.belastbarkeit.argumentation.einstufung.unverified": "Rating: not fully backed",
+  "ask.belastbarkeit.argumentation.einstufung.gap": "Rating: knowledge gap",
+  "ask.belastbarkeit.wissensart.bauchgefuehl": "Gut feeling",
+  "ask.belastbarkeit.wissensart.best_practice": "Proven practice",
+  "ask.belastbarkeit.wissensart.lernkurve": "Learning curve",
+  "ask.belastbarkeit.wissensart.technik": "Technical",
+  "ask.belastbarkeit.wissensart.negativwissen": "Negative knowledge",
+  "ask.belastbarkeit.zuschnitt":
+    "Answer and explanation tailored to: {{rolle}}, occasion {{anlass}}.",
+  "ask.belastbarkeit.rolle.viewer": "reader",
+  "ask.belastbarkeit.rolle.experte": "expert",
+  "ask.belastbarkeit.rolle.controller": "reviewer",
+  "ask.belastbarkeit.rolle.admin": "administration",
+  "ask.belastbarkeit.rolle.unbekannt": "unknown role",
+  "ask.belastbarkeit.anlass.dokument": "working on a document",
+  "ask.belastbarkeit.anlass.frage": "free question",
+  "ask.pruefrahmen.satz":
+    "Checked against {{umfang}}: {{verglichen}} matching entries were compared (at most {{hoechstens}} per question), none carries an answer.",
+  "ask.pruefrahmen.umfang.validiert": "validated, non-confidential knowledge only",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "all non-confidential knowledge",
+  "ask.pruefrahmen.woertlich": "The search was literal, without an AI summary.",
   // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
   "ai.truncated.hint": "This answer was cut off at the length limit and may be incomplete.",
   "ask.contract.sumTotal_one": "{{count}} source consulted",
@@ -2350,6 +2479,30 @@ const en: typeof de = {
   // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
   "gap.privacyNotice":
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
+  "gap.originalfrage": "Original question",
+  "gap.askCount": "asked {{count}}×",
+  "gap.ausgangsfrage": "Question behind this knowledge gap",
+  "gap.belegbedarf.label": "Missing evidence",
+  "gap.belegbedarf.wissensobjekt":
+    "No matching knowledge object found — one that answers the question is missing",
+  "gap.belegbedarf.unbestimmt": "Undetermined — which evidence is missing cannot be derived",
+  "nulltreffer.titel": "Your searches without results",
+  "nulltreffer.hinweis":
+    "For these terms your search found nothing you are allowed to see — a hint where knowledge may be missing. Only you see this list.",
+  "nulltreffer.anzahl": "searched {{count}}×",
+  "nulltreffer.erfassen": "Capture knowledge",
+  "nulltreffer.eingegrenzt":
+    "Searched only within this filter ({{filter}}) — no finding about the whole collection.",
+  "nulltreffer.feld.type": "Knowledge type",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Category",
+  "nulltreffer.feld.tag": "Keyword",
+  "einzelquelle.titel": "Knowledge only you hold",
+  "einzelquelle.satz":
+    "Topics with bus factor 1 whose visible knowledge comes only from you: {{count}}",
+  "einzelquelle.zeile": "“{{thema}}” — would you like to spend five minutes on it now?",
+  "einzelquelle.einstieg": "Start interview",
+  "einzelquelle.themaLabel": "Topic",
   "ask.toGaps": "To the knowledge gaps",
   "ask.toCapture": "Capture knowledge",
   "ko.use.ready": "Ready to use",
@@ -2852,6 +3005,7 @@ const en: typeof de = {
   "ko.attachmentPreviewUnavailable": "No preview available",
   "ko.attachmentOriginalUnavailable": "Original unavailable",
   "pruefen.title": "Review",
+  "pruefen.handeltAls": "You are reviewing as {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicts",
   "pruefen.tab.duplikate": "Duplicates",
@@ -3079,6 +3233,10 @@ const en: typeof de = {
   "start.livewall.photoRevoke": "Remove photo",
   "start.livewall.photoError":
     "The photo could not be saved. Please choose a PNG, JPEG or WebP image.",
+  "start.livewall.consentError":
+    "The name consent was not saved — the state shown still applies. Please toggle again.",
+  "start.livewall.photoRevokeError":
+    "The photo was not removed — it is still shared. Please revoke again.",
   "start.livewall.photoAlt": "Photo of the author",
   "start.livewall.photoOwnAlt": "My photo for the wall",
   "start.livewall.beamerOpen": "Open as projector view",
@@ -3177,6 +3335,7 @@ const en: typeof de = {
   "con.openKo": "Open object",
   "con.compareOpen": "Compare both",
   "con.readonlyCompare": "Read-only comparison",
+  "con.caseList": "All open conflicts ({{count}})",
   "con.detectedOn": "Detected on {{date}}",
   "con.evidenceSideLabel": "Evidence for this side",
   "con.evidenceBalance.neither":
@@ -3425,6 +3584,11 @@ const en: typeof de = {
   "lib.lesemodus.listeEinblenden": "Show result list",
   "lib.lesemodus.listeAusblenden": "Hide result list",
   "lib.lesen.mehr": "More",
+  "lib.lesen.belegstelle.markiert": "Supporting passage highlighted.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "The cited passage does not appear verbatim in this version of the text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "The passage belongs to version {{fassung}}; this is version {{aktuell}}. Nothing is highlighted.",
   "lib.lesen.bilder_one": "{{count}} image",
   "lib.lesen.bilder_other": "{{count}} images",
   "lib.lesen.fehler": "The entry could not be loaded.",
@@ -4081,6 +4245,14 @@ const en: typeof de = {
   "risk.pflege.retirementTitle": "Retirement horizons",
   "risk.pflege.retirement": "Retirement horizon of {{name}}",
   "risk.pflege.noRetirement": "No retirement entered",
+  "risk.pflege.retirementSaved": "Retirement horizon of {{name}} saved.",
+  "risk.pflege.retirementNotRefreshed":
+    "Saved. The display for {{name}} has not been refreshed yet — the selection shows the saved value.",
+  "risk.pflege.profileSaved": "Area profile “{{category}}” saved.",
+  "risk.pflege.profileError":
+    "Area profile “{{category}}” was not saved. Your entries stay — “Save” tries again.",
+  "risk.pflege.retirementError":
+    "Retirement horizon of {{name}} was not saved. Your selection stays — “Try again” saves it once more.",
   "risk.busLegendSingle": "red = single source (failure risk)",
   "risk.busLegendOk": "green = multiple sources",
   "risk.help.summary":
@@ -4143,6 +4315,13 @@ const en: typeof de = {
   "risk.close": "Close",
   "risk.closeWithTitle": "Close with the knowledge object that answers this gap",
   "risk.closeFailed": "Not closed — the knowledge object is missing or in the trash.",
+  "risk.gapToast.closed": "Gap closed.",
+  "risk.gapToast.assigned": "Gap assigned.",
+  "risk.gapToast.assignFailed": "Not assigned — please select again.",
+  "risk.gapToast.removed": "Gap deleted.",
+  "risk.gapToast.removeFailed": "Not deleted — the gap remains. Please try again.",
+  "risk.gapToast.prioritySaved": "Priority saved.",
+  "risk.gapToast.priorityFailed": "Priority not saved — please select again.",
   "risk.assign": "Expert …",
   "risk.delete": "Delete",
   "risk.gapNextLabel": "Next step",
@@ -4163,6 +4342,9 @@ const en: typeof de = {
   "lcy.assetPlaceholder": "Asset/process reference (e.g. press-P2)",
   "lcy.assetTrigger": "Trigger revalidation",
   "lcy.assetMarked": "{{n}} object(s) flagged for review for „{{asset}}“.",
+  "lcy.toast.revalidateFailed": "Not confirmed — the entry stays due. Please try again.",
+  "lcy.toast.stepDone": "Learning step saved as done.",
+  "lcy.toast.stepFailed": "Learning step not saved — please tick it again.",
   "lcy.pendingTitle": "Pending re-validation",
   "lcy.revalAsset": "Asset",
   "lcy.revalNextLabel": "Next step",
@@ -4241,6 +4423,9 @@ const en: typeof de = {
   "adm.resetConfirm": "Reset",
   "adm.resetCancel": "Cancel",
   "adm.resetDone": "Password reset; all sessions ended.",
+  "adm.correct": "Correct account details",
+  "adm.correctSave": "Save account details",
+  "adm.correctDone": "Account details corrected.",
   "adm.gastfrist.titel": "Access valid until",
   "adm.gastfrist.unbefristet": "No end date — this access does not expire on its own.",
   "adm.gastfrist.gueltigBis": "Valid until {{datum}}.",
@@ -4278,6 +4463,8 @@ const en: typeof de = {
   "empty.cta.library": "Go to library",
   "empty.cta.validation": "Go to validation",
   "empty.cta.tasks": "Go to my tasks",
+  "empty.cta.wissensnetz": "Go to the knowledge network",
+  "empty.cta.ask": "Ask a question",
   "story.rescue.title": "Klarwerk secures hands-on experience before it's lost.",
   "story.honest":
     "Nothing is validated automatically — knowledge only counts as secured after the team reviews it.",
@@ -4289,6 +4476,48 @@ const en: typeof de = {
     "No knowledge to look up yet. Capture the first contribution — after review it becomes usable here, source-bound.",
   "story.surface.validation.lead":
     "Nothing to review. Captured knowledge appears here for team review before it counts as secured and can be used.",
+  "story.surface.gaps.lead":
+    "A gap appears when a question finds no secured answer. None is open right now — asking uncovers new ones; capturing closes them.",
+  "story.surface.lifecycle.lead":
+    "Contributions become due here when their review period ends or a reported asset change affects them. Nothing is due right now — an asset change can be reported below.",
+  "story.surface.duplicates.lead":
+    "An overlap appears when two contributions say the same thing. None is open right now — new ones show up here as soon as captured knowledge is reviewed.",
+  "story.surface.audit.lead":
+    "No recorded actions yet. The log keeps track of who captures, reviews and changes in the knowledge cycle — it fills with the first captured or reviewed contribution.",
+  "story.surface.neighborhood.lead":
+    "This contribution doesn't share a meaningful tag with any other yet. The knowledge network shows which topics are already connected; new knowledge with matching tags links it to neighbours.",
+  "story.surface.risk.lead":
+    "No risk data yet — this needs captured knowledge per area. Capture or import experience knowledge; this list then shows where it depends on a single person.",
+  "story.surface.objekt.lead":
+    "Nothing is recorded here for this contribution yet. Additions such as sources, attachments and comments make it more reliable — open it to add to it, or ask what is missing.",
+  "story.surface.entwuerfe.lead":
+    "No drafts yet. A draft keeps what you capture before the team reviews it — start with a new contribution.",
+  "story.surface.verwaltung.lead":
+    "Nothing has been set up here yet. Administration keeps Klarwerk up to date — entries appear as soon as something is configured, backed up or deleted.",
+  "story.surface.auswertung.lead":
+    "There is nothing for this analysis yet. It is built from reviewed knowledge — the next step is to capture contributions and have them reviewed.",
+  "story.surface.import.lead":
+    "Nothing to take over yet. An import brings existing knowledge from a source into the cycle — choose a source or upload a file.",
+  "story.surface.anleitung.lead":
+    "There is no content here yet. Work instructions combine reviewed knowledge into steps — add building blocks from the library.",
+  "story.surface.spaces.lead":
+    "This space is still empty. Spaces organise contributions by responsibility — move a contribution here or capture a new one.",
+  "story.surface.ausgang.lead":
+    "Nothing is waiting for the outbound check. Whatever Klarwerk is meant to share externally lands here — as soon as someone submits a contribution for release.",
+  "story.surface.wissensnetz.lead":
+    "No connections yet. The knowledge network shows how contributions are linked by tags — add fitting tags when capturing.",
+  "story.surface.meldungen.lead":
+    "Nothing to report right now. Whatever needs your attention appears here — conflicts, gaps and due reviews.",
+  "story.surface.horizont.lead":
+    "No one with sole knowledge retires in the chosen period. Keep retirement horizons up to date in the maintenance area so this view stays accurate.",
+  "story.surface.lernpfad.lead":
+    "No learning path is set up for your role yet. It guides you through the most important reviewed knowledge — until then, the library helps.",
+  "story.surface.hilfe.lead":
+    "There is no page help for this page yet. The help explains Klarwerk step by step — you reach it through the help chapter in the menu.",
+  "story.surface.gliederung.lead":
+    "This contribution has no headings yet. Headings structure knowledge so others find it quickly — add them in the editor.",
+  "story.surface.conflicts.lead":
+    "The team resolves conflicts while reviewing. None is open right now — new ones appear here as soon as two contributions contradict each other.",
   "adm.auditTitle": "Recent user/auth activity (audit)",
   "adm.auditEmpty": "No user audit entries.",
   "prof.kicker": "Account",
@@ -4299,6 +4528,16 @@ const en: typeof de = {
   "prof.passwordSubmit": "Change password",
   "prof.passwordChanged":
     "Password changed. For security you've been signed out everywhere — please sign in again.",
+  "prof.correctTitle": "Correct account details",
+  "prof.correctPassword": "Current password (only for a new email)",
+  "prof.correctSubmit": "Save account details",
+  "prof.correctSaved": "Account details saved.",
+  "prof.correctUnchanged": "Nothing changed.",
+  "prof.correctSso": "Confirm with SSO instead",
+  "prof.correctSaml": "Confirm with SAML company sign-in instead",
+  "prof.correctSsoConfirmed": "Identity confirmed via SSO — now save your account details.",
+  "prof.correctSsoKontoGewechselt":
+    "A different account signed in during the SSO confirmation. The previous account's draft was discarded; the details shown belong to the account that is now signed in.",
   "help.kicker": "Help",
   "help.open": "Open help",
   "help.openCenter": "Open in help center",
@@ -4333,6 +4572,8 @@ const en: typeof de = {
   "klara.aiBusy": "The AI is reading the matching help entries …",
   "klara.aiAnswerTitle": "AI answer from the help",
   "klara.aiDisclaimer": "AI-generated — not fully verified",
+  "klara.helpAnswerTitle": "Answer from the help",
+  "klara.ohneModell": "Rule-based, no AI model",
   "klara.aiGoto": "Open area: {{target}}",
   "klara.aiSources": "Based on",
   "klara.aiEmpty":
@@ -4663,6 +4904,22 @@ const en: typeof de = {
   "mob.photo": "Photo",
   "mob.interview": "Interview",
   "mob.lookup": "Look up",
+  "mob.modusGruppe": "Capture type",
+  "mob.modusGesperrt": "Save or clear first, then switch the capture type.",
+  "mob.iv.frage1": "What is this about? State the core message in one sentence.",
+  "mob.iv.frage2": "Under what conditions or from when does this apply?",
+  "mob.iv.frage3": "What action or consequence follows from it?",
+  "mob.iv.frage4": "Which keywords/tags help to find it again? (comma-separated)",
+  "mob.iv.fortschritt": "Question {{nummer}} of {{gesamt}}",
+  "mob.iv.weiter": "Next question",
+  "mob.iv.zurueck": "Previous question",
+  "mob.iv.hinweis": "Every answer is in the draft right away — you can save after any question.",
+  "mob.foto.kamera": "Camera",
+  "mob.foto.mediathek": "Photo library",
+  "mob.foto.entfernen": "Remove photo",
+  "mob.foto.fehler": "The photo could not be read.",
+  "mob.foto.max": "At most {{max}} photos per draft.",
+  "mob.foto.inArbeit": "Preparing photo … you can save in a moment.",
   "mob.editing": "Resuming a draft.",
   "mob.formTitle": "Core statement",
   "mob.formStatement": "What happened / what applies?",
@@ -5318,6 +5575,13 @@ const en: typeof de = {
 
   // JOB 3062 · H3 — the sheet (Pages).
   "erfassen.werkzeug.diktieren": "Dictate",
+  "sprachaufnahme.start": "Record",
+  "sprachaufnahme.stop": "Stop recording",
+  "sprachaufnahme.frage": "Record and transcribe question",
+  "sprachaufnahme.verarbeitet": "Transcribing …",
+  "sprachaufnahme.keinMikrofon":
+    "No access to the microphone. Please allow it in the browser or type the text.",
+  "sprachaufnahme.fehler": "The recording could not be transcribed.",
   "erfassen.werkzeug.bild": "Image",
   "erfassen.werkzeug.datei": "File",
   "erfassen.werkzeug.ki": "AI",
@@ -5597,6 +5861,10 @@ const en: typeof de = {
     "This attempt did not get through either. Please check your network connection.",
 
   "ai.generatedNotice": "Generated by artificial intelligence — please review professionally.",
+  "ai.surfaceNotice": "An AI may assist here — content it generates is labelled.",
+  "ergebnisStufe.entwurf": "Reasoner draft, not validated",
+  "ergebnisStufe.empfehlung": "Recommendation, unchecked",
+  "ergebnisStufe.validiert": "Validated",
   "ai.costHint": "One click may trigger a real, chargeable cloud AI request.",
   "ai.exportNotice":
     "Generated by artificial intelligence (KLARWERK, {{task}}, {{date}}). To be reviewed for content.",
@@ -5860,6 +6128,24 @@ const en: typeof de = {
   "ga.liste.geaendert": "Last changed",
   "ga.liste.bausteine": "Sections: {{anzahl}}",
   "ga.liste.unvollstaendig": "Incomplete for you – sections you cannot access: {{anzahl}}",
+  // Work paths on the same article (produkt:20261007:arbeitswege-objekt) — see de.ts.
+  "arbeitsweg.pruefen.sucht": "Looking for the requested entry in the review list …",
+  "arbeitsweg.pruefen.fehlt":
+    "The requested entry is not up for review in this view (already decided or filtered out). Showing the next open entry.",
+  "arbeitsweg.pruefen.lesen": "Open requested entry",
+  "arbeitsweg.pruefen.entschieden": "Decided: “{{titel}}” –",
+  "arbeitsweg.pruefen.oeffnen": "Open entry with current status",
+  "arbeitsweg.pruefen.standOffen":
+    "Status from the server: still in review, {{gruen}} of {{noetig}} approvals.",
+  "arbeitsweg.pruefen.standRaus": "Status from the server: no longer in the review list.",
+  "arbeitsweg.pruefen.weiter": "now in review: “{{titel}}”",
+  "arbeitsweg.fassung": "Version {{fassung}}",
+  "arbeitsweg.fragen.bezug": "Question about the entry “{{titel}}”",
+  "arbeitsweg.fragen.zurueck": "Back to the entry",
+  "arbeitsweg.lesen.fassungAbweichend":
+    "You came from version {{genannt}}; this entry is now at version {{aktuell}}.",
+  "arbeitsweg.klara.label": "Entry",
+  "arbeitsweg.klara.chat": "Continue in “Ask” about this entry",
 };
 
 export { en };

@@ -381,6 +381,13 @@ const de = {
   "topbar.plain.external":
     "Zeigt, ob Klarwerk beim Antworten auch im offenen Internet nachsehen darf. „Blockiert“ heißt: nein, es bleibt bei eurem eigenen Wissen.",
   // AUFTRAG-mega51 BLOCK G1: „KI-Modus" ist eine Einstellung; gemeint ist der ORT.
+  // Auftrag gesamt-ki-freigaberegeln (R-0606): der wirksame Stand der zentralen Adminfreigabe für
+  // öffentliche KI, sichtbar über der Kopfzeile (`shell/ExternStatus.tsx`).
+  "topbar.extern.blockiert": "Extern: Blockiert",
+  "topbar.extern.frei": "Extern: Freigegeben",
+  "topbar.extern.freiVertraulich": "Extern: Freigegeben, auch Vertrauliches",
+  "topbar.extern.hinweis":
+    "Ob Inhalte an eine öffentliche KI gehen dürfen, legt der Administrator fest. Vorgabe: blockiert.",
   "topbar.kiExternal": "KI rechnet in der Cloud",
   "topbar.kiInternal": "KI rechnet im eigenen Haus",
   "topbar.kiMixed": "KI rechnet in der Cloud und im eigenen Haus",
@@ -434,6 +441,7 @@ const de = {
   "cmd.treffer_other": "{{count}} Ziele",
   "cmd.audit": "Audit-Log (in Analytics)",
   "toast.dismiss": "Schließen",
+  "einblendung.erledigt": "Erledigt.",
   "page.placeholder":
     "Dieser Screen wird in einem späteren Task gebaut. App-Shell, Navigation und Rollenlogik stehen.",
   "status.entwurf": "Entwurf",
@@ -574,6 +582,7 @@ const de = {
   // neutrale Humanisierung aus `lib/auditAction.ts` zuständig.
   "audit.action.user_role_change": "Rolle geändert",
   "audit.action.user_approve": "Konto freigegeben",
+  "audit.action.user_account_corrected": "Kontodaten berichtigt",
   "audit.action.auth_login": "Angemeldet",
   "audit.action.auth_logout": "Abgemeldet",
   "audit.action.notice_acknowledged": "Hinweis zur Kenntnis genommen",
@@ -719,6 +728,14 @@ const de = {
   "auth.toSignIn": "Zur Anmeldung",
   "auth.or": "oder",
   "auth.ssoButton": "Mit SSO anmelden",
+  // R-0541: die Anmeldeseite, wenn nur noch der Firmen-Login gilt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Auf dieser Installation meldest du dich mit deinem Firmenkonto an. Ein eigenes Passwort für Klara gibt es hier nicht.",
+  // R-0541 (Nacharbeit 2): das Passwort ist abgeschaltet, der Firmen-Login aber noch nicht da.
+  "auth.ssoOnlyMissing":
+    "Die Anmeldung mit Passwort ist abgeschaltet, der Firmen-Login ist aber noch nicht eingerichtet. Bitte wende dich an deine IT.",
+  // R-0560: der Firmen-Login über SAML.
+  "auth.samlButton": "Mit Firmenkonto (SAML) anmelden",
   "auth.ssoUnavailable": "SSO ist für diese Instanz nicht konfiguriert.",
   "auth.ssoTitle": "SSO-Anmeldung",
   "auth.ssoBusy": "Anmeldung wird abgeschlossen …",
@@ -2205,6 +2222,13 @@ const de = {
   "capture.saveDraft": "Als Entwurf speichern",
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
+  // entscheidung:8b909a1e (Option A): der Server hat beim erneuten Speichern den vorhandenen
+  // Eintrag erkannt — statt der normalen Erfolgsmeldung, mit Verweis auf genau diesen Eintrag.
+  "capture.bereitsGespeichert":
+    "Dieses Dokument war bereits gespeichert, es wurde kein zweiter Eintrag angelegt.",
+  "capture.bereitsGespeichertFortgeschrieben":
+    "Dieses Dokument war bereits gespeichert, es wurde kein zweiter Eintrag angelegt. Der vorhandene Eintrag trägt jetzt deinen geänderten Stand.",
+  "capture.bereitsGespeichertOeffnen": "Vorhandenen Eintrag öffnen: „{{title}}“",
   // LAUF 6 RUNDE 2 (erfassen-doppelklick, bens B7): der Teilerfolg des gemeinsamen Speicherns.
   "capture.teilerfolg.dateiAusstehend":
     "Noch nicht alles gesichert: Der Entwurf ist gespeichert, die Datei „{{name}}“ wird noch gespeichert.",
@@ -2746,6 +2770,9 @@ const de = {
   "ask.error.body":
     "Die Anfrage ist unterwegs steckengeblieben. Das ist KEINE Aussage über das Wissen — es bedeutet nicht, dass es keine Antwort gibt. Bitte erneut versuchen.",
   "ask.error.retry": "Erneut versuchen",
+  // Aufnahme gesamt-integrations-api (R-0842): die KI-Bremse hat abgewiesen — der Satz mit der
+  // Wartezeit kommt vom Server (`services/app/src/anfragebremse.ts`), hier steht nur die Überschrift.
+  "ask.gebremst.titel": "Bitte kurz warten.",
   // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
   // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
   "ask.offline": "Keine Verbindung.",
@@ -2820,10 +2847,25 @@ const de = {
   "ask.export.copy": "Kopieren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Drucken / PDF",
+  // R-0703: Dateien, die die KI-Kennzeichnung in ihren Eigenschaften tragen.
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-Datei",
+  "ask.export.pdfZeichen":
+    "Die PDF-Datei kann diese Zeichen nicht unverändert darstellen: {{zeichen}}. Es wurde nichts heruntergeladen — Word oder Markdown geben den Text verlustfrei weiter.",
   "ask.export.copied": "Antwort inkl. Quellen kopiert.",
   "ask.export.answer": "Antwort",
   "ask.export.footer":
     "Quellengebundene Antwort aus KLARWERK · erstellt am {{date}}. Nur so belastbar wie die genutzten Quellen (Status/Vertrauen). Kein Wahrheitsversprechen.",
+  // R-1643: Entscheidungs-Protokoll — Zeitpunkt und Person des Exports.
+  "ask.export.protocol.heading": "Entscheidungs-Protokoll",
+  "ask.export.protocol.time": "Zeitpunkt (UTC)",
+  "ask.export.protocol.user": "Nutzer-ID",
+  "ask.export.protocol.userUnknown": "nicht angemeldet – keine Kennung vorhanden",
+  "ask.export.protocol.argumentation": "Argumentationskette",
+  "ask.export.protocol.supportedBy": "belegt durch",
+  "ask.export.protocol.argumentationMissing":
+    "Für diese Antwort liegt keine Argumentationskette vor. Die Quellenliste ersetzt sie nicht.",
   "ask.sourcesHint":
     "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Vertrauen, Nutzbarkeit). Aufgeführt sind alle Quellen, die für die Frage herangezogen wurden; welche davon die Antwort getragen haben, ist gekennzeichnet. Zum Wissensobjekt für Details.",
   // AUFTRAG-mega52 A3/A5 — die Antwort sagt, worauf sie steht. Die Marken des Modells werden
@@ -2832,6 +2874,12 @@ const de = {
     "Die zuerst genannten Quellen haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet.",
   "ask.attribution.unknown":
     "Welche dieser Quellen die Antwort getragen hat, ließ sich nicht zuordnen — die KI hat keine verwertbaren Quellenverweise geliefert. Die Liste zeigt deshalb alle herangezogenen Quellen ohne Kennzeichen, und ein „Hat geholfen“ ist hier nicht möglich.",
+  // R-0310/R-0325 (Ben zu 8e6c9d73): die Antwort ist zurückgehalten, weil sich kein Absatz einer
+  // Quelle zuordnen ließ. Zuordnung unbekannt macht einen unbelegten Absatz nicht ausgabefähig.
+  // R-0310: der Chip „+N" unter der Antwort — sein zugänglicher Name.
+  "ask.quellen.weitere": "{{count}} weitere Quellen anzeigen",
+  "ask.zuordnungUnbekannt":
+    "Keine Antwort angezeigt: Sie ließ sich keiner Quelle zuordnen. Ein Absatz ohne Beleg wird nicht ausgegeben.",
   // JOB 3267 Q1 — DREI ZUSTÄNDE, DREI WÖRTER, UND EIN VIERTES FÜR DEN PRÜFSTAND.
   // Bis hierher gab es zwei Wörter („trägt"/„angesehen") für eine Frage, die drei Antworten hat;
   // der dritte Zustand („wir wissen es nicht") stand nur als Satz ÜBER der Liste und fehlte an der
@@ -2950,6 +2998,11 @@ const de = {
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
   "ask.verschlossen.stufe": "Stufe fehlt",
+  // R-0303: dasselbe Wort wie die Validierung beim Anlegen (services/capture/src/service.ts,
+  // ko-routes.ts: „Vertraulichkeitsstufe fehlt — …") — Antwortfläche und Validierung sprechen gleich.
+  // Die Torlage und der Belegbedarf einer Lücke rendern DIESEN Schlüssel; der kurze darüber bleibt
+  // als Bestandswert stehen (tests/i18n-textmodule/werte-vorher.json), wird aber nicht mehr gezeigt.
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertraulichkeitsstufe fehlt",
   "ask.verschlossen.stufeHint": "Für das Dokument ist keine Vertraulichkeitsstufe gesetzt.",
   "ask.verschlossen.volltext": "Kein durchsuchbarer Text",
   "ask.verschlossen.volltextHint": "Von diesem Dokument liegt noch kein durchsuchbarer Text vor.",
@@ -2998,6 +3051,106 @@ const de = {
     "Keine Quelle passt sicher genug zu dieser Frage, um eine Antwort zu tragen. Das heißt nicht zwingend, dass das Wissen fehlt — vielleicht steht es nur unter anderen Wörtern in der Basis. Beides ist eine Lücke, die ihr schließen könnt, kein Fehler.",
   "ask.contract.trustNote":
     "Vertrauen und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
+  // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit vom Server an der Antwort
+  // (components/fragen/Belastbarkeit.tsx). Die Gründe und Lagen sind die geschlossenen Mengen aus
+  // services/ask/src/answer-belastbarkeit.ts — je Wert genau ein Satz.
+  "ask.belastbarkeit.titel": "Wie belastbar ist das?",
+  "ask.belastbarkeit.lage.belegt": "Belegt",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt":
+    "Belegt — Verantwortliche Person nicht erreichbar",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Belegt — mit Widerspruch",
+  "ask.belastbarkeit.lage.wissensluecke": "Wissenslücke",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technischer Fehler",
+  "ask.belastbarkeit.lage.geschwaerzt": "Geschwärzt",
+  "ask.belastbarkeit.anzahl":
+    "{{tragend}} von {{herangezogen}} herangezogenen Quellen tragen die Antwort",
+  "ask.belastbarkeit.vertrauenswert":
+    "Vertrauenswert {{wert}} — so belastbar wie die schwächste tragende Quelle („{{quelle}}“). Dieselbe Zahl steht in der Bibliothek an diesem Eintrag.",
+  "ask.belastbarkeit.vertrauenswertKeiner":
+    "Kein Vertrauenswert: Es ist keine tragende Quelle bekannt.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Vertrauenswert {{wert}}",
+  "ask.belastbarkeit.stand": "Stand {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "validiert",
+  "ask.belastbarkeit.quelle.nichtValidiert": "nicht validiert",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Verantwortlich",
+  "ask.belastbarkeit.verantwortung.autor":
+    "Keine verantwortliche Person benannt, es gilt der Autor",
+  "ask.belastbarkeit.erreichbar.ja": "erreichbar",
+  "ask.belastbarkeit.erreichbar.nein": "nicht erreichbar",
+  "ask.belastbarkeit.erreichbar.unbekannt": "Erreichbarkeit unbekannt",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "Keine Quelle trägt eine Antwort auf diese Frage.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt":
+    "Welche Quelle die Antwort trägt, ist nicht bekannt.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert":
+    "Alle tragenden Quellen sind validiert.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "Mindestens eine tragende Quelle ist nicht validiert.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "Für mindestens eine tragende Quelle ist die Konfliktprüfung nicht vollständig belegt.",
+  "ask.belastbarkeit.grund.offener_konflikt":
+    "Eine tragende Quelle steht in einem offenen Widerspruch.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "Die Konfliktlage ließ sich nicht abfragen — das heißt nicht, dass keine besteht.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "Die verantwortliche Person ist nicht erreichbar (kein freigegebenes Konto). Das Wissen bleibt nutzbar; Rückfragen brauchen eine neue Zuständigkeit.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Ob die verantwortliche Person erreichbar ist, ließ sich nicht feststellen.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "Für mindestens eine Quelle ist keine verantwortliche Person benannt; es gilt der Autor.",
+  "ask.belastbarkeit.konflikt.titel": "Widerspruch — beide Seiten",
+  "ask.belastbarkeit.konflikt.seite": "Seite {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "trägt diese Antwort",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "Diese Seite ist für dich nicht einsehbar.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "Es wird keine Seite gewählt. Den Widerspruch entscheiden Menschen unter „Konflikte“.",
+  "ask.belastbarkeit.hinweis":
+    "Der Vertrauenswert sagt, wie belastbar die Quellen sind. Er ist keine Aussage darüber, ob etwas wahr ist.",
+  // R-1627 / R-0346: die aufklappbare Argumentationskette und der Zuschnitt (Belastbarkeit.tsx).
+  "ask.belastbarkeit.argumentation.titel": "So kommt die Antwort zustande",
+  "ask.belastbarkeit.argumentation.belegstelle": "Belegstelle: „{{stelle}}“",
+  "ask.belastbarkeit.argumentation.art.aussage": "Aussage",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Begriffe ergänzt aus dem Firmenwörterbuch — nicht Teil der Quellenbilanz und ohne Vertrauenswert:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Wörterbucheintrag {{id}}, Fassung {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Verantwortlich: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "Keine Verantwortung angegeben",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Belastbarkeit nicht bewertet",
+  "ask.belastbarkeit.argumentation.art.beziehung": "Belegte Beziehung",
+  "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "gehört zu",
+  "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "ergänzt",
+  "ask.belastbarkeit.argumentation.beziehung.ersetzt": "ersetzt",
+  "ask.belastbarkeit.argumentation.beziehung.widerspricht": "widerspricht",
+  "ask.belastbarkeit.argumentation.beziehung.beispiel_fuer": "ist ein Beispiel für",
+  "ask.belastbarkeit.argumentation.gesetztVon": "Beziehung gesetzt von {{wer}}",
+  "ask.belastbarkeit.argumentation.gestuetztAuf": "Gestützt auf: {{quellen}}",
+  "ask.belastbarkeit.argumentation.unabhaengig":
+    "Zwischen diesen Quellen ist keine Beziehung belegt — sie stehen unabhängig nebeneinander.",
+  "ask.belastbarkeit.argumentation.art.einwand": "Einwand aus einem offenen Widerspruch",
+  "ask.belastbarkeit.argumentation.art.vorbehalt": "Vorbehalt",
+  "ask.belastbarkeit.argumentation.art.schluss": "Schluss",
+  "ask.belastbarkeit.argumentation.einstufung.verified": "Einstufung: belegt",
+  "ask.belastbarkeit.argumentation.einstufung.unverified": "Einstufung: nicht vollständig belegt",
+  "ask.belastbarkeit.argumentation.einstufung.gap": "Einstufung: Wissenslücke",
+  "ask.belastbarkeit.wissensart.bauchgefuehl": "Bauchgefühl",
+  "ask.belastbarkeit.wissensart.best_practice": "Bewährte Vorgehensweise",
+  "ask.belastbarkeit.wissensart.lernkurve": "Lernkurve",
+  "ask.belastbarkeit.wissensart.technik": "Technik",
+  "ask.belastbarkeit.wissensart.negativwissen": "Negativwissen",
+  "ask.belastbarkeit.zuschnitt":
+    "Antwort und Erklärung zugeschnitten auf: {{rolle}}, Anlass {{anlass}}.",
+  "ask.belastbarkeit.rolle.viewer": "Lesende",
+  "ask.belastbarkeit.rolle.experte": "Expertin oder Experte",
+  "ask.belastbarkeit.rolle.controller": "Prüfende",
+  "ask.belastbarkeit.rolle.admin": "Verwaltung",
+  "ask.belastbarkeit.rolle.unbekannt": "unbekannte Rolle",
+  "ask.belastbarkeit.anlass.dokument": "Arbeit an einem Dokument",
+  "ask.belastbarkeit.anlass.frage": "freie Frage",
+  "ask.pruefrahmen.satz":
+    "Geprüft gegen {{umfang}}: {{verglichen}} passende Einträge wurden verglichen (höchstens {{hoechstens}} je Frage), keiner trägt eine Antwort.",
+  "ask.pruefrahmen.umfang.validiert": "nur validiertes, nicht vertrauliches Wissen",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "alles nicht vertrauliche Wissen",
+  "ask.pruefrahmen.woertlich": "Gesucht wurde wörtlich, ohne KI-Zusammenfassung.",
   // ==============================================================================================
   // JOB 3366 · KI-FRAGMENT-SICHTBAR — DER EINE SATZ AN EINER ABGESCHNITTENEN ANTWORT.
   // ==============================================================================================
@@ -3051,6 +3204,38 @@ const de = {
   // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk).
   "gap.privacyNotice":
     "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
+  // R-0307 / R-1061: das neutrale Etikett für Lücken ohne Sprachangabe (Altbestand) — immer wahr,
+  // weil der Titel die gestellte Frage im Wortlaut ist; es behauptet keine Sprache.
+  "gap.originalfrage": "Originalfrage",
+  // R-0333 / R-0753: die Häufigkeit derselben Frage, erst ab zwei.
+  "gap.askCount": "{{count}}× gefragt",
+  // N-0084: die Ausgangsfrage über dem Editor, wenn das Blatt aus einer Lücke geöffnet wurde.
+  "gap.ausgangsfrage": "Ausgangsfrage der Wissenslücke",
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde. Die drei Tore benutzen die
+  // Schlüssel `ask.verschlossen.*` — hier stehen nur die zwei Fälle ohne Tor.
+  "gap.belegbedarf.label": "Fehlender Beleg",
+  "gap.belegbedarf.wissensobjekt":
+    "Kein passendes Wissensobjekt gefunden — es fehlt eines, das die Frage beantwortet",
+  "gap.belegbedarf.unbestimmt": "Unbestimmt — welcher Beleg fehlt, lässt sich nicht herleiten",
+  // R-0773: die eigenen Suchen ohne Treffer (nur die eigene Liste).
+  "nulltreffer.titel": "Deine Suchen ohne Treffer",
+  "nulltreffer.hinweis":
+    "Zu diesen Begriffen hat deine Suche nichts gefunden, was du sehen darfst — ein Hinweis, wo Wissen fehlen könnte. Nur du siehst diese Liste.",
+  "nulltreffer.anzahl": "{{count}}× gesucht",
+  "nulltreffer.erfassen": "Wissen erfassen",
+  "nulltreffer.eingegrenzt":
+    "Nur innerhalb dieser Eingrenzung gesucht ({{filter}}) — kein Befund über den ganzen Bestand.",
+  "nulltreffer.feld.type": "Wissensart",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Kategorie",
+  "nulltreffer.feld.tag": "Schlagwort",
+  // R-1626 (ROADMAP 1.4): die kurze persönliche Liste der Themen mit Bus-Faktor 1.
+  "einzelquelle.titel": "Wissen, das nur bei dir liegt",
+  "einzelquelle.satz":
+    "Themen mit Bus-Faktor 1, deren sichtbares Wissen nur von dir stammt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}“ — möchtest du dazu jetzt fünf Minuten erzählen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Thema",
   "ask.toGaps": "Zu den Wissenslücken",
   "ask.toCapture": "Wissen erfassen",
   "ko.use.ready": "Produktionsnah nutzbar",
@@ -3755,6 +3940,7 @@ const de = {
   "ko.attachmentOriginalUnavailable": "Original nicht verfügbar",
   // JOB 3061 · H2 — die gemeinsame Prüffläche (vier Reiter, vier Menüorte).
   "pruefen.title": "Prüfen",
+  "pruefen.handeltAls": "Du prüfst als {{role}}",
   "pruefen.tab.offen": "Offen",
   "pruefen.tab.konflikte": "Konflikte",
   "pruefen.tab.duplikate": "Duplikate",
@@ -4039,6 +4225,10 @@ const de = {
   "start.livewall.photoRevoke": "Foto entfernen",
   "start.livewall.photoError":
     "Das Foto konnte nicht übernommen werden. Bitte ein PNG-, JPEG- oder WebP-Bild wählen.",
+  "start.livewall.consentError":
+    "Die Namenszustimmung wurde nicht gespeichert — es gilt weiter der angezeigte Stand. Bitte erneut umschalten.",
+  "start.livewall.photoRevokeError":
+    "Das Foto wurde nicht entfernt — es ist weiter freigegeben. Bitte erneut widerrufen.",
   "start.livewall.photoAlt": "Foto der Autorin oder des Autors",
   "start.livewall.photoOwnAlt": "Mein Foto für die Wand",
   "start.livewall.beamerOpen": "Als Beamer-Ansicht öffnen",
@@ -4156,6 +4346,8 @@ const de = {
   "con.openKo": "Objekt öffnen",
   "con.compareOpen": "Beide gegenüberstellen",
   "con.readonlyCompare": "Read-only-Vergleich",
+  // Aufnahme gesamt-konfliktboard (FR-CON-04): Name des Menüs mit allen offenen Fällen.
+  "con.caseList": "Alle offenen Konflikte ({{count}})",
   "con.detectedOn": "Erkannt am {{date}}",
   "con.evidenceSideLabel": "Beleg dieser Seite",
   // ==============================================================================================
@@ -4487,6 +4679,11 @@ const de = {
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
   "lib.lesemodus.listeAusblenden": "Trefferliste ausblenden",
   "lib.lesen.mehr": "Mehr",
+  "lib.lesen.belegstelle.markiert": "Belegstelle hervorgehoben.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "Die zitierte Belegstelle steht in dieser Fassung nicht wörtlich im Text.",
+  "lib.lesen.belegstelle.andereFassung":
+    "Die Belegstelle gehört zu Fassung {{fassung}}; hier steht Fassung {{aktuell}}. Nichts ist hervorgehoben.",
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
   "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",
@@ -5269,6 +5466,14 @@ const de = {
   "risk.pflege.retirementTitle": "Ruhestandshorizonte",
   "risk.pflege.retirement": "Ruhestandshorizont von {{name}}",
   "risk.pflege.noRetirement": "Kein Ruhestand eingetragen",
+  "risk.pflege.retirementSaved": "Ruhestandshorizont von {{name}} gespeichert.",
+  "risk.pflege.retirementNotRefreshed":
+    "Gespeichert. Die Anzeige für {{name}} ist noch nicht aufgefrischt — die Auswahl zeigt den gespeicherten Wert.",
+  "risk.pflege.profileSaved": "Bereichsprofil „{{category}}“ gespeichert.",
+  "risk.pflege.profileError":
+    "Bereichsprofil „{{category}}“ wurde nicht gespeichert. Deine Eingaben bleiben stehen — „Speichern“ versucht es erneut.",
+  "risk.pflege.retirementError":
+    "Ruhestandshorizont von {{name}} wurde nicht gespeichert. Deine Auswahl bleibt stehen — „Erneut versuchen“ speichert sie noch einmal.",
   "risk.busLegendSingle": "rot = Einzelquelle (Ausfallrisiko)",
   "risk.busLegendOk": "grün = mehrere Quellen",
   "risk.help.summary":
@@ -5338,6 +5543,14 @@ const de = {
   "risk.close": "Schließen",
   "risk.closeWithTitle": "Mit dem Wissensobjekt schließen, das diese Lücke beantwortet",
   "risk.closeFailed": "Nicht geschlossen — das Wissensobjekt fehlt oder liegt im Papierkorb.",
+  "risk.gapToast.closed": "Lücke geschlossen.",
+  "risk.gapToast.assigned": "Lücke zugewiesen.",
+  "risk.gapToast.assignFailed": "Nicht zugewiesen — bitte erneut auswählen.",
+  "risk.gapToast.removed": "Lücke gelöscht.",
+  "risk.gapToast.removeFailed":
+    "Nicht gelöscht — die Lücke bleibt bestehen. Bitte erneut versuchen.",
+  "risk.gapToast.prioritySaved": "Priorität gespeichert.",
+  "risk.gapToast.priorityFailed": "Priorität nicht gespeichert — bitte erneut auswählen.",
   "risk.assign": "Experte …",
   "risk.delete": "Löschen",
   "risk.gapNextLabel": "Nächster Schritt",
@@ -5359,6 +5572,10 @@ const de = {
   "lcy.assetPlaceholder": "Anlagen-/Prozess-Referenz (z. B. Presse-P2)",
   "lcy.assetTrigger": "Revalidierung auslösen",
   "lcy.assetMarked": "{{n}} Objekt(e) für „{{asset}}“ zur Prüfung markiert.",
+  "lcy.toast.revalidateFailed":
+    "Nicht bestätigt — der Eintrag bleibt fällig. Bitte erneut versuchen.",
+  "lcy.toast.stepDone": "Lernschritt als erledigt gespeichert.",
+  "lcy.toast.stepFailed": "Lernschritt nicht gespeichert — bitte erneut abhaken.",
   "lcy.pendingTitle": "Zur Re-Validierung",
   "lcy.revalAsset": "Anlagenbezug",
   "lcy.revalNextLabel": "Nächster Schritt",
@@ -5437,6 +5654,10 @@ const de = {
   "adm.resetConfirm": "Zurücksetzen",
   "adm.resetCancel": "Abbrechen",
   "adm.resetDone": "Passwort zurückgesetzt; alle Sitzungen beendet.",
+  // R-0582 (DS13): der Admin berichtigt Name und E-Mail eines Kontos.
+  "adm.correct": "Kontodaten berichtigen",
+  "adm.correctSave": "Kontodaten speichern",
+  "adm.correctDone": "Kontodaten berichtigt.",
   // JOB 4021 (ERSTEINRICHTUNG-GAST T2): die Befristung eines Zugangs — sehen, setzen, verlängern,
   // beenden. Eigenes Präfix, eigene Schlüssel; kein bestehender Satz wird umgewidmet.
   "adm.gastfrist.titel": "Zugang gültig bis",
@@ -5494,6 +5715,8 @@ const de = {
   "empty.cta.library": "Zur Bibliothek",
   "empty.cta.validation": "Zur Validierung",
   "empty.cta.tasks": "Zu meinen Aufgaben",
+  "empty.cta.wissensnetz": "Zum Wissensnetz",
+  "empty.cta.ask": "Eine Frage stellen",
   "story.rescue.title": "Klarwerk sichert Erfahrungswissen, bevor es verloren geht.",
   "story.honest":
     "Nichts wird automatisch validiert — Wissen gilt erst nach der Prüfung im Team als gesichert.",
@@ -5505,6 +5728,48 @@ const de = {
     "Noch kein Wissen zum Nachschlagen. Erfasse den ersten Beitrag — nach der Prüfung wird er hier quellengebunden nutzbar.",
   "story.surface.validation.lead":
     "Nichts zu prüfen. Erfasstes Wissen erscheint hier zur Team-Prüfung, bevor es als gesichert gilt und genutzt werden kann.",
+  "story.surface.gaps.lead":
+    "Eine Lücke entsteht, wenn eine Frage keine gesicherte Antwort findet. Gerade ist keine offen — wer fragt, deckt neue auf; wer erfasst, schließt sie.",
+  "story.surface.lifecycle.lead":
+    "Beiträge werden hier fällig, wenn ihre Prüffrist abläuft oder eine gemeldete Anlagenänderung sie betrifft. Gerade ist nichts fällig — eine Anlagenänderung lässt sich darunter melden.",
+  "story.surface.duplicates.lead":
+    "Eine Überschneidung entsteht, wenn zwei Beiträge dasselbe sagen. Gerade ist keine offen — neue erscheinen hier, sobald Erfasstes geprüft wird.",
+  "story.surface.audit.lead":
+    "Noch keine protokollierten Aktionen. Das Protokoll hält fest, wer im Wissenskreis erfasst, prüft und ändert — es füllt sich mit dem ersten erfassten oder geprüften Beitrag.",
+  "story.surface.neighborhood.lead":
+    "Dieser Beitrag teilt noch kein aussagekräftiges Schlagwort mit einem anderen. Im Wissensnetz siehst du, welche Themen schon verbunden sind; neues Wissen mit passenden Schlagwörtern verknüpft ihn mit Nachbarn.",
+  "story.surface.risk.lead":
+    "Noch keine Risikodaten — dafür braucht es erfasstes Wissen je Bereich. Erfasse oder importiere Erfahrungswissen; danach zeigt diese Liste, wo es nur an einer Person hängt.",
+  "story.surface.objekt.lead":
+    "Zu diesem Beitrag liegt hier noch nichts vor. Ergänzungen wie Quellen, Anhänge und Kommentare machen ihn verlässlicher — öffne ihn zum Ergänzen oder frag nach, was fehlt.",
+  "story.surface.entwuerfe.lead":
+    "Noch keine Entwürfe. Ein Entwurf hält fest, was du erfasst, bevor das Team es prüft — beginne mit einem neuen Beitrag.",
+  "story.surface.verwaltung.lead":
+    "Hier ist noch nichts angelegt. Die Verwaltung hält Klarwerk aktuell — Einträge entstehen, sobald im Betrieb etwas eingerichtet, gesichert oder gelöscht wird.",
+  "story.surface.auswertung.lead":
+    "Für diese Auswertung liegt noch nichts vor. Sie entsteht aus geprüftem Wissen — der nächste Schritt ist, Beiträge zu erfassen und prüfen zu lassen.",
+  "story.surface.import.lead":
+    "Noch nichts zum Übernehmen. Ein Import holt vorhandenes Wissen aus einer Quelle in den Kreis — wähle eine Quelle oder lade eine Datei hoch.",
+  "story.surface.anleitung.lead":
+    "Hier steht noch kein Inhalt. Arbeitsanleitungen bündeln geprüftes Wissen zu Schritten — ergänze sie um Bausteine aus der Bibliothek.",
+  "story.surface.spaces.lead":
+    "Dieser Raum ist noch leer. Räume ordnen Beiträge nach Zuständigkeit — verschiebe einen Beitrag hierher oder erfasse einen neuen.",
+  "story.surface.ausgang.lead":
+    "Nichts wartet auf die Ausgangsprüfung. Hier landet, was Klarwerk nach außen geben soll — sobald jemand einen Beitrag zur Weitergabe vorlegt.",
+  "story.surface.wissensnetz.lead":
+    "Noch keine Verbindungen. Das Wissensnetz zeigt, wie Beiträge über Schlagwörter zusammenhängen — vergib beim Erfassen passende Schlagwörter.",
+  "story.surface.meldungen.lead":
+    "Gerade nichts zu melden. Hier erscheint, was deine Aufmerksamkeit braucht — Konflikte, Lücken und fällige Prüfungen.",
+  "story.surface.horizont.lead":
+    "Im gewählten Zeitraum geht niemand mit Einzelwissen in den Ruhestand. Halte die Ruhestandshorizonte in der Pflege aktuell, damit dieser Blick stimmt.",
+  "story.surface.lernpfad.lead":
+    "Für deine Rolle ist noch kein Lernpfad hinterlegt. Er führt durch das wichtigste geprüfte Wissen — bis dahin hilft die Bibliothek.",
+  "story.surface.hilfe.lead":
+    "Für diese Seite gibt es noch keine eigene Seitenhilfe. Die Hilfe erklärt Klarwerk Schritt für Schritt — sie ist über das Hilfe-Kapitel im Menü erreichbar.",
+  "story.surface.gliederung.lead":
+    "Dieser Beitrag hat noch keine Überschriften. Überschriften gliedern Wissen, damit andere es schnell finden — setze sie im Editor.",
+  "story.surface.conflicts.lead":
+    "Konflikte klärt das Team beim Prüfen. Gerade ist keiner offen — neue erscheinen hier, sobald sich zwei Beiträge widersprechen.",
   "adm.auditTitle": "Letzte Nutzer-/Auth-Aktivitäten (Audit)",
   "adm.auditEmpty": "Keine Nutzer-Audit-Einträge.",
   "prof.kicker": "Konto",
@@ -5515,6 +5780,17 @@ const de = {
   "prof.passwordSubmit": "Passwort ändern",
   "prof.passwordChanged":
     "Passwort geändert. Aus Sicherheitsgründen wurdest du überall abgemeldet — bitte neu anmelden.",
+  // R-0582 (DS13): Kontodaten selbst berichtigen.
+  "prof.correctTitle": "Kontodaten berichtigen",
+  "prof.correctPassword": "Aktuelles Passwort (nur bei neuer E-Mail)",
+  "prof.correctSubmit": "Kontodaten speichern",
+  "prof.correctSaved": "Kontodaten gespeichert.",
+  "prof.correctUnchanged": "Nichts geändert.",
+  "prof.correctSso": "Stattdessen mit SSO bestätigen",
+  "prof.correctSaml": "Stattdessen mit SAML-Firmen-Login bestätigen",
+  "prof.correctSsoConfirmed": "Identität per SSO bestätigt — jetzt die Kontodaten speichern.",
+  "prof.correctSsoKontoGewechselt":
+    "Bei der SSO-Bestätigung wurde ein anderes Konto angemeldet. Der Entwurf des vorherigen Kontos wurde verworfen; hier stehen die Daten des jetzt angemeldeten Kontos.",
   "help.kicker": "Hilfe",
   "help.open": "Hilfe öffnen",
   "help.openCenter": "Im Hilfe-Center öffnen",
@@ -5550,6 +5826,10 @@ const de = {
   "klara.aiBusy": "Die KI liest die passenden Hilfe-Einträge …",
   "klara.aiAnswerTitle": "KI-Antwort aus der Hilfe",
   "klara.aiDisclaimer": "KI-generiert — nicht zu 100 % geprüft",
+  // R-0604 (Aufnahme gesamt-ki-kennzeichnung): die Herkunft der Hilfeantwort beim regelbasierten
+  // Rückfall — dort hat kein Modell geschrieben, „KI-Antwort" und „KI-generiert" wären falsch.
+  "klara.helpAnswerTitle": "Antwort aus der Hilfe",
+  "klara.ohneModell": "Regelbasiert, ohne KI-Modell",
   "klara.aiGoto": "Zum Bereich: {{target}}",
   "klara.aiSources": "Grundlage",
   "klara.aiEmpty":
@@ -6014,6 +6294,24 @@ const de = {
   "mob.photo": "Foto",
   "mob.interview": "Interview",
   "mob.lookup": "Nachschlagen",
+  // FR-MOB-02 / FR-CAP-04: Erfassungsart Notiz/Interview und Fotos am Handy. Die Interviewfragen
+  // sind wörtlich die feste Folge des Servers (services/reasoner/src/provider.ts, INTERVIEW_QUESTIONS).
+  "mob.modusGruppe": "Erfassungsart",
+  "mob.modusGesperrt": "Erst speichern oder leeren, dann die Erfassungsart wechseln.",
+  "mob.iv.frage1": "Worum geht es? Formuliere die Kernaussage in einem Satz.",
+  "mob.iv.frage2": "Unter welchen Bedingungen oder ab wann gilt das?",
+  "mob.iv.frage3": "Welche Maßnahme oder Konsequenz folgt daraus?",
+  "mob.iv.frage4": "Welche Stichworte/Tags helfen beim Wiederfinden? (kommagetrennt)",
+  "mob.iv.fortschritt": "Frage {{nummer}} von {{gesamt}}",
+  "mob.iv.weiter": "Nächste Frage",
+  "mob.iv.zurueck": "Vorige Frage",
+  "mob.iv.hinweis": "Jede Antwort steht sofort im Entwurf — speichern geht nach jeder Frage.",
+  "mob.foto.kamera": "Kamera",
+  "mob.foto.mediathek": "Mediathek",
+  "mob.foto.entfernen": "Foto entfernen",
+  "mob.foto.fehler": "Das Foto konnte nicht gelesen werden.",
+  "mob.foto.max": "Höchstens {{max}} Fotos je Entwurf.",
+  "mob.foto.inArbeit": "Foto wird vorbereitet … gespeichert werden kann gleich.",
   "mob.editing": "Entwurf wird fortgesetzt.",
   "mob.formTitle": "Kernaussage",
   "mob.formStatement": "Was ist passiert / was gilt?",
@@ -6751,6 +7049,15 @@ const de = {
   // Erklärsatz — nur die Wörter, die auf der Fläche stehen. Die Erklärungen leben unverändert in
   // `chelp.*` und erscheinen im „?"-Menü.
   "erfassen.werkzeug.diktieren": "Diktieren",
+  // Aufnahme gesamt-sprachassistent (R-0104): Sprechen über das Browser-Diktat hinaus — die
+  // Aufnahme wird vom Server verschriftlicht (`lib/sprachaufnahme.ts`).
+  "sprachaufnahme.start": "Aufnehmen",
+  "sprachaufnahme.stop": "Aufnahme beenden",
+  "sprachaufnahme.frage": "Frage aufnehmen und verschriftlichen",
+  "sprachaufnahme.verarbeitet": "Wird verschriftlicht …",
+  "sprachaufnahme.keinMikrofon":
+    "Kein Zugriff auf das Mikrofon. Bitte im Browser erlauben oder den Text eintippen.",
+  "sprachaufnahme.fehler": "Die Aufnahme konnte nicht verschriftlicht werden.",
   "erfassen.werkzeug.bild": "Bild",
   "erfassen.werkzeug.datei": "Datei",
   "erfassen.werkzeug.ki": "KI",
@@ -7151,6 +7458,18 @@ const de = {
   // Fläche anders formuliert wäre, wäre weder klar noch unterscheidbar — und ein zweiter Wortlaut
   // wäre eine zweite Wahrheit über dasselbe Produkt.
   "ai.generatedNotice": "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
+  // R-0603 / R-0604: der DAUERHAFTE Satz an Auslösern und KI-Flächen. Er sagt, dass hier eine KI
+  // mitarbeiten kann — nicht, dass etwas erzeugt wurde. Das sagt `ai.generatedNotice`, und zwar
+  // nur am Ergebnis, das ein Modell wirklich geschrieben hat.
+  "ai.surfaceNotice":
+    "Hier kann eine KI mitarbeiten — von ihr erzeugte Inhalte sind gekennzeichnet.",
+  // R-1020 / R-1695 (Grundsatz G-3): die drei Stufen jedes Ergebnisses. Der Entwurf trägt den
+  // Wortlaut der Quelle. `reasoner.draftLabel` bleibt als Bestandstext unverändert stehen.
+  // Die Empfehlung sagt „ungeprüft" statt „nicht validiert": JOB 2660 hält fest, dass auf einer
+  // Fläche ohne geprüfte Quelle das Wort „validiert" GAR NICHT steht — auch nicht verneint.
+  "ergebnisStufe.entwurf": "Reasoner-Entwurf, nicht validiert",
+  "ergebnisStufe.empfehlung": "Empfehlung, ungeprüft",
+  "ergebnisStufe.validiert": "Validiert",
 
   // ==============================================================================================
   // AUFTRAG-mega62 BLOCK F — DER KOSTENHINWEIS AN JEDER AUSLÖSESTELLE.
@@ -7634,6 +7953,25 @@ const de = {
   // DIE ZAHL GEHÖRT IN DEN SATZ: „unvollständig" allein lässt offen, ob ein Satz oder ein halbes
   // Dokument fehlt. Titel und Kennung des geschützten Eintrags stehen ausdrücklich nicht dabei.
   "ga.liste.unvollstaendig": "Unvollständig für dich – nicht zugängliche Abschnitte: {{anzahl}}",
+  // ARBEITSWEGE AM SELBEN ARTIKEL (produkt:20261007:arbeitswege-objekt): der Objektbezug aus der
+  // Adresse (`lib/objektbezug.ts`) — in Prüfen, Fragen, Lesen und bei Klara mit denselben Worten.
+  "arbeitsweg.pruefen.sucht": "Der aufgerufene Beitrag wird in der Prüfliste gesucht …",
+  "arbeitsweg.pruefen.fehlt":
+    "Der aufgerufene Beitrag steht in dieser Ansicht nicht zur Prüfung (schon entschieden oder weggefiltert). Angezeigt wird der nächste offene Beitrag.",
+  "arbeitsweg.pruefen.lesen": "Aufgerufenen Beitrag öffnen",
+  "arbeitsweg.pruefen.entschieden": "Entschieden: „{{titel}}“ –",
+  "arbeitsweg.pruefen.oeffnen": "Beitrag mit aktuellem Stand öffnen",
+  "arbeitsweg.pruefen.standOffen":
+    "Stand laut Server: weiter in Prüfung, {{gruen}} von {{noetig}} Freigaben.",
+  "arbeitsweg.pruefen.standRaus": "Stand laut Server: nicht mehr in der Prüfliste.",
+  "arbeitsweg.pruefen.weiter": "jetzt in Prüfung: „{{titel}}“",
+  "arbeitsweg.fassung": "Fassung {{fassung}}",
+  "arbeitsweg.fragen.bezug": "Frage zum Beitrag „{{titel}}“",
+  "arbeitsweg.fragen.zurueck": "Zurück zum Beitrag",
+  "arbeitsweg.lesen.fassungAbweichend":
+    "Du kommst aus Fassung {{genannt}}; dieser Beitrag steht inzwischen in Fassung {{aktuell}}.",
+  "arbeitsweg.klara.label": "Beitrag",
+  "arbeitsweg.klara.chat": "In „Fragen“ zu diesem Beitrag weiterfragen",
 };
 
 export { de };

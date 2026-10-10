@@ -2,9 +2,14 @@ import { Pool } from "pg";
 import { ANSWER_SNAPSHOT_SCHEMA, ASK_SCHEMA } from "../../ask";
 import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
-import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
+import {
+  CAPTURE_CREATE_OPERATION_SCHEMA,
+  CAPTURE_INDEX_SCHEMA,
+  CAPTURE_SCHEMA,
+} from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { vorratsKonfiguration } from "../../db-tx";
+import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   DOKUMENTAKTE_SCHEMA,
@@ -55,18 +60,39 @@ import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter"
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
 // Instanztrennung: die eine Zeile, die diese Datenbank an genau eine Anlage bindet.
 import { INSTANZBINDUNG_SCHEMA } from "./instanzbindung";
+// R-0466: das Interaktionsgedächtnis (frühere Fragen, Antworten, Vorlieben je Konto). Im
+// App-Wurzelverzeichnis wie die Live-Wand-Fotos: ein eigener Datenraum, den kein Fachmodul besitzt.
+import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
+import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
 import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
+// Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
+// sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
+import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
+// Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
+import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
+// produkt:20261009:admin-teams: die Fassungen der Teams — neben den Spaces, die sie binden.
+import { TEAMS_SCHEMA } from "./teams";
+// R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte und zusätzlich angelegte Sprachen.
+import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
+// ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
+import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
+import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
+import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
+import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -177,6 +203,10 @@ export const schemas = [
   // `CREATE UNIQUE INDEX IF NOT EXISTS`), und die Datenmigration ist leer: kein Bestandsentwurf
   // trägt `createOperation`, jede vorhandene Zeile fällt durch das partielle `WHERE`.
   CAPTURE_CREATE_OPERATION_SCHEMA,
+  // R-1133: der technische Index der Entwürfe als Spalten an `drafts` — ZWANG zur Stellung nach
+  // `CAPTURE_SCHEMA` (ALTERt `drafts`) und nach `KO_SCHEMA` (pg_trgm für den Trigramm-Index).
+  // Additiv und wiederholbar; die Datenmigration ist leer, der Altbestand wird nachgezogen.
+  CAPTURE_INDEX_SCHEMA,
   ASK_SCHEMA,
   // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT
   // nach ASK_SCHEMA, weil sie demselben Modul gehoeren; auch hier gibt es keinen technischen
@@ -234,6 +264,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; sie
   // steht am Ende, weil das die lesbare Ordnung ist.
   KO_BEARBEITUNG_SCHEMA,
+  // produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände von Office
+  // im Artikel. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und
+  // ohne Extension; die Stellung ist die lesbare Ordnung neben dem Bearbeitungshinweis.
+  OFFICE_ABLAGE_SCHEMA,
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
   // Ende, weil das die lesbare Ordnung ist.
@@ -264,9 +298,44 @@ export const schemas = [
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   LIVEWALL_FOTO_SCHEMA,
+  // R-0466: das Interaktionsgedächtnis. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  GEDAECHTNIS_SCHEMA,
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  VERANTWORTUNG_NACHFOLGE_SCHEMA,
+  // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
+  EMBEDDING_SCHEMA,
+  // Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das
+  // die lesbare Ordnung ist.
+  LOESCHANTRAG_SCHEMA,
+  // produkt:20261009:admin-teams: die unveränderlichen Fassungen der Teams. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  TEAMS_SCHEMA,
+  // R-1034 / FR-I18N-02: die Übersetzungspflege. Additiv und wiederholbar (zwei CREATE TABLE IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  UEBERSETZUNGEN_SCHEMA,
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und ihr Handlungsprotokoll. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  UNTERNEHMEN_SCHEMA,
+  // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
+  // lesbare Ordnung ist.
+  KLARA_GESPRAECH_SCHEMA,
+  // R-1656: der Co-Reading-Zähler. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS),
+  // ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  MITGELESEN_SCHEMA,
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer
+  // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VEROEFFENTLICHUNG_SCHEMA,
   // Instanztrennung (R-0597/R-0790/R-0860): die eine Bindungszeile Datenbank → Anlage. Additiv und
   // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed — die
-  // Zeile schreibt erst der Start (`bindeInstanz` in server.ts), nicht die Migration.
+  // Zeile schreibt erst der Start (`bindeInstanzVorMigration` in server.ts, VOR dieser Liste); hier
+  // ist die Stufe danach ein No-op und hält Migrationsbeleg und Restore-Drill vollständig.
   INSTANZBINDUNG_SCHEMA,
 ];
 
