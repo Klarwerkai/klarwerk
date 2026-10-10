@@ -545,6 +545,14 @@ const REGISTER: Record<string, Eintrag> = {
       "Sitzung: sichtbarkeitsfilterFuer(betrachter); Schlüssel: sichtbarkeitsfilterFuer(schluessel" +
       "Betrachter(offeneSpaces)); ask wendet die Grundlage an, dropConfidential bleibt daneben.",
   },
+  // R-1630 / R-2176: der Antwortvergleich gibt Antworttexte, Titel und (nur freigegebene)
+  // Kernaussagen aus — heutige und damalige Fassung gehen beide durch `sichtbarkeitsfilterFuer`.
+  "POST /api/ask/vergleich": {
+    urteil: "PRAEDIKAT",
+    grund:
+      "Kandidaten und damalige Fassungen durch sichtbarkeitsfilterFuer, danach dropConfidential " +
+      "bzw. !isConfidential an der damaligen Fassung (ask/src/service.ts, vergleicheWissensstand).",
+  },
   // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
   // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
   // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`
