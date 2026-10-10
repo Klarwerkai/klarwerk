@@ -69,9 +69,12 @@ const PORT_ZUSTAND = 3124;
  * `arbeitswege-objekt-browser` reicht Beiträge ein und entscheidet an ihnen; im geteilten Server
  * füllte das das Prüf-Board, das `ui-smoke` leer erwartet. `klara-kontext-artikel-browser`
  * (Klara 03) legt einen freigegebenen Beitrag an und stuft ihn vertraulich.
+ *
+ * produkt:20261010:fragen-pruefen-einstieg: die Rollenprobe reicht fiktive Beiträge ein und stellt
+ * an ihnen Rückfragen — aus demselben Grund wie `arbeitswege-objekt-browser`.
  */
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|fragen-pruefen-einstieg-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.
