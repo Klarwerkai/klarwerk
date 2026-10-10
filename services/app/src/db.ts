@@ -63,6 +63,8 @@ import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
 import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
+import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -72,11 +74,21 @@ import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 // Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
 // sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
 import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
+// Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
+import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
+// R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte und zusätzlich angelegte Sprachen.
+import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
+// ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
+import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
+import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
+import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -248,6 +260,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; sie
   // steht am Ende, weil das die lesbare Ordnung ist.
   KO_BEARBEITUNG_SCHEMA,
+  // produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände von Office
+  // im Artikel. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und
+  // ohne Extension; die Stellung ist die lesbare Ordnung neben dem Bearbeitungshinweis.
+  OFFICE_ABLAGE_SCHEMA,
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
   // Ende, weil das die lesbare Ordnung ist.
@@ -292,6 +308,23 @@ export const schemas = [
   // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das
   // die lesbare Ordnung ist.
   LOESCHANTRAG_SCHEMA,
+  // R-1034 / FR-I18N-02: die Übersetzungspflege. Additiv und wiederholbar (zwei CREATE TABLE IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  UEBERSETZUNGEN_SCHEMA,
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und ihr Handlungsprotokoll. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  UNTERNEHMEN_SCHEMA,
+  // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
+  // lesbare Ordnung ist.
+  KLARA_GESPRAECH_SCHEMA,
+  // R-1656: der Co-Reading-Zähler. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS),
+  // ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  MITGELESEN_SCHEMA,
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer
+  // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VEROEFFENTLICHUNG_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

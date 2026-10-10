@@ -41,6 +41,7 @@ import {
 } from "../app/useOfflineQueue";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 // JOB 3786: die Seitenhilfe dieser Fläche. `HelpTip` ZEICHNET NICHTS — er meldet Titel und Text
 // beim Sammler an (`shell/SeitenhilfeContext.tsx`), und das Zahnrad-Menü listet sie unter
 // „Seitenhilfe". Pedi (04.09.): „Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld."
@@ -1668,9 +1669,13 @@ export function Mobile(): JSX.Element {
                       ))}
                     </ul>
                     {queue.queue.length === 0 ? (
-                      <p data-testid="mob-eigene-leer" className="text-[11.5px] text-muted">
-                        {t("mob.konto.eigeneLeer")}
-                      </p>
+                      <>
+                        <p data-testid="mob-eigene-leer" className="text-[11.5px] text-muted">
+                          {t("mob.konto.eigeneLeer")}
+                        </p>
+                        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Kreis ein. */}
+                        {leerzustandsZeile(t, "entwuerfe")}
+                      </>
                     ) : null}
                     {/* KEINE TITEL, NUR ZAHLEN. Was ein anderes Konto offline erfasst hat, ist
                         seine Sache — hier steht nur, DASS etwas liegt und was damit geschieht
@@ -1720,7 +1725,10 @@ export function Mobile(): JSX.Element {
               ) : isGroupError([drafts]) ? (
                 <p className="text-[12.5px] text-trust-crit-text">{t("state.error")}</p>
               ) : serverEntwuerfe.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
+                  {leerzustandsZeile(t, "entwuerfe")}
+                </>
               ) : (
                 <ul className="space-y-1.5">
                   {serverEntwuerfe.map((d) => (

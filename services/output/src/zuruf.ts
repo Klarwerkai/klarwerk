@@ -315,7 +315,14 @@ export class ZurufService {
    * irgendetwas eingesammelt wird.** Ohne sie beruehrt dieser Aufruf weder den KO-Bestand noch den
    * Formulierer.
    */
-  async schlageVor(eingabe: ZurufEingabe): Promise<ZurufVorschlag> {
+  //
+  // R-1175: `sichtbar` ist die EINE Sichtbarkeitsentscheidung des Fragenden (von der Route aus
+  // `sichtbarkeitsfilterFuer`). Eine Quelle, die er nicht sehen darf, wird ausgelassen wie eine
+  // unbekannte; `dropConfidential` bleibt daneben die Egress-Sperre.
+  async schlageVor(
+    eingabe: ZurufEingabe,
+    sichtbar: (ko: KnowledgeObject) => boolean = () => true,
+  ): Promise<ZurufVorschlag> {
     if (!ZURUF_ARTEN.includes(eingabe.art)) {
       throw new ZurufError("UNKNOWN_ART", `Unbekannter Zuruf: ${eingabe.art}.`);
     }
@@ -348,7 +355,7 @@ export class ZurufService {
       );
     }
 
-    const quellen = await this.sammleQuellen(eingabe.koIds ?? []);
+    const quellen = await this.sammleQuellen(eingabe.koIds ?? [], sichtbar);
 
     const auftrag: ZurufAuftrag = {
       art: eingabe.art,
@@ -457,14 +464,17 @@ export class ZurufService {
    * seiner Quellenliste, ein Formulierungsvorschlag nicht. Er wird dann eben `frei` statt
    * `bestand` — und sagt das im Ergebnis.
    */
-  private async sammleQuellen(koIds: readonly string[]): Promise<KnowledgeObject[]> {
+  private async sammleQuellen(
+    koIds: readonly string[],
+    sichtbar: (ko: KnowledgeObject) => boolean,
+  ): Promise<KnowledgeObject[]> {
     if (koIds.length === 0) {
       return [];
     }
     const gefunden: KnowledgeObject[] = [];
     for (const id of koIds) {
       const ko = await this.koService.get(id);
-      if (ko && ko.status === "validiert") {
+      if (ko && ko.status === "validiert" && sichtbar(ko)) {
         gefunden.push(ko);
       }
     }

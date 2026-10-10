@@ -18,6 +18,15 @@ export {
 export { pruefnachweiseFuer, type AuditLeser } from "./src/pruefnachweis";
 // AUFTRAG-mega29 C3: der Ehrlichkeits-Satz des Herkunftsblocks (+ der Renderer, der ihn trägt).
 export { OUTPUT_NO_CHECK_NOTE, renderProvenance } from "./src/render";
+// aufnahme:20260922:gesamt-wissensvermaechtnis — die Beiträge einer Person als Vermächtnis-Buch.
+export {
+  VERMAECHTNIS_OHNE_THEMA,
+  erstelleVermaechtnisBuch,
+  istBeitragVon,
+  type VermaechtnisAusgelassen,
+  type VermaechtnisBuch,
+  type VermaechtnisEingabe,
+} from "./src/vermaechtnis";
 // produkt:wettbewerb:20261003:lernplattform — Übergabe an eine Lernplattform als SCORM-1.2-Paket.
 export {
   LmsExportService,

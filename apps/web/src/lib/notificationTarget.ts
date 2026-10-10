@@ -48,5 +48,9 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "frische") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
+  // Veröffentlichung: der Eintrag selbst — dort steht, welche Fassung veröffentlicht ist.
+  if (n.kind === "veroeffentlichung") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
   return null;
 }

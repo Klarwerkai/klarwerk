@@ -89,7 +89,9 @@ const CHEVRON = (
     height="12"
     viewBox="0 0 24 24"
     fill="none"
-    stroke="#9AA2B1"
+    // WCAG 1.4.11 (Audit nacharbeit-8): das Mockup-Grau #9AA2B1 maß am Mehr-Knopf 2,57:1; der Pfeil
+    // nimmt jetzt die Farbe seines Knopfes (Tinte-2, ≥ 4,5:1).
+    stroke="currentColor"
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"

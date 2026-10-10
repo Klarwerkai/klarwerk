@@ -131,6 +131,19 @@ export class SharePointSourceAdapter {
   }
 
   /**
+   * ADMIN-02 — DER VERBINDUNGSTEST: GENAU EINE Listenseite des Wurzelordners, nur Merkmale.
+   *
+   * Er beantwortet „nimmt die Gegenstelle den hinterlegten Zugang an und liefert sie diese
+   * Bibliothek aus?" mit dem kleinsten Abruf, der das belegt. Kein Inhalt, kein Folgecursor, kein
+   * Schreibeffekt — die Fehlerlagen reisen unverändert als `SharePointRequestError` nach oben.
+   * Zurück kommt nur die Zahl der gelesenen Einträge, keine Namen.
+   */
+  async pruefeVerbindung(): Promise<{ eintraege: number }> {
+    const { items } = await this.client.listeOrdnerSeite(undefined, null);
+    return { eintraege: items.length };
+  }
+
+  /**
    * R-0145/R-0190 — DIE ORDNER-INVENTUR EIN STÜCK WEITERFÜHREN.
    *
    * Liest Listenseiten — dem Graph-Cursor folgend, Unterordner auf allen Ebenen in die Warteschlange

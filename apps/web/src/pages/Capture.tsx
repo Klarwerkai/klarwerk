@@ -26,6 +26,7 @@ import {
   type DraftPayload,
   type ExternalResult,
   type ExtractedPoint,
+  type InterviewResearchPoint,
   type InterviewResult,
   KO_AUSSAGEARTEN,
   type KnowledgeObject,
@@ -66,6 +67,7 @@ import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
@@ -82,6 +84,7 @@ import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { Blatt } from "../components/erfassen/Blatt";
 import { NegativwissenFuehrung } from "../components/erfassen/NegativwissenFuehrung";
+import { ExterneQuelleKennung } from "../components/ko/ExterneQuelleKennung";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
 import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
@@ -168,7 +171,12 @@ import {
   wholeDocumentDraftPayload,
   wholeDraftFitsWithObjectLink,
 } from "../lib/captureFromFile";
-import { gapContextDraft, readGapId, resolveGapQuestion } from "../lib/captureFromGap";
+import {
+  gapContextDraft,
+  normalizeGapContext,
+  readGapId,
+  resolveGapQuestion,
+} from "../lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
 import { captureReadiness } from "../lib/captureReadiness";
 import { type DraftOrigin, originForSave, resumeTargetForDraft } from "../lib/captureResume";
@@ -248,9 +256,13 @@ import {
 import { type FotoAnker, applyFotoAnker, applyFotoArtikel } from "../lib/fotoInterview";
 import {
   CLEARED_DRAFT_INTERVIEW,
+  SKIPPED_ANSWER,
   appendAnswer,
+  interviewCanConfirm,
+  interviewDepthSections,
   interviewForDraft,
   interviewFromDraft,
+  interviewNodeKey,
   interviewSourceKey,
   isInterviewDone,
 } from "../lib/interviewFlow";
@@ -549,6 +561,11 @@ const BEISPIEL_TOR_TEXT = {
 export interface CaptureArbeitsraumProps {
   /** Die Ansicht, die das Blatt geöffnet hat. Ohne Angabe bleibt die Ruhelage `freitext`. */
   modus?: Mode | undefined;
+  /**
+   * AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema, zu dem das Blatt ein Lücken-Interview
+   * angeboten hat. Es wird erst mit „Interview starten" gesendet.
+   */
+  thema?: string | null | undefined;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn (Auftrag §5.2). */
   onEntwurfInsBlatt?: ((entwurfId: string) => void) | undefined;
   /**
@@ -566,6 +583,7 @@ export interface CaptureArbeitsraumProps {
 
 export function CaptureArbeitsraum({
   modus,
+  thema,
   onEntwurfInsBlatt,
   onZurueckInsBlatt,
   // KEIN Vorgabewert `= {}` an dieser Stelle: mit ihm wird der Prop-Parameter OPTIONAL, und
@@ -617,6 +635,10 @@ export function CaptureArbeitsraum({
   const gapId = readGapId(params);
   const gaps = useGaps();
   const gapContext = resolveGapQuestion(gapId, gaps.data);
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema eines Lücken-Interviews — das vom Blatt
+  // angebotene oder die aufgelöste Frage einer offenen Wissenslücke. Gleich begrenzt wie der
+  // Lücken-Startkontext.
+  const interviewThema = normalizeGapContext(thema ?? gapContext ?? "") || null;
   // JOB 3414: die Entwurfskennung der ADRESSE — abgeleitet aus demselben `params` wie `gapId`
   // (kein zweites `useSearchParams()`, keine eigene Zerlegung von `location.search`). Es ist
   // derselbe Abfrageschlüssel, den das Blatt liest (Blatt.tsx: `searchParams.get("draft")`);
@@ -1135,6 +1157,21 @@ export function CaptureArbeitsraum({
   // („Interview starten"). Solange false, wird KEIN ModelRun/Fetch ausgelöst — der Tabwechsel allein
   // sendet nichts an das Modell.
   const [ivStarted, setIvStarted] = useState(false);
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: jedes neu gestartete Interview läuft im Fragebaum
+  // (Restlückenwert, Spiegel, Abschluss nur durch den Menschen — R-0043/R-0113). `ivTopic` ist das
+  // feste Thema des Lücken-Interviews (R-0091). Ein fortgesetzter ALTER Entwurf ohne Baum-Kennung
+  // läuft in der bisherigen Fragenfolge weiter — seine Antworten gehören zu deren Reihenfolge.
+  const [ivTree, setIvTree] = useState(false);
+  const [ivTopic, setIvTopic] = useState<string | null>(null);
+  // R-0088: die ungeprüften Recherche-Prüfpunkte des Modells für dieses Interview.
+  const [ivResearch, setIvResearch] = useState<InterviewResearchPoint[]>([]);
+  // Bens Befund nacharbeit-6: die gewünschte Quellenrecherche ergab nichts (keine Quellen, Stufe
+  // gesperrt, vertraulich oder ohne KI-Modell) — die Fläche sagt das, statt zu schweigen.
+  const [ivRechercheLeer, setIvRechercheLeer] = useState(false);
+  // Bens Befund nacharbeit-8: dieses Sichern geschieht FÜR die Recherche — es bleibt im Interview
+  // (kein Wechsel ins Blatt, kein Räumen) und löst danach die Recherche mit der neuen Kennung aus.
+  const ivRechercheNachSichernRef = useRef(false);
+  const [ivConfirmed, setIvConfirmed] = useState(false);
   // AUFTRAG-mega6 Block C (bens ROT 3, zweiter Teil): laufende Nummer des aktuell GÜLTIGEN
   // Interview-Turns. Jeder Start erhöht sie, jedes Räumen (Save-Erfolg, Verwerfen) ebenfalls. Die
   // Mutation trägt ihre Nummer als Variable mit und schreibt ihr Ergebnis nur zurück, wenn sie noch
@@ -1317,6 +1354,8 @@ export function CaptureArbeitsraum({
   // Er kommt als Serverfeld (`ExtractResult.abgeschnitten`) und wird nie aus der Punkteliste oder
   // der `note` erraten. `null` heißt „nicht gemeldet", nicht „vollständig".
   const [fileAbgeschnitten, setFileAbgeschnitten] = useState<AbbruchBefund | null>(null);
+  // R-0157/R-1070: nie ausgewertete Dokumentteile dieses Laufs (`ExtractResult.ungelesenerRest`).
+  const [fileUngelesen, setFileUngelesen] = useState<string | null>(null);
   const [fileQueue, setFileQueue] = useState<FileDraftQueue | null>(null);
 
   // JOB 3572 Runde 2 (bens Korrekturpflicht 1): DIE EINE FORMEL für den Satz, den ein Fehler dem
@@ -1377,8 +1416,13 @@ export function CaptureArbeitsraum({
   // Die Entscheidung steht HIER und nicht in der Bedingung am Element: der Kasten unten ist Wort
   // für Wort derselbe wie in `BodyExtractPanel.tsx` (bewachte Fremddoppelung, JOB 2476 W1/F1) und
   // bleibt es.
+  // R-0157/R-1070 (Nacharbeit 1): ausgeblendet wird nur die ABGELEITETE Verarbeitungswarnung. Dass
+  // Teile des Dokuments nie gelesen wurden, ist eine eigene Tatsache, die der Anbieter-Hinweis
+  // nicht abdeckt — sie bleibt neben ihm stehen.
   const fileNoteSichtbar =
-    fragmentHinweisSichtbar && filePoints !== null && filePoints.length > 0 ? null : fileNote;
+    fragmentHinweisSichtbar && filePoints !== null && filePoints.length > 0
+      ? fileUngelesen
+      : fileNote;
 
   // FR-I18N-01: Reasoner-Aufrufe folgen der aktuellen UI-Sprache (Quelleninhalt bleibt original).
   const locale = toReasonerLocale(i18n.language);
@@ -1411,13 +1455,59 @@ export function CaptureArbeitsraum({
   // SCRUM-132: ein Interview-Turn — Antworten rein, nächste Frage + Draft raus.
   // AUFTRAG-mega6 Block C: der Turn reist mit seiner Laufnummer (`run`); veraltete Läufe werden im
   // Erfolgs- UND im Fehlerpfad verworfen, statt den inzwischen gültigen Zustand zu überschreiben.
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: das Interviewergebnis in Entwurf und Wissensseite
+  // übernehmen. Im Fragebaum geschieht das NUR über die ausdrückliche Bestätigung (`ivConfirm`);
+  // gespeichert wird danach weiterhin erst mit dem Speichern des Menschen. Die vertiefenden
+  // Antworten (Schwelle, Ausnahmen, Warum …) stehen wörtlich als eigene Abschnitte darunter.
+  const applyInterviewDraft = (res: InterviewResult, imageContext?: string): void => {
+    setDraft(res.draft);
+    setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
+    const articleLocale = normalizeDraftArticleLocale(i18n.language);
+    // R-1624: beim Foto-Interview steht der Bild-Anker schon im Rumpf — die Seite (Fehlerbild,
+    // Ursache, Lösung) wird darunter ANGEHÄNGT, nie überschrieben.
+    // SCRUM-384: sonst wie bisher — Interview fertig → gleiche Wissensseiten-Führung wie beim
+    // Freitext, nur in einen leeren Rumpf.
+    setBodyHtml((prev) =>
+      imageContext
+        ? applyFotoArtikel(prev, res.draft, articleLocale)
+        : prev.trim()
+          ? prev
+          : applyDraftArticle(
+              prev,
+              {
+                ...res.draft,
+                sections: interviewDepthSections(res.depth, (node) => t(interviewNodeKey(node))),
+              },
+              articleLocale,
+            ),
+    );
+    setWizStep("refine");
+  };
+
   const interview = useMutation({
-    mutationFn: (v: { answers: string[]; run: number; imageContext?: string }) =>
+    mutationFn: (v: {
+      answers: string[];
+      run: number;
+      tree: boolean;
+      topic: string | null;
+      research: InterviewResearchPoint[];
+      recherchieren?: boolean;
+      imageContext?: string;
+      // Bens Befund nacharbeit-8: die Kennung eines EBEN gesicherten Entwurfs — der Zustand
+      // `draftId` gilt in diesem Render noch nicht.
+      draftId?: string;
+    }) =>
       endpoints.reasoner.interview(
         v.answers,
         locale,
-        draftProvenance(confidentiality, undefined, draftId ?? undefined),
+        draftProvenance(confidentiality, undefined, v.draftId ?? draftId ?? undefined),
         v.imageContext,
+        {
+          tree: v.tree,
+          topic: v.topic,
+          research: v.research,
+          ...(v.recherchieren ? { recherchieren: true } : {}),
+        },
       ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
@@ -1425,22 +1515,19 @@ export function CaptureArbeitsraum({
       }
       setIvResult(res);
       setErr(null);
-      if (isInterviewDone(res)) {
-        setDraft(res.draft);
-        setTags((prev) => (prev.length > 0 ? prev : res.draft.tags));
-        const articleLocale = normalizeDraftArticleLocale(i18n.language);
-        // R-1624: beim Foto-Interview steht der Bild-Anker schon im Rumpf — die Seite (Fehlerbild,
-        // Ursache, Lösung) wird darunter ANGEHÄNGT, nie überschrieben.
-        // SCRUM-384: sonst wie bisher — Interview fertig → gleiche Wissensseiten-Führung wie beim
-        // Freitext, nur in einen leeren Rumpf.
-        setBodyHtml((prev) =>
-          v.imageContext
-            ? applyFotoArtikel(prev, res.draft, articleLocale)
-            : prev.trim()
-              ? prev
-              : applyDraftArticle(prev, res.draft, articleLocale),
-        );
-        setWizStep("refine");
+      // R-0088: die Recherche des Modells bleibt für die weiteren Turns stehen (sie wird
+      // zurückgereicht, damit nur einmal recherchiert wird) — als ungeprüfter Hinweis, nie im Entwurf.
+      if (res.research && res.research.length > 0) {
+        setIvResearch(res.research);
+      }
+      // Bens Befund nacharbeit-6: eine gewünschte Recherche, die nichts ergab, wird gesagt.
+      if (v.recherchieren) {
+        setIvRechercheLeer(!(res.research && res.research.length > 0));
+      }
+      // Im Fragebaum schließt der Server nie selbst ab — er bietet den Abschluss nur an. Das
+      // Foto-Interview (R-1624) und ein fortgesetzter Altentwurf schließen wie bisher selbst ab.
+      if (!v.tree && isInterviewDone(res)) {
+        applyInterviewDraft(res, v.imageContext);
       }
     },
     onError: (e, v) => {
@@ -1454,14 +1541,35 @@ export function CaptureArbeitsraum({
   // AUFTRAG-mega6 Block C: EINZIGER Einstieg in einen Interview-Turn. Vergibt die neue Laufnummer
   // und macht damit jeden vorher gestarteten Turn ungültig — es gibt keinen zweiten Weg, der die
   // Mutation ohne gültige Nummer auslösen könnte.
-  // R-1624: `befund` ist der Bildbefund des laufenden Foto-Interviews; der Start reicht ihn
-  // ausdrücklich herein, weil der eben gesetzte Zustand in diesem Render noch nicht gilt.
-  const runInterview = (answers: string[], befund: string | null = ivBefund): void => {
+  // R-1624: `befund` ist der Bildbefund des laufenden Foto-Interviews; Baum und Thema (AUFNAHME
+  // 20260922 · WISSEN-INTERVIEW) gehören ebenso zum Lauf. Der Start reicht alle drei ausdrücklich
+  // herein, weil die eben gesetzten Zustände in diesem Render noch nicht gelten.
+  const runInterview = (
+    answers: string[],
+    guide: {
+      tree: boolean;
+      topic: string | null;
+      befund: string | null;
+      research: InterviewResearchPoint[];
+      recherchieren?: boolean;
+      draftId?: string;
+    } = {
+      tree: ivTree,
+      topic: ivTopic,
+      befund: ivBefund,
+      research: ivResearch,
+    },
+  ): void => {
     ivRunRef.current += 1;
     interview.mutate({
       answers,
       run: ivRunRef.current,
-      ...(befund ? { imageContext: befund } : {}),
+      tree: guide.tree,
+      topic: guide.topic,
+      research: guide.research,
+      ...(guide.recherchieren ? { recherchieren: true } : {}),
+      ...(guide.draftId ? { draftId: guide.draftId } : {}),
+      ...(guide.befund ? { imageContext: guide.befund } : {}),
     });
   };
 
@@ -1508,6 +1616,7 @@ export function CaptureArbeitsraum({
       // JOB 3366: der Befund gehört zu DIESEM Lauf. Ein Lauf ohne Meldung setzt ihn zurück — der
       // Hinweis eines früheren Laufs neben einer neuen Punkteliste wäre eine Falschaussage.
       setFileAbgeschnitten(r.abgeschnitten ?? null);
+      setFileUngelesen(r.ungelesenerRest ?? null);
     },
     onError: fail,
   });
@@ -1824,6 +1933,7 @@ export function CaptureArbeitsraum({
       setFilePoints(null);
       setFileNote(null);
       setFileAbgeschnitten(null);
+      setFileUngelesen(null);
       setFileQueue(null);
       setFileWholeDraftSaved({
         id: savedDraftId,
@@ -2611,6 +2721,9 @@ export function CaptureArbeitsraum({
         // R-1624: der Foto-Kontext gehört zum Fortschritt — sonst liefe das Interview nach dem
         // Wiederöffnen als normales weiter.
         imageContext: ivBefund,
+        tree: ivTree,
+        topic: ivTopic,
+        confirmed: ivConfirmed,
       });
       // AUFTRAG-mega6 Block B: „wird aktualisiert" entscheidet, ob Leerwerte als Löschmarker mitgehen.
       const isDraftUpdate = Boolean(draftId);
@@ -2704,6 +2817,26 @@ export function CaptureArbeitsraum({
         : draftId
           ? t("capture.draftUpdated")
           : t("capture.draftSaved");
+      // Bens Befund nacharbeit-8: „Entwurf sichern und recherchieren" — gesichert ist jetzt, die
+      // Arbeit geht HIER weiter. Kennung und gesehener Stand gelten ab sofort (das nächste Sichern
+      // aktualisiert genau diesen Entwurf), dann läuft die Recherche mit genau dieser Kennung.
+      if (ivRechercheNachSichernRef.current) {
+        ivRechercheNachSichernRef.current = false;
+        // Bens Befund nacharbeit-9: lief das Sichern über den Grenzen-Dialog, hat der Mensch das
+        // Verwerfen der benannten, nicht sicherbaren Inhalte bestätigt — dieselben, die der
+        // gewöhnliche Abschluss unten räumt (Bilder, Dokumente, Trefferliste). Das Interview bleibt.
+        setImages([]);
+        setDocs([]);
+        setExtResults([]);
+        setExtListDropped(false);
+        setDraftId(_d.id);
+        loadedUpdatedAtRef.current = _d.updatedAt ?? null;
+        setStaleConflict(false);
+        setNotice(msg);
+        push("success", msg);
+        ivRecherchieren(_d.id);
+        return;
+      }
       // Bugfix (Pedi 04.07.): nach dem Speichern ist die Eingabe leer/neu — der Entwurf liegt in
       // „Entwürfe fortsetzen"; Weiterarbeiten läuft bewusst über „Fortsetzen".
       setRaw("");
@@ -2793,6 +2926,9 @@ export function CaptureArbeitsraum({
       onEntwurfInsBlatt?.(_d.id);
     },
     onError: (e) => {
+      // Bens Befund nacharbeit-8: gescheitertes Sichern — keine Recherche, der nächste Speichervorgang
+      // ist wieder ein gewöhnlicher.
+      ivRechercheNachSichernRef.current = false;
       // R-0020: bei eindeutiger Ablehnung ist nichts entstanden — der nächste Versuch ist neu.
       // entscheidung:14ce8681: ebenso, wenn der Server das Fortschreiben abgelehnt hat.
       if (
@@ -2969,6 +3105,9 @@ export function CaptureArbeitsraum({
       // R-1624: Foto-Interview bleibt Foto-Interview — weitere Turns tragen den Befund, und die
       // Wissensseite wird beim Abschluss unter dem gesicherten Bild-Anker ergänzt.
       setIvBefund(iv.imageContext);
+      setIvTree(iv.tree);
+      setIvTopic(iv.topic);
+      setIvConfirmed(iv.confirmed);
       // JOB 3414: der Fortschritt kommt IMMER zurück (nichts geht verloren) — die ANSICHT wechselt
       // nur dann von selbst ins Interview, wenn der Mensch keine ausdrücklich gewählt hat. Sonst
       // stünde er nach „Formular (Experten)" im Interview, und der Modus-Abgleich weiter unten
@@ -3045,6 +3184,7 @@ export function CaptureArbeitsraum({
     purgeUnselectedRef.current = false;
     setFileNote(null);
     setFileAbgeschnitten(null);
+    setFileUngelesen(null);
     setFileQueue(null);
     setFileWholeDraftSaved(null);
     // LAUF 6 RUNDE 2: ohne Datei gibt es keinen ausstehenden Datei-Anteil mehr.
@@ -3077,6 +3217,11 @@ export function CaptureArbeitsraum({
     setIvResult(null);
     setIvStarted(false);
     setIvBefund(null);
+    setIvTree(false);
+    setIvTopic(null);
+    setIvConfirmed(false);
+    setIvResearch([]);
+    setIvRechercheLeer(false);
   };
 
   // E2E-003: „Verwerfen" muss das GESAMTE Erfassungsmodell auf Leerzustand bringen — nicht nur die
@@ -4559,6 +4704,7 @@ export function CaptureArbeitsraum({
     setFilePoints(null);
     setFileNote(null);
     setFileAbgeschnitten(null);
+    setFileUngelesen(null);
     setFileQueue(null);
     setFileWholeDraftSaved(null);
     setFileImageUrl(null);
@@ -5024,17 +5170,207 @@ export function CaptureArbeitsraum({
   // erste Turn an das Modell. Vorher wurde nichts gesendet und kein ModelRun ausgelöst.
   // R-1624: mit Foto setzt der Start zuerst den Bild-Anker in den Rumpf (sichtbar im Blatt und mit
   // dem Entwurf gesichert) und fragt danach mit der Foto-Fragenfolge.
+  //
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: jeder Start OHNE Foto läuft im Fragebaum. Kommt der
+  // Mensch mit einem Thema — aus dem Blatt-Angebot nach einer Vorschau ohne Treffer oder über eine
+  // offene Wissenslücke (`?gap=`) —, wird es das Lücken-Interview mit drei Fragen (R-0091). Das
+  // Foto-Interview behält seine eigene Fragenfolge und seinen Abschluss (kein Baum).
   const startInterview = (foto: FotoAnker | null = null): void => {
+    const befund = foto ? foto.befund : null;
+    const tree = befund === null;
+    const topic = tree ? interviewThema : null;
     setIvAnswers([]);
     setIvAnswer("");
     setIvResult(null);
     setIvStarted(true);
-    setIvBefund(foto ? foto.befund : null);
+    setIvBefund(befund);
+    setIvTree(tree);
+    setIvTopic(topic);
+    setIvConfirmed(false);
+    setIvResearch([]);
+    setIvRechercheLeer(false);
     if (foto) {
       setBodyHtml((prev) => applyFotoAnker(prev, foto));
     }
-    runInterview([], foto ? foto.befund : null);
+    runInterview([], { tree, topic, befund, research: [] });
   };
+
+  // R-0113: „Weiß ich nicht" — die Frage bleibt eine Lücke, das Interview geht weiter.
+  const ivSkip = (): void => {
+    const answers = [...ivAnswers, SKIPPED_ANSWER];
+    setIvAnswers(answers);
+    setIvAnswer("");
+    setIvResult(null);
+    runInterview(answers);
+  };
+
+  // R-0113 / R-0043: die ausdrückliche Abschlussbestätigung des Menschen. Erst hier entsteht der
+  // Entwurf auf dem Blatt; gespeichert wird er weiterhin erst über „Entwurf speichern".
+  const ivConfirm = (): void => {
+    if (!ivResult) {
+      return;
+    }
+    applyInterviewDraft(ivResult);
+    setIvConfirmed(true);
+  };
+
+  // Die Bausteine des Fragebaums, die im laufenden UND im durchlaufenen Interview stehen.
+  const ivBereit = ivResult !== null && !interview.isPending;
+  const ivThemaZeile = ivTopic ? (
+    <p data-testid="interview-thema" className="text-[13px] font-medium text-text">
+      {t("interview.thema", { thema: ivTopic })}
+    </p>
+  ) : null;
+  // R-0113: der Wert für die verbleibenden Lücken; die offenen Knoten stehen im Hinweis.
+  const ivLueckenwert =
+    ivBereit && ivResult?.gaps ? (
+      <span
+        data-testid="interview-luecken"
+        className="text-[12px] text-muted"
+        title={t("interview.lueckenListe", {
+          liste: ivResult.gaps.open.map((node) => t(interviewNodeKey(node))).join(", "),
+        })}
+      >
+        {t("interview.luecken", { wert: ivResult.gaps.value })}
+      </span>
+    ) : null;
+  // R-0043: Klara spiegelt das Verstandene — wörtlich die letzte Antwort, nichts hinzugedichtet.
+  const ivSpiegel =
+    ivBereit && ivResult?.mirror ? (
+      <p data-testid="interview-spiegel" className="text-[13px] text-muted">
+        {t("interview.spiegel", {
+          knoten: t(interviewNodeKey(ivResult.mirror.node)),
+          text: ivResult.mirror.text,
+        })}
+      </p>
+    ) : null;
+  // R-0088: die Recherche des Modells — sichtbar und ausdrücklich UNGEPRÜFT. Sie ist nur der Anlass
+  // für gezieltere Rückfragen; in den Entwurf kommt allein, was der Mensch darauf antwortet.
+  //
+  // Bens Befund nacharbeit-6: recherchiert wird in QUELLEN, und zwar auf ausdrücklichen Wunsch —
+  // der Knopf wiederholt den aktuellen Turn mit `recherchieren`, die Route ruft zum Thema Quellen
+  // ab (Admin-Stufe, nie vertraulich), das Modell leitet daraus die Prüfpunkte ab.
+  //
+  // BENS BEFUND (nacharbeit-8): DIE RECHERCHE HÄNGT AM GESPEICHERTEN ENTWURF. Der Server sucht nur
+  // mit einem auflösbaren Anker (`draftId`, JOB 2692 D2) — ohne ihn gilt der Text fail-closed als
+  // vertraulich. Ein ungespeichertes Interview bekommt deshalb keinen Knopf, der nichts tun kann,
+  // sondern die konkrete Voraussetzung samt Weg: „Entwurf sichern und recherchieren" sichert über
+  // den EINEN Speicherweg (`saveDraft`), BLEIBT im Interview und recherchiert danach mit der neuen
+  // Kennung. Die Vertraulichkeitssperre bleibt: ein vertraulich eingestufter Entwurf wird auch
+  // gesichert nie extern gesucht (dann steht die Leer-Meldung).
+  const ivRechercheMoeglich =
+    ivTree &&
+    ivResearch.length === 0 &&
+    ivBereit &&
+    ivResult !== null &&
+    !isInterviewDone(ivResult) &&
+    Boolean(ivTopic?.trim() || ivAnswers[0]?.trim());
+  const ivRecherchieren = (entwurfId: string | null = draftId): void => {
+    runInterview(ivAnswers, {
+      tree: ivTree,
+      topic: ivTopic,
+      befund: ivBefund,
+      research: [],
+      recherchieren: true,
+      ...(entwurfId ? { draftId: entwurfId } : {}),
+    });
+  };
+  const ivSichernUndRecherchieren = (): void => {
+    // Dieselben Tore wie der Speichern-Knopf (`requestManualSave`): das Speicher-Tor gilt, und nicht
+    // sicherbare Inhalte verlangen erst die ausdrückliche Bestätigung — über den gewöhnlichen Weg.
+    if (!speicherTor.erlaubt) {
+      ivRechercheNachSichernRef.current = false;
+      if (speicherTor.grund) {
+        setErr(speicherTor.grund);
+      }
+      return;
+    }
+    // BENS BEFUND (nacharbeit-9): der Auftrag „danach recherchieren" wird VOR dem Dialog gemerkt.
+    // Bis hierher kehrte dieser Zweig vor dem Merken zurück — nach „trotzdem speichern" lief dann
+    // der gewöhnliche Abschluss: Interview geräumt, Recherche nie gestartet. Jetzt trägt der
+    // Merker durch die Bestätigung (`saveDespiteLimits`); Abbruch, Tor-Sperre und Fehler setzen
+    // ihn zurück (`saveLimitAbbrechen`, `saveDraft.onError`).
+    ivRechercheNachSichernRef.current = true;
+    if (unsavableDirtyReasons.length > 0) {
+      setConfirmSaveLimit(true);
+      return;
+    }
+    saveDraft.mutate();
+  };
+  const ivRechercheKnopf = !ivRechercheMoeglich ? null : draftId ? (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="ghost" onClick={() => ivRecherchieren()}>
+        {t("interview.recherche.knopf")}
+      </Button>
+      {ivRechercheLeer ? (
+        <span data-testid="interview-recherche-leer" className="text-[12px] text-muted">
+          {t("interview.recherche.leer")}
+        </span>
+      ) : null}
+    </div>
+  ) : (
+    <div data-testid="interview-recherche-sichern" className="flex flex-wrap items-center gap-2">
+      <span className="text-[12px] text-muted">{t("interview.recherche.sichernNoetig")}</span>
+      <Button variant="ghost" disabled={saveDraft.isPending} onClick={ivSichernUndRecherchieren}>
+        {t("interview.recherche.sichernUndRecherchieren")}
+      </Button>
+    </div>
+  );
+  const ivRecherche =
+    ivTree && ivResearch.length > 0 ? (
+      <div data-testid="interview-recherche" className="text-[12px] text-muted">
+        <p className="font-medium">{t("interview.recherche.titel")}</p>
+        <ul className="list-disc pl-5">
+          {ivResearch.map((p) => (
+            <li key={`${p.node}:${p.hint}`}>
+              {t(interviewNodeKey(p.node))}: {p.hint}{" "}
+              {/* Bens Befund nacharbeit-6: die abgerufene Quelle steht am Hinweis, nachprüfbar. */}
+              <span>
+                ({t("interview.recherche.quelle")}{" "}
+                <a
+                  href={p.source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-text"
+                >
+                  {p.source.title}
+                </a>
+                )
+              </span>{" "}
+              {/* R-0205 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): der Hinweis
+                  stammt aus einer EXTERNEN Suche (`externalSearch.search`, reasoner-routes) — er
+                  trägt deshalb wie jede externe Quelle „Stufe 2" und „Extern · ungeprüft". */}
+              <span data-testid="interview-recherche-kennung" className="inline-flex gap-1.5">
+                <ExterneQuelleKennung source={{ peerValidated: false }} />
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p>{t("interview.recherche.grenze")}</p>
+      </div>
+    ) : null;
+  // R-0113: der Abschluss wird ANGEBOTEN, nie von selbst vollzogen.
+  const ivAbschluss =
+    ivBereit && ivResult && interviewCanConfirm(ivTree, ivResult) ? (
+      <div
+        data-testid="interview-abschluss"
+        className="space-y-2 rounded-card border border-hairline bg-surface p-3"
+      >
+        <p className="text-[13px] text-text">
+          {isInterviewDone(ivResult)
+            ? t("interview.abschlussBaumDurch")
+            : t("interview.abschlussAngebot")}
+        </p>
+        {ivResult.sufficient ? null : (
+          <p className="text-[12px] text-trust-warn-text">
+            {t("interview.abschlussUnvollstaendig")}
+          </p>
+        )}
+        <Button variant="primary" onClick={ivConfirm}>
+          {t("interview.abschliessen")}
+        </Button>
+      </div>
+    ) : null;
 
   // SCRUM-132: Antwort senden → nächster reasoner-getriebener Turn.
   // AUFTRAG-mega6 Block C (bens ROT 3): mit dem Start des NÄCHSTEN Turns ist die bisherige Frage
@@ -5496,12 +5832,19 @@ export function CaptureArbeitsraum({
     }
     void manuellSichern(dateiTraeger);
   };
+  // Bens Befund nacharbeit-9: wer den Grenzen-Dialog abbricht, hat auch die Folgeaktion („danach
+  // recherchieren") abgebrochen — das nächste Speichern ist wieder ein gewöhnliches.
+  const saveLimitAbbrechen = (): void => {
+    ivRechercheNachSichernRef.current = false;
+    setConfirmSaveLimit(false);
+  };
   const saveDespiteLimits = (): void => {
     setConfirmSaveLimit(false);
     // Auch hier: die Bestätigung gilt den benannten, nicht sicherbaren Inhalten — sie hebt das
     // Speicher-Tor NICHT auf. Wer „trotzdem speichern" wählt, während ein Original fehlt, bekäme
     // sonst genau den ausgedünnten Überschreibvorgang, den Block F verhindert.
     if (!speicherTor.erlaubt) {
+      ivRechercheNachSichernRef.current = false;
       if (speicherTor.grund) {
         setErr(speicherTor.grund);
       }
@@ -6094,7 +6437,7 @@ export function CaptureArbeitsraum({
                     speechSupported ? (
                       <div className="mb-2 flex items-center gap-1">
                         <Button variant={listening ? "primary" : "ghost"} onClick={toggleDictation}>
-                          <Mic size={15} />
+                          <Mic size={15} aria-hidden="true" />
                           {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       </div>
@@ -6115,7 +6458,7 @@ export function CaptureArbeitsraum({
                     Text) fließt sofort in den Freitext, Bilder/Videos werden Anhang (PMO-FEA-0006-Anschluss). */}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                      <FileText size={14} />
+                      <FileText size={14} aria-hidden="true" />
                       {t(CAPTURE_WIZARD_TEXT.upload)}
                       <input
                         type="file"
@@ -6127,7 +6470,7 @@ export function CaptureArbeitsraum({
                     </label>
                     {/* Pedi 04.07.: eigener „beifügen"-Knopf gleich daneben — Datei/Bild NUR anhängen. */}
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                      <Paperclip size={14} />
+                      <Paperclip size={14} aria-hidden="true" />
                       {t(CAPTURE_WIZARD_TEXT.attach)}
                       <input
                         type="file"
@@ -6162,7 +6505,7 @@ export function CaptureArbeitsraum({
                         title={!structureAi.available ? t("ai.unavailable.hint") : undefined}
                         onClick={() => structure.mutate()}
                       >
-                        <Sparkles size={15} />
+                        <Sparkles size={15} aria-hidden="true" />
                         {structure.isPending
                           ? t(CAPTURE_WIZARD_TEXT.structuring)
                           : t("capture.structure")}
@@ -6186,6 +6529,14 @@ export function CaptureArbeitsraum({
                   // E2E-008: bewusster Start VOR jedem Cloud-Lauf. Provider-/Region-/Kostenhinweis
                   // (AiModelInfo) steht am Knopf; erst der Klick löst den ersten ModelRun aus.
                   <div data-help="cap:interview" className="space-y-3">
+                    {interviewThema ? (
+                      <p
+                        data-testid="interview-thema"
+                        className="text-[13px] font-medium text-text"
+                      >
+                        {t("interview.thema", { thema: interviewThema })}
+                      </p>
+                    ) : null}
                     {/* R-0957 / R-1926: das Lehrlingsbild — an das gebunden, was der Weg wirklich
                         tut (Rückfragen, Einreichen, Teamprüfung) und ausdrücklich OHNE Lernzusage
                         (`texte/lehrling.ts`, bewacht von `tests/app/learning-claim-guard.test.ts`). */}
@@ -6203,13 +6554,23 @@ export function CaptureArbeitsraum({
                       auswerten" sendet das Bild, erst „Foto-Interview starten" die erste Frage. */}
                     <FotoInterviewStart onStart={(foto) => startInterview(foto)} />
                   </div>
-                ) : ivResult && isInterviewDone(ivResult) ? (
+                ) : ivConfirmed || (!ivTree && ivResult && isInterviewDone(ivResult)) ? (
                   <p className="rounded-card border border-dashed border-hairline p-3 text-[13px] text-trust-pos-text">
                     {t("capture.ivDone")}
                   </p>
+                ) : ivTree && ivResult && isInterviewDone(ivResult) ? (
+                  // Der Fragebaum ist durch: keine Frage mehr, nur noch die Bestätigung (R-0113).
+                  <div data-help="cap:interview" className="space-y-3">
+                    {ivThemaZeile}
+                    {ivLueckenwert}
+                    {ivSpiegel}
+                    {ivRecherche}
+                    {ivAbschluss}
+                  </div>
                 ) : (
                   <div data-help="cap:interview" className="space-y-3">
-                    <div className="flex items-center gap-2">
+                    {ivThemaZeile}
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
                         {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
                       </span>
@@ -6223,10 +6584,15 @@ export function CaptureArbeitsraum({
                           {t("fotowissen.laeuft")}
                         </span>
                       ) : null}
+                      {ivLueckenwert}
                     </div>
                     {/* R-1624: der Kontext, auf den sich die Rückfragen beziehen — sichtbar, nicht
                       nur im Prompt. */}
                     {ivBefund ? <p className="text-[12px] text-muted">{ivBefund}</p> : null}
+                    {ivSpiegel}
+                    {ivRecherche}
+                    {ivRechercheKnopf}
+                    {ivAbschluss}
                     {/* SCRUM-403 (Pedi 03.07.): Frage vorlesen + Antwort diktieren — Sprache in
                       beide Richtungen; Knöpfe nur, wenn der Browser es ehrlich kann. */}
                     {/* AUFTRAG-mega5 Block A: liegt (nach Fortsetzen eines Entwurfs ohne gesicherte
@@ -6254,7 +6620,7 @@ export function CaptureArbeitsraum({
                           onClick={toggleReadQuestion}
                           title={ivReading ? t("capture.ivReadStop") : t("capture.ivReadAloud")}
                         >
-                          <Volume2 size={15} />
+                          <Volume2 size={15} aria-hidden="true" />
                           {ivReading ? t("capture.ivReadStop") : t("capture.ivReadAloud")}
                         </Button>
                       ) : null}
@@ -6296,6 +6662,23 @@ export function CaptureArbeitsraum({
                       >
                         {t("capture.ivSend")}
                       </Button>
+                      {/* R-0113: im Fragebaum darf eine Frage offen bleiben — sie zählt dann
+                        weiter als Lücke. Gesperrt, solange schon etwas getippt ist, damit kein
+                        Text verloren geht. */}
+                      {ivTree ? (
+                        <Button
+                          variant="ghost"
+                          disabled={
+                            interview.isPending ||
+                            ivAnswer.trim().length > 0 ||
+                            !ivResult ||
+                            ivAnswers.length >= DRAFT_LIMITS.interviewAnswers
+                          }
+                          onClick={ivSkip}
+                        >
+                          {t("interview.ueberspringen")}
+                        </Button>
+                      ) : null}
                       {/* Pedi 04.07.: (!)-Info — welche KI das geführte Interview steuert. */}
                       <AiModelInfo task="interview" />
                       {speechSupported ? (
@@ -6304,7 +6687,7 @@ export function CaptureArbeitsraum({
                           onClick={toggleIvDictation}
                           disabled={interview.isPending || !ivResult}
                         >
-                          <Mic size={15} />
+                          <Mic size={15} aria-hidden="true" />
                           {ivListening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
                       ) : (
@@ -6376,7 +6759,7 @@ export function CaptureArbeitsraum({
                   </label>
                   {slidesProgress ? (
                     <p className="mb-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-ai">
-                      <Loader2 size={13} className="animate-spin" />
+                      <Loader2 size={13} className="animate-spin" aria-hidden="true" />
                       {slidesProgress}
                     </p>
                   ) : null}
@@ -6404,12 +6787,12 @@ export function CaptureArbeitsraum({
                       }
                       onClick={cancelFileImport}
                     >
-                      <X size={14} />
+                      <X size={14} aria-hidden="true" />
                       {t(CAPTURE_FILE_TEXT.cancel)}
                     </Button>
                     {fileName ? (
                       <span className="inline-flex items-center gap-1.5 text-[12.5px] text-text">
-                        <FileText size={13} className="text-muted-2" />
+                        <FileText size={13} className="text-muted-2" aria-hidden="true" />
                         {fileName}
                       </span>
                     ) : null}
@@ -6526,9 +6909,9 @@ export function CaptureArbeitsraum({
                               >
                                 {/* SCRUM-418: sichtbare Arbeits-Animation, solange die KI liest. */}
                                 {extract.isPending ? (
-                                  <Loader2 size={15} className="animate-spin" />
+                                  <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                                 ) : (
-                                  <Sparkles size={15} />
+                                  <Sparkles size={15} aria-hidden="true" />
                                 )}
                                 {extract.isPending
                                   ? t(CAPTURE_FILE_TEXT.searching)
@@ -6572,9 +6955,9 @@ export function CaptureArbeitsraum({
                               }}
                             >
                               {fileWholeDraft.isPending ? (
-                                <Loader2 size={15} className="animate-spin" />
+                                <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                               ) : (
-                                <Save size={15} />
+                                <Save size={15} aria-hidden="true" />
                               )}
                               {fileWholeDraft.isPending
                                 ? t(CAPTURE_FILE_TEXT.wholeSaving)
@@ -6923,7 +7306,12 @@ export function CaptureArbeitsraum({
                       {t("capture.reviewers.title")}
                     </div>
                     {reviewerChoices.length === 0 ? (
-                      <div className="text-[12px] text-muted-2">{t("capture.reviewers.none")}</div>
+                      <>
+                        <div className="text-[12px] text-muted-2">
+                          {t("capture.reviewers.none")}
+                        </div>
+                        {leerzustandsZeile(t, "verwaltung")}
+                      </>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {reviewerChoices.map((p) => {
@@ -6967,7 +7355,7 @@ export function CaptureArbeitsraum({
                   {/* Dokumente */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                      <FileText size={13} />
+                      <FileText size={13} aria-hidden="true" />
                       {t("capture.documents")}
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
@@ -6993,7 +7381,7 @@ export function CaptureArbeitsraum({
                             key={d.id}
                             className="flex items-center gap-2 text-[12.5px] text-text"
                           >
-                            <FileText size={12} className="text-muted-2" />
+                            <FileText size={12} className="text-muted-2" aria-hidden="true" />
                             <span className="truncate">{d.name}</span>
                             {d.mime.startsWith("video/") || d.mime.startsWith("audio/") ? (
                               <button
@@ -7013,7 +7401,7 @@ export function CaptureArbeitsraum({
                               onClick={() => setDocs((arr) => arr.filter((x) => x.id !== d.id))}
                               className="ml-auto text-muted-2 hover:text-text"
                             >
-                              <X size={12} />
+                              <X size={12} aria-hidden="true" />
                             </button>
                           </li>
                         ))}
@@ -7024,7 +7412,7 @@ export function CaptureArbeitsraum({
                   {/* Bilder */}
                   <div className="rounded-card border border-dashed border-hairline p-3">
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                      <Paperclip size={13} />
+                      <Paperclip size={13} aria-hidden="true" />
                       {t("capture.images")}
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
@@ -7057,7 +7445,7 @@ export function CaptureArbeitsraum({
                               onClick={() => setImages((arr) => arr.filter((x) => x.id !== img.id))}
                               className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 group-hover:opacity-100"
                             >
-                              <X size={12} />
+                              <X size={12} aria-hidden="true" />
                             </button>
                             {/* SCRUM-123: OCR nur auf Klick, mit sichtbarem Lade-/Fehlerstatus */}
                             <button
@@ -7081,7 +7469,7 @@ export function CaptureArbeitsraum({
                   {canSources ? (
                     <div className="rounded-card border border-dashed border-hairline p-3">
                       <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                        <Globe size={13} />
+                        <Globe size={13} aria-hidden="true" />
                         {t("capture.sourcesTitle")}
                       </div>
                       <p className="mb-2 text-[11.5px] leading-relaxed text-muted-2">
@@ -7103,6 +7491,8 @@ export function CaptureArbeitsraum({
                                     <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
                                       {t("ko.sourceUnvalidated")}
                                     </span>
+                                    {/* R-0205: eine Warteliste-Quelle ist immer extern und ungeprüft. */}
+                                    <ExterneQuelleKennung source={{ peerValidated: false }} />
                                     {s.provider ? (
                                       <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
                                         {s.provider}
@@ -7126,7 +7516,7 @@ export function CaptureArbeitsraum({
                                   }
                                   className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
                                 >
-                                  <X size={14} />
+                                  <X size={14} aria-hidden="true" />
                                 </button>
                               </div>
                             </li>
@@ -7417,7 +7807,7 @@ export function CaptureArbeitsraum({
                   disabled={busy || !canSaveDraft}
                   onClick={requestManualSave}
                 >
-                  <Save size={15} />
+                  <Save size={15} aria-hidden="true" />
                   {t("capture.saveDraft")}
                 </Button>
                 <Button variant="ghost" onClick={loadExample}>
@@ -7477,7 +7867,11 @@ export function CaptureArbeitsraum({
               {draft ? (
                 <ReasonerDraft>
                   <div className="space-y-3">
-                    <Field label={t("capture.fTitle")}>
+                    {/* EDITOR-EINHEITLICH (K1): derselbe Begriff wie im Bearbeiten
+                      (`BibliothekLesen.tsx`), im Blatt (`fd.fieldTitle`) und im geführten Weg —
+                      „Titel". Der Altschlüssel `capture.fTitle` („Kernaussage") benannte hier
+                      das Titelfeld mit einem Wort, das beim Erstellen sonst die Aussage meint. */}
+                    <Field label={t("capture.wizard.titleLabel")}>
                       <TextInput
                         value={draft.title}
                         onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -7526,7 +7920,7 @@ export function CaptureArbeitsraum({
                           }}
                           className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
                         >
-                          <Sparkles size={14} /> {t("studio.fromDraft.cta")}
+                          <Sparkles size={14} aria-hidden="true" /> {t("studio.fromDraft.cta")}
                           <span className="rounded-pill bg-white/20 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase">
                             {t(CAPTURE_FLOW_TEXT.studioRecommended)}
                           </span>
@@ -7589,7 +7983,7 @@ export function CaptureArbeitsraum({
                         captionFormRequest={captionRequest ?? undefined}
                         /* JOB 2419 D1 (TV1, letzte Luecke): der Titelvorschlag aus der
                            Bildbeschreibung geht in DASSELBE Feld, das der Nutzer daneben tippt
-                           (`capture.fTitle`, oben in diesem Block). Bewusst wortgleich mit dessen
+                           (`capture.wizard.titleLabel`, oben in diesem Block). Bewusst wortgleich mit dessen
                            `onChange` — eine Uebernahme muss sich verhalten wie eine Eingabe, sonst
                            entstuende ein zweiter, stillerer Weg zum selben Feld. */
                         onTitelVorschlag={(titel) => setDraft({ ...draft, title: titel })}
@@ -7729,7 +8123,7 @@ export function CaptureArbeitsraum({
                           kettet mehrere Netz-Aufrufe; der Text zeigt die aktuelle Phase (inkl. Upload-Größe). */}
                           {submit.isPending ? (
                             <>
-                              <Loader2 size={15} className="animate-spin" />
+                              <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                               {submitBusyLabel}
                             </>
                           ) : (
@@ -8107,7 +8501,7 @@ export function CaptureArbeitsraum({
                     disabled={busy || !canSaveDraft}
                     onClick={requestManualSave}
                   >
-                    <Save size={15} />
+                    <Save size={15} aria-hidden="true" />
                     {t("capture.saveDraft")}
                   </Button>
                   <button
@@ -8134,7 +8528,7 @@ export function CaptureArbeitsraum({
                       {/* WP-D7/D7b (Befund 4/Rot-Fix 1): mehrstufiges Ladefeedback beim Einreichen. */}
                       {submit.isPending ? (
                         <>
-                          <Loader2 size={15} className="animate-spin" />
+                          <Loader2 size={15} className="animate-spin" aria-hidden="true" />
                           {submitBusyLabel}
                         </>
                       ) : (
@@ -8165,7 +8559,7 @@ export function CaptureArbeitsraum({
           kein stiller Verlust hinter einer erfolgreichen Speicheraktion mehr. */}
         <Modal
           open={confirmSaveLimit}
-          onClose={() => setConfirmSaveLimit(false)}
+          onClose={saveLimitAbbrechen}
           title={t("capture.saveLimit.title")}
         >
           <p className="text-[13px] leading-relaxed text-text">{t("capture.saveLimit.lead")}</p>
@@ -8175,7 +8569,7 @@ export function CaptureArbeitsraum({
             ))}
           </ul>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <Button variant="primary" onClick={() => setConfirmSaveLimit(false)}>
+            <Button variant="primary" onClick={saveLimitAbbrechen}>
               {t("capture.saveLimit.cancel")}
             </Button>
             <Button variant="ghost" onClick={saveDespiteLimits}>
@@ -8207,9 +8601,10 @@ export function CaptureArbeitsraum({
 export function Capture(): JSX.Element {
   return (
     <Blatt
-      arbeitsraum={({ modus, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
+      arbeitsraum={({ modus, thema, onEntwurfInsBlatt, onZurueckInsBlatt }) => (
         <CaptureArbeitsraum
           modus={modus}
+          thema={thema}
           onEntwurfInsBlatt={onEntwurfInsBlatt}
           onZurueckInsBlatt={onZurueckInsBlatt}
         />

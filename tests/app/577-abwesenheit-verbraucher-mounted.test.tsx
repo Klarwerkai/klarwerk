@@ -121,6 +121,7 @@ import { type ReactNode, act, createElement } from "../../apps/web/node_modules/
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { FeatureGate } from "../../apps/web/src/components/FeatureGate";
 import { ImportAccessPanel } from "../../apps/web/src/components/ImportAccessPanel";
 // Registriert die echte i18n-Instanz (initReactI18next). Ohne sie gäbe `t()` nur den Schlüssel
@@ -150,7 +151,13 @@ async function mounte(element: ReactNode): Promise<string> {
       createElement(
         QueryClientProvider,
         { client: qc },
-        createElement(MemoryRouter, { initialEntries: ["/risiko"] }, element),
+        // Die App-Shell trägt den Benachrichtigungs-Bus; `Risk` meldet seit R-0953 Erfolg und
+        // Fehler der Lückenaktionen darüber.
+        createElement(
+          ToastProvider,
+          null,
+          createElement(MemoryRouter, { initialEntries: ["/risiko"] }, element),
+        ),
       ),
     );
   });

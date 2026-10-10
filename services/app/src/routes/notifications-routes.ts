@@ -18,6 +18,7 @@ import {
   type KenntnisnahmeNotice,
   type Notification,
   type ReklamationNotice,
+  type VeroeffentlichungNotice,
   buildNotifications,
 } from "../notification-feed";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
@@ -53,6 +54,9 @@ export interface NotificationRoutesDeps {
   // Prüfanforderung an Autor bzw. Nachfolger (R-1635) — `frische-meldungen.ts`. Optional wie die
   // Kenntnisnahme; die Sichtbarkeit läuft unten über dieselbe Prüfung.
   frische?: { meldungenFuer(nutzerId: string): Promise<FrischeNotice[]> };
+  // Veröffentlichung: Meldungen bei „normal"/„hervorgehoben" an den festgehaltenen Empfängerkreis.
+  // Die Sichtbarkeit wird unten trotzdem neu geprüft — ein späterer Entzug wirkt sofort.
+  veroeffentlichungen?: { meldungenFuer(nutzerId: string): Promise<VeroeffentlichungNotice[]> };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -189,7 +193,14 @@ async function loadFeed(
   const impacts: ImpactNotice[] = alleImpacts
     .filter((im) => !im.nurUrheber || sichtbareUrheberImpacts.has(im))
     .map(({ koId, title, at }) => ({ koId, title, at }));
-  return buildNotifications({
+  // Veröffentlichung: derselbe Filter wie bei den Zuweisungen — ein späterer Entzug wirkt sofort.
+  const veroeffentlichungen = (await deps.veroeffentlichungen?.meldungenFuer(user.id)) ?? [];
+  const sichtbareVeroeffentlichungen = await sichtbareEintraege(
+    user,
+    veroeffentlichungen,
+    deps.kos,
+  );
+  const feed = buildNotifications({
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
     gaps: gapViews,
@@ -199,10 +210,15 @@ async function loadFeed(
     loeschantraege,
     reklamationen: sichtbareReklamationen,
     frische: sichtbareFrische,
+    veroeffentlichungen: sichtbareVeroeffentlichungen,
   }).map((n) => ({
     ...n,
     seen: seen.has(n.id),
   }));
+  // Veröffentlichung „hervorgehoben": steht oben, solange sie ungelesen ist. Die übrige Reihenfolge
+  // bleibt unverändert (neueste zuerst); ohne hervorgehobene Meldung ändert sich nichts.
+  const oben = (n: (typeof feed)[number]): boolean => n.hervorgehoben === true && !n.seen;
+  return [...feed.filter(oben), ...feed.filter((n) => !oben(n))];
 }
 
 export function notificationsRoutes(

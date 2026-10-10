@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
-import { useDrafts, useKos } from "../../api/hooks";
+import { useDrafts, useGaps, useKos } from "../../api/hooks";
 import type {
   AssistResult,
   Confidentiality,
@@ -46,6 +46,7 @@ import {
   assistActionInstructionKey,
   assistActionLabelKey,
 } from "../../lib/captureAiAssist";
+import { readGapId, resolveGapQuestion } from "../../lib/captureFromGap";
 import {
   FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY,
   buildFrontDoorPayload,
@@ -73,6 +74,7 @@ import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
 import { kiBremsSatz } from "../../lib/kiBremse";
 import { REASONER_ENTWURF_FLAECHE, ergebnisStufeFuerVorschlag } from "../../lib/kiHerkunft";
 import { useNetzOnline } from "../../lib/netzzustand";
+import { pruefHref } from "../../lib/objektbezug";
 // JOB 3266 (D1): dasselbe Datumsformat wie überall sonst in der Oberfläche — und dieselbe
 // Ehrlichkeit: ein fehlender oder unlesbarer Zeitwert wird `null`, nicht ein erfundenes Datum.
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -93,14 +95,17 @@ import { Begriffshinweise } from "../Begriffshinweise";
 import { CaptureDraftList } from "../CaptureDraftList";
 import { DemoBanner } from "../DemoBanner";
 import { DraftBodyGallery } from "../DraftBodyGallery";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { useSprachaufnahme } from "../sprache/useSprachaufnahme";
 import { ErgebnisStufeMarke } from "../trust/ErgebnisStufeMarke";
 import { StatusPill } from "../trust/StatusPill";
 import type { DisplayStatus } from "../trust/types";
 import { Button } from "../ui";
+import { LueckenInterviewAngebot } from "./LueckenInterviewAngebot";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import { NegativwissenHinweis } from "./NegativwissenHinweis";
 import {
@@ -223,6 +228,12 @@ const SPEICHERLAGE_TON: Record<Speicherzustand, string> = {
 
 export type ArbeitsraumFabrik = (args: {
   modus: ArbeitsraumModus;
+  /**
+   * AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): das Thema, zu dem das Blatt nach einer Vorschau
+   * ohne Treffer ein Lücken-Interview angeboten hat. `null`, wenn der Arbeitsraum anders geöffnet
+   * wurde.
+   */
+  thema: string | null;
   /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn und kommt zurück. */
   onEntwurfInsBlatt: (entwurfId: string) => void;
   /**
@@ -351,6 +362,41 @@ const BLATT_SCHUTZDATEN_WARNUNG_ID = "blatt-schutzdaten-warnung";
 const BLATT_LADEN_HINWEIS_ID = "blatt-laden-hinweis";
 
 /**
+ * N-0084 — DIE AUSGANGSFRAGE ÜBER DEM EDITOR.
+ *
+ * Befund (Seiteninventar 08.09.): „Wissen erfassen" aus einer Lücke öffnete `/erfassen?gap=<id>`,
+ * und seit `/erfassen` das Blatt rendert, stand dort ein leerer Editor ohne den Wortlaut der Frage —
+ * die Karte mit der Ausgangsfrage lag nur im alten Arbeitsraum. Man musste sich die Frage merken.
+ *
+ * Dieselbe Auflösung wie im Arbeitsraum (`resolveGapQuestion`): der Text kommt nur aus der
+ * serverseitig berechtigungsgefilterten Lückenliste; eine redigierte oder unbekannte Lücke zeigt
+ * nichts. Eine eigene Komponente, damit die Lückenliste NUR bei `?gap=` abgefragt wird.
+ */
+/** R-1626: der Adressparameter des Themas (Einstieg aus `lib/meineEinzelquellen.ts`). */
+const BLATT_THEMA_PARAMETER = "thema";
+
+function BlattAusgangsfrage({ gapId }: { gapId: string }): JSX.Element | null {
+  const { t } = useTranslation();
+  const gaps = useGaps();
+  const frage = resolveGapQuestion(gapId, gaps.data);
+  if (!frage) {
+    return null;
+  }
+  return (
+    <section
+      data-testid="blatt-ausgangsfrage"
+      aria-label={t("gap.ausgangsfrage")}
+      className="rounded-[10px] border border-dashed border-hairline bg-surface px-4 py-3"
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-2">
+        {t("gap.ausgangsfrage")}
+      </div>
+      <p className="mt-1 break-words text-[14px] leading-snug text-text">„{frage}“</p>
+    </section>
+  );
+}
+
+/**
  * Die zwei Regeln, mit denen das Blatt den `RichTextEditor` von aussen auf Blatt-Maß bringt.
  * Sie stehen bewusst als benannte Konstante und nicht als Zeichenkette im JSX — was sie tun und
  * warum, steht an ihrer Verwendungsstelle.
@@ -380,6 +426,18 @@ export function Blatt({
   const { setGuard } = useNavGuard();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumeDraftId = searchParams.get("draft");
+  const gapId = readGapId(searchParams);
+  // R-1626: aus „Wissen, das nur bei dir liegt" geöffnet — das Thema steht als Kontext über dem
+  // Blatt bzw. dem Interview. Ein Kategoriename, kein Freitext; begrenzt wie ein Lückentitel.
+  const thema = (searchParams.get(BLATT_THEMA_PARAMETER) ?? "").trim().slice(0, 120);
+  const themaZeile = thema ? (
+    <p data-testid="blatt-thema" className="px-1 text-[12.5px] text-muted">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
+        {t("einzelquelle.themaLabel")}:
+      </span>{" "}
+      <span className="break-words text-text">{thema}</span>
+    </p>
+  ) : null;
 
   // ---- Inhalt des Blattes ----------------------------------------------------------------------
   const [title, setTitle] = useState("");
@@ -433,6 +491,8 @@ export function Blatt({
     "entwuerfe" | "anhaenge" | "status" | "beispiel" | "klara" | null
   >(null);
   const [ansicht, setAnsicht] = useState<Ansicht>("blatt");
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): Thema des angebotenen Lücken-Interviews.
+  const [arbeitsraumThema, setArbeitsraumThema] = useState<string | null>(null);
   // JOB 3341 (UX-18-R1): die Arbeitsraum-Fläche, damit der Fokus ihr nach einem Deep-Link folgen
   // kann. Sie ist NUR programmatisch fokussierbar (`tabIndex={-1}`) — der Tab-Lauf der Seite bleibt
   // damit genau der, der er war.
@@ -684,6 +744,16 @@ export function Blatt({
   const [diktatHinweisOffen, setDiktatHinweisOffen] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
+  // R-0104 (Aufnahme gesamt-sprachassistent): Sprechen über das Browser-Diktat hinaus. Die Aufnahme
+  // verschriftlicht die vorhandene Server-Transkription; das Transkript kommt als Absatz in den
+  // Rumpf — derselbe Weg wie ein diktierter Satz. Verschriftlicht wird unter der GEWÄHLTEN Stufe;
+  // ohne Wahl gilt die Aufnahme beim Server als vertraulich (dieselbe Regel wie beim Upload).
+  // Getrennt wird sie an denselben Stellen wie das Diktat (`diktatVomBlattTrennen`).
+  const sprachaufnahme = useSprachaufnahme({
+    anhaengen: (text: string) => setBodyHtml((prev) => diktatAnhaengen(prev, text)),
+    vertraulichkeit: declaredConfidentiality,
+  });
+  const aufnahmeTrennen = sprachaufnahme.trennen;
 
   // ---- Bestand für Bereich, Entwürfe, Beispiel -------------------------------------------------
   const kos = useKos();
@@ -1054,6 +1124,9 @@ export function Blatt({
   // NICHT GETRENNT WIRD BEIM MANUELLEN STOPP über den Diktat-Knopf. Wer selbst anhält, nimmt sich
   // seinen Rumpf ja nicht weg — sein Abschlussergebnis gehört ihm und soll noch ankommen.
   const diktatVomBlattTrennen = useCallback((): void => {
+    // R-0104: auch eine laufende oder schon gesendete Sprachaufnahme gehört ab hier keinem Blatt
+    // mehr — ihr Transkript fiele sonst in den geladenen oder geleerten Rumpf.
+    aufnahmeTrennen();
     const getrennt = recRef.current;
     if (!getrennt) {
       return;
@@ -1062,7 +1135,7 @@ export function Blatt({
     setDiktatLaeuft(false);
     setDiktatZwischen("");
     getrennt.stop();
-  }, []);
+  }, [aufnahmeTrennen]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadNonce erzwingt das Neuladen nach einem Standkonflikt (JOB 2684 D1)
   useEffect(() => {
@@ -2333,8 +2406,17 @@ export function Blatt({
   // heisst, die dieses Bauteil nicht bekommen soll.
   const arbeitsraumOeffnen = useCallback((modus: ArbeitsraumModus): void => {
     setOffenesMenue(null);
+    setArbeitsraumThema(null);
     setAnsicht(modus);
   }, []);
+
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — das Blatt bietet an,
+  // das Wissen gleich im Gespräch abzuholen. Thema ist der Titel, sonst der Text des Blattes; der
+  // Arbeitsraum begrenzt es. Derselbe eine Öffnungsweg, danach steht das Thema fest.
+  const lueckenInterviewOeffnen = (): void => {
+    arbeitsraumOeffnen("interview");
+    setArbeitsraumThema(title.trim() || liveText.trim() || null);
+  };
 
   // ==============================================================================================
   // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068) — DAS FORMULAR ÜBERNIMMT DEN
@@ -2712,6 +2794,43 @@ export function Blatt({
         >
           {t("capture.diktatUnsupported")}
           {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
+        </output>
+      ) : null}
+      {/* R-0104: die Aufnahme mit Server-Transkription — nur, wo der Browser aufnehmen kann. */}
+      {sprachaufnahme.moeglich ? (
+        <button
+          type="button"
+          data-testid="blatt-werkzeug-aufnehmen"
+          disabled={!blattNimmtAn || sprachaufnahme.verarbeitet}
+          title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+          aria-pressed={sprachaufnahme.laeuft}
+          aria-busy={sprachaufnahme.verarbeitet}
+          onClick={() => {
+            setOffenesMenue(null);
+            sprachaufnahme.umschalten();
+          }}
+          className={`inline-flex items-center gap-1.5 text-[13px] ${
+            !blattNimmtAn
+              ? "text-muted-2 opacity-50"
+              : sprachaufnahme.laeuft
+                ? "font-semibold text-text"
+                : "text-muted-2 hover:text-text"
+          }`}
+        >
+          <SymbolMikrofon />
+          {sprachaufnahme.verarbeitet
+            ? t("sprachaufnahme.verarbeitet")
+            : sprachaufnahme.laeuft
+              ? t("sprachaufnahme.stop")
+              : t("sprachaufnahme.start")}
+        </button>
+      ) : null}
+      {sprachaufnahme.meldung ? (
+        <output
+          data-testid="blatt-aufnahme-meldung"
+          className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {sprachaufnahme.meldung}
         </output>
       ) : null}
 
@@ -3267,6 +3386,7 @@ export function Blatt({
       <div className="mx-auto flex w-[820px] max-w-full flex-col gap-3.5 pt-6">
         {werkzeugzeile}
         {rueckfrageZeile}
+        {themaZeile}
         <div
           data-testid="blatt-arbeitsraum"
           ref={arbeitsraumRef}
@@ -3280,6 +3400,7 @@ export function Blatt({
         >
           {arbeitsraum({
             modus: ansicht,
+            thema: arbeitsraumThema,
             onEntwurfInsBlatt: entwurfOeffnen,
             onZurueckInsBlatt: arbeitsraumSchliessen,
           })}
@@ -3351,6 +3472,9 @@ export function Blatt({
         {isDemoContext(searchParams) ? <DemoBanner surface="capture" /> : null}
         {werkzeugzeile}
         {rueckfrageZeile}
+        {/* N-0084: aus einer Lücke geöffnet — die Ausgangsfrage steht über dem Blatt. */}
+        {gapId ? <BlattAusgangsfrage gapId={gapId} /> : null}
+        {themaZeile}
 
         <div
           data-testid="blatt"
@@ -3383,7 +3507,12 @@ export function Blatt({
               }}
               placeholder={t("erfassen.platzhalter.titel")}
               aria-label={t("erfassen.platzhalter.titel")}
-              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2/60"
+              // WCAG 1.4.11: die Titelzeile ist Teil des Blattes, wie der Rumpf darunter — eine
+              // Dokument-Schreibfläche, kein Formularfeld. Ihre Lage zeigen der 28-px-Platzhalter
+              // und die Schreibmarke; ein Feldrahmen wäre ein Formular im Dokument. Der Audit nimmt
+              // genau so markierte Flächen von der Feldgrenzen-Regel aus.
+              data-kw-dokumentflaeche=""
+              className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2"
             />
             {/* N-0064: die vollständige Titelanzeige, nur bei echtem Überlauf (Messung oben). Für
                 Hilfstechnik verborgen — das Feld selbst trägt den ganzen Wert schon. */}
@@ -3648,6 +3777,11 @@ export function Blatt({
                 </div>
               ) : null}
             </div>
+          ) : null}
+          {/* AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0091): die Vorschau fand nichts — abgeschlossen
+              ohne Treffer ODER ohne Konfliktprüfung, aber mit belegtem leeren Ähnlichkeitsumfang. */}
+          {verdict.status === "empty" || liveVorschauSatz !== null ? (
+            <LueckenInterviewAngebot onStart={lueckenInterviewOeffnen} />
           ) : null}
 
           {/* ==========================================================================================
@@ -4032,7 +4166,13 @@ function AnhangListe({ bodyHtml }: { bodyHtml: string }): JSX.Element {
   const { t } = useTranslation();
   const anzahl = (bodyHtml.match(/<img\b/gi) ?? []).length;
   if (anzahl === 0) {
-    return <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>;
+    return (
+      <>
+        <p className="text-[12.5px] text-muted">{t("erfassen.anhaenge.keine")}</p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "entwuerfe")}
+      </>
+    );
   }
   return <p className="text-[12.5px] text-text">{t("erfassen.anhaenge.anzahl", { n: anzahl })}</p>;
 }
@@ -4136,10 +4276,12 @@ function BlattLage({
         <span data-testid="blatt-lage-zustand" data-zustand={erfolg.zustand}>
           <StatusPill status={erfolg.zustand} />
         </span>
+        {/* Arbeitswege am selben Artikel: die Prüfung DIESES Beitrags (`ko=<id>`), nicht der
+            erste Eintrag einer anders sortierten Liste. */}
         <RoleLink
           className="ml-2 inline-flex items-center gap-1 font-semibold underline"
           hoverClassName="hover:opacity-80"
-          to="/validierung"
+          to={pruefHref(erfolg.id)}
         >
           {() => t("fd.openValidation")}
         </RoleLink>
