@@ -152,9 +152,10 @@ export interface KlaraZustand {
   /** Klara 03: der gewählte Bezug der nächsten Frage. */
   bezug: Bezug;
   /**
-   * Klara 03 · K4/K5: der Schritt, an dem die Begleitung zuletzt stand. Unter 900 px baut die Hülle
-   * einen anderen Baum — Tutorial und Klara werden dabei neu montiert. Mit diesem Stand öffnet Klara
-   * das Tutorial wieder an DEMSELBEN Schritt (`KlaraVorschau.tsx`), statt bei Schritt 1.
+   * Klara 03 · K4/K5: der Schritt, an dem die Begleitung zuletzt stand. Nach einem Neuladen steht
+   * das Tutorial geschlossen da; mit diesem Stand öffnet Klara es wieder an DEMSELBEN Schritt
+   * (`KlaraVorschau.tsx`), statt bei Schritt 1. Beim Breitenwechsel behält der Tutorialbereich
+   * seinen Schritt selbst — dort ist nichts wiederherzustellen.
    */
   begleitStand: BegleitStand | null;
   /**

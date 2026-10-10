@@ -811,11 +811,12 @@ export function KlaraVorschau(): JSX.Element {
   // ---------------------------------------------------------------------------------------------
   // Klara 03 · K4/K5: DER SCHRITT DER BEGLEITUNG ÜBERSTEHT DEN NEUAUFBAU DER HÜLLE.
   // ---------------------------------------------------------------------------------------------
-  // Unter 900 px rendert die Hülle einen anderen Baum (`shell/AppShell.tsx`): Tutorial und Klara
-  // werden neu montiert, das Tutorial stünde geschlossen da. Klara merkt sich deshalb den Schritt
-  // und öffnet es nach dem Einbau wieder — über dieselben Befehle wie die Knöpfe des Tutorials
-  // („Weiter“), ohne zweiten Zähler. Schliesst die Person das Tutorial selbst (oder verlässt sie die
-  // Seite), endet die Begleitung: dann wird nichts wieder geöffnet.
+  // Beim Breitenwechsel über 900 px montiert die Hülle Klara neu (`shell/AppShell.tsx`); der
+  // Tutorialbereich in `<main>` steht in beiden Bäumen an derselben Stelle und behält seinen
+  // Schritt (Nacharbeit 2, gemessen im Smoke). Nach einem NEULADEN dagegen steht das Tutorial
+  // geschlossen da. Klara merkt sich deshalb den Schritt und öffnet es nach dem Einbau wieder — über
+  // dieselben Befehle wie die Knöpfe des Tutorials („Weiter“), ohne zweiten Zähler. Schliesst die
+  // Person das Tutorial selbst (oder verlässt sie die Seite), endet die Begleitung.
   const lageDefinition = lage?.definitionId ?? null;
   const lageIndex = lage?.schrittIndex ?? null;
   const lageSpielt = lage?.spielt ?? null;
@@ -847,14 +848,19 @@ export function KlaraVorschau(): JSX.Element {
   // biome-ignore lint/correctness/useExhaustiveDependencies: nur beim Einbau — danach gilt die Person.
   useEffect(() => {
     const s = leseZustand();
-    if (s.begleiten && s.begleitStand && tutorial.vorhanden && !tutorial.offen) {
-      wiederherstellen.current = {
-        ziel: s.begleitStand.schrittIndex,
-        spielt: s.begleitStand.spielt,
-        definitionId: s.begleitStand.definitionId,
-      };
-      tutorial.oeffnen();
+    if (!(s.begleiten && s.begleitStand && tutorial.vorhanden && !tutorial.offen)) {
+      return;
     }
+    wiederherstellen.current = {
+      ziel: s.begleitStand.schrittIndex,
+      spielt: s.begleitStand.spielt,
+      definitionId: s.begleitStand.definitionId,
+    };
+    // Nacharbeit 2: NACH dem Einbau-Effekt des Rahmens öffnen. `TutorialProvider` schliesst beim
+    // Einbau (Pfad-Effekt); Eltern-Effekte laufen nach denen der Kinder — ein sofortiges Öffnen
+    // würde dort im selben Durchgang wieder überschrieben.
+    const uhr = window.setTimeout(() => tutorial.oeffnen(), 0);
+    return () => window.clearTimeout(uhr);
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: jede neue Lage ist der Auslöser.
   useEffect(() => {

@@ -84,6 +84,13 @@ async function zeigerDeckt(page: Page, ziel: Locator, wann: string): Promise<voi
     .toBe(true);
 }
 
+/** Der Zeiger steht auf dem Ziel — oder Klara benennt das Fehlziel; nie ins Leere. */
+async function zeigerOderFehlziel(page: Page): Promise<void> {
+  await expect(
+    page.locator('[data-testid="klara-zeiger"], [data-testid="klara-tutorial-fehlziel"]').first(),
+  ).toBeVisible();
+}
+
 async function beleg(page: Page, info: TestInfo, name: string): Promise<void> {
   await info.attach(`Klara 03 · Tutorial — ${name}`, {
     body: await page.screenshot({ fullPage: false }),
@@ -185,23 +192,37 @@ test("Klara 03 · Tutorial „Fragen“: wirklicher Schritt, Zwischenfrage, Paus
   await expect(aktuell).toHaveAttribute("data-schritt", "formulieren");
   await beleg(p, info, "3 Zwischenfrage, Pause, Zurück — Schritt 2 gehalten");
 
-  // --- K5 · Grössenwechsel ÜBER die Breitengrenze: neue Hülle, derselbe Schritt ------------------
+  // --- K5 · Grössenwechsel ÜBER die Breitengrenze: Klara wird neu montiert, der Schritt bleibt ----
+  // Nacharbeit 2 (gemessen): der Tutorialbereich behält seinen Schritt selbst — Klaras neu
+  // montierte Begleitkarte zeigt ihn weiter an; es wird nichts wiederhergestellt.
   await p.setViewportSize({ width: 390, height: 844 });
   await expect(p.getByTestId("klara-tutorial-schritt")).toContainText("Schritt 2 von 7", {
     timeout: 10_000,
   });
   await expect(aktuell).toHaveAttribute("data-schritt", "formulieren");
-  await expect(p.getByTestId("klara-tutorial-hinweis")).toContainText("wieder bei Schritt 2");
   // Gezeigt wird das Ziel dieses Schritts — oder Klara benennt, dass es fehlt; nie ins Leere.
   await expect(
     p.locator('[data-testid="klara-zeiger"], [data-testid="klara-tutorial-fehlziel"]').first(),
   ).toBeVisible();
-  await beleg(p, info, "4 schmal 390: Tutorial wieder bei Schritt 2");
+  await beleg(p, info, "4 schmal 390: Tutorial weiter bei Schritt 2");
   await p.setViewportSize({ width: 1280, height: 800 });
   await expect(p.getByTestId("klara-tutorial-schritt")).toContainText("Schritt 2 von 7", {
     timeout: 10_000,
   });
   await expect(aktuell).toHaveAttribute("data-schritt", "formulieren");
+  await zeigerOderFehlziel(p);
+
+  // --- K4 · Neuladen: das Tutorial steht zu — Klara öffnet es wieder an DEMSELBEN Schritt --------
+  await p.reload();
+  await expect(p.getByTestId("page-fragen")).toBeVisible({ timeout: 15_000 });
+  await oeffnen(p);
+  await expect(p.getByTestId("klara-tutorial-schritt")).toContainText("Schritt 2 von 7", {
+    timeout: 10_000,
+  });
+  await expect(aktuell).toHaveAttribute("data-schritt", "formulieren");
+  await expect(p.getByTestId("klara-tutorial-hinweis")).toContainText("wieder bei Schritt 2");
+  await zeigerOderFehlziel(p);
+  await beleg(p, info, "4b nach Neuladen: Tutorial wieder bei Schritt 2");
 
   // --- K5 · Fehlziel: im Schritt „Antwort“ gibt es auf der echten Seite noch keine Antwort -------
   for (let i = 0; i < 3; i++) {

@@ -137,10 +137,16 @@ test("Klara 03 · Artikel: Kontext, Markierung über Fokus- und Seitenwechsel, B
   await beleg(p, info, "1 Dieser Artikel mit Fassung und Prüfstatus");
 
   // --- K2 · echte Mausmarkierung → „Klara fragen“ --------------------------------------------------
+  // Nacharbeit 2 (gemessen): das kompakt geöffnete Gespräch liegt bei 1280 px über dem Lesetext und
+  // fängt den Klick ab. Wie eine Person schliesst die Sonde es zum Markieren; „Klara fragen“ öffnet
+  // es mit der Markierung wieder.
+  await p.getByTestId("klara-schliessen").click();
+  await expect(p.getByTestId("klara-gespraech")).toHaveCount(0);
   const absatz = p.locator('[data-testid="bib-text"] p', { hasText: aussage }).first();
   await absatz.click({ clickCount: 3 });
   await expect(p.getByTestId("klara-auswahl-knopf")).toBeVisible();
   await p.getByTestId("klara-auswahl-knopf").click();
+  await expect(p.getByTestId("klara-gespraech")).toBeVisible();
   await expect(p.getByTestId("klara-auswahl-text")).toContainText(aussage);
   const herkunft = p.getByTestId("klara-auswahl-herkunft");
   await expect(herkunft).toContainText(titel);
