@@ -450,6 +450,16 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Block D — loadFeed, über den Helferrumpf nachgeprüft.",
   },
+  // ADMIN-10: die Qualitätsübersicht nennt Titel und Konfliktbeschreibungen — die Route bildet
+  // sichtbarkeitsfilterFuer(user) unbedingt und reicht ihn an jede Zeile (Paare beidseitig).
+  "GET /api/qualitaetsaufgaben": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-10 — sichtbarkeitsfilterFuer je Objekt; Lückentext über redactGapForViewer.",
+  },
+  "POST /api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-10 — nicht sichtbares Objekt der Meldung endet in 404, ohne Beleg.",
+  },
   "GET /api/livewall": { urteil: "PRAEDIKAT", grund: "Block E — Titel + Autor je Objekt." },
   "GET /api/validation/board": { urteil: "PRAEDIKAT", grund: "Block E — volle Wissensobjekte." },
   // --- Die vorbereiteten Wege, jetzt scharf (Block F) ---------------------------------------
