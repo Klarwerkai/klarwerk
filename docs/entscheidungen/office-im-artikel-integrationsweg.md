@@ -413,3 +413,44 @@ Cookies oder Schlüssel.
 | Produktivbetrieb Weg C | **Collabora-Online-Subscription** (Angebot und Kauffreigabe) | Pedi |
 | Microsoft 365 im Artikel (Weg A) | **CSPP-Zulassung durch Microsoft** (Bewerbung und Programmvertrag) | Klarwerk-Inhaber gegenüber Microsoft |
 | „In Microsoft öffnen“ (Weg B, nicht eingebettet) | **Entra-App-Registrierung + Admin-Zustimmung** im Kundenmandanten | Mandanten-Admin des Kunden |
+
+---
+
+## 9 · Umsetzung im Artikel (Auftrag `produkt:20261007:office-artikel-editor`)
+
+*Stand 10.10.2026. Die Abschnitte 1–8 sind der Machbarkeitsstand und bleiben unverändert.*
+
+**Gebaut (U1–U4), Weg C mit demselben Hostweg `erstelleWopiHost`:**
+
+| Schritt | Ort | Was |
+|---|---|---|
+| U1 | `docker-compose.yml`, Profil `office` | CODE-Testdienst mit `aliasgroup1` und `net.frame_ancestors` aus der Umgebung. Startet nur auf ausdrücklichen Aufruf. |
+| U2 | `services/app/src/routes/office-routes.ts`, `office-artikel.ts`, `build-app.ts`, `security-headers.ts` | WOPI-Türen `/wopi/files/:anhangId[/contents]` in Fastify. Die Marke wird **vor dem Parsen** geprüft. Rechte werden je Anfrage frisch gelesen (Konto freigegeben, Rolle, Spaces, `darfSehen`, Status). `frame-src`/`form-action` bekommen genau die eine Editor-Herkunft. Das Anfrageprotokoll schreibt die URL ohne Abfrageteil, die Marke erscheint also nicht. |
+| U3 | `KoService.uebernimmOfficeFassung` | Anhangstausch **und** neue Fassung in einem `mutateKoTx` mit CAS. Status `offen`, Trust 0, Snapshot, `ko.revised` + `ko.office-uebernommen`, Beleg `attachment`. Das Rückholen eines früheren Dokumentstands ergibt eine neue Fassung (`anhangZurueckAus`); der Dienst prüft das Objekt an Belegkette oder Snapshot. |
+| U4 | `apps/web/src/components/bibliothek/OfficeImArtikel.tsx` | Am Anhang „Im Artikel öffnen“: Schreibweg, Dokumentstände mit Rückholen, Belegstellen je Dokumentstand, laufende gemeinsame Bearbeitung, gesicherte Konfliktstände. Der Editor wird per Formular-POST ins iframe eingebettet; „Als neue Fassung übernehmen“, „Speichern und zurück zum Artikel“, „Abbrechen“. Laden, Speichern und Fehler sind sichtbar und haben Fristen. |
+
+**Betreiberumgebung:** `KLARWERK_OFFICE_EDITOR_URL` (Editor im Browser), optional
+`KLARWERK_OFFICE_EDITOR_INTERN_URL` (Discovery vom Server), `KLARWERK_WOPI_HOST_URL` (wie der Editor
+Klarwerk erreicht; ohne Angabe gilt `APP_BASE_URL`), `KLARWERK_WOPI_SCHLUESSEL` (≥ 32 Byte, hex oder
+base64). Fehlt etwas, zeigt die Fläche „nicht eingerichtet“, und die WOPI-Türen antworten 404.
+
+**Konflikte ohne stillen Verlust:** Bei einer fremden Änderung während der Sitzung meldet die Übernahme
+`409 KO_STALE`. Beim Schließen wird der Arbeitsstand dann **nicht** übernommen, sondern als „gesichert“
+vermerkt und am Artikel angezeigt. Erst ein ausdrücklicher Klick übernimmt ihn als neue Fassung, und
+zwar nur ein Objekt, das der Host selbst vermerkt hat.
+
+**Klara:** Klara liest Markierungen aus dem Seiten-DOM. Der Editor im fremden iframe übergibt keine
+Auswahl, und keine seiner Nachrichten trägt markierten Text. Die Fläche sagt das sichtbar
+(`auswahlVomEditor` liefert `null`); ein Auswahlkontext aus dem Editor wird nicht angeboten.
+
+**Offen, ausdrücklich:**
+
+- Editor-Sitzungen und gesicherte Stände liegen im Arbeitsspeicher **eines** App-Prozesses. Für mehrere
+  Prozesse fehlt eine Postgres-Ablage.
+- Datei-Vorschlag für freigegebene Artikel ohne Freigaberecht (Plan 5.4): nicht gebaut. Der Editor
+  öffnet dort nur lesend.
+- Kein neuer Dokumentauszug nach der Übernahme. Belegstellen am alten Dokumentstand werden als
+  „früherer Dokumentstand — nicht neu geprüft“ gezeigt, nicht still umgehängt.
+- Automatisch geprüft ist der Weg über die echten Routen ohne Editor
+  (`tests/office-artikel-editor/`). Der Bedienlauf aus 7.4 mit echtem CODE im Browser, zwei Konten und
+  Word/Excel/PowerPoint ist **nicht erfolgt**; er braucht den Testdienst und einen Menschen.

@@ -4035,6 +4035,141 @@ export class KoService {
     }
   }
 
+  // ==============================================================================================
+  // produkt:20261007:office-artikel-editor (Plan U3) — EINE OFFICE-SPEICHERUNG WIRD EINE FASSUNG.
+  // ==============================================================================================
+  //
+  // Bis hierher gab es zwei getrennte Wege: `updateAttachment` tauscht den Inhalt OHNE Fassung,
+  // `revise` erhöht die Fassung OHNE Anhangstausch. Der eingebettete Editor braucht beides in EINEM
+  // bedingten Schritt — sonst stünde zwischen den beiden Aufrufen ein neues Dokument an einer alten,
+  // womöglich freigegebenen Fassung.
+  //
+  // DIESELBE BEDEUTUNG WIE `revise` (über `naechsteFassung`): Fassung + 1, Status `offen`, Trust 0,
+  // Bewertungen der Vorfassung zählen nicht mehr. Eine Dokumentänderung stuft den Artikel nie hoch;
+  // es gibt hier keinen Freigabeparameter. Text, Titel, Quellen und Belegstellen bleiben, wie sie sind
+  // — welche Belegstellen am alten Dokumentstand hängen, zeigt die Fläche (`objectId` der Quelle).
+  //
+  // CAS GEGEN `expectedVersion`: wer außerhalb der Editor-Sitzung geschrieben hat, bekommt `KO_STALE`
+  // und nichts wird überschrieben. Der Arbeitsstand bleibt als Objekt im Speicher.
+  //
+  // ZURÜCKHOLEN (`restoredFrom`): dieselbe Anhangskennung bekommt ein Objekt zurück, das sie früher
+  // trug. Das ist eine NEUE Fassung mit `anhangZurueckAus`; gelöscht wird nichts. Dass das Objekt wirklich
+  // ein früherer Stand GENAU DIESES Anhangs war, prüft der Dienst selbst an der append-only Belegkette
+  // (`kind: "attachment"`, geschrieben von `addAttachment` und jeder Übernahme) oder an einem
+  // Fassungs-Snapshot — über diesen Weg gerät kein fremdes Objekt an den Artikel.
+  async uebernimmOfficeFassung(
+    id: string,
+    input: {
+      anhangId: string;
+      objectId: string;
+      size: number;
+      expectedVersion: number;
+      restoredFrom?: number;
+    },
+    actor: string,
+  ): Promise<{ ko: KnowledgeObject; belegOffen: boolean }> {
+    if (input.restoredFrom !== undefined) {
+      const belegt = (await this.evidence?.listByKo(id))?.some(
+        (b) =>
+          b.kind === "attachment" &&
+          b.attachmentId === input.anhangId &&
+          b.objectId === input.objectId,
+      );
+      const imSnapshot = (await this.versions?.listByKo(id))?.some((f) =>
+        f.snapshot.attachments?.some(
+          (a) => a.id === input.anhangId && a.objectId === input.objectId,
+        ),
+      );
+      if (!belegt && !imSnapshot) {
+        throw new KoError(
+          "INVALID",
+          "Dieses Dokument war nie ein Stand dieses Anhangs; es gibt nichts zurückzuholen.",
+        );
+      }
+    }
+    const neu: { objectId: string; size: number; restoredFrom?: number } = {
+      objectId: input.objectId,
+      size: input.size,
+      ...(input.restoredFrom === undefined ? {} : { restoredFrom: input.restoredFrom }),
+    };
+    const geplant: { beleg?: Omit<EvidenceRecord, "id"> } = {};
+    const ko = await this.mutateKoTx(id, (aktuell) => {
+      this.pruefeErwarteteVersion(aktuell, input.expectedVersion);
+      const vorher = (aktuell.attachments ?? []).find((a) => a.id === input.anhangId);
+      if (!vorher?.objectId) {
+        throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+      }
+      const fassung = this.naechsteFassung(aktuell, {}, actor);
+      const version = fassung.version;
+      const nachher: KoAttachment = { ...vorher, objectId: neu.objectId, size: neu.size };
+      const updated: KnowledgeObject = {
+        ...fassung,
+        attachments: (aktuell.attachments ?? []).map((a) =>
+          a.id === input.anhangId ? nachher : a,
+        ),
+        history: fassung.history.map((eintrag) =>
+          eintrag.version === version
+            ? {
+                ...eintrag,
+                anhangGeaendert: input.anhangId,
+                ...(neu.restoredFrom === undefined ? {} : { anhangZurueckAus: neu.restoredFrom }),
+              }
+            : eintrag,
+        ),
+      };
+      geplant.beleg = {
+        koId: id,
+        koVersion: version,
+        kind: "attachment",
+        attachmentId: input.anhangId,
+        objectId: neu.objectId,
+        label: nachher.name,
+        mime: nachher.mime,
+        createdBy: actor,
+        createdAt: new Date(this.now()).toISOString(),
+      };
+      return {
+        updated,
+        value: updated,
+        snapshot: { author: actor, note: "überarbeitet" },
+        audit: async (tx?: TxContext) => {
+          await this.audit?.record(
+            { actor, action: "ko.revised", target: id, payload: { version } },
+            tx,
+          );
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.office-uebernommen",
+              target: id,
+              payload: {
+                version,
+                anhangId: input.anhangId,
+                vorherObjectId: vorher.objectId,
+                objectId: neu.objectId,
+                ...(neu.restoredFrom === undefined ? {} : { restoredFrom: neu.restoredFrom }),
+              },
+            },
+            tx,
+          );
+        },
+      };
+    });
+    // Der Beleg folgt nach der Transaktion, wie bei `updateAttachment`: scheitert er, ist die Fassung
+    // geschrieben, und die Antwort meldet `belegOffen`. Die frühere `objectId` bleibt über den
+    // Snapshot ihrer Fassung referenziert.
+    const beleg = geplant.beleg;
+    if (!beleg) {
+      return { ko, belegOffen: false };
+    }
+    try {
+      await this.appendEvidence(beleg);
+      return { ko, belegOffen: false };
+    } catch {
+      return { ko, belegOffen: true };
+    }
+  }
+
   /**
    * R-0163 (Nacharbeit 7): trägt fehlende Belege ÜBERNOMMENER Anhänge nach — je Anhang mit
    * Herkunft (`quelle`) und `objectId`, zu dem die Belegkette keinen `attachment`-Eintrag mit

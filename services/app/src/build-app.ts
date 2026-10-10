@@ -335,6 +335,7 @@ import {
 } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
+import { leseOfficeEditorUmgebung } from "./office-artikel";
 import {
   type PaarpflichtAusfuehrung,
   createPaarpflichtAusfuehrung,
@@ -395,6 +396,7 @@ import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
+import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
@@ -4049,6 +4051,22 @@ export function buildApp(
         kos: services.ko,
         nutzerName: async (nutzerId) =>
           (await services.auth.listUsers()).find((u) => u.id === nutzerId)?.name,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:office-artikel-editor: Word, Excel und PowerPoint im Artikel über den WOPI-
+  // Hostweg (Plan U2). Ohne Einrichtung in der Umgebung antworten die Routen 503 bzw. 404; die
+  // Fläche zeigt dann „nicht eingerichtet". Spaces und Konten kommen aus derselben Quelle wie an
+  // `makeGuards`, damit der Editor nie mehr sieht als die Klarwerk-Sitzung.
+  app.register(
+    officeRoutes(
+      {
+        ko: services.ko,
+        objekte: services.objects,
+        einrichtung: leseOfficeEditorUmgebung(process.env),
+        konten: () => services.auth.listUsers(),
+        spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
       },
       guards,
     ),

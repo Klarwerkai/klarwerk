@@ -159,6 +159,13 @@ export interface HistoryEntry {
   // den Vermerktext zu schreiben machte ihn unübersetzbar, weil er dann für jede Version anders
   // lautete. Beides zusammen liest sich als „aus früherer Fassung übernommen · v2".
   restoredFrom?: number;
+  // produkt:20261007:office-artikel-editor: die Kennung des Anhangs, dessen Dokument diese Fassung
+  // ersetzt hat (`KoService.uebernimmOfficeFassung`). Optional; fehlt es, hat die Fassung keinen
+  // Anhangsinhalt getauscht. Die Anzeige liest daraus „Dokument geändert", ohne Vermerktext.
+  anhangGeaendert?: string;
+  // Ab welcher Fassung der zurückgeholte DOKUMENTSTAND galt. Bewusst NICHT `restoredFrom`: das sagt
+  // im Bestand „der Artikelinhalt stammt aus Fassung n" — hier bleibt der Artikeltext, wie er ist.
+  anhangZurueckAus?: number;
 }
 
 // ================================================================================================
