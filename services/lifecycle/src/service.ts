@@ -3,8 +3,12 @@ import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import type { LifecycleRepo } from "./repo";
 import type { LearningPath, LearningStep } from "./types";
 
-/** R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde. */
-export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek";
+/**
+ * R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde.
+ * ADMIN-10: „rueckmeldung" — eine belegte Rückmeldung (`answer.reported`) wurde in der
+ * Qualitätsübersicht als Aufgabe übernommen; der Beleg nennt ihre `meldungId`.
+ */
+export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek" | "rueckmeldung";
 
 /**
  * R-1635: der Beleg einer Markierung — eine Zeile je markiertem Objekt im Prüfprotokoll
@@ -62,7 +66,12 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   private async markiere(
     koIds: readonly string[],
     actor: string,
-    payload: { grund: RevalidierungsGrund; assetRef?: string; ausgeloestVon?: string },
+    payload: {
+      grund: RevalidierungsGrund;
+      assetRef?: string;
+      ausgeloestVon?: string;
+      meldungId?: string;
+    },
   ): Promise<void> {
     for (const koId of koIds) {
       await this.repo.markPending(koId);
@@ -122,6 +131,16 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   // Bibliothek heraus, ohne Anlagenänderung. Derselbe Merker; die Bestätigung räumt ihn wie gewohnt.
   async requestRevalidation(koId: string, actor = "system"): Promise<void> {
     await this.markiere([koId], actor, { grund: "bibliothek" });
+  }
+
+  // ADMIN-10: dieselbe gezielte Prüfanforderung, ausgelöst aus einer belegten Rückmeldung. Kein
+  // zweiter Aufgabentyp — der Merker ist derselbe, die Bestätigung räumt ihn wie gewohnt.
+  async requestRevalidationAusRueckmeldung(
+    koId: string,
+    actor: string,
+    meldungId: string,
+  ): Promise<void> {
+    await this.markiere([koId], actor, { grund: "rueckmeldung", meldungId });
   }
 
   // SCRUM-420 (Pedi 03.07.): Selbstheilung — Marker, deren KO nicht mehr existiert (z. B.
