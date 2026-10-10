@@ -1301,6 +1301,76 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // produkt:20261008:klara-basis — die eigenen Klara-Gespräche. Jede Tür prüft nur die Anmeldung;
+  // das Konto kommt aus der Sitzung. DIE GEFAHRENEN URLs SIND ZUSTANDSFREI: die Lesetür liefert auf
+  // der gemeinsamen Bühne `{ gespraech: null }`; `POST /api/me/klara/gespraeche` mit leerer Nutzlast
+  // scheitert an der Pflichtangabe `objektbezug` (400), BEVOR etwas angelegt wird; alle Türen mit
+  // Kennung tragen eine erfundene und enden in 400 (leere Nutzlast) oder 404 des Dienstes.
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraech",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:97",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "GET",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht",
+    route: "/api/me/klara/gespraeche/:id",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:121",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "POST",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/nachrichten",
+    route: "/api/me/klara/gespraeche/:id/nachrichten",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:134",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/schritt",
+    route: "/api/me/klara/gespraeche/:id/schritt",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:154",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "PUT",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht/einwilligung",
+    route: "/api/me/klara/gespraeche/:id/einwilligung",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:174",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "klaraGespraechRoutes",
+    methode: "DELETE",
+    pfad: "/api/me/klara/gespraeche/gibt-es-nicht",
+    route: "/api/me/klara/gespraeche/:id",
+    belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:199",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
   // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {

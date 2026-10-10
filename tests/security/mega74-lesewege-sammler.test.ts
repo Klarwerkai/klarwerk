@@ -838,6 +838,34 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur das eigene Gedächtnis (user.id), Antwort nur die Zahl.",
   },
+  "GET /api/me/klara/gespraech": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur das eigene zuletzt geführte Klara-Gespräch (klara-gespraech-routes.ts, user.id).",
+  },
+  "POST /api/me/klara/gespraeche": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt nur ein eigenes Gespräch an; der Objektbezug kommt vom Bildschirm der Person.",
+  },
+  "GET /api/me/klara/gespraeche/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur ein eigenes Gespräch (user.id), fremd und unbekannt antworten 404.",
+  },
+  "POST /api/me/klara/gespraeche/:id/nachrichten": {
+    urteil: "EIGENER_BESTAND",
+    grund: "hängt an ein eigenes Gespräch an; eine Antwortkennung muss eine eigene Antwort sein.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/schritt": {
+    urteil: "EIGENER_BESTAND",
+    grund: "setzt den letzten Schritt eines eigenen Gesprächs, fremd und unbekannt 404.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/einwilligung": {
+    urteil: "EIGENER_BESTAND",
+    grund: "Einwilligung nur für ein eigenes Gespräch, fremd und unbekannt 404.",
+  },
+  "DELETE /api/me/klara/gespraeche/:id": {
+    urteil: "EIGENER_BESTAND",
+    grund: "löscht nur ein eigenes Gespräch (user.id), Antwort nur die Zahl.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
