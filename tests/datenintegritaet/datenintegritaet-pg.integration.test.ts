@@ -8,7 +8,8 @@
 //   F4 — Altbestand: verwaiste Zeilen aus der Zeit vor dem Schlüssel lassen den Start zu (NOT
 //        VALID); der Bericht findet sie, die Bereinigung entfernt sie und validiert die Schlüssel.
 //   F5 — Lücken: geschlossen ohne Bezug wird gezählt, ein Bezug ohne Objekt einzeln genannt; das
-//        Schliessen über die Route speichert nur einen Bezug auf ein vorhandenes Objekt.
+//        Schliessen über die Route speichert nur einen Bezug auf ein vorhandenes Objekt — seit
+//        produkt:20261010:wissenskreislauf-schliessen nur auf ein fachlich freigegebenes.
 //   F6 — Prüfspur: ein `ko.*`-Ziel ohne Objekt und ohne `ko.purged` ist ein Widerspruch.
 //   F7 — Waisen: nur ein Objekt ohne jeden Bezug und ausserhalb der Schutzfrist; ein Bezug im
 //        Text, im Papierkorb oder eine laufende Frist schützt. Die Bereinigung entfernt genau sie.
@@ -281,6 +282,25 @@ describe("R-0846 / R-1437 · Datenintegrität und begrenzte Prüfung gegen echte
         [offen],
       );
       expect(nochOffen.rows[0]?.data.status).toBe("offen");
+      // produkt:20261010:wissenskreislauf-schliessen: ein vorhandenes, aber fachlich NICHT
+      // freigegebenes Objekt schliesst die Lücke nicht mehr — 400 mit den Gründen, Zeile offen.
+      const ungeprueft = await app.inject({
+        method: "PUT",
+        url: `/api/gaps/${offen}`,
+        headers,
+        payload: { close: true, koId: ko.id },
+      });
+      expect(ungeprueft.statusCode, ungeprueft.body).toBe(400);
+      expect((ungeprueft.json() as { gruende?: string[] }).gruende).toContain("nicht_freigegeben");
+      const immerNochOffen = await p.query<{ data: { status: string } }>(
+        "SELECT data FROM gaps WHERE id = $1",
+        [offen],
+      );
+      expect(immerNochOffen.rows[0]?.data.status).toBe("offen");
+      // Die vorgeschriebene Fachfreigabe über den echten Bewertungsweg (aktuelle Fassung).
+      for (let i = 0; i < ko.neededValidations; i++) {
+        await s.validation.rate(ko.id, `pruefer-${i}-${randomUUID().slice(0, 6)}`, "up");
+      }
       const richtig = await app.inject({
         method: "PUT",
         url: `/api/gaps/${offen}`,

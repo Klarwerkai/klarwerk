@@ -71,7 +71,11 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // Dev-Neustart den Entwurf bzw. seinen Fassungsbezug. Das Replay ist deterministisch: beide tragen
   // ihre Bedingung in den Argumenten, und in derselben Reihenfolge trifft sie denselben Stand.
   drafts: ["insert", "update", "delete", "insertIfOperationAbsent", "updateWennStand"],
-  gaps: ["insert", "update", "delete"],
+  // produkt:20261010:wissenskreislauf-schliessen: `insertOrIncrement` (Hochzählen samt weiterer
+  // Fragender) und `ersetzeWenn` (jeder Vorgangsschritt, auch der Abschluss) sind Mutationen. Beide
+  // tragen ihre Bedingung in den Argumenten — das Replay trifft in derselben Reihenfolge denselben
+  // Stand. Ohne sie verlöre ein Dev-Neustart weitere Fragende und Abschlüsse.
+  gaps: ["insert", "update", "delete", "insertOrIncrement", "ersetzeWenn"],
   // SCRUM-507 R2: die Bewertung (inkl. koVersion) wird per upsert journaled; die Invalidierung ist
   // versionsgebunden (keine separate Löschung), daher kein weiterer Mutator nötig.
   ratings: ["upsert"],
@@ -109,7 +113,17 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
   // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
   managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
-  lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],
+  // produkt:20261010:aenderungsfolgen-sichtbar: `markPending` trägt den fertigen Anlass (inkl.
+  // Zeitpunkt) in seinen args → Replay exakt; `restorePending` nimmt eine gescheiterte Bestätigung
+  // ohne Transaktion zurück und ist damit ebenfalls eine Mutation.
+  lifecycleRepo: [
+    "addCoupling",
+    "markPending",
+    "clearPending",
+    "restorePending",
+    "savePath",
+    "setProgress",
+  ],
   objects: ["insert"],
   // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
   // sonst überleben so eingereihte Import-Kandidaten den Dev-Neustart nicht.
