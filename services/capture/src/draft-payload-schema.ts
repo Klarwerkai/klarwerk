@@ -147,6 +147,29 @@ export function validateDraftPayloadShape(wert: unknown): DraftPayloadShapeResul
   if (negativFehler !== undefined) {
     return { ok: false, message: negativFehler };
   }
+  // produkt:20261007:templates-default: der Vorlagenbezug ist `null` (freie Eingabe) oder
+  // { id, version, spaceId? }. Nur die Gestalt — ob es die Vorlage gibt, prüft das Einreichen.
+  const vorlage = wert.vorlage;
+  if (vorlage !== undefined && vorlage !== null) {
+    const v = istEinfachesObjekt(vorlage) ? vorlage : {};
+    const spaceId = v.spaceId;
+    if (
+      typeof v.id !== "string" ||
+      v.id.length === 0 ||
+      v.id.length > 100 ||
+      typeof v.version !== "number" ||
+      !Number.isInteger(v.version) ||
+      v.version < 1 ||
+      (spaceId !== undefined &&
+        spaceId !== null &&
+        (typeof spaceId !== "string" || spaceId.length > 100))
+    ) {
+      return {
+        ok: false,
+        message: "draftPayload.vorlage ist null oder { id, version, spaceId? }.",
+      };
+    }
+  }
   // Die verschachtelten Strukturen werden an der Persistenzgrenze typ-tolerant normalisiert
   // (falscher Container ⇒ Feld fällt weg) und können dort nicht werfen. Hier wird deshalb NUR
   // geprüft, was `mergeDraftPayload` selbst anfassen würde.
