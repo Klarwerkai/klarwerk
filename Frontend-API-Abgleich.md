@@ -10,7 +10,7 @@
 
 ## Vorhandene Endpunkte (geprüft)
 
-- **Auth/Onboarding (vollständig):** `POST /api/auth/register|login|logout|forgot|reset|oidc|setup`, `GET /api/auth/status|me`, `POST /api/auth/password`. → Login/Registrieren/Wartet-auf-Freigabe/Ersteinrichtung sind gedeckt.
+- **Auth/Onboarding (vollständig):** `POST /api/auth/register|login|logout|forgot|reset|oidc|setup`, `GET /api/auth/status|me`, `POST /api/auth/password`. → Login/Registrieren/Wartet-auf-Freigabe/Ersteinrichtung sind gedeckt. Seit Ship 8 (23.07.2026) gilt „Registrierung nur per Einladung": `register` antwortet im Auslieferungszustand 403 `REGISTRATION_DISABLED`, `GET /api/auth/status` meldet `selfRegistrationEnabled: false`; neue Konten entstehen über `POST /api/users` (Admin).
 - **Nutzer/Admin:** `GET /api/users`, `POST /api/users`, `PUT /api/users/:id` (Rolle/Passwort), `DELETE /api/users/:id`, `POST /api/auth/users/:id/approve`. → Admin-Screen gedeckt (inkl. Selbstschutz serverseitig).
 - **Wissensobjekt:** `GET /api/kos`, `GET /api/kos/:id`, `POST /api/kos`, `DELETE /api/kos/:id`, **`PUT /api/kos/:id`** mit Aktion `rate|assign|revise|category|tags|conflict|resolve-conflict|transfer-author|revalidate`. → Detail/Wiki, Bearbeiten, Validieren, Konflikt melden/lösen, Übergabe, Re-Validierung gedeckt. KO trägt `confidence`, `trust`, `version`, `history`, `originalAuthor`, `author`, `neededValidations`, `assignments`, `asset`, `type`, `tags` (alles, was die Vertrauens-/Herkunftszeile braucht).
 - **Erfassen/Entwürfe:** `GET/POST /api/drafts`, `GET /api/drafts/:id`, `DELETE /api/drafts/:id`, `POST /api/drafts/:id/promote` + Reasoner-Route. → Capture-Flow inkl. geräteübergreifendem Entwurf gedeckt.
@@ -18,6 +18,7 @@
 - **Konflikte:** `GET /api/conflicts`, `GET /api/conflicts/:id`, `POST /api/conflicts/:id/escalate`; Anlegen/Lösen über KO-Dispatcher. → Conflict Board gedeckt.
 - **Fragen + Wissenslücken:** `POST /api/ask`, `POST /api/ask/helpful`, `GET /api/gaps`, `PUT /api/gaps/:id` (zuweisen/schließen), `DELETE /api/gaps/:id?confirm=true`. → Ask→Antwort/Lücke **und** Risiko/Lücken sind gedeckt (besser als im Brief angenommen).
 - **Bibliothek/Lebenszyklus/Analytics/Audit/i18n/Graph:** `GET /api/library/export`, `POST /api/library/import`, `GET /api/lifecycle/pending`, `GET /api/analytics`, `GET /api/analytics/busfactor`, `GET /api/audit`, `GET /api/i18n/locales`, `GET /api/learning-paths/:role`, `GET /api/graph`. → Bibliothek, Lebenszyklus, Analytics/Audit, Risiko-Bus-Faktor, Graph (Datenpfad vorhanden) gedeckt.
+- **Übersetzungspflege (R-1034 / FR-I18N-02):** `GET /api/i18n/locales`, `GET /api/i18n/:locale` (beim Start und bei jedem Sprachwechsel, `lib/textpflege.ts`), `PUT`/`DELETE /api/admin/i18n/:locale/:key` und `PUT /api/admin/i18n-sprachen/:locale` → Verwaltung › System › Übersetzungen (`components/einstellungen/UebersetzungsPflege.tsx`).
 
 ## Echte Abstimmpunkte (vor Bau der abhängigen Screens)
 

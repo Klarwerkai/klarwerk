@@ -1,5 +1,5 @@
 import type { ReasonerLocale } from "../../reasoner";
-import type { Gap, GapPriority } from "./types";
+import type { Gap, GapBelegbedarf, GapPriority } from "./types";
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): adressatengerechte Sichtbarkeit des Wissenslücken-
 // FREITEXTES (gap.question). Der Fragetext ist Nutzer-Freitext OHNE Vertraulichkeitsstufe und kann
@@ -24,24 +24,34 @@ export interface GapView {
   // GAP-SPRACHHERKUNFT: Sprache, in der die Lücke entstand. Bewusst AUCH in der redigierten Sicht
   // (siehe unten) — eine Sprachangabe ist kein Fragetext und verrät nichts über den Inhalt.
   locale?: ReasonerLocale;
+  // JOB 1111 / D-032 · R-0333: wie oft dieselbe Frage zu dieser Lücke führte. Stand bis zur
+  // Aufnahme gesamt-wissensluecken NICHT in dieser Projektion — die Häufigkeit wurde gezählt und
+  // gespeichert, erreichte die Oberfläche aber nie. In BEIDEN Zweigen: eine Zahl ist kein Fragetext.
+  askCount?: number;
+  // R-0291: welcher Beleg für eine tragfähige Antwort fehlen würde. NUR in der berechtigten Sicht —
+  // der Befund gehört zur Frage und wird mit ihr zurückgehalten.
+  belegbedarf?: GapBelegbedarf[];
   // true → der Fragetext wurde für diesen Betrachter zurückgehalten (fail-closed Redaktion).
   redacted?: boolean;
 }
 
+// R-0585 (DS6, Auftrag gesamt-datenschutz-voreinstellung): „Was jemand gefragt hat, sieht nur er
+// selbst und der Zuständige — für alle anderen wird der Fragetext geschwärzt." Bis hierher trug der
+// Kontext ein drittes Recht, `maySeeDetail`, das die Routen pauschal aus `ko.validate` ableiteten:
+// jeder Admin und Controller las jeden Fragetext, auch ohne je zuständig gewesen zu sein. Dieses
+// Rollenrecht ist ENTFERNT, nicht bloß auf `false` gestellt — ein Feld, das niemand mehr setzen
+// darf, wäre die Einladung, es wieder zu setzen. Zuständig wird man durch Zuweisung (`assignee`).
 export interface GapViewerContext {
   viewerId: string;
-  // Rolle mit ausdrücklicher Detail-Berechtigung (ko.validate/users.manage-Ebene) — Kuratoren, die den
-  // Lücken-Freitext ohnehin bearbeiten. Aus der Rolle in der Route abgeleitet (can(role, "ko.validate")).
-  maySeeDetail: boolean;
 }
 
-// FUNKE-FIX2 P0: fail-closed Redaktion. Volltext sehen NUR: eine Detail-Rolle, der Assignee ODER der
-// Ersteller/Owner. Alle anderen (und jeder Fall ohne ermittelbare Berechtigung) erhalten eine
-// redigierte Sicht (Kategorie/Neutralbezeichnung über die vorhandenen Felder — Priorität/Status/
-// Zeitpunkt bleiben, der Fragetext NICHT).
+// FUNKE-FIX2 P0: fail-closed Redaktion. Volltext sehen NUR der Assignee (der Zuständige) ODER der
+// Ersteller/Owner (der Fragende). Alle anderen — ausdrücklich auch Rollen mit `ko.validate` — und
+// jeder Fall ohne ermittelbare Berechtigung erhalten eine redigierte Sicht (Kategorie/
+// Neutralbezeichnung über die vorhandenen Felder — Priorität/Status/Zeitpunkt bleiben, der
+// Fragetext NICHT).
 export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView {
   const authorized =
-    viewer.maySeeDetail ||
     (gap.assignee !== null && gap.assignee === viewer.viewerId) ||
     (gap.createdBy !== undefined && gap.createdBy === viewer.viewerId);
   const base: GapView = {
@@ -56,9 +66,14 @@ export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView 
     // sieht nur eine Neutralbezeichnung — ohne die Sprachangabe stünde bei ihm ein unerklärter
     // fremdsprachiger Eintrag. Die Sprache ist datensparsam: sie sagt nichts über den Inhalt.
     ...(gap.locale ? { locale: gap.locale } : {}),
+    ...(typeof gap.askCount === "number" ? { askCount: gap.askCount } : {}),
   };
   if (authorized) {
-    return { ...base, question: gap.question };
+    return {
+      ...base,
+      question: gap.question,
+      ...(gap.belegbedarf?.length ? { belegbedarf: [...gap.belegbedarf] } : {}),
+    };
   }
   return { ...base, redacted: true };
 }

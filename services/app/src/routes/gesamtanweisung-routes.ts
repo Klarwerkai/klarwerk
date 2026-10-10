@@ -41,7 +41,7 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Confidentiality } from "../../../knowledge-object";
 import { type Guards, type SessionUser, sendError } from "../http";
-import { darfSehen } from "../sichtbarkeit";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // ================================================================================================
 // DER PORT
@@ -123,6 +123,7 @@ export interface GesamtanweisungDienstPort {
     version: number,
     entscheidung: "angenommen" | "abgelehnt",
     sichtbar: AnweisungSichtbar,
+    von: string,
   ): Promise<unknown>;
   /** QUELLENÄNDERUNGEN · die neuere Fassung eines Abschnitts bewusst übernehmen. */
   fassungUebernehmen(
@@ -258,13 +259,15 @@ function kopfAus(body: Record<string, unknown>): AnweisungKopfEingabe {
  * Sie wird als DATUM übergeben, nicht als Flag: seit mega74/Variante A hängt die Sichtbarkeit auch
  * am Autor, und ein Boolescher Wert könnte „vertrauliches, aber eigenes Objekt" nicht ausdrücken
  * (`sichtbarkeit.ts:101-104`).
+ *
+ * R-1175 (aufnahme:20260922:gesamt-rechte-inventar), Nacharbeit 4: gebildet aus DERSELBEN Fabrik
+ * wie jeder andere Leseweg (`sichtbarkeitsfilterFuer`, der `darfSehen` anwendet). Bis hierher stand
+ * hier ein eigenes Literal `(fakten) => darfSehen(user, {…})`, das nur zurückgegeben und erst im
+ * Dienst aufgerufen wurde — für den Lesewege-Sammler ein nie ausgeführter Rumpf. Die Fakten reisen
+ * unverändert (Stufe und Autor), also ändert sich die Entscheidung nicht.
  */
 function sichtbarFuer(user: SessionUser): AnweisungSichtbar {
-  return (fakten) =>
-    darfSehen(user, {
-      confidentiality: fakten.confidentiality ?? null,
-      author: fakten.author ?? null,
-    });
+  return sichtbarkeitsfilterFuer(user);
 }
 
 // ================================================================================================
@@ -513,11 +516,11 @@ export const gesamtanweisungRoutes: FastifyPluginAsync<GesamtanweisungRoutesOpti
         return;
       }
       try {
+        // Wer entscheidet, kommt aus der Anmeldung — nie aus dem Körper (STATUS-FREIGABE).
+        const { id } = request.params;
         reply
           .code(200)
-          .send(
-            await dienst.entscheiden(request.params.id, stand, entscheidung, sichtbarFuer(user)),
-          );
+          .send(await dienst.entscheiden(id, stand, entscheidung, sichtbarFuer(user), user.id));
       } catch (error) {
         antworteMitFehler(reply, error);
       }

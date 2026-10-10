@@ -207,6 +207,11 @@ const nl: typeof de = {
     "Laat zien of de AI op dit moment antwoordt. „Ongeverifieerd“ betekent alleen: sinds de start is er nog geen antwoord teruggekomen — het is geen fout.",
   "topbar.plain.external":
     "Laat zien of Klarwerk bij het antwoorden ook op het open internet mag kijken. „Geblokkeerd“ betekent: nee, het blijft bij jullie eigen kennis.",
+  "topbar.extern.blockiert": "Extern: Geblokkeerd",
+  "topbar.extern.frei": "Extern: Vrijgegeven",
+  "topbar.extern.freiVertraulich": "Extern: Vrijgegeven, ook vertrouwelijke inhoud",
+  "topbar.extern.hinweis":
+    "De beheerder bepaalt of inhoud naar een openbare AI mag. Standaard: geblokkeerd.",
   "topbar.kiExternal": "AI rekent in de cloud",
   "topbar.kiInternal": "AI rekent in eigen huis",
   "topbar.kiMixed": "AI rekent in de cloud en in eigen huis",
@@ -248,6 +253,7 @@ const nl: typeof de = {
   "cmd.treffer_other": "{{count}} doelen",
   "cmd.audit": "Audit-log (in Analytics)",
   "toast.dismiss": "Sluiten",
+  "einblendung.erledigt": "Gereed.",
   "page.placeholder":
     "Dit scherm wordt in een latere taak gebouwd. App-shell, navigatie en rollogica staan er al.",
   "status.entwurf": "Concept",
@@ -354,6 +360,7 @@ const nl: typeof de = {
   // JOB 3140 (UX-11) — zie het Duitse blok voor de toelichting.
   "audit.action.user_role_change": "Rol gewijzigd",
   "audit.action.user_approve": "Account vrijgegeven",
+  "audit.action.user_account_corrected": "Accountgegevens gecorrigeerd",
   "audit.action.auth_login": "Aangemeld",
   "audit.action.auth_logout": "Afgemeld",
   "audit.action.notice_acknowledged": "Kennisgeving bevestigd",
@@ -476,6 +483,14 @@ const nl: typeof de = {
   "auth.toSignIn": "Naar aanmelden",
   "auth.or": "of",
   "auth.ssoButton": "Aanmelden met SSO",
+  // R-0541: de aanmeldpagina wanneer alleen de bedrijfslogin geldt (KLARWERK_SSO_ONLY).
+  "auth.ssoOnlyNote":
+    "Op deze installatie meld je je aan met je bedrijfsaccount. Een apart wachtwoord voor Klara is hier niet nodig.",
+  // R-0541 (herwerking 2): aanmelden met wachtwoord is uit, maar de bedrijfslogin ontbreekt nog.
+  "auth.ssoOnlyMissing":
+    "Aanmelden met een wachtwoord is uitgeschakeld, maar de bedrijfslogin is nog niet ingericht. Neem contact op met je IT-afdeling.",
+  // R-0560: de bedrijfslogin via SAML.
+  "auth.samlButton": "Aanmelden met bedrijfsaccount (SAML)",
   "auth.ssoUnavailable": "SSO is niet geconfigureerd voor deze instantie.",
   "auth.ssoTitle": "SSO-aanmelding",
   "auth.ssoBusy": "Aanmelding wordt afgerond …",
@@ -1711,6 +1726,11 @@ const nl: typeof de = {
   "capture.saveDraft": "Als concept opslaan",
   "capture.draftSaved": "Concept opgeslagen.",
   "capture.draftUpdated": "Concept bijgewerkt.",
+  "capture.bereitsGespeichert":
+    "Dit document was al opgeslagen; er is geen tweede vermelding aangemaakt.",
+  "capture.bereitsGespeichertFortgeschrieben":
+    "Dit document was al opgeslagen; er is geen tweede vermelding aangemaakt. De bestaande vermelding bevat nu je gewijzigde versie.",
+  "capture.bereitsGespeichertOeffnen": "Bestaande vermelding openen: “{{title}}”",
   "capture.teilerfolg.dateiAusstehend":
     "Nog niet alles opgeslagen: het concept is opgeslagen, het bestand “{{name}}” wordt nog opgeslagen.",
   "capture.teilerfolg.dateiGescheitert":
@@ -2143,6 +2163,7 @@ const nl: typeof de = {
   "ask.error.body":
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
+  "ask.gebremst.titel": "Even geduld.",
   "ask.offline": "Geen verbinding.",
   "ask.wiederaufnahme.entwurf":
     "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld.",
@@ -2190,10 +2211,24 @@ const nl: typeof de = {
   "ask.export.copy": "Kopiëren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Afdrukken / PDF",
+  "ask.export.docx": "Als Word (.docx)",
+  "ask.export.pptx": "Als PowerPoint (.pptx)",
+  "ask.export.pdfDatei": "Als PDF-bestand",
+  "ask.export.pdfZeichen":
+    "Het PDF-bestand kan deze tekens niet ongewijzigd weergeven: {{zeichen}}. Er is niets gedownload — Word of Markdown geven de tekst zonder verlies door.",
   "ask.export.copied": "Antwoord incl. bronnen gekopieerd.",
   "ask.export.answer": "Antwoord",
   "ask.export.footer":
     "Brongebonden antwoord uit KLARWERK · gemaakt op {{date}}. Alleen zo betrouwbaar als de gebruikte bronnen (status/vertrouwen). Geen belofte van waarheid.",
+  // R-1643: beslissingsprotocol — tijdstip en persoon van de export.
+  "ask.export.protocol.heading": "Beslissingsprotocol",
+  "ask.export.protocol.time": "Tijdstip (UTC)",
+  "ask.export.protocol.user": "Gebruikers-ID",
+  "ask.export.protocol.userUnknown": "niet aangemeld – geen kenmerk beschikbaar",
+  "ask.export.protocol.argumentation": "Redeneerketen",
+  "ask.export.protocol.supportedBy": "onderbouwd door",
+  "ask.export.protocol.argumentationMissing":
+    "Voor dit antwoord is geen redeneerketen beschikbaar. De bronnenlijst vervangt die niet.",
   "ask.sourcesHint":
     "Dit antwoord is brongebonden — het is alleen zo betrouwbaar als de gebruikte bron (status, vertrouwen, bruikbaarheid). Vermeld zijn alle bronnen die voor de vraag zijn geraadpleegd; welke daarvan het antwoord gedragen hebben, is gemarkeerd. Naar het kennisobject voor details.",
   // AUFTRAG-mega52 A3/A5 — het antwoord zegt waarop het steunt. Onbruikbare markeringen betekenen "onbekend".
@@ -2201,6 +2236,10 @@ const nl: typeof de = {
     "De eerstgenoemde bronnen hebben het antwoord gedragen; de overige zijn geraadpleegd maar niet gebruikt.",
   "ask.attribution.unknown":
     "Welke van deze bronnen het antwoord gedragen heeft, was niet toe te wijzen — de AI leverde geen bruikbare bronverwijzingen. De lijst toont daarom alle geraadpleegde bronnen zonder markering, en „Heeft geholpen” is hier niet mogelijk.",
+  // R-0310/R-0325: het antwoord wordt achtergehouden omdat geen alinea aan een bron toe te wijzen was.
+  "ask.quellen.weitere": "Nog {{count}} bronnen tonen",
+  "ask.zuordnungUnbekannt":
+    "Er wordt geen antwoord getoond: het kon aan geen enkele bron worden toegewezen. Een alinea zonder bron wordt niet uitgegeven.",
   // JOB 3267 Q1 — drie toestanden, drie woorden, plus een vierde voor de toetsingsstand
   // (zie de Duitse ingang voor de bevinding die hiermee is verholpen).
   "ask.attribution.carrying.badge": "gebruikt",
@@ -2288,6 +2327,7 @@ const nl: typeof de = {
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
   "ask.verschlossen.stufe": "Niveau ontbreekt",
+  "ask.verschlossen.vertraulichkeitsstufe": "Vertrouwelijkheidsniveau ontbreekt",
   "ask.verschlossen.stufeHint": "Voor het document is geen vertrouwelijkheidsniveau ingesteld.",
   "ask.verschlossen.volltext": "Geen doorzoekbare tekst",
   "ask.verschlossen.volltextHint": "Van dit document is nog geen doorzoekbare tekst beschikbaar.",
@@ -2310,6 +2350,101 @@ const nl: typeof de = {
     "Geen enkele bron past nauw genoeg bij deze vraag om een antwoord te dragen. Dat betekent niet per se dat de kennis ontbreekt — misschien staat ze alleen onder andere woorden in de basis. Hoe dan ook is het een hiaat dat jullie kunnen dichten, geen fout.",
   "ask.contract.trustNote":
     "Vertrouwen en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
+  // AUFNAHME 20260922 · Antwort-Erklärung (Begründung im deutschen Block).
+  "ask.belastbarkeit.titel": "Hoe betrouwbaar is dit?",
+  "ask.belastbarkeit.lage.belegt": "Onderbouwd",
+  "ask.belastbarkeit.lage.belegt_zustaendig_fehlt":
+    "Onderbouwd — verantwoordelijke niet bereikbaar",
+  "ask.belastbarkeit.lage.belegt_mit_konflikt": "Onderbouwd — met tegenstrijdigheid",
+  "ask.belastbarkeit.lage.wissensluecke": "Kennishiaat",
+  "ask.belastbarkeit.lage.technischer_fehler": "Technische fout",
+  "ask.belastbarkeit.lage.geschwaerzt": "Afgeschermd",
+  "ask.belastbarkeit.anzahl":
+    "{{tragend}} van {{herangezogen}} geraadpleegde bronnen dragen het antwoord",
+  "ask.belastbarkeit.vertrauenswert":
+    "Vertrouwenswaarde {{wert}} — zo betrouwbaar als de zwakste dragende bron („{{quelle}}”). De bibliotheek toont hetzelfde getal bij die vermelding.",
+  "ask.belastbarkeit.vertrauenswertKeiner":
+    "Geen vertrouwenswaarde: er is geen dragende bron bekend.",
+  "ask.belastbarkeit.vertrauenswertKurz": "Vertrouwenswaarde {{wert}}",
+  "ask.belastbarkeit.stand": "Stand {{datum}}",
+  "ask.belastbarkeit.quelle.validiert": "gevalideerd",
+  "ask.belastbarkeit.quelle.nichtValidiert": "niet gevalideerd",
+  "ask.belastbarkeit.verantwortung.eigentuemer": "Verantwoordelijk",
+  "ask.belastbarkeit.verantwortung.autor": "Geen verantwoordelijke genoemd, de auteur geldt",
+  "ask.belastbarkeit.erreichbar.ja": "bereikbaar",
+  "ask.belastbarkeit.erreichbar.nein": "niet bereikbaar",
+  "ask.belastbarkeit.erreichbar.unbekannt": "bereikbaarheid onbekend",
+  "ask.belastbarkeit.grund.keine_tragfaehige_quelle":
+    "Geen enkele bron draagt een antwoord op deze vraag.",
+  "ask.belastbarkeit.grund.zuordnung_unbekannt": "Welke bron het antwoord draagt, is niet bekend.",
+  "ask.belastbarkeit.grund.alle_tragenden_quellen_validiert":
+    "Alle dragende bronnen zijn gevalideerd.",
+  "ask.belastbarkeit.grund.tragende_quelle_nicht_validiert":
+    "Minstens één dragende bron is niet gevalideerd.",
+  "ask.belastbarkeit.grund.pruefnachweis_unvollstaendig":
+    "Voor minstens één dragende bron is de conflictcontrole niet volledig aangetoond.",
+  "ask.belastbarkeit.grund.offener_konflikt":
+    "Een dragende bron staat in een open tegenstrijdigheid.",
+  "ask.belastbarkeit.grund.konfliktlage_unbekannt":
+    "De conflictstatus kon niet worden opgevraagd — dat betekent niet dat er geen is.",
+  "ask.belastbarkeit.grund.zustaendig_nicht_erreichbar":
+    "De verantwoordelijke is niet bereikbaar (geen goedgekeurd account). De kennis blijft bruikbaar; vervolgvragen hebben een nieuwe verantwoordelijke nodig.",
+  "ask.belastbarkeit.grund.erreichbarkeit_unbekannt":
+    "Of de verantwoordelijke bereikbaar is, kon niet worden vastgesteld.",
+  "ask.belastbarkeit.grund.verantwortung_nur_autor":
+    "Voor minstens één bron is geen verantwoordelijke genoemd; de auteur geldt.",
+  "ask.belastbarkeit.konflikt.titel": "Tegenstrijdigheid — beide kanten",
+  "ask.belastbarkeit.konflikt.seite": "Kant {{nummer}}",
+  "ask.belastbarkeit.konflikt.traegt": "draagt dit antwoord",
+  "ask.belastbarkeit.konflikt.nichtEinsehbar": "Deze kant kun je niet inzien.",
+  "ask.belastbarkeit.konflikt.keinGewinner":
+    "Er wordt geen kant gekozen. Mensen beslissen over de tegenstrijdigheid onder „Conflicten”.",
+  "ask.belastbarkeit.hinweis":
+    "De vertrouwenswaarde zegt hoe betrouwbaar de bronnen zijn. Ze zegt niets over of iets waar is.",
+  "ask.belastbarkeit.argumentation.titel": "Zo komt het antwoord tot stand",
+  "ask.belastbarkeit.argumentation.belegstelle": "Bewijsplaats: „{{stelle}}”",
+  "ask.belastbarkeit.argumentation.art.aussage": "Bewering",
+  "ask.belastbarkeit.woerterbuch.titel":
+    "Begrippen aangevuld uit het bedrijfswoordenboek — geen deel van de bronnentelling en zonder vertrouwenswaarde:",
+  "ask.belastbarkeit.woerterbuch.eintrag": "Woordenboekitem {{id}}, versie {{fassung}}",
+  "ask.belastbarkeit.woerterbuch.verantwortlich": "Verantwoordelijk: {{wer}}",
+  "ask.belastbarkeit.woerterbuch.ohneVerantwortung": "Geen verantwoordelijke opgegeven",
+  "ask.belastbarkeit.woerterbuch.nichtBewertet": "Betrouwbaarheid niet beoordeeld",
+  "ask.belastbarkeit.argumentation.art.beziehung": "Vastgelegde relatie",
+  "ask.belastbarkeit.argumentation.beziehung.gehoert_zu": "hoort bij",
+  "ask.belastbarkeit.argumentation.beziehung.ergaenzt": "vult aan",
+  "ask.belastbarkeit.argumentation.beziehung.ersetzt": "vervangt",
+  "ask.belastbarkeit.argumentation.beziehung.widerspricht": "spreekt tegen",
+  "ask.belastbarkeit.argumentation.beziehung.beispiel_fuer": "is een voorbeeld van",
+  "ask.belastbarkeit.argumentation.gesetztVon": "Relatie vastgelegd door {{wer}}",
+  "ask.belastbarkeit.argumentation.gestuetztAuf": "Gebaseerd op: {{quellen}}",
+  "ask.belastbarkeit.argumentation.unabhaengig":
+    "Tussen deze bronnen is geen relatie vastgelegd — ze staan onafhankelijk naast elkaar.",
+  "ask.belastbarkeit.argumentation.art.einwand": "Bezwaar uit een open tegenstrijdigheid",
+  "ask.belastbarkeit.argumentation.art.vorbehalt": "Voorbehoud",
+  "ask.belastbarkeit.argumentation.art.schluss": "Conclusie",
+  "ask.belastbarkeit.argumentation.einstufung.verified": "Inschaling: onderbouwd",
+  "ask.belastbarkeit.argumentation.einstufung.unverified": "Inschaling: niet volledig onderbouwd",
+  "ask.belastbarkeit.argumentation.einstufung.gap": "Inschaling: kennishiaat",
+  "ask.belastbarkeit.wissensart.bauchgefuehl": "Onderbuikgevoel",
+  "ask.belastbarkeit.wissensart.best_practice": "Beproefde werkwijze",
+  "ask.belastbarkeit.wissensart.lernkurve": "Leercurve",
+  "ask.belastbarkeit.wissensart.technik": "Techniek",
+  "ask.belastbarkeit.wissensart.negativwissen": "Negatieve kennis",
+  "ask.belastbarkeit.zuschnitt":
+    "Antwoord en uitleg afgestemd op: {{rolle}}, aanleiding {{anlass}}.",
+  "ask.belastbarkeit.rolle.viewer": "lezer",
+  "ask.belastbarkeit.rolle.experte": "expert",
+  "ask.belastbarkeit.rolle.controller": "beoordelaar",
+  "ask.belastbarkeit.rolle.admin": "beheer",
+  "ask.belastbarkeit.rolle.unbekannt": "onbekende rol",
+  "ask.belastbarkeit.anlass.dokument": "werken aan een document",
+  "ask.belastbarkeit.anlass.frage": "vrije vraag",
+  "ask.pruefrahmen.satz":
+    "Gecontroleerd tegen {{umfang}}: {{verglichen}} passende vermeldingen zijn vergeleken (hoogstens {{hoechstens}} per vraag), geen enkele draagt een antwoord.",
+  "ask.pruefrahmen.umfang.validiert": "alleen gevalideerde, niet-vertrouwelijke kennis",
+  "ask.pruefrahmen.umfang.nicht_vertraulich": "alle niet-vertrouwelijke kennis",
+  "ask.pruefrahmen.woertlich": "Er is letterlijk gezocht, zonder AI-samenvatting.",
   // JOB 3366: der Satz an einer abgeschnittenen KI-Antwort (Begründung im deutschen Block).
   "ai.truncated.hint": "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
   "ask.contract.sumTotal_one": "{{count}} bron geraadpleegd",
@@ -2340,6 +2475,30 @@ const nl: typeof de = {
     "De bekende tegenstrijdigheden konden niet worden opgehaald. Of een van de bronnen in een open conflict staat, is daarmee onbekend; dit antwoord geldt daarom als ongecontroleerd.",
   "gap.privacyNotice":
     "De vraag wordt als kennishiaat opgeslagen — geen antwoord en geen gevalideerde kennis. Leg alsjeblieft geen gevoelige of persoonsgebonden details vast; vul later gecontroleerde ervaring aan.",
+  "gap.originalfrage": "Oorspronkelijke vraag",
+  "gap.askCount": "{{count}}× gevraagd",
+  "gap.ausgangsfrage": "Vraag achter dit kennishiaat",
+  "gap.belegbedarf.label": "Ontbrekend bewijs",
+  "gap.belegbedarf.wissensobjekt":
+    "Geen passend kennisobject gevonden — er ontbreekt er een dat de vraag beantwoordt",
+  "gap.belegbedarf.unbestimmt": "Onbepaald — welk bewijs ontbreekt, valt niet af te leiden",
+  "nulltreffer.titel": "Jouw zoekopdrachten zonder resultaat",
+  "nulltreffer.hinweis":
+    "Voor deze termen vond je zoekopdracht niets wat je mag zien — een aanwijzing waar kennis kan ontbreken. Alleen jij ziet deze lijst.",
+  "nulltreffer.anzahl": "{{count}}× gezocht",
+  "nulltreffer.erfassen": "Kennis vastleggen",
+  "nulltreffer.eingegrenzt":
+    "Alleen binnen deze afbakening gezocht ({{filter}}) — geen bevinding over het hele bestand.",
+  "nulltreffer.feld.type": "Kennissoort",
+  "nulltreffer.feld.status": "Status",
+  "nulltreffer.feld.category": "Categorie",
+  "nulltreffer.feld.tag": "Trefwoord",
+  "einzelquelle.titel": "Kennis die alleen bij jou ligt",
+  "einzelquelle.satz":
+    "Onderwerpen met busfactor 1 waarvan de zichtbare kennis alleen van jou komt: {{count}}",
+  "einzelquelle.zeile": "„{{thema}}” — wil je er nu vijf minuten over vertellen?",
+  "einzelquelle.einstieg": "Interview starten",
+  "einzelquelle.themaLabel": "Onderwerp",
   "ask.toGaps": "Naar de kennishiaten",
   "ask.toCapture": "Kennis vastleggen",
   "ko.use.ready": "Bruikbaar in de praktijk",
@@ -2846,6 +3005,7 @@ const nl: typeof de = {
   "ko.attachmentPreviewUnavailable": "Geen voorbeeld beschikbaar",
   "ko.attachmentOriginalUnavailable": "Origineel niet beschikbaar",
   "pruefen.title": "Controleren",
+  "pruefen.handeltAls": "Je controleert als {{role}}",
   "pruefen.tab.offen": "Open",
   "pruefen.tab.konflikte": "Conflicten",
   "pruefen.tab.duplikate": "Duplicaten",
@@ -3058,6 +3218,30 @@ const nl: typeof de = {
   "start.livewall.helpedToday": "vandaag geholpen: {{n}}",
   "start.livewall.savedEmpty": "Nog niets vastgelegd — de eerste bijdrage verschijnt hier.",
   "start.livewall.helpedEmpty": "Nog geen „heeft geholpen”-terugkoppeling.",
+  "start.livewall.validated": "Nieuw gevalideerd",
+  "start.livewall.validatedEmpty": "Nog geen gevalideerde kennis.",
+  "start.livewall.nameConsent":
+    "Mijn naam hier bij mijn gevalideerde kennis tonen. Vrijwillig en altijd intrekbaar; zonder toestemming verschijnt geen naam.",
+  "start.livewall.photoConsent":
+    "Mijn foto hier bij mijn gevalideerde kennis tonen. Vrijwillig; „Foto verwijderen” wist hem direct.",
+  "start.livewall.photoAdd": "Foto kiezen",
+  "start.livewall.photoReplace": "Foto vervangen",
+  "start.livewall.photoRevoke": "Foto verwijderen",
+  "start.livewall.photoError":
+    "De foto kon niet worden opgeslagen. Kies een PNG-, JPEG- of WebP-afbeelding.",
+  "start.livewall.consentError":
+    "De naamtoestemming is niet opgeslagen — de getoonde stand blijft gelden. Schakel opnieuw om.",
+  "start.livewall.photoRevokeError":
+    "De foto is niet verwijderd — hij blijft gedeeld. Trek de toestemming opnieuw in.",
+  "start.livewall.photoAlt": "Foto van de auteur",
+  "start.livewall.photoOwnAlt": "Mijn foto voor de wand",
+  "start.livewall.beamerOpen": "Als beamerweergave openen",
+  "start.livewall.beamerFullscreen": "Volledig scherm",
+  "start.livewall.beamerLoading": "Laden …",
+  "start.livewall.beamerError":
+    "De wand is momenteel niet bereikbaar. Bij de volgende cyclus wordt het opnieuw geprobeerd.",
+  "start.livewall.beamerStale":
+    "Geen actuele verbinding — namen en foto's zijn verborgen tot de wand weer actueel is.",
   "con.kicker": "Conflictoverzicht",
   "con.title": "Conflicten oplossen — zonder kennis te verliezen",
   "con.intro":
@@ -3147,6 +3331,7 @@ const nl: typeof de = {
   "con.openKo": "Object openen",
   "con.compareOpen": "Beide naast elkaar zetten",
   "con.readonlyCompare": "Alleen-lezen vergelijking",
+  "con.caseList": "Alle openstaande conflicten ({{count}})",
   "con.detectedOn": "Herkend op {{date}}",
   "con.evidenceSideLabel": "Bewijs van deze kant",
   "con.evidenceBalance.neither":
@@ -3389,6 +3574,11 @@ const nl: typeof de = {
   "lib.lesemodus.listeEinblenden": "Resultatenlijst tonen",
   "lib.lesemodus.listeAusblenden": "Resultatenlijst verbergen",
   "lib.lesen.mehr": "Meer",
+  "lib.lesen.belegstelle.markiert": "Bewijspassage gemarkeerd.",
+  "lib.lesen.belegstelle.nichtGefunden":
+    "De geciteerde passage staat in deze versie niet letterlijk in de tekst.",
+  "lib.lesen.belegstelle.andereFassung":
+    "De passage hoort bij versie {{fassung}}; dit is versie {{aktuell}}. Er is niets gemarkeerd.",
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",
   "lib.lesen.fehler": "Het item kon niet worden geladen.",
@@ -4050,6 +4240,14 @@ const nl: typeof de = {
   "risk.pflege.retirementTitle": "Pensioenhorizonten",
   "risk.pflege.retirement": "Pensioenhorizon van {{name}}",
   "risk.pflege.noRetirement": "Geen pensioen ingevoerd",
+  "risk.pflege.retirementSaved": "Pensioenhorizon van {{name}} opgeslagen.",
+  "risk.pflege.retirementNotRefreshed":
+    "Opgeslagen. De weergave voor {{name}} is nog niet ververst — de keuze toont de opgeslagen waarde.",
+  "risk.pflege.profileSaved": "Gebiedsprofiel „{{category}}” opgeslagen.",
+  "risk.pflege.profileError":
+    "Gebiedsprofiel „{{category}}” is niet opgeslagen. Je invoer blijft staan — „Opslaan” probeert het opnieuw.",
+  "risk.pflege.retirementError":
+    "Pensioenhorizon van {{name}} is niet opgeslagen. Je keuze blijft staan — „Opnieuw proberen” slaat die nog een keer op.",
   "risk.busLegendSingle": "rood = enkele bron (uitvalrisico)",
   "risk.busLegendOk": "groen = meerdere bronnen",
   "risk.help.summary":
@@ -4109,6 +4307,15 @@ const nl: typeof de = {
   "risk.priority.mittel": "middel",
   "risk.priority.niedrig": "laag",
   "risk.close": "Sluiten",
+  "risk.closeWithTitle": "Sluiten met het kennisobject dat dit hiaat beantwoordt",
+  "risk.closeFailed": "Niet gesloten — het kennisobject ontbreekt of staat in de prullenbak.",
+  "risk.gapToast.closed": "Lacune gesloten.",
+  "risk.gapToast.assigned": "Lacune toegewezen.",
+  "risk.gapToast.assignFailed": "Niet toegewezen — kies opnieuw.",
+  "risk.gapToast.removed": "Lacune verwijderd.",
+  "risk.gapToast.removeFailed": "Niet verwijderd — de lacune blijft bestaan. Probeer het opnieuw.",
+  "risk.gapToast.prioritySaved": "Prioriteit opgeslagen.",
+  "risk.gapToast.priorityFailed": "Prioriteit niet opgeslagen — kies opnieuw.",
   "risk.assign": "Expert …",
   "risk.delete": "Verwijderen",
   "risk.gapNextLabel": "Volgende stap",
@@ -4130,6 +4337,9 @@ const nl: typeof de = {
   "lcy.assetPlaceholder": "Installatie-/procesreferentie (bijv. Pers-P2)",
   "lcy.assetTrigger": "Hervalidatie starten",
   "lcy.assetMarked": "{{n}} object(en) voor „{{asset}}“ ter controle gemarkeerd.",
+  "lcy.toast.revalidateFailed": "Niet bevestigd — het item blijft openstaan. Probeer het opnieuw.",
+  "lcy.toast.stepDone": "Leerstap als afgerond opgeslagen.",
+  "lcy.toast.stepFailed": "Leerstap niet opgeslagen — vink opnieuw aan.",
   "lcy.pendingTitle": "Voor hervalidatie",
   "lcy.revalAsset": "Installatieverwijzing",
   "lcy.revalNextLabel": "Volgende stap",
@@ -4209,6 +4419,9 @@ const nl: typeof de = {
   "adm.resetConfirm": "Resetten",
   "adm.resetCancel": "Annuleren",
   "adm.resetDone": "Wachtwoord gereset; alle sessies beëindigd.",
+  "adm.correct": "Accountgegevens corrigeren",
+  "adm.correctSave": "Accountgegevens opslaan",
+  "adm.correctDone": "Accountgegevens gecorrigeerd.",
   "adm.gastfrist.titel": "Toegang geldig tot",
   "adm.gastfrist.unbefristet": "Onbeperkt — deze toegang verloopt niet vanzelf.",
   "adm.gastfrist.gueltigBis": "Geldig tot {{datum}}.",
@@ -4247,6 +4460,8 @@ const nl: typeof de = {
   "empty.cta.library": "Naar de bibliotheek",
   "empty.cta.validation": "Naar de validatie",
   "empty.cta.tasks": "Naar mijn taken",
+  "empty.cta.wissensnetz": "Naar het kennisnetwerk",
+  "empty.cta.ask": "Een vraag stellen",
   "story.rescue.title": "Klarwerk borgt ervaringskennis voordat ze verloren gaat.",
   "story.honest":
     "Niets wordt automatisch gevalideerd — kennis geldt pas na de controle in het team als geborgd.",
@@ -4258,6 +4473,48 @@ const nl: typeof de = {
     "Nog geen kennis om op te zoeken. Leg de eerste bijdrage vast — na de controle is die hier met bronvermelding bruikbaar.",
   "story.surface.validation.lead":
     "Niets te controleren. Vastgelegde kennis verschijnt hier voor teamcontrole, voordat ze als geborgd geldt en gebruikt kan worden.",
+  "story.surface.gaps.lead":
+    "Een lacune ontstaat wanneer een vraag geen geborgd antwoord vindt. Er staat er nu geen open — wie vraagt, brengt nieuwe aan het licht; wie vastlegt, sluit ze.",
+  "story.surface.lifecycle.lead":
+    "Bijdragen worden hier opnieuw te controleren wanneer hun controletermijn afloopt of een gemelde installatiewijziging ze raakt. Er staat nu niets open — een installatiewijziging kan hieronder worden gemeld.",
+  "story.surface.duplicates.lead":
+    "Een overlapping ontstaat wanneer twee bijdragen hetzelfde zeggen. Er staat er nu geen open — nieuwe verschijnen hier zodra vastgelegde kennis wordt gecontroleerd.",
+  "story.surface.audit.lead":
+    "Nog geen vastgelegde acties. Het logboek houdt bij wie in de kenniscyclus vastlegt, controleert en wijzigt — het vult zich met de eerste vastgelegde of gecontroleerde bijdrage.",
+  "story.surface.neighborhood.lead":
+    "Deze bijdrage deelt nog geen betekenisvolle tag met een andere. Het kennisnetwerk toont welke thema's al verbonden zijn; nieuwe kennis met passende tags verbindt haar met buren.",
+  "story.surface.risk.lead":
+    "Nog geen risicogegevens — daarvoor is vastgelegde kennis per gebied nodig. Leg ervaringskennis vast of importeer die; daarna toont deze lijst waar die van één persoon afhangt.",
+  "story.surface.objekt.lead":
+    "Bij deze bijdrage staat hier nog niets. Aanvullingen zoals bronnen, bijlagen en opmerkingen maken haar betrouwbaarder — open haar om aan te vullen of vraag wat ontbreekt.",
+  "story.surface.entwuerfe.lead":
+    "Nog geen concepten. Een concept bewaart wat je vastlegt voordat het team het controleert — begin met een nieuwe bijdrage.",
+  "story.surface.verwaltung.lead":
+    "Hier is nog niets ingericht. Het beheer houdt Klarwerk actueel — items verschijnen zodra er iets wordt ingericht, geback-upt of verwijderd.",
+  "story.surface.auswertung.lead":
+    "Voor deze analyse is nog niets beschikbaar. Ze ontstaat uit gecontroleerde kennis — de volgende stap is bijdragen vastleggen en laten controleren.",
+  "story.surface.import.lead":
+    "Nog niets om over te nemen. Een import haalt bestaande kennis uit een bron in de cyclus — kies een bron of upload een bestand.",
+  "story.surface.anleitung.lead":
+    "Hier staat nog geen inhoud. Werkinstructies bundelen gecontroleerde kennis tot stappen — vul ze aan met bouwstenen uit de bibliotheek.",
+  "story.surface.spaces.lead":
+    "Deze ruimte is nog leeg. Ruimtes ordenen bijdragen naar verantwoordelijkheid — verplaats een bijdrage hierheen of leg een nieuwe vast.",
+  "story.surface.ausgang.lead":
+    "Er wacht niets op de uitgaande controle. Hier komt terecht wat Klarwerk naar buiten moet geven — zodra iemand een bijdrage ter vrijgave voorlegt.",
+  "story.surface.wissensnetz.lead":
+    "Nog geen verbindingen. Het kennisnetwerk toont hoe bijdragen via tags samenhangen — geef bij het vastleggen passende tags.",
+  "story.surface.meldungen.lead":
+    "Op dit moment niets te melden. Hier verschijnt wat je aandacht nodig heeft — conflicten, lacunes en geplande controles.",
+  "story.surface.horizont.lead":
+    "In de gekozen periode gaat niemand met unieke kennis met pensioen. Houd de pensioenhorizonten in het beheer actueel, zodat dit overzicht klopt.",
+  "story.surface.lernpfad.lead":
+    "Voor jouw rol is nog geen leerpad ingesteld. Het leidt door de belangrijkste gecontroleerde kennis — tot die tijd helpt de bibliotheek.",
+  "story.surface.hilfe.lead":
+    "Voor deze pagina is nog geen eigen paginahulp. De hulp legt Klarwerk stap voor stap uit — je bereikt haar via het hulphoofdstuk in het menu.",
+  "story.surface.gliederung.lead":
+    "Deze bijdrage heeft nog geen koppen. Koppen structureren kennis, zodat anderen die snel vinden — voeg ze toe in de editor.",
+  "story.surface.conflicts.lead":
+    "Conflicten lost het team op bij het controleren. Er staat er nu geen open — nieuwe verschijnen hier zodra twee bijdragen elkaar tegenspreken.",
   "adm.auditTitle": "Recente gebruikers-/auth-activiteiten (audit)",
   "adm.auditEmpty": "Geen gebruikers-auditvermeldingen.",
   "prof.kicker": "Account",
@@ -4268,6 +4525,16 @@ const nl: typeof de = {
   "prof.passwordSubmit": "Wachtwoord wijzigen",
   "prof.passwordChanged":
     "Wachtwoord gewijzigd. Om veiligheidsredenen ben je overal afgemeld — meld je opnieuw aan.",
+  "prof.correctTitle": "Accountgegevens corrigeren",
+  "prof.correctPassword": "Huidig wachtwoord (alleen bij nieuw e-mailadres)",
+  "prof.correctSubmit": "Accountgegevens opslaan",
+  "prof.correctSaved": "Accountgegevens opgeslagen.",
+  "prof.correctUnchanged": "Niets gewijzigd.",
+  "prof.correctSso": "In plaats daarvan bevestigen met SSO",
+  "prof.correctSaml": "In plaats daarvan bevestigen met SAML-bedrijfsaanmelding",
+  "prof.correctSsoConfirmed": "Identiteit bevestigd via SSO — sla nu je accountgegevens op.",
+  "prof.correctSsoKontoGewechselt":
+    "Tijdens de SSO-bevestiging is een ander account aangemeld. Het concept van het vorige account is verworpen; hier staan de gegevens van het account dat nu is aangemeld.",
   "help.kicker": "Help",
   "help.open": "Help openen",
   "help.openCenter": "In het Help-Center openen",
@@ -4301,6 +4568,8 @@ const nl: typeof de = {
   "klara.aiBusy": "De AI leest de passende help-vermeldingen …",
   "klara.aiAnswerTitle": "AI-antwoord uit de help",
   "klara.aiDisclaimer": "AI-gegenereerd — niet voor 100 % gecontroleerd",
+  "klara.helpAnswerTitle": "Antwoord uit de help",
+  "klara.ohneModell": "Regelgebaseerd, zonder AI-model",
   "klara.aiGoto": "Naar onderdeel: {{target}}",
   "klara.aiSources": "Grondslag",
   "klara.aiEmpty":
@@ -4631,6 +4900,22 @@ const nl: typeof de = {
   "mob.photo": "Foto",
   "mob.interview": "Interview",
   "mob.lookup": "Opzoeken",
+  "mob.modusGruppe": "Vastlegwijze",
+  "mob.modusGesperrt": "Eerst opslaan of leegmaken, dan de vastlegwijze wisselen.",
+  "mob.iv.frage1": "Waar gaat het over? Formuleer de kernboodschap in één zin.",
+  "mob.iv.frage2": "Onder welke voorwaarden of vanaf wanneer geldt dat?",
+  "mob.iv.frage3": "Welke maatregel of consequentie volgt daaruit?",
+  "mob.iv.frage4": "Welke trefwoorden/tags helpen bij het terugvinden? (komma-gescheiden)",
+  "mob.iv.fortschritt": "Vraag {{nummer}} van {{gesamt}}",
+  "mob.iv.weiter": "Volgende vraag",
+  "mob.iv.zurueck": "Vorige vraag",
+  "mob.iv.hinweis": "Elk antwoord staat meteen in het concept — opslaan kan na elke vraag.",
+  "mob.foto.kamera": "Camera",
+  "mob.foto.mediathek": "Fotobibliotheek",
+  "mob.foto.entfernen": "Foto verwijderen",
+  "mob.foto.fehler": "De foto kon niet worden gelezen.",
+  "mob.foto.max": "Maximaal {{max}} foto's per concept.",
+  "mob.foto.inArbeit": "Foto wordt voorbereid … opslaan kan zo meteen.",
   "mob.editing": "Concept wordt voortgezet.",
   "mob.formTitle": "Kernuitspraak",
   "mob.formStatement": "Wat is er gebeurd / wat geldt?",
@@ -5290,6 +5575,13 @@ const nl: typeof de = {
 
   // JOB 3062 · H3 — het blad (Pages).
   "erfassen.werkzeug.diktieren": "Dicteren",
+  "sprachaufnahme.start": "Opnemen",
+  "sprachaufnahme.stop": "Opname stoppen",
+  "sprachaufnahme.frage": "Vraag opnemen en uitschrijven",
+  "sprachaufnahme.verarbeitet": "Wordt uitgeschreven …",
+  "sprachaufnahme.keinMikrofon":
+    "Geen toegang tot de microfoon. Sta het toe in de browser of typ de tekst.",
+  "sprachaufnahme.fehler": "De opname kon niet worden uitgeschreven.",
   "erfassen.werkzeug.bild": "Beeld",
   "erfassen.werkzeug.datei": "Bestand",
   "erfassen.werkzeug.ki": "AI",
@@ -5572,6 +5864,10 @@ const nl: typeof de = {
 
   "ai.generatedNotice":
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
+  "ai.surfaceNotice": "Hier kan een AI meewerken — door haar gegenereerde inhoud wordt gemarkeerd.",
+  "ergebnisStufe.entwurf": "Reasoner-concept, niet gevalideerd",
+  "ergebnisStufe.empfehlung": "Aanbeveling, ongetoetst",
+  "ergebnisStufe.validiert": "Gevalideerd",
   "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",
   "ai.exportNotice":
     "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",
@@ -5842,6 +6138,24 @@ const nl: typeof de = {
   "ga.liste.geaendert": "Laatst gewijzigd",
   "ga.liste.bausteine": "Onderdelen: {{anzahl}}",
   "ga.liste.unvollstaendig": "Onvolledig voor jou – niet toegankelijke onderdelen: {{anzahl}}",
+  // Werkpaden bij hetzelfde artikel (produkt:20261007:arbeitswege-objekt) — zie de.ts.
+  "arbeitsweg.pruefen.sucht": "Het opgevraagde item wordt in de controlelijst gezocht …",
+  "arbeitsweg.pruefen.fehlt":
+    "Het opgevraagde item staat in deze weergave niet ter controle (al besloten of weggefilterd). Het volgende open item wordt getoond.",
+  "arbeitsweg.pruefen.lesen": "Opgevraagd item openen",
+  "arbeitsweg.pruefen.entschieden": "Besloten: „{{titel}}” –",
+  "arbeitsweg.pruefen.oeffnen": "Item met actuele status openen",
+  "arbeitsweg.pruefen.standOffen":
+    "Status volgens de server: nog in controle, {{gruen}} van {{noetig}} goedkeuringen.",
+  "arbeitsweg.pruefen.standRaus": "Status volgens de server: niet meer in de controlelijst.",
+  "arbeitsweg.pruefen.weiter": "nu in controle: „{{titel}}”",
+  "arbeitsweg.fassung": "Versie {{fassung}}",
+  "arbeitsweg.fragen.bezug": "Vraag over het item „{{titel}}”",
+  "arbeitsweg.fragen.zurueck": "Terug naar het item",
+  "arbeitsweg.lesen.fassungAbweichend":
+    "Je komt van versie {{genannt}}; dit item staat inmiddels op versie {{aktuell}}.",
+  "arbeitsweg.klara.label": "Item",
+  "arbeitsweg.klara.chat": "In „Vragen” verder vragen over dit item",
 };
 
 export { nl };

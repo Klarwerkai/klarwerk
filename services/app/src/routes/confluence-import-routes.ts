@@ -39,7 +39,7 @@ import {
 } from "../confluence-import";
 import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
 import type { Guards } from "../http";
-import { sanitizeLogText } from "../log-sanitize";
+import { inhaltsfreieFehlerkennung } from "../log-positivliste";
 import type { ImportRunSourceSync, QuellabgleichRepo } from "../quellabgleich-ablage";
 
 // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import. NUR bei aktivem KLARWERK_CONFLUENCE_IMPORT
@@ -76,8 +76,8 @@ export interface ConfluenceImportRouteDeps {
 // Bis 2693 standen an den Fehlerpfaden dieser Datei Konsolen-Warnungen — ohne Anfrage-Kennung,
 // ohne Level, ohne Format, unstrukturiert auf stderr. Jetzt gehen alle ueber den Logger der
 // Anfrage (`request.log`, traegt `reqId`); der Hintergrundlauf bekommt ihn als Parameter mit.
-// Der Fehlertext wird weiterhin VOR dem Loggen sanitisiert (`sanitizeLogText`) und als Feld
-// `fehler` gefuehrt — kein rohes `err`-Objekt: die Serializer-Disziplin aus 2661 liegt nicht in
+// Seit R-0623 steht im Feld `fehler` nur noch die inhaltsfreie Fehlerkennung
+// (`inhaltsfreieFehlerkennung`: fester Satz oder Klassenname) — kein rohes `err`-Objekt: die Serializer-Disziplin aus 2661 liegt nicht in
 // diesem Basisstand (build-app.ts konfiguriert keinen Logger), und ein roher Fehler traegt Stack
 // und Ziel-URL. Die Wirkung im Produkt tritt erst mit dem Einbau des 2661-Loggers ein.
 //
@@ -111,7 +111,8 @@ function wurzelWarn(
 function warne(log: FastifyBaseLogger, stelle: string, err: unknown): void {
   wurzelWarn(log).call(
     log,
-    { stelle, fehler: sanitizeLogText(err instanceof Error ? err.message : String(err)) },
+    // R-0623 (Ben, Nacharbeit 1): statt des freien Fehlertexts die inhaltsfreie Fehlerkennung.
+    { stelle, fehler: inhaltsfreieFehlerkennung(err) },
     `confluence-import: ${stelle} fehlgeschlagen`,
   );
 }
@@ -728,6 +729,40 @@ function uebernahmeZaehler(bilanz: Uebernahmebilanz): ImportRun["counters"] {
     itemsBound: 0,
     itemsSkipped: bilanz.bereitsInQueue,
     itemsFailed: bilanz.gescheitert + bilanz.nichtGefunden,
+  };
+}
+
+/**
+ * R-0144 — DER GRUND EINES TEILAUSFALLS AN ZEIT ODER DATENVOLUMEN, AM LAUF SELBST.
+ *
+ * Scheitert der Einzelabruf einer Seite an Frist, Zeitbudget oder Antwortgrösse, zaehlt die Seite
+ * als gescheitert und der Lauf endet `PARTIAL`. Bis hierher stand der Grund nur als Fehlerklasse in
+ * der Antwort dieses Aufrufs; der gespeicherte Lauf trug `failureCode: null`, und wer ihn spaeter
+ * las (`GET /api/admin/import/runs/:importId`), erfuhr nicht, dass Zeit oder Datenvolumen nicht
+ * gereicht hatten. Jetzt traegt er denselben Code wie der Gesamtlauf (`abbruchCode`) — den ersten
+ * aufgetretenen — und einen Satz mit den Zahlen je Grund. Keine Seitenkennung, kein Quelltext.
+ *
+ * `null` heisst: kein Element ist an einer dieser Grenzen gescheitert. Andere Fehler bleiben, was
+ * sie waren (Zaehler + Antwort), damit kein Code einen Grund behauptet, den es nicht gab.
+ */
+function uebernahmeGrenzgrund(
+  grenzen: readonly string[],
+): { failureCode: string; failureReason: string } | null {
+  const [erster] = grenzen;
+  if (erster === undefined) {
+    return null;
+  }
+  const anlass: Record<string, string> = {
+    CONFLUENCE_TIMEOUT: "Zeitüberschreitung",
+    CONFLUENCE_BUDGET: "erschöpftem Zeitbudget",
+    CONFLUENCE_RESPONSE_TOO_LARGE: "zu großer Antwort",
+  };
+  const teile = [...new Set(grenzen)].map(
+    (code) => `${grenzen.filter((g) => g === code).length} Seite(n) wegen ${anlass[code] ?? code}`,
+  );
+  return {
+    failureCode: erster,
+    failureReason: sanitizeImportFailureReason(`${teile.join(", ")} nicht übernommen.`),
   };
 }
 
@@ -1460,6 +1495,8 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           let alreadyQueued = 0;
           const failed: { id: string; reason: string }[] = [];
           const notFound: string[] = [];
+          // R-0144: die Grenzcodes der gescheiterten Einzelabrufe, in Auftretensfolge.
+          const grenzen: string[] = [];
           // JOB 3288: DIE KENNUNG VOR DEM ERSTEN SCHREIBEFFEKT. Ab hier kann diese Uebernahme
           // Kandidaten anlegen — von hier an ist sie eine Tatsache und traegt einen Lauf.
           uebernahmelauf = await legeUebernahmelaufAn(
@@ -1517,6 +1554,10 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
                 alreadyQueued += 1;
               }
             } catch (err) {
+              const grenze = confluenceGrenze(err);
+              if (grenze) {
+                grenzen.push(grenze.error);
+              }
               // PII-frei: nur Id + Fehlerklasse, nie Inhalte.
               failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
             }
@@ -1535,6 +1576,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             {
               status: uebernahmeStatus(bilanz),
               completedAt: new Date().toISOString(),
+              ...(uebernahmeGrenzgrund(grenzen) ?? {}),
               counters: uebernahmeZaehler(bilanz),
             },
             request.log,

@@ -258,7 +258,7 @@ const ENTWURFSFLAECHE_OFFEN = `(zurueck) => [...document.querySelectorAll('butto
 
 /**
  * Markiert das Titelfeld des Expertenformulars (`Capture.tsx:6489-6492`, `<Field label={t(
- * "capture.fTitle")}><TextInput …/></Field>`, gerendert als `<label><span>…</span><input/></label>`,
+ * "capture.wizard.titleLabel")}><TextInput …/></Field>`, gerendert als `<label><span>…</span><input/></label>`,
  * `components/ui.tsx:186-193`).
  *
  * WARUM EINE MARKE UND KEIN SELEKTOR: das Feld trägt keine `data-testid`, und ein Selektor über die
@@ -687,8 +687,8 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
         // (`draftHasContent`, `Capture.tsx:2742-2748`) — E2 bleibt deshalb unberührt, und die
         // Quittung hängt ALLEIN am Dateizweig. Genau das war BENs vorgeführter Weg zu JOB 4231.
         expect(
-          await seite.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.fTitle")),
-          `das Titelfeld des Expertenformulars («${satz("capture.fTitle")}») war nicht auffindbar`,
+          await seite.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.wizard.titleLabel")),
+          `das Titelfeld des Expertenformulars («${satz("capture.wizard.titleLabel")}») war nicht auffindbar`,
         ).toBe(true);
         await seite.fill(TITELMARKE, "");
         expect(
@@ -966,8 +966,8 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
         );
         // Titel leeren wie in `P2`: E3 bleibt unberührt, die Quittung hängt allein am Dateizweig.
         expect(
-          await seite.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.fTitle")),
-          `das Titelfeld des Expertenformulars («${satz("capture.fTitle")}») war nicht auffindbar`,
+          await seite.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.wizard.titleLabel")),
+          `das Titelfeld des Expertenformulars («${satz("capture.wizard.titleLabel")}») war nicht auffindbar`,
         ).toBe(true);
         await seite.fill(TITELMARKE, "");
 

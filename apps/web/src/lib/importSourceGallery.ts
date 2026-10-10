@@ -29,9 +29,23 @@
 // einen ruhigen, nicht-modalen Hinweis. Kein neuer Egress-Pfad, kein Konnektor-Aufruf an geplante
 // Systeme — das steckt bewusst NICHT in diesem Modell.
 
+//
+// ADMIN-02 — „available" ist dazugekommen: die Anbindung ist GEBAUT (Produktfähigkeit), aber ob sie
+// in DIESER Installation eingerichtet und erreichbar ist, weiss ein statisches Modell nicht. Bis
+// hierher stand SharePoint hier fest auf „active" und sagte damit „aktiv", während der Zugangsbereich
+// derselben Seite „nicht eingeschaltet" meldete (UI-Beobachtung 09.10.2026). „available" ist die
+// schmalere wahre Aussage; den Zustand dieser Installation setzt die Galerie aus der Zugangsauskunft
+// darüber (`systemKachelMitStatus`, gemeinsames Statusmodell `lib/integrationStatus.ts`).
 import { type FileKind, detectFileKind } from "./extract";
+import type { IntegrationStatus } from "./integrationStatus";
 
-export type SourceState = "active" | "elsewhere" | "unconfigured" | "soon" | "planned";
+export type SourceState =
+  | "active"
+  | "elsewhere"
+  | "available"
+  | "unconfigured"
+  | "soon"
+  | "planned";
 
 export interface GallerySource {
   /** Stabile ID — steuert bei "active" den echten Fluss (Argument von onActivate). */
@@ -39,18 +53,27 @@ export interface GallerySource {
   /** i18n-Schluessel des Anzeigenamens (keine hartcodierten Strings im JSX). */
   readonly labelKey: string;
   readonly state: SourceState;
+  /**
+   * ADMIN-02: der Zustand DIESER Installation aus der Zugangsauskunft — nur bei Anbindungen, für
+   * die eine Auskunft vorliegt. Er ersetzt dann Abzeichen und Hinweis des statischen Zustands.
+   */
+  readonly status?: IntegrationStatus;
+  readonly badgeKey?: string;
+  readonly hintKey?: string;
 }
 
 // Reihenfolge der Zustaende: aktiv zuerst, dann anderswo verfuegbar, dann vorhanden-aber-
 // unkonfiguriert, dann bald, dann geplant. JOB 3190: "elsewhere" steht direkt hinter "active" und
 // vor "unconfigured", weil es die staerkste Aussage nach "hier nutzbar" ist — die Faehigkeit
-// existiert und ist von hier aus in einem Schritt erreichbar.
+// existiert und ist von hier aus in einem Schritt erreichbar. ADMIN-02: "available" (gebaut, Stand
+// dieser Installation unbekannt oder ungeprüft) steht zwischen beiden.
 const STATE_RANK: Record<SourceState, number> = {
   active: 0,
   elsewhere: 1,
-  unconfigured: 2,
-  soon: 3,
-  planned: 4,
+  available: 2,
+  unconfigured: 3,
+  soon: 4,
+  planned: 5,
 };
 
 /**
@@ -69,6 +92,7 @@ export const STATE_BADGE_KEY: Record<SourceState, string> = {
   active: "imp.explore.active",
   // JOB 3190: das Badge sagt BEIDES in zwei Woertern — dass es die Funktion gibt und wo sie liegt.
   elsewhere: "imp.gallery.elsewhere",
+  available: "integrationen.galerie.verfuegbar",
   unconfigured: "imp.gallery.unconfigured",
   soon: "imp.explore.soon",
   planned: "imp.gallery.planned",
@@ -80,10 +104,48 @@ export const STATE_HINT_KEY: Record<Exclude<SourceState, "active">, string> = {
   // die Kachel selbst der Weg (ein Link); wo kein Link angeboten wird, bleibt dieser Satz die
   // Auskunft. Ein Text, zwei Tueren — keine zweite Wahrheit.
   elsewhere: "imp.gallery.hintElsewhere",
+  available: "integrationen.galerie.hinweisVerfuegbar",
   unconfigured: "imp.gallery.hintUnconfigured",
   soon: "imp.gallery.hintSoon",
   planned: "imp.gallery.hintPlanned",
 };
+
+// ================================================================================================
+// ADMIN-02 — DIE SYSTEMKACHEL TRÄGT DEN ZUSTAND DIESER INSTALLATION, WENN ER BEKANNT IST.
+// ================================================================================================
+//
+// Je abgeleitetem Zustand (`lib/integrationStatus.ts`) der Kachelzustand, das Abzeichen und der
+// Hinweis. „active" fällt NUR bei einem bestandenen Verbindungstest — hinterlegte Angaben allein
+// ergeben „available" mit dem Abzeichen „eingerichtet, ungeprüft". Ausgeschaltet und ohne Angaben
+// sind „unconfigured": gebaut, hier nicht nutzbar.
+const STATUS_KACHEL: Record<IntegrationStatus, { state: SourceState; badgeKey: string }> = {
+  ausgeschaltet: { state: "unconfigured", badgeKey: "integrationen.status.ausgeschaltet" },
+  "nicht-eingerichtet": {
+    state: "unconfigured",
+    badgeKey: "integrationen.status.nichtEingerichtet",
+  },
+  konfiguriert: { state: "available", badgeKey: "integrationen.status.konfiguriert" },
+  geprueft: { state: "active", badgeKey: "integrationen.status.geprueft" },
+  fehlgeschlagen: { state: "unconfigured", badgeKey: "integrationen.status.fehlgeschlagen" },
+};
+
+/** Eine Systemkachel mit dem Zustand dieser Installation — ohne Auskunft bleibt sie, wie sie ist. */
+export function systemKachelMitStatus(
+  source: GallerySource,
+  status: IntegrationStatus | null,
+): GallerySource {
+  if (status === null) {
+    return source;
+  }
+  const kachel = STATUS_KACHEL[status];
+  return {
+    ...source,
+    state: kachel.state,
+    status,
+    badgeKey: kachel.badgeKey,
+    hintKey: "integrationen.galerie.hinweisStatus",
+  };
+}
 
 /** i18n-Schluessel des ehrlichen Hinweises fuer einen Zustand; null fuer "active" (kein Hinweis). */
 export function hintKeyFor(state: SourceState): string | null {
@@ -123,7 +185,9 @@ export function stepsKeyFor(state: SourceState): string | null {
 export const JSON_UPLOAD_INPUT_ID = "imp-json-upload-input";
 
 // IDs der aktiven JSON-Kacheln (Systeme + Dateien) — beide zeigen auf denselben echten Upload.
-export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
+// R-0179 (Nacharbeit 3): die Excel-Kachel der Import-Fläche ebenso — derselbe Eingang liest .xlsx
+// (`lib/xlsxImport.ts`) und reiht die Zeilen über denselben Weg in die Prüfliste.
+export const JSON_SOURCE_IDS = ["json", "json-file", "xlsx"] as const;
 
 // ================================================================================================
 // JOB 3235 (UX-18-R2) — DIE SYSTEMKACHEL HIESS WIE EINE DATEI UND SAGTE ETWAS ANDERES ALS SIE.
@@ -186,8 +250,12 @@ export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 //    Anbindung — kein Modul, kein Schalter, keine Route. Also `planned`, nicht `soon`. Beide
 //    Kacheln wandern damit in den eingeklappten „In Planung"-Bereich; die Aufklappzeile der
 //    Systemgruppe zaehlt danach 12 statt 10.
-//  · JIRA BLEIBT „bald", und zwar belegt: `build-app.ts:548` nennt als naechste Quelle ausdruecklich
-//    „kuenftig: || jiraEnabled || …". Word und PDF stehen dort nicht.
+//  · JIRA BLEIBT „bald". Der Beleg von damals (`build-app.ts`: „kuenftig: || jiraEnabled || …") ist
+//    ueberholt — seit R-0170 gibt es `services/jira/`, den Schalter `jiraImport` und
+//    `services/app/src/routes/jira-import-routes.ts`. Was fehlt, ist die BEDIENFLAECHE: keine Kachel-
+//    Zielseite, keine Zugangskarte, kein Auswahl- und Uebernahmedialog in dieser Oberflaeche. Eine
+//    Kachel auf `active` versprache einen Weg, den ein Mensch hier nicht gehen kann; „bald" heisst
+//    deshalb weiter „in Arbeit". Word und PDF haben keinen der drei Bausteine.
 //  · KEIN WIDERSPRUCH ZUR DATEIKACHEL: „Word-Dokumentquelle (Anbindung) · geplant" und
 //    „Word-Datei (.docx) · im Erfassen" sind zwei Aussagen ueber zwei verschiedene Wege, nicht
 //    zwei Aussagen ueber denselben.
@@ -221,13 +289,21 @@ export const JSON_SOURCE_IDS = ["json", "json-file"] as const;
 // Auskunft, die den Rest sagt. Genau dieselbe Arbeitsteilung traegt die Confluence-Kachel seit
 // mega67, und sie steht aus demselben Grund auf `active`.
 //
-// PAKET 1 — Systeme. aktiv: Confluence · JSON-Import · SharePoint. bald: Jira. geplant: Word- und
-// PDF-Dokumentquelle · MS Teams · Google Drive · DMS · PLM · ServiceNow · SAP · Notion · Slack ·
-// E-Mail.
+// ADMIN-02 — DIESE BEGRÜNDUNG GALT DER FRAGE „GEPLANT ODER NICHT", UND DORT STIMMT SIE WEITER.
+// Für „aktiv" trug sie nicht: eine Kachel, die für JEDEN Betrieb „aktiv" sagt, ist für jeden Betrieb
+// OHNE Zugangsdaten falsch — genau der Widerspruch vom 09.10.2026. Statisch steht SharePoint deshalb
+// auf „available" (gebaut; Stand dieser Installation siehe Zugangsbereich). Den Stand DIESER
+// Installation setzt die Galerie aus der Zugangsauskunft (`systemKachelMitStatus`).
+//
+// PAKET 1 — Systeme. aktiv: JSON-Import. verfügbar: Confluence · SharePoint (Stand dieser
+// Installation aus der Auskunft). bald: Jira. geplant: Word- und PDF-Dokumentquelle · MS Teams ·
+// Google Drive · DMS · PLM · ServiceNow · SAP · Notion · Slack · E-Mail.
 export const SYSTEM_SOURCES: readonly GallerySource[] = orderByState([
-  { id: "confluence", labelKey: "imp.gallery.src.confluence", state: "active" },
+  // ADMIN-02 (Nacharbeit 2): Confluence aus demselben Grund wie SharePoint nicht mehr fest „active"
+  // — ob die Anbindung hier eingeschaltet, eingerichtet und geprüft ist, sagt nur die Auskunft.
+  { id: "confluence", labelKey: "imp.gallery.src.confluence", state: "available" },
   { id: "json", labelKey: "imp.gallery.src.jsonImport", state: "active" },
-  { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "active" },
+  { id: "sharepoint", labelKey: "imp.gallery.src.sharepoint", state: "available" },
   { id: "jira", labelKey: "imp.gallery.src.jira", state: "soon" },
   // IDs unveraendert: `FileTypePicker.tsx:62/:64` fuehrt Icon-Eintraege unter genau diesen Namen.
   { id: "word-sys", labelKey: "imp.gallery.src.wordSource", state: "planned" },
@@ -303,7 +379,8 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
     accept: ACCEPT_IMAGE,
     sample: { name: "a.png", type: "image/png" },
   },
-  // Wirklich (noch) fehlend: Excel — kein Extraktionsweg → kein Dialog, ehrlich geplant.
+  // Excel: im ERFASSEN weiterhin ohne Extraktionsweg (`accept: null`, dort „geplant"). Auf
+  // `/import` liest der Importkasten .xlsx seit R-0179 (Nacharbeit 3) — s. `IMPORT_FILE_STATE`.
   //
   // AUFTRAG-mega14 Block G / mega15 Block D (SCRUM-382) — der Befund und Pedis Entscheidung:
   // Für Audio/Video stimmt „kein Extraktionsweg" NICHT. Das Transkriptionsmodul (`services/media/`)
@@ -316,7 +393,6 @@ const FILE_SOURCE_DEFS: readonly FileSourceDef[] = [
   // nutzbar. Kein Umhaengen auf ein anderes Eingabefeld, kein neuer Handler: `accept` bleibt null,
   // die Galerie oeffnet fuer diese Kachel weiterhin keinen Dialog.
   //
-  // Excel bleibt „geplant": dort gibt es wirklich keinen Extraktionsweg.
   { id: "xlsx", labelKey: "imp.gallery.file.xlsx", accept: null, sample: { name: "a.xlsx" } },
   {
     id: "avtranscript",
@@ -343,9 +419,9 @@ export type ImportSurface = "capture" | "import";
 // GEBLIEBEN sind genau zwei Eintraege, und beide sind Aussagen, die aus der Weiche nicht folgen:
 //   · `json-file: "active"` — die ausdrueckliche Zusage DIESER Flaeche. Auf `/import` laeuft ein
 //     echter JSON-Upload; die Weiche wuesste davon nichts (sie kennt nur „extrahiert Text").
-//   · `xlsx: "planned"`     — der echte Planwert. Excel hat keinen Extraktionsweg (`accept: null`),
-//     die Weiche gaebe also ohnehin „nicht einlesbar" — der Eintrag steht hier trotzdem, weil
-//     „geplant" die staerkere, ausdrueckliche Aussage ist und nicht der Rueckfall sein soll.
+//   · `xlsx: "active"`      — R-0179 (Nacharbeit 3): auf `/import` liest derselbe Eingang wie JSON
+//     auch Excel (`lib/xlsxImport.ts`). Die Weiche des Erfassens kennt Excel weiterhin nicht
+//     (`accept: null` unten bleibt), dort bleibt die Kachel deshalb „geplant".
 // `avtranscript` steht bewusst NICHT hier: sein Zustand ist auf beiden Oberflaechen derselbe und
 // kommt aus `fixedState` (SCRUM-382).
 //
@@ -354,7 +430,7 @@ export type ImportSurface = "capture" | "import";
 // `tests/import-einstieg/weiche-statt-handtisch.test.ts` rot.
 const IMPORT_FILE_STATE: Record<string, SourceState> = {
   "json-file": "active",
-  xlsx: "planned",
+  xlsx: "active",
 };
 
 // Erfassen: eine Kachel ist AKTIV, wenn ihr Sample über die ECHTE Weiche detectFileKind (die

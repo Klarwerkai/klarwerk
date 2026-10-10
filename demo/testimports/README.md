@@ -1,7 +1,7 @@
 # Probe-Importe für den Admin-Upload-/Lösch-Test (SCRUM-487 / SCRUM-494)
 
 Fertige `ImportItem[]`-JSON-Dateien für Pedis manuellen Test: hochladen → Erkennung beobachten →
-löschen. **Garantiert schemakonform** — abgeleitet aus `services/app/src/demo-corpus.ts`
+löschen. **Garantiert schemakonform** — abgeleitet aus `tests/demo-korpus/demo-corpus.ts`
 (`corpusImportItems()`) und gegen den echten Upload-Parser `apps/web/src/lib/importReview.ts`
 (`parseImportItems`) geprüft. Der Parser übernimmt bewusst nur `title, statement, type, category,
 tags` — genau diese Felder tragen die Smoke-Dateien.

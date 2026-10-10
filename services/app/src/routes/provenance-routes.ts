@@ -59,10 +59,15 @@ import { darfSehen } from "../sichtbarkeit";
  * BLOCK D — DER SCHALTER. Vorgabe AUS.
  *
  * Anders als `KLARWERK_SLIDES_ENABLED` (das die Route registriert laesst und ehrlich 503 antwortet)
- * entscheidet dieser Schalter ueber die REGISTRIERUNG selbst: ohne ihn gibt es die Route nicht,
- * und der Knopf in der Oberflaeche wird ebenfalls nicht gerendert. Damit ist „die Seite wieder
- * verstecken" ein Schalter und kein Rueckbau — und es entsteht kein 404-Raetsel, weil niemand auf
- * eine Flaeche zeigt, die es nicht gibt.
+ * entscheidet dieser Schalter ueber die REGISTRIERUNG selbst: ohne ihn gibt es die Route nicht.
+ * Damit ist „die Seite wieder verstecken" ein Schalter und kein Rueckbau.
+ *
+ * R-1975 / R-0791 (I27): Der fruehere Satz „der Knopf in der Oberflaeche wird ebenfalls nicht
+ * gerendert" behauptete eine Flaeche, die es nicht gibt — `apps/web` ruft diese Route nirgends
+ * auf; die Herkunftskette am Objekt (`MehrAbschnitte.tsx`) kommt aus dem Pruefprotokoll und haengt
+ * nicht an diesem Schalter. Festgehalten im Leserregister
+ * `tests/funktionsschalter/schalter-leser.test.ts` (Art „ohneFlaeche"): baut jemand den Aufruf,
+ * wird es rot und verlangt einen echten Leser des Schalters.
  *
  * Pro Aufruf gelesen, damit Tests beide Zustaende im selben Lauf festhalten koennen.
  *

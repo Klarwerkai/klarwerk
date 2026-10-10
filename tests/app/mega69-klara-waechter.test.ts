@@ -2747,7 +2747,402 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
     // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
     // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
-    const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
+    // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word) — DER PIN MUSS
+    // WANDERN. `taskpane.html` ändert sich um GENAU einen Verweis im Kopf hinter `begriffe.js`:
+    // `<script src="anleitung.js?v=__KW_FASSUNG__"></script>` (Block KW-ANLEITUNG, eigene Datei wie
+    // KW-BEGRIFFE; `taskpane.js`, `taskpane.css` und `marke.js` bleiben unberührt, Zeilenzahl der
+    // Seite unverändert). Auslieferungsfolgen: neue Abrufziele NUR in `anleitung.js` und nur auf
+    // Klick — `GET /api/output/sources`, `POST /api/output/generate`, `GET /api/kos/:id`, alle
+    // gleichherkünftig (`connect-src 'self'`) und alle mit dem bestehenden Recht `ko.read`; keine
+    // CSP-, Rechte- oder Manifeständerung (`Paragraph.select`/`insertParagraph` WordApi 1.1,
+    // `styleBuiltIn` nur, wenn WordApi 1.3 gemeldet wird), kein Sideload. Ohne zugelassenes
+    // Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Prüflauf meldet ihn als
+    // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 1 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (eefba3bd… -> cf784c5a…). Im
+    // Prüflauf zu Kandidat a757d6c3 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // panel-pins-messung.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung
+    // unberührt.
+    // AUFNAHME 20260922 · GESAMT-BILDBUDGET (R-0021, R-0412): in `taskpane.js` ist allein der Wert von
+    // `sendTooLarge` je Sprache (de/en/nl) umformuliert — weiter EIN Satz, jetzt mit dem Hinweis, wann
+    // erneut zu senden ist, und der benannten Grenze (höchstens 60 Bilder, dieselbe Zahl wie
+    // `WORD_ADDIN_MAX_BILDER` und die Serverkante `DOCX_BILDER_MAX_ANZAHL`). Kein neuer Schlüssel,
+    // keine neue Zeile, kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung,
+    // kein Sideload. NACHARBEIT 1: PIN BEWUSST AKTUALISIERT (eefba3bd… -> 543d180f…). Im Prüflauf zu
+    // Kandidat 4e98aeda GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/waechter-geaenderte-
+    // flaechen.log) und unverändert übernommen.
+    // NACHARBEIT 3 (R-0021, Ben): `sendTooLarge` (de/en/nl) nennt zusätzlich Kürzen und Aufteilen als
+    // Abhilfe — weiter EIN Satz, kein neuer Schlüssel, keine neue Zeile, kein neues Abrufziel, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. NACHARBEIT 4: PIN BEWUSST
+    // AKTUALISIERT (543d180f… -> 852ea03b…). Im Prüflauf zu Kandidat bd239505 GEMESSEN („Received",
+    // HISTORIE/nacharbeit-4/PRUEFUNG/panel-inhalts-pin.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
+    // AUFNAHME 20260922 · ANTWORT-QUELLENANZEIGE (R-0309/R-0325) — DER PIN MUSS WANDERN. `taskpane.js`:
+    // die Herkunftszeile trägt bei belegtem Datum „Stand …" (vorhandener Schlüssel `askChipStand`);
+    // die Quellen-Zeile im Dokument nennt nur die tragenden Quellen (`citedSources`, ohne das Feld wie
+    // bisher alle) je mit Prüfstand und Version (`askTragendeQuellen`, `askDokumentQuellenTitel`);
+    // der Kommentarkopf über `composeOutputText` ist verdichtet (Schranke B3: 12494 Zeilen).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload.
+    // NACHARBEIT 1 (antwort-quellenanzeige): PIN BEWUSST AKTUALISIERT (eefba3bd… -> 8cd91a17…). Im
+    // Prüflauf zu Kandidat 95df9979 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // panel-ausgabe-und-waechter.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt.
+    // NACHARBEIT 3 (antwort-quellenanzeige, Ben zu 36386e17) — DER PIN MUSS WANDERN. `taskpane.js`:
+    // Chips, Ziffern und Dokumentzeile nur aus TRAGENDEN Quellen (`askZugeordnet`,
+    // `askTragendeQuellen`; fehlende/leere/widersprüchliche Zuordnung → „keine tragende Quelle
+    // belegt"), Stand je Quelle (`askQuelleStandTeile`), der Einschub (`askEinschubOeffnen`,
+    // Passage = Aussage des Objekts, Original über `/api/objects/:id/raw`, Wissensnetz über
+    // `/wissen/:id`), fünf neue Wörterbuchschlüssel je Sprache, verdichtete Kommentarköpfe (B3);
+    // `taskpane.css`: Ziffern klickbar, Einschub-Stil. Auslieferungsfolgen: KEIN neues Abrufziel
+    // (`/api/kos/:id` liefert Aussage und Anhänge bereits), Links sind gleichherkünftig, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Ohne zugelassenes Hash-Werkzeug
+    // nicht berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen
+    // übernommen.
+    // NACHARBEIT 4: PIN BEWUSST AKTUALISIERT (8cd91a17… -> bd2cae06…). Im Prüflauf zu Kandidat
+    // ca6061e4 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/panel-waechter-und-pins.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 5 — DER PIN MUSS WANDERN. `taskpane.js`: der Quellenlink trägt die Belegstelle
+    // (`askStelleHref`, `?stelle=…&fassung=…`), „Im Wissensnetz anzeigen" führt auf
+    // `/wissen/:id?abschnitt=nachbarschaft`; zwei Kommentarköpfe verdichtet (B3: 12497 Zeilen).
+    // Auslieferungsfolgen: kein neues Abrufziel, nur gleichherkünftige Linkadressen, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Der Prüflauf meldet den
+    // Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 6: PIN BEWUSST AKTUALISIERT (bd2cae06… -> 68c44d3c…). Im Prüflauf zu Kandidat
+    // 300b9834 GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/
+    // panel-belegstelle-und-wissensnetz.log) und unverändert übernommen; die Panel-Dateien sind seit
+    // dieser Messung unberührt.
+    // AUFNAHME gesamt-funktionsschalter (R-1040, Ben nacharbeit-2) — DER PIN MUSS WANDERN.
+    // `taskpane.js` wertet in `performAsk` die 503 `KI_ABGESCHALTET` aus (Ergebnisart
+    // `ki-abgeschaltet`) und nennt in `#ask-status` die administrative Abschaltung statt
+    // „Fragen fehlgeschlagen (HTTP 503)"; dort kein „Erneut versuchen". Ein neuer Wörterbuchschlüssel
+    // je Sprache (`askKiAbgeschaltet`, in der Zeile von `askFallbackConsentEnded`); netto eine Zeile
+    // (B3: 12493). Gemessen in `tests/app/word-addin-ask.test.ts` (R-1040, DE/EN/NL + Gegenprobe).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload.
+    // NACHARBEIT 3 (gesamt-funktionsschalter): PIN BEWUSST AKTUALISIERT (eefba3bd… -> dce012c0…). Im
+    // Prüflauf zu Kandidat e9529cb7 GEMESSEN („Received", HISTORIE/nacharbeit-3/PRUEFUNG/
+    // word-addin-auslieferungswaechter.log) und unverändert übernommen; die vier Panel-Dateien sind
+    // seit dieser Messung unberührt (Nacharbeit 3 ändert nur Testdateien).
+    // INTEGRATION gesamt-dokumenterzeugung × gesamt-funktionsschalter (main d8717621, Nacharbeit 2):
+    // BEIDE Änderungen stehen jetzt im Fenster — der Verweis auf `anleitung.js` in `taskpane.html`
+    // (gesamt-dokumenterzeugung) UND die Auswertung von 503 `KI_ABGESCHALTET` samt
+    // `askKiAbgeschaltet` in `taskpane.js` (gesamt-funktionsschalter). Keine der beiden Messungen
+    // (`cf784c5a…` zu a757d6c3, `dce012c0…` zu e9529cb7) beschreibt das zusammengefügte Fenster; beide
+    // galten nur für ihren Zweig. Der Wert unten ist der von main und damit ein PLATZHALTER bis zur
+    // Messung: ohne zugelassenes Hash-Werkzeug ist der neue SHA-256 hier nicht berechenbar. Der
+    // Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen
+    // beider Seiten wie in den zwei Absätzen darüber; die Vereinigung fügt keine hinzu.
+    // NACHARBEIT 3 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter dce012c0… ->
+    // a42c4302…). Im Prüflauf zu Kandidat b4a727cc GEMESSEN („Received", HISTORIE/nacharbeit-3/
+    // PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die Panel-Dateien sind seit
+    // dieser Messung unberührt.
+    // INTEGRATION gesamt-bildbudget × gesamt-funktionsschalter (Nacharbeit 5): Beide Stände ändern
+    // `taskpane.js` an getrennten Stellen (`sendTooLarge` de/en/nl bzw. `askKiAbgeschaltet` und
+    // `performAsk`); die Zusammenführung trägt beide. Keiner der beiden gemessenen Werte (852ea03b…
+    // aus dem Bildbudget-Zweig, dce012c0… aus main) beschreibt die vereinigte Datei. NACHARBEIT 6:
+    // PIN BEWUSST AKTUALISIERT (dce012c0… -> a6dc7a30…). Im Prüflauf zu Kandidat 1df43d16 GEMESSEN
+    // („Received", HISTORIE/nacharbeit-6/PRUEFUNG/panel-inhalts-pin.log) und unverändert übernommen;
+    // die Panel-Dateien sind seit dieser Messung unberührt.
+    // AUFTRAG ki-modus-wahrheit (R-0700, Ben nacharbeit-2) — DER PIN MUSS WANDERN. `taskpane.js`
+    // ändert sich allein in `performAsk`: MIT registrierter Sitzung geht die Frage an Klaras eigenen
+    // Zugang `POST /api/klara/sessions/{sessionId}/execute` (Sitzung im Pfad; Kopfzeilen und Körper
+    // Byte für Byte wie bisher), OHNE Sitzung an `/api/ask` im retrieval-only-Modus OHNE
+    // Bindungskopfzeilen und Klara-Felder (der allgemeine Weg weist beides seit R-0700 ab).
+    // Auslieferungsfolgen: kein neues Abrufziel im Sinn von M7 (dieselbe `fetchFn`-Stelle,
+    // same-origin, `connect-src 'self'` deckt den Pfad), keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload; netto +2 Zeilen (B3: 12495).
+    // DAZU (R-0378, Ben nacharbeit-2): die KI-Zeile der Sitzung dauerhaft im Kopf — `#kw-kopf-ki`
+    // (role=status) in der Schlusszeile des `<header>` (Markup 498 Zeilen, A2), absolut im unteren
+    // Kopfpolster (`taskpane.css`, ohne Einfluss auf Polster/Flex des Kopfs), gefüllt in
+    // `renderKlaraS4` aus DERSELBEN Auflösung wie Einstellungen und Ausführung; ein neuer
+    // Wörterbuchschlüssel je Sprache (`s4KopfKi`). Kein neues Abrufziel, keine Nutzlast-, CSP-,
+    // Rechte- oder Manifeständerung, kein Sideload; `taskpane.js` 12498 Zeilen (B3).
+    // Ohne zugelassenes Hash-Werkzeug ist der neue Wert hier nicht berechenbar — der Prüflauf
+    // meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 4 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (dce012c0… -> 7f02c1c4…). Im
+    // Prüflauf zu Kandidat fdd18078 GEMESSEN („Received", HISTORIE/nacharbeit-4/PRUEFUNG/
+    // panel-auslieferung-pins-und-schranken.log) und unverändert übernommen; die Panel-Dateien sind
+    // seit dieser Messung unberührt.
+    // AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708) — DER PIN
+    // MUSS WANDERN. Zwei Änderungen, nur EINE bewegt ihn:
+    //   (1) Der Abschnitt KW-WORDVERGLEICH wohnt in einer eigenen Datei `wortvergleich.js`, geladen
+    //       als klassisches Skript UNMITTELBAR NACH `taskpane.js` (Verweis in derselben Zeile) und vor
+    //       `marke.js`; `panelQuelleAus` setzt ihn beim Zusammenfügen wieder an seine Stelle. Grund:
+    //       B3 (`taskpane.js` stand bei 12493 von < 12500 Zeilen). Kein Byte des zusammengefügten
+    //       Dokuments ändert sich dadurch (Rest und Abschnitt mit `cmp` gegen 817d5347 verglichen).
+    //   (2) Im Abschnitt: Knopf „Markierung prüfen" (`#wv-markierung`, liest die Markierung über
+    //       `Word.run`/`getSelection`, LESEND, schreibt weder Text noch Farbe), die Fundstelle eines
+    //       Quellenfunds als Zitat, der Haken „Auch noch nicht validierten Bestand einbeziehen"
+    //       (`#wv-ungeprueft`, AUS bis zum Haken, nur für dieses Fenster, fällt beim Logout) und
+    //       acht neue Wörterbuchschlüssel je Sprache.
+    // Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (`wortvergleich.js`, gleicher Ursprung,
+    // `script-src 'self'`, dieselbe Cachekennung). Abrufziel: keines neu (dieselbe Route
+    // `/api/check-text`). Nutzlast: der Prüfweg des Vergleichs trägt zusätzlich
+    // `ungeprueftEinbeziehen` (true/false); kein Text mehr als vorher, bei „Markierung prüfen" nur die
+    // Markierung statt eines Absatzes. CSP, Recht, Manifest unverändert (WordApi 1.1 deckt
+    // `getSelection`), kein Sideload. Ein alter Server ohne die Datei liefert 404 — das Fenster bleibt
+    // bedienbar, nur ohne Word-Vergleich. Ohne zugelassenes Hash-Werkzeug (`git hash-object` und
+    // `shasum` waren in dieser Bahn gesperrt) ist der neue Wert hier nicht berechenbar; der Prüflauf
+    // meldet ihn als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 1 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (dce012c0… -> 8bd59ad6…). Im Prüflauf
+    // zu Kandidat 12b0b2d6 GEMESSEN („Received", HISTORIE/nacharbeit-1/PRUEFUNG/
+    // schnitt-wortvergleich-und-panelwaechter.log) und unverändert übernommen; die Panel-Dateien sind
+    // seit dieser Messung unberührt.
+    // Auf `main` lief parallel (die Zeilen unten stammen von dort):
+    // AUFNAHME 20260922 · ANTWORT-ERKLÄRUNG (Ben nacharbeit-2, R-0321/R-0335) — DER PIN MUSS WANDERN.
+    // `taskpane.js`: `performAsk` liest `result.belastbarkeit` (Lage und Konfliktseiten); ein Körper
+    // ohne Ergebnis, eine unbekannte/gestörte oder zur Antwortform widersprüchliche Lage wird
+    // `{kind:"error",detail:"lage"}`, `geschwaerzt` wird `{kind:"redacted"}`; `renderAskLage` zeichnet
+    // Lage und beide Seiten unter „Mehr"; neun Wörterbuchschlüssel je Sprache in EINER Zeile; Kommentare
+    // im Antwortzweig verdichtet (B3: 12496 Zeilen). `taskpane.html`: `#ask-lage-line` und
+    // `#ask-konflikt-seiten` auf der Zeile von `#ask-conflict-line` (498 Zeilen). Auslieferungsfolgen:
+    // kein neues Abrufziel, keine Nutzlaständerung (der Rumpf von POST /api/ask ist byte-gleich), CSP,
+    // Recht und Manifest unverändert, kein Sideload. Ohne zugelassenes Hash-Werkzeug ist der neue Wert
+    // hier nicht berechenbar — der Prüflauf meldet ihn als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 4 (dieser Auftrag): gemessen zu Kandidat 64095a2e war `264cf053…9a2028` — NICHT
+    // übernommen, weil `taskpane.js` danach erneut geändert wurde: drei Lage-Schlüssel sind ohne
+    // ASCII-Umschrift umbenannt (askLageVerantwortungFehlt, askKonfliktTragend, askLageGesperrt), denn
+    // der Umlaut-Wächter (mega69 C) erntet die einzeilige Schlüsselreihe als EINEN Text und traf die
+    // Namen. Gleiche Zeilenzahl, kein Ausdruck sonst geändert. Rechenversuch erneut nicht zugelassen;
+    // der Prüflauf meldet den Wert der endgültigen Fassung als „Received".
+    // NACHARBEIT 5 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (eefba3bd… -> 3a0471fa…). Im Prüflauf zu
+    // Kandidat 0bd4f3cb GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/word-fenster-pins.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt
+    // (`git diff 0bd4f3cb -- apps/web/public/word-addin/` leer).
+    // INTEGRATION Antwort-Erklärung × gesamt-funktionsschalter (main d8717621, nacharbeit-6): BEIDE
+    // Änderungen stehen jetzt in `taskpane.js` — `ki-abgeschaltet` (R-1040) und Lage/Konfliktseiten
+    // (R-0321/R-0335); die Statuszeile in `renderAskOutcome` trägt beide Fälle in EINEM Ausdruck (kein
+    // „Erneut versuchen" bei Abschaltung oder Schwärzung). B3: 12497 Zeilen. Keiner der beiden
+    // gemessenen Werte (3a0471fa… dieser Auftrag, dce012c0… main) beschreibt das zusammengefügte
+    // Fenster. Der Wert unten ist der von main und damit ein PLATZHALTER bis zur Messung; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet ihn als „Received".
+    // NACHARBEIT 8 (Antwort-Erklärung): PIN BEWUSST AKTUALISIERT (dce012c0… -> 9464e051…). Im Prüflauf
+    // zu Kandidat 7e98d5c4 GEMESSEN („Received", HISTORIE/nacharbeit-8/PRUEFUNG/
+    // integration-word-fenster.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt (`git diff 7e98d5c4 -- apps/web/public/word-addin/` leer).
+    // INTEGRATION antwort-quellenanzeige × gesamt-funktionsschalter (Kandidat d9fe11c3, Nacharbeit 8):
+    // BEIDE Änderungen stehen jetzt in `taskpane.js` — die Quellenanzeige dieses Auftrags (tragende
+    // Quellen, Stand je Quelle, Einschub, Belegstelle, Wissensnetz-Sprung) UND die Auswertung von
+    // `KI_ABGESCHALTET` samt `askKiAbgeschaltet` (12498 Zeilen, B3 eingehalten). Keine der beiden
+    // Messungen (68c44d3c… hier, dce012c0… auf main) beschreibt das zusammengeführte Dokument. Der
+    // Wert unten ist der von main und damit ein PLATZHALTER bis zur Messung — DER PIN MUSS WANDERN;
+    // der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // Auslieferungsfolgen: die beider Aufträge zusammen — kein neues Abrufziel, keine Nutzlast-,
+    // CSP-, Rechte- oder Manifeständerung, kein Sideload.
+    // NACHARBEIT 10 (antwort-quellenanzeige): PIN BEWUSST AKTUALISIERT (Platzhalter dce012c0… ->
+    // aefb62af…). Im Prüflauf zu Kandidat a54d2eff am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-10/PRUEFUNG/panel-pins-nach-integration.log) und unverändert übernommen;
+    // die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 11 (antwort-quellenanzeige, Ben zu c022ce07: R-0310, R-0326) — DER PIN MUSS
+    // WANDERN. `taskpane.js`: `askAbsaetzeLesen` liest das neue Antwortfeld `absaetze` (je Absatz
+    // die tragenden Quellen); ausgegeben werden nur belegte Absätze, ohne einen belegten Absatz
+    // bleibt die Antwort eine Lücke; die Fußnoten stehen je Absatz (`absatzmarke`); die Passage im
+    // Einschub ist selbst der Link auf die Belegstelle (`askStelleHref`, die zwei Aktionen bleiben).
+    // Mehrere Kommentarköpfe verdichtet (B3: 12492 Zeilen). `taskpane.css`: `.absatzmarke`.
+    // Auslieferungsfolgen: kein neues Abrufziel (`/api/ask` trägt das Feld zusätzlich), nur
+    // gleichherkünftige Links, keine CSP-, Rechte- oder Manifeständerung, kein neuer
+    // Wörterbuchschlüssel, kein Sideload. Der Wert unten ist ein PLATZHALTER; der Prüflauf meldet
+    // den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 12: PIN BEWUSST AKTUALISIERT (Platzhalter aefb62af… -> 7c842a83…). Im Prüflauf zu
+    // Kandidat ff6019e3 GEMESSEN („Received", HISTORIE/nacharbeit-12/PRUEFUNG/
+    // panel-waechter-und-pins.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt.
+    // NACHARBEIT 13 (Ben zu 6cc581b4) — DER PIN MUSS WANDERN. `taskpane.js` `askFussnotenSetzen`:
+    // jede Absatzmarke ist nur verborgen, wenn IHR Absatzende ausserhalb der kompakten Ansicht
+    // liegt; ein abgeschnittenes Textende verbirgt nur seine eigenen Ziffern (`ende-verborgen`),
+    // nicht mehr den ganzen Halter. `taskpane.css`: Regel `.ende-verborgen > .fussnote`.
+    // Auslieferungsfolgen: kein Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung,
+    // kein Wörterbuchschlüssel, kein Sideload. Der Wert unten ist ein PLATZHALTER; der Prüflauf
+    // meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 14: PIN BEWUSST AKTUALISIERT (Platzhalter 7c842a83… -> f045e108…). Im Prüflauf zu
+    // Kandidat 966d179e GEMESSEN („Received", HISTORIE/nacharbeit-14/PRUEFUNG/
+    // r0310-panel-absatzmarken.log) und unverändert übernommen; die Panel-Dateien sind seit dieser
+    // Messung unberührt.
+    // NACHARBEIT 15 (Ben zu 8e6c9d73, R-0310/R-0325) — DER PIN MUSS WANDERN. `taskpane.js`: ist
+    // kein Absatz belegt UND steht keine tragende Quelle fest, trägt die Lücke `zuordnungUnbekannt`,
+    // und `#ask-gap-zuordnung` (vorhandener Schlüssel `askCaveatUnattributed`) wird sichtbar.
+    // `taskpane.html`: dieses Element als Geschwister von `#ask-gap-ungeprueft` (auf derselben Zeile,
+    // Schranke < 500); `taskpane.css`: dieselbe Regel wie `#ask-gap-ungeprueft`. Auslieferungsfolgen:
+    // kein Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein neuer
+    // Wörterbuchschlüssel, kein Sideload. Der Wert unten ist ein PLATZHALTER; der Prüflauf meldet
+    // den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 17: PIN BEWUSST AKTUALISIERT (Platzhalter f045e108… -> 3d9cdf45…). Im Prüflauf zu
+    // Kandidat 2c099872 GEMESSEN („Received", HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-dokumenterzeugung × antwort-quellenanzeige (main ffd509db, Nacharbeit 32):
+    // BEIDE Änderungen stehen jetzt im Fenster — der Verweis auf `anleitung.js` in `taskpane.html`
+    // (gesamt-dokumenterzeugung) UND die Quellenanzeige samt `#ask-gap-zuordnung`
+    // (antwort-quellenanzeige). Keine der beiden Messungen (`a42c4302…` hier, `3d9cdf45…` auf main)
+    // beschreibt das zusammengefügte Fenster. Der Wert unten ist der von main und damit ein
+    // PLATZHALTER bis zur Messung — DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen. Auslieferungsfolgen: die beider Aufträge
+    // zusammen, wie in den Absätzen darüber; die Vereinigung fügt keine hinzu.
+    // NACHARBEIT 33 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… ->
+    // cec1cf9e…). Im Prüflauf zu Kandidat 38a24dcd am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-33/PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION ki-modus-wahrheit × antwort-quellenanzeige (Kandidat de703240, Nacharbeit 21):
+    // BEIDE Änderungen stehen jetzt in den Panel-Dateien — Klaras eigener Zugang in `performAsk`,
+    // `#kw-kopf-ki` samt `s4KopfKi` (R-0700/R-0378, dieser Auftrag) UND Absatz-Belege, Fußnoten,
+    // `#ask-gap-zuordnung` (R-0310/R-0325, main). Damit `taskpane.js` unter B3 bleibt, ist ein
+    // fremder Kommentar (JOB 2621 §1) wortgleich auf zwei Zeilen verdichtet und der eigene
+    // R-0700-Kommentar an seine Codezeile gezogen; kein Ausdruck geändert (12498 Zeilen). Keine der
+    // beiden Messungen (7f02c1c4… hier, 3d9cdf45… auf main) beschreibt das zusammengeführte
+    // Dokument. Der Wert unten ist der von main und damit ein PLATZHALTER — DER PIN MUSS WANDERN;
+    // der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // Auslieferungsfolgen: die beider Aufträge zusammen — Klaras Antwort trägt `absaetze` jetzt auch
+    // über ihren eigenen Zugang; kein neues Abrufziel, keine CSP-, Rechte- oder Manifeständerung,
+    // kein Sideload.
+    // NACHARBEIT 22 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… ->
+    // 80a80f3b…). Im Prüflauf zu Kandidat 423e9199 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-22/PRUEFUNG/integration-panel-auslieferung-pins-und-schranken.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION „Geschriebene Behauptungen …" × main 70216f9f (Nacharbeit 3 dieses Auftrags) — DER
+    // PIN MUSS WANDERN. Im zusammengefügten Dokument stehen BEIDE Änderungen: die Quellenanzeige von
+    // main (Absatz-Belege, Fußnoten, `#ask-gap-zuordnung`) und der Wortvergleich dieses Auftrags
+    // („Markierung prüfen", Zitat, Zustimmung; ausgelagert in `wortvergleich.js`). Git hat die
+    // Panel-Dateien ohne Konflikt zusammengeführt (Block nur in `wortvergleich.js`, `taskpane.js` 11544
+    // Zeilen, `taskpane.html` 498). Keine der Messungen (8bd59ad6… hier, 3d9cdf45… auf main) beschreibt
+    // dieses Dokument; der Wert unten ist der von main und damit ein PLATZHALTER. Auslieferungsfolgen:
+    // die beider Stände zusammen, wie oben je Stand benannt — nichts darüber hinaus. Ohne zugelassenes
+    // Hash-Werkzeug hier nicht berechenbar; der Prüflauf meldet den Ist-Wert als „Received".
+    // NACHARBEIT 4 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… -> c1007d1d…).
+    // Im Prüflauf zu Kandidat 3b7914f4 am zusammengeführten Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-4/PRUEFUNG/panel-nach-integration-pins-und-schnitt.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // Auf `main` lief parallel (die Zeilen unten stammen von dort):
+    // INTEGRATION Antwort-Erklärung (9464e051…) × antwort-quellenanzeige (main 3d9cdf45…), Nacharbeit 17
+    // der Antwort-Erklärung — DER PIN MUSS WANDERN. `taskpane.js` trägt jetzt BEIDES: Lage und
+    // Konfliktseiten (R-0321/R-0335, `renderAskLage`, `detail: "lage"`, `redacted`) UND die
+    // Absatz-Beleg-Zuordnung (R-0310, `askAbsaetzeLesen`, `zuordnungUnbekannt`). In `performAsk`
+    // wird die Lage weiter am Antwortkörper geprüft; ausgegeben wird nur mit mindestens einem belegten
+    // Absatz. Drei KA4-/Ask-Kommentarköpfe sind ohne Wortverlust verdichtet (B3: 12490 Zeilen).
+    // Auslieferungsfolgen: die beider Aufträge — kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte-
+    // oder Manifeständerung, kein Sideload. Keiner der beiden Werte beschreibt das zusammengeführte
+    // Fenster; der Wert unten (main) ist ein PLATZHALTER, der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 19 (Antwort-Erklärung): PIN BEWUSST AKTUALISIERT (Platzhalter 3d9cdf45… ->
+    // 9667e18b…). Im Prüflauf zu Kandidat d96bc621 am ZUSAMMENGEFÜHRTEN Fenster GEMESSEN
+    // („Received", HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-dokumenterzeugung × Antwort-Erklärung (main 97440d8a, Nacharbeit 56):
+    // BEIDE Änderungen stehen jetzt im Fenster — der Verweis auf `anleitung.js` in `taskpane.html`
+    // (gesamt-dokumenterzeugung) UND Lage/Konfliktseiten samt `#ask-lage-line` und
+    // `#ask-konflikt-seiten` (Antwort-Erklärung). Keine der beiden Messungen (`cec1cf9e…` hier,
+    // `9667e18b…` auf main) beschreibt das zusammengefügte Fenster. Der Wert unten ist der von main
+    // und damit ein PLATZHALTER bis zur Messung — DER PIN MUSS WANDERN; der Prüflauf meldet den
+    // Ist-Wert als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen: die beider
+    // Aufträge zusammen, wie in den Absätzen darüber; die Vereinigung fügt keine hinzu.
+    // NACHARBEIT 57 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… ->
+    // 478c59c0…). Im Prüflauf zu Kandidat 88250be0 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-57/PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-bildbudget (a6dc7a30…) × main (9667e18b…), Nacharbeit 9 des Bildbudgets — DER
+    // PIN MUSS WANDERN. `taskpane.js` trägt jetzt BEIDES: den Bildbudget-Satz `sendTooLarge` (de/en/nl,
+    // Kürzen, Aufteilen, höchstens 60 Bilder) UND den gesamten Stand von main (Quellenanzeige,
+    // Antwort-Erklärung, Funktionsschalter). Die drei `sendTooLarge`-Zeilen stehen unverändert in der
+    // zusammengeführten Datei (Wert-, nicht Zeilenänderung; B3 unberührt). Auslieferungsfolgen: die
+    // aller beteiligten Aufträge — kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. Keiner der beiden Werte beschreibt das zusammengeführte Fenster.
+    // NACHARBEIT 10 (gesamt-bildbudget): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… -> f55e6c65…).
+    // Im Prüflauf zu Kandidat f939185b am ZUSAMMENGEFÜHRTEN Fenster (main 5ed2ded3 + `sendTooLarge`)
+    // GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/panel-inhalts-pin.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION ki-modus-wahrheit × Antwort-Erklärung (main ab5f3c95, Nacharbeit 26): BEIDE
+    // Änderungen stehen jetzt in den Panel-Dateien — Klaras eigener Zugang in `performAsk`,
+    // `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND Lage/Konfliktseiten aus `result.belastbarkeit`
+    // (R-0321/R-0335, main). Ohne Konflikt in den Panel-Dateien zusammengeführt (`taskpane.js` 12491
+    // Zeilen, `taskpane.html` 498). Keine der beiden Messungen (80a80f3b… hier, 9667e18b… auf main)
+    // beschreibt das zusammengeführte Dokument. Der Wert unten ist der von main und damit ein
+    // PLATZHALTER — DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird
+    // danach gemessen übernommen. Auslieferungsfolgen: die beider Aufträge zusammen — Klaras Zugang
+    // liefert `belastbarkeit` wie der allgemeine Weg; kein neues Abrufziel, keine CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload.
+    // NACHARBEIT 27 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… ->
+    // 154b4705…). Im Prüflauf zu Kandidat 7e0024f6 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-27/PRUEFUNG/integration-panel-auslieferung-pins-und-schranken.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION „Geschriebene Behauptungen …" × main ab5f3c95 (Nacharbeit 8 dieses Auftrags) — DER
+    // PIN MUSS WANDERN. Im zusammengefügten Dokument stehen BEIDE Änderungen: Lage/Konfliktseiten und
+    // Absatz-Beleg-Zuordnung von main (R-0321/R-0335/R-0310) und der Wortvergleich dieses Auftrags
+    // (`wortvergleich.js`, R-0336/R-0708). Git hat die Panel-Dateien ohne Konflikt zusammengeführt
+    // (Block nur in `wortvergleich.js`, `taskpane.js` 11537 Zeilen, `taskpane.html` 498). Keine der
+    // Messungen (c1007d1d… hier, 9667e18b… auf main) beschreibt dieses Dokument; der Wert unten ist der
+    // von main und damit ein PLATZHALTER. Auslieferungsfolgen: die beider Stände, wie oben je Stand
+    // benannt — nichts darüber hinaus. Der Prüflauf meldet den Ist-Wert als „Received".
+    // NACHARBEIT 9 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (Platzhalter 9667e18b… -> 4ce94aa2…).
+    // Im Prüflauf zu Kandidat 42f34c5e am zusammengeführten Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-9/PRUEFUNG/panel-nach-integration-ab5f3c95-pins-und-schnitt.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-dokumenterzeugung × „Geschriebene Behauptungen …" (main 13984aac,
+    // Nacharbeit 70 dieses Auftrags) — DER PIN MUSS WANDERN. Im Fenster stehen BEIDE Änderungen:
+    // der Verweis auf `anleitung.js` (gesamt-dokumenterzeugung) und der Verweis auf
+    // `wortvergleich.js` samt ausgelagertem Block (R-0336/R-0708). Keine der Messungen (478c59c0…
+    // hier, 4ce94aa2… auf main) beschreibt dieses Fenster; der Wert unten ist der von main und damit
+    // ein PLATZHALTER. Auslieferungsfolgen: die beider Stände, wie oben je Stand benannt — die
+    // Vereinigung fügt keine hinzu. Der Prüflauf meldet den Ist-Wert als „Received".
+    // NACHARBEIT 71 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter 4ce94aa2… ->
+    // 018bb9a8…). Im Prüflauf zu Kandidat 1fb4e6af am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-71/PRUEFUNG/panel-integration-wortvergleich.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION gesamt-bildbudget (f55e6c65…) × main (4ce94aa2…), Nacharbeit 19 des Bildbudgets —
+    // DER PIN MUSS WANDERN. Das zusammengefügte Fenster trägt BEIDES: den Stand von main (u. a.
+    // `wortvergleich.js`, Lage/Konfliktseiten, Absatz-Beleg-Zuordnung, Funktionsschalter) und die drei
+    // `sendTooLarge`-Zeilen dieses Auftrags (de/en/nl, Wert-, nicht Zeilenänderung; B3 unberührt).
+    // Auslieferungsfolgen: die aller beteiligten Stände — nichts darüber hinaus. Keiner der beiden
+    // gemessenen Werte beschreibt das zusammengefügte Dokument. NACHARBEIT 20 (gesamt-bildbudget): PIN
+    // BEWUSST AKTUALISIERT (Platzhalter 4ce94aa2… -> c8be910e…). Im Prüflauf zu Kandidat e426a436 am
+    // ZUSAMMENGEFÜGTEN Fenster GEMESSEN („Received", HISTORIE/nacharbeit-20/PRUEFUNG/
+    // panel-inhalts-pin.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung
+    // unberührt.
+    // INTEGRATION ki-modus-wahrheit × „Geschriebene Behauptungen …" (main 325ff8cb, Nacharbeit 33):
+    // BEIDE Änderungen stehen jetzt in den Panel-Dateien — Klaras eigener Zugang in `performAsk`,
+    // `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND der Wortvergleich (main, ausgelagert in
+    // `wortvergleich.js`, R-0336/R-0708). Git hat die Panel-Dateien ohne Konflikt zusammengeführt
+    // (`taskpane.js` 11538 Zeilen, `taskpane.html` 498). Keine der beiden Messungen (154b4705… hier,
+    // 4ce94aa2… auf main) beschreibt das zusammengeführte Dokument. Der Wert unten ist der von main
+    // und damit ein PLATZHALTER — DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen. Auslieferungsfolgen: die beider Stände, wie
+    // oben je Stand benannt — nichts darüber hinaus.
+    // NACHARBEIT 34 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (Platzhalter 4ce94aa2… ->
+    // f72ab829…). Im Prüflauf zu Kandidat bc98b221 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-34/PRUEFUNG/integration-wortvergleich-panel-pins-und-schranken.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION ki-modus-wahrheit × gesamt-sprache-begriffe (main 1ff962b3, Nacharbeit 36) — DER
+    // PIN MUSS WANDERN. main fügt `taskpane.js` genau eine Zeile in `renderStatics` hinzu
+    // (`#einst-sprache-wahl` mit `t("einstSprache")`, K22); Git hat sie ohne Konflikt übernommen
+    // (`taskpane.js` 11539 Zeilen, `taskpane.html` 498). Main hat diesen Pin dafür nicht bewegt; der
+    // Wert unten (f72ab829…, Messung vor dieser Zeile) ist damit ein PLATZHALTER. Der Prüflauf meldet
+    // den Ist-Wert als „Received", er wird danach gemessen übernommen. Auslieferungsfolgen der Zeile:
+    // nur ein zugänglicher Name; kein Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload.
+    // NACHARBEIT 37 (ki-modus-wahrheit): PIN BEWUSST AKTUALISIERT (Platzhalter f72ab829… ->
+    // c7a4b5ec…). Im Prüflauf zu Kandidat d3a9f1e2 am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-37/PRUEFUNG/integration-sprachwahl-panel-pins-und-schranken.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // Integration 5eac5f5d + 2b5b685b: Beide fachlichen Änderungen sind erhalten.
+    // Der gemeinsame Inhalt hat einen eigenen, gemessenen Fingerabdruck; die historischen
+    // Werte oben bleiben Herkunft. Keine Produktdatei durch diese Konfliktauflösung geändert.
+    // Beleg: HILFE/4fd4c87b805ee60e13c32720/PANEL-MESSUNG.json im Auftragsordner (d53e68e7…).
+    // TECHNISCHE INTEGRATION gesamt-bildbudget (975b314e) × main (4333e511): Beide
+    // Prüfhistorien bleiben erhalten. Die Panel-Dateien wurden automatisch zusammengeführt;
+    // gegenüber main unterscheiden sich allein die drei `sendTooLarge`-Sätze (de/en/nl).
+    // Klaras eigener Fragezugang, KI-Kopfzeile und Sprachwahl von main bleiben enthalten.
+    // Den PIN über die bestehende `panelQuelle()` am erhaltenen Merge-Arbeitsbaum gemessen:
+    // ab97e2bb… . Keine Produktdatei durch die technische Hilfe geändert. Messung und Proben:
+    // QUELLEN-HILFE-525ff063-INTEGRATION.json im bestehenden Auftragsordner.
+    // INTEGRATION gesamt-dokumenterzeugung × main b723640f (Nacharbeit 93) — DER PIN MUSS WANDERN.
+    // Im Fenster stehen BEIDE Stände: der Verweis auf `anleitung.js` (gesamt-dokumenterzeugung) und
+    // der Stand von main samt den drei `sendTooLarge`-Sätzen (gesamt-bildbudget). Keine der beiden
+    // Messungen (`d53e68e7…` hier, `ab97e2bb…` auf main) beschreibt das zusammengefügte Fenster; der
+    // Wert unten ist der von main und damit ein PLATZHALTER. Auslieferungsfolgen: die beider Stände,
+    // wie oben je Stand benannt — die Vereinigung fügt keine hinzu. Der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 94 (gesamt-dokumenterzeugung): PIN BEWUSST AKTUALISIERT (Platzhalter ab97e2bb… ->
+    // c3da73f9…). Im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
+    // HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log) und unverändert übernommen; die
+    // Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "c3da73f9507f3a2781db3fd160744e7786bbd94dadaa945859f68fc8758083d7";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
@@ -2983,7 +3378,26 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
     // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
     //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
-    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
+    // AUFNAHME gesamt-sso NACHARBEIT 2 (08.10.2026) — DATEI BEWUSST GEAENDERT, PIN STEHT NOCH AUS.
+    // Bens Befund: das Fenster bot bei `KLARWERK_SSO_ONLY` weiter ein Kennwortfeld an, das nur in
+    // eine 403 fuehrte. Jetzt liest es `passwordLoginEnabled` und `samlEnabled` aus
+    // `/api/auth/status`, blendet den Kennwortbereich (`#passwortweg`) aus und bietet den
+    // Firmen-Login an (gemessen: dialogseite.test.ts F1–F4). Auslieferungsfolgen:
+    //   · Abrufziel:  keines neu (`/api/auth/status` wie bisher). Neu ist ein Seitenwechsel auf
+    //                 `/api/auth/saml/start?ziel=word-addin` — dieselbe Herkunft, dieselbe EINE
+    //                 Zielkennung wie beim OIDC-Weg; der SAML-Ruecksprung fuehrt hierher zurueck.
+    //   · CSP, Recht, Manifest: unveraendert. · Sideload: keiner noetig.
+    // PIN BEWUSST AKTUALISIERT (f63ac6bc… -> 17aa296a…): der Wert ist der vom Prüflauf
+    // (Nacharbeit 4, Kandidat 925c95e2) an genau dieser Datei gemessene — die Datei ist seitdem
+    // unverändert.
+    // TECHNISCHE PRÜFVORBEREITUNG (gesamt-bildbudget, 09.10.2026): Der obige Wert stammt
+    // aus main 110348b2d. Seit Integration d13306efd enthält die Datei zusätzlich R-0562
+    // (eigene Zwei-Faktor-Anmeldung); HEAD 975b314e und main 4333e511 tragen dieselben Bytes.
+    // Codeschritt: `/api/auth/login/second-factor` mit Anmeldeanfrage und Code; dieselbe Herkunft,
+    // CSP und Manifest unverändert. Kein neues Sideload. Der SHA-256 ist 2a6b7083… .
+    // Bestehende Dialog- und Zwei-Faktor-Proben: 40/40 bestanden. Keine Produktänderung durch
+    // die Hilfe; Herkunft und Messung: QUELLEN-HILFE-525ff063-INTEGRATION.json im Auftragsordner.
+    const PIN = "2a6b70838c98b7beca7e1b823a7f99f269026f076cdbdaf492bfe5774ceb409e";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,
