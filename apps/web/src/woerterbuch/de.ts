@@ -2857,6 +2857,15 @@ const de = {
   "ask.export.answer": "Antwort",
   "ask.export.footer":
     "Quellengebundene Antwort aus KLARWERK · erstellt am {{date}}. Nur so belastbar wie die genutzten Quellen (Status/Vertrauen). Kein Wahrheitsversprechen.",
+  // R-1643: Entscheidungs-Protokoll — Zeitpunkt und Person des Exports.
+  "ask.export.protocol.heading": "Entscheidungs-Protokoll",
+  "ask.export.protocol.time": "Zeitpunkt (UTC)",
+  "ask.export.protocol.user": "Nutzer-ID",
+  "ask.export.protocol.userUnknown": "nicht angemeldet – keine Kennung vorhanden",
+  "ask.export.protocol.argumentation": "Argumentationskette",
+  "ask.export.protocol.supportedBy": "belegt durch",
+  "ask.export.protocol.argumentationMissing":
+    "Für diese Antwort liegt keine Argumentationskette vor. Die Quellenliste ersetzt sie nicht.",
   "ask.sourcesHint":
     "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Vertrauen, Nutzbarkeit). Aufgeführt sind alle Quellen, die für die Frage herangezogen wurden; welche davon die Antwort getragen haben, ist gekennzeichnet. Zum Wissensobjekt für Details.",
   // AUFTRAG-mega52 A3/A5 — die Antwort sagt, worauf sie steht. Die Marken des Modells werden

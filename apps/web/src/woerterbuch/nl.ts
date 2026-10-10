@@ -2220,6 +2220,15 @@ const nl: typeof de = {
   "ask.export.answer": "Antwoord",
   "ask.export.footer":
     "Brongebonden antwoord uit KLARWERK · gemaakt op {{date}}. Alleen zo betrouwbaar als de gebruikte bronnen (status/vertrouwen). Geen belofte van waarheid.",
+  // R-1643: beslissingsprotocol — tijdstip en persoon van de export.
+  "ask.export.protocol.heading": "Beslissingsprotocol",
+  "ask.export.protocol.time": "Tijdstip (UTC)",
+  "ask.export.protocol.user": "Gebruikers-ID",
+  "ask.export.protocol.userUnknown": "niet aangemeld – geen kenmerk beschikbaar",
+  "ask.export.protocol.argumentation": "Redeneerketen",
+  "ask.export.protocol.supportedBy": "onderbouwd door",
+  "ask.export.protocol.argumentationMissing":
+    "Voor dit antwoord is geen redeneerketen beschikbaar. De bronnenlijst vervangt die niet.",
   "ask.sourcesHint":
     "Dit antwoord is brongebonden — het is alleen zo betrouwbaar als de gebruikte bron (status, vertrouwen, bruikbaarheid). Vermeld zijn alle bronnen die voor de vraag zijn geraadpleegd; welke daarvan het antwoord gedragen hebben, is gemarkeerd. Naar het kennisobject voor details.",
   // AUFTRAG-mega52 A3/A5 — het antwoord zegt waarop het steunt. Onbruikbare markeringen betekenen "onbekend".

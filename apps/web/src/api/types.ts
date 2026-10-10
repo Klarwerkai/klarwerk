@@ -2134,6 +2134,11 @@ export interface AnswerResult {
   citedSources?: string[];
   // JOB 3366: gesetzt, wenn der ausgelieferte Antworttext am Token-Limit abgeschnitten wurde.
   abgeschnitten?: AbbruchBefund;
+  // R-1643: die Argumentationskette — je Aussage die Quelle, deren Wortlaut sie belegt (Vertrag
+  // am Serverfeld `AnswerResult.argumentation`, services/reasoner/src/types.ts). Optional: ein
+  // älterer Server sendet sie nicht, und das Protokoll sagt dann, dass keine Kette vorliegt.
+  // Nicht zu verwechseln mit `belastbarkeit.argumentation` (R-1627, Stufen je tragender Quelle).
+  argumentation?: ArgumentationsGlied[];
   // AUFNAHME 20260922 · Antwort-Erklärung: die Belastbarkeit VOM SERVER (Spiegel von
   // `services/ask/src/answer-belastbarkeit.ts`, wo Vertrag und Grenzen stehen). Optional — ein
   // älterer Server sendet sie nicht, dann zeigt die Fläche keine Belastbarkeitszeile und erfindet
@@ -2146,6 +2151,13 @@ export interface AnswerResult {
   // R-0310/R-0325 (nur Fläche, gesetzt in `lib/askResponse.ts`): die Antwort wurde zurückgehalten,
   // weil kein Absatz belegt ist UND keine tragende Quelle feststeht — die Lücke nennt das.
   zuordnungUnbekannt?: true;
+}
+
+/** R-1643: ein Glied der Argumentationskette (Spiegel des Serverfelds). */
+export interface ArgumentationsGlied {
+  aussage: string;
+  quellen: string[];
+  belegtDurch: string;
 }
 
 // Spiegel von `services/ask/src/answer-belastbarkeit.ts` — die Oberfläche LIEST, sie leitet nichts ab.
