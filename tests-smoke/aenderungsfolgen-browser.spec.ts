@@ -164,9 +164,15 @@ test.describe("Änderungsfolgen · der Weg im Reiter „Erneut“", () => {
     );
     expect(mitAbschnitt.status(), await mitAbschnitt.text()).toBe(200);
     const nachAbschnitt = (await mitAbschnitt.json()) as { version: number };
+    // Auch die Testvorbereitung folgt dem vorhandenen Weg: erst vorlegen, dann entscheiden.
+    const vorlegen = await page.request.post(`/api/gesamtanweisungen/${anleitung.id}/vorlegen`, {
+      data: { version: nachAbschnitt.version },
+    });
+    expect(vorlegen.status(), await vorlegen.text()).toBe(200);
+    const vorgelegt = (await vorlegen.json()) as { version: number };
     const entschieden = await page.request.post(
       `/api/gesamtanweisungen/${anleitung.id}/entscheiden`,
-      { data: { version: nachAbschnitt.version, entscheidung: "angenommen" } },
+      { data: { version: vorgelegt.version, entscheidung: "angenommen" } },
     );
     expect(entschieden.status(), await entschieden.text()).toBe(200);
     const standEntschieden = ((await entschieden.json()) as { version: number }).version;
