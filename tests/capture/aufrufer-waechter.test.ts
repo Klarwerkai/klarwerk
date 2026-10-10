@@ -1484,6 +1484,10 @@ const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [];
 // WP-BILD-1d (`tests/ko/body-image-gallery.test.ts`, Galerie in `BibliothekLesen.tsx`) und UX-27
 // (`tests/ux27-pruefstand/ux27-weitere-leseflaechen.test.tsx`, Fall „lesen" entfällt). Mit der
 // Leseansicht fiel `lib/bodyReadMode.ts::BODY_READ_NOTE_KEY`, dessen einziger Leser sie war.
+//
+// WISSENSDETAIL (R-0998/R-1697): die Lesefläche zeigt Bedingungen, Maßnahmen und Tags sowie die
+// nächste sinnvolle Handlung wieder — direkt in `BibliothekLesen.tsx` (`bib-felder`,
+// `bib-naechste`), ohne die entfernten Bausteine zurückzuholen. Kein neuer Export, kein Eintrag hier.
 
 // ------------------------------------------------------------------------------------------------
 // REGISTER 4e · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3062 · H3)
