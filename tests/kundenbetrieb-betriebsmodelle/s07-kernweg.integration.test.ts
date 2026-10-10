@@ -18,6 +18,8 @@
 //   S5  Protokolle: kein Inhaltstext und kein Kennwort in der Prozessausgabe.
 //   S6  Sicherung: `scripts/backup/backup.sh` für Firma A — Dump mit passender Prüfsumme, enthält A,
 //       enthält B nicht.
+//   S7  Netzsperre des Modellservers: nach dem Gewichtsdownload hängt er nur an einem
+//       `--internal`-Netz; im Container scheitern TCP nach außen, Namensauflösung und Registry-Abruf.
 //
 // Jeder Lauf wird über `/health` (`commit`, `instanz`) dem Kandidaten zugeordnet; das Ergebnis steht
 // mit Rechnername, Rollen und Kennungen in `.local/run/s07/<zeit>/S07-ERGEBNIS.json` und auf stdout.
@@ -26,7 +28,12 @@
 // Zeugenfall Z0): `KLARWERK_PG_TEST_URL`, `docker`, `pg_dump`/`pg_restore`, und — falls kein
 // vorbefüllter Ordner `KLARWERK_S07_MODELLE_DIR` übergeben wird — Netz zum einmaligen Laden der
 // Gewichte in den Container. Die App selbst bekommt keinen Cloud-Schlüssel.
-import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
+import {
+  type ChildProcessWithoutNullStreams,
+  execFileSync,
+  spawn,
+  spawnSync,
+} from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -96,7 +103,56 @@ let laufzustand: Laufzustand | undefined;
 let verbindung: Verbindung | undefined;
 let adminPool: Pool | undefined;
 let container: string | undefined;
+let netz: string | undefined;
+let modellHost = "127.0.0.1";
 let modellPort = 0;
+
+interface Sperrprobe {
+  container: string;
+  containerId: string;
+  netz: string;
+  netzIntern: string;
+  netzeVorher: string[];
+  netzeNachher: string[];
+  tcpNachAussen: number | null;
+  namensaufloesung: number | null;
+  registryAbruf: number | null;
+}
+let netzsperre: Sperrprobe | undefined;
+
+/** Die Netze, an denen ein Container hängt, mit seiner Adresse je Netz. */
+type Netze = Record<string, { IPAddress?: string }>;
+function netzeVon(name: string): Netze {
+  const format = "{{json .NetworkSettings.Networks}}";
+  return JSON.parse(lauf("docker", ["inspect", "--format", format, name])) as Netze;
+}
+
+/** Exitcode eines `docker`-Aufrufs, ohne zu werfen (null = Zeitgrenze oder nicht startbar). */
+function exitcode(args: string[], zeitMs: number): number | null {
+  return spawnSync("docker", args, { stdio: "pipe", timeout: zeitMs }).status;
+}
+
+/**
+ * Misst die Netzsperre IM Container: eine TCP-Verbindung nach außen, eine Namensauflösung und ein
+ * Registry-Abruf müssen scheitern. Jeder Exitcode ungleich 0 heißt „kam nicht hinaus".
+ */
+function sperrprobe(name: string, internesNetz: string, vorher: string[]): Sperrprobe {
+  const id = lauf("docker", ["inspect", "--format", "{{.Id}}", name]).trim();
+  const nachher = Object.keys(netzeVon(name));
+  const intern = lauf("docker", ["network", "inspect", "--format", "{{.Internal}}", internesNetz]);
+  const tcp = "timeout 15 bash -c 'exec 3<>/dev/tcp/1.1.1.1/443'";
+  return {
+    container: name,
+    containerId: id,
+    netz: internesNetz,
+    netzIntern: intern.trim(),
+    netzeVorher: vorher,
+    netzeNachher: nachher,
+    tcpNachAussen: exitcode(["exec", name, "bash", "-c", tcp], 30_000),
+    namensaufloesung: exitcode(["exec", name, "getent", "hosts", "registry.ollama.ai"], 30_000),
+    registryAbruf: exitcode(["exec", name, "ollama", "pull", "all-minilm"], 180_000),
+  };
+}
 let ablage = "";
 let commit = "unbekannt";
 let bestandLauf: { code: number | null; stdout: string; stderr: string } | undefined;
@@ -146,7 +202,10 @@ async function starteInstanz(name: string, db: string): Promise<Instanz> {
     ...serverUmgebung(pgUrl(verbindung, db), port),
     APP_BASE_URL: adresse,
     KLARWERK_BUILD_COMMIT: commit,
-    KLARWERK_LOCAL_LLM_URL: `http://127.0.0.1:${modellPort}/v1`,
+    KLARWERK_LOCAL_LLM_URL: `http://${modellHost}:${modellPort}/v1`,
+    // Die Adresse im internen Netz ist kein Loopback: sie wird ausdrücklich als interne Herkunft
+    // freigegeben (`isConfirmedLocalOrigin`) — derselbe Weg wie bei einem Modellrechner im Haus.
+    KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS: `http://${modellHost}:${modellPort}`,
     KLARWERK_LOCAL_LLM_MODEL: SPRACHMODELL,
     KLARWERK_LOCAL_LLM_TIMEOUT_MS: String(STUNDE),
     KLARWERK_LOCAL_EMBEDDING_MODEL: EMBEDDING,
@@ -229,16 +288,36 @@ beforeAll(async () => {
     lauf("docker", ["exec", container, "ollama", "pull", gewicht], 3 * STUNDE);
   }
 
+  // ── Netzsperre: nach dem Laden der Gewichte NUR noch das interne Netz ────────────────────────
+  // Ben, Kandidat 234fe917: der Modellserver lief im Kernweg am Standardnetz, seine Verbindungen und
+  // Namensauflösung blieben ungeprüft. Ab hier hängt er nur an einem `--internal`-Netz (kein Weg
+  // nach außen, so wie `scripts/deploy/compose-intern.yml`); die App erreicht ihn über seine Adresse
+  // in diesem Netz. Die Wirkung wird im Container selbst gemessen (Fall S7).
+  const netzeVorher = Object.keys(netzeVon(container));
+  netz = `kw-s07-intern-${ZEIT}`;
+  lauf("docker", ["network", "create", "--internal", netz]);
+  lauf("docker", ["network", "connect", netz, container]);
+  lauf("docker", ["network", "disconnect", "bridge", container]);
+  modellHost = netzeVon(container)[netz]?.IPAddress ?? "";
+  modellPort = 11434;
+  if (!modellHost) throw new Error(`${MARKE}: Modellserver hat im Netz ${netz} keine Adresse`);
+  await warteAufModellserver(`http://${modellHost}:${modellPort}`);
+  netzsperre = sperrprobe(container, netz, netzeVorher);
+  writeFileSync(join(ablage, "NETZSPERRE.json"), `${JSON.stringify(netzsperre, null, 2)}\n`);
+
   // ── S1 vorbereitet: der Bestand am laufenden Server ──────────────────────────────────────────
+  const modellHerkunft = `http://${modellHost}:${modellPort}`;
   bestandLauf = await fahreNode([
     join(WURZEL, "scripts/betrieb/modellbestand-erfassen.mjs"),
-    `http://127.0.0.1:${modellPort}`,
+    modellHerkunft,
     "--sprachmodell",
     SPRACHMODELL,
     "--embedding",
     EMBEDDING,
     "--dim",
     String(DIM),
+    "--erlaubt",
+    modellHerkunft,
   ]);
   writeFileSync(join(ablage, "MODELLBESTAND.json"), bestandLauf.stdout);
 
@@ -268,6 +347,13 @@ afterAll(async () => {
   if (container) {
     try {
       lauf("docker", ["rm", "-f", container]);
+    } catch {
+      // bereits weg
+    }
+  }
+  if (netz) {
+    try {
+      lauf("docker", ["network", "rm", netz]);
     } catch {
       // bereits weg
     }
@@ -421,7 +507,7 @@ describe("AW-12 · Abnahme S07 auf dem Prüfplatz", () => {
       const port = Number(z.port);
       return (
         (port === Number(pg.port) && (z.host === pg.host || lokal.has(z.host))) ||
-        (port === modellPort && lokal.has(z.host))
+        (port === modellPort && z.host === modellHost)
       );
     };
     const befund: Record<string, Mitschnitt[]> = {};
@@ -437,6 +523,23 @@ describe("AW-12 · Abnahme S07 auf dem Prüfplatz", () => {
       befund[i.name] = [...einzeln.values()];
     }
     ergebnis.verbindungen = befund;
+  });
+
+  it("S7 · Modellserver im Kernweg ohne Weg nach außen: Netz, TCP, Namen, Registry", () => {
+    // Ben, Kandidat 234fe917: Wirkungsnachweis der Netzsperre am Modellserver selbst, gebunden an
+    // Kandidat (`commit`) und Container (`containerId`). Gemessen nach dem Gewichtsdownload und
+    // VOR dem Kernweg; der Kernweg (S3) lief danach über genau diese Adresse im internen Netz.
+    const probe = netzsperre;
+    expect(probe, "Netzsperre wurde nicht gemessen").toBeDefined();
+    if (!probe) return;
+    expect(probe.netzeVorher).toContain("bridge");
+    expect(probe.netzeNachher).toEqual([probe.netz]);
+    expect(probe.netzIntern).toBe("true");
+    expect(probe.tcpNachAussen, "TCP nach außen kam durch").not.toBe(0);
+    expect(probe.namensaufloesung, "externer Name wurde aufgelöst").not.toBe(0);
+    expect(probe.registryAbruf, "Registry war erreichbar").not.toBe(0);
+    expect(modellHost).not.toBe("127.0.0.1");
+    ergebnis.netzsperre = { kandidat: commit, modellAdresse: modellHost, ...probe };
   });
 
   it("S5 · Protokolle tragen keinen Inhaltstext und kein Kennwort", () => {

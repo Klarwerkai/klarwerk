@@ -394,9 +394,13 @@ App-Prozesse (`verbindungsmitschnitt.mjs`, S4), Protokolldurchsicht (S5) und Sic
 und Inhaltsprobe (S6). Das Ergebnis mit Kandidat (`/health.commit`), Rechnername, Rollen und
 Kennungen steht in `.local/run/s07/<zeit>/S07-ERGEBNIS.json` und auf stdout. Fehlt eine
 Voraussetzung (`KLARWERK_PG_TEST_URL`, `docker`, `pg_dump`/`pg_restore`, Netz zum Laden der
-Gewichte), ist der Lauf rot (Zeugenfall Z0), nicht übersprungen. **Grenzen des Mitschnitts:**
-Namensauflösung und Verbindungen des Modellservers selbst sind nicht darin; der Modellserver lädt die
-Gewichte einmalig über das Netz, die App bekommt keinen Cloud-Schlüssel.
+Gewichte), ist der Lauf rot (Zeugenfall Z0), nicht übersprungen. **Modellserver:** Er lädt die
+Gewichte einmalig über das Netz; danach wird er in ein `--internal`-Netz verlegt und vom
+Standardnetz getrennt, die App erreicht ihn nur über seine Adresse dort (als interne Herkunft
+freigegeben). Fall S7 misst die Sperre im Container — TCP nach außen, Namensauflösung und
+Registry-Abruf müssen scheitern — und hält Container-ID, Netze und Kandidat in `NETZSPERRE.json`
+fest. **Grenze des App-Mitschnitts:** Namensauflösung der App-Prozesse ist nicht darin; die App
+bekommt keinen Cloud-Schlüssel.
 
 ---
 
