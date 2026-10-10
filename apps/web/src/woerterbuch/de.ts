@@ -441,6 +441,7 @@ const de = {
   "cmd.treffer_other": "{{count}} Ziele",
   "cmd.audit": "Audit-Log (in Analytics)",
   "toast.dismiss": "Schließen",
+  "einblendung.erledigt": "Erledigt.",
   "page.placeholder":
     "Dieser Screen wird in einem späteren Task gebaut. App-Shell, Navigation und Rollenlogik stehen.",
   "status.entwurf": "Entwurf",
@@ -4178,6 +4179,10 @@ const de = {
   "start.livewall.photoRevoke": "Foto entfernen",
   "start.livewall.photoError":
     "Das Foto konnte nicht übernommen werden. Bitte ein PNG-, JPEG- oder WebP-Bild wählen.",
+  "start.livewall.consentError":
+    "Die Namenszustimmung wurde nicht gespeichert — es gilt weiter der angezeigte Stand. Bitte erneut umschalten.",
+  "start.livewall.photoRevokeError":
+    "Das Foto wurde nicht entfernt — es ist weiter freigegeben. Bitte erneut widerrufen.",
   "start.livewall.photoAlt": "Foto der Autorin oder des Autors",
   "start.livewall.photoOwnAlt": "Mein Foto für die Wand",
   "start.livewall.beamerOpen": "Als Beamer-Ansicht öffnen",
@@ -5415,6 +5420,14 @@ const de = {
   "risk.pflege.retirementTitle": "Ruhestandshorizonte",
   "risk.pflege.retirement": "Ruhestandshorizont von {{name}}",
   "risk.pflege.noRetirement": "Kein Ruhestand eingetragen",
+  "risk.pflege.retirementSaved": "Ruhestandshorizont von {{name}} gespeichert.",
+  "risk.pflege.retirementNotRefreshed":
+    "Gespeichert. Die Anzeige für {{name}} ist noch nicht aufgefrischt — die Auswahl zeigt den gespeicherten Wert.",
+  "risk.pflege.profileSaved": "Bereichsprofil „{{category}}“ gespeichert.",
+  "risk.pflege.profileError":
+    "Bereichsprofil „{{category}}“ wurde nicht gespeichert. Deine Eingaben bleiben stehen — „Speichern“ versucht es erneut.",
+  "risk.pflege.retirementError":
+    "Ruhestandshorizont von {{name}} wurde nicht gespeichert. Deine Auswahl bleibt stehen — „Erneut versuchen“ speichert sie noch einmal.",
   "risk.busLegendSingle": "rot = Einzelquelle (Ausfallrisiko)",
   "risk.busLegendOk": "grün = mehrere Quellen",
   "risk.help.summary":
@@ -5484,6 +5497,14 @@ const de = {
   "risk.close": "Schließen",
   "risk.closeWithTitle": "Mit dem Wissensobjekt schließen, das diese Lücke beantwortet",
   "risk.closeFailed": "Nicht geschlossen — das Wissensobjekt fehlt oder liegt im Papierkorb.",
+  "risk.gapToast.closed": "Lücke geschlossen.",
+  "risk.gapToast.assigned": "Lücke zugewiesen.",
+  "risk.gapToast.assignFailed": "Nicht zugewiesen — bitte erneut auswählen.",
+  "risk.gapToast.removed": "Lücke gelöscht.",
+  "risk.gapToast.removeFailed":
+    "Nicht gelöscht — die Lücke bleibt bestehen. Bitte erneut versuchen.",
+  "risk.gapToast.prioritySaved": "Priorität gespeichert.",
+  "risk.gapToast.priorityFailed": "Priorität nicht gespeichert — bitte erneut auswählen.",
   "risk.assign": "Experte …",
   "risk.delete": "Löschen",
   "risk.gapNextLabel": "Nächster Schritt",
@@ -5505,6 +5526,10 @@ const de = {
   "lcy.assetPlaceholder": "Anlagen-/Prozess-Referenz (z. B. Presse-P2)",
   "lcy.assetTrigger": "Revalidierung auslösen",
   "lcy.assetMarked": "{{n}} Objekt(e) für „{{asset}}“ zur Prüfung markiert.",
+  "lcy.toast.revalidateFailed":
+    "Nicht bestätigt — der Eintrag bleibt fällig. Bitte erneut versuchen.",
+  "lcy.toast.stepDone": "Lernschritt als erledigt gespeichert.",
+  "lcy.toast.stepFailed": "Lernschritt nicht gespeichert — bitte erneut abhaken.",
   "lcy.pendingTitle": "Zur Re-Validierung",
   "lcy.revalAsset": "Anlagenbezug",
   "lcy.revalNextLabel": "Nächster Schritt",
@@ -5644,6 +5669,8 @@ const de = {
   "empty.cta.library": "Zur Bibliothek",
   "empty.cta.validation": "Zur Validierung",
   "empty.cta.tasks": "Zu meinen Aufgaben",
+  "empty.cta.wissensnetz": "Zum Wissensnetz",
+  "empty.cta.ask": "Eine Frage stellen",
   "story.rescue.title": "Klarwerk sichert Erfahrungswissen, bevor es verloren geht.",
   "story.honest":
     "Nichts wird automatisch validiert — Wissen gilt erst nach der Prüfung im Team als gesichert.",
@@ -5655,6 +5682,48 @@ const de = {
     "Noch kein Wissen zum Nachschlagen. Erfasse den ersten Beitrag — nach der Prüfung wird er hier quellengebunden nutzbar.",
   "story.surface.validation.lead":
     "Nichts zu prüfen. Erfasstes Wissen erscheint hier zur Team-Prüfung, bevor es als gesichert gilt und genutzt werden kann.",
+  "story.surface.gaps.lead":
+    "Eine Lücke entsteht, wenn eine Frage keine gesicherte Antwort findet. Gerade ist keine offen — wer fragt, deckt neue auf; wer erfasst, schließt sie.",
+  "story.surface.lifecycle.lead":
+    "Beiträge werden hier fällig, wenn ihre Prüffrist abläuft oder eine gemeldete Anlagenänderung sie betrifft. Gerade ist nichts fällig — eine Anlagenänderung lässt sich darunter melden.",
+  "story.surface.duplicates.lead":
+    "Eine Überschneidung entsteht, wenn zwei Beiträge dasselbe sagen. Gerade ist keine offen — neue erscheinen hier, sobald Erfasstes geprüft wird.",
+  "story.surface.audit.lead":
+    "Noch keine protokollierten Aktionen. Das Protokoll hält fest, wer im Wissenskreis erfasst, prüft und ändert — es füllt sich mit dem ersten erfassten oder geprüften Beitrag.",
+  "story.surface.neighborhood.lead":
+    "Dieser Beitrag teilt noch kein aussagekräftiges Schlagwort mit einem anderen. Im Wissensnetz siehst du, welche Themen schon verbunden sind; neues Wissen mit passenden Schlagwörtern verknüpft ihn mit Nachbarn.",
+  "story.surface.risk.lead":
+    "Noch keine Risikodaten — dafür braucht es erfasstes Wissen je Bereich. Erfasse oder importiere Erfahrungswissen; danach zeigt diese Liste, wo es nur an einer Person hängt.",
+  "story.surface.objekt.lead":
+    "Zu diesem Beitrag liegt hier noch nichts vor. Ergänzungen wie Quellen, Anhänge und Kommentare machen ihn verlässlicher — öffne ihn zum Ergänzen oder frag nach, was fehlt.",
+  "story.surface.entwuerfe.lead":
+    "Noch keine Entwürfe. Ein Entwurf hält fest, was du erfasst, bevor das Team es prüft — beginne mit einem neuen Beitrag.",
+  "story.surface.verwaltung.lead":
+    "Hier ist noch nichts angelegt. Die Verwaltung hält Klarwerk aktuell — Einträge entstehen, sobald im Betrieb etwas eingerichtet, gesichert oder gelöscht wird.",
+  "story.surface.auswertung.lead":
+    "Für diese Auswertung liegt noch nichts vor. Sie entsteht aus geprüftem Wissen — der nächste Schritt ist, Beiträge zu erfassen und prüfen zu lassen.",
+  "story.surface.import.lead":
+    "Noch nichts zum Übernehmen. Ein Import holt vorhandenes Wissen aus einer Quelle in den Kreis — wähle eine Quelle oder lade eine Datei hoch.",
+  "story.surface.anleitung.lead":
+    "Hier steht noch kein Inhalt. Arbeitsanleitungen bündeln geprüftes Wissen zu Schritten — ergänze sie um Bausteine aus der Bibliothek.",
+  "story.surface.spaces.lead":
+    "Dieser Raum ist noch leer. Räume ordnen Beiträge nach Zuständigkeit — verschiebe einen Beitrag hierher oder erfasse einen neuen.",
+  "story.surface.ausgang.lead":
+    "Nichts wartet auf die Ausgangsprüfung. Hier landet, was Klarwerk nach außen geben soll — sobald jemand einen Beitrag zur Weitergabe vorlegt.",
+  "story.surface.wissensnetz.lead":
+    "Noch keine Verbindungen. Das Wissensnetz zeigt, wie Beiträge über Schlagwörter zusammenhängen — vergib beim Erfassen passende Schlagwörter.",
+  "story.surface.meldungen.lead":
+    "Gerade nichts zu melden. Hier erscheint, was deine Aufmerksamkeit braucht — Konflikte, Lücken und fällige Prüfungen.",
+  "story.surface.horizont.lead":
+    "Im gewählten Zeitraum geht niemand mit Einzelwissen in den Ruhestand. Halte die Ruhestandshorizonte in der Pflege aktuell, damit dieser Blick stimmt.",
+  "story.surface.lernpfad.lead":
+    "Für deine Rolle ist noch kein Lernpfad hinterlegt. Er führt durch das wichtigste geprüfte Wissen — bis dahin hilft die Bibliothek.",
+  "story.surface.hilfe.lead":
+    "Für diese Seite gibt es noch keine eigene Seitenhilfe. Die Hilfe erklärt Klarwerk Schritt für Schritt — sie ist über das Hilfe-Kapitel im Menü erreichbar.",
+  "story.surface.gliederung.lead":
+    "Dieser Beitrag hat noch keine Überschriften. Überschriften gliedern Wissen, damit andere es schnell finden — setze sie im Editor.",
+  "story.surface.conflicts.lead":
+    "Konflikte klärt das Team beim Prüfen. Gerade ist keiner offen — neue erscheinen hier, sobald sich zwei Beiträge widersprechen.",
   "adm.auditTitle": "Letzte Nutzer-/Auth-Aktivitäten (Audit)",
   "adm.auditEmpty": "Keine Nutzer-Audit-Einträge.",
   "prof.kicker": "Konto",
