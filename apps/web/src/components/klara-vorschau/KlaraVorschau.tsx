@@ -96,6 +96,7 @@ import {
   seitenErklaerung,
 } from "./kontext";
 import { leseVorlesen, stoppeVorlesen, vorlesen as vorlesenStarten } from "./vorlesen";
+import { formuliere, liesNach, setzeVorschlag, uebernehme } from "./vorschlag";
 import {
   type Aktion,
   type Bezug,
@@ -106,6 +107,7 @@ import {
   type Position,
   SEITLICH_BREITE,
   type Status,
+  type Textvorschlag,
   type Vorschlag,
   ZIEH_SCHWELLE,
   aendere,
@@ -1178,6 +1180,100 @@ export function KlaraVorschau(): JSX.Element {
       .then((antwort) => echtHilfe(bitte, antwort, bezug))
       .finally(() => aendere((alt) => ({ ...alt, status: "antwort" })));
   };
+
+  // ---------------------------------------------------------------------------------------------
+  // Klara 04 (produkt:20261008:klara-vorschlaege): Umformulieren und Notizentwurf im ECHTEN Betrieb.
+  // Der Vorschlag steht neben dem Original; geändert wird erst nach „Übernehmen“ — im Editor des
+  // Objekts, gespeichert über dessen Speicherweg (`vorschlag.ts`, `lib/klaraUebernahme.ts`).
+  // ---------------------------------------------------------------------------------------------
+  const umformulierenEcht = (): void => {
+    const z0 = leseZustand();
+    const a = z0.auswahl;
+    if (!a || z0.status === "laeuft") {
+      return;
+    }
+    const konto = z0.kontoId;
+    setAuswahlSperre(null);
+    aendere((alt) => ({ ...alt, status: "laeuft" }));
+    void formuliere(a, toReasonerLocale(i18n.language), t).then((r) => {
+      if ("gesperrt" in r) {
+        setAuswahlSperre({ id: a.id, text: r.gesperrt });
+        setAnsage(r.gesperrt);
+        aendere((alt) => ({ ...alt, status: "ruhe" }));
+        return;
+      }
+      // Ein Kontowechsel während des Formulierens: der Vorschlag gehört dem alten Konto.
+      aendere((alt) =>
+        alt.kontoId === konto
+          ? {
+              ...alt,
+              textvorschlag: r.vorschlag,
+              status: r.vorschlag.stand === "offen" ? "entscheidung" : "antwort",
+            }
+          : { ...alt, status: "ruhe" },
+      );
+      setAnsage(r.vorschlag.meldung ?? t("klaravorschlag.ansage.bereit"));
+    });
+  };
+  const notizEcht = (): void => {
+    const a = leseZustand().auswahl;
+    if (!a) {
+      return;
+    }
+    aendere((alt) => ({
+      ...alt,
+      entwurf: {
+        id: neueId("entwurf"),
+        art: "notiz",
+        inhalt: entwurfsInhalt(a),
+        herkunft: a.herkunft,
+        erinnerung: "",
+        termin: "",
+        gespeichert: false,
+      },
+    }));
+  };
+  const vorschlagUebernehmen = (wahl?: { nr: number; anzahl: number }): void => {
+    const v = leseZustand().textvorschlag;
+    if (!v) {
+      return;
+    }
+    void uebernehme(v, leseobjektJetzt(), t, wahl).then(() => {
+      const nach = leseZustand().textvorschlag;
+      if (nach?.id === v.id) {
+        aendere((alt) => ({
+          ...alt,
+          status: nach.stand === "rueckfrage" ? "entscheidung" : "antwort",
+        }));
+        setAnsage(nach.meldung ?? t(`klaravorschlag.stand.${nach.stand}`));
+      }
+    });
+  };
+  // Nach der Übernahme: ist die Bearbeitung des Objekts zu, liest Klara am Server nach, was dort steht.
+  const tv = z.textvorschlag;
+  const nachgelesen = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tv || tv.stand !== "in_bearbeitung") {
+      return;
+    }
+    const imEditor = leseobjekt?.koId === tv.herkunft.koId && leseobjekt?.modus === "bearbeiten";
+    if (imEditor) {
+      if (!tv.bearbeitungGesehen) {
+        setzeVorschlag(tv.id, { bearbeitungGesehen: true });
+      }
+      nachgelesen.current = null;
+      return;
+    }
+    if (tv.bearbeitungGesehen && nachgelesen.current !== tv.id) {
+      nachgelesen.current = tv.id;
+      void liesNach(tv, t).then(() => {
+        const nach = leseZustand().textvorschlag;
+        if (nach?.id === tv.id) {
+          setAnsage(t(`klaravorschlag.stand.${nach.stand}`, { fassung: nach.gespeichertFassung }));
+        }
+      });
+    }
+  }, [tv, leseobjekt, t]);
   /**
    * EIN Weg für getippte und gesprochene Fragen (Klara 02): im echten Betrieb der Frageweg mit
    * Einwilligung, im Demo-Betrieb die vorgefertigte, gekennzeichnete Antwort.
@@ -1759,6 +1855,25 @@ export function KlaraVorschau(): JSX.Element {
                           ))}
                         </select>
                       </span>
+                      {/* Klara 04: Formulierungsvorschlag (über den Formulierungsweg des Editors) und
+                          Notizentwurf — beide ändern am Objekt nichts. */}
+                      <button
+                        type="button"
+                        data-testid="klara-aktion-umformulieren"
+                        disabled={!echtSendebereit || z.status === "laeuft"}
+                        onClick={umformulierenEcht}
+                        className={KNOPF_KI}
+                      >
+                        {t("klaravorschau.aktion.umformulieren")}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="klara-aktion-notiz"
+                        onClick={notizEcht}
+                        className={KNOPF}
+                      >
+                        {t("klaravorschau.aktion.notiz")}
+                      </button>
                     </>
                   ) : (
                     (["erklaeren", "zusammenfassen", "umformulieren", "notiz"] as const).map(
@@ -1801,6 +1916,11 @@ export function KlaraVorschau(): JSX.Element {
                 {t("klaravorschau.auswahl.leer")}
               </p>
             )}
+
+            {/* Klara 04: Original und Vorschlag, Ziel und Bearbeitungsfassung, Rückfrage. */}
+            {istEcht && z.textvorschlag ? (
+              <TextvorschlagKarte v={z.textvorschlag} onUebernehmen={vorschlagUebernehmen} />
+            ) : null}
 
             {/* Klara 03 · K2: die beim Fokuswechsel aufgehobene Markierung — mit ihrer Herkunft. */}
             {vorgemerkt && vorgemerkt.text !== auswahl?.text ? (
@@ -1917,6 +2037,13 @@ export function KlaraVorschau(): JSX.Element {
                 <li>{t("klarakontext.bedienhilfe.quellen")}</li>
                 <li>{t("klarakontext.bedienhilfe.uebersetzen")}</li>
                 <li>{t("klarakontext.bedienhilfe.tutorial")}</li>
+                {/* Klara 04: Vorschlag, Übernahme und Rückfrage. */}
+                <li data-testid="klara-bedienhilfe-vorschlag">
+                  {t("klaravorschlag.bedienhilfe.umformulieren")}
+                </li>
+                <li>{t("klaravorschlag.bedienhilfe.uebernehmen")}</li>
+                <li>{t("klaravorschlag.bedienhilfe.rueckfrage")}</li>
+                <li>{t("klaravorschlag.bedienhilfe.notiz")}</li>
                 <li>{t("klaragespraech.bedienhilfe.stoppen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.speichern")}</li>
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>
@@ -2201,6 +2328,184 @@ function VorschlagKarte({
         </p>
       )}
     </div>
+  );
+}
+
+// -------------------------------------------------------------------------------------------------
+// Klara 04 · der Formulierungsvorschlag im ECHTEN Betrieb — Original und Vorschlag, Ziel und
+// Bearbeitungsfassung, Rückfrage, Ergebnis. Das Original ändert sich erst nach „Übernehmen“, und
+// auch dann nur im Editor des Objekts; was gespeichert wurde, liest Klara am Server nach.
+// -------------------------------------------------------------------------------------------------
+const VORSCHLAG_ENDE: readonly Textvorschlag["stand"][] = [
+  "gespeichert",
+  "eingereicht",
+  "nicht_gespeichert",
+  "verworfen",
+];
+
+function TextvorschlagKarte({
+  v,
+  onUebernehmen,
+}: {
+  v: Textvorschlag;
+  onUebernehmen: (wahl?: { nr: number; anzahl: number }) => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const h = v.herkunft;
+  const titel = h.titel ?? h.objekt;
+  const ende = VORSCHLAG_ENDE.includes(v.stand);
+  const uebernehmbar =
+    v.neu.length > 0 && (v.stand === "offen" || v.stand === "rueckfrage" || v.stand === "fehler");
+  const warnend = v.stand === "fehler" || v.stand === "rueckfrage";
+  return (
+    <section
+      data-testid="klara-textvorschlag"
+      data-stand={v.stand}
+      aria-label={t("klaravorschlag.titel")}
+      className="rounded-card border border-hairline bg-surface px-3 py-2.5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <h3 className="text-[12.5px] font-semibold text-ink">{t("klaravorschlag.titel")}</h3>
+        <span
+          data-testid="klara-textvorschlag-ki"
+          data-ki={v.ki}
+          className={
+            v.ki === "ki"
+              ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai"
+              : "rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+          }
+        >
+          {v.ki === "ki" ? t("klaravorschlag.ki.ki") : t("klaravorschlag.ki.ohneKi")}
+        </span>
+      </div>
+      {/* Ziel und Bearbeitungsfassung: wohin eine Übernahme ginge — und wo sie wirkt. */}
+      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11.5px]">
+        <dt className={KLEINTITEL}>{t("klaravorschlag.ziel")}</dt>
+        <dd data-testid="klara-textvorschlag-ziel" className="text-text">
+          {herkunftZeile(h, t)}{" "}
+          <Link
+            to={herkunftZiel(h)}
+            data-testid="klara-textvorschlag-quelle"
+            className="font-semibold text-brand-text hover:underline"
+          >
+            {t("klaravorschlag.zurQuelle")}
+          </Link>
+        </dd>
+        <dt className={KLEINTITEL}>{t("klaravorschlag.fassung")}</dt>
+        <dd data-testid="klara-textvorschlag-fassung" className="text-text">
+          {h.koId
+            ? v.feld
+              ? t("klaravorschlag.fassungEditorFeld", { feld: t(`klaravorschlag.feld.${v.feld}`) })
+              : t("klaravorschlag.fassungEditor", { titel })
+            : t("klaravorschlag.fassungKeine")}
+        </dd>
+      </dl>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <div>
+          <p className={KLEINTITEL}>{t("klaravorschlag.original")}</p>
+          <p
+            data-testid="klara-textvorschlag-original"
+            className="mt-0.5 rounded-btn bg-page px-2 py-1 text-[11.5px] leading-relaxed text-muted"
+          >
+            {v.original}
+          </p>
+        </div>
+        <div>
+          <p className={KLEINTITEL}>{t("klaravorschlag.neu")}</p>
+          <p
+            data-testid="klara-textvorschlag-neu"
+            className="mt-0.5 rounded-btn bg-ai-surface-2 px-2 py-1 text-[11.5px] leading-relaxed text-text"
+          >
+            {v.neu || "—"}
+          </p>
+        </div>
+      </div>
+      <p
+        data-testid="klara-textvorschlag-stand"
+        aria-live="polite"
+        className="mt-1.5 text-[11.5px] font-semibold text-text"
+      >
+        {t(`klaravorschlag.stand.${v.stand}`, { fassung: v.gespeichertFassung ?? "?" })}
+      </p>
+      {v.meldung ? (
+        <p
+          role={warnend ? "alert" : undefined}
+          data-testid="klara-textvorschlag-meldung"
+          className={
+            warnend
+              ? "mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[11.5px] leading-relaxed text-trust-warn-text"
+              : "mt-1 text-[11.5px] text-muted"
+          }
+        >
+          {v.meldung}
+        </p>
+      ) : null}
+      {v.stand === "rueckfrage" && v.rueckfrage === "stellen" && v.stellen ? (
+        <ul className="mt-1 space-y-1">
+          {v.stellen.map((s) => (
+            <li key={s.nr}>
+              <button
+                type="button"
+                data-testid="klara-textvorschlag-stelle"
+                data-nr={s.nr}
+                data-feld={s.feld}
+                onClick={() => onUebernehmen({ nr: s.nr, anzahl: v.stellen?.length ?? 0 })}
+                className="w-full rounded-btn border border-hairline px-2 py-1 text-left text-[11.5px] text-text hover:border-ink/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+              >
+                <span className="font-semibold">{t(`klaravorschlag.feld.${s.feld}`)}:</span>{" "}
+                {s.davor ? `…${s.davor} ` : ""}
+                <mark className="bg-brand/30">{kuerze(v.original, 60)}</mark>
+                {s.danach ? ` ${s.danach}…` : ""}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {v.stand === "rueckfrage" && v.rueckfrage === "anderes_objekt" && h.koId ? (
+        <Link
+          to={leserHref({ koId: h.koId, fassung: null })}
+          data-testid="klara-textvorschlag-zum-objekt"
+          className="mt-1 inline-flex text-[12px] font-semibold text-brand-text hover:underline"
+        >
+          {t("klaravorschlag.zumObjekt", { titel })}
+        </Link>
+      ) : null}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {uebernehmbar && !(v.stand === "rueckfrage" && v.rueckfrage === "stellen") ? (
+          <button
+            type="button"
+            data-testid="klara-textvorschlag-uebernehmen"
+            onClick={() => onUebernehmen()}
+            className={KNOPF_KI}
+          >
+            {t("klaravorschlag.uebernehmen")}
+          </button>
+        ) : null}
+        {v.stand === "wartet" || v.stand === "in_bearbeitung" || ende ? null : (
+          <button
+            type="button"
+            data-testid="klara-textvorschlag-verwerfen"
+            onClick={() => {
+              setzeVorschlag(v.id, { stand: "verworfen", meldung: undefined });
+              aendere((z) => ({ ...z, status: "antwort" }));
+            }}
+            className={KNOPF}
+          >
+            {t("klaravorschlag.verwerfen")}
+          </button>
+        )}
+        {ende ? (
+          <button
+            type="button"
+            data-testid="klara-textvorschlag-schliessen"
+            onClick={() => aendere((z) => ({ ...z, textvorschlag: null }))}
+            className={KNOPF}
+          >
+            {t("klaravorschlag.schliessen")}
+          </button>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
