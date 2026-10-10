@@ -8,11 +8,16 @@
 
 import type { ImportItem, SourceAdapter } from "../../library-analytics";
 import {
+  type ConfluenceAhnenBeschraenkung,
   type ConfluenceImportItem,
+  type ConfluenceLeseEbene,
   type ConfluenceMapOptions,
+  type ConfluenceRechtekontext,
   confluenceAhnenBefund,
   confluenceAncestorIds,
   confluenceAnhangsFelder,
+  confluenceLeseEbene,
+  isPageRestricted,
   mapConfluencePageToImportItem,
 } from "./mapper";
 import type {
@@ -139,6 +144,328 @@ export function hierarchieBefund(pages: readonly ConfluencePage[]): ConfluenceHi
 // Nur sie lösen eine Entfernung aus; alles andere außer `current` ist eine offene Gegenprobe.
 const GELOESCHTE_STATUS: ReadonlySet<string> = new Set(["trashed", "archived", "deleted"]);
 
+/**
+ * AUFNAHME 20260922 · confluence-import-rechte (R-0549): die Ahnenlage aus einer EINGESAMMELTEN
+ * Seitenmenge. Jede gelieferte Seite trägt ihre eigene Leseeinschränkung; ein Vorfahr, der nicht in
+ * der Sammlung steht (abgeschnittener Lauf, für das Dienstkonto nicht lesbar), bleibt `undefined` —
+ * der Mapper stuft das Kind dann fail-closed als vertraulich ein.
+ */
+export function ahnenAusSammlung(
+  pages: readonly ConfluencePage[],
+  // Nacharbeit 3: die im Rechte-Lauf VOLL aufgelösten Ebenen (Gruppenmitglieder, nachgefragte
+  // Mailadressen). Ohne sie zählt nur, was die Seite selbst mitliefert.
+  aufgeloest?: ReadonlyMap<ConfluencePage, ConfluenceLeseEbene>,
+): ConfluenceAhnenBeschraenkung {
+  const ebenen = new Map<string, ConfluenceLeseEbene>();
+  for (const page of pages) {
+    const id = page.id?.trim();
+    if (id) {
+      const neu = aufgeloest?.get(page) ?? confluenceLeseEbene(page);
+      const alt = ebenen.get(id);
+      // Doppelt geliefert: beschränkt gewinnt, und von zwei Leserlisten gilt die Schnittmenge.
+      if (!alt || (!alt.beschraenkt && neu.beschraenkt)) {
+        ebenen.set(id, neu);
+      } else if (alt.beschraenkt && neu.beschraenkt) {
+        ebenen.set(id, {
+          beschraenkt: true,
+          emails: alt.emails.filter((email) => neu.emails.includes(email)),
+          ...(alt.unvollstaendig || neu.unvollstaendig ? { unvollstaendig: true as const } : {}),
+        });
+      }
+    }
+  }
+  return (ancestorId) => ebenen.get(ancestorId);
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 3, Befund F1) — DER RECHTE-LAUF.
+// ================================================================================================
+//
+// EIN Lauf je Einsammeln bzw. je Nachladen: Space-Leserecht, Gruppenmitglieder und nachgefragte
+// Mailadressen werden darin GENAU EINMAL abgerufen und für alle Seiten des Laufs wiederverwendet.
+// Über Läufe hinweg wird nichts gehalten — Rechte ändern sich, und ein alter Stand wäre die falsche
+// Auskunft. Jeder Abruf ist im Client fail-closed (Fehler → unbekannt bzw. weniger Leser).
+/**
+ * Nacharbeit 16 (Ben, K1): die Space-Ebene. `offen` heißt: das Leserecht kommt (auch) über
+ * Principals, zu denen die Quelle keine Kontenliste liefert — Zugangsklassen wie
+ * `ALL_LICENSED_USERS`, oder ein Eintrag, dessen Principal nicht bestimmbar war.
+ */
+interface RaumEbene extends ConfluenceLeseEbene {
+  offen?: { zugangsklassen: string[] };
+}
+
+/** Eine aufgelöste Ebene mit den Quellkonten, aus denen ihre Leser stammen (Prüfkandidaten). */
+interface KontenEbene extends ConfluenceLeseEbene {
+  konten?: string[];
+}
+
+// Nacharbeit 19/20 (Ben, K1): KEINE Höchstzahl der Leseprüfungen mehr. Eine Grenze — erst je Lauf,
+// dann je Seite — ließ Konten hinter ihr dauerhaft ungeprüft: jeder Wiederholungslauf begann neu,
+// ein Rechtewechsel zu einem Konto hinter der Grenze kam nie an. Die Last bleibt begrenzt, weil die
+// Prüfungen NACHEINANDER laufen (eine Anfrage zur Zeit), die Mailadresse je Konto im Lauf nur
+// einmal erfragt wird und die Kandidatenmenge selbst begrenzt ist (Gruppenverzeichnis und
+// Mitglieder mit Seitenobergrenze).
+
+class RechteLauf {
+  /** VOR dem ersten Abruf gesetzt: die Rechte gelten höchstens ab diesem Zeitpunkt. */
+  readonly beobachtetAm = new Date().toISOString();
+  private readonly gruppen = new Map<
+    string,
+    Promise<{ emails: string[]; konten: string[]; vollstaendig: boolean }>
+  >();
+  private readonly konten = new Map<string, Promise<string | undefined>>();
+
+  constructor(private readonly client: ConfluenceRestClient) {}
+
+  /** Das Leserecht des Space; `undefined` = nicht nachsehbar, anonym lesbar = nicht beschränkt. */
+  async space(): Promise<RaumEbene | undefined> {
+    const rechte = await this.client.getSpaceLeserechte();
+    if (!rechte) {
+      return undefined;
+    }
+    if (rechte.anonym) {
+      return { beschraenkt: false, emails: [] };
+    }
+    const { konten: _konten, ...genannt } = await this.emailsVon(rechte.users, rechte.groups);
+    if (rechte.zugangsklassen.length > 0 || rechte.principalsUnbekannt) {
+      return { beschraenkt: true, ...genannt, offen: { zugangsklassen: rechte.zugangsklassen } };
+    }
+    return { beschraenkt: true, ...genannt };
+  }
+
+  /**
+   * Nacharbeit 16 (Ben, K1): die Space-Ebene FÜR EINE SEITE. Gibt der Space das Leserecht über eine
+   * Zugangsklasse, wird NICHT pauschal jeder Klara-Nutzer Leser: jedes Quellkonto, das dieser Lauf
+   * zur Seite kennt (Restriktionen und Gruppen der Seite und ihrer Vorfahren, Autor), wird an der
+   * Quelle geprüft (`pruefeLeserecht`). Nur ein bestätigtes Konto mit zuordenbarer Mailadresse
+   * kommt dazu. Die Ebene bleibt `unvollstaendig` — Konten, die nur die Zugangsklasse kennt, kann
+   * die Quelle nicht aufzählen; der Vermerk reist bis zum Laufergebnis.
+   *
+   * Nacharbeit 18 (Ben, K1): dazu die Konten des Gruppenverzeichnisses der Quelle
+   * (`verzeichnisKonten`) — unabhängig von Autorenrolle und Restriktionseinträgen. Auch sie werden
+   * einzeln an der Quelle geprüft und nur mit regulär zugeordneter Mailadresse übernommen.
+   */
+  async spaceFuer(
+    space: RaumEbene | undefined,
+    page: ConfluencePage,
+    kandidaten: Iterable<string>,
+  ): Promise<ConfluenceLeseEbene | undefined> {
+    if (!space?.offen) {
+      return space;
+    }
+    const emails = new Set(space.emails);
+    const pageId = page.id?.trim();
+    const alle = new Set(kandidaten);
+    for (const accountId of (await this.verzeichnisKonten()).konten) {
+      alle.add(accountId);
+    }
+    // Nacharbeit 20: JEDES zuordenbare Konto wird geprüft, nacheinander und ohne Abbruchgrenze.
+    // Abbruchschutz (Nacharbeit 19) bleibt: lässt sich die Seite nicht prüfen (keine Kennung), ist
+    // sie NICHT ermittelt (`nichtErmittelt`) — kein Leserergebnis, das ein Lauf übernehmen darf.
+    let nichtErmittelt = false;
+    for (const accountId of alle) {
+      if (!pageId) {
+        nichtErmittelt = true;
+        break;
+      }
+      const email = await this.emailVon({ accountId }); // je Konto einmal im Lauf
+      if (!email || emails.has(email)) {
+        continue; // ohne Mailadresse keine Zuordnung; schon Leser
+      }
+      if ((await this.client.pruefeLeserecht(pageId, accountId)) === true) {
+        emails.add(email);
+      }
+    }
+    return {
+      beschraenkt: true,
+      emails: [...emails],
+      unvollstaendig: true,
+      ...(nichtErmittelt ? { nichtErmittelt: true as const } : {}),
+    };
+  }
+
+  /**
+   * Nacharbeit 18 (Ben, K1): der reguläre Quellkontenweg für Zugangsklassen — alle Mitglieder der
+   * Gruppen im lesenden Gruppenverzeichnis (`getGruppenverzeichnis`, Mitglieder über die
+   * Gruppen-ID). EINMAL je Lauf, erst wenn eine Seite ihn braucht. Mitgelieferte Mailadressen
+   * gelten für spätere Nachfragen per Kennung. Ein Konto in keiner lesbaren Gruppe bleibt
+   * unbekannt; deshalb bleibt die Space-Ebene `unvollstaendig`.
+   */
+  private verzeichnis: Promise<{ konten: string[] }> | undefined;
+
+  private verzeichnisKonten(): Promise<{ konten: string[] }> {
+    if (!this.verzeichnis) {
+      this.verzeichnis = (async () => {
+        const konten = new Set<string>();
+        const { gruppen } = await this.client.getGruppenverzeichnis();
+        for (const gruppe of gruppen) {
+          const { users } = await this.client.getGruppenmitglieder(gruppe.name, gruppe.id);
+          for (const user of users) {
+            const accountId = kennungVon(user);
+            if (accountId) {
+              konten.add(accountId);
+              this.merkeMitgelieferteAdresse(user, accountId);
+            }
+          }
+        }
+        return { konten: [...konten] };
+      })();
+    }
+    return this.verzeichnis;
+  }
+
+  private merkeMitgelieferteAdresse(user: unknown, accountId: string): void {
+    const email = (user as { email?: unknown }).email;
+    if (typeof email === "string" && email.trim().length > 0 && !this.konten.has(accountId)) {
+      this.konten.set(accountId, Promise.resolve(email.trim().toLowerCase()));
+    }
+  }
+
+  /** Die eigene Ebene einer Seite, VOLL aufgelöst (Benutzer und Mitglieder genannter Gruppen). */
+  async ebene(page: ConfluencePage): Promise<KontenEbene> {
+    if (!isPageRestricted(page)) {
+      return { beschraenkt: false, emails: [] };
+    }
+    const lesen = page.restrictions?.read?.restrictions;
+    return {
+      beschraenkt: true,
+      ...(await this.emailsVon(lesen?.user?.results ?? [], lesen?.group?.results ?? [])),
+    };
+  }
+
+  /**
+   * Die Leser einer Ebene. Nacharbeit 6 (Befund F3): eine Gruppe, deren Mitglieder nicht
+   * vollständig gelesen werden konnten — oder eine Gruppe ohne Namen —, macht die Ebene
+   * `unvollstaendig`. Die Leser bleiben eine Untermenge (fail-closed), der Vermerk reist bis an
+   * das Import-Item und das Wissensobjekt.
+   */
+  private async emailsVon(
+    users: readonly unknown[],
+    groups: readonly unknown[],
+  ): Promise<{ emails: string[]; konten: string[]; unvollstaendig?: true }> {
+    const emails = new Set<string>();
+    const konten = new Set<string>();
+    let unvollstaendig = false;
+    for (const user of users) {
+      const accountId = kennungVon(user);
+      if (accountId) {
+        konten.add(accountId);
+      }
+      const email = await this.emailVon(user);
+      if (email) {
+        emails.add(email);
+      }
+    }
+    for (const gruppe of groups) {
+      const name =
+        gruppe && typeof gruppe === "object" ? (gruppe as { name?: unknown }).name : undefined;
+      if (typeof name !== "string" || name.trim().length === 0) {
+        unvollstaendig = true; // eine Gruppe ohne Namen lässt sich nicht nachsehen
+        continue;
+      }
+      const mitglieder = await this.mitglieder(name);
+      if (!mitglieder.vollstaendig) {
+        unvollstaendig = true;
+      }
+      for (const email of mitglieder.emails) {
+        emails.add(email);
+      }
+      for (const accountId of mitglieder.konten) {
+        konten.add(accountId);
+      }
+    }
+    return {
+      emails: [...emails],
+      konten: [...konten],
+      ...(unvollstaendig ? { unvollstaendig: true as const } : {}),
+    };
+  }
+
+  private mitglieder(
+    name: string,
+  ): Promise<{ emails: string[]; konten: string[]; vollstaendig: boolean }> {
+    const bekannt = this.gruppen.get(name);
+    if (bekannt) {
+      return bekannt;
+    }
+    const abruf = (async () => {
+      const { users, vollstaendig } = await this.client.getGruppenmitglieder(name);
+      const emails: string[] = [];
+      const konten: string[] = [];
+      for (const user of users) {
+        const accountId = kennungVon(user);
+        if (accountId) {
+          konten.push(accountId);
+        }
+        const email = await this.emailVon(user);
+        if (email) {
+          emails.push(email);
+        }
+      }
+      return { emails, konten, vollstaendig };
+    })();
+    this.gruppen.set(name, abruf);
+    return abruf;
+  }
+
+  private emailVon(user: unknown): Promise<string | undefined> {
+    if (!user || typeof user !== "object") {
+      return Promise.resolve(undefined);
+    }
+    const { email } = user as { email?: unknown };
+    const accountId = kennungVon(user);
+    if (typeof email === "string" && email.trim().length > 0) {
+      const gelesen = Promise.resolve(email.trim().toLowerCase());
+      // Nacharbeit 16: die mitgelieferte Adresse gilt auch für spätere Nachfragen per Kennung.
+      if (accountId && !this.konten.has(accountId)) {
+        this.konten.set(accountId, gelesen);
+      }
+      return gelesen;
+    }
+    if (!accountId) {
+      return Promise.resolve(undefined);
+    }
+    const bekannt = this.konten.get(accountId);
+    if (bekannt) {
+      return bekannt;
+    }
+    const abruf = this.client.getKontoEmail(accountId);
+    this.konten.set(accountId, abruf);
+    return abruf;
+  }
+}
+
+/** Die Quellkennung eines Kontos (`accountId`), oder `undefined`. */
+function kennungVon(user: unknown): string | undefined {
+  const accountId =
+    user && typeof user === "object" ? (user as { accountId?: unknown }).accountId : undefined;
+  return typeof accountId === "string" && accountId.trim().length > 0 ? accountId : undefined;
+}
+
+/** Die Kennungen der Vorfahren einer Seite (ohne leere). */
+function ahnenIds(page: ConfluencePage): string[] {
+  if (!Array.isArray(page.ancestors)) {
+    return [];
+  }
+  return page.ancestors.map((ancestor) => ancestor?.id?.trim()).filter((id): id is string => !!id);
+}
+
+/** Nacharbeit 16: die Prüfkandidaten einer Seite — Quellkonten ihrer Ebenen und ihr Autor. */
+function kandidatenVon(
+  page: ConfluencePage,
+  ebenen: readonly (KontenEbene | undefined)[],
+): string[] {
+  const out: string[] = [];
+  for (const ebene of ebenen) {
+    out.push(...(ebene?.konten ?? []));
+  }
+  const autor = kennungVon(page.version?.by);
+  if (autor) {
+    out.push(autor);
+  }
+  return out;
+}
+
 export class ConfluenceSourceAdapter implements SourceAdapter {
   readonly source = "Confluence";
 
@@ -157,7 +484,52 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
 
   async collect(): Promise<ConfluenceImportItem[]> {
     const pages = await this.client.listPages();
-    return pages.map((page) => mapConfluencePageToImportItem(page, this.mapOpts));
+    const rechte = await this.rechteDerSammlung(pages);
+    // Ohne Anhangsliste (`undefined`): die Space-Liste liest keine Anhänge (R-0163).
+    return pages.map((page) =>
+      mapConfluencePageToImportItem(
+        page,
+        this.mapOpts,
+        undefined,
+        rechte.ahnen,
+        rechte.kontext(page),
+      ),
+    );
+  }
+
+  /**
+   * Nacharbeit 3 (Befund F1): die Rechte einer eingesammelten Seitenmenge — Space EINMAL, jede
+   * Seite voll aufgelöst, Vorfahren aus derselben aufgelösten Menge. Erst NACH dem Einlesen der
+   * Seiten: scheitert schon das Listing, entsteht kein zusätzlicher Abruf.
+   */
+  private async rechteDerSammlung(pages: readonly ConfluencePage[]) {
+    const lauf = new RechteLauf(this.client);
+    const space = await lauf.space();
+    const eigene = new Map<ConfluencePage, KontenEbene>();
+    const nachId = new Map<string, KontenEbene>();
+    for (const page of pages) {
+      const ebene = await lauf.ebene(page);
+      eigene.set(page, ebene);
+      const id = page.id?.trim();
+      if (id && !nachId.has(id)) {
+        nachId.set(id, ebene);
+      }
+    }
+    // Nacharbeit 16: die Space-Ebene je Seite (Zugangsklassen über die Leseprüfung je Konto).
+    const raum = new Map<ConfluencePage, ConfluenceLeseEbene | undefined>();
+    for (const page of pages) {
+      const ahnenEbenen = ahnenIds(page).map((id) => nachId.get(id));
+      const kandidaten = kandidatenVon(page, [eigene.get(page), ...ahnenEbenen]);
+      raum.set(page, await lauf.spaceFuer(space, page, kandidaten));
+    }
+    return {
+      ahnen: ahnenAusSammlung(pages, eigene),
+      kontext: (page: ConfluencePage): ConfluenceRechtekontext => ({
+        space: raum.has(page) ? raum.get(page) : space,
+        eigene: eigene.get(page) ?? confluenceLeseEbene(page),
+        beobachtetAm: lauf.beobachtetAm,
+      }),
+    };
   }
 
   // SCRUM-510 WP2: liest den GESAMTEN Space (Cursor-Pagination) und mappt jede Seite EINZELN. Scheitert
@@ -167,12 +539,23 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     const { pages, truncated, abbruch } = await this.client.listAllPages();
     const items: ConfluenceImportItem[] = [];
     const failed: CollectResult["failed"] = [];
+    const rechte = await this.rechteDerSammlung(pages);
     for (const page of pages) {
       try {
         // R-0163 (Runde 3): auch der Bereichsimport vervollständigt Anhangslisten, die der Expand
         // nicht ganz trug. Scheitert das Nachblättern, bleibt die Teilliste MIT Unvollständig-
         // Marke — die Annahme entfernt dann keine bestehende Anhangsquelle (library-analytics).
-        items.push(mapConfluencePageToImportItem(await this.mitAllenAnhaengen(page), this.mapOpts));
+        // Die Rechte gehören zur gelieferten Seite (`kontext(page)`); das Nachblättern ändert nur
+        // ihre Anhangsliste.
+        items.push(
+          mapConfluencePageToImportItem(
+            await this.mitAllenAnhaengen(page),
+            this.mapOpts,
+            undefined,
+            rechte.ahnen,
+            rechte.kontext(page),
+          ),
+        );
       } catch (err) {
         failed.push({
           ref: page.id || page.title || "(unbekannt)",
@@ -220,11 +603,50 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     } catch {
       anhaenge = { attachments: [], unvollstaendig: true };
     }
+    // Nacharbeit 3 (Befund F1/F4): auch der Anwendungsweg sieht Space, Gruppen und Konten frisch
+    // nach — die Rechte gelten zum Zeitpunkt dieses Abrufs (`beobachtetAm`).
+    const lauf = new RechteLauf(this.client);
+    const space = await lauf.space();
+    const ahnen = await this.ahnenNachladen(page, lauf);
+    const eigene = await lauf.ebene(page);
+    // Nacharbeit 16: Space-Leserecht über Zugangsklassen je Konto an der Quelle geprüft.
+    const ahnenEbenen = ahnenIds(page).map((id) => ahnen(id) as KontenEbene | undefined);
+    const raum = await lauf.spaceFuer(space, page, kandidatenVon(page, [eigene, ...ahnenEbenen]));
     return mapConfluencePageToImportItem(
       await this.mitAllenAnhaengen(page),
       this.mapOpts,
       anhaenge,
+      ahnen,
+      { space: raum, eigene, beobachtetAm: lauf.beobachtetAm },
     );
+  }
+
+  /**
+   * R-0549: beim Nachladen EINER Seite gibt es keine Sammlung — die Vorfahren werden je ID frisch
+   * nachgesehen, auf demselben Netzweg (`getPageById`). Ein Vorfahr, den das Dienstkonto nicht lesen
+   * darf (404), bleibt unbekannt und macht die Seite vertraulich, ohne zuordenbare Leser.
+   */
+  private async ahnenNachladen(
+    page: ConfluencePage,
+    lauf: RechteLauf,
+  ): Promise<ConfluenceAhnenBeschraenkung> {
+    // Nacharbeit 2 (Befund F1): KEIN Abbruch mehr beim ersten beschränkten Vorfahren — für die
+    // Leser zählt jede beschränkte Ebene (Schnittmenge), nicht nur die Einstufung.
+    const ebenen = new Map<string, ConfluenceLeseEbene>();
+    if (Array.isArray(page.ancestors)) {
+      for (const ancestor of page.ancestors) {
+        const id = ancestor?.id?.trim();
+        if (!id || ebenen.has(id)) {
+          continue; // ohne ID entscheidet der Mapper fail-closed
+        }
+        const ahne = await this.client.getPageById(id);
+        if (!ahne) {
+          continue;
+        }
+        ebenen.set(id, await lauf.ebene(ahne));
+      }
+    }
+    return (ancestorId) => ebenen.get(ancestorId);
   }
 
   /**

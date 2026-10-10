@@ -89,6 +89,13 @@ export function confluenceInstanz(opts: {
   ergebnisseiten: ConfluencePage[][];
   folgeseite?: (init?: RequestInit) => Promise<unknown>;
   ersteVerzoegerungMs?: number;
+  /**
+   * confluence-import-rechte: die Mailadresse je Quellkonto (`/rest/api/user/email`). Ein Konto
+   * ohne Eintrag antwortet 404 — wie Confluence, wenn es die Adresse nicht herausgibt.
+   */
+  kontoEmails?: Record<string, string>;
+  /** confluence-import-rechte: die Mitglieder je Gruppe (`/rest/api/group/member`), eine Seite. */
+  gruppen?: Record<string, unknown[]>;
 }): { fetchFn: typeof fetch; abrufe: string[] } {
   const abrufe: string[] = [];
   const alle = opts.ergebnisseiten.flat();
@@ -100,6 +107,47 @@ export function confluenceInstanz(opts: {
     // nicht mit einer Ergebnisseite des Space-Listings.
     if (new URL(url).pathname.endsWith("/child/attachment")) {
       return confluenceAntwort(200, { results: [] });
+    }
+    // confluence-import-rechte: der Importeur liest das Leserecht des Space
+    // (`/rest/api/space/<key>?expand=permissions`). Diese Instanz ist ein OFFENER Space — sie
+    // antwortet wie Confluence mit einer anonymen Leseberechtigung und nicht mit einer
+    // Ergebnisseite. Ohne diese Antwort gälte das Leserecht als unbekannt, und kein Konto sähe die
+    // übernommenen Seiten (fail-closed, Nacharbeit 3).
+    // confluence-import-rechte: Gruppenmitglieder und Kontoadressen liest der Importeur, um die
+    // Leser einer beschränkten Seite auf Konten abzubilden — Antwortform wie Confluence, nie eine
+    // Ergebnisseite des Space-Listings.
+    const pfad = new URL(url);
+    // CF-REST-01: Confluence Cloud ordnet den Gruppennamen im Verzeichnis einer ID zu und liefert
+    // die Mitglieder über `membersByGroupId` — dieselbe Antwortform wie die echte Quelle.
+    if (pfad.pathname.endsWith("/rest/api/group")) {
+      return confluenceAntwort(200, {
+        results: Object.keys(opts.gruppen ?? {}).map((name) => ({ name, id: `buehne-${name}` })),
+        _links: {},
+      });
+    }
+    const gruppenMitglieder = /\/rest\/api\/group\/([^/]+)\/membersByGroupId$/.exec(pfad.pathname);
+    if (gruppenMitglieder) {
+      const name = decodeURIComponent(gruppenMitglieder[1] ?? "").slice("buehne-".length);
+      return confluenceAntwort(200, { results: opts.gruppen?.[name] ?? [], _links: {} });
+    }
+    if (pfad.pathname.endsWith("/rest/api/group/member")) {
+      const name = pfad.searchParams.get("name") ?? "";
+      return confluenceAntwort(200, { results: opts.gruppen?.[name] ?? [], _links: {} });
+    }
+    if (pfad.pathname.endsWith("/rest/api/user/email")) {
+      const email = opts.kontoEmails?.[pfad.searchParams.get("accountId") ?? ""];
+      return email ? confluenceAntwort(200, { email }) : confluenceAntwort(404, {});
+    }
+    if (/\/rest\/api\/space\/[^/?]+$/.test(new URL(url).pathname)) {
+      return confluenceAntwort(200, {
+        permissions: [
+          {
+            operation: { operation: "read", targetType: "space" },
+            anonymousAccess: true,
+            subjects: { user: { results: [] }, group: { results: [] } },
+          },
+        ],
+      });
     }
     const einzel = /\/rest\/api\/content\/([^/?]+)\?/.exec(url);
     if (einzel) {

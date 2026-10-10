@@ -191,7 +191,7 @@ import {
 } from "../../object-store";
 import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
-import { canChangeRole } from "../../rbac";
+import { can, canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -1380,10 +1380,24 @@ export function assembleServices(
         }
       : undefined;
 
+  // produkt:20261010:wissenskreislauf-schliessen: die EINE Validierungsinstanz entsteht jetzt vor dem
+  // Ask-Dienst, weil der fachliche Abschluss einer Wissenslücke ihren Prüfstand liest. Dieselben
+  // Abhängigkeiten wie bisher an `services.validation` (unten), keine zweite Instanz.
+  const validation = new ValidationService({
+    koService: ko,
+    ratings: repos.ratings,
+    assignments: repos.assignments,
+    audit,
+    // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
+    settings: repos.validationSettings,
+  });
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
   // Mehr-Instanz-/reproduzierbare Deployments, sonst prozess-lokal zufällig (Belege sind kurzlebig).
   const ask = new AskService({
+    // produkt:20261010:wissenskreislauf-schliessen: der Fachprüfstand der AKTUELLEN Fassung —
+    // dieselbe Zählung wie Prüfboard und Detailabruf.
+    pruefstand: (koId, koVersion) => validation.pruefstandFuer(koId, koVersion),
     reasoner,
     koService: ko,
     gaps: repos.gaps,
@@ -1494,6 +1508,18 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // AUFNAHME 20260922 · confluence-import-rechte (R-0549): Quellleser → Klara-Konten über die
+    // Mailadresse, dasselbe Verzeichnis wie die Anmeldung. Nicht gefunden = kein Leserecht.
+    quellLeserAufloesen: async (emails) => {
+      const ids: string[] = [];
+      for (const email of emails) {
+        const konto = await repos.users.findByEmail(email);
+        if (konto) {
+          ids.push(konto.id);
+        }
+      }
+      return ids;
+    },
     // R-0142 (Lauf 5): eine Entscheidung über einen laufgebundenen Kandidaten schreibt ihre
     // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest. Die Quellrevisionen
     // (`externalSources`) reichen R-0169 und R-0142 gemeinsam — EIN Eintrag oben.
@@ -1753,14 +1779,8 @@ export function assembleServices(
     // braucht. Er ist DASSELBE Repo, das der Schreibweg oben benutzt — ein zweites waere ein
     // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
     answerSnapshots: repos.answerSnapshots,
-    validation: new ValidationService({
-      koService: ko,
-      ratings: repos.ratings,
-      assignments: repos.assignments,
-      audit,
-      // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
-      settings: repos.validationSettings,
-    }),
+    // produkt:20261010:wissenskreislauf-schliessen: dieselbe Instanz, die der Ask-Dienst liest (oben).
+    validation,
     conflicts,
     overlaps,
     // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
@@ -3529,6 +3549,8 @@ export function buildApp(
         ko: services.ko,
         lesevarianten: services.lesevarianten,
         kandidaten: services.candidates,
+        // confluence-import-rechte (Nacharbeit 6, F1): dieselbe Grenze wie die Warteschlange.
+        kandidatenRechte: services.library,
         ...(services.audit ? { audit: services.audit } : {}),
       },
       guards,
@@ -4491,6 +4513,19 @@ export function buildApp(
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
+        // produkt:20261010:wissenskreislauf-schliessen: berechtigte Fachzuständigkeit heisst HEUTE
+        // ein freigegebenes, nicht abgelaufenes Konto mit Erfassungsrecht (`ko.create`) — aus
+        // demselben Nutzerverzeichnis wie die Erreichbarkeit oben. Unbekannte Kennung: nein.
+        fachzustaendigkeit: async (personId: string) => {
+          const konto = (await services.auth.listUsers()).find((u) => u.id === personId);
+          if (!konto) {
+            return false;
+          }
+          const abgelaufen =
+            typeof konto.accessExpiresAt === "string" &&
+            Date.parse(konto.accessExpiresAt) <= Date.now();
+          return konto.approved === true && !abgelaufen && can(konto.role, "ko.create");
+        },
       },
       guards,
     ),
@@ -5065,6 +5100,10 @@ export function buildApp(
         koService: services.ko,
         // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
         luecken: services.ask,
+        // confluence-import-rechte (Nacharbeit 16): Quellrevisionen nur für Quellberechtigte —
+        // dieselbe Grenze wie die Warteschlange.
+        kandidaten: services.candidates,
+        kandidatenRechte: services.library,
         guards,
       }),
     );

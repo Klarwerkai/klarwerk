@@ -253,6 +253,14 @@ describe("R-0623 · Betriebslogfelder nur nach Positivliste", () => {
     // Die Feldliste wirkt daneben unverändert.
     expect(zeilen().find((z) => z.event === "probe")?.msg).toBe(MELDUNG_NICHT_GELISTET);
     expect(gelisteteMeldung("Befund: Anna Meier")).toBe(MELDUNG_NICHT_GELISTET);
+    // Über „Hauptstand integriert" hinzugekommene Sätze aus server.ts stehen auf der Liste.
+    for (const satz of [
+      "Wissensereignis-Abgleich übersprungen",
+      "Wissensereignis-Meldungen aktiv — 2 Ziel(e), Takt 60 s.",
+      "Lückenerkennung über den Reasoner aktiv — Takt 15 min.",
+    ]) {
+      expect(gelisteteMeldung(satz), satz).toBe(satz);
+    }
   });
 
   // ----------------------------------------------------------------------------------------------

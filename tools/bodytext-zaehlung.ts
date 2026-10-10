@@ -30,6 +30,7 @@
 
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
+import { inhaltsfreieAbbruchkennung } from "../services/app/src/startfehler-zeile";
 import { SEARCH_PROJECTION_VERSION } from "../services/knowledge-object";
 
 // Eine Zahl aus dem Produktcode, kein Eingabewert — die Einbettung ins SQL ist deshalb unbedenklich.
@@ -133,17 +134,49 @@ export async function zaehlen(pool: Pool): Promise<Zaehlbericht> {
   };
 }
 
-async function main(): Promise<void> {
-  const url = process.env.KLARWERK_DB_URL ?? process.env.DATABASE_URL;
-  if (!url) {
-    process.stderr.write("KLARWERK_DB_URL (oder DATABASE_URL) setzen — kein Wert steht im Code.\n");
-    process.exitCode = 2;
-    return;
+/**
+ * R-0623 (Ben, Nacharbeit 19) — DIE ABBRUCHZEILE DES WERKZEUGS.
+ *
+ * Bis hierher stand hier `${fehler.name}: ${fehler.message}` bzw. `String(fehler)` — ein Treiber-
+ * oder Netzfehler trägt Hostnamen, Pfade und Datenwerte, und die gingen an allen Positivlisten
+ * vorbei auf stderr. Jetzt: fester Ereignistext und nur die freigegebenen Fehlerkennungen
+ * (`inhaltsfreieAbbruchkennung`: Typ und Code aus den Erlaubnislisten, Quelltextstelle). Einzeilig.
+ */
+export function zaehlungAbbruchZeile(fehler: unknown): string {
+  return `[bodytext-zaehlung] Abbruch: ${inhaltsfreieAbbruchkennung(fehler)}`;
+}
+
+/** Was ein Lauf braucht — einspritzbar, damit der CLI-Weg samt Fänger ohne Datenbank prüfbar ist. */
+export interface ZaehlungsLauf {
+  env: Record<string, string | undefined>;
+  neuerPool: (url: string) => Pool;
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+}
+
+/**
+ * Der ganze Lauf des Werkzeugs mit Fänger. Liefert den Exit-Code: 0 bei Erfolg, 2 bei fehlender
+ * Verbindungsangabe oder Abbruch. Der Pool wird in jedem Fall beendet (`finally`).
+ */
+export async function zaehlungAusfuehren(lauf: ZaehlungsLauf): Promise<number> {
+  try {
+    return await main(lauf);
+  } catch (fehler: unknown) {
+    lauf.stderr(`${zaehlungAbbruchZeile(fehler)}\n`);
+    return 2;
   }
-  const pool = new Pool({ connectionString: url, ...ZAEHLUNG_POOL_OPTIONEN });
+}
+
+async function main(lauf: ZaehlungsLauf): Promise<number> {
+  const url = lauf.env.KLARWERK_DB_URL ?? lauf.env.DATABASE_URL;
+  if (!url) {
+    lauf.stderr("KLARWERK_DB_URL (oder DATABASE_URL) setzen — kein Wert steht im Code.\n");
+    return 2;
+  }
+  const pool = lauf.neuerPool(url);
   try {
     const b = await zaehlen(pool);
-    process.stdout.write(
+    lauf.stdout(
       [
         `Projektionstabelle vorhanden: ${b.projektionstabelle ? "ja" : "NEIN (alles Betroffene)"}`,
         `KOs gesamt (lebend): ${b.gesamt} · davon mit bodyHtml: ${b.mitBodyHtml}`,
@@ -158,6 +191,7 @@ async function main(): Promise<void> {
         "",
       ].join("\n"),
     );
+    return 0;
   } finally {
     await pool.end();
   }
@@ -166,10 +200,13 @@ async function main(): Promise<void> {
 const invokedDirectly =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
-  // Fänger nach dem Muster von tools/bodytext-nachziehen.ts: EINE Zeile, Exit 2.
-  main().catch((fehler: unknown) => {
-    const text = fehler instanceof Error ? `${fehler.name}: ${fehler.message}` : String(fehler);
-    process.stderr.write(`[bodytext-zaehlung] Abbruch: ${text.replace(/\s*\n\s*/g, " · ")}\n`);
-    process.exitCode = 2;
+  // Fänger in `zaehlungAusfuehren`: EINE Zeile ohne Fehlertext, Exit 2, Pool-Ende im `finally`.
+  void zaehlungAusfuehren({
+    env: process.env,
+    neuerPool: (url) => new Pool({ connectionString: url, ...ZAEHLUNG_POOL_OPTIONEN }),
+    stdout: (text) => process.stdout.write(text),
+    stderr: (text) => process.stderr.write(text),
+  }).then((code) => {
+    process.exitCode = code;
   });
 }

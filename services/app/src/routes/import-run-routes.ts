@@ -46,6 +46,7 @@ import type { KoService } from "../../../knowledge-object";
 import {
   type ExternalSourceRecord,
   type ExternalSourceRepo,
+  type ImportCandidate,
   type ImportRun,
   type ImportRunItemRef,
   type ImportRunRepo,
@@ -60,7 +61,7 @@ import {
   InMemoryQuellabgleichRepo,
   type QuellabgleichRepo,
 } from "../quellabgleich-ablage";
-import { darfSehen } from "../sichtbarkeit";
+import { type KandidatenRechtequelle, darfKandidatSehen, darfSehen } from "../sichtbarkeit";
 
 export interface ImportRunRoutesDeps {
   readonly importRuns: ImportRunRepo;
@@ -85,6 +86,14 @@ export interface ImportRunRoutesDeps {
       koIds: readonly string[],
     ): Promise<{ bezug: Map<string, Gap[]>; geprueft: number; offen: number }>;
   };
+  /**
+   * confluence-import-rechte (Nacharbeit 16, Ben K1): die Kandidaten und ihre Quellrechte —
+   * dieselbe Grenze wie die Warteschlange (`darfKandidatSehen`). Damit verrät eine Quellrevision
+   * Titel und Adresse einer an der Quelle beschränkten Seite nicht, solange sie nur als Kandidat
+   * vorliegt. Fehlt der Zugang, zählen nur die Wissensobjekte.
+   */
+  readonly kandidaten?: { all(): Promise<ImportCandidate[]> };
+  readonly kandidatenRechte?: KandidatenRechtequelle;
   readonly guards: Guards;
 }
 
@@ -322,6 +331,60 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
   /** Der eine Nicht-gefunden-Koerper. Ohne Kennung, ohne Fachinhalt — bewusst nichtssagend. */
   const nichtGefunden = { error: "NOT_FOUND", message: "Nicht gefunden." };
 
+  /**
+   * confluence-import-rechte (Nacharbeit 16, Ben K1): darf dieser Betrachter die Herkunftsangaben
+   * (Titel, Adresse) einer Quellrevision sehen? Tragen Wissensobjekte oder Kandidaten denselben
+   * Herkunftsanker, entscheidet deren Sichtbarkeit — dieselbe Regel wie Wissensseite
+   * (`darfSehen`) und Warteschlange (`darfKandidatSehen`). Sieht er keinen davon, ist die Revision
+   * für ihn nicht vorhanden. Gibt es keinen solchen Träger, bleibt es beim bisherigen Verhalten.
+   *
+   * Nacharbeit 17 (Ben K1): trägt ein Wissensobjekt den Anker, entscheidet ALLEIN seine aktuelle
+   * Sichtbarkeit — ein älterer (etwa abgelehnter) Kandidat mit damals offenen Quellrechten darf
+   * eine heutige Sperre nicht überstimmen. Kandidaten zählen nur, solange die Quelle noch nicht
+   * übernommen ist, und dann fail-closed: JEDER passende Kandidat muss sichtbar sein.
+   */
+  const darfRevisionSehen = async (
+    user: Parameters<typeof darfSehen>[0],
+    satz: ExternalSourceRecord,
+  ): Promise<boolean> => {
+    const system = satz.sourceSystem.trim().toLowerCase();
+    // Anker ohne Provider (Altbestand) zählen wie überall als Confluence (`importSourceKey`).
+    const passt = (provider: string | null | undefined, externalId: string | undefined) => {
+      const anbieter = (provider ?? "").trim().toLowerCase() || "confluence";
+      return externalId === satz.externalId && anbieter === system;
+    };
+    let objektGetragen = false;
+    for (const ko of deps.koService ? await deps.koService.list() : []) {
+      const traegt = ko.sources.some(
+        (s) =>
+          s.attachmentOf === undefined &&
+          (s.sourceRecordId === satz.sourceRecordId || passt(s.provider, s.externalId)),
+      );
+      if (traegt) {
+        if (darfSehen(user, ko)) {
+          return true;
+        }
+        objektGetragen = true;
+      }
+    }
+    if (objektGetragen) {
+      return false; // die aktuelle Sperre am Objekt ist verbindlich — kein Kandidaten-Rückweg
+    }
+    for (const k of deps.kandidaten ? await deps.kandidaten.all() : []) {
+      const gleicheFassung = (k.item.sourceVersion ?? 1) === satz.sourceVersion;
+      if (!gleicheFassung || !passt(k.item.provider, k.item.externalId)) {
+        continue;
+      }
+      const sichtbar = deps.kandidatenRechte
+        ? await darfKandidatSehen(user, k, deps.kandidatenRechte)
+        : (k.item as { quellrechte?: unknown }).quellrechte === undefined;
+      if (!sichtbar) {
+        return false;
+      }
+    }
+    return true;
+  };
+
   return async (app) => {
     app.get<{ Params: { importId: string } }>(
       "/api/admin/import/runs/:importId",
@@ -355,9 +418,11 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
         }
         // Die Quellrevision gibt es erst, wenn der Lauf eine geschrieben hat. `null` ist hier eine
         // Aussage („noch keine"), kein fehlendes Feld — das Ergebnis FUEHRT `source` immer.
-        const quelle = run.sourceRecordId
+        const gefunden = run.sourceRecordId
           ? await externalSources.findById(run.sourceRecordId)
           : undefined;
+        // Nacharbeit 16 (Ben K1): die Herkunftsangaben nur, wenn der Betrachter sie sehen darf.
+        const quelle = gefunden && (await darfRevisionSehen(user, gefunden)) ? gefunden : undefined;
         // `listItemRefs` gibt bereits stabil nach `ordinal` aufsteigend zurueck (repo.ts:569-570).
         // Die Reihenfolge ist Vertrag; sie wird hier nicht noch einmal umsortiert, sondern gehalten.
         const elemente = await importRuns.listItemRefs(run.importId);
@@ -466,7 +531,8 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
           return reply;
         }
         const satz = await externalSources.findById(request.params.sourceRecordId);
-        if (!satz) {
+        // Nacharbeit 16 (Ben K1): unsichtbar ist wie nicht vorhanden — derselbe Körper.
+        if (!satz || !(await darfRevisionSehen(user, satz))) {
           reply.code(404).send(nichtGefunden);
           return reply;
         }

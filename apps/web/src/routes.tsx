@@ -143,6 +143,11 @@ const KnowledgeIntake = lazy(() =>
   import("./pages/KnowledgeIntake").then((m) => ({ default: m.KnowledgeIntake })),
 );
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
+// produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke — nachgeladen wie
+// jede andere Seite (Regel oben, JOB 3503).
+const LueckeVorgang = lazy(() =>
+  import("./pages/LueckeVorgang").then((m) => ({ default: m.LueckeVorgang })),
+);
 const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default: m.Lifecycle })));
 const LiveWallBeamer = lazy(() =>
   import("./pages/LiveWallBeamer").then((m) => ({ default: m.LiveWallBeamer })),
@@ -308,6 +313,11 @@ export function AppRoutes(): JSX.Element {
           <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
         ))}
         <Route path="/wissen/:id" element={<KnowledgeDetail />} />
+        {/* produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke für
+            Fragende und Fachzuständige. Ohne `Guarded`, wie `/wissen/:id`: die Beteiligung prüft
+            der Server (`GET /api/gaps/:id/vorgang`, 404 für Unbeteiligte). Erreichbar aus der
+            Glocke und aus der Fragenseite. */}
+        <Route path="/luecke/:id" element={<LueckeVorgang />} />
         {/* R-0928 / R-1675 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen): die vier kurzen
             thematischen Einstiege vor den Vollfunktionen (`pages/Einstieg.tsx`, `lib/einstiege.ts`).
             OHNE `Guarded`: die Ansicht erklärt nur und öffnet nichts; das Rollen-Tor sitzt an ihrer

@@ -42,6 +42,7 @@ import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { importKandidatBefunde } from "../import-befunde";
 import {
+  darfKandidatSehen,
   darfSehen,
   sichtbareFuer,
   sichtbarkeitsfilterFuer,
@@ -94,10 +95,30 @@ interface ImportCandidateDto {
   auditPending?: boolean;
 }
 
+// AUFNAHME 20260922 · confluence-import-rechte — Quellrechte (Leser einer Confluence-Seite) setzt
+// nur ein Quell-Adapter auf dem Server (services/confluence/src/mapper.ts). Ein öffentlicher
+// Importrumpf verliert sie hier: ein Client mit `ko.create` darf sich keine Leserechte an einem
+// Objekt schreiben und keine quellgetreue Herabstufung auslösen. Kein Array → unverändert (die
+// Route prüft weiter wie bisher).
+function ohneQuellrechte<T>(items: T): T {
+  if (!Array.isArray(items)) {
+    return items;
+  }
+  return items.map((item) => {
+    if (item === null || typeof item !== "object" || !("quellrechte" in item)) {
+      return item;
+    }
+    const { quellrechte: _verworfen, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }) as T;
+}
+
 function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
   return {
     id: candidate.id,
-    item: candidate.item,
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte (Mailadressen der Leser) bleiben
+    // im Server — die Prüfkarte braucht sie nicht, und `ko.read` reicht für diese Liste.
+    item: ohneQuellrechte([candidate.item])[0] ?? candidate.item,
     status: candidate.status,
     duplicate: candidate.duplicate,
     note: candidate.note,
@@ -1016,7 +1037,9 @@ export function libraryRoutes(
         // auch der direkte Re-Sync fremder Objekte (NACHARBEIT 2, `zielDarf`): fortgeschrieben wird
         // nur noch über die Annahme mit `ko.validate`.
         // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
-        const items = ohneQuellRestriktionen(request.body.items ?? []);
+        // confluence-import-rechte: ebenso die Leserechte (`quellrechte`) — sie setzt nur ein
+        // Quell-Adapter auf dem Server.
+        const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
         const kandidaten = await einreihen(items, user.id);
         // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele — auch hier.
         const dtos = await kandidatenDtosFuer(library, user, kandidaten);
@@ -1042,7 +1065,9 @@ export function libraryRoutes(
           // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
           // ohne eingeschalteten Quelladapter (`einreihen` setzt den Dateiweg-Vermerk).
           // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
-          const items = ohneQuellRestriktionen(request.body.items ?? []);
+          // AUFNAHME 20260922 · confluence-import-rechte: Leserechte setzt nur ein Quell-Adapter auf
+          // dem Server — ein Rumpf mit `quellrechte` verliert sie hier, vor dem Import-Kern.
+          const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
           const created = await einreihen(items, user.id);
           // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
           reply.code(201).send(await kandidatenDtosFuer(library, user, created));
@@ -1071,7 +1096,15 @@ export function libraryRoutes(
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
       // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
-      const kandidaten = await library.listImportCandidates();
+      // confluence-import-rechte (Nacharbeit 6, F1): ein Kandidat, dessen Quelle diesen Menschen
+      // nicht lesen lässt, fehlt in der Liste ganz — Titel und Text eingeschlossen, auch für
+      // `ko.validate`.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
     });
 
@@ -1137,6 +1170,14 @@ export function libraryRoutes(
         return;
       }
       try {
+        // confluence-import-rechte (Nacharbeit 6, F1): wer den Kandidaten nicht sehen darf, kann
+        // ihn auch nicht entscheiden — die Antwort trüge sonst Titel und Text. 404 wie für eine
+        // unbekannte Kennung, damit keine Existenzauskunft entsteht.
+        const vorher = await library.importKandidat(request.params.id);
+        if (vorher && !(await darfKandidatSehen(user, vorher, library))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Importkandidat nicht gefunden." });
+          return;
+        }
         const result = await library.reviewImportCandidate(
           request.params.id,
           request.body.action,
