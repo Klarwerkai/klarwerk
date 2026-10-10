@@ -519,6 +519,7 @@ PFLICHTTABELLEN=(
   richtlinien_handlungen
   klara_gespraeche
   ko_mitgelesen
+  vorlagen_fassungen
   assistenz_profile
 )
 FEHLENDE_TABELLEN=()

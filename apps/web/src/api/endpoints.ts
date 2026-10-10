@@ -416,7 +416,13 @@ export type KoAction =
   // erfundener Wert belegt nichts und hebt keine Sperre auf.
   | {
       action: "add-source";
-      source: { label: string; url?: string; excerpt?: string; objectId?: string };
+      source: {
+        label: string;
+        url?: string;
+        excerpt?: string;
+        objectId?: string;
+        abrufbeleg?: string;
+      };
     }
   | { action: "remove-source"; sourceId: string }
   // AUFTRAG-mega18 Block A-1: die VERBUND-OPERATION „Dokumentinhalt übernehmen". Sie ersetzt die

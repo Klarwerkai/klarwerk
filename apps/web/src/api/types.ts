@@ -142,6 +142,10 @@ export interface ExternalResult {
   url: string;
   snippet: string;
   provider: string;
+  /** REF-01: wann der Server diesen Treffer abgerufen hat. */
+  abgerufenAm?: string;
+  /** REF-01: der signierte Abrufbeleg des Servers — beim Anhängen unverändert zurückgeben. */
+  abrufbeleg?: string;
 }
 
 // SCRUM-414: Admin-Regler „externe Wissensabfrage" (4 Stufen).
@@ -1347,6 +1351,9 @@ export interface DraftPayload {
     topic?: string;
     confirmed?: boolean;
   };
+  // produkt:20261007:templates-default: Vorlage und Fassung, mit der der Entwurf geschrieben wird,
+  // und der gewählte Space (Spiegel von services/capture/src/types.ts). `null` = freie Eingabe.
+  vorlage?: { id: string; version: number; spaceId?: string | null } | null;
 }
 
 export interface Draft {
@@ -3031,6 +3038,8 @@ export interface ImportCleanupPreview {
   // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — das Löschen lässt
   // sie fail-closed stehen (einziger Träger des Belegs).
   auditPendingCandidates: number;
+  // Aufnahme gesamt-bestandsbereinigung (R-0124): davon erkannte Doppel-Kandidaten.
+  duplicateCandidates: number;
 }
 
 export interface ImportCleanupResult {
@@ -3047,6 +3056,8 @@ export interface ImportCleanupResult {
   // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg — nicht entfernt,
   // ehrlich beziffert; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab.
   auditPendingCandidates: number;
+  // Aufnahme gesamt-bestandsbereinigung (R-0124): davon tatsächlich entfernte Doppel-Kandidaten.
+  removedDuplicateCandidates: number;
 }
 
 // WP-B6: Bilanz eines geladenen Beispielpakets (idempotent — übersprungen = schon vorhanden).
