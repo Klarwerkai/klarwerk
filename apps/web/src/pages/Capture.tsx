@@ -5325,6 +5325,12 @@ export function CaptureArbeitsraum({
                   {p.source.title}
                 </a>
                 )
+              </span>{" "}
+              {/* R-0205 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): der Hinweis
+                  stammt aus einer EXTERNEN Suche (`externalSearch.search`, reasoner-routes) — er
+                  trägt deshalb wie jede externe Quelle „Stufe 2" und „Extern · ungeprüft". */}
+              <span data-testid="interview-recherche-kennung" className="inline-flex gap-1.5">
+                <ExterneQuelleKennung source={{ peerValidated: false }} />
               </span>
             </li>
           ))}
