@@ -119,6 +119,20 @@ beforeAll(() => {
   if (typeof Element.prototype.scrollIntoView !== "function") {
     Element.prototype.scrollIntoView = () => {};
   }
+  if (typeof Range.prototype.getBoundingClientRect !== "function") {
+    Range.prototype.getBoundingClientRect = () =>
+      ({
+        x: 40,
+        y: 120,
+        left: 40,
+        top: 120,
+        right: 240,
+        bottom: 140,
+        width: 200,
+        height: 20,
+        toJSON: () => ({}),
+      }) as DOMRect;
+  }
 });
 
 afterAll(() => {
@@ -504,7 +518,7 @@ describe("U2 · K1/K10 — gesprochen über denselben Weg; Diktat führt nichts 
     await klick(q(document, "klara-aufnahme-stoppen"));
     expect(q(document, "klara-auftrag-art")?.dataset.art).toBe("ausfuehrung");
     expect(text(document, "klara-auftrag-art")).toBe("Ausführungsauftrag");
-    expect(text(document, "klara-auftrag-ausfuehrung-hinweis")).toContain("getippter Auftrag");
+    expect(text(document, "klara-auftrag-ausfuehrung-hinweis")).toContain("getippten Auftrag");
     expect(karte()).toBeNull();
     await klick(q(document, "klara-auftrag-senden"));
     await bisPhase("fertig");
