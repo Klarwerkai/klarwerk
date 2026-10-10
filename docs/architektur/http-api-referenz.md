@@ -381,6 +381,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/notifications` | `requireUser` | — | 200 Glockenliste | — |
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
 | `GET` | `/api/qualitaetsaufgaben` | `users.manage` | — | 200 `{ stand, vorgaenge, quellen, spaces }` — je Vorgang Typ, Zustand, Ursprung, Arbeitsweg, Zuständigkeit, Frist, Beginn, Einstiege (ADMIN-10); Zeilen nur über den Sichtbarkeitsfilter | — |
+| `GET` | `/api/wissenskennzahlen` | `users.manage` | Abfrage `tage` (7/30/90, sonst 30), `space`, `team` (nur wählbare Werte) | 200 `{ stand, anfrage, zeitraum, vorperiode, handlungsbedarf, nutzung, bedarf, suche, filterwerte, quellen }` — je Kennzahl Wert, Lage (gemessen/unvollständig/nicht erhoben/unbekannt), Zähler/Nenner, Erhebungsbeginn, Trend nur bei vollständig erhobenem Vorzeitraum; Handlungsbedarf mit den gezählten Vorgängen aus `/api/qualitaetsaufgaben` (ADMIN-11) | 400 (Space oder Team nicht wählbar) |
 | `POST` | `/api/qualitaetsaufgaben/rueckmeldungen/:meldungId/uebernehmen` | `users.manage` | — | 200 `{ art: angelegt \| angehaengt \| bereits, vorgang, am, durch }` — Prüfanforderung am Objekt der Meldung, je Meldung höchstens einmal | 404 (Meldung unbekannt oder Objekt nicht sichtbar) |
 | `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand (`saved`, `helped`, `helpedToday`, `validated` — Name/Foto nur mit Zustimmung) | — |
 | `GET` | `/api/livewall/consent` | `requireUser` | — | 200 `{ nameConsent, photoConsent, photo? }` — eigenes Konto | — |
