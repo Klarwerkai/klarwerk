@@ -65,6 +65,7 @@ import {
   lesekontextVergessen,
   lesespalteRollbereich,
 } from "../../lib/lesekontext";
+import { meldeLeseobjekt, zieheLeseobjektZurueck } from "../../lib/leseobjekt";
 import { sprachcode, useFrischeLesevariante } from "../../lib/lesevariante";
 import type { MatchField } from "../../lib/librarySearch";
 import { useNetzOnline } from "../../lib/netzzustand";
@@ -2209,6 +2210,41 @@ export function BibliothekLesen({
     }
   }, [gelesenId, gelesenFassung]);
 
+  // Klara 03 (produkt:20261007:klara-kontext-tutorial): was Klara als „Dieser Artikel“ nennt —
+  // Titel, Fassung, Prüfstatus, Lesen oder Bearbeiten, wie diese Fläche es gerade zeichnet
+  // (`lib/leseobjekt.ts`). Beim Abbau (anderer Eintrag, andere Seite) wird die Meldung zurückgenommen.
+  const gelesenTitel = query.data?.title ?? null;
+  const gelesenGeprueft = query.data?.status === "validiert";
+  const gelesenLesart = !zeigtOriginal && lesevariante ? "uebersetzung" : "original";
+  useEffect(() => {
+    if (gelesenId === null || gelesenTitel === null) {
+      return;
+    }
+    meldeLeseobjekt({
+      koId: gelesenId,
+      titel: gelesenTitel,
+      fassung: gelesenFassung,
+      pruefstatus: gelesenGeprueft ? "geprueft" : "ungeprueft",
+      modus: bearbeitet ? "bearbeiten" : "lesen",
+      darfBearbeiten: canEdit,
+      lesart: gelesenLesart,
+    });
+  }, [
+    gelesenId,
+    gelesenTitel,
+    gelesenFassung,
+    gelesenGeprueft,
+    bearbeitet,
+    canEdit,
+    gelesenLesart,
+  ]);
+  useEffect(() => {
+    if (gelesenId === null) {
+      return;
+    }
+    return () => zieheLeseobjektZurueck(gelesenId);
+  }, [gelesenId]);
+
   // R-0329: der Einstieg „Im Wissensnetz anzeigen" (Word-Panel) landet in der GEÖFFNETEN
   // Nachbarschaft dieses Eintrags — derselbe Sprungweg wie die Kopfsprünge (`springeZu`), einmal.
   // INTEGRATION mit N-0020: kehrt jemand per Browser-Zurück in diesen Verlaufseintrag zurück
@@ -3883,6 +3919,14 @@ export function BibliothekLesen({
               ref={textKnotenSetzen}
               data-testid="bib-text"
               data-bib-text="text"
+              // Klara 03: eine Markierung in diesem Text trägt Objekt, Fassung, Prüfstatus und
+              // Lesart dieses Augenblicks mit (`klara-vorschau/kontext.ts`, `herkunftFuer`) — ein
+              // späterer Seitenwechsel kann ihre Herkunft deshalb nicht umdeuten.
+              data-klara-objekt={ko.id}
+              data-klara-titel={ko.title}
+              data-klara-fassung={typeof ko.version === "number" ? ko.version : undefined}
+              data-klara-pruefstatus={ko.status === "validiert" ? "geprueft" : "ungeprueft"}
+              data-klara-lesart={gelesen ? "uebersetzung" : "original"}
               className="hyphens-auto break-words text-[15.5px] leading-[1.7] text-text"
             >
               {/* JOB 3362: die übersetzte Lesart des FLIESSTEXTS. Die Bildergalerie darunter bleibt

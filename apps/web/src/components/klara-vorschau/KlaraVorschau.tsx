@@ -37,9 +37,12 @@ import {
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
 import { internerPfad } from "../../lib/internerPfad";
+import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
+import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
@@ -58,6 +61,23 @@ import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
 import { klaraAvatarUrl } from "./avatar";
+import {
+  type KontextAktion,
+  ZIELSPRACHEN,
+  type Zielsprache,
+  bezugZeile,
+  frageText,
+  herkunftTeile,
+  mitSeitenbezug,
+  moeglicheAktionen,
+  objektbezugFuer,
+  pruefeAuswahl,
+  seitenbezugAusObjektbezug,
+  seitenbezugFuer,
+  sperrgrund,
+  uebersetzung,
+  wirksamerBezug,
+} from "./bezug";
 import {
   fragen as echtFragen,
   hilfe as echtHilfe,
@@ -78,6 +98,7 @@ import {
 import { leseVorlesen, stoppeVorlesen, vorlesen as vorlesenStarten } from "./vorlesen";
 import {
   type Aktion,
+  type Bezug,
   type Entwurf,
   FIGUR_GROESSE,
   type Herkunft,
@@ -88,6 +109,7 @@ import {
   type Vorschlag,
   ZIEH_SCHWELLE,
   aendere,
+  anKontoBinden,
   angedocktePosition,
   entscheide,
   klemme,
@@ -195,18 +217,24 @@ function useVollbild(): Element | null {
   return el;
 }
 
+/** Herkunft samt Absatz — seit Klara 03 auch mit Fassung, Prüfstatus und Lesart (`bezug.ts`). */
 function herkunftZeile(h: Herkunft, t: Uebersetzer): string {
-  const basis = t("klaravorschau.auswahl.herkunft", { seite: h.seitenName, objekt: h.objekt });
-  return h.absatz ? `${basis} · ${t("klaravorschau.auswahl.absatz", { nr: h.absatz })}` : basis;
+  return herkunftTeile(h, t).join(" · ");
 }
 
 // R-1398: `h.pfad` ist ein früher gelesener `location.pathname` — nur ein interner Pfad wird
-// Navigationsziel (lib/internerPfad.ts, GHSA-wrjc/GHSA-jjmj).
+// Navigationsziel (lib/internerPfad.ts, GHSA-wrjc/GHSA-jjmj). Klara 03: eine Markierung aus einem
+// Wissensobjekt führt in die Lesefläche DIESES Objekts mit der Fassung von damals (`leserHref`).
 function herkunftZiel(h: Herkunft): string {
+  if (h.koId) {
+    return leserHref({ koId: h.koId, fassung: h.fassung ?? null });
+  }
   return h.artikelId && h.absatz
     ? `${artikelPfad(h.artikelId)}#absatz-${h.absatz}`
     : internerPfad(h.pfad, HOME_ROUTE);
 }
+
+const BEZUG_KNOEPFE: readonly Bezug[] = ["seite", "markierung", "frei"];
 
 interface AuswahlKnopf {
   x: number;
@@ -231,10 +259,20 @@ export function KlaraVorschau(): JSX.Element {
   // ---------------------------------------------------------------------------------------------
   // Klara 01 · echter Betrieb: das eigene Gespräch vom Server, die Lage der KI aus dem Status.
   // ---------------------------------------------------------------------------------------------
-  const kontoId = useSession().user?.id ?? null;
+  const sitzung = useSession();
+  const kontoId = sitzung.user?.id ?? null;
   const echt = useEchtGespraech();
   const ki = useKlaraKiLage();
   const istEcht = z.betrieb === "echt";
+  // Klara 03 · K6: Markierung, Demo-Verlauf und Entwurf gehören dem Konto, unter dem sie entstanden.
+  // Gebunden wird erst, wenn der Server die Sitzungsfrage beantwortet hat — während des Ladens ist
+  // „kein Konto“ keine Abmeldung (`Sitzungslage`, AuthContext).
+  const sitzungBeantwortet = !sitzung.isLoading && sitzung.sitzungslage !== "unbeantwortet";
+  useEffect(() => {
+    if (sitzungBeantwortet) {
+      aendere((alt) => anKontoBinden(alt, kontoId));
+    }
+  }, [sitzungBeantwortet, kontoId]);
   useEffect(() => {
     if (!kontoId) {
       // Abgemeldet: nichts vom Gespräch bleibt im Browser stehen — und nichts wird mehr vorgelesen.
@@ -259,25 +297,45 @@ export function KlaraVorschau(): JSX.Element {
   // ---------------------------------------------------------------------------------------------
   // Wo bin ich? Seite und Objekt — neu bei Seitenwechsel, Eingabe und Öffnen.
   // ---------------------------------------------------------------------------------------------
+  // Klara 03: das Objekt der Lesefläche (Titel, Fassung, Prüfstatus, Lesen/Bearbeiten) kommt aus
+  // dem Appzustand (`lib/leseobjekt.ts`); jede Meldung dort liest den Kontext neu.
+  const leseobjekt = useLeseobjekt();
   const [kontext, setKontext] = useState<Herkunft>(() =>
-    ermittleKontext(location.pathname, t, document),
+    ermittleKontext(location.pathname, t, document, location.search, leseobjektJetzt()),
   );
   const kontextRef = useRef(kontext);
   kontextRef.current = kontext;
+  // Für Ereignishörer, die einmal angemeldet werden (Markierung, Ziehen): der aktuelle Übersetzer.
+  const tRef = useRef(t);
+  tRef.current = t;
   // NACHARBEIT 3 (Bens Befund): Ein Entwurf lädt oft erst nach dem Seitenwechsel, und ein Wechsel
   // über `?draft=` setzt den Titel PROGRAMMATISCH (`Blatt.tsx` → `setTitle`) — ohne input-Ereignis.
   // Klara liest deshalb auf Seiten, deren Objekt aus einem Feld kommt (Erfassung, Fragen), das
   // tatsächlich angezeigte Objekt fortlaufend nach und reagiert zusätzlich auf jeden Wechsel der
   // Abfrage (`location.search`). Neu gesetzt wird nur, wenn sich wirklich etwas geändert hat.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `z.offen` und `location.search` sind Auslöser.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `z.offen` und `leseobjekt` sind Auslöser.
   useEffect(() => {
     const neu = (): void => {
-      const gemessen = ermittleKontext(location.pathname, t, document);
+      const gemessen = ermittleKontext(
+        location.pathname,
+        t,
+        document,
+        location.search,
+        leseobjektJetzt(),
+      );
       setKontext((alt) =>
         alt.pfad === gemessen.pfad &&
         alt.seitenName === gemessen.seitenName &&
         alt.objekt === gemessen.objekt &&
-        alt.artikelId === gemessen.artikelId
+        alt.artikelId === gemessen.artikelId &&
+        alt.koId === gemessen.koId &&
+        alt.fassung === gemessen.fassung &&
+        alt.pruefstatus === gemessen.pruefstatus &&
+        alt.modus === gemessen.modus &&
+        alt.lesart === gemessen.lesart &&
+        alt.entwurfId === gemessen.entwurfId &&
+        alt.kontextText === gemessen.kontextText &&
+        alt.darfBearbeiten === gemessen.darfBearbeiten
           ? alt
           : gemessen,
       );
@@ -300,7 +358,7 @@ export function KlaraVorschau(): JSX.Element {
       window.clearTimeout(eingabeUhr);
       document.removeEventListener("input", beiEingabe, true);
     };
-  }, [location.pathname, location.search, t, z.offen]);
+  }, [location.pathname, location.search, t, z.offen, leseobjekt]);
 
   const lageRef = useRef<TutorialFernLage | null>(tutorial.lage);
   lageRef.current = tutorial.lage;
@@ -415,13 +473,14 @@ export function KlaraVorschau(): JSX.Element {
     const artikelId = absatzEl?.closest<HTMLElement>("[data-klara-artikel]")?.dataset.klaraArtikel;
     const nr = absatzEl ? Number(absatzEl.dataset.klaraAbsatz) : Number.NaN;
     if (absatzEl && artikelId && Number.isFinite(nr)) {
-      const herkunft = herkunftFuer(absatzEl, kontextRef.current);
+      const herkunft = herkunftFuer(absatzEl, kontextRef.current, t);
       aendere((alt) => ({
         ...alt,
         position: p,
         angedockt: null,
         geparkt: { artikelId, absatz: nr },
         auswahl: { id: neueId("auswahl"), text: absatzEl.innerText.trim(), herkunft },
+        bezug: "markierung",
       }));
       setAnsage(t("klaravorschau.figur.geparkt", { nr }));
       return;
@@ -542,6 +601,17 @@ export function KlaraVorschau(): JSX.Element {
   // Markierung: „Klara fragen“ an der Auswahl, und Text auf Klara ziehen.
   // ---------------------------------------------------------------------------------------------
   const [auswahlKnopf, setAuswahlKnopf] = useState<AuswahlKnopf | null>(null);
+  // Klara 03 · K2: Wer markiert und dann in Klara klickt oder tippt (Fokuswechsel), verliert die
+  // Markierung auf der Seite — der Browser hebt sie auf. Klara merkt sich die zuletzt gesehene
+  // Markierung samt Herkunft und bietet sie im Gespräch zur Übernahme an.
+  const letzteMarkierung = useRef<AuswahlKnopf | null>(null);
+  const [vorgemerkt, setVorgemerkt] = useState<AuswahlKnopf | null>(null);
+  // K6: eine Vormerkung gehört dem Konto, unter dem markiert wurde.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: der Kontowechsel ist der Auslöser.
+  useEffect(() => {
+    letzteMarkierung.current = null;
+    setVorgemerkt(null);
+  }, [kontoId]);
   useEffect(() => {
     let uhr = 0;
     const pruefen = (): void => {
@@ -549,6 +619,12 @@ export function KlaraVorschau(): JSX.Element {
       const text = sel?.toString().replace(/\s+/g, " ").trim() ?? "";
       if (!sel || sel.isCollapsed || sel.rangeCount === 0 || text.length < 2) {
         setAuswahlKnopf(null);
+        const fokusInKlara = document.activeElement?.closest("[data-klara]") ?? null;
+        if (fokusInKlara && letzteMarkierung.current) {
+          setVorgemerkt(letzteMarkierung.current);
+        }
+        // Aufgehoben, weil auf der Seite weitergearbeitet wird: dann gilt die Markierung als verworfen.
+        letzteMarkierung.current = null;
         return;
       }
       const anker = sel.anchorNode;
@@ -557,12 +633,14 @@ export function KlaraVorschau(): JSX.Element {
         return;
       }
       const r = sel.getRangeAt(0).getBoundingClientRect();
-      setAuswahlKnopf({
+      const neu: AuswahlKnopf = {
         x: r.left,
         y: r.bottom + 8,
         text,
-        herkunft: herkunftFuer(anker, kontextRef.current),
-      });
+        herkunft: herkunftFuer(anker, kontextRef.current, tRef.current),
+      };
+      letzteMarkierung.current = neu;
+      setAuswahlKnopf(neu);
     };
     const spaeter = (): void => {
       window.clearTimeout(uhr);
@@ -581,11 +659,15 @@ export function KlaraVorschau(): JSX.Element {
     aendere((alt) => ({
       ...alt,
       auswahl: { id: neueId("auswahl"), text: text.slice(0, 1200), herkunft },
+      // Klara 03: wer bewusst eine Markierung übergibt, meint sie — der Bezug folgt sichtbar.
+      bezug: "markierung",
       offen: true,
       minimiert: false,
     }));
     // Der Ausschnitt ist gemerkt; die Markierung auf der Seite darf gehen (sonst stünde der Knopf
     // „Klara fragen“ beim nächsten Scrollen wieder da).
+    letzteMarkierung.current = null;
+    setVorgemerkt(null);
     window.getSelection()?.removeAllRanges();
     setAuswahlKnopf(null);
     setFokusZiel("auswahl");
@@ -598,6 +680,7 @@ export function KlaraVorschau(): JSX.Element {
       ziehHerkunft.current = herkunftFuer(
         sel?.anchorNode ?? (e.target as Node | null),
         kontextRef.current,
+        tRef.current,
       );
     };
     document.addEventListener("dragstart", start);
@@ -744,6 +827,95 @@ export function KlaraVorschau(): JSX.Element {
     }
   }, [tutorial.offen]);
 
+  // ---------------------------------------------------------------------------------------------
+  // Klara 03 · K4/K5: DER SCHRITT DER BEGLEITUNG ÜBERSTEHT DEN NEUAUFBAU DER HÜLLE.
+  // ---------------------------------------------------------------------------------------------
+  // Beim Breitenwechsel über 900 px montiert die Hülle Klara neu (`shell/AppShell.tsx`); der
+  // Tutorialbereich in `<main>` steht in beiden Bäumen an derselben Stelle und behält seinen
+  // Schritt (Nacharbeit 2, gemessen im Smoke). Nach einem NEULADEN dagegen steht das Tutorial
+  // geschlossen da. Klara merkt sich deshalb den Schritt und öffnet es nach dem Einbau wieder — über
+  // dieselben Befehle wie die Knöpfe des Tutorials („Weiter“), ohne zweiten Zähler. Schliesst die
+  // Person das Tutorial selbst (oder verlässt sie die Seite), endet die Begleitung.
+  const lageDefinition = lage?.definitionId ?? null;
+  const lageIndex = lage?.schrittIndex ?? null;
+  const lageSpielt = lage?.spielt ?? null;
+  const wiederherstellen = useRef<{ ziel: number; spielt: boolean; definitionId: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!z.begleiten || lageDefinition === null || lageIndex === null || lageSpielt === null) {
+      return;
+    }
+    if (wiederherstellen.current) {
+      return; // während des Wiederherstellens zählt der gemerkte Stand, nicht die Zwischenschritte
+    }
+    aendere((alt) =>
+      alt.begleitStand?.definitionId === lageDefinition &&
+      alt.begleitStand.schrittIndex === lageIndex &&
+      alt.begleitStand.spielt === lageSpielt
+        ? alt
+        : {
+            ...alt,
+            begleitStand: {
+              definitionId: lageDefinition,
+              schrittIndex: lageIndex,
+              spielt: lageSpielt,
+            },
+          },
+    );
+  }, [z.begleiten, lageDefinition, lageIndex, lageSpielt]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: nur beim Einbau — danach gilt die Person.
+  useEffect(() => {
+    const s = leseZustand();
+    if (!(s.begleiten && s.begleitStand && tutorial.vorhanden && !tutorial.offen)) {
+      return;
+    }
+    wiederherstellen.current = {
+      ziel: s.begleitStand.schrittIndex,
+      spielt: s.begleitStand.spielt,
+      definitionId: s.begleitStand.definitionId,
+    };
+    // Nacharbeit 2: NACH dem Einbau-Effekt des Rahmens öffnen. `TutorialProvider` schliesst beim
+    // Einbau (Pfad-Effekt); Eltern-Effekte laufen nach denen der Kinder — ein sofortiges Öffnen
+    // würde dort im selben Durchgang wieder überschrieben.
+    const uhr = window.setTimeout(() => tutorial.oeffnen(), 0);
+    return () => window.clearTimeout(uhr);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: jede neue Lage ist der Auslöser.
+  useEffect(() => {
+    const w = wiederherstellen.current;
+    if (!w || !lage) {
+      return;
+    }
+    if (lage.definitionId !== w.definitionId) {
+      wiederherstellen.current = null; // ein anderes Tutorial — nichts zu übertragen
+      return;
+    }
+    if (lage.schrittIndex < w.ziel) {
+      lage.weiter();
+      return;
+    }
+    wiederherstellen.current = null;
+    if (!w.spielt && lage.spielt) {
+      lage.pause();
+    }
+    setTutorialHinweis(
+      t("klarakontext.tutorial.wiederhergestellt", {
+        nr: lage.schrittIndex + 1,
+        titel: lage.schrittTitel,
+      }),
+    );
+  }, [lage]);
+  const tutorialWarOffen = useRef(tutorial.offen);
+  useEffect(() => {
+    if (tutorialWarOffen.current && !tutorial.offen && !wiederherstellen.current) {
+      aendere((alt) =>
+        alt.begleiten || alt.begleitStand ? { ...alt, begleiten: false, begleitStand: null } : alt,
+      );
+    }
+    tutorialWarOffen.current = tutorial.offen;
+  }, [tutorial.offen]);
+
   // Fehlklick während der Begleitung: freundlich sagen, was gerade gezeigt wird — nichts abfangen.
   useEffect(() => {
     if (!z.begleiten) {
@@ -867,7 +1039,7 @@ export function KlaraVorschau(): JSX.Element {
     );
   };
   const begleitungBeenden = (): void => {
-    aendere((alt) => ({ ...alt, begleiten: false }));
+    aendere((alt) => ({ ...alt, begleiten: false, begleitStand: null }));
     setEinmalZeigen(false);
     setTutorialHinweis(t("klaravorschau.tutorial.beendet"));
   };
@@ -891,36 +1063,120 @@ export function KlaraVorschau(): JSX.Element {
       vorlesenStarten(id, text, i18n.language);
     }
   };
+  // Klara 03 · K6: warum eine Markierung gerade nicht an den Frageweg darf — oder `null`.
+  const [auswahlSperre, setAuswahlSperre] = useState<{ id: string; text: string } | null>(null);
+  const pruefungLaeuft = useRef(false);
   /**
-   * `ziel`: der Ort, auf den sich die Frage bezieht. Getippte Fragen nehmen den aktuellen Ort; ein
-   * gesprochener Auftrag gibt das Ziel mit, das seine Karte zeigt — Anzeige und Gesprächsbezug sind
-   * damit dasselbe, auch wenn die Person zwischen Sprechen und Senden die Seite gewechselt hat.
+   * Eine Frage im echten Betrieb.
+   *   · `art`: die getippte/gesprochene Frage oder eine Aktion mit der Markierung (Klara 03);
+   *   · `fest`: „Erneut fragen“ — der gespeicherte Wortlaut mit dem Bezug von damals, unverändert;
+   *   · `ziel` (Klara 02): der Ort, auf den sich die Frage bezieht. Getippte Fragen nehmen den
+   *     aktuellen Ort; ein gesprochener Auftrag gibt das Ziel mit, das seine Karte zeigt — Anzeige und
+   *     Gesprächsbezug sind damit dasselbe, auch nach einem Seitenwechsel zwischen Sprechen und Senden.
+   *
+   * Klara 03 · K6: Geht die Markierung mit, prüft Klara sie VORHER gegen den heutigen Stand und die
+   * heutigen Rechte (`pruefeAuswahl`). Unsichtbar, vertraulich oder nicht mehr im Text: es geht
+   * nichts an den Frageweg, und der Grund steht an der Markierung.
    */
-  const echtFrage = (frage: string, ziel?: Herkunft): Promise<Absendeergebnis> => {
-    if (!echtSendebereit) {
+  const echtFrage = (
+    eingabeText: string,
+    optionen: {
+      art?: KontextAktion | "frage";
+      fest?: { text: string; bezug: KlaraObjektbezug };
+      ziel?: Herkunft;
+    } = {},
+  ): Promise<Absendeergebnis> => {
+    const { art = "frage", fest, ziel } = optionen;
+    if (!echtSendebereit || pruefungLaeuft.current) {
       return Promise.resolve({ stand: "nicht_gesendet", antwort: null });
     }
     if (lageRef.current) {
       pausieren();
     }
     aendere((alt) => ({ ...alt, status: "laeuft" }));
-    const bezug = objektbezugAus(ziel ?? kontextRef.current);
     const sprache = toReasonerLocale(i18n.language);
-    return echtFragen(frage, bezug, sprache, t).then((stand): Absendeergebnis => {
-      if (stand === "veraltet") {
-        // Kontowechsel während der Frage: nichts mehr ansagen, nichts mehr zeigen.
-        aendere((alt) => ({ ...alt, status: "ruhe" }));
-        return { stand: "nicht_gesendet", antwort: null };
+    const z0 = leseZustand();
+    const auswahlJetzt = z0.auswahl;
+    const mitMarkierung =
+      !fest &&
+      auswahlJetzt !== null &&
+      (art !== "frage" || wirksamerBezug(z0.bezug, auswahlJetzt) === "markierung");
+    pruefungLaeuft.current = true;
+    return (async (): Promise<Absendeergebnis> => {
+      try {
+        if (mitMarkierung && auswahlJetzt) {
+          const grund = sperrgrund(await pruefeAuswahl(auswahlJetzt), t);
+          if (grund) {
+            setAuswahlSperre({ id: auswahlJetzt.id, text: grund });
+            setAnsage(grund);
+            aendere((alt) => ({ ...alt, status: "ruhe" }));
+            return { stand: "nicht_gesendet", antwort: null };
+          }
+          setAuswahlSperre(null);
+        }
+        // Der Ort der Frage: das Ziel eines gesprochenen Auftrags oder die aktuelle Seite.
+        const kontextJetzt = ziel ?? kontextRef.current;
+        const text =
+          fest?.text ?? frageText(art, eingabeText, z0.bezug, kontextJetzt, auswahlJetzt, t);
+        const gewaehlt = art === "frage" ? z0.bezug : "markierung";
+        // Nacharbeit 5: der gewählte Seiten-/Objektkontext geht MIT an den Frageweg — der Server
+        // löst das Objekt unter den Rechten auf. Frei: keiner.
+        // Nacharbeit 6: „Erneut fragen“ nimmt GENAU den damals gesendeten Seitenbezug (am
+        // gespeicherten Objektbezug), und jede neue Frage hält ihren Seitenbezug dort fest.
+        const seitenbezug = fest
+          ? seitenbezugAusObjektbezug(fest.bezug)
+          : seitenbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt);
+        const bezug =
+          fest?.bezug ??
+          mitSeitenbezug(objektbezugFuer(gewaehlt, kontextJetzt, auswahlJetzt), seitenbezug);
+        pruefungLaeuft.current = false;
+        const stand = await echtFragen(text, bezug, sprache, t, seitenbezug);
+        if (stand === "veraltet") {
+          // Kontowechsel während der Frage: nichts mehr ansagen, nichts mehr zeigen.
+          aendere((alt) => ({ ...alt, status: "ruhe" }));
+          return { stand: "nicht_gesendet", antwort: null };
+        }
+        aendere((alt) => ({ ...alt, status: "antwort" }));
+        setAnsage(t(`klaragespraech.ansage.${stand}`));
+        const letzte = [...leseEcht().nachrichten].reverse().find((n) => n.von === "klara");
+        const antwort = letzte?.text ?? null;
+        if (letzte) {
+          autoVorlesen(letzte.id, antwort);
+        }
+        return { stand, antwort };
+      } finally {
+        pruefungLaeuft.current = false;
       }
-      aendere((alt) => ({ ...alt, status: "antwort" }));
-      setAnsage(t(`klaragespraech.ansage.${stand}`));
-      const letzte = [...leseEcht().nachrichten].reverse().find((n) => n.von === "klara");
-      const antwort = letzte?.text ?? null;
-      if (letzte) {
-        autoVorlesen(letzte.id, antwort);
-      }
-      return { stand, antwort };
+    })();
+  };
+
+  // Klara 03: Erklären, Zusammenfassen und Übersetzen mit der Markierung im ECHTEN Betrieb.
+  const [zielsprache, setZielsprache] = useState<Zielsprache>(() => {
+    const ui = toReasonerLocale(i18n.language);
+    return ui === "de" ? "en" : ui;
+  });
+  const mitAuswahlEcht = (aktion: KontextAktion | "uebersetzen"): void => {
+    const a = leseZustand().auswahl;
+    if (!a) {
+      return;
+    }
+    if (aktion !== "uebersetzen") {
+      void echtFrage("", { art: aktion });
+      return;
+    }
+    // Übersetzen geht an keine KI: Klara zeigt die vorhandene Leseübersetzung (Klarwerk-Hilfe).
+    if (hilfeGesperrt) {
+      return;
+    }
+    aendere((alt) => ({ ...alt, status: "laeuft" }));
+    const bitte = t("klarakontext.uebersetzen.bitte", {
+      sprache: t(`klarakontext.sprache.${zielsprache}`),
+      auszug: kuerze(a.text, 60),
     });
+    const bezug = objektbezugFuer("markierung", kontextRef.current, a);
+    void uebersetzung(a, zielsprache, t)
+      .then((antwort) => echtHilfe(bitte, antwort, bezug))
+      .finally(() => aendere((alt) => ({ ...alt, status: "antwort" })));
   };
   /**
    * EIN Weg für getippte und gesprochene Fragen (Klara 02): im echten Betrieb der Frageweg mit
@@ -928,7 +1184,7 @@ export function KlaraVorschau(): JSX.Element {
    */
   const fragenSenden = (frage: string, ziel?: Herkunft): Promise<Absendeergebnis> => {
     if (istEcht) {
-      return echtFrage(frage, ziel);
+      return echtFrage(frage, ziel ? { ziel } : {});
     }
     const l = lageRef.current;
     if (l) {
@@ -1310,7 +1566,90 @@ export function KlaraVorschau(): JSX.Element {
               <dd data-testid="klara-ort-objekt" className="text-[12.5px] text-text">
                 {kontext.objekt}
               </dd>
+              {/* Klara 03: Fassung, Prüfstatus und Modus — aus dem Appzustand, nur wenn bekannt. */}
+              {kontext.fassung ? (
+                <>
+                  <dt className={KLEINTITEL}>{t("klarakontext.ort.fassung")}</dt>
+                  <dd data-testid="klara-ort-fassung" className="text-[12.5px] text-text">
+                    {t("klarakontext.fassung", { nr: kontext.fassung })}
+                  </dd>
+                </>
+              ) : null}
+              {kontext.pruefstatus ? (
+                <>
+                  <dt className={KLEINTITEL}>{t("klarakontext.ort.pruefstatus")}</dt>
+                  <dd
+                    data-testid="klara-ort-pruefstatus"
+                    data-pruefstatus={kontext.pruefstatus}
+                    className="text-[12.5px] text-text"
+                  >
+                    {t(`klarakontext.pruefstatus.${kontext.pruefstatus}`)}
+                  </dd>
+                </>
+              ) : null}
+              {kontext.modus ? (
+                <>
+                  <dt className={KLEINTITEL}>{t("klarakontext.ort.modus")}</dt>
+                  <dd
+                    data-testid="klara-ort-modus"
+                    data-modus={kontext.modus}
+                    className="text-[12.5px] text-text"
+                  >
+                    {t(`klarakontext.modus.${kontext.modus}`)}
+                    {kontext.lesart === "uebersetzung"
+                      ? ` · ${t("klarakontext.lesart.uebersetzung")}`
+                      : ""}
+                  </dd>
+                </>
+              ) : null}
             </dl>
+
+            {/* Klara 03 · K1: der Bezug der nächsten Frage — sichtbar und umschaltbar. */}
+            <section
+              data-testid="klara-bezug"
+              data-bezug={wirksamerBezug(z.bezug, auswahl)}
+              aria-label={t("klarakontext.bezug.label")}
+              className="rounded-card border border-hairline bg-page px-3 py-2"
+            >
+              <p className={KLEINTITEL}>{t("klarakontext.bezug.label")}</p>
+              <p data-testid="klara-bezug-zeile" className="text-[12.5px] font-semibold text-ink">
+                {bezugZeile(z.bezug, kontext, auswahl, t)}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {BEZUG_KNOEPFE.map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    data-testid={`klara-bezug-${b}`}
+                    aria-pressed={wirksamerBezug(z.bezug, auswahl) === b}
+                    disabled={b === "markierung" && !auswahl}
+                    onClick={() => {
+                      aendere((alt) => ({ ...alt, bezug: b }));
+                      setAnsage(
+                        t("klarakontext.bezug.gewechselt", {
+                          bezug: bezugZeile(b, kontext, auswahl, t),
+                        }),
+                      );
+                    }}
+                    className={KNOPF}
+                  >
+                    {t(`klarakontext.bezug.knopf.${b}`)}
+                  </button>
+                ))}
+              </div>
+              <p data-testid="klara-aktionen-moeglich" className="mt-1.5 text-[11.5px] text-muted">
+                {t("klarakontext.aktionen.label")}{" "}
+                {moeglicheAktionen({
+                  kontext,
+                  auswahl,
+                  echt: istEcht,
+                  sendebereit: echtSendebereit,
+                  tutorialVorhanden: tutorial.vorhanden,
+                })
+                  .map((a) => t(`klarakontext.aktionen.${a}`))
+                  .join(" · ") || t("klarakontext.aktionen.keine")}
+              </p>
+            </section>
 
             {/* Markierter Ausschnitt */}
             {auswahl ? (
@@ -1352,36 +1691,102 @@ export function KlaraVorschau(): JSX.Element {
                     </Link>
                   </p>
                 ) : null}
-                <p className={`${KLEINTITEL} mt-2`}>{t("klaravorschau.aktion.label")}</p>
-                {istEcht ? (
+                {auswahlSperre && auswahlSperre.id === auswahl.id ? (
                   <p
-                    data-testid="klara-aktion-nur-demo"
-                    className="mt-1 text-[11.5px] leading-relaxed text-muted-2"
+                    role="alert"
+                    data-testid="klara-auswahl-gesperrt"
+                    className="mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[11.5px] leading-relaxed text-trust-warn-text"
                   >
-                    {t("klaragespraech.aktionHinweis")}
+                    {auswahlSperre.text}
                   </p>
                 ) : null}
+                <p className={`${KLEINTITEL} mt-2`}>{t("klaravorschau.aktion.label")}</p>
+                {istEcht ? (
+                  <>
+                    <p
+                      data-testid="klara-auswahl-hinweis"
+                      className="mt-1 text-[11.5px] leading-relaxed text-muted"
+                    >
+                      {t("klarakontext.auswahl.hinweis")}
+                    </p>
+                    <p
+                      data-testid="klara-aktion-nur-demo"
+                      className="mt-1 text-[11.5px] leading-relaxed text-muted-2"
+                    >
+                      {t("klaragespraech.aktionHinweis")}
+                    </p>
+                  </>
+                ) : null}
                 <div className="mt-1 flex flex-wrap gap-1.5">
-                  {istEcht
-                    ? null
-                    : (["erklaeren", "zusammenfassen", "umformulieren", "notiz"] as const).map(
-                        (a) => (
-                          <button
-                            key={a}
-                            type="button"
-                            data-testid={`klara-aktion-${a}`}
-                            disabled={z.status === "laeuft"}
-                            onClick={() => mitAuswahl(a)}
-                            className={KNOPF_KI}
-                          >
-                            {t(`klaravorschau.aktion.${a}`)}
-                          </button>
-                        ),
-                      )}
+                  {istEcht ? (
+                    <>
+                      {(["erklaeren", "zusammenfassen"] as const).map((a) => (
+                        <button
+                          key={a}
+                          type="button"
+                          data-testid={`klara-aktion-${a}`}
+                          disabled={!echtSendebereit || z.status === "laeuft"}
+                          onClick={() => mitAuswahlEcht(a)}
+                          className={KNOPF_KI}
+                        >
+                          {t(`klaravorschau.aktion.${a}`)}
+                        </button>
+                      ))}
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          data-testid="klara-aktion-uebersetzen"
+                          disabled={hilfeGesperrt || z.status === "laeuft"}
+                          onClick={() => mitAuswahlEcht("uebersetzen")}
+                          className={KNOPF}
+                        >
+                          {t("klarakontext.aktion.uebersetzen")}
+                        </button>
+                        <label className="sr-only" htmlFor={`${eingabeId}-sprache`}>
+                          {t("klarakontext.uebersetzen.zielsprache")}
+                        </label>
+                        <select
+                          id={`${eingabeId}-sprache`}
+                          data-testid="klara-uebersetzen-sprache"
+                          value={zielsprache}
+                          onChange={(e) => setZielsprache(e.target.value as Zielsprache)}
+                          className="h-8 rounded-input border border-hairline bg-surface px-1.5 text-[12px] text-text"
+                        >
+                          {ZIELSPRACHEN.map((s) => (
+                            <option key={s} value={s}>
+                              {t(`klarakontext.sprache.${s}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                    </>
+                  ) : (
+                    (["erklaeren", "zusammenfassen", "umformulieren", "notiz"] as const).map(
+                      (a) => (
+                        <button
+                          key={a}
+                          type="button"
+                          data-testid={`klara-aktion-${a}`}
+                          disabled={z.status === "laeuft"}
+                          onClick={() => mitAuswahl(a)}
+                          className={KNOPF_KI}
+                        >
+                          {t(`klaravorschau.aktion.${a}`)}
+                        </button>
+                      ),
+                    )
+                  )}
                   <button
                     type="button"
                     data-testid="klara-auswahl-entfernen"
-                    onClick={() => aendere((alt) => ({ ...alt, auswahl: null }))}
+                    onClick={() => {
+                      setAuswahlSperre(null);
+                      aendere((alt) => ({
+                        ...alt,
+                        auswahl: null,
+                        bezug: alt.bezug === "markierung" ? "seite" : alt.bezug,
+                      }));
+                    }}
                     className={KNOPF}
                   >
                     {t("klaravorschau.auswahl.entfernen")}
@@ -1396,6 +1801,43 @@ export function KlaraVorschau(): JSX.Element {
                 {t("klaravorschau.auswahl.leer")}
               </p>
             )}
+
+            {/* Klara 03 · K2: die beim Fokuswechsel aufgehobene Markierung — mit ihrer Herkunft. */}
+            {vorgemerkt && vorgemerkt.text !== auswahl?.text ? (
+              <section
+                data-testid="klara-vorgemerkt"
+                className="rounded-card border border-dashed border-hairline px-3 py-2"
+              >
+                <p className={KLEINTITEL}>{t("klarakontext.vorgemerkt.titel")}</p>
+                <blockquote className="mt-1 max-h-16 overflow-y-auto border-l-2 border-brand/50 pl-2 text-[12px] italic text-text">
+                  {kuerze(vorgemerkt.text, 160)}
+                </blockquote>
+                <p
+                  data-testid="klara-vorgemerkt-herkunft"
+                  className="mt-1 text-[11.5px] text-muted"
+                >
+                  {herkunftZeile(vorgemerkt.herkunft, t)}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="klara-vorgemerkt-uebernehmen"
+                    onClick={() => uebernehmeAuswahl(vorgemerkt.text, vorgemerkt.herkunft)}
+                    className={KNOPF_KI}
+                  >
+                    {t("klarakontext.vorgemerkt.uebernehmen")}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="klara-vorgemerkt-verwerfen"
+                    onClick={() => setVorgemerkt(null)}
+                    className={KNOPF}
+                  >
+                    {t("klarakontext.vorgemerkt.verwerfen")}
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             {/* Hilfe zur Seite: erklären, zeigen, begleiten */}
             <section data-testid="klara-modi" aria-label={t("klaravorschau.modus.label")}>
@@ -1469,6 +1911,12 @@ export function KlaraVorschau(): JSX.Element {
               </summary>
               <ul className="list-disc space-y-1 px-2.5 pb-2 pl-6 text-[11.5px] leading-relaxed text-text">
                 <li>{t("klaragespraech.bedienhilfe.fragen")}</li>
+                {/* Klara 03: Bezug, Markierung, Quellen, Übersetzen und Tutorialbegleitung. */}
+                <li data-testid="klara-bedienhilfe-bezug">{t("klarakontext.bedienhilfe.bezug")}</li>
+                <li>{t("klarakontext.bedienhilfe.markierung")}</li>
+                <li>{t("klarakontext.bedienhilfe.quellen")}</li>
+                <li>{t("klarakontext.bedienhilfe.uebersetzen")}</li>
+                <li>{t("klarakontext.bedienhilfe.tutorial")}</li>
                 <li>{t("klaragespraech.bedienhilfe.stoppen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.speichern")}</li>
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>
@@ -1493,7 +1941,10 @@ export function KlaraVorschau(): JSX.Element {
                 kontext={objektbezugAus(kontext)}
                 pfad={location.pathname}
                 ki={ki}
-                onErneutFragen={echtFrage}
+                // Klara 03: „Erneut fragen“ mit Wortlaut UND Bezug von damals.
+                onErneutFragen={(text, bezugDamals) => {
+                  void echtFrage(text, { fest: { text, bezug: bezugDamals } });
+                }}
                 onNeuLaden={() => {
                   if (kontoId) {
                     void ladeEcht(kontoId, t);
