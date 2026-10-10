@@ -26,14 +26,23 @@ export const STARTFEHLER_EREIGNIS = "Serverstart fehlgeschlagen:";
 const VARIABLENNAME = /^[A-Z][A-Z0-9_]{0,80}$/;
 
 export function startfehlerZeile(fehler: unknown): string {
-  const typ = erlaubterTyp(fehler instanceof Error ? fehler.name : undefined);
   if (fehler instanceof StartvertragError) {
     const namen = fehler.fehlend.filter((name) => VARIABLENNAME.test(name));
-    return `${STARTFEHLER_EREIGNIS} ${typ}: ${new StartvertragError(namen).message}`;
+    return `${STARTFEHLER_EREIGNIS} ${erlaubterTyp(fehler.name)}: ${new StartvertragError(namen).message}`;
   }
+  return `${STARTFEHLER_EREIGNIS} ${inhaltsfreieAbbruchkennung(fehler)}`;
+}
+
+/**
+ * Die Kennung eines Abbruchs für jede Ausgabe AUSSERHALB des App-Loggers (Startfehler, Werkzeuge
+ * unter `tools/`): Fehlertyp und -code nur aus den Erlaubnislisten, dazu die Quelltextstelle —
+ * nie Meldung, Name ausserhalb der Liste, Stacktext oder `String(fehler)`. Immer einzeilig.
+ */
+export function inhaltsfreieAbbruchkennung(fehler: unknown): string {
+  const typ = erlaubterTyp(fehler instanceof Error ? fehler.name : undefined);
   const code = erlaubterCode(
     fehler !== null && typeof fehler === "object" ? (fehler as { code?: unknown }).code : undefined,
   );
   const herkunft = herkunftAusStack(fehler instanceof Error ? fehler.stack : undefined);
-  return `${STARTFEHLER_EREIGNIS} ${typ} (code ${code}, herkunft ${herkunft}) — ${ERR_TEXT_UNTERDRUECKT}`;
+  return `${typ} (code ${code}, herkunft ${herkunft}) — ${ERR_TEXT_UNTERDRUECKT}`;
 }
