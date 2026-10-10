@@ -202,6 +202,15 @@ describe("R-0256 · am echten HTTP-Weg", () => {
     expect(wieder.status).toBe("validiert");
     expect(wieder.trust).toBe(TRUST_MAX - TRUTH_CONFLICT_TRUST_PENALTY);
 
+    // R-0215 / R-1714 (aus main): ein Wahrheitskonflikt wird erst eskaliert, dann entschieden —
+    // derselbe Ablauf wie in conflict-server-trust-impact-e2e. Eskaliert bleibt er offen und wirkt.
+    const eskaliert = await app.inject({
+      method: "POST",
+      url: `/api/conflicts/${offen.id}/escalate`,
+      headers: admin,
+    });
+    expect(eskaliert.statusCode).toBe(200);
+    expect((await lesen(app, admin, a.id)).trust).toBe(TRUST_MAX - TRUTH_CONFLICT_TRUST_PENALTY);
     const geloest = await app.inject({
       method: "PUT",
       url: `/api/kos/${a.id}`,
