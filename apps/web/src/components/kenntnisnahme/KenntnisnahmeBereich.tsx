@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { leerzustandsZeile } from "../EmptyStateCtas";
 import { Button, Card, SectionLabel } from "../ui";
 import {
@@ -52,7 +53,7 @@ function StatusPille({ status }: { status: KenntnisnahmeStatus }): JSX.Element {
 
 function useDatum(): (iso: string) => string {
   const { i18n } = useTranslation();
-  return (iso) => new Date(iso).toLocaleString(i18n.language);
+  return (iso) => formatKoTimestamp(iso, i18n.language) ?? "—";
 }
 
 function fehlerText(t: TFunction, fehler: unknown): string {

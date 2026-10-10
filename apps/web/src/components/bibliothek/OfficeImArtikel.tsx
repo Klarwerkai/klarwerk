@@ -23,6 +23,7 @@ import {
   officeFehlerSchluessel,
 } from "../../api/officeArtikel";
 import type { KnowledgeObject } from "../../api/types";
+import { formatKoTimestamp } from "../../lib/koDates";
 import {
   type EditorPhase,
   LADE_FRIST_MS,
@@ -163,8 +164,8 @@ function OfficeAnhangFlaeche({
   }, [qc, ko.id]);
 
   const fehlerText = (fehler: unknown) => t(officeFehlerSchluessel(fehler));
-  const datum = (iso: string) =>
-    new Date(iso).toLocaleString(i18n.language, { dateStyle: "medium", timeStyle: "short" });
+  // R-1010: dieselbe Zeitregel wie überall (`formatKoTimestamp`), in der Sprache der Oberfläche.
+  const datum = (iso: string) => formatKoTimestamp(iso, i18n.language) ?? "—";
 
   async function starten() {
     setMeldung(null);
