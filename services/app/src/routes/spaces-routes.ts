@@ -27,6 +27,13 @@ import { can } from "../../../rbac";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 import {
+  type Konto,
+  archivFolgen,
+  bestandsPlan,
+  pruefeBestandsRegeln,
+  zugriffsuebersicht,
+} from "../space-verwaltung";
+import {
   type SpaceEingabe,
   type SpaceFassung,
   SpaceFehler,
@@ -36,8 +43,11 @@ import {
   darfSpaceInhalteLesen,
   darfSpaceSehen,
   eigenesSpaceRecht,
+  istArchiviert,
   lesbareSpaces,
+  pruefeBegruendung,
   pruefeSpaceEingabe,
+  vorgangVon,
 } from "../spaces";
 import type { TeamFassung, TeamsRepo } from "../teams";
 
@@ -88,6 +98,21 @@ function fehler(reply: FastifyReply, e: unknown): void {
   sendError(reply, e);
 }
 
+function archiviertAbsage(reply: FastifyReply): void {
+  reply.code(409).send({
+    error: "SPACE_ARCHIVIERT",
+    message: "Dieser Space ist archiviert. Erst wiederaufnehmen, dann ändern.",
+  });
+}
+
+function veraltet(reply: FastifyReply, aktuelleVersion: number): void {
+  reply.code(409).send({
+    error: "VERSION_VERALTET",
+    message: "Der Space wurde inzwischen geändert. Bitte neu laden.",
+    aktuelleVersion,
+  });
+}
+
 export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): FastifyPluginAsync {
   const jetzt = dienste.jetzt ?? (() => new Date());
 
@@ -97,6 +122,10 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
 
   async function namen(): Promise<Map<string, string>> {
     return new Map((await konten()).map((u) => [u.id, u.name]));
+  }
+
+  async function kontoListe(): Promise<Konto[]> {
+    return (await konten()).map((u) => ({ id: u.id, name: u.name, role: u.role }));
   }
 
   async function aktuellerSpace(id: string): Promise<SpaceFassung | undefined> {
@@ -143,6 +172,14 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       eigenesRecht: eigenesSpaceRecht(space, user),
       darfBearbeiten: darfSpaceBearbeiten(space, user),
       darfInhalteLesen: darfSpaceInhalteLesen(space, user.id),
+      // ADMIN-07: Status und Mitgliederzahl (direkt UND über Teams, je Person einmal) für die
+      // Verwaltungsübersicht.
+      archiviert: istArchiviert(space),
+      vorgang: vorgangVon(space),
+      mitgliederZahl: new Set([
+        ...space.mitglieder.map((m) => m.nutzer),
+        ...(space.teamMitglieder ?? []).map((m) => m.nutzer),
+      ]).size,
     };
   }
 
@@ -200,8 +237,32 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       artikelVerantwortung: string;
       artikelVerantwortungName: string | null;
     };
+    /**
+     * ADMIN-07 (K4): die REGELN vorher und nachher — Zugang, Spaceregeln in Worten und
+     * Zuständigkeit. Die Rechtewirkung allein sagt nicht, nach welchen Regeln der Artikel danach
+     * gepflegt wird.
+     */
+    regeln: { quelle: RegelSicht | null; ziel: RegelSicht | null };
     darfAusfuehren: boolean;
     grund: string | null;
+  }
+
+  interface RegelSicht {
+    zugang: SpaceFassung["zugang"];
+    regeln: string | null;
+    verantwortlich: string;
+    verantwortlichName: string | null;
+  }
+
+  function regelSicht(s: SpaceFassung | undefined, alle: readonly PublicUser[]): RegelSicht | null {
+    return s
+      ? {
+          zugang: s.zugang,
+          regeln: s.regeln ?? null,
+          verantwortlich: s.verantwortlich,
+          verantwortlichName: alle.find((u) => u.id === s.verantwortlich)?.name ?? null,
+        }
+      : null;
   }
 
   async function vorschau(
@@ -244,6 +305,10 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       grund = "Der Artikel liegt bereits in diesem Space.";
     } else if (quelleId && !quelle) {
       grund = "Der bisherige Space ist nicht mehr vorhanden.";
+    } else if (quelle && istArchiviert(quelle)) {
+      grund = "Der bisherige Space ist archiviert; erst wiederaufnehmen, dann verschieben.";
+    } else if (ziel && istArchiviert(ziel)) {
+      grund = "Der Zielspace ist archiviert und nimmt keine Inhalte auf.";
     } else if (!darfVerschiebenAus(ko, quelle, user)) {
       grund = "Für den bisherigen Space fehlt das Schreibrecht.";
     } else if (ziel && !darfInSpaceSchreiben(ziel, user)) {
@@ -268,6 +333,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         artikelVerantwortung: responsibleOf(ko),
         artikelVerantwortungName: alle.find((u) => u.id === responsibleOf(ko))?.name ?? null,
       },
+      regeln: { quelle: regelSicht(quelle, alle), ziel: regelSicht(ziel, alle) },
       darfAusfuehren: grund === null,
       grund,
     };
@@ -311,7 +377,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           ...spaceSicht(s, user, n, teams),
           artikelSichtbar: artikel.filter((k) => k.spaceId === s.id).length,
         }));
-      reply.code(200).send({ spaces: sichtbar, darfAnlegen: can(user.role, "ko.validate") });
+      reply.code(200).send({
+        spaces: sichtbar,
+        darfAnlegen: can(user.role, "ko.validate"),
+        // ADMIN-07: die Bestandszuordnung ist der Kontoverwaltung vorbehalten (Server prüft erneut).
+        darfBestandZuordnen: can(user.role, "users.manage"),
+      });
     });
 
     // Die Konten, die als Zuständige oder Mitglieder wählbar sind — Kennung, Name, Rolle; keine
@@ -362,6 +433,9 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           geaendertVon: f.geaendertVon,
           geaendertVonName: n.get(f.geaendertVon) ?? null,
           geaendertAm: f.geaendertAm,
+          // ADMIN-07: Archivieren und Wiederaufnehmen stehen mit Begründung im Verlauf.
+          vorgang: vorgangVon(f),
+          begruendung: f.begruendung ?? null,
         })),
       });
     });
@@ -392,6 +466,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         angelegtAm: am,
         geaendertVon: user.id,
         geaendertAm: am,
+        archiviert: false,
+        vorgang: "angelegt",
       };
       await dienste.spaces.lege(fassung);
       await dienste.audit?.record({
@@ -430,6 +506,10 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           });
           return;
         }
+        if (istArchiviert(aktuell)) {
+          archiviertAbsage(reply);
+          return;
+        }
         const gesehen = (request.body as { version?: unknown } | null)?.version;
         if (typeof gesehen !== "number") {
           reply.code(400).send({
@@ -457,6 +537,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           angelegtAm: aktuell.angelegtAm,
           geaendertVon: user.id,
           geaendertAm: jetzt().toISOString(),
+          archiviert: false,
+          vorgang: "geaendert",
         };
         const gelegt = gesehen === aktuell.version && (await dienste.spaces.lege(fassung));
         if (!gelegt) {
@@ -480,6 +562,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
             mitglieder: fassung.mitglieder.length,
             teams: (fassung.teams ?? []).map((b) => b.team),
             vorherTeams: (aktuell.teams ?? []).map((b) => b.team),
+            regelnGeaendert: (fassung.regeln ?? "") !== (aktuell.regeln ?? ""),
           },
         });
         const gelesen = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
@@ -715,6 +798,341 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         }
         sendError(reply, e);
       }
+    });
+
+    // ==============================================================================================
+    // ADMIN-07 · produkt:20261007:spaces:admin-20261009 — Zugriffsherkunft, Archiv, Bestand.
+    // ==============================================================================================
+
+    // K2 · Wer hat Zugriff, über welchen Weg (zuständig, direkt, je Team), mit welcher Wirkung. Wer den
+    // Space nicht sehen darf, erfährt nichts (404) — dieselbe Grenze wie `GET /api/spaces/:id`.
+    app.get<{ Params: { id: string } }>("/api/spaces/:id/zugriff", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const space = await aktuellerSpace(request.params.id);
+      if (!space || !darfSpaceSehen(space, user)) {
+        nichtGefunden(reply, "Space");
+        return;
+      }
+      const teams = await alleTeams();
+      reply
+        .code(200)
+        .send(
+          zugriffsuebersicht(
+            space,
+            await kontoListe(),
+            (id) => teams.find((t) => t.id === id)?.name,
+          ),
+        );
+    });
+
+    async function folgenFuer(space: SpaceFassung, user: SessionUser) {
+      return archivFolgen(
+        space,
+        await dienste.ko.list({}),
+        await kontoListe(),
+        (ko) => darfSehen(user, ko),
+        darfSpaceBearbeiten(space, user),
+      );
+    }
+
+    // K5 · Was das Archivieren bewirkt: Lesen bleibt, Schreiben entfällt, offene Aufgaben und
+    // Verantwortungsfragen. Schreibt nichts.
+    app.post<{ Params: { id: string } }>(
+      "/api/spaces/:id/archivierung/vorschau",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const space = await aktuellerSpace(request.params.id);
+        if (!space || !darfSpaceSehen(space, user)) {
+          nichtGefunden(reply, "Space");
+          return;
+        }
+        if (!darfSpaceBearbeiten(space, user)) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message: "Nur die Spacezuständigen oder die Kontoverwaltung archivieren diesen Space.",
+          });
+          return;
+        }
+        reply.code(200).send(await folgenFuer(space, user));
+      },
+    );
+
+    // Archivieren — eine neue Fassung, nur mit Begründung und der Grundlage der gezeigten Folgen.
+    // Offene Verantwortungsfragen verhindern es (409); der Space bleibt in Liste und Verlauf stehen.
+    app.post<{ Params: { id: string }; Body: unknown }>(
+      "/api/spaces/:id/archivieren",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const aktuell = await aktuellerSpace(request.params.id);
+        if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+          nichtGefunden(reply, "Space");
+          return;
+        }
+        if (!darfSpaceBearbeiten(aktuell, user)) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message: "Nur die Spacezuständigen oder die Kontoverwaltung archivieren diesen Space.",
+          });
+          return;
+        }
+        if (istArchiviert(aktuell)) {
+          archiviertAbsage(reply);
+          return;
+        }
+        const body = (request.body ?? {}) as {
+          version?: unknown;
+          grundlage?: unknown;
+          begruendung?: unknown;
+        };
+        if (body.version !== aktuell.version) {
+          veraltet(reply, aktuell.version);
+          return;
+        }
+        let begruendung: string;
+        try {
+          begruendung = pruefeBegruendung(body.begruendung);
+        } catch (e) {
+          fehler(reply, e);
+          return;
+        }
+        const folgen = await folgenFuer(aktuell, user);
+        if (typeof body.grundlage !== "string") {
+          reply.code(400).send({
+            error: "VORSCHAU_FEHLT",
+            message: "Das Archivieren braucht die bestätigte Folgenvorschau.",
+          });
+          return;
+        }
+        if (body.grundlage !== folgen.grundlage) {
+          reply.code(409).send({
+            error: "VORSCHAU_VERALTET",
+            message: "Die Lage hat sich seit der Vorschau geändert. Bitte die neuen Folgen prüfen.",
+            vorschau: folgen,
+          });
+          return;
+        }
+        if (!folgen.darfArchivieren) {
+          reply.code(409).send({
+            error: "OFFENE_VERANTWORTUNG",
+            message: folgen.grund ?? "Archivieren ist nicht möglich.",
+            vorschau: folgen,
+          });
+          return;
+        }
+        const fassung: SpaceFassung = {
+          ...aktuell,
+          version: aktuell.version + 1,
+          geaendertVon: user.id,
+          geaendertAm: jetzt().toISOString(),
+          archiviert: true,
+          vorgang: "archiviert",
+          begruendung,
+        };
+        if (!(await dienste.spaces.lege(fassung))) {
+          veraltet(reply, aktuell.version);
+          return;
+        }
+        await dienste.audit?.record({
+          actor: user.id,
+          action: "space.archiviert",
+          target: fassung.id,
+          payload: {
+            vorherVersion: aktuell.version,
+            version: fassung.version,
+            begruendung,
+            artikel: folgen.artikel.gesamt,
+            offeneAufgaben: folgen.artikel.offen,
+            schreibenEntfaellt: folgen.schreibenEntfaellt.map((p) => p.id),
+          },
+        });
+        const gelesen = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
+        reply.code(200).send(spaceSicht(gelesen, user, await namen(), await alleTeams()));
+      },
+    );
+
+    // Wiederaufnehmen — eine neue Fassung mit Begründung; Mitglieder, Teams und Regeln gelten wieder
+    // wie vor dem Archivieren.
+    app.post<{ Params: { id: string }; Body: unknown }>(
+      "/api/spaces/:id/wiederaufnehmen",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const aktuell = await aktuellerSpace(request.params.id);
+        if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+          nichtGefunden(reply, "Space");
+          return;
+        }
+        if (!darfSpaceBearbeiten(aktuell, user)) {
+          reply.code(403).send({
+            error: "FORBIDDEN",
+            message:
+              "Nur die Spacezuständigen oder die Kontoverwaltung nehmen diesen Space wieder auf.",
+          });
+          return;
+        }
+        if (!istArchiviert(aktuell)) {
+          reply.code(409).send({
+            error: "SPACE_AKTIV",
+            message: "Dieser Space ist nicht archiviert.",
+          });
+          return;
+        }
+        const body = (request.body ?? {}) as { version?: unknown; begruendung?: unknown };
+        if (body.version !== aktuell.version) {
+          veraltet(reply, aktuell.version);
+          return;
+        }
+        let begruendung: string;
+        try {
+          begruendung = pruefeBegruendung(body.begruendung);
+        } catch (e) {
+          fehler(reply, e);
+          return;
+        }
+        const fassung: SpaceFassung = {
+          ...aktuell,
+          version: aktuell.version + 1,
+          geaendertVon: user.id,
+          geaendertAm: jetzt().toISOString(),
+          archiviert: false,
+          vorgang: "wiederaufgenommen",
+          begruendung,
+        };
+        if (!(await dienste.spaces.lege(fassung))) {
+          veraltet(reply, aktuell.version);
+          return;
+        }
+        await dienste.audit?.record({
+          actor: user.id,
+          action: "space.wiederaufgenommen",
+          target: fassung.id,
+          payload: { vorherVersion: aktuell.version, version: fassung.version, begruendung },
+        });
+        const gelesen = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
+        reply.code(200).send(spaceSicht(gelesen, user, await namen(), await alleTeams()));
+      },
+    );
+
+    // K6 · Bestandszuordnung: Artikel OHNE Space bekommen per Tag-Regel einen führenden Space — nur,
+    // wenn danach niemand mehr sieht als vorher. Recht: die Kontoverwaltung (`users.manage`).
+    async function plan(user: SessionUser, roh: unknown) {
+      const spaces = await dienste.spaces.aktuelle();
+      const regeln = pruefeBestandsRegeln(roh, spaces);
+      if (typeof regeln === "string") {
+        return regeln;
+      }
+      return bestandsPlan(regeln, spaces, await dienste.ko.list({}), await kontoListe(), (ko) =>
+        darfSehen(user, ko),
+      );
+    }
+
+    app.post<{ Body: unknown }>("/api/spaces/bestand/vorschau", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const p = await plan(user, (request.body as { regeln?: unknown } | null)?.regeln);
+      if (typeof p === "string") {
+        reply.code(400).send({ error: "REGELN_UNGUELTIG", message: p });
+        return;
+      }
+      reply.code(200).send(p);
+    });
+
+    app.post<{ Body: unknown }>("/api/spaces/bestand/zuordnung", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const body = (request.body ?? {}) as { regeln?: unknown; grundlage?: unknown };
+      const p = await plan(user, body.regeln);
+      if (typeof p === "string") {
+        reply.code(400).send({ error: "REGELN_UNGUELTIG", message: p });
+        return;
+      }
+      if (typeof body.grundlage !== "string") {
+        reply.code(400).send({
+          error: "VORSCHAU_FEHLT",
+          message: "Die Bestandszuordnung braucht die bestätigte Bilanz.",
+        });
+        return;
+      }
+      if (body.grundlage !== p.grundlage) {
+        reply.code(409).send({
+          error: "VORSCHAU_VERALTET",
+          message: "Bestand oder Rechte haben sich seit der Bilanz geändert. Bitte neu prüfen.",
+          vorschau: p,
+        });
+        return;
+      }
+      const zugeordnet: { koId: string; zielSpaceId: string }[] = [];
+      const fehlgeschlagen: { koId: string; grund: string }[] = [];
+      for (const z of p.zuordnungen) {
+        try {
+          // `erwartet: null` — nur, wer noch OHNE Space ist; ein paralleler Wechsel bleibt stehen.
+          await dienste.ko.setLeadingSpace(z.koId, z.zielSpaceId, user.id, null);
+          zugeordnet.push({ koId: z.koId, zielSpaceId: z.zielSpaceId });
+          await dienste.pruefzustaendigkeit?.abgleichen(z.koId, user.id).catch((fehlerWert) => {
+            request.log.warn(
+              { err: fehlerWert, event: "pruefzustaendigkeit" },
+              "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
+            );
+          });
+        } catch (e) {
+          fehlgeschlagen.push({
+            koId: z.koId,
+            grund:
+              (e as { code?: unknown }).code === "SPACE_STAND_VERALTET"
+                ? "zwischenzeitlich_geaendert"
+                : "fehler",
+          });
+        }
+      }
+      const protokoll = {
+        regeln: p.regeln.map((r) => ({ tag: r.tag, zielSpaceId: r.zielSpaceId })),
+        bilanz: {
+          ...p.bilanz,
+          zugeordnet: zugeordnet.length,
+          fehlgeschlagen: fehlgeschlagen.length,
+        },
+        zugeordnet,
+        ausnahmen: p.ausnahmen.map((a) => ({ koId: a.koId, art: a.art, ziele: a.ziele })),
+        fehlgeschlagen,
+      };
+      await dienste.audit?.record({
+        actor: user.id,
+        action: "space.bestand-zugeordnet",
+        target: "spaces-bestand",
+        payload: protokoll,
+      });
+      reply.code(200).send({ ...protokoll, ausnahmen: p.ausnahmen });
+    });
+
+    // Die dokumentierten Bestandszuordnungen — prüfbar auch nach Reload. Nur Kennungen, keine Titel.
+    app.get("/api/spaces/bestand/protokoll", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      const eintraege = (await dienste.audit?.list({ action: "space.bestand-zugeordnet" })) ?? [];
+      reply.code(200).send({
+        laeufe: eintraege.map((e) => ({
+          wer: e.actor,
+          am: e.at,
+          ...(e.payload as Record<string, unknown>),
+        })),
+      });
     });
   };
 }

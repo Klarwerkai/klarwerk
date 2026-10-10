@@ -338,10 +338,11 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/kos/:id/provenance": { urteil: "PRAEDIKAT", grund: "Block F — Zentrum + Gegenseite." },
   // --- Egress-Wege, die im Dienst filtern ----------------------------------------------------
+  // ADMIN-07 (K3): zusätzlich zu SCRUM-506 (includeConfidential als Datum) trägt jeder Export die
+  // Sichtregel des Betrachters (`darfSehen`, library-routes.ts) — samt führendem Space.
   "GET /api/library/export": {
-    urteil: "KURATORENTOR",
-    recht: "ko.validate",
-    grund: "SCRUM-506 — includeConfidential als Datum (library-routes.ts:172).",
+    urteil: "PRAEDIKAT",
+    grund: "Export nur über darfSehen des Betrachters; Stufe/Status wie SCRUM-506.",
   },
   "GET /api/output/sources": {
     urteil: "DIENST_FILTERT",
@@ -710,6 +711,36 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/spaces/teams": {
     urteil: "KEIN_KO_INHALT",
     grund: "Name, Zweck und Mitgliederzahl aktiver Teams (spaces-routes.ts).",
+  },
+  // ADMIN-07 (spaces-routes.ts, space-verwaltung.ts): Titel nur über `darfSehen` des Betrachters;
+  // unsichtbare Artikel zählen nur mit.
+  "GET /api/spaces/:id/zugriff": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Zugangswege je Konto (zuständig, direkt, Team) — Rechte, keine Inhalte.",
+  },
+  "POST /api/spaces/:id/archivierung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Archivfolgen — Titel offener Artikel nur, wo darfSehen es erlaubt.",
+  },
+  "POST /api/spaces/:id/archivieren": {
+    urteil: "PRAEDIKAT",
+    grund: "Archivierte Space-Fassung; bei 409 die Folgen mit darfSehen-Titeln.",
+  },
+  "POST /api/spaces/:id/wiederaufnehmen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Antwort ist die wiederaufgenommene Space-Fassung.",
+  },
+  "POST /api/spaces/bestand/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Bestandsbilanz — Titel nur, wo darfSehen es erlaubt; sonst nur Kennung und Zahl.",
+  },
+  "POST /api/spaces/bestand/zuordnung": {
+    urteil: "PRAEDIKAT",
+    grund: "Ergebnis der Zuordnung — Ausnahmen mit Titel nur über darfSehen.",
+  },
+  "GET /api/spaces/bestand/protokoll": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Dokumentierte Läufe aus dem Prüfprotokoll — Kennungen und Zahlen, keine Titel.",
   },
   // Teams (teams-routes.ts, produkt:20261009:admin-teams): Teamfassungen, Konten und Space-Namen —
   // kein Wissensobjekt wird gelesen oder ausgegeben.

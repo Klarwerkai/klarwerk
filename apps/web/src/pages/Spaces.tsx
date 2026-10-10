@@ -5,6 +5,11 @@
 // trägt kein Rollentor; die Rechte entscheidet der Server (`spaces-routes.ts`) — dieselbe Bauform
 // wie `/begriffe` und `/wissen/:id`. Jede Artikelzeile führt auf `/wissen/:id`: dasselbe Objekt,
 // keine Kopie.
+//
+// ADMIN-07 (produkt:20261007:spaces:admin-20261009): die Übersicht ist zugleich die
+// Verwaltungsübersicht — Suche, Filter nach Status/Zugang/Gruppe, optionale Gruppierung, Zweck,
+// Zuständigkeit, Mitgliederzahl und Status. Die Detailseite zeigt Regeln, Zugriffsherkunft und
+// Archivieren/Wiederaufnehmen (`components/SpaceVerwaltung.tsx`).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,6 +23,7 @@ import {
   spaceFehlerSchluessel,
   spacesApi,
 } from "../api/spaces";
+import { SpaceArchiv, SpaceBestand, SpaceZugriff } from "../components/SpaceVerwaltung";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 
 const FELD =
@@ -43,6 +49,8 @@ function eingabeAus(s: SpaceSicht): SpaceEingabe {
     mitglieder: s.mitglieder.map((m) => ({ nutzer: m.nutzer, recht: m.recht })),
     ansichten: s.ansichten.map((a) => ({ id: a.id, name: a.name, tag: a.tag })),
     teams: (s.teams ?? []).map((b) => ({ team: b.team, recht: b.recht })),
+    gruppe: s.gruppe ?? "",
+    regeln: s.regeln ?? "",
   };
 }
 
@@ -120,6 +128,26 @@ function SpaceFormular({
           className={FELD}
           value={form.zweck}
           onChange={(e) => setForm({ ...form, zweck: e.target.value })}
+        />
+      </Field>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label={t("spaces.feld.gruppe")}>
+          <TextInput
+            data-testid="space-gruppe"
+            placeholder={t("spaces.feld.gruppeHinweis")}
+            value={form.gruppe ?? ""}
+            onChange={(e) => setForm({ ...form, gruppe: e.target.value })}
+          />
+        </Field>
+      </div>
+      <Field label={t("spaces.feld.regeln")}>
+        <textarea
+          data-testid="space-regeln"
+          rows={3}
+          className={FELD}
+          placeholder={t("spaces.feld.regelnHinweis")}
+          value={form.regeln ?? ""}
+          onChange={(e) => setForm({ ...form, regeln: e.target.value })}
         />
       </Field>
       <Field label={t("spaces.feld.zugang")}>
@@ -344,6 +372,37 @@ function SpaceFormular({
   );
 }
 
+function SpaceStatus({ s }: { s: SpaceSicht }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {/* ADMIN-07 (K1): ein Space ist als WISSENSBEREICH erkennbar — keine Funktionsseite. */}
+      <span
+        data-testid="space-art"
+        className="rounded-btn border border-hairline px-1.5 py-0.5 font-mono text-micro uppercase tracking-wider text-muted-2"
+      >
+        {t("spaces.art.marke")}
+      </span>
+      <span
+        data-testid="space-status"
+        data-archiviert={s.archiviert ? "1" : "0"}
+        className={
+          s.archiviert
+            ? "rounded-btn bg-trust-crit-bg px-1.5 py-0.5 text-[11.5px] font-semibold text-trust-crit-text"
+            : "rounded-btn border border-hairline px-1.5 py-0.5 text-[11.5px] text-text"
+        }
+      >
+        {s.archiviert ? t("spaces.status.archiviert") : t("spaces.status.aktiv")}
+      </span>
+      {s.gruppe ? (
+        <span data-testid="space-gruppe-anzeige" className="text-[11.5px] text-muted-2">
+          {t("spaces.detail.gruppe", { gruppe: s.gruppe })}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function SpaceKopf({ s }: { s: SpaceSicht }): JSX.Element {
   const { t } = useTranslation();
   return (
@@ -356,8 +415,16 @@ function SpaceKopf({ s }: { s: SpaceSicht }): JSX.Element {
       </p>
       <p className="text-[12px] text-muted-2">
         {t(`spaces.zugang.${s.zugang}`)} · {t(`spaces.eigenesRecht.${s.eigenesRecht}`)} ·{" "}
-        {t("spaces.detail.fassung", { version: s.version })}
+        <span data-testid="space-mitgliederzahl">
+          {t("spaces.detail.mitgliederZahl", { anzahl: s.mitgliederZahl })}
+        </span>{" "}
+        · {t("spaces.detail.fassung", { version: s.version })}
       </p>
+      {s.regeln ? (
+        <p className="whitespace-pre-line text-[12px] text-text" data-testid="space-regeln-text">
+          <span className="font-semibold">{t("spaces.feld.regeln")}:</span> {s.regeln}
+        </p>
+      ) : null}
       {s.mitglieder.length > 0 ? (
         <p className="text-[12px] text-muted-2" data-testid="space-mitglieder-anzeige">
           {t("spaces.feld.mitglieder")}:{" "}
@@ -467,7 +534,7 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
             >
               {t("spaces.seite.zurueck")}
             </Link>
-            {s.darfBearbeiten && !bearbeiten ? (
+            {s.darfBearbeiten && !bearbeiten && !s.archiviert ? (
               <Button data-testid="space-bearbeiten" onClick={() => setBearbeiten(true)}>
                 {t("spaces.seite.bearbeiten")}
               </Button>
@@ -486,6 +553,17 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
         </Card>
       ) : null}
       <Card className="mb-4">
+        <div className="mb-2">
+          <SpaceStatus s={s} />
+        </div>
+        {s.archiviert ? (
+          <output
+            data-testid="space-archiviert-hinweis"
+            className="mb-2 block text-[12.5px] text-text"
+          >
+            {t("spaces.archiv.hinweis")}
+          </output>
+        ) : null}
         <SpaceKopf s={s} />
         <div className="mt-2">
           <Button
@@ -499,17 +577,26 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
         {verlauf ? (
           <ol data-testid="space-verlauf" className="mt-2 space-y-1 border-t border-hairline pt-2">
             {[...eintrag.data.fassungen].reverse().map((f) => (
-              <li key={f.version} data-testid="space-fassung" className="text-[12px] text-muted-2">
+              <li
+                key={f.version}
+                data-testid="space-fassung"
+                data-vorgang={f.vorgang}
+                className="text-[12px] text-muted-2"
+              >
                 {t("spaces.detail.verlaufEintrag", {
                   version: f.version,
                   zeit: new Date(f.geaendertAm).toLocaleString(i18n.language),
                   wer: f.geaendertVonName ?? f.geaendertVon,
-                })}
+                })}{" "}
+                · {t(`spaces.vorgang.${f.vorgang}`)}
+                {f.begruendung ? ` — ${f.begruendung}` : ""}
               </li>
             ))}
           </ol>
         ) : null}
       </Card>
+      <SpaceZugriff space={s} />
+      <SpaceArchiv key={s.id} space={s} />
       {s.darfInhalteLesen ? (
         <Card>
           <div className="mb-3 flex flex-wrap gap-2">
@@ -549,10 +636,91 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
   );
 }
 
+type StatusFilter = "aktiv" | "archiviert" | "alle";
+
+/** ADMIN-07 (K1): Suche über Name, Zweck, Zuständigkeit, Gruppe und Regeln — ohne Gross/klein. */
+function passt(s: SpaceSicht, suche: string): boolean {
+  const q = suche.trim().toLocaleLowerCase();
+  if (!q) {
+    return true;
+  }
+  const felder = [s.name, s.zweck, s.verantwortlichName ?? "", s.gruppe ?? "", s.regeln ?? ""];
+  return felder.some((x) => x.toLocaleLowerCase().includes(q));
+}
+
+function SpaceKarte({ s }: { s: SpaceSicht }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Card
+      interactive={false}
+      data-testid="space-eintrag"
+      data-space={s.id}
+      data-archiviert={s.archiviert ? "1" : "0"}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold text-ink">{s.name}</p>
+          <div className="mb-1">
+            <SpaceStatus s={s} />
+          </div>
+          <SpaceKopf s={s} />
+          {s.darfInhalteLesen ? (
+            <p className="mt-1 text-[12px] text-muted-2">
+              {t("spaces.seite.artikelZahl", { anzahl: s.artikelSichtbar ?? 0 })}
+            </p>
+          ) : null}
+        </div>
+        <Link
+          to={`/spaces/${encodeURIComponent(s.id)}`}
+          data-testid="space-oeffnen"
+          aria-label={t("spaces.seite.oeffnenName", { name: s.name })}
+          className="shrink-0 text-[12.5px] font-semibold text-brand-text hover:underline"
+        >
+          {t("spaces.seite.oeffnen")}
+        </Link>
+      </div>
+    </Card>
+  );
+}
+
 function SpaceUebersicht(): JSX.Element {
   const { t } = useTranslation();
   const [neu, setNeu] = useState(false);
   const liste = useQuery({ queryKey: ["spaces"], queryFn: spacesApi.liste });
+  // Filter stehen in der Adresse: Neuladen und Rückweg behalten sie.
+  const [parameter, setParameter] = useSearchParams();
+  const suche = parameter.get("q") ?? "";
+  const status = (parameter.get("status") as StatusFilter | null) ?? "aktiv";
+  const zugang = parameter.get("zugang") ?? "";
+  const gruppe = parameter.get("gruppe") ?? "";
+  const gruppieren = parameter.get("gruppieren") === "1";
+  const setze = (schluessel: string, wert: string): void => {
+    const neuP = new URLSearchParams(parameter);
+    if (wert) {
+      neuP.set(schluessel, wert);
+    } else {
+      neuP.delete(schluessel);
+    }
+    setParameter(neuP, { replace: true });
+  };
+  const alle = liste.data?.spaces ?? [];
+  const gruppen = [...new Set(alle.flatMap((s) => (s.gruppe ? [s.gruppe] : [])))];
+  gruppen.sort((a, b) => a.localeCompare(b));
+  const gefiltert = alle.filter(
+    (s) =>
+      passt(s, suche) &&
+      (status === "alle" || (status === "archiviert") === s.archiviert) &&
+      (!zugang || s.zugang === zugang) &&
+      (!gruppe || s.gruppe === gruppe),
+  );
+  const abschnitte: { titel: string | null; spaces: SpaceSicht[] }[] = gruppieren
+    ? [
+        ...gruppen
+          .map((g) => ({ titel: g, spaces: gefiltert.filter((s) => s.gruppe === g) }))
+          .filter((a) => a.spaces.length > 0),
+        { titel: t("spaces.filter.ohneGruppe"), spaces: gefiltert.filter((s) => !s.gruppe) },
+      ].filter((a) => a.spaces.length > 0)
+    : [{ titel: null, spaces: gefiltert }];
   return (
     <div>
       <PageHeader
@@ -567,7 +735,10 @@ function SpaceUebersicht(): JSX.Element {
           ) : null
         }
       />
-      <p className="mb-4 text-[12px] text-muted-2">{t("spaces.seite.grenze")}</p>
+      <p className="mb-2 text-[12px] text-muted-2">{t("spaces.seite.grenze")}</p>
+      <p data-testid="spaces-art-hinweis" className="mb-4 text-[12px] text-muted-2">
+        {t("spaces.art.hinweis")}
+      </p>
       {neu ? (
         <Card className="mb-4" data-testid="space-pflege">
           <SectionLabel>{t("spaces.seite.neu")}</SectionLabel>
@@ -585,32 +756,88 @@ function SpaceUebersicht(): JSX.Element {
           {t("spaces.seite.leer")}
         </p>
       ) : null}
-      <ul className="space-y-3">
-        {(liste.data?.spaces ?? []).map((s) => (
-          <li key={s.id}>
-            <Card interactive={false} data-testid="space-eintrag" data-space={s.id}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-[15px] font-semibold text-ink">{s.name}</p>
-                  <SpaceKopf s={s} />
-                  {s.darfInhalteLesen ? (
-                    <p className="mt-1 text-[12px] text-muted-2">
-                      {t("spaces.seite.artikelZahl", { anzahl: s.artikelSichtbar ?? 0 })}
-                    </p>
-                  ) : null}
-                </div>
-                <Link
-                  to={`/spaces/${encodeURIComponent(s.id)}`}
-                  data-testid="space-oeffnen"
-                  className="shrink-0 text-[12.5px] font-semibold text-brand-text hover:underline"
-                >
-                  {t("spaces.seite.oeffnen")}
-                </Link>
-              </div>
-            </Card>
-          </li>
-        ))}
-      </ul>
+      {alle.length > 0 ? (
+        <fieldset
+          data-testid="spaces-filter"
+          className="m-0 mb-4 grid min-w-0 gap-2 border-0 p-0 md:grid-cols-[2fr_1fr_1fr_1fr]"
+        >
+          <legend className="sr-only">{t("spaces.filter.titel")}</legend>
+          <Field label={t("spaces.filter.suche")}>
+            <TextInput
+              type="search"
+              data-testid="spaces-suche"
+              value={suche}
+              onChange={(e) => setze("q", e.target.value)}
+            />
+          </Field>
+          <Field label={t("spaces.filter.status")}>
+            <select
+              data-testid="spaces-filter-status"
+              className={FELD}
+              value={status}
+              onChange={(e) => setze("status", e.target.value === "aktiv" ? "" : e.target.value)}
+            >
+              <option value="aktiv">{t("spaces.status.aktiv")}</option>
+              <option value="archiviert">{t("spaces.status.archiviert")}</option>
+              <option value="alle">{t("spaces.filter.alle")}</option>
+            </select>
+          </Field>
+          <Field label={t("spaces.feld.zugang")}>
+            <select
+              data-testid="spaces-filter-zugang"
+              className={FELD}
+              value={zugang}
+              onChange={(e) => setze("zugang", e.target.value)}
+            >
+              <option value="">{t("spaces.filter.alle")}</option>
+              <option value="mitglieder">{t("spaces.zugang.mitglieder")}</option>
+              <option value="alle">{t("spaces.zugang.alle")}</option>
+            </select>
+          </Field>
+          <Field label={t("spaces.feld.gruppe")}>
+            <select
+              data-testid="spaces-filter-gruppe"
+              className={FELD}
+              value={gruppe}
+              onChange={(e) => setze("gruppe", e.target.value)}
+            >
+              <option value="">{t("spaces.filter.alle")}</option>
+              {gruppen.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <label className="flex items-center gap-2 text-[12.5px] text-text md:col-span-4">
+            <input
+              type="checkbox"
+              data-testid="spaces-gruppieren"
+              checked={gruppieren}
+              onChange={(e) => setze("gruppieren", e.target.checked ? "1" : "")}
+            />
+            {t("spaces.filter.gruppieren")}
+          </label>
+        </fieldset>
+      ) : null}
+      {liste.isSuccess && alle.length > 0 ? (
+        <output data-testid="spaces-treffer" className="mb-2 block text-[12px] text-muted-2">
+          {t("spaces.filter.treffer", { anzahl: gefiltert.length, gesamt: alle.length })}
+        </output>
+      ) : null}
+      {abschnitte.map((a) => (
+        <section key={a.titel ?? "alle"} data-testid="spaces-abschnitt" className="mb-4">
+          {a.titel ? <SectionLabel>{a.titel}</SectionLabel> : null}
+          <ul className="space-y-3">
+            {a.spaces.map((s) => (
+              <li key={s.id}>
+                <SpaceKarte s={s} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      {liste.data?.darfBestandZuordnen ? <SpaceBestand spaces={alle} /> : null}
     </div>
   );
 }

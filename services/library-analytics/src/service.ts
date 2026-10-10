@@ -86,6 +86,12 @@ export const EXPORT_NO_CHECK_NOTE =
 interface ExportOptionen {
   ids?: readonly string[];
   includeConfidential?: boolean;
+  /**
+   * produkt:20261007:spaces:admin-20261009 (ADMIN-07, K3): die Sichtregel des Betrachters
+   * (`darfSehen` aus der Route). Sie tritt NEBEN Stufe und Status — ein Objekt aus einem
+   * geschlossenen Space verlässt das Haus über den Export nur für dessen Mitglieder.
+   */
+  sichtbar?: (ko: KnowledgeObject) => boolean;
   beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
 }
 
@@ -3733,9 +3739,11 @@ export class LibraryService {
   async exportJson(opts: ExportOptionen = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.list({ status: "validiert" });
     const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
-    const items = opts.includeConfidential
+    const gestuft = opts.includeConfidential
       ? scoped
       : scoped.filter((ko) => !isConfidential(ko.confidentiality));
+    const sichtbar = opts.sichtbar;
+    const items = sichtbar ? gestuft.filter((ko) => sichtbar(ko)) : gestuft;
     if (opts.beleg) {
       await this.audit?.record({
         actor: opts.beleg.actor,

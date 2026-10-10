@@ -72,7 +72,18 @@ export interface SpaceEingabe {
   teams?: SpaceTeam[];
   /** Abgeleitet aus `teams` und dem aktuellen Teamstand; nie Teil einer gespeicherten Fassung. */
   teamMitglieder?: SpaceTeamMitglied[];
+  /**
+   * produkt:20261007:spaces:admin-20261009 (ADMIN-07) — eine OPTIONALE, flache Gruppierung für die
+   * Verwaltungsübersicht (z. B. „Produktion"). Sie ist ein Etikett, KEIN Elternordner: sie trägt
+   * keine Rechte, keine Inhalte und keine Unterebenen.
+   */
+  gruppe?: string;
+  /** Die Spaceregeln in Worten: was hineingehört, wie gepflegt wird. Rechte stehen NICHT hier. */
+  regeln?: string;
 }
+
+/** ADMIN-07: was eine Fassung gegenüber der vorigen getan hat — für den Verlauf nach Reload. */
+export type SpaceVorgang = "angelegt" | "geaendert" | "archiviert" | "wiederaufgenommen";
 
 /** Eine gespeicherte, unveränderliche Fassung eines Space. */
 export interface SpaceFassung extends SpaceEingabe {
@@ -82,6 +93,16 @@ export interface SpaceFassung extends SpaceEingabe {
   angelegtAm: string;
   geaendertVon: string;
   geaendertAm: string;
+  /**
+   * ADMIN-07: archiviert — Inhalte bleiben für die bisherigen Leser lesbar, aber nichts wird mehr
+   * hinein- oder herausbewegt und der Space wird nicht mehr gepflegt, bis er wiederaufgenommen
+   * ist. Fehlt in Fassungen von vor ADMIN-07: dann aktiv.
+   */
+  archiviert?: boolean;
+  /** Fehlt in Fassungen von vor ADMIN-07; Version 1 gilt dann als „angelegt", jede weitere als „geaendert". */
+  vorgang?: SpaceVorgang;
+  /** Pflicht beim Archivieren und Wiederaufnehmen: warum — damit nichts still verschwindet. */
+  begruendung?: string;
 }
 
 export const SPACE_GRENZEN = {
@@ -92,7 +113,19 @@ export const SPACE_GRENZEN = {
   ansichten: 20,
   ansichtName: 80,
   tag: 80,
+  gruppe: 60,
+  regeln: 2_000,
+  begruendung: 1_000,
 } as const;
+
+/** Der Vorgang einer Fassung — auch für Fassungen, die das Feld noch nicht tragen. */
+export function vorgangVon(f: Pick<SpaceFassung, "version" | "vorgang">): SpaceVorgang {
+  return f.vorgang ?? (f.version === 1 ? "angelegt" : "geaendert");
+}
+
+export function istArchiviert(space: SpaceEingabe & { archiviert?: boolean }): boolean {
+  return space.archiviert === true;
+}
 
 export class SpaceFehler extends Error {
   constructor(
@@ -246,6 +279,18 @@ export function pruefeSpaceEingabe(
     vergeben.add(id);
     ansichten.push({ id, name: ansichtName, tag });
   }
+  // ADMIN-07: Gruppe ist ein einzelnes Etikett — ein „/" würde eine Ordnerhierarchie vortäuschen.
+  const gruppe = text(r.gruppe);
+  if (gruppe.length > SPACE_GRENZEN.gruppe || gruppe.includes("/")) {
+    throw new SpaceFehler(
+      "SPACE_UNGUELTIG",
+      "Die Gruppe ist ein kurzes Etikett ohne „/“ — keine Ordnerebene.",
+    );
+  }
+  const regeln = typeof r.regeln === "string" ? r.regeln.normalize("NFC").trim() : "";
+  if (regeln.length > SPACE_GRENZEN.regeln) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Die Spaceregeln sind zu lang.");
+  }
   return {
     name,
     zweck,
@@ -254,7 +299,21 @@ export function pruefeSpaceEingabe(
     mitglieder,
     ansichten,
     ...(gebunden.length > 0 ? { teams: gebunden } : {}),
+    ...(gruppe ? { gruppe } : {}),
+    ...(regeln ? { regeln } : {}),
   };
+}
+
+/** Eine Begründung für Archivieren/Wiederaufnehmen — bereinigt, oder `SpaceFehler`. */
+export function pruefeBegruendung(roh: unknown): string {
+  const b = text(roh);
+  if (!b || b.length > SPACE_GRENZEN.begruendung) {
+    throw new SpaceFehler(
+      "BEGRUENDUNG_FEHLT",
+      "Bitte begründen, warum der Space archiviert oder wiederaufgenommen wird.",
+    );
+  }
+  return b;
 }
 
 // ================================================================================================
@@ -291,8 +350,18 @@ export function lesbareSpaces(spaces: readonly SpaceFassung[], nutzerId: string)
   return new Set(spaces.filter((s) => darfSpaceInhalteLesen(s, nutzerId)).map((s) => s.id));
 }
 
-/** Darf dieser Mensch Wissensobjekte in diesen Space legen oder aus ihm heraus verschieben? */
-export function darfInSpaceSchreiben(space: SpaceEingabe, nutzer: SpaceNutzer): boolean {
+/**
+ * Darf dieser Mensch Wissensobjekte in diesen Space legen oder aus ihm heraus verschieben?
+ * ADMIN-07: in einem archivierten Space niemand — auch nicht die Zuständigen; erst die
+ * Wiederaufnahme öffnet ihn wieder.
+ */
+export function darfInSpaceSchreiben(
+  space: SpaceEingabe & { archiviert?: boolean },
+  nutzer: SpaceNutzer,
+): boolean {
+  if (istArchiviert(space)) {
+    return false;
+  }
   if (space.verantwortlich === nutzer.id) {
     return true;
   }
@@ -316,23 +385,28 @@ export interface SpaceZugangsweg {
   team?: string;
 }
 
-export function zugangswege(space: SpaceEingabe, nutzer: SpaceNutzer): SpaceZugangsweg[] {
+export function zugangswege(
+  space: SpaceEingabe & { archiviert?: boolean },
+  nutzer: SpaceNutzer,
+): SpaceZugangsweg[] {
+  // ADMIN-07: im Archiv trägt jeder Weg nur noch Lesen — die Herkunft bleibt trotzdem benannt.
+  const r = (recht: SpaceRecht): SpaceRecht => (istArchiviert(space) ? "lesen" : recht);
   const wege: SpaceZugangsweg[] = [];
   if (space.verantwortlich === nutzer.id) {
-    wege.push({ art: "zustaendig", recht: "schreiben" });
+    wege.push({ art: "zustaendig", recht: r("schreiben") });
   }
   for (const m of space.mitglieder) {
     if (m.nutzer === nutzer.id) {
-      wege.push({ art: "direkt", recht: m.recht });
+      wege.push({ art: "direkt", recht: r(m.recht) });
     }
   }
   for (const m of space.teamMitglieder ?? []) {
     if (m.nutzer === nutzer.id) {
-      wege.push({ art: "team", recht: m.recht, team: m.team });
+      wege.push({ art: "team", recht: r(m.recht), team: m.team });
     }
   }
   if (space.zugang === "alle") {
-    wege.push({ art: "offen", recht: can(nutzer.role, "ko.create") ? "schreiben" : "lesen" });
+    wege.push({ art: "offen", recht: r(can(nutzer.role, "ko.create") ? "schreiben" : "lesen") });
   }
   return wege;
 }

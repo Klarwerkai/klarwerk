@@ -896,8 +896,11 @@ export function libraryRoutes(
       // nur die validierten, nicht-vertraulichen KOs.
       const includeConfidential = can(user.role, "ko.validate");
       // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
+      // ADMIN-07 K3: zusätzlich die eine Sichtregel des Betrachters — sonst trüge der Export
+      // validierte Artikel geschlossener Spaces an Nichtmitglieder aus.
       const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
         includeConfidential,
+        sichtbar: (ko: KnowledgeObject) => darfSehen(user, ko),
         beleg: { actor: user.id, format },
       });
       if (request.query.format === "markdown") {
