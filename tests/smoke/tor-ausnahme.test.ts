@@ -52,6 +52,15 @@ import { beforeAll, describe, expect, it } from "vitest";
  *
  * Was im Tor nachweisbar ist, prüft der Fall „Fragen ohne Modell: der Weg ist gesperrt und sagt
  * warum" — er läuft im Tor mit und ist keine Ausnahme.
+ *
+ * produkt:20261008:klara-basis (Nacharbeit 4) — DIE DRITTE AUSNAHME, mit demselben Grund. K1 des
+ * Auftrags verlangt, dass eine TATSÄCHLICHE KI-Antwort im beweglichen Klara-Gespräch erscheint. Das
+ * lässt sich nur mit einem Modell belegen; im hermetischen Tor (kein Anbieter, kein lokaler Weg)
+ * kann der Fall nicht grün werden. Bis Nacharbeit 3 stand er ohne Marke im Tor und wurde dort mit
+ * `test.skip` übersprungen — still, und damit genau die Form, die dieser Wächter verhindern soll
+ * (Bens Befund, nacharbeit-4). Er trägt jetzt `@modell`, läuft im vollen `npm run smoke:ui` und ist
+ * dort ROT statt übersprungen, wenn kein Modell steht. Alles ohne Modell Nachweisbare an Klara läuft
+ * weiter im Tor (`klara-basis-browser.spec.ts`, übrige Fälle).
  */
 const ERLAUBTE_AUSNAHMEN = [
   {
@@ -61,6 +70,21 @@ const ERLAUBTE_AUSNAHMEN = [
   {
     file: "ui-smoke.spec.ts",
     title: "Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
+  },
+  // AUFTRAG gesamt-dokumenterzeugung, Nacharbeit 10 — eine weitere Ausnahme, mit Grund: Bens offener
+  // Beleg verlangt eine TATSÄCHLICHE Modellantwort samt wirksamer Einwilligung. Das hermetische Tor
+  // hat kein Modell (s. `smoke-umgebung.spec.ts`); der Fall kann dort im Prinzip nicht laufen —
+  // dieselbe Lage wie die Einträge darüber. Er läuft im vollen Smoke (`npm run smoke:ui`).
+  // INTEGRATION mit produkt:20261008:klara-basis (Nacharbeit 93): beide Aufträge haben je eine
+  // dritte Ausnahme begründet; zusammen sind es VIER benannte Fälle.
+  {
+    file: "anleitung-recherche-ki-modell.spec.ts",
+    title:
+      "Anleitung: Recherche und KI-Entwurf mit Einwilligung, echter Modellantwort und Herkunft @modell",
+  },
+  {
+    file: "klara-basis-browser.spec.ts",
+    title: "Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell",
   },
 ] as const;
 

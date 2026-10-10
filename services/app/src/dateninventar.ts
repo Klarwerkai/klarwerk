@@ -300,6 +300,26 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: true },
   },
   {
+    // produkt:20261007:veroeffentlichungsoptionen — der beim Veröffentlichen angekündigte
+    // Empfängerkreis, je Empfänger eine Zeile (`services/app/src/veroeffentlichung.ts`).
+    id: "veroeffentlichungszustellungen",
+    name: "Veröffentlichungsmeldungen (Zustellungen)",
+    inhalt:
+      "Je normal oder hervorgehoben veröffentlichter Fassung und Empfänger: Kennung des Vermerks, des Wissensobjekts und des Empfängers, Zeitpunkt, ob hervorgehoben. Kein Inhalt des Wissensobjekts.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, dem die Meldung zugestellt wurde.",
+    ablage: { ort: DATENBANK, tabellen: ["veroeffentlichung_zustellungen"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Verwaiste Zeilen (Vermerk fehlt am Eintrag) entfernt der Abruf der Glocke; sonst kein Löschweg, auch nicht mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die Zustellungen sind die Veröffentlichungsmeldungen der eigenen Glocke und dort für die Person sichtbar; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
     id: "protokoll",
     name: "Prüfprotokoll (Audit)",
     inhalt: "Wer (Kennung), wann, welche Aktion, welches Ziel und Nutzdaten der Aktion.",
@@ -443,6 +463,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     loeschung: "Flüchtig; der Hinweis läuft nach seinem Zeitraum ab.",
     frist: "Ende des Bearbeitungszeitraums.",
     selbstauskunft: { enthalten: false, grund: "Flüchtig, nur während einer Bearbeitung." },
+  },
+  {
+    id: "office-ablage",
+    name: "Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände",
+    inhalt:
+      "Laufende Editor-Sitzung je Anhang (Sperre, Sitzungsbasis, Arbeitsstand, letzter Schreiber) und Arbeitsstände, die wegen eines Konflikts nicht übernommen, sondern gesichert wurden: Artikel-, Anhang- und Objektkennung, Kennung der speichernden Person, Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung der Person, die zuletzt gespeichert hat.",
+    ablage: { ort: DATENBANK, tabellen: ["office_sitzungen", "office_gesichert"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Sitzung: endet mit dem Entsperren des Editors. Gesicherter Stand: mit seiner Übernahme als Fassung.",
+    frist: "Ende der Editor-Sitzung bzw. Übernahme des gesicherten Stands.",
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Arbeitsstand eines Dokuments, am Artikel als gesicherter Stand sichtbar.",
+    },
   },
   {
     id: "lesevarianten",

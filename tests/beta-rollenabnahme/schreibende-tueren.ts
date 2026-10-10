@@ -1484,6 +1484,34 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     }),
   },
   {
+    // R-0582: das eigene Konto berichtigen. Jede Anmeldung darf es — und zwar NUR am eigenen Konto:
+    // die Kennung kommt aus der Sitzung, nicht aus dem Pfad. Der Name ist der Fachvorgang (die
+    // Adresse verlangt zusätzlich das aktuelle Passwort und gehört nicht in die Rollenmessung).
+    gruppe: "authRoutes",
+    methode: "PUT",
+    route: "/api/auth/me",
+    belegstelle: "services/auth/src/routes.ts:507",
+    erfolg: [200],
+    tor: "requireUser (eigener Guard des auth-Moduls)",
+    erwartet: ANGEMELDET,
+    codes: { "401": AUTH_401 },
+    ruesten: async (buehne, akteur) => ({
+      pfad: "/api/auth/me",
+      payload: { name: "Rollenabnahme Berichtigt" },
+      bestand: async () => {
+        if (akteur === "anonym") {
+          return "ohne Sitzung";
+        }
+        const ich = await fahre(buehne.app, kopf(buehne, akteur), "GET", "/api/auth/me");
+        return (ich.json() as { name?: string }).name;
+      },
+      wirkung: {
+        beschreibung: "das eigene Konto trägt danach den berichtigten Namen",
+        eingetreten: (bestand) => bestand === "Rollenabnahme Berichtigt",
+      },
+    }),
+  },
+  {
     gruppe: "authRoutes",
     methode: "POST",
     route: "/api/auth/notice",

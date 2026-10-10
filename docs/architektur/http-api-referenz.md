@@ -84,8 +84,12 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `GET` | `/api/reasoner/status` | keines | — | 200 abstrakter KI-Status (`reasoner.publicStatus()`), ohne Anbieter- oder Modellnamen | — |
 | `GET` | `/api/ai-status` | keines | — | 200 `{ ai: publicStatus() }` | — |
 | `GET` | `/api/analytics/impact` | `ko.read` | — | 200 Wirkungsbericht (`impactReport`), sichtbarkeitsgefiltert | — |
-| `GET` | `/api/i18n/locales` | keines | — | 200 `{ locales }` | — |
-| `GET` | `/api/i18n/:locale/:key` | keines | — | 200 `{ value }` | — |
+| `GET` | `/api/i18n/locales` | keines | — | 200 `{ locales, sprachen: [{ kennung, name, grundsprache }] }` (mitgelieferte und angelegte Sprachen) | — |
+| `GET` | `/api/i18n/:locale` | keines | — | 200 `{ sprache, texte }` — die im Betrieb gepflegten Texte dieser Sprache | 400 `INVALID_LOCALE` |
+| `GET` | `/api/i18n/:locale/:key` | keines | — | 200 `{ value }` (gepflegter Text vor dem Serverkatalog) | — |
+| `PUT` | `/api/admin/i18n/:locale/:key` | `users.manage` | Rumpf `{ text }` (≤ 4000 Zeichen) | 200 `{ sprache, schluessel, text }`; Prüfprotokoll `i18n.text-set` | 400 `UNKNOWN_LOCALE`, `INVALID_KEY`, `INVALID_TEXT` |
+| `DELETE` | `/api/admin/i18n/:locale/:key` | `users.manage` | — | 200 `{ sprache, schluessel, entfernt }` — der mitgelieferte Text gilt wieder; Prüfprotokoll `i18n.text-reset` | 400 `INVALID_KEY` |
+| `PUT` | `/api/admin/i18n-sprachen/:locale` | `users.manage` | Rumpf `{ name }` | 200 `{ kennung, name }`; Prüfprotokoll `i18n.language-set` | 400 `INVALID_LOCALE` (auch für de/en/nl), `INVALID_NAME` |
 | `GET` | `/api/branding` | keines | — | 200 die Markenwahl der Instanz | — |
 | `PUT` | `/api/admin/branding` | `users.manage` | Rumpf `{ profil?, aktiv? }` | 200 neue Markenwahl | 400 `UNKNOWN_PROFILE` |
 | `GET` | `/api/features` | ohne Token keines, mit Token `requireUser` | — | 200 `{ features }` (vor der Anmeldung die verkürzte Fassung) | 401 bei ungültigem Token |
@@ -129,6 +133,7 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
 | `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
 | `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
+| `GET` | `/api/verantwortung/person/:id/vermaechtnis` | `users.manage` (`verantwortungRoutes`) | — | 200 Wissens-Vermächtnis-Buch `{ person, titel, erzeugtAm, dateiname, aufgenommen, zeitraum, themen, ausgelassen, markdown, provenance }` — nur einsehbare, validierte, nicht vertrauliche Beiträge; schreibt kein Wissen; Auditeintrag `vermaechtnis.erzeugt` | 401; 403 `FORBIDDEN`; 404 `NOT_FOUND` (weder Konto noch Beitrag) |
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
 `401 INVALID_CREDENTIALS`, nicht `UNAUTHENTICATED`.
@@ -225,7 +230,7 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/drafts` | `ko.create` | — | 200 eigene/sichtbare Entwürfe | — |
 | `POST` | `/api/drafts` | `ko.create` | Rumpf `DraftPayload` (`title?`, `statement?`, `type?`, `category?`, `tags?`, `bodyHtml?`, `confidentiality?`, …), `operationId?`, `expectedOwner?`, `fortschreiben?` (mit `operationId`: geänderter Inhalt schreibt den Entwurf desselben Vorgangs fort, solange er unverändert ist) | 201 Entwurf; 200 bei Wiederholung derselben `operationId`, dann mit `anlage: "bestehend" \| "fortgeschrieben"` | 400 `BAD_REQUEST`; 409 `DRAFT_OWNER_MISMATCH`, `IDEMPOTENCY_PAYLOAD_MISMATCH`; 413 `PAYLOAD_TOO_LARGE` |
-| `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
+| `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 413 `DOCX_DRAFT_TOO_LARGE`, `PAYLOAD_TOO_LARGE`, `DOCX_BILDGRENZE` (höchstens 60 Bilder je Dokument, 3,5 MB `bodyHtml` nach der Bildverkleinerung und ein serialisierter Einreich-Rumpf `{ draftPayload }` von höchstens 5 MiB − 256 KiB; kein Entwurf, kein Bild weggelassen); 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
 | `GET` | `/api/drafts/trash` | `ko.create` | — | 200 gelöschte, sichtbare Entwürfe | — |
 | `DELETE` | `/api/drafts/trash/:id` | `ko.create` | — | 204 | 404 `NOT_FOUND` |
 | `GET` | `/api/drafts/:id` | `ko.create` | — | 200 Entwurf | 404 `NOT_FOUND`; 403 `FORBIDDEN` (nicht sichtbar) |
@@ -243,6 +248,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp (Cachevertrag wie oben) | 404; 415 `UNSUPPORTED` (beide `no-store`) |
 | `GET` | `/api/media/status` | `requireUser` | — | 200 Engine-Auskunft | — |
 | `POST` | `/api/media/analyze` | `ko.read` | Rumpf `{ objectId, locale?, confidentiality? }` | 200 Analyse | 404 `NOT_FOUND` |
+| `POST` | `/api/media/transcribe` | `ko.read` (Anmeldung vor dem Einlesen) | Rumpf `{ data, locale?, confidentiality? }` (Data-URL einer Audio-/Videoaufnahme, wird nicht gespeichert) | 200 `{ transcript, engineActive, engine, note }` | 400 `BAD_REQUEST`, `UNSUPPORTED_KIND`; 413 (über der Rumpfgrenze); 429 KI-Bremse; 502 `ENGINE_FAILED` |
 
 ### 3.5 Prüfung, Konflikte, Dubletten (`validationRoutes`, `conflictRoutes`, `overlapRoutes`, `aiCheckCoverageRoutes`, `auditRoutes`)
 
@@ -253,6 +259,7 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
+| `GET` | `/api/conflicts/geloest` | `ko.read` | Abfrage `ko=<id>,<id>` (höchstens 50) | 200 von einem Menschen gelöste Konflikte zu diesen Objekten, sichtbarkeitsgefiltert; bei Redaktion auch `decision`, `secondOpinion` und `vorrang.geltungsbereich` leer | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
 | `GET` | `/api/conflicts/vorrang/:id` | `ko.read`, Paar sichtbar | Pfad `:id` = Wissensobjekt | 200 Liste festgelegter Vorrang-Beziehungen (R-0263) | — |
 | `POST` | `/api/conflicts/:id/escalate` | `conflict.resolve` | — | 200 Konflikt | Dienstfehler |
@@ -270,14 +277,17 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/duplicates/:id/status` | `ko.validate` | Rumpf `{ status?, reason?, note? }` | 200 | Dienstfehler |
 | `POST` | `/api/duplicates/:id/merge` | `ko.validate`, kein Autor einer Seite, beide Inhalte lesbar, gleicher Space | Rumpf `{ fuehrend: { id, version }, aufgehend: { id, version }, titel, kernaussage, bedingungen[], massnahmen[], quellen[], bestaetigt: true, vermerk? }` | 200 `{ befund, fuehrend, aufgehend }` | 400 `INVALID`, 403 `FORBIDDEN`, 404 `NOT_FOUND`, 409 `CONFLICT` |
 | `GET` | `/api/ai-check/coverage-summary` | `ko.read` | — | 200 Abdeckung der KI-Prüfung | — |
-| `GET` | `/api/audit` | `ko.validate` | Abfrage `actor?`, `action?`, `target?` | 200 Protokolleinträge | — |
-| `GET` | `/api/audit/verify` | `ko.validate` | — | 200 Prüfbericht der Protokollkette | — |
+| `GET` | `/api/audit` | `ko.validate` | Abfrage `actor?`, `action?`, `target?` | 200 Protokolleinträge (Inhaltsfelder nicht lesbarer Objekte geschwärzt) | — |
+| `GET` | `/api/audit/seite` | `ko.validate` | Abfrage `actor?`, `action?`, `actions?` (Komma-Liste), `target?`, `from?`, `to?` (ISO-Zeitpunkte), `before?`, `limit?` (höchstens 100) | 200 `{ entries, nextBefore, limit, objekte, namensbelege }` — jüngste zuerst; `objekte` nur für Objekte, die der Betrachter öffnen darf | 400 `BAD_REQUEST` (unlesbarer Zeitraum oder Zahl) |
+| `GET` | `/api/audit/verify` | `ko.validate` | — | 200 Prüfbericht der Protokollkette mit Prüfzeitpunkt `checkedAt` | — |
+| `GET` | `/api/audit/ko/:koId/findings` | `ko.validate` | Pfad `koId` | 200 `{ ids }` Kennungen der Konflikte und Überschneidungen des Objekts | — |
+| `GET` | `/api/audit/export` | `ko.validate` | — | 200 Kettendatei `{ format, count, head, inspection, entries, geschwaerzt }` als Anhang; hängt `audit.exported` an; Inhaltsfelder nicht lesbarer Objekte geschwärzt | — |
 
 ### 3.6 Fragen, Klara und KI (`askRoutes`, `klaraAiRoutes`, `klaraZurufRoutes`, `klaraAnswerExplanationRoutes`, `knowledgeCheckRoutes`, `checkTextRoutes`, `reasonerRoutes`, `helpRoutes`, `modelRunRoutes`)
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
-| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
+| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource?, thread?, zweitmeinung? }` — `zweitmeinung: true` wirkt nur im Konsolenzweig (R-0305/R-1099) | 200 Antwort mit Belegen; mit `zweitmeinung` zusätzlich das Feld `zweitmeinung` (Gegenüberstellung oder Grund) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
 | `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
 | `POST` | `/api/ask/report` | `ko.read` | Rumpf `{ koId, receipt, grund: "antwort-falsch" \| "quelle-passt-nicht" }` | 200 Quittung `{ meldungId, koId, koTitle, grund, at, zugestelltAn, bereitsGemeldet }` | 400 `BAD_REQUEST`; 403 `FORBIDDEN`; 404 `NOT_FOUND` |
 | `POST` | `/api/ask/not-helpful` | `ko.read`; mit `alternative` zusätzlich `ko.create` | Rumpf `{ koId, receipt?, alternative?, entwurfTitel? }` | 200 `{ vermerkt, entwurfId }` (Audit `answer.not_helpful`, genau einmal je Person und Objekt; `alternative` wird ein Entwurf) | 403 `FORBIDDEN`; 404 `NOT_FOUND`; 400 Schema |
@@ -301,7 +311,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/reasoner/describe` | `ko.read` (vor dem Einlesen) | Rumpf `{ dataUrl, locale?, source?, koId?, confidentiality?, nichtEingestuft?, draftId?, context? }` | 200 Bildbeschreibung | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE` |
 | `POST` | `/api/reasoner/enrich` | `ko.create` | Rumpf `{ query, locale? }` | 200 Anreicherung | 400 `BAD_REQUEST`; 403 `PUBLIC_AI_ENRICHMENT_BLOCKED` |
 | `GET` | `/api/reasoner/config` | `users.manage` | — | 200 Konfiguration samt Anbietern (`configStatus()`) | — |
-| `PUT` | `/api/reasoner/config` | `users.manage` | Rumpf `{ global?, perTask?, kiFreigabe? { oeffentlicheKi?, vertraulicheInhalte? } }` | 200 neuer Status | 400 `BAD_REQUEST`; 409 `REASONER_POLICY_ENV_LOCKED`; 503 `REASONER_FREIGABE_NICHT_PROTOKOLLIERBAR` |
+| `PUT` | `/api/reasoner/config` | `users.manage` | Rumpf `{ global?, perTask?, kiFreigabe? { oeffentlicheKi?, vertraulicheInhalte? }, zweitmeinung? }` — `zweitmeinung`: `openai`/`anthropic`/`local`, `null` = aus, weglassen = unverändert | 200 neuer Status | 400 `BAD_REQUEST`; 409 `REASONER_POLICY_ENV_LOCKED`; 503 `REASONER_FREIGABE_NICHT_PROTOKOLLIERBAR`; 503 `REASONER_ZWEITMEINUNG_NICHT_PROTOKOLLIERBAR` |
 | `GET` | `/api/reasoner/assist-presets` | `ko.read` | — | 200 Vorlagen | — |
 | `PUT` | `/api/reasoner/assist-presets` | `users.manage` | Rumpf `{ presets: [{ id?, name?, instruction? }] }` | 200 Vorlagen | 400 `BAD_REQUEST` |
 | `POST` | `/api/reasoner/test` | `users.manage` | — | 200 Probe des Cloud-Wegs | — |
@@ -317,10 +327,12 @@ herabgestuft werden (409 `mutability`).
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/api/library/search` | `ko.read` | Abfrage `q?` und Filter wie `GET /api/kos` | 200 Treffer | 500 `INTERNAL`, solange die Suchprojektion nicht bereit ist |
+| `GET` | `/api/library/nulltreffer` | `ko.read` | — | 200 eigene Suchen ohne Treffer | — |
 | `GET` | `/api/library/images` | `ko.read` | Abfrage `q?`, `limit?` | 200 Bildtreffer | 400 `BAD_REQUEST`; 503 `SEARCH_UNAVAILABLE` |
-| `GET` | `/api/library/export` | `ko.read` | Abfrage `format?` | 200 Export | — |
+| `GET` | `/api/library/export` | `ko.read` | Abfrage `format?`, `ids?` (kommagetrennt; grenzt nur ein — validiert/Vertraulichkeit gelten weiter; leer = leere Auswahl) | 200 Export | — |
 | `POST` | `/api/library/import` | `ko.create` | Rumpf `{ items }` | 200 Importbilanz | Dienstfehler |
 | `GET` | `/api/library/import/candidates` | `ko.read` | — | 200 Prüfwarteschlange | — |
+| `GET` | `/api/library/import/candidates/befunde` | `ko.read` | — | 200 je Kandidat `{ id, schutz, veraltet }` — schützenswert (Gründe ohne Werte) und veraltet (Stand der Quelle), jeweils mit `bewertet: false`, wo nichts zu bewerten war | — |
 | `POST` | `/api/library/import/candidates` | `ko.create` | Rumpf `{ items }` | 201 Kandidaten | Dienstfehler |
 | `PUT` | `/api/library/import/candidates/:id` | `ko.validate` | Rumpf `{ action: accept \| reject \| info, note? }` | 200 Kandidat | 400 `BAD_REQUEST` |
 | `POST` | `/api/admin/import/cleanup` | `users.manage` | Rumpf `{ confirm?, digest? }` | 200 `{ preview: true, … }` bzw. `{ preview: false, … }` | 409 `CLEANUP_DRIFT` |
@@ -348,6 +360,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/lifecycle/handover/preview` | `users.manage` | Rumpf `{ from, to }` | 200 Vorschau der Wissensübergabe (Wissensobjekte mit Titel, Eigentum, Hauptverantwortung im Papierkorb mit Titel, Entwürfe/Lücken/Prüfaufgaben als Kennung — derselbe Umfang wie die Ausführung); schreibt nichts | 400 `INVALID` (leer/gleiche Person); 404 `NOT_FOUND` (Nachfolger kein freigeschaltetes Konto) |
 | `POST` | `/api/lifecycle/handover` | `users.manage` | Rumpf `{ from, to }` | 200 `{ uebergeben, fehlgeschlagen }`; Protokoll `lifecycle.handover`, je Objekt `ko.author-transferred`/`ko.ownership` | wie Vorschau |
 | `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |
+| `GET` | `/api/lifecycle/revalidiert` | `ko.read`, sichtbar | Abfrage `ko=<id>,<id>` (höchstens 50) | 200 frühere Bestätigungen `[{ koId, am, version }]` aus `ko.revalidated`, neueste zuerst; kein Akteur, keine Nutzlast | — |
 | `POST` | `/api/learning-paths` | `ko.create` | Rumpf `{ role, steps: [{ title }] }` | 201 Lernpfad | Dienstfehler |
 | `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
 | `POST` | `/api/learning-paths/:pathId/complete` | `ko.read` | Rumpf `{ stepId }` | 200 Fortschritt | Dienstfehler |
@@ -372,7 +385,7 @@ herabgestuft werden (409 `mutability`).
 | `POST` | `/api/gesamtanweisungen/:id/vorlegen` | `ko.create` | Rumpf `{ version }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 | `POST` | `/api/gesamtanweisungen/:id/entscheiden` | `ko.validate` | Rumpf `{ version, entscheidung: angenommen \| abgelehnt }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
 
-### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
+### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `importLaufListeRoutes`, `sharepointImportRoutes`, `jiraImportRoutes`)
 
 | Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
 | --- | --- | --- | --- | --- | --- |
@@ -393,6 +406,9 @@ herabgestuft werden (409 `mutability`).
 | `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
 | `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `GET` | `/api/import/jira/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `POST` | `/api/import/confluence/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Seite des Space ohne Inhalt, schreibt nur das Prüfprotokoll) | — |
+| `GET` | `/api/admin/import/runs` | `users.manage` | Abfrage `limit` (1–200, Vorgabe 50) | 200 `{ verfuegbar, limit, ausloeserFestgehalten, runs[] }` (jüngste Läufe zuerst) | — |
+| `POST` | `/api/import/sharepoint/verbindungstest` | `users.manage` | — | 200 `{ geprueftAm, umfang, ergebnis, dauerMs }` (auch bei negativem Ergebnis; liest eine Listenseite, schreibt nur das Prüfprotokoll) | — |
 | `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
 | `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |
 | `POST` | `/api/admin/import/confluence/select` | `users.manage` (Schalter wie oben) | Rumpf `{ prompt?, criteria?, locale?, promptConfidential? }` | 200 Auswahlvorschau | 400 `BAD_REQUEST`; 503 `IMPORT_UNAVAILABLE`; `SELECT_FAILED` |

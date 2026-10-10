@@ -16,8 +16,11 @@ import {
   type GapRepo,
   InMemoryAnswerSnapshotRepo,
   InMemoryGapRepo,
+  InMemoryNulltrefferRepo,
+  type NulltrefferRepo,
   PgAnswerSnapshotRepo,
   PgGapRepo,
+  PgNulltrefferRepo,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
@@ -144,11 +147,9 @@ import {
   type ImportRunRepo,
   InMemoryCandidateRepo,
   InMemoryExternalSourceRepo,
-  InMemoryImportRunRepo,
   LibraryService,
   PgCandidateRepo,
   PgExternalSourceRepo,
-  PgImportRunRepo,
 } from "../../library-analytics";
 import {
   InMemoryLifecycleRepo,
@@ -188,7 +189,7 @@ import {
   PgObjectRepo,
   decodeDataUrl,
 } from "../../object-store";
-import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
+import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
 import { canChangeRole } from "../../rbac";
 import {
@@ -284,6 +285,7 @@ import { schalterAn } from "./feature-flags";
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
 import { frischeMeldungen } from "./frische-meldungen";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
+import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
 import {
   type SessionUser,
   isInternalOnlyError,
@@ -292,6 +294,8 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// ADMIN-02: die auflistbaren Laufablagen für die Importliste (neben dem eingefrorenen Vertrag).
+import { InMemoryAuflistbareImportRunRepo, PgAuflistbareImportRunRepo } from "./import-lauf-liste";
 // R-0466: das Interaktionsgedächtnis — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
   GedaechtnisDienst,
@@ -307,6 +311,14 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
+// Speicher ohne Datenbank.
+import {
+  InMemoryKlaraGespraechRepo,
+  KlaraGespraechDienst,
+  type KlaraGespraechRepo,
+  PgKlaraGespraechRepo,
+} from "./klara-gespraech";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -335,6 +347,8 @@ import {
 } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
+import { type OfficeAblage, PgOfficeAblage, SpeicherOfficeAblage } from "./office-ablage";
+import { leseOfficeEditorUmgebung } from "./office-artikel";
 import {
   type PaarpflichtAusfuehrung,
   createPaarpflichtAusfuehrung,
@@ -349,7 +363,7 @@ import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
-import { askRoutes } from "./routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
@@ -371,7 +385,7 @@ import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
-import { importRunRoutes } from "./routes/import-run-routes";
+import { importLaufListeRoutes, importRunRoutes } from "./routes/import-run-routes";
 // R-0170: der Jira-Import — Vorgänge und Epics eines Projekts, Projektrollen als Leserechte.
 import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
@@ -379,6 +393,8 @@ import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
+import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
@@ -395,6 +411,7 @@ import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
+import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
@@ -406,14 +423,18 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { teamsRoutes } from "./routes/teams-routes";
+// ADMIN-15: Unternehmensprofil und interne Richtlinien.
+import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
 import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
+import { veroeffentlichungRoutes } from "./routes/veroeffentlichung-routes";
 import {
   lesePruefzustaendigkeit,
   scimSchluessel,
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
+import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -433,12 +454,40 @@ import { speicherVorgang } from "./speicher-vorgang";
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
 // produkt:20261009:admin-teams — Teams als Mitgliedschaftsweg; im Postgres-Betrieb haltbar.
 import { InMemoryTeamsRepo, PgTeamsRepo, TeamAufloesendeSpaces, type TeamsRepo } from "./teams";
+// R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
+import {
+  InMemoryUebersetzungRepo,
+  PgUebersetzungRepo,
+  type UebersetzungRepo,
+} from "./uebersetzungen";
+// ADMIN-15: Unternehmensprofil und interne Richtlinien — haltbar im Postgres-Betrieb, im Speicher
+// ohne Datenbank.
+import {
+  InMemoryUnternehmenRepo,
+  PgUnternehmenRepo,
+  UnternehmenDienst,
+  type UnternehmenRepo,
+} from "./unternehmensprofil";
 import { verantwortungBeiAnlage } from "./verantwortung";
 import {
   InMemoryNachfolgeRepo,
   type NachfolgeRepo,
   PgNachfolgeRepo,
 } from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl still/normal/hervorgehoben.
+import {
+  InMemoryVeroeffentlichungsZustellungRepo,
+  PgVeroeffentlichungsZustellungRepo,
+  VeroeffentlichungDienst,
+  type VeroeffentlichungsZustellungRepo,
+} from "./veroeffentlichung";
+// R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
+import {
+  InMemoryMitgelesenRepo,
+  type MitgelesenRepo,
+  PgMitgelesenRepo,
+  WissensempfehlungDienst,
+} from "./wissensempfehlung";
 // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
 import { Wissensuebergabe } from "./wissensuebergabe";
 
@@ -562,12 +611,30 @@ export interface AppServices {
    */
   livewallFotos: LiveWallFotoRepo;
   /**
+   * R-1034 / FR-I18N-02: die im Betrieb gepflegten Oberflächentexte und zusätzlich angelegten
+   * Sprachen (`uebersetzungen.ts`). Aus demselben Grund wie `brandingSettings` NICHT in `AppRepos`;
+   * im Postgres-Betrieb haltbar (`PgUebersetzungRepo`), sonst die In-Memory-Ablage.
+   */
+  uebersetzungen: UebersetzungRepo;
+  /**
    * R-0466: das Interaktionsgedächtnis (`interaktionsgedaechtnis.ts`) — frühere Fragen, Antworten
    * und Vorlieben je Konto. Aus demselben Grund wie `livewallFotos` NICHT in `AppRepos`; im
    * Postgres-Betrieb haltbar (`PgGedaechtnisRepo`), sonst die In-Memory-Ablage. Geht sie beim
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /**
+   * R-1656: der Co-Reading-Zähler (`wissensempfehlung.ts`) — je Paar nur eine Zahl, ohne
+   * Kontokennung. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb
+   * haltbar (`PgMitgelesenRepo`), sonst die In-Memory-Ablage.
+   */
+  mitgelesen: MitgelesenRepo;
+  /**
+   * produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (`klara-gespraech.ts`) je Konto.
+   * Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
+   */
+  klaraGespraeche: KlaraGespraechRepo;
   /**
    * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
    * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
@@ -590,6 +657,12 @@ export interface AppServices {
    */
   bearbeitungen: BearbeitungsRepo;
   /**
+   * produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände von
+   * Office im Artikel. Aus demselben Grund wie `bearbeitungen` NICHT in `AppRepos`. Im Postgres-
+   * Betrieb `PgOfficeAblage`, damit ein als „gesichert" angezeigter Stand einen Neustart überlebt.
+   */
+  officeAblage: OfficeAblage;
+  /**
    * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
    * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
    * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim
@@ -599,6 +672,12 @@ export interface AppServices {
   /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
   kenntnisnahmeUhr: () => number;
   /**
+   * produkt:20261007:veroeffentlichungsoptionen — die Zustellungen je Empfänger (der angekündigte
+   * Kreis einer Veröffentlichung). Bauform wie `kenntnisnahmen`: Postgres im Betrieb, sonst die
+   * Speicherfassung, die im Desktop-Journal-Betrieb das Anlegen ablehnt.
+   */
+  veroeffentlichungsZustellungen: VeroeffentlichungsZustellungRepo;
+  /**
    * Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Aus demselben Grund wie
    * `kenntnisnahmen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgLoeschantragRepo`; ohne Datenbank
    * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt.
@@ -606,6 +685,13 @@ export interface AppServices {
   loeschantraege: LoeschantragRepo;
   /** Die Uhr der Betroffenenrechte (Millisekunden) — in Tests stellbar für Frist und Überfälligkeit. */
   datenschutzUhr: () => number;
+  /**
+   * ADMIN-15: Fassungen des Unternehmensprofils, Fassungen der internen Richtlinien und das
+   * Handlungsprotokoll. Aus demselben Grund wie `kenntnisnahmen` NICHT in `AppRepos`. Im
+   * Postgres-Betrieb `PgUnternehmenRepo`; ohne Datenbank die Speicherfassung, die im
+   * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim Neustart zu verlieren.
+   */
+  unternehmen: UnternehmenRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -645,6 +731,10 @@ export interface AppServices {
   overlapSettings: OverlapSettingsRepo;
   library: LibraryService;
   output: OutputService;
+  // gesamt-dokumenterzeugung (R-0337, Nacharbeit 7): der Leseweg zum Validierungsnachweis für den
+  // Zuruf (KI-Entwurf) — dieselbe Auditablage wie beim `OutputService`. Optional: fehlt er, nennt
+  // der Entwurf das Prüfdatum „nicht belegt".
+  auditLeser?: AuditLeser;
   // produkt:wettbewerb:20261003:lernplattform: SCORM-1.2-Übergabe an eine Lernplattform.
   lmsExport: LmsExportService;
   management: ManagementService;
@@ -684,6 +774,8 @@ export interface AppServices {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (nur die eigene Liste ist lesbar).
+  nulltreffer: NulltrefferRepo;
   // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
   slideConverter: SlideConverter;
   // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Von buildApp
@@ -757,6 +849,8 @@ export interface AppRepos {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (Tabelle `ask_nulltreffer` in ASK_SCHEMA).
+  nulltreffer: NulltrefferRepo;
   /**
    * W1 Weg A: der Answer-Beleg-Schreibweg — und zwar HIER, nicht mehr als Option.
    *
@@ -1090,8 +1184,14 @@ export function assembleServices(
     verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     livewallFotos?: LiveWallFotoRepo;
+    // R-1034 / FR-I18N-02: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    uebersetzungen?: UebersetzungRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // R-1656: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    mitgelesen?: MitgelesenRepo;
+    // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    klaraGespraeche?: KlaraGespraechRepo;
     // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
     // In-Memory-Speicher an.
     vektorSpeicher?: EmbeddingStore;
@@ -1100,14 +1200,21 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
+    // Office im Artikel: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die
+    // Speicherfassung, die einen Neustart nicht überlebt.
+    officeAblage?: OfficeAblage;
     // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
     kenntnisnahmeUhr?: () => number;
+    // Veröffentlichung: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    veroeffentlichungsZustellungen?: VeroeffentlichungsZustellungRepo;
     // Betroffenenrechte: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     loeschantraege?: LoeschantragRepo;
     // Betroffenenrechte: die Uhr für Antragsfrist und Überfälligkeit — ohne Injektion `Date.now`.
     datenschutzUhr?: () => number;
+    // ADMIN-15: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    unternehmen?: UnternehmenRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1472,8 +1579,14 @@ export function assembleServices(
     verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
+    // R-1034 / FR-I18N-02: die Übersetzungspflege — Postgres, wenn injiziert, sonst im Speicher.
+    uebersetzungen: opts.uebersetzungen ?? new InMemoryUebersetzungRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // R-1656: der Co-Reading-Zähler — Postgres, wenn injiziert, sonst im Speicher.
+    mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
+    // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
+    klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
     // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
     ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
@@ -1482,6 +1595,8 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
+    // Office im Artikel: Postgres, wenn injiziert, sonst im Speicher.
+    officeAblage: opts.officeAblage ?? new SpeicherOfficeAblage(),
     // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
     // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
     // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
@@ -1489,12 +1604,20 @@ export function assembleServices(
       opts.kenntnisnahmen ??
       new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
+    // Veröffentlichung: dieselbe Haltbarkeitsregel wie die Kenntnisnahme.
+    veroeffentlichungsZustellungen:
+      opts.veroeffentlichungsZustellungen ??
+      new InMemoryVeroeffentlichungsZustellungRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // Betroffenenrechte: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit
     // zu (Desktop-Journal), lehnt die Speicherfassung Anträge ab — ein angenommener und beim
     // Neustart verlorener Löschantrag wäre schlimmer als ein abgelehnter.
     loeschantraege:
       opts.loeschantraege ?? new InMemoryLoeschantragRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     datenschutzUhr: opts.datenschutzUhr ?? Date.now,
+    // ADMIN-15: Postgres, wenn injiziert, sonst im Speicher — mit derselben Haltbarkeitsregel wie
+    // die Kenntnisnahme.
+    unternehmen:
+      opts.unternehmen ?? new InMemoryUnternehmenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1620,7 +1743,10 @@ export function assembleServices(
     // JOB 3363: dieselbe Kandidaten-Ablage, die `library` oben bekommen hat — kein zweiter Bestand.
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
-    output: new OutputService({ koService: ko }),
+    // gesamt-dokumenterzeugung (R-0337): dieselbe Auditablage, damit das Prüfdatum je Quelle aus
+    // dem Validierungsnachweis belegt werden kann.
+    output: new OutputService({ koService: ko, audit: repos.auditRepo }),
+    auditLeser: repos.auditRepo,
     // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
     // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
     // der Betreiber fest (`KLARWERK_LMS_EMPFAENGER`); ohne Eintrag ist kein Export möglich.
@@ -1760,6 +1886,8 @@ export function assembleServices(
     externalKnowledge: repos.externalKnowledge,
     // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
     uploadLimits: repos.uploadLimits,
+    // R-0773: erfolglose Suchen je Person — Repo direkt für die Bibliotheksroute.
+    nulltreffer: repos.nulltreffer,
     // WP-D11: PPTX-Folien → PNG (LibreOffice headless). In Tests/Dev ohne soffice meldet
     // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
     slideConverter: createSofficeSlideConverter(),
@@ -1797,7 +1925,8 @@ export function inMemoryRepos(): AppRepos {
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
-    importRuns: new InMemoryImportRunRepo(),
+    // ADMIN-02: dieselbe Laufablage, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+    importRuns: new InMemoryAuflistbareImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
     quellabgleich: new InMemoryQuellabgleichRepo(),
     dokumente: new InMemoryDokumentaktenRepo(),
@@ -1808,6 +1937,7 @@ export function inMemoryRepos(): AppRepos {
     validationSettings: new InMemoryValidationSettingsRepo(),
     externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
     uploadLimits: new InMemoryUploadLimitsRepo(),
+    nulltreffer: new InMemoryNulltrefferRepo(),
     // W1 Weg A (Auftrag 143): der Answer-Beleg gehört in denselben Repo-Satz wie alles andere —
     // nur so umhüllt ihn die Dev-Persistenz und spielt ihn beim Start aus dem Journal zurück.
     answerSnapshots: new InMemoryAnswerSnapshotRepo(),
@@ -1883,7 +2013,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       candidates: new PgCandidateRepo(pool),
       // W2-A/148: Laufdomaene persistent — ein Lauf muss einen Neustart ueberleben, sonst waere
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
-      importRuns: new PgImportRunRepo(pool),
+      // ADMIN-02: dieselbe Tabelle, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+      importRuns: new PgAuflistbareImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
       quellabgleich: new PgQuellabgleichRepo(pool),
       // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
@@ -1902,6 +2033,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
       // SCRUM-421: Upload-Grenzen persistent.
       uploadLimits: new PgUploadLimitsRepo(pool),
+      // R-0773: erfolglose Suchen je Person, Tabelle `ask_nulltreffer` (ASK_SCHEMA).
+      nulltreffer: new PgNulltrefferRepo(pool),
       // W3-C1 (Auftrag 76): der Answer-Beleg gegen die echte Datenbank. Die Tabellen
       // `answer_records` und `answer_snapshots` stehen seit Freeze 61 im Migrationsweg.
       // W1 Weg A (Auftrag 143): er steht jetzt bei den übrigen Repos statt in den Optionen —
@@ -1956,9 +2089,17 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
       // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
       livewallFotos: new PgLiveWallFotoRepo(pool),
+      // R-1034 / FR-I18N-02: gepflegte Oberflächentexte und angelegte Sprachen überleben Neustart
+      // und Deploy (`UEBERSETZUNGEN_SCHEMA`, angelegt von `migrate()`).
+      uebersetzungen: new PgUebersetzungRepo(pool),
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // R-1656: die Paarzahlen überleben Neustart und Deploy (`MITGELESEN_SCHEMA`).
+      mitgelesen: new PgMitgelesenRepo(pool),
+      // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
+      // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
+      klaraGespraeche: new PgKlaraGespraechRepo(pool),
       // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
       // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
       vektorSpeicher: new PgEmbeddingStore(pool),
@@ -1969,11 +2110,19 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
       bearbeitungen: new PgBearbeitungsRepo(pool),
+      // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände überleben Neustart und
+      // Deploy (`OFFICE_ABLAGE_SCHEMA`).
+      officeAblage: new PgOfficeAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
+      // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
+      veroeffentlichungsZustellungen: new PgVeroeffentlichungsZustellungRepo(pool),
       // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
       // das sie betreffen — sie sind der Nachweis über die Bearbeitung.
       loeschantraege: new PgLoeschantragRepo(pool),
+      // ADMIN-15: Profil- und Richtlinienfassungen samt Handlungsprotokoll überleben Neuladen,
+      // Neustart und Deploy (`UNTERNEHMEN_SCHEMA`, angelegt von `migrate()`).
+      unternehmen: new PgUnternehmenRepo(pool),
     },
   );
 }
@@ -2788,6 +2937,9 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: der Nachhol- und Abgleichlauf über DEN
+    // Prüf-Worker dieser App (hintergrundpruefung.ts); `server.ts` startet ihn, Tests nicht.
+    hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
     /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
     verzeichnisAbgleichWiederholungMs?: number;
   } = {},
@@ -2921,10 +3073,16 @@ export function buildApp(
   // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
   // dort (oder später vor dem Dienst) während einer Aus-/Wiedereinschaltung wartet, trägt die ALTE
   // Epoche und bleibt entwertet. Nur die beiden D5-Eingänge; synchron, ohne Warten, ohne Inhalt.
+  // R-0700: Klaras eigener Ausführungszugang ist der dritte Frage-Eingang und gehört dazu.
   app.decorateRequest("askKiBeginn", null);
   app.addHook("onRequest", async (request) => {
     const pfad = request.routeOptions.url;
-    if (request.method === "POST" && (pfad === "/api/ask" || pfad === "/api/reasoner")) {
+    if (
+      request.method === "POST" &&
+      (pfad === "/api/ask" ||
+        pfad === "/api/reasoner" ||
+        pfad === "/api/klara/sessions/:sessionId/execute")
+    ) {
       request.askKiBeginn = services.ask.kiStand() ?? null;
     }
   });
@@ -3178,6 +3336,18 @@ export function buildApp(
     services.reasoner.refreshReachabilityIfStale();
     return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
   });
+  // R-0599 (Ben nacharbeit-2): die KI-Lage der Kopfzeile — ob gerade eine externe, eine hausinterne
+  // oder keine KI arbeitet, WELCHER Anbieter dahintersteht und woher er kommt. Für JEDEN
+  // angemeldeten Nutzer (`ko.read`), nicht anonym: die beiden Statusrouten oben bleiben abstrahiert
+  // (WP-VIP2-GATE). Bewusst OHNE Modellnamen (Admin-Sicht) und ohne Schlüssel — der Anbieter ist
+  // die Datenschutzauskunft, die ein Mensch braucht, bevor seine Inhalte hinausgehen.
+  app.get("/api/ki-lage", async (request, reply) => {
+    const user = await guards.requirePermission("ko.read", request, reply);
+    if (!user) {
+      return;
+    }
+    reply.code(200).send(services.reasoner.kiLage());
+  });
 
   // ============================================================================================
   // W1 S4 — KLARA-STATUS, SITZUNG UND ZUSTIMMUNG (KW-S4-04 §13-100)
@@ -3310,7 +3480,12 @@ export function buildApp(
   // (`services.zurufModell`); fehlt es, antwortet die Route ehrlich 503 `NO_FORMULIERER`.
   app.register(
     klaraZurufRoutes(
-      { sessions: klaraSessions, ko: services.ko, modell: services.zurufModell },
+      {
+        sessions: klaraSessions,
+        ko: services.ko,
+        modell: services.zurufModell,
+        ...(services.auditLeser ? { audit: services.auditLeser } : {}),
+      },
       guards,
     ),
   );
@@ -3726,6 +3901,29 @@ export function buildApp(
       }),
     });
   services.aiCheckWorker = aiCheckWorker;
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: eigener Worker mit DEMSELBEN Runner plus
+  // Zählhaken — so zählt nur der Hintergrundlauf gegen sein Budget (hintergrundpruefung.ts).
+  opts.hintergrundpruefung?.(
+    createHintergrundpruefung({
+      ko: services.ko,
+      hauptWorker: aiCheckWorker,
+      baueWorker: (vorVergleich) =>
+        createAiCheckWorker({
+          ko: services.ko,
+          run: createAiCheckRunner({
+            ko: services.ko,
+            conflicts: services.conflicts,
+            overlaps: services.overlaps,
+            overlapSettings: services.overlapSettings,
+            reasoner: services.reasoner,
+            semanticPrefilter,
+            vorVergleich,
+          }),
+        }),
+      modellAktiv: () => services.reasoner.status().active,
+      audit: services.audit,
+    }),
+  );
   app.register(
     koRoutes(
       {
@@ -4005,6 +4203,23 @@ export function buildApp(
       guards,
     ),
   );
+  // produkt:20261007:office-artikel-editor: Word, Excel und PowerPoint im Artikel über den WOPI-
+  // Hostweg (Plan U2). Ohne Einrichtung in der Umgebung antworten die Routen 503 bzw. 404; die
+  // Fläche zeigt dann „nicht eingerichtet". Spaces und Konten kommen aus derselben Quelle wie an
+  // `makeGuards`, damit der Editor nie mehr sieht als die Klarwerk-Sitzung.
+  app.register(
+    officeRoutes(
+      {
+        ko: services.ko,
+        objekte: services.objects,
+        einrichtung: leseOfficeEditorUmgebung(process.env),
+        konten: () => services.auth.listUsers(),
+        spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+        ablage: services.officeAblage,
+      },
+      guards,
+    ),
+  );
   // Kenntnisnahme einer gültigen Fassung. Der Dienst liest Einträge über `services.ko` und Konten
   // über die vorhandene Kontenliste (Rolle, Freigabe, Befristung); dieselbe Instanz speist die
   // Glocke (`notificationsRoutes` unten), damit Anforderung und Erinnerung den vorhandenen
@@ -4017,6 +4232,21 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis
+  // ist derselbe wie der Empfängerkreis einer Kenntnisnahme (eine Regel, eine Stelle); der Vermerk
+  // liegt am Eintrag, der Beleg im Prüfprotokoll. Dieselbe Instanz speist die Glocke unten.
+  const veroeffentlichungDienst = new VeroeffentlichungDienst({
+    ko: services.ko,
+    leser: (ko) => kenntnisnahmeDienst.moeglicheEmpfaenger(ko),
+    kontoNamen: () => kenntnisnahmeDienst.kontoNamen(),
+    kenntnisnahmen: (ko) => kenntnisnahmeDienst.uebersicht(ko),
+    zustellungen: services.veroeffentlichungsZustellungen,
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+  });
+  app.register(
+    veroeffentlichungRoutes({ dienst: veroeffentlichungDienst, kos: services.ko }, guards),
+  );
   // R-1644: die Wissensauskunft zum Zeitpunkt — liest Fassungen, Audit-Protokoll und Kenntnisnahmen,
   // schreibt nichts. Dieselbe Uhr wie die Kenntnisnahme, damit „nicht in der Zukunft" zu deren
   // Zeitpunkten passt.
@@ -4029,6 +4259,24 @@ export function buildApp(
         kenntnisnahmen: services.kenntnisnahmen,
         konten: () => services.auth.listUsers(),
         jetzt: services.kenntnisnahmeUhr,
+      },
+      guards,
+    ),
+  );
+  // R-1656: „Du solltest auch wissen…". Themennähe ist die vorhandene Schlagwort-Nachbarschaft
+  // (`library.neighbors`, mega68), Konflikte kommen aus dem Konfliktdienst, Co-Reading aus dem
+  // kontolosen Paarzähler. Die Sichtbarkeit entscheidet die Route je Aufrufer.
+  app.register(
+    wissensempfehlungRoutes(
+      {
+        dienst: new WissensempfehlungDienst({
+          repo: services.mitgelesen,
+          ko: services.ko,
+          thema: async (koId, sichtbar) =>
+            (await services.library.neighbors(koId, { sichtbar })).neighbors,
+          konflikte: services.conflicts,
+        }),
+        kos: services.ko,
       },
       guards,
     ),
@@ -4090,48 +4338,55 @@ export function buildApp(
   // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht
   // dafür Bestand und Konflikte. Beide liegen hier ohnehin — dasselbe Muster wie livewallRoutes und
   // impactRoutes darunter.
-  // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
-  // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
-  // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
-  // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
+  // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
+  const offeneSpaces = async (): Promise<ReadonlySet<string>> =>
+    new Set((await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id));
+  // Was der gemeinsame Antwortlauf beider Zugänge liest (R-0700: allgemeiner Weg UND Klaras
+  // Zugang) — einmal gebaut, damit beide dieselbe Belastbarkeit und denselben Zuschnitt liefern.
+  const antwortDeps = {
+    ask: services.ask,
+    ko: services.ko,
+    conflicts: services.conflicts,
+    offeneSpaces,
+    // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
+    kanten: services.kanten,
+    // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
+    begriffe: async () => services.begriffe.aktuelle(),
+    // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
+    // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
+    personen: {
+      erreichbarkeit: async (ids: readonly string[]) => {
+        const konten = await services.auth.listUsers();
+        const erreichbar = new Map<string, boolean>();
+        const namen = new Map<string, string>();
+        for (const id of ids) {
+          const konto = konten.find((u) => u.id === id);
+          erreichbar.set(id, konto?.approved === true);
+          if (konto) {
+            namen.set(id, konto.name);
+          }
+        }
+        return { erreichbar, namen };
+      },
+    },
+  };
+  // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
+  // Klara-Bindung an.
   app.register(
     askRoutes(
       {
-        ask: services.ask,
-        ko: services.ko,
-        conflicts: services.conflicts,
-        klaraSessions,
-        // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
-        offeneSpaces: async () =>
-          new Set(
-            (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
-          ),
+        ...antwortDeps,
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
-        // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
-        kanten: services.kanten,
-        // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
-        begriffe: async () => services.begriffe.aktuelle(),
-        personen: {
-          erreichbarkeit: async (ids) => {
-            const konten = await services.auth.listUsers();
-            const erreichbar = new Map<string, boolean>();
-            const namen = new Map<string, string>();
-            for (const id of ids) {
-              const konto = konten.find((u) => u.id === id);
-              erreichbar.set(id, konto?.approved === true);
-              if (konto) {
-                namen.set(id, konto.name);
-              }
-            }
-            return { erreichbar, namen };
-          },
-        },
       },
       guards,
     ),
   );
+  // R-0700 (KW-S4-24): Klaras eigener, sitzungsgebundener Ausführungszugang
+  // `POST /api/klara/sessions/{sessionId}/execute`. KW-KA4: `klaraSessions` ist das bestehende
+  // Ausführungstor von oben — DIESELBE Instanz wie am Status-, Zuruf- und Reasoner-Weg.
+  app.register(klaraAusfuehrungRoutes({ ...antwortDeps, klaraSessions }, guards));
   // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
   // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
   // zweite Aufloesung.
@@ -4197,14 +4452,20 @@ export function buildApp(
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
   app.register(
-    libraryRoutes(services.library, guards, {
-      ko: services.ko,
-      conflicts: services.conflicts,
-      overlaps: services.overlaps,
-      overlapSettings: services.overlapSettings,
-      reasoner: services.reasoner,
-      semanticPrefilter,
-    }),
+    libraryRoutes(
+      services.library,
+      guards,
+      {
+        ko: services.ko,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        overlapSettings: services.overlapSettings,
+        reasoner: services.reasoner,
+        semanticPrefilter,
+      },
+      // R-0773: erfolglose Suchen je Person.
+      services.nulltreffer,
+    ),
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
@@ -4226,8 +4487,15 @@ export function buildApp(
   );
   // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
   // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
+  // R-1662: frühere Revalidierungen (`ko.revalidated`) lesen dieselben Belege aus dem Prüfprotokoll.
   app.register(
-    lifecycleRoutes(services.lifecycle, guards, koSichtbarkeit, services.wissensuebergabe),
+    lifecycleRoutes(
+      services.lifecycle,
+      guards,
+      koSichtbarkeit,
+      services.wissensuebergabe,
+      services.audit,
+    ),
   );
   app.register(
     notificationsRoutes(
@@ -4260,6 +4528,8 @@ export function buildApp(
           lifecycle: services.lifecycle,
           audit: services.audit,
         }),
+        // Veröffentlichung: Meldungen bei „normal" und „hervorgehoben" — nie bei „still".
+        veroeffentlichungen: veroeffentlichungDienst,
       },
       guards,
     ),
@@ -4293,7 +4563,25 @@ export function buildApp(
       guards,
     ),
   );
-  app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
+  // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
+  // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
+  app.register(
+    klaraGespraechRoutes(
+      {
+        dienst: new KlaraGespraechDienst({
+          repo: services.klaraGespraeche,
+          antworten: services.answerSnapshots,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
+  // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
+  app.register(
+    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit),
+  );
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
@@ -4363,7 +4651,14 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
-  app.register(i18nRoutes(services.i18n));
+  // R-1034 / FR-I18N-02: die Oberflächentexte — öffentlich lesbar (die Anmeldemaske braucht sie vor
+  // jeder Sitzung), gepflegt ausschließlich mit `users.manage`.
+  app.register(
+    i18nRoutes(
+      { i18n: services.i18n, uebersetzungen: services.uebersetzungen, audit: services.audit },
+      guards,
+    ),
+  );
   // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
@@ -4374,6 +4669,21 @@ export function buildApp(
   // Begründung, warum das nicht in `/api/features` gehört, steht im Kopf von branding-routes.ts.
   app.register(
     brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
+  );
+  // ADMIN-15: Unternehmensprofil und interne Richtlinien. Getrennt von der festen Markenwahl oben
+  // (die bleibt, wie sie ist) und von den Rechtsseiten der Web-App. Die betroffenen Konten kommen
+  // aus der vorhandenen Kontenliste.
+  app.register(
+    unternehmenRoutes(
+      {
+        dienst: new UnternehmenDienst({
+          repo: services.unternehmen,
+          konten: () => services.auth.listUsers(),
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
   );
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
@@ -4502,6 +4812,8 @@ export function buildApp(
         audit: services.audit,
         // ADMIN-04: die Zahlen der Kontenliste aus derselben Erhebung wie die Wissensübergabe.
         offeneVorgaenge: (personen) => services.wissensuebergabe.offeneVorgaenge(personen),
+        // ADMIN-05: der gemeinsame Übergabeablauf überträgt offene Vorgänge über dieselbe Instanz.
+        vorgaengeWeg: services.wissensuebergabe,
       },
       guards,
     ),
@@ -4552,6 +4864,15 @@ export function buildApp(
   // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
   // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
   // R-0170: der Jira-Import schreibt Läufe genauso und gehört deshalb in dieselbe Bedingung.
+  // ADMIN-02 (Nacharbeit 3): die Importliste steht UNBEDINGT da — auch wenn alle Importwege aus
+  // sind, ist „noch kein Lauf festgehalten" eine Auskunft und keine fehlende Route.
+  app.register(
+    importLaufListeRoutes({
+      importRuns: services.importRuns,
+      quellabgleich: services.quellabgleich,
+      guards,
+    }),
+  );
   const importLaeufeLesbar =
     schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
   if (importLaeufeLesbar) {

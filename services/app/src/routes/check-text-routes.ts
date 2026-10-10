@@ -24,6 +24,7 @@ import type { SemanticPrefilter } from "../duplicate-detection";
 import type { Guards, SessionUser } from "../http";
 import {
   type SqlSichtbarkeitstrim,
+  schluesselBetrachter,
   sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
@@ -657,11 +658,17 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         const quellenSicht = quellensichtVon(SITZUNGSNUTZER.get(request));
         // Stufe-1-Deps: OHNE Judge/Prefilter → rein deterministisch (kein Modell, kein embed). Für
         // want fehlend / != "deep" bleibt das byte-identisch zu Slice 5.
+        // R-1175: der Dubletten-/Konfliktpool fährt dieselbe EINE Entscheidung — für den Menschen
+        // seine, für den Schlüssel die des engsten Betrachters (keine Kennung, `viewer`, kein Space).
+        const poolSichtbar = sichtbarkeitsfilterFuer(
+          SITZUNGSNUTZER.get(request) ?? schluesselBetrachter(new Set<string>()),
+        );
         const stage1Deps = {
           ko: deps.ko,
           overlaps: deps.overlaps,
           includeUnvalidated,
           ...quellenSicht,
+          poolSichtbar,
         };
         // Der vertrauliche Rückfall bleibt deterministisch; weder Judge noch Embedder erhalten Text.
         // Aufnahme gesamt-integrations-api: ein DIENST-Schlüssel bekommt nur Stufe 1 — kein

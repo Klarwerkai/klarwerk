@@ -446,6 +446,8 @@ export type {
   ConfidentialityDisclosure,
   ConfidentialityProvenance,
 } from "./src/confidentiality";
+// R-1631 (gesamt-anlagenzugang): Stücklistenbezug und Geltungskontext — die Eingangsprüfung der Route.
+export { anlagenkontextFehler } from "./src/anlagenkontext";
 // JOB 593 / R-0082: die EINE Normalform der Anlagenkennung — auch für die Lebenszyklus-Kopplung.
 export { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./src/asset";
 // R-1664/R-2179/R-2180: die Normalform der geführten Negativwissen-Angaben. Aufrufer ist die
@@ -457,6 +459,7 @@ export type { NegativwissenAngaben } from "./src/negativwissen";
 export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";
 export type { SchutzdatenArt, SchutzdatenQuarantaene } from "./src/types";
 export type {
+  AnlagenKontext,
   EvidenceKind,
   EvidenceRecord,
   KnowledgeObject,
@@ -499,4 +502,7 @@ export type {
   AiCheckCoverageSummary,
   // AUFNAHME 20260922: die gespeicherte Basisbindung eines Prüfnachweises.
   AiCheckBasis,
+  // produkt:20261007:veroeffentlichungsoptionen: der Vermerk einer Veröffentlichung samt Meldungswahl.
+  KoVeroeffentlichung,
+  VeroeffentlichungsMeldung,
 } from "./src/types";

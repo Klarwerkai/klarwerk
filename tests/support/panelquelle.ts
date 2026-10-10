@@ -202,6 +202,37 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * von E2, HISTORIE/nacharbeit-8/PRUEFUNG/integration-word-fenster.log) und unverändert übernommen;
  * die vier Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word): dieselbe Regel.
+ * `taskpane.html` trägt im Kopf GENAU einen Verweis mehr — `anleitung.js` hinter `begriffe.js`, in
+ * derselben Zeile (Zeilenzahl unverändert). `taskpane.js`, `taskpane.css` und `marke.js` bleiben
+ * unberührt; `anleitung.js` selbst ist wie `begriffe.js` kein Teil des zusammengefügten Dokuments.
+ * Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes Hash-Werkzeug ist er hier nicht
+ * berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach gemessen übernommen. E3
+ * bleibt die Gegenprobe.
+ * NACHARBEIT 1 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat a757d6c3
+ * (`ca1f9d53…`, „Received" von E2, HISTORIE/nacharbeit-1/PRUEFUNG/panel-pins-messung.log) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * INTEGRATION gesamt-dokumenterzeugung × main d8717621 (Nacharbeit 2): main hat `taskpane.js`
+ * geändert (gesamt-funktionsschalter, 503 `KI_ABGESCHALTET` und `askKiAbgeschaltet`), diese Zeile
+ * aber nicht — sie wurde deshalb ohne Konflikt auf `ca1f9d53…` zusammengeführt. Dieser Wert
+ * beschreibt nur den Zweig gesamt-dokumenterzeugung, nicht das vereinigte Fenster. Er ist ein
+ * PLATZHALTER bis zur Messung; ohne zugelassenes Hash-Werkzeug nicht berechenbar. E2 meldet den
+ * Wert im Prüflauf als „Received"; er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 3 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat b4a727cc (`84122c98…`,
+ * „Received" von E2, HISTORIE/nacharbeit-3/PRUEFUNG/panel-pins-integration.log) und unverändert
+ * übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFTRAG ki-modus-wahrheit (R-0700, Ben nacharbeit-2): `taskpane.js` ändert sich allein in
+ * `performAsk` (Klaras eigener Zugang `/api/klara/sessions/{sessionId}/execute` mit Sitzung; ohne
+ * Sitzung `/api/ask` ohne Bindungskopfzeilen und Klara-Felder). DAZU R-0378: `#kw-kopf-ki` in der
+ * Schlusszeile des `<header>` (`taskpane.html`, 498 Zeilen), seine Regel in `taskpane.css`, die
+ * Befüllung in `renderKlaraS4` und `s4KopfKi` je Sprache (`taskpane.js`); `marke.js` bleibt
+ * unberührt. Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes
+ * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird
+ * danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 4 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat fdd18078 (`782fe303…`,
+ * „Received" von E2, HISTORIE/nacharbeit-4/PRUEFUNG/panel-auslieferung-pins-und-schranken.log) und
+ * unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ *
  * AUFTRAG „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336, R-0708): ZWEI
  * Änderungen, und nur EINE bewegt diesen Wert.
  *   (1) Der Abschnitt KW-WORDVERGLEICH wandert Zeile für Zeile von `taskpane.js` nach
@@ -266,6 +297,31 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * HISTORIE/nacharbeit-17/PRUEFUNG/r0310-panel-und-pins.log) und unverändert übernommen; die vier
  * Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * INTEGRATION gesamt-dokumenterzeugung × antwort-quellenanzeige (main ffd509db, Nacharbeit 32):
+ * BEIDE Änderungen stehen jetzt in den Panel-Dateien — der Verweis auf `anleitung.js` in
+ * `taskpane.html` (gesamt-dokumenterzeugung) UND die Quellenanzeige samt `#ask-gap-zuordnung` in
+ * `taskpane.js`/`taskpane.html`/`taskpane.css` (antwort-quellenanzeige). Keine der beiden Messungen
+ * (`84122c98…` hier, `cb99796c…` auf main) beschreibt das zusammengefügte Dokument. Der Wert unten
+ * ist der von main und damit ein PLATZHALTER bis zur Messung: ohne zugelassenes Hash-Werkzeug ist
+ * der neue Blob hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird danach
+ * gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 33 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat 38a24dcd am
+ * ZUSAMMENGEFÜHRTEN Panel (`e18110b7…`, „Received" von E2,
+ * HISTORIE/nacharbeit-33/PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die vier
+ * INTEGRATION ki-modus-wahrheit × antwort-quellenanzeige (Kandidat de703240, Nacharbeit 21): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND Absatz-Belege, Fußnoten, `#ask-gap-zuordnung` (main).
+ * Für B3 sind ein fremder Kommentar (JOB 2621 §1) wortgleich verdichtet und der eigene
+ * R-0700-Kommentar an seine Codezeile gezogen (`taskpane.js` 12498 Zeilen, `taskpane.html` 498).
+ * Keine der beiden Messungen (`782fe303…` hier, `cb99796c…` auf main) beschreibt das
+ * zusammengefügte Dokument. Der Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB
+ * MUSS WANDERN; E2 meldet ihn im Prüflauf als „Received", er wird danach gemessen übernommen. E3
+ * bleibt die Gegenprobe.
+ * NACHARBEIT 22 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat 423e9199 am
+ * zusammengeführten Panel (`eadf9dc0…`, „Received" von E2, HISTORIE/nacharbeit-22/PRUEFUNG/
+ * integration-panel-auslieferung-pins-und-schranken.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
  * INTEGRATION „Geschriebene Behauptungen …" × main 70216f9f (Nacharbeit 3 dieses Auftrags): BEIDE
  * Änderungen stehen im zusammengefügten Dokument — die Quellenanzeige von main (R-0309/R-0310/
  * R-0325/R-0326, `#ask-gap-zuordnung`) in `taskpane.js`/`.html`/`.css` UND der Wortvergleich dieses
@@ -291,6 +347,28 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * Panel (`c2a57caf…`, „Received" von E2, HISTORIE/nacharbeit-19/PRUEFUNG/integration-word-fenster.log)
  * und unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * INTEGRATION gesamt-dokumenterzeugung × Antwort-Erklärung (main 97440d8a, Nacharbeit 56): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — der Verweis auf `anleitung.js` in `taskpane.html`
+ * (gesamt-dokumenterzeugung) UND Lage/Konfliktseiten samt `#ask-lage-line`/`#ask-konflikt-seiten`
+ * (Antwort-Erklärung). Keine der beiden Messungen (`e18110b7…` hier, `c2a57caf…` auf main)
+ * beschreibt das zusammengefügte Dokument. Der Wert unten ist der von main und damit ein
+ * PLATZHALTER bis zur Messung — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als „Received", er
+ * wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 57 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat 88250be0 am
+ * ZUSAMMENGEFÜHRTEN Panel (`e73efa0f…`, „Received" von E2,
+ * HISTORIE/nacharbeit-57/PRUEFUNG/panel-pins-integration.log) und unverändert übernommen; die vier
+ * INTEGRATION ki-modus-wahrheit × Antwort-Erklärung (main ab5f3c95, Nacharbeit 26): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND Lage/Konfliktseiten (main). Ohne Konflikt in den
+ * Panel-Dateien zusammengeführt (`taskpane.js` 12491 Zeilen, `taskpane.html` 498). Keine der beiden
+ * Messungen (`eadf9dc0…` hier, `c2a57caf…` auf main) beschreibt das zusammengefügte Dokument. Der
+ * Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet ihn im
+ * Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 27 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat 7e0024f6 am
+ * zusammengeführten Panel (`fd013c5d…`, „Received" von E2, HISTORIE/nacharbeit-27/PRUEFUNG/
+ * integration-panel-auslieferung-pins-und-schranken.log) und unverändert übernommen; die vier
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
  * INTEGRATION „Geschriebene Behauptungen …" × main ab5f3c95 (Nacharbeit 8 dieses Auftrags): BEIDE
  * Änderungen stehen im zusammengefügten Dokument — Lage/Konfliktseiten und Absatz-Beleg-Zuordnung
  * von main (R-0321/R-0335/R-0310) in `taskpane.js`/`.html` UND der Wortvergleich dieses Auftrags
@@ -304,6 +382,31 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * panel-nach-integration-ab5f3c95-pins-und-schnitt.log) und unverändert übernommen; die fünf
  * Panel-Dateien sind seit dieser Messung unberührt.
  *
+ * INTEGRATION gesamt-dokumenterzeugung × „Geschriebene Behauptungen …" (main 13984aac, Nacharbeit 70
+ * dieses Auftrags): BEIDE Änderungen stehen jetzt in den Panel-Dateien — der Verweis auf
+ * `anleitung.js` in `taskpane.html` (gesamt-dokumenterzeugung) UND der ausgelagerte Block
+ * KW-WORDVERGLEICH in `wortvergleich.js` samt Verweis (R-0336/R-0708). Keine der beiden Messungen
+ * (`e73efa0f…` hier, `2d544023…` auf main) beschreibt das zusammengefügte Dokument. Der Wert unten
+ * ist der von main und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als
+ * „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 71 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat 1fb4e6af am
+ * ZUSAMMENGEFÜHRTEN Panel (`af829859…`, „Received" von E2,
+ * HISTORIE/nacharbeit-71/PRUEFUNG/panel-integration-wortvergleich.log) und unverändert übernommen;
+ * die fünf Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * INTEGRATION ki-modus-wahrheit × „Geschriebene Behauptungen …" (main 325ff8cb, Nacharbeit 33):
+ * BEIDE Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND der Wortvergleich (main, `wortvergleich.js`). Ohne
+ * Konflikt in den Panel-Dateien zusammengeführt (`taskpane.js` 11538 Zeilen, `taskpane.html` 498).
+ * Keine der beiden Messungen (`fd013c5d…` hier, `2d544023…` auf main) beschreibt das zusammengefügte
+ * Dokument. Der Wert unten ist der von `main` und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2
+ * meldet ihn im Prüflauf als „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 34 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat bc98b221 am
+ * zusammengeführten Panel (`4ed6f553…`, „Received" von E2, HISTORIE/nacharbeit-34/PRUEFUNG/
+ * integration-wortvergleich-panel-pins-und-schranken.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Auf `main` lief parallel (die Zeilen unten stammen von dort):
  * INTEGRATION gesamt-sprache-begriffe × main 13984aac (K22): Auf den Stand von `main` kommt GENAU
  * eine Zeile in `renderStatics` (`taskpane.js`) — der Gruppenname der Sprachwahl
  * `#einst-sprache-wahl` über `t("einstSprache")` (gesamt-sprache-begriffe Nacharbeit 9; frühere
@@ -315,8 +418,42 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * Verfahren mit `taskpane.js` aus `main` 13984aac ergibt wörtlich
  * `2d544023972d9f9be4e644b2ace90e52c233bdb2` (der Wert von `main` oben); mit der Zeile
  * `dc94b941…` (Beleg CLAUDE/BLOB-MESSUNG-NACHARBEIT-27.json im Auftragsordner).
+ *
+ * INTEGRATION gesamt-dokumenterzeugung × gesamt-sprache-begriffe (main 1ff962b3, Nacharbeit 74
+ * dieses Auftrags): BEIDE Änderungen stehen jetzt in den Panel-Dateien — der Verweis auf
+ * `anleitung.js` in `taskpane.html` (gesamt-dokumenterzeugung) UND die Zeile für den Gruppennamen
+ * der Sprachwahl in `taskpane.js` (gesamt-sprache-begriffe). Keine der beiden Messungen
+ * (`af829859…` hier, `dc94b941…` auf main) beschreibt das zusammengefügte Dokument. Der Wert unten
+ * ist der von main und damit ein PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet den Ist-Wert als
+ * „Received", er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 75 (gesamt-dokumenterzeugung): GEMESSEN im Prüflauf zu Kandidat c437ae6e am
+ * ZUSAMMENGEFÜHRTEN Panel (`e9e11524…`, „Received" von E2,
+ * HISTORIE/nacharbeit-75/PRUEFUNG/panel-blob-integration.log) und unverändert übernommen; die fünf
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * INTEGRATION ki-modus-wahrheit × gesamt-sprache-begriffe (main 1ff962b3, Nacharbeit 36): BEIDE
+ * Änderungen stehen jetzt in den Panel-Dateien — `performAsk` über Klaras eigenen Zugang,
+ * `#kw-kopf-ki`/`s4KopfKi` (dieser Auftrag) UND die Zeile `#einst-sprache-wahl` in `renderStatics`
+ * (main, K22). Die Panel-Dateien führten sich ohne Konflikt zusammen (`taskpane.js` 11539 Zeilen,
+ * `taskpane.html` 498). Keine der beiden Messungen (`4ed6f553…` hier, `dc94b941…` auf main)
+ * beschreibt das zusammengefügte Dokument. Der Wert unten ist der von `main` und damit ein
+ * PLATZHALTER — DER BLOB MUSS WANDERN; E2 meldet ihn im Prüflauf als „Received", er wird danach
+ * gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 37 (ki-modus-wahrheit): GEMESSEN im Prüflauf zu Kandidat d3a9f1e2 am
+ * zusammengeführten Panel (`3af6ddc1…`, „Received" von E2, HISTORIE/nacharbeit-37/PRUEFUNG/
+ * integration-sprachwahl-panel-pins-und-schranken.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Integration 5eac5f5d + 2b5b685b: Beide oben dokumentierten Fachstände bleiben
+ * im automatisch zusammengeführten Panel erhalten. Die alten Messungen beziehen sich
+ * auf ihre jeweiligen Vorfassungen. Der neue Blob wird am gemeinsamen Panel gemessen;
+ * Beleg: HILFE/4fd4c87b805ee60e13c32720/PANEL-MESSUNG.json im Auftragsordner.
+ * INTEGRATION mit main b723640f (Nacharbeit 93) und NACHARBEIT 94 (gesamt-dokumenterzeugung):
+ * GEMESSEN im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel (`1e57e17c…`, „Received" von
+ * E2, HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log; vorher `05ff5c13…`) und unverändert
+ * übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "dc94b94136c782cfb6c00438317e12821dd3a3bf";
+export const PANEL_VOR_SCHNITT_BLOB = "1e57e17c9fe02ca6f04d94e5846ee8a0d98fd794";
 
 export interface PanelTeile {
   html: string;

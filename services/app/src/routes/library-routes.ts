@@ -1,5 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  NULLTREFFER_DECKEL,
+  type NulltrefferRepo,
+  nulltrefferBegriff,
+  nulltrefferEingrenzung,
+} from "../../../ask";
+import {
   type ConflictService,
   type OverlapService,
   type OverlapSettingsRepo,
@@ -34,6 +40,7 @@ import {
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
+import { importKandidatBefunde } from "../import-befunde";
 import {
   darfSehen,
   sichtbareFuer,
@@ -559,6 +566,26 @@ function bildsucheLimit(raw: string | undefined): number {
   return Math.min(n, BILDSUCHE_LIMIT_MAX);
 }
 
+// aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02): die Abfrage des Exports. `ids` ist
+// eine kommagetrennte Kennungsliste (oder der wiederholte Parameter, wie Fastify ihn liefert).
+interface ExportAbfrage {
+  format?: string;
+  ids?: string | string[];
+}
+
+/**
+ * Die Auswahl eines Exports aus der Abfrage. `undefined` heisst „kein Parameter" — dann gilt der
+ * validierte Gesamtbestand. Ein vorhandener, aber leerer Parameter ist eine LEERE Auswahl: er darf
+ * nie still zum Gesamtbestand werden.
+ */
+function exportAuswahl(raw: string | string[] | undefined): string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const teile = (Array.isArray(raw) ? raw : [raw]).flatMap((s) => s.split(","));
+  return [...new Set(teile.map((s) => s.trim()).filter((s) => s.length > 0))];
+}
+
 // JOB 3111 · B1b: die Attributlesart stand hier als lokales `attributIn`. Sie liegt jetzt als
 // `attributWert` im structure-Modul, weil der SCHREIBWEG der Benennungen (searchImageNames) sie
 // ebenfalls braucht — zwei Lesarten wären zwei Wahrheiten darüber, was ein Attributwert ist.
@@ -725,8 +752,21 @@ export function libraryRoutes(
   library: LibraryService,
   guards: Guards,
   detection?: ImportDetectionDeps,
+  // R-0773: optional — ohne Ablage (Teilaufbauten in Tests) bleibt die Suche wie bisher.
+  nulltreffer?: NulltrefferRepo,
 ): FastifyPluginAsync {
   return async (app) => {
+    // R-0773: die EIGENEN Suchen ohne Treffer. Nur die eigene Liste — ein Suchbegriff ist Freitext
+    // derselben Art wie der Fragetext einer Lücke (R-0585), fremde Suchen liest hier niemand.
+    app.get("/api/library/nulltreffer", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const eigene = nulltreffer ? await nulltreffer.fuer(user.id, NULLTREFFER_DECKEL) : [];
+      reply.code(200).send(eigene);
+    });
+
     app.get<{ Querystring: KoFilter & { q?: string } }>(
       "/api/library/search",
       async (request, reply) => {
@@ -764,14 +804,30 @@ export function libraryRoutes(
         // (etwa in einem zweiten Aufbau) nicht anwendet, findet hier weiterhin das Tor vor, das
         // seit mega74 hier steht. Die Zusage der Route ändert sich damit nicht — sie wird nur
         // billiger und, was mehr zählt, paginierbar.
-        reply
-          .code(200)
-          .send(
-            sichtbareFuer(
-              user,
-              await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
-            ),
-          );
+        const treffer = sichtbareFuer(
+          user,
+          await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
+        );
+        // R-0773: eine Suche OHNE Treffer wird für den Suchenden vermerkt — nur mit nicht-leerem
+        // Begriff und gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Eine gefilterte
+        // Suche wird MIT ihrer Eingrenzung vermerkt (BEN, Nacharbeit 3): sie sagt nur etwas über
+        // diese Auswahl, die Fläche kennzeichnet das. Ein Fehler der Suche hat die Route oben
+        // bereits verlassen und wird nie als Nulltreffer gezählt. Ein Fehler beim Vermerken nimmt
+        // dem Suchenden sein (leeres) Ergebnis nicht.
+        const begriff = nulltrefferBegriff(q ?? "");
+        if (nulltreffer && treffer.length === 0 && begriff) {
+          try {
+            await nulltreffer.erfasse({
+              userId: user.id,
+              ...begriff,
+              eingrenzung: nulltrefferEingrenzung(filter),
+              zeitpunkt: new Date().toISOString(),
+            });
+          } catch (fehler) {
+            request.log.warn({ err: fehler }, "Nulltreffer-Suche konnte nicht vermerkt werden");
+          }
+        }
+        reply.code(200).send(treffer);
       },
     );
 
@@ -885,7 +941,7 @@ export function libraryRoutes(
       },
     );
 
-    app.get<{ Querystring: { format?: string } }>("/api/library/export", async (request, reply) => {
+    app.get<{ Querystring: ExportAbfrage }>("/api/library/export", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
@@ -895,12 +951,20 @@ export function libraryRoutes(
       // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
       // nur die validierten, nicht-vertraulichen KOs.
       const includeConfidential = can(user.role, "ko.validate");
+      // aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02 „Export der Auswahl"): `ids`
+      // GRENZT NUR EIN. Die Auswahl läuft durch dieselbe Validiert-/Vertraulichkeitsgrenze wie der
+      // Gesamtexport (`exportJson`) — eine genannte Kennung holt nie etwas hinaus, das der
+      // Gesamtexport derselben Rolle nicht auch enthielte (G6: Exportmenge ⊆ Lesemenge bleibt).
+      // Ohne Parameter: validierter Gesamtbestand wie bisher. Ein leerer Parameter ist eine leere
+      // Auswahl, NICHT „alles".
+      const ids = exportAuswahl(request.query.ids);
       // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
       // ADMIN-07 K3: zusätzlich die eine Sichtregel des Betrachters — sonst trüge der Export
       // validierte Artikel geschlossener Spaces an Nichtmitglieder aus.
       const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
         includeConfidential,
         sichtbar: (ko: KnowledgeObject) => darfSehen(user, ko),
+        ...(ids ? { ids } : {}),
         beleg: { actor: user.id, format },
       });
       if (request.query.format === "markdown") {
@@ -1007,6 +1071,18 @@ export function libraryRoutes(
       // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
       const kandidaten = await library.listImportCandidates();
       reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
+    });
+
+    // R-0179 / FR-EXT-01 (Nacharbeit 3): veraltete Inhalte und schützenswertes Firmenwissen je
+    // Kandidat — bewertet vor der Übernahme, mit „nicht bewertet" als eigenem Zustand
+    // (`import-befunde.ts`). Dasselbe Tor wie die Liste; ausgegeben werden nur Gründe, nie Werte.
+    app.get("/api/library/import/candidates/befunde", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const kandidaten = await library.listImportCandidates();
+      reply.code(200).send(importKandidatBefunde(kandidaten, Date.now()));
     });
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER

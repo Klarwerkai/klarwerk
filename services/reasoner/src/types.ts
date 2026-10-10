@@ -183,6 +183,23 @@ export interface AnswerResult {
   // Deckungsrückfall stattdessen den Wortlaut einer Quelle aus (JOB 2659/3353/3365), fehlt das Feld:
   // dieser Text ist vollständig, und ein Unvollständigkeits-Hinweis daran wäre eine Falschaussage.
   abgeschnitten?: AbbruchBefund;
+  // R-1643 (Entscheidungs-Protokoll): die ARGUMENTATIONSKETTE dieser Antwort — Aussage für Aussage,
+  // mit der Quelle, deren Wortlaut sie belegt. Sie ist kein neu erzeugter Text: es ist genau das,
+  // was `pruefeDeckung` (provider-model.ts) ohnehin prüft, bevor ein Modelltext hinausgeht, bzw.
+  // auf den Rückfallwegen die Zuordnung „dieser Wortlaut stammt aus dieser Quelle". `steps` bleibt
+  // daneben die Liste der herangezogenen Fundstellen und ist KEINE Begründung. Fehlt das Feld, gibt
+  // es keine belegte Kette (keine Antwort, älterer Weg) — weggelassen, nie leer erfunden.
+  argumentation?: ArgumentationsGlied[];
+}
+
+/** R-1643: ein Glied der Argumentationskette. */
+export interface ArgumentationsGlied {
+  /** Die Aussage der Antwort, ohne Fußnotenmarken. */
+  aussage: string;
+  /** Die Quellen, auf die die Aussage verweist (Marken des Modells bzw. die zitierte Quelle). */
+  quellen: string[];
+  /** Die Quelle, deren Wortlaut die Aussage enthält — gemessen, nicht behauptet. */
+  belegtDurch: string;
 }
 
 // FR-STR-01 (R-0315): die Wissensart des Strukturierungsvorschlags. Dieselben fünf Werte wie
@@ -245,6 +262,78 @@ export interface InterviewResult {
   // unverändert ohne sie. Deshalb hier optional — die Zusage „immer gesetzt" gilt ab dem
   // Dienst und ist genau dort getestet.
   aiGenerated?: AiGeneratedMark;
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW (R-0043/R-0113): nur im Fragebaum gesetzt
+  // (`InterviewOptions.tree`). Ohne Fragebaum bleibt das Ergebnis genau wie bisher.
+  node?: InterviewNodeId | null; // Knoten der aktuellen Frage; null, wenn der Baum durch ist
+  sufficient?: boolean; // Pflichtknoten beantwortet — der Mensch DARF den Abschluss bestätigen
+  gaps?: InterviewGaps; // Maß der verbleibenden Lücken
+  mirror?: InterviewAnswerRef | null; // zuletzt Verstandenes — wörtlich die letzte Antwort
+  depth?: InterviewAnswerRef[]; // vertiefende Antworten (Schwelle, Ausnahme, Warum …), wörtlich
+  // R-0088: die themenbezogene Recherche des Modells — UNGEPRÜFTE Prüfpunkte, an denen die
+  // Rückfragen gezielt nachhaken. Sie gehen NIE in den Entwurf; übernommen wird nur, was der
+  // Mensch darauf antwortet. Ohne Modell (kein gültiger KI-Schlüssel) fehlt das Feld.
+  research?: InterviewResearchPoint[];
+}
+
+// R-0088: ein Recherche-Prüfpunkt — der Knoten, zu dem er nachhakt, der kurze Hinweis und die
+// Quelle, aus der er stammt (Bens Befund nacharbeit-6: ohne Quellenabruf keine Recherche).
+export interface InterviewResearchPoint {
+  node: InterviewNodeId;
+  hint: string;
+  source: InterviewResearchSource;
+}
+
+// R-0088: eine abgerufene Quelle der Recherche (Titel, Adresse, Auszug) — so, wie die
+// Quellensuche (`services/external-search`) sie liefert.
+export interface InterviewResearchSource {
+  title: string;
+  url: string;
+  snippet?: string;
+}
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums. Pflicht sind Kernaussage,
+// Bedingung und Maßnahme; die übrigen holen das, was Erfahrungswissen ausmacht (R-0043: Schwellen
+// und Ausnahmen; Argus-Recherche: Warum, verworfene Alternativen, Geltungsbereich, Risiken und die
+// Herkunft — Erfahrung, Zeitpunkt, Rolle — getrennt von allgemeiner Wahrheit).
+export type InterviewNodeId =
+  | "kern"
+  | "bedingung"
+  | "massnahme"
+  | "schwelle"
+  | "ausnahme"
+  | "warum"
+  | "alternativen"
+  | "geltung"
+  | "risiko"
+  | "herkunft"
+  | "stichworte";
+
+// R-0113: ein Wert für die verbleibenden Lücken. `value` ist der Anteil (0–100) des gewichteten
+// Fragebaums, der noch nicht mit einer Antwort belegt ist; `open` nennt genau diese Knoten.
+export interface InterviewGaps {
+  value: number;
+  open: InterviewNodeId[];
+}
+
+export interface InterviewAnswerRef {
+  node: InterviewNodeId;
+  text: string;
+}
+
+// Steuerung des Interviews. Ohne Angabe: die bisherige feste Fragenfolge (Abwärtskompatibilität).
+export interface InterviewOptions {
+  // R-0113: Fragebaum mit Restlückenwert; der Abschluss wird vom Menschen bestätigt.
+  tree?: boolean;
+  // R-0091 / R-0088: das Thema steht fest (Lücken-Interview). Kurzer Baum mit drei Fragen; ein
+  // Modell richtet die Fragen auf dieses Fachthema aus.
+  topic?: string;
+  // R-0088: die Recherche eines früheren Turns, vom Client zurückgereicht — so wird je Interview
+  // nur einmal recherchiert. Der Reasoner prüft und kappt sie (`normalizeInterviewResearch`).
+  research?: unknown;
+  // R-0088 (Bens Befund nacharbeit-6): die zum Thema ABGERUFENEN Quellen. Gesetzt nur von der
+  // Route, nach Stufen- und Vertraulichkeitsprüfung. Ohne Quellen gibt es keine Recherche — das
+  // Modell leitet Prüfpunkte nur aus ihnen ab, nie aus eigenem Wissen.
+  sources?: unknown;
 }
 
 // PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die
@@ -278,6 +367,10 @@ export interface ExtractResult {
   // aufgebraucht war. Bei mehreren Abschnitten steht der Befund des ZULETZT abgeschnittenen —
   // die Aussage „mindestens ein Abschnitt riss am Limit ab" ist damit vollständig gedeckt.
   abgeschnitten?: AbbruchBefund;
+  // R-0157/R-1070: gesetzt, wenn Teile des Dokuments nie ausgewertet wurden (Dokument- oder
+  // Punktedeckel). Derselbe Satz steht auch in `note`; das eigene Feld trägt ihn dorthin, wo die
+  // Fläche die abgeleitete `note` zugunsten von `abgeschnitten` ausblendet.
+  ungelesenerRest?: string;
 }
 
 export interface ReasonerStatus {
@@ -386,6 +479,69 @@ export interface ReasonerCloudAnbieterStatus {
   grund?: string;
 }
 
+// R-0702: die HERKUNFT eines KI-Zugangs kommt aus der zentralen Zugangsverwaltung dieses Servers
+// (`anbieter-herkunft.ts`), nicht aus einer Deutung der Modellkennung im Browser. `nachweis` sagt,
+// wie belastbar die Angabe ist: `behauptet` = Angabe des Anbieters zu seinem Sitz, von KLARWERK
+// nicht geprüft; `geprueft` = ein belegter Nachweis liegt vor (heute für keinen Zugang);
+// `unbekannt` = es gibt keine Angabe (dann ist auch `land` null).
+export type ReasonerHerkunftNachweis = "geprueft" | "behauptet" | "unbekannt";
+
+export interface ReasonerZugangHerkunft {
+  land: string | null; // ISO-3166-Alpha-2, klein geschrieben (z. B. "us"), oder null
+  nachweis: ReasonerHerkunftNachweis;
+}
+
+// R-0299: der Wissensstand eines Modells — der vom Hersteller VERÖFFENTLICHTE „knowledge cutoff",
+// NUR aus belegten Herstellerangaben (`anbieter-herkunft.ts`). Er ist nicht dasselbe wie das Ende der
+// Trainingsdaten (Anthropic nennt beides getrennt). Fehlt der Beleg, ist `stand` null, `nachweis`
+// „unbekannt", und `quellenbedarf` nennt die fehlende Quelle.
+export interface ReasonerModellWissensstand {
+  stand: string | null;
+  nachweis: "belegt" | "unbekannt";
+  quelle: string | null;
+  /** Wann die Herstellerquelle gelesen wurde (ISO-Datum); `null` ohne Beleg. */
+  abgerufen: string | null;
+  quellenbedarf: string | null;
+}
+
+// R-0299: die Karte „Betreiber und Wissensstand" — wer das gerade antwortende Modell betreibt,
+// woher er kommt und bis wann das Wissen des Modells reicht. Nur Metadaten, nie ein Schlüssel.
+export interface ReasonerBetreiberKarte {
+  /** Der Zugang, über den gerade geantwortet würde; `null`, wenn kein Modell arbeitet. */
+  zugang: ReasonerCloudAnbieter | "local" | null;
+  /** Lesbarer Betreibername (z. B. „ChatGPT (OpenAI)"); beim Server des Betreibers `null`. */
+  betreiber: string | null;
+  /** Die Modellkennung, wie der Client sie meldet; `null`, wenn keine bekannt ist. */
+  modell: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+  wissensstand: ReasonerModellWissensstand | null;
+  /** Wie es um die Erreichbarkeit des Zugangs steht — siehe `ReasonerKiVerfuegbarkeit`. */
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+}
+
+// Ben nacharbeit-7/-9 (R-0940/R-2142): was der Server über die Erreichbarkeit des Glieds WEISS, das
+// die Ausführung als ERSTES ruft — aus den vorhandenen Kantensignalen (`providerReachability`):
+//   · "erreichbar"   — es hat zuletzt (innerhalb der Frist) wirklich geantwortet;
+//   · "ungeprueft"   — eingerichtet und freigegeben, aber noch ohne frischen Befund;
+//   · "unerreichbar" — es ist zuletzt gescheitert. Der nächste Lauf versucht es TROTZDEM zuerst
+//                      (`runTask`); `modus` und `anbieter` nennen es deshalb weiter. Ein Ersatzweg
+//                      wird nicht behauptet — er steht erst fest, wenn dieser Versuch scheitert.
+// `null`: es ist gar kein Modell in der freigegebenen Kette (keins eingerichtet, keine Freigabe,
+// abgeschaltet) — dann gibt es auch nichts zu erreichen.
+export type ReasonerKiVerfuegbarkeit = "erreichbar" | "ungeprueft" | "unerreichbar";
+
+// R-0599: die KI-Lage für JEDEN angemeldeten Nutzer (GET /api/ki-lage, ko.read) — ob gerade eine
+// externe, eine hausinterne oder keine KI arbeitet, welcher Anbieter dahintersteht und woher er
+// kommt. BEWUSST OHNE Modellnamen und ohne Schlüssel: der Modellname bleibt Admin-Sicht
+// (WP-VIP2-GATE); der Anbieter ist für den Datenschutz die Auskunft, die der Mensch braucht.
+export interface ReasonerKiLage {
+  modus: "extern" | "intern" | "keine";
+  anbieter: ReasonerCloudAnbieter | "local" | null;
+  anbieterName: string | null;
+  herkunft: ReasonerZugangHerkunft | null;
+  verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+}
+
 // SCRUM-525 P.5 (WP-C): Herkunft der AKTIVEN Policy — "env" (Deploy-ENV KLARWERK_REASONER_POLICY,
 // deklarativ pro Deploy, per Admin-Schreibpfad NICHT änderbar), "db" (persistierte Admin-Wahl) oder
 // "default" (nichts konfiguriert/geladen, inkl. eines fail-closed Ladefehlers — s. Reasoner.setTaskConfig).
@@ -443,6 +599,20 @@ export interface ReasonerKiFreigabe {
   vertraulicheInhalte?: boolean;
 }
 
+// ================================================================================================
+// AUFNAHME 20260922 (R-0305, R-1099) · DAS MODELL DER ZWEITMEINUNG — AUSDRÜCKLICH GEWÄHLT.
+// ================================================================================================
+//
+// Eine Zweitmeinung schickt dieselbe Frage samt derselben Grundlage an ein ZWEITES Modell. Wer das
+// ist, entscheidet der Administrator — nicht eine Vorzugsregel und nicht „der andere Anbieter, der
+// zufällig eingerichtet ist". Das ist Pedis Regel aus JOB 3134 („was gewählt ist, bestimmt den
+// Empfänger") auf den zweiten Empfänger angewandt. Ohne Wahl gibt es keine Zweitmeinung und damit
+// keinen zusätzlichen Empfänger. Ein externer Anbieter braucht zusätzlich dieselbe Adminfreigabe wie
+// jeder Cloudweg (`kiFreigabe`); der deterministische Ersatz ist bewusst KEINE Wahl — er ist kein
+// zweites Modell, und eine Gegenüberstellung mit ihm wäre keine zweite Einschätzung.
+export const REASONER_ZWEITMEINUNG_WAHLEN = [...REASONER_CLOUD_ANBIETER, "local"] as const;
+export type ReasonerZweitmeinungWahl = (typeof REASONER_ZWEITMEINUNG_WAHLEN)[number];
+
 // Die WIRKSAME Zuordnung: nach der Normalisierung stehen hier nur noch aktive Werte — kein
 // `cloud`, kein `model` (JOB 3134, s. ReasonerLegacyChoice).
 export interface ReasonerTaskConfig {
@@ -452,7 +622,69 @@ export interface ReasonerTaskConfig {
   // Normalisierung nur da, wenn wenigstens ein Schalter `true` ist (kein `{}`, kein `false`-Rest).
   // Ein fehlendes Feld ist damit dasselbe wie „gesperrt" und kein „noch nicht gefragt".
   kiFreigabe?: ReasonerKiFreigabe;
+  // R-0305/R-1099: das Modell der Zweitmeinung. Fehlt es, ist die Zweitmeinung aus.
+  zweitmeinung?: ReasonerZweitmeinungWahl;
 }
+
+// ================================================================================================
+// AUFNAHME 20260922 (R-0305, R-1099) · DAS ERGEBNIS EINER ZWEITMEINUNG.
+// ================================================================================================
+//
+// `stufe` statt Anbieter- oder Modellname: die Antwort geht an jeden fragenden Nutzer, und Anbieter
+// und Modell sind Infrastrukturangaben der Adminsicht (WP-VIP2-GATE-2). Die Stufe sagt, was der
+// Fragende zum Einordnen braucht — extern, im Haus oder Ersatzmodus ohne Modell.
+export type ZweitmeinungStufe = "cloud" | "local" | "deterministic";
+
+// Warum KEINE Gegenüberstellung entstand — jeder Grund benannt, keiner geraten:
+//   · nicht_eingerichtet — der Administrator hat kein Modell für die Zweitmeinung gewählt;
+//   · nicht_verfuegbar   — das gewählte Modell ist nicht eingerichtet oder nicht erreichbar verdrahtet;
+//   · nicht_freigegeben  — für einen externen Anbieter fehlt die Adminfreigabe (bei vertraulichem
+//                          Kontext die zweite Freigabe), oder eine Anbieterbindung lässt ihn nicht zu;
+//   · nicht_unabhaengig  — die erste Antwort kam bereits von genau diesem Modell; ein zweiter Lauf
+//                          desselben Modells wäre keine unabhängige Einschätzung;
+//   · fehlgeschlagen     — das zweite Modell wurde gefragt und hat keine Antwort geliefert.
+export type ZweitmeinungGrund =
+  | "nicht_eingerichtet"
+  | "nicht_verfuegbar"
+  | "nicht_freigegeben"
+  | "nicht_unabhaengig"
+  | "fehlgeschlagen";
+
+// Woran der Abgleich eine Abweichung festmacht. Bewusst nur Merkmale, die sich OHNE ein drittes
+// Urteil prüfen lassen — der Abgleich bewertet keine Inhalte, er zeigt Warnzeichen:
+//   · beantwortet — das eine Modell antwortet, das andere findet keine belastbare Grundlage;
+//   · quellen     — beide nennen tragende Quellen, aber keine gemeinsame;
+//   · zahlen      — beide nennen Zahlen, aber nicht dieselben.
+export type ZweitmeinungAbweichung = "beantwortet" | "quellen" | "zahlen";
+
+// Die zweite Antwort — dieselben Felder wie die erste, soweit sie für die Gegenüberstellung zählen.
+// Ihre Quellen stammen aus DERSELBEN, bereits gefilterten Kandidatenmenge wie die der ersten.
+export interface ZweitmeinungAntwort {
+  answered: boolean;
+  answer: string | null;
+  sources: string[];
+  citedSources: string[];
+  demo: boolean;
+  aiGenerated?: AiGeneratedMark;
+}
+
+export type ZweitmeinungErgebnis =
+  | {
+      status: "verglichen";
+      ersteStufe: ZweitmeinungStufe;
+      zweiteStufe: ZweitmeinungStufe;
+      // Ben (Nacharbeit 17): die ERSTE Modellantwort, genau so, wie sie verglichen wurde — vor
+      // jedem späteren Zuschnitt durch den Fragedienst (R-0346). Spalte A zeigt diesen Text, damit
+      // Gegenüberstellung und Abgleich sich auf dasselbe Paar beziehen.
+      erste: ZweitmeinungAntwort;
+      zweite: ZweitmeinungAntwort;
+      // `true` genau dann, wenn `abweichungen` nicht leer ist — ein Warnzeichen, dem jemand
+      // nachgehen muss. `false` heißt NICHT „beide stimmen inhaltlich überein", sondern „der Abgleich
+      // hat an seinen drei Merkmalen keinen Unterschied gefunden".
+      abweichend: boolean;
+      abweichungen: ZweitmeinungAbweichung[];
+    }
+  | { status: "nicht_moeglich"; grund: ZweitmeinungGrund };
 
 // Die EINGABE einer Zuordnung (Schreibweg, Datenbankbestand, Deploy-ENV): darf noch die abgelösten
 // Werte tragen; der Reasoner migriert sie und meldet die Migration.
@@ -464,6 +696,10 @@ export interface ReasonerTaskConfigEingabe {
   // der ZUORDNUNG darf eine erteilte Freigabe nicht beiläufig löschen — und eine fehlende nicht
   // beiläufig erteilen. Wer die Freigabe ändern will, nennt sie.
   kiFreigabe?: ReasonerKiFreigabe;
+  // R-0305/R-1099: dieselbe Regel wie bei `kiFreigabe` — WEGLASSEN lässt die Wahl unverändert,
+  // `null` schaltet die Zweitmeinung aus. So kann ein Speichern der Zuordnung, das von diesem Feld
+  // nichts weiß, keinen zweiten Empfänger beiläufig löschen oder hinzufügen.
+  zweitmeinung?: ReasonerZweitmeinungWahl | null;
 }
 
 export interface ReasonerConfigStatus {
@@ -494,6 +730,11 @@ export interface ReasonerConfigStatus {
   // JOB 3134: die beiden externen Anbieter EINZELN — eingerichtet oder nicht, und warum nicht.
   // `cloudConfigured` oben bleibt „irgendein externer Anbieter ist eingerichtet".
   cloudProviders: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;
+  // R-0702: die Herkunft je Zugang aus der zentralen Zugangsverwaltung, mit Nachweisstufe.
+  // Optional, damit vorhandene Statusattrappen gültig bleiben; „fehlt" heißt „keine Angabe".
+  herkunft?: Record<ReasonerCloudAnbieter | "local", ReasonerZugangHerkunft>;
+  // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells. Optional wie `herkunft`.
+  betreiber?: ReasonerBetreiberKarte;
   // JOB 3134: der Anbieter, auf den „auto" (und die abgelösten Werte) heute aufgelöst werden — der
   // erste eingerichtete in der Reihenfolge von REASONER_CLOUD_ANBIETER; null, wenn keiner
   // eingerichtet ist. Die Fläche zeigt ihn neben „Auto", statt ihn raten zu lassen.

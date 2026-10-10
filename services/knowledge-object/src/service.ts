@@ -17,6 +17,7 @@ import {
 // JOB 593 / Ownerentscheidung Option A: die EINE Normalform der kanonischen Anlagenkennung.
 // Sie steht in einer eigenen Datei und nicht hier, weil BEIDE Schreibränder — Anlegen und
 // Überarbeiten — sie anwenden müssen. Zwei Kopien wären zwei Wahrheiten.
+import { normalizeAnlagenkontext } from "./anlagenkontext";
 import { anlagenFelder, anlagenVon, normalizeAsset, normalizeAssets } from "./asset";
 // JOB 3076 (Q1): `isConfidential` steht hier NICHT mehr — der Speicherzweig (`buildCreatedKo`) war
 // seine einzige Verwendung in dieser Datei und benutzte es als Speicherbedingung. Die Funktion selbst
@@ -132,6 +133,7 @@ import {
   type AiCheckBasis,
   type AiCheckCoverage,
   type AiCheckCoverageSummary,
+  type AnlagenKontext,
   type Confidentiality,
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
@@ -156,6 +158,7 @@ import {
   type KoRepairNote,
   type KoSource,
   type KoStatus,
+  type KoVeroeffentlichung,
   type TrashedKo,
 } from "./types";
 
@@ -468,6 +471,9 @@ export interface CreateKoInput {
   confidence?: number;
   neededValidations?: number;
   asset?: string | null;
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext; Normalform beim
+  // Anlegen (`anlagenkontext.ts`), die Eingangsprüfung (400) steht an der Route.
+  anlagenkontext?: AnlagenKontext | null;
   // R-0082: mehrere Anlagen. Ist die Liste da, gilt SIE (auch leer = keine Anlage); sonst wird die
   // Einzelangabe `asset` zur Liste. Gespeichert wird über `anlagenFelder` (asset.ts).
   assets?: string[] | null;
@@ -2374,6 +2380,7 @@ export class KoService {
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
     // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
     const domain = normalizeDomain(input.domain);
+    const anlagenkontext = normalizeAnlagenkontext(input.anlagenkontext);
     // R-1664/R-2179: die geführten Angaben gehören allein zur Wissensart `negativwissen`.
     // R-2180: ein Fall mit Personen-, Kunden-, Produktions- oder Qualitätsbezug liegt nie unter
     // „vertraulich" — die Stufe wird angehoben, nie gesenkt (Regel in negativwissen.ts).
@@ -2430,6 +2437,8 @@ export class KoService {
       // R-0082: `assets` (kanonisch) und `asset` (Spiegel der ersten) entstehen zusammen.
       ...anlagenFelder(anlagen),
       ...(revalidierungAm ? { revalidierungAm } : {}),
+      // R-1631: nur speichern, wenn wirklich etwas angegeben ist — wie das Fachgebiet oben.
+      ...(anlagenkontext ? { anlagenkontext } : {}),
       // JOB 3076 (Q1) — DIE STUFE NUR SPEICHERN, WENN SIE JEMAND MITBRINGT. ABLÖSUNG VON SCRUM-415.
       //
       // BIS HIERHER GALT (SCRUM-415): „nur speichern, wenn tatsächlich vertraulich" — die Bedingung
@@ -3509,7 +3518,7 @@ export class KoService {
     if (!next) {
       throw new KoError(
         "INVALID_OWNERSHIP",
-        "Ungültige Eigentümerangabe — erwartet werden owner, reviewers oder validators.",
+        "Ungültige Eigentümerangabe — erwartet werden owner, ownerRole, reviewers oder validators.",
       );
     }
     return this.mutateKo(id, (ko) => {
@@ -3528,9 +3537,11 @@ export class KoService {
               // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
               payload: {
                 owner: next.owner ?? null,
+                ownerRole: next.ownerRole ?? null,
                 reviewers: next.reviewers,
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
+                previousOwnerRole: previous?.ownerRole ?? null,
               },
             },
             tx,
@@ -3621,8 +3632,11 @@ export class KoService {
         return "konflikt";
       }
       const previous = ownershipOf(ko);
+      // gesamt-dokumenterzeugung (Integration): die verantwortliche ROLLE ist eine Funktion, keine
+      // Person — sie bleibt bei der Übergabe an eine andere Person erhalten (R-0337).
       const next: KnowledgeOwnership = {
         owner: nachfolger,
+        ...(previous?.ownerRole ? { ownerRole: previous.ownerRole } : {}),
         reviewers: previous?.reviewers ?? [],
         validators: previous?.validators ?? [],
       };
@@ -3637,9 +3651,11 @@ export class KoService {
               target: id,
               payload: {
                 owner: nachfolger,
+                ownerRole: next.ownerRole ?? null,
                 reviewers: next.reviewers,
                 validators: next.validators,
                 previousOwner: previous?.owner ?? null,
+                previousOwnerRole: previous?.ownerRole ?? null,
                 ...(ko.deletedAt ? { imPapierkorb: true } : {}),
               },
             },
@@ -4023,6 +4039,141 @@ export class KoService {
         },
       };
     });
+    const beleg = geplant.beleg;
+    if (!beleg) {
+      return { ko, belegOffen: false };
+    }
+    try {
+      await this.appendEvidence(beleg);
+      return { ko, belegOffen: false };
+    } catch {
+      return { ko, belegOffen: true };
+    }
+  }
+
+  // ==============================================================================================
+  // produkt:20261007:office-artikel-editor (Plan U3) — EINE OFFICE-SPEICHERUNG WIRD EINE FASSUNG.
+  // ==============================================================================================
+  //
+  // Bis hierher gab es zwei getrennte Wege: `updateAttachment` tauscht den Inhalt OHNE Fassung,
+  // `revise` erhöht die Fassung OHNE Anhangstausch. Der eingebettete Editor braucht beides in EINEM
+  // bedingten Schritt — sonst stünde zwischen den beiden Aufrufen ein neues Dokument an einer alten,
+  // womöglich freigegebenen Fassung.
+  //
+  // DIESELBE BEDEUTUNG WIE `revise` (über `naechsteFassung`): Fassung + 1, Status `offen`, Trust 0,
+  // Bewertungen der Vorfassung zählen nicht mehr. Eine Dokumentänderung stuft den Artikel nie hoch;
+  // es gibt hier keinen Freigabeparameter. Text, Titel, Quellen und Belegstellen bleiben, wie sie sind
+  // — welche Belegstellen am alten Dokumentstand hängen, zeigt die Fläche (`objectId` der Quelle).
+  //
+  // CAS GEGEN `expectedVersion`: wer außerhalb der Editor-Sitzung geschrieben hat, bekommt `KO_STALE`
+  // und nichts wird überschrieben. Der Arbeitsstand bleibt als Objekt im Speicher.
+  //
+  // ZURÜCKHOLEN (`restoredFrom`): dieselbe Anhangskennung bekommt ein Objekt zurück, das sie früher
+  // trug. Das ist eine NEUE Fassung mit `anhangZurueckAus`; gelöscht wird nichts. Dass das Objekt wirklich
+  // ein früherer Stand GENAU DIESES Anhangs war, prüft der Dienst selbst an der append-only Belegkette
+  // (`kind: "attachment"`, geschrieben von `addAttachment` und jeder Übernahme) oder an einem
+  // Fassungs-Snapshot — über diesen Weg gerät kein fremdes Objekt an den Artikel.
+  async uebernimmOfficeFassung(
+    id: string,
+    input: {
+      anhangId: string;
+      objectId: string;
+      size: number;
+      expectedVersion: number;
+      restoredFrom?: number;
+    },
+    actor: string,
+  ): Promise<{ ko: KnowledgeObject; belegOffen: boolean }> {
+    if (input.restoredFrom !== undefined) {
+      const belegt = (await this.evidence?.listByKo(id))?.some(
+        (b) =>
+          b.kind === "attachment" &&
+          b.attachmentId === input.anhangId &&
+          b.objectId === input.objectId,
+      );
+      const imSnapshot = (await this.versions?.listByKo(id))?.some((f) =>
+        f.snapshot.attachments?.some(
+          (a) => a.id === input.anhangId && a.objectId === input.objectId,
+        ),
+      );
+      if (!belegt && !imSnapshot) {
+        throw new KoError(
+          "INVALID",
+          "Dieses Dokument war nie ein Stand dieses Anhangs; es gibt nichts zurückzuholen.",
+        );
+      }
+    }
+    const neu: { objectId: string; size: number; restoredFrom?: number } = {
+      objectId: input.objectId,
+      size: input.size,
+      ...(input.restoredFrom === undefined ? {} : { restoredFrom: input.restoredFrom }),
+    };
+    const geplant: { beleg?: Omit<EvidenceRecord, "id"> } = {};
+    const ko = await this.mutateKoTx(id, (aktuell) => {
+      this.pruefeErwarteteVersion(aktuell, input.expectedVersion);
+      const vorher = (aktuell.attachments ?? []).find((a) => a.id === input.anhangId);
+      if (!vorher?.objectId) {
+        throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+      }
+      const fassung = this.naechsteFassung(aktuell, {}, actor);
+      const version = fassung.version;
+      const nachher: KoAttachment = { ...vorher, objectId: neu.objectId, size: neu.size };
+      const updated: KnowledgeObject = {
+        ...fassung,
+        attachments: (aktuell.attachments ?? []).map((a) =>
+          a.id === input.anhangId ? nachher : a,
+        ),
+        history: fassung.history.map((eintrag) =>
+          eintrag.version === version
+            ? {
+                ...eintrag,
+                anhangGeaendert: input.anhangId,
+                ...(neu.restoredFrom === undefined ? {} : { anhangZurueckAus: neu.restoredFrom }),
+              }
+            : eintrag,
+        ),
+      };
+      geplant.beleg = {
+        koId: id,
+        koVersion: version,
+        kind: "attachment",
+        attachmentId: input.anhangId,
+        objectId: neu.objectId,
+        label: nachher.name,
+        mime: nachher.mime,
+        createdBy: actor,
+        createdAt: new Date(this.now()).toISOString(),
+      };
+      return {
+        updated,
+        value: updated,
+        snapshot: { author: actor, note: "überarbeitet" },
+        audit: async (tx?: TxContext) => {
+          await this.audit?.record(
+            { actor, action: "ko.revised", target: id, payload: { version } },
+            tx,
+          );
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.office-uebernommen",
+              target: id,
+              payload: {
+                version,
+                anhangId: input.anhangId,
+                vorherObjectId: vorher.objectId,
+                objectId: neu.objectId,
+                ...(neu.restoredFrom === undefined ? {} : { restoredFrom: neu.restoredFrom }),
+              },
+            },
+            tx,
+          );
+        },
+      };
+    });
+    // Der Beleg folgt nach der Transaktion, wie bei `updateAttachment`: scheitert er, ist die Fassung
+    // geschrieben, und die Antwort meldet `belegOffen`. Die frühere `objectId` bleibt über den
+    // Snapshot ihrer Fassung referenziert.
     const beleg = geplant.beleg;
     if (!beleg) {
       return { ko, belegOffen: false };
@@ -6435,6 +6586,34 @@ export class KoService {
     });
   }
 
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext setzen, ändern oder
+  // entfernen. Dieselbe Bauform wie `setDomain` direkt darüber (per KO serialisiert, Beleg im Audit,
+  // Rechte an der Route); der Kontext ersetzt den bisherigen VOLLSTÄNDIG. Ein leerer Kontext
+  // entfernt das Feld; ein unveränderter ändert nichts und erzeugt keinen Beleg.
+  async setAnlagenkontext(id: string, kontext: unknown, actor: string): Promise<KnowledgeObject> {
+    const nachher = normalizeAnlagenkontext(kontext);
+    return this.mutateKo(id, (ko) => {
+      const vorher = normalizeAnlagenkontext(ko.anlagenkontext);
+      if (JSON.stringify(vorher ?? null) === JSON.stringify(nachher ?? null)) {
+        return { updated: ko, value: ko };
+      }
+      const { anlagenkontext: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, anlagenkontext: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.anlagenkontext-changed",
+            target: id,
+            payload: { vorher: vorher ?? null, nachher: nachher ?? null },
+          });
+        },
+      };
+    });
+  }
+
   // aufnahme:20260922:gesamt-wissen-frische (R-0206 / R-1746): „Stimmt weiterhin" nach dem Anwenden —
   // ein Frische-Signal, KEINE neue Prüfung. Bauform wie `setDomain`: per KO serialisiert, Beleg im
   // Audit, keine neue Inhaltsversion, kein Statuswechsel. Nur geprüftes Wissen kann so bestätigt
@@ -6609,6 +6788,55 @@ export class KoService {
               action: "ko.space-changed",
               target: id,
               payload: { vorher, nachher: spaceId, version: ko.version },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // produkt:20261007:veroeffentlichungsoptionen — einen Veröffentlichungsvermerk anhängen.
+  //
+  // `bilde` bekommt das FRISCH unter dem KO-Lock gelesene Objekt und entscheidet dort, ob die
+  // Veröffentlichung zulässig ist (gültige Fassung, erwartete Version, nicht schon veröffentlicht) —
+  // es wirft sonst. Damit kann zwischen Vorschau und Schreiben weder eine Überarbeitung noch eine
+  // zweite Veröffentlichung derselben Fassung durchrutschen. Der Vermerk berührt nichts ausser
+  // `veroeffentlichungen`: Inhaltsversion, `history`, Status und Sichtbarkeitsfelder bleiben. Vermerk
+  // und Beleg `ko.veroeffentlicht` committen gemeinsam (`mutateKo`).
+  //
+  // `nachher` (Ben, Nacharbeit 11): läuft IM Belegschritt — also erst NACH der Prüfung in `bilde` und
+  // mit demselben Transaktionskontext wie Vermerk und Beleg. Mit `withTx` committen Vermerk,
+  // `nachher` und Beleg gemeinsam oder gar nicht; ohne `withTx` nimmt `mutateKo` den Vermerk zurück,
+  // wenn `nachher` oder der Beleg scheitert. Ein abgelehnter Versuch erreicht `nachher` nie.
+  async vermerkeVeroeffentlichung(
+    id: string,
+    bilde: (ko: KnowledgeObject) => KoVeroeffentlichung,
+    nachher?: (vermerk: KoVeroeffentlichung, tx?: TxContext) => Promise<void>,
+  ): Promise<{ ko: KnowledgeObject; vermerk: KoVeroeffentlichung }> {
+    return this.mutateKo(id, (ko) => {
+      const vermerk = bilde(ko);
+      const updated: KnowledgeObject = {
+        ...ko,
+        veroeffentlichungen: [...(ko.veroeffentlichungen ?? []), vermerk],
+      };
+      return {
+        updated,
+        value: { ko: updated, vermerk },
+        audit: async (tx) => {
+          await nachher?.(vermerk, tx);
+          await this.audit?.record(
+            {
+              actor: vermerk.von,
+              action: "ko.veroeffentlicht",
+              target: id,
+              payload: {
+                vermerkId: vermerk.id,
+                fassung: vermerk.fassung,
+                art: vermerk.art,
+                meldung: vermerk.meldung,
+                empfaenger: vermerk.empfaenger,
+              },
             },
             tx,
           );
