@@ -66,6 +66,12 @@
 //   · Markup in Zeichenketten (`innerHTML`, Template-Strings) gilt als Prosa — ein `<dialog>`, das
 //     erst zur Laufzeit aus einer Zeichenkette entsteht, ist kein Kandidat.
 //   · `role={variable}` bzw. eine `role` ohne wörtliches "dialog"/"alertdialog" fällt durch.
+//     Register A17b hebt das für JSX-`role`, `setAttribute("role", …)` und Props-Objekte auf: der
+//     Wert wird am Syntaxbaum ausgewertet (Verkettung, Konstanten, Parameter-Typen), ein nicht
+//     bestimmbarer Wert ist als unbekannte Bauform rot (`statischeWerte`, `unbekannteBauformen`,
+//     Belege in `tests/app/modalgrenze-abweichende-bauformen.test.ts`). `x.role = …` und `role`
+//     an sonstigen Objekten melden nur bestimmte Dialogwerte — dort ist `role` meist die
+//     Benutzerrolle.
 //   · Modalität GANZ OHNE Marker IN DER EIGENEN DATEI bleibt für die Kandidatenerhebung unsichtbar:
 //     `apps/web/src/components/Modal.tsx`, die Command-Palette und das Studio tragen selbst kein
 //     `<dialog>`, keine `role`, kein `aria-modal`. Seit R-0909 (Aufnahme `gesamt-dialog-bedienung`)
