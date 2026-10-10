@@ -280,9 +280,12 @@ export type KoAction =
       widerspruch?: { koB: string; type: ConflictType; description: string };
       // R-0238 · Nacharbeit 8: nur die fehlenden Konfliktschritte, ohne neue Bewertung.
       fortsetzungFuerFassung?: number;
+      // ADMIN-09: die geprüfte Fassung. In einem Space mit Freigaberegel Pflicht für die
+      // Zustimmung; hat sich die Fassung bewegt, antwortet der Server 409 `KO_STALE`.
+      expectedVersion?: number;
     }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
-  | { action: "admin-validate"; duplicateAcknowledged?: true }
+  | { action: "admin-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
@@ -399,7 +402,8 @@ export type KoAction =
   // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
   | { action: "ownership-release" }
   // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
-  | { action: "owner-validate"; duplicateAcknowledged?: true }
+  // ADMIN-09: `expectedVersion` = die geprüfte Fassung (in Spaces mit Freigaberegel Pflicht).
+  | { action: "owner-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet

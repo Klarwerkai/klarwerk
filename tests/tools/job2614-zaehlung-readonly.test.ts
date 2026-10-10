@@ -10,8 +10,16 @@ import type { Pool } from "pg";
 //       projektionsabhängigen Statements ab.
 //   R3  Fehlt die Projektionstabelle (älterer Bestand), gilt ehrlich: betroffen = alle mit
 //       bodyHtml — und KEIN projektionsabhängiges Statement wird abgesetzt.
+//   R4  (R-1410, BEFUND 19) Fassungsschutz: jede Betroffenen-Frage verlangt die GELTENDE
+//       Projektionsfassung — eine Altfassungszeile mit Text gilt nicht als versorgt.
+//   R5  (R-1410) Schreibschutz auf Sitzungsebene: der Pool öffnet jede Transaktion read-only.
 import { describe, expect, it } from "vitest";
-import { BODYTEXT_ZAEHLUNG_SQL, zaehlen } from "../../tools/bodytext-zaehlung";
+import { SEARCH_PROJECTION_VERSION } from "../../services/knowledge-object";
+import {
+  BODYTEXT_ZAEHLUNG_SQL,
+  ZAEHLUNG_POOL_OPTIONEN,
+  zaehlen,
+} from "../../tools/bodytext-zaehlung";
 
 function fakePool(antworten: (sql: string) => { rows: unknown[] }) {
   const calls: string[] = [];
@@ -107,5 +115,21 @@ describe("JOB 2614 · D4 · Zählung: read-only, richtige Fragen, ehrlicher Altb
       BODYTEXT_ZAEHLUNG_SQL.gesamt,
       BODYTEXT_ZAEHLUNG_SQL.mitBodyHtml,
     ]);
+  });
+
+  it("R4 — Fassungsschutz: jede Betroffenen-Frage verlangt die geltende Projektionsfassung", () => {
+    const fragen = [
+      BODYTEXT_ZAEHLUNG_SQL.betroffen,
+      BODYTEXT_ZAEHLUNG_SQL.betroffeneNachStatus,
+      BODYTEXT_ZAEHLUNG_SQL.betroffeneOhneStufe,
+    ];
+    for (const sql of fragen) {
+      expect(sql).toContain(`p.projection_version = ${SEARCH_PROJECTION_VERSION}`);
+    }
+  });
+
+  it("R5 — Schreibschutz auf Sitzungsebene: jede Transaktion des Pools ist read-only", () => {
+    expect(ZAEHLUNG_POOL_OPTIONEN.options).toBe("-c default_transaction_read_only=on");
+    expect(ZAEHLUNG_POOL_OPTIONEN.max).toBe(1);
   });
 });

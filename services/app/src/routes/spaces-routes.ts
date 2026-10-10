@@ -72,6 +72,12 @@ export interface SpacesRouteDienste {
   pruefzustaendigkeit?: {
     abgleichen: (koId: string, akteur: string) => Promise<string[] | undefined>;
   };
+  /**
+   * ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl an
+   * Zustimmungen für seinen laufenden Vorgang sofort (`FreigabeRegelDienst.anwenden`). Scheitert es,
+   * holt die nächste Entscheidung es serverseitig nach.
+   */
+  freigaberegelAnwenden?: (koId: string, akteur: string) => Promise<void>;
 }
 
 /** Eine Zeile in einer Space- oder Ansichtsliste: dasselbe Objekt, keine Kopie. */
@@ -570,6 +576,9 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           geaendertAm: jetzt().toISOString(),
           archiviert: false,
           vorgang: "geaendert",
+          // ADMIN-09: die Freigaberegel hat ihren eigenen Pflegeweg mit Wirkungsvorschau
+          // (`freigaberegeln-routes.ts`); die Spacepflege reicht sie unverändert weiter.
+          ...(aktuell.freigabe ? { freigabe: aktuell.freigabe } : {}),
         };
         const gelegt = gesehen === aktuell.version && (await dienste.spaces.lege(fassung));
         if (!gelegt) {
@@ -815,6 +824,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
             pruefzuweisung = "fehlgeschlagen";
           }
         }
+        await dienste.freigaberegelAnwenden?.(nachher.id, user.id).catch((fehlerWert) => {
+          request.log.warn(
+            { err: fehlerWert, event: "freigaberegel" },
+            "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
+          );
+        });
         reply.code(200).send({
           koId: nachher.id,
           version: nachher.version,
@@ -1123,6 +1138,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
             request.log.warn(
               { err: fehlerWert, event: "pruefzustaendigkeit" },
               "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
+            );
+          });
+          await dienste.freigaberegelAnwenden?.(z.koId, user.id).catch((fehlerWert) => {
+            request.log.warn(
+              { err: fehlerWert, event: "freigaberegel" },
+              "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
             );
           });
         } catch (e) {

@@ -29,12 +29,20 @@ export interface Assignment {
    * Nur solche OFFENEN Zuweisungen gleicht `verzeichnisAbgleichen` mit dem Gruppenstand ab; ohne
    * Feld ist die Zuweisung von Hand (oder beim Einreichen) entstanden und bleibt unberührt.
    */
-  quelle?: "verzeichnis";
+  /**
+   * ADMIN-09: „vertretung" = eine Vertretungsaufgabe aus der Freigaberegel eines Space
+   * (`vertretungZuweisen`). `vertretungFuer` nennt die vertretene Prüferin, `seit` den Zeitpunkt
+   * der Zuweisung. Der Verzeichnisabgleich lässt diese Zuweisungen unberührt.
+   */
+  quelle?: "verzeichnis" | "vertretung";
+  vertretungFuer?: string;
+  seit?: string;
 }
 
 // SCRUM-395: INVALID_DEFAULT = ungültige Standard-Prüferanzahl (Admin-Einstellung).
 // R-0507: NOT_OWNER = die Eigentümerfreigabe verlangt den benannten Eigentümer (an der Route 403).
-export type ValidationErrorCode = "NOT_FOUND" | "INVALID_DEFAULT" | "NOT_OWNER";
+// ADMIN-09: KO_STALE = die Entscheidung nennt eine Fassung, die nicht mehr die aktuelle ist.
+export type ValidationErrorCode = "NOT_FOUND" | "INVALID_DEFAULT" | "NOT_OWNER" | "KO_STALE";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

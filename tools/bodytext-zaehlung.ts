@@ -17,11 +17,29 @@
 // KEINE Projektionszeile mit gefuelltem `body_text` existiert — das deckt alle drei Sorten
 // (ohne Zeile · Fassung 1 · geltende Fassung mit leerem Text) in EINER Zahl ab.
 //
+// R-1410 (BEFUND 19, „Zählung ohne Absicherung") — drei Absicherungen der Gegenprobe:
+//   - FASSUNGSSCHUTZ: eine Zeile zählt nur in der GELTENDEN Projektionsfassung als versorgt — dieselbe
+//     Grenze wie `zaehleBetroffene` (Sorte „Fassung alt"). Ohne sie hielte die Zählung eine
+//     Altfassungszeile mit Text für erledigt, die das Nachziehwerkzeug als betroffen meldet.
+//   - SCHREIBSCHUTZ AUF SITZUNGSEBENE: `default_transaction_read_only=on` — auch ein künftig
+//     versehentlich ergänztes Schreib-Statement scheitert an der Datenbank, nicht erst am Test R1.
+//   - FÄNGER: ein Abbruch endet mit EINER Zeile und Exit 2 statt einer unbehandelten Zurückweisung.
+//
 // Aufruf (Pedi/Chef):
 //   KLARWERK_DB_URL='postgres://…' tools/bodytext-zaehlung.sh
 
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
+import { SEARCH_PROJECTION_VERSION } from "../services/knowledge-object";
+
+// Eine Zahl aus dem Produktcode, kein Eingabewert — die Einbettung ins SQL ist deshalb unbedenklich.
+const GELTENDE_FASSUNG: number = SEARCH_PROJECTION_VERSION;
+
+/** Pool-Optionen der Zählung: eine Verbindung, jede Transaktion read-only. */
+export const ZAEHLUNG_POOL_OPTIONEN = {
+  max: 1,
+  options: "-c default_transaction_read_only=on",
+} as const;
 
 export const BODYTEXT_ZAEHLUNG_SQL = {
   // Existiert die Projektionstabelle ueberhaupt? (Aeltere Bestaende: nein → alles Betroffene.)
@@ -38,6 +56,7 @@ export const BODYTEXT_ZAEHLUNG_SQL = {
         SELECT 1 FROM ko_search_projections p
         WHERE p.ko_id = k.id
           AND p.ko_version = coalesce(nullif(k.data->>'version','')::int, 1)
+          AND p.projection_version = ${GELTENDE_FASSUNG}
           AND coalesce(p.body_text,'') <> ''
       )`,
   // Kontext fuer die Reihenfolgefalle (BASIC3 §3): Pruefstand und Stufe der Betroffenen — nur
@@ -49,6 +68,7 @@ export const BODYTEXT_ZAEHLUNG_SQL = {
         SELECT 1 FROM ko_search_projections p
         WHERE p.ko_id = k.id
           AND p.ko_version = coalesce(nullif(k.data->>'version','')::int, 1)
+          AND p.projection_version = ${GELTENDE_FASSUNG}
           AND coalesce(p.body_text,'') <> ''
       )
     GROUP BY k.status ORDER BY k.status`,
@@ -60,6 +80,7 @@ export const BODYTEXT_ZAEHLUNG_SQL = {
         SELECT 1 FROM ko_search_projections p
         WHERE p.ko_id = k.id
           AND p.ko_version = coalesce(nullif(k.data->>'version','')::int, 1)
+          AND p.projection_version = ${GELTENDE_FASSUNG}
           AND coalesce(p.body_text,'') <> ''
       )`,
   inventur: `SELECT p.projection_version, count(*)::int AS n
@@ -119,7 +140,7 @@ async function main(): Promise<void> {
     process.exitCode = 2;
     return;
   }
-  const pool = new Pool({ connectionString: url, max: 1 });
+  const pool = new Pool({ connectionString: url, ...ZAEHLUNG_POOL_OPTIONEN });
   try {
     const b = await zaehlen(pool);
     process.stdout.write(
@@ -145,5 +166,10 @@ async function main(): Promise<void> {
 const invokedDirectly =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
-  void main();
+  // Fänger nach dem Muster von tools/bodytext-nachziehen.ts: EINE Zeile, Exit 2.
+  main().catch((fehler: unknown) => {
+    const text = fehler instanceof Error ? `${fehler.name}: ${fehler.message}` : String(fehler);
+    process.stderr.write(`[bodytext-zaehlung] Abbruch: ${text.replace(/\s*\n\s*/g, " · ")}\n`);
+    process.exitCode = 2;
+  });
 }
