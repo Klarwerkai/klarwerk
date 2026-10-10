@@ -34,6 +34,7 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import { meldeErgebnis } from "../../apps/web/src/components/assistenz/ausdruck";
 import { setzeKlaraVorschauAktiv } from "../../apps/web/src/components/klara-vorschau/aktiv";
 import { zuruecksetzenGanz } from "../../apps/web/src/components/klara-vorschau/zustand";
 import i18n from "../../apps/web/src/i18n";
@@ -240,6 +241,7 @@ beforeEach(async () => {
   sessionStorage.clear();
   zuruecksetzenGanz();
   verwerfeAssistenzProfil();
+  meldeErgebnis(null);
   setzeKlaraVorschauAktiv(true);
   medienStub();
   Element.prototype.scrollIntoView = () => {};
@@ -362,6 +364,9 @@ describe("E2/E3 · Meine Assistenz: Abbrechen, einzeln ändern, Bewegung, Speich
     expect(await profil(adaCookie)).toMatchObject({ name: "Mia", avatar: "fuchs" });
     await bis(() => q(document, "klara-avatar")?.getAttribute("src") === BILD("fuchs"));
     expect(q(document, "klara-avatar")?.getAttribute("src")).toBe(BILD("fuchs"));
+    // Zustand aus dem echten Ereignis: bestätigtes Speichern = Freude (expressives Motiv).
+    expect(f.getAttribute("data-zustand")).toBe("freude");
+    expect(f.getAttribute("data-stil")).toBe("expressiv");
 
     // Bewegung reduzieren: am Konto gespeichert, an der Figur wirksam.
     await klick(q(document, "assistenz-bewegung"));
@@ -380,6 +385,9 @@ describe("E2/E3 · Meine Assistenz: Abbrechen, einzeln ändern, Bewegung, Speich
     expect(namensfeld().value).toBe("Kai");
     expect(await profil(adaCookie)).toMatchObject({ name: "Mia" });
     expect(f.getAttribute("aria-label")).toBe("Mia – Gespräch öffnen oder schließen");
+    // Tatsächlich fehlgeschlagen: Fehlerzustand mit Text an der Figur.
+    expect(f.getAttribute("data-zustand")).toBe("fehler");
+    expect(q(document, "klara-figur-zustand")?.textContent).toContain("Fehlgeschlagen");
     // Die übrige Anwendung bleibt bedienbar: die Figur öffnet weiter ihr Gespräch.
     await klick(f);
     await bis(() => Boolean(q(document, "klara-gespraech")));
@@ -397,6 +405,8 @@ describe("E2/E3 · Meine Assistenz: Abbrechen, einzeln ändern, Bewegung, Speich
     await bis(() => Boolean(q(document, "assistenz-speicherfehler")));
     await klick(q(document, "assistenz-abbrechen"));
     expect(q(document, "assistenz-speicherfehler")).toBeNull();
+    // Abbrechen beendet den Fehlerzustand der Figur.
+    expect(f.getAttribute("data-zustand")).not.toBe("fehler");
     expect(namensfeld().value).toBe("Kai");
     expect(await profil(adaCookie)).toMatchObject({ name: "Kai" });
   });
@@ -426,6 +436,36 @@ describe("E4 · ein nicht mehr angebotenes Motiv: Ersatzgrafik mit Hinweis, Name
     await klick(f);
     await bis(() => Boolean(q(document, "klara-avatar-fehlt")));
     expect(q(document, "klara-avatar-fehlt")?.textContent).toContain("dein Name bleibt erhalten");
+  });
+});
+
+describe("E6 · klassischer Hilfeknopf ohne festen Produktnamen (K6)", () => {
+  it("ohne Profil neutral „Assistenz“/„Deine Assistenz“, mit Profil der persönliche Name", async () => {
+    setzeKlaraVorschauAktiv(false);
+    await montiere("/start", createElement("div", { "data-testid": "leere-seite" }));
+    // Der klassische Hilfeknopf (`KlaraAssistant`) — an seiner Beschriftung „… — Hilfe zu dieser Seite“.
+    const knopf = (): HTMLButtonElement | null =>
+      document.querySelector<HTMLButtonElement>(
+        'button[data-klara="1"][aria-label$="— Hilfe zu dieser Seite"]',
+      );
+    await bis(() => Boolean(knopf()), 160);
+    expect(knopf()?.getAttribute("aria-label")).toBe("Assistenz öffnen — Hilfe zu dieser Seite");
+    expect(knopf()?.getAttribute("title")).toBe("Assistenz öffnen — Hilfe zu dieser Seite");
+    await klick(knopf());
+    const flaeche = document.querySelector('section[data-klara="1"][aria-label]');
+    expect(flaeche?.getAttribute("aria-label")).toBe("Deine Assistenz");
+    abbauen();
+
+    await draht("PUT", "/api/me/assistenz", adaCookie, {
+      name: "Mia",
+      avatar: "eule",
+      einrichtungAbschliessen: true,
+      fassung: 0,
+    });
+    verwerfeAssistenzProfil();
+    await montiere("/start", createElement("div", { "data-testid": "leere-seite" }));
+    await bis(() => knopf()?.getAttribute("aria-label")?.startsWith("Mia") ?? false, 160);
+    expect(knopf()?.getAttribute("aria-label")).toBe("Mia öffnen — Hilfe zu dieser Seite");
   });
 });
 

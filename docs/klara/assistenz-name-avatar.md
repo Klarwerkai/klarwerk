@@ -51,12 +51,41 @@ Prüfsumme, keine Kopie). Die zwölf neuen Basisbilder gehören nach
 `tests/assistenz-profil/bildpaket.test.ts` wird rot. Eine gespeicherte Kennung, die nicht mehr
 angeboten wird, zeigt dieselbe Ersatzgrafik mit Hinweis; der Name bleibt.
 
+## Zustände der Figur
+
+Vorgabe: `ANIMATIONSZUSTAENDE.json` des Bildpakets. Die Figur trägt einen von neun Zuständen
+(`data-zustand`), abgeleitet allein aus echten Ereignissen (`components/assistenz/ausdruck.ts`):
+
+| Zustand | Auslöser im Produkt | Ende |
+| --- | --- | --- |
+| bereit | nichts läuft | neue Aktion |
+| warten | Anfrage gesendet, Antwort steht aus | Antwort, Fehler, Stopp |
+| nachdenken | nur bei gemeldeter laufender Verarbeitung — der Frageweg meldet heute keine solche Phase, der Zustand wird deshalb nicht angezeigt | — |
+| zuhören | Spracherkennung tatsächlich aktiv („Diktieren“/„Auftrag sprechen“) | Aufnahme endet oder wird gestoppt |
+| sprechen | Vorlesen spielt tatsächlich ab | Vorlesen endet oder wird gestoppt |
+| ratlos | Entscheidung bzw. Rückfrage der Person nötig | Person entscheidet |
+| freude | Antwort beantwortet und gespeichert, Profil gespeichert | nach 2,4 s von selbst |
+| fehler | Anfrage oder Speichern fehlgeschlagen | Wiederholen, Abbrechen, neue Aktion |
+| pause | Figur verkleinert, Anfrage gestoppt | neue Aktion, Öffnen |
+
+Darstellung (`index.css`) nach `style_variants`: „expressiv“ (Original, Lichtwesen, Roboter, Eule,
+Fuchs, Pinguin, Wolke, Kompass) mit kleinen Gesten der Figur — Atmen, Schweben, Neigen, Nicken,
+Sprechbewegung, einmaliges Kippen, kurzer Hüpfer, Absinken; „zurückhaltend“ (Prisma, Wissensbuch,
+Verbindungsknoten, Monolith, Leuchtkreis) nur mit Lichtpuls, wanderndem Licht, Signalmodulation,
+einmaliger Neigung und Aufhellen, Fehler und Pause gedimmt und still. Bei reduzierter Bewegung (System
+oder „Bewegung reduzieren“) bleibt ein statischer Ausdruck; jeder Zustand steht zusätzlich als Text
+an der Figur bzw. in der vorgelesenen Beschreibung.
+
 ## Grenzen
 
-- Die bisherigen Zustandsanimationen (Anfrage läuft, Antwort bereit) gelten für alle Motive; eigene
-  emotionale Animationsdateien je Motiv sind nicht Teil dieser Lieferung.
-- Der klassische Hilfeknopf (ohne eingeschaltete bewegliche Assistenz) zeigt den persönlichen Namen,
-  sobald einer gespeichert ist; ohne Namen behält er seine bisherigen, eingefrorenen Grundtexte.
+- Die Zustände bewegen und belichten die gelieferten Standbilder. Mimik im Bild (Blinzeln,
+  Mund-/Schnabelbewegung, Brauen) setzt eigene Animationsdateien je Motiv voraus; das Bildpaket
+  enthält keine („animation files not delivered“, MANIFEST.json).
+- „Nachdenken“ ist angelegt, aber ohne Auslöser: der Frageweg meldet keine eigene
+  Verarbeitungsphase. Zuhören und Sprechen hängen an den vorhandenen Browserfunktionen
+  (Spracherkennung, Sprachausgabe); ohne sie treten diese Zustände nicht auf.
+- Der klassische Hilfeknopf heißt ohne gespeicherten Namen neutral „Assistenz öffnen — Hilfe zu
+  dieser Seite“ bzw. „Deine Assistenz“, mit Profil trägt er den persönlichen Namen.
 
 ## Prüfungen
 
@@ -64,6 +93,7 @@ angeboten wird, zeigt dieselbe Ersatzgrafik mit Hinweis; der Name bleibt.
   Konten, zweite Sitzung, Fremdkonto, Konflikt, Gespräche unverändert, Prüfprotokoll).
 - `tests/assistenz-profil/profil-pg.integration.test.ts` — PostgreSQL (Neustart, zwei Konten, Konflikt).
 - `tests/assistenz-profil/katalog.test.ts`, `bildpaket.test.ts` — Motive, Original, Texte.
+- `tests/assistenz-profil/ausdruck.test.ts` — die neun Zustände: Auslöser, Vorrang, Ende, Stil.
 - `tests/assistenz-profil/assistenz-mounted.test.tsx` — echte Hülle und Profilseite gegen den Server.
 - `tests-smoke/assistenz-name-avatar-browser.spec.ts` — Bedienbeleg in Chromium (Desktop,
   390 × 844, Tastatur, Speicherfehler, zwei Konten, zweites Gerät, Fremdkonto).

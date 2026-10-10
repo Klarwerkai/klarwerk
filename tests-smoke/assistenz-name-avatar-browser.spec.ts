@@ -122,6 +122,13 @@ async function motivAnFigur(page: Page, testId: string, id: string): Promise<voi
   }
 }
 
+/** Die tatsächlich laufende CSS-Animation am Motiv der Figur (`none` = still). */
+async function motivAnimation(page: Page): Promise<string> {
+  return figur(page)
+    .locator(".klara-motiv")
+    .evaluate((el) => getComputedStyle(el).animationName);
+}
+
 /** Liegt `innen` vollständig in `aussen`? (Vorschau nicht abgeschnitten) */
 async function liegtInnen(innen: Locator, aussen: Locator): Promise<boolean> {
   const a = await aussen.boundingBox();
@@ -178,11 +185,11 @@ test("Assistenz · Erstanmeldung → Name/Avatar → Speichern → Neuladen → 
   expect(gespeichert).toBe(0);
   await beleg(p, info, "2 Feldprüfung ohne Name und Motiv");
 
-  // Dreizehn Motive in zwei Gruppen, das Original vorn.
+  // Dreizehn Motive in zwei Gruppen nach dem Manifest (Kompass ist „expressiv“), das Original vorn.
   await expect(p.locator('[data-avatar-gruppe="ausdrucksstark"] input[type="radio"]')).toHaveCount(
-    7,
+    8,
   );
-  await expect(p.locator('[data-avatar-gruppe="sachlich"] input[type="radio"]')).toHaveCount(6);
+  await expect(p.locator('[data-avatar-gruppe="sachlich"] input[type="radio"]')).toHaveCount(5);
   await expect(motiv(p, "original")).toBeVisible();
   await expect(auswahl(p, "Original")).toHaveCount(1);
 
@@ -200,6 +207,18 @@ test("Assistenz · Erstanmeldung → Name/Avatar → Speichern → Neuladen → 
   // Bildpaket-Sonde unten (K15); hier geht es um die Wahl am Konto und ihre Anzeige.
   await motivAnFigur(p, "klara-avatar", "eule");
   expect((await profilAmServer(p)).profil).toMatchObject({ name: "Mia", avatar: "eule" });
+
+  // Zustandswechsel aus einem echten Ereignis (ANIMATIONSZUSTAENDE.json): das bestätigte Speichern
+  // ist Freude — kurz, mit dem Hüpfer des expressiven Stils —, danach von selbst wieder Bereit.
+  await expect(figur(p)).toHaveAttribute("data-stil", "expressiv");
+  await expect(figur(p)).toHaveAttribute("data-zustand", "freude");
+  expect(await motivAnimation(p)).toBe("kw-assistenz-huepfer");
+  await expect(p.getByTestId("klara-figur-zustand")).toHaveText("Erledigt");
+  await beleg(p, info, "3a Zustand Freude nach bestätigtem Speichern");
+  await expect(figur(p)).toHaveAttribute("data-zustand", "bereit", { timeout: 6_000 });
+  expect(await motivAnimation(p)).toBe("kw-assistenz-atmen");
+  await expect(p.getByTestId("klara-figur-zustand")).toHaveCount(0);
+
   await figur(p).click();
   await expect(kopf(p, "Mia")).toBeVisible();
   await beleg(p, info, "3 gespeichert: Figur und Gesprächskopf mit Name und Motiv");
@@ -315,12 +334,18 @@ test("Assistenz · Meine Assistenz: Abbrechen, nur Motiv, Speicherfehler mit Wie
   const fehler = p.getByTestId("assistenz-speicherfehler");
   await expect(fehler).toBeVisible();
   await expect(fehler).toContainText("Nicht gespeichert");
+  // Tatsächlich fehlgeschlagen: die Figur zeigt den Fehlerzustand samt Text, bis wiederholt wird.
+  await expect(figur(p)).toHaveAttribute("data-zustand", "fehler");
+  await expect(p.getByTestId("klara-figur-zustand")).toContainText("Fehlgeschlagen");
   await expect(p.getByTestId("assistenz-name")).toHaveValue("Kai");
   await expect(figur(p)).toHaveAttribute("aria-label", "Mia – Gespräch öffnen oder schließen");
   expect((await profilAmServer(p)).profil).toMatchObject({ name: "Mia" });
   await beleg(p, info, "6 Speicherfehler: Eingabe bleibt, Wiederholen und Abbrechen");
   await p.getByTestId("assistenz-wiederholen").click();
   await expect(fehler).toHaveCount(0);
+  // Wiederholen gelingt: der Fehler endet, kurze Freude, danach Bereit.
+  await expect(figur(p)).not.toHaveAttribute("data-zustand", "fehler");
+  await expect(figur(p)).toHaveAttribute("data-zustand", "bereit", { timeout: 6_000 });
   await expect(figur(p)).toHaveAttribute("aria-label", "Kai – Gespräch öffnen oder schließen");
   await expect(kopf(p, "Kai")).toBeVisible();
   expect((await profilAmServer(p)).profil).toMatchObject({ name: "Kai", avatar: "fuchs" });
@@ -395,6 +420,11 @@ test("Assistenz · 390 × 844, reduzierte Bewegung, nur Tastatur: Fokus sichtbar
     "aria-label",
     "Nordlicht – Gespräch öffnen oder schließen",
   );
+  // Reduzierte Bewegung: der Zustand wechselt trotzdem (Freude steht als Text da), das Motiv bleibt
+  // aber still — kein Hüpfer, keine Dauerschleife.
+  await expect(figur(p)).toHaveAttribute("data-zustand", "freude");
+  await expect(p.getByTestId("klara-figur-zustand")).toHaveText("Erledigt");
+  expect(await motivAnimation(p)).toBe("none");
   // Die Figur bleibt im Bild und bedienbar.
   await figur(p).focus();
   await p.keyboard.press("Enter");

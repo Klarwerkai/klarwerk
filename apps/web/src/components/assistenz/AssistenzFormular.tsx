@@ -29,6 +29,7 @@ import {
 import { Button, TextInput } from "../ui";
 import { AvatarAuswahl } from "./AvatarAuswahl";
 import { AvatarBild } from "./AvatarBild";
+import { meldeErgebnis } from "./ausdruck";
 
 interface Eingabe {
   name: string;
@@ -148,11 +149,15 @@ export function AssistenzFormular({
     }
     setLaeuft(true);
     setSpeicherFehler(null);
+    // Neue Aktion: ein früherer Fehler- oder Freudezustand der Figur endet hier.
+    meldeErgebnis(null);
     try {
       const antwort = await assistenzProfilApi.speichern(teil);
       // Erst der Aufrufer (er zeigt das Ergebnis), dann der bestätigte Stand für alle Flächen.
       onGespeichert?.(antwort);
       bestaetigeAssistenzProfil(user.id, antwort);
+      // Bestätigter Erfolg einer bewusst angestossenen Aktion: kurze Freude der Figur.
+      meldeErgebnis("freude");
       setBeruehrt(false);
       setGeprueft(false);
       const p = antwort.profil;
@@ -170,6 +175,8 @@ export function AssistenzFormular({
           ? fehler.message
           : t("assistenz.speichern.netz");
       setSpeicherFehler(t("assistenz.speichern.fehler", { grund }));
+      // Tatsächlich fehlgeschlagen: die Figur zeigt den Fehlerzustand bis Wiederholen/Abbrechen.
+      meldeErgebnis("fehler");
       // Ein Konflikt heisst: der bestätigte Stand ist veraltet — neu lesen, Eingabe behalten.
       if (fehler instanceof ApiError && fehler.status === 409) {
         void ladeAssistenzProfil(user.id);
@@ -180,6 +187,9 @@ export function AssistenzFormular({
   };
 
   const abbrechen = (): void => {
+    if (speicherFehler) {
+      meldeErgebnis(null);
+    }
     setSpeicherFehler(null);
     setGeprueft(false);
     setBeruehrt(false);

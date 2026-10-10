@@ -71,9 +71,10 @@ describe("M2 · nur die freigegebenen Motive, gruppiert, Original leicht auffind
       "fuchs",
       "pinguin",
       "wolke",
+      // Nach `style_variants` des gelieferten Manifests ist der Kompass „expressiv“.
+      "kompass",
     ]);
     expect(gruppe("sachlich").map((m) => m.id)).toEqual([
-      "kompass",
       "prisma",
       "wissensbuch",
       "verbindungsknoten",

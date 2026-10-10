@@ -82,13 +82,12 @@ function KlaraResult({
 
 export function KlaraAssistant(): JSX.Element {
   const { t, i18n } = useTranslation();
-  // produkt:20261010:assistenz-name-avatar: Öffnen-Hilfe, Tooltip und Kopf tragen den persönlichen
-  // Namen. Ohne gespeicherten Namen bleiben die bisherigen (eingefrorenen) Grundtexte stehen.
-  const { name: assistenzName } = useAssistenzAnzeige();
-  const oeffnenText = assistenzName
-    ? t("assistenz.hilfe.oeffnen", { assistenz: assistenzName })
-    : t("klara.open");
-  const titelText = assistenzName ?? t("klara.title");
+  // produkt:20261010:assistenz-name-avatar (K6): Öffnen-Hilfe, Tooltip, zugängliche Beschriftung und
+  // Kopf tragen den persönlichen Namen — ohne gespeicherten Namen neutral „Assistenz“ bzw. „Deine
+  // Assistenz“, nie ein fester Produktname. (Die eingefrorenen Grundtexte `klara.open`/`klara.title`
+  // bleiben im Wörterbuch unverändert stehen, werden hier aber nicht mehr verwendet.)
+  const { anzeigename, titel: titelText } = useAssistenzAnzeige();
+  const oeffnenText = t("assistenz.hilfe.oeffnen", { assistenz: anzeigename });
   const location = useLocation();
   const [open, setOpen] = useState(false);
   // R-0942: Klara ist eine aufklappende Fläche, kein sperrendes Fenster. Der Auslöser meldet seinen

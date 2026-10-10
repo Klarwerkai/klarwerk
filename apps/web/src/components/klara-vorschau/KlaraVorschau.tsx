@@ -47,6 +47,7 @@ import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
 // produkt:20261010:assistenz-name-avatar: Name, Motiv und Bewegung aus dem persönlichen Profil.
+import { animationsStil } from "../../lib/assistenzAvatare";
 import { useAssistenzAnzeige, useAssistenzT } from "../../lib/assistenzProfil";
 import { internerPfad } from "../../lib/internerPfad";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
@@ -55,6 +56,8 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
 import { AvatarBild } from "../assistenz/AvatarBild";
+// produkt:20261010:assistenz-name-avatar: die neun Zustände der Figur aus echten Ereignissen.
+import { ermittleZustand, meldeErgebnis, useLetztesErgebnis } from "../assistenz/ausdruck";
 import {
   meldeFlaeche,
   useAndereFlaecheOffen,
@@ -110,7 +113,12 @@ import {
   seitenErklaerung,
 } from "./kontext";
 import { auftrittAus, useAssistenzProfil } from "./profil";
-import { leseVorlesen, stoppeVorlesen, vorlesen as vorlesenStarten } from "./vorlesen";
+import {
+  leseVorlesen,
+  stoppeVorlesen,
+  useKlaraVorlesen,
+  vorlesen as vorlesenStarten,
+} from "./vorlesen";
 import {
   type Aktion,
   type Bezug,
@@ -1154,6 +1162,8 @@ export function KlaraVorschau({
     if (lageRef.current) {
       pausieren();
     }
+    // Eine neue Aktion beendet Fehler-, Pause- und Freudezustand der Figur.
+    meldeErgebnis(null);
     aendere((alt) => ({ ...alt, status: "laeuft" }));
     const sprache = toReasonerLocale(i18n.language);
     const z0 = leseZustand();
@@ -1198,6 +1208,11 @@ export function KlaraVorschau({
           return { stand: "nicht_gesendet", antwort: null };
         }
         aendere((alt) => ({ ...alt, status: "antwort" }));
+        // Das tatsächliche Ergebnis für den Ausdruck der Figur: beantwortet = Freude (kurz),
+        // gestoppt = Pause, fehlgeschlagen = Fehler (bis zur nächsten Aktion).
+        meldeErgebnis(
+          stand === "beantwortet" ? "freude" : stand === "abgebrochen" ? "pause" : "fehler",
+        );
         setAnsage(t(`klaragespraech.ansage.${stand}`));
         const letzte = [...leseEcht().nachrichten].reverse().find((n) => n.von === "klara");
         const antwort = letzte?.text ?? null;
@@ -1308,6 +1323,26 @@ export function KlaraVorschau({
   }, [panelSichtbar, aufnahmeAbbrechen]);
 
   // ---------------------------------------------------------------------------------------------
+  // produkt:20261010:assistenz-name-avatar — der Zustand der Figur (ANIMATIONSZUSTAENDE.json), nur
+  // aus echten Ereignissen: Mikrofon aktiv, Sprachausgabe spielt, Anfrage läuft, Entscheidung nötig,
+  // Ergebnis des letzten Vorgangs, verkleinert. „Nachdenken" bleibt aus — der Frageweg meldet keine
+  // eigene Verarbeitungsphase (`ausdruck.ts`).
+  // ---------------------------------------------------------------------------------------------
+  const vorleseLage = useKlaraVorlesen();
+  const letztesErgebnis = useLetztesErgebnis();
+  const figurZustand = ermittleZustand({
+    minimiert: z.minimiert,
+    hoertZu: sprechen.laeuft !== null,
+    spricht: vorleseLage.liest !== null,
+    laeuft: z.status === "laeuft",
+    verarbeitet: false,
+    rueckfrage: z.status === "entscheidung",
+    ergebnis: letztesErgebnis,
+    jetzt: Date.now(),
+  });
+  const figurStil = animationsStil(assistenz.motiv);
+
+  // ---------------------------------------------------------------------------------------------
   // Vollbild, Ende der Vorschau.
   // ---------------------------------------------------------------------------------------------
   const vollbildUmschalten = (): void => {
@@ -1408,6 +1443,8 @@ export function KlaraVorschau({
           data-geparkt={z.geparkt ? String(z.geparkt.absatz) : ""}
           data-ablage={ablage ? "true" : "false"}
           data-bewegung={assistenz.bewegungReduziert ? "reduziert" : "standard"}
+          data-zustand={figurZustand}
+          data-stil={figurStil}
           aria-label={figurLabel}
           aria-expanded={panelSichtbar}
           aria-describedby={hinweisId}
@@ -1433,7 +1470,7 @@ export function KlaraVorschau({
             width={groesse}
             height={groesse}
             testId="klara-avatar"
-            className="pointer-events-none h-full w-full"
+            className="klara-motiv pointer-events-none h-full w-full"
           />
         </button>
         {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
@@ -1461,6 +1498,26 @@ export function KlaraVorschau({
             {t(STATUS_TEXT[z.status])}
           </span>
         ) : null}
+        {/* produkt:20261010:assistenz-name-avatar: jeder Zustand der Figur steht auch als Text da —
+            unabhängig von Bewegung, Licht und Farbe. Warten und Rückfrage nennt schon der Status
+            oben; verkleinert bleibt die Figur ohne zusätzliche Pille (der Text steht vorgelesen). */}
+        {!z.minimiert &&
+        figurZustand !== "bereit" &&
+        figurZustand !== "warten" &&
+        figurZustand !== "ratlos" &&
+        !(figurZustand === "freude" && z.status === "antwort") ? (
+          <span
+            data-testid="klara-figur-zustand"
+            data-zustand={figurZustand}
+            className={`mt-1 whitespace-nowrap rounded-pill px-2 py-0.5 text-[10.5px] font-semibold shadow-tile ${
+              figurZustand === "fehler"
+                ? "bg-trust-crit-bg text-trust-crit-text"
+                : "bg-surface text-text"
+            }`}
+          >
+            {t(`assistenz.zustand.${figurZustand}`)}
+          </span>
+        ) : null}
         {/* Klara 01: der Demo-Betrieb ist auch an der geschlossenen Figur zu erkennen. */}
         {!istEcht ? (
           <span
@@ -1480,6 +1537,7 @@ export function KlaraVorschau({
         ) : null}
         <span id={hinweisId} className="sr-only">
           {t("klaravorschau.figur.tastatur")} {t(STATUS_TEXT[z.status])}{" "}
+          {t(`assistenz.zustand.${figurZustand}`)}{" "}
           {istEcht ? t("klaragespraech.betrieb.echtKurz") : t("klaragespraech.betrieb.demoKurz")}
         </span>
       </div>

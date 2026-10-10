@@ -36,6 +36,7 @@ import {
   tippe,
   warte,
 } from "../fe003-tutorial-fragen/huelle";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 let m: Montiert | null = null;
 
@@ -149,7 +150,7 @@ describe("K1/K3 · Klara ersetzt bei eingeschalteter Vorschau den Hilfeknopf", (
     m = await montiere("/fragen");
     const f = await figur();
     expect(f.querySelector("img")?.getAttribute("src")).toBe("/klara/klara-avatar-v1.png");
-    expect(document.querySelector(`[aria-label="${i18n.t("klara.open")}"]`)).toBeNull();
+    expect(document.querySelector(`[aria-label="${hilfeknopfLabel()}"]`)).toBeNull();
   });
 
   // produkt:20261010:assistenz-produkteinstieg: ohne Schalter steht dieselbe Figur im
@@ -162,7 +163,7 @@ describe("K1/K3 · Klara ersetzt bei eingeschalteter Vorschau den Hilfeknopf", (
     expect(f.dataset.betriebsart).toBe("produkt");
     expect(f.dataset.betrieb).toBe("echt");
     expect(q(document, "klara-figur-demo")).toBeNull();
-    expect(document.querySelector(`[aria-label="${i18n.t("klara.open")}"]`)).not.toBeNull();
+    expect(document.querySelector(`[aria-label="${hilfeknopfLabel()}"]`)).not.toBeNull();
   });
 });
 

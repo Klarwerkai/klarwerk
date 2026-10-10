@@ -38,7 +38,9 @@ export const ASSISTENZ_AVATAR_KATALOG: readonly AssistenzAvatarMotiv[] = [
   neu("fuchs", "ausdrucksstark"),
   neu("pinguin", "ausdrucksstark"),
   neu("wolke", "ausdrucksstark"),
-  neu("kompass", "sachlich"),
+  // Gruppen nach `style_variants` des gelieferten Manifests (ANIMATIONSZUSTAENDE.json): der Kompass
+  // ist dort „expressiv“; die fünf sachlichen Objekte sind „zurückhaltend“.
+  neu("kompass", "ausdrucksstark"),
   neu("prisma", "sachlich"),
   neu("wissensbuch", "sachlich"),
   neu("verbindungsknoten", "sachlich"),
@@ -53,4 +55,16 @@ export const STANDARD_AVATAR = "original";
 
 export function avatarMotiv(id: string | null | undefined): AssistenzAvatarMotiv | null {
   return ASSISTENZ_AVATAR_KATALOG.find((m) => m.id === id) ?? null;
+}
+
+/**
+ * Der Animationsstil eines Motivs (Vorgabe `style_variants`): „expressiv“ — kleine Gesten und
+ * Bewegung der Figur; „zurückhaltend“ — nichtmenschliche Objekte, nur sparsame Neigung und
+ * Lichtmodulation, keine Hüpfer, keine hinzugefügten Gesichter. Die neutrale Ersatzgrafik (kein
+ * Motiv) ist ein gesichtsloses Objekt und folgt deshalb dem zurückhaltenden Stil.
+ */
+export type AnimationsStil = "expressiv" | "zurueckhaltend";
+
+export function animationsStil(m: AssistenzAvatarMotiv | null): AnimationsStil {
+  return m?.gruppe === "ausdrucksstark" ? "expressiv" : "zurueckhaltend";
 }
