@@ -476,7 +476,8 @@ export type KoAction =
     }
   // produkt:20261010:aenderungsfolgen-sichtbar: `stand` bindet die Bestätigung an den gesehenen
   // Stand der Folgeprüfung (sonst 409 `STAND_VERALTET`).
-  | { action: "revalidate"; stand?: number }
+  // Nacharbeit 6: `fassung` = die angezeigte Inhaltsfassung (Pflicht zusammen mit `stand`).
+  | { action: "revalidate"; stand?: number; fassung?: number }
   // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
   | { action: "confirm-fresh" }
   // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).

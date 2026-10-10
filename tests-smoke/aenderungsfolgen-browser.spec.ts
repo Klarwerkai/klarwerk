@@ -142,33 +142,108 @@ test.describe("Änderungsfolgen · der Weg im Reiter „Erneut“", () => {
     expect(wiederholt.status()).toBe(200);
     expect((await faelle(page.request)).find((f) => f.koId === a)?.stand).toBe(2);
 
-    // ---- Nacharbeit 4 (Ben, S02): bewusste Übernahme, Historie, fortbestehende Prüfpflicht ------
-    // Die Anleitung A wird an die geänderte Quelle angepasst (neue Fassung über den vorhandenen
-    // Überarbeitungsweg). Die Vorfassung bleibt in der Historie; die Folgeprüfung bleibt offen, bis
-    // jemand den angezeigten Stand bestätigt; die Karte nennt die Überarbeitung seit der Meldung.
-    const vorUebernahme = (await (await page.request.get(`/api/kos/${a}`)).json()) as {
-      version: number;
-      history?: unknown[];
-    };
-    const uebernahme = await page.request.put(`/api/kos/${a}`, {
+    // ---- Nacharbeit 6 (Ben, S02/AW-08): Quellenvergleich und bewusste Übernahme in der Anleitung --
+    // Eine fiktive Anleitung bindet Eintrag A in seiner bisherigen Fassung und ist entschieden. Dann
+    // ändert sich A (neue Fassung). In der ECHTEN Anleitungsfläche werden verwendete und neue
+    // Fassung gezeigt, die Unterschiede angesehen und die neue Fassung bewusst übernommen. Danach:
+    // neue Bindung, festgehaltener Vorstand lesbar, Anleitung wieder Entwurf (erneute Entscheidung
+    // nötig) und die Folgeprüfung von A weiter offen, bis jemand den angezeigten Stand bestätigt.
+    const fassungAlt = (
+      (await (await page.request.get(`/api/kos/${a}`)).json()) as {
+        version: number;
+      }
+    ).version;
+    const angelegt = await page.request.post("/api/gesamtanweisungen", {
+      data: { titel: `Dosieranleitung ${m}`, zweck: "Fiktive Anleitung für die Abnahme." },
+    });
+    expect(angelegt.status(), await angelegt.text()).toBe(201);
+    const anleitung = (await angelegt.json()) as { id: string; version: number };
+    const mitAbschnitt = await page.request.post(
+      `/api/gesamtanweisungen/${anleitung.id}/bausteine`,
+      { data: { version: anleitung.version, koId: a, koVersion: fassungAlt } },
+    );
+    expect(mitAbschnitt.status(), await mitAbschnitt.text()).toBe(200);
+    const nachAbschnitt = (await mitAbschnitt.json()) as { version: number };
+    const entschieden = await page.request.post(
+      `/api/gesamtanweisungen/${anleitung.id}/entscheiden`,
+      { data: { version: nachAbschnitt.version, entscheidung: "angenommen" } },
+    );
+    expect(entschieden.status(), await entschieden.text()).toBe(200);
+    const standEntschieden = ((await entschieden.json()) as { version: number }).version;
+
+    // Die Quelle A ändert sich: eine neue Fassung des Eintrags.
+    const quellaenderung = await page.request.put(`/api/kos/${a}`, {
       data: {
         action: "revise",
         changes: { statement: `${titelA}: nach Rev. C mit angepasster Dosiermenge (fiktiv).` },
       },
     });
-    expect(uebernahme.status(), await uebernahme.text()).toBe(200);
-    const nachUebernahme = (await (await page.request.get(`/api/kos/${a}`)).json()) as {
-      version: number;
-      history?: unknown[];
-    };
-    expect(nachUebernahme.version).toBe(vorUebernahme.version + 1);
-    expect((nachUebernahme.history ?? []).length).toBeGreaterThan(
-      (vorUebernahme.history ?? []).length,
+    expect(quellaenderung.status(), await quellaenderung.text()).toBe(200);
+    const fassungNeu = fassungAlt + 1;
+
+    await page.goto(`/gesamtanweisungen/${anleitung.id}`);
+    const aenderungskarte = page.getByTestId("ga-lesestand-aenderung").first();
+    await expect(aenderungskarte).toBeVisible({ timeout: 15_000 });
+    await expect(aenderungskarte.getByTestId("ga-lesestand-aenderung-bisher")).toContainText(
+      String(fassungAlt),
     );
+    await expect(aenderungskarte.getByTestId("ga-lesestand-aenderung-neu")).toContainText(
+      String(fassungNeu),
+    );
+    await aenderungskarte
+      .getByRole("button", { name: /Unterschiede ansehen|View differences|Verschillen bekijken/ })
+      .click();
+    await expect(aenderungskarte.getByTestId("ga-lesestand-weiterhin")).toBeVisible();
+    const unterschiede = aenderungskarte.getByTestId("ga-lesestand-unterschiede");
+    await expect(unterschiede).toContainText("vor jeder Schicht zu prüfen", { timeout: 10_000 });
+    await expect(unterschiede).toContainText("angepasster Dosiermenge");
+    await page.screenshot({
+      path: test.info().outputPath("2b-quellenvergleich.png"),
+      fullPage: true,
+    });
+    await aenderungskarte
+      .getByRole("button", {
+        name: new RegExp(
+          `Fassung ${fassungNeu} übernehmen|Adopt version ${fassungNeu}|Versie ${fassungNeu} overnemen`,
+        ),
+      })
+      .click();
+    await expect(page.getByTestId("ga-lesestand-aenderung")).toHaveCount(0, { timeout: 15_000 });
+    await page.screenshot({ path: test.info().outputPath("2c-uebernommen.png"), fullPage: true });
+
+    // Bewusst übernommene Bindung und erneute Entscheidungspflicht der Anleitung (vom Server).
+    const lesestand = (await (
+      await page.request.get(`/api/gesamtanweisungen/${anleitung.id}`)
+    ).json()) as {
+      version: number;
+      stand: string;
+      bausteine: { koId: string; koVersion: number }[];
+      uebernommeneAenderungen: { vonFassung: number; aufFassung: number }[] | null;
+    };
+    expect(lesestand.bausteine.find((x) => x.koId === a)?.koVersion).toBe(fassungNeu);
+    expect(lesestand.stand).toBe("entwurf");
+    expect(lesestand.uebernommeneAenderungen).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ vonFassung: fassungAlt, aufFassung: fassungNeu }),
+      ]),
+    );
+    // Der festgehaltene, entschiedene Vorstand bleibt lesbar und vergleichbar.
+    const staende = (await (
+      await page.request.get(`/api/gesamtanweisungen/${anleitung.id}/staende`)
+    ).json()) as { staende: number[] };
+    expect(staende.staende).toContain(standEntschieden);
+    const vergleich = await page.request.get(
+      `/api/gesamtanweisungen/${anleitung.id}/vergleich?von=${standEntschieden}&bis=${lesestand.version}`,
+    );
+    expect(vergleich.status(), await vergleich.text()).toBe(200);
+    expect(((await vergleich.json()) as { befunde: unknown[] }).befunde.length).toBeGreaterThan(0);
+    // Erneute Prüfpflicht des Eintrags: die Folgeprüfung bleibt offen.
     expect(
       (await faelle(page.request)).find((f) => f.koId === a)?.stand,
       "Prüfpflicht bleibt",
     ).toBe(2);
+    await page.goto("/lebenszyklus");
+    await expect(page.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
     // Verborgene Verwendung: der vertrauliche Eintrag D ist ebenso betroffen — sichtbar nur für
     // Berechtigte (hier: Verwaltung), für die Leserin unten nicht.
     expect((await faelle(page.request)).map((f) => f.koId)).toContain(d);

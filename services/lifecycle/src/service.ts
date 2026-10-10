@@ -375,6 +375,7 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     koId: string,
     author: string,
     geprueftStand?: number,
+    geseheneFassung?: number,
   ): Promise<KnowledgeObject> {
     const [vorab] = await this.repo.offeneFaelle([koId]);
     if (geprueftStand !== undefined) {
@@ -386,6 +387,12 @@ export class LifecycleService implements RevalidierungMerkerLeser {
     let ohneTxFall: OffenerFall | undefined;
     try {
       return await this.koService.revise(koId, {}, author, {
+        // Nacharbeit 6 (Ben, K5): die angezeigte INHALTSFASSUNG gehört zur Bestätigung. Der vorhandene
+        // Compare-and-Set von `revise` prüft sie im selben serialisierten Schritt (mit `withTx` in
+        // derselben Transaktion), BEVOR der Audit-Schritt den Merker räumt. Wurde der Eintrag
+        // inzwischen überarbeitet, wirft `revise` `KO_STALE` (409) — keine Fassung, kein Beleg, die
+        // Folgeprüfung bleibt offen.
+        ...(geseheneFassung !== undefined ? { expectedVersion: geseheneFassung } : {}),
         zusatzBeleg: {
           action: "ko.revalidated",
           vorher: async (tx) => {

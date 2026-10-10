@@ -107,14 +107,17 @@ async function bestaetigen(app: App, autor: Auth, koId: string): Promise<number>
     headers: autor,
   });
   expect(uebersicht.statusCode, uebersicht.body).toBe(200);
-  const stand = (uebersicht.json() as { koId: string; stand: number }[]).find(
+  const fall = (uebersicht.json() as { koId: string; stand: number; version: number }[]).find(
     (f) => f.koId === koId,
-  )?.stand;
+  );
   const res = await app.inject({
     method: "PUT",
     url: `/api/kos/${koId}`,
     headers: autor,
-    payload: stand === undefined ? { action: "revalidate" } : { action: "revalidate", stand },
+    payload:
+      fall === undefined
+        ? { action: "revalidate" }
+        : { action: "revalidate", stand: fall.stand, fassung: fall.version },
   });
   expect(res.statusCode, res.body).toBe(200);
   return res.json().version as number;

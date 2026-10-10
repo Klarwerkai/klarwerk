@@ -101,10 +101,23 @@ export function Lifecycle(): JSX.Element {
   } | null>(null);
   const confirm = useMutation({
     // produkt:20261010:aenderungsfolgen-sichtbar: mit Stand, sobald er bekannt ist.
-    mutationFn: ({ id, stand }: { id: string; title: string; found: boolean; stand?: number }) =>
+    // Nacharbeit 6 (Ben, K5): mit dem Stand reist die angezeigte Inhaltsfassung.
+    mutationFn: ({
+      id,
+      stand,
+      fassung,
+    }: {
+      id: string;
+      title: string;
+      found: boolean;
+      stand?: number;
+      fassung?: number;
+    }) =>
       endpoints.ko.act(
         id,
-        stand === undefined ? { action: "revalidate" } : { action: "revalidate", stand },
+        stand === undefined || fassung === undefined
+          ? { action: "revalidate" }
+          : { action: "revalidate", stand, fassung },
       ),
     onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: ["lifecycle"] });
@@ -120,7 +133,12 @@ export function Lifecycle(): JSX.Element {
     // produkt:20261010:aenderungsfolgen-sichtbar: ein veralteter Stand ist kein Störfall — die
     // Meldung sagt, was geschah, und die Liste lädt den neuen Stand.
     onError: (error) => {
-      if (error instanceof ApiError && error.code === "STAND_VERALTET") {
+      // Nacharbeit 6: auch eine inzwischen überarbeitete Inhaltsfassung (`KO_STALE`) ist ein
+      // veralteter Stand — dieselbe Meldung, dasselbe Neuladen.
+      if (
+        error instanceof ApiError &&
+        (error.code === "STAND_VERALTET" || error.code === "KO_STALE")
+      ) {
         void qc.invalidateQueries({ queryKey: ["lifecycle"] });
         push("error", t("folgepruefung.standVeraltet"));
         return;
@@ -649,7 +667,7 @@ export function Lifecycle(): JSX.Element {
                 id,
                 title: view.title,
                 found: view.found,
-                ...(fall ? { stand: fall.stand } : {}),
+                ...(fall ? { stand: fall.stand, fassung: fall.version } : {}),
               })
             }
           >

@@ -267,6 +267,23 @@ describe("Folgeprüfung: Stand und Anlässe unter echter Transaktion und Paralle
     expect((await w.koService.get(w.ko.id))?.version).toBe(2);
   });
 
+  // Nacharbeit 6 (Ben): die angezeigte Inhaltsfassung wird in der Transaktion der Revision geprüft.
+  it("K5 · Inhalt zwischen Anzeige und Bestätigung überarbeitet: KO_STALE, Rollback, Fall bleibt", async (ctx) => {
+    const p = requirePool(ctx);
+    await reset(p);
+    const w = await welt(p);
+    await w.lifecycle.meldeAnlagenaenderung(ANLAGE, "carla", "Rev. B");
+    const gezeigt = (await w.koService.get(w.ko.id))?.version ?? 0;
+    await w.koService.revise(w.ko.id, { statement: "Nach Rev. B zweimal entlüften." }, "anna");
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "anna", 1, gezeigt)).rejects.toMatchObject({
+      code: "KO_STALE",
+    });
+    expect(await w.lifecycle.offeneFaelle([w.ko.id])).toHaveLength(1);
+    expect((await w.koService.get(w.ko.id))?.version).toBe(gezeigt + 1);
+    expect(await w.audit.list({ action: "ko.revalidated" })).toEqual([]);
+    expect((await w.audit.verifyReport()).ok).toBe(true);
+  });
+
   it("K5 · ohne Stand kein Abschluss eines offenen Falls (409), Fassung bleibt", async (ctx) => {
     const p = requirePool(ctx);
     await reset(p);

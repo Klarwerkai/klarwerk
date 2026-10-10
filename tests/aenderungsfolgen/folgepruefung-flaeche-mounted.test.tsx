@@ -322,7 +322,7 @@ describe("K5 · „Noch gültig“ gilt dem angezeigten Stand", () => {
       knopfNochGueltig().click();
       await flush();
     });
-    expect(d.act).toHaveBeenCalledWith("ka", { action: "revalidate", stand: 2 });
+    expect(d.act).toHaveBeenCalledWith("ka", { action: "revalidate", stand: 2, fassung: 4 });
   });
 
   it("409 STAND_VERALTET: verständliche Meldung, die Übersicht lädt neu, der Eintrag bleibt", async () => {
@@ -376,7 +376,7 @@ describe("K5 · „Noch gültig“ gilt dem angezeigten Stand", () => {
       knopfNochGueltig().click();
       await flush();
     });
-    expect(d.act).toHaveBeenCalledWith("ka", { action: "revalidate", stand: 2 });
+    expect(d.act).toHaveBeenCalledWith("ka", { action: "revalidate", stand: 2, fassung: 4 });
   });
 
   it("GEGENPROBE: rein fristfälliger Eintrag OHNE Merker bestätigt wie bisher ohne Stand", async () => {

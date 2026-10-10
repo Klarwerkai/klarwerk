@@ -203,7 +203,12 @@ describe("Erneute Prüfung aus der Bibliothek (R-1732 / R-1745)", () => {
     const ohneStand = await put(app, admin, id, { action: "revalidate" });
     expect(ohneStand.statusCode, ohneStand.body).toBe(409);
     expect(await faellig(app, admin)).toContain(id);
-    const bestaetigt = await put(app, admin, id, { action: "revalidate", stand: 1 });
+    const gezeigt = await lesen(app, admin, id);
+    const bestaetigt = await put(app, admin, id, {
+      action: "revalidate",
+      stand: 1,
+      fassung: gezeigt.version,
+    });
     expect(bestaetigt.statusCode, bestaetigt.body).toBe(200);
     expect(await faellig(app, admin)).not.toContain(id);
   });
@@ -247,7 +252,11 @@ describe("Auslöser über benachbarte Wissensobjekte (R-0203 / R-1635 / FR-LIF-0
 
     // FR-LIF-01: Bestätigen versioniert und räumt den Merker.
     const vorher = await lesen(app, admin, b);
-    const bestaetigt = await put(app, admin, b, { action: "revalidate", stand: 1 });
+    const bestaetigt = await put(app, admin, b, {
+      action: "revalidate",
+      stand: 1,
+      fassung: vorher.version,
+    });
     expect(bestaetigt.statusCode, bestaetigt.body).toBe(200);
     expect((bestaetigt.json() as Objekt).version).toBe(vorher.version + 1);
     expect(await faellig(app, admin)).not.toContain(b);

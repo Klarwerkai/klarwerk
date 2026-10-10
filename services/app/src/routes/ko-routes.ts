@@ -654,6 +654,8 @@ interface PutBody {
    * geprüft an der `case`.
    */
   stand?: unknown;
+  /** Nacharbeit 6: an `revalidate` die angezeigte Inhaltsfassung (Pflicht zusammen mit `stand`). */
+  fassung?: unknown;
   aenderung?: unknown;
   text?: string;
   /**
@@ -3816,9 +3818,22 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (stand !== undefined && !(Number.isInteger(stand) && (stand as number) > 0)) {
               return badRequest("stand muss eine positive ganze Zahl sein.");
             }
+            // Nacharbeit 6 (Ben, K5): mit dem Stand reist die angezeigte Inhaltsfassung — eine
+            // inzwischen überarbeitete Fassung ergibt 409 `KO_STALE` (samt `currentVersion`).
+            const fassung = body.fassung;
+            if (stand !== undefined && !(Number.isInteger(fassung) && (fassung as number) > 0)) {
+              return badRequest("fassung (die angezeigte Fassung) muss mit stand mitkommen.");
+            }
             reply
               .code(200)
-              .send(await lifecycle.confirmStillValid(id, user.id, stand as number | undefined));
+              .send(
+                await lifecycle.confirmStillValid(
+                  id,
+                  user.id,
+                  stand as number | undefined,
+                  stand === undefined ? undefined : (fassung as number),
+                ),
+              );
             return;
           }
           // R-1732 / R-0206: aus der Bibliothek eine erneute Prüfung anstossen — dasselbe Recht wie

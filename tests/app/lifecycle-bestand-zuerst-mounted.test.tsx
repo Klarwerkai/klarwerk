@@ -281,7 +281,11 @@ describe("R-0953 · „Noch gültig“ meldet einen Fehler", () => {
       knopf?.click();
       await flush();
     });
-    expect(d.bestaetigen).toHaveBeenCalledWith("k1", { action: "revalidate", stand: 1 });
+    expect(d.bestaetigen).toHaveBeenCalledWith("k1", {
+      action: "revalidate",
+      stand: 1,
+      fassung: 1,
+    });
     const einblendungen = Array.from(container.querySelectorAll("output"), (o) => o.textContent);
     expect(einblendungen).toContain(i18n.t("lcy.toast.revalidateFailed"));
     expect(container.querySelector('a[href="/wissen/k1"]'), "der Eintrag bleibt").not.toBeNull();

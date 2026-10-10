@@ -291,7 +291,11 @@ describe("K5/K6/K7 · neue Änderung während der Prüfung, Wiederholung, Abschl
 
     // K5: zwischen Anzeige und Bestätigung geht Rev. C ein.
     await melden(app, admin, "Rev. C");
-    const veraltet = await put(app, admin, a, { action: "revalidate", stand: angezeigt?.stand });
+    const veraltet = await put(app, admin, a, {
+      action: "revalidate",
+      stand: angezeigt?.stand,
+      fassung: angezeigt?.version,
+    });
     expect(veraltet.statusCode, veraltet.body).toBe(409);
     expect((veraltet.json() as { error: string }).error).toBe("STAND_VERALTET");
     const offen = (await uebersicht(app, admin)).find((f) => f.koId === a);
@@ -307,7 +311,11 @@ describe("K5/K6/K7 · neue Änderung während der Prüfung, Wiederholung, Abschl
     expect(frische?.stufe).toBe("faellig");
 
     // Abschluss genau des neuen Stands.
-    const abschluss = await put(app, admin, a, { action: "revalidate", stand: 2 });
+    const abschluss = await put(app, admin, a, {
+      action: "revalidate",
+      stand: 2,
+      fassung: offen?.version,
+    });
     expect(abschluss.statusCode, abschluss.body).toBe(200);
     expect((abschluss.json() as { version: number }).version).toBe((angezeigt?.version ?? 0) + 1);
     const nachher = await uebersicht(app, admin);
@@ -322,10 +330,53 @@ describe("K5/K6/K7 · neue Änderung während der Prüfung, Wiederholung, Abschl
     ]);
 
     // Wiederholung des Abschlusses: keine zweite Fassung.
-    const nochmal = await put(app, admin, a, { action: "revalidate", stand: 2 });
+    const nochmal = await put(app, admin, a, {
+      action: "revalidate",
+      stand: 2,
+      fassung: (angezeigt?.version ?? 0) + 1,
+    });
     expect(nochmal.statusCode, nochmal.body).toBe(409);
     const stand = await app.inject({ method: "GET", url: `/api/kos/${a}`, headers: admin });
     expect((stand.json() as { version: number }).version).toBe((angezeigt?.version ?? 0) + 1);
+  });
+
+  // Nacharbeit 6 (Ben, K5): eine alte Bestätigung darf den inzwischen überarbeiteten, ungesehenen
+  // Inhalt nicht freizeichnen — auch wenn der Änderungsstand unverändert ist.
+  it("Inhalt zwischen Anzeige und Bestätigung überarbeitet: 409 KO_STALE, Fall bleibt offen", async () => {
+    const { services, app, admin, b } = await aufbau("af8b");
+    await melden(app, admin, "Rev. B");
+    const angezeigt = (await uebersicht(app, admin)).find((f) => f.koId === b);
+    expect(angezeigt?.stand).toBe(1);
+    const ueberarbeitet = await put(app, admin, b, {
+      action: "revise",
+      changes: { statement: "Die Dosiermenge nach Rev. B auf 12 ml einstellen (fiktiv)." },
+    });
+    expect(ueberarbeitet.statusCode, ueberarbeitet.body).toBe(200);
+
+    const alt = await put(app, admin, b, {
+      action: "revalidate",
+      stand: angezeigt?.stand,
+      fassung: angezeigt?.version,
+    });
+    expect(alt.statusCode, alt.body).toBe(409);
+    expect((alt.json() as { error: string }).error).toBe("KO_STALE");
+    const offen = (await uebersicht(app, admin)).find((f) => f.koId === b);
+    expect(offen?.stand).toBe(1);
+    expect(offen?.version).toBe((angezeigt?.version ?? 0) + 1);
+    expect(await services.audit.list({ action: "ko.revalidated", target: b })).toEqual([]);
+
+    // Ohne angezeigte Fassung gibt es keinen Abschluss.
+    const ohneFassung = await put(app, admin, b, { action: "revalidate", stand: 1 });
+    expect(ohneFassung.statusCode, ohneFassung.body).toBe(400);
+
+    // Wer die NEUE Fassung angesehen hat, schließt ab.
+    const neu = await put(app, admin, b, {
+      action: "revalidate",
+      stand: 1,
+      fassung: offen?.version,
+    });
+    expect(neu.statusCode, neu.body).toBe(200);
+    expect((await uebersicht(app, admin)).map((f) => f.koId)).not.toContain(b);
   });
 
   it("ungültiger Stand ist ein Eingabefehler, kein stiller Abschluss", async () => {

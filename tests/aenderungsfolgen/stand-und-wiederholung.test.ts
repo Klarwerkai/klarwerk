@@ -299,6 +299,27 @@ describe("K5 · die Bestätigung gilt genau dem gesehenen Stand", () => {
     expect(reval.map((e) => e.payload)).toEqual([{ pendingCleared: false, version: 2 }]);
   });
 
+  // Nacharbeit 6 (Ben): der Stand allein genügt nicht — die angezeigte Inhaltsfassung gehört dazu.
+  it("Inhalt zwischen Anzeige und Bestätigung überarbeitet: KO_STALE, keine Fassung, Fall bleibt", async () => {
+    const w = await welt();
+    await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. B");
+    const gezeigteFassung = (await w.ko.get(w.a.id))?.version ?? 0;
+    await w.ko.revise(
+      w.a.id,
+      { statement: "Nach Rev. B: Pumpe zweimal entlüften (fiktiv)." },
+      "anna",
+    );
+    await expect(
+      w.lifecycle.confirmStillValid(w.a.id, "anna", 1, gezeigteFassung),
+    ).rejects.toMatchObject({ code: "KO_STALE" });
+    expect((await fall(w.lifecycle, w.a.id))?.stand).toBe(1);
+    expect((await w.ko.get(w.a.id))?.version).toBe(gezeigteFassung + 1);
+    expect(await w.audit.list({ action: "ko.revalidated" })).toEqual([]);
+    // Mit der NEUEN, angesehenen Fassung gelingt der Abschluss.
+    await w.lifecycle.confirmStillValid(w.a.id, "anna", 1, gezeigteFassung + 1);
+    expect(await fall(w.lifecycle, w.a.id)).toBeUndefined();
+  });
+
   it("B angezeigt → B abgeschlossen → C eröffnet → verspätetes B bestätigt: C bleibt offen", async () => {
     const w = await welt();
     await w.lifecycle.meldeAnlagenaenderung("Dosierstation DP-4", "carla", "Rev. B");
