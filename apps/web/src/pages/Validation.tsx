@@ -587,6 +587,10 @@ export function Validation(): JSX.Element {
       // R-0247: das Kennzeichen steht NUR in der Nutzlast, wenn ausdrücklich bestätigt wurde —
       // ohne offene Dublette bleibt der Aufruf zeichengleich wie bisher.
       const bestaetigung = dubletteBestaetigt ? { duplicateAcknowledged: true as const } : {};
+      // ADMIN-09: trägt der Space eine Freigaberegel, nennt die Zustimmung die geprüfte Fassung —
+      // der Server lehnt sie sonst ab. Ohne Regel bleibt die Nutzlast zeichengleich wie bisher.
+      const zeile = Array.isArray(query.data) ? query.data.find((z) => z.id === id) : undefined;
+      const fassung = zeile?.freigaberegel ? { expectedVersion: zeile.version } : {};
       if (stufe) {
         try {
           await endpoints.ko.act(id, { action: "confidentiality", level: stufe });
@@ -603,10 +607,11 @@ export function Validation(): JSX.Element {
             action: "rate",
             verdict: "up",
             ...bestaetigung,
+            ...fassung,
           });
           return antwort;
         }
-        await endpoints.ko.act(id, { action: "admin-validate", ...bestaetigung });
+        await endpoints.ko.act(id, { action: "admin-validate", ...bestaetigung, ...fassung });
         return undefined;
       } catch (e) {
         // Schritt 2 gescheitert: `stufe` ist genau dann gespeichert, wenn Schritt 1 überhaupt lief.
@@ -1185,7 +1190,12 @@ export function Validation(): JSX.Element {
         return { id: k.id, title: k.title, art: vorab };
       }
       try {
-        await endpoints.ko.act(k.id, { action: "rate", verdict: "up" });
+        // ADMIN-09: in einem Space mit Freigaberegel nennt auch die Sammelzustimmung die Fassung —
+        // die beim Auswählen GESEHENE, nicht die frisch gelesene. Wurde der Beitrag inzwischen
+        // überarbeitet, lehnt der Server ab (409 `KO_STALE`) und der Eintrag bleibt stehen.
+        const gesehen = stapel.find((s) => s.id === k.id)?.version ?? k.version;
+        const fassung = k.freigaberegel ? { expectedVersion: gesehen } : {};
+        await endpoints.ko.act(k.id, { action: "rate", verdict: "up", ...fassung });
         return { id: k.id, title: k.title, art: "bestaetigt" };
       } catch (e) {
         // Der Server kennt eine Dublette, die die Fläche (noch) nicht zeigte: nichts validiert.

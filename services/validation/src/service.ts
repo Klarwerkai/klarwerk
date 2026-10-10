@@ -22,6 +22,21 @@ function ratingVersion(r: { koVersion?: number }): number {
   return r.koVersion ?? 1;
 }
 
+/**
+ * ADMIN-09: die Fassung, die die entscheidende Person gelesen hat, gegen die aktuelle. Weicht sie
+ * ab, wird nichts entschieden (KO_STALE) — eine Entscheidung zur alten Fassung gibt die neue nicht
+ * frei. Ohne Angabe gilt wie bisher die beim Lesen aktuelle Fassung; den Schreibweg schützt danach
+ * der Compare-and-Set in `setValidationStateMitBeleg`.
+ */
+function pruefeErwarteteFassung(aktuell: number, erwartet: number | undefined): void {
+  if (erwartet !== undefined && erwartet !== aktuell) {
+    throw new ValidationError(
+      "KO_STALE",
+      `Das Wissensobjekt wurde inzwischen überarbeitet (jetzt Fassung ${aktuell}, geprüft wurde Fassung ${erwartet}). Es wurde nichts entschieden.`,
+    );
+  }
+}
+
 export interface AssignmentSummary {
   userId: string;
   open: number;
@@ -231,11 +246,21 @@ export class ValidationService {
   }
 
   // FR-VAL-01/02: Bewertung verbuchen, Trust/Status neu berechnen, am KO setzen.
-  async rate(koId: string, userId: string, verdict: Verdict): Promise<ValidationDecision> {
+  //
+  // ADMIN-09: `erwarteteFassung` ist die Fassung, die die prüfende Person gelesen hat. Ist das Objekt
+  // inzwischen überarbeitet, wird nichts bewertet (KO_STALE) — eine Entscheidung zur alten Fassung
+  // gibt die neue nicht frei. Ohne Angabe gilt wie bisher die beim Lesen aktuelle Fassung.
+  async rate(
+    koId: string,
+    userId: string,
+    verdict: Verdict,
+    opts: { erwarteteFassung?: number } = {},
+  ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
     // SCRUM-507 R2: die Bewertung wird an die bewertete KO-VERSION gebunden. Ein nebenläufiges Revise
     // (Version+1) macht sie damit implizit stale — keine separate Invalidierung, kein Desync.
     const ratedVersion = ko.version;
@@ -380,11 +405,16 @@ export class ValidationService {
   // Bewusst nur Admin (Route-Guard users.manage); der Vorgang ist als eigene Aktion im Audit
   // nachvollziehbar. Trust wird auf den Deckel (99) gesetzt — kein Wahrheitsversprechen (PI-K2),
   // aber die höchste Evidenzstufe, die das System vergibt.
-  async adminValidate(koId: string, actorId: string): Promise<ValidationDecision> {
+  async adminValidate(
+    koId: string,
+    actorId: string,
+    opts: { erwarteteFassung?: number } = {},
+  ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
     // JOB 3789: DIE GELESENE FASSUNG BEKOMMT EINEN NAMEN — dieselbe Form wie `ratedVersion` in
     // `rate` (:232). Der Admin entscheidet über den Text, den er gelesen hat; jeder folgende
     // Schritt (Schreibvorgang, Beleg, Verweis) bindet sich an genau diese Zahl. Kein zweites
@@ -481,11 +511,16 @@ export class ValidationService {
   // nicht — der Compare-and-Set auf `version` sähe sie nicht. Deshalb prüft der `zustand`-Rückruf,
   // der unter dem KO-Lock den FRISCH gelesenen Stand bekommt, den Eigentümer erneut und übernimmt
   // dessen aktuelles Vertrauen. Die frühe Prüfung bleibt als schnelle Abweisung ohne Schreibversuch.
-  async ownerValidate(koId: string, actorId: string): Promise<ValidationDecision> {
+  async ownerValidate(
+    koId: string,
+    actorId: string,
+    opts: { erwarteteFassung?: number } = {},
+  ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
     const nichtEigentuemer = (): ValidationError =>
       new ValidationError(
         "NOT_OWNER",
@@ -699,6 +734,50 @@ export class ValidationService {
   ): Promise<{ verdict: Verdict; koVersion: number } | null> {
     const eigene = (await this.ratings.listByKo(koId)).find((r) => r.userId === userId);
     return eigene ? { verdict: eigene.verdict, koVersion: ratingVersion(eigene) } : null;
+  }
+
+  /**
+   * ADMIN-09: eine Vertretungsaufgabe aus der Freigaberegel — `durch` prüft an Stelle von `fuer`.
+   * WIEDERHOLBAR: besteht für `durch` schon eine Zuweisung an diesem Objekt (gleich welcher
+   * Herkunft), entsteht nichts, kein Beleg und keine neue Benachrichtigung. Die neue Zuweisung trägt
+   * „ausstehend"; der Aufrufer benachrichtigt über `nochZuBenachrichtigen` und hakt ab.
+   * `true` heisst: diese Aufgabe ist eben neu entstanden.
+   */
+  async vertretungZuweisen(
+    koId: string,
+    durch: string,
+    fuer: string,
+    actor: string,
+  ): Promise<boolean> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    if (await this.assignments.find(koId, durch)) {
+      return false;
+    }
+    await this.assignments.create({
+      koId,
+      userId: durch,
+      status: "open",
+      benachrichtigung: "ausstehend",
+      quelle: "vertretung",
+      vertretungFuer: fuer,
+      seit: new Date(this.now()).toISOString(),
+    });
+    await this.audit?.record({
+      actor,
+      action: "ko.assigned",
+      target: koId,
+      payload: { userIds: [durch], quelle: "vertretung", fuer },
+    });
+    await this.koService.recordOwnershipRole(koId, "reviewers", [durch], actor);
+    return true;
+  }
+
+  /** ADMIN-09: alle Zuweisungen dieser Objekte, offen wie erledigt — nur lesend. */
+  async zuweisungenZu(koIds: readonly string[]): Promise<Assignment[]> {
+    return this.assignments.listByKos(koIds);
   }
 
   async pruefstandFuer(koId: string, koVersion: number): Promise<KoPruefstand> {

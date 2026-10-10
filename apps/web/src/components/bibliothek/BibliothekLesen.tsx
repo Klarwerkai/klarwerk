@@ -2744,7 +2744,12 @@ export function BibliothekLesen({
                     <>
                       <MenuePunkt
                         onClick={() => {
-                          act.mutate({ action: "rate", verdict: "up" });
+                          // ADMIN-09: im Space nennt die Zustimmung die gelesene Fassung.
+                          act.mutate({
+                            action: "rate",
+                            verdict: "up",
+                            ...(ko.spaceId ? { expectedVersion: ko.version } : {}),
+                          });
                           schliessen();
                         }}
                       >
