@@ -571,7 +571,7 @@ describe("REF-01 · Fundstellen auflösen — aktuelle Rechte, gelöscht, geänd
       at: "2026-10-01T08:00:00.000Z",
     };
     const leser = bestand({
-      aktuell: [{ ...NORD, id: "ko-metall" }],
+      aktuell: [{ ...NORD, id: "ko-metall", sources: [quelle] }],
       fassungen: { "ko-metall": { 1: { statement: "egal", sources: [quelle] } } },
     });
     const externerVerweis: FundstellenVerweis = {
