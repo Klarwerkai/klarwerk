@@ -25,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { runConfluenceImport } from "../../services/app/src/confluence-import";
+import { darfSehen } from "../../services/app/src/sichtbarkeit";
 import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
@@ -1372,5 +1373,54 @@ describe("R-0549 · Space-Leserecht über eine Zugangsklasse", () => {
     const rechte = (item as MitQuellrechten | undefined)?.quellrechte;
     expect(rechte?.emails).toEqual(["lea@example.com"]);
     expect(rechte?.leserUnvollstaendig).toBe(true);
+  });
+});
+
+// ==================================================================================================
+// Nacharbeit 23 — ZUSAMMENFÜHRUNG MIT MAIN (Spaces, „öffentlich").
+// ==================================================================================================
+describe("R-0549 · Zusammenführung mit main: Spaces und die Marke „öffentlich“", () => {
+  it("S1 · der führende Space ist eine UND-Bedingung auch für Quellleser", () => {
+    const objekt = {
+      confidentiality: "vertraulich" as const,
+      author: "admin",
+      quellrechte: { leser: ["lea"] },
+      spaceId: "space-hr",
+    };
+    const leaImSpace = { id: "lea", role: "viewer" as const, spaceLesbar: new Set(["space-hr"]) };
+    const leaOhneSpace = { id: "lea", role: "viewer" as const, spaceLesbar: new Set<string>() };
+    const ottoImSpace = { id: "otto", role: "viewer" as const, spaceLesbar: new Set(["space-hr"]) };
+    expect(darfSehen(leaImSpace, objekt)).toBe(true);
+    // Quellleser, aber ohne Space-Leserecht: die Quellleser öffnen keinen fremden Space.
+    expect(darfSehen(leaOhneSpace, objekt)).toBe(false);
+    // Im Space, aber nicht Quellleser: der Space öffnet keine Quellbeschränkung.
+    expect(darfSehen(ottoImSpace, objekt)).toBe(false);
+    // Ohne führenden Space gilt allein die Quellleserliste (Bestand vor main).
+    const ohneSpace = { ...objekt, spaceId: undefined };
+    expect(darfSehen({ id: "lea", role: "viewer" }, ohneSpace)).toBe(true);
+    expect(darfSehen({ id: "otto", role: "viewer" }, ohneSpace)).toBe(false);
+  });
+
+  it("S2 · hebt die Quelle ein als öffentlich markiertes Objekt an, verschwindet die Marke (R-0652)", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService, externalUpsert: true });
+    const v1 = await fixture([seite("31", [], undefined, 1)]).adapter.collectAll();
+    const [c1] = await library.createImportCandidates(v1.items, "importeur");
+    const r1 = await library.reviewImportCandidate(c1!.id, "accept", "reviewerin");
+    expect((await koService.get(r1.koId!))?.confidentiality).toBe("intern");
+    await koService.setOeffentlich(r1.koId!, true, "anna");
+    expect((await koService.get(r1.koId!))?.oeffentlich).toBe(true);
+
+    // Fassung 2 ist an der Quelle beschränkt — die Quelle hebt auf vertraulich an.
+    const zu: ConfluencePage = {
+      ...seite("31", [], { group: [{ name: "qs" }] }, 2),
+      body: { storage: { value: "<p>Inhalt 31, Stand 2.</p>" } },
+    };
+    const v2 = await fixture([zu]).adapter.collectAll();
+    const [c2] = await library.createImportCandidates(v2.items, "importeur");
+    await library.reviewImportCandidate(c2!.id, "accept", "reviewerin");
+    const objekt = await koService.get(r1.koId!);
+    expect(objekt?.confidentiality).toBe("vertraulich");
+    expect(objekt?.oeffentlich).toBeUndefined();
   });
 });

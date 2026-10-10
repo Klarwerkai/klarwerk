@@ -25,6 +25,8 @@ type Auth = { authorization: string };
 // Kategorie-Bucket ist die Auskunft, gegen die dieser Block gebaut ist.
 const GEHEIME_KATEGORIE = "Geheimprojekt-Zeta";
 const OFFENE_KATEGORIE = "Anlage-Sichtbar";
+// Dasselbe für das Fachgebiet, nach dem das Wissenshaus seine Stockwerke bildet (R-0768).
+const GEHEIMES_FACHGEBIET = "Geheimfach-Zeta";
 
 const AGGREGATE = [
   "/api/analytics",
@@ -99,15 +101,28 @@ async function setup() {
     payload: { action: "confidentiality", level: "vertraulich" },
   });
   expect(stufe.statusCode, stufe.body).toBe(200);
+  // R-0768: das Wissenshaus gliedert nach FACHGEBIET. Das vertrauliche Objekt trägt deshalb auch
+  // ein Fachgebiet, das es sonst nicht gibt — sonst prüfte der Snapshot-Fall unten ins Leere.
+  const fach = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${geheim}`,
+    headers: admin,
+    payload: { action: "domain", domain: GEHEIMES_FACHGEBIET },
+  });
+  expect(fach.statusCode, fach.body).toBe(200);
 
   // Beide validieren — damit der Wirkungs-Bericht (`validatedTotal`, `validatedByWeek`) überhaupt
   // etwas zu zählen hat.
+  //
+  // Beide Objekte tragen dieselbe Aussage und gelten dem Dublettentor (`validation-routes.ts`,
+  // `DUPLICATE_ACK_REQUIRED`) daher als offene Dublette. Die Validierung verlangt seitdem die
+  // ausdrückliche Bestätigung — sie ist hier Aufbau, kein Gegenstand dieses Tests.
   for (const id of [offen, geheim]) {
     const val = await app.inject({
       method: "PUT",
       url: `/api/kos/${id}`,
       headers: admin,
-      payload: { action: "admin-validate" },
+      payload: { action: "admin-validate", duplicateAcknowledged: true },
     });
     expect(val.statusCode, val.body).toBe(200);
   }
@@ -216,11 +231,25 @@ describe("mega76 D · die Zähler rechnen über der SICHTBAREN Grundmenge", () =
       `Ein einzelnes vertrauliches Objekt erzeugt eine neue Kategoriezeile, verschiebt
       Zeitfenster und mehrere globale Scores. Antwort: ${JSON.stringify(alsViewer.overview)}`,
     ).toBe(1);
-    const haus = (alsViewer.house ?? []) as { category: string }[];
+    // R-0768: `house` nennt Fachgebietsname und koCount unmittelbar, `houseFlow` den Bestand.
+    type Stockwerk = { domain: string | null; koCount: number };
+    const haus = (alsViewer.house ?? []) as Stockwerk[];
+    const hausAdmin = (alsAdmin.house ?? []) as Stockwerk[];
     expect(
-      haus.map((z) => z.category),
-      "`house` nennt Kategoriename und koCount unmittelbar",
-    ).not.toContain(GEHEIME_KATEGORIE);
+      hausAdmin.map((z) => z.domain),
+      "GEGENPROBE: der Admin sieht das Stockwerk des vertraulichen Objekts",
+    ).toContain(GEHEIMES_FACHGEBIET);
+    expect(
+      haus.map((z) => z.domain),
+      "`house` nennt Fachgebietsname und koCount unmittelbar",
+    ).not.toContain(GEHEIMES_FACHGEBIET);
+    expect(
+      haus.reduce((s, z) => s + z.koCount, 0),
+      "kein Stockwerk zählt das vertrauliche Objekt mit",
+    ).toBe(1);
+    expect(alsAdmin.houseFlow.inHouse, "GEGENPROBE").toBe(2);
+    expect(alsViewer.houseFlow.inHouse, "Import → Haus → Ausgabe zählt nur Sichtbares").toBe(1);
+    expect(alsViewer.houseFlow.outputReady).toBe(1);
   });
 
   it("/api/analytics/busfactor — keine Zeile für die nur vertraulich belegte Kategorie", async () => {

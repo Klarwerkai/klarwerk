@@ -1,4 +1,5 @@
 import type { Notification } from "../api/types";
+import { adminHref } from "./adminSections";
 import { validationMineHref } from "./validationFilters";
 
 // SCRUM-220: DOM-freie Ableitung des Sprungziels einer Benachrichtigung aus vorhandenen Daten.
@@ -11,8 +12,14 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   if (n.kind === "impact") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
-  if (n.kind === "conflict") {
+  // R-0894: eine Eskalation wird dort entschieden, wo der Konflikt steht.
+  if (n.kind === "conflict" || n.kind === "escalation") {
     return "/konflikte";
+  }
+  // R-0894: eine Rückgabe zur Nacharbeit führt in den Eintrag — dort wird überarbeitet, nicht in
+  // der Prüfliste.
+  if (n.kind === "return") {
+    return n.koId ? `/wissen/${n.koId}` : null;
   }
   // Pedi 04.07.: Duplikat-Benachrichtigung führt aufs Duplikate-Board.
   if (n.kind === "duplicate") {
@@ -26,6 +33,23 @@ export function notificationTarget(n: Pick<Notification, "kind" | "koId">): stri
   }
   // Kenntnisnahme: der Eintrag selbst — dort steht die Anforderung samt Bestätigen-Knopf.
   if (n.kind === "kenntnisnahme") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
+  // Löschantrag (R-0661): die Datenschutzkarte der Verwaltung — dort stehen Frist und Entscheidung.
+  if (n.kind === "loeschantrag") {
+    return adminHref("sicherheit", "datenschutz");
+  }
+  // R-1089: gemeldete Antwort → das zitierte Wissensobjekt, dort wird korrigiert.
+  if (n.kind === "reklamation") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
+  // aufnahme:20260922:gesamt-wissen-frische: das eigene Wissensobjekt — dort stehen „Stimmt
+  // weiterhin" und die Frist.
+  if (n.kind === "frische") {
+    return n.koId ? `/wissen/${n.koId}` : null;
+  }
+  // Veröffentlichung: der Eintrag selbst — dort steht, welche Fassung veröffentlicht ist.
+  if (n.kind === "veroeffentlichung") {
     return n.koId ? `/wissen/${n.koId}` : null;
   }
   return null;

@@ -84,6 +84,24 @@ export interface Anweisung {
   readonly urheber: string;
   readonly erstelltAm: string;
   readonly geaendertAm: string;
+  /**
+   * STATUS-FREIGABE (produkt:20261007) · die letzte Entscheidung über die Gesamtfassung.
+   *
+   * FEHLT DAS FELD, IST NICHTS FESTGEHALTEN — und das ist bei jeder Entscheidung vor diesem Auftrag
+   * so. Es wird nie nachträglich aus `urheber` oder `geaendertAm` gefüllt: wer damals entschieden
+   * hat, weiss der Bestand nicht, und eine Anzeige darf es dann auch nicht behaupten.
+   */
+  readonly entscheidung?: AnweisungEntscheidung;
+}
+
+/** Wer über welche Fassung wann entschieden hat — gesetzt ausschliesslich in `alsEntschieden`. */
+export interface AnweisungEntscheidung {
+  readonly ergebnis: "angenommen" | "abgelehnt";
+  /** Die Kennung des angemeldeten Kontos, das entschieden hat — aus der Sitzung, nie aus dem Körper. */
+  readonly von: string;
+  readonly am: string;
+  /** Die Fassung (`version`), die durch diese Entscheidung entstanden ist. */
+  readonly version: number;
 }
 
 // ================================================================================================
@@ -343,6 +361,8 @@ export interface AnweisungLesestand {
   readonly urheber: string;
   readonly erstelltAm: string;
   readonly geaendertAm: string;
+  /** Die festgehaltene letzte Entscheidung — fehlt, wenn keine festgehalten ist (Altbestand). */
+  readonly entscheidung?: AnweisungEntscheidung;
   /** NUR die zugänglichen Bausteine. Ein verborgener erscheint hier gar nicht — auch nicht leer. */
   readonly bausteine: readonly BausteinLesestand[];
   /** Wahr, sobald auch nur ein gebundener Baustein für den Betrachter nicht zugänglich ist. */
@@ -396,6 +416,8 @@ export interface AnweisungListeneintrag {
   readonly urheber: string;
   readonly erstelltAm: string;
   readonly geaendertAm: string;
+  /** Wörtlich `lesestand(...).entscheidung` — Übersicht und Detail nennen dieselbe Person. */
+  readonly entscheidung?: AnweisungEntscheidung;
   /** Wie viele Bausteine dieser Betrachter sehen darf — `lesestand(...).bausteine.length`. */
   readonly sichtbareBausteine: number;
   /** Wie viele ihm verborgen bleiben. Die Zahl, und sonst nichts über sie. */

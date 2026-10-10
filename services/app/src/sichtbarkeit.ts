@@ -55,6 +55,29 @@ export interface SichtbarkeitsFakten {
   // der Mindestform — eine Projektion ohne das Feld fällt auf die Stufenregel zurück (s. Grenze
   // an `darfSehen`).
   quellrechte?: { leser?: readonly string[] | undefined } | null | undefined;
+  /** produkt:20261007:spaces — der führende Space; fehlt er, gilt allein Stufe + Autor. */
+  spaceId?: unknown;
+}
+
+// ================================================================================================
+// produkt:20261007:spaces — DER FÜHRENDE SPACE IST EINE ZWEITE, UNABHÄNGIGE BEDINGUNG (UND).
+// ================================================================================================
+//
+// Trägt ein Objekt eine `spaceId` (Zeichenkette), sieht es nur, wessen `spaceLesbar` diese Kennung
+// enthält. Die Bedingung tritt NEBEN die Stufenregel, nie an ihre Stelle: ein vertrauliches Objekt
+// in einem offenen Space bleibt vertraulich, ein internes Objekt in einem geschlossenen Space bleibt
+// geschlossen. Kein Rollen-Durchgriff (auch `ko.validate` öffnet keinen fremden Space) und keine
+// Autor-Ausnahme: der führende Space bestimmt die Rechte — wer ihn wechselt, sieht die Folge vorher
+// in der Rechtevorschau (`routes/spaces-routes.ts`).
+//
+// FAIL-CLOSED: fehlt `spaceLesbar` am Betrachter (ein Aufbau ohne Spaces) oder ist die Kennung
+// unbekannt, bleibt das Objekt verborgen. Ein Objekt ohne `spaceId` — der gesamte Bestand vor
+// diesem Auftrag — ist von dieser Bedingung nicht berührt.
+function spaceErlaubt(user: SessionUser, spaceId: unknown): boolean {
+  if (typeof spaceId !== "string") {
+    return true;
+  }
+  return user.spaceLesbar?.has(spaceId) === true;
 }
 
 /**
@@ -79,6 +102,12 @@ export interface SichtbarkeitsFakten {
  * mitnehmen (Gesamtanweisung, Papierkorb). Ohne sie fiele das Objekt auf die Stufenregel zurück.
  */
 export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  // Zusammenführung (Nacharbeit 23): der führende Space ist eine UNABHÄNGIGE UND-Bedingung — er gilt
+  // vor jeder weiteren Regel, auch vor den Quelllesern (ein Quellleser ohne Space-Leserecht liest
+  // nicht; die Quellleser öffnen keinen fremden Space).
+  if (!spaceErlaubt(user, ko.spaceId)) {
+    return false;
+  }
   const leser = ko.quellrechte?.leser;
   if (Array.isArray(leser)) {
     return user.id.length > 0 && leser.includes(user.id);
@@ -126,6 +155,20 @@ export type Sichtbarkeitsfilter = (ko: SichtbarkeitsFakten) => boolean;
 
 export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter {
   return (ko) => darfSehen(user, ko);
+}
+
+/**
+ * R-1175 (aufnahme:20260922:gesamt-rechte-inventar) — DER BETRACHTER EINES SCHLÜSSELS.
+ *
+ * Ein Add-in- oder Dienst-Schlüssel ist kein Konto. Bis hierher entschied `/api/ask` für ihn mit
+ * einer eigenen Zeile („ohne Space oder offener Space"), also NICHT mit der einen Entscheidung.
+ * Jetzt fragt auch dieser Weg `darfSehen` — mit einem Betrachter, der so wenig darf wie möglich:
+ * Rolle `viewer` (kein `ko.validate`, also nichts Vertrauliches), KEINE Kennung (leer ist nach
+ * `darfSehen` nie Autorschaft) und als lesbare Spaces genau die offenen. Das Ergebnis ist dieselbe
+ * Menge wie die alte Zeile, enger nur um Vertrauliches, das der Zweig ohnehin verwirft.
+ */
+export function schluesselBetrachter(offeneSpaces: ReadonlySet<string>): SessionUser {
+  return { id: "", role: "viewer", spaceLesbar: offeneSpaces };
 }
 
 // ================================================================================================
@@ -236,11 +279,20 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
   // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
   const darfVertraulich = can(user.role, "ko.validate");
   const betrachter = user.id;
+  // produkt:20261007:spaces — die lesbaren Spaces reisen als DRITTER Parameter, aber nur, wenn der
+  // Betrachter sie trägt. Ohne sie bleibt die Parameterliste die bisherige, und das Prädikat lässt
+  // jedes Objekt mit führendem Space weg (dieselbe fail-closed-Richtung wie `spaceErlaubt`).
+  const spaces = user.spaceLesbar ? [...user.spaceLesbar] : undefined;
 
   return {
     sql(spaltenTraeger: string, abPlatzhalter: number): string {
       const rolle = `$${abPlatzhalter}`;
       const autor = `$${abPlatzhalter + 1}`;
+      // Zeichengleich `spaceErlaubt`: nur eine Zeichenkette in `spaceId` ist ein führender Space.
+      const ohneSpace = `jsonb_typeof(${spaltenTraeger}.data->'spaceId') IS DISTINCT FROM 'string'`;
+      const spaceBedingung = spaces
+        ? ` AND (${ohneSpace} OR ${spaltenTraeger}.data->>'spaceId' = ANY($${abPlatzhalter + 2}::text[]))`
+        : ` AND ${ohneSpace}`;
       // Zeile für Zeile dieselbe Regel wie `darfSehen`, plus der Papierkorb davor:
       //   · nicht getrasht,
       //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
@@ -263,10 +315,12 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
         ` THEN (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text))` +
         ` ELSE (${spaltenTraeger}.confidentiality_key = 'intern'` +
         ` OR ${rolle}::boolean` +
-        ` OR ${istAutor}) END))`
+        // Zusammenführung (Nacharbeit 23): die Space-Bedingung (main) als UND hinter Quellleser-/
+        // Stufenregel — Zeile für Zeile wie `darfSehen`.
+        ` OR ${istAutor}) END)${spaceBedingung})`
       );
     },
-    params: [darfVertraulich, betrachter],
+    params: spaces ? [darfVertraulich, betrachter, spaces] : [darfVertraulich, betrachter],
     // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
     // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
     trifftZu(ko): boolean {
@@ -559,7 +613,14 @@ export interface KonfliktFelder {
   koA: string;
   koB: string;
   description: string;
-  detector?: { rationale?: string; quotes?: { a: string; b: string } } | undefined;
+  detector?:
+    | {
+        rationale?: string;
+        quotes?: { a: string; b: string };
+        // R-0263: Klaras vorgeschlagener Geltungsbereich ist Modelltext über den Inhalt.
+        vorschlag?: { geltungsbereich?: string } | undefined;
+      }
+    | undefined;
 }
 
 export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
@@ -581,10 +642,20 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
     return konflikt;
   }
   const detector = konflikt.detector;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klaras vorgeschlagener Geltungsbereich ist
+  // Modelltext über den Inhalt beider Seiten — er geht den Weg von `rationale`. Art und Seite des
+  // Vorschlags bleiben stehen: sie sagen nicht mehr als die Existenz des Konflikts selbst.
+  const vorschlag = detector?.vorschlag;
+  const vorschlagSicht =
+    vorschlag?.geltungsbereich !== undefined
+      ? { vorschlag: { ...vorschlag, geltungsbereich: "" } }
+      : {};
   return {
     ...konflikt,
     description: "",
-    ...(detector ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" } } } : {}),
+    ...(detector
+      ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" }, ...vorschlagSicht } }
+      : {}),
     redacted: true,
   };
 }
@@ -632,7 +703,8 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
 // ZWEI ÄNDERUNGEN, und die zweite ist die wichtigere:
 //
 //   1. Die Trägersuche kennt jetzt alle fünf Orte, an denen eine Referenz stehen kann — dieselbe
-//      Aufzählung wie in object-references.ts, dort für den Datenverlust, hier für den Schutz.
+//      Aufzählung wie im Waisenlauf (`datenintegritaet.ts`), dort für den Datenverlust, hier für
+//      den Schutz.
 //   2. Der TRÄGERLOSE Fall ist fail-closed: eine FEHLENDE Stufe ist keine Aussage „intern",
 //      sondern „unbekannt" — und Unbekanntes wird nicht ausgeliefert. Sichtbar bleibt es nur für
 //      die, die auch ein vertrauliches Objekt sehen dürften: den Hochladenden selbst (das
@@ -765,8 +837,7 @@ export interface AnhangEntwurf {
 
 /**
  * Die Quellen, die die Trägersuche befragt. BEWUSST als Funktionen injiziert und nicht als Module
- * importiert — dasselbe Muster und dieselbe Begründung wie `ObjectReferenceSources`: der
- * Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
+ * importiert: der Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
  */
 export interface AnhangQuellen {
   /**
@@ -959,7 +1030,7 @@ function zuordnungInFassung(
  * Darf dieser Mensch diesen Anhang sehen? (G2 — der Anhang erbt die Stufe seines Objekts.)
  *
  * `traeger` ist der AKTUELLE Bestand der Wissensobjekte; der Aufrufer liefert ihn, damit diese
- * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (Muster `ObjectReferenceSources`).
+ * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (injizierte Quellen, s. oben).
  */
 export interface AnhangUrteil {
   /** Darf dieser Mensch die Bytes bekommen? */

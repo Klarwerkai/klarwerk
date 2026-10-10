@@ -337,6 +337,68 @@ async function zeilenMitQuellsatz(db: Pool): Promise<number> {
   return Number.parseInt(antwort.rows[0]?.anzahl ?? "0", 10);
 }
 
+// ------------------------------------------------------------------------------------------------
+// entscheidung:14ce8681 / entscheidung:8b909a1e — Werkzeuge für Q7–Q9.
+// ------------------------------------------------------------------------------------------------
+
+/** Wie viele Zeilen in `drafts` enthalten diesen Text? */
+async function zeilenMit(db: Pool, text: string): Promise<number> {
+  const antwort = await db.query<{ anzahl: string }>(
+    "SELECT count(*)::text AS anzahl FROM drafts WHERE data::text LIKE $1",
+    [`%${text}%`],
+  );
+  return Number.parseInt(antwort.rows[0]?.anzahl ?? "0", 10);
+}
+
+/** Fokussiert das Feld unter GENAU dieser Beschriftung und setzt die Einfügemarke ans Ende. */
+const FELD_PER_LABEL_FOKUS_ENDE = `(label) => {
+  const l = [...document.querySelectorAll('label')].find(
+    (x) => ((x.querySelector('span') || {}).textContent || '').trim() === label);
+  const f = l && l.querySelector('input,textarea');
+  if (!f) { return false; }
+  f.focus();
+  f.setSelectionRange(f.value.length, f.value.length);
+  return true;
+}`;
+/** Der sichtbare Hinweis „war bereits gespeichert": Text und Kennung des Verweises, sonst `null`. */
+const HINWEIS = `() => {
+  const h = document.querySelector('[data-testid="capture-bereits-gespeichert"]');
+  if (!h || h.offsetParent === null) { return null; }
+  const a = h.querySelector('a');
+  return { text: (h.textContent || '').replace(/\\s+/g, ' ').trim(), entwurf: h.dataset.entwurf || null, href: a ? a.getAttribute('href') : null };
+}`;
+/** Klickt den Verweis im Hinweis. */
+const HINWEIS_VERWEIS_KLICKEN = `() => {
+  const a = document.querySelector('[data-testid="capture-bereits-gespeichert"] a');
+  if (!a) { return false; }
+  a.click();
+  return true;
+}`;
+
+/** Füllt ein frisches Erfassen-Formular (Titel, Aussage) — fokussiert und getippt, nicht gesetzt. */
+async function formularFuellen(
+  seite: SeiteMitDialogUndRoute,
+  titel: string,
+  aussage: string,
+): Promise<void> {
+  await wegWaehlen(seite, "erfassen.weg.formular");
+  for (const [label, wert] of [
+    [satz("capture.fTitle"), titel],
+    [satz("capture.fStatement"), aussage],
+  ] as const) {
+    await aufZustandWarten(
+      seite,
+      `(l) => [...document.querySelectorAll('label')].some(
+        (x) => ((x.querySelector('span') || {}).textContent || '').trim() === l)`,
+      `das Feld «${label}» steht`,
+      label,
+    );
+    expect(await seite.evaluate<boolean>(fn(FELD_PER_LABEL_FOKUS_ENDE), label)).toBe(true);
+    await seite.keyboard.type(wert);
+  }
+  await aufZustandWarten(seite, FELDWERT_DA, `die Aussage «${aussage}» steht`, aussage);
+}
+
 async function warteBisAsync(bedingung: () => Promise<boolean>, was: string): Promise<void> {
   const ende = Date.now() + wartebudget("aufFlaechensatzWarten");
   while (!(await bedingung())) {
@@ -755,6 +817,17 @@ describe("JOB 4352 Q · der sichtbare Speicherknopf im Browser, gegen echtes Pos
         expect(await zeilenMitQuellsatz(db), "die Datei liegt doppelt in `drafts`").toBe(
           vorherDatei + 1,
         );
+        // entscheidung:8b909a1e: der Server hat den Eintrag erkannt — Hinweis statt Erfolg.
+        const bereits = satz("capture.bereitsGespeichert");
+        await aufZustandWarten(seite, TEXT_ODER_FELD, `der Hinweis «${bereits}» steht`, bereits);
+        await sichtbarZugesichert(seite, bereits, "Hinweis „war bereits gespeichert“ (Q3)");
+        expect(
+          await seite.evaluate<boolean>(
+            fn(TEXT_ODER_FELD),
+            satz(CAPTURE_FILE_TEXT.wholeSaved, { name: DATEI_NAME }),
+          ),
+          "die normale Erfolgsmeldung steht trotz erkannter Wiederholung da",
+        ).toBe(false);
         process.stderr.write(`${JOB} Q3 GRÜN · Anlagen 2 · Zeilen +1 · Uploads 1\n`);
       } finally {
         riegel();
@@ -939,15 +1012,29 @@ describe("JOB 4352 Q · der sichtbare Speicherknopf im Browser, gegen echtes Pos
         expect(leitung.schluessel[1], "die Wiederholung trägt einen anderen Schlüssel").toBe(
           leitung.schluessel[0],
         );
-        expect(leitung.rumpfe[1], "die Wiederholung schickt eine andere Nutzlast").toBe(
+        // entscheidung:14ce8681: die Wiederholung eines unklaren Vorgangs trägt zusätzlich das
+        // TRANSPORTFELD `fortschreiben` (wie `operationId` kein Dokumentinhalt). Verglichen wird
+        // deshalb der Rumpf ohne dieses eine Feld — Zeichen für Zeichen, ohne weitere Ausnahme.
+        const rumpf2 = JSON.parse(leitung.rumpfe[1] ?? "{}") as Record<string, unknown>;
+        expect(rumpf2.fortschreiben, "die Wiederholung trägt kein `fortschreiben`").toBe(true);
+        const { fortschreiben: _transport, ...ohneTransport } = rumpf2;
+        expect(JSON.stringify(ohneTransport), "die Wiederholung schickt eine andere Nutzlast").toBe(
           leitung.rumpfe[0],
         );
+        expect(
+          Object.hasOwn(JSON.parse(leitung.rumpfe[0] ?? "{}") as object, "fortschreiben"),
+          "schon der erste Versuch trug `fortschreiben`",
+        ).toBe(false);
         expect(leitung.uploads, "die Wiederholung hat erneut hochgeladen").toBe(1);
         expect(await zeilenMitQuellsatz(db), "Doppelbestand ohne Änderung des Menschen").toBe(
           vorherDatei + 1,
         );
         const grund = satz("capture.originalAttachFailed", { name: DATEI_NAME });
         await aufZustandWarten(seite, TEXT_ODER_FELD, `der Grund «${grund}» steht da`, grund);
+        // entscheidung:8b909a1e: der Server hat den Eintrag erkannt — Hinweis statt Erfolg.
+        const bereits = satz("capture.bereitsGespeichert");
+        await aufZustandWarten(seite, TEXT_ODER_FELD, `der Hinweis «${bereits}» steht`, bereits);
+        await sichtbarZugesichert(seite, bereits, "Hinweis „war bereits gespeichert“ (Q5)");
         process.stderr.write(`${JOB} Q5 GRÜN · Anlagen 2 · Zeilen +1 · Uploads 1\n`);
       } finally {
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
@@ -1130,6 +1217,239 @@ describe("JOB 4352 Q · der sichtbare Speicherknopf im Browser, gegen echtes Pos
         );
       } finally {
         riegel();
+        await seite.close({ runBeforeUnload: false }).catch(() => undefined);
+      }
+    },
+    FALL_RAHMEN_MS * 3,
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // entscheidung:14ce8681 / entscheidung:8b909a1e (Pedi, 30.09.2026, jeweils Option A).
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // Q7 (K1, K3): Antwort verloren, der Mensch ÄNDERT den Inhalt und speichert erneut — EINE Zeile in
+  //   `drafts` mit dem neuen Inhalt, der Hinweis steht sichtbar statt der Erfolgsmeldung, sein
+  //   Verweis öffnet genau diese Zeile, und nach dem Neuladen kommt der neue Inhalt wieder.
+  // Q8 (K2, K4): der erste Aufruf erreicht den Server NIE, der Mensch ändert den Inhalt und speichert
+  //   erneut — EINE Zeile mit dem aktuellen Inhalt, kein Hinweis, die normale Erfolgsmeldung.
+  // Q9 (K4): echte Erstspeicherung — kein Hinweis, die normale Erfolgsmeldung.
+  // Gezählt wird an der Tabelle `drafts`; die Leitung wird nur über Playwright-Weichen verstellt.
+
+  it(
+    "Q7 — Formular: Antwort verloren, Inhalt geändert, erneut gespeichert: EINE Zeile mit dem neuen Inhalt, sichtbarer Hinweis mit funktionierendem Verweis, nach dem Neuladen derselbe Stand",
+    async (ctx) => {
+      if (!verfuegbar) {
+        ctx.skip();
+        return;
+      }
+      const db = brauche(pool, "der Verbindungspool");
+      const basis = brauche(strecke, "die Messstrecke").basis;
+      const seite = await neueSeite();
+      const TITEL = "Lieferbedingung Q7";
+      const ALT = "Lieferung frei Haus ab 500 Euro.";
+      const ZUSATZ = " Darunter 9 Euro Pauschale.";
+      const leitung = { anlagen: 0, schluessel: [] as string[], antwortVerworfen: false };
+      try {
+        await seite.route(`${basis}/api/drafts`, async (route) => {
+          const r = route as unknown as Abrufweiche;
+          if (r.request().method() !== "POST") {
+            await r.fallback();
+            return;
+          }
+          leitung.anlagen += 1;
+          const rumpf = JSON.parse(r.request().postData() ?? "{}") as { operationId?: string };
+          leitung.schluessel.push(String(rumpf.operationId));
+          if (leitung.anlagen === 1) {
+            await r.fetch();
+            await r.abort("failed");
+            leitung.antwortVerworfen = true;
+            return;
+          }
+          await r.fallback();
+        });
+        await seite.goto(`${basis}/erfassen`, {
+          waitUntil: "load",
+          timeout: wartebudget("neuLadenAdresse"),
+        });
+        await aufZustandWarten(seite, SELEKTOR_DA, "das Blatt steht nach dem Laden", BLATT);
+        expect(await zeilenMit(db, TITEL)).toBe(0);
+        await formularFuellen(seite, TITEL, ALT);
+
+        const speichern = satz("capture.saveDraft");
+        expect(await seite.evaluate<boolean>(fn(KLICK_KNOPF_EXAKT), speichern)).toBe(true);
+        await warteBis(() => leitung.antwortVerworfen, "die erste Antwort ist verworfen");
+        await warteBisAsync(
+          async () => (await zeilenMit(db, TITEL)) === 1,
+          "die erste Anlage liegt als Zeile in `drafts`",
+        );
+        await aufZustandWarten(seite, KNOPF_BETAETIGBAR, "der Knopf ist wieder frei", speichern);
+        expect(
+          await seite.evaluate<boolean>(fn(TEXT_ODER_FELD), satz("capture.draftSaved")),
+          "Erfolg gemeldet, obwohl die Antwort verloren ging",
+        ).toBe(false);
+
+        // Der Mensch ÄNDERT den Inhalt — getippt — und speichert erneut.
+        expect(
+          await seite.evaluate<boolean>(fn(FELD_PER_LABEL_FOKUS_ENDE), satz("capture.fStatement")),
+        ).toBe(true);
+        await seite.keyboard.type(ZUSATZ);
+        await aufZustandWarten(seite, FELDWERT_DA, "die Änderung steht im Feld", `${ALT}${ZUSATZ}`);
+        expect(await seite.evaluate<boolean>(fn(KLICK_KNOPF_EXAKT), speichern)).toBe(true);
+
+        // K3: der Hinweis steht SICHTBAR, die normale Erfolgsmeldung nicht.
+        const satzFort = satz("capture.bereitsGespeichertFortgeschrieben");
+        await aufZustandWarten(seite, TEXT_ODER_FELD, `der Hinweis «${satzFort}» steht`, satzFort);
+        await sichtbarZugesichert(seite, satzFort, "Hinweis „war bereits gespeichert“ (Q7)");
+        expect(
+          await seite.evaluate<boolean>(fn(TEXT_ODER_FELD), satz("capture.draftSaved")),
+          "die normale Erfolgsmeldung steht trotz erkannter Wiederholung da",
+        ).toBe(false);
+
+        // K1: EINE Zeile, und sie trägt den NEUEN Inhalt.
+        expect(leitung.anlagen).toBe(2);
+        expect(leitung.schluessel[1], "der geänderte Inhalt bekam einen neuen Schlüssel").toBe(
+          leitung.schluessel[0],
+        );
+        expect(await zeilenMit(db, TITEL), "zweiter Entwurf nach geändertem Inhalt").toBe(1);
+        const h = await seite.evaluate<{ entwurf: string | null; href: string | null } | null>(
+          fn(HINWEIS),
+        );
+        const kennung = h?.entwurf ?? null;
+        if (kennung === null) {
+          throw new Error(`${JOB} Q7: der Hinweis nennt keinen Eintrag.`);
+        }
+        expect(h?.href, "der Verweis zeigt nicht auf den vorhandenen Eintrag").toContain(
+          `draft=${encodeURIComponent(kennung)}`,
+        );
+        const zeile = await entwurfszeile(db, kennung);
+        expect(zeile, "die Zeile trägt den neuen Inhalt nicht").toContain(`${ALT}${ZUSATZ}`);
+
+        // Der Verweis FUNKTIONIERT: Klick öffnet genau diesen Eintrag im Blatt.
+        expect(await seite.evaluate<boolean>(fn(HINWEIS_VERWEIS_KLICKEN))).toBe(true);
+        await aufBlattMitTitel(seite, TITEL);
+        expect(
+          await seite.evaluate<string | null>(
+            fn("() => new URLSearchParams(location.search).get('draft')"),
+          ),
+          "das Blatt zeigt nicht den Eintrag aus dem Verweis",
+        ).toBe(kennung);
+
+        // Nach dem Neuladen: derselbe neue Stand, und weiterhin genau eine Zeile.
+        await seite.reload({ waitUntil: "load", timeout: wartebudget("neuLadenAdresse") });
+        await aufZustandWarten(
+          seite,
+          TEXT_ODER_FELD,
+          "nach dem Neuladen steht der neue Inhalt auf der Fläche",
+          ZUSATZ.trim(),
+        );
+        expect(await zeilenMit(db, TITEL)).toBe(1);
+        process.stderr.write(`${JOB} Q7 GRÜN · Entwurf ${kennung} · Zeilen 1 · fortgeschrieben\n`);
+      } finally {
+        await seite.close({ runBeforeUnload: false }).catch(() => undefined);
+      }
+    },
+    FALL_RAHMEN_MS * 3,
+  );
+
+  it(
+    "Q8 — Formular: der erste Aufruf erreicht den Server nie, Inhalt geändert, erneut gespeichert: EINE Zeile mit dem aktuellen Inhalt, kein Hinweis, normale Erfolgsmeldung",
+    async (ctx) => {
+      if (!verfuegbar) {
+        ctx.skip();
+        return;
+      }
+      const db = brauche(pool, "der Verbindungspool");
+      const basis = brauche(strecke, "die Messstrecke").basis;
+      const seite = await neueSeite();
+      const TITEL = "Lieferbedingung Q8";
+      const ALT = "Abholung nur werktags.";
+      const ZUSATZ = " Samstags nach Absprache.";
+      const leitung = { anlagen: 0 };
+      try {
+        await seite.route(`${basis}/api/drafts`, async (route) => {
+          const r = route as unknown as Abrufweiche;
+          if (r.request().method() !== "POST") {
+            await r.fallback();
+            return;
+          }
+          leitung.anlagen += 1;
+          if (leitung.anlagen === 1) {
+            // Der Aufruf erreicht den Server NIE.
+            await r.abort("failed");
+            return;
+          }
+          await r.fallback();
+        });
+        await seite.goto(`${basis}/erfassen`, {
+          waitUntil: "load",
+          timeout: wartebudget("neuLadenAdresse"),
+        });
+        await aufZustandWarten(seite, SELEKTOR_DA, "das Blatt steht nach dem Laden", BLATT);
+        await formularFuellen(seite, TITEL, ALT);
+
+        const speichern = satz("capture.saveDraft");
+        expect(await seite.evaluate<boolean>(fn(KLICK_KNOPF_EXAKT), speichern)).toBe(true);
+        await warteBis(() => leitung.anlagen === 1, "der erste Aufruf ist abgebrochen");
+        await aufZustandWarten(seite, KNOPF_BETAETIGBAR, "der Knopf ist wieder frei", speichern);
+        expect(await zeilenMit(db, TITEL), "angelegt, obwohl der Aufruf nie ankam").toBe(0);
+        // Nichts verloren: die Eingabe steht noch da.
+        await aufZustandWarten(seite, FELDWERT_DA, "die Eingabe steht noch", ALT);
+
+        expect(
+          await seite.evaluate<boolean>(fn(FELD_PER_LABEL_FOKUS_ENDE), satz("capture.fStatement")),
+        ).toBe(true);
+        await seite.keyboard.type(ZUSATZ);
+        expect(await seite.evaluate<boolean>(fn(KLICK_KNOPF_EXAKT), speichern)).toBe(true);
+
+        const erfolg = satz("capture.draftSaved");
+        await aufZustandWarten(seite, TEXT_ODER_FELD, `die Erfolgsmeldung «${erfolg}»`, erfolg);
+        expect(
+          await seite.evaluate<unknown>(fn(HINWEIS)),
+          "Hinweis bei Erstspeicherung",
+        ).toBeNull();
+        expect(await zeilenMit(db, TITEL)).toBe(1);
+        expect(await zeilenMit(db, `${ALT}${ZUSATZ}`), "der aktuelle Inhalt fehlt").toBe(1);
+        process.stderr.write(`${JOB} Q8 GRÜN · Zeilen 1 · aktueller Inhalt\n`);
+      } finally {
+        await seite.close({ runBeforeUnload: false }).catch(() => undefined);
+      }
+    },
+    FALL_RAHMEN_MS * 3,
+  );
+
+  it(
+    "Q9 — echte Erstspeicherung im Formular: kein Hinweis, die normale Erfolgsmeldung",
+    async (ctx) => {
+      if (!verfuegbar) {
+        ctx.skip();
+        return;
+      }
+      const db = brauche(pool, "der Verbindungspool");
+      const basis = brauche(strecke, "die Messstrecke").basis;
+      const seite = await neueSeite();
+      const TITEL = "Lieferbedingung Q9";
+      try {
+        await seite.goto(`${basis}/erfassen`, {
+          waitUntil: "load",
+          timeout: wartebudget("neuLadenAdresse"),
+        });
+        await aufZustandWarten(seite, SELEKTOR_DA, "das Blatt steht nach dem Laden", BLATT);
+        await formularFuellen(seite, TITEL, "Zahlung binnen 14 Tagen.");
+        expect(
+          await seite.evaluate<boolean>(fn(KLICK_KNOPF_EXAKT), satz("capture.saveDraft")),
+        ).toBe(true);
+        const erfolg = satz("capture.draftSaved");
+        await aufZustandWarten(seite, TEXT_ODER_FELD, `die Erfolgsmeldung «${erfolg}»`, erfolg);
+        expect(
+          await seite.evaluate<unknown>(fn(HINWEIS)),
+          "Hinweis bei Erstspeicherung",
+        ).toBeNull();
+        expect(
+          await seite.evaluate<boolean>(fn(TEXT_ODER_FELD), satz("capture.bereitsGespeichert")),
+        ).toBe(false);
+        expect(await zeilenMit(db, TITEL)).toBe(1);
+        process.stderr.write(`${JOB} Q9 GRÜN · Erstspeicherung ohne Hinweis\n`);
+      } finally {
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
       }
     },

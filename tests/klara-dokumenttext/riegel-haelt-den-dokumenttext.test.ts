@@ -26,7 +26,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
-import { askRoutes } from "../../services/app/src/routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "../../services/app/src/routes/ask-routes";
 import {
   KlaraSessionService,
   pruefeDokumenttextDeckung,
@@ -272,20 +272,15 @@ async function wegAufbauen(
   const app = Fastify({
     logger: { level: "info", stream: { write: (z: string) => zeilen.push(z) } },
   });
-  app.register(
-    askRoutes(
-      {
-        ask,
-        ko: koService,
-        conflicts: { unresolved: async () => [] } as never,
-        klaraSessions: dienst,
-      },
-      {
-        requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
-        requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
-      } as never,
-    ),
-  );
+  const guards = {
+    requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+    requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+  } as never;
+  const basis = { ask, ko: koService, conflicts: { unresolved: async () => [] } as never };
+  // R-0700: Klaras eigener Zugang trägt die Markierung und die Dokumenttext-Prüfung; der allgemeine
+  // Frageweg steht daneben, damit R4d seine Abweisung am selben Aufbau misst.
+  app.register(askRoutes(basis, guards));
+  app.register(klaraAusfuehrungRoutes({ ...basis, klaraSessions: dienst }, guards));
   await app.ready();
   const sicht = await dienst.createSession("nutzer-1", "inst-1", {
     kind: "saved",
@@ -328,7 +323,7 @@ async function wegAufbauen(
 const fragen = (w: Weg, rumpf: Record<string, unknown> = {}) =>
   w.app.inject({
     method: "POST",
-    url: "/api/ask",
+    url: `/api/klara/sessions/${w.sitzung}/execute`,
     headers: { ...w.kopf, "content-type": "application/json" },
     payload: {
       question: FRAGE,
@@ -457,8 +452,10 @@ describe("R-0639 · R4 — am Draht: was den Modellclient WIRKLICH erreicht", ()
       headers: { "content-type": "application/json" },
       payload: { question: FRAGE, locale: "de", mode: "retrieval-only", selection: MARKIERUNG },
     });
-    expect(res.statusCode).toBe(200);
-    // Ohne Bindung bleibt die Enge: retrieval-only, kein Modellaufruf, keine Dokumenttext-Frage.
+    // R-0700: der allgemeine Frageweg nimmt die Markierung gar nicht mehr an (400) — schärfer als
+    // die frühere Enge, und mit derselben Zusage: kein Modellaufruf, keine Dokumenttext-Frage.
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("KLARA_EIGENER_WEG");
     expect(w.prompts).toEqual([]);
     expect(w.entscheidungen()).toEqual([]);
     await w.app.close();
@@ -691,7 +688,7 @@ describe("R-0639 · R6 — die Herkunft der Frage an der Route, fail-closed", ()
       const w = await wegAufbauen();
       const res = await w.app.inject({
         method: "POST",
-        url: "/api/ask",
+        url: `/api/klara/sessions/${w.sitzung}/execute`,
         headers: { ...w.kopf, "content-type": "application/json" },
         payload: {
           question: MARKIERUNG,
@@ -707,7 +704,7 @@ describe("R-0639 · R6 — die Herkunft der Frage an der Route, fail-closed", ()
     const getippt = await wegAufbauen();
     await getippt.app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${getippt.sitzung}/execute`,
       headers: { ...getippt.kopf, "content-type": "application/json" },
       payload: { question: FRAGE, locale: "de", mode: "retrieval-only", questionSource: "manual" },
     });
@@ -719,7 +716,7 @@ describe("R-0639 · R6 — die Herkunft der Frage an der Route, fail-closed", ()
     const w = await wegAufbauen({ riegelOffen: true });
     await w.app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${w.sitzung}/execute`,
       headers: { ...w.kopf, "content-type": "application/json" },
       payload: {
         question: MARKIERUNG,
@@ -744,10 +741,11 @@ describe("R-0639 · R6 — die Herkunft der Frage an der Route, fail-closed", ()
 // B2: ohne `mode` lief eine gebundene Anfrage am ganzen Klara-Zweig vorbei in den Konsolenweg —
 //     auch mit `questionSource: "selection"` und `selectionConfidentiality: "vertraulich"`.
 // Jeder Absagefall hat eine Gegenprobe, in der genau EIN Umstand anders ist.
+// R-0700: MIT Bindung ist das Klaras eigener Zugang; OHNE Bindung der allgemeine Frageweg.
 const rumpfFrage = (w: Weg, payload: Record<string, unknown>, mitBindung = true) =>
   w.app.inject({
     method: "POST",
-    url: "/api/ask",
+    url: mitBindung ? `/api/klara/sessions/${w.sitzung}/execute` : "/api/ask",
     headers: { ...(mitBindung ? w.kopf : {}), "content-type": "application/json" },
     payload,
   });
@@ -822,9 +820,16 @@ describe("R-0639 · R7 — Bens Befunde B1/B2 aus Runde 2", () => {
     await w.app.close();
   });
 
-  it('R7h · ohne Bindung, aber ausdrücklich `questionSource: "selection"` — eingeengt, kein Modell', async () => {
+  // R-0700: `questionSource` ist ein Klara-Feld — der allgemeine Frageweg weist es ab (400) statt
+  // einzuengen. Die Zusage bleibt dieselbe: kein Modell.
+  it('R7h · ohne Bindung, aber ausdrücklich `questionSource: "selection"` — abgewiesen, kein Modell', async () => {
     const w = await wegAufbauen();
-    await rumpfFrage(w, { question: MARKIERUNG, locale: "de", questionSource: "selection" }, false);
+    const res = await rumpfFrage(
+      w,
+      { question: MARKIERUNG, locale: "de", questionSource: "selection" },
+      false,
+    );
+    expect(res.statusCode).toBe(400);
     expect(w.prompts).toEqual([]);
     await w.app.close();
   });

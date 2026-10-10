@@ -128,8 +128,10 @@ describe("UX-20: Ablehnungsgrund", () => {
     // UX-20b-R (Bens Befund R-0150/R-1731): der Export trägt die Urheberschaft als `originalAuthor`,
     // und der Parser reicht sie seitdem durch — sonst wurde beim Wiedereinlesen der frühere `author`
     // zum Wissensträger. Hier sind beide „Anna", weil das Objekt ohne abweichende Urheberin entstand.
+    // R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 4, Bens Befund): NACHGEFÜHRT — die
+    // Einstufung der Quelle reist seither mit (`einstufungAusDatei`), hier die exportierte „intern".
     expect(parseImportItems(JSON.stringify(exported))).toEqual([
-      { ...valid, author: "Anna", originalAuthor: "Anna", tags: ["a"] },
+      { ...valid, author: "Anna", originalAuthor: "Anna", tags: ["a"], confidentiality: "intern" },
     ]);
   });
 });

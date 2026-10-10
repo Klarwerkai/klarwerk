@@ -6,6 +6,30 @@
 # Typ-/Lint-/Test-Gates laufen im Runner bzw. in CI — das Image baut nur (vite build direkt,
 # nicht "npm run build", damit der Image-Build nicht am tsc-Gate doppelt hängt).
 
+# ---- Stufe 0: bekannte Schwachstellen der Fremdbibliotheken (R-1398) -----------------------
+# Jeder Lieferweg endet hier: Coolify baut nach dem Push dieses Dockerfile. Diese Stufe fragt
+# `npm audit --omit=dev` für beide ausgelieferten Bestände (Laufzeit = package-lock.json,
+# gebündelte SPA = apps/web/package-lock.json) und hält jede Meldung gegen ihre Bewertung an der
+# gebundenen Version (tools/abhaengigkeiten-bewertet.json). Exit 1 (unbewertet/veraltet) oder 2
+# (nicht prüfbar) lässt den Bau scheitern; die Laufzeitstufe hängt über `COPY --from` an dieser
+# Stufe, deshalb kann sie nicht übersprungen werden. Node 24 führt das TypeScript-Werkzeug direkt
+# aus (wie tools/abhaengigkeiten-audit.sh), ohne tsx und ohne Nachladen.
+FROM node:24-bookworm-slim AS abhaengigkeiten
+WORKDIR /pruef
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/package-lock.json apps/web/
+COPY tools/abhaengigkeiten-audit.ts tools/abhaengigkeiten-bewertet.json tools/
+# SOURCE_COMMIT steht im RUN, damit ein neuer Commit den Bau-Cache dieser Stufe verwirft und die
+# Registry erneut gefragt wird — sonst bliebe bei unveränderten Lockdateien ein altes Ergebnis
+# stehen. DER NAME `SOURCE_COMMIT` IST HIER DIESELBE ANNAHME ÜBER DIE AUSLIEFERUNG wie in der
+# Laufzeitstufe unten, keine Messung. Fehlt der Wert oder ist er unbrauchbar, nennt die Ausgabe den
+# Commit „unbekannt“, und der Cache des Builders entscheidet, ob erneut gefragt wird; der
+# Zeitstempel im Ergebnis zeigt, wann. Für /health prüft weiterhin allein `buildCommit()` in
+# build-app.ts den Wert der Laufzeitstufe.
+ARG SOURCE_COMMIT=""
+RUN echo "Abhängigkeitsprüfung für Commit ${SOURCE_COMMIT:-unbekannt}" && \
+    node tools/abhaengigkeiten-audit.ts --ausgabe /pruef/abhaengigkeiten-audit.txt
+
 # ---- Stufe 1: Oberfläche bauen -------------------------------------------------------------
 FROM node:20-bookworm-slim AS webbuild
 WORKDIR /build
@@ -55,9 +79,15 @@ COPY apps/web/src apps/web/src
 # darunter, nicht den teuren apt-/npm-Teil weiter oben.
 ARG SOURCE_COMMIT=""
 ENV KLARWERK_BUILD_COMMIT=$SOURCE_COMMIT
+# R-1398: das Ergebnis der Stufe `abhaengigkeiten` reist mit. Diese Zeile ist zugleich die
+# Abhängigkeit, ohne die BuildKit die Prüfstufe gar nicht bauen würde. Bewusst spät, damit ein
+# neues Prüfergebnis nur diese Ebene entwertet, nicht apt/npm weiter oben.
+COPY --from=abhaengigkeiten /pruef/abhaengigkeiten-audit.txt ./abhaengigkeiten-audit.txt
 EXPOSE 3001
 USER node
 # Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
+# R-2057: mit KLARWERK_TLS_CERT_FILE fragt er über HTTPS mit Zertifikatsprüfung
+# (services/app/healthcheck.mjs, Anleitung docs/operations/tls-bis-zur-anwendung.md).
 HEALTHCHECK --interval=30s --timeout=4s --start-period=15s \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node services/app/healthcheck.mjs
 CMD ["npx", "tsx", "services/app/src/server.ts"]

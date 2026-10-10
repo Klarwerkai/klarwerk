@@ -335,7 +335,7 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
 
   it("FR-ANA-02: Wirkungs-Dashboard zählt Antwortquote ohne Lücke", async () => {
     const { app, headers } = await adminApp();
-    await app.inject({
+    const angelegt = await app.inject({
       method: "POST",
       url: "/api/kos",
       headers,
@@ -345,8 +345,18 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",
         category: "Anlage 1",
+        neededValidations: 1,
       },
     });
+    // R-0278 (Nacharbeit 3) / R-0584 (Auftrag gesamt-datenschutz-voreinstellung): beantwortbar ist
+    // eine Frage nur aus geprüftem Wissen — das KO wird über die echte Bewertung validiert.
+    const bewertet = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${angelegt.json().id}`,
+      headers,
+      payload: { action: "rate", verdict: "up" },
+    });
+    expect(bewertet.statusCode).toBe(200);
 
     // Eine beantwortbare Frage und eine ohne belastbares Wissen (→ Lücke).
     await app.inject({

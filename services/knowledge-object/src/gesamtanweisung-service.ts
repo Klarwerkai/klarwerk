@@ -433,6 +433,8 @@ export function lesestand(
     urheber: anweisung.urheber,
     erstelltAm: anweisung.erstelltAm,
     geaendertAm: anweisung.geaendertAm,
+    // Nur was festgehalten ist; Altbestand ohne Angabe bleibt ohne Feld (nichts wird ergänzt).
+    ...(anweisung.entscheidung ? { entscheidung: anweisung.entscheidung } : {}),
     bausteine,
     unvollstaendig: verborgen > 0,
     verborgeneBausteine: verborgen,
@@ -516,6 +518,7 @@ export function listeneintrag(
     urheber: gesehen.urheber,
     erstelltAm: gesehen.erstelltAm,
     geaendertAm: gesehen.geaendertAm,
+    ...(gesehen.entscheidung ? { entscheidung: gesehen.entscheidung } : {}),
     sichtbareBausteine: gesehen.bausteine.length,
     verborgeneBausteine: gesehen.verborgeneBausteine,
     unvollstaendig: gesehen.unvollstaendig,
@@ -788,12 +791,19 @@ export type Entscheidung = "angenommen" | "abgelehnt";
  *
  * DIE ZWEITE REGEL (F5). `stand` entsteht hier aus einer menschlichen Entscheidung. Es gibt in
  * diesem Modul keine Zeile, die ihn aus Bausteinmarkierungen ableitet.
+ *
+ * STATUS-FREIGABE (produkt:20261007) · `von` ist die angemeldete Person, die entscheidet. Mit ihr
+ * hält die Anweisung fest, WER über WELCHE Fassung WANN entschieden hat — Zeitpunkt und Fassung
+ * sind genau die des fortgeschriebenen Stands. Ohne `von` (reine Regelaufrufe ohne Sitzung) wird
+ * nichts festgehalten und eine frühere Angabe entfernt: eine Person zu einer anderen Entscheidung
+ * stehen zu lassen, wäre die erfundene Freigabeperson, die der Auftrag verbietet.
  */
 export function alsEntschieden(
   anweisung: Anweisung,
   version: number,
   entscheidung: Entscheidung,
   jetzt: string,
+  von?: string,
 ): Anweisung {
   pruefeVersion(anweisung, version);
   if (anweisung.stand !== "vorgelegt") {
@@ -803,7 +813,15 @@ export function alsEntschieden(
     });
   }
   const stand: AnweisungStand = entscheidung === "angenommen" ? "entschieden" : "abgelehnt";
-  return fortgeschrieben(anweisung, { stand }, jetzt);
+  const { entscheidung: _frueher, ...ohneFruehere } = anweisung;
+  const neu = fortgeschrieben(ohneFruehere, { stand }, jetzt);
+  if (typeof von !== "string" || von.trim().length === 0) {
+    return neu;
+  }
+  return {
+    ...neu,
+    entscheidung: { ergebnis: entscheidung, von: von.trim(), am: jetzt, version: neu.version },
+  };
 }
 
 // ================================================================================================
@@ -1401,14 +1419,16 @@ export class GesamtanweisungDienst {
     return this.schreiben(neu, anweisung.version, lagen);
   }
 
+  /** `von`: die angemeldete Person, die entscheidet — die Route reicht sie aus der Sitzung herein. */
   async entscheiden(
     id: string,
     version: number,
     entscheidung: Entscheidung,
     sichtbar: AnweisungSichtbar | undefined,
+    von?: string,
   ): Promise<Anweisung> {
     const { anweisung, lagen } = await this.geladen(id, sichtbar, true);
-    const neu = alsEntschieden(anweisung, version, entscheidung, this.deps.jetzt());
+    const neu = alsEntschieden(anweisung, version, entscheidung, this.deps.jetzt(), von);
     return this.schreiben(neu, anweisung.version, lagen);
   }
 

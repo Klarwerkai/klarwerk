@@ -69,7 +69,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 /**
  * Der UMSCHALTBARE Endpunkt-Mock — der ganze Unterschied zur Datei nebenan.
  *
- * `ANTWORTEN` bildet den gepunkteten Zugriffspfad (`audit.list`, `directory.list`, `users.list`)
+ * `ANTWORTEN` bildet den gepunkteten Zugriffspfad (`audit.seite`, `directory.list`, `users.list`)
  * auf das ab, was der Aufruf tun soll. Der Proxy sammelt diesen Pfad beim Durchgreifen ein, damit
  * kein Endpunkt hier aufgezählt werden muss:
  *
@@ -189,6 +189,19 @@ const PROTOKOLL = [
     hash: "h2",
   },
 ];
+
+/**
+ * produkt:20261009:admin-audit-verstaendlich: die Karte liest die Kette seitenweise
+ * (`GET /api/audit/seite`). Dieselben zwei Einträge als Seite — jüngster zuerst, keine ältere Seite,
+ * kein freigegebenes Objekt (also auch kein Titel neben `KO_ID`) und keine fremden Namensbelege.
+ */
+const PROTOKOLL_SEITE = {
+  entries: [...PROTOKOLL].reverse(),
+  nextBefore: null,
+  limit: 25,
+  objekte: {},
+  namensbelege: [],
+};
 
 const NUTZER = [
   {
@@ -421,7 +434,7 @@ const PROTOKOLL_URL = "/admin?bereich=sicherheit&detail=protokoll";
 // in „lädt", es gäbe keine Zeilen, und die abgeleiteten Fälle liefen ins Leere statt rot zu werden.
 describe("JOB 3670 R2 · G0 · die Karte hat wirklich geladene Daten vor sich", () => {
   it("das Prüfprotokoll zeichnet beide Einträge mit ihren beschrifteten Zeilen", async () => {
-    ANTWORTEN["audit.list"] = PROTOKOLL;
+    ANTWORTEN["audit.seite"] = PROTOKOLL_SEITE;
     ANTWORTEN["directory.list"] = VERZEICHNIS;
     await mount(PROTOKOLL_URL);
 
@@ -451,7 +464,7 @@ describe("JOB 3670 R2 · G0 · die Karte hat wirklich geladene Daten vor sich", 
 // alte Hilfetext sagte, sie tue das nicht und das Verzeichnis sei nicht lesbar gewesen.
 describe("JOB 3670 R2 · G1 · „Konto nicht mehr vorhanden“ ist eine Aussage, und die Hilfe sagt das", () => {
   it("die Karte zeigt den Hinweis bei ERFOLGREICH geladenem Verzeichnis", async () => {
-    ANTWORTEN["audit.list"] = PROTOKOLL;
+    ANTWORTEN["audit.seite"] = PROTOKOLL_SEITE;
     ANTWORTEN["directory.list"] = VERZEICHNIS;
     await mount(PROTOKOLL_URL);
 
@@ -472,7 +485,7 @@ describe("JOB 3670 R2 · G1 · „Konto nicht mehr vorhanden“ ist eine Aussage
   for (const sprache of ["de", "en", "nl"] as const) {
     it(`${sprache}: der Hilfetext nennt genau diesen Hinweis — abgeleitet aus der Karte`, async () => {
       await i18n.changeLanguage(sprache);
-      ANTWORTEN["audit.list"] = PROTOKOLL;
+      ANTWORTEN["audit.seite"] = PROTOKOLL_SEITE;
       ANTWORTEN["directory.list"] = VERZEICHNIS;
       await mount(PROTOKOLL_URL);
 
@@ -528,7 +541,7 @@ describe("JOB 3670 R2 · G2 · die schwachen Lagen stehen ebenfalls im Hilfetext
 
   for (const lage of LAGEN) {
     it(`${lage.key} · die Karte zeigt den schwachen Hinweis, nicht die starke Aussage`, async () => {
-      ANTWORTEN["audit.list"] = PROTOKOLL;
+      ANTWORTEN["audit.seite"] = PROTOKOLL_SEITE;
       lage.stelle();
       await mount(PROTOKOLL_URL);
 
@@ -547,7 +560,7 @@ describe("JOB 3670 R2 · G2 · die schwachen Lagen stehen ebenfalls im Hilfetext
     for (const sprache of ["de", "en", "nl"] as const) {
       it(`${lage.key} · ${sprache}: der Hilfetext nennt auch diesen Hinweis`, async () => {
         await i18n.changeLanguage(sprache);
-        ANTWORTEN["audit.list"] = PROTOKOLL;
+        ANTWORTEN["audit.seite"] = PROTOKOLL_SEITE;
         lage.stelle();
         await mount(PROTOKOLL_URL);
 
@@ -570,7 +583,7 @@ describe("JOB 3670 R2 · G2 · die schwachen Lagen stehen ebenfalls im Hilfetext
 // gar keinen Hinweis, sondern nur die Kennung.
 describe("JOB 3670 R2 · G3 · beim betroffenen Objekt steht die Kennung ohne jeden Zusatz", () => {
   it("die Objektzeile trägt keinen Hinweis — auch nicht bei frischem Verzeichnis", async () => {
-    ANTWORTEN["audit.list"] = PROTOKOLL;
+    ANTWORTEN["audit.seite"] = PROTOKOLL_SEITE;
     ANTWORTEN["directory.list"] = VERZEICHNIS;
     await mount(PROTOKOLL_URL);
 
@@ -703,7 +716,7 @@ const BESTANDSNAME = "Pia Admin";
 
 /** Mit beantwortetem Protokoll UND Verzeichnis montieren; ohne sichtbaren Bestand ist Schluss. */
 async function mitBestandMontieren(): Promise<void> {
-  ANTWORTEN["audit.list"] = PROTOKOLL;
+  ANTWORTEN["audit.seite"] = PROTOKOLL_SEITE;
   ANTWORTEN["directory.list"] = VERZEICHNIS;
   await mount(PROTOKOLL_URL);
   expect(

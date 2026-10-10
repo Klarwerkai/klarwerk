@@ -193,7 +193,7 @@ export class InMemoryBrandingSettingsRepo implements BrandingSettingsRepo {
  *
  * REIN ADDITIV UND WIEDERHOLBAR: `CREATE TABLE IF NOT EXISTS`, kein `DROP`, kein `DELETE FROM`,
  * kein `TRUNCATE`, kein `UPDATE … SET`, kein Fremdschlüssel, keine Extension. Damit trifft KEIN
- * einziger Marker aus `RISIKOMARKER` (`migrationsbeleg.ts:60-71`), und die Stufe ist `ADDITIV` —
+ * einziger Marker aus `RISIKOMARKER` (`tests/support/migrationsmodell.ts`), und die Stufe ist `ADDITIV` —
  * nicht behauptet, sondern von `klassifiziereStufe` gemessen.
  *
  * UND AUSDRÜCKLICH KEIN SEED. Eine vorbelegte Zeile hätte eine Versionszahl, und damit wäre

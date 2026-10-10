@@ -158,10 +158,46 @@ export interface ConfluenceListAllResult {
 // Ein Nicht-2xx-Status. Eigene Klasse nur, damit der Fristweg (`mitFrist`) ihn unverändert
 // durchreicht statt ihn als „nicht lesbar" zu verpacken; `name` bleibt bewusst „Error".
 class ConfluenceStatusError extends Error {
+  /** ADMIN-02: der Status als Zahl, damit der Verbindungstest 401/403/404 unterscheiden kann. */
+  readonly status: number;
+
   constructor(status: number) {
     // Nur der Status (eine Zahl) — strukturell token-frei.
     super(`Confluence-API antwortete mit ${status}`);
+    this.status = status;
   }
+}
+
+/**
+ * ADMIN-02 — was ein gescheiterter Verbindungstest über die Gegenstelle sagt. Erkannt wird an der
+ * Fehlerklasse dieses Moduls (Status als Zahl, Frist), nie am Meldungstext. Alles, was nicht aus
+ * diesem Modul stammt oder sich nicht deuten lässt, fällt ehrlich auf „nicht-erreichbar".
+ */
+export type ConfluenceVerbindungsfehler =
+  | "anmeldung-abgewiesen"
+  | "keine-berechtigung"
+  | "nicht-gefunden"
+  | "zeitueberschreitung"
+  | "nicht-erreichbar";
+
+export function confluenceVerbindungsfehler(err: unknown): ConfluenceVerbindungsfehler {
+  if (err instanceof ConfluenceRequestError) {
+    return err.grund === "timeout" || err.grund === "zeitbudget"
+      ? "zeitueberschreitung"
+      : "nicht-erreichbar";
+  }
+  if (err instanceof ConfluenceStatusError) {
+    if (err.status === 401) {
+      return "anmeldung-abgewiesen";
+    }
+    if (err.status === 403) {
+      return "keine-berechtigung";
+    }
+    if (err.status === 404) {
+      return "nicht-gefunden";
+    }
+  }
+  return "nicht-erreichbar";
 }
 
 // ================================================================================================
@@ -1032,6 +1068,21 @@ export class ConfluenceRestClient {
       expand: EXPAND,
     });
     return `${this.baseUrl}/rest/api/content?${params.toString()}`;
+  }
+
+  /**
+   * ADMIN-02 — der Verbindungstest: EINE Seite des konfigurierten Space, ohne Expand, `limit=1`.
+   * Derselbe Netzweg (Origin-Pin, Frist, Redaction), nur Kennungen, kein Seiteninhalt.
+   */
+  async pruefeVerbindung(): Promise<number> {
+    const params = new URLSearchParams({
+      spaceKey: this.config.spaceKey,
+      type: "page",
+      status: "current",
+      limit: "1",
+    });
+    const url = `${this.baseUrl}/rest/api/content?${params.toString()}`;
+    return (await this.getContent<{ id?: string }>(url, this.allowedOrigin())).results.length;
   }
 
   // Liest die ERSTE Ergebnisseite des konfigurierten Space (read-only GET).
