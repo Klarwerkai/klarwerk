@@ -445,12 +445,23 @@ Auswahl, und keine seiner Nachrichten trägt markierten Text. Die Fläche sagt d
 
 **Offen, ausdrücklich:**
 
-- Editor-Sitzungen und gesicherte Stände liegen im Arbeitsspeicher **eines** App-Prozesses. Für mehrere
-  Prozesse fehlt eine Postgres-Ablage.
+- *(Nacharbeit 2, erledigt)* Editor-Sitzungen, der letzte Schreiber und gesicherte Konfliktstände
+  liegen in `OfficeAblage` (`services/app/src/office-ablage.ts`), im Postgres-Betrieb `PgOfficeAblage`
+  (`OFFICE_ABLAGE_SCHEMA`). Sie überleben damit einen Neustart: Die Fläche zeigt sie wieder an, und sie
+  lassen sich übernehmen. Offen bleibt: Die Reihenfolge der Vorgänge an einem Anhang hält der Hostweg je
+  Prozess; mehrere App-Prozesse hinter einem Editor teilen die Ablage, aber nicht diese Reihenfolge.
+- *(Nacharbeit 2)* Zuklappen und Anhangswechsel bei offenem Editor nehmen denselben Speicher- und
+  Übernahmeweg wie „Speichern und zurück“; scheitert er, bleibt der Editor offen. Ohne bereites
+  Dokument wird sichtbar abgebrochen.
+- *(Nacharbeit 2)* `tests/office-artikel-editor/code-artikelweg.integration.test.ts` fährt den Weg mit
+  echtem CODE über die echten Routen: gültige DOCX/XLSX/PPTX ändern, speichern, übernehmen,
+  schließen und mit Inhalt wieder öffnen; dazu zwei Konten in einer Sitzung mit Konflikt und bewusster
+  Übernahme. Sie braucht Docker, das Abbild `collabora/code` und Chromium in der Prüfbahn.
 - Datei-Vorschlag für freigegebene Artikel ohne Freigaberecht (Plan 5.4): nicht gebaut. Der Editor
   öffnet dort nur lesend.
 - Kein neuer Dokumentauszug nach der Übernahme. Belegstellen am alten Dokumentstand werden als
   „früherer Dokumentstand — nicht neu geprüft“ gezeigt, nicht still umgehängt.
-- Automatisch geprüft ist der Weg über die echten Routen ohne Editor
-  (`tests/office-artikel-editor/`). Der Bedienlauf aus 7.4 mit echtem CODE im Browser, zwei Konten und
-  Word/Excel/PowerPoint ist **nicht erfolgt**; er braucht den Testdienst und einen Menschen.
+- Die Routentests in `tests/office-artikel-editor/` prüfen den Weg über die echten Routen ohne Editor.
+  Mit echtem CODE prüft ihn die oben genannte Integrationsprobe. Ein menschlicher Bedienlauf in der
+  vollständigen Klarwerk-Oberfläche (Anmeldung, Artikelseite, Klara) mit dem Testdienst ist damit
+  nicht ersetzt.

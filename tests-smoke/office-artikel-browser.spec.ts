@@ -276,4 +276,60 @@ test.describe("Office im Artikel", () => {
     await expect(flaeche.locator('[data-office-meldung="hinweis"]')).toContainText("abgebrochen");
     await beleg(page, "nachgestellt-abgebrochen");
   });
+
+  // Nacharbeit 2 (bens Befund): Zuklappen bei offenem Editor nimmt denselben Speicher- und
+  // Übernahmeweg wie „Speichern und zurück" — und scheitert er, bleibt der Editor offen.
+  test("NACHGESTELLT · K4/K7: Zuklappen speichert und übernimmt zuerst", async ({ page }) => {
+    await ensureLoggedIn(page);
+    const { koId, anhangId } = await artikelMitDokument(page.request, marke());
+    await page.goto("/");
+    await simuliereEditor(page, koId, anhangId, "laedt");
+    let uebernahmen = 0;
+    await page.route(`**/api/kos/${koId}/office/${anhangId}/uebernahme`, (route) => {
+      uebernahmen += 1;
+      return route.fulfill({ json: { fassung: 2, status: "offen" } });
+    });
+    const flaeche = await oeffneOfficeFlaeche(page, koId, anhangId);
+    await flaeche.locator("[data-office-starten]").click();
+    await expect(flaeche.locator("[data-office-phase]")).toHaveAttribute(
+      "data-office-phase",
+      "bereit",
+      { timeout: 15_000 },
+    );
+    await page.locator(`[data-office-oeffnen="${anhangId}"]`).click();
+    await expect(flaeche).toHaveCount(0);
+    expect(uebernahmen).toBe(1);
+    await expect(page.locator('[data-office-letzte-meldung="erfolg"]')).toContainText(
+      "Gespeichert als Artikelfassung 2",
+    );
+    await beleg(page, "nachgestellt-zuklappen-uebernommen");
+  });
+
+  test("NACHGESTELLT · K4: Zuklappen bei Konflikt — Editor bleibt offen, nichts verschwindet", async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    const { koId, anhangId } = await artikelMitDokument(page.request, marke());
+    await page.goto("/");
+    await simuliereEditor(page, koId, anhangId, "laedt");
+    await page.route(`**/api/kos/${koId}/office/${anhangId}/uebernahme`, (route) =>
+      route.fulfill({
+        status: 409,
+        json: { error: "KO_STALE", message: "simuliert", currentVersion: 2 },
+      }),
+    );
+    const flaeche = await oeffneOfficeFlaeche(page, koId, anhangId);
+    await flaeche.locator("[data-office-starten]").click();
+    await expect(flaeche.locator("[data-office-phase]")).toHaveAttribute(
+      "data-office-phase",
+      "bereit",
+      { timeout: 15_000 },
+    );
+    await page.locator(`[data-office-oeffnen="${anhangId}"]`).click();
+    await expect(flaeche.locator('[data-office-meldung="fehler"]')).toContainText(
+      "anderweitig geändert",
+    );
+    await expect(flaeche.locator("iframe")).toBeVisible();
+    await beleg(page, "nachgestellt-zuklappen-konflikt");
+  });
 });

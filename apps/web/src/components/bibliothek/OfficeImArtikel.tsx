@@ -39,13 +39,39 @@ interface Meldung {
   text: string;
 }
 
+/** Ein gewünschter Wechsel (anderer Anhang) oder ein Zuklappen (`ziel: null`) bei offenem Editor. */
+interface Wechselwunsch {
+  ziel: string | null;
+  nonce: number;
+}
+
 export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | null {
   const { t } = useTranslation();
   const [offen, setOffen] = useState<string | null>(null);
+  const [editorAktiv, setEditorAktiv] = useState(false);
+  const [wunsch, setWunsch] = useState<Wechselwunsch | null>(null);
+  // Die Meldung einer Fläche, die beim Wechsel verschwindet — sie bleibt hier sichtbar stehen.
+  const [letzteMeldung, setLetzteMeldung] = useState<Meldung | null>(null);
   const anhaenge = (ko.attachments ?? []).filter((a) => a.objectId && istOfficeAnhang(a.name));
   if (anhaenge.length === 0) {
     return null;
   }
+
+  // Nacharbeit 2 (bens Befund): bei laufendem Editor wechselt NICHTS sofort. Der Wunsch geht an den
+  // Editor, der denselben Weg nimmt wie „Speichern und zurück" bzw. „Abbrechen"; erst wenn er
+  // ohne Verlust geschlossen ist, wird gewechselt. Scheitert Speichern oder Übernahme, bleibt er offen.
+  function waehle(ziel: string | null) {
+    if (wunsch) {
+      return;
+    }
+    if (!editorAktiv) {
+      setLetzteMeldung(null);
+      setOffen(ziel);
+      return;
+    }
+    setWunsch({ ziel, nonce: Date.now() });
+  }
+
   return (
     <section data-office-im-artikel="" className="mt-4 space-y-3">
       <h4 className="text-[13px] font-semibold text-text">{t("officeartikel.titel")}</h4>
@@ -59,7 +85,8 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
               type="button"
               data-office-oeffnen={a.id}
               aria-expanded={offen === a.id}
-              onClick={() => setOffen(offen === a.id ? null : a.id)}
+              aria-disabled={wunsch !== null}
+              onClick={() => waehle(offen === a.id ? null : a.id)}
               className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
             >
               {offen === a.id ? t("officeartikel.zuklappen") : t("officeartikel.oeffnen")}
@@ -67,6 +94,11 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
           </li>
         ))}
       </ul>
+      {letzteMeldung ? (
+        <output data-office-letzte-meldung={letzteMeldung.art} className="block text-[12.5px]">
+          {letzteMeldung.text}
+        </output>
+      ) : null}
       {offen ? (
         <OfficeAnhangFlaeche
           key={offen}
@@ -74,6 +106,17 @@ export function OfficeImArtikel({ ko }: { ko: KnowledgeObject }): JSX.Element | 
           anhangId={offen}
           name={anhaenge.find((a) => a.id === offen)?.name ?? ""}
           schliessen={() => setOffen(null)}
+          meldeEditorAktiv={setEditorAktiv}
+          schliessAnfrage={wunsch?.nonce ?? 0}
+          angefragtGeschlossen={(ok, meldung) => {
+            const ziel = wunsch?.ziel ?? null;
+            setWunsch(null);
+            if (ok) {
+              setEditorAktiv(false);
+              setLetzteMeldung(meldung);
+              setOffen(ziel);
+            }
+          }}
         />
       ) : null}
     </section>
@@ -85,11 +128,17 @@ function OfficeAnhangFlaeche({
   anhangId,
   name,
   schliessen,
+  meldeEditorAktiv,
+  schliessAnfrage,
+  angefragtGeschlossen,
 }: {
   ko: KnowledgeObject;
   anhangId: string;
   name: string;
   schliessen: () => void;
+  meldeEditorAktiv: (aktiv: boolean) => void;
+  schliessAnfrage: number;
+  angefragtGeschlossen: (ok: boolean, meldung: Meldung | null) => void;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -101,6 +150,10 @@ function OfficeAnhangFlaeche({
   const [phase, setPhase] = useState<EditorPhase>("geschlossen");
   const [meldung, setMeldung] = useState<Meldung | null>(null);
   const [beschaeftigt, setBeschaeftigt] = useState(false);
+
+  useEffect(() => {
+    meldeEditorAktiv(sitzung !== null);
+  }, [sitzung, meldeEditorAktiv]);
 
   const neuLaden = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["ko", ko.id] });
@@ -259,6 +312,8 @@ function OfficeAnhangFlaeche({
           }}
           uebernehmen={() => officeArtikel.uebernahme(ko.id, anhangId)}
           fehlerText={fehlerText}
+          schliessAnfrage={schliessAnfrage}
+          angefragtGeschlossen={angefragtGeschlossen}
         />
       ) : null}
 
@@ -289,6 +344,8 @@ function EditorRahmen({
   beenden,
   uebernehmen,
   fehlerText,
+  schliessAnfrage,
+  angefragtGeschlossen,
 }: {
   sitzung: OfficeSitzung;
   phase: EditorPhase;
@@ -297,6 +354,9 @@ function EditorRahmen({
   beenden: (ergebnis: "abgebrochen" | "geschlossen") => void;
   uebernehmen: () => Promise<{ fassung: number }>;
   fehlerText: (fehler: unknown) => string;
+  /** Wechselt der Wert, möchte die Seite zuklappen oder einen anderen Anhang öffnen. */
+  schliessAnfrage: number;
+  angefragtGeschlossen: (ok: boolean, meldung: Meldung | null) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const rahmenName = `office-editor-${useId().replace(/[^A-Za-z0-9]/g, "")}`;
@@ -363,35 +423,84 @@ function EditorRahmen({
     });
   }
 
-  /** Speichern lassen und als Fassung übernehmen. `true`, wenn nichts verloren und alles gesagt ist. */
-  async function speichernUndUebernehmen(): Promise<boolean> {
+  /**
+   * Speichern lassen und als Fassung übernehmen. Gibt die Meldung des Erfolgs zurück; `null` heißt:
+   * gescheitert — die Fehlermeldung steht da, und der Editor bleibt offen, damit nichts verloren geht.
+   */
+  async function speichernUndUebernehmen(): Promise<Meldung | null> {
     setPhase("speichert");
     if (!(await speichern())) {
       setPhase("bereit");
       meldung({ art: "fehler", text: t("officeartikel.fehler.speichern") });
-      return false;
+      return null;
     }
     setPhase("uebernimmt");
     try {
       const ergebnis = await uebernehmen();
-      meldung({
+      const erfolg: Meldung = {
         art: "erfolg",
         text: t("officeartikel.uebernommen", { fassung: ergebnis.fassung }),
-      });
+      };
+      meldung(erfolg);
       setPhase("bereit");
-      return true;
+      return erfolg;
     } catch (fehler) {
       const code = (fehler as { code?: string }).code;
       // Nichts geändert seit der letzten Übernahme: kein Fehler, nichts zu tun.
       if (code === "OFFICE_NICHTS_GESPEICHERT") {
         setPhase("bereit");
-        return true;
+        return { art: "hinweis", text: t("officeartikel.editorGeschlossen") };
       }
       meldung({ art: "fehler", text: fehlerText(fehler) });
       setPhase("bereit");
-      return false;
+      return null;
     }
   }
+
+  /** Sichtbar abbrechen: der Editor schließt; Automatisch Gespeichertes übernimmt bzw. sichert der Server. */
+  function abbrechen(): Meldung {
+    const hinweis: Meldung = {
+      art: "hinweis",
+      text: schreiben ? t("officeartikel.abgebrochenSchreiben") : t("officeartikel.abgebrochen"),
+    };
+    meldung(hinweis);
+    beenden("abgebrochen");
+    return hinweis;
+  }
+
+  /**
+   * Der EINE kontrollierte Schließweg für Zuklappen und Anhangswechsel (Nacharbeit 2): bereit und
+   * schreibend → speichern und übernehmen (scheitert das, bleibt der Editor offen); sonst sichtbar
+   * abbrechen. Während eines laufenden Speicherns wird nicht geschlossen.
+   */
+  async function kontrolliertSchliessen(): Promise<{ ok: boolean; meldung: Meldung | null }> {
+    if (phase === "speichert" || phase === "uebernimmt") {
+      return { ok: false, meldung: null };
+    }
+    if (schreiben && phase === "bereit") {
+      const erfolg = await speichernUndUebernehmen();
+      if (!erfolg) {
+        return { ok: false, meldung: null };
+      }
+      beenden("geschlossen");
+      return { ok: true, meldung: erfolg };
+    }
+    return { ok: true, meldung: abbrechen() };
+  }
+
+  // Die jüngste Fassung des Schließwegs; der Effekt unten hängt so nur an der Anfrage selbst.
+  const schliessWeg = useRef(kontrolliertSchliessen);
+  schliessWeg.current = kontrolliertSchliessen;
+  const antwortWeg = useRef(angefragtGeschlossen);
+  antwortWeg.current = angefragtGeschlossen;
+  const letzteAnfrage = useRef(schliessAnfrage);
+  useEffect(() => {
+    if (schliessAnfrage === letzteAnfrage.current) {
+      return;
+    }
+    letzteAnfrage.current = schliessAnfrage;
+    void schliessWeg.current().then(({ ok, meldung: m }) => antwortWeg.current(ok, m));
+  }, [schliessAnfrage]);
 
   const bereit = phase === "bereit";
   return (
@@ -439,7 +548,7 @@ function EditorRahmen({
             if (phase === "speichert" || phase === "uebernimmt") {
               return;
             }
-            if (schreiben && bereit && !(await speichernUndUebernehmen())) {
+            if (schreiben && bereit && (await speichernUndUebernehmen()) === null) {
               // Gescheitert: der Editor bleibt offen, damit nichts verloren geht.
               return;
             }
@@ -453,13 +562,7 @@ function EditorRahmen({
           type="button"
           data-office-abbrechen=""
           onClick={() => {
-            meldung({
-              art: "hinweis",
-              text: schreiben
-                ? t("officeartikel.abgebrochenSchreiben")
-                : t("officeartikel.abgebrochen"),
-            });
-            beenden("abgebrochen");
+            abbrechen();
           }}
           className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted"
         >

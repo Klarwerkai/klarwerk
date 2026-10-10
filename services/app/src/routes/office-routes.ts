@@ -4,6 +4,7 @@ import type { EvidenceRecord, KnowledgeObject, KoVersionSnapshot } from "../../.
 import type { ObjectStore } from "../../../object-store";
 import { can } from "../../../rbac";
 import type { Guards, SessionUser } from "../http";
+import { type OfficeAblage, SpeicherOfficeAblage } from "../office-ablage";
 import {
   type OfficeEditorEinrichtung,
   type OfficeKoDienst,
@@ -22,11 +23,7 @@ import {
   pruefeZugangsmarke,
   stelleZugangsmarkeAus,
 } from "../office-wopi";
-import {
-  SpeicherWopiSitzungen,
-  type WopiSitzungsablage,
-  erstelleWopiHost,
-} from "../office-wopi-host";
+import { type WopiProtokolleintrag, erstelleWopiHost } from "../office-wopi-host";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -59,10 +56,13 @@ import { darfSehen } from "../sichtbarkeit";
 // schreibt die URL ohne Abfrageteil (`build-app.ts`, Serializer `req`); der Hostweg selbst nennt im
 // Protokoll nur Vorgang, Anhang, Status und Objekt.
 //
+// ABLAGE (Nacharbeit 2): Editor-Sitzungen, der letzte Schreiber und gesicherte Konfliktstände
+// liegen in `OfficeAblage` (`office-ablage.ts`) — im Postgres-Betrieb `PgOfficeAblage`, damit eine
+// als „gesichert" angezeigte Fassung einen Neustart überlebt und danach übernommen werden kann.
+//
 // GRENZEN, ausdrücklich:
-//   · Editor-Sitzungen und gesicherte Konfliktstände liegen im Arbeitsspeicher DIESES Prozesses
-//     (`SpeicherWopiSitzungen`). Mehrere App-Prozesse hinter einem Editor brauchen eine gemeinsame
-//     Ablage (Postgres); die gibt es noch nicht.
+//   · Die Reihenfolge der Vorgänge an EINEM Anhang hält der Hostweg je Prozess (`seriell`). Mehrere
+//     App-Prozesse hinter einem Editor teilen die Ablage, aber nicht diese Reihenfolge.
 //   · Ein freigegebener Artikel wird ohne Freigaberecht nur angesehen; ein Datei-Vorschlag
 //     (`KoProposal` mit Objekt) ist nicht gebaut (Plan 5.4).
 
@@ -88,15 +88,11 @@ export interface OfficeRoutesDeps {
   /** Liest die Discovery; austauschbar für Tests. */
   readonly holeDiscovery?: (url: string) => Promise<string>;
   readonly jetzt?: () => number;
-  readonly sitzungen?: WopiSitzungsablage;
+  /** Sitzungen und gesicherte Stände; ohne Angabe die Speicherfassung (ohne Neustartschutz). */
+  readonly ablage?: OfficeAblage;
 }
 
-/** Ein Arbeitsstand, der beim Schließen wegen einer fremden Änderung NICHT übernommen wurde. */
-interface GesicherterStand {
-  readonly objectId: string;
-  readonly nutzerId: string;
-  readonly at: string;
-}
+const ENDE_MIT_KONFLIKT = "Uebernahme beim Ende: fremde-aenderung";
 
 async function standardDiscovery(url: string): Promise<string> {
   const antwort = await fetch(url, { signal: AbortSignal.timeout(10_000) });
@@ -108,9 +104,12 @@ async function standardDiscovery(url: string): Promise<string> {
 
 export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPluginAsync {
   const jetzt = deps.jetzt ?? Date.now;
-  const sitzungen = deps.sitzungen ?? new SpeicherWopiSitzungen();
+  const ablage = deps.ablage ?? new SpeicherOfficeAblage();
   const holeDiscovery = deps.holeDiscovery ?? standardDiscovery;
-  const gesichert = new Map<string, GesicherterStand[]>();
+  // Der Hostweg meldet ein gescheitertes Übernehmen beim Entsperren nur über sein Protokoll, und
+  // dieses ist synchron. Die Meldungen werden hier gesammelt und vom aufrufenden WOPI-Handler NACH
+  // der Antwort des Hostwegs mit `await` dauerhaft gesichert — kein unbeobachtetes Schreiben.
+  const endeKonflikte: WopiProtokolleintrag[] = [];
 
   function rechteFuer(user: SessionUser, artikel: KnowledgeObject): OfficeRechte {
     return {
@@ -153,30 +152,24 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         },
         nutzerName: async (nutzerId) =>
           (await deps.konten()).find((k) => k.id === nutzerId)?.name ?? "",
-        sitzungen,
+        sitzungen: ablage,
         // Nur die Klarwerk-Seite selbst darf dem Editor Nachrichten schicken.
         postMessageOrigin: einrichtung.umgebung.seitenHerkunft,
         protokoll: (eintrag) => {
-          if (eintrag.vorgang === "Uebernahme beim Ende: fremde-aenderung" && eintrag.objectId) {
-            vermerkeGesichert(eintrag.anhangId, eintrag.objectId);
+          if (eintrag.vorgang === ENDE_MIT_KONFLIKT && eintrag.objectId) {
+            endeKonflikte.push(eintrag);
           }
         },
       })
     : undefined;
 
-  // Wer beim Schließen gespeichert hat, steht nicht im Protokolleintrag; die Sitzung kennt nur die
-  // Sperre. Der Vermerk nennt deshalb den Nutzer der letzten PutFile-Marke (`letzterSchreiber`).
-  const letzterSchreiber = new Map<string, string>();
-  function vermerkeGesichert(anhangId: string, objectId: string): void {
-    const liste = gesichert.get(anhangId) ?? [];
-    if (!liste.some((s) => s.objectId === objectId)) {
-      liste.push({
-        objectId,
-        nutzerId: letzterSchreiber.get(anhangId) ?? "",
-        at: new Date(jetzt()).toISOString(),
-      });
-      gesichert.set(anhangId, liste);
+  /** Nimmt die Konfliktmeldungen dieses Anhangs aus der Sammlung. */
+  function konflikteFuer(anhangId: string): WopiProtokolleintrag[] {
+    const eigene = endeKonflikte.filter((e) => e.anhangId === anhangId);
+    for (const e of eigene) {
+      endeKonflikte.splice(endeKonflikte.indexOf(e), 1);
     }
+    return eigene;
   }
 
   async function artikelOder404(
@@ -221,8 +214,13 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
     );
   }
 
+  /** Gesicherte Stände genau dieses Anhangs DIESES Artikels. */
+  async function gesicherteAm(koId: string, anhangId: string) {
+    return (await ablage.gesicherte(anhangId)).filter((s) => s.koId === koId);
+  }
+
   async function sitzungsstand(anhangId: string) {
-    const s = await sitzungen.lies(anhangId);
+    const s = await ablage.lies(anhangId);
     if (!s || s.sperre.bis <= jetzt()) {
       return { laeuft: false as const };
     }
@@ -251,6 +249,12 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
       const koerper = Buffer.isBuffer(request.body) ? request.body : Buffer.alloc(0);
       const roh = (request.query as { access_token?: unknown }).access_token;
       const accessToken = typeof roh === "string" ? roh : undefined;
+      const anhangId = (request.params as { anhangId: string }).anhangId;
+      const inhalt = pfad.endsWith("/contents");
+      // Vor einem Sperrvorgang: wer zuletzt gespeichert hat. Ein Entsperren beendet die Sitzung samt
+      // diesem Vermerk; für einen gesicherten Konfliktstand wird er danach noch gebraucht.
+      const schreiber =
+        request.method === "POST" && !inhalt ? await ablage.schreiber(anhangId) : undefined;
       const antwort = await host.bearbeite({
         methode: request.method,
         pfad,
@@ -261,11 +265,28 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         },
         koerper,
       });
-      if (request.method === "POST" && pfad.endsWith("/contents") && antwort.status === 200) {
-        const anhangId = pfad.split("/")[3] ?? "";
-        const nutzer = markenNutzer(accessToken);
-        if (nutzer) {
-          letzterSchreiber.set(anhangId, nutzer);
+      // Die Marke ist am Riegel bereits geprüft; hier wird nur ihr Inhalt gelesen.
+      const pruefung = pruefeZugangsmarke(
+        accessToken ?? "",
+        anhangId,
+        einrichtung.eingerichtet ? einrichtung.umgebung.schluessel : Buffer.alloc(32),
+        jetzt(),
+      );
+      const marke = pruefung.gueltig ? pruefung.inhalt : undefined;
+      if (request.method === "POST" && inhalt && antwort.status === 200 && marke) {
+        await ablage.merkeSchreiber(anhangId, marke.nutzerId);
+      }
+      // Ein beim Entsperren NICHT übernommener Arbeitsstand wird dauerhaft gesichert — bevor der
+      // Editor seine Antwort bekommt, damit kein Neustart dazwischen ihn verliert.
+      for (const konflikt of konflikteFuer(anhangId)) {
+        if (konflikt.objectId && marke) {
+          await ablage.sichere({
+            koId: marke.koId,
+            anhangId,
+            objectId: konflikt.objectId,
+            nutzerId: schreiber ?? marke.nutzerId,
+            at: new Date(jetzt()).toISOString(),
+          });
         }
       }
       reply.code(antwort.status).headers(antwort.kopf);
@@ -329,7 +350,7 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
           verlauf,
           belegstellen: belegstellenZumAnhang(lage.artikel, verlauf, lage.anhang.id),
           sitzung: await sitzungsstand(lage.anhang.id),
-          gesichert: (gesichert.get(lage.anhang.id) ?? []).map((s) => ({
+          gesichert: (await gesicherteAm(lage.artikel.id, lage.anhang.id)).map((s) => ({
             objectId: s.objectId,
             at: s.at,
             eigen: s.nutzerId === user.id,
@@ -570,7 +591,7 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         return;
       }
       const expectedVersion = erwartet(request.body?.expectedVersion);
-      const liste = gesichert.get(vorher.lage.anhang.id) ?? [];
+      const liste = await gesicherteAm(vorher.lage.artikel.id, vorher.lage.anhang.id);
       // Nur ein Objekt, das der Host selbst als gesicherten Konfliktstand vermerkt hat — nie eine
       // beliebige Kennung aus dem Rumpf.
       const stand = liste.find((s) => s.objectId === request.body?.objectId);
@@ -597,27 +618,11 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
           },
           vorher.user.id,
         );
-        gesichert.set(
-          vorher.lage.anhang.id,
-          liste.filter((s) => s.objectId !== stand.objectId),
-        );
+        await ablage.entferneGesichert(vorher.lage.anhang.id, stand.objectId);
         reply.code(200).send({ fassung: ko.version, status: ko.status, belegOffen });
       } catch (fehler) {
         fassungsfehler(fehler, reply);
       }
     });
   };
-}
-
-/** Der Nutzer einer Marke OHNE Prüfung — nur für den Vermerk, wer zuletzt gespeichert hat. */
-function markenNutzer(marke: string | undefined): string | undefined {
-  try {
-    const nutzlast = (marke ?? "").split(".")[0] ?? "";
-    const inhalt = JSON.parse(Buffer.from(nutzlast, "base64url").toString("utf8")) as {
-      nutzerId?: unknown;
-    };
-    return typeof inhalt.nutzerId === "string" ? inhalt.nutzerId : undefined;
-  } catch {
-    return undefined;
-  }
 }

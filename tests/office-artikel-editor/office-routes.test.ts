@@ -21,11 +21,15 @@
 //   O6  Unberechtigte: unsichtbarer Artikel 404, Anonym 401, fremde/abgelaufene Marke 401,
 //       entzogenes Konto ohne Zugriff.                                                         (K6)
 //   O7  Nicht eingerichtet / Editor nicht erreichbar: sichtbarer Fehler, nichts geändert.       (K7)
+//   O8  (Nacharbeit 2) Neustart: ein gesicherter Konfliktstand und eine laufende Sitzung sind nach
+//       dem Neustart der App sichtbar; der gesicherte Stand lässt sich übernehmen, das Entsperren
+//       der fortgeführten Sitzung sichert bzw. übernimmt ihren Arbeitsstand.               (K4)
 
 import Fastify, { type FastifyInstance } from "fastify";
 import JSZip from "jszip";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Guards, SessionUser } from "../../services/app/src/http";
+import { type OfficeAblage, SpeicherOfficeAblage } from "../../services/app/src/office-ablage";
 import {
   type OfficeEditorEinrichtung,
   leseOfficeEditorUmgebung,
@@ -74,15 +78,28 @@ interface Welt {
   ko: KoService;
   objekte: ObjectStore;
   konten: OfficeKonto[];
+  ablage: OfficeAblage;
 }
 
-async function baueWelt(einrichtung: OfficeEditorEinrichtung, discovery?: () => string) {
-  const objekte = new ObjectStore({ repo: new InMemoryObjectRepo() });
-  const ko = new KoService({
-    repo: new InMemoryKoRepo(),
-    versions: new InMemoryKoVersionRepo(),
-    evidence: new InMemoryEvidenceRepo(),
-  });
+/**
+ * Eine App mit Office-Routen. `bestand` übergibt Dienst, Objektspeicher und Ablage einer früheren
+ * Welt — so entsteht ein NEUER App-Prozess (neue Routeninstanz, leerer Arbeitsspeicher) über
+ * demselben dauerhaften Bestand: der Neustart aus bens Befund.
+ */
+async function baueWelt(
+  einrichtung: OfficeEditorEinrichtung,
+  discovery?: () => string,
+  bestand?: Pick<Welt, "ko" | "objekte" | "ablage">,
+) {
+  const objekte = bestand?.objekte ?? new ObjectStore({ repo: new InMemoryObjectRepo() });
+  const ablage = bestand?.ablage ?? new SpeicherOfficeAblage();
+  const ko =
+    bestand?.ko ??
+    new KoService({
+      repo: new InMemoryKoRepo(),
+      versions: new InMemoryKoVersionRepo(),
+      evidence: new InMemoryEvidenceRepo(),
+    });
   const konten: OfficeKonto[] = [
     { id: "anna", name: "Anna Beispiel", role: "experte", approved: true },
     { id: "bert", name: "Bert Beispiel", role: "experte", approved: true },
@@ -125,12 +142,13 @@ async function baueWelt(einrichtung: OfficeEditorEinrichtung, discovery?: () => 
           }
           return discovery();
         },
+        ablage,
       },
       guards,
     ),
   );
   await app.ready();
-  return { app, ko, objekte, konten } satisfies Welt;
+  return { app, ko, objekte, konten, ablage } satisfies Welt;
 }
 
 const eingerichtet = leseOfficeEditorUmgebung({
@@ -566,6 +584,59 @@ describe("Office im Artikel · Routen", () => {
       expect(wopi.statusCode).toBe(404);
     } finally {
       await ohne.app.close();
+    }
+  });
+
+  it("O8 (K4): Sitzung und gesicherter Konfliktstand überleben zwei Neustarts der App", async () => {
+    // Prozess A: Anna bearbeitet; jemand ändert den Artikel außerhalb der Sitzung.
+    const a = await baueWelt(eingerichtet);
+    const { koId, anhangId } = await artikelMitAnhang(
+      a,
+      "docx",
+      await fiktivesDocx("Vor Neustart"),
+    );
+    const s = await sitzung(a, "anna", koId, anhangId);
+    const annasStand = await fiktivesDocx("Annas Stand, der nicht verloren gehen darf");
+    const ea = editor(a, anhangId, s.body.accessToken);
+    expect((await ea.sperre("LOCK", "neustart-1")).statusCode).toBe(200);
+    expect((await ea.speichere("neustart-1", annasStand)).statusCode).toBe(200);
+    await a.ko.revise(koId, { statement: "Fremde Änderung vor dem Neustart." }, "chef");
+    await a.app.close();
+
+    // Prozess B: neu gestartet über demselben Bestand. Die Sitzung ist noch bekannt.
+    const b = await baueWelt(eingerichtet, undefined, a);
+    try {
+      const nachStart = await lage(b, "anna", koId, anhangId);
+      expect(nachStart.body.sitzung).toMatchObject({ laeuft: true, arbeitsstandOffen: true });
+      // Der Editor lief weiter und entsperrt jetzt bei Prozess B: Konflikt → dauerhaft gesichert.
+      const eb = editor(b, anhangId, s.body.accessToken);
+      expect((await eb.sperre("UNLOCK", "neustart-1")).statusCode).toBe(200);
+      const gesichert = await lage(b, "anna", koId, anhangId);
+      expect(gesichert.body.sitzung.laeuft).toBe(false);
+      expect(gesichert.body.gesichert).toEqual([expect.objectContaining({ eigen: true })]);
+    } finally {
+      await b.app.close();
+    }
+
+    // Prozess C: noch ein Neustart. Der gesicherte Stand ist da und lässt sich übernehmen.
+    const c = await baueWelt(eingerichtet, undefined, a);
+    try {
+      const l = await lage(c, "anna", koId, anhangId);
+      expect(l.body.gesichert).toHaveLength(1);
+      const uebernahme = await c.app.inject({
+        method: "POST",
+        url: `/api/kos/${koId}/office/${anhangId}/gesichert`,
+        headers: als("anna"),
+        payload: { objectId: l.body.gesichert[0].objectId, expectedVersion: 2 },
+      });
+      expect(uebernahme.statusCode).toBe(200);
+      expect(uebernahme.json().fassung).toBe(3);
+      expect(Buffer.compare(await bytesDesAnhangs(c, koId, anhangId), annasStand)).toBe(0);
+      // Die fremde Textänderung bleibt stehen; übernommen wurde nur das Dokument.
+      expect((await c.ko.get(koId))?.statement).toBe("Fremde Änderung vor dem Neustart.");
+      expect((await lage(c, "anna", koId, anhangId)).body.gesichert).toEqual([]);
+    } finally {
+      await c.app.close();
     }
   });
 });
