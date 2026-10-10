@@ -367,14 +367,16 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:
-      "Lernpfade je Rolle, Kopplungen von Arbeitsmitteln an Wissensobjekte, Fortschritt je Person, anstehende Nachprüfungen.",
+      "Lernpfade je Rolle, Kopplungen von Arbeitsmitteln an Wissensobjekte, Fortschritt je Person, anstehende Nachprüfungen mit ihren Anlässen (Grund, Anlage, Änderungsbeleg, Fassung, Zeitpunkt, meldende Kennung).",
     personenbezug: "ja",
-    personenbezugGrund: "Der Fortschritt ist je Person gespeichert.",
+    personenbezugGrund:
+      "Der Fortschritt ist je Person gespeichert; der Anlass einer Nachprüfung nennt die meldende Kennung (nur intern, nicht in der Übersicht).",
     ablage: {
       ort: DATENBANK,
       tabellen: [
         "lifecycle_couplings",
         "lifecycle_pending",
+        "lifecycle_verlauf",
         "lifecycle_paths",
         "lifecycle_progress",
       ],
@@ -599,6 +601,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: {
       enthalten: false,
       grund: "Teammitgliedschaften stehen am Space als Zugangsweg und in der Teamverwaltung.",
+    },
+  },
+  {
+    id: "vorlagen",
+    name: "Vorlagen, Standards und Space-Vorgaben",
+    inhalt:
+      "Fassungen eigener Vorlagen (Name, Felder, Geltung, Eigentümerkennung), je Konto der gewählte persönliche Standard, Space-Vorgaben, je Beitrag die verwendete Vorlagenfassung und gepflegte Begriffe, jeweils mit ändernder Kennung und Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen der Eigentümerin, der ändernden Person und des Kontos mit persönlichem Standard.",
+    ablage: { ort: DATENBANK, tabellen: ["vorlagen_fassungen"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg — Vorlagen werden ausgemustert, jede Fassung bleibt zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Eigene Vorlagen und der persönliche Standard sind unter „Vorlagen“ einsehbar.",
     },
   },
   {

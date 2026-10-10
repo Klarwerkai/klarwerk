@@ -59,6 +59,7 @@ import type {
   ExternalResult,
   ExtractResult,
   FeatureFlags,
+  FolgepruefungsFall,
   Fragekontext,
   Gap,
   GapPriority,
@@ -415,7 +416,13 @@ export type KoAction =
   // erfundener Wert belegt nichts und hebt keine Sperre auf.
   | {
       action: "add-source";
-      source: { label: string; url?: string; excerpt?: string; objectId?: string };
+      source: {
+        label: string;
+        url?: string;
+        excerpt?: string;
+        objectId?: string;
+        abrufbeleg?: string;
+      };
     }
   | { action: "remove-source"; sourceId: string }
   // AUFTRAG-mega18 Block A-1: die VERBUND-OPERATION „Dokumentinhalt übernehmen". Sie ersetzt die
@@ -477,7 +484,10 @@ export type KoAction =
       note?: string;
       expectedVersion?: number;
     }
-  | { action: "revalidate" }
+  // produkt:20261010:aenderungsfolgen-sichtbar: `stand` bindet die Bestätigung an den gesehenen
+  // Stand der Folgeprüfung (sonst 409 `STAND_VERALTET`).
+  // Nacharbeit 6: `fassung` = die angezeigte Inhaltsfassung (Pflicht zusammen mit `stand`).
+  | { action: "revalidate"; stand?: number; fassung?: number }
   // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
   | { action: "confirm-fresh" }
   // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
@@ -1234,6 +1244,9 @@ export const endpoints = {
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),
+    // produkt:20261010:aenderungsfolgen-sichtbar: offene Folgeprüfungen mit Anlass, Stand und
+    // Zuständigkeit — dieselbe Sichtbarkeitsgrenze wie `pending`.
+    folgepruefung: () => api.get<FolgepruefungsFall[]>("/lifecycle/folgepruefung"),
     // R-1662: frühere Bestätigungen „stimmt noch" zu genau diesen Objekten (Lösungsweg).
     revalidiert: (koIds: readonly string[]) =>
       api.get<RevalidierungBestaetigt[]>(
@@ -1244,8 +1257,12 @@ export const endpoints = {
       api.post<void>("/lifecycle/couple", { assetRef, koId }),
     couplingsFor: (koId: string) => api.get<string[]>(`/lifecycle/couplings/${koId}`),
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
-    assetChanged: (assetRef: string) =>
-      api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+    // produkt:20261010:aenderungsfolgen-sichtbar: optional mit Änderungsbeleg (`aenderung`).
+    assetChanged: (assetRef: string, aenderung?: string) =>
+      api.post<string[]>(
+        "/lifecycle/asset-changed",
+        aenderung ? { assetRef, aenderung } : { assetRef },
+      ),
     // R-0554: Wissensübergabe beim Ausscheiden — erst Vorschau, dann Ausführung (Recht `users.manage`).
     uebergabeVorschau: (von: string, an: string) =>
       api.post<UebergabeVorschau>("/lifecycle/handover/preview", { from: von, to: an }),
