@@ -41,7 +41,7 @@ export default {
       "Der letzte Schritt konnte nicht gespeichert werden. Nach dem Neuladen steht hier der vorige.",
     "klaragespraech.einwilligung.titel": "Einwilligung für dieses Gespräch",
     "klaragespraech.einwilligung.text":
-      "Klara schickt deine getippten Fragen und als Zusammenhang die vorigen Fragen dieses Gesprächs an den Frageweg von Klarwerk. Markierter Seitentext geht nicht mit. Geantwortet wird nur aus Wissen, das du lesen darfst; ob und welche Inhalte eine externe KI erhält, entscheiden die zentralen Freigaben.",
+      "Klara schickt deine getippten und gesprochenen Fragen (als Text, ohne Tonaufnahme) und als Zusammenhang die vorigen Fragen dieses Gesprächs an den Frageweg von Klarwerk. Markierter Seitentext geht nicht mit. Geantwortet wird nur aus Wissen, das du lesen darfst; ob und welche Inhalte eine externe KI erhält, entscheiden die zentralen Freigaben.",
     "klaragespraech.einwilligung.erteilen": "Einverstanden",
     "klaragespraech.einwilligung.erteilt": "Einwilligung erteilt am {{zeit}}.",
     "klaragespraech.einwilligung.widerrufen": "Einwilligung widerrufen",
@@ -127,7 +127,7 @@ export default {
       "The last step could not be saved. After reloading, the previous one is shown here.",
     "klaragespraech.einwilligung.titel": "Consent for this conversation",
     "klaragespraech.einwilligung.text":
-      "Klara sends the questions you type, and the earlier questions of this conversation as context, to Klarwerk's question path. Selected page text is not sent. Answers only use knowledge you may read; whether and which content an external AI receives is decided by the central approvals.",
+      "Klara sends the questions you type or speak (as text, without the audio), and the earlier questions of this conversation as context, to Klarwerk's question path. Selected page text is not sent. Answers only use knowledge you may read; whether and which content an external AI receives is decided by the central approvals.",
     "klaragespraech.einwilligung.erteilen": "I agree",
     "klaragespraech.einwilligung.erteilt": "Consent given on {{zeit}}.",
     "klaragespraech.einwilligung.widerrufen": "Withdraw consent",
@@ -213,7 +213,7 @@ export default {
       "De laatste stap kon niet worden opgeslagen. Na herladen staat hier de vorige.",
     "klaragespraech.einwilligung.titel": "Toestemming voor dit gesprek",
     "klaragespraech.einwilligung.text":
-      "Klara stuurt je getypte vragen, en als context de eerdere vragen van dit gesprek, naar de vraagroute van Klarwerk. Gemarkeerde paginatekst gaat niet mee. Er wordt alleen geantwoord uit kennis die je mag lezen; of en welke inhoud een externe AI krijgt, bepalen de centrale vrijgaven.",
+      "Klara stuurt je getypte en gesproken vragen (als tekst, zonder geluidsopname), en als context de eerdere vragen van dit gesprek, naar de vraagroute van Klarwerk. Gemarkeerde paginatekst gaat niet mee. Er wordt alleen geantwoord uit kennis die je mag lezen; of en welke inhoud een externe AI krijgt, bepalen de centrale vrijgaven.",
     "klaragespraech.einwilligung.erteilen": "Akkoord",
     "klaragespraech.einwilligung.erteilt": "Toestemming gegeven op {{zeit}}.",
     "klaragespraech.einwilligung.widerrufen": "Toestemming intrekken",

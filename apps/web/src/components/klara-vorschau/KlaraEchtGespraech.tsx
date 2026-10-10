@@ -21,6 +21,7 @@ import { KNOWLEDGE_CLASS_META } from "../../lib/knowledgeClass";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
+import { VorlesenKnopf } from "./KlaraSprache";
 import {
   type EchtNachricht,
   einwilligen,
@@ -155,6 +156,12 @@ function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
             </Link>
           ))}
         </p>
+      ) : null}
+      {/* Klara 02: jede Antwort und jeder Hilfetext kann vorgelesen werden — nur auf Klick. */}
+      {n.von === "klara" && n.text ? (
+        <div className="mt-1">
+          <VorlesenKnopf id={n.id} text={n.text} />
+        </div>
       ) : null}
       {n.gespeichert === "laeuft" ? (
         <p data-testid="klara-speicherstand" className="mt-1 text-[10.5px] text-muted-2">
