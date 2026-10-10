@@ -18,6 +18,7 @@ import type { KnowledgeClass } from "../../api/types";
 import { HOME_ROUTE } from "../../app/navigation";
 import { internerPfad } from "../../lib/internerPfad";
 import { KNOWLEDGE_CLASS_META } from "../../lib/knowledgeClass";
+import { leserHref } from "../../lib/objektbezug";
 import { useAiAvailable } from "../../lib/useAiAvailable";
 import { type ExternStand, externStand } from "../../shell/ExternStatus";
 import { AnswerMarkdown } from "../AnswerMarkdown";
@@ -66,6 +67,86 @@ function bezugZeile(b: KlaraObjektbezug): { seite: string; objekt: string } {
   return { seite: b.seitenName, objekt: b.objekt };
 }
 
+/**
+ * Klara 03 · K2: der Bezug, mit dem ein Schritt festgehalten wurde — Markierung oder frei, Fassung
+ * und Absatz von DAMALS. Er kommt aus der Ablage und wird nie aus der aktuellen Seite ergänzt.
+ */
+function BezugVonDamals({ b }: { b: KlaraObjektbezug }): JSX.Element | null {
+  const { t } = useTranslation();
+  const teile: string[] = [];
+  if (b.bezug === "frei") {
+    teile.push(t("klarakontext.verlauf.frei"));
+  } else if (b.bezug === "markierung") {
+    teile.push(
+      b.absatz
+        ? t("klarakontext.verlauf.markierungAbsatz", { nr: b.absatz })
+        : t("klarakontext.verlauf.markierung"),
+    );
+  }
+  if (b.fassung) {
+    teile.push(t("klarakontext.fassung", { nr: b.fassung }));
+  }
+  if (teile.length === 0) {
+    return null;
+  }
+  return (
+    <span data-testid="klara-nachricht-bezug" data-bezug={b.bezug ?? ""}>
+      {teile.join(" · ")}
+    </span>
+  );
+}
+
+/** Klara 03 · K3: jede Quelle mit Titel, Fassung und Prüfstatus — oder ehrlich ohne Angabe. */
+function QuellenZeile({ n }: { n: EchtNachricht }): JSX.Element {
+  const { t } = useTranslation();
+  const angaben = new Map((n.quellenAngaben ?? []).map((a) => [a.koId, a]));
+  return (
+    <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
+      <li className={KLEINTITEL}>{t("klaragespraech.quellen")}</li>
+      {n.quellen.map((q, i) => {
+        const a = angaben.get(q);
+        const geprueft = a?.geprueft === true ? "ja" : a?.geprueft === false ? "nein" : "unbekannt";
+        return (
+          <li
+            key={q}
+            data-testid="klara-quelle"
+            data-ko={q}
+            data-fassung={a?.fassung ?? ""}
+            data-geprueft={geprueft}
+            className="flex flex-wrap items-center gap-1"
+          >
+            <Link
+              to={leserHref({ koId: q, fassung: a?.fassung ?? null })}
+              className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
+            >
+              [{i + 1}] {a ? a.titel : t("klarakontext.quelle.ohneTitel")}
+            </Link>
+            {a ? (
+              <span className="text-muted">
+                {a.fassung
+                  ? t("klarakontext.fassung", { nr: a.fassung })
+                  : t("klarakontext.quelle.fassungUnbekannt")}
+                {" · "}
+                <span
+                  className={
+                    geprueft === "ja"
+                      ? "font-semibold text-text"
+                      : "font-semibold text-trust-warn-text"
+                  }
+                >
+                  {t(`klarakontext.quelle.geprueft.${geprueft}`)}
+                </span>
+              </span>
+            ) : (
+              <span className="text-muted-2">{t("klarakontext.quelle.ohneAngaben")}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
   const { t } = useTranslation();
   const klasse =
@@ -73,6 +154,8 @@ function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
       ? KNOWLEDGE_CLASS_META[n.wissensklasse as KnowledgeClass]
       : null;
   const istAntwort = n.modus === "ki" || n.modus === "ohne_ki";
+  // Klara 03 · K3: eine Antwort ohne jede Quelle hat keine Grundlage — das steht als Kennzeichen da.
+  const ohneGrundlage = n.modus === "ohne_ki" && n.quellen.length === 0;
   return (
     <li
       data-testid="klara-nachricht"
@@ -94,6 +177,7 @@ function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
         <span data-testid="klara-nachricht-herkunft">
           {t("klaravorschau.verlauf.auf", bezugZeile(n.objektbezug))}
         </span>
+        <BezugVonDamals b={n.objektbezug} />
         {n.modus === "ki" ? (
           <>
             <span
@@ -137,26 +221,22 @@ function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
             {t(klasse.labelKey)}
           </span>
         ) : null}
+        {ohneGrundlage ? (
+          <span
+            data-testid="klara-grundlage-fehlt"
+            className={`${SCHILD} bg-trust-warn-bg text-trust-warn-text`}
+          >
+            {t("klarakontext.grundlage.kennzeichen")}
+          </span>
+        ) : null}
       </div>
       {istAntwort ? (
         <AnswerMarkdown text={n.text} className="text-[12px] leading-relaxed text-text" />
       ) : (
         <p className="whitespace-pre-line">{n.text}</p>
       )}
-      {istAntwort && n.quellen.length > 0 ? (
-        <p className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
-          <span className={KLEINTITEL}>{t("klaragespraech.quellen")}:</span>
-          {n.quellen.map((q, i) => (
-            <Link
-              key={q}
-              to={`/wissen/${encodeURIComponent(q)}`}
-              className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-semibold text-text hover:border-ink/30"
-            >
-              [{i + 1}]
-            </Link>
-          ))}
-        </p>
-      ) : null}
+      {/* Klara 03: Quellen mit Titel, Fassung und Prüfstatus (ersetzt die blossen [n]-Verweise). */}
+      {istAntwort && n.quellen.length > 0 ? <QuellenZeile n={n} /> : null}
       {/* Klara 02: jede Antwort und jeder Hilfetext kann vorgelesen werden — nur auf Klick. */}
       {n.von === "klara" && n.text ? (
         <div className="mt-1">
@@ -201,7 +281,8 @@ export function KlaraEchtGespraech({
   kontext: KlaraObjektbezug;
   pfad: string;
   ki: KiLage;
-  onErneutFragen: (frage: string) => void;
+  /** Klara 03: der gespeicherte Wortlaut UND der Bezug von damals — nichts wird neu zusammengesetzt. */
+  onErneutFragen: (frage: string, bezug: KlaraObjektbezug) => void;
   onNeuLaden: () => void;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
@@ -330,7 +411,7 @@ export function KlaraEchtGespraech({
                 <button
                   type="button"
                   data-testid="klara-schritt-nochmal"
-                  onClick={() => onErneutFragen(schritt.text)}
+                  onClick={() => onErneutFragen(schritt.text, schritt.objektbezug)}
                   className={`${KNOPF_KI} mt-1`}
                 >
                   {t("klaragespraech.schritt.nochmal")}

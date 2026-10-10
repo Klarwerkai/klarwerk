@@ -990,6 +990,17 @@ export class AskService {
        * der Route, und nur im Konsolenzweig — wie der Gesprächsfaden.
        */
       fragekontext?: Fragekontext;
+      /**
+       * Klara 03 (produkt:20261007:klara-kontext-tutorial): der gewählte Seitenkontext, bereits von
+       * der Route unter den Rechten des Fragenden aufgelöst. Gesetzt nur im Konsolenzweig.
+       *   · `kontext` — ein Satz zum Objekt der Seite (Titel des Artikels, Titel des Entwurfs, die
+       *     aktuelle Frage). Er reist wie eine Fadenfrage als ZUSAMMENHANG: er ergänzt die Suche
+       *     (hinter den Fragetermen) und steht vor der Frage im Zusammenhang — gebunden wird er NICHT.
+       *   · `nurObjekt` — Bezug „Dieser Artikel“: geantwortet wird NUR aus diesem Objekt (sofern es
+       *     die Frage deckt und alle übrigen Filter besteht). `null` heisst: das gewählte Objekt ist
+       *     für den Fragenden nicht zugänglich — dann gibt es keine Grundlage.
+       */
+      seitenkontext?: { kontext: string; nurObjekt?: string | null };
     },
     // produkt:20261007:spaces — WAS DER FRAGENDE ÜBERHAUPT SEHEN DARF, als fertige Entscheidung der
     // Route (`sichtbarkeitsfilterFuer`, samt führendem Space). Bewusst ein EIGENER Parameter und
@@ -1057,9 +1068,14 @@ export class AskService {
     const vorFaden = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
     // R-0348: der Gesprächsfaden — Begründung und Grenzen an `fadenfragen`.
     const faden = fadenfragen(opts?.gespraechsfaden);
+    // Klara 03: der Seitenkontext steht im Zusammenhang direkt vor der Frage — wie eine Fadenfrage,
+    // aber nie Themenanker (gebunden bleibt allein `faden[0]`). Ohne ihn ist alles wie bisher.
+    const kontextSatz = opts?.seitenkontext?.kontext.trim() ?? "";
+    const zusammenhang = kontextSatz ? [...faden, kontextSatz] : faden;
     const frageImZusammenhang =
-      faden.length > 0 ? [...faden, question].join(FADEN_TRENNER) : question;
-    const suchterme = faden.length > 0 ? erweiterteSuchterme(vorFaden, faden.join(" ")) : vorFaden;
+      zusammenhang.length > 0 ? [...zusammenhang, question].join(FADEN_TRENNER) : question;
+    const suchterme =
+      zusammenhang.length > 0 ? erweiterteSuchterme(vorFaden, zusammenhang.join(" ")) : vorFaden;
     // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
     this.pruefeKiSperre("vorauswahl", kiBeginn);
     const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
@@ -1186,7 +1202,12 @@ export class AskService {
     });
     // R-0348: gebunden haben oben die getippte Frage und ihr Anker; gewählt und beantwortet wird im
     // Zusammenhang.
-    const candidates = waehleKandidaten(frageImZusammenhang, vollstaendig, DEFAULT_TOP_K, relevanz);
+    // Klara 03: Bezug „Dieser Artikel“ — nur dieses Objekt kommt an beide Tore (Tor 2 wählt aus
+    // genau diesen Kandidaten). `null` (nicht zugänglich) lässt keinen Kandidaten übrig.
+    const nurObjekt = opts?.seitenkontext?.nurObjekt;
+    const auswahlBasis =
+      nurObjekt === undefined ? vollstaendig : vollstaendig.filter((ref) => ref.id === nurObjekt);
+    const candidates = waehleKandidaten(frageImZusammenhang, auswahlBasis, DEFAULT_TOP_K, relevanz);
     // R-0284: der Rahmen dieser Suche, aus genau den Werten, die den Weg bestimmt haben.
     const pruefrahmen: AskPruefrahmen = {
       umfang: opts?.validatedOnly ? "validiert" : "nicht_vertraulich",
