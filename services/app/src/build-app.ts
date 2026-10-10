@@ -416,6 +416,8 @@ import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
+// ADMIN-10: gemeinsame Ansicht auf Prüfung, Revalidierung, Konflikt, Duplikat, Lücke, Rückmeldung.
+import { qualitaetsaufgabenRoutes } from "./routes/qualitaetsaufgaben-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
@@ -4535,6 +4537,25 @@ export function buildApp(
         }),
         // Veröffentlichung: Meldungen bei „normal" und „hervorgehoben" — nie bei „still".
         veroeffentlichungen: veroeffentlichungDienst,
+      },
+      guards,
+    ),
+  );
+  // ADMIN-10 (produkt:20261009:admin-qualitaetsaufgaben): eine Leseansicht auf die vorhandenen
+  // Vorgänge, keine zweite Aufgabenablage. Übernehmen einer Rückmeldung nutzt die vorhandene
+  // Prüfanforderung des Lebenszyklus.
+  app.register(
+    qualitaetsaufgabenRoutes(
+      {
+        ko: services.ko,
+        validation: services.validation,
+        lifecycle: services.lifecycle,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        ask: services.ask,
+        audit: services.audit,
+        konten: () => services.auth.listUsers(),
+        spaces: services.spaces,
       },
       guards,
     ),
