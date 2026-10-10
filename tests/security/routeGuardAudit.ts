@@ -1083,6 +1083,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "users.manage",
     zeilenrecht: ["darfSehen"],
   },
+  // ADMIN-05: der gemeinsame Übergabeablauf — dieselbe Kontoverwaltung, Titel nur über `darfSehen`;
+  // die Bilanzen aus dem Prüfprotokoll tragen nur Kennungen und Anzahlen.
+  "POST /api/verantwortung/ablauf/vorschau": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/verantwortung/ablauf": { protection: "users.manage", zeilenrecht: ["darfSehen"] },
+  "GET /api/verantwortung/person/:id/ablaeufe": { protection: "users.manage" },
 
   // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
   // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit
