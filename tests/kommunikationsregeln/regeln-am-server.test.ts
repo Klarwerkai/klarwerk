@@ -44,7 +44,7 @@ import {
   buildApp,
   inMemoryRepos,
 } from "../../services/app/src/build-app";
-import type { MailMessage, Mailer } from "../../services/notifications";
+import { ConsoleMailer, type MailMessage, type Mailer } from "../../services/notifications";
 
 type App = ReturnType<typeof buildApp>;
 
@@ -731,5 +731,98 @@ describe("K6 · Regeländerungen gelten nach Reload, sind protokolliert und nur 
     });
     expect(hv.statusCode).toBe(400);
     expect((await regeln(ada.token)).version).toBe(0);
+  });
+});
+
+// ================================================================================================
+// Ben, Nacharbeit 2 — zwei Lücken im Zustellstatus.
+//
+// GEGENPROBEN (benannt, nicht gefahren):
+//   · In `zustellstatus` die Kenntnisnahme-Empfänger wieder aus `ids` nehmen → N2.1 wird rot
+//     (leere Empfängerliste, Nullzähler bei stiller Veröffentlichung).
+//   · In `mailsVersenden` die Prüfung `eingerichtet()` entfernen → N2.2 wird rot (die Zeile stünde
+//     nach dem Fortsetzen ohne SMTP auf „zugestellt", der Ersatz hätte die Mail nur gesammelt).
+// ================================================================================================
+describe("Ben Nacharbeit 2 · Kenntnisnahme im Zustellstatus; Fortsetzen ohne Mailweg", () => {
+  it("N2.1 (K3/K4) · still: der Zustellstatus nennt offene und bestätigte Kenntnisnahmen", async () => {
+    const id = await gueltigerEintrag("Absperrung Halle 3");
+    const anforderung = await auf(clara.token, "POST", `/api/kos/${id}/kenntnisnahmen`, {
+      fassung: 1,
+      empfaenger: [erik.id, vera.id],
+    });
+    expect(anforderung.statusCode, anforderung.body).toBe(201);
+    const anforderungId = (anforderung.json() as { anforderungId: string }).anforderungId;
+    const vermerk = await veroeffentlicht(id, "still");
+    const bestaetigenPfad = `/api/kenntnisnahmen/${anforderungId}/bestaetigen`;
+    const bestaetigt = await auf(erik.token, "POST", bestaetigenPfad, { fassung: 1 });
+    expect(bestaetigt.statusCode, bestaetigt.body).toBeLessThan(300);
+
+    const z = await zustellung(clara.token, id, vermerk);
+    expect(z.erfasst).toBe(true);
+    expect(z.zaehlung.kenntnisnahme).toEqual({ offen: 1, bestaetigt: 1 });
+    // „still" legt keine Glocken- und Mailzeilen an — und behauptet auch keine.
+    expect(z.zaehlung.glocke).toEqual({ angelegt: 0, zugestellt: 0, gelesen: 0 });
+    expect(z.empfaenger).toEqual([
+      {
+        id: erik.id,
+        name: "Erik Experte",
+        glocke: null,
+        hinweis: null,
+        mail: null,
+        kenntnisnahme: "bestaetigt",
+      },
+      {
+        id: vera.id,
+        name: "Vera Viewer",
+        glocke: null,
+        hinweis: null,
+        mail: null,
+        kenntnisnahme: "ausstehend",
+      },
+    ]);
+  });
+
+  // SIMULATION eines Neustarts ohne SMTP: die Instanz läuft mit dem sammelnden Ersatz
+  // (`ConsoleMailer`), und es liegen nie versuchte Mailzeilen aus der Zeit mit SMTP vor.
+  it("N2.2 (K4/K5) · ohne SMTP bleibt die Mail „angelegt“; mit SMTP geht sie genau einmal raus", async () => {
+    expect(services.mailer).toBeInstanceOf(ConsoleMailer);
+    const id = await gueltigerEintrag("Leckage Kühlkreis melden");
+    const vermerk = await veroeffentlicht(id, "normal");
+    await services.kommunikation.statusAnlegen([
+      {
+        vermerkId: vermerk,
+        koId: id,
+        empfaengerId: erik.id,
+        kanal: "mail",
+        status: "angelegt",
+        angelegtAm: new Date(Date.now() + versatz).toISOString(),
+        versuchAm: null,
+        ergebnisAm: null,
+        grund: null,
+      },
+    ]);
+    const pfad = `${zustellPfad(id, vermerk)}/fortsetzen`;
+    const ohne = await auf(clara.token, "POST", pfad);
+    expect(ohne.statusCode).toBe(200);
+    expect(person(ohne.json() as Zustellung, erik)?.mail).toEqual({
+      status: "angelegt",
+      grund: null,
+    });
+    expect((services.mailer as ConsoleMailer).sent).toEqual([]);
+    const zeile = (await services.kommunikation.statusFuer(vermerk)).find(
+      (x) => x.empfaengerId === erik.id && x.kanal === "mail",
+    );
+    expect(zeile?.versuchAm).toBeNull();
+
+    // SMTP ist wieder angeschlossen (Testpostfach): dieselbe Zeile geht genau einmal raus.
+    const postfach = new Testpostfach();
+    services.mailer = postfach;
+    const mit = await auf(clara.token, "POST", pfad);
+    expect(person(mit.json() as Zustellung, erik)?.mail).toEqual({
+      status: "zugestellt",
+      grund: null,
+    });
+    expect((await auf(clara.token, "POST", pfad)).statusCode).toBe(200);
+    expect(postfach.veroeffentlichungen().map((m) => m.to)).toEqual(["erik@kommunikation.test"]);
   });
 });

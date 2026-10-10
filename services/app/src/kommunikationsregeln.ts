@@ -1104,6 +1104,12 @@ export class KommunikationDienst {
 export interface MailVersandDeps {
   repo: KommunikationRepo;
   mailer: Mailer;
+  /**
+   * Ist JETZT ein echter Versandweg angeschlossen? (Ben, Nacharbeit 2) Ohne ihn — etwa nach einem
+   * Neustart ohne SMTP, wenn nur der sammelnde Ersatz da ist — wird nichts beansprucht und keine
+   * Zustellung behauptet; die nie versuchten Zeilen bleiben für eine spätere Fortsetzung erhalten.
+   */
+  eingerichtet: () => boolean;
   /** Konto → Adresse; nur zum Senden gelesen, nie gespeichert. */
   adressen: () => Promise<Map<string, string>>;
   /** Darf dieses Konto den Eintrag JETZT lesen? (dieselbe Regel wie der Empfängerkreis) */
@@ -1121,6 +1127,9 @@ export async function mailsVersenden(
   deps: MailVersandDeps,
   vermerk: { id: string; koId: string; fassung: number; hervorgehoben: boolean },
 ): Promise<void> {
+  if (!deps.eingerichtet()) {
+    return;
+  }
   const am = () => new Date(deps.jetzt()).toISOString();
   const beansprucht = await deps.repo.mailBeanspruchen(vermerk.id, am());
   if (beansprucht.length === 0) {

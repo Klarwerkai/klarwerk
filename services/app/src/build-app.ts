@@ -4291,6 +4291,8 @@ export function buildApp(
           {
             repo: services.kommunikation,
             mailer: services.mailer,
+            // Dieselbe Auskunft wie `mailEingerichtet` oben — je Versand frisch gelesen.
+            eingerichtet: () => !(services.mailer instanceof ConsoleMailer),
             adressen: async () =>
               new Map((await services.auth.listUsers()).map((u) => [u.id, u.email])),
             darfLesen: async (kontoId, koId) => {

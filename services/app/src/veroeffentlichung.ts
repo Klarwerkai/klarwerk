@@ -663,7 +663,9 @@ export class VeroeffentlichungDienst {
         }
       }
     }
-    const ids = [...new Set(zeilen.map((z) => z.empfaengerId))];
+    // Ben, Nacharbeit 2: auch Empfänger einer Kenntnisnahme dieser Fassung gehören in die
+    // Auskunft — bei „still" haben sie keine Versandzeile, ihre Kenntnisnahme läuft aber weiter.
+    const ids = [...new Set([...zeilen.map((z) => z.empfaengerId), ...kenntnis.keys()])];
     const abgewaehlt =
       k && vermerk.meldung === "normal"
         ? await k.dienst.wirksamAbgewaehlt("veroeffentlichung", ids)
@@ -677,7 +679,7 @@ export class VeroeffentlichungDienst {
       meldung: vermerk.meldung,
       am: vermerk.am,
       mailEingerichtet: k?.dienst.mailEingerichtet() ?? false,
-      erfasst: zeilen.length > 0 || vermerk.empfaenger === 0,
+      erfasst: zeilen.length > 0 || vermerk.empfaenger === 0 || kenntnis.size > 0,
       zaehlung: {
         glocke: { angelegt: 0, zugestellt: 0, gelesen: 0 },
         mail: { angelegt: 0, zugestellt: 0, fehlgeschlagen: 0, entfallen: 0 },
