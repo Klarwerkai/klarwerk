@@ -344,6 +344,8 @@ import {
 } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
+import { type OfficeAblage, PgOfficeAblage, SpeicherOfficeAblage } from "./office-ablage";
+import { leseOfficeEditorUmgebung } from "./office-artikel";
 import {
   type PaarpflichtAusfuehrung,
   createPaarpflichtAusfuehrung,
@@ -406,6 +408,7 @@ import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
+import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
 import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
@@ -620,6 +623,12 @@ export interface AppServices {
    * denselben Hinweis an derselben Datenbankuhr sehen.
    */
   bearbeitungen: BearbeitungsRepo;
+  /**
+   * produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände von
+   * Office im Artikel. Aus demselben Grund wie `bearbeitungen` NICHT in `AppRepos`. Im Postgres-
+   * Betrieb `PgOfficeAblage`, damit ein als „gesichert" angezeigter Stand einen Neustart überlebt.
+   */
+  officeAblage: OfficeAblage;
   /**
    * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
    * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
@@ -1140,6 +1149,9 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
+    // Office im Artikel: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die
+    // Speicherfassung, die einen Neustart nicht überlebt.
+    officeAblage?: OfficeAblage;
     // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
@@ -1524,6 +1536,8 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
+    // Office im Artikel: Postgres, wenn injiziert, sonst im Speicher.
+    officeAblage: opts.officeAblage ?? new SpeicherOfficeAblage(),
     // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
     // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
     // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
@@ -2020,6 +2034,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
       bearbeitungen: new PgBearbeitungsRepo(pool),
+      // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände überleben Neustart und
+      // Deploy (`OFFICE_ABLAGE_SCHEMA`).
+      officeAblage: new PgOfficeAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
       // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
@@ -4099,6 +4116,23 @@ export function buildApp(
         kos: services.ko,
         nutzerName: async (nutzerId) =>
           (await services.auth.listUsers()).find((u) => u.id === nutzerId)?.name,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:office-artikel-editor: Word, Excel und PowerPoint im Artikel über den WOPI-
+  // Hostweg (Plan U2). Ohne Einrichtung in der Umgebung antworten die Routen 503 bzw. 404; die
+  // Fläche zeigt dann „nicht eingerichtet". Spaces und Konten kommen aus derselben Quelle wie an
+  // `makeGuards`, damit der Editor nie mehr sieht als die Klarwerk-Sitzung.
+  app.register(
+    officeRoutes(
+      {
+        ko: services.ko,
+        objekte: services.objects,
+        einrichtung: leseOfficeEditorUmgebung(process.env),
+        konten: () => services.auth.listUsers(),
+        spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+        ablage: services.officeAblage,
       },
       guards,
     ),
