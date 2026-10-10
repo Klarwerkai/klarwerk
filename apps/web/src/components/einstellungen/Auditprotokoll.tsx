@@ -567,12 +567,13 @@ export function AuditFilterLeiste({
     setFehler(false);
     filter.anwenden(entwurf);
   };
-  const feld = (name: keyof AuditFilterWerte) => ({
-    id: `${idPraefix}-${name}`,
-    value: entwurf[name],
-    onChange: (e: { target: { value: string } }) =>
-      setEntwurf((alt) => ({ ...alt, [name]: e.target.value })),
-  });
+  // Die Felder tragen id, value und onChange ausdrücklich statt eines gespreizten Props-Objekts:
+  // die Modalgrenzenprüfung (tools/modalgrenze.ts) kann die Herkunft gespreizter Eigenschaften
+  // nicht prüfen, ausdrücklich gesetzte DOM-Eigenschaften schon.
+  const aendern =
+    (name: keyof AuditFilterWerte) =>
+    (e: { target: { value: string } }): void =>
+      setEntwurf((alt) => ({ ...alt, [name]: e.target.value }));
 
   return (
     <form
@@ -588,7 +589,9 @@ export function AuditFilterLeiste({
       <label className="flex min-w-0 flex-col gap-1 text-[11.5px] font-semibold text-muted-2">
         {t("auditprotokoll.filter.person")}
         <input
-          {...feld("person")}
+          id={`${idPraefix}-person`}
+          value={entwurf.person}
+          onChange={aendern("person")}
           type="text"
           list={`${idPraefix}-personen`}
           autoComplete="off"
@@ -617,7 +620,12 @@ export function AuditFilterLeiste({
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-[11.5px] font-semibold text-muted-2">
         {t("auditprotokoll.filter.aktion")}
-        <select {...feld("aktion")} className={FELD}>
+        <select
+          id={`${idPraefix}-aktion`}
+          value={entwurf.aktion}
+          onChange={aendern("aktion")}
+          className={FELD}
+        >
           <option value="">{t("auditprotokoll.filter.aktionAlle")}</option>
           {aktionen.map((a) => (
             <option key={a} value={a}>
@@ -632,7 +640,9 @@ export function AuditFilterLeiste({
       <label className="flex min-w-0 flex-col gap-1 text-[11.5px] font-semibold text-muted-2">
         {t("auditprotokoll.filter.ziel")}
         <input
-          {...feld("ziel")}
+          id={`${idPraefix}-ziel`}
+          value={entwurf.ziel}
+          onChange={aendern("ziel")}
           type="text"
           inputMode="text"
           autoComplete="off"
@@ -643,12 +653,20 @@ export function AuditFilterLeiste({
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-[11.5px] font-semibold text-muted-2">
         {t("auditprotokoll.filter.von")}
-        <input {...feld("von")} type="date" className={FELD} />
+        <input
+          id={`${idPraefix}-von`}
+          value={entwurf.von}
+          onChange={aendern("von")}
+          type="date"
+          className={FELD}
+        />
       </label>
       <label className="flex min-w-0 flex-col gap-1 text-[11.5px] font-semibold text-muted-2">
         {t("auditprotokoll.filter.bis")}
         <input
-          {...feld("bis")}
+          id={`${idPraefix}-bis`}
+          value={entwurf.bis}
+          onChange={aendern("bis")}
           type="date"
           aria-invalid={fehler || undefined}
           aria-describedby={fehler ? `${idPraefix}-zeitraumfehler` : undefined}
