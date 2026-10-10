@@ -2725,8 +2725,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Dieser Auftrag hat seit Nacharbeit 38 nur diese Testdatei geändert; die EINE Komponente und
     // eine Quelldatei (762 → 763) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 50: GEMESSEN 597. Am Kandidaten f2dcaff4 meldete der
+    // Sammler wörtlich „gemessen: 597 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 765
+    // Quelldateien … expected { komponenten: 597, … } to deeply equal { komponenten: 593, … }".
+    // Dieser Auftrag hat seit Nacharbeit 38 nur diese Testdatei geändert; die VIER Komponenten und
+    // zwei Quelldateien (763 → 765) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem
+    // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 593,
+      komponenten: 597,
       anbieter: 1,
       traeger: 2,
     });
