@@ -639,6 +639,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
   "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
+  // R-1630 / R-2176: der Antwortvergleich — dieselbe Grundlage wie die Konsolenfrage, gefiltert
+  // durch die Sichtbarkeit des Fragenden (heutige UND damalige Fassung).
+  "POST /api/ask/vergleich": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // R-1089: Meldung „Antwort falsch / Quelle passt nicht" — dasselbe Tor und derselbe Beleg.
   "POST /api/ask/report": { protection: "ko.read" },
   // R-1649: ko.read; ein mitgeschickter Weg wird ein Entwurf und verlangt im Handler ko.create.
