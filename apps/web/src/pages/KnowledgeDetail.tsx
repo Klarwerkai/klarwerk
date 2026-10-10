@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { AufgegangenHinweis } from "../components/AufgegangenHinweis";
+import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
 import { HelpTip } from "../components/HelpTip";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 import { SanitizedHtml } from "../components/SanitizedHtml";
@@ -177,7 +178,15 @@ export function KnowledgeDetail(): JSX.Element {
         // LESEN-INHALT-ZUERST (Ben, nacharbeit-6): die Zeile stand VOR der ganzen Fläche und schob
         // Titel, Status und erste Regel mobil um etwa 260 px nach unten. Sie steht jetzt in der
         // Lesespalte NACH dem fachlichen Inhalt — dieselbe Komponente, dieselben Rechte.
-        nachDemInhalt={<SpaceZeile koId={id} />}
+        // produkt:20261007:interner-chat: dahinter der Weg in das Gespräch zu genau diesem Artikel.
+        nachDemInhalt={
+          <>
+            <SpaceZeile koId={id} />
+            <div className="mt-3">
+              <ChatGespraechKnopf ziel={{ art: "artikel", koId: id }} />
+            </div>
+          </>
+        }
       />
     </div>
   );

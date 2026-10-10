@@ -167,6 +167,8 @@ const Richtlinien = lazy(() =>
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
 // produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
+// produkt:20261007:interner-chat: nachgeladen wie jede andere Seite.
+const Chat = lazy(() => import("./pages/Chat").then((m) => ({ default: m.Chat })));
 const Start = lazy(() => import("./pages/Start").then((m) => ({ default: m.Start })));
 const Capital = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Capital })));
 const GraphView = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.GraphView })));
@@ -377,6 +379,13 @@ export function AppRoutes(): JSX.Element {
             spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
         <Route path="/spaces" element={<Spaces />} />
         <Route path="/spaces/:id" element={<Spaces />} />
+        {/* Interner Chat (produkt:20261007:interner-chat). Ohne `Guarded`, wie `/spaces`: die
+            Türen dahinter fordern ihr Recht am Server (`ko.read`, `ko.create` für die
+            Wissensübernahme; Teilnahme, Space- und Artikelrecht je Gespräch,
+            `services/app/src/routes/chat-routes.ts`). Erreichbar über das Konto-Menü, den
+            Gesprächsknopf an Artikel und Space und Klaras „Als Nachricht entwerfen". */}
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/chat/:id" element={<Chat />} />
         {/* ADMIN-15: Unternehmensprofil und interne Richtlinien. Ohne `Guarded`, wie `/begriffe`:
             die Türen dahinter fordern ihr Recht am Server (`requireUser` zum Lesen und für die
             eigene Kenntnisnahme/Zustimmung, `users.manage` für die Verwaltung,

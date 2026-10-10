@@ -88,6 +88,14 @@ export function KontoEintraege({
       >
         {t("unternehmen.konto.richtlinien")}
       </MenueZeile>
+      {/* produkt:20261007:interner-chat: Direkt-, Gruppen-, Space- und Artikelgespräche. */}
+      <MenueZeile
+        to="/chat"
+        aktiv={location.pathname === "/chat" || location.pathname.startsWith("/chat/")}
+        testid="konto-chat"
+      >
+        {t("chat.konto.menue")}
+      </MenueZeile>
       <MenueTrenner />
       <MenueZeile onClick={() => void signOut()} testid="konto-abmelden">
         {t("action.logout")}

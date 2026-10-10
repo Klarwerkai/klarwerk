@@ -37,6 +37,7 @@ import {
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { setzeKlaraEntwurf } from "../../api/chat";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
@@ -1790,6 +1791,32 @@ export function KlaraVorschau(): JSX.Element {
                     className={KNOPF}
                   >
                     {t("klaravorschau.auswahl.entfernen")}
+                  </button>
+                  {/* produkt:20261007:interner-chat: die Markierung wird nur ein ENTWURF. Ziel und
+                      Text stehen danach im Chat sichtbar da; erst „Senden" dort verschickt etwas. */}
+                  <button
+                    type="button"
+                    data-testid="klara-aktion-nachricht"
+                    onClick={() => {
+                      const h = auswahl.herkunft;
+                      const text = auswahl.text.slice(0, 1200);
+                      const quelle = (h.titel || h.objekt || h.seitenName).slice(0, 200);
+                      setzeKlaraEntwurf({
+                        ausschnitt: h.koId
+                          ? {
+                              text,
+                              quelle,
+                              fiktiv: false,
+                              koId: h.koId,
+                              ...(h.fassung ? { fassung: h.fassung } : {}),
+                            }
+                          : { text, quelle, fiktiv: true, pfad: h.pfad },
+                      });
+                      navigate("/chat?klara=1");
+                    }}
+                    className={KNOPF}
+                  >
+                    {t("chat.klara.ausKlara")}
                   </button>
                 </div>
               </section>

@@ -18,6 +18,7 @@ import {
   spaceFehlerSchluessel,
   spacesApi,
 } from "../api/spaces";
+import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 
@@ -385,7 +386,7 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
       ) : null}
       <Card className="mb-4">
         <SpaceKopf s={s} />
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <Button
             data-testid="space-verlauf-knopf"
             aria-expanded={verlauf}
@@ -393,6 +394,10 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
           >
             {t("spaces.detail.verlauf")}
           </Button>
+          {/* produkt:20261007:interner-chat: das Gespräch derer, die die Inhalte lesen dürfen. */}
+          {s.darfInhalteLesen ? (
+            <ChatGespraechKnopf ziel={{ art: "space", spaceId: s.id }} />
+          ) : null}
         </div>
         {verlauf ? (
           <ol data-testid="space-verlauf" className="mt-2 space-y-1 border-t border-hairline pt-2">

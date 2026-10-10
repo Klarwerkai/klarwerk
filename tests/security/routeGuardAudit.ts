@@ -1084,6 +1084,21 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
 
+  // --- Interner Chat (chat-routes.ts, produkt:20261007:interner-chat) ---
+  // Jede Tür verlangt `ko.read`; welche Gespräche und Inhalte erscheinen, entscheidet je Zeile
+  // Teilnahme, Space-Leserecht und `darfSehen` (Artikelgespräche, Verweise, Ausschnitte, Anhänge).
+  // Die Wissensübernahme legt einen Entwurf an und verlangt deshalb `ko.create`.
+  "GET /api/chat/konten": { protection: "ko.read" },
+  "GET /api/chat/gespraeche": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/chat/gespraeche": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/chat/gespraeche/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/chat/gespraeche/:id/nachrichten": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/chat/nachrichten/:id/wissen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "GET /api/chat/erwaehnungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)
   // Kontoverwaltung wie die bestehende Autorenübergabe. Titel nur, wo `darfSehen` es erlaubt; die
   // Liste ohne aktive Verantwortung nennt je Person nur eine Anzahl.
