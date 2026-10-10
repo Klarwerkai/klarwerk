@@ -33,6 +33,7 @@ import {
   type UploadLimitsRepo,
   alsMenge,
   alsSchreibpatch,
+  anlagenkontextFehler,
   // JOB 4077: die EINE Antwort auf „hängt dieser Anker an DIESEM Objekt?". Sie kennt weder Stufe
   // noch Reichweite und kann deshalb keine Erlaubnis erweitern (Begründung: `source-anchor.ts`).
   confirmedSourceAnchor,
@@ -433,6 +434,8 @@ type KoAktion =
   | "tags"
   // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
   | "domain"
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext am Objekt.
+  | "anlagenkontext"
   // R-1632 / R-1633: die Geltung (Konzern/Werk/Schicht, optional Rolle) setzen oder entfernen.
   | "geltung"
   | "confidentiality"
@@ -510,6 +513,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   tags: "tor",
   // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
   domain: "tor",
+  // R-1631: arbeitet AM Objekt unter `:id` — dasselbe Tor wie `domain`.
+  anlagenkontext: "tor",
   // R-1632 / R-1633: arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `domain`.
   geltung: "tor",
   confidentiality: "tor",
@@ -621,6 +626,8 @@ interface PutBody {
   tags?: string[];
   /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
   domain?: unknown;
+  /** R-1631: Bauteile, Materialien, Geltungskontext (`action: "anlagenkontext"`), gelesen an der `case`. */
+  anlagenkontext?: unknown;
   /** R-1632 / R-1633: die Geltung (`action: "geltung"`); `null` entfernt sie. Geprüft im Dienst. */
   geltung?: unknown;
   conflict?: ConflictInput;
@@ -1603,6 +1610,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           if (input.confidentiality === undefined) {
             sendMissingConfidentiality(reply);
             return;
+          }
+          // R-1631 (gesamt-anlagenzugang): derselbe Eingang wie an `action: "anlagenkontext"` —
+          // Unförmiges ist ein 400, nichts wird gekürzt. Fehlt das Feld, ist nichts angegeben.
+          if (input.anlagenkontext !== undefined && input.anlagenkontext !== null) {
+            const fehler = anlagenkontextFehler(input.anlagenkontext);
+            if (fehler) {
+              reply.code(400).send({ error: "BAD_REQUEST", message: fehler });
+              return;
+            }
           }
           // R-0034 / FR-CAP-08: das Fachgebiet beim Anlegen trägt dieselbe Grenze wie die Aktion
           // `domain` — ein Nicht-Text oder ein überlanger Wert ist ein 400, nichts wird gekürzt.
@@ -3599,6 +3615,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return badRequest(`domain ist länger als ${DOMAIN_MAX_LENGTH} Zeichen.`);
             }
             reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
+            return;
+          }
+          case "anlagenkontext": {
+            // R-1631 (gesamt-anlagenzugang): dasselbe Recht wie Fachgebiet und Kategorie
+            // (`ko.create`). Der Kontext ersetzt den bisherigen; Unförmiges ist ein 400.
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            const fehler = anlagenkontextFehler(body.anlagenkontext);
+            if (fehler) {
+              return badRequest(fehler);
+            }
+            reply.code(200).send(await ko.setAnlagenkontext(id, body.anlagenkontext, user.id));
             return;
           }
           case "geltung": {
