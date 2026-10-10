@@ -567,6 +567,15 @@ export interface KoFrische {
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/** R-1631: Bauteile, Materialien und Geltungskontext — Spiegel von `AnlagenKontext` im Dienst. */
+export interface AnlagenKontext {
+  bauteile?: string[];
+  materialien?: string[];
+  versionen?: string[];
+  standorte?: string[];
+  schichten?: string[];
+}
+
 /**
  * R-1664/R-2179/R-2180: die geführt erfassten Angaben eines Negativwissen-Falls — Spiegel von
  * `NegativwissenAngaben` (services/knowledge-object/src/negativwissen.ts, dort die Begründung).
@@ -736,6 +745,9 @@ export interface KnowledgeObject {
   assets?: string[];
   // R-1690: Re-Validierungstermin `JJJJ-MM-TT`, beim Erfassen gesetzt; fehlt = keiner.
   revalidierungAm?: string;
+  // R-1631 (gesamt-anlagenzugang): Spiegel von `services/knowledge-object/src/types.ts` —
+  // Bauteile, Materialien und Geltungskontext (Version, Standort, Schicht). Fehlt = nichts angegeben.
+  anlagenkontext?: AnlagenKontext;
   createdAt: string;
   history: HistoryEntry[];
   comments?: KoComment[];
