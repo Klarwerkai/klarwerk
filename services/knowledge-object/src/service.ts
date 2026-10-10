@@ -7184,6 +7184,52 @@ export class KoService {
     return trust;
   }
 
+  // ==============================================================================================
+  // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4, Ben K1) — EINE ANLAGE ZUORDNEN.
+  // ==============================================================================================
+  //
+  // Die Kopplung „Anlage ↔ Wissenseintrag" aus dem Lebenszyklus schreibt seither in die KANONISCHE
+  // Anlagenzuordnung (`asset`/`assets`, JOB 593 / R-0082) statt in eine eigene Tabelle — damit gibt es
+  // genau eine Zuordnung, aus der die Betroffenheit einer Anlagenänderung folgt. Normalform und
+  // Feldabbildung über dieselbe eine Stelle (`normalizeAsset`, `anlagenFelder`); eine schon
+  // zugeordnete Anlage ändert nichts (kein Schreiben, kein Beleg). Bauform wie `setAuthor`: per KO
+  // serialisiert, Beleg im selben Schritt, keine neue Inhaltsfassung — die Zuordnung ist Einordnung,
+  // kein Inhalt.
+  async ordneAnlageZu(id: string, assetRef: string, actor = "system"): Promise<KnowledgeObject> {
+    const anlage = normalizeAsset(assetRef);
+    if (anlage === null) {
+      throw new KoError("INVALID", "Anlagenkennung fehlt.");
+    }
+    const vorher = await this.get(id);
+    if (!vorher) {
+      throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    if (anlagenVon(vorher).includes(anlage)) {
+      return vorher;
+    }
+    return this.mutateKo(id, (ko) => {
+      const liste = anlagenVon(ko);
+      const nachher = liste.includes(anlage) ? liste : [...liste, anlage];
+      const { assets: _bisher, ...ohneListe } = ko;
+      const updated: KnowledgeObject = { ...ohneListe, ...anlagenFelder(nachher) };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.asset-assigned",
+              target: id,
+              payload: { asset: anlage, assets: nachher },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
   // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.
   async setAuthor(id: string, author: string, actor = "system"): Promise<KnowledgeObject> {
     return this.mutateKo(id, (ko) => {
