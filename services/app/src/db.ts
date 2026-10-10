@@ -72,6 +72,8 @@ import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
 // Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
 // sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
 import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
+// Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
+import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
@@ -252,6 +254,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; sie
   // steht am Ende, weil das die lesbare Ordnung ist.
   KO_BEARBEITUNG_SCHEMA,
+  // produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände von Office
+  // im Artikel. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und
+  // ohne Extension; die Stellung ist die lesbare Ordnung neben dem Bearbeitungshinweis.
+  OFFICE_ABLAGE_SCHEMA,
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
   // Ende, weil das die lesbare Ordnung ist.

@@ -413,3 +413,61 @@ Cookies oder Schlüssel.
 | Produktivbetrieb Weg C | **Collabora-Online-Subscription** (Angebot und Kauffreigabe) | Pedi |
 | Microsoft 365 im Artikel (Weg A) | **CSPP-Zulassung durch Microsoft** (Bewerbung und Programmvertrag) | Klarwerk-Inhaber gegenüber Microsoft |
 | „In Microsoft öffnen“ (Weg B, nicht eingebettet) | **Entra-App-Registrierung + Admin-Zustimmung** im Kundenmandanten | Mandanten-Admin des Kunden |
+
+---
+
+## 9 · Umsetzung im Artikel (Auftrag `produkt:20261007:office-artikel-editor`)
+
+*Stand 10.10.2026. Die Abschnitte 1–8 sind der Machbarkeitsstand und bleiben unverändert.*
+
+**Gebaut (U1–U4), Weg C mit demselben Hostweg `erstelleWopiHost`:**
+
+| Schritt | Ort | Was |
+|---|---|---|
+| U1 | `docker-compose.yml`, Profil `office` | CODE-Testdienst mit `aliasgroup1` und `net.frame_ancestors` aus der Umgebung. Startet nur auf ausdrücklichen Aufruf. |
+| U2 | `services/app/src/routes/office-routes.ts`, `office-artikel.ts`, `build-app.ts`, `security-headers.ts` | WOPI-Türen `/wopi/files/:anhangId[/contents]` in Fastify. Die Marke wird **vor dem Parsen** geprüft. Rechte werden je Anfrage frisch gelesen (Konto freigegeben, Rolle, Spaces, `darfSehen`, Status). `frame-src`/`form-action` bekommen genau die eine Editor-Herkunft. Das Anfrageprotokoll schreibt die URL ohne Abfrageteil, die Marke erscheint also nicht. |
+| U3 | `KoService.uebernimmOfficeFassung` | Anhangstausch **und** neue Fassung in einem `mutateKoTx` mit CAS. Status `offen`, Trust 0, Snapshot, `ko.revised` + `ko.office-uebernommen`, Beleg `attachment`. Das Rückholen eines früheren Dokumentstands ergibt eine neue Fassung (`anhangZurueckAus`); der Dienst prüft das Objekt an Belegkette oder Snapshot. |
+| U4 | `apps/web/src/components/bibliothek/OfficeImArtikel.tsx` | Am Anhang „Im Artikel öffnen“: Schreibweg, Dokumentstände mit Rückholen, Belegstellen je Dokumentstand, laufende gemeinsame Bearbeitung, gesicherte Konfliktstände. Der Editor wird per Formular-POST ins iframe eingebettet; „Als neue Fassung übernehmen“, „Speichern und zurück zum Artikel“, „Abbrechen“. Laden, Speichern und Fehler sind sichtbar und haben Fristen. |
+
+**Betreiberumgebung:** `KLARWERK_OFFICE_EDITOR_URL` (Editor im Browser), optional
+`KLARWERK_OFFICE_EDITOR_INTERN_URL` (Discovery vom Server), `KLARWERK_WOPI_HOST_URL` (wie der Editor
+Klarwerk erreicht; ohne Angabe gilt `APP_BASE_URL`), `KLARWERK_WOPI_SCHLUESSEL` (≥ 32 Byte, hex oder
+base64). Fehlt etwas, zeigt die Fläche „nicht eingerichtet“, und die WOPI-Türen antworten 404.
+
+**Konflikte ohne stillen Verlust:** Bei einer fremden Änderung während der Sitzung meldet die Übernahme
+`409 KO_STALE`. Beim Schließen wird der Arbeitsstand dann **nicht** übernommen, sondern als „gesichert“
+vermerkt und am Artikel angezeigt. Erst ein ausdrücklicher Klick übernimmt ihn als neue Fassung, und
+zwar nur ein Objekt, das der Host selbst vermerkt hat.
+
+**Klara:** Klara liest Markierungen aus dem Seiten-DOM. Der Editor im fremden iframe übergibt keine
+Auswahl, und keine seiner Nachrichten trägt markierten Text. Die Fläche sagt das sichtbar
+(`auswahlVomEditor` liefert `null`); ein Auswahlkontext aus dem Editor wird nicht angeboten.
+
+**Offen, ausdrücklich:**
+
+- *(Nacharbeit 2, erledigt)* Editor-Sitzungen, der letzte Schreiber und gesicherte Konfliktstände
+  liegen in `OfficeAblage` (`services/app/src/office-ablage.ts`), im Postgres-Betrieb `PgOfficeAblage`
+  (`OFFICE_ABLAGE_SCHEMA`). Sie überleben damit einen Neustart: Die Fläche zeigt sie wieder an, und sie
+  lassen sich übernehmen. Offen bleibt: Die Reihenfolge der Vorgänge an einem Anhang hält der Hostweg je
+  Prozess; mehrere App-Prozesse hinter einem Editor teilen die Ablage, aber nicht diese Reihenfolge.
+- *(Nacharbeit 4)* Sitzungsende ohne Übergabelücke: Löscht der Hostweg eine Sitzung mit
+  Arbeitsstand, wird sie nur als beendet fortgeschrieben. Der Abschluss sichert einen nicht
+  übernommenen Arbeitsstand dauerhaft und löscht erst danach die Sitzung. Scheitert das Sichern,
+  bleibt der Stand in der beendeten Sitzung, und jeder weitere Zugriff (auch nach Neustart) versucht
+  es erneut. Eine neue Editor-Sitzung wird bis dahin mit 503 abgewiesen. Dasselbe gilt für eine ohne
+  Entsperren abgelaufene Sperre (abgestürzter Editor).
+- *(Nacharbeit 2)* Zuklappen und Anhangswechsel bei offenem Editor nehmen denselben Speicher- und
+  Übernahmeweg wie „Speichern und zurück“; scheitert er, bleibt der Editor offen. Ohne bereites
+  Dokument wird sichtbar abgebrochen.
+- *(Nacharbeit 2)* `tests/office-artikel-editor/code-artikelweg.integration.test.ts` fährt den Weg mit
+  echtem CODE über die echten Routen: gültige DOCX/XLSX/PPTX ändern, speichern, übernehmen,
+  schließen und mit Inhalt wieder öffnen; dazu zwei Konten in einer Sitzung mit Konflikt und bewusster
+  Übernahme. Sie braucht Docker, das Abbild `collabora/code` und Chromium in der Prüfbahn.
+- Datei-Vorschlag für freigegebene Artikel ohne Freigaberecht (Plan 5.4): nicht gebaut. Der Editor
+  öffnet dort nur lesend.
+- Kein neuer Dokumentauszug nach der Übernahme. Belegstellen am alten Dokumentstand werden als
+  „früherer Dokumentstand — nicht neu geprüft“ gezeigt, nicht still umgehängt.
+- Die Routentests in `tests/office-artikel-editor/` prüfen den Weg über die echten Routen ohne Editor.
+  Mit echtem CODE prüft ihn die oben genannte Integrationsprobe. Ein menschlicher Bedienlauf in der
+  vollständigen Klarwerk-Oberfläche (Anmeldung, Artikelseite, Klara) mit dem Testdienst ist damit
+  nicht ersetzt.
