@@ -66,6 +66,8 @@ export const KLARA_SESSION_ABSOLUTE_MS = 8 * 60 * 60 * 1000;
  * JOB 2688 D1 (Befund R2-13): JEDES HINSEHEN WAR EIN SCHREIBVORGANG. Jeder Statusabruf des Panels
  * schrieb `last_activity_at`/`expires_at` per UPDATE fort — auch wenn der letzte Abruf Sekunden
  * her war. Der Touch wird jetzt nur ausgeführt, wenn `lastActivityAt` älter als diese Spanne ist.
+ * R-0777: seither berührt der Statusabruf gar nicht mehr; die Drossel gilt für die Aktivitätswege
+ * (`meldeAktivitaet`, Ausführungstor, Zustimmung).
  *
  * WARUM 60 s TRAGEN: die Gleitfrist beträgt 15 min. Ein unterlassener Touch lässt `expiresAt`
  * höchstens 60 s hinter dem tatsächlichen letzten Zugriff zurück; eine Sitzung läuft dadurch
@@ -857,7 +859,44 @@ export class KlaraSessionService {
   }
 
   /**
-   * `GET /api/klara/sessions/{id}` — und jede Benutzung schreibt die Frist fort (ROT-4).
+   * `GET /api/klara/sessions/{id}` und `GET /api/klara/ai-status` — REINES ANSEHEN, KEIN TOUCH.
+   *
+   * ============================================================================================
+   * R-0777 (F-0777, Folge von JOB 2688 D1) — ANSEHEN IST KEINE AKTIVITÄT.
+   * ============================================================================================
+   *
+   * Bis hierher berührte jeder Abruf die Sitzung; JOB 2688 D1 hatte das nur auf einen Schreib-
+   * vorgang je 60 s gedrosselt. Ben hat belegt, dass damit das blosse Ansehen weiter schrieb
+   * (Polling alle 5 s: 9–10 UPDATEs in 10 min). Jetzt schreibt dieser Weg `lastActivityAt`,
+   * `expiresAt` und die Revision NIE fort. Die gleitende Frist (ROT-4) bleibt erhalten — sie
+   * gleitet ausschliesslich über ausdrückliche Aktivität: `meldeAktivitaet`, das Ausführungstor
+   * (`pruefeExterneAusfuehrung`, jede Frage/Prüfung mit Klara-Bindung), Zustimmung, Widerruf,
+   * Rebind und Schliessen.
+   *
+   * WAS DIESER WEG WEITERHIN SCHREIBEN DARF, und warum das kein „Ansehen schreibt" ist: die
+   * Entwertung einer abgelaufenen oder nicht mehr deckenden Zustimmung (ROT-3, KW-S4-23 §4), den
+   * einmaligen Nachtrag eines fehlenden Endeintrags (R-0609 B2) und die Erneuerung der Auflösung
+   * bei einem Policy-/Konfigurationswechsel. Jeder dieser Schritte geschieht genau einmal je
+   * Zustandswechsel; ein wiederholter Abruf desselben Stands findet nichts mehr zu tun.
+   *
+   * Die Konsistenzprüfung unten (R5) bleibt unverändert: auch ohne Touch kann zwischen Lesen und
+   * Antwort ein fremder Übergang liegen.
+   */
+  async getSession(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
+    return this.sitzungsstand(sessionId, bindung, false);
+  }
+
+  /**
+   * R-0777 — DER AUSDRÜCKLICHE AKTIVITÄTSWEG. Dieselbe zusammengehörende Sicht wie `getSession`,
+   * aber mit Touch: `lastActivityAt`/`expiresAt` werden fortgeschrieben (ROT-4), gedrosselt auf
+   * höchstens einen Schreibvorgang je `KLARA_TOUCH_MINDESTABSTAND_MS` (JOB 2688 D1).
+   */
+  async meldeAktivitaet(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
+    return this.sitzungsstand(sessionId, bindung, true);
+  }
+
+  /**
+   * Gemeinsamer Kern von `getSession` (ohne Touch) und `meldeAktivitaet` (mit Touch).
    *
    * ============================================================================================
    * W1 S4 R5 (KW-S4-21 §5, BEN-Bericht 24 Abschnitt 3.2/4) — DIE ANTWORT MUSS ZUSAMMENGEHÖREN.
@@ -898,10 +937,15 @@ export class KlaraSessionService {
    * es braucht auch keine: die Prüfung kommt mit `findSession`/`findConsent` aus, und der
    * CAS-Vertrag aus R4 bleibt unangetastet.
    */
-  async getSession(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
+  private async sitzungsstand(
+    sessionId: string,
+    bindung: KlaraBindung,
+    aktivitaet: boolean,
+  ): Promise<KlaraSessionView> {
     for (let anlauf = 0; anlauf < 2; anlauf++) {
       const { session } = await this.laden(sessionId, bindung);
-      const beruehrt = await this.beruehre(session, bindung);
+      // R-0777: nur der Aktivitätsweg berührt; reines Ansehen trägt den geladenen Stand.
+      const beruehrt = aktivitaet ? await this.beruehre(session, bindung) : session;
       // Die Zustimmung ZULETZT — nie aus einem Stand vor dem Touch.
       const consent = await this.repo.findConsent(sessionId);
       // ========================================================================================
@@ -1034,7 +1078,10 @@ export class KlaraSessionService {
     aufgabe: KlaraAufgabe = "answer",
   ): Promise<KlaraAusfuehrungsfreigabe> {
     // Frisch laden — dieselbe Bindungsprüfung wie jeder andere Weg (fremde Sitzung ⇒ NOT_FOUND).
-    const { session } = await this.laden(sessionId, bindung);
+    const { session: geladen } = await this.laden(sessionId, bindung);
+    // R-0777: ein Ausführungsversuch ist BENUTZUNG, kein Ansehen — er hält die gleitende Frist
+    // (ROT-4) am Leben, seit der Statusabruf nicht mehr berührt. Gedrosselt wie jeder Touch.
+    const session = await this.beruehre(geladen, bindung);
     const {
       session: gebunden,
       resolution: ohneConsent,
@@ -1184,6 +1231,20 @@ export class KlaraSessionService {
   }
 
   /** Die Auflösung zu einer registrierten Sitzung — der einzige Statusweg (S4-20 §6). */
+  /**
+   * R-0700 · DIE BINDUNGSPRÜFUNG DES EIGENEN KLARA-AUSFÜHRUNGSZUGANGS
+   * (`POST /api/klara/sessions/{sessionId}/execute`, `klaraAusfuehrungRoutes`).
+   *
+   * Dieselbe Prüfung, die jeder Sitzungsweg durchläuft (`laden`): fremde Sitzung oder fremde
+   * Bindung ⇒ `NOT_FOUND`, geschlossene oder abgelaufene Sitzung ⇒ `CONFLICT`; eine abgelaufene
+   * Zustimmung wird dabei entwertet. BEWUSST OHNE TOUCH: eine Frage verlängert die Sitzung nicht —
+   * das tun Status- und Sitzungswege (`getSession`). So bleibt die gleitende Frist, was sie war,
+   * und der Zugang beantwortet ausschliesslich gültig gebundene Fragen.
+   */
+  async pruefeBindung(sessionId: string, bindung: KlaraBindung): Promise<void> {
+    await this.laden(sessionId, bindung);
+  }
+
   async statusFor(sessionId: string, bindung: KlaraBindung): Promise<KlaraResolution> {
     return (await this.getSession(sessionId, bindung)).resolution;
   }

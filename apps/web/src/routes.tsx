@@ -83,6 +83,10 @@ import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const Ask = lazy(() => import("./pages/Ask").then((m) => ({ default: m.Ask })));
+// R-0443 (Aufnahme gesamt-hilfen): die Seite „So arbeitet Klarwerk“ — nachgeladen wie jede andere.
+const Arbeitsweise = lazy(() =>
+  import("./pages/Arbeitsweise").then((m) => ({ default: m.Arbeitsweise })),
+);
 // R-1646: die Ausgangsprüfung — nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Ausgangspruefung = lazy(() =>
   import("./pages/Ausgangspruefung").then((m) => ({ default: m.Ausgangspruefung })),
@@ -155,6 +159,11 @@ const PlaceholderPage = lazy(() =>
   import("./pages/PlaceholderPage").then((m) => ({ default: m.PlaceholderPage })),
 );
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
+// ADMIN-15: interne Richtlinien (alle Konten) und ihre Verwaltung samt Unternehmensprofil —
+// nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Richtlinien = lazy(() =>
+  import("./pages/Richtlinien").then((m) => ({ default: m.Richtlinien })),
+);
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
 // produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
 const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
@@ -166,6 +175,9 @@ const ImportReview = lazy(() =>
 );
 const Output = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Output })));
 const UiKit = lazy(() => import("./pages/UiKit").then((m) => ({ default: m.UiKit })));
+const Unternehmen = lazy(() =>
+  import("./pages/Unternehmen").then((m) => ({ default: m.Unternehmen })),
+);
 const Validation = lazy(() =>
   import("./pages/Validation").then((m) => ({ default: m.Validation })),
 );
@@ -292,6 +304,11 @@ export function AppRoutes(): JSX.Element {
             OHNE `Guarded`: die Ansicht erklärt nur und öffnet nichts; das Rollen-Tor sitzt an ihrer
             Übergabe (`RoleLink`) und am Ziel selbst. Ein unbekanntes Thema führt auf die Startseite. */}
         <Route path="/einstieg/:thema" element={<Einstieg />} />
+        {/* R-0443 (Aufnahme gesamt-hilfen): „So arbeitet Klarwerk“ — wie das Wissensnetz aufgebaut
+            ist und wie gearbeitet wird. OHNE `Guarded`, wie `/einstieg/:thema`: die Seite erklärt
+            und öffnet nichts; ihre Wege laufen über `RoleLink`, und die Daten dahinter fordern
+            `ko.read` am Server (`/api/graph`). Einstieg: oben auf der Hilfeseite. */}
+        <Route path="/so-arbeitet-klarwerk" element={<Arbeitsweise />} />
         {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
             Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
         <Route path="/erfassen/neu" element={<KnowledgeIntake />} />
@@ -360,6 +377,13 @@ export function AppRoutes(): JSX.Element {
             spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
         <Route path="/spaces" element={<Spaces />} />
         <Route path="/spaces/:id" element={<Spaces />} />
+        {/* ADMIN-15: Unternehmensprofil und interne Richtlinien. Ohne `Guarded`, wie `/begriffe`:
+            die Türen dahinter fordern ihr Recht am Server (`requireUser` zum Lesen und für die
+            eigene Kenntnisnahme/Zustimmung, `users.manage` für die Verwaltung,
+            `services/app/src/routes/unternehmen-routes.ts`). Erreichbar über das Konto-Menü
+            (`/richtlinien`) und die Verwaltung unter „System" (`/unternehmen`). */}
+        <Route path="/richtlinien" element={<Richtlinien />} />
+        <Route path="/unternehmen" element={<Unternehmen />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />

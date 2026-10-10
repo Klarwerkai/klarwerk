@@ -232,7 +232,7 @@ async function entwurfOffenUndLeer(): Promise<void> {
   server.bestand = { [ENTWURF_ID]: entwurfNurTitel() };
   await oeffnen(ADRESSE, "formular");
   expect(verlassenKnopf(), "der Entwurf ist nicht geöffnet").not.toBeNull();
-  await tippe(feld(i18n.t("capture.fTitle")), "");
+  await tippe(feld(i18n.t("capture.wizard.titleLabel")), "");
 }
 
 /** Schritt 3–4: in „Aus Datei" wechseln, Datei ablegen, auswerten lassen. */
@@ -482,7 +482,7 @@ describe("JOB 4231 · die Quittung des Verlassen-Wegs nach einem Datei-Speicherw
   // dieser Fall, was D4 nicht mehr misst.
   it("Q1 · Server lehnt ab, dann verwerfen: die Meldung heisst „verworfen“, nicht „gespeichert“", async () => {
     await oeffnen(ADRESSE, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), NEUER_TITEL);
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), NEUER_TITEL);
     await klick(verlassenKnopf() as HTMLButtonElement);
     expect(wacheDialoge()).toBe(1);
     const vorher = bestand();
@@ -518,7 +518,7 @@ describe("JOB 4231 · die Quittung des Verlassen-Wegs nach einem Datei-Speicherw
   // ==============================================================================================
   it("Q2 · zweiter Druck gelingt: gewechselt, geschrieben, und die Meldung heisst „gespeichert“", async () => {
     await oeffnen(ADRESSE, "formular");
-    await tippe(feld(i18n.t("capture.fTitle")), NEUER_TITEL);
+    await tippe(feld(i18n.t("capture.wizard.titleLabel")), NEUER_TITEL);
     await klick(verlassenKnopf() as HTMLButtonElement);
 
     lasseNaechstesUpdateScheitern(

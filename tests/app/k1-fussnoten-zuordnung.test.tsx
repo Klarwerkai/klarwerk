@@ -78,17 +78,13 @@ describe("JOB 3056 R4 · Fussnotenziffern — Zuordnung zu den Chips", () => {
       { text: "2", quelle: "kb" },
     ]);
     expect(sichtbar(el("ask-fussnoten"))).toBe(true);
-    // Zwei Chips im Bild („+1" fuer die dritte), dieselben Quellen in derselben Reihenfolge.
+    // Zwei Chips, dieselben Quellen in derselben Reihenfolge. Aufnahme 20260922 (R-0325): die
+    // dritte, nur herangezogene Quelle steht NICHT unter der Antwort — kein Chip, kein „+1".
     expect(chips()).toEqual([
       { text: "1 · Design Guide", quelle: "ka" },
       { text: "2 · HD Handbook", quelle: "kb" },
     ]);
-    expect(el("ask-quellen-mehr-btn").textContent).toBe("+1");
-    // „+1" zeigt die dritte Quelle — sie bekommt weiterhin KEINE Ziffer (nur herangezogen).
-    el("ask-quellen-mehr-btn").click();
-    await ruhe();
-    expect(chips().map((c) => c.quelle)).toEqual(["ka", "kb", "kc"]);
-    expect(ziffern().map((z) => z.quelle)).toEqual(["ka", "kb"]);
+    expect(document.getElementById("ask-quellen-mehr-btn")).toBeNull();
     // Jede Ziffer findet ihren Chip ueber dieselbe Quelle — und traegt dessen Nummer.
     for (const z of ziffern()) {
       const chip = document.querySelector(`#ask-sources li.quelle-chip[data-quelle="${z.quelle}"]`);
@@ -97,7 +93,7 @@ describe("JOB 3056 R4 · Fussnotenziffern — Zuordnung zu den Chips", () => {
     }
   });
 
-  it("ohne `citedSources` (alter Server) steht KEINE Ziffer — keine Rolle wird behauptet", async () => {
+  it("ohne `citedSources` (alter Server) steht KEINE Ziffer und KEIN Chip — keine Rolle wird behauptet (R-0325)", async () => {
     starten({
       answered: true,
       answer: "Offene Profile sind zu bevorzugen.",
@@ -108,7 +104,7 @@ describe("JOB 3056 R4 · Fussnotenziffern — Zuordnung zu den Chips", () => {
     });
     await ruhe();
     await fragen();
-    expect(chips().length).toBe(1);
+    expect(chips().length).toBe(0);
     expect(ziffern()).toEqual([]);
     expect(sichtbar(el("ask-fussnoten"))).toBe(false);
   });
