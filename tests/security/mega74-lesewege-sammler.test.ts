@@ -463,7 +463,8 @@ const REGISTER: Record<string, Eintrag> = {
   // Sichtregel des Betrachters (`darfSehen`, library-routes.ts) — samt führendem Space.
   "GET /api/library/export": {
     urteil: "PRAEDIKAT",
-    grund: "Export nur über darfSehen des Betrachters; Stufe/Status wie SCRUM-506.",
+    grund:
+      "Export nur über sichtbarkeitsfilterFuer (darfSehen) des Betrachters; Stufe/Status wie SCRUM-506.",
   },
   "GET /api/output/sources": {
     urteil: "DIENST_FILTERT",

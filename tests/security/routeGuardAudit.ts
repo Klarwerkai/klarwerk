@@ -743,7 +743,7 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbareFuer", "darfSehen"],
   },
   // ADMIN-07 (K3): der Export filtert zusätzlich je Objekt über `darfSehen` (führender Space).
-  "GET /api/library/export": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/library/export": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // R-1165 (Nacharbeit 1): die drei Kandidatenwege antworten über den lokalen Helfer
   // `kandidatenDtosFuer` (library-routes.ts, „NACHARBEIT 3 (bens F3): Trefferkennungen nur für
   // sichtbare Ziele"), dessen Rumpf `darfSehen` ruft — gemessen von g10-herkunft-zentrum-
