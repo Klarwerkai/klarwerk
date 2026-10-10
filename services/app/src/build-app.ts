@@ -4535,6 +4535,8 @@ export function buildApp(
   // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
   // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
   // R-1662: frühere Revalidierungen (`ko.revalidated`) lesen dieselben Belege aus dem Prüfprotokoll.
+  // produkt:20261010:aenderungsfolgen-sichtbar: die Folgeprüfungsübersicht liest Objekt und
+  // Personennamen über dieselben Dienste — kein zweiter Bestand.
   app.register(
     lifecycleRoutes(
       services.lifecycle,
@@ -4542,6 +4544,7 @@ export function buildApp(
       koSichtbarkeit,
       services.wissensuebergabe,
       services.audit,
+      { ko: services.ko, personen: services.auth },
     ),
   );
   app.register(

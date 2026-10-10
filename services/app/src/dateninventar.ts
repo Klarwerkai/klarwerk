@@ -367,14 +367,16 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:
-      "Lernpfade je Rolle, Kopplungen von Arbeitsmitteln an Wissensobjekte, Fortschritt je Person, anstehende Nachprüfungen.",
+      "Lernpfade je Rolle, Kopplungen von Arbeitsmitteln an Wissensobjekte, Fortschritt je Person, anstehende Nachprüfungen mit ihren Anlässen (Grund, Anlage, Änderungsbeleg, Fassung, Zeitpunkt, meldende Kennung).",
     personenbezug: "ja",
-    personenbezugGrund: "Der Fortschritt ist je Person gespeichert.",
+    personenbezugGrund:
+      "Der Fortschritt ist je Person gespeichert; der Anlass einer Nachprüfung nennt die meldende Kennung (nur intern, nicht in der Übersicht).",
     ablage: {
       ort: DATENBANK,
       tabellen: [
         "lifecycle_couplings",
         "lifecycle_pending",
+        "lifecycle_verlauf",
         "lifecycle_paths",
         "lifecycle_progress",
       ],

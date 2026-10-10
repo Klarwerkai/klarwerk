@@ -268,6 +268,14 @@ export const useQualitaetsblick = (gewaehlt: boolean) => ({
 // kennt diesen Endpunkt nicht überall.
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: () => endpoints.lifecycle.pending() });
+// produkt:20261010:aenderungsfolgen-sichtbar: die offenen Folgeprüfungen mit Anlass und Stand.
+// Unter dem Schlüssel `lifecycle` — jede Bestätigung und jede Meldung lädt sie mit. LAZY gelesen
+// wie `useQualitaetsblick`: eine Fläche, deren Testbestand den Endpunkt nicht kennt, reißt nicht ab.
+export const useFolgepruefung = () =>
+  useQuery({
+    queryKey: ["lifecycle", "folgepruefung"],
+    queryFn: () => endpoints.lifecycle.folgepruefung(),
+  });
 // R-1662: die fälligen Revalidierungsfälle für den Lösungsweg an einer Antwort — derselbe Schlüssel
 // und Endpunkt wie `useLifecyclePending`, aber erst geladen, wenn das Blatt offen ist (`enabled`),
 // und LAZY gelesen wie in `useQualitaetsblick`: Fragen-Tests ohne `lifecycle` reißen nicht ab.

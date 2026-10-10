@@ -474,6 +474,7 @@ PFLICHTTABELLEN=(
   overlap_settings
   lifecycle_couplings
   lifecycle_pending
+  lifecycle_verlauf
   lifecycle_paths
   lifecycle_progress
   objects
