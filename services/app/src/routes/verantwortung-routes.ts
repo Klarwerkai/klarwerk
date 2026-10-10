@@ -53,6 +53,7 @@ import {
   responsibleKindOf,
   responsibleOf,
 } from "../../../knowledge-object";
+import { erstelleVermaechtnisBuch, istBeitragVon } from "../../../output";
 import { can } from "../../../rbac";
 import { type Guards, type SessionUser, sendError, tokenFromRequest } from "../http";
 import { darfSehen } from "../sichtbarkeit";
@@ -786,6 +787,45 @@ export function verantwortungRoutes(
         vertretung: vertretung(konten, von, zeit),
       });
     });
+
+    // Auftrag `aufnahme:20260922:gesamt-wissensvermaechtnis` (R-1642 / R-2175): das Wissens-
+    // Vermächtnis-Buch einer Person — alle ihre Beiträge als Autorin oder Autor, auf Knopfdruck
+    // aus der Kontokarte. Schreibt nichts am Wissen. Aufgenommen wird nur, was der Handelnde lesen
+    // darf, validiert und nicht vertraulich ist (`services/output/src/vermaechtnis.ts`). Das
+    // Protokoll hält fest, DASS jemand das Buch einer Person erzeugt hat — mit Zählern, ohne Titel.
+    app.get<{ Params: { id: string } }>(
+      "/api/verantwortung/person/:id/vermaechtnis",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const { konten, bestand, zeit } = await lage();
+        const id = request.params.id;
+        if (!konten.some((k) => k.id === id) && !bestand.some((ko) => istBeitragVon(ko, id))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Konto nicht gefunden." });
+          return;
+        }
+        const buch = erstelleVermaechtnisBuch({
+          person: { id, name: name(id, konten) },
+          bestand,
+          darfSehen: (ko) => darfSehen(user, ko),
+          name: (kennung) => name(kennung, konten),
+          jetzt: zeit,
+        });
+        try {
+          await dienste.audit?.record({
+            actor: user.id,
+            action: "vermaechtnis.erzeugt",
+            target: id,
+            payload: { aufgenommen: buch.aufgenommen, ausgelassen: buch.ausgelassen },
+          });
+        } catch (e) {
+          request.log.error({ err: e }, "Vermächtnis-Buch: Erzeugung nicht protokolliert");
+        }
+        reply.code(200).send(buch);
+      },
+    );
 
     // ADMIN-04 · DIE ZAHLEN DER KONTENLISTE — je Konto Zugangsstand, Beiträge und andere offene
     // Vorgänge, nur Anzahlen. `beitraege` ist dieselbe Menge wie `anzahl` im Bestand der Person
