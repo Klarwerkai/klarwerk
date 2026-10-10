@@ -138,6 +138,7 @@ import type {
   Verdict,
   VorrangAmPunkt,
   VorrangWahl,
+  Wissensempfehlungen,
   Wochenupdate,
   // R-1107: der Drahtvertrag des Zusammenführens.
   ZusammenfuehrungsAuftrag,
@@ -668,6 +669,11 @@ export const endpoints = {
     evidence: (id: string) => api.get<EvidenceRecord[]>(`/kos/${id}/evidence`),
     // AUFTRAG-mega68: begrenzte Nachbarschaft eines Objekts (Anwendersicht des Wissensnetzes).
     neighbors: (id: string) => api.get<Neighborhood>(`/kos/${id}/neighbors`),
+    // R-1656 „Du solltest auch wissen…": verwandte Einträge mit Grund (Co-Reading, Thema, Konflikt).
+    empfehlungen: (id: string) => api.get<Wissensempfehlungen>(`/kos/${id}/empfehlungen`),
+    // R-1656: in derselben Lesesitzung nach `zuvor` geöffnet. Der Server zählt nur das Paar.
+    mitgelesen: (id: string, zuvor: string) =>
+      api.post<{ gezaehlt: boolean }>(`/kos/${id}/mitgelesen`, { zuvor }),
     // ==========================================================================================
     // JOB 4153 (WG-ANZEIGE) — DIE AUSDRÜCKLICH GESETZTEN FACHBEZIEHUNGEN.
     // ==========================================================================================

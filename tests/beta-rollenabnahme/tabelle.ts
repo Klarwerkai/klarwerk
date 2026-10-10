@@ -938,6 +938,27 @@ export const TABELLE: Zeile[] = [
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
+  // R-1656 „Du solltest auch wissen…": beide Türen am Leserecht. Erfundene Kennung: hinter dem Tor
+  // endet die Empfehlung im 404, das Co-Reading-Signal ohne `zuvor` im 400 — „durchgelassen", und
+  // nichts wird gezählt.
+  {
+    gruppe: "wissensempfehlungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/empfehlungen",
+    route: "/api/kos/:id/empfehlungen",
+    belegstelle: "services/app/src/routes/wissensempfehlung-routes.ts:47",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "wissensempfehlungRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/mitgelesen",
+    route: "/api/kos/:id/mitgelesen",
+    belegstelle: "services/app/src/routes/wissensempfehlung-routes.ts:64",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "brandingRoutes",
     methode: "GET",

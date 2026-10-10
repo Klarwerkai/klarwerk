@@ -351,6 +351,18 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Wissensauskunft — darfSehen am Eintrag vor der Ausgabe, sonst 404.",
   },
+  // --- R-1656 „Du solltest auch wissen…" ----------------------------------------------------------
+  // Die Empfehlung trägt Titel der Gegenseiten: das Zentrum über darfSehen (sonst 404), jede
+  // Gegenseite über sichtbarkeitsfilterFuer. Das Co-Reading-Signal hält BEIDE Einträge gegen
+  // darfSehen, bevor gezählt wird.
+  "GET /api/kos/:id/empfehlungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Empfehlung — Zentrum über darfSehen, Gegenseiten über sichtbarkeitsfilterFuer.",
+  },
+  "POST /api/kos/:id/mitgelesen": {
+    urteil: "PRAEDIKAT",
+    grund: "Co-Reading — beide Einträge über darfSehen, sonst 404; keine Kontokennung gespeichert.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).

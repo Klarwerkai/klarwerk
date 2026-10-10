@@ -95,7 +95,7 @@ function LaufZeile({ run }: { run: ImportRunRecord }): JSX.Element {
         data-testid={`import-lauf-details-${run.importId}`}
         aria-expanded={offen}
         onClick={() => setOffen((v) => !v)}
-        className="mt-1.5 rounded-btn text-[12px] text-ai underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        className="mt-1.5 rounded-btn text-[12px] text-ai underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-text"
       >
         {t(offen ? "integrationen.liste.detailsZu" : "integrationen.liste.detailsAuf")}
       </button>
