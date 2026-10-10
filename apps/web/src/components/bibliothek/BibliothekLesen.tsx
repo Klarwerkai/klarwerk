@@ -53,12 +53,13 @@ import {
 import type { OriginalDocument, OriginalRefCache } from "../../lib/captureAttachments";
 import { fileSourcePayload } from "../../lib/captureFromFile";
 import { CONF_TONE_CLASS, vertraulichkeitsAuskunft } from "../../lib/confidentiality";
-import { conflictImpact, conflictNotice } from "../../lib/conflictImpact";
+import { conflictImpact, conflictLimitedUsability, conflictNotice } from "../../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../../lib/displayStatus";
 import { studioSaveConfidence } from "../../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { koOverview } from "../../lib/koOverview";
 import { type KoRevisionItemId, koRevisionSummary } from "../../lib/koRevisionSummary";
 import {
   lesekontextLesen,
@@ -121,7 +122,7 @@ import { ListEditor, TagEditor } from "../editors";
 import { KenntnisnahmeBereich, KenntnisnahmeVerweis } from "../kenntnisnahme/KenntnisnahmeBereich";
 import { NegativwissenAnzeige } from "../ko/NegativwissenAnzeige";
 import { KNOWLEDGE_TYPES } from "../trust";
-import { Button, Field, TextInput, cx } from "../ui";
+import { Button, Field, SectionLabel, TextInput, cx } from "../ui";
 import { VeroeffentlichungBereich } from "../veroeffentlichung/VeroeffentlichungBereich";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
@@ -2496,12 +2497,16 @@ export function BibliothekLesen({
   // fehlt (`vertraulichkeitsAuskunft`). Dieselbe Funktion und derselbe Tönungssatz wie auf jeder
   // anderen Fläche, damit hier keine zweite Auslegung derselben Aussage entsteht.
   const auskunft = vertraulichkeitsAuskunft(ko);
-  const meta = [ko.category, nameOf(ko.author), erstellt].filter(Boolean).join(" · ");
+  // R-0921 (Ausbau „Datum, Uhrzeit UND Ersteller"): neben der Erstellzeit steht der ERSTELLER —
+  // dieselbe Regel wie auf der Validierungskarte (`Validation.tsx`, `originalAuthor` vor `author`).
+  // Nach einer Übertragung nennt die „Herkunftskette" (`MehrAbschnitte.tsx`) den neuen Autor.
+  const erstellerId = ko.originalAuthor?.trim() ? ko.originalAuthor : ko.author;
+  const meta = [ko.category, nameOf(erstellerId), erstellt].filter(Boolean).join(" · ");
   // package:versionen („Aktuelle Version eindeutig", „Änderungszeit sichtbar"): die Fassung, die
   // gerade gelesen wird, und — ab v2 — wann sie entstand. Die Zeit kommt aus dem letzten
   // Historieneintrag des Dienstes (`naechsteFassung` schreibt ihn mit jeder Revision). Bei v1 ist
   // sie die Erstellzeit, die `meta` schon nennt; dieselbe Zeit zweimal stünde hier nur doppelt.
-  // `bib-meta` bleibt unverändert (gemessen in `Library.timestamp.test.tsx`).
+  // Die Fassungszeile ändert `bib-meta` nicht (gemessen in `Library.timestamp.test.tsx`).
   const fassungsNummer = typeof ko.version === "number" ? ko.version : null;
   const verlauf = ko.history ?? [];
   const geaendertAm =
@@ -3964,21 +3969,79 @@ export function BibliothekLesen({
               ) : (
                 <p>{ko.statement}</p>
               )}
-              {ko.conditions.length > 0 || ko.measures.length > 0 ? (
-                <>
-                  {ko.conditions.map((c) => (
-                    <p key={`c-${c}`}>{c}</p>
-                  ))}
-                  {ko.measures.map((m) => (
-                    <p key={`m-${m}`}>{m}</p>
-                  ))}
-                </>
-              ) : null}
             </div>
             {/* R-1664/R-2179: der geführt erfasste Lerneffekt (nur, wenn er Angaben trägt). Bewusst
                 AUSSERHALB von `bib-text`: die Lesegliederung sammelt Überschriften aus diesem Knoten,
                 und die Lerneffekt-Überschrift ist kein Abschnitt des Fliesstexts. */}
             <NegativwissenAnzeige angaben={ko.negativwissen} />
+
+            {/* WISSENSDETAIL (R-0998/R-1697) — DIE FELDER DES WISSENSOBJEKTS, BENANNT.
+                Bis hierher standen Bedingungen und Maßnahmen als namenlose Absätze IM Fließtext,
+                die Tags gar nicht, und die Kernaussage fiel weg, sobald ein Fließtext da war. Jetzt
+                steht hier jedes Feld unter seinem Namen. Bedingungen · Maßnahmen · Tags folgen der
+                Darstellung des früheren Bausteins `KoReadDetails`; der ist mit R-1349 samt
+                `components/ko/KoRead.tsx` entfernt worden, deshalb steht die Darstellung jetzt
+                hier, ohne eigene Karte. Die Aussage steht nur, wenn der Fließtext sie nicht schon
+                IST (ohne Body trägt `bib-text` sie oben); ein leeres Feld zeichnet nichts.
+                `data-bib-text`: das ist Inhalt, kein Erklärtext. */}
+            {(() => {
+              const aussage = (gelesen ? gelesen.statement : ko.statement).trim();
+              const textSteht = gelesen ? Boolean(gelesen.bodyHtml) : Boolean(ko.bodyHtml);
+              const aussageZeigen = textSteht && aussage.length > 0;
+              const anlage = (ko.asset ?? "").trim();
+              const felder = ko.conditions.length + ko.measures.length + ko.tags.length;
+              if (!aussageZeigen && anlage.length === 0 && felder === 0) {
+                return null;
+              }
+              return (
+                <div data-testid="bib-felder" data-bib-text="felder" className="space-y-4">
+                  {aussageZeigen ? (
+                    <div data-testid="bib-feld-aussage">
+                      <SectionLabel>{t("ko.statement")}</SectionLabel>
+                      <p className="text-[14.5px] leading-relaxed text-text">{aussage}</p>
+                    </div>
+                  ) : null}
+                  {anlage.length > 0 ? (
+                    <div data-testid="bib-feld-anlage">
+                      <SectionLabel>{t("capture.fAsset")}</SectionLabel>
+                      <p className="text-[13.5px] text-text">{anlage}</p>
+                    </div>
+                  ) : null}
+                  {ko.conditions.length > 0 ? (
+                    <div data-testid="bib-feld-bedingungen">
+                      <SectionLabel>{t("ko.conditions")}</SectionLabel>
+                      <ul className="list-inside list-disc text-[13.5px] text-text">
+                        {ko.conditions.map((c) => (
+                          <li key={c}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {ko.measures.length > 0 ? (
+                    <div data-testid="bib-feld-massnahmen">
+                      <SectionLabel>{t("ko.measures")}</SectionLabel>
+                      <ul className="list-inside list-disc text-[13.5px] text-text">
+                        {ko.measures.map((m) => (
+                          <li key={m}>{m}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {ko.tags.length > 0 ? (
+                    <div data-testid="bib-feld-tags" className="flex flex-wrap gap-1.5">
+                      {ko.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-pill bg-page px-2 py-0.5 font-mono text-[11px] text-muted"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })()}
 
             {/* Chips: Quellen und Bilder. Die Zahl steht vorn, wie in der Vorlage („1 · Titel"). */}
             <div
@@ -4020,6 +4083,65 @@ export function BibliothekLesen({
                 ohne Aufklappen, als Teil der Beziehungen direkt nach ihnen; ohne Empfehlung
                 zeichnet die Fläche nichts (`Wissensempfehlung.tsx`, Kopf). */}
             <Wissensempfehlung key={`empfehlung-${ko.id}`} koId={ko.id} />
+
+            {/* WISSENSDETAIL (R-0998) — DIE NÄCHSTE SINNVOLLE HANDLUNG.
+                Die Empfehlung kommt aus der EINEN vorhandenen Ableitung (`koOverview(ko).nextAction`,
+                `lib/koOverview.ts`) — keine zweite Statusrechnung. Die Beschriftungen sind die
+                vorhandenen Schlüssel `ko.next.*`/`ko.cta.*` (DE/EN/NL); der frühere Helfer
+                `lib/koCta.ts` ist mit R-1349 entfernt, seine Zuordnung steht deshalb hier — mit
+                dem Fragenweg dieser Fläche statt seiner nackten `/fragen?q=`-Adresse und dem
+                Quellensprung statt seines toten Ankers `#ko-sources`. Angeschlossen an die Wege,
+                die es hier schon gibt:
+                  · use       → derselbe Fragenweg wie „Fragen" oben (`fragen`: Herkunft `ko=<id>`
+                                und Vertraulichkeit bleiben erhalten);
+                  · addSource → derselbe Sprung wie der Quellenknopf im Kopf (`springeZu`), nicht
+                                der alte Anker `#ko-sources`, den es auf dieser Fläche nicht gibt;
+                  · review/validate → die Validierung, über `RoleLink`: wer sie nicht erreicht,
+                                sieht die Empfehlung, aber keinen begehbaren Link. */}
+            {(() => {
+              // Ein offener Konflikt begrenzt die Nutzbarkeit (`conflictLimitedUsability`, dieselbe
+              // Regel wie unter „Mehr" → Belege): die Pille sagt dann „Konflikt", und „In Fragen
+              // nutzen" wäre die falsche Empfehlung. In Prüfung heißt in `koOverview` → `review`.
+              const uebersicht = koOverview(ko);
+              const begrenzt =
+                conflictLimitedUsability(uebersicht.usability, impact) !== uebersicht.usability;
+              const naechste = begrenzt ? "review" : uebersicht.nextAction;
+              const knopfKlassen =
+                "inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-2.5 py-[5px] text-[12px] font-semibold text-text";
+              return (
+                <div
+                  data-testid="bib-naechste"
+                  data-bib-text="naechste"
+                  data-naechste={naechste}
+                  className="flex flex-wrap items-center gap-2 text-[13px] text-text"
+                >
+                  <span>
+                    <span className="font-semibold">{t("ko.nextLabel")}</span>{" "}
+                    {t(`ko.next.${naechste}`)}
+                  </span>
+                  {naechste === "addSource" ? (
+                    <button
+                      type="button"
+                      data-testid="bib-naechste-ziel"
+                      aria-controls={mehrId}
+                      onClick={() => springeZu("quellen")}
+                      className={`${knopfKlassen} hover:bg-hairline-soft`}
+                    >
+                      {t(`ko.cta.${naechste}`)}
+                    </button>
+                  ) : (
+                    <RoleLink
+                      to={naechste === "use" ? fragen : "/validierung"}
+                      className={knopfKlassen}
+                      hoverClassName="hover:bg-hairline-soft"
+                      testId="bib-naechste-ziel"
+                    >
+                      {() => t(`ko.cta.${naechste}`)}
+                    </RoleLink>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* LESEN-INHALT-ZUERST: die Kenntnisnahme nachgeordnet — nach Inhalt, Quellen und
                 Beziehungen, vor „Mehr". Ohne eigene Anforderung nur eine zugeklappte Zeile. */}
