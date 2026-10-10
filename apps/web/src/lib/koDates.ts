@@ -4,6 +4,9 @@
 // NICHT (nur Drafts tragen es) — es wird deshalb ehrlich NICHT angezeigt statt erfunden.
 // Fehlt das Feld bei Altdaten oder ist es unparsebar → null (Aufrufer lässt die Zeile ehrlich weg,
 // kein Platzhalter-Datum).
+// R-1010: die eine Zeitregel für Zeitpunkte mit Datum UND Uhrzeit in der Oberfläche — eigene
+// `toLocaleString`-/`Intl.DateTimeFormat`-Varianten dafür sind abgelöst
+// (`tests/wissenszeiten/zeitangaben-einheitlich.test.tsx`).
 
 // Lokalisiert als „20.07.2026 19:41" (DE) bzw. Locale-Äquivalent — Datum + Uhrzeit, ohne Sekunden.
 export function formatKoTimestamp(iso: string | null | undefined, locale: string): string | null {

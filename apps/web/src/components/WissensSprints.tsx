@@ -11,14 +11,14 @@
 // und eine Zeile nennt den Stand der regelmäßigen Reasoner-Analyse für die eigene Sicht.
 import { useTranslation } from "react-i18next";
 import type { MgmtSprint, MgmtSprintAnalysis } from "../api/types";
+import { formatKoTimestamp } from "../lib/koDates";
 
 const BEKANNTE_URSACHEN = new Set(["no-model", "confidential", "model-timeout", "model-error"]);
 
 function Analysestand({ analyse }: { analyse: MgmtSprintAnalysis }): JSX.Element {
   const { t, i18n } = useTranslation();
-  const zeit = analyse.analyzedAt
-    ? new Date(analyse.analyzedAt).toLocaleString(i18n.language)
-    : null;
+  // R-1010: dieselbe Zeitregel wie überall; ohne lesbaren Wert bleibt `zeit` null wie bisher.
+  const zeit = formatKoTimestamp(analyse.analyzedAt, i18n.language);
   let text: string;
   if (analyse.failure) {
     const ursache = BEKANNTE_URSACHEN.has(analyse.failure) ? analyse.failure : "model-error";
