@@ -632,8 +632,10 @@ export function KlaraVorschau(): JSX.Element {
     aktion: Aktion,
     erzeugen: () => { text: string; vorschlag?: Vorschlag; entwurf?: Entwurf },
     fertig?: (antwort: string) => void,
+    bezug?: Herkunft,
   ): void => {
-    const herkunft = kontextRef.current;
+    // Klara 02: ein gesprochener Auftrag bringt sein beim Sprechen bestätigtes Ziel mit.
+    const herkunft = bezug ?? kontextRef.current;
     // Klara 01: im echten Betrieb ist Klaras eingebaute Hilfe (Seite erklären, Tutorial) Teil des
     // gespeicherten Gesprächs — gekennzeichnet als „Klarwerk-Hilfe · ohne KI“, nicht als Demo.
     if (leseZustand().betrieb === "echt" && aktion === "modus") {
@@ -889,7 +891,12 @@ export function KlaraVorschau(): JSX.Element {
       vorlesenStarten(id, text, i18n.language);
     }
   };
-  const echtFrage = (frage: string): Promise<Absendeergebnis> => {
+  /**
+   * `ziel`: der Ort, auf den sich die Frage bezieht. Getippte Fragen nehmen den aktuellen Ort; ein
+   * gesprochener Auftrag gibt das Ziel mit, das seine Karte zeigt — Anzeige und Gesprächsbezug sind
+   * damit dasselbe, auch wenn die Person zwischen Sprechen und Senden die Seite gewechselt hat.
+   */
+  const echtFrage = (frage: string, ziel?: Herkunft): Promise<Absendeergebnis> => {
     if (!echtSendebereit) {
       return Promise.resolve({ stand: "nicht_gesendet", antwort: null });
     }
@@ -897,7 +904,7 @@ export function KlaraVorschau(): JSX.Element {
       pausieren();
     }
     aendere((alt) => ({ ...alt, status: "laeuft" }));
-    const bezug = objektbezugAus(kontextRef.current);
+    const bezug = objektbezugAus(ziel ?? kontextRef.current);
     const sprache = toReasonerLocale(i18n.language);
     return echtFragen(frage, bezug, sprache, t).then((stand): Absendeergebnis => {
       if (stand === "veraltet") {
@@ -919,9 +926,9 @@ export function KlaraVorschau(): JSX.Element {
    * EIN Weg für getippte und gesprochene Fragen (Klara 02): im echten Betrieb der Frageweg mit
    * Einwilligung, im Demo-Betrieb die vorgefertigte, gekennzeichnete Antwort.
    */
-  const fragenSenden = (frage: string): Promise<Absendeergebnis> => {
+  const fragenSenden = (frage: string, ziel?: Herkunft): Promise<Absendeergebnis> => {
     if (istEcht) {
-      return echtFrage(frage);
+      return echtFrage(frage, ziel);
     }
     const l = lageRef.current;
     if (l) {
@@ -931,14 +938,18 @@ export function KlaraVorschau(): JSX.Element {
       anfrage(
         frage,
         "frage",
-        () => ({ text: antwortAufFrage(frage, kontextRef.current, t, l) }),
+        () => ({ text: antwortAufFrage(frage, ziel ?? kontextRef.current, t, l) }),
         (antwort) => {
           autoVorlesen(`demo-${Date.now()}`, antwort);
           fertig({ stand: "demo", antwort });
         },
+        ziel,
       );
     });
   };
+  /** Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. */
+  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> =>
+    fragenSenden(text, ziel.herkunft);
   const senden = (e: FormEvent): void => {
     e.preventDefault();
     const frage = eingabe.trim();
@@ -966,6 +977,7 @@ export function KlaraVorschau(): JSX.Element {
         seitenName: k.seitenName,
         objekt: k.objekt,
         bekannt: !objektLeer.includes(k.objekt),
+        herkunft: k,
       };
     },
   });
@@ -1495,7 +1507,7 @@ export function KlaraVorschau(): JSX.Element {
             <KlaraAuftragKarte
               s={sprechen}
               sendebereit={sprachSendebereit}
-              absenden={fragenSenden}
+              absenden={auftragSenden}
             />
             <div ref={endeRef} />
           </div>

@@ -33,6 +33,7 @@ import {
   useKlaraVorlesen,
   vorlesenUmschalten,
 } from "./vorlesen";
+import type { Herkunft } from "./zustand";
 
 const KNOPF =
   "inline-flex h-8 items-center gap-1 rounded-btn border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-text hover:border-ink/30 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -50,6 +51,11 @@ export interface SprachZiel {
   objekt: string;
   /** `false`, wenn auf dieser Seite kein Objekt erkannt ist. */
   bekannt: boolean;
+  /**
+   * Der vollständige Ort beim Sprechen. Mit GENAU diesem Bezug wird der Auftrag gesendet — ein
+   * Seitenwechsel bis zum Senden ändert weder die angezeigte Zieldarstellung noch den Gesprächsbezug.
+   */
+  herkunft: Herkunft;
 }
 
 export interface GesprochenerAuftrag {
@@ -59,7 +65,10 @@ export interface GesprochenerAuftrag {
   /** Der korrigierbare Text; genau dieser geht hinaus. */
   text: string;
   ziel: SprachZiel;
-  /** Schlüssel der beantworteten Rückfragen. */
+  /**
+   * Schlüssel der beantworteten Rückfragen — gültig nur für den aktuellen `text`: jede eigene
+   * Korrektur leert die Liste (Nacharbeit 3).
+   */
   erledigt: string[];
   gesendet: {
     text: string;
@@ -338,7 +347,7 @@ export function KlaraAuftragKarte({
 }: {
   s: KlaraSprachSteuerung;
   sendebereit: boolean;
-  absenden: (text: string) => Promise<Absendeergebnis>;
+  absenden: (text: string, ziel: SprachZiel) => Promise<Absendeergebnis>;
 }): JSX.Element | null {
   const a = s.auftrag;
   if (!a) {
@@ -364,7 +373,7 @@ function AuftragEntwurf({
   a: GesprochenerAuftrag;
   s: KlaraSprachSteuerung;
   sendebereit: boolean;
-  absenden: (text: string) => Promise<Absendeergebnis>;
+  absenden: (text: string, ziel: SprachZiel) => Promise<Absendeergebnis>;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const feldId = useId();
@@ -387,7 +396,8 @@ function AuftragEntwurf({
       return;
     }
     aendere((x) => ({ ...x, gesendet: { text, art, stand: "laeuft", antwort: null } }));
-    void absenden(text).then((r) => {
+    // Nacharbeit 3: gesendet wird mit dem Ziel dieser Karte, nicht mit dem Ort, an dem Klara jetzt ist.
+    void absenden(text, a.ziel).then((r) => {
       aendere((x) =>
         x.gesendet ? { ...x, gesendet: { ...x.gesendet, stand: r.stand, antwort: r.antwort } } : x,
       );
@@ -414,7 +424,12 @@ function AuftragEntwurf({
         rows={2}
         onChange={(e) => {
           const text = e.target.value;
-          aendere((x) => ({ ...x, text }));
+          // Nacharbeit 3 (Bens Befund): eine Rückfragen-Entscheidung gilt nur für den Text, für den
+          // sie getroffen wurde. Eine eigene Korrektur kann eine schon geklärte Stelle wieder
+          // mehrdeutig machen („um 15:00“ → „um drei“) — deshalb verfallen alle Entscheidungen, und
+          // `klaerungen` fragt neu, was im korrigierten Text noch unklar ist. Ersetzte Stellen
+          // („Anna“ → „Anna Kramer“) bleiben dabei geklärt, weil sie gar nicht mehr unklar sind.
+          aendere((x) => ({ ...x, text, erledigt: [] }));
         }}
         className="mt-0.5 w-full rounded-input border border-hairline bg-surface px-2 py-1.5 text-[12.5px] text-text outline-none focus:border-ink/30"
       />

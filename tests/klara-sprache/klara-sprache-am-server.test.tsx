@@ -20,7 +20,7 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { Link, MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
@@ -237,6 +237,13 @@ async function montiere(pfad: string): Promise<void> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // Ein Seitenwechsel wie in Klara 01 (`data-testid` als `object` gespreizt, Begründung dort).
+  const testkennung: object = { "data-testid": "zu-fragen" };
+  const seite = createElement(
+    "div",
+    { "data-testid": "seite" },
+    createElement(Link, { to: "/fragen", ...testkennung }, "Zu Fragen"),
+  );
   await act(async () => {
     r.render(
       createElement(
@@ -257,7 +264,7 @@ async function montiere(pfad: string): Promise<void> {
                 createElement(
                   MemoryRouter,
                   { initialEntries: [pfad] },
-                  createElement(AppShell, null, createElement("div", { "data-testid": "seite" })),
+                  createElement(AppShell, null, seite),
                 ),
               ),
             ),
@@ -360,7 +367,13 @@ async function schreibeIn(feld: HTMLTextAreaElement, text: string): Promise<void
   await ruhe(3);
 }
 
-async function serverFragen(a: Aufbau, konto: Konto): Promise<string[]> {
+interface ServerFrage {
+  text: string;
+  objektbezug: { pfad: string; seitenName: string; objekt: string };
+}
+
+/** Die eigenen Fragen am Server — mit dem Gesprächsbezug, unter dem sie abgelegt wurden. */
+async function serverFragenMitBezug(a: Aufbau, konto: Konto): Promise<ServerFrage[]> {
   const r = await a.app.inject({
     method: "GET",
     url: "/api/me/klara/gespraech",
@@ -369,10 +382,14 @@ async function serverFragen(a: Aufbau, konto: Konto): Promise<string[]> {
   expect(r.statusCode, r.body).toBe(200);
   const g = (
     r.json() as {
-      gespraech: { nachrichten: { von: string; modus: string; text: string }[] } | null;
+      gespraech: { nachrichten: (ServerFrage & { von: string; modus: string })[] } | null;
     }
   ).gespraech;
-  return (g?.nachrichten ?? []).filter((n) => n.von === "du").map((n) => n.text);
+  return (g?.nachrichten ?? []).filter((n) => n.von === "du");
+}
+
+async function serverFragen(a: Aufbau, konto: Konto): Promise<string[]> {
+  return (await serverFragenMitBezug(a, konto)).map((n) => n.text);
 }
 
 /**
@@ -586,6 +603,29 @@ describe("S3 · K3/K5 — Rückfragen zu Name, Zeit und Bezug; der korrigierte T
     const feld = q<HTMLTextAreaElement>(document, "klara-auftrag-text") as HTMLTextAreaElement;
     expect(feld.value).toBe(`Hat Anna Kramer am ${datum} um 15:00 hier Dienst ${bezug}`);
 
+    // Nacharbeit 3 (Bens Befund): wer eine geklärte Stelle von Hand wieder mehrdeutig macht, wird
+    // erneut gefragt — die alte Entscheidung unterdrückt die Rückfrage nicht, Senden ist gesperrt.
+    const geklaert = feld.value;
+    await schreibeIn(feld, geklaert.replace("um 15:00", "um drei"));
+    expect(alle(document, "klara-klaerung").map((k) => k.dataset.art)).toEqual(["zeit"]);
+    expect(q<HTMLButtonElement>(document, "klara-auftrag-senden")?.disabled).toBe(true);
+    expect(q(document, "klara-auftrag-offen")).not.toBeNull();
+    await klick(option("zeit", "15:00"));
+    expect(feld.value).toBe(geklaert);
+    expect(alle(document, "klara-klaerung")).toHaveLength(0);
+    // „So lassen“ gilt ebenfalls nur für den Text, für den es gewählt wurde.
+    await schreibeIn(feld, `${geklaert} morgen`);
+    const soLassen = alle(document, "klara-klaerung")
+      .find((k) => k.dataset.art === "zeit")
+      ?.querySelector<HTMLElement>('[data-testid="klara-klaerung-option"][data-wert=""]');
+    await klick(soLassen);
+    expect(alle(document, "klara-klaerung")).toHaveLength(0);
+    await schreibeIn(feld, `${geklaert} morgen bitte`);
+    expect(alle(document, "klara-klaerung").map((k) => k.dataset.art)).toEqual(["zeit"]);
+    expect(q<HTMLButtonElement>(document, "klara-auftrag-senden")?.disabled).toBe(true);
+    await schreibeIn(feld, geklaert);
+    expect(alle(document, "klara-klaerung")).toHaveLength(0);
+
     // Eigene Korrektur des erkannten Textes.
     const korrigiert = feld.value.replace("Dienst", "Schicht");
     await schreibeIn(feld, korrigiert);
@@ -604,6 +644,53 @@ describe("S3 · K3/K5 — Rückfragen zu Name, Zeit und Bezug; der korrigierte T
     expect(q(document, "klara-ergebnis-ziel")?.textContent).toBe(zielDerSeite());
     expect(q(document, "klara-auftrag-ergebnis")?.dataset.stand).toBe("beantwortet");
     expect(fremdeMutationen(aufrufeVorher)).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// K2/K5 · Nacharbeit 3 (Bens Befund): angezeigtes Ziel = tatsächlich verwendeter Gesprächsbezug.
+// ================================================================================================
+describe("S5 · K2/K5 — Seitenwechsel zwischen Sprechen und Senden: Karte und Gesprächsbezug bleiben beim gesprochenen Ziel", () => {
+  it("auf der Klara-Vorschau gesprochen, auf „Fragen“ gesendet: Bezug am Server ist die Klara-Vorschau", async () => {
+    const { a, leser } = await bereit();
+    await sprichAuftrag(GESPROCHEN);
+    const zielBeimSprechen = zielDerSeite();
+    const seiteBeimSprechen = q(document, "klara-ort-seite")?.textContent ?? "";
+    const objektBeimSprechen = q(document, "klara-ort-objekt")?.textContent ?? "";
+    expect(q(document, "klara-auftrag-ziel")?.textContent).toBe(zielBeimSprechen);
+
+    // Seitenwechsel, die Karte bleibt offen.
+    await klick(q(document, "zu-fragen"));
+    await bis(() => q(document, "klara-ort-seite")?.textContent === "Fragen");
+    expect(q(document, "klara-ort-seite")?.textContent).toBe("Fragen");
+    expect(zielDerSeite()).not.toBe(zielBeimSprechen);
+    expect(q(document, "klara-auftrag-ziel")?.textContent).toBe(zielBeimSprechen);
+
+    const vorher = klaraAnzahl();
+    await klick(q(document, "klara-auftrag-senden"));
+    await bisAntwort(vorher);
+    expect(gefragt).toEqual([GESPROCHEN]);
+    const amServer = await serverFragenMitBezug(a, leser);
+    expect(amServer.map((n) => n.text)).toEqual([GESPROCHEN]);
+    expect(amServer[0]?.objektbezug).toMatchObject({
+      pfad: "/klara-vorschau",
+      seitenName: seiteBeimSprechen,
+      objekt: objektBeimSprechen,
+    });
+    await bis(() => q(document, "klara-auftrag-ergebnis")?.dataset.stand !== "laeuft");
+    expect(q(document, "klara-ergebnis-ziel")?.textContent).toBe(zielBeimSprechen);
+    // Die Antwort trägt denselben Bezug wie die Frage.
+    const herkunft = letzteKlara()?.querySelector('[data-testid="klara-nachricht-herkunft"]');
+    expect(herkunft?.textContent).toContain(seiteBeimSprechen);
+
+    // Gegenprobe: eine getippte Frage auf „Fragen“ nimmt weiter den aktuellen Ort.
+    const feld = q<HTMLInputElement>(document, "klara-eingabe") as HTMLInputElement;
+    await tippe(feld, GESPROCHEN);
+    const vorher2 = klaraAnzahl();
+    await klick(q(document, "klara-senden"));
+    await bisAntwort(vorher2);
+    const danach = await serverFragenMitBezug(a, leser);
+    expect(danach[1]?.objektbezug.pfad).toBe("/fragen");
   });
 });
 
