@@ -1691,7 +1691,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
     // nachreicht. Nur derselbe Nutzer, mit seinen JETZT gültigen Rechten; höchstens
     // `REFERENZ_ERNEUT_MAX` mal (danach 409 mit der Höchstzahl). Unbekannt, abgelaufen und fremd
     // sehen gleich aus (404). Die Route zählt in die KI-Anfragebremse (`ki-anfragebremse.ts`).
-    app.post<{ Params: { pruefId: string } }>(
+    //
+    // Ben nacharbeit-4 (K8): mit Rumpf `{ bestaetigen: true }` BESTÄTIGT dieselbe Tür eine im
+    // Browser gespeicherte Anzeige, bevor sie gilt — aktuelle Rechte, aktuell gewählter Prüfer,
+    // aktuelle Richtlinie, und nur ein exakt passender gültiger Cachebeleg. Kein Modellaufruf,
+    // kein gezählter Versuch; ohne passenden Beleg „nicht prüfbar" (`bestaetigung_abgelaufen`).
+    app.post<{ Params: { pruefId: string }; Body: { bestaetigen?: unknown } | null }>(
       "/api/ask/referenzpruefung/:pruefId/erneut",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.read", request, reply);
@@ -1708,11 +1713,17 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           nichtGefunden();
           return;
         }
-        const ausgang = await deps.referenz.erneut(request.params.pruefId, user.id, {
-          leser: fundstellenLeser(deps.ko),
-          darfSehen: sichtbarkeitsfilterFuer(user),
-          signal: anfrageAbbruch(reply),
-        });
+        const nurBestaetigen = request.body?.bestaetigen === true;
+        const ausgang = await deps.referenz.erneut(
+          request.params.pruefId,
+          user.id,
+          {
+            leser: fundstellenLeser(deps.ko),
+            darfSehen: sichtbarkeitsfilterFuer(user),
+            signal: anfrageAbbruch(reply),
+          },
+          { nurBestaetigen },
+        );
         if ("fehlt" in ausgang) {
           nichtGefunden();
           return;

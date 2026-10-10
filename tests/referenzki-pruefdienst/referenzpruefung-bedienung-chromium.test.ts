@@ -206,8 +206,31 @@ describe("REF-02 · Prüfergebnis und Adminauswahl, bedient in Chromium", () => 
     expect(await s.seite.evaluate<string>(PFAD)).toContain("fassung=");
 
     // Rückweg: die Antwort UND ihre Prüfung stehen wieder da (Arbeitsstand).
+    const aufrufeVorRueckweg = aufrufe;
     await s.seite.evaluate(fn("() => { history.back(); }"));
     await s.seite.waitForFunction(DA, GEPRUEFT, { timeout: 30_000 });
+    // Ben nacharbeit-4 (K8): die wiederhergestellte Anzeige wurde serverseitig bestätigt — aus dem
+    // exakt passenden Beleg, ohne neuen Modellaufruf.
+    expect(aufrufe).toBe(aufrufeVorRueckweg);
+  }, 180_000);
+
+  it("B1b · gespeicherte Bestätigung nach geändertem Prüfmodell: kein Urteil, sondern „gilt nicht mehr“", async () => {
+    expect(fehler).toBeNull();
+    const s = stand as H4Stand;
+    // Die Antwort aus B1 steht im Arbeitsstand. Der Administrator stellt auf ein anderes Prüfmodell
+    // um (hier: der Doppelgänger meldet einen anderen Modellbezeichner); dann lädt die Seite neu.
+    pruefer = machePruefer("pruef-fiktiv-11");
+    const vorher = aufrufe;
+    await s.seite.reload({ waitUntil: "load" });
+    await s.seite.waitForFunction(DA, NICHT_PRUEFBAR, { timeout: 45_000 });
+    const m = await s.seite.evaluate<Lage>(MESSEN);
+    console.info(`REF-02 · B1b → ${JSON.stringify(m)}`);
+    expect(m.statusText).toContain("gilt nicht mehr");
+    expect(m.zustaende.every((z) => z === "nicht_pruefbar")).toBe(true);
+    expect(m.fundstellen).toEqual([]);
+    // Keine neue Prüfung ohne ausdrücklichen Anstoß — die begrenzte erneute Prüfung steht bereit.
+    expect(aufrufe).toBe(vorher);
+    expect(m.erneut).toBe(true);
   }, 180_000);
 
   it("B2 · 390 × 844: Ausfall sichtbar, erneute Prüfung per Tastatur, danach ausgeschöpft", async () => {

@@ -759,6 +759,12 @@ export function Ask(): JSX.Element {
   const [aussageTexte, setAussageTexte] = useState<ReadonlyMap<string, string>>(
     () => new Map(anfang?.antwort?.aussageTexte ?? []),
   );
+  // Ben nacharbeit-4 (K8): eine aus dem Arbeitsstand WIEDERHERGESTELLTE Prüfung ist UNBESTÄTIGT, bis
+  // der Server sie mit den aktuellen Rechten, dem aktuell gewählten Prüfmodell und der aktuellen
+  // Richtlinie bestätigt hat (`referenzBestaetigen`). Bis dahin wird kein Urteil gezeigt.
+  // `bestaetigtFuer` ist die Prüfkennung, deren Anzeige vom Server stammt.
+  const [bestaetigtFuer, setBestaetigtFuer] = useState<string | null>(null);
+  const [referenzAbgelaufen, setReferenzAbgelaufen] = useState(false);
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
@@ -1006,6 +1012,8 @@ export function Ask(): JSX.Element {
       setPruefrahmen(null);
       setReferenzpruefung(null);
       setAussageTexte(new Map());
+      setBestaetigtFuer(null);
+      setReferenzAbgelaufen(false);
       // R-1633: dieselbe Bindung — die Gewichtungsauskunft gehört zu genau einer Antwort.
       setGeltungsAuskunft(null);
       // R-0305/R-1099: ebenso der Kontext, an den die Zweitmeinung gebunden ist.
@@ -1043,6 +1051,9 @@ export function Ask(): JSX.Element {
       // REF-02: abwesend heißt „kein Prüfdienst oder keine beantwortete Frage" — dann steht nichts.
       setReferenzpruefung(r.referenzpruefung ?? null);
       setAussageTexte(new Map((r.aussagen?.aussagen ?? []).map((a) => [a.aussageId, a.text])));
+      // Frisch vom Server zu GENAU dieser Antwort — keine Wiederherstellung, also bestätigt.
+      setBestaetigtFuer(r.referenzpruefung?.pruefId ?? null);
+      setReferenzAbgelaufen(false);
       // R-1633: abwesend heißt „ohne Fragekontext gefragt" — dann steht keine Auskunft da.
       setGeltungsAuskunft(r.geltung ?? null);
       // R-0305/R-1099 (Ben, Nacharbeit 9): der Kontext DIESER Anfrage, nicht der aktuellen Auswahl.
@@ -1065,13 +1076,41 @@ export function Ask(): JSX.Element {
   // Das Ergebnis gilt nur, solange dieselbe Prüfung noch steht (eine neue Frage hat sie abgeräumt).
   const referenzErneut = useMutation({
     mutationFn: (pruefId: string) => endpoints.ask.referenzErneut(pruefId),
-    onSuccess: (antwort, pruefId) =>
+    onSuccess: (antwort, pruefId) => {
       setReferenzpruefung((vorher) =>
         vorher && vorher.pruefId === pruefId ? antwort.referenzpruefung : vorher,
-      ),
+      );
+      setBestaetigtFuer(pruefId);
+    },
     onError: (e) =>
       push("error", e instanceof ApiError ? e.message : t("referenzpruefung.erneut.fehler")),
   });
+  // Ben nacharbeit-4 (K8): die serverseitige Bestätigung einer wiederhergestellten Prüfung. Erst ihr
+  // Ergebnis wird angezeigt — exakt passender gültiger Beleg (dann geprüft) oder „nicht prüfbar"
+  // mit `bestaetigung_abgelaufen`; dann bleibt die begrenzte erneute Prüfung. Unbekannt, abgelaufen
+  // oder fremd (404): die gespeicherte Anzeige wird verworfen.
+  const referenzBestaetigen = useMutation({
+    mutationFn: (pruefId: string) => endpoints.ask.referenzBestaetigen(pruefId),
+    onSuccess: (antwort, pruefId) => {
+      setReferenzpruefung((vorher) =>
+        vorher && vorher.pruefId === pruefId ? antwort.referenzpruefung : vorher,
+      );
+      setBestaetigtFuer(pruefId);
+    },
+    onError: (_e, pruefId) => {
+      setReferenzpruefung((vorher) => (vorher && vorher.pruefId === pruefId ? null : vorher));
+      setReferenzAbgelaufen(true);
+    },
+  });
+  const bestaetigungAngefragt = useRef<string | null>(null);
+  useEffect(() => {
+    const id = referenzpruefung?.pruefId;
+    if (!id || bestaetigtFuer === id || bestaetigungAngefragt.current === id) {
+      return;
+    }
+    bestaetigungAngefragt.current = id;
+    referenzBestaetigen.mutate(id);
+  }, [referenzpruefung?.pruefId, bestaetigtFuer, referenzBestaetigen]);
   const helpful = useMutation({
     mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
     onError: rueckmeldungAbgelehnt,
@@ -1246,6 +1285,9 @@ export function Ask(): JSX.Element {
       // REF-02: die Prüfung des neuen Kontos ersetzt die alte vollständig.
       setReferenzpruefung(antwort?.referenzpruefung ?? null);
       setAussageTexte(new Map(antwort?.aussageTexte ?? []));
+      // Ben nacharbeit-4 (K8): wiederhergestellt heißt unbestätigt — erst der Server bestätigt.
+      setBestaetigtFuer(null);
+      setReferenzAbgelaufen(false);
       setGapId(antwort?.gapId ?? null);
       setAsked(antwort?.frage ?? "");
       // R-0305/R-1099 (Ben, Nacharbeit 10): der gespeicherte Kontext DIESER Antwort — fehlt er
@@ -2571,7 +2613,26 @@ export function Ask(): JSX.Element {
                   {/* REF-02 (Ben nacharbeit-3): die Referenzprüfung der Quellen — je Aussage ein
                     Zustand mit Fundstelle und Begründung, getrennte Aktualitäts-/Konflikthinweise
                     und sichtbar „nicht prüfbar" bei Ausfall, Zeitlimit oder verweigerter Freigabe. */}
-                  {referenzpruefung ? (
+                  {/* Ben nacharbeit-4 (K8): eine wiederhergestellte, noch nicht vom Server bestätigte
+                    Prüfung zeigt KEIN Urteil — nur, dass sie bestätigt wird. `<output>` trägt
+                    implizit role="status" (a11y/useSemanticElements); `block`, weil es inline ist. */}
+                  {referenzpruefung && bestaetigtFuer !== referenzpruefung.pruefId ? (
+                    <output
+                      data-testid="referenzpruefung-unbestaetigt"
+                      className="block rounded-btn bg-surface-2 px-2.5 py-1.5 text-[12.5px] text-muted"
+                    >
+                      {t("referenzpruefung.unbestaetigt")}
+                    </output>
+                  ) : null}
+                  {!referenzpruefung && referenzAbgelaufen ? (
+                    <output
+                      data-testid="referenzpruefung-abgelaufen"
+                      className="block rounded-btn bg-trust-warn-bg px-2.5 py-1.5 text-[12.5px] text-trust-warn-text"
+                    >
+                      {t("referenzpruefung.abgelaufen")}
+                    </output>
+                  ) : null}
+                  {referenzpruefung && bestaetigtFuer === referenzpruefung.pruefId ? (
                     <Referenzpruefung
                       ergebnis={referenzpruefung}
                       aussageTexte={aussageTexte}

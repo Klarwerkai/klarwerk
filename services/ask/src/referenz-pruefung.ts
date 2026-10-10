@@ -98,6 +98,7 @@ export type ReferenzGrund =
   | "ungueltige_pruefausgabe"
   | "pruefer_fehler"
   | "modellaufruf_ausgeschlossen"
+  | "bestaetigung_abgelaufen"
   | "kein_urteil";
 
 /** Aktualitäts- und Konflikthinweise — getrennt von der Unterstützung (K4). */
@@ -242,6 +243,8 @@ const GRUND_SATZ: Readonly<Record<ReferenzGrund, string>> = {
   pruefer_fehler: "Die Referenz-KI ist ausgefallen.",
   modellaufruf_ausgeschlossen:
     "Auf diesem Antwortweg ist jeder Modellaufruf vertraglich ausgeschlossen — eine Referenzprüfung findet nicht statt.",
+  bestaetigung_abgelaufen:
+    "Für den aktuellen Stand (Rechte, Quellen, Prüfmodell, Prüfrichtlinie) liegt kein gültiger Prüfbeleg vor — die frühere Bestätigung gilt nicht mehr.",
   kein_urteil: "Die Referenz-KI hat zu diesem Punkt kein gültiges Urteil geliefert.",
 };
 
@@ -620,6 +623,14 @@ export interface ReferenzPruefEingabe<T extends AufloesbaresObjekt = Aufloesbare
    * keine Referenzprüfung statt; das Ergebnis steht sichtbar als „nicht prüfbar" mit Grund da.
    */
   readonly modellaufrufAusgeschlossen?: boolean;
+  /**
+   * Ben nacharbeit-4 (K8): BESTÄTIGEN statt prüfen. Der Lauf löst alle Fundstellen mit den AKTUELLEN
+   * Rechten neu auf, wählt den Prüfer neu und übernimmt NUR einen exakt passenden, gültigen
+   * Cachebeleg (gleiches Paket, gleicher Quellenstand, gleiches tatsächliches Prüfmodell, gleiche
+   * Richtlinie). Ohne ihn: kein Modellaufruf, sondern „nicht prüfbar" mit `bestaetigung_abgelaufen`
+   * — ein neuer Lauf bleibt die ausdrückliche, begrenzte erneute Prüfung.
+   */
+  readonly nurCache?: boolean;
   /** Abgrenzung des Cache (Mandant/Installation); ohne Angabe die Installation. */
   readonly mandant?: string;
 }
@@ -705,11 +716,29 @@ export class ReferenzPruefdienst {
     pruefId: string,
     akteur: string,
     zugang: { leser: FundstellenLeser<T>; darfSehen: (ko: T) => boolean; signal?: AbortSignal },
+    optionen: { nurBestaetigen?: boolean } = {},
   ): Promise<ErneutErgebnis> {
     this.raeumeAuf();
     const kontext = this.kontexte.get(pruefId);
     if (!kontext || kontext.eingabe.akteur !== akteur) {
       return { fehlt: true };
+    }
+    // Ben nacharbeit-4 (K8): eine gespeicherte Anzeige wird BESTÄTIGT, bevor sie gilt — mit den
+    // dann gültigen Rechten, dem dann gewählten Prüfer und nur aus einem exakt passenden Beleg. Das
+    // zählt keinen Versuch und ruft kein Modell.
+    if (optionen.nurBestaetigen === true) {
+      const ergebnis = await this.sicherLauf(
+        pruefId,
+        {
+          ...kontext.eingabe,
+          leser: zugang.leser,
+          darfSehen: zugang.darfSehen,
+          nurCache: true,
+          ...(zugang.signal ? { signal: zugang.signal } : {}),
+        },
+        kontext.versuche,
+      );
+      return { ergebnis };
     }
     if (kontext.versuche > REFERENZ_ERNEUT_MAX) {
       return { ausgeschoepft: true, hoechstens: REFERENZ_ERNEUT_MAX + 1 };
@@ -1044,6 +1073,20 @@ export class ReferenzPruefdienst {
       });
     }
 
+    // Ben nacharbeit-4 (K8): eine BESTÄTIGUNG ruft nie ein Modell. Kein exakt passender Beleg für
+    // den aktuellen Stand heißt: die frühere Bestätigung gilt nicht mehr.
+    if (eingabe.nurCache === true) {
+      return fertig({
+        status: "nicht_pruefbar",
+        grund: "bestaetigung_abgelaufen",
+        pruefer: pruefer.rolle,
+        paket,
+        aussagen: zusammen(new Map(), "bestaetigung_abgelaufen"),
+        ausCache: false,
+        modellaufrufe: 0,
+      });
+    }
+
     // 4b. BUDGET — Posten- und Zeichendeckel VOR jedem Aufruf.
     const user = pruefdaten(paket, pruefbar);
     if (pruefbar.length > REFERENZ_POSTEN_MAX || user.length > REFERENZ_EINGABE_MAX_ZEICHEN) {
@@ -1300,6 +1343,7 @@ export class ReferenzPruefdienst {
       "pruefer_nicht_eingerichtet",
       "keine_aussage",
       "modellaufruf_ausgeschlossen",
+      "bestaetigung_abgelaufen",
     ];
     if (ohneLauf.includes(ergebnis.grund)) {
       return ergebnis;

@@ -61,6 +61,12 @@ export default {
     "referenzpruefung.grund.kein_urteil":
       "Die Referenz-KI hat dazu kein gültiges Urteil geliefert.",
     "referenzpruefung.grund.unbekannt": "Der Grund ist nicht bekannt.",
+    "referenzpruefung.grund.bestaetigung_abgelaufen":
+      "Für den aktuellen Stand (Ihre Rechte, Quellen, Prüfmodell, Prüfrichtlinie) liegt kein gültiger Prüfbeleg vor — die frühere Bestätigung gilt nicht mehr.",
+    "referenzpruefung.unbestaetigt":
+      "Die gespeicherte Quellenprüfung wird gegen Ihre aktuellen Rechte und den aktuellen Prüfstand bestätigt …",
+    "referenzpruefung.abgelaufen":
+      "Die gespeicherte Quellenprüfung ist nicht mehr bestätigbar und wird nicht angezeigt. Stellen Sie die Frage erneut für eine neue Prüfung.",
     "referenzpruefung.fundstelle": "Fundstelle: {{titel}}, Fassung {{fassung}}",
     "referenzpruefung.quelleOhneTitel": "Quelle",
     "referenzpruefung.teile": "{{anzahl}} Teilaussagen einzeln",
@@ -140,6 +146,12 @@ export default {
       "On this answer path every model call is excluded; no reference check takes place.",
     "referenzpruefung.grund.kein_urteil": "The reference AI gave no valid verdict on this.",
     "referenzpruefung.grund.unbekannt": "The reason is unknown.",
+    "referenzpruefung.grund.bestaetigung_abgelaufen":
+      "There is no valid check record for the current state (your rights, sources, check model, check policy) — the earlier confirmation no longer applies.",
+    "referenzpruefung.unbestaetigt":
+      "The saved source check is being confirmed against your current rights and the current check state …",
+    "referenzpruefung.abgelaufen":
+      "The saved source check can no longer be confirmed and is not shown. Ask the question again for a new check.",
     "referenzpruefung.fundstelle": "Passage: {{titel}}, version {{fassung}}",
     "referenzpruefung.quelleOhneTitel": "Source",
     "referenzpruefung.teile": "{{anzahl}} partial statements individually",
@@ -219,6 +231,12 @@ export default {
       "Op deze antwoordweg is elke modelaanroep uitgesloten; er vindt geen referentiecontrole plaats.",
     "referenzpruefung.grund.kein_urteil": "De referentie-AI gaf hierover geen geldig oordeel.",
     "referenzpruefung.grund.unbekannt": "De reden is onbekend.",
+    "referenzpruefung.grund.bestaetigung_abgelaufen":
+      "Voor de huidige stand (uw rechten, bronnen, controlemodel, controlerichtlijn) is er geen geldig controlebewijs — de eerdere bevestiging geldt niet meer.",
+    "referenzpruefung.unbestaetigt":
+      "De opgeslagen broncontrole wordt bevestigd tegen uw huidige rechten en de huidige controlestand …",
+    "referenzpruefung.abgelaufen":
+      "De opgeslagen broncontrole kan niet meer worden bevestigd en wordt niet getoond. Stel de vraag opnieuw voor een nieuwe controle.",
     "referenzpruefung.fundstelle": "Vindplaats: {{titel}}, versie {{fassung}}",
     "referenzpruefung.quelleOhneTitel": "Bron",
     "referenzpruefung.teile": "{{anzahl}} deeluitspraken afzonderlijk",

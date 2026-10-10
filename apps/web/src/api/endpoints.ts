@@ -1028,6 +1028,13 @@ export const endpoints = {
         `/ask/referenzpruefung/${encodeURIComponent(pruefId)}/erneut`,
         {},
       ),
+    // REF-02 (Ben nacharbeit-4, K8): eine gespeicherte Anzeige serverseitig bestätigen lassen —
+    // aktuelle Rechte, aktueller Prüfer, nur ein exakt passender Beleg, kein Modellaufruf.
+    referenzBestaetigen: (pruefId: string) =>
+      api.post<{ referenzpruefung: ReferenzPruefung }>(
+        `/ask/referenzpruefung/${encodeURIComponent(pruefId)}/erneut`,
+        { bestaetigen: true },
+      ),
     // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
     report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
       api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),

@@ -281,6 +281,53 @@ describe("REF-02 · erneute Prüfung", () => {
   });
 });
 
+describe("REF-02 · Bestätigung einer gespeicherten Anzeige (Ben nacharbeit-4, K8)", () => {
+  it("H6 · nur derselbe Nutzer, aktuelle Rechte, aktuelles Prüfmodell — ohne Modellaufruf und ohne Versuch", async () => {
+    const { app, services, admin, leser } = await aufbau();
+    const erster = pruefer();
+    const zweiter = pruefer();
+    let aktiv = erster.p;
+    vi.spyOn(services.reasoner, "referenzPruefer").mockImplementation(() => ({ pruefer: aktiv }));
+    vi.spyOn(services.reasoner, "externeVerarbeitungErlaubt").mockReturnValue(true);
+    const ref = (await fragen(app, admin)).json().referenzpruefung;
+    expect(ref.status).toBe("geprueft");
+    const url = `/api/ask/referenzpruefung/${ref.pruefId}/erneut`;
+    const bestaetigen = (kopf: Kopf) =>
+      app.inject({ method: "POST", url, headers: kopf, payload: { bestaetigen: true } });
+
+    // Unverändert: exakt passender Beleg — geprüft, aus dem Cache, kein Aufruf, Versuch 1.
+    const gleich = await bestaetigen(admin);
+    expect(gleich.statusCode, gleich.body.slice(0, 300)).toBe(200);
+    expect(gleich.json().referenzpruefung).toMatchObject({
+      status: "geprueft",
+      ausCache: true,
+      messung: { modellaufrufe: 0 },
+      versuch: { nummer: 1, hoechstens: 2 },
+    });
+    expect(erster.aufrufe()).toBe(1);
+
+    // Ein anderer Nutzer bekommt nichts (unbekannt und fremd sehen gleich aus).
+    expect((await bestaetigen(leser)).statusCode).toBe(404);
+
+    // Anderes tatsächliches Prüfmodell: die frühere Bestätigung gilt nicht — kein Aufruf.
+    aktiv = { ...zweiter.p, rolle: { ...zweiter.p.rolle, modell: "pruef-fiktiv-anders" } };
+    const anders = await bestaetigen(admin);
+    expect(anders.statusCode).toBe(200);
+    expect(anders.json().referenzpruefung).toMatchObject({
+      status: "nicht_pruefbar",
+      grund: "bestaetigung_abgelaufen",
+      messung: { modellaufrufe: 0 },
+    });
+    expect(zweiter.aufrufe()).toBe(0);
+
+    // Die ausdrückliche, begrenzte erneute Prüfung bleibt unverbraucht.
+    const neu = await app.inject({ method: "POST", url, headers: admin, payload: {} });
+    expect(neu.statusCode).toBe(200);
+    expect(neu.json().referenzpruefung.versuch.nummer).toBe(2);
+    expect(zweiter.aufrufe()).toBe(1);
+  });
+});
+
 describe("REF-02 · Adminliste über PUT /api/reasoner/config", () => {
   it("H4 · setzen (protokolliert), weglassen (unverändert), Ungültiges (400), aus (protokolliert), ohne Beleg 503", async () => {
     const { app, services, admin } = await aufbau();

@@ -540,6 +540,75 @@ describe("REF-02 · K8 — Bindung und Cache", () => {
     expect(p.aufrufe).toHaveLength(1);
   });
 
+  it("S8d · Bestätigung einer gespeicherten Anzeige: nur exakt passender Beleg, aktuelle Rechte, aktuelles Prüfmodell — nie ein Modellaufruf", async () => {
+    let aktiv = doppelgaenger(alle("belegt"));
+    const d = new ReferenzPruefdienst({
+      waehlePruefer: () => aktiv,
+      externErlaubt: () => true,
+      istVertraulich: () => false,
+    });
+    const f = fall("korrekter_beleg");
+    const b = bestand(f.quellen);
+    const erst = await pruefeFall(d, f, { akteur: "nutzer-a" }, b);
+    expect(erst.status).toBe("geprueft");
+    expect(aktiv.aufrufe).toHaveLength(1);
+    const zugang = { leser: b.leser, darfSehen: () => true };
+
+    // 1 · Unverändert: der exakt passende Cachebeleg wird übernommen — kein Aufruf, kein Versuch.
+    const gleich = await d.erneut(erst.pruefId, "nutzer-a", zugang, { nurBestaetigen: true });
+    if (!("ergebnis" in gleich)) {
+      throw new Error("Bestätigung fehlt");
+    }
+    expect(gleich.ergebnis.status).toBe("geprueft");
+    expect(gleich.ergebnis.ausCache).toBe(true);
+    expect(gleich.ergebnis.messung.modellaufrufe).toBe(0);
+    expect(gleich.ergebnis.versuch).toEqual({ nummer: 1, hoechstens: 2 });
+    expect(aktiv.aufrufe).toHaveLength(1);
+
+    // 2 · Rechte entzogen: kein Urteil, kein Aufruf.
+    const ohneRecht = await d.erneut(
+      erst.pruefId,
+      "nutzer-a",
+      { leser: b.leser, darfSehen: () => false },
+      { nurBestaetigen: true },
+    );
+    if (!("ergebnis" in ohneRecht)) {
+      throw new Error("Bestätigung fehlt");
+    }
+    expect(zustaende(ohneRecht.ergebnis)).toEqual(["nicht_pruefbar"]);
+    expect(JSON.stringify(ohneRecht.ergebnis)).not.toContain("Die Fundstelle trägt");
+    expect(aktiv.aufrufe).toHaveLength(1);
+
+    // 3 · Anderes tatsächliches Prüfmodell: die frühere Bestätigung gilt nicht — kein Aufruf.
+    aktiv = doppelgaenger(alle("belegt"), { ...PRUEF_ROLLE, modell: "pruef-modell-neu" });
+    const neuesModell = await d.erneut(erst.pruefId, "nutzer-a", zugang, { nurBestaetigen: true });
+    if (!("ergebnis" in neuesModell)) {
+      throw new Error("Bestätigung fehlt");
+    }
+    expect(neuesModell.ergebnis.grund).toBe("bestaetigung_abgelaufen");
+    expect(zustaende(neuesModell.ergebnis)).toEqual(["nicht_pruefbar"]);
+    expect(neuesModell.ergebnis.bindung.prueferModell).toBe("pruef-modell-neu");
+    expect(aktiv.aufrufe).toHaveLength(0);
+
+    // 4 · Geänderter Quellenstand mit dem ursprünglichen Modell: ebenfalls abgelaufen.
+    aktiv = doppelgaenger(alle("belegt"));
+    b.revidiere("ko-fiktiv-pumpe", "Die Pumpe P7 fördert mit höchstens 3 bar; geprüft 2026.");
+    const neuerStand = await d.erneut(erst.pruefId, "nutzer-a", zugang, { nurBestaetigen: true });
+    if (!("ergebnis" in neuerStand)) {
+      throw new Error("Bestätigung fehlt");
+    }
+    expect(neuerStand.ergebnis.grund).toBe("bestaetigung_abgelaufen");
+    expect(aktiv.aufrufe).toHaveLength(0);
+
+    // 5 · Fremder Akteur: unbekannt. Und die begrenzte erneute Prüfung bleibt unverbraucht.
+    expect(await d.erneut(erst.pruefId, "nutzer-b", zugang, { nurBestaetigen: true })).toEqual({
+      fehlt: true,
+    });
+    const neu = await d.erneut(erst.pruefId, "nutzer-a", zugang);
+    expect("ergebnis" in neu && neu.ergebnis.versuch.nummer).toBe(2);
+    expect(aktiv.aufrufe).toHaveLength(1);
+  });
+
   it("S8c · ein Ausfall wird nie zum Cachebeleg", async () => {
     let n = 0;
     const p = doppelgaenger((posten) => {
