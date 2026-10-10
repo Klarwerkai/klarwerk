@@ -66,6 +66,7 @@ import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { EditorAttachmentContext } from "../components/EditorAttachmentContext";
 import { EditorContentQuality } from "../components/EditorContentQuality";
 import { EditorGuidance } from "../components/EditorGuidance";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
@@ -6924,7 +6925,12 @@ export function CaptureArbeitsraum({
                       {t("capture.reviewers.title")}
                     </div>
                     {reviewerChoices.length === 0 ? (
-                      <div className="text-[12px] text-muted-2">{t("capture.reviewers.none")}</div>
+                      <>
+                        <div className="text-[12px] text-muted-2">
+                          {t("capture.reviewers.none")}
+                        </div>
+                        {leerzustandsZeile(t, "verwaltung")}
+                      </>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {reviewerChoices.map((p) => {
