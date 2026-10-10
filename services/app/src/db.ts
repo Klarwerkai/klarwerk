@@ -65,6 +65,8 @@ import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
 import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
+// ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus.
+import { KOMMUNIKATION_SCHEMA } from "./kommunikationsregeln";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -330,6 +332,11 @@ export const schemas = [
   // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
   // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   VEROEFFENTLICHUNG_SCHEMA,
+  // ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus je
+  // Veröffentlichung, Empfänger und Kanal. Additiv und wiederholbar (drei CREATE TABLE IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung
+  // ist.
+  KOMMUNIKATION_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

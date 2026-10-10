@@ -2904,8 +2904,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // in dieser Testdatei gelöst, keine Komponente hinzugefügt. Die DREI Komponenten über der
     // Rechnung (Grundmenge 777 → 784) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // ADMIN-12 (produkt:20261007:veroeffentlichungsoptionen:admin-20261009): 606 → 612. GENAU SECHS
+    // Bauteile kommen dazu: `Kommunikation`, `EreignisZeile`, `MeineEinstellungen` und
+    // `Unternehmensvorgaben` (`pages/Kommunikation.tsx`) sowie `RegelWirkung` und `Zustellstatus`
+    // (`components/veroeffentlichung/VeroeffentlichungBereich.tsx`). Keines trägt ein Bild oder einen
+    // Editor; `anbieter` 1 und `traeger` 2 bleiben. EHRLICH GESAGT: die 612 ist GERECHNET (606 + 6),
+    // nicht gemessen — dieser Lauf durfte keine Tests ausführen. Weicht die Messung ab, gehört die
+    // gemessene Zahl hierher.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 606,
+      komponenten: 612,
       anbieter: 1,
       traeger: 2,
     });

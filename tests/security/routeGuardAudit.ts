@@ -485,6 +485,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.validate",
     zeilenrecht: ["darfSehen"],
   },
+  // ADMIN-12: Zustellstatus und Wiederaufnahme — dasselbe Freigaberecht, derselbe darfSehen-Halt.
+  "GET /api/kos/:id/veroeffentlichung/zustellung/:vermerkId": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
   // R-1644: die Wissensauskunft zum Zeitpunkt — Einsichtsstufe des Audit-Protokolls (`ko.validate`),
   // der Eintrag wird vor der Antwort gegen `darfSehen` gehalten (sonst 404).
   "GET /api/kos/:id/wissensauskunft": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
@@ -1036,6 +1045,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/richtlinien/wirkung": { protection: "users.manage" },
   "POST /api/admin/richtlinien": { protection: "users.manage" },
   "POST /api/admin/richtlinien/:id/fassungen": { protection: "users.manage" },
+
+  // --- Kommunikationsregeln (kommunikation-routes.ts, ADMIN-12) ---
+  // Übersicht und EIGENE Meldungseinstellungen: jedes angemeldete Konto. Unternehmensvorgabe
+  // ändern und ihre Fassungen lesen: Verwaltung — dieselbe Schranke wie das Unternehmensprofil.
+  "GET /api/kommunikation/regeln": { protection: "auth" },
+  "GET /api/meldungsregeln/meine": { protection: "auth" },
+  "PUT /api/meldungsregeln/meine": { protection: "auth" },
+  "PUT /api/admin/kommunikation/regeln": { protection: "users.manage" },
+  "GET /api/admin/kommunikation/fassungen": { protection: "users.manage" },
 
   // --- Firmenwörterbuch (begriffe-routes.ts) ---
   // Nachschlagen und der deterministische Abgleich eines eigenen Textes: wer Wissen lesen darf.

@@ -3664,6 +3664,18 @@ export interface Notification {
   // Veröffentlichung: neu oder Aktualisierung, und ob hervorgehoben gemeldet (nur bei diesem `kind`).
   art?: "neu" | "aktualisierung";
   hervorgehoben?: boolean;
+  // ADMIN-12: die tägliche Zusammenfassung gewöhnlicher Veröffentlichungen eines Tages (ohne `koId`).
+  zusammenfassung?: {
+    tag: string;
+    anzahl: number;
+    eintraege: Array<{
+      vermerkId: string;
+      koId: string;
+      title: string;
+      fassung: number;
+      art: "neu" | "aktualisierung";
+    }>;
+  };
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH

@@ -114,6 +114,19 @@ export interface Notification {
   // `kind: "veroeffentlichung"` gesetzt (`fassung` trägt dort die veröffentlichte Fassung).
   art?: "neu" | "aktualisierung";
   hervorgehoben?: boolean;
+  // ADMIN-12 (`kommunikationsregeln.ts`): die tägliche Zusammenfassung gewöhnlicher
+  // Veröffentlichungen eines Tages — eine Meldung `kind: "veroeffentlichung"` ohne `koId`.
+  zusammenfassung?: {
+    tag: string;
+    anzahl: number;
+    eintraege: Array<{
+      vermerkId: string;
+      koId: string;
+      title: string;
+      fassung: number;
+      art: "neu" | "aktualisierung";
+    }>;
+  };
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.

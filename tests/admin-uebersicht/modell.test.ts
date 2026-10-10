@@ -86,7 +86,7 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
     }
   });
 
-  it("jeder App-Bereich ist ein vorhandener Menüeintrag; Spaces ist die vorhandene Route", () => {
+  it("jeder App-Bereich ist ein vorhandener Menüeintrag; Spaces und Kommunikation sind vorhandene Routen", () => {
     for (const g of VERWALTUNG_GRUPPEN) {
       for (const z of g.ziele) {
         if (z.art === "bereich") {
@@ -96,7 +96,8 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
           ).toBe(true);
         }
         if (z.art === "pfad") {
-          expect(z.pfad).toBe("/spaces");
+          // ADMIN-12: `/kommunikation` ist die Route der Kommunikationsregeln (`routes.tsx`).
+          expect(["/spaces", "/kommunikation"]).toContain(z.pfad);
         }
       }
     }
@@ -109,9 +110,13 @@ describe("ADMIN-01 · K1 · die sieben Gruppen erklären sich und führen zum Be
     expect(kennungen).toContain("konten");
   });
 
-  it("Kommunikation bietet nichts als benutzbar an — die Gruppe hat keinen Weg", () => {
+  // ADMIN-12: die Gruppe hat seit der Kommunikationsregelung genau einen Weg — die vorhandene Route
+  // `/kommunikation`, nichts darüber hinaus.
+  it("Kommunikation führt allein auf die Seite der Kommunikationsregeln", () => {
     const kommunikation = VERWALTUNG_GRUPPEN.find((g) => g.id === "kommunikation");
-    expect(kommunikation?.ziele).toEqual([]);
+    expect(kommunikation?.ziele).toEqual([
+      { art: "pfad", pfad: "/kommunikation", labelKey: "kommunikation.verwaltung.ziel" },
+    ]);
   });
 
   it("die Beitragsübergabe führt in die Kontenliste, aus der die Kontokarte mit der Übergabe aufgeht", () => {

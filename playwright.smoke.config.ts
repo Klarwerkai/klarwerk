@@ -71,9 +71,11 @@ const PORT_ZUSTAND = 3124;
  * (Klara 03) legt einen freigegebenen Beitrag an und stuft ihn vertraulich.
  * `assistenz-produkteinstieg-browser` (produkt:20261010:assistenz-produkteinstieg) legt für die
  * Artikelseite einen fiktiven freigegebenen Beitrag an.
+ * `kommunikation-browser` (ADMIN-12) legt ein Konto und einen gültigen Eintrag an, veröffentlicht
+ * ihn und ändert eine Kommunikationsvorgabe (am Ende zurückgestellt).
  */
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|assistenz-produkteinstieg-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|assistenz-produkteinstieg-browser|kommunikation-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.

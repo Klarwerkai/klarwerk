@@ -5,7 +5,14 @@ import type {
   KoVeroeffentlichung,
   VeroeffentlichungsMeldung,
 } from "../../knowledge-object";
-import type { AnforderungsStand } from "./kenntnisnahme";
+import type { AnforderungsStand, KenntnisnahmeStatus } from "./kenntnisnahme";
+import {
+  type KommunikationDienst,
+  type KommunikationRepo,
+  type ZustellZeile,
+  tagVon,
+  zusammenfassungsKennung,
+} from "./kommunikationsregeln";
 
 // ================================================================================================
 // VERÖFFENTLICHUNG MIT BENACHRICHTIGUNGSWAHL (produkt:20261007:veroeffentlichungsoptionen).
@@ -261,6 +268,64 @@ export interface VeroeffentlichungDienstDeps {
   zustellungen: VeroeffentlichungsZustellungRepo;
   jetzt: () => number;
   kennung: () => string;
+  /**
+   * ADMIN-12 (`kommunikationsregeln.ts`): Unternehmensvorgabe, persönliche Abwahl, Zustellstatus und
+   * Mailversand. Fehlt er, gilt der Stand vor ADMIN-12 (nur Glocke, kein Zustellstatus).
+   */
+  kommunikation?: VeroeffentlichungKommunikation;
+}
+
+export interface VeroeffentlichungKommunikation {
+  dienst: KommunikationDienst;
+  repo: KommunikationRepo;
+  /** Verschickt die noch nie versuchten Mails dieser Veröffentlichung (`mailsVersenden`). */
+  versenden: (vermerk: {
+    id: string;
+    koId: string;
+    fassung: number;
+    hervorgehoben: boolean;
+  }) => Promise<void>;
+  /** Die Meldungskennungen, die dieses Konto als gelesen markiert hat (vorhandener Gelesenstatus). */
+  gelesen: (kontoId: string) => Promise<ReadonlySet<string>>;
+}
+
+/** Was eine Wahl bewirkt — gezählt für genau diesen Eintrag, vor dem Klick. */
+export interface Meldungswirkung {
+  /** Personen, die eine Meldung in der Glocke bekommen (sofort oder in der Zusammenfassung). */
+  glocke: number;
+  sofort: number;
+  zusammenfassung: number;
+  /** Personen aus dem Leserkreis, die diese Meldung persönlich abgewählt haben. */
+  abgewaehlt: number;
+  /** Davon zusätzlich per Mail (nur bei eingerichtetem Mailversand und passender Vorgabe). */
+  mail: number;
+}
+
+export interface ZustellEmpfaenger {
+  id: string;
+  name: string;
+  glocke: "angelegt" | "zugestellt" | "gelesen" | null;
+  /** Warum eine Glockenmeldung (noch) nicht ausgeliefert ist. */
+  hinweis: "abgewaehlt" | "zusammenfassung" | null;
+  mail: { status: ZustellZeile["status"]; grund: ZustellZeile["grund"] } | null;
+  /** Der Stand einer für DIESE Fassung angeforderten Kenntnisnahme — `null`: keine angefordert. */
+  kenntnisnahme: KenntnisnahmeStatus | null;
+}
+
+export interface ZustellAuskunft {
+  vermerkId: string;
+  fassung: number;
+  meldung: VeroeffentlichungsMeldung;
+  am: string;
+  mailEingerichtet: boolean;
+  /** `false`: vor ADMIN-12 veröffentlicht — dafür wurde kein Zustellstatus festgehalten. */
+  erfasst: boolean;
+  zaehlung: {
+    glocke: { angelegt: number; zugestellt: number; gelesen: number };
+    mail: { angelegt: number; zugestellt: number; fehlgeschlagen: number; entfallen: number };
+    kenntnisnahme: { offen: number; bestaetigt: number };
+  };
+  empfaenger: ZustellEmpfaenger[];
 }
 
 export interface KenntnisnahmeLage {
@@ -307,11 +372,19 @@ export interface Veroeffentlichungsvorschau extends VeroeffentlichungsStand {
   /** Die Empfänger bei „normal" und „hervorgehoben" (bei „still": niemand). */
   empfaenger: Array<{ id: string; name: string }>;
   kenntnisnahmen: KenntnisnahmeLage;
+  /**
+   * ADMIN-12: die Wirkung JEDER Wahl nach den geltenden Regeln — derselbe Leserkreis, dieselbe
+   * Sichtbarkeit, dieselbe Freigabe; nur die Meldungen unterscheiden sich.
+   */
+  meldungswirkung: Record<VeroeffentlichungsMeldung, Meldungswirkung>;
+  mailEingerichtet: boolean;
 }
 
 export interface VeroeffentlichungsErgebnis {
   vermerk: VerlaufEintrag;
   kenntnisnahmen: KenntnisnahmeLage;
+  /** ADMIN-12: der Zustellstatus unmittelbar nach dem Veröffentlichen (`null` ohne Regeln). */
+  zustellung: ZustellAuskunft | null;
 }
 
 /** Eine Veröffentlichungsmeldung für die Glocke — die Route filtert noch über die Sichtbarkeit. */
@@ -323,6 +396,19 @@ export interface VeroeffentlichungsMeldungFuerGlocke {
   art: KoVeroeffentlichung["art"];
   hervorgehoben: boolean;
   at: string;
+}
+
+/** Der Vermerk einer Veröffentlichung an DIESEM Eintrag — ein fremder oder erfundener ist ein 404. */
+function vermerkVon(ko: KnowledgeObject, vermerkId: string): KoVeroeffentlichung {
+  const vermerk = ko.veroeffentlichungen?.find((v) => v.id === vermerkId);
+  if (!vermerk) {
+    throw new VeroeffentlichungFehler(
+      404,
+      "vermerk_unbekannt",
+      "Diese Veröffentlichung gibt es an diesem Eintrag nicht.",
+    );
+  }
+  return vermerk;
 }
 
 export class VeroeffentlichungDienst {
@@ -397,6 +483,41 @@ export class VeroeffentlichungDienst {
       },
       empfaenger,
       kenntnisnahmen: await this.kenntnisnahmeLage(ko),
+      meldungswirkung: await this.meldungswirkung(empfaenger.map((k) => k.id)),
+      mailEingerichtet: this.deps.kommunikation?.dienst.mailEingerichtet() ?? false,
+    };
+  }
+
+  /**
+   * ADMIN-12: die Wirkung jeder Wahl für diesen Kreis. „still" meldet niemandem (die Kenntnisnahme
+   * hat ihren eigenen Weg); „normal" respektiert persönliche Abwahl und Zusammenfassung;
+   * „hervorgehoben" erreicht denselben Kreis sofort und ist nicht abwählbar.
+   */
+  private async meldungswirkung(
+    kreis: readonly string[],
+  ): Promise<Record<VeroeffentlichungsMeldung, Meldungswirkung>> {
+    const k = this.deps.kommunikation;
+    const abgewaehlt = k ? (await k.dienst.wirksamAbgewaehlt("veroeffentlichung", kreis)).size : 0;
+    const gebuendelt = k ? await k.dienst.zusammenfassungAktiv() : false;
+    const mailNormal = k ? await k.dienst.mailAktiv("veroeffentlichung") : false;
+    const mailWichtig = k ? await k.dienst.mailAktiv("veroeffentlichung_hervorgehoben") : false;
+    const normal = kreis.length - abgewaehlt;
+    return {
+      still: { glocke: 0, sofort: 0, zusammenfassung: 0, abgewaehlt: 0, mail: 0 },
+      normal: {
+        glocke: normal,
+        sofort: gebuendelt ? 0 : normal,
+        zusammenfassung: gebuendelt ? normal : 0,
+        abgewaehlt,
+        mail: mailNormal ? normal : 0,
+      },
+      hervorgehoben: {
+        glocke: kreis.length,
+        sofort: kreis.length,
+        zusammenfassung: 0,
+        abgewaehlt: 0,
+        mail: mailWichtig ? kreis.length : 0,
+      },
     };
   }
 
@@ -417,6 +538,18 @@ export class VeroeffentlichungDienst {
     const empfaenger = kreis.length;
     const id = this.deps.kennung();
     const am = new Date(this.deps.jetzt()).toISOString();
+    // ADMIN-12: wer zusätzlich eine Mail bekommt — nur mit eingerichtetem Kanal und passender
+    // Vorgabe; bei „normal" ohne die, die diese Meldung wirksam abgewählt haben.
+    const k = this.deps.kommunikation;
+    let mailKreis: string[] = [];
+    if (k && eingabe.meldung === "hervorgehoben") {
+      mailKreis = (await k.dienst.mailAktiv("veroeffentlichung_hervorgehoben")) ? kreis : [];
+    } else if (k && eingabe.meldung === "normal") {
+      if (await k.dienst.mailAktiv("veroeffentlichung")) {
+        const ab = await k.dienst.wirksamAbgewaehlt("veroeffentlichung", kreis);
+        mailKreis = kreis.filter((kontoId) => !ab.has(kontoId));
+      }
+    }
     // Ben, Nacharbeit 11: die Zustellungen entstehen ERST im Belegschritt des Vermerks — also nach
     // der fachlichen Prüfung in `bilde` und mit demselben Transaktionskontext (`nachher`). Ein
     // abgelehnter Versuch (409) hinterlässt deshalb keine Zeile, die gegen das Abruffenster zählt;
@@ -457,8 +590,8 @@ export class VeroeffentlichungDienst {
           empfaenger,
         };
       },
-      (geschrieben, tx) =>
-        this.deps.zustellungen.anlegen(
+      async (geschrieben, tx) => {
+        await this.deps.zustellungen.anlegen(
           kreis.map((empfaengerId) => ({
             vermerkId: geschrieben.id,
             koId: ko.id,
@@ -467,8 +600,36 @@ export class VeroeffentlichungDienst {
             hervorgehoben: geschrieben.meldung === "hervorgehoben",
           })),
           tx,
-        ),
+        );
+        // ADMIN-12: der Zustellstatus entsteht im selben Belegschritt — je Empfänger und Kanal
+        // „angelegt". Ein abgelehnter Versuch hinterlässt deshalb auch hier keine Zeile.
+        const zeile = (empfaengerId: string, kanal: ZustellZeile["kanal"]): ZustellZeile => ({
+          vermerkId: geschrieben.id,
+          koId: ko.id,
+          empfaengerId,
+          kanal,
+          status: "angelegt",
+          angelegtAm: geschrieben.am,
+          versuchAm: null,
+          ergebnisAm: null,
+          grund: null,
+        });
+        await k?.repo.statusAnlegen(
+          [...kreis.map((e) => zeile(e, "glocke")), ...mailKreis.map((e) => zeile(e, "mail"))],
+          tx,
+        );
+      },
     );
+    // Die Mails gehen erst NACH dem Festhalten raus; scheitert eine, bleibt die Veröffentlichung
+    // gültig und die Zeile sagt „fehlgeschlagen".
+    if (k && mailKreis.length > 0) {
+      await k.versenden({
+        id: vermerk.id,
+        koId: ko.id,
+        fassung: vermerk.fassung,
+        hervorgehoben: vermerk.meldung === "hervorgehoben",
+      });
+    }
     const namen = await this.deps.kontoNamen();
     return {
       vermerk: {
@@ -481,7 +642,109 @@ export class VeroeffentlichungDienst {
         empfaenger: vermerk.empfaenger,
       },
       kenntnisnahmen: await this.kenntnisnahmeLage(danach),
+      zustellung: k ? await this.zustellstatus(danach, vermerk.id) : null,
     };
+  }
+
+  /**
+   * ADMIN-12: der Zustellstatus einer Veröffentlichung je Empfänger — angelegt, zugestellt (soweit
+   * belegt), fehlgeschlagen/entfallen (Mail), gelesen (Glocke) und bestätigt (Kenntnisnahme).
+   */
+  async zustellstatus(ko: KnowledgeObject, vermerkId: string): Promise<ZustellAuskunft> {
+    const vermerk = vermerkVon(ko, vermerkId);
+    const k = this.deps.kommunikation;
+    const zeilen = k ? await k.repo.statusFuer(vermerkId) : [];
+    const namen = await this.deps.kontoNamen();
+    const kenntnis = new Map<string, KenntnisnahmeStatus>();
+    for (const a of await this.deps.kenntnisnahmen(ko)) {
+      if (a.fassung === vermerk.fassung) {
+        for (const e of a.empfaenger) {
+          kenntnis.set(e.id, e.status);
+        }
+      }
+    }
+    const ids = [...new Set(zeilen.map((z) => z.empfaengerId))];
+    const abgewaehlt =
+      k && vermerk.meldung === "normal"
+        ? await k.dienst.wirksamAbgewaehlt("veroeffentlichung", ids)
+        : new Set<string>();
+    const gebuendelt =
+      k && vermerk.meldung === "normal" ? await k.dienst.zusammenfassungAktiv() : false;
+    const sammelKennung = zusammenfassungsKennung(tagVon(vermerk.am));
+    const auskunft: ZustellAuskunft = {
+      vermerkId,
+      fassung: vermerk.fassung,
+      meldung: vermerk.meldung,
+      am: vermerk.am,
+      mailEingerichtet: k?.dienst.mailEingerichtet() ?? false,
+      erfasst: zeilen.length > 0 || vermerk.empfaenger === 0,
+      zaehlung: {
+        glocke: { angelegt: 0, zugestellt: 0, gelesen: 0 },
+        mail: { angelegt: 0, zugestellt: 0, fehlgeschlagen: 0, entfallen: 0 },
+        kenntnisnahme: { offen: 0, bestaetigt: 0 },
+      },
+      empfaenger: [],
+    };
+    for (const id of ids) {
+      const glockeZeile = zeilen.find((z) => z.empfaengerId === id && z.kanal === "glocke");
+      const mailZeile = zeilen.find((z) => z.empfaengerId === id && z.kanal === "mail");
+      let glocke: ZustellEmpfaenger["glocke"] = null;
+      if (glockeZeile?.status === "zugestellt") {
+        const gelesen = k ? await k.gelesen(id) : new Set<string>();
+        glocke =
+          gelesen.has(`pub-${vermerkId}`) || gelesen.has(sammelKennung) ? "gelesen" : "zugestellt";
+      } else if (glockeZeile) {
+        glocke = "angelegt";
+      }
+      const hinweis: ZustellEmpfaenger["hinweis"] =
+        glocke !== "angelegt"
+          ? null
+          : abgewaehlt.has(id)
+            ? "abgewaehlt"
+            : gebuendelt
+              ? "zusammenfassung"
+              : null;
+      if (glocke) {
+        auskunft.zaehlung.glocke[glocke] += 1;
+      }
+      if (mailZeile) {
+        auskunft.zaehlung.mail[mailZeile.status] += 1;
+      }
+      const kn = kenntnis.get(id) ?? null;
+      if (kn === "bestaetigt") {
+        auskunft.zaehlung.kenntnisnahme.bestaetigt += 1;
+      } else if (kn === "ausstehend" || kn === "ueberfaellig") {
+        auskunft.zaehlung.kenntnisnahme.offen += 1;
+      }
+      auskunft.empfaenger.push({
+        id,
+        name: namen.get(id) ?? "",
+        glocke,
+        hinweis,
+        mail: mailZeile ? { status: mailZeile.status, grund: mailZeile.grund } : null,
+        kenntnisnahme: kn,
+      });
+    }
+    auskunft.empfaenger.sort((a, b) => a.name.localeCompare(b.name));
+    return auskunft;
+  }
+
+  /**
+   * ADMIN-12: Wiederaufnahme eines unterbrochenen Versands. Verschickt nur Mails, die noch nie
+   * versucht wurden — eine bereits versuchte, zugestellte oder fehlgeschlagene Mail geht nicht
+   * ein zweites Mal raus, und an der Glocke ändert sich nichts.
+   */
+  async zustellungFortsetzen(ko: KnowledgeObject, vermerkId: string): Promise<ZustellAuskunft> {
+    const vermerk = vermerkVon(ko, vermerkId);
+    if (this.deps.kommunikation && vermerk.meldung !== "still") {
+      await this.deps.kommunikation.versenden({
+        id: vermerk.id,
+        koId: ko.id,
+        fassung: vermerk.fassung,
+        hervorgehoben: vermerk.meldung === "hervorgehoben",
+      });
+    }
+    return this.zustellstatus(ko, vermerkId);
   }
 
   /**

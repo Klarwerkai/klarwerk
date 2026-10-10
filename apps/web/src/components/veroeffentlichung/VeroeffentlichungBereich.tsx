@@ -3,7 +3,13 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { Button, Card, SectionLabel } from "../ui";
-import { MELDUNGSWAHLEN, type Meldungswahl, fehlerGrund, veroeffentlichungApi } from "./api";
+import {
+  MELDUNGSWAHLEN,
+  type Meldungswahl,
+  type Meldungswirkung,
+  fehlerGrund,
+  veroeffentlichungApi,
+} from "./api";
 
 // ================================================================================================
 // VERÖFFENTLICHUNG · die Fläche am gelesenen Eintrag (produkt:20261007:veroeffentlichungsoptionen).
@@ -26,6 +32,165 @@ function stufeSchluessel(stufe: string | null): string {
   return stufe === "intern" || stufe === "vertraulich" || stufe === "streng_vertraulich"
     ? `veroeffentlichung.stufe.${stufe}`
     : "veroeffentlichung.stufe.unbekannt";
+}
+
+/** ADMIN-12: die Wirkung einer Wahl nach den geltenden Kommunikationsregeln. */
+function RegelWirkung({
+  wirkung,
+  mailEingerichtet,
+}: {
+  wirkung: Meldungswirkung;
+  mailEingerichtet: boolean;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div data-testid="veroeffentlichung-regelwirkung" className="space-y-0.5">
+      <p className="font-semibold">{t("veroeffentlichung.regel.titel")}</p>
+      <ul className="list-disc pl-5">
+        {wirkung.sofort > 0 ? (
+          <li data-testid="veroeffentlichung-regel-sofort">
+            {t("veroeffentlichung.regel.sofort", { anzahl: wirkung.sofort })}
+          </li>
+        ) : null}
+        {wirkung.zusammenfassung > 0 ? (
+          <li data-testid="veroeffentlichung-regel-zusammenfassung">
+            {t("veroeffentlichung.regel.zusammenfassung", { anzahl: wirkung.zusammenfassung })}
+          </li>
+        ) : null}
+        {wirkung.abgewaehlt > 0 ? (
+          <li data-testid="veroeffentlichung-regel-abgewaehlt">
+            {t("veroeffentlichung.regel.abgewaehlt", { anzahl: wirkung.abgewaehlt })}
+          </li>
+        ) : null}
+        <li data-testid="veroeffentlichung-regel-mail">
+          {mailEingerichtet
+            ? t("veroeffentlichung.regel.mail", { anzahl: wirkung.mail })
+            : t("veroeffentlichung.regel.mailNichtEingerichtet")}
+        </li>
+      </ul>
+      <p className="text-[12px] text-muted-2">{t("veroeffentlichung.regel.link")}</p>
+    </div>
+  );
+}
+
+/** ADMIN-12: der Zustellstatus einer Veröffentlichung — auf Wunsch aufgeklappt, je Empfänger. */
+function Zustellstatus({ koId, vermerkId }: { koId: string; vermerkId: string }): JSX.Element {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [offen, setOffen] = useState(false);
+  const schluessel = ["veroeffentlichung", koId, "zustellung", vermerkId] as const;
+  const status = useQuery({
+    queryKey: schluessel,
+    queryFn: () => veroeffentlichungApi.zustellung(koId, vermerkId),
+    enabled: offen,
+    retry: false,
+  });
+  const fortsetzen = useMutation({
+    mutationFn: () => veroeffentlichungApi.fortsetzen(koId, vermerkId),
+    onSuccess: (daten) => queryClient.setQueryData(schluessel, daten),
+  });
+  const s = status.data;
+  const panelId = `zustellung-${vermerkId}`;
+  const statusWort = (wort: string): string => t(`veroeffentlichung.zustellung.status.${wort}`);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        data-testid="veroeffentlichung-zustellung-umschalten"
+        aria-expanded={offen}
+        aria-controls={offen ? panelId : undefined}
+        onClick={() => setOffen((x) => !x)}
+        className="rounded-btn text-[12px] font-semibold text-ai underline outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+      >
+        {t(
+          offen ? "veroeffentlichung.zustellung.verbergen" : "veroeffentlichung.zustellung.zeigen",
+        )}
+      </button>
+      {offen ? (
+        <div
+          id={panelId}
+          data-testid="veroeffentlichung-zustellung"
+          className="mt-1 space-y-1 rounded-btn border border-hairline px-3 py-2 text-[12.5px] text-text"
+        >
+          {status.isPending ? <p>{t("veroeffentlichung.zustellung.laedt")}</p> : null}
+          {status.isError ? (
+            <p role="alert" className="text-trust-warn-text">
+              {t("veroeffentlichung.fehler.allgemein")}
+            </p>
+          ) : null}
+          {s && !s.erfasst ? <p>{t("veroeffentlichung.zustellung.nichtErfasst")}</p> : null}
+          {s?.erfasst && s.empfaenger.length === 0 ? (
+            <p>{t("veroeffentlichung.zustellung.leer")}</p>
+          ) : null}
+          {s?.erfasst && s.empfaenger.length > 0 ? (
+            <>
+              <p data-testid="veroeffentlichung-zustellung-glocke">
+                {t("veroeffentlichung.zustellung.glocke", s.zaehlung.glocke)}
+              </p>
+              {s.mailEingerichtet || Object.values(s.zaehlung.mail).some((anzahl) => anzahl > 0) ? (
+                <p data-testid="veroeffentlichung-zustellung-mail">
+                  {t("veroeffentlichung.zustellung.mail", s.zaehlung.mail)}
+                </p>
+              ) : null}
+              <p data-testid="veroeffentlichung-zustellung-kenntnisnahme">
+                {t("veroeffentlichung.zustellung.kenntnisnahme", s.zaehlung.kenntnisnahme)}
+              </p>
+              <p className="text-[12px] text-muted-2">{t("veroeffentlichung.zustellung.belegt")}</p>
+              <ul className="space-y-0.5">
+                {s.empfaenger.map((e) => (
+                  <li
+                    key={e.id}
+                    data-testid="veroeffentlichung-zustellung-person"
+                    data-glocke={e.glocke ?? ""}
+                    data-mail={e.mail?.status ?? ""}
+                  >
+                    <span className="font-semibold">{e.name}</span>
+                    {" · "}
+                    {t("veroeffentlichung.zustellung.person.glocke")}:{" "}
+                    {e.glocke ? statusWort(e.glocke) : "—"}
+                    {e.hinweis
+                      ? ` (${t(`veroeffentlichung.zustellung.hinweis.${e.hinweis}`)})`
+                      : ""}
+                    {e.mail ? (
+                      <>
+                        {" · "}
+                        {t("veroeffentlichung.zustellung.person.mail")}: {statusWort(e.mail.status)}
+                        {e.mail.grund
+                          ? ` (${t(`veroeffentlichung.zustellung.grund.${e.mail.grund}`)})`
+                          : ""}
+                      </>
+                    ) : null}
+                    {e.kenntnisnahme ? (
+                      <>
+                        {" · "}
+                        {t("veroeffentlichung.zustellung.person.kenntnisnahme")}:{" "}
+                        {statusWort(e.kenntnisnahme)}
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {s.zaehlung.mail.angelegt > 0 ? (
+                <Button
+                  type="button"
+                  data-testid="veroeffentlichung-zustellung-fortsetzen"
+                  disabled={fortsetzen.isPending}
+                  onClick={() => fortsetzen.mutate()}
+                >
+                  {t("veroeffentlichung.zustellung.fortsetzen")}
+                </Button>
+              ) : null}
+              {fortsetzen.isError ? (
+                <p role="alert" className="text-trust-warn-text">
+                  {t("veroeffentlichung.fehler.allgemein")}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** Die Veröffentlichung am gelesenen Eintrag — Stand für alle, Wahl und Vorschau für Freigebende. */
@@ -157,6 +322,14 @@ export function VeroeffentlichungBereich({ koId }: { koId: string }): JSX.Elemen
                           ].join(", "),
                         })}
                 </p>
+                {/* ADMIN-12: was die geltenden Kommunikationsregeln aus dieser Wahl machen —
+                    persönliche Abwahl, Zusammenfassung und Mail, gezählt am Server. */}
+                {wahl !== "still" && daten.empfaenger.length > 0 ? (
+                  <RegelWirkung
+                    wirkung={daten.meldungswirkung[wahl]}
+                    mailEingerichtet={daten.mailEingerichtet}
+                  />
+                ) : null}
               </div>
             ) : null}
             {daten.kenntnisnahmen.offen > 0 ? (
@@ -226,6 +399,8 @@ export function VeroeffentlichungBereich({ koId }: { koId: string }): JSX.Elemen
                   datum: datum(v.am),
                   anzahl: v.empfaenger,
                 })}
+                {/* ADMIN-12: der Zustellstatus — nur für Freigebende (der Server prüft dasselbe). */}
+                {daten.darfVeroeffentlichen ? <Zustellstatus koId={koId} vermerkId={v.id} /> : null}
               </li>
             ))}
           </ul>

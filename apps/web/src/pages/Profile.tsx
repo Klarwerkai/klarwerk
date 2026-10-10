@@ -9,7 +9,9 @@ import { useLocation } from "react-router-dom";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useMyImpact } from "../api/hooks";
+import { KOMMUNIKATION_PFAD } from "../api/kommunikation";
 import { useSession } from "../app/AuthContext";
+import { useGuardedNavigate } from "../app/NavGuardContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
 import { istAktiv } from "../components/SprachSchalter";
@@ -535,6 +537,7 @@ const ZWEI_FAKTOR_KEY = ["auth", "second-factor"] as const;
 export function Profile(): JSX.Element {
   const { t } = useTranslation();
   const { user, signOut } = useSession();
+  const navigate = useGuardedNavigate();
   const [busy, setBusy] = useState(false);
   // R-0582: Rücksprung aus der SSO-Bestätigung (`/profil?kontodaten=sso`) öffnet die Karte wieder.
   const ausSso = new URLSearchParams(useLocation().search).get("kontodaten") === "sso";
@@ -601,6 +604,13 @@ export function Profile(): JSX.Element {
             label={t("funke.impact.title")}
             onOeffnen={() => setDetail("wirkung")}
             testId="zeile-wirkung"
+          />
+          {/* ADMIN-12: die eigenen Meldungseinstellungen und die Regeln dahinter — eine eigene
+              Seite, weil Übersicht und Unternehmensvorgaben dort für alle lesbar stehen. */}
+          <Zeile
+            label={t("kommunikation.profil.zeile")}
+            onOeffnen={() => navigate(KOMMUNIKATION_PFAD)}
+            testId="zeile-kommunikation"
           />
           <Zeile
             label={t("datenschutz.meineDaten.titel")}
