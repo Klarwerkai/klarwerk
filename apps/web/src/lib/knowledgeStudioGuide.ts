@@ -25,16 +25,13 @@ export const STUDIO_GUIDE_STEPS: readonly StudioGuideStep[] = (
   hintKey: `studio.guide.${id}.hint`,
 }));
 
-export function studioGuideSteps(): readonly StudioGuideStep[] {
-  return STUDIO_GUIDE_STEPS;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier standen `studioGuideSteps()` (gab die Tabelle oben
+// zurück) und `studioGuideActiveStep(view)` (aktiver Schritt je Ansicht). Das Studio liest
+// `STUDIO_GUIDE_STEPS` unmittelbar und markiert den inhaltsbewussten nächsten Schritt über
+// `studioNextStep` (`components/KnowledgeInputStudio.tsx`, R-0991 Nr. 35). Beide sind entfernt.
 
 export function studioGuideStepLabelKey(id: StudioGuideStepId): string {
   return `studio.guide.${id}.label`;
-}
-
-export function studioGuideActiveStep(view: "edit" | "preview"): StudioGuideStepId {
-  return view === "preview" ? "preview" : "structure";
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +103,8 @@ export function studioContribution(q: ContentQuality): StudioContribution {
   return {
     level,
     levelLabelKey: `studio.contrib.level.${level}.label`,
-    levelHintKey: `studio.contrib.level.${level}.hint`,
+    // R-0936: der Stand beschreibt den TEXT, nicht die Person (Textmodul `texte/tragfaehigkeit.ts`).
+    levelHintKey: `tragfaehigkeit.stand.${level}`,
     tone,
     strengths,
     suggestions,

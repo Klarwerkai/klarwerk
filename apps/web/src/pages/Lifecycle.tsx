@@ -22,6 +22,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useKos, useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
+import { useToast } from "../app/ToastContext";
+import { EmptyStateCtas, leerzustandsZeile } from "../components/EmptyStateCtas";
 import { PruefenKopf } from "../components/pruefen/PruefenKopf";
 import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
 import {
@@ -40,6 +42,7 @@ import {
 import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
 import { Button, cx } from "../components/ui";
 import { leseFall } from "../lib/fallAbsprung";
+import { aeltesteVorlage, faelligeKennungen } from "../lib/frische";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
 import {
   revalidationCta,
@@ -54,6 +57,7 @@ const QUITTUNG_MS = 3000;
 export function Lifecycle(): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const { push } = useToast();
   const navigate = useNavigate();
   const { user } = useSession();
   const role = user?.role ?? "viewer";
@@ -81,6 +85,9 @@ export function Lifecycle(): JSX.Element {
       void qc.invalidateQueries({ queryKey: ["lifecycle"] });
       setLastRevalidated({ id: vars.id, title: vars.title, found: vars.found });
     },
+    // R-0953 (Bestandsabgleich, Nacharbeit 4): der Erfolg hat seine Quittung oben; der Fehler
+    // blieb bis hierher still.
+    onError: () => push("error", t("lcy.toast.revalidateFailed")),
   });
 
   // SCRUM-146: Asset-Change-Auslöser → markiert gekoppelte KOs „prüfen".
@@ -106,14 +113,29 @@ export function Lifecycle(): JSX.Element {
   // SCRUM-145: Lernpfad-Schritt abhaken (Fortschritt serverseitig).
   const complete = useMutation({
     mutationFn: (stepId: string) => endpoints.learningPaths.complete(pathId ?? "", stepId),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["learning-progress", pathId] }),
+    onSuccess: () => {
+      push("success", t("lcy.toast.stepDone"));
+      void qc.invalidateQueries({ queryKey: ["learning-progress", pathId] });
+    },
+    onError: () => push("error", t("lcy.toast.stepFailed")),
   });
 
-  const ids = query.data ?? [];
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206): neben den Merkern steht hier auch geprüftes
+  // Wissen, das nach der serverseitigen Frische fällig oder veraltet ist (`lib/frische.ts`).
+  const faellig =
+    query.data === undefined ? undefined : faelligeKennungen(query.data, kos.data ?? []);
+  const ids = faellig ?? [];
+  // R-0266: die ältesten geprüften Beiträge in der Verantwortung der angemeldeten Person. Dieselbe
+  // Auswahlregel stellt der Server jede Woche als persönliche Vorlage in die Glocke
+  // (`aeltesteVorlageFuer`, services/app/src/frische-meldungen.ts) — hier steht sie zum Abarbeiten.
+  const vorlage = user ? aeltesteVorlage(kos.data ?? [], user.id) : [];
   // bens Korrekturpflicht 2 (Runde 4): Die Fälligkeitsliste liefert nur IDs — Titel, Anlage und
   // Status stehen im Objektabruf (`revalidationView`). Ohne dessen Antwort stand hier die rohe UUID
   // mit dem Vermerk „Objekt nicht auffindbar", obwohl das Objekt nur noch nicht geladen war.
-  const lage = flaechenZustand(query, abhaengigeQuelle(kos));
+  const lage = flaechenZustand(
+    { data: faellig, isLoading: query.isLoading, isError: query.isError },
+    abhaengigeQuelle(kos),
+  );
   const bestand = lage.lage === "bestand";
   const aktivIdEffektiv = bestand ? (ids.find((id) => id === aktivId) ?? ids[0] ?? null) : null;
 
@@ -184,7 +206,10 @@ export function Lifecycle(): JSX.Element {
             </ol>
           </>
         ) : (
-          <p>{t("lcy.pathEmpty")}</p>
+          <>
+            <p>{t("lcy.pathEmpty")}</p>
+            {leerzustandsZeile(t, "lernpfad")}
+          </>
         )}
       </PruefenHilfeBlock>
       <PruefenMenueTrenner />
@@ -212,6 +237,9 @@ export function Lifecycle(): JSX.Element {
             />
           ) : null}
           {lage.lage === "leer" ? <PruefenSatz kennung="leer">{t("lcy.empty")}</PruefenSatz> : null}
+          {/* R-0956 (Bestandsabgleich, Nacharbeit 4): der Leersatz bleibt wörtlich; darunter die
+              Einordnung in den Wissenskreis und der nächste Schritt. */}
+          {lage.lage === "leer" ? <EmptyStateCtas context="lifecycle" /> : null}
           {bestand && ids.length > 0 ? (
             <ul data-testid="pruefen-warteschlange" className="flex flex-col gap-1">
               {ids.map((id) => {
@@ -266,6 +294,38 @@ export function Lifecycle(): JSX.Element {
               ) : null}
             </div>
           </details>
+          {/* R-0266: die ältesten geprüften Beiträge der angemeldeten Person zur Bestätigung. */}
+          <details data-testid="pruefen-vorlage" className="mt-3">
+            <summary className="cursor-pointer list-none text-[12.5px] font-semibold text-muted hover:text-text">
+              {t("frische.vorlageTitel")} ({vorlage.length})
+            </summary>
+            <div className="mt-2 space-y-1.5 text-[12.5px]">
+              {vorlage.length === 0 ? (
+                <p className="text-muted-2">{t("frische.vorlageLeer")}</p>
+              ) : (
+                <>
+                  <p className="text-muted">{t("frische.vorlageHinweis")}</p>
+                  <ul className="flex flex-col gap-1">
+                    {vorlage.map((eintrag) => (
+                      <li key={eintrag.id} data-testid="pruefen-vorlage-eintrag">
+                        <Link
+                          to={`/wissen/${eintrag.id}`}
+                          className="text-text underline-offset-4 hover:underline"
+                        >
+                          {eintrag.title}
+                        </Link>
+                        {eintrag.frische ? (
+                          <span className="ml-1.5 text-muted-2">
+                            · {t(`frische.stufe.${eintrag.frische.stufe}`)}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          </details>
         </div>
 
         {/* ---- Die Karte des gewählten Objekts ----------------------------------------------- */}
@@ -278,6 +338,7 @@ export function Lifecycle(): JSX.Element {
   function karte(id: string): JSX.Element {
     const view = revalidationView(id, kos.data ?? []);
     const cta = revalidationCta(view);
+    const frische = kos.data?.find((k) => k.id === id)?.frische;
     return (
       <div
         data-testid="pruefen-karte"
@@ -321,6 +382,20 @@ export function Lifecycle(): JSX.Element {
             </PruefenMehrZeile>
             {view.asset ? (
               <PruefenMehrZeile beschriftung={t("lcy.revalAsset")}>{view.asset}</PruefenMehrZeile>
+            ) : null}
+            {/* aufnahme:20260922:gesamt-wissen-frische: wie frisch und bis wann gesichert. Wer
+                verantwortlich ist, steht am Objekt (Bibliothek „Mehr" → Belege). */}
+            {frische ? (
+              <>
+                <PruefenMehrZeile beschriftung={t("frische.stufeLabel")}>
+                  {t(`frische.stufe.${frische.stufe}`)}
+                </PruefenMehrZeile>
+                <PruefenMehrZeile beschriftung={t("frische.haltbarBis")}>
+                  {frische.haltbarBis
+                    ? new Date(frische.haltbarBis).toLocaleDateString()
+                    : t("frische.haltbarUnbekannt")}
+                </PruefenMehrZeile>
+              </>
             ) : null}
             {!view.found ? (
               <PruefenMehrBlock beschriftung={t("pruefen.mehr.zustand")}>

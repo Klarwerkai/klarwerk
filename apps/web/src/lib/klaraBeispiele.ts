@@ -19,8 +19,12 @@
 // SPRACHEN: DE/EN/NL wie die Oberfläche. Die Daten liegen als Sprachobjekte hier (Vorbild
 // `lib/helpTopics.iso.ts`), weil sie an der Kennung des Elements hängen und nicht an einem
 // i18n-Schlüssel; die Beschriftung „Beispiel" kommt aus `texte/klarabeispiel.ts`.
-import { CAPTURE_HELP_IDS } from "./captureHelp";
-import { REVIEW_HELP_IDS } from "./reviewHelp";
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): die Pflichtliste `BEISPIEL_PFLICHT`
+// (welche Kennungen ein Beispiel tragen MÜSSEN) stand hier als Export, gelesen nur vom Prüfstand.
+// Sie ist eine Prüferwartung, kein Produktverhalten, und steht jetzt dort
+// (`tests/hilfe-elementbeispiel/elementbeispiel-mounted.test.tsx`), unverändert aus denselben
+// Registern abgeleitet.
 
 export type BeispielSprache = "de" | "en" | "nl";
 
@@ -287,9 +291,3 @@ export const KLARA_BEISPIELE: Readonly<Record<string, Beispiel>> = {
 export function klaraBeispiel(entryId: string, lng: string): string | null {
   return KLARA_BEISPIELE[entryId]?.[beispielSprache(lng)] ?? null;
 }
-
-/** Die Kennungen, die ein Beispiel tragen MÜSSEN — aus den Registern, nicht von Hand. */
-export const BEISPIEL_PFLICHT: readonly string[] = [
-  ...CAPTURE_HELP_IDS.map((id) => `cap:${id}`),
-  ...REVIEW_HELP_IDS.map((id) => `rev:${id}`),
-];

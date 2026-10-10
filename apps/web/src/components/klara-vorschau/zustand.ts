@@ -6,7 +6,9 @@
 // (`shell/AppShell.tsx`). Klara wird bei jedem Wechsel der Fensterbreite also NEU montiert — ein
 // `useState` in der Figur verlöre dabei Position, Verlauf und offenen Vorschlag. Hier liegt der
 // Zustand einmal, React liest ihn über `useSyncExternalStore`, und die Sitzung (sessionStorage)
-// hält ihn über ein Neuladen. Nichts davon geht an den Server: die Vorschau speichert nichts.
+// hält ihn über ein Neuladen. Nichts davon geht an den Server: die Vorschau speichert nichts. Das
+// ECHTE Gespräch (Klara 01) liegt NICHT hier, sondern am Server unter dem eigenen Konto (`echt.ts`);
+// hier steht nur, welcher Betrieb gewählt ist.
 //
 // Die Funktionen hier sind REIN (Position klemmen, andocken, Antwort einsortieren) und ohne DOM
 // prüfbar (`tests/klara-vorschau/`).
@@ -33,6 +35,12 @@ export interface Flaeche {
 
 export type Rand = "links" | "rechts";
 export type Ansicht = "kompakt" | "seitlich";
+/**
+ * Klara 01 (produkt:20261008:klara-basis): ECHTER Betrieb (Frageweg von Klarwerk, Gespräch unter dem
+ * eigenen Konto — `echt.ts`) oder DEMO (die vorgefertigten Antworten der Vorschau). Sichtbar
+ * umschaltbar; der echte Betrieb ist der Anfang.
+ */
+export type Betrieb = "echt" | "demo";
 export type SeitenArt = "uebersicht" | "artikel" | "erfassung" | "fragen" | "andere";
 export type Status = "ruhe" | "laeuft" | "antwort" | "entscheidung";
 export type Aktion = "erklaeren" | "zusammenfassen" | "umformulieren" | "notiz" | "frage" | "modus";
@@ -102,6 +110,7 @@ export interface KlaraZustand {
   status: Status;
   entwurf: Entwurf | null;
   begleiten: boolean;
+  betrieb: Betrieb;
 }
 
 export const ANFANG: KlaraZustand = {
@@ -117,6 +126,7 @@ export const ANFANG: KlaraZustand = {
   status: "ruhe",
   entwurf: null,
   begleiten: false,
+  betrieb: "echt",
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -180,7 +190,8 @@ function laden(): KlaraZustand {
     const gelesen = JSON.parse(roh) as Partial<KlaraZustand>;
     // Eine laufende Anfrage überlebt kein Neuladen — der Zeitgeber dazu ist weg.
     const status = gelesen.status === "laeuft" ? "antwort" : (gelesen.status ?? "ruhe");
-    return { ...ANFANG, ...gelesen, status };
+    const betrieb = gelesen.betrieb === "demo" ? "demo" : "echt";
+    return { ...ANFANG, ...gelesen, status, betrieb };
   } catch {
     return ANFANG;
   }
