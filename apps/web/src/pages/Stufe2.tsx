@@ -51,6 +51,7 @@ import type {
 } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { ImportAccessPanel } from "../components/ImportAccessPanel";
 import { ImportExplore } from "../components/ImportExplore";
@@ -300,7 +301,11 @@ export function Output(): JSX.Element {
       <Card className="mb-4">
         <SectionLabel>{t("out.sourcesTitle")}</SectionLabel>
         <HelpTip title={t("out.sourcesTitle")} body={t("shelp.out.sourcesTitle")} />
-        <QueryState query={sources} emptyText={t("out.noValidated")}>
+        <QueryState
+          query={sources}
+          emptyText={t("out.noValidated")}
+          emptyExtra={leerzustandsZeile(t, "auswertung")}
+        >
           {(list) => (
             <ul className="mt-2 space-y-1.5">
               {list.map((s) => (
@@ -1471,6 +1476,8 @@ export function ImportReview(): JSX.Element {
              wirklich kam. Vorher trug ihn auch der Fall „nie gelesen". */
           <Card className="border-dashed text-center text-sm text-muted">
             {t("imp.queueEmpty")}
+            {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+            {leerzustandsZeile(t, "import")}
           </Card>
         ) : (
           <div className="space-y-2">
@@ -1678,7 +1685,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <SectionLabel>{t("mgmt.house")}</SectionLabel>
         <HelpTip title={t("mgmt.house")} body={t("shelp.mgmt.house")} />
         {snap.house.length === 0 ? (
-          <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+          <>
+            <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+            {leerzustandsZeile(t, "auswertung")}
+          </>
         ) : (
           <Wissenshaus floors={snap.house} flow={snap.houseFlow} />
         )}
@@ -1689,7 +1699,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <SectionLabel>{t("mgmt.recommendations")}</SectionLabel>
         <HelpTip title={t("mgmt.recommendations")} body={t("shelp.mgmt.recommendations")} />
         {snap.recommendations.length === 0 ? (
-          <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.noRecs")}</p>
+          <>
+            <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.noRecs")}</p>
+            {leerzustandsZeile(t, "auswertung")}
+          </>
         ) : (
           <ul className="mt-2 space-y-1.5">
             {snap.recommendations.map((r) => (
@@ -1720,7 +1733,10 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         <SectionLabel>{t("mgmt.priorities")}</SectionLabel>
         <HelpTip title={t("mgmt.priorities")} body={t("shelp.mgmt.priorities")} />
         {snap.priorities.length === 0 ? (
-          <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+          <>
+            <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
+            {leerzustandsZeile(t, "auswertung")}
+          </>
         ) : (
           <WissensPriorisierung priorities={snap.priorities} />
         )}
@@ -1858,7 +1874,10 @@ function ReasonerRunsCard(): JSX.Element {
             </p>
           ) : null}
           {records.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("fachwort.kiLaeufe.leer")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("fachwort.kiLaeufe.leer")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           ) : (
             <>
               <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2171,7 +2190,10 @@ function ModelRunAuswertungCard(): JSX.Element {
               ))}
             </ul>
           ) : (
-            <p className="text-[13px] text-muted">{t("mrun.report.empty")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("mrun.report.empty")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           )}
         </div>
       )}
@@ -2257,7 +2279,10 @@ function EvidenceIndexCard(): JSX.Element {
       ) : index.isError ? (
         <p className="text-[13px] text-danger">{t("state.error")}</p>
       ) : records.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("fachwort.belegIndex.leer")}</p>
+        <>
+          <p className="text-[13px] text-muted">{t("fachwort.belegIndex.leer")}</p>
+          {leerzustandsZeile(t, "auswertung")}
+        </>
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2337,7 +2362,10 @@ function ProvenanceIndexCard(): JSX.Element {
       ) : error ? (
         <p className="text-[13px] text-danger">{t("state.error")}</p>
       ) : rows.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("prov.empty")}</p>
+        <>
+          <p className="text-[13px] text-muted">{t("prov.empty")}</p>
+          {leerzustandsZeile(t, "auswertung")}
+        </>
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
@@ -2509,7 +2537,10 @@ function KnowledgeOsHintsCard(): JSX.Element {
             <span>{t("kos.sevCount.info", { n: result.summary.info })}</span>
           </div>
           {top.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("kos.hints.none")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("kos.hints.none")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           ) : (
             <ul className="space-y-1.5">
               {top.map((h) => (
@@ -2585,7 +2616,10 @@ function EvidenceFreshnessCard(): JSX.Element {
             <span>{t("evFresh.summary.neutral", { n: index.summary.neutral })}</span>
           </div>
           {index.affected.length === 0 ? (
-            <p className="text-[13px] text-muted">{t("fachwort.belegFrische.leer")}</p>
+            <>
+              <p className="text-[13px] text-muted">{t("fachwort.belegFrische.leer")}</p>
+              {leerzustandsZeile(t, "auswertung")}
+            </>
           ) : (
             <ul className="divide-y divide-hairline">
               {index.affected.map((r) => (
@@ -2991,9 +3025,12 @@ export function SoArbeitetKlarwerk({
               {t("wissensgraph.sicht.nichtGeliefert")}
             </p>
           ) : sichtbar.length === 0 ? (
-            <p data-testid="graph-sicht-leer" className="mt-2 text-muted">
-              {t("wissensgraph.sicht.leer")}
-            </p>
+            <>
+              <p data-testid="graph-sicht-leer" className="mt-2 text-muted">
+                {t("wissensgraph.sicht.leer")}
+              </p>
+              {leerzustandsZeile(t, "wissensnetz")}
+            </>
           ) : (
             <ul data-testid="graph-sicht-beziehungen" className="mt-2 flex flex-col gap-1">
               {sichtbar.map((k) => (
@@ -3194,10 +3231,19 @@ export function GraphView(): JSX.Element {
           verspricht den Sprung nur unter seiner Voraussetzung: klickbar ist ein Punkt erst, wenn
           sein Objekt im Bestand bekannt ist (`isNavigableNode`, weiter unten). */}
       <HelpTip title={t("seitenhilfe.graph.titel")} body={t("seitenhilfe.graph.text")} />
-      <QueryState query={graphQ} emptyText={t("s2.graphEmpty")}>
+      <QueryState
+        query={graphQ}
+        emptyText={t("s2.graphEmpty")}
+        emptyExtra={leerzustandsZeile(t, "wissensnetz")}
+      >
         {(raw) => {
           if (raw.nodes.length === 0) {
-            return <Notice textKey="s2.graphEmpty" />;
+            return (
+              <>
+                <Notice textKey="s2.graphEmpty" />
+                {leerzustandsZeile(t, "wissensnetz")}
+              </>
+            );
           }
           // UX-07 Lieferung 6: auf den Bestand MITWARTEN. Ohne ihn wüsste die Zeichnung weder
           // Status (alle Knoten sähen „offen" aus) noch Ziel (kein Knoten wäre ein Link) — beides

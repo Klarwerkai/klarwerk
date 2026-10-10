@@ -38,6 +38,7 @@ import type {
   SicherungsEintrag,
   VergleichKategorie,
 } from "../api/types";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
@@ -226,9 +227,13 @@ function Befund({
     // Eine BELEGTE Negativaussage: es liegt eine erfolgreiche, vollständige Lesung dieses
     // Verzeichnisses vor. Deshalb steht das Verzeichnis im Satz — die Aussage gilt für genau eines.
     return (
-      <p data-testid="sicherung-leer" className="text-[12.5px] leading-relaxed text-muted">
-        {t("adm.backup.none", { verzeichnis: daten.verzeichnis })}
-      </p>
+      <>
+        <p data-testid="sicherung-leer" className="text-[12.5px] leading-relaxed text-muted">
+          {t("adm.backup.none", { verzeichnis: daten.verzeichnis })}
+        </p>
+        {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+        {leerzustandsZeile(t, "verwaltung")}
+      </>
     );
   }
   return (

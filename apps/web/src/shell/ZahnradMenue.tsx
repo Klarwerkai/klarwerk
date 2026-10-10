@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { useRole } from "../app/RoleContext";
 import { ALL_ITEMS, anzeigeNameKey, einstellungenItem, istAktiverEintrag } from "../app/navigation";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { LegalFooter, useRechtsseitenAn } from "../legal/LegalPages";
 import { navHilfeFor } from "../lib/navHilfe";
 import { APP_VERSION } from "../version";
@@ -62,7 +63,13 @@ function SeitenhilfeListe(): JSX.Element {
   const nav = useNavErklaerung();
   const alle = nav ? [nav, ...tipps] : [...tipps];
   if (alle.length === 0) {
-    return <p className="px-2.5 py-1.5 text-[12.5px] text-muted">{t("menue.seitenhilfe.leer")}</p>;
+    return (
+      <div className="px-2.5 py-1.5">
+        <p className="text-[12.5px] text-muted">{t("menue.seitenhilfe.leer")}</p>
+        {/* R-0956 (Nacharbeit 7): auch die leere Seitenhilfe ordnet ein und nennt den Weg. */}
+        {leerzustandsZeile(t, "hilfe")}
+      </div>
+    );
   }
   return (
     <ul
