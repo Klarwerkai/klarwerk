@@ -1,3 +1,4 @@
+import { mitWeiteremFragenden } from "./gap-vorgang";
 import {
   type AnswerEvidenceSnapshot,
   type AnswerRecord,
@@ -46,10 +47,33 @@ export interface GapRepo {
   // Die Ablage ruft sie vor JEDEM ihrer eigenen Zugriffe — in PostgreSQL liegen zwischen Einfügen
   // und Hochzählen Wartepunkte, an denen der Administrator abschalten kann. Wirft sie, findet der
   // Zugriff nicht statt. Ohne sie unverändert.
+  //
+  // produkt:20261010:wissenskreislauf-schliessen: beim Hochzählen wird der Fragende der übergebenen
+  // Lücke (`gap.createdBy`) der offenen Lücke als weiterer Fragender zugeordnet — in DERSELBEN
+  // unteilbaren Anweisung (`mitWeiteremFragenden`), ohne Doppelte und ohne den Ersteller zweimal.
   insertOrIncrement?(
     gap: Gap,
     vorInhaltsabruf?: () => void,
   ): Promise<{ gap: Gap; created: boolean }>;
+  /**
+   * produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3) — VERGLEICHEN UND SETZEN.
+   *
+   * Schreibt `neu` NUR, wenn die gespeicherte Lücke noch genau `erwartet` ist (der Stand, aus dem
+   * der Schritt gerechnet wurde). Jeder Vorgangsschritt — Zuordnung, Rückfrage, Antwort, Entwurf,
+   * Priorität, Abschluss, Rücknahme — läuft hierüber (`AskService.aendereLuecke`): hat sich die
+   * Lücke inzwischen geändert (weitere Fragende, Zähler, Abschluss), wird nichts geschrieben, und
+   * der Dienst rechnet den Schritt am frischen Stand neu. Eine alte Momentaufnahme kann damit weder
+   * zwischenzeitliche Fragende verlieren noch einen Abschluss zurücknehmen.
+   *
+   * Optional aus demselben Grund wie `insertOrIncrement` (speicherlose Testattrappen); ohne die
+   * Methode vergleicht der Dienst den Stand selbst unmittelbar vor dem Schreiben.
+   */
+  ersetzeWenn?(erwartet: Gap, neu: Gap): Promise<boolean>;
+}
+
+/** Inhaltsgleichheit zweier Lückenstände — dieselbe Aussage wie `data = $3::jsonb` in PostgreSQL. */
+export function gleicherLueckenstand(a: Gap | undefined, b: Gap | undefined): boolean {
+  return a !== undefined && b !== undefined && JSON.stringify(a) === JSON.stringify(b);
 }
 
 /** Der Zähler einer Lücke; Altbestände ohne Feld gelten als einmal gefragt. */
@@ -79,7 +103,10 @@ export class InMemoryGapRepo implements GapRepo {
     if (gap.compareKey) {
       for (const vorhanden of this.gaps.values()) {
         if (vorhanden.status === "offen" && vorhanden.compareKey === gap.compareKey) {
-          const erhoeht: Gap = { ...vorhanden, askCount: haeufigkeit(vorhanden) + 1 };
+          const erhoeht: Gap = mitWeiteremFragenden(
+            { ...vorhanden, askCount: haeufigkeit(vorhanden) + 1 },
+            gap.createdBy,
+          );
           this.gaps.set(erhoeht.id, erhoeht);
           return Promise.resolve({ gap: erhoeht, created: false });
         }
@@ -96,6 +123,15 @@ export class InMemoryGapRepo implements GapRepo {
   update(gap: Gap): Promise<void> {
     this.gaps.set(gap.id, gap);
     return Promise.resolve();
+  }
+
+  // Ohne `await` zwischen Prüfen und Setzen — dieselbe Unteilbarkeit wie `insertOrIncrement`.
+  ersetzeWenn(erwartet: Gap, neu: Gap): Promise<boolean> {
+    if (!gleicherLueckenstand(this.gaps.get(neu.id), erwartet)) {
+      return Promise.resolve(false);
+    }
+    this.gaps.set(neu.id, neu);
+    return Promise.resolve(true);
   }
 
   delete(id: string): Promise<void> {
