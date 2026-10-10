@@ -127,7 +127,8 @@ describe("R-1630 / R-2176 · Antwort mit dem Wissensstand vor einem Jahr verglei
     await b.koService.revise(
       ko.id,
       {
-        title: "Absperrorgan bei Drucküberschreitung schließen",
+        // Kein Fragebegriff und kein Wortteil davon (etwa „Druck" aus „Überdruck") bleibt.
+        title: "Absperrorgan bei Grenzwert schließen",
         statement: "Absperrorgan Y automatisch schließen lassen.",
       },
       "anna",
