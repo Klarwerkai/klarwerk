@@ -112,15 +112,32 @@ describe("REF-02 · P1 — tatsächliches Antwortmodell je Anfrage, anderes Prü
   });
 
   it("P1b · der deterministische Rückfall hat kein Modell — die erste erlaubte Option ist unabhängig", async () => {
+    // Ein Reasoner ohne jedes Modell: die Antwort kommt vom deterministischen Rückfall, ohne dass
+    // die KI administrativ abgeschaltet wäre (keine gespeicherte Wahl `deterministic`, D5).
+    const ohneModell = new Reasoner(undefined, undefined, new InMemoryModelRunRepo());
+    const rolle = antwortRolleVon(await ohneModell.answer(FRAGE, KONTEXT, "de"));
+    expect(rolle).toMatchObject({ modell: null, stufe: "deterministic" });
+
     const { reasoner } = aufbau();
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "openai", perTask: {}, referenzpruefung: ["openai"] }),
+    );
+    const wahl = reasoner.referenzPruefer(rolle, false);
+    expect("pruefer" in wahl && wahl.pruefer.rolle.modell).toBe("gpt-fiktiv-1");
+  });
+
+  it("P1c · GEGENPROBE — gespeicherte Wahl `deterministic` ist die KI-Abschaltung (D5): kein Prüfer", async () => {
+    const { reasoner, openai } = aufbau();
     await reasoner.setTaskConfig(
       mitKiFreigabe({ global: "deterministic", perTask: {}, referenzpruefung: ["openai"] }),
     );
-    const antwort = await reasoner.answer(FRAGE, KONTEXT, "de");
-    const rolle = antwortRolleVon(antwort);
-    expect(rolle).toMatchObject({ modell: null, stufe: "deterministic" });
-    const wahl = reasoner.referenzPruefer(rolle, false);
-    expect("pruefer" in wahl && wahl.pruefer.rolle.modell).toBe("gpt-fiktiv-1");
+    expect(reasoner.kiAbschaltung().abgeschaltet).toBe(true);
+    const wahl = reasoner.referenzPruefer(
+      { anbieter: "deterministic", modell: null, stufe: "deterministic" },
+      false,
+    );
+    expect(wahl).toEqual({ grund: "nicht_freigegeben" });
+    expect(openai.pruefungen()).toBe(0);
   });
 });
 
