@@ -28,10 +28,12 @@ import {
   type KlaraObjektbezug,
   type KlaraSchritt,
   type KlaraSchrittStand,
+  type KlaraSeitenbezug,
   klaraGespraechApi,
 } from "../../api/klaraGespraech";
 import { kiBremsSatz } from "../../lib/kiBremse";
 import type { ReasonerLocale } from "../../lib/reasonerLocale";
+import { fehlendeGrundlage, quellenAngabenAus } from "./bezug";
 import type { Herkunft } from "./zustand";
 
 export type Speicherstand = "ja" | "laeuft" | "nein";
@@ -145,7 +147,11 @@ export function vergiss(): void {
 // Reine Helfer.
 // ------------------------------------------------------------------------------------------------
 
-/** Der Objektbezug, wie ihn der Server annimmt: Seite, Objekt und ggf. Artikelabsatz. */
+/**
+ * Der Objektbezug, wie ihn der Server annimmt: Seite, Objekt und ggf. Artikelabsatz — seit Klara 03
+ * auch Wissensobjekt, Fassung, Modus, Prüfstatus und Lesart, soweit der Appzustand sie kennt.
+ * Den gewählten Bezug einer Frage setzt `objektbezugFuer` (`bezug.ts`).
+ */
 export function objektbezugAus(h: Herkunft): KlaraObjektbezug {
   return {
     pfad: h.pfad,
@@ -153,6 +159,11 @@ export function objektbezugAus(h: Herkunft): KlaraObjektbezug {
     objekt: h.objekt,
     ...(h.artikelId ? { artikelId: h.artikelId } : {}),
     ...(h.absatz ? { absatz: h.absatz } : {}),
+    ...(h.koId ? { koId: h.koId } : {}),
+    ...(h.fassung ? { fassung: h.fassung } : {}),
+    ...(h.modus ? { modus: h.modus } : {}),
+    ...(h.pruefstatus ? { pruefstatus: h.pruefstatus } : {}),
+    ...(h.lesart ? { lesart: h.lesart } : {}),
   };
 }
 
@@ -287,6 +298,7 @@ function lokaleNachricht(e: KlaraNachrichtEingabe, gespeichert: Speicherstand): 
     objektbezug: e.objektbezug,
     antwortId: e.antwortId ?? null,
     quellen: e.quellen ?? [],
+    ...(e.quellenAngaben ? { quellenAngaben: e.quellenAngaben } : {}),
     wissensklasse: e.wissensklasse ?? null,
     grund: e.grund ?? null,
     angelegtAm: new Date().toISOString(),
@@ -488,6 +500,8 @@ export async function fragen(
   bezug: KlaraObjektbezug,
   locale: ReasonerLocale,
   t: TFunction,
+  /** Klara 03 (Nacharbeit 5): der gewählte Seitenkontext für den Frageweg — frei: keiner. */
+  seitenbezug?: KlaraSeitenbezug,
 ): Promise<Fragestand> {
   if (laufend) {
     return "fehlgeschlagen";
@@ -524,7 +538,7 @@ export async function fragen(
       );
       stand = "fehlgeschlagen";
     } else {
-      stand = await frageStellen(frage, bezug, locale, faden, steuerung, gen, t);
+      stand = await frageStellen(frage, bezug, locale, faden, steuerung, gen, t, seitenbezug);
     }
   } finally {
     if (laufend === steuerung) {
@@ -550,25 +564,38 @@ async function frageStellen(
   steuerung: AbortController,
   gen: number,
   t: TFunction,
+  seitenbezug?: KlaraSeitenbezug,
 ): Promise<Fragestand> {
   try {
-    const antwort = await klaraGespraechApi.frage(frage, locale, faden, steuerung.signal);
+    const antwort = await klaraGespraechApi.frage(
+      frage,
+      locale,
+      faden,
+      steuerung.signal,
+      seitenbezug,
+    );
     if (!gueltig(gen)) {
       return "veraltet";
     }
     const r = antwort.result;
     const beantwortet = r.answered && Boolean(r.answer);
-    // Ohne Antwort steht Klaras fester Satz da — der ist nie eine KI-Antwort.
-    const roh = beantwortet && r.answer ? r.answer : t("klaragespraech.antwort.keine");
+    // Ohne Antwort steht Klaras fester Satz da — der ist nie eine KI-Antwort. Klara 03: er sagt,
+    // WELCHE Grundlage fehlt (zur Markierung, zum Artikel, allgemein) und ob es Ungeprüftes gibt.
+    const roh = beantwortet && r.answer ? r.answer : fehlendeGrundlage(antwort, bezug, t);
     const text = roh.slice(0, 20_000);
     const getragen = r.citedSources?.length ? r.citedSources : r.sources;
-    const quellen = getragen.filter((q) => q.length > 0).slice(0, 20);
+    // Klara 03 · K3: eine Nicht-Antwort hat keine Quelle. Herangezogene Kandidaten neben dem Satz
+    // „keine Grundlage“ sähen aus wie Belege, die es nicht gibt.
+    const quellen = beantwortet ? getragen.filter((q) => q.length > 0).slice(0, 20) : [];
+    // Klara 03 · K3: Titel, Fassung und Prüfstatus jeder Quelle — wie DIESE Antwort sie nannte.
+    const quellenAngaben = beantwortet ? quellenAngabenAus(antwort, quellen) : [];
     const eingabe: KlaraNachrichtEingabe = {
       von: "klara",
       modus: beantwortet ? antwortModus(r.demo === true) : "ohne_ki",
       text,
       objektbezug: bezug,
       quellen,
+      ...(quellenAngaben.length > 0 ? { quellenAngaben } : {}),
       ...(typeof r.knowledgeClass === "string" ? { wissensklasse: r.knowledgeClass } : {}),
     };
     if (antwort.answerId) {

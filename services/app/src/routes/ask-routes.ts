@@ -22,6 +22,7 @@ import {
   GELTUNG_TEXT_MAX,
   type KnowledgeObject,
   type KoService,
+  isConfidential,
   normalizeFragekontext,
   responsibleOf,
 } from "../../../knowledge-object";
@@ -84,8 +85,94 @@ const askBodySchema = {
     // liegen, und Klaras eigener Zugang (R-0700) kennt das Feld gar nicht — ihre Egress-Verträge
     // kennen keinen zweiten Empfänger und bekommen keinen.
     zweitmeinung: { type: "boolean" },
+    // Klara 03 (produkt:20261007:klara-kontext-tutorial) — DER GEWÄHLTE SEITENKONTEXT. Wirkt wie
+    // Faden und Fragekontext NUR im Konsolenzweig. Ein Wissensobjekt (`koId`) löst die Route unter
+    // den Rechten des Fragenden auf (`seitenbezugAufloesen`); `kontext` ist der Titel des eigenen
+    // Entwurfs bzw. die aktuelle Frage der Seite. Kein Klara-Feld im Sinne von R-0700: es bindet
+    // nichts an ein Word-Dokument und trägt keine Markierung.
+    seitenbezug: {
+      type: "object",
+      properties: {
+        art: { type: "string", enum: ["artikel", "entwurf", "frage"] },
+        koId: { type: "string", minLength: 1, maxLength: 200 },
+        fassung: { type: "integer", minimum: 1 },
+        kontext: { type: "string", maxLength: 300 },
+      },
+      required: ["art"],
+      additionalProperties: false,
+    },
   },
 } as const;
+
+/** Klara 03: der Seitenbezug, wie er am Draht ankommt (Form vom Schema geprüft). */
+interface Seitenbezug {
+  art: "artikel" | "entwurf" | "frage";
+  koId?: string;
+  fassung?: number;
+  kontext?: string;
+}
+
+/** Klara 03: was die Antwort über den verwendeten Seitenbezug sagt — ohne Titel eines fremden Objekts. */
+interface SeitenbezugAuskunft {
+  art: Seitenbezug["art"];
+  /** `objekt`: aus diesem Objekt geantwortet; `kontext`: als Zusammenhang; sonst warum nicht. */
+  status: "objekt" | "kontext" | "nicht_zugaenglich" | "vertraulich";
+  koId?: string;
+  /** Die aktuelle Fassung des Objekts und die, die auf der Seite zu sehen war. */
+  fassung?: number;
+  angefragteFassung?: number;
+  fassungAbweichend?: boolean;
+  /** Hat das Objekt die Antwort tatsächlich getragen (unter den Quellen)? */
+  verwendet?: boolean;
+}
+
+/**
+ * Klara 03 · K1/K6: der Seitenbezug unter den Rechten DIESES Fragenden. Ein Wissensobjekt gilt nur,
+ * wenn es für ihn sichtbar und nicht vertraulich ist — dann reist sein (serverseitiger) Titel als
+ * Zusammenhang, und geantwortet wird nur aus ihm. Sonst gibt es keine Grundlage, und die Auskunft
+ * nennt weder Titel noch Fassung (keine Existenzauskunft über Fremdes).
+ */
+async function seitenbezugAufloesen(
+  ko: KoService,
+  user: SessionUser,
+  b: Seitenbezug,
+): Promise<{
+  zusatz: { kontext: string; nurObjekt?: string | null };
+  auskunft: SeitenbezugAuskunft;
+}> {
+  const kontextText = (b.kontext ?? "").trim();
+  if (!b.koId) {
+    return { zusatz: { kontext: kontextText }, auskunft: { art: b.art, status: "kontext" } };
+  }
+  const objekt = await ko.get(b.koId);
+  if (!objekt || !sichtbarkeitsfilterFuer(user)(objekt)) {
+    return {
+      zusatz: { kontext: "", nurObjekt: null },
+      auskunft: { art: b.art, status: "nicht_zugaenglich" },
+    };
+  }
+  if (isConfidential(objekt.confidentiality)) {
+    return {
+      zusatz: { kontext: "", nurObjekt: null },
+      auskunft: { art: b.art, status: "vertraulich", koId: objekt.id },
+    };
+  }
+  const kontext = [objekt.title, b.art === "frage" ? kontextText : ""]
+    .filter((teil) => teil.length > 0)
+    .join(" · ");
+  return {
+    zusatz: { kontext, nurObjekt: objekt.id },
+    auskunft: {
+      art: b.art,
+      status: "objekt",
+      koId: objekt.id,
+      fassung: objekt.version,
+      ...(b.fassung !== undefined
+        ? { angefragteFassung: b.fassung, fassungAbweichend: b.fassung !== objekt.version }
+        : {}),
+    },
+  };
+}
 
 // ================================================================================================
 // R-0700 · DIE KLARA-FELDER GEHÖREN NICHT MEHR ZUM ALLGEMEINEN FRAGEWEG.
@@ -895,6 +982,8 @@ async function antwortLauf(
     readonly actorId: string;
     readonly opts?: AskOptionen;
     readonly zusatz?: Partial<AskOptionen>;
+    /** Klara 03: zweigeigene Auskünfte NEBEN der Antwort (z. B. `seitenbezug`). Ohne: wie bisher. */
+    readonly beilage?: (out: Awaited<ReturnType<AskService["ask"]>>) => Record<string, unknown>;
     // R-0346 (aus main integriert): `dokument`, wenn die Frage aus dem Dokument stammt oder die
     // Anfrage an ein Word-Dokument gebunden ist — Klaras Zugang immer; sonst `frage`. Bewusst NICHT
     // die bloße Markierung (KA5-R2).
@@ -984,6 +1073,7 @@ async function antwortLauf(
     ...out,
     result: { ...out.result, evidence, belastbarkeit },
     ...(absaetze ? { absaetze } : {}),
+    ...(lauf.beilage ? lauf.beilage(out) : {}),
   });
 }
 
@@ -1128,6 +1218,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           actorId: string,
           opts: AskOptionen,
           zusatz?: Partial<AskOptionen>,
+          beilage?: (out: Awaited<ReturnType<AskService["ask"]>>) => Record<string, unknown>,
         ): Promise<void> =>
           antwortLauf(deps, request, reply, {
             question,
@@ -1135,6 +1226,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             actorId,
             opts,
             ...(zusatz ? { zusatz } : {}),
+            ...(beilage ? { beilage } : {}),
             // R-0346: hier kommt eine Klara-Bindung nur noch mit einem Dienst-Schlüssel an (R-0688,
             // Abweisung oben); dann gilt wie bisher der Anlass `dokument`.
             anlass: klaraBindungVorhanden(request.headers) ? "dokument" : "frage",
@@ -1203,10 +1295,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // Gesprächsfaden mit (Wirkung und Grenzen an `fadenfragen` im Fragedienst).
         // R-1633: dieselbe Grenze für den Fragekontext — nur hier, sonst unangetastet.
         // R-0305/R-1099: ebenso die Zweitmeinung — nur hier und nur auf ausdrückliche Anforderung.
+        // Klara 03: der gewählte Seitenkontext — nur hier, unter den Rechten dieses Fragenden.
+        const seitenbezug = request.body.seitenbezug as Seitenbezug | undefined;
+        const aufgeloest = seitenbezug
+          ? await seitenbezugAufloesen(deps.ko, user, seitenbezug)
+          : undefined;
         const konsolenZusatz = {
           ...(faden.length > 0 ? { gespraechsfaden: faden } : {}),
           ...(fragekontext ? { fragekontext } : {}),
           ...(request.body.zweitmeinung === true ? { zweitmeinung: true } : {}),
+          ...(aufgeloest ? { seitenkontext: aufgeloest.zusatz } : {}),
         };
         await answer(
           user.id,
@@ -1216,6 +1314,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
           },
           Object.keys(konsolenZusatz).length > 0 ? konsolenZusatz : undefined,
+          aufgeloest
+            ? (out) => ({
+                seitenbezug: {
+                  ...aufgeloest.auskunft,
+                  ...(aufgeloest.auskunft.koId && aufgeloest.auskunft.status === "objekt"
+                    ? { verwendet: out.result.sources.includes(aufgeloest.auskunft.koId) }
+                    : {}),
+                },
+              })
+            : undefined,
         );
       },
     );
