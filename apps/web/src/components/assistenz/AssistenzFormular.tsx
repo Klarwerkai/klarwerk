@@ -106,7 +106,8 @@ export function AssistenzFormular({
     if (modus === "einrichtung" || !bestaetigt) {
       return {
         name,
-        avatar: eingabe.avatar ?? undefined,
+        // `exactOptionalPropertyTypes`: ohne Wahl fehlt das Feld ganz (nie `undefined`).
+        ...(eingabe.avatar !== null ? { avatar: eingabe.avatar } : {}),
         bewegung: eingabe.bewegung,
         einrichtungAbschliessen: true,
         fassung,
