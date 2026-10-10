@@ -663,6 +663,40 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
     expect(res.json().error).toBe("KLARA_EIGENER_WEG");
     expect(gesehen).toHaveLength(0);
   });
+
+  it("KA4-S5 · gesamt-dokumenterzeugung: die Recherche des Anleitungsblocks (Frage + Faden, ohne Klara-Feld) läuft durch — die alte Form mit questionSource nicht", async () => {
+    // Genau der Körper, den `anleitungRecherche` (apps/web/public/word-addin/anleitung.js) schickt:
+    // getippte Frage, Gesprächsfaden, Sprache — keine Klara-Kopfzeile, kein Klara-Feld.
+    const { app, gesehen } = mitSpion();
+    const { authorization } = await adminHeaders(app);
+    const panel = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { authorization },
+      payload: {
+        question: "Was gilt für die Ventilwartung?",
+        thread: ["Ich muss eine Betriebsmitteilung schreiben."],
+        locale: "de",
+      },
+    });
+    expect(panel.statusCode, panel.body).toBe(200);
+    expect(gesehen.map((g) => g.question)).toEqual(["Was gilt für die Ventilwartung?"]);
+    // Gegenprobe: die Form vor R-0700 (questionSource: "manual") wird abgewiesen.
+    const alt = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { authorization },
+      payload: {
+        question: "Was gilt für die Ventilwartung?",
+        questionSource: "manual",
+        thread: [],
+        locale: "de",
+      },
+    });
+    expect(alt.statusCode).toBe(400);
+    expect(alt.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(gesehen).toHaveLength(1);
+  });
 });
 
 // ================================================================================================

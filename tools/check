@@ -122,10 +122,11 @@ KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_SEED=1 ANTHROPIC_API_KEY= ./tools/browse
   exit 1
 }
 echo "  ⓘ NICHT im Tor gelaufen: ui-smoke.spec.ts „Kernfluss … @modell\" und „Fragen antwortet"
-echo "    ehrlich … @modell\" sowie klara-basis-browser.spec.ts „Klara 01 · tatsächliche"
-echo "    Modellantwort … @modell\" — alle drei brauchen ein aktives"
+echo "    ehrlich … @modell\", anleitung-recherche-ki-modell.spec.ts „Anleitung: Recherche und"
+echo "    KI-Entwurf … @modell\" sowie klara-basis-browser.spec.ts „Klara 01 · tatsächliche"
+echo "    Modellantwort … @modell\" — alle vier brauchen ein aktives"
 echo "    Modell (Zugangsdatum + Egress), das dieses hermetische Tor bewusst nicht hat."
-echo "    Dass es bei GENAU DIESEN DREI bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
+echo "    Dass es bei GENAU DIESEN VIER bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
 echo "    dass der Tor-Lauf wirklich ohne Modell lief, hält tests-smoke/smoke-umgebung.spec.ts fest."
 echo "    Abgedeckt durch die Ship-Vorbedingung: npm run smoke:ui (drei Engines, mit Modell)."
 echo "✓ check grün"

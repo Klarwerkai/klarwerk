@@ -1,9 +1,11 @@
 // FR-EXT-03 / SCRUM-117: Output-Service. Stateless — keine Persistenz, keine KO-Mutation.
 // Quelle sind ausschließlich validierte KnowledgeObjects; nicht-validierte werden abgelehnt.
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
+import { type AuditLeser, pruefnachweiseFuer } from "./pruefnachweis";
 import {
   KIND_TITLE,
   OUTPUT_NO_CHECK_NOTE,
+  quellenMarke,
   renderBody,
   renderProvenance,
   toProvenance,
@@ -14,6 +16,7 @@ import {
   OUTPUT_KINDS,
   type OutputDocument,
   OutputError,
+  type OutputPruefnachweis,
   type OutputSource,
 } from "./types";
 import { type Wochenupdate, WochenupdateService } from "./wochenupdate";
@@ -29,15 +32,24 @@ export const OHNE_BETRACHTER: Sichtbarkeitsentscheidung = () => true;
 export interface OutputServiceDeps {
   koService: KoService;
   now?: () => number;
+  /**
+   * aufnahme:20260922:gesamt-dokumenterzeugung (R-0337, Nacharbeit 5): der Leseweg zum
+   * Validierungsnachweis. `findBySeq` adressiert den Eintrag, `all` liefert die Kette für die
+   * Integritätsprüfung (`pruefeValidationDecisionRef`, KW-W3-19). Fehlt er, ist kein Prüfdatum
+   * belegbar — das steht dann als Unsicherheit da, nicht als erfundenes Datum.
+   */
+  audit?: AuditLeser;
 }
 
 export class OutputService {
   private readonly koService: KoService;
   private readonly now: () => number;
+  private readonly audit: AuditLeser | undefined;
 
   constructor(deps: OutputServiceDeps) {
     this.koService = deps.koService;
     this.now = deps.now ?? (() => Date.now());
+    this.audit = deps.audit;
   }
 
   // Nur validierte KOs sind als Output-Quelle zulässig (Anti-Fake-Guard).
@@ -48,6 +60,11 @@ export class OutputService {
   ): Promise<OutputSource[]> {
     const kos = await this.koService.list({ status: "validiert" });
     return kos.filter((ko) => !isConfidential(ko.confidentiality) && sichtbar(ko)).map(toSource);
+  }
+
+  /** R-0337: das Prüfdatum je Quelle — dieselbe Lesung wie im Zuruf (`pruefnachweis.ts`). */
+  private pruefnachweise(kos: readonly KnowledgeObject[]): Promise<OutputPruefnachweis[]> {
+    return pruefnachweiseFuer(this.audit, kos);
   }
 
   async generate(
@@ -85,15 +102,25 @@ export class OutputService {
     }
 
     const audienceRole = input.audienceRole ?? null;
+    const anlass =
+      typeof input.anlass === "string" && input.anlass.trim() ? input.anlass.trim() : null;
     const generatedAt = new Date(this.now()).toISOString();
-    const provenance = selected.map(toProvenance);
+    const pruefungen = await this.pruefnachweise(selected);
+    const provenance = selected.map((ko, i) =>
+      // `pruefnachweise` liefert je Quelle genau einen Eintrag; der Rückfall bedient nur den
+      // indizierten Zugriff (exactOptionalPropertyTypes) und heißt „kein Nachweis", nie „belegt".
+      toProvenance(ko, { marke: `Q${i + 1}`, pruefung: pruefungen[i] ?? { zustand: "MISSING" } }),
+    );
+    const marken = selected.map((ko, i) => quellenMarke(i, ko));
     const title = KIND_TITLE[input.kind];
 
-    const header = [
-      `# ${title}`,
-      "",
-      `_Adressat: ${audienceRole ?? "—"} · erzeugt am ${generatedAt} · ${selected.length} validierte Quelle(n)_`,
-    ].join("\n");
+    // R-0350: die Betriebsmitteilung ist ein ENTWURF für Menschen — der Kopf sagt das, statt ein
+    // technisches Exportgerüst zu zeigen. Er sagt auch, dass kein Modell beteiligt war.
+    const kopfzeile =
+      input.kind === "betriebsmitteilung"
+        ? `_Entwurf · an: ${audienceRole ?? "alle Mitarbeitenden"} · aus ${selected.length} geprüften Quelle(n) zusammengestellt, ohne KI · erstellt am ${generatedAt} · vor dem Versand prüfen, kürzen und unterschreiben_`
+        : `_Adressat: ${audienceRole ?? "—"} · erzeugt am ${generatedAt} · ${selected.length} validierte Quelle(n)_`;
+    const header = [`# ${title}`, "", kopfzeile].join("\n");
 
     // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz stand ausschließlich am Ende des
     // Herkunftsblocks — also hinter dem gesamten Dokument. Wer eine fertige Arbeitsanweisung
@@ -104,7 +131,7 @@ export class OutputService {
       "",
       OUTPUT_NO_CHECK_NOTE,
       "",
-      renderBody(input.kind, selected),
+      renderBody(input.kind, selected, { marken, anlass, audienceRole, provenance }),
       "",
       renderProvenance(provenance),
     ].join("\n");

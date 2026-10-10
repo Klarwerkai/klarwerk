@@ -7,6 +7,13 @@ export {
 } from "./src/service";
 export type { AuditServiceDeps, AuditChainExport } from "./src/service";
 export { InMemoryAuditRepo, type AuditRepo, auditSeiteTrifft } from "./src/repo";
+// aufnahme:20260922:gesamt-dokumenterzeugung (R-0337): die Output Factory liest das Prüfdatum über
+// denselben geprüften Leseweg wie jeder andere Verbraucher eines Validierungsnachweises.
+export {
+  pruefeValidationDecisionRef,
+  type ValidationDecisionRef,
+  type ValidationDecisionRefState,
+} from "./src/repo";
 export {
   PgAuditRepo,
   AUDIT_SCHEMA,
