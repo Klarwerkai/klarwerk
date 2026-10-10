@@ -23,6 +23,8 @@
 import {
   type AnswerExportInput,
   type AnswerExportSource,
+  decisionArguments,
+  decisionProtocolRows,
   exportKennzeichnen,
 } from "./answerExport";
 import { stripAskAnswerMarkdown } from "./wordAddin";
@@ -117,6 +119,30 @@ export function antwortAbsaetze(input: AnswerExportInput): AntwortAbsatz[] {
     }
     for (const source of input.sources) {
       out.push({ art: "text", text: quellenZeile(source, L.trust) });
+    }
+  }
+  // R-1643 (Entscheidungs-Protokoll): Zeitpunkt, Nutzer-ID und Argumentationskette — dieselben
+  // Hilfen wie Markdown und Druck, damit Word, PowerPoint und PDF dasselbe Protokoll tragen.
+  if (input.protocol) {
+    const PL = input.protocol.labels;
+    out.push({ art: "ueberschrift", text: PL.heading });
+    for (const zeile of decisionProtocolRows(input, input.protocol)) {
+      out.push({ art: "text", text: `${zeile.label}: ${zeile.value}` });
+    }
+    out.push({ art: "ueberschrift", text: PL.argumentation });
+    const kette = decisionArguments(input, input.protocol);
+    if (kette) {
+      for (const [i, glied] of kette.entries()) {
+        const quelle = glied.quelleTitel
+          ? `${glied.quelleTitel} (${glied.quelleId})`
+          : glied.quelleId;
+        out.push({
+          art: "text",
+          text: `${i + 1}. „${glied.aussage}“ — ${PL.supportedBy}: ${quelle}`,
+        });
+      }
+    } else {
+      out.push({ art: "hinweis", text: PL.argumentationMissing });
     }
   }
   const datum = input.generatedAt.slice(0, 10);
