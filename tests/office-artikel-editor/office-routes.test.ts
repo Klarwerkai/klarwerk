@@ -507,6 +507,9 @@ describe("Office im Artikel · Routen", () => {
       expect.objectContaining({
         label: "Abschnitt 2 der Anleitung",
         stand: "frueher",
+        // R-0205: der Prüfstand der über `addSource` angehängten Quelle kommt über die Route an —
+        // auch an einer Belegstelle eines früheren Dokumentstands.
+        peerValidated: false,
       }),
     ]);
     // Die Belegstelle selbst ist unverändert — nichts wird still umgehängt.

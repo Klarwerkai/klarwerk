@@ -201,9 +201,18 @@ describe("B3/B4 · Verlauf und Belegstellen", () => {
 
   it("B4: Belegstellen nach Dokumentstand; fremde bleiben draussen", () => {
     const verlauf = anhangVerlauf(artikel, snapshots, belege, "anh-1");
+    // R-0205 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): der Prüfstand der Quelle
+    // reist mit — hier `false` aus `quelle()`.
     expect(belegstellenZumAnhang(artikel, verlauf, "anh-1")).toEqual([
-      { quelleId: "q-alt", label: "Alt", excerpt: null, stand: "frueher", ausFassung: 2 },
-      { quelleId: "q-neu", label: "Neu", excerpt: null, stand: "aktuell" },
+      {
+        quelleId: "q-alt",
+        label: "Alt",
+        excerpt: null,
+        stand: "frueher",
+        ausFassung: 2,
+        peerValidated: false,
+      },
+      { quelleId: "q-neu", label: "Neu", excerpt: null, stand: "aktuell", peerValidated: false },
     ]);
   });
 });
