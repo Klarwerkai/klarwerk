@@ -149,11 +149,14 @@ interface Struktur {
 }
 
 async function zeilen(p: Pool): Promise<Zeile[]> {
-  const res = await p.query<Zeile>(
+  const res = await p.query<Omit<Zeile, "source_version"> & { source_version: number | string }>(
     `SELECT id, data, external_id, provider, source_version, review_status
        FROM import_candidates ORDER BY id`,
   );
-  return res.rows;
+  // R-1653: `migrate()` baut `source_version` als `bigint` neu auf (Neun-Stellen-Fassung → fünfzehn
+  // Stellen); node-postgres liefert `bigint` als Zeichenkette. Verglichen wird der ZAHLENWERT —
+  // er muss für jede Zeile derselbe bleiben.
+  return res.rows.map((z) => ({ ...z, source_version: Number(z.source_version) }));
 }
 
 async function struktur(p: Pool): Promise<Struktur> {
@@ -188,9 +191,22 @@ function erwartetNachher(vorher: Zeile[]): Zeile[] {
   }));
 }
 
-/** Struktur ohne `external_id` — alles andere muss die Migration unverändert lassen. */
+/**
+ * Struktur ohne `external_id` und `source_version` — alles andere muss die Migration unverändert
+ * lassen. `source_version` heilt seit R-1653 ein eigener Block (Neun-Stellen-Fassung → `bigint`
+ * mit fünfzehn Stellen); ihre Sollform prüft `sourceVersionGeheilt` ausdrücklich.
+ */
 function ohneExternalId(s: Struktur): Spalte[] {
-  return s.spalten.filter((x) => x.attname !== "external_id");
+  return s.spalten.filter((x) => x.attname !== "external_id" && x.attname !== "source_version");
+}
+
+/** Die Sollform von `source_version` nach `migrate()` (R-1653). */
+function sourceVersionGeheilt(s: Struktur): void {
+  const sv = spalte(s, "source_version");
+  expect(sv.typ).toBe("bigint");
+  expect(sv.attgenerated).toBe("s");
+  expect(sv.ausdruck).toContain("{1,15}");
+  expect(sv.ausdruck).not.toContain("{1,9}");
 }
 
 describe("Q2d · Bestandsmigration external_id (JOB 3424) über echten Altbestand", () => {
@@ -327,6 +343,7 @@ describe("Q2d · Bestandsmigration external_id (JOB 3424) über echten Altbestan
     expect(ext.attgenerated).toBe("s");
     expect(ext.ausdruck).toMatch(/^NULLIF\(.*'externalId'.*, ''::text\)$/);
     expect(ohneExternalId(strukturNachher)).toEqual(ohneExternalId(strukturVorher));
+    sourceVersionGeheilt(strukturNachher);
     expect(strukturNachher.indizes).toEqual(strukturVorher.indizes);
 
     // WIRKUNG: der zweite Import mit leerer Kennung geht jetzt durch; eine echte Kennung bleibt

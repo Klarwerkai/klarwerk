@@ -134,10 +134,52 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_FROM: ${SMTP_FROM:-noreply@klarwerk.ai}
       SMTP_SECURE: ${SMTP_SECURE:-false}
+      # R-0545 / R-0868 · FIRMEN-LOGIN (SSO/OIDC), VOLLSTAENDIG DURCHGEREICHT.
+      # Bis hierher standen hier nur ISSUER, AUDIENCE und JWKS_URI — der Anmeldebaustein verlangt
+      # aber SIEBEN Pflichtwerte (`createOidcProviderFromEnv`, services/auth/src/oidc.ts). Wer alle
+      # sieben in seine `.env` schrieb, bekam auf diesem Weg trotzdem kein SSO: vier kamen nie an.
+      # Jetzt reicht der Block jeden Wert durch, den der Code liest. Alle bleiben OPTIONAL — ohne
+      # einen einzigen ist SSO schlicht aus. Fehlt nur ein Teil, nennt der Startbericht beim Start
+      # jeden fehlenden Namen (`startbericht`, services/app/src/start-vertrag.ts).
+      # DIE LEER-FALLE: `${X:-}` setzt den Wert auf den LEEREN String. Fuer OIDC_ROLE_CLAIM waere
+      # das falsch (`?? "roles"` greift bei "" nicht, es kaeme keine Rolle an) — dort steht deshalb
+      # der Vorgabewert des Codes. Fuer alle anderen ist "leer" gleichbedeutend mit „nicht gesetzt".
+      # Gehuetet von tests/firmenanmeldung/compose-reicht-sso-durch.test.ts.
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
       OIDC_JWKS_URI: ${OIDC_JWKS_URI:-}
+      OIDC_AUTHORIZE_URL: ${OIDC_AUTHORIZE_URL:-}
+      OIDC_TOKEN_URL: ${OIDC_TOKEN_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_AUTOPROVISION: ${OIDC_AUTOPROVISION:-false}
+      OIDC_ROLE_CLAIM: ${OIDC_ROLE_CLAIM:-roles}
+      OIDC_GROUP_ADMIN: ${OIDC_GROUP_ADMIN:-}
+      OIDC_GROUP_CONTROLLER: ${OIDC_GROUP_CONTROLLER:-}
+      OIDC_GROUP_EXPERTE: ${OIDC_GROUP_EXPERTE:-}
+      OIDC_REQUIRE_EMAIL_VERIFIED: ${OIDC_REQUIRE_EMAIL_VERIFIED:-}
+      OIDC_SESSION_TTL_HOURS: ${OIDC_SESSION_TTL_HOURS:-}
+      # R-0541: nur noch Firmen-Login (1/true). Die Sperre gilt auch ohne eingerichteten Firmen-Login;
+      # der Startbericht sagt dann, was fehlt.
+      KLARWERK_SSO_ONLY: ${KLARWERK_SSO_ONLY:-}
+      # R-0560: Firmen-Login ueber SAML. Dieselbe Regel wie oben: alle fuenf Pflichtwerte oder SAML
+      # ist aus, und der Startbericht nennt die fehlenden.
+      SAML_IDP_ENTITY_ID: ${SAML_IDP_ENTITY_ID:-}
+      SAML_IDP_SSO_URL: ${SAML_IDP_SSO_URL:-}
+      SAML_IDP_CERT: ${SAML_IDP_CERT:-}
+      SAML_SP_ENTITY_ID: ${SAML_SP_ENTITY_ID:-}
+      SAML_ACS_URL: ${SAML_ACS_URL:-}
+      SAML_AUTOPROVISION: ${SAML_AUTOPROVISION:-false}
+      SAML_ATTR_EMAIL: ${SAML_ATTR_EMAIL:-}
+      SAML_ATTR_NAME: ${SAML_ATTR_NAME:-}
+      SAML_ATTR_GROUPS: ${SAML_ATTR_GROUPS:-}
+      SAML_GROUP_ADMIN: ${SAML_GROUP_ADMIN:-}
+      SAML_GROUP_CONTROLLER: ${SAML_GROUP_CONTROLLER:-}
+      SAML_GROUP_EXPERTE: ${SAML_GROUP_EXPERTE:-}
+      # R-0556 / R-0571: Verzeichnispflege (SCIM) und Pruefzustaendigkeit je Space.
+      KLARWERK_SCIM_TOKEN: ${KLARWERK_SCIM_TOKEN:-}
+      KLARWERK_PRUEFZUSTAENDIGKEIT: ${KLARWERK_PRUEFZUSTAENDIGKEIT:-}
       # Word im Browser aus SharePoint/OneDrive: die SharePoint-Domaenenstaemme der eigenen
       # Microsoft-365-Mandanten (kommagetrennt, der Teil vor `.sharepoint.com`). OPTIONAL — leer
       # oder nicht gesetzt heisst: wie bisher, keine SharePoint-Herkunft darf das Taskpane

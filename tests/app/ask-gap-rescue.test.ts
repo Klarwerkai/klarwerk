@@ -4,15 +4,14 @@ import {
   GAP_RESCUE_STEPS,
   GAP_RESCUE_TEXT,
   type GapRescueStepId,
-  gapRescueStepLabelKey,
-  gapRescueSteps,
 } from "../../apps/web/src/lib/askGapRescue";
 
 // SCRUM-369 / AG-12 / AG-13 / AG-P2-4: Ask→Rescue-Rahmung — DOM-freie Beschreibung der
 // „Wissenslücke retten"-Story + geführte Schrittfolge (eine Quelle für Ask-Gap-Karte + Capture-Gap-Kontext).
 describe("SCRUM-369: askGapRescue", () => {
+  // R-1349: `gapRescueSteps()` und `gapRescueStepLabelKey` sind entfernt (kein Produktleser); die
+  // Flächen lesen `GAP_RESCUE_STEPS` und den `labelKey` des Schritts unmittelbar.
   it("liefert die geführten Schritte in fester Reihenfolge (antworten → erfahrung → strukturieren → prüfen)", () => {
-    expect(gapRescueSteps()).toBe(GAP_RESCUE_STEPS);
     expect(GAP_RESCUE_STEPS.map((s) => s.id)).toEqual<GapRescueStepId[]>([
       "answer",
       "experience",
@@ -25,7 +24,6 @@ describe("SCRUM-369: askGapRescue", () => {
     for (const step of GAP_RESCUE_STEPS) {
       expect(step.labelKey).toBe(`ask.gap.step.${step.id}.label`);
       expect(step.hintKey).toBe(`ask.gap.step.${step.id}.hint`);
-      expect(gapRescueStepLabelKey(step.id)).toBe(step.labelKey);
     }
   });
 

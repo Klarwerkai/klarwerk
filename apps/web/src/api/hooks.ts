@@ -7,7 +7,7 @@ import { importRunStateView } from "../lib/importResultView";
 import { LIVEWALL_TAKT_MS } from "../lib/livewallTakt";
 import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
-import type { BeziehungSetzenBody } from "./types";
+import type { AuditSeitenAnfrage, BeziehungSetzenBody } from "./types";
 
 /** Nachfragetakt für einen laufenden Import — ruhig genug fürs Netz, schnell genug fürs Auge. */
 const IMPORT_RUN_TAKT_MS = 2000;
@@ -37,6 +37,13 @@ export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],
     queryFn: () => endpoints.library.importCandidates.list(),
+  });
+// R-0179 (Nacharbeit 3): die Befunde je Kandidat. Derselbe Schlüsselstamm wie die Liste, damit
+// jede Invalidierung der Prüfliste auch diese Bewertung neu holt. Lazy wie `useConflicts`.
+export const useImportKandidatBefunde = () =>
+  useQuery({
+    queryKey: ["import-candidates", "befunde"],
+    queryFn: () => endpoints.library.importCandidates.befunde(),
   });
 // F-0140 / K-20 (JOB 2970 D1): der laufende Importlauf, so lange er läuft.
 //
@@ -150,6 +157,15 @@ export const useGaps = () => useQuery({ queryKey: ["gaps"], queryFn: endpoints.g
 // FUNKE-FIX2 P0 (bens Erforderlich 1): nur aggregierte Zähler für die Startseite (kein Volltext-Fetch).
 export const useGapsSummary = () =>
   useQuery({ queryKey: ["gaps", "summary"], queryFn: endpoints.gaps.summary });
+// R-1663 / R-2178: Ansprechpartner zu EINER Lücke — erst auf ausdrückliches Aufklappen angefragt
+// (`enabled`), nie für die ganze Liste beim Laden der Seite. Kein Retry, wie bei useExpertise.
+export const useGapAnsprechpartner = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["gaps", id, "ansprechpartner"],
+    queryFn: () => endpoints.gaps.ansprechpartner(id),
+    enabled,
+    retry: false,
+  });
 export const useDrafts = () => useQuery({ queryKey: ["drafts"], queryFn: endpoints.drafts.list });
 export const useAnalytics = () =>
   useQuery({ queryKey: ["analytics"], queryFn: endpoints.analytics.overview });
@@ -190,10 +206,13 @@ export const useExpertise = (enabled: boolean) =>
 // ein 404 jetzt `data === null`, und die optionale Verkettung dort greift aus einem DATENzustand
 // statt aus einem übergangenen Fehler. Dass die Fläche dabei unsichtbar bleibt, ist ab jetzt
 // gemessen (tests/app/577-abwesenheit-verbraucher-mounted.test.tsx).
+// R-1663 / R-2178: der Abruf ist LAZY wie bei `useConflicts` — ein teilweise gesetztes
+// `endpoints`-Objekt darf eine Fläche nicht schon beim Rendern abreissen (fail-closed bleibt:
+// Fehler = aus).
 export const useFeatures = () =>
   useQuery({
     queryKey: ["features"],
-    queryFn: alsAbwesenheit(endpoints.features.get),
+    queryFn: alsAbwesenheit(() => endpoints.features.get()),
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
@@ -213,6 +232,13 @@ export const useImportAccessConfluence = (enabled = true) =>
     retry: false,
   });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
+// produkt:20261009:admin-audit-verstaendlich: eine Seite der Kette. Der Schlüssel beginnt mit
+// „audit", damit jede bestehende Invalidierung von `["audit"]` (etwa nach dem Export) sie mitnimmt.
+export const useAuditSeite = (anfrage: AuditSeitenAnfrage) =>
+  useQuery({
+    queryKey: ["audit", "seite", anfrage],
+    queryFn: () => endpoints.audit.seite(anfrage),
+  });
 // JOB 2600 D1: die Themenkarte kommt als Teil der Sichtmetrik — eine Route, eine Rechte-Naht.
 export const useWissensnetz = () =>
   useQuery({ queryKey: ["wissensnetz", "luecken"], queryFn: endpoints.wissensnetz.luecken });
@@ -238,8 +264,33 @@ export const useQualitaetsblick = (gewaehlt: boolean) => ({
     enabled: gewaehlt,
   }),
 });
+// Lazy wie `useConflicts`: die Import-Seite liest den Hook seit R-0179 mit, und deren Testbestand
+// kennt diesen Endpunkt nicht überall.
 export const useLifecyclePending = () =>
-  useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
+  useQuery({ queryKey: ["lifecycle", "pending"], queryFn: () => endpoints.lifecycle.pending() });
+// R-1662: die fälligen Revalidierungsfälle für den Lösungsweg an einer Antwort — derselbe Schlüssel
+// und Endpunkt wie `useLifecyclePending`, aber erst geladen, wenn das Blatt offen ist (`enabled`),
+// und LAZY gelesen wie in `useQualitaetsblick`: Fragen-Tests ohne `lifecycle` reißen nicht ab.
+export const useLifecyclePendingWenn = (aktiv: boolean) =>
+  useQuery({
+    queryKey: ["lifecycle", "pending"],
+    queryFn: () => endpoints.lifecycle.pending(),
+    enabled: aktiv,
+  });
+// R-1662: frühere Revalidierungen zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
+export const useFruehereRevalidierungen = (koIds: readonly string[], aktiv: boolean) =>
+  useQuery({
+    queryKey: ["lifecycle", "revalidiert", [...koIds].sort().join(",")],
+    queryFn: () => endpoints.lifecycle.revalidiert(koIds),
+    enabled: aktiv && koIds.length > 0,
+  });
+// R-1662: die gelösten Konflikte zu den Quellen EINER Antwort — erst mit offenem Blatt, lazy.
+export const useGeloesteKonflikte = (koIds: readonly string[], aktiv: boolean) =>
+  useQuery({
+    queryKey: ["conflicts", "geloest", [...koIds].sort().join(",")],
+    queryFn: () => endpoints.conflicts.geloest(koIds),
+    enabled: aktiv && koIds.length > 0,
+  });
 export const useLearningPath = (role: string) =>
   useQuery({
     queryKey: ["learning-path", role],
@@ -375,6 +426,15 @@ export const useDeleteLiveWallPhoto = () => {
 };
 export const useReasonerStatus = () =>
   useQuery({ queryKey: ["reasoner", "status"], queryFn: endpoints.reasoner.status });
+// R-0599: die KI-Lage der Kopfzeile. Der Schlüssel liegt UNTER ["reasoner", "status"] — die
+// Invalidierung nach einer Admin-Änderung (`invalidateAiState`, Präfixvergleich) erneuert sie mit.
+// Der Endpunkt wird erst IM Abruf nachgeschlagen: die Zeile hängt in jeder Hülle, und ein Fehlschlag
+// ist dann ein Abfragefehler („unbekannt"), kein Renderfehler.
+export const useKiLage = () =>
+  useQuery({
+    queryKey: ["reasoner", "status", "kiLage"],
+    queryFn: () => endpoints.reasoner.kiLage(),
+  });
 // SCRUM-166: read-only Reasoner-/Provider-Konfiguration.
 // WP-VIP2-GATE-2 (bens Fix 3): serverseitig jetzt ECHTE Admin-Sicht (users.manage). Nicht-Admin-
 // Oberflaechen deaktivieren die Query (enabled=false) und fallen auf den oeffentlichen

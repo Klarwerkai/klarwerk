@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DRAFTS_BODY_LIMIT, buildApp, buildServices } from "../../app";
-import { InterviewSession } from "./interview";
 import { type DraftRepo, InMemoryDraftRepo } from "./repo";
 import { PgDraftRepo } from "./repo-pg";
 import { CaptureService } from "./service";
@@ -275,23 +274,8 @@ describe("AUFTRAG-JOB507-D4: POST /api/drafts — 413 legt NICHTS an, 201 legt g
   });
 });
 
-describe("InterviewSession (FR-CAP-02)", () => {
-  it("stellt eine Frage pro Schritt und schließt nach genügend Antworten ab", () => {
-    const session = new InterviewSession();
-    let steps = 0;
-    while (!session.isComplete()) {
-      const q = session.currentQuestion();
-      expect(q).toBeTruthy();
-      session.answer(`Antwort ${steps}`);
-      steps += 1;
-    }
-    expect(steps).toBeGreaterThanOrEqual(4);
-    expect(session.currentQuestion()).toBeUndefined();
-    const result = session.result();
-    expect(result.title).toBe("Antwort 0");
-    expect(result.conditions).toEqual(["Antwort 1"]);
-  });
-});
+// R-1349: Der Fall „InterviewSession (FR-CAP-02)" prüfte das deterministische Interview, das kein
+// Produktweg rief. Klasse und Fall sind entfernt; das Interview trägt der Reasoner-Weg.
 
 // ================================================================================================
 // JOB 510 / R10 — DIE WORD-HERKUNFT UEBERLEBT SPEICHERN UND LADEN.
@@ -507,12 +491,25 @@ interface Abfrage {
  * String, aus einer jsonb-Spalte kommt ein Objekt. Wuerde das Doppel den String zurueckgeben,
  * pruefte der Test seine eigene Erfindung statt die Abbildung.
  */
+/**
+ * R-1133: die Indexanweisung (`PgDraftRepo.setzeEntwurfsIndex`) schreibt die Indexspalten, NICHT
+ * `data`. Sie trägt dieselbe Standbedingung wie der Compare-and-Swap und würde ohne eigene Erkennung
+ * dort als Schreiben von `data=$2` gelesen — das Doppel legte dann die Fassungsnummer als Entwurf ab.
+ */
+const istIndexSchreiben = (text: string): boolean => text.includes("SET index_fassung");
+
 class PoolDoppel {
   readonly abfragen: Abfrage[] = [];
   private readonly tabelle = new Map<string, string>();
 
   query<T>(text: string, werte: unknown[] = []): Promise<{ rows: T[]; rowCount?: number }> {
     this.abfragen.push({ text, werte });
+    // R-1133: Indexspalten, gebunden an den gespeicherten Stand (`$3`) — `data` bleibt unberührt.
+    if (text.startsWith("UPDATE") && istIndexSchreiben(text)) {
+      const roh = this.tabelle.get(werte[0] as string);
+      const gespeichert = roh === undefined ? undefined : (JSON.parse(roh) as Draft).updatedAt;
+      return Promise.resolve({ rows: [], rowCount: gespeichert === werte[2] ? 1 : 0 });
+    }
     // JOB 2684 D3: die Schreibanweisung mit Standbedingung (`… AND data->>'updatedAt' = $3`) —
     // das Doppel wertet sie aus wie Postgres: Treffer nur, wenn der gespeicherte Stand passt;
     // `rowCount` sagt, ob geschrieben wurde. Ohne Bedingung: schreiben, rowCount 1.
@@ -548,7 +545,10 @@ class PoolDoppel {
   /** Der zuletzt als Parameter uebergebene JSON-Text zu dieser Id — die echte Schreibwahrheit. */
   letzterJsonParameter(id: string): string {
     const treffer = this.abfragen.filter(
-      (a) => (a.text.startsWith("INSERT") || a.text.startsWith("UPDATE")) && a.werte[0] === id,
+      (a) =>
+        (a.text.startsWith("INSERT") || a.text.startsWith("UPDATE")) &&
+        !istIndexSchreiben(a.text) &&
+        a.werte[0] === id,
     );
     const letzte = treffer[treffer.length - 1];
     if (!letzte) {
@@ -584,7 +584,11 @@ describe("JOB 510 D3: PgDraftRepo selbst — Insert/Find/Update mit Pool-Doppel"
     // (3) UPDATE ueber den Dienst: die Herkunft ueberlebt auch das Fortschreiben.
     const weiter = await s.continueDraft(draft.id, { statement: "ergaenzt" }, "bob");
     expect(weiter.payload.origin).toBe("word_addin");
-    const update = doppel.abfragen.find((a) => a.text.startsWith("UPDATE"));
+    // Die Schreibanweisung des Entwurfs — nicht die Indexanweisung, die seit R-1133 jedem
+    // Schreiben folgt (sie schreibt die Indexspalten, nicht `data`).
+    const update = doppel.abfragen.find(
+      (a) => a.text.startsWith("UPDATE") && !istIndexSchreiben(a.text),
+    );
     expect(update?.text).toContain("UPDATE drafts SET data=$2 WHERE id=$1");
     expect(doppel.letzterJsonParameter(draft.id)).toContain('"origin":"word_addin"');
     const nachUpdate = await repo.findById(draft.id);
