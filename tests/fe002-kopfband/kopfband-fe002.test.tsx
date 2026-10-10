@@ -98,6 +98,7 @@ import {
 import { direktzugangZiele } from "../../apps/web/src/app/navigationGliederung";
 import i18n from "../../apps/web/src/i18n";
 import { effectiveStufe2 } from "../../apps/web/src/lib/effectiveRole";
+import { aktuellePlattform, kuerzelText } from "../../apps/web/src/lib/tastenkuerzel";
 import { CommandPalette } from "../../apps/web/src/shell/CommandPalette";
 import { DrawerMenue } from "../../apps/web/src/shell/DrawerMenue";
 import { Kopfband } from "../../apps/web/src/shell/Kopfband";
@@ -284,7 +285,8 @@ describe("FE-002 · E1 — vier Zwecke, vier sichtbare Wege", () => {
 
     const seite = q('[data-testid="kopfband-gehezu"]');
     expect(seite?.textContent).toContain("Seite finden");
-    expect(seite?.textContent).toContain("⌘K");
+    // R-0987: das Kürzel der eigenen Plattform („⌘K" auf Apple, sonst „Strg+K").
+    expect(seite?.textContent).toContain(kuerzelText("K", i18n.language, aktuellePlattform()));
     expect(seite?.textContent, "der alte, zweckfreie Name steht noch da").not.toContain("Gehe zu");
 
     expect(q('[data-testid="kopfband-zahnrad"]')?.getAttribute("aria-label")).toBe(
@@ -477,7 +479,7 @@ describe("FE-002 · E2 — Wissen suchen und Seite finden sind zwei Wege", () =>
     await klicke(ausloeser);
     const zeile = q('[data-testid="arbeitsbereiche-seite-finden"]');
     expect(zeile?.textContent).toContain("Seite finden");
-    expect(zeile?.textContent).toContain("⌘K");
+    expect(zeile?.textContent).toContain(kuerzelText("K", i18n.language, aktuellePlattform()));
     await klicke(zeile);
     expect(q('[data-testid="arbeitsbereiche-menue"]')).toBeNull();
     expect(q('[data-cmd="suchfeld"]')).not.toBeNull();

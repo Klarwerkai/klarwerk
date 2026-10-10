@@ -100,7 +100,9 @@ export function ImportJsonUpload({
           className="block w-full rounded-input border border-hairline bg-page p-2 font-mono text-text"
         />
         <p id="import-json-example-hint">{t("imp.json.exampleHint")}</p>
-        <Link to="/bibliothek" className="inline-block text-brand underline">
+        {/* WCAG 1.4.3 (Audit nacharbeit-8): `text-brand` maß als Linktext 2,78:1 (klassisch) bzw.
+            3,38:1 (modern). Das Marken-TEXT-Token ist genau für Schrift da (≥ 4,5:1). */}
+        <Link to="/bibliothek" className="inline-block text-brand-text underline">
           {t("imp.json.exportPath")}
         </Link>
       </div>

@@ -2,6 +2,7 @@ import { ChevronDown } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { useKuerzel } from "../lib/tastenkuerzel";
 import type { PaletteAnfrage } from "./CommandPalette";
 import { WeitereBereicheZeilen } from "./KopfbandPunkte";
 import { MenueFlaeche, MenueTrenner, MenueZeile, useMenue } from "./Menue";
@@ -39,6 +40,8 @@ export function ArbeitsbereicheEintraege({
   rueckweg?: (() => HTMLElement | null) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
+  // R-0987: „⌘K" auf Apple, sonst „Strg+K"/„Ctrl+K" — dieselbe Quelle wie der Kopfband-Knopf.
+  const kuerzel = useKuerzel("K");
   const seiteFinden = (): void => {
     onSchnellzugriff?.();
     // Im Drawer (erkennbar am Rückweg) ist die Modalgrenze in diesem Moment noch gesperrt — die
@@ -56,7 +59,7 @@ export function ArbeitsbereicheEintraege({
       <MenueTrenner />
       <MenueZeile
         onClick={seiteFinden}
-        wert="⌘K"
+        wert={kuerzel}
         title={t("fe002.seiteFindenLabel")}
         testid="arbeitsbereiche-seite-finden"
       >

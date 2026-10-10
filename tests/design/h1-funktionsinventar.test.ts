@@ -12,6 +12,7 @@
 // noch Konto-Menü — jede Zeile ist dort rot.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
+import { kuerzelFormen } from "../../apps/web/src/lib/tastenkuerzel";
 import { APP_VERSION } from "../../apps/web/src/version";
 import { type Seite, type Strecke, fn, oeffne, strecke, warteBis } from "./h1-chromium";
 
@@ -170,7 +171,11 @@ const INVENTAR: Zeile[] = [
       const text = (await sichtbarerText(knopf)) ?? "";
       // FE-002: der Knopf heißt „Seite finden" (vormals „Gehe zu …") — dieselbe Palette.
       expect(text).toContain(t("fe002.seiteFinden"));
-      expect(text, "die Tastenkombination ist am Knopf nicht erkennbar").toContain("⌘K");
+      // R-0987: die Kombination der Plattform dieser Maschine — „⌘K" auf Apple, sonst „Strg+K".
+      expect(
+        kuerzelFormen("K", "de").some((k) => text.includes(k)),
+        "die Tastenkombination ist am Knopf nicht erkennbar",
+      ).toBe(true);
       // Zu: der Klick öffnet.
       await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
       await seite().click(knopf);
@@ -329,7 +334,8 @@ const INVENTAR: Zeile[] = [
           // gehört).
           t("fe002.arbeitsbereiche"),
           t("fe002.seiteFinden"),
-          "⌘K",
+          // R-0987: das Kürzel folgt der Plattform — beide Formen gehören zum Inventar.
+          ...kuerzelFormen("K", "de"),
           t("fe002.meldungen"),
         ].flatMap((n) => n.split(/\s+/)),
       );

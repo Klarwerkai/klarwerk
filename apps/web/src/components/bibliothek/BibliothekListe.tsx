@@ -315,7 +315,10 @@ export function BibliothekListe({
               onChange={(e) => onQ(e.target.value)}
               placeholder={t("lib.searchLabel")}
               data-testid="bib-suche"
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-[#9AA2B1]"
+              // WCAG 1.4.3 (Audit nacharbeit-6): das Mockup-Grau #9AA2B1 maß als Platzhalter auf der
+              // Seitenfläche 2,3–2,4:1. Wie auf Start und Fragen (zielbild-h5) nimmt das Produkt
+              // Tinte-2 (`muted`), die in beiden Themen ≥ 4,5:1 erreicht.
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-muted"
             />
           </div>
           {menues.punkte}
