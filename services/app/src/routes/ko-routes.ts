@@ -685,6 +685,15 @@ interface PutBody {
   /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
   vorrang?: unknown;
   newAuthor?: string;
+  /**
+   * produkt:20261010:aenderungsfolgen-sichtbar: an `revalidate` der Stand der Folgeprüfung, den der
+   * Prüfende gesehen hat; an `neighbors-changed` der optionale Änderungsbeleg. Beide `unknown`,
+   * geprüft an der `case`.
+   */
+  stand?: unknown;
+  /** Nacharbeit 6: an `revalidate` die angezeigte Inhaltsfassung (Pflicht zusammen mit `stand`). */
+  fassung?: unknown;
+  aenderung?: unknown;
   text?: string;
   /**
    * JOB 4146 (WIKI-DISKUSSION) — die drei Felder des Fadens. Alle `unknown`, weil sie aus dem Netz
@@ -3919,7 +3928,28 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            reply.code(200).send(await lifecycle.confirmStillValid(id, user.id));
+            // produkt:20261010:aenderungsfolgen-sichtbar: mit `stand` gilt die Bestätigung genau dem
+            // gesehenen Stand; eine inzwischen eingegangene Änderung ergibt 409 `STAND_VERALTET`.
+            const stand = body.stand;
+            if (stand !== undefined && !(Number.isInteger(stand) && (stand as number) > 0)) {
+              return badRequest("stand muss eine positive ganze Zahl sein.");
+            }
+            // Nacharbeit 6 (Ben, K5): mit dem Stand reist die angezeigte Inhaltsfassung — eine
+            // inzwischen überarbeitete Fassung ergibt 409 `KO_STALE` (samt `currentVersion`).
+            const fassung = body.fassung;
+            if (stand !== undefined && !(Number.isInteger(fassung) && (fassung as number) > 0)) {
+              return badRequest("fassung (die angezeigte Fassung) muss mit stand mitkommen.");
+            }
+            reply
+              .code(200)
+              .send(
+                await lifecycle.confirmStillValid(
+                  id,
+                  user.id,
+                  stand as number | undefined,
+                  stand === undefined ? undefined : (fassung as number),
+                ),
+              );
             return;
           }
           // R-1732 / R-0206: aus der Bibliothek eine erneute Prüfung anstossen — dasselbe Recht wie
@@ -3936,13 +3966,35 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // R-0203: die Anlagenänderung über dieses Objekt melden — dasselbe Recht wie
           // `POST /api/lifecycle/asset-changed`. Die Antwort nennt nur die ZAHL der markierten
           // Objekte, keine Kennungen: Nachbarn, die der Meldende nicht sehen darf, bleiben ungenannt.
+          //
+          // produkt:20261010:aenderungsfolgen-sichtbar: auch die ZAHL ist eine Auskunft — gezählt
+          // werden seither nur die markierten Objekte, die der Meldende sehen darf. Markiert wird
+          // weiter jedes gekoppelte. Ein optionaler Änderungsbeleg unterscheidet eine weitere
+          // Änderung von der wiederholten Meldung derselben.
           case "neighbors-changed": {
             const user = await guards.requirePermission("ko.validate", request, reply);
             if (!user) {
               return;
             }
-            const markiert = await lifecycle.neighborsChanged(id, user.id);
-            reply.code(200).send({ markiert: markiert.length });
+            const roh = body.aenderung;
+            const aenderung =
+              typeof roh === "string" ? roh.normalize("NFC").replace(/\s+/g, " ").trim() : "";
+            if ((roh !== undefined && typeof roh !== "string") || aenderung.length > 200) {
+              return badRequest("aenderung ist eine kurze Kennung (höchstens 200 Zeichen).");
+            }
+            const markiert = await lifecycle.neighborsChanged(
+              id,
+              user.id,
+              aenderung.length > 0 ? aenderung : undefined,
+            );
+            let sichtbar = 0;
+            for (const koId of markiert) {
+              const nachbar = await ko.get(koId);
+              if (nachbar && darfSehen(user, nachbar)) {
+                sichtbar += 1;
+              }
+            }
+            reply.code(200).send({ markiert: sichtbar });
             return;
           }
           // R-0206 / R-1746: „Stimmt weiterhin" nach dem Anwenden — jeder, der das Objekt lesen
