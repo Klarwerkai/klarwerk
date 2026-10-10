@@ -9,6 +9,7 @@ import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnlagenKontext,
   AnsprechpartnerAuskunft,
   AnswerResult,
   AntwortMeldeGrund,
@@ -371,6 +372,8 @@ export type KoAction =
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
   | { action: "domain"; domain: string }
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext; ersetzt den bisherigen.
+  | { action: "anlagenkontext"; anlagenkontext: AnlagenKontext }
   // R-1632 / R-1633: die Geltung setzen; `null` entfernt sie (ko-routes.ts `geltung`).
   | { action: "geltung"; geltung: KoGeltung | null }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
