@@ -284,7 +284,8 @@ export interface MeldungZeile {
     | "kenntnisnahme"
     | "loeschantrag"
     | "frische"
-    | "reklamation";
+    | "reklamation"
+    | "veroeffentlichung";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -322,6 +323,8 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   frische: "today",
   gap: "later",
   impact: "later",
+  // Eine Veröffentlichungsmeldung ist Information, keine Arbeit — wie eine Wirkungs-Rückmeldung.
+  veroeffentlichung: "later",
 };
 
 /** Bereichsname je Meldungsart (i18n-Schlüssel) — steht als Meta rechts in der Zeile. */
@@ -337,6 +340,10 @@ export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
   // aufnahme:20260922:gesamt-wissen-frische: Texte im Textmodul `texte/frische.ts`.
   if (kind === "frische") {
     return "frische.meldungArt";
+  }
+  // Die Veröffentlichung bringt ihre Texte im eigenen Textmodul mit (`texte/veroeffentlichung.ts`).
+  if (kind === "veroeffentlichung") {
+    return "veroeffentlichung.meldungArt";
   }
   // R-0894: die beiden neueren Arten tragen ihren Namen im Textmodul `texte/meldungsart.ts`.
   if (kind === "escalation") {

@@ -350,6 +350,14 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Kenntnisnahme — nur die eigene Anforderung und nur bei darfSehen, sonst 404.",
   },
+  "GET /api/kos/:id/veroeffentlichung": {
+    urteil: "PRAEDIKAT",
+    grund: "Veröffentlichung — Stand und Vorschau nur zu einem Eintrag, den der Leser sehen darf.",
+  },
+  "POST /api/kos/:id/veroeffentlichung": {
+    urteil: "PRAEDIKAT",
+    grund: "Veröffentlichung — darfSehen vor dem Veröffentlichen, sonst 404.",
+  },
   // --- R-1644: Wissensauskunft zum Zeitpunkt -------------------------------------------------------
   // Trägt Titel und Kernaussage der damals geltenden Fassung; darfSehen vor jeder Antwort.
   "GET /api/kos/:id/wissensauskunft": {

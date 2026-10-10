@@ -504,6 +504,7 @@ PFLICHTTABELLEN=(
   begriffe_fassungen
   kenntnisnahme_anforderungen
   kenntnisnahme_empfaenger
+  veroeffentlichung_zustellungen
   spaces_fassungen
   livewall_fotos
   interaktions_gedaechtnis

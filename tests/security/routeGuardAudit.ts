@@ -477,6 +477,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["darfSehen"],
   },
+  // Veröffentlichung mit Meldungswahl: der Stand mit `ko.read`, das Veröffentlichen mit dem
+  // vorhandenen Freigaberecht `ko.validate`. Beide Türen halten den Eintrag vor der Antwort gegen
+  // `darfSehen` (sonst 404 wie am Detailabruf).
+  "GET /api/kos/:id/veroeffentlichung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/veroeffentlichung": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
   // R-1644: die Wissensauskunft zum Zeitpunkt — Einsichtsstufe des Audit-Protokolls (`ko.validate`),
   // der Eintrag wird vor der Antwort gegen `darfSehen` gehalten (sonst 404).
   "GET /api/kos/:id/wissensauskunft": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },

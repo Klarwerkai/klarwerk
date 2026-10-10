@@ -300,6 +300,26 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: true },
   },
   {
+    // produkt:20261007:veroeffentlichungsoptionen — der beim Veröffentlichen angekündigte
+    // Empfängerkreis, je Empfänger eine Zeile (`services/app/src/veroeffentlichung.ts`).
+    id: "veroeffentlichungszustellungen",
+    name: "Veröffentlichungsmeldungen (Zustellungen)",
+    inhalt:
+      "Je normal oder hervorgehoben veröffentlichter Fassung und Empfänger: Kennung des Vermerks, des Wissensobjekts und des Empfängers, Zeitpunkt, ob hervorgehoben. Kein Inhalt des Wissensobjekts.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, dem die Meldung zugestellt wurde.",
+    ablage: { ort: DATENBANK, tabellen: ["veroeffentlichung_zustellungen"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Verwaiste Zeilen (Vermerk fehlt am Eintrag) entfernt der Abruf der Glocke; sonst kein Löschweg, auch nicht mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die Zustellungen sind die Veröffentlichungsmeldungen der eigenen Glocke und dort für die Person sichtbar; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
     id: "protokoll",
     name: "Prüfprotokoll (Audit)",
     inhalt: "Wer (Kennung), wann, welche Aktion, welches Ziel und Nutzdaten der Aktion.",

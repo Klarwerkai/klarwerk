@@ -122,6 +122,7 @@ import { KenntnisnahmeBereich, KenntnisnahmeVerweis } from "../kenntnisnahme/Ken
 import { NegativwissenAnzeige } from "../ko/NegativwissenAnzeige";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
+import { VeroeffentlichungBereich } from "../veroeffentlichung/VeroeffentlichungBereich";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { FassungsvergleichImEditor } from "./Fassungsvergleich";
@@ -2634,6 +2635,12 @@ export function BibliothekLesen({
       zielId={kenntnisnahmeZiel}
     />
   );
+  // Veröffentlichung (produkt:20261007:veroeffentlichungsoptionen): welche Fassung veröffentlicht
+  // ist — und für Freigebende die Wahl still/normal/hervorgehoben samt Wirkung. Was jemand darf,
+  // entscheidet allein die Serverantwort (`ko.validate`). Mit Freigaberecht ist auch sie ein
+  // Formular; sie steht deshalb wie die Kenntnisnahme (LESEN-INHALT-ZUERST) auf JEDER Breite NACH
+  // dem Inhalt, direkt hinter ihr — im Lesen wie im Bearbeiten.
+  const veroeffentlichung = <VeroeffentlichungBereich koId={koId} />;
 
   return (
     <ImageDescribeProvider provenance={draftProvenance(ko.confidentiality, koId)}>
@@ -3592,6 +3599,7 @@ export function BibliothekLesen({
                 EDITOR-EINHEITLICH (K4): die Aktionsleiste steht weiter oben VOR den Meldungen; diese
                 Flächen folgen ihr und den Meldungen und verschieben sie damit nicht. */}
             {kenntnisnahmeFlaeche}
+            {veroeffentlichung}
             {nachDemInhalt}
           </div>
         ) : (
@@ -4016,6 +4024,7 @@ export function BibliothekLesen({
             {/* LESEN-INHALT-ZUERST: die Kenntnisnahme nachgeordnet — nach Inhalt, Quellen und
                 Beziehungen, vor „Mehr". Ohne eigene Anforderung nur eine zugeklappte Zeile. */}
             {kenntnisnahmeFlaeche}
+            {veroeffentlichung}
 
             {/* LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Seitenmetadaten wie „Space und
                 Verantwortung" — nach dem Inhalt, vor „Mehr". */}

@@ -85,6 +85,8 @@ import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
 // ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
 import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
 import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
+import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
 // R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
 import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
@@ -319,6 +321,10 @@ export const schemas = [
   // R-1656: der Co-Reading-Zähler. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS),
   // ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
   MITGELESEN_SCHEMA,
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer
+  // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VEROEFFENTLICHUNG_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

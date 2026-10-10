@@ -3616,7 +3616,8 @@ export type NotificationKind =
   | "loeschantrag"
   // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage, Prüfanforderung.
   | "frische"
-  | "reklamation";
+  | "reklamation"
+  | "veroeffentlichung";
 
 // R-1089: der Meldeweg „Antwort falsch / Quelle passt nicht". Eigenständig getippt wie der Rest
 // dieser Datei — apps/web importiert nicht über die Modulgrenze nach services.
@@ -3657,6 +3658,9 @@ export interface Notification {
   meldungId?: string;
   // aufnahme:20260922:gesamt-wissen-frische: Unterart einer `frische`-Meldung (R-0248/R-0266/R-1635).
   frischeArt?: "frist" | "vorlage" | "anlage";
+  // Veröffentlichung: neu oder Aktualisierung, und ob hervorgehoben gemeldet (nur bei diesem `kind`).
+  art?: "neu" | "aktualisierung";
+  hervorgehoben?: boolean;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
