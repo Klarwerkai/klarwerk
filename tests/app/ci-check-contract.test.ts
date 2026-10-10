@@ -84,8 +84,20 @@ describe("I51 · der Check-Job fährt dasselbe Gesamttor wie die Hand", () => {
     ).toBe(true);
   });
 
+  it("provisioniert ALLE Engines, die das Tor fährt — seit Aufnahme 20260922 drei", () => {
+    // `tools/check` ruft `smoke:ui:gate:drei` (Chromium, Firefox, WebKit). Fehlt hier eine Engine,
+    // scheitert das Tor in CI am fehlenden Browser statt am Produkt.
+    const install = CHECK_RUNS.find((b) => /playwright\s+install/.test(b)) ?? "";
+    for (const engine of ["chromium", "firefox", "webkit"]) {
+      expect(install, `Check-Job installiert ${engine} nicht: ${install}`).toMatch(
+        new RegExp(`\\b${engine}\\b`),
+      );
+    }
+    expect(readFileSync("tools/check", "utf8")).toMatch(/^npm run --silent smoke:ui:gate:drei /m);
+  });
+
   it("bleibt hermetisch: kein Cloud-Geheimnis und kein Modellschlüssel im Check-Job", () => {
-    // `tools/check` fährt bewusst `smoke:ui:gate` (ohne Modell, ohne Egress) und NICHT `smoke:ui`.
+    // `tools/check` fährt bewusst `smoke:ui:gate:drei` (ohne Modell, ohne Egress) und NICHT `smoke:ui`.
     expect(CHECK).not.toMatch(/secrets\./);
     expect(CHECK).not.toMatch(/ANTHROPIC_API_KEY/);
     expect(CHECK).not.toMatch(/KLARWERK_SHIP_SMOKE_API_KEY/);

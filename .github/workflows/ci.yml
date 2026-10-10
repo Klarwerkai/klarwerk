@@ -34,13 +34,14 @@ jobs:
       - run: npm ci
       - run: npm ci --prefix apps/web
       # `--with-deps` ist der Unterschied zum lokalen `npm run smoke:browser:setup`: der Runner
-      # bringt die Systembibliotheken für Chromium nicht mit. Ohne diesen Schritt bricht das Tor
+      # bringt die Systembibliotheken der Browser nicht mit. Ohne diesen Schritt bricht das Tor
       # unten am fehlenden Browser ab — bewusst mit Fehler, denn `tools/check` kennt kein „skip,
-      # wenn Chromium fehlt".
-      - name: browser (Chromium für den hermetischen UI-Smoke)
-        run: npx playwright install --with-deps chromium
-      # Dasselbe Tor wie an der Hand: Build, Lint, Architektur, Tests UND der Chromium-Smoke —
-      # hermetisch, ohne Modell und ohne Egress (`smoke:ui:gate`, nicht `smoke:ui`).
+      # wenn ein Browser fehlt". Seit Aufnahme 20260922 fährt das Tor drei Engines
+      # (`smoke:ui:gate:drei`), deshalb stehen hier alle drei.
+      - name: browser (Chromium, Firefox, WebKit für den hermetischen UI-Smoke)
+        run: npx playwright install --with-deps chromium firefox webkit
+      # Dasselbe Tor wie an der Hand: Build, Lint, Architektur, Tests UND der Drei-Engine-Smoke —
+      # hermetisch, ohne Modell und ohne Egress (`smoke:ui:gate:drei`, nicht `smoke:ui`).
       - name: gate (./tools/check — dasselbe Gesamttor wie lokal)
         run: ./tools/check
 

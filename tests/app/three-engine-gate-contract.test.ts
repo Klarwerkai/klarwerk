@@ -188,23 +188,20 @@ describe("JOB 1123 · Enginekette bis zur effektiven Projektmenge", () => {
     });
   }
 
-  // ── PFLICHT 2 + K7 · Die Sperre wird gehalten, nicht umgangen ────────────────────────────────
-  it("das Tor bleibt einengig, solange Stufe A nicht grün gemessen ist", () => {
-    // Diese Zusicherung ist DECKUNGSGLEICH mit K7 in tests/smoke/job1094-engine-kette.test.ts.
-    // Sie steht hier ein zweites Mal, weil dieser Durchgang die Verdrahtung tatsächlich gebaut,
-    // Stufe A gemessen und sie daraufhin zurückgenommen hat — der Verzicht soll an der Stelle
-    // sichtbar sein, an der er entschieden wurde.
+  // ── PFLICHT 2 + K7 · Die Sperre ist nach grüner Stufe A eingelöst ────────────────────────────
+  it("das Tor fährt nach grüner Stufe A den Drei-Engine-Weg", () => {
+    // Deckungsgleich mit K7 in tests/smoke/job1094-engine-kette.test.ts. Bis Aufnahme 20260922
+    // hielt dieser Fall den Verzicht fest: JOB 1123 hatte die Verdrahtung gebaut, Stufe A rot
+    // gemessen und sie zurückgenommen. Am 10.10.2026 lief Stufe A auf dem regulären Prüfweg grün
+    // (Firefox 151.0, WebKit 26.5, je gestartet ohne Startfehler) — erst danach wurde verdrahtet.
     const skript = torSkript();
     const engines = effektiveEngines(
       lies("playwright.smoke.config.ts"),
       playwrightArgumente(skript),
     );
 
-    expect(
-      skript,
-      "Das Tor ruft den Drei-Engine-Weg, obwohl Stufe A rot gemessen ist. Ein Gate, das drei Engines beauftragt, von denen keine startet, meldet Fehler der Umgebung als Produktfehler.",
-    ).not.toBe("smoke:ui:gate:drei");
-    expect(engines, "Das Tor ist nicht mehr einengig.").toEqual(["chromium"]);
+    expect(skript, "Das Tor ruft nicht den Drei-Engine-Weg.").toBe("smoke:ui:gate:drei");
+    expect(engines, "Das Tor fährt nicht alle drei Engines.").toEqual(ALLE_ENGINES);
   });
 
   // ── PFLICHT 4 · Browserlage benennen, nichts installieren, nichts überspringen ───────────────
@@ -214,7 +211,7 @@ describe("JOB 1123 · Enginekette bis zur effektiven Projektmenge", () => {
     // Sichtbar in der Ausgabe: installiert ist nicht gestartet. Genau diese Unterscheidung hat
     // JOB 1094 aufgedeckt und dieser Durchgang bestätigt.
     const lage = vorhanden.length > 0 ? vorhanden.join(" ") : "(keine)";
-    const befund = `[JOB 1123] vorprovisioniert: ${lage} · Stufe A (netzfreier Start) in dieser Bahn: chromium ROT, firefox ROT, webkit ROT — Rohprotokoll in der Arbeitsspur, Verdrahtung deshalb zurückgenommen.`;
+    const befund = `[JOB 1123] vorprovisioniert: ${lage} · Stufe A (netzfreier Start) in dieser Bahn: chromium ROT, firefox ROT, webkit ROT — Rohprotokoll in der Arbeitsspur, Verdrahtung deshalb zurückgenommen. Nachtrag 10.10.2026: Stufe A auf dem regulären Prüfweg grün, Tor seither drei Engines.`;
 
     console.info(befund);
 

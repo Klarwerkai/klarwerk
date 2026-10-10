@@ -33,7 +33,8 @@ if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläc
 echo "▶ geheimnis-scan"; bash tools/geheimnis-scan.sh ||{ echo "✖ Geheimnis-Scan rot"; exit 1; }
 echo "▶ test";         ./tools/test "$@"
 
-# AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — und zwar Chromium-only.
+# AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — seit Aufnahme 20260922 in DREI Engines
+# (Chromium, Firefox, WebKit); bis dahin Chromium-only, s. „WARUM NUR CHROMIUM" unten.
 #
 # WARUM ÜBERHAUPT: bis mega23 war `smoke:ui` kein Teil dieses Gates, und die Automatisierung fuhr
 # ihn damals nicht mit — `.github/workflows/ci.yml` rief `npm run build`, `lint`, `arch` und `test`
@@ -62,6 +63,21 @@ echo "▶ test";         ./tools/test "$@"
 # die das Tor fangen muss — „lebt der Kernfluss überhaupt noch?" — ist engine-unabhängig und fällt
 # schon in einer Engine auf. Der vollständige Drei-Engine-Lauf bleibt `npm run smoke:ui` und ist
 # weiterhin Ship-Vorbedingung.
+#
+# AUFNAHME 20260922 (R-1334/R-1382/R-1916, A19) — DIE BEGRÜNDUNG OBEN IST ÜBERHOLT. „Ein einmaliger
+# grüner Lauf ist keine Garantie. Bricht Safari beim Kunden, erfahren wir es vom Kunden." Genau der
+# Drei-Engine-Lauf hat die unbedienbare Tastaturführung in Safari gefunden — ein Fehler, den das
+# Chromium-only-Tor baulich nicht sehen konnte. Die Sperre aus Auflage 2 (K7 in
+# `tests/smoke/job1094-engine-kette.test.ts`: erst nach grüner Stufe A verdrahten) ist erfüllt:
+# Stufe A lief am 10.10.2026 auf dem regulären Prüfweg grün — Firefox 151.0 und WebKit 26.5 je
+# gestartet, ohne Startfehler, je 14 bestanden / 4 übersprungen (Chromium-only-Fälle, sichtbar).
+# Deshalb fährt das Tor jetzt `smoke:ui:gate:drei`. Welche Engines ein Lauf WIRKLICH gestartet hat,
+# druckt der Engine-Bericht am Laufende (`tests-smoke/support/engine-bericht.ts`); eine Engine, die
+# nicht startet, macht den Lauf rot und steht dort als Startfehler — nie als „gefahren".
+#
+# Der geseedete UX-20b-Lauf weiter unten bleibt bewusst Chromium: er prüft den Inhaltszweig des
+# JSON-Rundlaufs, nicht die Engine-Abdeckung, und mehrere seiner Fälle sind ausdrücklich nur in
+# Chromium steuerbar (`NUR_CHROMIUM_TAB` in `tests-smoke/ui-smoke.spec.ts`).
 #
 # WARUM ZWEI TESTS FEHLEN (`--grep-invert @modell`): „Kernfluss" klickt „Mit KI strukturieren". Seit
 # „KI-Ehrlichkeit" (AI-STATE V1-V5) ist dieser Knopf hart ausgegraut, solange kein echtes Modell
@@ -97,10 +113,11 @@ echo "▶ test";         ./tools/test "$@"
 # NICHTS DAVON GESCHIEHT STILL — genau das war ja die Krankheit. Die Ausnahme wird unten
 # ausgedruckt, sie ist auf EINEN benannten Test begrenzt, und fehlende Browser machen das Tor ROT
 # mit Handlungsanweisung (kein „skip, wenn Chromium fehlt").
-echo "▶ ui-smoke (Chromium, hermetisch — ohne @modell)"
-npm run --silent smoke:ui:gate || {
+echo "▶ ui-smoke (Chromium, Firefox, WebKit — hermetisch, ohne @modell)"
+npm run --silent smoke:ui:gate:drei || {
   echo "✖ UI-Smoke rot."
-  echo "  Fehlt der Browser? → npx playwright install chromium"
+  echo "  Fehlt ein Browser? → npx playwright install chromium firefox webkit"
+  echo "  Welche Engine nicht startete, steht im Engine-Bericht oben (Startfehler)."
   echo "  Alle drei Engines lokal: npm run smoke:ui (braucht KLARWERK_SHIP_SMOKE_API_KEY)"
   exit 1
 }

@@ -89,7 +89,7 @@ const ERLAUBTE_AUSNAHMEN = [
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
-const GATE_SCRIPT = "smoke:ui:gate";
+const GATE_SCRIPT = "smoke:ui:gate:drei";
 
 interface ListedSpec {
   file?: string;

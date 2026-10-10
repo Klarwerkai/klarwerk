@@ -41,6 +41,10 @@
 // `tools/check` ist geleast. Genau deshalb steht `K7` in dieser Datei: er hält fest, dass das Tor
 // weiterhin einengig fährt. Würde jemand die Verdrahtung stillschweigend nachziehen, würde er rot —
 // und dann ist es eine Entscheidung nach grüner Stufe A und kein Nebeneffekt dieses Durchgangs.
+//
+// NACHTRAG Aufnahme 20260922: Stufe A ist am 10.10.2026 grün gemessen, das Tor fährt seither
+// `smoke:ui:gate:drei`. K1, K3 und K7 halten jetzt die Drei-Engine-Deckung fest; K5 und K8 wachen
+// unverändert über den Verlust einer Engine.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -284,9 +288,11 @@ describe("JOB1094 D2 · K — die Kette von tools/check bis zur Engine", () => {
   });
 
   it("K1: das Tor ruft genau EIN npm-Skript, und die Auflösung findet es", () => {
-    expect(TOR_SKRIPT, "kein npm-Skript in den Kommandos von tools/check").toBe("smoke:ui:gate");
+    expect(TOR_SKRIPT, "kein npm-Skript in den Kommandos von tools/check").toBe(
+      "smoke:ui:gate:drei",
+    );
     // Die Auflösung darf nicht an einer Erwähnung hängen: das Kommando muss wirklich dastehen.
-    expect(TOR_KOMMANDOS.some((b) => b.includes("smoke:ui:gate"))).toBe(true);
+    expect(TOR_KOMMANDOS.some((b) => b.includes("smoke:ui:gate:drei"))).toBe(true);
   });
 
   it("K2: die Konfiguration bietet genau drei Engines an — der Vorrat, aus dem gewählt wird", () => {
@@ -298,10 +304,11 @@ describe("JOB1094 D2 · K — die Kette von tools/check bis zur Engine", () => {
     expect(PROJEKTE.filter((p) => p.engine === "unbekannt")).toEqual([]);
   });
 
-  it("K3 · DAS TOR: die effektive Enginemenge ist heute {chromium}", () => {
-    // Der Ist-Zustand, den A19 als Deckungslücke führt. Er wird hier NICHT zum Soll erklärt — er
-    // wird festgehalten, damit eine Änderung in beide Richtungen sichtbar ist (s. K7).
-    expect(engineMengeVon(TOR_SKRIPT as string)).toEqual(["chromium"]);
+  it("K3 · DAS TOR: die effektive Enginemenge ist {chromium, firefox, webkit}", () => {
+    // Bis Aufnahme 20260922 stand hier {chromium} — der Ist-Zustand, den A19 als Deckungslücke
+    // führte. Seit der Torumstellung ist die Deckung das Soll; fällt eine Engine aus der Kette,
+    // wird genau dieser Fall rot.
+    expect(engineMengeVon(TOR_SKRIPT as string)).toEqual(ALLE_ENGINES);
   });
 
   it("K4 · DER SHIP-WEG: drei Engines, und die Kette dorthin ist wirklich aufgelöst", () => {
@@ -371,18 +378,20 @@ describe("JOB1094 D2 · K — die Kette von tools/check bis zur Engine", () => {
     ).toBe("smoke:ui");
   });
 
-  it("K7 · DIE SPERRE AUS AUFLAGE 2: das Tor bleibt einengig, bis Stufe A grün ist", () => {
-    // Auflage 2: „Bei irgendeinem roten Enginefall keine Torverdrahtung bauen." Stufe A ist in
-    // dieser Bahn rot gemessen (Chromium startet nicht, WebKit läuft ins Zeitlimit) — also bleibt
-    // das Tor, wie es ist. Diese Zusicherung ist der SICHTBARE Verzicht: zöge jemand die
-    // Verdrahtung nach, ohne Stufe A grün zu messen, wird sie rot.
-    //
-    // Dass es ein Einzeiler wäre, steht hier ausdrücklich: das Drei-Engine-Skript ist fertig.
+  it("K7 · DIE SPERRE AUS AUFLAGE 2 IST EINGELÖST: das Tor fährt den Drei-Engine-Weg", () => {
+    // Auflage 2: „Bei irgendeinem roten Enginefall keine Torverdrahtung bauen." Bis Aufnahme
+    // 20260922 war Stufe A rot (Chromium startete nicht, WebKit lief ins Zeitlimit), und dieser
+    // Fall hielt den sichtbaren Verzicht fest. Am 10.10.2026 lief Stufe A auf dem regulären
+    // Prüfweg grün — Firefox 151.0 und WebKit 26.5 je gestartet, ohne Startfehler, je 14 bestanden
+    // (Prüfbelege `stufe-a-firefox` / `stufe-a-webkit`). Die Verdrahtung ist damit eine
+    // Entscheidung NACH grüner Stufe A, wie die Auflage es verlangte, und kein Nebeneffekt.
     expect(PKG.scripts?.["smoke:ui:gate:drei"], "das Drei-Engine-Torskript fehlt").toBeDefined();
     expect(engineMengeVon("smoke:ui:gate:drei")).toEqual(ALLE_ENGINES);
-    // Und niemand ruft es — auch das Tor nicht.
-    expect(TOR_SKRIPT).not.toBe("smoke:ui:gate:drei");
-    expect(engineMengeVon(TOR_SKRIPT as string)).toEqual(["chromium"]);
+    expect(TOR_SKRIPT).toBe("smoke:ui:gate:drei");
+    expect(engineMengeVon(TOR_SKRIPT as string)).toEqual(ALLE_ENGINES);
+    // Der einengige Weg bleibt als Skript bestehen (Sondenläufe, Adapter), ist aber nicht das Tor.
+    expect(engineMengeVon("smoke:ui:gate")).toEqual(["chromium"]);
+    expect(TOR_SKRIPT).not.toBe("smoke:ui:gate");
   });
 
   it("K8 · ENGINE-ENTFERNUNG: fällt WebKit oder Firefox weg, schlägt der Wächter an", () => {

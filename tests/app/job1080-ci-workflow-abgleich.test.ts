@@ -79,7 +79,11 @@ type Lage = "VOR" | "IST_DAS_TOR" | "NACH" | "AUSSERHALB";
 const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
   { job: "check", befehl: "npm ci", lage: "VOR" },
   { job: "check", befehl: "npm ci --prefix apps/web", lage: "VOR" },
-  { job: "check", befehl: "npx playwright install --with-deps chromium", lage: "VOR" },
+  {
+    job: "check",
+    befehl: "npx playwright install --with-deps chromium firefox webkit",
+    lage: "VOR",
+  },
   { job: "check", befehl: "./tools/check", lage: "IST_DAS_TOR" },
   { job: "integration", befehl: "npm ci", lage: "AUSSERHALB" },
   { job: "integration", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
@@ -121,7 +125,7 @@ describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeor
     expect(vor).toEqual([
       "npm ci",
       "npm ci --prefix apps/web",
-      "npx playwright install --with-deps chromium",
+      "npx playwright install --with-deps chromium firefox webkit",
     ]);
     // Belegt statt behauptet: das Tor installiert weder Abhängigkeiten noch einen Browser. Für
     // Chromium genügt „kommt nicht vor" NICHT — das Tor NENNT `npx playwright install chromium`
