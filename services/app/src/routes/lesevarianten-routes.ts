@@ -33,7 +33,13 @@ import {
   lokalisierungsPaket,
   mitAenderungsauskunft,
 } from "../lesevarianten";
-import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import {
+  type KandidatenRechtequelle,
+  darfKandidatSehen,
+  darfSehen,
+  sichtbareFuer,
+  sqlSichtbarkeitFuer,
+} from "../sichtbarkeit";
 
 /**
  * JOB 3363: der Zugang zum Kandidatenbestand, so schmal wie die Frage — EIN Kandidat zu EINER
@@ -52,6 +58,11 @@ export interface LesevariantenRoutesDeps {
   /** JOB 3363: der Kandidatenbestand der Prüfkarte — nur lesend, nur `findById`. */
   kandidaten: KandidatenZugriff;
   audit?: AuditService;
+  /**
+   * confluence-import-rechte (Nacharbeit 6, F1): dieselbe Sichtbarkeitsgrenze wie die
+   * Warteschlange (`darfKandidatSehen`). Fehlt sie, bleibt ein Eintrag MIT Quellrechten verschlossen.
+   */
+  kandidatenRechte?: KandidatenRechtequelle;
 }
 
 interface LadeBody {
@@ -156,7 +167,18 @@ export function lesevariantenRoutes(
         if (!user) {
           return;
         }
-        const kandidat = await kandidaten.findById(request.params.id);
+        const gefunden = await kandidaten.findById(request.params.id);
+        // confluence-import-rechte (Nacharbeit 6, F1): ein Kandidat, den die Quelle diesem Menschen
+        // nicht zeigt, gilt hier als nicht vorhanden — wie in der Warteschlange.
+        const traegtQuellrechte =
+          gefunden !== undefined && Object.hasOwn(gefunden.item as object, "quellrechte");
+        const sichtbar =
+          gefunden === undefined
+            ? false
+            : deps.kandidatenRechte
+              ? await darfKandidatSehen(user, gefunden, deps.kandidatenRechte)
+              : !traegtQuellrechte;
+        const kandidat = sichtbar ? gefunden : undefined;
         if (!kandidat) {
           // Kein Kandidat, keine Auskunft — auch keine über die Lieferung. Eine Antwort
           // „keine Variante" wäre hier bereits eine Existenzauskunft über die Kennung.

@@ -266,6 +266,8 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+// produkt:20261007:interner-chat — Gespräche und Nachrichten; im Postgres-Betrieb haltbar.
+import { type ChatRepo, InMemoryChatRepo, PgChatRepo } from "./chat";
 import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
 // Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
@@ -382,6 +384,7 @@ import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
 import { canManageDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
+import { chatRoutes } from "./routes/chat-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
@@ -619,6 +622,11 @@ export interface AppServices {
    * `AppRepos`; im Postgres-Betrieb haltbar (`PgSpacesRepo`), sonst die In-Memory-Ablage.
    */
   spaces: SpacesRepo;
+  /**
+   * produkt:20261007:interner-chat — Gespräche und Nachrichten (`chat.ts`). Wie `spaces` NICHT in
+   * `AppRepos`; im Postgres-Betrieb haltbar (`PgChatRepo`), sonst die In-Memory-Ablage.
+   */
+  chat: ChatRepo;
   /**
    * produkt:20261009:admin-teams — die Fassungen der Teams (`teams.ts`). `spaces` liest sie mit
    * (`TeamAufloesendeSpaces`): Teammitglieder gebundener Spaces sind dort abgeleitete Mitglieder.
@@ -1215,6 +1223,8 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261007:interner-chat: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
+    chat?: ChatRepo;
     // produkt:20261009:admin-teams: gesetzt von `buildPgServices` (echter Pool); sonst im Speicher.
     teams?: TeamsRepo;
     // produkt:20261007:templates-default: gesetzt von `buildPgServices`; sonst im Speicher.
@@ -1525,6 +1535,18 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // AUFNAHME 20260922 · confluence-import-rechte (R-0549): Quellleser → Klara-Konten über die
+    // Mailadresse, dasselbe Verzeichnis wie die Anmeldung. Nicht gefunden = kein Leserecht.
+    quellLeserAufloesen: async (emails) => {
+      const ids: string[] = [];
+      for (const email of emails) {
+        const konto = await repos.users.findByEmail(email);
+        if (konto) {
+          ids.push(konto.id);
+        }
+      }
+      return ids;
+    },
     // R-0142 (Lauf 5): eine Entscheidung über einen laufgebundenen Kandidaten schreibt ihre
     // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest. Die Quellrevisionen
     // (`externalSources`) reichen R-0169 und R-0142 gemeinsam — EIN Eintrag oben.
@@ -1630,6 +1652,8 @@ export function assembleServices(
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
     spaces,
+    // produkt:20261007:interner-chat — Postgres, wenn injiziert, sonst im Speicher.
+    chat: opts.chat ?? new InMemoryChatRepo(),
     teams,
     // produkt:20261007:templates-default — Postgres, wenn injiziert, sonst im Speicher.
     vorlagen: opts.vorlagen ?? new InMemoryVorlagenAblage(),
@@ -2133,6 +2157,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261007:interner-chat: Gespräche und Nachrichten überleben Neuladen, Neustart und
+      // Deploy (`CHAT_SCHEMA`, angelegt von `migrate()`).
+      chat: new PgChatRepo(pool),
       // produkt:20261009:admin-teams: Teamfassungen überleben Neuladen, Neustart und Deploy
       // (`TEAMS_SCHEMA`, angelegt von `migrate()`).
       teams: new PgTeamsRepo(pool),
@@ -3531,6 +3558,8 @@ export function buildApp(
         ko: services.ko,
         lesevarianten: services.lesevarianten,
         kandidaten: services.candidates,
+        // confluence-import-rechte (Nacharbeit 6, F1): dieselbe Grenze wie die Warteschlange.
+        kandidatenRechte: services.library,
         ...(services.audit ? { audit: services.audit } : {}),
       },
       guards,
@@ -5023,6 +5052,21 @@ export function buildApp(
       guards,
     ),
   );
+  // produkt:20261007:interner-chat: Direkt-, Gruppen-, Space- und Artikelgespräche. Rechte aus Space
+  // und Artikel (`darfSehen`); die Wissensübernahme legt über den bestehenden Entwurfsweg an.
+  app.register(
+    chatRoutes(
+      {
+        chat: services.chat,
+        ko: services.ko,
+        auth: services.auth,
+        spaces: services.spaces,
+        entwuerfe: services.capture,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
   // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
   // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
@@ -5090,6 +5134,10 @@ export function buildApp(
         koService: services.ko,
         // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
         luecken: services.ask,
+        // confluence-import-rechte (Nacharbeit 16): Quellrevisionen nur für Quellberechtigte —
+        // dieselbe Grenze wie die Warteschlange.
+        kandidaten: services.candidates,
+        kandidatenRechte: services.library,
         guards,
       }),
     );
