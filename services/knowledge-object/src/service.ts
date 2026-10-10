@@ -6535,6 +6535,20 @@ export class KoService {
     });
   }
 
+  // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 8) — DIESELBE KLAMMER FÜR EINEN
+  // SCHRITT, DER SICH AN DEN STAND DIESES OBJEKTS BINDET.
+  //
+  // Der fachliche Abschluss einer Wissenslücke prüft Fassung und Fachprüfstand dieses Objekts und
+  // schreibt danach die Lücke. Liefe dazwischen eine Bewertung (`setValidationStateMitBeleg`) oder
+  // eine Überarbeitung (`revise`), schlösse die Lücke mit einem Stand, der nicht mehr gilt. Beide
+  // schreiben in `withKoLock`; läuft der Abschluss in derselben Klammer, wird an diesem Objekt
+  // nichts gespeichert, solange `fn` läuft — eine Änderung kommt davor (dann sieht die Prüfung sie)
+  // oder danach. Wie `einordnungsstandVon` gilt das je Prozess. `fn` darf keine schreibende Methode
+  // für DASSELBE Objekt rufen: sie wartete auf die Klammer, in der sie selbst steht.
+  async unterSchreibsperre<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    return this.withKoLock(id, fn);
+  }
+
   // JOB 4251: `opts` ist der bedingte Schreibzugriff auf die Einordnung (s. `EinordnungsBedingung`).
   // Er ist optional, und ohne ihn ist dieser Aufruf Zeichen für Zeichen der bisherige.
   async updateCategory(

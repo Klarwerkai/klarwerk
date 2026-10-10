@@ -98,7 +98,6 @@ export {
 export type {
   Gap,
   GapAbschluss,
-  GapAbschlussVorbereitung,
   GapBelegbedarf,
   GapPriority,
   GapRueckfrage,

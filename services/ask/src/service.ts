@@ -85,7 +85,6 @@ import {
   type AskCaller,
   AskError,
   type Gap,
-  type GapAbschlussVorbereitung,
   type GapBelegbedarf,
   type GapPriority,
   type GapRueckfrage,
@@ -2382,25 +2381,21 @@ export class AskService {
   // Bewertungen liegen in anderen Ablagen und können sich zwischen Prüfung und Schreiben ändern
   // (neue Fassung, rote Stimme).
   //
-  // Ben, Nacharbeit 7: Ein Abschluss darf erst gespeichert und sichtbar werden, wenn er bestätigt
-  // ist — nicht vorläufig, auch nicht für einen parallelen Aufruf, und kein Fehler oder Neustart
-  // darf einen unbestätigten zurücklassen. Deshalb gibt es zwei Stufen, und jeder Durchlauf ist:
+  // Ben, Nacharbeit 7/8: Ein Abschluss wird erst gespeichert, wenn er auf dem Stand beruht, der beim
+  // Schreiben gilt — es gibt keinen vorläufigen Zwischenstand, und eine Änderung an Eintrag oder
+  // Bewertungen nach der letzten Prüfung verhindert das Schreiben. Deshalb läuft JEDER Versuch
+  // vollständig in der Schreibklammer des Eintrags (`KoService.unterSchreibsperre`), in der auch
+  // Bewertungen und Überarbeitungen schreiben:
   //   1. Lücke frisch lesen; Status, Entwurfsbezug und — bei `rolleVerlangt` — das Abschlussrecht
   //      an der AKTUELLEN Zuordnung prüfen;
-  //   2. Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit frisch erheben (Signatur);
-  //   3a. steht an der Lücke noch KEINE Vormerkung für diesen Eintrag mit genau dieser Signatur:
-  //      VORMERKEN (`abschlussVorbereitung`) per Vergleichen-und-Setzen an der weiterhin OFFENEN
-  //      Lücke und neu durchlaufen. Die Vormerkung zählt nirgends als Abschluss — Status, Vorgang,
-  //      Meldungen, Wiederholungsfrage und Listen lesen sie nicht;
-  //   3b. steht sie dort bereits, hat Schritt 2 sie NACH ihrem Schreiben bestätigt (gleiche
-  //      Signatur vor und nach dem Vormerken). Erst jetzt wird der Abschluss geschrieben — per
-  //      Vergleichen-und-Setzen gegen genau den Stand aus Schritt 1, an dem auch das Recht geprüft
-  //      wurde. Das darf auch ein paralleler Aufruf tun: er hat selbst vollständig geprüft.
-  // Trägt der Eintrag nicht mehr, wird eine anstehende Vormerkung für ihn entfernt — ihr Urheber
-  // findet sie nicht mehr und wird beim nächsten Durchlauf ebenso verweigert. Scheitert ein
-  // Durchlauf mit einem Fehler, wird die eigene Vormerkung entfernt. Bricht der Prozess ab, bleibt
-  // höchstens eine Vormerkung an einer OFFENEN Lücke — kein Abschluss —, und der nächste
-  // Abschlussversuch prüft sie wie in Schritt 3b oder ersetzt sie. Protokolliert wird nur in 3b.
+  //   2. Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit frisch erheben;
+  //   3. die Lücke schreiben, nur wenn sie noch genau den Stand aus 1 hält (Vergleichen-und-Setzen).
+  // Während 1–3 wird an diesem Eintrag nichts gespeichert: eine Bewertung oder neue Fassung kommt
+  // vorher (dann sieht 2 sie und verweigert) oder nachher (dann ist sie eine Änderung NACH dem
+  // Abschluss, und Meldung, Vorgang und Wiederholungsfrage prüfen sie bei jedem Abruf). Ein
+  // paralleler Abschlussaufruf wartet auf die Klammer und sieht danach den fertigen Abschluss.
+  // Scheitert ein Schritt oder bricht der Prozess ab, ist nichts geschrieben. Protokolliert wird
+  // erst nach 3.
   async closeGap(
     id: string,
     koId?: string,
@@ -2421,7 +2416,7 @@ export class AskService {
     }
     const sichtbar = beteiligter?.sichtbar ?? (() => true);
     const von = aufruferBeschriftung(aufruferAus(beteiligter?.id));
-    // Vor dem Vormerken UND vor dem Abschliessen am jeweils aktuellen Stand.
+    // Am Stand, gegen den geschrieben wird.
     const vorbedingung = (aktuell: Gap): void => {
       // Ben, Nacharbeit 5: das Abschlussrecht an der Zuordnung, die JETZT gilt — nicht an der vom
       // Anfang. Nach einer Neuzuordnung schliesst die frühere zuständige Person nicht mehr ab.
@@ -2441,134 +2436,87 @@ export class AskService {
         );
       }
     };
-    // Die Kennung der Vormerkung, die DIESER Aufruf geschrieben hat — nur sie entfernt er bei einem
-    // Fehler oder Abbruch selbst.
-    let eigene: string | null = null;
-    try {
-      for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
-        const gelesen = await this.gaps.findById(id);
-        if (!gelesen) {
-          throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
-        }
-        const aktuell = withPriority(gelesen);
-        if (aktuell.status !== "offen") {
-          // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe —
-          // und es ist ein BESTÄTIGTER: „geschlossen" wird nur in Schritt 3b geschrieben.
-          if (aktuell.abschluss?.art === "fachlich" && aktuell.abschluss.koId === bezug) {
-            return aktuell;
+    for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
+      const ergebnis = await this.unterKoSperre(
+        bezug,
+        async (): Promise<{ gap: Gap; geschrieben: boolean } | null> => {
+          const gelesen = await this.gaps.findById(id);
+          if (!gelesen) {
+            throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
           }
-          throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
-        }
-        vorbedingung(aktuell);
-        const vorgemerkt =
-          aktuell.abschlussVorbereitung?.koId === bezug ? aktuell.abschlussVorbereitung : undefined;
-        const geprueft = await this.abschlussPruefung(bezug, sichtbar);
-        if (!geprueft.ko || !geprueft.nutzbarkeit.nutzbar) {
-          // Trägt der Eintrag JETZT für niemanden (fehlt, Fachprüfung, Gültigkeit — nicht bloss das
-          // Leserecht DIESES Aufrufers), darf keine anstehende Vormerkung für ihn mehr zum
-          // Abschluss werden. Sonst nur die eigene entfernen.
-          const fuerNiemanden =
-            !geprueft.ko || !geprueft.nutzbarkeit.gruende.includes("kein_zugriff");
-          const weg = fuerNiemanden && vorgemerkt ? vorgemerkt.kennung : eigene;
-          if (weg) {
-            await this.verwirfVormerkung(id, weg);
+          const aktuell = withPriority(gelesen);
+          if (aktuell.status !== "offen") {
+            // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe.
+            if (aktuell.abschluss?.art === "fachlich" && aktuell.abschluss.koId === bezug) {
+              return { gap: aktuell, geschrieben: false };
+            }
+            throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
           }
-          if (!geprueft.ko) {
+          vorbedingung(aktuell);
+          const { ko, nutzbarkeit } = await this.abschlussPruefung(bezug, sichtbar);
+          if (!ko) {
             throw new AskError(
               "BAD_REQUEST",
               "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
             );
           }
-          throw new GapAbschlussVerweigert(geprueft.nutzbarkeit.gruende);
-        }
-        if (vorgemerkt && vorgemerkt.signatur === geprueft.signatur) {
-          // 3b · bestätigt: die Prüfung lief NACH dem Vormerken und ergab denselben Stand.
-          const { abschlussVorbereitung: _bestaetigt, ...rest } = aktuell;
+          if (!nutzbarkeit.nutzbar) {
+            throw new GapAbschlussVerweigert(nutzbarkeit.gruende);
+          }
           const neu: Gap = {
-            ...rest,
+            ...aktuell,
             status: "geschlossen",
             koId: bezug,
             abschluss: {
               art: "fachlich",
               koId: bezug,
-              koVersion: vorgemerkt.koVersion,
+              koVersion: ko.version,
               von,
               at: new Date(this.now()).toISOString(),
             },
           };
-          if (!(await this.ersetzeWenn(gelesen, neu))) {
-            continue;
-          }
-          eigene = null;
-          await this.audit?.record({
-            actor: von,
-            action: "gap.closed",
-            target: id,
-            payload: { koId: bezug, koVersion: vorgemerkt.koVersion },
-          });
-          return neu;
-        }
-        // 3a · vormerken — neu, oder anstelle einer Vormerkung mit anderem Stand (geänderter
-        // Eintrag, andere Stimmen, abgebrochener Aufruf). Danach wird neu gelesen und geprüft.
-        const vormerkung: GapAbschlussVorbereitung = {
-          kennung: this.genId(),
-          koId: bezug,
-          koVersion: geprueft.ko.version,
-          signatur: geprueft.signatur,
-          at: new Date(this.now()).toISOString(),
-        };
-        if (await this.ersetzeWenn(gelesen, { ...aktuell, abschlussVorbereitung: vormerkung })) {
-          eigene = vormerkung.kennung;
-        }
-      }
-      throw new AskError(
-        "CONFLICT",
-        "Die Wissenslücke oder ihr Wissenseintrag wurde gerade mehrfach geändert — der Abschluss wurde nicht ausgeführt.",
+          // Die Lücke hat sich seit 1 geändert (weitere Fragende, Zuordnung …): neu, vollständig.
+          return (await this.ersetzeWenn(gelesen, neu)) ? { gap: neu, geschrieben: true } : null;
+        },
       );
-    } catch (fehler) {
-      // Lesefehler, verlorenes Recht, Konflikt: kein Abschluss, und die eigene Vormerkung bleibt
-      // nicht liegen. Gemeldet wird der ursprüngliche Fehler.
-      if (eigene) {
-        await this.verwirfVormerkung(id, eigene).catch(() => undefined);
+      if (ergebnis === null) {
+        continue;
       }
-      throw fehler;
+      if (ergebnis.geschrieben && ergebnis.gap.abschluss?.art === "fachlich") {
+        await this.audit?.record({
+          actor: von,
+          action: "gap.closed",
+          target: id,
+          payload: { koId: bezug, koVersion: ergebnis.gap.abschluss.koVersion },
+        });
+      }
+      return ergebnis.gap;
     }
+    throw new AskError(
+      "CONFLICT",
+      "Die Wissenslücke wurde gerade mehrfach geändert — der Abschluss wurde nicht ausgeführt.",
+    );
   }
 
-  /**
-   * Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit — frisch erhoben, mit einer
-   * Signatur, an der `closeGap` erkennt, ob sich zwischen Prüfung und Schreiben etwas geändert hat
-   * (Fassung, Status, Stimmen, Nutzbarkeit samt Gründen).
-   */
+  /** Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit — frisch erhoben. */
   private async abschlussPruefung(
     koId: string,
     sichtbar: (ko: KnowledgeObject) => boolean,
-  ): Promise<{
-    ko: KnowledgeObject | undefined;
-    nutzbarkeit: FachlicheNutzbarkeit;
-    signatur: string;
-  }> {
+  ): Promise<{ ko: KnowledgeObject | undefined; nutzbarkeit: FachlicheNutzbarkeit }> {
     const ko = await this.koService.get(koId);
     const stand = await this.pruefstandVon(ko);
-    const nutzbarkeit = await this.nutzbarkeitMit(ko, stand, sichtbar);
-    const signatur = JSON.stringify({
-      version: ko?.version ?? null,
-      status: ko?.status ?? null,
-      stand,
-      nutzbarkeit,
-    });
-    return { ko, nutzbarkeit, signatur };
+    return { ko, nutzbarkeit: await this.nutzbarkeitMit(ko, stand, sichtbar) };
   }
 
-  /** Entfernt GENAU die eigene Vormerkung — am aktuellen Stand; alles andere bleibt unberührt. */
-  private async verwirfVormerkung(id: string, kennung: string): Promise<void> {
-    await this.aendereLuecke(id, (aktuell) => {
-      if (aktuell.abschlussVorbereitung?.kennung !== kennung) {
-        return null;
-      }
-      const { abschlussVorbereitung: _verworfen, ...rest } = aktuell;
-      return rest;
-    });
+  /**
+   * `fn` in der Schreibklammer des Eintrags (`KoService.unterSchreibsperre`) — dieselbe, in der
+   * Bewertungen und Überarbeitungen schreiben. Eine Attrappe ohne die Methode (Testdoppel) läuft
+   * ohne Klammer.
+   */
+  private unterKoSperre<T>(koId: string, fn: () => Promise<T>): Promise<T> {
+    const sperre = (this.koService as Partial<Pick<KoService, "unterSchreibsperre">>)
+      .unterSchreibsperre;
+    return sperre ? this.koService.unterSchreibsperre(koId, fn) : fn();
   }
 
   /**

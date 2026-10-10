@@ -18,8 +18,7 @@
 //   G — Rückfrage und Neuzuordnung über die Rollen.
 //   H — Überlappende Schritte am Lückendatensatz.
 //   I — Neue Fassung, Bewertung oder Neuzuordnung zwischen Fachprüfung und Schreiben des Abschlusses.
-//   J — Kein unbestätigter Abschluss: paralleler Zweitaufruf, Lesefehler und Neustart im
-//       Bestätigungsfenster.
+//   J — Kein vorläufiger Abschluss: paralleler Zweitaufruf, Lesefehler und Abbruch im Prüffenster.
 import { describe, expect, it } from "vitest";
 import { AskService, type Gap, type GapRepo, InMemoryGapRepo } from "../../services/ask";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
@@ -537,20 +536,26 @@ describe("H · überlappende Schritte verlieren nichts und öffnen nichts wieder
 
 // ================================================================================================
 // I — ÄNDERUNGEN AM EINTRAG, AN DEN BEWERTUNGEN UND AN DER ZUORDNUNG WÄHREND DES ABSCHLUSSES
-// (Ben, Nacharbeit 5). Gehalten wird nach der Fachprüfabfrage und VOR dem Schreiben der Lücke. Vor der
-// Korrektur schloss die Lücke dann mit dem alten positiven Prüfstand bzw. durch die frühere
-// zuständige Person.
+// (Ben, Nacharbeit 5/8). Vor der Korrektur schloss die Lücke mit einem alten positiven Prüfstand bzw.
+// durch die frühere zuständige Person. Seit Nacharbeit 8 laufen Prüfung und Schreiben in der
+// Schreibklammer des Eintrags: eine Änderung VOR der letzten Prüfung verhindert den Abschluss (I1/I2),
+// eine Änderung WÄHREND der letzten Prüfung wird erst nach dem Schreiben gespeichert (I3/I6).
 // ================================================================================================
 describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", () => {
   const geloesteMeldungen = async (b: Awaited<ReturnType<typeof buehne>>, wer: string) =>
     (await b.ask.gapMeldungenFuer(wer, ALLE)).filter((m) => m.art === "geloest");
 
-  it("I1 eine rote Stimme im Fenster verhindert den Abschluss", async () => {
+  // Ben, Nacharbeit 8: Prüfung und Schreiben laufen in der Schreibklammer des Eintrags. Gehalten wird
+  // jetzt entweder VOR ihr (erstes Lesen der Lücke — dann sieht die Prüfung die Änderung) oder IN ihr
+  // (Fachprüfabfrage — dann kann die Änderung bis zum Schreiben nicht gespeichert werden).
+  const fenster = (): Promise<void> => new Promise((weiter) => setTimeout(weiter, 25));
+
+  it("I1 eine rote Stimme vor der letzten Prüfung verhindert den Abschluss", async () => {
     const b = await buehne();
     const { gap } = await b.frage("frida");
     const id = gap?.id ?? "";
     await b.freigeben(b.antwort.id);
-    const halt = b.halteNachPruefstand(1);
+    const halt = b.gaps.halteLesen(1);
     const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
     await halt.gelesen;
     await b.validation.rate(b.antwort.id, "pruefer-rot", "down");
@@ -562,18 +567,17 @@ describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", 
     const danach = await b.gaps.findById(id);
     expect(danach?.status).toBe("offen");
     expect(danach?.abschluss).toBeUndefined();
-    expect(danach?.abschlussVorbereitung).toBeUndefined();
     expect(danach?.koId).toBeUndefined();
     expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
     expect(await geloesteMeldungen(b, "frida")).toEqual([]);
   });
 
-  it("I2 eine neue Fassung im Fenster verhindert den Abschluss mit den alten Bewertungen", async () => {
+  it("I2 eine neue Fassung vor der letzten Prüfung verhindert den Abschluss mit den alten Bewertungen", async () => {
     const b = await buehne();
     const { gap } = await b.frage("frida");
     const id = gap?.id ?? "";
     await b.freigeben(b.antwort.id);
-    const halt = b.halteNachPruefstand(1);
+    const halt = b.gaps.halteLesen(1);
     const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
     await halt.gelesen;
     await b.koService.revise(b.antwort.id, { statement: "Geänderte Anweisung." }, "fachmann");
@@ -589,7 +593,7 @@ describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", 
     expect(wieder.gap?.id).toBe(id);
   });
 
-  it("I3 Gegenprobe: bleibt der Eintrag nutzbar, wird vollständig neu geprüft und genau einmal abgeschlossen", async () => {
+  it("I3 (Bens Gegenprobe) rote Stimme während der letzten Prüfstanderhebung: sie wird erst NACH dem Schreiben gespeichert", async () => {
     const b = await buehne();
     const { gap } = await b.frage("frida");
     const id = gap?.id ?? "";
@@ -597,14 +601,56 @@ describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", 
     const halt = b.halteNachPruefstand(1);
     const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
     await halt.gelesen;
-    await b.validation.rate(b.antwort.id, "pruefer-zusatz", "up");
+    let gespeichert = false;
+    const rot = b.validation.rate(b.antwort.id, "pruefer-rot", "down").then((r) => {
+      gespeichert = true;
+      return r;
+    });
+    await fenster();
+    // Zwischen Prüfung und Schreiben kommt die Stimme NICHT in die Ablage — sie wartet.
+    expect(gespeichert).toBe(false);
+    expect((await b.validation.pruefstandFuer(b.antwort.id, 1)).votes.down).toBe(0);
+    expect((await b.gaps.findById(id))?.status).toBe("offen");
     halt.weiter();
     const zu = await abschluss;
-    expect(zu.status).toBe("geschlossen");
+    await rot;
+    // Geschlossen mit genau dem geprüften Stand; die Stimme ist eine Änderung NACH dem Abschluss.
     expect(zu.abschluss).toMatchObject({ art: "fachlich", koId: b.antwort.id, koVersion: 1 });
-    expect(await b.gaps.findById(id)).toEqual(zu);
     expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
-    expect(await geloesteMeldungen(b, "frida")).toHaveLength(1);
+    expect((await b.validation.pruefstandFuer(b.antwort.id, 1)).votes.down).toBe(1);
+    // Ab jetzt trägt der Eintrag nicht: keine Erfolgsmeldung, kein „gelöst" für die Wiederholung.
+    expect(await geloesteMeldungen(b, "frida")).toEqual([]);
+    expect((await b.ask.gapVorgang(id, frida)).ergebnis).toMatchObject({
+      nutzbarkeit: { nutzbar: false },
+    });
+    expect((await b.frage("fritz")).geloesteLuecke).toBeUndefined();
+  });
+
+  it("I6 (Bens Gegenprobe) neue Fassung während der letzten Prüfstanderhebung: sie wird erst NACH dem Schreiben gespeichert", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const halt = b.halteNachPruefstand(1);
+    const abschluss = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    let gespeichert = false;
+    const neueFassung = b.koService
+      .revise(b.antwort.id, { statement: "Geänderte Anweisung." }, "fachmann")
+      .then((r) => {
+        gespeichert = true;
+        return r;
+      });
+    await fenster();
+    expect(gespeichert).toBe(false);
+    expect((await b.koService.get(b.antwort.id))?.version).toBe(1);
+    halt.weiter();
+    const zu = await abschluss;
+    await neueFassung;
+    expect(zu.abschluss).toMatchObject({ koVersion: 1 });
+    expect((await b.koService.get(b.antwort.id))?.version).toBe(2);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+    expect(await geloesteMeldungen(b, "frida")).toEqual([]);
   });
 
   it("I4 nach einer Neuzuordnung im Fenster schliesst die frühere zuständige Person nicht ab", async () => {
@@ -654,16 +700,16 @@ describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", 
 });
 
 // ================================================================================================
-// J — KEIN UNBESTÄTIGTER ABSCHLUSS (Ben, Nacharbeit 7). Gehalten wird jetzt die BESTÄTIGUNG (zweite
-// Fachprüfabfrage eines Abschlusses). Vor der Korrektur stand die Lücke in diesem Fenster bereits als
-// „geschlossen" in der Ablage: ein paralleler Aufruf bekam sie als Erfolg, und ein Lesefehler oder
-// Neustart liess den ungeprüften Abschluss stehen.
+// J — KEIN VORLÄUFIGER ABSCHLUSS (Ben, Nacharbeit 7/8). Gehalten wird die Fachprüfabfrage IN der
+// Schreibklammer. Bis zur Korrektur in Nacharbeit 7 stand die Lücke in diesem Fenster bereits als
+// „geschlossen" in der Ablage; jetzt wird vor dem Schreiben nichts an ihr verändert.
 // ================================================================================================
-describe("J · ein Abschluss wird erst nach seiner Bestätigung gespeichert und sichtbar", () => {
+describe("J · ein Abschluss wird erst mit dem Schreiben sichtbar — vorher steht nichts in der Ablage", () => {
   const geloesteMeldungen = async (b: Awaited<ReturnType<typeof buehne>>, wer: string) =>
     (await b.ask.gapMeldungenFuer(wer, ALLE)).filter((m) => m.art === "geloest");
+  const fenster = (): Promise<void> => new Promise((weiter) => setTimeout(weiter, 25));
 
-  /** Im Bestätigungsfenster ist für niemanden etwas abgeschlossen. */
+  /** Im Prüffenster ist für niemanden etwas abgeschlossen. */
   const nichtsAbgeschlossen = async (
     b: Awaited<ReturnType<typeof buehne>>,
     ask: AskService,
@@ -679,84 +725,49 @@ describe("J · ein Abschluss wird erst nach seiner Bestätigung gespeichert und 
     expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
   };
 
-  it("J1 ein paralleler Zweitaufruf bekommt den vorgemerkten Stand nicht als Erfolg", async () => {
+  it("J1 ein paralleler Zweitaufruf wartet und bekommt nie einen vorläufigen Stand", async () => {
     const b = await buehne();
     const { gap } = await b.frage("frida");
     const id = gap?.id ?? "";
     await b.freigeben(b.antwort.id);
-    // Erste Abfrage: Vorprüfung; zweite: Bestätigung — gehalten wird die Bestätigung.
-    const halt = b.halteNachPruefstand(2);
+    const vorher = await b.gaps.findById(id);
+    const halt = b.halteNachPruefstand(1);
     const erster = b.ask.closeGap(id, b.antwort.id, fachmann);
     await halt.gelesen;
-    expect((await b.gaps.findById(id))?.abschlussVorbereitung?.koId).toBe(b.antwort.id);
+    let zweiterFertig = false;
+    const zweiter = b.ask.closeGap(id, b.antwort.id, fachmann).then((g) => {
+      zweiterFertig = true;
+      return g;
+    });
+    await fenster();
+    // Geprüft, aber noch nicht geschrieben: die Ablage ist unverändert, der Zweitaufruf wartet.
+    expect(zweiterFertig).toBe(false);
+    expect(await b.gaps.findById(id)).toEqual(vorher);
     await nichtsAbgeschlossen(b, b.ask, id);
-    // Die Wiederholungsfrage im Fenster nutzt nichts Vorläufiges.
-    const wieder = await b.frage("fritz");
-    expect(wieder.geloesteLuecke).toBeUndefined();
-    expect(wieder.gap?.id).toBe(id);
-    // Jetzt eine rote Stimme — und der parallele Zweitaufruf: er prüft selbst und wird verweigert,
-    // statt den vorgemerkten Stand als Erfolg zurückzubekommen.
-    await b.validation.rate(b.antwort.id, "pruefer-rot", "down");
-    await expect(b.ask.closeGap(id, b.antwort.id, fachmann)).rejects.toMatchObject({
-      gruende: expect.arrayContaining(["negative_bewertung"]),
-    });
-    // Der erste Aufruf findet seine Vormerkung nicht mehr, prüft neu und wird ebenso verweigert.
     halt.weiter();
-    await expect(erster).rejects.toMatchObject({
-      gruende: expect.arrayContaining(["negative_bewertung"]),
-    });
-    const danach = await b.gaps.findById(id);
-    expect(danach?.status).toBe("offen");
-    expect(danach?.abschluss).toBeUndefined();
-    expect(danach?.abschlussVorbereitung).toBeUndefined();
-    expect(danach?.weitereFragende).toEqual(["fritz"]);
-    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
-    expect(await geloesteMeldungen(b, "frida")).toEqual([]);
-    expect(await geloesteMeldungen(b, "fritz")).toEqual([]);
-  });
-
-  it("J2 Gegenprobe: zwei parallele Aufrufe mit tragendem Eintrag — genau ein bestätigter Abschluss", async () => {
-    const b = await buehne();
-    const { gap } = await b.frage("frida");
-    const id = gap?.id ?? "";
-    await b.freigeben(b.antwort.id);
-    const halt = b.halteNachPruefstand(2);
-    const erster = b.ask.closeGap(id, b.antwort.id, fachmann);
-    await halt.gelesen;
-    const zweiter = await b.ask.closeGap(id, b.antwort.id, fachmann);
-    expect(zweiter.status).toBe("geschlossen");
-    expect(zweiter.abschlussVorbereitung).toBeUndefined();
-    halt.weiter();
-    const eins = await erster;
-    expect(eins.abschluss).toEqual(zweiter.abschluss);
-    expect(await b.gaps.findById(id)).toEqual(zweiter);
+    const [eins, zwei] = await Promise.all([erster, zweiter]);
+    expect(eins.status).toBe("geschlossen");
+    expect(zwei.abschluss).toEqual(eins.abschluss);
+    expect(await b.gaps.findById(id)).toEqual(eins);
     expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
     expect(await geloesteMeldungen(b, "frida")).toHaveLength(1);
   });
 
-  it("J3 ein Lesefehler bei der Bestätigung hinterlässt weder Abschluss noch Vormerkung", async () => {
+  it("J2 ein Lesefehler bei der Prüfung hinterlässt nichts", async () => {
     const b = await buehne();
     const { gap } = await b.frage("frida");
     const id = gap?.id ?? "";
     await b.freigeben(b.antwort.id);
+    const vorher = await b.gaps.findById(id);
     const echt = b.koService.get.bind(b.koService);
-    let abrufe = 0;
-    // Erster Abruf: Vorprüfung; zweiter: Bestätigung — der scheitert.
-    b.koService.get = async (koId: string, vor?: () => void) => {
-      abrufe += 1;
-      if (abrufe === 2) {
-        throw new Error("Lesefehler im Wissensbestand");
-      }
-      return echt(koId, vor);
+    b.koService.get = async () => {
+      throw new Error("Lesefehler im Wissensbestand");
     };
     await expect(b.ask.closeGap(id, b.antwort.id, fachmann)).rejects.toThrow(
       "Lesefehler im Wissensbestand",
     );
     b.koService.get = echt;
-    const danach = await b.gaps.findById(id);
-    expect(danach?.status).toBe("offen");
-    expect(danach?.abschluss).toBeUndefined();
-    expect(danach?.abschlussVorbereitung).toBeUndefined();
+    expect(await b.gaps.findById(id)).toEqual(vorher);
     await nichtsAbgeschlossen(b, b.ask, id);
     // Danach schliesst ein regulärer Aufruf ungehindert.
     const zu = await b.ask.closeGap(id, b.antwort.id, fachmann);
@@ -764,31 +775,20 @@ describe("J · ein Abschluss wird erst nach seiner Bestätigung gespeichert und 
     expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
   });
 
-  it("J4 ein Neustart zwischen Vormerken und Bestätigen hinterlässt keinen Abschluss", async () => {
+  it("J3 bricht der Abschluss vor dem Schreiben ab (Neustart), steht nichts in der Ablage", async () => {
     const b = await buehne();
     const { gap } = await b.frage("frida");
     const id = gap?.id ?? "";
     await b.freigeben(b.antwort.id);
-    const halt = b.halteNachPruefstand(2);
-    const abgebrochen = b.ask.closeGap(id, b.antwort.id, fachmann);
+    const vorher = await b.gaps.findById(id);
+    const halt = b.halteNachPruefstand(1);
+    const unterwegs = b.ask.closeGap(id, b.antwort.id, fachmann);
     await halt.gelesen;
-    // „Neustart": neue Dienstinstanz auf derselben Ablage; der alte Aufruf kommt nicht weiter.
+    // Eine neue Dienstinstanz liest die Ablage, wie sie nach einem Abbruch an dieser Stelle stünde.
     const neu = new AskService({ ...b.deps });
-    expect((await b.gaps.findById(id))?.abschlussVorbereitung).toBeDefined();
+    expect(await b.gaps.findById(id)).toEqual(vorher);
     await nichtsAbgeschlossen(b, neu, id);
-    const wieder = await neu.ask(FRAGE, "fritz", "de", undefined, ALLE);
-    expect(wieder.geloesteLuecke).toBeUndefined();
-    expect(wieder.gap?.id).toBe(id);
-    // Die liegengebliebene Vormerkung blockiert nichts: der nächste Abschluss prüft und schliesst.
-    const zu = await neu.closeGap(id, b.antwort.id, fachmann);
-    expect(zu.status).toBe("geschlossen");
-    expect(zu.abschlussVorbereitung).toBeUndefined();
-    expect(zu.weitereFragende).toEqual(["fritz"]);
-    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
-    // Kommt der alte Aufruf doch noch an, schreibt er nichts mehr.
     halt.weiter();
-    await abgebrochen;
-    expect(await b.gaps.findById(id)).toEqual(zu);
-    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+    await unterwegs;
   });
 });
