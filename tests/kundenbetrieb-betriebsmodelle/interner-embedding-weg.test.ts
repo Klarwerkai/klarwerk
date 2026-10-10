@@ -10,9 +10,14 @@ import { readFileSync } from "node:fs";
 import { type IncomingMessage, type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
+import { STARTVERTRAG } from "../../services/app/src/start-vertrag";
 import { createEmbeddingProviderFromEnv, embeddingArt } from "../../services/embedding";
 import { createLocalEmbeddingClientFromEnv } from "../../services/reasoner";
 import { repoPfad } from "../support/repoPfad";
+
+interface Zielliste {
+  ziele: { kennung: string; dateien: string[]; umgebung: string[] }[];
+}
 
 interface Anfrage {
   pfad: string;
@@ -148,6 +153,23 @@ describe("AW-12 · interner Embedding-Weg", () => {
         KLARWERK_EMBEDDING_DIM: "3",
       }),
     ).toBeUndefined();
+  });
+
+  it("E6 · Startvertrag und Zielliste führen den internen Weg dieses Auftrags", () => {
+    // Die globalen Wächter (vertrag-vollstaendig D1, ausgehende-ziele Z1) prüfen das ganze Repo und
+    // sind derzeit an fremden, hier nicht geänderten Stellen rot. Dieser Fall hält genau den eigenen
+    // Anteil fest: die neue Variable steht im Vertrag, und ihre einzige Lesestelle liegt in der Datei,
+    // die die Zielliste für `ki-lokal` führt.
+    const namen = STARTVERTRAG.map((w) => w.name);
+    expect(namen).toContain("KLARWERK_LOCAL_EMBEDDING_MODEL");
+    const roh = readFileSync(repoPfad("services/app/src/ausgehende-ziele.json"), "utf8");
+    const ziele = JSON.parse(roh) as Zielliste;
+    const lokal = ziele.ziele.find((z) => z.kennung === "ki-lokal");
+    expect(lokal?.dateien).toEqual(["services/reasoner/src/model-client.ts"]);
+    expect(lokal?.umgebung).toContain("KLARWERK_LOCAL_LLM_URL");
+    const client = readFileSync(repoPfad("services/reasoner/src/model-client.ts"), "utf8");
+    expect(client).toContain("env.KLARWERK_LOCAL_EMBEDDING_MODEL");
+    expect(client).toContain("env.KLARWERK_LOCAL_LLM_URL");
   });
 
   it("E5 · die App reicht den internen Weg in die Embedder-Auswahl", () => {
