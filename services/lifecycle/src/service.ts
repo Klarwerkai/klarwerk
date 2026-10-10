@@ -3,8 +3,12 @@ import type { KnowledgeObject, KoService } from "../../knowledge-object";
 import type { LifecycleRepo } from "./repo";
 import type { LearningPath, LearningStep } from "./types";
 
-/** R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde. */
-export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek";
+/**
+ * R-1635: warum ein Objekt mit „Stimmt das noch?" markiert wurde.
+ * ADMIN-10: „rueckmeldung" — eine belegte Rückmeldung (`answer.reported`) wurde in der
+ * Qualitätsübersicht als Aufgabe übernommen; der Beleg nennt ihre `meldungId`.
+ */
+export type RevalidierungsGrund = "anlage" | "nachbar" | "bibliothek" | "rueckmeldung";
 
 /**
  * R-1635: der Beleg einer Markierung — eine Zeile je markiertem Objekt im Prüfprotokoll
@@ -62,7 +66,12 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   private async markiere(
     koIds: readonly string[],
     actor: string,
-    payload: { grund: RevalidierungsGrund; assetRef?: string; ausgeloestVon?: string },
+    payload: {
+      grund: RevalidierungsGrund;
+      assetRef?: string;
+      ausgeloestVon?: string;
+      meldungId?: string;
+    },
   ): Promise<void> {
     for (const koId of koIds) {
       await this.repo.markPending(koId);
@@ -122,6 +131,67 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   // Bibliothek heraus, ohne Anlagenänderung. Derselbe Merker; die Bestätigung räumt ihn wie gewohnt.
   async requestRevalidation(koId: string, actor = "system"): Promise<void> {
     await this.markiere([koId], actor, { grund: "bibliothek" });
+  }
+
+  // ============================================================================================
+  // ADMIN-10 · EINE RÜCKMELDUNG ALS AUFGABE ÜBERNEHMEN — unter derselben Objektsperre wie der Abschluss.
+  // ============================================================================================
+  //
+  // Dieselbe gezielte Prüfanforderung wie `requestRevalidation`, ausgelöst aus einer belegten
+  // Rückmeldung. Kein zweiter Aufgabentyp — der Merker ist derselbe, die Bestätigung räumt ihn.
+  //
+  // Ben (Nacharbeit 2) fand zwei Lücken in der ersten Fassung, die beide hier geschlossen sind:
+  //   1. Der Übernahmebeleg stand dauerhaft, bevor die Anforderung geschrieben war. Fiel sie aus,
+  //      antwortete jede Wiederholung „bereits" und die Aufgabe entstand nie. Jetzt prüft JEDER
+  //      Aufruf — auch der, der den Beleg nicht mehr gewinnt — nach dem Beleg die tatsächliche Lage
+  //      und holt eine fehlende Anforderung nach (idempotente Wiederaufnahme).
+  //   2. „Angehängt" beruhte auf einer Lesung VOR dem Beleg. Schloss jemand die Revalidierung
+  //      dazwischen ab, hing die Meldung an einem Vorgang, den es nicht mehr gab. Jetzt laufen Beleg,
+  //      Lesung und Anforderung unter der Sperre des Objekts, unter der auch `confirmStillValid`
+  //      läuft: entweder ist der Abschluss ganz vorbei (dann wird neu angefordert) oder er kommt
+  //      erst danach (dann schliesst er die Revalidierung, an der die Meldung tatsächlich hängt).
+  //
+  // `belegen` schreibt den Übernahmebeleg (true = neu geschrieben), `erledigtSeitBeleg` sagt, ob
+  // nach diesem Beleg schon eine Bestätigung vorliegt — beides liegt beim Aufrufer, weil dieses
+  // Modul das Prüfprotokoll nur schreibt, nicht liest.
+  async rueckmeldungUebernehmen(
+    koId: string,
+    actor: string,
+    meldungId: string,
+    schritte: {
+      belegen: () => Promise<boolean>;
+      erledigtSeitBeleg: () => Promise<boolean>;
+    },
+  ): Promise<{ neu: boolean; lage: "angelegt" | "angehaengt" | "erledigt" }> {
+    return this.unterSperre(koId, async () => {
+      const neu = await schritte.belegen();
+      if ((await this.repo.pendingFor([koId])).includes(koId)) {
+        return { neu, lage: "angehaengt" as const };
+      }
+      if (await schritte.erledigtSeitBeleg()) {
+        return { neu, lage: "erledigt" as const };
+      }
+      await this.markiere([koId], actor, { grund: "rueckmeldung", meldungId });
+      return { neu, lage: "angelegt" as const };
+    });
+  }
+
+  // Je Objekt eine Warteschlange: Übernahme und Bestätigung desselben Objekts laufen nacheinander.
+  // Grenze: die Sperre gilt innerhalb EINES Serverprozesses.
+  private readonly sperren = new Map<string, Promise<unknown>>();
+
+  private async unterSperre<T>(koId: string, fn: () => Promise<T>): Promise<T> {
+    const vorher = this.sperren.get(koId) ?? Promise.resolve();
+    const lauf = vorher.catch(() => undefined).then(fn);
+    const ende = lauf.catch(() => undefined);
+    this.sperren.set(koId, ende);
+    try {
+      return await lauf;
+    } finally {
+      if (this.sperren.get(koId) === ende) {
+        this.sperren.delete(koId);
+      }
+    }
   }
 
   // SCRUM-420 (Pedi 03.07.): Selbstheilung — Marker, deren KO nicht mehr existiert (z. B.
@@ -188,7 +258,12 @@ export class LifecycleService implements RevalidierungMerkerLeser {
   //  - ohne `withTx` (Speicherbetrieb) rollt `KoService` die Fassung zurück, und hier wird der Merker
   //    wieder gesetzt, sobald das Löschen auch nur versucht wurde.
   // `pendingCleared` ist die Antwort des Löschens selbst, nicht eine Lesung davor.
+  // ADMIN-10: unter derselben Objektsperre wie `rueckmeldungUebernehmen` (Begründung dort).
   async confirmStillValid(koId: string, author: string): Promise<KnowledgeObject> {
+    return this.unterSperre(koId, () => this.bestaetigeUngesperrt(koId, author));
+  }
+
+  private async bestaetigeUngesperrt(koId: string, author: string): Promise<KnowledgeObject> {
     // Nur ohne Transaktion gebraucht: stand vor dem Löschversuch ein Merker, der wieder zu setzen ist?
     let ohneTxWarGesetzt = false;
     try {

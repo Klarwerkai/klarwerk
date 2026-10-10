@@ -25,6 +25,7 @@ import {
 } from "../api/spaces";
 import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
+import { SpaceFreigaberegel } from "../components/SpaceFreigaberegel";
 import { SpaceArchiv, SpaceBestand, SpaceZugriff } from "../components/SpaceVerwaltung";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -603,6 +604,8 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
         ) : null}
       </Card>
       <SpaceZugriff space={s} />
+      {/* ADMIN-09: wer hier prüfen darf, was bis zur Freigabe fehlt, und die Regel selbst. */}
+      <SpaceFreigaberegel space={s} />
       <SpaceArchiv key={s.id} space={s} />
       {s.darfInhalteLesen ? (
         <Card>
