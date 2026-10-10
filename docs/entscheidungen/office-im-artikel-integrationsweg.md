@@ -136,7 +136,11 @@ wird im Bedienlauf (Abschnitt 7.4) an festen Prüfdokumenten festgestellt, nicht
    - Der Serverschlüssel kommt aus der Umgebung (`KLARWERK_WOPI_SCHLUESSEL`, mindestens 32 Byte,
      Test M7). Er gehört nie in Auftragsunterlagen.
    - Die Marke ist 10 Stunden gültig, wie WOPI es empfiehlt.
-   - Sie ist fälschungssicher (Test M4) und läuft genau zum Ablaufzeitpunkt ab (Test M3).
+   - Die HMAC-Signatur wird bei jeder Prüfung nachgerechnet. Belegt ist: eine veränderte Nutzlast
+     (Leserecht zu Schreibrecht) fällt an der Signatur durch (Test M4), eine mit anderem
+     Serverschlüssel signierte Marke gilt nicht (Test M5), unlesbare Formen werden abgewiesen
+     (Test M6), und die Marke läuft genau zum Ablaufzeitpunkt ab (Test M3). Das ist keine absolute
+     Sicherheitszusage: Wer den Serverschlüssel kennt, kann gültige Marken ausstellen.
 3. **Editor → Klarwerk** (server-zu-server, `/wopi/files/...`):
    - **Jede** Anfrage prüft die Marke **und** liest die Rechte frisch aus dem Bestand: Rolle,
      `darfSehen`, Status. Ein entzogenes Recht wirkt deshalb ab der nächsten Editor-Anfrage.
