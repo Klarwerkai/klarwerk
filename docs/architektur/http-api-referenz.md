@@ -258,6 +258,10 @@ herabgestuft werden (409 `mutability`).
 | `GET` | `/api/validation/overview` | `ko.read` | — | 200 Übersicht | — |
 | `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
 | `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
+| `GET` | `/api/spaces/:id/freigaberegel` | `ko.read`, Space sichtbar | Pfad `:id` = Space | 200 Regelübersicht: Regel, berechtigte Prüfer, Schritte, fehlende Voraussetzungen, laufende Vorgänge (Titel nur sichtbarer), Regelverlauf (ADMIN-09) | 404 `NOT_FOUND` |
+| `POST` | `/api/spaces/:id/freigaberegel/vorschau` | `users.manage` | Rumpf `{ regel: { zustimmungen, pruefer[], prueferTeams[], fristTage?, vertretungen[] } }` | 200 alte und neue Regel, Wirkung auf laufende Vorgänge und Prüfer, `grundlage`; schreibt nichts | 400 `FREIGABEREGEL_UNGUELTIG`, 404 `NOT_FOUND`, 409 `SPACE_ARCHIVIERT` |
+| `PUT` | `/api/spaces/:id/freigaberegel` | `users.manage` | Rumpf `{ version, regel, grundlage, begruendung? }` | 200 Übersicht der neuen Space-Fassung samt `angehoben` | 400 `FREIGABEREGEL_UNGUELTIG`, `VORSCHAU_FEHLT`, `KEINE_AENDERUNG`; 404; 409 `VERSION_VERALTET`, `VORSCHAU_VERALTET` (mit `vorschau`), `SPACE_ARCHIVIERT` |
+| `POST` | `/api/spaces/:id/freigaberegel/fristlauf` | `ko.read`, Spacezuständigkeit oder `users.manage` | — | 200 `{ regel, neu[], bestehend, faellig[], ohneVertretung[] }` — Vertretungsaufgaben, wiederholbar ohne Doppelung | 403 `FORBIDDEN`, 404 `NOT_FOUND` |
 | `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/conflicts/geloest` | `ko.read` | Abfrage `ko=<id>,<id>` (höchstens 50) | 200 von einem Menschen gelöste Konflikte zu diesen Objekten, sichtbarkeitsgefiltert; bei Redaktion auch `decision`, `secondOpinion` und `vorrang.geltungsbereich` leer | — |
 | `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
