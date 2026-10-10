@@ -23,7 +23,7 @@ import {
   pruefeZugangsmarke,
   stelleZugangsmarkeAus,
 } from "../office-wopi";
-import { type WopiProtokolleintrag, erstelleWopiHost } from "../office-wopi-host";
+import { type WopiSitzungsablage, erstelleWopiHost } from "../office-wopi-host";
 import { darfSehen } from "../sichtbarkeit";
 
 // ================================================================================================
@@ -92,8 +92,6 @@ export interface OfficeRoutesDeps {
   readonly ablage?: OfficeAblage;
 }
 
-const ENDE_MIT_KONFLIKT = "Uebernahme beim Ende: fremde-aenderung";
-
 async function standardDiscovery(url: string): Promise<string> {
   const antwort = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!antwort.ok) {
@@ -106,10 +104,84 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
   const jetzt = deps.jetzt ?? Date.now;
   const ablage = deps.ablage ?? new SpeicherOfficeAblage();
   const holeDiscovery = deps.holeDiscovery ?? standardDiscovery;
-  // Der Hostweg meldet ein gescheitertes Übernehmen beim Entsperren nur über sein Protokoll, und
-  // dieses ist synchron. Die Meldungen werden hier gesammelt und vom aufrufenden WOPI-Handler NACH
-  // der Antwort des Hostwegs mit `await` dauerhaft gesichert — kein unbeobachtetes Schreiben.
-  const endeKonflikte: WopiProtokolleintrag[] = [];
+  // ==============================================================================================
+  // Nacharbeit 4 (bens Befund) — ERST SICHERN, DANN DIE SITZUNG LÖSCHEN.
+  // ==============================================================================================
+  //
+  // Der Hostweg löscht beim Entsperren die Sitzung — auch dann, wenn ihr Arbeitsstand wegen einer
+  // fremden Änderung NICHT übernommen wurde. Bis Nacharbeit 3 sicherte diese Datei den Stand erst
+  // danach; scheiterte das Schreiben oder endete der Prozess dazwischen, war die Referenz weg.
+  //
+  // JETZT: der Host bekommt `hostAblage`. Löscht er eine Sitzung, die noch einen Arbeitsstand trägt,
+  // wird sie NICHT gelöscht, sondern als BEENDET fortgeschrieben (Sperre abgelaufen, Arbeitsstand
+  // bleibt). `abschliessen` macht daraus danach — wiederholbar — den dauerhaften Zustand: ein noch
+  // nicht übernommener Arbeitsstand wird gesichert, und ERST DANN wird die Sitzung gelöscht. Scheitert
+  // das Sichern, bleibt die beendete Sitzung mit ihrem Arbeitsstand stehen; jeder weitere Zugriff
+  // (Lage, Sitzungsbeginn, jede Editor-Anfrage, auch nach einem Neustart) versucht es erneut.
+  // Dasselbe gilt für eine Sitzung, deren Sperre ohne Entsperren abgelaufen ist (Editor abgestürzt):
+  // ihr Arbeitsstand wird gesichert, bevor eine neue Sitzung ihn überschreiben könnte.
+  const hostAblage: WopiSitzungsablage = {
+    lies: (anhangId) => ablage.lies(anhangId),
+    async schreibe(anhangId, sitzung) {
+      if (sitzung === undefined) {
+        const bisher = await ablage.lies(anhangId);
+        if (bisher?.arbeitsstand) {
+          await ablage.schreibe(anhangId, { ...bisher, sperre: { ...bisher.sperre, bis: 0 } });
+          return;
+        }
+      }
+      await ablage.schreibe(anhangId, sitzung);
+    },
+  };
+
+  // Alle Abschlüsse und Editor-Anfragen an EINEM Anhang laufen in diesem Prozess nacheinander, damit
+  // ein Abschluss nie eine eben begonnene neue Sitzung löscht.
+  const ketten = new Map<string, Promise<unknown>>();
+  function nacheinander<T>(anhangId: string, vorgang: () => Promise<T>): Promise<T> {
+    const vorher = ketten.get(anhangId) ?? Promise.resolve();
+    const lauf = vorher.then(vorgang, vorgang);
+    const ende = lauf.catch(() => undefined);
+    ketten.set(anhangId, ende);
+    void ende.then(() => {
+      if (ketten.get(anhangId) === ende) {
+        ketten.delete(anhangId);
+      }
+    });
+    return lauf;
+  }
+
+  /**
+   * Beendet eine beendete oder abgelaufene Sitzung dauerhaft: ein Arbeitsstand, der nicht der
+   * aktuelle Anhang ist, wird gesichert; erst danach wird die Sitzung gelöscht. Wirft, wenn das
+   * Sichern scheitert — dann bleibt alles stehen. Ohne Aufrufer-Serialisierung (`nacheinander`).
+   */
+  async function abschliessenRoh(anhangId: string, koId: string): Promise<void> {
+    const sitzung = await ablage.lies(anhangId);
+    if (!sitzung || sitzung.sperre.bis > jetzt()) {
+      return;
+    }
+    if (sitzung.arbeitsstand) {
+      const artikel = await deps.ko.get(koId);
+      const anhang = artikel?.attachments?.find((a) => a.id === anhangId);
+      if (!anhang) {
+        // Nicht zuzuordnen: nichts löschen, die Referenz bleibt in der Sitzung.
+        return;
+      }
+      if (anhang.objectId !== sitzung.arbeitsstand.objectId) {
+        await ablage.sichere({
+          koId,
+          anhangId,
+          objectId: sitzung.arbeitsstand.objectId,
+          nutzerId: (await ablage.schreiber(anhangId)) ?? "",
+          at: new Date(jetzt()).toISOString(),
+        });
+      }
+    }
+    await ablage.schreibe(anhangId, undefined);
+  }
+
+  const abschliessen = (anhangId: string, koId: string) =>
+    nacheinander(anhangId, () => abschliessenRoh(anhangId, koId));
 
   function rechteFuer(user: SessionUser, artikel: KnowledgeObject): OfficeRechte {
     return {
@@ -152,25 +224,11 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         },
         nutzerName: async (nutzerId) =>
           (await deps.konten()).find((k) => k.id === nutzerId)?.name ?? "",
-        sitzungen: ablage,
+        sitzungen: hostAblage,
         // Nur die Klarwerk-Seite selbst darf dem Editor Nachrichten schicken.
         postMessageOrigin: einrichtung.umgebung.seitenHerkunft,
-        protokoll: (eintrag) => {
-          if (eintrag.vorgang === ENDE_MIT_KONFLIKT && eintrag.objectId) {
-            endeKonflikte.push(eintrag);
-          }
-        },
       })
     : undefined;
-
-  /** Nimmt die Konfliktmeldungen dieses Anhangs aus der Sammlung. */
-  function konflikteFuer(anhangId: string): WopiProtokolleintrag[] {
-    const eigene = endeKonflikte.filter((e) => e.anhangId === anhangId);
-    for (const e of eigene) {
-      endeKonflikte.splice(endeKonflikte.indexOf(e), 1);
-    }
-    return eigene;
-  }
 
   async function artikelOder404(
     user: SessionUser,
@@ -251,20 +309,6 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
       const accessToken = typeof roh === "string" ? roh : undefined;
       const anhangId = (request.params as { anhangId: string }).anhangId;
       const inhalt = pfad.endsWith("/contents");
-      // Vor einem Sperrvorgang: wer zuletzt gespeichert hat. Ein Entsperren beendet die Sitzung samt
-      // diesem Vermerk; für einen gesicherten Konfliktstand wird er danach noch gebraucht.
-      const schreiber =
-        request.method === "POST" && !inhalt ? await ablage.schreiber(anhangId) : undefined;
-      const antwort = await host.bearbeite({
-        methode: request.method,
-        pfad,
-        accessToken,
-        kopf: (name) => {
-          const wert = request.headers[name.toLowerCase()];
-          return Array.isArray(wert) ? wert[0] : wert;
-        },
-        koerper,
-      });
       // Die Marke ist am Riegel bereits geprüft; hier wird nur ihr Inhalt gelesen.
       const pruefung = pruefeZugangsmarke(
         accessToken ?? "",
@@ -273,22 +317,49 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         jetzt(),
       );
       const marke = pruefung.gueltig ? pruefung.inhalt : undefined;
-      if (request.method === "POST" && inhalt && antwort.status === 200 && marke) {
-        await ablage.merkeSchreiber(anhangId, marke.nutzerId);
+      if (!marke) {
+        reply.code(401).send();
+        return;
       }
-      // Ein beim Entsperren NICHT übernommener Arbeitsstand wird dauerhaft gesichert — bevor der
-      // Editor seine Antwort bekommt, damit kein Neustart dazwischen ihn verliert.
-      for (const konflikt of konflikteFuer(anhangId)) {
-        if (konflikt.objectId && marke) {
-          await ablage.sichere({
-            koId: marke.koId,
-            anhangId,
-            objectId: konflikt.objectId,
-            nutzerId: schreiber ?? marke.nutzerId,
-            at: new Date(jetzt()).toISOString(),
-          });
+      const ergebnis = await nacheinander(anhangId, async () => {
+        // VOR dem Hostweg: eine beendete oder abgelaufene Sitzung dauerhaft abschließen. Scheitert
+        // das Sichern, bekommt der Editor 503 und der Hostweg wird gar nicht erst gefragt — sonst
+        // könnte eine neue Sitzung den ungesicherten Arbeitsstand überschreiben.
+        try {
+          await abschliessenRoh(anhangId, marke.koId);
+        } catch (fehler) {
+          request.log.error({ fehler, anhangId }, "Office: Arbeitsstand nicht gesichert");
+          return undefined;
         }
+        const antwort = await host.bearbeite({
+          methode: request.method,
+          pfad,
+          accessToken,
+          kopf: (name) => {
+            const wert = request.headers[name.toLowerCase()];
+            return Array.isArray(wert) ? wert[0] : wert;
+          },
+          koerper,
+        });
+        if (request.method === "POST" && inhalt && antwort.status === 200) {
+          await ablage.merkeSchreiber(anhangId, marke.nutzerId);
+        }
+        // NACH dem Hostweg: hat er die Sitzung beendet (Entsperren), wird ihr Arbeitsstand jetzt
+        // gesichert und erst danach die Sitzung gelöscht. Scheitert das, bleibt die beendete Sitzung
+        // mit ihrem Arbeitsstand stehen und wird beim nächsten Zugriff erneut abgeschlossen; das
+        // Entsperren selbst ist gelungen, der Editor bekommt seine Antwort.
+        try {
+          await abschliessenRoh(anhangId, marke.koId);
+        } catch (fehler) {
+          request.log.error({ fehler, anhangId }, "Office: Abschluss vertagt");
+        }
+        return antwort;
+      });
+      if (!ergebnis) {
+        reply.code(503).send();
+        return;
       }
+      const antwort = ergebnis;
       reply.code(antwort.status).headers(antwort.kopf);
       if (antwort.json !== undefined) {
         reply.type("application/json").send(JSON.stringify(antwort.json));
@@ -338,6 +409,11 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
         if (!lage) {
           return;
         }
+        // Ein vertagter Abschluss wird hier nachgeholt; scheitert er wieder, bleibt der Stand in der
+        // beendeten Sitzung und die Lage wird trotzdem beantwortet.
+        await abschliessen(lage.anhang.id, lage.artikel.id).catch((fehler: unknown) =>
+          request.log.error({ fehler }, "Office: Abschluss vertagt"),
+        );
         const verlauf = await verlaufVon(lage.artikel, lage.anhang.id);
         reply.code(200).send({
           anwendung: lage.format.anwendung,

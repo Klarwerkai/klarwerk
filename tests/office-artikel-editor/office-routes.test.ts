@@ -21,6 +21,11 @@
 //   O6  Unberechtigte: unsichtbarer Artikel 404, Anonym 401, fremde/abgelaufene Marke 401,
 //       entzogenes Konto ohne Zugriff.                                                         (K6)
 //   O7  Nicht eingerichtet / Editor nicht erreichbar: sichtbarer Fehler, nichts geändert.       (K7)
+//   O9  (Nacharbeit 4) Das Sichern scheitert beim konfliktbedingten Sitzungsende: der Arbeitsstand
+//       bleibt in der beendeten Sitzung; nach einem Neustart wird der Abschluss nachgeholt und der
+//       Stand ist gesichert und übernehmbar.                                                 (K4)
+//   O10 (Nacharbeit 4) Sperre ohne Entsperren abgelaufen: vor der neuen Sitzung wird der alte
+//       Arbeitsstand gesichert; ist das Sichern gestört, wird die neue Sitzung abgewiesen.    (K4)
 //   O8  (Nacharbeit 2) Neustart: ein gesicherter Konfliktstand und eine laufende Sitzung sind nach
 //       dem Neustart der App sichtbar; der gesicherte Stand lässt sich übernehmen, das Entsperren
 //       der fortgeführten Sitzung sichert bzw. übernimmt ihren Arbeitsstand.               (K4)
@@ -73,6 +78,17 @@ async function fiktivesPaket(text: string): Promise<Buffer> {
   return zip.generateAsync({ type: "nodebuffer" });
 }
 
+/** Eine Ablage, deren dauerhaftes Sichern gezielt scheitern kann (Datenbankausfall). */
+class StoerbareAblage extends SpeicherOfficeAblage {
+  stoerung = false;
+  override async sichere(stand: Parameters<SpeicherOfficeAblage["sichere"]>[0]): Promise<void> {
+    if (this.stoerung) {
+      throw new Error("Sichern gestört (Probe)");
+    }
+    return super.sichere(stand);
+  }
+}
+
 interface Welt {
   app: FastifyInstance;
   ko: KoService;
@@ -90,6 +106,7 @@ async function baueWelt(
   einrichtung: OfficeEditorEinrichtung,
   discovery?: () => string,
   bestand?: Pick<Welt, "ko" | "objekte" | "ablage">,
+  jetzt?: () => number,
 ) {
   const objekte = bestand?.objekte ?? new ObjectStore({ repo: new InMemoryObjectRepo() });
   const ablage = bestand?.ablage ?? new SpeicherOfficeAblage();
@@ -143,6 +160,7 @@ async function baueWelt(
           return discovery();
         },
         ablage,
+        ...(jetzt === undefined ? {} : { jetzt }),
       },
       guards,
     ),
@@ -637,6 +655,98 @@ describe("Office im Artikel · Routen", () => {
       expect((await lage(c, "anna", koId, anhangId)).body.gesichert).toEqual([]);
     } finally {
       await c.app.close();
+    }
+  });
+
+  it("O9 (K4): Sichern scheitert beim Sitzungsende — nichts geht verloren, Abschluss nach Neustart", async () => {
+    const ablage = new StoerbareAblage();
+    const a = await baueWelt(eingerichtet, undefined, {
+      ko: w.ko,
+      objekte: w.objekte,
+      ablage,
+    });
+    const { koId, anhangId } = await artikelMitAnhang(a, "docx", await fiktivesDocx("Vorher"));
+    const s = await sitzung(a, "anna", koId, anhangId);
+    const ea = editor(a, anhangId, s.body.accessToken);
+    const stand = await fiktivesDocx("Stand, dessen Sicherung zunächst scheitert");
+    expect((await ea.sperre("LOCK", "stoer-1")).statusCode).toBe(200);
+    expect((await ea.speichere("stoer-1", stand)).statusCode).toBe(200);
+    await a.ko.revise(koId, { statement: "Fremde Änderung." }, "chef");
+
+    // Die Datenbank fällt beim Sichern aus. Das Entsperren gelingt, aber der Arbeitsstand bleibt
+    // in der beendeten Sitzung stehen — nicht gelöscht, nicht verloren.
+    ablage.stoerung = true;
+    expect((await ea.sperre("UNLOCK", "stoer-1")).statusCode).toBe(200);
+    const behalten = await ablage.lies(anhangId);
+    expect(behalten?.arbeitsstand).toBeDefined();
+    expect(behalten?.sperre.bis).toBe(0);
+    expect(await ablage.gesicherte(anhangId)).toEqual([]);
+    // Auch die Lage verliert nichts: sie antwortet, und der Stand bleibt in der Sitzung.
+    const waehrend = await lage(a, "anna", koId, anhangId);
+    expect(waehrend.status).toBe(200);
+    expect(waehrend.body.sitzung.laeuft).toBe(false);
+    expect((await ablage.lies(anhangId))?.arbeitsstand?.objectId).toBe(
+      behalten?.arbeitsstand?.objectId,
+    );
+    // Eine neue Editor-Sitzung darf den ungesicherten Stand nicht überschreiben: 503.
+    const neu = await sitzung(a, "anna", koId, anhangId);
+    const enNeu = editor(a, anhangId, neu.body.accessToken);
+    expect((await enNeu.sperre("LOCK", "stoer-2")).statusCode).toBe(503);
+    expect((await ablage.lies(anhangId))?.arbeitsstand?.objectId).toBe(
+      behalten?.arbeitsstand?.objectId,
+    );
+    await a.app.close();
+
+    // Neustart, die Datenbank ist wieder da: der Abschluss wird nachgeholt.
+    ablage.stoerung = false;
+    const b = await baueWelt(eingerichtet, undefined, { ko: w.ko, objekte: w.objekte, ablage });
+    try {
+      const danach = await lage(b, "anna", koId, anhangId);
+      expect(danach.body.gesichert).toEqual([
+        expect.objectContaining({ objectId: behalten?.arbeitsstand?.objectId, eigen: true }),
+      ]);
+      expect(await ablage.lies(anhangId)).toBeUndefined();
+      const fassung = (await b.ko.get(koId))?.version ?? 0;
+      const uebernahme = await b.app.inject({
+        method: "POST",
+        url: `/api/kos/${koId}/office/${anhangId}/gesichert`,
+        headers: als("anna"),
+        payload: { objectId: behalten?.arbeitsstand?.objectId, expectedVersion: fassung },
+      });
+      expect(uebernahme.statusCode).toBe(200);
+      expect(Buffer.compare(await bytesDesAnhangs(b, koId, anhangId), stand)).toBe(0);
+    } finally {
+      await b.app.close();
+    }
+  });
+
+  it("O10 (K4): abgelaufene Sperre ohne Entsperren — Arbeitsstand gesichert vor neuer Sitzung", async () => {
+    const uhr = { t: Date.now() };
+    const ablage = new StoerbareAblage();
+    const x = await baueWelt(
+      eingerichtet,
+      undefined,
+      { ko: w.ko, objekte: w.objekte, ablage },
+      () => uhr.t,
+    );
+    try {
+      const { koId, anhangId } = await artikelMitAnhang(x, "docx", await fiktivesDocx("Start"));
+      const s = await sitzung(x, "anna", koId, anhangId);
+      const ex = editor(x, anhangId, s.body.accessToken);
+      const stand = await fiktivesDocx("Stand eines abgestürzten Editors");
+      expect((await ex.sperre("LOCK", "absturz-1")).statusCode).toBe(200);
+      expect((await ex.speichere("absturz-1", stand)).statusCode).toBe(200);
+      const objekt = (await ablage.lies(anhangId))?.arbeitsstand?.objectId;
+      // Der Editor stürzt ab: kein Entsperren. 31 Minuten später öffnet jemand neu.
+      uhr.t += 31 * 60 * 1000;
+      const neu = await sitzung(x, "bert", koId, anhangId);
+      const eb = editor(x, anhangId, neu.body.accessToken);
+      expect((await eb.sperre("LOCK", "neu-1")).statusCode).toBe(200);
+      const l = await lage(x, "bert", koId, anhangId);
+      expect(l.body.gesichert).toEqual([expect.objectContaining({ objectId: objekt })]);
+      expect(l.body.sitzung.laeuft).toBe(true);
+    } finally {
+      await x.app.close();
     }
   });
 });

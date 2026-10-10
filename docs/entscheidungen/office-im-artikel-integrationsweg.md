@@ -450,6 +450,12 @@ Auswahl, und keine seiner Nachrichten trägt markierten Text. Die Fläche sagt d
   (`OFFICE_ABLAGE_SCHEMA`). Sie überleben damit einen Neustart: Die Fläche zeigt sie wieder an, und sie
   lassen sich übernehmen. Offen bleibt: Die Reihenfolge der Vorgänge an einem Anhang hält der Hostweg je
   Prozess; mehrere App-Prozesse hinter einem Editor teilen die Ablage, aber nicht diese Reihenfolge.
+- *(Nacharbeit 4)* Sitzungsende ohne Übergabelücke: Löscht der Hostweg eine Sitzung mit
+  Arbeitsstand, wird sie nur als beendet fortgeschrieben. Der Abschluss sichert einen nicht
+  übernommenen Arbeitsstand dauerhaft und löscht erst danach die Sitzung. Scheitert das Sichern,
+  bleibt der Stand in der beendeten Sitzung, und jeder weitere Zugriff (auch nach Neustart) versucht
+  es erneut. Eine neue Editor-Sitzung wird bis dahin mit 503 abgewiesen. Dasselbe gilt für eine ohne
+  Entsperren abgelaufene Sperre (abgestürzter Editor).
 - *(Nacharbeit 2)* Zuklappen und Anhangswechsel bei offenem Editor nehmen denselben Speicher- und
   Übernahmeweg wie „Speichern und zurück“; scheitert er, bleibt der Editor offen. Ohne bereites
   Dokument wird sichtbar abgebrochen.
