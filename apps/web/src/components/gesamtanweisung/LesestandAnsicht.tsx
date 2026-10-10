@@ -19,6 +19,7 @@ import type { AnweisungLesestand, BausteinLesestand, KoVersionSnapshot } from ".
 import type { NameResolver } from "../../lib/koAuthor";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { type KoVersionPaarDiff, paarDiff } from "../../lib/koVersionDiff";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { SanitizedHtml } from "../SanitizedHtml";
 // JOB 4233: die ANZEIGE- UND STRUKTURREGELN der Gliederung kommen aus der EINEN Stelle des Hauses
 // und werden nicht nachgebaut — `d44LeisteZeigen` („ohne Überschrift keine Leiste, aber KEINE
@@ -726,6 +727,7 @@ export function LesestandAnsicht({
       <section data-testid={LESESTAND_MARKE} className={KARTE}>
         <h2 className={KARTEN_TITEL}>{t("fe001.lesestand.titel")}</h2>
         <p className={MELDUNG_HINWEIS}>{t("ga.leer")}</p>
+        {leerzustandsZeile(t, "anleitung")}
       </section>
     );
   }
@@ -740,7 +742,10 @@ export function LesestandAnsicht({
           {t("fe001.lesestand.titel")}
         </h2>
         <Dokument stand={stand}>
-          <p className={MELDUNG_HINWEIS}>{t("ga.leer")}</p>
+          <>
+            <p className={MELDUNG_HINWEIS}>{t("ga.leer")}</p>
+            {leerzustandsZeile(t, "anleitung")}
+          </>
         </Dokument>
       </section>
     );
@@ -789,7 +794,10 @@ export function LesestandAnsicht({
 
       <Dokument stand={stand}>
         {stand.bausteine.length === 0 ? (
-          <p className={HINWEIS}>{t("ga.leer")}</p>
+          <>
+            <p className={HINWEIS}>{t("ga.leer")}</p>
+            {leerzustandsZeile(t, "anleitung")}
+          </>
         ) : (
           <ol className="space-y-4">
             {stand.bausteine.map((baustein, index) => (
