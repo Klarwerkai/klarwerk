@@ -396,6 +396,29 @@ describe("Lücken-Interview am echten Arbeitsraum", () => {
     expect(recherche?.textContent).toContain(QUELLE.title);
     expect(recherche?.querySelector("a")?.getAttribute("href")).toBe(QUELLE.url);
     expect(recherche?.textContent).toContain(i18n.t("interview.recherche.grenze"));
+    // R-0205 (aufnahme:20260922:gesamt-externe-quellen-kennzeichnung): die Hinweise stammen aus
+    // einer externen Suche — JEDER Recherchepunkt trägt „Stufe 2" und „Extern · ungeprüft", in der
+    // Sprache der Oberfläche.
+    const kennungenIn = (sprache: "de" | "en"): void => {
+      const flaeche = teil("interview-recherche");
+      const punkte = [...(flaeche?.querySelectorAll("li") ?? [])];
+      expect(punkte.length).toBeGreaterThan(0);
+      for (const punkt of punkte) {
+        const text = punkt.querySelector(
+          '[data-testid="interview-recherche-kennung"]',
+        )?.textContent;
+        expect(text, sprache).toContain(i18n.getFixedT(sprache)("externequelle.stufe"));
+        expect(text, sprache).toContain(i18n.getFixedT(sprache)("ko.sourceExternUnchecked"));
+      }
+    };
+    kennungenIn("de");
+    await act(async () => {
+      await i18n.changeLanguage("en");
+    });
+    kennungenIn("en");
+    await act(async () => {
+      await i18n.changeLanguage("de");
+    });
 
     await antworte("bei Überdruck");
     // Der nächste Turn reicht die Recherche zurück — der Server muss nicht erneut recherchieren —
