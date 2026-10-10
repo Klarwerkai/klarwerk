@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { Button, Card, SectionLabel } from "../ui";
 import { MELDUNGSWAHLEN, type Meldungswahl, fehlerGrund, veroeffentlichungApi } from "./api";
 
@@ -55,7 +56,7 @@ export function VeroeffentlichungBereich({ koId }: { koId: string }): JSX.Elemen
   if (!daten) {
     return null;
   }
-  const datum = (iso: string): string => new Date(iso).toLocaleString(i18n.language);
+  const datum = (iso: string): string => formatKoTimestamp(iso, i18n.language) ?? "—";
   const letzte = daten.verlauf[0];
   const aktuellSatz = daten.aktuelleIstVeroeffentlicht
     ? t("veroeffentlichung.stand.aktuellVeroeffentlicht", { aktuell: daten.aktuelleFassung })
