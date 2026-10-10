@@ -16,6 +16,7 @@ import {
 } from "../api/hooks";
 import type {
   AnswerResult,
+  AntwortAussagenBeleg,
   AskGeltungsauskunft,
   AskPruefrahmen,
   Fragekontext,
@@ -750,6 +751,10 @@ export function Ask(): JSX.Element {
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
+  // produkt:20261010:antwort-beanstandung-korrektur: die Aussagen DIESER Antwort (REF-01), an die
+  // eine Beanstandung gebunden wird. Nicht im Arbeitsstand: nach dem Neuladen bleibt nur die
+  // einfache Meldung — der Server prüft die Aussage ohnehin gegen den signierten Beleg.
+  const [aussagen, setAussagen] = useState<AntwortAussagenBeleg["aussagen"]>([]);
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
   const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
   // R-0348: der Gesprächsfaden — die zuletzt beantworteten Fragen dieser Fragestrecke. Eine
@@ -1022,6 +1027,7 @@ export function Ask(): JSX.Element {
       setQuellenStand(quellenStandAus(angekommen.sources, r.quellenStand));
       setBeobachtet(beobachtungAus(angekommen.sources, kos.data));
       setReceipt(r.receipt);
+      setAussagen(r.aussagen?.aussagen ?? []);
       // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
       // auf die leere Liste und damit auf die generische Leermeldung zurück.
       setVerschlossen(r.verschlossen ?? []);
@@ -1207,6 +1213,7 @@ export function Ask(): JSX.Element {
       aufgenommeneAntwort.current = antwort?.result ?? null;
       setResult(antwort?.result ?? null);
       setReceipt(antwort?.receipt ?? "");
+      setAussagen([]);
       setVerschlossen(antwort?.verschlossen ?? []);
       setPruefrahmen(null);
       setGapId(antwort?.gapId ?? null);
@@ -2963,6 +2970,7 @@ export function Ask(): JSX.Element {
                     receipt={receipt}
                     belegGueltig={belegGueltig}
                     onFehler={rueckmeldungAbgelehnt}
+                    aussagen={aussagen}
                   />
                   {/* Ben R1, F8: eine nicht ausführbare Aktion wird erklärt, nicht bloss gesperrt. */}
                   {belegGueltig || helpful.isSuccess ? null : (

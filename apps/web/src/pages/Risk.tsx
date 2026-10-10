@@ -541,7 +541,11 @@ export function Risk(): JSX.Element {
                           (`truncate`), das Etikett bleibt (`shrink-0`). */}
                       <div className="flex items-baseline gap-1.5">
                         <div className="min-w-0 flex-1 truncate text-[13.5px] text-text">
-                          {g.redacted ? t("risk.gapRedacted") : g.question}
+                          {g.beanstandung
+                            ? t("lueckenvorgang.liste.beanstandung")
+                            : g.redacted
+                              ? t("risk.gapRedacted")
+                              : g.question}
                         </div>
                         {/* R-0307 / R-1061: ohne Sprachangabe das neutrale Etikett „Originalfrage". */}
                         {(() => {
@@ -630,7 +634,9 @@ export function Risk(): JSX.Element {
                         {t(
                           g.abschlussArt === "fachlich"
                             ? "lueckenvorgang.liste.geloest"
-                            : "lueckenvorgang.liste.zurueckgenommen",
+                            : g.abschlussArt === "zurueckgewiesen"
+                              ? "lueckenvorgang.liste.zurueckgewiesen"
+                              : "lueckenvorgang.liste.zurueckgenommen",
                         )}
                       </span>
                     ) : null}
