@@ -1253,6 +1253,10 @@ export interface DraftPayload {
     demo?: boolean;
     // R-1624: bestätigter Bildbefund eines Foto-Interviews (Klartext); fehlt = normales Interview.
     imageContext?: string;
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum, Lücken-Thema, Abschlussbestätigung.
+    tree?: boolean;
+    topic?: string;
+    confirmed?: boolean;
   };
 }
 
@@ -3433,7 +3437,38 @@ export interface InterviewResult {
   done: boolean;
   draft: StructureResult;
   demo: boolean;
+  // AUFNAHME 20260922 · WISSEN-INTERVIEW: nur im Fragebaum gesetzt — Spiegel von
+  // `services/reasoner/src/types.ts` (InterviewResult).
+  node?: InterviewNodeId | null;
+  sufficient?: boolean;
+  gaps?: { value: number; open: InterviewNodeId[] };
+  mirror?: { node: InterviewNodeId; text: string } | null;
+  depth?: { node: InterviewNodeId; text: string }[];
+  // R-0088: ungeprüfte Recherche-Prüfpunkte des Modells zum Fachthema (nur mit KI-Schlüssel).
+  research?: InterviewResearchPoint[];
 }
+
+// R-0088: ein Recherche-Prüfpunkt (Spiegel von services/reasoner/src/types.ts).
+export interface InterviewResearchPoint {
+  node: InterviewNodeId;
+  hint: string;
+  // Bens Befund nacharbeit-6: jeder Prüfpunkt stammt aus einer abgerufenen Quelle.
+  source: { title: string; url: string; snippet?: string };
+}
+
+// AUFNAHME 20260922 · WISSEN-INTERVIEW: die Knoten des Fragebaums (Spiegel des Servers).
+export type InterviewNodeId =
+  | "kern"
+  | "bedingung"
+  | "massnahme"
+  | "schwelle"
+  | "ausnahme"
+  | "warum"
+  | "alternativen"
+  | "geltung"
+  | "risiko"
+  | "herkunft"
+  | "stichworte";
 
 // SCRUM-181: Rückgabe des admin-getriebenen Demo-Seeds (ehrlich: seeded vs. skipped).
 export interface DemoSeedResult {
