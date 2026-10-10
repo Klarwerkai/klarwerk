@@ -108,6 +108,20 @@ async function profilAmServer(page: Page): Promise<{
   return r.json();
 }
 
+/**
+ * Das Motiv an einer Assistenzfläche: die gewählte Kennung (`data-avatar`) steht am Bild bzw. an
+ * der Ersatzgrafik; ein geladenes Bild kommt aus dem Bau unter der Kennung des Motivs.
+ */
+async function motivAnFigur(page: Page, testId: string, id: string): Promise<void> {
+  const el = page.getByTestId(testId);
+  await expect(el).toHaveAttribute("data-avatar", id);
+  if ((await el.evaluate((n) => n.tagName)) === "IMG") {
+    await expect(el).toHaveAttribute("src", `/assistenz/erstauswahl-v1/${id}.png`);
+  } else {
+    await expect(el).toHaveAttribute("data-avatar-ersatz", "datei");
+  }
+}
+
 /** Liegt `innen` vollständig in `aussen`? (Vorschau nicht abgeschnitten) */
 async function liegtInnen(innen: Locator, aussen: Locator): Promise<boolean> {
   const a = await aussen.boundingBox();
@@ -181,10 +195,10 @@ test("Assistenz · Erstanmeldung → Name/Avatar → Speichern → Neuladen → 
   await expect(p.getByTestId("assistenz-einrichtung-fertig")).toContainText("Mia");
   expect(gespeichert).toBe(1);
   await expect(figur(p)).toHaveAttribute("aria-label", "Mia – Gespräch öffnen oder schließen");
-  await expect(p.getByTestId("klara-avatar")).toHaveAttribute(
-    "src",
-    "/assistenz/erstauswahl-v1/eule.png",
-  );
+  // Die Figur trägt das gewählte Motiv — als Bild oder, solange die Datei fehlt, als ehrlich
+  // gekennzeichnete Ersatzgrafik. Dass jede Datei wirklich ausgeliefert wird, misst allein die
+  // Bildpaket-Sonde unten (K15); hier geht es um die Wahl am Konto und ihre Anzeige.
+  await motivAnFigur(p, "klara-avatar", "eule");
   expect((await profilAmServer(p)).profil).toMatchObject({ name: "Mia", avatar: "eule" });
   await figur(p).click();
   await expect(kopf(p, "Mia")).toBeVisible();
@@ -258,6 +272,11 @@ test("Assistenz · Meine Assistenz: Abbrechen, nur Motiv, Speicherfehler mit Wie
   await expect(p.getByTestId("assistenz-name")).toHaveValue("Mia");
   await figur(p).click();
   await expect(p.getByTestId("klara-gespraech")).toBeVisible();
+  // Seitenansicht: die App rückt zur Seite, statt vom kompakten Gespräch verdeckt zu werden — so
+  // bleibt „Meine Assistenz“ bei offener Assistenz bedienbar (im kompakten Modus lag das Gespräch
+  // über dem Formular, nacharbeit-3). Belegt nebenbei das Motiv in der Seitenansicht (K5).
+  await p.getByTestId("klara-ansicht").click();
+  await expect(p.getByTestId("klara-gespraech")).toHaveAttribute("data-ansicht", "seitlich");
 
   // Abbrechen erhält die bisherige Auswahl.
   await p.getByTestId("assistenz-name").fill("Kai");
@@ -273,14 +292,8 @@ test("Assistenz · Meine Assistenz: Abbrechen, nur Motiv, Speicherfehler mit Wie
   await expect(p.getByTestId("assistenz-meldung")).toHaveText(
     "Gespeichert: Mia mit dem Motiv „Fuchs“.",
   );
-  await expect(p.getByTestId("klara-avatar")).toHaveAttribute(
-    "src",
-    "/assistenz/erstauswahl-v1/fuchs.png",
-  );
-  await expect(p.getByTestId("klara-gespraech-avatar")).toHaveAttribute(
-    "src",
-    "/assistenz/erstauswahl-v1/fuchs.png",
-  );
+  await motivAnFigur(p, "klara-avatar", "fuchs");
+  await motivAnFigur(p, "klara-gespraech-avatar", "fuchs");
   await beleg(p, info, "5 Meine Assistenz: Motiv geändert, Figur gewechselt");
 
   // Speicherfehler: einmal 500 — Eingabe bleibt, bestätigter Stand bleibt, Wiederholen gelingt.

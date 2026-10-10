@@ -14,15 +14,22 @@ export function AvatarErsatz({
   className = "",
   beschriftung,
   grund,
+  testId = "assistenz-avatar-ersatz",
+  avatarId,
 }: {
   className?: string;
   /** Leer: rein dekorativ (der Name steht daneben). */
   beschriftung: string;
   grund: AvatarErsatzGrund;
+  /** Dieselbe Kennung wie das Bild, an dessen Stelle der Ersatz steht. */
+  testId?: string;
+  /** Das gewählte Motiv, dessen Datei nicht lud (`grund="datei"`) — die Wahl bleibt ablesbar. */
+  avatarId?: string;
 }): JSX.Element {
   return (
     <span
-      data-testid="assistenz-avatar-ersatz"
+      data-testid={testId}
+      data-avatar={avatarId}
       data-avatar-ersatz={grund}
       aria-hidden={beschriftung ? undefined : true}
       className={`grid place-items-center rounded-full bg-hairline-soft text-muted ${className}`}
@@ -67,6 +74,8 @@ export function AvatarBild({
         className={className}
         beschriftung={ersatzBeschriftung}
         grund={datei === null ? "unbekannt" : "datei"}
+        {...(testId ? { testId } : {})}
+        {...(motiv ? { avatarId: motiv.id } : {})}
       />
     );
   }
