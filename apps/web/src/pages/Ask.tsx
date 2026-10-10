@@ -117,16 +117,20 @@ import { anzeigestatusAus } from "../lib/displayStatus";
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 // Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
 import {
+  LEERES_SZENARIO,
   type QuellenStand,
+  type Szenario,
   antwortFrische,
   arbeitsstandLesen,
   arbeitsstandSchreiben,
   belegNochGueltig,
   beobachtungAus,
   fragenSpeicher,
+  kontextGesetzt,
   quellenStandAus,
   startadresseMarke,
   startadresseMerken,
+  szenarioGesetzt,
   wiederaufnahmeAus,
 } from "../lib/fragenArbeitsstand";
 // produkt:20261010:fragen-pruefen-einstieg: Einstieg der leeren Fläche und fiktive Beispiele.
@@ -755,9 +759,13 @@ export function Ask(): JSX.Element {
   // Die zuletzt gestellte Frage steht schon in der Fragezeile; aufgezählt werden die früheren.
   const fadenFrueher = faden.filter((frage) => frage !== asked);
   // R-1633: wofür gefragt wird (Werk/Schicht/Rolle) und die Auskunft des Servers, wofür die
-  // stehende Antwort gewichtet wurde. Die Angabe gilt für diese Sitzung der Seite; sie wird nicht
-  // gespeichert.
-  const [fragekontext, setFragekontext] = useState<Fragekontext>({});
+  // stehende Antwort gewichtet wurde.
+  // produkt:20261010:fragen-pruefen-einstieg (K2, Ben Nacharbeit 3): bis hierher galt die Auswahl
+  // nur für diese Sitzung der Seite und war nach jedem Ansichtswechsel leer. Sie reist jetzt — wie
+  // der Entwurf — im Arbeitsstand des Kontos, ebenso die begonnenen Szenarioangaben. Getrennt davon
+  // bleibt `antwortKontext`: der Kontext, mit dem die STEHENDE Antwort gestellt wurde.
+  const [fragekontext, setFragekontext] = useState<Fragekontext>(() => anfang?.fragekontext ?? {});
+  const [szenario, setSzenario] = useState<Szenario>(() => anfang?.szenario ?? LEERES_SZENARIO);
   const [geltungsAuskunft, setGeltungsAuskunft] = useState<AskGeltungsauskunft | null>(null);
   // R-0305/R-1099 (Ben, Nacharbeit 9): der Fragekontext, mit dem die STEHENDE Antwort gestellt
   // wurde — gesetzt beim Eintreffen der Antwort, nicht aus der aktuellen Auswahl gelesen. Die
@@ -1101,6 +1109,10 @@ export function Ask(): JSX.Element {
             }
           : null,
       startadressen: gemerkteStartadressen,
+      // K2 (Ben Nacharbeit 3): die begonnene Auswahl und das begonnene Szenario — leer wird
+      // nichts abgelegt (`arbeitsstandSchreiben`).
+      fragekontext,
+      szenario,
     });
   }, [
     konto,
@@ -1115,6 +1127,8 @@ export function Ask(): JSX.Element {
     beobachtet,
     antwortKontext,
     gemerkteStartadressen,
+    fragekontext,
+    szenario,
   ]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
@@ -1130,8 +1144,22 @@ export function Ask(): JSX.Element {
   //     wird dann bloss nicht geschrieben.
   // Der aktuelle Stand wird über einen Ref gelesen: der Effekt soll auf die KENNUNG reagieren,
   // nicht auf jeden Tastendruck.
-  const flaecheJetzt = useRef({ q, result, wartet: ask.isPending, startfrageGilt });
-  flaecheJetzt.current = { q, result, wartet: ask.isPending, startfrageGilt };
+  const flaecheJetzt = useRef({
+    q,
+    result,
+    wartet: ask.isPending,
+    startfrageGilt,
+    fragekontext,
+    szenario,
+  });
+  flaecheJetzt.current = {
+    q,
+    result,
+    wartet: ask.isPending,
+    startfrageGilt,
+    fragekontext,
+    szenario,
+  };
   const askZuruecksetzen = ask.reset;
   useEffect(() => {
     if (konto === null || konto === standFuer) {
@@ -1155,6 +1183,14 @@ export function Ask(): JSX.Element {
     const antwort = antwortNehmen ? (gelesen?.antwort ?? null) : null;
     if (entwurfNehmen) {
       setQ(entwurf);
+    }
+    // K2 (Ben Nacharbeit 3): dieselbe Regel für Auswahl und Szenario — bei einem Kontowechsel
+    // ersetzt, beim ersten Bekanntwerden der Kennung nur aufgefüllt, wenn noch nichts eingegeben ist.
+    if (wechsel || !kontextGesetzt(jetzt.fragekontext)) {
+      setFragekontext(gelesen?.fragekontext ?? {});
+    }
+    if (wechsel || !szenarioGesetzt(jetzt.szenario)) {
+      setSzenario(gelesen?.szenario ?? LEERES_SZENARIO);
     }
     if (antwortNehmen) {
       antwortFrage.current = antwort?.frage ?? "";
@@ -1932,6 +1968,8 @@ export function Ask(): JSX.Element {
             kiVerfuegbar={answerAi.available}
             kiSperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
             wartet={ask.isPending}
+            wert={szenario}
+            onWert={setSzenario}
           />
         </fieldset>
         <FrageFeld

@@ -13,6 +13,10 @@
 import { describe, expect, it } from "vitest";
 import { type AskExampleChip, buildAskExampleChips } from "../../apps/web/src/lib/askExampleChips";
 import {
+  arbeitsstandLesen,
+  arbeitsstandSchreiben,
+} from "../../apps/web/src/lib/fragenArbeitsstand";
+import {
   FRAGEN_EINSTIEG_KEYS,
   beispielIstFiktiv,
   hatFiktiveBeispiele,
@@ -126,6 +130,82 @@ describe("P3 · Wirkung mit den tatsächlichen Stimmen", () => {
     const g = pruefGrund({ ...BASIS, version: Number.NaN, greenVotes: -2, needed: 0 });
     expect(g.version).toBe(1);
     expect(g.wirkung.params).toEqual({ have: 0, need: 1 });
+  });
+});
+
+/** Ein Speicher im Arbeitsspeicher — derselbe Ausschnitt, den der Arbeitsstand braucht. */
+function speicher(): Pick<Storage, "getItem" | "setItem" | "removeItem"> & {
+  daten: Map<string, string>;
+} {
+  const daten = new Map<string, string>();
+  return {
+    daten,
+    getItem: (k) => daten.get(k) ?? null,
+    setItem: (k, v) => {
+      daten.set(k, v);
+    },
+    removeItem: (k) => {
+      daten.delete(k);
+    },
+  };
+}
+
+describe("A · Ben Nacharbeit 3 (K2): Auswahl und Szenario im Arbeitsstand des Kontos", () => {
+  it("A1 · Rundlauf: Auswahl und Szenario kommen unverändert zurück", () => {
+    const s = speicher();
+    arbeitsstandSchreiben(s, "u1", {
+      entwurf: "",
+      antwort: null,
+      startadressen: [],
+      fragekontext: { werk: "Werk Nord", rolle: "Instandhaltung" },
+      szenario: { bisher: "5083-H111", neu: "6082-T6", thema: "" },
+    });
+    expect(arbeitsstandLesen(s, "u1")).toEqual({
+      entwurf: "",
+      antwort: null,
+      startadressen: [],
+      fragekontext: { werk: "Werk Nord", rolle: "Instandhaltung" },
+      szenario: { bisher: "5083-H111", neu: "6082-T6", thema: "" },
+    });
+    // Ein anderes Konto sieht davon nichts.
+    expect(arbeitsstandLesen(s, "u2")).toBeNull();
+  });
+
+  it("A2 · leere Auswahl und leeres Szenario werden nicht abgelegt", () => {
+    const s = speicher();
+    arbeitsstandSchreiben(s, "u1", {
+      entwurf: "",
+      antwort: null,
+      startadressen: [],
+      fragekontext: { werk: "  " },
+      szenario: { bisher: "", neu: "", thema: "" },
+    });
+    expect(s.daten.size).toBe(0);
+    arbeitsstandSchreiben(s, "u1", {
+      entwurf: "Frage",
+      antwort: null,
+      startadressen: [],
+      fragekontext: {},
+      szenario: { bisher: "", neu: "", thema: "" },
+    });
+    const roh = JSON.parse(s.daten.get("kw.fragen.arbeitsstand.v1:u1") ?? "{}");
+    expect(Object.keys(roh).sort()).toEqual(["antwort", "entwurf", "startadressen"]);
+  });
+
+  it("A3 · beschädigte Angaben fallen weg, der übrige Stand bleibt", () => {
+    const s = speicher();
+    s.setItem(
+      "kw.fragen.arbeitsstand.v1:u1",
+      JSON.stringify({
+        entwurf: "Frage",
+        antwort: null,
+        startadressen: [],
+        fragekontext: { werk: 7 },
+        szenario: { bisher: "A" },
+      }),
+    );
+    const erwartet = { entwurf: "Frage", antwort: null, startadressen: [] };
+    expect(arbeitsstandLesen(s, "u1")).toEqual(erwartet);
   });
 });
 

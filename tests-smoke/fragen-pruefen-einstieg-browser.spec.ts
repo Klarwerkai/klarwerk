@@ -21,7 +21,8 @@ import { ensureLoggedIn } from "./support/auth";
 //   Aufgaben (ausschliesslich fiktive Inhalte):
 //     F1  Erkennen, dass die angebotenen Beispiele fiktiv sind, ohne etwas zu senden.
 //     F2  Die erste Frage beginnen (Feld erreichen, fiktive Frage eingeben).
-//     F3  Optional „Ich frage für" setzen und wieder zuklappen — die begonnene Frage bleibt.
+//     F3  Optional „Ich frage für" und ein Szenario setzen, zuklappen, in eine andere Ansicht
+//         wechseln und zurückkommen — Frage, Auswahl und Szenario bleiben (Ben Nacharbeit 3).
 //     P1  Einen eingereichten fiktiven Beitrag prüfen: sehen, warum er hier liegt, was zu prüfen ist
 //         und was die Entscheidung bewirkt; dann Rückfrage mit Begründung — das tatsächliche
 //         Ergebnis (Stand laut Server) steht danach da.
@@ -212,6 +213,33 @@ async function fragenAufgaben(page: Page, rolle: Rolle, aufgaben: Aufgabe[]): Pr
     await expect(page.getByTestId("ask-fragekontext-werk")).toHaveCount(0);
     await expect(page.getByTestId("ask-fragekontext-zeile")).toContainText("Werk Nord (fiktiv)");
     await expect(page.locator(FRAGEFELD)).toHaveValue(frage);
+
+    // Ben Nacharbeit 3 (K2): auch ein begonnenes Szenario — und dann ein echter Ansichtswechsel.
+    const szenario = page.getByTestId("bedingungswechsel-umschalten");
+    await szenario.click();
+    await page.getByTestId("bedingungswechsel-bisher").fill("5083-H111");
+    await page.getByTestId("bedingungswechsel-neu").fill("6082-T6");
+    await szenario.click();
+    await expect(page.getByTestId("bedingungswechsel-zeile")).toHaveText("5083-H111 → 6082-T6");
+    // Erst weg, wenn der Arbeitsstand des Kontos die Eingaben trägt (Schreiben nach dem Zeichnen).
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Object.keys(localStorage).some(
+            (k) =>
+              k.startsWith("kw.fragen.arbeitsstand.v1:") &&
+              (localStorage.getItem(k) ?? "").includes("6082-T6"),
+          ),
+        ),
+      )
+      .toBe(true);
+    await page.goto("/bibliothek");
+    await expect(page).toHaveURL(/\/bibliothek(?:[?#]|$)/);
+    await page.goto("/fragen");
+    await expect(page.getByTestId("page-fragen")).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(FRAGEFELD)).toHaveValue(frage);
+    await expect(page.getByTestId("ask-fragekontext-zeile")).toContainText("Werk Nord (fiktiv)");
+    await expect(page.getByTestId("bedingungswechsel-zeile")).toHaveText("5083-H111 → 6082-T6");
     return undefined;
   });
 }

@@ -16,6 +16,10 @@
 //   M5  Nach der Antwort ist der Einstieg weg (der Antwortvertrag trägt den nächsten Schritt), die
 //       Frage steht weiter im Feld.
 //   M6  Fehler: keine Erfolgsmeldung, die Frage bleibt im Feld, der Einstieg kehrt nicht zurück.
+//   M7  Ben Nacharbeit 3 (K2): Eingeben → andere Ansicht → zurück — Frage, „Ich frage für" und die
+//       Szenarioangaben stehen wieder da (zugeklappt sichtbar, aufgeklappt bearbeitbar).
+//   M8  Die aktuelle Auswahl bleibt getrennt vom Kontext, mit dem die stehende Antwort gestellt wurde.
+//   M9  Geleerte Angaben werden nicht abgelegt und kommen nicht zurück.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -68,6 +72,7 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { arbeitsstandLesen } from "../../apps/web/src/lib/fragenArbeitsstand";
 import { Ask } from "../../apps/web/src/pages/Ask";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -312,5 +317,82 @@ describe("produkt:20261010:fragen-pruefen-einstieg · Fragen", () => {
     expect(c.querySelector('[data-testid="ask-answer"]')).toBeNull();
     expect(feldWert(c)).toBe("Was gilt bei Überdruck?");
     expect(c.querySelector(EINSTIEG)).toBeNull();
+  });
+
+  it("M7 · Ansichtswechsel: Frage, „Ich frage für“ und Szenario sind beim Zurückkommen wieder da", async () => {
+    const c1 = await montiere();
+    await tippe(c1, FELD, "Wie prüfe ich das Ventil V7?");
+    await klicke(c1, '[data-testid="ask-fragekontext-umschalten"]');
+    await tippe(c1, '[data-testid="ask-fragekontext-werk"]', "Werk Nord");
+    await tippe(c1, '[data-testid="ask-fragekontext-rolle"]', "Instandhaltung");
+    await klicke(c1, '[data-testid="bedingungswechsel-umschalten"]');
+    await tippe(c1, '[data-testid="bedingungswechsel-bisher"]', "5083-H111");
+    await tippe(c1, '[data-testid="bedingungswechsel-neu"]', "6082-T6");
+    await tippe(c1, '[data-testid="bedingungswechsel-thema"]', "Naht");
+    // Andere Ansicht: die Seite wird abgebaut (wie Wegnavigieren, Breitenwechsel, Neuladen).
+    abbauen?.();
+    abbauen = null;
+
+    const c2 = await montiere();
+    expect(feldWert(c2)).toBe("Wie prüfe ich das Ventil V7?");
+    // Zugeklappt sichtbar, ohne Eingabefeld vor dem Fragefeld.
+    expect(c2.querySelector("input")).toBe(c2.querySelector(FELD));
+    expect(c2.querySelector('[data-testid="ask-fragekontext-zeile"]')?.textContent).toBe(
+      "Werk Nord · Instandhaltung",
+    );
+    expect(c2.querySelector('[data-testid="bedingungswechsel-zeile"]')?.textContent).toBe(
+      "5083-H111 → 6082-T6 · Naht",
+    );
+    // Aufgeklappt stehen dieselben Werte in den Feldern — weiterbearbeitbar.
+    await klicke(c2, '[data-testid="ask-fragekontext-umschalten"]');
+    const wert = (s: string): string => c2.querySelector<HTMLInputElement>(s)?.value ?? "";
+    expect(wert('[data-testid="ask-fragekontext-werk"]')).toBe("Werk Nord");
+    expect(wert('[data-testid="ask-fragekontext-rolle"]')).toBe("Instandhaltung");
+    await klicke(c2, '[data-testid="bedingungswechsel-umschalten"]');
+    expect(wert('[data-testid="bedingungswechsel-bisher"]')).toBe("5083-H111");
+    expect(wert('[data-testid="bedingungswechsel-neu"]')).toBe("6082-T6");
+    expect(wert('[data-testid="bedingungswechsel-thema"]')).toBe("Naht");
+    // Wiederherstellen fragt nichts.
+    expect(askMock).not.toHaveBeenCalled();
+  });
+
+  it("M8 · die aktuelle Auswahl bleibt getrennt vom Kontext der stehenden Antwort", async () => {
+    const c1 = await montiere();
+    await klicke(c1, '[data-testid="ask-fragekontext-umschalten"]');
+    await tippe(c1, '[data-testid="ask-fragekontext-werk"]', "Werk Nord");
+    await tippe(c1, FELD, "Wie prüfe ich das Ventil V7?");
+    await absenden(c1);
+    expect(askMock).toHaveBeenCalledTimes(1);
+    // Nach der Antwort eine andere Auswahl beginnen.
+    await tippe(c1, '[data-testid="ask-fragekontext-werk"]', "Werk Süd");
+    const stand = arbeitsstandLesen(localStorage, "u1");
+    expect(stand?.antwort?.fragekontext).toEqual({ werk: "Werk Nord" });
+    expect(stand?.fragekontext).toEqual({ werk: "Werk Süd" });
+    abbauen?.();
+    abbauen = null;
+
+    const c2 = await montiere();
+    expect(c2.querySelector('[data-testid="ask-fragekontext-zeile"]')?.textContent).toBe(
+      "Werk Süd",
+    );
+    expect(arbeitsstandLesen(localStorage, "u1")?.antwort?.fragekontext).toEqual({
+      werk: "Werk Nord",
+    });
+    expect(askMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("M9 · geleerte Angaben werden nicht wiederhergestellt", async () => {
+    const c1 = await montiere();
+    await klicke(c1, '[data-testid="ask-fragekontext-umschalten"]');
+    await tippe(c1, '[data-testid="ask-fragekontext-werk"]', "Werk Nord");
+    await tippe(c1, '[data-testid="ask-fragekontext-werk"]', "");
+    expect(arbeitsstandLesen(localStorage, "u1")).toBeNull();
+    abbauen?.();
+    abbauen = null;
+    const c2 = await montiere();
+    expect(c2.querySelector('[data-testid="ask-fragekontext-zeile"]')?.textContent).toBe(
+      i18n.t("geltung.frage.leer"),
+    );
+    expect(c2.querySelector('[data-testid="bedingungswechsel-zeile"]')).toBeNull();
   });
 });
