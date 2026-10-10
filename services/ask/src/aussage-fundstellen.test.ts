@@ -10,6 +10,7 @@ import {
   type ObjektFassung,
   aufKernaussagenBeschraenkt,
   bestaetigungGilt,
+  bindeAntworttext,
   bindeAussagen,
   fingerabdruck,
   leseFundstellenAnfrage,
@@ -612,6 +613,136 @@ describe("REF-01 · Fundstellen auflösen — aktuelle Rechte, gelöscht, geänd
       link: "/wissen/ko-metall",
     });
     expect(JSON.stringify(weg)).not.toContain("schmilzt");
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Ben nacharbeit-7 — Gegenfälle zu K2 (Abrufnachweis) und K4 (vollständig entfernter Anker).
+  // ----------------------------------------------------------------------------------------------
+
+  const ABGERUFEN = "2026-10-08T07:00:00.000Z";
+  const AUSZUG_METALL = "Fiktivmetall schmilzt bei 1234 °C.";
+  const QUELLE_BELEGT = {
+    id: "q-belegt",
+    url: "https://de.wikipedia.org/wiki/Fiktivmetall",
+    excerpt: AUSZUG_METALL,
+    provider: "Wikipedia",
+    at: "2026-10-08T07:05:00.000Z",
+    abgerufenAm: ABGERUFEN,
+    abrufInhaltFingerabdruck: fingerabdruck(AUSZUG_METALL),
+  };
+  const VERWEIS_BELEGT: FundstellenVerweis = {
+    art: "extern",
+    koId: "ko-metall",
+    koVersion: 1,
+    quelleId: "q-belegt",
+    start: 0,
+    ende: AUSZUG_METALL.length,
+    fingerabdruck: fingerabdruck(AUSZUG_METALL),
+  };
+
+  it("K2 · vollständiger externer Beleg: Herkunft, nachgewiesener Abruf, Passage, Fingerabdruck", async () => {
+    const metall: BindungsQuelle = { ...FIKTIVMETALL, sources: [QUELLE_BELEGT] };
+    const beleg = binde(`${AUSZUG_METALL} [1]`, ["ko-metall"], [metall]);
+    const extern = beleg.aussagen[0]!.teile[0]!.fundstellen.find((f) => f.art === "extern");
+    expect(extern).toMatchObject({
+      herkunft: QUELLE_BELEGT.url,
+      gespeichertAm: QUELLE_BELEGT.at,
+      abgerufenAm: ABGERUFEN,
+      abrufInhaltFingerabdruck: fingerabdruck(AUSZUG_METALL),
+      vollstaendigkeit: "vollstaendig",
+      auszug: AUSZUG_METALL,
+      fingerabdruck: fingerabdruck(AUSZUG_METALL),
+    });
+    // Das Prüfpaket reicht den Abrufnachweis weiter.
+    const paket = pruefPaket(beleg, { modell: "intern-fiktiv", oeffentlich: false }, () => true);
+    const imPaket = paket.posten[0]!.fundstellen.find((f) => f.art === "extern");
+    expect(imPaket).toMatchObject({ abgerufenAm: ABGERUFEN, vollstaendigkeit: "vollstaendig" });
+    // Und die Auflösung ebenso.
+    const leser = bestand({
+      aktuell: [{ ...NORD, id: "ko-metall", sources: [QUELLE_BELEGT] }],
+      fassungen: { "ko-metall": { 1: { statement: "egal", sources: [QUELLE_BELEGT] } } },
+    });
+    const r = await loeseFundstelleAuf(VERWEIS_BELEGT, leser, nurNord);
+    expect(r).toMatchObject({
+      zustand: "aktuell",
+      auszug: AUSZUG_METALL,
+      abgerufenAm: ABGERUFEN,
+      vollstaendigkeit: "vollstaendig",
+    });
+  });
+
+  it("K4 · vollständig entfernter Anker, der in der alten Fassung noch steht: kein Auszug", async () => {
+    // `removeSource` entfernt den Anker ohne neue Fassung; eine ältere Fassung führt ihn weiter.
+    const leser = bestand({
+      aktuell: [{ ...NORD, id: "ko-metall", version: 2, sources: [] }],
+      fassungen: {
+        "ko-metall": {
+          1: { statement: "egal", sources: [QUELLE_BELEGT] },
+          2: { statement: "egal", sources: [] },
+        },
+      },
+    });
+    const r = await loeseFundstelleAuf(VERWEIS_BELEGT, leser, nurNord);
+    expect(r).toEqual({
+      zustand: "herkunft_entfernt",
+      hinweis: expect.any(String),
+      koId: "ko-metall",
+      link: "/wissen/ko-metall",
+    });
+    expect(JSON.stringify(r)).not.toContain("schmilzt");
+  });
+
+  it("K4/K5 · ersetzter Anker derselben Herkunft: Nachfolgerin benannt, alter Auszug nicht", async () => {
+    const nachfolgerin = { ...QUELLE_BELEGT, id: "q-neu", excerpt: "Fiktivmetall ist erfunden." };
+    const leser = bestand({
+      aktuell: [{ ...NORD, id: "ko-metall", version: 2, sources: [nachfolgerin] }],
+      fassungen: {
+        "ko-metall": {
+          1: { statement: "egal", sources: [QUELLE_BELEGT] },
+          2: { statement: "egal", sources: [nachfolgerin] },
+        },
+      },
+    });
+    const r = await loeseFundstelleAuf(VERWEIS_BELEGT, leser, nurNord);
+    expect(r).toEqual({
+      zustand: "anker_ersetzt",
+      hinweis: expect.any(String),
+      koId: "ko-metall",
+      nachfolgeQuelleId: "q-neu",
+      link: "/wissen/ko-metall",
+    });
+    expect(JSON.stringify(r)).not.toContain("schmilzt");
+  });
+
+  it("K1 · jede ausgegebene Antwort bekommt ihre EIGENE Bindung aus ihrem eigenen Text", () => {
+    const quellen = new Map<string, BindungsQuelle>([
+      ["ko-ventil", VENTIL],
+      ["ko-pumpe", PUMPE],
+    ]);
+    const erste = bindeAntworttext(
+      {
+        answered: true,
+        answer: "Am Ventil F3 gilt höchstens 80 °C. [1]",
+        sources: ["ko-ventil"],
+        citedSources: ["ko-ventil"],
+      },
+      quellen,
+    );
+    const zweite = bindeAntworttext(
+      {
+        answered: true,
+        answer: "Die Pumpe P7 vor dem Start vollständig entlüften. [1]",
+        sources: ["ko-pumpe"],
+        citedSources: ["ko-pumpe"],
+      },
+      quellen,
+    );
+    expect(erste?.aussagen.map((a) => a.teile[0]!.fundstellen[0]!.koId)).toEqual(["ko-ventil"]);
+    expect(zweite?.aussagen.map((a) => a.teile[0]!.fundstellen[0]!.koId)).toEqual(["ko-pumpe"]);
+    expect(erste?.antwortFingerabdruck).not.toBe(zweite?.antwortFingerabdruck);
+    // Ohne beantworteten Text entsteht keine Bindung — auch keine geliehene.
+    const leer = { answered: false, answer: null, sources: [], citedSources: [] };
+    expect(bindeAntworttext(leer, quellen)).toBeUndefined();
   });
 
   it("Auflösungsanfrage: nur gültige Verweise, höchstens 20, sonst ganz ungültig", () => {

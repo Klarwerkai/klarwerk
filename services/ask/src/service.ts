@@ -57,7 +57,9 @@ import {
 import {
   type AussagenBeleg,
   type BindungsQuelle,
-  bindeAussagen,
+  type ZweitmeinungAussagen,
+  bindeAntworttext,
+  bindungsQuelleAus,
   volltextDerFassung,
 } from "./aussage-fundstellen";
 import { leiteBelegbedarfAb } from "./gap-belegbedarf";
@@ -619,6 +621,9 @@ export interface AskResult {
   // Fingerabdruck) — oder die ausdrücklich ausgewiesene Deckungslücke. Gebildet aus DENSELBEN
   // Objekten, aus denen die Antwort entstand (`aussage-fundstellen.ts`). Fehlt ohne Antwort.
   aussagen?: AussagenBeleg;
+  // REF-01 (Ben nacharbeit-7, K1): die EIGENEN Bindungen der beiden Zweitmeinungsantworten — nur,
+  // wenn eine Gegenüberstellung ausgeliefert wird (`zweitmeinung.status === "verglichen"`).
+  zweitmeinungAussagen?: ZweitmeinungAussagen;
 }
 
 /** R-0346: der angewandte Zuschnitt der Antwort (Regel und Grenzen: `antwort-zuschnitt.ts`). */
@@ -1468,28 +1473,26 @@ export class AskService {
     // Erklärung ändert den Antwortfingerabdruck. Objekte genau dieses Laufs: Fassung und
     // Belegstellen aus `prefiltered`, der Volltext nur aus der Projektion DERSELBEN Fassung
     // (`volltexte`). Keine Neusuche, kein Modellaufruf, kein zusätzlicher Lesevorgang.
-    const bindungsText = result.answer;
-    const aussagenFeld: { aussagen?: AussagenBeleg } =
-      result.answered && typeof bindungsText === "string" && bindungsText.trim() !== ""
+    const bindungsQuellen = new Map(
+      prefiltered.map((ko): [string, BindungsQuelle] => [
+        ko.id,
+        bindungsQuelleAus(ko, volltextDerFassung(volltexte.get(ko.id), ko.version)),
+      ]),
+    );
+    const hauptBeleg = bindeAntworttext(result, bindungsQuellen);
+    const aussagenFeld: { aussagen?: AussagenBeleg } = hauptBeleg ? { aussagen: hauptBeleg } : {};
+    // REF-01 (Ben nacharbeit-7, K1): auch die Antworten der Zweitmeinung werden ausgeliefert und
+    // angezeigt — JEDE bekommt ihre EIGENE Bindung aus ihrem eigenen Text und ihren eigenen Quellen
+    // (dieselbe gefilterte Kandidatenmenge, dieselben Fassungen dieses Laufs). Die Bindung der
+    // Hauptantwort wird nie auf einen abweichenden Text übertragen.
+    const vergleich = zweitmeinungFeld.zweitmeinung;
+    const zweitmeinungAussagenFeld: { zweitmeinungAussagen?: ZweitmeinungAussagen } =
+      vergleich?.status === "verglichen"
         ? {
-            aussagen: bindeAussagen({
-              antwort: bindungsText,
-              sources: result.sources,
-              citedSources: result.citedSources,
-              quellen: new Map(
-                prefiltered.map((ko): [string, BindungsQuelle] => [
-                  ko.id,
-                  {
-                    id: ko.id,
-                    version: ko.version,
-                    originalAuthor: ko.originalAuthor,
-                    statement: ko.statement,
-                    bodyText: volltextDerFassung(volltexte.get(ko.id), ko.version),
-                    sources: ko.sources,
-                  },
-                ]),
-              ),
-            }),
+            zweitmeinungAussagen: {
+              erste: bindeAntworttext(vergleich.erste, bindungsQuellen) ?? null,
+              zweite: bindeAntworttext(vergleich.zweite, bindungsQuellen) ?? null,
+            },
           }
         : {};
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
@@ -1560,6 +1563,7 @@ export class AskService {
           ...ungeprueftFeld,
           ...verschlossenFeld,
           ...zweitmeinungFeld,
+          ...zweitmeinungAussagenFeld,
           ...geltungFeld,
           ...zuschnittFeld,
           pruefrahmen,
@@ -1604,6 +1608,7 @@ export class AskService {
         ...ungeprueftFeld,
         ...verschlossenFeld,
         ...zweitmeinungFeld,
+        ...zweitmeinungAussagenFeld,
         ...geltungFeld,
         ...zuschnittFeld,
         pruefrahmen,
@@ -1618,6 +1623,7 @@ export class AskService {
       ...ungeprueftFeld,
       ...verschlossenFeld,
       ...zweitmeinungFeld,
+      ...zweitmeinungAussagenFeld,
       ...geltungFeld,
       ...zuschnittFeld,
       ...aussagenFeld,
@@ -1750,13 +1756,15 @@ export class AskService {
       actor,
       kiBeginn,
     );
+    const heuteQuellen = heute.antwort.sources;
+    const damalsQuellen = damals.antwort.sources;
     const quellen = seiten
-      .filter((s) => heute.sources.includes(s.heute.id) || damals.sources.includes(s.heute.id))
+      .filter((s) => heuteQuellen.includes(s.heute.id) || damalsQuellen.includes(s.heute.id))
       .map((s) => {
         const id = s.heute.id;
-        return vergleichsQuelle(s, heute.sources.includes(id), damals.sources.includes(id));
+        return vergleichsQuelle(s, heuteQuellen.includes(id), damalsQuellen.includes(id));
       });
-    const geaendert = antwortGeaendert(heute, damals);
+    const geaendert = antwortGeaendert(heute.antwort, damals.antwort);
     await this.audit?.record({
       actor,
       action: "ask.vergleich",
@@ -1771,8 +1779,10 @@ export class AskService {
     });
     return {
       stichtag: new Date(stichtagMs).toISOString(),
-      heute,
-      damals,
+      heute: heute.antwort,
+      damals: damals.antwort,
+      heuteAussagen: heute.aussagen,
+      damalsAussagen: damals.aussagen,
       antwortGeaendert: geaendert,
       quellen,
     };
@@ -1791,10 +1801,14 @@ export class AskService {
     relevanz: Relevanztext,
     actor: string,
     kiBeginn: number | undefined,
-  ): Promise<AnswerResult> {
+  ): Promise<{ antwort: AnswerResult; aussagen: AussagenBeleg | null }> {
     const jetzt = new Date(this.now()).toISOString();
+    // REF-01 (nacharbeit-7, K1): die Bindungsquellen in GENAU den übergebenen Fassungen — derselbe
+    // Volltext, den der Antwortweg dieser Seite gelesen hat.
+    const bindungsQuellen = new Map<string, BindungsQuelle>();
     const refs = grundlage.map(({ ko, trust }): KnowledgeRef => {
       const bodyText = buildSearchProjection(ko, jetzt).bodyText;
+      bindungsQuellen.set(ko.id, bindungsQuelleAus(ko, bodyText.trim() ? bodyText : undefined));
       return {
         id: ko.id,
         title: ko.title,
@@ -1829,9 +1843,11 @@ export class AskService {
     );
     this.pruefeKiSperre("ergebnis", kiBeginn);
     const { abgeschnitten: _abgeschnittenVerworfen, ...ohneAbbruch } = roh;
-    return roh.answered && roh.sources.length === 0
-      ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
-      : roh;
+    const antwort: AnswerResult =
+      roh.answered && roh.sources.length === 0
+        ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
+        : roh;
+    return { antwort, aussagen: bindeAntworttext(antwort, bindungsQuellen) ?? null };
   }
 
   /**

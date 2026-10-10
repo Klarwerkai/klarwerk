@@ -91,14 +91,18 @@ export interface ExterneFundstelle extends FundstelleBasis {
   /** Wann die Belegstelle mit ihrem Auszug am Objekt GESPEICHERT wurde (`KoSource.at`). */
   readonly gespeichertAm: string;
   /**
-   * Wann die externe Quelle tatsächlich ABGERUFEN wurde — `null`, solange kein Abrufnachweis
-   * vorliegt. `KoSource.at` ist der Speicherzeitpunkt der Belegstelle (auch ein von Hand
-   * eingetragener Auszug bekommt ihn) und wird hier ausdrücklich NICHT als Abruf ausgegeben.
+   * Wann die externe Quelle tatsächlich ABGERUFEN wurde — aus dem geprüften Abrufbeleg des Servers
+   * (`KoSource.abgerufenAm`, nacharbeit-7). `null`, solange kein Abrufnachweis vorliegt.
+   * `KoSource.at` ist der Speicherzeitpunkt der Belegstelle (auch ein von Hand eingetragener Auszug
+   * bekommt ihn) und wird hier ausdrücklich NICHT als Abruf ausgegeben.
    */
   readonly abgerufenAm: string | null;
+  /** Fingerabdruck des tatsächlich abgerufenen Inhalts — `null` ohne Abrufnachweis. */
+  readonly abrufInhaltFingerabdruck: string | null;
   /**
-   * `abruf_nicht_belegt`: Herkunft, Passage und Fingerabdruck sind gebunden, der Abrufzeitpunkt
-   * fehlt — die Fundstelle ist in diesem Punkt UNVOLLSTÄNDIG und sagt es.
+   * `vollstaendig`: Herkunft, nachgewiesener Abruf, Passage und Fingerabdruck sind gebunden.
+   * `abruf_nicht_belegt`: der Abrufzeitpunkt fehlt — die Fundstelle ist in diesem Punkt
+   * UNVOLLSTÄNDIG und sagt es (Altbestand, Handeingabe, Beleg nach Neustart nicht mehr gültig).
    */
   readonly vollstaendigkeit: "vollstaendig" | "abruf_nicht_belegt";
   /**
@@ -157,6 +161,67 @@ export interface QuelleBelegstelle {
   readonly sourceRecordId?: string | undefined;
   /** R-0162: die Quellseite ist gelöscht — der Anker trägt dann keinen gültigen Beleg mehr. */
   readonly sourceRemovedAt?: string | undefined;
+  /** Der Anker im Quellsystem (Confluence-pageId) — Grundlage der Nachfolgezuordnung. */
+  readonly externalId?: string | undefined;
+  /** REF-01 (nacharbeit-7): der NACHGEWIESENE Abrufzeitpunkt — fehlt ohne Abrufbeleg. */
+  readonly abgerufenAm?: string | undefined;
+  /** REF-01 (nacharbeit-7): der Fingerabdruck des tatsächlich abgerufenen Inhalts. */
+  readonly abrufInhaltFingerabdruck?: string | undefined;
+}
+
+/** Die Bindungssicht eines Wissensobjekts in GENAU der Fassung, die der Antwortlauf gelesen hat. */
+export function bindungsQuelleAus(
+  ko: {
+    readonly id: string;
+    readonly version: number;
+    readonly originalAuthor: string;
+    readonly statement: string;
+    readonly sources?: readonly QuelleBelegstelle[] | undefined;
+  },
+  bodyText: string | undefined,
+): BindungsQuelle {
+  return {
+    id: ko.id,
+    version: ko.version,
+    originalAuthor: ko.originalAuthor,
+    statement: ko.statement,
+    bodyText,
+    sources: ko.sources,
+  };
+}
+
+/** Eine ausgelieferte Antwort — Haupt-, Zweitmeinungs- oder Stichtagsantwort. */
+export interface AusgelieferteAntwort {
+  readonly answered: boolean;
+  readonly answer: string | null;
+  readonly sources: readonly string[];
+  readonly citedSources: readonly string[];
+}
+
+/**
+ * REF-01 (Ben nacharbeit-7, K1): die Bindung EINES ausgelieferten Antworttextes mit SEINEN Quellen.
+ * Jede ausgegebene Antwort — auch Zweitmeinung und Stichtagsvergleich — bekommt ihre eigene; eine
+ * Bindung wird nie von einem Text auf einen anderen übertragen. `undefined` ohne beantworteten Text.
+ */
+export function bindeAntworttext(
+  antwort: AusgelieferteAntwort,
+  quellen: ReadonlyMap<string, BindungsQuelle>,
+): AussagenBeleg | undefined {
+  if (!antwort.answered || typeof antwort.answer !== "string" || antwort.answer.trim() === "") {
+    return undefined;
+  }
+  return bindeAussagen({
+    antwort: antwort.answer,
+    sources: antwort.sources,
+    citedSources: antwort.citedSources,
+    quellen,
+  });
+}
+
+/** Die eigenen Bindungen beider Antworten einer Zweitmeinung — `null` ohne beantworteten Text. */
+export interface ZweitmeinungAussagen {
+  readonly erste: AussagenBeleg | null;
+  readonly zweite: AussagenBeleg | null;
 }
 
 /** Der Volltext NUR, wenn seine Projektion zur gebundenen Fassung gehört — sonst keiner. */
@@ -401,10 +466,14 @@ function externeFundstellen(
         herkunft: s.url,
         anbieter: s.provider ?? null,
         gespeichertAm: s.at,
-        // Ben nacharbeit-4 (K2): `KoSource.at` ist keine Abrufzeit. Ein Abrufnachweis liegt der
-        // Belegstelle nicht bei — die Fundstelle sagt das, statt eine Abrufzeit zu behaupten.
-        abgerufenAm: null,
-        vollstaendigkeit: "abruf_nicht_belegt" as const,
+        // Ben nacharbeit-4/-7 (K2): `KoSource.at` ist keine Abrufzeit. Abgerufen heisst nur, was
+        // der Server mit gültigem Abrufbeleg gespeichert hat; ohne ihn bleibt die Fundstelle
+        // ausdrücklich unvollständig.
+        abgerufenAm: s.abgerufenAm ?? null,
+        abrufInhaltFingerabdruck: s.abrufInhaltFingerabdruck ?? null,
+        vollstaendigkeit: s.abgerufenAm
+          ? ("vollstaendig" as const)
+          : ("abruf_nicht_belegt" as const),
         quellRevision: s.sourceRecordId ?? null,
         start: bereich.start,
         ende: bereich.ende,
@@ -822,6 +891,7 @@ export type FundstellenZustand =
   | "beschaedigt"
   | "geloescht"
   | "herkunft_entfernt"
+  | "anker_ersetzt"
   | "nicht_zugaenglich";
 
 /** Verständliche Zustände — ohne Inhalt oder Metadaten, die der Leser nicht sehen darf. */
@@ -836,6 +906,8 @@ export const FUNDSTELLEN_HINWEIS: Readonly<Record<FundstellenZustand, string>> =
   geloescht: "Die Quelle wurde gelöscht. Die Fundstelle ist nicht mehr abrufbar.",
   herkunft_entfernt:
     "Die externe Herkunft dieser Fundstelle wurde gelöscht. Der gespeicherte Auszug gilt nicht mehr als Beleg und wird nicht angezeigt.",
+  anker_ersetzt:
+    "Diese Belegstelle wurde am Wissensobjekt durch eine neue Belegstelle derselben Herkunft ersetzt. Der alte Auszug gilt nicht mehr als Beleg; die Nachfolgerin ist benannt.",
   nicht_zugaenglich: "Diese Quelle ist für Sie nicht zugänglich oder existiert nicht.",
 };
 
@@ -852,8 +924,9 @@ export type FundstellenAufloesung =
       readonly herkunft?: string | null;
       /** Speicherzeitpunkt der Belegstelle — ausdrücklich KEINE Abrufzeit. */
       readonly gespeichertAm?: string;
-      /** Kein Abrufnachweis an der Belegstelle: `null` statt einer behaupteten Abrufzeit. */
-      readonly abgerufenAm?: null;
+      /** Der nachgewiesene Abruf (Abrufbeleg des Servers) — `null` ohne Nachweis. */
+      readonly abgerufenAm?: string | null;
+      readonly vollstaendigkeit?: ExterneFundstelle["vollstaendigkeit"];
     }
   | {
       readonly zustand: "geaendert";
@@ -881,6 +954,14 @@ export type FundstellenAufloesung =
       readonly link: string;
     }
   | {
+      readonly zustand: "anker_ersetzt";
+      readonly hinweis: string;
+      readonly koId: string;
+      /** Die Belegstelle, die dieselbe Herkunft (Adresse bzw. Quellanker) jetzt trägt. */
+      readonly nachfolgeQuelleId: string;
+      readonly link: string;
+    }
+  | {
       readonly zustand: "beschaedigt" | "geloescht" | "nicht_zugaenglich";
       readonly hinweis: string;
       readonly koId: string;
@@ -893,18 +974,78 @@ function ohneInhalt(
   return { zustand, hinweis: FUNDSTELLEN_HINWEIS[zustand], koId };
 }
 
+interface GebundenerText {
+  text: string;
+  herkunft?: string | null;
+  gespeichertAm?: string;
+  abgerufenAm?: string | null;
+}
+
 function textDerFassung(
   verweis: FundstellenVerweis,
   fassung: ObjektFassung,
-): { text: string; herkunft?: string | null; gespeichertAm?: string } | undefined {
+): GebundenerText | undefined {
   if (verweis.art === "intern") {
     const text = verweis.feld === "statement" ? fassung.statement : fassung.bodyText;
     return typeof text === "string" ? { text } : undefined;
   }
   const quelle = (fassung.sources ?? []).find((s) => s.id === verweis.quelleId);
   return typeof quelle?.excerpt === "string"
-    ? { text: quelle.excerpt, herkunft: quelle.url, gespeichertAm: quelle.at }
+    ? {
+        text: quelle.excerpt,
+        herkunft: quelle.url,
+        gespeichertAm: quelle.at,
+        abgerufenAm: quelle.abgerufenAm ?? null,
+      }
     : undefined;
+}
+
+/**
+ * Ben nacharbeit-7 (K4): der aktuelle Zustand des konkreten externen Ankers — VOR jeder Ausgabe
+ * eines historischen Auszugs. Drei Fälle tragen nicht mehr:
+ *   · der Anker trägt einen Löschvermerk der Herkunft (`sourceRemovedAt`);
+ *   · der Anker ist am Objekt vollständig entfernt (`removeSource` — ohne neue Fassung, die alte
+ *     Fassung führt ihn also weiter) und eine andere Belegstelle trägt dieselbe Herkunft
+ *     (Adresse oder Quellanker): dann wird die Nachfolgerin benannt (`anker_ersetzt`);
+ *   · der Anker ist vollständig entfernt, ohne Nachfolgerin (`herkunft_entfernt`).
+ * `undefined` heisst: der Anker steht unverändert am Objekt.
+ */
+async function ankerZustand<T extends AufloesbaresObjekt>(
+  verweis: Extract<FundstellenVerweis, { art: "extern" }>,
+  ko: T,
+  leser: FundstellenLeser<T>,
+): Promise<FundstellenAufloesung | undefined> {
+  const link = quellenLink(ko.id);
+  const aktuelle = ko.sources ?? [];
+  const anker = aktuelle.find((s) => s.id === verweis.quelleId);
+  const entfernt: FundstellenAufloesung = {
+    zustand: "herkunft_entfernt",
+    hinweis: FUNDSTELLEN_HINWEIS.herkunft_entfernt,
+    koId: ko.id,
+    link,
+  };
+  if (anker) {
+    return anker.sourceRemovedAt ? entfernt : undefined;
+  }
+  // Vollständig entfernt: die frühere Herkunft aus der gebundenen Fassung lesen, um eine
+  // Nachfolgerin derselben Herkunft zuzuordnen — nie aus einer Ähnlichkeit des Textes.
+  const fruehereFassung = await leser.fassung(ko.id, verweis.koVersion);
+  const frueher = fruehereFassung?.sources?.find((s) => s.id === verweis.quelleId);
+  const gleicheHerkunft = (s: QuelleBelegstelle): boolean =>
+    frueher !== undefined &&
+    ((typeof frueher.url === "string" && frueher.url !== "" && s.url === frueher.url) ||
+      (typeof frueher.externalId === "string" && s.externalId === frueher.externalId));
+  const nachfolgerin = aktuelle.find((s) => !s.sourceRemovedAt && gleicheHerkunft(s));
+  if (nachfolgerin) {
+    return {
+      zustand: "anker_ersetzt",
+      hinweis: FUNDSTELLEN_HINWEIS.anker_ersetzt,
+      koId: ko.id,
+      nachfolgeQuelleId: nachfolgerin.id,
+      link,
+    };
+  }
+  return entfernt;
 }
 
 /**
@@ -938,15 +1079,11 @@ export async function loeseFundstelleAuf<T extends AufloesbaresObjekt>(
   // Ben nacharbeit-4 (K4/K5): bei einer externen Fundstelle zählt der AKTUELLE Zustand des
   // konkreten Ankers. Ein Löschvermerk der Herkunft (`sourceRemovedAt`, gesetzt ohne neue Fassung)
   // macht den gespeicherten Auszug ungültig — er wird nicht mehr ausgeliefert.
+  // Ben nacharbeit-7 (K4): auch ein VOLLSTÄNDIG entfernter Anker (`ankerZustand`).
   if (verweis.art === "extern") {
-    const anker = (ko.sources ?? []).find((s) => s.id === verweis.quelleId);
-    if (anker?.sourceRemovedAt) {
-      return {
-        zustand: "herkunft_entfernt",
-        hinweis: FUNDSTELLEN_HINWEIS.herkunft_entfernt,
-        koId: ko.id,
-        link,
-      };
+    const zustand = await ankerZustand(verweis, ko, leser);
+    if (zustand) {
+      return zustand;
     }
   }
   if (verweis.koVersion > ko.version) {
@@ -981,7 +1118,10 @@ export async function loeseFundstelleAuf<T extends AufloesbaresObjekt>(
         ? {
             herkunft: gebunden.herkunft ?? null,
             gespeichertAm: gebunden.gespeichertAm ?? "",
-            abgerufenAm: null,
+            abgerufenAm: gebunden.abgerufenAm ?? null,
+            vollstaendigkeit: gebunden.abgerufenAm
+              ? ("vollstaendig" as const)
+              : ("abruf_nicht_belegt" as const),
           }
         : {}),
     };

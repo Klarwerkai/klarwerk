@@ -132,7 +132,9 @@ export {
   FUNDSTELLEN_HINWEIS,
   aufKernaussagenBeschraenkt,
   bestaetigungGilt,
+  bindeAntworttext,
   bindeAussagen,
+  bindungsQuelleAus,
   fingerabdruck,
   leseFundstellenAnfrage,
   leseFundstellenVerweis,
@@ -158,6 +160,8 @@ export type {
   PruefPaket,
   PruefPosten,
   Teilaussage,
+  ZweitmeinungAussagen,
+  AusgelieferteAntwort,
 } from "./src/aussage-fundstellen";
 export { redactGapForViewer, summarizeGaps } from "./src/gap-visibility";
 // R-1630 / R-2176: der Stichtag des Antwortvergleichs — die Route liest ihn mit derselben Regel.

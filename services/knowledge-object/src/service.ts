@@ -4274,6 +4274,12 @@ export class KoService {
       excerpt?: string | null;
       provider?: string | null;
       objectId?: string | null;
+      /**
+       * REF-01 (Ben nacharbeit-7 K2): der GEPRÜFTE Abrufnachweis des Servers
+       * (`pruefeAbrufbeleg`, external-search) — oder nichts. Die Route reicht ihn nur weiter, wenn
+       * Signatur, Adresse und Inhalt stimmen; hier wird er nicht neu bewertet, nur gespeichert.
+       */
+      abruf?: { abgerufenAm: string; inhaltFingerabdruck: string } | null;
     },
   ): Promise<KnowledgeObject> {
     const label = input.label?.trim() ?? "";
@@ -4298,6 +4304,14 @@ export class KoService {
       // weggelassenes Feld ist dasselbe wie am Altbestand, und die Fläche liest beides als „keine
       // Datei" (`quellennachweis`).
       ...(anchor ? { objectId: anchor } : {}),
+      // REF-01: die Abrufzeit NUR mit geprüftem Nachweis und nur an einem gespeicherten Auszug —
+      // `at` bleibt die Speicherzeit und wird nie als Abruf ausgegeben.
+      ...(input.abruf && input.excerpt?.trim()
+        ? {
+            abgerufenAm: input.abruf.abgerufenAm,
+            abrufInhaltFingerabdruck: input.abruf.inhaltFingerabdruck,
+          }
+        : {}),
       author,
       at: new Date(this.now()).toISOString(),
     };
