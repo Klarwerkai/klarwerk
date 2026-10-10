@@ -15,6 +15,13 @@
 //     einem markierten Ausschnitt gibt es nur hier: im echten Betrieb geht kein Seitentext an die KI.
 // Keine Beobachtung ausserhalb des Browsers.
 //
+// ZWEI BETRIEBSARTEN DER FLÄCHE (produkt:20261010:assistenz-produkteinstieg):
+//   · `produkt` — der normale Produkteinstieg ohne Vorschau-Aufruf. Nur der echte Betrieb, kein
+//     Demo-Schalter, keine vorgefertigten Aktionen; Name und Avatar aus dem persönlichen Profil
+//     (`profil.ts`), ohne Profil neutral „Deine Assistenz“. Der Hilfeknopf bleibt daneben erreichbar,
+//     offen ist immer nur eine der beiden Flächen (`../assistenzFlaechen.ts`).
+//   · `vorschau` — wie geliefert nach `/klara-vorschau`, mit Demo-Betrieb und „Vorschau beenden“.
+//
 // BEDIENUNG, DREI WEGE FÜR JEDE HANDLUNG:
 //   · Verschieben: Maus und Touch (Pointer-Ereignisse), Tastatur (Pfeiltasten, Umschalt = grösser,
 //     Pos1 = Startplatz). Ziehen öffnet das Gespräch NICHT — erst ein Klick ohne Weg tut das.
@@ -46,6 +53,11 @@ import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { useTutorialFuerKlara } from "../../tutorial/TutorialRahmen";
 import type { TutorialFernLage } from "../../tutorial/fernsteuerung";
+import {
+  meldeFlaeche,
+  useAndereFlaecheOffen,
+  useAndereFlaecheSchliesst,
+} from "../assistenzFlaechen";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
 import {
   type Absendeergebnis,
@@ -88,6 +100,7 @@ import {
   objektbezugAus,
   useEchtGespraech,
 } from "./echt";
+import { eingabeAnKontoBinden, leseEingabe, setzeEingabe, useEingabe } from "./eingabe";
 import {
   type Uebersetzer,
   ermittleKontext,
@@ -95,6 +108,7 @@ import {
   seiteAusPfad,
   seitenErklaerung,
 } from "./kontext";
+import { auftrittAus, useAssistenzProfil } from "./profil";
 import { leseVorlesen, stoppeVorlesen, vorlesen as vorlesenStarten } from "./vorlesen";
 import {
   type Aktion,
@@ -131,6 +145,11 @@ const VERZOEGERUNG_MS = 700;
 const HILFE_TAKT_MS = 400;
 const PANEL_BREITE = 360;
 const MINI_GROESSE = 48;
+/**
+ * Produktbetrieb: unten bleibt dieser Streifen für den Hilfeknopf (`KlaraAssistant`, unten rechts)
+ * frei — Figur und sichtbare Beschriftung legen sich nie darüber.
+ */
+const HILFE_FREIRAUM = 80;
 const SCHMAL = "(max-width: 899px)";
 const REDUZIERT = "(prefers-reduced-motion: reduce)";
 
@@ -243,8 +262,20 @@ interface AuswahlKnopf {
   herkunft: Herkunft;
 }
 
-export function KlaraVorschau(): JSX.Element {
+export function KlaraVorschau({
+  betriebsart = "vorschau",
+}: {
+  betriebsart?: "vorschau" | "produkt";
+} = {}): JSX.Element {
   const { t, i18n } = useTranslation();
+  const produkt = betriebsart === "produkt";
+  // Name und Avatar: im Produkt aus dem persönlichen Profil, ohne Profil neutral (`profil.ts`).
+  const auftritt = auftrittAus(useAssistenzProfil());
+  const anzeigeName = auftritt.name ?? t("klaraprodukt.name.neutral");
+  const avatarUrl = produkt ? auftritt.avatarUrl : klaraAvatarUrl();
+  const figurLabel = produkt
+    ? t("klaraprodukt.figur.label", { name: anzeigeName })
+    : t("klaravorschau.figur.label");
   const z = useKlaraZustand();
   const location = useLocation();
   const navigate = useNavigate();
@@ -263,14 +294,22 @@ export function KlaraVorschau(): JSX.Element {
   const kontoId = sitzung.user?.id ?? null;
   const echt = useEchtGespraech();
   const ki = useKlaraKiLage();
-  const istEcht = z.betrieb === "echt";
+  // Im Produktbetrieb gibt es nur den echten Betrieb — auch wenn die Sitzung noch einen in der
+  // Vorschau gewählten Demo-Betrieb trägt.
+  const istEcht = produkt || z.betrieb === "echt";
+  const istEchtRef = useRef(istEcht);
+  istEchtRef.current = istEcht;
+  const kontoIdRef = useRef(kontoId);
+  kontoIdRef.current = kontoId;
   // Klara 03 · K6: Markierung, Demo-Verlauf und Entwurf gehören dem Konto, unter dem sie entstanden.
   // Gebunden wird erst, wenn der Server die Sitzungsfrage beantwortet hat — während des Ladens ist
-  // „kein Konto“ keine Abmeldung (`Sitzungslage`, AuthContext).
+  // „kein Konto“ keine Abmeldung (`Sitzungslage`, AuthContext). Dasselbe gilt für die angefangene
+  // Eingabe (`eingabe.ts`).
   const sitzungBeantwortet = !sitzung.isLoading && sitzung.sitzungslage !== "unbeantwortet";
   useEffect(() => {
     if (sitzungBeantwortet) {
       aendere((alt) => anKontoBinden(alt, kontoId));
+      eingabeAnKontoBinden(kontoId);
     }
   }, [sitzungBeantwortet, kontoId]);
   useEffect(() => {
@@ -367,7 +406,7 @@ export function KlaraVorschau(): JSX.Element {
   const seitlichBreit = panelSichtbar && z.ansicht === "seitlich" && !schmal;
   const flaeche = {
     breite: seitlichBreit ? fenster.breite - SEITLICH_BREITE : fenster.breite,
-    hoehe: fenster.hoehe,
+    hoehe: produkt ? Math.max(FIGUR_GROESSE, fenster.hoehe - HILFE_FREIRAUM) : fenster.hoehe,
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -402,6 +441,17 @@ export function KlaraVorschau(): JSX.Element {
     }));
     setFokusZiel(ziel);
   }, []);
+  // Nie zwei offene Flächen: öffnet sich das Gespräch, schliesst der Hilfeknopf seine Fläche — und
+  // öffnet jemand die Hilfe, schliesst sich das Gespräch (Sitzung, Auswahl und Eingabe bleiben).
+  // Solange die Hilfe offen ist, tritt die Figur zurück: deren Fläche liegt unten rechts, wo die
+  // Figur steht, und die Figur verdeckte sonst ihren Inhalt.
+  useEffect(() => {
+    meldeFlaeche("assistenz", panelSichtbar);
+  }, [panelSichtbar]);
+  useAndereFlaecheSchliesst("assistenz", () =>
+    aendere((alt) => (alt.offen ? { ...alt, offen: false } : alt)),
+  );
+  const hilfeOffen = useAndereFlaecheOffen("assistenz");
   const schliessen = useCallback(() => {
     aendere((alt) => ({ ...alt, offen: false, minimiert: false }));
     setFokusZiel("figur");
@@ -721,7 +771,7 @@ export function KlaraVorschau(): JSX.Element {
     const herkunft = bezug ?? kontextRef.current;
     // Klara 01: im echten Betrieb ist Klaras eingebaute Hilfe (Seite erklären, Tutorial) Teil des
     // gespeicherten Gesprächs — gekennzeichnet als „Klarwerk-Hilfe · ohne KI“, nicht als Demo.
-    if (leseZustand().betrieb === "echt" && aktion === "modus") {
+    if (istEchtRef.current && aktion === "modus") {
       aendere((alt) => ({ ...alt, status: "laeuft" }));
       window.setTimeout(() => {
         const ergebnis = erzeugen();
@@ -1047,7 +1097,12 @@ export function KlaraVorschau(): JSX.Element {
   // ---------------------------------------------------------------------------------------------
   // Freie Frage — während eines Tutorials eine ZWISCHENFRAGE: das Tutorial hält am selben Schritt.
   // ---------------------------------------------------------------------------------------------
-  const [eingabe, setEingabe] = useState("");
+  // Die angefangene Eingabe liegt ausserhalb der Figur (`eingabe.ts`): Schliessen, Verkleinern,
+  // Breitenwechsel und Neuladen verlieren sie nicht.
+  const eingabe = useEingabe();
+  const setEingabe = useCallback((neu: string | ((alt: string) => string)): void => {
+    setzeEingabe(kontoIdRef.current, typeof neu === "function" ? neu(leseEingabe()) : neu);
+  }, []);
   // Klara 01: eine Frage im echten Betrieb geht nur mit gelesenem Gespräch und gespeicherter
   // Einwilligung, nicht bei abgeschalteter KI und nicht, solange eine andere läuft.
   const echtSendebereit =
@@ -1330,7 +1385,8 @@ export function KlaraVorschau(): JSX.Element {
       <div
         data-klara="1"
         data-testid="klara-figur-huelle"
-        className="fixed z-[60] flex flex-col items-center"
+        data-zurueckgetreten={hilfeOffen ? "true" : "false"}
+        className={`fixed z-[60] flex-col items-center ${hilfeOffen ? "hidden" : "flex"}`}
         style={{ left: position.x, top: position.y, width: FIGUR_GROESSE }}
       >
         <button
@@ -1338,12 +1394,13 @@ export function KlaraVorschau(): JSX.Element {
           type="button"
           data-testid="klara-figur"
           data-status={z.status}
-          data-betrieb={z.betrieb}
+          data-betrieb={istEcht ? "echt" : "demo"}
+          data-betriebsart={betriebsart}
           data-minimiert={z.minimiert ? "true" : "false"}
           data-angedockt={z.angedockt ?? ""}
           data-geparkt={z.geparkt ? String(z.geparkt.absatz) : ""}
           data-ablage={ablage ? "true" : "false"}
-          aria-label={t("klaravorschau.figur.label")}
+          aria-label={figurLabel}
           aria-expanded={panelSichtbar}
           aria-describedby={hinweisId}
           onPointerDown={beiZeigerRunter}
@@ -1355,14 +1412,14 @@ export function KlaraVorschau(): JSX.Element {
           onDragOver={beiZiehenUeber}
           onDragLeave={() => setAblage(false)}
           onDrop={beiAblegen}
-          title={ablage ? t("klaravorschau.figur.ablegen") : t("klaravorschau.figur.label")}
+          title={ablage ? t("klaravorschau.figur.ablegen") : figurLabel}
           className={`klara-figur grid place-items-center overflow-hidden rounded-full border-2 border-brand bg-surface shadow-popover focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-ink ${
             ziehPos ? "cursor-grabbing" : "cursor-grab"
           }`}
           style={{ width: groesse, height: groesse }}
         >
           <img
-            src={klaraAvatarUrl()}
+            src={avatarUrl}
             alt=""
             draggable={false}
             width={groesse}
@@ -1371,6 +1428,17 @@ export function KlaraVorschau(): JSX.Element {
             className="pointer-events-none h-full w-full object-cover"
           />
         </button>
+        {/* Produktbetrieb: der Name steht SICHTBAR an der Figur — der Einstieg ist ohne Vorwissen
+            zu finden. Die Beschriftung ist kein eigenes Ziel; bedient wird die Figur selbst. */}
+        {produkt ? (
+          <span
+            data-testid="klara-figur-name"
+            aria-hidden="true"
+            className="pointer-events-none mt-1 whitespace-nowrap rounded-pill bg-ink px-2 py-0.5 text-[11px] font-semibold text-page shadow-tile"
+          >
+            {anzeigeName}
+          </span>
+        ) : null}
         {z.status !== "ruhe" ? (
           <span
             data-testid="klara-figur-status"
@@ -1425,8 +1493,10 @@ export function KlaraVorschau(): JSX.Element {
             top: Math.max(8, Math.min(auswahlKnopf.y, fenster.hoehe - 48)),
           }}
         >
-          <img src={klaraAvatarUrl()} alt="" className="h-5 w-5 rounded-full" />
-          {t("klaravorschau.auswahl.knopf")}
+          <img src={avatarUrl} alt="" className="h-5 w-5 rounded-full" />
+          {produkt
+            ? t("klaraprodukt.auswahl.knopf", { name: anzeigeName })
+            : t("klaravorschau.auswahl.knopf")}
         </button>
       ) : null}
 
@@ -1452,18 +1522,23 @@ export function KlaraVorschau(): JSX.Element {
           {/* Kopf */}
           <div className="flex items-start justify-between gap-2 border-b border-hairline px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
-              <img src={klaraAvatarUrl()} alt="" className="h-8 w-8 shrink-0 rounded-full" />
+              <img src={avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full" />
               <div className="min-w-0">
                 <h2
                   id={`${hinweisId}-titel`}
                   ref={panelTitelRef}
                   tabIndex={-1}
+                  data-testid="klara-panel-titel"
                   className="text-[14px] font-semibold text-ink outline-none focus-visible:underline"
                 >
-                  {t("klaravorschau.panel.titel")}
+                  {produkt ? anzeigeName : t("klaravorschau.panel.titel")}
                 </h2>
                 <p className={KLEINTITEL}>
-                  {istEcht ? t("klaragespraech.untertitel") : t("klaravorschau.panel.untertitel")}
+                  {produkt
+                    ? t("klaraprodukt.untertitel")
+                    : istEcht
+                      ? t("klaragespraech.untertitel")
+                      : t("klaravorschau.panel.untertitel")}
                 </p>
                 <p
                   data-testid="klara-status-text"
@@ -1516,7 +1591,7 @@ export function KlaraVorschau(): JSX.Element {
               <span className="sr-only">{t("klaragespraech.betrieb.label")}</span>
               <span
                 data-testid="klara-betrieb"
-                data-betrieb={z.betrieb}
+                data-betrieb={istEcht ? "echt" : "demo"}
                 className={
                   istEcht
                     ? "rounded-pill border border-ai bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-ai"
@@ -1527,25 +1602,31 @@ export function KlaraVorschau(): JSX.Element {
                   ? t("klaragespraech.betrieb.echtKurz")
                   : t("klaragespraech.betrieb.demoKurz")}
               </span>
-              <button
-                type="button"
-                data-testid="klara-betrieb-echt"
-                aria-pressed={istEcht}
-                onClick={() => aendere((alt) => ({ ...alt, betrieb: "echt" }))}
-                className={KNOPF}
-              >
-                {t("klaragespraech.betrieb.echt")}
-              </button>
-              <button
-                type="button"
-                data-testid="klara-betrieb-demo"
-                aria-pressed={!istEcht}
-                disabled={echt.laeuftSeit !== null}
-                onClick={() => aendere((alt) => ({ ...alt, betrieb: "demo" }))}
-                className={KNOPF}
-              >
-                {t("klaragespraech.betrieb.demo")}
-              </button>
+              {/* Produktbetrieb: kein Demo-Schalter — vorgefertigte Antworten gibt es nur in der
+                  getrennten Vorschau (Link im Fuss). */}
+              {!produkt ? (
+                <>
+                  <button
+                    type="button"
+                    data-testid="klara-betrieb-echt"
+                    aria-pressed={istEcht}
+                    onClick={() => aendere((alt) => ({ ...alt, betrieb: "echt" }))}
+                    className={KNOPF}
+                  >
+                    {t("klaragespraech.betrieb.echt")}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="klara-betrieb-demo"
+                    aria-pressed={!istEcht}
+                    disabled={echt.laeuftSeit !== null}
+                    onClick={() => aendere((alt) => ({ ...alt, betrieb: "demo" }))}
+                    className={KNOPF}
+                  >
+                    {t("klaragespraech.betrieb.demo")}
+                  </button>
+                </>
+              ) : null}
             </div>
             {!istEcht ? (
               <p
@@ -1700,7 +1781,9 @@ export function KlaraVorschau(): JSX.Element {
                     {auswahlSperre.text}
                   </p>
                 ) : null}
-                <p className={`${KLEINTITEL} mt-2`}>{t("klaravorschau.aktion.label")}</p>
+                <p className={`${KLEINTITEL} mt-2`}>
+                  {produkt ? t("klaraprodukt.aktion.label") : t("klaravorschau.aktion.label")}
+                </p>
                 {istEcht ? (
                   <>
                     <p
@@ -1713,7 +1796,9 @@ export function KlaraVorschau(): JSX.Element {
                       data-testid="klara-aktion-nur-demo"
                       className="mt-1 text-[11.5px] leading-relaxed text-muted-2"
                     >
-                      {t("klaragespraech.aktionHinweis")}
+                      {produkt
+                        ? t("klaraprodukt.auswahl.offen")
+                        : t("klaragespraech.aktionHinweis")}
                     </p>
                   </>
                 ) : null}
@@ -1898,8 +1983,22 @@ export function KlaraVorschau(): JSX.Element {
               <output className="block text-[11.5px] text-muted-2">{tutorialHinweis}</output>
             ) : null}
 
-            {/* Entwurf */}
-            {z.entwurf ? <EntwurfKarte entwurf={z.entwurf} /> : null}
+            {/* Produktbetrieb: was noch nicht freigegeben ist, steht als solches da — ohne Knopf. */}
+            {produkt ? (
+              <section
+                data-testid="klara-offen"
+                aria-label={t("klaraprodukt.offen.titel")}
+                className="rounded-card border border-dashed border-hairline px-3 py-2"
+              >
+                <p className={KLEINTITEL}>{t("klaraprodukt.offen.titel")}</p>
+                <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted">
+                  {t("klaraprodukt.offen.text")}
+                </p>
+              </section>
+            ) : null}
+
+            {/* Entwurf — ein Demo-Entwurf der Vorschau erscheint nie im Produktbetrieb. */}
+            {z.entwurf && !produkt ? <EntwurfKarte entwurf={z.entwurf} /> : null}
 
             {/* Klara 01: Bedienhilfe zu dieser Fähigkeit — von Anfang an über Klara. */}
             <details
@@ -1920,7 +2019,11 @@ export function KlaraVorschau(): JSX.Element {
                 <li>{t("klaragespraech.bedienhilfe.stoppen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.speichern")}</li>
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>
-                <li>{t("klaragespraech.bedienhilfe.demo")}</li>
+                {produkt ? (
+                  <li>{t("klaraprodukt.vorschau.hinweis")}</li>
+                ) : (
+                  <li>{t("klaragespraech.bedienhilfe.demo")}</li>
+                )}
                 <li>{t("klaragespraech.bedienhilfe.bedienen")}</li>
                 {/* Klara 02: Sprechen, Diktieren und Vorlesen — erklärt, wo es bedient wird. */}
                 <li data-testid="klara-bedienhilfe-sprache">
@@ -1950,6 +2053,7 @@ export function KlaraVorschau(): JSX.Element {
                     void ladeEcht(kontoId, t);
                   }
                 }}
+                {...(produkt ? { sprecher: anzeigeName } : {})}
               />
             ) : (
               <DemoVerlauf verlauf={z.verlauf} />
@@ -1983,7 +2087,7 @@ export function KlaraVorschau(): JSX.Element {
             <KlaraSprachLeiste s={sprechen} />
             <div className="min-w-0 flex-1">
               <label htmlFor={eingabeId} className={KLEINTITEL}>
-                {t("klaravorschau.eingabe.label")}
+                {produkt ? t("klaraprodukt.eingabe.label") : t("klaravorschau.eingabe.label")}
               </label>
               <input
                 id={eingabeId}
@@ -1991,7 +2095,11 @@ export function KlaraVorschau(): JSX.Element {
                 value={eingabe}
                 enterKeyHint="send"
                 onChange={(e) => setEingabe(e.target.value)}
-                placeholder={t("klaravorschau.eingabe.platzhalter")}
+                placeholder={
+                  produkt
+                    ? t("klaraprodukt.eingabe.platzhalter")
+                    : t("klaravorschau.eingabe.platzhalter")
+                }
                 className="h-9 w-full rounded-input border border-hairline bg-surface px-2.5 text-[13px] text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
               />
             </div>
@@ -2050,14 +2158,20 @@ export function KlaraVorschau(): JSX.Element {
                 ? t("klaravorschau.knopf.vollbildAus")
                 : t("klaravorschau.knopf.vollbild")}
             </button>
-            <button
-              type="button"
-              data-testid="klara-beenden"
-              onClick={vorschauBeenden}
-              className={KNOPF}
-            >
-              {t("klaravorschau.knopf.beenden")}
-            </button>
+            {produkt ? (
+              <Link to={VORSCHAU_PFAD} data-testid="klara-zur-vorschau" className={KNOPF}>
+                {t("klaraprodukt.vorschau.link")}
+              </Link>
+            ) : (
+              <button
+                type="button"
+                data-testid="klara-beenden"
+                onClick={vorschauBeenden}
+                className={KNOPF}
+              >
+                {t("klaravorschau.knopf.beenden")}
+              </button>
+            )}
           </div>
         </section>
       ) : null}

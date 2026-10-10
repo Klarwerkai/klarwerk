@@ -11,7 +11,22 @@ Seite und der Markierung.
 3. Ab jetzt begleitet Klara diese Browser-Sitzung auf jeder Seite. Sie ersetzt dabei den runden
    Hilfeknopf unten rechts. **„Vorschau beenden“** in Klaras Gespräch schaltet sie wieder aus.
 
-Ohne diesen Einstieg bleibt die Oberfläche unverändert (Hilfeknopf `KlaraAssistant`).
+## Im normalen Produkt (`produkt:20261010:assistenz-produkteinstieg`)
+
+Ohne Vorschau-Aufruf steht dieselbe Figur auf jeder Seite der Hülle im **Produktbetrieb**
+(`<KlaraVorschau betriebsart="produkt" />` in `shell/AppShell.tsx`):
+
+- sichtbar beschriftet — ohne persönliches Profil neutral **„Deine Assistenz“**, mit Profil dessen
+  Name und Avatar (`klara-vorschau/profil.ts`, nur Leseeinstieg; Einrichtung und Auswahl gehören den
+  Personalisierungs-/Zustandsmotiv-Aufträgen);
+- nur der echte Betrieb: kein Demo-Schalter, keine vorgefertigten Aktionen, kein „Vorschau
+  beenden“; noch nicht freigegebene Ausbaustufen stehen als „Noch nicht verfügbar“ da. Ein Link
+  führt in die getrennte, gekennzeichnete Vorschau;
+- der Hilfeknopf (`KlaraAssistant`) bleibt daneben erreichbar; offen ist immer nur eine der beiden
+  Flächen, und solange die Hilfe offen ist, tritt die Figur zurück (`components/assistenzFlaechen.ts`).
+  Unten bleibt ein Streifen für den Hilfeknopf frei;
+- eine angefangene Eingabe übersteht Schliessen, Verkleinern, Breitenwechsel und Neuladen
+  (`klara-vorschau/eingabe.ts`, Browser-Sitzung, ans Konto gebunden).
 
 ## Echter Betrieb (Klara 01, `produkt:20261008:klara-basis`)
 
@@ -117,3 +132,6 @@ ausdrückliche Handlung hin, der Hinweis steht an der Markierung.
   (`kontext-am-server.test.tsx`)
 - `tests-smoke/klara-kontext-tutorial-browser.spec.ts` (alle Engines) und
   `tests-smoke/klara-kontext-artikel-browser.spec.ts` (isolierter Kontext) — Klara 03 im Browser
+- `tests/klara-produkt/produkteinstieg-am-server.test.tsx` und
+  `tests-smoke/assistenz-produkteinstieg-browser.spec.ts` (isolierter Kontext) — der normale
+  Produkteinstieg ohne Vorschau: Desktop, 390 × 844 und Tastatur

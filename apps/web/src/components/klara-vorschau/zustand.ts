@@ -13,6 +13,7 @@
 // Die Funktionen hier sind REIN (Position klemmen, andocken, Antwort einsortieren) und ohne DOM
 // prüfbar (`tests/klara-vorschau/`).
 import { useSyncExternalStore } from "react";
+import { eingabeZuruecksetzen } from "./eingabe";
 
 export const FIGUR_GROESSE = 72;
 export const RAND_ABSTAND = 12;
@@ -315,8 +316,9 @@ export function aendere(f: (z: KlaraZustand) => KlaraZustand): void {
   }
 }
 
-/** Nur für Tests und „Vorschau beenden“: alles auf Anfang. */
+/** Nur für Tests und „Vorschau beenden“: alles auf Anfang — auch die angefangene Eingabe. */
 export function zuruecksetzenGanz(): void {
+  eingabeZuruecksetzen();
   zustand = ANFANG;
   try {
     sessionStorage.removeItem(SITZUNG);
