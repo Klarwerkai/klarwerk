@@ -282,6 +282,7 @@ import { schalterAn } from "./feature-flags";
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
 import { frischeMeldungen } from "./frische-meldungen";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
+import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
 import {
   type SessionUser,
   isInternalOnlyError,
@@ -2841,6 +2842,9 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: der Nachhol- und Abgleichlauf über DEN
+    // Prüf-Worker dieser App (hintergrundpruefung.ts); `server.ts` startet ihn, Tests nicht.
+    hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
     /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
     verzeichnisAbgleichWiederholungMs?: number;
   } = {},
@@ -3797,6 +3801,29 @@ export function buildApp(
       }),
     });
   services.aiCheckWorker = aiCheckWorker;
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: eigener Worker mit DEMSELBEN Runner plus
+  // Zählhaken — so zählt nur der Hintergrundlauf gegen sein Budget (hintergrundpruefung.ts).
+  opts.hintergrundpruefung?.(
+    createHintergrundpruefung({
+      ko: services.ko,
+      hauptWorker: aiCheckWorker,
+      baueWorker: (vorVergleich) =>
+        createAiCheckWorker({
+          ko: services.ko,
+          run: createAiCheckRunner({
+            ko: services.ko,
+            conflicts: services.conflicts,
+            overlaps: services.overlaps,
+            overlapSettings: services.overlapSettings,
+            reasoner: services.reasoner,
+            semanticPrefilter,
+            vorVergleich,
+          }),
+        }),
+      modellAktiv: () => services.reasoner.status().active,
+      audit: services.audit,
+    }),
+  );
   app.register(
     koRoutes(
       {
