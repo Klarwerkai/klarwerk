@@ -48,6 +48,7 @@ import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import { useSession } from "../../app/AuthContext";
 import { HOME_ROUTE } from "../../app/navigation";
 import { internerPfad } from "../../lib/internerPfad";
+import { erkenneAuftrag, istAusfuehrungsauftrag } from "../../lib/klaraAuftragErkennung";
 import { leseobjektJetzt, useLeseobjekt } from "../../lib/leseobjekt";
 import { leserHref } from "../../lib/objektbezug";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -58,6 +59,7 @@ import {
   useAndereFlaecheOffen,
   useAndereFlaecheSchliesst,
 } from "../assistenzFlaechen";
+import { KlaraAusfuehrungen } from "./KlaraAusfuehrung";
 import { KlaraEchtGespraech, useKlaraKiLage } from "./KlaraEchtGespraech";
 import {
   type Absendeergebnis,
@@ -72,6 +74,7 @@ import { KlaraTutorialKarte, KlaraZeiger, type ZielTreffer, findeZiel } from "./
 import { setzeKlaraVorschauAktiv } from "./aktiv";
 import { antwortAufAuswahl, antwortAufFrage, entwurfsInhalt, kuerze } from "./antworten";
 import { VORSCHAU_PFAD, artikelPfad, demoArtikel } from "./artikel";
+import { type AuftragsUmgebung, ladeAuftraege, starteAuftrag, useAusfuehrungen } from "./auftrag";
 import { klaraAvatarUrl } from "./avatar";
 import {
   type KontextAktion,
@@ -1356,13 +1359,79 @@ export function KlaraVorschau({
       );
     });
   };
-  /** Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. */
-  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> =>
-    fragenSenden(text, ziel.herkunft);
+  // ---------------------------------------------------------------------------------------------
+  // Klara 05 (produkt:20261008:klara-aktionen): EIN Ausführungsweg für getippte und gesprochene
+  // Aufträge (`auftrag.ts`). Nur im echten Betrieb, nur mit gelesenem Gespräch — und nur, was die
+  // Person selbst eingibt oder als Auftrag spricht; kein Text einer Antwort oder Markierung.
+  // ---------------------------------------------------------------------------------------------
+  const ausfuehrungen = useAusfuehrungen();
+  const ausfuehrungLaeuft = ausfuehrungen.some(
+    (a) => a.phase === "pruefen" || a.phase === "laeuft",
+  );
+  const ausfuehrungBereit =
+    istEcht && Boolean(kontoId) && echt.laden === "bereit" && !ausfuehrungLaeuft;
+  const ortRef = useRef(`${location.pathname}${location.search}`);
+  ortRef.current = `${location.pathname}${location.search}`;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const auftragsUmgebung = useCallback(
+    (): AuftragsUmgebung => ({
+      t: tRef.current,
+      navigiere: (pfad) => navigateRef.current(pfad),
+      ort: () => ortRef.current,
+    }),
+    [],
+  );
+  const ausfuehren = (
+    text: string,
+    quelle: "getippt" | "gesprochen",
+    ziel?: Herkunft,
+  ): "gestartet" | "kein_auftrag" | "belegt" => {
+    if (!istEcht || !kontoId || echt.laden !== "bereit") {
+      return "kein_auftrag";
+    }
+    const r = starteAuftrag(text, quelle, ziel ?? kontextRef.current, auftragsUmgebung());
+    if (r === "gestartet") {
+      setAnsage(t("klaraauftrag.ansage.gestartet"));
+    } else if (r === "belegt") {
+      setAnsage(t("klaraauftrag.belegt"));
+    }
+    return r;
+  };
+  // Nach Neuladen oder neuer Anmeldung: die Aufträge des eigenen Gesprächs vom Server.
+  const gespraechId = echt.gespraech?.id ?? null;
+  useEffect(() => {
+    if (istEcht && gespraechId) {
+      void ladeAuftraege(gespraechId, kontextRef.current);
+    }
+  }, [istEcht, gespraechId]);
+  const eingabeAuftrag = istEcht ? erkenneAuftrag(eingabe) : null;
+
+  /**
+   * Ein gesprochener Auftrag: gesendet mit GENAU dem Ziel, das seine Karte zeigt. Ein klarer
+   * Ausführungsauftrag geht an denselben Ausführungsweg wie ein getippter (Klara 05).
+   */
+  const auftragSenden = (text: string, ziel: SprachZiel): Promise<Absendeergebnis> => {
+    const r = ausfuehren(text, "gesprochen", ziel.herkunft);
+    if (r === "gestartet") {
+      return Promise.resolve({ stand: "uebergeben", antwort: null });
+    }
+    if (r === "belegt") {
+      return Promise.resolve({ stand: "nicht_gesendet", antwort: null });
+    }
+    return fragenSenden(text, ziel.herkunft);
+  };
   const senden = (e: FormEvent): void => {
     e.preventDefault();
     const frage = eingabe.trim();
     if (!frage) {
+      return;
+    }
+    const r = ausfuehren(frage, "getippt");
+    if (r !== "kein_auftrag") {
+      if (r === "gestartet") {
+        setEingabe("");
+      }
       return;
     }
     if (istEcht && !echtSendebereit) {
@@ -2149,6 +2218,14 @@ export function KlaraVorschau({
                 <li>{t("klaravorschlag.bedienhilfe.uebernehmen")}</li>
                 <li>{t("klaravorschlag.bedienhilfe.rueckfrage")}</li>
                 <li>{t("klaravorschlag.bedienhilfe.notiz")}</li>
+                {/* Klara 05: Aufträge ausführen, stoppen, korrigieren und rückgängig machen. */}
+                <li data-testid="klara-bedienhilfe-auftrag">
+                  {t("klaraauftrag.bedienhilfe.ausfuehren")}
+                </li>
+                <li>{t("klaraauftrag.bedienhilfe.grenze")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.stoppen")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.rueckgaengig")}</li>
+                <li>{t("klaraauftrag.bedienhilfe.sprechen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.stoppen")}</li>
                 <li>{t("klaragespraech.bedienhilfe.speichern")}</li>
                 <li>{t("klaragespraech.bedienhilfe.schritt")}</li>
@@ -2191,11 +2268,15 @@ export function KlaraVorschau({
             ) : (
               <DemoVerlauf verlauf={z.verlauf} />
             )}
+            {/* Klara 05: Ausführungsaufträge — Grenze, Schritte, Abbrechen, Rückgängig. */}
+            {istEcht ? <KlaraAusfuehrungen umgebung={auftragsUmgebung} /> : null}
             {/* Klara 02: der gesprochene Auftrag — erkannter Text, Ziel, Rückfragen, Ergebnis. */}
             <KlaraAuftragKarte
               s={sprechen}
               sendebereit={sprachSendebereit}
               absenden={auftragSenden}
+              {...(istEcht ? { ausfuehrbar: istAusfuehrungsauftrag } : {})}
+              ausfuehrungBereit={ausfuehrungBereit}
             />
             <div ref={endeRef} />
           </div>
@@ -2235,6 +2316,25 @@ export function KlaraVorschau({
                 }
                 className="h-9 w-full rounded-input border border-hairline bg-surface px-2.5 text-[13px] text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
               />
+              {/* Klara 05: vor dem Senden sichtbar, dass dieser Text ein Ausführungsauftrag ist. */}
+              {eingabeAuftrag ? (
+                <p
+                  data-testid="klara-eingabe-auftrag"
+                  className="mt-0.5 text-[11px] leading-relaxed text-ai"
+                >
+                  {t("klaraauftrag.eingabeHinweis", {
+                    schritte: eingabeAuftrag.schritte
+                      .map((s, i) =>
+                        t("klaraauftrag.schritt", {
+                          nr: i + 1,
+                          aktion: t(`klaraauftrag.aktion.${s.aktion}`),
+                          titel: s.name,
+                        }),
+                      )
+                      .join(" · "),
+                  })}
+                </p>
+              ) : null}
             </div>
             {istEcht && echt.laeuftSeit !== null ? (
               <button
@@ -2249,7 +2349,10 @@ export function KlaraVorschau({
               <button
                 type="submit"
                 data-testid="klara-senden"
-                disabled={!eingabe.trim() || (istEcht && !echtSendebereit)}
+                disabled={
+                  !eingabe.trim() ||
+                  (istEcht && !echtSendebereit && !(eingabeAuftrag && ausfuehrungBereit))
+                }
                 className={KNOPF_KI}
               >
                 {t("klaravorschau.eingabe.senden")}

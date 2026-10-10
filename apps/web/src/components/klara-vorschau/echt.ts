@@ -132,12 +132,25 @@ export function useEchtGespraech(): EchtZustand {
   );
 }
 
+/**
+ * Klara 05: wer mit dem Gespräch vergessen werden muss (die Ausführungsaufträge in `auftrag.ts`).
+ * Sie hängen am Konto wie das Gespräch selbst.
+ */
+const vergessenHoerer = new Set<() => void>();
+
+export function beimVergessen(f: () => void): void {
+  vergessenHoerer.add(f);
+}
+
 /** Abmelden, Kontowechsel, Tests: alles Gelesene vergessen, eine laufende Anfrage stoppen. */
 export function vergiss(): void {
   generation += 1;
   laufend?.abort();
   laufend = null;
   zustand = LEER;
+  for (const f of vergessenHoerer) {
+    f();
+  }
   for (const h of hoerer) {
     h();
   }
@@ -286,6 +299,14 @@ async function sichereGespraech(bezug: KlaraObjektbezug, gen: number): Promise<s
   pruefe(gen);
   setze((z) => ({ ...z, gespraech: ohneNachrichten(gespraech) }));
   return gespraech.id;
+}
+
+/**
+ * Klara 05: das eigene Gespräch, in dem ein Ausführungsauftrag geführt wird — dasselbe wie für
+ * Fragen; gibt es noch keins, beginnt es hier mit dem Objektbezug des Auftrags.
+ */
+export function gespraechFuerAuftrag(bezug: KlaraObjektbezug): Promise<string> {
+  return sichereGespraech(bezug, generation);
 }
 
 function lokaleNachricht(e: KlaraNachrichtEingabe, gespeichert: Speicherstand): EchtNachricht {

@@ -1,6 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { type AnswerSnapshotRepo, gehoertNutzer } from "../../ask";
+import {
+  type KlaraAuftrag,
+  type KlaraAuftragEingabe,
+  KlaraAuftragFehler,
+  type KlaraAuftragGrund,
+  type KlaraAuftragSchritt,
+  type KlaraSchrittEingabe as KlaraAuftragSchrittEingabe,
+  type KlaraKorrekturEingabe,
+  brecheAb,
+  korrigiere,
+  mitNeuemAuftrag,
+  neuerAuftrag,
+  setzeSchritt as setzeAuftragSchritt,
+} from "./klara-auftrag";
 
 // ================================================================================================
 // produkt:20261008:klara-basis — DAS PERSÖNLICHE KLARA-GESPRÄCH, SERVERSEITIG UNTER DER EIGENEN PERSON.
@@ -160,6 +174,11 @@ export interface KlaraGespraech {
   readonly geaendertAm: string;
   /** Zähler für den Standvergleich beim Schreiben (kein stilles Überschreiben paralleler Tabs). */
   readonly fassung: number;
+  /**
+   * Klara 05 (produkt:20261008:klara-aktionen): die in diesem Gespräch gegebenen Ausführungsaufträge
+   * mit ihrer Grenze und ihren Schritten (`klara-auftrag.ts`). Fehlt bei Gesprächen von davor.
+   */
+  readonly auftraege?: readonly KlaraAuftrag[];
 }
 
 export const KLARA_GESPRAECH_MAX_NACHRICHTEN = 400;
@@ -320,7 +339,8 @@ export type KlaraGespraechGrund =
   | "antwort_unbekannt"
   | "einwilligung_fehlt"
   | "voll"
-  | "konflikt";
+  | "konflikt"
+  | KlaraAuftragGrund;
 
 export class KlaraGespraechFehler extends Error {
   constructor(
@@ -735,5 +755,125 @@ export class KlaraGespraechDienst {
 
   loesche(kontoId: string, id: string): Promise<boolean> {
     return this.repo.entferne(kontoId, id);
+  }
+
+  // ----------------------------------------------------------------------------------------------
+  // Klara 05 (produkt:20261008:klara-aktionen) — Ausführungsaufträge mit fester Grenze.
+  // Dieselbe Ablage, derselbe Standvergleich, dieselbe Kontobindung wie das Gespräch; die Regeln der
+  // Grenze stehen rein in `klara-auftrag.ts`. Ein Auftrag braucht keine Einwilligung: er geht an
+  // keine KI, sondern an vorhandene Produktwege, die ihre Rechte selbst prüfen.
+  // ----------------------------------------------------------------------------------------------
+
+  /** Übersetzt einen Regelverstoss der Grenze in die Fehlerform dieses Dienstes. */
+  private async mitGrenze<T>(f: () => Promise<T>): Promise<T> {
+    try {
+      return await f();
+    } catch (fehler) {
+      if (fehler instanceof KlaraAuftragFehler) {
+        throw new KlaraGespraechFehler(fehler.status, fehler.grund, fehler.message);
+      }
+      throw fehler;
+    }
+  }
+
+  private static auftragIn(g: KlaraGespraech, auftragId: string): KlaraAuftrag {
+    const a = (g.auftraege ?? []).find((x) => x.id === auftragId);
+    if (!a) {
+      throw new KlaraGespraechFehler(404, "auftrag_unbekannt", "Auftrag nicht gefunden.");
+    }
+    return a;
+  }
+
+  private static ersetzeAuftrag(g: KlaraGespraech, neu: KlaraAuftrag): KlaraGespraech {
+    return { ...g, auftraege: (g.auftraege ?? []).map((a) => (a.id === neu.id ? neu : a)) };
+  }
+
+  async auftraege(kontoId: string, id: string): Promise<readonly KlaraAuftrag[]> {
+    return (await this.hole(kontoId, id)).auftraege ?? [];
+  }
+
+  legeAuftragAn(kontoId: string, id: string, eingabe: KlaraAuftragEingabe): Promise<KlaraAuftrag> {
+    return this.mitGrenze(async () => {
+      const auftragId = this.neueId();
+      // Zuerst prüfen, dann schreiben: eine ungültige Eingabe berührt das Gespräch nicht.
+      neuerAuftrag(eingabe, kontoId, auftragId, this.jetztIso());
+      const g = await this.aendere(kontoId, id, (alt, jetzt) => ({
+        ...alt,
+        auftraege: mitNeuemAuftrag(
+          alt.auftraege ?? [],
+          neuerAuftrag(eingabe, kontoId, auftragId, jetzt),
+        ),
+      }));
+      return KlaraGespraechDienst.auftragIn(g, auftragId);
+    });
+  }
+
+  korrigiereAuftrag(
+    kontoId: string,
+    id: string,
+    auftragId: string,
+    eingabe: KlaraKorrekturEingabe,
+  ): Promise<KlaraAuftrag> {
+    return this.mitGrenze(async () => {
+      const g = await this.aendere(kontoId, id, (alt, jetzt) =>
+        KlaraGespraechDienst.ersetzeAuftrag(
+          alt,
+          korrigiere(KlaraGespraechDienst.auftragIn(alt, auftragId), eingabe, jetzt),
+        ),
+      );
+      return KlaraGespraechDienst.auftragIn(g, auftragId);
+    });
+  }
+
+  /**
+   * Beginnt einen Schritt oder meldet sein Ergebnis. Eine Wiederholung mit demselben Schlüssel und
+   * Stand schreibt nichts und antwortet mit dem gespeicherten Schritt (`wiederholt: true`).
+   */
+  setzeAuftragsschritt(
+    kontoId: string,
+    id: string,
+    auftragId: string,
+    schluessel: string,
+    eingabe: KlaraAuftragSchrittEingabe,
+  ): Promise<{ auftrag: KlaraAuftrag; schritt: KlaraAuftragSchritt; wiederholt: boolean }> {
+    return this.mitGrenze(async () => {
+      const vorab = KlaraGespraechDienst.auftragIn(await this.hole(kontoId, id), auftragId);
+      const probe = setzeAuftragSchritt(vorab, schluessel, eingabe, this.jetztIso());
+      if (probe.wiederholt) {
+        return probe;
+      }
+      const lage: { schritt?: KlaraAuftragSchritt; wiederholt: boolean } = { wiederholt: false };
+      const g = await this.aendere(kontoId, id, (alt, jetzt) => {
+        const r = setzeAuftragSchritt(
+          KlaraGespraechDienst.auftragIn(alt, auftragId),
+          schluessel,
+          eingabe,
+          jetzt,
+        );
+        lage.schritt = r.schritt;
+        lage.wiederholt = r.wiederholt;
+        return KlaraGespraechDienst.ersetzeAuftrag(alt, r.auftrag);
+      });
+      if (!lage.schritt) {
+        throw new Error("Schritt wurde nicht gesetzt.");
+      }
+      return {
+        auftrag: KlaraGespraechDienst.auftragIn(g, auftragId),
+        schritt: lage.schritt,
+        wiederholt: lage.wiederholt,
+      };
+    });
+  }
+
+  brecheAuftragAb(kontoId: string, id: string, auftragId: string): Promise<KlaraAuftrag> {
+    return this.mitGrenze(async () => {
+      const g = await this.aendere(kontoId, id, (alt, jetzt) =>
+        KlaraGespraechDienst.ersetzeAuftrag(
+          alt,
+          brecheAb(KlaraGespraechDienst.auftragIn(alt, auftragId), jetzt),
+        ),
+      );
+      return KlaraGespraechDienst.auftragIn(g, auftragId);
+    });
   }
 }

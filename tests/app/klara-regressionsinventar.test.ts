@@ -1355,6 +1355,16 @@ const INVENTAR: readonly string[] = [
   // Vorlesen — Achse `komponente`. Kein „klara" im Pfad: K5 bleibt unverändert. NICHT GEMESSEN,
   // SONDERN AUS DER QUELLE ABGELEITET (die Bahn startet keine Tests).
   "tests/hilfe-elementbeispiel/elementbeispiel-mounted.test.tsx",
+  // produkt:20261008:klara-aktionen (Klara 05): drei neue Testdateien unter `tests/klara-aktionen/`
+  // tragen „klara" im PFAD (Achse `name`). Nachgeführt für genau diese drei Dateien — NICHT
+  // GEMESSEN, sondern aus der Pfadregel abgeleitet (in dieser Lieferung wurde kein Testlauf
+  // gestartet). Die Zahl in K5 ist hier bewusst nicht angefasst: nach Quelleninspektion fehlen im
+  // Inventar des Basisstands bereits die Verzeichnisse von Klara 01–04 (`tests/klara-basis/`,
+  // `klara-kontext/`, `klara-sprache/`, `klara-vorschau/`, `klara-vorschlaege/`, `klara-produkt/`);
+  // das ist ein Befund am Bestand, kein Teil dieses Auftrags.
+  "tests/klara-aktionen/auftrag-am-server.test.tsx",
+  "tests/klara-aktionen/auftragsgrenze-am-server.test.ts",
+  "tests/klara-aktionen/erkennung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

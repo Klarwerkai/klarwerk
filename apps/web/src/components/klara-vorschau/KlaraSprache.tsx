@@ -43,8 +43,19 @@ const KLEINTITEL = "font-mono text-[9.5px] font-semibold uppercase tracking-wide
 
 export type Aufnahmeart = "diktat" | "auftrag";
 
-/** Was aus einem gesendeten Auftrag wurde — `demo` im Demo-Betrieb, sonst der Stand des Fragewegs. */
-export type SprachStand = Exclude<Fragestand, "veraltet"> | "demo" | "nicht_gesendet";
+/**
+ * Was aus einem gesendeten Auftrag wurde — `demo` im Demo-Betrieb, sonst der Stand des Fragewegs.
+ * Klara 05: `uebergeben` — ein Ausführungsauftrag ging an die Auftragskarte (`KlaraAusfuehrung.tsx`),
+ * die den tatsächlichen Stand jedes Schritts zeigt.
+ */
+export type SprachStand =
+  | Exclude<Fragestand, "veraltet">
+  | "demo"
+  | "nicht_gesendet"
+  | "uebergeben";
+
+/** Klara 05: eine Frage, ein (noch) nicht ausführbarer Arbeitsauftrag oder ein Ausführungsauftrag. */
+export type SprachArt = "frage" | "aktion" | "ausfuehrung";
 
 export interface SprachZiel {
   seitenName: string;
@@ -72,7 +83,7 @@ export interface GesprochenerAuftrag {
   erledigt: string[];
   gesendet: {
     text: string;
-    art: "frage" | "aktion";
+    art: SprachArt;
     stand: SprachStand | "laeuft";
     antwort: string | null;
   } | null;
@@ -344,10 +355,19 @@ export function KlaraAuftragKarte({
   s,
   sendebereit,
   absenden,
+  ausfuehrbar,
+  ausfuehrungBereit = false,
 }: {
   s: KlaraSprachSteuerung;
   sendebereit: boolean;
   absenden: (text: string, ziel: SprachZiel) => Promise<Absendeergebnis>;
+  /**
+   * Klara 05: ist dieser Text ein klarer Ausführungsauftrag (`lib/klaraAuftragErkennung.ts`)? Dann
+   * geht „Senden“ an denselben Ausführungsweg wie ein getippter Auftrag. Fehlt die Angabe (Demo),
+   * bleibt alles wie in Klara 02.
+   */
+  ausfuehrbar?: (text: string) => boolean;
+  ausfuehrungBereit?: boolean;
 }): JSX.Element | null {
   const a = s.auftrag;
   if (!a) {
@@ -356,7 +376,14 @@ export function KlaraAuftragKarte({
   return a.gesendet ? (
     <AuftragErgebnis a={a} s={s} />
   ) : (
-    <AuftragEntwurf a={a} s={s} sendebereit={sendebereit} absenden={absenden} />
+    <AuftragEntwurf
+      a={a}
+      s={s}
+      sendebereit={sendebereit}
+      absenden={absenden}
+      ausfuehrbar={ausfuehrbar}
+      ausfuehrungBereit={ausfuehrungBereit}
+    />
   );
 }
 
@@ -367,13 +394,17 @@ function zielText(z: SprachZiel): string {
 function AuftragEntwurf({
   a,
   s,
-  sendebereit,
+  sendebereit: frageBereit,
   absenden,
+  ausfuehrbar,
+  ausfuehrungBereit,
 }: {
   a: GesprochenerAuftrag;
   s: KlaraSprachSteuerung;
   sendebereit: boolean;
   absenden: (text: string, ziel: SprachZiel) => Promise<Absendeergebnis>;
+  ausfuehrbar: ((text: string) => boolean) | undefined;
+  ausfuehrungBereit: boolean;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const feldId = useId();
@@ -385,7 +416,9 @@ function AuftragEntwurf({
     sprache: i18n.language,
     bezug,
   }).filter((k) => !a.erledigt.includes(k.schluessel));
-  const art = auftragsArt(a.text);
+  // Klara 05: ein klarer Ausführungsauftrag ist sichtbar etwas anderes als Frage und Diktat.
+  const art: SprachArt = ausfuehrbar?.(a.text) ? "ausfuehrung" : auftragsArt(a.text);
+  const sendebereit = art === "ausfuehrung" ? ausfuehrungBereit : frageBereit;
   const leer = a.text.trim().length === 0;
   const aendere = (f: (x: GesprochenerAuftrag) => GesprochenerAuftrag): void =>
     s.setzeAuftrag((x) => (x && x.id === a.id ? f(x) : x));
@@ -440,9 +473,19 @@ function AuftragEntwurf({
         </dd>
         <dt className={KLEINTITEL}>{t("klarasprache.auftrag.artLabel")}</dt>
         <dd data-testid="klara-auftrag-art" data-art={art} className="font-semibold text-text">
-          {t(`klarasprache.auftrag.art.${art}`)}
+          {art === "ausfuehrung"
+            ? t("klaraauftrag.sprache.art")
+            : t(`klarasprache.auftrag.art.${art}`)}
         </dd>
       </dl>
+      {art === "ausfuehrung" ? (
+        <p
+          data-testid="klara-auftrag-ausfuehrung-hinweis"
+          className="mt-1 text-[11px] leading-relaxed text-muted-2"
+        >
+          {t("klaraauftrag.sprache.hinweis")}
+        </p>
+      ) : null}
       {art === "aktion" ? (
         <p
           data-testid="klara-auftrag-aktion-hinweis"
@@ -562,8 +605,20 @@ function AuftragErgebnis({
         </dd>
         <dt className={KLEINTITEL}>{t("klarasprache.ergebnis.ergebnis")}</dt>
         <dd data-testid="klara-ergebnis-stand" className="font-semibold text-text">
-          {t(`klarasprache.ergebnis.stand.${g.stand}`)}
-          {g.art === "aktion" ? ` ${t("klarasprache.ergebnis.keineAktion")}` : ""}
+          {g.art === "ausfuehrung" ? (
+            g.stand === "uebergeben" ? (
+              t("klaraauftrag.sprache.ergebnis")
+            ) : g.stand === "laeuft" ? (
+              t("klarasprache.ergebnis.stand.laeuft")
+            ) : (
+              t("klaraauftrag.sprache.nichtUebergeben")
+            )
+          ) : (
+            <>
+              {t(`klarasprache.ergebnis.stand.${g.stand}`)}
+              {g.art === "aktion" ? ` ${t("klarasprache.ergebnis.keineAktion")}` : ""}
+            </>
+          )}
         </dd>
       </dl>
       <div className="mt-2 flex flex-wrap gap-1.5">

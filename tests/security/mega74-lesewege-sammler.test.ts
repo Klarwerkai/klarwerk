@@ -911,6 +911,28 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "löscht nur ein eigenes Gespräch (user.id), Antwort nur die Zahl.",
   },
+  // produkt:20261008:klara-aktionen (Klara 05): die Aufträge liegen IM eigenen Gespräch. Titel und
+  // Kennungen darin hat die Person selbst auf ihrem Bildschirm gewählt; kein Weg liest ein Objekt.
+  "GET /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "nur die Aufträge eines eigenen Gesprächs (user.id), fremd und unbekannt 404.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege": {
+    urteil: "EIGENER_BESTAND",
+    grund: "legt einen Auftrag im eigenen Gespräch an; Antwort ist dieser Auftrag.",
+  },
+  "POST /api/me/klara/gespraeche/:id/auftraege/:auftragId/fassungen": {
+    urteil: "EIGENER_BESTAND",
+    grund: "engt die Grenze eines eigenen Auftrags ein; fremd und unbekannt 404.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/schritte/:schluessel": {
+    urteil: "EIGENER_BESTAND",
+    grund: "meldet einen Schritt eines eigenen Auftrags; liest kein Wissensobjekt.",
+  },
+  "PUT /api/me/klara/gespraeche/:id/auftraege/:auftragId/abbruch": {
+    urteil: "EIGENER_BESTAND",
+    grund: "bricht einen eigenen Auftrag ab; fremd und unbekannt 404.",
+  },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
