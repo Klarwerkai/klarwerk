@@ -198,7 +198,7 @@ describe("K5 · die Bestätigung gilt genau dem gesehenen Stand", () => {
     // Die Vorprüfung sieht Stand 1; unmittelbar vor dem Löschen geht Rev. C ein. Gemessen am
     // ECHTEN Speicher — die Attrappe schiebt nur die Meldung in den Augenblick davor.
     const inner = new InMemoryLifecycleRepo();
-    const melder: { vorher?: () => Promise<void> } = {};
+    const melder: { vorher: (() => Promise<void>) | undefined } = { vorher: undefined };
     const repo = new Proxy(inner, {
       get(ziel, name, empfaenger) {
         if (name === "clearPending") {

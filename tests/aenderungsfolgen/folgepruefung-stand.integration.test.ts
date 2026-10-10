@@ -189,7 +189,7 @@ describe("Folgeprüfung: Stand und Anlässe unter echter Transaktion und Paralle
     const p = requirePool(ctx);
     await reset(p);
     const inner = new PgLifecycleRepo(p);
-    const melder: { vorher?: () => Promise<void> } = {};
+    const melder: { vorher: (() => Promise<void>) | undefined } = { vorher: undefined };
     const repo = new Proxy(inner, {
       get(ziel, name, empfaenger) {
         if (name === "clearPending") {
