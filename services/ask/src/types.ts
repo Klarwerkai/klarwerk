@@ -105,6 +105,24 @@ export interface Gap {
   // der geprüften Fassung; ADMINISTRATIV ist eine Rücknahme mit geschlossenem Grund — nie „gelöst".
   // Fehlt bei einer geschlossenen Lücke: Altbestand von vor dieser Regel.
   abschluss?: GapAbschluss;
+  // Ben, Nacharbeit 7: die VORMERKUNG eines fachlichen Abschlusses, solange er noch bestätigt wird
+  // (`AskService.closeGap`). Sie steht nur an einer OFFENEN Lücke, ist kein Abschluss und wird von
+  // keiner Sicht, Meldung oder Wiederholungsfrage gelesen. Bleibt sie nach einem Abbruch liegen,
+  // prüft der nächste Abschlussversuch sie oder ersetzt sie.
+  abschlussVorbereitung?: GapAbschlussVorbereitung;
+}
+
+/**
+ * Ein noch unbestätigter fachlicher Abschluss. `signatur` ist der Prüfstand beim Vormerken
+ * (Fassung, Status, Stimmen, Nutzbarkeit); abgeschlossen wird erst, wenn eine Prüfung NACH dem
+ * Vormerken genau denselben Stand ergibt.
+ */
+export interface GapAbschlussVorbereitung {
+  kennung: string;
+  koId: string;
+  koVersion: number;
+  signatur: string;
+  at: string;
 }
 
 /** Eine Zuordnung der Lücke: wer zuständig wurde, durch wen, wann und auf welchem Weg. */

@@ -85,6 +85,7 @@ import {
   type AskCaller,
   AskError,
   type Gap,
+  type GapAbschlussVorbereitung,
   type GapBelegbedarf,
   type GapPriority,
   type GapRueckfrage,
@@ -2379,15 +2380,27 @@ export class AskService {
   //
   // Ben, Nacharbeit 5: Das Vergleichen-und-Setzen schützt nur den Lückendatensatz. Eintrag und
   // Bewertungen liegen in anderen Ablagen und können sich zwischen Prüfung und Schreiben ändern
-  // (neue Fassung, rote Stimme). Deshalb läuft JEDER Schreibversuch so:
+  // (neue Fassung, rote Stimme).
+  //
+  // Ben, Nacharbeit 7: Ein Abschluss darf erst gespeichert und sichtbar werden, wenn er bestätigt
+  // ist — nicht vorläufig, auch nicht für einen parallelen Aufruf, und kein Fehler oder Neustart
+  // darf einen unbestätigten zurücklassen. Deshalb gibt es zwei Stufen, und jeder Durchlauf ist:
   //   1. Lücke frisch lesen; Status, Entwurfsbezug und — bei `rolleVerlangt` — das Abschlussrecht
   //      an der AKTUELLEN Zuordnung prüfen;
-  //   2. Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit frisch erheben;
-  //   3. schreiben, nur wenn die Lücke noch genau den gelesenen Stand hält;
-  //   4. Eintrag und Prüfstand NACH dem Schreiben noch einmal erheben. Weicht irgendetwas vom
-  //      geprüften Stand ab, wird der eigene Abschluss zurückgenommen und der Versuch beginnt bei 1 —
-  //      eine vollständige erneute Prüfung, die dann verweigert oder an der neuen Fassung abschliesst.
-  // Protokolliert wird erst, wenn Schritt 4 den geprüften Stand bestätigt hat.
+  //   2. Eintrag, Fachprüfstand der aktuellen Fassung und Nutzbarkeit frisch erheben (Signatur);
+  //   3a. steht an der Lücke noch KEINE Vormerkung für diesen Eintrag mit genau dieser Signatur:
+  //      VORMERKEN (`abschlussVorbereitung`) per Vergleichen-und-Setzen an der weiterhin OFFENEN
+  //      Lücke und neu durchlaufen. Die Vormerkung zählt nirgends als Abschluss — Status, Vorgang,
+  //      Meldungen, Wiederholungsfrage und Listen lesen sie nicht;
+  //   3b. steht sie dort bereits, hat Schritt 2 sie NACH ihrem Schreiben bestätigt (gleiche
+  //      Signatur vor und nach dem Vormerken). Erst jetzt wird der Abschluss geschrieben — per
+  //      Vergleichen-und-Setzen gegen genau den Stand aus Schritt 1, an dem auch das Recht geprüft
+  //      wurde. Das darf auch ein paralleler Aufruf tun: er hat selbst vollständig geprüft.
+  // Trägt der Eintrag nicht mehr, wird eine anstehende Vormerkung für ihn entfernt — ihr Urheber
+  // findet sie nicht mehr und wird beim nächsten Durchlauf ebenso verweigert. Scheitert ein
+  // Durchlauf mit einem Fehler, wird die eigene Vormerkung entfernt. Bricht der Prozess ab, bleibt
+  // höchstens eine Vormerkung an einer OFFENEN Lücke — kein Abschluss —, und der nächste
+  // Abschlussversuch prüft sie wie in Schritt 3b oder ersetzt sie. Protokolliert wird nur in 3b.
   async closeGap(
     id: string,
     koId?: string,
@@ -2408,19 +2421,8 @@ export class AskService {
     }
     const sichtbar = beteiligter?.sichtbar ?? (() => true);
     const von = aufruferBeschriftung(aufruferAus(beteiligter?.id));
-    for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
-      const gelesen = await this.gaps.findById(id);
-      if (!gelesen) {
-        throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
-      }
-      const aktuell = withPriority(gelesen);
-      if (aktuell.status !== "offen") {
-        // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe.
-        if (aktuell.abschluss?.art === "fachlich" && aktuell.abschluss.koId === bezug) {
-          return aktuell;
-        }
-        throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
-      }
+    // Vor dem Vormerken UND vor dem Abschliessen am jeweils aktuellen Stand.
+    const vorbedingung = (aktuell: Gap): void => {
       // Ben, Nacharbeit 5: das Abschlussrecht an der Zuordnung, die JETZT gilt — nicht an der vom
       // Anfang. Nach einer Neuzuordnung schliesst die frühere zuständige Person nicht mehr ab.
       if (optionen.rolleVerlangt) {
@@ -2438,46 +2440,99 @@ export class AskService {
           "Der verknüpfte Antwortentwurf hat sich geändert — bitte erneut abschliessen.",
         );
       }
-      const geprueft = await this.abschlussPruefung(bezug, sichtbar);
-      if (!geprueft.ko) {
-        throw new AskError(
-          "BAD_REQUEST",
-          "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
-        );
+    };
+    // Die Kennung der Vormerkung, die DIESER Aufruf geschrieben hat — nur sie entfernt er bei einem
+    // Fehler oder Abbruch selbst.
+    let eigene: string | null = null;
+    try {
+      for (let versuch = 0; versuch < LUECKE_SCHREIBVERSUCHE; versuch += 1) {
+        const gelesen = await this.gaps.findById(id);
+        if (!gelesen) {
+          throw new AskError("NOT_FOUND", "Wissenslücke nicht gefunden.");
+        }
+        const aktuell = withPriority(gelesen);
+        if (aktuell.status !== "offen") {
+          // Ein anderer Abschluss kam zuvor. Ist es derselbe Eintrag, ist das Ergebnis dasselbe —
+          // und es ist ein BESTÄTIGTER: „geschlossen" wird nur in Schritt 3b geschrieben.
+          if (aktuell.abschluss?.art === "fachlich" && aktuell.abschluss.koId === bezug) {
+            return aktuell;
+          }
+          throw new AskError("BAD_REQUEST", "Die Wissenslücke ist bereits geschlossen.");
+        }
+        vorbedingung(aktuell);
+        const vorgemerkt =
+          aktuell.abschlussVorbereitung?.koId === bezug ? aktuell.abschlussVorbereitung : undefined;
+        const geprueft = await this.abschlussPruefung(bezug, sichtbar);
+        if (!geprueft.ko || !geprueft.nutzbarkeit.nutzbar) {
+          // Trägt der Eintrag JETZT für niemanden (fehlt, Fachprüfung, Gültigkeit — nicht bloss das
+          // Leserecht DIESES Aufrufers), darf keine anstehende Vormerkung für ihn mehr zum
+          // Abschluss werden. Sonst nur die eigene entfernen.
+          const fuerNiemanden =
+            !geprueft.ko || !geprueft.nutzbarkeit.gruende.includes("kein_zugriff");
+          const weg = fuerNiemanden && vorgemerkt ? vorgemerkt.kennung : eigene;
+          if (weg) {
+            await this.verwirfVormerkung(id, weg);
+          }
+          if (!geprueft.ko) {
+            throw new AskError(
+              "BAD_REQUEST",
+              "Das Wissensobjekt existiert nicht oder liegt im Papierkorb — die Lücke bleibt offen.",
+            );
+          }
+          throw new GapAbschlussVerweigert(geprueft.nutzbarkeit.gruende);
+        }
+        if (vorgemerkt && vorgemerkt.signatur === geprueft.signatur) {
+          // 3b · bestätigt: die Prüfung lief NACH dem Vormerken und ergab denselben Stand.
+          const { abschlussVorbereitung: _bestaetigt, ...rest } = aktuell;
+          const neu: Gap = {
+            ...rest,
+            status: "geschlossen",
+            koId: bezug,
+            abschluss: {
+              art: "fachlich",
+              koId: bezug,
+              koVersion: vorgemerkt.koVersion,
+              von,
+              at: new Date(this.now()).toISOString(),
+            },
+          };
+          if (!(await this.ersetzeWenn(gelesen, neu))) {
+            continue;
+          }
+          eigene = null;
+          await this.audit?.record({
+            actor: von,
+            action: "gap.closed",
+            target: id,
+            payload: { koId: bezug, koVersion: vorgemerkt.koVersion },
+          });
+          return neu;
+        }
+        // 3a · vormerken — neu, oder anstelle einer Vormerkung mit anderem Stand (geänderter
+        // Eintrag, andere Stimmen, abgebrochener Aufruf). Danach wird neu gelesen und geprüft.
+        const vormerkung: GapAbschlussVorbereitung = {
+          kennung: this.genId(),
+          koId: bezug,
+          koVersion: geprueft.ko.version,
+          signatur: geprueft.signatur,
+          at: new Date(this.now()).toISOString(),
+        };
+        if (await this.ersetzeWenn(gelesen, { ...aktuell, abschlussVorbereitung: vormerkung })) {
+          eigene = vormerkung.kennung;
+        }
       }
-      if (!geprueft.nutzbarkeit.nutzbar) {
-        throw new GapAbschlussVerweigert(geprueft.nutzbarkeit.gruende);
+      throw new AskError(
+        "CONFLICT",
+        "Die Wissenslücke oder ihr Wissenseintrag wurde gerade mehrfach geändert — der Abschluss wurde nicht ausgeführt.",
+      );
+    } catch (fehler) {
+      // Lesefehler, verlorenes Recht, Konflikt: kein Abschluss, und die eigene Vormerkung bleibt
+      // nicht liegen. Gemeldet wird der ursprüngliche Fehler.
+      if (eigene) {
+        await this.verwirfVormerkung(id, eigene).catch(() => undefined);
       }
-      const abschluss = {
-        art: "fachlich" as const,
-        koId: bezug,
-        koVersion: geprueft.ko.version,
-        von,
-        at: new Date(this.now()).toISOString(),
-      };
-      const neu: Gap = { ...aktuell, status: "geschlossen", koId: bezug, abschluss };
-      if (!(await this.ersetzeWenn(gelesen, neu))) {
-        continue;
-      }
-      const bestaetigt = await this.abschlussPruefung(bezug, sichtbar);
-      if (bestaetigt.signatur !== geprueft.signatur) {
-        // Eintrag oder Prüfstand haben sich im Fenster geändert: dieser Abschluss beruht nicht auf
-        // dem, was jetzt gilt. Zurücknehmen und vollständig neu prüfen.
-        await this.nimmEigenenAbschlussZurueck(id, abschluss, aktuell.koId);
-        continue;
-      }
-      await this.audit?.record({
-        actor: von,
-        action: "gap.closed",
-        target: id,
-        payload: { koId: bezug, koVersion: geprueft.ko.version },
-      });
-      return neu;
+      throw fehler;
     }
-    throw new AskError(
-      "CONFLICT",
-      "Die Wissenslücke oder ihr Wissenseintrag wurde gerade mehrfach geändert — der Abschluss wurde nicht ausgeführt.",
-    );
   }
 
   /**
@@ -2505,27 +2560,14 @@ export class AskService {
     return { ko, nutzbarkeit, signatur };
   }
 
-  /**
-   * Nimmt GENAU den eigenen, gerade geschriebenen Abschluss zurück — am aktuellen Stand, damit
-   * zwischenzeitliche Fragende und Zähler bleiben. Hat inzwischen etwas anderes die Lücke
-   * geschlossen, bleibt das unberührt.
-   */
-  private async nimmEigenenAbschlussZurueck(
-    id: string,
-    abschluss: NonNullable<Gap["abschluss"]>,
-    vorherKoId: string | undefined,
-  ): Promise<void> {
-    const eigener = JSON.stringify(abschluss);
+  /** Entfernt GENAU die eigene Vormerkung — am aktuellen Stand; alles andere bleibt unberührt. */
+  private async verwirfVormerkung(id: string, kennung: string): Promise<void> {
     await this.aendereLuecke(id, (aktuell) => {
-      if (aktuell.status !== "geschlossen" || JSON.stringify(aktuell.abschluss) !== eigener) {
+      if (aktuell.abschlussVorbereitung?.kennung !== kennung) {
         return null;
       }
-      const { abschluss: _zurueckgenommen, koId: _bezug, ...rest } = aktuell;
-      return {
-        ...rest,
-        status: "offen",
-        ...(vorherKoId !== undefined ? { koId: vorherKoId } : {}),
-      };
+      const { abschlussVorbereitung: _verworfen, ...rest } = aktuell;
+      return rest;
     });
   }
 

@@ -18,6 +18,8 @@
 //   G — Rückfrage und Neuzuordnung über die Rollen.
 //   H — Überlappende Schritte am Lückendatensatz.
 //   I — Neue Fassung, Bewertung oder Neuzuordnung zwischen Fachprüfung und Schreiben des Abschlusses.
+//   J — Kein unbestätigter Abschluss: paralleler Zweitaufruf, Lesefehler und Neustart im
+//       Bestätigungsfenster.
 import { describe, expect, it } from "vitest";
 import { AskService, type Gap, type GapRepo, InMemoryGapRepo } from "../../services/ask";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
@@ -560,6 +562,7 @@ describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", 
     const danach = await b.gaps.findById(id);
     expect(danach?.status).toBe("offen");
     expect(danach?.abschluss).toBeUndefined();
+    expect(danach?.abschlussVorbereitung).toBeUndefined();
     expect(danach?.koId).toBeUndefined();
     expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
     expect(await geloesteMeldungen(b, "frida")).toEqual([]);
@@ -646,6 +649,146 @@ describe("I · der Abschluss gilt nur für den Stand, der beim Schreiben gilt", 
     const zu = await abschluss;
     expect(zu.status).toBe("geschlossen");
     expect(zu.assignee).toBe("andere");
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+  });
+});
+
+// ================================================================================================
+// J — KEIN UNBESTÄTIGTER ABSCHLUSS (Ben, Nacharbeit 7). Gehalten wird jetzt die BESTÄTIGUNG (zweite
+// Fachprüfabfrage eines Abschlusses). Vor der Korrektur stand die Lücke in diesem Fenster bereits als
+// „geschlossen" in der Ablage: ein paralleler Aufruf bekam sie als Erfolg, und ein Lesefehler oder
+// Neustart liess den ungeprüften Abschluss stehen.
+// ================================================================================================
+describe("J · ein Abschluss wird erst nach seiner Bestätigung gespeichert und sichtbar", () => {
+  const geloesteMeldungen = async (b: Awaited<ReturnType<typeof buehne>>, wer: string) =>
+    (await b.ask.gapMeldungenFuer(wer, ALLE)).filter((m) => m.art === "geloest");
+
+  /** Im Bestätigungsfenster ist für niemanden etwas abgeschlossen. */
+  const nichtsAbgeschlossen = async (
+    b: Awaited<ReturnType<typeof buehne>>,
+    ask: AskService,
+    id: string,
+  ): Promise<void> => {
+    const stand = await b.gaps.findById(id);
+    expect(stand?.status).toBe("offen");
+    expect(stand?.abschluss).toBeUndefined();
+    expect((await ask.gapVorgang(id, frida)).phase).not.toBe("geloest");
+    expect((await ask.gapVorgang(id, frida)).ergebnis).toBeNull();
+    const meldungen = await ask.gapMeldungenFuer("frida", ALLE);
+    expect(meldungen.filter((m) => m.art === "geloest")).toEqual([]);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
+  };
+
+  it("J1 ein paralleler Zweitaufruf bekommt den vorgemerkten Stand nicht als Erfolg", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    // Erste Abfrage: Vorprüfung; zweite: Bestätigung — gehalten wird die Bestätigung.
+    const halt = b.halteNachPruefstand(2);
+    const erster = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    expect((await b.gaps.findById(id))?.abschlussVorbereitung?.koId).toBe(b.antwort.id);
+    await nichtsAbgeschlossen(b, b.ask, id);
+    // Die Wiederholungsfrage im Fenster nutzt nichts Vorläufiges.
+    const wieder = await b.frage("fritz");
+    expect(wieder.geloesteLuecke).toBeUndefined();
+    expect(wieder.gap?.id).toBe(id);
+    // Jetzt eine rote Stimme — und der parallele Zweitaufruf: er prüft selbst und wird verweigert,
+    // statt den vorgemerkten Stand als Erfolg zurückzubekommen.
+    await b.validation.rate(b.antwort.id, "pruefer-rot", "down");
+    await expect(b.ask.closeGap(id, b.antwort.id, fachmann)).rejects.toMatchObject({
+      gruende: expect.arrayContaining(["negative_bewertung"]),
+    });
+    // Der erste Aufruf findet seine Vormerkung nicht mehr, prüft neu und wird ebenso verweigert.
+    halt.weiter();
+    await expect(erster).rejects.toMatchObject({
+      gruende: expect.arrayContaining(["negative_bewertung"]),
+    });
+    const danach = await b.gaps.findById(id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.abschluss).toBeUndefined();
+    expect(danach?.abschlussVorbereitung).toBeUndefined();
+    expect(danach?.weitereFragende).toEqual(["fritz"]);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(0);
+    expect(await geloesteMeldungen(b, "frida")).toEqual([]);
+    expect(await geloesteMeldungen(b, "fritz")).toEqual([]);
+  });
+
+  it("J2 Gegenprobe: zwei parallele Aufrufe mit tragendem Eintrag — genau ein bestätigter Abschluss", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const halt = b.halteNachPruefstand(2);
+    const erster = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    const zweiter = await b.ask.closeGap(id, b.antwort.id, fachmann);
+    expect(zweiter.status).toBe("geschlossen");
+    expect(zweiter.abschlussVorbereitung).toBeUndefined();
+    halt.weiter();
+    const eins = await erster;
+    expect(eins.abschluss).toEqual(zweiter.abschluss);
+    expect(await b.gaps.findById(id)).toEqual(zweiter);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+    expect(await geloesteMeldungen(b, "frida")).toHaveLength(1);
+  });
+
+  it("J3 ein Lesefehler bei der Bestätigung hinterlässt weder Abschluss noch Vormerkung", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const echt = b.koService.get.bind(b.koService);
+    let abrufe = 0;
+    // Erster Abruf: Vorprüfung; zweiter: Bestätigung — der scheitert.
+    b.koService.get = async (koId: string, vor?: () => void) => {
+      abrufe += 1;
+      if (abrufe === 2) {
+        throw new Error("Lesefehler im Wissensbestand");
+      }
+      return echt(koId, vor);
+    };
+    await expect(b.ask.closeGap(id, b.antwort.id, fachmann)).rejects.toThrow(
+      "Lesefehler im Wissensbestand",
+    );
+    b.koService.get = echt;
+    const danach = await b.gaps.findById(id);
+    expect(danach?.status).toBe("offen");
+    expect(danach?.abschluss).toBeUndefined();
+    expect(danach?.abschlussVorbereitung).toBeUndefined();
+    await nichtsAbgeschlossen(b, b.ask, id);
+    // Danach schliesst ein regulärer Aufruf ungehindert.
+    const zu = await b.ask.closeGap(id, b.antwort.id, fachmann);
+    expect(zu.status).toBe("geschlossen");
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+  });
+
+  it("J4 ein Neustart zwischen Vormerken und Bestätigen hinterlässt keinen Abschluss", async () => {
+    const b = await buehne();
+    const { gap } = await b.frage("frida");
+    const id = gap?.id ?? "";
+    await b.freigeben(b.antwort.id);
+    const halt = b.halteNachPruefstand(2);
+    const abgebrochen = b.ask.closeGap(id, b.antwort.id, fachmann);
+    await halt.gelesen;
+    // „Neustart": neue Dienstinstanz auf derselben Ablage; der alte Aufruf kommt nicht weiter.
+    const neu = new AskService({ ...b.deps });
+    expect((await b.gaps.findById(id))?.abschlussVorbereitung).toBeDefined();
+    await nichtsAbgeschlossen(b, neu, id);
+    const wieder = await neu.ask(FRAGE, "fritz", "de", undefined, ALLE);
+    expect(wieder.geloesteLuecke).toBeUndefined();
+    expect(wieder.gap?.id).toBe(id);
+    // Die liegengebliebene Vormerkung blockiert nichts: der nächste Abschluss prüft und schliesst.
+    const zu = await neu.closeGap(id, b.antwort.id, fachmann);
+    expect(zu.status).toBe("geschlossen");
+    expect(zu.abschlussVorbereitung).toBeUndefined();
+    expect(zu.weitereFragende).toEqual(["fritz"]);
+    expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
+    // Kommt der alte Aufruf doch noch an, schreibt er nichts mehr.
+    halt.weiter();
+    await abgebrochen;
+    expect(await b.gaps.findById(id)).toEqual(zu);
     expect(await b.audit.list({ action: "gap.closed" })).toHaveLength(1);
   });
 });
