@@ -148,7 +148,13 @@ function QuellenZeile({ n }: { n: EchtNachricht }): JSX.Element {
   );
 }
 
-function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
+function NachrichtEcht({
+  n,
+  sprecher,
+}: {
+  n: EchtNachricht;
+  sprecher?: string | undefined;
+}): JSX.Element {
   const { t } = useTranslation();
   const klasse =
     n.wissensklasse && n.wissensklasse in KNOWLEDGE_CLASS_META
@@ -173,7 +179,9 @@ function NachrichtEcht({ n }: { n: EchtNachricht }): JSX.Element {
     >
       <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-muted-2">
         <span className="font-semibold text-text">
-          {n.von === "du" ? t("klaravorschau.verlauf.du") : t("klaravorschau.verlauf.klara")}
+          {n.von === "du"
+            ? t("klaravorschau.verlauf.du")
+            : (sprecher ?? t("klaravorschau.verlauf.klara"))}
         </span>
         <span data-testid="klara-nachricht-herkunft">
           {t("klaravorschau.verlauf.auf", bezugZeile(n.objektbezug))}
@@ -278,6 +286,7 @@ export function KlaraEchtGespraech({
   ki,
   onErneutFragen,
   onNeuLaden,
+  sprecher,
 }: {
   kontext: KlaraObjektbezug;
   pfad: string;
@@ -285,6 +294,11 @@ export function KlaraEchtGespraech({
   /** Klara 03: der gespeicherte Wortlaut UND der Bezug von damals — nichts wird neu zusammengesetzt. */
   onErneutFragen: (frage: string, bezug: KlaraObjektbezug) => void;
   onNeuLaden: () => void;
+  /**
+   * Assistenz im Produkt: der sichtbare Name der Assistenz an ihren Nachrichten und im leeren
+   * Verlauf (Profilname oder neutral). Ohne Angabe wie geliefert „Klara“.
+   */
+  sprecher?: string;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const e = useEchtGespraech();
@@ -488,12 +502,12 @@ export function KlaraEchtGespraech({
         <p className={KLEINTITEL}>{t("klaravorschau.verlauf.titel")}</p>
         {e.nachrichten.length === 0 ? (
           <p data-testid="klara-echt-leer" className="mt-1 text-[11.5px] text-muted-2">
-            {t("klaragespraech.leer")}
+            {sprecher ? t("klaraprodukt.leer") : t("klaragespraech.leer")}
           </p>
         ) : (
           <ol className="mt-1 space-y-2">
             {e.nachrichten.map((n) => (
-              <NachrichtEcht key={n.id} n={n} />
+              <NachrichtEcht key={n.id} n={n} sprecher={sprecher} />
             ))}
           </ol>
         )}
