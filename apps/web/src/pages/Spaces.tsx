@@ -26,6 +26,7 @@ import {
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { SpaceArchiv, SpaceBestand, SpaceZugriff } from "../components/SpaceVerwaltung";
 import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { formatKoTimestamp } from "../lib/koDates";
 
 const FELD =
   "w-full rounded-input border border-hairline bg-surface px-3 py-2 text-sm text-text outline-none focus:border-ink/30";
@@ -586,7 +587,7 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
               >
                 {t("spaces.detail.verlaufEintrag", {
                   version: f.version,
-                  zeit: new Date(f.geaendertAm).toLocaleString(i18n.language),
+                  zeit: formatKoTimestamp(f.geaendertAm, i18n.language) ?? "—",
                   wer: f.geaendertVonName ?? f.geaendertVon,
                 })}{" "}
                 · {t(`spaces.vorgang.${f.vorgang}`)}
