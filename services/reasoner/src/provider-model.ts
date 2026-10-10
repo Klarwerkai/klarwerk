@@ -25,6 +25,7 @@ import {
 import {
   type AbbruchBefund,
   type AnswerResult,
+  type ArgumentationsGlied,
   type AssistResult,
   type CandidateGroup,
   type ConflictJudgeResult,
@@ -412,6 +413,40 @@ export function pruefeDeckung(
     aussagen.push({ text: satz, quellen: quellen.map((q) => q.id), zitatVon, nachlauf, gedeckt });
   }
   return { gedeckt: aussagen.every((a) => a.gedeckt), aussagen };
+}
+
+/**
+ * R-1643 · DIE ARGUMENTATIONSKETTE AUS DEM DECKUNGSBEFUND.
+ *
+ * `pruefeDeckung` zerlegt den Modelltext ohnehin in Aussagen und misst je Aussage, welche markierte
+ * Quelle sie im Wortlaut enthält. Genau diese Zuordnung ist die nachvollziehbare Begründung „Aussage
+ * → belegt durch Quelle", die das Entscheidungs-Protokoll verlangt — sie wird hier nur nicht mehr
+ * weggeworfen. Kein neuer Modellaufruf, kein formulierter Text.
+ *
+ * Aufgenommen wird nur, was eine messbare Quelle hat (`zitatVon`). Aussagen ohne Inhalt (ein
+ * nackter Satzpunkt nach der Marke) tragen nichts zur Begründung bei und fallen weg. Ist die Antwort
+ * nicht gedeckt, gibt es KEINE Kette aus diesem Befund — dann geht auch der Modelltext nicht hinaus.
+ */
+export function argumentationAus(befund: DeckungBefund): ArgumentationsGlied[] {
+  if (!befund.gedeckt) {
+    return [];
+  }
+  return befund.aussagen.flatMap((a) =>
+    a.zitatVon === null
+      ? []
+      : [
+          {
+            // Ein Segment beginnt hinter der vorigen Marke — oft mit deren Satzpunkt („[1]. Ventil …").
+            aussage: a.text
+              .replace(MARKE, " ")
+              .replace(/\s+/g, " ")
+              .replace(/^[\s.,;:!?]+/, "")
+              .trim(),
+            quellen: a.quellen,
+            belegtDurch: a.zitatVon,
+          },
+        ],
+  );
 }
 
 /**
@@ -1004,7 +1039,12 @@ export function rueckfallStand(
   tragend: readonly KnowledgeRef[],
   kontext: readonly KnowledgeRef[],
   locale: ReasonerLocale,
-): { refs: KnowledgeRef[]; text: string } | null {
+): {
+  refs: KnowledgeRef[];
+  text: string;
+  // R-1643: je ausgegebenem Wortlaut seine Quelle — die Argumentationskette des Rückfalls.
+  stimmen: { ref: KnowledgeRef; text: string }[];
+} | null {
   const gewaehlt = rueckfallAntwort(frage, tragend);
   if (!gewaehlt) {
     return null;
@@ -1028,11 +1068,12 @@ export function rueckfallStand(
     weitere.push({ ref, text });
   }
   if (weitere.length === 0) {
-    return { refs: [gewaehlt.ref], text: gewaehlt.text };
+    return { refs: [gewaehlt.ref], text: gewaehlt.text, stimmen: [gewaehlt] };
   }
   const stimmen = [gewaehlt, ...weitere];
   return {
     refs: stimmen.map((s) => s.ref),
+    stimmen,
     // Absatzweise (Leerzeile), weil die Fläche den Antworttext als Markdown rendert: so steht jede
     // Quelle für sich, statt dass zwei Auskünfte zu einem Fließtext verschmelzen.
     text: [UNGEKLAERT[locale], ...stimmen.map((s) => `${s.ref.title}: ${s.text}`)].join("\n\n"),
@@ -2685,6 +2726,13 @@ export class ModelProvider implements ReasonerProvider {
           sourceId: r.id,
           snippet: r.statement,
         })),
+        // R-1643: jeder ausgegebene Wortlaut mit der Quelle, aus der er stammt. Der Begleitsatz
+        // „nicht geklärt" ist keine Aussage über die Sache und gehört nicht in die Kette.
+        argumentation: rueckfall.stimmen.map((s) => ({
+          aussage: s.text,
+          quellen: [s.ref.id],
+          belegtDurch: s.ref.id,
+        })),
         demo: false,
       };
     }
@@ -2707,6 +2755,8 @@ export class ModelProvider implements ReasonerProvider {
         sourceId: r.id,
         snippet: r.statement,
       })),
+      // R-1643: die Argumentationskette — dieselbe Zuordnung, die `pruefeDeckung` oben gemessen hat.
+      argumentation: argumentationAus(deckung),
       demo: false,
     };
   }
