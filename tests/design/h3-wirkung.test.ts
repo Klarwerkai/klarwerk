@@ -761,7 +761,8 @@ describe("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten Blatt", () => {
   const VORSCHLAG_OFFEN = einstieg.de["einstieg.formular.vorschlagOffen"];
   /** Sichtbare Beschriftungen — wörtlich aus `apps/web/src/i18n.ts`, DE-Block. */
   const FORMULAR_WEG = "Formular (Experten)"; // erfassen.weg.formular
-  const FORMULAR_TITEL = "Kernaussage"; // capture.fTitle
+  // EDITOR-EINHEITLICH (K1): das Titelfeld des Expertenformulars heisst wie beim Bearbeiten „Titel".
+  const FORMULAR_TITEL = "Titel"; // capture.wizard.titleLabel
   const VERWERFEN = "Vorschlag verwerfen"; // fd.discardProposal
   const NACHTRAG = "Nachtrag Ventil V2";
 
