@@ -2711,8 +2711,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Dieser Auftrag hat seit Nacharbeit 38 nur diese Testdatei geändert; die SECHS Komponenten und
     // zwei Quelldateien (754 → 756) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem
     // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
+    //
+    // veroeffentlichungsoptionen Nacharbeit 47: GEMESSEN 592. Am Kandidaten dcbb03c9 meldete der
+    // Sammler wörtlich „gemessen: 592 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 762
+    // Quelldateien … expected { komponenten: 592, … } to deeply equal { komponenten: 585, … }".
+    // Dieser Auftrag hat seit Nacharbeit 38 nur diese Testdatei geändert; die SIEBEN Komponenten und
+    // sechs Quelldateien (756 → 762) kamen mit dem Basisstand und sind ohne Git-Verlauf an diesem
+    // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 585,
+      komponenten: 592,
       anbieter: 1,
       traeger: 2,
     });
