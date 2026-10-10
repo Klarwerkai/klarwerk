@@ -11,14 +11,18 @@ import {
   SUCH_ZUORDNUNGEN,
   type SuchZuordnung,
   type WithTx,
+  buildSearchProjection,
   dropConfidential,
+  erkenneSchutzdaten,
   expandSearchTerms,
   geltungFuerFrage,
   haltbarkeitAbgelaufen,
+  inSchutzdatenQuarantaene,
   isConfidential,
   normalizeSearchTerms,
   responsibleKindOf,
   responsibleOf,
+  visibleTextFromBodyHtml,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -68,6 +72,15 @@ import {
   hashAnswerSnapshot,
   isGapPriority,
 } from "./types";
+import {
+  type VergleichsSeiten,
+  type WissensstandVergleich,
+  antwortGeaendert,
+  fassungZumStichtag,
+  freigabeZumStichtagBelegt,
+  grundlageDamals,
+  vergleichsQuelle,
+} from "./wissensstand-vergleich";
 
 const HELPFUL_TRUST_STEP = 2;
 
@@ -1561,6 +1574,215 @@ export class AskService {
       ...zuschnittFeld,
       pruefrahmen,
     };
+  }
+
+  /**
+   * ============================================================================================
+   * R-1630 / R-2176 — DIESELBE FRAGE, BEANTWORTET AUS DEM WISSENSSTAND ZUM STICHTAG.
+   * ============================================================================================
+   *
+   * Regeln und Grenzen stehen in `wissensstand-vergleich.ts`. Hier läuft der Weg selbst:
+   *   1. dieselbe Vorauswahl wie `ask` (heutiger Suchbestand) und derselbe Sichtfilter;
+   *   2. je Kandidat die Fassung zum Stichtag (Verlauf + Versionsabbild) und ihre Freigabe
+   *      (Prüfprotokoll);
+   *   3. ZWEI Antworten über denselben Antwortweg — eine aus den heute freigegebenen Fassungen, eine
+   *      aus den damals belegt freigegebenen Fassungen;
+   *   4. je Quelle beider Antworten der Grund des Unterschieds.
+   *
+   * KEINE NEBENWIRKUNG WIE BEI `ask`: keine Wissenslücke, kein Antwortbeleg, kein Receipt. Der
+   * Vergleich ist eine Auskunft über zwei Bestände, keine neue Frage an das Firmenwissen. Ins
+   * Protokoll geht nur, DASS verglichen wurde (Zahlen, kein Fragetext) — wie `ask.query`.
+   *
+   * DIESELBEN GRENZEN WIE `ask` (Konsolenweg): nur freigegebenes Wissen, nichts Vertrauliches, nur was
+   * der Fragende sehen darf. Eine damalige Fassung muss diese Grenzen HEUTE wie DAMALS einhalten,
+   * sonst bleibt sie draussen; Schutzdaten werden an ihrem Inhalt mit der heutigen Regel geprüft.
+   */
+  async vergleicheWissensstand(
+    question: string,
+    actor: string,
+    locale: ReasonerLocale,
+    stichtagMs: number,
+    grundlageSichtbarFuer: (ko: KnowledgeObject) => boolean,
+  ): Promise<WissensstandVergleich> {
+    const kiBeginn = this.kiSperre?.stand();
+    const frageterme = queryTokens(question);
+    const relevanz = zugeordneteSuchterme(frageterme);
+    const suchterme = [...frageterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const vorauswahl = await this.prefilterCandidates(suchterme, kiBeginn);
+    // BEN (Nacharbeit 4): die heutige Suchprojektion kennt nur heutige Texte. Wurde ein Fragebegriff
+    // seither aus einem noch vorhandenen Objekt entfernt, fände sie es nicht — und die damals
+    // tragende Fassung fehlte. Deshalb zusätzlich die Objekte, deren Fassungen bis zum Stichtag die
+    // Begriffe trugen. Nachgeladen wird über `get` (Papierkorb bleibt draussen); danach gelten
+    // dieselben Filter wie für die Vorauswahl. Ein Objekt in Schutzdaten-Quarantäne bleibt draussen,
+    // wie es die Suche ebenfalls auslässt.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const bekannt = new Set(vorauswahl.map((ko) => ko.id));
+    const fruehereIds = await this.koService.koIdsMitPassenderFassung(
+      suchterme.slice(0, ASK_PREFILTER_MAX_TERMS),
+      new Date(stichtagMs).toISOString(),
+      ASK_CANDIDATE_PREFILTER_LIMIT,
+      () => this.pruefeKiSperre("vorauswahl", kiBeginn),
+    );
+    const nachgeladen = (
+      await Promise.all(
+        fruehereIds
+          .filter((id) => !bekannt.has(id))
+          .map((id) =>
+            this.koService
+              .get(id, () => this.pruefeKiSperre("vorauswahl", kiBeginn))
+              .catch((fehler: unknown) => {
+                if (fehler instanceof AskError) {
+                  throw fehler;
+                }
+                return undefined;
+              }),
+          ),
+      )
+    ).filter((ko): ko is KnowledgeObject => ko !== undefined && !inSchutzdatenQuarantaene(ko));
+    const kandidaten = dropConfidential(
+      [...vorauswahl, ...nachgeladen].filter((ko) => grundlageSichtbarFuer(ko)),
+    );
+    // Verlauf, Abbilder und Protokoll lesen Kundeninhalt — dieselbe Sperre wie vor der Vorauswahl.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const seiten: VergleichsSeiten[] = await Promise.all(
+      kandidaten.map(async (ko) => {
+        const fassung = fassungZumStichtag(
+          ko,
+          await this.koService.versionsOf(ko.id).catch(() => []),
+          stichtagMs,
+        );
+        // Ohne Protokoll gibt es keinen Freigabebeleg — dann trägt keine damalige Fassung.
+        const protokoll =
+          fassung.art === "fassung" && this.audit
+            ? await this.audit.list({ target: ko.id }).catch(() => [])
+            : [];
+        const frueher = fassung.art === "fassung" ? fassung.ko : null;
+        return {
+          heute: ko,
+          grundlageHeute: ko.status === "validiert",
+          fassung,
+          freigabeDamals:
+            fassung.art === "fassung" &&
+            freigabeZumStichtagBelegt(ko, fassung.version, protokoll, stichtagMs),
+          damalsZulaessig:
+            frueher !== null &&
+            !isConfidential(frueher.confidentiality) &&
+            grundlageSichtbarFuer(frueher) &&
+            !inSchutzdatenQuarantaene(frueher) &&
+            erkenneSchutzdaten([
+              frueher.title,
+              frueher.statement,
+              visibleTextFromBodyHtml(frueher.bodyHtml),
+              ...(frueher.conditions ?? []),
+              ...(frueher.measures ?? []),
+            ]).length === 0,
+        };
+      }),
+    );
+    // Der Vertrauenswert wird nicht historisch geführt — beide Seiten tragen den heutigen, damit er
+    // keinen Unterschied erzeugt, den es im Wissen nicht gibt.
+    const heute = await this.antwortAusFassungen(
+      question,
+      seiten.filter((s) => s.grundlageHeute).map((s) => ({ ko: s.heute, trust: s.heute.trust })),
+      locale,
+      relevanz,
+      actor,
+      kiBeginn,
+    );
+    const damals = await this.antwortAusFassungen(
+      question,
+      seiten.flatMap((s) => {
+        const ko = grundlageDamals(s);
+        return ko ? [{ ko, trust: s.heute.trust }] : [];
+      }),
+      locale,
+      relevanz,
+      actor,
+      kiBeginn,
+    );
+    const quellen = seiten
+      .filter((s) => heute.sources.includes(s.heute.id) || damals.sources.includes(s.heute.id))
+      .map((s) => {
+        const id = s.heute.id;
+        return vergleichsQuelle(s, heute.sources.includes(id), damals.sources.includes(id));
+      });
+    const geaendert = antwortGeaendert(heute, damals);
+    await this.audit?.record({
+      actor,
+      action: "ask.vergleich",
+      target: "-",
+      payload: {
+        stichtag: new Date(stichtagMs).toISOString(),
+        kandidaten: kandidaten.length,
+        grundlageHeute: seiten.filter((s) => s.grundlageHeute).length,
+        grundlageDamals: seiten.filter((s) => grundlageDamals(s) !== null).length,
+        antwortGeaendert: geaendert,
+      },
+    });
+    return {
+      stichtag: new Date(stichtagMs).toISOString(),
+      heute,
+      damals,
+      antwortGeaendert: geaendert,
+      quellen,
+    };
+  }
+
+  /**
+   * Eine Antwort aus einer festen Menge von Fassungen — derselbe Weg wie in `ask` ab der
+   * Suchprojektion: Volltext aus derselben Projektionsregel, beide Auswahltore, Antwortweg, und
+   * die Quellenpflicht danach. Der Volltext entsteht hier aus dem Inhalt der übergebenen Fassung
+   * (`buildSearchProjection`), weil die gespeicherte Projektion nur die heutige Fassung kennt.
+   */
+  private async antwortAusFassungen(
+    question: string,
+    grundlage: readonly { ko: KnowledgeObject; trust: number }[],
+    locale: ReasonerLocale,
+    relevanz: Relevanztext,
+    actor: string,
+    kiBeginn: number | undefined,
+  ): Promise<AnswerResult> {
+    const jetzt = new Date(this.now()).toISOString();
+    const refs = grundlage.map(({ ko, trust }): KnowledgeRef => {
+      const bodyText = buildSearchProjection(ko, jetzt).bodyText;
+      return {
+        id: ko.id,
+        title: ko.title,
+        statement: ko.statement,
+        status: "validiert",
+        trust,
+        ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
+        ...(bodyText.trim() ? { bodyText } : {}),
+      };
+    });
+    const ordnung = new Map<string, string[]>(
+      grundlage.map(({ ko }): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
+    );
+    const vollstaendig = refs.filter((ref) =>
+      decktAlleFragebegriffe(
+        question,
+        [
+          ref.title,
+          ref.statement,
+          ...(ref.captionTexts ?? []),
+          ref.bodyText ?? "",
+          ...(ordnung.get(ref.id) ?? []),
+        ].join(" "),
+        relevanz,
+      ),
+    );
+    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
+    const kontextVertraulich = grundlage.some(({ ko }) => isConfidential(ko.confidentiality));
+    this.pruefeKiSperre("antwortweg", kiBeginn);
+    const roh = await this.mitUebertragungssperre(() =>
+      this.reasoner.answer(question, candidates, locale, kontextVertraulich, { actor }, relevanz),
+    );
+    this.pruefeKiSperre("ergebnis", kiBeginn);
+    const { abgeschnitten: _abgeschnittenVerworfen, ...ohneAbbruch } = roh;
+    return roh.answered && roh.sources.length === 0
+      ? { ...ohneAbbruch, answered: false, answer: null, citedSources: [] }
+      : roh;
   }
 
   /**

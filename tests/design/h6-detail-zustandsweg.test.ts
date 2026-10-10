@@ -1720,6 +1720,14 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         behaelter: "detail-nutzer-neu",
         seitenPfad: "/admin",
       },
+      // ADMIN-06 (produkt:20261009:admin-teams): die Karte „Teams" — Liste, Anlegen und, mit
+      // gewähltem Team, dessen Karte im selben Behälter.
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="zeile-teams"]',
+        behaelter: "detail-teams",
+        seitenPfad: "/admin",
+      },
       {
         reiter: t("adm.sec.konten"),
         zeile: '[data-testid="zeile-ansicht-rolle"]',

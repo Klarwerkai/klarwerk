@@ -32,6 +32,26 @@ export interface SpaceMitglied {
   recht: SpaceRecht;
 }
 
+/**
+ * produkt:20261009:admin-teams — ein Team als Mitgliedschaftsweg: jedes AKTIVE Mitglied des Teams
+ * hat in diesem Space das genannte Recht. Gespeichert wird nur die Bindung, nie eine Kopie der
+ * Mitglieder; wer im Team ist, steht allein am Team (`teams.ts`).
+ */
+export interface SpaceTeam {
+  team: string;
+  recht: SpaceRecht;
+}
+
+/**
+ * Eine aus einem Team ABGELEITETE Mitgliedschaft — erhoben beim Lesen aus dem aktuellen Teamstand
+ * (`teams.ts`, `TeamAufloesendeSpaces`), nie gespeichert. Ein archiviertes Team trägt keine bei.
+ */
+export interface SpaceTeamMitglied {
+  nutzer: string;
+  recht: SpaceRecht;
+  team: string;
+}
+
 /** Eine gespeicherte Ansicht: alle für den Betrachter sichtbaren Objekte mit diesem Tag. */
 export interface SpaceAnsicht {
   id: string;
@@ -48,7 +68,22 @@ export interface SpaceEingabe {
   zugang: SpaceZugang;
   mitglieder: SpaceMitglied[];
   ansichten: SpaceAnsicht[];
+  /** Teams als Mitgliedschaftsweg. Fehlt in Fassungen von vor den Teams — dann gibt es keine. */
+  teams?: SpaceTeam[];
+  /** Abgeleitet aus `teams` und dem aktuellen Teamstand; nie Teil einer gespeicherten Fassung. */
+  teamMitglieder?: SpaceTeamMitglied[];
+  /**
+   * produkt:20261007:spaces:admin-20261009 (ADMIN-07) — eine OPTIONALE, flache Gruppierung für die
+   * Verwaltungsübersicht (z. B. „Produktion"). Sie ist ein Etikett, KEIN Elternordner: sie trägt
+   * keine Rechte, keine Inhalte und keine Unterebenen.
+   */
+  gruppe?: string;
+  /** Die Spaceregeln in Worten: was hineingehört, wie gepflegt wird. Rechte stehen NICHT hier. */
+  regeln?: string;
 }
+
+/** ADMIN-07: was eine Fassung gegenüber der vorigen getan hat — für den Verlauf nach Reload. */
+export type SpaceVorgang = "angelegt" | "geaendert" | "archiviert" | "wiederaufgenommen";
 
 /** Eine gespeicherte, unveränderliche Fassung eines Space. */
 export interface SpaceFassung extends SpaceEingabe {
@@ -58,16 +93,39 @@ export interface SpaceFassung extends SpaceEingabe {
   angelegtAm: string;
   geaendertVon: string;
   geaendertAm: string;
+  /**
+   * ADMIN-07: archiviert — Inhalte bleiben für die bisherigen Leser lesbar, aber nichts wird mehr
+   * hinein- oder herausbewegt und der Space wird nicht mehr gepflegt, bis er wiederaufgenommen
+   * ist. Fehlt in Fassungen von vor ADMIN-07: dann aktiv.
+   */
+  archiviert?: boolean;
+  /** Fehlt in Fassungen von vor ADMIN-07; Version 1 gilt dann als „angelegt", jede weitere als „geaendert". */
+  vorgang?: SpaceVorgang;
+  /** Pflicht beim Archivieren und Wiederaufnehmen: warum — damit nichts still verschwindet. */
+  begruendung?: string;
 }
 
 export const SPACE_GRENZEN = {
   name: 80,
   zweck: 1_000,
   mitglieder: 200,
+  teams: 50,
   ansichten: 20,
   ansichtName: 80,
   tag: 80,
+  gruppe: 60,
+  regeln: 2_000,
+  begruendung: 1_000,
 } as const;
+
+/** Der Vorgang einer Fassung — auch für Fassungen, die das Feld noch nicht tragen. */
+export function vorgangVon(f: Pick<SpaceFassung, "version" | "vorgang">): SpaceVorgang {
+  return f.vorgang ?? (f.version === 1 ? "angelegt" : "geaendert");
+}
+
+export function istArchiviert(space: SpaceEingabe & { archiviert?: boolean }): boolean {
+  return space.archiviert === true;
+}
 
 export class SpaceFehler extends Error {
   constructor(
@@ -105,8 +163,15 @@ function ansichtId(name: string, vergeben: ReadonlySet<string>): string {
  * `konten` ist die Menge der bestehenden Konto-Kennungen dieser Instanz: Zuständige und Mitglieder
  * müssen echte Konten sein, sonst verspräche der Space Rechte an niemanden. Eine doppelte
  * Mitgliedschaft wird zusammengefasst; das stärkere Recht gilt.
+ *
+ * `teams` sind die Teams, die dieser Space binden darf: die aktiven und die schon gebundenen
+ * (ein archiviertes Team erzeugt keine NEUE Bindung, eine bestehende bleibt als Verlauf stehen).
  */
-export function pruefeSpaceEingabe(roh: unknown, konten: ReadonlySet<string>): SpaceEingabe {
+export function pruefeSpaceEingabe(
+  roh: unknown,
+  konten: ReadonlySet<string>,
+  teams: ReadonlySet<string> = new Set(),
+): SpaceEingabe {
   if (typeof roh !== "object" || roh === null) {
     throw new SpaceFehler("SPACE_UNGUELTIG", "Erwartet wird ein Space als Objekt.");
   }
@@ -157,6 +222,36 @@ export function pruefeSpaceEingabe(roh: unknown, konten: ReadonlySet<string>): S
     }
     mitglieder.push({ nutzer, recht: recht as SpaceRecht });
   }
+  const rohTeams = r.teams ?? [];
+  if (!Array.isArray(rohTeams) || rohTeams.length > SPACE_GRENZEN.teams) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Die Teams sind keine gültige Liste.");
+  }
+  const gebunden: SpaceTeam[] = [];
+  for (const eintrag of rohTeams) {
+    const e = (typeof eintrag === "object" && eintrag !== null ? eintrag : {}) as Record<
+      string,
+      unknown
+    >;
+    const team = text(e.team);
+    const recht = e.recht ?? "lesen";
+    if (!team || !teams.has(team)) {
+      throw new SpaceFehler(
+        "SPACE_UNGUELTIG",
+        "Ein Team ist unbekannt oder archiviert und kann nicht neu gebunden werden.",
+      );
+    }
+    if (!SPACE_RECHTE.includes(recht as SpaceRecht)) {
+      throw new SpaceFehler("SPACE_UNGUELTIG", "Ein Teamrecht ist „lesen“ oder „schreiben“.");
+    }
+    const vorhanden = gebunden.find((t) => t.team === team);
+    if (vorhanden) {
+      if (recht === "schreiben") {
+        vorhanden.recht = "schreiben";
+      }
+      continue;
+    }
+    gebunden.push({ team, recht: recht as SpaceRecht });
+  }
   const rohAnsichten = r.ansichten ?? [];
   if (!Array.isArray(rohAnsichten) || rohAnsichten.length > SPACE_GRENZEN.ansichten) {
     throw new SpaceFehler("SPACE_UNGUELTIG", "Die Ansichten sind keine gültige Liste.");
@@ -184,7 +279,41 @@ export function pruefeSpaceEingabe(roh: unknown, konten: ReadonlySet<string>): S
     vergeben.add(id);
     ansichten.push({ id, name: ansichtName, tag });
   }
-  return { name, zweck, verantwortlich, zugang: zugang as SpaceZugang, mitglieder, ansichten };
+  // ADMIN-07: Gruppe ist ein einzelnes Etikett — ein „/" würde eine Ordnerhierarchie vortäuschen.
+  const gruppe = text(r.gruppe);
+  if (gruppe.length > SPACE_GRENZEN.gruppe || gruppe.includes("/")) {
+    throw new SpaceFehler(
+      "SPACE_UNGUELTIG",
+      "Die Gruppe ist ein kurzes Etikett ohne „/“ — keine Ordnerebene.",
+    );
+  }
+  const regeln = typeof r.regeln === "string" ? r.regeln.normalize("NFC").trim() : "";
+  if (regeln.length > SPACE_GRENZEN.regeln) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Die Spaceregeln sind zu lang.");
+  }
+  return {
+    name,
+    zweck,
+    verantwortlich,
+    zugang: zugang as SpaceZugang,
+    mitglieder,
+    ansichten,
+    ...(gebunden.length > 0 ? { teams: gebunden } : {}),
+    ...(gruppe ? { gruppe } : {}),
+    ...(regeln ? { regeln } : {}),
+  };
+}
+
+/** Eine Begründung für Archivieren/Wiederaufnehmen — bereinigt, oder `SpaceFehler`. */
+export function pruefeBegruendung(roh: unknown): string {
+  const b = text(roh);
+  if (!b || b.length > SPACE_GRENZEN.begruendung) {
+    throw new SpaceFehler(
+      "BEGRUENDUNG_FEHLT",
+      "Bitte begründen, warum der Space archiviert oder wiederaufgenommen wird.",
+    );
+  }
+  return b;
 }
 
 // ================================================================================================
@@ -196,8 +325,12 @@ export interface SpaceNutzer {
   role: Role;
 }
 
+/** Direkt ODER über ein aktives Team Mitglied — beide Wege tragen dieselbe Wirkung. */
 function istMitglied(space: SpaceEingabe, nutzerId: string): boolean {
-  return space.mitglieder.some((m) => m.nutzer === nutzerId);
+  return (
+    space.mitglieder.some((m) => m.nutzer === nutzerId) ||
+    (space.teamMitglieder ?? []).some((m) => m.nutzer === nutzerId)
+  );
 }
 
 /**
@@ -217,15 +350,65 @@ export function lesbareSpaces(spaces: readonly SpaceFassung[], nutzerId: string)
   return new Set(spaces.filter((s) => darfSpaceInhalteLesen(s, nutzerId)).map((s) => s.id));
 }
 
-/** Darf dieser Mensch Wissensobjekte in diesen Space legen oder aus ihm heraus verschieben? */
-export function darfInSpaceSchreiben(space: SpaceEingabe, nutzer: SpaceNutzer): boolean {
+/**
+ * Darf dieser Mensch Wissensobjekte in diesen Space legen oder aus ihm heraus verschieben?
+ * ADMIN-07: in einem archivierten Space niemand — auch nicht die Zuständigen; erst die
+ * Wiederaufnahme öffnet ihn wieder.
+ */
+export function darfInSpaceSchreiben(
+  space: SpaceEingabe & { archiviert?: boolean },
+  nutzer: SpaceNutzer,
+): boolean {
+  if (istArchiviert(space)) {
+    return false;
+  }
   if (space.verantwortlich === nutzer.id) {
     return true;
   }
   if (space.mitglieder.some((m) => m.nutzer === nutzer.id && m.recht === "schreiben")) {
     return true;
   }
+  if ((space.teamMitglieder ?? []).some((m) => m.nutzer === nutzer.id && m.recht === "schreiben")) {
+    return true;
+  }
   return space.zugang === "alle" && can(nutzer.role, "ko.create");
+}
+
+/**
+ * produkt:20261009:admin-teams — WOHER ein Zugang kommt, je Weg getrennt: Spacezuständigkeit,
+ * direkte Mitgliedschaft, jedes Team einzeln, offener Zugang. Die globale Rolle ist KEIN Weg zu
+ * Inhalten (kein Admin-Durchgriff); sie wirkt nur im offenen Space über `ko.create` aufs Schreiben.
+ */
+export interface SpaceZugangsweg {
+  art: "zustaendig" | "direkt" | "team" | "offen";
+  recht: SpaceRecht;
+  team?: string;
+}
+
+export function zugangswege(
+  space: SpaceEingabe & { archiviert?: boolean },
+  nutzer: SpaceNutzer,
+): SpaceZugangsweg[] {
+  // ADMIN-07: im Archiv trägt jeder Weg nur noch Lesen — die Herkunft bleibt trotzdem benannt.
+  const r = (recht: SpaceRecht): SpaceRecht => (istArchiviert(space) ? "lesen" : recht);
+  const wege: SpaceZugangsweg[] = [];
+  if (space.verantwortlich === nutzer.id) {
+    wege.push({ art: "zustaendig", recht: r("schreiben") });
+  }
+  for (const m of space.mitglieder) {
+    if (m.nutzer === nutzer.id) {
+      wege.push({ art: "direkt", recht: r(m.recht) });
+    }
+  }
+  for (const m of space.teamMitglieder ?? []) {
+    if (m.nutzer === nutzer.id) {
+      wege.push({ art: "team", recht: r(m.recht), team: m.team });
+    }
+  }
+  if (space.zugang === "alle") {
+    wege.push({ art: "offen", recht: r(can(nutzer.role, "ko.create") ? "schreiben" : "lesen") });
+  }
+  return wege;
 }
 
 /** Zweck, Mitglieder, Zugang und Ansichten ändern: die Zuständigen oder die Kontoverwaltung. */

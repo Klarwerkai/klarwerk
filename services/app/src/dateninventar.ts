@@ -586,6 +586,22 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "teams",
+    name: "Teams",
+    inhalt:
+      "Fassungen der Teams mit Name, Zweck, zuständiger Person, Kennungen der Mitglieder, Archivstand, anlegender und ändernder Kennung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
+    ablage: { ort: DATENBANK, tabellen: ["teams_fassungen"] },
+    taetigkeit: "konten",
+    loeschung: "Kein Löschweg — Teams werden archiviert, jede Fassung bleibt zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Teammitgliedschaften stehen am Space als Zugangsweg und in der Teamverwaltung.",
+    },
+  },
+  {
     id: "verantwortungnachfolge",
     name: "Nachfolge bei Befristung",
     inhalt:
