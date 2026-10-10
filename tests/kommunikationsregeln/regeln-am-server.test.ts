@@ -545,7 +545,11 @@ describe("K4 · nur angeschlossene Kanäle; fiktiver Versand mit nachvollziehbar
     expect(z.zaehlung.kenntnisnahme).toEqual({ offen: 0, bestaetigt: 1 });
     // Keine Mailadresse und keine Servermeldung im Zustellstatus.
     expect(JSON.stringify(z)).not.toContain("@");
-    expect(JSON.stringify(z)).not.toContain("550");
+    // Geprüft wird der Text der Servermeldung selbst — nicht die Ziffernfolge „550“, die auch in
+    // einer zufälligen Kennung (UUID) stehen kann (Nacharbeit 13: Fehlalarm an einer Vermerk-UUID).
+    expect(JSON.stringify(z)).not.toContain("Postfach nicht verfügbar");
+    expect(JSON.stringify(z)).not.toContain("Testkanal");
+    expect(person(z, vera)?.mail?.grund).toBe("mailserver_abgelehnt");
     // Den Zustellstatus sieht nur, wer veröffentlichen darf.
     expect((await auf(erik.token, "GET", zustellPfad(id, vermerk))).statusCode).toBe(403);
     expect((await auf(clara.token, "GET", zustellPfad(id, "x"))).statusCode).toBe(404);
