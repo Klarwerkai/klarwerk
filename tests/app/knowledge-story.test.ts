@@ -15,6 +15,27 @@ const KNOWLEDGE_STORY_SURFACES: readonly StorySurface[] = [
   "tasks",
   "library",
   "validation",
+  "risk",
+  "neighborhood",
+  "audit",
+  "gaps",
+  "lifecycle",
+  "duplicates",
+  "objekt",
+  "entwuerfe",
+  "verwaltung",
+  "auswertung",
+  "import",
+  "anleitung",
+  "spaces",
+  "ausgang",
+  "wissensnetz",
+  "meldungen",
+  "horizont",
+  "lernpfad",
+  "hilfe",
+  "conflicts",
+  "gliederung",
 ];
 
 describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
@@ -24,6 +45,27 @@ describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
       tasks: "validate",
       library: "use",
       validation: "validate",
+      risk: "capture",
+      neighborhood: "use",
+      audit: "maintain",
+      gaps: "use",
+      lifecycle: "maintain",
+      duplicates: "validate",
+      objekt: "use",
+      entwuerfe: "capture",
+      verwaltung: "maintain",
+      auswertung: "maintain",
+      import: "capture",
+      anleitung: "use",
+      spaces: "use",
+      ausgang: "validate",
+      wissensnetz: "use",
+      meldungen: "maintain",
+      horizont: "maintain",
+      lernpfad: "use",
+      hilfe: "use",
+      conflicts: "validate",
+      gliederung: "capture",
     };
     for (const surface of KNOWLEDGE_STORY_SURFACES) {
       const story = knowledgeStory(surface);
@@ -45,12 +87,38 @@ describe("SCRUM-377: knowledgeStory — Flächen → Kreis-Phase", () => {
     expect(leads.size).toBe(KNOWLEDGE_STORY_SURFACES.length);
   });
 
-  it("deckt genau die vier Kernflächen ab", () => {
+  // R-0956: dazugekommen sind die Risikoseite (Cockpit/Bus-Faktor), die Schlagwort-Nachbarschaft,
+  // das Audit-Protokoll und (Bestandsabgleich, Nacharbeit 4) Lücken, Lebenszyklus und Dubletten.
+  // Nacharbeit 7 (Ben): R-0956 gilt für JEDE leere Liste — dazu kommen die Teillisten eines
+  // Beitrags, Entwürfe, Verwaltung, Auswertung, Import, Anleitung, Räume, Ausgangsprüfung,
+  // Wissensnetz, Meldungen, Ruhestandshorizont, Lernpfad, Seitenhilfe, Konflikte und Gliederung.
+  it("deckt genau die fünfundzwanzig Flächen ab", () => {
     expect([...KNOWLEDGE_STORY_SURFACES].sort()).toEqual([
+      "anleitung",
+      "audit",
+      "ausgang",
+      "auswertung",
+      "conflicts",
+      "duplicates",
+      "entwuerfe",
+      "gaps",
+      "gliederung",
+      "hilfe",
+      "horizont",
+      "import",
+      "lernpfad",
       "library",
+      "lifecycle",
+      "meldungen",
+      "neighborhood",
+      "objekt",
+      "risk",
+      "spaces",
       "start",
       "tasks",
       "validation",
+      "verwaltung",
+      "wissensnetz",
     ]);
   });
 });
