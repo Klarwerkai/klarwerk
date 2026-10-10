@@ -1,12 +1,19 @@
+import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
+import type { AufnahmeRumpf, SprachTranskriptAntwort } from "../lib/sprachaufnahme";
+// R-1034 / FR-I18N-02: der Drahtvertrag der Übersetzungspflege.
+import type { GepflegteTexte, InstanzSprache, InstanzSprachen } from "../lib/textpflege";
 import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
+  AnlagenKontext,
   AnsprechpartnerAuskunft,
   AnswerResult,
+  AntwortMeldeGrund,
+  AntwortMeldungQuittung,
   // JOB 4154 (WIKI-GESAMTANWEISUNG): der Drahtvertrag der zusammengesetzten Anweisung.
   Anweisung,
   AnweisungEntscheidung,
@@ -20,6 +27,8 @@ import type {
   AssistResult,
   AuditChainExport,
   AuditEntry,
+  AuditSeite,
+  AuditSeitenAnfrage,
   AuditVerifyReport,
   BearbeitungsLage,
   BearbeitungsMeldung,
@@ -64,11 +73,14 @@ import type {
   ImportExploreResponse,
   ImportGroupResponse,
   ImportItemInput,
+  ImportKandidatBefund,
   ImportKnowledgeResult,
+  ImportRunListe,
   ImportRunRecord,
   ImportRunStartResponse,
   ImportSelectCriteria,
   ImportSelectResponse,
+  InterviewResearchPoint,
   InterviewResult,
   KandidatenLesevariante,
   KnowledgeCheckResult,
@@ -93,6 +105,7 @@ import type {
   MyImpact,
   Neighborhood,
   Notification,
+  NulltrefferSuche,
   ObjectContent,
   ObjectRef,
   OutputDocument,
@@ -102,10 +115,12 @@ import type {
   OverlapSettings,
   PublicUser,
   ReasonerConfigStatus,
+  ReasonerKiLage,
   ReasonerProbeResult,
   ReasonerStatus,
   RetirementEntry,
   RetirementHorizon,
+  RevalidierungBestaetigt,
   ReviewAction,
   RiskHorizonView,
   Role,
@@ -116,12 +131,16 @@ import type {
   SlideConvertResponse,
   StructureResult,
   TrashedKo,
+  UebergabeErgebnis,
+  UebergabeVorschau,
   UploadLimits,
   ValidationBoardKo,
   ValidationSettings,
   Verdict,
   VorrangAmPunkt,
   VorrangWahl,
+  Wissensempfehlungen,
+  Wochenupdate,
   // R-1107: der Drahtvertrag des Zusammenführens.
   ZusammenfuehrungsAuftrag,
   ZusammenfuehrungsErgebnis,
@@ -356,6 +375,8 @@ export type KoAction =
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
   // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
   | { action: "domain"; domain: string }
+  // R-1631 (gesamt-anlagenzugang): Bauteile, Materialien und Geltungskontext; ersetzt den bisherigen.
+  | { action: "anlagenkontext"; anlagenkontext: AnlagenKontext }
   // R-1632 / R-1633: die Geltung setzen; `null` entfernt sie (ko-routes.ts `geltung`).
   | { action: "geltung"; geltung: KoGeltung | null }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
@@ -374,6 +395,10 @@ export type KoAction =
   // R-0263: `vorrang` optional — welcher der beiden Punkte gilt bzw. einschränkt.
   | { action: "resolve-conflict"; conflictId: string; decision: string; vorrang?: VorrangWahl }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0507: der benannte Eigentümer gibt seine Verantwortung zurück (sonst 403 `NOT_OWNER`).
+  | { action: "ownership-release" }
+  // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
+  | { action: "owner-validate"; duplicateAcknowledged?: true }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -447,7 +472,11 @@ export type KoAction =
       note?: string;
       expectedVersion?: number;
     }
-  | { action: "revalidate" };
+  | { action: "revalidate" }
+  // aufnahme:20260922:gesamt-wissen-frische (R-0206): „Stimmt weiterhin" — Frische-Signal, keine Prüfung.
+  | { action: "confirm-fresh" }
+  // R-0652 / FR-EXT-06: Schutzbedarf „öffentlich" setzen oder zurücknehmen (nur an internen Objekten).
+  | { action: "schutz-oeffentlich"; oeffentlich: boolean };
 
 /**
  * AUFTRAG-mega18 Block A-1 — Nutzlast der Verbund-Operation.
@@ -641,6 +670,11 @@ export const endpoints = {
     evidence: (id: string) => api.get<EvidenceRecord[]>(`/kos/${id}/evidence`),
     // AUFTRAG-mega68: begrenzte Nachbarschaft eines Objekts (Anwendersicht des Wissensnetzes).
     neighbors: (id: string) => api.get<Neighborhood>(`/kos/${id}/neighbors`),
+    // R-1656 „Du solltest auch wissen…": verwandte Einträge mit Grund (Co-Reading, Thema, Konflikt).
+    empfehlungen: (id: string) => api.get<Wissensempfehlungen>(`/kos/${id}/empfehlungen`),
+    // R-1656: in derselben Lesesitzung nach `zuvor` geöffnet. Der Server zählt nur das Paar.
+    mitgelesen: (id: string, zuvor: string) =>
+      api.post<{ gezaehlt: boolean }>(`/kos/${id}/mitgelesen`, { zuvor }),
     // ==========================================================================================
     // JOB 4153 (WG-ANZEIGE) — DIE AUSDRÜCKLICH GESETZTEN FACHBEZIEHUNGEN.
     // ==========================================================================================
@@ -676,6 +710,13 @@ export const endpoints = {
     // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt, ohne vorausgehende Antwort. Der
     // Server antwortet mit 204 (kein Objekt) — deshalb ein eigener Aufruf neben `act`.
     helpful: (id: string) => api.put<void>(`/kos/${id}`, { action: "helpful" }),
+    // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung aus der Bibliothek anstossen (R-1732,
+    // 204 ohne Objekt) und die Anlagenänderung über dieses Objekt an die Nachbarn melden (R-0203,
+    // Antwort nur mit der Zahl der markierten Objekte).
+    requestRevalidation: (id: string) =>
+      api.put<void>(`/kos/${id}`, { action: "request-revalidation" }),
+    neighborsChanged: (id: string) =>
+      api.put<{ markiert: number }>(`/kos/${id}`, { action: "neighbors-changed" }),
     // AUFTRAG-mega18 Block A-1: eigener Aufruf, weil die Antwort ein COMMIT-ERGEBNIS ist und kein
     // KnowledgeObject — der Aufrufer erfährt daraus ohne Rückfrage, was gilt.
     appendDocument: (id: string, appendDocument: DocumentAppendRequest) =>
@@ -724,6 +765,9 @@ export const endpoints = {
   },
   conflicts: {
     list: () => api.get<Conflict[]>("/conflicts"),
+    // R-1662: die von einem Menschen gelösten Konflikte zu genau diesen Objekten (Lösungsweg).
+    geloest: (koIds: readonly string[]) =>
+      api.get<Conflict[]>(`/conflicts/geloest?ko=${koIds.map(encodeURIComponent).join(",")}`),
     get: (id: string) => api.get<Conflict>(`/conflicts/${id}`),
     escalate: (id: string) => api.post<Conflict>(`/conflicts/${id}/escalate`),
     secondOpinion: (id: string, opinion: string) =>
@@ -821,11 +865,20 @@ export const endpoints = {
     // Zusammenstellen und Absenden), legt der Server NICHTS an und antwortet 409
     // `DRAFT_OWNER_MISMATCH`. Ohne den Wert bleibt alles wie bisher — die anderen Aufrufer
     // (`pages/Capture.tsx`, das Panel, der Word-Weg) hängen daran.
-    create: (payload: DraftPayload, operationId?: string, expectedOwner?: string) =>
+    // entscheidung:14ce8681: `fortschreiben` sagt dem Server, dass dieser Aufruf einen unklar
+    // gebliebenen Vorgang WIEDERHOLT und ein geänderter Inhalt denselben Entwurf fortschreiben soll.
+    // Transport wie `operationId`; ohne den Wert bleibt alles wie bisher.
+    create: (
+      payload: DraftPayload,
+      operationId?: string,
+      expectedOwner?: string,
+      opts?: { fortschreiben?: boolean },
+    ) =>
       api.post<Draft>("/drafts", {
         ...payload,
         ...(operationId ? { operationId } : {}),
         ...(expectedOwner ? { expectedOwner } : {}),
+        ...(operationId && opts?.fortschreiben ? { fortschreiben: true } : {}),
       }),
     // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
     // JOB 2684 D1: `expectedUpdatedAt` = der beim Laden gesehene Stand; der Server antwortet 409
@@ -904,9 +957,29 @@ export const endpoints = {
         ...(thread && thread.length > 0 ? { thread } : {}),
         ...(fragekontext ? { fragekontext } : {}),
       }),
+    // R-0305/R-1099: dieselbe Frage samt Faden, zusätzlich vom Zweitmodell beantwortet. Derselbe
+    // Endpunkt — Auth, Schema, Filter und Egress-Regeln bleiben die der Frage.
+    // Ben (Nacharbeit 9): auch derselbe Fragekontext (R-1633) wie bei der stehenden Antwort — sonst
+    // gewichtet die Gegenüberstellung andere Quellen als die Antwort, auf die sie sich bezieht.
+    zweitmeinung: (
+      question: string,
+      locale?: ReasonerLocale,
+      thread?: readonly string[],
+      fragekontext?: Fragekontext,
+    ) =>
+      api.post<AskResponse>("/ask", {
+        question,
+        ...(locale ? { locale } : {}),
+        ...(thread && thread.length > 0 ? { thread } : {}),
+        ...(fragekontext ? { fragekontext } : {}),
+        zweitmeinung: true,
+      }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
     helpful: (koId: string, receipt: string) => api.post<void>("/ask/helpful", { koId, receipt }),
+    // R-1089: „Antwort falsch / Quelle passt nicht" — derselbe Beleg; die Antwort ist die Quittung.
+    report: (koId: string, receipt: string, grund: AntwortMeldeGrund) =>
+      api.post<AntwortMeldungQuittung>("/ask/report", { koId, receipt, grund }),
     // R-1649: „nicht hilfreich" an der tragenden Quelle — derselbe Receipt wie beim „Danke";
     // ein mitgeschickter abweichender Weg wird serverseitig ein Entwurf (`entwurfId`).
     notHelpful: (body: {
@@ -972,18 +1045,32 @@ export const endpoints = {
         ...provenanceFields(provenance),
       }),
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: `guide.tree` schaltet den Fragebaum mit Restlückenwert
+    // zu, `guide.topic` das Lücken-Interview (drei Fragen zu einem festen Thema).
     interview: (
       answers: string[],
       locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
       // R-1624: bestätigter Bildbefund des Fotos (Klartext, kein Bild) → Foto-Fragenfolge.
       imageContext?: string,
+      guide?: {
+        tree?: boolean;
+        topic?: string | null;
+        // R-0088: die Recherche des ersten Turns — zurückgereicht, damit nur einmal recherchiert wird.
+        research?: readonly InterviewResearchPoint[] | null;
+        // R-0088: ausdrücklicher Wunsch nach Quellenrecherche (Knopf „Zum Thema recherchieren").
+        recherchieren?: boolean;
+      },
     ) =>
       api.post<InterviewResult>("/reasoner", {
         task: "interview",
         answers,
         ...(locale ? { locale } : {}),
         ...(imageContext?.trim() ? { imageContext: imageContext.trim() } : {}),
+        ...(guide?.tree ? { tree: true } : {}),
+        ...(guide?.topic?.trim() ? { topic: guide.topic.trim() } : {}),
+        ...(guide?.research && guide.research.length > 0 ? { research: guide.research } : {}),
+        ...(guide?.recherchieren ? { recherchieren: true } : {}),
         ...provenanceFields(provenance),
       }),
     // WP-BILD-1c/1f: KI-Bildbeschreibung als VORSCHLAG für die Bild-Fußnote (Vision). EIGENE
@@ -1025,6 +1112,8 @@ export const endpoints = {
     enrich: (query: string, locale?: ReasonerLocale) =>
       api.post<EnrichResult>("/reasoner/enrich", { query, ...(locale ? { locale } : {}) }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
+    // R-0599: die KI-Lage der Kopfzeile (Modus, Anbieter, Herkunft) — nur für Angemeldete.
+    kiLage: () => api.get<ReasonerKiLage>("/ki-lage"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
     config: () => api.get<ReasonerConfigStatus>("/reasoner/config"),
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
@@ -1070,6 +1159,21 @@ export const endpoints = {
   },
   audit: {
     list: () => api.get<AuditEntry[]>("/audit"),
+    // produkt:20261009:admin-audit-verstaendlich: eine Seite der Kette, kombinierbar gefiltert —
+    // die Verwalteransicht lädt damit nie mehr die unbeschränkte Gesamtliste.
+    seite: (anfrage: AuditSeitenAnfrage = {}) =>
+      api.get<AuditSeite>(
+        `/audit/seite${qs({
+          actor: anfrage.actor,
+          action: anfrage.action,
+          actions: anfrage.actions?.join(","),
+          target: anfrage.target,
+          from: anfrage.from,
+          to: anfrage.to,
+          before: anfrage.before?.toString(),
+          limit: anfrage.limit?.toString(),
+        })}`,
+      ),
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Knopf „Integrität geprüft").
     // AUFTRAG-mega14 Block A: der Bericht nennt jetzt auch die URSACHE einer Abweichung.
     verify: () => api.get<AuditVerifyReport>("/audit/verify"),
@@ -1110,9 +1214,18 @@ export const endpoints = {
         locale,
         ...(confidentiality ? { confidentiality } : {}),
       }),
+    // Aufnahme gesamt-sprachassistent (R-0104): eine Sprachaufnahme verschriftlichen, ohne sie zu
+    // speichern — derselbe Transkriptionsdienst wie `analyze` (`lib/sprachaufnahme.ts`).
+    transcribe: (rumpf: AufnahmeRumpf) =>
+      api.post<SprachTranskriptAntwort>("/media/transcribe", rumpf),
   },
   lifecycle: {
     pending: () => api.get<string[]>("/lifecycle/pending"),
+    // R-1662: frühere Bestätigungen „stimmt noch" zu genau diesen Objekten (Lösungsweg).
+    revalidiert: (koIds: readonly string[]) =>
+      api.get<RevalidierungBestaetigt[]>(
+        `/lifecycle/revalidiert?ko=${koIds.map(encodeURIComponent).join(",")}`,
+      ),
     // Audit B1 (02.07.2026): Anlagen-Kopplung im KO-Detail — koppeln + gekoppelte Anlagen lesen.
     couple: (assetRef: string, koId: string) =>
       api.post<void>("/lifecycle/couple", { assetRef, koId }),
@@ -1120,6 +1233,11 @@ export const endpoints = {
     // SCRUM-146: vorhandener Asset-Change-Pfad → markiert gekoppelte KOs als „prüfen".
     assetChanged: (assetRef: string) =>
       api.post<string[]>("/lifecycle/asset-changed", { assetRef }),
+    // R-0554: Wissensübergabe beim Ausscheiden — erst Vorschau, dann Ausführung (Recht `users.manage`).
+    uebergabeVorschau: (von: string, an: string) =>
+      api.post<UebergabeVorschau>("/lifecycle/handover/preview", { from: von, to: an }),
+    uebergeben: (von: string, an: string) =>
+      api.post<UebergabeErgebnis>("/lifecycle/handover", { from: von, to: an }),
   },
   // SCRUM-145: vorhandene Learning-Path-API (rollenbasiert, Fortschritt serverseitig).
   learningPaths: {
@@ -1139,6 +1257,8 @@ export const endpoints = {
     // FE-LIB-01: Server-Volltextsuche + strukturierte Filter (Art/Status/Kategorie/Tag).
     search: (params: KoFilter & { q?: string }) =>
       api.get<KnowledgeObject[]>(`/library/search${qs(params)}`),
+    // R-0773: die EIGENEN Suchen ohne Treffer (Server: services/ask/src/nulltreffer.ts).
+    nulltreffer: () => api.get<NulltrefferSuche[]>("/library/nulltreffer"),
     // JOB 3095 · M5: Bilder anhand ihrer Unterschrift, mit Herkunft; dieselbe Rechte-Naht wie search.
     images: (q: string, limit?: number) =>
       api.get<LibraryImageSearchResponse>(
@@ -1149,6 +1269,8 @@ export const endpoints = {
       create: (items: ImportItemInput[]) =>
         api.post<ImportCandidate[]>("/library/import/candidates", { items }),
       list: () => api.get<ImportCandidate[]>("/library/import/candidates"),
+      // R-0179 (Nacharbeit 3): veraltet und schützenswert je Kandidat, vom Server bewertet.
+      befunde: () => api.get<ImportKandidatBefund[]>("/library/import/candidates/befunde"),
       review: (id: string, action: ReviewAction, note?: string) =>
         api.put<ImportCandidate>(`/library/import/candidates/${id}`, { action, note }),
     },
@@ -1161,6 +1283,8 @@ export const endpoints = {
     // produkt:wettbewerb:20261003:lernplattform: Prüfung vor dem Export und das SCORM-1.2-Paket.
     scormPruefen: (body: ScormExportBody) => api.post<ScormPruefung>("/output/scorm/pruefen", body),
     scormPaket: (body: ScormExportBody) => api.postDatei("/output/scorm/paket", body),
+    // RECHERCHE:pmo-fea-0004: Wissensupdate fürs Teamgespräch — nur auf Abruf, kein Versand.
+    wochenupdate: (bis?: string) => api.get<Wochenupdate>(`/output/wochenupdate${qs({ bis })}`),
   },
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {
@@ -1298,6 +1422,8 @@ export const endpoints = {
         };
       },
       run: (importId: string) => api.get<ImportRunRecord>(`/admin/import/runs/${importId}`),
+      // ADMIN-02: die Importliste — die jüngsten Läufe, jüngster zuerst.
+      runs: (limit = 50) => api.get<ImportRunListe>(`/admin/import/runs?limit=${limit}`),
       // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts — Quellrevision, Lauf, Ausgang.
       knowledgeResult: (koId: string) =>
         api.get<ImportKnowledgeResult>(`/admin/import/knowledge/${encodeURIComponent(koId)}`),
@@ -1377,6 +1503,9 @@ export const endpoints = {
     // R-0134 / R-1005: der Betreiberschalter — genau ein Ja/Nein, die Antwort ist die neue Auskunft.
     confluenceSchalter: (an: boolean) =>
       api.put<ImportAccessStatus>("/import/confluence/schalter", { an }),
+    // ADMIN-02: der bewusst gestartete Verbindungstest — eine Seite des Space, ohne Inhalt.
+    confluenceVerbindungstest: () =>
+      api.post<Verbindungsnachweis>("/import/confluence/verbindungstest", {}),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),
@@ -1405,11 +1534,20 @@ export const endpoints = {
       accessExpiresAt?: string,
     ) => api.post<PublicUser>("/users", { name, email, password, role, accessExpiresAt }),
     approve: (id: string) => api.post<void>(`/auth/users/${id}/approve`),
-    setRole: (id: string, role: Role) => api.put<void>(`/users/${id}`, { role }),
-    remove: (id: string) => api.del<void>(`/users/${id}`),
+    // ADMIN-04: der Server antwortet mit dem gespeicherten Konto (`routes.ts`, PUT /api/users/:id) —
+    // die Bestätigung in der Kontokarte nennt die Rolle aus dieser Antwort, nicht die gewählte.
+    setRole: (id: string, role: Role) => api.put<PublicUser>(`/users/${id}`, { role }),
+    // R-0554: mit `nachfolger` läuft vor dem Entfernen die Wissensübergabe (Auslöser aus der
+    // Verzeichnispflege); bleibt etwas liegen, antwortet der Server 409 und entfernt nichts.
+    remove: (id: string, nachfolger?: string) =>
+      api.del<void>(
+        nachfolger ? `/users/${id}?nachfolger=${encodeURIComponent(nachfolger)}` : `/users/${id}`,
+      ),
     // SCRUM-148: Admin-Passwort-Reset (eigener Pfad; invalidiert Sitzungen serverseitig).
     resetPassword: (id: string, password: string) =>
       api.post<void>(`/auth/users/${id}/reset`, { password }),
+    // R-0562: eigenen zweiten Faktor des Kontos entfernen (verlorenes zweites Gerät).
+    resetSecondFactor: (id: string) => api.del<void>(`/users/${id}/second-factor`),
     // JOB 4021 (ERSTEINRICHTUNG-GAST T2): DER EINE WEG, EINE BEFRISTUNG ZU SETZEN UND ZU NEHMEN.
     //
     // Derselbe Endpunkt wie `setRole` — der Server führt Rolle, Freigabe, Passwort und Befristung
@@ -1427,6 +1565,9 @@ export const endpoints = {
     //     zeigt nach dem Speichern den Stand von davor.
     setAccessExpiry: (id: string, accessExpiresAt: string | null) =>
       api.put<PublicUser>(`/users/${id}`, { accessExpiresAt }),
+    // R-0582: der Admin berichtigt Name und E-Mail — dieselbe Route, die Antwort ist der neue Stand.
+    correct: (id: string, name: string, email: string) =>
+      api.put<PublicUser>(`/users/${id}`, { name, email }),
   },
   // ==============================================================================================
   // JOB 4154 · WIKI-GESAMTANWEISUNG — NEUN ADRESSEN, UND JEDE SCHREIBENDE TRÄGT DEN GELESENEN STAND.
@@ -1494,5 +1635,24 @@ export const endpoints = {
         version,
         aufVersion,
       }),
+  },
+  // R-1034 / FR-I18N-02: Oberflächentexte im laufenden Betrieb pflegen (i18n-routes.ts).
+  i18n: {
+    sprachen: () => api.get<InstanzSprachen>("/i18n/locales"),
+    texte: (sprache: string) => api.get<GepflegteTexte>(`/i18n/${encodeURIComponent(sprache)}`),
+    setzeText: (sprache: string, schluessel: string, text: string) =>
+      api.put<{ sprache: string; schluessel: string; text: string }>(
+        `/admin/i18n/${encodeURIComponent(sprache)}/${encodeURIComponent(schluessel)}`,
+        { text },
+      ),
+    entferneText: (sprache: string, schluessel: string) =>
+      api.del<{ sprache: string; schluessel: string; entfernt: boolean }>(
+        `/admin/i18n/${encodeURIComponent(sprache)}/${encodeURIComponent(schluessel)}`,
+      ),
+    setzeSprache: (kennung: string, name: string) =>
+      api.put<Pick<InstanzSprache, "kennung"> & { name: string }>(
+        `/admin/i18n-sprachen/${encodeURIComponent(kennung)}`,
+        { name },
+      ),
   },
 };

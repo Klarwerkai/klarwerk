@@ -523,7 +523,18 @@
           },
           "answerId": { "type": ["string", "null"] },
           "gap": { "type": ["object", "null"] },
-          "receipt": { "type": "string" }
+          "receipt": { "type": "string" },
+          "absaetze": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["text", "quellen"],
+              "properties": {
+                "text": { "type": "string" },
+                "quellen": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
         }
       },
       "Evidenz": {

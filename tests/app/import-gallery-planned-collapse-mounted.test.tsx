@@ -89,15 +89,18 @@ describe("mega32 G · die geplanten Kacheln liegen hinter EINER Zeile", () => {
     }
   });
 
-  it("die Zeile nennt die ANZAHL — je Gruppe eine eigene", async () => {
+  // R-0179 (Aufnahme import-gesamtvertrag, Nacharbeit 3): NACHGEFÜHRT. Excel war die letzte
+  // geplante Dateikachel; seit der Importkasten sie liest, hat die Dateigruppe nichts mehr
+  // einzuklappen und trägt deshalb KEINE Zeile — eine „In Planung (0)"-Zeile wäre leer.
+  it("die Zeile nennt die ANZAHL — je Gruppe mit geplanten Kacheln eine eigene", async () => {
     await mount();
     const rows = disclosures();
-    // Zwei Gruppen, zwei Zeilen (Systeme und Dateien sind getrennt).
-    expect(rows).toHaveLength(2);
     const systemGeplant = SYSTEM_SOURCES.filter((s) => s.state === "planned").length;
     const dateiGeplant = FILE_SOURCES.filter((s) => s.state === "planned").length;
+    expect(systemGeplant).toBeGreaterThan(0);
+    expect(dateiGeplant).toBe(0);
+    expect(rows).toHaveLength(1);
     expect(rows[0]?.textContent).toContain(String(systemGeplant));
-    expect(rows[1]?.textContent).toContain(String(dateiGeplant));
     expect(rows[0]?.getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -145,7 +148,12 @@ describe("mega32 G · die geplanten Kacheln liegen hinter EINER Zeile", () => {
 
     await mount();
     expect(disclosures()[0]?.getAttribute("aria-expanded")).toBe("true");
-    // Die ANDERE Gruppe hat davon nichts mitbekommen — zwei Schlüssel, zwei Zustände.
-    expect(disclosures()[1]?.getAttribute("aria-expanded")).toBe("false");
+    // Die ANDERE Gruppe hat davon nichts mitbekommen — zwei Schlüssel, zwei Zustände. R-0179
+    // (Nacharbeit 3): die Dateigruppe trägt keine Zeile mehr; gemessen wird deshalb ihr Schlüssel.
+    const speicher = globalThis.localStorage;
+    const system = speicher?.getItem("klarwerk.import.gallery.systems.plannedOpen");
+    const dateien = speicher?.getItem("klarwerk.import.gallery.files.plannedOpen");
+    expect(system).toBeTruthy();
+    expect(dateien).not.toBe(system);
   });
 });

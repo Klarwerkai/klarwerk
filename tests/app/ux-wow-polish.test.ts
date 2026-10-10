@@ -115,7 +115,10 @@ describe("WP-UX-WOW-1 U6: Konflikte-Leerzustand erklärt", () => {
     expect(conflicts).toContain('t("con.emptyWhat")');
     expect(conflicts).toContain('t("con.emptyHow")');
     expect(conflicts).toContain('role === "admin"');
-    expect(conflicts).toContain('to="/import#beispielpakete"');
+    // ADMIN-16: die Beispielpakete wohnen in der Verwaltung unter Vorführdaten, nicht mehr auf
+    // `/import`; der alte Anker leitet die Importseite dorthin weiter (`pages/Stufe2.tsx`).
+    expect(conflicts).toContain('to={adminHref("vorfuehrdaten", "pakete")}');
+    expect(conflicts).toContain('t("betriebdemo.konfliktHinweis")');
   });
 
   it("der Beispielpakete-Kasten trägt den Anker und scrollt beim Deep-Link hin", () => {
@@ -147,6 +150,10 @@ describe("WP-UX-WOW-1 U7: echte Umlaute in Nutzertexten", () => {
     const editor = read("apps/web/src/components/RichTextEditor.tsx");
     expect(editor).toContain("Bildgröße");
     expect(editor).not.toContain("Bildgroesse");
+    // R-1169: die sichtbare Beschriftung kommt seit der Aufnahme gesamt-sprache-begriffe aus dem
+    // Textmodul — die Umlaut-Zusage gilt deshalb auch dort, wo der Text heute wirklich steht.
+    const beschriftung = read("apps/web/src/texte/beschriftung.ts");
+    expect(beschriftung).toContain('"beschriftung.editor.bildgroesse": "Bildgröße"');
     const frontDoorLib = read("apps/web/src/lib/captureFrontDoor.ts");
     expect(frontDoorLib).toContain("Bitte prüfe Bibliothek oder Entwürfe");
   });

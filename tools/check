@@ -27,6 +27,10 @@ echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verle
 # da, nichts gemessen" — der Normalfall in jedem Clone, denn `_relay/` steht in `.gitignore:25`.
 echo "▶ zentrale-drift"; zentrale_rc=0; ./tools/zentrale-drift.sh || zentrale_rc=$?
 if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläche"; exit 1; fi
+# R-1420 (F-1420, secrets-management.md §10): Zugangsdaten gelangen nicht unbemerkt in den
+# Quellcode. Gelesen wird alles, was uebernommen werden kann (versioniert UND neu, nicht ignoriert).
+# Jeder Fund sperrt; ausgegeben wird er nur maskiert. Eng gefasste Formate — s. tools/geheimnis-scan.ts.
+echo "▶ geheimnis-scan"; bash tools/geheimnis-scan.sh ||{ echo "✖ Geheimnis-Scan rot"; exit 1; }
 echo "▶ test";         ./tools/test "$@"
 
 # AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — und zwar Chromium-only.
@@ -118,9 +122,10 @@ KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_SEED=1 ANTHROPIC_API_KEY= ./tools/browse
   exit 1
 }
 echo "  ⓘ NICHT im Tor gelaufen: ui-smoke.spec.ts „Kernfluss … @modell\" und „Fragen antwortet"
-echo "    ehrlich … @modell\" — beide brauchen ein aktives"
+echo "    ehrlich … @modell\" sowie klara-basis-browser.spec.ts „Klara 01 · tatsächliche"
+echo "    Modellantwort … @modell\" — alle drei brauchen ein aktives"
 echo "    Modell (Zugangsdatum + Egress), das dieses hermetische Tor bewusst nicht hat."
-echo "    Dass es bei GENAU DIESEN ZWEI bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
+echo "    Dass es bei GENAU DIESEN DREI bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
 echo "    dass der Tor-Lauf wirklich ohne Modell lief, hält tests-smoke/smoke-umgebung.spec.ts fest."
 echo "    Abgedeckt durch die Ship-Vorbedingung: npm run smoke:ui (drei Engines, mit Modell)."
 echo "✓ check grün"

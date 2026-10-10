@@ -15,13 +15,13 @@ import {
   confluenceAnhangsFelder,
   mapConfluencePageToImportItem,
 } from "./mapper";
-import type { ConfluenceAbbruch, ConfluenceAttachment, ConfluencePage } from "./rest-client";
-import {
+import type {
+  ConfluenceAbbruch,
+  ConfluenceAttachment,
+  ConfluencePage,
   ConfluenceRestClient,
-  type ConfluenceRestConfig,
-  confluenceClientFromEnv,
-  istAnhangsliste,
 } from "./rest-client";
+import { confluenceClientFromEnv, istAnhangsliste } from "./rest-client";
 
 // SCRUM-510 WP2: Ergebnis eines vollständigen (paginierten) Space-Einlesens — normalisierte Items PLUS
 // pro-Seite-Fehler (eine fehlerhafte Seite bricht den Lauf NICHT ab). `ref` ist die Herkunft (pageId
@@ -146,6 +146,14 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     private readonly client: ConfluenceRestClient,
     private readonly mapOpts: ConfluenceMapOptions,
   ) {}
+
+  /**
+   * ADMIN-02 — der Verbindungstest: eine Seite des Space, nur Kennungen, kein Schreibeffekt.
+   * Fehler reisen unverändert; deuten kann sie `confluenceVerbindungsfehler`.
+   */
+  async pruefeVerbindung(): Promise<{ eintraege: number }> {
+    return { eintraege: await this.client.pruefeVerbindung() };
+  }
 
   async collect(): Promise<ConfluenceImportItem[]> {
     const pages = await this.client.listPages();
@@ -321,7 +329,9 @@ function isConfluenceImportEnabled(env: Record<string, string | undefined>): boo
 }
 
 // Baut den Adapter aus einem fertigen Client (nicht-geheime baseUrl/spaceKey für die Provenienz).
-function adapterFromClient(client: ConfluenceRestClient): ConfluenceSourceAdapter {
+// R-1349: exportiert, damit Tests Client und Adapter selbst zusammensetzen — derselbe Weg, den
+// `createConfluenceAdapterFromEnv` im Betrieb nimmt (Muster des SharePoint-Moduls).
+export function adapterFromClient(client: ConfluenceRestClient): ConfluenceSourceAdapter {
   return new ConfluenceSourceAdapter(client, {
     baseUrl: client.baseUrl,
     spaceKey: client.spaceKey,
@@ -342,9 +352,7 @@ export function createConfluenceAdapterFromEnv(
   return client ? adapterFromClient(client) : undefined;
 }
 
-// Test-/Wiederverwendungs-Einstieg mit injizierbarem fetchFn. Nimmt eine token-tragende Config und ist
-// daher BEWUSST modul-intern (nicht über die Paket-index exportiert) — von außen führt der einzige Weg
-// über createConfluenceAdapterFromEnv (env→Client, Token in der Closure).
-export function adapterFromConfig(config: ConfluenceRestConfig): ConfluenceSourceAdapter {
-  return adapterFromClient(new ConfluenceRestClient(config));
-}
+// R-1349: Hier stand `adapterFromConfig`, ein Test-Einstieg mit token-tragender Config, den kein
+// Produktweg rief. Er ist entfernt; Tests bauen über `tests/support/confluence-adapter.ts`
+// (`adapterFromClient(new ConfluenceRestClient(config))`). Von außen führt der einzige Weg weiter
+// über `createConfluenceAdapterFromEnv` (env→Client, Token in der Closure).

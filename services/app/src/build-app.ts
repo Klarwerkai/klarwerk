@@ -16,24 +16,31 @@ import {
   type GapRepo,
   InMemoryAnswerSnapshotRepo,
   InMemoryGapRepo,
+  InMemoryNulltrefferRepo,
+  type NulltrefferRepo,
   PgAnswerSnapshotRepo,
   PgGapRepo,
+  PgNulltrefferRepo,
   parseConfiguredReceiptSecret,
 } from "../../ask";
 import { type AuditRepo, AuditService, InMemoryAuditRepo, PgAuditRepo } from "../../audit";
 import {
   AuthService,
   InMemoryPasswordResetRepo,
+  InMemorySecondFactorRepo,
   InMemorySessionRepo,
   InMemoryUserRepo,
   type PasswordResetRepo,
   PgPasswordResetRepo,
+  PgSecondFactorRepo,
   PgSessionRepo,
   PgUserRepo,
+  type SecondFactorRepo,
   type SessionRepo,
   type UserRepo,
   authRoutes,
   createOidcProviderFromEnv,
+  createSamlProviderFromEnv,
   sprache,
 } from "../../auth";
 import {
@@ -52,19 +59,28 @@ import {
   InMemoryConflictRepo,
   InMemoryOverlapRepo,
   InMemoryOverlapSettingsRepo,
+  InMemoryPaarpflichtRepo,
   type OverlapRepo,
   OverlapService,
   type OverlapSettingsRepo,
+  type PaarpflichtRepo,
+  PaarpflichtService,
   PgConflictMemoryRepo,
   PgConflictRepo,
   PgOverlapRepo,
   PgOverlapSettingsRepo,
+  PgPaarpflichtRepo,
 } from "../../conflicts";
 import { createConfluenceAdapterFromEnv } from "../../confluence";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
 // an den echten, mit PgKoRepo/PgAuditRepo geteilten Pool (s. buildPgServices unten).
 import { gatedPool, withPgTx } from "../../db-tx";
-import { InMemoryEmbeddingStore, createEmbeddingProviderFromEnv } from "../../embedding";
+import {
+  type EmbeddingStore,
+  InMemoryEmbeddingStore,
+  PgEmbeddingStore,
+  createEmbeddingProviderFromEnv,
+} from "../../embedding";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
@@ -91,8 +107,10 @@ import {
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  type HalbwertszeitVerlaufRepo,
   InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
+  InMemoryHalbwertszeitVerlauf,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
@@ -111,6 +129,7 @@ import {
   PgAnweisungRepo,
   PgDokumentaktenRepo,
   PgEvidenceRepo,
+  PgHalbwertszeitVerlauf,
   PgKantenRepo,
   PgKoRepo,
   PgKoSearchProjectionRepo,
@@ -120,6 +139,7 @@ import {
   type UploadLimitsRepo,
   type WithTx,
   anweisungFehler,
+  responsibleOf,
 } from "../../knowledge-object";
 import {
   type CandidateRepo,
@@ -127,11 +147,9 @@ import {
   type ImportRunRepo,
   InMemoryCandidateRepo,
   InMemoryExternalSourceRepo,
-  InMemoryImportRunRepo,
   LibraryService,
   PgCandidateRepo,
   PgExternalSourceRepo,
-  PgImportRunRepo,
 } from "../../library-analytics";
 import {
   InMemoryLifecycleRepo,
@@ -250,14 +268,24 @@ import {
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
 import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
-import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
+import {
+  type SemanticPrefilter,
+  entzugNachStart,
+  gesicherterVektorspeicher,
+  nachfuehrungNachStart,
+  reindexKoForDuplicatePrefilter,
+  removeKoFromDuplicatePrefilter,
+  vektorBleibtFuer,
+} from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
+import { frischeMeldungen } from "./frische-meldungen";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
+import { type HintergrundlaufBericht, createHintergrundpruefung } from "./hintergrundpruefung";
 import {
   type SessionUser,
   isInternalOnlyError,
@@ -266,6 +294,8 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// ADMIN-02: die auflistbaren Laufablagen für die Importliste (neben dem eingefrorenen Vertrag).
+import { InMemoryAuflistbareImportRunRepo, PgAuflistbareImportRunRepo } from "./import-lauf-liste";
 // R-0466: das Interaktionsgedächtnis — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
 import {
   GedaechtnisDienst,
@@ -281,6 +311,14 @@ import {
   PgKenntnisnahmeRepo,
 } from "./kenntnisnahme";
 import { kiGrenzeAusEnv, registriereKiAnfragebremse } from "./ki-anfragebremse";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche — haltbar im Postgres-Betrieb, im
+// Speicher ohne Datenbank.
+import {
+  InMemoryKlaraGespraechRepo,
+  KlaraGespraechDienst,
+  type KlaraGespraechRepo,
+  PgKlaraGespraechRepo,
+} from "./klara-gespraech";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -294,20 +332,38 @@ import {
   type LiveWallFotoRepo,
   PgLiveWallFotoRepo,
 } from "./livewall-fotos";
-import { gelisteteMeldung, nurGelisteteLogfelder } from "./log-positivliste";
+// Betroffenenrechte (R-0661): die Löschanträge — Postgres im Datenbankbetrieb, sonst im Speicher.
+import {
+  InMemoryLoeschantragRepo,
+  type LoeschantragRepo,
+  PgLoeschantragRepo,
+  offeneLoeschantragMeldungen,
+} from "./loeschantraege";
+import {
+  gelisteteMeldung,
+  istStapelRahmenListe,
+  nurGelisteteLogfelder,
+  stapelRahmen,
+} from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
-// AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
-import type { ObjectReferenceSources } from "./object-references";
+import { type OfficeAblage, PgOfficeAblage, SpeicherOfficeAblage } from "./office-ablage";
+import { leseOfficeEditorUmgebung } from "./office-artikel";
+import {
+  type PaarpflichtAusfuehrung,
+  createPaarpflichtAusfuehrung,
+  paarpflichtPrueferFuer,
+} from "./paarpflicht-ausfuehrung";
 import {
   InMemoryQuellabgleichRepo,
   PgQuellabgleichRepo,
   type QuellabgleichRepo,
 } from "./quellabgleich-ablage";
+import { createReindexQueue } from "./reindex-queue";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
-import { askRoutes } from "./routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
@@ -318,6 +374,7 @@ import { categoryRoutes } from "./routes/category-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
+import { datenschutzRoutes } from "./routes/datenschutz-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { gedaechtnisRoutes } from "./routes/gedaechtnis-routes";
@@ -328,7 +385,7 @@ import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
-import { importRunRoutes } from "./routes/import-run-routes";
+import { importLaufListeRoutes, importRunRoutes } from "./routes/import-run-routes";
 // R-0170: der Jira-Import — Vorgänge und Epics eines Projekts, Projektrollen als Leserechte.
 import { jiraImportRoutes } from "./routes/jira-import-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
@@ -336,6 +393,8 @@ import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
+// produkt:20261008:klara-basis: die eigenen, serverseitig gespeicherten Klara-Gespräche.
+import { klaraGespraechRoutes } from "./routes/klara-gespraech-routes";
 // JOB 3110 (M2b): der Memo-Weg des Word-Panels. Die Route ist seit JOB 3091 gebaut und gemessen;
 // hier — und nur hier — bekommt sie ihren Aufrufer.
 import { type ZurufModell, klaraZurufRoutes } from "./routes/klara-session-routes";
@@ -352,8 +411,10 @@ import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
+import { officeRoutes } from "./routes/office-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
+import { paarpflichtenRoutes } from "./routes/paarpflichten-routes";
 import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
@@ -361,8 +422,18 @@ import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
+// ADMIN-15: Unternehmensprofil und interne Richtlinien.
+import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { kontoendeSperre, verantwortungRoutes } from "./routes/verantwortung-routes";
+import { veroeffentlichungRoutes } from "./routes/veroeffentlichung-routes";
+import {
+  lesePruefzustaendigkeit,
+  scimSchluessel,
+  verzeichnisRoutes,
+} from "./routes/verzeichnis-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
+import { wissensempfehlungRoutes } from "./routes/wissensempfehlung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -380,6 +451,42 @@ import { speicherVorgang } from "./speicher-vorgang";
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
 import { ermittleBestand, pruefeStartvertrag, startbericht } from "./start-vertrag";
+// R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte — im Postgres-Betrieb haltbar.
+import {
+  InMemoryUebersetzungRepo,
+  PgUebersetzungRepo,
+  type UebersetzungRepo,
+} from "./uebersetzungen";
+// ADMIN-15: Unternehmensprofil und interne Richtlinien — haltbar im Postgres-Betrieb, im Speicher
+// ohne Datenbank.
+import {
+  InMemoryUnternehmenRepo,
+  PgUnternehmenRepo,
+  UnternehmenDienst,
+  type UnternehmenRepo,
+} from "./unternehmensprofil";
+import { verantwortungBeiAnlage } from "./verantwortung";
+import {
+  InMemoryNachfolgeRepo,
+  type NachfolgeRepo,
+  PgNachfolgeRepo,
+} from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl still/normal/hervorgehoben.
+import {
+  InMemoryVeroeffentlichungsZustellungRepo,
+  PgVeroeffentlichungsZustellungRepo,
+  VeroeffentlichungDienst,
+  type VeroeffentlichungsZustellungRepo,
+} from "./veroeffentlichung";
+// R-1656: „Du solltest auch wissen…" — der Co-Reading-Zähler ist im Postgres-Betrieb haltbar.
+import {
+  InMemoryMitgelesenRepo,
+  type MitgelesenRepo,
+  PgMitgelesenRepo,
+  WissensempfehlungDienst,
+} from "./wissensempfehlung";
+// R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
+import { Wissensuebergabe } from "./wissensuebergabe";
 
 // ================================================================================================
 // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
@@ -484,6 +591,11 @@ export interface AppServices {
    */
   spaces: SpacesRepo;
   /**
+   * produkt:20261007:ownership-uebergabe (Nacharbeit 4) — die Nachfolge für neue Beiträge eines
+   * befristeten Kontos (`verantwortung-nachfolge.ts`). Im Postgres-Betrieb haltbar.
+   */
+  verantwortungNachfolge: NachfolgeRepo;
+  /**
    * PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (`livewall-fotos.ts`). Aus demselben Grund
    * wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`PgLiveWallFotoRepo`,
    * eingehängt in `buildPgServices`), sonst die In-Memory-Ablage. Geht sie beim Neustart des
@@ -491,12 +603,36 @@ export interface AppServices {
    */
   livewallFotos: LiveWallFotoRepo;
   /**
+   * R-1034 / FR-I18N-02: die im Betrieb gepflegten Oberflächentexte und zusätzlich angelegten
+   * Sprachen (`uebersetzungen.ts`). Aus demselben Grund wie `brandingSettings` NICHT in `AppRepos`;
+   * im Postgres-Betrieb haltbar (`PgUebersetzungRepo`), sonst die In-Memory-Ablage.
+   */
+  uebersetzungen: UebersetzungRepo;
+  /**
    * R-0466: das Interaktionsgedächtnis (`interaktionsgedaechtnis.ts`) — frühere Fragen, Antworten
    * und Vorlieben je Konto. Aus demselben Grund wie `livewallFotos` NICHT in `AppRepos`; im
    * Postgres-Betrieb haltbar (`PgGedaechtnisRepo`), sonst die In-Memory-Ablage. Geht sie beim
    * Neustart des Dev-Betriebs verloren, ist das die Richtung des Löschens, nicht des Offenlegens.
    */
   gedaechtnis: GedaechtnisRepo;
+  /**
+   * R-1656: der Co-Reading-Zähler (`wissensempfehlung.ts`) — je Paar nur eine Zahl, ohne
+   * Kontokennung. Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb
+   * haltbar (`PgMitgelesenRepo`), sonst die In-Memory-Ablage.
+   */
+  mitgelesen: MitgelesenRepo;
+  /**
+   * produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (`klara-gespraech.ts`) je Konto.
+   * Aus demselben Grund wie `gedaechtnis` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgKlaraGespraechRepo`), sonst die In-Memory-Ablage.
+   */
+  klaraGespraeche: KlaraGespraechRepo;
+  /**
+   * R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters (`PgEmbeddingStore`), gesetzt
+   * von `buildPgServices`. Fehlt er (Speicherbetrieb), legt `buildApp` den In-Memory-Speicher an —
+   * dann ohne Neustartzusage, und genau so benannt.
+   */
+  vektorSpeicher?: EmbeddingStore;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -513,6 +649,12 @@ export interface AppServices {
    */
   bearbeitungen: BearbeitungsRepo;
   /**
+   * produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände von
+   * Office im Artikel. Aus demselben Grund wie `bearbeitungen` NICHT in `AppRepos`. Im Postgres-
+   * Betrieb `PgOfficeAblage`, damit ein als „gesichert" angezeigter Stand einen Neustart überlebt.
+   */
+  officeAblage: OfficeAblage;
+  /**
    * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
    * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
    * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim
@@ -521,6 +663,27 @@ export interface AppServices {
   kenntnisnahmen: KenntnisnahmeRepo;
   /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
   kenntnisnahmeUhr: () => number;
+  /**
+   * produkt:20261007:veroeffentlichungsoptionen — die Zustellungen je Empfänger (der angekündigte
+   * Kreis einer Veröffentlichung). Bauform wie `kenntnisnahmen`: Postgres im Betrieb, sonst die
+   * Speicherfassung, die im Desktop-Journal-Betrieb das Anlegen ablehnt.
+   */
+  veroeffentlichungsZustellungen: VeroeffentlichungsZustellungRepo;
+  /**
+   * Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Aus demselben Grund wie
+   * `kenntnisnahmen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgLoeschantragRepo`; ohne Datenbank
+   * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt.
+   */
+  loeschantraege: LoeschantragRepo;
+  /** Die Uhr der Betroffenenrechte (Millisekunden) — in Tests stellbar für Frist und Überfälligkeit. */
+  datenschutzUhr: () => number;
+  /**
+   * ADMIN-15: Fassungen des Unternehmensprofils, Fassungen der internen Richtlinien und das
+   * Handlungsprotokoll. Aus demselben Grund wie `kenntnisnahmen` NICHT in `AppRepos`. Im
+   * Postgres-Betrieb `PgUnternehmenRepo`; ohne Datenbank die Speicherfassung, die im
+   * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim Neustart zu verlieren.
+   */
+  unternehmen: UnternehmenRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -549,6 +712,11 @@ export interface AppServices {
   answerSnapshots: AnswerSnapshotRepo;
   validation: ValidationService;
   conflicts: ConflictService;
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): der Pflichtendienst und seine
+  // Hintergrundausführung (fassungsgebundener Prüfer über den Reasoner). Die Ausführung erstellt
+  // buildApp — wie `aiCheckWorker`; ein vorab gesetzter Wert hat Vorrang.
+  paarpflichten: PaarpflichtService;
+  paarpflichtAusfuehrung?: PaarpflichtAusfuehrung;
   // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
   overlaps: OverlapService;
   // Pedi 04.07.: einstellbare Anzeige-Schwelle der Duplikat-Erkennung (Admin) — schmale Repo-Schnittstelle.
@@ -561,14 +729,14 @@ export interface AppServices {
   // SCRUM-118: optionaler externer Such-Proxy (undefined, wenn EXTERNAL_SEARCH=off).
   externalSearch: ExternalSearchService | undefined;
   lifecycle: LifecycleService;
+  // R-0554 / R-2128: Wissensübergabe beim Ausscheiden (Vorschau + Ausführung + Protokoll).
+  wissensuebergabe: Wissensuebergabe;
   i18n: I18nService;
   objects: ObjectStore;
-  // AUFTRAG-mega20 Block C: die MODULÜBERGREIFENDE Referenzprüfung — verdrahtet mit den echten
-  // Beständen (Wissensobjekte inkl. Papierkorb, Versions-Snapshots, Belegkette, Entwürfe). Sie
-  // gehört in die Composition-Root, weil nur sie alle Module kennen darf; die ausgeschriebene
-  // Begründung und die fünf Fundorte stehen in object-references.ts. Sie ENTSCHEIDET nichts und
-  // löscht nichts — der Waisen-Sweep ist ausdrücklich nicht Teil dieses Blocks.
-  objectReferences: ObjectReferenceSources;
+  // R-1349: Hier stand `objectReferences`, die Quellen der Referenzprüfung aus mega20 Block C. Kein
+  // Produktweg fragte sie ab; den Waisenlauf trägt `datenintegritaet.ts::ermittleWaisen` (Betreiber-
+  // werkzeug `tools/datenintegritaet.ts`) als Obermenge derselben Fundorte. Feld und Verdrahtung
+  // sind entfernt.
   media: MediaAnalysisService;
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
@@ -594,6 +762,8 @@ export interface AppServices {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (nur die eigene Liste ist lesbar).
+  nulltreffer: NulltrefferRepo;
   // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
   slideConverter: SlideConverter;
   // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Von buildApp
@@ -620,10 +790,15 @@ export interface AppRepos {
   auditRepo: AuditRepo;
   koRepo: KoRepo;
   koVersions: KoVersionRepo;
+  // aufnahme:20260922:gesamt-wissen-frische (R-1636/R-0248): der festgehaltene Lernverlauf der
+  // Halbwertszeiten. Optional: fehlt er, hält der KoService ihn im Speicher.
+  halbwertszeitVerlauf?: HalbwertszeitVerlaufRepo;
   evidence: EvidenceRepo;
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens: PasswordResetRepo;
+  // R-0562: der eigene zweite Faktor (TOTP) je Konto.
+  secondFactors: SecondFactorRepo;
   drafts: DraftRepo;
   gaps: GapRepo;
   ratings: RatingRepo;
@@ -631,6 +806,8 @@ export interface AppRepos {
   conflictsRepo: ConflictRepo;
   // Aufnahme 20260922 · Prüfung-Gedächtnis (R-1103/R-1105): gemerkte Textstände je Paar.
   conflictMemory: ConflictMemoryRepo;
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): Laufköpfe und Aussage-Paarpflichten.
+  paarpflichten: PaarpflichtRepo;
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
@@ -660,6 +837,8 @@ export interface AppRepos {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
   uploadLimits: UploadLimitsRepo;
+  // R-0773: erfolglose Suchen je Person (Tabelle `ask_nulltreffer` in ASK_SCHEMA).
+  nulltreffer: NulltrefferRepo;
   /**
    * W1 Weg A: der Answer-Beleg-Schreibweg — und zwar HIER, nicht mehr als Option.
    *
@@ -987,19 +1166,41 @@ export function assembleServices(
     begriffe?: BegriffeRepo;
     // produkt:20261007:spaces: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     spaces?: SpacesRepo;
+    // produkt:20261007:ownership-uebergabe: gesetzt von `buildPgServices`; sonst im Speicher.
+    verantwortungNachfolge?: NachfolgeRepo;
     // PMO-FEA-0003: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     livewallFotos?: LiveWallFotoRepo;
+    // R-1034 / FR-I18N-02: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    uebersetzungen?: UebersetzungRepo;
     // R-0466: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     gedaechtnis?: GedaechtnisRepo;
+    // R-1656: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    mitgelesen?: MitgelesenRepo;
+    // produkt:20261008:klara-basis: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    klaraGespraeche?: KlaraGespraechRepo;
+    // R-0470: gesetzt von `buildPgServices` (echter Pool); ohne Injektion legt `buildApp` den
+    // In-Memory-Speicher an.
+    vektorSpeicher?: EmbeddingStore;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
+    // Office im Artikel: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die
+    // Speicherfassung, die einen Neustart nicht überlebt.
+    officeAblage?: OfficeAblage;
     // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
     kenntnisnahmeUhr?: () => number;
+    // Veröffentlichung: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    veroeffentlichungsZustellungen?: VeroeffentlichungsZustellungRepo;
+    // Betroffenenrechte: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    loeschantraege?: LoeschantragRepo;
+    // Betroffenenrechte: die Uhr für Antragsfrist und Überfälligkeit — ohne Injektion `Date.now`.
+    datenschutzUhr?: () => number;
+    // ADMIN-15: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    unternehmen?: UnternehmenRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1017,10 +1218,24 @@ export function assembleServices(
     // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
     ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
   });
+  const verantwortungNachfolge = opts.verantwortungNachfolge ?? new InMemoryNachfolgeRepo();
+  // produkt:20261007:spaces — hier schon gebaut, weil die Nachfolge bei Anlage (Nacharbeit 6) das
+  // Leserecht der Nachfolge am führenden Space des neuen Beitrags prüft. Dieselbe Instanz geht
+  // unten in die Dienste.
+  const spaces = opts.spaces ?? new InMemorySpacesRepo();
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
+    // produkt:20261007:ownership-uebergabe (Nacharbeit 4): neue Beiträge eines befristeten Kontos
+    // verantwortet ab der Anlage dessen Nachfolge — über das Kontoende hinaus.
+    verantwortungBeiAnlage: verantwortungBeiAnlage(
+      (id) => repos.users.findById(id),
+      verantwortungNachfolge,
+      () => spaces.aktuelle(),
+      () => Date.now(),
+    ),
     versions: repos.koVersions,
+    ...(repos.halbwertszeitVerlauf ? { halbwertszeitVerlauf: repos.halbwertszeitVerlauf } : {}),
     evidence: repos.evidence,
     // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
     // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
@@ -1131,6 +1346,9 @@ export function assembleServices(
     reasoner,
     koService: ko,
     gaps: repos.gaps,
+    // aufnahme:20260922:gesamt-wissen-frische (R-1636): die gelernte Halbwertszeit je Kategorie
+    // bestimmt die Haltbarkeit auch im Fragepfad — dieselbe Tabelle wie an den Leserouten.
+    halbwertszeiten: () => ko.gelernteHalbwertszeiten(),
     // W3-C1 (Auftrag 76): ab hier schreibt der Antwortweg wirklich einen Beleg.
     // W1 Weg A (Auftrag 143): das Repo kommt aus `repos.` — derselbe Satz, den die Dev-Persistenz
     // journaliert. Kein bedingter Key mehr: es ist immer da, und damit läuft der Beleg in JEDER
@@ -1165,6 +1383,10 @@ export function assembleServices(
     currentVersion: koVersion,
     memory: repos.conflictMemory,
   });
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): der Pflichtendienst über der Ablage. Seine
+  // Hintergrundausführung entsteht in `buildApp` (wie der KI-Prüf-Worker), damit sie den dort
+  // gültigen Reasoner benutzt.
+  const paarpflichten = new PaarpflichtService({ repo: repos.paarpflichten });
   // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
   // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
   // `services/knowledge-object` nicht kennen (dependency-cruiser). Die Regel selbst wohnt im
@@ -1249,7 +1471,9 @@ export function assembleServices(
         }
       : {}),
   });
-  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
+  // aufnahme:20260922:gesamt-wissen-frische (R-1635): jede Markierung hinterlässt einen Beleg im
+  // Prüfprotokoll — die Grundlage der Benachrichtigung an Autor bzw. Nachfolger in der Glocke.
+  const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo, audit });
 
   // ==============================================================================================
   // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
@@ -1271,9 +1495,41 @@ export function assembleServices(
   // SCRUM-506.
   policyNahtSchliessen((betrachter) => sichtbarkeitsfilterFuer(betrachter as never) as never);
 
+  // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden. Sie bekommt dieselben Dienste und
+  // Ablagen wie die übrigen Wege — die Einzelübergabe `setAuthor`, den Eigentumsgeber, die
+  // Entwurfs-, Lücken- und Zuweisungsablagen — und keinen eigenen Bestand.
+  const wissensuebergabe = new Wissensuebergabe({
+    kos: () => ko.list(),
+    // BEN (Nacharbeit 7): Papierkorb in Vorschau UND Ausführung — derselbe Weg wie
+    // produkt:20261007:ownership-uebergabe.
+    kosEinschliesslichPapierkorb: () => ko.listEinschliesslichPapierkorb(),
+    uebertrageVerantwortung: (koId, erwartet, nachfolger, actor) =>
+      ko.uebertrageVerantwortung(koId, erwartet, nachfolger, actor),
+    setAuthor: (koId, to, actor) => lifecycle.transferAuthor(koId, to, actor),
+    setOwnership: (koId, value, actor) => ko.setOwnership(koId, value, actor),
+    drafts: repos.drafts,
+    gaps: () => ask.listGaps(),
+    assignGap: (gapId, to) => ask.assignGap(gapId, to),
+    assignments: {
+      all: () => repos.assignments.all(),
+      find: (koId, userId) => repos.assignments.find(koId, userId),
+      create: (zuweisung) => repos.assignments.create(zuweisung),
+      remove: async (koId, userId) => {
+        if (!repos.assignments.remove) {
+          throw new Error("Diese Zuweisungsablage kann keine Prüfaufgabe entfernen.");
+        }
+        await repos.assignments.remove(koId, userId);
+      },
+    },
+    audit,
+    nachfolgerBekannt: async (id) => (await repos.users.findById(id))?.approved === true,
+  });
+
   return {
     audit,
+    wissensuebergabe,
     reasoner,
+    paarpflichten,
     klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
     // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
     lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
@@ -1301,17 +1557,28 @@ export function assembleServices(
     // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
     begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // produkt:20261007:spaces — Postgres, wenn injiziert, sonst im Speicher.
-    spaces: opts.spaces ?? new InMemorySpacesRepo(),
+    spaces,
+    verantwortungNachfolge,
     // PMO-FEA-0003: die Fotos der Live-Wand — Postgres, wenn injiziert, sonst im Speicher.
     livewallFotos: opts.livewallFotos ?? new InMemoryLiveWallFotoRepo(),
+    // R-1034 / FR-I18N-02: die Übersetzungspflege — Postgres, wenn injiziert, sonst im Speicher.
+    uebersetzungen: opts.uebersetzungen ?? new InMemoryUebersetzungRepo(),
     // R-0466: das Interaktionsgedächtnis — Postgres, wenn injiziert, sonst im Speicher.
     gedaechtnis: opts.gedaechtnis ?? new InMemoryGedaechtnisRepo(),
+    // R-1656: der Co-Reading-Zähler — Postgres, wenn injiziert, sonst im Speicher.
+    mitgelesen: opts.mitgelesen ?? new InMemoryMitgelesenRepo(),
+    // produkt:20261008:klara-basis: die Klara-Gespräche — Postgres, wenn injiziert, sonst im Speicher.
+    klaraGespraeche: opts.klaraGespraeche ?? new InMemoryKlaraGespraechRepo(),
+    // R-0470: der Vektorspeicher — nur, wenn injiziert (Postgres); sonst entscheidet `buildApp`.
+    ...(opts.vektorSpeicher ? { vektorSpeicher: opts.vektorSpeicher } : {}),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
+    // Office im Artikel: Postgres, wenn injiziert, sonst im Speicher.
+    officeAblage: opts.officeAblage ?? new SpeicherOfficeAblage(),
     // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
     // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
     // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
@@ -1319,6 +1586,20 @@ export function assembleServices(
       opts.kenntnisnahmen ??
       new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
+    // Veröffentlichung: dieselbe Haltbarkeitsregel wie die Kenntnisnahme.
+    veroeffentlichungsZustellungen:
+      opts.veroeffentlichungsZustellungen ??
+      new InMemoryVeroeffentlichungsZustellungRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // Betroffenenrechte: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit
+    // zu (Desktop-Journal), lehnt die Speicherfassung Anträge ab — ein angenommener und beim
+    // Neustart verlorener Löschantrag wäre schlimmer als ein abgelehnter.
+    loeschantraege:
+      opts.loeschantraege ?? new InMemoryLoeschantragRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    datenschutzUhr: opts.datenschutzUhr ?? Date.now,
+    // ADMIN-15: Postgres, wenn injiziert, sonst im Speicher — mit derselben Haltbarkeitsregel wie
+    // die Kenntnisnahme.
+    unternehmen:
+      opts.unternehmen ?? new InMemoryUnternehmenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1332,6 +1613,7 @@ export function assembleServices(
       users: repos.users,
       sessions: repos.sessions,
       resetTokens: repos.resetTokens,
+      secondFactors: repos.secondFactors,
       audit,
       // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
       canChangeRole,
@@ -1503,6 +1785,21 @@ export function assembleServices(
       busFactor: (opts) => library.busFactor(opts),
       // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
       profiles: repos.managementProfiles,
+      // R-1657 (Nacharbeit 2): „Lückenerkennung über Reasoner" — das Urteil über die Kennzahlen je
+      // Bereich. Die Vertraulichkeit reist als Egress-Bit mit (vertraulich ⇒ keine Cloud). Ein
+      // Fehler des Urteilswegs (auch Überlast) wird zur benannten Ursache, nie zum Absturz des Laufs.
+      judgeGaps: async (bereiche, confidential) => {
+        try {
+          const ausgang = await reasoner.judgeKnowledgeGapsOutcome(bereiche, "de", confidential);
+          return {
+            urteile: ausgang.urteile,
+            failure: ausgang.failure ?? null,
+            provider: ausgang.provider ?? null,
+          };
+        } catch {
+          return { urteile: null, failure: "model-error", provider: null };
+        }
+      },
     }),
     // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
     externalSearch: createExternalSearchFromEnv(),
@@ -1510,16 +1807,6 @@ export function assembleServices(
     i18n: new I18nService(),
     // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
     objects,
-    // AUFTRAG-mega20 Block C: die Quellen der Referenzprüfung, direkt an den REPOS — nicht an den
-    // Diensten. Der Unterschied ist tragend: `ko.list()` blendet getrashte Wissensobjekte aus
-    // (SCRUM-422), und ein Aufräumlauf, der den Papierkorb übersieht, macht aus „gelöscht"
-    // ein „unwiederbringlich". Hier wird deshalb bewusst der ROHE Bestand befragt.
-    objectReferences: {
-      kos: () => repos.koRepo.list({}),
-      drafts: () => repos.drafts.list(),
-      versions: (koId) => repos.koVersions.listByKo(koId),
-      evidence: (koId) => repos.evidence.listByKo(koId),
-    },
     // JOB 2706 D1 (R2-30): nur, wenn das Repo die Traegersuche an der Datenquelle kann. Die
     // Methoden sind am `KoRepo` optional (Begruendung dort); hier werden sie durchgereicht, nicht
     // geraten. Ebenso der Schreibstand aus der Ablage.
@@ -1578,6 +1865,8 @@ export function assembleServices(
     externalKnowledge: repos.externalKnowledge,
     // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
     uploadLimits: repos.uploadLimits,
+    // R-0773: erfolglose Suchen je Person — Repo direkt für die Bibliotheksroute.
+    nulltreffer: repos.nulltreffer,
     // WP-D11: PPTX-Folien → PNG (LibreOffice headless). In Tests/Dev ohne soffice meldet
     // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
     slideConverter: createSofficeSlideConverter(),
@@ -1595,23 +1884,28 @@ export function inMemoryRepos(): AppRepos {
     auditRepo: new InMemoryAuditRepo(),
     koRepo: new InMemoryKoRepo(schreibstand),
     koVersions: new InMemoryKoVersionRepo(schreibstand),
+    // R-1636/R-0248: der Lernverlauf im Speicherbetrieb — hier, damit die Dev-Persistenz ihn journaliert.
+    halbwertszeitVerlauf: new InMemoryHalbwertszeitVerlauf(),
     evidence: new InMemoryEvidenceRepo(schreibstand),
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
     resetTokens: new InMemoryPasswordResetRepo(),
+    secondFactors: new InMemorySecondFactorRepo(),
     drafts: new InMemoryDraftRepo(),
     gaps: new InMemoryGapRepo(),
     ratings: new InMemoryRatingRepo(),
     assignments: new InMemoryAssignmentRepo(),
     conflictsRepo: new InMemoryConflictRepo(),
     conflictMemory: new InMemoryConflictMemoryRepo(),
+    paarpflichten: new InMemoryPaarpflichtRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
     managementProfiles: new InMemoryManagementProfileRepo(),
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
-    importRuns: new InMemoryImportRunRepo(),
+    // ADMIN-02: dieselbe Laufablage, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+    importRuns: new InMemoryAuflistbareImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
     quellabgleich: new InMemoryQuellabgleichRepo(),
     dokumente: new InMemoryDokumentaktenRepo(),
@@ -1622,6 +1916,7 @@ export function inMemoryRepos(): AppRepos {
     validationSettings: new InMemoryValidationSettingsRepo(),
     externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
     uploadLimits: new InMemoryUploadLimitsRepo(),
+    nulltreffer: new InMemoryNulltrefferRepo(),
     // W1 Weg A (Auftrag 143): der Answer-Beleg gehört in denselben Repo-Satz wie alles andere —
     // nur so umhüllt ihn die Dev-Persistenz und spielt ihn beim Start aus dem Journal zurück.
     answerSnapshots: new InMemoryAnswerSnapshotRepo(),
@@ -1670,16 +1965,21 @@ export function buildPgServices(rohPool: Pool): AppServices {
       auditRepo: new PgAuditRepo(pool),
       koRepo: new PgKoRepo(pool),
       koVersions: new PgKoVersionRepo(pool),
+      // R-1636/R-0248: der Lernverlauf überlebt Neustarts — sonst begänne er nach jedem Start neu.
+      halbwertszeitVerlauf: new PgHalbwertszeitVerlauf(pool),
       evidence: new PgEvidenceRepo(pool),
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
       resetTokens: new PgPasswordResetRepo(pool),
+      secondFactors: new PgSecondFactorRepo(pool),
       drafts: new PgDraftRepo(pool),
       gaps: new PgGapRepo(pool),
       ratings: new PgRatingRepo(pool),
       assignments: new PgAssignmentRepo(pool),
       conflictsRepo: new PgConflictRepo(pool),
       conflictMemory: new PgConflictMemoryRepo(pool),
+      // G2: Paarpflichten überleben den Neustart und werden danach wiederaufgenommen.
+      paarpflichten: new PgPaarpflichtRepo(pool),
       // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
@@ -1692,7 +1992,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       candidates: new PgCandidateRepo(pool),
       // W2-A/148: Laufdomaene persistent — ein Lauf muss einen Neustart ueberleben, sonst waere
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
-      importRuns: new PgImportRunRepo(pool),
+      // ADMIN-02: dieselbe Tabelle, zusätzlich auflistbar (Importliste, `import-lauf-liste.ts`).
+      importRuns: new PgAuflistbareImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
       quellabgleich: new PgQuellabgleichRepo(pool),
       // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
@@ -1711,6 +2012,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
       // SCRUM-421: Upload-Grenzen persistent.
       uploadLimits: new PgUploadLimitsRepo(pool),
+      // R-0773: erfolglose Suchen je Person, Tabelle `ask_nulltreffer` (ASK_SCHEMA).
+      nulltreffer: new PgNulltrefferRepo(pool),
       // W3-C1 (Auftrag 76): der Answer-Beleg gegen die echte Datenbank. Die Tabellen
       // `answer_records` und `answer_snapshots` stehen seit Freeze 61 im Migrationsweg.
       // W1 Weg A (Auftrag 143): er steht jetzt bei den übrigen Repos statt in den Optionen —
@@ -1756,12 +2059,26 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // produkt:20261007:spaces: Spaces und ihre Fassungen liegen in derselben Datenbank wie der
       // Bestand und überleben Neuladen, Neustart und Deploy.
       spaces: new PgSpacesRepo(pool),
+      // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung überlebt Neustart und
+      // Deploy (`VERANTWORTUNG_NACHFOLGE_SCHEMA`, angelegt von `migrate()`).
+      verantwortungNachfolge: new PgNachfolgeRepo(pool),
       // PMO-FEA-0003: ein hinterlegtes Foto überlebt Neustart und Deploy; der Widerruf löscht die
       // Zeile in derselben Datenbank (`LIVEWALL_FOTO_SCHEMA`, angelegt von `migrate()`).
       livewallFotos: new PgLiveWallFotoRepo(pool),
+      // R-1034 / FR-I18N-02: gepflegte Oberflächentexte und angelegte Sprachen überleben Neustart
+      // und Deploy (`UEBERSETZUNGEN_SCHEMA`, angelegt von `migrate()`).
+      uebersetzungen: new PgUebersetzungRepo(pool),
       // R-0466: Gedächtniseinträge überleben Neustart und Deploy bis zu ihrer Frist; Löschen und
       // Fristablauf entfernen die Zeile in derselben Datenbank (`GEDAECHTNIS_SCHEMA`).
       gedaechtnis: new PgGedaechtnisRepo(pool),
+      // R-1656: die Paarzahlen überleben Neustart und Deploy (`MITGELESEN_SCHEMA`).
+      mitgelesen: new PgMitgelesenRepo(pool),
+      // produkt:20261008:klara-basis: ein Klara-Gespräch überlebt Neuladen, erneute Anmeldung,
+      // Neustart und Deploy (`KLARA_GESPRAECH_SCHEMA`, angelegt von `migrate()`).
+      klaraGespraeche: new PgKlaraGespraechRepo(pool),
+      // R-0470: die Vektoren des Textprüfungs-Vorfilters überleben Neustart und Deploy
+      // (`EMBEDDING_SCHEMA`, angelegt von `migrate()`); die Endlöschung entfernt die Zeile.
+      vektorSpeicher: new PgEmbeddingStore(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -1769,8 +2086,19 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
       bearbeitungen: new PgBearbeitungsRepo(pool),
+      // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände überleben Neustart und
+      // Deploy (`OFFICE_ABLAGE_SCHEMA`).
+      officeAblage: new PgOfficeAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
+      // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
+      veroeffentlichungsZustellungen: new PgVeroeffentlichungsZustellungRepo(pool),
+      // Betroffenenrechte: Löschanträge überleben Neuladen, Neustart und die Löschung des Kontos,
+      // das sie betreffen — sie sind der Nachweis über die Bearbeitung.
+      loeschantraege: new PgLoeschantragRepo(pool),
+      // ADMIN-15: Profil- und Richtlinienfassungen samt Handlungsprotokoll überleben Neuladen,
+      // Neustart und Deploy (`UNTERNEHMEN_SCHEMA`, angelegt von `migrate()`).
+      unternehmen: new PgUnternehmenRepo(pool),
     },
   );
 }
@@ -1778,10 +2106,18 @@ export function buildPgServices(rohPool: Pool): AppServices {
 // Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —
 // Standard AUS (heutiges „jeder gegen jeden" bleibt Default). Ohne einsatzbereiten Provider (z. B.
 // Modus cloud/local noch nicht verdrahtet) → ehrlich undefined statt Fake. topK aus
-// KLARWERK_DUP_PREFILTER_TOPK (Default 25). Der In-Memory-Store ist in dieser Ausbaustufe noch nicht
-// befüllt (Befüllung im Einreiche-Pfad ist ein separater Folgeschritt) → der Prefilter fällt bis dahin
-// über den leeren Store auf den Voll-Pool zurück.
-function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
+// KLARWERK_DUP_PREFILTER_TOPK (Default 25).
+//
+// R-0470: der Speicher kommt herein — im Postgres-Betrieb der dauerhafte (`PgEmbeddingStore`),
+// sonst der In-Memory-Speicher. Er wird in `gesicherterVektorspeicher` gehüllt: jede Ablage, auch
+// die des Einreichewegs, prüft danach das lebende Objekt und entfernt einen Vektor, den es nicht
+// mehr tragen darf.
+function createSemanticPrefilterFromEnv(
+  speicher: EmbeddingStore,
+  ko: Pick<KoService, "get">,
+  // Ben, Nacharbeit 5: reiht ein Objekt ein, dessen eben abgelegter Text schon überholt ist.
+  nachfuehren: (koId: string) => void,
+): SemanticPrefilter | undefined {
   const flag = process.env.KLARWERK_DUP_PREFILTER;
   if (flag !== "1" && flag !== "true") {
     return undefined;
@@ -1794,7 +2130,11 @@ function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
   const topK = Number.isInteger(rawTopK) && rawTopK > 0 ? rawTopK : 25;
   // SCRUM-498 B2 (Fix): embed() durch den prozess-globalen Embed-Cap führen, damit der Prefilter den
   // Cap nicht umgeht. Bei Normallast (und mit dem Stub) ein No-Op → Prefilter-Verhalten bit-gleich.
-  return { embedder: cappedEmbeddingProvider(embedder), store: new InMemoryEmbeddingStore(), topK };
+  return {
+    embedder: cappedEmbeddingProvider(embedder),
+    store: gesicherterVektorspeicher(speicher, ko, nachfuehren),
+    topK,
+  };
 }
 
 // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-/Embed-Cap-Überlauf (ModelCapacityError)
@@ -2053,7 +2393,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "KantenError",
   "KoError",
   "LibraryError",
-  "LifecycleError",
+  // R-1349: `LifecycleError` ist gestrichen — die Klasse warf niemand und ist entfernt.
   // R-0163 / K3 (Ben, Nacharbeit 15): der Fehler eines ungültigen Management-Profils
   // (`services/management/src/profiles.ts`). ENTSCHEIDUNG: der Name darf ins Protokoll — nur der
   // Klassenname, keine Profilwerte.
@@ -2342,23 +2682,12 @@ export function pfadOhneAbfrage(url: string): string {
  * FAIL-CLOSED: Nur ein Rahmen, der dem strengen Muster entspricht, wird übernommen; alles andere
  * ergibt `unbekannt`. Ein Stack aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen"
  * tragen. Die erste Stackzeile ist die MELDUNG selbst und wird nie betrachtet.
+ *
+ * Das Muster steht seit arbeit:kos-anlage-500-pg in `stapelRahmen` (log-positivliste.ts), weil der
+ * Auffangzweig von `sendError` dieselben Rahmen als ganze Folge protokolliert — ein Muster, zwei Leser.
  */
 export function herkunftAusStack(stack: unknown): string {
-  if (typeof stack !== "string") {
-    return "unbekannt";
-  }
-  for (const zeile of stack.split("\n").slice(1)) {
-    const treffer =
-      /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/.exec(
-        zeile.trimEnd(),
-      );
-    if (!treffer?.[1]) {
-      continue;
-    }
-    const kurz = treffer[1].replace(/^.*?\/(services|apps|tools|tests|node_modules)\//, "$1/");
-    return `${kurz}:${treffer[2]}:${treffer[3]}`;
-  }
-  return "unbekannt";
+  return stapelRahmen(stack)[0] ?? "unbekannt";
 }
 
 /** Tiefer wird nicht abgestiegen — ein zyklisches Objekt darf den Logger nicht festfahren. */
@@ -2413,12 +2742,25 @@ export function senkeUeberWert(
   for (const [schluessel, inhalt] of Object.entries(wert)) {
     // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
     // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
-    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
-      ? entferneGeheimeEnvWerte(inhalt, env)
-      : senkeUeberWert(inhalt, env, tiefe + 1);
+    // arbeit:kos-anlage-500-pg: dieselbe Bauform für die Stapelrahmen des Auffangzweigs (`sendError`,
+    // http.ts) — NUR unter `stapel` und NUR in der strengen Rahmenform (`istStapelRahmenListe`).
+    if (istTraceKennung(schluessel, inhalt)) {
+      ergebnis[schluessel] = entferneGeheimeEnvWerte(inhalt, env);
+    } else if (schluessel === STAPEL_FELD && istStapelRahmenListe(inhalt)) {
+      ergebnis[schluessel] = inhalt.map((rahmen) => entferneGeheimeEnvWerte(rahmen, env));
+    } else {
+      ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    }
   }
   return ergebnis;
 }
+
+// Regel 4 von `sanitizeLogText` liest jeden Pfad ab 24 Zeichen aus dem Base64-Alphabet als Token —
+// `services/knowledge-object/src/search-projection-repo-pg.ts:…` wurde damit zu `[redacted].ts:…`,
+// und die Stapelzeile des Auffangzweigs nannte keinen Ort mehr (Prüfung nacharbeit-1, K1). Die
+// Ausnahme ist so eng wie die Trace-Ausnahme darunter: nur dieser eine Feldname, nur Listen in der
+// Form, die `stapelRahmen` erzeugt; Werte secret-benannter Env-Variablen werden auch hier entfernt.
+const STAPEL_FELD = "stapel";
 
 // Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
 // Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
@@ -2571,6 +2913,11 @@ export function buildApp(
     factoryReset?: FactoryReset;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+    // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: der Nachhol- und Abgleichlauf über DEN
+    // Prüf-Worker dieser App (hintergrundpruefung.ts); `server.ts` startet ihn, Tests nicht.
+    hintergrundpruefung?: (lauf: () => Promise<HintergrundlaufBericht | null>) => void;
+    /** R-0571: Wartezeit bis zur Wiederholung eines unvollständigen Verzeichnisabgleichs. */
+    verzeichnisAbgleichWiederholungMs?: number;
   } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
@@ -2640,8 +2987,26 @@ export function buildApp(
   // zweiter Weg, keine zweite Zustandsmaschine: `stelleSuchprojektionBereit` ist der EINE Einstieg
   // für App-Ready und `runSeed()`. Er wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht — die App
   // wird dann nie ready und die Suche bleibt fail-closed.
+  // R-1133: eingeplante Indexschreibvorgänge der Entwürfe laufen ausserhalb des Speicherwegs
+  // (`CaptureService.indexiere`). Beim Schliessen werden sie abgewartet, damit der Aufrufer den Pool
+  // nicht mitten in einem Schreibvorgang beendet. Optional gerufen: Prüfattrappen ersetzen
+  // `capture` teils durch Doppel ohne diese Methode.
+  app.addHook("onClose", async () => {
+    await services.capture.indexArbeitAbgeschlossen?.();
+  });
   app.addHook("onReady", async () => {
     await stelleSuchprojektionBereit(services.ko);
+    // R-1133 — DER ABGLEICH DES ENTWURFSINDEX, BEWUSST NICHT ABGEWARTET. Anders als die
+    // Suchprojektion oben ist dieser Index kein Bereitschaftsmerkmal: er ist ausdrücklich nicht die
+    // Wahrheit und darf den Eingabefluss nicht blockieren (R-1133). Ein Altbestand ohne Index macht
+    // die App also nicht unbereit; der Lauf zieht ihn im Hintergrund nach, jedes Speichern
+    // indiziert ohnehin selbst. Ein Fehler geht über den `err`-Serializer ins Protokoll — auch der
+    // einer Prüfattrappe ohne diese Methode: der Aufruf steht deshalb IN der Zusage, nicht davor.
+    void Promise.resolve()
+      .then(() => services.capture.gleicheEntwurfsIndexAb())
+      .catch((fehler: unknown) => {
+        app.log.warn({ err: fehler, event: "entwurfsindex_abgleich" }, "Entwurfsindex-Abgleich");
+      });
     // JOB 3655 — DER STARTBERICHT. Er ist BEWUSST erst hier angesiedelt und BEWUSST nicht
     // start-entscheidend: ein Bericht ist kein Betriebsmittel. Scheitert der Bestandsbefund, sagt
     // er „unbekannt" (nie „leer") und der Start geht weiter. Die start-entscheidende Prüfung ist
@@ -2684,10 +3049,16 @@ export function buildApp(
   // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
   // dort (oder später vor dem Dienst) während einer Aus-/Wiedereinschaltung wartet, trägt die ALTE
   // Epoche und bleibt entwertet. Nur die beiden D5-Eingänge; synchron, ohne Warten, ohne Inhalt.
+  // R-0700: Klaras eigener Ausführungszugang ist der dritte Frage-Eingang und gehört dazu.
   app.decorateRequest("askKiBeginn", null);
   app.addHook("onRequest", async (request) => {
     const pfad = request.routeOptions.url;
-    if (request.method === "POST" && (pfad === "/api/ask" || pfad === "/api/reasoner")) {
+    if (
+      request.method === "POST" &&
+      (pfad === "/api/ask" ||
+        pfad === "/api/reasoner" ||
+        pfad === "/api/klara/sessions/:sessionId/execute")
+    ) {
       request.askKiBeginn = services.ask.kiStand() ?? null;
     }
   });
@@ -2941,6 +3312,18 @@ export function buildApp(
     services.reasoner.refreshReachabilityIfStale();
     return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
   });
+  // R-0599 (Ben nacharbeit-2): die KI-Lage der Kopfzeile — ob gerade eine externe, eine hausinterne
+  // oder keine KI arbeitet, WELCHER Anbieter dahintersteht und woher er kommt. Für JEDEN
+  // angemeldeten Nutzer (`ko.read`), nicht anonym: die beiden Statusrouten oben bleiben abstrahiert
+  // (WP-VIP2-GATE). Bewusst OHNE Modellnamen (Admin-Sicht) und ohne Schlüssel — der Anbieter ist
+  // die Datenschutzauskunft, die ein Mensch braucht, bevor seine Inhalte hinausgehen.
+  app.get("/api/ki-lage", async (request, reply) => {
+    const user = await guards.requirePermission("ko.read", request, reply);
+    if (!user) {
+      return;
+    }
+    reply.code(200).send(services.reasoner.kiLage());
+  });
 
   // ============================================================================================
   // W1 S4 — KLARA-STATUS, SITZUNG UND ZUSTIMMUNG (KW-S4-04 §13-100)
@@ -3081,18 +3464,221 @@ export function buildApp(
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
   const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
+  // produkt:20261007:ownership-uebergabe: kein Konto wird gelöscht, das noch Hauptverantwortung
+  // trägt (beide Löschwege der Auth-Routen) — sonst blieben Beiträge ohne Verantwortung zurück.
+  kontoendeSperre(app, {
+    ko: services.ko,
+    auth: services.auth,
+    nachfolge: services.verantwortungNachfolge,
+  });
   app.register(
     authRoutes(services.auth, {
       mailer: services.mailer,
       resetBaseUrl,
       oidc: createOidcProviderFromEnv(),
+      // R-0560: SAML als zweiter Firmen-Login; nur bei vollständiger Konfiguration gesetzt.
+      saml: createSamlProviderFromEnv(),
+      // R-0554: der Auslöser aus der Verzeichnispflege — Konto entfernen mit Nachfolger fährt
+      // zuerst die Wissensübergabe (dieselbe Instanz wie `/api/lifecycle/handover`).
+      //
+      // Integration mit produkt:20261007:ownership-uebergabe (`kontoendeSperre`): kein Konto wird
+      // entfernt, das noch Hauptverantwortung trägt — einschliesslich des Papierkorbs.
+      // BEN (Nacharbeit 7): den Papierkorb überträgt jetzt die Wissensübergabe SELBST (Art
+      // `papierkorb`), damit die Vorschau denselben Umfang zeigt wie die Ausführung. Hier bleibt
+      // nur die PRÜFUNG danach, ohne eigenen Schreibweg: hängt am Konto noch Verantwortung (etwa
+      // durch einen gleichzeitig angelegten Beitrag), wird das als fehlgeschlagen gemeldet und die
+      // Auth-Route entfernt nichts (409). Ein zweiter Lauf mit Vorschau zeigt und übernimmt den Rest.
+      vorDemEntfernen: async (von, nachfolger, adminId) => {
+        const ergebnis = await services.wissensuebergabe.uebergeben(von, nachfolger, adminId);
+        const rest = (await services.ko.listEinschliesslichPapierkorb()).filter(
+          (ko) => responsibleOf(ko) === von,
+        );
+        const bekannt = new Set(ergebnis.fehlgeschlagen.map((f) => f.id));
+        return {
+          ...ergebnis,
+          fehlgeschlagen: [
+            ...ergebnis.fehlgeschlagen,
+            ...rest
+              .filter((ko) => !bekannt.has(ko.id))
+              .map((ko) => ({
+                art: "eigentum" as const,
+                id: ko.id,
+                grund: "Nach der Übergabe noch hauptverantwortlich (nicht in der Vorschau).",
+              })),
+          ],
+        };
+      },
     }),
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
   const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // R-0571: wer laut Verzeichnis für die Prüfung in einem Space zuständig ist. Ohne Zuordnung bleibt
+  // das Einreichen, wie es war (nur die genannten Prüfenden).
+  const pruefzustaendigkeit = lesePruefzustaendigkeit(process.env.KLARWERK_PRUEFZUSTAENDIGKEIT);
+  // Gleicht die aus dem Verzeichnis abgeleiteten Zuweisungen EINES Objekts mit dem heutigen Stand
+  // ab (Space des Objekts × Gruppen der Konten) und benachrichtigt neu Zuständige. Ein validiertes
+  // oder gelöschtes Objekt ist kein Prüfanlass mehr und bleibt unberührt.
+  //
+  // Eine gescheiterte Benachrichtigung (Mailserver weg) bricht den Abgleich NICHT ab: die Zuweisung
+  // steht schon, ihr Benachrichtigungsstand bleibt dauerhaft „ausstehend" (`Assignment`), und jeder
+  // spätere Lauf holt genau sie nach. `unvollstaendig` sagt dem Aufrufer, dass es noch etwas gibt.
+  const zustaendigkeitAbgleichen = async (
+    koId: string,
+    akteur: string,
+    jeSpace = new Map<string, Promise<string[]>>(),
+  ): Promise<{ soll: string[]; unvollstaendig: boolean } | undefined> => {
+    const ko = await services.ko.get(koId);
+    if (!ko || ko.deletedAt || ko.status === "validiert") {
+      return undefined;
+    }
+    const space = typeof ko.spaceId === "string" ? ko.spaceId : undefined;
+    if (space && !jeSpace.has(space)) {
+      jeSpace.set(space, services.auth.pruefzustaendigeFuer(space, pruefzustaendigkeit));
+    }
+    const soll = space ? ((await jeSpace.get(space))?.filter((id) => id !== ko.author) ?? []) : [];
+    await services.validation.verzeichnisAbgleichen(koId, soll, akteur);
+    const offen = await services.validation.nochZuBenachrichtigen(koId, soll, {
+      altbestandBenachrichtigt: true,
+    });
+    let unvollstaendig = false;
+    for (const prueferin of offen) {
+      try {
+        await notifyAssignment(koId, [prueferin]);
+        await services.validation.benachrichtigungErledigt(koId, prueferin);
+      } catch (fehler) {
+        unvollstaendig = true;
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-benachrichtigung", koId },
+          "Benachrichtigung über eine Prüfzuweisung gescheitert — wird nachgeholt",
+        );
+      }
+    }
+    return { soll, unvollstaendig };
+  };
+  // Nach jeder Verzeichnisänderung (Eintritt, Austritt, Gruppenwechsel): ALLE betroffenen Objekte —
+  // die in zugeordneten Spaces und die, an denen noch eine offene Verzeichnis-Zuweisung hängt.
+  // Jedes Objekt für sich: scheitert eines, laufen die übrigen weiter. `true` = vollständig.
+  const alleZustaendigkeitenAbgleichen = async (): Promise<boolean> => {
+    const spaces = new Set([...pruefzustaendigkeit.values()].flat());
+    const ids = new Set(await services.validation.koMitVerzeichnisZuweisung());
+    for (const ko of await services.ko.list()) {
+      if (typeof ko.spaceId === "string" && spaces.has(ko.spaceId)) {
+        ids.add(ko.id);
+      }
+    }
+    // Die Zuständigen je Space einmal je Lauf lesen, nicht einmal je Objekt.
+    const jeSpace = new Map<string, Promise<string[]>>();
+    let vollstaendig = true;
+    for (const koId of ids) {
+      try {
+        const ergebnis = await zustaendigkeitAbgleichen(koId, "system", jeSpace);
+        if (ergebnis?.unvollstaendig) {
+          vollstaendig = false;
+        }
+      } catch (fehler) {
+        vollstaendig = false;
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-abgleich", koId },
+          "Verzeichnisabgleich eines Wissensobjekts gescheitert — wird wiederholt",
+        );
+      }
+    }
+    return vollstaendig;
+  };
+  // ==============================================================================================
+  // R-0571 · DER ABGLEICH IST WIEDERAUFNEHMBAR (Ben, nacharbeit-8).
+  // ==============================================================================================
+  //
+  // Die Kontoanlage aus dem Verzeichnis ist gespeichert, BEVOR der Abgleich läuft. Hinge der Abgleich
+  // an der Antwort, endete ein Mailfehler in einem SCIM-Fehler, das Verzeichnis wiederholte die
+  // Anlage, bekäme 409 — und der Abgleich liefe nie wieder. Deshalb:
+  //   · Der Abgleich wirft nie in die SCIM-Antwort; die Antwort sagt, was gespeichert ist.
+  //   · Sein Arbeitsauftrag ist kein eigener Merker, sondern der dauerhafte Stand selbst: Gruppen der
+  //     Konten, Spaces der Objekte, Zuweisungen samt „Benachrichtigung ausstehend". Jeder Lauf leitet
+  //     daraus neu ab, was fehlt — idempotent, auch nach einem Absturz mitten im Lauf.
+  //   · Angestoßen wird er nach jeder Verzeichnisänderung, beim Start der Instanz (holt nach, was ein
+  //     Absturz zwischen Kontoanlage und Abgleich liegen liess) und — war ein Lauf unvollständig —
+  //     erneut nach `verzeichnisAbgleichWiederholungMs`, bis einer vollständig ist.
+  //   · Läufe reihen sich hintereinander ein; zwei gleichzeitige Verzeichnisaufrufe benachrichtigen
+  //     dieselbe Person nicht doppelt.
+  // Die 409 auf eine wiederholte Anlage bleibt: ein bestehendes Konto wird nie stillschweigend als
+  // „dieselbe Anlage noch einmal" übernommen.
+  const abgleichWartezeitMs = opts.verzeichnisAbgleichWiederholungMs ?? 60_000;
+  let abgleichKette: Promise<void> = Promise.resolve();
+  let abgleichWiederholung: ReturnType<typeof setTimeout> | undefined;
+  let abgleichBeendet = false;
+  const abgleichWiederholen = (): void => {
+    if (abgleichWiederholung || abgleichBeendet) {
+      return;
+    }
+    abgleichWiederholung = setTimeout(() => {
+      abgleichWiederholung = undefined;
+      void abgleichAnstossen();
+    }, abgleichWartezeitMs);
+    abgleichWiederholung.unref?.();
+  };
+  const abgleichAnstossen = (): Promise<void> => {
+    const lauf = abgleichKette.then(async () => {
+      if (abgleichBeendet) {
+        return;
+      }
+      let vollstaendig = false;
+      try {
+        vollstaendig = await alleZustaendigkeitenAbgleichen();
+      } catch (fehler) {
+        app.log.warn(
+          { err: fehler, event: "pruefzustaendigkeit-abgleich" },
+          "Verzeichnisabgleich gescheitert — wird wiederholt",
+        );
+      }
+      if (vollstaendig) {
+        clearTimeout(abgleichWiederholung);
+        abgleichWiederholung = undefined;
+      } else {
+        abgleichWiederholen();
+      }
+    });
+    abgleichKette = lauf;
+    return lauf;
+  };
+  if (pruefzustaendigkeit.size > 0) {
+    app.addHook("onReady", async () => {
+      // Nicht abwarten: der Start hängt nicht am Mailserver.
+      void abgleichAnstossen();
+    });
+    app.addHook("onClose", async () => {
+      abgleichBeendet = true;
+      clearTimeout(abgleichWiederholung);
+      await abgleichKette;
+    });
+  }
+  // R-0556 / R-0571: die Pflege aus dem Unternehmensverzeichnis (SCIM). Ohne gültigen
+  // Verzeichnisschlüssel gibt es die Routen nicht — der Startbericht sagt, warum.
+  const verzeichnisSchluessel = scimSchluessel();
+  if (verzeichnisSchluessel) {
+    app.register(
+      verzeichnisRoutes({
+        auth: services.auth,
+        schluessel: verzeichnisSchluessel,
+        rollen: {
+          adminGroup: process.env.OIDC_GROUP_ADMIN,
+          controllerGroup: process.env.OIDC_GROUP_CONTROLLER,
+          expertGroup: process.env.OIDC_GROUP_EXPERTE,
+        },
+        ...(pruefzustaendigkeit.size > 0 ? { nachAenderung: abgleichAnstossen } : {}),
+      }),
+    );
+  }
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
-  const semanticPrefilter = createSemanticPrefilterFromEnv();
+  // R-0470: im Postgres-Betrieb der dauerhafte Vektorspeicher, sonst der In-Memory-Speicher.
+  const vektorSpeicher = services.vektorSpeicher ?? new InMemoryEmbeddingStore();
+  // Ben, Nacharbeit 5: die Schlange entsteht erst weiter unten; der Speicher reiht über diese späte
+  // Bindung ein, sobald sie steht (vorher ist sie ein No-op — dann gibt es auch keine Schlange).
+  let vektorNachfuehren: (koId: string) => void = () => undefined;
+  const semanticPrefilter = createSemanticPrefilterFromEnv(vektorSpeicher, services.ko, (koId) =>
+    vektorNachfuehren(koId),
+  );
   // ==============================================================================================
   // JOB 3066 — DAS AUFRÄUMEN DER BEFUNDE FÄHRT IN DER LÖSCHTRANSAKTION MIT.
   // ==============================================================================================
@@ -3193,7 +3779,82 @@ export function buildApp(
   // (duplicate-detection.ts:182-183). Was hier steht, ist idempotent und selbstheilend.
   services.ko.setPurgeCleanup(async (koId) => {
     await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
+    // R-0470: der dauerhafte Speicher kann Vektoren aus einer Zeit tragen, in der der Schalter an
+    // war. Die Endlöschung räumt ihn deshalb auch bei abgeschaltetem Vorfilter (idempotent).
+    if (!semanticPrefilter && services.vektorSpeicher) {
+      await services.vektorSpeicher.delete(koId).catch((err: unknown) => {
+        console.warn(
+          `[dup-prefilter] Embedding-Kaskadenlöschung für KO ${koId} fehlgeschlagen`,
+          err instanceof Error ? err.name : typeof err,
+        );
+      });
+    }
   });
+  // ==============================================================================================
+  // R-0195 / R-0470 / R-0483 (Aufnahme gesamt-suchindex-aktualitaet) — DIE REINDEX-WARTESCHLANGE.
+  // ==============================================================================================
+  //
+  // Jede gespeicherte Objektänderung reiht EINEN Eintrag ein (`setAenderungsNachlauf`); die
+  // serielle Schlange aus JOB 1163 arbeitet ihn ausserhalb des Aufrufs ab — die Antwortzeit leidet
+  // nicht. Der Eintrag liest das Objekt frisch und bettet neu ein oder entfernt den Vektor
+  // (heraufgestuft, Papierkorb, aufgegangen). Ohne Vorfilter (Flag aus) wird nichts eingebettet
+  // und damit auch nichts nachgeführt: dann wird die Schlange nicht verdrahtet.
+  //
+  // BEN, NACHARBEIT 3 — ENTFERNEN, SOBALD DIE STUFE STEIGT, NICHT ERST WENN DIE SCHLANGE DRAN IST.
+  // Darf das gespeicherte Objekt keinen Vektor mehr tragen, löscht der Nachlauf ihn SOFORT, vorbei
+  // an jedem Rückstau; der Eintrag in der Schlange folgt trotzdem (er prüft und räumt nach). Eine
+  // laufende Einbettung schreibt danach keinen alten Stand mehr — das sichert
+  // `reindexKoForDuplicatePrefilter` mit seinen Prüfungen vor und nach dem Schreiben.
+  //
+  // R-0470 — NACH EINEM NEUSTART: `nachfuehrungNachStart` hält beim Start den Bestand gegen den
+  // dauerhaften Speicher und reiht alles ein, was vor dem Neustart nicht mehr nachgeführt wurde.
+  // Das läuft im Hintergrund und hält den Start nicht auf.
+  //
+  // Die Suchprojektion von Bibliothek und Klara steht NICHT in dieser Schlange: sie entsteht im
+  // selben Schreibvorgang wie die neue Fassung und ist damit sofort auffindbar.
+  //
+  // BEN, NACHARBEIT 5 — DER ENTZUG HÄNGT NICHT AM SCHALTER. Ist der Vorfilter aus, trägt der
+  // dauerhafte Speicher womöglich noch Vektoren aus einer Zeit, in der er an war. Für sie gilt das
+  // Entfernen weiter: derselbe sofortige Entzug am Nachlauf und ein Abgleich beim Start, der NUR
+  // entfernt (`entzugNachStart`). Eingebettet wird dabei nichts, kein Modell wird gerufen.
+  // Nur die Fehlerklasse, nie der Fehlertext — er könnte Inhalt tragen (wie reindex-queue.ts).
+  const meldeVektorFehler = (was: string, koId: string, fehler: unknown): void => {
+    const klasse = fehler instanceof Error ? fehler.name : typeof fehler;
+    console.warn(`[dup-prefilter] ${was} für KO ${koId} fehlgeschlagen (${klasse})`);
+  };
+  const entziehe = (speicher: EmbeddingStore, koId: string, stand?: KnowledgeObject): void => {
+    if (stand && !vektorBleibtFuer(stand)) {
+      const entzug = speicher.delete(koId);
+      void entzug.catch((e: unknown) => meldeVektorFehler("Sofortiger Entzug", koId, e));
+    }
+  };
+  if (semanticPrefilter) {
+    const reindexQueue = createReindexQueue({
+      reindex: (koId) =>
+        reindexKoForDuplicatePrefilter(koId, { ko: services.ko, semanticPrefilter }),
+      onError: (koId, fehler) => meldeVektorFehler("Neuindizierung", koId, fehler),
+    });
+    vektorNachfuehren = (koId) => reindexQueue.enqueue(koId);
+    services.ko.setAenderungsNachlauf((koId, stand) => {
+      entziehe(semanticPrefilter.store, koId, stand);
+      reindexQueue.enqueue(koId);
+    });
+    app.addHook("onReady", async () => {
+      const abgleich = nachfuehrungNachStart({
+        ko: services.ko,
+        store: semanticPrefilter.store,
+        enqueue: (koId) => reindexQueue.enqueue(koId),
+      });
+      void abgleich.catch((fehler: unknown) => meldeVektorFehler("Nachführung", "-", fehler));
+    });
+  } else if (services.vektorSpeicher) {
+    const speicher = services.vektorSpeicher;
+    services.ko.setAenderungsNachlauf((koId, stand) => entziehe(speicher, koId, stand));
+    app.addHook("onReady", async () => {
+      const abgleich = entzugNachStart({ ko: services.ko, store: speicher });
+      void abgleich.catch((fehler: unknown) => meldeVektorFehler("Entzug", "-", fehler));
+    });
+  }
   // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
   // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
   // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.
@@ -3211,6 +3872,29 @@ export function buildApp(
       }),
     });
   services.aiCheckWorker = aiCheckWorker;
+  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund: eigener Worker mit DEMSELBEN Runner plus
+  // Zählhaken — so zählt nur der Hintergrundlauf gegen sein Budget (hintergrundpruefung.ts).
+  opts.hintergrundpruefung?.(
+    createHintergrundpruefung({
+      ko: services.ko,
+      hauptWorker: aiCheckWorker,
+      baueWorker: (vorVergleich) =>
+        createAiCheckWorker({
+          ko: services.ko,
+          run: createAiCheckRunner({
+            ko: services.ko,
+            conflicts: services.conflicts,
+            overlaps: services.overlaps,
+            overlapSettings: services.overlapSettings,
+            reasoner: services.reasoner,
+            semanticPrefilter,
+            vorVergleich,
+          }),
+        }),
+      modellAktiv: () => services.reasoner.status().active,
+      audit: services.audit,
+    }),
+  );
   app.register(
     koRoutes(
       {
@@ -3449,6 +4133,28 @@ export function buildApp(
   // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
   // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
   app.register(aiCheckCoverageRoutes(services.ko, guards));
+  // Aufnahme 20260922 · Paarpflichten-dauerhaft (G2): ausdrücklich gewählte Läufe anlegen, lesen und
+  // fortsetzen. Die Ausführung prüft fassungsgebunden über DENSELBEN Reasoner und DENSELBEN
+  // KO-Dienst wie die Konflikterkennung. Gespeicherte Läufe mit offener Arbeit (z. B. nach einem
+  // Neustart) werden beim Bau der App wieder eingereiht — die Ausführung meldet ihre Fehler selbst.
+  const paarpflichtAusfuehrung =
+    services.paarpflichtAusfuehrung ??
+    createPaarpflichtAusfuehrung({
+      service: services.paarpflichten,
+      pruefer: paarpflichtPrueferFuer({ ko: services.ko, reasoner: services.reasoner }),
+    });
+  services.paarpflichtAusfuehrung = paarpflichtAusfuehrung;
+  app.register(
+    paarpflichtenRoutes(
+      {
+        ko: services.ko,
+        paarpflichten: services.paarpflichten,
+        ausfuehrung: paarpflichtAusfuehrung,
+      },
+      guards,
+    ),
+  );
+  void paarpflichtAusfuehrung.wiederaufnehmen();
   // JOB 4151 (WG-PERSISTENZ): die kuratierten Beziehungen. Der Bestand kommt aus `services`
   // (Postgres oder Speicher, s. dort); `services.ko` erfüllt den SCHMALEN Port `KantenKoLeser`
   // (`kanten-service.ts:178-180`) — die Route kennt den KO-Dienst deshalb nicht als Ganzes. Die
@@ -3468,6 +4174,23 @@ export function buildApp(
       guards,
     ),
   );
+  // produkt:20261007:office-artikel-editor: Word, Excel und PowerPoint im Artikel über den WOPI-
+  // Hostweg (Plan U2). Ohne Einrichtung in der Umgebung antworten die Routen 503 bzw. 404; die
+  // Fläche zeigt dann „nicht eingerichtet". Spaces und Konten kommen aus derselben Quelle wie an
+  // `makeGuards`, damit der Editor nie mehr sieht als die Klarwerk-Sitzung.
+  app.register(
+    officeRoutes(
+      {
+        ko: services.ko,
+        objekte: services.objects,
+        einrichtung: leseOfficeEditorUmgebung(process.env),
+        konten: () => services.auth.listUsers(),
+        spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+        ablage: services.officeAblage,
+      },
+      guards,
+    ),
+  );
   // Kenntnisnahme einer gültigen Fassung. Der Dienst liest Einträge über `services.ko` und Konten
   // über die vorhandene Kontenliste (Rolle, Freigabe, Befristung); dieselbe Instanz speist die
   // Glocke (`notificationsRoutes` unten), damit Anforderung und Erinnerung den vorhandenen
@@ -3480,6 +4203,21 @@ export function buildApp(
     kennung: () => randomUUID(),
   });
   app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
+  // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis
+  // ist derselbe wie der Empfängerkreis einer Kenntnisnahme (eine Regel, eine Stelle); der Vermerk
+  // liegt am Eintrag, der Beleg im Prüfprotokoll. Dieselbe Instanz speist die Glocke unten.
+  const veroeffentlichungDienst = new VeroeffentlichungDienst({
+    ko: services.ko,
+    leser: (ko) => kenntnisnahmeDienst.moeglicheEmpfaenger(ko),
+    kontoNamen: () => kenntnisnahmeDienst.kontoNamen(),
+    kenntnisnahmen: (ko) => kenntnisnahmeDienst.uebersicht(ko),
+    zustellungen: services.veroeffentlichungsZustellungen,
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+  });
+  app.register(
+    veroeffentlichungRoutes({ dienst: veroeffentlichungDienst, kos: services.ko }, guards),
+  );
   // R-1644: die Wissensauskunft zum Zeitpunkt — liest Fassungen, Audit-Protokoll und Kenntnisnahmen,
   // schreibt nichts. Dieselbe Uhr wie die Kenntnisnahme, damit „nicht in der Zukunft" zu deren
   // Zeitpunkten passt.
@@ -3492,6 +4230,24 @@ export function buildApp(
         kenntnisnahmen: services.kenntnisnahmen,
         konten: () => services.auth.listUsers(),
         jetzt: services.kenntnisnahmeUhr,
+      },
+      guards,
+    ),
+  );
+  // R-1656: „Du solltest auch wissen…". Themennähe ist die vorhandene Schlagwort-Nachbarschaft
+  // (`library.neighbors`, mega68), Konflikte kommen aus dem Konfliktdienst, Co-Reading aus dem
+  // kontolosen Paarzähler. Die Sichtbarkeit entscheidet die Route je Aufrufer.
+  app.register(
+    wissensempfehlungRoutes(
+      {
+        dienst: new WissensempfehlungDienst({
+          repo: services.mitgelesen,
+          ko: services.ko,
+          thema: async (koId, sichtbar) =>
+            (await services.library.neighbors(koId, { sichtbar })).neighbors,
+          konflikte: services.conflicts,
+        }),
+        kos: services.ko,
       },
       guards,
     ),
@@ -3553,20 +4309,44 @@ export function buildApp(
   // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht
   // dafür Bestand und Konflikte. Beide liegen hier ohnehin — dasselbe Muster wie livewallRoutes und
   // impactRoutes darunter.
-  // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
-  // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
+  // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
+  const offeneSpaces = async (): Promise<ReadonlySet<string>> =>
+    new Set((await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id));
+  // Was der gemeinsame Antwortlauf beider Zugänge liest (R-0700: allgemeiner Weg UND Klaras
+  // Zugang) — einmal gebaut, damit beide dieselbe Belastbarkeit und denselben Zuschnitt liefern.
+  const antwortDeps = {
+    ask: services.ask,
+    ko: services.ko,
+    conflicts: services.conflicts,
+    offeneSpaces,
+    // AUFNAHME 20260922 · R-1627: die kuratierten Kanten für die belegten Beziehungen der Kette.
+    kanten: services.kanten,
+    // R-0346: das Firmenwörterbuch für die Begriffserklärungen einer allgemeinsprachlichen Antwort.
+    begriffe: async () => services.begriffe.aktuelle(),
+    // AUFNAHME 20260922 · R-0322: die Erreichbarkeit der Verantwortlichen aus dem bestehenden
+    // Nutzerverzeichnis — erreichbar heisst „freigegebenes Konto vorhanden", nichts darüber hinaus.
+    personen: {
+      erreichbarkeit: async (ids: readonly string[]) => {
+        const konten = await services.auth.listUsers();
+        const erreichbar = new Map<string, boolean>();
+        const namen = new Map<string, string>();
+        for (const id of ids) {
+          const konto = konten.find((u) => u.id === id);
+          erreichbar.set(id, konto?.approved === true);
+          if (konto) {
+            namen.set(id, konto.name);
+          }
+        }
+        return { erreichbar, namen };
+      },
+    },
+  };
+  // R-0700: der allgemeine Frageweg bekommt das Sitzungstor NICHT mehr — er nimmt keine
+  // Klara-Bindung an.
   app.register(
     askRoutes(
       {
-        ask: services.ask,
-        ko: services.ko,
-        conflicts: services.conflicts,
-        klaraSessions,
-        // produkt:20261007:spaces: ohne Sitzungsnutzer (Add-on) nur Inhalt aus offenen Spaces.
-        offeneSpaces: async () =>
-          new Set(
-            (await services.spaces.aktuelle()).filter((s) => s.zugang === "alle").map((s) => s.id),
-          ),
+        ...antwortDeps,
         // R-1649: der abweichende Weg aus „nicht hilfreich" wird ein gewöhnlicher Entwurf —
         // derselbe Anlageweg wie POST /api/drafts, kein zweiter.
         alternativeAlsEntwurf: (entwurf, author) => services.capture.createDraft(entwurf, author),
@@ -3574,6 +4354,10 @@ export function buildApp(
       guards,
     ),
   );
+  // R-0700 (KW-S4-24): Klaras eigener, sitzungsgebundener Ausführungszugang
+  // `POST /api/klara/sessions/{sessionId}/execute`. KW-KA4: `klaraSessions` ist das bestehende
+  // Ausführungstor von oben — DIESELBE Instanz wie am Status-, Zuruf- und Reasoner-Weg.
+  app.register(klaraAusfuehrungRoutes({ ...antwortDeps, klaraSessions }, guards));
   // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
   // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
   // zweite Aufloesung.
@@ -3639,14 +4423,20 @@ export function buildApp(
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
   app.register(
-    libraryRoutes(services.library, guards, {
-      ko: services.ko,
-      conflicts: services.conflicts,
-      overlaps: services.overlaps,
-      overlapSettings: services.overlapSettings,
-      reasoner: services.reasoner,
-      semanticPrefilter,
-    }),
+    libraryRoutes(
+      services.library,
+      guards,
+      {
+        ko: services.ko,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        overlapSettings: services.overlapSettings,
+        reasoner: services.reasoner,
+        semanticPrefilter,
+      },
+      // R-0773: erfolglose Suchen je Person.
+      services.nulltreffer,
+    ),
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
@@ -3668,7 +4458,16 @@ export function buildApp(
   );
   // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
   // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
-  app.register(lifecycleRoutes(services.lifecycle, guards, koSichtbarkeit));
+  // R-1662: frühere Revalidierungen (`ko.revalidated`) lesen dieselben Belege aus dem Prüfprotokoll.
+  app.register(
+    lifecycleRoutes(
+      services.lifecycle,
+      guards,
+      koSichtbarkeit,
+      services.wissensuebergabe,
+      services.audit,
+    ),
+  );
   app.register(
     notificationsRoutes(
       {
@@ -3684,6 +4483,24 @@ export function buildApp(
         kos: koSichtbarkeit,
         // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
         kenntnisnahmen: kenntnisnahmeDienst,
+        // Betroffenenrechte (R-0661): offene Löschanträge als Verwalteraufgabe mit Frist.
+        loeschantraege: {
+          offene: () =>
+            offeneLoeschantragMeldungen(
+              services.loeschantraege,
+              () => services.auth.listUsers(),
+              services.datenschutzUhr(),
+            ),
+        },
+        // aufnahme:20260922:gesamt-wissen-frische: Fristerinnerung, Wochenvorlage und
+        // Prüfanforderung an Autor bzw. Nachfolger (R-0248 / R-0266 / R-1635).
+        frische: frischeMeldungen({
+          ko: services.ko,
+          lifecycle: services.lifecycle,
+          audit: services.audit,
+        }),
+        // Veröffentlichung: Meldungen bei „normal" und „hervorgehoben" — nie bei „still".
+        veroeffentlichungen: veroeffentlichungDienst,
       },
       guards,
     ),
@@ -3717,7 +4534,25 @@ export function buildApp(
       guards,
     ),
   );
-  app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
+  // produkt:20261008:klara-basis: die eigenen Klara-Gespräche. Eine Antwort aus dem Frageweg wird
+  // gegen DIESELBE Antwortablage geprüft wie die Herkunft im Gedächtnis.
+  app.register(
+    klaraGespraechRoutes(
+      {
+        dienst: new KlaraGespraechDienst({
+          repo: services.klaraGespraeche,
+          antworten: services.answerSnapshots,
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
+  // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
+  // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
+  app.register(
+    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit),
+  );
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
@@ -3730,11 +4565,11 @@ export function buildApp(
   app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
   // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
-  // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.
+  // (Modulgrenze des Objektspeichers); die Kompositionswurzel reicht den Zugang.
   //
   // AUFTRAG-mega76 BLOCK B: dazu kommen die drei Herkünfte, die bis mega76 durchfielen —
-  // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie in
-  // object-references.ts, dort gegen Datenverlust, hier gegen Auskunft.
+  // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie im Waisenlauf
+  // (`datenintegritaet.ts`), dort gegen Datenverlust, hier gegen Auskunft.
   //
   // JOB 2021 (G8): EINE Aufzählung für BEIDE Wege in den Objektspeicher. `POST /api/media/analyze`
   // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
@@ -3787,7 +4622,14 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
-  app.register(i18nRoutes(services.i18n));
+  // R-1034 / FR-I18N-02: die Oberflächentexte — öffentlich lesbar (die Anmeldemaske braucht sie vor
+  // jeder Sitzung), gepflegt ausschließlich mit `users.manage`.
+  app.register(
+    i18nRoutes(
+      { i18n: services.i18n, uebersetzungen: services.uebersetzungen, audit: services.audit },
+      guards,
+    ),
+  );
   // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
@@ -3799,9 +4641,73 @@ export function buildApp(
   app.register(
     brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
   );
+  // ADMIN-15: Unternehmensprofil und interne Richtlinien. Getrennt von der festen Markenwahl oben
+  // (die bleibt, wie sie ist) und von den Rechtsseiten der Web-App. Die betroffenen Konten kommen
+  // aus der vorhandenen Kontenliste.
+  app.register(
+    unternehmenRoutes(
+      {
+        dienst: new UnternehmenDienst({
+          repo: services.unternehmen,
+          konten: () => services.auth.listUsers(),
+        }),
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
   // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
   app.register(begriffeRoutes({ begriffe: services.begriffe, audit: services.audit }, guards));
+  // Betroffenenrechte (R-0583, R-0661, R-0663, R-0667, R-1645): Selbstauskunft und Datenmitnahme,
+  // Löschantrag mit Frist, Auskunft durch die Verwaltung und das Verarbeitungsverzeichnis aus dem
+  // Dateninventar. Nicht geschaltet: ein Betroffenenrecht darf kein abschaltbares Modul sein.
+  app.register(
+    datenschutzRoutes(
+      {
+        quellen: {
+          auth: services.auth,
+          ko: services.ko,
+          capture: services.capture,
+          ask: services.ask,
+          answerSnapshots: services.answerSnapshots,
+          validation: services.validation,
+          audit: services.audit,
+          objects: services.objects,
+          kenntnisnahmen: services.kenntnisnahmen,
+          lifecycle: services.lifecycle,
+          management: services.management,
+          loeschantraege: services.loeschantraege,
+          modelRuns: services.modelRuns,
+          klara: services.klaraSessions,
+          // R-0663/R-1645: die Nachfolge bei Befristung, in der die Person vorkommt.
+          nachfolge: services.verantwortungNachfolge,
+        },
+        loeschantraege: services.loeschantraege,
+        auth: services.auth,
+        audit: services.audit,
+        // Die Empfängerangaben des Verzeichnisses kommen aus dem, was JETZT wirklich verdrahtet und
+        // zugeordnet ist — nicht aus einer Konfigurationsbehauptung.
+        betriebslage: () => {
+          const ki = services.reasoner.configStatus();
+          const zuordnung = [
+            ...Object.values(ki.effectiveAnbieter),
+            ...(ki.effectiveAnbieterGlobal ? [ki.effectiveAnbieterGlobal] : []),
+          ];
+          return {
+            modellAnbieter: [
+              ...new Set(zuordnung.filter((a) => a !== "local" && a !== "deterministic")),
+            ].sort(),
+            lokalesModell: zuordnung.includes("local"),
+            externeSuche: services.externalSearch !== undefined,
+            mailVersand: !(services.mailer instanceof ConsoleMailer),
+          };
+        },
+        jetzt: services.datenschutzUhr,
+      },
+      guards,
+    ),
+  );
   // R-1646 · Ausgangsprüfung: nur mit `KLARWERK_AUSGANGSPRUEFUNG=an`. Dann hält der Chokepoint
   // jeden Aufruf, der das Haus verlassen kann, bis ein Controller den anonymisierten Text freigibt.
   // Als Person ersetzt werden die Namen der Konten dieser Installation — bei jedem Aufruf frisch
@@ -3823,7 +4729,48 @@ export function buildApp(
   // produkt:20261007:spaces: Arbeitsräume, Inhalte je Space und Ansicht, Rechtevorschau, Wechsel.
   app.register(
     spacesRoutes(
-      { spaces: services.spaces, ko: services.ko, auth: services.auth, audit: services.audit },
+      {
+        spaces: services.spaces,
+        ko: services.ko,
+        auth: services.auth,
+        audit: services.audit,
+        // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
+        // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
+        // Verzeichnis-Zuweisung.
+        ...(pruefzustaendigkeit.size > 0
+          ? {
+              pruefzustaendigkeit: {
+                // Unvollständig (Benachrichtigung nicht verschickt): die Zuweisung steht, die
+                // Benachrichtigung holt der wiederholte Gesamtabgleich nach.
+                abgleichen: async (koId: string, akteur: string) => {
+                  const ergebnis = await zustaendigkeitAbgleichen(koId, akteur);
+                  if (ergebnis?.unvollstaendig) {
+                    abgleichWiederholen();
+                  }
+                  return ergebnis?.soll;
+                },
+              },
+            }
+          : {}),
+      },
+      guards,
+    ),
+  );
+  // produkt:20261007:ownership-uebergabe: Hauptverantwortung einzeln und gesammelt übergeben,
+  // Vorschau, Teilfehler mit Wiederaufnahme, Deaktivierung ohne Restbestand.
+  app.register(
+    verantwortungRoutes(
+      {
+        ko: services.ko,
+        auth: services.auth,
+        spaces: services.spaces,
+        nachfolge: services.verantwortungNachfolge,
+        audit: services.audit,
+        // ADMIN-04: die Zahlen der Kontenliste aus derselben Erhebung wie die Wissensübergabe.
+        offeneVorgaenge: (personen) => services.wissensuebergabe.offeneVorgaenge(personen),
+        // ADMIN-05: der gemeinsame Übergabeablauf überträgt offene Vorgänge über dieselbe Instanz.
+        vorgaengeWeg: services.wissensuebergabe,
+      },
       guards,
     ),
   );
@@ -3873,6 +4820,15 @@ export function buildApp(
   // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
   // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
   // R-0170: der Jira-Import schreibt Läufe genauso und gehört deshalb in dieselbe Bedingung.
+  // ADMIN-02 (Nacharbeit 3): die Importliste steht UNBEDINGT da — auch wenn alle Importwege aus
+  // sind, ist „noch kein Lauf festgehalten" eine Auskunft und keine fehlende Route.
+  app.register(
+    importLaufListeRoutes({
+      importRuns: services.importRuns,
+      quellabgleich: services.quellabgleich,
+      guards,
+    }),
+  );
   const importLaeufeLesbar =
     schalterAn("confluenceImport") || schalterAn("sharepointImport") || schalterAn("jiraImport");
   if (importLaeufeLesbar) {

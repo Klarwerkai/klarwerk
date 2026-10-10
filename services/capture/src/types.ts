@@ -1,4 +1,9 @@
-import type { Confidentiality, DokumentHerkunft, KnowledgeType } from "../../knowledge-object";
+import type {
+  Confidentiality,
+  DokumentHerkunft,
+  KnowledgeType,
+  NegativwissenAngaben,
+} from "../../knowledge-object";
 import type { DraftAblauf } from "./ablauf";
 
 // Roh-Inhalt eines Entwurfs (wird später zu einem KO strukturiert/eingereicht).
@@ -7,15 +12,30 @@ export interface DraftPayload {
   statement?: string;
   type?: KnowledgeType;
   category?: string;
+  // R-0034 / R-0056 / FR-CAP-08 (aufnahme:20260922:gesamt-wissen-metadaten): das Fachgebiet,
+  // erfasst neben der Kategorie. Es reist mit dem Entwurf bis ins KO (`toKoInput`); leer oder
+  // fehlend = kein Fachgebiet angegeben — es wird nichts abgeleitet (KnowledgeObject.domain).
+  domain?: string;
+  // R-0086: Tatsache oder Handlungsanweisung. Der Wert wird erst am Einreichen geprüft
+  // (`KoService.create`, INVALID); ein Leerwert heißt „nicht angegeben".
+  aussageart?: string;
   tags?: string[];
   conditions?: string[];
   measures?: string[];
   neededValidations?: number;
   asset?: string | null;
+  // R-0082: die Anlagenliste des Entwurfs; ist sie da, gilt sie beim Einreichen (s. CreateKoInput).
+  assets?: string[];
+  // R-1690: Re-Validierungstermin `JJJJ-MM-TT`; geprüft beim Einreichen (`KoService.create`).
+  revalidierungAm?: string;
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body übersteht Entwurf/Resume/Promote
   // SCRUM-509 R2: die im Erfassen gewählte Vertraulichkeit übersteht Entwurf/Resume/Promote —
   // sonst ginge die Stufe beim Promote verloren (fail-open). toKoInput reicht sie ans KO durch.
   confidentiality?: Confidentiality;
+  // R-1664/R-2179: die geführten Angaben eines Negativwissen-Falls überstehen Entwurf/Resume/Promote.
+  // An der Persistenzgrenze normalisiert (`normalizeNegativwissen`); `toKoInput` reicht sie durch.
+  // `null` leert sie ausdrücklich (Merge-Vertrag) und wird dort nicht gespeichert.
+  negativwissen?: NegativwissenAngaben | null;
   // UI-Herkunft fuer Resume-Routing; keine Persistenzlogik, nur Payload-Metadatum.
   origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
   // JOB 512 (R5): Zahl der Bilder in der QUELLDATEI, erhoben beim Import VOR jedem Budget-/
@@ -92,6 +112,11 @@ export interface DraftPayload {
     // R-1624: der bestätigte Bildbefund eines Foto-Interviews (Klartext, kein Bild — das Foto steht
     // als Bild-Anker im Rumpf). Fehlt er, war es ein normales Interview.
     imageContext?: string;
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum, Lücken-Thema und die ausdrückliche
+    // Abschlussbestätigung des Menschen (R-0113) reisen mit, damit ein Fortsetzen nichts davon verliert.
+    tree?: boolean;
+    topic?: string;
+    confirmed?: boolean;
   };
   /**
    * BILDSCHIRMABLÄUFE — die übernommenen Schritte samt Herkunft (Begründung: `./ablauf.ts`).
@@ -127,6 +152,17 @@ export interface Draft {
   lastEditor: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * R-0554 — DIE URSPRÜNGLICHE URHEBERIN EINES ÜBERGEBENEN ENTWURFS.
+   *
+   * Bei der Wissensübergabe (`services/app/src/wissensuebergabe.ts`) wandert `originalAuthor` an
+   * die Nachfolgerin — an diesem Feld hängen Sichtbarkeit und „meine Entwürfe", und die gehören
+   * jetzt ihr. Wer den Entwurf ursprünglich verfasst hat, bleibt HIER stehen und reist beim
+   * Einreichen als `originalAuthor` ans Wissensobjekt (`toKoInput`) — dieselbe Trennung wie
+   * `author`/`originalAuthor` dort. Gesetzt nur bei der ersten Übergabe; fehlt das Feld, ist
+   * `originalAuthor` die Urheberin. Additiv im JSONB, keine Migration.
+   */
+  urheber?: string;
   /**
    * JOB 2697 — OPTIONAL UND AM `Draft`, NICHT IM `DraftPayload`.
    *
