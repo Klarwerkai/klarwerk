@@ -62,9 +62,11 @@ const PORT_ZUSTAND = 3124;
 /**
  * Die Sonden, die Bestand anlegen — sie laufen ausschliesslich im isolierten Kontext.
  * `arbeitswege-objekt-browser` reicht Beiträge ein und entscheidet an ihnen; im geteilten Server
- * füllte das das Prüf-Board, das `ui-smoke` leer erwartet.
+ * füllte das das Prüf-Board, das `ui-smoke` leer erwartet. `klara-kontext-artikel-browser`
+ * (Klara 03) legt einen freigegebenen Beitrag an und stuft ihn vertraulich.
  */
-const ZUSTAND_SPEC = /(demo-ux-v1-capture-frontdoor|arbeitswege-objekt-browser)\.spec\.ts/;
+const ZUSTAND_SPEC =
+  /(demo-ux-v1-capture-frontdoor|arbeitswege-objekt-browser|klara-kontext-artikel-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.

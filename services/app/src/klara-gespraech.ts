@@ -66,6 +66,14 @@ const SCHRITT_STAENDE: readonly KlaraSchrittStand[] = [
   "fehlgeschlagen",
 ];
 
+/** Klara 03: der Bezug, den die Person für einen Schritt gewählt hat. */
+export type KlaraBezug = "seite" | "markierung" | "frei";
+const BEZUEGE: readonly KlaraBezug[] = ["seite", "markierung", "frei"];
+const MODI_SEITE = ["lesen", "bearbeiten"] as const;
+const PRUEFSTAENDE = ["geprueft", "ungeprueft"] as const;
+const LESARTEN = ["original", "uebersetzung"] as const;
+export const KLARA_AUSWAHL_MAX = 300;
+
 /** Wo etwas geschah: Seite und Objekt, wie Klara sie auf dem Bildschirm gelesen hat. */
 export interface KlaraObjektbezug {
   readonly pfad: string;
@@ -73,6 +81,32 @@ export interface KlaraObjektbezug {
   readonly objekt: string;
   readonly artikelId?: string;
   readonly absatz?: number;
+  // produkt:20261007:klara-kontext-tutorial (Klara 03) — der Bezug aus dem Appzustand, alles
+  // wahlweise: ein Gespräch aus Klara 01 trägt nichts davon und bleibt gültig.
+  /** Das Wissensobjekt, auf das sich der Schritt bezog, und die Fassung, die dabei zu sehen war. */
+  readonly koId?: string;
+  readonly fassung?: number;
+  /** Lese- oder Bearbeitungsmodus der Seite in diesem Augenblick. */
+  readonly modus?: (typeof MODI_SEITE)[number];
+  /** Prüfstatus des Objekts in diesem Augenblick (Anzeige, keine Freigabeentscheidung). */
+  readonly pruefstatus?: (typeof PRUEFSTAENDE)[number];
+  /** Original oder Leseübersetzung — woraus eine Markierung stammt. */
+  readonly lesart?: (typeof LESARTEN)[number];
+  /** Seite, Markierung oder freies Gespräch. */
+  readonly bezug?: KlaraBezug;
+  /** Der Anfang der Markierung (gekürzt), wenn der Bezug die Markierung war. */
+  readonly auswahl?: string;
+}
+
+/**
+ * Klara 03: eine Quelle einer Antwort, wie der Frageweg sie für DIESE Antwort nannte — Titel, die
+ * gelesene Fassung und ob die Quelle geprüft war. `null` heisst: der Frageweg hat es nicht gesagt.
+ */
+export interface KlaraQuellenAngabe {
+  readonly koId: string;
+  readonly titel: string;
+  readonly fassung: number | null;
+  readonly geprueft: boolean | null;
 }
 
 export interface KlaraNachricht {
@@ -85,6 +119,11 @@ export interface KlaraNachricht {
   readonly antwortId: string | null;
   /** Nur bei `ki`/`ohne_ki`: die herangezogenen Quellen (Kennungen), wie der Frageweg sie nannte. */
   readonly quellen: readonly string[];
+  /**
+   * Klara 03, nur bei `ki`/`ohne_ki`: Titel, Fassung und Prüfstatus der Quellen. Fehlt das Feld,
+   * stammt die Nachricht aus der Zeit davor oder der Frageweg nannte nichts dazu.
+   */
+  readonly quellenAngaben?: readonly KlaraQuellenAngabe[];
   /** Nur bei `ki`/`ohne_ki`: die Einstufung der Antwort (`knowledgeClass`). */
   readonly wissensklasse: string | null;
   /** Nur bei `fehler`: ein kurzer Grundschlüssel (`ki_abgeschaltet`, `anmeldung`, …). */
@@ -293,6 +332,7 @@ export interface KlaraNachrichtEingabe {
   objektbezug?: unknown;
   antwortId?: unknown;
   quellen?: unknown;
+  quellenAngaben?: unknown;
   wissensklasse?: unknown;
   grund?: unknown;
 }
@@ -330,7 +370,31 @@ function wahlweiseText(wert: unknown, max: number, feld: string): string | null 
   return kurzerText(wert, max, feld);
 }
 
-/** Prüft einen Objektbezug aus dem Netz — nur die fünf bekannten Felder werden übernommen. */
+function wahlweiseWahl<T extends string>(
+  wert: unknown,
+  erlaubt: readonly T[],
+  feld: string,
+): T | null {
+  if (wert === undefined || wert === null) {
+    return null;
+  }
+  if (typeof wert !== "string" || !(erlaubt as readonly string[]).includes(wert)) {
+    throw eingabeFehler(`${feld} muss einer der Werte ${erlaubt.join(", ")} sein.`);
+  }
+  return wert as T;
+}
+
+function wahlweiseFassung(wert: unknown, feld: string): number | null {
+  if (wert === undefined || wert === null) {
+    return null;
+  }
+  if (typeof wert !== "number" || !Number.isSafeInteger(wert) || wert < 1) {
+    throw eingabeFehler(`${feld} muss eine positive ganze Zahl sein.`);
+  }
+  return wert;
+}
+
+/** Prüft einen Objektbezug aus dem Netz — nur die bekannten Felder werden übernommen. */
 export function pruefeObjektbezug(roh: unknown): KlaraObjektbezug {
   if (typeof roh !== "object" || roh === null || Array.isArray(roh)) {
     throw eingabeFehler("objektbezug ist Pflicht.");
@@ -344,11 +408,7 @@ export function pruefeObjektbezug(roh: unknown): KlaraObjektbezug {
     throw eingabeFehler("objektbezug.pfad muss eine Adresse dieser Anwendung sein.");
   }
   const bezug: {
-    pfad: string;
-    seitenName: string;
-    objekt: string;
-    artikelId?: string;
-    absatz?: number;
+    -readonly [K in keyof KlaraObjektbezug]: KlaraObjektbezug[K];
   } = {
     pfad,
     seitenName: kurzerText(o.seitenName, 120, "objektbezug.seitenName"),
@@ -364,7 +424,75 @@ export function pruefeObjektbezug(roh: unknown): KlaraObjektbezug {
     }
     bezug.absatz = o.absatz;
   }
+  // Klara 03 — dieselbe Regel für jedes neue Feld: bekannt und gültig, sonst abgewiesen; fehlt es,
+  // fehlt es auch in der Ablage (kein Füllwert, der etwas behauptet).
+  const koId = wahlweiseText(o.koId, 200, "objektbezug.koId");
+  if (koId !== null) {
+    bezug.koId = koId;
+  }
+  const fassung = wahlweiseFassung(o.fassung, "objektbezug.fassung");
+  if (fassung !== null) {
+    bezug.fassung = fassung;
+  }
+  const modus = wahlweiseWahl(o.modus, MODI_SEITE, "objektbezug.modus");
+  if (modus !== null) {
+    bezug.modus = modus;
+  }
+  const pruefstatus = wahlweiseWahl(o.pruefstatus, PRUEFSTAENDE, "objektbezug.pruefstatus");
+  if (pruefstatus !== null) {
+    bezug.pruefstatus = pruefstatus;
+  }
+  const lesart = wahlweiseWahl(o.lesart, LESARTEN, "objektbezug.lesart");
+  if (lesart !== null) {
+    bezug.lesart = lesart;
+  }
+  const gewaehlt = wahlweiseWahl(o.bezug, BEZUEGE, "objektbezug.bezug");
+  if (gewaehlt !== null) {
+    bezug.bezug = gewaehlt;
+  }
+  const auswahl = wahlweiseText(o.auswahl, KLARA_AUSWAHL_MAX, "objektbezug.auswahl");
+  if (auswahl !== null) {
+    if (gewaehlt !== "markierung") {
+      throw eingabeFehler("objektbezug.auswahl gehört nur zum Bezug markierung.");
+    }
+    bezug.auswahl = auswahl;
+  }
   return bezug;
+}
+
+/**
+ * Klara 03: Titel, Fassung und Prüfstatus der Quellen einer Antwort. Jede Angabe muss zu einer der
+ * genannten Quellen gehören — eine Angabe zu einer Kennung, die die Antwort gar nicht nennt, wäre
+ * eine erfundene Quelle.
+ */
+function quellenAngabenAus(roh: unknown, quellen: readonly string[]): KlaraQuellenAngabe[] {
+  if (roh === undefined || roh === null) {
+    return [];
+  }
+  if (!Array.isArray(roh) || roh.length > MAX_QUELLEN) {
+    throw eingabeFehler(`quellenAngaben: höchstens ${MAX_QUELLEN} Angaben.`);
+  }
+  const gesehen = new Set<string>();
+  return roh.map((eintrag, i) => {
+    if (typeof eintrag !== "object" || eintrag === null || Array.isArray(eintrag)) {
+      throw eingabeFehler(`quellenAngaben[${i}] ist keine Angabe.`);
+    }
+    const e = eintrag as Record<string, unknown>;
+    const koId = kurzerText(e.koId, 200, `quellenAngaben[${i}].koId`);
+    if (!quellen.includes(koId) || gesehen.has(koId)) {
+      throw eingabeFehler(`quellenAngaben[${i}] gehört zu keiner (weiteren) Quelle der Antwort.`);
+    }
+    gesehen.add(koId);
+    if (e.geprueft !== undefined && e.geprueft !== null && typeof e.geprueft !== "boolean") {
+      throw eingabeFehler(`quellenAngaben[${i}].geprueft muss true, false oder null sein.`);
+    }
+    return {
+      koId,
+      titel: kurzerText(e.titel, 300, `quellenAngaben[${i}].titel`),
+      fassung: wahlweiseFassung(e.fassung, `quellenAngaben[${i}].fassung`),
+      geprueft: typeof e.geprueft === "boolean" ? e.geprueft : null,
+    };
+  });
 }
 
 function quellenAus(roh: unknown): string[] {
@@ -480,10 +608,16 @@ export class KlaraGespraechDienst {
     );
     const objektbezug = pruefeObjektbezug(eingabe.objektbezug);
     const mitAntwort = MODI_MIT_ANTWORT.includes(modus);
-    if (!mitAntwort && (eingabe.antwortId !== undefined || eingabe.quellen !== undefined)) {
+    if (
+      !mitAntwort &&
+      (eingabe.antwortId !== undefined ||
+        eingabe.quellen !== undefined ||
+        eingabe.quellenAngaben !== undefined)
+    ) {
       throw eingabeFehler("Nur eine Antwort des Fragewegs trägt Antwortkennung und Quellen.");
     }
     const quellen = mitAntwort ? quellenAus(eingabe.quellen) : [];
+    const quellenAngaben = mitAntwort ? quellenAngabenAus(eingabe.quellenAngaben, quellen) : [];
     const wissensklasse = mitAntwort
       ? wahlweiseText(eingabe.wissensklasse, 40, "wissensklasse")
       : null;
@@ -521,6 +655,7 @@ export class KlaraGespraechDienst {
         objektbezug,
         antwortId,
         quellen,
+        ...(quellenAngaben.length > 0 ? { quellenAngaben } : {}),
         wissensklasse,
         grund,
         angelegtAm: jetzt,
