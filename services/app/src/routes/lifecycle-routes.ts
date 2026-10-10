@@ -27,11 +27,37 @@ import type { Wissensuebergabe } from "../wissensuebergabe";
 //
 // `kos` IST PFLICHTPARAMETER, nicht optional (AUFTRAG-mega76 BLOCK A): ein Schutz, den der
 // Aufrufer weglassen kann, ist keiner. Einziger Aufrufer ist die Kompositionswurzel.
+/**
+ * R-1662 (Prüfpunkt 6 „alte Revalidierungsfälle"): der Lesezugang zu den Belegen `ko.revalidated`
+ * im Prüfprotokoll — als PORT, nicht als Dienstimport (dieselbe Überlegung wie `OverlapLesezugang`
+ * in conflicts-routes.ts). Fehlt er, wird die Route gar nicht registriert: 404, nie eine leere Liste,
+ * die „nie bestätigt" behaupten würde.
+ */
+export interface RevalidierungsBeleg {
+  at: string;
+  target: string;
+  payload: Record<string, unknown>;
+}
+export interface RevalidierungsBelege {
+  list(filter: { action: string; target: string }): Promise<readonly RevalidierungsBeleg[]>;
+}
+
+/** Eine frühere Bestätigung „stimmt noch" — nur Kennung, Zeitpunkt und bestätigte Fassung. */
+export interface RevalidierungBestaetigt {
+  koId: string;
+  am: string;
+  version: number | null;
+}
+
+/** So viele Objekte nimmt `GET /api/lifecycle/revalidiert` je Anfrage (die Quellen EINER Antwort). */
+const REVALIDIERT_HOECHSTENS_OBJEKTE = 50;
+
 export function lifecycleRoutes(
   lifecycle: LifecycleService,
   guards: Guards,
   kos: KoSichtbarkeitsZugang,
   uebergabe: Wissensuebergabe,
+  belege?: RevalidierungsBelege,
 ): FastifyPluginAsync {
   return async (app) => {
     app.post<{ Body: { assetRef: string; koId: string } }>(
@@ -136,6 +162,62 @@ export function lifecycleRoutes(
       );
       reply.code(200).send(sichtbar.map((eintrag) => eintrag.koId));
     });
+
+    // ============================================================================================
+    // R-1662 (Ben, Nacharbeit 5) — FRÜHERE REVALIDIERUNGEN ZU DEN QUELLEN EINER ANTWORT.
+    // ============================================================================================
+    //
+    // `pending` oben kennt nur OFFENE Fälle: `confirmStillValid` löscht den Merker im selben Schritt,
+    // in dem es `ko.revalidated` ins Prüfprotokoll schreibt (lifecycle/src/service.ts:118-131). Eine
+    // frühere Bestätigung steht danach NUR dort. Dieser Weg liest genau diesen Beleg — und nur ihn:
+    //   · Routenrecht `ko.read` und Zeilenrecht `sichtbareEintraege` wie bei `pending`: ein Objekt,
+    //     das der Betrachter nicht sehen darf, fehlt in der Antwort (keine Existenzauskunft).
+    //   · Feldbeschränkung: hinaus gehen Kennung, Zeitpunkt und bestätigte Fassung. Akteur, Hashes
+    //     und übrige Nutzlast des Protokolls bleiben hinter dem Audit-Recht.
+    if (belege) {
+      app.get<{ Querystring: { ko?: string } }>(
+        "/api/lifecycle/revalidiert",
+        async (request, reply) => {
+          const user = await guards.requirePermission("ko.read", request, reply);
+          if (!user) {
+            return;
+          }
+          try {
+            const angefragt = [
+              ...new Set(
+                (request.query.ko ?? "")
+                  .split(",")
+                  .map((id) => id.trim())
+                  .filter((id) => id.length > 0),
+              ),
+            ].slice(0, REVALIDIERT_HOECHSTENS_OBJEKTE);
+            const sichtbar = await sichtbareEintraege(
+              user,
+              angefragt.map((koId) => ({ koId })),
+              kos,
+            );
+            const bestaetigt: RevalidierungBestaetigt[] = [];
+            for (const { koId } of sichtbar) {
+              for (const beleg of await belege.list({ action: "ko.revalidated", target: koId })) {
+                const version = beleg.payload.version;
+                bestaetigt.push({
+                  koId,
+                  am: beleg.at,
+                  version: typeof version === "number" ? version : null,
+                });
+              }
+            }
+            // Jüngste zuerst; bei gleichem Zeitstempel die höhere Fassung (sie ist die spätere).
+            bestaetigt.sort((a, b) =>
+              a.am !== b.am ? (a.am < b.am ? 1 : -1) : (b.version ?? 0) - (a.version ?? 0),
+            );
+            reply.code(200).send(bestaetigt);
+          } catch (error) {
+            sendError(reply, error);
+          }
+        },
+      );
+    }
 
     app.post<{ Body: { role: string; steps: { title: string }[] } }>(
       "/api/learning-paths",
