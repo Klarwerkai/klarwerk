@@ -1328,9 +1328,26 @@ export class CaptureService {
    * nicht vorhanden (`findById` gibt ihn nicht heraus) — der zweite Klick auf „löschen" ergibt 404
    * und nicht still einen neuen Löschzeitpunkt.
    */
-  async deleteDraft(id: string, actor?: string): Promise<void> {
-    await this.require(id);
-    await this.repo.delete(id, actor, new Date(this.now()).toISOString());
+  async deleteDraft(id: string, actor?: string, erwarteterStand?: string): Promise<void> {
+    const draft = await this.require(id);
+    const zeitpunkt = new Date(this.now()).toISOString();
+    if (erwarteterStand === undefined) {
+      await this.repo.delete(id, actor, zeitpunkt);
+      return;
+    }
+    // Klara 05 (Nacharbeit 4): mit erwartetem Stand löscht die Ablage UNTEILBAR — Vergleich und
+    // Papierkorbvermerk in einem Schritt. Wer verliert, bekommt den gespeicherten Stand zurück.
+    if (!this.repo.deleteWennStand) {
+      throw new DraftStaleError(draft.updatedAt);
+    }
+    const geloescht = await this.repo.deleteWennStand(id, erwarteterStand, actor, zeitpunkt);
+    if (!geloescht) {
+      const jetzt = await this.repo.findById(id);
+      if (!jetzt) {
+        throw new CaptureError("NOT_FOUND", "Entwurf nicht gefunden.");
+      }
+      throw new DraftStaleError(jetzt.updatedAt);
+    }
   }
 
   /**

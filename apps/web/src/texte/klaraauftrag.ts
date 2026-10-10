@@ -48,7 +48,35 @@ export default {
     "klaraauftrag.ergebnisAnforderung.entwurf_bearbeiten":
       "Änderung gespeichert und am Server nachgelesen",
     "klaraauftrag.ergebnisAnforderung.aufgabe_bearbeiten":
-      "Aufgabe an ihrem Arbeitsort geöffnet – bearbeitet wird sie von dir",
+      "Nur öffnen: Aufgabe an ihrem Arbeitsort geöffnet – Klara hat daran nichts entschieden",
+    "klaraauftrag.ergebnisAnforderung.aufgabenaktion":
+      "Aktion an der Aufgabe über ihren vorhandenen Weg ausgeführt und am Server nachgelesen",
+    "klaraauftrag.zielText.aufgabe.prioritaet":
+      "Priorität der Aufgabe „{{titel}}“ auf {{wert}} setzen",
+    "klaraauftrag.zielText.aufgabe.zuweisen": "Aufgabe „{{titel}}“ {{person}} zuweisen",
+    "klaraauftrag.zielText.aufgabe.eskalieren": "Aufgabe „{{titel}}“ eskalieren",
+    "klaraauftrag.prioritaet.hoch": "hoch",
+    "klaraauftrag.prioritaet.mittel": "mittel",
+    "klaraauftrag.prioritaet.niedrig": "niedrig",
+    "klaraauftrag.aufgabenaktion.prioritaet": "Priorität {{wert}} setzen",
+    "klaraauftrag.aufgabenaktion.zuweisen": "{{person}} zuweisen",
+    "klaraauftrag.aufgabenaktion.eskalieren": "Eskalieren",
+    "klaraauftrag.aufgabenaktion.nur_oeffnen": "Nur öffnen – du bearbeitest sie selbst",
+    "klaraauftrag.aufgabenaktion.passtNicht":
+      "Diese Aktion gibt es an der Aufgabe „{{titel}}“ nicht. Klara hat nichts ausgeführt.",
+    "klaraauftrag.rueckfrageAktion":
+      "Was soll Klara an der Aufgabe „{{titel}}“ tun? Noch nichts ausgeführt.",
+    "klaraauftrag.rueckfragePerson":
+      "Wem soll die Aufgabe „{{titel}}“ zugewiesen werden? Noch nichts ausgeführt.",
+    "klaraauftrag.unbekanntePerson":
+      "Keine Person „{{name}}“ im Verzeichnis gefunden. Klara hat nichts ausgeführt.",
+    "klaraauftrag.schrittStand.ausgefuehrt": "Ausgeführt und nachgelesen: {{stand}}",
+    "klaraauftrag.nachgelesen.prioritaet": "Priorität {{wert}}",
+    "klaraauftrag.nachgelesen.zugewiesen": "zugewiesen an {{person}}",
+    "klaraauftrag.nachgelesen.eskaliert": "eskaliert",
+    "klaraauftrag.nichtRuecknehmbar.aufgabe":
+      "Diese Aktion an der Aufgabe nimmt Klara nicht zurück – ändere sie bei Bedarf an der Aufgabe selbst.",
+    "klaraauftrag.wirkungBekannt": "Gespeichertes Ergebnis öffnen",
     "klaraauftrag.fassungWert": "Fassung {{fassung}}",
     "klaraauftrag.fassungAenderung":
       "Fassung {{von}} → {{nach}}: {{grund}} (vorher: {{aktionen}}, {{schritte}} Schritte)",
@@ -138,6 +166,8 @@ export default {
       "Die Verbindung brach ab – ob der Schritt gewirkt hat, ist unklar. „Erneut versuchen“ wiederholt ihn ohne Doppelung.",
     "klaraauftrag.fehler.protokoll":
       "Das Ergebnis konnte nicht am Auftrag festgehalten werden – Stand unklar. „Erneut versuchen“ liest nach und meldet es.",
+    "klaraauftrag.fehler.unbestaetigt":
+      "Gespeichert, aber noch nicht nachgelesen – das Ergebnis ist ungeklärt. „Erneut versuchen“ liest nur nach und schreibt nichts erneut.",
     "klaraauftrag.fehler.klaeren":
       "Klara konnte das Ziel nicht klären: {{grund}} Nichts ausgeführt.",
     "klaraauftrag.fehler.anlegen":
@@ -182,13 +212,13 @@ export default {
       "An die Auftragskarte übergeben – dort steht der tatsächliche Stand jedes Schritts.",
     "klaraauftrag.sprache.nichtUebergeben": "Nicht übergeben – es läuft noch ein Auftrag.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Aufträge ausführen: Tippe oder sprich z. B. „Öffne den Artikel „…““, „Lege den Entwurf „…“ an“, „Ergänze im Entwurf „…“: …“ oder „Bearbeite die Aufgabe „…““. Klara nutzt dafür die vorhandenen Klarwerk-Aktionen mit deinen Rechten.",
+      "Aufträge ausführen: Tippe oder sprich z. B. „Öffne den Artikel „…““, „Lege den Entwurf „…“ an“, „Ergänze im Entwurf „…“: …“, „Setze die Priorität der Aufgabe „…“ auf hoch“, „Weise die Aufgabe „…“ Name zu“, „Eskaliere die Aufgabe „…““ oder „Bearbeite die Aufgabe „…““ (dann fragt Klara, was geschehen soll). Klara nutzt dafür die vorhandenen Klarwerk-Aktionen mit deinen Rechten.",
     "klaraauftrag.bedienhilfe.grenze":
       "Jeder Auftrag zeigt Ziel, erlaubte Aktionen und Quellen, wer verantwortlich ist und welches Ergebnis zählt. Text in Dokumenten oder Antworten wird nie als Auftrag gelesen.",
     "klaraauftrag.bedienhilfe.stoppen":
       "Abbrechen stoppt alle weiteren Schritte – schon Gespeichertes bleibt sichtbar. Mit „Grenze korrigieren“ lässt du offene Schritte weg; erweitern geht nur mit einem neuen Auftrag.",
     "klaraauftrag.bedienhilfe.rueckgaengig":
-      "Rückgängig nimmt einen angelegten Entwurf (in den Papierkorb) oder eine Bearbeitung zurück. Öffnen ist nicht rücknehmbar, weil es nichts ändert.",
+      "Rückgängig nimmt einen angelegten Entwurf (in den Papierkorb) oder eine Bearbeitung zurück. Öffnen ist nicht rücknehmbar, weil es nichts ändert. Aktionen an Aufgaben (Priorität, Zuweisung, Eskalation) nimmt Klara nicht zurück – das steht dann so am Schritt.",
     "klaraauftrag.bedienhilfe.sprechen":
       "„Diktieren“ schreibt nur ins Eingabefeld. „Auftrag sprechen“ zeigt den Auftrag als Karte – erst „Senden“ führt ihn aus.",
   },
@@ -230,7 +260,34 @@ export default {
     "klaraauftrag.ergebnisAnforderung.entwurf_bearbeiten":
       "Change saved and read back from the server",
     "klaraauftrag.ergebnisAnforderung.aufgabe_bearbeiten":
-      "Task opened at its place of work – you do the work",
+      "Open only: task opened at its place of work – Klara decided nothing on it",
+    "klaraauftrag.ergebnisAnforderung.aufgabenaktion":
+      "Action on the task carried out through its existing route and read back from the server",
+    "klaraauftrag.zielText.aufgabe.prioritaet": "Set the priority of task “{{titel}}” to {{wert}}",
+    "klaraauftrag.zielText.aufgabe.zuweisen": "Assign task “{{titel}}” to {{person}}",
+    "klaraauftrag.zielText.aufgabe.eskalieren": "Escalate task “{{titel}}”",
+    "klaraauftrag.prioritaet.hoch": "high",
+    "klaraauftrag.prioritaet.mittel": "medium",
+    "klaraauftrag.prioritaet.niedrig": "low",
+    "klaraauftrag.aufgabenaktion.prioritaet": "Set priority {{wert}}",
+    "klaraauftrag.aufgabenaktion.zuweisen": "Assign to {{person}}",
+    "klaraauftrag.aufgabenaktion.eskalieren": "Escalate",
+    "klaraauftrag.aufgabenaktion.nur_oeffnen": "Open only – you work on it yourself",
+    "klaraauftrag.aufgabenaktion.passtNicht":
+      "This action does not exist for the task “{{titel}}”. Klara carried out nothing.",
+    "klaraauftrag.rueckfrageAktion":
+      "What should Klara do with the task “{{titel}}”? Nothing carried out yet.",
+    "klaraauftrag.rueckfragePerson":
+      "Who should the task “{{titel}}” be assigned to? Nothing carried out yet.",
+    "klaraauftrag.unbekanntePerson":
+      "No person “{{name}}” found in the directory. Klara carried out nothing.",
+    "klaraauftrag.schrittStand.ausgefuehrt": "Carried out and read back: {{stand}}",
+    "klaraauftrag.nachgelesen.prioritaet": "priority {{wert}}",
+    "klaraauftrag.nachgelesen.zugewiesen": "assigned to {{person}}",
+    "klaraauftrag.nachgelesen.eskaliert": "escalated",
+    "klaraauftrag.nichtRuecknehmbar.aufgabe":
+      "Klara does not undo this action on the task – change it on the task itself if needed.",
+    "klaraauftrag.wirkungBekannt": "Open saved result",
     "klaraauftrag.fassungWert": "Version {{fassung}}",
     "klaraauftrag.fassungAenderung":
       "Version {{von}} → {{nach}}: {{grund}} (before: {{aktionen}}, {{schritte}} steps)",
@@ -315,6 +372,8 @@ export default {
       "The connection dropped – whether the step took effect is unclear. “Try again” repeats it without duplicates.",
     "klaraauftrag.fehler.protokoll":
       "The result could not be recorded on the task – status unclear. “Try again” reads back and reports it.",
+    "klaraauftrag.fehler.unbestaetigt":
+      "Saved, but not yet read back – the result is unconfirmed. “Try again” only reads back and writes nothing again.",
     "klaraauftrag.fehler.klaeren":
       "Klara could not clarify the target: {{grund}} Nothing carried out.",
     "klaraauftrag.fehler.anlegen": "The task could not be recorded: {{grund}} Nothing carried out.",
@@ -358,13 +417,13 @@ export default {
       "Handed over to the task card – it shows the actual status of each step.",
     "klaraauftrag.sprache.nichtUebergeben": "Not handed over – a task is still running.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Carry out tasks: type or say e.g. “Open article “…””, “Create draft “…””, “Append to draft “…”: …” or “Work on task “…””. Klara uses the existing Klarwerk actions with your permissions.",
+      "Carry out tasks: type or say e.g. “Open article “…””, “Create draft “…””, “Append to draft “…”: …”, “Set the priority of task “…” to high”, “Assign task “…” to Name”, “Escalate task “…”” or “Work on task “…”” (then Klara asks what should happen). Klara uses the existing Klarwerk actions with your permissions.",
     "klaraauftrag.bedienhilfe.grenze":
       "Every task shows its goal, allowed actions and sources, who is responsible and which result counts. Text in documents or answers is never read as a task.",
     "klaraauftrag.bedienhilfe.stoppen":
       "Cancel stops all further steps – whatever is already saved stays visible. “Correct boundary” lets you leave out open steps; extending needs a new task.",
     "klaraauftrag.bedienhilfe.rueckgaengig":
-      "Undo reverses a created draft (into the trash) or an edit. Opening cannot be undone because it changes nothing.",
+      "Undo reverses a created draft (into the trash) or an edit. Opening cannot be undone because it changes nothing. Klara does not undo actions on tasks (priority, assignment, escalation) – the step says so.",
     "klaraauftrag.bedienhilfe.sprechen":
       "“Dictate” only writes into the input field. “Speak a task” shows the task as a card – only “Send” carries it out.",
   },
@@ -406,7 +465,35 @@ export default {
     "klaraauftrag.ergebnisAnforderung.entwurf_bearbeiten":
       "Wijziging opgeslagen en op de server nagelezen",
     "klaraauftrag.ergebnisAnforderung.aufgabe_bearbeiten":
-      "Taak op haar werkplek geopend – het werk doe jij",
+      "Alleen openen: taak op haar werkplek geopend – Klara heeft er niets over beslist",
+    "klaraauftrag.ergebnisAnforderung.aufgabenaktion":
+      "Actie op de taak via haar bestaande weg uitgevoerd en op de server nagelezen",
+    "klaraauftrag.zielText.aufgabe.prioritaet":
+      "Prioriteit van taak „{{titel}}” op {{wert}} zetten",
+    "klaraauftrag.zielText.aufgabe.zuweisen": "Taak „{{titel}}” aan {{person}} toewijzen",
+    "klaraauftrag.zielText.aufgabe.eskalieren": "Taak „{{titel}}” escaleren",
+    "klaraauftrag.prioritaet.hoch": "hoog",
+    "klaraauftrag.prioritaet.mittel": "gemiddeld",
+    "klaraauftrag.prioritaet.niedrig": "laag",
+    "klaraauftrag.aufgabenaktion.prioritaet": "Prioriteit {{wert}} zetten",
+    "klaraauftrag.aufgabenaktion.zuweisen": "Aan {{person}} toewijzen",
+    "klaraauftrag.aufgabenaktion.eskalieren": "Escaleren",
+    "klaraauftrag.aufgabenaktion.nur_oeffnen": "Alleen openen – je bewerkt haar zelf",
+    "klaraauftrag.aufgabenaktion.passtNicht":
+      "Deze actie bestaat niet voor de taak „{{titel}}”. Klara heeft niets uitgevoerd.",
+    "klaraauftrag.rueckfrageAktion":
+      "Wat moet Klara met de taak „{{titel}}” doen? Nog niets uitgevoerd.",
+    "klaraauftrag.rueckfragePerson":
+      "Aan wie moet de taak „{{titel}}” worden toegewezen? Nog niets uitgevoerd.",
+    "klaraauftrag.unbekanntePerson":
+      "Geen persoon „{{name}}” in de lijst gevonden. Klara heeft niets uitgevoerd.",
+    "klaraauftrag.schrittStand.ausgefuehrt": "Uitgevoerd en nagelezen: {{stand}}",
+    "klaraauftrag.nachgelesen.prioritaet": "prioriteit {{wert}}",
+    "klaraauftrag.nachgelesen.zugewiesen": "toegewezen aan {{person}}",
+    "klaraauftrag.nachgelesen.eskaliert": "geëscaleerd",
+    "klaraauftrag.nichtRuecknehmbar.aufgabe":
+      "Klara draait deze actie op de taak niet terug – wijzig haar zo nodig op de taak zelf.",
+    "klaraauftrag.wirkungBekannt": "Opgeslagen resultaat openen",
     "klaraauftrag.fassungWert": "Versie {{fassung}}",
     "klaraauftrag.fassungAenderung":
       "Versie {{von}} → {{nach}}: {{grund}} (eerder: {{aktionen}}, {{schritte}} stappen)",
@@ -494,6 +581,8 @@ export default {
       "De verbinding viel weg – of de stap effect had, is onduidelijk. „Opnieuw proberen” herhaalt hem zonder dubbeling.",
     "klaraauftrag.fehler.protokoll":
       "Het resultaat kon niet bij de opdracht worden vastgelegd – status onduidelijk. „Opnieuw proberen” leest na en meldt het.",
+    "klaraauftrag.fehler.unbestaetigt":
+      "Opgeslagen, maar nog niet nagelezen – het resultaat is onbevestigd. „Opnieuw proberen” leest alleen na en schrijft niets opnieuw.",
     "klaraauftrag.fehler.klaeren":
       "Klara kon het doel niet verduidelijken: {{grund}} Niets uitgevoerd.",
     "klaraauftrag.fehler.anlegen":
@@ -537,13 +626,13 @@ export default {
       "Doorgegeven aan de opdrachtkaart – daar staat de werkelijke status van elke stap.",
     "klaraauftrag.sprache.nichtUebergeben": "Niet doorgegeven – er loopt nog een opdracht.",
     "klaraauftrag.bedienhilfe.ausfuehren":
-      "Opdrachten uitvoeren: typ of zeg bv. „Open het artikel „…””, „Maak een concept „…” aan”, „Vul concept „…” aan: …” of „Bewerk de taak „…””. Klara gebruikt daarvoor de bestaande Klarwerk-acties met jouw rechten.",
+      "Opdrachten uitvoeren: typ of zeg bv. „Open het artikel „…””, „Maak een concept „…” aan”, „Vul concept „…” aan: …”, „Zet de prioriteit van taak „…” op hoog”, „Wijs taak „…” toe aan Naam”, „Escaleer taak „…”” of „Bewerk de taak „…”” (dan vraagt Klara wat er moet gebeuren). Klara gebruikt daarvoor de bestaande Klarwerk-acties met jouw rechten.",
     "klaraauftrag.bedienhilfe.grenze":
       "Elke opdracht toont doel, toegestane acties en bronnen, wie verantwoordelijk is en welk resultaat telt. Tekst in documenten of antwoorden wordt nooit als opdracht gelezen.",
     "klaraauftrag.bedienhilfe.stoppen":
       "Afbreken stopt alle verdere stappen – wat al is opgeslagen blijft zichtbaar. Met „Grens corrigeren” laat je open stappen weg; uitbreiden kan alleen met een nieuwe opdracht.",
     "klaraauftrag.bedienhilfe.rueckgaengig":
-      "Ongedaan maken draait een aangemaakt concept (naar de prullenbak) of een bewerking terug. Openen kan niet worden teruggedraaid, omdat het niets verandert.",
+      "Ongedaan maken draait een aangemaakt concept (naar de prullenbak) of een bewerking terug. Openen kan niet worden teruggedraaid, omdat het niets verandert. Acties op taken (prioriteit, toewijzing, escalatie) draait Klara niet terug – dat staat dan bij de stap.",
     "klaraauftrag.bedienhilfe.sprechen":
       "„Dicteren” schrijft alleen in het invoerveld. „Opdracht inspreken” toont de opdracht als kaart – pas „Verzenden” voert hem uit.",
   },

@@ -30,6 +30,7 @@ import { useSyncExternalStore } from "react";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
 import {
+  type KlaraAufgabenaktion,
   type KlaraAuftrag,
   type KlaraAuftragErgebnis,
   type KlaraAuftragSchritt,
@@ -68,6 +69,100 @@ export interface GeplanterSchritt {
   ziel: KlaraAuftragZiel | null;
   /** Bei mehreren Treffern: zur Wahl, bevor etwas geschieht. */
   kandidaten: KlaraAuftragZiel[];
+  /**
+   * Nacharbeit 4: bei „Aufgabe bearbeiten“ die geklärte Aktion. `null`, solange sie fehlt — dann
+   * stehen die möglichen Aktionen (`aktionsoptionen`) bzw. Personen (`personen`) zur Wahl.
+   */
+  aufgabenaktion?: KlaraAufgabenaktion | null;
+  aktionsoptionen?: KlaraAufgabenaktion[];
+  personen?: { id: string; name: string }[];
+}
+
+/** Welche Aufgabenart ein Arbeitsort meint — dieselbe Zuordnung wie am Server und in „Meine Aufgaben“. */
+function aufgabenart(pfad: string | null): "pruefung" | "konflikt" | "luecke" | null {
+  if (!pfad) {
+    return null;
+  }
+  if (pfad.startsWith("/wissen/")) {
+    return "pruefung";
+  }
+  if (pfad.startsWith("/konflikte")) {
+    return "konflikt";
+  }
+  return pfad.startsWith("/risiko") ? "luecke" : null;
+}
+
+/** Die vorhandenen Aktionen des Fachwegs je Aufgabenart, die Klara ausführen kann. */
+function aktionenFuer(art: ReturnType<typeof aufgabenart>): KlaraAufgabenaktion[] {
+  if (art === "luecke") {
+    return [
+      { art: "prioritaet", wert: "hoch" },
+      { art: "prioritaet", wert: "mittel" },
+      { art: "prioritaet", wert: "niedrig" },
+      { art: "nur_oeffnen" },
+    ];
+  }
+  if (art === "konflikt") {
+    return [{ art: "eskalieren" }, { art: "nur_oeffnen" }];
+  }
+  return art === "pruefung" ? [{ art: "nur_oeffnen" }] : [];
+}
+
+/** Braucht dieser Schritt noch eine Angabe der Person, bevor etwas geschieht? */
+function brauchtKlaerung(s: GeplanterSchritt): boolean {
+  if (s.erkannt.ausSchritt === undefined && !s.ziel) {
+    return true;
+  }
+  return s.erkannt.aktion === "aufgabe_bearbeiten" && !s.aufgabenaktion;
+}
+
+/** Die Zeile über der Rückfrage: zum Ziel — die Rückfrage zur Aufgabe trägt ihren eigenen Satz. */
+function rueckfrageMeldung(geplant: readonly GeplanterSchritt[], t: TFunction): string | null {
+  return geplant.some((s) => s.erkannt.ausSchritt === undefined && !s.ziel)
+    ? t("klaraauftrag.rueckfrage")
+    : null;
+}
+
+/**
+ * Nacharbeit 4 (Ben): klärt die Aktion an einer Aufgabe, BEVOR etwas geschieht. Genannt und
+ * passend: übernehmen (beim Zuweisen die Person über das Personenverzeichnis auflösen). Nicht
+ * genannt: die Aktionen des Fachwegs zur Wahl — gibt es nur „öffnen“, ist das die Aktion.
+ */
+async function klaereAufgabe(
+  s: GeplanterSchritt,
+  t: TFunction,
+): Promise<GeplanterSchritt | { fehler: string }> {
+  if (s.erkannt.aktion !== "aufgabe_bearbeiten" || !s.ziel || s.aufgabenaktion) {
+    return s;
+  }
+  const moeglich = aktionenFuer(aufgabenart(s.ziel.pfad));
+  const genannt = s.erkannt.aufgabenaktion;
+  if (!genannt) {
+    if (moeglich.length === 1 && moeglich[0]?.art === "nur_oeffnen") {
+      return { ...s, aufgabenaktion: { art: "nur_oeffnen" }, aktionsoptionen: [] };
+    }
+    return { ...s, aufgabenaktion: null, aktionsoptionen: moeglich };
+  }
+  const passt =
+    genannt.art === "zuweisen"
+      ? aufgabenart(s.ziel.pfad) === "luecke"
+      : moeglich.some((m) => m.art === genannt.art);
+  if (!passt) {
+    return { fehler: t("klaraauftrag.aufgabenaktion.passtNicht", { titel: s.ziel.titel }) };
+  }
+  if (genannt.art === "prioritaet" || genannt.art === "eskalieren") {
+    return { ...s, aufgabenaktion: genannt, aktionsoptionen: [] };
+  }
+  const verzeichnis = await endpoints.directory.list();
+  const treffer = passende(verzeichnis, (p) => p.name, genannt.person).slice(0, MAX_KANDIDATEN);
+  if (treffer.length === 0) {
+    return { fehler: t("klaraauftrag.unbekanntePerson", { name: genannt.person }) };
+  }
+  if (treffer.length === 1) {
+    const p = treffer[0] as { id: string; name: string };
+    return { ...s, aufgabenaktion: { art: "zuweisen", personId: p.id, personName: p.name } };
+  }
+  return { ...s, aufgabenaktion: null, personen: treffer };
 }
 
 /** Was nur dieser Browser über einen Schritt weiss — der Server bleibt die Wahrheit über den Stand. */
@@ -461,6 +556,28 @@ async function klaere(lokalId: string, u: AuftragsUmgebung): Promise<void> {
   if (gen !== generation) {
     return;
   }
+  // Nacharbeit 4: die Aktion an einer Aufgabe klären (genannt, zur Wahl, Person auflösen).
+  for (let i = 0; i < geplant.length; i++) {
+    const s = geplant[i] as GeplanterSchritt;
+    try {
+      const r = await klaereAufgabe(s, u.t);
+      if ("fehler" in r) {
+        setze(lokalId, (x) => ({ ...x, geplant, phase: "fehler", meldung: r.fehler }));
+        return;
+      }
+      geplant[i] = r;
+    } catch (fehler) {
+      setze(lokalId, (x) => ({
+        ...x,
+        phase: "fehler",
+        meldung: u.t("klaraauftrag.fehler.klaeren", { grund: fehlerGrund(fehler, u.t) }),
+      }));
+      return;
+    }
+  }
+  if (gen !== generation) {
+    return;
+  }
   const unbekannt = geplant.filter(
     (s) => s.erkannt.ausSchritt === undefined && !s.ziel && s.kandidaten.length === 0,
   );
@@ -475,12 +592,52 @@ async function klaere(lokalId: string, u: AuftragsUmgebung): Promise<void> {
     }));
     return;
   }
-  const offen = geplant.some((s) => s.erkannt.ausSchritt === undefined && !s.ziel);
+  const offen = geplant.some(brauchtKlaerung);
   setze(lokalId, (x) => ({
     ...x,
     geplant,
     phase: offen ? "rueckfrage" : "pruefen",
-    meldung: offen ? u.t("klaraauftrag.rueckfrage") : null,
+    meldung: rueckfrageMeldung(geplant, u.t),
+  }));
+  if (!offen) {
+    await legeAnUndFuehreAus(lokalId, u);
+  }
+}
+
+/** Nach einer Antwort auf eine Rückfrage: weiter klären — oder, wenn alles geklärt ist, anlegen. */
+async function weiterNachRueckfrage(
+  lokalId: string,
+  geplantNeu: GeplanterSchritt[],
+  u: AuftragsUmgebung,
+): Promise<void> {
+  const gen = generation;
+  const geplant = [...geplantNeu];
+  for (let i = 0; i < geplant.length; i++) {
+    try {
+      const r = await klaereAufgabe(geplant[i] as GeplanterSchritt, u.t);
+      if (gen !== generation) {
+        return;
+      }
+      if ("fehler" in r) {
+        setze(lokalId, (x) => ({ ...x, geplant, phase: "fehler", meldung: r.fehler }));
+        return;
+      }
+      geplant[i] = r;
+    } catch (fehler) {
+      setze(lokalId, (x) => ({
+        ...x,
+        phase: "fehler",
+        meldung: u.t("klaraauftrag.fehler.klaeren", { grund: fehlerGrund(fehler, u.t) }),
+      }));
+      return;
+    }
+  }
+  const offen = geplant.some(brauchtKlaerung);
+  setze(lokalId, (x) => ({
+    ...x,
+    geplant,
+    phase: offen ? "rueckfrage" : "pruefen",
+    meldung: rueckfrageMeldung(geplant, u.t),
   }));
   if (!offen) {
     await legeAnUndFuehreAus(lokalId, u);
@@ -497,11 +654,49 @@ export function waehleZiel(lokalId: string, nr: number, index: number, u: Auftra
     const gewaehlt = s.nr === nr ? s.kandidaten[index] : undefined;
     return gewaehlt ? { ...s, ziel: gewaehlt, kandidaten: [] } : s;
   });
-  const offen = geplant.some((s) => s.erkannt.ausSchritt === undefined && !s.ziel);
-  setze(lokalId, (x) => ({ ...x, geplant, phase: offen ? "rueckfrage" : "pruefen" }));
-  if (!offen) {
-    void legeAnUndFuehreAus(lokalId, u);
+  void weiterNachRueckfrage(lokalId, geplant, u);
+}
+
+/** Nacharbeit 4: Rückfrage zur Aufgabe beantwortet — genau diese Aktion des Fachwegs. */
+export function waehleAufgabenaktion(
+  lokalId: string,
+  nr: number,
+  index: number,
+  u: AuftragsUmgebung,
+): void {
+  const a = hole(lokalId);
+  if (!a || a.phase !== "rueckfrage") {
+    return;
   }
+  const geplant = a.geplant.map((s) => {
+    const gewaehlt = s.nr === nr ? s.aktionsoptionen?.[index] : undefined;
+    return gewaehlt ? { ...s, aufgabenaktion: gewaehlt, aktionsoptionen: [] } : s;
+  });
+  void weiterNachRueckfrage(lokalId, geplant, u);
+}
+
+/** Nacharbeit 4: Rückfrage zur Person beantwortet — genau dieser Mensch aus dem Verzeichnis. */
+export function waehlePerson(
+  lokalId: string,
+  nr: number,
+  index: number,
+  u: AuftragsUmgebung,
+): void {
+  const a = hole(lokalId);
+  if (!a || a.phase !== "rueckfrage") {
+    return;
+  }
+  const geplant = a.geplant.map((s) => {
+    const p = s.nr === nr ? s.personen?.[index] : undefined;
+    return p
+      ? {
+          ...s,
+          aufgabenaktion: { art: "zuweisen" as const, personId: p.id, personName: p.name },
+          personen: [],
+        }
+      : s;
+  });
+  void weiterNachRueckfrage(lokalId, geplant, u);
 }
 
 /** Dieselbe Regel wie am Server: gleiche Art und Kennung, ein neuer Entwurf über seinen Titel. */
@@ -530,7 +725,33 @@ function zielText(s: GeplanterSchritt, t: TFunction): string {
       ? t("klaraauftrag.zielText.ergaenzen", { titel, text: s.erkannt.aenderung.text })
       : t("klaraauftrag.zielText.umbenennen", { titel, neu: s.erkannt.aenderung.titel });
   }
+  const aa = s.aufgabenaktion;
+  if (s.erkannt.aktion === "aufgabe_bearbeiten" && aa && aa.art !== "nur_oeffnen") {
+    return t(`klaraauftrag.zielText.aufgabe.${aa.art}`, { titel, ...aktionsWerte(aa, t) });
+  }
   return t(`klaraauftrag.zielText.${s.erkannt.aktion}`, { titel });
+}
+
+/** Die Werte einer Aufgabenaktion für Texte (Priorität in Worten, Name der Person). */
+function aktionsWerte(aa: KlaraAufgabenaktion, t: TFunction): { wert?: string; person?: string } {
+  if (aa.art === "prioritaet") {
+    return { wert: t(`klaraauftrag.prioritaet.${aa.wert}`) };
+  }
+  return aa.art === "zuweisen" ? { person: aa.personName } : {};
+}
+
+/** Die Bezeichnung einer Aufgabenaktion zur Wahl in der Rückfrage. */
+export function aufgabenaktionText(aa: KlaraAufgabenaktion, t: TFunction): string {
+  return t(`klaraauftrag.aufgabenaktion.${aa.art}`, aktionsWerte(aa, t));
+}
+
+/** Ergebnisanforderung je Schritt: eine ausgeführte Aufgabenaktion ist etwas anderes als Öffnen. */
+function ergebnisAnforderung(s: GeplanterSchritt, t: TFunction): string {
+  const aa = s.aufgabenaktion;
+  if (s.erkannt.aktion === "aufgabe_bearbeiten" && aa && aa.art !== "nur_oeffnen") {
+    return t("klaraauftrag.ergebnisAnforderung.aufgabenaktion");
+  }
+  return t(`klaraauftrag.ergebnisAnforderung.${s.erkannt.aktion}`);
 }
 
 function kuerzen(s: string, max: number): string {
@@ -570,7 +791,7 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
       erlaubteZiele: ziele,
       erlaubteQuellen: [...new Set(quellen)].slice(0, 10),
       ergebnis: kuerzen(
-        aktionen.map((x) => t(`klaraauftrag.ergebnisAnforderung.${x}`)).join(" · "),
+        [...new Set(a.geplant.map((s) => ergebnisAnforderung(s, t)))].join(" · "),
         600,
       ),
       geplanteSchritte: a.geplant.length,
@@ -581,6 +802,8 @@ async function legeAnUndFuehreAus(lokalId: string, u: AuftragsUmgebung): Promise
         ausSchritt: s.erkannt.ausSchritt === undefined ? null : s.erkannt.ausSchritt + 1,
         ...(s.erkannt.inhalt ? { inhalt: s.erkannt.inhalt } : {}),
         ...(s.erkannt.aenderung ? { aenderung: s.erkannt.aenderung } : {}),
+        // Nacharbeit 4: die geklärte Aktion an der Aufgabe — Teil der Grenze, nicht der Ausführung.
+        ...(s.aufgabenaktion ? { aufgabenaktion: s.aufgabenaktion } : {}),
       })),
     });
     if (gen !== generation) {
@@ -767,6 +990,12 @@ async function fuehreSchrittAus(
   // 2. Öffnen und Aufgabe: der Server hat Zielidentität und aktuelle Berechtigung bestätigt
   //    (`geprueft`). Erst jetzt wechselt der Bildschirm — und abgeschlossen wird nur dieses Ziel.
   const schritt = r.schritt;
+  // Nacharbeit 4 (Ben): gespeichert, aber das Nachlesen blieb aus — Kennung bekannt, Stand
+  // ungeklärt. „Erneut versuchen“ holt mit demselben Schlüssel nur das Nachlesen nach.
+  if (schritt.stand === "begonnen" && schritt.schreibwirkung && !schritt.geprueft) {
+    setzeLokal(lokalId, nr, { lage: "unklar", meldung: t("klaraauftrag.fehler.unbestaetigt") });
+    return "stopp";
+  }
   if (schritt.stand === "begonnen" && schritt.geprueft) {
     const offen = await oeffneBestaetigt(schritt.geprueft, u);
     if (gen !== generation) {
@@ -806,6 +1035,11 @@ async function fuehreAus(lokalId: string, u: AuftragsUmgebung, gen: number): Pro
     }
     // Abbrechen verhindert jeden WEITEREN Schritt — geprüft vor jedem Beginn, hier und am Server.
     if (a.abbruch || a.auftrag?.abgebrochenAm) {
+      // Schon gespeichert, nur das Nachlesen fehlt: das ist kein weiterer Schritt — nachlesen.
+      if (vorhanden?.stand === "begonnen" && vorhanden.schreibwirkung) {
+        await fuehreSchrittAus(lokalId, s.nr, u, gen);
+        continue;
+      }
       setzeLokal(lokalId, s.nr, { lage: "nicht_ausgefuehrt" });
       continue;
     }
@@ -839,7 +1073,45 @@ export function wiederhole(lokalId: string, u: AuftragsUmgebung): void {
   if (!a || a.phase !== "angehalten" || !a.auftrag) {
     return;
   }
+  if (a.geplant.length === 0) {
+    void liesUngeklaerteNach(lokalId, u);
+    return;
+  }
   void fuehreAus(lokalId, u, generation);
+}
+
+/**
+ * Nacharbeit 4: nach dem Neuladen kennt dieser Browser keinen Plan — ein ungeklärter Schritt
+ * (gespeichert, Nachlesen ausstehend) wird trotzdem am Server nachgelesen: derselbe Schlüssel, keine
+ * neue Schreibwirkung. Weitere Schritte beginnt das nicht.
+ */
+async function liesUngeklaerteNach(lokalId: string, u: AuftragsUmgebung): Promise<void> {
+  const gen = generation;
+  const a = hole(lokalId);
+  if (!a?.auftrag || !a.gespraechId) {
+    return;
+  }
+  for (const s of a.auftrag.schritte) {
+    if (s.stand !== "begonnen" || !s.schreibwirkung || s.geprueft) {
+      continue;
+    }
+    try {
+      const r = await klaraAuftragApi.fuehreAus(a.gespraechId, a.auftrag.id, s.schluessel, {
+        nr: s.nr,
+        auftragFassung: s.auftragFassung,
+      });
+      if (gen !== generation) {
+        return;
+      }
+      uebernimmAuftrag(lokalId, r.auftrag);
+    } catch (fehler) {
+      if (gen !== generation) {
+        return;
+      }
+      setze(lokalId, (x) => ({ ...x, meldung: fehlerGrund(fehler, u.t) }));
+      return;
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -874,7 +1146,11 @@ export async function brecheAuftragAb(lokalId: string, u: AuftragsUmgebung): Pro
           lokal[s.nr] = { ...(lokal[s.nr] ?? {}), lage: "nicht_ausgefuehrt" };
         }
       }
-      return { ...x, lokal, phase: "fertig" };
+      // Nacharbeit 4: ein gespeicherter Schritt, dessen Nachlesen aussteht, bleibt nachlesbar.
+      const wirkungOffen = (x.auftrag?.schritte ?? []).some(
+        (s) => s.stand === "begonnen" && s.schreibwirkung && !s.geprueft,
+      );
+      return { ...x, lokal, phase: wirkungOffen ? "angehalten" : "fertig" };
     });
   }
 }

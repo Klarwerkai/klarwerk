@@ -18,12 +18,14 @@
 //
 // Beim Öffnen (Objekt, Entwurf, Aufgabe) bestätigt der Server Zielidentität und aktuelle Berechtigung
 // (`geprueft`). Den Bildschirm wechselt der Browser; abschliessen darf er den Schritt nur mit diesem
-// bestätigten Ziel. „Aufgabe bearbeiten“ ÖFFNET die Aufgabe an ihrem Arbeitsort — welche Fachaktion
-// dort zu treffen ist, entscheidet die Person (offen benannt, keine stille Automatik).
+// bestätigten Ziel. Nacharbeit 4: „Aufgabe bearbeiten“ führt die im Plan GEKLÄRTE Fachaktion aus
+// (Priorität/Zuweisung an einer Lücke, Eskalation an einem Konflikt) und liest sie nach; „nur
+// öffnen“ bleibt der getrennte Öffnen-Weg.
 //
 // Rückgängig läuft ebenfalls hier: mit dem nachgelesenen Ergebnisstand als erwartetem Stand am
 // vorhandenen Lösch- bzw. Speicherweg. Wurde der Entwurf inzwischen geändert, bleibt er erhalten.
 import type {
+  KlaraAufgabenaktion,
   KlaraAuftrag,
   KlaraAuftragErgebnis,
   KlaraAuftragSchritt,
@@ -203,26 +205,48 @@ export class KlaraAusfuehrung {
         stand === "fehlgeschlagen" ? { fehlerCode: zusatz.code ?? "server" } : {},
       );
     const scheitert = (code: string): Promise<Ergebnis> => melde("fehlgeschlagen", { code });
+    // Nacharbeit 4 (Ben): die Schreibwirkung ist bekannt, das Nachlesen gelang (noch) nicht. Der
+    // Schritt bleibt „begonnen“ mit seiner Ergebniskennung (`schreibwirkung`) — ungeklärt, nicht
+    // gescheitert. Eine Wiederholung liest nur nach.
+    const merke = (wirkung: { art: "entwurf" | "aufgabe"; id: string; pfad: string }) =>
+      this.dienst.merkeSchreibwirkung(kontoId, gespraechId, auftragId, schluessel, wirkung);
+    const ungeklaert = async (): Promise<Ergebnis> => {
+      const jetzt = await this.dienst.auftrag(kontoId, gespraechId, auftragId);
+      const schritt = jetzt.schritte.find((s) => s.schluessel === schluessel);
+      if (!schritt) {
+        throw new KlaraGespraechFehler(404, "unbekannt", "Schritt nicht gefunden.");
+      }
+      return { auftrag: jetzt, schritt, wiederholt: false };
+    };
+    const bekannt = vorhanden?.schreibwirkung ?? null;
 
     if (!ziel) {
       return scheitert("vorschritt");
     }
 
     if (p.aktion === "entwurf_erstellen") {
-      const angelegt = await rufe("POST", "/api/drafts", {
-        title: ziel.titel,
-        ...(p.inhalt ? { statement: p.inhalt } : {}),
-        // Der Vorgangsschlüssel ist an Auftrag und Planschritt gebunden: eine Wiederholung legt
-        // keinen zweiten Entwurf an.
-        operationId: `klara-auftrag-${auftragId}-${p.nr}`,
-        expectedOwner: kontoId,
-      });
-      if ((angelegt.status !== 201 && angelegt.status !== 200) || !istEntwurf(angelegt.daten)) {
-        return scheitert(codeAus(angelegt.status));
+      let entwurfId = bekannt?.id ?? null;
+      if (!entwurfId) {
+        const angelegt = await rufe("POST", "/api/drafts", {
+          title: ziel.titel,
+          ...(p.inhalt ? { statement: p.inhalt } : {}),
+          // Der Vorgangsschlüssel ist an Auftrag und Planschritt gebunden: eine Wiederholung legt
+          // keinen zweiten Entwurf an.
+          operationId: `klara-auftrag-${auftragId}-${p.nr}`,
+          expectedOwner: kontoId,
+        });
+        if ((angelegt.status !== 201 && angelegt.status !== 200) || !istEntwurf(angelegt.daten)) {
+          return scheitert(codeAus(angelegt.status));
+        }
+        entwurfId = angelegt.daten.id;
+        await merke({ art: "entwurf", id: entwurfId, pfad: entwurfPfad(entwurfId) });
       }
-      const gelesen = await rufe("GET", `/api/drafts/${encodeURIComponent(angelegt.daten.id)}`);
+      const gelesen = await rufe("GET", `/api/drafts/${encodeURIComponent(entwurfId)}`);
+      if (gelesen.status === 404) {
+        return scheitert("nichtGefunden");
+      }
       if (gelesen.status !== 200 || !istEntwurf(gelesen.daten)) {
-        return scheitert("nichtNachgelesen");
+        return ungeklaert();
       }
       if ((gelesen.daten.payload.title ?? "") !== ziel.titel) {
         return scheitert("nichtNachgelesen");
@@ -244,33 +268,38 @@ export class KlaraAusfuehrung {
       // Der gebundene Stand ist der der GRENZE — nicht, was ein Browser jetzt behauptet.
       const gebunden =
         a.erlaubteZiele.find((z) => gleich(z, ziel as KlaraAuftragZiel))?.stand ?? ziel.stand;
-      const jetzt = await rufe("GET", `/api/drafts/${encodeURIComponent(id)}`);
-      if (jetzt.status !== 200 || !istEntwurf(jetzt.daten)) {
-        return scheitert(codeAus(jetzt.status));
-      }
-      const schonGeschrieben = Boolean(vorhanden?.vorher) && angewandt(jetzt.daten.payload, p);
-      if (!schonGeschrieben) {
-        if (!gebunden || jetzt.daten.updatedAt !== gebunden) {
-          return scheitert("versionGeaendert");
+      if (!bekannt) {
+        const jetzt = await rufe("GET", `/api/drafts/${encodeURIComponent(id)}`);
+        if (jetzt.status !== 200 || !istEntwurf(jetzt.daten)) {
+          return scheitert(codeAus(jetzt.status));
         }
-        await this.dienst.merkeVorher(kontoId, gespraechId, auftragId, schluessel, {
-          title: jetzt.daten.payload.title ?? "",
-          statement: jetzt.daten.payload.statement ?? "",
-        });
-        const geschrieben = await rufe("PUT", `/api/drafts/${encodeURIComponent(id)}`, {
-          ...anwenden(jetzt.daten.payload, p),
-          expectedUpdatedAt: gebunden,
-        });
-        if (geschrieben.status !== 200) {
-          return scheitert(codeAus(geschrieben.status));
+        const schonGeschrieben = Boolean(vorhanden?.vorher) && angewandt(jetzt.daten.payload, p);
+        if (!schonGeschrieben) {
+          if (!gebunden || jetzt.daten.updatedAt !== gebunden) {
+            return scheitert("versionGeaendert");
+          }
+          await this.dienst.merkeVorher(kontoId, gespraechId, auftragId, schluessel, {
+            title: jetzt.daten.payload.title ?? "",
+            statement: jetzt.daten.payload.statement ?? "",
+          });
+          const geschrieben = await rufe("PUT", `/api/drafts/${encodeURIComponent(id)}`, {
+            ...anwenden(jetzt.daten.payload, p),
+            expectedUpdatedAt: gebunden,
+          });
+          if (geschrieben.status !== 200) {
+            return scheitert(codeAus(geschrieben.status));
+          }
         }
+        await merke({ art: "entwurf", id, pfad: entwurfPfad(id) });
       }
       const gelesen = await rufe("GET", `/api/drafts/${encodeURIComponent(id)}`);
-      if (
-        gelesen.status !== 200 ||
-        !istEntwurf(gelesen.daten) ||
-        !angewandt(gelesen.daten.payload, p)
-      ) {
+      if (gelesen.status === 404) {
+        return scheitert("nichtGefunden");
+      }
+      if (gelesen.status !== 200 || !istEntwurf(gelesen.daten)) {
+        return ungeklaert();
+      }
+      if (!angewandt(gelesen.daten.payload, p)) {
         return scheitert("nichtNachgelesen");
       }
       return melde("gespeichert", {
@@ -285,7 +314,48 @@ export class KlaraAusfuehrung {
       });
     }
 
-    // Öffnen und Aufgabe: Zielidentität und aktuelle Berechtigung am Server bestätigen.
+    // Nacharbeit 4 (Ben): an einer verfügbaren Aufgabe die geklärte Fachaktion AUSFÜHREN — über den
+    // vorhandenen Weg mit den Rechten der Person — und das Ergebnis nachlesen. „Nur öffnen“ bleibt
+    // der getrennte Weg darunter.
+    const aufgabenaktion = p.aktion === "aufgabe_bearbeiten" ? (p.aufgabenaktion ?? null) : null;
+    if (aufgabenaktion && aufgabenaktion.art !== "nur_oeffnen") {
+      const id = ziel.id as string;
+      let pfad = bekannt?.pfad ?? ziel.pfad ?? "";
+      if (!bekannt) {
+        const verfuegbar = await this.bestaetige(ziel, rufe);
+        if ("code" in verfuegbar) {
+          return scheitert(verfuegbar.code);
+        }
+        pfad = verfuegbar.pfad;
+        const geschrieben =
+          aufgabenaktion.art === "eskalieren"
+            ? await rufe("POST", `/api/conflicts/${encodeURIComponent(id)}/escalate`)
+            : await rufe(
+                "PUT",
+                `/api/gaps/${encodeURIComponent(id)}`,
+                aufgabenaktion.art === "prioritaet"
+                  ? { priority: aufgabenaktion.wert }
+                  : { expertId: aufgabenaktion.personId },
+              );
+        if (geschrieben.status !== 200 && geschrieben.status !== 201) {
+          return scheitert(codeAus(geschrieben.status));
+        }
+        await merke({ art: "aufgabe", id, pfad });
+      }
+      const nachgelesen = await this.liesAufgabeNach(id, aufgabenaktion, rufe);
+      if (nachgelesen === "ungeklaert") {
+        return ungeklaert();
+      }
+      if (nachgelesen === "abweichend") {
+        return scheitert("nichtNachgelesen");
+      }
+      return melde("gespeichert", {
+        ergebnis: { art: "aufgabe", id, titel: ziel.titel, stand: nachgelesen, pfad },
+        // Eine Fachaktion an einer Aufgabe nimmt Klara nicht zurück — das steht als solches da.
+      });
+    }
+
+    // Öffnen und Aufgabe (nur öffnen): Zielidentität und aktuelle Berechtigung am Server bestätigen.
     const geprueft = await this.bestaetige(ziel, rufe);
     if ("code" in geprueft) {
       return scheitert(geprueft.code);
@@ -299,6 +369,39 @@ export class KlaraAusfuehrung {
       "server",
       { geprueft },
     );
+  }
+
+  /**
+   * Nacharbeit 4: liest die Wirkung einer Aufgabenaktion am vorhandenen Lesweg nach. Antwort: der
+   * nachgelesene Stand („prioritaet:hoch“, „zugewiesen:…“, „eskaliert“), `abweichend` oder
+   * `ungeklaert` (Lesen gelang nicht).
+   */
+  private async liesAufgabeNach(
+    id: string,
+    aktion: Exclude<KlaraAufgabenaktion, { art: "nur_oeffnen" }>,
+    rufe: KlaraRufe,
+  ): Promise<string> {
+    if (aktion.art === "eskalieren") {
+      const r = await rufe("GET", `/api/conflicts/${encodeURIComponent(id)}`);
+      if (r.status !== 200) {
+        return "ungeklaert";
+      }
+      return (r.daten as { status?: unknown }).status === "eskaliert" ? "eskaliert" : "abweichend";
+    }
+    const r = await rufe("GET", "/api/gaps");
+    if (r.status !== 200 || !Array.isArray(r.daten)) {
+      return "ungeklaert";
+    }
+    const g = r.daten.find((x) => x?.id === id) as
+      | { priority?: unknown; assignee?: unknown }
+      | undefined;
+    if (!g) {
+      return "abweichend";
+    }
+    if (aktion.art === "prioritaet") {
+      return g.priority === aktion.wert ? `prioritaet:${aktion.wert}` : "abweichend";
+    }
+    return g.assignee === aktion.personId ? `zugewiesen:${aktion.personName}` : "abweichend";
   }
 
   private async bestaetige(

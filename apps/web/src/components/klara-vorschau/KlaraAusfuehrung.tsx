@@ -12,6 +12,7 @@
 //   · ABBRECHEN (keine weiteren Schritte) und RÜCKGÄNGIG (eine gespeicherte Änderung zurück) als zwei
 //     getrennte Knöpfe; nicht Rücknehmbares steht als solches da.
 // Kein Text dieser Karte wird als Handlung gelesen.
+import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -24,6 +25,7 @@ import {
   type Ausfuehrung,
   type GeplanterSchritt,
   type LokalerSchritt,
+  aufgabenaktionText,
   brecheAuftragAb,
   korrigiereAuftrag,
   nimmZurueck,
@@ -31,6 +33,8 @@ import {
   schliesseAusfuehrung,
   serverSchritt,
   useAusfuehrungen,
+  waehleAufgabenaktion,
+  waehlePerson,
   waehleZiel,
   wiederhole,
 } from "./auftrag";
@@ -82,10 +86,29 @@ function zeilenStand(z: Zeile): string {
   if (z.lokal?.lage === "unklar") {
     return "unklar";
   }
+  // Nacharbeit 4: gespeichert, Nachlesen ausstehend — ungeklärt, auch nach dem Neuladen.
+  if (z.server?.stand === "begonnen" && z.server.schreibwirkung && !z.server.geprueft) {
+    return "unklar";
+  }
   if (z.server) {
     return z.server.stand;
   }
   return z.lokal?.lage ?? "geplant";
+}
+
+/** Der nachgelesene Stand einer Aufgabenaktion in Worten („prioritaet:hoch“ → „Priorität hoch“). */
+function nachgelesenText(stand: string | null, t: TFunction): string {
+  const roh = stand ?? "";
+  const trenner = roh.indexOf(":");
+  const art = trenner < 0 ? roh : roh.slice(0, trenner);
+  const wert = trenner < 0 ? "" : roh.slice(trenner + 1);
+  if (art === "prioritaet") {
+    return t("klaraauftrag.nachgelesen.prioritaet", { wert: t(`klaraauftrag.prioritaet.${wert}`) });
+  }
+  if (art === "zugewiesen") {
+    return t("klaraauftrag.nachgelesen.zugewiesen", { person: wert });
+  }
+  return art === "eskaliert" ? t("klaraauftrag.nachgelesen.eskaliert") : (stand ?? "");
 }
 
 export function KlaraAusfuehrungen({
@@ -125,7 +148,11 @@ function AusfuehrungKarte({
   const geschehen = zeilen.filter(
     (z) => z.server || z.lokal?.lage === "laeuft" || z.lokal?.lage === "unklar",
   ).length;
-  const unklar = zeilen.some((z) => z.lokal?.lage === "unklar");
+  const unklar = zeilen.some((z) => zeilenStand(z) === "unklar");
+  // Gespeichert, Nachlesen ausstehend: nachlesen bleibt auch nach Abbrechen möglich (kein neuer Schritt).
+  const wirkungOffen = zeilen.some(
+    (z) => z.server?.stand === "begonnen" && z.server.schreibwirkung && !z.server.geprueft,
+  );
   const zeit = (iso: string): string =>
     new Date(iso).toLocaleTimeString(i18n.language, {
       hour: "2-digit",
@@ -289,6 +316,56 @@ function AusfuehrungKarte({
               </fieldset>
             ))
         : null}
+      {/* Nacharbeit 4: Rückfrage zur Aufgabe — welche Aktion bzw. welche Person, BEVOR etwas geschieht. */}
+      {a.phase === "rueckfrage"
+        ? a.geplant
+            .filter((s) => (s.aktionsoptionen?.length ?? 0) > 0 || (s.personen?.length ?? 0) > 1)
+            .map((s) => {
+              const titel = s.ziel?.titel ?? s.erkannt.name;
+              const personen = s.personen ?? [];
+              return (
+                <fieldset
+                  key={`aufgabe-${s.nr}`}
+                  data-testid="klara-ausfuehrung-rueckfrage-aufgabe"
+                  data-nr={s.nr}
+                  className="mt-1.5 rounded-btn border border-hairline px-2 py-1.5"
+                >
+                  <legend className="px-1 text-[11.5px] text-text">
+                    {personen.length > 1
+                      ? t("klaraauftrag.rueckfragePerson", { titel })
+                      : t("klaraauftrag.rueckfrageAktion", { titel })}
+                  </legend>
+                  <div className="flex flex-wrap gap-1">
+                    {personen.length > 1
+                      ? personen.map((p, i) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            data-testid="klara-ausfuehrung-person-option"
+                            data-id={p.id}
+                            onClick={() => waehlePerson(a.lokalId, s.nr, i, umgebung())}
+                            className={KNOPF}
+                          >
+                            {p.name}
+                          </button>
+                        ))
+                      : (s.aktionsoptionen ?? []).map((o, i) => (
+                          <button
+                            key={JSON.stringify(o)}
+                            type="button"
+                            data-testid="klara-ausfuehrung-aktion-option"
+                            data-art={o.art}
+                            onClick={() => waehleAufgabenaktion(a.lokalId, s.nr, i, umgebung())}
+                            className={KNOPF}
+                          >
+                            {aufgabenaktionText(o, t)}
+                          </button>
+                        ))}
+                  </div>
+                </fieldset>
+              );
+            })
+        : null}
 
       {zeilen.length > 0 && a.phase !== "unbekannt" && a.phase !== "rueckfrage" ? (
         <ol className="mt-1.5 space-y-1">
@@ -306,10 +383,21 @@ function AusfuehrungKarte({
                   : s.grund
                 : z.lokal?.meldung;
             // Öffnen bleibt Öffnen: ein abgeschlossener Öffnen-/Aufgabenschritt heisst „geöffnet“.
-            const standText =
-              s?.stand === "abgeschlossen" && UNWIDERRUFLICH.includes(s.aktion)
+            // Nacharbeit 4: eine ausgeführte Aufgabenaktion zeigt, was am Server nachgelesen wurde.
+            const aufgabeAusgefuehrt =
+              s?.stand === "gespeichert" && s.aktion === "aufgabe_bearbeiten";
+            const standText = aufgabeAusgefuehrt
+              ? t("klaraauftrag.schrittStand.ausgefuehrt", {
+                  stand: nachgelesenText(s.ergebnis?.stand ?? null, t),
+                })
+              : s?.stand === "abgeschlossen" && UNWIDERRUFLICH.includes(s.aktion)
                 ? t(`klaraauftrag.schrittStand.geoeffnet.${s.aktion}`)
                 : t(`klaraauftrag.schrittStand.${sichtbar}`);
+            // Ungeklärt, aber die Kennung des Gespeicherten ist bekannt: der Weg dorthin bleibt da.
+            const bekannteWirkung =
+              sichtbar === "unklar" && s?.schreibwirkung && !ergebnisOffen
+                ? s.schreibwirkung
+                : null;
             return (
               <li
                 key={z.nr}
@@ -350,6 +438,16 @@ function AusfuehrungKarte({
                       {t("klaraauftrag.zumErgebnis", { titel: s.ergebnis.titel })}
                     </Link>
                   ) : null}
+                  {bekannteWirkung ? (
+                    <Link
+                      to={internerPfad(bekannteWirkung.pfad, HOME_ROUTE)}
+                      data-testid="klara-ausfuehrung-schritt-wirkung"
+                      data-id={bekannteWirkung.id}
+                      className={VERWEIS}
+                    >
+                      {t("klaraauftrag.wirkungBekannt")}
+                    </Link>
+                  ) : null}
                 </div>
                 {meldung ? (
                   <p
@@ -368,6 +466,14 @@ function AusfuehrungKarte({
                     className="mt-0.5 text-[11px] text-muted-2"
                   >
                     {t("klaraauftrag.endgueltig")}
+                  </p>
+                ) : null}
+                {aufgabeAusgefuehrt ? (
+                  <p
+                    data-testid="klara-ausfuehrung-schritt-nicht-ruecknehmbar"
+                    className="mt-0.5 text-[11px] text-muted-2"
+                  >
+                    {t("klaraauftrag.nichtRuecknehmbar.aufgabe")}
                   </p>
                 ) : null}
                 {s?.stand === "zurueckgenommen" ? (
@@ -503,7 +609,7 @@ function AusfuehrungKarte({
             {t("klaraauftrag.knopf.abbrechen")}
           </button>
         ) : null}
-        {a.phase === "angehalten" && unklar && !a.abbruch ? (
+        {a.phase === "angehalten" && unklar && (!a.abbruch || wirkungOffen) ? (
           <button
             type="button"
             data-testid="klara-ausfuehrung-erneut"

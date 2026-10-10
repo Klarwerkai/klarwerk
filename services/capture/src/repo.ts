@@ -94,6 +94,21 @@ export interface DraftRepo {
    */
   delete(id: string, geloeschtVon?: string, zeitpunkt?: string): Promise<void>;
   /**
+   * produkt:20261008:klara-aktionen (Nacharbeit 4) — WEICH LÖSCHEN NUR AM ERWARTETEN STAND.
+   *
+   * Dieselbe Unteilbarkeit wie `updateWennStand`: Standvergleich und Papierkorbvermerk in EINEM
+   * Schritt (Speicherablage synchron, PostgreSQL in einer `UPDATE`-Anweisung). `false`: der Entwurf
+   * fehlt, liegt schon im Papierkorb oder trägt einen anderen Stand — dann ist nichts geschehen.
+   * Wahlweise, damit vorhandene Ablagen (Testablagen) unverändert gültig bleiben; der Dienst lehnt
+   * einen Standvergleich ohne diese Methode ab, statt ihn nicht-unteilbar nachzubauen.
+   */
+  deleteWennStand?(
+    id: string,
+    erwarteterStand: string,
+    geloeschtVon?: string,
+    zeitpunkt?: string,
+  ): Promise<boolean>;
+  /**
    * JOB 3668 — DIE PAPIERKORB-SICHT: NUR das Gelöschte, jüngste Löschung zuerst.
    *
    * Dieselbe Reihenfolge wie `KoService.trashed` (`knowledge-object/src/service.ts:3487`) und
@@ -359,6 +374,26 @@ export class InMemoryDraftRepo implements DraftRepo {
     };
     this.drafts.set(id, vermerk);
     return Promise.resolve();
+  }
+
+  // Klara 05 (Nacharbeit 4): geprüft und vermerkt ohne `await` dazwischen — wie `updateWennStand`.
+  deleteWennStand(
+    id: string,
+    erwarteterStand: string,
+    geloeschtVon?: string,
+    zeitpunkt?: string,
+  ): Promise<boolean> {
+    const draft = this.drafts.get(id);
+    if (!draft || istGetrasht(draft) || draft.updatedAt !== erwarteterStand) {
+      return Promise.resolve(false);
+    }
+    const vermerk: EntwurfImPapierkorb = {
+      ...draft,
+      deletedAt: zeitpunkt ?? new Date().toISOString(),
+      ...(geloeschtVon === undefined ? {} : { deletedBy: geloeschtVon }),
+    };
+    this.drafts.set(id, vermerk);
+    return Promise.resolve(true);
   }
 
   listTrashed(fuerAutor?: string): Promise<EntwurfImPapierkorb[]> {

@@ -933,8 +933,19 @@ describe("A8 · K1/K2/K5 — der Browser behauptet keine Wirkung; der Server fü
       erlaubteZiele: [weg, echt],
       geplanteSchritte: 2,
       plan: [
-        { aktion: "aufgabe_bearbeiten", ziel: weg, ausSchritt: null },
-        { aktion: "aufgabe_bearbeiten", ziel: echt, ausSchritt: null },
+        // Nacharbeit 4: jede Aufgabe trägt ihre geklärte Aktion — hier ausdrücklich „nur öffnen“.
+        {
+          aktion: "aufgabe_bearbeiten",
+          ziel: weg,
+          ausSchritt: null,
+          aufgabenaktion: { art: "nur_oeffnen" },
+        },
+        {
+          aktion: "aufgabe_bearbeiten",
+          ziel: echt,
+          ausSchritt: null,
+          aufgabenaktion: { art: "nur_oeffnen" },
+        },
       ],
     });
     const nichtDa = (await fuehreAus(ada.token, gid, a.id, "s-1", 1)).schritt;

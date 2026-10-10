@@ -1361,7 +1361,9 @@ const INVENTAR: readonly string[] = [
   // gestartet). Die Zahl in K5 ist hier bewusst nicht angefasst: nach Quelleninspektion fehlen im
   // Inventar des Basisstands bereits die Verzeichnisse von Klara 01–04 (`tests/klara-basis/`,
   // `klara-kontext/`, `klara-sprache/`, `klara-vorschau/`, `klara-vorschlaege/`, `klara-produkt/`);
-  // das ist ein Befund am Bestand, kein Teil dieses Auftrags.
+  // das ist ein Befund am Bestand, kein Teil dieses Auftrags. Nacharbeit 4: eine vierte Datei
+  // (`aufgabenaktion-und-nachlesen.test.ts`) nach derselben Pfadregel.
+  "tests/klara-aktionen/aufgabenaktion-und-nachlesen.test.ts",
   "tests/klara-aktionen/auftrag-am-server.test.tsx",
   "tests/klara-aktionen/auftragsgrenze-am-server.test.ts",
   "tests/klara-aktionen/erkennung.test.ts",

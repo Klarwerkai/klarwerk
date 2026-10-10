@@ -57,6 +57,8 @@ export interface KlaraAuftragSchritt {
   fehlerCode?: string | null;
   /** Nacharbeit 2: das am Server bestätigte Ziel eines Öffnens. */
   geprueft?: KlaraAuftragErgebnis | null;
+  /** Nacharbeit 4: bestätigte Schreibwirkung, deren Nachlesen noch aussteht (Schritt ungeklärt). */
+  schreibwirkung?: { art: "entwurf" | "aufgabe"; id: string; pfad: string } | null;
   begonnenAm: string;
   geaendertAm: string;
 }
@@ -68,7 +70,16 @@ export interface KlaraPlanSchritt {
   ausSchritt: number | null;
   inhalt?: string;
   aenderung?: { art: "ergaenzen"; text: string } | { art: "umbenennen"; titel: string };
+  /** Nacharbeit 4: bei `aufgabe_bearbeiten` die geklärte Aktion (Pflicht). */
+  aufgabenaktion?: KlaraAufgabenaktion;
 }
+
+/** Nacharbeit 4: Spiegel von `KlaraAufgabenaktion` in `services/app/src/klara-auftrag.ts`. */
+export type KlaraAufgabenaktion =
+  | { art: "nur_oeffnen" }
+  | { art: "prioritaet"; wert: "hoch" | "mittel" | "niedrig" }
+  | { art: "zuweisen"; personId: string; personName: string }
+  | { art: "eskalieren" };
 
 export interface KlaraAuftragGrenze {
   fassung: number;

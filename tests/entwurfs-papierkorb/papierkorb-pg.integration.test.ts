@@ -279,4 +279,34 @@ describe("JOB 3668 · Entwurfs-Papierkorb gegen echtes PostgreSQL", () => {
     expect((await r.listByAuthor("anna")).map((d) => d.id)).toEqual(["d-1"]);
     expect((await r.list())[0]?.payload.pendingSources?.[0]?.objectId).toBe("obj-1");
   });
+
+  // produkt:20261008:klara-aktionen · Nacharbeit 4: Löschen mit erwartetem Stand in EINER Anweisung.
+  it("P9 · Löschen nur beim erwarteten Stand: anderer Stand ⇒ nichts geändert, gleicher ⇒ Papierkorb", async (ctx) => {
+    if (!verfuegbar) {
+      ctx.skip();
+      return;
+    }
+    await leeren();
+    const r = repo();
+    await r.insert(entwurf("d-1"));
+    // Inzwischen weiter bearbeitet: der Stand der Rücknahme ist veraltet.
+    await r.update(entwurf("d-1", { updatedAt: "2026-09-01T10:00:00.000Z" }));
+    expect(await r.deleteWennStand("d-1", "2026-09-01T09:00:00.000Z", "klara")).toBe(false);
+    expect((await r.findById("d-1"))?.updatedAt).toBe("2026-09-01T10:00:00.000Z");
+    expect(await r.findTrashed("d-1")).toBeUndefined();
+
+    expect(
+      await r.deleteWennStand(
+        "d-1",
+        "2026-09-01T10:00:00.000Z",
+        "klara",
+        "2026-09-12T07:00:00.000Z",
+      ),
+    ).toBe(true);
+    expect(await r.findById("d-1")).toBeUndefined();
+    expect((await r.findTrashed("d-1"))?.deletedBy).toBe("klara");
+    // Schon im Papierkorb: kein zweiter Vermerk.
+    expect(await r.deleteWennStand("d-1", "2026-09-01T10:00:00.000Z", "bodo")).toBe(false);
+    expect((await r.findTrashed("d-1"))?.deletedBy).toBe("klara");
+  });
 });

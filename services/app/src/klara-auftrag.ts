@@ -105,6 +105,16 @@ export interface KlaraAuftragSchritt {
   readonly geprueft?: KlaraAuftragErgebnis | null;
   /** Nacharbeit 2: beim Bearbeiten die Felder vor der Änderung, vom Server gelesen (Rückgängig). */
   readonly vorher?: { readonly title: string; readonly statement: string } | null;
+  /**
+   * Nacharbeit 4 (Ben): die BEKANNTE Schreibwirkung — der vorhandene Weg hat das Speichern bestätigt
+   * (Kennung des Entwurfs), das Nachlesen steht aber noch aus. Der Schritt bleibt „begonnen“ und
+   * gilt als ungeklärt; eine Wiederholung liest nur nach und schreibt nicht erneut.
+   */
+  readonly schreibwirkung?: {
+    readonly art: "entwurf" | "aufgabe";
+    readonly id: string;
+    readonly pfad: string;
+  } | null;
   readonly begonnenAm: string;
   readonly geaendertAm: string;
 }
@@ -112,6 +122,48 @@ export interface KlaraAuftragSchritt {
 export type KlaraAenderung =
   | { readonly art: "ergaenzen"; readonly text: string }
   | { readonly art: "umbenennen"; readonly titel: string };
+
+/**
+ * Nacharbeit 4 (Ben): was Klara an einer verfügbaren Aufgabe TUT — jeweils eine vorhandene Aktion
+ * ihres Fachwegs. Lücke: Priorität setzen (`PUT /api/gaps/:id`) oder zuweisen (ebenda, `expertId`);
+ * Konflikt: eskalieren (`POST /api/conflicts/:id/escalate`). `nur_oeffnen`: ausdrücklich nur öffnen.
+ * Fehlt die Angabe, klärt Klara sie VOR dem Auftrag; ohne sie wird kein Plan angenommen.
+ */
+export type KlaraAufgabenaktion =
+  | { readonly art: "nur_oeffnen" }
+  | { readonly art: "prioritaet"; readonly wert: "hoch" | "mittel" | "niedrig" }
+  | { readonly art: "zuweisen"; readonly personId: string; readonly personName: string }
+  | { readonly art: "eskalieren" };
+
+/** Welche Aufgabenart ein Arbeitsort meint — dieselbe Zuordnung wie „Meine Aufgaben“. */
+export function aufgabenart(pfad: string | null): "pruefung" | "konflikt" | "luecke" | null {
+  if (!pfad) {
+    return null;
+  }
+  if (pfad.startsWith("/wissen/")) {
+    return "pruefung";
+  }
+  if (pfad.startsWith("/konflikte")) {
+    return "konflikt";
+  }
+  if (pfad.startsWith("/risiko")) {
+    return "luecke";
+  }
+  return null;
+}
+
+/** Die Aktionen, die der vorhandene Fachweg je Aufgabenart anbietet (ohne Prüfvotum: s. Doku). */
+export function erlaubteAufgabenaktionen(
+  art: ReturnType<typeof aufgabenart>,
+): readonly KlaraAufgabenaktion["art"][] {
+  if (art === "luecke") {
+    return ["prioritaet", "zuweisen", "nur_oeffnen"];
+  }
+  if (art === "konflikt") {
+    return ["eskalieren", "nur_oeffnen"];
+  }
+  return art === "pruefung" ? ["nur_oeffnen"] : [];
+}
 
 /**
  * Nacharbeit 2 (Ben): der PLAN eines Auftrags — je Schritt Aktion, Ziel und Inhalt. Der Server führt
@@ -125,6 +177,8 @@ export interface KlaraPlanSchritt {
   readonly ausSchritt: number | null;
   readonly inhalt: string | null;
   readonly aenderung: KlaraAenderung | null;
+  /** Nacharbeit 4: nur bei `aufgabe_bearbeiten` — die geklärte Aktion an der Aufgabe. */
+  readonly aufgabenaktion?: KlaraAufgabenaktion | null;
 }
 
 /** Eine Fassung der Grenze. Die aktuelle steht am Auftrag selbst, frühere in `fassungen`. */
@@ -485,8 +539,40 @@ function pruefePlan(
       aktion === "entwurf_erstellen" ? wahlweiseText(o.inhalt, 2_000, `${feld}.inhalt`) : null;
     const aenderung =
       aktion === "entwurf_bearbeiten" ? pruefeAenderung(o.aenderung, `${feld}.aenderung`) : null;
-    return { nr, aktion, ziel, ausSchritt, inhalt, aenderung };
+    const aufgabenaktion =
+      aktion === "aufgabe_bearbeiten"
+        ? pruefeAufgabenaktion(o.aufgabenaktion, ziel?.pfad ?? null, `${feld}.aufgabenaktion`)
+        : null;
+    return { nr, aktion, ziel, ausSchritt, inhalt, aenderung, aufgabenaktion };
   });
+}
+
+/** Nacharbeit 4: die Aktion muss angegeben sein und zur Aufgabenart passen. */
+function pruefeAufgabenaktion(
+  roh: unknown,
+  pfad: string | null,
+  feld: string,
+): KlaraAufgabenaktion {
+  const o = objekt(roh, feld);
+  const art = wahl(
+    o.art,
+    ["nur_oeffnen", "prioritaet", "zuweisen", "eskalieren"] as const,
+    `${feld}.art`,
+  );
+  if (!erlaubteAufgabenaktionen(aufgabenart(pfad)).includes(art)) {
+    throw eingabeFehler(`${feld}: diese Aktion bietet der Fachweg dieser Aufgabe nicht an.`);
+  }
+  if (art === "prioritaet") {
+    return { art, wert: wahl(o.wert, ["hoch", "mittel", "niedrig"] as const, `${feld}.wert`) };
+  }
+  if (art === "zuweisen") {
+    return {
+      art,
+      personId: text(o.personId, 200, `${feld}.personId`),
+      personName: text(o.personName, 200, `${feld}.personName`),
+    };
+  }
+  return { art };
 }
 
 export function neuerAuftrag(
@@ -840,6 +926,15 @@ export function setzeSchritt(
         "Diesen Schritt schliesst nur die Ausführung am Server ab.",
       );
     }
+    // Nacharbeit 4: eine bekannte Schreibwirkung bleibt stehen — der Browser macht aus einem
+    // ungeklärten Nachlesen kein „gescheitert“; das klärt nur die Wiederholung am Server.
+    if (stand === "fehlgeschlagen" && vorhanden.schreibwirkung) {
+      throw new KlaraAuftragFehler(
+        409,
+        "nur_server",
+        "Die Wirkung dieses Schritts ist bekannt, ihr Nachlesen steht aus — das klärt nur der Server.",
+      );
+    }
     if (stand === "abgeschlossen" && !vorhanden.geprueft) {
       throw new KlaraAuftragFehler(
         409,
@@ -901,6 +996,22 @@ export function merkeVorher(
     ...a,
     schritte: a.schritte.map((s) =>
       s.schluessel === schluessel ? { ...s, vorher, geaendertAm: jetzt } : s,
+    ),
+    geaendertAm: jetzt,
+  };
+}
+
+/** Nacharbeit 4: die bestätigte, aber noch nicht nachgelesene Schreibwirkung am Schritt festhalten. */
+export function merkeSchreibwirkung(
+  a: KlaraAuftrag,
+  schluessel: string,
+  schreibwirkung: { art: "entwurf" | "aufgabe"; id: string; pfad: string },
+  jetzt: string,
+): KlaraAuftrag {
+  return {
+    ...a,
+    schritte: a.schritte.map((s) =>
+      s.schluessel === schluessel ? { ...s, schreibwirkung, geaendertAm: jetzt } : s,
     ),
     geaendertAm: jetzt,
   };

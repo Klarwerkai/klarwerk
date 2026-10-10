@@ -33,6 +33,15 @@ export type Zielsuche = "wissensobjekt" | "entwurf" | "aufgabe" | "beliebig" | "
 
 export type Aenderung = { art: "ergaenzen"; text: string } | { art: "umbenennen"; titel: string };
 
+/**
+ * Nacharbeit 4: was an einer Aufgabe getan werden soll, wie die Person es sagte. Die Person wird
+ * beim Zuweisen noch über das Personenverzeichnis aufgelöst (mehrdeutig: Rückfrage).
+ */
+export type ErkannteAufgabenaktion =
+  | { art: "prioritaet"; wert: "hoch" | "mittel" | "niedrig" }
+  | { art: "zuweisen"; person: string }
+  | { art: "eskalieren" };
+
 export interface ErkannterSchritt {
   aktion: KlaraAktion;
   suche: Zielsuche;
@@ -44,6 +53,8 @@ export interface ErkannterSchritt {
   aenderung?: Aenderung;
   /** Öffnet das Ergebnis des Schritts mit diesem Index (0-basiert) desselben Auftrags. */
   ausSchritt?: number;
+  /** Nacharbeit 4: nur bei `aufgabe_bearbeiten` — die genannte Aktion; fehlt sie, fragt Klara. */
+  aufgabenaktion?: ErkannteAufgabenaktion;
 }
 
 export interface ErkannterAuftrag {
@@ -229,6 +240,68 @@ function bearbeiten(s: string): ErkannterAuftrag | null {
   return null;
 }
 
+const PRIORITAET = [
+  /^(?:setze|setz)\s+(?:die\s+)?priorit(?:ä|ae)t\s+(?:der|von)\s+(?:der\s+)?aufgabe\s+(.+?)\s+auf\s+(hoch|mittel|niedrig)$/iu,
+  /^set\s+(?:the\s+)?priority\s+of\s+(?:the\s+)?task\s+(.+?)\s+to\s+(high|medium|low)$/iu,
+];
+const PRIORITAET_WERT: Record<string, "hoch" | "mittel" | "niedrig"> = {
+  hoch: "hoch",
+  mittel: "mittel",
+  niedrig: "niedrig",
+  high: "hoch",
+  medium: "mittel",
+  low: "niedrig",
+};
+const ZUWEISEN_DE = /^(?:weise|weis)\s+(?:die\s+)?aufgabe\s+(.+)\s+zu$/iu;
+const ZUWEISEN_EN = /^assign\s+(?:the\s+)?task\s+(.+?)\s+to\s+(.+)$/iu;
+const ESKALIEREN = [
+  /^(?:eskaliere|eskalier)\s+(?:die\s+)?aufgabe\s+(.+)$/iu,
+  /^escalate\s+(?:the\s+)?task\s+(.+)$/iu,
+];
+
+/** Nacharbeit 4: eine genannte Aktion an einer Aufgabe (Priorität, zuweisen, eskalieren). */
+function aufgabenaktion(s: string): ErkannterAuftrag | null {
+  const schritt = (n: string | null, a: ErkannteAufgabenaktion): ErkannterAuftrag | null =>
+    n
+      ? {
+          schritte: [
+            { aktion: "aufgabe_bearbeiten", suche: "aufgabe", name: n, aufgabenaktion: a },
+          ],
+        }
+      : null;
+  for (const muster of PRIORITAET) {
+    const m = muster.exec(s);
+    const wert = PRIORITAET_WERT[(m?.[2] ?? "").toLowerCase()];
+    if (m && wert) {
+      return schritt(name(m[1] ?? ""), { art: "prioritaet", wert });
+    }
+  }
+  const de = ZUWEISEN_DE.exec(s);
+  if (de) {
+    // „Weise die Aufgabe „X“ (an) Anna Kramer zu“ — der Aufgabenname steht in Anführungszeichen.
+    const innen = de[1] ?? "";
+    const aufgabe = zitate(innen)[0];
+    if (!aufgabe) {
+      return null;
+    }
+    const nach = innen.slice(innen.indexOf(aufgabe) + aufgabe.length + 1);
+    const person = name(nach.replace(/^\s*(?:an\s+)/iu, ""));
+    return person ? schritt(aufgabe, { art: "zuweisen", person }) : null;
+  }
+  const en = ZUWEISEN_EN.exec(s);
+  if (en) {
+    const person = name(en[2] ?? "");
+    return person ? schritt(name(en[1] ?? ""), { art: "zuweisen", person }) : null;
+  }
+  for (const muster of ESKALIEREN) {
+    const m = muster.exec(s);
+    if (m) {
+      return schritt(name(m[1] ?? ""), { art: "eskalieren" });
+    }
+  }
+  return null;
+}
+
 function aufgabe(s: string): ErkannterAuftrag | null {
   for (const muster of AUFGABE) {
     const m = muster.exec(s);
@@ -269,7 +342,7 @@ export function erkenneAuftrag(text: string): ErkannterAuftrag | null {
     return null;
   }
   const s = bereinige(roh);
-  return anlegen(s) ?? bearbeiten(s) ?? aufgabe(s) ?? oeffnen(s);
+  return anlegen(s) ?? bearbeiten(s) ?? aufgabenaktion(s) ?? aufgabe(s) ?? oeffnen(s);
 }
 
 /** Kurzform für die Oberfläche: ist dieser Text ein ausführbarer Auftrag? */

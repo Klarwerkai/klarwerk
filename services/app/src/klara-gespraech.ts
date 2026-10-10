@@ -13,6 +13,7 @@ import {
   type KlaraServerZusatz,
   brecheAb,
   korrigiere,
+  merkeSchreibwirkung,
   merkeVorher,
   mitNeuemAuftrag,
   neuerAuftrag,
@@ -901,6 +902,30 @@ export class KlaraGespraechDienst {
         KlaraGespraechDienst.ersetzeAuftrag(
           alt,
           merkeVorher(KlaraGespraechDienst.auftragIn(alt, auftragId), schluessel, vorher, jetzt),
+        ),
+      );
+      return KlaraGespraechDienst.auftragIn(g, auftragId);
+    });
+  }
+
+  /** Nacharbeit 4: bestätigte Schreibwirkung festhalten, bevor nachgelesen wird. */
+  merkeSchreibwirkung(
+    kontoId: string,
+    id: string,
+    auftragId: string,
+    schluessel: string,
+    schreibwirkung: { art: "entwurf" | "aufgabe"; id: string; pfad: string },
+  ): Promise<KlaraAuftrag> {
+    return this.mitGrenze(async () => {
+      const g = await this.aendere(kontoId, id, (alt, jetzt) =>
+        KlaraGespraechDienst.ersetzeAuftrag(
+          alt,
+          merkeSchreibwirkung(
+            KlaraGespraechDienst.auftragIn(alt, auftragId),
+            schluessel,
+            schreibwirkung,
+            jetzt,
+          ),
         ),
       );
       return KlaraGespraechDienst.auftragIn(g, auftragId);

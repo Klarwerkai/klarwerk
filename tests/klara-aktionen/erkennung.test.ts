@@ -99,6 +99,31 @@ describe("E1 · K1 — die vier vorhandenen Aktionen, DE und EN", () => {
     );
   });
 
+  it("Nacharbeit 4: eine genannte Aufgabenaktion (Priorität, zuweisen, eskalieren) reist mit", () => {
+    const aufgabe = (name: string, aufgabenaktion: unknown) => [
+      { aktion: "aufgabe_bearbeiten", suche: "aufgabe", name, aufgabenaktion },
+    ];
+    expect(
+      erkenneAuftrag("Setze die Priorität der Aufgabe „Filter F3“ auf hoch")?.schritte,
+    ).toEqual(aufgabe("Filter F3", { art: "prioritaet", wert: "hoch" }));
+    expect(erkenneAuftrag("Set the priority of task “Filter F3” to low")?.schritte).toEqual(
+      aufgabe("Filter F3", { art: "prioritaet", wert: "niedrig" }),
+    );
+    expect(erkenneAuftrag("Weise die Aufgabe „Filter F3“ Erik Experte zu")?.schritte).toEqual(
+      aufgabe("Filter F3", { art: "zuweisen", person: "Erik Experte" }),
+    );
+    expect(erkenneAuftrag("Weise die Aufgabe „Filter F3“ an Erik Experte zu")?.schritte).toEqual(
+      aufgabe("Filter F3", { art: "zuweisen", person: "Erik Experte" }),
+    );
+    expect(erkenneAuftrag("Eskaliere die Aufgabe „Drehmoment Flansch“")?.schritte).toEqual(
+      aufgabe("Drehmoment Flansch", { art: "eskalieren" }),
+    );
+    // Ohne genannte Aktion: keine — Klara fragt vor der Handlung nach (Engine, nicht Erkennung).
+    expect(
+      erkenneAuftrag("Bearbeite die Aufgabe „Filter F3“")?.schritte[0]?.aufgabenaktion,
+    ).toBeUndefined();
+  });
+
   it("getippt und gesprochen: dieselbe Funktion, dasselbe Ergebnis (Anrede und Satzzeichen egal)", () => {
     const getippt = erkenneAuftrag("Lege den Entwurf „Wartung“ an");
     const gesprochen = erkenneAuftrag("klara bitte lege den Entwurf „Wartung“ an.");

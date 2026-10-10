@@ -1890,23 +1890,21 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // produkt:20261008:klara-aktionen (Nacharbeit 2): wahlweise derselbe Standvergleich wie beim
         // Speichern. Wer den gesehenen Stand mitgibt (Klaras Rückgängig), löscht nichts, was
         // inzwischen geändert wurde — 409 DRAFT_STALE, der Entwurf bleibt. Ohne Angabe wie bisher.
+        // Nacharbeit 4 (Ben): der Vergleich läuft UNTEILBAR in der Ablage (`deleteWennStand`), nicht
+        // hier vorab — eine Änderung zwischen Prüfung und Löschen kann so nicht mehr durchrutschen.
         const erwartet = erwarteterStand(request.query?.expectedUpdatedAt);
-        if (erwartet !== undefined && sichtbar.updatedAt !== erwartet) {
-          // Dieselbe Antwort wie der Speicherweg (`antwortBeiVeraltetemStand`), kein zweiter Satz.
-          antwortBeiVeraltetemStand(reply, {
-            code: "DRAFT_STALE",
-            currentUpdatedAt: sichtbar.updatedAt,
-          });
-          return;
-        }
         // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
         // statt ihn zu vernichten. Die Antwort bleibt 204, der Aufrufer merkt keinen Unterschied:
         // der Entwurf verschwindet aus `GET /api/drafts` wie zuvor. Geprüfte Aufrufer stehen in
         // der Rückgabe dieses Jobs. `user.id` reist mit, damit der Papierkorb sagen kann, WER
         // gelöscht hat — bis hierher wusste das niemand.
-        await capture.deleteDraft(request.params.id, user.id);
+        await capture.deleteDraft(request.params.id, user.id, erwartet);
         reply.code(204).send();
       } catch (error) {
+        // Verlorener Standvergleich: 409 DRAFT_STALE mit dem gespeicherten Stand, der Entwurf bleibt.
+        if (antwortBeiVeraltetemStand(reply, error)) {
+          return;
+        }
         sendError(reply, error);
       }
     });

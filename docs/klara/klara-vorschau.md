@@ -114,8 +114,9 @@ Auftrag gelesen.
 | Ausführen | Nacharbeit 2: Der Auftrag trägt einen gebundenen **Plan** (Aktion, Ziel, Inhalt je Schritt). Ausgeführt wird **am Server** (`POST …/schritte/:schluessel/ausfuehrung`, `services/app/src/klara-ausfuehrung.ts`): Schritt unter der Grenze beginnen → die vorhandenen Türen mit der Anmeldung der Person aufrufen (`/api/drafts` mit an Auftrag und Planschritt gebundenem Vorgangsschlüssel und dem Stand aus der Grenze als `expectedUpdatedAt`, `/api/kos/:id`, Aufgabenquellen) → nachlesen → „gespeichert“ eintragen. Der Browser schickt nur Schrittnummer und Fassung; ein vom Browser gemeldetes Ergebnis weist der Server ab. Beim Öffnen bestätigt der Server Ziel und Berechtigung, erst dann wechselt der Bildschirm und nur dieses Ziel darf als abgeschlossen gelten. Der Auftrag ist „vorgeschlagen“, „läuft“, „abgeschlossen“, „teilweise“, „fehlgeschlagen“ oder „abgebrochen“ — abgeleitet aus den Schritten, mit Verlauf und Uhrzeit. Ergebnis und Ziel stehen als Rückweg an jedem Schritt. |
 | Stand-/Rechteänderung | Vor einem Bearbeitungsschritt liest Klara das Ziel neu; weicht der Stand vom Auftrag ab oder ist es nicht mehr sichtbar, geschieht nichts. Der Speicherweg prüft den Stand zusätzlich selbst (409). Es gibt kein Ablaufdatum als Ersatz für diese Prüfung. |
 | Abbrechen | Keine weiteren Schritte (am Server: jeder neue Beginn 409). Ein gerade laufender Schritt meldet sein tatsächliches Ergebnis; Gespeichertes bleibt gespeichert und sichtbar. |
-| Rückgängig | Getrennt von Abbrechen, am Server (`…/ruecknahme`): ein angelegter Entwurf geht in den Papierkorb (dort wiederherstellbar) — `DELETE /api/drafts/:id?expectedUpdatedAt=` mit dem nachgelesenen Ergebnisstand; ist er inzwischen geändert, antwortet der Löschweg 409 und der Entwurf bleibt. Eine Bearbeitung bekommt ihre vom Server vorher gelesenen Felder zurück, ebenfalls mit Standvergleich. Öffnen ist als nicht rücknehmbar benannt. |
-| Aufgabe | „Bearbeite die Aufgabe …“ **öffnet** die Aufgabe an ihrem Arbeitsort, nachdem der Server ihre Identität und aktuelle Verfügbarkeit für die Person bestätigt hat; der Schritt heisst danach „Geöffnet – Klara hat an der Aufgabe nichts entschieden“. Eine Fachaktion (prüfen, schliessen, zuweisen) führt Klara nicht aus — das ist eine offene Produktentscheidung. |
+| Rückgängig | Getrennt von Abbrechen, am Server (`…/ruecknahme`): ein angelegter Entwurf geht in den Papierkorb (dort wiederherstellbar) — `DELETE /api/drafts/:id?expectedUpdatedAt=` mit dem nachgelesenen Ergebnisstand; Standvergleich und Papierkorbänderung laufen unteilbar in der Ablage (`deleteWennStand`, in PostgreSQL ein bedingtes `UPDATE`) — ist er inzwischen geändert, antwortet der Löschweg 409 und der Entwurf bleibt. Eine Bearbeitung bekommt ihre vom Server vorher gelesenen Felder zurück, ebenfalls mit Standvergleich. Öffnen ist als nicht rücknehmbar benannt. |
+| Aufgabe | Nacharbeit 4: Eine vorhandene Fachaktion wird **ausgeführt** und nachgelesen — an einer Lücke „Setze die Priorität der Aufgabe „…“ auf hoch/mittel/niedrig“ (`PUT /api/gaps/:id` mit `priority`) und „Weise die Aufgabe „…“ Name zu“ (`expertId`, die Person aus `/api/directory`; mehrere Treffer: Rückfrage), an einem Konflikt „Eskaliere die Aufgabe „…““ (`POST /api/conflicts/:id/escalate`). Die geklärte Aktion steht im gebundenen Plan; der Server prüft sie gegen die Aufgabenart, ruft den Fachweg mit den Rechten der Person auf und liest am vorhandenen Lesweg nach („Ausgeführt und nachgelesen: Priorität hoch“). Solche Aktionen sind nicht rücknehmbar und so benannt. Fehlt die Aktion („Bearbeite die Aufgabe …“), fragt Klara VOR der Handlung, was geschehen soll; „Nur öffnen“ bleibt eine eigene Wahl und heisst danach „Geöffnet – Klara hat an der Aufgabe nichts entschieden“. Prüfaufgaben werden nur geöffnet: ein Prüfentscheid ist ein inhaltliches Urteil der Person (offene Produktentscheidung). |
+| Nachlesen bleibt aus | Nacharbeit 4: Gelingt das Schreiben, aber nicht das Nachlesen, hält der Server Wirkung und Kennung am Schritt fest (`schreibwirkung`) — der Schritt ist „Ergebnis unklar“ mit Weg zum gespeicherten Ergebnis, nicht gescheitert; der Browser kann daraus kein „gescheitert“ machen. „Erneut versuchen“ (auch nach Abbrechen oder Neuladen) liest nur nach und schreibt nichts erneut. |
 | Korrigieren | „Grenze korrigieren“ lässt offene Schritte weg und hält eine neue Fassung fest (frühere Fassungen bleiben sichtbar). Mehr Aktionen, Ziele, Quellen oder Schritte weist der Server ab — das ist ein eigener Auftrag. |
 | Verbindungsabbruch | „Ergebnis unklar“ statt Erfolg. „Erneut versuchen“ nutzt denselben Schrittschlüssel und denselben Vorgangsschlüssel: kein zweiter Entwurf. |
 | Sprache | „Diktieren“ schreibt nur ins Feld (dort steht dann sichtbar, dass „Senden“ ausführen würde). „Auftrag sprechen“ zeigt „Ausführungsauftrag“ auf der Karte; erst „Senden“ übergibt an die Auftragskarte. |
@@ -123,8 +124,9 @@ Auftrag gelesen.
 
 Grenzen: Der Stand vor einer Bearbeitung kennt nur die Sitzung, in der sie geschah — nach dem
 Neuladen ist das Zurückändern einer Bearbeitung im Entwurf selbst nötig (Anlegen bleibt
-rücknehmbar). Ein nach dem Neuladen noch laufender Auftrag wird nicht von selbst fortgesetzt. Aufgaben
-werden an ihrem Arbeitsort geöffnet; bearbeitet werden sie dort von der Person. Wissensobjekte
+rücknehmbar). Ein nach dem Neuladen noch laufender Auftrag wird nicht von selbst fortgesetzt. An Aufgaben
+führt Klara nur Priorität, Zuweisung (Lücke) und Eskalation (Konflikt) aus; Prüfentscheide,
+Schliessen und Konfliktentscheide bleiben bei der Person am Arbeitsort. Wissensobjekte
 werden über Klara 05 nur geöffnet — geändert werden sie weiter über Klara 04 und den Editor.
 
 ## Was man in der Demo ausprobieren kann
@@ -184,7 +186,8 @@ werden über Klara 05 nur geöffnet — geändert werden sie weiter über Klara 
   Weg Vorschlag → Übernahme → Editor → Speichern → Wiederöffnen, Rückfrage und fehlendes Recht gegen
   den echten Server mit kontrolliertem Modelladapter (`vorschlag-am-server.test.tsx`)
 - `tests/klara-aktionen/` — Klara 05: Erkennung (`erkennung.test.ts`), Auftragsgrenze am Server
-  (`auftragsgrenze-am-server.test.ts`) und der ganze Weg getippt/gesprochen → Grenze → Ausführung →
+  (`auftragsgrenze-am-server.test.ts`), Aufgabenaktionen, ausbleibendes Nachlesen und unteilbares
+  Löschen (`aufgabenaktion-und-nachlesen.test.ts`) und der ganze Weg getippt/gesprochen → Grenze → Ausführung →
   Nachlesen, Abbrechen, Rückgängig, Korrektur und Fehlerfälle in der echten Klara gegen den echten
   Server (`auftrag-am-server.test.tsx`)
 - `tests/klara-produkt/produkteinstieg-am-server.test.tsx` und

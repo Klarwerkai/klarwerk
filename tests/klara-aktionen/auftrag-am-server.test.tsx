@@ -19,6 +19,8 @@
 //                  Ergebnis und Ziel öffnbar.
 //   U2 · K1/K10    gesprochen: derselbe Weg wie getippt (Artikel öffnen); Diktat führt nichts aus.
 //   U3 · K1        eine verfügbare Prüfaufgabe bearbeiten (Arbeitsort öffnen).
+//   U3c · K1/K10   Nacharbeit 4: Priorität einer Lücke über ihren Fachweg setzen und nachlesen;
+//                  ohne genannte Aktion zuerst die Rückfrage, vorher geschieht nichts.
 //   U4 · K3        Abbrechen mitten im Lauf: kein weiterer Schritt, Gespeichertes bleibt sichtbar.
 //   U5 · K4        Rückgängig nimmt Anlegen (Papierkorb) und Bearbeiten (vorheriger Stand) zurück
 //                  — getrennt von Abbrechen; Öffnen ist als nicht rücknehmbar benannt.
@@ -52,6 +54,7 @@ import { zuruecksetzenGanz } from "../../apps/web/src/components/klara-vorschau/
 import i18n from "../../apps/web/src/i18n";
 import { KnowledgeDetail } from "../../apps/web/src/pages/KnowledgeDetail";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
+import { assembleServices, inMemoryRepos } from "../../services/app/src/build-app";
 import { alle, bis, klick, medienStub, q, ruhe, tippe } from "../fe003-tutorial-fragen/huelle";
 import {
   type Aufbau,
@@ -686,6 +689,86 @@ describe("U3 · K1 — eine verfügbare Prüfaufgabe bearbeiten", () => {
       stand: "fehlgeschlagen",
       fehlerCode: "nichtVerfuegbar",
     });
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 4 (Ben): eine Aufgabenaktion wird AUSGEFÜHRT und nachgelesen — fehlt die Aktion, fragt
+// Klara zuerst. Öffnen bleibt getrennt ausgewiesen (U3).
+describe("U3c · K1/K2/K10 — eine Aufgabenaktion ausführen und nachlesen; fehlende Angabe vorher klären", () => {
+  const FRAGE = "Wechselintervall Filter F3 klären";
+
+  async function mitLuecke(): Promise<{ a: Aufbau; prioritaet: () => Promise<string> }> {
+    const repos = inMemoryRepos();
+    const a = await appAufbauen(false, () => assembleServices(repos));
+    aufbau = a;
+    draht.setzeApp(a.app);
+    const ich = await a.app.inject({ method: "GET", url: "/api/auth/me", headers: a.admin.kopf });
+    // Fiktive offene Lücke der Person — so, wie eine unbeantwortete Frage sie anlegt.
+    await repos.gaps.insert({
+      id: "gap-u3c",
+      question: FRAGE,
+      status: "offen",
+      assignee: null,
+      priority: "mittel",
+      createdAt: new Date().toISOString(),
+      createdBy: (ich.json() as { id: string }).id,
+    });
+    const prioritaet = async () => {
+      const r = await a.app.inject({ method: "GET", url: "/api/gaps", headers: a.admin.kopf });
+      return (r.json() as { id: string; priority: string }[]).find((g) => g.id === "gap-u3c")
+        ?.priority as string;
+    };
+    return { a, prioritaet };
+  }
+
+  it("„Setze die Priorität …“: am Fachweg gesetzt, nachgelesen, als nicht rücknehmbar benannt", async () => {
+    const { a, prioritaet } = await mitLuecke();
+    alsKonto(a.admin);
+    await klaraOeffnen();
+    await tippeUndSende(`Setze die Priorität der Aufgabe „${FRAGE}“ auf hoch`);
+    await bisPhase("fertig");
+    expect(karte()?.dataset.stand).toBe("abgeschlossen");
+    expect(schritte()[0]?.dataset.stand).toBe("gespeichert");
+    expect(text(karte(), "klara-ausfuehrung-ziel")).toContain("auf hoch setzen");
+    expect(text(karte(), "klara-ausfuehrung-ergebnisanforderung")).toContain("nachgelesen");
+    expect(text(schritte()[0], "klara-ausfuehrung-schritt-stand")).toContain(
+      "Ausgeführt und nachgelesen: Priorität hoch",
+    );
+    const zeile = schritte()[0] as HTMLElement;
+    expect(q(zeile, "klara-ausfuehrung-schritt-nicht-ruecknehmbar")).not.toBeNull();
+    expect(q(zeile, "klara-ausfuehrung-rueckgaengig")).toBeNull();
+    // Die Wirkung steht am Fachweg; der Browser hat selbst nichts an /api/gaps geschrieben.
+    expect(await prioritaet()).toBe("hoch");
+    expect(schreibend.some((x) => x.includes("/api/gaps"))).toBe(false);
+    expect(ausfuehrungen).toHaveLength(1);
+  });
+
+  it("„Bearbeite die Aufgabe …“: erst die Rückfrage, was geschehen soll — vorher geschieht nichts", async () => {
+    const { a, prioritaet } = await mitLuecke();
+    alsKonto(a.admin);
+    await klaraOeffnen();
+    await tippeUndSende(`Bearbeite die Aufgabe „${FRAGE}“`);
+    await bisPhase("rueckfrage");
+    const frage = q(karte() as HTMLElement, "klara-ausfuehrung-rueckfrage-aufgabe");
+    expect(frage?.textContent).toContain("Was soll Klara an der Aufgabe");
+    const optionen = alle(frage as HTMLElement, "klara-ausfuehrung-aktion-option");
+    expect(optionen.map((o) => o.dataset.art)).toEqual([
+      "prioritaet",
+      "prioritaet",
+      "prioritaet",
+      "nur_oeffnen",
+    ]);
+    // Noch kein Auftrag, keine Ausführung, keine Wirkung.
+    expect(await auftraegeAmServer(a, a.admin)).toHaveLength(0);
+    expect(ausfuehrungen).toHaveLength(0);
+    const niedrig = optionen.find((o) => o.textContent?.includes("niedrig"));
+    await klick(niedrig as HTMLElement);
+    await bisPhase("fertig");
+    expect(schritte()[0]?.dataset.stand).toBe("gespeichert");
+    expect(await prioritaet()).toBe("niedrig");
+    const [amServer] = await auftraegeAmServer(a, a.admin);
+    expect(amServer?.schritte[0]).toMatchObject({ stand: "gespeichert" });
   });
 });
 
