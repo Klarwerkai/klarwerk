@@ -6,7 +6,7 @@ Quellenstand der Aufnahmepunkte: 22.09.2026*
 > Dieses Dokument **gleicht den vorhandenen Stand ab** und hält für jeden zugeordneten Aufnahmepunkt
 > Ergebnis oder verbleibende Entscheidung fest (§9). Es **baut nichts neu**, was schon geliefert ist,
 > und erfindet keine Anforderungen. Geliefert hat dieser Auftrag: die Prüfsumme am Inselpaket, den
-> Abbildbau mit Prüfsumme, die Versionsbestätigung der Starter, die Instanzidentität an `/health`, den
+> Abbildbau mit Prüfsumme samt automatischem CI-Lauf, die Versionsbestätigung der Starter, die Instanzidentität an `/health`, den
 > Instanzabgleich mit Kanal und Drift, Bedienkarte und Blaupause für den Hausbetrieb (alles §7), den
 > Bereitstellungsweg je Modell (§7.1), den letzten Port-Widerspruch in einem Leitfaden (§3) und dieses
 > Dokument.
@@ -218,14 +218,15 @@ nicht fest. Ohne diese Festlegung wird hier kein Profilinhalt erfunden.
     Prüfsumme — **ohne** `docker push`/`login`. Vorgabeziel `dist/abbild`. Eine Kundeninstanz fährt
     dieses Abbild über `scripts/deploy/compose-abbild.yml` (§7.1). Gegenprobe mit Stellvertretern für
     git/tar/docker: `tests/kundenbetrieb-betriebsmodelle/abbild-bauen.test.ts`.
-    **Grenzen:** Ein echter `docker build` lief im Prüfzug nicht (kein Docker im Prüfstand). Der Bauer
-    läuft auf Aufruf; dass er bei **jedem** Hauptstand von selbst läuft, verlangt einen Schritt in
-    `.github/workflows/ci.yml`. Diese Datei liegt außerhalb der Pfade, die für diesen Auftrag zum
-    Schreiben freigegeben sind (`AUFTRAG.json` → `allowed_paths`), und ist **nicht geändert**. Der
-    fertige Schritt dafür: im Job `integration` nach `npm ci` ein
-    `node scripts/deploy/abbild-bauen.mjs --ziel dist/abbild` und das Hochladen von `dist/abbild/*` als
-    Laufartefakt — ohne Registry-Zugang, also ohne Veröffentlichung. **Offen ist allein die Freigabe
-    dieses Pfads.**
+    **Automatisch:** `.github/workflows/ci.yml` hat dafür den Job `abbild` (`needs: check`). Bei jedem
+    Push auf `main` und jedem Pull Request baut er nach grünem Gesamttor
+    `node scripts/deploy/abbild-bauen.mjs --ziel dist/abbild` und lädt `dist/abbild/` als **ein**
+    Laufartefakt `klarwerk-abbild-<commit>` hoch — Archiv, `.sha256` und Nachweisdatei zusammen,
+    14 Tage aufbewahrt, ohne Registry-Geheimnis, Login oder Push. Gegenprobe der Einhängung:
+    `tests/kundenbetrieb-betriebsmodelle/abbild-bauen.test.ts` C7; der Workflow-Wächter
+    `tests/app/job1080-ci-workflow-abgleich.test.ts` ordnet den Job als außerhalb des Tors ein.
+    **Grenzen:** Ein echter `docker build` lief im Prüfzug dieses Auftrags nicht (kein Docker im
+    Prüfstand); der erste Beleg ist der erste Lauf des Jobs `abbild` auf GitHub nach dem Einbau.
 
 ### 7.1 Bereitstellungsweg je Betriebsmodell (R-2072)
 
@@ -235,13 +236,14 @@ grün, Ein-Klick-Deploy." Je Modell der eine Weg, woraus er reproduzierbar ist, 
 | Modell | Ein Schritt | Reproduzierbar aus | Was fehlt — technisch umsetzbar oder Voraussetzung/Entscheidung |
 | --- | --- | --- | --- |
 | Cloud (Hetzner/Coolify) | `scripts/deploy/klarwerk-ship.command "<Text>"`: Tor → Versionszähler → Commit → Push → `klarwerk-live-update.command`; geliefert heißt `/health.commit` = Commit (R-0786) | Commit über `SOURCE_COMMIT` im Coolify-Bau des `Dockerfile` | **Externe Voraussetzung:** Coolify-Zugangsschlüssel im Schlüsselbund und Plattformzustand (`I11-U*` UNBELEGT). Kein Produktrest. |
-| Eigene Kundeninstanz (Compose) | `node scripts/deploy/abbild-bauen.mjs`, dann am Ziel `shasum -c`, `docker load`, `KLARWERK_ABBILD=… docker compose -f docker-compose.prod.yml -f scripts/deploy/compose-abbild.yml up -d` | Abbild = `git archive` des Commits, mit Prüfsumme und Nachweisdatei (§7) | **Technisch offen, nicht gemessen:** der Lauf mit geladenem Abbild auf einem echten Compose-Platz (B2 prüft den Weg mit Bau am Ziel). **Freigabe offen:** der Abbildbau im CI (`.github/workflows/ci.yml`, s. o.). |
+| Eigene Kundeninstanz (Compose) | `node scripts/deploy/abbild-bauen.mjs`, dann am Ziel `shasum -c`, `docker load`, `KLARWERK_ABBILD=… docker compose -f docker-compose.prod.yml -f scripts/deploy/compose-abbild.yml up -d` | Abbild = `git archive` des Commits, mit Prüfsumme und Nachweisdatei (§7) | **Technisch offen, nicht gemessen:** der Lauf mit geladenem Abbild auf einem echten Compose-Platz (B2 prüft den Weg mit Bau am Ziel). Das Abbild selbst entsteht automatisch im CI-Job `abbild` (s. o.). |
 | Private AI (Kundencloud) | derselbe Weg wie die Kundeninstanz, `OPENAI_BASE_URL` auf den Endpunkt des Kunden | wie Kundeninstanz | **Externe Voraussetzung:** Zugang zu einer Kundencloud und einem freigegebenen Modellendpunkt dort. **Entscheidung des Kunden:** welcher Endpunkt und welche Region. Ohne beides kein Nachweis. |
 | Hausbetrieb (Insel) | Doppelklick `install.command` im Paket → `update-einspielen.sh` (Sicherung, Vertrag, Health mit Version, Rückfall bei Rot) | Paketname aus Version/Commit/Bauzeit, `.zip.sha256` (§7) | **Gehört zu B4:** der volle Paketlauf auf macOS. **Entscheidung offen** (H1): Node und Modell im Material oder Vorbedingung. |
 
 **Pipeline.** `.github/workflows/ci.yml` fährt bei jedem Push auf `main` und jedem Pull Request
-`./tools/check` (Bau, Lint, Architektur, Tests, Chromium-Smoke) und die PostgreSQL-Integration. Sie
-liefert nicht aus; ausgeliefert wird je Modell über den Weg oben, nach grünem Tor.
+`./tools/check` (Bau, Lint, Architektur, Tests, Chromium-Smoke), die PostgreSQL-Integration und nach
+grünem Tor den Abbildbau mit Laufartefakt. Sie veröffentlicht nicht; ausgeliefert wird je Modell über
+den Weg oben.
 
 ---
 
@@ -288,11 +290,11 @@ Spalten: Punkt · Stand · Ergebnis · Rest.
 | R-0861 Versionsinventar und Kanäle | geliefert | Inventar mit Kanälen und erwarteter Fassung, Abgleich zeigt je Anlage Kanal, erwartete und laufende Fassung (§7) | Kanäle und ihre Sollfassung legt der Betreiber fest |
 | R-0869 eindeutiger Port | erledigt | 3001 für Container, Server, Compose und Leitfäden; letzter Rest in `server-hardening-readiness.md` korrigiert; Inselpaket 3002 ausdrücklich benannt (§3) | — |
 | R-1270 Schreibtisch-App | historisch erledigt | `desktop-app/KLARWERK App.app` vorhanden | heutige Vollabnahme nicht belegt |
-| R-1487 automatischer Bau mit Prüfsumme | geliefert bis auf CI-Einhängung | Inselpaket mit Prüfsumme; Container-Abbild aus dem Commit mit Abbildkennung, Prüfsumme und Nachweisdatei, ohne Veröffentlichung (`abbild-bauen.mjs`, §7) | Lauf bei jedem Hauptstand braucht einen Schritt in `.github/workflows/ci.yml` — Pfad nicht zum Schreiben freigegeben; echter `docker build` im Prüfzug nicht gelaufen |
+| R-1487 automatischer Bau mit Prüfsumme | geliefert | Inselpaket mit Prüfsumme; Container-Abbild aus dem Commit mit Abbildkennung, Prüfsumme und Nachweisdatei, ohne Veröffentlichung (`abbild-bauen.mjs`), automatisch im CI-Job `abbild` nach grünem Tor als ein Laufartefakt (§7) | echter `docker build` noch nicht belegt; erster Beleg ist der erste CI-Lauf des Jobs |
 | R-2046 Coolify-Eigenheiten kennzeichnen | erledigt im Repository | `OFFEN.md` I11-U3…U8, `mehrinstanz-tor.md` | Bestätigung durch Ops/Pedi |
 | R-2053 drei Deployment-Modelle | teilweise | wie R-0787 | wie R-0787 |
 | R-2061 Zusage nur für On-Premises | im Text erfüllt | §2.2; Oberfläche sagt den Satz nur bei lokaler Aufgabe | Anzeige für nicht bestätigten Endpunkt nicht geprüft |
-| R-2072 CI/CD je Modell | Weg je Modell benannt | Pipeline `ci.yml` (Tor und Integration); je Modell ein Schritt: Ship-Befehl (Cloud), Abbild + `compose-abbild.yml` (Kundeninstanz, Private AI), `install.command` (Insel) (§7.1) | Private AI: Kundencloud-Zugang und Endpunktwahl des Kunden; Kundeninstanz mit geladenem Abbild nicht gemessen; CI-Abbildbau: Pfadfreigabe |
+| R-2072 CI/CD je Modell | Weg je Modell benannt | Pipeline `ci.yml` (Tor und Integration); je Modell ein Schritt: Ship-Befehl (Cloud), Abbild + `compose-abbild.yml` (Kundeninstanz, Private AI), `install.command` (Insel) (§7.1) | Private AI: Kundencloud-Zugang und Endpunktwahl des Kunden; Kundeninstanz mit geladenem Abbild nicht gemessen |
 | JOB-4366 Kundeninstanz mit Neustart über HTTPS | bestehender Auftrag B2 | Prüfstrecke vorhanden | gehört zu B2 |
 | P-B2-NEUINSTALLATION-DURCHGAENGIG | bestehender Auftrag B2 | — | gehört zu B2 |
 | TEST-A14 Neuinstallation und persistente Daten | über B2 | Prüfstrecke `tests/neuinstallation/kundeninstallation-strecke.integration.test.ts` | Beurteilung gehört zu B2 |
@@ -325,7 +327,7 @@ Spalten: Punkt · Stand · Ergebnis · Rest.
 - Ein echter Lauf von `scripts/deploy/abbild-bauen.mjs` mit Docker und eine Kundeninstanz, die das
   geladene Abbild über `scripts/deploy/compose-abbild.yml` fährt — geprüft sind Herleitung, Argumente,
   Prüfsumme und Nachweis mit Stellvertretern, nicht der Containerbau selbst.
-- Der Abbildbau bei jedem Hauptstand im CI (Pfadfreigabe für `.github/workflows/ci.yml` fehlt).
+- Ein grüner Lauf des CI-Jobs `abbild` mit hochgeladenem Laufartefakt (eingebaut, noch nicht gelaufen).
 - Eine Sichtung der Starter mit Versionsbestätigung auf Pedis Rechner.
 - Eine Einrichtung nach Blaupause durch einen Kunden ohne Beistand.
 - Die Liste der 15 Leitfäden aus der Recherchequelle.

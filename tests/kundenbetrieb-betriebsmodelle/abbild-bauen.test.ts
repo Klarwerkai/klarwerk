@@ -184,6 +184,29 @@ describe("R-1487 · Containerbau mit Quellfassung und Prüfsumme, ohne Veröffen
     );
   });
 
+  it("C7 · CI baut nach grünem Tor automatisch und lädt alles als EIN Laufartefakt hoch", () => {
+    // Ben, Kandidat a86a88ec: der Bauer war nicht in den automatischen Bauablauf eingebunden.
+    const yml = readFileSync(repoPfad(".github/workflows/ci.yml"), "utf8");
+    const zeilen = yml.split("\n");
+    const kopf = zeilen.findIndex((z) => /^ {2}abbild:\s*$/.test(z));
+    expect(kopf, "Job `abbild` fehlt in ci.yml").toBeGreaterThan(-1);
+    const rest = zeilen.slice(kopf + 1);
+    const ende = rest.findIndex((z) => /^ {2}\S/.test(z) || /^\S/.test(z));
+    const block = (ende === -1 ? rest : rest.slice(0, ende)).join("\n");
+    expect(block).toMatch(/^ {4}needs: check$/m);
+    expect(block).toMatch(
+      /^ {8}run: node scripts\/deploy\/abbild-bauen\.mjs --ziel dist\/abbild$/m,
+    );
+    expect(block).toContain("uses: actions/upload-artifact@v4");
+    expect(block).toMatch(/^ {10}path: dist\/abbild\/$/m);
+    expect(block).toMatch(/^ {10}if-no-files-found: error$/m);
+    // Ohne Veröffentlichung: kein Geheimnis, kein Login, kein Push, keine Registry-Aktion.
+    expect(block).not.toMatch(/secrets\.|docker login|docker push|docker\/login-action|push: true/);
+    // Der Auslöser bleibt der des Workflows: jeder Push auf main und jeder Pull Request.
+    expect(yml).toContain("push: { branches: [main] }");
+    expect(yml).toContain("pull_request: {}");
+  });
+
   it("C5 · unbekanntes Argument: Exit 2, nichts gebaut", async () => {
     const p = platz("falsch");
     const lauf = await fahreNode([BAUER, "--zeil", p.ziel], umgebung(p.bin));
