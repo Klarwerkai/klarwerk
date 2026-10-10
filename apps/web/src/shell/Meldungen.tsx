@@ -455,7 +455,9 @@ export function MeldungenListe({
                           ? "lueckenvorgang.meldung.geloest"
                           : n.lueckenArt === "rueckfrage_beantwortet"
                             ? "lueckenvorgang.meldung.rueckfrageBeantwortet"
-                            : "lueckenvorgang.meldung.rueckfrage",
+                            : n.lueckenArt === "zurueckgewiesen"
+                              ? "lueckenvorgang.meldung.zurueckgewiesen"
+                              : "lueckenvorgang.meldung.rueckfrage",
                       )}
                       :{" "}
                     </span>
