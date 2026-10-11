@@ -485,6 +485,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.validate",
     zeilenrecht: ["darfSehen"],
   },
+  // ADMIN-12: Zustellstatus und Wiederaufnahme — dasselbe Freigaberecht, derselbe darfSehen-Halt.
+  "GET /api/kos/:id/veroeffentlichung/zustellung/:vermerkId": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen": {
+    protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
   // R-1644: die Wissensauskunft zum Zeitpunkt — Einsichtsstufe des Audit-Protokolls (`ko.validate`),
   // der Eintrag wird vor der Antwort gegen `darfSehen` gehalten (sonst 404).
   "GET /api/kos/:id/wissensauskunft": { protection: "ko.validate", zeilenrecht: ["darfSehen"] },
@@ -963,6 +972,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/me/klara/gespraeche/:id/schritt": { protection: "auth" },
   "PUT /api/me/klara/gespraeche/:id/einwilligung": { protection: "auth" },
   "DELETE /api/me/klara/gespraeche/:id": { protection: "auth" },
+  // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das EIGENE Konto
+  // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
+  "GET /api/me/assistenz": { protection: "auth" },
+  "PUT /api/me/assistenz": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
@@ -1082,6 +1095,15 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/richtlinien": { protection: "users.manage" },
   "POST /api/admin/richtlinien/:id/fassungen": { protection: "users.manage" },
 
+  // --- Kommunikationsregeln (kommunikation-routes.ts, ADMIN-12) ---
+  // Übersicht und EIGENE Meldungseinstellungen: jedes angemeldete Konto. Unternehmensvorgabe
+  // ändern und ihre Fassungen lesen: Verwaltung — dieselbe Schranke wie das Unternehmensprofil.
+  "GET /api/kommunikation/regeln": { protection: "auth" },
+  "GET /api/meldungsregeln/meine": { protection: "auth" },
+  "PUT /api/meldungsregeln/meine": { protection: "auth" },
+  "PUT /api/admin/kommunikation/regeln": { protection: "users.manage" },
+  "GET /api/admin/kommunikation/fassungen": { protection: "users.manage" },
+
   // --- Firmenwörterbuch (begriffe-routes.ts) ---
   // Nachschlagen und der deterministische Abgleich eines eigenen Textes: wer Wissen lesen darf.
   "GET /api/begriffe": { protection: "ko.read" },
@@ -1167,6 +1189,43 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/teams/:id/vorschau": { protection: "users.manage" },
   "PUT /api/teams/:id": { protection: "users.manage" },
   "POST /api/teams/:id/archivieren": { protection: "users.manage" },
+
+  // --- Interner Chat (chat-routes.ts, produkt:20261007:interner-chat) ---
+  // Jede Tür verlangt `ko.read`; welche Gespräche und Inhalte erscheinen, entscheidet je Zeile
+  // Teilnahme, Space-Leserecht und `darfSehen` (Artikelgespräche, Verweise, Ausschnitte, Anhänge).
+  // Die Wissensübernahme legt einen Entwurf an und verlangt deshalb `ko.create`.
+  "GET /api/chat/konten": { protection: "ko.read" },
+  "GET /api/chat/gespraeche": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/chat/gespraeche": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/chat/gespraeche/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/chat/gespraeche/:id/nachrichten": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/chat/nachrichten/:id/wissen": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  // Nacharbeit 3: die Zielnachricht einer Erwähnung, unabhängig von der jüngsten Verlaufsseite.
+  "GET /api/chat/nachrichten/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Nacharbeit 6: angezeigte ältere Nachrichten je Leser neu gegen die Rechte halten.
+  "POST /api/chat/gespraeche/:id/auffrischen": {
+    protection: "ko.read",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/chat/erwaehnungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+
+  // --- Gemeinsamer Artikelentwurf (gemeinsam-routes.ts, produkt:20261007:artikel-gemeinsam) ---
+  // Dasselbe Recht wie Bearbeiten (`ko.create`), nur an einem sichtbaren Artikel (`darfSehen`,
+  // sonst 404). Wer nur liest, sieht den Entwurf nicht.
+  "GET /api/kos/:id/gemeinsam": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/gemeinsam": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "PUT /api/kos/:id/gemeinsam": { protection: "ko.create", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/gemeinsam/angleichen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "POST /api/kos/:id/gemeinsam/abschluss": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
 
   // --- Vorlagen (vorlagen-routes.ts, produkt:20261007:templates-default / ADMIN-08) ---
   // Lesen wie Wissen; welche Vorlage erscheint, entscheidet ihre Geltung (persönlich, Space-Lese-

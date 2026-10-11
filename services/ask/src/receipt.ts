@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 // FUNKE-FIX P0 (bens Sammel-Nacht, ROT-1): der OPAKE Antwort-/Quellen-Beleg ("Receipt"). Wenn Ask
 // eine Antwort liefert, bindet der Server serverseitig, WELCHE Quell-KOs diesem Nutzer in DIESEM
@@ -113,6 +113,40 @@ interface ReceiptPayload {
   s: string[];
   // x = Ablauf (Epoch ms).
   x: number;
+  // produkt:20261010:antwort-beanstandung-korrektur (PV-04-01): die AUSSAGEFASSUNG dieser Antwort.
+  // Bis hierher band der Beleg nur Nutzer und Quellen — welche Aussage in welcher Quellfassung
+  // stand, war nicht belegt, und eine Beanstandung konnte sich nur auf den Titel berufen. Optional:
+  // ein älterer Beleg trägt die Felder nicht und taugt dann weiter für „Danke" und die einfache
+  // Meldung, aber nicht für eine Beanstandung einer konkreten Aussage.
+  // b = Antwortkennung (`AskResult.answerId`) oder null, wenn kein Antwortbeleg gespeichert wurde.
+  b?: string | null;
+  // v = die gelesene Fassung jeder herangezogenen Quelle (`AskResult.quellenStand`).
+  v?: Record<string, number>;
+  // a = je Aussage [Kennung, kurzer Fingerabdruck des Aussagetextes, [[Fundstelle, Objekt], …]].
+  a?: [string, string, [string, string][]][];
+}
+
+/** Eine Aussage, wie dieser Antwortvorgang sie ausgeliefert hat (aus `AussagenBeleg`). */
+export interface ReceiptAussage {
+  readonly aussageId: string;
+  /** `aussageFingerabdruck(text)` — derselbe Wert, den eine Beanstandung vorlegen muss. */
+  readonly fingerabdruck: string;
+  readonly fundstellen: readonly { readonly fundstelleId: string; readonly koId: string }[];
+}
+
+/** Die Aussagefassung eines Belegs: Antwort, Quellfassungen, Aussagen. */
+export interface ReceiptAussagefassung {
+  readonly answerId: string | null;
+  readonly quellenStand: Readonly<Record<string, number>>;
+  readonly aussagen: readonly ReceiptAussage[];
+}
+
+/** Kurzer Fingerabdruck eines Aussagetextes (Leerraum zusammengezogen, sonst wörtlich). */
+export function aussageFingerabdruck(text: string): string {
+  return createHash("sha256")
+    .update(text.replace(/\s+/g, " ").trim(), "utf8")
+    .digest("hex")
+    .slice(0, 24);
 }
 
 function b64url(buf: Buffer): string {
@@ -131,11 +165,27 @@ export function signAnswerReceipt(
   sources: readonly string[],
   now: number,
   ttlMs: number = ANSWER_RECEIPT_TTL_MS,
+  fassung?: ReceiptAussagefassung,
 ): string {
+  const s = [...new Set(sources)].sort();
   const payload: ReceiptPayload = {
     u: userId,
-    s: [...new Set(sources)].sort(),
+    s,
     x: now + ttlMs,
+    ...(fassung
+      ? {
+          b: fassung.answerId,
+          // Alle gelesenen Quellen, nicht nur die tragenden: eine Fundstelle kann in jeder liegen.
+          v: Object.fromEntries(
+            Object.entries(fassung.quellenStand).filter(([, v]) => typeof v === "number"),
+          ),
+          a: fassung.aussagen.map((a): [string, string, [string, string][]] => [
+            a.aussageId,
+            a.fingerabdruck,
+            a.fundstellen.map((f): [string, string] => [f.fundstelleId, f.koId]),
+          ]),
+        }
+      : {}),
   };
   const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
   return `${body}.${sign(secret, body)}`;
@@ -147,7 +197,12 @@ export function verifyAnswerReceipt(
   secret: Buffer,
   token: unknown,
   now: number,
-): { userId: string; sources: readonly string[] } | null {
+): {
+  userId: string;
+  sources: readonly string[];
+  /** Nur bei Belegen, die die Aussagefassung tragen; ältere Belege haben sie nicht. */
+  fassung?: ReceiptAussagefassung;
+} | null {
   if (typeof token !== "string" || token.length === 0) {
     return null;
   }
@@ -181,5 +236,40 @@ export function verifyAnswerReceipt(
   if (payload.x < now) {
     return null; // abgelaufen
   }
-  return { userId: payload.u, sources: payload.s };
+  const fassung = aussagefassungAus(payload);
+  return { userId: payload.u, sources: payload.s, ...(fassung ? { fassung } : {}) };
+}
+
+// Die Felder sind signiert; geprüft wird nur ihre Gestalt. Eine unlesbare Fassung zählt als keine.
+function aussagefassungAus(p: ReceiptPayload): ReceiptAussagefassung | undefined {
+  if (!Array.isArray(p.a) || !p.v || typeof p.v !== "object") {
+    return undefined;
+  }
+  const aussagen: ReceiptAussage[] = [];
+  for (const eintrag of p.a) {
+    if (
+      !Array.isArray(eintrag) ||
+      typeof eintrag[0] !== "string" ||
+      typeof eintrag[1] !== "string" ||
+      !Array.isArray(eintrag[2])
+    ) {
+      return undefined;
+    }
+    const fundstellen = eintrag[2].filter(
+      (f): f is [string, string] =>
+        Array.isArray(f) && typeof f[0] === "string" && typeof f[1] === "string",
+    );
+    aussagen.push({
+      aussageId: eintrag[0],
+      fingerabdruck: eintrag[1],
+      fundstellen: fundstellen.map(([fundstelleId, koId]) => ({ fundstelleId, koId })),
+    });
+  }
+  const quellenStand: Record<string, number> = {};
+  for (const [id, v] of Object.entries(p.v)) {
+    if (typeof v === "number") {
+      quellenStand[id] = v;
+    }
+  }
+  return { answerId: typeof p.b === "string" ? p.b : null, quellenStand, aussagen };
 }

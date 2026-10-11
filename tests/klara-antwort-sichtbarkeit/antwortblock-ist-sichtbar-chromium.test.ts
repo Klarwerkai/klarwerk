@@ -92,6 +92,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { type Seite, type Strecke, fn, oeffne, strecke, warteBis } from "../design/h1-chromium";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 // ---- Die Modellfreigabe (siehe Kopf, (a)) --------------------------------------------------------
 // Gesetzt VOR `buildServices()` (das laeuft in `strecke()`), zurueckgenommen in `afterAll` — ein
@@ -502,7 +503,9 @@ describe("JOB 3919 · der Antwortblock ist im echten Browser sichtbar — nicht 
       await seite().addInitScript(MITLESER);
       await oeffne(seite(), "/start");
       // Klara oeffnen — der Knopf unten rechts, an seinem zugaenglichen Namen.
-      await seite().click(`button[data-klara="1"][aria-label="${t("klara.open")}"]`);
+      const deutsch = (k: string, w?: Record<string, unknown>): string =>
+        i18n.getFixedT("de")(k, w ?? {});
+      await seite().click(`button[data-klara="1"][aria-label="${hilfeknopfLabel(deutsch)}"]`);
       await warteBis(seite(), `() => document.querySelector('${PANEL}') !== null`);
       // Die Frage tippen. Das Panel traegt genau EIN Eingabefeld (die Hilfesuche).
       await seite().fill(`${PANEL} input`, FRAGE);

@@ -16,10 +16,11 @@ export default {
       "Gesprochenes wird als Text ins Eingabefeld geschrieben. Es wird nichts gesendet.",
     "klarasprache.auftragSprechen": "Auftrag sprechen",
     "klarasprache.auftragSprechenHilfe":
-      "Sprich eine Frage oder einen Auftrag. Klara zeigt dir erkannten Text und Ziel, bevor etwas gesendet wird.",
+      "Sprich eine Frage oder einen Auftrag. {{assistenz}} zeigt dir erkannten Text und Ziel, bevor etwas gesendet wird.",
     "klarasprache.stoppen": "Aufnahme stoppen",
     "klarasprache.laeuft.diktat": "Diktat läuft – der Text kommt ins Eingabefeld.",
-    "klarasprache.laeuft.auftrag": "Klara hört zu – sprich deine Frage oder deinen Auftrag.",
+    "klarasprache.laeuft.auftrag":
+      "{{assistenz}} hört zu – sprich deine Frage oder deinen Auftrag.",
     "klarasprache.na":
       "Spracheingabe ist in diesem Browser nicht verfügbar. Tippe deine Frage ins Eingabefeld.",
     "klarasprache.fehler.mikrofon":
@@ -34,10 +35,10 @@ export default {
     "klarasprache.auftrag.text": "Erkannter Text – hier korrigieren",
     "klarasprache.auftrag.ziel": "Ziel",
     "klarasprache.auftrag.artLabel": "Erkannt als",
-    "klarasprache.auftrag.art.frage": "Frage an Klara",
+    "klarasprache.auftrag.art.frage": "Frage an {{assistenz}}",
     "klarasprache.auftrag.art.aktion": "Arbeitsauftrag",
     "klarasprache.auftrag.aktionHinweis":
-      "Diese Handlung kann Klara noch nicht selbst ausführen. Beim Senden wird der Text als Frage gestellt; es wird nichts angelegt oder geändert.",
+      "Diese Handlung kann {{assistenz}} noch nicht selbst ausführen. Beim Senden wird der Text als Frage gestellt; es wird nichts angelegt oder geändert.",
     "klarasprache.auftrag.senden": "Senden",
     "klarasprache.auftrag.verwerfen": "Verwerfen",
     "klarasprache.auftrag.offen": "Bitte zuerst die Rückfragen beantworten.",
@@ -58,19 +59,20 @@ export default {
     "klarasprache.ergebnis.gesendet": "Gesendet als",
     "klarasprache.ergebnis.ziel": "Ziel",
     "klarasprache.ergebnis.ergebnis": "Ergebnis",
-    "klarasprache.ergebnis.stand.laeuft": "Klara arbeitet …",
+    "klarasprache.ergebnis.stand.laeuft": "{{assistenz}} arbeitet …",
     "klarasprache.ergebnis.stand.beantwortet":
-      "Klara hat geantwortet – die Antwort steht im Verlauf.",
+      "{{assistenz}} hat geantwortet – die Antwort steht im Verlauf.",
     "klarasprache.ergebnis.stand.abgebrochen": "Gestoppt – keine Antwort erhalten.",
     "klarasprache.ergebnis.stand.fehlgeschlagen": "Fehlgeschlagen – der Grund steht im Verlauf.",
     "klarasprache.ergebnis.stand.demo": "Demo-Antwort – vorgefertigt, keine echte Antwort.",
-    "klarasprache.ergebnis.stand.nicht_gesendet": "Nicht gesendet – Klara war nicht bereit.",
+    "klarasprache.ergebnis.stand.nicht_gesendet":
+      "Nicht gesendet – {{assistenz}} war nicht bereit.",
     "klarasprache.ergebnis.keineAktion": "Ausgeführt wurde keine Handlung.",
     "klarasprache.ergebnis.schliessen": "Schließen",
     "klarasprache.vorlesen": "Vorlesen",
     "klarasprache.vorlesenStop": "Vorlesen stoppen",
     "klarasprache.vorlesenNa":
-      "Vorlesen ist in diesem Browser nicht verfügbar. Klaras Antworten stehen vollständig als Text da.",
+      "Vorlesen ist in diesem Browser nicht verfügbar. Die Antworten von {{assistenz}} stehen vollständig als Text da.",
     "klarasprache.ausgabe.titel": "Sprachausgabe",
     "klarasprache.ausgabe.auto": "Antworten automatisch vorlesen",
     "klarasprache.ausgabe.tempoLabel": "Tempo",
@@ -80,7 +82,7 @@ export default {
     "klarasprache.bedienhilfe.diktieren":
       "„Diktieren“ schreibt Gesprochenes ins Eingabefeld. Es wird nichts gesendet – du prüfst, änderst und sendest selbst.",
     "klarasprache.bedienhilfe.auftrag":
-      "„Auftrag sprechen“ zeigt den erkannten Text, das Ziel (Seite und Objekt) und Rückfragen zu Namen, Zeiten und Bezug. Gesendet wird erst mit „Senden“, über denselben Weg wie eine getippte Frage. Im Moment beantwortet Klara Fragen; Handlungen führt sie noch nicht aus.",
+      "„Auftrag sprechen“ zeigt den erkannten Text, das Ziel (Seite und Objekt) und Rückfragen zu Namen, Zeiten und Bezug. Gesendet wird erst mit „Senden“, über denselben Weg wie eine getippte Frage. Im Moment beantwortet {{assistenz}} Fragen; Handlungen werden noch nicht ausgeführt.",
     "klarasprache.bedienhilfe.stoppen":
       "„Aufnahme stoppen“ beendet das Zuhören, „Vorlesen stoppen“ die Sprachausgabe. Unter „Sprachausgabe“ stellst du automatisches Vorlesen und Tempo ein.",
     "klarasprache.bedienhilfe.datenschutz":
@@ -94,10 +96,10 @@ export default {
       "What you say is written into the input field as text. Nothing is sent.",
     "klarasprache.auftragSprechen": "Speak a request",
     "klarasprache.auftragSprechenHilfe":
-      "Say a question or a request. Klara shows you the recognised text and the target before anything is sent.",
+      "Say a question or a request. {{assistenz}} shows you the recognised text and the target before anything is sent.",
     "klarasprache.stoppen": "Stop recording",
     "klarasprache.laeuft.diktat": "Dictation running – the text goes into the input field.",
-    "klarasprache.laeuft.auftrag": "Klara is listening – say your question or request.",
+    "klarasprache.laeuft.auftrag": "{{assistenz}} is listening – say your question or request.",
     "klarasprache.na":
       "Voice input is not available in this browser. Type your question into the input field.",
     "klarasprache.fehler.mikrofon":
@@ -111,10 +113,10 @@ export default {
     "klarasprache.auftrag.text": "Recognised text – correct it here",
     "klarasprache.auftrag.ziel": "Target",
     "klarasprache.auftrag.artLabel": "Recognised as",
-    "klarasprache.auftrag.art.frage": "Question to Klara",
+    "klarasprache.auftrag.art.frage": "Question to {{assistenz}}",
     "klarasprache.auftrag.art.aktion": "Work request",
     "klarasprache.auftrag.aktionHinweis":
-      "Klara cannot carry out this action herself yet. When sent, the text is asked as a question; nothing is created or changed.",
+      "{{assistenz}} cannot carry out this action yet. When sent, the text is asked as a question; nothing is created or changed.",
     "klarasprache.auftrag.senden": "Send",
     "klarasprache.auftrag.verwerfen": "Discard",
     "klarasprache.auftrag.offen": "Please answer the follow-up questions first.",
@@ -135,19 +137,19 @@ export default {
     "klarasprache.ergebnis.gesendet": "Sent as",
     "klarasprache.ergebnis.ziel": "Target",
     "klarasprache.ergebnis.ergebnis": "Result",
-    "klarasprache.ergebnis.stand.laeuft": "Klara is working …",
+    "klarasprache.ergebnis.stand.laeuft": "{{assistenz}} is working …",
     "klarasprache.ergebnis.stand.beantwortet":
-      "Klara has answered – the answer is in the conversation.",
+      "{{assistenz}} has answered – the answer is in the conversation.",
     "klarasprache.ergebnis.stand.abgebrochen": "Stopped – no answer received.",
     "klarasprache.ergebnis.stand.fehlgeschlagen": "Failed – the reason is in the conversation.",
     "klarasprache.ergebnis.stand.demo": "Demo answer – prepared, not a real answer.",
-    "klarasprache.ergebnis.stand.nicht_gesendet": "Not sent – Klara was not ready.",
+    "klarasprache.ergebnis.stand.nicht_gesendet": "Not sent – {{assistenz}} was not ready.",
     "klarasprache.ergebnis.keineAktion": "No action was carried out.",
     "klarasprache.ergebnis.schliessen": "Close",
     "klarasprache.vorlesen": "Read aloud",
     "klarasprache.vorlesenStop": "Stop reading",
     "klarasprache.vorlesenNa":
-      "Reading aloud is not available in this browser. Klara's answers are shown in full as text.",
+      "Reading aloud is not available in this browser. The answers of {{assistenz}} are shown in full as text.",
     "klarasprache.ausgabe.titel": "Speech output",
     "klarasprache.ausgabe.auto": "Read answers aloud automatically",
     "klarasprache.ausgabe.tempoLabel": "Speed",
@@ -157,7 +159,7 @@ export default {
     "klarasprache.bedienhilfe.diktieren":
       "“Dictate” writes what you say into the input field. Nothing is sent – you check, change and send it yourself.",
     "klarasprache.bedienhilfe.auftrag":
-      "“Speak a request” shows the recognised text, the target (page and object) and follow-up questions about names, times and references. It is only sent with “Send”, the same way as a typed question. For now Klara answers questions; she does not carry out actions yet.",
+      "“Speak a request” shows the recognised text, the target (page and object) and follow-up questions about names, times and references. It is only sent with “Send”, the same way as a typed question. For now {{assistenz}} answers questions; actions are not carried out yet.",
     "klarasprache.bedienhilfe.stoppen":
       "“Stop recording” ends listening, “Stop reading” ends speech output. Under “Speech output” you set automatic reading and speed.",
     "klarasprache.bedienhilfe.datenschutz":
@@ -171,10 +173,10 @@ export default {
       "Wat je zegt wordt als tekst in het invoerveld geschreven. Er wordt niets verstuurd.",
     "klarasprache.auftragSprechen": "Opdracht inspreken",
     "klarasprache.auftragSprechenHilfe":
-      "Spreek een vraag of opdracht in. Klara toont je de herkende tekst en het doel voordat er iets wordt verstuurd.",
+      "Spreek een vraag of opdracht in. {{assistenz}} toont je de herkende tekst en het doel voordat er iets wordt verstuurd.",
     "klarasprache.stoppen": "Opname stoppen",
     "klarasprache.laeuft.diktat": "Dicteren loopt – de tekst komt in het invoerveld.",
-    "klarasprache.laeuft.auftrag": "Klara luistert – spreek je vraag of opdracht in.",
+    "klarasprache.laeuft.auftrag": "{{assistenz}} luistert – spreek je vraag of opdracht in.",
     "klarasprache.na":
       "Spraakinvoer is in deze browser niet beschikbaar. Typ je vraag in het invoerveld.",
     "klarasprache.fehler.mikrofon":
@@ -189,10 +191,10 @@ export default {
     "klarasprache.auftrag.text": "Herkende tekst – hier corrigeren",
     "klarasprache.auftrag.ziel": "Doel",
     "klarasprache.auftrag.artLabel": "Herkend als",
-    "klarasprache.auftrag.art.frage": "Vraag aan Klara",
+    "klarasprache.auftrag.art.frage": "Vraag aan {{assistenz}}",
     "klarasprache.auftrag.art.aktion": "Werkopdracht",
     "klarasprache.auftrag.aktionHinweis":
-      "Deze handeling kan Klara nog niet zelf uitvoeren. Bij versturen wordt de tekst als vraag gesteld; er wordt niets aangemaakt of gewijzigd.",
+      "Deze handeling kan {{assistenz}} nog niet zelf uitvoeren. Bij versturen wordt de tekst als vraag gesteld; er wordt niets aangemaakt of gewijzigd.",
     "klarasprache.auftrag.senden": "Versturen",
     "klarasprache.auftrag.verwerfen": "Weggooien",
     "klarasprache.auftrag.offen": "Beantwoord eerst de vervolgvragen.",
@@ -213,19 +215,19 @@ export default {
     "klarasprache.ergebnis.gesendet": "Verstuurd als",
     "klarasprache.ergebnis.ziel": "Doel",
     "klarasprache.ergebnis.ergebnis": "Resultaat",
-    "klarasprache.ergebnis.stand.laeuft": "Klara is bezig …",
+    "klarasprache.ergebnis.stand.laeuft": "{{assistenz}} is bezig …",
     "klarasprache.ergebnis.stand.beantwortet":
-      "Klara heeft geantwoord – het antwoord staat in het gesprek.",
+      "{{assistenz}} heeft geantwoord – het antwoord staat in het gesprek.",
     "klarasprache.ergebnis.stand.abgebrochen": "Gestopt – geen antwoord ontvangen.",
     "klarasprache.ergebnis.stand.fehlgeschlagen": "Mislukt – de reden staat in het gesprek.",
     "klarasprache.ergebnis.stand.demo": "Demo-antwoord – voorbereid, geen echt antwoord.",
-    "klarasprache.ergebnis.stand.nicht_gesendet": "Niet verstuurd – Klara was niet klaar.",
+    "klarasprache.ergebnis.stand.nicht_gesendet": "Niet verstuurd – {{assistenz}} was niet klaar.",
     "klarasprache.ergebnis.keineAktion": "Er is geen handeling uitgevoerd.",
     "klarasprache.ergebnis.schliessen": "Sluiten",
     "klarasprache.vorlesen": "Voorlezen",
     "klarasprache.vorlesenStop": "Voorlezen stoppen",
     "klarasprache.vorlesenNa":
-      "Voorlezen is in deze browser niet beschikbaar. Klara's antwoorden staan volledig als tekst.",
+      "Voorlezen is in deze browser niet beschikbaar. De antwoorden van {{assistenz}} staan volledig als tekst.",
     "klarasprache.ausgabe.titel": "Spraakuitvoer",
     "klarasprache.ausgabe.auto": "Antwoorden automatisch voorlezen",
     "klarasprache.ausgabe.tempoLabel": "Tempo",
@@ -235,7 +237,7 @@ export default {
     "klarasprache.bedienhilfe.diktieren":
       "“Dicteren” schrijft wat je zegt in het invoerveld. Er wordt niets verstuurd – je controleert, wijzigt en verstuurt zelf.",
     "klarasprache.bedienhilfe.auftrag":
-      "“Opdracht inspreken” toont de herkende tekst, het doel (pagina en object) en vervolgvragen over namen, tijden en verwijzingen. Pas met “Versturen” gaat het weg, via dezelfde route als een getypte vraag. Voorlopig beantwoordt Klara vragen; handelingen voert ze nog niet uit.",
+      "“Opdracht inspreken” toont de herkende tekst, het doel (pagina en object) en vervolgvragen over namen, tijden en verwijzingen. Pas met “Versturen” gaat het weg, via dezelfde route als een getypte vraag. Voorlopig beantwoordt {{assistenz}} vragen; handelingen worden nog niet uitgevoerd.",
     "klarasprache.bedienhilfe.stoppen":
       "“Opname stoppen” beëindigt het luisteren, “Voorlezen stoppen” de spraakuitvoer. Onder “Spraakuitvoer” stel je automatisch voorlezen en tempo in.",
     "klarasprache.bedienhilfe.datenschutz":

@@ -3548,6 +3548,7 @@ const nl: typeof de = {
   "lib.format.markdown": "Tekst (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Print/PDF)",
+  "lib.format.paket": "Kennispakket (ZIP met versies en bijlagen)",
   // JOB 1119 (D-002) — zie de Duitse regel voor de bevinding en de gemeten zoekruimte.
   "lib.searchLabel": "Bibliotheek doorzoeken",
   "lib.ownScope.label": "Bereik",

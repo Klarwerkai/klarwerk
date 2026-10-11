@@ -38,6 +38,7 @@ import { KLARA_BEISPIELE, klaraBeispiel } from "../../apps/web/src/lib/klaraBeis
 import { klaraEntryById } from "../../apps/web/src/lib/klaraRegistry";
 import { REVIEW_HELP_IDS } from "../../apps/web/src/lib/reviewHelp";
 import { cleanForSpeech } from "../../apps/web/src/lib/vorlesen";
+import { hilfeknopfLabel } from "../support/hilfeknopf";
 
 // R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): die Pflichtliste stand bis hierher als
 // Export in `lib/klaraBeispiele.ts`, gelesen nur von diesem Prüfstand. Sie ist die Erwartung DIESES
@@ -144,7 +145,7 @@ async function tippen(panel: HTMLElement, text: string): Promise<void> {
 
 async function oeffnen(flaeche: HTMLElement): Promise<HTMLElement> {
   const knopf = flaeche.querySelector<HTMLButtonElement>(
-    `button[aria-label="${i18n.t("klara.open")}"]`,
+    `button[aria-label="${hilfeknopfLabel()}"]`,
   );
   if (!knopf) throw new Error("Der Klara-Auslöser fehlt.");
   await act(async () => knopf.click());

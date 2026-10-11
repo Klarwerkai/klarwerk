@@ -93,12 +93,19 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
     lage: "AUSSERHALB",
   },
   { job: "integration", befehl: "npm run test:integration", lage: "AUSSERHALB" },
+  // R-1487 (aufnahme:20260922:gesamt-kundenbetrieb): der Abbildbau läuft NACH dem Tor (`needs:
+  // check`) in einem eigenen Job; `./tools/check` fährt ihn nicht mit.
+  {
+    job: "abbild",
+    befehl: "node scripts/deploy/abbild-bauen.mjs --ziel dist/abbild",
+    lage: "AUSSERHALB",
+  },
 ];
 
 describe("JOB 1080 · Auflage 1 — der VOLLSTÄNDIGE Workflow, jobweise eingeordnet", () => {
   it("kennt genau die Jobs, die eingeordnet sind — ein neuer Job macht diesen Test rot", () => {
-    expect(jobNamen()).toEqual(["check", "integration"]);
-    expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual(["check", "integration"]);
+    expect(jobNamen()).toEqual(["check", "integration", "abbild"]);
+    expect([...new Set(EINORDNUNG.map((e) => e.job))]).toEqual(["check", "integration", "abbild"]);
   });
 
   it("ordnet JEDEN ausführbaren Schritt JEDES Jobs zu — lückenlos und in der Laufreihenfolge", () => {

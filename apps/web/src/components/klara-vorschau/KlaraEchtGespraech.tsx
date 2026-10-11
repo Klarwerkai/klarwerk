@@ -10,12 +10,13 @@
 //   · jede Nachricht mit ihrer Herkunft („KI-Antwort" nur bei `demo: false`) und ihrem Speicherstand.
 // Die Eingabe, der Stopp und die Figur stehen in `KlaraVorschau.tsx`.
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useReasonerStatus } from "../../api/hooks";
 import type { KlaraObjektbezug } from "../../api/klaraGespraech";
 import type { KnowledgeClass } from "../../api/types";
 import { HOME_ROUTE } from "../../app/navigation";
+// produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+import { useAssistenzT } from "../../lib/assistenzProfil";
 import { internerPfad } from "../../lib/internerPfad";
 import { KNOWLEDGE_CLASS_META } from "../../lib/knowledgeClass";
 import { formatKoTimestamp } from "../../lib/koDates";
@@ -73,7 +74,7 @@ function bezugZeile(b: KlaraObjektbezug): { seite: string; objekt: string } {
  * und Absatz von DAMALS. Er kommt aus der Ablage und wird nie aus der aktuellen Seite ergänzt.
  */
 function BezugVonDamals({ b }: { b: KlaraObjektbezug }): JSX.Element | null {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const teile: string[] = [];
   if (b.bezug === "frei") {
     teile.push(t("klarakontext.verlauf.frei"));
@@ -99,7 +100,7 @@ function BezugVonDamals({ b }: { b: KlaraObjektbezug }): JSX.Element | null {
 
 /** Klara 03 · K3: jede Quelle mit Titel, Fassung und Prüfstatus — oder ehrlich ohne Angabe. */
 function QuellenZeile({ n }: { n: EchtNachricht }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const angaben = new Map((n.quellenAngaben ?? []).map((a) => [a.koId, a]));
   return (
     <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="klara-quellen">
@@ -155,7 +156,8 @@ function NachrichtEcht({
   n: EchtNachricht;
   sprecher?: string | undefined;
 }): JSX.Element {
-  const { t } = useTranslation();
+  // produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+  const { t } = useAssistenzT();
   const klasse =
     n.wissensklasse && n.wissensklasse in KNOWLEDGE_CLASS_META
       ? KNOWLEDGE_CLASS_META[n.wissensklasse as KnowledgeClass]
@@ -300,7 +302,7 @@ export function KlaraEchtGespraech({
    */
   sprecher?: string;
 }): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const e = useEchtGespraech();
   const [loeschenFragen, setLoeschenFragen] = useState(false);
   const g = e.gespraech;

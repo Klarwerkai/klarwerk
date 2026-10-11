@@ -876,6 +876,54 @@ export const TABELLE: Zeile[] = [
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
+  // produkt:20261007:artikel-gemeinsam · der gemeinsame Artikelentwurf. Jede Tür hängt an
+  // `ko.create` — demselben Recht wie Bearbeiten; kein neues Recht. Die URLs sind zustandsfrei
+  // (erfundene Kennung): hinter dem Tor endet jede Tür im 404 und legt nichts an.
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:178",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:190",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "PUT",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam",
+    route: "/api/kos/:id/gemeinsam",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:213",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam/angleichen",
+    route: "/api/kos/:id/gemeinsam/angleichen",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:258",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "gemeinsamRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/gemeinsam/abschluss",
+    route: "/api/kos/:id/gemeinsam/abschluss",
+    belegstelle: "services/app/src/routes/gemeinsam-routes.ts:296",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   // produkt:20261007:office-artikel-editor · Office im Artikel. Die Artikelseite fragt Lage und
   // Sitzung mit `ko.read` an (Ansehen ist Lesen), Übernehmen, Zurückholen und gesicherte Stände mit
   // `ko.create` — dieselben Rechte wie `revise`; kein neues Recht. Die URLs sind zustandsfrei
@@ -1023,7 +1071,7 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
     route: "/api/kos/:id/veroeffentlichung",
-    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:79",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:82",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -1032,7 +1080,27 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/kos/gibt-es-nicht/veroeffentlichung",
     route: "/api/kos/:id/veroeffentlichung",
-    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:107",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:110",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // ADMIN-12: Zustellstatus und Wiederaufnahme — dasselbe Freigaberecht wie das Veröffentlichen.
+  // Erfundene Kennungen: hinter dem Tor endet beides im 404, nichts wird verschickt.
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung/zustellung/gibt-es-nicht",
+    route: "/api/kos/:id/veroeffentlichung/zustellung/:vermerkId",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:148",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "veroeffentlichungRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/veroeffentlichung/zustellung/gibt-es-nicht/fortsetzen",
+    route: "/api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen",
+    belegstelle: "services/app/src/routes/veroeffentlichung-routes.ts:170",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -1178,6 +1246,51 @@ export const TABELLE: Zeile[] = [
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
+  },
+  // ADMIN-12 · Kommunikationsregeln. Übersicht und eigene Einstellungen: jedes angemeldete Konto;
+  // Unternehmensvorgabe ändern und Fassungen lesen: `users.manage`. Leere Nutzlasten — hinter dem
+  // Tor endet jede schreibende Tür im 400 und ändert nichts.
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "GET",
+    pfad: "/api/kommunikation/regeln",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:41",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "PUT",
+    pfad: "/api/admin/kommunikation/regeln",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:53",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "GET",
+    pfad: "/api/admin/kommunikation/fassungen",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:75",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "GET",
+    pfad: "/api/meldungsregeln/meine",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:84",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "kommunikationRoutes",
+    methode: "PUT",
+    pfad: "/api/meldungsregeln/meine",
+    belegstelle: "services/app/src/routes/kommunikation-routes.ts:93",
+    tor: "requireUser",
+    payload: {},
+    erwartet: ANGEMELDET,
   },
   {
     gruppe: "captureRoutes",
@@ -1499,6 +1612,28 @@ export const TABELLE: Zeile[] = [
     route: "/api/me/klara/gespraeche/:id",
     belegstelle: "services/app/src/routes/klara-gespraech-routes.ts:199",
     tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
+  // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas
+  // geschrieben wird. Die Wirkung (Schreiben, Fremdkonto 403) misst
+  // `tests/assistenz-profil/profil-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:81",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:98",
+    tor: "requireUser",
+    payload: { avatar: "gibt-es-nicht" },
     erwartet: ANGEMELDET,
   },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite

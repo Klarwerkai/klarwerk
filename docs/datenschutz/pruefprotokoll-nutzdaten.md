@@ -42,6 +42,9 @@ wiederholt.
 | `gap.draft-linked` | `koId` | K |
 | `gap.closed` (fachlicher Abschluss) | `koId`, `koVersion` | K, M |
 | `gap.withdrawn` (administrative Rücknahme) | `grund` (geschlossene Auswahl `GAP_RUECKNAHME_GRUENDE`) | Z — **kein Freitext** |
+| `answer.reported` (R-1089; einfache Meldung) | `meldungId`, `grund` (geschlossene Auswahl), `koTitle`, `responsible`, `responsibleKind` | K, M, Z |
+| `answer.reported` als Beanstandung einer Aussage (produkt:20261010:antwort-beanstandung-korrektur) | wie oben (ohne Quelle entfallen `koTitle`, `responsible`, `responsibleKind`), zusätzlich `aussageId`, `aussageFingerabdruck`, ggf. `answerId`, `koVersion`, `fundstelleId`, `quelleFehlt` | K, M, Z — **kein Aussagetext, keine Begründung, keine Frage** (gemessen: `tests/antwort-beanstandung/beanstandung-dienst.test.ts` B1); Aussage und Begründung stehen nur am Vorgang |
+| `gap.beanstandung-zurueckgewiesen` | ggf. `koId`, `koVersion` | K, M — **keine Begründung** (gemessen: dieselbe Datei, B8); die Begründung steht nur am Vorgang |
 | `ask.zweitmeinung` (R-0305/R-1099, nur auf Anforderung) | `status`, und entweder `abweichend`, `abweichungen` (Merkmalsnamen, kommagetrennt), `ersteStufe`, `zweiteStufe` (`cloud`/`local`/`deterministic`) oder `grund` | Z — **kein Frage- oder Antworttext, kein Anbieter- oder Modellname**; `target` ist die tragende Quelle (gemessen: `tests/zweitmeinung/fragedienst.test.ts`, `route-und-protokoll.test.ts`) |
 
 ### Wissensobjekte (`services/knowledge-object`, `services/validation`, `services/lifecycle`)
@@ -126,6 +129,8 @@ am Konflikt, **nicht** im Protokoll.
 | `unternehmensprofil.geaendert` | `vorherVersion`, `version`, `akzent`, `nameGeaendert`, `logoGeaendert`, `uebernommenAus` | Z — weder Name noch Logodatei stehen im Protokoll |
 | `richtlinie.veroeffentlicht` | `fassung`, `anforderung`, `rollen`, `gueltigAb`, `betroffen`, ggf. `erneut`, `bisherigeHandlungen` | Z, M — der Richtlinientext steht **nicht** im Protokoll |
 | `richtlinie.handlung` | `fassung`, `handlung` (Akteur = die handelnde Person) | Z — dieselbe Angabe steht im Handlungsprotokoll der Richtlinie |
+| `kommunikationsregeln.geaendert` (ADMIN-12) | `vorherVersion`, `version`, `aenderungen` (je Ereignis, Feld, vorher, nachher — Werte aus geschlossenen Mengen) | Z — keine Inhalte, keine Empfänger |
+| `meldungsregel.persoenlich` (ADMIN-12) | `ereignis`, `abgewaehlt` (Akteur und Ziel = die Person selbst) | Z |
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |

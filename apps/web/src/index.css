@@ -485,15 +485,351 @@ body.klara-inspect * {
   outline: 3px dashed rgb(var(--kw-ai));
   outline-offset: 4px;
 }
+/* produkt:20261010:assistenz-name-avatar — DIE NEUN ZUSTÄNDE DER FIGUR (ANIMATIONSZUSTAENDE.json).
+   `data-zustand` kommt aus echten Ereignissen (`components/assistenz/ausdruck.ts`), `data-stil` aus
+   dem Motiv: „expressiv“ (Original, Lichtwesen, Roboter, Eule, Fuchs, Pinguin, Wolke, Kompass) —
+   kleine Gesten der Figur; „zurueckhaltend“ (Prisma, Wissensbuch, Verbindungsknoten, Monolith,
+   Leuchtkreis, neutrale Ersatzgrafik) — nur Licht und sparsame Neigung, keine Hüpfer, keine Gesichter.
+   Bewegt wird nur das Motiv (`.klara-motiv`); Freude und Rückfrage laufen einmal, Warten, Zuhören und
+   Sprechen nur solange das Ereignis besteht; Pause und Fehler sind still. Bei reduzierter Bewegung
+   (System oder eigene Wahl `data-bewegung="reduziert"`) bleibt ein ruhiger statischer Ausdruck —
+   jeder Zustand steht ohnehin als Text an der Figur. Verkleinert ist die Figur in „pause“. */
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="fehler"] .klara-motiv,
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="pause"] .klara-motiv {
+  filter: brightness(0.86) saturate(0.85);
+}
+.klara-figur[data-stil="expressiv"][data-zustand="fehler"] .klara-motiv,
+.klara-figur[data-stil="expressiv"][data-zustand="fehler"] .klara-mimik {
+  filter: saturate(0.85);
+}
+/* produkt:20261010:assistenz-avatarzustaende — STATISCHER Lichtausdruck der sachlichen Objekte: auch
+   ohne Bewegung (System oder eigene Wahl) zeigt jedes Objekt seinen Zustand ruhig — etwas heller
+   beim Warten, Zuhören und Sprechen, ein stiller Lichtsaum beim Nachdenken, eine leichte Neigung
+   bei der Rückfrage, aufgehellt bei Freude. Keine Gesichter, keine Bewegung. Läuft eine Bewegung
+   (Block unten), überlagert sie diesen Ruhewert nur, solange sie läuft. */
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="warten"] .klara-motiv {
+  filter: brightness(1.05);
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="nachdenken"] .klara-motiv {
+  filter: drop-shadow(0 0 4px rgb(255 255 255 / 0.55));
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="zuhoeren"] .klara-motiv,
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="sprechen"] .klara-motiv {
+  filter: brightness(1.09);
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="ratlos"] .klara-motiv {
+  transform: rotate(-3deg);
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="freude"] .klara-motiv {
+  filter: brightness(1.12);
+}
+/* Fehlerarten (`data-fehlerart`): eine fehlende geprüfte Quelle oder eine fehlende Angabe der Person
+   ist kein technischer Fehlschlag — kaum gedimmt und statt des Absinkens (Bewegungsblock unten) eine
+   einmalige fragende Neigung; der Text an der Figur nennt den Unterschied. Nie ein erschrockener
+   oder vorwurfsvoller Ausdruck. */
+.klara-figur[data-fehlerart="quelle"][data-zustand="fehler"] .klara-motiv,
+.klara-figur[data-fehlerart="eingabe"][data-zustand="fehler"] .klara-motiv,
+.klara-figur[data-fehlerart="quelle"][data-zustand="fehler"] .klara-mimik,
+.klara-figur[data-fehlerart="eingabe"][data-zustand="fehler"] .klara-mimik {
+  filter: brightness(0.96);
+}
+/* Mimik der acht Motive mit Gesicht (`components/assistenz/AvatarMimik.tsx`): Lider und Mund bzw.
+   Schnabelspalt liegen deckungsgleich über dem unveränderten Bild und sind ruhend unsichtbar. Der
+   STATISCHE Ausdruck je Zustand gilt auch bei reduzierter Bewegung; Lidschlag und Mundbewegung
+   laufen nur im Bewegungsblock unten. Sachliche Objekte haben keine Mimik-Ebene. */
+.klara-mimik-lid,
+.klara-mimik-mund {
+  transform-box: fill-box;
+  transform: scaleY(0);
+}
+.klara-mimik-lid {
+  transform-origin: 50% 0%;
+}
+.klara-mimik-mund {
+  transform-origin: 50% 50%;
+}
+.klara-mimik[data-zustand="nachdenken"] .klara-mimik-lid {
+  transform: scaleY(0.28);
+}
+.klara-mimik[data-zustand="ratlos"] .klara-mimik-lid-l {
+  transform: scaleY(0.06);
+}
+.klara-mimik[data-zustand="ratlos"] .klara-mimik-lid-r {
+  transform: scaleY(0.42);
+}
+/* Freude: das untere Lid hebt sich — freundlich zusammengezogene Augen. */
+.klara-mimik[data-zustand="freude"] .klara-mimik-lid {
+  transform-origin: 50% 100%;
+  transform: scaleY(0.42);
+}
+.klara-mimik[data-zustand="fehler"] .klara-mimik-lid {
+  transform: scaleY(0.36);
+}
+.klara-mimik[data-zustand="pause"] .klara-mimik-lid {
+  transform: scaleY(0.52);
+}
+/* Sprechen ohne Bewegung: ein ruhig halb geöffneter Mund statt Mundbewegung. */
+.klara-mimik[data-zustand="sprechen"] .klara-mimik-mund {
+  transform: scaleY(0.5);
+}
 @media (prefers-reduced-motion: no-preference) {
-  .klara-figur {
+  .klara-figur:not([data-bewegung="reduziert"]) {
     transition: width 0.15s ease, height 0.15s ease;
   }
-  .klara-figur[data-status="laeuft"] img {
+  .klara-figur[data-status="antwort"]:not([data-bewegung="reduziert"]) {
+    animation: kw-klara-bereit 1.2s ease-out 2;
+  }
+  /* expressiv — Gesten der Figur; die Mimik-Ebene bewegt sich deckungsgleich mit dem Bild. */
+  .klara-figur[data-stil="expressiv"][data-zustand="bereit"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="bereit"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
+    animation: kw-assistenz-atmen 4.5s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="expressiv"][data-zustand="warten"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="warten"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
     animation: kw-klara-denkt 1.4s ease-in-out infinite;
   }
-  .klara-figur[data-status="antwort"] {
-    animation: kw-klara-bereit 1.2s ease-out 2;
+  .klara-figur[data-stil="expressiv"][data-zustand="nachdenken"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="nachdenken"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
+    animation: kw-assistenz-neigen 3s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="expressiv"][data-zustand="zuhoeren"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="zuhoeren"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
+    animation: kw-assistenz-nicken 1.8s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="expressiv"][data-zustand="sprechen"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="sprechen"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
+    animation: kw-assistenz-sprechen 0.6s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="expressiv"][data-zustand="ratlos"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="ratlos"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
+    animation: kw-assistenz-kippen 0.9s ease-out 1 forwards;
+  }
+  .klara-figur[data-stil="expressiv"][data-zustand="freude"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="freude"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
+    animation: kw-assistenz-huepfer 0.55s ease-out 2;
+  }
+  .klara-figur[data-stil="expressiv"][data-zustand="fehler"]:not([data-bewegung="reduziert"])
+    .klara-motiv,
+  .klara-figur[data-stil="expressiv"][data-zustand="fehler"]:not([data-bewegung="reduziert"])
+    .klara-mimik {
+    animation: kw-assistenz-absinken 0.7s ease-out 1 forwards;
+  }
+  /* assistenz-avatarzustaende: fehlende Quelle / fehlende Angabe — fragende Neigung statt Absinken. */
+  .klara-figur[data-fehlerart="quelle"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-motiv,
+  .klara-figur[data-fehlerart="quelle"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-mimik,
+  .klara-figur[data-fehlerart="eingabe"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-motiv,
+  .klara-figur[data-fehlerart="eingabe"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-mimik {
+    animation: kw-assistenz-neigen-klein 0.9s ease-out 1 forwards;
+  }
+  /* Mimik — Lidschlag, langsamer Lidwechsel beim Nachdenken, Mund/Schnabel beim Sprechen */
+  .klara-mimik:not([data-bewegung="reduziert"]) .klara-mimik-lid {
+    transition: transform 0.25s ease-out;
+  }
+  .klara-mimik[data-zustand="bereit"]:not([data-bewegung="reduziert"]) .klara-mimik-lid {
+    animation: kw-mimik-blinzeln 4.8s ease-in-out infinite;
+  }
+  .klara-mimik[data-zustand="warten"]:not([data-bewegung="reduziert"]) .klara-mimik-lid {
+    animation: kw-mimik-blinzeln 3.2s ease-in-out infinite;
+  }
+  .klara-mimik[data-zustand="nachdenken"]:not([data-bewegung="reduziert"]) .klara-mimik-lid {
+    animation: kw-mimik-sinnen 3s ease-in-out infinite;
+  }
+  .klara-mimik[data-zustand="sprechen"]:not([data-bewegung="reduziert"]) .klara-mimik-lid {
+    animation: kw-mimik-blinzeln 4.8s ease-in-out infinite;
+  }
+  .klara-mimik[data-zustand="sprechen"]:not([data-bewegung="reduziert"]) .klara-mimik-mund {
+    animation: kw-mimik-sprechen 0.34s ease-in-out infinite alternate;
+  }
+  /* zurückhaltend — Licht und sparsame Neigung */
+  .klara-figur[data-stil="zurueckhaltend"][data-zustand="warten"]:not([data-bewegung="reduziert"])
+    .klara-motiv {
+    animation: kw-assistenz-lichtpuls 2.6s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="zurueckhaltend"][data-zustand="nachdenken"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-motiv {
+    animation: kw-assistenz-lichtwandern 3.2s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="zurueckhaltend"][data-zustand="zuhoeren"]:not([data-bewegung="reduziert"])
+    .klara-motiv {
+    animation: kw-assistenz-signal 1.1s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="zurueckhaltend"][data-zustand="sprechen"]:not([data-bewegung="reduziert"])
+    .klara-motiv {
+    animation: kw-assistenz-signal 0.55s ease-in-out infinite;
+  }
+  .klara-figur[data-stil="zurueckhaltend"][data-zustand="ratlos"]:not([data-bewegung="reduziert"])
+    .klara-motiv {
+    animation: kw-assistenz-neigen-klein 0.9s ease-out 1 forwards;
+  }
+  .klara-figur[data-stil="zurueckhaltend"][data-zustand="freude"]:not([data-bewegung="reduziert"])
+    .klara-motiv {
+    animation: kw-assistenz-aufhellen 1.2s ease-out 1;
+  }
+}
+@keyframes kw-assistenz-atmen {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.025);
+  }
+}
+@keyframes kw-assistenz-neigen {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+@keyframes kw-assistenz-nicken {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(1.5px) rotate(1.5deg);
+  }
+}
+@keyframes kw-assistenz-sprechen {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.02, 0.98);
+  }
+}
+@keyframes kw-assistenz-kippen {
+  0% {
+    transform: rotate(0deg);
+  }
+  60% {
+    transform: rotate(-9deg);
+  }
+  100% {
+    transform: rotate(-6deg);
+  }
+}
+@keyframes kw-assistenz-huepfer {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes kw-assistenz-absinken {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(3px);
+  }
+}
+@keyframes kw-assistenz-lichtpuls {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.14);
+  }
+}
+@keyframes kw-assistenz-lichtwandern {
+  0%,
+  100% {
+    filter: drop-shadow(-3px 0 5px rgb(255 255 255 / 0.55));
+  }
+  50% {
+    filter: drop-shadow(3px 0 5px rgb(255 255 255 / 0.55));
+  }
+}
+@keyframes kw-assistenz-signal {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.07);
+  }
+}
+@keyframes kw-assistenz-neigen-klein {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(-3deg);
+  }
+}
+@keyframes kw-assistenz-aufhellen {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  40% {
+    filter: brightness(1.28);
+  }
+}
+/* Lidschlag: kurz zu und wieder auf, sonst offen. */
+@keyframes kw-mimik-blinzeln {
+  0%,
+  91%,
+  100% {
+    transform: scaleY(0);
+  }
+  95% {
+    transform: scaleY(1);
+  }
+}
+/* Nachdenken: leicht gesenkte Lider, die sich langsam heben und senken. */
+@keyframes kw-mimik-sinnen {
+  0%,
+  100% {
+    transform: scaleY(0.28);
+  }
+  50% {
+    transform: scaleY(0.12);
+  }
+}
+/* Sprechen: Mund bzw. Schnabelspalt öffnet und schließt sich. */
+@keyframes kw-mimik-sprechen {
+  from {
+    transform: scaleY(0.15);
+  }
+  to {
+    transform: scaleY(1);
   }
 }
 @keyframes kw-klara-denkt {

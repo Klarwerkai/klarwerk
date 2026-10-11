@@ -13,7 +13,15 @@ import type { LifecycleService } from "../../lifecycle";
 import type { ObjectStore } from "../../object-store";
 import type { Reasoner } from "../../reasoner";
 import type { ValidationService } from "../../validation";
-import { type DemoLocale, demoTexts } from "./demo-content";
+import {
+  type DemoLocale,
+  type DemoTexts,
+  POC_ANLAGE,
+  POC_ANLAGE_UNBETEILIGT,
+  POC_KATEGORIE,
+  POC_TAG,
+  demoTexts,
+} from "./demo-content";
 
 // SCRUM-156/181: reproduzierbarer Demo-/Dev-Seed. Erzeugt einen kleinen, ehrlichen Bestand
 // AUSSCHLIESSLICH über die echten Services — Audit/Statuslogik/Side-Effects bleiben real,
@@ -892,6 +900,11 @@ async function buildDemoContent(
     provider: "Intern",
   });
 
+  // produkt:20261010:branchen-poc-arbeitswege: der Ausgangsbestand der drei Arbeitsgeschichten.
+  // Bewusst NACH der Demo-Lückenfrage angelegt — die Lücke entsteht damit unabhängig von diesen
+  // Einträgen (die Wortwahl schließt eine Scheinantwort ohnehin aus, s. `PocTexts`).
+  await buildPocArbeitswege(services, actors, t);
+
   // --- Kennzahlen aus echten Service-Reads ableiten ---
   const allKos = await ko.list();
   return {
@@ -906,6 +919,82 @@ async function buildDemoContent(
     attachments: allKos.reduce((n, k) => n + (k.attachments?.length ?? 0), 0),
     sources: allKos.reduce((n, k) => n + (k.sources?.length ?? 0), 0),
   };
+}
+
+// ================================================================================================
+// produkt:20261010:branchen-poc-arbeitswege — DER AUSGANGSBESTAND DER DREI ARBEITSGESCHICHTEN.
+// ================================================================================================
+//
+// Kein eigener Ladeweg, kein eigenes Datenmodell: dieselben Dienste, derselbe `demoSeed`-Merker und
+// derselbe `DEMO_TAG` wie der übrige Demo-Bestand — „Demodaten entfernen" und „force" nehmen den PoC
+// mit, echte Daten bleiben unberührt. Ablauf, Rollen und Messprotokoll:
+// docs/poc/branchen-poc-arbeitswege.md.
+//
+//   Geschichte 1: ein validierter Eintrag MIT Quelle (Label + wörtlicher Auszug, bewusst ohne
+//                 erfundene Adresse) — die typische Frage `poc.quellenFrage` trifft ihn.
+//   Geschichte 2: braucht hier nichts; Start ist die vorhandene Demo-Lücke (`gapQuestion`).
+//   Geschichte 3: zwei validierte Einträge an `POC_ANLAGE` (Quelle: Betriebsanleitung Fassung 1)
+//                 und ein validierter Eintrag an einer ANDEREN Anlage. Es wird hier bewusst KEINE
+//                 Änderung gemeldet: der Ausgangsstand ist „aktuell", die Änderung meldet der
+//                 Durchlauf.
+async function buildPocArbeitswege(
+  services: DemoSeedServices,
+  actors: SeedActors,
+  t: DemoTexts,
+): Promise<void> {
+  const { ko, validation, lifecycle } = services;
+  const { adminId, controllerId: carlaId, expertId: erikId } = actors;
+  const p = t.poc;
+
+  const anlegen = async (
+    text: { title: string; statement: string },
+    tags: string[],
+    asset?: string,
+  ): Promise<KnowledgeObject> =>
+    ko.create({
+      demoSeed: true,
+      title: text.title,
+      statement: text.statement,
+      type: "best_practice",
+      category: POC_KATEGORIE,
+      author: erikId,
+      tags: [...tags, POC_TAG, DEMO_TAG],
+      confidence: 75,
+      neededValidations: 2,
+      confidentiality: "intern",
+      ...(asset ? { asset } : {}),
+    });
+  // Fachprüfung über den echten Bewertungsweg (zwei Stimmen, wie koValid), NACH dem Anhängen der
+  // Quelle — der validierte Stand umfasst damit Aussage und Beleg.
+  const freigeben = async (id: string): Promise<void> => {
+    await validation.rate(id, carlaId, "up");
+    await validation.rate(id, adminId, "up");
+  };
+
+  const quelle = await anlegen(p.koQuelle, ["kühlschmierstoff", "fräse"]);
+  await ko.addSource(quelle.id, erikId, {
+    label: p.quelleLabel,
+    url: null,
+    excerpt: p.koQuelle.statement,
+    provider: "Intern",
+  });
+  await freigeben(quelle.id);
+
+  for (const text of [p.koAnlageA, p.koAnlageB]) {
+    const eintrag = await anlegen(text, ["abfüllanlage"], POC_ANLAGE);
+    await ko.addSource(eintrag.id, erikId, {
+      label: p.anlageQuelleLabel,
+      url: null,
+      excerpt: text.statement,
+      provider: "Intern",
+    });
+    await freigeben(eintrag.id);
+    await lifecycle.couple(POC_ANLAGE, eintrag.id);
+  }
+
+  const unbeteiligt = await anlegen(p.koUnbeteiligt, ["kompressor"], POC_ANLAGE_UNBETEILIGT);
+  await freigeben(unbeteiligt.id);
+  await lifecycle.couple(POC_ANLAGE_UNBETEILIGT, unbeteiligt.id);
 }
 
 // ---- Demodaten komplett entfernen (Pedi 02.07.) -------------------------------------

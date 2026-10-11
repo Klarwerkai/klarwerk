@@ -1209,7 +1209,10 @@ export interface Gap {
   // produkt:20261010:wissenskreislauf-schliessen (Spiegel von `GapView`): wie eine geschlossene
   // Lücke geschlossen wurde — fachlich gelöst oder administrativ zurückgenommen. Fehlt bei offenen
   // Lücken und beim Altbestand.
-  abschlussArt?: "fachlich" | "administrativ";
+  abschlussArt?: "fachlich" | "administrativ" | "zurueckgewiesen";
+  // produkt:20261010:antwort-beanstandung-korrektur: die Lücke ist eine beanstandete Antwortaussage
+  // (der Fragetext ist dann eine Neutralbezeichnung; die Aussage steht nur im Vorgang).
+  beanstandung?: true;
   // Nur in der berechtigten Sicht: eine Rückfrage an die Fragenden ist offen.
   rueckfrageOffen?: true;
   // Nur in der berechtigten Sicht: der Betrachter hat diese Frage selbst gestellt.
@@ -1232,6 +1235,7 @@ export type GapVorgangsphase =
   | "bereit_zum_abschluss"
   | "geloest"
   | "zurueckgenommen"
+  | "zurueckgewiesen"
   | "geschlossen_ohne_nachweis";
 
 export type GapVorgangsrolle = "fragend" | "zustaendig" | "verwaltend";
@@ -1248,6 +1252,7 @@ export type GapNaechsterSchritt =
   | "bearbeitung_abwarten"
   | "ergebnis_lesen"
   | "erneut_fragen"
+  | "begruendung_lesen"
   | "keiner";
 
 export type NutzbarkeitsGrund =
@@ -1303,13 +1308,45 @@ export interface GapVorgang {
     antwort?: string;
     beantwortetAm?: string;
     vonMirBeantwortet?: boolean;
+    // Nur für die zuständige Person bei einer Beanstandung: die angefragte Meldung.
+    meldungId?: string;
   }[];
   entwurf: GapVorgangEintrag | { zugaenglich: false } | null;
   ergebnis: GapVorgangEintrag | { zugaenglich: false } | null;
   abschluss:
     | { art: "fachlich"; at: string; koVersion: number }
     | { art: "administrativ"; at: string; grund: GapRuecknahmeGrund }
+    | {
+        art: "zurueckgewiesen";
+        at: string;
+        begruendung: string;
+        koId: string | null;
+        koVersion: number | null;
+      }
     | null;
+  // produkt:20261010:antwort-beanstandung-korrektur (Spiegel von `BeanstandungSicht`).
+  beanstandung?: GapBeanstandungSicht;
+}
+
+export interface GapBeanstandungSicht {
+  koId: string | null;
+  quelleZugaenglich: boolean;
+  quelleFehlt: boolean;
+  fassungenDamals: number[];
+  aussage: string;
+  aussageZurueckgehalten: boolean;
+  meldungen: number;
+  eigeneMeldungen: {
+    meldungId: string;
+    at: string;
+    answerId: string | null;
+    aussageId: string;
+    koVersion: number | null;
+    fundstelleId: string | null;
+    quelleFehlt: boolean;
+    begruendung: string;
+  }[];
+  begruendungen: { meldungId: string; at: string; text: string }[];
 }
 
 // R-0773: eine eigene Suche ohne Treffer (`GET /api/library/nulltreffer`, nur die eigene Liste).
@@ -2542,6 +2579,9 @@ export interface AskResponse {
   // R-0310: je Absatz die tragenden Quellen, die ihn belegen (services/app/src/absatz-belege.ts);
   // nur bei beantworteter Frage. Angewandt in `lib/askResponse.ts` (`selectAnswer`).
   absaetze?: AbsatzBeleg[];
+  // REF-01: je Aussage Kennung, Wortlaut und Fundstellen; nur bei beantworteter Frage. Grundlage der
+  // Beanstandung einer konkreten Aussage (produkt:20261010:antwort-beanstandung-korrektur).
+  aussagen?: AntwortAussagenBeleg;
 }
 
 // R-1630 / R-2176: Spiegel von `services/ask/src/wissensstand-vergleich.ts` — dort stehen Regeln
@@ -3829,9 +3869,41 @@ export interface AntwortMeldungQuittung {
   grund: AntwortMeldeGrund;
   at: string;
   // Wohin die Meldung ging — benannte verantwortliche Person oder ersatzweise der Autor. Wer das
-  // ist, sagt die Quittung bewusst nicht.
-  zugestelltAn: "owner" | "author-fallback";
+  // ist, sagt die Quittung bewusst nicht. `niemand`: „Quelle fehlt" ohne Quelle — offen ohne
+  // Zuständigkeit.
+  zugestelltAn: "owner" | "author-fallback" | "niemand";
   bereitsGemeldet: boolean;
+  // produkt:20261010:antwort-beanstandung-korrektur: nur bei der Beanstandung einer Aussage.
+  beanstandung?: {
+    vorgangId: string;
+    answerId: string | null;
+    aussageId: string;
+    aussageFingerabdruck: string;
+    koVersion: number | null;
+    fundstelleId: string | null;
+    quelleFehlt: boolean;
+    zusammengefuehrt: boolean;
+    zustaendigkeit: "zugeordnet" | "offen";
+  };
+}
+
+/** Die Beanstandung einer konkreten Aussage (`POST /api/ask/report`, Felder `aussage`/`begruendung`). */
+export interface AntwortBeanstandung {
+  aussage: { aussageId: string; text: string; fundstelleId?: string; quelleFehlt?: true };
+  begruendung: string;
+}
+
+// produkt:20261009:referenzki-quellenbelege (REF-01): Spiegel des Teils von `AussagenBeleg`
+// (services/ask/src/aussage-fundstellen.ts), den die Fragenseite für die Beanstandung braucht.
+export interface AntwortAussagenBeleg {
+  aussagen: {
+    aussageId: string;
+    text: string;
+    deckung: "belegt" | "teilweise" | "unbelegt";
+    teile: {
+      fundstellen: { fundstelleId: string; koId: string; koVersion: number; auszug: string }[];
+    }[];
+  }[];
 }
 
 export interface Notification {
@@ -3861,8 +3933,20 @@ export interface Notification {
   art?: "neu" | "aktualisierung";
   hervorgehoben?: boolean;
   // produkt:20261010:wissenskreislauf-schliessen: Unterart und Lücke einer `luecke`-Meldung.
-  lueckenArt?: "geloest" | "rueckfrage" | "rueckfrage_beantwortet";
+  lueckenArt?: "geloest" | "rueckfrage" | "rueckfrage_beantwortet" | "zurueckgewiesen";
   gapId?: string;
+  // ADMIN-12: die tägliche Zusammenfassung gewöhnlicher Veröffentlichungen eines Tages (ohne `koId`).
+  zusammenfassung?: {
+    tag: string;
+    anzahl: number;
+    eintraege: Array<{
+      vermerkId: string;
+      koId: string;
+      title: string;
+      fassung: number;
+      art: "neu" | "aktualisierung";
+    }>;
+  };
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
@@ -4008,7 +4092,36 @@ export type SicherungenAuskunft = (
    * Feld weiter gelten; der Server sendet es in jedem der drei Zustände.
    */
   schutzwege?: Schutzwege;
+  /**
+   * produkt:20261010:poc-wiederherstellung-export — was die Sicherung je Bereich enthält, gebunden an
+   * die laufende Fassung. Optional für Teilaufbauten ohne Fassungsangabe.
+   */
+  umfang?: SicherungsUmfang;
 };
+
+// ================================================================================================
+// produkt:20261010:poc-wiederherstellung-export — DER SICHERUNGSUMFANG JE BEREICH.
+// Spiegel von `services/app/src/sicherungsumfang.ts`; Titel, Grund und Folge übersetzt die Fläche.
+// ================================================================================================
+export type UmfangZustand = "im_dump" | "ausgeschlossen" | "nicht_vorhanden";
+export type UmfangBeleg =
+  | "belegt"
+  | "zeilen_gleich"
+  | "abweichend"
+  | "nicht_gemessen"
+  | "kein_beleg";
+export interface SicherungsUmfangBereich {
+  id: string;
+  art: "kern" | "assistenz";
+  zustand: UmfangZustand;
+  tabellen: string[];
+  beleg: UmfangBeleg;
+}
+export interface SicherungsUmfang {
+  produkt: { version: string; commit: string };
+  tabellenImDump: number;
+  bereiche: SicherungsUmfangBereich[];
+}
 
 // ================================================================================================
 // ADMIN-13 · DIE VIER SCHUTZWEGE — Spiegel von `services/app/src/routes/admin-routes.ts`.
@@ -4065,6 +4178,11 @@ export interface RestoreDrillBefund {
     anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
     beziehungen: VergleichKategorie;
     rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+    /**
+     * produkt:20261010:poc-wiederherstellung-export — private Assistenzspeicher. Optional: ältere
+     * Server senden das Feld nicht; ein älteres Protokoll ergibt am Server `nicht_gemessen`.
+     */
+    assistenz?: VergleichKategorie;
   };
   wissensnachweis: string | null;
 }

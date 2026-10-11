@@ -60,6 +60,7 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { assistenzProfilApi } from "../../apps/web/src/api/assistenzProfil";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
@@ -67,6 +68,10 @@ import { LueckenVorgang } from "../../apps/web/src/components/LueckenVorgang";
 import { setzeAssistenzProfil } from "../../apps/web/src/components/klara-vorschau/profil";
 import { aendere } from "../../apps/web/src/components/klara-vorschau/zustand";
 import i18n from "../../apps/web/src/i18n";
+import {
+  ladeAssistenzProfil,
+  verwerfeAssistenzProfil,
+} from "../../apps/web/src/lib/assistenzProfil";
 import { notificationTarget } from "../../apps/web/src/lib/notificationTarget";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -323,6 +328,38 @@ describe("Vorgangsfläche · zeigt den Serverstand und löst die vorhandenen Sch
     expect(finde("luecke-klara")?.textContent).toContain(
       i18n.t("lueckenvorgang.klara.titel", { name: i18n.t("klaraprodukt.name.neutral") }),
     );
+  });
+
+  // produkt:20261010:branchen-poc-arbeitswege (Browserbefund Nacharbeit 4): der am KONTO
+  // gespeicherte Name (`/api/me/assistenz`, `lib/assistenzProfil.ts`) — derselbe, den die Figur
+  // trägt — erscheint auch in der Erklärung am Vorgang und hat Vorrang vor dem Leseeinstieg.
+  it("V9 · der am Konto gespeicherte Assistenzname erscheint am Vorgang, wie an der Figur", async () => {
+    const lesen = vi.spyOn(assistenzProfilApi, "lesen").mockResolvedValue({
+      profil: {
+        name: "Nora",
+        avatar: "eule",
+        bewegung: "standard",
+        eingerichtetAm: "2026-10-11T08:00:00.000Z",
+        fassung: 1,
+        geaendertAm: "2026-10-11T08:00:00.000Z",
+      },
+      einrichtungOffen: false,
+    });
+    setzeAssistenzProfil({ name: "Mira", avatarUrl: null });
+    try {
+      await act(async () => {
+        await ladeAssistenzProfil("frida");
+      });
+      await mount(sicht({}));
+      const erklaerung = finde("luecke-klara")?.textContent ?? "";
+      expect(erklaerung).toContain(i18n.t("lueckenvorgang.klara.titel", { name: "Nora" }));
+      expect(erklaerung).not.toContain("Mira");
+      expect(erklaerung).not.toContain(i18n.t("klaraprodukt.name.neutral"));
+    } finally {
+      lesen.mockRestore();
+      setzeAssistenzProfil(null);
+      verwerfeAssistenzProfil();
+    }
   });
 
   it("V7 · jede Lückenmeldung der Glocke führt in den für Beteiligte erreichbaren Vorgang", async () => {

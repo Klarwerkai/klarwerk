@@ -320,6 +320,60 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // ADMIN-12 — die Fassungen der unternehmensweiten Kommunikationsregeln
+    // (`services/app/src/kommunikationsregeln.ts`).
+    id: "kommunikationsregeln",
+    name: "Kommunikationsregeln (Unternehmensvorgabe)",
+    inhalt:
+      "Je Fassung: Abwählbarkeit, Häufigkeit und Mailversand je Meldungsereignis, Kennung der ändernden Person, Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung der Person, die die Fassung gespeichert hat.",
+    ablage: { ort: DATENBANK, tabellen: ["kommunikationsregel_fassungen"] },
+    taetigkeit: "betrieb",
+    loeschung: "Kein Löschweg; korrigiert wird durch eine neue Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Unternehmensvorgabe, keine Angabe über die Person; ihre Änderung steht im Prüfprotokoll.",
+    },
+  },
+  {
+    // ADMIN-12 — die persönliche Abwahl einer abwählbaren Meldung.
+    id: "meldungseinstellungen",
+    name: "Persönliche Meldungseinstellungen",
+    inhalt: "Je Konto und Meldungsereignis: abgewählt ja/nein und Zeitpunkt der letzten Änderung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, dessen Einstellung gespeichert ist.",
+    ablage: { ort: DATENBANK, tabellen: ["meldungsregel_persoenlich"] },
+    taetigkeit: "konten",
+    loeschung: "Die Person setzt ihre Wahl selbst zurück; kein Löschweg mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die eigenen Einstellungen stehen für die Person auf der Seite „Meldungen und Kanäle“ und sind dort änderbar; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
+    // ADMIN-12 — der Zustellstatus je Veröffentlichung, Empfänger und Kanal.
+    id: "meldungszustellstatus",
+    name: "Zustellstatus von Veröffentlichungsmeldungen",
+    inhalt:
+      "Je Veröffentlichung, Empfänger und Kanal (Glocke, Mail): Status (angelegt, zugestellt, fehlgeschlagen, entfallen), feste Ursache, Zeitpunkte. Keine Mailadresse, kein Inhalt, keine Servermeldung.",
+    personenbezug: "ja",
+    personenbezugGrund: "Kennung des Kontos, an das die Meldung ging.",
+    ablage: { ort: DATENBANK, tabellen: ["meldung_zustellstatus"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg, auch nicht mit der Kontolöschung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Der Status beschreibt die Zustellung der Meldungen der eigenen Glocke; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
     id: "protokoll",
     name: "Prüfprotokoll (Audit)",
     inhalt: "Wer (Kennung), wann, welche Aktion, welches Ziel und Nutzdaten der Aktion.",
@@ -362,6 +416,50 @@ export const DATENINVENTAR: readonly Datenart[] = [
       "Abgelaufene Sitzungen löscht ein periodischer Aufräumlauf (`klara-aufraeumen.ts`, Aufbewahrung 30 Tage).",
     frist: "30 Tage nach Ablauf (KLARA_SESSION_AUFBEWAHRUNG_MS).",
     selbstauskunft: { enthalten: true },
+  },
+  {
+    // produkt:20261010:assistenz-name-avatar — das persönliche Assistenzprofil
+    // (`services/app/src/assistenz-profil.ts`), eine Zeile je Konto.
+    id: "assistenzprofil",
+    name: "Persönliches Assistenzprofil",
+    inhalt:
+      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; der Anzeigename ist Freitext der Person und kann Persönliches enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["assistenz_profile"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto ändert Name und Motiv selbst unter „Meine Assistenz“; ein eigener Löschweg der Zeile ist nicht gebaut.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Das Konto sieht und ändert sein Profil jederzeit selbst unter „Meine Assistenz“; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
+    // produkt:20261010:poc-wiederherstellung-export — die persönlichen Klara-Gespräche
+    // (`services/app/src/klara-gespraech.ts`, produkt:20261008:klara-basis) standen bis hierher in
+    // keiner Datenart, obwohl `migrate()` sie anlegt. Der Sicherungsumfang ordnet sie ausdrücklich zu
+    // (`sicherungsumfang.ts`); hier steht, was sie sind und wie sie heute gelöscht werden.
+    id: "klaragespraeche",
+    name: "Persönliche Klara-Gespräche",
+    inhalt:
+      "Je Konto die Gespräche mit Klara: Nachrichten (Frage, Hilfe, Antworttext mit Antwortkennung und Quellenangaben), Objektbezug je Nachricht, der zuletzt bewusst begonnene Schritt mit Stand und der Zeitpunkt der Einwilligung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Frage- und Antworttext sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_gespraeche"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht ein Gespräch selbst (DELETE /api/me/klara/gespraeche/:id); auch Administratoren lesen fremde Gespräche nicht.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Gespräche (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
   },
   {
     id: "lernpfade",
@@ -585,6 +683,42 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: {
       enthalten: false,
       grund: "Je Space mit Zuständigkeit und Mitgliedern in der Space-Ansicht einsehbar.",
+    },
+  },
+  {
+    id: "chat",
+    name: "Interner Chat",
+    inhalt:
+      "Gespräche (direkt, Gruppe, Space, Artikel) mit Teilnehmenden, Gruppenname und Bezug; Nachrichten mit Absender, Zeitpunkt, Text, Sendekennung, Erwähnungen, Verweisen auf Artikel und Anhänge (nur Kennungen), markiertem Ausschnitt samt Herkunft und Wissensübernahmen (Kennung des Entwurfs).",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen von Absendern, Teilnehmenden und Erwähnten; der Nachrichtentext kann Angaben über Personen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["chat_gespraeche", "chat_nachrichten"] },
+    taetigkeit: "wissen",
+    loeschung: "Kein Löschweg im Code — Nachrichten bleiben im Gespräch zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Noch nicht in der Selbstauskunft; die eigenen Gespräche und Nachrichten sind im Chat einsehbar.",
+    },
+  },
+  {
+    id: "gemeinsame-entwuerfe",
+    name: "Gemeinsame Artikelentwürfe",
+    inhalt:
+      "Je Artikel die gemeinsame Arbeitsfassung (Titel, Text, Basisfassung des Artikels), ihre gespeicherten Arbeitsstände und der Verlauf mit Kennung und Name der speichernden Person und Zeitpunkt.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennung und Name der speichernden Personen; der Entwurfstext kann Angaben über Personen enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["gemeinsame_entwuerfe"] },
+    taetigkeit: "wissen",
+    loeschung:
+      "Kein Löschweg im Code — ein übernommener oder eingereichter Entwurf bleibt als Verlauf zuordenbar.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Am gemeinsamen Entwurf des Artikels mit Verlauf einsehbar.",
     },
   },
   {

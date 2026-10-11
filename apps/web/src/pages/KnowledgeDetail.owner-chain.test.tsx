@@ -35,6 +35,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuditEntry, KnowledgeObject } from "../api/types";
+import type { VeroeffentlichungLeserStand } from "../components/veroeffentlichung/api";
 
 const AUTORIN = "u-autorin";
 const EIGENTUEMERIN = "u-eigentuemerin";
@@ -132,6 +133,18 @@ function transport(pfad: string): unknown {
   }
   if (ohneFrage === `/api/kos/${KO_ID}`) {
     return antwort(ko());
+  }
+  if (ohneFrage === `/api/kos/${KO_ID}/veroeffentlichung`) {
+    // Auch der Veröffentlichungsbereich braucht den echten Antwortvertrag statt des []-Fallbacks.
+    return antwort({
+      koId: KO_ID,
+      aktuelleFassung: 1,
+      gueltig: false,
+      veroeffentlichteFassung: null,
+      aktuelleIstVeroeffentlicht: false,
+      verlauf: [],
+      darfVeroeffentlichen: false,
+    } satisfies VeroeffentlichungLeserStand);
   }
   if (ohneFrage === "/api/kos") {
     // `returnedToAuthor(audit, kos, userId)` braucht das Objekt — ohne es hätte die Aufgabenliste

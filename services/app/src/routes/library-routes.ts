@@ -42,11 +42,13 @@ import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { importKandidatBefunde } from "../import-befunde";
 import {
+  darfKandidatSehen,
   darfSehen,
   sichtbareFuer,
   sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
+import { type WissenspaketQuellen, baueWissenspaket } from "../wissenspaket";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -94,10 +96,30 @@ interface ImportCandidateDto {
   auditPending?: boolean;
 }
 
+// AUFNAHME 20260922 · confluence-import-rechte — Quellrechte (Leser einer Confluence-Seite) setzt
+// nur ein Quell-Adapter auf dem Server (services/confluence/src/mapper.ts). Ein öffentlicher
+// Importrumpf verliert sie hier: ein Client mit `ko.create` darf sich keine Leserechte an einem
+// Objekt schreiben und keine quellgetreue Herabstufung auslösen. Kein Array → unverändert (die
+// Route prüft weiter wie bisher).
+function ohneQuellrechte<T>(items: T): T {
+  if (!Array.isArray(items)) {
+    return items;
+  }
+  return items.map((item) => {
+    if (item === null || typeof item !== "object" || !("quellrechte" in item)) {
+      return item;
+    }
+    const { quellrechte: _verworfen, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }) as T;
+}
+
 function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
   return {
     id: candidate.id,
-    item: candidate.item,
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte (Mailadressen der Leser) bleiben
+    // im Server — die Prüfkarte braucht sie nicht, und `ko.read` reicht für diese Liste.
+    item: ohneQuellrechte([candidate.item])[0] ?? candidate.item,
     status: candidate.status,
     duplicate: candidate.duplicate,
     note: candidate.note,
@@ -754,6 +776,8 @@ export function libraryRoutes(
   detection?: ImportDetectionDeps,
   // R-0773: optional — ohne Ablage (Teilaufbauten in Tests) bleibt die Suche wie bisher.
   nulltreffer?: NulltrefferRepo,
+  // produkt:20261010:poc-wiederherstellung-export: optional — ohne Quellen kein Format `paket`.
+  paket?: WissenspaketQuellen,
 ): FastifyPluginAsync {
   return async (app) => {
     // R-0773: die EIGENEN Suchen ohne Treffer. Nur die eigene Liste — ein Suchbegriff ist Freitext
@@ -963,12 +987,49 @@ export function libraryRoutes(
       // validierte Artikel geschlossener Spaces an Nichtmitglieder aus. Hier im Rumpf erhoben (wie
       // `/api/graph`), damit die Entscheidung an der Route selbst ausgeführt wird.
       const sichtbar = sichtbarkeitsfilterFuer(user);
-      const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
+      const opts = (format: "json" | "markdown" | "mediawiki" | "html" | "paket") => ({
         includeConfidential,
         sichtbar,
         ...(ids ? { ids } : {}),
         beleg: { actor: user.id, format },
       });
+      // produkt:20261010:poc-wiederherstellung-export (PV-01-04/05): das Wissenspaket — dieselbe
+      // Grundmenge und derselbe Beleg (`library.export`, Format `paket`) wie jedes andere Format;
+      // dazu Fassungen, Originalanhänge und das Verzeichnis (`wissenspaket.ts`). Ohne verdrahtete
+      // Quellen (Teilaufbauten) gibt es dieses Format nicht.
+      if (request.query.format === "paket") {
+        if (!paket) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Format nicht verfügbar." });
+          return;
+        }
+        try {
+          const jetzt = new Date();
+          const { zip } = await baueWissenspaket(
+            {
+              betrachter: user,
+              betrachterName: (await paket.personen()).get(user.id) ?? null,
+              vertraulichErlaubt: includeConfidential,
+              beitraege: await library.exportJson(opts("paket")),
+              auswahl: ids,
+              jetzt,
+            },
+            paket,
+          );
+          const stempel = jetzt.toISOString().slice(0, 19).replace(/[-:]/g, "");
+          reply
+            .header("content-type", "application/zip")
+            .header("cache-control", "no-store")
+            .header(
+              "content-disposition",
+              `attachment; filename="klarwerk-wissenspaket-${stempel}Z.zip"`,
+            )
+            .code(200)
+            .send(zip);
+        } catch (error) {
+          sendError(reply, error);
+        }
+        return;
+      }
       if (request.query.format === "markdown") {
         reply
           .header("content-type", "text/markdown; charset=utf-8")
@@ -1016,7 +1077,9 @@ export function libraryRoutes(
         // auch der direkte Re-Sync fremder Objekte (NACHARBEIT 2, `zielDarf`): fortgeschrieben wird
         // nur noch über die Annahme mit `ko.validate`.
         // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
-        const items = ohneQuellRestriktionen(request.body.items ?? []);
+        // confluence-import-rechte: ebenso die Leserechte (`quellrechte`) — sie setzt nur ein
+        // Quell-Adapter auf dem Server.
+        const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
         const kandidaten = await einreihen(items, user.id);
         // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele — auch hier.
         const dtos = await kandidatenDtosFuer(library, user, kandidaten);
@@ -1042,7 +1105,9 @@ export function libraryRoutes(
           // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
           // ohne eingeschalteten Quelladapter (`einreihen` setzt den Dateiweg-Vermerk).
           // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
-          const items = ohneQuellRestriktionen(request.body.items ?? []);
+          // AUFNAHME 20260922 · confluence-import-rechte: Leserechte setzt nur ein Quell-Adapter auf
+          // dem Server — ein Rumpf mit `quellrechte` verliert sie hier, vor dem Import-Kern.
+          const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
           const created = await einreihen(items, user.id);
           // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
           reply.code(201).send(await kandidatenDtosFuer(library, user, created));
@@ -1071,7 +1136,15 @@ export function libraryRoutes(
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
       // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
-      const kandidaten = await library.listImportCandidates();
+      // confluence-import-rechte (Nacharbeit 6, F1): ein Kandidat, dessen Quelle diesen Menschen
+      // nicht lesen lässt, fehlt in der Liste ganz — Titel und Text eingeschlossen, auch für
+      // `ko.validate`.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
     });
 
@@ -1137,6 +1210,14 @@ export function libraryRoutes(
         return;
       }
       try {
+        // confluence-import-rechte (Nacharbeit 6, F1): wer den Kandidaten nicht sehen darf, kann
+        // ihn auch nicht entscheiden — die Antwort trüge sonst Titel und Text. 404 wie für eine
+        // unbekannte Kennung, damit keine Existenzauskunft entsteht.
+        const vorher = await library.importKandidat(request.params.id);
+        if (vorher && !(await darfKandidatSehen(user, vorher, library))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Importkandidat nicht gefunden." });
+          return;
+        }
         const result = await library.reviewImportCandidate(
           request.params.id,
           request.body.action,

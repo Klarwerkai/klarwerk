@@ -358,6 +358,14 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Veröffentlichung — darfSehen vor dem Veröffentlichen, sonst 404.",
   },
+  "GET /api/kos/:id/veroeffentlichung/zustellung/:vermerkId": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-12 — Zustellstatus nur zu einem Eintrag, den der Freigebende sehen darf.",
+  },
+  "POST /api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-12 — darfSehen vor der Wiederaufnahme des Versands, sonst 404.",
+  },
   // --- R-1644: Wissensauskunft zum Zeitpunkt -------------------------------------------------------
   // Trägt Titel und Kernaussage der damals geltenden Fassung; darfSehen vor jeder Antwort.
   "GET /api/kos/:id/wissensauskunft": {
@@ -927,6 +935,15 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "nur das eigene zuletzt geführte Klara-Gespräch (klara-gespraech-routes.ts, user.id).",
   },
+  "GET /api/me/assistenz": {
+    urteil: "EIGENER_BESTAND",
+    grund:
+      "nur das eigene Assistenzprofil (assistenz-profil-routes.ts, user.id); fremde Kennung 403.",
+  },
+  "PUT /api/me/assistenz": {
+    urteil: "EIGENER_BESTAND",
+    grund: "ändert nur das eigene Assistenzprofil (user.id); fremde Kennung 403, kein KO-Inhalt.",
+  },
   "POST /api/me/klara/gespraeche": {
     urteil: "EIGENER_BESTAND",
     grund: "legt nur ein eigenes Gespräch an; der Objektbezug kommt vom Bildschirm der Person.",
@@ -1020,6 +1037,29 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "ADMIN-15 — Antwort ist die neue Richtlinienfassung samt Wirkung.",
   },
+  // ADMIN-12 · Kommunikationsregeln (kommunikation-routes.ts). Regelfassungen und persönliche
+  // Abwahlen liegen in einer eigenen Ablage (`kommunikationsregeln.ts`); kein Feld dieser Antworten
+  // stammt aus einem Wissensobjekt.
+  "GET /api/kommunikation/regeln": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Ereigniskatalog, Kanalzustand und Unternehmensvorgabe, kein Bestand.",
+  },
+  "PUT /api/admin/kommunikation/regeln": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Antwort ist dieselbe Übersicht wie der Leseweg; users.manage im Rumpf.",
+  },
+  "GET /api/admin/kommunikation/fassungen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Fassungen der Unternehmensvorgabe samt Namen der Ändernden.",
+  },
+  "GET /api/meldungsregeln/meine": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — die eigenen Meldungseinstellungen je Ereignis.",
+  },
+  "PUT /api/meldungsregeln/meine": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Antwort sind die eigenen Meldungseinstellungen.",
+  },
   // Firmenwörterbuch (begriffe-routes.ts): Katalogeinträge und Hinweise. Kein Feld stammt aus
   // einem Wissensobjekt — der Abgleich liest nur den Katalog und den mitgesendeten Text.
   "GET /api/begriffe": { urteil: "KEIN_KO_INHALT", grund: "Begriffskatalog, kein Bestand." },
@@ -1091,6 +1131,64 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/spaces/verschiebung": {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
+  },
+  // Interner Chat (chat-routes.ts): Artikelgespräche, Verweise, Ausschnitte und Anhänge laufen je
+  // lesender Person durch `darfSehen` (lokaler Helfer `koFuer`).
+  "GET /api/chat/konten": { urteil: "KEIN_KO_INHALT", grund: "Kennung, Name, Rolle der Konten." },
+  "GET /api/chat/gespraeche": {
+    urteil: "PRAEDIKAT",
+    grund: "Gesprächsliste; Artikelgespräche nur zu sichtbaren Artikeln.",
+  },
+  "POST /api/chat/gespraeche": {
+    urteil: "PRAEDIKAT",
+    grund: "Artikelgespräch nur zu einem sichtbaren Artikel — 404 statt Auskunft.",
+  },
+  "GET /api/chat/gespraeche/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Verlauf; Verweise, Ausschnitte und Anhänge je Leser gegen darfSehen.",
+  },
+  "POST /api/chat/gespraeche/:id/nachrichten": {
+    urteil: "PRAEDIKAT",
+    grund: "Senden nur mit Artikeln, die der Absender sehen darf; Antwort je Leser getrimmt.",
+  },
+  "POST /api/chat/gespraeche/:id/auffrischen": {
+    urteil: "PRAEDIKAT",
+    grund: "Angezeigte Nachrichten neu je Leser gegen darfSehen; fremde Kennungen fehlen.",
+  },
+  "GET /api/chat/nachrichten/:id": {
+    urteil: "PRAEDIKAT",
+    grund: "Einzelne Nachricht nur aus lesbarem Gespräch; Inhalte je Leser gegen darfSehen.",
+  },
+  "POST /api/chat/nachrichten/:id/wissen": {
+    urteil: "PRAEDIKAT",
+    grund: "Übernahme nur aus lesbarem Gespräch; Ausschnitt nur, wenn sichtbar.",
+  },
+  "GET /api/chat/erwaehnungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Erwähnungen nur aus Gesprächen, die die Person jetzt lesen darf.",
+  },
+  // Gemeinsamer Artikelentwurf (gemeinsam-routes.ts): Entwurf und Lesefassung tragen Titel und Text
+  // des Artikels. Jede Tür hält den Artikel VOR der Antwort gegen `darfSehen` (lokaler Helfer
+  // `sichtbarOder404`), sonst 404 wie GET /api/kos/:id.
+  "GET /api/kos/:id/gemeinsam": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor der Ausgabe, sonst 404.",
+  },
+  "POST /api/kos/:id/gemeinsam": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Anlegen, sonst 404.",
+  },
+  "PUT /api/kos/:id/gemeinsam": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Speichern, sonst 404.",
+  },
+  "POST /api/kos/:id/gemeinsam/angleichen": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Angleichen, sonst 404.",
+  },
+  "POST /api/kos/:id/gemeinsam/abschluss": {
+    urteil: "PRAEDIKAT",
+    grund: "Gemeinsamer Entwurf — darfSehen vor dem Abschluss, sonst 404.",
   },
   "GET /api/spaces/teams": {
     urteil: "KEIN_KO_INHALT",
@@ -2832,7 +2930,9 @@ const AUSGAENGE: Record<string, Ausgangseintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund:
       "Mailversand: Kontotexte (Rücksetzen, Freigabe) und bei der Prüfzuweisung nur die Kennung " +
-      "des Objekts an die zugewiesene Person (notify.ts) — kein Titel, keine Aussage.",
+      "des Objekts an die zugewiesene Person (notify.ts) — kein Titel, keine Aussage. ADMIN-12: " +
+      "bei einer Veröffentlichung mit eingeschalteter Mailvorgabe Kennung und Fassung an Konten, " +
+      "die den Eintrag zum Versandzeitpunkt lesen dürfen (kommunikationsregeln.ts, mailsVersenden).",
   },
   "services/confluence/src/rest-client.ts::mitFrist#1": {
     urteil: "KEIN_KO_INHALT",
