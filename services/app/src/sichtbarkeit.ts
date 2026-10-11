@@ -1303,7 +1303,11 @@ export async function privatesFolgeprodukt(
     if ((traeger.attachments ?? []).some((a) => a.objectId === objectId)) {
       return undefined;
     }
-    if ((await quellen.belege(quelleId)).some((b) => b.objectId === objectId)) {
+    // Die Belegkette nur an einer AKTIVEN Quelle: `KoService.evidenceOf` verlangt ein aktives Objekt
+    // und wirft für den Papierkorb (Nacharbeit 7: 500 statt Urteil). Bei gelöschter Quelle zählt
+    // allein ihr Anhang; ein früher übernommener, inzwischen ersetzter Stand bleibt dann privat —
+    // die strengere Seite, nie die offenere.
+    if (aktiv && (await quellen.belege(quelleId)).some((b) => b.objectId === objectId)) {
       return undefined;
     }
   }
