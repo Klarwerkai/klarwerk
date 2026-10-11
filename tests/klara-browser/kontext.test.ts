@@ -539,13 +539,50 @@ describe("BPA-01 · Kontextkarte im Browser (Adaptervertrag, kein Hostnachweis)"
     expect(K.erklaerungsText("unbekannt", "de")).toBe("");
   });
 
+  it("AC10 · das Begleiter-Protokoll: nur eine Antwort mit genau diesem Einmalwert gilt, übergeben wird nur die Karte", () => {
+    const { karte } = gebunden(offen(), erfassung());
+    expect(K.begleiterHallo({ nonce: "n-1", erweiterung: "0.4.1", nutzer: "nutzer-a" })).toEqual({
+      typ: "hallo",
+      protokoll: 1,
+      nonce: "n-1",
+      erweiterung: "0.4.1",
+      nutzer: "nutzer-a",
+    });
+    const gut = { typ: "hallo", protokoll: 1, nonce: "n-1", version: "0.1.0", macos: "15.1" };
+    expect(K.begleiterAntwort(gut, "n-1")).toEqual({
+      ok: true,
+      version: "0.1.0",
+      macos: "15.1",
+      protokoll: 1,
+    });
+    expect(K.begleiterAntwort({ ...gut, nonce: "fremd" }, "n-1")).toEqual({
+      ok: false,
+      grund: "begleiter_antwort_ungueltig",
+    });
+    expect(K.begleiterAntwort({ ...gut, protokoll: 2 }, "n-1").ok).toBe(false);
+    expect(K.begleiterAntwort({ ...gut, version: "x y; rm" }, "n-1").ok).toBe(false);
+    expect(K.begleiterAntwort(null, "n-1")).toEqual({
+      ok: false,
+      grund: "begleiter_nicht_erreichbar",
+    });
+    // Die Karte: Seite, Markierung, Fassung, Folge, Nutzer — sonst nichts.
+    const felder = ["auswahl", "erfasstAm", "fassung", "folge", "nutzer", "tabelle", "titel"];
+    expect(Object.keys(K.begleiterKarte(karte)).sort()).toEqual([...felder, "typ", "url"].sort());
+    const quittung = { typ: "angenommen", folge: karte.folge, fassung: karte.fassung };
+    expect(K.begleiterQuittung(quittung, karte)).toBe(true);
+    expect(K.begleiterQuittung({ ...quittung, fassung: "andere" }, karte)).toBe(false);
+    expect(K.begleiterQuittung({ ...quittung, folge: karte.folge + 1 }, karte)).toBe(false);
+  });
+
   it("der Vertrag bleibt rein: kein Chrome-Aufruf, kein Netz, kein neues Recht im Manifest", () => {
     const quelle = read("kontext.js");
     const browserzugriff = /chrome\.(runtime|tabs|scripting|storage|sidePanel)|fetch\(|XMLHttp/;
     expect(quelle).not.toMatch(browserzugriff);
     const manifest = JSON.parse(read("manifest.json"));
     expect(manifest.host_permissions).toEqual(["https://app.klarwerk.ai/*"]);
+    // AC10: Native Messaging nur als OPTIONALES Recht — angefragt auf Klick, nie fest.
     expect(manifest.permissions).not.toContain("nativeMessaging");
+    expect(manifest.optional_permissions).toContain("nativeMessaging");
     expect(manifest.permissions).not.toContain("tabs");
   });
 });

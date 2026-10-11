@@ -210,6 +210,13 @@ export type KontextApi = {
   erklaerungAus(roh: unknown): Erklaerungsinhalt;
   quellenAdresse(koId: string): string | null;
   erklaerungsText(schluessel: string, sprache: string): string;
+  begleiterHallo(angaben: { nonce: string; erweiterung: string; nutzer: string }): object;
+  begleiterAntwort(
+    roh: unknown,
+    nonce: string,
+  ): { ok: true; version: string; macos: string; protokoll: number } | { ok: false; grund: string };
+  begleiterKarte(karte: Karte): object;
+  begleiterQuittung(roh: unknown, karte: Karte): boolean;
   anzeige(karte: Karte): KontextAnzeige;
   importMerken(zustand: KontextZustand, draftId: string): KontextZustand;
   widerrufen(zustand: KontextZustand, domain: string): KontextZustand;
@@ -278,6 +285,38 @@ export type KontextSicht = {
   laeuft: boolean;
   /** Nur die Antwort, die zur AKTUELLEN Karte und Fassung gehört. */
   antwort: (Erklaerungsinhalt & { fassung: string }) | null;
+  /** AC10: der Begleiter auf diesem Mac — verbunden (mit Fassungen) oder der letzte Fehler. */
+  begleiter: {
+    verbunden: boolean;
+    version: string;
+    macos: string;
+    uebergeben: boolean;
+    fehler: string;
+  } | null;
+};
+/** AC10: was der Worker über die Begleiter-Verbindung festhält. */
+export type BegleiterStand = {
+  version: string;
+  macos: string;
+  protokoll: number;
+  verbundenAm: string;
+  /** Folge der Karte, die der Begleiter angenommen hat; `-1` = keine. */
+  folge: number;
+  fassung: string;
+  fehler: string;
+};
+/** Der Native-Messaging-Kanal zu Chromes Host (`chrome.runtime.connectNative`). */
+export type NativePort = {
+  postMessage(nachricht: object): void;
+  disconnect(): void;
+  onMessage: {
+    addListener(fn: (nachricht: unknown) => void): void;
+    removeListener(fn: (nachricht: unknown) => void): void;
+  };
+  onDisconnect: {
+    addListener(fn: () => void): void;
+    removeListener(fn: () => void): void;
+  };
 };
 export type State = {
   auth?: Auth | null;
@@ -291,6 +330,7 @@ export type State = {
   /** Steigt mit jedem Widerruf; ein Schritt, der unter einer älteren Epoche begann, wirkt nicht. */
   kontextEpoche?: number;
   kontextAntwort?: KontextErklaerung | null;
+  begleiter?: BegleiterStand | null;
 };
 export type View = {
   status: string;
@@ -372,6 +412,11 @@ declare global {
       id: string;
       getURL(path: string): string;
       getManifest?(): { version: string };
+      /**
+       * AC10: nur vorhanden, wenn das optionale Recht `nativeMessaging` erteilt ist. Chrome startet
+       * dann den registrierten Host, wenn dessen Manifest diese Erweiterung zulässt.
+       */
+      connectNative?(host: string): NativePort;
       onInstalled: Event<() => void>;
       onMessage: Event<
         (
@@ -411,6 +456,7 @@ declare global {
             kontextSperre?: { newValue?: unknown };
             kern?: { newValue?: unknown };
             kontextAntwort?: { newValue?: unknown };
+            begleiter?: { newValue?: unknown };
           },
           area: string,
         ) => void

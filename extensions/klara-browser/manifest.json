@@ -6,7 +6,7 @@
   "minimum_chrome_version": "120",
   "default_locale": "de",
   "permissions": ["activeTab", "contextMenus", "scripting", "sidePanel", "storage"],
-  "optional_permissions": ["clipboardRead"],
+  "optional_permissions": ["clipboardRead", "nativeMessaging"],
   "host_permissions": ["https://app.klarwerk.ai/*"],
   "background": { "service_worker": "worker.js" },
   "action": { "default_title": "__MSG_capture__" },

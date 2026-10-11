@@ -546,19 +546,27 @@
    *
    * Ein fehlender Zweig ist KEIN Fehler, sondern der Fall „dieser Browser kennt die Anfrage nicht";
    * er führt in denselben ehrlichen Satz wie eine Ablehnung.
+   *
+   * BPA-01 AC10: dieselbe EINE Anfragestelle fragt auch `nativeMessaging` an — auf Klick „Mit
+   * Begleiter verbinden". Es gibt weiterhin genau einen `request` in dieser Datei.
+   * @param {"clipboardRead" | "nativeMessaging"} recht
    * @returns {Promise<boolean>}
    */
-  async function darfLesen() {
+  async function rechtAnfragen(recht) {
     const rechte =
       /** @type {{ permissions?: { request(anfrage: { permissions: string[] }): Promise<boolean> } }} */ (
         /** @type {unknown} */ (chrome)
       ).permissions;
     if (!rechte) return false;
     try {
-      return (await rechte.request({ permissions: ["clipboardRead"] })) === true;
+      return (await rechte.request({ permissions: [recht] })) === true;
     } catch {
       return false;
     }
+  }
+  /** Die Zwischenablage: das optionale Recht, angefragt in der Klickgeste. */
+  function darfLesen() {
+    return rechtAnfragen("clipboardRead");
   }
   $("paste").addEventListener("click", async () => {
     if (busy || $("paste").disabled) return;
@@ -1083,6 +1091,22 @@
     $("kontext-verbinden").disabled =
       kontextLaeuft || !karte || karte.veraltet || stand?.verbunden === true;
     $("kontext-erklaeren").disabled = kontextLaeuft || stand?.verbunden !== true;
+    $("kontext-begleiter").disabled = kontextLaeuft || stand?.angemeldet !== true;
+    // Der Begleiter mit seinen Fassungen — die Hostfassungen, die ein Beleg festhält.
+    const begleiter = stand?.begleiter ?? null;
+    const begleiterZeile =
+      begleiter?.verbunden === true
+        ? [
+            belegText("begleiterVerbunden"),
+            begleiter.version,
+            begleiter.macos,
+            belegText(begleiter.uebergeben ? "begleiterUebergeben" : "begleiterOhneKarte"),
+          ]
+            .filter((teil) => teil.length > 0)
+            .join(" · ")
+        : "";
+    $("kontext-begleiter-stand").hidden = !begleiterZeile;
+    $("kontext-begleiter-stand").textContent = begleiterZeile;
     // Der Widerruf wartet NICHT auf einen laufenden Schritt: er ist gerade dann der Stopp.
     $("kontext-widerrufen").disabled = !kontextLaeuft && stand?.widerrufbar !== true;
     const antwort = stand?.antwort ?? null;
@@ -1173,11 +1197,14 @@
     }
     $("kontext-quellen-box").hidden = quellen.length === 0;
   }
-  /** @param {"kontext" | "kontextVerbinden" | "kontextErklaeren" | "kontextWiderrufen"} art */
+  /**
+   * @param {"kontext" | "kontextVerbinden" | "kontextErklaeren" | "kontextWiderrufen" | "kontextBegleiter"} art
+   */
   async function kontextFragen(art) {
-    // Verbinden und Erklären laufen; Widerruf und Lesen setzen keinen Laufzustand — der Stopp darf
-    // einen laufenden Schritt nicht als „fertig" ausgeben.
-    const handlung = art === "kontextVerbinden" || art === "kontextErklaeren";
+    // Verbinden, Erklären und der Begleiter laufen; Widerruf und Lesen setzen keinen Laufzustand —
+    // der Stopp darf einen laufenden Schritt nicht als „fertig" ausgeben.
+    const handlung =
+      art === "kontextVerbinden" || art === "kontextErklaeren" || art === "kontextBegleiter";
     if (handlung) {
       kontextLaeuft = true;
       kontextZeigen();
@@ -1194,6 +1221,13 @@
   }
   $("kontext-verbinden").addEventListener("click", () => void kontextFragen("kontextVerbinden"));
   $("kontext-erklaeren").addEventListener("click", () => void kontextFragen("kontextErklaeren"));
+  // AC10: das optionale Recht wird IN der Klickgeste angefragt; ob Chrome es erteilt hat, prüft der
+  // Worker selbst (ohne Recht gibt es `connectNative` nicht) und meldet den Grund.
+  $("kontext-begleiter").addEventListener("click", async () => {
+    if (kontextLaeuft) return;
+    await rechtAnfragen("nativeMessaging");
+    await kontextFragen("kontextBegleiter");
+  });
   $("kontext-widerrufen").addEventListener("click", () => void kontextFragen("kontextWiderrufen"));
   $("language").addEventListener("change", kontextZeigen);
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -1203,6 +1237,7 @@
       "kontextSperre" in changes ||
       "kern" in changes ||
       "kontextAntwort" in changes ||
+      "begleiter" in changes ||
       "auth" in changes
     )
       void kontextFragen("kontext");

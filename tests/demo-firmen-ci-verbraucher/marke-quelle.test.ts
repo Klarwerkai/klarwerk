@@ -232,7 +232,10 @@ describe("JOB 3512 Q3 · Chrome bleibt buildlos, CSP-treu und ohne neue Rechte",
     expect([...MANIFEST.permissions].sort()).toEqual(
       ["activeTab", "contextMenus", "scripting", "sidePanel", "storage"].sort(),
     );
-    expect(MANIFEST.optional_permissions).toEqual(["clipboardRead"]);
+    // BPA-01 AC10 (aufnahme:20260922:gesamt-browser-kontextkarten): `nativeMessaging` ist
+    // HINZUGEKOMMEN — optional, angefragt nur auf Klick „Mit Begleiter verbinden". Bewusst
+    // nachgeführt und weiterhin abschliessend gepinnt; CSP, Host und feste Rechte bleiben wörtlich.
+    expect(MANIFEST.optional_permissions).toEqual(["clipboardRead", "nativeMessaging"]);
   });
 
   it("das Logo wird LOKAL adressiert, nie über app.klarwerk.ai", () => {

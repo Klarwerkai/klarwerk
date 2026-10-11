@@ -935,6 +935,8 @@
   async function mutate(message, state) {
     try {
       if (message.type === "logout") {
+        // BPA-01 AC03/AC10: eine dem Begleiter übergebene Karte gehört dem abgemeldeten Konto.
+        begleiterTrennen(true);
         await chrome.storage.session.clear();
         try {
           if (state.auth) await api("logout", state.auth, {});
@@ -966,6 +968,7 @@
         const accountChanged = state.work?.owner && state.work.owner !== result.user.id;
         const auth = { token: result.token, id: result.user.id, email: result.user.email };
         if (accountChanged) {
+          begleiterTrennen(true);
           await chrome.storage.session.clear();
           await chrome.storage.session.set({ auth });
           return view(await read(), "account_changed");
@@ -1355,6 +1358,7 @@
     "kontextVerbinden",
     "kontextErklaeren",
     "kontextWiderrufen",
+    "kontextBegleiter",
   ];
   /** @type {import("./types").KontextSicht} */
   const KONTEXT_FEHLER = {
@@ -1370,6 +1374,7 @@
     widerrufbar: true,
     laeuft: false,
     antwort: null,
+    begleiter: null,
   };
   let kontextBusy = false;
 
@@ -1552,6 +1557,25 @@
       widerrufbar,
       laeuft: kontextBusy,
       antwort,
+      begleiter: begleiterSicht(state, karte),
+    };
+  }
+
+  /**
+   * Der Begleiter, wie die Leiste ihn sieht. „Verbunden" heisst: in DIESEM Worker steht ein
+   * geprüfter Kanal offen — ein gespeicherter Stand nach einem Neustart des Workers ist es nicht.
+   * @param {Zustand} state @param {import("./types").Karte | null} karte
+   * @returns {import("./types").KontextSicht["begleiter"]}
+   */
+  function begleiterSicht(state, karte) {
+    const stand = state.begleiter ?? null;
+    if (!stand) return null;
+    return {
+      verbunden: begleiterPort !== null && !stand.fehler,
+      version: stand.version,
+      macos: stand.macos,
+      uebergeben: karte !== null && stand.folge === karte.folge && stand.fassung === karte.fassung,
+      fehler: stand.fehler,
     };
   }
 
@@ -1974,12 +1998,15 @@
     /** @type {import("./types").Kern | null} */
     let ohneSitzung = null;
     if (kern) ohneSitzung = { ...kern, sessionId: "", documentContextId: "", folge: -1, url: "" };
+    // Der Begleiter erfährt den Widerruf sofort und verwirft die übergebene Karte (AC08/AC10).
+    begleiterTrennen(true);
     await merke({
       kontext: zustand,
       kontextSperre: sperreAus("verbindung_widerrufen"),
       kern: ohneSitzung,
       kontextAntwort: null,
       kontextEpoche: epocheVon(state) + 1,
+      begleiter: null,
     });
     if (kern && state.auth) await kernSchliessen(state.auth, kern);
     return kontextSicht(await read(), "widerrufen");
@@ -1993,6 +2020,7 @@
     if (art === "kontext") return kontextSicht(/** @type {Zustand} */ (await read()), "bereit");
     // Der Stopp wartet auf nichts und ist nie „busy".
     if (art === "kontextWiderrufen") return kontextWiderrufen();
+    if (art === "kontextBegleiter") return begleiterVerbinden();
     if (kontextBusy) return kontextSicht(/** @type {Zustand} */ (await read()), "busy");
     kontextBusy = true;
     try {
@@ -2002,6 +2030,158 @@
     } finally {
       kontextBusy = false;
     }
+  }
+  // ================================================================================================
+  // KW-BEGLEITER · BPA-01 AC10 — DIE ERWEITERUNG UND DER KLARA-BEGLEITER AUF DIESEM MAC.
+  // ================================================================================================
+  //
+  // DER KANAL ist Chrome Native Messaging: `connectNative` startet den Host
+  // `ai.klarwerk.klara_begleiter` (apps/desktop/klara-begleiter/BrowserBruecke). Chrome lässt das
+  // nur zu, wenn (a) die Erweiterung das OPTIONALE Recht `nativeMessaging` erteilt bekommen hat —
+  // angefragt auf Klick in der Leiste — und (b) das Host-Manifest genau diese Erweiterung unter
+  // `allowed_origins` nennt. Es gibt keinen offenen Port, keinen lokalen Webserver und keine
+  // allgemeine Steuerschnittstelle; der Host liest und schreibt nur über stdin/stdout dieser einen
+  // Verbindung.
+  //
+  // DIE ECHTHEIT DER ANTWORT: jede Verbindung beginnt mit `hallo` und einem frischen Einmalwert; nur
+  // eine Antwort mit genau diesem Wert, dem Protokoll und einer Fassung gilt (`begleiterAntwort`).
+  // Die Fassungen von Begleiter und macOS hält die Leiste sichtbar fest — sie sind die Hostfassungen
+  // des Belegs.
+  //
+  // WAS HINÜBERGEHT: nur auf Klick, nur die gebundene Karte (`begleiterKarte`), nur solange sie
+  // gilt. Widerruf und Abmelden schicken `widerrufen` und trennen; der Host verwirft die Karte.
+  const BEGLEITER_HOST = "ai.klarwerk.klara_begleiter";
+  /** @type {import("./types").NativePort | null} */
+  let begleiterPort = null;
+
+  /**
+   * Die nächste Nachricht des Hosts — oder `null` nach Ablauf bzw. Trennung.
+   * @param {import("./types").NativePort} port @param {number} ms @returns {Promise<unknown>}
+   */
+  function naechsteNachricht(port, ms) {
+    return new Promise((fertig) => {
+      /** @param {unknown} nachricht */
+      const auf = (nachricht) => abschliessen(nachricht);
+      const weg = () => abschliessen(null);
+      const frist = setTimeout(() => abschliessen(null), ms);
+      /** @param {unknown} ergebnis */
+      function abschliessen(ergebnis) {
+        clearTimeout(frist);
+        port.onMessage.removeListener(auf);
+        port.onDisconnect.removeListener(weg);
+        fertig(ergebnis);
+      }
+      port.onMessage.addListener(auf);
+      port.onDisconnect.addListener(weg);
+    });
+  }
+
+  /** Den Kanal schliessen; mit `melden` erfährt der Host vorher, dass die Karte nicht mehr gilt. */
+  function begleiterTrennen(melden = false) {
+    const port = begleiterPort;
+    begleiterPort = null;
+    if (!port) return;
+    try {
+      if (melden) port.postMessage({ typ: "widerrufen" });
+      port.disconnect();
+    } catch {
+      // Ein schon getrennter Kanal ist das Ziel, kein Fehler.
+    }
+  }
+
+  /** @param {string} grund */
+  async function begleiterFehler(grund) {
+    await merke({
+      begleiter: {
+        version: "",
+        macos: "",
+        protokoll: 0,
+        verbundenAm: "",
+        folge: -1,
+        fassung: "",
+        fehler: grund,
+      },
+    });
+    return kontextAbbruch(grund);
+  }
+
+  /**
+   * „Mit Begleiter verbinden": Kanal öffnen, Begleiter prüfen, dann die gültige Karte übergeben.
+   * @returns {Promise<import("./types").KontextSicht>}
+   */
+  async function begleiterVerbinden() {
+    const state = /** @type {Zustand} */ (await read());
+    if (!K) return kontextSicht(state, "kontext_fehlt");
+    if (!state.auth) return kontextAbbruch("anmeldung_fehlt");
+    const verbinde = chrome.runtime.connectNative;
+    // Ohne erteiltes `nativeMessaging` gibt es die Schnittstelle gar nicht.
+    if (typeof verbinde !== "function") return begleiterFehler("begleiter_recht_fehlt");
+    begleiterTrennen();
+    /** @type {import("./types").NativePort} */
+    let port;
+    try {
+      port = verbinde.call(chrome.runtime, BEGLEITER_HOST);
+    } catch {
+      return begleiterFehler("begleiter_nicht_erreichbar");
+    }
+    const nonce = crypto.randomUUID();
+    const erste = naechsteNachricht(port, 5000);
+    try {
+      port.postMessage(
+        K.begleiterHallo({
+          nonce,
+          erweiterung: chrome.runtime.getManifest?.().version ?? "",
+          nutzer: state.auth.id,
+        }),
+      );
+    } catch {
+      return begleiterFehler("begleiter_nicht_erreichbar");
+    }
+    const hallo = K.begleiterAntwort(await erste, nonce);
+    if (!hallo.ok) {
+      try {
+        port.disconnect();
+      } catch {
+        // s. o.
+      }
+      return begleiterFehler(hallo.grund);
+    }
+    begleiterPort = port;
+    port.onDisconnect.addListener(() => {
+      if (begleiterPort !== port) return;
+      begleiterPort = null;
+      void merke({ begleiter: null });
+    });
+    // Die Karte nur, wenn sie unter DIESER Anmeldung gilt und übermittelt werden darf.
+    const jetzt = /** @type {Zustand} */ (await read());
+    const zustand = kontextVon(jetzt);
+    const karte = zustand?.karte ?? null;
+    let folge = -1;
+    let fassung = "";
+    const gleicheAnmeldung = jetzt.auth?.id === state.auth.id;
+    if (zustand && karte && gleicheAnmeldung && K.uebermittlung(zustand).erlaubt) {
+      const quittung = naechsteNachricht(port, 5000);
+      port.postMessage(K.begleiterKarte(karte));
+      const angenommen = K.begleiterQuittung(await quittung, karte);
+      // Gilt die Karte nach der Quittung noch? Sonst zählt die Übergabe nicht.
+      const nachher = kontextVon(/** @type {Zustand} */ (await read()));
+      if (angenommen && nachher?.karte?.folge === karte.folge) {
+        folge = karte.folge;
+        fassung = karte.fassung;
+      }
+    }
+    await merke({
+      begleiter: {
+        version: hallo.version,
+        macos: hallo.macos,
+        protokoll: hallo.protokoll,
+        verbundenAm: new Date().toISOString(),
+        folge,
+        fassung,
+        fehler: "",
+      },
+    });
+    return kontextSicht(/** @type {Zustand} */ (await read()), "begleiter_verbunden");
   }
   // KW-KONTEXT-END
   chrome.runtime.onMessage.addListener((message, sender, respond) => {

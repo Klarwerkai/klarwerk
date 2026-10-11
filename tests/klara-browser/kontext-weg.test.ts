@@ -170,6 +170,59 @@ async function bahn() {
   };
 }
 
+type Nachricht = Record<string, unknown>;
+/**
+ * AC10: eine Attrappe des Native-Messaging-Hosts, die das Protokoll der Browserbrücke
+ * (`apps/desktop/klara-begleiter/BrowserBruecke`) spricht. Gestellt ist der HOST, nicht der
+ * Prüfling — der Worker benutzt unverändert `chrome.runtime.connectNative`.
+ */
+function begleiterAttrappe(antworte: (n: Nachricht) => Nachricht | null) {
+  const empfangen: Nachricht[] = [];
+  const hosts: string[] = [];
+  let getrennt = false;
+  const verbinde = (host: string) => {
+    hosts.push(host);
+    const hoerer = new Set<(n: unknown) => void>();
+    const trennung = new Set<() => void>();
+    return {
+      postMessage: (n: object) => {
+        const nachricht = structuredClone(n) as Nachricht;
+        empfangen.push(nachricht);
+        const antwort = antworte(nachricht);
+        if (antwort)
+          queueMicrotask(() => {
+            for (const h of [...hoerer]) h(structuredClone(antwort));
+          });
+      },
+      disconnect: () => {
+        getrennt = true;
+      },
+      onMessage: {
+        addListener: (f: (n: unknown) => void) => hoerer.add(f),
+        removeListener: (f: (n: unknown) => void) => hoerer.delete(f),
+      },
+      onDisconnect: {
+        addListener: (f: () => void) => trennung.add(f),
+        removeListener: (f: () => void) => trennung.delete(f),
+      },
+    };
+  };
+  return { verbinde, empfangen, hosts, getrennt: () => getrennt };
+}
+/** Der Host, wie die Brücke antwortet: `hallo` mit Einmalwert, `karte` mit Quittung. */
+const echterHost = (n: Nachricht): Nachricht | null =>
+  n.typ === "hallo"
+    ? {
+        typ: "hallo",
+        protokoll: 1,
+        nonce: n.nonce,
+        version: "0.1.0",
+        macos: "Version 15.1 (Build 24B83)",
+      }
+    : n.typ === "karte"
+      ? { typ: "angenommen", folge: n.folge, fassung: n.fassung }
+      : null;
+
 /** Den Kern selbst fragen, ob die Sitzung unter genau dieser Zuordnung existiert. */
 async function kernSitzung(h: Awaited<ReturnType<typeof bahn>>) {
   const kern = h.data.kern as Kern;
@@ -742,6 +795,100 @@ describe("BPA-01 · der Browserweg der Kontextkarte (Worker, Leiste, Klara-Kern)
       const sicht = await h.frage("kontextVerbinden");
       expect(sicht.sperre).toBe("kern_nicht_erreichbar");
       expect(h.data.auth ?? null).toBeNull();
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC10 · Begleiter: Host, Einmalwert und Fassungen; übergeben wird genau die gebundene Karte", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      const host = begleiterAttrappe(echterHost);
+      h.setzeBegleiter(host.verbinde);
+      const sicht = await h.frage("kontextBegleiter");
+      expect(sicht.status).toBe("begleiter_verbunden");
+      expect(host.hosts).toEqual(["ai.klarwerk.klara_begleiter"]);
+      const [hallo, karte] = host.empfangen;
+      expect(hallo).toMatchObject({
+        typ: "hallo",
+        protokoll: 1,
+        nutzer: (h.data.auth as { id: string }).id,
+      });
+      expect(typeof hallo?.nonce).toBe("string");
+      expect(karte).toMatchObject({
+        typ: "karte",
+        folge: h.zustand().karte?.folge,
+        fassung: h.zustand().karte?.fassung,
+        url: SEITE,
+        auswahl: TEXT,
+      });
+      // Anmeldung und Schlüssel reisen nie zum Begleiter.
+      expect(JSON.stringify(host.empfangen)).not.toContain(
+        (h.data.auth as { token: string }).token,
+      );
+      expect(sicht.begleiter).toEqual({
+        verbunden: true,
+        version: "0.1.0",
+        macos: "Version 15.1 (Build 24B83)",
+        uebergeben: true,
+        fehler: "",
+      });
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC10 · ein Begleiter ohne passenden Einmalwert bekommt nichts; ohne Recht oder Host gibt es einen Grund", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      // Ohne erteiltes `nativeMessaging` gibt es die Schnittstelle nicht.
+      expect((await h.frage("kontextBegleiter")).sperre).toBe("begleiter_recht_fehlt");
+      // Host nicht eingerichtet: Chrome wirft beim Verbinden.
+      h.setzeBegleiter(() => {
+        throw new Error("Specified native messaging host not found.");
+      });
+      expect((await h.frage("kontextBegleiter")).sperre).toBe("begleiter_nicht_erreichbar");
+      // Ein Host, der den Einmalwert nicht zurückgibt, gilt nicht: keine Karte, Kanal getrennt.
+      const falsch = begleiterAttrappe((n) =>
+        n.typ === "hallo"
+          ? { typ: "hallo", protokoll: 1, nonce: "fremd", version: "9.9", macos: "x" }
+          : null,
+      );
+      h.setzeBegleiter(falsch.verbinde);
+      const sicht = await h.frage("kontextBegleiter");
+      expect(sicht.sperre).toBe("begleiter_antwort_ungueltig");
+      expect(falsch.empfangen.map((n) => n.typ)).toEqual(["hallo"]);
+      expect(falsch.getrennt()).toBe(true);
+      expect(sicht.begleiter?.verbunden).toBe(false);
+    } finally {
+      await h.app.close();
+    }
+  });
+
+  it("AC10/AC08 · Widerruf und Abmelden melden dem Begleiter `widerrufen` und trennen", async () => {
+    const h = await bahn();
+    try {
+      await h.capture();
+      await h.anmelden();
+      const host = begleiterAttrappe(echterHost);
+      h.setzeBegleiter(host.verbinde);
+      expect((await h.frage("kontextBegleiter")).begleiter?.uebergeben).toBe(true);
+      const weg = await h.frage("kontextWiderrufen");
+      expect(host.empfangen.at(-1)).toEqual({ typ: "widerrufen" });
+      expect(host.getrennt()).toBe(true);
+      expect(weg.begleiter).toBeNull();
+
+      // Erneut verbinden, dann abmelden: wieder `widerrufen` und Trennen.
+      const zweiter = begleiterAttrappe(echterHost);
+      h.setzeBegleiter(zweiter.verbinde);
+      expect((await h.frage("kontextBegleiter")).begleiter?.verbunden).toBe(true);
+      await h.send({ type: "logout" });
+      expect(zweiter.empfangen.at(-1)).toEqual({ typ: "widerrufen" });
+      expect(zweiter.getrennt()).toBe(true);
     } finally {
       await h.app.close();
     }

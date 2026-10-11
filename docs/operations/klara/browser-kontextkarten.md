@@ -126,17 +126,40 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   Begleiter ist, entscheidet die zuständige Hostentwicklung bzw. Führung (O06). Diese Entscheidung
   wird hier nicht getroffen.
 
-  Für AC10 fehlen daher drei Dinge, die nicht in diesem Arbeitsbaum entstehen können, ohne einen
-  zweiten Begleiter zu bauen:
-  1. die Integration des gewählten Kandidaten nach `main`;
-  2. dessen Native-Messaging-Host (Manifest für Chrome und authentifizierter
-     stdin/stdout-Anschluss) — Produktarbeit am Begleiter in dessen Auftrag; auf der
-     Erweiterungsseite kommt danach das Recht `nativeMessaging` hinzu, ein neues Recht mit
-     Neuladen durch Peter;
-  3. ein realer Lauf auf diesem Mac mit Chrome- und Begleiterfassung und Ergebnisprotokoll (Mensch).
+- **Browseranschluss an den Begleiter (Nacharbeit 7) — gebaut.** Kanal ist Chrome Native Messaging.
+  - **Begleiterseite:** die Browserbrücke `apps/desktop/klara-begleiter/BrowserBruecke`, ein eigenes
+    Swift-Ziel neben beiden Kandidaten, ohne Dateikollision. Dazu gehören das Host-Manifest
+    `ai.klarwerk.klara_begleiter` und `installieren.sh`. Sie hat keinen offenen Port, prüft die
+    Herkunft gegen die eingerichtete Erweiterungskennung, weist sich mit dem Einmalwert aus und
+    meldet ihre Fassung und die macOS-Fassung. Sie nimmt nur die Karte des Nutzers aus `hallo` an
+    und legt sie mit 0600 ab; beim Widerruf und beim Trennen verwirft sie die Karte.
+  - **Erweiterungsseite:**
+    - `nativeMessaging` ist ein **optionales** Recht, angefragt auf Klick „Mit Begleiter
+      verbinden“ über dieselbe eine Anfragestelle wie die Zwischenablage.
+    - Der Worker baut die Verbindung auf, prüft die Antwort und übergibt die gebundene Karte mit
+      Quittung über Folge und Fassung.
+    - Die Leiste zeigt Begleiter- und macOS-Fassung und ob die Karte übergeben ist.
+    - Widerruf, Abmelden und Kontowechsel melden `widerrufen` und trennen.
+  - **Geprüft** ist das im Prüfstand mit einer Host-Attrappe, die das Protokoll der Brücke spricht
+    (`tests/klara-browser/kontext-weg.test.ts`, AC10).
 
-  Bis dahin ist der vorhandene, authentifizierte Klara-Sitzungsweg des Servers angeschlossen —
-  kein zweiter Kern. Native Messaging ist im Manifest weiterhin **nicht** angefordert.
+  **Was für AC10 noch fehlt, mit konkreten Voraussetzungen:**
+  1. **Übersetzen und Einrichten auf diesem Mac** (`./installieren.sh <Kennung>`: `swift build`,
+     Dateien unter `~/Library/Application Support`). Diese Produktbahn startet laut Auftrag keine
+     Übersetzung, Installation oder Dienste. Das ist der Grund, warum die Brücke hier nicht
+     übersetzt ist. Nötig sind ein Mac mit Xcode-Kommandozeilenwerkzeugen und das Benutzerkonto,
+     unter dem Chrome läuft.
+  2. **Neuladen der Erweiterung** in Chrome und die Zustimmung zum optionalen Recht im Dialog.
+     Beides ist eine Bedienung in Peters Chrome; die Erweiterungskennung steht nur dort.
+  3. **Der reale Lauf mit Protokoll:** Kandidat, Chrome-Fassung, Erweiterung 0.4.1,
+     Brücken-Fassung, macOS-Fassung, Ergebnis-ID der Karte, Widerruf. Dafür sind die Schritte 1
+     und 2 die Voraussetzung.
+  4. **Die Anzeige der übergebenen Karte in der Begleiter-Oberfläche** (Lesen von
+     `browserkontext.json`) gehört in den Begleiter, den die Hostentwicklung wählt (s. o.). Die
+     Brücke legt die Karte dafür bereits ab.
+
+  Der Server-Sitzungsweg bleibt daneben angeschlossen. Er trägt Erklärung und Belege; der
+  Begleiter bekommt die gebundene Karte.
 - **„Erkläre mir diese Angaben" (Nacharbeit 3).** Nach dem Verbinden stellt die Leiste die Frage
   über den vorhandenen Ausführungsweg `POST /api/klara/sessions/{id}/execute`. Dort gelten
   unverändert Anmeldung (`ko.read`), Sitzungsbindung, Einwilligung je Dokument (KA4) und

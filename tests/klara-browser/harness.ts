@@ -107,6 +107,9 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
     runtime: {
       id: "test-extension",
       getURL: (p: string) => `chrome-extension://test-extension/${p}`,
+      // BPA-01 AC10: wie im Browser nur vorhanden, wenn `nativeMessaging` erteilt ist —
+      // gestellt über `setzeBegleiter`. Ohne ihn fehlt die Schnittstelle ganz.
+      connectNative: undefined as undefined | ((host: string) => unknown),
       onMessage: event("message"),
       onInstalled: event("installed"),
     },
@@ -213,6 +216,10 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
         leseSperre = null;
         los();
       };
+    },
+    /** AC10: der Native-Messaging-Anschluss (Recht erteilt + Host) — `undefined` nimmt ihn weg. */
+    setzeBegleiter: (verbinde: ((host: string) => unknown) | undefined) => {
+      chrome.runtime.connectNative = verbinde;
     },
     /** Wie oft die Seite bisher gelesen wurde (auch angehaltene Lesungen). */
     lesungen: () => spuren.filter((s) => s === "scripting.executeScript").length,

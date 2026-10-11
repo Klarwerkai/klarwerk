@@ -1,0 +1,7 @@
+{
+  "name": "ai.klarwerk.klara_begleiter",
+  "description": "Klara-Begleiter · Browserbrücke (BPA-01)",
+  "path": "__PROGRAMM__",
+  "type": "stdio",
+  "allowed_origins": ["chrome-extension://__ERWEITERUNG__/"]
+}
