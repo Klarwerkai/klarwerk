@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import type { FaehigkeitsVormerkung } from "./assistenz-faehigkeiten";
 
 // ================================================================================================
 // produkt:20261010:assistenz-name-avatar — DAS PERSÖNLICHE ASSISTENZPROFIL JE KONTO.
@@ -54,6 +55,12 @@ export interface AssistenzProfil {
   eingerichtetAm: string | null;
   fassung: number;
   geaendertAm: string;
+  /**
+   * produkt:20261011:assistenz-skills-werkzeuge — persönliche Favoriten und bestätigte Routinen
+   * (`assistenz-faehigkeiten.ts`). Fehlt bei Profilen ohne Vormerkung; Änderungen an Name, Avatar
+   * oder Bewegung lassen sie unverändert.
+   */
+  faehigkeiten?: readonly FaehigkeitsVormerkung[];
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -291,6 +298,7 @@ export class AssistenzProfilDienst {
       eingerichtetAm: alt?.eingerichtetAm ?? (abschliessen ? stempel : null),
       fassung: (alt?.fassung ?? 0) + 1,
       geaendertAm: stempel,
+      ...(alt?.faehigkeiten ? { faehigkeiten: alt.faehigkeiten } : {}),
     };
     if (!(await this.repo.schreibe(neu))) {
       throw new AssistenzProfilFehler(
