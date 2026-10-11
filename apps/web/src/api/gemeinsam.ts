@@ -79,6 +79,8 @@ export type KonfliktTeil =
 /** Die Details eines `ENTWURF_KONFLIKT`/`ENTWURF_ANGLEICH_KONFLIKT` (aus `ApiError.details`). */
 export interface KonfliktDetails {
   titel: { basis: string; meine: string; deren: string } | null;
+  /** Der konfliktfrei zusammengeführte Titel, wenn nur der Inhalt in Konflikt steht. */
+  titelGeloest?: string | null;
   teile: KonfliktTeil[];
   aktuell: { revision: number; id?: string; titel?: string; rumpf?: string; text?: string };
   seitherVon?: string[];

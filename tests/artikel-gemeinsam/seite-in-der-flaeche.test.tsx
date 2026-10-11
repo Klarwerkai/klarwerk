@@ -22,6 +22,10 @@
 //   F7         DE/EN/NL: die Sätze stehen in der Sprache der Fläche, kein Schlüssel bleibt roh.
 //   F8 (K2/K5) Nacharbeit 5: eine verzögerte Speicherantwort überschreibt keine Zwischeneingabe.
 //   F9 (K2/K5) Nacharbeit 5: Speichern auf einem ersetzten Entwurf schreibt nichts, Eingabe bleibt.
+//   F10 (K2)   Nacharbeit 7: Inhaltskonflikt + fremde Titeländerung — der Titel wird nicht
+//              zurückgesetzt.
+//   F11 (K2/K5) Nacharbeit 7: Weiterschreiben bei offenem Konflikt verwirft die alte Lösung; die
+//              neu bestimmte behält die Zwischeneingabe.
 //
 // Der Inhalt wird seit Nacharbeit 5 im EINHEITLICHEN Editor (`RichTextEditor`) bearbeitet.
 //
@@ -158,13 +162,21 @@ const amServer = async (
 };
 
 /** Anna speichert über den Draht (Klartext-Absätze), mit der Kennung des offenen Entwurfs. */
-const annaSpeichert = async (koId: string, basisRevision: number, text: string) =>
+const annaSpeichert = async (koId: string, basisRevision: number, text: string, titel = TITEL) =>
   api(anna.token, "PUT", `/api/kos/${koId}/gemeinsam`, {
     entwurfId: (await amServer(koId)).id,
     basisRevision,
-    titel: TITEL,
+    titel,
     text,
   });
+
+/** Der gespeicherte Titel des offenen Entwurfs. */
+const titelAmServer = async (koId: string): Promise<string> =>
+  (
+    (await api(pedi, "GET", `/api/kos/${koId}/gemeinsam`)).json() as {
+      entwurf: { titel: string };
+    }
+  ).entwurf.titel;
 
 let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
@@ -602,6 +614,65 @@ describe("F9 · der Entwurf ist inzwischen übernommen und ersetzt (Nacharbeit 5
     expect(danach.id).toBe(neu.id);
     expect(danach.revision).toBe(1);
     expect(danach.text).not.toContain(A3_NEU);
+  }, 30_000);
+});
+
+describe("F10 · Inhaltskonflikt mit unabhängiger fremder Titeländerung (Nacharbeit 7, Ben 1)", () => {
+  it("die Lösung übernimmt Annas Titel — das anschließende Speichern setzt ihn nicht zurück", async () => {
+    const koId = await artikelMitEntwurf();
+    await mount(koId);
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
+    const berndsA2 = "Vorher den Druck über Ventil Z ablassen.";
+    const annasA2 = "Vorher den Druck VOLLSTÄNDIG ablassen.";
+    const annasTitel = "Ventil X schließt bei Überdruck (Anlage 1)";
+    await tippen(TEXT.replace(A2, berndsA2));
+    // Anna ändert Titel UND denselben Absatz.
+    const anna2 = await annaSpeichert(koId, 1, TEXT.replace(A2, annasA2), annasTitel);
+    expect(anna2.statusCode).toBe(200);
+    await klick("gemeinsam-speichern");
+    await bis(() => suche("gemeinsam-konflikt") !== null, "der Konflikt steht da");
+    // Am Titel gibt es keinen Konflikt — nur am Absatz.
+    expect(suche("gemeinsam-konflikt-titel")).toBeNull();
+
+    await klick("gemeinsam-wahl-meine");
+    await klick("gemeinsam-konflikt-uebernehmen");
+    expect((suche("gemeinsam-titel") as HTMLInputElement).value).toBe(annasTitel);
+    await klick("gemeinsam-speichern");
+    await bis(() => zustand() === "gespeichert", "gespeichert");
+    expect(await titelAmServer(koId)).toBe(annasTitel);
+    expect((await amServer(koId)).text).toBe(TEXT.replace(A2, berndsA2));
+  }, 30_000);
+});
+
+describe("F11 · Konflikt anzeigen → weiterschreiben → auflösen (Nacharbeit 7, Ben 2)", () => {
+  it("die Zwischeneingabe verwirft die alte Lösung; die neu bestimmte Lösung behält sie", async () => {
+    const koId = await artikelMitEntwurf();
+    await mount(koId);
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
+    const berndsA2 = "Vorher den Druck über Ventil Z ablassen.";
+    const annasA2 = "Vorher den Druck VOLLSTÄNDIG ablassen.";
+    await tippen(TEXT.replace(A2, berndsA2));
+    await annaSpeichert(koId, 1, TEXT.replace(A2, annasA2));
+    await klick("gemeinsam-speichern");
+    await bis(() => suche("gemeinsam-konflikt") !== null, "der Konflikt steht da");
+
+    // Bernd schreibt bei offenem Konflikt an einer ANDEREN Stelle weiter.
+    await tippen([A1, berndsA2, A3_NEU].join("\n\n"));
+    expect(suche("gemeinsam-konflikt")).toBeNull();
+    expect(zustand()).toBe("konfliktErneut");
+    expect(imFeld()).toContain(A3_NEU);
+    expect((await amServer(koId)).text).toBe(TEXT.replace(A2, annasA2));
+
+    // Erneut speichern: der Konflikt wird aus der JETZIGEN Eingabe bestimmt.
+    await klick("gemeinsam-speichern");
+    await bis(() => suche("gemeinsam-konflikt") !== null, "der Konflikt steht neu da");
+    await klick("gemeinsam-wahl-beide");
+    await klick("gemeinsam-konflikt-uebernehmen");
+    // Die Zwischeneingabe ist in der Lösung erhalten.
+    expect(imFeld()).toBe([A1, annasA2, berndsA2, A3_NEU].join("\n\n"));
+    await klick("gemeinsam-speichern");
+    await bis(() => zustand() === "gespeichert", "gespeichert");
+    expect((await amServer(koId)).text).toBe([A1, annasA2, berndsA2, A3_NEU].join("\n\n"));
   }, 30_000);
 });
 

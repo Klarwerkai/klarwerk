@@ -473,6 +473,12 @@ export type StandZusammenfuehrung =
   | {
       ok: false;
       titel: { basis: string; meine: string; deren: string } | null;
+      /**
+       * NACHARBEIT 7 (Ben): der konfliktfrei zusammengeführte Titel, wenn nur der INHALT in Konflikt
+       * steht — sonst `null`. Ohne ihn behielte die Auflösung den eigenen alten Titel und setzte eine
+       * unabhängige fremde Titeländerung beim nächsten Speichern still zurück.
+       */
+      titelGeloest: string | null;
       teile: ZusammenfuehrungsTeil[];
     };
 
@@ -486,7 +492,12 @@ export function fuehreStaendeZusammen(
   if ("wert" in titel && inhalt.ergebnis !== null) {
     return { ok: true, stand: { titel: titel.wert, rumpf: inhalt.ergebnis.join("") } };
   }
-  return { ok: false, titel: "konflikt" in titel ? titel.konflikt : null, teile: inhalt.teile };
+  return {
+    ok: false,
+    titel: "konflikt" in titel ? titel.konflikt : null,
+    titelGeloest: "wert" in titel ? titel.wert : null,
+    teile: inhalt.teile,
+  };
 }
 
 // ================================================================================================
@@ -799,6 +810,7 @@ export class GemeinsamerEntwurfDienst {
           "Die Lesefassung wurde inzwischen an denselben Stellen geändert wie der Entwurf.",
           {
             titel: ergebnis.titel,
+            titelGeloest: ergebnis.titelGeloest,
             teile: ergebnis.teile,
             lesefassung: { version: ko.version },
             aktuell: { revision: e.revision },
@@ -1017,6 +1029,7 @@ export class GemeinsamerEntwurfDienst {
       "Derselbe Abschnitt wurde inzwischen anders geändert. Nichts wurde gespeichert — bitte je Stelle entscheiden.",
       {
         titel: ergebnis.titel,
+        titelGeloest: ergebnis.titelGeloest,
         teile: ergebnis.teile,
         basisRevision,
         aktuell: {

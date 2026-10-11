@@ -324,6 +324,18 @@ describe("S2 · gleichzeitige Änderungen (K2)", () => {
       deren: "Ventil X (Anlage 1)",
     });
   });
+
+  it("Nacharbeit 7: Anna ändert Titel und Absatz, Bernd denselben Absatz — Annas Titel reist mit", async () => {
+    const koId = await artikel();
+    await oeffnen(anna.token, koId);
+    const annas = await speichern(anna.token, koId, 1, ersetze(A2, "Annas A2."), "Annas Titel");
+    expect(annas.statusCode).toBe(200);
+    const res = await speichern(bernd.token, koId, 1, ersetze(A2, "Bernds A2."));
+    expect(res.statusCode).toBe(409);
+    const konflikt = res.json() as { titel: unknown; titelGeloest: unknown };
+    expect(konflikt.titel).toBeNull();
+    expect(konflikt.titelGeloest).toBe("Annas Titel");
+  });
 });
 
 describe("S3 · Bearbeitende und Speicherzustand (K3)", () => {

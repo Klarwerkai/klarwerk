@@ -131,6 +131,21 @@ describe("Z5 · der Titel", () => {
     );
     expect(stand.ok).toBe(false);
   });
+
+  it("Nacharbeit 7: nur der Inhalt in Konflikt — der fremd geänderte Titel kommt als titelGeloest mit", () => {
+    const basis = { titel: "Ventil X", rumpf: rumpfAusText(BASIS.join("\n\n")) };
+    const meine = { titel: "Ventil X", rumpf: rumpfAusText([B0, "Meins.", B2].join("\n\n")) };
+    const deren = {
+      titel: "Ventil X — Anlage 1",
+      rumpf: rumpfAusText([B0, "Deins.", B2].join("\n\n")),
+    };
+    const stand = fuehreStaendeZusammen(basis, meine, deren);
+    expect(stand.ok).toBe(false);
+    expect(stand).toMatchObject({ titel: null, titelGeloest: "Ventil X — Anlage 1" });
+    // Steht auch der Titel in Konflikt, gibt es keinen zusammengeführten.
+    const beide = fuehreStaendeZusammen(basis, { ...meine, titel: "A" }, deren);
+    expect(beide).toMatchObject({ titelGeloest: null });
+  });
 });
 
 describe("Z6 · Artikelinhalt als HTML-Rumpf (Nacharbeit 5: einheitlicher Editor)", () => {

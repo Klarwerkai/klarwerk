@@ -164,15 +164,29 @@ function aufgeloest(k: OffenerKonflikt): { titel: string | null; rumpf: string }
     nr += 1;
     return gewaehlt(wahl, teil.meine, teil.deren);
   });
-  const titel =
-    k.details.titel === null || k.titelWahl === null
-      ? null
-      : k.titelWahl === "deren"
-        ? k.details.titel.deren
-        : k.titelWahl === "meine"
-          ? k.details.titel.meine
-          : `${k.details.titel.meine} / ${k.details.titel.deren}`;
-  return { titel, rumpf: abschnitte.join("") };
+  return { titel: titelDerLoesung(k), rumpf: abschnitte.join("") };
+}
+
+/**
+ * Der Titel der Lösung. Stand nur der INHALT in Konflikt, gilt der konfliktfrei zusammengeführte
+ * Titel des Servers (Nacharbeit 7, Ben) — sonst setzte die Lösung eine unabhängige fremde
+ * Titeländerung zurück. `null` heißt: keine Angabe vom Server, der Titel im Feld bleibt.
+ */
+function titelDerLoesung(k: OffenerKonflikt): string | null {
+  const t = k.details.titel;
+  if (t === null) {
+    return k.details.titelGeloest ?? null;
+  }
+  switch (k.titelWahl) {
+    case "meine":
+      return t.meine;
+    case "deren":
+      return t.deren;
+    case "beide":
+      return `${t.meine} / ${t.deren}`;
+    default:
+      return null;
+  }
 }
 
 /** Gleicher Stand? Titel und Inhalt Zeichen für Zeichen. */
@@ -515,7 +529,23 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
     if (sanitizeHtml(html) !== sanitizeHtml(rumpf)) {
       setRumpf(html);
       setGeaendert(true);
+      konfliktVeraltet();
     }
+  };
+
+  /**
+   * Nacharbeit 7 (Ben): wer bei angezeigtem Konflikt weiterschreibt, macht dessen Lösung ungültig —
+   * sie wurde aus der Eingabe VOR dieser Änderung gebildet und würde sie beim Übernehmen still
+   * ersetzen. Der Konflikt wird deshalb verworfen; die Eingabe bleibt, wie sie jetzt ist, und das
+   * nächste Speichern bestimmt die Konfliktstellen aus ihr neu. (Ein Angleich-Konflikt ebenso: er
+   * beruht auf dem gespeicherten Entwurf, nicht auf der neuen Eingabe.)
+   */
+  const konfliktVeraltet = (): void => {
+    if (konflikt === null) {
+      return;
+    }
+    setKonflikt(null);
+    setSpeicherlage("konfliktErneut");
   };
 
   const neueLage = (l: GemeinsamLage): void => {
@@ -955,6 +985,7 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
               onChange={(e) => {
                 setTitel(e.target.value);
                 setGeaendert(true);
+                konfliktVeraltet();
               }}
             />
             <p className="mt-3 block text-[12.5px] font-semibold text-text">
