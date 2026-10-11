@@ -152,7 +152,7 @@ async function bisZuDenFunden(): Promise<void> {
   await seiteOeffnen(ADRESSE);
   await modusUeberLeiste("erfassen.weg.formular");
   expect(verlassenKnopf(), "der Entwurf ist im Formular nicht geöffnet").not.toBeNull();
-  await tippe(feld(i18n.t("capture.fTitle")), "");
+  await tippe(feld(i18n.t("capture.wizard.titleLabel")), "");
   await modusUeberLeiste("erfassen.weg.datei");
   expect(
     verlassenKnopf(),

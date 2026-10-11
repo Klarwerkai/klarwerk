@@ -27,7 +27,6 @@ import {
   confluenceImportRoutes,
   warteAufOffeneImportLaeufe,
 } from "../../services/app/src/routes/confluence-import-routes";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
@@ -41,6 +40,7 @@ import {
   PgImportRunRepo,
 } from "../../services/library-analytics";
 import { InMemoryObjectRepo, ObjectStore } from "../../services/object-store";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 const BASIS = "https://acme.atlassian.net/wiki";
 const PNG_V1 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -99,12 +99,13 @@ describe("R-0163 · unvollständiger Anhangsabgleich, gespeichert in PostgreSQL 
     }
     try {
       container = await new GenericContainer("postgres:16-alpine")
-        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk" })
+        // Testname nach `tests/app/job2354-drei-datenbanknamen.test.ts` (E7), nicht frei gewählt.
+        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
         .withExposedPorts(5432)
         .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
         .start();
       pool = new Pool({
-        connectionString: `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`,
+        connectionString: `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
       });
       available = true;
     } catch {

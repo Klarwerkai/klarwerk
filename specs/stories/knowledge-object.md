@@ -36,8 +36,16 @@ Versioniertes Wissensobjekt mit klarem Datenmodell, fünf Wissensarten, Kategori
 ## Datenmodell (Auszug, Technischer Anhang §1)
 `kos(id, title, statement, conditions, measures, type, category, tags[], confidence, trust, status, version, original_author, needed_validations, asset_ref, created_at)` + `ko_history`. Wissensart als Enum.
 
+### Metadaten und Anlagenbezug (aufnahme:20260922:gesamt-wissen-metadaten)
+- Beim Erfassen setzbar und am KO gespeichert: Wissensart, Kategorie, **Fachgebiet** (`domain`, eigene Angabe neben der Kategorie), Schlagwörter, **Anlage** (`asset`), nötige Validierungen (1–5, Standard 3) und die **Art der Aussage** (`aussageart`: `tatsache` | `handlungsanweisung`, optional). Fachgebiet und Aussageart reisen auch über Entwurf → Einreichen ins KO.
+- Fachgebiet nachträglich änderbar (Leseansicht „Provenienz", `PUT /api/kos/:id {action:"domain"}`); Fachgebiet, Anlage und Wissensart sind Facetten der Bibliothek.
+- **Kanonischer Anlagenbezug (JOB 593, Option A):** welche Anlage zu einem KO gehört, sagt allein `KnowledgeObject.asset` (Normalform `normalizeAsset`). Die Lebenszyklus-Kopplungen (`/api/lifecycle/couple`) sind nur die Liste für Änderungsmeldungen; sie nehmen nur sichtbare, existierende KOs und eine nicht leere, normalisierte Kennung an. Eine Kennung kann an mehreren KOs hängen.
+- **Mehrere Anlagen je KO:** die Anlagen stehen am KO und werden über `anlagenVon` gelesen. Eine (oder keine) Anlage wird wie bisher nur in `asset` gespeichert — Einzelzuordnungen und Altbestand bleiben unverändert; ab zwei Anlagen trägt `assets` die Liste (Normalform, ohne Doppelte) und `asset` spiegelt die erste für Einzelleser (Konflikterkennung, Word-Add-in). Erfassen: ein Feld, mehrere Anlagen mit `;` getrennt (ein Semikolon in einer Kennung als `\;`, ein Backslash als `\\` — vorhandene Kennungen überstehen Öffnen und Speichern unverändert); eine mitgeschickte `assets`-Angabe, die keine Liste nicht leerer Texte ist, weist der Server mit 400 ab (`null` und `[]` löschen ausdrücklich); Ändern: Leseansicht „Kopplung und Anlagen" (über `revise`, `changes.assets`); Filter: Facette „Anlage" zählt ein KO unter jeder seiner Anlagen.
+- **Matrix (R-0477):** Bibliothek → Menü „…" → „Anlagen-Matrix": Anlagen × Wissensobjekte über die aktuellen, sichtbaren Treffer.
+- **Re-Validierungstermin (R-1690):** `revalidierungAm` (`JJJJ-MM-TT`) beim Erfassen, über Entwurf → Einreichen am KO gespeichert; ungültige Tage werden abgewiesen. Eine automatische Erinnerung zum Termin gibt es nicht.
+
 ## Nicht-Ziele (v1)
-Import/Output-Felder (`source_type`, `validity_until` …) sind Konzept/Roadmap → Modul `extensions` (FR-EXT-07).
+Import/Output-Felder (`source_type`, `validity_until` …) sind Konzept/Roadmap → Modul `extensions` (FR-EXT-07); dokumentiert in `specs/reference/Funktionsbeschreibung.md` §18.4.
 
 ## Offene Fragen
 Konfliktfeld-Verknüpfung zu `conflicts` · Asset-Speicherung (Bilder/Dokumente) lokal vs. Objektspeicher.

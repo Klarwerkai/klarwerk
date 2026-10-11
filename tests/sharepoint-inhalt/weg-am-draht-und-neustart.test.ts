@@ -62,7 +62,8 @@ process.env.KLARWERK_SHAREPOINT_DRIVE = "b!testbibliothek";
 const ADMIN = { name: "Admin 4232", email: "admin4232@example.com", password: "geheim-1234" };
 
 const GEAENDERT_AM = "2026-09-12T09:15:00Z";
-const QUELLSTAND = Math.floor(Date.parse(GEAENDERT_AM) / 1000);
+// R-0144: der Mapper zählt den Quellstand in Sekunden seit 2025-01-01 (`sharepointQuellstand`).
+const QUELLSTAND = Math.floor((Date.parse(GEAENDERT_AM) - Date.UTC(2025, 0, 1)) / 1000);
 const TEXT = "ZEILE EINS\nZEILE ZWEI";
 
 const NOTIZ = {

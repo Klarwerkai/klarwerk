@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Conflict, ConflictDetector, KnowledgeObject } from "../../apps/web/src/api/types";
-import {
-  conflictDisplayMode,
-  hasStreitpunkt,
-  resolveCollision,
-} from "../../apps/web/src/lib/conflictCollision";
+import { hasStreitpunkt, resolveCollision } from "../../apps/web/src/lib/conflictCollision";
 
 const ko = (id: string, title: string): KnowledgeObject =>
   ({
@@ -59,26 +55,8 @@ const kollisionDetector = (streitpunkt = "Pflichtfarbe"): ConflictDetector => ({
 
 const kos = [ko("K1", "Anweisung Halle A"), ko("K2", "Anweisung Halle B")];
 
-// SCRUM-492: Die Darstellung folgt einer Fallback-Kaskade — strukturierte Kacheln, sonst die zwei
-// wörtlichen Zitate, sonst der Beschreibungstext. Alt-/Manuell-Konflikte brechen nie.
-describe("SCRUM-492: conflictDisplayMode (Fallback-Kaskade)", () => {
-  it("detector.kollision vorhanden → Kacheln", () => {
-    expect(conflictDisplayMode(conflict(kollisionDetector()))).toBe("kollision");
-  });
-
-  it("nur detector.quotes (Alt-Auto-Konflikt) → Zitate", () => {
-    const d: ConflictDetector = {
-      trigger: "validation",
-      method: "model",
-      quotes: { a: "x", b: "y" },
-    };
-    expect(conflictDisplayMode(conflict(d))).toBe("quotes");
-  });
-
-  it("kein detector (manuell/Alt) → Text", () => {
-    expect(conflictDisplayMode(conflict())).toBe("text");
-  });
-});
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Der Block zu `conflictDisplayMode` ist mit der
+// Auswahl entfallen — sie hatte keinen Produktleser; das Board entscheidet über `resolveCollision`.
 
 describe("SCRUM-492: resolveCollision (Titel-Auflösung + Streitwert-Beleg)", () => {
   it("löst Titel aus dem KO-Paar und übernimmt Kernaussage/Streitwert/Beleg-Flag", () => {

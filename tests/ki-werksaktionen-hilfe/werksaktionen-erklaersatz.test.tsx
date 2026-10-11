@@ -443,15 +443,16 @@ describe("JOB 3831 · W1 (JOB 3880 umgedreht) · Palette zu, Zahnrad auf — der
     // als Zusicherung, verhindert sie falsches Grün aus einer LEEREN Liste: `fehlt.length === 0`
     // wäre sonst auch dann erfüllt, wenn `.textContent` alles enthielte, was man hineinliest —
     // deshalb muss hier nachweislich das Hilferegister des Blattes stehen, mit einem Wortlaut, den
-    // KEINE der fünf Werksaktionen beisteuert (`conf.help`, die Vertraulichkeits-Hilfe).
+    // KEINE der fünf Werksaktionen beisteuert (die Vertraulichkeits-Hilfe; seit R-0908
+    // `fachwort.vertraulichkeit.hilfe` statt `conf.help`, derselbe Text ohne „Output Factory").
     expect(
       text,
       "W1: die Liste enthält nicht einmal das Hilferegister des Blattes — hier wurde die falsche Fläche gelesen",
-    ).toContain(i18n.t("conf.help"));
+    ).toContain(i18n.t("fachwort.vertraulichkeit.hilfe"));
     expect(
       text.length,
       "W1: die gelesene Liste ist kürzer als das Hilferegister des Blattes sein kann — sie wurde nicht vollständig gezeichnet",
-    ).toBeGreaterThan(i18n.t("conf.help").length);
+    ).toBeGreaterThan(i18n.t("fachwort.vertraulichkeit.hilfe").length);
   });
 });
 

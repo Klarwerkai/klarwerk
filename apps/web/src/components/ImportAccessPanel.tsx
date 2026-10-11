@@ -42,7 +42,20 @@
 // der Server einen Betreiberschalter meldet UND die Installation den Import freigibt — sonst
 // könnte er nichts bewirken. Die Sperre setzen die Importrouten am Server durch; dieser Knopf ist
 // die Bedienung dazu, nicht die Sperre selbst. Weiterhin kein Eingabefeld, kein Formular, kein Wert.
+//
+// ================================================================================================
+// ADMIN-02 (Nacharbeit 2) — CONFLUENCE AM GEMEINSAMEN STATUSMODELL.
+// ================================================================================================
+//
+// Bis hierher sagte diese Fläche, ob der Import eingeschaltet ist und die Angaben stehen — und die
+// Galeriekachel daneben sagte unabhängig davon fest „aktiv". Jetzt trägt die Fläche denselben
+// abgeleiteten Zustand wie die SharePoint-Karte (`lib/integrationStatus.ts`), und die Kachel liest
+// ihn aus demselben Abfragespeicher. Freischaltung, Angaben, Verbindungsnachweis und historischer
+// Importerfolg stehen getrennt. Der Verbindungstest ist ein BEWUSST gedrückter Knopf: er liest eine
+// Seite des Space (ohne Inhalt) und hält Zeitpunkt, Umfang und Ergebnis fest — er erkundet nicht,
+// importiert nicht und verändert keine Beiträge. Ohne bestandenen Test steht nirgends „geprüft".
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -55,6 +68,14 @@ import {
   betreiberHatAusgeschaltet,
   importAccessState,
 } from "../lib/importAccessState";
+import {
+  INTEGRATION_STATUS_TEXT,
+  VERBINDUNGSTEST_TEXT,
+  VERBINDUNGSTEST_UMFANG_TEXT,
+  integrationStatus,
+  juengererNachweis,
+  naechsterSchrittKey,
+} from "../lib/integrationStatus";
 import { formatKoTimestamp } from "../lib/koDates";
 import { Button, Card } from "./ui";
 
@@ -77,6 +98,14 @@ export function ImportAccessPanel(): JSX.Element | null {
     mutationFn: (an: boolean) => endpoints.importAccess.confluenceSchalter(an),
     onSuccess: (neu) => {
       qc.setQueryData(["import-access", "confluence"], neu);
+    },
+  });
+  // ADMIN-02: der Verbindungstest. Danach wird die Auskunft neu geholt — sie trägt das
+  // festgehaltene Ergebnis, und genau das sieht man auch nach dem Neuladen und in der Galerie.
+  const pruefen = useMutation({
+    mutationFn: () => endpoints.importAccess.confluenceVerbindungstest(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["import-access", "confluence"] });
     },
   });
   if (!zugang.data) {
@@ -106,6 +135,18 @@ export function ImportAccessPanel(): JSX.Element | null {
   const blockerKey = daten.blocker ? IMPORT_ACCESS_BLOCKER_TEXT[daten.blocker] : undefined;
   // JOB-924 D6: fail-closed — ein unparsebarer Wert wird zu `null` und damit zum Unbekannt-Satz.
   const zuletzt = formatKoTimestamp(daten.lastConnectedAt, i18n.language);
+  // ADMIN-02: der gemeinsame Zustand und sein nächster Schritt. Der jüngere von „gerade geprüft"
+  // und „aus der Auskunft gelesen" gilt — nie ein älterer über einen neueren.
+  const test = juengererNachweis(pruefen.data, daten.letzterVerbindungstest);
+  const status = integrationStatus({
+    enabled: daten.enabled,
+    credentialsUsable: daten.credentialsUsable,
+    letzterVerbindungstest: test,
+  });
+  const statusText = INTEGRATION_STATUS_TEXT[status];
+  const schrittKey = naechsterSchrittKey("confluence", status, test, betreiberAus);
+  const testZeit = test ? formatKoTimestamp(test.geprueftAm, i18n.language) : null;
+  const freigegeben = betreiber ? betreiber.freigegeben : daten.enabled;
   return (
     <Card className="mb-5">
       <div className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
@@ -119,8 +160,33 @@ export function ImportAccessPanel(): JSX.Element | null {
         >
           {t(text.titleKey)}
         </span>
+        {/* ADMIN-02: der gemeinsame Zustand — derselbe, den die Galeriekachel zeigt. Ohne
+            bestandenen Verbindungstest steht hier nie „Verbindung geprüft". */}
+        <span
+          data-testid="import-access-status"
+          data-status={status}
+          data-ton={statusText.tone}
+          className="font-mono text-[10px] font-semibold text-muted"
+        >
+          {t(statusText.key)}
+        </span>
       </div>
       <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(text.bodyKey)}</p>
+      <p
+        data-testid="import-access-naechster-schritt"
+        data-schritt={schrittKey}
+        className="mt-1.5 rounded-btn bg-hairline-soft px-2.5 py-1.5 text-[12.5px] leading-relaxed text-text"
+      >
+        {t("integrationen.naechsterSchritt")} {t(schrittKey)}
+      </p>
+      <p
+        data-testid="import-access-freischaltung"
+        data-freigegeben={freigegeben ? "yes" : "no"}
+        className="mt-1.5 text-[12px] leading-relaxed text-muted"
+      >
+        {t("integrationen.freischaltung.titel")}:{" "}
+        {t(freigegeben ? "integrationen.freischaltung.an" : "integrationen.freischaltung.aus")}
+      </p>
       {/* R-0134 / R-1005: der Betreiberschalter — nur wenn der Server ihn meldet UND die
           Installation den Import freigibt. Ohne Freigabe könnte der Knopf nichts bewirken. */}
       {betreiber?.freigegeben ? (
@@ -181,6 +247,68 @@ export function ImportAccessPanel(): JSX.Element | null {
       </ul>
       <p className="mt-2 text-[12px] leading-relaxed text-muted">{t("imp.access.whereSet")}</p>
       <p className="mt-1 text-[12px] leading-relaxed text-muted">{t("imp.access.whoMay")}</p>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted">
+        {t("integrationen.zustaendig.test")}
+      </p>
+
+      {/* ADMIN-02: LETZTER VERBINDUNGSTEST — bewusst gestartet, Wirkung daneben erklärt. */}
+      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+        {t("integrationen.test.titel")}
+      </div>
+      <div data-testid="import-access-verbindungstest" aria-live="polite">
+        {test !== null && testZeit !== null ? (
+          <p
+            data-testid="import-access-verbindungstest-zeile"
+            data-ergebnis={test.ergebnis}
+            data-umfang={test.umfang}
+            className="mt-1 text-[12.5px] leading-relaxed text-text"
+          >
+            {t("integrationen.test.zeile", {
+              zeit: testZeit,
+              umfang: t(VERBINDUNGSTEST_UMFANG_TEXT[test.umfang]),
+              ergebnis: t(VERBINDUNGSTEST_TEXT[test.ergebnis].ergebnisKey),
+            })}
+          </p>
+        ) : (
+          <p
+            data-testid="import-access-verbindungstest-keiner"
+            className="mt-1 text-[12.5px] leading-relaxed text-muted"
+          >
+            {t("integrationen.test.keiner")}
+          </p>
+        )}
+        {pruefen.isError ? (
+          <p
+            data-testid="import-access-verbindungstest-fehler"
+            className="mt-1 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+          >
+            {t("integrationen.test.fehler")}
+          </p>
+        ) : null}
+      </div>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted">
+        {t("integrationen.confluence.wirkung")}
+      </p>
+      <div className="mt-1.5">
+        <Button
+          variant="outline"
+          data-testid="import-access-verbindungstest-starten"
+          disabled={pruefen.isPending}
+          onClick={() => pruefen.mutate()}
+        >
+          {pruefen.isPending ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <ShieldCheck size={14} />
+          )}
+          {pruefen.isPending ? t("integrationen.test.laeuft") : t("integrationen.test.knopf")}
+        </Button>
+      </div>
+
+      {/* ADMIN-02: der letzte erfolgreiche Import ist ein HISTORISCHER Nachweis, kein Verbindungstest. */}
+      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+        {t("integrationen.historie.titel")}
+      </div>
       {/* JOB-924 D6: DIE ZEILE STEHT IMMER — nur ihr Inhalt hängt vom Bestand ab. Eine fehlende
           Zeile läse sich wie „nie verbunden", und das wäre eine Behauptung.
           Der Wertfall nennt den Zeitpunkt RÜCKBLICKEND und sagt ausdrücklich dazu, dass er über

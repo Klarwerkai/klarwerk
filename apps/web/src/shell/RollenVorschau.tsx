@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { useRole } from "../app/RoleContext";
+import { routePathAllows } from "../app/navigation";
 
 // ================================================================================================
 // JOB 3065 · H6 — HIER STEHT NUR NOCH DER RÜCKWEG. DIE WAHL SELBST WOHNT IN DEN EINSTELLUNGEN.
@@ -45,14 +47,26 @@ import { useRole } from "../app/RoleContext";
 //
 // WARUM DER RÜCKWEG TROTZDEM IN DER HÜLLE BLEIBEN MUSS: die Sperrkarte ist nur EINER der Orte, an
 // denen die Vorschau auffällt. Wer während der Vorschau auf einer erlaubten Seite steht (`/start`),
-// sieht keine Sperrkarte — für ihn ist das Zahnrad weiterhin der Ausweg. Die Sperrkarte kommt
-// hinzu, sie ersetzt nichts.
+// sieht keine Sperrkarte. Die Sperrkarte kommt hinzu, sie ersetzt nichts.
+//
+// ================================================================================================
+// N-0028 (Auftrag gesamt-rollen-vorschau, BEN Nacharbeit 1) — AUCH AUF ERLAUBTEN SEITEN SICHTBAR.
+// ================================================================================================
+//
+// Bis hierher stand der Hinweis auf einer erlaubten Seite (z. B. nach „Zurück zum Start" von der
+// Sperrkarte) nur im geschlossenen Zahnrad-Menü — die Vorschau lief weiter, ohne dass die Seite es
+// sagte. `AppShell.tsx` legt DASSELBE Bauteil als Fläche „seite" oben in `<main>`, solange eine
+// Vorschau läuft — kein neues Bauteil, eine dritte Kleidung. Auf einer gesperrten Seite trägt den
+// Hinweis bereits die Sperrkarte; dort bleibt die Fläche „seite" leer, damit der Rückweg nicht
+// doppelt dasteht. Ob eine Seite gesperrt ist, beantwortet dieselbe Registry wie der Router
+// (`routePathAllows`). Keine Rollenwahl, keine Rechteänderung: es bleibt der eine Knopf zurück in
+// die eigene Rolle.
 
-/** Wo derselbe Hinweis steht: im Zahnrad-Menü oder auf der Sperrkarte des Rollen-Tors. */
-export type VorschauFlaeche = "zahnrad" | "sperrkarte";
+/** Wo derselbe Hinweis steht: im Zahnrad-Menü, auf der Sperrkarte oder oben auf einer Seite. */
+export type VorschauFlaeche = "zahnrad" | "sperrkarte" | "seite";
 
 /**
- * Der Vorschauhinweis samt Rückweg — EINE Aussage, zwei Flächen.
+ * Der Vorschauhinweis samt Rückweg — EINE Aussage, drei Flächen.
  *
  * EHRLICHKEIT VOR OPTIK: „du bleibst Admin" ist eine Tatsachenaussage über die laufende Sitzung.
  * Sie hängt allein an `previewActive`, und das ist `isAdminSession && role !== "admin"`
@@ -63,25 +77,34 @@ export type VorschauFlaeche = "zahnrad" | "sperrkarte";
 export function VorschauHinweis({ flaeche }: { flaeche: VorschauFlaeche }): JSX.Element | null {
   const { t } = useTranslation();
   const { role, setRole, previewActive } = useRole();
+  const { pathname } = useLocation();
   // Ohne laufende Vorschau gibt es nichts zu sagen und nichts, wovon man zurückkehren könnte.
   if (!previewActive) {
     return null;
   }
-  const aufKarte = flaeche === "sperrkarte";
+  // Auf einer gesperrten Seite spricht die Sperrkarte — die Seitenfläche schweigt dort.
+  if (flaeche === "seite" && !routePathAllows(pathname, role)) {
+    return null;
+  }
+  // Karte und Seite tragen den Hinweis in Lesegröße; das Zahnrad-Menü in seiner kompakten Form.
+  const gross = flaeche !== "zahnrad";
   return (
     <div
-      data-testid={aufKarte ? "sperrkarte-vorschau" : "zahnrad-vorschau"}
+      data-testid={`${flaeche}-vorschau`}
       className={
-        aufKarte
+        flaeche === "sperrkarte"
           ? // Auf der Karte: volle Breite, mittig wie der Rest des Rahmens, und bei schmaler
             // Fläche bricht die Zeile um, statt den Knopf hinauszudrängen.
             "mx-auto mt-4 flex max-w-md flex-wrap items-center justify-center gap-2 rounded-card bg-trust-warn-bg px-3 py-2"
-          : "mx-2.5 mb-1.5 flex items-center justify-between gap-2 rounded-btn bg-trust-warn-bg px-2 py-1.5"
+          : flaeche === "seite"
+            ? // Oben auf der Seite: ein Band über dem Inhalt, das schmal ebenso umbricht.
+              "mb-4 flex flex-wrap items-center justify-between gap-2 rounded-card bg-trust-warn-bg px-3 py-2"
+            : "mx-2.5 mb-1.5 flex items-center justify-between gap-2 rounded-btn bg-trust-warn-bg px-2 py-1.5"
       }
     >
       <span
         className={
-          aufKarte
+          gross
             ? "text-[12.5px] leading-relaxed text-trust-warn-text"
             : "text-[11px] leading-tight text-trust-warn-text"
         }
@@ -96,7 +119,7 @@ export function VorschauHinweis({ flaeche }: { flaeche: VorschauFlaeche }): JSX.
         type="button"
         onClick={() => setRole("admin")}
         className={
-          aufKarte
+          gross
             ? "shrink-0 rounded-pill bg-surface px-3 py-1 text-[12.5px] font-semibold text-text hover:opacity-80"
             : "shrink-0 rounded-pill bg-surface px-2 py-0.5 text-[11px] font-semibold text-text hover:opacity-80"
         }

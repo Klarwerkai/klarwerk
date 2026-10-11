@@ -64,11 +64,17 @@ async function zweiterNutzer(
   return { authorization: `Bearer ${login.json().token}` };
 }
 
-/** Legt ein belegfaehiges Wissensobjekt an und stellt die Frage, die es trifft. */
+/**
+ * Legt ein belegfaehiges Wissensobjekt an und stellt die Frage, die es trifft.
+ *
+ * R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur aus geprüftem
+ * Wissen — „belegfähig" heisst deshalb validiert. Bewertet wird über die echte Route; ein Konto
+ * ohne `ko.validate` (Rolle experte) braucht dafür einen `pruefer`.
+ */
 async function frageMitBeleg(
   app: ReturnType<typeof buildApp>,
   auth: Record<string, string>,
-  opts: { vertraulich?: boolean } = {},
+  opts: { vertraulich?: boolean; pruefer?: Record<string, string> } = {},
 ) {
   const ko = await app.inject({
     method: "POST",
@@ -82,10 +88,21 @@ async function frageMitBeleg(
       // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe — der nicht-vertrauliche Zweig sagt
       // deshalb ausdrücklich „intern" statt gar nichts. Die Aussage des Falls bleibt dieselbe.
       confidentiality: opts.vertraulich ? "vertraulich" : "intern",
+      neededValidations: 1,
     },
   });
   if (ko.statusCode !== 201) {
     throw new Error(`KO nicht angelegt: ${ko.statusCode} ${ko.body}`);
+  }
+  // R-0278 (Nacharbeit 3) / R-0584: belegfähig ist nur noch, was validiert ist.
+  const bewertung = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${ko.json().id}`,
+    headers: opts.pruefer ?? auth,
+    payload: { action: "rate", verdict: "up" },
+  });
+  if (bewertung.statusCode !== 200) {
+    throw new Error(`KO nicht validiert: ${bewertung.statusCode} ${bewertung.body}`);
   }
   const ask = await app.inject({
     method: "POST",
@@ -208,7 +225,7 @@ describe("W3-C · GET /api/klara/answers/:answerId/explanation", () => {
     const systemKonto = { authorization: `Bearer ${login.json().token}` };
 
     // (1) SEINE EIGENE Antwort — der Fall, den D3 verlor.
-    const eigene = await frageMitBeleg(app, systemKonto);
+    const eigene = await frageMitBeleg(app, systemKonto, { pruefer: auth });
     expect(eigene.answerId, "der Antwortlauf muss eine Kennung ausweisen").not.toBeNull();
     const eigeneErklaerung = await erklaerung(app, systemKonto, String(eigene.answerId));
     expect(
@@ -415,7 +432,7 @@ describe("W3-C · GET /api/klara/answers/:answerId/explanation", () => {
       const app = buildApp(services);
       const auth = await admin(app, "tab2@x.de");
       const experte = await zweiterNutzer(app, auth, "experte541@x.de");
-      const { koId, answerId } = await frageMitBeleg(app, experte);
+      const { koId, answerId } = await frageMitBeleg(app, experte, { pruefer: auth });
 
       await services.ko.setConfidentiality(koId, "vertraulich", "anna");
       const res = await erklaerung(app, experte, String(answerId));

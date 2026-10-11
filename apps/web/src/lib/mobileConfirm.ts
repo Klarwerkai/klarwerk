@@ -22,12 +22,7 @@ export function isPending(state: ConfirmState, id: string): boolean {
   return state.pendingId === id;
 }
 
-// Braucht ein Klick auf diesen Eintrag noch eine Bestätigung (= noch nicht pending)?
-export function needsConfirmation(state: ConfirmState, id: string): boolean {
-  return state.pendingId !== id;
-}
-
-// Ist der nächste Klick auf diesen Eintrag der finale Löschschritt?
-export function confirmsDelete(state: ConfirmState, id: string): boolean {
-  return state.pendingId === id;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier standen `needsConfirmation` (= nicht `isPending`)
+// und `confirmsDelete` (= `isPending`). Mobil bestätigt über `requestConfirm`/`isPending` — dieselbe
+// Zweischritt-Regel (`pages/Mobile.tsx`, R-0991 Nr. 49/50); die beiden Zweitnamen rief niemand und
+// sind entfernt.

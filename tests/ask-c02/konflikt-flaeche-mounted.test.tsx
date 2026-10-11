@@ -246,7 +246,7 @@ async function vorrichtung(kopieAbsaetze: readonly string[]): Promise<void> {
     confidentiality: "intern",
   } as never);
   await endpoints.ko.act(freigegeben.id, { action: "admin-validate" });
-  await endpoints.ko.create({
+  const kopie = await endpoints.ko.create({
     title: TITEL_KOPIE,
     statement: ADVISOR_FICTION_NOTICE,
     type: "best_practice",
@@ -254,6 +254,11 @@ async function vorrichtung(kopieAbsaetze: readonly string[]): Promise<void> {
     bodyHtml: kopieAbsaetze.map((a) => `<p>${a}</p>`).join(""),
     confidentiality: "intern",
   } as never);
+  // R-0278 (Nacharbeit 3, ben): die Fläche zieht nur noch FREIGEGEBENES heran. Der Widerspruch, den
+  // dieser Fall zeigen muss, ist deshalb einer zwischen zwei freigegebenen Fristen — eine ungeprüfte
+  // Kopie wäre gar keine Quelle mehr (das misst tests/antwort-quellendeckung/). Gleicher Titelkern,
+  // daher die Dublettenbestätigung.
+  await endpoints.ko.act(kopie.id, { action: "admin-validate", duplicateAcknowledged: true });
   await services.aiCheckWorker?.idle();
   await seiteOeffnen();
 }

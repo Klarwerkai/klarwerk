@@ -35,7 +35,7 @@ import { type ReactNode, act, createElement } from "../../apps/web/node_modules/
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { Link, MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { GuardedLink, NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
-import { Button, Card } from "../../apps/web/src/components/ui";
+import { Button, Card, TextInput } from "../../apps/web/src/components/ui";
 import "../../apps/web/src/i18n";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -128,6 +128,8 @@ const knopfProbe = { "data-testid": ANKER, children: "Inhalt" };
 const linkProbe = { to: "/start", "data-testid": ANKER, children: "Inhalt" };
 const askAnswerProbe = { "data-testid": "ask-answer", children: "Antwort" };
 const hilfeProbe = { "data-help": "cap:x", children: "Inhalt" };
+// Ein Eingabefeld trägt keine Kinder; die Probe ist das Attribut plus ein gewöhnlicher Wert.
+const eingabeProbe = { "data-testid": ANKER, defaultValue: "Inhalt" };
 // Symbole tragen keine Kinder — die Probe ist das Attribut plus die Größe. Die Größe steht nicht
 // zur Zierde da: ohne mindestens EINE bekannte Eigenschaft lehnt TypeScript das Objekt an
 // `LucideProps` ab („has no properties in common"), und genau daran zeigt sich noch einmal der
@@ -137,6 +139,10 @@ const symbolProbe = { size: 13, "data-testid": ANKER };
 const PROBEN: Record<string, () => ReactNode> = {
   Card: () => createElement(Card, kartenProbe),
   Button: () => createElement(Button, knopfProbe),
+  // Das Firmenwörterbuch (`pages/Firmenwoerterbuch.tsx`) setzt seine Feldanker (`begriffe-suche`,
+  // `begriff-geltungsbereich`, …) an `TextInput`. Kommen sie nicht im DOM an, misst
+  // `tests-smoke/firmenwoerterbuch-browser.spec.ts` ins Leere — dieselbe Klasse wie `ask-answer`.
+  TextInput: () => createElement(TextInput, eingabeProbe),
   Link: () => createElement(MemoryRouter, { children: createElement(Link, linkProbe) }),
   // GuardedLink stellt die Dirty-Frage und braucht dafür seinen Provider — die Probe baut ihn mit
   // auf, statt die Komponente in einer Umgebung zu messen, in der sie nie läuft.

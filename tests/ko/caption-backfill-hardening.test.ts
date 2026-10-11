@@ -15,12 +15,17 @@ import {
   type KoRepo,
   KoService,
 } from "../../services/knowledge-object";
-import { LibraryService, SEARCH_BACKFILL_LIMIT_PER_QUERY } from "../../services/library-analytics";
+import { LibraryService } from "../../services/library-analytics";
 import {
   MAX_CAPTIONS_PER_KO,
   MAX_CAPTION_TEXT_LENGTH,
   searchCaptionTexts,
 } from "../../services/structure";
+
+// R-1349: Der Deckel je Wartungsschwung ist der Wert, den DIESER Fall dem Lauf übergibt. Die
+// gleichnamige Produktkonstante las kein Produktweg (die Läufe nehmen ihren eigenen Schwung) und
+// ist entfernt; geprüft bleibt, dass `backfillSearchProjections` einen übergebenen Deckel hart hält.
+const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
 
 const FIGURE = (caption: string): string =>
   `<figure><img src="/api/objects/x/raw" alt="Bild"><figcaption data-image-id="kw-img-1">${caption}</figcaption></figure>`;
@@ -158,7 +163,6 @@ describe("WP-BILD-1h P2 (G27 R1): Wartungslauf hart gedeckelt, single-flight, fe
     for (let i = 1; i <= 25; i++) {
       await inner.insert(legacyKo(`legacy-${String(i).padStart(2, "0")}`, FIGURE("Verschraubung")));
     }
-    expect(SEARCH_BACKFILL_LIMIT_PER_QUERY).toBe(20);
     const erster = await koService.backfillSearchProjections({
       limit: SEARCH_BACKFILL_LIMIT_PER_QUERY,
     });

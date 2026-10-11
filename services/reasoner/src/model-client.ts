@@ -99,7 +99,14 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   // Gemeinsamer Request-Kern für Text- und Vision-Aufrufe: gleicher Timeout, gleiche
   // Fehlerklassen (ModelHttpError/ModelTimeoutError), gleicher Antwort-Vertrag.
-  const postMessages = async (body: Record<string, unknown>): Promise<string> => {
+  // R-0046 (Bildbeschreibung gegen abgeschnittene Ergebnisse): `abbruchVermerken` meldet einen
+  // belegten Abbruch (`stop_reason: "max_tokens"` MIT Text) in die Abbruch-Spur — dieselbe Tatsache,
+  // die `requireChatContent` auf der OpenAI-Kante vermerkt. Nur der Vision-Weg setzt ihn; der
+  // Textweg bleibt byteweise wie bisher. Ohne laufende Spur ist der Vermerk ein No-op.
+  const postMessages = async (
+    body: Record<string, unknown>,
+    abbruchVermerken = false,
+  ): Promise<string> => {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -137,6 +144,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
         // Bewusst `unknown` je Wert: was hier ankommt, ist eine fremde Antwort, kein Vertrag —
         // geprüft wird sie an der einen Stelle, die das darf (`meldeModellVerbrauch`).
         usage?: { input_tokens?: unknown; output_tokens?: unknown } | null;
+        stop_reason?: unknown;
       };
       // JOB 3074: VERBRAUCHT IST VERBRAUCHT. Der Verbrauch wird gemeldet, BEVOR die Textauswertung
       // darunter entscheidet, ob etwas Brauchbares herauskam — eine Antwort ohne verwertbaren
@@ -150,6 +158,19 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
         blocks.find((block) => block?.type === "text") ??
         blocks.find((block) => typeof block?.text === "string")
       )?.text;
+      if (
+        abbruchVermerken &&
+        data.stop_reason === "max_tokens" &&
+        typeof text === "string" &&
+        text.trim().length > 0
+      ) {
+        vermerkeAbbruch({
+          budgetFeld: "max_tokens",
+          budget: typeof body.max_tokens === "number" ? body.max_tokens : 0,
+          finishReason: "max_tokens",
+          zeichen: text.length,
+        });
+      }
       return text ?? "";
     } catch (err) {
       if (timedOut) {
@@ -199,23 +220,26 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       if (!image) {
         throw new Error(BILD_FORMAT_FEHLER);
       }
-      return postMessages({
-        model: config.model,
-        max_tokens: maxTokens,
-        system,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: image.mediaType, data: image.base64 },
-              },
-              { type: "text", text: user },
-            ],
-          },
-        ],
-      });
+      return postMessages(
+        {
+          model: config.model,
+          max_tokens: maxTokens,
+          system,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: { type: "base64", media_type: image.mediaType, data: image.base64 },
+                },
+                { type: "text", text: user },
+              ],
+            },
+          ],
+        },
+        true,
+      );
     },
   };
 }
@@ -981,6 +1005,99 @@ export function isConfirmedLocalOrigin(baseUrl: string, allowedOrigins?: string)
         return false;
       }
     });
+}
+
+// ==================================================================================================
+// AW-12 (aufnahme:20260922:gesamt-kundenbetrieb): DER INTERNE EMBEDDING-WEG.
+// ==================================================================================================
+//
+// Bis hierher gab es für Vektoren nur den deterministischen Stub (`services/embedding`). Dieser Client
+// spricht mit dem Embedding-Endpunkt DESSELBEN lokalen OpenAI-kompatiblen Servers wie der lokale
+// Sprachmodellweg (Ollama/vLLM unter `KLARWERK_LOCAL_LLM_URL`), mit eigenem Modellnamen
+// (`KLARWERK_LOCAL_EMBEDDING_MODEL`, z. B. ein bge-m3-Gewicht).
+//
+// FAIL-CLOSED AUF DAS HAUS BEGRENZT. Anders als beim Chat-Client gibt es hier keinen Wächter, der
+// vertrauliche Inhalte vor einem externen Ziel abfängt — jeder einzubettende Text wäre Egress. Deshalb
+// entsteht der Client NUR für eine als On-Prem bestätigte Adresse (`isConfirmedLocalOrigin`: Loopback
+// oder ausdrücklich in `KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS`). Für jede andere Adresse: `undefined`,
+// kein Aufruf. Ein externer Embedding-Anbieter ist damit in diesem Weg nicht möglich.
+//
+// GETRENNT GEKENNZEICHNET: Ein gebauter Client sagt nur „konfiguriert und intern". Ob der Server
+// antwortet und welche Vektoren er liefert, belegt erst ein echter `einbetten`-Aufruf — der prüft
+// Anzahl, Reihenfolge und Zahlenform der Antwort und wirft bei jeder Abweichung, statt still zu raten.
+export interface LokalerEmbeddingClient {
+  /** Modellname am lokalen Server (kein Geheimnis). */
+  readonly modell: string;
+  /** Herkunft (Schema, Host, Port) des bestätigten internen Servers — ohne Pfad und Zugangsdaten. */
+  readonly herkunft: string;
+  einbetten(texte: readonly string[]): Promise<number[][]>;
+}
+
+export function createLocalEmbeddingClientFromEnv(
+  env: Record<string, string | undefined> = process.env,
+  fetchFn: typeof fetch = fetch,
+): LokalerEmbeddingClient | undefined {
+  const basisUrl = env.KLARWERK_LOCAL_LLM_URL;
+  const modell = env.KLARWERK_LOCAL_EMBEDDING_MODEL?.trim();
+  if (!basisUrl || !modell) {
+    return undefined;
+  }
+  if (!isConfirmedLocalOrigin(basisUrl, env.KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS)) {
+    return undefined;
+  }
+  const herkunft = new URL(basisUrl).origin;
+  const ziel = `${basisUrl.replace(/\/+$/, "")}/embeddings`;
+  const timeoutMs = parseTimeoutMs(env.KLARWERK_LOCAL_LLM_TIMEOUT_MS) ?? DEFAULT_MODEL_TIMEOUT_MS;
+  const schluessel = env.KLARWERK_LOCAL_LLM_KEY;
+  return {
+    modell,
+    herkunft,
+    async einbetten(texte) {
+      if (texte.length === 0) {
+        return [];
+      }
+      const antwort = await fetchFn(ziel, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(schluessel ? { authorization: `Bearer ${schluessel}` } : {}),
+        },
+        body: JSON.stringify({ model: modell, input: [...texte] }),
+        signal: AbortSignal.timeout(timeoutMs),
+        // Geprüft ist nur die Ausgangsadresse. Eine Weiterleitung (307/308 wiederholt den POST mit
+        // demselben Rumpf) könnte die Texte an ein ungeprüftes Ziel tragen — deshalb wird keiner
+        // gefolgt: `fetch` bricht mit einem Fehler ab, bevor ein zweites Ziel angesprochen wird.
+        redirect: "error",
+      });
+      if (!antwort.ok) {
+        throw new Error(`lokaler Embedding-Server antwortet HTTP ${antwort.status}`);
+      }
+      const rumpf = (await antwort.json()) as { data?: unknown };
+      if (!Array.isArray(rumpf.data) || rumpf.data.length !== texte.length) {
+        throw new Error("lokaler Embedding-Server: Antwort ohne passende Anzahl Vektoren");
+      }
+      const nachIndex = new Map<number, number[]>();
+      for (const eintrag of rumpf.data as { index?: unknown; embedding?: unknown }[]) {
+        const index = eintrag?.index;
+        const vektor = eintrag?.embedding;
+        if (
+          typeof index !== "number" ||
+          !Number.isInteger(index) ||
+          index < 0 ||
+          index >= texte.length ||
+          nachIndex.has(index) ||
+          !Array.isArray(vektor) ||
+          vektor.length === 0 ||
+          !vektor.every((zahl) => typeof zahl === "number" && Number.isFinite(zahl))
+        ) {
+          throw new Error("lokaler Embedding-Server: Antwort mit ungültigem Vektor oder Index");
+        }
+        nachIndex.set(index, vektor as number[]);
+      }
+      // Anzahl stimmt und jeder Index ist eindeutig im Bereich — also ist jeder Text belegt.
+      return texte.map((_, index) => nachIndex.get(index) ?? []);
+    },
+  };
 }
 
 // SCRUM-502 R8: analog für den eigenen lokalen LLM (on-prem, kein externer Egress). Gecappt (globaler

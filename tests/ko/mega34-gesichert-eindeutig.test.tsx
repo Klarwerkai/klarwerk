@@ -15,12 +15,20 @@
 //
 // Der Test pinnt beide Hälften: das Wort ist weg UND die Zahl steht noch da. Ohne die zweite Hälfte
 // wäre die Zusage durch Löschen des ganzen Balkens erfüllbar.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): C1 maß die Kopfzeile bis hierher an `KoReadHeader`
+// (`components/ko/KoRead.tsx`). Diese Leseansicht hatte seit JOB 3063 keinen Produktaufrufer mehr und
+// ist entfernt. Das KO-Detail ist heute das „Mehr" der Bibliothek, und dort steht derselbe Balken mit
+// denselben Eigenschaften (`MehrAbschnitte.tsx`). C1 misst jetzt genau diesen Balken und pinnt, dass
+// die Fläche ihn so führt.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
-import { KoReadHeader } from "../../apps/web/src/components/ko/KoRead";
 import { SourceEvidence } from "../../apps/web/src/components/ko/SourceEvidence";
+import { ConfidenceBar } from "../../apps/web/src/components/trust";
 import i18n from "../../apps/web/src/i18n";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -67,7 +75,22 @@ afterEach(() => {
 
 describe("mega34 C1 · im KO-Detail steht die Zahl, nicht das Wort", () => {
   it("die Kopfzeile des KO-Detail zeigt „87 % sicher“ und NICHT „Gesichert“", () => {
-    const text = render(createElement(KoReadHeader, { ko }));
+    // Der Balken des KO-Details, wörtlich mit den Eigenschaften, die die Fläche setzt …
+    const flaeche = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/bibliothek/MehrAbschnitte.tsx"),
+      "utf8",
+    );
+    expect(flaeche).toContain(
+      "<ConfidenceBar value={ko.confidence} showLabel={false} percentPhrase />",
+    );
+    // … und gerendert mit dem Wert des Beispielobjekts.
+    const text = render(
+      createElement(ConfidenceBar, {
+        value: (ko as { confidence: number }).confidence,
+        showLabel: false,
+        percentPhrase: true,
+      }),
+    );
 
     expect(text).toContain(i18n.t("evidence.percentSure", { pct: 87 }));
     expect(text).not.toContain(GESICHERT);

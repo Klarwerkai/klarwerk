@@ -1,10 +1,9 @@
-import type { KnowledgeCheckCoverage, KnowledgeObject, KoStatus } from "../api/types";
+import type { KnowledgeCheckCoverage, KoStatus } from "../api/types";
 
 // SCRUM-527 (WP2-Design): die Live-Reaktion braucht eine ehrliche Einschätzung „neu vs. ähnlich" schon
-// WÄHREND des Tippens. Es gibt (Stand 0b-Kartierung) KEINEN dedizierten Pro-Text-Ähnlichkeits-/
-// Widerspruchs-Endpoint → diese reine, DOM-freie Heuristik vergleicht den Entwurfstext token-basiert
-// gegen den geladenen Bestand. Der WIDERSPRUCH-Fall wird hier BEWUSST NICHT erfunden (kein Fake-Alarm):
-// er ist im Typ vorgesehen und andockbereit an einen künftigen serverseitigen Widerspruchs-Check.
+// WÄHREND des Tippens. Damals gab es (Stand 0b-Kartierung) KEINEN dedizierten Pro-Text-Ähnlichkeits-/
+// Widerspruchs-Endpoint; inzwischen urteilt der Server (`/api/knowledge/check`), und dieser Typ ist
+// sein Urteil auf der Fläche. Der WIDERSPRUCH-Fall wird BEWUSST NICHT erfunden (kein Fake-Alarm).
 
 export type LiveVerdict =
   | { status: "idle" }
@@ -45,65 +44,10 @@ export type LiveVerdict =
 
 // Ab hier lohnt die Prüfung (zu kurzer Text → idle, kein Rauschen).
 export const INTAKE_MIN_LENGTH = 15;
-// Ab dieser Token-Überdeckung gilt ein Bestand-KO als „ähnlich".
-export const INTAKE_SIMILAR_THRESHOLD = 0.34;
 
-function tokens(value: string): Set<string> {
-  return new Set(
-    value
-      .toLowerCase()
-      .split(/[^a-z0-9äöüß]+/i)
-      .filter((part) => part.length > 2),
-  );
-}
-
-// Jaccard-Tokenüberdeckung 0..1 (wie in der Duplikat-Heuristik) — reproduzierbar, ohne Modell.
-export function textSimilarity(left: string, right: string): number {
-  const a = tokens(left);
-  const b = tokens(right);
-  if (a.size === 0 || b.size === 0) {
-    return 0;
-  }
-  let intersection = 0;
-  for (const token of a) {
-    if (b.has(token)) {
-      intersection += 1;
-    }
-  }
-  const union = new Set([...a, ...b]).size;
-  return union === 0 ? 0 : intersection / union;
-}
-
-// Klassifiziert den Entwurfstext gegen den Bestand: idle (zu kurz) · similar (bester Treffer über
-// Schwelle) · empty. „checking"/„conflict" werden hier NICHT erzeugt (der Hook setzt checking; conflict
-// bleibt dem serverseitigen Check vorbehalten). Der Umfang dieses Wegs ist der geladene Bestand, und
-// ob der vollständig ist, weiss diese Funktion nicht — deshalb `unknown` (Vorschau-Reichweite).
-export function classifyIntake(
-  text: string,
-  kos: readonly KnowledgeObject[] | undefined,
-): LiveVerdict {
-  if (text.trim().length < INTAKE_MIN_LENGTH) {
-    return { status: "idle" };
-  }
-  let best: {
-    koId: string;
-    title: string;
-    score: number;
-    koStatus: KoStatus | null;
-    koCategory: string | null;
-  } | null = null;
-  for (const ko of kos ?? []) {
-    const score = textSimilarity(text, `${ko.title} ${ko.statement}`);
-    if (!best || score > best.score) {
-      // JOB 3045: dieser lokale Heuristikweg macht KEINE Fundortaussage. Der Fundort hat genau eine
-      // Herkunft — den Serververtrag aus /api/knowledge/check; hier daneben eine zweite aus dem
-      // geladenen Bestand abzuleiten, wäre exakt die zweite Wahrheit, die der Vertrag verbietet.
-      // `null` heißt deshalb hier: „dieser Weg sagt zum Fundort nichts" — und die Fläche schweigt.
-      best = { koId: ko.id, title: ko.title, score, koStatus: null, koCategory: null };
-    }
-  }
-  if (best && best.score >= INTAKE_SIMILAR_THRESHOLD) {
-    return { status: "similar", match: best };
-  }
-  return { status: "empty", coverage: { kind: "unknown" } };
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand die lokale Heuristik `classifyIntake` samt
+// `textSimilarity`, Tokenzerlegung und Schwelle `INTAKE_SIMILAR_THRESHOLD` — ein Vergleich des
+// Entwurfstexts gegen den geladenen Bestand. Kein Produktweg rief sie: der Live-Check fragt den
+// Server (`hooks/useLiveKnowledgeCheck.ts`, `endpoints.knowledge.check`; R-0991 Nr. 31), und der
+// Fundort hat dort genau eine Herkunft (JOB 3045). Sie ist mit ihrem Komponententest entfernt.
+// Geblieben sind der Urteilstyp oben und die Mindestlänge, die der Hook liest.
