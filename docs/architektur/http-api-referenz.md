@@ -132,7 +132,7 @@ heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den An
 | `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt?, weisungsbefugnis? }` (`weisungsbefugnis`: Liste von Bereichen, `*` = ganzes Unternehmen, `null` entzieht) | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
 | `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
 | `DELETE` | `/api/users/:id/second-factor` | `requireAdmin` | — | 204 (zweiter Faktor entfernt, z. B. bei verlorenem Gerät) | 401; 403 `FORBIDDEN` (nicht eingerichtet); 404 |
-| `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
+| `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail; dahinter gelöschte Konten als `{ id, geloescht: true }` ohne Namen (Beleg: Prüfprotokoll `user.delete`) | 401 |
 | `GET` | `/api/verantwortung/person/:id/vermaechtnis` | `users.manage` (`verantwortungRoutes`) | — | 200 Wissens-Vermächtnis-Buch `{ person, titel, erzeugtAm, dateiname, aufgenommen, zeitraum, themen, ausgelassen, markdown, provenance }` — nur einsehbare, validierte, nicht vertrauliche Beiträge; schreibt kein Wissen; Auditeintrag `vermaechtnis.erzeugt` | 401; 403 `FORBIDDEN`; 404 `NOT_FOUND` (weder Konto noch Beitrag) |
 
 Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
@@ -219,7 +219,9 @@ herabgestuft werden (409 `mutability`).
 | `ownership` | `ko.validate` | `ownership` |
 | `owner-validate` | `ko.validate`; nur der benannte Eigentümer (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.owner-validated`; Eigentümer in `ownership.validators`) |
 | `weisung-validate` | `ko.read` **und** Weisungsbefugnis am Konto für den Bereich des Objekts (sonst 403; die Rolle allein genügt nicht); nur das eigene Objekt (sonst 403 `NOT_OWNER`); Dublettentor wie `rate` | `expectedVersion` (Pflicht; gelesene Fassung, sonst 400, abweichend 409 `KO_STALE` mit `currentVersion`); offener Wahrheitskonflikt → 409 `CONFLICT`; `sichtung: { verantwortlich, frist: JJJJ-MM-TT }` — andere, freigegebene Person mit `ko.validate` oder Weisungsbefugnis im Bereich, Frist ab heute (sonst 400); `duplicateAcknowledged?` (Status „validiert“, Vertrauen unverändert; Audit `ko.weisung-validated`, Kontoregel `weisung`; `weisungsSichtung` am Objekt) |
-| `weisung-sichten` | `ko.read`; nur die benannte verantwortliche Person, die JETZT noch `ko.validate` oder Weisungsbefugnis für den Bereich hat (sonst 403), nur die offene Sichtung der gültigen Fassung (sonst 400) | `expectedVersion` (Pflicht, wie oben); `sichtung: { ergebnis: bestaetigt \| widerrufen }` (`widerrufen` → Status offen, Annahme entfällt; Audit `ko.weisung-gesichtet`) |
+| `weisung-sichten` | `ko.read`; nur die benannte verantwortliche Person, die JETZT noch `ko.validate` oder Weisungsbefugnis für den Bereich hat (sonst 403), nur die offene Sichtung der gültigen Fassung (sonst 400) | `expectedVersion` (Pflicht, wie oben); `sichtung: { ergebnis: bestaetigt \| widerrufen }` (`widerrufen` → Status offen, Annahme entfällt; Audit `ko.weisung-gesichtet`). **Ist stattdessen eine Weisung mit punktweiser Entscheidung (`weisung`, s. nächste Zeile) die AKTUELLE — ihr Beleg (`weisung.beleg`) steht später in der Kette als der einer früheren `weisungsSichtung`, oder es gibt keine:** eine Sichtung mit `sichtung.ergebnis` wird mit 409 `WEISUNG_NICHT_AKTUELL` abgelehnt; sonst nur die dort benannte Person (sonst 403 `SICHTUNG_NICHT_ZUSTAENDIG`), einmal (sonst 409 `WEISUNG_BEREITS_GESICHTET`), `vermerk?`; Audit `ko.weisung-sichtung-vermerkt`, Status unverändert |
+| `weisung` | `ko.read` **und** Weisungsbefugnis am Konto (dieselbe wie oben) für den Bereich des Objekts (sonst 403 `WEISUNGSBEFUGNIS_FEHLT`); Dublettentor wie `rate` | `sichtung: { verantwortlich, frist }` — die Person muss das Objekt mit ihrem eigenen Zugang lesen können und aktiv sein (sonst 400 `SICHTUNG_NICHT_MOEGLICH`); jeder offene Konflikt des Objekts einzeln in `bestehenLassen` oder `ueberstimmen` (sonst 409 `WEISUNG_PUNKTE_OFFEN` bzw. `WEISUNG_PUNKT_VERBORGEN`); überstimmen nur im eigenen Bereich (sonst 403). Wirkung: Status „validiert“, Herkunft `weisung`, Audit `ko.weisung`; je überstimmtem Punkt zuerst `geschlossen` am Gegenpunkt (Audit `ko.durch-weisung-geschlossen`), dann die Konfliktentscheidung mit Vorrang. Scheitert ein Schritt: 409 `WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG` mit Stand je Punkt (`punkt`, `konflikt`), Audit `ko.weisung-abschluss-unvollstaendig`, und `GET /api/kos/:id` führt `weisungAbschlussOffen`; die Weisung selbst bleibt gesetzt |
+| `weisung-abschluss` | `ko.read`; nur die weisende Person (sonst 403 `WEISUNG_NICHT_EIGENE`) mit weiterhin deckender Weisungsbefugnis (sonst 403) | — ; holt für jeden Punkt aus `weisung.ueberstimmt` genau die fehlenden Schritte nach (bereits Erledigtes wird nicht wiederholt); vor jedem noch ausstehenden Schritt wird JETZT geprüft, dass der Gegenpunkt für die Person sichtbar ist und ihre Weisungsbefugnis seinen Bereich deckt — sonst bleibt der Punkt unverändert (weder Gegenpunkt noch Konflikt) mit `fehler`, bei fehlender Sichtbarkeit ohne Kennung des Gegenpunkts (`koId: null`); Antwort wie oben (200 vollständig, sonst 409) |
 | `ownership-release` | `ko.read`; nur der benannte Eigentümer selbst (sonst 403 `NOT_OWNER`) | — (Spur `reviewers`/`validators` bleibt; Audit `ko.ownership-released`) |
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
@@ -464,6 +466,16 @@ herabgestuft werden (409 `mutability`).
 | --- | --- | --- | --- | --- | --- |
 | `GET` | `/addin` | keines | — | — (immer 404, kein Verzeichnislisting) | 404 `NOT_FOUND` |
 | `GET` | `/addin/*` | keines | Dateipfad im Bündel | 200 Datei aus der festen Dateiliste | 404 `NOT_FOUND` |
+
+### 3.10 MCP-Zugang für fremde KI-Programme (`mcpRoutes`, nur mit `KLARWERK_SERVICE_KEYS`)
+
+Registriert nur, wenn ein Dienst-Schlüssel konfiguriert ist. Eine Sitzung jeder Rolle ist hier
+unangemeldet; die Rollenabnahme (`tests/beta-rollenabnahme/tabelle.ts`) misst das mit fünf Akteuren.
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | — | — (405 `METHOD_NOT_ALLOWED`, kein Ereignisstrom) | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf (`Origin`) |
+| `POST` | `/mcp` | Dienst-Schlüssel mit `mcp.werkzeug` (Kopf `x-klarwerk-service-key`), keine Sitzung | JSON-RPC-2.0-Nachricht | 200 JSON-RPC-Antwort; Werkzeugaufrufe laufen intern über die Route ihres Rechts | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN` bei Browseraufruf; JSON-RPC-Fehler im Rumpf |
 
 ## 4 Testabdeckung und Abdeckungsziel
 

@@ -256,6 +256,7 @@ import {
   InMemoryAssistenzProfilRepo,
   PgAssistenzProfilRepo,
 } from "./assistenz-profil";
+import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -397,7 +398,7 @@ import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
-import { auditRoutes } from "./routes/audit-routes";
+import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
@@ -489,7 +490,7 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { tabellenDerStufen } from "./sicherungsumfang";
-import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
+import { type AnhangQuellen, entwurfSichtbarFuer, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
 import { InMemorySpacesRepo, PgSpacesRepo, type SpacesRepo, lesbareSpaces } from "./spaces";
@@ -515,7 +516,7 @@ import {
   UnternehmenDienst,
   type UnternehmenRepo,
 } from "./unternehmensprofil";
-import { verantwortungBeiAnlage } from "./verantwortung";
+import { sitzungVon, verantwortungBeiAnlage, zugangsstand } from "./verantwortung";
 import {
   InMemoryNachfolgeRepo,
   type NachfolgeRepo,
@@ -1596,9 +1597,28 @@ export function assembleServices(
   const objects = new ObjectStore({ repo: repos.objects });
   // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
   const dokumente = new DokumentaktenService({ repo: repos.dokumente });
+  // Aufnahme gesamt-wissen-herkunft (R-0298): der Kontodienst entsteht eine Stufe früher, weil
+  // Bibliotheksexport und Output Factory die Autorennamen über ihn auflösen — DIESELBE Instanz, die
+  // unten als `auth` zurückgegeben wird, kein zweiter Kontobestand.
+  const auth = new AuthService({
+    users: repos.users,
+    sessions: repos.sessions,
+    resetTokens: repos.resetTokens,
+    secondFactors: repos.secondFactors,
+    audit,
+    // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
+    canChangeRole,
+    // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
+    // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
+    // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
+    // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
+    ...(opts.withTx ? { withTx: opts.withTx } : {}),
+  });
+  const autorenNamen = autorenNamenAus(auth);
   const library = new LibraryService({
     koService: ko,
     dokumente,
+    autorenNamen,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
@@ -1795,20 +1815,9 @@ export function assembleServices(
     // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
     dokumente,
     ko,
-    auth: new AuthService({
-      users: repos.users,
-      sessions: repos.sessions,
-      resetTokens: repos.resetTokens,
-      secondFactors: repos.secondFactors,
-      audit,
-      // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
-      canChangeRole,
-      // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
-      // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
-      // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
-      // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
-      ...(opts.withTx ? { withTx: opts.withTx } : {}),
-    }),
+    // Aufnahme gesamt-wissen-herkunft: oben gebaut (s. `autorenNamen`), hier unverändert gereicht —
+    // mit dem zweiten Faktor (R-0562).
+    auth,
     // AUFTRAG-mega20 Block D: die Ankerprüfung des Entwurfs bekommt ihre Auflösung HIER — capture
     // kennt den Objektspeicher nicht (Modulgrenze), die Composition-Root kennt beide. Dieselbe
     // Bewegung wie bei `koConfidentiality` für die Medien-Analyse.
@@ -1907,8 +1916,9 @@ export function assembleServices(
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     // gesamt-dokumenterzeugung (R-0337): dieselbe Auditablage, damit das Prüfdatum je Quelle aus
-    // dem Validierungsnachweis belegt werden kann.
-    output: new OutputService({ koService: ko, audit: repos.auditRepo }),
+    // dem Validierungsnachweis belegt werden kann. Aufnahme gesamt-wissen-herkunft (R-0298):
+    // sichtbare Autorennamen im Ausgabedokument.
+    output: new OutputService({ koService: ko, audit: repos.auditRepo, autorenNamen }),
     auditLeser: repos.auditRepo,
     // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
     // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
@@ -3773,7 +3783,14 @@ export function buildApp(
     }),
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
-  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // aufnahme:20260922:gesamt-leserechte (R-0610): die Mail nennt das Objekt — sie geht nur an
+  // Empfänger, die es nach der EINEN Regel (`darfSehen`) sehen dürfen, mit denselben lesbaren
+  // Spaces wie die Anmeldung (`makeGuards` oben). Das gilt auch für den Verzeichnisabgleich
+  // (R-0571) darunter, der denselben Notifier benutzt.
+  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer, {
+    ko: (koId) => services.ko.get(koId),
+    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+  });
   // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
   // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
   const freigaberegeln = new FreigabeRegelDienst({
@@ -4232,6 +4249,26 @@ export function buildApp(
         // die Lesevarianten-Routen benutzen, keine zweite. Das Original selbst bleibt unberührt:
         // die Variante tritt als eigenes Feld daneben, nie an die Stelle eines KO-Feldes.
         lesevarianten: services.lesevarianten,
+        // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: Befugnis und Konto kommen
+        // aus DEMSELBEN Kontodienst wie die Anmeldung — kein zweiter Kontobestand. Die Befugnis ist
+        // seit der Integration (Nacharbeit 12) DIESELBE wie an `weisungskonto` unten
+        // (`User.weisungsbefugnis`, Aufnahme gesamt-peer-validierung).
+        konten: {
+          befugnisVon: (userId) => services.auth.weisungsbefugnisVon(userId),
+          kontoBesteht: (userId) => services.auth.kontoBesteht(userId),
+          // Nacharbeit 11 (Ben B1): der Lesekontext jedes Kontos aus DENSELBEN Quellen wie
+          // `makeGuards` (Kontenliste, aktuelle Spaces) — die Sicht des Kontos selbst.
+          lesekontexte: async () => {
+            const spaces = await services.spaces.aktuelle();
+            const jetzt = Date.now();
+            return (await services.auth.listUsers()).map((konto) => ({
+              id: konto.id,
+              zugang: zugangsstand(konto, jetzt),
+              ...(konto.accessExpiresAt ? { zugangEndet: konto.accessExpiresAt } : {}),
+              sitzung: sitzungVon(konto, spaces),
+            }));
+          },
+        },
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,
         // WP-SUBMIT-ASYNC: Prüf-Job-Vermerk + Hintergrund-Worker statt synchroner Erkennung.
@@ -4287,7 +4324,12 @@ export function buildApp(
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein Entwurf, den dieser
+            // Mensch nicht SEHEN darf, gibt es für ihn nicht — dieselbe Antwort wie die
+            // Entwurfsrouten (`requireVisibleDraft`). 403 bleibt dem sichtbaren Pool-Entwurf, an dem
+            // nur das Recht zum Einreichen fehlt.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (Pedi, entscheidung:297afc57): die Dokumentübernahme REICHT EIN — und
@@ -4324,7 +4366,9 @@ export function buildApp(
           // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
           applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte: dieselbe 404-Regel wie in `load` oben.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (297afc57): derselbe Einreichweg wie `load` — nur der Autor.
@@ -4874,7 +4918,6 @@ export function buildApp(
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
-  app.register(lmsExportRoutes(services.lmsExport, services.audit, guards));
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
@@ -5039,8 +5082,23 @@ export function buildApp(
   );
   // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
   // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15, 20): dazu das Protokoll nach dem
+  // Leserecht des Lesers — gegen die Sichtbarkeitsfakten des Bestands samt Papierkorb, die Spaces
+  // und die Objektzuordnung der Befunde (Gelöschtes rekonstruiert die Route aus der Kette selbst).
   app.register(
-    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit),
+    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit, {
+      sichtbarkeitsfaktenAller: () => services.ko.sichtbarkeitsfaktenAller(),
+      spaceKennungen: async () => (await services.spaces.aktuelle()).map((s) => s.id),
+      befundZuordnungen: async () => [
+        ...(await services.conflicts.koZuordnungen()),
+        ...(await services.overlaps.koZuordnungen()),
+      ],
+      weitereZiele: async () => (await services.teams.aktuelle()).map((t) => t.id),
+      // Nacharbeit 28 (Ben): die vollständige Kette nur mit ausdrücklich erteilter Ketteneinsicht —
+      // vom Betrieb je Konto vergeben, bei jedem Abruf frisch gelesen (Entzug wirkt sofort).
+      ketteneinsicht: (kontoId) =>
+        ketteneinsichtKonten(process.env.KLARWERK_AUDIT_KETTENEINSICHT).has(kontoId),
+    }),
   );
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
@@ -5111,6 +5169,11 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
+  // aufnahme:20260922:gesamt-leserechte: der SCORM-Export liest Bilder aus DEMSELBEN Speicher und
+  // bekommt deshalb dieselben Herkünfte für die Anhangsregel — keine zweite Aufzählung.
+  app.register(
+    lmsExportRoutes(services.lmsExport, services.audit, guards, services.objects, anhangQuellen),
+  );
   // R-1034 / FR-I18N-02: die Oberflächentexte — öffentlich lesbar (die Anmeldemaske braucht sie vor
   // jeder Sitzung), gepflegt ausschließlich mit `users.manage`.
   app.register(
@@ -5248,6 +5311,13 @@ export function buildApp(
         teams: services.teams,
         // ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl sofort.
         freigaberegelAnwenden: (koId, akteur) => freigaberegeln.anwenden(koId, akteur),
+        // gesamt-leserechte (Nacharbeit 32, Entscheidung 25): das ausdrückliche Existenzrecht — vom
+        // Betrieb je Konto (Kennung oder E-Mail) vergeben, bei jedem Abruf frisch gelesen (Entzug
+        // wirkt sofort).
+        existenzrecht: ({ id, email }) =>
+          [...ketteneinsichtKonten(process.env.KLARWERK_EXISTENZRECHT)].some(
+            (k) => k === id || k.toLowerCase() === email.toLowerCase(),
+          ),
         // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.

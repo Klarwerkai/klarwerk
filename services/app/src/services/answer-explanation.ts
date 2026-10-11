@@ -42,7 +42,13 @@ export interface AnswerExplanationLeser {
   /**
    * R-1175 (aufnahme:20260922:gesamt-rechte-inventar): die EINE Sichtbarkeitsentscheidung des
    * Lesers (`sichtbarkeitsfilterFuer`, von der Route). Ein Beleg, den er heute nicht sehen darf
-   * (fremder Space, fremdes Vertrauliches), wird geschwärzt — die Stufenregel darüber bleibt.
+   * (fremder Space, fremdes Vertrauliches), wird geschwärzt.
+   *
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19–22, Variante B): sie tritt NEBEN die
+   * Stufensperre (`darfVertraulich`), nie an ihre Stelle — wie in R-1175. Die Route bildet
+   * `darfVertraulich` seither aus dem Freigaberang (≥ 1), nicht aus der Rolle: so behält ein Konto
+   * mit persönlichem Niveau „vertraulich“ ohne Controllerrolle seinen Beleg, und die Autorschaft
+   * allein öffnet in der Erklärung keine vertrauliche Quelle (JOB 541 D5/D6, REDACTED).
    */
   readonly sichtbar?: (ko: KnowledgeObject) => boolean;
 }

@@ -214,6 +214,11 @@ const smokeServerEnv = (port: number): Record<string, string> => ({
   //      Schalter darum auch nicht — sonst stünde in der Tor-Umgebung ein Werkzeug scharf, das
   //      dieser Lauf nicht benutzt.
   ...(process.env.KLARWERK_SMOKE_SEED === "1" ? { KLARWERK_DEMO_SEED: "1" } : {}),
+  // (2c) aufnahme:20260922:gesamt-leserechte (Nacharbeit 32, Entscheidung 25): einen Space, dessen
+  //      sichtbarer Bestand leer ist, löscht nur ein Konto mit ausdrücklichem Existenzrecht. Die
+  //      Smoke-Suite kennt genau ein Konto (`tests-smoke/support/auth.ts`, SMOKE_MAIL); ihm wird
+  //      das Recht hier ausdrücklich erteilt — `wissensprojekte-loeschen.spec.ts` löscht so.
+  KLARWERK_EXISTENZRECHT: "smoke@klarwerk.test",
   // (3) Der Cloud-Schlüssel steht NICHT hier — er kommt als geerbte Prozessumgebung aus dem
   //     Start-Befehl (s. oben, `package.json`). Dort wird er im Tor auf LEER gesetzt (nicht
   //     „ungesetzt": leer, damit ein in Pedis Shell exportierter Wert die Hermetik nicht doch

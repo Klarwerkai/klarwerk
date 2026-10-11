@@ -866,7 +866,9 @@ export function NutzerDetail({
                   )}
                 </div>
                 {/* Antwort 18 (gesamt-peer-validierung): die fachliche Weisungsbefugnis am Konto —
-                    neben Rolle und Befristung, unabhängig von der Rolle. */}
+                    neben Rolle und Befristung, unabhängig von der Rolle. Seit der Integration
+                    (gesamt-wissen-herkunft, Nacharbeit 12) die EINE Befugnispflege für beide
+                    Weisungswege. */}
                 <Weisungsbefugnis nutzer={nutzer} />
               </>
             ) : (

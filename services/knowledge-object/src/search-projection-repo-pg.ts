@@ -374,6 +374,11 @@ const AKTIVE_VERSION = `k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1
 // gilt wie ein fehlendes Feld.
 const K_NICHT_AUFGEGANGEN = `COALESCE(jsonb_typeof(k.data->'mergedInto'), 'null') = 'null'`;
 
+// Aufnahme gesamt-wissen-herkunft · R-0573 (Nacharbeit 11): „nicht durch Weisung geschlossen" — der
+// SQL-Spiegel von `!ko.geschlossen` im Speicheradapter. Ein überstimmter Punkt bleibt lesbar, ist
+// aber kein Suchtreffer und kein Klara-Kandidat mehr. Ein JSON-`null` gilt wie ein fehlendes Feld.
+const K_NICHT_GESCHLOSSEN = `COALESCE(jsonb_typeof(k.data->'geschlossen'), 'null') = 'null'`;
+
 // ================================================================================================
 // JOB 2689 D1 (Befund R2-37) — EIN PROZENTZEICHEN HOLT DEN GANZEN BESTAND.
 // ================================================================================================
@@ -724,7 +729,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
       params.push(...trim.params);
     }
     const rumpf = `FROM ko_search_projections p
-        JOIN kos k ON ${AKTIVE_VERSION} AND ${K_NICHT_AUFGEGANGEN}
+        JOIN kos k ON ${AKTIVE_VERSION} AND ${K_NICHT_AUFGEGANGEN} AND ${K_NICHT_GESCHLOSSEN}
         LEFT JOIN ko_metadata_projections md ON md.ko_id = p.ko_id
        WHERE ${fassungsBedingung} AND ${vorauswahl} AND (${orsSearch.join(" OR ")})${trimBedingung}`;
     // Die AUSGABEORDNUNG — unverändert seit G27 und die einzige Aussage darüber, in welcher

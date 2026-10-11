@@ -1,3 +1,4 @@
+import { trenneVerzeichnis } from "../lib/geloeschteKonten";
 import type { Verbindungsnachweis } from "../lib/integrationStatus";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
@@ -295,6 +296,34 @@ export type KoAction =
     }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 (R-0573): die befugte Weisung mit
+  // nachfolgender Sichtung; `bestehenLassen` nennt die betroffenen Punkte, die bestehen bleiben.
+  | {
+      action: "weisung";
+      sichtung: { verantwortlich: string; frist: string };
+      bestehenLassen?: string[];
+      // R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte — sie werden geschlossen.
+      ueberstimmen?: string[];
+      duplicateAcknowledged?: true;
+    }
+  | { action: "weisung-sichten"; vermerk?: string }
+  // Nacharbeit 14 (Ben B2): den unvollständigen Abschluss überstimmter Punkte nachholen.
+  | { action: "weisung-abschluss" }
+  // Entscheidung 27: externe Freigabe übernehmen, interne Anwendbarkeit ausdrücklich bestätigt.
+  | {
+      action: "externe-freigabe";
+      externeFreigabe: {
+        art: "wissen" | "referenz";
+        herausgeber: string;
+        freigabeKennung?: string;
+        freigegebenAm: string;
+        freigegebenVon?: string;
+        nachweis?: string;
+        zustaendig: string;
+        anwendbarBestaetigt: true;
+      };
+      duplicateAcknowledged?: true;
+    }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
@@ -1223,7 +1252,11 @@ export const endpoints = {
     // Audit-P3 (SCRUM-397): bewusstes Als-gesehen-Markieren (idempotent, nur eigene Sicht).
     markSeen: (ids: string[]) => api.post<{ unseenCount: number }>("/notifications/seen", { ids }),
   },
-  directory: { list: () => api.get<{ id: string; name: string }[]>("/directory") },
+  // Aufnahme gesamt-wissen-herkunft (K3): gelöschte Konten kommen als Marke mit und werden hier
+  // abgetrennt — Zuweisungslisten sehen nur Konten, die Autorenzeile die Kennungen (lib/geloeschteKonten).
+  directory: {
+    list: () => api.get<{ id: string; name: string }[]>("/directory").then(trenneVerzeichnis),
+  },
   // Audit-P4 (SCRUM-398): Live-Wall (read-only Aggregation).
   livewall: {
     get: () => api.get<LiveWall>("/livewall"),

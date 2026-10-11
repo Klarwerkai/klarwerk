@@ -20,7 +20,12 @@
 //   L3 · Verknüpfungen bleiben konsistent (kein Artikel mit Kennung eines gelöschten Space — auch
 //        nicht bei einem gleichzeitigen Spacewechsel; Fassung und Historie unverändert).
 //   L4 · Projektfilter stimmen nach der Löschung (Spaceliste, Space-Artikel, Ansicht, Tag-Filter).
-import { describe, expect, it } from "vitest";
+//   L5 · aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 32; Entscheidung 25): ohne
+//        ausdrückliches Existenzrecht ist der Löschweg vom verborgenen Bestand unabhängig.
+//
+// Das Existenzrecht (`KLARWERK_EXISTENZRECHT`) erhalten in L1–L4 ausdrücklich die löschenden
+// Konten — dort geht es um die Löschung selbst, nicht um verborgene Artikel.
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 type App = ReturnType<typeof buildApp>;
@@ -28,6 +33,19 @@ type Kopf = { authorization: string };
 
 const KENNWORT = "geheim12345";
 const WORT = "Rundlaufpruefstand";
+const MIT_EXISTENZRECHT = "lea@projekte.test,carla@projekte.test,admin@projekte.test";
+
+const existenzrechtVorher = process.env.KLARWERK_EXISTENZRECHT;
+beforeEach(() => {
+  process.env.KLARWERK_EXISTENZRECHT = MIT_EXISTENZRECHT;
+});
+afterEach(() => {
+  if (existenzrechtVorher === undefined) {
+    delete process.env.KLARWERK_EXISTENZRECHT;
+  } else {
+    process.env.KLARWERK_EXISTENZRECHT = existenzrechtVorher;
+  }
+});
 
 async function anmelden(app: App, email: string): Promise<Kopf> {
   const res = await app.inject({
@@ -243,7 +261,6 @@ describe("L1 · Projektlöschung funktioniert", () => {
     expect(v.json()).toMatchObject({
       space: { id: werkstatt.id, name: "Werkstatt Nord", version: 1 },
       artikel: [],
-      weitereVerborgen: 0,
       imPapierkorb: 0,
       ansichten: 1,
       mitglieder: 1,
@@ -314,8 +331,10 @@ describe("L1 · Projektlöschung funktioniert", () => {
 });
 
 describe("L2 · Auswirkung auf Artikel wird vorab erklärt", () => {
-  it("die Vorschau nennt sichtbare Artikel mit Titel, verborgene nur als Zahl — und sperrt", async () => {
+  it("die Vorschau nennt sichtbare Artikel mit Titel, verborgene gar nicht — und die Löschung sperrt", async () => {
     const b = await buehne();
+    // Gegenstück ohne Artikel: die Vorschau der Kontoverwaltung für einen wirklich leeren Space.
+    const leerVorher = (await loeschVorschau(b, b.k.admin, b.werkstatt.id)).json();
     const koId = await artikelAnlegen(b);
     expect((await verschieben(b, koId, b.werkstatt.id)).statusCode).toBe(200);
 
@@ -323,18 +342,32 @@ describe("L2 · Auswirkung auf Artikel wird vorab erklärt", () => {
     expect(lea.statusCode, lea.body).toBe(200);
     expect(lea.json()).toMatchObject({
       artikel: [{ id: koId, title: `${WORT} an Linie 3` }],
-      weitereVerborgen: 0,
       imPapierkorb: 0,
       darfLoeschen: false,
       grund: "SPACE_NICHT_LEER",
     });
 
-    // Die Kontoverwaltung liest geschlossene Inhalte nicht: nur die Zahl, kein Titel, keine Kennung.
+    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 31; Entscheidung 25): die
+    // Kontoverwaltung liest geschlossene Inhalte nicht — und erfährt auch nicht, DASS es sie gibt.
+    // Ihre Vorschau ist Feld für Feld die eines leeren Space: kein Titel, keine Kennung, keine Zahl.
     const admin = await loeschVorschau(b, b.k.admin, b.werkstatt.id);
     expect(admin.statusCode, admin.body).toBe(200);
-    expect(admin.json()).toMatchObject({ artikel: [], weitereVerborgen: 1, darfLoeschen: false });
+    expect(admin.json()).toEqual(leerVorher);
     expect(admin.body).not.toContain(WORT);
     expect(admin.body).not.toContain(koId);
+    // Die Schutzprüfung über den Gesamtbestand bleibt: ihr Löschversuch scheitert mit einer
+    // allgemeinen Meldung ohne Grund, Vorschau oder Zahl — und es wird nichts geschrieben. Dass er
+    // überhaupt von verborgenen Artikeln abhängen darf, liegt am ausdrücklichen Existenzrecht der
+    // Kontoverwaltung in diesem Fall; ohne es gilt L5.
+    const adminLoeschen = await loeschen(b, b.k.admin, b.werkstatt.id, 1);
+    expect(adminLoeschen.statusCode).toBe(409);
+    expect(adminLoeschen.json()).toEqual({
+      error: "LOESCHUNG_NICHT_MOEGLICH",
+      message: expect.any(String),
+    });
+    expect(adminLoeschen.body).not.toContain(koId);
+    expect(await b.services.spaces.fassungen(b.werkstatt.id)).toHaveLength(1);
+    await keineWaise(b);
 
     // Löschen trotz Artikel: abgelehnt, nichts geschrieben.
     const res = await loeschen(b, b.k.lea, b.werkstatt.id, 1);
@@ -358,7 +391,8 @@ describe("L2 · Auswirkung auf Artikel wird vorab erklärt", () => {
     expect((await b.services.ko.trashed()).map((t) => t.id)).toContain(koId);
 
     const v = (await loeschVorschau(b, b.k.lea, b.werkstatt.id)).json();
-    expect(v).toMatchObject({ artikel: [], weitereVerborgen: 0, imPapierkorb: 1 });
+    // Lea dürfte den Artikel lesen — er zählt für sie mit (Papierkorb nach Leserecht).
+    expect(v).toMatchObject({ artikel: [], imPapierkorb: 1 });
     expect(v.darfLoeschen).toBe(false);
     expect((await loeschen(b, b.k.lea, b.werkstatt.id, 1)).statusCode).toBe(409);
   });
@@ -540,5 +574,89 @@ describe("L4 · Projektfilter stimmen nach der Löschung", () => {
     const tag = await lies(b, b.k.fritz, "/api/kos?tag=pruefstand");
     expect(tag.statusCode, tag.body).toBe(200);
     expect(tag.body).toContain(koId);
+  });
+});
+
+describe("L5 · ohne ausdrückliches Existenzrecht: Löschweg unabhängig vom verborgenen Bestand", () => {
+  // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 32): früher ergab ein wirklich leerer
+  // Space 200 `geloescht`, einer mit nur verborgenen Artikeln 409 — Antwort UND Folgezustand
+  // verrieten den verborgenen Bestand. Hier hat nur Lea das Recht, die Kontoverwaltung nicht.
+  beforeEach(() => {
+    process.env.KLARWERK_EXISTENZRECHT = "lea@projekte.test";
+  });
+
+  /** Was die Kontoverwaltung ohne Existenzrecht vom Löschweg beobachtet — samt Folgeabruf. */
+  async function beobachtet(b: Buehne) {
+    const id = b.werkstatt.id;
+    const ohneKennung = (text: string) => text.split(id).join("<space>");
+    const vorschau = await loeschVorschau(b, b.k.admin, id);
+    const versuch = await loeschen(b, b.k.admin, id, 1);
+    const danach = await loeschVorschau(b, b.k.admin, id);
+    const einzeln = await lies(b, b.k.admin, `/api/spaces/${id}`);
+    const liste = (await lies(b, b.k.admin, "/api/spaces")).json() as {
+      spaces: { id: string; version: number; artikelSichtbar: number }[];
+    };
+    const zeile = liste.spaces.find((s) => s.id === id);
+    const artikel = await lies(b, b.k.admin, `/api/spaces/${id}/artikel`);
+    return {
+      vorschau: [vorschau.statusCode, ohneKennung(vorschau.body)],
+      versuch: [versuch.statusCode, ohneKennung(versuch.body)],
+      danach: [danach.statusCode, ohneKennung(danach.body)],
+      einzeln: einzeln.statusCode,
+      zeile: zeile ? { version: zeile.version, artikelSichtbar: zeile.artikelSichtbar } : null,
+      artikel: [artikel.statusCode, ohneKennung(artikel.body)],
+      fassungen: (await b.services.spaces.fassungen(id)).length,
+    };
+  }
+
+  it("leerer und nur verborgen belegter Space: dieselbe Vorschau, dieselbe Absage, derselbe Folgezustand", async () => {
+    const leer = await buehne();
+    const verborgen = await buehne();
+    const koId = await artikelAnlegen(verborgen);
+    expect((await verschieben(verborgen, koId, verborgen.werkstatt.id)).statusCode).toBe(200);
+    // Kontrolle: Lea liest den Artikel, die Kontoverwaltung nicht.
+    expect((await lies(verborgen, verborgen.k.lea, `/api/kos/${koId}`)).statusCode).toBe(200);
+    expect((await lies(verborgen, verborgen.k.admin, `/api/kos/${koId}`)).statusCode).toBe(404);
+
+    const a = await beobachtet(leer);
+    const v = await beobachtet(verborgen);
+    expect(v).toEqual(a);
+    expect(JSON.stringify(v)).not.toContain(koId);
+    expect(JSON.stringify(v)).not.toContain(WORT);
+    // Und was beide sehen: keine Löschung, kein Hinweis auf Artikel.
+    expect(a.versuch[0]).toBe(403);
+    expect(JSON.parse(String(a.versuch[1]))).toEqual({
+      error: "EXISTENZRECHT_FEHLT",
+      message: expect.any(String),
+    });
+    expect(JSON.parse(String(a.vorschau[1]))).toMatchObject({
+      artikel: [],
+      imPapierkorb: 0,
+      darfLoeschen: false,
+      grund: "EXISTENZRECHT_FEHLT",
+    });
+    expect(a.einzeln).toBe(200);
+    expect(a.fassungen).toBe(1);
+    await keineWaise(leer);
+    await keineWaise(verborgen);
+
+    // Die interne Schutzprüfung bleibt: wer den Artikel lesen darf und das Recht hat, wird
+    // weiter am Artikel aufgehalten.
+    const lea = await loeschen(verborgen, verborgen.k.lea, verborgen.werkstatt.id, 1);
+    expect(lea.statusCode).toBe(409);
+    expect(lea.json().error).toBe("SPACE_NICHT_LEER");
+    expect(await verborgen.services.spaces.fassungen(verborgen.werkstatt.id)).toHaveLength(1);
+  });
+
+  it("Entzug wirkt beim nächsten Abruf: ohne Recht wird auch der leere Space nicht mehr gelöscht", async () => {
+    const b = await buehne();
+    process.env.KLARWERK_EXISTENZRECHT = "admin@projekte.test";
+    const mit = (await loeschVorschau(b, b.k.admin, b.werkstatt.id)).json();
+    expect(mit).toMatchObject({ darfLoeschen: true, grund: null });
+    process.env.KLARWERK_EXISTENZRECHT = "";
+    const ohne = (await loeschVorschau(b, b.k.admin, b.werkstatt.id)).json();
+    expect(ohne).toMatchObject({ darfLoeschen: false, grund: "EXISTENZRECHT_FEHLT" });
+    expect((await loeschen(b, b.k.admin, b.werkstatt.id, 1)).statusCode).toBe(403);
+    expect(await b.services.spaces.fassungen(b.werkstatt.id)).toHaveLength(1);
   });
 });

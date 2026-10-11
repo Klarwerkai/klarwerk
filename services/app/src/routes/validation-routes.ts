@@ -47,7 +47,15 @@ export async function dublettenTor(
   user: SessionUser,
   koId: string,
   kennzeichen: unknown,
-  weg: "rate" | "admin-validate" | "owner-validate" | "weisung-validate",
+  // Aufnahme gesamt-wissen-herkunft: auch die befugte Weisung (beide Wege) und die Übernahme einer
+  // externen Freigabe machen ein Objekt gültig — dieselbe Dublettenbestätigung gilt dort.
+  weg:
+    | "rate"
+    | "admin-validate"
+    | "owner-validate"
+    | "weisung-validate"
+    | "weisung"
+    | "externe-freigabe",
   reply: FastifyReply,
 ): Promise<boolean> {
   const offen = (await deps.overlaps.unresolved()).filter(
