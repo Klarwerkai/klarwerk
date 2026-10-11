@@ -116,7 +116,28 @@ export default {
     "verstaendnis.zurueckweisen": "Zurückweisen",
     "verstaendnis.begruendung": "Begründung der Zurückweisung",
     "verstaendnis.kontoregel":
-      "Annahme nach der bestehenden Kontoregel: Wer freigeben darf, nimmt direkt an; Vorlegen ist die freiwillige Zweitprüfung. Ohne vollständige Belege ist keine Annahme möglich.",
+      "Annahme nach der bestehenden Kontoregel: Gilt im Space eine Freigaberegel, entscheiden nur ihre Prüfer, niemand über den eigenen Fragensatz, und angenommen ist erst mit der verlangten Zahl an Zustimmungen. Ohne Regel nimmt an, wer freigeben darf; Vorlegen ist die freiwillige Zweitprüfung. Ohne vollständige Belege keine Annahme.",
+    "verstaendnis.annahme.regel":
+      "Freigaberegel „{{space}}“: {{zustimmungen}} von {{erforderlich}} Zustimmungen.",
+    "verstaendnis.annahme.direkt":
+      "Keine Freigaberegel im Space: direkte Annahme durch eine Person mit Freigaberecht.",
+    "verstaendnis.annahme.zuWenige":
+      "Zu wenige unabhängige Prüfer verfügbar ({{anzahl}}) — der Fragensatz bleibt vorgelegt.",
+    "verstaendnis.hindernis.kein_freigaberecht": "Entscheiden darf, wer freigeben darf.",
+    "verstaendnis.hindernis.selbstpruefung":
+      "Über den eigenen Fragensatz entscheidest du nicht (Mehr-Augen-Prinzip).",
+    "verstaendnis.hindernis.nicht_berechtigt":
+      "Du gehörst nicht zu den Prüfern der Freigaberegel dieses Space.",
+    "verstaendnis.hindernis.vertretung_ruht":
+      "Als Vertretung entscheidest du erst, wenn die vertretene Person nicht aktiv ist.",
+    "verstaendnis.hindernis.bereits_zugestimmt": "Du hast dieser Version bereits zugestimmt.",
+    "verstaendnis.fehler.selbstpruefung":
+      "Über den eigenen Fragensatz entscheidest du nicht (Mehr-Augen-Prinzip).",
+    "verstaendnis.fehler.nicht_berechtigt":
+      "Du gehörst nicht zu den Prüfern der Freigaberegel dieses Space.",
+    "verstaendnis.fehler.vertretung_ruht":
+      "Als Vertretung entscheidest du erst, wenn die vertretene Person nicht aktiv ist.",
+    "verstaendnis.fehler.bereits_zugestimmt": "Du hast dieser Version bereits zugestimmt.",
     "verstaendnis.befundeTitel": "Vor Vorlage oder Annahme zu klären",
     "verstaendnis.befundFrage": "Frage {{nummer}}: {{befund}}",
     "verstaendnis.keineBefunde": "Alle Fragen sind aus Fassung {{fassung}} belegt.",
@@ -255,7 +276,28 @@ export default {
     "verstaendnis.zurueckweisen": "Reject",
     "verstaendnis.begruendung": "Reason for rejection",
     "verstaendnis.kontoregel":
-      "Acceptance follows the existing account rule: whoever may approve accepts directly; submitting is the voluntary second review. Without complete evidence, acceptance is not possible.",
+      "Acceptance follows the existing account rule: if the space has an approval rule, only its reviewers decide, nobody decides on their own question set, and it is accepted only once the required number of approvals is reached. Without a rule, whoever may approve accepts directly; submitting is the voluntary second review. No acceptance without complete evidence.",
+    "verstaendnis.annahme.regel":
+      "Approval rule “{{space}}”: {{zustimmungen}} of {{erforderlich}} approvals.",
+    "verstaendnis.annahme.direkt":
+      "No approval rule in this space: direct acceptance by a person who may approve.",
+    "verstaendnis.annahme.zuWenige":
+      "Too few independent reviewers available ({{anzahl}}) — the question set stays submitted.",
+    "verstaendnis.hindernis.kein_freigaberecht": "Only someone who may approve can decide.",
+    "verstaendnis.hindernis.selbstpruefung":
+      "You do not decide on your own question set (four-eyes principle).",
+    "verstaendnis.hindernis.nicht_berechtigt":
+      "You are not one of the reviewers of this space's approval rule.",
+    "verstaendnis.hindernis.vertretung_ruht":
+      "As a deputy you decide only when the person you stand in for is not active.",
+    "verstaendnis.hindernis.bereits_zugestimmt": "You have already approved this version.",
+    "verstaendnis.fehler.selbstpruefung":
+      "You do not decide on your own question set (four-eyes principle).",
+    "verstaendnis.fehler.nicht_berechtigt":
+      "You are not one of the reviewers of this space's approval rule.",
+    "verstaendnis.fehler.vertretung_ruht":
+      "As a deputy you decide only when the person you stand in for is not active.",
+    "verstaendnis.fehler.bereits_zugestimmt": "You have already approved this version.",
     "verstaendnis.befundeTitel": "To resolve before submitting or accepting",
     "verstaendnis.befundFrage": "Question {{nummer}}: {{befund}}",
     "verstaendnis.keineBefunde": "All questions are backed by version {{fassung}}.",
@@ -393,7 +435,28 @@ export default {
     "verstaendnis.zurueckweisen": "Afwijzen",
     "verstaendnis.begruendung": "Reden van afwijzing",
     "verstaendnis.kontoregel":
-      "Aanname volgens de bestaande accountregel: wie mag vrijgeven, neemt direct aan; voorleggen is de vrijwillige tweede controle. Zonder volledige bewijzen is aanname niet mogelijk.",
+      "Aanname volgens de bestaande accountregel: geldt in de space een vrijgaveregel, dan beslissen alleen haar controleurs, niemand over de eigen vragenset, en aangenomen is pas met het vereiste aantal instemmingen. Zonder regel neemt aan wie mag vrijgeven; voorleggen is de vrijwillige tweede controle. Zonder volledige bewijzen geen aanname.",
+    "verstaendnis.annahme.regel":
+      "Vrijgaveregel „{{space}}”: {{zustimmungen}} van {{erforderlich}} instemmingen.",
+    "verstaendnis.annahme.direkt":
+      "Geen vrijgaveregel in de space: directe aanname door iemand die mag vrijgeven.",
+    "verstaendnis.annahme.zuWenige":
+      "Te weinig onafhankelijke controleurs beschikbaar ({{anzahl}}) — de vragenset blijft voorgelegd.",
+    "verstaendnis.hindernis.kein_freigaberecht": "Alleen wie mag vrijgeven, kan beslissen.",
+    "verstaendnis.hindernis.selbstpruefung":
+      "Over je eigen vragenset beslis je niet (vier-ogenprincipe).",
+    "verstaendnis.hindernis.nicht_berechtigt":
+      "Je hoort niet bij de controleurs van de vrijgaveregel van deze space.",
+    "verstaendnis.hindernis.vertretung_ruht":
+      "Als vervanger beslis je pas als de vervangen persoon niet actief is.",
+    "verstaendnis.hindernis.bereits_zugestimmt": "Je hebt al met deze versie ingestemd.",
+    "verstaendnis.fehler.selbstpruefung":
+      "Over je eigen vragenset beslis je niet (vier-ogenprincipe).",
+    "verstaendnis.fehler.nicht_berechtigt":
+      "Je hoort niet bij de controleurs van de vrijgaveregel van deze space.",
+    "verstaendnis.fehler.vertretung_ruht":
+      "Als vervanger beslis je pas als de vervangen persoon niet actief is.",
+    "verstaendnis.fehler.bereits_zugestimmt": "Je hebt al met deze versie ingestemd.",
     "verstaendnis.befundeTitel": "Op te lossen vóór voorleggen of aannemen",
     "verstaendnis.befundFrage": "Vraag {{nummer}}: {{befund}}",
     "verstaendnis.keineBefunde": "Alle vragen zijn onderbouwd met versie {{fassung}}.",

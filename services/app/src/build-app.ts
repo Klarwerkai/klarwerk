@@ -4482,6 +4482,9 @@ export function buildApp(
     jetzt: services.kenntnisnahmeUhr,
     kennung: () => randomUUID(),
     audit: services.audit,
+    // Nacharbeit 3 (Ben): die Annahme folgt der Freigaberegel des führenden Space (ADMIN-09) —
+    // derselbe Dienst wie am Prüfpunkt der Wissenseinträge, keine zweite Regel.
+    freigabe: freigaberegeln,
   });
   app.register(verstaendnisfragenRoutes({ dienst: verstaendnisDienst, kos: services.ko }, guards));
   // produkt:20261007:veroeffentlichungsoptionen — Veröffentlichung mit Meldungswahl. Der Leserkreis

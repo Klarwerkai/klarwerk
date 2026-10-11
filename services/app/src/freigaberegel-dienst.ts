@@ -237,6 +237,34 @@ export class FreigabeRegelDienst {
   }
 
   /**
+   * aufnahme:20260922:gesamt-lernwege — Regel UND Prüferkreis des führenden Space eines Objekts, für
+   * Vorgänge, die nicht über die Peer-Bewertung laufen (Annahme von Verständnisfragen). Dieselbe
+   * Kreisbildung wie am Prüfpunkt (`prueferkreis`, Konten und Teams von jetzt); keine zweite Regel.
+   * `undefined`, wenn der Space keine Regel trägt.
+   */
+  async kreisFuer(ko: Pick<KnowledgeObject, "spaceId">): Promise<
+    | {
+        space: SpaceFassung;
+        regel: FreigabeRegel;
+        kreis: PrueferEintrag[];
+      }
+    | undefined
+  > {
+    const lage = await this.regelFuer(ko);
+    if (!lage) {
+      return undefined;
+    }
+    const kreis = prueferkreis(
+      lage.space,
+      lage.regel,
+      await this.konten(),
+      await this.teamStaende(),
+      this.jetzt().getTime(),
+    );
+    return { ...lage, kreis };
+  }
+
+  /**
    * Für das Prüfbrett: je Objekt die Regel seines führenden Space — Kennung, Name, Regelfassung und
    * Mindestzahl. Objekte ohne Regel fehlen in der Karte.
    */

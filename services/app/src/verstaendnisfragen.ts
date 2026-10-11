@@ -2,6 +2,7 @@ import type { Pool } from "pg";
 import type { Role } from "../../auth";
 import { type KnowledgeObject, responsibleOf } from "../../knowledge-object";
 import { can } from "../../rbac";
+import { type PrueferEintrag, entscheidungsurteil, unabhaengigePruefer } from "./freigaberegeln";
 
 // ================================================================================================
 // VERSTÄNDNISFRAGEN ZU EINER GÜLTIGEN WISSENSFASSUNG (aufnahme:20260922:gesamt-lernwege, Zusatz
@@ -106,6 +107,22 @@ export interface FragensatzFassung {
   entschiedenVon: string | null;
   entschiedenAm: string | null;
   begruendung: string | null;
+  /**
+   * Nacharbeit 3 (Ben): die Zustimmungen zu GENAU dieser Version — nach der Freigaberegel des
+   * führenden Space braucht die Annahme so viele, wie die Regel verlangt. Eine neue Version beginnt
+   * leer. Fehlt das Feld (früher abgelegte Version), zählt es als leer (`zustimmungenVon`).
+   */
+  zustimmungen?: Zustimmung[];
+}
+
+export interface Zustimmung {
+  von: string;
+  am: string;
+}
+
+/** Die Zustimmungen einer Version — ein fehlendes Feld ist keine Zustimmung. */
+export function zustimmungenVon(f: Pick<FragensatzFassung, "zustimmungen">): Zustimmung[] {
+  return Array.isArray(f.zustimmungen) ? f.zustimmungen : [];
 }
 
 export type Urteil = "richtig" | "falsch" | "unbeantwortet";
@@ -531,21 +548,29 @@ export type VersuchAblage =
   | { art: "vorhanden"; versuch: Versuch }
   | { art: "nummer_belegt" };
 
+/** Der Status-Teil einer Version — Inhalt und Fragen ändert kein Statuswechsel. */
+export type StatusAenderung = Pick<
+  FragensatzFassung,
+  "status" | "vorgelegtVon" | "vorgelegtAm" | "entschiedenVon" | "entschiedenAm" | "begruendung"
+> & { zustimmungen?: Zustimmung[] };
+
 export interface VerstaendnisfragenRepo {
   /** Legt eine neue Version ab. `false`, wenn es (Fragensatz, Version) schon gibt. */
   legeFassung(fassung: FragensatzFassung): Promise<boolean>;
   /**
    * Ändert NUR den Status-Teil einer Version, und nur, wenn sie gerade in einem der `vorher`
    * genannten Status steht (Vergleich-und-Setzen). `undefined`: nicht in diesem Status.
+   *
+   * `vorherZustimmungen` (Nacharbeit 3): gesetzt, gilt der Wechsel nur, wenn die Version gerade so
+   * viele Zustimmungen trägt — zwei gleichzeitige Zustimmungen verlieren so keine und zählen keine
+   * doppelt.
    */
   setzeStatus(
     id: string,
     version: number,
     vorher: readonly FragensatzStatus[],
-    neu: Pick<
-      FragensatzFassung,
-      "status" | "vorgelegtVon" | "vorgelegtAm" | "entschiedenVon" | "entschiedenAm" | "begruendung"
-    >,
+    neu: StatusAenderung,
+    vorherZustimmungen?: number,
   ): Promise<FragensatzFassung | undefined>;
   /** Alle Versionen eines Fragensatzes, aufsteigend. */
   fassungen(id: string): Promise<FragensatzFassung[]>;
@@ -601,11 +626,15 @@ export class InMemoryVerstaendnisfragenRepo implements VerstaendnisfragenRepo {
     id: string,
     version: number,
     vorher: readonly FragensatzStatus[],
-    neu: Parameters<VerstaendnisfragenRepo["setzeStatus"]>[3],
+    neu: StatusAenderung,
+    vorherZustimmungen?: number,
   ): Promise<FragensatzFassung | undefined> {
     this.pruefeHaltbarkeit();
     const f = this.saetze.get(id)?.find((x) => x.version === version);
     if (!f || !vorher.includes(f.status)) {
+      return Promise.resolve(undefined);
+    }
+    if (vorherZustimmungen !== undefined && zustimmungenVon(f).length !== vorherZustimmungen) {
       return Promise.resolve(undefined);
     }
     Object.assign(f, neu);
@@ -728,16 +757,20 @@ export class PgVerstaendnisfragenRepo implements VerstaendnisfragenRepo {
     id: string,
     version: number,
     vorher: readonly FragensatzStatus[],
-    neu: Parameters<VerstaendnisfragenRepo["setzeStatus"]>[3],
+    neu: StatusAenderung,
+    vorherZustimmungen?: number,
   ): Promise<FragensatzFassung | undefined> {
     // Ein Schritt in der Datenbank: nur der Status-Teil wird überschrieben, Inhalt und Fragen
-    // bleiben, wie sie abgelegt wurden.
+    // bleiben, wie sie abgelegt wurden. Mit `vorherZustimmungen` zusätzlich nur bei genau so vielen
+    // abgelegten Zustimmungen ($5 NULL: keine Bedingung).
     const res = await this.pool.query<DataZeile<FragensatzFassung>>(
       `UPDATE verstaendnis_fragensaetze
           SET data = data || $4::jsonb
         WHERE fragensatz_id=$1 AND version=$2 AND data->>'status' = ANY($3::text[])
+          AND ($5::int IS NULL
+               OR jsonb_array_length(COALESCE(data->'zustimmungen', '[]'::jsonb)) = $5::int)
         RETURNING data`,
-      [id, version, [...vorher], JSON.stringify(neu)],
+      [id, version, [...vorher], JSON.stringify(neu), vorherZustimmungen ?? null],
     );
     return res.rows[0]?.data;
   }
@@ -860,6 +893,22 @@ export interface VerstaendnisBeleg {
   }): Promise<unknown>;
 }
 
+/**
+ * Nacharbeit 3 (Ben) — DIE BESTEHENDE KONTOREGEL DER ANNAHME: die Freigaberegel des führenden
+ * Space (ADMIN-09, `freigaberegeln.ts`). `FreigabeRegelDienst.kreisFuer` erfüllt diesen Port.
+ * `undefined`: der Space trägt keine Regel — dann gilt die direkte Annahme durch `ko.validate`.
+ */
+export interface VerstaendnisFreigabe {
+  kreisFuer(ko: KnowledgeObject): Promise<
+    | {
+        space: { id: string; name: string; version: number };
+        regel: { zustimmungen: number };
+        kreis: readonly PrueferEintrag[];
+      }
+    | undefined
+  >;
+}
+
 export interface VerstaendnisDienstDeps {
   repo: VerstaendnisfragenRepo;
   ko: VerstaendnisKoLeser;
@@ -867,7 +916,48 @@ export interface VerstaendnisDienstDeps {
   jetzt: () => number;
   kennung: () => string;
   audit?: VerstaendnisBeleg;
+  /** Fehlt der Port, gibt es keine Space-Regel (Aufbau ohne Spaces, schmale Tests). */
+  freigabe?: VerstaendnisFreigabe;
 }
+
+/** Warum eine Person über DIESE Version nicht entscheiden darf — oder `null`. */
+export type Entscheidungshindernis =
+  | "kein_freigaberecht"
+  | "selbstpruefung"
+  | "nicht_berechtigt"
+  | "vertretung_ruht"
+  | "bereits_zugestimmt";
+
+/** Die Annahmelage einer Version für die Bearbeitungsfläche. */
+export interface Annahmelage {
+  /** Die Regel des führenden Space — `null`: keine Regel, direkte Annahme durch Freigaberecht. */
+  regel: { spaceId: string; spaceName: string; regelVersion: number; zustimmungen: number } | null;
+  erforderlich: number;
+  zustimmungen: number;
+  darfEntscheiden: boolean;
+  hindernis: Entscheidungshindernis | null;
+  /** Wie viele Personen über diese Version unabhängig entscheiden können — `null` ohne Regel. */
+  unabhaengig: number | null;
+}
+
+/**
+ * Der „eigene Beitrag" eines Fragensatzes nach dem Mehr-Augen-Prinzip: wer diese Version verfasst
+ * oder vorgelegt hat. Dieselbe Form wie Autor/Erstautor am Wissenseintrag (`istEigenerBeitrag`).
+ */
+function beitragVon(f: FragensatzFassung): { author: string; originalAuthor: string } {
+  return { author: f.geaendertVon, originalAuthor: f.vorgelegtVon ?? f.geaendertVon };
+}
+
+const HINDERNIS_TEXT: Record<Entscheidungshindernis, string> = {
+  kein_freigaberecht: "Entscheiden darf, wer freigeben darf.",
+  selbstpruefung:
+    "Den eigenen Fragensatz prüft niemand selbst (Mehr-Augen-Prinzip der Freigaberegel).",
+  nicht_berechtigt:
+    "Nach der Freigaberegel des Space gehören Sie nicht zu den berechtigten Prüfern.",
+  vertretung_ruht:
+    "Als Vertretung entscheiden Sie erst, wenn die vertretene Person nicht aktiv ist.",
+  bereits_zugestimmt: "Sie haben dieser Version bereits zugestimmt.",
+};
 
 export interface Handelnder {
   id: string;
@@ -990,6 +1080,48 @@ export class VerstaendnisfragenDienst {
       entschiedenVon: null,
       entschiedenAm: null,
       begruendung: null,
+      zustimmungen: [],
+    };
+  }
+
+  /**
+   * Nacharbeit 3 (Ben): die Annahmelage einer Version nach der geltenden Kontoregel. Ohne Space-Regel
+   * entscheidet, wer freigeben darf, allein (direkte Annahme). Mit Regel nur, wer im Prüferkreis
+   * des Space entscheidet (`entscheidungsurteil`: Mehr-Augen-Prinzip, Prüferkreis, Vertretung), und
+   * angenommen ist erst mit so vielen Zustimmungen, wie die Regel verlangt.
+   */
+  async annahmelage(
+    user: Handelnder,
+    ko: KnowledgeObject,
+    fassung: FragensatzFassung,
+  ): Promise<Annahmelage> {
+    const lage = await this.deps.freigabe?.kreisFuer(ko);
+    const bisher = zustimmungenVon(fassung);
+    const erforderlich = lage ? Math.max(1, lage.regel.zustimmungen) : 1;
+    let hindernis: Entscheidungshindernis | null = null;
+    if (!this.darfEntscheiden(user)) {
+      hindernis = "kein_freigaberecht";
+    } else if (lage) {
+      const urteil = entscheidungsurteil(beitragVon(fassung), lage.kreis, user.id);
+      hindernis = urteil.erlaubt ? null : urteil.grund;
+    }
+    if (hindernis === null && bisher.some((z) => z.von === user.id)) {
+      hindernis = "bereits_zugestimmt";
+    }
+    return {
+      regel: lage
+        ? {
+            spaceId: lage.space.id,
+            spaceName: lage.space.name,
+            regelVersion: lage.space.version,
+            zustimmungen: lage.regel.zustimmungen,
+          }
+        : null,
+      erforderlich,
+      zustimmungen: bisher.length,
+      darfEntscheiden: hindernis === null,
+      hindernis,
+      unabhaengig: lage ? unabhaengigePruefer(beitragVon(fassung), lage.kreis) : null,
     };
   }
 
@@ -1097,7 +1229,21 @@ export class VerstaendnisfragenDienst {
       );
     }
     const juengste = this.juengsteOderFehler(fassungen, version);
+    // Nacharbeit 3 (Ben): die geltende Kontoregel VOR jeder Wirkung — Prüferkreis und
+    // Mehr-Augen-Prinzip der Space-Regel; ohne Regel die direkte Annahme durch Freigaberecht.
+    const lage = await this.annahmelage(user, ko, juengste);
+    if (lage.hindernis !== null && lage.hindernis !== "bereits_zugestimmt") {
+      throw new VerstaendnisFehler(403, lage.hindernis, HINDERNIS_TEXT[lage.hindernis], {
+        regel: lage.regel,
+      });
+    }
     if (entscheidung === "annehmen") {
+      if (lage.hindernis === "bereits_zugestimmt") {
+        throw new VerstaendnisFehler(409, "bereits_zugestimmt", HINDERNIS_TEXT.bereits_zugestimmt, {
+          zustimmungen: lage.zustimmungen,
+          erforderlich: lage.erforderlich,
+        });
+      }
       await this.pruefeVeroeffentlichbar(juengste, ko);
     } else if (!begruendung) {
       throw new VerstaendnisFehler(
@@ -1107,39 +1253,56 @@ export class VerstaendnisfragenDienst {
       );
     }
     const am = this.iso();
+    const bisher = zustimmungenVon(juengste);
+    const zustimmungen = entscheidung === "annehmen" ? [...bisher, { von: user.id, am }] : bisher;
+    // Angenommen erst, wenn die Regel erfüllt ist; bis dahin steht die Version „vorgelegt" mit den
+    // gesammelten Zustimmungen — eine Zustimmung allein veröffentlicht nichts.
+    const erfuellt = entscheidung === "annehmen" && zustimmungen.length >= lage.erforderlich;
+    const status: FragensatzStatus =
+      entscheidung === "zurueckweisen" ? "zurueckgewiesen" : erfuellt ? "angenommen" : "vorgelegt";
+    const entschieden = entscheidung === "zurueckweisen" || erfuellt;
     const neu = await this.deps.repo.setzeStatus(
       juengste.id,
       version,
       entscheidung === "annehmen" ? ["entwurf", "vorgelegt"] : ["vorgelegt"],
       {
-        status: entscheidung === "annehmen" ? "angenommen" : "zurueckgewiesen",
+        status,
         vorgelegtVon: juengste.vorgelegtVon,
         vorgelegtAm: juengste.vorgelegtAm,
-        entschiedenVon: user.id,
-        entschiedenAm: am,
+        entschiedenVon: entschieden ? user.id : null,
+        entschiedenAm: entschieden ? am : null,
         begruendung,
+        zustimmungen,
       },
+      bisher.length,
     );
     if (!neu) {
       throw new VerstaendnisFehler(
         409,
         "status",
         entscheidung === "annehmen"
-          ? "Angenommen werden kann ein Entwurf oder ein vorgelegter Fragensatz."
+          ? "Angenommen werden kann ein Entwurf oder ein vorgelegter Fragensatz; inzwischen hat sich sein Stand geändert. Bitte neu laden."
           : "Zurückgewiesen werden kann nur ein vorgelegter Fragensatz.",
       );
     }
     await this.deps.audit?.record({
       actor: user.id,
       action:
-        entscheidung === "annehmen"
-          ? "verstaendnisfragen.angenommen"
-          : "verstaendnisfragen.zurueckgewiesen",
+        entscheidung === "zurueckweisen"
+          ? "verstaendnisfragen.zurueckgewiesen"
+          : erfuellt
+            ? "verstaendnisfragen.angenommen"
+            : "verstaendnisfragen.zugestimmt",
       target: ko.id,
       payload: {
         fragensatzId: neu.id,
         fragensatzVersion: neu.version,
         koVersion: neu.koVersion,
+        zustimmungen: zustimmungen.length,
+        erforderlich: lage.erforderlich,
+        ...(lage.regel
+          ? { spaceId: lage.regel.spaceId, regelVersion: lage.regel.regelVersion }
+          : {}),
         ...(neu.vorgelegtVon ? { vorgelegtVon: neu.vorgelegtVon } : {}),
       },
     });

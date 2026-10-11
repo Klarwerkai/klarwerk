@@ -74,6 +74,25 @@ export interface Bearbeitung {
   begruendung: string | null;
   quellenlage: Quellenlage;
   befunde: Befunde;
+  zustimmungen?: Array<{ von: string; am: string }>;
+  /** Die Annahme nach der geltenden Kontoregel (Freigaberegel des Space oder direkte Annahme). */
+  annahme: Annahmelage;
+}
+
+export type Entscheidungshindernis =
+  | "kein_freigaberecht"
+  | "selbstpruefung"
+  | "nicht_berechtigt"
+  | "vertretung_ruht"
+  | "bereits_zugestimmt";
+
+export interface Annahmelage {
+  regel: { spaceId: string; spaceName: string; regelVersion: number; zustimmungen: number } | null;
+  erforderlich: number;
+  zustimmungen: number;
+  darfEntscheiden: boolean;
+  hindernis: Entscheidungshindernis | null;
+  unabhaengig: number | null;
 }
 
 export interface FragensatzSicht {

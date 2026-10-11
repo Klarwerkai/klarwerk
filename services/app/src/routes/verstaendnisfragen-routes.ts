@@ -127,6 +127,8 @@ export function verstaendnisfragenRoutes(
             ...juengste,
             quellenlage: (await dienst.quellenstand(ko, juengste.koVersion)).lage,
             befunde: await dienst.befunde(juengste, ko),
+            // Nacharbeit 3: Regel, Zustimmungen und ob DIESE Person über diese Version entscheidet.
+            annahme: await dienst.annahmelage(user, ko, juengste),
           }
         : null;
     return {

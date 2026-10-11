@@ -127,8 +127,10 @@ Schnittstellen: `docs/architektur/http-api-referenz.md` (Abschnitt Lernpfade).
 ### B3. Festlegungen
 
 * **Kontoregel, keine neue Rolle:** Anlegen/Ändern/Vorlegen `ko.create` **und** Verantwortung am
-  Eintrag (`responsibleOf`) oder `ko.validate`; Annehmen/Zurückweisen `ko.validate` (direkte
-  Annahme), Vorlegen = freiwillige Zweitprüfung; Beantworten `ko.read`; Sichtbarkeit jeder Tür über
+  Eintrag (`responsibleOf`) oder `ko.validate`; Annehmen/Zurückweisen `ko.validate` — ohne
+  Space-Freigaberegel als direkte Annahme, mit Regel nach Prüferkreis, Mehr-Augen-Prinzip und
+  Mindestzahl der Zustimmungen (Beleg: `tests/verstaendnisfragen/kontoregel.test.ts`); Vorlegen =
+  freiwillige Zweitprüfung; Beantworten `ko.read`; Sichtbarkeit jeder Tür über
   `darfSehen` (unsichtbar → 404). Entscheidungen stehen im Prüfprotokoll
   (`verstaendnisfragen.angenommen`/`.zurueckgewiesen`); **Versuche nicht** (das Protokoll dient
   nicht der Leistungs- oder Verhaltenskontrolle).
@@ -169,7 +171,8 @@ Schnittstellen: `docs/architektur/http-api-referenz.md` (Abschnitt Lernpfade).
 | --- | --- |
 | 400 `VALIDATION` (`eingabe`) | Rumpf formal ungültig (Längen, Grenzen, unbekannte Rolle/Antwortmöglichkeit, fehlende Version) |
 | 403 `FORBIDDEN` | Routenrecht fehlt (z. B. Viewer legt an, Experte entscheidet) |
-| 403 `NICHT_ZUSTAENDIG` | Anlegen ohne Verantwortung; Ergebnisse anderer ohne Zuständigkeit |
+| 403 `NICHT_ZUSTAENDIG` | Anlegen ohne Verantwortung; Ergebnisse anderer ohne Zuständigkeit; nach Space-Freigaberegel `selbstpruefung`, `nicht_berechtigt`, `vertretung_ruht` |
+| 409 `bereits_zugestimmt` | Dieselbe Person stimmt derselben Version ein zweites Mal zu |
 | 404 | Eintrag unsichtbar, gelöscht oder unbekannt; fremder Versuch |
 | 409 `befunde` | Vorlegen/Annehmen mit fehlender oder nicht gefundener Belegstelle, fehlender Antwort/Regel |
 | 409 `quelle_geaendert` / `quelle_nicht_gueltig` / `quelle_fehlt` | Bindung an eine Fassung, deren Inhalt nicht mehr gilt; Abgabe wird nicht bewertet |
@@ -185,9 +188,14 @@ Schnittstellen: `docs/architektur/http-api-referenz.md` (Abschnitt Lernpfade).
   (`/lebenszyklus`, `minRole: controller`). Viewer und Experten sehen ihre Fragensätze und
   Ergebnisse am Eintrag (`/wissen/:id`) und über `GET /api/verstaendnisfragen/meine`; eine
   Lernpfad-Seite für alle Rollen gehört zur offenen Entscheidung A2.
-* **Vorgeschriebene Prüfung je Space** (Freigaberegel mit Prüfergruppe/mehreren Zustimmungen,
-  `freigaberegeln.ts`) wird auf Fragensätze **nicht** angewendet; die Annahme ist eine Entscheidung
-  mit `ko.validate`. Ob Fragensätze der Space-Freigaberegel folgen sollen, ist offen.
+* **Vorgeschriebene Prüfung (Nacharbeit 3):** Trägt der führende Space des Eintrags eine
+  Freigaberegel (ADMIN-09), gilt sie für die Annahme: nur Personen ihres Prüferkreises entscheiden
+  (`entscheidungsurteil`), niemand über die selbst verfasste oder vorgelegte Version
+  (Mehr-Augen-Prinzip), und angenommen ist erst mit der verlangten Zahl verschiedener Zustimmungen
+  zu genau dieser Version; davor bleibt sie „vorgelegt“ und unsichtbar für Lernende. Ohne Regel
+  bleibt die direkte Annahme durch `ko.validate`. Nicht übernommen sind Fristlauf und
+  Vertretungsaufgaben der Regel (es gibt für Fragensätze keine Prüfaufgaben); eine Vertretung
+  entscheidet deshalb nur, wenn die vertretene Person nicht aktiv ist.
 * **Inhalt einsprachig:** Fragen stehen in der Sprache, in der die verantwortliche Person sie
   schreibt; die Oberfläche ist DE/EN/NL.
 * **Kein Löschweg** für Ergebnisse (wie Kenntnisnahme und Lernfortschritt; Frist vom Betreiber

@@ -52,6 +52,10 @@ const BEKANNTE_FEHLER = [
   "gleichzeitig",
   "nicht_haltbar",
   "versuch_fremd",
+  "selbstpruefung",
+  "nicht_berechtigt",
+  "vertretung_ruht",
+  "bereits_zugestimmt",
 ];
 
 const amEintragSchluessel = (koId: string) => ["verstaendnisfragen", "eintrag", koId] as const;
@@ -731,6 +735,12 @@ function BearbeitungsBlock({
     ),
   ];
   const fehler = vorlegen.error ?? entscheiden.error;
+  // Nacharbeit 3: wer über DIESE Version entscheidet, sagt der Server nach der geltenden Kontoregel
+  // (Freigaberegel des Space: Prüferkreis, Mehr-Augen-Prinzip, Mindestzahl; ohne Regel direkt).
+  const a = b.annahme;
+  const entscheidet = darfEntscheiden && a.darfEntscheiden;
+  const darfZurueckweisen =
+    darfEntscheiden && (a.darfEntscheiden || a.hindernis === "bereits_zugestimmt");
   return (
     <div
       data-testid="verstaendnis-bearbeitung"
@@ -773,6 +783,30 @@ function BearbeitungsBlock({
         </p>
       )}
       <p className="text-muted">{t("verstaendnis.kontoregel")}</p>
+      <p
+        data-testid="verstaendnis-annahme"
+        data-zustimmungen={a.zustimmungen}
+        data-erforderlich={a.erforderlich}
+        className="text-text"
+      >
+        {a.regel
+          ? t("verstaendnis.annahme.regel", {
+              space: a.regel.spaceName,
+              zustimmungen: a.zustimmungen,
+              erforderlich: a.erforderlich,
+            })
+          : t("verstaendnis.annahme.direkt")}
+      </p>
+      {a.regel && a.unabhaengig !== null && a.unabhaengig < a.erforderlich - a.zustimmungen ? (
+        <p className="text-trust-warn-text">
+          {t("verstaendnis.annahme.zuWenige", { anzahl: a.unabhaengig })}
+        </p>
+      ) : null}
+      {darfEntscheiden && a.hindernis ? (
+        <p data-testid="verstaendnis-hindernis" className="text-trust-warn-text">
+          {t(`verstaendnis.hindernis.${a.hindernis}`)}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
@@ -793,7 +827,7 @@ function BearbeitungsBlock({
             {t("verstaendnis.vorlegen")}
           </Button>
         ) : null}
-        {darfEntscheiden && (b.status === "entwurf" || b.status === "vorgelegt") ? (
+        {entscheidet && (b.status === "entwurf" || b.status === "vorgelegt") ? (
           <Button
             variant="primary"
             data-testid="verstaendnis-annehmen"
@@ -804,7 +838,7 @@ function BearbeitungsBlock({
           </Button>
         ) : null}
       </div>
-      {darfEntscheiden && b.status === "vorgelegt" ? (
+      {darfZurueckweisen && b.status === "vorgelegt" ? (
         <div className="flex flex-wrap items-end gap-2">
           <label className="block flex-1 space-y-1">
             <span className="text-muted">{t("verstaendnis.begruendung")}</span>

@@ -170,6 +170,31 @@ describe("Verständnisfragen · PostgreSQL-Ablage", () => {
     expect(await nachher.versucheZu("satz-beispiel-1")).toHaveLength(1);
   });
 
+  it("P5 · zwei gleichzeitige Zustimmungen: keine geht verloren, keine zählt doppelt", async () => {
+    const repo = new PgVerstaendnisfragenRepo(pool);
+    await repo.legeFassung(fassung(1, { status: "vorgelegt" }));
+    const zustimmung = (von: string) => ({
+      status: "vorgelegt" as const,
+      vorgelegtVon: "konto-erik",
+      vorgelegtAm: "2026-10-11T08:10:00.000Z",
+      entschiedenVon: null,
+      entschiedenAm: null,
+      begruendung: null,
+      zustimmungen: [{ von, am: "2026-10-11T08:20:00.000Z" }],
+    });
+    const [a, b] = await Promise.all([
+      repo.setzeStatus("satz-beispiel-1", 1, ["vorgelegt"], zustimmung("konto-carla"), 0),
+      repo.setzeStatus("satz-beispiel-1", 1, ["vorgelegt"], zustimmung("konto-paul"), 0),
+    ]);
+    expect([a, b].filter((z) => z !== undefined)).toHaveLength(1);
+    const [gelesen] = await repo.fassungen("satz-beispiel-1");
+    expect(gelesen?.zustimmungen).toHaveLength(1);
+    // Eine veraltete Zahl (0 statt 1) schreibt nie.
+    expect(
+      await repo.setzeStatus("satz-beispiel-1", 1, ["vorgelegt"], zustimmung("konto-x"), 0),
+    ).toBeUndefined();
+  });
+
   it("P4 · die Migration ist wiederholbar", async () => {
     await migrate(pool);
     await migrate(pool);
