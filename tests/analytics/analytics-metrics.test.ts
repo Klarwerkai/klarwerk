@@ -10,7 +10,7 @@ import {
   formatRate,
   validationRate,
   weeklyAnswerRate,
-  weeklyValidated,
+  weeklyReviewed,
   workloadSummary,
 } from "../../apps/web/src/lib/analyticsMetrics";
 
@@ -45,8 +45,10 @@ describe("SCRUM-140: Impact-Aufbereitung", () => {
     expect(formatRate(0)).toBe("0%");
   });
 
-  it("weeklyValidated sortiert chronologisch und begrenzt", () => {
-    const out = weeklyValidated({ "2026-06-15": 2, "2026-06-01": 1, "2026-06-08": 3 }, 2);
+  // R-0750: der Verlauf nach PRÜFZEITPUNKT (`validatedAt`) — nicht die von ADMIN-11 entfernte,
+  // rückwirkende Erstellungswochen-Reihe `weeklyValidated`.
+  it("weeklyReviewed sortiert chronologisch und begrenzt", () => {
+    const out = weeklyReviewed({ "2026-06-15": 2, "2026-06-01": 1, "2026-06-08": 3 }, 2);
     expect(out).toEqual([
       { week: "2026-06-08", count: 3 },
       { week: "2026-06-15", count: 2 },

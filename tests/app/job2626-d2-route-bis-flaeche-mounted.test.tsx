@@ -257,7 +257,8 @@ async function fragen(c: HTMLDivElement, frage: string): Promise<void> {
 
 const TOR = {
   freigabe: (): string => i18n.t("ask.verschlossen.freigabe"),
-  stufe: (): string => i18n.t("ask.verschlossen.stufe"),
+  // R-0303 (Aufnahme gesamt-wissensluecken): die Fläche spricht das Wort der Validierung.
+  stufe: (): string => i18n.t("ask.verschlossen.vertraulichkeitsstufe"),
   volltext: (): string => i18n.t("ask.verschlossen.volltext"),
 };
 const torlage = (c: HTMLElement): HTMLElement | null =>
@@ -352,7 +353,8 @@ describe("JOB 2626 D2 · von der echten Route bis zur gemounteten Ask-Flaeche �
 
   it("G-c · GEGENPROBE answered=true: die Frage IST der Titel, der Bestand traegt → Antwort sichtbar, keine Torlage — ueber den realen Response", async () => {
     const { services, autorId } = await serverStarten();
-    await dokument(services, autorId);
+    // R-0278 (Nacharbeit 3): eine Antwort trägt nur Freigegebenes — das Tor „Freigabe" ist hier offen.
+    await dokument(services, autorId, { validiert: true });
     const c = await askMounten();
     await fragen(c, `${TITEL} Zustaendigkeit`);
     const antwort = letzteAskAntwort();

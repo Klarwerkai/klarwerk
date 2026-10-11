@@ -365,7 +365,7 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
     // Der Ladeweg hat den Entwurf geholt, und zwar genau diesen.
     expect(draftsGet).toHaveBeenCalledWith(GESPEICHERT.id);
     // Zeichen für Zeichen: „nicht leer" hätte schon die Rohtext-Übernahme von `switchMode` erfüllt.
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(GESPEICHERT.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(GESPEICHERT.payload.title);
     expect(feld(i18n.t("capture.fStatement")).value).toBe(GESPEICHERT.payload.statement);
     // Die erweiterten Felder kommen über DENSELBEN Füllweg (`loadDraft`) mit.
     expect(feld(i18n.t("capture.fCategory")).value).toBe(GESPEICHERT.payload.category);
@@ -379,7 +379,7 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
 
     expect(letzteAdresse).toBe(`/erfassen?draft=${GESPEICHERT.id}`);
     expect(text()).not.toContain(i18n.t("fd.title"));
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(GESPEICHERT.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(GESPEICHERT.payload.title);
   });
 
   it("A3 · je Kennung genau EIN Ladeweg — Sprachwechsel, Rendern, Formular→Freitext→Formular", async () => {
@@ -399,12 +399,12 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
     await wechsleModus("formular");
 
     expect(draftsGet).toHaveBeenCalledTimes(1);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(GESPEICHERT.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(GESPEICHERT.payload.title);
   });
 
   it("B · DER PRÜFSTEIN: Speichern trifft denselben Entwurf, es entsteht keine Dublette", async () => {
     await mount(`/erfassen?draft=${GESPEICHERT.id}`, "formular");
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(GESPEICHERT.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(GESPEICHERT.payload.title);
 
     await act(async () => {
       knopf(i18n.t("capture.saveDraft")).click();
@@ -450,7 +450,7 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
 
     expect(draftsGet).not.toHaveBeenCalled();
     expect(feld(i18n.t("capture.fStatement")).value).toBe(EIGENER);
-    expect(feld(i18n.t("capture.fTitle")).value).not.toBe(GESPEICHERT.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).not.toBe(GESPEICHERT.payload.title);
   });
 
   it("E · die Herkunft reist mit: die KI-Palette des Formulars trägt den Entwurfs-Anker", async () => {
@@ -459,7 +459,7 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
     // die Palette scheitert an der Sperre — auch für einen ausdrücklich als „intern" eingestuften,
     // gespeicherten Entwurf. Vorher konnte der Anker hier nicht mitreisen, weil `draftId` null war.
     await mount(`/erfassen?draft=${GESPEICHERT.id}`, "formular");
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(GESPEICHERT.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(GESPEICHERT.payload.title);
 
     await act(async () => {
       knopf(i18n.t("capture.ai.action.clarify")).click();
@@ -490,7 +490,7 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
     // Ein Satz, keine leere Fläche, die so tut, als sei nichts gewesen.
     expect(text()).toContain("Entwurf nicht gefunden.");
     // Das Formular bleibt bedienbar.
-    const titel = feld(i18n.t("capture.fTitle"));
+    const titel = feld(i18n.t("capture.wizard.titleLabel"));
     expect(titel.disabled).toBe(false);
     await tippe(feld(i18n.t("capture.fStatement")) as HTMLTextAreaElement, "Ein neuer Gedanke.");
 
@@ -528,12 +528,12 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
     // Jetzt kommt die ÜBERHOLTE Antwort. Sie darf nichts anfassen: keinen Inhalt, keine Kennung —
     // und auch nicht den Ladezustand, den die noch laufende zweite Anfrage führt.
     await antwort.erfuelle(GESPEICHERT.id, GESPEICHERT);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe("");
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("");
     expect(knopf(i18n.t("capture.saveDraft")).disabled).toBe(true);
 
     // Und dann die gültige.
     await antwort.erfuelle(ZWEITER.id, ZWEITER);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(ZWEITER.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(ZWEITER.payload.title);
 
     await act(async () => {
       knopf(i18n.t("capture.saveDraft")).click();
@@ -560,10 +560,10 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
     });
 
     await antwort.erfuelle(ZWEITER.id, ZWEITER);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(ZWEITER.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(ZWEITER.payload.title);
     // Die verspätete alte Antwort darf den bereits gezeigten Entwurf nicht verdrängen.
     await antwort.erfuelle(GESPEICHERT.id, GESPEICHERT);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(ZWEITER.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(ZWEITER.payload.title);
 
     await act(async () => {
       knopf(i18n.t("capture.saveDraft")).click();
@@ -611,7 +611,7 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
     expect(text()).not.toContain("Entwurf nicht gefunden.");
 
     await antwort.erfuelle(ZWEITER.id, ZWEITER);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe(ZWEITER.payload.title);
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe(ZWEITER.payload.title);
     expect(text()).not.toContain("Entwurf nicht gefunden.");
   });
 
@@ -629,7 +629,7 @@ describe("JOB 3414 · der gespeicherte Entwurf im Experten-Formular", () => {
 
     // Die Fläche behauptet nichts über Inhalt: die Felder sind leer, weil der Entwurf leer ist.
     expect(draftsGet).toHaveBeenCalledWith(LEERER.id);
-    expect(feld(i18n.t("capture.fTitle")).value).toBe("");
+    expect(feld(i18n.t("capture.wizard.titleLabel")).value).toBe("");
     expect(feld(i18n.t("capture.fStatement")).value).toBe("");
     // Aber er GEHÖRT dieser Fläche — also ist er speicherbar.
     expect(knopf(i18n.t("capture.saveDraft")).disabled).toBe(false);

@@ -2,9 +2,14 @@ import { Pool } from "pg";
 import { ANSWER_SNAPSHOT_SCHEMA, ASK_SCHEMA } from "../../ask";
 import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
-import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
+import {
+  CAPTURE_CREATE_OPERATION_SCHEMA,
+  CAPTURE_INDEX_SCHEMA,
+  CAPTURE_SCHEMA,
+} from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { vorratsKonfiguration } from "../../db-tx";
+import { EMBEDDING_SCHEMA } from "../../embedding";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
   DOKUMENTAKTE_SCHEMA,
@@ -41,6 +46,8 @@ import {
   REASONER_POLICY_SCHEMA,
 } from "../../reasoner";
 import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation";
+// produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil (eine Zeile je Konto).
+import { ASSISTENZ_PROFIL_SCHEMA } from "./assistenz-profil";
 // JOB 3578: die instanzweite Markenwahl (Demo-Firmen-CI). Sie wohnt wie die Lesevarianten im
 // App-Wurzelverzeichnis, weil sie zu keinem Fachmodul gehört: drei Oberflächen lesen sie, und
 // keine davon besitzt sie.
@@ -48,23 +55,57 @@ import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation"
 // die Lesevarianten: ein danebenliegender, flüchtiger Datenraum, der das KO-Modell nicht berührt.
 import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
+// produkt:20261007:interner-chat: Gespräche und Nachrichten des internen Chats. Im App-Wurzel-
+// verzeichnis wie die Spaces: die Sichtbarkeitsregel entscheidet über sie, kein Fachmodul besitzt sie.
+import { CHAT_SCHEMA } from "./chat";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+import { GEMEINSAMER_ENTWURF_SCHEMA } from "./gemeinsamer-entwurf";
+// Instanztrennung: die eine Zeile, die diese Datenbank an genau eine Anlage bindet.
+import { INSTANZBINDUNG_SCHEMA } from "./instanzbindung";
+// R-0466: das Interaktionsgedächtnis (frühere Fragen, Antworten, Vorlieben je Konto). Im
+// App-Wurzelverzeichnis wie die Live-Wand-Fotos: ein eigener Datenraum, den kein Fachmodul besitzt.
+import { GEDAECHTNIS_SCHEMA } from "./interaktionsgedaechtnis";
 // Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
 import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
+// produkt:20261008:klara-basis: die persönlichen Klara-Gespräche (eine Zeile je Gespräch und Konto).
+import { KLARA_GESPRAECH_SCHEMA } from "./klara-gespraech";
+// ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus.
+import { KOMMUNIKATION_SCHEMA } from "./kommunikationsregeln";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
 import { LESEVARIANTEN_SCHEMA } from "./lesevarianten";
 // PMO-FEA-0003: die freiwilligen Fotos der Live-Wand (eine Zeile je zustimmendem Konto).
 import { LIVEWALL_FOTO_SCHEMA } from "./livewall-fotos";
+// Betroffenenrechte (R-0661): die Löschanträge. Im App-Wurzelverzeichnis wie die Kenntnisnahme —
+// sie verbinden Konto (auth) und Verwalteraufgabe, kein Fachmodul besitzt sie.
+import { LOESCHANTRAG_SCHEMA } from "./loeschantraege";
+// Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände.
+import { OFFICE_ABLAGE_SCHEMA } from "./office-ablage";
 import { IMPORT_RUN_SOURCE_SYNC_SCHEMA } from "./quellabgleich-ablage";
 // produkt:20261007:spaces: die Fassungen der Arbeitsräume. Im App-Wurzelverzeichnis wie das
 // Firmenwörterbuch: die Sichtbarkeitsregel (`sichtbarkeit.ts`) liest sie, kein Fachmodul besitzt sie.
 import { SPACES_SCHEMA } from "./spaces";
+// produkt:20261009:admin-teams: die Fassungen der Teams — neben den Spaces, die sie binden.
+import { TEAMS_SCHEMA } from "./teams";
+// R-1034 / FR-I18N-02: im Betrieb gepflegte Oberflächentexte und zusätzlich angelegte Sprachen.
+import { UEBERSETZUNGEN_SCHEMA } from "./uebersetzungen";
+// ADMIN-15: Fassungen des Unternehmensprofils und der internen Richtlinien samt Handlungsprotokoll.
+import { UNTERNEHMEN_SCHEMA } from "./unternehmensprofil";
+import { VERANTWORTUNG_NACHFOLGE_SCHEMA } from "./verantwortung-nachfolge";
+// produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer Veröffentlichung.
+import { VEROEFFENTLICHUNG_SCHEMA } from "./veroeffentlichung";
+// aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+import { VERSTAENDNISFRAGEN_SCHEMA } from "./verstaendnisfragen";
+// produkt:20261007:templates-default: Vorlagen, persönliche Standards, Space-Vorgaben, Nutzung und
+// Begriffspflege als unveränderliche Fassungen.
+import { VORLAGEN_SCHEMA } from "./vorlagen";
+// R-1656: der Co-Reading-Zähler der Empfehlung „Du solltest auch wissen…" — je Paar nur eine Zahl.
+import { MITGELESEN_SCHEMA } from "./wissensempfehlung";
 
 // Querschnitt-Infrastruktur: ein Pool, geteilt von allen Modul-Adaptern.
 // R-0798: mit Zeitgrenzen — begrenztes Warten auf eine freie Verbindung (Notbremse für den Vorrat)
@@ -175,6 +216,10 @@ export const schemas = [
   // `CREATE UNIQUE INDEX IF NOT EXISTS`), und die Datenmigration ist leer: kein Bestandsentwurf
   // trägt `createOperation`, jede vorhandene Zeile fällt durch das partielle `WHERE`.
   CAPTURE_CREATE_OPERATION_SCHEMA,
+  // R-1133: der technische Index der Entwürfe als Spalten an `drafts` — ZWANG zur Stellung nach
+  // `CAPTURE_SCHEMA` (ALTERt `drafts`) und nach `KO_SCHEMA` (pg_trgm für den Trigramm-Index).
+  // Additiv und wiederholbar; die Datenmigration ist leer, der Altbestand wird nachgezogen.
+  CAPTURE_INDEX_SCHEMA,
   ASK_SCHEMA,
   // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT
   // nach ASK_SCHEMA, weil sie demselben Modul gehoeren; auch hier gibt es keinen technischen
@@ -232,6 +277,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; sie
   // steht am Ende, weil das die lesbare Ordnung ist.
   KO_BEARBEITUNG_SCHEMA,
+  // produkt:20261007:office-artikel-editor: Editor-Sitzungen und gesicherte Konfliktstände von Office
+  // im Artikel. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und
+  // ohne Extension; die Stellung ist die lesbare Ordnung neben dem Bearbeitungshinweis.
+  OFFICE_ABLAGE_SCHEMA,
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
   // Ende, weil das die lesbare Ordnung ist.
@@ -262,11 +311,108 @@ export const schemas = [
   // NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
   // Ordnung ist.
   LIVEWALL_FOTO_SCHEMA,
+  // R-0466: das Interaktionsgedächtnis. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare
+  // Ordnung ist.
+  GEDAECHTNIS_SCHEMA,
+  // produkt:20261007:ownership-uebergabe: die Nachfolge bei Befristung je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  VERANTWORTUNG_NACHFOLGE_SCHEMA,
+  // R-0470: der dauerhafte Vektorspeicher des Textprüfungs-Vorfilters. Additiv und wiederholbar
+  // (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension (kein pgvector), ohne Seed.
+  EMBEDDING_SCHEMA,
+  // Betroffenenrechte (R-0661): die Löschanträge der Mitarbeiter. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das
+  // die lesbare Ordnung ist.
+  LOESCHANTRAG_SCHEMA,
+  // produkt:20261009:admin-teams: die unveränderlichen Fassungen der Teams. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  TEAMS_SCHEMA,
+  // R-1034 / FR-I18N-02: die Übersetzungspflege. Additiv und wiederholbar (zwei CREATE TABLE IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  UEBERSETZUNGEN_SCHEMA,
+  // ADMIN-15: Unternehmensprofil, interne Richtlinien und ihr Handlungsprotokoll. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  UNTERNEHMEN_SCHEMA,
+  // produkt:20261008:klara-basis: die persönlichen Klara-Gespräche. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
+  // lesbare Ordnung ist.
+  KLARA_GESPRAECH_SCHEMA,
+  // R-1656: der Co-Reading-Zähler. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS),
+  // ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  MITGELESEN_SCHEMA,
+  // produkt:20261007:veroeffentlichungsoptionen: die Zustellungen je Empfänger einer
+  // Veröffentlichung. Additiv und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VEROEFFENTLICHUNG_SCHEMA,
+  // produkt:20261007:interner-chat: Gespräche und Nachrichten. Additiv und wiederholbar (CREATE
+  // TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die
+  // lesbare Ordnung ist.
+  CHAT_SCHEMA,
+  // produkt:20261007:templates-default: die Fassungen der Vorlagen samt Standards, Space-Vorgaben,
+  // Nutzung und Begriffspflege. Additiv und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne
+  // Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VORLAGEN_SCHEMA,
+  // produkt:20261007:artikel-gemeinsam: die gemeinsamen Entwürfe der Artikel. Additiv und
+  // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed;
+  // am Ende, weil das die lesbare Ordnung ist.
+  GEMEINSAMER_ENTWURF_SCHEMA,
+  // Instanztrennung (R-0597/R-0790/R-0860): die eine Bindungszeile Datenbank → Anlage. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed — die
+  // Zeile schreibt erst der Start (`bindeInstanzVorMigration` in server.ts, VOR dieser Liste); hier
+  // ist die Stufe danach ein No-op und hält Migrationsbeleg und Restore-Drill vollständig.
+  INSTANZBINDUNG_SCHEMA,
+  // produkt:20261010:assistenz-name-avatar: das persönliche Assistenzprofil je Konto. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am
+  // Ende, weil das die lesbare Ordnung ist.
+  ASSISTENZ_PROFIL_SCHEMA,
+  // ADMIN-12: Fassungen der Kommunikationsregeln, persönliche Abwahlen und Zustellstatus je
+  // Veröffentlichung, Empfänger und Kanal. Additiv und wiederholbar (drei CREATE TABLE IF NOT
+  // EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung
+  // ist.
+  KOMMUNIKATION_SCHEMA,
+  // aufnahme:20260922:gesamt-lernwege: Fragensatzversionen und Versuche der Verständnisfragen.
+  // Additiv und wiederholbar (zwei CREATE TABLE IF NOT EXISTS samt Indizes), ohne Fremdschlüssel,
+  // ohne Extension, ohne Seed; am Ende, weil das die lesbare Ordnung ist.
+  VERSTAENDNISFRAGEN_SCHEMA,
 ];
+
+// ================================================================================================
+// R-0800 — DER SCHEMAAUFBAU LÄUFT KOORDINIERT: EINE INSTANZ NACH DER ANDEREN.
+// ================================================================================================
+//
+// DER GEMESSENE BEFUND (`tests/pg-erstaufbau-konkurrenz/erstaufbau-konkurrenz.integration.test.ts`,
+// Fall E2, Testserver-Lauf pa-1790428493-d9a9274b): `migrate()` lief ohne Sperre. Starteten zwei
+// Instanzen — oder Server und `seed:demo` — gleichzeitig gegen eine frische Datenbank, fiel die
+// zweite mit einer Eindeutigkeitsverletzung im Katalog aus (`23505`, `pg_type_typname_nsp_index`).
+// `IF NOT EXISTS` schützt nur gegen das, was schon FESTGESCHRIEBEN ist, nicht gegen eine Anlage,
+// die eine andere Sitzung gerade vornimmt.
+//
+// DIE SPERRE IST DATENBANKWEIT UND SITZUNGSGEBUNDEN (`pg_advisory_lock`), und alle Stufen laufen auf
+// DERSELBEN Sitzung, die sie hält. Eine Transaktion um den ganzen Aufbau ist bewusst NICHT gewählt:
+// sie änderte, was eine einzelne Stufe darf (`CONCURRENTLY`, s. `overlap-repo-pg.ts`), und machte
+// aus der Koordination eine zweite Änderung. Wer wartet, wartet an der Sperre und findet danach
+// das fertige Schema vor — seine Stufen laufen dann als das, was sie sind: wiederholbar und folgenlos.
+//
+// DER SCHLÜSSEL folgt dem Muster der übrigen Sperren im Haus (`596000001` Bestandsreset,
+// `613000001` Prüfprotokoll, `3087000001` Importannahme) und ist mit keiner davon gleich.
+export const MIGRATIONSSPERRE = 800000001;
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
 export async function migrate(pool: Pool): Promise<void> {
-  for (const ddl of schemas) {
-    await pool.query(ddl);
+  const sitzung = await pool.connect();
+  let sauber = false;
+  try {
+    await sitzung.query("SELECT pg_advisory_lock($1)", [MIGRATIONSSPERRE]);
+    for (const ddl of schemas) {
+      await sitzung.query(ddl);
+    }
+    await sitzung.query("SELECT pg_advisory_unlock($1)", [MIGRATIONSSPERRE]);
+    sauber = true;
+  } finally {
+    // Bricht eine Stufe ab, geht die Sitzung NICHT in den Pool zurück: `release(true)` schließt sie,
+    // und mit ihr endet die Sperre — ohne einen Freigabeaufruf, der auf einer gestörten Verbindung
+    // selbst scheitern und die Sperre bis zum Neustart des Pools festhalten könnte.
+    sitzung.release(!sauber);
   }
 }

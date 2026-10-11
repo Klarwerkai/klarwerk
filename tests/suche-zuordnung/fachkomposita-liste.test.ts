@@ -12,9 +12,11 @@
 import { describe, expect, it } from "vitest";
 import { demoTexts } from "../../services/app/src/demo-content";
 import type { KnowledgeRef } from "../../services/reasoner";
-import { Reasoner, keywordSelect, queryTokens, rankCandidates } from "../../services/reasoner";
+import { Reasoner, queryTokens, rankCandidates } from "../../services/reasoner";
 import { FACHKOMPOSITA } from "../../services/reasoner/src/fachkomposita";
 import { fachkompositaIndex } from "../../services/reasoner/src/provider";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 function ref(
   id: string,

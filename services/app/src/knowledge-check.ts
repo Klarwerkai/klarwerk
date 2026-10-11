@@ -378,7 +378,7 @@ function terms(text: string): string[] {
 export async function checkKnowledge(
   text: string,
   deps: KnowledgeCheckDeps,
-): Promise<KnowledgeCheckResult> {
+): Promise<KnowledgeCheckResult & NegativwissenAuskunft> {
   const clean = text.trim();
   if (clean.length < 12) {
     // G-2-EHRLICHKEIT (ben-Check V2): zu kurzer Text wurde NICHT auf Widerspruch geprüft → ehrlich
@@ -463,11 +463,15 @@ export async function checkKnowledge(
       .sort((a, b) => b.score - a.score)
       .slice(0, SIMILAR_LIMIT);
 
+    // AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629): dieselbe Nähe, nur über die Kandidaten der
+    // Wissensart „negativwissen" — Vertrag bei `negativwissenAuskunft` am Dateiende.
+    const negativ = negativwissenAuskunft(candidates, naehe);
+
     // 3) conflicts: NUR wenn die Route einen Judge übergeben hat (Freitext nicht-vertraulich + Modell
     //    verfügbar). Sonst ehrlich „pending" (nicht geprüft), conflicts = [] — KEIN Cloud-/Modell-Egress
     //    von Freitext. Der Dry-Run (assessAgainstPool) persistiert nichts.
     if (!deps.judge) {
-      return { status: "pending", similar, conflicts: [], coverage };
+      return { status: "pending", similar, conflicts: [], coverage, ...negativ };
     }
     const pool = candidates.map((k) =>
       koToSubject(k, auszuege.get(k.id) ?? "", naehe.get(k.id)?.traegt ?? false),
@@ -485,7 +489,7 @@ export async function checkKnowledge(
       reason: d.rationale ?? "",
       ...(origins.get(d.koId) ?? { koStatus: null, koCategory: null }),
     }));
-    return { status: "done", similar, conflicts, coverage };
+    return { status: "done", similar, conflicts, coverage, ...negativ };
   } catch {
     // never block: ehrlicher Fehlerstatus, keine Interna. Was geprüft wurde, ist nicht belegt.
     return { status: "failed", similar: [], conflicts: [], coverage: UMFANG_UNBEKANNT };
@@ -523,4 +527,75 @@ function pruefumfang(vorausgewaehlt: number, verglichen: number): KnowledgeCheck
     limit: CANDIDATE_LIMIT,
     limitReached: vorausgewaehlt >= CANDIDATE_LIMIT,
   };
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 · NEGATIVWISSEN-HINWEIS (R-1629) — „haben wir probiert, ging nicht" MELDET SICH.
+// ================================================================================================
+//
+// DER AUFTRAG (Roadmap 2.3, wörtlich): „Wenn jemand eine Lösung vorschlägt, die in der
+// Negativwissens-Bibliothek bereits als ‚haben wir probiert, ging nicht' dokumentiert ist, blendet
+// KLARWERK das proaktiv ein — bevor der Fehler ein zweites Mal gemacht wird."
+//
+// WARUM EIN EIGENES FELD UND NICHT `similar`. Die Ähnlichkeitsliste ist auf fünf Treffer gedeckelt,
+// und die Fläche zeigt davon nur den ersten. Ein Negativwissen-Eintrag auf Rang zwei bliebe dort
+// unsichtbar. Hier wird er deshalb aus DERSELBEN Kandidatenmenge gesondert ausgewiesen:
+//   · gleiche Vorauswahl, gleiche Sichtbarkeitsregel, gleiches Weglassen vertraulicher Einträge —
+//     es entsteht kein Kanal an der Vertraulichkeit vorbei;
+//   · gleiche Nähe (der höhere der beiden gemessenen Werte) und gleiche Schwelle SIMILAR_MIN_SCORE —
+//     keine neue Zahl, kein Modell, kein Egress; deshalb läuft der Hinweis auch dann, wenn die
+//     Widerspruchsprüfung mangels Freigabe „pending" bleibt (der Normalfall im Browser-Editor).
+// Die Wissensart ist das, was der Bestand selbst sagt (`type`), nicht eine Deutung des Textes.
+//
+// WAS DER HINWEIS NICHT BEHAUPTET: dass der Entwurf denselben Weg vorschlägt. Belegt ist nur die
+// Textnähe zu einem dokumentierten Fehlschlag. Die Fläche formuliert ihn deshalb als „bitte vorher
+// lesen", nicht als Urteil, und blockiert nichts.
+//
+// DER DRAHT: das Feld fehlt, wenn es keinen Treffer gibt. Antworten ohne Treffer sind damit
+// zeichengleich die bisherigen, und ein Client ohne Kenntnis des Felds sieht nichts Neues.
+const NEGATIVWISSEN_LIMIT = 3;
+const NEGATIVWISSEN_AUSZUG_ZEICHEN = 280;
+
+export interface KnowledgeCheckNegativwissen {
+  id: string;
+  title: string;
+  // Die dokumentierte Kurzfassung des Fehlschlags (Plaintext), gekürzt — damit der Grund schon im
+  // Hinweis steht und nicht erst nach einem Klick.
+  statement: string;
+  score: number; // 0..1, lexikalisch — dieselbe Nähe wie `similar`
+  koStatus: KoStatus | null;
+  koCategory: string | null;
+}
+
+export interface NegativwissenAuskunft {
+  negativwissen?: KnowledgeCheckNegativwissen[];
+}
+
+function kurzfassung(statement: string): string {
+  const text = statement.trim();
+  return text.length <= NEGATIVWISSEN_AUSZUG_ZEICHEN
+    ? text
+    : `${text.slice(0, NEGATIVWISSEN_AUSZUG_ZEICHEN - 1).trimEnd()}…`;
+}
+
+function negativwissenAuskunft(
+  candidates: KnowledgeObject[],
+  naehe: ReadonlyMap<string, { ohne: number; mit: number }>,
+): NegativwissenAuskunft {
+  const treffer = candidates
+    .filter((k) => k.type === "negativwissen")
+    .map((k) => {
+      const wert = naehe.get(k.id);
+      return {
+        id: k.id,
+        title: k.title,
+        statement: kurzfassung(k.statement),
+        score: Math.max(wert?.ohne ?? 0, wert?.mit ?? 0),
+        ...koToOrigin(k),
+      };
+    })
+    .filter((n) => n.score >= SIMILAR_MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, NEGATIVWISSEN_LIMIT);
+  return treffer.length > 0 ? { negativwissen: treffer } : {};
 }

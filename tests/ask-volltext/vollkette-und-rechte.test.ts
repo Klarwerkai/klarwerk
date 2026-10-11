@@ -66,7 +66,11 @@ function mitschreiber(antwort: string): { client: ModelClient; prompts: () => st
 }
 
 async function aufbauen(
-  opts: { vertraulich?: boolean; status?: "offen" | "validiert" } = {},
+  opts: {
+    vertraulich?: boolean;
+    status?: "offen" | "validiert";
+    harmlosTraegtFrage?: boolean;
+  } = {},
   antwort = `${REGELSATZ} [1]`,
 ) {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
@@ -87,9 +91,16 @@ async function aufbauen(
   // Ein zweites, unbedenkliches Objekt (validiert, nicht vertraulich, ohne den Regelsatz). Es sorgt
   // dafür, dass in den Rechte-Fällen WIRKLICH ein Modellaufruf stattfindet: „der Satz steht nicht im
   // Prompt" ist nur dann eine Aussage, wenn es einen Prompt gibt.
+  //
+  // R-0473 (dab4e20c): seit dort muss eine Quelle ALLE Sachbegriffe der Frage führen (customer,
+  // defect, report, days). Der alte Satz hatte kein „days" — das Objekt war kein Kandidat mehr, das
+  // Modell wurde nie gefragt, und R1/R2 maßen nichts. In den Rechte-Fällen trägt es deshalb alle
+  // Begriffe, aber weiterhin NICHT den Regelsatz („30 calendar days"). V1/R3 bleiben unverändert.
   const harmlos = await koService.create({
     title: "Customer defect intake desk",
-    statement: "Reports are received by the service desk.",
+    statement: opts.harmlosTraegtFrage
+      ? "Customer defect reports are received by the service desk on working days."
+      : "Reports are received by the service desk.",
     type: "best_practice",
     category: "Vertrag",
     author: "bea",
@@ -135,7 +146,10 @@ describe("JOB 3298 V · der Nutzerweg: Import → Suche → Auszug → Antwort m
 
 describe("JOB 3298 R · die Rechte gelten vor dem Auszug", () => {
   it("R1 · ein VERTRAULICHES Objekt gibt seinen Dokumenttext nicht an das Modell", async () => {
-    const { ask, ko, harmlos, prompts } = await aufbauen({ vertraulich: true });
+    const { ask, ko, harmlos, prompts } = await aufbauen({
+      vertraulich: true,
+      harmlosTraegtFrage: true,
+    });
     const antwort = await ask.ask(FRAGE, "anna", "en");
     // Das Modell WURDE gefragt (über das unbedenkliche Objekt) — und im Prompt steht kein Wort
     // des vertraulichen Objekts, weder Auszug noch Titel noch Kennung.
@@ -149,7 +163,10 @@ describe("JOB 3298 R · die Rechte gelten vor dem Auszug", () => {
   });
 
   it("R2 · `validatedOnly`: ein UNVALIDIERTES Objekt gibt seinen Dokumenttext nicht an das Modell", async () => {
-    const { ask, ko, harmlos, prompts } = await aufbauen({ status: "offen" });
+    const { ask, ko, harmlos, prompts } = await aufbauen({
+      status: "offen",
+      harmlosTraegtFrage: true,
+    });
     const antwort = await ask.ask(FRAGE, "anna", "en", { validatedOnly: true });
     expect(prompts()).toHaveLength(1);
     const prompt = prompts()[0] ?? "";

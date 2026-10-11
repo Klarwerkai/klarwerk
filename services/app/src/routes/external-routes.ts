@@ -6,6 +6,7 @@ import {
   type ExternalSearchService,
   externalSearchAllowed,
   normalizeExternalKnowledgeStage,
+  stelleAbrufbelegAus,
 } from "../../../external-search";
 import { type Guards, sendError } from "../http";
 
@@ -80,18 +81,24 @@ export function externalRoutes(deps: ExternalRoutesDeps, guards: Guards): Fastif
         return;
       }
       try {
-        reply.code(200).send(await search.search(request.query.q ?? ""));
+        const treffer = await search.search(request.query.q ?? "");
+        // REF-01 (Ben nacharbeit-7 K2): der Abruf ist HIER geschehen — der Server hält ihn je
+        // Treffer fest (Adresse, abgerufener Inhalt, Zeitpunkt) und signiert ihn. Wer den Treffer
+        // anhängt, legt den Beleg vor; nur dann trägt die Belegstelle eine Abrufzeit.
+        const abgerufenAm = new Date().toISOString();
+        reply.code(200).send(
+          treffer.map((t) => ({
+            ...t,
+            abgerufenAm,
+            abrufbeleg: stelleAbrufbelegAus({ url: t.url, inhalt: t.snippet, abgerufenAm }),
+          })),
+        );
       } catch (error) {
-        // JOB 2683 D1 (Review R2-36): die ROHE Ursache (Host, DNS, Statuscode) bleibt hier im Log —
-        // request-gebunden, mit Request-Id. Nach außen geht über `sendError` nur noch die generische
-        // `message` des Providers; bis hierher stand dort der Netzfehlertext im Wortlaut.
-        const detail =
-          error && typeof error === "object" && "detail" in error
-            ? (error as { detail?: unknown }).detail
-            : undefined;
-        if (typeof detail === "string" && detail.length > 0) {
-          request.log.warn({ detail }, "external-search: Anfrage an den Anbieter fehlgeschlagen");
-        }
+        // JOB 2683 D1 (Review R2-36): nach außen geht über `sendError` nur die generische `message`
+        // des Providers. R-0623 (Ben, Nacharbeit 1): ins Log geht nicht mehr der freie Netzfehlertext
+        // (`detail`: Host, DNS), sondern der Fehler über den Erlaubnislisten-Serializer — Typ, Code
+        // und Quelltextstelle, request-gebunden über die Request-Id.
+        request.log.warn({ err: error }, "external-search: Anfrage an den Anbieter fehlgeschlagen");
         sendError(reply, error);
       }
     });

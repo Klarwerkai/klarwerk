@@ -25,9 +25,11 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -35,6 +37,7 @@ import { useTranslation } from "react-i18next";
 import { ZIEL_ATTRIBUT } from "../components/fragen/ziele";
 import { cleanForSpeech, pickVoice, vorlesenMoeglich } from "../lib/vorlesen";
 import { useMediaQuery } from "../shell/useMediaQuery";
+import { TutorialMeldungCtx } from "./fernsteuerung";
 import type { TutorialDefinition, TutorialModul } from "./typen";
 
 /** Takt der Vorführuhr (ms). */
@@ -316,6 +319,72 @@ export function TutorialBereich({
     beobachter.observe(document.body, { childList: true, subtree: true });
     return () => beobachter.disconnect();
   }, [zielName, modul, schrittIndex, lauf, definition.id]);
+
+  // ---------------------------------------------------------------------------------------------
+  // KLARA-VORSCHAU: die Lage an den Rahmen melden (`fernsteuerung.ts`). Die Befehle sind dieselben
+  // Handlungen wie die Knöpfe unten; die Referenz sorgt dafür, dass Klara stets die aktuelle
+  // Fassung ruft. Ohne Klara (kein Meldeweg) passiert hier nichts.
+  // ---------------------------------------------------------------------------------------------
+  const melden = useContext(TutorialMeldungCtx);
+  const befehle = useRef({
+    pause: () => {},
+    fortsetzen: () => {},
+    zurueck: () => {},
+    weiter: () => {},
+  });
+  befehle.current = {
+    pause: () => setSpielt(false),
+    fortsetzen: () => {
+      if (!spielt) {
+        abspielenOderPause();
+      }
+    },
+    zurueck: () => zuSchritt(schrittIndex - 1),
+    weiter: () => zuSchritt(schrittIndex + 1),
+  };
+  const fernbefehle = useMemo(
+    () => ({
+      pause: () => befehle.current.pause(),
+      fortsetzen: () => befehle.current.fortsetzen(),
+      zurueck: () => befehle.current.zurueck(),
+      weiter: () => befehle.current.weiter(),
+    }),
+    [],
+  );
+  const fernSchrittTitel = t(schritt.titelKey, werte);
+  const fernSchrittText = text(schritt.textKey);
+  const fernTeilText = teil ? text(teil.textKey) : null;
+  useEffect(() => {
+    melden?.({
+      definitionId: definition.id,
+      schrittIndex,
+      schrittAnzahl: schritte.length,
+      schrittId: schritt.id,
+      schrittTitel: fernSchrittTitel,
+      schrittText: fernSchrittText,
+      teilText: fernTeilText,
+      zielName,
+      zielFehlt,
+      spielt,
+      interaktiv: Boolean(schritt.interaktiv),
+      ...fernbefehle,
+    });
+  }, [
+    melden,
+    definition.id,
+    schrittIndex,
+    schritte.length,
+    schritt.id,
+    schritt.interaktiv,
+    fernSchrittTitel,
+    fernSchrittText,
+    fernTeilText,
+    zielName,
+    zielFehlt,
+    spielt,
+    fernbefehle,
+  ]);
+  useEffect(() => () => melden?.(null), [melden]);
 
   const verweisAbfangen = (e: MouseEvent<HTMLElement>): void => {
     // Über den React-Baum kommen hier auch Klicks aus dem Blatt „Mehr“ der Demo an (Portal).

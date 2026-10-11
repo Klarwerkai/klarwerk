@@ -27,6 +27,7 @@ export default {
       "{{demo}} von {{total}} gezählten Objekten sind Demodaten. Diese Zahlen enthalten Beispielbestand und sind insoweit keine Messwerte dieser Installation.",
     "kennzahlen.help.wirkung":
       "Der Wochenverlauf zeigt, ob der Nutzen wächst: wie viele Objekte je Woche validiert wurden und welcher Anteil der Fragen je Woche ohne Wissenslücke beantwortet wurde.",
+    "kennzahlen.wochen.geprueft": "Validiert je Woche (nach Prüfzeitpunkt)",
     "kennzahlen.wochen.validiertHinweis":
       "Gezählt nach der Woche, in der das Objekt validiert wurde — nicht nach seiner Erfassung.",
     "kennzahlen.wochen.ohnePruefzeitpunkt":
@@ -54,6 +55,7 @@ export default {
       "{{demo}} of {{total}} counted objects are demo data. These figures include sample holdings and to that extent are not measurements of this installation.",
     "kennzahlen.help.wirkung":
       "The weekly course shows whether the benefit grows: how many objects were validated per week, and what share of questions per week was answered without a knowledge gap.",
+    "kennzahlen.wochen.geprueft": "Validated per week (by review date)",
     "kennzahlen.wochen.validiertHinweis":
       "Counted by the week in which the object was validated — not by when it was captured.",
     "kennzahlen.wochen.ohnePruefzeitpunkt":
@@ -81,6 +83,7 @@ export default {
       "{{demo}} van {{total}} getelde objecten zijn demogegevens. Deze cijfers bevatten voorbeeldbestand en zijn in zoverre geen metingen van deze installatie.",
     "kennzahlen.help.wirkung":
       "Het verloop per week laat zien of het nut groeit: hoeveel objecten per week zijn gevalideerd en welk deel van de vragen per week zonder kennislacune is beantwoord.",
+    "kennzahlen.wochen.geprueft": "Gevalideerd per week (naar controlemoment)",
     "kennzahlen.wochen.validiertHinweis":
       "Geteld naar de week waarin het object is gevalideerd — niet naar het moment van vastleggen.",
     "kennzahlen.wochen.ohnePruefzeitpunkt":

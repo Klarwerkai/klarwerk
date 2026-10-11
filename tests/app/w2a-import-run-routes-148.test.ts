@@ -410,4 +410,20 @@ describe("W2-A/148 · 5 · keine vorgezogene Sichtbarkeit", () => {
     const aufrufer = treffer.filter((p) => !p.endsWith(join("lib", "importResultView.ts")));
     expect(aufrufer, "keine Seite darf die Resultatfläche rendern").toEqual([]);
   });
+
+  // R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 10): die Sperre oben war eine Schnittgrenze
+  // bis zur Lieferung von R-0142. Geliefert ist sie (gesamt-confluence-import, 1.0.0-beta.1.723) als
+  // `components/bibliothek/ImportErgebnis.tsx`, montiert in `MehrAbschnitte.tsx`. Die alte Fläche
+  // ist damit überholt und entfernt; dieser Fall hält fest, dass sie nicht zurückkommt und der
+  // gelieferte Weg der ist, der gerendert wird.
+  it("die Altfläche ist entfernt; das Importergebnis kommt über den gelieferten Weg", async () => {
+    const { existsSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const web = join(__dirname, "..", "..", "apps", "web", "src", "components");
+    for (const alt of ["ImportResultView.tsx", "SourceRecordCard.tsx", "KnowledgeItemList.tsx"]) {
+      expect(existsSync(join(web, "confluence-import", alt)), `${alt} ist zurück`).toBe(false);
+    }
+    const mehr = readFileSync(join(web, "bibliothek", "MehrAbschnitte.tsx"), "utf8");
+    expect(mehr, "der gelieferte Weg ist nicht mehr montiert").toMatch(/<ImportErgebnis\b/);
+  });
 });

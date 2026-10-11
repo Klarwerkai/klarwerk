@@ -11,7 +11,12 @@ import { useReasonerConfig, useReasonerStatus } from "../api/hooks";
 import type { ReasonerTask } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { deriveAiBillable } from "../lib/aiAvailability";
-import { AI_TASK_INFO_TEXT, aiTaskInfo, aiTaskInfoPublic } from "../lib/reasonerTaskInfo";
+import {
+  AI_TASK_INFO_TEXT,
+  type AiDatenfluss,
+  aiTaskInfo,
+  aiTaskInfoPublic,
+} from "../lib/reasonerTaskInfo";
 // AUFTRAG-mega62 Block F: der Kostenhinweis. Er steht hier aus demselben Grund wie der KI-Satz —
 // diese Fläche sitzt IMMER an einem Auslöser (sie nennt die Aufgabe, die der Klick daneben startet),
 // nie an einem Ergebnis. Damit tragen Strukturieren, Extrahieren, Interview und Umformulieren ihn
@@ -19,7 +24,32 @@ import { AI_TASK_INFO_TEXT, aiTaskInfo, aiTaskInfoPublic } from "../lib/reasoner
 import { AiCostHint } from "./AiCostHint";
 // AUFTRAG-mega61 Block E: der dauerhaft sichtbare Satz. Er steht hier, damit JEDE Fläche, die
 // heute schon die Modellangabe trägt, ihn ohne weiteres Zutun mitbekommt.
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+// R-0603/R-0604: diese Fläche sitzt am AUSLÖSER, nie am Ergebnis — deshalb der Flächensatz und
+// nicht „von KI erzeugt": vor dem Klick ist nichts erzeugt.
+import { AiSurfaceNotice } from "./AiGeneratedNotice";
+
+// R-0600: der Datenfluss-Hinweis je Stufe — Kurzsatz und Erläuterung. „unknown" hat keinen:
+// ohne geladene Zuordnung gibt es keine Aussage (kein Fake-Grün, kein Fake-Rot).
+const DATENFLUSS: Record<
+  Exclude<AiDatenfluss, "unknown">,
+  { labelKey: string; bodyKey: string; klasse: string }
+> = {
+  extern: {
+    labelKey: AI_TASK_INFO_TEXT.flussExtern,
+    bodyKey: AI_TASK_INFO_TEXT.flussExternBody,
+    klasse: "bg-trust-warn-bg text-trust-warn-text",
+  },
+  server: {
+    labelKey: AI_TASK_INFO_TEXT.flussServer,
+    bodyKey: AI_TASK_INFO_TEXT.flussServerBody,
+    klasse: "bg-trust-warn-bg text-trust-warn-text",
+  },
+  keiner: {
+    labelKey: AI_TASK_INFO_TEXT.flussKeiner,
+    bodyKey: AI_TASK_INFO_TEXT.flussKeinerBody,
+    klasse: "bg-trust-pos-bg text-trust-pos-text",
+  },
+};
 
 // JOB 615 D7: die Fläche nennt eine Aufgabe — und zwar eine, die es gibt. Der geschlossene Typ
 // macht einen Tippfehler an JEDER der vielen Einbaustellen zum Compilerfehler.
@@ -30,20 +60,24 @@ export function AiModelInfo({ task }: { task: ReasonerTask }): JSX.Element {
   const config = useReasonerConfig(role === "admin");
   const publicStatus = useReasonerStatus();
   const info = config.data ? aiTaskInfo(config.data, task) : aiTaskInfoPublic(publicStatus.data);
+  const fluss = info.datenfluss === "unknown" ? null : DATENFLUSS[info.datenfluss];
   return (
     // AUFTRAG-mega61 Block E: der dauerhaft sichtbare Satz steht VOR der Modellangabe — er braucht
     // keine Interaktion, sie schon. Beides bleibt beieinander: was arbeitet (aufklappbar) und dass
     // etwas arbeitet (immer da). Die Modellangabe selbst ist unverändert.
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <AiGeneratedNotice />
+      <AiSurfaceNotice />
       {/* AUFTRAG-mega67 Block G: diese Fläche KENNT ihre Aufgabe bereits (sie nennt sie ja) und
           hält den öffentlichen Status ohnehin schon — sie leitet den Kostenhinweis daraus ab und
           schweigt, wenn dieser Klick nichts kostet. */}
       <AiCostHint billable={deriveAiBillable(publicStatus.data, task)} />
       <span className="relative inline-flex">
+        {/* R-0600: „vor dem Klick wissen, wohin die Inhalte gehen" — der Kurzsatz steht schon im
+            Zeigehinweis des Symbols, nicht erst in der aufgeklappten Fläche. */}
         <button
           type="button"
           aria-label={t(AI_TASK_INFO_TEXT.title)}
+          title={fluss ? t(fluss.labelKey) : t(AI_TASK_INFO_TEXT.title)}
           onClick={() => setOpen((v) => !v)}
           className={`grid h-4 w-4 place-items-center rounded-full text-[11px] ${
             open ? "text-ai" : "text-muted-2 hover:text-text"
@@ -71,30 +105,19 @@ export function AiModelInfo({ task }: { task: ReasonerTask }): JSX.Element {
                 </div>
               ) : null}
               <p className="mt-1.5 text-[12px] leading-relaxed text-muted">{t(info.bodyKey)}</p>
-              {/* Pedi 05.07.: Datenschutz-Hinweis — grün, wenn die KI im Haus läuft (lokal/regelbasiert,
-                keine Übermittlung an Dritte); amber bei externer Cloud-Verarbeitung. Ohne Konfiguration
-                bewusst keine Aussage (kein Fake-Grün). */}
-              {info.dsgvo !== "unknown" ? (
-                <div className="mt-2">
+              {/* R-0600: wohin die Inhalte gehen und was das bedeutet. Grün nur, wenn gar nichts an
+                ein Modell geht (regelbasiert); jeder Versand an eine KI ist amber — auch an den
+                Server des Betreibers, dessen Ort der Code nicht kennt. Die frühere Aussage
+                „DSGVO-konform" ist gestrichen (R-0599). Ohne Zuordnung bewusst keine Aussage. */}
+              {fluss ? (
+                <div className="mt-2" data-testid="ai-model-info-datenfluss">
                   <span
-                    className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
-                      info.dsgvo === "inhouse"
-                        ? "bg-trust-pos-bg text-trust-pos-text"
-                        : "bg-trust-warn-bg text-trust-warn-text"
-                    }`}
+                    className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${fluss.klasse}`}
                   >
-                    {t(
-                      info.dsgvo === "inhouse"
-                        ? AI_TASK_INFO_TEXT.dsgvoInhouse
-                        : AI_TASK_INFO_TEXT.dsgvoExternal,
-                    )}
+                    {t(fluss.labelKey)}
                   </span>
                   <p className="mt-1 text-[11px] leading-relaxed text-muted-2">
-                    {t(
-                      info.dsgvo === "inhouse"
-                        ? AI_TASK_INFO_TEXT.dsgvoInhouseBody
-                        : AI_TASK_INFO_TEXT.dsgvoExternalBody,
-                    )}
+                    {t(fluss.bodyKey)}
                   </p>
                 </div>
               ) : null}

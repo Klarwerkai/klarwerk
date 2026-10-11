@@ -112,6 +112,10 @@ interface WordMessung {
 const wordMessungen = new Map<string, WordMessung>();
 const wordRouten = ["/start", "/import"] as const;
 const wordSprachen = ["de", "en"] as const;
+const wordMenuepunkt: Record<Sprache, string> = {
+  de: "Klara in Word (Vorschau)",
+  en: "Klara in Word (preview)",
+};
 const hilfesaetze: Record<Sprache, string> = {
   de: "Klara hilft dir schon heute in der Web-App — hier geht es zur Hilfe.",
   en: "Klara already helps you in the web app — open the help page here.",
@@ -129,17 +133,20 @@ async function wordHinweisOeffnen(seite: Seite, route: WordRoute, sprache: Sprac
       fn('(label) => document.querySelector(`button[aria-label="${label}"]`).click()'),
       label,
     );
+    // N-0042: der Menüpunkt trägt die Vorschau im Namen (`texte/wordvorschau.ts`).
+    const punkt = wordMenuepunkt[sprache];
     await seite.waitForFunction(
       fn(
-        '() => [...document.querySelectorAll("button")].some(el => el.textContent.trim() === "Klara in Word")',
+        '(punkt) => [...document.querySelectorAll("button")].some(el => el.textContent.trim() === punkt)',
       ),
-      undefined,
+      punkt,
       { timeout: 10_000 },
     );
     await seite.evaluate(
       fn(
-        '() => [...document.querySelectorAll("button")].find(el => el.textContent.trim() === "Klara in Word").click()',
+        '(punkt) => [...document.querySelectorAll("button")].find(el => el.textContent.trim() === punkt).click()',
       ),
+      punkt,
     );
   }
   await seite.waitForFunction(
@@ -352,13 +359,15 @@ describe("JOB 3144 · Klara-Webhilfe in Chromium", () => {
     );
     await seite.waitForFunction(
       fn(
-        '() => [...document.querySelectorAll("button")].some(el => el.textContent.trim() === "Klara in Word")',
+        '(punkt) => [...document.querySelectorAll("button")].some(el => el.textContent.trim() === punkt)',
       ),
+      wordMenuepunkt.de,
     );
     await seite.evaluate(
       fn(
-        '() => [...document.querySelectorAll("button")].find(el => el.textContent.trim() === "Klara in Word").click()',
+        '(punkt) => [...document.querySelectorAll("button")].find(el => el.textContent.trim() === punkt).click()',
       ),
+      wordMenuepunkt.de,
     );
     await seite.waitForFunction(
       fn("() => !!document.querySelector('[data-testid=\"klara-path-teaser\"] summary')"),

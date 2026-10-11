@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   useAiCheckCoverageSummary,
   useAnalytics,
@@ -14,9 +14,11 @@ import {
   useValidationOverview,
 } from "../api/hooks";
 import type { AuditFilter } from "../api/types";
+import { leerzustandsRahmen } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { PersonenZeilen } from "../components/PruefaufgabenJePerson";
+import { Wissenskennzahlen } from "../components/Wissenskennzahlen";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import {
   assignmentRows,
@@ -28,13 +30,15 @@ import {
   formatRate,
   validationRate,
   weeklyAnswerRate,
-  weeklyValidated,
+  weeklyReviewed,
   workloadSummary,
 } from "../lib/analyticsMetrics";
 import { ANALYTICS_AUDIT_ANCHOR, hashToElementId } from "../lib/analyticsSections";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
+import { emptyStateActions } from "../lib/emptyStateActions";
 import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
+import { formatKoTimestamp } from "../lib/koDates";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 
 const BAND_TONE: Record<HealthBand, string> = {
@@ -43,14 +47,23 @@ const BAND_TONE: Record<HealthBand, string> = {
   kritisch: "bg-trust-crit-bg text-trust-crit-text",
 };
 
-function Kpi({ label, value }: { label: string; value: string | number }): JSX.Element {
+// ADMIN-11: jede Bestandszahl nennt darunter, was sie zählt und wovon (Grundmenge).
+function Kpi({
+  label,
+  value,
+  hint,
+}: { label: string; value: string | number; hint: string }): JSX.Element {
   return (
     <div className="rounded-card bg-page p-4">
       <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
+      <div className="mt-0.5 text-[11px] leading-snug text-muted-2">{hint}</div>
     </div>
   );
 }
+
+/** Eine Quote über eine leere Grundmenge ist nicht 0 %, sondern nicht berechenbar. */
+const OHNE_GRUNDMENGE = "—";
 
 // SCRUM-431: Executive-Kachel mit kurzer Erklärung darunter — jede Zahl ist selbsterklärend.
 // E2E-016: solange die Quelle noch lädt, zeigt die Kachel „—" statt einer echten 0 (unbekannt ≠ 0).
@@ -70,7 +83,7 @@ function ExecKpi({
 }
 
 export function Analytics(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const analytics = useAnalytics();
   const audit = useAudit();
   const kos = useKos();
@@ -96,9 +109,7 @@ export function Analytics(): JSX.Element {
   // E2E-016: die vier Exec-Kennzahlen sind EINE zusammengehörige Gruppe — bis ALLE Quellen geladen
   // sind, wird die Gruppe atomar als „lädt" behandelt (kein Mischbild aus echter Zahl und 0). Seit
   // bens D9-Auflage über den gemeinsamen Ladezustand-Helfer (dasselbe Muster wie Start/Nav/Bereitschaft).
-  // R-0723: drei der vier Kernzahlen oben kommen aus dem Wirkungsbericht — er gehört deshalb mit in
-  // die Gruppe.
-  const execSources = [kos, gaps, busFactor, impact];
+  const execSources = [kos, gaps, busFactor];
   const execLoading = isGroupLoading(execSources);
   // AUFTRAG-mega3 Block B (bens D9): dritte Phase „error"/„stale" für die Exec-KPI-Gruppe.
   const execError = isGroupError(execSources);
@@ -107,11 +118,7 @@ export function Analytics(): JSX.Element {
     void kos.refetch();
     void gaps.refetch();
     void busFactor.refetch();
-    void impact.refetch();
   };
-  const im = impact.data;
-  const rateWeeks = weeklyAnswerRate(im?.askByWeek);
-  const latestRateWeek = rateWeeks[rateWeeks.length - 1];
   // R-0736/R-0755: Demodaten zählen mit, aber nicht stillschweigend — der Anteil wird benannt.
   const kosList = kos.data ?? [];
   const demoCount = kosList.filter(isDemoKnowledge).length;
@@ -166,104 +173,29 @@ export function Analytics(): JSX.Element {
     return () => window.clearTimeout(handle);
   }, [location.hash]);
 
+  // ADMIN-11: der Datenstand der Bestandszahlen — der Abruf der Übersicht, nicht „jetzt".
+  const bestandStand =
+    analytics.dataUpdatedAt > 0
+      ? formatKoTimestamp(new Date(analytics.dataUpdatedAt).toISOString(), i18n.language)
+      : null;
+
   return (
     <div className="mx-auto max-w-4xl space-y-7">
       <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} pageKey="analytics" />
 
-      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick aus Live-Daten.
-          R-0723: oben die vier Kernzahlen für Entscheider — geprüftes Wissen, gestellte Fragen, ohne
-          Lücke beantwortete Fragen, Antwortquote (ihr Wochenverlauf steht unter „Wirkung"). Die
-          bisherigen Bestands-/Risikokacheln bleiben als zweite Zeile derselben Gruppe erhalten. */}
-      <div>
-        <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("ana.exec.title")}</SectionLabel>
-          <HelpTip title={t("ana.exec.title")} body={t("kennzahlen.help.exec")} />
-        </div>
-        <Card>
-          {execStale ? (
-            <div className="mb-3">
-              <StaleMarker onRetry={retryExec} />
-            </div>
-          ) : null}
-          {execError ? (
-            // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
-            <LoadErrorState onRetry={retryExec} />
-          ) : (
-            <div className="space-y-3">
-              {!execLoading && demoCount > 0 ? (
-                <p
-                  data-testid="analytics-demo-hinweis"
-                  className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2 text-[12px] leading-relaxed text-trust-warn-text"
-                >
-                  {t("kennzahlen.demo.hinweis", { demo: demoCount, total: kosList.length })}
-                </p>
-              ) : null}
-              <div
-                className="grid grid-cols-2 gap-3 sm:grid-cols-4"
-                data-testid="analytics-kernzahlen"
-              >
-                <ExecKpi
-                  label={t("ana.exec.validated")}
-                  value={exec.validated}
-                  hint={t("ana.exec.validatedHint")}
-                  loading={execLoading}
-                />
-                <ExecKpi
-                  label={t("ana.impactAsk")}
-                  value={im?.askTotal ?? 0}
-                  hint={t("kennzahlen.exec.askedHint")}
-                  loading={execLoading}
-                />
-                <ExecKpi
-                  label={t("ana.impactAnswered")}
-                  value={im?.answeredWithoutGap ?? 0}
-                  hint={t("kennzahlen.exec.answeredHint")}
-                  loading={execLoading}
-                />
-                <ExecKpi
-                  label={t("ana.impactRate")}
-                  value={formatRate(im?.answerRate ?? 0)}
-                  hint={
-                    latestRateWeek
-                      ? t("kennzahlen.exec.rateHint", {
-                          rate: formatRate(latestRateWeek.rate),
-                          week: latestRateWeek.week,
-                        })
-                      : t("kennzahlen.exec.rateHintLeer")
-                  }
-                  loading={execLoading}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <ExecKpi
-                  label={t("ana.exec.openReviews")}
-                  value={exec.openReviews}
-                  hint={t("ana.exec.openReviewsHint")}
-                  loading={execLoading}
-                />
-                <ExecKpi
-                  label={t("ana.exec.busFactor")}
-                  value={exec.singleSourceCategories}
-                  hint={t("ana.exec.busFactorHint")}
-                  loading={execLoading}
-                />
-                <ExecKpi
-                  label={t("ana.exec.rescued")}
-                  value={exec.rescuedGaps}
-                  hint={t("ana.exec.rescuedHint")}
-                  loading={execLoading}
-                />
-              </div>
-            </div>
-          )}
-        </Card>
-      </div>
+      {/* ADMIN-11 (produkt:20261009:admin-wissenskennzahlen): der Handlungsbedarf steht ZUERST —
+          mit Zeitraum, Space- und Teamfilter, Datenstand und dem Weg in die Arbeitslisten.
+          R-0723 (Integration mit main): Fragen, ohne Lücke beantwortet und Antwortquote stehen hier
+          für den gewählten Zeitraum samt Vorperiode; die Gesamtzahlen samt validiertem Wissen und
+          ihr Wochenverlauf stehen unter den Bestandszahlen („Fragen und validiertes Wissen gesamt"). */}
+      <Wissenskennzahlen />
 
-      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar */}
+      {/* SCRUM-141: Knowledge Health — datenbasiert & erklärbar. R-0908: die Überschrift kommt aus
+          `texte/fachwort.ts` („Zustand der Wissensbasis“), `health.title` sagte „Knowledge Health“. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("health.title")}</SectionLabel>
-          <HelpTip title={t("health.title")} body={t("ana.help.health")} />
+          <SectionLabel>{t("fachwort.gesundheit.titel")}</SectionLabel>
+          <HelpTip title={t("fachwort.gesundheit.titel")} body={t("ana.help.health")} />
         </div>
         {healthUnknown ? (
           <Card data-testid="health-unknown" className="flex items-center gap-4">
@@ -316,7 +248,9 @@ export function Analytics(): JSX.Element {
             </div>
             {/* AUFTRAG-mega33 BLOCK B (Pedi 27.07.): bei unbelegter Erkennung rechnet die sichtbare
                 Zahl mit dem VOLLEN Konfliktabzug — der schlechteste Fall steht groß da. Der
-                optimistische Rand steht daneben, benannt als das, was er ist. */}
+                optimistische Rand steht daneben, benannt als das, was er ist.
+                ADMIN-11: die Kennzeichnung (Titelsatz) bleibt sichtbar; Grund und bekannter Abzug
+                stehen mit der übrigen Rechnung im aufklappbaren Teil darunter. */}
             {health.conflictFactor.proven ? null : (
               <div
                 data-testid="health-conflict-unproven"
@@ -329,35 +263,114 @@ export function Analytics(): JSX.Element {
                   })}
                 </p>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                  {t(`health.conflictUnproven.${health.conflictFactor.reason}`)}
-                </p>
-                <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                  {t("health.conflictUnproven.known", {
-                    count: health.openConflicts,
-                    penalty: health.conflictFactor.knownPenalty,
-                    max: health.conflictFactor.maxPenalty,
-                  })}
+                  {t("wkz.wert.unbelegt")}
                 </p>
               </div>
             )}
-            <div className="space-y-1.5">
-              {health.factors.map((f) => (
-                <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
-                  <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
-                    }`}
-                  />
-                  <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
-                  <span className="font-mono text-muted-2">
-                    {f.value}
-                    {f.unit === "percent" ? "%" : ""}
-                  </span>
+            <details data-testid="health-berechnung" className="text-[12.5px]">
+              <summary className="cursor-pointer font-semibold text-text">
+                {t("wkz.wert.details")}
+              </summary>
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                {t("wkz.wert.erklaerung")}
+              </p>
+              {health.conflictFactor.proven ? null : (
+                <div className="mt-1.5 space-y-0.5 text-[12px] leading-relaxed text-muted">
+                  <p>{t(`health.conflictUnproven.${health.conflictFactor.reason}`)}</p>
+                  <p>
+                    {t("health.conflictUnproven.known", {
+                      count: health.openConflicts,
+                      penalty: health.conflictFactor.knownPenalty,
+                      max: health.conflictFactor.maxPenalty,
+                    })}
+                  </p>
                 </div>
-              ))}
-            </div>
+              )}
+              <div className="mt-2 space-y-1.5">
+                {health.factors.map((f) => (
+                  <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
+                      }`}
+                    />
+                    <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
+                    <span className="font-mono text-muted-2">
+                      {f.value}
+                      {f.unit === "percent" ? "%" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
           </Card>
         )}
+      </div>
+
+      {/* ADMIN-11: alles darunter ist Gesamtbestand ohne Zeitraum und ohne Filter — das steht hier,
+          einmal, mit dem Datenstand des Abrufs. */}
+      <div data-testid="bestand-kopf">
+        <SectionLabel>{t("wkz.bestand.titel")}</SectionLabel>
+        <p className="text-[12px] text-muted-2">
+          {t("wkz.bestand.erklaerung", { zeit: bestandStand ?? OHNE_GRUNDMENGE })}
+        </p>
+      </div>
+
+      {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
+      <div>
+        <div className="mb-2 flex items-center gap-1.5">
+          <SectionLabel>{t("ana.exec.title")}</SectionLabel>
+          <HelpTip title={t("ana.exec.title")} body={t("ana.help.exec")} />
+        </div>
+        <Card>
+          {execStale ? (
+            <div className="mb-3">
+              <StaleMarker onRetry={retryExec} />
+            </div>
+          ) : null}
+          {execError ? (
+            // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
+            <LoadErrorState onRetry={retryExec} />
+          ) : (
+            <div className="space-y-3">
+              {/* R-0736/R-0755: Demobestand zählt mit, aber nicht stillschweigend. */}
+              {!execLoading && demoCount > 0 ? (
+                <p
+                  data-testid="analytics-demo-hinweis"
+                  className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2 text-[12px] leading-relaxed text-trust-warn-text"
+                >
+                  {t("kennzahlen.demo.hinweis", { demo: demoCount, total: kosList.length })}
+                </p>
+              ) : null}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <ExecKpi
+                  label={t("ana.exec.validated")}
+                  value={exec.validated}
+                  hint={t("ana.exec.validatedHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.openReviews")}
+                  value={exec.openReviews}
+                  hint={t("ana.exec.openReviewsHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.busFactor")}
+                  value={exec.singleSourceCategories}
+                  hint={t("ana.exec.busFactorHint")}
+                  loading={execLoading}
+                />
+                <ExecKpi
+                  label={t("ana.exec.rescued")}
+                  value={exec.rescuedGaps}
+                  hint={t("ana.exec.rescuedHint")}
+                  loading={execLoading}
+                />
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
 
       <QueryState query={analytics}>
@@ -368,29 +381,70 @@ export function Analytics(): JSX.Element {
           return (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Kpi label={t("ana.total")} value={a.total} />
-                <Kpi label={t("status.offen")} value={a.byStatus.offen ?? 0} />
-                <Kpi label={t("status.validiert")} value={a.byStatus.validiert ?? 0} />
-                <Kpi label={t("ana.categories")} value={Object.keys(a.byCategory).length} />
+                <Kpi label={t("ana.total")} value={a.total} hint={t("wkz.bestand.total")} />
+                <Kpi
+                  label={t("status.offen")}
+                  value={a.byStatus.offen ?? 0}
+                  hint={t("wkz.bestand.offen")}
+                />
+                <Kpi
+                  label={t("status.validiert")}
+                  value={a.byStatus.validiert ?? 0}
+                  hint={t("wkz.bestand.validiert")}
+                />
+                <Kpi
+                  label={t("ana.categories")}
+                  value={Object.keys(a.byCategory).length}
+                  hint={t("wkz.bestand.categories")}
+                />
               </div>
 
-              {/* SCRUM-139: Trust & Arbeitslast */}
+              {/* SCRUM-139: Trust & Arbeitslast. ADMIN-11: über eine leere Grundmenge steht keine 0. */}
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Kpi label={t("ana.avgTrust")} value={trust} />
+                <Kpi
+                  label={t("ana.avgTrust")}
+                  value={(kos.data ?? []).length > 0 ? trust : OHNE_GRUNDMENGE}
+                  hint={
+                    (kos.data ?? []).length > 0
+                      ? t("wkz.bestand.avgTrust")
+                      : t("wkz.bestand.keineGrundmenge")
+                  }
+                />
                 <Kpi
                   label={t("ana.validationRate")}
-                  value={`${validationRate(a.total, a.byStatus.validiert ?? 0)}%`}
+                  value={
+                    a.total > 0
+                      ? `${validationRate(a.total, a.byStatus.validiert ?? 0)}%`
+                      : OHNE_GRUNDMENGE
+                  }
+                  hint={
+                    a.total > 0 ? t("wkz.bestand.validationRate") : t("wkz.bestand.keineGrundmenge")
+                  }
                 />
-                <Kpi label={t("ana.openTasks")} value={work.openTotal} />
-                <Kpi label={t("ana.doneTasks")} value={work.doneTotal} />
+                <Kpi
+                  label={t("ana.openTasks")}
+                  value={work.openTotal}
+                  hint={t("wkz.bestand.openTasks")}
+                />
+                <Kpi
+                  label={t("ana.doneTasks")}
+                  value={work.doneTotal}
+                  hint={t("wkz.bestand.doneTasks")}
+                />
               </div>
 
               <Card>
                 <SectionLabel>{t("ana.byType")}</SectionLabel>
+                {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die vorhandene Abschnittserklärung
+                    (`shelp.*`) in der Seitenhilfe — bis hierher nur über Klaras Suche erreichbar. */}
+                <HelpTip title={t("ana.byType")} body={t("shelp.ana.byType")} />
                 <div className="space-y-2">
                   {Object.entries(a.byType).map(([k, v]) => (
                     <div key={k} className="flex items-center gap-3">
-                      <span className="w-32 truncate text-[13px] text-text">{t(`ktype.${k}`)}</span>
+                      {/* WCAG 1.4.12 (Audit nacharbeit-10): umbrechen statt abschneiden. */}
+                      <span className="w-32 text-[13px] text-text [overflow-wrap:anywhere]">
+                        {t(`ktype.${k}`)}
+                      </span>
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
                         <div
                           className="h-full rounded-full bg-brand"
@@ -450,22 +504,58 @@ export function Analytics(): JSX.Element {
         </QueryState>
       </div>
 
-      {/* SCRUM-140: Wirkungs-/Impact-Metriken aus GET /api/analytics/impact.
-          R-0723/R-0750: die vier Zahlen stehen oben im Executive-Blick; hier steht ihr Verlauf
-          über die Zeit — validiertes Wissen je Woche und die Antwortquote je Woche. */}
+      {/* SCRUM-140: Fragen und validiertes Wissen gesamt aus GET /api/analytics/impact.
+          ADMIN-11: Überschrift und Hilfe sagen, was die Zahlen sind — Nutzung, keine gemessene
+          Zeit- oder Geldersparnis.
+          R-0723: die vier Kernzahlen gesamt (geprüftes Wissen, gestellte Fragen, ohne Lücke
+          beantwortet, Antwortquote) stehen hier EINMAL; ihr Wochenverlauf darunter (R-0750/R-1741).
+          main hatte den Wochenbalken entfernt, weil er HEUTE validierte Objekte nach ihrer
+          Erstellungswoche gruppierte. Seit diesem Auftrag zählt er nach dem belegten Prüfzeitpunkt
+          `validatedAt`; Objekte ohne belegten Zeitpunkt stehen gesondert als zeitlich unbekannt. */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <SectionLabel>{t("ana.impact")}</SectionLabel>
-          <HelpTip title={t("ana.impact")} body={t("kennzahlen.help.wirkung")} />
+          <SectionLabel>{t("wkz.bestand.fragenTitel")}</SectionLabel>
+          <HelpTip title={t("wkz.bestand.fragenTitel")} body={t("wkz.bestand.fragenHilfe")} />
         </div>
         <QueryState query={impact}>
           {(bericht) => {
-            const weeks = weeklyValidated(bericht.validatedByWeek);
+            const weeks = weeklyReviewed(bericht.validatedByWeek);
             const maxWeek = Math.max(1, ...weeks.map((w) => w.count));
             const rates = weeklyAnswerRate(bericht.askByWeek);
             const ohnePruefzeitpunkt = bericht.validatedUnknownWeek ?? 0;
             return (
               <div className="space-y-4">
+                <div
+                  className="grid grid-cols-2 gap-3 sm:grid-cols-4"
+                  data-testid="analytics-kernzahlen"
+                >
+                  <Kpi
+                    label={t("ana.impactValidated")}
+                    value={bericht.validatedTotal}
+                    hint={t("wkz.bestand.impactValidated")}
+                  />
+                  <Kpi
+                    label={t("ana.impactAsk")}
+                    value={bericht.askTotal}
+                    hint={t("wkz.bestand.impactAsk")}
+                  />
+                  <Kpi
+                    label={t("ana.impactAnswered")}
+                    value={bericht.answeredWithoutGap}
+                    hint={t("wkz.bestand.impactAnswered")}
+                  />
+                  <Kpi
+                    label={t("ana.impactRate")}
+                    value={
+                      bericht.askTotal > 0 ? formatRate(bericht.answerRate) : OHNE_GRUNDMENGE
+                    }
+                    hint={
+                      bericht.askTotal > 0
+                        ? t("wkz.bestand.impactRate")
+                        : t("wkz.bestand.keineGrundmenge")
+                    }
+                  />
+                </div>
                 <Card data-testid="analytics-quote-woche">
                   <SectionLabel>{t("kennzahlen.wochen.quote")}</SectionLabel>
                   {rates.length === 0 ? (
@@ -495,7 +585,7 @@ export function Analytics(): JSX.Element {
                 </Card>
                 {weeks.length > 0 || ohnePruefzeitpunkt > 0 ? (
                   <Card data-testid="analytics-validiert-woche">
-                    <SectionLabel>{t("ana.weekly")}</SectionLabel>
+                    <SectionLabel>{t("kennzahlen.wochen.geprueft")}</SectionLabel>
                     <p className="mb-2 text-[11px] leading-snug text-muted-2">
                       {t("kennzahlen.wochen.validiertHinweis")}
                     </p>
@@ -574,7 +664,30 @@ export function Analytics(): JSX.Element {
             className="h-9 min-w-[10rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-[13px] outline-none focus:border-ink/30"
           />
         </div>
-        <QueryState query={audit} emptyText={t("ana.auditEmpty")}>
+        {/* R-0956 (Ben, Nacharbeit 4): der WIRKLICH leere Bestand ordnet in den Wissenskreis ein
+            und nennt den nächsten Schritt. Der Filter-Leerzustand darunter (`ana.auditNoMatch`)
+            bleibt davon getrennt — dort ist der Bestand nicht leer, nur eingegrenzt.
+            Diese Seite ist reine Admin-Fläche (`navigation.ts`, minRole „admin“) und bewusst ohne
+            Rollenzweig gebaut (`tests/seitenhilfe-navkapitel/lesekapitel-am-seitenverhalten`):
+            die Schritte kommen deshalb aus derselben Liste, fest für ihre einzige Rolle. */}
+        <QueryState
+          query={audit}
+          emptyText={t("ana.auditEmpty")}
+          emptyExtra={leerzustandsRahmen(
+            t,
+            "audit",
+            emptyStateActions("audit", "admin", false),
+            (a) => (
+              <Link
+                key={a.to}
+                to={a.to}
+                className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-text hover:border-ink/30 hover:text-ai"
+              >
+                {t(a.labelKey)}
+              </Link>
+            ),
+          )}
+        >
           {(entries) => {
             const filtered = filterAudit(entries, filter);
             return (
@@ -600,10 +713,15 @@ export function Analytics(): JSX.Element {
                           className="flex items-center gap-3 px-4 py-2 text-[12.5px]"
                         >
                           <span className="font-mono text-[11px] text-muted-2">
-                            {new Date(e.at).toLocaleString()}
+                            {formatKoTimestamp(e.at, i18n.language)}
                           </span>
                           <span className="font-semibold text-text">{e.action}</span>
-                          <span className="truncate text-muted">{e.target}</span>
+                          {/* WCAG 1.4.12 (Audit nacharbeit-10): bis hier `truncate` — mit größerem
+                              Textabstand schnitt die Zeile das Ziel ab, und der volle Wert war
+                              nirgends sonst zu lesen. Jetzt bricht er um, auch mitten in einer ID. */}
+                          <span className="min-w-0 text-muted [overflow-wrap:anywhere]">
+                            {e.target}
+                          </span>
                           <span className="ml-auto font-mono text-[11px] text-muted-2">
                             {e.actor}
                           </span>

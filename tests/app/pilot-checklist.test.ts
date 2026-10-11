@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ALL_ITEMS, ROLE_RANK, type Role } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
-import {
-  PILOT_CHECKLIST,
-  pilotChecklist,
-  pilotSchritte,
-} from "../../apps/web/src/lib/pilotChecklist";
+import { PILOT_CHECKLIST, pilotSchritte } from "../../apps/web/src/lib/pilotChecklist";
 
 // SCRUM-305: In-App-Einstiegsführung für den ersten Nutzerlauf — ehrliche Stage-1-Prüfpunkte entlang
 // Capture → Validation → Use → Gap → Maintain, nur auf vorhandene App-Routen.
@@ -37,8 +33,8 @@ function minRolleAusRegistry(to: string): Role {
 }
 
 describe("SCRUM-305: pilotChecklist", () => {
+  // R-1349: gemessen an `PILOT_CHECKLIST` — der Zugriff `pilotChecklist()` ist entfernt.
   it("liefert genau sieben Schritte in fester Reihenfolge", () => {
-    expect(pilotChecklist()).toBe(PILOT_CHECKLIST);
     expect(PILOT_CHECKLIST.map((c) => c.id)).toEqual([
       "start",
       "library",

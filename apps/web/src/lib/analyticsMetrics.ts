@@ -39,8 +39,15 @@ export function formatRate(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-// SCRUM-140: validierte KOs je Woche, jüngste zuletzt, optional begrenzt.
-export function weeklyValidated(
+// ADMIN-11: `weeklyValidated` ist entfernt — sein einziger Aufrufer, der Wochenbalken auf
+// /analytics, zeigte heute validierte Objekte nach Erstellungswoche als Freigabeverlauf.
+//
+// R-0750 / R-1741 (Aufnahme gesamt-kennzahlen): ein ANDERER, erhobener Verlauf. Der Server zählt
+// `validatedByWeek` seit diesem Auftrag nach dem belegten Prüfzeitpunkt `validatedAt`
+// (services/app/src/impact.ts); Objekte ohne belegten Zeitpunkt zählen in keine Woche. Eigener Name,
+// damit der ADMIN-11-Wächter gegen die rückwirkende Erstellungswochen-Reihe unverändert gilt.
+// Wochen chronologisch, jüngste zuletzt, optional begrenzt.
+export function weeklyReviewed(
   byWeek: Record<string, number>,
   limit = 8,
 ): { week: string; count: number }[] {

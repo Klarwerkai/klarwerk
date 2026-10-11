@@ -5,15 +5,19 @@
 //
 // Gefahren wird die echte Analytics-Seite; die Endpointgrenze ist die einzige Attrappe.
 //
-//   K1  R-0723   oben stehen genau die vier Kernzahlen für Entscheider — geprüftes Wissen,
-//                gestellte Fragen, ohne Lücke beantwortet, Antwortquote — vor allen anderen Blöcken
+//   K1  R-0723   die vier Kernzahlen für Entscheider gesamt — geprüftes Wissen, gestellte Fragen,
+//                ohne Lücke beantwortet, Antwortquote — stehen zusammen im Abschnitt „Fragen und
+//                validiertes Wissen gesamt", VOR ihrem Wochenverlauf. Seit der Integration mit main
+//                (ADMIN-11, produkt:20261009) steht ganz oben der Handlungsbedarf (`Wissenskennzahlen`,
+//                eigener Test); die Reihenfolge „Kernzahlen ganz oben" ist dort eine offene
+//                Produktfrage, kein Sollwert dieses Tests mehr.
 //   K2  R-0750   der Wochenverlauf: Antwortquote je Woche UND validiertes Wissen je Woche, und die
 //                vier Zahlen stehen nicht ein zweites Mal als eigene Reihe darunter
 //   K3  FR-VAL-06 / FR-ANA-01  offen/erledigt je Person, mit Namen statt Kennung
 //   K4  R-0755   Demobestand in den Zahlen wird ausdrücklich benannt; ohne Demobestand kein Hinweis
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const lage = vi.hoisted(() => ({ mitDemo: true }));
+const lage = vi.hoisted(() => ({ mitDemo: true, ohneFragen: false }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
@@ -59,17 +63,30 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         }),
         busfactor: ok([]),
         expertise: ok([]),
-        impact: ok({
-          validatedTotal: 3,
-          validatedByWeek: { "2026-09-07": 1, "2026-09-14": 2 },
-          askTotal: 7,
-          answeredWithoutGap: 5,
-          answerRate: 5 / 7,
-          askByWeek: {
-            "2026-09-07": { asked: 3, answeredWithoutGap: 1 },
-            "2026-09-14": { asked: 4, answeredWithoutGap: 4 },
-          },
-        }),
+        impact: vi.fn(async () =>
+          lage.ohneFragen
+            ? {
+                validatedTotal: 3,
+                validatedByWeek: { "2026-09-14": 3 },
+                validatedUnknownWeek: 0,
+                askTotal: 0,
+                answeredWithoutGap: 0,
+                answerRate: 0,
+                askByWeek: {},
+              }
+            : {
+                validatedTotal: 3,
+                validatedByWeek: { "2026-09-07": 1, "2026-09-14": 2 },
+                validatedUnknownWeek: 0,
+                askTotal: 7,
+                answeredWithoutGap: 5,
+                answerRate: 5 / 7,
+                askByWeek: {
+                  "2026-09-07": { asked: 3, answeredWithoutGap: 1 },
+                  "2026-09-14": { asked: 4, answeredWithoutGap: 4 },
+                },
+              },
+        ),
       },
       audit: { list: ok([]) },
       lifecycle: { pending: ok([]) },
@@ -176,6 +193,7 @@ function vor(a: Element, b: Element): boolean {
 
 beforeEach(async () => {
   lage.mitDemo = true;
+  lage.ohneFragen = false;
   await i18n.changeLanguage("de");
 });
 
@@ -187,26 +205,27 @@ afterEach(async () => {
 });
 
 describe("Gesamt-Kennzahlen · die Auswertungsseite gegen ihre Originalkriterien", () => {
-  it("K1 · R-0723: oben stehen genau die vier Kernzahlen, mit den Werten der Live-Quellen", async () => {
+  it("K1 · R-0723: die vier Kernzahlen gesamt stehen zusammen, mit den Werten der Live-Quellen", async () => {
     await mount();
     const reihe = element("analytics-kernzahlen");
     expect(kacheln(reihe)).toEqual([
-      // drei echte validierte + ein validiertes Demo-Objekt: gezählt wird der ganze Bestand
-      [i18n.t("ana.exec.validated"), "3"],
+      [i18n.t("ana.impactValidated"), "3"],
       [i18n.t("ana.impactAsk"), "7"],
       [i18n.t("ana.impactAnswered"), "5"],
       [i18n.t("ana.impactRate"), "71%"],
     ]);
-    // Die Quote nennt ihren jüngsten Wochenwert gleich mit — „im Wochenverlauf".
-    expect(reihe.textContent).toContain(
-      i18n.t("kennzahlen.exec.rateHint", { rate: "100%", week: "2026-09-14" }),
-    );
-    // „oben": vor dem Health-Wert, vor dem Bestand und vor dem Wirkungsabschnitt.
-    for (const spaeter of ["health.title", "ana.total", "ana.impact"]) {
-      const ziel = blatt(i18n.t(spaeter));
-      expect(ziel, `${spaeter} fehlt`).toBeDefined();
-      expect(vor(reihe, ziel as Element), `Kernzahlen nicht vor ${spaeter}`).toBe(true);
-    }
+    // Die Zahlen stehen VOR ihrem Wochenverlauf (Antwortquote je Woche, validiert je Woche).
+    const quoteVerlauf = element("analytics-quote-woche");
+    const validiertVerlauf = element("analytics-validiert-woche");
+    expect(vor(reihe, quoteVerlauf), "Kernzahlen nach dem Quotenverlauf").toBe(true);
+    expect(vor(reihe, validiertVerlauf), "Kernzahlen nach dem Freigabeverlauf").toBe(true);
+  });
+
+  it("K1 · Gegenprobe: ohne Fragen ist die Antwortquote nicht berechenbar, keine 0 %", async () => {
+    lage.ohneFragen = true;
+    await mount();
+    const quote = kacheln(element("analytics-kernzahlen"))[3];
+    expect(quote).toEqual([i18n.t("ana.impactRate"), "—"]);
   });
 
   it("K2 · R-0750: Antwortquote und validiertes Wissen je Woche — ohne zweite Zahlenreihe", async () => {
@@ -222,7 +241,7 @@ describe("Gesamt-Kennzahlen · die Auswertungsseite gegen ihre Originalkriterien
     expect(text.indexOf("2026-09-07"), "Wochen nicht chronologisch").toBeLessThan(
       text.indexOf("2026-09-14"),
     );
-    expect(container.textContent).toContain(i18n.t("ana.weekly"));
+    expect(container.textContent).toContain(i18n.t("kennzahlen.wochen.geprueft"));
     expect(container.textContent).toContain(i18n.t("kennzahlen.wochen.validiertHinweis"));
     // Die vier Zahlen stehen EINMAL auf der Seite (die doppelte Zahlenreihe ist zusammengezogen).
     const fragen = [...container.querySelectorAll("div")].filter(
@@ -274,7 +293,8 @@ describe("Gesamt-Kennzahlen · die Auswertungsseite gegen ihre Originalkriterien
     lage.mitDemo = false;
     await mount();
     expect(container.querySelector('[data-testid="analytics-demo-hinweis"]')).toBeNull();
-    const erste = kacheln(element("analytics-kernzahlen"))[0];
-    expect(erste).toEqual([i18n.t("ana.exec.validated"), "2"]);
+    // Kalibrierung: die Exec-Gruppe ist geladen (sonst fehlte der Hinweis nur wegen „lädt").
+    const validiert = blatt(i18n.t("ana.exec.validated"))?.parentElement?.children[1];
+    expect(validiert?.textContent).toBe("2");
   });
 });
