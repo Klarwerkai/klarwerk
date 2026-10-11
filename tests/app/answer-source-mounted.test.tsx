@@ -57,7 +57,8 @@ function makeKo(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
 describe("Paket 4: AnswerSourceDetails (Mounted)", () => {
   it("Status-Badge (Validierungs-Sprache) + Trust sichtbar; Summary-Disclosure toggelt", () => {
     mount(makeKo(), "Anna Autor");
-    expect(container.textContent).toContain("Validiert"); // StatusPill via deriveStatus
+    // StatusPill via deriveStatus; Nutzerentscheid Antwort 54: „Fachlich bestätigt".
+    expect(container.textContent).toContain("Fachlich bestätigt");
     // mega52 E2: der deutsche Anzeigewert heißt „Vertrauen" — „Trust" war Fachjargon, den die
     // Zielgruppe überliest. Der Schlüssel (`answerSource.trust`) ist unverändert (E3).
     expect(container.textContent).toContain("Vertrauen 80");

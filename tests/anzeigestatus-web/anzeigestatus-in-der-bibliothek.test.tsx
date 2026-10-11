@@ -309,7 +309,8 @@ describe("JOB 3072 · N4 — die Bibliothek zeigt den erhobenen Zustand", () => 
   // ----------------------------------------------------------------------------------------------
   it("R-3 · ohne erhobene Auskunft bleibt es beim gespeicherten Status; der Anker nennt `bestand`", () => {
     mount();
-    expect(zeilenWort("k-ohne")).toBe(WORT("status.validiert"));
+    // Nutzerentscheid Antwort 54: der validierte Zustand heisst sichtbar „Fachlich bestätigt".
+    expect(zeilenWort("k-ohne")).toBe(WORT("pruefablauf.wissensstatus.validiert"));
     expect(zeilenAnker("k-ohne")).toEqual({ herkunft: "bestand", ungeprueft: [] });
     waehle("k-ohne");
     expect(pille().anker.herkunft).toBe("bestand");
