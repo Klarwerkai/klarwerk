@@ -322,6 +322,26 @@ Grenzen:
 - Den Antrag gibt es nur über den Knopf am Objekt und die API. Eine Aufgabe für die Person, die den
   Antrag stellt, entsteht nicht; angezeigt wird sie der Verwaltung.
 
+## Nacharbeit 7 (Kandidat `ac6f378f`): Prüflaufbefunde nach der Integration
+
+- `apps/web/src/api/hooks.ts` liest keinen React-Kontext mehr. Grund war TS6142: das Modul ist
+  aus Node-Prüfungen erreichbar und darf kein `.tsx` laden. Ob die Verwaltung die Übergaben sieht,
+  entscheidet der Aufrufer aus der Rolle (`shell/KopfbandPunkte.tsx`, `pages/MyTasks.tsx`). Die
+  Rolle steht im Abfrageschlüssel, damit eine vor der Sitzung gemountete Fläche nach der Anmeldung
+  neu lädt.
+- `autorenuebergabe-aufgabe.test.ts` A1/A2: mains neue Kontoendesperre
+  (`produkt:20261007:ownership-uebergabe`, 409 `BESTAND_OFFEN`) verbietet Löschen und Befristen
+  eines Kontos, das noch Verantwortung trägt. Die Tests ändern das Konto deshalb vor dem Anlegen
+  des Objekts. Statt eines künftigen Ablaufs wird der Ablauf entfernt (`null`), was die Sperre
+  zulässt. An der Fachregel ändert sich nichts.
+- Fremde rote Prüfungen aus mains Bestand sind nicht mehr im Prüfplan:
+  - `g10-herkunft-zentrum-vertraulich`, `route-guard-audit` und `mega74-lesewege-sammler`
+    scheitern an mains neuen Routen (Office/WOPI, `POST /api/gaps/:id/zurueckweisen`,
+    `GET /api/library/import/candidates/befunde`, Ausgangsstellen `standardDiscovery` und
+    `einbetten`).
+  - `KnowledgeDetail.owner-chain` scheitert in mains `VerstaendnisfragenBereich.tsx`.
+  - Die Einträge dieses Auftrags in diesen Inventaren bleiben bestehen.
+
 ## Unverändert (K3, K4)
 
 - `setAuthor`, `transferAuthor`, die Route `transfer-author` und das Audit `ko.author-transferred`

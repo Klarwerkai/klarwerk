@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSession } from "../app/AuthContext";
 // JOB 577: die kanonische Normalisierung von „nicht vorhanden / nicht sichtbar" (404) in den
 // Datenzustand `null`. Sie steht in einer eigenen Datei, weil sie ein VERTRAG ist und keine
 // Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
@@ -59,27 +58,33 @@ export const useReturnedTasks = () =>
 // (`null`), statt einer Abfrage, die mit 403 scheitert oder als abgeschaltete Abfrage ewig „lädt".
 // Beides hielte den Aufgaben-Zähler und die Seite in einem falschen Lade- oder Fehlerzustand.
 //
-// Gefragt wird die SITZUNGSrolle, nicht die Ansicht-als-Rolle: Die Abfrage richtet sich nach dem
-// Recht, das der Server prüft. Beide Schlüssel liegen unter `["me", "author-transfers"]`; wer
-// diesen Präfix entwertet, frischt Liste und Zahl gemeinsam auf.
-function useIstVerwaltung(): boolean {
-  return useSession().user?.role === "admin";
+// OB die Verwaltung fragt, entscheidet der AUFRUFER (`verwaltung`, aus Sitzung bzw. Rolle). Dieses
+// Modul importiert bewusst keinen React-Kontext: es wird auch aus Node-Prüfungen erreicht, die kein
+// JSX übersetzen (Nacharbeit 7, TS6142).
+//
+// DER SCHLÜSSEL TRÄGT DIE ENTSCHEIDUNG MIT. Die Rolle steht erst fest, wenn die Sitzung geladen
+// ist. Wechselt `verwaltung` dann auf wahr, ist es ein NEUER Schlüssel und damit ein neuer Abruf.
+// Das gilt auch für Flächen, die schon vor der Sitzung montiert waren. Mit einem festen Schlüssel
+// und nur umspringendem `enabled` blieben genau diese Flächen ohne Daten (Nacharbeit 7: Kopfband und
+// Aufgabenseite zählten die Übergaben nicht, solange sie vor der Sitzung montiert waren). Beide
+// Schlüssel liegen weiter unter `["me", "author-transfers"]`; wer diesen Präfix entwertet, frischt
+// Liste und Zahl gemeinsam auf.
+function verwaltungsSchluessel(verwaltung: boolean): string {
+  return verwaltung ? "verwaltung" : "keine";
 }
 
-export function useAuthorTransfers() {
-  const verwaltung = useIstVerwaltung();
+export function useAuthorTransfers(verwaltung: boolean) {
   const abfrage = useQuery({
-    queryKey: ["me", "author-transfers", "list"],
+    queryKey: ["me", "author-transfers", "list", verwaltungsSchluessel(verwaltung)],
     queryFn: () => endpoints.me.authorTransfers(),
     enabled: verwaltung,
   });
   return verwaltung ? abfrage : null;
 }
 
-export function useAuthorTransfersSummary() {
-  const verwaltung = useIstVerwaltung();
+export function useAuthorTransfersSummary(verwaltung: boolean) {
   const abfrage = useQuery({
-    queryKey: ["me", "author-transfers", "summary"],
+    queryKey: ["me", "author-transfers", "summary", verwaltungsSchluessel(verwaltung)],
     queryFn: () => endpoints.me.authorTransfersSummary(),
     enabled: verwaltung,
   });

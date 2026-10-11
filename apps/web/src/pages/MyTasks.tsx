@@ -166,10 +166,10 @@ export function MyTasks(): JSX.Element {
   // (`GET /api/audit`, `ko.validate`). Daran scheiterte die Liste für Experten, während das
   // Kopfband sie zählte. Liste und Zahl rechnen jetzt serverseitig mit derselben Auswahl.
   const zurueckgegeben = useReturnedTasks();
-  // R-0961: die wartenden Autorenübergaben — nur für die Verwaltung (`null` für alle anderen).
-  const uebergaben = useAuthorTransfers();
-  const kos = useKos();
   const { user } = useSession();
+  // R-0961: die wartenden Autorenübergaben — nur für die Verwaltung (`null` für alle anderen).
+  const uebergaben = useAuthorTransfers(user?.role === "admin");
+  const kos = useKos();
 
   // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts).
   const nameOf = useAuthorName();

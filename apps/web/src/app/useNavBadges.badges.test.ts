@@ -69,7 +69,8 @@ vi.mock("../api/hooks", () => ({
   useGapsSummary: () => q.gaps,
   useLifecyclePending: () => q.lifecycle,
   useReturnedTasksSummary: () => q.returned,
-  useAuthorTransfersSummary: () => (q.verwaltung.an ? q.uebergaben : null),
+  // Wie der echte Hook: eine Quelle nur, wenn der Aufrufer die Verwaltung meldet.
+  useAuthorTransfersSummary: (verwaltung: boolean) => (verwaltung ? q.uebergaben : null),
 }));
 
 import { type NavBadge, useNavBadges } from "./useNavBadges";
@@ -78,7 +79,7 @@ import { type NavBadge, useNavBadges } from "./useNavBadges";
 function badgesLesen(): Record<string, NavBadge> {
   let ergebnis: Record<string, NavBadge> = {};
   const Sonde = (): null => {
-    ergebnis = useNavBadges();
+    ergebnis = useNavBadges(q.verwaltung.an);
     return null;
   };
   renderToStaticMarkup(createElement(Sonde));

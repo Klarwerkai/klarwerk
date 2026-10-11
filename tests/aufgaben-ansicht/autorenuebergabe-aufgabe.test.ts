@@ -87,15 +87,22 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
     expect(await anstehend()).toEqual([]);
   });
 
+  // Seit `produkt:20261007:ownership-uebergabe` (verantwortung-routes.ts, `kontoendeSperre`) lässt
+  // die Kontoverwaltung ein Konto nicht mehr löschen oder befristen, solange es noch Beiträge
+  // verantwortet (409 `BESTAND_OFFEN`). Der Auslöser bleibt trotzdem nötig: für Beiträge, deren
+  // Konto schon fehlte, als sie entstanden (Altbestand, Import), und für Befristungen, die vor dem
+  // Beitrag gesetzt wurden. Genau in dieser Reihenfolge stellen A1 und A2 den Zustand her, über
+  // die echten Kontowege und ohne den Schutz zu umgehen.
   it("A1 · Konto des Autors gelöscht ⇒ Übergabe steht an; A7 · Übergabe ⇒ verschwindet", async () => {
     const { app, services, ada, anna, bert, eintrag, anstehend, aktion } = await setup();
-    const k = await eintrag(bert.id, "Instandhaltung");
     const geloescht = await app.inject({
       method: "DELETE",
       url: `/api/users/${bert.id}`,
       headers: ada.headers,
     });
     expect(geloescht.statusCode, geloescht.body).toBe(204);
+    // Ein Beitrag, dessen Autor kein Konto mehr hat (Altbestand).
+    const k = await eintrag(bert.id, "Instandhaltung");
     expect(await anstehend()).toEqual([{ koId: k, grund: "konto-geloescht", kritisch: false }]);
 
     // Die vorhandene Admin-Handlung, unverändert: neuer Autor, Audit `ko.author-transferred`.
@@ -113,7 +120,6 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
 
   it("A2 · Zugang des Autors abgelaufen ⇒ Übergabe steht an; Befristung entfernt ⇒ nicht mehr", async () => {
     const { app, ada, anna, eintrag, anstehend } = await setup();
-    const k = await eintrag(anna.id, "Instandhaltung");
     const befristen = (accessExpiresAt: string | null) =>
       app.inject({
         method: "PUT",
@@ -121,13 +127,15 @@ describe("R-0961: wartende Autorenübergabe — Auslöser, Berechtigung, Priorit
         headers: ada.headers,
         payload: { accessExpiresAt },
       });
+    // Die Befristung steht VOR dem Beitrag (s. Kommentar über A1) und ist inzwischen abgelaufen.
     const abgelaufen = await befristen("2026-01-01T00:00:00.000Z");
     expect(abgelaufen.statusCode, abgelaufen.body).toBeLessThan(300);
+    const k = await eintrag(anna.id, "Instandhaltung");
     expect(await anstehend()).toEqual([{ koId: k, grund: "zugang-beendet", kritisch: false }]);
 
-    // Eine Befristung in der Zukunft ist kein Ausscheiden.
-    const kuenftig = await befristen("2099-01-01T00:00:00.000Z");
-    expect(kuenftig.statusCode, kuenftig.body).toBeLessThan(300);
+    // Die Befristung zu NEHMEN ist auch mit Bestand erlaubt — danach ist der Zugang offen.
+    const entfernt = await befristen(null);
+    expect(entfernt.statusCode, entfernt.body).toBeLessThan(300);
     expect(await anstehend()).toEqual([]);
   });
 

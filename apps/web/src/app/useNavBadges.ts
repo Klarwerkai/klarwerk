@@ -60,7 +60,10 @@ export interface NavBadge {
 // FUNKE-FIX3 P0 (bens Blocker A): die Sidebar ist auf JEDER Seite gemountet — der Aufgaben-Zähler
 // speist sich deshalb aus der TEXTFREIEN aggregierten Quelle (useGapsSummary → GET /api/gaps/summary,
 // nur Zahlen). Der Gap-Volltextpfad (useGaps → GET /api/gaps) darf in der Shell NIE geladen werden.
-export function useNavBadges(): Record<string, NavBadge> {
+// R-0961: `verwaltung` — zählt die Verwaltung (Admin) die wartenden Autorenübergaben mit? Der
+// Aufrufer entscheidet es aus der Rolle (`shell/KopfbandPunkte.tsx`); ohne Angabe gibt es die Quelle
+// nicht. Dieses Modul liest selbst keinen React-Kontext (Node-Prüfungen, TS6142).
+export function useNavBadges(verwaltung = false): Record<string, NavBadge> {
   const board = useValidationBoard();
   const conflicts = useConflicts();
   const duplicates = useDuplicates();
@@ -77,7 +80,7 @@ export function useNavBadges(): Record<string, NavBadge> {
   // Autorenübergabe-Auftrag (R-0961): die wartenden Autorenübergaben. Sie gibt es nur für die
   // Verwaltung; für alle anderen ist die Quelle `null` und steht weder im Summanden noch in der
   // Ladezustandsliste — sonst hielte eine nie gestellte Abfrage den Zähler im Ladezustand.
-  const uebergaben = useAuthorTransfersSummary();
+  const uebergaben = useAuthorTransfersSummary(verwaltung);
   const uebergabenQuellen = uebergaben ? [uebergaben] : [];
   // ==============================================================================================
   // JOB 3113 H1b — DIE UHR, DIE GENAU EINMAL SCHLÄGT.
