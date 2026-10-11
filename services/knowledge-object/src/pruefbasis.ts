@@ -103,16 +103,38 @@ export function brauchtPruefstand(ko: { aiCheck?: AiCheck | undefined }): boolea
   return ko.aiCheck !== undefined && ko.aiCheck.status !== "pending";
 }
 
+// ================================================================================================
+// produkt:20261011:peter-p14 · B-07 — DIE LESEFASSUNG VERRÄT KEINEN UNSICHTBAREN BESTAND.
+// ================================================================================================
+//
+// Der Bestandsteil der Basis ist ein Fingerabdruck über ALLE aktiven Objekte — auch über die, die
+// ein Leser nicht sehen darf. Stand er in der gelesenen Fassung (`aiCheck.ueberholt`), kippte das
+// Bit an einem sichtbaren Objekt, sobald sich irgendwo ein unsichtbares änderte (Prüfnachtrag
+// CLAUDE-20261011-B-07: A=true/B=false/C=true bei sichtbaren Mengen 1/1/2). Peters Existenzregel
+// (Entscheidung 25): Existenzhinweise nur mit ausdrücklichem Recht. Ein solches Recht gibt es im
+// Produkt nicht — der Bestandsteil gehört deshalb in KEINE Lesefassung.
+//
+// WAS BLEIBT: Die gespeicherte Basis ist unverändert dreiteilig (quelle, kontext, bestand); jeder
+// Lauf bindet sich weiter an alle drei (`pruefbasisVon`, `gleichePruefbasis` beim Eintragen). Der
+// INTERNE Abgleich (`KoService.listMitBestandsabgleich`, Hintergrundprüfung) liest den Bestandsteil
+// weiter mit und gleicht Nachweise nach Bestandsänderungen neu ab. Nur die Lesefassung, die jede
+// Route, jede Zählung und jede Antwortbewertung erreicht, leitet `ueberholt` allein aus dem Objekt
+// selbst ab: aus Dingen, die jeder Leser dieses Objekts ohnehin sieht.
+
 /**
- * Ist dieser abgeschlossene Nachweis gegenüber dem jetzigen Objekt und Bestand überholt?
+ * Ist dieser abgeschlossene Nachweis gegenüber dem jetzigen Objekt (und, nur intern, dem jetzigen
+ * Bestand) überholt?
  *
  * Nur ein ABGESCHLOSSENER Nachweis (done/failed) kann überholt sein — ein wartender Lauf gilt ohnehin
  * nicht als aktuell, und der Lauf selbst bindet sich beim Start an die dann gültige Basis. Ohne
- * vollständige gespeicherte Basis ist nichts belegt: überholt.
+ * vollständige gespeicherte Basis ist nichts belegt: überholt (die Vollständigkeit ist eine Angabe
+ * des gespeicherten Nachweises selbst, kein Blick in den Bestand).
+ *
+ * `bestand` fehlt → die Lesefassung: verglichen werden nur Quelle und Kontext dieses Objekts.
  */
 export function aiCheckUeberholt(
   ko: BasisQuelle & { aiCheck?: AiCheck | undefined },
-  bestand: string,
+  bestand?: string,
 ): boolean {
   const check = ko.aiCheck;
   if (!check || check.status === "pending") {
@@ -121,17 +143,21 @@ export function aiCheckUeberholt(
   if (!check.basis?.quelle || !check.basis.kontext || !check.basis.bestand) {
     return true;
   }
+  if (bestand === undefined) {
+    return check.basis.quelle !== quelleVon(ko) || check.basis.kontext !== kontextVon(ko);
+  }
   return !gleichePruefbasis(check.basis, pruefbasisVon(ko, bestand));
 }
 
 /**
  * Die Lesefassung eines Objekts: `aiCheck.ueberholt` wird bei JEDEM Lesen aus der gespeicherten
  * Basisbindung neu abgeleitet — nie geglaubt, nie fortgeschrieben. Ein versehentlich mitgespeicherter
- * Merker wird hier also auch wieder entfernt.
+ * Merker wird hier also auch wieder entfernt. Ohne `bestand` die Lesefassung (B-07, s. oben); mit
+ * `bestand` die interne Fassung des Abgleichs.
  */
 export function mitPruefstand<T extends BasisQuelle & { aiCheck?: AiCheck | undefined }>(
   ko: T,
-  bestand: string,
+  bestand?: string,
 ): T {
   if (!ko.aiCheck) {
     return ko;

@@ -44,9 +44,26 @@ Ablauf einer gefilterten Anfrage:
 
 Eine Partnerkennung, die nicht lesbar, kein Partnerbereich, unbekannt oder aus einer anderen Firma ist, liefert dieselbe leere Antwort `[]`.
 
-Rechte und Partnerbereiche werden je Anfrage frisch aus der Ablage gelesen. Es gibt keinen Zwischenspeicher: Ein Entzug der Mitgliedschaft oder eine geänderte Marke wirkt mit der nächsten Anfrage. Die Weboberfläche führt den Filter im Abfrageschlüssel mit (`KoFilter`) und leert ihren Zwischenspeicher bei der Abmeldung.
+Rechte und Partnerbereiche werden je Anfrage frisch aus der Ablage gelesen. Es gibt keinen Zwischenspeicher: Ein Entzug der Mitgliedschaft oder eine geänderte Marke wirkt mit der nächsten Anfrage.
+
+## Zwischenspeicher der Weboberfläche
+
+Jede angemeldete Antwort trägt den Kopf `x-klarwerk-rechtekontext`. Er ist ein Fingerabdruck aus Konto, Rolle und lesbaren Spaces dieser Anfrage (`services/app/src/rechtekontext.ts`).
+
+Ändert sich der Stempel, bricht die Weboberfläche alle laufenden Inhaltsabfragen ab und setzt sie zurück (`apps/web/src/lib/rechtekontext.ts`, `RechtekontextWache`). Auslöser sind Rollenentzug, Mitgliedschaftsentzug und Kontowechsel. Danach gilt:
+
+- Bis die Neuantwort da ist, zeigt die Fläche nichts statt alter Treffer.
+- Verspätete Antworten aus dem alten Kontext werden verworfen.
+
+Der Wechsel wird mit der nächsten Antwort erkannt. Bei offener Seite kommt sie spätestens im Takt der Hülle (`GeteilterStandNachlader`, 20 s). Die Abmeldung leert den Speicher wie bisher ganz.
+
+## Prüfstand in der Ausgabe (Prüfnachtrag B-07)
+
+`aiCheck.ueberholt` wird in jeder ausgegebenen Fassung nur aus Quelle und Kontext des Eintrags selbst abgeleitet. Das gilt für Liste, Suche, Export, Detail, Antwortbewertung und Zählung. Der Bestandsteil der gespeicherten Basis bleibt gespeichert und wirkt nur intern (`KoService.listMitBestandsabgleich`, Hintergrundprüfung). Eine Änderung an einem für den Leser unsichtbaren Eintrag ändert seine Antworten deshalb nicht.
 
 ## Grenzen
 
 - Eine Bedienfläche für den Bereichswechsel in der Bibliothek ist nicht gebaut. Der Filter ist über die API und die Web-API-Typen nutzbar.
 - Eine Suche mit Firmenfilter wird ohne Treffer nicht als Nulltreffer vermerkt. Die gespeicherte Eingrenzung kennt den Bereich nicht.
+- Nach einer Bestandsänderung wird ein Prüfnachweis nicht mehr beim Lesen erneuert, sondern nur durch die Hintergrundprüfung oder einen ausdrücklichen Vollabgleich.
+- Die gelernten Halbwertszeiten der Frische-Auskunft (R-1636) werden bewusst über den ganzen Bestand gerechnet. Diese Regel ist nicht Teil dieser Änderung.

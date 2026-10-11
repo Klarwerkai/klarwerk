@@ -18,6 +18,8 @@ import { GeteilterStandNachlader } from "./app/GeteilterStandNachlader";
 // Hier ist es eine, neben den übrigen App-Kontexten, und sie deckt AUCH die shell-lose Route.
 import { ImageDescribeProvider } from "./app/ImageDescribeContext";
 import { NavGuardProvider } from "./app/NavGuardContext";
+// produkt:20261011:peter-p14 (K6/K7): räumt den Zwischenspeicher bei einem Wechsel des Rechtekontexts.
+import { RechtekontextWache } from "./app/RechtekontextWache";
 import { RoleProvider } from "./app/RoleContext";
 import { ToastProvider } from "./app/ToastContext";
 import { AuthScreens } from "./auth/AuthScreens";
@@ -90,6 +92,7 @@ function Gate(): JSX.Element {
   const anwendung = (
     <>
       <GeteilterStandNachlader />
+      <RechtekontextWache />
       <AppShell>
         <AppRoutes />
       </AppShell>

@@ -29,8 +29,9 @@
 //   K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage (kein Zwischenstand)
 //   K7 · Kontextwechsel lässt keine unberechtigten alten Ergebnisse stehen
 //   K8 · Zwei Firmen und mehrere Rollen mit positiven/negativen Fällen
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import type { KnowledgeObject } from "../../services/knowledge-object";
 
 type App = ReturnType<typeof buildApp>;
 type Kopf = { authorization: string };
@@ -542,36 +543,180 @@ describe("K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage", ()
     expect(await liste(a, a.k.erik, "firmenbereich=eigen")).toEqual(["E1", "E2", "P1"]);
   });
 
-  it("eine für Lea unsichtbare Änderung ändert ihre gefilterten Antworten nicht", async () => {
+  // ==============================================================================================
+  // B-07 (Prüfnachtrag) · Nacharbeit 2, Bens Befund „Antwortvergleich": verglichen werden die
+  // VOLLSTÄNDIGEN Antworten — samt Metadaten, Prüfvermerk (`aiCheck.ueberholt`), Zählung und
+  // Rechtekontext-Kopf —, nicht nur Kennungen. Kalibriert ist mit abgeschlossenen Nachweisen samt
+  // vollständig gespeicherter Basis. Normalisiert wird NICHTS: die Uhr steht während der Vergleiche
+  // still (`Date`), weil die Frische-Auskunft an der Uhrzeit hängt — das ist der einzige begründet
+  // veränderliche Anteil, und er wird angehalten statt herausgerechnet.
+  //
+  // BENANNTE GRENZE: die stehende Uhr hält auch den Zwischenspeicher der gelernten Halbwertszeiten
+  // (R-1636, `KoService.gelernteHalbwertszeiten`, bewusst über den GANZEN Bestand gerechnet) fest.
+  // Ob eine unsichtbare neue Fassung nach dessen Frist die Frische sichtbarer Einträge verschiebt,
+  // misst dieser Fall deshalb NICHT; das ist eine eigene, dort entschiedene Regel.
+  // ==============================================================================================
+  it("B-07: eine für Lea unsichtbare Änderung ändert keine ihrer vollständigen Antworten — Gegenprobe, Existenz, Widerruf", async () => {
     const a = await firmaA();
-    const sicht = async () => {
-      const liste_ = await lies(a.app, a.k.lea, `/api/kos?${ALLE}`);
-      const suche_ = await lies(a.app, a.k.lea, `/api/library/search?q=${WORT}&${ALLE}`);
-      const ausfuhr_ = await lies(a.app, a.k.lea, `/api/library/export?${ALLE}`);
-      return {
-        liste: kennungen(liste_.body),
-        suche: kennungen(suche_.body),
-        ausfuhr: kennungen(ausfuhr_.body),
-      };
+    await a.services.aiCheckWorker?.idle();
+    // KALIBRIERUNG 1: jeder Eintrag trägt einen abgeschlossenen Nachweis mit vollständiger Basis.
+    for (const id of Object.values(a.ko)) {
+      expect(await a.services.ko.markAiCheckPending(id)).toBe(true);
+      const start = (await a.services.ko.get(id)) as KnowledgeObject;
+      const basis = await a.services.ko.aktuellePruefbasis(start);
+      const fassung = start.aiCheck?.koVersion;
+      expect(await a.services.ko.resolveAiCheck(id, { ok: true }, fassung, basis), id).toBe(true);
+    }
+    const sichtbar = [a.ko.E1, a.ko.W1, a.ko.P1, a.ko.O1];
+    for (const id of sichtbar) {
+      const ko = (await lies(a.app, a.k.lea, `/api/kos/${id}`)).json() as KnowledgeObject;
+      expect(ko.aiCheck?.status, id).toBe("done");
+      expect(ko.aiCheck?.basis?.bestand, id).toBeTruthy();
+      expect(ko.aiCheck?.ueberholt, id).toBeUndefined();
+    }
+    const unbekannt = "00000000-0000-4000-8000-0000000000b7";
+    const wege = [
+      `/api/kos?${ALLE}`,
+      "/api/kos",
+      `/api/library/search?q=${WORT}&${ALLE}`,
+      `/api/library/search?q=${WORT}`,
+      `/api/library/export?${ALLE}`,
+      "/api/library/export",
+      ...sichtbar.map((id) => `/api/kos/${id}`),
+    ];
+    const antworten = async (kopf: Kopf) => {
+      const aus: Record<string, unknown> = {};
+      for (const url of wege) {
+        const res = await lies(a.app, kopf, url);
+        aus[url] = {
+          status: res.statusCode,
+          koerper: res.json(),
+          kontext: res.headers["x-klarwerk-rechtekontext"],
+        };
+      }
+      return aus;
     };
-    const vorher = await sicht();
-    // KALIBRIERUNG: die Sicht ist nicht leer — sonst bewiese die Gleichheit nichts.
-    expect(vorher.liste.length).toBeGreaterThan(0);
-    // Für Lea unsichtbar: ein neuer Eintrag im Beta-Bereich und eine Höherstufung von P2.
-    const neu = await eintrag(a.app, a.k.erik, "NochEinBeta");
-    await a.services.ko.setLeadingSpace(neu, a.spaces.beta, a.ids.carla, null);
-    await a.services.ko.setValidationState(neu, { trust: 90, status: "validiert" });
-    const hoch = await a.app.inject({
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now());
+      const vorher = await antworten(a.k.lea);
+
+      // Für Lea unsichtbar: ein neuer Eintrag im Beta-Bereich, eine neue Fassung und eine
+      // Höherstufung von P2.
+      const neu = await eintrag(a.app, a.k.erik, "NochEinBeta");
+      await a.services.ko.setLeadingSpace(neu, a.spaces.beta, a.ids.carla, null);
+      await a.services.ko.setValidationState(neu, { trust: 90, status: "validiert" });
+      await a.services.aiCheckWorker?.idle();
+      const neueFassung = { statement: "Beta prüft künftig zweimal." };
+      await a.services.ko.revise(a.ko.P2, neueFassung, a.ids.carla);
+      const hoch = await a.app.inject({
+        method: "PUT",
+        url: `/api/kos/${a.ko.P2}`,
+        headers: a.k.carla,
+        payload: { action: "confidentiality", level: "vertraulich" },
+      });
+      expect(hoch.statusCode, hoch.body).toBe(200);
+
+      // KALIBRIERUNG 2: die Änderung HAT den Bestandsteil verschoben — intern ist Leas sichtbarer
+      // Nachweis überholt. Genau dieses Bit stand vor der Reparatur in jeder ihrer Antworten.
+      const intern = await a.services.ko.listMitBestandsabgleich();
+      expect(intern.find((k) => k.id === a.ko.E1)?.aiCheck?.ueberholt).toBe(true);
+
+      expect(await antworten(a.k.lea)).toEqual(vorher);
+
+      // GEGENPROBE (erlaubt): eine Änderung, die Lea sehen darf, kommt bei ihr an — samt Bit.
+      await a.services.ko.updateTags(a.ko.W1, ["neu"], a.ids.carla);
+      const danach = await antworten(a.k.lea);
+      expect(danach).not.toEqual(vorher);
+      const w1 = (await lies(a.app, a.k.lea, `/api/kos/${a.ko.W1}`)).json() as KnowledgeObject;
+      expect(w1.aiCheck?.ueberholt).toBe(true);
+      expect(w1.tags).toEqual(["neu"]);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // EXISTENZ, bereichsgebunden: wer den Partnerbereich lesen darf, erfährt vom Eintrag (positiv);
+    // wer nicht, bekommt dieselbe Antwort wie für eine Kennung, die es nicht gibt (negativ).
+    const nichtDa = await lies(a.app, a.k.lea, `/api/kos/${unbekannt}`);
+    expect(nichtDa.statusCode).toBe(404);
+    expect((await lies(a.app, a.k.lea, `/api/kos/${a.ko.P1}`)).statusCode).toBe(200);
+    const fremdFuerLea = await lies(a.app, a.k.lea, `/api/kos/${a.ko.P2}`);
+    expect([fremdFuerLea.statusCode, fremdFuerLea.body]).toEqual([404, nichtDa.body]);
+    const fremdFuerVera = await lies(a.app, a.k.vera, `/api/kos/${a.ko.P1}`);
+    const nichtDaVera = await lies(a.app, a.k.vera, `/api/kos/${unbekannt}`);
+    expect([fremdFuerVera.statusCode, fremdFuerVera.body]).toEqual([404, nichtDaVera.body]);
+
+    // WIDERRUF: nach dem Entzug ist P1 für Lea wie nie dagewesen; ihr übriges Wissen bleibt gleich.
+    const e1Vorher = (await lies(a.app, a.k.lea, `/api/kos/${a.ko.E1}`)).body;
+    const entzug = await a.app.inject({
       method: "PUT",
-      url: `/api/kos/${a.ko.P2}`,
+      url: `/api/spaces/${a.spaces.alpha}`,
       headers: a.k.carla,
-      payload: { action: "confidentiality", level: "vertraulich" },
+      payload: {
+        ...a.alphaEingabe,
+        version: 1,
+        mitglieder: [{ nutzer: a.ids.erik, recht: "schreiben" }],
+      },
     });
-    expect(hoch.statusCode, hoch.body).toBe(200);
-    expect(await sicht()).toEqual(vorher);
-    // Gegenprobe: für Carla ist die Änderung sichtbar.
-    const carla = await lies(a.app, a.k.carla, "/api/kos?firmenbereich=partner");
-    expect(kennungen(carla.body)).toContain(neu);
+    expect(entzug.statusCode, entzug.body).toBe(200);
+    const p1Danach = await lies(a.app, a.k.lea, `/api/kos/${a.ko.P1}`);
+    expect([p1Danach.statusCode, p1Danach.body]).toEqual([404, nichtDa.body]);
+    expect(await liste(a, a.k.lea, ALLE)).not.toContain("P1");
+    expect(await ausfuhr(a, a.k.lea, ALLE)).not.toContain("P1");
+    expect((await lies(a.app, a.k.lea, `/api/kos/${a.ko.E1}`)).body).toBe(e1Vorher);
+  });
+});
+
+describe("K6/K7 · der Rechtekontext jeder Antwort folgt Rolle, Mitgliedschaft und Konto", () => {
+  const kontext = (res: { headers: Record<string, unknown> }) =>
+    res.headers["x-klarwerk-rechtekontext"] as string | undefined;
+
+  it("Mitgliedschaftsentzug, Rollenentzug und Personenwechsel ändern den Stempel — sonst bleibt er", async () => {
+    const a = await firmaA();
+    const lea1 = await lies(a.app, a.k.lea, "/api/kos");
+    const lea2 = await lies(a.app, a.k.lea, `/api/library/search?q=${WORT}`);
+    expect(kontext(lea1), "jede angemeldete Antwort trägt ihn").toMatch(/^[0-9a-f]{32}$/);
+    // Gegenprobe: gleiche Person, gleiche Rechte — gleicher Stempel auf jedem Weg.
+    expect(kontext(lea2)).toBe(kontext(lea1));
+    // Personenwechsel: Vera hat einen anderen Kontext.
+    expect(kontext(await lies(a.app, a.k.vera, "/api/kos"))).not.toBe(kontext(lea1));
+
+    // Mitgliedschaftsentzug.
+    const entzug = await a.app.inject({
+      method: "PUT",
+      url: `/api/spaces/${a.spaces.alpha}`,
+      headers: a.k.carla,
+      payload: {
+        ...a.alphaEingabe,
+        version: 1,
+        mitglieder: [{ nutzer: a.ids.erik, recht: "schreiben" }],
+      },
+    });
+    expect(entzug.statusCode, entzug.body).toBe(200);
+    const lea3 = await lies(a.app, a.k.lea, "/api/kos");
+    expect(kontext(lea3)).not.toBe(kontext(lea1));
+    expect(genannt(a, lea3.body)).not.toContain("P1");
+
+    // Rollenentzug: Carla wird von controller zu experte — das Vertrauliche fällt weg.
+    const carla1 = await lies(a.app, a.k.carla, "/api/kos");
+    expect(genannt(a, carla1.body), "KALIBRIERUNG").toContain("E2");
+    const herab = await a.app.inject({
+      method: "PUT",
+      url: `/api/users/${a.ids.carla}`,
+      headers: a.k.ada,
+      payload: { role: "experte" },
+    });
+    expect(herab.statusCode, herab.body).toBe(200);
+    const carla2 = await lies(a.app, a.k.carla, "/api/kos");
+    expect(kontext(carla2)).not.toBe(kontext(carla1));
+    expect(genannt(a, carla2.body)).not.toContain("E2");
+  });
+
+  it("ohne Anmeldung gibt es keinen Stempel", async () => {
+    const a = await firmaA();
+    const anonym = await a.app.inject({ method: "GET", url: "/api/kos" });
+    expect(anonym.statusCode).toBe(401);
+    expect(kontext(anonym)).toBeUndefined();
   });
 });
 

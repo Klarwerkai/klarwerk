@@ -465,21 +465,15 @@ const HALTEFAELLE: readonly Haltefall[] = [
     sperre: ["vorauswahl"],
     naechster: { lesen: /^ko\.listByIds$/ },
   },
-  // Lauf 3: seit der Prüfbasis-Aktualität (AUFNAHME 20260922) liest die Lesefassung der Kandidaten
-  // nach `listByIds` noch den Schreibstand der Ablage (und bei verändertem Stand den ganzen Bestand,
-  // `KoService.pruefbestandStempel`). Die Sperre „vorauswahl" steht deshalb auch dort.
+  // Lauf 3 las die Lesefassung der Kandidaten nach `listByIds` noch den Schreibstand der Ablage
+  // (`KoService.pruefbestandStempel`). produkt:20261011:peter-p14 · B-07: die Lesefassung liest den
+  // Bestandsstempel nicht mehr — nach `listByIds` folgt kein weiterer Ablagezugriff des Kandidaten-
+  // wegs. Der Halt liegt deshalb am Nachladen selbst: das dritte Auftreten ist die letzte der drei
+  // parallelen Begriffsabfragen, danach geht die Frage geschlossen zum Dokumenttext weiter.
   {
     punkt: "ko.listByIds",
-    wo: "mit nachgeladenen Kandidaten, vor ihrer Lesefassung",
-    sperre: ["vorauswahl"],
-    naechster: { lesen: /^ko\.anhangSchreibstand$/ },
-  },
-  {
-    // Das dritte Auftreten: die letzte der drei parallelen Begriffsabfragen — danach geht die Frage
-    // geschlossen zum Dokumenttext weiter.
-    punkt: "ko.anhangSchreibstand",
     mal: 3,
-    wo: "mit gestempelten Kandidaten, vor dem Dokumenttext",
+    wo: "mit nachgeladenen Kandidaten, vor dem Dokumenttext",
     sperre: ["vorauswahl", "suchprojektion"],
     naechster: { lesen: /^ko\.findById$/ },
   },
@@ -518,19 +512,13 @@ const HALTEFAELLE: readonly Haltefall[] = [
     naechster: { lesen: /^ko\.findById$/ },
   },
   // Runde 3, Bens Befund: die Route liest nach den Quellen die offenen Konflikte — und liefert aus.
+  // P14 · B-07: die Lesefassung der Quelle liest keinen Schreibstand mehr — nach dem Quellenlesen
+  // folgt direkt der Konfliktabruf.
   {
     punkt: "ko.findById",
     mal: 2,
     nurRoute: true,
-    wo: "beim Quellenlesen der Route, vor der Lesefassung der Quelle",
-    sperre: ["auslieferung"],
-    naechster: { lesen: /^ko\.anhangSchreibstand$/ },
-  },
-  {
-    punkt: "ko.anhangSchreibstand",
-    mal: 4,
-    nurRoute: true,
-    wo: "in der Lesefassung der Quelle, vor dem Konfliktabruf",
+    wo: "beim Quellenlesen der Route, vor dem Konfliktabruf",
     sperre: ["auslieferung"],
     naechster: { lesen: /^konflikte\./ },
   },

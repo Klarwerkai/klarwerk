@@ -111,7 +111,12 @@ type PruefWorker = Pick<AiCheckWorker, "enqueue" | "has" | "idle">;
 
 export interface HintergrundpruefungDeps {
   ko: {
-    list(): Promise<KnowledgeObject[]>;
+    /**
+     * produkt:20261011:peter-p14 · B-07: der Bestand mit dem VOLLEN, bestandsgebundenen Prüfstand.
+     * Die Lesefassung (`list`/`get`) trägt den Bestandsteil nicht mehr; der Abgleich nach einer
+     * Bestandsänderung liest ihn hier — intern, nie an einen Leser.
+     */
+    listMitBestandsabgleich(): Promise<KnowledgeObject[]>;
     get(id: string): Promise<KnowledgeObject | undefined>;
     markAiCheckPending(id: string): Promise<boolean>;
   };
@@ -286,7 +291,7 @@ export function createHintergrundpruefung(
       }
       bericht.vergleicheHeute = heute;
     }
-    const arbeit = (await deps.ko.list())
+    const arbeit = (await deps.ko.listMitBestandsabgleich())
       .map((ko) => ({ ko, art: hintergrundArt(ko, nowMs) }))
       .filter((e): e is { ko: KnowledgeObject; art: Art } => e.art !== null)
       .filter((e) => !deps.hauptWorker.has(e.ko.id) && !worker.has(e.ko.id))

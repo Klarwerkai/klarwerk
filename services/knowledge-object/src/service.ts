@@ -4617,23 +4617,33 @@ export class KoService {
     return pruefbasisVon(ko, await this.pruefbestandStempel());
   }
 
-  private async lesefassung(
-    ko: KnowledgeObject,
-    vorInhaltsabruf?: () => void,
-  ): Promise<KnowledgeObject> {
-    return brauchtPruefstand(ko)
-      ? mitPruefstand(ko, await this.pruefbestandStempel(vorInhaltsabruf))
-      : ko;
+  // produkt:20261011:peter-p14 · B-07: die LESEFASSUNG leitet `aiCheck.ueberholt` allein aus Quelle
+  // und Kontext des Objekts ab (pruefbasis.ts, Abschnitt B-07) — ohne Bestandsstempel. Jeder Weg,
+  // der ein Objekt an einen Leser gibt (Routen, Zählungen, Antwortbewertung, Board-Nachreihung),
+  // liest diese Fassung; eine unsichtbare Änderung irgendwo im Bestand ändert sie nicht.
+  private async lesefassung(ko: KnowledgeObject): Promise<KnowledgeObject> {
+    return brauchtPruefstand(ko) ? mitPruefstand(ko) : ko;
   }
 
-  private async lesefassungen(
-    kos: KnowledgeObject[],
-    vorInhaltsabruf?: () => void,
-  ): Promise<KnowledgeObject[]> {
+  private async lesefassungen(kos: KnowledgeObject[]): Promise<KnowledgeObject[]> {
     if (!kos.some(brauchtPruefstand)) {
       return kos;
     }
-    const stempel = await this.pruefbestandStempel(vorInhaltsabruf);
+    return kos.map((ko) => mitPruefstand(ko));
+  }
+
+  /**
+   * B-07 · der INTERNE Abgleich: der aktive Bestand mit dem vollen, bestandsgebundenen Prüfstand
+   * (Quelle, Kontext UND Bestandsstempel). Einziger Leser ist die Hintergrundprüfung, die
+   * Nachweise nach einer Bestandsänderung neu abgleicht. Das Ergebnis verlässt den Server nicht —
+   * keine Route gibt es aus.
+   */
+  async listMitBestandsabgleich(): Promise<KnowledgeObject[]> {
+    const kos = (await this.repo.list({})).filter((k) => !k.deletedAt);
+    if (!kos.some(brauchtPruefstand)) {
+      return kos;
+    }
+    const stempel = await this.pruefbestandStempel();
     return kos.map((ko) => mitPruefstand(ko, stempel));
   }
 
@@ -4662,7 +4672,7 @@ export class KoService {
   async get(id: string, vorInhaltsabruf?: () => void): Promise<KnowledgeObject | undefined> {
     vorInhaltsabruf?.();
     const ko = await this.repo.findById(id);
-    return ko && !ko.deletedAt ? this.lesefassung(ko, vorInhaltsabruf) : undefined;
+    return ko && !ko.deletedAt ? this.lesefassung(ko) : undefined;
   }
 
   // D5 (KI aus): die aktuelle Fassung eines (nicht getrashten) Objekts — die Versions-Autorität der
@@ -5073,14 +5083,14 @@ export class KoService {
     query.vorInhaltsabruf?.();
     const kos = await this.repo.listByIds(hits.map((hit) => hit.koId));
     // AUFNAHME 20260922: auch der Suchkandidat trägt die Lesefassung des Prüfnachweises.
-    // D5: deren Stempel liest nach `listByIds` weiter — die Sperre reist mit (s. `pruefbestandStempel`).
+    // P14 · B-07: sie liest nach `listByIds` nichts mehr (kein Bestandsstempel) — D5 braucht hier
+    // deshalb keinen weiteren Sperrpunkt.
     return this.lesefassungen(
       kos
         // R-0658: ein Objekt in Quarantäne ist kein Suchkandidat (Ask/Klara) — auch nicht über
         // Kategorie oder Schlagwort, die in der Metadatenprojektion weiter stehen.
         .filter((ko) => !ko.deletedAt && !inSchutzdatenQuarantaene(ko))
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
-      query.vorInhaltsabruf,
     );
   }
 

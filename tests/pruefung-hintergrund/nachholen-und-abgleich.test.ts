@@ -211,7 +211,11 @@ describe("R-1111 · laufender Abgleich: später entstandene Nachbarn, Tagesbudge
     expect((await b.vermerk(id))?.ueberholt).toBeFalsy();
 
     const spaeter = await b.lege("Später", "Das Ventil bleibt während der Wartung offen");
-    expect((await b.vermerk(id))?.ueberholt).toBe(true);
+    // produkt:20261011:peter-p14 · B-07: der Bestandsteil wirkt im INTERNEN Abgleich; die
+    // Lesefassung (`get`) zeigt eine Änderung an einem anderen Objekt nicht.
+    const intern = (await b.services.ko.listMitBestandsabgleich()).find((k) => k.id === id);
+    expect(intern?.aiCheck?.ueberholt).toBe(true);
+    expect((await b.vermerk(id))?.ueberholt).toBeFalsy();
     const aufrufeVorher = b.modell.aufrufe;
 
     const bericht = await b.lauf();
