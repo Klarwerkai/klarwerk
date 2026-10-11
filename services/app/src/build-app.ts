@@ -460,6 +460,7 @@ import { slidesRoutes } from "./routes/slides-routes";
 import { spacesRoutes } from "./routes/spaces-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { teamsRoutes } from "./routes/teams-routes";
+import { technischeDatenRoutes } from "./routes/technische-daten-routes";
 // ADMIN-15: Unternehmensprofil und interne Richtlinien.
 import { unternehmenRoutes } from "./routes/unternehmen-routes";
 import { validationRoutes } from "./routes/validation-routes";
@@ -4684,6 +4685,9 @@ export function buildApp(
       guards,
     ),
   );
+  // BPA-02 (produkt:20261011:assistenz-browser-wissenserfassung): technische Daten aus einem
+  // erfassten Seiten-/Datenblattabschnitt — regelbasiert, über denselben Entwurfsdienst.
+  app.register(technischeDatenRoutes({ capture: services.capture }, guards));
   // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
   app.register(slidesRoutes(services.slideConverter, guards));
   // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht

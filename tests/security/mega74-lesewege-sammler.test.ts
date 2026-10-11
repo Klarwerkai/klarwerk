@@ -883,6 +883,16 @@ const REGISTER: Record<string, Eintrag> = {
     grund: "visibleDraftsFor — Eigentümerlogik plus bewusst geteilter Pool.",
   },
   "GET /api/drafts/:id": { urteil: "EIGENER_BESTAND", grund: "requireVisibleDraft." },
+  // BPA-02: die Vorschau wertet nur die eingesandten Zellen aus; der Quellenabgleich liest
+  // ausschliesslich die eigenen Entwürfe (`listDraftsForResume(user.id)`, ohne Pool).
+  "POST /api/technische-daten/vorschau": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Auswertung des eingesandten Abschnitts (technische-daten-routes.ts), kein Bestand.",
+  },
+  "POST /api/technische-daten/quellenabgleich": {
+    urteil: "EIGENER_BESTAND",
+    grund: "listDraftsForResume(user.id) — nur eigene Entwürfe, Kennung/Titel/Fassung.",
+  },
   // JOB 3668 (Entwurfs-Papierkorb): derselbe Bestand, dieselbe Eigentümerlogik — nur die gelöschten
   // Entwürfe. Zweifach begrenzt: die Ablage lädt fremde gar nicht erst (`listTrashed(user.id)`), und
   // `canSeeDraft` entscheidet danach noch einmal. Ein Entwurf ist ohnehin kein Wissensobjekt; was
@@ -1705,6 +1715,9 @@ const REGISTER: Record<string, Eintrag> = {
     // hinaus: `restore` gibt den EIGENEN Entwurf zurück, `purge` antwortet mit 204 ohne Rumpf.
     "POST /api/drafts/:id/restore": "eigener Entwurf aus dem Papierkorb.",
     "DELETE /api/drafts/trash/:id": "eigener Entwurf — 204 ohne Inhalt.",
+    // BPA-02 (technische-daten-routes.ts): legt einen EIGENEN Entwurf aus den eingesandten
+    // Tabellenzellen an (`user.id` aus der Anmeldung); gelesen wird kein Bestand.
+    "POST /api/technische-daten/uebernahme": "eigener Entwurf aus eingesandtem Abschnitt.",
     "POST /api/objects": "Upload — owner aus der Anmeldung.",
     "POST /api/library/import": "ko.create.",
     "POST /api/library/import/candidates": "ko.create.",
