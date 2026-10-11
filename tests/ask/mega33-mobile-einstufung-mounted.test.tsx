@@ -105,7 +105,8 @@ const CAPPED = {
 
 // Kein \b-Anker: `textContent` klebt Plaketten aneinander. Geprueft wird das Wort in seiner
 // Anzeigeform (grosses G).
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026): das Statuswort heisst „Fachlich bestätigt" statt „Gesichert".
+const GESICHERT = "Fachlich bestätigt";
 
 function ko(aiCheck: unknown) {
   return {

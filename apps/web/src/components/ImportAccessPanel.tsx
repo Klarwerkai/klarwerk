@@ -149,14 +149,14 @@ export function ImportAccessPanel(): JSX.Element | null {
   const freigegeben = betreiber ? betreiber.freigegeben : daten.enabled;
   return (
     <Card className="mb-5">
-      <div className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("imp.access.title")} · {t("imp.gallery.src.confluence")}
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <span
           data-testid="import-access-state"
           data-state={betreiberAus ? "switched-off" : state}
-          className={`inline-flex items-center rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold ${TONE_CLASS[text.tone]}`}
+          className={`inline-flex items-center rounded-pill px-2 py-0.5 font-mono text-klein font-semibold ${TONE_CLASS[text.tone]}`}
         >
           {t(text.titleKey)}
         </span>
@@ -166,7 +166,7 @@ export function ImportAccessPanel(): JSX.Element | null {
           data-testid="import-access-status"
           data-status={status}
           data-ton={statusText.tone}
-          className="font-mono text-[10px] font-semibold text-muted"
+          className="font-mono text-klein font-semibold text-muted"
         >
           {t(statusText.key)}
         </span>
@@ -222,7 +222,7 @@ export function ImportAccessPanel(): JSX.Element | null {
         </p>
       ) : null}
 
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("imp.access.varsTitle")}
       </div>
       <ul className="mt-1 space-y-1">
@@ -236,7 +236,7 @@ export function ImportAccessPanel(): JSX.Element | null {
             <span
               data-testid={`import-access-var-${c.name}`}
               data-present={c.present ? "yes" : "no"}
-              className={`font-mono text-[10px] font-semibold ${
+              className={`font-mono text-klein font-semibold ${
                 c.present ? "text-trust-pos-text" : "text-muted-2"
               }`}
             >
@@ -252,7 +252,7 @@ export function ImportAccessPanel(): JSX.Element | null {
       </p>
 
       {/* ADMIN-02: LETZTER VERBINDUNGSTEST — bewusst gestartet, Wirkung daneben erklärt. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("integrationen.test.titel")}
       </div>
       <div data-testid="import-access-verbindungstest" aria-live="polite">
@@ -306,7 +306,7 @@ export function ImportAccessPanel(): JSX.Element | null {
       </div>
 
       {/* ADMIN-02: der letzte erfolgreiche Import ist ein HISTORISCHER Nachweis, kein Verbindungstest. */}
-      <div className="mt-3 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+      <div className="mt-3 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("integrationen.historie.titel")}
       </div>
       {/* JOB-924 D6: DIE ZEILE STEHT IMMER — nur ihr Inhalt hängt vom Bestand ab. Eine fehlende

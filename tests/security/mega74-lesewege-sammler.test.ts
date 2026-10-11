@@ -237,6 +237,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "EIGENER_BESTAND",
     grund: "R-0773 — nulltreffer.fuer(user.id) (library-routes.ts), nur die eigene Liste.",
   },
+  // produkt:20261011:peter-p14 · Existenzrecht: gibt nur Bereichsnamen aus; ob ein Bereich genannt
+  // wird, entscheidet `darfSehen` mit dem auf genau diesen Space beschränkten Blick.
+  "GET /api/library/existenzhinweise": {
+    urteil: "PRAEDIKAT",
+    grund: "P14 — darfSehen(bereichsblick) + sqlSichtbarkeitFuer je Bereich (existenzhinweis.ts).",
+  },
   "GET /api/categories": {
     urteil: "PRAEDIKAT",
     grund: "JOB 3507 — Kategorien und Zähler erst nach sqlSichtbarkeitFuer + sichtbareFuer.",

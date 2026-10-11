@@ -844,6 +844,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   // R-0773: die eigenen Suchen ohne Treffer — gelesen nur unter der eigenen Kennung, kein Objekt.
   "GET /api/library/nulltreffer": { protection: "ko.read" },
+  // produkt:20261011:peter-p14 · Existenzrecht: nur Bereichsnamen, je Bereich über `darfSehen`
+  // mit dem auf genau diesen Space beschränkten Blick (existenzhinweis.ts).
+  "GET /api/library/existenzhinweise": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // JOB 3095 · M5: Bildsuche — Kandidaten über `sichtbareFuer` (plus SQL-Trim), jeder geladene
   // Rumpf zusätzlich über `darfSehen` am vollen Objekt (library-routes.ts, `/api/library/images`).
   "GET /api/library/images": {
