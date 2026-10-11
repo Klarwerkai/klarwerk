@@ -545,10 +545,20 @@ async function appMitKonten() {
       payload: { name, email, password: "geheim-1234", role },
     });
     expect(angelegt.statusCode, angelegt.body).toBe(201);
-    return {
-      id: (angelegt.json() as { id: string }).id,
-      headers: await anmelden(email, "geheim-1234"),
-    };
+    const id = (angelegt.json() as { id: string }).id;
+    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24): die Leserliste aus der Quelle
+    // ersetzt das persönliche Freigabeniveau nicht. Lesende Konten bekommen das Niveau der
+    // importierten Stufe („vertraulich“) — so schließt in diesen Fällen allein die Liste aus.
+    if (role !== "controller") {
+      const niveau = await app.inject({
+        method: "PUT",
+        url: `/api/users/${id}`,
+        headers: adminHeaders,
+        payload: { freigabe: "vertraulich" },
+      });
+      expect(niveau.statusCode, niveau.body).toBe(200);
+    }
+    return { id, headers: await anmelden(email, "geheim-1234") };
   };
   return {
     app,
@@ -1387,18 +1397,57 @@ describe("R-0549 · Zusammenführung mit main: Spaces und die Marke „öffentli
       quellrechte: { leser: ["lea"] },
       spaceId: "space-hr",
     };
-    const leaImSpace = { id: "lea", role: "viewer" as const, spaceLesbar: new Set(["space-hr"]) };
-    const leaOhneSpace = { id: "lea", role: "viewer" as const, spaceLesbar: new Set<string>() };
-    const ottoImSpace = { id: "otto", role: "viewer" as const, spaceLesbar: new Set(["space-hr"]) };
+    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24): jede Leserin trägt das Niveau der
+    // Stufe — die Liste ersetzt es nicht (Gegenprobe S1b).
+    const niveau = { freigabe: "vertraulich" as const };
+    const leaImSpace = {
+      id: "lea",
+      role: "viewer" as const,
+      spaceLesbar: new Set(["space-hr"]),
+      ...niveau,
+    };
+    const leaOhneSpace = {
+      id: "lea",
+      role: "viewer" as const,
+      spaceLesbar: new Set<string>(),
+      ...niveau,
+    };
+    const ottoImSpace = {
+      id: "otto",
+      role: "viewer" as const,
+      spaceLesbar: new Set(["space-hr"]),
+      ...niveau,
+    };
     expect(darfSehen(leaImSpace, objekt)).toBe(true);
     // Quellleser, aber ohne Space-Leserecht: die Quellleser öffnen keinen fremden Space.
     expect(darfSehen(leaOhneSpace, objekt)).toBe(false);
     // Im Space, aber nicht Quellleser: der Space öffnet keine Quellbeschränkung.
     expect(darfSehen(ottoImSpace, objekt)).toBe(false);
-    // Ohne führenden Space gilt allein die Quellleserliste (Bestand vor main).
+    // Ohne führenden Space gelten Quellleserliste und Niveau (Bestand vor main).
     const ohneSpace = { ...objekt, spaceId: undefined };
-    expect(darfSehen({ id: "lea", role: "viewer" }, ohneSpace)).toBe(true);
-    expect(darfSehen({ id: "otto", role: "viewer" }, ohneSpace)).toBe(false);
+    expect(darfSehen({ id: "lea", role: "viewer", ...niveau }, ohneSpace)).toBe(true);
+    expect(darfSehen({ id: "otto", role: "viewer", ...niveau }, ohneSpace)).toBe(false);
+  });
+
+  it("S1b · die Quellleserliste ersetzt das persönliche Freigabeniveau nicht (Variante B)", () => {
+    const objekt = {
+      confidentiality: "streng_vertraulich" as const,
+      author: "admin",
+      quellrechte: { leser: ["lea"] },
+    };
+    // Gelistet, aber nur Niveau „intern“: kein Zugriff — weder auf streng noch auf vertraulich.
+    expect(darfSehen({ id: "lea", role: "viewer", freigabe: "intern" }, objekt)).toBe(false);
+    const vertraulich = { ...objekt, confidentiality: "vertraulich" as const };
+    expect(darfSehen({ id: "lea", role: "viewer", freigabe: "intern" }, vertraulich)).toBe(false);
+    // „vertraulich“ öffnet nicht „streng vertraulich“ — erst das passende Niveau.
+    expect(darfSehen({ id: "lea", role: "viewer", freigabe: "vertraulich" }, objekt)).toBe(false);
+    expect(darfSehen({ id: "lea", role: "viewer", freigabe: "streng_vertraulich" }, objekt)).toBe(
+      true,
+    );
+    // Und das höchste Niveau ersetzt die Liste ebenso wenig.
+    expect(darfSehen({ id: "otto", role: "viewer", freigabe: "streng_vertraulich" }, objekt)).toBe(
+      false,
+    );
   });
 
   it("S2 · hebt die Quelle ein als öffentlich markiertes Objekt an, verschwindet die Marke (R-0652)", async () => {

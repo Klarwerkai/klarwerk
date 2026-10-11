@@ -313,7 +313,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/ask",
     art: "zurueckgestellt",
     grund:
-      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.)",
+      "Die Frage an den Bestand. Sie hat zwei Zweige (Sitzung und Add-on-Schlüssel) mit unterschiedlichem Rechteweg; eine Zeile könnte nur einen messen und verschwiege den anderen. (Gefahren wird sie in JOB 4113 sehr wohl — als Vorbereitung der Zeilen zu `POST /api/ask/helpful` und `PUT|DELETE /api/gaps/:id`; abgenommen ist damit nicht sie, sondern was aus ihr entsteht.) aufnahme:20260922:gesamt-leserechte: der SITZUNGSzweig ist mit sechs Akteuren und echtem Bestand (internes Objekt als Quelle, vertrauliches nie, keine Torlage für Unbefugte) in `tests/security/leserechte-rollenmatrix.test.ts` gemessen; der Add-on-/Dienst-Zweig (keine Sitzungsrolle, sondern ein Schlüssel) ist in `tests/security/leserechte-reasoner-frageweg.test.ts` gemessen — nie Vertrauliches, nie ein Objekt aus einem Mitglieder-Space, mit Gegenprobe — und in `f0688-schluessel-api-nur-validiert` (nur Validiertes). Als Rollenzeile bleibt die Tür zurückgestellt, weil ihr zweiter Zweig gar keine Rolle trägt.",
   },
   // JOB 4141: die sechs Urteils-Türen (`POST /api/conflicts/:id/dismiss|second-opinion`,
   // `POST /api/duplicates/:id/dismiss|keep-separate|link-related|status`) standen hier mit derselben
@@ -392,13 +392,10 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     grund:
       "Hakt einen Schritt eines Lernpfads ab. Setzt einen angelegten Pfad und eine gültige Schrittkennung voraus.",
   },
-  {
-    methode: "POST",
-    pfad: "/api/output/generate",
-    art: "zurueckgestellt",
-    grund:
-      "Erzeugt ein Ausgabedokument aus ausgewählten Quellen. Die Nutzlast ist die Quellenauswahl; der Vorgang ist ein Erzeugungslauf, kein Türtest.",
-  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543, Ben Nacharbeit 5): `POST /api/output/generate`
+  // und `POST /api/media/analyze` stehen nicht mehr hier. Ihre Tür misst jetzt je eine Zeile in
+  // `TABELLE`; die Rollenmatrix mit echtem Bestand (Quellenauswahl, angehängtes Bild, vertrauliche
+  // Stufe, sechs Akteure) steht in `tests/security/leserechte-rollenmatrix.test.ts`.
   {
     methode: "POST",
     pfad: "/api/capture/slides",
@@ -415,13 +412,6 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
   },
   {
     methode: "POST",
-    pfad: "/api/media/analyze",
-    art: "zurueckgestellt",
-    grund:
-      "Lässt einen vorhandenen Anhang durch die Medienanalyse laufen. Braucht einen echten Anhang, sonst ist die Antwort eine Existenzauskunft.",
-  },
-  {
-    methode: "POST",
     pfad: "/api/notifications/seen",
     art: "zurueckgestellt",
     grund:
@@ -434,7 +424,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/reasoner",
     art: "zurueckgestellt",
     grund:
-      "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus.",
+      "Der Text-Verteiler der KI-Unterstützung. Er ruft echte Modelle auf; eine Rollenzeile darüber löste bei jedem Lauf einen Modellaufruf aus. aufnahme:20260922:gesamt-leserechte: die Aufgabe `ask` LIEST den Bestand — ihre Grundlage trägt seit Nacharbeit 8 die Lesepolicy des Fragenden (`sichtbarkeitsfilterFuer`), gemessen mit Space-Mitglied, Nichtmitglied, Admin ohne Mitgliedschaft und Rechteentzug in `tests/security/leserechte-reasoner-frageweg.test.ts`.",
   },
   {
     methode: "POST",
@@ -555,7 +545,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/admin/lesevarianten/laden",
     art: "zurueckgestellt",
     grund:
-      "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest.",
+      "Lädt Übersetzungen für ein Paket und liest dafür den ganzen Bestand, um Anker zuzuordnen. Ein Ladelauf, kein Türtest. Die ausgegebene Bilanz folgt der Lesepolicy des Aufrufers: tests/security/leserechte-lesevarianten-bilanz.test.ts.",
   },
   {
     methode: "POST",
@@ -652,6 +642,21 @@ export const NUR_ADMIN: Erwartungen = {
   experte: "403",
   controller: "403",
   admin: "erlaubt",
+};
+
+/**
+ * aufnahme:20260922:gesamt-leserechte (R-0543): eine Tür, die KEINE Sitzung öffnet — nur ein
+ * Dienst-Schlüssel (`x-klarwerk-service-key`). Jede Rolle bekommt deshalb dieselbe 401 wie ein
+ * Unangemeldeter; ein Durchlass für eine Sitzungsrolle wäre hier der Befund.
+ */
+const NUR_DIENST_GRUND =
+  "Der MCP-Zugang nimmt nur einen Dienst-Schlüssel an (mcp-routes.ts, `zugang`); eine Sitzung jeder Rolle ist dort unangemeldet.";
+export const NUR_DIENSTSCHLUESSEL: Erwartungen = {
+  anonym: "401",
+  viewer: { soll: "401", grund: NUR_DIENST_GRUND },
+  experte: { soll: "401", grund: NUR_DIENST_GRUND },
+  controller: { soll: "401", grund: NUR_DIENST_GRUND },
+  admin: { soll: "401", grund: NUR_DIENST_GRUND },
 };
 
 /**
@@ -2229,7 +2234,7 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/klara/sessions/gibt-es-nicht/zuruf",
     route: "/api/klara/sessions/:sessionId/zuruf",
-    belegstelle: "services/app/src/routes/klara-session-routes.ts:208",
+    belegstelle: "services/app/src/routes/klara-session-routes.ts:251",
     tor: "ko.read",
     payload: {},
     erwartet: NUR_LESEN,
@@ -2343,6 +2348,43 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  // aufnahme:20260922:gesamt-leserechte (R-0543 · jeder Zugriffspunkt × jede Rolle): die Türen der
+  // eigenen Live-Wand-Zustimmung. Jede wirkt nur auf das EIGENE Konto (`user.id`); die Nutzlasten
+  // enden in der Eingabeprüfung (400), der Widerruf löscht höchstens ein eigenes Foto.
+  {
+    gruppe: "livewallRoutes",
+    methode: "GET",
+    pfad: "/api/livewall/consent",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:107",
+    tor: "angemeldet (eigener Stand)",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "PUT",
+    pfad: "/api/livewall/consent",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:123",
+    tor: "angemeldet (ohne Wahrheitswert, 400)",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "PUT",
+    pfad: "/api/livewall/photo",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:148",
+    tor: "angemeldet (ohne Bild, 400)",
+    payload: {},
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "livewallRoutes",
+    methode: "DELETE",
+    pfad: "/api/livewall/photo",
+    belegstelle: "services/app/src/routes/livewall-routes.ts:171",
+    tor: "angemeldet (Widerruf des eigenen Fotos)",
+    erwartet: ANGEMELDET,
+  },
   {
     gruppe: "managementRoutes",
     methode: "GET",
@@ -2394,6 +2436,18 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/media/status",
     belegstelle: "services/app/src/routes/media-routes.ts:41",
     tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): die Tür der Medienanalyse. Erfundene Kennung —
+  // Berechtigte bekommen 404 „gibt es nicht", das Tor misst sich am 401 bzw. Durchlass. Die
+  // Matrix mit echtem Anhang und Vertraulichkeit: `tests/security/leserechte-rollenmatrix.test.ts`.
+  {
+    gruppe: "mediaRoutes",
+    methode: "POST",
+    pfad: "/api/media/analyze",
+    belegstelle: "services/app/src/routes/media-routes.ts:49",
+    tor: "ko.read, dann beurteileAnhang (erfundene Kennung, 404)",
+    payload: { objectId: "gibt-es-nicht" },
     erwartet: NUR_LESEN,
   },
   {
@@ -2463,8 +2517,43 @@ export const TABELLE: Zeile[] = [
     gruppe: "outputRoutes",
     methode: "GET",
     pfad: "/api/output/sources",
-    belegstelle: "services/app/src/routes/output-routes.ts:9",
+    belegstelle: "services/app/src/routes/output-routes.ts:14",
     tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): der MCP-Zugang (Aufnahme gesamt-mcp). Er ist
+  // AUSSCHLIESSLICH für einen Dienst-Schlüssel mit `mcp.werkzeug` gebaut (`mcp-routes.ts`, `zugang`);
+  // eine Sitzung — gleich welcher Rolle, auch der Admin — kommt nicht herein und bekommt 401. Genau
+  // das misst diese Zeile mit fünf Akteuren. Die Bühne trägt dafür nur eine Schlüssel-PRÜFSUMME
+  // (`buehne.ts`, `KLARWERK_SERVICE_KEYS`); der Weg MIT Schlüssel gehört den Tests des MCP-Auftrags.
+  {
+    gruppe: "mcpRoutes",
+    methode: "GET",
+    pfad: "/mcp",
+    belegstelle: "services/app/src/routes/mcp-routes.ts:273",
+    tor: "Dienst-Schlüssel mit mcp.werkzeug — keine Sitzungsrolle",
+    erwartet: NUR_DIENSTSCHLUESSEL,
+  },
+  {
+    gruppe: "mcpRoutes",
+    methode: "POST",
+    pfad: "/mcp",
+    belegstelle: "services/app/src/routes/mcp-routes.ts:284",
+    tor: "Dienst-Schlüssel mit mcp.werkzeug — keine Sitzungsrolle",
+    payload: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    erwartet: NUR_DIENSTSCHLUESSEL,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): die Tür der Ausgabeerzeugung. Die leere
+  // Quellenauswahl endet für jede Rolle in `NO_SOURCES` (400), also HINTER dem Rechtetor; es wird
+  // nichts erzeugt. Die Matrix mit echter Quellenauswahl (intern/vertraulich, sechs Akteure):
+  // `tests/security/leserechte-rollenmatrix.test.ts`.
+  {
+    gruppe: "outputRoutes",
+    methode: "POST",
+    pfad: "/api/output/generate",
+    belegstelle: "services/app/src/routes/output-routes.ts:22",
+    tor: "ko.read, dann sichtbarkeitsfilterFuer (leere Auswahl, 400)",
+    payload: { kind: "instruction", koIds: [] },
     erwartet: NUR_LESEN,
   },
   // RECHERCHE:pmo-fea-0004 — das Wissensupdate fürs Teamgespräch: lesen, auf Abruf, kein Versand.
@@ -2482,7 +2571,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "lmsExportRoutes",
     methode: "POST",
     pfad: "/api/output/scorm/pruefen",
-    belegstelle: "services/app/src/routes/lms-export-routes.ts:25",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:64",
     tor: "ko.read",
     payload: {},
     erwartet: NUR_LESEN,
@@ -2491,8 +2580,174 @@ export const TABELLE: Zeile[] = [
     gruppe: "lmsExportRoutes",
     methode: "POST",
     pfad: "/api/output/scorm/paket",
-    belegstelle: "services/app/src/routes/lms-export-routes.ts:37",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:77",
     tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543 · jeder Zugriffspunkt × jede Rolle): die drei
+  // Routengruppen, die bis hierher ohne Abnahmezeile registriert waren (Firmenwörterbuch,
+  // Ausgangsprüfung, Spaces). Die Nutzlasten sind bewusst dünn bzw. die Kennungen erfunden — gemessen
+  // wird die Tür (Rechtetor), es entsteht und ändert sich nichts.
+  {
+    gruppe: "begriffeRoutes",
+    methode: "GET",
+    pfad: "/api/begriffe",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:69",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "GET",
+    pfad: "/api/begriffe/gibt-es-nicht",
+    route: "/api/begriffe/:id",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:78",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "GET",
+    pfad: "/api/begriffe/gibt-es-nicht/fassungen/1",
+    route: "/api/begriffe/:id/fassungen/:version",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:93",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "POST",
+    pfad: "/api/begriffe",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:113",
+    tor: "ko.validate (leerer Rumpf endet in der Eingabeprüfung, 400)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "PUT",
+    pfad: "/api/begriffe/gibt-es-nicht",
+    route: "/api/begriffe/:id",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:154",
+    tor: "ko.validate (erfundene Kennung, 404)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "begriffeRoutes",
+    methode: "POST",
+    pfad: "/api/begriffe/pruefen",
+    belegstelle: "services/app/src/routes/begriffe-routes.ts:224",
+    tor: "ko.read (leerer Rumpf, 400)",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "ausgangspruefungRoutes",
+    methode: "GET",
+    pfad: "/api/ausgangspruefung",
+    belegstelle: "services/app/src/routes/ausgangspruefung-routes.ts:60",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "ausgangspruefungRoutes",
+    methode: "POST",
+    pfad: "/api/ausgangspruefung/gibt-es-nicht/freigeben",
+    route: "/api/ausgangspruefung/:id/freigeben",
+    belegstelle: "services/app/src/routes/ausgangspruefung-routes.ts:75",
+    tor: "ko.validate (kein wartender Aufruf, 404)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "ausgangspruefungRoutes",
+    methode: "POST",
+    pfad: "/api/ausgangspruefung/gibt-es-nicht/ablehnen",
+    route: "/api/ausgangspruefung/:id/ablehnen",
+    belegstelle: "services/app/src/routes/ausgangspruefung-routes.ts:86",
+    tor: "ko.validate (kein wartender Aufruf, 404)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:252",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/konten",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:272",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/gibt-es-nicht",
+    route: "/api/spaces/:id",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:284",
+    tor: "ko.read, dann Space-Sichtbarkeit (erfundene Kennung, 404)",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "POST",
+    pfad: "/api/spaces",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:308",
+    tor: "ko.validate (leerer Rumpf endet in der Eingabeprüfung, 400)",
+    payload: {},
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "PUT",
+    pfad: "/api/spaces/gibt-es-nicht",
+    route: "/api/spaces/:id",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:346",
+    tor: "ko.read, dann Space-Sichtbarkeit und Spacezuständigkeit (erfundene Kennung, 404)",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/gibt-es-nicht/artikel",
+    route: "/api/spaces/:id/artikel",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:418",
+    tor: "ko.read, dann Space-Sichtbarkeit und darfSehen (erfundene Kennung, 404)",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "GET",
+    pfad: "/api/spaces/kontext/artikel/gibt-es-nicht",
+    route: "/api/spaces/kontext/artikel/:koId",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:459",
+    tor: "ko.read, dann darfSehen (erfundene Kennung, 404)",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "POST",
+    pfad: "/api/spaces/verschiebung/vorschau",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:508",
+    tor: "ko.read, dann darfSehen am Objekt (ohne koId, 404)",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "spacesRoutes",
+    methode: "POST",
+    pfad: "/api/spaces/verschiebung",
+    belegstelle: "services/app/src/routes/spaces-routes.ts:537",
+    tor: "ko.read, dann darfSehen am Objekt (ohne koId, 404)",
     payload: {},
     erwartet: NUR_LESEN,
   },
@@ -2982,6 +3237,17 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/admin/import/source-records/gibt-es-nicht",
     route: "/api/admin/import/source-records/:sourceRecordId",
     belegstelle: "services/app/src/routes/import-run-routes.ts:164",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  // aufnahme:20260922:gesamt-leserechte (R-0543): das Importergebnis EINES Wissensobjekts —
+  // `users.manage`, danach `darfSehen` je Zeile (routeGuardAudit). Erfundene Kennung, 404.
+  {
+    gruppe: "importRunRoutes",
+    methode: "GET",
+    pfad: "/api/admin/import/knowledge/gibt-es-nicht",
+    route: "/api/admin/import/knowledge/:koId",
+    belegstelle: "services/app/src/routes/import-run-routes.ts:342",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },

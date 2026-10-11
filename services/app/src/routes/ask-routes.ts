@@ -1050,6 +1050,8 @@ async function antwortLauf(
   } else {
     // R-1175: auch ohne Sitzungsnutzer DIESELBE Entscheidung — `darfSehen` mit dem engsten
     // Betrachter (keine Kennung, `viewer`, nur offene Spaces), statt einer eigenen Zeile.
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19/20): ein Schlüssel hat kein persönliches
+    // Freigabeniveau — Rang 0, also nur ausdrücklich „intern" (Entscheidung 15/16).
     const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
     grundlage = sichtbarkeitsfilterFuer(schluesselBetrachter(offen));
   }

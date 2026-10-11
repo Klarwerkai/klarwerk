@@ -39,6 +39,10 @@ function ko(p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject {
     asset: null,
     createdAt: "2026-01-01",
     history: [],
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20, Variante B): ausdrücklich eingestuft —
+    // eine fehlende Stufe ist „ungeklärt" und bliebe dem Betrachter ohne Freigabe verborgen
+    // (Entscheidung 16); dieser Test misst Spaces, nicht die Stufe.
+    confidentiality: "intern",
     ...p,
   } as KnowledgeObject;
 }
@@ -58,7 +62,9 @@ describe("R-1175 · Output-Weg fährt die zentrale Sichtbarkeitsentscheidung", (
     const mitSicht = await output.listEligible(sichtbarkeitsfilterFuer(LESER));
     expect(mitSicht.map((q) => q.id)).toEqual(["OFFEN"]);
     // GEGENPROBE: ohne die Entscheidung (Systemaufruf) wäre er da — die Wirkung kommt von ihr.
-    const ohneSicht = await output.listEligible();
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): `listEligible` ist fail-closed — der
+    // Systemaufruf reicht die alles zulassende Entscheidung ausdrücklich herein.
+    const ohneSicht = await output.listEligible(() => true);
     expect(ohneSicht.map((q) => q.id).sort()).toEqual(["GESCHLOSSEN", "OFFEN"]);
   });
 

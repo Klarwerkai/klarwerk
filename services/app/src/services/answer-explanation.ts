@@ -22,11 +22,18 @@ import {
   baueAnswerExplanation,
   gehoertNutzer,
 } from "../../../ask";
+import type { Conflict } from "../../../conflicts";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../../knowledge-object";
 
 export interface AnswerExplanationDeps {
   readonly answerSnapshots: AnswerSnapshotRepo;
   readonly ko: KoService;
+  /**
+   * R-0293: die heute offenen Widersprueche — derselbe interne Leseweg wie `GET /api/conflicts` und
+   * die Evidenz der Ask-Route (`conflicts.unresolved()`). OPTIONAL: ohne ihn ist die Konfliktlage
+   * ehrlich UNBEKANNT (`null`), nicht „keine".
+   */
+  readonly conflicts?: { unresolved(): Promise<Conflict[]> };
 }
 
 /**
@@ -40,20 +47,61 @@ export interface AnswerExplanationLeser {
   readonly userId: string;
   readonly darfVertraulich: boolean;
   /**
-   * R-1175 (aufnahme:20260922:gesamt-rechte-inventar): die EINE Sichtbarkeitsentscheidung des
-   * Lesers (`sichtbarkeitsfilterFuer`, von der Route). Ein Beleg, den er heute nicht sehen darf
-   * (fremder Space, fremdes Vertrauliches), wird geschwärzt — die Stufenregel darüber bleibt.
+   * Antwortbeleg-Nacharbeit 5 (Ben, R-0293/R-0317/R-0618): DIE ZENTRALE SICHTBARKEITSENTSCHEIDUNG
+   * von heute — `sichtbarkeitsfilterFuer(user)` (services/app/src/sichtbarkeit.ts, `darfSehen`),
+   * einschliesslich des fuehrenden Space und der Autorberechtigung. Die Route reicht sie herein;
+   * der Dienst wendet sie auf JEDE gebundene Wissenseinheit an. Liegt sie vor, entscheidet sie
+   * ALLEIN — `darfVertraulich` wird dann nicht zusaetzlich ausgewertet (Ben, Nacharbeit 6).
+   *
+   * FAIL-CLOSED: Fehlt sie (ein Aufrufer ohne Sichtbarkeitsauskunft), gilt jedes Objekt mit
+   * fuehrendem Space als gesperrt — dieselbe Richtung wie `spaceErlaubt` ohne `spaceLesbar` — und
+   * Vertrauliches nur bei `darfVertraulich`.
+   *
+   * Integration mit R-1175 (aufnahme:20260922:gesamt-rechte-inventar, Feld `sichtbar`): beide
+   * Auftraege haben dieselbe Entscheidung an dieselbe Stelle gebracht. Es gibt sie hier EINMAL —
+   * mit Bens Vorgabe aus Nacharbeit 6, dass keine zweite Stufenregel sie ueberstimmt.
+   *
+   * Integration mit aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidungen 15/16 vom
+   * 11.10.2026): die zentrale Regel `darfSehen` traegt seither selbst den Freigaberang (persoenliches
+   * Niveau, sonst Uebergangsregel) UND die Autor-Ausnahme, die Entscheidung 15 ausdruecklich
+   * behaelt. Eine zusaetzliche UND-Stufensperre hier haette genau diese Ausnahme im Erklaerweg
+   * wieder aufgehoben. Uebernommen ist die Rangbildung: die Route bildet `darfVertraulich` aus
+   * `freigaberang(user) >= 1` — er wirkt nur im fail-closed-Ersatzweg ohne zentrale Entscheidung.
    */
-  readonly sichtbar?: (ko: KnowledgeObject) => boolean;
+  readonly darfSehen?: (ko: KnowledgeObject) => boolean;
+}
+
+/** Fail-closed-Ersatz, wenn keine zentrale Entscheidung hereinkommt: führender Space ⇒ gesperrt. */
+function ohneSpace(ko: KnowledgeObject): boolean {
+  return typeof ko.spaceId !== "string";
 }
 
 export class AnswerExplanationService {
   private readonly answerSnapshots: AnswerSnapshotRepo;
   private readonly ko: KoService;
+  private readonly conflicts: AnswerExplanationDeps["conflicts"];
 
   constructor(deps: AnswerExplanationDeps) {
     this.answerSnapshots = deps.answerSnapshots;
     this.ko = deps.ko;
+    this.conflicts = deps.conflicts;
+  }
+
+  /**
+   * Die Wissenseinheiten mit heute offenem Widerspruch — oder `null`, wenn das nicht feststellbar
+   * ist. Ein gescheiterter Abruf verhindert die Erklaerung nicht; er macht die Konfliktlage nur
+   * UNBEKANNT (dieselbe Beweislast-Umkehr wie `answerEvidence`, mega34).
+   */
+  private async offeneKonflikte(): Promise<ReadonlySet<string> | null> {
+    if (this.conflicts === undefined) {
+      return null;
+    }
+    try {
+      const offen = await this.conflicts.unresolved();
+      return new Set(offen.flatMap((c) => [c.koA, c.koB]));
+    } catch {
+      return null;
+    }
   }
 
   async erklaere(
@@ -87,29 +135,52 @@ export class AnswerExplanationService {
     // Menge. `ko.get` auf eine gebundene Kennung ist eine Aufloesung, keine Suche.
     const gesperrteObjekte = new Set<string>();
     const verschwunden = new Set<string>();
+    const fassungUnaufloesbar = new Set<string>();
     for (const ref of snapshot.evidence) {
       const objekt: KnowledgeObject | undefined = await this.ko.get(ref.knowledgeObjectId);
       if (objekt === undefined) {
         verschwunden.add(ref.knowledgeObjectId);
         continue;
       }
-      const heuteSichtbar = leser.sichtbar?.(objekt) ?? true;
-      if ((isConfidential(objekt.confidentiality) && !leser.darfVertraulich) || !heuteSichtbar) {
+      // R-0276: das Objekt gibt es, aber die gebundene Fassung laesst sich nicht aufloesen — sie
+      // fehlt im Beleg, oder sie liegt ueber der heutigen Fassung (Fassungen wachsen nur). Das ist
+      // kein unbekannter Verweis, sondern ein technisch unaufloesbarer.
+      if (ref.knowledgeObjectVersion === null || ref.knowledgeObjectVersion > objekt.version) {
+        fassungUnaufloesbar.add(ref.knowledgeObjectId);
+      }
+      // Gelesen wird mit den Rechten von HEUTE. Liegt die zentrale Sichtbarkeitsentscheidung vor
+      // (`darfSehen`, samt Space-Recht und Autorberechtigung), gilt AUSSCHLIESSLICH sie — eine
+      // zweite, eigene Rollenregel daneben haette berechtigten Autoren ihre eigenen vertraulichen
+      // Objekte geschwaerzt (Ben, Nacharbeit 6). Fehlt sie, bleibt es fail-closed: kein fuehrender
+      // Space und Vertrauliches nur mit `darfVertraulich`. Gesperrt heisst geschwaerzt — Quelle,
+      // Fundstelle (gespeicherter Textauszug), Zustaendigkeit und Konfliktlage inklusive.
+      const sichtbar =
+        leser.darfSehen !== undefined
+          ? leser.darfSehen(objekt)
+          : ohneSpace(objekt) && (!isConfidential(objekt.confidentiality) || leser.darfVertraulich);
+      if (!sichtbar) {
         gesperrteObjekte.add(ref.knowledgeObjectId);
       }
     }
     // Eine TRAGENDE Referenz, die es nicht mehr gibt, macht den Beleg unbelastbar — eine bloss
     // herangezogene nicht. Die Ursache ist benannt und nicht geraten: KW-W3-22 verlangt genau eine
-    // bekannte Ursache, und ein Objekt, das nicht mehr auffindbar ist, ist `UNKNOWN_REFERENCE`.
-    const primaerFehlt = snapshot.evidence.some(
-      (ref) => ref.evidenceRole === "carrying" && verschwunden.has(ref.knowledgeObjectId),
-    );
-    const ursache: AnswerPrimaryResolutionFailure = "UNKNOWN_REFERENCE";
+    // bekannte Ursache. Ein Objekt, das nicht mehr auffindbar ist, ist `UNKNOWN_REFERENCE`; das
+    // wiegt schwerer als eine unaufloesbare Fassung und gewinnt deshalb, wenn beides vorliegt.
+    const tragendIn = (menge: ReadonlySet<string>): boolean =>
+      snapshot.evidence.some(
+        (ref) => ref.evidenceRole === "carrying" && menge.has(ref.knowledgeObjectId),
+      );
+    const ursache: AnswerPrimaryResolutionFailure | undefined = tragendIn(verschwunden)
+      ? "UNKNOWN_REFERENCE"
+      : tragendIn(fassungUnaufloesbar)
+        ? "UNRESOLVABLE_REFERENCE"
+        : undefined;
     return baueAnswerExplanation(record, snapshot, {
-      primaryResolvable: !primaerFehlt,
-      ...(primaerFehlt ? { primaryResolutionFailure: ursache } : {}),
+      primaryResolvable: ursache === undefined,
+      ...(ursache !== undefined ? { primaryResolutionFailure: ursache } : {}),
       gesperrt: false,
       gesperrteObjekte,
+      offeneKonflikte: await this.offeneKonflikte(),
     });
   }
 }

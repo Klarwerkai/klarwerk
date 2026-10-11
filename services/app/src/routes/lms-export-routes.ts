@@ -1,8 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
-import { type LmsExportService, leseScormEingabe } from "../../../output";
-import { type Guards, sendError } from "../http";
-import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { isValidConfidentiality } from "../../../knowledge-object";
+import type { ObjectStore } from "../../../object-store";
+import { type LmsExportService, type ScormBetrachter, leseScormEingabe } from "../../../output";
+import { type Guards, type SessionUser, sendError } from "../http";
+import { type AnhangQuellen, beurteileAnhang, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // produkt:wettbewerb:20261003:lernplattform — Übergabe an eine Lernplattform (SCORM 1.2).
 //
@@ -17,11 +19,40 @@ import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 //
 // NACHWEIS: jeder ausgelieferte Export ist ein eigener Auditeintrag (append-only) mit Exportfassung,
 // Objektfassungen, Empfänger und Paket-Prüfsumme. Ein späterer Export ändert keinen früheren.
+//
+// aufnahme:20260922:gesamt-leserechte: beide Türen tragen die Lesepolicy DIESES Betrachters —
+// für Wissensobjekte `sichtbarkeitsfilterFuer`, für Bilder dieselbe Anhangsregel wie
+// `GET /api/objects/:id` (`beurteileAnhang` über dieselben Herkünfte). Ohne beides ging ins Paket,
+// was der Betrachter im Produkt selbst nicht öffnen darf.
 export function lmsExportRoutes(
   lmsExport: LmsExportService,
   audit: AuditService,
   guards: Guards,
+  objects: ObjectStore,
+  quellen: AnhangQuellen,
 ): FastifyPluginAsync {
+  // Wortgleich zur Torwache in object-routes.ts/media-routes.ts: derselbe Speicher, dieselbe Regel.
+  async function mediumSichtbar(user: SessionUser, objectId: string): Promise<boolean> {
+    // mega76 A: ein Aufrufer, den der Compiler nicht sieht, bekommt ein NEIN — nicht ein Ja.
+    if (typeof quellen?.kos !== "function") {
+      return false;
+    }
+    const ref = await objects.metadata(objectId);
+    if (!ref) {
+      return false;
+    }
+    const urteil = await beurteileAnhang(
+      user,
+      objectId,
+      {
+        confidentiality: isValidConfidentiality(ref.confidentiality) ? ref.confidentiality : null,
+        author: ref.lifecycle?.owner ?? null,
+      },
+      quellen,
+    );
+    return urteil.sichtbar;
+  }
+
   return async (app) => {
     app.post("/api/output/scorm/pruefen", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -29,9 +60,15 @@ export function lmsExportRoutes(
         return;
       }
       try {
-        // R-1175: die EINE Sichtbarkeitsentscheidung dieses Betrachters reist in den Dienst.
+        // R-1175: die EINE Sichtbarkeitsentscheidung dieses Betrachters reist in den Dienst —
+        // als `betrachter.ko`, daneben die Anhangsregel für die Medien. Hier im Rumpf gebildet,
+        // damit der Lesewege-Sammler die Übergabe nachprüfen kann.
+        const betrachter: ScormBetrachter = {
+          ko: sichtbarkeitsfilterFuer(user),
+          medium: (objectId) => mediumSichtbar(user, objectId),
+        };
         const eingabe = leseScormEingabe(request.body);
-        reply.code(200).send(await lmsExport.pruefe(eingabe, sichtbarkeitsfilterFuer(user)));
+        reply.code(200).send(await lmsExport.pruefe(eingabe, betrachter));
       } catch (error) {
         sendError(reply, error);
       }
@@ -43,8 +80,12 @@ export function lmsExportRoutes(
         return;
       }
       try {
+        const betrachter: ScormBetrachter = {
+          ko: sichtbarkeitsfilterFuer(user),
+          medium: (objectId) => mediumSichtbar(user, objectId),
+        };
         const eingabe = leseScormEingabe(request.body);
-        const ergebnis = await lmsExport.exportiere(eingabe, sichtbarkeitsfilterFuer(user));
+        const ergebnis = await lmsExport.exportiere(eingabe, betrachter);
         if (!("daten" in ergebnis)) {
           reply.code(422).send({ error: "EXPORT_BLOCKED", pruefung: ergebnis.pruefung });
           return;

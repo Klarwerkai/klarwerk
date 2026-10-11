@@ -38,6 +38,7 @@ import {
   darfKandidatSehen,
   darfSehen,
   sichtbareFuer,
+  sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
 
@@ -227,6 +228,9 @@ export function lesevariantenRoutes(
           // UNGETRIMMT: das Zuordnen ist ein Admin-Vorgang über den ganzen Bestand. Was hier
           // zugeordnet wird, ist deshalb noch keine Anzeige — die Leserouten oben trimmen.
           kos: () => ko.list({}),
+          // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 10): `users.manage` ersetzt kein
+          // Space-Leserecht. Die Antwort zählt und nennt nur, was DIESER Admin sehen darf.
+          sichtbar: sichtbarkeitsfilterFuer(user),
           ...(deps.audit ? { audit: deps.audit } : {}),
         },
         paket,

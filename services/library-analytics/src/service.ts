@@ -92,6 +92,9 @@ interface ExportOptionen {
    * produkt:20261007:spaces:admin-20261009 (ADMIN-07, K3): die Sichtregel des Betrachters
    * (`darfSehen` aus der Route). Sie tritt NEBEN Stufe und Status — ein Objekt aus einem
    * geschlossenen Space verlässt das Haus über den Export nur für dessen Mitglieder.
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): dieselbe Regel trägt seit Variante B auch
+   * das persönliche Freigabeniveau und die ungeklärten Stufen — exportiert wird nur, was Stufe UND
+   * Sichtregel zulassen.
    */
   sichtbar?: (ko: KnowledgeObject) => boolean;
   // produkt:20261010:poc-wiederherstellung-export: `paket` ist das ZIP mit Fassungen, Originalanhängen
