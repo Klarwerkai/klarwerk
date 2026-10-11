@@ -25,6 +25,7 @@ import { VermaechtnisBuch } from "../components/VermaechtnisBuch";
 import { UebergabeVorschauInhalt } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
+import { Weisungsbefugnis } from "../components/einstellungen/Weisungsbefugnis";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
 import { Button, Field, TextInput } from "../components/ui";
 import { isPasswordResetValid, newUserIssues, passwordRepeatMismatch } from "../lib/adminForms";
@@ -864,6 +865,9 @@ export function NutzerDetail({
                     </p>
                   )}
                 </div>
+                {/* Antwort 18 (gesamt-peer-validierung): die fachliche Weisungsbefugnis am Konto —
+                    neben Rolle und Befristung, unabhängig von der Rolle. */}
+                <Weisungsbefugnis nutzer={nutzer} />
               </>
             ) : (
               <button

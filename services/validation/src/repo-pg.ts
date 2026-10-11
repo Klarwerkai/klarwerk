@@ -68,6 +68,25 @@ export class PgRatingRepo implements RatingRepo {
     ]);
     return res.rows.map((row) => row.data);
   }
+
+  // R-0254: EINE gruppierte Abfrage über die Schlüsselspalten — kein Laden der Bewertungsrümpfe.
+  async fruehereBewertungen(
+    userIds: readonly string[],
+    ausserKoId: string,
+  ): Promise<Map<string, number>> {
+    const anzahl = new Map<string, number>();
+    if (userIds.length === 0) {
+      return anzahl;
+    }
+    const res = await this.pool.query<{ user_id: string; n: number }>(
+      "SELECT user_id, count(*)::int AS n FROM ratings WHERE user_id = ANY($1) AND ko_id <> $2 GROUP BY user_id",
+      [[...userIds], ausserKoId],
+    );
+    for (const row of res.rows) {
+      anzahl.set(row.user_id, row.n);
+    }
+    return anzahl;
+  }
 }
 
 export class PgAssignmentRepo implements AssignmentRepo {

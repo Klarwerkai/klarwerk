@@ -5,10 +5,18 @@ import type { Sichtbarkeitsfilter } from "./sichtbarkeit";
 // FR-ANA-02: Wirkungs-Dashboard — zwei Kernmetriken über Zeit.
 export interface ImpactReport {
   validatedTotal: number;
-  validatedByWeek: Record<string, number>; // Schlüssel = Wochenstart (Montag, YYYY-MM-DD)
+  // R-0750/R-1741: Schlüssel = Wochenstart (Montag, YYYY-MM-DD) des PRÜFZEITPUNKTS `validatedAt` —
+  // die Woche, in der das Objekt validiert wurde, nicht die seiner Erfassung.
+  validatedByWeek: Record<string, number>;
+  // Heute validierte Objekte OHNE belegten Prüfzeitpunkt (Altbestand vor dem Feld, Seed-Daten).
+  // Sie zählen in `validatedTotal`, aber in keine Woche — zeitlich unbekannt, nicht geraten.
+  validatedUnknownWeek: number;
   askTotal: number;
   answeredWithoutGap: number;
   answerRate: number; // Anteil beantworteter Fragen ohne Wissenslücke (0..1)
+  // R-0723/R-0750: die Antwortquote im Wochenverlauf. Schlüssel = Wochenstart des Audit-Zeitpunkts
+  // der Frage; die Quote je Woche rechnet der Leser aus beiden Zählern (keine gerundete Zahl hier).
+  askByWeek: Record<string, { asked: number; answeredWithoutGap: number }>;
 }
 
 // Wochenstart (Montag, UTC) als stabiler Gruppierungs-Schlüssel.
@@ -34,21 +42,39 @@ export async function impactReport(
   const kos = (await ko.list({})).filter(opts.sichtbar);
   const validated = kos.filter((entry) => entry.status === "validiert");
   const validatedByWeek: Record<string, number> = {};
+  let validatedUnknownWeek = 0;
   for (const entry of validated) {
-    const key = weekKey(entry.createdAt);
+    const geprueft = entry.validatedAt ? Date.parse(entry.validatedAt) : Number.NaN;
+    if (Number.isNaN(geprueft)) {
+      validatedUnknownWeek += 1;
+      continue;
+    }
+    const key = weekKey(new Date(geprueft).toISOString());
     validatedByWeek[key] = (validatedByWeek[key] ?? 0) + 1;
   }
 
   const asks = await audit.list({ action: "ask.query" });
   const askTotal = asks.length;
   const answeredWithoutGap = asks.filter((entry) => entry.payload.answered === true).length;
+  const askByWeek: ImpactReport["askByWeek"] = {};
+  for (const entry of asks) {
+    const key = weekKey(entry.at);
+    const bucket = askByWeek[key] ?? { asked: 0, answeredWithoutGap: 0 };
+    bucket.asked += 1;
+    if (entry.payload.answered === true) {
+      bucket.answeredWithoutGap += 1;
+    }
+    askByWeek[key] = bucket;
+  }
 
   return {
     validatedTotal: validated.length,
     validatedByWeek,
+    validatedUnknownWeek,
     askTotal,
     answeredWithoutGap,
     answerRate: askTotal > 0 ? answeredWithoutGap / askTotal : 0,
+    askByWeek,
   };
 }
 
