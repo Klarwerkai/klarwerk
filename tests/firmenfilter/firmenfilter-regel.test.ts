@@ -177,7 +177,13 @@ describe("K4 · manipulierte oder unklare Angaben scheitern gleich", () => {
 describe("K2 · der Filter verengt nur — er öffnet nichts", () => {
   it("die In-Memory-Form ist Sichtbarkeit UND Bereich", () => {
     const filter = filterAus({ partner: "s-alpha" });
-    const partnerObjekt = { spaceId: "s-alpha", author: "u-erik" };
+    // Ausdrücklich intern: seit Entscheidung 16 (main, gesamt-leserechte) zählt eine fehlende Stufe
+    // wie vertraulich — die Probe soll hier allein den Space messen.
+    const partnerObjekt = {
+      spaceId: "s-alpha",
+      author: "u-erik",
+      confidentiality: "intern" as const,
+    };
     // Der Bereich passt, das Recht fehlt (kein Mitglied, auch nicht als Admin): nicht sichtbar.
     const fremd: SessionUser = { id: "u-fritz", role: "admin", spaceLesbar: new Set() };
     expect(imFirmenfilter(partnerObjekt, filter, PARTNER)).toBe(true);
@@ -189,6 +195,10 @@ describe("K2 · der Filter verengt nur — er öffnet nichts", () => {
     const mitglied: SessionUser = { id: "u-lea", role: "viewer", spaceLesbar: lesbar };
     const trim = firmenTrim(sqlSichtbarkeitFuer(mitglied), filter, PARTNER);
     expect(trim.trifftZu(partnerObjekt)).toBe(true);
+    // Und der Filter öffnet auch keine Stufe: ohne Einstufung sieht das Mitglied (Viewer) es nicht.
+    const { confidentiality: _stufe, ...ohneStufe } = partnerObjekt;
+    expect(imFirmenfilter(ohneStufe, filter, PARTNER)).toBe(true);
+    expect(trim.trifftZu(ohneStufe)).toBe(false);
   });
 
   it("die SQL-Form hängt das Bereichsprädikat UND-verknüpft an den unveränderten Trim", () => {
