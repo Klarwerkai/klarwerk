@@ -120,6 +120,13 @@ export default {
     "assistenz.faehigkeiten.ergebnis": "Stand: {{stand}} – {{meldung}}",
     "assistenz.faehigkeiten.fehler": "Nicht ausgeführt: {{grund}}",
     "assistenz.faehigkeiten.feld.suchbegriff": "Suchbegriff",
+    "assistenz.faehigkeiten.ungewiss":
+      "Keine Antwort erhalten – ob der Auftrag ausgeführt wurde, ist offen. Er bleibt unter derselben Kennung; ein erneutes Senden löst keine zweite Wirkung aus.",
+    "assistenz.faehigkeiten.standAbrufen": "Stand abrufen",
+    "assistenz.faehigkeiten.erneutSenden": "Denselben Auftrag erneut senden",
+    "assistenz.faehigkeiten.nichtAngekommen":
+      "Der Auftrag ist nicht angekommen. Du kannst denselben Auftrag erneut senden.",
+    "assistenz.faehigkeiten.laeuftNoch": "Der Auftrag läuft noch – bitte gleich erneut abrufen.",
   },
   en: {
     "assistenz.neutral.name": "Assistant",
@@ -231,6 +238,13 @@ export default {
     "assistenz.faehigkeiten.ergebnis": "State: {{stand}} – {{meldung}}",
     "assistenz.faehigkeiten.fehler": "Not run: {{grund}}",
     "assistenz.faehigkeiten.feld.suchbegriff": "Search term",
+    "assistenz.faehigkeiten.ungewiss":
+      "No answer received – it is open whether the task was run. It keeps the same identifier; sending it again does not cause a second effect.",
+    "assistenz.faehigkeiten.standAbrufen": "Check status",
+    "assistenz.faehigkeiten.erneutSenden": "Send the same task again",
+    "assistenz.faehigkeiten.nichtAngekommen":
+      "The task did not arrive. You can send the same task again.",
+    "assistenz.faehigkeiten.laeuftNoch": "The task is still running – please check again shortly.",
   },
   nl: {
     "assistenz.neutral.name": "Assistent",
@@ -341,5 +355,12 @@ export default {
     "assistenz.faehigkeiten.ergebnis": "Stand: {{stand}} – {{meldung}}",
     "assistenz.faehigkeiten.fehler": "Niet uitgevoerd: {{grund}}",
     "assistenz.faehigkeiten.feld.suchbegriff": "Zoekterm",
+    "assistenz.faehigkeiten.ungewiss":
+      "Geen antwoord ontvangen – of de opdracht is uitgevoerd, is onbekend. Hij houdt dezelfde kenmerk; opnieuw verzenden veroorzaakt geen tweede effect.",
+    "assistenz.faehigkeiten.standAbrufen": "Status opvragen",
+    "assistenz.faehigkeiten.erneutSenden": "Dezelfde opdracht opnieuw verzenden",
+    "assistenz.faehigkeiten.nichtAngekommen":
+      "De opdracht is niet aangekomen. Je kunt dezelfde opdracht opnieuw verzenden.",
+    "assistenz.faehigkeiten.laeuftNoch": "De opdracht loopt nog – vraag zo meteen opnieuw op.",
   },
 } satisfies Textmodul;

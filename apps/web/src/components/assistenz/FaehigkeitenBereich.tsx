@@ -4,6 +4,13 @@
 // JETZT verfügbar sind (sonst mit den konkreten Voraussetzungen), die eigenen Favoriten und
 // bestätigten Routinen samt Deaktivieren — und ein Aufruf mit Vorschau vor der Ausführung. Alles
 // über `/api/me/faehigkeiten`; der bestätigte Stand ist immer die Antwort des Servers.
+//
+// AUFTRAGSIDENTITÄT (AC08): Eine Ausführung trägt die Kennung und den Fingerabdruck der ANGEZEIGTEN
+// Vorschau. Nur ein Versionskonflikt (409) verlangt eine neue Vorschau. Bei jedem anderen Fehler —
+// Antwortverlust, Netzfehler, Serverfehler — ist der Ausgang unbekannt: die Wirkung kann schon
+// eingetreten sein. Dann bleiben Kennung und Bindung erhalten, die Eingabe ist gesperrt, und es gibt
+// nur „Stand abrufen" und „Denselben Auftrag erneut senden" — der Server erkennt die Kennung und
+// liefert das gespeicherte Ergebnis statt einer zweiten Wirkung.
 import { useCallback, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../../api/client";
@@ -37,12 +44,19 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
   // Kennung und Fingerabdruck der ANGEZEIGTEN Vorschau — ausgeführt wird nur genau diese Bindung.
   const [auftragId, setAuftragId] = useState<string | null>(null);
   const [fingerabdruck, setFingerabdruck] = useState<string | null>(null);
+  // Ausgang einer gesendeten Ausführung unbekannt: Identität festhalten, keine neue Vorschau.
+  const [ungewiss, setUngewiss] = useState(false);
+  const [hinweis, setHinweis] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const zweck = f.zwecke[0] ?? "";
 
   const vorschau = async (): Promise<void> => {
+    if (ungewiss) {
+      return;
+    }
     setFehler(null);
+    setHinweis(null);
     setErgebnis(null);
     setLaeuft(true);
     try {
@@ -67,6 +81,7 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
       return;
     }
     setFehler(null);
+    setHinweis(null);
     setLaeuft(true);
     try {
       const a = await faehigkeitenApi.ausfuehren({
@@ -78,10 +93,47 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
       });
       setVorbereitung(a.vorbereitung);
       setErgebnis(a.ergebnis);
+      setUngewiss(false);
     } catch (e) {
-      // 409: die Bindung hat sich seit der Vorschau geändert — erst die neue Vorschau prüfen.
-      setVorbereitung(null);
-      setFingerabdruck(null);
+      if (e instanceof ApiError && e.status === 409) {
+        // Versionskonflikt: die Bindung hat sich seit der Vorschau geändert — KEINE Wirkung ist
+        // eingetreten; erst die neue Vorschau prüfen.
+        setVorbereitung(null);
+        setFingerabdruck(null);
+        setAuftragId(null);
+        setUngewiss(false);
+        setFehler(grundAus(e));
+        return;
+      }
+      // Unbekannter Ausgang: Kennung, Fingerabdruck und Vorschau bleiben.
+      setUngewiss(true);
+      setFehler(grundAus(e));
+    } finally {
+      setLaeuft(false);
+    }
+  };
+
+  const standAbrufen = async (): Promise<void> => {
+    if (!auftragId) {
+      return;
+    }
+    setFehler(null);
+    setHinweis(null);
+    setLaeuft(true);
+    try {
+      const a = await faehigkeitenApi.auftrag(auftragId);
+      if (a.auftrag.ergebnis) {
+        setErgebnis(a.auftrag.ergebnis);
+        setUngewiss(false);
+      } else {
+        setHinweis(t("assistenz.faehigkeiten.laeuftNoch"));
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        // Nie angekommen: derselbe Auftrag darf unter derselben Kennung gesendet werden.
+        setHinweis(t("assistenz.faehigkeiten.nichtAngekommen"));
+        return;
+      }
       setFehler(grundAus(e));
     } finally {
       setLaeuft(false);
@@ -97,22 +149,36 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
           </span>
           <TextInput
             id={`${basisId}-${feld.name}`}
+            data-testid={`faehigkeit-feld-${feld.name}`}
             maxLength={feld.maxLaenge}
             value={werte[feld.name] ?? ""}
+            disabled={ungewiss}
             onChange={(e) => {
               setWerte({ ...werte, [feld.name]: e.target.value });
               setVorbereitung(null);
+              setFingerabdruck(null);
+              setAuftragId(null);
               setErgebnis(null);
             }}
           />
         </label>
       ))}
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" disabled={laeuft} onClick={() => void vorschau()}>
+        <Button
+          variant="outline"
+          data-testid="faehigkeit-vorschau"
+          disabled={laeuft || ungewiss}
+          onClick={() => void vorschau()}
+        >
           {t("assistenz.faehigkeiten.vorschau")}
         </Button>
-        {vorbereitung?.art === "gebunden" && !ergebnis ? (
-          <Button variant="primary" disabled={laeuft} onClick={() => void ausfuehren()}>
+        {vorbereitung?.art === "gebunden" && !ergebnis && !ungewiss ? (
+          <Button
+            variant="primary"
+            data-testid="faehigkeit-ausfuehren"
+            disabled={laeuft}
+            onClick={() => void ausfuehren()}
+          >
             {t("assistenz.faehigkeiten.ausfuehren")}
           </Button>
         ) : null}
@@ -125,6 +191,34 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
       {vorbereitung?.art === "offen" ? (
         <output className="block text-[12.5px] text-trust-crit-text">
           {vorbereitung.erklaerung}
+        </output>
+      ) : null}
+      {ungewiss ? (
+        <div className="space-y-2" data-testid="faehigkeit-ungewiss">
+          <p className="text-[12.5px]">{t("assistenz.faehigkeiten.ungewiss")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              data-testid="faehigkeit-stand-abrufen"
+              disabled={laeuft}
+              onClick={() => void standAbrufen()}
+            >
+              {t("assistenz.faehigkeiten.standAbrufen")}
+            </Button>
+            <Button
+              variant="primary"
+              data-testid="faehigkeit-erneut-senden"
+              disabled={laeuft}
+              onClick={() => void ausfuehren()}
+            >
+              {t("assistenz.faehigkeiten.erneutSenden")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {hinweis ? (
+        <output className="block text-[12.5px]" data-testid="faehigkeit-hinweis">
+          {hinweis}
         </output>
       ) : null}
       {ergebnis ? (
@@ -243,15 +337,24 @@ export function FaehigkeitenBereich(): JSX.Element {
                   </ul>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => void merke(f.id, "favorit")}>
+                  <Button
+                    variant="outline"
+                    data-testid={`faehigkeit-favorit-${f.id}`}
+                    onClick={() => void merke(f.id, "favorit")}
+                  >
                     {t("assistenz.faehigkeiten.favorit")}
                   </Button>
-                  <Button variant="outline" onClick={() => void merke(f.id, "routine")}>
+                  <Button
+                    variant="outline"
+                    data-testid={`faehigkeit-routine-${f.id}`}
+                    onClick={() => void merke(f.id, "routine")}
+                  >
                     {t("assistenz.faehigkeiten.routine")}
                   </Button>
                   {f.verfuegbar ? (
                     <Button
                       variant="ghost"
+                      data-testid={`faehigkeit-nutzen-${f.id}`}
                       aria-expanded={offen === f.id}
                       onClick={() => setOffen(offen === f.id ? null : f.id)}
                     >
@@ -265,7 +368,7 @@ export function FaehigkeitenBereich(): JSX.Element {
           </ul>
           <h4 className="text-[13px] font-semibold">{t("assistenz.faehigkeiten.vormerkungen")}</h4>
           {stand.vormerkungen.length === 0 ? (
-            <p className="text-[12.5px] text-muted">
+            <p className="text-[12.5px] text-muted" data-testid="faehigkeiten-keine-vormerkungen">
               {t("assistenz.faehigkeiten.keineVormerkungen")}
             </p>
           ) : (
@@ -274,6 +377,8 @@ export function FaehigkeitenBereich(): JSX.Element {
                 <li
                   key={`${v.vormerkung.faehigkeitId}-${v.vormerkung.art}`}
                   className="flex flex-wrap items-center gap-2 text-[12.5px]"
+                  data-testid={`faehigkeit-vormerkung-${v.vormerkung.faehigkeitId}-${v.vormerkung.art}`}
+                  data-aktiv={v.vormerkung.aktiv ? "true" : "false"}
                 >
                   <span>
                     {t(`assistenz.faehigkeiten.art.${v.vormerkung.art}`)}:{" "}
@@ -284,6 +389,7 @@ export function FaehigkeitenBereich(): JSX.Element {
                   {v.vormerkung.aktiv ? (
                     <Button
                       variant="ghost"
+                      data-testid={`faehigkeit-deaktivieren-${v.vormerkung.faehigkeitId}-${v.vormerkung.art}`}
                       onClick={() => void deaktiviere(v.vormerkung.faehigkeitId)}
                     >
                       {t("assistenz.faehigkeiten.deaktivieren")}

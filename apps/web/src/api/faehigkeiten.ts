@@ -101,6 +101,12 @@ export const faehigkeitenApi = {
     auftragId: string;
     fingerabdruck: string | null;
   }> => api.post("/me/faehigkeiten/vorschau", a),
+  /** Der gespeicherte Stand eines eigenen Auftrags (404, wenn er nie angekommen ist). */
+  auftrag: (
+    auftragId: string,
+  ): Promise<{
+    auftrag: { auftragId: string; zustand: string; ergebnis: FaehigkeitsErgebnis | null };
+  }> => api.get(`/me/faehigkeiten/auftraege/${encodeURIComponent(auftragId)}`),
   /** Führt GENAU die angezeigte Vorschau aus; weicht die Bindung ab, antwortet der Server 409. */
   ausfuehren: (
     a: FaehigkeitsAuftragEingabe & { auftragId: string; vorschauFingerabdruck: string },
