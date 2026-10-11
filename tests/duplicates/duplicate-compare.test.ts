@@ -47,6 +47,8 @@ const t = (key: string, opts?: Record<string, unknown>): string => {
     "dcmp.tagsCategory": "Kategorie {{category}}; Wissensart {{type}}; Tags {{tags}}",
     "status.offen": "Offen",
     "status.validiert": "Validiert",
+    // Nutzerentscheid Antwort 54: der sichtbare Name des validierten Zustands (lib/wissensstatus.ts).
+    "pruefablauf.wissensstatus.validiert": "Fachlich bestätigt",
     "ktype.technik": "Technik",
     "ktype.bauchgefuehl": "Intuition",
     "ktype.best_practice": "Best Practice",
