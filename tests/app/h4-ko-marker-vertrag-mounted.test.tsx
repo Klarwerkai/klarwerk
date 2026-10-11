@@ -95,6 +95,14 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     // Ohne nutzbares Modell feuert der Auto-Ask bewusst NICHT (Ask.tsx:437-441) — dann gäbe es
     // keinen Anfragevertrag zu messen. Hier ist eins da.
     useReasonerStatus: () => ok(STATUS_MIT_MODELL),
+    // NACHGEFÜHRT: die Fragenseite fragt seit dem Problemlösungsweg drei weitere Abrufe ab
+    // (`Ask.tsx`, `useGeloesteKonflikte`/`useLifecyclePendingWenn`/`useFruehereRevalidierungen`).
+    // Ohne Eintrag hier bricht der Mock beim Zeichnen ab, bevor der Anfragevertrag gemessen ist.
+    // Sie antworten wie der echte, abgeschaltete Abruf: ohne Daten, ohne Fehler. Gemessen wird
+    // weiter nur der Anfragevertrag.
+    useGeloesteKonflikte: () => ok(undefined),
+    useLifecyclePendingWenn: () => ok(undefined),
+    useFruehereRevalidierungen: () => ok(undefined),
   };
 });
 vi.mock("../../apps/web/src/api/endpoints", () => ({
