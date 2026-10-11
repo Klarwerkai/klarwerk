@@ -29,6 +29,7 @@ import {
   responsibleOf,
 } from "../../../knowledge-object";
 import { can } from "../../../rbac";
+import { type Bereichsmarken, firmenbereichVon } from "../firmenbereich";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 import {
@@ -45,6 +46,7 @@ import {
   SpaceFehler,
   type SpaceKontext,
   type SpacesRepo,
+  bereichsmarken,
   darfInSpaceSchreiben,
   darfSpaceBearbeiten,
   darfSpaceInhalteLesen,
@@ -232,12 +234,27 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return sichtbareFuer(user, await dienste.ko.listForSearch({}, sqlSichtbarkeitFuer(user)));
   }
 
+  // produkt:20261011:peter-p14 · Bens Befund (Nacharbeit 8, AC01): der Kontext eines Artikels kommt
+  // aus DERSELBEN Bereichsableitung wie der Firmenfilter (`firmenbereichVon`, `firmenbereich.ts`) —
+  // Spacekontext UND Öffentlich-Marke am Objekt, Vertrauliches nie „öffentlich". `eigen` heisst im
+  // Spaceweg `firma`. Die Marken je Bestandsliste einmal (dieselbe Liste wird für alle Zeilen gereicht).
+  const markenJe = new WeakMap<readonly SpaceFassung[], Bereichsmarken>();
+  function markenVon(spaces: readonly SpaceFassung[]): Bereichsmarken {
+    let marken = markenJe.get(spaces);
+    if (!marken) {
+      marken = bereichsmarken(spaces);
+      markenJe.set(spaces, marken);
+    }
+    return marken;
+  }
+
   function zeile(ko: KnowledgeObject, spaces: readonly SpaceFassung[]): ArtikelZeile {
     const spaceId = typeof ko.spaceId === "string" ? ko.spaceId : null;
     const space = spaceId ? spaces.find((s) => s.id === spaceId) : undefined;
+    const bereich = firmenbereichVon(ko, markenVon(spaces));
     return {
-      kontext: space ? kontextVon(space) : "firma",
-      partner: space?.partner ?? null,
+      kontext: bereich === "eigen" ? "firma" : bereich,
+      partner: bereich === "partner" ? (space?.partner ?? null) : null,
       id: ko.id,
       version: ko.version,
       title: ko.title,
@@ -897,6 +914,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           zugang: fassung.zugang,
           mitglieder: fassung.mitglieder.length,
           teams: (fassung.teams ?? []).map((b) => b.team),
+          partner: fassung.partner ?? null,
+          existenz: fassung.existenz ?? [],
         },
       });
       const angelegt = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;
@@ -935,10 +954,23 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           });
           return;
         }
+        // produkt:20261011:peter-p14: eine Pflege, die `kontext` nicht nennt, lässt den Firmenkontext
+        // stehen; bleibt es ein Partnerbereich und nennt sie `partner` nicht, bleibt auch der Name.
+        // Geprüft wird die so ergänzte Eingabe mit den Regeln aus `pruefeSpaceEingabe` — ein
+        // Partnerbereich bleibt also auch dann geschlossen. Wer den Kontext ändern will, nennt ihn.
+        const rumpf = (request.body ?? {}) as Record<string, unknown>;
+        const kontext = rumpf.kontext === undefined ? kontextVon(aktuell) : rumpf.kontext;
+        const eingang = {
+          ...rumpf,
+          kontext,
+          ...(rumpf.partner === undefined && kontext === "partner" && aktuell.partner
+            ? { partner: aktuell.partner }
+            : {}),
+        };
         let eingabe: SpaceEingabe;
         try {
           eingabe = pruefeSpaceEingabe(
-            request.body,
+            eingang,
             new Set((await konten()).map((u) => u.id)),
             await bindbareTeams(aktuell),
           );
@@ -960,6 +992,13 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
           // (`freigaberegeln-routes.ts`); die Spacepflege reicht sie unverändert weiter.
           ...(aktuell.freigabe ? { freigabe: aktuell.freigabe } : {}),
         };
+        // P14 · Existenzrecht: dieselbe Regel — ungenannt bleibt es, `[]`/`null` widerruft es.
+        if (
+          (request.body as { existenz?: unknown }).existenz === undefined &&
+          aktuell.existenz !== undefined
+        ) {
+          fassung.existenz = aktuell.existenz;
+        }
         const gelegt = gesehen === aktuell.version && (await dienste.spaces.lege(fassung));
         if (!gelegt) {
           reply.code(409).send({
@@ -983,6 +1022,10 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
             teams: (fassung.teams ?? []).map((b) => b.team),
             vorherTeams: (aktuell.teams ?? []).map((b) => b.team),
             regelnGeaendert: (fassung.regeln ?? "") !== (aktuell.regeln ?? ""),
+            partner: fassung.partner ?? null,
+            vorherPartner: aktuell.partner ?? null,
+            existenz: fassung.existenz ?? [],
+            vorherExistenz: aktuell.existenz ?? [],
           },
         });
         const gelesen = (await dienste.spaces.fassungen(fassung.id)).at(-1) ?? fassung;

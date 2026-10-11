@@ -39,7 +39,7 @@ export function UnternehmensKopf({
       ) : null}
       <p
         data-testid={`${testId}-name`}
-        className="min-w-0 break-words text-[18px] font-semibold leading-snug"
+        className="min-w-0 break-words text-[20px] font-semibold leading-snug"
       >
         {profil.name}
       </p>

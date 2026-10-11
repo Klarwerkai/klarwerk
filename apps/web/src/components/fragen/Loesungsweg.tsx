@@ -98,7 +98,7 @@ export function LoesungswegSchritte({
       <p data-testid="ask-loesungsweg-hinweis" className="text-[12.5px] leading-relaxed text-muted">
         {t(weg.hinweisKey)}
       </p>
-      <p className="mt-4 font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-2">
+      <p className="mt-4 font-mono text-klein font-semibold uppercase tracking-wider text-muted-2">
         {t("loesungsweg.schritte")}
       </p>
       <ol className="mt-2 list-decimal space-y-3 pl-5">

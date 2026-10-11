@@ -3142,7 +3142,29 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // c3da73f9…). Im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
     // HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log) und unverändert übernommen; die
     // Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "c3da73f9507f3a2781db3fd160744e7786bbd94dadaa945859f68fc8758083d7";
+    // AUFNAHME gesamt-design-abgleich (Peters Entscheidung 55, 11.10.2026): PIN BEWUSST AKTUALISIERT
+    // (c3da73f9… -> ea46e0c0…). Auslieferungsfolgen, jede geprüft: die Stufenknöpfe tragen nicht mehr
+    // `primary`, sondern bleiben `ghost` mit Auswahlrahmen (taskpane.css); NEU ein Satz
+    // #capture-stufe-standard mit einem Wörterbuchschlüssel je Sprache (`captureStufeStandard`).
+    // Kein Abrufziel, keine Nutzlast (ohne Wahl weiterhin keine Stufe, N11), keine CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. Im Prüflauf zu Kandidat 09f84e0e GEMESSEN („Received",
+    // HISTORIE/nacharbeit-27/PRUEFUNG/entscheidungen-53-55-texte-und-panel.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // AUFNAHME gesamt-design-abgleich (Peters Entscheidung 54, 11.10.2026): PIN BEWUSST AKTUALISIERT
+    // (ea46e0c0… -> 8d82fac4…). Auslieferungsfolgen, jede geprüft: nur der deutsche Wert von
+    // `askEvidenceVerified` lautet jetzt „Einstufung: Fachlich bestätigt — …“ statt „gesichert“;
+    // Schlüssel, Ausgabewege, Abrufziele, Nutzlast, CSP, Rechte und Manifest unverändert, kein
+    // Sideload. Im Prüflauf zu Kandidat 7854cbde GEMESSEN („Received",
+    // HISTORIE/nacharbeit-30/PRUEFUNG/entscheidung-54-statuswort.log) und unverändert übernommen;
+    // die Panel-Dateien sind seit dieser Messung unberührt.
+    // INTEGRATION Hauptstand (a55bab3b, Auftrag „Menschliche Bewertungen und nachvollziehbare
+    // Freigaberegeln“, ebenfalls Antwort 54): PIN BEWUSST AKTUALISIERT (8d82fac4… -> 13a4708e…).
+    // Auslieferungsfolgen, jede geprüft: nur der deutsche Wert von `askStatusValidiert` lautet
+    // „Fachlich bestätigt“ statt „Validiert“ (plus zwei Kommentarzeilen); Schlüssel, Abrufziele,
+    // Nutzlast, CSP, Rechte und Manifest unverändert, kein Sideload. Im Prüflauf zu Kandidat
+    // 82db4e0a GEMESSEN („Received", HISTORIE/nacharbeit-31/PRUEFUNG/panel-pins-entscheidung-54.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "13a4708e0d85d80ded0ff5b86f1abdfdfe0314211c9f8ff8412da35df403a41e";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

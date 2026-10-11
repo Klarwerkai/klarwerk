@@ -66,7 +66,7 @@ export function WochenupdateTeamgespraech(): JSX.Element {
           />
         </label>
         <Button variant="primary" disabled={erzeugen.isPending} onClick={() => erzeugen.mutate()}>
-          <FileText size={15} />
+          <FileText size={15} strokeWidth={1.8} />
           {t("wochenupdate.erzeugen")}
         </Button>
       </div>

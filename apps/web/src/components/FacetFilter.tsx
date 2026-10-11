@@ -134,7 +134,7 @@ export function FacetFilter(props: FacetFilterProps): JSX.Element {
         <SlidersHorizontal size={15} aria-hidden />
         {t("facet.openFilters")}
         {activeCount > 0 ? (
-          <span className="rounded-pill bg-brand px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-white">
+          <span className="rounded-pill bg-brand px-1.5 py-0.5 font-mono text-klein font-bold text-white">
             {activeCount}
           </span>
         ) : null}
@@ -353,7 +353,7 @@ function RailBody({
               type="button"
               aria-expanded={moreOpen}
               onClick={toggleMore}
-              className="flex w-full items-center gap-1.5 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-muted hover:text-text"
+              className="flex w-full items-center gap-1.5 py-2.5 font-mono text-klein font-semibold uppercase tracking-wider text-muted hover:text-text"
             >
               <ChevronDown
                 size={13}

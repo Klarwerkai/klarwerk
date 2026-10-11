@@ -41,10 +41,21 @@ import { type AbsatzBeleg, absatzBelege } from "../absatz-belege";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { schalterAn } from "../feature-flags";
+import {
+  type BereichsmarkenQuelle,
+  FirmenfilterFehler,
+  KEINE_BEREICHSMARKEN,
+  imFirmenfilter,
+  leseFirmenfilter,
+} from "../firmenbereich";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
-import { schluesselBetrachter, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import {
+  type Sichtbarkeitsfilter,
+  schluesselBetrachter,
+  sichtbarkeitsfilterFuer,
+} from "../sichtbarkeit";
 
 // SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
 // HÜLLE eines Requests:
@@ -279,6 +290,11 @@ export interface AskRouteDeps {
    * werden. Fehlt die Quelle, fällt dort JEDES Objekt mit führendem Space weg (fail-closed).
    */
   offeneSpaces?: (() => Promise<ReadonlySet<string>>) | undefined;
+  /**
+   * produkt:20261011:peter-p14 — die Partner- und öffentlichen Spaces für den Firmenfilter der
+   * Frage. Fehlt die Quelle, gibt es keine Bereichsmarke (der Filter verengt nur).
+   */
+  bereichsmarken?: BereichsmarkenQuelle | undefined;
   /**
    * R-1649: legt den abweichenden Weg aus „nicht hilfreich, ich habe es so gemacht …" als Entwurf
    * an. Eine schmale Funktion statt des Erfassungsdienstes (dieselbe Bauart wie `hilfreich` in
@@ -1046,6 +1062,8 @@ async function antwortLauf(
      * aufgelösten Nutzer — mit ihm wird danach das Leserecht an jeder Quelle geprüft.
      */
     readonly nachpruefung?: () => Promise<SessionUser | undefined>;
+    /** P14: der Firmenfilter dieser Frage — tritt als UND hinter die Grundlage, nie an ihre Stelle. */
+    readonly bereich?: Sichtbarkeitsfilter;
   },
 ): Promise<void> {
   const ask = deps.ask;
@@ -1054,15 +1072,17 @@ async function antwortLauf(
     : lauf.opts;
   const betrachter = request.askSessionUser;
   let grundlage: (ko: KnowledgeObject) => boolean;
+  // produkt:20261011:peter-p14: der Modellkontext bleibt im erlaubten Raum — der Firmenfilter
+  // (`lauf.bereich`) verengt die Grundlage innerhalb derselben Entscheidung, er ersetzt sie nicht.
   if (betrachter) {
-    grundlage = sichtbarkeitsfilterFuer(betrachter);
+    grundlage = sichtbarkeitsfilterFuer(betrachter, lauf.bereich);
   } else {
     // R-1175: auch ohne Sitzungsnutzer DIESELBE Entscheidung — `darfSehen` mit dem engsten
     // Betrachter (keine Kennung, `viewer`, nur offene Spaces), statt einer eigenen Zeile.
     // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19/20): ein Schlüssel hat kein persönliches
     // Freigabeniveau — Rang 0, also nur ausdrücklich „intern" (Entscheidung 15/16).
     const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
-    grundlage = sichtbarkeitsfilterFuer(schluesselBetrachter(offen));
+    grundlage = sichtbarkeitsfilterFuer(schluesselBetrachter(offen), lauf.bereich);
   }
   // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest). Jede Prüfung bis zur
   // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet die
@@ -1141,7 +1161,8 @@ async function antwortLauf(
     if (!frisch) {
       return;
     }
-    sichtJetzt = sichtbarkeitsfilterFuer(frisch);
+    // Zusammenführung mit P14: dieselbe Entscheidung wie am Eingang — samt Firmenfilter.
+    sichtJetzt = sichtbarkeitsfilterFuer(frisch, lauf.bereich);
   }
   // P05-AC03 (Ben, Nacharbeit 4): LESERECHTSENTZUG WÄHREND DER VERARBEITUNG. Die Antwort entstand
   // aus Quellen, die der Fragende beim Eingang sehen durfte. Wurde ihm inzwischen das Leserecht an
@@ -1316,6 +1337,25 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           reply.code(400).send({ error: "INVALID", message: "fragekontext ist ungültig." });
           return;
         }
+        // produkt:20261011:peter-p14: der Firmenfilter der Frage — auf JEDEM Zweig derselbe, geprüft
+        // vor jedem Lesen. Ungültig → 400 mit einem Text, der nichts über den Bestand sagt.
+        let bereich: Sichtbarkeitsfilter | undefined;
+        try {
+          const firmenfilter = leseFirmenfilter({
+            firmenbereich: request.body.firmenbereich,
+            partner: request.body.partner,
+          });
+          if (firmenfilter) {
+            const marken = (await deps.bereichsmarken?.()) ?? KEINE_BEREICHSMARKEN;
+            bereich = (ko) => imFirmenfilter(ko, firmenfilter, marken);
+          }
+        } catch (fehler) {
+          if (fehler instanceof FirmenfilterFehler) {
+            reply.code(400).send({ error: fehler.code, message: fehler.message });
+            return;
+          }
+          throw fehler;
+        }
         // Der Abschluss dieses Wegs — derselbe Antwortlauf wie an Klaras Zugang. Als `answer(…)`
         // benannt, weil `tests/app/mega52-validiert-zusicherung-sammler.test.ts` die Session-
         // Abschlüsse `answer(user.id, …)` AUS DIESEM QUELLTEXT liest (R-0278: alle mit
@@ -1333,6 +1373,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             opts,
             ...(zusatz ? { zusatz } : {}),
             ...(beilage ? { beilage } : {}),
+            ...(bereich ? { bereich } : {}),
             // R-0346: hier kommt eine Klara-Bindung nur noch mit einem Dienst-Schlüssel an (R-0688,
             // Abweisung oben); dann gilt wie bisher der Anlass `dokument`.
             anlass: klaraBindungVorhanden(request.headers) ? "dokument" : "frage",
