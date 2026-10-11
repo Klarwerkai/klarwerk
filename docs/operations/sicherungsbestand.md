@@ -140,8 +140,10 @@ Diese Punkte sind **offen** und werden von keiner Anzeige als erfüllt ausgegebe
 1. **Unabhängige tägliche Offsite-Sicherung** — weder eingerichtet noch im Repository belegt
    (`docs/operations/backup-disaster-recovery.md` §3/§12, `scripts/backup/RESTORE.md`
    „Offene Betreiberpflicht"). Bleibt offen für den B3-Kandidaten `fe14fb08`.
-2. **Verbindliche RPO/RTO-Ziele** — nur Vorschläge (≤ 24 h / ≤ 4 h,
-   `backup-disaster-recovery.md` §4), nicht festgelegt und durch keinen produktiven Drill bestätigt.
+2. **Verbindliche RPO/RTO-Ziele** — nur Vorschläge in drei Varianten (Basis 24 h/8 h, Standard
+   1 h/4 h, Erhöht 15 min/1 h; `docs/operations/wiederanlauf-rpo-rto.md`), nicht festgelegt und
+   durch keinen produktiven Drill bestätigt. Das Messverfahren mit fiktiven Daten und der
+   Wiederanlauf mit Sperre und Replay-Grenze sind seit produkt:20261011:peter-p09 vorhanden.
 3. **Verschlüsselung der Dumps** — liefert `backup.sh` nicht.
 4. **Der `backup.sh`-Weg am Anwendungshost ist nicht eingerichtet** (Laufzeitbefund 09.10.2026,
    oben): kein `BACKUP_DIR`, keine Einhängung, keine Application Scheduled Task, keine Root-Crontab,

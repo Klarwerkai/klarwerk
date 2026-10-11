@@ -89,14 +89,20 @@
 
 ---
 
-## 4. RTO / RPO (Vorschlag — Betreiber bestätigt)
+## 4. RTO / RPO (Vorschlag — Kunde und Messung bestätigen)
 
-| Kennzahl | Zielwert (Vorschlag) | Begründung |
+Seit Peters Entscheidung vom 11.10.2026 (PETER-20261011-P09) gibt es **drei Planungsvarianten**
+statt eines Einzelwerts — alle **Vorschläge, keine SLA**:
+
+| Variante | RPO (Vorschlag) | RTO (Vorschlag) |
 | --- | --- | --- |
-| **RPO** (max. Datenverlust) | **≤ 24 h** | tägliches Backup; bei Bedarf häufiger (z. B. 6 h) |
-| **RTO** (max. Ausfallzeit bis Wiederherstellung) | **≤ 4 h** | Restore Dump + `migrate` + Redeploy + Smoke |
+| Basis | 24 Stunden | 8 Stunden |
+| Standard | 1 Stunde | 4 Stunden |
+| Erhöht | 15 Minuten | 1 Stunde |
 
-> Diese Werte sind **Vorschläge**. Der Betreiber legt verbindliche RTO/RPO nach Geschäftsbedarf fest und prüft sie im Restore-Drill (§7).
+> Umfang je Variante, Bestätigungsregel (Kunde **und** Messung), Messverfahren, Wiederanlauf und das
+> Kosten-/SLA-Tor stehen in `docs/operations/wiederanlauf-rpo-rto.md`. Der frühere Einzelvorschlag
+> (RPO ≤ 24 h, RTO ≤ 4 h) ist damit abgelöst; er war ebenfalls nie bestätigt.
 
 ---
 
