@@ -18,6 +18,7 @@ import {
   type OutputDocument,
   OutputError,
   type OutputPruefnachweis,
+  type OutputSichtbarkeit,
   type OutputSource,
 } from "./types";
 import { type Wochenupdate, WochenupdateService } from "./wochenupdate";
@@ -62,11 +63,17 @@ export class OutputService {
   // Nur validierte KOs sind als Output-Quelle zulässig (Anti-Fake-Guard).
   // SCRUM-415: vertrauliche KOs erscheinen NICHT als Output-Quelle — ein Output ist teilbar (externer
   // Kontext), vertrauliche Objekte bleiben davon ausgeschlossen.
-  async listEligible(
-    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
-  ): Promise<OutputSource[]> {
+  // aufnahme:20260922:gesamt-leserechte: zusätzlich nur, was DIESER Betrachter sehen darf
+  // (`sichtbar`, Pflicht — ohne tauglichen Filter ist die Liste leer). Nacharbeit 20 (Integration
+  // main): der Rückfall `OHNE_BETRACHTER` aus R-1175 gilt hier bewusst NICHT — ein Systemaufruf
+  // reicht ausdrücklich `OHNE_BETRACHTER` herein, statt den Filter wegzulassen. Der Filter wird hier
+  // selbst gerufen (nachprüfbar für den Lesewege-Sammler) — nur ein `true` einer Funktion zählt.
+  async listEligible(sichtbar: OutputSichtbarkeit): Promise<OutputSource[]> {
     const kos = await this.koService.list({ status: "validiert" });
-    return kos.filter((ko) => !isConfidential(ko.confidentiality) && sichtbar(ko)).map(toSource);
+    const tauglich = typeof sichtbar === "function";
+    return kos
+      .filter((ko) => tauglich && sichtbar(ko) === true && !isConfidential(ko.confidentiality))
+      .map(toSource);
   }
 
   /** R-0337: das Prüfdatum je Quelle — dieselbe Lesung wie im Zuruf (`pruefnachweis.ts`). */
@@ -76,7 +83,7 @@ export class OutputService {
 
   async generate(
     input: GenerateOutputInput,
-    sichtbar: Sichtbarkeitsentscheidung = OHNE_BETRACHTER,
+    sichtbar: OutputSichtbarkeit,
   ): Promise<OutputDocument> {
     if (!OUTPUT_KINDS.includes(input.kind)) {
       throw new OutputError("UNKNOWN_KIND", `Unbekannter Output-Typ: ${input.kind}.`);
@@ -87,9 +94,10 @@ export class OutputService {
     const selected: KnowledgeObject[] = [];
     for (const id of input.koIds) {
       const ko = await this.koService.get(id);
-      // R-1175: ein Objekt, das dieser Betrachter nicht sehen darf, antwortet wie ein unbekanntes —
-      // ein eigener Fehler wäre selbst die Existenzauskunft.
-      if (!ko || !sichtbar(ko)) {
+      // aufnahme:20260922:gesamt-leserechte / R-1175: ein Objekt, das der Betrachter nicht sehen
+      // darf, gibt es für ihn nicht — dieselbe Antwort wie für eine unbekannte Kennung, damit weder
+      // Status noch Stufe seine Existenz verraten.
+      if (!ko || typeof sichtbar !== "function" || sichtbar(ko) !== true) {
         throw new OutputError("UNKNOWN_KO", `Wissensobjekt nicht gefunden: ${id}.`);
       }
       if (ko.status !== "validiert") {

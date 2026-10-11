@@ -2416,10 +2416,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             // Aufnahme gesamt-fehlermeldungen (P-Q9): dieselben zwei Katalogsätze wie die
             // Entwurfsrouten (`capture-routes.ts`, JOB 3956) — bis hierher sprach dieser Weg in
             // einer EN/NL-Sitzung als einziger noch Deutsch. Status und Code bleiben unverändert.
+            //
+            // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein NICHT SICHTBARER
+            // Entwurf kommt als `not-found` an (build-app.ts, `draftPromotion`) und antwortet wie
+            // ein unbekannter. `forbidden` bleibt allein dem SICHTBAREN Pool-Entwurf, an dem das
+            // Einreichrecht fehlt — derselbe Rechtesatz wie an `requireVisibleDraft` (`nurAutor`).
             reply.code(loaded.reason === "not-found" ? 404 : 403).send({
               error: loaded.reason === "not-found" ? "NOT_FOUND" : "FORBIDDEN",
               message: meldung(
-                loaded.reason === "not-found" ? "DRAFT_NOT_FOUND" : "DRAFT_NOT_VISIBLE",
+                loaded.reason === "not-found" ? "DRAFT_NOT_FOUND" : "PERMISSION_DENIED",
                 sprache(request),
               ),
             });

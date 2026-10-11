@@ -161,7 +161,9 @@ describe("mega21 A: der Eigentümer des Vorgangs ist der ANFRAGENDE, nicht der K
       draftPayload: {},
       documents: bündel(objectId),
     });
-    expect(versuch.statusCode).toBe(403);
+    // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): den fremden privaten Entwurf gibt es
+    // für den Admin nicht — 404 wie eine unbekannte Kennung, nicht 403.
+    expect(versuch.statusCode).toBe(404);
     expect(versuch.body).not.toContain(INHALT.statement);
     expect(await bestand(app, headers)).toHaveLength(0);
     const beas = await app.inject({
