@@ -7,7 +7,11 @@ import type { FastifyPluginAsync } from "fastify";
 import type { AuditEntry, AuditService } from "../../../audit";
 import { BestandsresetGesperrtError } from "../../../db-tx";
 import { TRASH_RETENTION_DAYS } from "../../../knowledge-object";
-import { type BestandsresetDienst, pruefeFreigabe } from "../bestandsreset-dienst";
+import {
+  type BestandsresetDienst,
+  BestandsresetVorschauVeraltetError,
+  pruefeFreigabe,
+} from "../bestandsreset-dienst";
 import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
 // JOB 3277: der paketbezogene Weg (wählen · laden · zurücksetzen · entfernen) — additiv neben
 // WP-B6, siehe Kopf von example-packages/demo-pakete.ts.
@@ -1093,7 +1097,10 @@ export function adminRoutes(
         }
       };
       try {
-        const befund = await dienst.ausfuehren(laufId);
+        // Nacharbeit 7 (BEN): die bestätigte Kennung geht mit und wird IN der Löschtransaktion unter
+        // der exklusiven Sperre erneut geprüft — die Prüfung oben schliesst das Fenster bis zur
+        // Sperre nicht, sie liefert nur früh die neue Vorschau.
+        const befund = await dienst.ausfuehren(laufId, freigabe.vorschauKennung);
         const protokolliert = await protokolliere("bestandsreset.ausgefuehrt", {
           zustand: befund.zustand,
           geloescht: jetzt.vorschau.geloescht,
@@ -1103,6 +1110,16 @@ export function adminRoutes(
       } catch (fehler) {
         if (fehler instanceof BestandsresetGesperrtError) {
           reply.code(409).send({ error: fehler.code, message: fehler.message });
+          return;
+        }
+        if (fehler instanceof BestandsresetVorschauVeraltetError) {
+          // Zurückgerollt, der Lauf steht als ROLLED_BACK in der Laufakte — es ist nichts gelöscht.
+          const neu = await dienst.stand().catch(() => undefined);
+          reply.code(409).send({
+            error: fehler.code,
+            message: fehler.message,
+            ...(neu ? { vorschau: neu.vorschau } : {}),
+          });
           return;
         }
         request.log.error({ err: fehler, laufId }, "Bestandsreset fehlgeschlagen");

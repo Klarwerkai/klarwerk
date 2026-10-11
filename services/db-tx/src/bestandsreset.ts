@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import {
   type BestandsresetBefund,
   SQL_ABSCHLUSS_SETZEN,
@@ -114,6 +114,29 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   // abgeschaltet. Sie bleibt stehen wie die Einstellungen; Projektionen und Wissensobjekte gehen
   // in derselben Transaktion, ihr Gleichstand (beide leer) bleibt damit erhalten.
   "ko_overlaps",
+  // Nacharbeit 7 (BEN): Abgleich mit dem Schema nach der Integration mit main. Diese Tabellen hängen
+  // über `ko_id` (bzw. Objektpaar, Anhang oder Fragensatz) an Wissensobjekten, OHNE Fremdschlüssel-
+  // kaskade auf `kos` — ein Reset ohne sie ließe Ableitungen, Beziehungen und Arbeitsstände
+  // gelöschter Objekte zurück. Welche Tabelle bewusst bleibt und warum, hält der PostgreSQL-Beleg
+  // (`tests/db-tx/bestandsreset-e9-pg.integration.test.ts`, P1) gegen das tatsächlich migrierte
+  // Schema fest: eine neue Tabelle ist dort rot, bis sie einer der beiden Seiten zugeordnet ist.
+  //   Ableitungen des Texts und des Lesens:
+  "ko_embeddings",
+  "ko_mitgelesen",
+  "lesevarianten",
+  //   kuratierte Beziehungen (Wiederholschlüssel vor dem Aggregat):
+  "ko_kanten_beitrag",
+  "ko_kanten",
+  //   Arbeitsstände an Objekt und Anhang:
+  "gemeinsame_entwuerfe",
+  "office_gesichert",
+  "office_sitzungen",
+  //   Zustellungen einer Veröffentlichung:
+  "veroeffentlichung_zustellungen",
+  "meldung_zustellstatus",
+  //   Verständnisfragen zu einer Wissensfassung (Versuche vor ihren Fragensätzen):
+  "verstaendnis_versuche",
+  "verstaendnis_fragensaetze",
   "ko_evidence",
   // aufnahme:20260922:gesamt-wissen-frische: der aus den Fassungen gelernte Halbwertszeit-Verlauf —
   // abgeleitet aus dem Wissen, fällt mit ihm (dieselbe Begründung wie `conflict_pair_memory`).
@@ -156,6 +179,16 @@ export const SQL_SCHREIBSTAND_ERHOEHEN =
   "UPDATE ko_schreibstand SET stand = stand + 1 WHERE id = 1";
 
 /**
+ * Nacharbeit 7 (BEN): eine Prüfung, die IN der Nutzdatentransaktion läuft — nach dem Erwerb der
+ * exklusiven Sperre und vor der ersten Löschung. Ab diesem Punkt weist die Kapselung (`gatedPool`)
+ * jeden Schreiber ab; was die Prüfung sieht, ist also genau der Bestand, den die Löschungen treffen.
+ * Wirft sie, wird zurückgerollt und der Lauf als `ROLLED_BACK` abgeschlossen — es ist nichts gelöscht.
+ */
+export interface BestandsresetOptionen {
+  readonly vorDemLoeschen?: (client: PoolClient) => Promise<void>;
+}
+
+/**
  * Führt einen Bestandsreset aus und gibt den belastbaren Abschlusszustand zurück.
  *
  * WIRFT statt zu behaupten: Jeder Weg, der nicht bis zum committeten Merkmal führt, endet in einem
@@ -167,6 +200,7 @@ export async function fuehreBestandsresetAus(
   rohPool: Pool,
   laufId: string,
   loeschgraph: readonly string[] = BESTANDSRESET_LOESCHGRAPH,
+  optionen: BestandsresetOptionen = {},
 ): Promise<BestandsresetBefund> {
   const client = await rohPool.connect();
   try {
@@ -182,6 +216,7 @@ export async function fuehreBestandsresetAus(
       if (!sperre.rows[0]?.erworben) {
         throw new BestandsresetGesperrtError();
       }
+      await optionen.vorDemLoeschen?.(client);
       for (const tabelle of loeschgraph) {
         // Die Tabellennamen stammen aus einer Konstante dieses Moduls, nie aus einer Eingabe —
         // deshalb ist die Interpolation hier zulässig. Ein Bezeichner kann ohnehin nicht als

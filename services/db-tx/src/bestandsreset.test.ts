@@ -221,6 +221,19 @@ describe("E1 — Erfolg: vom Aufruf bis zum belastbaren OK", () => {
       "gesamtanweisungen",
       "dokument_fassungen",
       "ko_bearbeitungen",
+      // Nacharbeit 7 (BEN): an Wissensobjekte gebundene Tabellen aus dem Abgleich mit main.
+      "ko_embeddings",
+      "ko_mitgelesen",
+      "lesevarianten",
+      "ko_kanten",
+      "ko_kanten_beitrag",
+      "gemeinsame_entwuerfe",
+      "office_gesichert",
+      "office_sitzungen",
+      "veroeffentlichung_zustellungen",
+      "meldung_zustellstatus",
+      "verstaendnis_fragensaetze",
+      "verstaendnis_versuche",
     ]) {
       expect(BESTANDSRESET_LOESCHGRAPH).toContain(tabelle);
     }
@@ -240,6 +253,8 @@ describe("E1 — Erfolg: vom Aufruf bis zum belastbaren OK", () => {
     vor("kenntnisnahme_empfaenger", "kenntnisnahme_anforderungen");
     vor("gesamtanweisung_bausteine", "gesamtanweisungen");
     vor("gesamtanweisung_staende", "gesamtanweisungen");
+    vor("ko_kanten_beitrag", "ko_kanten");
+    vor("verstaendnis_versuche", "verstaendnis_fragensaetze");
   });
 
   it("der Schreibstand steigt IN der Nutzdatentransaktion — sonst bliebe ein Bild über gelöschtem Wissen gültig", async () => {
@@ -286,6 +301,37 @@ describe("E2 — Rollback: der Bestand steht, und der Lauf sagt das auch", () =>
       zustand: "ROLLED_BACK",
       bestandIstP0: true,
       erfolgMeldbar: false,
+    });
+  });
+
+  it("Nacharbeit 7: die Prüfung vor dem Löschen läuft NACH der Sperre und VOR der ersten Löschung", async () => {
+    const doppel = poolDoppel();
+    await fuehreBestandsresetAus(doppel.pool, "lauf-p", ["kos"], {
+      vorDemLoeschen: async (client) => {
+        await client.query("SELECT 'pruefung'");
+      },
+    });
+    const sperre = doppel.protokoll.findIndex((z) => z.includes("pg_try_advisory_xact_lock"));
+    const pruefung = doppel.protokoll.indexOf("SELECT 'pruefung'");
+    const loeschung = doppel.protokoll.indexOf("DELETE FROM kos");
+    expect(pruefung).toBeGreaterThan(sperre);
+    expect(pruefung).toBeLessThan(loeschung);
+  });
+
+  it("Nacharbeit 7: wirft die Prüfung, wird nichts gelöscht und der Lauf steht als ROLLED_BACK", async () => {
+    const doppel = poolDoppel();
+    await expect(
+      fuehreBestandsresetAus(doppel.pool, "lauf-v", ["kos"], {
+        vorDemLoeschen: async () => {
+          throw new Error("Vorschau veraltet");
+        },
+      }),
+    ).rejects.toThrow("Vorschau veraltet");
+    expect(doppel.protokoll.filter((z) => z.startsWith("DELETE"))).toEqual([]);
+    expect(doppel.protokoll).toContain("ROLLBACK");
+    expect(doppel.tabelle.get("lauf-v")).toMatchObject({
+      status: "ROLLED_BACK",
+      payload_committed_at: null,
     });
   });
 

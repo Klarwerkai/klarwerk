@@ -57,7 +57,25 @@ export interface BestandsresetStand {
 
 export interface BestandsresetDienst {
   stand(): Promise<BestandsresetStand>;
-  ausfuehren(laufId: string): Promise<BestandsresetBefund>;
+  /**
+   * Nacharbeit 7 (BEN): `vorschauKennung` ist die BESTÄTIGTE Kennung. Der Dienst rechnet sie IN der
+   * Löschtransaktion nach dem Erwerb der exklusiven Sperre neu; weicht sie ab, wirft er
+   * `BestandsresetVorschauVeraltetError`, und es ist nichts gelöscht. Die Prüfung in der Route davor
+   * bleibt als frühe Antwort mit neuer Vorschau — sie allein schloss das Fenster bis zur Sperre nicht.
+   */
+  ausfuehren(laufId: string, vorschauKennung: string): Promise<BestandsresetBefund>;
+}
+
+/** Der Bestand ist nicht mehr der bestätigte — der Reset hat nichts gelöscht. */
+export class BestandsresetVorschauVeraltetError extends Error {
+  readonly code = "VORSCHAU_VERALTET";
+
+  constructor() {
+    super(
+      "Der Bestand hat sich seit der Vorschau verändert. Prüfe die neue Vorschau und bestätige erneut.",
+    );
+    this.name = "BestandsresetVorschauVeraltetError";
+  }
 }
 
 /**
@@ -138,7 +156,17 @@ export function pgBestandsresetDienst(rohPool: Pool): BestandsresetDienst {
       vorschau: await vorschauAus(db),
       letzterLauf: (await bestandsresetBefund(db, sperreGehalten)) ?? null,
     }),
-    ausfuehren: (laufId) => fuehreBestandsresetAus(rohPool, laufId),
+    ausfuehren: (laufId, erwartet) =>
+      fuehreBestandsresetAus(rohPool, laufId, BESTANDSRESET_LOESCHGRAPH, {
+        // Dieselbe Vorschau wie im GET, aber auf dem Client der Löschtransaktion: unter der
+        // exklusiven Sperre kann kein Schreiber mehr dazwischen.
+        vorDemLoeschen: async (client) => {
+          const jetzt = await vorschauAus(client as unknown as Queryable);
+          if (jetzt.kennung !== erwartet) {
+            throw new BestandsresetVorschauVeraltetError();
+          }
+        },
+      }),
   };
 }
 

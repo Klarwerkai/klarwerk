@@ -27,6 +27,10 @@
 import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  BestandsresetVorschauVeraltetError,
+  pgBestandsresetDienst,
+} from "../../services/app/src/bestandsreset-dienst";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { PgKenntnisnahmeRepo } from "../../services/app/src/kenntnisnahme";
@@ -120,8 +124,156 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
     expect(fehlend).toEqual([]);
   });
 
+  // Nacharbeit 7 (BEN): DER ABGLEICH MIT DEM TATSÄCHLICH MIGRIERTEN SCHEMA. Jede Tabelle, die
+  // `migrate()` anlegt, steht GENAU EINER Seite zu: im Löschgraphen — oder hier, mit Grund. Eine
+  // neue Tabelle macht diesen Fall rot, bis jemand entschieden hat, ob sie zum Wissensbestand gehört.
+  // Die Trennlinie ist Peters Entscheidung vom 11.10. und die des Löschgraphen: Konten,
+  // Firmenwörterbuch, Einstellungen und Nachweise bleiben.
+  const ERHALTEN: Readonly<Record<string, string>> = {
+    users: "Konto",
+    sessions: "Anmeldung",
+    password_resets: "Konto (Rücksetzmarke)",
+    user_second_factors: "Konto (zweiter Faktor)",
+    verantwortung_nachfolge: "Konto (Nachfolge bei Befristung)",
+    begriffe_fassungen: "Firmenwörterbuch (Peter, 11.10.)",
+    audit: "Nachweis: Prüfprotokoll",
+    bestandsreset_laeufe: "Nachweis: Laufakte des Resets selbst",
+    richtlinien_handlungen: "Nachweis: Handlungsprotokoll der Richtlinien",
+    loeschantraege: "Nachweis über Betroffenenrechte",
+    ko_schreibstand: "Steuerung: Zählerzeile, wird erhöht statt gelöscht",
+    ko_projection_control: "Steuerung: Steuerzeile der Suche",
+    overlap_settings: "Einstellung",
+    validation_settings: "Einstellung",
+    external_knowledge_policy: "Einstellung",
+    upload_limits: "Einstellung",
+    reasoner_policy: "Einstellung",
+    branding_settings: "Einstellung",
+    confluence_import_schalter: "Einstellung",
+    assist_presets: "Einstellung",
+    instanz_bindung: "Einstellung (Instanzbindung)",
+    ui_uebersetzungen: "Einstellung (Oberflächentexte)",
+    ui_sprachen: "Einstellung (angelegte Sprachen)",
+    management_category_profiles: "Einstellung (Bereichsverantwortung)",
+    management_retirement_horizons: "Einstellung (Ruhestandshorizonte)",
+    unternehmensprofil_fassungen: "Einstellung (Unternehmensprofil)",
+    richtlinien_fassungen: "Einstellung (interne Richtlinien)",
+    kommunikationsregel_fassungen: "Einstellung (Kommunikationsregeln)",
+    meldungsregel_persoenlich: "Einstellung je Person (Abwahlen)",
+    assistenz_profile: "Einstellung je Person (Assistenzprofil)",
+    spaces_fassungen: "Struktur (Spaces), nicht an Wissensobjekte gebunden",
+    teams_fassungen: "Struktur (Teams), nicht an Wissensobjekte gebunden",
+    vorlagen_fassungen: "Struktur (Vorlagen), nicht an Wissensobjekte gebunden",
+    interaktions_gedaechtnis: "persönliche Daten je Konto, nicht an Wissensobjekte gebunden",
+    klara_gespraeche: "persönliche Gespräche je Konto, nicht an Wissensobjekte gebunden",
+    chat_gespraeche: "interner Chat zwischen Personen",
+    chat_nachrichten: "interner Chat zwischen Personen",
+    livewall_fotos: "freiwillige Fotos je Konto",
+    ask_nulltreffer: "Suchbegriffe ohne Treffer je Konto, nicht an Wissensobjekte gebunden",
+  };
+
+  it("P1b · jede migrierte Tabelle steht im Löschgraphen ODER mit Grund auf der Erhaltensliste", async () => {
+    const res = await pool.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`,
+    );
+    const migriert = res.rows.map((z) => z.table_name);
+    // Kalibrierung: ohne eine nennenswerte Erhebung wäre der Abgleich trivial grün.
+    expect(migriert.length).toBeGreaterThan(80);
+    const loeschen = new Set(BESTANDSRESET_LOESCHGRAPH);
+    expect(migriert.filter((t) => !loeschen.has(t) && ERHALTEN[t] === undefined)).toEqual([]);
+    expect(Object.keys(ERHALTEN).filter((t) => loeschen.has(t))).toEqual([]);
+  });
+
   it("P2 · Wissen und Papierkorb sind weg, Konten und Sitzungen stehen, der Schreibstand steigt", async () => {
     expect(await anzahl("kos")).toBe(2);
+    // Nacharbeit 7 (BEN): die an Wissensobjekte gebundenen Tabellen OHNE Fremdschlüsselkaskade —
+    // je eine echte Zeile, damit die Leerung belegt ist und nicht an leeren Tabellen gemessen wird.
+    const gebunden: [string, string, unknown[]][] = [
+      [
+        "ko_embeddings",
+        `INSERT INTO ko_embeddings(ko_id, embedding_version, dim, vektor)
+         VALUES ('ko-lebend', 'v1', 2, ARRAY[0.1, 0.2]::double precision[])`,
+        [],
+      ],
+      [
+        "ko_mitgelesen",
+        "INSERT INTO ko_mitgelesen(ko_a, ko_b, anzahl) VALUES ('ko-lebend', 'ko-papierkorb', 3)",
+        [],
+      ],
+      [
+        "lesevarianten",
+        `INSERT INTO lesevarianten(ko_id, lang, original_language, title, statement, body_html,
+           herkunft, status, original_sha256, uebersetzung_sha256, quellabgleich, updated_at)
+         VALUES ('ko-lebend', 'en', 'de', 'Title', 'Statement', '<p>x</p>', 'test', 'aktuell',
+           'a', 'b', 'aktuell', now())`,
+        [],
+      ],
+      [
+        "ko_kanten",
+        `INSERT INTO ko_kanten(id, quelle_id, ziel_id, art, richtung, urheber, gesetzt_am,
+           geaendert_am, status, version, beziehungs_schluessel_hash)
+         VALUES ('kante-1', 'ko-lebend', 'ko-papierkorb', 'verwandt', 'beide', 'konto-testerin',
+           '2026-07-30T08:00:00.000Z', '2026-07-30T08:00:00.000Z', 'aktiv', 1, 'hash-1')`,
+        [],
+      ],
+      [
+        "ko_kanten_beitrag",
+        "INSERT INTO ko_kanten_beitrag(beitrag_schluessel, kante_id) VALUES ('beitrag-1', 'kante-1')",
+        [],
+      ],
+      [
+        "gemeinsame_entwuerfe",
+        `INSERT INTO gemeinsame_entwuerfe(id, ko_id, offen, revision, geaendert_am, data)
+         VALUES ('entwurf-1', 'ko-lebend', true, 1, now(), '{}'::jsonb)`,
+        [],
+      ],
+      [
+        "office_gesichert",
+        `INSERT INTO office_gesichert(anhang_id, object_id, ko_id, nutzer_id, at)
+         VALUES ('anhang-1', 'objekt-1', 'ko-lebend', 'konto-testerin', now())`,
+        [],
+      ],
+      [
+        "office_sitzungen",
+        "INSERT INTO office_sitzungen(anhang_id, sitzung) VALUES ('anhang-1', '{}'::jsonb)",
+        [],
+      ],
+      [
+        "veroeffentlichung_zustellungen",
+        `INSERT INTO veroeffentlichung_zustellungen(vermerk_id, ko_id, empfaenger_id, am, hervorgehoben)
+         VALUES ('vermerk-1', 'ko-lebend', 'konto-testerin', now(), false)`,
+        [],
+      ],
+      [
+        "meldung_zustellstatus",
+        `INSERT INTO meldung_zustellstatus(vermerk_id, ko_id, empfaenger_id, kanal, status, angelegt_am)
+         VALUES ('vermerk-1', 'ko-lebend', 'konto-testerin', 'app', 'offen', now())`,
+        [],
+      ],
+      [
+        "verstaendnis_fragensaetze",
+        `INSERT INTO verstaendnis_fragensaetze(fragensatz_id, version, ko_id, data)
+         VALUES ('satz-1', 1, 'ko-lebend', '{}'::jsonb)`,
+        [],
+      ],
+      [
+        "verstaendnis_versuche",
+        `INSERT INTO verstaendnis_versuche(versuch_id, person_id, fragensatz_id, fragensatz_version,
+           nummer, abgegeben_am, data)
+         VALUES ('versuch-1', 'konto-testerin', 'satz-1', 1, 1, now(), '{}'::jsonb)`,
+        [],
+      ],
+    ];
+    for (const [tabelle, sql, werte] of gebunden) {
+      await pool.query(sql, werte);
+      expect(await anzahl(tabelle), `${tabelle}: vor dem Reset befüllt`).toBe(1);
+    }
+    // Firmenwörterbuch: bleibt (Peter, 11.10.) — auch das wird an einer echten Zeile gemessen.
+    await pool.query("TRUNCATE begriffe_fassungen");
+    await pool.query(
+      `INSERT INTO begriffe_fassungen(begriff_id, version, data, geaendert_von, geaendert_am)
+       VALUES ('begriff-p2', 1, '{"begriff":"Ventil"}'::jsonb, 'konto-testerin', now())`,
+    );
     const standVorher = await schreibstand();
 
     const befund = await fuehreBestandsresetAus(pool, "lauf-e9");
@@ -132,9 +284,11 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
       "dokument_fassungen",
       "kenntnisnahme_empfaenger",
       "kenntnisnahme_anforderungen",
+      ...gebunden.map(([t]) => t),
     ]) {
       expect(await anzahl(tabelle), tabelle).toBe(0);
     }
+    expect(await anzahl("begriffe_fassungen")).toBe(1);
     const konten = await pool.query("SELECT id, email, approved FROM users");
     expect(konten.rows).toEqual([
       { id: "konto-testerin", email: "testerin@example.invalid", approved: true },
@@ -171,6 +325,38 @@ describe("E9 · Bestandsreset gegen echtes Postgres: Wissen und Papierkorb weg, 
       "SELECT status, payload_committed_at FROM bestandsreset_laeufe WHERE id = 'lauf-zweiter'",
     );
     expect(lauf.rows[0]).toEqual({ status: "ROLLED_BACK", payload_committed_at: null });
+  });
+
+  it("P5 · Nacharbeit 7: ein Schreiber zwischen bestätigter Vorschau und Sperre — der Reset bricht ab, nichts gelöscht", async () => {
+    // Genau das Fenster aus BENs Befund: die Kennung ist bestätigt (und hätte die frühe Prüfung der
+    // Route bestanden), DANACH legt ein anderer Aufruf ein Wissensobjekt an, und erst dann nimmt der
+    // Reset seine Sperre. Gefahren wird der Dienst direkt — ohne die Routenprüfung, damit allein die
+    // Prüfung UNTER der Sperre über das Ergebnis entscheidet.
+    const dienst = pgBestandsresetDienst(pool);
+    const bestaetigt = (await dienst.stand()).vorschau.kennung;
+    await pool.query(
+      "INSERT INTO kos(id, type, status, category, data) VALUES ('ko-neu', 'wiki', 'published', 'allgemein', $1::jsonb)",
+      [JSON.stringify({ id: "ko-neu", title: "Nach der Vorschau angelegt" })],
+    );
+
+    await expect(dienst.ausfuehren("lauf-fenster", bestaetigt)).rejects.toBeInstanceOf(
+      BestandsresetVorschauVeraltetError,
+    );
+
+    expect(await anzahl("kos")).toBe(3);
+    expect(await anzahl("dokument_fassungen")).toBe(1);
+    expect(await anzahl("kenntnisnahme_anforderungen")).toBe(1);
+    const lauf = await pool.query(
+      "SELECT status, payload_committed_at FROM bestandsreset_laeufe WHERE id = 'lauf-fenster'",
+    );
+    expect(lauf.rows[0]).toEqual({ status: "ROLLED_BACK", payload_committed_at: null });
+
+    // Gegenprobe: mit der Kennung des JETZIGEN Bestands läuft derselbe Dienst durch.
+    const aktuell = (await dienst.stand()).vorschau.kennung;
+    await expect(dienst.ausfuehren("lauf-aktuell", aktuell)).resolves.toMatchObject({
+      zustand: "OK",
+    });
+    expect(await anzahl("kos")).toBe(0);
   });
 
   it("P4 · der administrative Weg: Vorschau, zweimal Passwort, Häkchen — sonst bleibt alles stehen", async () => {

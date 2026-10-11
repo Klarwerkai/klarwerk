@@ -30,6 +30,7 @@ vi.mock("../../apps/web/src/api/auth", async (importOriginal) => {
   };
 });
 
+import { act } from "../../apps/web/node_modules/react";
 import type { BestandsresetAuskunft } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
 import { adminHref } from "../../apps/web/src/lib/adminSections";
@@ -182,6 +183,54 @@ describe("Bestandsreset · die Fläche", () => {
       folgenBestaetigt: true,
       vorschauKennung: KENNUNG,
     });
+  });
+
+  it("M4 · Nacharbeit 7: ändert sich die Vorschau im offenen Formular, ist die Bestätigung hinfällig", async () => {
+    const s = await karte();
+    await klicke(knopf(s, t("bestandsreset.starten")));
+    const ausfuehren = (): HTMLButtonElement | undefined => knopf(s, t("bestandsreset.ausfuehren"));
+    await tippe(feldMitBeschriftung(s, t("bestandsreset.passwort")), "geheim-123");
+    await tippe(feldMitBeschriftung(s, t("bestandsreset.passwortWiederholung")), "geheim-123");
+    await klicke(abschnitt(s)?.querySelector('input[type="checkbox"]'));
+    expect(ausfuehren()?.disabled, "vor der Änderung vollständig bestätigt").toBe(false);
+
+    // Der Bestand ändert sich, und die Fläche holt die Vorschau neu — so wie es React Query bei der
+    // Rückkehr ins Fenster ohnehin tut (refetchOnWindowFocus ist nicht abgeschaltet).
+    const NEU = "b".repeat(64);
+    auskunft = {
+      verfuegbar: true,
+      vorschau: {
+        geloescht: [{ tabelle: "kos", zeilen: 8 }],
+        wissensobjekte: 8,
+        papierkorb: 5,
+        erhalten: { konten: 2, begriffe: 3 },
+        kennung: NEU,
+      },
+      letzterLauf: null,
+    };
+    await act(async () => {
+      window.dispatchEvent(new Event("visibilitychange"));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    await beruhige();
+
+    expect(
+      s.container.querySelector('[data-testid="bestandsreset-vorschau-geaendert"]')?.textContent,
+    ).toBe(t("bestandsreset.vorschauGeaendert"));
+    const haken = abschnitt(s)?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    expect(haken?.checked, "das Häkchen gilt der alten Vorschau").toBe(false);
+    expect(feldMitBeschriftung(s, t("bestandsreset.passwort"))?.value).toBe("");
+    expect(feldMitBeschriftung(s, t("bestandsreset.passwortWiederholung"))?.value).toBe("");
+    expect(ausfuehren()?.disabled, "ohne erneute Bestätigung läuft nichts").toBe(true);
+    expect(posts, "die geänderte Löschmenge darf nicht ungefragt hinausgehen").toEqual([]);
+
+    // Erneut bestätigt — jetzt für die NEUE Vorschau, und genau ihre Kennung geht hinaus.
+    await tippe(feldMitBeschriftung(s, t("bestandsreset.passwort")), "geheim-123");
+    await tippe(feldMitBeschriftung(s, t("bestandsreset.passwortWiederholung")), "geheim-123");
+    await klicke(abschnitt(s)?.querySelector('input[type="checkbox"]'));
+    await klicke(ausfuehren());
+    expect(posts).toHaveLength(1);
+    expect((posts[0]?.rumpf as { vorschauKennung?: string }).vorschauKennung).toBe(NEU);
   });
 
   it("M3 · ohne Datenbank: „nicht verfügbar“ und kein Knopf", async () => {

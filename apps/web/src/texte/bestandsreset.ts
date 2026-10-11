@@ -43,6 +43,8 @@ export default {
     "bestandsreset.veraltet":
       "Der Bestand hat sich seit der Vorschau verändert. Bitte die neue Vorschau prüfen und erneut bestätigen.",
     "bestandsreset.fehler": "Der Bestandsreset ist nicht durchgelaufen.",
+    "bestandsreset.vorschauGeaendert":
+      "Die Vorschau hat sich geändert. Bitte die neuen Folgen prüfen und erneut bestätigen.",
   },
   en: {
     "bestandsreset.titel": "Reset knowledge base",
@@ -76,6 +78,8 @@ export default {
     "bestandsreset.veraltet":
       "The knowledge base has changed since the preview. Please check the new preview and confirm again.",
     "bestandsreset.fehler": "The knowledge base reset did not complete.",
+    "bestandsreset.vorschauGeaendert":
+      "The preview has changed. Please check the new consequences and confirm again.",
   },
   nl: {
     "bestandsreset.titel": "Kennisbestand terugzetten",
@@ -111,5 +115,7 @@ export default {
     "bestandsreset.veraltet":
       "Het kennisbestand is sinds het voorbeeld gewijzigd. Controleer het nieuwe voorbeeld en bevestig opnieuw.",
     "bestandsreset.fehler": "Het terugzetten van het kennisbestand is niet voltooid.",
+    "bestandsreset.vorschauGeaendert":
+      "Het voorbeeld is gewijzigd. Controleer de nieuwe gevolgen en bevestig opnieuw.",
   },
 } satisfies Textmodul;

@@ -14,7 +14,7 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -971,11 +971,39 @@ function BestandsresetAbschnitt(): JSX.Element {
   const [passwort, setPasswort] = useState("");
   const [wiederholung, setWiederholung] = useState("");
   const [haken, setHaken] = useState(false);
+  // Nacharbeit 7 (BEN): die Kennung der Vorschau, für die die Bestätigung gilt — festgehalten beim
+  // Öffnen des Formulars. Ändert sich die angezeigte Vorschau danach (etwa durch eine automatische
+  // Aktualisierung), ist die Bestätigung hinfällig: Passwörter und Häkchen werden geleert, und der
+  // Knopf schickt nie eine Kennung, die der Mensch nicht bestätigt hat.
+  const [bestaetigt, setBestaetigt] = useState<string | null>(null);
+  const [vorschauGeaendert, setVorschauGeaendert] = useState(false);
+  const aktuelleKennung = status.data?.verfuegbar ? status.data.vorschau.kennung : null;
+  useEffect(() => {
+    if (
+      offen &&
+      bestaetigt !== null &&
+      aktuelleKennung !== null &&
+      aktuelleKennung !== bestaetigt
+    ) {
+      setPasswort("");
+      setWiederholung("");
+      setHaken(false);
+      setBestaetigt(aktuelleKennung);
+      setVorschauGeaendert(true);
+    }
+  }, [offen, bestaetigt, aktuelleKennung]);
+  const oeffnen = (kennung: string): void => {
+    setBestaetigt(kennung);
+    setVorschauGeaendert(false);
+    setOffen(true);
+  };
   const schliessen = (): void => {
     setOffen(false);
     setPasswort("");
     setWiederholung("");
     setHaken(false);
+    setBestaetigt(null);
+    setVorschauGeaendert(false);
   };
   const ausfuehren = useMutation({
     mutationFn: (vorschauKennung: string) =>
@@ -1009,7 +1037,13 @@ function BestandsresetAbschnitt(): JSX.Element {
     },
   });
   const ungleich = passwort !== "" && wiederholung !== "" && passwort !== wiederholung;
-  const bereit = passwort !== "" && passwort === wiederholung && haken && !ausfuehren.isPending;
+  const bereit =
+    passwort !== "" &&
+    passwort === wiederholung &&
+    haken &&
+    bestaetigt !== null &&
+    bestaetigt === aktuelleKennung &&
+    !ausfuehren.isPending;
 
   return (
     <div
@@ -1066,7 +1100,7 @@ function BestandsresetAbschnitt(): JSX.Element {
                 {!offen ? (
                   <button
                     type="button"
-                    onClick={() => setOffen(true)}
+                    onClick={() => oeffnen(stand.vorschau.kennung)}
                     className="inline-flex items-center gap-1.5 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
                   >
                     <Trash2 size={14} />
@@ -1074,6 +1108,14 @@ function BestandsresetAbschnitt(): JSX.Element {
                   </button>
                 ) : (
                   <div className="space-y-2.5 rounded-card border border-trust-crit-text/40 bg-trust-crit-bg px-4 py-3.5">
+                    {vorschauGeaendert ? (
+                      <p
+                        data-testid="bestandsreset-vorschau-geaendert"
+                        className="text-[12.5px] font-semibold text-trust-crit-text"
+                      >
+                        {t("bestandsreset.vorschauGeaendert")}
+                      </p>
+                    ) : null}
                     <Field label={t("bestandsreset.passwort")}>
                       <TextInput
                         type="password"
@@ -1116,7 +1158,11 @@ function BestandsresetAbschnitt(): JSX.Element {
                         type="button"
                         disabled={!bereit}
                         className="inline-flex items-center gap-1 rounded-btn bg-trust-crit-text px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
-                        onClick={() => ausfuehren.mutate(stand.vorschau.kennung)}
+                        onClick={() => {
+                          if (bestaetigt !== null) {
+                            ausfuehren.mutate(bestaetigt);
+                          }
+                        }}
                       >
                         <AlertTriangle size={13} />
                         {t("bestandsreset.ausfuehren")}

@@ -687,7 +687,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "adminRoutes",
     methode: "GET",
     pfad: "/api/admin/bestandsreset",
-    belegstelle: "services/app/src/routes/admin-routes.ts:1025",
+    belegstelle: "services/app/src/routes/admin-routes.ts:1029",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },

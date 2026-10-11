@@ -3,6 +3,7 @@ import { type BestandsresetBefund, BestandsresetGesperrtError } from "../../../d
 import {
   type BestandsresetDienst,
   type BestandsresetVorschau,
+  BestandsresetVorschauVeraltetError,
   pruefeFreigabe,
   vorschauKennung,
 } from "../bestandsreset-dienst";
@@ -40,26 +41,44 @@ function vorschau(fingerabdruck: string): BestandsresetVorschau {
 interface Attrappe {
   dienst: BestandsresetDienst;
   laeufe: string[];
+  /** Die Kennungen, die die Route an `ausfuehren` übergeben hat. */
+  kennungen: string[];
   /** Der Bestand „ändert sich": die nächste Vorschau trägt eine andere Kennung. */
   aendere(): void;
+  /**
+   * Nacharbeit 7: ein Schreiber NACH der Prüfung in der Route und VOR der Sperre. Die Attrappe
+   * verhält sich dann wie der echte Dienst unter der Sperre: sie rechnet nach und weist ab.
+   */
+  zwischenschreiber: { aktiv: boolean };
   sperre: { gehalten: boolean };
 }
 
 function attrappe(): Attrappe {
   let fingerabdruck = "stand-1";
   const laeufe: string[] = [];
+  const kennungen: string[] = [];
   const sperre = { gehalten: false };
+  const zwischenschreiber = { aktiv: false };
   return {
     laeufe,
+    kennungen,
     sperre,
+    zwischenschreiber,
     aendere: () => {
       fingerabdruck = "stand-2";
     },
     dienst: {
       stand: async () => ({ vorschau: vorschau(fingerabdruck), letzterLauf: null }),
-      ausfuehren: async (laufId) => {
+      ausfuehren: async (laufId, kennung) => {
+        kennungen.push(kennung);
         if (sperre.gehalten) {
           throw new BestandsresetGesperrtError();
+        }
+        if (zwischenschreiber.aktiv) {
+          fingerabdruck = "stand-3";
+        }
+        if (vorschau(fingerabdruck).kennung !== kennung) {
+          throw new BestandsresetVorschauVeraltetError();
         }
         laeufe.push(laufId);
         return OK_BEFUND;
@@ -226,12 +245,34 @@ describe("Bestandsreset · Folgenvorschau, zweimal Passwort, Häkchen", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: true, befund: { zustand: "OK" }, protokolliert: true });
     expect(a.laeufe).toEqual([res.json().laufId]);
+    // Die BESTÄTIGTE Kennung geht an den Dienst — er prüft sie unter der Sperre erneut.
+    expect(a.kennungen).toEqual([kennung]);
     const eintraege = (await services.audit.list()).filter(
       (e) => e.action === "bestandsreset.ausgefuehrt",
     );
     expect(eintraege).toHaveLength(1);
     expect(eintraege[0]).toMatchObject({ actor: adminId, target: res.json().laufId });
     expect(eintraege[0]?.payload).toMatchObject({ erhalten: { konten: 2, begriffe: 3 } });
+  });
+
+  it("Nacharbeit 7: schreibt jemand zwischen Routenprüfung und Sperre → 409, nichts gelöscht, kein Erfolgsbeleg", async () => {
+    const { app, services, a, admin } = await aufbau(true);
+    const kennung = (await a.dienst.stand()).vorschau.kennung;
+    a.zwischenschreiber.aktiv = true;
+    const res = await app.inject({
+      method: "POST",
+      url: WEG,
+      headers: admin,
+      payload: voll(kennung),
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("VORSCHAU_VERALTET");
+    expect(res.json().vorschau.kennung).not.toBe(kennung);
+    expect(a.laeufe).toEqual([]);
+    const erfolg = (await services.audit.list()).filter(
+      (e) => e.action === "bestandsreset.ausgefuehrt",
+    );
+    expect(erfolg).toEqual([]);
   });
 
   it("läuft schon ein Reset → 409 BESTANDSRESET_GESPERRT", async () => {
