@@ -45,13 +45,33 @@ Freigaberecht: 403 `PROPOSAL_REQUIRED` (Nur-Vorschlag bleibt). Laufende Editor-S
 - Stopp: vor jeder Wirkung abgefragt; Ergebnis nennt `gestopptVor` und was schon gespeichert ist.
 - Rücknahme: `POST …/zurueckholen` mit `ausFassung = basisFassung`.
 - Folgeprodukte: Eigentümer = Auftraggeber, `ziel: privat`, Schutzklasse mindestens `vertraulich`,
-  `versandt: false`, `gemeinsamFreigegeben: false`, an keinen Artikel gebunden.
+  `versandt: false`, `gemeinsamFreigegeben: false`, an keinen Artikel gebunden. Am Objekt steht
+  `lifecycle.privatQuelle` (Kennung des Quellartikels): über `GET /api/objects/:id`, `/raw` und die
+  Medienroute liest NUR der Eigentümer — keine Rolle, auch kein Admin — und nur, solange er den
+  Quellartikel jetzt sehen darf (`privatesFolgeprodukt`, `services/app/src/sichtbarkeit.ts`).
+  Rechteentzug an der Quelle sperrt damit auch die Kopien.
+- Zahlenprüfung: Vorzeichen zählen (`-10` → `10` ist eine Änderung); verglichen wird die Zahlenfolge
+  Stelle für Stelle, auch Entfernen/Umstellen braucht einen Beleg.
+- Stopp wird auch NACH dem Hochladen und VOR der Übernahme abgefragt (`gestopptVor: "uebernahme"`,
+  `nichtUebernommen.objectId`).
+- Scheitert ein Schritt nach einer Wirkung (Hochladen, Fassung, Folgeprodukt): 500
+  `NACHBEARBEITUNG_TEILFEHLER` mit `wirkungen` (Ergebniskennungen) und Rücknahmehinweis; dieselbe
+  `laufId` liefert diesen Stand erneut und erzeugt keine weiteren Kopien.
+
+## Hostprobe
+
+`tests/assistenz-dokumentnachbearbeitung/code-hostweg.integration.test.ts` fährt den Weg mit dem
+eingebetteten Editor Collabora CODE (Container, echtes Chromium): Nachbearbeitung → Öffnen im Editor →
+Speichern durch den Editor → Übernahme → Wiederöffnen → Quellenprüfung → zweite Nachbearbeitung auf dem
+vom Host geschriebenen Stand. Beleg: `test-results/assistenz-dokumentnachbearbeitung/HOSTBELEG.json`
+(Abbild, vom Host gemeldete Version, Rolle, Fassungen, Objektkennungen, Bildschirmfotos).
 
 ## Grenzen
 
-- Belegt durch Routentests mit synthetischer Datei; kein echtes PowerPoint/Collabora, keine Hostversion.
+- Host der Probe ist Collabora CODE, nicht Microsoft PowerPoint; ob eine angefügte Notiz in PowerPoint
+  (Desktop/Web) erscheint, ist nicht belegt.
 - Laufgedächtnis (Wiederholung/Stopp) je Prozess; nach Neustart zeigt der Anhangsverlauf das Gespeicherte.
 - Keine automatische Meetingbindung (BPA-16); Beschlussstellen kommen als belegte Angaben im Auftrag.
 - Keine Oberfläche in dieser Lieferung; die Fähigkeit ist über die API erreichbar.
-- Private Folgeprodukte sind nach der bestehenden Stufenregel für `vertraulich` auch für `ko.validate`-Rollen
-  über ihre Kennung lesbar.
+- Eine bei Stopp vor der Übernahme hochgeladene Datei ist ein ungebundenes Objekt ohne Stufe (fail-safe
+  vertraulich nach der bestehenden Regel), kein privates Folgeprodukt.

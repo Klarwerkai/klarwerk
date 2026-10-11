@@ -25,7 +25,11 @@
 //   N6  Rücknahme über `zurueckholen`; Stopp vor dem Speichern und nach dem Speichern;
 //       Wiederholung derselben Laufkennung schreibt nichts.                                  (K7)
 //   N7  Lesender Teilnehmer ändert nichts; unsichtbarer Artikel 404 ohne Titel.             (K8)
-//   N8  Folgeprodukte privat, nicht versandt/geteilt, nicht angehängt, Eigentümer/Ziel/Klasse. (K9)
+//   N8  Folgeprodukte privat, nicht versandt/geteilt, nicht angehängt, Eigentümer/Ziel/Klasse;
+//       über `GET /api/objects/:id` und `/raw` liest nur der Eigentümer (auch Admin nicht), und
+//       ein Rechteentzug an der Quelle sperrt auch die Kopien.                          (K8 K9)
+//   N9  Fehler nach der Übernahme: 500 mit erfolgten Wirkungen und Ergebniskennungen;
+//       Wiederholung derselben Laufkennung erzeugt keine weiteren Kopien.                (K7)
 
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,8 +42,8 @@ import {
   leseAuftrag,
 } from "../../services/app/src/office-nachbearbeitung";
 import { OFFICE_FORMATE } from "../../services/app/src/office-wopi";
+import { objectRoutes } from "../../services/app/src/routes/object-routes";
 import { type OfficeKonto, officeRoutes } from "../../services/app/src/routes/office-routes";
-import { darfSehen } from "../../services/app/src/sichtbarkeit";
 import {
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
@@ -63,14 +67,30 @@ const DISCOVERY = `<?xml version="1.0" encoding="utf-8"?>
 <app name="impress"><action default="true" ext="pptx" name="edit" urlsrc="http://intern:9980/browser/abc/cool.html?"/><action ext="pptx" name="view" urlsrc="http://intern:9980/browser/abc/cool.html?"/></app>
 </net-zone></wopi-discovery>`;
 
+/**
+ * Der echte Objektspeicher; `stoereNachPuts` lässt das N-te folgende `put` scheitern (Ben-Befund
+ * AC07/G12: ein Fehler NACH der Übernahme). Ohne Angabe verhält er sich unverändert.
+ */
+class StoerbarerSpeicher extends ObjectStore {
+  puts = 0;
+  stoereBeiPut: number | undefined;
+  override async put(input: Parameters<ObjectStore["put"]>[0]) {
+    this.puts += 1;
+    if (this.stoereBeiPut !== undefined && this.puts === this.stoereBeiPut) {
+      throw Object.assign(new Error("Speicher gestört (Probe)"), { code: "SPEICHER_GESTOERT" });
+    }
+    return super.put(input);
+  }
+}
+
 interface Welt {
   app: FastifyInstance;
   ko: KoService;
-  objekte: ObjectStore;
+  objekte: StoerbarerSpeicher;
 }
 
 async function baueWelt(): Promise<Welt> {
-  const objekte = new ObjectStore({ repo: new InMemoryObjectRepo() });
+  const objekte = new StoerbarerSpeicher({ repo: new InMemoryObjectRepo() });
   const ko = new KoService({
     repo: new InMemoryKoRepo(),
     versions: new InMemoryKoVersionRepo(),
@@ -122,6 +142,14 @@ async function baueWelt(): Promise<Welt> {
       },
       guards,
     ),
+  );
+  // Der BESTEHENDE Objektzugriffsweg (`GET /api/objects/:id` und `/raw`) mit denselben Herkünften
+  // wie in build-app.ts: Träger aus dem Bestand, ein Träger frisch über `ko`.
+  await app.register(
+    objectRoutes(objekte, guards, {
+      kos: async () => ko.list(),
+      ko: (koId) => ko.get(koId),
+    }),
   );
   await app.ready();
   return { app, ko, objekte };
@@ -372,6 +400,35 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
     expect(falsch.body.aenderungsuebersicht[0]?.grund).toMatch(/ergibt 4\.2, nicht 3,1/);
     expect(falsch.body.aenderungsuebersicht[1]?.grund).toMatch(/Diagramm.*nicht unterstützt/);
     expect((await w.ko.get(koId))?.version).toBe(1);
+
+    // Ben-Befund AC03: ein VORZEICHENWECHSEL ist eine Zahlenänderung — ohne Beleg wird er Klärung.
+    const vorzeichen = (id: string, alt: string, neu: string) => ({
+      id,
+      art: "text",
+      folieId: 257,
+      alt,
+      neu,
+      herkunft: { art: "nutzerauftrag" },
+    });
+    const ohneVorzeichen = await nachbearbeiten(w, "anna", koId, anhangId, {
+      laufId: "n2-vorzeichen",
+      basisFassung: 1,
+      schritte: [
+        vorzeichen("v1", "-10 °C", "10 °C"),
+        vorzeichen("v2", "Temperaturabweichung: -10 °C", "Temperaturabweichung: +10 °C"),
+      ],
+    });
+    expect(ohneVorzeichen.status).toBe(200);
+    expect(ohneVorzeichen.body.zustand).toBe("nichts_gespeichert");
+    expect(ohneVorzeichen.body.aenderungsuebersicht.map((z) => z.status)).toEqual([
+      "klaerung",
+      "klaerung",
+    ]);
+    expect(ohneVorzeichen.body.aenderungsuebersicht[0]?.grund).toMatch(/Zahl 10 ohne belegte/);
+    expect((await w.ko.get(koId))?.version).toBe(1);
+    expect(await folienText(await anhangBytes(w, koId, anhangId), 2)).toContain(
+      "Temperaturabweichung: -10 °C",
+    );
 
     const belegt = await nachbearbeiten(w, "anna", koId, anhangId, {
       laufId: "n2-belegt",
@@ -659,7 +716,8 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
       );
       return { ergebnis, version: (await w.ko.get(neu.koId))?.version };
     }
-    // Abfragen: 1 vor b1, 2 vor n1, 3 vor dem Speichern, 4 vor dem Handout.
+    // Abfragen: 1 vor b1, 2 vor n1, 3 vor dem Hochladen, 4 nach dem Hochladen vor der Übernahme,
+    // 5 vor dem Handout.
     const vorSchritt = await mitStoppAb(2);
     expect(vorSchritt.ergebnis).toMatchObject({ zustand: "gestoppt", gestopptVor: "schritt:n1" });
     // Vorbereitet ist nicht gespeichert: auch b1 heißt nicht „eingearbeitet", sagt aber, warum.
@@ -678,7 +736,24 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
     ]);
     expect(vorSpeichern.version).toBe(1);
 
-    const nachSpeichern = await mitStoppAb(4);
+    // Ben-Befund AC07: Stopp WÄHREND des Hochladens bestätigt (Abfrage 4 nach dem Upload) — die
+    // Übernahme unterbleibt, die hochgeladene Datei ist als Teilergebnis ausgewiesen.
+    const nachHochladen = await mitStoppAb(4);
+    expect(nachHochladen.ergebnis).toMatchObject({
+      zustand: "gestoppt",
+      gestopptVor: "uebernahme",
+    });
+    expect(nachHochladen.ergebnis.neueFassung).toBeUndefined();
+    expect(nachHochladen.version).toBe(1);
+    expect(nachHochladen.ergebnis.aenderungsuebersicht.map((z) => z.status)).toEqual([
+      "nicht_ausgefuehrt",
+      "nicht_ausgefuehrt",
+    ]);
+    const hochgeladen = nachHochladen.ergebnis.nichtUebernommen?.objectId ?? "";
+    expect(await w.objekte.metadata(hochgeladen)).toBeDefined();
+    expect(await folienText(await bytesVon(w, hochgeladen), 1)).toContain("vierteljährlich");
+
+    const nachSpeichern = await mitStoppAb(5);
     expect(nachSpeichern.ergebnis).toMatchObject({
       zustand: "gestoppt",
       gestopptVor: "handout",
@@ -715,8 +790,9 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
     expect((await w.ko.get(geheim.koId))?.version).toBe(1);
   });
 
-  it("N8 (K9): Folgeprodukte privat, nicht versandt, nicht geteilt, nicht angehängt", async () => {
-    const { koId, anhangId } = await artikelMitPraesentation(w);
+  it("N8 (K8 K9): Folgeprodukte privat — Eigentümer allein, auch gegen Admin; Quellenentzug sperrt", async () => {
+    // Der Artikel gehört Bert; Anna bearbeitet nach. So lässt sich Anna die Quelle später entziehen.
+    const { koId, anhangId } = await artikelMitPraesentation(w, "bert");
     const r = await nachbearbeiten(w, "anna", koId, anhangId, {
       laufId: "n8-lauf",
       basisFassung: 1,
@@ -741,19 +817,81 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
       });
       const ref = await w.objekte.metadata(f.objectId);
       expect(ref?.lifecycle?.owner).toBe("anna");
+      expect(ref?.lifecycle?.privatQuelle).toBe(koId);
       expect(ref?.confidentiality).toBe("vertraulich");
-      // Nach der bestehenden Stufenregel: der Eigentümer liest, ein anderer Experte nicht.
-      const fakten = { confidentiality: "vertraulich" as const, author: "anna" };
-      const experte = (id: string) => ({
-        id,
-        role: "experte" as const,
-        spaceLesbar: new Set<string>(),
-      });
-      expect(darfSehen(experte("anna"), fakten)).toBe(true);
-      expect(darfSehen(experte("bert"), fakten)).toBe(false);
     }
     const ko = await w.ko.get(koId);
     expect(ko?.attachments).toHaveLength(1);
     expect(ko?.status).toBe("offen");
+
+    // Über den BESTEHENDEN Objektzugriffsweg: Metadaten/Daten-URL und Rohbytes.
+    const lies = async (nutzer: string, objectId: string) => {
+      const meta = await w.app.inject({
+        method: "GET",
+        url: `/api/objects/${objectId}`,
+        headers: als(nutzer),
+      });
+      const roh = await w.app.inject({
+        method: "GET",
+        url: `/api/objects/${objectId}/raw`,
+        headers: als(nutzer),
+      });
+      return [meta.statusCode, roh.statusCode];
+    };
+    for (const f of r.body.folgeprodukte) {
+      // Der Eigentümer liest.
+      expect(await lies("anna", f.objectId)).toEqual([200, 200]);
+      // Niemand sonst — weder der Artikelautor noch die Administratorin (`ko.validate`).
+      expect(await lies("bert", f.objectId)).toEqual([404, 404]);
+      expect(await lies("chef", f.objectId)).toEqual([404, 404]);
+    }
+
+    // Quellenrechte entzogen: der vertrauliche Artikel ist für Anna nicht mehr sichtbar — damit
+    // auch keine ihrer Kopien, Handout eingeschlossen.
+    await w.ko.setConfidentiality(koId, "vertraulich", "chef");
+    for (const f of r.body.folgeprodukte) {
+      expect(await lies("anna", f.objectId)).toEqual([404, 404]);
+      expect(await lies("chef", f.objectId)).toEqual([404, 404]);
+    }
+  });
+
+  it("N9 (K7): Fehler NACH der Übernahme — Wirkungen bleiben sichtbar, Wiederholung kopiert nicht", async () => {
+    const { koId, anhangId } = await artikelMitPraesentation(w);
+    // Puts dieses Laufs: 1 Dokument (→ Übernahme), 2 Handout, 3 Änderungsübersicht.
+    w.objekte.stoereBeiPut = w.objekte.puts + 2;
+    const lauf = {
+      laufId: "n9-lauf",
+      basisFassung: 1,
+      schritte: [BESCHLUSS],
+      folgeprodukte: { handout: true },
+    };
+    try {
+      const r = await nachbearbeiten(w, "anna", koId, anhangId, lauf);
+      expect(r.status).toBe(500);
+      expect(r.body).toMatchObject({
+        error: "NACHBEARBEITUNG_TEILFEHLER",
+        zustand: "teilfehler",
+        fehler: { code: "SPEICHER_GESTOERT" },
+        ruecknahme: { moeglich: true, ausFassung: 1 },
+      });
+      const wirkungen = r.body.wirkungen as { art: string; fassung?: number; objectId?: string }[];
+      expect(wirkungen.map((x) => x.art)).toEqual(["hochgeladen", "fassung"]);
+      expect(wirkungen[1]?.fassung).toBe(2);
+      // Die gespeicherte Fassung ist real und trägt genau das gemeldete Objekt.
+      const ko = await w.ko.get(koId);
+      expect(ko?.version).toBe(2);
+      expect(ko?.attachments?.[0]?.objectId).toBe(wirkungen[1]?.objectId);
+
+      // Dieselbe Laufkennung noch einmal: derselbe Stand, kein weiteres Objekt, keine Fassung.
+      const puts = w.objekte.puts;
+      const nochmal = await nachbearbeiten(w, "anna", koId, anhangId, lauf);
+      expect(nochmal.status).toBe(500);
+      expect(nochmal.body).toMatchObject({ zustand: "teilfehler", wiederholt: true });
+      expect(nochmal.body.wirkungen).toEqual(r.body.wirkungen);
+      expect(w.objekte.puts).toBe(puts);
+      expect((await w.ko.get(koId))?.version).toBe(2);
+    } finally {
+      w.objekte.stoereBeiPut = undefined;
+    }
   });
 });

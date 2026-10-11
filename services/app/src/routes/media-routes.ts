@@ -8,6 +8,7 @@ import {
   type AnhangUrteil,
   type SichtbarkeitsFakten,
   beurteileAnhang,
+  privatesFolgeprodukt,
 } from "../sichtbarkeit";
 
 // SCRUM-382: Video-/Audio-Analyse (Transkript) für die Erfassung. Der Schlüssel des
@@ -33,6 +34,11 @@ export function mediaRoutes(
     // mega76 A: ein Aufrufer, den der Compiler nicht sieht, bekommt ein NEIN — nicht ein Ja.
     if (typeof quellen?.kos !== "function") {
       return { sichtbar: false, vertraulich: true };
+    }
+    // BPA-17: ein privates Folgeprodukt liest nur sein Eigentümer, solange die Quelle sichtbar ist.
+    const privat = await privatesFolgeprodukt(user, ref.lifecycle, quellen);
+    if (privat) {
+      return privat;
     }
     return beurteileAnhang(user, objectId, eigen, quellen);
   }

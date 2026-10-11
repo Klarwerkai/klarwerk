@@ -1231,6 +1231,38 @@ const STUFE_FUER_UNBEKANNT: Confidentiality = "vertraulich";
  * Stufe. Kann der Speicher nicht arbeiten (keine Frist, keine `kosFuer`/`ko`/`stand`-Quelle), laeuft
  * der bisherige Weg unveraendert. Ohne `speicher` ist alles wie vor 2706.
  */
+/**
+ * produkt:20261011:assistenz-dokumentnachbearbeitung (BPA-17, Ben-Befund AC08/AC09) — PRIVATE
+ * FOLGEPRODUKTE (Handout, Notizdatei, Änderungsübersicht, Entwurf einer Nachbearbeitung).
+ *
+ * Sie tragen `lifecycle.privatQuelle` = das Wissensobjekt, aus dem sie abgeleitet sind. Für sie gilt
+ * NICHT die Stufenregel (`vertraulich` öffnete `ko.validate`), sondern:
+ *   · lesen darf ausschliesslich der Eigentümer (`lifecycle.owner`, serverseitig gesetzt) — keine
+ *     Rolle, auch kein Administrator, öffnet eine fremde private Ableitung;
+ *   · und nur, solange er das Quellobjekt JETZT sehen darf (frisch gelesen, `darfSehen`). Wird ihm
+ *     die Quelle entzogen (Stufe, Space, Quellleser, Papierkorb), ist auch die Kopie gesperrt.
+ * Fehlt der Lesezugang zur Quelle (`quellen.ko`), ist die Antwort NEIN (fail-closed).
+ *
+ * `undefined` heisst: kein privates Folgeprodukt — dann gilt `beurteileAnhang` unverändert.
+ */
+export async function privatesFolgeprodukt(
+  user: SessionUser,
+  lifecycle: { owner?: string | undefined; privatQuelle?: string | undefined } | undefined,
+  quellen: AnhangQuellen,
+): Promise<AnhangUrteil | undefined> {
+  const quelleId = lifecycle?.privatQuelle;
+  if (!quelleId) {
+    return undefined;
+  }
+  const nein: AnhangUrteil = { sichtbar: false, vertraulich: true };
+  const eigentuemer = lifecycle?.owner;
+  if (!eigentuemer || eigentuemer !== user.id || typeof quellen.ko !== "function") {
+    return nein;
+  }
+  const quelle = await quellen.ko(quelleId);
+  return quelle && darfSehen(user, quelle) ? { sichtbar: true, vertraulich: true } : nein;
+}
+
 export async function beurteileAnhang(
   user: SessionUser,
   objectId: string,

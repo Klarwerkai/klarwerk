@@ -475,10 +475,15 @@ export interface SchrittErgebnis {
   readonly grund: string;
 }
 
-const ZAHL = /\d+(?:[.,]\d+)*/g;
+// Ben-Befund AC03: das VORZEICHEN gehört zur Zahl („-10" → „10" ist eine Zahlenänderung). Ein
+// Minus/Plus zählt, wenn davor kein Buchstabe und keine Ziffer steht — „P1-2" bleibt Bezeichnung.
+// Auch das typografische Minus (U+2212) wird erkannt; „+10" und „10" sind derselbe Wert.
+const ZAHL = /(?:(?<![\p{L}\p{N}])[-+−])?\d+(?:[.,]\d+)*/gu;
 
 function zahlen(t: string): string[] {
-  return [...t.matchAll(ZAHL)].map((z) => z[0].replace(/,/g, "."));
+  return [...t.matchAll(ZAHL)].map((z) =>
+    z[0].replace(/−/g, "-").replace(/^\+/, "").replace(/,/g, "."),
+  );
 }
 
 function rechne(b: NonNullable<Zahlenbeleg["berechnung"]>): number {
@@ -493,16 +498,27 @@ function rechne(b: NonNullable<Zahlenbeleg["berechnung"]>): number {
   }
 }
 
-/** Neue Zahlen ohne tragfähigen Beleg; leer, wenn jede neue Zahl belegt ist. */
-function unbelegteZahlen(s: Schritt): { offen: string[]; rechenfehler?: string } {
-  const vorher = new Set(zahlen(s.alt ?? ""));
-  const neu = zahlen(s.neu ?? "").filter((z) => !vorher.has(z));
-  if (neu.length === 0) {
-    return { offen: [] };
+/**
+ * Geänderte Zahlen ohne tragfähigen Beleg. Verglichen wird die ZAHLENFOLGE Stelle für Stelle, nicht
+ * eine Menge: ein anderes Vorzeichen, ein Tausch zweier Werte und ein entfernter Wert sind Änderungen.
+ * `geaendert` sagt, ob sich die Folge überhaupt geändert hat; `offen` nennt die neuen Werte, die kein
+ * Beleg trägt. Ohne Zahlenbeleg ist jede Änderung der Folge offen.
+ */
+function unbelegteZahlen(s: Schritt): {
+  geaendert: boolean;
+  offen: string[];
+  rechenfehler?: string;
+} {
+  const vorher = zahlen(s.alt ?? "");
+  const nachher = zahlen(s.neu ?? "");
+  const neu = nachher.filter((z, i) => vorher[i] !== z);
+  const geaendert = neu.length > 0 || vorher.length !== nachher.length;
+  if (!geaendert) {
+    return { geaendert, offen: [] };
   }
   const beleg = s.zahlenbeleg;
   if (!beleg) {
-    return { offen: neu };
+    return { geaendert, offen: neu };
   }
   const belegt = new Set(beleg.werte.flatMap(zahlen));
   let rechenfehler: string | undefined;
@@ -517,6 +533,7 @@ function unbelegteZahlen(s: Schritt): { offen: string[]; rechenfehler?: string }
     }
   }
   return {
+    geaendert,
     offen: neu.filter((z) => !belegt.has(z)),
     ...(rechenfehler ? { rechenfehler } : {}),
   };
@@ -563,7 +580,15 @@ function pruefeSchritt(s: Schritt, folie: Folie | undefined, folienXml: string):
     return {
       anwendbar: false,
       status: "klaerung",
-      grund: `Neue Zahl ${zahlenpruefung.offen.join(", ")} ohne belegte Daten- oder Berechnungsquelle. Keine Zahl wurde erfunden; bitte die Quelle nennen.`,
+      grund: `Neue oder geänderte Zahl ${zahlenpruefung.offen.join(", ")} ohne belegte Daten- oder Berechnungsquelle. Keine Zahl wurde erfunden; bitte die Quelle nennen.`,
+    };
+  }
+  if (zahlenpruefung.geaendert && !s.zahlenbeleg) {
+    return {
+      anwendbar: false,
+      status: "klaerung",
+      grund:
+        "Zahlen werden entfernt oder umgestellt, ohne belegte Daten- oder Berechnungsquelle. Nichts geändert; bitte die Quelle nennen.",
     };
   }
   const alt = s.alt ?? "";
@@ -703,7 +728,71 @@ export interface NachbearbeitungsErgebnis {
     readonly nachher: string;
     readonly hinweis: string;
   };
+  /**
+   * Ben-Befund AC07: Stopp NACH dem Hochladen, VOR der Übernahme. Die Datei liegt im Speicher, ist
+   * aber nicht am Artikel — ein ungebundenes Objekt des Auftraggebers ohne Stufe, das nach der
+   * bestehenden Regel für ungebundene Objekte fail-safe als vertraulich gilt. Es wird ausgewiesen,
+   * nicht verschwiegen.
+   */
+  readonly nichtUebernommen?: { readonly objectId: string; readonly hinweis: string };
   readonly grenzen: readonly string[];
+}
+
+/**
+ * Eine bereits EINGETRETENE Wirkung eines Laufs. Der Kern meldet sie sofort (`Laufkontext.melde`),
+ * damit ein späterer Fehler sie nicht unsichtbar macht (Ben-Befund AC07/G12).
+ */
+export type Wirkung =
+  | { readonly art: "hochgeladen"; readonly objectId: string }
+  | { readonly art: "fassung"; readonly fassung: number; readonly objectId: string }
+  | { readonly art: "folgeprodukt"; readonly folgeprodukt: Folgeprodukt };
+
+/** Ein Lauf, der nach mindestens einer Wirkung an einem Fehler endete. */
+export interface Teilfehler {
+  readonly laufId: string;
+  readonly koId: string;
+  readonly anhangId: string;
+  readonly zustand: "teilfehler";
+  /** Was tatsächlich geschehen ist, in Reihenfolge — mit Ergebniskennungen. */
+  readonly wirkungen: readonly Wirkung[];
+  readonly fehler: { readonly code: string; readonly meldung: string };
+  readonly ruecknahme?: {
+    readonly moeglich: true;
+    readonly ausFassung: number;
+    readonly hinweis: string;
+  };
+}
+
+/** Baut aus den gemeldeten Wirkungen den sichtbaren Teilfehlerstand. */
+export function teilfehler(
+  auftrag: { readonly laufId: string; readonly basisFassung: number },
+  ort: { readonly koId: string; readonly anhangId: string },
+  wirkungen: readonly Wirkung[],
+  fehler: unknown,
+): Teilfehler {
+  const gespeichert = wirkungen.some((w) => w.art === "fassung");
+  return {
+    laufId: auftrag.laufId,
+    koId: ort.koId,
+    anhangId: ort.anhangId,
+    zustand: "teilfehler",
+    wirkungen: [...wirkungen],
+    fehler: {
+      code: fehlerCode(fehler) || "FEHLER",
+      meldung: gespeichert
+        ? "Die neue Fassung ist gespeichert; ein späterer Schritt ist gescheitert. Die erfolgten Wirkungen stehen in `wirkungen`; eine Wiederholung dieses Laufs erzeugt keine weiteren Kopien."
+        : "Der Lauf ist nach dem Hochladen gescheitert; der Artikel ist unverändert. Die erfolgten Wirkungen stehen in `wirkungen`.",
+    },
+    ...(gespeichert
+      ? {
+          ruecknahme: {
+            moeglich: true as const,
+            ausFassung: auftrag.basisFassung,
+            hinweis: `„Zurückholen" aus Fassung ${auftrag.basisFassung} stellt den vorherigen Dokumentstand als neue Fassung wieder her.`,
+          },
+        }
+      : {}),
+  };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -724,18 +813,21 @@ export interface Laufkontext {
   readonly nutzerId: string;
   /** Wird vor JEDER Wirkung gefragt; `true` hält an, bereits Geschehenes bleibt. */
   readonly gestoppt: () => boolean;
+  /** Erhält jede eingetretene Wirkung SOFORT — nicht erst mit dem Ergebnis am Ende. */
+  readonly melde?: (wirkung: Wirkung) => void;
 }
 
 const GRENZEN = [
   "Geändert wird nur Folientext in einzelnen Formatierungsläufen; Diagramme, Datenreihen, Bilder, Layout und Vorlage ändert dieser Weg nicht.",
-  "Handout, Notizdatei, Änderungsübersicht und Entwurf sind private Markdown-/PPTX-Objekte des Auftraggebers: nicht versandt, nicht geteilt, an keinen Artikel gebunden.",
+  "Handout, Notizdatei, Änderungsübersicht und Entwurf sind private Markdown-/PPTX-Objekte des Auftraggebers: nicht versandt, nicht geteilt, an keinen Artikel gebunden; lesbar nur für ihn, solange er die Quelle sehen darf.",
   "Kein Modell läuft in diesem Schritt; die Texte stammen aus dem Auftrag und tragen ihre Herkunft.",
-  "Geprüft ist die Datei, nicht die Darstellung in einem bestimmten PowerPoint-Programm.",
+  "Geprüft ist die Datei; die Darstellung in Microsoft PowerPoint ist nicht belegt.",
 ];
 
 function hoehereKlasse(k: KnowledgeObject["confidentiality"]): Schutzklasse {
-  // Private Folgeprodukte sind mindestens vertraulich: nach der bestehenden Stufenregel liest sie
-  // dann nur der Eigentümer (und `ko.validate`), auch wenn jemand ihre Kennung kennt.
+  // Private Folgeprodukte sind mindestens vertraulich (Zwischenspeicher: `no-store`). Wer sie lesen
+  // darf, entscheidet NICHT die Stufe, sondern `privatQuelle`: nur der Eigentümer, solange er die
+  // Quelle sieht (`privatesFolgeprodukt`, sichtbarkeit.ts) — auch `ko.validate` öffnet sie nicht.
   return k === "streng_vertraulich" ? "streng_vertraulich" : "vertraulich";
 }
 
@@ -974,8 +1066,11 @@ export async function fuehreNachbearbeitungAus(
       purpose: "attachment",
       owner: ctx.nutzerId,
       confidentiality: schutzklasse,
+      // Ben-Befund AC08/AC09: die Zugriffsregel am Objekt — nur der Eigentümer, und nur solange er
+      // die Quelle sehen darf (`privatesFolgeprodukt`, sichtbarkeit.ts). Keine Rolle öffnet es.
+      privatQuelle: ctx.artikel.id,
     });
-    return {
+    const produkt: Folgeprodukt = {
       art,
       objectId: ref.id,
       name,
@@ -987,6 +1082,8 @@ export async function fuehreNachbearbeitungAus(
       gemeinsamFreigegeben: false,
       herkunft: { koId: ctx.artikel.id, anhangId: ctx.anhang.id, fassung, objectId },
     };
+    ctx.melde?.({ art: "folgeprodukt", folgeprodukt: produkt });
+    return produkt;
   };
 
   // 3 · VOR DEM SPEICHERN: HEUTIGEN STAND ABGLEICHEN. Nichts wird überschrieben.
@@ -1097,6 +1194,27 @@ export async function fuehreNachbearbeitungAus(
       purpose: "attachment",
       owner: ctx.nutzerId,
     });
+    ctx.melde?.({ art: "hochgeladen", objectId: ref.id });
+    // Ben-Befund AC07: ein Stopp, der WÄHREND des Hochladens bestätigt wurde, verhindert die
+    // Übernahme. Die hochgeladene Datei ist ein reales Teilergebnis und wird ausgewiesen.
+    if (ctx.gestoppt()) {
+      return {
+        ...grundlage,
+        zustand: "gestoppt",
+        gestopptVor: "uebernahme",
+        aenderungsuebersicht: nichtImDokument(
+          ergebnisse,
+          "Hochgeladen, aber vor der Übernahme angehalten; nicht im Dokument.",
+        ),
+        folgeprodukte: [],
+        nichtUebernommen: {
+          objectId: ref.id,
+          hinweis:
+            "Die bearbeitete Datei liegt im Speicher, ist aber NICHT am Artikel; der Artikel ist unverändert. Sie ist ein ungebundenes Objekt des Auftraggebers ohne Stufe und gilt nach der bestehenden Regel fail-safe als vertraulich.",
+        },
+        fachstatus: fachstatus(ctx.artikel.status),
+      };
+    }
     try {
       const { ko } = await deps.ko.uebernimmOfficeFassung(
         ctx.artikel.id,
@@ -1109,6 +1227,7 @@ export async function fuehreNachbearbeitungAus(
         ctx.nutzerId,
       );
       gespeichert = { ko, objectId: ref.id };
+      ctx.melde?.({ art: "fassung", fassung: ko.version, objectId: ref.id });
     } catch (fehler) {
       const code = fehlerCode(fehler);
       if (code === "KO_STALE" || code === "STALE_WRITE") {

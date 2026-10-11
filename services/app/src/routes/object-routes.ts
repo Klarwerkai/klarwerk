@@ -15,6 +15,7 @@ import {
   KandidatenSpeicher,
   type SichtbarkeitsFakten,
   beurteileAnhang,
+  privatesFolgeprodukt,
   sichtbareFuer,
 } from "../sichtbarkeit";
 
@@ -218,6 +219,11 @@ export function objectRoutes(
     // das alte bedingungslose Ja.
     if (typeof quellen?.kos !== "function") {
       return { sichtbar: false, vertraulich: true };
+    }
+    // BPA-17: ein privates Folgeprodukt liest nur sein Eigentümer, solange die Quelle sichtbar ist.
+    const privat = await privatesFolgeprodukt(user, ref.lifecycle, quellen);
+    if (privat) {
+      return privat;
     }
     // JOB 2706 D1: dieselbe Regel, ueber den Kandidaten-Speicher (Begruendung am Kopf dieses Blocks).
     return beurteileAnhang(user, objectId, eigen, quellen, speicher);

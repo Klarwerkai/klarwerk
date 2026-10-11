@@ -19,8 +19,11 @@ import {
   type NachbearbeitungsErgebnis,
   NachbearbeitungsFehler,
   type Nachbearbeitungsauftrag,
+  type Teilfehler,
+  type Wirkung,
   fuehreNachbearbeitungAus,
   leseAuftrag,
+  teilfehler,
 } from "../office-nachbearbeitung";
 import {
   type OfficeRechte,
@@ -725,7 +728,13 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
     // gespeicherte Ergebnis (`wiederholt: true`) und schreibt nichts. Das Gedächtnis dafür hält DIESER
     // Prozess (wie die Reihenfolge `nacheinander`); nach einem Neustart zeigt der Verlauf des Anhangs,
     // was gespeichert wurde.
-    type Lauf = { nutzerId: string; stopp: boolean; ergebnis?: NachbearbeitungsErgebnis };
+    type Lauf = {
+      nutzerId: string;
+      stopp: boolean;
+      /** Was schon geschehen ist — gemeldet vom Kern, bevor das Ergebnis feststeht. */
+      wirkungen: Wirkung[];
+      ergebnis?: NachbearbeitungsErgebnis | Teilfehler;
+    };
     const laeufe = new Map<string, Lauf>();
     const LAEUFE_HOECHSTENS = 500;
     const laufSchluessel = (koId: string, anhangId: string, laufId: string) =>
@@ -774,14 +783,15 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
             });
             return;
           }
+          const zustand = bekannt.ergebnis.zustand;
           reply
-            .code(bekannt.ergebnis.zustand === "konflikt" ? 409 : 200)
+            .code(zustand === "teilfehler" ? 500 : zustand === "konflikt" ? 409 : 200)
             .send({ ...bekannt.ergebnis, wiederholt: true });
           return;
         }
-        const eintrag: Lauf = { nutzerId: user.id, stopp: false };
+        const eintrag: Lauf = { nutzerId: user.id, stopp: false, wirkungen: [] };
         laeufe.set(schluessel, eintrag);
-        let ergebnis: NachbearbeitungsErgebnis;
+        let ergebnis: NachbearbeitungsErgebnis | Teilfehler;
         try {
           ergebnis = await nacheinander(lage.anhang.id, () =>
             fuehreNachbearbeitungAus(
@@ -796,17 +806,30 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
                 anhang: lage.anhang,
                 nutzerId: user.id,
                 gestoppt: () => eintrag.stopp,
+                melde: (wirkung) => eintrag.wirkungen.push(wirkung),
               },
               auftrag,
             ),
           );
         } catch (fehler) {
-          laeufe.delete(schluessel);
-          if (fehler instanceof NachbearbeitungsFehler) {
-            reply.code(400).send({ error: fehler.code, message: fehler.message });
-            return;
+          // Ben-Befund AC07/G12: OHNE eingetretene Wirkung darf der Lauf neu versucht werden. MIT
+          // Wirkung bleibt der Lauf mit seinen Ergebniskennungen stehen — eine Wiederholung derselben
+          // Kennung liefert diesen Stand und erzeugt keine weiteren Kopien.
+          if (eintrag.wirkungen.length === 0) {
+            laeufe.delete(schluessel);
+            if (fehler instanceof NachbearbeitungsFehler) {
+              reply.code(400).send({ error: fehler.code, message: fehler.message });
+              return;
+            }
+            throw fehler;
           }
-          throw fehler;
+          request.log.error({ fehler, laufId: auftrag.laufId }, "Nachbearbeitung: Teilfehler");
+          ergebnis = teilfehler(
+            auftrag,
+            { koId: lage.artikel.id, anhangId: lage.anhang.id },
+            eintrag.wirkungen,
+            fehler,
+          );
         }
         eintrag.ergebnis = ergebnis;
         // Ältestes abgeschlossenes Gedächtnis zuerst vergessen; laufende bleiben.
@@ -817,6 +840,14 @@ export function officeRoutes(deps: OfficeRoutesDeps, guards: Guards): FastifyPlu
           if (v.ergebnis) {
             laeufe.delete(k);
           }
+        }
+        if (ergebnis.zustand === "teilfehler") {
+          reply.code(500).send({
+            error: "NACHBEARBEITUNG_TEILFEHLER",
+            message: ergebnis.fehler.meldung,
+            ...ergebnis,
+          });
+          return;
         }
         if (ergebnis.zustand === "konflikt") {
           reply.code(409).send({

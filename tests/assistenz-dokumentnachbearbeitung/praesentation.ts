@@ -132,6 +132,7 @@ export async function synthetischePraesentation(abweichung?: {
         `<a:p>${lauf(abweichung?.kennzahl ?? "Ausfallquote 2025: 4,2 %")}</a:p>`,
         `<a:p>${lauf("Kosten je Einsatz: 310 EUR")}</a:p>`,
         `<a:p>${lauf("Ziel: ")}${lauf("null", true)}${lauf(" Ausfälle")}</a:p>`,
+        `<a:p>${lauf("Temperaturabweichung: -10 °C")}</a:p>`,
       ])}`,
     ),
   );
