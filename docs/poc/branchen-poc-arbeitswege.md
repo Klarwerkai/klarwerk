@@ -39,9 +39,14 @@ entstünde keine Lücke, oder die Wiederholungsfrage würde von der Suche statt 
 
 | Rolle in der Geschichte | Konto | Produktrolle |
 | --- | --- | --- |
-| Verwaltung, Fragende (Geschichte 2) | ladende Person | admin |
+| Verwaltung: Fragende (Geschichte 2), Übernahme des Änderungsvorschlags, Fachprüfung | ladende Person | admin |
 | Fragende (Geschichte 1), Fachprüfung, meldet die Änderung (Geschichte 3) | Carla Controller `carla@demo.klarwerk` | controller |
-| Fachzuständigkeit (Geschichte 2), Folgeprüfung (Geschichte 3) | Erik Experte `erik@demo.klarwerk` | experte |
+| Fachzuständigkeit (Geschichte 2), Anpassung als Vorschlag (Geschichte 3) | Erik Experte `erik@demo.klarwerk` | experte |
+| Folgeprüfung im Reiter „Erneut“ (Geschichte 3) | ein zweites Controllerkonto, z. B. „Theo Teamleitung“ (von der Verwaltung regulär angelegt) | controller |
+
+Die Seite `/lebenszyklus` mit dem Reiter „Erneut“ steht erst ab der Rolle Controller zur Verfügung;
+Erik (Experte) bestätigt dort deshalb nichts. Die Folgeprüfung übernimmt eine zweite Controllerrolle,
+damit die anschließende Fachprüfung bei zwei **anderen** Personen bleibt.
 
 ## Ablauf je Geschichte
 
@@ -51,10 +56,13 @@ festgelegt.
 ### Geschichte 1 · Typische Frage mit Quellenantwort
 
 - **Start:** Bestand wie oben. **Rolle:** Carla (jede Rolle mit Leserecht ist zulässig).
-- **Schritte:** `/fragen` → „Wie oft muss der Kühlschmierstoff an der Fräse M12 erneuert werden?“ →
-  Quelle in der Antwort öffnen (führt nach `/wissen/<id>?stelle=…&fassung=…`).
-- **Ergebnis:** Antwort aus dem validierten Eintrag; Fundstelle mit Fassung; Prüfstand „belegt“,
-  tragende Quelle validiert; die Quelle zeigt Bezeichnung und Auszug.
+- **Schritte:** `/fragen` oder die persönliche Assistenz → „Wie oft muss der Kühlschmierstoff an der
+  Fräse M12 erneuert werden?“ → Quelle in der Antwort öffnen (führt nach `/wissen/<id>?…fassung=…`) →
+  auf der Quelle die Assistenz öffnen (Seitenkontext: Seite, Eintrag, Fassung, Prüfstatus) → einen
+  Satz markieren → „… fragen“ (Markierung mit Herkunft und Fassung). Ohne aktives Modell ist das
+  Absenden auf `/fragen` gesperrt; die Assistenz fragt über denselben Frageweg „Ohne KI“.
+- **Ergebnis:** Antwort aus dem validierten Eintrag; Quelle mit Fassung und Prüfstatus „geprüft“;
+  Prüfstand „belegt“; beim Demo-Ladeweg zeigt die Quelle zusätzlich Bezeichnung und Auszug.
 - **Gegenprobe:** Die Lückenfrage aus Geschichte 2 bekommt **keine** Quelle und keine erfundene
   Referenz, sondern führt zur Wissenslücke.
 - **Abschluss:** Quelle geöffnet, Fassung und Prüfstand abgelesen.
@@ -65,36 +73,42 @@ festgelegt.
   Fachprüfung = Carla und die ladende Person (zwei Bewertungen).
 - **Schritte:**
   1. Fragende: Lücke öffnen (`/luecke/<id>`, auch über die Glocke) → an „Erik Experte“ übergeben.
-  2. Erik: Rückfrage „Tritt die Abweichung bei allen Rezepturen auf oder nur bei einer?“.
-  3. Fragende: Glocke → Rückfrage → Antwort „Bei allen Rezepturen, jeweils in der ersten halben Stunde.“
-  4. Erik: Eintrag erfassen „Mengenregler des Mischers M4 bei der Übergabe neu nullen“ (Aussage aus
-     `poc.lueckenAntwort`) und in der Lücke als Antwortentwurf verknüpfen. „Abschließen“ bleibt gesperrt.
+  2. Erik: Rückfrage „Schwankt der Dosierwert an Linie L4 bei allen Rezepturen oder nur bei einer?“.
+  3. Fragende: Glocke → Rückfrage → Antwort „Bei allen Rezepturen, jeweils in der ersten halben
+     Stunde nach dem Schichtwechsel.“
+  4. Erik: Eintrag erfassen „Linie L4: Dosierwaage bei jedem Schichtwechsel neu tarieren“ (Aussage aus
+     `poc.lueckenAntwort`: die nicht neu tarierte Dosierwaage derselben Linie ist die Ursache) und in
+     der Lücke als Antwortentwurf verknüpfen. „Abschließen“ bleibt gesperrt.
   5. Carla und die Fragende bewerten den Eintrag in `/validierung` positiv.
   6. Erik: „Abschließen“ → „Fachlich gelöst“.
 - **Ergebnis:** genau eine Erfolgsmeldung an die Fragende mit dem nutzbaren Eintrag; dieselbe Frage
-  erneut zeigt den abgeschlossenen Stand statt einer neuen Lücke.
+  erneut zeigt den abgeschlossenen Stand statt einer neuen Lücke — als direkte Antwort mit genau
+  diesem Eintrag als Quelle (er passt sachlich) oder über den Verweis auf die gelöste Lücke.
 - **Abschluss:** Wiederholungsfrage gestellt und Ergebnis geöffnet.
 
 ### Geschichte 3 · Geänderte Quelle mit gezielter Folgeprüfung
 
 - **Start:** drei validierte Einträge, keine offene Folgeprüfung. **Rollen:** Meldung = Carla
-  (braucht `ko.validate`); Folgeprüfung = Erik (zuständig, braucht `ko.create`); Übernahme des
-  Änderungsvorschlags = ladende Person (braucht `users.manage`).
+  (braucht `ko.validate`); Folgeprüfung = zweite Controllerrolle (Reiter „Erneut“, braucht
+  `ko.create`); Anpassung = Erik (zuständig, ohne Freigaberecht); Übernahme des Änderungsvorschlags =
+  ladende Person (braucht `users.manage`); Fachprüfung = Carla und die ladende Person.
 - **Schritte:**
   1. Carla: `/lebenszyklus` → „Anlage geändert …“: Anlage `AF-2`, Änderung „Betriebsanleitung AF-2,
      Fassung 2“.
   2. Liste „Erneut“: genau die zwei Einträge an `AF-2`, je mit Anlage, Änderungsbeleg, Fassung und
-     zuständiger Person. Der Kompressor-Eintrag und die Antwortquelle aus Geschichte 1 fehlen.
-  3. Erik: Füllventile → „Noch gültig“ (bestätigt genau den gesehenen Stand und legt eine neue
-     Fassung an; keine fachliche Freigabe des Inhalts).
+     zuständiger Person (Erik). Der Kompressor-Eintrag und die Antwortquelle aus Geschichte 1 fehlen.
+  3. Folgeprüfung: Füllventile → „Noch gültig“ (bestätigt genau den gesehenen Stand und legt eine
+     neue Fassung an; keine fachliche Freigabe des Inhalts).
   4. Erik: Etikettierer auf Fassung 2 anpassen (Aussage aus `poc.koAnlageBNeu`). Der Eintrag ist
      freigegeben und Erik hat kein Freigaberecht: das Produkt nimmt die Änderung nur als
      **Änderungsvorschlag** an. Die ladende Person (Verwaltung) übernimmt den Vorschlag; den eigenen
      Vorschlag gibt niemand selbst frei.
-  5. Erik: „Noch gültig“ für die **neue** Fassung. Eine Bestätigung der alten Fassung wird abgewiesen.
-  6. Carla und die ladende Person prüfen die dabei entstandene Fassung erneut.
+  5. Folgeprüfung: Etikettierer → „Noch gültig“ für die **neue** Fassung. Eine Bestätigung der alten
+     Fassung wird abgewiesen.
+  6. Carla und die ladende Person prüfen die beiden dabei entstandenen Fassungen erneut.
 - **Ergebnis:** beide Folgefälle geschlossen; der unbeteiligte Eintrag war nie betroffen.
-- **Abschluss:** Liste „Erneut“ ohne `AF-2`-Einträge; Etikettierer wieder validiert.
+- **Abschluss:** Liste „Erneut“ ohne `AF-2`-Einträge; beide Einträge wieder validiert, der
+  Etikettierer mit dem Text der Fassung 2.
 
 ### Persönliche Assistenz
 
@@ -109,7 +123,26 @@ eigenen Aufträge.
 ## Messprotokoll (je Rolle und Geschichte getrennt)
 
 Nur tatsächlich Gemessenes eintragen. Ohne belastbaren Vorher-Vergleich wird **keine** Zeitersparnis,
-Qualitäts- oder Renditeaussage gemacht.
+Qualitäts- oder Renditeaussage gemacht. Werte werden nicht nachträglich geschätzt.
+
+**Agentenprobe (automatisch erhoben).** Die Browserprobe
+`tests-smoke/branchen-poc-arbeitswege-browser.spec.ts` misst bei jedem Lauf je Geschichte und
+ausgeführter Rolle und hängt das Ergebnis als JSON-Anhang „PoC-Messprotokoll“ an den nativen
+Playwright-Bericht, auch bei einem Abbruch. Erhoben werden:
+- Einstieg sowie Version und Commit des laufenden Servers (aus `/health`), KI-Betriebsart und welcher
+  Ausgangsbestandsweg lief;
+- je Schritt Beginn, Ende und Dauer;
+- genutzte Assistenz-/Hilfeflächen;
+- im Browser dieser Rolle beobachtete Fehler (API-Antworten ≥ 400, Seitenfehler);
+- offene Punkte (z. B. „über Route statt Fläche“) und das Ergebnis (abgeschlossen/abgebrochen).
+
+Gemessene Schritte: Geschichte 1 Fragende; Geschichte 2 Übergabe, Rückfrage, Antwort, Erfassen und
+Verknüpfen, zwei Fachprüfungen, Abschluss, Meldung und Wiederholung; Geschichte 3 Meldung,
+Folgeprüfung A, Anpassung als Vorschlag, Übernahme durch die Verwaltung, Folgeprüfung B, zwei
+Fachprüfungen. „Hilfe“ heißt bei einer Agentenprobe: genutzte Flächen, kein menschlicher Hilfebedarf.
+Die Werte stehen im Bericht des jeweiligen Laufs, nicht in dieser Datei.
+
+**Echte Nutzung (offen).** Für eine Probe mit Menschen dieselben Spalten von Hand:
 
 | Geschichte | Rolle | Art (Agentenprobe / Simulation / echte Nutzung) | Produktrevision | Start–Ende (Dauer) | Hilfe nötig (wo, welche) | Fehler (Schritt, Meldung) | offene Punkte |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -119,12 +152,14 @@ Qualitäts- oder Renditeaussage gemacht.
 | 2 | Fachprüfung | | | | | | |
 | 3 | Meldung | | | | | | |
 | 3 | Folgeprüfung | | | | | | |
+| 3 | Anpassung / Übernahme | | | | | | |
+| 3 | Fachprüfung | | | | | | |
 
 ## KI-Betriebsart und Integrationen
 
 - Die Antwort entsteht im **eingestellten** Betrieb der Instanz (Verwaltung → KI): Modellweg oder
-  deterministischer Weg ohne Modell. Der automatisierte Durchlauf unten läuft **ohne Modell**
-  (deterministisch). Für den PoC wird kein Anbieter- oder Kontowechsel vorgenommen.
+  deterministischer Weg ohne Modell. Beide automatisierten Durchläufe unten laufen **ohne Modell**
+  (deterministisch); die Browserprobe hält den gemeldeten KI-Status aus `/health` im Protokoll fest. Für den PoC wird kein Anbieter- oder Kontowechsel vorgenommen.
 - Genutzte Integrationen im PoC: **keine**. Office-Datenimport, Office-Bearbeitung, Confluence und
   externe Suche sind nicht Teil der Geschichten und werden im PoC nicht als funktionsfähig gezeigt.
 
@@ -134,8 +169,10 @@ Qualitäts- oder Renditeaussage gemacht.
   (Merker `demoSeed`, Demo-Konten) und lädt ihn neu: der PoC steht danach wieder im Ausgangszustand,
   die Demo-Lücke ist wieder offen.
 - Echte, selbst erfasste Einträge und Lücken bleiben unberührt. Auch der in Geschichte 2 von Erik
-  erfasste Antworteintrag ist ein gewöhnlicher Eintrag und bleibt bestehen. Wer ihn nach der Abnahme
-  nicht behalten will, löscht ihn regulär.
+  erfasste Antworteintrag ist ein gewöhnlicher Eintrag und bleibt bestehen. Weil er die Lückenfrage
+  sachlich beantwortet, entsteht beim erneuten Laden **keine** neue Demo-Lücke, solange er besteht.
+  Soll Geschichte 2 wiederholt werden, löscht die Verwaltung ihn vorher regulär und lädt dann mit
+  „force“ — erst danach ist die Demo-Lücke wieder offen.
 - Die Demo-Konten werden bei „force“ neu angelegt (neue Einmalkennwörter); ihre Assistenzprofile
   entfallen mit ihnen.
 
@@ -143,9 +180,9 @@ Qualitäts- oder Renditeaussage gemacht.
 
 | Nachweis | Art | Stand |
 | --- | --- | --- |
-| `tests/branchen-poc/arbeitswege-am-draht.test.ts` | Agentenprobe über die echten Routen (In-Memory, ohne Modell) | Geschichten 1–3 mit getrennten Rollen, Gegenfälle, Wiederholung, Wortwahl je Sprache |
-| Bedienung im Browser | — | **offen** (der Smoke-Torlauf setzt `KLARWERK_DEMO_SEED` nicht) |
-| Echte Nutzung durch Menschen, Messprotokoll | — | **offen** |
+| `tests/branchen-poc/arbeitswege-am-draht.test.ts` | Agentenprobe über die echten Routen (In-Memory, ohne Modell), Ausgangsbestand über „Demodaten laden“ | Geschichten 1–3 mit getrennten Rollen, Gegenfälle, Wiederholung, Wortwahl und sachliche Passung je Sprache |
+| `tests-smoke/branchen-poc-arbeitswege-browser.spec.ts` | Agentenprobe im echten Browser (`chromium-zustand`, ohne Modell), angemeldeter Einstieg `/start`, Revision aus `/health` | Geschichten 1–3 mit getrennten Konten; Assistenz mit persönlichem Namen, Seiten- und Markierungskontext; Messprotokoll und Bildbelege am Bericht. Im Torlauf fehlt der Schalter `KLARWERK_DEMO_SEED`; der Ausgangsbestand wird dann mit denselben Texten über die regulären Routen nachgebildet (ohne Quellenbezeichnung) — welcher Weg lief, steht im Protokoll |
+| Echte Nutzung durch Menschen | — | **offen** |
 | Veröffentlichte Fassung, Live-Einstieg, Provider-Nachweis | — | **offen**, folgt dem regulären Lieferweg nach Bens Prüfung |
 
 ## Zuordnung zu vorhandenen Verträgen

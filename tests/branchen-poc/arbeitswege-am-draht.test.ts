@@ -181,21 +181,27 @@ describe("Branchen-PoC · Wortwahl je Sprache (Antwortsuche des Produkts)", () =
   });
   for (const locale of ["de", "en", "nl"] as const) {
     const s = DEMO_TEXTS[locale];
+    // Nur der GESEEDETE Ausgangsbestand — die Lückenantwort entsteht erst im Durchlauf.
     const bestand = [
       ref("quelle", s.poc.koQuelle),
       ref("a", s.poc.koAnlageA),
       ref("b", s.poc.koAnlageB),
       ref("c", s.poc.koUnbeteiligt),
-      ref("antwort", s.poc.lueckenAntwort),
     ];
 
     it(`[${locale}] die typische Frage findet die Antwortquelle (Geschichte 1)`, () => {
       expect(rankCandidates(s.poc.quellenFrage, bestand).map((x) => x.ref.id)).toContain("quelle");
     });
 
-    it(`[${locale}] die Demo-Lückenfrage trifft keinen PoC-Text (Geschichte 2)`, () => {
-      // Sonst entstünde keine Lücke, oder die Wiederholungsfrage würde von der Suche beantwortet
-      // statt vom Lückenabschluss — die Geschichte bewiese dann nichts.
+    it(`[${locale}] die erfasste Lückenantwort passt sachlich zur Frage (Geschichte 2)`, () => {
+      // Dieselbe Linie, dieselbe Dosierung: die Suche findet die Antwort zur Lückenfrage.
+      const antwort = ref("antwort", s.poc.lueckenAntwort);
+      expect(rankCandidates(s.gapQuestion, [antwort]).map((x) => x.ref.id)).toEqual(["antwort"]);
+      expect(rankCandidates(s.poc.rueckfrage, [antwort]).map((x) => x.ref.id)).toEqual(["antwort"]);
+    });
+
+    it(`[${locale}] die Demo-Lückenfrage trifft keinen geseedeten PoC-Text (Lückenstart)`, () => {
+      // Sonst entstünde beim Laden keine Lücke, und Geschichte 2 hätte keinen Start.
       expect(rankCandidates(s.gapQuestion, bestand)).toEqual([]);
       const frage = new Set(queryTokens(s.gapQuestion));
       for (const eintrag of bestand) {
@@ -370,11 +376,22 @@ describe("Branchen-PoC · die drei Arbeitsgeschichten mit getrennten Rollen", ()
     expect(geloest).toHaveLength(1);
     expect(geloest[0]).toMatchObject({ gapId, koId: antwortKo.id });
 
-    // Spätere Wiederholung: der abgeschlossene Wissensstand, keine neue Lücke.
+    // Spätere Wiederholung: der abgeschlossene Wissensstand, keine neue Lücke. Die Antwort passt
+    // sachlich zur Frage; der Frageweg zeigt den Eintrag deshalb als direkte Antwort (zitiert) —
+    // oder, falls die Suche ihn nicht trägt, über den Verweis auf die gelöste Lücke. Beides ist
+    // GENAU dieser abgeschlossene Eintrag.
     const wieder = await post(app, ada, "/api/ask", { question: t.gapQuestion });
     expect(wieder.statusCode, wieder.body).toBe(200);
-    expect(wieder.json().gap).toBeNull();
-    expect(wieder.json().geloesteLuecke).toMatchObject({ koId: antwortKo.id });
+    const w2 = wieder.json() as {
+      gap: unknown;
+      geloesteLuecke?: { koId: string };
+      result?: { answered?: boolean; citedSources?: string[] };
+    };
+    expect(w2.gap).toBeNull();
+    const zeigtEintrag =
+      w2.geloesteLuecke?.koId === antwortKo.id ||
+      (w2.result?.answered === true && (w2.result.citedSources ?? []).includes(antwortKo.id));
+    expect(zeigtEintrag, wieder.body).toBe(true);
 
     // =========================== GESCHICHTE 3 · QUELLENÄNDERUNG ================================
     const gemeldet = await post(app, carla, "/api/lifecycle/asset-changed", {
@@ -501,6 +518,19 @@ describe("Branchen-PoC · die drei Arbeitsgeschichten mit getrennten Rollen", ()
     expect(echtNachher).toMatchObject({ title: echtKo.title, version: echtKo.version });
     // … auch der im Durchlauf erfasste Antworteintrag (er ist kein Demo-Bestand).
     expect(kos.some((k) => k.id === antwortKo.id)).toBe(true);
+    // Er beantwortet die Lückenfrage jetzt selbst. Für eine Wiederholung von Geschichte 2 löscht
+    // die Verwaltung ihn deshalb regulär (Durchführungshilfe), und lädt erneut.
+    const geloescht = await app.inject({
+      method: "DELETE",
+      url: `/api/kos/${antwortKo.id}`,
+      headers: ada.headers,
+    });
+    expect(geloescht.statusCode, geloescht.body).toBeLessThan(300);
+    await demodatenLaden(app, ada, true);
+    const echtZuletzt = ((await lies(app, ada, "/api/kos")).json() as Ko[]).find(
+      (k) => k.id === echtKo.id,
+    );
+    expect(echtZuletzt).toMatchObject({ title: echtKo.title, version: echtKo.version });
     // Der PoC-Ausgangsbestand steht wieder: neue Einträge, validiert, ohne offene Folgeprüfung.
     const neu = await pocEintraege(app, ada);
     expect(neu.a.id).not.toBe(poc.a.id);

@@ -84,10 +84,11 @@ export interface DemoTexts {
  *     Fassung 1 der Betriebsanleitung; `anlageAenderung` ist die im Durchlauf gemeldete Fassung 2.
  *     `koUnbeteiligt` hängt an einer anderen Anlage und darf nicht betroffen werden.
  *
- * WORTWAHL: kein Text teilt ein Inhaltswort mit `gapQuestion` derselben Sprache (auch keine
- * Wortteile wie „Schicht“/„Wechsel“, „line“/„change“/„every“, „lijn“/„elke“/„wissel“). Sonst fände
- * die Antwortsuche eine Scheinantwort, die Demo-Lücke entstünde nicht, und die Wiederholungsfrage
- * aus Geschichte 2 würde von der Suche statt vom Lückenabschluss beantwortet.
+ * WORTWAHL: kein GESEEDETER PoC-Text (koQuelle, koAnlageA/B, koUnbeteiligt) teilt ein Inhaltswort
+ * mit `gapQuestion` derselben Sprache — sonst fände die Antwortsuche eine Scheinantwort und die
+ * Demo-Lücke entstünde nicht. `lueckenAntwort` dagegen beantwortet die Frage SACHLICH (dieselbe
+ * Linie L4, dieselbe Dosierung) und darf und soll von der Suche gefunden werden: sie entsteht erst
+ * im Durchlauf und zeigt bei der Wiederholungsfrage den abgeschlossenen Wissensstand.
  */
 export interface PocTexts {
   organisation: string;
@@ -282,12 +283,13 @@ const de: DemoTexts = {
         "Der Kühlschmierstoff der Fräse M12 wird alle sechs Wochen vollständig erneuert. Vorher die Konzentration mit dem Refraktometer messen und im Maschinenbuch eintragen.",
     },
     quelleLabel: "Betriebsanweisung Fräse M12, Abschnitt 3 (fiktiv)",
-    rueckfrage: "Tritt die Abweichung bei allen Rezepturen auf oder nur bei einer?",
-    rueckfrageAntwort: "Bei allen Rezepturen, jeweils in der ersten halben Stunde.",
+    rueckfrage: "Schwankt der Dosierwert an Linie L4 bei allen Rezepturen oder nur bei einer?",
+    rueckfrageAntwort:
+      "Bei allen Rezepturen, jeweils in der ersten halben Stunde nach dem Schichtwechsel.",
     lueckenAntwort: {
-      title: "Mengenregler des Mischers M4 bei der Übergabe neu nullen",
+      title: "Linie L4: Dosierwaage bei jedem Schichtwechsel neu tarieren",
       statement:
-        "Beim Übergeben der Anlage an die nächste Besetzung den Mengenregler des Mischers M4 neu nullen; die Waage driftet sonst um bis zu drei Prozent.",
+        "Der Dosierwert an Linie L4 schwankt nach dem Schichtwechsel, weil die Dosierwaage der Linie bei der Übergabe nicht neu tariert wird. Bei jedem Schichtwechsel die leere Dosierwaage an Linie L4 tarieren und den ersten Dosierwert gegen das Rezept prüfen; die Waage driftet sonst um bis zu drei Prozent.",
     },
     koAnlageA: {
       title: "Abfüllanlage AF-2: Füllventile vor dem Anfahren auf Tropfdichtheit prüfen",
@@ -480,12 +482,12 @@ const en: DemoTexts = {
         "The cooling lubricant of milling machine M12 is fully renewed at six-week intervals. Beforehand, measure the concentration with the refractometer and record it in the machine log.",
     },
     quelleLabel: "Operating instruction milling machine M12, section 3 (fictitious)",
-    rueckfrage: "Does the deviation occur with all recipes or only with one?",
-    rueckfrageAntwort: "With all recipes, always in the first half hour.",
+    rueckfrage: "Does the dosing value on line L4 fluctuate with all recipes or only with one?",
+    rueckfrageAntwort: "With all recipes, always in the first half hour after the shift change.",
     lueckenAntwort: {
-      title: "Zero the quantity controller of mixer M4 at handover",
+      title: "Line L4: re-tare the dosing scale at every shift change",
       statement:
-        "When handing the plant over to the next crew, zero the quantity controller of mixer M4 again; otherwise the scale drifts by up to three percent.",
+        "The dosing value on line L4 fluctuates after the shift change because the line's dosing scale is not re-tared at handover. At every shift change, tare the empty dosing scale on line L4 and check the first dosing value against the recipe; otherwise the scale drifts by up to three percent.",
     },
     koAnlageA: {
       title: "Filling plant AF-2: check the filling valves for drip-tightness before start-up",
@@ -675,12 +677,12 @@ const nl: DemoTexts = {
         "Het koelsmeermiddel van freesmachine M12 wordt om de zes weken volledig vernieuwd. Meet vooraf de concentratie met de refractometer en noteer die in het machineboek.",
     },
     quelleLabel: "Bedieningsvoorschrift freesmachine M12, paragraaf 3 (fictief)",
-    rueckfrage: "Treedt de afwijking op bij alle recepturen of maar bij één?",
-    rueckfrageAntwort: "Bij alle recepturen, steeds in het eerste halfuur.",
+    rueckfrage: "Schommelt de doseerwaarde op lijn L4 bij alle recepturen of maar bij één?",
+    rueckfrageAntwort: "Bij alle recepturen, steeds in het eerste halfuur na de ploegwisseling.",
     lueckenAntwort: {
-      title: "Hoeveelheidsregelaar van menger M4 bij overdracht opnieuw nullen",
+      title: "Lijn L4: doseerweegschaal bij elke ploegwisseling opnieuw tarreren",
       statement:
-        "Zet bij het overdragen van de installatie aan de volgende bezetting de hoeveelheidsregelaar van menger M4 opnieuw op nul; anders verloopt de weegschaal tot drie procent.",
+        "De doseerwaarde op lijn L4 schommelt na de ploegwisseling, omdat de doseerweegschaal van de lijn bij de overdracht niet opnieuw wordt getarreerd. Tarreer bij elke ploegwisseling de lege doseerweegschaal op lijn L4 en controleer de eerste doseerwaarde tegen het recept; anders verloopt de weegschaal tot drie procent.",
     },
     koAnlageA: {
       title: "Afvulinstallatie AF-2: vulkleppen vóór het opstarten op druppeldichtheid controleren",

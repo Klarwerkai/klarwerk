@@ -82,7 +82,7 @@ const PORT_ZUSTAND = 3124;
 // produkt:20261010:antwort-beanstandung-korrektur: die Beanstandungssonde legt ebenso Konten, eine
 // Quelle samt Bewertungen und einen Vorgang an.
 const ZUSTAND_SPEC =
-  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser|assistenz-produkteinstieg-browser|fragen-pruefen-einstieg-browser|kommunikation-browser|antwort-beanstandung-browser)\.spec\.ts/;
+  /(demo-ux-v1-capture-frontdoor|veroeffentlichung-browser|arbeitswege-objekt-browser|klara-kontext-artikel-browser|luecken-vorgang-browser|assistenz-produkteinstieg-browser|fragen-pruefen-einstieg-browser|kommunikation-browser|antwort-beanstandung-browser|branchen-poc-arbeitswege-browser)\.spec\.ts/;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.
