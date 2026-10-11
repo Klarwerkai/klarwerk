@@ -83,7 +83,12 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
-import type { EinreichEntscheid, VorlagenEinreichungPort } from "../vorlagen";
+import {
+  type EinreichEntscheid,
+  VORLAGE_SPACE_KONFLIKT_TEXT,
+  type VorlagenEinreichungPort,
+  VorlagenSpaceFehler,
+} from "../vorlagen";
 import { dublettenTor } from "./validation-routes";
 
 /** produkt:20261007:templates-default — die Absage der Einreichprüfung, wörtlich weitergegeben. */
@@ -96,6 +101,14 @@ function sendeVorlagenAbsage(
     message: e.message,
     ...(e.befunde ? { befunde: e.befunde } : {}),
   });
+}
+
+/**
+ * aufnahme:20260922:gesamt-wissensprojekte: der gewählte Space ließ sich nicht zuordnen — die
+ * Anlage ist zurückgenommen (`VorlagenSpaceFehler`). Ein Konflikt, kein stilles 201 ohne Space.
+ */
+function sendeVorlagenSpaceKonflikt(reply: FastifyReply, e: VorlagenSpaceFehler): void {
+  reply.code(409).send({ error: e.code, message: VORLAGE_SPACE_KONFLIKT_TEXT });
 }
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
@@ -1850,30 +1863,53 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           }
           // produkt:20261007:templates-default: Pflichtfelder der Vorlage, Space-Vorgaben und
           // gepflegte Begriffe — serverseitig, VOR der Anlage. Ein Entwurf bleibt davon unberührt.
-          const vorlagenEntscheid = await deps.vorlagen?.pruefe(
-            vorlagenBezug,
-            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
-            user,
-          );
-          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
-            sendeVorlagenAbsage(reply, vorlagenEntscheid);
+          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): mit gewähltem
+          // Space laufen Prüfung, Anlage und Zuordnung unter derselben Sperre wie die
+          // Spacelöschung (`sperre`). Gewinnt die Löschung vorher, antwortet die Prüfung 409
+          // `SPACE_GELOESCHT`; misslingt die Zuordnung, ist die Anlage zurückgenommen (409).
+          const anlage = async () => {
+            const entscheid = await deps.vorlagen?.pruefe(
+              vorlagenBezug,
+              { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+              user,
+            );
+            if (entscheid && !entscheid.ok) {
+              return { absage: entscheid } as const;
+            }
+            let neu = await ko.create({ ...input, author: user.id });
+            // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das
+            // gesagt (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben — AUSSER die
+            // Space-Zuordnung scheitert: dann ist die Anlage zurückgenommen.
+            let vermerk: "fehlgeschlagen" | undefined;
+            if (entscheid?.ok && entscheid.bezug) {
+              try {
+                await deps.vorlagen?.vermerke(neu.id, entscheid.bezug, user);
+                if (entscheid.bezug.spaceId) {
+                  neu = (await ko.get(neu.id)) ?? neu;
+                }
+              } catch (fehlerWert) {
+                if (fehlerWert instanceof VorlagenSpaceFehler) {
+                  return { spaceFehler: fehlerWert } as const;
+                }
+                request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+                vermerk = "fehlgeschlagen";
+              }
+            }
+            return { created: neu, vorlagenVermerk: vermerk } as const;
+          };
+          const ergebnis = deps.vorlagen
+            ? await deps.vorlagen.sperre(vorlagenBezug, anlage)
+            : await anlage();
+          if ("absage" in ergebnis) {
+            sendeVorlagenAbsage(reply, ergebnis.absage);
             return;
           }
-          let created = await ko.create({ ...input, author: user.id });
-          // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das gesagt
-          // (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben.
-          let vorlagenVermerk: "fehlgeschlagen" | undefined;
-          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
-            try {
-              await deps.vorlagen?.vermerke(created.id, vorlagenEntscheid.bezug, user);
-              if (vorlagenEntscheid.bezug.spaceId) {
-                created = (await ko.get(created.id)) ?? created;
-              }
-            } catch (fehlerWert) {
-              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
-              vorlagenVermerk = "fehlgeschlagen";
-            }
+          if ("spaceFehler" in ergebnis) {
+            sendeVorlagenSpaceKonflikt(reply, ergebnis.spaceFehler);
+            return;
           }
+          const created = ergebnis.created;
+          const vorlagenVermerk = ergebnis.vorlagenVermerk;
           // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
           // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
           // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
@@ -1943,8 +1979,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       const badRequest = (message: string): void => {
         reply.code(400).send({ error: "BAD_REQUEST", message });
       };
+      // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält dieser
+      // Vorgang von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
+      let spaceSperreFrei: (() => void) | undefined;
       try {
         const body = request.body ?? {};
+        const rohBezug = body.draftId
+          ? typeof body.draftPayload === "object" && body.draftPayload !== null
+            ? (body.draftPayload as { vorlage?: unknown }).vorlage
+            : undefined
+          : (body.create as { vorlage?: unknown } | undefined)?.vorlage;
+        spaceSperreFrei = await deps.vorlagen?.halte(rohBezug);
         const entries = body.documents ?? [];
         // ---- UNVERÄNDERLICHE FORMPRÜFUNGEN ----------------------------------------------------
         if (entries.length === 0) {
@@ -2363,17 +2408,35 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         // sein Autor sieht und löschen kann — unschön, aber kein Verlust und vor allem kein
         // Wissensobjekt ohne Herkunft. Die umgekehrte Reihenfolge hätte den Entwurf vernichten
         // können, während die Anlage scheitert.
+        // produkt:20261007:templates-default: Vorlage und Fassung vermerken, ggf. in den gewählten
+        // Space legen — eine Nacharbeit wie die übrigen, nachholbar und ehrlich gemeldet.
+        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+        // Zuordnung. Misslingt sie, hat der Port die Anlage zurückgenommen — dann 409, und der
+        // Entwurf bleibt erhalten (deshalb steht dieser Schritt VOR dem Verwerfen des Entwurfs).
+        const bezug = vorlagenEntscheid?.ok ? vorlagenEntscheid.bezug : null;
+        const spaceKonflikt: { fehler?: VorlagenSpaceFehler } = {};
+        if (bezug) {
+          await followUp("vorlage", async () => {
+            try {
+              await (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user);
+            } catch (fehlerWert) {
+              if (fehlerWert instanceof VorlagenSpaceFehler) {
+                spaceKonflikt.fehler = fehlerWert;
+                return;
+              }
+              throw fehlerWert;
+            }
+          });
+        }
+        if (spaceKonflikt.fehler) {
+          sendeVorlagenSpaceKonflikt(reply, spaceKonflikt.fehler);
+          return;
+        }
+        // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+        spaceSperreFrei?.();
         const draftId = body.draftId;
         if (draftId && draftPromotion) {
           await followUp("draft-discard", () => draftPromotion.discard(draftId));
-        }
-        // produkt:20261007:templates-default: Vorlage und Fassung vermerken, ggf. in den gewählten
-        // Space legen — eine Nacharbeit wie die übrigen, nachholbar und ehrlich gemeldet.
-        const bezug = vorlagenEntscheid?.ok ? vorlagenEntscheid.bezug : null;
-        if (bezug) {
-          await followUp("vorlage", () =>
-            (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user),
-          );
         }
         const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
         if (reviewers.length > 0) {
@@ -2469,6 +2532,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         await indexKoForDuplicatePrefilter(created, semanticPrefilter);
       } catch (error) {
         sendError(reply, error);
+      } finally {
+        spaceSperreFrei?.();
       }
     });
 
