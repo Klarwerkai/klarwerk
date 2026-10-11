@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import i18n from "../../apps/web/src/i18n";
 import {
-  ATTACH_FILES_KEY,
-  ATTACH_FILE_HINT_KEY,
-  ATTACH_IMAGES_KEY,
-  ATTACH_IMAGE_HINT_KEY,
-  ATTACH_TITLE_KEY,
   attachmentContext,
   isImageAttachment,
 } from "../../apps/web/src/lib/editorAttachmentContext";
@@ -50,23 +44,7 @@ describe("SCRUM-323: editorAttachmentContext", () => {
     expect(ctx).toEqual({ imageCount: 1, fileCount: 2, total: 3, hasAny: true });
   });
 
-  it("liefert stabile i18n-Keys, alle DE+EN vorhanden", () => {
-    const keys = [
-      ATTACH_TITLE_KEY,
-      ATTACH_IMAGES_KEY,
-      ATTACH_FILES_KEY,
-      ATTACH_IMAGE_HINT_KEY,
-      ATTACH_FILE_HINT_KEY,
-    ];
-    for (const key of keys) {
-      for (const lng of ["de", "en"]) {
-        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
-      }
-    }
-  });
-
-  it("ehrlich: Datei-Hinweis behauptet kein Inline-Einbetten (DE)", () => {
-    const fileHint = String(i18n.getResource("de", "translation", ATTACH_FILE_HINT_KEY) ?? "");
-    expect(fileHint).toMatch(/nicht inline/i);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Die zwei Fälle zu den Textschlüsseln `ATTACH_*_KEY`
+  // sind mit ihnen entfallen — keiner hatte einen Produktleser; die Karte rendert die
+  // Medienführung `editorMediaGuide` mit den `MEDIA_*`-Schlüsseln.
 });

@@ -128,10 +128,12 @@ export function createConflictOffersRestart(
 // liefert den schon angelegten Entwurf zurück (200) statt einen zweiten anzulegen. Das gilt auch
 // für zwei Wege, die dieselbe Nutzlast GLEICHZEITIG schicken.
 //
-// HAT DER MENSCH ZWISCHEN DEN VERSUCHEN ETWAS GEÄNDERT, ist es ein neuer Inhalt und ein neuer
-// Schlüssel. Der Server legt dann einen zweiten Entwurf an, falls der erste trotz verlorener
-// Antwort entstanden war — ehrlich benannt: beide tragen dann verschiedene Stände, keiner ist
-// ein stilles Duplikat, und ein Abdruckkonflikt ohne Ausweg auf der Fläche bleibt aus.
+// HAT DER MENSCH ZWISCHEN DEN VERSUCHEN ETWAS GEÄNDERT — bis zur entscheidung:14ce8681 war das ein
+// neuer Schlüssel und, falls der erste trotz verlorener Antwort entstanden war, ein zweiter
+// Entwurf. Seit Pedis Entscheidung (30.09.2026, Option A) gilt: es gibt immer nur EINEN Eintrag.
+// Solange der erste Vorgang UNKLAR ist, behält auch der geänderte Inhalt dessen Schlüssel
+// (`anlageVorgangWiederholen`) und reist mit `fortschreiben`; der Server schreibt denselben
+// Entwurf mit dem neuen Inhalt fort — oder legt ihn jetzt an, wenn der erste nie angekommen war.
 
 /** Ein Schlüssel und der Inhalt, für den er vergeben wurde. */
 export interface AnlageVorgang {
@@ -148,6 +150,22 @@ export function anlageVorgangFuer(bisher: AnlageVorgang | null, abdruck: string)
     return bisher;
   }
   return { id: anlageKennung(), abdruck };
+}
+
+/**
+ * entscheidung:14ce8681 — DER SCHLÜSSEL FÜR DEN NÄCHSTEN VERSUCH, wenn `offen` ein UNKLAR
+ * gebliebener Vorgang ist (Antwort verloren, 5xx). Er bleibt derselbe, auch bei geändertem Inhalt;
+ * `fortschreiben` ist dann gesetzt, und der Server schreibt denselben Entwurf fort. Ohne offenen
+ * Vorgang ist es eine Erstspeicherung mit frischem Schlüssel.
+ */
+export function anlageVorgangWiederholen(
+  offen: AnlageVorgang | null,
+  abdruck: string,
+): { vorgang: AnlageVorgang; fortschreiben: boolean } {
+  if (!offen) {
+    return { vorgang: anlageVorgangFuer(null, abdruck), fortschreiben: false };
+  }
+  return { vorgang: { id: offen.id, abdruck }, fortschreiben: true };
 }
 
 /**

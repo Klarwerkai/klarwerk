@@ -24,6 +24,8 @@ say()  { /usr/bin/osascript -e "display notification \"$1\" with title \"KLARWER
 # Erfolgs-Bestätigung als kleiner Dialog (schließt sich nach 4 s selbst) — macOS
 # unterdrückt Skript-Benachrichtigungen je nach Mitteilungs-Einstellung (Pedi 02.07.).
 confirm() { /usr/bin/osascript -e "display dialog \"$1\" with title \"KLARWERK App\" buttons {\"OK\"} default button 1 giving up after 4" >/dev/null 2>&1; }
+# R-0779: eine Versionsabweichung bleibt stehen, bis sie bestätigt ist (kein Ablauf nach 4 s).
+warn() { /usr/bin/osascript -e "display dialog \"$1\" with title \"KLARWERK App\" buttons {\"OK\"} default button 1 with icon caution" >/dev/null 2>&1; }
 fail() {
   # Pedi-Vorschlag 02.07.: Dialog nennt die letzte Fehlerzeile aus dem Log (gekürzt, ohne Anführungszeichen).
   HINT="$(tail -n 15 "$LOG" 2>/dev/null | grep -E 'Error|error|fatal|fehlgeschlagen|failed|EADDRINUSE|ENOENT|Permission denied' | tail -1 | tr -d '"\\' | cut -c1-180)"
@@ -143,11 +145,24 @@ fi
 
 # „Läuft bereits"-Abkürzung NUR, wenn der Key NICHT erneuert wurde — sonst behielte der
 # laufende Server den alten Key im Speicher (Neustart erzwingt die neue Umgebung).
+#
+# R-0779: Die bestätigte Version ist die, die der LAUFENDE Server über /health meldet
+# (`scripts/local/laufende-version.mjs`), nicht die Nummer aus version.ts. Meldet der alte Server
+# eine andere Version als der Quellstand, gilt er NICHT als „läuft bereits" — dann wird neu gestartet.
+laufende_version() { # $1=Port · stdout: laufende Version · Exit 0 gleich / 2 keine Auskunft / 3 Abweichung
+  "$NODE_PICK" "$REPO/scripts/local/laufende-version.mjs" "http://127.0.0.1:$1/health" "$VER" 2>> "$LOG"
+}
 if [ "$NEED_FRESH" = "0" ] && [ "$KEY_RENEWED" = "0" ] && [ -n "$OLD_PORT" ] && [ "$DIST_STAMP" = "$OLD_STAMP" ] && \
    /usr/bin/curl -s --max-time 2 "http://127.0.0.1:$OLD_PORT/health" | /usr/bin/grep -q '"status":"ok"'; then
-  /usr/bin/open "http://localhost:$OLD_PORT"
-  confirm "Läuft bereits: Version $VER\nBuild $STAMP · Port $OLD_PORT"
-  exit 0
+  LRC=0
+  LAUFEND="$(laufende_version "$OLD_PORT")" || LRC=$?
+  if [ "$LRC" = "0" ]; then
+    /usr/bin/open "http://localhost:$OLD_PORT"
+    confirm "Läuft bereits: Version $LAUFEND (vom Server bestätigt)\nBuild $STAMP · Port $OLD_PORT"
+    exit 0
+  fi
+  # Kein „läuft bereits": der Weg unten beendet den gemerkten Altprozess und startet neu.
+  echo "Laufender Server bestätigt Version $VER nicht (Exit $LRC, gemeldet: ${LAUFEND:-keine}) — Neustart" >> "$LOG"
 fi
 [ "$KEY_RENEWED" = "1" ] && say "Key erneuert — Server wird neu gestartet …"
 
@@ -211,9 +226,17 @@ for _ in $(seq 1 60); do
       ADMIN_PASS=""
     fi
     STAMP="$(/usr/bin/stat -f %Sm -t '%d.%m. %H:%M' "$BUILD_REF" 2>/dev/null)"
-    echo "Gestartet: v$VER / Build $STAMP / Port $PORT" >> "$LOG"
+    LRC=0
+    LAUFEND="$(laufende_version "$PORT")" || LRC=$?
+    echo "Gestartet: erwartet v$VER / laufend v${LAUFEND:-?} (Exit $LRC) / Build $STAMP / Port $PORT" >> "$LOG"
     /usr/bin/open "http://localhost:$PORT"
-    confirm "Gestartet: Version $VER\nBuild $STAMP · Port $PORT"
+    if [ "$LRC" = "0" ]; then
+      confirm "Gestartet: Version $LAUFEND (vom Server bestätigt)\nBuild $STAMP · Port $PORT"
+    elif [ "$LRC" = "3" ]; then
+      warn "Gestartet, aber der Server meldet Version $LAUFEND statt $VER.\n\nBitte KLARWERK App erneut öffnen; bleibt die Abweichung, Details in desktop-app/app.log."
+    else
+      warn "Gestartet, aber der Server nennt keine Version (erwartet $VER).\n\nDetails in desktop-app/app.log."
+    fi
     exit 0
   fi
   sleep 0.5

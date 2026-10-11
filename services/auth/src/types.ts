@@ -49,6 +49,10 @@ export interface User {
   // Ablauf einer Sitzung: `Session.expiresAt` hat seine eigene, unberuehrte Bedeutung — zwei
   // Ablaufbegriffe, die sich vermischen, waeren der eigentliche Fehler.
   accessExpiresAt?: string;
+  // R-0556 / R-0571: die Gruppen, die das Unternehmensverzeichnis (SCIM) für dieses Konto zuletzt
+  // gemeldet hat. Aus ihnen folgen Rolle und Prüfzuständigkeiten — gepflegt vom Verzeichnis, nicht
+  // von Hand. Optional: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
+  verzeichnisGruppen?: string[];
 }
 
 export interface Session {

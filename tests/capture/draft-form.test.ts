@@ -5,7 +5,6 @@ import {
   draftToForm,
   formToPayload,
   isDraftFormFillable,
-  isPromotable,
 } from "../../apps/web/src/lib/draftForm";
 
 const draft = (payload: Draft["payload"]): Draft =>
@@ -53,10 +52,6 @@ describe("SCRUM-113 / FE-CAP-07: draftForm", () => {
     expect(draftTitle(draft({}), "fb")).toBe("fb");
   });
 
-  it("isPromotable nur bei vollständigen KO-Pflichtfeldern", () => {
-    expect(isPromotable({ title: "T", statement: "S" })).toBe(false);
-    expect(
-      isPromotable({ title: "T", statement: "S", type: "technik", category: "Anlage 1" }),
-    ).toBe(true);
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall zu `isPromotable` ist mit dem Baustein
+  // entfallen — er hatte keinen Produktleser; Erfassen prüft über `captureReadiness`.
 });

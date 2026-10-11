@@ -22,6 +22,6 @@ export const EDITOR_GUIDANCE: readonly EditorGuidanceItem[] = [
   { id: "ai", labelKey: "editor.guidance.ai" },
 ];
 
-export function editorGuidance(): readonly EditorGuidanceItem[] {
-  return EDITOR_GUIDANCE;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `editorGuidance()`, das die Tabelle oben
+// zurückgab. `components/EditorGuidance.tsx` liest `EDITOR_GUIDANCE` unmittelbar; der Zugriff rief
+// niemand und ist entfernt.

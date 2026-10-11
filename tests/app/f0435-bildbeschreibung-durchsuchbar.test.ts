@@ -33,7 +33,6 @@
 // th|td|tr)>` → Leerzeichen). Zwei Leser derselben Wahrheit gaben bisher zwei verschiedene
 // Antworten; dieser Durchgang gleicht die Fussnote an die laengst geltende Regel an.
 import { describe, expect, it } from "vitest";
-import { captionsMatchQuery } from "../../services/library-analytics/src/search-captions";
 import { imageCaptionTexts, searchCaptionTexts } from "../../services/structure/src/captions";
 import { sanitizeHtml } from "../../services/structure/src/sanitize";
 
@@ -106,11 +105,15 @@ describe("F-0435 · die Inline-Haelfte aus mega84 bleibt unangetastet", () => {
 describe("F-0435 · was der Nutzer davon hat: die Fussnote wird wieder gefunden", () => {
   it("die Suche ueber die Blockgrenze trifft — vorher fand sie nichts", () => {
     const body = gespeichert("<p>Ventil V2</p><p>gerissen</p>");
-    // `captionsMatchQuery` ist der Suchvertrag der Bibliothek (case-insensitiver Substring).
-    expect(captionsMatchQuery(body, "ventil v2")).toBe(true);
-    expect(captionsMatchQuery(body, "gerissen")).toBe(true);
+    // R-1349: gemessen am persistierten Suchfeld (`searchCaptionTexts`), das die Suche wirklich
+    // liest, mit ihrer Regel (case-insensitiver Substring). Die frühere Hilfe `captionsMatchQuery`
+    // rief kein Produktweg mehr; sie ist entfernt.
+    const trifft = (q: string): boolean =>
+      searchCaptionTexts(body).some((c) => c.toLowerCase().includes(q));
+    expect(trifft("ventil v2")).toBe(true);
+    expect(trifft("gerissen")).toBe(true);
     // Und die Verschmelzung selbst ist weg.
-    expect(captionsMatchQuery(body, "v2gerissen")).toBe(false);
+    expect(trifft("v2gerissen")).toBe(false);
   });
 
   it("das persistierte Suchfeld traegt denselben Text — Deckel unveraendert", () => {

@@ -1,7 +1,26 @@
 // Öffentliche API des Moduls audit.
-export { AuditService } from "./src/service";
-export type { AuditServiceDeps } from "./src/service";
-export { InMemoryAuditRepo, type AuditRepo, VALIDATION_DECISION_ACTIONS } from "./src/repo";
+export {
+  AuditService,
+  AUDIT_SEITE_MAX,
+  AUDIT_SEITE_STANDARD,
+  auditSeitengroesse,
+} from "./src/service";
+export type { AuditServiceDeps, AuditChainExport } from "./src/service";
+export {
+  InMemoryAuditRepo,
+  type AuditRepo,
+  auditSeiteTrifft,
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die benannten Entscheidungsereignisse für die
+  // Verifizierungsmarke (services/app/src/verifizierungsmarke.ts).
+  VALIDATION_DECISION_ACTIONS,
+} from "./src/repo";
+// aufnahme:20260922:gesamt-dokumenterzeugung (R-0337): die Output Factory liest das Prüfdatum über
+// denselben geprüften Leseweg wie jeder andere Verbraucher eines Validierungsnachweises.
+export {
+  pruefeValidationDecisionRef,
+  type ValidationDecisionRef,
+  type ValidationDecisionRefState,
+} from "./src/repo";
 export {
   PgAuditRepo,
   AUDIT_SCHEMA,
@@ -25,4 +44,11 @@ export {
   AUDIT_HASH_DOMAIN_V2,
 } from "./src/chain";
 export type { ChainInspection, ChainDeviation, ChainDeviationKind } from "./src/chain";
-export type { AuditEntry, AuditInput, AuditFilter } from "./src/types";
+export type {
+  AuditEntry,
+  AuditInput,
+  AuditFilter,
+  AuditSeite,
+  AuditSeitenAnfrage,
+  AuditSeitenFilter,
+} from "./src/types";

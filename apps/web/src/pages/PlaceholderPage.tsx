@@ -12,16 +12,20 @@ export function PlaceholderPage({ item }: { item: NavItem }): JSX.Element {
       <h1 className="mt-1 flex items-center gap-2.5 text-2xl font-semibold text-ink">
         <Icon size={22} strokeWidth={2} />
         {t(item.labelKey)}
+        {/* R-1169: „Stufe 2" und die Vorlagenzeile standen hart auf Deutsch im Code. */}
         {item.stufe2 ? (
           <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[11px] font-semibold text-ai">
-            Stufe 2
+            {t("start.menu.stufe2")}
           </span>
         ) : null}
       </h1>
       <div className="mt-6 rounded-card border border-dashed border-hairline bg-surface p-10 text-center">
         <p className="text-sm text-muted">{t("page.placeholder")}</p>
         <p className="mt-2 font-mono text-[12px] text-muted-2">
-          Design: §{item.section} · screenshots/{item.shot}-screen.png
+          {t("beschriftung.platzhalter.vorlage", {
+            abschnitt: item.section,
+            bild: `screenshots/${item.shot}-screen.png`,
+          })}
         </p>
       </div>
     </div>

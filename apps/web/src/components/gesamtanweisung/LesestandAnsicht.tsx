@@ -19,6 +19,7 @@ import type { AnweisungLesestand, BausteinLesestand, KoVersionSnapshot } from ".
 import type { NameResolver } from "../../lib/koAuthor";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { type KoVersionPaarDiff, paarDiff } from "../../lib/koVersionDiff";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { SanitizedHtml } from "../SanitizedHtml";
 // JOB 4233: die ANZEIGE- UND STRUKTURREGELN der Gliederung kommen aus der EINEN Stelle des Hauses
 // und werden nicht nachgebaut — `d44LeisteZeigen` („ohne Überschrift keine Leiste, aber KEINE
@@ -458,6 +459,19 @@ function BausteinZeile({
           {...(aenderung ? { aenderung } : {})}
         />
       ) : null}
+      {baustein.voraussetzung ? (
+        <p className="text-[13px] text-text">
+          <span className="font-semibold">{t("ga.voraussetzung.label")}:</span>{" "}
+          {baustein.voraussetzung}
+        </p>
+      ) : null}
+      {/* `?? null`: ein fehlendes Feld ist unbekannt, nicht leer (`api/types.ts`, `rumpfHtml`). */}
+      <div className="text-[14px] leading-relaxed text-text">
+        <BausteinText rumpfHtml={baustein.rumpfHtml ?? null} />
+      </div>
+      {/* LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Momentaufnahme- und Nachweisvermerke sind
+          Herkunftsdetails und stehen NACH dem Regeltext; die Änderungskarte (eine Warnung) bleibt
+          davor. */}
       {(baustein.momentaufnahmen ?? []).map((datei) => (
         // Eine hochgeladene Datei hat keine neuere Fassung, die hier erkannt würde.
         <p
@@ -474,16 +488,6 @@ function BausteinZeile({
       {baustein.nachweisHash === null ? (
         <p className={HINWEIS}>{t("ga.baustein.nachweisFehlt")}</p>
       ) : null}
-      {baustein.voraussetzung ? (
-        <p className="text-[13px] text-text">
-          <span className="font-semibold">{t("ga.voraussetzung.label")}:</span>{" "}
-          {baustein.voraussetzung}
-        </p>
-      ) : null}
-      {/* `?? null`: ein fehlendes Feld ist unbekannt, nicht leer (`api/types.ts`, `rumpfHtml`). */}
-      <div className="text-[14px] leading-relaxed text-text">
-        <BausteinText rumpfHtml={baustein.rumpfHtml ?? null} />
-      </div>
       <ul className={`${HINWEIS} list-none`}>
         <Menge schluessel="ga.baustein.tabellen" werte={baustein.inhalt.tabellenUeberschriften} />
         <Menge schluessel="ga.baustein.abbildungen" werte={baustein.inhalt.abbildungen} />
@@ -532,6 +536,33 @@ function BausteinZeile({
  * bekommen hat. Ist die Auffrischung gescheitert oder fehlt die Verbindung, ist das Ergebnis „nicht
  * gesichert" — der alte Befund wird nicht als heutiger ausgegeben.
  */
+function quellenErgebnis(
+  pruefung: NonNullable<AnweisungLesestand["aenderungspruefung"]>,
+  lage: Extract<Anzeigelage, { art: "stand" }>,
+): string {
+  const gescheitert = lage.auffrischungGescheitert || lage.offline;
+  return gescheitert && pruefung.ergebnis === "aktuell" ? "nichtGesichert" : pruefung.ergebnis;
+}
+
+/**
+ * LESEN-INHALT-ZUERST (Ben, nacharbeit-6): verlangt die Quellenprüfung Aufmerksamkeit? Dann steht
+ * sie weiter VOR den Abschnitten — eine gefundene Änderung, eine gescheiterte, unvollständige oder
+ * nicht gesicherte Prüfung ist eine Warnung. Meldet sie nur „alles aktuell" (oder dass es keine
+ * Quellen gibt), ist sie Prüfdetail und steht NACH dem fachlichen Inhalt.
+ */
+function quellenVerlangenAufmerksamkeit(
+  stand: AnweisungLesestand,
+  lage: Extract<Anzeigelage, { art: "stand" }>,
+): boolean {
+  const pruefung = stand.aenderungspruefung;
+  if (!pruefung) {
+    return false;
+  }
+  const ergebnis = quellenErgebnis(pruefung, lage);
+  const ruhig = ergebnis === "aktuell" || ergebnis === "keine_quellen";
+  return !ruhig || pruefung.gefundeneAenderungen > 0;
+}
+
 function Quellenpruefung({
   stand,
   lage,
@@ -544,9 +575,7 @@ function Quellenpruefung({
   if (!pruefung) {
     return null;
   }
-  const gescheitert = lage.auffrischungGescheitert || lage.offline;
-  const ergebnis =
-    gescheitert && pruefung.ergebnis === "aktuell" ? "nichtGesichert" : pruefung.ergebnis;
+  const ergebnis = quellenErgebnis(pruefung, lage);
   const lesbar = (iso: string | null): string =>
     formatKoTimestamp(iso, i18n.language) ?? t("fe001.zeitUnbekannt");
   const nummer = new Map(stand.bausteine.map((b, i) => [b.id, i + 1]));
@@ -698,6 +727,7 @@ export function LesestandAnsicht({
       <section data-testid={LESESTAND_MARKE} className={KARTE}>
         <h2 className={KARTEN_TITEL}>{t("fe001.lesestand.titel")}</h2>
         <p className={MELDUNG_HINWEIS}>{t("ga.leer")}</p>
+        {leerzustandsZeile(t, "anleitung")}
       </section>
     );
   }
@@ -712,13 +742,17 @@ export function LesestandAnsicht({
           {t("fe001.lesestand.titel")}
         </h2>
         <Dokument stand={stand}>
-          <p className={MELDUNG_HINWEIS}>{t("ga.leer")}</p>
+          <>
+            <p className={MELDUNG_HINWEIS}>{t("ga.leer")}</p>
+            {leerzustandsZeile(t, "anleitung")}
+          </>
         </Dokument>
       </section>
     );
   }
 
   const standzeile = standSchluessel(lage);
+  const quellenOben = quellenVerlangenAufmerksamkeit(stand, lage);
   // Ein Zeitpunkt, den ein Mensch liest — nie die rohe ISO-Zeichenkette im Lesefluss.
   const lesbareZeit = formatKoTimestamp(zeit, i18n.language) ?? t("fe001.zeitUnbekannt");
   return (
@@ -743,7 +777,6 @@ export function LesestandAnsicht({
           {t(lage.offline ? "ga.offline" : "ga.fehler")}
         </p>
       ) : null}
-      <p className={HINWEIS}>{t("fe001.lesestand.einleitung")}</p>
       {stand.unvollstaendig ? (
         <p
           data-testid={`${LESESTAND_MARKE}-unvollstaendig`}
@@ -753,11 +786,18 @@ export function LesestandAnsicht({
           {t("ga.unvollstaendig")} {t("ga.verborgene", { anzahl: stand.verborgeneBausteine })}
         </p>
       ) : null}
-      <Quellenpruefung stand={stand} lage={lage} />
+      {/* LESEN-INHALT-ZUERST (Ben, nacharbeit-6): Freigabestand und Warnungen stehen oben, dann
+          sofort das Dokument mit seinen Abschnitten. Die allgemeine Leseerläuterung und die
+          ausführliche Quellenprüfung folgen danach — die Quellenprüfung bleibt nur dann oben,
+          wenn sie eine Warnung trägt (`quellenVerlangenAufmerksamkeit`). */}
+      {quellenOben ? <Quellenpruefung stand={stand} lage={lage} /> : null}
 
       <Dokument stand={stand}>
         {stand.bausteine.length === 0 ? (
-          <p className={HINWEIS}>{t("ga.leer")}</p>
+          <>
+            <p className={HINWEIS}>{t("ga.leer")}</p>
+            {leerzustandsZeile(t, "anleitung")}
+          </>
         ) : (
           <ol className="space-y-4">
             {stand.bausteine.map((baustein, index) => (
@@ -775,6 +815,10 @@ export function LesestandAnsicht({
           </ol>
         )}
       </Dokument>
+      <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-einleitung`}>
+        {t("fe001.lesestand.einleitung")}
+      </p>
+      {quellenOben ? null : <Quellenpruefung stand={stand} lage={lage} />}
       {/* Der Lückenvermerk kommt vom Server und steht sichtbar — kein grüner Haken. */}
       <p data-testid={`${LESESTAND_MARKE}-pruefanbindung`} className={MELDUNG_HINWEIS}>
         {t("ga.pruefanbindung")}

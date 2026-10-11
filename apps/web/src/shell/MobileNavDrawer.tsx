@@ -220,7 +220,7 @@ export function MobileNavDrawer({
             onClick={onClose}
             className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
           >
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
           {/* JOB 3060 · H1: statt der Seitenleiste die Bausteine des Kopfbands und seiner Menüs. */}
           <DrawerMenue onClose={onClose} rueckweg={() => triggerRef.current} />

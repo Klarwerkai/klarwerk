@@ -1,5 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  NULLTREFFER_DECKEL,
+  type NulltrefferRepo,
+  nulltrefferBegriff,
+  nulltrefferEingrenzung,
+} from "../../../ask";
+import {
   type ConflictService,
   type OverlapService,
   type OverlapSettingsRepo,
@@ -34,12 +40,15 @@ import {
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
+import { importKandidatBefunde } from "../import-befunde";
 import {
+  darfKandidatSehen,
   darfSehen,
   sichtbareFuer,
   sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
+import { type WissenspaketQuellen, baueWissenspaket } from "../wissenspaket";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -87,10 +96,30 @@ interface ImportCandidateDto {
   auditPending?: boolean;
 }
 
+// AUFNAHME 20260922 · confluence-import-rechte — Quellrechte (Leser einer Confluence-Seite) setzt
+// nur ein Quell-Adapter auf dem Server (services/confluence/src/mapper.ts). Ein öffentlicher
+// Importrumpf verliert sie hier: ein Client mit `ko.create` darf sich keine Leserechte an einem
+// Objekt schreiben und keine quellgetreue Herabstufung auslösen. Kein Array → unverändert (die
+// Route prüft weiter wie bisher).
+function ohneQuellrechte<T>(items: T): T {
+  if (!Array.isArray(items)) {
+    return items;
+  }
+  return items.map((item) => {
+    if (item === null || typeof item !== "object" || !("quellrechte" in item)) {
+      return item;
+    }
+    const { quellrechte: _verworfen, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }) as T;
+}
+
 function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
   return {
     id: candidate.id,
-    item: candidate.item,
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte (Mailadressen der Leser) bleiben
+    // im Server — die Prüfkarte braucht sie nicht, und `ko.read` reicht für diese Liste.
+    item: ohneQuellrechte([candidate.item])[0] ?? candidate.item,
     status: candidate.status,
     duplicate: candidate.duplicate,
     note: candidate.note,
@@ -559,6 +588,26 @@ function bildsucheLimit(raw: string | undefined): number {
   return Math.min(n, BILDSUCHE_LIMIT_MAX);
 }
 
+// aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02): die Abfrage des Exports. `ids` ist
+// eine kommagetrennte Kennungsliste (oder der wiederholte Parameter, wie Fastify ihn liefert).
+interface ExportAbfrage {
+  format?: string;
+  ids?: string | string[];
+}
+
+/**
+ * Die Auswahl eines Exports aus der Abfrage. `undefined` heisst „kein Parameter" — dann gilt der
+ * validierte Gesamtbestand. Ein vorhandener, aber leerer Parameter ist eine LEERE Auswahl: er darf
+ * nie still zum Gesamtbestand werden.
+ */
+function exportAuswahl(raw: string | string[] | undefined): string[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const teile = (Array.isArray(raw) ? raw : [raw]).flatMap((s) => s.split(","));
+  return [...new Set(teile.map((s) => s.trim()).filter((s) => s.length > 0))];
+}
+
 // JOB 3111 · B1b: die Attributlesart stand hier als lokales `attributIn`. Sie liegt jetzt als
 // `attributWert` im structure-Modul, weil der SCHREIBWEG der Benennungen (searchImageNames) sie
 // ebenfalls braucht — zwei Lesarten wären zwei Wahrheiten darüber, was ein Attributwert ist.
@@ -725,8 +774,23 @@ export function libraryRoutes(
   library: LibraryService,
   guards: Guards,
   detection?: ImportDetectionDeps,
+  // R-0773: optional — ohne Ablage (Teilaufbauten in Tests) bleibt die Suche wie bisher.
+  nulltreffer?: NulltrefferRepo,
+  // produkt:20261010:poc-wiederherstellung-export: optional — ohne Quellen kein Format `paket`.
+  paket?: WissenspaketQuellen,
 ): FastifyPluginAsync {
   return async (app) => {
+    // R-0773: die EIGENEN Suchen ohne Treffer. Nur die eigene Liste — ein Suchbegriff ist Freitext
+    // derselben Art wie der Fragetext einer Lücke (R-0585), fremde Suchen liest hier niemand.
+    app.get("/api/library/nulltreffer", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const eigene = nulltreffer ? await nulltreffer.fuer(user.id, NULLTREFFER_DECKEL) : [];
+      reply.code(200).send(eigene);
+    });
+
     app.get<{ Querystring: KoFilter & { q?: string } }>(
       "/api/library/search",
       async (request, reply) => {
@@ -764,14 +828,30 @@ export function libraryRoutes(
         // (etwa in einem zweiten Aufbau) nicht anwendet, findet hier weiterhin das Tor vor, das
         // seit mega74 hier steht. Die Zusage der Route ändert sich damit nicht — sie wird nur
         // billiger und, was mehr zählt, paginierbar.
-        reply
-          .code(200)
-          .send(
-            sichtbareFuer(
-              user,
-              await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
-            ),
-          );
+        const treffer = sichtbareFuer(
+          user,
+          await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
+        );
+        // R-0773: eine Suche OHNE Treffer wird für den Suchenden vermerkt — nur mit nicht-leerem
+        // Begriff und gemessen an DIESER, schon sichtbarkeitsgeschnittenen Liste. Eine gefilterte
+        // Suche wird MIT ihrer Eingrenzung vermerkt (BEN, Nacharbeit 3): sie sagt nur etwas über
+        // diese Auswahl, die Fläche kennzeichnet das. Ein Fehler der Suche hat die Route oben
+        // bereits verlassen und wird nie als Nulltreffer gezählt. Ein Fehler beim Vermerken nimmt
+        // dem Suchenden sein (leeres) Ergebnis nicht.
+        const begriff = nulltrefferBegriff(q ?? "");
+        if (nulltreffer && treffer.length === 0 && begriff) {
+          try {
+            await nulltreffer.erfasse({
+              userId: user.id,
+              ...begriff,
+              eingrenzung: nulltrefferEingrenzung(filter),
+              zeitpunkt: new Date().toISOString(),
+            });
+          } catch (fehler) {
+            request.log.warn({ err: fehler }, "Nulltreffer-Suche konnte nicht vermerkt werden");
+          }
+        }
+        reply.code(200).send(treffer);
       },
     );
 
@@ -885,7 +965,7 @@ export function libraryRoutes(
       },
     );
 
-    app.get<{ Querystring: { format?: string } }>("/api/library/export", async (request, reply) => {
+    app.get<{ Querystring: ExportAbfrage }>("/api/library/export", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
@@ -895,11 +975,61 @@ export function libraryRoutes(
       // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
       // nur die validierten, nicht-vertraulichen KOs.
       const includeConfidential = can(user.role, "ko.validate");
+      // aufnahme:20260922:gesamt-wissen-export (R-0681 / FR-LIB-02 „Export der Auswahl"): `ids`
+      // GRENZT NUR EIN. Die Auswahl läuft durch dieselbe Validiert-/Vertraulichkeitsgrenze wie der
+      // Gesamtexport (`exportJson`) — eine genannte Kennung holt nie etwas hinaus, das der
+      // Gesamtexport derselben Rolle nicht auch enthielte (G6: Exportmenge ⊆ Lesemenge bleibt).
+      // Ohne Parameter: validierter Gesamtbestand wie bisher. Ein leerer Parameter ist eine leere
+      // Auswahl, NICHT „alles".
+      const ids = exportAuswahl(request.query.ids);
       // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
-      const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
+      // ADMIN-07 K3: zusätzlich die eine Sichtregel des Betrachters — sonst trüge der Export
+      // validierte Artikel geschlossener Spaces an Nichtmitglieder aus. Hier im Rumpf erhoben (wie
+      // `/api/graph`), damit die Entscheidung an der Route selbst ausgeführt wird.
+      const sichtbar = sichtbarkeitsfilterFuer(user);
+      const opts = (format: "json" | "markdown" | "mediawiki" | "html" | "paket") => ({
         includeConfidential,
+        sichtbar,
+        ...(ids ? { ids } : {}),
         beleg: { actor: user.id, format },
       });
+      // produkt:20261010:poc-wiederherstellung-export (PV-01-04/05): das Wissenspaket — dieselbe
+      // Grundmenge und derselbe Beleg (`library.export`, Format `paket`) wie jedes andere Format;
+      // dazu Fassungen, Originalanhänge und das Verzeichnis (`wissenspaket.ts`). Ohne verdrahtete
+      // Quellen (Teilaufbauten) gibt es dieses Format nicht.
+      if (request.query.format === "paket") {
+        if (!paket) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Format nicht verfügbar." });
+          return;
+        }
+        try {
+          const jetzt = new Date();
+          const { zip } = await baueWissenspaket(
+            {
+              betrachter: user,
+              betrachterName: (await paket.personen()).get(user.id) ?? null,
+              vertraulichErlaubt: includeConfidential,
+              beitraege: await library.exportJson(opts("paket")),
+              auswahl: ids,
+              jetzt,
+            },
+            paket,
+          );
+          const stempel = jetzt.toISOString().slice(0, 19).replace(/[-:]/g, "");
+          reply
+            .header("content-type", "application/zip")
+            .header("cache-control", "no-store")
+            .header(
+              "content-disposition",
+              `attachment; filename="klarwerk-wissenspaket-${stempel}Z.zip"`,
+            )
+            .code(200)
+            .send(zip);
+        } catch (error) {
+          sendError(reply, error);
+        }
+        return;
+      }
       if (request.query.format === "markdown") {
         reply
           .header("content-type", "text/markdown; charset=utf-8")
@@ -947,7 +1077,9 @@ export function libraryRoutes(
         // auch der direkte Re-Sync fremder Objekte (NACHARBEIT 2, `zielDarf`): fortgeschrieben wird
         // nur noch über die Annahme mit `ko.validate`.
         // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
-        const items = ohneQuellRestriktionen(request.body.items ?? []);
+        // confluence-import-rechte: ebenso die Leserechte (`quellrechte`) — sie setzt nur ein
+        // Quell-Adapter auf dem Server.
+        const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
         const kandidaten = await einreihen(items, user.id);
         // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele — auch hier.
         const dtos = await kandidatenDtosFuer(library, user, kandidaten);
@@ -973,7 +1105,9 @@ export function libraryRoutes(
           // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
           // ohne eingeschalteten Quelladapter (`einreihen` setzt den Dateiweg-Vermerk).
           // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
-          const items = ohneQuellRestriktionen(request.body.items ?? []);
+          // AUFNAHME 20260922 · confluence-import-rechte: Leserechte setzt nur ein Quell-Adapter auf
+          // dem Server — ein Rumpf mit `quellrechte` verliert sie hier, vor dem Import-Kern.
+          const items = ohneQuellrechte(ohneQuellRestriktionen(request.body.items ?? []));
           const created = await einreihen(items, user.id);
           // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
           reply.code(201).send(await kandidatenDtosFuer(library, user, created));
@@ -1002,8 +1136,28 @@ export function libraryRoutes(
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
       // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
-      const kandidaten = await library.listImportCandidates();
+      // confluence-import-rechte (Nacharbeit 6, F1): ein Kandidat, dessen Quelle diesen Menschen
+      // nicht lesen lässt, fehlt in der Liste ganz — Titel und Text eingeschlossen, auch für
+      // `ko.validate`.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
+    });
+
+    // R-0179 / FR-EXT-01 (Nacharbeit 3): veraltete Inhalte und schützenswertes Firmenwissen je
+    // Kandidat — bewertet vor der Übernahme, mit „nicht bewertet" als eigenem Zustand
+    // (`import-befunde.ts`). Dasselbe Tor wie die Liste; ausgegeben werden nur Gründe, nie Werte.
+    app.get("/api/library/import/candidates/befunde", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      const kandidaten = await library.listImportCandidates();
+      reply.code(200).send(importKandidatBefunde(kandidaten, Date.now()));
     });
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER
@@ -1056,6 +1210,14 @@ export function libraryRoutes(
         return;
       }
       try {
+        // confluence-import-rechte (Nacharbeit 6, F1): wer den Kandidaten nicht sehen darf, kann
+        // ihn auch nicht entscheiden — die Antwort trüge sonst Titel und Text. 404 wie für eine
+        // unbekannte Kennung, damit keine Existenzauskunft entsteht.
+        const vorher = await library.importKandidat(request.params.id);
+        if (vorher && !(await darfKandidatSehen(user, vorher, library))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Importkandidat nicht gefunden." });
+          return;
+        }
         const result = await library.reviewImportCandidate(
           request.params.id,
           request.body.action,

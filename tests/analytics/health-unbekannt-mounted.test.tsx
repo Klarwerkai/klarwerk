@@ -125,10 +125,13 @@ async function mount(): Promise<void> {
   await act(flush);
 }
 
-/** Der Abschnitt des Health-Werts: vom Titel bis vor die nächste Sektion. */
+/**
+ * Der Abschnitt des Health-Werts: vom Titel bis vor die nächste Sektion. Der Titel heißt seit
+ * R-0908 „Zustand der Wissensbasis“ (`fachwort.gesundheit.titel`, vorher `health.title`).
+ */
 function healthAbschnitt(): Element {
   const titel = [...container.querySelectorAll("*")].find(
-    (e) => e.children.length === 0 && e.textContent === i18n.t("health.title"),
+    (e) => e.children.length === 0 && e.textContent === i18n.t("fachwort.gesundheit.titel"),
   );
   // Titel → Kopfzeile → Abschnitt (s. Analytics.tsx: <div><div><SectionLabel/>…</div><Card/></div>).
   const abschnitt = titel?.parentElement?.parentElement;

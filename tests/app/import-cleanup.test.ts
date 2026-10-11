@@ -115,6 +115,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       digest: expect.stringMatching(/^[0-9a-f]{64}$/),
       claimedKos: 0,
       auditPendingCandidates: 0,
+      duplicateCandidates: 0,
     });
     // Nichts passiert: Queue und Bestand unverändert, Papierkorb leer.
     expect((await services.library.listImportCandidates()).length).toBe(2);
@@ -142,6 +143,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       newCandidates: 0,
       claimedKos: 0,
       auditPendingCandidates: 0,
+      removedDuplicateCandidates: 0,
     });
     // Queue KOMPLETT leer (jeder Status).
     expect(await services.library.listImportCandidates()).toEqual([]);
@@ -161,6 +163,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       newCandidates: 0,
       claimedKos: 0,
       auditPendingCandidates: 0,
+      removedDuplicateCandidates: 0,
     });
   });
 
@@ -260,6 +263,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       newCandidates: 0,
       claimedKos: 0,
       auditPendingCandidates: 0,
+      removedDuplicateCandidates: 0,
     });
     expect((await services.library.listImportCandidates()).length).toBe(2);
     expect((await services.ko.list()).map((k) => k.title).sort()).toEqual([
@@ -343,6 +347,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
         newCandidates: 0,
         claimedKos: 0,
         auditPendingCandidates: 0,
+        removedDuplicateCandidates: 0,
       });
       expect(await services.library.listImportCandidates()).toEqual([]);
       expect((await services.ko.trashed()).length).toBe(2);
@@ -417,6 +422,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       newCandidates: 1,
       claimedKos: 0,
       auditPendingCandidates: 0,
+      removedDuplicateCandidates: 0,
     });
     const remaining = await services.library.listImportCandidates();
     expect(remaining.map((c) => c.item.title)).toEqual(["Parallel eingereiht"]);
@@ -970,6 +976,94 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  // Aufnahme gesamt-bestandsbereinigung (R-0124): „Vor dem Aufraeumen zeigt das System eine
+  // Vorschau, danach eine Bilanz, was wirklich passiert ist - einschliesslich der erkannten
+  // Doppel-Kandidaten." Der Doppel-Kandidat wird direkt in die Queue gelegt (`duplicate: true`),
+  // damit dieser Fall die Bilanz misst und nicht die Dublettenregel des Einreihens.
+  async function mitDoppelKandidat(ctx: Awaited<ReturnType<typeof cleanupApp>>): Promise<string> {
+    const repo = (
+      ctx.services.library as unknown as {
+        candidates: { insert: (c: unknown) => Promise<unknown> };
+      }
+    ).candidates;
+    await repo.insert({
+      id: "doppel-1",
+      item: {
+        title: "Leitfaden (dritter Import)",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+      },
+      status: "neu",
+      duplicate: true,
+      note: null,
+      koId: null,
+      createdAt: "2026-07-27T00:00:00.000Z",
+    });
+    return "doppel-1";
+  }
+
+  it("R-0124: Vorschau UND Bilanz nennen die erkannten Doppel-Kandidaten; der Abschlussbeleg trägt die Zahl", async () => {
+    const ctx = await cleanupApp();
+    const { app, services, headers } = ctx;
+    await mitDoppelKandidat(ctx);
+    const preview = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: {},
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({ preview: true, candidates: 3, duplicateCandidates: 1 });
+    // Die Vorschau verändert nichts — auch der Doppel-Kandidat steht noch.
+    expect((await services.library.listImportCandidates()).length).toBe(3);
+
+    const run = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest: (preview.json() as { digest: string }).digest },
+    });
+    expect(run.statusCode).toBe(200);
+    expect(run.json()).toMatchObject({
+      preview: false,
+      removedCandidates: 3,
+      removedDuplicateCandidates: 1,
+      skipped: [],
+    });
+    expect(await services.library.listImportCandidates()).toEqual([]);
+    const entry = (await services.audit.list()).find((e) => e.action === "import.cleanup");
+    expect(entry?.payload).toMatchObject({ removedCandidates: 3, removedDuplicateCandidates: 1 });
+  });
+
+  it("R-0124: die Bilanz zählt, was WIRKLICH passiert ist — bleibt die Queue stehen, wurde auch kein Doppel-Kandidat entfernt", async () => {
+    const ctx = await cleanupApp();
+    const { app, services, headers } = ctx;
+    const doppelId = await mitDoppelKandidat(ctx);
+    const digest = await previewDigest(app, headers);
+    // Ein Soft-Delete scheitert → Regel (3): die unwiderrufliche Queue bleibt komplett stehen.
+    const jiraKo = (await services.ko.list()).find((k) => k.title === "Aus Jira importiert");
+    const realDelete = services.ko.delete.bind(services.ko);
+    services.ko.delete = async (id, actor, opts) => {
+      if (id === jiraKo?.id) {
+        const err = new Error("Repo nicht erreichbar");
+        err.name = "RepoDown";
+        throw err;
+      }
+      return realDelete(id, actor, opts);
+    };
+    const run = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/cleanup",
+      headers,
+      payload: { confirm: true, digest },
+    });
+    expect(run.statusCode).toBe(200);
+    expect(run.json()).toMatchObject({ removedCandidates: 0, removedDuplicateCandidates: 0 });
+    const queue = await services.library.listImportCandidates();
+    expect(queue.map((c) => c.id)).toContain(doppelId);
   });
 
   it("die Aufräum-Copy existiert in DE, EN und NL", () => {

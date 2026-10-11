@@ -8,10 +8,11 @@ import {
   klaraEntryById,
   pageEntryFor,
   pageTitleKeyForRoute,
-  rankKlara,
   resolveKlaraEntries,
   searchKlara,
 } from "../../apps/web/src/lib/klaraRegistry";
+// R-1349: die Rangliste wird am Produktweg `klaraGrundlage` gemessen (Kopf der Prüfhilfe).
+import { rankKlara } from "../support/klara-rangfolge";
 
 // Klara v1 (Pedi 05.07.): EINE Registry über alle Hilfe-Quellen — Seiten, chelp.*, vhelp.*,
 // Hilfeseiten-Kapitel. Getestet: Vollständigkeit, DE+EN-Auflösung, Kontext-Zuordnung, Suche.
@@ -271,20 +272,12 @@ describe("Klara v1: konsolidierte Hilfe-Registry", () => {
   //   · Ein Stamm, der hier steht und wieder trägt, macht ihn ebenfalls rot — dann gehört die
   //     Zeile weg, sonst verwaltet das Register Gespenster.
   // Ihre Behebung bräuchte `apps/web/src/i18n.ts` (Hilfe-Lücke, in der Rückgabe gemeldet).
-  const ALTBESTAND: ReadonlyMap<string, string> = new Map([
-    [
-      "löschen → papierkorb",
-      "ECHTER FUND des ersten Laufs (JOB 3798, 12.09.2026), nicht weggeschaut: der Stamm trifft 0 " +
-        "von allen aufgelösten Klara-Einträgen. Der Grund ist eine HILFE-LÜCKE, kein Tippfehler — " +
-        "der einzige Klara-Eintrag zum Löschen eines Wissensobjekts (`vhelp.deleteKo.body`, " +
-        "`i18n.ts:5430`) sagt „Entfernt dieses Wissensobjekt endgültig“ und kennt weder Papierkorb " +
-        "noch Wiederherstellung, während die Löschabfrage der Fläche (`i18n.ts:996`) sagt, der " +
-        "Beitrag wandere in den Papierkorb und sei dort 28 Tage wiederherstellbar. Der ZWEITE " +
-        "Stamm desselben Schlüssels (`entfern`) trägt mit 5 Treffern — das Synonym „löschen“ läuft " +
-        "also nicht ins Leere; tot ist genau dieser eine Stamm. Behebung: Klaras Löschhilfe muss " +
-        "den Papierkorb nennen; das bräuchte `i18n.ts` und war für JOB 3798 gesperrt (§10).",
-    ],
-  ]);
+  // Aufnahme gesamt-hilfen, Nacharbeit 13 (Ben): die einzige Zeile „löschen → papierkorb“ ist
+  // weg, weil ihre Behebung geliefert ist. Klaras Löschhilfe steht jetzt unter
+  // `loeschhilfe.deleteKo.body` (`texte/loeschhilfe.ts`) und nennt den Papierkorb — der Stamm trägt
+  // wieder, und dieser Wächter verlangt genau dann, dass die Zeile gelöscht wird („sonst verwaltet
+  // das Register Gespenster“). Das Register bleibt als Schranke stehen, auch leer.
+  const ALTBESTAND: ReadonlyMap<string, string> = new Map<string, string>([]);
 
   // Die Normalisierung, der `searchKlara` den Text unterwirft, BEVOR es den rohen Kartenwert darin
   // sucht (`klaraRegistry.ts:248-254`). Bewusst hier nachgebildet und nicht importiert:
@@ -400,7 +393,8 @@ describe("Klara v1: konsolidierte Hilfe-Registry", () => {
   // eine sprachabhängige Synonymkarte oder ein ehrliches Sprachgate wie bei `allFaqEntries`
   // (`klaraRegistry.ts:204-207`) — beides eine Produktentscheidung mit Wirkung auf alle Aufrufer,
   // und `klaraRegistry.ts` ist nach §10 KEIN Zielpfad dieses Auftrags. In der Rückgabe gemeldet.
-  // NUR die zwei `papierkorb`-Zeilen liegen anders; ihr abweichender Weg steht bei ihnen selbst.
+  // Die zwei `papierkorb`-Zeilen lagen bis Nacharbeit 13 (gesamt-hilfen) anders (`statt: null`, der
+  // Begriff fehlte ganz); seit Klaras Löschhilfe den Papierkorb nennt, haben auch sie ein Ersatzwort.
   interface Luecke {
     readonly statt: string | null;
     readonly grund: string;
@@ -465,26 +459,21 @@ describe("Klara v1: konsolidierte Hilfe-Registry", () => {
     [
       "en → papierkorb",
       {
-        statt: null,
+        statt: "recycle bin",
         grund:
-          "KEIN Ersatzwort, und das ist der Unterschied zu allen anderen Zeilen hier: dieser Stamm " +
-          "trägt auch in DE nichts (siehe `ALTBESTAND` oben, `:274`). Klaras Löschhilfe " +
-          "`vhelp.deleteKo.body` sagt EN (`i18n.ts:10737`) „Removes this knowledge object " +
-          "permanently“ und kennt wie die deutsche Fassung weder Papierkorb noch " +
-          "Wiederherstellung, obwohl die Löschabfrage der Fläche 28 Tage verspricht. Das ist eine " +
-          "echte HILFE-LÜCKE in allen drei Sprachen; ihre Behebung bräuchte `apps/web/src/i18n.ts` " +
-          "und ist nach §10 draussen.",
+          "Aufnahme gesamt-hilfen, Nacharbeit 13: der BEGRIFF ist jetzt da — Klaras Löschhilfe " +
+          "`loeschhilfe.deleteKo.body` EN (`texte/loeschhilfe.ts`) sagt „Moves this knowledge " +
+          "object to the recycle bin“, dasselbe Wort wie `adm.trash.title` EN. Tot bleibt nur der " +
+          "deutsche Kartenwert „papierkorb“ — dieselbe Lage wie bei allen Zeilen mit Ersatzwort.",
       },
     ],
     [
       "nl → papierkorb",
       {
-        statt: null,
+        statt: "prullenbak",
         grund:
-          "Wie EN: kein Ersatzwort, weil der BEGRIFF fehlt. `vhelp.deleteKo.body` NL " +
-          "(`i18n.ts:15778`) sagt „Verwijdert dit kennisobject definitief“ — kein Papierkorb, " +
-          "keine Wiederherstellung. Dieselbe Hilfe-Lücke wie in DE und EN, Behebung über " +
-          "`i18n.ts`, §10.",
+          "Wie EN: `loeschhilfe.deleteKo.body` NL sagt „Verplaatst dit kennisobject naar de " +
+          "prullenbak“, dasselbe Wort wie `adm.trash.title` NL. Tot ist nur der deutsche Kartenwert.",
       },
     ],
     [
@@ -492,15 +481,17 @@ describe("Klara v1: konsolidierte Hilfe-Registry", () => {
       {
         statt: "remove",
         grund:
-          "`vhelp.deleteKo.body` EN (`i18n.ts:10737`) beginnt mit „Removes“; in DE trägt dieser " +
-          "Stamm mit 5 Treffern und rettet dort den Schlüssel „löschen“. In EN rettet ihn niemand.",
+          "`loeschhilfe.deleteKo.body` EN sagt „it is removed permanently and automatically“; in DE " +
+          "trägt dieser Stamm mit 5 Treffern und rettet dort den Schlüssel „löschen“. In EN rettet " +
+          "ihn niemand.",
       },
     ],
     [
       "nl → entfern",
       {
         statt: "verwijder",
-        grund: "`vhelp.deleteKo.body` NL (`i18n.ts:15778`) sagt „Verwijdert … definitief“.",
+        grund:
+          "`loeschhilfe.deleteKo.body` NL sagt „daarna wordt ze automatisch definitief verwijderd“.",
       },
     ],
     [

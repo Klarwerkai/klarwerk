@@ -39,16 +39,8 @@ export function formatRate(rate: number): string {
   return `${Math.round(rate * 100)}%`;
 }
 
-// SCRUM-140: validierte KOs je Woche, jüngste zuletzt, optional begrenzt.
-export function weeklyValidated(
-  byWeek: Record<string, number>,
-  limit = 8,
-): { week: string; count: number }[] {
-  return Object.entries(byWeek)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-limit)
-    .map(([week, count]) => ({ week, count }));
-}
+// ADMIN-11: `weeklyValidated` ist entfernt — sein einziger Aufrufer, der Wochenbalken auf
+// /analytics, zeigte heute validierte Objekte nach Erstellungswoche als Freigabeverlauf.
 
 // SCRUM-143: distinkte Actor-/Action-Werte aus echten Audit-Daten (für Filter-Dropdowns).
 export function auditActors(entries: readonly AuditEntry[]): string[] {
