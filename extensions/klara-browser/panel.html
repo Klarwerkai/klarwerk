@@ -178,6 +178,27 @@
           <label class="confirm"><input type="checkbox" id="confirm" /><span data-i18n="confirm"></span></label>
           <div class="actions save-actions"><button type="button" id="save" class="primary" data-i18n="save" disabled></button><button type="button" id="cancel" data-i18n="cancel"></button></div>
         </section>
+        <!-- BPA-02: TECHNISCHE DATEN AUS DER MARKIERTEN TABELLE. Erscheint nur, wenn die Markierung
+             in einer Tabelle stand. Prüfen fragt den Server (regelbasiert, ohne KI); Übernehmen liest
+             DENSELBEN Tab neu und gleicht die Fassung mit der geprüften ab, bevor etwas entsteht.
+             Alle Werte, Klärungen und Empfehlungen kommen als Text vom Server (`textContent`). -->
+        <section id="technik" aria-labelledby="technik-title" hidden>
+          <h2 id="technik-title" data-i18n="technikTitle"></h2>
+          <p class="source-line"><span data-i18n="technikAbschnitt"></span>: <span id="technik-abschnitt"></span></p>
+          <label for="technik-objekt" data-i18n="technikObjekt"></label><input id="technik-objekt" maxlength="200" />
+          <label for="technik-variante" data-i18n="technikVariante"></label><input id="technik-variante" maxlength="200" />
+          <div class="actions"><button type="button" id="technik-pruefen" data-i18n="technikPruefen"></button></div>
+          <div id="technik-ergebnis" hidden>
+            <h3 data-i18n="technikWerte"></h3><ul id="technik-werte"></ul>
+            <div id="technik-klaerungen-box" hidden><h3 data-i18n="technikKlaerungen"></h3><ul id="technik-klaerungen"></ul></div>
+            <div id="technik-abweichungen-box" hidden><h3 data-i18n="technikAbweichungen"></h3><ul id="technik-abweichungen"></ul></div>
+            <label for="technik-schutz" data-i18n="technikSchutz"></label>
+            <select id="technik-schutz"><option value="" data-i18n="technikSchutzUnbekannt"></option><option value="intern" data-i18n="internal"></option><option value="vertraulich" data-i18n="confidential"></option><option value="streng_vertraulich" data-i18n="strict"></option></select>
+            <p class="hint" data-i18n="technikHinweis"></p>
+            <div class="actions"><button type="button" id="technik-uebernehmen" class="primary" data-i18n="technikUebernehmen"></button></div>
+          </div>
+          <p><a id="technik-open" target="_blank" rel="noopener noreferrer" data-i18n="openDraft" hidden></a></p>
+        </section>
       </div>
     </main>
   </body>

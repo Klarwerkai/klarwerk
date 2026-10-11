@@ -889,9 +889,17 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Auswertung des eingesandten Abschnitts (technische-daten-routes.ts), kein Bestand.",
   },
+  // Nacharbeit 3: der Abgleich nennt zusätzlich Wissensobjekte aus derselben Quelle — nur die, die
+  // `darfSehen` dem Fragenden öffnet (Prädikat im Helfer `abgleichen`, den die Registrierung ruft).
+  // BPA-02 Nacharbeit 3: die Übernahme legt einen EIGENEN Entwurf an; steht dieselbe Fassung schon
+  // als Wissensobjekt im Bestand, nennt sie dessen Kennung — nur, wenn `darfSehen` es öffnet.
+  "POST /api/technische-daten/uebernahme": {
+    urteil: "PRAEDIKAT",
+    grund: "eigener Entwurf; vorhandenes Wissensobjekt nur nach darfSehen (Kennung, Fassung).",
+  },
   "POST /api/technische-daten/quellenabgleich": {
-    urteil: "EIGENER_BESTAND",
-    grund: "listDraftsForResume(user.id) — nur eigene Entwürfe, Kennung/Titel/Fassung.",
+    urteil: "PRAEDIKAT",
+    grund: "darfSehen je Wissensobjekt; Entwürfe nur listDraftsForResume(user.id).",
   },
   // JOB 3668 (Entwurfs-Papierkorb): derselbe Bestand, dieselbe Eigentümerlogik — nur die gelöschten
   // Entwürfe. Zweifach begrenzt: die Ablage lädt fremde gar nicht erst (`listTrashed(user.id)`), und
@@ -1729,9 +1737,8 @@ const REGISTER: Record<string, Eintrag> = {
     // hinaus: `restore` gibt den EIGENEN Entwurf zurück, `purge` antwortet mit 204 ohne Rumpf.
     "POST /api/drafts/:id/restore": "eigener Entwurf aus dem Papierkorb.",
     "DELETE /api/drafts/trash/:id": "eigener Entwurf — 204 ohne Inhalt.",
-    // BPA-02 (technische-daten-routes.ts): legt einen EIGENEN Entwurf aus den eingesandten
-    // Tabellenzellen an (`user.id` aus der Anmeldung); gelesen wird kein Bestand.
-    "POST /api/technische-daten/uebernahme": "eigener Entwurf aus eingesandtem Abschnitt.",
+    // Antwort trägt nur Anzahlen — keine Kennung, kein Titel gesperrter Inhalte.
+    "POST /api/technische-daten/quellenrechte": "ko.validate; Antwort nur Anzahlen.",
     "POST /api/objects": "Upload — owner aus der Anmeldung.",
     "POST /api/library/import": "ko.create.",
     "POST /api/library/import/candidates": "ko.create.",

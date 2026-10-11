@@ -1,6 +1,11 @@
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { AuditService } from "../../../audit";
 import type { CaptureService, Draft, DraftPayload } from "../../../capture";
+import type { KnowledgeObject, KoService } from "../../../knowledge-object";
+import type { LifecycleService } from "../../../lifecycle";
 import { type Guards, type SessionUser, sendError } from "../http";
+import { darfSehen } from "../sichtbarkeit";
 import {
   BEWERTUNG,
   BEWERTUNG_ERKLAERUNG,
@@ -19,24 +24,36 @@ import {
 } from "../technische-daten";
 
 // ================================================================================================
-// BPA-02 · ÜBERNAHME TECHNISCHER DATEN — DREI WEGE ÜBER DEN VORHANDENEN ENTWURFSDIENST.
+// BPA-02 · ÜBERNAHME TECHNISCHER DATEN — ÜBER DEN VORHANDENEN ENTWURFSDIENST.
 // ================================================================================================
 //
-//   POST /api/technische-daten/vorschau          Extraktion zeigen, nichts speichern.
-//   POST /api/technische-daten/uebernahme        Geschützten Entwurf anlegen (idempotent).
-//   POST /api/technische-daten/quellenabgleich   Eigene Übernahmen aus diesem Abschnitt nennen,
-//                                                deren Fassung von der jetzt gelesenen abweicht.
+//   POST /api/technische-daten/vorschau          Extraktion zeigen, nichts speichern; liefert den
+//                                                signierten Vorschaubeleg.
+//   POST /api/technische-daten/uebernahme        Geschützten Entwurf anlegen (idempotent) — nur mit
+//                                                Vorschaubeleg und NEU gelesener Quelle.
+//   POST /api/technische-daten/quellenabgleich   Pflege: eigene Entwürfe und sichtbare
+//                                                Wissensobjekte aus diesem Abschnitt nennen,
+//                                                Abweichung dauerhaft vermerken.
+//   POST /api/technische-daten/quellenrechte     Rechteentzug/-erteilung der Quelle (ko.validate)
+//                                                über den bestehenden Quellrechte-Weg.
 //
-// RECHTE GETRENNT (roles_rights): Lesen der Quelle hat der Adapter in der Sitzung des Menschen
-// getan — der Server ruft keine Adresse ab. Schreiben ins Ziel prüft hier `ko.create`, dieselbe
-// Berechtigung wie jeder Entwurf. Fachliche Freigabe und Übernahme ins Wissen bleiben beim
-// bestehenden Einreich-/Validierungsweg; diese Routen setzen keines von beiden.
+// RECHTE GETRENNT (roles_rights): Lesen der Quelle tut der Browseradapter in der Sitzung des
+// Menschen — der Server ruft keine Adresse ab, eine bloss genannte URL verschafft keinen Zugriff.
+// Schreiben ins Ziel prüft `ko.create`. Die Rechte der Quelle selbst führt der bestehende Weg
+// `KoService.setQuellrechte` (Leserkreis am Wissensobjekt, durchgesetzt von `darfSehen` und dem
+// SQL-Sichtbarkeitsfilter der Suche); die Sperre der laufenden Verarbeitung steht hier.
 //
-// KEIN KI-AUFRUF: die Extraktion ist regelbasiert (`technische-daten.ts`). Keine Schutzstufe, kein
-// „Keine KI"-Schalter und kein Anbieter wird dadurch berührt.
+// KEIN KI-AUFRUF: die Extraktion ist regelbasiert (`technische-daten.ts`).
 
 export interface TechnischeDatenDeps {
   capture: CaptureService;
+  ko: Pick<KoService, "list" | "setQuellrechte">;
+  lifecycle: Pick<LifecycleService, "requestRevalidation">;
+  audit: Pick<AuditService, "record" | "list">;
+  /** Schlüssel des Vorschaubelegs; im Betrieb je Prozess zufällig (Neustart = neue Vorschau). */
+  vorschauSchluessel?: Buffer;
+  /** Zeitquelle (ms); im Betrieb `Date.now`. */
+  uhr?: () => number;
 }
 
 const SCHUTZKLASSEN = ["intern", "vertraulich", "streng_vertraulich"] as const;
@@ -44,6 +61,14 @@ type Schutzklasse = (typeof SCHUTZKLASSEN)[number];
 
 /** Vorläufige Stufe bei unbekannter Schutzklasse (P01): die strengste, privat, ohne Vorlage. */
 const GESCHUETZTE_KLAERUNG: Schutzklasse = "streng_vertraulich";
+
+/** So lange gilt ein Vorschaubeleg; danach ist eine neue Vorschau nötig. */
+export const VORSCHAU_GUELTIG_MS = 30 * 60 * 1000;
+
+/** Prüfprotokoll: Rechtelage einer Quelle (Ziel = Quellkennung, Nutzlast ohne Adresse/Inhalt). */
+export const QUELLENRECHTE_AKTION = "technische-daten.quellenrechte";
+/** Prüfprotokoll: beobachtete Quellenlage an einem Entwurf oder Wissensobjekt. */
+export const QUELLENBEOBACHTUNG_AKTION = "technische-daten.quelle-beobachtet";
 
 const MELDUNG = {
   BELEG_FORM: "Der erfasste Abschnitt hat keine gültige Form.",
@@ -55,11 +80,19 @@ const MELDUNG = {
   BELEGE_FEHLEN: "Mindestens ein und höchstens fünf erfasste Abschnitte angeben.",
   ZIEL_FORM: "Ziel braucht ein Objekt als Text; die Variante ist optional.",
   SCHUTZKLASSE_FORM: "Unbekannte Schutzklasse-Angabe.",
+  FASSUNGSABGLEICH_FEHLT:
+    "Vor der Übernahme fehlt der Abgleich mit der geprüften Vorschau. Bitte zuerst die Vorschau öffnen und die Quelle danach neu lesen.",
+  VORSCHAU_UNGUELTIG:
+    "Die Vorschau gehört nicht zu diesem Auftrag oder ist abgelaufen. Bitte die Vorschau erneut öffnen.",
+  QUELLE_NICHT_NEU_GELESEN:
+    "Die Quelle wurde seit der Vorschau nicht neu gelesen. Es wurde nichts gespeichert.",
   QUELLE_GEAENDERT:
     "Die Quelle hat sich seit der Vorschau geändert. Bitte die neue Fassung prüfen und erneut übernehmen.",
+  QUELLE_GESPERRT:
+    "Für diese Quelle ist das Leserecht entzogen. Erfassung und Übernahme sind gesperrt.",
   KEINE_WERTE:
     "Für dieses Ziel wurde im Abschnitt kein Wert gefunden. Es wurde nichts gespeichert.",
-  ZUSTAND_FORM: "Zustand muss „vorhanden“ oder „geloescht“ sein.",
+  ZUSTAND_FORM: "Unbekannter Zustand der Quelle.",
 } as const;
 
 type Fehler = keyof typeof MELDUNG;
@@ -140,19 +173,141 @@ function quellenEintrag(b: ErfassterAbschnitt) {
   };
 }
 
+// ------------------------------------------------------------------------------------------------
+// Quellkennung und Zuordnung — dieselbe Regel für Entwürfe und eingereichte Wissensobjekte
+// ------------------------------------------------------------------------------------------------
+
+type QuellOrt = Pick<ErfassterAbschnitt, "url" | "abschnitt" | "anker">;
+
+/** Kennung einer Quelle im Prüfprotokoll: Hash über Adresse und Abschnitt, keine Klartextangabe. */
+export function quellKennung(q: QuellOrt): string {
+  const roh = `${belegAdresse(q)}\n${q.abschnitt}`;
+  return `technische-daten-quelle:${createHash("sha256").update(roh, "utf8").digest("hex")}`;
+}
+
+/** Stammt diese Belegstelle (Entwurfsquelle oder Quellanker) aus genau diesem Abschnitt? */
+function ausAbschnitt(
+  s: { url?: string | null | undefined; excerpt?: string | null | undefined },
+  q: QuellOrt,
+): boolean {
+  const marke = `Abschnitt: ${q.abschnitt} · `;
+  return s.url === belegAdresse(q) && (s.excerpt ?? "").includes(marke);
+}
+
+const LAGE = / · Lage: .*$/;
+
+/** Der Auszug mit dauerhaft vermerkter Lage — oder ohne Vermerk, wenn die Quelle wieder stimmt. */
+function auszugMitLage(auszug: string, lage: string | null): string {
+  const basis = auszug.replace(LAGE, "");
+  return (lage ? `${basis} · Lage: ${lage}` : basis).slice(0, 500);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Der Vorschaubeleg (AC08): bindet Konto, Ziel, geprüfte Fassungen und deren Erfassungszeit
+// ------------------------------------------------------------------------------------------------
+
+interface Vorschaubeleg {
+  konto: string;
+  ziel: string;
+  fassungen: string[];
+  erfasst: string[];
+  am: number;
+}
+
+/**
+ * Wofür die Vorschau gilt: Ziel und die ORTE der Belege (Adresse, Abschnitt) — bewusst ohne
+ * Inhalt, damit eine geänderte Quelle als Änderung erkannt wird und nicht als fremde Vorschau.
+ */
+function zielKennung(belege: ErfassterAbschnitt[], ziel: Ziel): string {
+  const roh = JSON.stringify([
+    (ziel.objekt ?? "").trim().toLowerCase(),
+    (ziel.variante ?? "").trim().toLowerCase(),
+    belege.map((b) => [belegAdresse(b), b.abschnitt]),
+  ]);
+  return createHash("sha256").update(roh, "utf8").digest("hex");
+}
+
+function signiere(beleg: Vorschaubeleg, schluessel: Buffer): string {
+  const inhalt = Buffer.from(JSON.stringify(beleg), "utf8").toString("base64url");
+  const signatur = createHmac("sha256", schluessel).update(inhalt).digest("base64url");
+  return `${inhalt}.${signatur}`;
+}
+
+function pruefeSignatur(roh: unknown, schluessel: Buffer): Vorschaubeleg | null {
+  if (typeof roh !== "string" || roh.length > 8192) return null;
+  const [inhalt, signatur] = roh.split(".");
+  if (!inhalt || !signatur) return null;
+  const erwartet = createHmac("sha256", schluessel).update(inhalt).digest();
+  const erhalten = Buffer.from(signatur, "base64url");
+  if (erhalten.length !== erwartet.length || !timingSafeEqual(erhalten, erwartet)) return null;
+  try {
+    const b = JSON.parse(Buffer.from(inhalt, "base64url").toString("utf8")) as Vorschaubeleg;
+    const texte = (x: unknown) => Array.isArray(x) && x.every((t) => typeof t === "string");
+    return typeof b.konto === "string" &&
+      typeof b.ziel === "string" &&
+      texte(b.fassungen) &&
+      texte(b.erfasst) &&
+      typeof b.am === "number"
+      ? b
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+
 export function technischeDatenRoutes(
   deps: TechnischeDatenDeps,
   guards: Guards,
 ): FastifyPluginAsync {
-  const { capture } = deps;
+  const { capture, ko, lifecycle, audit } = deps;
+  const schluessel = deps.vorschauSchluessel ?? randomBytes(32);
+  const uhr = deps.uhr ?? Date.now;
 
-  return async (app) => {
+  /** Ist das Leserecht dieser Quelle entzogen? Maßgeblich ist der jüngste Rechtevermerk. */
+  async function gesperrt(belege: QuellOrt[]): Promise<boolean> {
+    for (const b of belege) {
+      const vermerke = await audit.list({
+        action: QUELLENRECHTE_AKTION,
+        target: quellKennung(b),
+      });
+      const juengster = vermerke.reduce<(typeof vermerke)[number] | undefined>(
+        (bisher, e) => (!bisher || e.seq > bisher.seq ? e : bisher),
+        undefined,
+      );
+      if (juengster?.payload.zustand === "entzogen") return true;
+    }
+    return false;
+  }
+
+  /** Eingereichte Wissensobjekte mit einem Quellanker aus diesem Abschnitt — ohne Sichtfilter. */
+  async function wissenAusQuelle(q: QuellOrt): Promise<KnowledgeObject[]> {
+    const alle = await ko.list();
+    return alle.filter((k) => (k.sources ?? []).some((s) => ausAbschnitt(s, q)));
+  }
+
+  const plugin: FastifyPluginAsync = async (app) => {
     app.post("/api/technische-daten/vorschau", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) return;
       const eingang = leseEingang(request.body, reply);
       if (!eingang) return;
-      reply.code(200).send(vorschauAntwort(eingang.belege, eingang.ziel));
+      if (await gesperrt(eingang.belege)) {
+        ablehnen(reply, 403, "QUELLE_GESPERRT");
+        return;
+      }
+      const beleg: Vorschaubeleg = {
+        konto: user.id,
+        ziel: zielKennung(eingang.belege, eingang.ziel),
+        fassungen: eingang.belege.map(belegFassung),
+        erfasst: eingang.belege.map((b) => b.abgerufenAm),
+        am: uhr(),
+      };
+      reply.code(200).send({
+        ...vorschauAntwort(eingang.belege, eingang.ziel),
+        vorschaubeleg: signiere(beleg, schluessel),
+      });
     });
 
     app.post("/api/technische-daten/uebernahme", async (request, reply) => {
@@ -172,41 +327,75 @@ export function technischeDatenRoutes(
       const unbekannt = roh === undefined || roh === null;
       const stufe: Schutzklasse = unbekannt ? GESCHUETZTE_KLAERUNG : (roh as Schutzklasse);
 
-      // Fassungsabgleich (AC08): hat sich ein Beleg seit der Vorschau geändert, wird nichts
-      // gespeichert; die Antwort trägt die neue Vorschau und — wenn die alte Fassung mitkam —
-      // die zellgenauen Änderungen.
-      const erwartet = body.erwarteteFassungen;
-      if (erwartet !== undefined) {
-        if (!Array.isArray(erwartet) || erwartet.length !== eingang.belege.length) {
-          ablehnen(reply, 400, "BELEG_FORM");
-          return;
-        }
-        const vorher = Array.isArray(body.vorschauBelege) ? body.vorschauBelege : [];
-        const geaendert = eingang.belege
-          .map((b, i) => ({ b, i, aktuell: belegFassung(b), erwartet: erwartet[i] }))
-          .filter((x) => x.aktuell !== x.erwartet)
-          .map((x) => {
-            const alt = vorher[x.i] as unknown;
-            const altGueltig =
-              pruefeAbschnitt(alt) === null &&
-              belegFassung(alt as ErfassterAbschnitt) === x.erwartet;
-            return {
-              url: x.b.url,
-              abschnitt: x.b.abschnitt,
-              erwarteteFassung: x.erwartet,
-              aktuelleFassung: x.aktuell,
-              ...(altGueltig
-                ? { aenderungen: fassungsUnterschied(alt as ErfassterAbschnitt, x.b) }
-                : {}),
-            };
-          });
-        if (geaendert.length > 0) {
-          ablehnen(reply, 409, "QUELLE_GEAENDERT", {
-            geaendert,
-            vorschau: vorschauAntwort(eingang.belege, eingang.ziel),
-          });
-          return;
-        }
+      // ==========================================================================================
+      // AC08 — DER FASSUNGSABGLEICH IST PFLICHT, UND ER VERGLEICHT GEGEN DIE GEPRÜFTE VORSCHAU.
+      // ==========================================================================================
+      //
+      // Der Vorschaubeleg ist vom Server signiert und bindet Konto, Ziel, die geprüften Fassungen
+      // und deren Erfassungszeiten. Ohne ihn keine Übernahme. Die Belege dieser Anfrage müssen vom
+      // Adapter NACH der Vorschau neu gelesen sein (spätere Erfassungszeit als der geprüfte Stand):
+      // ein erneut gesendeter alter Beleg ist kein Abgleich mit der Quelle. Weicht die neu gelesene
+      // Fassung ab, wird nichts gespeichert; die Antwort trägt die neue Vorschau samt Beleg.
+      if (body.vorschaubeleg === undefined) {
+        ablehnen(reply, 428, "FASSUNGSABGLEICH_FEHLT");
+        return;
+      }
+      const vorschau = pruefeSignatur(body.vorschaubeleg, schluessel);
+      if (
+        !vorschau ||
+        vorschau.konto !== user.id ||
+        vorschau.ziel !== zielKennung(eingang.belege, eingang.ziel) ||
+        vorschau.fassungen.length !== eingang.belege.length ||
+        uhr() - vorschau.am > VORSCHAU_GUELTIG_MS
+      ) {
+        ablehnen(reply, 409, "VORSCHAU_UNGUELTIG");
+        return;
+      }
+      const nichtNeu = eingang.belege.some(
+        (b, i) => !(Date.parse(b.abgerufenAm) > Date.parse(vorschau.erfasst[i] ?? "")),
+      );
+      if (nichtNeu) {
+        ablehnen(reply, 409, "QUELLE_NICHT_NEU_GELESEN");
+        return;
+      }
+      if (await gesperrt(eingang.belege)) {
+        ablehnen(reply, 403, "QUELLE_GESPERRT");
+        return;
+      }
+      const vorher = Array.isArray(body.vorschauBelege) ? body.vorschauBelege : [];
+      const geaendert = eingang.belege
+        .map((b, i) => ({ b, i, aktuell: belegFassung(b), erwartet: vorschau.fassungen[i] }))
+        .filter((x) => x.aktuell !== x.erwartet)
+        .map((x) => {
+          const alt = vorher[x.i] as unknown;
+          const altGueltig =
+            pruefeAbschnitt(alt) === null && belegFassung(alt as ErfassterAbschnitt) === x.erwartet;
+          return {
+            url: x.b.url,
+            abschnitt: x.b.abschnitt,
+            erwarteteFassung: x.erwartet,
+            aktuelleFassung: x.aktuell,
+            ...(altGueltig
+              ? { aenderungen: fassungsUnterschied(alt as ErfassterAbschnitt, x.b) }
+              : {}),
+          };
+        });
+      if (geaendert.length > 0) {
+        const neu: Vorschaubeleg = {
+          konto: user.id,
+          ziel: vorschau.ziel,
+          fassungen: eingang.belege.map(belegFassung),
+          erfasst: eingang.belege.map((b) => b.abgerufenAm),
+          am: uhr(),
+        };
+        ablehnen(reply, 409, "QUELLE_GEAENDERT", {
+          geaendert,
+          vorschau: {
+            ...vorschauAntwort(eingang.belege, eingang.ziel),
+            vorschaubeleg: signiere(neu, schluessel),
+          },
+        });
+        return;
       }
 
       const u = uebernahmeAufbauen(eingang.belege, eingang.ziel);
@@ -235,6 +424,36 @@ export function technischeDatenRoutes(
       };
       const kennung = uebernahmeKennung(eingang.belege, eingang.ziel);
       try {
+        // AC06/AC10 NACH DEM EINREICHEN: der Entwurf ist dann verbraucht, seine Vorgangskennung
+        // trägt nicht mehr. Steht dieselbe Übernahme (gleicher Titel, jede Belegfassung gleich)
+        // schon als sichtbares Wissensobjekt im Bestand, wird es genannt — kein zweiter Entwurf.
+        const erster = eingang.belege[0] as ErfassterAbschnitt;
+        const imWissen = (await wissenAusQuelle(erster)).find(
+          (k) =>
+            darfSehen(user, k) &&
+            k.title === payload.title &&
+            eingang.belege.every((b) =>
+              (k.sources ?? []).some(
+                (s) =>
+                  ausAbschnitt(s, b) &&
+                  fassungAusAuszug(s.excerpt ?? undefined) === belegFassung(b),
+              ),
+            ),
+        );
+        if (imWissen) {
+          reply.code(200).send({
+            wiederholung: true,
+            wissensobjekt: { id: imWissen.id, fassung: imWissen.version },
+            stand: {
+              entwurf: "nicht_angelegt",
+              uebernahmeInsWissen: "erfolgt",
+              fachlicheFreigabe: imWissen.status === "validiert" ? "erteilt" : "nicht_erteilt",
+            },
+            geschuetzteKlaerung: unbekannt,
+            ...vorschauAntwort(eingang.belege, eingang.ziel),
+          });
+          return;
+        }
         let ergebnis: { draft: Draft; angelegt: boolean };
         try {
           ergebnis = await capture.createDraftVorgang(payload, user.id, kennung);
@@ -276,6 +495,19 @@ export function technischeDatenRoutes(
       }
     });
 
+    // ============================================================================================
+    // PFLEGE (AC08/AC09) — EIGENE ENTWÜRFE UND EINGEREICHTE WISSENSFASSUNGEN.
+    // ============================================================================================
+    //
+    // Der Adapter liest den Abschnitt neu (oder findet ihn nicht mehr: `zustand: "geloescht"`).
+    // Betroffen ist jede eigene Übernahme und jedes für diese Person sichtbare Wissensobjekt mit
+    // einer Belegstelle aus genau diesem Abschnitt. Die Wirkung bleibt in den vorhandenen Wegen:
+    //   · Entwurf: die Lage steht DAUERHAFT an seiner Quelle („Lage: …"), über `continueDraft`.
+    //   · Wissensobjekt: der vorhandene Merker „Stimmt das noch?" (`requestRevalidation`) — er
+    //     benachrichtigt Autor bzw. Nachfolger und erscheint in Bibliothek und Qualitätsaufgaben.
+    //   · Beide: ein Prüfprotokolleintrag mit Kennung, Zustand und Fassungen (ohne Adresse).
+    // Eine gewöhnliche Quellenlöschung löscht und sperrt nichts: der Import bleibt mit Herkunft
+    // erhalten und trägt den Vermerk „Quelle nicht mehr erreichbar".
     app.post("/api/technische-daten/quellenabgleich", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) return;
@@ -291,51 +523,191 @@ export function technischeDatenRoutes(
         return;
       }
       const beleg = body.beleg as ErfassterAbschnitt;
-      reply.code(200).send(await abgleichen(capture, user, beleg, zustand));
+      try {
+        reply.code(200).send(await abgleichen(user, beleg, zustand));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
+    // ============================================================================================
+    // RECHTEENTZUG (AC09) — ÜBER DEN BESTEHENDEN QUELLRECHTE-WEG, NUR FÜR DIE FACHPRÜFUNG.
+    // ============================================================================================
+    //
+    // `entzogen`: jedes Wissensobjekt mit Belegstelle aus diesem Abschnitt bekommt den Leserkreis
+    // „niemand" (`setQuellrechte`, leer) — damit sperren `darfSehen`, die Suche (SQL-Filter) und
+    // jede Ableitung über dieselbe Regel. Entwürfe aus der Quelle gehen in den Papierkorb ihrer
+    // Autorin (umkehrbar, kein Löschen). Der Rechtevermerk sperrt Vorschau und Übernahme, auch eine
+    // laufende: die Übernahme prüft ihn unmittelbar vor dem Speichern.
+    // `erteilt`: die Leserkreis-Sperre wird aufgehoben (Quellrechte ohne Leserliste); Entwürfe im
+    // Papierkorb stellt ihre Autorin selbst wieder her.
+    app.post("/api/technische-daten/quellenrechte", async (request, reply) => {
+      const user = await guards.requirePermission("ko.validate", request, reply);
+      if (!user) return;
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const ort = {
+        art: "html",
+        url: body.url,
+        abschnitt: body.abschnitt,
+        ...(body.anker !== undefined ? { anker: body.anker } : {}),
+        abgerufenAm: new Date(uhr()).toISOString(),
+        kopf: ["-"],
+        zeilen: [["-"]],
+      };
+      const fehler = pruefeAbschnitt(ort);
+      if (fehler) {
+        ablehnen(reply, 400, fehler);
+        return;
+      }
+      const zustand = body.zustand;
+      if (zustand !== "entzogen" && zustand !== "erteilt") {
+        ablehnen(reply, 400, "ZUSTAND_FORM");
+        return;
+      }
+      const q = ort as unknown as QuellOrt;
+      try {
+        const am = new Date(uhr()).toISOString();
+        let wissensobjekte = 0;
+        let entwuerfe = 0;
+        for (const k of await wissenAusQuelle(q)) {
+          await ko.setQuellrechte(
+            k.id,
+            zustand === "entzogen"
+              ? { stufe: k.confidentiality ?? "intern", leser: [], beobachtetAm: am }
+              : { stufe: k.confidentiality ?? "intern", beobachtetAm: am },
+            user.id,
+          );
+          wissensobjekte += 1;
+        }
+        if (zustand === "entzogen") {
+          for (const { draft } of await capture.listDraftsForResume(undefined, { mitPool: true })) {
+            if ((draft.payload.pendingSources ?? []).some((s) => ausAbschnitt(s, q))) {
+              await capture.deleteDraft(draft.id, user.id);
+              entwuerfe += 1;
+            }
+          }
+        }
+        await audit.record({
+          actor: user.id,
+          action: QUELLENRECHTE_AKTION,
+          target: quellKennung(q),
+          payload: { zustand, wissensobjekte, entwuerfe },
+        });
+        // Nur Anzahlen — keine Kennungen oder Titel gesperrter Inhalte (P05/G05).
+        reply.code(200).send({ zustand, wissensobjekte, entwuerfe });
+      } catch (error) {
+        sendError(reply, error);
+      }
     });
   };
-}
 
-/**
- * Pflege (AC08/AC09): welche EIGENEN Übernahmen stammen aus genau diesem Abschnitt, und mit welcher
- * Fassung? Gelesen wird die Quellenliste der Entwürfe — dieselbe, die beim Einreichen zur Herkunft
- * des Wissensobjekts wird. Eine gewöhnliche Quellenlöschung löscht hier nichts: die Übernahme
- * bleibt mit Herkunft erhalten und wird nur als „Quelle nicht mehr erreichbar" gekennzeichnet.
- */
-async function abgleichen(
-  capture: CaptureService,
-  user: SessionUser,
-  beleg: ErfassterAbschnitt,
-  zustand: "vorhanden" | "geloescht",
-) {
-  const adresse = belegAdresse(beleg);
-  const aktuell = zustand === "vorhanden" ? belegFassung(beleg) : null;
-  const eigene = await capture.listDraftsForResume(user.id);
-  const treffer = [];
-  for (const { draft } of eigene) {
-    for (const quelle of draft.payload.pendingSources ?? []) {
-      if (quelle.url !== adresse || !quelle.excerpt?.includes(`Abschnitt: ${beleg.abschnitt}`)) {
-        continue;
+  /** Pflege einer Quelle für diese Person: eigene Entwürfe und für sie sichtbare Wissensobjekte. */
+  async function abgleichen(
+    user: SessionUser,
+    beleg: ErfassterAbschnitt,
+    zustand: "vorhanden" | "geloescht",
+  ) {
+    const aktuell = zustand === "vorhanden" ? belegFassung(beleg) : null;
+    const am = new Date(uhr()).toISOString();
+    const lageVon = (erfasst: string | null) => {
+      if (zustand === "geloescht") return "quelle_nicht_mehr_erreichbar";
+      return erfasst === aktuell ? "unveraendert" : "quelle_geaendert";
+    };
+    const vermerk = (lage: string) => {
+      if (lage === "quelle_nicht_mehr_erreichbar") {
+        return `Quelle nicht mehr erreichbar (festgestellt ${am})`;
       }
-      const erfasst = fassungAusAuszug(quelle.excerpt);
+      if (lage === "quelle_geaendert") {
+        const kurz = (aktuell ?? "").slice(0, 12);
+        return `Quelle geändert, aktuelle Fassung sha256:${kurz} (festgestellt ${am})`;
+      }
+      return null;
+    };
+    const protokolliere = (
+      ziel: string,
+      art: "entwurf" | "wissensobjekt",
+      lage: string,
+      erfasst: string | null,
+    ) =>
+      audit.record({
+        actor: user.id,
+        action: QUELLENBEOBACHTUNG_AKTION,
+        target: ziel,
+        payload: {
+          art,
+          quelle: quellKennung(beleg),
+          lage,
+          erfassteFassung: erfasst,
+          aktuelleFassung: aktuell,
+        },
+      });
+
+    const treffer: {
+      art: "entwurf" | "wissensobjekt";
+      id: string;
+      titel: string;
+      fassung?: number;
+      erfassteFassung: string | null;
+      aktuelleFassung: string | null;
+      lage: string;
+    }[] = [];
+
+    for (const { draft } of await capture.listDraftsForResume(user.id)) {
+      const quellen = draft.payload.pendingSources ?? [];
+      const passend = quellen.find((s) => ausAbschnitt(s, beleg));
+      if (!passend) continue;
+      const erfasst = fassungAusAuszug(passend.excerpt);
+      const lage = lageVon(erfasst);
+      const neuerAuszug = auszugMitLage(passend.excerpt ?? "", vermerk(lage));
+      if (neuerAuszug !== passend.excerpt) {
+        await capture.continueDraft(
+          draft.id,
+          {
+            pendingSources: quellen.map((s) =>
+              s === passend ? { ...s, excerpt: neuerAuszug } : s,
+            ),
+          },
+          user.id,
+        );
+        await protokolliere(draft.id, "entwurf", lage, erfasst);
+      }
       treffer.push({
-        entwurfId: draft.id,
+        art: "entwurf",
+        id: draft.id,
         titel: draft.payload.title ?? "",
         erfassteFassung: erfasst,
         aktuelleFassung: aktuell,
-        lage:
-          zustand === "geloescht"
-            ? "quelle_nicht_mehr_erreichbar"
-            : erfasst === aktuell
-              ? "unveraendert"
-              : "quelle_geaendert",
+        lage,
       });
     }
+
+    // Nur Wissensobjekte, die diese Person JETZT sehen darf — dieselbe Regel wie jeder Leseweg.
+    for (const k of (await wissenAusQuelle(beleg)).filter((x) => darfSehen(user, x))) {
+      const anker = (k.sources ?? []).find((s) => ausAbschnitt(s, beleg));
+      const erfasst = fassungAusAuszug(anker?.excerpt ?? undefined);
+      const lage = lageVon(erfasst);
+      if (lage !== "unveraendert") {
+        await lifecycle.requestRevalidation(k.id, user.id);
+        await protokolliere(k.id, "wissensobjekt", lage, erfasst);
+      }
+      treffer.push({
+        art: "wissensobjekt",
+        id: k.id,
+        titel: k.title,
+        fassung: k.version,
+        erfassteFassung: erfasst,
+        aktuelleFassung: aktuell,
+        lage,
+      });
+    }
+
+    return {
+      zustand,
+      aktuelleFassung: aktuell,
+      betroffen: treffer.filter((t) => t.lage !== "unveraendert"),
+      unveraendert: treffer.filter((t) => t.lage === "unveraendert"),
+    };
   }
-  return {
-    zustand,
-    aktuelleFassung: aktuell,
-    betroffen: treffer.filter((t) => t.lage !== "unveraendert"),
-    unveraendert: treffer.filter((t) => t.lage === "unveraendert"),
-  };
+
+  return plugin;
 }

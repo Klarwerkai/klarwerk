@@ -70,8 +70,11 @@
   // Fläche; sie sind kein Ereignis. Der Test verlangt, dass diese vier Mengen zusammen jeden
   // Zustandstext abdecken — ein neuer Text ohne Ton ist rot, nicht still neutral.
   const TON = {
-    ok: ["saved", "updated", "logged_out"],
+    ok: ["saved", "updated", "logged_out", "technik_saved"],
     crit: [
+      // BPA-02: gesperrte Quelle und gescheiterte Übernahme der technischen Daten.
+      "technik_blocked",
+      "technik_failed",
       // JOB 3412: der Sammelausgang `clipboard_denied` ist ERSETZT. Was übrig bleibt, ist ein
       // echter Ausfall: die Leiste durfte lesen und es ging trotzdem schief. Der Fall „darf nicht
       // lesen" ist kein Ausfall mehr, sondern eine Nachfrage mit gangbarem Weg — er steht unten.
@@ -123,8 +126,13 @@
       // steht unverändert in der Leiste, und der nächste Griff („Speichern") legt ihn neu an.
       // Rot wäre hier eine Übertreibung — kaputt ist nichts, der Entwurf ist nur weg.
       "draft_missing",
+      // BPA-02: keine Tabelle an der Markierung; geänderte Quelle vor dem Speichern. Beides hat
+      // einen klaren nächsten Schritt, gesendet bzw. gespeichert wurde nichts.
+      "technik_none",
+      "technik_changed",
     ],
     "": [
+      "technik_preview",
       "no_selection",
       "preview",
       "previewState",
@@ -216,6 +224,11 @@
     // und die Umfangswahl sind gesperrt, die Angaben daneben nicht. Der Worker zieht dieselbe
     // Grenze (`unresolved_create`); hier ist sie nur sichtbar, damit niemand vergeblich klickt —
     // und niemand die Zwischenablage freigibt, deren Inhalt danach abgewiesen würde.
+    // BPA-02: Prüfen braucht Anmeldung und markierte Tabelle, Übernehmen zusätzlich eine Prüfung.
+    $("technik-pruefen").disabled = busy || !next.user || !next.technik;
+    $("technik-uebernehmen").disabled = busy || !next.user || next.technik?.geprueft !== true;
+    for (const id of ["technik-objekt", "technik-variante", "technik-schutz"])
+      $(id).disabled = busy;
     const ungeklaert = next.unresolvedCreate === true;
     for (const id of ["paste", "clipboard"]) $(id).disabled = busy || !next.selection || ungeklaert;
     for (const mode of MODES)
@@ -388,8 +401,57 @@
     // Jetzt steht hier der Knopf, und daneben in einer Zeile die Wege, die die Erweiterung sonst
     // noch kennt (Symbol, Rechtsklick, Tastenkürzel) — falls der Tab inzwischen weitergezogen ist.
     $("neu-rest").hidden = Boolean(next.selection) || next.canCapture !== true;
+    technikZeichnen(next);
     controls(next);
   }
+  /** Die Übernahme, deren Ziel zuletzt in die Felder geschrieben wurde. @type {string | undefined} */
+  let technikGeladen;
+  /** @param {HTMLElement} liste @param {string[]} texte */
+  function zeilenSetzen(liste, texte) {
+    clear(liste);
+    for (const text of texte) {
+      const item = document.createElement("li");
+      item.textContent = text;
+      liste.appendChild(item);
+    }
+  }
+  /**
+   * BPA-02: der Abschnitt „Technische Daten". Er steht nur, wenn der Worker zu DIESER Übernahme
+   * eine markierte Tabelle führt; alle Texte kommen als Text vom Server und werden nie als Markup
+   * gedeutet. Der Link entsteht wie oben ausschliesslich über `oeffnenLink`.
+   * @param {import("./types").View} next
+   */
+  function technikZeichnen(next) {
+    const tk = next.technik;
+    $("technik").hidden = !tk;
+    if (!tk) {
+      technikGeladen = undefined;
+      return;
+    }
+    $("technik-abschnitt").textContent = tk.abschnitt;
+    if (technikGeladen !== next.captureId) {
+      $("technik-objekt").value = tk.ziel.objekt;
+      $("technik-variante").value = tk.ziel.variante;
+      $("technik-schutz").value = "";
+      technikGeladen = next.captureId;
+    }
+    const e = tk.ergebnis;
+    $("technik-ergebnis").hidden = !e || !tk.geprueft;
+    zeilenSetzen($("technik-werte"), e?.werte ?? []);
+    zeilenSetzen($("technik-klaerungen"), e?.klaerungen ?? []);
+    zeilenSetzen($("technik-abweichungen"), e?.abweichungen ?? []);
+    $("technik-klaerungen-box").hidden = (e?.klaerungen.length ?? 0) === 0;
+    $("technik-abweichungen-box").hidden = (e?.abweichungen.length ?? 0) === 0;
+    const href = tk.link ? oeffnenLink(tk.link, language) : null;
+    $("technik-open").removeAttribute("href");
+    if (href) $("technik-open").setAttribute("href", href);
+    $("technik-open").hidden = !href;
+  }
+  /** @returns {{ objekt: string, variante: string }} */
+  const technikZiel = () => ({
+    objekt: $("technik-objekt").value,
+    variante: $("technik-variante").value,
+  });
   /**
    * JOB 3280 (Codex-Nachführung 08.09. 21:19) — DIE LINKPRÜFUNG BLEIBT ENG.
    *
@@ -669,6 +731,20 @@
   $("pending-keep").addEventListener("click", () => {
     if (busy || $("pending-capture").hidden) return;
     void send({ type: "keep" });
+  });
+  // BPA-02: Prüfen und Übernehmen der technischen Daten — zwei feste Nachrichten an den Worker.
+  $("technik-pruefen").addEventListener("click", () => {
+    if (busy || $("technik-pruefen").disabled) return;
+    void send({ type: "technik_vorschau", captureId: current.captureId, ziel: technikZiel() });
+  });
+  $("technik-uebernehmen").addEventListener("click", () => {
+    if (busy || $("technik-uebernehmen").disabled) return;
+    void send({
+      type: "technik_uebernahme",
+      captureId: current.captureId,
+      ziel: technikZiel(),
+      schutzklasse: $("technik-schutz").value,
+    });
   });
   $("save").addEventListener("click", () => {
     if (busy || $("save").disabled || !$("confirm").checked) return;

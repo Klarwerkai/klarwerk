@@ -4702,7 +4702,18 @@ export function buildApp(
   );
   // BPA-02 (produkt:20261011:assistenz-browser-wissenserfassung): technische Daten aus einem
   // erfassten Seiten-/Datenblattabschnitt — regelbasiert, über denselben Entwurfsdienst.
-  app.register(technischeDatenRoutes({ capture: services.capture }, guards));
+  // Pflege und Rechte über die vorhandenen Wege: Revalidierungsmerker, Quellrechte, Prüfprotokoll.
+  app.register(
+    technischeDatenRoutes(
+      {
+        capture: services.capture,
+        ko: services.ko,
+        lifecycle: services.lifecycle,
+        audit: services.audit,
+      },
+      guards,
+    ),
+  );
   // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
   app.register(slidesRoutes(services.slideConverter, guards));
   // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht

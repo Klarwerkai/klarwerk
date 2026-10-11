@@ -76,12 +76,45 @@ export type Work = {
   savedLevel: string;
   receipt: string | null;
 };
+/** BPA-02: eine Tabelle der Seite — Abschnitt, optionaler Anker, Kopf und Zeilen als Text. */
+export type Tabelle = { abschnitt: string; anker: string; kopf: string[]; zeilen: string[][] };
+/** BPA-02: der Beleg, den `POST /api/technische-daten/*` verlangt. */
+export type Beleg = {
+  art: "html";
+  url: string;
+  abschnitt: string;
+  anker?: string;
+  titel: string;
+  abgerufenAm: string;
+  kopf: string[];
+  zeilen: string[][];
+};
+/** BPA-02: was die Leiste von einer Serverauswertung zeigt — nur Texte. */
+export type TechnikErgebnis = { werte: string[]; klaerungen: string[]; abweichungen: string[] };
+/** BPA-02: die markierte Tabelle einer Übernahme und ihr Prüfstand. */
+export type Technik = {
+  captureId: string;
+  tabelle: Tabelle;
+  ziel: { objekt: string; variante: string };
+  beleg: Beleg | null;
+  vorschaubeleg: string | null;
+  ergebnis: TechnikErgebnis | null;
+  entwurfId: string | null;
+};
+export type TechnikSicht = {
+  abschnitt: string;
+  ziel: { objekt: string; variante: string };
+  geprueft: boolean;
+  ergebnis?: TechnikErgebnis;
+  link?: string;
+};
 export type State = {
   auth?: Auth | null;
   work?: Work | null;
   captureStatus?: string | null;
   sourceChangedId?: string;
   pendingCapture?: boolean;
+  technik?: Technik | null;
 };
 export type View = {
   status: string;
@@ -102,6 +135,8 @@ export type View = {
   draftId?: string;
   /** JOB 3280 R3: DASS eine Anlage unklar ist — und der Inhalt deshalb bis zur Klärung still steht. */
   unresolvedCreate?: boolean;
+  /** BPA-02: die markierte Tabelle dieser Übernahme, ihr Prüfergebnis und der Entwurfslink. */
+  technik?: TechnikSicht;
 };
 export type Message = {
   type: string;
@@ -112,6 +147,9 @@ export type Message = {
   text?: string;
   email?: string;
   password?: string;
+  /** BPA-02: Erfassungsziel und Schutzklasse der technischen Daten (leer = unbekannt). */
+  ziel?: { objekt?: string; variante?: string };
+  schutzklasse?: string;
 };
 export type Payload = {
   title: string;
@@ -142,6 +180,9 @@ export type CaptureResult = {
   title: string;
   url: string;
   variants?: Partial<Record<string, unknown>>;
+  /** BPA-02: die sichtbaren Tabellen und die Stelle der markierten (−1 = keine). */
+  tabellen?: unknown[];
+  tabelleGewaehlt?: unknown;
 };
 type Tab = { id?: number; url?: string; title?: string };
 type Click = {

@@ -497,6 +497,257 @@
       ...(form.confidentiality ? { confidentiality: form.confidentiality } : {}),
     };
   }
+  // ================================================================================================
+  // BPA-02 · TECHNISCHE DATEN AUS DER MARKIERTEN TABELLE.
+  // ================================================================================================
+  //
+  // Der Weg: Markierung in einer Tabelle → `capture()` merkt sich DIESE Tabelle (`technik`) →
+  // „Prüfen" schickt sie an `POST /api/technische-daten/vorschau` und erhält Werte, Klärungen und
+  // den signierten Vorschaubeleg → „Übernehmen" liest DENSELBEN Tab neu (gleiche Adresse, gleicher
+  // Abschnitt), schickt die frische Fassung mit dem Vorschaubeleg an `…/uebernahme` und öffnet den
+  // Entwurf über denselben Link wie jede andere Übernahme. Die Seitendaten sind Fremddatum und
+  // werden hier Zelle für Zelle neu aufgebaut; der Server rechnet und entscheidet, nicht die Leiste.
+  const TECHNIK_ZEILEN = 200;
+  const TECHNIK_SPALTEN = 30;
+  const TECHNIK_ZELLE = 500;
+  const TECHNIK_ANKER = /^[\w.:-]{1,128}$/;
+  const SCHUTZKLASSEN = ["", "intern", "vertraulich", "streng_vertraulich"];
+  /**
+   * Eine Tabelle aus der Seite — oder `null`, wenn sie nicht genau die erwartete Gestalt hat.
+   * @param {unknown} raw @returns {import("./types").Tabelle | null}
+   */
+  function cleanTabelle(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const t = /** @type {Record<string, unknown>} */ (raw);
+    /** @param {unknown} z */
+    const zelle = (z) => typeof z === "string" && z.length <= TECHNIK_ZELLE;
+    /** @param {unknown} r */
+    const reihe = (r) => Array.isArray(r) && r.length <= TECHNIK_SPALTEN && r.every(zelle);
+    const abschnitt = t.abschnitt;
+    const anker = t.anker;
+    const zeilen = t.zeilen;
+    if (
+      typeof abschnitt !== "string" ||
+      !abschnitt.trim() ||
+      abschnitt.length > 300 ||
+      typeof anker !== "string" ||
+      (anker !== "" && !TECHNIK_ANKER.test(anker)) ||
+      !reihe(t.kopf) ||
+      !Array.isArray(zeilen) ||
+      zeilen.length === 0 ||
+      zeilen.length > TECHNIK_ZEILEN ||
+      !zeilen.every(reihe)
+    )
+      return null;
+    return {
+      abschnitt,
+      anker,
+      kopf: /** @type {string[]} */ (t.kopf).slice(),
+      zeilen: /** @type {string[][]} */ (zeilen).map((r) => r.slice()),
+    };
+  }
+  /**
+   * Die markierte Tabelle eines Inhaltsskript-Ergebnisses.
+   * @param {import("./types").CaptureResult} s
+   */
+  function markierteTabelle(s) {
+    const liste = Array.isArray(s.tabellen) ? s.tabellen : [];
+    const index = typeof s.tabelleGewaehlt === "number" ? s.tabelleGewaehlt : -1;
+    return index >= 0 ? cleanTabelle(liste[index]) : null;
+  }
+  /**
+   * Dieselbe Tabelle in einem neuen Lesevorgang — erkannt an ihrem Abschnitt, nie geraten.
+   * @param {import("./types").CaptureResult} s @param {string} abschnitt
+   */
+  function wiedergefunden(s, abschnitt) {
+    const liste = Array.isArray(s.tabellen) ? s.tabellen : [];
+    for (const roh of liste) {
+      const t = cleanTabelle(roh);
+      if (t && t.abschnitt === abschnitt) return t;
+    }
+    return null;
+  }
+  /**
+   * Der Beleg, wie der Server ihn verlangt: Adresse, Abschnitt, Erfassungszeit, Zellen.
+   * @param {import("./types").Tabelle} t @param {import("./types").Selection} s @param {string} am
+   * @returns {import("./types").Beleg}
+   */
+  function beleg(t, s, am) {
+    return {
+      art: "html",
+      url: s.url,
+      abschnitt: t.abschnitt,
+      ...(t.anker ? { anker: t.anker } : {}),
+      titel: s.title.slice(0, 300),
+      abgerufenAm: am,
+      kopf: t.kopf,
+      zeilen: t.zeilen,
+    };
+  }
+  /**
+   * Feste Wege zum Server, ohne Adresse aus Nachricht oder Seite. Antwortet auch bei 4xx mit dem
+   * Rumpf: die Abweisungen dieses Weges (geänderte Quelle, gesperrte Quelle) tragen den nächsten
+   * Schritt in sich.
+   * @param {"vorschau" | "uebernahme"} kind @param {import("./types").Auth} auth @param {object} body
+   * @returns {Promise<{ status: number, body: Record<string, unknown> }>}
+   */
+  async function technikApi(kind, auth, body) {
+    const paths = {
+      vorschau: "/api/technische-daten/vorschau",
+      uebernahme: "/api/technische-daten/uebernahme",
+    };
+    if (!Object.hasOwn(paths, kind)) throw new Error("invalid_message");
+    const response = await fetch(HOST + paths[kind], {
+      method: "POST",
+      credentials: "omit",
+      redirect: "error",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    /** @type {Record<string, unknown>} */
+    let inhalt = {};
+    try {
+      const gelesen = await response.json();
+      if (gelesen && typeof gelesen === "object") inhalt = gelesen;
+    } catch {
+      inhalt = {};
+    }
+    return { status: response.status, body: inhalt };
+  }
+  /**
+   * Was die Leiste von einer Serverauswertung zeigt — nur Texte, keine Struktur der Seite.
+   * @param {Record<string, unknown>} v @returns {import("./types").TechnikErgebnis}
+   */
+  function ergebnis(v) {
+    /** @param {unknown} x @returns {Record<string, unknown>[]} */
+    const liste = (x) =>
+      Array.isArray(x) ? x.filter((e) => e && typeof e === "object").slice(0, 400) : [];
+    /** @param {unknown} x */
+    const text = (x) => (typeof x === "string" ? x.slice(0, 600) : "");
+    const werte = liste(v.geraete).flatMap((g) => {
+      const name = [text(g.modell), text(g.variante)].filter(Boolean).join(" / ");
+      return liste(g.werte).map((w) => {
+        const n = /** @type {Record<string, unknown> | null} */ (w.normalisierung ?? null);
+        let normal = "";
+        if (n && typeof n === "object") {
+          const zahl = [text(n.von), text(n.bis)].filter(Boolean).join(" … ") || text(n.wert);
+          normal = ` → ${zahl} ${text(n.einheit)} (${text(n.formel)})`;
+        }
+        const status = w.status === "uebernehmbar" ? "" : " · in Klärung";
+        return `${name || "?"} · ${text(w.merkmal)}: ${text(w.original)}${normal}${status}`;
+      });
+    });
+    return {
+      werte,
+      klaerungen: liste(v.klaerungen).map((k) => text(k.text)),
+      abweichungen: liste(v.abweichungen).map((a) => text(a.begruendung)),
+    };
+  }
+  /**
+   * Vorschau und Übernahme der technischen Daten. Beide verlangen die Anmeldung und eine
+   * markierte Tabelle DIESER Übernahme; die Übernahme verlangt zusätzlich eine geprüfte Vorschau.
+   * @param {import("./types").Message} message @param {Zustand} state
+   */
+  async function technik(message, state) {
+    const w = state.work;
+    const t = state.technik;
+    if (!w || !t || t.captureId !== w.id) return view(state, "technik_none");
+    if (message.captureId !== w.id) return view(state, "stale_preview");
+    if (!state.auth) return view(state, "expired");
+    /** @param {unknown} x */
+    const angabe = (x) => (typeof x === "string" ? x.slice(0, 200) : "");
+    const objekt = angabe(message.ziel?.objekt);
+    const variante = angabe(message.ziel?.variante);
+    const ziel = {
+      ...(objekt.trim() ? { objekt } : {}),
+      ...(variante.trim() ? { variante } : {}),
+    };
+    /**
+     * Gesperrte Quelle ist etwas anderes als ein fehlendes Recht des Kontos.
+     * @param {Record<string, unknown>} body
+     */
+    const verweigert = (body) => (body.error === "QUELLE_GESPERRT" ? "technik_blocked" : "denied");
+    try {
+      if (message.type === "technik_vorschau") {
+        const gelesen = beleg(t.tabelle, w.selection, w.selection.capturedAt);
+        const antwort = await technikApi("vorschau", state.auth, { belege: [gelesen], ziel });
+        if (antwort.status === 401) return failure(state, new Error("expired"));
+        if (antwort.status === 403) return view(state, verweigert(antwort.body));
+        const vorschaubeleg = antwort.body.vorschaubeleg;
+        if (antwort.status !== 200 || typeof vorschaubeleg !== "string")
+          return view(state, "technik_failed", textAus(antwort.body));
+        await merke({
+          technik: {
+            ...t,
+            ziel: { objekt, variante },
+            beleg: gelesen,
+            vorschaubeleg,
+            ergebnis: ergebnis(antwort.body),
+            entwurfId: null,
+          },
+        });
+        return view(/** @type {Zustand} */ (await read()), "technik_preview");
+      }
+      // Übernahme: zuerst DENSELBEN Tab neu lesen. Andere Adresse → nichts wird gesendet.
+      if (!t.vorschaubeleg || !t.beleg) return view(state, "technik_none");
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: w.selection.tabId },
+        files: ["selection.js"],
+      });
+      const s = results[0]?.result;
+      if (!s || s.url !== w.selection.url) return view(state, "source_changed");
+      const frisch = wiedergefunden(s, t.tabelle.abschnitt);
+      if (!frisch) return view(state, "technik_changed");
+      // Die neue Lesung liegt immer NACH der geprüften — der Server verlangt genau das.
+      const am = Math.max(Date.now(), Date.parse(t.beleg.abgerufenAm) + 1);
+      const neu = beleg(frisch, w.selection, new Date(am).toISOString());
+      const schutz = SCHUTZKLASSEN.includes(message.schutzklasse ?? "")
+        ? (message.schutzklasse ?? "")
+        : "";
+      const antwort = await technikApi("uebernahme", state.auth, {
+        belege: [neu],
+        vorschauBelege: [t.beleg],
+        vorschaubeleg: t.vorschaubeleg,
+        ziel,
+        ...(schutz ? { schutzklasse: schutz } : {}),
+      });
+      if (antwort.status === 401) return failure(state, new Error("expired"));
+      if (antwort.status === 403) return view(state, verweigert(antwort.body));
+      if (antwort.status === 409 && antwort.body.error === "QUELLE_GEAENDERT") {
+        const v = /** @type {Record<string, unknown>} */ (antwort.body.vorschau ?? {});
+        await merke({
+          technik: {
+            ...t,
+            tabelle: frisch,
+            beleg: neu,
+            vorschaubeleg: typeof v.vorschaubeleg === "string" ? v.vorschaubeleg : null,
+            ergebnis: ergebnis(v),
+            entwurfId: null,
+          },
+        });
+        return view(/** @type {Zustand} */ (await read()), "technik_changed");
+      }
+      const entwurf = /** @type {Record<string, unknown>} */ (antwort.body.entwurf ?? {});
+      if (![200, 201].includes(antwort.status) || !DRAFT_ID.test(String(entwurf.id ?? "")))
+        return view(state, "technik_failed", textAus(antwort.body));
+      await merke({ technik: { ...t, entwurfId: String(entwurf.id) } });
+      return view(/** @type {Zustand} */ (await read()), "technik_saved");
+    } catch {
+      return view(state, "technik_failed");
+    }
+  }
+  /**
+   * Die Meldung einer Abweisung als eine Zeile — Fremdtext, nie Zustand.
+   * @param {Record<string, unknown>} body
+   */
+  function textAus(body) {
+    const text = body.message;
+    if (typeof text !== "string") return "";
+    const eine = text.replace(/\p{C}+/gu, " ").trim();
+    return eine.length > GRUND_MAX ? `${eine.slice(0, GRUND_MAX - 1)}…` : eine;
+  }
   async function read() {
     await ready;
     return chrome.storage.session.get(null);
@@ -542,6 +793,7 @@
   /** @param {Zustand} state @param {string} [status] @param {string} [grundText] @returns {Sicht} */
   function view(state, status, grundText) {
     const w = state.work;
+    const tk = w && state.technik && state.technik.captureId === w.id ? state.technik : null;
     return {
       // JOB 3606 · Befund (c): der Satz des Servers reist NEBEN dem Zustand, nie an seiner Stelle.
       // Die Leiste hängt ihn hinter ihren eigenen Satz; fehlt er, bleibt alles wie bisher.
@@ -612,6 +864,21 @@
               ? { link: `${HOST}/capture/frontdoor?draft=${encodeURIComponent(w.receipt)}` }
               : {}),
           }
+        : {}),
+      // BPA-02: die markierte Tabelle DIESER Übernahme — sonst nichts. Der Link entsteht nur aus
+      // der Kennung, die der Server für genau diese Übernahme bestätigt hat.
+      ...(tk ? { technik: technikSicht(tk) } : {}),
+    };
+  }
+  /** @param {import("./types").Technik} tk @returns {import("./types").TechnikSicht} */
+  function technikSicht(tk) {
+    return {
+      abschnitt: tk.tabelle.abschnitt,
+      ziel: tk.ziel,
+      geprueft: Boolean(tk.vorschaubeleg),
+      ...(tk.ergebnis ? { ergebnis: tk.ergebnis } : {}),
+      ...(tk.entwurfId
+        ? { link: `${HOST}/capture/frontdoor?draft=${encodeURIComponent(tk.entwurfId)}` }
         : {}),
     };
   }
@@ -830,6 +1097,9 @@
         "recapture",
         // JOB 3606: „Offene Übernahme behalten" — der zweite Ausgang der Nachfrage.
         "keep",
+        // BPA-02: technische Daten aus der markierten Tabelle prüfen und übernehmen.
+        "technik_vorschau",
+        "technik_uebernahme",
       ].includes(message.type)
     )
       return { status: "invalid_message" };
@@ -916,6 +1186,8 @@
     busy = true;
     try {
       const state = await read();
+      if (message.type === "technik_vorschau" || message.type === "technik_uebernahme")
+        return await technik(message, state);
       return await mutate(message, state);
     } finally {
       busy = false;
@@ -1459,8 +1731,25 @@
                 : variants.article.available
                   ? "article"
                   : "";
+              const id = crypto.randomUUID();
+              // BPA-02: steht die Markierung in einer Tabelle, wird GENAU diese gemerkt — gebunden an
+              // diese Übernahme. Ohne Tabelle bleibt der Weg zu, statt eine Tabelle zu raten.
+              const tabelle = markierteTabelle(s);
+              await merke({
+                technik: tabelle
+                  ? {
+                      captureId: id,
+                      tabelle,
+                      ziel: { objekt: "", variante: "" },
+                      beleg: null,
+                      vorschaubeleg: null,
+                      ergebnis: null,
+                      entwurfId: null,
+                    }
+                  : null,
+              });
               await put({
-                id: crypto.randomUUID(),
+                id,
                 selection,
                 variants,
                 mode,

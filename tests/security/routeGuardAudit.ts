@@ -679,6 +679,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/technische-daten/vorschau": { protection: "ko.create" },
   "POST /api/technische-daten/uebernahme": { protection: "ko.create" },
   "POST /api/technische-daten/quellenabgleich": { protection: "ko.create" },
+  // Rechteentzug/-erteilung einer Quelle wirkt auf fremde Wissensobjekte und Entwürfe — nur die
+  // Fachprüfung, wie der Import-Accept, der denselben Quellrechte-Weg schreibt.
+  "POST /api/technische-daten/quellenrechte": { protection: "ko.validate" },
   // JOB 3668 (Entwurfs-Papierkorb): DIESELBE Berechtigung und DERSELBE Torwächter wie die übrigen
   // Entwurfsrouten — `canSeeDraft`, nur auf der Papierkorb-Sicht (`requireVisibleTrashedDraft`).
   // BEWUSST NICHT `users.manage` wie beim Papierkorb der Wissensobjekte (`POST /api/kos/:id/restore`):

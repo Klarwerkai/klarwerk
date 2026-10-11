@@ -9,8 +9,9 @@
 //   N1 · Ergebnisobjekt (Entwurf) und Eigentümer sind nach dem Neustart erreichbar; Herkunft je Beleg
 //        mit Fassung ist erhalten; Entwurf, Übernahme ins Wissen und fachliche Freigabe sind getrennt
 //        ausgewiesen (AC10, AC03).
-//   N2 · Dieselbe Übernahme nach dem Neustart erneut → derselbe Entwurf, keine Dublette (AC06);
-//        der Quellenabgleich findet ihn bei geänderter Quelle (AC08).
+//   N2 · Dieselbe Übernahme nach dem Neustart erneut (neue Vorschau, neu gelesene Quelle) →
+//        derselbe Entwurf, keine Dublette (AC06); der Quellenabgleich findet ihn bei geänderter
+//        Quelle, und sein Vermerk übersteht einen weiteren Neustart (AC08).
 //
 // INFRASTRUKTUR: `KLARWERK_PG_TEST_URL` (Datenbankname mit `test`), sonst ein Wegwerf-Container.
 // Fehlt beides, SCHEITERT der Lauf — kein stiller Skip. Alle Inhalte sind erfundene Testdaten.
@@ -61,6 +62,28 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
       await eintrag.app.close();
       await eintrag.pool.end();
     }
+  }
+
+  /** Der Adapterweg: Vorschau, Quelle neu lesen (spätere Erfassungszeit), Übernahme mit Beleg. */
+  async function uebernehmen(app: App, wer: Kopf, minuten: number) {
+    const vorschau = await app.inject({
+      method: "POST",
+      url: "/api/technische-daten/vorschau",
+      headers: wer,
+      payload: { belege: AUFTRAG.belege, ziel: AUFTRAG.ziel },
+    });
+    expect(vorschau.statusCode, vorschau.body).toBe(200);
+    const spaeter = (iso: string) => new Date(Date.parse(iso) + minuten * 60_000).toISOString();
+    return app.inject({
+      method: "POST",
+      url: "/api/technische-daten/uebernahme",
+      headers: wer,
+      payload: {
+        ...AUFTRAG,
+        belege: AUFTRAG.belege.map((b) => ({ ...b, abgerufenAm: spaeter(b.abgerufenAm) })),
+        vorschaubeleg: vorschau.json().vorschaubeleg,
+      },
+    });
   }
 
   async function anmelden(app: App): Promise<Kopf> {
@@ -137,12 +160,7 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     const erste = await neu();
     const anna = await anmelden(erste);
     annaId = (await erste.inject({ method: "GET", url: "/api/auth/me", headers: anna })).json().id;
-    const res = await erste.inject({
-      method: "POST",
-      url: "/api/technische-daten/uebernahme",
-      headers: anna,
-      payload: AUFTRAG,
-    });
+    const res = await uebernehmen(erste, anna, 5);
     expect(res.statusCode, res.body).toBe(201);
     expect(res.json().stand).toEqual({
       entwurf: "gespeichert",
@@ -180,12 +198,8 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     expect(entwurfId, "N1 muss vorher gelaufen sein").not.toBe("");
     const app = await neu();
     const anna = await anmelden(app);
-    const nochmal = await app.inject({
-      method: "POST",
-      url: "/api/technische-daten/uebernahme",
-      headers: anna,
-      payload: AUFTRAG,
-    });
+    // Neuer Prozess, neuer Schlüssel: die Vorschau wird neu geholt; die Quelle ist dieselbe Fassung.
+    const nochmal = await uebernehmen(app, anna, 10);
     expect(nochmal.statusCode, nochmal.body).toBe(200);
     expect(nochmal.json().entwurf.id).toBe(entwurfId);
 
@@ -205,12 +219,25 @@ describe("BPA-02 · Übernahme technischer Daten gegen echtes PostgreSQL", () =>
     expect(abgleich.statusCode, abgleich.body).toBe(200);
     expect(abgleich.json().betroffen).toEqual([
       expect.objectContaining({
-        entwurfId,
+        art: "entwurf",
+        id: entwurfId,
         erfassteFassung: belegFassung(HTML_SEITE),
         aktuelleFassung: belegFassung(jetzt),
         lage: "quelle_geaendert",
       }),
     ]);
     await beenden(app);
+
+    // Der Vermerk an der Quelle ist DAUERHAFT: nach einem weiteren Neustart steht er im Entwurf.
+    const dritte = await neu();
+    const wieder = await anmelden(dritte);
+    const gelesen = await dritte.inject({
+      method: "GET",
+      url: `/api/drafts/${entwurfId}`,
+      headers: wieder,
+    });
+    expect(gelesen.statusCode, gelesen.body).toBe(200);
+    expect(gelesen.json().payload.pendingSources[0].excerpt).toContain("Lage: Quelle geändert");
+    await beenden(dritte);
   }, 120_000);
 });
