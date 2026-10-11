@@ -1223,6 +1223,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // aufnahme:20260922:gesamt-wissensprojekte: Löschen wie Bearbeiten (Zuständige/Kontoverwaltung,
+  // sonst 403); Titel betroffener Artikel nur, wenn `darfSehen` sie freigibt, sonst nur die Zahl.
+  "POST /api/spaces/:id/loeschung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Firmenfilter (Frage 51): Artikel je Firmen-/Partner-/öffentlichem Kontext, je Zeile getrimmt.
+  "GET /api/spaces/artikel": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  "POST /api/spaces/:id/loeschung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // produkt:20261009:admin-teams: wählbare Teams für die Spacepflege (ohne Mitgliedernamen).
   "GET /api/spaces/teams": { protection: "ko.read" },
   // produkt:20261007:spaces:admin-20261009 (ADMIN-07): Zugriffsherkunft lesen wie den Space;

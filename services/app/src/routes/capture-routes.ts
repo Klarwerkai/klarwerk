@@ -47,7 +47,11 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
 import { autorenrechtAmEntwurf, entwurfSichtbarFuer } from "../sichtbarkeit";
-import type { VorlagenEinreichungPort } from "../vorlagen";
+import {
+  VORLAGE_SPACE_KONFLIKT_TEXT,
+  type VorlagenEinreichungPort,
+  VorlagenSpaceFehler,
+} from "../vorlagen";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
@@ -2072,6 +2076,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           aiCheckWorker.enqueue(koId, vermerkt?.aiCheck?.koVersion);
           return vermerkt;
         };
+        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält der
+        // Promote von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
+        let spaceSperreFrei: (() => void) | undefined;
         try {
           const body = request.body ?? {};
           const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
@@ -2159,8 +2166,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
           // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
           // Scheitert sie, bleibt der Entwurf mit allen Werten stehen — es entsteht nichts.
+          const rohBezug = (await capture.getDraft(request.params.id))?.payload.vorlage;
+          spaceSperreFrei = await deps.vorlagenEinreichung?.halte(rohBezug);
           const vorlagenEntscheid = await deps.vorlagenEinreichung?.pruefe(
-            (await capture.getDraft(request.params.id))?.payload.vorlage,
+            rohBezug,
             { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
             user,
           );
@@ -2193,19 +2202,31 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Prüfung und Historie. Deshalb der eigene Weg `entwurfVerbraucht` (hart) und nicht
           // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
           // dazu führen, dass der Entwurf aus der Liste verschwindet.
-          await capture.entwurfVerbraucht(request.params.id);
           // produkt:20261007:templates-default: Vorlage/Fassung vermerken, ggf. in den gewählten
           // Space legen. Eine Nacharbeit: scheitert sie, steht das Objekt trotzdem, und die Antwort
           // sagt es (`vorlagenVermerk`).
+          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+          // Zuordnung — misslingt sie, ist die Anlage zurückgenommen, die Antwort 409, und der
+          // Entwurf bleibt bestehen (deshalb steht dieser Schritt VOR dem Verbrauch des Entwurfs).
           let vorlagenVermerk: "fehlgeschlagen" | undefined;
           if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
             try {
               await deps.vorlagenEinreichung?.vermerke(created.id, vorlagenEntscheid.bezug, user);
             } catch (fehlerWert) {
+              if (fehlerWert instanceof VorlagenSpaceFehler) {
+                reply.code(409).send({
+                  error: fehlerWert.code,
+                  message: VORLAGE_SPACE_KONFLIKT_TEXT,
+                });
+                return;
+              }
               request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
               vorlagenVermerk = "fehlgeschlagen";
             }
           }
+          // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+          spaceSperreFrei?.();
+          await capture.entwurfVerbraucht(request.params.id);
           // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
           // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
           // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
@@ -2230,6 +2251,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             return;
           }
           sendError(reply, error);
+        } finally {
+          spaceSperreFrei?.();
         }
       },
     );

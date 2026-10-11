@@ -1237,6 +1237,20 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Spacewechsel nur an einem sichtbaren Artikel.",
   },
+  // aufnahme:20260922:gesamt-wissensprojekte: Titel betroffener Artikel nur über `darfSehen`;
+  // verborgene und Papierkorb-Artikel nur als Zahl.
+  "GET /api/spaces/artikel": {
+    urteil: "PRAEDIKAT",
+    grund: "Firmenfilter: Artikel je Kontext, nur sichtbare.",
+  },
+  "POST /api/spaces/:id/loeschung/vorschau": {
+    urteil: "PRAEDIKAT",
+    grund: "Löschfolgen: Titel nur sichtbarer Artikel, sonst Zahl.",
+  },
+  "POST /api/spaces/:id/loeschung": {
+    urteil: "PRAEDIKAT",
+    grund: "Löschung; bei Ablehnung dieselbe Vorschau wie oben.",
+  },
   // Interner Chat (chat-routes.ts): Artikelgespräche, Verweise, Ausschnitte und Anhänge laufen je
   // lesender Person durch `darfSehen` (lokaler Helfer `koFuer`).
   "GET /api/chat/konten": { urteil: "KEIN_KO_INHALT", grund: "Kennung, Name, Rolle der Konten." },
