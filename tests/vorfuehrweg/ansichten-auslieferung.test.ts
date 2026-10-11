@@ -23,39 +23,43 @@ const SEITE = join(OEFFENTLICH, "demonstration", "vorfuehrweg.html");
 const ORDNER = join(OEFFENTLICH, "demonstration", "vorfuehrweg-ansichten");
 const PRAEFIX = "/demonstration/vorfuehrweg-ansichten/";
 
-/** Die gesicherten Aufnahmen (Gruppe `vorfuehrweg-ansichten`; Herkunft je Datei im Beleg). */
+/**
+ * Die gesicherten Aufnahmen (Gruppe `vorfuehrweg-ansichten`; Herkunft je Datei im Beleg). Alle 20
+ * stammen aus dem Aufnahmelauf an Kandidat 73a26d5e (integrierte Oberfläche, Nutzungshinweis
+ * bestätigt); importwege und importwege-en waren dort bytegleich mit der bisherigen Auslieferung.
+ */
 const AUFNAHMEN: Record<string, { bytes: number; sha256: string }> = {
   "bibliothek-en.png": {
-    bytes: 110789,
-    sha256: "1ff5fb26a6968c803ff3b9e755f045659ddb038401a89e77547cfab5ae5010dd",
+    bytes: 124583,
+    sha256: "9f7f69366b96a5b572e46e1711a32a9a9abaf60f43fb18bc7b5e063137cb640a",
   },
   "bibliothek.png": {
-    bytes: 109655,
-    sha256: "548461c672107ee17e0c72ca4beeaa61fa4a0eaaf1a1580c718399a4e02dcec4",
+    bytes: 124066,
+    sha256: "e33179711fcad9b8c0cdcf38ba69650a99e848e13972b013933afc657a0a69f6",
   },
   "demodaten-en.png": {
-    bytes: 93871,
-    sha256: "4da4d11ec9da1c8f1309fecc5eab430b4316ea460691cefc59939de379b70179",
+    bytes: 105869,
+    sha256: "be6a668cf66f2881ebbdde6776849a7fecf46908736b8b92a8fec2a2041853d8",
   },
   "demodaten.png": {
-    bytes: 94864,
-    sha256: "6108d2484d64179c18f7700a4faa6db7bce7e5cba539c93a727633c193fdf39b",
+    bytes: 104973,
+    sha256: "b6b9fb662c1809ea11dbb586da0c94d7e83c8be4d43fc15a180605262663d014",
   },
   "erfassen-en.png": {
-    bytes: 69870,
-    sha256: "b35fe1ede3bb1d4f8f5b8272207d1cb3b9b3bd7f738b6a8ee81d0665dc0475b7",
+    bytes: 73989,
+    sha256: "2875880581ff3582a140e1cdfcbbd76e32777d8ccb136d7fa4a4ba300c58ddd3",
   },
   "erfassen.png": {
-    bytes: 70598,
-    sha256: "6b5361fff47734ecb2f1b85ab0e46fb956deac6641173a36256a3645859297af",
+    bytes: 72027,
+    sha256: "113205389185a8582ffe31011ef13b12c86f56621a04e095f5dba27dc02e6153",
   },
   "fragen-en.png": {
-    bytes: 67209,
-    sha256: "ca136a5ad1544ce2dbb7fb1f55b129e25ab3f3d04d9011ba855dfc23f8b5bd37",
+    bytes: 87685,
+    sha256: "5e093bf4288caa10bb6fae0054d348554ddc5502081f98b700d84c523b4ef8f2",
   },
   "fragen.png": {
-    bytes: 69011,
-    sha256: "5a86305fbc37b67ee5e374b7f537b0fad94306e0fc16d083d871e6ea72737f4c",
+    bytes: 87402,
+    sha256: "3c87410efaf658aefc20da41f561b34c0d8ab34bcd085dae99fac5dcbc04a5f6",
   },
   "importwege-en.png": {
     bytes: 81869,
@@ -66,46 +70,44 @@ const AUFNAHMEN: Record<string, { bytes: number; sha256: string }> = {
     sha256: "5f95a7933ec2857aab5552ee09396f227570832d1e797a4e1b04b54f2a3d663f",
   },
   "konflikte-en.png": {
-    bytes: 95039,
-    sha256: "b9abf0f551962054c718eaa85449b66d8856d7f6fd8c3df53f7e48cc3295e6ff",
+    bytes: 95966,
+    sha256: "12f4df09d3e0a9d1cde8262e6ce1262c73a7d6cf33fcc9e06e184361fae87c93",
   },
   "konflikte.png": {
-    bytes: 98397,
-    sha256: "35c93d4d75123be9a40820dcdf8568175c4331dce8e2b9e13eb349cbf3cefff2",
+    bytes: 95400,
+    sha256: "9b51e2a74c644c8495cefbff32a775d9cabecb9ce66b7a1146ec255187c8fb92",
   },
-  // Neu aufgenommen an Kandidat 0f9590de (Nutzungshinweis bestätigt, Karls Erfahrung bzw. der
-  // geöffnete Fassungsverlauf V1/V2/V3 vollständig im Bild); die übrigen 16 stammen aus 775fd23c.
   "lagerfall-en.png": {
-    bytes: 107606,
-    sha256: "6a662afbca3a26fcc0cab22af28ff13290cfa81d2b26f25fcb24dbd92b966563",
+    bytes: 123350,
+    sha256: "c69db633654cdc93cd2cb1a29d34b7c336d768d1e7f1459b7f9273cf9c3e335f",
   },
   "lagerfall.png": {
-    bytes: 103786,
-    sha256: "aa1baaacb2f05e420f405363a083bfd0d5889879677a1d10b05b4a59433f1955",
+    bytes: 125061,
+    sha256: "1dfdb4c3b9fba557e01d04dad0ea5f2780664a3d7930283a9d976e4536e18a54",
   },
   "schweissnaht-en.png": {
-    bytes: 94812,
-    sha256: "dd12e7df577d93ca2f78c4f366c1c9fc3776c762123a603b58ce7798141e5835",
+    bytes: 120411,
+    sha256: "f2eee37c1ae870431f08cc3346626d04e8831c5825f00ae24490acbd7aa316e5",
   },
   "schweissnaht.png": {
-    bytes: 99946,
-    sha256: "f4a214d6e0f945256502613aab061b30b6ed3899639f6fc563815e274e9ef9fd",
+    bytes: 126151,
+    sha256: "1cea861c24f9be88a0dafc11f1b391db4871447eb8992987e5c545e436d4ddd6",
   },
   "start-en.png": {
-    bytes: 81623,
-    sha256: "0e9c26d36fad864d8f56700bbabe907449684cce98afc34470b5e7aa29badb46",
+    bytes: 84361,
+    sha256: "5b4c751a2250b7d31d5f140f2cb3e8527bf870cfca093d6ab359f18328d7f597",
   },
   "start.png": {
-    bytes: 82000,
-    sha256: "df8c9ccddb11ccc10ff20ec66edfba8d09c08df78c668f5a78a4c755bc2285cd",
+    bytes: 81629,
+    sha256: "50286e40bcd614b614287911c56bff384491baebaffa130e08cfb2750d5a9a41",
   },
   "validierung-en.png": {
-    bytes: 107906,
-    sha256: "353166a17defe2f298c4c32bcb7cdcb96217eb1f178ff1fe9b3de963551e5246",
+    bytes: 131366,
+    sha256: "bee495dc697d9dc95418d653bf584131a20f106ac10b42a84cfbe1ae106c3ced",
   },
   "validierung.png": {
-    bytes: 107529,
-    sha256: "498898e5143833b0bfbf404d5a0ec82b8241052d5b01c988b6ae30116ca47b80",
+    bytes: 133440,
+    sha256: "c741028d55d5860bdfd368af3e20b8fe50baa479e08afccb32daa457e000a5b3",
   },
 };
 

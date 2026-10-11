@@ -9,15 +9,19 @@ die der Vorführweg (`apps/web/public/demonstration/vorfuehrweg.html`) je Statio
 **Herkunft:** aufgenommen von `tests/vorfuehrweg/ansichten-chromium.test.ts` an der gebauten Fassung,
 in echtem Chromium, mit über `POST /api/admin/demo-seed` geladenen Demodaten in der jeweiligen Sprache.
 Gesichert als Prüfartefakte (Gruppe `vorfuehrweg-ansichten`, `BILDBELEGE.json`) und unverändert unter
-ihrem Ursprungsnamen übernommen. Zwei Aufnahmeläufe:
+ihrem Ursprungsnamen übernommen.
 
-- **16 Bilder** aus Kandidat `775fd23c497eef62d535da1ee82565944860c1a9` (Prüfauftrag
-  `auftrag-703b41de15245d33aab2-775fd23c497e`). Damals verlangte die Aufnahme den Nachweistext nur im
-  Dokument; einige dieser Bilder zeigen unten noch den Nutzungshinweis.
-- **lagerfall, lagerfall-en, schweissnaht, schweissnaht-en** aus Kandidat
-  `0f9590dee87762d829fd7c0aaac6bd933aef50b7` (Prüfauftrag `auftrag-703b41de15245d33aab2-0f9590dee877`,
-  bildbeleg-012 bis -015). Der Nutzungshinweis ist regulär bestätigt; die Aufnahme verlangte, dass
-  Karls Erfahrung bzw. die Titel der Fassungen V1, V2 und V3 vollständig und unverdeckt im Bild stehen.
+Alle 20 Bilder entsprechen dem Aufnahmelauf an Kandidat `73a26d5e42aec068b759ebeea0813ed798c5138a`
+(Prüfauftrag `auftrag-703b41de15245d33aab2-73a26d5e42ae`, bildbeleg-000 bis -019), also an der Fassung
+mit integriertem Hauptstand (u. a. Bibliothek mit Inhalt vor der Kenntnisnahme, neue Einleitung unter
+„Fragen“). Der Nutzungshinweis ist regulär bestätigt; die Aufnahme verlangte, dass der jeweilige
+Nachweistext (etwa Karls Erfahrung oder die Titel der Fassungen V1, V2 und V3) vollständig und
+unverdeckt im Bild steht.
+
+- **18 Bilder** wurden nach Sichtvergleich mit der bisherigen Auslieferung (Aufnahmen aus `775fd23c`
+  und `0f9590de`, die die Oberfläche vor der Integration zeigten) durch diesen Lauf ersetzt.
+- **importwege, importwege-en** waren in diesem Lauf bytegleich mit der bisherigen Auslieferung
+  (bildbeleg-008/-009) und blieben unverändert.
 
 **Abgleich:** `tests/vorfuehrweg/ansichten-auslieferung.test.ts` verlangt je Datei genau die
 unten stehende Größe und SHA-256 und ruft jede verlinkte Datei über den echten statischen
@@ -29,23 +33,23 @@ Auslieferungsweg ab.
 
 | Datei | Bytes | SHA-256 |
 |---|---:|---|
-| bibliothek-en.png | 110789 | 1ff5fb26a6968c803ff3b9e755f045659ddb038401a89e77547cfab5ae5010dd |
-| bibliothek.png | 109655 | 548461c672107ee17e0c72ca4beeaa61fa4a0eaaf1a1580c718399a4e02dcec4 |
-| demodaten-en.png | 93871 | 4da4d11ec9da1c8f1309fecc5eab430b4316ea460691cefc59939de379b70179 |
-| demodaten.png | 94864 | 6108d2484d64179c18f7700a4faa6db7bce7e5cba539c93a727633c193fdf39b |
-| erfassen-en.png | 69870 | b35fe1ede3bb1d4f8f5b8272207d1cb3b9b3bd7f738b6a8ee81d0665dc0475b7 |
-| erfassen.png | 70598 | 6b5361fff47734ecb2f1b85ab0e46fb956deac6641173a36256a3645859297af |
-| fragen-en.png | 67209 | ca136a5ad1544ce2dbb7fb1f55b129e25ab3f3d04d9011ba855dfc23f8b5bd37 |
-| fragen.png | 69011 | 5a86305fbc37b67ee5e374b7f537b0fad94306e0fc16d083d871e6ea72737f4c |
+| bibliothek-en.png | 124583 | 9f7f69366b96a5b572e46e1711a32a9a9abaf60f43fb18bc7b5e063137cb640a |
+| bibliothek.png | 124066 | e33179711fcad9b8c0cdcf38ba69650a99e848e13972b013933afc657a0a69f6 |
+| demodaten-en.png | 105869 | be6a668cf66f2881ebbdde6776849a7fecf46908736b8b92a8fec2a2041853d8 |
+| demodaten.png | 104973 | b6b9fb662c1809ea11dbb586da0c94d7e83c8be4d43fc15a180605262663d014 |
+| erfassen-en.png | 73989 | 2875880581ff3582a140e1cdfcbbd76e32777d8ccb136d7fa4a4ba300c58ddd3 |
+| erfassen.png | 72027 | 113205389185a8582ffe31011ef13b12c86f56621a04e095f5dba27dc02e6153 |
+| fragen-en.png | 87685 | 5e093bf4288caa10bb6fae0054d348554ddc5502081f98b700d84c523b4ef8f2 |
+| fragen.png | 87402 | 3c87410efaf658aefc20da41f561b34c0d8ab34bcd085dae99fac5dcbc04a5f6 |
 | importwege-en.png | 81869 | ba296aa54349f878e5a0448952eeaa922728c5a32673937cb3bb990381a657ed |
 | importwege.png | 87908 | 5f95a7933ec2857aab5552ee09396f227570832d1e797a4e1b04b54f2a3d663f |
-| konflikte-en.png | 95039 | b9abf0f551962054c718eaa85449b66d8856d7f6fd8c3df53f7e48cc3295e6ff |
-| konflikte.png | 98397 | 35c93d4d75123be9a40820dcdf8568175c4331dce8e2b9e13eb349cbf3cefff2 |
-| lagerfall-en.png | 107606 | 6a662afbca3a26fcc0cab22af28ff13290cfa81d2b26f25fcb24dbd92b966563 |
-| lagerfall.png | 103786 | aa1baaacb2f05e420f405363a083bfd0d5889879677a1d10b05b4a59433f1955 |
-| schweissnaht-en.png | 94812 | dd12e7df577d93ca2f78c4f366c1c9fc3776c762123a603b58ce7798141e5835 |
-| schweissnaht.png | 99946 | f4a214d6e0f945256502613aab061b30b6ed3899639f6fc563815e274e9ef9fd |
-| start-en.png | 81623 | 0e9c26d36fad864d8f56700bbabe907449684cce98afc34470b5e7aa29badb46 |
-| start.png | 82000 | df8c9ccddb11ccc10ff20ec66edfba8d09c08df78c668f5a78a4c755bc2285cd |
-| validierung-en.png | 107906 | 353166a17defe2f298c4c32bcb7cdcb96217eb1f178ff1fe9b3de963551e5246 |
-| validierung.png | 107529 | 498898e5143833b0bfbf404d5a0ec82b8241052d5b01c988b6ae30116ca47b80 |
+| konflikte-en.png | 95966 | 12f4df09d3e0a9d1cde8262e6ce1262c73a7d6cf33fcc9e06e184361fae87c93 |
+| konflikte.png | 95400 | 9b51e2a74c644c8495cefbff32a775d9cabecb9ce66b7a1146ec255187c8fb92 |
+| lagerfall-en.png | 123350 | c69db633654cdc93cd2cb1a29d34b7c336d768d1e7f1459b7f9273cf9c3e335f |
+| lagerfall.png | 125061 | 1dfdb4c3b9fba557e01d04dad0ea5f2780664a3d7930283a9d976e4536e18a54 |
+| schweissnaht-en.png | 120411 | f2eee37c1ae870431f08cc3346626d04e8831c5825f00ae24490acbd7aa316e5 |
+| schweissnaht.png | 126151 | 1cea861c24f9be88a0dafc11f1b391db4871447eb8992987e5c545e436d4ddd6 |
+| start-en.png | 84361 | 5b4c751a2250b7d31d5f140f2cb3e8527bf870cfca093d6ab359f18328d7f597 |
+| start.png | 81629 | 50286e40bcd614b614287911c56bff384491baebaffa130e08cfb2750d5a9a41 |
+| validierung-en.png | 131366 | bee495dc697d9dc95418d653bf584131a20f106ac10b42a84cfbe1ae106c3ced |
+| validierung.png | 133440 | c741028d55d5860bdfd368af3e20b8fe50baa479e08afccb32daa457e000a5b3 |
