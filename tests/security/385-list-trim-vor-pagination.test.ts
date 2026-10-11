@@ -97,9 +97,10 @@ describe("BASIC 391 · PgKoRepo.list nimmt den injizierten Trim in das SQL auf",
     expect(abfrage?.text).toContain("type=$1");
     expect(abfrage?.text).toContain("status=$2");
     expect(abfrage?.text).toContain("deleted_at_key");
-    expect(abfrage?.text).toContain("confidentiality_key");
+    // Variante B (Entscheidung 16): die Stufe roh aus `data`, Betrachteranteil ist der Freigaberang.
+    expect(abfrage?.text).toContain("data->>'confidentiality'");
     expect(abfrage?.text).toContain("author_key");
-    expect(abfrage?.params).toEqual(["best_practice", "validiert", true, "u-cara"]);
+    expect(abfrage?.params).toEqual(["best_practice", "validiert", 1, "u-cara"]);
   });
 
   it("T-385-1: der Trim steht VOR einem etwaigen Deckel — er ist Teil der WHERE-Klausel", async () => {
@@ -158,7 +159,7 @@ const STUFEN = [
   "intern",
   "vertraulich",
   "streng_vertraulich",
-  "geheim", // ungültig → normalizeConfidentiality legt auf 'intern' aus (sichtbarkeit.ts:39-43)
+  "geheim", // ungültig → seit Entscheidung 16 „ungeklärt“ (schutzrang 1), nicht mehr 'intern'
   null,
 ] as const;
 const AUTOREN = ["u-anna", "u-bert", ""] as const;
@@ -225,15 +226,26 @@ describe("BASIC 391 · die Liste trimmt die GRUNDMENGE, nicht das Ergebnis", () 
     expect(geprueft).toBe(8);
   });
 
-  it("T-385-5: eine UNBEKANNTE Stufe gilt als intern und bleibt sichtbar — in beiden Formen gleich", async () => {
+  // aufnahme:20260922:gesamt-leserechte (Entscheidung 16 vom 11.10.2026): eine fehlende, null- oder
+  // unbekannte Stufe ist UNGEKLÄRT und wird wie „vertraulich“ geschützt — bis hierher galt sie als
+  // intern und war für jeden sichtbar.
+  it("T-385-5: eine UNGEKLÄRTE Stufe ist geschützt wie vertraulich — in beiden Formen gleich", async () => {
     const ko385 = await dienstMitKreuzbestand();
-    const sichtbar = (await ko385.list({}, sqlSichtbarkeitFuer(FREMDER))).map((k) => k.id);
-    // Index 4 = 'geheim' (ungültig), Index 5 = null. Beide sind für JEDEN sichtbar.
-    expect(sichtbar).toContain("k-4-0-live");
-    expect(sichtbar).toContain("k-5-0-live");
-    // Und die echten Stufen sind es für den Fremden weiterhin NICHT.
-    expect(sichtbar).not.toContain("k-2-0-live");
-    expect(sichtbar).not.toContain("k-3-0-live");
+    const fremd = (await ko385.list({}, sqlSichtbarkeitFuer(FREMDER))).map((k) => k.id);
+    // Index 0 = fehlend, 4 = 'geheim' (ungültig), 5 = null: für den Fremden ohne Rang verborgen.
+    expect(fremd).not.toContain("k-0-0-live");
+    expect(fremd).not.toContain("k-4-0-live");
+    expect(fremd).not.toContain("k-5-0-live");
+    // Die echten Stufen ebenfalls — nur „intern“ geht durch.
+    expect(fremd).not.toContain("k-2-0-live");
+    expect(fremd).not.toContain("k-3-0-live");
+    expect(fremd).toContain("k-1-0-live");
+    // Gegenprobe: Rang 1 (ko.validate, Übergangsregel) sieht die ungeklärten, nicht „streng“.
+    const kuratorin = (await ko385.list({}, sqlSichtbarkeitFuer(CONTROLLER))).map((k) => k.id);
+    expect(kuratorin).toContain("k-0-0-live");
+    expect(kuratorin).toContain("k-4-0-live");
+    expect(kuratorin).toContain("k-5-0-live");
+    expect(kuratorin).not.toContain("k-3-0-live");
   });
 
   it("T-385-5: ein leerer Autor ist keine Autorschaft — auch nicht über den Listenweg", async () => {

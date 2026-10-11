@@ -2,9 +2,10 @@
 // AUFNAHME 20260922 · confluence-import-rechte (R-0549) — DIE LESERLISTE AUS DER QUELLE, ALS SQL.
 // ==================================================================================================
 //
-// `darfSehen` hat einen neuen ersten Zweig: trägt ein Objekt `quellrechte.leser`, entscheidet nur
-// diese Liste (seit Nacharbeit 3 ohne Autorausnahme). `sqlSichtbarkeitFuer` trägt denselben Zweig
-// als CASE im Prädikat. Zwei Formen derselben Regel brauchen denselben Beleg wie BASIC 380: ein
+// `darfSehen` hat einen zusätzlichen Zweig: trägt ein Objekt `quellrechte.leser`, muss der Leser
+// darin stehen (seit Nacharbeit 3 ohne Autorausnahme) — und seit gesamt-leserechte Nacharbeit 24
+// ZUSÄTZLICH das persönliche Freigabeniveau der Stufe haben. `sqlSichtbarkeitFuer` trägt denselben
+// Zweig als CASE im Prädikat, UND-verknüpft mit der Stufenregel. Zwei Formen derselben Regel brauchen denselben Beleg wie BASIC 380: ein
 // ECHTES Postgres und Mengengleichheit über den vollständigen Kreuzbestand, nicht eine Stichprobe.
 //
 //   {ohne Quellrechte, leere Liste, [Lea], [Lea, Carl]} × {intern, vertraulich} × {Admin, leer}
@@ -54,6 +55,14 @@ const STUFEN: readonly Confidentiality[] = ["intern", "vertraulich"];
 const AUTOREN: readonly string[] = [ADMIN, ""];
 const ROLLEN: readonly Role[] = ["viewer", "controller", "admin"];
 const BETRACHTER: readonly string[] = [LEA, CARL, OTTO, ADMIN];
+// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24): die Leserliste ist eine zusätzliche
+// Bedingung NEBEN dem persönlichen Freigabeniveau — die Parität läuft deshalb auch über alle Niveaus.
+const FREIGABEN: readonly (SessionUser["freigabe"] | undefined)[] = [
+  undefined,
+  "intern",
+  "vertraulich",
+  "streng_vertraulich",
+];
 
 function kreuzbestand(): KnowledgeObject[] {
   const out: KnowledgeObject[] = [];
@@ -137,21 +146,26 @@ describe("R-0549 · SQL-Trim und darfSehen sind auch mit Quelllesern dieselbe Re
       let geprueft = 0;
       for (const role of ROLLEN) {
         for (const id of BETRACHTER) {
-          const user: SessionUser = { id, role };
-          const ausRegel = alle
-            .filter((k) => !k.deletedAt && darfSehen(user, k))
-            .map((k) => k.id)
-            .sort();
-          const ausListe = (await repo.list({}, sqlSichtbarkeitFuer(user))).map((k) => k.id).sort();
-          const ausSuche = (await repo.listForSearch({}, sqlSichtbarkeitFuer(user)))
-            .map((k) => k.id)
-            .sort();
-          expect(ausListe, `Liste — ${role}/${id}`).toEqual(ausRegel);
-          expect(ausSuche, `Suche — ${role}/${id}`).toEqual(ausRegel);
-          geprueft += 1;
+          for (const freigabe of FREIGABEN) {
+            const user: SessionUser = { id, role, ...(freigabe ? { freigabe } : {}) };
+            const lage = `${role}/${id}/${freigabe ?? "ohne Niveau"}`;
+            const ausRegel = alle
+              .filter((k) => !k.deletedAt && darfSehen(user, k))
+              .map((k) => k.id)
+              .sort();
+            const ausListe = (await repo.list({}, sqlSichtbarkeitFuer(user)))
+              .map((k) => k.id)
+              .sort();
+            const ausSuche = (await repo.listForSearch({}, sqlSichtbarkeitFuer(user)))
+              .map((k) => k.id)
+              .sort();
+            expect(ausListe, `Liste — ${lage}`).toEqual(ausRegel);
+            expect(ausSuche, `Suche — ${lage}`).toEqual(ausRegel);
+            geprueft += 1;
+          }
         }
       }
-      expect(geprueft).toBe(ROLLEN.length * BETRACHTER.length);
+      expect(geprueft).toBe(ROLLEN.length * BETRACHTER.length * FREIGABEN.length);
     } finally {
       await pool.end();
     }
@@ -163,9 +177,16 @@ describe("R-0549 · SQL-Trim und darfSehen sind auch mit Quelllesern dieselbe Re
       const repo = new PgKoRepo(pool);
       const id = "q-2-vertraulich-0-live"; // Leser [Lea], vertraulich, Autor Admin, lebend
       const carl = await repo.list({}, sqlSichtbarkeitFuer({ id: CARL, role: "controller" }));
-      const lea = await repo.list({}, sqlSichtbarkeitFuer({ id: LEA, role: "viewer" }));
+      // Nacharbeit 24 (Ben): die gelistete Leserin braucht ZUSÄTZLICH das Niveau der Stufe.
+      const leaMitNiveau: SessionUser = { id: LEA, role: "viewer", freigabe: "vertraulich" };
+      const leaOhneNiveau: SessionUser = { id: LEA, role: "viewer", freigabe: "intern" };
+      const lea = await repo.list({}, sqlSichtbarkeitFuer(leaMitNiveau));
+      const leaIntern = await repo.list({}, sqlSichtbarkeitFuer(leaOhneNiveau));
       expect(carl.map((k) => k.id)).not.toContain(id);
       expect(lea.map((k) => k.id)).toContain(id);
+      // Gegenprobe: die Leserliste ersetzt das persönliche Freigabeniveau nicht.
+      expect(leaIntern.map((k) => k.id)).not.toContain(id);
+      expect(leaIntern.map((k) => k.id)).toContain("q-2-intern-0-live");
       // Ohne Leserliste bleibt die Stufenregel: dieselbe Stufe, der Controller sieht sie.
       expect(carl.map((k) => k.id)).toContain("q-0-vertraulich-0-live");
       // Nacharbeit 3 (Befund F2): der AUTOR ohne Quellrecht sieht das Objekt auch im SQL nicht.
@@ -406,6 +427,18 @@ describe("K4/K5 · Import, Annahme und Versionsabgleich überstehen den Neustart
         });
         expect(angelegt.statusCode, angelegt.body).toBe(201);
         ids[schluessel] = (angelegt.json() as { id: string }).id;
+      }
+      // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24): die Leserliste ersetzt das
+      // persönliche Freigabeniveau nicht. Die beiden Quellleserinnen bekommen deshalb das Niveau
+      // der importierten Stufe („vertraulich“) — es überdauert den Neustart mit dem Konto.
+      for (const schluessel of ["lea", "otto"] as const) {
+        const niveau = await app.inject({
+          method: "PUT",
+          url: `/api/users/${ids[schluessel]}`,
+          headers: adminHeaders,
+          payload: { freigabe: "vertraulich" },
+        });
+        expect(niveau.statusCode, niveau.body).toBe(200);
       }
 
       // v1: „700" offen, „701" nur für Lea.

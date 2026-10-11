@@ -768,6 +768,9 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
           // R-0483: ein in einem Führungsartikel aufgegangener Artikel ist durch dessen neue Fassung
           // ERSETZT — verdrängt, nicht ergänzt (SQL-Spiegel `K_NICHT_AUFGEGANGEN` im Pg-Adapter).
           !ko.mergedInto &&
+          // R-0573 (Nacharbeit 11): ein durch Weisung überstimmter, geschlossener Punkt gilt nicht
+          // mehr — lesbar, aber kein Treffer (SQL-Spiegel `K_NICHT_GESCHLOSSEN`).
+          !ko.geschlossen &&
           ko.version === projection.koVersion &&
           projection.projectionVersion === aktiveFassung &&
           (generation === null ||

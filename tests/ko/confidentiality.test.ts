@@ -188,7 +188,8 @@ describe("SCRUM-415: Output Factory schließt vertrauliche KOs aus (nie in exter
     const offen = await validatedKo(ko, { title: "Öffentlich" });
     const geheim = await validatedKo(ko, { title: "Geheim", confidentiality: "vertraulich" });
 
-    const eligible = await output.listEligible();
+    // Auch ein Betrachter, der alles sehen darf, bekommt Vertrauliches nicht als Output-Quelle.
+    const eligible = await output.listEligible(() => true);
     const ids = eligible.map((s) => s.id);
     expect(ids).toContain(offen.id);
     expect(ids).not.toContain(geheim.id);
@@ -199,8 +200,9 @@ describe("SCRUM-415: Output Factory schließt vertrauliche KOs aus (nie in exter
     const output = new OutputService({ koService: ko });
     const geheim = await validatedKo(ko, { confidentiality: "streng_vertraulich" });
 
-    await expect(output.generate({ kind: "instruction", koIds: [geheim.id] })).rejects.toThrow(
-      OutputError,
-    );
+    const allesSichtbar = () => true;
+    await expect(
+      output.generate({ kind: "instruction", koIds: [geheim.id] }, allesSichtbar),
+    ).rejects.toThrow(OutputError);
   });
 });

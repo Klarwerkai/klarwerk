@@ -19,18 +19,29 @@
 //        noch über den Export; Objekttitel (Rücklinks) nur für Objekte, die sie öffnen dürfen.
 //   K3 · Die gespeicherten Ereignisse bleiben unverändert — Schwärzung ist eine Sicht, kein Umschreiben.
 //   K6 · Die Integritätsprüfung bleibt wirksam und nennt ihren Zeitpunkt.
+//
+// aufnahme:20260922:gesamt-leserechte (Nacharbeit 20, Integration main): die Route trägt seither
+// ZWEI Schichten. Wer nicht alles lesen darf (Freigaberang < 2 oder ein bekannter Space nicht
+// lesbar — Variante B), bekommt eine LESERANSICHT: Einträge zu Objekten, die er nicht sehen darf,
+// fehlen ganz (keine Existenzauskunft), die Nummern sind laufende Nummern der Ansicht, der Export ist
+// `klarwerk-audit-ansicht`. Darauf wirkt die Schwärzung dieses Auftrags. Die Fälle, die Kettennummern
+// und die vollständige Kette messen, laufen deshalb mit einem uneingeschränkten Controller (`VOLL`);
+// die Rechtefälle messen den eingeschränkten (`CONTROLLER`) — dort fehlt der geschützte Eintrag
+// jetzt ganz, statt geschwärzt zu erscheinen.
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AuditObjektFakten } from "../../services/app/src/audit-sicht";
 import type { Guards, SessionUser } from "../../services/app/src/http";
-import { auditRoutes } from "../../services/app/src/routes/audit-routes";
+import { type AuditLeseQuelle, auditRoutes } from "../../services/app/src/routes/audit-routes";
 import {
   type AuditEntry,
   type AuditInput,
   AuditService,
   InMemoryAuditRepo,
+  hashEntryFuerVersion,
+  verifyChain,
 } from "../../services/audit";
-import type { Role } from "../../services/auth";
+import { type Role, istFreigabestufe } from "../../services/auth";
 import { can } from "../../services/rbac";
 
 const GEHEIM = "GEHEIMTITEL Schichtplan Halle Z (fiktiv)";
@@ -124,10 +135,12 @@ function testTuer(): Guards {
       return undefined;
     }
     const spaces = request.headers["x-test-spaces"];
+    const freigabe = request.headers["x-test-freigabe"];
     return {
       id: konto,
       role: rolle as Role,
       spaceLesbar: new Set(typeof spaces === "string" ? spaces.split(",").filter(Boolean) : []),
+      ...(istFreigabestufe(freigabe) ? { freigabe } : {}),
     };
   };
   return {
@@ -155,6 +168,22 @@ function testTuer(): Guards {
 
 const CONTROLLER = { "x-test-rolle": "controller", "x-test-konto": "u-ctrl" };
 const CONTROLLER_MIT_SPACE = { ...CONTROLLER, "x-test-spaces": "space-z" };
+/** Volles Leserecht: jeder bekannte Space lesbar und persönliches Niveau „streng vertraulich". */
+const VOLL = { ...CONTROLLER_MIT_SPACE, "x-test-freigabe": "streng_vertraulich" };
+/**
+ * Nacharbeit 28 (Ben): die vollständige Kette gibt es nur mit AUSDRÜCKLICH erteilter
+ * Ketteneinsicht — hier dem Konto `u-revision`. Ohne sie bekommt auch volles Leserecht die
+ * Leseansicht (die Form hängt nie am Bestand).
+ */
+const KETTENEINSICHT = { ...VOLL, "x-test-konto": "u-revision" };
+
+/** Die Lesequelle der Route — dieselben drei erfundenen Beiträge, ein Space, keine Befunde. */
+const QUELLE: AuditLeseQuelle = {
+  sichtbarkeitsfaktenAller: async () => Object.entries(OBJEKTE).map(([id, f]) => ({ id, ...f })),
+  spaceKennungen: async () => ["space-z"],
+  befundZuordnungen: async () => [],
+  ketteneinsicht: (kontoId) => kontoId === "u-revision",
+};
 
 interface Buehne {
   app: FastifyInstance;
@@ -175,7 +204,7 @@ async function buehne(): Promise<Buehne> {
   uhr = Date.parse("2026-10-09T09:00:00.000Z");
   const app = Fastify();
   const objekte = { get: async (id: string) => OBJEKTE[id] };
-  app.register(auditRoutes(audit, testTuer(), [], objekte));
+  app.register(auditRoutes(audit, testTuer(), [], objekte, QUELLE));
   await app.ready();
   offen.push(app);
   return { app, audit, repo };
@@ -210,40 +239,76 @@ describe("K4 · Person, Aktion, Ziel und Zeitraum — kombinierbar, seitenweise"
     const b = await buehne();
     const zeitraum = "&from=2026-10-01T00:00:00.000Z&to=2026-10-04T00:00:00.000Z";
     // Alle vier zugleich: genau Annas Überarbeitung von ko-offen am 3. Oktober.
-    const alleVier = await seite(b, `?actor=u-anna&action=ko.revised&target=ko-offen${zeitraum}`);
+    const alleVier = await seite(
+      b,
+      `?actor=u-anna&action=ko.revised&target=ko-offen${zeitraum}`,
+      VOLL,
+    );
     expect(seqs(alleVier)).toEqual([3]);
     // Derselbe Vorgang am selben Ziel, aber eine andere Person: nur der unbekannte Akteur.
-    const anderePerson = await seite(b, "?actor=u-unbekannt&action=ko.revised&target=ko-offen");
+    const anderePerson = await seite(
+      b,
+      "?actor=u-unbekannt&action=ko.revised&target=ko-offen",
+      VOLL,
+    );
     expect(seqs(anderePerson)).toEqual([8]);
     // Der Zeitraum endet VOR dem Eintrag (`to` ist ausschließlich): leer, kein Fehler.
-    const zuFrueh = await seite(b, "?actor=u-anna&action=ko.revised&to=2026-10-03T08:00:00.000Z");
+    const zuFrueh = await seite(
+      b,
+      "?actor=u-anna&action=ko.revised&to=2026-10-03T08:00:00.000Z",
+      VOLL,
+    );
     expect(seqs(zuFrueh)).toEqual([]);
     // Nur Ziel: alles an ko-offen, jüngstes zuerst.
-    expect(seqs(await seite(b, "?target=ko-offen"))).toEqual([9, 8, 3]);
+    expect(seqs(await seite(b, "?target=ko-offen", VOLL))).toEqual([9, 8, 3]);
     // Mehrere Aktionen zugleich (die Auth-Ansicht): Anmeldungen und die Löschung.
-    expect(seqs(await seite(b, "?actions=auth.login,user.delete"))).toEqual([7, 6, 2]);
+    expect(seqs(await seite(b, "?actions=auth.login,user.delete", VOLL))).toEqual([7, 6, 2]);
   });
 
   it("Seiten über den Zeiger des Servers — keine Lücke, keine Doppelung, keine Gesamtliste", async () => {
     const b = await buehne();
-    const eins = await seite(b, "?limit=3");
+    const eins = await seite(b, "?limit=3", VOLL);
     expect(seqs(eins)).toEqual([10, 9, 8]);
     expect(eins.nextBefore).toBe(8);
-    const zwei = await seite(b, `?limit=3&before=${eins.nextBefore}`);
+    const zwei = await seite(b, `?limit=3&before=${eins.nextBefore}`, VOLL);
     expect(seqs(zwei)).toEqual([7, 6, 5]);
-    const drei = await seite(b, `?limit=3&before=${zwei.nextBefore}`);
+    const drei = await seite(b, `?limit=3&before=${zwei.nextBefore}`, VOLL);
     expect(seqs(drei)).toEqual([4, 3, 2]);
-    const vier = await seite(b, `?limit=3&before=${drei.nextBefore}`);
+    const vier = await seite(b, `?limit=3&before=${drei.nextBefore}`, VOLL);
     expect(seqs(vier)).toEqual([1]);
     expect(vier.nextBefore).toBeNull();
     // Ohne Angabe 25, und auch eine riesige Wunschgröße bleibt bei höchstens 100.
-    expect((await seite(b, "")).limit).toBe(25);
-    expect((await seite(b, "?limit=100000")).limit).toBe(100);
+    expect((await seite(b, "", VOLL)).limit).toBe(25);
+    expect((await seite(b, "?limit=100000", VOLL)).limit).toBe(100);
     // Ein Filter blättert mit: Seiten innerhalb der gefilterten Menge.
-    const gefiltert = await seite(b, "?actor=u-anna&limit=2");
+    const gefiltert = await seite(b, "?actor=u-anna&limit=2", VOLL);
     expect(seqs(gefiltert)).toEqual([10, 9]);
-    const weiter = await seite(b, `?actor=u-anna&limit=2&before=${gefiltert.nextBefore}`);
+    const weiter = await seite(b, `?actor=u-anna&limit=2&before=${gefiltert.nextBefore}`, VOLL);
     expect(seqs(weiter)).toEqual([5, 3]);
+  });
+
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): derselbe Seitenweg für den
+  // eingeschränkten Controller. Der Eintrag zum geschlossenen Beitrag (Kette Nr. 5) fehlt; die
+  // Nummern sind lückenlos die der Ansicht, Zeiger und Seitengröße gelten über ihr.
+  it("eingeschränkt: Seiten über die Leseransicht — lückenlose Nummern, nichts Verborgenes", async () => {
+    const b = await buehne();
+    const eins = await seite(b, "?limit=4");
+    expect(seqs(eins)).toEqual([9, 8, 7, 6]);
+    expect(eins.nextBefore).toBe(6);
+    const zwei = await seite(b, `?limit=4&before=${eins.nextBefore}`);
+    expect(seqs(zwei)).toEqual([5, 4, 3, 2]);
+    const drei = await seite(b, `?limit=4&before=${zwei.nextBefore}`);
+    expect(seqs(drei)).toEqual([1]);
+    expect(drei.nextBefore).toBeNull();
+    const alle = [...eins.entries, ...zwei.entries, ...drei.entries];
+    expect(alle.some((e) => e.target === "ko-geschlossen")).toBe(false);
+    for (const e of alle) {
+      expect(e).not.toHaveProperty("hash");
+      expect(e).not.toHaveProperty("prevHash");
+    }
+    // Derselbe Filter wie oben, über der Ansicht: der unbekannte Akteur ist hier Nr. 7.
+    const anderePerson = await seite(b, "?actor=u-unbekannt&action=ko.revised&target=ko-offen");
+    expect(seqs(anderePerson)).toEqual([7]);
   });
 
   it("ein unlesbarer Zeitraum oder Zeiger ist ein 400, kein still ungefiltertes Ergebnis", async () => {
@@ -288,25 +353,27 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
     }
   });
 
-  it("ohne Recht am Space: kein Titel, kein Rücklink, die Titelkopie im Eintrag geschwärzt", async () => {
+  it("ohne Recht am Space: kein Titel, kein Rücklink, der Eintrag zum geschützten Beitrag fehlt", async () => {
     const b = await buehne();
     const s = await seite(b, "");
     // Rücklink nur für den offenen Beitrag; der geschlossene und der im Papierkorb bleiben Kennung.
     expect(s.objekte).toEqual({ "ko-offen": { titel: OFFEN } });
-    const geschlossen = s.entries.find((e) => e.seq === 5);
-    expect(geschlossen?.payload).toEqual({ koAuthor: "u-ben", koOriginalAuthor: "u-ben" });
-    expect(geschlossen?.geschwaerzt).toEqual(["koTitle"]);
-    // Der sichtbare Beitrag behält seine Titelkopie — geschwärzt wird nur, was geschützt ist.
-    expect(s.entries.find((e) => e.seq === 9)?.payload.koTitle).toBe(OFFEN);
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): der Eintrag mit der Titelkopie des
+    // geschlossenen Beitrags erscheint gar nicht — strenger als die Schwärzung und ohne Auskunft,
+    // dass es den Beitrag gibt.
+    expect(s.entries.some((e) => e.target === "ko-geschlossen")).toBe(false);
+    // Der sichtbare Beitrag behält seine Titelkopie — verborgen wird nur, was geschützt ist.
+    expect(s.entries.find((e) => e.action === "answer.helpful")?.payload.koTitle).toBe(OFFEN);
     expect(JSON.stringify(s)).not.toContain(GEHEIM);
 
     // Dieselbe Regel auf der Gesamtliste …
     const liste = await b.app.inject({ method: "GET", url: "/api/audit", headers: CONTROLLER });
     expect(liste.statusCode).toBe(200);
     expect(liste.body).not.toContain(GEHEIM);
+    expect(liste.body).not.toContain("ko-geschlossen");
     expect(liste.body).toContain(OFFEN);
 
-    // … und auf dem Export. Kopf und Prüfbericht beschreiben weiter die VOLLSTÄNDIGE Kette.
+    // … und auf dem Export: die Leseransicht, ausdrücklich keine Kette.
     const exp = await b.app.inject({
       method: "GET",
       url: "/api/audit/export",
@@ -314,24 +381,66 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
     });
     expect(exp.statusCode).toBe(200);
     expect(exp.body).not.toContain(GEHEIM);
+    expect(exp.body).not.toContain("ko-geschlossen");
+    const ansicht = exp.json() as {
+      format: string;
+      kette: boolean;
+      count: number;
+      entries: AuditEntry[];
+    };
+    expect(ansicht.format).toBe("klarwerk-audit-ansicht");
+    expect(ansicht.kette).toBe(false);
+    expect(ansicht.count).toBe(KETTE.length - 1);
+  });
+
+  it("mit Ketteneinsicht: der Export ist die vollständige Kette — Kopf und Prüfbericht wie gespeichert", async () => {
+    const b = await buehne();
+    // Nacharbeit 29 (Ben): ein Inhaltsbeleg zu einem Objekt im Papierkorb — genau der Eintrag, den
+    // die Schwärzung verändern würde. Im Kettenexport muss er unverändert und nachrechenbar sein.
+    const KATEGORIE = "Kategorie im Papierkorb (fiktiv)";
+    await b.audit.record({
+      actor: "u-anna",
+      action: "ko.category-changed",
+      target: "ko-papierkorb",
+      payload: { vorher: "Alt", nachher: KATEGORIE },
+    });
+    const gespeichert = await b.repo.all();
+    const exp = await b.app.inject({
+      method: "GET",
+      url: "/api/audit/export",
+      headers: KETTENEINSICHT,
+    });
+    expect(exp.statusCode).toBe(200);
     const datei = exp.json() as {
       count: number;
-      geschwaerzt: number;
       head: { seq: number; hash: string };
       inspection: { ok: boolean };
       entries: (AuditEntry & { geschwaerzt?: string[] })[];
     };
-    expect(datei.geschwaerzt).toBe(1);
-    expect(datei.count).toBe(KETTE.length);
+    // Die Einträge sind die gespeicherten — Feld für Feld, ohne Schwärzung, und rechnen nach.
+    expect(datei.entries).toEqual(gespeichert);
+    expect(datei.entries.some((e) => e.geschwaerzt !== undefined)).toBe(false);
+    expect(verifyChain(datei.entries)).toBe(true);
+    for (const e of datei.entries) {
+      const { hash, ...material } = e;
+      expect(hashEntryFuerVersion(material)).toBe(hash);
+    }
+    expect(datei.count).toBe(gespeichert.length);
     expect(datei.inspection.ok).toBe(true);
-    expect(datei.entries.find((e) => e.seq === 5)?.geschwaerzt).toEqual(["koTitle"]);
-    const original = (await b.repo.all()).find((e) => e.seq === KETTE.length);
-    expect(datei.head).toEqual({ seq: original?.seq, hash: original?.hash });
+    expect(datei.entries.find((e) => e.seq === 5)?.payload.koTitle).toBe(GEHEIM);
+    const letzter = gespeichert.at(-1);
+    expect(datei.head).toEqual({ seq: letzter?.seq, hash: letzter?.hash });
+    // Die Redaktion steht ausschließlich in der getrennten Leseansicht: dort fehlt die Kategorie.
+    const liste = await b.app.inject({ method: "GET", url: "/api/audit", headers: VOLL });
+    expect(liste.body).not.toContain(KATEGORIE);
+    // Gegenprobe (Nacharbeit 28): volles Leserecht OHNE Ketteneinsicht bekommt die Leseansicht.
+    const ansicht = await b.app.inject({ method: "GET", url: "/api/audit/export", headers: VOLL });
+    expect((ansicht.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");
   });
 
   // Bens Befund Nacharbeit 35: der Anlagenkontext eines Beitrags (Bauteil, Material, Version,
   // Standort, Schicht) steht als vorher/nachher im Protokoll und ist Inhalt des Beitrags.
-  it("Anlagenkontext ohne Leserecht: auf Liste, Seite und Export geschwärzt; mit Recht sichtbar", async () => {
+  it("Anlagenkontext ohne Leserecht: auf Liste, Seite und Export verborgen; mit Recht sichtbar", async () => {
     const b = await buehne();
     const KONTEXT = "Pumpe P7 · Edelstahl · Rev. C · Halle Z · Nachtschicht (fiktiv)";
     await b.audit.record({
@@ -342,10 +451,10 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
     });
     const vorher = structuredClone(await b.repo.all());
 
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): ohne Leserecht am Beitrag fehlt der
+    // Eintrag in der Leseransicht ganz — strenger als die Schwärzung.
     const s = await seite(b, "?action=ko.anlagenkontext-changed");
-    expect(s.entries).toHaveLength(1);
-    expect(s.entries[0]?.payload).toEqual({});
-    expect(s.entries[0]?.geschwaerzt).toEqual(["vorher", "nachher"]);
+    expect(s.entries).toHaveLength(0);
     expect(JSON.stringify(s)).not.toContain(KONTEXT);
     const liste = await b.app.inject({ method: "GET", url: "/api/audit", headers: CONTROLLER });
     expect(liste.statusCode).toBe(200);
@@ -385,7 +494,8 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
 describe("K1/K3 · Namen aus der Kette — als Belege, nicht als Umschreibung", () => {
   it("eine Seite mit dem gelöschten Konto bringt NUR dessen gespeicherte Namen mit", async () => {
     const b = await buehne();
-    const s = await seite(b, "?actor=u-gerd");
+    // Kettennummern: der uneingeschränkte Leser (eingeschränkt zählt die Ansicht, s. Dateikopf).
+    const s = await seite(b, "?actor=u-gerd", VOLL);
     expect(seqs(s)).toEqual([6]);
     // Begrenzt (Bens Befund Nacharbeit 3): je Kennung nur die JÜNGSTE Namens- bzw. Kontozuordnung.
     // Die Löschung (7) ist jüngster Zielname UND jüngster Kontovorgang; der ältere Rollenwechsel (4)
@@ -440,9 +550,10 @@ describe("K1/K3 · Namen aus der Kette — als Belege, nicht als Umschreibung", 
     await b.app.inject({ method: "GET", url: "/api/audit/export", headers: CONTROLLER });
     await b.app.inject({ method: "GET", url: "/api/audit/verify", headers: CONTROLLER });
     const nachher = await b.repo.all();
-    // Der Export hängt seinen eigenen Beleg an (R-0613) — alles davor ist unverändert.
+    // Der Export hängt seinen eigenen Beleg an (R-0613) — alles davor ist unverändert. Für den
+    // eingeschränkten Controller ist es der Beleg der Leseransicht (gesamt-leserechte).
     expect(nachher.slice(0, vorher.length)).toEqual(vorher);
-    expect(nachher.at(-1)?.action).toBe("audit.exported");
+    expect(nachher.at(-1)?.action).toBe("audit.view-exported");
     // Die Titelkopie steht gespeichert weiter da; geschwärzt wurde nur die Ausgabe.
     expect(nachher.find((e) => e.seq === 5)?.payload.koTitle).toBe(GEHEIM);
     expect((await b.audit.verifyReport()).ok).toBe(true);
@@ -453,16 +564,33 @@ describe("K6 · die Integritätsprüfung nennt ihren Zeitpunkt", () => {
   it("GET /api/audit/verify: ok mit Prüfzeitpunkt; nach einer Manipulation nicht ok", async () => {
     const b = await buehne();
     const vorher = Date.now();
+    // Die Kettenprüfung mit Ketteneinsicht (Nacharbeit 28: die einzige Form der ganzen Kette).
     const res = await b.app.inject({
       method: "GET",
       url: "/api/audit/verify",
-      headers: CONTROLLER,
+      headers: KETTENEINSICHT,
     });
     expect(res.statusCode).toBe(200);
     const bericht = res.json() as { ok: boolean; count: number; checkedAt: string };
     expect(bericht.ok).toBe(true);
     expect(bericht.count).toBe(KETTE.length);
     expect(Date.parse(bericht.checkedAt)).toBeGreaterThanOrEqual(vorher - 1000);
+
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): der eingeschränkte Controller bekommt
+    // den Bericht SEINER Ansicht — ebenfalls mit Prüfzeitpunkt, ohne die Gesamtzahl der Kette.
+    const ansicht = await b.app.inject({
+      method: "GET",
+      url: "/api/audit/verify",
+      headers: CONTROLLER,
+    });
+    const ansichtsbericht = ansicht.json() as {
+      ok: boolean;
+      count: number;
+      kette: boolean;
+      checkedAt: string;
+    };
+    expect(ansichtsbericht).toMatchObject({ ok: true, count: KETTE.length - 1, kette: false });
+    expect(Date.parse(ansichtsbericht.checkedAt)).toBeGreaterThanOrEqual(vorher - 1000);
 
     // Gegenprobe: eine Kette mit gebrochener Verkettung meldet die Route nicht als ok.
     const kaputt = new InMemoryAuditRepo();
@@ -471,10 +599,159 @@ describe("K6 · die Integritätsprüfung nennt ihren Zeitpunkt", () => {
       await kaputt.append(e.seq === 3 ? { ...e, prevHash: "x".repeat(64) } : e);
     }
     const app = Fastify();
-    app.register(auditRoutes(new AuditService({ repo: kaputt }), testTuer()));
+    app.register(
+      auditRoutes(new AuditService({ repo: kaputt }), testTuer(), [], undefined, QUELLE),
+    );
     await app.ready();
     offen.push(app);
-    const rot = await app.inject({ method: "GET", url: "/api/audit/verify", headers: CONTROLLER });
+    const rot = await app.inject({
+      method: "GET",
+      url: "/api/audit/verify",
+      headers: KETTENEINSICHT,
+    });
     expect((rot.json() as { ok: boolean }).ok).toBe(false);
+  });
+});
+
+// ================================================================================================
+// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24) — QUELLRECHTE IM PROTOKOLL.
+// ================================================================================================
+//
+// Freigaberang 2 und alle Spaces genügten bis hierher für die UNVERÄNDERTE Kette. Ein Objekt, das
+// eine Leserliste aus der Quelle trägt, stand damit für einen ausgeschlossenen Leser mit Kennung,
+// Vorgängen und Zählwerten im Protokoll. Jetzt läuft die Objektprüfung (samt Quellrechten) für
+// JEDEN Leser; uneingeschränkt ist nur, wem danach nichts verborgen bleibt. Und ein endgelöschtes
+// Objekt, dessen Quellschutz nicht belegt ist, gibt nichts frei.
+describe("Nacharbeit 24 · Quellrechte und unbelegter Schutz im Prüfprotokoll", () => {
+  const QUELLOBJEKT = "ko-quelle-lea";
+  const GELOESCHT_ALT = "ko-geloescht-alt";
+  const GELOESCHT_NEU = "ko-geloescht-neu";
+
+  async function quellbuehne(mitQuellobjekt = true) {
+    const repo = new InMemoryAuditRepo();
+    let uhr = Date.parse("2026-10-01T08:00:00.000Z");
+    const audit = new AuditService({ repo, now: () => uhr });
+    const quellvorgaenge: AuditInput[] = mitQuellobjekt
+      ? [
+          { actor: "u-anna", action: "ko.created", target: QUELLOBJEKT },
+          { actor: "u-anna", action: "ko.revised", target: QUELLOBJEKT, payload: { version: 2 } },
+        ]
+      : [];
+    const eintraege: AuditInput[] = [
+      { actor: "u-anna", action: "ko.created", target: "ko-offen" },
+      ...quellvorgaenge,
+      { actor: "u-anna", action: "ko.created", target: GELOESCHT_ALT },
+      // Altbeleg: die Endlöschung sagt nichts über Quellrechte.
+      { actor: "u-admin", action: "ko.purged", target: GELOESCHT_ALT, payload: { reason: "x" } },
+      { actor: "u-anna", action: "ko.created", target: GELOESCHT_NEU },
+      {
+        actor: "u-admin",
+        action: "ko.purged",
+        target: GELOESCHT_NEU,
+        payload: { reason: "hard", quellbeschraenkt: false },
+      },
+    ];
+    for (const e of eintraege) {
+      // Gleiche Zeitstempel in beiden Varianten: die Uhr läuft nur bei Einträgen außerhalb des
+      // Quellobjekts weiter — so ist der Antwortvergleich unten Feld für Feld möglich.
+      if (e.target !== QUELLOBJEKT) {
+        uhr += 60_000;
+      }
+      await audit.record(e);
+    }
+    const objekte: Record<string, AuditObjektFakten> = {
+      "ko-offen": { title: OFFEN, author: "u-anna", confidentiality: "intern" },
+      ...(mitQuellobjekt
+        ? {
+            [QUELLOBJEKT]: {
+              title: "Quellseite nur für Lea (fiktiv)",
+              author: "u-anna",
+              confidentiality: "intern" as const,
+              quellrechte: { leser: ["u-lea"] },
+            },
+          }
+        : {}),
+    };
+    const quelle: AuditLeseQuelle = {
+      sichtbarkeitsfaktenAller: async () =>
+        Object.entries(objekte).map(([id, f]) => ({ id, ...f })),
+      spaceKennungen: async () => [],
+      befundZuordnungen: async () => [],
+    };
+    const app = Fastify();
+    app.register(
+      auditRoutes(audit, testTuer(), [], { get: async (id: string) => objekte[id] }, quelle),
+    );
+    await app.ready();
+    offen.push(app);
+    return app;
+  }
+
+  const STRENG = {
+    "x-test-rolle": "admin",
+    "x-test-konto": "u-admin",
+    "x-test-freigabe": "streng_vertraulich",
+  };
+  const LEA_STRENG = { ...STRENG, "x-test-konto": "u-lea" };
+
+  it("Rang 2 ohne Quellrecht: das Quellobjekt fehlt in Liste, Seite, Export und Prüfbericht", async () => {
+    const app = await quellbuehne();
+    for (const url of ["/api/audit", "/api/audit/seite", "/api/audit/export"]) {
+      const res = await app.inject({ method: "GET", url, headers: STRENG });
+      expect(res.statusCode, url).toBe(200);
+      expect(res.body, url).not.toContain(QUELLOBJEKT);
+      expect(res.body, url).toContain("ko-offen");
+    }
+    const exp = await app.inject({ method: "GET", url: "/api/audit/export", headers: STRENG });
+    expect((exp.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");
+    const bericht = await app.inject({ method: "GET", url: "/api/audit/verify", headers: STRENG });
+    expect(bericht.json()).toMatchObject({ kette: false });
+    const befunde = await app.inject({
+      method: "GET",
+      url: `/api/audit/ko/${QUELLOBJEKT}/findings`,
+      headers: STRENG,
+    });
+    expect(befunde.json()).toEqual({ ids: [] });
+  });
+
+  it("ein Altbeleg ohne Angabe zum Quellschutz gibt das gelöschte Objekt nicht frei; ein belegter schon", async () => {
+    const app = await quellbuehne();
+    const liste = await app.inject({ method: "GET", url: "/api/audit", headers: LEA_STRENG });
+    expect(liste.statusCode).toBe(200);
+    // Lea steht in der Leserliste: das Quellobjekt sieht sie.
+    expect(liste.body).toContain(QUELLOBJEKT);
+    // Der Altbeleg trägt keine Schutzinformation — verborgen, auch für Rang 2.
+    expect(liste.body).not.toContain(GELOESCHT_ALT);
+    // Gegenprobe: „keine Quellleser“ ist belegt — das gelöschte Objekt bleibt nachvollziehbar.
+    expect(liste.body).toContain(GELOESCHT_NEU);
+    // Ohne Ketteneinsicht ist ihr Export eine Ansicht, keine Kette.
+    const exp = await app.inject({ method: "GET", url: "/api/audit/export", headers: LEA_STRENG });
+    expect((exp.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");
+  });
+
+  // Nacharbeit 28 (Ben): die FORM darf die Existenz des verborgenen Objekts nicht verraten. Derselbe
+  // Leser (Rang 2, ohne Quellrecht, ohne Ketteneinsicht) bekommt mit und ohne das ihn ausschließende
+  // Quellobjekt Feld für Feld dieselben Antworten — Liste, Seite, Prüfbericht und Export.
+  it("gleicher sichtbarer Bestand ⇒ gleiche Antworten, ob ein verborgenes Quellobjekt existiert oder nicht", async () => {
+    const mit = await quellbuehne(true);
+    const ohne = await quellbuehne(false);
+    // Nur Zeitpunkte des Abrufs selbst sind frei; alles andere muss übereinstimmen.
+    const ohneAbrufzeit = (roh: string): unknown =>
+      JSON.parse(roh, (schluessel, wert) =>
+        schluessel === "checkedAt" || schluessel === "exportedAt" ? "<abrufzeit>" : wert,
+      );
+    const wege = ["/api/audit", "/api/audit/seite", "/api/audit/verify", "/api/audit/export"];
+    for (const url of wege) {
+      const a = await mit.inject({ method: "GET", url, headers: STRENG });
+      const b = await ohne.inject({ method: "GET", url, headers: STRENG });
+      expect(a.statusCode, url).toBe(200);
+      expect(ohneAbrufzeit(a.body), url).toEqual(ohneAbrufzeit(b.body));
+    }
+    // Kalibrierung: das Quellobjekt existiert in der einen Bühne wirklich — Lea (gelistet) sieht es
+    // nur dort. Sonst wäre die Gleichheit oben trivial.
+    const leaMit = await mit.inject({ method: "GET", url: "/api/audit", headers: LEA_STRENG });
+    const leaOhne = await ohne.inject({ method: "GET", url: "/api/audit", headers: LEA_STRENG });
+    expect(leaMit.body).toContain(QUELLOBJEKT);
+    expect(leaOhne.body).not.toContain(QUELLOBJEKT);
   });
 });

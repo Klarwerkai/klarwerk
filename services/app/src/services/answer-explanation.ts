@@ -60,6 +60,13 @@ export interface AnswerExplanationLeser {
    * Integration mit R-1175 (aufnahme:20260922:gesamt-rechte-inventar, Feld `sichtbar`): beide
    * Auftraege haben dieselbe Entscheidung an dieselbe Stelle gebracht. Es gibt sie hier EINMAL —
    * mit Bens Vorgabe aus Nacharbeit 6, dass keine zweite Stufenregel sie ueberstimmt.
+   *
+   * Integration mit aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidungen 15/16 vom
+   * 11.10.2026): die zentrale Regel `darfSehen` traegt seither selbst den Freigaberang (persoenliches
+   * Niveau, sonst Uebergangsregel) UND die Autor-Ausnahme, die Entscheidung 15 ausdruecklich
+   * behaelt. Eine zusaetzliche UND-Stufensperre hier haette genau diese Ausnahme im Erklaerweg
+   * wieder aufgehoben. Uebernommen ist die Rangbildung: die Route bildet `darfVertraulich` aus
+   * `freigaberang(user) >= 1` — er wirkt nur im fail-closed-Ersatzweg ohne zentrale Entscheidung.
    */
   readonly darfSehen?: (ko: KnowledgeObject) => boolean;
 }

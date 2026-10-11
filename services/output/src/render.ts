@@ -55,6 +55,11 @@ export function toSource(ko: KnowledgeObject): OutputSource {
   };
 }
 
+/** Kennung → angezeigter Autorentext. Ohne Auflösung bleibt die Kennung (Bestandsverhalten). */
+export type AutorText = (id: string) => string;
+
+const KENNUNG: AutorText = (id) => id;
+
 /**
  * R-0349 / R-0414: die eindeutige Marke einer Quelle im Dokument. Sie nennt Kennung UND Fassung —
  * zwei gleichnamige Quellen bleiben unterscheidbar, und die Marke führt eindeutig in den
@@ -69,6 +74,11 @@ export interface ProvenanceOptionen {
   marke?: string;
   /** Ergebnis der Prüfung des Validierungsnachweises. Ohne Angabe: nicht geprüft = MISSING. */
   pruefung?: OutputPruefnachweis;
+  /**
+   * Aufnahme gesamt-wissen-herkunft (R-0298): Kennung → sichtbarer Name. Ohne Angabe tragen die
+   * Herkunftsangaben nur die Kennungen (Bestandsverhalten).
+   */
+  namen?: AutorText;
 }
 
 export function toProvenance(
@@ -103,6 +113,7 @@ export function toProvenance(
   } else if (pruefung.zustand !== "OK") {
     unsicherheiten.push("pruefnachweis_ungueltig");
   }
+  const namen = optionen.namen;
   return {
     marke: optionen.marke ?? "Q1",
     geltungsbereich,
@@ -119,6 +130,10 @@ export function toProvenance(
     version: ko.version,
     author: ko.author,
     originalAuthor: ko.originalAuthor,
+    // R-0298 / FR-LIF-04: der sichtbare Name — die Kennungen darüber bleiben für die Rückverfolgung.
+    ...(namen
+      ? { authorName: namen(ko.author), originalAuthorName: namen(ko.originalAuthor) }
+      : {}),
     category: ko.category,
     type: ko.type,
     // Gültigkeit ehrlich abgeleitet: kein Ablaufdatum im Modell (FR-EXT-07 = Konzept).
@@ -127,8 +142,16 @@ export function toProvenance(
   };
 }
 
-function authorLine(ko: KnowledgeObject): string {
-  return ko.author === ko.originalAuthor ? ko.author : `${ko.author} (urspr. ${ko.originalAuthor})`;
+// Ob der Originalautor abweicht, entscheiden die KENNUNGEN, nicht die Texte: zwei verschiedene
+// Konten mit demselben Anzeigenamen sind trotzdem eine Übergabe.
+function autorZeile(author: string, originalAuthor: string, namen: AutorText): string {
+  return author === originalAuthor
+    ? namen(author)
+    : `${namen(author)} (urspr. ${namen(originalAuthor)})`;
+}
+
+function authorLine(ko: KnowledgeObject, namen: AutorText): string {
+  return autorZeile(ko.author, ko.originalAuthor, namen);
 }
 
 // --- Renderer je Typ. Liefern den Dokument-Körper (ohne Herkunftsblock). ---
@@ -143,6 +166,8 @@ export interface RenderKontext {
   anlass: string | null;
   audienceRole: string | null;
   provenance: readonly OutputProvenance[];
+  /** R-0298: Kennung → sichtbarer Autorenname (ohne Auflösung die Kennung selbst). */
+  namen: AutorText;
 }
 
 function marke(kontext: RenderKontext, i: number): string {
@@ -219,7 +244,7 @@ function renderManagementSummary(kos: readonly KnowledgeObject[], k: RenderKonte
     "**Kernpunkte:**",
     ...kos.map(
       (ko, i) =>
-        `- ${ko.title} — ${ko.statement} _(${ko.category}, Trust ${ko.trust}, ${authorLine(ko)})_ ${marke(k, i)}`,
+        `- ${ko.title} — ${ko.statement} _(${ko.category}, Trust ${ko.trust}, ${authorLine(ko, k.namen)})_ ${marke(k, i)}`,
     ),
   ];
   const uncertain = kos
@@ -324,11 +349,14 @@ export function renderBody(
   kos: readonly KnowledgeObject[],
   kontext?: Partial<RenderKontext>,
 ): string {
+  const namen = kontext?.namen ?? KENNUNG;
   const k: RenderKontext = {
     marken: kontext?.marken ?? kos.map((ko, i) => quellenMarke(i, ko)),
     anlass: kontext?.anlass ?? null,
     audienceRole: kontext?.audienceRole ?? null,
-    provenance: kontext?.provenance ?? kos.map((ko, i) => toProvenance(ko, { marke: `Q${i + 1}` })),
+    provenance:
+      kontext?.provenance ?? kos.map((ko, i) => toProvenance(ko, { marke: `Q${i + 1}`, namen })),
+    namen,
   };
   return RENDERERS[kind](kos, k);
 }
@@ -344,6 +372,18 @@ export function renderBody(
 export const OUTPUT_NO_CHECK_NOTE =
   "Hinweis: Dieses Dokument trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
 
+// R-0298 / FR-LIF-04: der aufgelöste Name, wo es ihn gibt — sonst wie bisher die Kennung.
+function provenanzAutor(p: OutputProvenance): string {
+  const texte = new Map<string, string>();
+  if (p.authorName !== undefined) {
+    texte.set(p.author, p.authorName);
+  }
+  if (p.originalAuthorName !== undefined) {
+    texte.set(p.originalAuthor, p.originalAuthorName);
+  }
+  return autorZeile(p.author, p.originalAuthor, (id) => texte.get(id) ?? id);
+}
+
 // Herkunftsblock (FE-OUT-03): je Quelle Marke, KO-ID, Fassung, Status, Trust, Autor, Gültigkeit.
 export function renderProvenance(provs: readonly OutputProvenance[]): string {
   const lines = ["## Herkunft & Nachweis", ""];
@@ -351,7 +391,7 @@ export function renderProvenance(provs: readonly OutputProvenance[]): string {
     const flag = p.uncertain ? " · ⚠︎ niedriger Trust" : "";
     lines.push(
       `- [${p.marke}] **${p.title}** (\`${p.koId}\`, Fassung ${p.version}) — ${p.type} · ${p.category} · Status ${p.status} · ` +
-        `Trust ${p.trust} · ${p.validity} · Autor: ${p.author === p.originalAuthor ? p.author : `${p.author} (urspr. ${p.originalAuthor})`}${flag}`,
+        `Trust ${p.trust} · ${p.validity} · Autor: ${provenanzAutor(p)}${flag}`,
     );
     // R-0337 / R-1739: die übrigen Pflichtangaben je Quelle; Fehlendes steht als „nicht …" da.
     const validiert =

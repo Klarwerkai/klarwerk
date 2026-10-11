@@ -32,7 +32,7 @@ import type {
   AnswerExplanationLeser,
   AnswerExplanationService,
 } from "../services/answer-explanation";
-import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { freigaberang, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 export interface KlaraAnswerExplanationDeps {
   readonly explanations: AnswerExplanationService;
@@ -96,11 +96,14 @@ export function klaraAnswerExplanationRoutes(
         }
         // Die Vertraulichkeitsstufe wird an EINER Stelle ausgelegt — hier, aus der Rolle. Der
         // Dienst wendet sie an, statt sie ein zweites Mal zu bilden.
+        // aufnahme:20260922:gesamt-leserechte (Variante B): die Rolle allein öffnet keine Stufe
+        // mehr — die Stufensperre folgt dem Freigaberang (persönliches Niveau, sonst
+        // Übergangsregel: ko.validate → 1). Für Controller und Admin ohne Niveau bleibt es dabei.
         const leser: AnswerExplanationLeser = {
           userId: user.id,
-          darfVertraulich: user.role === "admin" || user.role === "controller",
-          // Antwortbeleg-Nacharbeit 5 / R-1175: die EINE Sichtbarkeitsentscheidung von heute, samt
-          // Space-Recht (`spaceLesbar` am Sitzungsnutzer, erhoben in `makeGuards`) und Autorschaft.
+          darfVertraulich: freigaberang(user) >= 1,
+          // Antwortbeleg-Nacharbeit 5 / R-1175 / Variante B: die EINE Sichtbarkeitsentscheidung von
+          // heute — Space-Recht (`spaceLesbar`), Freigaberang und Autorschaft. Sie entscheidet allein.
           darfSehen: sichtbarkeitsfilterFuer(user),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
