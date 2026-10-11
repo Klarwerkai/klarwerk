@@ -126,12 +126,18 @@ function wochenAusText(text: string, lng: Sprache): number | null {
  * Seite zurückziehen" sagt dieselbe Wiederherstellungsfrist zu wie `ko.deleteQ`. Sie wohnt im
  * Textmodul `apps/web/src/texte/rueckzug.ts`, erreicht das Sprachbündel aber über den Sammler
  * (`texte/intern/sammeln.ts`) — `bundle()` unten sieht sie deshalb wie jede andere Zusage.
+ *
+ * `entwurfspool.seitenhilfe.body` (Aufnahme gesamt-papierkorb): die Seitenhilfe von „Meine
+ * Entwürfe" sagt seit `CaptureService.runDraftTrashSweep` dieselbe Frist für den
+ * Entwurfs-Papierkorb zu (Pedi 17.09.2026, B5). Bis dahin stand dort „von selbst leert sich der
+ * Papierkorb nicht" — ohne Zahl und damit unsichtbar für diesen Wächter.
  */
 const TAGES_ZUSAGEN = [
   "ko.deleteQ",
   "adm.trash.help",
   "adm.sich.trash.b",
   "rueckzug.frage",
+  "entwurfspool.seitenhilfe.body",
 ] as const;
 
 /**

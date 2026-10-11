@@ -34,8 +34,10 @@ import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CAPTURE_SCHEMA, PgDraftRepo } from "../../services/capture/src/repo-pg";
+import { CaptureService } from "../../services/capture/src/service";
 import type { Draft } from "../../services/capture/src/types";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { TRASH_RETENTION_DAYS } from "../../services/knowledge-object";
 
 function entwurf(id: string, over: Partial<Draft> = {}): Draft {
   return {
@@ -278,5 +280,33 @@ describe("JOB 3668 · Entwurfs-Papierkorb gegen echtes PostgreSQL", () => {
     expect((await r.list()).map((d) => d.id)).toEqual(["d-1"]);
     expect((await r.listByAuthor("anna")).map((d) => d.id)).toEqual(["d-1"]);
     expect((await r.list())[0]?.payload.pendingSources?.[0]?.objectId).toBe("obj-1");
+  });
+
+  // Aufnahme gesamt-papierkorb (Pedi 17.09.2026, B5): 30 Tage, danach endgültig — auch für Entwürfe.
+  // Derselbe Lauf wie im Server (`CaptureService.runDraftTrashSweep`), hier gegen echtes PostgreSQL.
+  it("P9 · Fristablauf: nach TRASH_RETENTION_DAYS endgültig fort, davor und lebend unberührt", async (ctx) => {
+    if (!verfuegbar) {
+      ctx.skip();
+      return;
+    }
+    await leeren();
+    const r = repo();
+    const geloeschtUm = Date.parse("2026-09-12T07:00:00.000Z");
+    let jetzt = geloeschtUm;
+    const dienst = new CaptureService({ repo: r, now: () => jetzt });
+    await r.insert(entwurf("d-alt"));
+    await r.insert(entwurf("d-lebt"));
+    await dienst.deleteDraft("d-alt", "anna");
+
+    jetzt = geloeschtUm + (TRASH_RETENTION_DAYS - 1) * 86_400_000;
+    expect(await dienst.runDraftTrashSweep()).toBe(0);
+    expect((await r.findTrashed("d-alt"))?.deletedAt).toBe("2026-09-12T07:00:00.000Z");
+
+    jetzt = geloeschtUm + TRASH_RETENTION_DAYS * 86_400_000;
+    expect(await dienst.runDraftTrashSweep()).toBe(1);
+    expect(await r.findTrashed("d-alt")).toBeUndefined();
+    expect((await r.list()).map((d) => d.id)).toEqual(["d-lebt"]);
+    // Ein zweiter Lauf findet nichts mehr — idempotent wie beim Wissensobjekt.
+    expect(await dienst.runDraftTrashSweep()).toBe(0);
   });
 });

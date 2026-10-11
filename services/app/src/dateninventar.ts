@@ -193,8 +193,9 @@ export const DATENINVENTAR: readonly Datenart[] = [
     personenbezugGrund: "Kennungen von Autor und Bearbeiter; Freitext.",
     ablage: { ort: DATENBANK, tabellen: ["drafts"] },
     taetigkeit: "wissen",
-    loeschung: "Durch den Autor löschbar (Entwurfs-Papierkorb); mit dem Einreichen verbraucht.",
-    frist: BETREIBERFRIST,
+    loeschung:
+      "Durch den Autor löschbar: Löschen legt in den Entwurfs-Papierkorb; Endlöschung nach 30 Tagen (TRASH_RETENTION_DAYS, `CaptureService.runDraftTrashSweep`) oder vorher durch den Autor. Mit dem Einreichen verbraucht.",
+    frist: "Bis zum Löschen oder Einreichen; im Papierkorb 30 Tage.",
     selbstauskunft: { enthalten: true },
   },
   {
