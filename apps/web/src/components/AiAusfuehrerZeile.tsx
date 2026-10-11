@@ -38,8 +38,9 @@ export function AiAusfuehrerZeile({ tasks }: { tasks: readonly ReasonerTask[] })
   const { t } = useTranslation();
   const istAdmin = useRoleOptional()?.role === "admin";
   const config = useReasonerConfig(istAdmin);
-  // Die Ausführungsauskunft braucht nur, wer die Adminsicht nicht hat.
-  const ausfuehrung = useReasonerAusfuehrung(!istAdmin);
+  // Die Ausführungsauskunft braucht jeder: Nicht-Admins als Quelle, Admins für die Verteilung je
+  // Schutzstufe neben der Aufgabenwahl (BEN, Nacharbeit 10).
+  const ausfuehrung = useReasonerAusfuehrung(true);
   const wer = ausfuehrerWer({
     tasks,
     istAdmin,

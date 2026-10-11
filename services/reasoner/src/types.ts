@@ -636,6 +636,11 @@ export interface ReasonerAusfuehrung {
   einschraenkungen: ReasonerAusfuehrungsEinschraenkung[];
   // Antwort 29: Schutzstufen, für die der Administrator „Keine KI" gewählt hat.
   keineKiFuer: ReasonerSchutzstufe[];
+  // BEN, Nacharbeit 10: wer bei einem Text JEDER Stufe tatsächlich arbeitet — dieselbe Auflösung
+  // wie der Lauf (Stufenregel, Freigabe, Vertraulichkeit). `ausfuehrer` ist `jeStufe.intern`.
+  jeStufe: Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+  // `true`, wenn mindestens eine Stufe einen anderen Ausführer hat als „intern".
+  stufenAbweichend: boolean;
 }
 
 // ================================================================================================

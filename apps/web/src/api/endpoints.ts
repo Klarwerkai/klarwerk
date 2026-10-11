@@ -1184,8 +1184,12 @@ export const endpoints = {
     // KI-WAHL-BETRIEBSABNAHME · Antwort 13: wer je Aufgabe tatsächlich arbeitet (alle Angemeldeten).
     ausfuehrung: () => api.get<ReasonerAusfuehrungAntwort>("/reasoner/ausfuehrung"),
     // KI-Verwaltung v1: Zuordnung setzen (nur Admin; Antwort = frischer configStatus).
-    updateConfig: (cfg: { global: string; perTask: Record<string, string> }) =>
-      api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
+    // Antwort 29: optional die Wahl je Schutzstufe — weglassen lässt sie unverändert, `null` löscht.
+    updateConfig: (cfg: {
+      global: string;
+      perTask: Record<string, string>;
+      proSchutzstufe?: ReasonerConfigStatus["taskConfig"]["proSchutzstufe"] | null;
+    }) => api.put<ReasonerConfigStatus>("/reasoner/config", cfg),
     // Key-Test (Pedi 02.07.): echter Mini-Modellaufruf (nur Admin, ehrliches Ergebnis).
     test: () => api.post<ReasonerProbeResult>("/reasoner/test"),
     // SCRUM-428: Key-Test für den eigenen lokalen LLM (echter Mini-Aufruf über den Tunnel).

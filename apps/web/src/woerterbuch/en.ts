@@ -1126,6 +1126,12 @@ const en: typeof de = {
   "adm.ai.choice.local": "Internal · own LLM (on-prem)",
   "adm.ai.choice.localUnavailable": "Internal · own LLM (not connected)",
   "adm.ai.choice.deterministic": "Deterministic (no model)",
+  "adm.ai.stufe.titel": "AI per confidentiality level",
+  "adm.ai.stufe.text":
+    "For texts of a level, this choice applies instead of the task choice. “No AI” keeps every text of that level away from every model — in the background too. A level rule releases nothing that the approvals above block.",
+  "adm.ai.stufe.wieAufgabe": "Same as the task choice",
+  "adm.ai.stufe.keineKi": "No AI",
+  "adm.ai.stufe.gespeichert": "AI per confidentiality level saved.",
   "adm.ai.envLocked":
     "The AI mapping is fixed by the deployment configuration (KLARWERK_REASONER_POLICY) and cannot be changed here.",
   "adm.ai.migrated":
@@ -5630,6 +5636,7 @@ const en: typeof de = {
   "erfassen.ki.einschraenkung.ki_abgeschaltet": "AI switched off by the administrator",
   "erfassen.ki.einschraenkung.nicht_erreichbar": "recently unreachable",
   "erfassen.ki.keineKiFuer": "no AI for",
+  "erfassen.ki.jeStufe": "per confidentiality level:",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Drafts",
   "erfassen.mehr.anhaenge": "Attachments",

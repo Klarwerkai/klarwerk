@@ -330,4 +330,52 @@ describe("Antwort 13 · wer je Aufgabe arbeitet — für jeden Angemeldeten", ()
     expect(antwort.body).not.toContain("127.0.0.1");
     expect(antwort.body).not.toMatch(/API_KEY|Bearer/);
   });
+
+  it("S8 · die Auskunft nennt je Stufe denselben Ausführer, den der Lauf wirklich ruft — auch bei abweichender Aufgaben-/Stufenwahl", async () => {
+    // BEN, Nacharbeit 10: `ausfuehrung()` las die Kette OHNE Stufenregel, Läufe die Kette MIT ihr.
+    // Hier weichen Aufgabe und Stufen bewusst voneinander ab: global lokal, `structure`
+    // regelbasiert, „intern" → Keine KI, „vertraulich" → lokal.
+    const gespeichert = await zuordnen({
+      global: "local",
+      perTask: { structure: "deterministic" },
+      proSchutzstufe: { intern: "deterministic", vertraulich: "local" },
+    });
+    expect(gespeichert.statusCode, gespeichert.body).toBe(200);
+    const antwort = await app.inject({
+      method: "GET",
+      url: "/api/reasoner/ausfuehrung",
+      headers: admin,
+    });
+    expect(antwort.statusCode, antwort.body).toBe(200);
+    const { aufgaben } = antwort.json() as {
+      aufgaben: Record<
+        string,
+        { ausfuehrer: string; stufenAbweichend: boolean; jeStufe: Record<string, string> }
+      >;
+    };
+    // assist folgt global (lokal); die Stufenregel lenkt „intern" auf Keine KI, „vertraulich"
+    // ausdrücklich auf lokal; „streng vertraulich" hat keine Regel → Aufgabenwahl (lokal).
+    expect(aufgaben.assist?.jeStufe).toEqual({
+      intern: "deterministic",
+      vertraulich: "local",
+      streng_vertraulich: "local",
+    });
+    expect(aufgaben.assist?.ausfuehrer, "ausfuehrer ist der Eintrag für intern").toBe(
+      "deterministic",
+    );
+    expect(aufgaben.assist?.stufenAbweichend).toBe(true);
+    // structure ist als Aufgabe regelbasiert: ohne Stufenregel bleibt es dabei, „vertraulich"
+    // lenkt die Stufenregel trotzdem auf lokal.
+    expect(aufgaben.structure?.jeStufe).toEqual({
+      intern: "deterministic",
+      vertraulich: "local",
+      streng_vertraulich: "deterministic",
+    });
+
+    // DERSELBE Ausführer am wirklichen Lauf: intern 0 Modellaufrufe, vertraulich und streng
+    // vertraulich je einer — genau, was die Auskunft für assist nennt.
+    expect((await korrigieren("intern")).rufe, "Auskunft „Keine KI“, Lauf rief doch").toBe(0);
+    expect((await korrigieren("vertraulich")).rufe, "Auskunft lokal, Lauf rief nicht").toBe(1);
+    expect((await korrigieren("streng_vertraulich")).rufe).toBe(1);
+  });
 });

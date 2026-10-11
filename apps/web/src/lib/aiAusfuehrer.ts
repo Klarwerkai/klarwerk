@@ -12,9 +12,11 @@
 // Fehlt die jeweilige Auskunft (noch nicht geladen, Fehler), steht weiterhin „hier nicht bekannt"
 // bzw. für Admins „wird ermittelt" — nie die hausweite Stufe.
 import type {
+  ReasonerAusfuehrer,
   ReasonerAusfuehrung,
   ReasonerAusfuehrungAntwort,
   ReasonerConfigStatus,
+  ReasonerSchutzstufe,
   ReasonerTask,
 } from "../api/types";
 import { anbieterName, anbieterUndModell } from "./aiOverview";
@@ -23,17 +25,32 @@ import { aiTaskInfo } from "./reasonerTaskInfo";
 /** „Hier nicht bekannt" — der Platzhalter für `wer`, wenn keine Aufgabenauskunft vorliegt. */
 export const AUSFUEHRER_UNBEKANNT_KEY = "erfassen.ki.ausfuehrerUnbekannt";
 
-/** Der Name des tatsächlich arbeitenden Dienstes, wie ein Anwender ihn liest. */
-function dienstName(a: ReasonerAusfuehrung, t: (schluessel: string) => string): string {
-  if (a.ausfuehrer === "openai" || a.ausfuehrer === "anthropic") {
-    return anbieterName(a.ausfuehrer);
+/** Der Name eines Ausführers, wie ein Anwender ihn liest. */
+function dienstName(ausfuehrer: ReasonerAusfuehrer, t: (schluessel: string) => string): string {
+  if (ausfuehrer === "openai" || ausfuehrer === "anthropic") {
+    return anbieterName(ausfuehrer);
   }
-  return t(a.ausfuehrer === "local" ? "reasoner.taskInfo.local" : "reasoner.taskInfo.rule");
+  return t(ausfuehrer === "local" ? "reasoner.taskInfo.local" : "reasoner.taskInfo.rule");
+}
+
+const STUFEN: readonly ReasonerSchutzstufe[] = ["intern", "vertraulich", "streng_vertraulich"];
+
+/**
+ * Wer arbeitet — EIN Dienst nur, wenn alle Schutzstufen denselben haben. Gehen die Stufen
+ * auseinander (Stufenregel oder Vertraulichkeitsriegel, BEN Nacharbeit 10), steht jede Stufe mit
+ * ihrem eigenen Ausführer da: ohne Inhaltskontext gibt es keinen einzelnen „tatsächlichen" Dienst.
+ */
+function werArbeitet(a: ReasonerAusfuehrung, t: (schluessel: string) => string): string {
+  if (!a.jeStufe || !a.stufenAbweichend) {
+    return dienstName(a.ausfuehrer, t);
+  }
+  const jeStufe = a.jeStufe;
+  return STUFEN.map((s) => `${t(`conf.level.${s}`)}: ${dienstName(jeStufe[s], t)}`).join(", ");
 }
 
 /** Dienst, Verfügbarkeit und Einschränkungen EINER Aufgabe — für Nicht-Admins. */
 function auskunftFuer(a: ReasonerAusfuehrung, t: (schluessel: string) => string): string {
-  const teile = [dienstName(a, t)];
+  const teile = [werArbeitet(a, t)];
   if (a.ausfuehrer !== "deterministic") {
     teile.push(t(a.verfuegbar ? "erfassen.ki.verfuegbar" : "erfassen.ki.nichtVerfuegbar"));
   }
@@ -62,13 +79,18 @@ export function ausfuehrerWer(opts: {
 }): string {
   const { tasks, istAdmin, config, ausfuehrung, t } = opts;
   const werFuer = (task: ReasonerTask): string => {
+    const a = ausfuehrung?.aufgaben[task];
     if (istAdmin) {
       // Ohne geladene Adminauskunft ist `aiTaskInfo` ehrlich „wird ermittelt".
       const info = aiTaskInfo(config, task);
       const stufe = t(info.modeLabelKey);
-      return info.modelName ? `${stufe} · ${anbieterUndModell(info.modelName)}` : stufe;
+      const basis = info.modelName ? `${stufe} · ${anbieterUndModell(info.modelName)}` : stufe;
+      // BEN, Nacharbeit 10: die Adminsicht nennt die Aufgabenwahl; weicht eine Schutzstufe davon
+      // ab (Stufenregel, Vertraulichkeitsriegel), steht die Verteilung je Stufe ausdrücklich dabei.
+      return a?.jeStufe && a.stufenAbweichend
+        ? `${basis} · ${t("erfassen.ki.jeStufe")} ${werArbeitet(a, t)}`
+        : basis;
     }
-    const a = ausfuehrung?.aufgaben[task];
     return a ? auskunftFuer(a, t) : t(AUSFUEHRER_UNBEKANNT_KEY);
   };
   const je = tasks.map((task) => ({ task, wer: werFuer(task) }));

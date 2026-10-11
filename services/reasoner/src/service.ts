@@ -1602,11 +1602,22 @@ export class Reasoner {
   // Aufgabenwahl — eine Stufenregel ändert, was mit einem Text DIESER Stufe geschieht, nicht, was
   // für die Aufgabe eingerichtet ist.
   private wahlFuerLauf(basis: ReasonerAktiveWahl, confidential: boolean): ReasonerAktiveWahl {
+    return this.wahlFuerStufe(basis, confidential, aktuelleSchutzstufe());
+  }
+
+  // Dieselbe Auflösung mit AUSDRÜCKLICH genannter Stufe — der eine Kern, den Lauf (`wahlFuerLauf`,
+  // Stufe aus dem Anfragerahmen) und Ausführungsauskunft (`ausfuehrung`, je Stufe) teilen. So kann
+  // die Auskunft nie einen anderen Anbieter nennen als den, den ein Lauf dieser Stufe wirklich ruft
+  // (BEN, Nacharbeit 10).
+  private wahlFuerStufe(
+    basis: ReasonerAktiveWahl,
+    confidential: boolean,
+    gesetzt: ReasonerSchutzstufe | undefined,
+  ): ReasonerAktiveWahl {
     const regel = this.taskConfig.proSchutzstufe;
     if (!regel) {
       return basis;
     }
-    const gesetzt = aktuelleSchutzstufe();
     const stufe: ReasonerSchutzstufe | undefined =
       gesetzt !== undefined && !(confidential && gesetzt === "intern") ? gesetzt : undefined;
     if (stufe !== undefined) {
@@ -1635,6 +1646,17 @@ export class Reasoner {
   // Anzeigewege bleiben bei `providerChain`.
   private laufKette(task: ReasonerTask, confidential = false): ReasonerProvider[] {
     return this.chainForChoice(this.wahlFuerLauf(this.choiceFor(task), confidential), confidential);
+  }
+
+  // Die Kette, die ein Lauf dieser Aufgabe mit einem Text GENAU DIESER Stufe hätte: dieselbe
+  // Auflösung wie `laufKette` mit gesetzter Stufe; „intern" ist nicht vertraulich, beide anderen
+  // Stufen sind es (dieselbe Abbildung wie `resolveProvenance` in der Route).
+  private laufKetteFuerStufe(task: ReasonerTask, stufe: ReasonerSchutzstufe): ReasonerProvider[] {
+    const confidential = stufe !== "intern";
+    return this.chainForChoice(
+      this.wahlFuerStufe(this.choiceFor(task), confidential, stufe),
+      confidential,
+    );
   }
 
   // Effektiver Modus je Aufgabe — ehrlich: "model" nur, wenn ein echtes Modell (Cloud ODER
@@ -2392,6 +2414,13 @@ export class Reasoner {
   //
   // GEHEIMNISFREI: Anbieterkennung (`openai`/`anthropic`/`local`/`deterministic`), Booleans und
   // Codes — kein Schlüssel, keine Adresse, keine Modellkennung.
+  //
+  // JE SCHUTZSTUFE (BEN, Nacharbeit 10): Die Auskunft hat keinen Inhaltskontext — welcher Text
+  // kommt, weiß sie nicht. Sie behauptet deshalb keinen einzelnen Ausführer, sondern nennt für
+  // jede Stufe das erste Glied genau der Kette, die ein Lauf mit einem Text dieser Stufe ruft
+  // (`laufKetteFuerStufe` — dieselbe Auflösung wie `laufKette`, einschliesslich Stufenregel,
+  // Grundfreigabe und Vertraulichkeitsriegel). `ausfuehrer` ist der Eintrag für „intern" (ein
+  // gewöhnlicher, nicht vertraulicher Text); `stufenAbweichend` sagt, ob die Stufen auseinandergehen.
   ausfuehrung(): Record<ReasonerTask, ReasonerAusfuehrung> {
     const abgeschaltet = this.kiAbschaltung().abgeschaltet;
     const freigabe = this.taskConfig.kiFreigabe;
@@ -2411,7 +2440,12 @@ export class Reasoner {
     const ergebnis = {} as Record<ReasonerTask, ReasonerAusfuehrung>;
     for (const task of REASONER_TASKS) {
       const gewaehlt = this.effectiveAnbieterFor(task);
-      const ausfuehrer = alsAusfuehrer(this.providerChain(task, false)[0]);
+      const jeStufe = {} as Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+      for (const stufe of REASONER_SCHUTZSTUFEN) {
+        jeStufe[stufe] = alsAusfuehrer(this.laufKetteFuerStufe(task, stufe)[0]);
+      }
+      const ausfuehrer = jeStufe.intern;
+      const stufenAbweichend = REASONER_SCHUTZSTUFEN.some((s) => jeStufe[s] !== ausfuehrer);
       const nutzbar = this.taskModelUsable(task);
       const einschraenkungen: ReasonerAusfuehrungsEinschraenkung[] = [];
       if (abgeschaltet) {
@@ -2432,6 +2466,8 @@ export class Reasoner {
         verfuegbar: ausfuehrer !== "deterministic" && nutzbar && !abgeschaltet,
         einschraenkungen,
         keineKiFuer: [...keineKiFuer],
+        jeStufe,
+        stufenAbweichend,
       };
     }
     return ergebnis;

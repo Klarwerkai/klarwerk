@@ -128,6 +128,18 @@ Bereichs; umgesetzt ist sie nach BENs Wortlaut.
 gesetzt wird sie über den Adminweg `PUT /api/reasoner/config`. Wege ohne serverseitig bestimmte Stufe
 (z. B. `/api/ask`, Textprüfung) folgen der Bit-Regel, nicht der exakten Stufe.
 
+**Nacharbeit 10 (BEN):** (1) Die KI-Karte der Verwaltung (`AdminKiDetails.tsx`, `KiDetail`) hat jetzt
+den Abschnitt „KI je Vertraulichkeitsstufe" — je Stufe eine Auswahl „Wie die Aufgabenwahl" / Modelle /
+„Keine KI", gespeist aus dem bestätigten Stand, geschrieben über denselben Kanal wie Zuordnung,
+Freigabe und Zweitmeinung (`proSchutzstufe`, `null` ohne belegte Stufe). Frontendtypen
+(`taskConfig.proSchutzstufe`) und `endpoints.reasoner.updateConfig` kennen das Feld. Beleg:
+`admin-schutzstufe-mounted.test.tsx` (echte Karte gegen echten Server: auswählen, speichern,
+wiederöffnen, zurücknehmen). (2) Die Ausführungsauskunft nutzt dieselbe Auflösung wie der Lauf
+(`wahlFuerStufe`/`laufKetteFuerStufe`) und nennt je Aufgabe `jeStufe` und `stufenAbweichend`; gehen die
+Stufen auseinander, zeigt die Palettenzeile jede Stufe mit ihrem Ausführer (Nicht-Admins) bzw. die
+Verteilung neben der Aufgabenwahl (Admins). Belege: `keine-ki-je-schutzstufe.test.ts` S8 (Auskunft je
+Stufe = gezählte Modellaufrufe am Lauf), `ausfuehrer-vor-dem-klick.test.tsx` A9/A10.
+
 **Integration mit main (Nacharbeit 8):** main brachte parallel die Zweitmeinung (R-0305/R-1099) mit
 eigenem Konfigurationsfeld `zweitmeinung` und gelenkter Kette (`lenkung.kette`), den Wissens-Fragebaum
 im Interview (`imageContext`, `options`, R-0604-Kennzeichnung) und die KI-Bremse im Blatt. Aufgelöst

@@ -1113,6 +1113,12 @@ const nl: typeof de = {
   "adm.ai.choice.local": "Intern · eigen LLM (on-prem)",
   "adm.ai.choice.localUnavailable": "Intern · eigen LLM (niet verbonden)",
   "adm.ai.choice.deterministic": "Deterministisch (zonder model)",
+  "adm.ai.stufe.titel": "AI per vertrouwelijkheidsniveau",
+  "adm.ai.stufe.text":
+    "Voor teksten van een niveau geldt deze keuze in plaats van de taakkeuze. „Geen AI” houdt elke tekst van dat niveau weg van elk model — ook op de achtergrond. Een niveauregel geeft niets vrij wat de vrijgaven hierboven blokkeren.",
+  "adm.ai.stufe.wieAufgabe": "Zoals de taakkeuze",
+  "adm.ai.stufe.keineKi": "Geen AI",
+  "adm.ai.stufe.gespeichert": "AI per vertrouwelijkheidsniveau opgeslagen.",
   "adm.ai.envLocked":
     "De AI-toewijzing is vastgelegd via de deploy-configuratie (KLARWERK_REASONER_POLICY) en kan hier niet worden gewijzigd.",
   "adm.ai.migrated":
@@ -5630,6 +5636,7 @@ const nl: typeof de = {
   "erfassen.ki.einschraenkung.ki_abgeschaltet": "AI door de beheerder uitgeschakeld",
   "erfassen.ki.einschraenkung.nicht_erreichbar": "recent niet bereikbaar",
   "erfassen.ki.keineKiFuer": "geen AI voor",
+  "erfassen.ki.jeStufe": "per vertrouwelijkheidsniveau:",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Concepten",
   "erfassen.mehr.anhaenge": "Bijlagen",

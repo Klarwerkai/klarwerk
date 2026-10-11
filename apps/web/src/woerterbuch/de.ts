@@ -1530,6 +1530,12 @@ const de = {
   "adm.ai.choice.local": "Intern · eigener LLM (On-Prem)",
   "adm.ai.choice.localUnavailable": "Intern · eigener LLM (nicht verbunden)",
   "adm.ai.choice.deterministic": "Deterministisch (ohne Modell)",
+  "adm.ai.stufe.titel": "KI je Vertraulichkeitsstufe",
+  "adm.ai.stufe.text":
+    "Für Texte einer Stufe gilt diese Wahl statt der Aufgabenwahl. „Keine KI“ hält jeden Text dieser Stufe von jedem Modell fern — auch im Hintergrund. Eine Stufenregel gibt nichts frei, was die Freigaben oben sperren.",
+  "adm.ai.stufe.wieAufgabe": "Wie die Aufgabenwahl",
+  "adm.ai.stufe.keineKi": "Keine KI",
+  "adm.ai.stufe.gespeichert": "KI je Vertraulichkeitsstufe gespeichert.",
   "adm.ai.envLocked":
     "Die KI-Zuordnung ist per Deploy-Konfiguration (KLARWERK_REASONER_POLICY) festgelegt und kann hier nicht geändert werden.",
   "adm.ai.migrated":
@@ -7115,6 +7121,7 @@ const de = {
   "erfassen.ki.einschraenkung.ki_abgeschaltet": "KI vom Administrator abgeschaltet",
   "erfassen.ki.einschraenkung.nicht_erreichbar": "zuletzt nicht erreichbar",
   "erfassen.ki.keineKiFuer": "keine KI für",
+  "erfassen.ki.jeStufe": "je Schutzstufe:",
   "erfassen.ki.pille": "KI",
   "erfassen.mehr.entwuerfe": "Entwürfe",
   "erfassen.mehr.anhaenge": "Anhänge",

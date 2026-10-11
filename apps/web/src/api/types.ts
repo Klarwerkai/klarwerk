@@ -3631,7 +3631,13 @@ export interface ReasonerConfigStatus {
   supportsLocales: ("de" | "en" | "nl")[];
   tasks: ReasonerTask[];
   // KI-Verwaltung v1 (02.07.2026): Zuordnung + effektiver Modus je Aufgabe.
-  taskConfig: { global: string; perTask: Record<string, string> };
+  taskConfig: {
+    global: string;
+    perTask: Record<string, string>;
+    // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Wahl je Schutzstufe („deterministic" = Keine KI).
+    // Fehlt sie, gilt für jede Stufe die Aufgabenwahl.
+    proSchutzstufe?: Partial<Record<ReasonerSchutzstufe, string>>;
+  };
   effective: Record<string, "model" | "deterministic">;
   // SCRUM-424: eigener lokaler LLM + welche KI je Aufgabe zuerst arbeitet.
   cloudConfigured: boolean;
@@ -3679,6 +3685,10 @@ export interface ReasonerAusfuehrung {
   verfuegbar: boolean;
   einschraenkungen: ReasonerAusfuehrungsEinschraenkung[];
   keineKiFuer: ReasonerSchutzstufe[];
+  // BEN, Nacharbeit 10: der tatsächliche Ausführer je Stufe (dieselbe Auflösung wie der Lauf).
+  // Optional nur für Antworten älterer Server; fehlt es, bleibt die Anzeige bei `ausfuehrer`.
+  jeStufe?: Record<ReasonerSchutzstufe, ReasonerAusfuehrer>;
+  stufenAbweichend?: boolean;
 }
 export interface ReasonerAusfuehrungAntwort {
   aufgaben: Partial<Record<ReasonerTask, ReasonerAusfuehrung>>;

@@ -25,6 +25,9 @@
 //           Einschränkungen (vertrauliche Texte ohne Cloud-KI, Keine KI für Streng vertraulich).
 //   A8    · Antwort 13 · Nicht-Admin, Claude gewählt, Freigabe fehlt: der TATSÄCHLICHE Ausführer
 //           (regelbasiert) und der Grund — nicht der gewählte Anbieter.
+//   A9    · BEN Nacharbeit 10 · Nicht-Admin, die Schutzstufen haben verschiedene Ausführer: jede Stufe
+//           mit ihrem — kein einzelner behaupteter Dienst; Gegenprobe ohne Abweichung: ein Dienst.
+//   A10   · BEN Nacharbeit 10 · Admin: Aufgabenwahl plus die abweichende Verteilung je Stufe.
 //   A4    · der Satz rendert auch OHNE `RoleProvider` (das Blatt in seinen Einzeltests) — als
 //           Nicht-Admin, aus der Ausführungsauskunft, trotz hausweit „cloud".
 //   A5    · im Blatt steht er im Menü „KI", UNTER Eingabe und Knopf (Nacharbeit 4, B5a).
@@ -250,6 +253,62 @@ describe("N-0070 · wer führt die Palette aus — die Ableitung", () => {
     );
     expect(wer, "der nur gewählte, nicht arbeitende Anbieter steht als Ausführer da").not.toContain(
       "Claude",
+    );
+  });
+
+  // BEN, Nacharbeit 10: global ChatGPT gewählt, die Stufenregel lenkt „intern" auf lokal und
+  // „streng vertraulich" auf Keine KI. Ohne Inhaltskontext gibt es keinen einzelnen Ausführer.
+  const STUFEN_VERTEILT: Partial<ReasonerAusfuehrung> = {
+    ausfuehrer: "local",
+    gewaehlt: "openai",
+    verfuegbar: true,
+    keineKiFuer: ["streng_vertraulich"],
+    jeStufe: { intern: "local", vertraulich: "openai", streng_vertraulich: "deterministic" },
+    stufenAbweichend: true,
+  };
+  const VERTEILUNG = [
+    `${DE("conf.level.intern")}: ${DE("reasoner.taskInfo.local")}`,
+    `${DE("conf.level.vertraulich")}: ChatGPT (OpenAI)`,
+    `${DE("conf.level.streng_vertraulich")}: ${DE("reasoner.taskInfo.rule")}`,
+  ].join(", ");
+
+  it("A9 · Nicht-Admin, Stufen gehen auseinander: jede Stufe mit IHREM Ausführer — kein einzelner behaupteter Dienst", () => {
+    const wer = ausfuehrerWer({
+      tasks: ["structure", "assist"],
+      istAdmin: false,
+      config: undefined,
+      ausfuehrung: auskunft({ structure: STUFEN_VERTEILT, assist: STUFEN_VERTEILT }),
+      t: DE,
+    });
+    expect(wer.startsWith(VERTEILUNG), `gelesen: ${wer}`).toBe(true);
+    // Gegenprobe: dieselbe Auskunft OHNE Abweichung nennt einen Dienst.
+    const einheitlich = ausfuehrerWer({
+      tasks: ["structure"],
+      istAdmin: false,
+      config: undefined,
+      ausfuehrung: auskunft({
+        structure: {
+          ...STUFEN_VERTEILT,
+          jeStufe: { intern: "local", vertraulich: "local", streng_vertraulich: "local" },
+          stufenAbweichend: false,
+        },
+      }),
+      t: DE,
+    });
+    expect(einheitlich.startsWith(`${DE("reasoner.taskInfo.local")} · `)).toBe(true);
+    expect(einheitlich).not.toContain(DE("conf.level.intern"));
+  });
+
+  it("A10 · Admin: neben der Aufgabenwahl steht die abweichende Verteilung je Stufe", () => {
+    const wer = ausfuehrerWer({
+      tasks: ["structure"],
+      istAdmin: true,
+      config: konfig({ structure: "openai" }),
+      ausfuehrung: auskunft({ structure: STUFEN_VERTEILT }),
+      t: DE,
+    });
+    expect(wer).toBe(
+      `${DE("reasoner.taskInfo.cloud")} · ${anbieterUndModell(OPENAI)} · ${DE("erfassen.ki.jeStufe")} ${VERTEILUNG}`,
     );
   });
 });
