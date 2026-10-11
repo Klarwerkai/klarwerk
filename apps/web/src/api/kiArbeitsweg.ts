@@ -58,9 +58,13 @@ export interface KiAuftragSicht {
   paketAktuell: boolean;
   paketGruende: { quelleId: string; grund: string }[];
   prompt: string | null;
+  /** Sperrsatz des aktuellen Wegs (z. B. „Keine KI“) — `null`, solange der Weg offen ist. */
+  wegGesperrt: string | null;
+  /** Eine Quelle ist entzogen: Antworttexte und Teilergebnis werden nicht ausgeliefert. */
+  inhalteZurueckgehalten: boolean;
   antworten: {
     am: string;
-    inhalt: string;
+    inhalt: string | null;
     anbieter: string;
     modell: string | null;
     weg: "api" | "manuell";

@@ -1104,8 +1104,9 @@ export interface KiErgebnis {
 
 export type KiVergleichsstatus =
   /**
-   * Beide sagen dasselbe UND der Wert steht wörtlich in einer Originalpassage einer genannten
-   * Quelle in genau der Fassung des Pakets. Nur dieser Status ist eine Quellenbestätigung.
+   * Beide sagen dasselbe UND in einer Originalpassage einer genannten Quelle (Paketfassung) steht
+   * im SELBEN Satz der Gegenstand und der Wert als ganze Wortfolge, ohne Verneinung (Nacharbeit 5).
+   * Nur dieser Status ist eine Quellenbestätigung.
    */
   | "quelle_belegt"
   /**
@@ -1133,9 +1134,12 @@ export interface KiVergleichszeile {
   readonly werte: readonly [string | null, string | null];
   /** Genannte Quellen, die im Paket stehen — eine NENNUNG, noch keine Bestätigung. */
   readonly genannteQuellen: readonly string[];
-  /** Genannte Quellen, deren Originalpassage den Wert in der Paketfassung wörtlich trägt. */
+  /** Genannte Quellen, deren Originalpassage die Aussage BESTÄTIGT (s. `abgleich`). */
   readonly belegteQuellen: readonly string[];
+  /** Texttreffer: der Wert steht dort als ganze Wortfolge — noch KEINE Bestätigung. */
   readonly fundstellen: readonly KiFundstelle[];
+  /** Je Texttreffer: Gegenstand im selben Satz? verneint? bestätigt? */
+  readonly abgleich: readonly KiAbgleich[];
   /** Genannte Kennungen, die nicht im Paket stehen (erfunden oder fremd). */
   readonly unbekannteQuellen: readonly string[];
   readonly text: string;
@@ -1164,6 +1168,10 @@ function zitat(roh: string): { readonly quelleId: string; readonly fassung: stri
  *
  * Der Abgleich ist bewusst wörtlich und damit streng: eine sinngleiche Umformulierung bleibt
  * unbestätigt und muss an der genannten Fundstelle vom Menschen geprüft werden.
+ *
+ * Nacharbeit 5 (Ben, AC09): ein Texttreffer ist nur eine FUNDSTELLE. Bestätigt wird erst, wenn im
+ * selben Satz Gegenstand und Wert stehen — der Wert als ganze Wortfolge (keine Teilzahl: „20 EUR"
+ * steckt nicht in „120 EUR") — und der Satz nicht verneint ist (`gleicheAb`).
  */
 export function vergleicheKiErgebnisse(
   paket: Pick<KiKontextpaket, "quellenstand" | "passagen">,
@@ -1184,28 +1192,27 @@ export function vergleicheKiErgebnisse(
     ];
     const werte = [xa?.wert ?? null, xb?.wert ?? null] as const;
     const fundstellen: KiFundstelle[] = [];
-    if (xa && xb && norm(xa.wert) === norm(xb.wert) && norm(xa.wert).length > 0) {
-      const gesucht = norm(xa.wert);
+    const abgleich: KiAbgleich[] = [];
+    if (xa && xb && norm(xa.wert) === norm(xb.wert) && wortfolge(xa.wert).length > 0) {
       for (const z of zitate) {
         const fassung = fassungImPaket.get(z.quelleId);
         if (fassung === undefined || (z.fassung !== null && z.fassung !== fassung)) continue;
         for (const p of paket.passagen) {
           if (p.quelleId !== z.quelleId || p.fassung !== fassung) continue;
-          if (!norm(p.text).includes(gesucht)) continue;
           const schon = fundstellen.some(
             (f) => f.quelleId === p.quelleId && f.abschnittId === p.abschnittId,
           );
-          if (!schon) {
-            fundstellen.push({
-              quelleId: p.quelleId,
-              fassung: p.fassung,
-              abschnittId: p.abschnittId,
-            });
-          }
+          if (schon) continue;
+          const pruefung = gleicheAb(p.text, xa.thema, xa.wert);
+          if (!pruefung) continue;
+          const stelle = { quelleId: p.quelleId, fassung: p.fassung, abschnittId: p.abschnittId };
+          fundstellen.push(stelle);
+          abgleich.push({ ...stelle, ...pruefung });
         }
       }
     }
-    const belegteQuellen = [...new Set(fundstellen.map((f) => f.quelleId))];
+    const bestaetigt = abgleich.filter((x) => x.bestaetigt);
+    const belegteQuellen = [...new Set(bestaetigt.map((f) => f.quelleId))];
     let status: KiVergleichsstatus;
     let text: string;
     if (!xa || !xb) {
@@ -1214,10 +1221,19 @@ export function vergleicheKiErgebnisse(
     } else if (norm(xa.wert) !== norm(xb.wert)) {
       status = "unterschied";
       text = `${a.anbieter} und ${b.anbieter} unterscheiden sich fachlich — ${AN_QUELLE_PRUEFEN}`;
-    } else if (fundstellen.length > 0) {
+    } else if (bestaetigt.length > 0) {
       status = "quelle_belegt";
-      const orte = fundstellen.map((f) => `${f.quelleId} (Fassung ${f.fassung}, ${f.abschnittId})`);
-      text = `Übereinstimmend und wörtlich belegt in ${orte.join(", ")}.`;
+      const orte = bestaetigt.map((f) => `${f.quelleId} (Fassung ${f.fassung}, ${f.abschnittId})`);
+      const belegt = orte.join(", ");
+      text = `Übereinstimmend; Gegenstand und Wert stehen im selben Satz in ${belegt}.`;
+    } else if (abgleich.length > 0) {
+      // Der Wert steht dort — aber nicht als Aussage über diesen Gegenstand, oder verneint.
+      status = "quelle_genannt_unbestaetigt";
+      const orte = abgleich.map((f) => `${f.quelleId} (${f.abschnittId})`).join(", ");
+      const warum = abgleich.some((f) => f.verneint)
+        ? "die Aussage ist dort verneint"
+        : "dort ist nicht von diesem Gegenstand die Rede";
+      text = `Der Wert steht in ${orte}, aber ${warum}. ${UNBESTAETIGT}`;
     } else if (genannteQuellen.length > 0) {
       status = "quelle_genannt_unbestaetigt";
       const genannt = genannteQuellen.join(", ");
@@ -1233,10 +1249,109 @@ export function vergleicheKiErgebnisse(
       genannteQuellen,
       belegteQuellen,
       fundstellen,
+      abgleich,
       unbekannteQuellen,
       text,
     };
   });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Nacharbeit 5 (Ben, AC09): Texttreffer sind Fundstellen, keine Bestätigung
+// ------------------------------------------------------------------------------------------------
+
+/** Verneinungen, die eine Aussage im selben Satz umkehren (de/en). */
+const VERNEINUNGEN = new Set([
+  "nicht",
+  "kein",
+  "keine",
+  "keinem",
+  "keinen",
+  "keiner",
+  "keines",
+  "nie",
+  "niemals",
+  "ohne",
+  "not",
+  "no",
+  "never",
+  "without",
+  "none",
+]);
+
+/**
+ * Wörter und Zahlen eines Textes in Kleinschreibung. Eine Zahl mit Dezimal- oder Tausenderzeichen
+ * bleibt EIN Wort („1.200", „0,5") — so ist „20" nie ein Teil von „120" oder „1.200".
+ */
+function wortfolge(text: string): string[] {
+  return text.toLowerCase().match(/[\p{L}\p{N}]+(?:[.,]\p{N}+)*/gu) ?? [];
+}
+
+/** Sätze einer Passage — getrennt an Satzzeichen mit folgendem Leerraum und an Zeilenwechseln. */
+function saetze(text: string): string[] {
+  return text
+    .split(/(?<=[.!?;])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** Steht `nadel` als zusammenhängende Wortfolge in `heu`? */
+function enthaeltFolge(heu: readonly string[], nadel: readonly string[]): boolean {
+  if (nadel.length === 0) return false;
+  for (let i = 0; i + nadel.length <= heu.length; i++) {
+    if (nadel.every((w, j) => heu[i + j] === w)) return true;
+  }
+  return false;
+}
+
+/** Gleiches Wort oder Beugungsform (gemeinsamer Stamm ab 4 Zeichen, höchstens 3 Zeichen Endung). */
+function gleichesWort(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [kurz, lang] = a.length <= b.length ? [a, b] : [b, a];
+  return kurz.length >= 4 && lang.startsWith(kurz) && lang.length - kurz.length <= 3;
+}
+
+/**
+ * Der Gegenstand kommt im Satz vor, wenn JEDES tragende Wort des Themas (ab 3 Zeichen) dort steht.
+ * Ein Thema ohne tragendes Wort bestätigt nichts.
+ */
+function gegenstandImSatz(satz: readonly string[], thema: string): boolean {
+  const woerter = wortfolge(thema).filter((w) => w.length >= 3);
+  return woerter.length > 0 && woerter.every((w) => satz.some((s) => gleichesWort(s, w)));
+}
+
+/** Das Ergebnis des Abgleichs an EINER Fundstelle — nachvollziehbar je Bedingung. */
+export interface KiAbgleich extends KiFundstelle {
+  /** Der Gegenstand der Aussage steht im selben Satz wie der Wert. */
+  readonly gegenstand: boolean;
+  /** Der Satz mit dem Wert ist verneint. */
+  readonly verneint: boolean;
+  /** Erst Gegenstand UND Wert im selben Satz OHNE Verneinung bestätigen die Aussage. */
+  readonly bestaetigt: boolean;
+}
+
+/**
+ * Gleicht eine Aussage (Gegenstand + Wert) mit einer Originalpassage ab. `null` heisst: der Wert
+ * steht dort als ganze Wortfolge gar nicht — kein Texttreffer. Sonst wird der BESTE Satz mit dem
+ * Wert gemeldet; bestätigt ist nur ein Satz mit Gegenstand und ohne Verneinung.
+ */
+function gleicheAb(
+  passage: string,
+  thema: string,
+  wert: string,
+): Omit<KiAbgleich, keyof KiFundstelle> | null {
+  const gesucht = wortfolge(wert);
+  let treffer: Omit<KiAbgleich, keyof KiFundstelle> | null = null;
+  for (const satz of saetze(passage)) {
+    const woerter = wortfolge(satz);
+    if (!enthaeltFolge(woerter, gesucht)) continue;
+    const gegenstand = gegenstandImSatz(woerter, thema);
+    const verneint = woerter.some((w) => VERNEINUNGEN.has(w));
+    const jetzt = { gegenstand, verneint, bestaetigt: gegenstand && !verneint };
+    if (jetzt.bestaetigt) return jetzt;
+    treffer ??= jetzt;
+  }
+  return treffer;
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -105,6 +105,22 @@ function AuftragKarte({
           {t("kiarbeitsweg.paketVeraltet")}
         </p>
       ) : null}
+      {a.wegGesperrt !== null ? (
+        <p
+          data-testid="ki-auftrag-weg-gesperrt"
+          className="mt-1 rounded-btn bg-trust-crit-bg px-2 py-1 text-[11.5px] text-trust-crit-text"
+        >
+          {a.wegGesperrt}
+        </p>
+      ) : null}
+      {a.inhalteZurueckgehalten ? (
+        <p
+          data-testid="ki-auftrag-zurueckgehalten"
+          className="mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[11.5px] text-trust-warn-text"
+        >
+          {t("kiarbeitsweg.zurueckgehalten")}
+        </p>
+      ) : null}
       {a.prompt !== null ? (
         <label className="mt-1 block text-[11px] text-muted">
           {t("kiarbeitsweg.prompt")}
@@ -258,7 +274,9 @@ function AuftragKarte({
           className="mt-1.5"
         >
           <p className={KLEINTITEL}>{t("kiarbeitsweg.antwort", { anbieter: x.anbieter })}</p>
-          <p className="whitespace-pre-wrap text-[12px] text-text">{x.inhalt}</p>
+          {x.inhalt !== null ? (
+            <p className="whitespace-pre-wrap text-[12px] text-text">{x.inhalt}</p>
+          ) : null}
           {!x.anwendbar ? (
             <p className="text-[11px] font-semibold text-trust-warn-text">
               {x.hinweis ?? t("kiarbeitsweg.nichtAnwendbar")}

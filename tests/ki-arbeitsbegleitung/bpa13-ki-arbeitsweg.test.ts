@@ -793,6 +793,82 @@ describe("K9 · zwei KI-Ergebnisse gegen Originalquellen vergleichen", () => {
     expect(passend?.status).toBe("quelle_belegt");
   });
 
+  // Nacharbeit 5 (Ben, AC09): ein Texttreffer ist nur eine Fundstelle.
+  const aussage = (
+    anbieter: string,
+    thema: string,
+    wert: string,
+    quellen: string[],
+  ): KiErgebnis => ({
+    jobId: `kj_${anbieter}`,
+    anbieter,
+    modell: null,
+    antwortFassung: "r1",
+    aussagen: [{ thema, wert, quellen }],
+  });
+  const beide = (p: ReturnType<typeof paket>, thema: string, wert: string, quellen: string[]) =>
+    vergleicheKiErgebnisse(
+      p,
+      aussage("Claude", thema, wert, quellen),
+      aussage("ChatGPT", thema, wert, quellen),
+    )[0];
+
+  it("GEGENFALL Teilzahl: „20 EUR“ ist in „120 EUR“ weder Fundstelle noch Beleg", () => {
+    const z = beide(paket(), "Listenpreis", "20 EUR", ["q-preis"]);
+    expect(z).toMatchObject({
+      status: "quelle_genannt_unbestaetigt",
+      belegteQuellen: [],
+      fundstellen: [],
+    });
+  });
+
+  it("GEGENFALL anderer Gegenstand: der Wert steht dort, aber nicht als Aussage über das Thema", () => {
+    const z = beide(paket(), "Rabatt", "120 EUR", ["q-preis"]);
+    expect(z).toMatchObject({
+      status: "quelle_genannt_unbestaetigt",
+      belegteQuellen: [],
+      fundstellen: [{ quelleId: "q-preis", fassung: "v7", abschnittId: "a1" }],
+      abgleich: [{ gegenstand: false, verneint: false, bestaetigt: false }],
+    });
+    expect(z?.text).toContain("nicht von diesem Gegenstand die Rede");
+  });
+
+  it("GEGENFALL Verneinung: „beträgt nicht 99 EUR“ bestätigt „99 EUR“ nicht", () => {
+    const p = paket([
+      quelle({
+        quelleId: "q-neg",
+        abschnitte: [{ abschnittId: "a1", text: "Der Listenpreis beträgt nicht 99 EUR." }],
+      }),
+    ]);
+    const z = beide(p, "Listenpreis", "99 EUR", ["q-neg"]);
+    expect(z).toMatchObject({
+      status: "quelle_genannt_unbestaetigt",
+      abgleich: [{ gegenstand: true, verneint: true, bestaetigt: false }],
+    });
+    expect(z?.text).toContain("verneint");
+  });
+
+  it("GEGENFALL Satzbindung: Gegenstand und Wert in verschiedenen Sätzen bestätigen nichts", () => {
+    const p = paket([
+      quelle({
+        quelleId: "q-zwei",
+        abschnitte: [
+          {
+            abschnittId: "a1",
+            text: "Der Rabatt gilt ab 10 Lizenzen. Der Listenpreis ist 99 EUR.",
+          },
+        ],
+      }),
+    ]);
+    expect(beide(p, "Rabatt", "99 EUR", ["q-zwei"])?.status).toBe("quelle_genannt_unbestaetigt");
+    // Gegenprobe: dieselbe Passage bestätigt die Aussage über den richtigen Gegenstand.
+    expect(beide(p, "Listenpreis", "99 EUR", ["q-zwei"])).toMatchObject({
+      status: "quelle_belegt",
+      belegteQuellen: ["q-zwei"],
+      abgleich: [{ gegenstand: true, verneint: false, bestaetigt: true }],
+    });
+  });
+
   it("die gesperrte Passage ist kein Beleg — sie war nie im Paket", () => {
     const p = paket();
     const marge = (anbieter: string): KiErgebnis => ({

@@ -66,6 +66,8 @@ export default {
     "kiarbeitsweg.antwort": "Antwort von {{anbieter}}",
     "kiarbeitsweg.nichtAnwendbar": "Nicht auf das aktuelle Dokument anwendbar.",
     "kiarbeitsweg.beleg": "Beleg: {{text}}",
+    "kiarbeitsweg.zurueckgehalten":
+      "Eine Quelle dieses Auftrags ist dir nicht mehr zugänglich. Antworten und Teilergebnisse werden deshalb nicht angezeigt.",
   },
   en: {
     "kiarbeitsweg.titel": "Work with an AI",
@@ -123,6 +125,8 @@ export default {
     "kiarbeitsweg.antwort": "Answer from {{anbieter}}",
     "kiarbeitsweg.nichtAnwendbar": "Not applicable to the current document.",
     "kiarbeitsweg.beleg": "Evidence: {{text}}",
+    "kiarbeitsweg.zurueckgehalten":
+      "A source of this task is no longer accessible to you. Answers and partial results are therefore not shown.",
   },
   nl: {
     "kiarbeitsweg.titel": "Met een AI werken",
@@ -180,5 +184,7 @@ export default {
     "kiarbeitsweg.antwort": "Antwoord van {{anbieter}}",
     "kiarbeitsweg.nichtAnwendbar": "Niet toepasbaar op het huidige document.",
     "kiarbeitsweg.beleg": "Bewijs: {{text}}",
+    "kiarbeitsweg.zurueckgehalten":
+      "Een bron van deze opdracht is niet meer voor je toegankelijk. Antwoorden en deelresultaten worden daarom niet getoond.",
   },
 } satisfies Textmodul;

@@ -168,9 +168,23 @@ export interface KiAuftragSicht {
   readonly ausgelassen: KiAuftragEintrag["paket"]["ausgelassen"];
   readonly paketAktuell: boolean;
   readonly paketGruende: ReadonlyArray<{ readonly quelleId: string; readonly grund: string }>;
-  /** `null`, wenn Rechte, Freigaben oder Inhalte sich geändert haben (G05: Kopie gesperrt). */
+  /**
+   * `null`, wenn Rechte, Freigaben oder Inhalte sich geändert haben (G05: Kopie gesperrt) ODER der
+   * Weg jetzt gesperrt ist — etwa „Keine KI" (AC04, Nacharbeit 5): dann gibt es auch nichts zu
+   * kopieren.
+   */
   readonly prompt: string | null;
-  readonly antworten: readonly KiAntwortEintrag[];
+  /** Der sichtbare Sperrsatz des aktuellen Wegs — `null`, solange der Weg offen ist. */
+  readonly wegGesperrt: string | null;
+  /**
+   * G04/G05 (Nacharbeit 5): `true`, wenn mindestens eine Quelle des Pakets der Person nicht mehr
+   * lesbar ist. Dann gehen abgeleitete Inhalte nicht mehr hinaus — Antworttexte (`inhalt: null`),
+   * das Teilergebnis und die Titel entzogener Quellen.
+   */
+  readonly inhalteZurueckgehalten: boolean;
+  readonly antworten: ReadonlyArray<
+    Omit<KiAntwortEintrag, "inhalt"> & { readonly inhalt: string | null }
+  >;
   readonly belege: readonly KiBelegEintrag[];
   readonly codexWirkungen: readonly KiCodexWirkungEintrag[];
   readonly angelegtAm: string;
@@ -453,8 +467,34 @@ export class KiArbeitsbegleitungDienst {
   }
 
   /**
-   * Die Sicht prüft das Paket FRISCH: hat sich ein Recht, eine Freigabe oder ein Inhalt geändert,
-   * geht der Prompt (die Kopie der Quelltexte) nicht mehr hinaus — auch nicht zum Ansehen (G05).
+   * Welche Quellen dieses Auftrags die Person JETZT lesen darf — frisch, mit derselben Regel wie
+   * jede Übergabe. Grundlage für das Zurückhalten abgeleiteter Inhalte (G04/G05).
+   */
+  private async lesbareQuellen(wer: KiBetrachter, e: KiAuftragEintrag): Promise<Set<string>> {
+    const ids = [
+      ...new Set([
+        ...e.quellen,
+        ...e.paket.quellenstand.map((q) => q.quelleId),
+        ...e.paket.ausgelassen.map((a) => a.quelleId),
+      ]),
+    ];
+    const quellen = await this.quellen(
+      wer,
+      e.paket.bindung,
+      ids,
+      e.freigegebeneQuellen,
+      e.geschlosseneQuellen,
+    );
+    return new Set(quellen.filter((q) => q.lesbar).map((q) => q.quelleId));
+  }
+
+  /**
+   * Die Sicht prüft FRISCH, bevor irgendetwas hinausgeht:
+   *   · Paket (Rechte, Freigaben, Inhalte) UND Weg (z. B. „Keine KI") — nur wenn beide tragen,
+   *     steht der Prompt da (G05, AC04).
+   *   · Leserechte je Quelle — ist eine Quelle des Pakets entzogen, gehen Antworttexte und
+   *     Teilergebnis nicht mehr hinaus (sie sind aus ihr abgeleitet), und Titel entzogener Quellen
+   *     erscheinen nicht (G04/G05). Kennungen, Stände und Belegklassen bleiben sichtbar.
    */
   private async sicht(
     wer: KiBetrachter,
@@ -462,19 +502,27 @@ export class KiArbeitsbegleitungDienst {
     e: KiAuftragEintrag,
   ): Promise<KiAuftragSicht> {
     const p = await this.paketJetzt(wer, g, e);
+    const weg = this.weg(e.job.anbieter, e.job.faehigkeit);
+    const lesbar = await this.lesbareQuellen(wer, e);
+    const zurueck = e.paket.quellenstand.some((q) => !lesbar.has(q.quelleId));
+    const { teilergebnis: _teil, ...jobOhneTeil } = e.job;
     return {
-      job: e.job,
+      job: zurueck ? jobOhneTeil : e.job,
       auftrag: e.auftrag,
       quellen: e.quellen,
       freigegebeneQuellen: e.freigegebeneQuellen,
       geschlosseneQuellen: e.geschlosseneQuellen,
       paketId: e.paket.paketId,
       quellenstand: e.paket.quellenstand,
-      ausgelassen: e.paket.ausgelassen,
+      ausgelassen: e.paket.ausgelassen.map((a) =>
+        lesbar.has(a.quelleId) ? a : { ...a, titel: "" },
+      ),
       paketAktuell: p.aktuell,
       paketGruende: p.aktuell ? [] : p.gruende,
-      prompt: p.aktuell ? e.paket.prompt : null,
-      antworten: e.antworten,
+      prompt: p.aktuell && weg.erlaubt ? e.paket.prompt : null,
+      wegGesperrt: weg.erlaubt ? null : weg.text,
+      inhalteZurueckgehalten: zurueck,
+      antworten: zurueck ? e.antworten.map((a) => ({ ...a, inhalt: null })) : e.antworten,
       belege: e.belege,
       codexWirkungen: e.codexWirkungen,
       angelegtAm: e.angelegtAm,
@@ -930,6 +978,17 @@ export class KiArbeitsbegleitungDienst {
     const b = await this.eintrag(wer, gid, text(roh.jobB, 200, "jobB"));
     if (a.e.paket.paketId !== b.e.paket.paketId) {
       throw eingabe("Verglichen werden nur Ergebnisse zum selben Kontextpaket.");
+    }
+    // G04/G05 (Nacharbeit 5): der Vergleich liest die gespeicherten ORIGINALPASSAGEN. Er läuft nur,
+    // solange die Person jede Quelle des Pakets JETZT noch lesen darf — sonst gäbe er Fundstellen
+    // und Bestätigungen aus einer entzogenen Quelle heraus.
+    const lesbar = await this.lesbareQuellen(wer, a.e);
+    if (a.e.paket.quellenstand.some((q) => !lesbar.has(q.quelleId))) {
+      throw new KiArbeitsbegleitungFehler(
+        409,
+        "gesperrt",
+        "Eine Quelle dieses Auftrags ist dir nicht mehr zugänglich. Der Vergleich ist gesperrt.",
+      );
     }
     const ergebnis = (x: KiAuftragEintrag, liste: KiAussage[]): KiErgebnis => {
       const letzte = x.antworten.at(-1);

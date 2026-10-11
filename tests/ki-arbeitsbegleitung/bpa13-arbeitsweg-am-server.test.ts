@@ -291,6 +291,74 @@ describe("S14-2 · Entzug zwischen Vorbereitung und Übergabe (Ben, AC03/G04/G17
   });
 });
 
+describe("S14-2b · nach Rechteentzug keine abgeleiteten Inhalte (Ben, Nacharbeit 5, G04/G05)", () => {
+  it("Antworttexte, Teilergebnis und Titel sind zurückgehalten; der Vergleich ist gesperrt", async () => {
+    const gid = await gespraech(vera.token);
+    const antwort = "- Listenpreis 120 EUR je Lizenz (Preisblatt Angebot)";
+    const jobs: string[] = [];
+    for (const anbieter of ["anthropic", "openai"]) {
+      const a = await bereite(vera.token, gid, { anbieter });
+      jobs.push(a.job.jobId);
+      expect(
+        (await auf(vera.token, "POST", jobUrl(gid, a.job.jobId, "uebergabe"), {})).statusCode,
+      ).toBe(200);
+      const r = await auf(vera.token, "POST", jobUrl(gid, a.job.jobId, "ergebnis"), {
+        inhalt: antwort,
+        anbieter,
+      });
+      expect(r.statusCode, r.body).toBe(200);
+    }
+    const vergleich = {
+      jobA: jobs[0],
+      jobB: jobs[1],
+      aussagenA: [{ thema: "Listenpreis", wert: "120 EUR", quellen: [preis.id] }],
+      aussagenB: [{ thema: "Listenpreis", wert: "120 EUR", quellen: [preis.id] }],
+    };
+    // Vorher: lesbar, verglichen, bestätigt.
+    const vorher = await auf(
+      vera.token,
+      "POST",
+      `${BASIS}/gespraeche/${gid}/ki-vergleich`,
+      vergleich,
+    );
+    expect(vorher.statusCode, vorher.body).toBe(200);
+    expect((vorher.json() as { zeilen: { status: string }[] }).zeilen[0]?.status).toBe(
+      "quelle_belegt",
+    );
+    expect(JSON.stringify(await liste(vera.token, gid))).toContain(antwort);
+
+    // Entzug: die Quelle wird vertraulich — für die Betrachterin nicht mehr lesbar.
+    await services.ko.setConfidentiality(preis.id, "vertraulich", "ada");
+
+    const nachher = await liste(vera.token, gid);
+    const roh = JSON.stringify(nachher);
+    expect(roh).not.toContain(antwort);
+    expect(roh).not.toContain("Listenpreis 120 EUR");
+    expect(roh).not.toContain("Preisblatt Angebot");
+    for (const s of nachher) {
+      expect(s.inhalteZurueckgehalten).toBe(true);
+      expect(s.prompt).toBeNull();
+      expect(s.antworten.map((x) => x.inhalt)).toEqual([null]);
+      expect(s.job.teilergebnis).toBeUndefined();
+    }
+    const v = await auf(vera.token, "POST", `${BASIS}/gespraeche/${gid}/ki-vergleich`, vergleich);
+    expect(v.statusCode).toBe(409);
+    expect(v.body).not.toContain("Listenpreis 120 EUR");
+  });
+
+  it("ein ausgelassener Titel verschwindet, sobald die Quelle nicht mehr lesbar ist", async () => {
+    const gid = await gespraech(vera.token);
+    const a = await bereite(vera.token, gid);
+    expect(a.ausgelassen.find((x) => x.quelleId === beta.id)?.titel).toBe(
+      "Kalkulation Projekt Beta",
+    );
+    await services.ko.setConfidentiality(beta.id, "vertraulich", "ada");
+    const [s] = await liste(vera.token, gid);
+    expect(s?.ausgelassen.find((x) => x.quelleId === beta.id)?.titel).toBe("");
+    expect(JSON.stringify(s)).not.toContain("Kalkulation Projekt Beta");
+  });
+});
+
 describe("S14-3 · Keine KI und API-Weg ohne Anbieter: konkrete Sperre, kein Ausweichen", () => {
   it("„Keine KI“ sperrt Vorbereitung und Übergabe eines bereits vorbereiteten Auftrags", async () => {
     const gid = await gespraech(vera.token);
@@ -307,6 +375,14 @@ describe("S14-3 · Keine KI und API-Weg ohne Anbieter: konkrete Sperre, kein Aus
     const u = await auf(vera.token, "POST", jobUrl(gid, a.job.jobId, "uebergabe"), {});
     expect(u.statusCode).toBe(409);
     expect((u.json() as { grund: string }).grund).toBe("gesperrt");
+
+    // Ben, Nacharbeit 5 (AC04): Vorbereitung → Abschaltung → Listenabruf. Der vorbereitete Prompt
+    // ist nicht mehr abruf- oder kopierbar; der Sperrsatz steht stattdessen da.
+    expect(a.prompt).toContain("Listenpreis 120 EUR je Lizenz.");
+    const [s] = await liste(vera.token, gid);
+    expect(s?.prompt).toBeNull();
+    expect(s?.wegGesperrt).toContain("Keine KI");
+    expect(JSON.stringify(s)).not.toContain("Listenpreis 120 EUR");
   });
 
   it("API ohne eingerichteten Anbieter: Sperre statt eines anderen Anbieters", async () => {

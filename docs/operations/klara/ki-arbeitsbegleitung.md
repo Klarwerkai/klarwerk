@@ -53,12 +53,22 @@ Installation und jede andere Aktion werden abgelehnt und nicht ausgeführt.
 Modelllauf-Protokoll (Laufkennung) und vom Anbieter gemeldetem Verbrauch. Ist der Lauf nicht
 eindeutig zuzuordnen, wird kein Beleg geraten.
 
+## Rechte vor jeder Ausgabe (Nacharbeit 5)
+
+- Der Prompt steht nur da, wenn Paket **und** aktueller Weg tragen. Bei „Keine KI“ gibt es nichts
+  zu kopieren; der Sperrsatz steht stattdessen da (`wegGesperrt`).
+- Ist eine Quelle des Pakets nicht mehr lesbar, werden Antworttexte und Teilergebnis
+  zurückgehalten (`inhalteZurueckgehalten`). Titel entzogener Quellen erscheinen nicht. Der
+  Vergleich ist dann gesperrt.
+- Vergleich (AC09): Ein Texttreffer ist nur eine Fundstelle. Bestätigt ist eine Aussage erst, wenn
+  im selben Satz der Originalpassage Gegenstand und Wert stehen — der Wert als ganze Wortfolge,
+  ohne Verneinung.
+
 ## Offene Grenzen
 
-- **Realer Anbieterlauf (AC10):** Der Weg ist angeschlossen, aber in dieser Lieferung nicht real
-  ausgeführt. Dazu braucht es eine Instanz mit eingerichtetem Anbieter, erteilter Freigabe und
-  einem ausdrücklich beauftragten Lauf. Ob dafür Zugang oder Budget fehlt, ist hier nicht
-  festgestellt.
+- **Realer Anbieterlauf (AC10):** Die Sonde `tests-smoke/ki-arbeitsweg-modell.spec.ts` (`@modell`,
+  voller Smoke mit Betreiber-Einspeisung) fährt einen realen, gebundenen Lauf und legt Laufkennung,
+  Modell und Verbrauch als Anhang ab. Ein Beleg entsteht erst mit ihrem tatsächlichen Lauf.
 - **Codex selbst** wird nicht automatisch gestartet. Der Prompt geht manuell an Codex; Klarwerk
   setzt die zurückgegebenen Dateien begrenzt um.
 - **Browserbegleitung:** kein Adapter, ehrlich „nicht eingerichtet“.

@@ -86,6 +86,13 @@ const ERLAUBTE_AUSNAHMEN = [
     file: "klara-basis-browser.spec.ts",
     title: "Klara 01 · tatsächliche Modellantwort in der beweglichen Klara @modell",
   },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13, Ben Nacharbeit 5): AC10 verlangt einen
+  // REALEN Anbieterlauf mit gemeldetem Verbrauch. Ohne Modell kann der Fall im Tor im Prinzip
+  // nicht laufen — dieselbe Lage wie die Einträge darüber. Er läuft im vollen Smoke.
+  {
+    file: "ki-arbeitsweg-modell.spec.ts",
+    title: "KI-Arbeitsweg: realer gebundener Anbieterlauf mit Verbrauchsbeleg @modell",
+  },
 ] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
