@@ -875,6 +875,28 @@ export const TABELLE: Zeile[] = [
       "Ohne Token antwortet die Route bewusst mit der TEILMENGE, deren Flächen vor der Anmeldung erreichbar sind (Impressum, Datenschutz) — `features-routes.ts:40-58`. Ein ABGELAUFENER Token bleibt ein 401 und wird nicht stillschweigend herabgestuft; das ist der Unterschied zu einer offenen Route.",
     ),
   },
+  // R-0570 · Entscheidung zu Frage 14: die anonyme Vorführung. Öffentlich für jeden Akteur, weil sie
+  // ausschliesslich erfundene Inhalte trägt; der Wissensspeicher ist von hier aus nicht erreichbar.
+  {
+    gruppe: "vorfuehrungRoutes",
+    methode: "GET",
+    pfad: "/api/vorfuehrung",
+    belegstelle: "services/app/src/routes/vorfuehrung-routes.ts:38",
+    tor: "keines — erfundene Vorführinhalte",
+    erwartet: OEFFENTLICH(
+      "Entscheidung zu Frage 14 (11.10.2026): anonyme Vorführung nur mit erfundenen Inhalten aus `vorfuehrung/inhalte.ts`, ohne Zugriff auf den Wissensspeicher. Auf dieser Bühne ist der Schalter aus — die Tür ist registriert und antwortet 404 ohne Inhalt.",
+    ),
+  },
+  {
+    gruppe: "vorfuehrungRoutes",
+    methode: "GET",
+    pfad: "/api/vorfuehrung/frage",
+    belegstelle: "services/app/src/routes/vorfuehrung-routes.ts:48",
+    tor: "keines — Suche im festen erfundenen Bestand",
+    erwartet: OEFFENTLICH(
+      "Fragen ohne Anmeldung an die Vorführung (Frage 14): gesucht wird nur im festen erfundenen Bestand, kein Modell und kein Wissensspeicher. Auf dieser Bühne ist der Schalter aus — 404 ohne Inhalt.",
+    ),
+  },
   {
     gruppe: "helpRoutes",
     methode: "POST",

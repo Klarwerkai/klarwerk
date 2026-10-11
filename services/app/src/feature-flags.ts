@@ -77,6 +77,21 @@ export const SCHALTER_REGISTRY = {
    * hat, geht einen Unangemeldeten nichts an, und diese Fläche liegt ohnehin hinter `users.manage`.
    */
   demodaten: "KLARWERK_DEMO_SEED",
+  /**
+   * R-0570 · die anonyme Vorführung (`routes/vorfuehrung-routes.ts`): Lesen und Fragen OHNE
+   * Anmeldung, ausschließlich an erfundenen Beispielinhalten (Entscheidung zu Frage 14, 11.10.2026:
+   * „Firmenwissen authentifiziert; anonyme Demo nur öffentlich/fiktiv").
+   *
+   * NICHT DASSELBE WIE `demodaten`: jener lädt Vorführdaten in den ECHTEN Wissensspeicher, und die
+   * bleiben wie jedes Unternehmenswissen hinter der Anmeldung. Diese Fläche berührt den Speicher
+   * nicht. Und nicht dasselbe wie `demoInstanz` (die Kennzeichnung am Hostnamen).
+   *
+   * VORGABE AUS: Ob eine Installation Unangemeldeten überhaupt etwas zeigt, ist eine
+   * Betriebsentscheidung, die nicht dadurch fällt, dass niemand widersprochen hat. Er steht in
+   * `SCHALTER_VOR_ANMELDUNG`, weil die Anmeldemaske nur dann auf die Vorführung verweisen darf, wenn
+   * es sie gibt — und das muss sie wissen, bevor jemand angemeldet ist.
+   */
+  vorfuehrung: "KLARWERK_VORFUEHRUNG_ANONYM",
 } as const;
 
 // ================================================================================================
@@ -203,7 +218,15 @@ export function vorgabeAn(name: SchalterName): boolean {
 // Sie steht seit JOB 4365 NICHT mehr in dieser Menge, weil sie kein Registry-Schalter mehr ist —
 // beide Auskunftsfunktionen unten setzen sie AUSDRÜCKLICH aus dem Host der Anfrage. Über den Draht
 // ändert sich dadurch nichts.
-const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>(["rechtsseiten", "hinweisbanner"]);
+//
+// R-0570: `vorfuehrung` steht ebenfalls hier. Die Fläche richtet sich AUSSCHLIESSLICH an
+// Unangemeldete; die Anmeldemaske verweist nur dann auf sie, wenn sie eingeschaltet ist. Verraten
+// wird damit ein Ja/Nein über eine öffentliche Fläche, keine Fähigkeit des Betriebs.
+const SCHALTER_VOR_ANMELDUNG = new Set<SchalterName>([
+  "rechtsseiten",
+  "hinweisbanner",
+  "vorfuehrung",
+]);
 
 /**
  * DIE EINE AUSWERTUNGSREGEL. Zwei Richtungen, je nach Art des Schalters, und beide fail-safe in die

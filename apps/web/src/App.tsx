@@ -39,6 +39,12 @@ import { SignOutBlocked } from "./legal/SignOutBlocked";
 import { offeneVorgaengeAmGeraet } from "./lib/sessionState";
 import { AppRoutes } from "./routes";
 import { AppShell } from "./shell/AppShell";
+// R-0570: die anonyme Vorführung mit erfundenen Inhalten, vor dem Anmeldetor.
+import {
+  VORFUEHRUNG_PFAD,
+  VorfuehrungScreen,
+  useVorfuehrungTor,
+} from "./vorfuehrung/VorfuehrungScreen";
 
 // JOB 4333: die shell-lose Erfassungsroute. Dieselbe Zeichenkette entscheidet in
 // `shell/AppShell.tsx` („/mobile OHNE Shell") und in `routes.tsx` über die Route; sie steht hier
@@ -81,6 +87,9 @@ function Gate(): JSX.Element {
   // AUFTRAG-mega61 Block A: der Schalter der Rechtsseiten. Er wird UNBEDINGT gelesen (Regel der
   // Hooks), ausgewertet wird er nur auf den beiden Pfaden unten.
   const rechtsseiten = useRechtsseitenTor();
+  // R-0570: der Schalter der anonymen Vorführung — ebenso unbedingt gelesen, ausgewertet nur auf
+  // ihrem Pfad unten.
+  const vorfuehrung = useVorfuehrungTor();
   const devPreview = import.meta.env.DEV && s.error && !s.user;
   // JOB 4333: die Anwendung selbst — EINMAL gebildet, damit der neue Zweig unten sie durchreichen
   // kann, statt eine zweite Hülle daneben aufzubauen.
@@ -112,6 +121,17 @@ function Gate(): JSX.Element {
     }
     if (rechtsseiten.an) {
       return <LegalScreen page={legalPage} />;
+    }
+  }
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung (nur erfundene Inhalte) liegt VOR dem
+  // Anmeldetor. Ist sie ausgeschaltet, läuft der Ablauf unverändert weiter — wie bei den
+  // Rechtsseiten verhält sich die Adresse dann wie jede andere unbekannte.
+  if (window.location.pathname === VORFUEHRUNG_PFAD) {
+    if (!vorfuehrung.geklaert) {
+      return <Splash />;
+    }
+    if (vorfuehrung.an) {
+      return <VorfuehrungScreen />;
     }
   }
   // AUFTRAG-mega62 Block C: HIER ist die Sperre, und sie steht bewusst VOR jedem geschützten

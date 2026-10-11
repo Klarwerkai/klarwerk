@@ -227,6 +227,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "Add-in-Basis/Bundle-Serving (nur bei KLARWERK_ADDON_API); öffentlich, keine Daten.",
   },
+  // R-0570 · Entscheidung zu Frage 14 (11.10.2026): „Firmenwissen authentifiziert; anonyme Demo nur
+  // öffentlich/fiktiv." Die zwei Vorführungswege (services/app/src/routes/vorfuehrung-routes.ts)
+  // sind BEWUSST öffentlich und BEWUSST nur lesend (GET). Sie liefern ausschliesslich den festen,
+  // erfundenen Bestand aus `vorfuehrung/inhalte.ts` und berühren den Wissensspeicher nicht;
+  // abgegrenzt gemessen in `tests/vorfuehrung-anonym/`.
+  "GET /api/vorfuehrung": {
+    protection: "public",
+    reason:
+      "Anonyme Vorführung (R-0570/Frage 14): nur erfundene Beispielinhalte, kein Wissensspeicher; " +
+      "Vorgabe aus (KLARWERK_VORFUEHRUNG_ANONYM) → 404.",
+  },
+  "GET /api/vorfuehrung/frage": {
+    protection: "public",
+    reason:
+      "Fragen ohne Anmeldung an die Vorführung: Suche NUR im festen erfundenen Bestand, kein Modell, " +
+      "kein Wissensspeicher; Vorgabe aus → 404.",
+  },
   // SCRUM-510 WP2: Admin-Trigger Confluence-Space-Import (Source-Datei immer gescannt; Route nur bei
   // KLARWERK_CONFLUENCE_IMPORT registriert). Echte Admin-Auth via requirePermission("users.manage").
   "POST /api/admin/import/confluence": { protection: "users.manage" },

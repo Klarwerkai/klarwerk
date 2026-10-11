@@ -330,6 +330,7 @@ import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { vorfuehrungRoutes } from "./routes/vorfuehrung-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
@@ -3491,6 +3492,10 @@ export function buildApp(
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
   app.register(featuresRoutes(guards));
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung — erfundene Inhalte, ohne Anmeldung,
+  // ohne jeden Zugriff auf den Wissensspeicher. Immer registriert; der Schalter entscheidet über den
+  // Inhalt (Vorgabe aus → 404), Begründung im Kopf von vorfuehrung-routes.ts.
+  app.register(vorfuehrungRoutes());
   // JOB 3510: die EINE Auskunft über das Erscheinungsbild dieser Instanz — und der Adminweg, der es
   // umschaltet. Sie ist wie die Schalterauskunft darüber SELBST nicht geschaltet: Eine Marke, die
   // man erst freischalten müsste, ließe die Vorführinstanz beim ersten Laden ungefärbt. Die

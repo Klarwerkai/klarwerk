@@ -183,6 +183,14 @@ const SCHALTER_ERKLAERUNG: Record<SchalterName, { wofuer: string; ohneIhn: strin
     wofuer: "Das Laden der Demodaten (POST /api/admin/demo-seed) — legt Konten an.",
     ohneIhn: "Die Route ist nicht registriert. Vorgabe: aus, ohne Ausnahme.",
   },
+  // R-0570 / Entscheidung zu Frage 14: anonym nur erfundene Inhalte, Unternehmenswissen bleibt
+  // hinter der Anmeldung.
+  vorfuehrung: {
+    wofuer:
+      "Die anonyme Vorführung (/vorfuehrung): Lesen und Fragen ohne Anmeldung, nur an erfundenen Beispielinhalten.",
+    ohneIhn:
+      "Beide Vorführungswege antworten 404, die Anmeldemaske verweist nicht darauf. Unternehmenswissen ist in keinem Fall ohne Anmeldung erreichbar. Vorgabe: aus.",
+  },
 };
 
 // ================================================================================================

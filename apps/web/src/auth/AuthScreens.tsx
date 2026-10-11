@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
+import { useFeatures } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { Button, Field, TextInput } from "../components/ui";
 // AUFTRAG-mega61 Block A/B/D: Fußbereich, Hinweistext und der Satz nach einer Ablehnung. Der
@@ -10,6 +11,7 @@ import { Button, Field, TextInput } from "../components/ui";
 // hinzu kommen ausschließlich Anzeigeflächen unterhalb des Formulars.
 import { LegalFooter } from "../legal/LegalPages";
 import { NoticeText, takeDeclineMarker } from "../legal/NoticeBanner";
+import { VORFUEHRUNG_PFAD } from "../vorfuehrung/VorfuehrungScreen";
 // JOB 1097 / D-028 + D-027: Markenfläche und Sprachwahl liegen als EINE Quelle daneben. Der
 // Markenblock stand vorher zeichengleich auch in `ResetScreen.tsx` — jede Änderung hätte an beide
 // Stellen gemusst, sonst wären sie auseinandergelaufen.
@@ -23,6 +25,9 @@ type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent"
 export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Element {
   const { t, i18n } = useTranslation();
   const { refresh, oidcEnabled, selfRegistrationEnabled } = useSession();
+  // R-0570: `=== true` — „noch nicht geladen", „nicht gekommen" und „aus" zeigen gleichermassen
+  // keinen Verweis (fail-closed, dieselbe Richtung wie `FeatureGate`).
+  const vorfuehrungAn = useFeatures().data?.features?.vorfuehrung === true;
   const [mode, setMode] = useState<Mode>(needsSetup ? "setup" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -410,6 +415,20 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                   </button>
                 )}
               </div>
+            </div>
+          ) : null}
+          {/* R-0570 / Entscheidung zu Frage 14: der Weg in die anonyme Vorführung. Er steht nur da,
+              wenn der Server sie für diese Installation eingeschaltet hat (Vorgabe aus), und sagt
+              schon im Wortlaut, dass dort nur erfundene Inhalte liegen. */}
+          {!needsSetup && mode === "login" && vorfuehrungAn ? (
+            <div className="mt-4 text-center text-[13px]">
+              <a
+                href={VORFUEHRUNG_PFAD}
+                data-testid="auth-zur-vorfuehrung"
+                className="text-muted underline underline-offset-2 hover:text-ink"
+              >
+                {t("vorfuehrung.zurVorfuehrung")}
+              </a>
             </div>
           ) : null}
           {!needsSetup && (mode === "register" || mode === "forgot") ? (
