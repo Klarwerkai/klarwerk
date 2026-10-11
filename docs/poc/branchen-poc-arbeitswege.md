@@ -81,10 +81,11 @@ festgelegt.
   2. Erik: Rückfrage „Schwankt der Dosierwert an Linie L4 bei allen Rezepturen oder nur bei einer?“.
   3. Fragende: Glocke → Rückfrage → Antwort „Bei allen Rezepturen, jeweils in der ersten halben
      Stunde nach dem Schichtwechsel.“
-  4. Erik: Eintrag erfassen „Linie L4: Dosierwaage bei jedem Schichtwechsel neu tarieren“ (Aussage aus
+  4. Erik: über „Erfassen“ (`/capture/frontdoor`) den Eintrag einreichen „Linie L4: Dosierwaage bei jedem Schichtwechsel neu tarieren“ (Aussage aus
      `poc.lueckenAntwort`: die nicht neu tarierte Dosierwaage derselben Linie ist die Ursache) und in
      der Lücke als Antwortentwurf verknüpfen. „Abschließen“ bleibt gesperrt.
-  5. Carla und die Verwaltung bewerten den Eintrag in `/validierung` positiv.
+  5. Die vorgeschriebene Zahl Prüfender (Standard 3: Carla, Verwaltung, zweite Controllerrolle)
+     gibt den Eintrag in `/validierung` mit „Freigeben“ frei.
   6. Erik: „Abschließen“ → „Fachlich gelöst“.
 - **Ergebnis:** genau eine Erfolgsmeldung an die Fragende mit dem nutzbaren Eintrag; dieselbe Frage
   erneut zeigt den abgeschlossenen Stand statt einer neuen Lücke — als direkte Antwort mit genau
@@ -104,13 +105,16 @@ festgelegt.
      zuständiger Person (Erik). Der Kompressor-Eintrag und die Antwortquelle aus Geschichte 1 fehlen.
   3. Folgeprüfung: Füllventile → „Noch gültig“ (bestätigt genau den gesehenen Stand und legt eine
      neue Fassung an; keine fachliche Freigabe des Inhalts).
-  4. Erik: Etikettierer auf Fassung 2 anpassen (Aussage aus `poc.koAnlageBNeu`). Der Eintrag ist
-     freigegeben und Erik hat kein Freigaberecht: das Produkt nimmt die Änderung nur als
-     **Änderungsvorschlag** an. Die ladende Person (Verwaltung) übernimmt den Vorschlag; den eigenen
-     Vorschlag gibt niemand selbst frei.
+  4. Erik: Etikettierer öffnen → „Bearbeiten“ (`/wissen/<id>?edit=1`) → Aussage auf Fassung 2
+     anpassen (`poc.koAnlageBNeu`) → „Änderung einreichen“. Der Eintrag ist freigegeben und Erik hat
+     kein Freigaberecht: die Fläche sagt das und bietet kein direktes Speichern an. Die ladende
+     Person (Verwaltung) öffnet denselben Eintrag und wählt am offenen Vorschlag „Übernehmen“; den
+     eigenen Vorschlag gibt niemand selbst frei.
   5. Folgeprüfung: Etikettierer → „Noch gültig“ für die **neue** Fassung. Eine Bestätigung der alten
      Fassung wird abgewiesen.
-  6. Carla und die ladende Person prüfen die beiden dabei entstandenen Fassungen erneut.
+  6. Carla und die ladende Person geben die beiden dabei entstandenen Fassungen in `/validierung`
+     erneut frei. Nach „Noch gültig“ verschwindet der Eintrag sofort aus der Liste „Erneut“ (ohne
+     Neuladen).
 - **Ergebnis:** beide Folgefälle geschlossen; der unbeteiligte Eintrag war nie betroffen.
 - **Abschluss:** Liste „Erneut“ ohne `AF-2`-Einträge; beide Einträge wieder validiert, der
   Etikettierer mit dem Text der Fassung 2.
@@ -186,7 +190,7 @@ Die Werte stehen im Bericht des jeweiligen Laufs, nicht in dieser Datei.
 | Nachweis | Art | Stand |
 | --- | --- | --- |
 | `tests/branchen-poc/arbeitswege-am-draht.test.ts` | Agentenprobe über die echten Routen (In-Memory, ohne Modell), Ausgangsbestand über „Demodaten laden“ | Geschichten 1–3 mit getrennten Rollen, Gegenfälle, Wiederholung, Wortwahl und sachliche Passung je Sprache |
-| `tests-smoke/branchen-poc-arbeitswege-browser.spec.ts` | Agentenprobe im echten Browser (`chromium-zustand`, ohne Modell), angemeldeter Einstieg `/start`, Revision aus `/health` | Geschichten 1–3 mit getrennten Konten; Assistenz mit persönlichem Namen, Seiten- und Markierungskontext; Messprotokoll und Bildbelege am Bericht. Im Torlauf fehlt der Schalter `KLARWERK_DEMO_SEED`; der Ausgangsbestand wird dann mit denselben Texten über die regulären Routen nachgebildet (ohne Quellenbezeichnung) — welcher Weg lief, steht im Protokoll |
+| `tests-smoke/branchen-poc-arbeitswege-browser.spec.ts` | Agentenprobe im echten Browser (`chromium-zustand`, ohne Modell), angemeldeter Einstieg `/start`, Revision aus `/health` | Geschichten 1–3 mit getrennten Konten, alle Arbeitsschritte über die Oberfläche (Assistenz, Erfassen, Lückenvorgang, Prüffläche, Reiter „Erneut“, Leseansicht mit Vorschlag und Übernahme); Assistenz mit persönlichem Namen, Seiten- und Markierungskontext; Messprotokoll und Bildbelege am Bericht. Im Torlauf fehlt der Schalter `KLARWERK_DEMO_SEED`; der Ausgangsbestand wird dann mit denselben Texten über die regulären Routen nachgebildet (ohne Quellenbezeichnung) — welcher Weg lief, steht im Protokoll |
 | Echte Nutzung durch Menschen | — | **offen** |
 | Veröffentlichte Fassung, Live-Einstieg, Provider-Nachweis | — | **offen**, folgt dem regulären Lieferweg nach Bens Prüfung |
 

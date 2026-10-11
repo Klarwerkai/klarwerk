@@ -33,11 +33,12 @@ import { ensureLoggedIn, workspaceMarker } from "./support/auth";
 // beobachtete Fehler (API-Antworten ≥ 400 und Seitenfehler im Browser dieser Rolle) und offene
 // Punkte. Gemessen, nicht geschätzt; das Protokoll hängt auch bei einem Abbruch am Bericht.
 //
-// IM BROWSER BEDIENT: Assistenz (Frage, Quelle, Seitenkontext, Markierung), Lückenvorgang
-// (Übergabe, Rückfrage, Antwort, Entwurf, Abschluss, Glocke, Ergebnis), Reiter „Erneut“ (Melden,
-// Begründung, „Noch gültig“). ÜBER ROUTEN DER SITZUNG (keine eigene Fläche geklickt): Erfassen des
-// Antworteintrags, Bewertungen der Fachprüfung, Änderungsvorschlag und dessen Übernahme — so auch
-// in den vorhandenen Browserproben der verknüpften Aufträge.
+// IM BROWSER BEDIENT (Nacharbeit 7: alle Arbeitsschritte der Geschichten): Assistenz (Frage, Quelle,
+// Seitenkontext, Markierung), Erfassungsfläche (Antwort einreichen), Lückenvorgang (Übergabe,
+// Rückfrage, Antwort, Entwurf, Abschluss, Glocke, Ergebnis), Prüffläche (Fachfreigaben),
+// Reiter „Erneut“ (Melden, Begründung, „Noch gültig“ — Abschluss ohne Neuladen), Leseansicht
+// (Änderungsvorschlag einreichen, fremde Übernahme). Über Routen laufen nur der Aufbau des
+// Ausgangsbestands, das Assistenzprofil von Erik und lesende Kontrollen des Serverstands.
 
 const p = DEMO_TEXTS.de.poc;
 const LUECKENFRAGE = DEMO_TEXTS.de.gapQuestion;
@@ -131,11 +132,71 @@ async function anmelden(browser: Browser, email: string, kennwort: string): Prom
   await seite.locator('input[type="password"]').first().fill(kennwort);
   await seite.locator('button[type="submit"]').click();
   await expect(workspaceMarker(seite)).toBeVisible({ timeout: 15_000 });
-  if (await seite.getByTestId("notice-ack").count()) {
-    await seite.getByTestId("notice-ack").click();
-  }
+  await baenderSchliessen(seite);
   beobachte(seite);
   return seite;
+}
+
+/**
+ * Die zwei festen Bänder am unteren Rand (Nutzungshinweis, „Wie soll deine Assistenz heißen?“)
+ * liegen über den Knöpfen der Prüfkarte (Fehlerbilder Nacharbeit 6). Wie ein Mensch: zur Kenntnis
+ * nehmen bzw. „Später“. Erscheint ein Band nicht, gibt es nichts zu schließen.
+ */
+async function baenderSchliessen(seite: Page): Promise<void> {
+  for (const knopf of ["notice-ack", "assistenz-einrichtung-spaeter"]) {
+    const ziel = seite.getByTestId(knopf).first();
+    try {
+      await ziel.waitFor({ state: "visible", timeout: 3_000 });
+    } catch {
+      continue;
+    }
+    await ziel.click();
+    await expect(seite.getByTestId(knopf)).toHaveCount(0, { timeout: 5_000 });
+  }
+}
+
+const KARTENTITEL = '[data-testid="pruefen-karte"] [data-text="titel"]';
+
+/**
+ * Fachprüfung über die Prüffläche: Eintrag über `?ko=` vorwählen, „Freigeben“ (eine positive
+ * Bewertung), eine etwa gestellte Dubletten- oder Einstufungsfrage beantworten, dann das
+ * Ergebnis laut Server ablesen. Selektoren wie `fragen-pruefen-einstieg-browser.spec.ts`.
+ */
+async function freigebenImPruefen(
+  seite: Page,
+  koId: string,
+  titel: string,
+  hilfe: string[],
+): Promise<void> {
+  await seite.goto(`/validierung?ko=${koId}`);
+  await expect(seite.locator(KARTENTITEL)).toHaveText(titel, { timeout: 20_000 });
+  await assistenzSchliessen(seite);
+  const zustimmen = seite.getByTestId("pruefen-entscheidung-up");
+  // Die Hintergrundprüfung sperrt die Entscheidung, solange sie läuft (`validationAiGate`).
+  await expect(zustimmen).toBeEnabled({ timeout: 90_000 });
+  await zustimmen.click();
+  const ergebnis = seite.locator(`[data-testid="pruefen-entschieden"][data-ko="${koId}"]`);
+  const dublette = seite.getByTestId("pruefen-dublettenfrage-ja");
+  const stufe = seite.getByTestId("pruefen-stufenfrage-wahl-intern");
+  for (let i = 0; i < 2; i += 1) {
+    await expect(ergebnis.or(dublette).or(stufe).first()).toBeVisible({ timeout: 20_000 });
+    if (await dublette.isVisible()) {
+      hilfe.push("Prüfen: Dublettenfrage bestätigt");
+      await dublette.click();
+    } else if (await stufe.isVisible()) {
+      hilfe.push("Prüfen: Einstufungsfrage beantwortet (intern)");
+      await stufe.click();
+    } else {
+      break;
+    }
+  }
+  await expect(ergebnis).toHaveAttribute("data-verdict", "up", { timeout: 20_000 });
+}
+
+async function eintragLesen(seite: Page, koId: string): Promise<Ko & { statement: string }> {
+  const r = await seite.request.get(`/api/kos/${koId}`);
+  expect(r.status(), await r.text()).toBe(200);
+  return (await r.json()) as Ko & { statement: string };
 }
 
 async function assistenzOeffnen(seite: Page): Promise<void> {
@@ -206,11 +267,11 @@ const zeile = (seite: Page, titel: string) =>
   seite.getByTestId("pruefen-warteschlange-eintrag").filter({ hasText: titel });
 
 /**
- * Nach „Noch gültig“: erst der Serverstand (der Fall ist geschlossen), dann die Liste neu laden.
- * Gemessen (Nacharbeit 6): ohne Neuladen führt die Liste den eben bestätigten, noch ausgewählten
- * Eintrag weiter, obwohl der Reiter „Erneut“ schon einen Fall weniger zählt.
+ * Nach „Noch gültig“: der Fall ist am Server geschlossen. OHNE Neuladen — die offene Liste muss
+ * den Abschluss selbst zeigen (Nacharbeit 7: Lifecycle.tsx lädt dafür Merker UND Objektbestand
+ * nach; vorher blieb der bestätigte Eintrag bis zum Neuladen stehen).
  */
-async function bestaetigtUndNeuGeladen(seite: Page, koId: string): Promise<void> {
+async function amServerBestaetigt(seite: Page, koId: string): Promise<void> {
   await expect
     .poll(
       async () => {
@@ -220,8 +281,6 @@ async function bestaetigtUndNeuGeladen(seite: Page, koId: string): Promise<void>
       { timeout: 15_000, message: "die Folgeprüfung ist am Server nicht geschlossen" },
     )
     .not.toContain(koId);
-  await seite.reload();
-  await expect(seite.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
 }
 
 interface Ko {
@@ -229,15 +288,17 @@ interface Ko {
   title: string;
   status: string;
   version: number;
+  neededValidations?: number;
 }
 
 test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, mit Messprotokoll", async ({
   page,
   browser,
 }, info) => {
-  test.setTimeout(300_000);
+  test.setTimeout(600_000);
   await page.setViewportSize({ width: 1280, height: 800 });
   await ensureLoggedIn(page);
+  await baenderSchliessen(page);
   beobachte(page);
   const protokoll: Messung[] = [];
   const kopf: Record<string, unknown> = { art: ART };
@@ -533,20 +594,28 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       "2 Lückenabschluss",
       "Fachzuständigkeit (Erik): Eintrag erfassen und verknüpfen",
       erik,
-      ["Eintrag über die Erfassungsroute der Sitzung angelegt, nicht über die Erfassungsfläche"],
+      [],
       async () => {
-        const angelegt = await erik.request.post("/api/kos", {
-          data: {
-            confidentiality: "intern",
-            title: p.lueckenAntwort.title,
-            statement: p.lueckenAntwort.statement,
-            type: "best_practice",
-            category: POC_KATEGORIE,
-            neededValidations: 2,
-          },
+        // Erfassen über die Erfassungsfläche (Blatt) — Selektoren wie
+        // `fragen-pruefen-einstieg-browser.spec.ts` (`einreichen`).
+        await erik.goto("/capture/frontdoor");
+        await assistenzSchliessen(erik);
+        const schreibflaeche = erik.locator('[data-testid="blatt-text"] [contenteditable="true"]');
+        await expect(schreibflaeche).toBeVisible({ timeout: 15_000 });
+        await erik.getByTestId("blatt-titel").fill(p.lueckenAntwort.title);
+        await schreibflaeche.fill(p.lueckenAntwort.statement);
+        await erik.getByTestId("blatt-werkzeug-vertraulichkeit").click();
+        await erik.getByRole("menuitem", { name: "Öffentlich-intern" }).click();
+        await erik.getByRole("button", { name: "Einreichen", exact: true }).click();
+        await expect(erik.getByTestId("blatt-lage")).toContainText("Eingereicht:", {
+          timeout: 20_000,
         });
-        expect(angelegt.status(), await angelegt.text()).toBe(201);
-        const ko = (await angelegt.json()) as Ko;
+        await bild(erik, info, "G2 · Antwort über die Erfassungsfläche eingereicht");
+        // Die Kennung des eben eingereichten Eintrags (lesend).
+        const eigene = (await (await erik.request.get("/api/kos")).json()) as Ko[];
+        const treffer = eigene.filter((k) => k.title === p.lueckenAntwort.title);
+        expect(treffer, "der eingereichte Eintrag ist nicht genau einmal da").toHaveLength(1);
+        const ko = treffer[0] as Ko;
         erfasst.ko = ko;
         await vorgangOeffnen(erik, gapId);
         await erik.getByTestId("luecke-entwurf-verknuepfen").selectOption(ko.id);
@@ -560,23 +629,22 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     );
     const antwortId = erfasst.ko?.id ?? "";
 
-    for (const [rolle, seite] of [
+    // Die vorgeschriebene Zahl positiver Bewertungen (über die Erfassungsfläche gilt die
+    // Standardvorgabe) — von Personen, die NICHT Autor sind, über die Prüffläche.
+    const benoetigt = (await eintragLesen(page, antwortId)).neededValidations ?? 0;
+    const pruefende = [
       ["Fachprüfung (Carla)", carla],
       ["Fachprüfung (Verwaltung)", page],
-    ] as const) {
-      await schritt(
-        protokoll,
-        "2 Lückenabschluss",
-        rolle,
-        seite,
-        ["Bewertung über die Bewertungsroute der Sitzung, nicht über die Prüffläche geklickt"],
-        async () => {
-          const r = await seite.request.put(`/api/kos/${antwortId}`, {
-            data: { action: "rate", verdict: "up" },
-          });
-          expect(r.status(), await r.text()).toBe(200);
-        },
-      );
+      ["Fachprüfung (Theo)", theo],
+    ] as const;
+    expect(benoetigt, "mehr Bewertungen verlangt, als Prüfende im PoC sind").toBeLessThanOrEqual(
+      pruefende.length,
+    );
+    for (const [rolle, seite] of pruefende.slice(0, benoetigt)) {
+      await schritt(protokoll, "2 Lückenabschluss", rolle, seite, [], async (hilfe) => {
+        await freigebenImPruefen(seite, antwortId, p.lueckenAntwort.title, hilfe);
+        await bild(seite, info, `G2 · ${rolle}: Freigabe in der Prüffläche`);
+      });
     }
 
     await schritt(
@@ -653,7 +721,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       "3 Quellenänderung",
       "Folgeprüfung (Theo): Betroffenheit und Eintrag A",
       theo,
-      ["Liste „Erneut“ führt den bestätigten, ausgewählten Eintrag bis zum Neuladen weiter"],
+      [],
       async (hilfe) => {
         await theo.goto("/lebenszyklus");
         await expect(theo.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
@@ -671,7 +739,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
         hilfe.push("Begründung der Betroffenheit gelesen (Karte)");
         await bild(theo, info, "G3 · begründete Betroffenheit, Unbeteiligter fehlt");
         await theo.getByTestId("pruefen-knopf-noch-gueltig").click();
-        await bestaetigtUndNeuGeladen(theo, a.id);
+        await amServerBestaetigt(theo, a.id);
         await expect(zeile(theo, a.title)).toHaveCount(0, { timeout: 15_000 });
         await expect(zeile(theo, b.title), "B bleibt offen").toBeVisible();
       },
@@ -682,20 +750,29 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       "3 Quellenänderung",
       "Fachzuständigkeit (Erik): Anpassung als Vorschlag",
       erik,
-      ["Vorschlag über die Route der Sitzung, nicht über den Editor geklickt"],
-      async () => {
-        const aktuell = (await (await erik.request.get(`/api/kos/${b.id}`)).json()) as Ko;
-        const direkt = await erik.request.put(`/api/kos/${b.id}`, {
-          data: { action: "revise", changes: { statement: p.koAnlageBNeu } },
-        });
-        expect(direkt.status(), await direkt.text()).toBe(403);
-        const vorgeschlagen = await erik.request.put(`/api/kos/${b.id}`, {
-          data: {
-            action: "propose",
-            proposal: { statement: p.koAnlageBNeu, baseVersion: aktuell.version },
-          },
-        });
-        expect(vorgeschlagen.status(), await vorgeschlagen.text()).toBe(200);
+      [],
+      async (hilfe) => {
+        // Der Bearbeiten-Weg der Leseansicht (`BibliothekLesen.tsx`, `?edit=1`). B ist freigegeben,
+        // Erik hat kein Freigaberecht: die Fläche sagt die Einreichpflicht und bietet nur
+        // „Änderung einreichen“ an, kein direktes Speichern.
+        const vorher = await eintragLesen(erik, b.id);
+        await erik.goto(`/wissen/${b.id}?edit=1`);
+        await assistenzSchliessen(erik);
+        await expect(erik.getByTestId("bib-einreichen-pflicht")).toBeVisible({ timeout: 15_000 });
+        hilfe.push("Hinweis der Fläche: Änderung wird als Vorschlag eingereicht");
+        await expect(erik.getByTestId("bib-speichern")).toHaveCount(0);
+        await erik.getByTestId("bib-aussage").fill(p.koAnlageBNeu);
+        await erik.getByTestId("bib-einreichen").click();
+        await expect(erik.getByTestId("bib-einreichen-lage")).toHaveAttribute(
+          "data-lage",
+          "eingereicht",
+          { timeout: 15_000 },
+        );
+        await bild(erik, info, "G3 · Anpassung als Vorschlag eingereicht");
+        // Eingereicht ist nicht übernommen: der Eintrag trägt weiter die freigegebene Fassung.
+        const nachher = await eintragLesen(erik, b.id);
+        expect(nachher.version).toBe(vorher.version);
+        expect(nachher.statement).toBe(vorher.statement);
       },
     );
 
@@ -704,22 +781,21 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       "3 Quellenänderung",
       "Verwaltung: Vorschlag übernehmen",
       page,
-      ["Übernahme über die Route der Sitzung, nicht über die Vorschlagsfläche geklickt"],
+      [],
       async () => {
-        const stand = (await (await page.request.get(`/api/kos/${b.id}`)).json()) as Ko & {
-          proposals?: { id: string; status: string }[];
-        };
-        const vorschlag = stand.proposals?.find((v) => v.status === "offen");
-        expect(vorschlag, JSON.stringify(stand.proposals ?? null)).toBeDefined();
-        const r = await page.request.put(`/api/kos/${b.id}`, {
-          data: {
-            action: "decide-proposal",
-            proposalId: vorschlag?.id,
-            decision: "uebernehmen",
-            expectedVersion: stand.version,
-          },
-        });
-        expect(r.status(), await r.text()).toBe(200);
+        // Die Entscheidung in derselben Leseansicht — eine ANDERE Person als der Einreicher.
+        await page.goto(`/wissen/${b.id}`);
+        await assistenzSchliessen(page);
+        const vorschlag = page.getByTestId("bib-vorschlag").filter({ hasText: p.koAnlageBNeu });
+        await expect(vorschlag).toBeVisible({ timeout: 15_000 });
+        await expect(vorschlag).toHaveAttribute("data-eigen", "nein");
+        await bild(page, info, "G3 · offener Vorschlag in der Leseansicht");
+        await vorschlag.getByTestId("bib-vorschlag-uebernehmen").click();
+        await expect
+          .poll(async () => (await eintragLesen(page, b.id)).statement, { timeout: 15_000 })
+          .toBe(p.koAnlageBNeu);
+        await expect(page.getByTestId("bib-vorschlag")).toHaveCount(0, { timeout: 15_000 });
+        await bild(page, info, "G3 · Vorschlag übernommen");
       },
     );
 
@@ -728,13 +804,16 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       "3 Quellenänderung",
       "Folgeprüfung (Theo): Eintrag B in neuer Fassung",
       theo,
-      ["Liste „Erneut“ führt den bestätigten, ausgewählten Eintrag bis zum Neuladen weiter"],
+      [],
       async () => {
-        await theo.reload();
+        // B wurde inzwischen von ANDEREN geändert (Vorschlag, Übernahme): Theo öffnet den Reiter
+        // erneut, damit die Karte die neue Fassung zeigt. Der Abschluss danach ohne Neuladen.
+        await theo.goto("/lebenszyklus");
         await expect(theo.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
+        await expect(zeile(theo, a.title), "A bleibt geschlossen").toHaveCount(0);
         await zeile(theo, b.title).click();
         await theo.getByTestId("pruefen-knopf-noch-gueltig").click();
-        await bestaetigtUndNeuGeladen(theo, b.id);
+        await amServerBestaetigt(theo, b.id);
         await expect(zeile(theo, b.title)).toHaveCount(0, { timeout: 15_000 });
         await bild(theo, info, "G3 · beide Folgefälle geschlossen");
       },
@@ -744,21 +823,12 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       ["Fachprüfung (Carla)", carla],
       ["Fachprüfung (Verwaltung)", page],
     ] as const) {
-      await schritt(
-        protokoll,
-        "3 Quellenänderung",
-        rolle,
-        seite,
-        ["Bewertung über die Bewertungsroute der Sitzung, nicht über die Prüffläche geklickt"],
-        async () => {
-          for (const ko of [a, b]) {
-            const r = await seite.request.put(`/api/kos/${ko.id}`, {
-              data: { action: "rate", verdict: "up" },
-            });
-            expect(r.status(), await r.text()).toBe(200);
-          }
-        },
-      );
+      await schritt(protokoll, "3 Quellenänderung", rolle, seite, [], async (hilfe) => {
+        for (const ko of [a, b]) {
+          await freigebenImPruefen(seite, ko.id, ko.title, hilfe);
+        }
+        await bild(seite, info, `G3 · ${rolle}: beide Fassungen freigegeben`);
+      });
     }
     for (const ko of [a, b, c]) {
       const jetzt = (await (await page.request.get(`/api/kos/${ko.id}`)).json()) as Ko;
