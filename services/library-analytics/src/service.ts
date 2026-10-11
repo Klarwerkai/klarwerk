@@ -94,7 +94,9 @@ interface ExportOptionen {
    * geschlossenen Space verlässt das Haus über den Export nur für dessen Mitglieder.
    */
   sichtbar?: (ko: KnowledgeObject) => boolean;
-  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
+  // produkt:20261010:poc-wiederherstellung-export: `paket` ist das ZIP mit Fassungen, Originalanhängen
+  // und Verzeichnis (services/app/src/wissenspaket.ts). Dieselbe Grundmenge, derselbe Beleg.
+  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" | "paket" };
 }
 
 // aufnahme:20260922:gesamt-wissen-export (R-0706): die Quellen eines Objekts, wie die drei

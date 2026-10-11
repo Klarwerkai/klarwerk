@@ -4092,7 +4092,36 @@ export type SicherungenAuskunft = (
    * Feld weiter gelten; der Server sendet es in jedem der drei Zustände.
    */
   schutzwege?: Schutzwege;
+  /**
+   * produkt:20261010:poc-wiederherstellung-export — was die Sicherung je Bereich enthält, gebunden an
+   * die laufende Fassung. Optional für Teilaufbauten ohne Fassungsangabe.
+   */
+  umfang?: SicherungsUmfang;
 };
+
+// ================================================================================================
+// produkt:20261010:poc-wiederherstellung-export — DER SICHERUNGSUMFANG JE BEREICH.
+// Spiegel von `services/app/src/sicherungsumfang.ts`; Titel, Grund und Folge übersetzt die Fläche.
+// ================================================================================================
+export type UmfangZustand = "im_dump" | "ausgeschlossen" | "nicht_vorhanden";
+export type UmfangBeleg =
+  | "belegt"
+  | "zeilen_gleich"
+  | "abweichend"
+  | "nicht_gemessen"
+  | "kein_beleg";
+export interface SicherungsUmfangBereich {
+  id: string;
+  art: "kern" | "assistenz";
+  zustand: UmfangZustand;
+  tabellen: string[];
+  beleg: UmfangBeleg;
+}
+export interface SicherungsUmfang {
+  produkt: { version: string; commit: string };
+  tabellenImDump: number;
+  bereiche: SicherungsUmfangBereich[];
+}
 
 // ================================================================================================
 // ADMIN-13 · DIE VIER SCHUTZWEGE — Spiegel von `services/app/src/routes/admin-routes.ts`.
@@ -4149,6 +4178,11 @@ export interface RestoreDrillBefund {
     anhaenge: VergleichKategorie & { belegeOhneAnhang: number | null };
     beziehungen: VergleichKategorie;
     rechte: VergleichKategorie & { rollenDump: string | null; rollenDatenbank: string | null };
+    /**
+     * produkt:20261010:poc-wiederherstellung-export — private Assistenzspeicher. Optional: ältere
+     * Server senden das Feld nicht; ein älteres Protokoll ergibt am Server `nicht_gemessen`.
+     */
+    assistenz?: VergleichKategorie;
   };
   wissensnachweis: string | null;
 }
