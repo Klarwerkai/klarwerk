@@ -14,7 +14,7 @@
 // DIE DREI BEREICHE werden aus dem BESTAND abgeleitet, nie aus der Anfrage:
 //   · `partner`     — der führende Space steht ausdrücklich im Kontext `partner`
 //                     (`SpaceEingabe.kontext`/`partner`, `spaces.ts` · `bereichsmarken`).
-//   · `oeffentlich` — bei interner Stufe: Schutzbedarf „öffentlich" am Objekt
+//   · `oeffentlich` — bei AUSDRÜCKLICH interner Stufe: Schutzbedarf „öffentlich" am Objekt
 //                     (`KnowledgeObject.oeffentlich`, dieselbe Lesart wie `KoService.setOeffentlich`)
 //                     ODER der führende Space steht im Kontext `oeffentlich`.
 //   · `eigen`       — alles andere: das Wissen der eigenen Firma (im Spaceweg `firma`).
@@ -26,7 +26,6 @@
 // (`sichtbarkeit.ts`), in SQL vor jedem Deckel und noch einmal vor der Ausgabe. Er öffnet keinen
 // Space, keine Stufe und keine Quellleserliste. Eine Partnerkennung, die kein lesbarer
 // Partnerbereich ist, liefert dieselbe leere Antwort wie eine, die es nicht gibt.
-import { isConfidential } from "../../knowledge-object";
 import type { SichtbarkeitsFakten, SqlSichtbarkeitstrim } from "./sichtbarkeit";
 
 export const FIRMENBEREICHE = ["eigen", "partner", "oeffentlich"] as const;
@@ -160,8 +159,10 @@ export function firmenbereichVon(ko: FirmenbereichsFakten, marken: Bereichsmarke
   if (inSpace(ko, marken.partner)) {
     return "partner";
   }
+  // Zusammenführung mit main (Entscheidung 16, `schutzrang`): nur die AUSDRÜCKLICHE Stufe „intern"
+  // — eine fehlende oder ungeklärte Stufe zählt wie vertraulich und ist nie „öffentlich".
   if (
-    !isConfidential(ko.confidentiality) &&
+    ko.confidentiality === "intern" &&
     (ko.oeffentlich === true || inSpace(ko, marken.oeffentlich))
   ) {
     return "oeffentlich";
@@ -187,7 +188,7 @@ export function imFirmenfilter(
  *
  * SQL: der unveränderte Trim des Betrachters UND das Bereichsprädikat. Das Bereichsprädikat liest
  * dieselben Felder der lebenden Zeile wie `firmenbereichVon` (`spaceId`, `oeffentlich`, die
- * generierte Stufenspalte `confidentiality_key`), damit eine Herabstufung oder ein Spacewechsel
+ * rohe Stufe `data->>'confidentiality'`), damit eine Herabstufung oder ein Spacewechsel
  * sofort wirkt. In-Memory: `trifftZu` des Betrachters UND `imFirmenfilter`.
  *
  * Platzhalter: `$p` die Partnerbereiche (immer genutzt); danach entweder die Partnerkennung des
@@ -211,7 +212,9 @@ export function firmenTrim(
       // Objekt ohne Space still aus „eigen" fallen.
       const imPartner = `COALESCE(jsonb_typeof(${t}.data->'spaceId') = 'string' AND ${t}.data->>'spaceId' = ANY($${p}::text[]), false)`;
       const imOeffentlichenSpace = `(jsonb_typeof(${t}.data->'spaceId') = 'string' AND ${t}.data->>'spaceId' = ANY($${p + 1}::text[]))`;
-      const istOeffentlich = `COALESCE(${t}.confidentiality_key = 'intern' AND (${t}.data->'oeffentlich' = 'true'::jsonb OR ${imOeffentlichenSpace}), false)`;
+      // Die ROHE Stufe wie `sqlSichtbarkeitFuer` (Entscheidung 16) — nicht `confidentiality_key`,
+      // das eine unbekannte Stufe als 'intern' auslegt.
+      const istOeffentlich = `COALESCE(${t}.data->>'confidentiality' = 'intern' AND (${t}.data->'oeffentlich' = 'true'::jsonb OR ${imOeffentlichenSpace}), false)`;
       const zweige: string[] = [];
       if (filter.bereiche.has("partner")) {
         zweige.push(

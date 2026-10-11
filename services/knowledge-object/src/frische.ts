@@ -37,7 +37,6 @@
 // FEHLT EINE GRUNDLAGE, WIRD NICHTS GERATEN: ohne lesbares Datum gilt das Objekt als fällig und
 // nicht gesichert; ein nicht erhobener Merker oder Konfliktstand steht als Grund in `ungeprueft`
 // und sperrt die Freigabe in Dokumente (dieselbe Form wie `discloseDisplayStatus`).
-import { isConfidential } from "./confidentiality";
 import type { Erhoben } from "./display-status";
 import { responsibleKindOf, responsibleOf } from "./ownership";
 import type { Confidentiality, KnowledgeObject, KnowledgeType, KoFrischeSignal } from "./types";
@@ -131,12 +130,17 @@ export interface HalbwertszeitEintrag {
   oeffentlich?: boolean;
 }
 
-/** P14 · B-07: für JEDES Konto lesbar — dieselbe Lesart wie die Sichtregel ohne Rollenvorteil. */
+/**
+ * P14 · B-07: für JEDES Konto lesbar — dieselbe Lesart wie die Sichtregel ohne Rollenvorteil.
+ * Zusammenführung mit main (Entscheidung 16, `schutzrang` in app/src/sichtbarkeit.ts): nur die
+ * AUSDRÜCKLICHE Stufe „intern" hat Rang 0; eine fehlende oder ungeklärte Stufe zählt wie
+ * vertraulich und ist damit nicht für jedes Konto lesbar.
+ */
 function fuerJedenLesbar(
   ko: Partial<Pick<KnowledgeObject, "confidentiality" | "spaceId" | "quellrechte">>,
 ): boolean {
   return (
-    !isConfidential(ko.confidentiality) &&
+    ko.confidentiality === "intern" &&
     typeof ko.spaceId !== "string" &&
     !Array.isArray(ko.quellrechte?.leser)
   );

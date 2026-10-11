@@ -40,7 +40,14 @@ export const EXISTENZ_BEGRIFF = { min: 3, max: 200 } as const;
  * er GENAU diesen einen Space — keinen weiteren. Ausgewertet wird er nur von `sichtbarkeit.ts`.
  */
 export function bereichsblick(user: SessionUser, spaceId: string): SessionUser {
-  return { id: user.id, role: user.role, spaceLesbar: new Set([spaceId]) };
+  // Zusammenführung mit main (gesamt-leserechte): das persönliche Freigabeniveau gehört zum
+  // Menschen und reist mit — der Blick ändert NUR die lesbaren Spaces.
+  return {
+    id: user.id,
+    role: user.role,
+    ...(user.freigabe ? { freigabe: user.freigabe } : {}),
+    spaceLesbar: new Set([spaceId]),
+  };
 }
 
 /** Der Trim des Bereichsblicks, verengt auf Objekte, deren führender Space genau dieser ist. */

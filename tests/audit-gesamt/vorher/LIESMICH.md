@@ -13,6 +13,23 @@ git diff --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch 
 
 Kandidat und Hauptstand dieser Fassung stehen in `fassung.json`.
 
+Ist der Kandidat noch nicht eingecheckt (Nacharbeit im Arbeitsbaum), gleichbedeutend vom Arbeitsbaum aus:
+
+```
+git diff -R --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch \
+  <Hauptstand> -- services ':(exclude)services/**/*.test.ts'
+```
+
+Zuletzt so erzeugt in aufnahme:20260922:gesamt-leserechte, Nacharbeit 20 (Zusammenführung mit main
+`e344d72d`: `audit-routes.ts` mit Seitenweg und Schwärzung, Registrierung in `build-app.ts`, Output,
+Auth); beide Patches neu. Seit dieser Integration umfasst der Rückwärts-Patch 321 Dateien, weil der
+Vorher-Stand weiterhin der alte Hauptstand `6c576c70` ist. In Nacharbeit 22 (Kandidat `5a2a5ec4`)
+nach den Änderungen an `audit-routes.ts`, `overlap-routes.ts` und der Antwort-Erklärung erneut erzeugt.
+
+Achtung: die Kandidatbildung formatiert `services/` (Biome). Ein Patch, der aus einem noch
+unformatierten Arbeitsbaum erzeugt wurde, passt danach nicht mehr (Nacharbeit 15). Erst erzeugen,
+wenn die geänderten Dateien schon in Formatiererform stehen.
+
 `fassung-758e76c1.patch` (Nacharbeit 8) macht aus denselben verfolgten `services/` die Lauf-2-Fassung
 `758e76c1`, an der beleg:6818bd52 gemeldet wurde (gleichzeitige `GET /api/audit/export`). Sie ist von
 keinem Branch erreichbar, liegt aber als Git-Objekt vor. Erzeugt mit:

@@ -400,7 +400,7 @@ import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil (Name, Avatar, Ersteinrichtung).
 import { assistenzProfilRoutes } from "./routes/assistenz-profil-routes";
-import { auditRoutes } from "./routes/audit-routes";
+import { auditRoutes, ketteneinsichtKonten } from "./routes/audit-routes";
 import { ausgangspruefungRoutes } from "./routes/ausgangspruefung-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { begriffeRoutes } from "./routes/begriffe-routes";
@@ -492,7 +492,7 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { tabellenDerStufen } from "./sicherungsumfang";
-import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
+import { type AnhangQuellen, entwurfSichtbarFuer, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
 import {
@@ -3800,7 +3800,14 @@ export function buildApp(
     }),
   );
   // FR-VAL-07: EIN Notifier für alle Zuweisungswege (Board-Zuweisung + Einreichen, SCRUM-395).
-  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer);
+  // aufnahme:20260922:gesamt-leserechte (R-0610): die Mail nennt das Objekt — sie geht nur an
+  // Empfänger, die es nach der EINEN Regel (`darfSehen`) sehen dürfen, mit denselben lesbaren
+  // Spaces wie die Anmeldung (`makeGuards` oben). Das gilt auch für den Verzeichnisabgleich
+  // (R-0571) darunter, der denselben Notifier benutzt.
+  const notifyAssignment = makeAssignmentNotifier(services.auth, services.mailer, {
+    ko: (koId) => services.ko.get(koId),
+    spaceLesbar: async (user) => lesbareSpaces(await services.spaces.aktuelle(), user.id),
+  });
   // ADMIN-09 (produkt:20261009:admin-freigaberegeln): die Freigaberegel je Space — Prüfpunkt an den
   // Entscheidungswegen, Prüfbrett-Auskunft, Spacewechsel und die Verwaltungsrouten teilen EINEN Dienst.
   const freigaberegeln = new FreigabeRegelDienst({
@@ -4351,7 +4358,12 @@ export function buildApp(
         draftPromotion: {
           load: async (draftId, user) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein Entwurf, den dieser
+            // Mensch nicht SEHEN darf, gibt es für ihn nicht — dieselbe Antwort wie die
+            // Entwurfsrouten (`requireVisibleDraft`). 403 bleibt dem sichtbaren Pool-Entwurf, an dem
+            // nur das Recht zum Einreichen fehlt.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (Pedi, entscheidung:297afc57): die Dokumentübernahme REICHT EIN — und
@@ -4388,7 +4400,9 @@ export function buildApp(
           // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
           applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
             const draft = await services.capture.getDraft(draftId);
-            if (!draft) {
+            // aufnahme:20260922:gesamt-leserechte: dieselbe 404-Regel wie in `load` oben.
+            const betrachter = { id: user.id, role: user.role as SessionUser["role"] };
+            if (!draft || !entwurfSichtbarFuer(betrachter, draft)) {
               return { ok: false, reason: "not-found" as const };
             }
             // Pool-Auftrag (297afc57): derselbe Einreichweg wie `load` — nur der Autor.
@@ -4942,7 +4956,6 @@ export function buildApp(
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
-  app.register(lmsExportRoutes(services.lmsExport, services.audit, guards));
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
@@ -5107,8 +5120,23 @@ export function buildApp(
   );
   // produkt:20261009:admin-audit-verstaendlich: derselbe Sichtbarkeitszugang wie die Nebenwege —
   // Titel, Rücklinks und Inhaltsfelder im Protokoll nur für Objekte, die der Betrachter öffnen darf.
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 14/15, 20): dazu das Protokoll nach dem
+  // Leserecht des Lesers — gegen die Sichtbarkeitsfakten des Bestands samt Papierkorb, die Spaces
+  // und die Objektzuordnung der Befunde (Gelöschtes rekonstruiert die Route aus der Kette selbst).
   app.register(
-    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit),
+    auditRoutes(services.audit, guards, [services.conflicts, services.overlaps], koSichtbarkeit, {
+      sichtbarkeitsfaktenAller: () => services.ko.sichtbarkeitsfaktenAller(),
+      spaceKennungen: async () => (await services.spaces.aktuelle()).map((s) => s.id),
+      befundZuordnungen: async () => [
+        ...(await services.conflicts.koZuordnungen()),
+        ...(await services.overlaps.koZuordnungen()),
+      ],
+      weitereZiele: async () => (await services.teams.aktuelle()).map((t) => t.id),
+      // Nacharbeit 28 (Ben): die vollständige Kette nur mit ausdrücklich erteilter Ketteneinsicht —
+      // vom Betrieb je Konto vergeben, bei jedem Abruf frisch gelesen (Entzug wirkt sofort).
+      ketteneinsicht: (kontoId) =>
+        ketteneinsichtKonten(process.env.KLARWERK_AUDIT_KETTENEINSICHT).has(kontoId),
+    }),
   );
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
@@ -5179,6 +5207,11 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
+  // aufnahme:20260922:gesamt-leserechte: der SCORM-Export liest Bilder aus DEMSELBEN Speicher und
+  // bekommt deshalb dieselben Herkünfte für die Anhangsregel — keine zweite Aufzählung.
+  app.register(
+    lmsExportRoutes(services.lmsExport, services.audit, guards, services.objects, anhangQuellen),
+  );
   // R-1034 / FR-I18N-02: die Oberflächentexte — öffentlich lesbar (die Anmeldemaske braucht sie vor
   // jeder Sitzung), gepflegt ausschließlich mit `users.manage`.
   app.register(
@@ -5316,6 +5349,13 @@ export function buildApp(
         teams: services.teams,
         // ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl sofort.
         freigaberegelAnwenden: (koId, akteur) => freigaberegeln.anwenden(koId, akteur),
+        // gesamt-leserechte (Nacharbeit 32, Entscheidung 25): das ausdrückliche Existenzrecht — vom
+        // Betrieb je Konto (Kennung oder E-Mail) vergeben, bei jedem Abruf frisch gelesen (Entzug
+        // wirkt sofort).
+        existenzrecht: ({ id, email }) =>
+          [...ketteneinsichtKonten(process.env.KLARWERK_EXISTENZRECHT)].some(
+            (k) => k === id || k.toLowerCase() === email.toLowerCase(),
+          ),
         // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.

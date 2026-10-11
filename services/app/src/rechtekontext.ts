@@ -14,12 +14,17 @@ import type { SessionUser } from "./http";
 //
 // Er verrät nichts Neues: er ist ein Fingerabdruck über die eigenen Rechte der anfragenden Person —
 // dieselben Spaces, die sie über `GET /api/spaces` ohnehin sieht.
+//
+// Zusammenführung mit main (aufnahme:20260922:gesamt-leserechte): auch das persönliche
+// Freigabeniveau (`SessionUser.freigabe`) entscheidet seitdem mit, was sichtbar ist — ein Entzug
+// oder eine Erhöhung ändert den Stempel deshalb ebenso.
 export const RECHTEKONTEXT_KOPF = "x-klarwerk-rechtekontext";
 
 export function rechtekontextStempel(user: SessionUser): string {
   const spaces = user.spaceLesbar ? [...user.spaceLesbar].sort() : null;
+  const freigabe = user.freigabe ?? null;
   return createHash("sha256")
-    .update(JSON.stringify(["p14-rechtekontext-1", user.id, user.role, spaces]))
+    .update(JSON.stringify(["p14-rechtekontext-2", user.id, user.role, spaces, freigabe]))
     .digest("hex")
     .slice(0, 32);
 }

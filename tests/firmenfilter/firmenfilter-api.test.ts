@@ -891,6 +891,29 @@ describe("K6/K7 · der Rechtekontext jeder Antwort folgt Rolle, Mitgliedschaft u
     const carla2 = await lies(a.app, a.k.carla, "/api/kos");
     expect(kontext(carla2)).not.toBe(kontext(carla1));
     expect(genannt(a, carla2.body)).not.toContain("E2");
+
+    // Nacharbeit 9 (Zusammenführung mit gesamt-leserechte): das persönliche Freigabeniveau
+    // entscheidet mit — eine Erteilung und ein Entzug ändern den Stempel ebenso, bei gleicher Rolle.
+    const vera1 = await lies(a.app, a.k.vera, "/api/kos");
+    expect(genannt(a, vera1.body), "KALIBRIERUNG").not.toContain("E2");
+    const veraId = (await kontoIds(a.app, a.k.ada)).get("Vera Viewer") ?? "";
+    const setzeFreigabe = async (freigabe: string | null) => {
+      const res = await a.app.inject({
+        method: "PUT",
+        url: `/api/users/${veraId}`,
+        headers: a.k.ada,
+        payload: { freigabe },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+    };
+    await setzeFreigabe("vertraulich");
+    const vera2 = await lies(a.app, a.k.vera, "/api/kos");
+    expect(kontext(vera2)).not.toBe(kontext(vera1));
+    expect(genannt(a, vera2.body)).toContain("E2");
+    await setzeFreigabe(null);
+    const vera3 = await lies(a.app, a.k.vera, "/api/kos");
+    expect(kontext(vera3)).toBe(kontext(vera1));
+    expect(genannt(a, vera3.body)).not.toContain("E2");
   });
 
   it("ohne Anmeldung gibt es keinen Stempel", async () => {

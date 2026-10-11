@@ -13,7 +13,7 @@ Jeder Bereich wird aus dem Bestand abgeleitet (`services/app/src/firmenbereich.t
 | Bereich | Bedingung am Wissensobjekt |
 |---|---|
 | `partner` | Der führende Space steht im Kontext `partner` (mit Namen des Partners). |
-| `oeffentlich` | Interne Stufe und entweder die Öffentlich-Marke am Eintrag (`schutz-oeffentlich`) oder ein führender Space im Kontext `oeffentlich`. |
+| `oeffentlich` | Ausdrücklich interne Stufe (eine fehlende Stufe zählt wie vertraulich) und entweder die Öffentlich-Marke am Eintrag (`schutz-oeffentlich`) oder ein führender Space im Kontext `oeffentlich`. |
 | `eigen` | Für alle anderen Einträge. Im Space-Artikelfilter heißt dieser Bereich `firma`. |
 
 Die Ableitung gilt gleich für den Firmenfilter (`firmenbereich=…` an Liste, Suche, Export und Frage) und für den Space-Artikelfilter (`GET /api/spaces/artikel?kontext=…`). Sie steht an einer Stelle: `firmenbereichVon` und, in SQL, `firmenTrim` (`services/app/src/firmenbereich.ts`). Die Bereichsmarken kommen aus `bereichsmarken` (`services/app/src/spaces.ts`). Ein vertraulicher Eintrag ist nie „öffentlich", auch nicht in einem öffentlichen Space.
@@ -52,7 +52,7 @@ Rechte und Partnerbereiche werden je Anfrage frisch aus der Ablage gelesen. Es g
 
 ## Zwischenspeicher der Weboberfläche
 
-Jede angemeldete Antwort trägt den Kopf `x-klarwerk-rechtekontext`. Er ist ein Fingerabdruck aus Konto, Rolle und lesbaren Spaces dieser Anfrage (`services/app/src/rechtekontext.ts`).
+Jede angemeldete Antwort trägt den Kopf `x-klarwerk-rechtekontext`. Er ist ein Fingerabdruck aus Konto, Rolle, persönlichem Freigabeniveau und lesbaren Spaces dieser Anfrage (`services/app/src/rechtekontext.ts`).
 
 Ändert sich der Stempel, bricht die Weboberfläche alle laufenden Inhaltsabfragen ab und setzt sie zurück (`apps/web/src/lib/rechtekontext.ts`, `RechtekontextWache`). Auslöser sind Rollenentzug, Mitgliedschaftsentzug und Kontowechsel. Danach gilt:
 
@@ -71,7 +71,7 @@ Bleibt ein stiller Abgleich aus einem nicht vorübergehenden Grund ohne Erfolg, 
 
 ## Gelernte Halbwertszeiten (Prüfnachtrag B-07)
 
-Die Frische-Auskunft lernt Halbwertszeiten je Kategorie aus dem festgehaltenen Lernverlauf (R-1636/R-0248). Gezählt werden nur Beobachtungen an Einträgen, die beim Erfassen **für jedes Konto lesbar** waren: interne Stufe, kein führender Space, keine Quellleserliste (`frische.ts`, Feld `oeffentlich` am Verlaufseintrag; in PostgreSQL die Spalte `ko_halbwertszeit_beobachtungen.oeffentlich`, additiv angelegt). Fassungen vertraulicher oder spacegebundener Einträge verschieben die Frist sichtbarer Einträge damit nicht, auch nicht nach Ablauf des 10-Minuten-Zwischenspeichers.
+Die Frische-Auskunft lernt Halbwertszeiten je Kategorie aus dem festgehaltenen Lernverlauf (R-1636/R-0248). Gezählt werden nur Beobachtungen an Einträgen, die beim Erfassen **für jedes Konto lesbar** waren: ausdrücklich interne Stufe, kein führender Space, keine Quellleserliste (`frische.ts`, Feld `oeffentlich` am Verlaufseintrag; in PostgreSQL die Spalte `ko_halbwertszeit_beobachtungen.oeffentlich`, additiv angelegt). Fassungen vertraulicher oder spacegebundener Einträge verschieben die Frist sichtbarer Einträge damit nicht, auch nicht nach Ablauf des 10-Minuten-Zwischenspeichers.
 
 Verlaufseinträge von vor dieser Regel tragen keine Angabe (`NULL`) und zählen nicht. Bis neue Beobachtungen erfasst sind, gilt für betroffene Kategorien die Vorgabe der Wissensart.
 

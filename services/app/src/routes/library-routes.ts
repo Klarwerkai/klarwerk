@@ -1083,6 +1083,8 @@ export function libraryRoutes(
       // ADMIN-07 K3: zusätzlich die eine Sichtregel des Betrachters — sonst trüge der Export
       // validierte Artikel geschlossener Spaces an Nichtmitglieder aus. Hier im Rumpf erhoben (wie
       // `/api/graph`), damit die Entscheidung an der Route selbst ausgeführt wird.
+      // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): damit öffnet `ko.validate` allein auch
+      // nicht mehr jede Stufe — persönliches Freigabeniveau und ungeklärte Stufen gelten mit.
       //
       // produkt:20261011:peter-p14: der Firmenfilter tritt als UND hinter dieselbe Sichtregel — er
       // grenzt die Exportmenge ein, er erweitert sie nie (Exportmenge ⊆ Lesemenge bleibt).

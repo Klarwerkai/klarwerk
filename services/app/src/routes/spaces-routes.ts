@@ -89,6 +89,14 @@ export interface SpacesRouteDienste {
    * holt die nächste Entscheidung es serverseitig nach.
    */
   freigaberegelAnwenden?: (koId: string, akteur: string) => Promise<void>;
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 32; Entscheidung 25): das AUSDRÜCKLICHE
+   * Existenzrecht eines Kontos — es darf erfahren, dass es Objekte gibt, die es nicht lesen darf.
+   * Nur wer es hat, kann einen Space löschen, dessen sichtbarer Bestand leer ist: ob die Löschung
+   * gelingt, hängt dann vom verborgenen Bestand ab. Fehlt die Angabe oder sagt sie nein, ist der
+   * Löschweg vom verborgenen Bestand unabhängig (s. `fuehreLoeschungAus`).
+   */
+  existenzrecht?: (konto: { id: string; email: string }) => boolean;
 }
 
 /** Eine Zeile in einer Space- oder Ansichtsliste: dasselbe Objekt, keine Kopie. */
@@ -450,40 +458,64 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     space: { id: string; name: string; version: number };
     /** Artikel mit diesem führenden Space, die der Betrachter sieht — mit Titel, zum Verschieben. */
     artikel: { id: string; title: string; version: number }[];
-    /** Weitere Artikel mit diesem führenden Space, die der Betrachter nicht sieht — nur die Zahl. */
-    weitereVerborgen: number;
-    /** Artikel im Papierkorb mit diesem führenden Space — nur die Zahl. */
+    /**
+     * Artikel im Papierkorb mit diesem führenden Space, die der Betrachter lesen dürfte — nur die
+     * Zahl. aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 31): verborgene Artikel werden
+     * weder gezählt noch angedeutet (früher `weitereVerborgen` und ein ungefilterter Papierkorb).
+     */
     imPapierkorb: number;
     /** Was mit dem Space verschwindet: seine gespeicherten Ansichten und Mitgliedschaften. */
     ansichten: number;
     mitglieder: number;
     darfLoeschen: boolean;
-    grund: "SPACE_NICHT_LEER" | null;
+    /**
+     * `EXISTENZRECHT_FEHLT` (Nacharbeit 32): der sichtbare Bestand ist leer, aber ohne
+     * ausdrückliches Existenzrecht hinge der Ausgang vom verborgenen Bestand ab — gelöscht wird
+     * dann nie, unabhängig davon, ob es verborgene Artikel gibt.
+     */
+    grund: "SPACE_NICHT_LEER" | "EXISTENZRECHT_FEHLT" | null;
   }
 
   /**
-   * Die Folgen einer Löschung — für die Vorschau UND unmittelbar vor dem Schreiben. Gezählt wird
-   * über den GESAMTEN Bestand samt Papierkorb, denn auch ein verborgener oder gelöschter Artikel
-   * verlöre seinen Space. Titel bekommt nur, wer den Artikel sehen darf.
+   * Die Folgen einer Löschung — für die Vorschau UND unmittelbar vor dem Schreiben.
+   *
+   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 31; Entscheidung 25 „Existenzhinweise nur
+   * mit ausdrücklichem Recht; sonst allgemeine Meldung unabhängig von geheimen Treffern“): die
+   * AUSGABE (`vorschau`) beruht allein auf dem, was der Betrachter lesen darf — sichtbare Artikel
+   * mit Titel, Papierkorbartikel nur, wenn er sie lesen dürfte, und Löschbarkeit/Grund nur daraus.
+   * Die SCHUTZPRÜFUNG läuft weiter über den GESAMTEN Bestand samt Papierkorb, denn auch ein
+   * verborgener oder gelöschter Artikel verlöre seinen Space (`verborgenBlockiert`, nie ausgegeben).
+   * Space-Bearbeitungsrecht ersetzt weder persönliches Freigabeniveau noch Quellleserecht.
    */
-  async function loeschLage(space: SpaceFassung, user: SessionUser): Promise<Loeschvorschau> {
+  async function loeschLage(
+    space: SpaceFassung,
+    user: SessionUser,
+  ): Promise<{ vorschau: Loeschvorschau; verborgenBlockiert: boolean }> {
     const fuehrend = (await dienste.ko.listEinschliesslichPapierkorb()).filter(
       (k) => k.spaceId === space.id,
     );
-    const aktiv = fuehrend.filter((k) => !k.deletedAt);
-    const sichtbar = aktiv.filter((k) => darfSehen(user, k));
-    const leer = fuehrend.length === 0;
+    const lesbar = fuehrend.filter((k) => darfSehen(user, k));
+    const sichtbar = lesbar.filter((k) => !k.deletedAt);
+    const sichtbarLeer = lesbar.length === 0;
+    // Nacharbeit 32: beides hängt nur am Konto und am LESBAREN Bestand — nie am verborgenen.
+    const konto = dienste.existenzrecht
+      ? (await dienste.auth.listUsers()).find((u) => u.id === user.id)
+      : undefined;
+    const recht = konto !== undefined && dienste.existenzrecht?.(konto) === true;
+    const grund = !sichtbarLeer ? "SPACE_NICHT_LEER" : recht ? null : "EXISTENZRECHT_FEHLT";
     return {
-      space: { id: space.id, name: space.name, version: space.version },
-      artikel: sichtbar
-        .map((k) => ({ id: k.id, title: k.title, version: k.version }))
-        .sort((a, b) => a.title.localeCompare(b.title)),
-      weitereVerborgen: aktiv.length - sichtbar.length,
-      imPapierkorb: fuehrend.length - aktiv.length,
-      ansichten: space.ansichten.length,
-      mitglieder: space.mitglieder.length,
-      darfLoeschen: leer,
-      grund: leer ? null : "SPACE_NICHT_LEER",
+      vorschau: {
+        space: { id: space.id, name: space.name, version: space.version },
+        artikel: sichtbar
+          .map((k) => ({ id: k.id, title: k.title, version: k.version }))
+          .sort((a, b) => a.title.localeCompare(b.title)),
+        imPapierkorb: lesbar.length - sichtbar.length,
+        ansichten: space.ansichten.length,
+        mitglieder: space.mitglieder.length,
+        darfLoeschen: grund === null,
+        grund,
+      },
+      verborgenBlockiert: fuehrend.length > lesbar.length,
     };
   }
 
@@ -531,20 +563,43 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       });
       return;
     }
-    const lage = await loeschLage(aktuell, user);
+    const { vorschau, verborgenBlockiert } = await loeschLage(aktuell, user);
     if (gesehen !== aktuell.version) {
       reply.code(409).send({
         error: "VERSION_VERALTET",
         message: "Der Space wurde inzwischen geändert. Bitte die neue Vorschau prüfen.",
-        vorschau: lage,
+        vorschau,
       });
       return;
     }
-    if (!lage.darfLoeschen) {
+    if (vorschau.grund === "SPACE_NICHT_LEER") {
       reply.code(409).send({
         error: "SPACE_NICHT_LEER",
         message: "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
-        vorschau: lage,
+        vorschau,
+      });
+      return;
+    }
+    // Nacharbeit 32 (Ben; Entscheidung 25): ohne ausdrückliches Existenzrecht wird ein Space, dessen
+    // LESBARER Bestand leer ist, nie gelöscht — gleich, ob er leer ist oder nur verborgene Artikel
+    // führt. Antwort UND Folgezustand (der Space bleibt) sind damit vom verborgenen Bestand
+    // unabhängig; die Schutzprüfung gegen verwaiste Artikel bleibt unberührt.
+    if (vorschau.grund === "EXISTENZRECHT_FEHLT") {
+      reply.code(403).send({
+        error: "EXISTENZRECHT_FEHLT",
+        message:
+          "Diesen Space löscht, wer ausdrücklich erfahren darf, ob er noch Artikel führt. Bitte die Kontoverwaltung ansprechen.",
+      });
+      return;
+    }
+    // Nur mit Existenzrecht: halten Artikel, die der Betrachter NICHT lesen darf, die Löschung auf,
+    // unterbleibt sie (kein verwaister Artikel). Die Antwort darf das hier sagen (Existenzrecht),
+    // nennt aber weiter keinen Titel, keine Zahl und keine Kennung.
+    if (verborgenBlockiert) {
+      reply.code(409).send({
+        error: "LOESCHUNG_NICHT_MOEGLICH",
+        message:
+          "Der Space kann gerade nicht gelöscht werden. Bitte die Kontoverwaltung ansprechen.",
       });
       return;
     }
@@ -990,7 +1045,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         if (!space) {
           return;
         }
-        reply.code(200).send(await loeschLage(space, user));
+        // Nur die Vorschau nach Leserecht — die Schutzprüfung über den Gesamtbestand bleibt intern.
+        reply.code(200).send((await loeschLage(space, user)).vorschau);
       },
     );
 

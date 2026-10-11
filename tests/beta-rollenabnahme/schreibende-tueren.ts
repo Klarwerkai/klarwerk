@@ -1156,7 +1156,7 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "captureRoutes",
     methode: "PUT",
     route: "/api/drafts/:id/pool",
-    belegstelle: "services/app/src/routes/capture-routes.ts (PUT /api/drafts/:id/pool)",
+    belegstelle: "services/app/src/routes/capture-routes.ts:1664",
     erfolg: [200],
     tor: "ko.create, dann Autorenrecht am Entwurf (canManageDraft)",
     erwartet: AB_EXPERTE,
@@ -1207,7 +1207,9 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       // Geantwortet wird nur aus geprüftem Wissen (R-0278, Nacharbeit 3; R-0584); ohne Modell bleibt
       // ein bloß angelegtes Objekt ungeprüft (KI-Prüfung `no-model`), und die Frage endete in einer
       // Wissenslücke — gemessen im Prüflauf zu R-1649, Nacharbeit 3. Deshalb: Experte legt an, Admin
-      // gibt frei. Eine gemeldete Dublette ist für diesen Belegfall unerheblich und wird bestätigt.
+      // gibt frei. Die Freigabe geschieht über den echten Produktweg (`admin-validate`); die
+      // Dublettenquittung hält die Vorbereitung vom Dublettentor fern, damit die Zeile die Tür misst
+      // (aufnahme:20260922:gesamt-leserechte, Nacharbeit 4).
       const ko = await legeKoAn(buehne, "experte");
       await musterhaft(buehne.app, kopf(buehne, "admin"), "PUT", `/api/kos/${ko.id}`, {
         action: "admin-validate",

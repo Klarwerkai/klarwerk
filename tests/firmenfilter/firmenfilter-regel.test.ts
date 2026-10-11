@@ -43,20 +43,23 @@ function filterAus(eingabe: { firmenbereich?: unknown; partner?: unknown }) {
 
 describe("K1 · drei unterscheidbare Bereiche, abgeleitet aus dem Bestand", () => {
   it("Partnerbereich vor öffentlich vor eigen — und öffentlich nur bei interner Stufe", () => {
+    const intern = { confidentiality: "intern" as const };
     expect(bereich({ spaceId: "s-alpha" })).toBe("partner");
-    expect(bereich({ spaceId: "s-alpha", oeffentlich: true })).toBe("partner");
-    expect(bereich({ oeffentlich: true })).toBe("oeffentlich");
-    expect(bereich({ oeffentlich: true, confidentiality: "intern" })).toBe("oeffentlich");
+    expect(bereich({ spaceId: "s-alpha", oeffentlich: true, ...intern })).toBe("partner");
+    expect(bereich({ oeffentlich: true, ...intern })).toBe("oeffentlich");
     // Eine Höherstufung nimmt die Marke ausser Kraft — dieselbe Lesart wie `setOeffentlich`.
     expect(bereich({ oeffentlich: true, confidentiality: "vertraulich" })).toBe("eigen");
+    // Nacharbeit 9 (Zusammenführung, Entscheidung 16): eine FEHLENDE Stufe zählt wie vertraulich.
+    expect(bereich({ oeffentlich: true })).toBe("eigen");
     expect(bereich({ spaceId: "s-werkstatt" })).toBe("eigen");
     expect(bereich({})).toBe("eigen");
     // Eine Zeichenkette "true" ist keine Marke.
-    expect(bereich({ oeffentlich: "true" })).toBe("eigen");
+    expect(bereich({ oeffentlich: "true", ...intern })).toBe("eigen");
     // Nacharbeit 8 (AC01): ein Space im Kontext `oeffentlich` ordnet ebenso ein — mit derselben
     // Stufenregel; Partner geht weiterhin vor.
-    expect(bereich({ spaceId: "s-normen" })).toBe("oeffentlich");
-    expect(bereich({ spaceId: "s-normen", oeffentlich: true })).toBe("oeffentlich");
+    expect(bereich({ spaceId: "s-normen", ...intern })).toBe("oeffentlich");
+    expect(bereich({ spaceId: "s-normen", oeffentlich: true, ...intern })).toBe("oeffentlich");
+    expect(bereich({ spaceId: "s-normen" })).toBe("eigen");
     expect(bereich({ spaceId: "s-normen", confidentiality: "vertraulich" })).toBe("eigen");
     expect(bereich({ spaceId: "s-normen", confidentiality: "streng_vertraulich" })).toBe("eigen");
   });
