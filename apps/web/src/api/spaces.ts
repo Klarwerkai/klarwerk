@@ -295,7 +295,7 @@ export interface RegelSicht {
 export interface Loeschvorschau {
   space: { id: string; name: string; version: number };
   artikel: { id: string; title: string; version: number }[];
-  weitereVerborgen: number;
+  /** Nur Papierkorbartikel, die der Betrachter lesen dürfte (gesamt-leserechte, Nacharbeit 31). */
   imPapierkorb: number;
   ansichten: number;
   mitglieder: number;

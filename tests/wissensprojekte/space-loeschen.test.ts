@@ -243,7 +243,6 @@ describe("L1 · Projektlöschung funktioniert", () => {
     expect(v.json()).toMatchObject({
       space: { id: werkstatt.id, name: "Werkstatt Nord", version: 1 },
       artikel: [],
-      weitereVerborgen: 0,
       imPapierkorb: 0,
       ansichten: 1,
       mitglieder: 1,
@@ -314,8 +313,10 @@ describe("L1 · Projektlöschung funktioniert", () => {
 });
 
 describe("L2 · Auswirkung auf Artikel wird vorab erklärt", () => {
-  it("die Vorschau nennt sichtbare Artikel mit Titel, verborgene nur als Zahl — und sperrt", async () => {
+  it("die Vorschau nennt sichtbare Artikel mit Titel, verborgene gar nicht — und die Löschung sperrt", async () => {
     const b = await buehne();
+    // Gegenstück ohne Artikel: die Vorschau der Kontoverwaltung für einen wirklich leeren Space.
+    const leerVorher = (await loeschVorschau(b, b.k.admin, b.werkstatt.id)).json();
     const koId = await artikelAnlegen(b);
     expect((await verschieben(b, koId, b.werkstatt.id)).statusCode).toBe(200);
 
@@ -323,18 +324,30 @@ describe("L2 · Auswirkung auf Artikel wird vorab erklärt", () => {
     expect(lea.statusCode, lea.body).toBe(200);
     expect(lea.json()).toMatchObject({
       artikel: [{ id: koId, title: `${WORT} an Linie 3` }],
-      weitereVerborgen: 0,
       imPapierkorb: 0,
       darfLoeschen: false,
       grund: "SPACE_NICHT_LEER",
     });
 
-    // Die Kontoverwaltung liest geschlossene Inhalte nicht: nur die Zahl, kein Titel, keine Kennung.
+    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 31; Entscheidung 25): die
+    // Kontoverwaltung liest geschlossene Inhalte nicht — und erfährt auch nicht, DASS es sie gibt.
+    // Ihre Vorschau ist Feld für Feld die eines leeren Space: kein Titel, keine Kennung, keine Zahl.
     const admin = await loeschVorschau(b, b.k.admin, b.werkstatt.id);
     expect(admin.statusCode, admin.body).toBe(200);
-    expect(admin.json()).toMatchObject({ artikel: [], weitereVerborgen: 1, darfLoeschen: false });
+    expect(admin.json()).toEqual(leerVorher);
     expect(admin.body).not.toContain(WORT);
     expect(admin.body).not.toContain(koId);
+    // Die Schutzprüfung über den Gesamtbestand bleibt: ihr Löschversuch scheitert mit einer
+    // allgemeinen Meldung ohne Grund, Vorschau oder Zahl — und es wird nichts geschrieben.
+    const adminLoeschen = await loeschen(b, b.k.admin, b.werkstatt.id, 1);
+    expect(adminLoeschen.statusCode).toBe(409);
+    expect(adminLoeschen.json()).toEqual({
+      error: "LOESCHUNG_NICHT_MOEGLICH",
+      message: expect.any(String),
+    });
+    expect(adminLoeschen.body).not.toContain(koId);
+    expect(await b.services.spaces.fassungen(b.werkstatt.id)).toHaveLength(1);
+    await keineWaise(b);
 
     // Löschen trotz Artikel: abgelehnt, nichts geschrieben.
     const res = await loeschen(b, b.k.lea, b.werkstatt.id, 1);
@@ -358,7 +371,8 @@ describe("L2 · Auswirkung auf Artikel wird vorab erklärt", () => {
     expect((await b.services.ko.trashed()).map((t) => t.id)).toContain(koId);
 
     const v = (await loeschVorschau(b, b.k.lea, b.werkstatt.id)).json();
-    expect(v).toMatchObject({ artikel: [], weitereVerborgen: 0, imPapierkorb: 1 });
+    // Lea dürfte den Artikel lesen — er zählt für sie mit (Papierkorb nach Leserecht).
+    expect(v).toMatchObject({ artikel: [], imPapierkorb: 1 });
     expect(v.darfLoeschen).toBe(false);
     expect((await loeschen(b, b.k.lea, b.werkstatt.id, 1)).statusCode).toBe(409);
   });

@@ -122,8 +122,6 @@ export default {
       "Kein Artikel hat diesen Space als führenden Space. Die Löschung ändert an keinem Artikel etwas.",
     "spaces.loeschen.nichtLeer":
       "Löschen ist erst möglich, wenn kein Artikel mehr diesen Space als führenden Space hat.",
-    "spaces.loeschen.verborgen":
-      "Dazu {{anzahl}} weitere Artikel, die du nicht sehen darfst — ihre Autoren oder Verantwortlichen müssen sie verschieben.",
     "spaces.loeschen.papierkorb":
       "{{anzahl}} Artikel im Papierkorb gehören noch zu diesem Space — wiederherstellen und verschieben oder endgültig entfernen lassen.",
     "spaces.loeschen.weg":
@@ -368,8 +366,6 @@ export default {
       "No article has this space as its leading space. Deleting it changes no article.",
     "spaces.loeschen.nichtLeer":
       "Deleting is only possible once no article has this space as its leading space.",
-    "spaces.loeschen.verborgen":
-      "Plus {{anzahl}} further articles you may not see — their authors or responsible people must move them.",
     "spaces.loeschen.papierkorb":
       "{{anzahl}} articles in the trash still belong to this space — restore and move them, or have them removed for good.",
     "spaces.loeschen.weg":
@@ -612,8 +608,6 @@ export default {
       "Geen artikel heeft deze space als leidende space. Het verwijderen verandert aan geen enkel artikel iets.",
     "spaces.loeschen.nichtLeer":
       "Verwijderen kan pas als geen artikel deze space nog als leidende space heeft.",
-    "spaces.loeschen.verborgen":
-      "Daarnaast {{anzahl}} andere artikelen die je niet mag zien — hun auteurs of verantwoordelijken moeten ze verplaatsen.",
     "spaces.loeschen.papierkorb":
       "{{anzahl}} artikelen in de prullenbak horen nog bij deze space — herstellen en verplaatsen of definitief laten verwijderen.",
     "spaces.loeschen.weg":

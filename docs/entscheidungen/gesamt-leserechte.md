@@ -96,6 +96,12 @@ Beide fachlichen Stände sind erhalten; wo sie sich widersprachen, gilt die enge
   `seitenweg-und-rechte` „gleicher sichtbarer Bestand ⇒ gleiche Antworten“. Seit Nacharbeit 29
   schwärzt der Kettenexport nicht mehr: er liefert das gespeicherte Hashmaterial unverändert,
   Schwärzung steht nur in der Leseansicht.
+- **Space-Löschung (Nacharbeit 31, Ben; Entscheidung 25):** Vorschau und Fehlerantworten nennen nur
+  Lesbares (sichtbare Artikel, lesbare Papierkorbartikel); `weitereVerborgen` entfällt. Die
+  Schutzprüfung über den Gesamtbestand bleibt; halten nur verborgene Artikel die Löschung auf, kommt
+  die allgemeine Meldung `LOESCHUNG_NICHT_MOEGLICH`. **Offen:** das verbleibende eine Bit
+  (gelöscht/nicht möglich) ließe sich nur mit einem „ausdrücklichen Existenzrecht“ sauber ordnen —
+  wer es bekommt, ist nicht entschieden.
 - **Prüfprotokoll × Quellrechte (Nacharbeit 24):** die Sichtbarkeitsfakten tragen die Leserliste; die
   Objektprüfung läuft für jeden Leser, uneingeschränkt ist nur, wem danach nichts verborgen bleibt.
   Der Löschbeleg `ko.purged` hält fest, ob eine Leserliste bestand (`quellbeschraenkt`, ohne

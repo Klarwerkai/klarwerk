@@ -616,11 +616,6 @@ function SpaceLoeschen({ id, onAbbrechen }: { id: string; onAbbrechen: () => voi
                   ))}
                 </ul>
               ) : null}
-              {v.weitereVerborgen > 0 ? (
-                <p data-testid="space-loeschen-verborgen">
-                  {t("spaces.loeschen.verborgen", { anzahl: v.weitereVerborgen })}
-                </p>
-              ) : null}
               {v.imPapierkorb > 0 ? (
                 <p data-testid="space-loeschen-papierkorb">
                   {t("spaces.loeschen.papierkorb", { anzahl: v.imPapierkorb })}

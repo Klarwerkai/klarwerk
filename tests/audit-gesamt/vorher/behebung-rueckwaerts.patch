@@ -1613,7 +1613,7 @@ index 4917d8c99..2856ea6ff 100644
   *
   * UND AUSDRÜCKLICH KEIN SEED. Eine vorbelegte Zeile hätte eine Versionszahl, und damit wäre
 diff --git b/services/app/src/build-app.ts a/services/app/src/build-app.ts
-index 9429f5d36..2a5dcb570 100644
+index a06883799..2a5dcb570 100644
 --- b/services/app/src/build-app.ts
 +++ a/services/app/src/build-app.ts
 @@ -16,32 +16,24 @@ import {
@@ -3921,7 +3921,7 @@ index 9429f5d36..2a5dcb570 100644
    // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
    // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
    // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.
-@@ -4146,45 +2823,6 @@ export function buildApp(
+@@ -4146,60 +2823,6 @@ export function buildApp(
        }),
      });
    services.aiCheckWorker = aiCheckWorker;
@@ -3956,18 +3956,33 @@ index 9429f5d36..2a5dcb570 100644
 -    ablage: services.vorlagen,
 -    spaces: services.spaces,
 -    audit: services.audit,
+-    // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): Prüfung, Anlage und
+-    // Zuordnung laufen gemeinsam unter `sperre` → `exklusiv` (dieselbe Sperre wie Spacewechsel und
+-    // Spacelöschung). `inSpaceLegen` nimmt deshalb selbst keine Sperre mehr (sie wäre verschachtelt)
+-    // und WIRFT, statt einen Beitrag still ohne Space stehen zu lassen; der Port nimmt die Anlage
+-    // dann über `anlageZuruecknehmen` zurück.
+-    exklusiv: <T>(arbeit: () => Promise<T>) => services.spaces.exklusiv(arbeit),
 -    inSpaceLegen: async (koId, spaceId, akteur) => {
 -      const ko = await services.ko.get(koId);
--      if (!ko || ko.spaceId === spaceId) {
+-      if (!ko) {
+-        throw new Error("Der Beitrag ist nicht (mehr) vorhanden.");
+-      }
+-      if (ko.spaceId === spaceId) {
 -        return;
 -      }
+-      if (!(await services.spaces.aktuelle()).some((s) => s.id === spaceId)) {
+-        throw new Error("Der gewählte Space ist nicht (mehr) vorhanden.");
+-      }
 -      await services.ko.setLeadingSpace(koId, spaceId, akteur, null);
+-    },
+-    anlageZuruecknehmen: async (koId, akteur) => {
+-      await services.ko.delete(koId, akteur, { hard: true });
 -    },
 -  });
    app.register(
      koRoutes(
        {
-@@ -4240,52 +2878,13 @@ export function buildApp(
+@@ -4255,52 +2878,13 @@ export function buildApp(
          // Lesemodell hereingereicht, das es aus der Policy-Naht holt (`lesemodell.ts:254`,
          // `policyNahtSchliessen` weiter unten). Hier reist nur der Bestand.
          kanten: new KantenLeseService({ repo: services.kanten, kos: services.ko }),
@@ -4022,7 +4037,7 @@ index 9429f5d36..2a5dcb570 100644
                return { ok: false, reason: "forbidden" as const };
              }
              const input = await services.capture.toKoInput(draftId);
-@@ -4315,13 +2914,10 @@ export function buildApp(
+@@ -4330,13 +2914,10 @@ export function buildApp(
            // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
            applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
              const draft = await services.capture.getDraft(draftId);
@@ -4038,7 +4053,7 @@ index 9429f5d36..2a5dcb570 100644
                return { ok: false, reason: "forbidden" as const };
              }
              // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG
-@@ -4437,17 +3033,11 @@ export function buildApp(
+@@ -4452,17 +3033,11 @@ export function buildApp(
      ),
    );
    app.register(
@@ -4061,7 +4076,7 @@ index 9429f5d36..2a5dcb570 100644
    );
    // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
    // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.
-@@ -4462,28 +3052,6 @@ export function buildApp(
+@@ -4477,28 +3052,6 @@ export function buildApp(
    // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
    // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
    app.register(aiCheckCoverageRoutes(services.ko, guards));
@@ -4090,7 +4105,7 @@ index 9429f5d36..2a5dcb570 100644
    // JOB 4151 (WG-PERSISTENZ): die kuratierten Beziehungen. Der Bestand kommt aus `services`
    // (Postgres oder Speicher, s. dort); `services.ko` erfüllt den SCHMALEN Port `KantenKoLeser`
    // (`kanten-service.ts:178-180`) — die Route kennt den KO-Dienst deshalb nicht als Ganzes. Die
-@@ -4503,139 +3071,6 @@ export function buildApp(
+@@ -4518,139 +3071,6 @@ export function buildApp(
        guards,
      ),
    );
@@ -4230,7 +4245,7 @@ index 9429f5d36..2a5dcb570 100644
    // ==============================================================================================
    // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
    // ==============================================================================================
-@@ -4674,97 +3109,26 @@ export function buildApp(
+@@ -4689,97 +3109,26 @@ export function buildApp(
          audit: services.audit,
          kos: koSichtbarkeit,
          papierkorb: { get: (id: string) => services.ko.papierkorbFakten(id) },
@@ -4332,7 +4347,7 @@ index 9429f5d36..2a5dcb570 100644
    // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
    // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
    // zweite Aufloesung.
-@@ -4801,9 +3165,7 @@ export function buildApp(
+@@ -4816,9 +3165,7 @@ export function buildApp(
    // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
    // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
    // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
@@ -4343,7 +4358,7 @@ index 9429f5d36..2a5dcb570 100644
      app.register(
        checkTextRoutes(
          {
-@@ -4819,51 +3181,17 @@ export function buildApp(
+@@ -4834,51 +3181,17 @@ export function buildApp(
        ),
      );
    }
@@ -4403,7 +4418,7 @@ index 9429f5d36..2a5dcb570 100644
    );
    app.register(categoryRoutes(services.ko, guards));
    app.register(outputRoutes(services.output, guards));
-@@ -4884,19 +3212,7 @@ export function buildApp(
+@@ -4899,19 +3212,7 @@ export function buildApp(
    );
    // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
    // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
@@ -4424,7 +4439,7 @@ index 9429f5d36..2a5dcb570 100644
    app.register(
      notificationsRoutes(
        {
-@@ -4910,145 +3226,15 @@ export function buildApp(
+@@ -4925,145 +3226,15 @@ export function buildApp(
          seen: services.notificationSeen,
          // AUFTRAG-mega74 BLOCK D (G5): dieselbe Quelle wie Konflikte und Überschneidungen.
          kos: koSichtbarkeit,
@@ -4572,7 +4587,7 @@ index 9429f5d36..2a5dcb570 100644
    // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
    // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
    // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
-@@ -5061,11 +3247,11 @@ export function buildApp(
+@@ -5076,11 +3247,11 @@ export function buildApp(
    app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
    // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
    // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
@@ -4587,7 +4602,7 @@ index 9429f5d36..2a5dcb570 100644
    //
    // JOB 2021 (G8): EINE Aufzählung für BEIDE Wege in den Objektspeicher. `POST /api/media/analyze`
    // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
-@@ -5104,11 +3290,6 @@ export function buildApp(
+@@ -5119,11 +3290,6 @@ export function buildApp(
        (await services.capture.listDrafts()).map((draft) => ({
          originalAuthor: draft.originalAuthor,
          lastEditor: draft.lastEditor,
@@ -4599,7 +4614,7 @@ index 9429f5d36..2a5dcb570 100644
          bodyHtml: draft.payload.bodyHtml,
          objectIds: [
            ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
-@@ -5118,27 +3299,11 @@ export function buildApp(
+@@ -5133,27 +3299,11 @@ export function buildApp(
    };
    app.register(objectRoutes(services.objects, guards, anhangQuellen));
    app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
@@ -4628,7 +4643,7 @@ index 9429f5d36..2a5dcb570 100644
    // JOB 3510: die EINE Auskunft über das Erscheinungsbild dieser Instanz — und der Adminweg, der es
    // umschaltet. Sie ist wie die Schalterauskunft darüber SELBST nicht geschaltet: Eine Marke, die
    // man erst freischalten müsste, ließe die Vorführinstanz beim ersten Laden ungefärbt. Die
-@@ -5146,211 +3311,6 @@ export function buildApp(
+@@ -5161,211 +3311,6 @@ export function buildApp(
    app.register(
      brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
    );
@@ -4840,7 +4855,7 @@ index 9429f5d36..2a5dcb570 100644
    // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
    // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
    // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
-@@ -5369,14 +3329,7 @@ export function buildApp(
+@@ -5384,14 +3329,7 @@ export function buildApp(
        }),
      ),
    );
@@ -4856,7 +4871,7 @@ index 9429f5d36..2a5dcb570 100644
    // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
    // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
    // AUFTRAG-mega46 Block F: Die Prüfung stand hier als dritte Kopie derselben Regel und kommt jetzt
-@@ -5391,8 +3344,6 @@ export function buildApp(
+@@ -5406,8 +3344,6 @@ export function buildApp(
          reasoner: services.reasoner,
          // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
          importRuns: services.importRuns,
@@ -4865,7 +4880,7 @@ index 9429f5d36..2a5dcb570 100644
          // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
          betreiberSchalter: services.confluenceImportSchalter,
        }),
-@@ -5403,32 +3354,11 @@ export function buildApp(
+@@ -5418,32 +3354,11 @@ export function buildApp(
    // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
    // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
    // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
@@ -4899,7 +4914,7 @@ index 9429f5d36..2a5dcb570 100644
          guards,
        }),
      );
-@@ -5449,19 +3379,6 @@ export function buildApp(
+@@ -5464,19 +3379,6 @@ export function buildApp(
      );
    }
  
@@ -10877,10 +10892,10 @@ index e963fbac8..000000000
 -}
 diff --git b/services/app/src/freigaberegel-dienst.ts a/services/app/src/freigaberegel-dienst.ts
 deleted file mode 100644
-index 194b1eb41..000000000
+index 5deb8179b..000000000
 --- b/services/app/src/freigaberegel-dienst.ts
 +++ /dev/null
-@@ -1,1042 +0,0 @@
+@@ -1,1050 +0,0 @@
 -import type { AuditEntry, AuditService } from "../../audit";
 -import type { AuthService } from "../../auth";
 -import type { KnowledgeObject, KoService } from "../../knowledge-object";
@@ -10909,7 +10924,13 @@ index 194b1eb41..000000000
 -import type { SessionUser } from "./http";
 -import type { AssignmentNotifier } from "./notify";
 -import { darfSehen } from "./sichtbarkeit";
--import { type SpaceFassung, type SpacesRepo, istArchiviert, lesbareSpaces } from "./spaces";
+-import {
+-  type SpaceFassung,
+-  type SpacesRepo,
+-  istArchiviert,
+-  istGeloescht,
+-  lesbareSpaces,
+-} from "./spaces";
 -import type { TeamsRepo } from "./teams";
 -
 -// ================================================================================================
@@ -11104,8 +11125,10 @@ index 194b1eb41..000000000
 -    }));
 -  }
 -
+-  /** `undefined` auch für einen gelöschten Space (aufnahme:20260922:gesamt-wissensprojekte). */
 -  async aktuellerSpace(id: string): Promise<SpaceFassung | undefined> {
--    return (await this.deps.spaces.fassungen(id)).at(-1);
+-    const letzte = (await this.deps.spaces.fassungen(id)).at(-1);
+-    return istGeloescht(letzte) ? undefined : letzte;
 -  }
 -
 -  /** Space und Regel eines Objekts — `undefined`, wenn sein führender Space keine Regel trägt. */
@@ -20012,10 +20035,10 @@ index e208dc648..000000000
 -}
 diff --git b/services/app/src/log-positivliste.ts a/services/app/src/log-positivliste.ts
 deleted file mode 100644
-index 5cb500651..000000000
+index 007d22825..000000000
 --- b/services/app/src/log-positivliste.ts
 +++ /dev/null
-@@ -1,451 +0,0 @@
+@@ -1,454 +0,0 @@
 -// ================================================================================================
 -// Aufnahme gesamt-telemetrie (R-0623) — DIE POSITIVLISTE DER BETRIEBSLOGFELDER.
 -// ================================================================================================
@@ -20446,6 +20469,9 @@ index 5cb500651..000000000
 -  // klara-aufraeumen.ts
 -  "Klara-Sitzungen aufgeräumt ({wert}): {zahl} entfernt.",
 -  "Klara-Aufräumlauf ({wert}) übersprungen",
+-  // produkt:20261011:peter-p09 — server.ts und wiederanlauf.ts (Wiederanlauf nach einem Restore).
+-  "Wiederanlauf {wert}: Außenaktionen gestoppt ({liste}). Nach der Freigabe ohne KLARWERK_WIEDERANLAUF neu starten.",
+-  "Wiederanlauf {wert}: {bezeichnung}, Sicherungsstand {wert}, Replay-Grenze: {zahl} Meldungen unterdrückt, {zahl} offene Zustellungen geschlossen.",
 -];
 -
 -function vorlageAlsMuster(vorlage: string): RegExp {
@@ -27976,7 +28002,7 @@ index 26252afe2..000000000
 -  };
 -}
 diff --git b/services/app/src/routes/capture-routes.ts a/services/app/src/routes/capture-routes.ts
-index 5dd66811e..5597d6cab 100644
+index 6a30cc929..5597d6cab 100644
 --- b/services/app/src/routes/capture-routes.ts
 +++ a/services/app/src/routes/capture-routes.ts
 @@ -9,14 +9,10 @@ import JSZip from "jszip";
@@ -28011,12 +28037,16 @@ index 5dd66811e..5597d6cab 100644
  import type { ValidationService } from "../../../validation";
  import type { AiCheckWorker } from "../ai-check-worker";
  import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
-@@ -46,44 +40,12 @@ import { type Guards, type SessionUser, sendError } from "../http";
+@@ -46,48 +40,12 @@ import { type Guards, type SessionUser, sendError } from "../http";
  // ausdrücklich DOM- UND paketfrei gehalten, damit der Browser denselben Kern nutzen kann.
  import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
  import type { AssignmentNotifier } from "../notify";
 -import { autorenrechtAmEntwurf, entwurfSichtbarFuer } from "../sichtbarkeit";
--import type { VorlagenEinreichungPort } from "../vorlagen";
+-import {
+-  VORLAGE_SPACE_KONFLIKT_TEXT,
+-  type VorlagenEinreichungPort,
+-  VorlagenSpaceFehler,
+-} from "../vorlagen";
  
  // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
  // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
@@ -28057,7 +28087,7 @@ index 5dd66811e..5597d6cab 100644
  }
  
  // ================================================================================================
-@@ -144,7 +106,10 @@ function imPapierkorb(draft: Draft): boolean {
+@@ -148,7 +106,10 @@ function imPapierkorb(draft: Draft): boolean {
   * EINZEL-Zugriff läuft über `findById`, und das gibt einen getrashten Entwurf gar nicht heraus.
   */
  function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
@@ -28069,7 +28099,7 @@ index 5dd66811e..5597d6cab 100644
  }
  
  /**
-@@ -154,12 +119,6 @@ function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
+@@ -158,12 +119,6 @@ function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
   * Codeänderung wäre eine Vertragsänderung nach aussen und braucht eine eigene Erhebung der
   * Verbraucher. Nur `message` wechselt die Quelle.
   *
@@ -28082,7 +28112,7 @@ index 5dd66811e..5597d6cab 100644
   * `request` KOMMT ALS PARAMETER HEREIN und wird nicht aus `reply` gezogen (`reply.request` gäbe es):
   * Fastify füllt `reply.request` zwar, aber der Weg über den ausdrücklichen Parameter macht an JEDER
   * der fünf Aufrufstellen sichtbar, dass diese Funktion den Sprachkopf der ANFRAGE liest. Ein
-@@ -173,31 +132,18 @@ async function requireVisibleDraft(
+@@ -177,31 +132,18 @@ async function requireVisibleDraft(
    user: SessionUser,
    reply: FastifyReply,
    request: FastifyRequest,
@@ -28117,7 +28147,7 @@ index 5dd66811e..5597d6cab 100644
      return undefined;
    }
    return draft;
-@@ -210,11 +156,10 @@ async function requireVisibleDraft(
+@@ -214,11 +156,10 @@ async function requireVisibleDraft(
   * aus zwei verschiedenen Sichten (`getDraft` gibt einen getrashten Entwurf ausdrücklich NICHT
   * heraus). Das PRÄDIKAT ist dasselbe und kein zweites — `canSeeDraft`, derselbe Aufruf.
   *
@@ -28133,7 +28163,7 @@ index 5dd66811e..5597d6cab 100644
   * nicht mehr auffindbar. Hielte der Papierkorb sie mit 403 am Leben, wäre über ihn erfragbar, dass
   * es einen fremden Entwurf gegeben hat — der Papierkorb hätte eine Auskunft HINZUGEFÜGT, und genau
   * das verbietet §4.5. Es ist dieselbe Richtung, in die mega80 die Wissensobjekte gebracht hat
-@@ -227,9 +172,7 @@ async function requireVisibleTrashedDraft(
+@@ -231,9 +172,7 @@ async function requireVisibleTrashedDraft(
    reply: FastifyReply,
  ): Promise<Draft | undefined> {
    const draft = await capture.findTrashedDraft(id);
@@ -28144,7 +28174,7 @@ index 5dd66811e..5597d6cab 100644
      reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht im Papierkorb." });
      return undefined;
    }
-@@ -299,125 +242,6 @@ function docxDraftTooLargeErrorHandler(
+@@ -303,125 +242,6 @@ function docxDraftTooLargeErrorHandler(
    });
  }
  
@@ -28270,7 +28300,7 @@ index 5dd66811e..5597d6cab 100644
  /** Was das Panel schickt: die `.docx` als Base64 plus die Angaben, die es ohnehin kennt. */
  export interface DocxDraftRequest {
    /** Dateiname, für Titel und Formatprüfung. */
-@@ -426,12 +250,6 @@ export interface DocxDraftRequest {
+@@ -430,12 +250,6 @@ export interface DocxDraftRequest {
    data: string;
    /** Titelvorschlag des Panels; ohne ihn wird der Dateiname genommen. */
    title?: string;
@@ -28283,7 +28313,7 @@ index 5dd66811e..5597d6cab 100644
    /** R-0169 (Nacharbeit 5): die im Word-Dokument gespeicherte Dokumentkennung, falls vorhanden. */
    dokumentId?: string;
  }
-@@ -891,8 +709,6 @@ export type DraftCreateRequest = DraftPayload & {
+@@ -895,8 +709,6 @@ export type DraftCreateRequest = DraftPayload & {
    operationId?: string;
    expectedOwner?: string;
    dokumentId?: string;
@@ -28292,7 +28322,7 @@ index 5dd66811e..5597d6cab 100644
  };
  
  /**
-@@ -971,12 +787,6 @@ export interface CaptureRoutesDeps {
+@@ -975,12 +787,6 @@ export interface CaptureRoutesDeps {
     * Optional wie die Abhängigkeiten darüber; ohne sie bleibt der Word-Weg exakt wie vorher.
     */
    dokumente?: DokumentaktenService | undefined;
@@ -28305,7 +28335,7 @@ index 5dd66811e..5597d6cab 100644
  }
  
  // ================================================================================================
-@@ -1165,20 +975,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1169,20 +975,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
        // läuft deshalb durch DIESELBE Ankerprüfung wie die Einzelroute — sonst stünde „kein
        // Body-Resume ohne Anker" im Code und griffe in der Anwendung nie.
        // JOB 2696 (R2-33): Die Eingrenzung geschieht jetzt IN DER ABLAGE, nicht erst hier. Ein
@@ -28327,7 +28357,7 @@ index 5dd66811e..5597d6cab 100644
        );
        reply.code(200).send(
          visibleDraftsFor(
-@@ -1227,8 +1031,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1231,8 +1031,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
            expectedOwner: rohEigentuemer,
            // R-0169 (Nacharbeit 5): Transport wie `operationId`, nie Payload.
            dokumentId: rohDokumentId,
@@ -28336,7 +28366,7 @@ index 5dd66811e..5597d6cab 100644
            ...nutzlast
          } = request.body ?? {};
          const gestalt = validateDraftPayloadShape(nutzlast);
-@@ -1253,8 +1055,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1257,8 +1055,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
          // JOB 4249 R7 — UND SIE SPRICHT DIE SPRACHE DER SITZUNG. In Runde 6 stand der Satz hier als
          // deutsches Literal; der Q9-Wächter (`tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`)
          // hat ihn im Tor gefunden und damit genau das getan, wofür er gebaut ist. Er gehört in den
@@ -28347,7 +28377,7 @@ index 5dd66811e..5597d6cab 100644
          const erwarteterEigentuemer =
            typeof rohEigentuemer === "string" && rohEigentuemer.trim().length > 0
              ? rohEigentuemer.trim()
-@@ -1281,14 +1083,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1285,14 +1083,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
            sendeUnbekannteDokumentkennung(reply);
            return;
          }
@@ -28362,7 +28392,7 @@ index 5dd66811e..5597d6cab 100644
          try {
            // JOB 2697: DIE ROUTE ÜBERSETZT NUR. Sie trifft keine eigene Entscheidung über
            // Wiederholung oder Konflikt und führt kein eigenes Register — der Dienst hat
-@@ -1297,15 +1091,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1301,15 +1091,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
            // `IDEMPOTENCY_PAYLOAD_MISMATCH` aus dem Dienst und wird von `sendError` auf 409
            // abgebildet (`http.ts:65`). Ohne Kennung ist `angelegt` immer `true` — der
            // Bestandspfad antwortet unverändert mit 201.
@@ -28380,7 +28410,7 @@ index 5dd66811e..5597d6cab 100644
            );
            // R-0169 (Nacharbeit 5): ein Word-Entwurf wird an eine Fassung gebunden.
            // NACHARBEIT 8 (bens F2): nicht mehr nur beim NEU angelegten Entwurf. Scheiterte das
-@@ -1319,17 +1109,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1323,17 +1109,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
              ausWord && !draft.dokumentHerkunft
                ? await anWordDokumentBinden({ capture, dokumente }, draft, dokumentId, user.id)
                : draft;
@@ -28399,7 +28429,7 @@ index 5dd66811e..5597d6cab 100644
          } catch (error) {
            sendError(reply, error);
          }
-@@ -1371,7 +1151,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1375,7 +1151,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
            name,
            data,
            title,
@@ -28407,7 +28437,7 @@ index 5dd66811e..5597d6cab 100644
            dokumentId: rohDokumentId,
          } = request.body ?? ({} as DocxDraftRequest);
          if (typeof data !== "string" || data.length === 0) {
-@@ -1380,15 +1159,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1384,15 +1159,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
              .send({ error: "BAD_REQUEST", message: "Es wurden keine Dokumentbytes uebergeben." });
            return;
          }
@@ -28423,7 +28453,7 @@ index 5dd66811e..5597d6cab 100644
          // R-0169 (Nacharbeit 5): dasselbe Tor wie an POST /api/drafts — vor jeder Umwandlung.
          const dokumentId = gelieferteDokumentId(rohDokumentId);
          if (await unbekannteDokumentkennung(dokumente, dokumentId)) {
-@@ -1519,41 +1289,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1523,41 +1289,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
              statement: kernaussageAusKlartext(reich.text) || titelVorschlag || "",
              bodyHtml,
              origin: "word_addin",
@@ -28465,7 +28495,7 @@ index 5dd66811e..5597d6cab 100644
            // R-0169 (Nacharbeit 5): der neu angelegte Entwurf wird an die Fassung seines
            // Word-Dokuments gebunden (Akte neu, wenn das Dokument noch keine Kennung trägt).
            const draft = await anWordDokumentBinden(
-@@ -1611,7 +1350,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1615,7 +1350,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
        }
        // AUFTRAG-mega20 Block D: DAS FORTSETZEN LÄUFT ÜBER DIE ANKERPRÜFUNG.
        //
@@ -28474,7 +28504,7 @@ index 5dd66811e..5597d6cab 100644
        // berührt. Was hier dazukommt, ist die INHALTS-Entscheidung: beruft sich der Entwurf auf ein
        // gesichertes Original, das es nicht mehr gibt, kommt sein Body NICHT zurück — sonst stünde
        // übernommener Dokumenttext ohne Herkunft im Editor und ließe sich von dort einreichen.
-@@ -1672,34 +1411,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1676,34 +1411,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
        },
      );
  
@@ -28509,7 +28539,7 @@ index 5dd66811e..5597d6cab 100644
      app.put<{ Params: { id: string }; Body: DraftPayload & { expectedUpdatedAt?: unknown } }>(
        "/api/drafts/:id",
        // WP-D1c/WP-D1d: derselbe dokument-taugliche Cap + Auth-vor-Parsing wie POST — ein bildreicher
-@@ -1784,16 +1495,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1788,16 +1495,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
        }
        try {
          // Die Eingrenzung geschieht IN DER ABLAGE (JOB 2696s Lehre) — ein Nicht-Admin bekommt
@@ -28528,7 +28558,7 @@ index 5dd66811e..5597d6cab 100644
        } catch (error) {
          sendError(reply, error);
        }
-@@ -1805,7 +1513,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1809,7 +1513,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
          return;
        }
        try {
@@ -28537,7 +28567,7 @@ index 5dd66811e..5597d6cab 100644
          // ihn nicht sehen darf, erfährt auch hier nicht, dass es ihn gibt. `requireVisibleDraft`
          // selbst ist hier NICHT brauchbar — es liest über `getDraft`, und das gibt einen
          // getrashten Entwurf bewusst nicht heraus.
-@@ -1837,64 +1545,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -1841,64 +1545,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
        }
      });
  
@@ -28603,7 +28633,7 @@ index 5dd66811e..5597d6cab 100644
            return;
          }
          // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
-@@ -2008,70 +1665,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -2012,73 +1665,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
          if (!user) {
            return;
          }
@@ -28671,10 +28701,13 @@ index 5dd66811e..5597d6cab 100644
 -          aiCheckWorker.enqueue(koId, vermerkt?.aiCheck?.koVersion);
 -          return vermerkt;
 -        };
+-        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält der
+-        // Promote von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
+-        let spaceSperreFrei: (() => void) | undefined;
          try {
            const body = request.body ?? {};
            const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
-@@ -2098,34 +1691,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -2105,34 +1691,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
                fingerprint,
              });
              if (replay) {
@@ -28713,15 +28746,17 @@ index 5dd66811e..5597d6cab 100644
              return;
            }
            // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
-@@ -2156,22 +1728,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -2163,24 +1728,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
              await capture.requireFresh(request.params.id, expectedUpdatedAt);
            }
            const input = await capture.toKoInput(request.params.id);
 -          // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
 -          // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
 -          // Scheitert sie, bleibt der Entwurf mit allen Werten stehen — es entsteht nichts.
+-          const rohBezug = (await capture.getDraft(request.params.id))?.payload.vorlage;
+-          spaceSperreFrei = await deps.vorlagenEinreichung?.halte(rohBezug);
 -          const vorlagenEntscheid = await deps.vorlagenEinreichung?.pruefe(
--            (await capture.getDraft(request.params.id))?.payload.vorlage,
+-            rohBezug,
 -            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
 -            user,
 -          );
@@ -28736,26 +28771,35 @@ index 5dd66811e..5597d6cab 100644
            // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
            // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
            // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
-@@ -2194,35 +1750,29 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+@@ -2202,48 +1749,30 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+           // Prüfung und Historie. Deshalb der eigene Weg `entwurfVerbraucht` (hart) und nicht
            // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
            // dazu führen, dass der Entwurf aus der Liste verschwindet.
-           await capture.entwurfVerbraucht(request.params.id);
 -          // produkt:20261007:templates-default: Vorlage/Fassung vermerken, ggf. in den gewählten
 -          // Space legen. Eine Nacharbeit: scheitert sie, steht das Objekt trotzdem, und die Antwort
 -          // sagt es (`vorlagenVermerk`).
+-          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+-          // Zuordnung — misslingt sie, ist die Anlage zurückgenommen, die Antwort 409, und der
+-          // Entwurf bleibt bestehen (deshalb steht dieser Schritt VOR dem Verbrauch des Entwurfs).
 -          let vorlagenVermerk: "fehlgeschlagen" | undefined;
 -          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
 -            try {
 -              await deps.vorlagenEinreichung?.vermerke(created.id, vorlagenEntscheid.bezug, user);
 -            } catch (fehlerWert) {
+-              if (fehlerWert instanceof VorlagenSpaceFehler) {
+-                reply.code(409).send({
+-                  error: fehlerWert.code,
+-                  message: VORLAGE_SPACE_KONFLIKT_TEXT,
+-                });
+-                return;
+-              }
 -              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
 -              vorlagenVermerk = "fehlgeschlagen";
 -            }
-+          const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
-+          if (reviewers.length > 0) {
-+            await validation.assign(created.id, reviewers, user.id);
-+            await notifyAssignment?.(created.id, reviewers);
-           }
+-          }
+-          // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+-          spaceSperreFrei?.();
+           await capture.entwurfVerbraucht(request.params.id);
 -          // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
 -          // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
 -          // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
@@ -28767,6 +28811,11 @@ index 5dd66811e..5597d6cab 100644
 -            (imSpace ? await ko.get(created.id) : undefined) ??
 -            created;
 -          reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
++          const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
++          if (reviewers.length > 0) {
++            await validation.assign(created.id, reviewers, user.id);
++            await notifyAssignment?.(created.id, reviewers);
++          }
 +          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
 +          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
 +          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
@@ -28791,6 +28840,15 @@ index 5dd66811e..5597d6cab 100644
          } catch (error) {
            // JOB 2684 D1: ein veralteter Stand ist ein Konflikt, kein Eingabefehler — 409, und es ist
            // NICHTS entstanden (der Vergleich steht vor `continueDraft` und vor `ko.create`).
+@@ -2251,8 +1780,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
+             return;
+           }
+           sendError(reply, error);
+-        } finally {
+-          spaceSperreFrei?.();
+         }
+       },
+     );
 diff --git b/services/app/src/routes/chat-routes.ts a/services/app/src/routes/chat-routes.ts
 deleted file mode 100644
 index 1f24c9190..000000000
@@ -33663,7 +33721,7 @@ index 481fda074..ee8daf45e 100644
        reply.code(200).send(result);
      });
 diff --git b/services/app/src/routes/ko-routes.ts a/services/app/src/routes/ko-routes.ts
-index b761815c4..2205bd13b 100644
+index 64c9bcce2..2205bd13b 100644
 --- b/services/app/src/routes/ko-routes.ts
 +++ a/services/app/src/routes/ko-routes.ts
 @@ -1,14 +1,11 @@
@@ -33717,7 +33775,7 @@ index b761815c4..2205bd13b 100644
    normalizeUploadLimits,
  } from "../../../knowledge-object";
  // JOB 3054: `RevalidierungMerkerLeser` ist die SCHREIBFREIE Haelfte desselben Dienstes — sie kommt
-@@ -69,35 +57,19 @@ import type { Reasoner } from "../../../reasoner";
+@@ -69,48 +57,19 @@ import type { Reasoner } from "../../../reasoner";
  import {
    type KoPruefstand,
    TRUST_MAX,
@@ -33735,7 +33793,12 @@ index b761815c4..2205bd13b 100644
  import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
  import type { AssignmentNotifier } from "../notify";
  import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
--import type { EinreichEntscheid, VorlagenEinreichungPort } from "../vorlagen";
+-import {
+-  type EinreichEntscheid,
+-  VORLAGE_SPACE_KONFLIKT_TEXT,
+-  type VorlagenEinreichungPort,
+-  VorlagenSpaceFehler,
+-} from "../vorlagen";
  import { dublettenTor } from "./validation-routes";
  
 -/** produkt:20261007:templates-default — die Absage der Einreichprüfung, wörtlich weitergegeben. */
@@ -33750,10 +33813,18 @@ index b761815c4..2205bd13b 100644
 -  });
 -}
 -
+-/**
+- * aufnahme:20260922:gesamt-wissensprojekte: der gewählte Space ließ sich nicht zuordnen — die
+- * Anlage ist zurückgenommen (`VorlagenSpaceFehler`). Ein Konflikt, kein stilles 201 ohne Space.
+- */
+-function sendeVorlagenSpaceKonflikt(reply: FastifyReply, e: VorlagenSpaceFehler): void {
+-  reply.code(409).send({ error: e.code, message: VORLAGE_SPACE_KONFLIKT_TEXT });
+-}
+-
  // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
  // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
  // Orchestrierung über Modulgrenzen ist Aufgabe der App (Composition-Root).
-@@ -164,47 +136,6 @@ export interface KoRoutesDeps {
+@@ -177,47 +136,6 @@ export interface KoRoutesDeps {
    // OPTIONAL BLEIBT OPTIONAL: ein direkt konstruierter Routentest ohne Port bekommt weiterhin die
    // ehrliche Auslassung mit ihrem Grund — keine 0, keine erfundene Verknuepfungszahl.
    kanten?: WissensnetzDeps["kanten"];
@@ -33801,7 +33872,7 @@ index b761815c4..2205bd13b 100644
  }
  
  /**
-@@ -216,27 +147,6 @@ export interface KoRoutesDeps {
+@@ -229,27 +147,6 @@ export interface KoRoutesDeps {
   */
  type WissensnetzDeps = Parameters<typeof wissensnetzMetrikFuer<KnowledgeObject>>[1];
  
@@ -33829,7 +33900,7 @@ index b761815c4..2205bd13b 100644
  /**
   * AUFTRAG-mega19 Block B — DER ENTWURF ALS EINGABE EINER DOKUMENTÜBERNAHME.
   *
-@@ -444,12 +354,16 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
+@@ -457,12 +354,16 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
  
  // R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
  // Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
@@ -33852,7 +33923,7 @@ index b761815c4..2205bd13b 100644
  
  interface KoQuery {
    type?: KnowledgeType;
-@@ -507,21 +421,9 @@ type KoAktion =
+@@ -520,21 +421,9 @@ type KoAktion =
    | "tags"
    // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
    | "domain"
@@ -33874,7 +33945,7 @@ index b761815c4..2205bd13b 100644
    | "conflict"
    | "resolve-conflict"
    | "transfer-author"
-@@ -535,18 +437,7 @@ type KoAktion =
+@@ -548,18 +437,7 @@ type KoAktion =
    // AM Objekt unter `:id` — sie passieren das Tor, mit demselben Gate wie `comment`.
    | "comment-resolve"
    | "comment-reopen"
@@ -33894,7 +33965,7 @@ index b761815c4..2205bd13b 100644
  
  /**
   * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
-@@ -575,21 +466,6 @@ type Torurteil = "tor" | "kein-zielobjekt";
+@@ -588,21 +466,6 @@ type Torurteil = "tor" | "kein-zielobjekt";
  /** R-0431 (K2): die Höchstlänge eines Fachgebiets (`action: "domain"`). */
  const DOMAIN_MAX_LENGTH = 120;
  
@@ -33916,7 +33987,7 @@ index b761815c4..2205bd13b 100644
  const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
    rate: "tor",
    assign: "tor",
-@@ -605,20 +481,9 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
+@@ -618,20 +481,9 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
    tags: "tor",
    // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
    domain: "tor",
@@ -33937,7 +34008,7 @@ index b761815c4..2205bd13b 100644
    conflict: "kein-zielobjekt",
    "resolve-conflict": "kein-zielobjekt",
    "transfer-author": "tor",
-@@ -631,14 +496,6 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
+@@ -644,14 +496,6 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
    "comment-resolve": "tor",
    "comment-reopen": "tor",
    revalidate: "tor",
@@ -33952,7 +34023,7 @@ index b761815c4..2205bd13b 100644
  };
  
  /** Die Grundmenge als Datum — der Wächter liest sie, statt sie noch einmal abzuschreiben. */
-@@ -653,12 +510,6 @@ interface PutBody {
+@@ -666,12 +510,6 @@ interface PutBody {
     * (`dublettenTor` in validation-routes.ts).
     */
    duplicateAcknowledged?: unknown;
@@ -33965,7 +34036,7 @@ index b761815c4..2205bd13b 100644
    userIds?: string[];
    changes?: ReviseKoInput;
    /**
-@@ -718,8 +569,6 @@ interface PutBody {
+@@ -731,8 +569,6 @@ interface PutBody {
      clearBody?: unknown;
      baseVersion?: unknown;
      origin?: unknown;
@@ -33974,7 +34045,7 @@ index b761815c4..2205bd13b 100644
    };
    /** JOB 3667 R2: welcher Vorschlag entschieden wird (`action: "decide-proposal"`). */
    proposalId?: string;
-@@ -729,10 +578,6 @@ interface PutBody {
+@@ -742,10 +578,6 @@ interface PutBody {
    tags?: string[];
    /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
    domain?: unknown;
@@ -33985,7 +34056,7 @@ index b761815c4..2205bd13b 100644
    conflict?: ConflictInput;
    /**
     * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
-@@ -748,18 +593,7 @@ interface PutBody {
+@@ -761,18 +593,7 @@ interface PutBody {
    fortsetzungFuerFassung?: unknown;
    conflictId?: string;
    decision?: string;
@@ -34004,7 +34075,7 @@ index b761815c4..2205bd13b 100644
    text?: string;
    /**
     * JOB 4146 (WIKI-DISKUSSION) — die drei Felder des Fadens. Alle `unknown`, weil sie aus dem Netz
-@@ -770,13 +604,10 @@ interface PutBody {
+@@ -783,13 +604,10 @@ interface PutBody {
     * `clientKey` — der Beitragsschlüssel des Aufrufers (Vertrag Fall 5): reine Deduplizierung einer
     *   Wiederholung nach unklarer Übertragung, ohne Autorität über irgendetwas.
     * `commentId` — welcher Faden geklärt oder wieder geöffnet wird.
@@ -34018,7 +34089,7 @@ index b761815c4..2205bd13b 100644
    attachment?: {
      name?: string;
      mime?: string;
-@@ -793,15 +624,7 @@ interface PutBody {
+@@ -806,15 +624,7 @@ interface PutBody {
    // AUFTRAG-mega16 Block A: `objectId` ist der ANKER einer adresslosen Belegstelle — die Referenz
    // auf ein Dokument, das dieses Wissensobjekt bereits als Anhang trägt. Der Server GLAUBT ihn
    // nicht, er PRÜFT ihn gegen die eigene Anhangsliste; ein erfundener Wert belegt nichts.
@@ -34035,7 +34106,7 @@ index b761815c4..2205bd13b 100644
    sourceId?: string;
    // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
    level?: string;
-@@ -1092,30 +915,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1105,30 +915,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
      await guards.requireUser(request, reply);
    };
  
@@ -34066,7 +34137,7 @@ index b761815c4..2205bd13b 100644
    // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
    // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
    const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
-@@ -1157,64 +956,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1170,62 +956,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
      userId: string,
    ) {
      if (konflikt.type === "truth") {
@@ -34074,11 +34145,9 @@ index b761815c4..2205bd13b 100644
 -      // Bewertung, damit derselbe Konflikt genau einmal in den Vertrauenswert eingeht.
 -      await validation.wahrheitskonfliktFolge(konflikt.koA, userId);
 -      await validation.wahrheitskonfliktFolge(konflikt.koB, userId);
-+      await ko.markTruthConflictReview(konflikt.koA, userId);
-+      await ko.markTruthConflictReview(konflikt.koB, userId);
-     }
-   }
- 
+-    }
+-  }
+-
 -  /**
 -   * AW06-K02 (Ben, Nacharbeit 4) — DIE ANNAHME DIESER FASSUNG, AUS IHREM BELEG GELESEN.
 -   *
@@ -34106,7 +34175,9 @@ index b761815c4..2205bd13b 100644
 -    const ref = item.annahmeRef ?? item.validationDecisionRef;
 -    if (!audit || !ref || item.status !== "validiert") {
 -      return undefined;
--    }
++      await ko.markTruthConflictReview(konflikt.koA, userId);
++      await ko.markTruthConflictReview(konflikt.koB, userId);
+     }
 -    const beleg = (await audit.list({ target: item.id })).find(
 -      (e) => e.seq === ref.auditSeq && e.hash === ref.auditHash,
 -    );
@@ -34128,12 +34199,10 @@ index b761815c4..2205bd13b 100644
 -      kontoregel: typeof p.kontoregel === "string" ? p.kontoregel : null,
 -      ...(typeof p.benoetigt === "number" ? { benoetigt: p.benoetigt } : {}),
 -    };
--  }
--
+   }
+ 
    async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
-     const item = await ko.get(id);
-     if (!item || !darfSehen(user, item)) {
-@@ -1430,17 +1176,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1443,17 +1176,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
    }
  
    return async (app) => {
@@ -34151,7 +34220,7 @@ index b761815c4..2205bd13b 100644
      // ============================================================================================
      // JOB 2009 · D2 — H3 BEKOMMT SEINEN LESER. Datei und Zeile dieses Aufrufs sind der Beleg.
      // ============================================================================================
-@@ -1479,10 +1214,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1492,10 +1214,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          }
          const roh = request.query.deckel;
          try {
@@ -34163,7 +34232,7 @@ index b761815c4..2205bd13b 100644
              {
                kos: { alle: () => ko.list({}) },
                // JOB 4155 (Lieferung 1): die Kantenauskunft. Der Schluessel wird WEGGELASSEN, wenn
-@@ -1555,18 +1288,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1568,18 +1288,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
        // Pruefstandsabfrage. Ein Prueflauf ueber ein unsichtbares Objekt waere eine Existenzauskunft
        // ueber den Umweg der Kosten (gepinnt in L6).
        const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(user, sichtbare);
@@ -34186,7 +34255,7 @@ index b761815c4..2205bd13b 100644
        );
      });
  
-@@ -1647,15 +1373,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1660,15 +1373,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
        // Einordnungsfelder sind nach KW-ARCH-G27 ausdrücklich keine Sicherheitsmerkmale.
        const einordnung = await ko.einordnungsstandVon(item.id);
        const varianten = (await lesevarianten?.forKo(item.id)) ?? [];
@@ -34203,7 +34272,7 @@ index b761815c4..2205bd13b 100644
          ...(einordnung
            ? {
                category: einordnung.category,
-@@ -1740,7 +1461,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1753,7 +1461,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
  
      app.post<{ Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[] } }>(
        "/api/kos",
@@ -34211,7 +34280,7 @@ index b761815c4..2205bd13b 100644
        async (request, reply) => {
          const user = await guards.requirePermission("ko.create", request, reply);
          if (!user) {
-@@ -1768,9 +1488,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1781,9 +1488,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
            // (Capture.tsx `createPayload`).
            // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
@@ -34224,7 +34293,7 @@ index b761815c4..2205bd13b 100644
            const {
              reviewerIds,
              sources: _ignoredSources,
-@@ -1780,13 +1500,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1793,13 +1500,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              importedVia: _ignoredImportedVia,
              // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
              dokumentHerkunft: _ignoredDokumentHerkunft,
@@ -34239,7 +34308,7 @@ index b761815c4..2205bd13b 100644
            // ==========================================================================================
            // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
            // ==========================================================================================
-@@ -1826,54 +1541,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1839,77 +1541,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              sendMissingConfidentiality(reply);
              return;
            }
@@ -34267,35 +34336,58 @@ index b761815c4..2205bd13b 100644
 -          }
 -          // produkt:20261007:templates-default: Pflichtfelder der Vorlage, Space-Vorgaben und
 -          // gepflegte Begriffe — serverseitig, VOR der Anlage. Ein Entwurf bleibt davon unberührt.
--          const vorlagenEntscheid = await deps.vorlagen?.pruefe(
--            vorlagenBezug,
--            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
--            user,
--          );
--          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
--            sendeVorlagenAbsage(reply, vorlagenEntscheid);
+-          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): mit gewähltem
+-          // Space laufen Prüfung, Anlage und Zuordnung unter derselben Sperre wie die
+-          // Spacelöschung (`sperre`). Gewinnt die Löschung vorher, antwortet die Prüfung 409
+-          // `SPACE_GELOESCHT`; misslingt die Zuordnung, ist die Anlage zurückgenommen (409).
+-          const anlage = async () => {
+-            const entscheid = await deps.vorlagen?.pruefe(
+-              vorlagenBezug,
+-              { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+-              user,
+-            );
+-            if (entscheid && !entscheid.ok) {
+-              return { absage: entscheid } as const;
+-            }
+-            let neu = await ko.create({ ...input, author: user.id });
+-            // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das
+-            // gesagt (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben — AUSSER die
+-            // Space-Zuordnung scheitert: dann ist die Anlage zurückgenommen.
+-            let vermerk: "fehlgeschlagen" | undefined;
+-            if (entscheid?.ok && entscheid.bezug) {
+-              try {
+-                await deps.vorlagen?.vermerke(neu.id, entscheid.bezug, user);
+-                if (entscheid.bezug.spaceId) {
+-                  neu = (await ko.get(neu.id)) ?? neu;
+-                }
+-              } catch (fehlerWert) {
+-                if (fehlerWert instanceof VorlagenSpaceFehler) {
+-                  return { spaceFehler: fehlerWert } as const;
+-                }
+-                request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+-                vermerk = "fehlgeschlagen";
+-              }
+-            }
+-            return { created: neu, vorlagenVermerk: vermerk } as const;
+-          };
+-          const ergebnis = deps.vorlagen
+-            ? await deps.vorlagen.sperre(vorlagenBezug, anlage)
+-            : await anlage();
+-          if ("absage" in ergebnis) {
+-            sendeVorlagenAbsage(reply, ergebnis.absage);
 -            return;
 -          }
--          let created = await ko.create({ ...input, author: user.id });
--          // Der Vermerk ist eine Nacharbeit: das Objekt steht schon. Scheitert er, wird das gesagt
--          // (`vorlagenVermerk`), nicht als gescheiterte Anlage ausgegeben.
--          let vorlagenVermerk: "fehlgeschlagen" | undefined;
--          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
--            try {
--              await deps.vorlagen?.vermerke(created.id, vorlagenEntscheid.bezug, user);
--              if (vorlagenEntscheid.bezug.spaceId) {
--                created = (await ko.get(created.id)) ?? created;
--              }
--            } catch (fehlerWert) {
--              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
--              vorlagenVermerk = "fehlgeschlagen";
--            }
+-          if ("spaceFehler" in ergebnis) {
+-            sendeVorlagenSpaceKonflikt(reply, ergebnis.spaceFehler);
+-            return;
 -          }
+-          const created = ergebnis.created;
+-          const vorlagenVermerk = ergebnis.vorlagenVermerk;
 +          const created = await ko.create({ ...input, author: user.id });
            // SCRUM-395: Prüfer-Vorschlag beim Einreichen — der Autor darf für sein EIGENES,
            // frisch eingereichtes KO Prüfer benennen (dedupliziert, ohne sich selbst).
            // Läuft über validation.assign + Benachrichtigung (FR-VAL-07) wie die Board-Zuweisung.
-@@ -1890,24 +1558,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1926,24 +1558,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            // Die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending) — das Nachlesen
            // passiert VOR dem enqueue, damit die Antwort deterministisch den Job-Start zeigt.
            let submitted = created;
@@ -34323,7 +34415,25 @@ index b761815c4..2205bd13b 100644
          } catch (error) {
            sendError(reply, error);
          }
-@@ -2048,14 +1710,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -1979,17 +1605,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+       const badRequest = (message: string): void => {
+         reply.code(400).send({ error: "BAD_REQUEST", message });
+       };
+-      // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält dieser
+-      // Vorgang von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
+-      let spaceSperreFrei: (() => void) | undefined;
+       try {
+         const body = request.body ?? {};
+-        const rohBezug = body.draftId
+-          ? typeof body.draftPayload === "object" && body.draftPayload !== null
+-            ? (body.draftPayload as { vorlage?: unknown }).vorlage
+-            : undefined
+-          : (body.create as { vorlage?: unknown } | undefined)?.vorlage;
+-        spaceSperreFrei = await deps.vorlagen?.halte(rohBezug);
+         const entries = body.documents ?? [];
+         // ---- UNVERÄNDERLICHE FORMPRÜFUNGEN ----------------------------------------------------
+         if (entries.length === 0) {
+@@ -2093,14 +1710,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          }
          // ---- DIE INHALTSEINGABE: ENTWURF ODER FRISCH ------------------------------------------
          let input: CreateKoInput;
@@ -34338,7 +34448,7 @@ index b761815c4..2205bd13b 100644
            if (!draftPromotion) {
              // Ehrlich statt halb: ohne verdrahteten Entwurfs-Zugang gibt es diesen Weg nicht.
              return badRequest("Entwurfs-Übernahme ist in dieser Konfiguration nicht verfügbar.");
-@@ -2114,20 +1769,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2159,20 +1769,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (loaded.reason === "invalid") {
                return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
              }
@@ -34363,7 +34473,7 @@ index b761815c4..2205bd13b 100644
              });
              return;
            }
-@@ -2137,19 +1784,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2182,19 +1784,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
            // Dokumenten — nicht aus diesem Feld.
            // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
@@ -34385,7 +34495,7 @@ index b761815c4..2205bd13b 100644
            input = { ...rest, author: user.id } as CreateKoInput;
          }
          // ==========================================================================================
-@@ -2195,17 +1838,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2240,17 +1838,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            sendMissingConfidentiality(reply);
            return;
          }
@@ -34403,22 +34513,48 @@ index b761815c4..2205bd13b 100644
          // ---- KAPAZITÄT: derselbe Anhangs-Vertrag wie `attach` und `append-document` -------------
          const limits = (await uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS;
          if (entries.length > limits.maxAttachments) {
-@@ -2372,14 +2004,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
-         if (draftId && draftPromotion) {
-           await followUp("draft-discard", () => draftPromotion.discard(draftId));
-         }
+@@ -2413,32 +2000,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+         // sein Autor sieht und löschen kann — unschön, aber kein Verlust und vor allem kein
+         // Wissensobjekt ohne Herkunft. Die umgekehrte Reihenfolge hätte den Entwurf vernichten
+         // können, während die Anlage scheitert.
 -        // produkt:20261007:templates-default: Vorlage und Fassung vermerken, ggf. in den gewählten
 -        // Space legen — eine Nacharbeit wie die übrigen, nachholbar und ehrlich gemeldet.
+-        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+-        // Zuordnung. Misslingt sie, hat der Port die Anlage zurückgenommen — dann 409, und der
+-        // Entwurf bleibt erhalten (deshalb steht dieser Schritt VOR dem Verwerfen des Entwurfs).
 -        const bezug = vorlagenEntscheid?.ok ? vorlagenEntscheid.bezug : null;
+-        const spaceKonflikt: { fehler?: VorlagenSpaceFehler } = {};
 -        if (bezug) {
--          await followUp("vorlage", () =>
--            (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user),
--          );
+-          await followUp("vorlage", async () => {
+-            try {
+-              await (deps.vorlagen as VorlagenEinreichungPort).vermerke(created.id, bezug, user);
+-            } catch (fehlerWert) {
+-              if (fehlerWert instanceof VorlagenSpaceFehler) {
+-                spaceKonflikt.fehler = fehlerWert;
+-                return;
+-              }
+-              throw fehlerWert;
+-            }
+-          });
 -        }
-         const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
-         if (reviewers.length > 0) {
-           // Zuweisung und Benachrichtigung sind GETRENNTE Nacharbeiten: gelingt die Zuweisung und
-@@ -2480,27 +2104,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+-        if (spaceKonflikt.fehler) {
+-          sendeVorlagenSpaceKonflikt(reply, spaceKonflikt.fehler);
+-          return;
+-        }
+-        // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+-        spaceSperreFrei?.();
+         const draftId = body.draftId;
+         if (draftId && draftPromotion) {
+           await followUp("draft-discard", () => draftPromotion.discard(draftId));
+@@ -2537,35 +2098,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+         await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+       } catch (error) {
+         sendError(reply, error);
+-      } finally {
+-        spaceSperreFrei?.();
+       }
+     });
+ 
      // WP-SUBMIT-ASYNC (Teil 3, Retry): reiht einen FEHLGESCHLAGENEN (oder festhängenden pending-)
      // Prüf-Job neu ein. Recht ko.validate — der Knopf lebt auf den Validierungs-Karten der Prüfer.
      // done/ohne Feld ist nicht wiederholbar (ehrlicher 409 statt stillem Doppel-Lauf).
@@ -34446,7 +34582,7 @@ index b761815c4..2205bd13b 100644
          const subject = await ko.get(request.params.id);
          if (!subject) {
            reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
-@@ -2514,38 +2123,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -2579,38 +2123,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
            return;
          }
          const status = subject.aiCheck?.status;
@@ -34485,7 +34621,7 @@ index b761815c4..2205bd13b 100644
          // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
          // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
          if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
-@@ -2937,12 +2514,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3002,12 +2514,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          // Eine unbekannte Aktion wird hier abgewiesen, bevor das Tor greift: sie fasst kein Objekt
          // an und verrät deshalb auch keine Existenz — ein 400 ist die ehrlichere Antwort als ein
          // 404, das ein „gibt es nicht" über ein Objekt behauptet, nach dem gar nicht gefragt wurde.
@@ -34499,7 +34635,7 @@ index b761815c4..2205bd13b 100644
          if (!torurteil) {
            return badRequest(`Unbekannte Aktion: ${body.action}`);
          }
-@@ -2967,24 +2539,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3032,24 +2539,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
          // dort — und genau das, und nur das, ist der Grund für die zwei neuen Namen in dieser
          // Liste. An allen übrigen Aktionen bleibt es beim 400
          // (`tests/word-rueckweg/route-bedingter-schreibzugriff.test.ts`, F5).
@@ -34526,7 +34662,7 @@ index b761815c4..2205bd13b 100644
            );
          }
          // JOB 4251: der Stempel der EINORDNUNG greift nur dort, wo eine Einordnung geschrieben wird.
-@@ -3000,46 +2564,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3065,46 +2564,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              'expectedMetadataRevision gilt nur für die Aktionen "tags" und "category".',
            );
          }
@@ -34573,7 +34709,7 @@ index b761815c4..2205bd13b 100644
          switch (body.action) {
            case "rate": {
              const user = await guards.requirePermission("ko.validate", request, reply);
-@@ -3049,11 +2573,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3114,11 +2573,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!body.verdict) {
                return badRequest("verdict fehlt.");
              }
@@ -34585,7 +34721,7 @@ index b761815c4..2205bd13b 100644
              // R-0238: ein Widerspruch gehört NUR zur Ablehnung, und er wird VOR der Bewertung
              // vollständig geprüft (Form, Gegenüber sichtbar) — sonst stünde eine Bewertung, deren
              // angekündigter Konfliktvorschlag nie entstehen konnte.
-@@ -3167,12 +2686,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3232,12 +2686,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              // GENAU diese Fassung gebunden ist. Gelesen vor der Bewertung: überarbeitet jemand in
              // der Lücke, passt sie nicht mehr, und die Fortsetzung lehnt ab (409) statt zu raten.
              const bewerteteFassung = (await ko.get(id))?.version ?? null;
@@ -34599,7 +34735,7 @@ index b761815c4..2205bd13b 100644
              if (!widerspruch) {
                reply.code(200).send(entscheidung);
                return;
-@@ -3197,11 +2711,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3262,11 +2711,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!user) {
                return;
              }
@@ -34611,7 +34747,7 @@ index b761815c4..2205bd13b 100644
              if (
                !(await dublettenTor(
                  dublettenTorDeps,
-@@ -3214,14 +2723,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3279,14 +2723,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              ) {
                return;
              }
@@ -34627,7 +34763,7 @@ index b761815c4..2205bd13b 100644
              return;
            }
            case "revise": {
-@@ -3350,23 +2852,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3415,23 +2852,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                  "proposal.baseVersion muss die Ganzzahl der Version sein, auf der der Vorschlag beruht.",
                );
              }
@@ -34651,7 +34787,7 @@ index b761815c4..2205bd13b 100644
              const angelegt = await ko.addProposal(id, user.id, {
                statement: vorschlag.statement,
                ...(typeof vorschlag.bodyHtml === "string" ? { bodyHtml: vorschlag.bodyHtml } : {}),
-@@ -3375,12 +2860,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3440,12 +2860,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                ...(vorschlag.clearBody === true ? { clearBody: true } : {}),
                baseVersion: basis,
                ...(typeof vorschlag.origin === "string" ? { origin: vorschlag.origin } : {}),
@@ -34664,7 +34800,7 @@ index b761815c4..2205bd13b 100644
              });
              reply.code(200).send(angelegt.ko);
              return;
-@@ -3402,19 +2881,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3467,19 +2881,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                return;
              }
              const entscheidung = body.decision;
@@ -34686,7 +34822,7 @@ index b761815c4..2205bd13b 100644
              }
              if (typeof body.proposalId !== "string" || body.proposalId.trim().length === 0) {
                return badRequest("proposalId fehlt.");
-@@ -3485,21 +2953,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3550,21 +2953,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                  );
                }
              }
@@ -34708,7 +34844,7 @@ index b761815c4..2205bd13b 100644
                }),
              );
              return;
-@@ -3693,12 +3152,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -3758,12 +3152,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                  // dieser Zeile — der Server hatte die Zugehörigkeit vierzehn Zeilen weiter oben
                  // geprüft und vergaß sie beim Speichern.
                  objectId: body.source.objectId ?? null,
@@ -34721,7 +34857,7 @@ index b761815c4..2205bd13b 100644
                }),
              );
              return;
-@@ -4000,34 +3453,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4065,34 +3453,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
              return;
            }
@@ -34756,7 +34892,7 @@ index b761815c4..2205bd13b 100644
            case "tags": {
              const user = await guards.requirePermission("ko.create", request, reply);
              if (!user) {
-@@ -4094,170 +3519,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4159,170 +3519,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              reply.code(200).send(await ko.setOwnership(id, body.ownership, user.id));
              return;
            }
@@ -34927,7 +35063,7 @@ index b761815c4..2205bd13b 100644
            case "conflict": {
              const user = await guards.requirePermission("ko.validate", request, reply);
              if (!user) {
-@@ -4266,14 +3527,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4331,14 +3527,6 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!body.conflict) {
                return badRequest("conflict fehlt.");
              }
@@ -34942,7 +35078,7 @@ index b761815c4..2205bd13b 100644
              reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
              return;
            }
-@@ -4285,18 +3538,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4350,18 +3538,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!body.conflictId || !body.decision) {
                return badRequest("conflictId/decision fehlt.");
              }
@@ -34962,7 +35098,7 @@ index b761815c4..2205bd13b 100644
              return;
            }
            case "transfer-author": {
-@@ -4315,115 +3557,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
+@@ -4380,115 +3557,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
              if (!user) {
                return;
              }
@@ -39059,10 +39195,10 @@ index 3a5bf840d..ad9b71d37 100644
        log,
 diff --git b/services/app/src/routes/spaces-routes.ts a/services/app/src/routes/spaces-routes.ts
 deleted file mode 100644
-index 2c6004bf7..000000000
+index b784e062d..000000000
 --- b/services/app/src/routes/spaces-routes.ts
 +++ /dev/null
-@@ -1,1195 +0,0 @@
+@@ -1,1475 +0,0 @@
 -// ================================================================================================
 -// SPACES — PFLEGE, INHALTE JE SPACE UND ANSICHT, RECHTEVORSCHAU UND SPACEWECHSEL (`spaces.ts`).
 -// ================================================================================================
@@ -39075,11 +39211,16 @@ index 2c6004bf7..000000000
 -//     Detailabruf, Liste, Suche und Klara. Diese Datei filtert nie mit einer eigenen Auslegung.
 -//   · Verschieben: Schreibrecht im Quell- und im Zielspace (ohne Quellspace: Autor, Verantwortliche
 -//     oder `ko.validate`) — und nur mit der Grundlage einer Rechtevorschau, die noch stimmt.
+-//   · Löschen (aufnahme:20260922:gesamt-wissensprojekte): wer bearbeiten darf, nach einer
+-//     Löschvorschau und nur, wenn KEIN Artikel (auch keiner im Papierkorb) den Space noch als
+-//     führenden Space trägt. Sonst bliebe an ihm eine Kennung ohne Space, und `darfSehen` verbärge
+-//     ihn fail-closed vor allen — ein stiller Verlust. Die Artikel gehen vorher über den
+-//     gewöhnlichen Spacewechsel mit Rechtevorschau hinaus; das Löschen selbst bewegt keinen.
 -//
 -// EIN UNSICHTBARER SPACE ODER ARTIKEL IST 404, NICHT 403: eine Absage, die seine Existenz bestätigt,
 -// wäre schon eine Auskunft.
 -import { createHash, randomUUID } from "node:crypto";
--import type { FastifyPluginAsync, FastifyReply } from "fastify";
+-import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from "fastify";
 -import type { AuditService } from "../../../audit";
 -import type { AuthService, PublicUser } from "../../../auth";
 -import {
@@ -39099,9 +39240,11 @@ index 2c6004bf7..000000000
 -  zugriffsuebersicht,
 -} from "../space-verwaltung";
 -import {
+-  SPACE_KONTEXTE,
 -  type SpaceEingabe,
 -  type SpaceFassung,
 -  SpaceFehler,
+-  type SpaceKontext,
 -  type SpacesRepo,
 -  darfInSpaceSchreiben,
 -  darfSpaceBearbeiten,
@@ -39109,6 +39252,8 @@ index 2c6004bf7..000000000
 -  darfSpaceSehen,
 -  eigenesSpaceRecht,
 -  istArchiviert,
+-  istGeloescht,
+-  kontextVon,
 -  lesbareSpaces,
 -  pruefeBegruendung,
 -  pruefeSpaceEingabe,
@@ -39155,10 +39300,28 @@ index 2c6004bf7..000000000
 -  tags: string[];
 -  spaceId: string | null;
 -  spaceName: string | null;
+-  /** Firmenkontext des führenden Space; ohne Space `firma` (eigene Firmeninstanz). */
+-  kontext: SpaceKontext;
+-  partner: string | null;
 -}
 -
 -function nichtGefunden(reply: FastifyReply, was: "Space" | "Wissensobjekt"): void {
 -  reply.code(404).send({ error: "NOT_FOUND", message: `${was} nicht gefunden.` });
+-}
+-
+-/** `undefined` = kein Filter, sonst ein gültiger Kontext oder `UNGUELTIG`. */
+-function kontextAus(roh: string | undefined): SpaceKontext | "UNGUELTIG" | undefined {
+-  if (roh === undefined || roh === "") {
+-    return undefined;
+-  }
+-  return SPACE_KONTEXTE.includes(roh as SpaceKontext) ? (roh as SpaceKontext) : "UNGUELTIG";
+-}
+-
+-function kontextFehler(reply: FastifyReply): void {
+-  reply.code(400).send({
+-    error: "KONTEXT_UNGUELTIG",
+-    message: "Erwartet wird kontext=firma, partner oder oeffentlich.",
+-  });
 -}
 -
 -function fehler(reply: FastifyReply, e: unknown): void {
@@ -39199,9 +39362,11 @@ index 2c6004bf7..000000000
 -    return (await konten()).map((u) => ({ id: u.id, name: u.name, role: u.role }));
 -  }
 -
+-  /** Die jüngste Fassung — `undefined`, wenn es den Space nicht gibt oder er gelöscht ist. */
 -  async function aktuellerSpace(id: string): Promise<SpaceFassung | undefined> {
 -    const fassungen = await dienste.spaces.fassungen(id);
--    return fassungen[fassungen.length - 1];
+-    const letzte = fassungen[fassungen.length - 1];
+-    return istGeloescht(letzte) ? undefined : letzte;
 -  }
 -
 -  async function alleTeams(): Promise<TeamFassung[]> {
@@ -39226,6 +39391,8 @@ index 2c6004bf7..000000000
 -    const team = (id: string) => teams.find((t) => t.id === id);
 -    return {
 -      ...space,
+-      kontext: kontextVon(space),
+-      partner: space.partner ?? null,
 -      verantwortlichName: n.get(space.verantwortlich) ?? null,
 -      mitglieder: space.mitglieder.map((m) => ({ ...m, name: n.get(m.nutzer) ?? null })),
 -      // produkt:20261009:admin-teams: die Teambindungen und — getrennt von den direkten
@@ -39260,7 +39427,10 @@ index 2c6004bf7..000000000
 -
 -  function zeile(ko: KnowledgeObject, spaces: readonly SpaceFassung[]): ArtikelZeile {
 -    const spaceId = typeof ko.spaceId === "string" ? ko.spaceId : null;
+-    const space = spaceId ? spaces.find((s) => s.id === spaceId) : undefined;
 -    return {
+-      kontext: space ? kontextVon(space) : "firma",
+-      partner: space?.partner ?? null,
 -      id: ko.id,
 -      version: ko.version,
 -      title: ko.title,
@@ -39460,12 +39630,290 @@ index 2c6004bf7..000000000
 -    return typeof z === "string" && z.length > 0 ? z : undefined;
 -  }
 -
+-  interface Loeschvorschau {
+-    space: { id: string; name: string; version: number };
+-    /** Artikel mit diesem führenden Space, die der Betrachter sieht — mit Titel, zum Verschieben. */
+-    artikel: { id: string; title: string; version: number }[];
+-    /**
+-     * Artikel im Papierkorb mit diesem führenden Space, die der Betrachter lesen dürfte — nur die
+-     * Zahl. aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 31): verborgene Artikel werden
+-     * weder gezählt noch angedeutet (früher `weitereVerborgen` und ein ungefilterter Papierkorb).
+-     */
+-    imPapierkorb: number;
+-    /** Was mit dem Space verschwindet: seine gespeicherten Ansichten und Mitgliedschaften. */
+-    ansichten: number;
+-    mitglieder: number;
+-    darfLoeschen: boolean;
+-    grund: "SPACE_NICHT_LEER" | null;
+-  }
+-
+-  /**
+-   * Die Folgen einer Löschung — für die Vorschau UND unmittelbar vor dem Schreiben.
+-   *
+-   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 31; Entscheidung 25 „Existenzhinweise nur
+-   * mit ausdrücklichem Recht; sonst allgemeine Meldung unabhängig von geheimen Treffern“): die
+-   * AUSGABE (`vorschau`) beruht allein auf dem, was der Betrachter lesen darf — sichtbare Artikel
+-   * mit Titel, Papierkorbartikel nur, wenn er sie lesen dürfte, und Löschbarkeit/Grund nur daraus.
+-   * Die SCHUTZPRÜFUNG läuft weiter über den GESAMTEN Bestand samt Papierkorb, denn auch ein
+-   * verborgener oder gelöschter Artikel verlöre seinen Space (`verborgenBlockiert`, nie ausgegeben).
+-   * Space-Bearbeitungsrecht ersetzt weder persönliches Freigabeniveau noch Quellleserecht.
+-   */
+-  async function loeschLage(
+-    space: SpaceFassung,
+-    user: SessionUser,
+-  ): Promise<{ vorschau: Loeschvorschau; verborgenBlockiert: boolean }> {
+-    const fuehrend = (await dienste.ko.listEinschliesslichPapierkorb()).filter(
+-      (k) => k.spaceId === space.id,
+-    );
+-    const lesbar = fuehrend.filter((k) => darfSehen(user, k));
+-    const sichtbar = lesbar.filter((k) => !k.deletedAt);
+-    const sichtbarLeer = lesbar.length === 0;
+-    return {
+-      vorschau: {
+-        space: { id: space.id, name: space.name, version: space.version },
+-        artikel: sichtbar
+-          .map((k) => ({ id: k.id, title: k.title, version: k.version }))
+-          .sort((a, b) => a.title.localeCompare(b.title)),
+-        imPapierkorb: lesbar.length - sichtbar.length,
+-        ansichten: space.ansichten.length,
+-        mitglieder: space.mitglieder.length,
+-        darfLoeschen: sichtbarLeer,
+-        grund: sichtbarLeer ? null : "SPACE_NICHT_LEER",
+-      },
+-      verborgenBlockiert: fuehrend.length > lesbar.length,
+-    };
+-  }
+-
+-  /** Space für Löschvorschau und Löschung: 404 wie überall, 403 ohne Bearbeitungsrecht. */
+-  async function loeschbarerSpace(
+-    id: string,
+-    user: SessionUser,
+-    reply: FastifyReply,
+-  ): Promise<SpaceFassung | undefined> {
+-    const aktuell = await aktuellerSpace(id);
+-    if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+-      nichtGefunden(reply, "Space");
+-      return undefined;
+-    }
+-    if (!darfSpaceBearbeiten(aktuell, user)) {
+-      reply.code(403).send({
+-        error: "FORBIDDEN",
+-        message: "Nur die Spacezuständigen oder die Kontoverwaltung löschen diesen Space.",
+-      });
+-      return undefined;
+-    }
+-    return aktuell;
+-  }
+-
+-  /**
+-   * Die Löschung — nur unter `dienste.spaces.exklusiv` aufzurufen. Prüfung (Recht, Version, kein
+-   * führender Artikel) und Löschvermerk liegen in derselben Sperre wie jeder Spacewechsel; ein
+-   * Wechsel in diesen Space kann also weder zwischen Prüfung und Vermerk geschehen noch danach (der
+-   * Space fehlt dann in `aktuelle()`).
+-   */
+-  async function fuehreLoeschungAus(
+-    id: string,
+-    gesehen: unknown,
+-    user: SessionUser,
+-    reply: FastifyReply,
+-  ): Promise<void> {
+-    const aktuell = await loeschbarerSpace(id, user, reply);
+-    if (!aktuell) {
+-      return;
+-    }
+-    if (typeof gesehen !== "number") {
+-      reply.code(400).send({
+-        error: "VERSION_FEHLT",
+-        message: "Die zuletzt gesehene Version des Space fehlt.",
+-      });
+-      return;
+-    }
+-    const { vorschau, verborgenBlockiert } = await loeschLage(aktuell, user);
+-    if (gesehen !== aktuell.version) {
+-      reply.code(409).send({
+-        error: "VERSION_VERALTET",
+-        message: "Der Space wurde inzwischen geändert. Bitte die neue Vorschau prüfen.",
+-        vorschau,
+-      });
+-      return;
+-    }
+-    if (!vorschau.darfLoeschen) {
+-      reply.code(409).send({
+-        error: "SPACE_NICHT_LEER",
+-        message: "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
+-        vorschau,
+-      });
+-      return;
+-    }
+-    // Nacharbeit 31 (Ben, Entscheidung 25): nur Artikel, die der Betrachter NICHT lesen darf,
+-    // halten die Löschung auf. Die Löschung unterbleibt (kein Space ohne Artikel-Bezug), die Antwort
+-    // ist eine allgemeine Meldung: kein Grund, keine Vorschau, keine Zahl, keine Kennung.
+-    if (verborgenBlockiert) {
+-      reply.code(409).send({
+-        error: "LOESCHUNG_NICHT_MOEGLICH",
+-        message:
+-          "Der Space kann gerade nicht gelöscht werden. Bitte die Kontoverwaltung ansprechen.",
+-      });
+-      return;
+-    }
+-    const am = jetzt().toISOString();
+-    const vermerk: SpaceFassung = {
+-      ...aktuell,
+-      version: aktuell.version + 1,
+-      geaendertVon: user.id,
+-      geaendertAm: am,
+-      geloeschtAm: am,
+-    };
+-    // Ein paralleler Bearbeiter (PUT, ausserhalb der Sperre) kann dieselbe Version belegt haben.
+-    if (!(await dienste.spaces.lege(vermerk))) {
+-      reply.code(409).send({
+-        error: "VERSION_VERALTET",
+-        message: "Der Space wurde inzwischen geändert. Bitte neu laden.",
+-      });
+-      return;
+-    }
+-    await dienste.audit?.record({
+-      actor: user.id,
+-      action: "space.geloescht",
+-      target: aktuell.id,
+-      payload: {
+-        vorherVersion: aktuell.version,
+-        version: vermerk.version,
+-        ansichten: aktuell.ansichten.length,
+-        mitglieder: aktuell.mitglieder.length,
+-      },
+-    });
+-    reply.code(200).send({ id: aktuell.id, version: vermerk.version, geloescht: true });
+-  }
+-
+-  /** Der Spacewechsel — nur unter `dienste.spaces.exklusiv` aufzurufen. */
+-  async function fuehreWechselAus(
+-    rumpf: unknown,
+-    user: SessionUser,
+-    reply: FastifyReply,
+-    log: FastifyBaseLogger,
+-  ): Promise<void> {
+-    const body = (rumpf ?? {}) as {
+-      koId?: unknown;
+-      basis?: {
+-        quelleId?: unknown;
+-        quelleVersion?: unknown;
+-        zielId?: unknown;
+-        zielVersion?: unknown;
+-        grundlage?: unknown;
+-      };
+-    };
+-    const ko = await sichtbaresKo(user, body.koId);
+-    if (!ko) {
+-      nichtGefunden(reply, "Wissensobjekt");
+-      return;
+-    }
+-    const ziel = zielAus(rumpf);
+-    if (ziel === undefined) {
+-      reply.code(400).send({
+-        error: "ZIEL_FEHLT",
+-        message: "Erwartet wird zielSpaceId (Kennung oder null für „ohne Space“).",
+-      });
+-      return;
+-    }
+-    if (!body.basis || typeof body.basis !== "object") {
+-      reply.code(400).send({
+-        error: "VORSCHAU_FEHLT",
+-        message: "Ein Spacewechsel braucht die Grundlage der bestätigten Rechtevorschau.",
+-      });
+-      return;
+-    }
+-    const v = await vorschau(ko, ziel, user);
+-    if (v === "ZIEL_UNBEKANNT") {
+-      nichtGefunden(reply, "Space");
+-      return;
+-    }
+-    const basis = body.basis;
+-    // Nacharbeit 3 (Ben, K4): die Vorschau ist an ihr ZIEL gebunden, nicht nur an Versionen. Zwei
+-    // Spaces können dieselbe Versionsnummer tragen; ohne die Kennung ginge ein Wechsel nach B mit
+-    // der Rechtewirkung von A durch. Fehlt `zielId` in der Grundlage, gilt sie als nicht passend.
+-    const stimmt =
+-      "zielId" in basis &&
+-      (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
+-      (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
+-      (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
+-      (basis.zielVersion ?? null) === (v.ziel?.version ?? null) &&
+-      // ADMIN-07 Nacharbeit 3 (Ben, K4): und an die wirksame Rechtelage. Wer zwischen Vorschau und
+-      // Bestätigung über ein Team hinzukam oder ging, ändert die Grundlage — dann 409 mit der
+-      // neuen Vorschau statt eines Wechsels mit unangezeigten Berechtigten.
+-      basis.grundlage === v.grundlage;
+-    if (!stimmt) {
+-      reply.code(409).send({
+-        error: "VORSCHAU_VERALTET",
+-        message:
+-          "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
+-        vorschau: v,
+-      });
+-      return;
+-    }
+-    if (!v.darfAusfuehren) {
+-      reply.code(403).send({ error: "FORBIDDEN", message: v.grund ?? "Nicht erlaubt." });
+-      return;
+-    }
+-    try {
+-      const nachher = await dienste.ko.setLeadingSpace(ko.id, ziel, user.id, v.quelle?.id ?? null);
+-      // R-0571: wer laut Unternehmensverzeichnis für die Prüfung im NEUEN Space zuständig ist,
+-      // wird Prüfende(r) dieses Objekts — ohne Handpflege; die offenen Verzeichnis-Zuweisungen aus
+-      // dem alten Space werden zurückgezogen (Hand-Zuweisungen und erledigte Prüfungen bleiben).
+-      // Nicht die Autorin, und nicht für ein bereits validiertes Objekt (ein Umzug ist kein neuer
+-      // Prüfanlass). Scheitert der Abgleich, bleibt der Wechsel bestehen und die Antwort sagt es.
+-      const zustaendigkeit = dienste.pruefzustaendigkeit;
+-      let pruefzuweisung: string[] | "fehlgeschlagen" = [];
+-      if (zustaendigkeit) {
+-        try {
+-          pruefzuweisung = (await zustaendigkeit.abgleichen(nachher.id, user.id)) ?? [];
+-        } catch (fehlerWert) {
+-          log.warn(
+-            { err: fehlerWert, event: "pruefzustaendigkeit" },
+-            "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
+-          );
+-          pruefzuweisung = "fehlgeschlagen";
+-        }
+-      }
+-      await dienste.freigaberegelAnwenden?.(nachher.id, user.id).catch((fehlerWert) => {
+-        log.warn(
+-          { err: fehlerWert, event: "freigaberegel" },
+-          "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
+-        );
+-      });
+-      reply.code(200).send({
+-        koId: nachher.id,
+-        version: nachher.version,
+-        author: nachher.author,
+-        historyEintraege: nachher.history.length,
+-        spaceId: typeof nachher.spaceId === "string" ? nachher.spaceId : null,
+-        vorschau: v,
+-        ...(zustaendigkeit ? { pruefzuweisung } : {}),
+-      });
+-    } catch (e) {
+-      if ((e as { code?: unknown }).code === "SPACE_STAND_VERALTET") {
+-        reply.code(409).send({
+-          error: "VORSCHAU_VERALTET",
+-          message: "Der Space dieses Artikels hat sich inzwischen geändert.",
+-        });
+-        return;
+-      }
+-      sendError(reply, e);
+-    }
+-  }
+-
 -  return async (app) => {
 -    // Die Spaces, die dieser Mensch sehen darf — mit seinem Recht und der Zahl SEINER sichtbaren
 -    // Artikel darin (keine Gesamtzahl: die wäre eine Auskunft über Unsichtbares).
--    app.get("/api/spaces", async (request, reply) => {
+-    // `?kontext=firma|partner|oeffentlich` grenzt auf einen Firmenkontext ein (Firmenfilter).
+-    app.get<{ Querystring: { kontext?: string } }>("/api/spaces", async (request, reply) => {
 -      const user = await guards.requirePermission("ko.read", request, reply);
 -      if (!user) {
+-        return;
+-      }
+-      const kontext = kontextAus(request.query.kontext);
+-      if (kontext === "UNGUELTIG") {
+-        kontextFehler(reply);
 -        return;
 -      }
 -      const spaces = await dienste.spaces.aktuelle();
@@ -39474,6 +39922,7 @@ index 2c6004bf7..000000000
 -      const teams = await alleTeams();
 -      const sichtbar = spaces
 -        .filter((s) => darfSpaceSehen(s, user))
+-        .filter((s) => kontext === undefined || kontextVon(s) === kontext)
 -        .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
 -        .map((s) => ({
 -          ...spaceSicht(s, user, n, teams),
@@ -39486,6 +39935,42 @@ index 2c6004bf7..000000000
 -        darfBestandZuordnen: can(user.role, "users.manage"),
 -      });
 -    });
+-
+-    // Der Firmenfilter über Artikel: alle für den Betrachter sichtbaren Artikel eines Kontexts —
+-    // `firma` (eigene Firmeninstanz, auch ohne Space), `partner` (optional `&partner=` für genau
+-    // einen Partner) oder `oeffentlich`. Die Berechtigung prüft `darfSehen` je Zeile: Inhalte eines
+-    // Partnerbereichs erscheinen nur für ausdrücklich berechtigte Konten. Die Liste der Partner nennt
+-    // nur Bereiche, die der Betrachter selbst sehen darf.
+-    app.get<{ Querystring: { kontext?: string; partner?: string } }>(
+-      "/api/spaces/artikel",
+-      async (request, reply) => {
+-        const user = await guards.requirePermission("ko.read", request, reply);
+-        if (!user) {
+-          return;
+-        }
+-        const kontext = kontextAus(request.query.kontext);
+-        if (kontext === undefined || kontext === "UNGUELTIG") {
+-          kontextFehler(reply);
+-          return;
+-        }
+-        const partner = request.query.partner?.trim() || null;
+-        const spaces = await dienste.spaces.aktuelle();
+-        const zeilen = (await sichtbareArtikel(user))
+-          .map((k) => zeile(k, spaces))
+-          .filter((z) => z.kontext === kontext && (!partner || z.partner === partner))
+-          .sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+-        const partnerBereiche = [
+-          ...new Set(
+-            spaces
+-              .filter((s) => kontextVon(s) === "partner" && darfSpaceSehen(s, user))
+-              .map((s) => s.partner ?? ""),
+-          ),
+-        ]
+-          .filter((p) => p.length > 0)
+-          .sort((a, b) => a.localeCompare(b));
+-        reply.code(200).send({ kontext, partner, artikel: zeilen, partnerBereiche });
+-      },
+-    );
 -
 -    // Die Konten, die als Zuständige oder Mitglieder wählbar sind — Kennung, Name, Rolle; keine
 -    // Mailadressen.
@@ -39523,7 +40008,7 @@ index 2c6004bf7..000000000
 -      }
 -      const fassungen = await dienste.spaces.fassungen(request.params.id);
 -      const aktuell = fassungen[fassungen.length - 1];
--      if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+-      if (!aktuell || istGeloescht(aktuell) || !darfSpaceSehen(aktuell, user)) {
 -        nichtGefunden(reply, "Space");
 -        return;
 -      }
@@ -39675,6 +40160,40 @@ index 2c6004bf7..000000000
 -      },
 -    );
 -
+-    // Die Folgen einer Löschung — schreibt nichts.
+-    app.post<{ Params: { id: string } }>(
+-      "/api/spaces/:id/loeschung/vorschau",
+-      async (request, reply) => {
+-        const user = await guards.requirePermission("ko.read", request, reply);
+-        if (!user) {
+-          return;
+-        }
+-        const space = await loeschbarerSpace(request.params.id, user, reply);
+-        if (!space) {
+-          return;
+-        }
+-        // Nur die Vorschau nach Leserecht — die Schutzprüfung über den Gesamtbestand bleibt intern.
+-        reply.code(200).send((await loeschLage(space, user)).vorschau);
+-      },
+-    );
+-
+-    // Die Löschung selbst — eine weitere Fassung mit Löschvermerk. `version` nennt die Fassung, deren
+-    // Vorschau bestätigt wurde. Trägt noch ein Artikel den Space, wird nichts geschrieben.
+-    app.post<{ Params: { id: string }; Body: unknown }>(
+-      "/api/spaces/:id/loeschung",
+-      async (request, reply) => {
+-        const user = await guards.requirePermission("ko.read", request, reply);
+-        if (!user) {
+-          return;
+-        }
+-        const gesehen = (request.body as { version?: unknown } | null)?.version;
+-        // Prüfen und Schreiben unter derselben Sperre wie jeder Spacewechsel (`exklusiv`).
+-        await dienste.spaces.exklusiv(() =>
+-          fuehreLoeschungAus(request.params.id, gesehen, user, reply),
+-        );
+-      },
+-    );
+-
 -    // Die Artikel eines Space — ohne `ansicht` die, deren FÜHRENDER Space er ist; mit `ansicht` die
 -    // gespeicherte Ansicht (Tag) über alle Spaces. In beiden Fällen nur, was `darfSehen` erlaubt,
 -    // und immer dasselbe Objekt: Kennung und Fassung wie `GET /api/kos/:id`.
@@ -39802,118 +40321,11 @@ index 2c6004bf7..000000000
 -      if (!user) {
 -        return;
 -      }
--      const body = (request.body ?? {}) as {
--        koId?: unknown;
--        basis?: {
--          quelleId?: unknown;
--          quelleVersion?: unknown;
--          zielId?: unknown;
--          zielVersion?: unknown;
--          grundlage?: unknown;
--        };
--      };
--      const ko = await sichtbaresKo(user, body.koId);
--      if (!ko) {
--        nichtGefunden(reply, "Wissensobjekt");
--        return;
--      }
--      const ziel = zielAus(request.body);
--      if (ziel === undefined) {
--        reply.code(400).send({
--          error: "ZIEL_FEHLT",
--          message: "Erwartet wird zielSpaceId (Kennung oder null für „ohne Space“).",
--        });
--        return;
--      }
--      if (!body.basis || typeof body.basis !== "object") {
--        reply.code(400).send({
--          error: "VORSCHAU_FEHLT",
--          message: "Ein Spacewechsel braucht die Grundlage der bestätigten Rechtevorschau.",
--        });
--        return;
--      }
--      const v = await vorschau(ko, ziel, user);
--      if (v === "ZIEL_UNBEKANNT") {
--        nichtGefunden(reply, "Space");
--        return;
--      }
--      const basis = body.basis;
--      // Nacharbeit 3 (Ben, K4): die Vorschau ist an ihr ZIEL gebunden, nicht nur an Versionen. Zwei
--      // Spaces können dieselbe Versionsnummer tragen; ohne die Kennung ginge ein Wechsel nach B mit
--      // der Rechtewirkung von A durch. Fehlt `zielId` in der Grundlage, gilt sie als nicht passend.
--      const stimmt =
--        "zielId" in basis &&
--        (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
--        (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
--        (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
--        (basis.zielVersion ?? null) === (v.ziel?.version ?? null) &&
--        // ADMIN-07 Nacharbeit 3 (Ben, K4): und an die wirksame Rechtelage. Wer zwischen Vorschau und
--        // Bestätigung über ein Team hinzukam oder ging, ändert die Grundlage — dann 409 mit der
--        // neuen Vorschau statt eines Wechsels mit unangezeigten Berechtigten.
--        basis.grundlage === v.grundlage;
--      if (!stimmt) {
--        reply.code(409).send({
--          error: "VORSCHAU_VERALTET",
--          message:
--            "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
--          vorschau: v,
--        });
--        return;
--      }
--      if (!v.darfAusfuehren) {
--        reply.code(403).send({ error: "FORBIDDEN", message: v.grund ?? "Nicht erlaubt." });
--        return;
--      }
--      try {
--        const nachher = await dienste.ko.setLeadingSpace(
--          ko.id,
--          ziel,
--          user.id,
--          v.quelle?.id ?? null,
--        );
--        // R-0571: wer laut Unternehmensverzeichnis für die Prüfung im NEUEN Space zuständig ist,
--        // wird Prüfende(r) dieses Objekts — ohne Handpflege; die offenen Verzeichnis-Zuweisungen aus
--        // dem alten Space werden zurückgezogen (Hand-Zuweisungen und erledigte Prüfungen bleiben).
--        // Nicht die Autorin, und nicht für ein bereits validiertes Objekt (ein Umzug ist kein neuer
--        // Prüfanlass). Scheitert der Abgleich, bleibt der Wechsel bestehen und die Antwort sagt es.
--        const zustaendigkeit = dienste.pruefzustaendigkeit;
--        let pruefzuweisung: string[] | "fehlgeschlagen" = [];
--        if (zustaendigkeit) {
--          try {
--            pruefzuweisung = (await zustaendigkeit.abgleichen(nachher.id, user.id)) ?? [];
--          } catch (fehlerWert) {
--            request.log.warn(
--              { err: fehlerWert, event: "pruefzustaendigkeit" },
--              "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
--            );
--            pruefzuweisung = "fehlgeschlagen";
--          }
--        }
--        await dienste.freigaberegelAnwenden?.(nachher.id, user.id).catch((fehlerWert) => {
--          request.log.warn(
--            { err: fehlerWert, event: "freigaberegel" },
--            "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
--          );
--        });
--        reply.code(200).send({
--          koId: nachher.id,
--          version: nachher.version,
--          author: nachher.author,
--          historyEintraege: nachher.history.length,
--          spaceId: typeof nachher.spaceId === "string" ? nachher.spaceId : null,
--          vorschau: v,
--          ...(zustaendigkeit ? { pruefzuweisung } : {}),
--        });
--      } catch (e) {
--        if ((e as { code?: unknown }).code === "SPACE_STAND_VERALTET") {
--          reply.code(409).send({
--            error: "VORSCHAU_VERALTET",
--            message: "Der Space dieses Artikels hat sich inzwischen geändert.",
--          });
--          return;
--        }
--        sendError(reply, e);
--      }
+-      // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 4, Bens Befund): Artikel lesen,
+-      // Vorschau prüfen und schreiben unter derselben Sperre wie jede Spacelöschung. Quelle und Ziel
+-      // können so zwischen Prüfung und Schreiben nicht gelöscht werden — und eine Rücknahme, die
+-      // ungeprüft in einen inzwischen gelöschten Quellspace zurückschriebe, gibt es nicht mehr.
+-      await dienste.spaces.exklusiv(() => fuehreWechselAus(request.body, user, reply, request.log));
 -    });
 -
 -    // ==============================================================================================
@@ -40172,73 +40584,77 @@ index 2c6004bf7..000000000
 -        return;
 -      }
 -      const body = (request.body ?? {}) as { regeln?: unknown; grundlage?: unknown };
--      const p = await plan(user, body.regeln);
--      if (typeof p === "string") {
--        reply.code(400).send({ error: "REGELN_UNGUELTIG", message: p });
--        return;
--      }
--      if (typeof body.grundlage !== "string") {
--        reply.code(400).send({
--          error: "VORSCHAU_FEHLT",
--          message: "Die Bestandszuordnung braucht die bestätigte Bilanz.",
--        });
--        return;
--      }
--      if (body.grundlage !== p.grundlage) {
--        reply.code(409).send({
--          error: "VORSCHAU_VERALTET",
--          message: "Bestand oder Rechte haben sich seit der Bilanz geändert. Bitte neu prüfen.",
--          vorschau: p,
--        });
--        return;
--      }
--      const zugeordnet: { koId: string; zielSpaceId: string }[] = [];
--      const fehlgeschlagen: { koId: string; grund: string }[] = [];
--      for (const z of p.zuordnungen) {
--        try {
--          // `erwartet: null` — nur, wer noch OHNE Space ist; ein paralleler Wechsel bleibt stehen.
--          await dienste.ko.setLeadingSpace(z.koId, z.zielSpaceId, user.id, null);
--          zugeordnet.push({ koId: z.koId, zielSpaceId: z.zielSpaceId });
--          await dienste.pruefzustaendigkeit?.abgleichen(z.koId, user.id).catch((fehlerWert) => {
--            request.log.warn(
--              { err: fehlerWert, event: "pruefzustaendigkeit" },
--              "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
--            );
--          });
--          await dienste.freigaberegelAnwenden?.(z.koId, user.id).catch((fehlerWert) => {
--            request.log.warn(
--              { err: fehlerWert, event: "freigaberegel" },
--              "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
--            );
--          });
--        } catch (e) {
--          fehlgeschlagen.push({
--            koId: z.koId,
--            grund:
--              (e as { code?: unknown }).code === "SPACE_STAND_VERALTET"
--                ? "zwischenzeitlich_geaendert"
--                : "fehler",
--          });
+-      // aufnahme:20260922:gesamt-wissensprojekte: Bilanz und Zuordnung unter derselben Sperre wie
+-      // Spacewechsel und Spacelöschung — kein Zielspace kann dazwischen gelöscht werden.
+-      await dienste.spaces.exklusiv(async () => {
+-        const p = await plan(user, body.regeln);
+-        if (typeof p === "string") {
+-          reply.code(400).send({ error: "REGELN_UNGUELTIG", message: p });
+-          return;
 -        }
--      }
--      const protokoll = {
--        regeln: p.regeln.map((r) => ({ tag: r.tag, zielSpaceId: r.zielSpaceId })),
--        bilanz: {
--          ...p.bilanz,
--          zugeordnet: zugeordnet.length,
--          fehlgeschlagen: fehlgeschlagen.length,
--        },
--        zugeordnet,
--        ausnahmen: p.ausnahmen.map((a) => ({ koId: a.koId, art: a.art, ziele: a.ziele })),
--        fehlgeschlagen,
--      };
--      await dienste.audit?.record({
--        actor: user.id,
--        action: "space.bestand-zugeordnet",
--        target: "spaces-bestand",
--        payload: protokoll,
+-        if (typeof body.grundlage !== "string") {
+-          reply.code(400).send({
+-            error: "VORSCHAU_FEHLT",
+-            message: "Die Bestandszuordnung braucht die bestätigte Bilanz.",
+-          });
+-          return;
+-        }
+-        if (body.grundlage !== p.grundlage) {
+-          reply.code(409).send({
+-            error: "VORSCHAU_VERALTET",
+-            message: "Bestand oder Rechte haben sich seit der Bilanz geändert. Bitte neu prüfen.",
+-            vorschau: p,
+-          });
+-          return;
+-        }
+-        const zugeordnet: { koId: string; zielSpaceId: string }[] = [];
+-        const fehlgeschlagen: { koId: string; grund: string }[] = [];
+-        for (const z of p.zuordnungen) {
+-          try {
+-            // `erwartet: null` — nur, wer noch OHNE Space ist; ein paralleler Wechsel bleibt stehen.
+-            await dienste.ko.setLeadingSpace(z.koId, z.zielSpaceId, user.id, null);
+-            zugeordnet.push({ koId: z.koId, zielSpaceId: z.zielSpaceId });
+-            await dienste.pruefzustaendigkeit?.abgleichen(z.koId, user.id).catch((fehlerWert) => {
+-              request.log.warn(
+-                { err: fehlerWert, event: "pruefzustaendigkeit" },
+-                "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
+-              );
+-            });
+-            await dienste.freigaberegelAnwenden?.(z.koId, user.id).catch((fehlerWert) => {
+-              request.log.warn(
+-                { err: fehlerWert, event: "freigaberegel" },
+-                "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
+-              );
+-            });
+-          } catch (e) {
+-            fehlgeschlagen.push({
+-              koId: z.koId,
+-              grund:
+-                (e as { code?: unknown }).code === "SPACE_STAND_VERALTET"
+-                  ? "zwischenzeitlich_geaendert"
+-                  : "fehler",
+-            });
+-          }
+-        }
+-        const protokoll = {
+-          regeln: p.regeln.map((r) => ({ tag: r.tag, zielSpaceId: r.zielSpaceId })),
+-          bilanz: {
+-            ...p.bilanz,
+-            zugeordnet: zugeordnet.length,
+-            fehlgeschlagen: fehlgeschlagen.length,
+-          },
+-          zugeordnet,
+-          ausnahmen: p.ausnahmen.map((a) => ({ koId: a.koId, art: a.art, ziele: a.ziele })),
+-          fehlgeschlagen,
+-        };
+-        await dienste.audit?.record({
+-          actor: user.id,
+-          action: "space.bestand-zugeordnet",
+-          target: "spaces-bestand",
+-          payload: protokoll,
+-        });
+-        reply.code(200).send({ ...protokoll, ausnahmen: p.ausnahmen });
 -      });
--      reply.code(200).send({ ...protokoll, ausnahmen: p.ausnahmen });
 -    });
 -
 -    // Die dokumentierten Bestandszuordnungen — prüfbar auch nach Reload. Nur Kennungen, keine Titel.
@@ -43955,10 +44371,10 @@ index 9115b7a53..000000000
 -}
 diff --git b/services/app/src/routes/vorlagen-routes.ts a/services/app/src/routes/vorlagen-routes.ts
 deleted file mode 100644
-index 81058e2aa..000000000
+index 0814df38a..000000000
 --- b/services/app/src/routes/vorlagen-routes.ts
 +++ /dev/null
-@@ -1,1050 +0,0 @@
+@@ -1,1056 +0,0 @@
 -// ================================================================================================
 -// VORLAGEN — Auswahl, eigene Vorlagen, persönlicher Standard, Space-Vorgaben, Nutzung, Begriffe
 -// (produkt:20261007:templates-default · ADMIN-08). Regeln und Ablage: `../vorlagen.ts`.
@@ -43983,6 +44399,7 @@ index 81058e2aa..000000000
 -  darfSpaceBearbeiten,
 -  darfSpaceSehen,
 -  istArchiviert,
+-  istGeloescht,
 -} from "../spaces";
 -import {
 -  type BegriffEintrag,
@@ -44616,7 +45033,11 @@ index 81058e2aa..000000000
 -          if (a.vorgang !== "ausmustern") {
 -            for (const sid of [...new Set(p.ansichten.map((x) => x.spaceId))]) {
 -              const aktuellerSpace = (await dienste.spaces.fassungen(sid)).at(-1);
--              if (!aktuellerSpace || istArchiviert(aktuellerSpace)) {
+-              if (
+-                !aktuellerSpace ||
+-                istGeloescht(aktuellerSpace) ||
+-                istArchiviert(aktuellerSpace)
+-              ) {
 -                ansichtenUnveraendert.push(sid);
 -                continue;
 -              }
@@ -44665,7 +45086,8 @@ index 81058e2aa..000000000
 -              const space = (await dienste.spaces.fassungen(z.spaceId)).at(-1);
 -              const stand = await ablage.fassungen<SpaceVorgabe>("space-vorgabe", z.spaceId);
 -              const vorher = stand.at(-1);
--              if (!space || istArchiviert(space)) {
+-              // Ein gelöschter Space nimmt so wenig eine Änderung an wie ein archivierter.
+-              if (!space || istGeloescht(space) || istArchiviert(space)) {
 -                ueberspringe(z, "archiviert");
 -                continue;
 -              }
@@ -46271,10 +46693,10 @@ index 727b02e9e..000000000
 -  return auskunft;
 -}
 diff --git b/services/app/src/server.ts a/services/app/src/server.ts
-index 7814dc807..a3ea7060e 100644
+index 3a2180335..a3ea7060e 100644
 --- b/services/app/src/server.ts
 +++ a/services/app/src/server.ts
-@@ -3,33 +3,18 @@ import { dirname, join } from "node:path";
+@@ -3,40 +3,18 @@ import { dirname, join } from "node:path";
  import { fileURLToPath } from "node:url";
  import type { FastifyInstance } from "fastify";
  import { migrateAuthTokensAtRest } from "../../auth";
@@ -46300,8 +46722,15 @@ index 7814dc807..a3ea7060e 100644
  import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
  import { registerWebStatic } from "./web-static";
 -import {
+-  GESTOPPTE_AUSSENAKTIONEN,
+-  WIEDERANLAUF_ENV,
+-  leseWiederanlauf,
+-  registriereWiederanlauf,
+-} from "./wiederanlauf";
+-import {
 -  WEBHOOKS_TAKT_ENV,
 -  WissensereignisMelder,
+-  type WissensereignisQuellen,
 -  ladeWebhookZiele,
 -  resolveWebhookTaktMs,
 -  starteWissensereignisMelder,
@@ -46309,7 +46738,7 @@ index 7814dc807..a3ea7060e 100644
  
  // Kanonische Domain (klarwerk.ai). app.<domain> wird dauerhaft hierher umgeleitet.
  const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
-@@ -38,21 +23,6 @@ const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
+@@ -45,21 +23,6 @@ const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "klarwerk.ai";
  // ohne → In-Memory (lokaler Schnellstart). Läuft identisch auf Hetzner/On-Prem/Cloud.
  async function pgServices(databaseUrl: string) {
    const pool = createPool(databaseUrl);
@@ -46331,7 +46760,7 @@ index 7814dc807..a3ea7060e 100644
    await migrate(pool);
    // WP-VIP2-GATE (bens P1, Token-at-Rest): Einmal-Migration des Klartext-Token-Bestands
    // (Format-Erkennung via sha256:-Praefix → idempotent, zweiter Lauf findet nichts mehr);
-@@ -110,6 +80,24 @@ function devPersistFile(): string | undefined {
+@@ -117,6 +80,24 @@ function devPersistFile(): string | undefined {
    return join(dirname(fileURLToPath(import.meta.url)), "../../..", ".localdb/state.jsonl");
  }
  
@@ -46356,7 +46785,17 @@ index 7814dc807..a3ea7060e 100644
  async function start(): Promise<void> {
    // ==============================================================================================
    // JOB 3776 — DER STARTVERTRAG, ALS ERSTE ANWEISUNG DES EINSTIEGSPUNKTS.
-@@ -156,31 +144,14 @@ async function start(): Promise<void> {
+@@ -138,9 +119,6 @@ async function start(): Promise<void> {
+   // JOB 3655 Runde 1. In Nicht-Produktion prüft der Vertrag nichts (s. `fehlendePflichtwerte`),
+   // Entwicklung und Desktopbetrieb bleiben unberührt.
+   pruefeStartvertrag(process.env);
+-  // produkt:20261011:peter-p09: Wiederanlauf nach einem Restore (`wiederanlauf.ts`). Ein ungültiger
+-  // Wert bricht hier ab — ein Wiederanlauf darf nie still als Normalstart laufen.
+-  const wiederanlauf = leseWiederanlauf(process.env);
+   // EINE Quelle der Wahrheit (ben-Review ROT-1): DATABASE_URL genau hier am Rand normalisieren
+   // (trim; leer/whitespace → undefined). Derselbe Wert speist ALLE vier Verwendungen — Guard,
+   // Pg-vs-InMemory/Journal-Verzweigung, Factory-Reset-Erkennung und Modus-Log — sodass Guard-Entscheid
+@@ -166,48 +144,15 @@ async function start(): Promise<void> {
    if (storageDecision.warning) {
      process.stderr.write(`${storageDecision.warning}\n`);
    }
@@ -46389,9 +46828,26 @@ index 7814dc807..a3ea7060e 100644
 +  const factoryReset = databaseUrl ? factoryResetUnavailable : makeFactoryReset(journal);
 +  const app = buildApp(services, { factoryReset });
    await configureWebDelivery(app);
+-  // Dieselben Lesewege für den Melder und für die Replay-Grenze des Wiederanlaufs.
+-  const wissensereignisQuellen: WissensereignisQuellen = {
+-    wissensobjekte: () => services.ko.list({}),
+-    revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
+-    offeneWidersprueche: () => services.conflicts.unresolved(),
+-    wissensobjekt: (id) => services.ko.get(id),
+-  };
+-  if (wiederanlauf) {
+-    registriereWiederanlauf(app, {
+-      wiederanlauf,
+-      audit: services.audit,
+-      auth: services.auth,
+-      quellen: wissensereignisQuellen,
+-      log: { info: (t) => app.log.warn(t) },
+-    });
+-  }
    const port = Number(process.env.PORT ?? "3001");
    // SCRUM-525 P.5 (WP3-Batch3): die wirksame KI-Zuordnung (Policy) MUSS feststehen, BEVOR der Server
-@@ -198,11 +169,8 @@ async function start(): Promise<void> {
+   // Requests annimmt — sonst gäbe es kurz nach dem Neustart ein Fenster mit Default-„auto". Daher VOR
+@@ -224,11 +169,8 @@ async function start(): Promise<void> {
      // die Log-Meldung darf das nicht suggerieren. Bis zum Neustart bleibt fail-closed=deterministic aktiv;
      // ein Admin kann die Zuordnung in der Zwischenzeit über die API neu setzen (setTaskConfig ist nicht
      // ENV-gesperrt, s. ReasonerPolicyLockedError).
@@ -46404,7 +46860,7 @@ index 7814dc807..a3ea7060e 100644
      );
    } else if (policy.source === "env") {
      app.log.info(
-@@ -236,31 +204,20 @@ async function start(): Promise<void> {
+@@ -262,31 +204,20 @@ async function start(): Promise<void> {
    // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
    const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
    app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
@@ -46440,7 +46896,7 @@ index 7814dc807..a3ea7060e 100644
      });
    // SCRUM-523 P.3 (WP1-Batch3): zusätzlich PERIODISCH sweepen (nicht nur beim Start), damit abgelaufene
    // Einträge auch in langlaufenden Prozessen ohne Neustart endgültig verschwinden. Intervall aus der
-@@ -268,132 +225,19 @@ async function start(): Promise<void> {
+@@ -294,136 +225,19 @@ async function start(): Promise<void> {
    const sweepInterval = resolveTrashSweepIntervalMs(process.env.KLARWERK_TRASH_SWEEP_INTERVAL_MS);
    startTrashSweepScheduler({
      intervalMs: sweepInterval,
@@ -46494,7 +46950,8 @@ index 7814dc807..a3ea7060e 100644
 -  }
 -  // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
 -  // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
--  if (hintergrundLauf) {
+-  // Im Wiederanlauf gestoppt (Modellvergleiche; ihr Tagesverbrauch nach der Sicherung fehlt der Kette).
+-  if (hintergrundLauf && !wiederanlauf) {
 -    starteHintergrundpruefung({
 -      lauf: hintergrundLauf,
 -      intervalMs: HINTERGRUNDLAUF_INTERVAL_MS,
@@ -46523,6 +46980,14 @@ index 7814dc807..a3ea7060e 100644
 -    onSwept: gedaechtnisGeloescht("periodisch"),
 -    onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
 -  });
+-  // produkt:20261011:peter-p09: im Wiederanlauf starten die Außenaktionen unten NICHT. Sie laufen
+-  // erst nach der Freigabe und einem Neustart ohne den Schalter — ab der Replay-Grenze.
+-  if (wiederanlauf) {
+-    app.log.warn(
+-      `Wiederanlauf ${wiederanlauf.kennung}: Außenaktionen gestoppt (${GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id).join(", ")}). Nach der Freigabe ohne ${WIEDERANLAUF_ENV} neu starten.`,
+-    );
+-    return;
+-  }
 -  // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
 -  // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,
 -  // `wissenssprintLauf`). Intervall aus KLARWERK_WISSENSSPRINT_INTERVAL_MS, Vorgabe 15 min,
@@ -46550,12 +47015,7 @@ index 7814dc807..a3ea7060e 100644
 -    // R-1349: derselbe Name wie im Modul (`WEBHOOKS_TAKT_ENV`), nicht eine zweite Schreibweise.
 -    const melderTakt = resolveWebhookTaktMs(process.env[WEBHOOKS_TAKT_ENV]);
 -    const melder = new WissensereignisMelder({
--      quellen: {
--        wissensobjekte: () => services.ko.list({}),
--        revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
--        offeneWidersprueche: () => services.conflicts.unresolved(),
--        wissensobjekt: (id) => services.ko.get(id),
--      },
+-      quellen: wissensereignisQuellen,
 -      audit: services.audit,
 -      ziele: webhooks.ziele,
 -      log: { warn: (t) => app.log.warn(t) },
@@ -48940,10 +49400,10 @@ index b2bf3a162..000000000
 -}
 diff --git b/services/app/src/spaces.ts a/services/app/src/spaces.ts
 deleted file mode 100644
-index 825d18762..000000000
+index df87965f8..000000000
 --- b/services/app/src/spaces.ts
 +++ /dev/null
-@@ -1,580 +0,0 @@
+@@ -1,725 +0,0 @@
 -import type { Pool } from "pg";
 -import type { Role } from "../../auth";
 -import { can } from "../../rbac";
@@ -49005,6 +49465,25 @@ index 825d18762..000000000
 -  tag: string;
 -}
 -
+-// ================================================================================================
+-// aufnahme:20260922:gesamt-wissensprojekte — DER FIRMENFILTER ALS KONTEXT EINES SPACE.
+-// ================================================================================================
+-//
+-// Pedis Entscheidung (Frage 51, 11.10.2026): „Firmenfilter als serverseitig berechtigter Firmen-/
+-// Partner-/öffentlicher Kontext“ — eigene Firmeninstanz, ausdrücklich erlaubte Partnerbereiche und
+-// öffentliche Quellen klar unterscheiden. Ausgearbeitet am bestehenden Space:
+-//   · `firma`       — Inhalte der eigenen Firmeninstanz. Vorgabe; auch jeder Space ohne Angabe und
+-//                     jeder Artikel ohne Space gehört hierher. Zugang wie bisher frei wählbar.
+-//   · `partner`     — ein Bereich für EINEN benannten Partner (`partner`). Nur AUSDRÜCKLICH
+-//                     berechtigte Konten (Mitglieder, Zuständige) lesen ihn: Zugang `alle` ist
+-//                     unzulässig. Kein Rollen-Durchgriff (dieselbe Regel wie jeder geschlossene Space).
+-//   · `oeffentlich` — öffentliche Quellen. Für alle mit Leserecht offen: Zugang `mitglieder` ist
+-//                     unzulässig, sonst wäre „öffentlich“ eine falsche Auskunft.
+-// Die Sicht entscheidet weiterhin allein `darfSehen` (`../sichtbarkeit`) über den führenden Space;
+-// der Kontext ist die Einordnung, nach der gefiltert wird, und legt die zulässigen Zugänge fest.
+-export const SPACE_KONTEXTE = ["firma", "partner", "oeffentlich"] as const;
+-export type SpaceKontext = (typeof SPACE_KONTEXTE)[number];
+-
 -export interface SpaceEingabe {
 -  name: string;
 -  zweck: string;
@@ -49026,6 +49505,15 @@ index 825d18762..000000000
 -  gruppe?: string;
 -  /** Die Spaceregeln in Worten: was hineingehört, wie gepflegt wird. Rechte stehen NICHT hier. */
 -  regeln?: string;
+-  /** Der Firmenkontext; fehlt er (Fassungen vor diesem Auftrag), gilt `firma`. */
+-  kontext?: SpaceKontext;
+-  /** Nur bei `kontext: "partner"`: der Name des Partners. */
+-  partner?: string;
+-}
+-
+-/** Der Kontext eines Space — `firma`, wenn eine ältere Fassung keinen trägt. */
+-export function kontextVon(space: Pick<SpaceEingabe, "kontext">): SpaceKontext {
+-  return space.kontext ?? "firma";
 -}
 -
 -/**
@@ -49074,6 +49562,12 @@ index 825d18762..000000000
 -  geaendertVon: string;
 -  geaendertAm: string;
 -  /**
+-   * aufnahme:20260922:gesamt-wissensprojekte — gesetzt nur an der LETZTEN Fassung eines gelöschten
+-   * Space (Löschvermerk). Die Fassungen davor bleiben unverändert stehen; `aktuelle()` führt einen
+-   * so vermerkten Space nicht mehr.
+-   */
+-  geloeschtAm?: string;
+-  /**
 -   * ADMIN-07: archiviert — Inhalte bleiben für die bisherigen Leser lesbar, aber nichts wird mehr
 -   * hinein- oder herausbewegt und der Space wird nicht mehr gepflegt, bis er wiederaufgenommen
 -   * ist. Fehlt in Fassungen von vor ADMIN-07: dann aktiv.
@@ -49090,6 +49584,11 @@ index 825d18762..000000000
 -   * übrigen Pflegewege übernehmen sie unverändert in die nächste Fassung.
 -   */
 -  freigabe?: FreigabeRegel;
+-}
+-
+-/** Trägt diese Fassung den Löschvermerk? */
+-export function istGeloescht(fassung: SpaceFassung | undefined): boolean {
+-  return typeof fassung?.geloeschtAm === "string";
 -}
 -
 -export const SPACE_GRENZEN = {
@@ -49278,6 +49777,36 @@ index 825d18762..000000000
 -  if (regeln.length > SPACE_GRENZEN.regeln) {
 -    throw new SpaceFehler("SPACE_UNGUELTIG", "Die Spaceregeln sind zu lang.");
 -  }
+-  const kontext = r.kontext ?? "firma";
+-  if (!SPACE_KONTEXTE.includes(kontext as SpaceKontext)) {
+-    throw new SpaceFehler(
+-      "SPACE_UNGUELTIG",
+-      "Der Kontext ist „firma“, „partner“ oder „oeffentlich“.",
+-    );
+-  }
+-  const partner = text(r.partner);
+-  if (kontext === "partner") {
+-    if (!partner || partner.length > SPACE_GRENZEN.name) {
+-      throw new SpaceFehler(
+-        "SPACE_UNGUELTIG",
+-        "Ein Partnerbereich braucht den Namen des Partners.",
+-      );
+-    }
+-    if (zugang === "alle") {
+-      throw new SpaceFehler(
+-        "SPACE_KONTEXT_ZUGANG",
+-        "Ein Partnerbereich ist nur für ausdrücklich berechtigte Mitglieder offen.",
+-      );
+-    }
+-  } else if (partner) {
+-    throw new SpaceFehler("SPACE_UNGUELTIG", "Einen Partner nennt nur ein Partnerbereich.");
+-  }
+-  if (kontext === "oeffentlich" && zugang !== "alle") {
+-    throw new SpaceFehler(
+-      "SPACE_KONTEXT_ZUGANG",
+-      "Öffentliche Quellen sind für alle mit Leserecht offen.",
+-    );
+-  }
 -  return {
 -    name,
 -    zweck,
@@ -49288,6 +49817,8 @@ index 825d18762..000000000
 -    ...(gebunden.length > 0 ? { teams: gebunden } : {}),
 -    ...(gruppe ? { gruppe } : {}),
 -    ...(regeln ? { regeln } : {}),
+-    kontext: kontext as SpaceKontext,
+-    ...(kontext === "partner" ? { partner } : {}),
 -  };
 -}
 -
@@ -49430,22 +49961,50 @@ index 825d18762..000000000
 -// ================================================================================================
 -
 -export interface SpacesRepo {
--  /** Je Space die jüngste Fassung. */
+-  /** Je Space die jüngste Fassung — ohne gelöschte Spaces (Löschvermerk an der jüngsten Fassung). */
 -  aktuelle(): Promise<SpaceFassung[]>;
--  /** Alle Fassungen eines Space, aufsteigend nach Version — leer, wenn es ihn nicht gibt. */
+-  /**
+-   * Alle Fassungen eines Space, aufsteigend nach Version — leer, wenn es ihn nicht gibt. Bei einem
+-   * gelöschten Space ist die letzte Fassung der Löschvermerk.
+-   */
 -  fassungen(id: string): Promise<SpaceFassung[]>;
--  /** Legt eine neue Fassung ab. `false`, wenn es diese Version schon gibt (paralleler Schreiber). */
+-  /**
+-   * Legt eine neue Fassung ab. `false`, wenn es diese Version schon gibt (paralleler Schreiber) oder
+-   * der Space gelöscht ist (der Löschvermerk ist endgültig).
+-   */
 -  lege(fassung: SpaceFassung): Promise<boolean>;
+-  /**
+-   * aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 4, Bens Befund) — führt `arbeit` exklusiv
+-   * gegen jede andere `exklusiv`-Arbeit aus. Spacewechsel und Spacelöschung prüfen UND schreiben
+-   * darunter, sodass zwischen Prüfung und Schreiben weder Quelle noch Ziel gelöscht und kein Artikel
+-   * in einen zu löschenden Space gelegt werden kann. Eine Rücknahme im Nachhinein gibt es nicht mehr.
+-   */
+-  exklusiv<T>(arbeit: () => Promise<T>): Promise<T>;
+-}
+-
+-/** Eine prozessweite Warteschlange: jede Arbeit beginnt erst, wenn die vorige beendet ist. */
+-function warteschlange(): <T>(arbeit: () => Promise<T>) => Promise<T> {
+-  let kette: Promise<unknown> = Promise.resolve();
+-  return <T>(arbeit: () => Promise<T>): Promise<T> => {
+-    const lauf = kette.then(arbeit);
+-    kette = lauf.catch(() => undefined);
+-    return lauf;
+-  };
 -}
 -
 -export class InMemorySpacesRepo implements SpacesRepo {
 -  private readonly zeilen = new Map<string, SpaceFassung[]>();
+-  private readonly reihe = warteschlange();
+-
+-  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+-    return this.reihe(arbeit);
+-  }
 -
 -  aktuelle(): Promise<SpaceFassung[]> {
 -    const raus: SpaceFassung[] = [];
 -    for (const liste of this.zeilen.values()) {
 -      const letzte = liste[liste.length - 1];
--      if (letzte) {
+-      if (letzte && !istGeloescht(letzte)) {
 -        raus.push(structuredClone(letzte));
 -      }
 -    }
@@ -49458,7 +50017,8 @@ index 825d18762..000000000
 -
 -  lege(fassung: SpaceFassung): Promise<boolean> {
 -    const liste = this.zeilen.get(fassung.id) ?? [];
--    if (liste.some((f) => f.version === fassung.version)) {
+-    // Der Löschvermerk ist endgültig: auf einen gelöschten Space folgt keine Fassung mehr.
+-    if (liste.some((f) => f.version === fassung.version || istGeloescht(f))) {
 -      return Promise.resolve(false);
 -    }
 -    liste.push(structuredClone(fassung));
@@ -49472,6 +50032,8 @@ index 825d18762..000000000
 - * Die Tabelle der Fassungen. REIN ADDITIV UND WIEDERHOLBAR: `CREATE TABLE IF NOT EXISTS`, kein
 - * DROP, kein DELETE, kein UPDATE, kein Fremdschlüssel, kein Seed. Der zusammengesetzte
 - * Primärschlüssel ist die Nebenläufigkeitsregel (zweiter Schreiber derselben Version → 409).
+- * Auch das Löschen eines Space ist eine weitere Zeile (Löschvermerk `geloeschtAm` im JSON), kein
+- * DELETE — der Verlauf bleibt nachlesbar.
 - */
 -export const SPACES_SCHEMA = `
 -CREATE TABLE IF NOT EXISTS spaces_fassungen (
@@ -49488,14 +50050,52 @@ index 825d18762..000000000
 -  data: SpaceFassung;
 -}
 -
+-/** Schlüssel der Datenbanksperre für Spacewechsel und Spacelöschung (`pg_advisory_lock`). */
+-export const SPACES_SPERRE = "746120091801";
+-
 -export class PgSpacesRepo implements SpacesRepo {
+-  private readonly reihe = warteschlange();
+-
 -  constructor(private readonly pool: Pool) {}
 -
+-  /**
+-   * Erst die prozessweite Warteschlange, dann die Datenbanksperre: so hält je Prozess höchstens eine
+-   * wartende Arbeit eine Verbindung, und mehrere App-Prozesse an derselben Datenbank schliessen sich
+-   * ebenfalls aus. Die Arbeit selbst nutzt gewöhnliche Pool-Verbindungen.
+-   */
+-  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+-    return this.reihe(async () => {
+-      const verbindung = await this.pool.connect();
+-      try {
+-        await verbindung.query("SELECT pg_advisory_lock($1::bigint)", [SPACES_SPERRE]);
+-      } catch (e) {
+-        verbindung.release(true);
+-        throw e;
+-      }
+-      try {
+-        return await arbeit();
+-      } finally {
+-        try {
+-          await verbindung.query("SELECT pg_advisory_unlock($1::bigint)", [SPACES_SPERRE]);
+-          verbindung.release();
+-        } catch {
+-          // Endet die Sitzung, gibt PostgreSQL die Sperre selbst frei.
+-          verbindung.release(true);
+-        }
+-      }
+-    });
+-  }
+-
 -  async aktuelle(): Promise<SpaceFassung[]> {
+-    // Erst die jüngste Fassung je Space, DANN der Löschvermerk — sonst träte eine ältere Fassung
+-    // eines gelöschten Space wieder an seine Stelle.
 -    const res = await this.pool.query<FassungsZeile>(
--      `SELECT DISTINCT ON (space_id) data
--         FROM spaces_fassungen
--        ORDER BY space_id, version DESC`,
+-      `SELECT data FROM (
+-         SELECT DISTINCT ON (space_id) data
+-           FROM spaces_fassungen
+-          ORDER BY space_id, version DESC
+-       ) AS juengste
+-       WHERE NOT (data ? 'geloeschtAm')`,
 -    );
 -    return res.rows.map((z) => z.data);
 -  }
@@ -49509,9 +50109,14 @@ index 825d18762..000000000
 -  }
 -
 -  async lege(fassung: SpaceFassung): Promise<boolean> {
+-    // Der Löschvermerk ist endgültig: auf einen gelöschten Space folgt keine Fassung mehr — sonst
+-    // belebte etwa eine Freigaberegel- oder Archivfassung den Space still wieder.
 -    const res = await this.pool.query(
 -      `INSERT INTO spaces_fassungen(space_id, version, data, geaendert_von, geaendert_am)
--       VALUES($1,$2,$3,$4,$5)
+-       SELECT $1::text, $2::integer, $3::jsonb, $4::text, $5::timestamptz
+-        WHERE NOT EXISTS (
+-          SELECT 1 FROM spaces_fassungen WHERE space_id=$1::text AND data ? 'geloeschtAm'
+-        )
 -       ON CONFLICT (space_id, version) DO NOTHING`,
 -      [
 -        fassung.id,
@@ -50124,10 +50729,10 @@ index 81f1d9d02..000000000
 -}
 diff --git b/services/app/src/teams.ts a/services/app/src/teams.ts
 deleted file mode 100644
-index 9845e45bf..000000000
+index c3bd8ad23..000000000
 --- b/services/app/src/teams.ts
 +++ /dev/null
-@@ -1,405 +0,0 @@
+@@ -1,410 +0,0 @@
 -import { createHash } from "node:crypto";
 -import type { Pool } from "pg";
 -import type { Role } from "../../auth";
@@ -50303,6 +50908,11 @@ index 9845e45bf..000000000
 -  lege(fassung: SpaceFassung): Promise<boolean> {
 -    const { teamMitglieder: _abgeleitet, ...rein } = fassung;
 -    return this.basis.lege(rein);
+-  }
+-
+-  /** aufnahme:20260922:gesamt-wissensprojekte — dieselbe Sperre wie die zugrunde liegende Ablage. */
+-  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+-    return this.basis.exklusiv(arbeit);
 -  }
 -}
 -
@@ -55026,10 +55636,10 @@ index c285a7254..000000000
 -}
 diff --git b/services/app/src/vorlagen.ts a/services/app/src/vorlagen.ts
 deleted file mode 100644
-index 56c8c0913..000000000
+index 071512d56..000000000
 --- b/services/app/src/vorlagen.ts
 +++ /dev/null
-@@ -1,1865 +0,0 @@
+@@ -1,1970 +0,0 @@
 -import { createHash } from "node:crypto";
 -import type { Pool } from "pg";
 -import {
@@ -55050,6 +55660,7 @@ index 56c8c0913..000000000
 -  darfSpaceBearbeiten,
 -  darfSpaceInhalteLesen,
 -  istArchiviert,
+-  istGeloescht,
 -} from "./spaces";
 -
 -// ================================================================================================
@@ -56738,21 +57349,64 @@ index 56c8c0913..000000000
 -  tags?: readonly string[] | undefined;
 -}
 -
+-/**
+- * aufnahme:20260922:gesamt-wissensprojekte — der gewählte Space konnte dem frisch angelegten
+- * Beitrag nicht zugeordnet werden. Der Port hat die Anlage dann bereits zurückgenommen (es bleibt
+- * kein breiter sichtbarer Beitrag ohne Space); der Aufrufer meldet einen Konflikt statt 201.
+- */
+-export const VORLAGE_SPACE_KONFLIKT_TEXT =
+-  "Der gewählte Space konnte nicht zugeordnet werden; es wurde nichts angelegt. Bitte erneut einreichen.";
+-
+-export class VorlagenSpaceFehler extends Error {
+-  readonly code = "VORLAGE_SPACE_KONFLIKT";
+-  constructor(readonly ursache: unknown) {
+-    super("Der gewählte Space konnte dem Beitrag nicht zugeordnet werden.");
+-    this.name = "VorlagenSpaceFehler";
+-  }
+-}
+-
 -export interface VorlagenEinreichungPort {
 -  pruefe(
 -    bezug: unknown,
 -    inhalt: EinreichInhalt,
 -    nutzer: VorlagenNutzer,
 -  ): Promise<EinreichEntscheid>;
--  /** Nach der Anlage: Bezug vermerken und — bei einem gewählten Space — dort ablegen. */
+-  /**
+-   * Nach der Anlage: bei einem gewählten Space ZUERST dort ablegen, dann den Bezug vermerken.
+-   * Scheitert die Ablage, nimmt der Port die Anlage zurück und wirft `VorlagenSpaceFehler`.
+-   */
 -  vermerke(koId: string, bezug: VorlagenBezug | null, nutzer: VorlagenNutzer): Promise<void>;
+-  /**
+-   * aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund) — nennt der rohe Bezug
+-   * einen Space, läuft `arbeit` (Prüfung, Anlage, `vermerke`) unter derselben Sperre wie
+-   * Spacewechsel und Spacelöschung. Eine Löschung gewinnt dann entweder VOR der Prüfung (409
+-   * `SPACE_GELOESCHT`, nichts entsteht) oder wartet bis nach der Zuordnung (der Space trägt den
+-   * Beitrag, die Löschung wird abgelehnt). Ohne Space läuft `arbeit` unverändert.
+-   */
+-  sperre<T>(bezug: unknown, arbeit: () => Promise<T>): Promise<T>;
+-  /**
+-   * Dieselbe Sperre für lange Anlagewege (`from-document`, Promote): sie gilt ab der Rückkehr bis
+-   * zum Aufruf der zurückgegebenen Freigabe — im `finally` des Aufrufers. Ohne Space: sofort frei.
+-   */
+-  halte(bezug: unknown): Promise<() => void>;
 -}
 -
 -export interface VorlagenDienstDeps {
 -  ablage: VorlagenAblage;
--  spaces: { aktuelle(): Promise<SpaceFassung[]> };
--  /** Legt das frische Objekt in den gewählten Space (`KoService.setLeadingSpace`, erwartet: ohne). */
+-  /** `fassungen` erkennt einen gelöschten Space (Löschvermerk) — optional für schlanke Aufbauten. */
+-  spaces: {
+-    aktuelle(): Promise<SpaceFassung[]>;
+-    fassungen?(id: string): Promise<SpaceFassung[]>;
+-  };
+-  /**
+-   * Legt das frische Objekt in den gewählten Space (`KoService.setLeadingSpace`, erwartet: ohne).
+-   * Wird unter `sperre` aufgerufen und nimmt selbst keine Sperre; wirft, wenn es nicht gelingt.
+-   */
 -  inSpaceLegen?: (koId: string, spaceId: string, akteur: string) => Promise<void>;
+-  /** Die Sperre der Spaces-Ablage (`SpacesRepo.exklusiv`). */
+-  exklusiv?: <T>(arbeit: () => Promise<T>) => Promise<T>;
+-  /** Nimmt eine frische Anlage vollständig zurück, wenn ihr gewählter Space nicht gesetzt werden kann. */
+-  anlageZuruecknehmen?: (koId: string, akteur: string) => Promise<void>;
 -  /** Derselbe Prüfprotokolldienst wie an den übrigen Routen — kein nachgebauter Typ. */
 -  audit?: AuditService;
 -  jetzt?: () => Date;
@@ -56780,7 +57434,50 @@ index 56c8c0913..000000000
 -
 -export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichungPort {
 -  const jetzt = deps.jetzt ?? (() => new Date());
+-
+-  /** Trägt der Space den Löschvermerk, und durfte dieser Mensch ihn zuletzt sehen? */
+-  async function geloeschtUndSichtbar(spaceId: string, nutzer: VorlagenNutzer): Promise<boolean> {
+-    const fassungen = (await deps.spaces.fassungen?.(spaceId)) ?? [];
+-    if (!istGeloescht(fassungen.at(-1))) {
+-      return false;
+-    }
+-    const zuletzt = fassungen.filter((f) => !istGeloescht(f)).at(-1);
+-    return Boolean(
+-      zuletzt &&
+-        (darfSpaceInhalteLesen(zuletzt, nutzer.id) || darfSpaceBearbeiten(zuletzt, nutzer)),
+-    );
+-  }
+-
+-  function mitSpace(roh: unknown): boolean {
+-    const bezug = bezugAus(roh);
+-    return bezug !== null && bezug !== "ungueltig" && Boolean(bezug.spaceId);
+-  }
+-
 -  return {
+-    sperre<T>(roh: unknown, arbeit: () => Promise<T>): Promise<T> {
+-      return mitSpace(roh) && deps.exklusiv ? deps.exklusiv(arbeit) : arbeit();
+-    },
+-
+-    async halte(roh) {
+-      const exklusiv = deps.exklusiv;
+-      if (!mitSpace(roh) || !exklusiv) {
+-        return () => undefined;
+-      }
+-      let freigeben: () => void = () => undefined;
+-      const frei = new Promise<void>((weiter) => {
+-        freigeben = weiter;
+-      });
+-      // Scheitert schon das Nehmen der Sperre (etwa die Datenbank), kommt der Fehler hier an,
+-      // statt dass der Aufrufer endlos wartet.
+-      await new Promise<void>((gehalten, gescheitert) => {
+-        exklusiv(async () => {
+-          gehalten();
+-          await frei;
+-        }).catch(gescheitert);
+-      });
+-      return freigeben;
+-    },
+-
 -    async pruefe(roh, inhalt, nutzer) {
 -      const bezug = bezugAus(roh);
 -      if (bezug === "ungueltig") {
@@ -56811,6 +57508,16 @@ index 56c8c0913..000000000
 -      let space: SpaceFassung | undefined;
 -      if (bezug?.spaceId) {
 -        space = spaces.find((s) => s.id === bezug.spaceId);
+-        // aufnahme:20260922:gesamt-wissensprojekte: ein inzwischen GELÖSCHTER Space ist für den,
+-        // der ihn sehen durfte, ein erkennbarer Konflikt — kein stiller Rückfall auf „ohne Space“.
+-        if (!space && (await geloeschtUndSichtbar(bezug.spaceId, nutzer))) {
+-          return {
+-            ok: false,
+-            status: 409,
+-            error: "SPACE_GELOESCHT",
+-            message: "Der gewählte Space wurde gelöscht. Bitte einen anderen Space wählen.",
+-          };
+-        }
 -        if (
 -          !space ||
 -          !(darfSpaceInhalteLesen(space, nutzer.id) || darfSpaceBearbeiten(space, nutzer))
@@ -56867,6 +57574,17 @@ index 56c8c0913..000000000
 -      if (!bezug) {
 -        return;
 -      }
+-      // Erst der Space, dann der Beleg: ein Beitrag mit gewähltem Space darf nie ohne ihn — also
+-      // breiter sichtbar als gewählt — stehen bleiben. Scheitert die Ablage, wird die Anlage
+-      // zurückgenommen, und es entsteht auch kein Nutzungsbeleg.
+-      if (bezug.spaceId && deps.inSpaceLegen) {
+-        try {
+-          await deps.inSpaceLegen(koId, bezug.spaceId, nutzer.id);
+-        } catch (ursache) {
+-          await deps.anlageZuruecknehmen?.(koId, nutzer.id);
+-          throw new VorlagenSpaceFehler(ursache);
+-        }
+-      }
 -      const vorlage = (await vorlagenFassungen(deps.ablage, bezug.id)).find(
 -        (f) => f.version === bezug.version,
 -      );
@@ -56883,9 +57601,6 @@ index 56c8c0913..000000000
 -      };
 -      // Eine Wiederholung desselben Vorgangs findet den Eintrag schon vor — er bleibt, wie er ist.
 -      await deps.ablage.lege("nutzung", koId, eintrag);
--      if (bezug.spaceId && deps.inSpaceLegen) {
--        await deps.inSpaceLegen(koId, bezug.spaceId, nutzer.id);
--      }
 -      await deps.audit?.record({
 -        actor: nutzer.id,
 -        action: "vorlage.verwendet",
@@ -56894,6 +57609,394 @@ index 56c8c0913..000000000
 -      });
 -    },
 -  };
+-}
+diff --git b/services/app/src/wiederanlauf.ts a/services/app/src/wiederanlauf.ts
+deleted file mode 100644
+index e8c3bc8ce..000000000
+--- b/services/app/src/wiederanlauf.ts
++++ /dev/null
+@@ -1,382 +0,0 @@
+-// ================================================================================================
+-// produkt:20261011:peter-p09 — DER WIEDERANLAUF NACH EINEM RESTORE (P09-AC04/05/06).
+-// ================================================================================================
+-//
+-// Peters Entscheidung 45: „Wiederanlauf beginnt mit gestoppten Außenaktionen. Zuerst Integrität,
+-// Rechteentzüge und Löschmarkierungen nachführen; anschließend Suche und Bibliothek öffnen.
+-// Kalender-/Routinejobs erst nach Prüfung ihres letzten bestätigten Ausführungspunkts freigeben.
+-// Keine wiederholte Mail, Freigabe oder Friständerung durch Replay."
+-//
+-// KEIN ZWEITES BETRIEBSSYSTEM. Der Wiederanlauf ist ein Schalter am bestehenden Serverstart
+-// (`KLARWERK_WIEDERANLAUF=<kennung>`), danach dieselbe Anwendung mit drei Unterschieden:
+-//
+-//   1. AUSSENAKTIONEN GESTOPPT. `server.ts` startet Wissensereignis-Meldungen, Hintergrundprüfung
+-//      und Lückenerkennung nicht (`GESTOPPTE_AUSSENAKTIONEN`). Die Fristläufe (Papierkorb,
+-//      Gedächtnis, Klara-Aufräumen) laufen weiter: sie führen Löschfristen nach und wirken nicht
+-//      nach außen.
+-//   2. SPERRE BIS ZUR FREIGABE. Bibliothek, Suche, Fragen, Exporte, Schnittstellenschlüssel und
+-//      Office-Zugriff sind gesperrt (503 `WIEDERANLAUF`); offen bleiben Anmeldung, der
+-//      Verzeichnisabgleich (SCIM — er führt Rechteentzüge des Identitätsanbieters nach) und alles für
+-//      Konten mit `users.manage`. Die Verwaltung führt mit den VORHANDENEN Wegen nach: Konto sperren
+-//      oder Rolle ändern (`PUT /api/users/:id`), Konto entfernen, Space-Mitgliedschaft, Objekt in den
+-//      Papierkorb (`DELETE /api/kos/:id`).
+-//   3. REPLAY-GRENZE. Vor jeder Außenaktion hält `setzeWiederanlaufGrenze` (wissensereignisse.ts) den
+-//      wiederhergestellten Stand der Meldungen fest; nach der Freigabe geht nichts davon ein zweites
+-//      Mal hinaus.
+-//
+-// DIE FREIGABE (`POST /api/admin/wiederanlauf/freigabe`) verlangt die vier Bestätigungen und prüft
+-// die Auditkette selbst — mit derselben Regel wie der Restore-Drill (Kettenbrüche, unerklärte und
+-// ungeprüfte Abweichungen = 0). Sie steht als `wiederanlauf.freigegeben` in der Kette und gilt damit
+-// auch nach einem Neustart mit derselben Kennung. Die Außenaktionen laufen erst wieder nach einem
+-// Neustart OHNE den Schalter — ab der gesetzten Grenze.
+-import type { FastifyInstance, FastifyRequest } from "fastify";
+-import type { AuditService } from "../../audit";
+-import type { AuthService } from "../../auth";
+-import { can } from "../../rbac";
+-import { HINTERGRUNDLAUF_AUDIT } from "./hintergrundpruefung";
+-import { makeGuards, tokenFromRequest } from "./http";
+-import {
+-  type WiederanlaufGrenze,
+-  type WissensereignisQuellen,
+-  setzeWiederanlaufGrenze,
+-} from "./wissensereignisse";
+-
+-export const WIEDERANLAUF_ENV = "KLARWERK_WIEDERANLAUF";
+-export const AKTION_WIEDERANLAUF_BEGONNEN = "wiederanlauf.begonnen";
+-export const AKTION_WIEDERANLAUF_FREIGEGEBEN = "wiederanlauf.freigegeben";
+-/** Nachtrag des Sicherungsstands, wenn der erste Start ihn nicht kannte. */
+-export const AKTION_WIEDERANLAUF_SICHERUNGSSTAND = "wiederanlauf.sicherungsstand";
+-export const WIEDERANLAUF_AKTEUR = "system:wiederanlauf";
+-export const WIEDERANLAUF_PFAD = "/api/admin/wiederanlauf";
+-
+-const KENNUNG_FORM = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
+-
+-/** Was im Wiederanlauf nicht startet — jede dieser Aufgaben wirkt nach außen oder verbraucht Budget. */
+-export const GESTOPPTE_AUSSENAKTIONEN = [
+-  {
+-    id: "wissensereignisse",
+-    name: "Wissensereignis-Meldungen an Fremdwerkzeuge (KLARWERK_WEBHOOKS)",
+-  },
+-  { id: "hintergrundpruefung", name: "Hintergrundprüfung (Modellvergleiche)" },
+-  { id: "lueckenerkennung", name: "Lückenerkennung über den Reasoner" },
+-] as const;
+-
+-/** Was weiterläuft — reine Fristläufe innerhalb der Instanz. */
+-export const WEITERLAUFENDE_FRISTLAEUFE = [
+-  "Papierkorb-Endlöschung (Wissensobjekte und Entwürfe)",
+-  "Gedächtnis-Aufräumlauf",
+-  "Klara-Aufräumlauf",
+-] as const;
+-
+-/** Die vier Bestätigungen der Freigabe — in dieser Reihenfolge nach Peters Entscheidung 45. */
+-export const FREIGABE_BESTAETIGUNGEN = [
+-  "integritaet",
+-  "rechteentzuege",
+-  "loeschmarkierungen",
+-  "aussenaktionen",
+-] as const;
+-export type FreigabeBestaetigung = (typeof FREIGABE_BESTAETIGUNGEN)[number];
+-
+-/**
+- * Ben, Nacharbeit 2 (P09-AC05): DIE NACHFÜHRUNGSGRENZE IST DER SICHERUNGSSTAND — nie ein Auditzeitpunkt.
+- * Bis hierher galt der jüngste Eintrag der wiederhergestellten Kette als „Datenstand". Lief vorher der
+- * Restore-Drill gegen dasselbe Ziel, war das dessen Anmeldung: wer „seit dem Datenstand" nachführte,
+- * übersah Löschungen und Entzüge zwischen Sicherung und Drill. Der Stand kommt deshalb ausschließlich
+- * aus der Sicherung selbst — dem Dateinamen von `backup.sh` (`klarwerk-<UTC>.dump`, auch mit Pfad oder
+- * Folgenummer) oder einer ausdrücklichen UTC-Zeitangabe für Sicherungen ohne diesen Namen.
+- */
+-export const SICHERUNGSSTAND_ENV = "KLARWERK_WIEDERANLAUF_SICHERUNG";
+-
+-const DUMPNAME = /(?:^|\/)klarwerk-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z(?:_\d+)?\.dump$/;
+-const UTC_ZEIT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z$/;
+-
+-/** Der Sicherungsstand als ISO-Zeitpunkt (UTC) — oder ein Wurf, wenn die Angabe keiner ist. */
+-export function sicherungsstandAus(roh: string): string {
+-  const wert = roh.trim();
+-  const name = DUMPNAME.exec(wert);
+-  const iso = name
+-    ? `${name[1]}-${name[2]}-${name[3]}T${name[4]}:${name[5]}:${name[6]}Z`
+-    : UTC_ZEIT.test(wert)
+-      ? wert
+-      : undefined;
+-  const zeit = iso === undefined ? Number.NaN : Date.parse(iso);
+-  if (Number.isNaN(zeit)) {
+-    throw new Error(
+-      `${SICHERUNGSSTAND_ENV} ist weder ein Sicherungsname von backup.sh (klarwerk-<UTC>.dump) noch eine UTC-Zeitangabe.`,
+-    );
+-  }
+-  return new Date(zeit).toISOString();
+-}
+-
+-export interface Wiederanlauf {
+-  kennung: string;
+-  /** Sicherungsstand (ISO, UTC) — die Nachführungsgrenze. Fehlt er, gibt es keine Freigabe. */
+-  sicherungsstand?: string | undefined;
+-}
+-
+-/**
+- * Liest den Schalter. Nicht gesetzt → `undefined`, der Start bleibt wie bisher. Ein Wert, der keine
+- * Kennung ist, bricht den Start ab: ein Wiederanlauf, der still als Normalstart liefe, wäre genau der
+- * Fall, den der Schalter verhindern soll. Ein ungültiger Sicherungsstand bricht ebenso ab; ein
+- * fehlender lässt den Start in der Sperre zu, aber keine Freigabe.
+- */
+-export function leseWiederanlauf(
+-  env: Record<string, string | undefined> = process.env,
+-): Wiederanlauf | undefined {
+-  const roh = env[WIEDERANLAUF_ENV]?.trim();
+-  if (!roh) {
+-    return undefined;
+-  }
+-  if (!KENNUNG_FORM.test(roh)) {
+-    throw new Error(
+-      `${WIEDERANLAUF_ENV} ist keine gültige Kennung (Buchstaben, Ziffern, . _ : -, höchstens 64 Zeichen).`,
+-    );
+-  }
+-  const sicherung = env[SICHERUNGSSTAND_ENV]?.trim();
+-  return { kennung: roh, sicherungsstand: sicherung ? sicherungsstandAus(sicherung) : undefined };
+-}
+-
+-// GET-Auskünfte ohne Bestandsinhalt, die die Anmeldeseite braucht (dieselben, die JOB 4015 als
+-// bewusst offen gemessen hat).
+-const OFFENE_AUSKUENFTE = new Set([
+-  "/api/features",
+-  "/api/branding",
+-  "/api/i18n/locales",
+-  "/api/ai-status",
+-  "/api/reasoner/status",
+-]);
+-
+-/** Ist dieser Weg während der Sperre nur der Verwaltung offen? */
+-export function gesperrterWeg(methode: string, pfad: string): boolean {
+-  if (pfad.startsWith("/api/auth/") || pfad.startsWith(WIEDERANLAUF_PFAD)) {
+-    return false;
+-  }
+-  if (methode === "GET" && OFFENE_AUSKUENFTE.has(pfad)) {
+-    return false;
+-  }
+-  return pfad.startsWith("/api/") || pfad.startsWith("/wopi/");
+-}
+-
+-export const SPERRSATZ =
+-  "Klarwerk läuft nach einer Wiederherstellung wieder an. Bibliothek, Suche und Schnittstellen öffnen, sobald die Verwaltung Rechteentzüge und Löschungen nachgeführt hat.";
+-
+-export interface WiederanlaufDeps {
+-  wiederanlauf: Wiederanlauf;
+-  audit: AuditService;
+-  auth: AuthService;
+-  quellen: WissensereignisQuellen;
+-  log?: { info: (text: string) => void };
+-}
+-
+-export interface WiederanlaufLage {
+-  readonly kennung: string;
+-  freigegeben(): boolean;
+-  grenze(): WiederanlaufGrenze | undefined;
+-}
+-
+-/**
+- * Hängt Sperre, Auskunft und Freigabe an die App. MUSS vor `app.ready()`/`listen` gerufen werden:
+- * die Grenze wird im `onReady` gesetzt — nach dem Bereitschaftslauf der App (Suchprojektion) und
+- * bevor eine Anfrage angenommen wird. Scheitert sie, wird die App nicht bereit (fail-closed).
+- */
+-export function registriereWiederanlauf(
+-  app: FastifyInstance,
+-  deps: WiederanlaufDeps,
+-): WiederanlaufLage {
+-  const { kennung } = deps.wiederanlauf;
+-  const guards = makeGuards(deps.auth);
+-  let freigegeben = false;
+-  let grenze: WiederanlaufGrenze | undefined;
+-  // Die Nachführungsgrenze: AUSSCHLIESSLICH der Sicherungsstand (s. `SICHERUNGSSTAND_ENV`). Kein
+-  // Auditzeitpunkt ersetzt ihn — unbekannt bleibt unbekannt, und dann gibt es keine Freigabe.
+-  let sicherungsstand: string | null = deps.wiederanlauf.sicherungsstand ?? null;
+-
+-  app.addHook("onReady", async () => {
+-    // DAUERHAFT: steht der Stand schon im Beginn-Eintrag dieses Wiederanlaufs, gilt er — auch nach
+-    // einem Neustart mit anderer oder fehlender Angabe. Erst ein unbekannter Stand nimmt die Angabe
+-    // dieses Starts an (und hält sie im Nachtrag fest).
+-    const begonnen = (await deps.audit.list({ action: AKTION_WIEDERANLAUF_BEGONNEN })).find(
+-      (e) => e.eventId === `${AKTION_WIEDERANLAUF_BEGONNEN}:${kennung}`,
+-    );
+-    const nachtrag = (await deps.audit.list({ action: AKTION_WIEDERANLAUF_SICHERUNGSSTAND })).find(
+-      (e) => e.eventId === `${AKTION_WIEDERANLAUF_SICHERUNGSSTAND}:${kennung}`,
+-    );
+-    const festgehalten = [begonnen, nachtrag]
+-      .map((e) => e?.payload.sicherungsstand)
+-      .find((wert): wert is string => typeof wert === "string");
+-    if (festgehalten) {
+-      sicherungsstand = festgehalten;
+-    } else if (begonnen && sicherungsstand) {
+-      await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_SICHERUNGSSTAND}:${kennung}`, {
+-        actor: WIEDERANLAUF_AKTEUR,
+-        action: AKTION_WIEDERANLAUF_SICHERUNGSSTAND,
+-        target: "wiederanlauf",
+-        payload: { kennung, sicherungsstand },
+-      });
+-    }
+-    freigegeben = (await deps.audit.list({ action: AKTION_WIEDERANLAUF_FREIGEGEBEN })).some(
+-      (e) => e.eventId === `${AKTION_WIEDERANLAUF_FREIGEGEBEN}:${kennung}`,
+-    );
+-    grenze = await setzeWiederanlaufGrenze({
+-      quellen: deps.quellen,
+-      audit: deps.audit,
+-      wiederanlauf: kennung,
+-    });
+-    await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_BEGONNEN}:${kennung}`, {
+-      actor: WIEDERANLAUF_AKTEUR,
+-      action: AKTION_WIEDERANLAUF_BEGONNEN,
+-      target: "wiederanlauf",
+-      payload: {
+-        kennung,
+-        sicherungsstand,
+-        gestoppt: GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id),
+-        replayGrenze: {
+-          unterdrueckt: grenze.unterdrueckt.length,
+-          geschlossen: grenze.geschlossen.length,
+-        },
+-      },
+-    });
+-    // Satz und Werte nach der Log-Positivliste (`log-positivliste.ts`).
+-    deps.log?.info(
+-      `Wiederanlauf ${kennung}: ${freigegeben ? "bereits freigegeben" : "Sperre aktiv bis zur Freigabe"}, Sicherungsstand ${sicherungsstand ?? "unbekannt"}, Replay-Grenze: ${grenze.unterdrueckt.length} Meldungen unterdrückt, ${grenze.geschlossen.length} offene Zustellungen geschlossen.`,
+-    );
+-  });
+-
+-  app.addHook("onRequest", async (request, reply) => {
+-    if (freigegeben) {
+-      return;
+-    }
+-    const pfad = request.routeOptions?.url ?? request.url.split("?")[0] ?? "";
+-    if (!gesperrterWeg(request.method, pfad) || (await istVerwaltung(deps.auth, request))) {
+-      return;
+-    }
+-    reply
+-      .code(503)
+-      .header("retry-after", "300")
+-      .send({ error: "WIEDERANLAUF", message: SPERRSATZ, wiederanlauf: kennung });
+-    return reply;
+-  });
+-
+-  app.get(WIEDERANLAUF_PFAD, async (request, reply) => {
+-    const user = await guards.requirePermission("users.manage", request, reply);
+-    if (!user) {
+-      return;
+-    }
+-    reply.code(200).send(await auskunft());
+-  });
+-
+-  app.post<{ Body: Record<string, unknown> | null }>(
+-    `${WIEDERANLAUF_PFAD}/freigabe`,
+-    async (request, reply) => {
+-      const user = await guards.requirePermission("users.manage", request, reply);
+-      if (!user) {
+-        return;
+-      }
+-      const body = request.body && typeof request.body === "object" ? request.body : {};
+-      const fehlend = FREIGABE_BESTAETIGUNGEN.filter((b) => body[b] !== true);
+-      if (fehlend.length > 0) {
+-        reply.code(400).send({
+-          error: "BESTAETIGUNG_FEHLT",
+-          message:
+-            "Die Freigabe braucht alle vier Bestätigungen: Integrität geprüft, Rechteentzüge und Löschmarkierungen nachgeführt, Außenaktionen geprüft.",
+-          fehlend,
+-        });
+-        return;
+-      }
+-      // Ohne Sicherungsstand gibt es keine Grenze, gegen die „nachgeführt" bestätigt werden könnte.
+-      if (!sicherungsstand) {
+-        reply.code(409).send({
+-          error: "SICHERUNGSSTAND_UNBEKANNT",
+-          message: `Der Sicherungsstand ist unbekannt — die Nachführung hat keine Grenze. Mit ${SICHERUNGSSTAND_ENV}=<Sicherungsname oder UTC-Zeit> neu starten.`,
+-        });
+-        return;
+-      }
+-      const bericht = await deps.audit.verifyReport();
+-      const integritaet = {
+-        eintraege: bericht.count,
+-        linkageBreaks: bericht.linkageBreaks,
+-        unresolvedDeviations: bericht.unresolvedDeviations,
+-        uncheckedDeviations: bericht.uncheckedDeviations,
+-      };
+-      if (
+-        bericht.linkageBreaks !== 0 ||
+-        bericht.unresolvedDeviations !== 0 ||
+-        bericht.uncheckedDeviations !== 0
+-      ) {
+-        reply.code(409).send({
+-          error: "INTEGRITAET",
+-          message:
+-            "Die Auditkette trägt nicht (Kettenbruch oder unerklärte/ungeprüfte Abweichung) — keine Freigabe.",
+-          integritaet,
+-        });
+-        return;
+-      }
+-      await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_FREIGEGEBEN}:${kennung}`, {
+-        actor: user.id,
+-        action: AKTION_WIEDERANLAUF_FREIGEGEBEN,
+-        target: "wiederanlauf",
+-        payload: {
+-          kennung,
+-          bestaetigt: [...FREIGABE_BESTAETIGUNGEN],
+-          integritaet,
+-          nachfuehrungsgrenze: sicherungsstand,
+-        },
+-      });
+-      freigegeben = true;
+-      reply.code(200).send(await auskunft());
+-    },
+-  );
+-
+-  async function auskunft() {
+-    const hintergrund = await deps.audit.list({ action: HINTERGRUNDLAUF_AUDIT });
+-    const letzterHintergrundlauf = hintergrund.reduce<string | null>(
+-      (j, e) => (j === null || e.at > j ? e.at : j),
+-      null,
+-    );
+-    const punkt: Record<string, string | null> = {
+-      wissensereignisse: grenze?.letzteBestaetigteZustellung ?? null,
+-      hintergrundpruefung: letzterHintergrundlauf,
+-      lueckenerkennung: null,
+-    };
+-    return {
+-      kennung,
+-      zustand: freigegeben ? "freigegeben" : "gesperrt",
+-      // Alles NACH diesem Zeitpunkt fehlt dem Bestand und ist nachzuführen. `null` = unbekannt.
+-      nachfuehrungsgrenze: { sicherungsstand },
+-      schritte: FREIGABE_BESTAETIGUNGEN,
+-      gestoppt: GESTOPPTE_AUSSENAKTIONEN.map((a) => ({
+-        ...a,
+-        letzterBestaetigterPunkt: punkt[a.id] ?? null,
+-      })),
+-      weiterlaufend: WEITERLAUFENDE_FRISTLAEUFE,
+-      replayGrenze: grenze
+-        ? {
+-            unterdrueckt: grenze.unterdrueckt,
+-            geschlossen: grenze.geschlossen,
+-            letzteBestaetigteZustellung: grenze.letzteBestaetigteZustellung,
+-          }
+-        : null,
+-      naechsterSchritt: freigegeben
+-        ? `Ohne ${WIEDERANLAUF_ENV} neu starten — erst dann laufen die gestoppten Außenaktionen wieder, ab der Replay-Grenze.`
+-        : sicherungsstand
+-          ? `Integrität prüfen, Rechteentzüge und Löschmarkierungen seit dem Sicherungsstand ${sicherungsstand} nachführen, Außenaktionen prüfen, dann freigeben.`
+-          : `Sicherungsstand unbekannt — mit ${SICHERUNGSSTAND_ENV}=<Sicherungsname oder UTC-Zeit> neu starten; ohne ihn keine Freigabe.`,
+-    };
+-  }
+-
+-  return { kennung, freigegeben: () => freigegeben, grenze: () => grenze };
+-}
+-
+-/**
+- * Darf diese Anfrage während der Sperre durch? Nur ein angemeldetes Konto mit `users.manage`.
+- * Schlüsselzugänge (Add-in, Dienst-Schlüssel) sind ausdrücklich NICHT die Verwaltung.
+- */
+-async function istVerwaltung(auth: AuthService, request: FastifyRequest): Promise<boolean> {
+-  const kontext = (request as { authContext?: { authKind?: string } | null }).authContext;
+-  if (kontext?.authKind === "addon") {
+-    return false;
+-  }
+-  const token = tokenFromRequest(request);
+-  const user = token ? await auth.authenticate(token) : undefined;
+-  return user ? can(user.role, "users.manage") : false;
 -}
 diff --git b/services/app/src/wissensauskunft.ts a/services/app/src/wissensauskunft.ts
 deleted file mode 100644
@@ -57583,10 +58686,10 @@ index 6c580121c..000000000
 -}
 diff --git b/services/app/src/wissensereignisse.ts a/services/app/src/wissensereignisse.ts
 deleted file mode 100644
-index f6761b235..000000000
+index b8b535cb8..000000000
 --- b/services/app/src/wissensereignisse.ts
 +++ /dev/null
-@@ -1,698 +0,0 @@
+@@ -1,848 +0,0 @@
 -import { createHmac } from "node:crypto";
 -import type { AuditEntry, AuditService } from "../../audit";
 -import type { Conflict } from "../../conflicts";
@@ -57638,6 +58741,14 @@ index f6761b235..000000000
 -// wieder auf und zählt die Versuche weiter. Zugestellt wird damit mindestens einmal: Ein Neustart
 -// zwischen erfolgreicher Antwort und Abschlusseintrag oder zwei gleichzeitig neu gestartete Instanzen
 -// können eine Meldung doppelt senden — der Empfänger erkennt sie an derselben `kennung`.
+-//
+-// WIEDERANLAUF NACH EINEM RESTORE (produkt:20261011:peter-p09, P09-AC06). Eine Sicherung ist älter als
+-// der Ausfall. Was zwischen Sicherung und Ausfall zugestellt wurde, fehlt der wiederhergestellten
+-// Kette: ein offener Vorgang würde wieder aufgenommen, ein schon gemeldeter Zustand neu erkannt — und
+-// ein zweites Mal hinausgeschickt. `setzeWiederanlaufGrenze` hält deshalb im Wiederanlauf (vor jeder
+-// Außenaktion) fest, was der wiederhergestellte Bestand ableiten lässt, und schließt jeden offenen
+-// Vorgang als abgebrochen. Über die Grenze hinweg gilt damit „höchstens einmal": was hinter ihr liegt,
+-// geht nicht ein zweites Mal hinaus; was davor nie zugestellt war, steht namentlich in der Grenze.
 -
 -export const WISSENSEREIGNISSE = [
 -  "wissen.validiert",
@@ -57656,6 +58767,9 @@ index f6761b235..000000000
 -export const AKTION_GESCHEITERT = "wissensereignis.zustellung-gescheitert";
 -export const AKTION_ABGEBROCHEN = "wissensereignis.zustellung-abgebrochen";
 -export const AKTION_VERSUCH = "wissensereignis.zustellversuch";
+-export const AKTION_WIEDERANLAUF_GRENZE = "wissensereignis.wiederanlauf-grenze";
+-/** `grund` der Vorgänge, die die Wiederanlauf-Grenze geschlossen hat. */
+-export const GRUND_WIEDERANLAUF = "wiederanlauf-grenze";
 -const ABSCHLUSS_AKTIONEN = [AKTION_ZUGESTELLT, AKTION_GESCHEITERT, AKTION_ABGEBROCHEN] as const;
 -
 -export const SIGNATUR_HEADER = "x-klarwerk-signatur";
@@ -57976,6 +59090,16 @@ index f6761b235..000000000
 -  return typeof wert === "number" && Number.isFinite(wert) ? wert : 0;
 -}
 -
+-function fuegeKennungenHinzu(ziel: Set<string>, liste: unknown): void {
+-  if (Array.isArray(liste)) {
+-    for (const k of liste) {
+-      if (typeof k === "string") {
+-        ziel.add(k);
+-      }
+-    }
+-  }
+-}
+-
 -export class WissensereignisMelder {
 -  private readonly deps: WissensereignisMelderDeps;
 -  private readonly zusteller: Zusteller;
@@ -58031,13 +59155,10 @@ index f6761b235..000000000
 -      grundstand = (await this.deps.audit.list({ action: AKTION_GRUNDSTAND }))[0];
 -    }
 -    const bekannt = new Set<string>();
--    const ausGrundstand = grundstand?.payload.kennungen;
--    if (Array.isArray(ausGrundstand)) {
--      for (const k of ausGrundstand) {
--        if (typeof k === "string") {
--          bekannt.add(k);
--        }
--      }
+-    fuegeKennungenHinzu(bekannt, grundstand?.payload.kennungen);
+-    // P09-AC06: jede Wiederanlauf-Grenze ist ein weiterer Grundstand — was sie festhält, ist bekannt.
+-    for (const grenze of await this.deps.audit.list({ action: AKTION_WIEDERANLAUF_GRENZE })) {
+-      fuegeKennungenHinzu(bekannt, grenze.payload.kennungen);
 -    }
 -    const erkannteEintraege = await this.deps.audit.list({ action: AKTION_ERKANNT });
 -    for (const eintrag of erkannteEintraege) {
@@ -58263,6 +59384,138 @@ index f6761b235..000000000
 -      .record({ actor: MELDER_AKTEUR, action, target: this.zielVon(eintrag), payload })
 -      .catch((error) => this.deps.log?.warn(`Prüfprotokoll für ${action}: ${String(error)}`));
 -  }
+-}
+-
+-// ------------------------------------------------------------------------------------------------
+-// Wiederanlauf-Grenze (produkt:20261011:peter-p09, P09-AC06)
+-// ------------------------------------------------------------------------------------------------
+-
+-/** Eindeutige Kennung der Grenze eines Wiederanlaufs (`recordOnce`). */
+-export function grenzKennung(wiederanlauf: string): string {
+-  return `${AKTION_WIEDERANLAUF_GRENZE}:${wiederanlauf}`;
+-}
+-
+-export interface WiederanlaufGrenze {
+-  wiederanlauf: string;
+-  /** `false`: die Grenze dieses Wiederanlaufs stand schon in der Kette (zweiter Start). */
+-  neuGesetzt: boolean;
+-  /** Alle Ereignisse, die der wiederhergestellte Bestand ableiten lässt — ab hier bekannt. */
+-  kennungen: string[];
+-  /**
+-   * Davon die, die bis zur Grenze NICHT als erkannt in der Kette standen. Sie können vor dem Ausfall
+-   * schon gemeldet worden sein; die Kette weiß es nicht mehr. Sie gehen nicht hinaus — wer sie
+-   * braucht, gleicht sie mit dem Empfänger ab.
+-   */
+-  unterdrueckt: string[];
+-  /** Zustellvorgänge ohne Abschluss, die die Grenze als abgebrochen geschlossen hat. */
+-  geschlossen: { ziel: string; kennung: string }[];
+-  /** Der letzte bestätigte Ausführungspunkt: jüngste Zustellung im wiederhergestellten Bestand. */
+-  letzteBestaetigteZustellung: string | null;
+-}
+-
+-function zeichenketten(liste: unknown): string[] {
+-  return Array.isArray(liste) ? liste.filter((k): k is string => typeof k === "string") : [];
+-}
+-
+-/**
+- * Setzt die Grenze im Wiederanlauf — VOR jeder Außenaktion und genau einmal je Wiederanlauf.
+- * Geschrieben wird zuerst jeder Abschluss, zuletzt die Grenze selbst: bricht der Lauf dazwischen ab,
+- * findet der nächste Start keine Grenze und setzt sie vollständig neu (Abschlüsse über `recordOnce`).
+- */
+-export async function setzeWiederanlaufGrenze(deps: {
+-  quellen: WissensereignisQuellen;
+-  audit: Pick<AuditService, "list" | "recordOnce">;
+-  wiederanlauf: string;
+-}): Promise<WiederanlaufGrenze> {
+-  const { audit, wiederanlauf } = deps;
+-  const kennungDerGrenze = grenzKennung(wiederanlauf);
+-  const grenzen = await audit.list({ action: AKTION_WIEDERANLAUF_GRENZE });
+-  const vorhanden = grenzen.find((e) => e.eventId === kennungDerGrenze);
+-  if (vorhanden) {
+-    const p = vorhanden.payload;
+-    return {
+-      wiederanlauf,
+-      neuGesetzt: false,
+-      kennungen: zeichenketten(p.kennungen),
+-      unterdrueckt: zeichenketten(p.unterdrueckt),
+-      geschlossen: Array.isArray(p.geschlossen)
+-        ? (p.geschlossen as { ziel: string; kennung: string }[])
+-        : [],
+-      letzteBestaetigteZustellung:
+-        typeof p.letzteBestaetigteZustellung === "string" ? p.letzteBestaetigteZustellung : null,
+-    };
+-  }
+-
+-  const bekannt = new Set<string>();
+-  for (const g of await audit.list({ action: AKTION_GRUNDSTAND })) {
+-    fuegeKennungenHinzu(bekannt, g.payload.kennungen);
+-  }
+-  for (const g of grenzen) {
+-    fuegeKennungenHinzu(bekannt, g.payload.kennungen);
+-  }
+-  const erkannt = await audit.list({ action: AKTION_ERKANNT });
+-  for (const e of erkannt) {
+-    if (e.eventId) {
+-      bekannt.add(e.eventId);
+-    }
+-  }
+-  const kennungen = befundeAus(await ladeStand(deps.quellen)).map((b) => b.kennung);
+-  const unterdrueckt = kennungen.filter((k) => !bekannt.has(k));
+-
+-  const abgeschlossen = new Set<string>();
+-  let letzteBestaetigteZustellung: string | null = null;
+-  for (const action of ABSCHLUSS_AKTIONEN) {
+-    for (const e of await audit.list({ action })) {
+-      if (e.eventId) {
+-        abgeschlossen.add(e.eventId);
+-      }
+-      if (
+-        action === AKTION_ZUGESTELLT &&
+-        (letzteBestaetigteZustellung === null || e.at > letzteBestaetigteZustellung)
+-      ) {
+-        letzteBestaetigteZustellung = e.at;
+-      }
+-    }
+-  }
+-  const geschlossen: { ziel: string; kennung: string }[] = [];
+-  for (const e of erkannt) {
+-    if (!e.eventId) {
+-      continue;
+-    }
+-    for (const ziel of zeichenketten(e.payload.ziele)) {
+-      const schluessel = abschlussKennung(ziel, e.eventId);
+-      if (abgeschlossen.has(schluessel)) {
+-        continue;
+-      }
+-      await audit.recordOnce(schluessel, {
+-        actor: MELDER_AKTEUR,
+-        action: AKTION_ABGEBROCHEN,
+-        target: e.target,
+-        payload: {
+-          ziel,
+-          ereignis: e.payload.ereignis,
+-          kennung: e.eventId,
+-          grund: GRUND_WIEDERANLAUF,
+-          wiederanlauf,
+-        },
+-      });
+-      geschlossen.push({ ziel, kennung: e.eventId });
+-    }
+-  }
+-  await audit.recordOnce(kennungDerGrenze, {
+-    actor: MELDER_AKTEUR,
+-    action: AKTION_WIEDERANLAUF_GRENZE,
+-    target: "wissensereignisse",
+-    payload: { wiederanlauf, kennungen, unterdrueckt, geschlossen, letzteBestaetigteZustellung },
+-  });
+-  return {
+-    wiederanlauf,
+-    neuGesetzt: true,
+-    kennungen,
+-    unterdrueckt,
+-    geschlossen,
+-    letzteBestaetigteZustellung,
+-  };
 -}
 -
 -export interface MelderHandle {
