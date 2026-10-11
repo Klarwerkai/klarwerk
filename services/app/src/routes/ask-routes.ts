@@ -1290,7 +1290,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // vor jedem Lesen. Ungültig → 400 mit einem Text, der nichts über den Bestand sagt.
         let bereich: Sichtbarkeitsfilter | undefined;
         try {
-          const firmenfilter = leseFirmenfilter(request.body);
+          const firmenfilter = leseFirmenfilter({
+            firmenbereich: request.body.firmenbereich,
+            partner: request.body.partner,
+          });
           if (firmenfilter) {
             const partner = (await deps.partnerbereiche?.()) ?? new Set<string>();
             bereich = (ko) => imFirmenfilter(ko, firmenfilter, partner);
