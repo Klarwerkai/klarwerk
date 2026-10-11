@@ -44,17 +44,25 @@ import { bis, klick, medienStub, q, ruhe, tippe } from "../fe003-tutorial-fragen
 import {
   type Aufbau,
   type Draht,
+  type Konto,
+  adapterUmgebungSetzen,
   appAufbauen,
   drahtAufbauen,
   eintragMitOriginal,
+  fragen as kettenFrage,
   neuesKonto,
 } from "../klara-quellen-nutzerweg/kette";
+
+// Der KONTROLLIERTE Modelladapter der Kette (wie `klara-echt-am-server.test.tsx`): ohne ihn hat der
+// Frageweg kein Modell (`grund=no-model`) und kann nie eine belegte KI-Antwort geben (N3).
+adapterUmgebungSetzen();
 
 /** Wie in `klara-echt-am-server.test.tsx`: eine Frage, deren Begriffe der Ketteneintrag trägt. */
 const GEDECKTE_FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 vor dem Wechsel entlastet?";
 
 let draht: Draht;
 let aufbau: Aufbau | null = null;
+let leserKonto: Konto | null = null;
 let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
 let echterFetch: typeof globalThis.fetch;
@@ -98,6 +106,7 @@ afterEach(async () => {
     await aufbau.app.close();
     aufbau = null;
   }
+  leserKonto = null;
   draht.setzeApp(null);
   draht.setzeCookie(null);
   draht.lage.generierungen = 0;
@@ -113,6 +122,7 @@ async function vorrichtung(mitEintrag: boolean): Promise<Aufbau> {
     await eintragMitOriginal(a.app, a.admin);
   }
   const leser = await neuesKonto(a.app, "assistenz-nachdenken", a.admin);
+  leserKonto = leser;
   draht.setzeCookie(`kw_session=${leser.token}`);
   return a;
 }
@@ -284,9 +294,17 @@ describe("N2/N3/N4 · Nachdenken endet mit Ergebnis oder Fehler", () => {
   it("N3 · belegte KI-Antwort: Nachdenken endet mit Freude, danach von selbst Bereit", async () => {
     await vorrichtung(false);
     await montiere();
-    if (aufbau) {
-      await eintragMitOriginal(aufbau.app, aufbau.admin);
+    if (!aufbau || !leserKonto) {
+      throw new Error("Vorrichtung fehlt");
     }
+    await eintragMitOriginal(aufbau.app, aufbau.admin);
+    // KALIBRIERUNG wie E1 in klara-echt-am-server: derselbe Server beantwortet dieselbe Frage
+    // derselben Person über den Kettenweg mit dem Modell. Ist das rot, liegt es nicht an der Figur.
+    const kalibrierung = await kettenFrage(aufbau.app, leserKonto, GEDECKTE_FRAGE);
+    expect(
+      kalibrierung.answered && kalibrierung.citedSources.length > 0,
+      `Kalibrierung: der Frageweg antwortet nicht mit dem Modell — ${kalibrierung.roh}`,
+    ).toBe(true);
     const frageweg = riegel();
     abfangen((url, _init, weiter) => (url === "/api/ask" ? frageweg.offen.then(weiter) : null));
     await fragen(GEDECKTE_FRAGE);
