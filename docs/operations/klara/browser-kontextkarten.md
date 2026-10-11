@@ -218,36 +218,55 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
   - Gegenprobe: `BrowserBruecke/Tests/KlaraBrowserKarteTests/SitzungsbindungTests.swift`
     (`swift test` auf dem Mac; in dieser Bahn nicht ausgeführt).
   - Die Erweiterung schickt dafür neu den Mandanten mit der Karte.
-  - Der Anschluss im Host sind zwei Stellen: `anmelden(...)`, wenn die Webfläche `/begleiter`
-    ihre Anmeldung oder Abmeldung meldet, und `beiAenderung`, das die Karte an die Webfläche
-    weiterreicht.
+  **Nachtrag Nacharbeit 18 — Host übernommen und angeschlossen**
+  (`QUELLEN-HOSTUEBERNAHME-20261011T231344Z`). Die frühere Aussage, ein vorheriger Merge sei
+  Voraussetzung, ist überholt: Die Führung hat die Quellübernahme in diesem Arbeitsbereich
+  festgelegt.
 
-  *Nicht in diesem Arbeitsbaum möglich, mit Begründung:*
-  - Der Host gehört nicht allein zu `apps/desktop`. Er besteht aus 28 zusammengehörigen Dateien
-    (App, Webfläche `/begleiter` mit `Begleiter.tsx`/`begleiterBruecke.ts`, Serverwege
-    `klara-begleiter*.ts`, Bauskripte, Tests, rund 7.800 Zeilen). Sie stehen auf einem Zweig, der
-    `main` um rund 3.000 Dateien vorausläuft (`git diff --stat main...ff96149e`).
-  - Eine reguläre Integration ist ein Merge dieses Kandidaten. Diese Bahn darf keine Commits und
-    damit keine Merges erzeugen. Einzelne Dateien herauszukopieren wäre keine reguläre Integration
-    und bräche den Bau, weil Routenregistrierung und Abhängigkeiten auf demselben Zweig liegen.
-  - Die BPA-04-Funktionen benutzen Serverwege (`/api/auth/office-handover/redeem`,
-    `/api/klara/programme/*`), die in `main` nicht vorhanden sind.
-  - Nötig ist deshalb: Der Host-Kandidat `ff96149e` und die BPA-04-Teile aus `345b4467` kommen
-    über den regulären Lieferweg nach `main` (Merge durch die Liefersteuerung). Danach werden die
-    zwei Anschlussstellen eingesetzt, dann folgen Bau, Einrichtung und der reale AC10-Rundweg
-    durch die Führung.
-  - **Stand Nacharbeit 15: AC10 ist technisch unvollständig.** Der Begleiteranschluss ist
-    bestellte, noch ausstehende Produktarbeit dieser Claude-Nacharbeit. Er hängt an einer
-    Voraussetzung: dem Merge von `ff96149e` und `345b4467` durch die reguläre Koordination.
-    `ff96149e` ist weiterhin kein Vorfahr des Kandidaten (`git merge-base --is-ancestor`,
-    Exit 1). Diese Bahn kann den Merge nicht selbst erzeugen.
-  - Nach dem Merge setzt diese Nacharbeit den Anschluss im Host ein und berichtigt diese
-    Dokumentation auf den tatsächlichen Stand:
-    1. Im Host `quelle.anmelden(...)`/`quelle.anmelden(nil)` an die Anmeldemeldung der Webfläche
-       `/begleiter` anschließen.
-    2. `quelle.beiAenderung` an die Kartenanzeige der Webfläche anschließen, wobei `nil` die
-       Anzeige leert.
-    3. `quelle.beobachten()` beim Start aufrufen.
+  *Umgesetzt (Quellcode in `apps/desktop/klara-begleiter`, eine App):*
+  - **Host aus `ff96149e`:** `main.swift`, `Fenster.swift`, `Lage.swift`, `Info.plist.vorlage`
+    und `VERSION` sind byteweise unverändert übernommen. `Steuerung.swift` ist übernommen und um
+    die mit „BPA-01“ markierten Stellen ergänzt. Figur, Fenster, Menüleiste und Tastenkürzel
+    bleiben erhalten.
+  - **BPA-04 aus `345b4467`:** `Server.swift`, `FinderAufnahme.swift` und
+    `Bedienungshilfe.swift` sind unverändert übernommen. `Programme.swift` ist die frühere
+    `KlaraBegleiter.swift` ohne eigene `@main`-App. Der Host öffnet sie als Fenster
+    „In anderen Programmen …“; es gibt also keine zweite App.
+  - **`Package.swift`** ist neu und baut genau diese App mit `KlaraBrowserKarte` aus
+    `BrowserBruecke`. Die beiden Quell-Layouts sind nicht blind überschrieben.
+  - **Anmeldung:** Der Host stellt seine Anmeldung selbst beim Server fest (`/api/auth/me` in
+    einer eigenen WebKit-Skriptwelt).
+    - Er prüft nach jedem Laden, bei jeder Navigation, auf die Meldung `anmeldung` der Webfläche,
+      beim Öffnen des Menüs und alle 30 Sekunden. Nur die jüngste Abfrage zählt.
+    - `HostAnmeldungsFolge` macht daraus `anmelden(...)`. Jeder Übergang ist eine neue Sitzung
+      mit neuer Sitzungsmarke: abgemeldet → angemeldet oder Nutzerwechsel.
+    - Abgemeldet, offline oder nicht feststellbar führt zu `anmelden(nil)`.
+  - **Anzeige und Leerung:** `beiAenderung` setzt den Tooltip der Menüleiste und schickt die
+    Karte bzw. `null` als Ereignis `klara-begleiter-browserkarte` an die Webfläche, aber nur auf
+    dem eigenen Server.
+    - Das Menü zeigt „Browserkarte: …“ (Titel, Seite, Fassung, Auswahl), beim Öffnen frisch über
+      `aktuell()` geprüft.
+    - „Quelle im Browser öffnen“ prüft die Karte beim Klick erneut.
+  - **Lebenszyklus:** `beobachten()` beim Start; beim Beenden `anmelden(nil)` (Marke weg, die
+    Brücke nimmt nichts mehr an) und `anhalten()`.
+  - Widerruf, Tab-, Quell-, Konto- und Sitzungswechsel verwerfen verspätete Karten weiterhin über
+    dieselben Wege (Erweiterung `verwerfen`/`widerrufen`, Brücke, Sitzungsmarke).
+  - **Gegenproben:** `SitzungsbindungTests.swift` deckt die Anmeldefolge, die Herkunft wie in
+    der Erweiterung und den Fall ab, dass Abmelden und Neuanmelden desselben Nutzers die alte und
+    eine verspätete Karte sperrt.
+
+  *Getrennt offen:*
+  - **Native Prüfung:** Host, Brücke und Tests sind in dieser Bahn weder übersetzt noch
+    ausgeführt, weil Swift und XCTest fehlen. `swift build` bzw. `swift test` auf dem Mac stehen
+    aus.
+  - **Realer AC10-Rundweg** auf diesem Mac mit Chrome-, Brücken-, Begleiter- und macOS-Fassung.
+  - **Weitere Teile der Kandidaten:** Die Webfläche `/begleiter`, die Serverwege der
+    BPA-04-Funktionen (`/api/auth/office-handover/redeem`, `/api/klara/programme/*`) und das
+    Bauskript `scripts/klara-office/begleiter-bauen.sh` gehören zu `ff96149e` bzw. `345b4467`.
+    Sie liegen nicht in diesem Arbeitsbaum; bis dahin antworten diese BPA-04-Wege mit dem Fehler
+    des Servers. Die Browserkarte braucht sie nicht.
+  - **Git-Integration:** Kandidatenbildung und spätere Git-Zusammenführung übernimmt der
+    reguläre Adapter.
 
   Der Server-Sitzungsweg bleibt daneben angeschlossen. Er trägt Erklärung und Belege; der
   Begleiter bekommt die gebundene Karte.

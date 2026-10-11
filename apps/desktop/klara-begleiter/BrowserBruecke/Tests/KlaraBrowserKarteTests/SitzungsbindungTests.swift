@@ -78,6 +78,47 @@ final class SitzungsbindungTests: XCTestCase {
     XCTAssertNotNil(q.aktuell())
   }
 
+  /// nacharbeit-18: So meldet der Host seine Anmeldung (`Steuerung.anmeldungSetzen`).
+  func testHostAnmeldungsfolgeNeueSitzungBeiJedemUebergang() {
+    var zaehler = 0
+    var folge = HostAnmeldungsFolge(mandant: "https://app.klarwerk.ai") {
+      zaehler += 1
+      return "s-\(zaehler)"
+    }
+    let a1 = folge.gemeldet(nutzer: "nutzer-a")
+    XCTAssertEqual(a1?.sitzung, "s-1")
+    XCTAssertEqual(a1?.mandant, "https://app.klarwerk.ai")
+    XCTAssertEqual(folge.gemeldet(nutzer: "nutzer-a"), a1)  // dieselbe Anmeldung bleibt
+    XCTAssertNil(folge.gemeldet(nutzer: nil))  // abgemeldet / offline
+    XCTAssertEqual(folge.gemeldet(nutzer: "nutzer-a")?.sitzung, "s-2")  // erneut angemeldet
+    XCTAssertEqual(folge.gemeldet(nutzer: "nutzer-b")?.sitzung, "s-3")  // Nutzerwechsel
+    XCTAssertNil(folge.gemeldet(nutzer: ""))
+  }
+
+  func testKlarwerkHerkunftWieDieErweiterung() {
+    XCTAssertEqual(
+      klarwerkHerkunft(URL(string: "https://App.Klarwerk.ai/begleiter")!), "https://app.klarwerk.ai")
+    XCTAssertEqual(
+      klarwerkHerkunft(URL(string: "http://localhost:8080/")!), "http://localhost:8080")
+    XCTAssertNil(klarwerkHerkunft(URL(string: "begleiter")!))
+  }
+
+  /// Host-Weg: Abmelden und erneutes Anmelden DESSELBEN Nutzers sperrt die Karte der alten Sitzung.
+  func testHostAbmeldungUndNeuanmeldungSperrtAlteKarte() throws {
+    let q = BrowserKartenQuelle(ablage: ablage)
+    var folge = HostAnmeldungsFolge(mandant: "https://app.klarwerk.ai")
+    q.anmelden(folge.gemeldet(nutzer: "nutzer-a"))
+    let alt = try XCTUnwrap(q.sitzungsmarke)
+    try ablegen(marke: alt)
+    XCTAssertNotNil(q.aktuell())
+    q.anmelden(folge.gemeldet(nutzer: nil))
+    XCTAssertNil(q.aktuell())
+    q.anmelden(folge.gemeldet(nutzer: "nutzer-a"))
+    XCTAssertNotEqual(q.sitzungsmarke, alt)
+    try ablegen(marke: alt)  // verspätete Übergabe aus der alten Sitzung
+    XCTAssertNil(q.aktuell())
+  }
+
   func testOhneMarkeFremderNutzerUnsichereDateiUndAbmeldungGebenNichtsFrei() throws {
     let q = BrowserKartenQuelle(ablage: ablage)
     q.anmelden(anmeldung("s-1"))

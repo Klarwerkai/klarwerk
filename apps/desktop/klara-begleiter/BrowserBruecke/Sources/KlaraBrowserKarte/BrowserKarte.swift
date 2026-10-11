@@ -20,15 +20,14 @@
 // Gelöscht oder unlesbar heisst: KEINE Karte (nie die zuletzt gesehene). Die Datei muss diesem
 // macOS-Konto gehören und darf nur für es lesbar sein (0600), sonst wird sie ignoriert.
 //
-// ANSCHLUSS IM HOST (zwei Stellen, s. docs/operations/klara/browser-kontextkarten.md):
-//   1. Wenn die Webfläche `/begleiter` ihre Anmeldung meldet (oder Abmeldung), ruft der Host
-//      `quelle.anmelden(Anmeldung(...))` bzw. `quelle.anmelden(nil)`.
-//   2. `quelle.beiAenderung = { karte in … }` reicht die freigegebene Karte (oder `nil`) an die
-//      Webfläche weiter; `quelle.beobachten()` startet das Beobachten der Ablage.
+// ANSCHLUSS IM HOST (nacharbeit-18): `apps/desktop/klara-begleiter/Sources/KlaraBegleiter/
+// Steuerung.swift`. Der Host meldet seine geprüfte Anmeldung über `HostAnmeldungsFolge` an
+// `anmelden(...)`/`anmelden(nil)`; `beiAenderung` zeigt die Karte bzw. leert die Anzeige;
+// `beobachten()` beim Start, `anmelden(nil)` und `anhalten()` beim Beenden.
 import Foundation
 
 /// Die Karte, wie die Erweiterung sie übergeben hat — nur die angezeigten Felder.
-public struct BrowserKarte: Equatable {
+public struct BrowserKarte: Equatable, Sendable {
   public let folge: Int
   public let fassung: String
   public let nutzer: String
@@ -53,6 +52,43 @@ public struct BegleiterAnmeldung: Equatable {
     self.nutzer = nutzer
     self.mandant = mandant
     self.sitzung = sitzung
+  }
+}
+
+/// Die Herkunft eines Klarwerk-Servers, wie die Erweiterung sie als `mandant` schreibt
+/// (`https://app.klarwerk.ai`, mit Port nur, wenn einer angegeben ist). `nil` ohne Schema/Host.
+public func klarwerkHerkunft(_ server: URL) -> String? {
+  guard let schema = server.scheme?.lowercased(), let host = server.host?.lowercased(), !host.isEmpty
+  else { return nil }
+  if let port = server.port { return "\(schema)://\(host):\(port)" }
+  return "\(schema)://\(host)"
+}
+
+/// Was der Host über seine Anmeldung weiss, wird hier zu `BegleiterAnmeldung`: JEDER Übergang
+/// (abgemeldet → angemeldet, Nutzerwechsel) ist eine NEUE Sitzung; dieselbe Anmeldung bleibt
+/// dieselbe. Damit erzeugt auch Abmelden und erneutes Anmelden desselben Nutzers eine neue
+/// Sitzungsmarke in `BrowserKartenQuelle`.
+public struct HostAnmeldungsFolge {
+  public let mandant: String
+  public private(set) var aktuell: BegleiterAnmeldung?
+  private let neueSitzung: () -> String
+
+  public init(mandant: String, neueSitzung: @escaping () -> String = { UUID().uuidString }) {
+    self.mandant = mandant
+    self.neueSitzung = neueSitzung
+  }
+
+  /// `nutzer` ist die vom Server bestätigte Nutzerkennung — `nil` oder leer heisst abgemeldet
+  /// bzw. nicht feststellbar (fail-closed).
+  public mutating func gemeldet(nutzer: String?) -> BegleiterAnmeldung? {
+    guard let nutzer, !nutzer.isEmpty else {
+      aktuell = nil
+      return nil
+    }
+    if aktuell?.nutzer != nutzer {
+      aktuell = BegleiterAnmeldung(nutzer: nutzer, mandant: mandant, sitzung: neueSitzung())
+    }
+    return aktuell
   }
 }
 
