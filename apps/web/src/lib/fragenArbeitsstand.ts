@@ -40,6 +40,18 @@ export interface GespeicherteAntwort {
   /** Zeitpunkt der Antwort (ISO) — die Fläche nennt ihn, damit niemand sie für frisch hält. */
   angezeigtAm: string;
   /**
+   * R-0293 / R-0317: die Kennung des dauerhaften Antwortbelegs DIESER Antwort — der Schlüssel zu
+   * „Wie kam diese Antwort zustande?". Sie reist mit der Antwort im Stand desselben Kontos, damit
+   * der Erklärweg nach Neuladen und Wiederaufnahme bleibt.
+   *
+   * DREI LAGEN, bewusst unterschieden:
+   *   · fehlt das Feld  -> ALTBESTAND: der Eintrag stammt von vor dieser Regel; eine Kennung wurde
+   *                        nie gemerkt. Die Fläche bietet dann keine Erklärung an, statt zu raten.
+   *   · `null`          -> der Server hat zu dieser Antwort keinen Beleg geschrieben.
+   *   · Zeichenkette    -> die Kennung des Belegs.
+   */
+  answerId?: string | null;
+  /**
    * R-0338: die Fassung jeder herangezogenen Quelle, wie der SERVER sie zu dieser Antwort meldete
    * (`AskResponse.quellenStand`) — Grundlage des Auffrischen-Vertrags (`antwortFrische`). Eigener
    * Schlüsselname: ein früherer, nie ausgelieferter Stand legte unter `quellenStand` einen Wert aus
@@ -184,9 +196,16 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
   if (!istObjekt(roh)) {
     return null;
   }
-  const { frage, result, receipt, verschlossen, gapId, angezeigtAm } = roh;
+  const { frage, result, receipt, verschlossen, gapId, angezeigtAm, answerId } = roh;
+  // R-0293: eine VORHANDENE Kennung muss eine Kennung oder `null` sein; ein anderer Wert ist ein
+  // beschädigter Eintrag. Eine FEHLENDE ist Altbestand und kein Fehler.
+  const kennungGueltig =
+    !("answerId" in roh) ||
+    answerId === null ||
+    (typeof answerId === "string" && answerId.trim() !== "");
   const fragekontext = fragekontextAus(roh.fragekontext);
   if (
+    !kennungGueltig ||
     typeof frage !== "string" ||
     frage.trim() === "" ||
     !istObjekt(result) ||
@@ -209,6 +228,8 @@ function antwortAus(roh: unknown): GespeicherteAntwort | null {
     verschlossen: verschlossen as VerschlossenHinweis[],
     gapId,
     angezeigtAm,
+    // Altbestand bleibt Altbestand: ohne Feld im Speicher entsteht hier auch keins.
+    ...("answerId" in roh ? { answerId: answerId as string | null } : {}),
     ...(serverQuellenStand ? { serverQuellenStand } : {}),
     ...(beobachtet ? { beobachtet } : {}),
     // Fehlt oder beschädigt: das Feld fehlt auch hier — „unbekannt" hat genau eine Darstellung.
