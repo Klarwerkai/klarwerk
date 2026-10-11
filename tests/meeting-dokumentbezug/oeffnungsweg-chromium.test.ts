@@ -282,6 +282,9 @@ describe("BPA-16 · Öffnungsweg in Chromium (K1/K6/K7/K10)", () => {
     await als(a, vortragende, "PUT", `/api/users/${teilnehmer.id}`, { freigabe: "intern" });
     await klick('[data-testid="besprechung-folie-oeffnen"][data-sld="257"]');
     await warte('[data-testid="besprechung-treffer-leer"]');
+    // Nacharbeit 9: die Überschrift nennt den gesperrten Folientitel nicht mehr.
+    const titel = await s.textContent('[data-testid="besprechung-treffer-titel"]');
+    expect(titel).not.toContain("Umsatzentwicklung");
     await klick('[data-testid="besprechung-stelle-oeffnen"][data-stelle="r2"]');
     await warte('[data-testid="besprechung-folie-gesperrt"]');
     expect(await s.$('[data-testid="besprechung-quelle"]')).toBeNull();

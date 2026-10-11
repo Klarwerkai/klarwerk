@@ -83,6 +83,8 @@ export interface Gespraechsstelle {
 export interface Praesentation {
   dateiId: string;
   quelleId: string;
+  /** Name der hochgeladenen Datei (nur für lesbare Präsentationen; `null`, wenn unbekannt). */
+  dateiname: string | null;
   fassung: string;
   abgleich: { status: string; originalZugriff: boolean; originalQuelleId?: string };
   folien: { sldId: string; position: number; titel: string; versteckt: boolean }[];

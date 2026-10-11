@@ -59,6 +59,12 @@ export default {
     "besprechungen.folien.titel": "Folien",
     "besprechungen.folien.leer": "Noch keine Präsentation, die du lesen darfst.",
     "besprechungen.folienZeile": "Folie {{position}}: {{titel}}",
+    "besprechungen.praesentationKopf": "{{datei}} (Kennung {{kennung}}) · Fassung {{fassung}}",
+    "besprechungen.dateiUnbekannt": "Datei ohne Namen",
+    "besprechungen.folieOption":
+      "{{datei}} (Kennung {{kennung}}) · Fassung {{fassung}} · Folie {{position}}: {{titel}}",
+    "besprechungen.treffer.titelFolieOhneTitel":
+      "Rückmeldungen zu einer Folie, die du nicht (mehr) lesen darfst",
     "besprechungen.folie.versteckt": "ausgeblendet",
     "besprechungen.folie.oeffnen": "Rückmeldungen zu dieser Folie",
     "besprechungen.praesentierteFassung": "Präsentierte Fassung öffnen",
@@ -154,6 +160,12 @@ export default {
     "besprechungen.folien.titel": "Slides",
     "besprechungen.folien.leer": "No presentation you are allowed to read yet.",
     "besprechungen.folienZeile": "Slide {{position}}: {{titel}}",
+    "besprechungen.praesentationKopf": "{{datei}} (ID {{kennung}}) · version {{fassung}}",
+    "besprechungen.dateiUnbekannt": "File without a name",
+    "besprechungen.folieOption":
+      "{{datei}} (ID {{kennung}}) · version {{fassung}} · slide {{position}}: {{titel}}",
+    "besprechungen.treffer.titelFolieOhneTitel":
+      "Feedback on a slide you are not (or no longer) allowed to read",
     "besprechungen.folie.versteckt": "hidden",
     "besprechungen.folie.oeffnen": "Feedback on this slide",
     "besprechungen.praesentierteFassung": "Open presented version",
@@ -248,6 +260,11 @@ export default {
     "besprechungen.folien.titel": "Dia's",
     "besprechungen.folien.leer": "Nog geen presentatie die je mag lezen.",
     "besprechungen.folienZeile": "Dia {{position}}: {{titel}}",
+    "besprechungen.praesentationKopf": "{{datei}} (ID {{kennung}}) · versie {{fassung}}",
+    "besprechungen.dateiUnbekannt": "Bestand zonder naam",
+    "besprechungen.folieOption":
+      "{{datei}} (ID {{kennung}}) · versie {{fassung}} · dia {{position}}: {{titel}}",
+    "besprechungen.treffer.titelFolieOhneTitel": "Feedback op een dia die je niet (meer) mag lezen",
     "besprechungen.folie.versteckt": "verborgen",
     "besprechungen.folie.oeffnen": "Feedback op deze dia",
     "besprechungen.praesentierteFassung": "Gepresenteerde versie openen",

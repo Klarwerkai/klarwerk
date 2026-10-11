@@ -193,10 +193,20 @@ export function Besprechungen(): JSX.Element {
 // Eine Besprechung
 // ------------------------------------------------------------------------------------------------
 
-/** Woher die angezeigten Rückmeldungen kommen — aus einer Folie oder aus einer Gesprächsstelle. */
-type Treffer =
-  | { von: "folie"; dateiId: string; sldId: string; position: number; titel: string }
-  | { von: "stelle"; zeitMs: number };
+/**
+ * Woher die angezeigten Rückmeldungen kommen — aus einer Folie oder aus einer Gesprächsstelle.
+ *
+ * Nacharbeit 9 (Bens Befund 2): die Auswahl trägt NUR Kennungen, keinen Titel. Die Überschrift
+ * liest Nummer und Titel bei jedem Rendern aus den aktuell gelieferten (also berechtigten) Daten;
+ * fehlt die Folie dort, steht kein Titel da. Ein Titel aus einer früheren Auswahl kann einen
+ * Rechteentzug so nicht überleben.
+ */
+type Treffer = { von: "folie"; dateiId: string; sldId: string } | { von: "stelle"; zeitMs: number };
+
+/** Die gekürzte Fassung (SHA-256) für die Anzeige — dieselbe Länge an jeder Stelle der Seite. */
+function fassungKurz(fassung: string): string {
+  return fassung.slice(0, 12);
+}
 
 function zielSchluessel(z: Folienziel): string {
   return JSON.stringify([z.dateiId, z.fassung, z.sldId]);
@@ -218,7 +228,7 @@ function RueckmeldungsKarte({
 }: {
   r: RueckmeldungsSicht;
   zurStelle: (startMs: number) => void;
-  zurFolie: (dateiId: string, sldId: string, position: number, titel: string) => void;
+  zurFolie: (dateiId: string, sldId: string) => void;
 }): JSX.Element {
   const { t } = useTranslation();
   const sprecher = r.stelle.sprecher ?? t("besprechungen.sprecherUnbekannt");
@@ -254,7 +264,7 @@ function RueckmeldungsKarte({
               data-testid="besprechung-zur-folie"
               onClick={() => {
                 if (r.folie?.lesbar) {
-                  zurFolie(r.folie.dateiId, r.folie.sldId, r.folie.position, r.folie.titel);
+                  zurFolie(r.folie.dateiId, r.folie.sldId);
                 }
               }}
             >
@@ -488,7 +498,13 @@ function StelleBearbeiten({
                 key={`${p.dateiId}-${p.fassung}-${f.sldId}`}
                 value={zielSchluessel({ dateiId: p.dateiId, fassung: p.fassung, sldId: f.sldId })}
               >
-                {t("besprechungen.folienZeile", { position: f.position, titel: f.titel })}
+                {t("besprechungen.folieOption", {
+                  datei: p.dateiname ?? t("besprechungen.dateiUnbekannt"),
+                  kennung: p.dateiId,
+                  fassung: fassungKurz(p.fassung),
+                  position: f.position,
+                  titel: f.titel,
+                })}
               </option>
             )),
           )}
@@ -570,15 +586,42 @@ export function BesprechungAnsicht(): JSX.Element {
       return besprechungenApi.ausZeitstelle(id, treffer?.von === "stelle" ? treffer.zeitMs : 0);
     },
   });
+  const qc = useQueryClient();
+  // Wann zuletzt geöffnet wurde: Daten der Besprechung zählen für die Überschrift erst, wenn sie
+  // NACH diesem Zeitpunkt vom Server kamen — also mit den aktuellen Rechten.
+  const [geoeffnetAm, setGeoeffnetAm] = useState(0);
   const oeffnen = (ziel: Treffer): void => {
     setAbruf((n) => n + 1);
+    setGeoeffnetAm(Date.now());
     setTreffer(ziel);
+    void qc.invalidateQueries({ queryKey: ["besprechung", id], exact: true });
   };
   const zurStelle = (zeitMs: number): void => oeffnen({ von: "stelle", zeitMs });
-  const zurFolie = (dateiId: string, sldId: string, position: number, titel: string): void =>
-    oeffnen({ von: "folie", dateiId, sldId, position, titel });
+  const zurFolie = (dateiId: string, sldId: string): void =>
+    oeffnen({ von: "folie", dateiId, sldId });
 
   const b = besprechung.data;
+  // Nacharbeit 9 (Bens Befund 2): Nummer und Titel der geöffneten Folie NUR aus aktuell erlaubten
+  // Daten — aus den Treffern dieses Abrufs oder aus der danach neu geladenen Besprechung. Fehlt die
+  // Folie dort (etwa nach einem Rechteentzug), bleibt die Überschrift ohne Titel.
+  const folieAktuell = ((): { position: number; titel: string } | null => {
+    if (treffer?.von !== "folie") {
+      return null;
+    }
+    for (const r of liste.data?.rueckmeldungen ?? []) {
+      const fo = r.folie;
+      if (fo?.lesbar && fo.dateiId === treffer.dateiId && fo.sldId === treffer.sldId) {
+        return { position: fo.position, titel: fo.titel };
+      }
+    }
+    const frisch = !besprechung.isFetching && besprechung.dataUpdatedAt >= geoeffnetAm;
+    const f = frisch
+      ? b?.praesentationen
+          .find((p) => p.dateiId === treffer.dateiId)
+          ?.folien.find((x) => x.sldId === treffer.sldId)
+      : undefined;
+    return f ? { position: f.position, titel: f.titel } : null;
+  })();
   const gewaehlteStelle =
     b && gewaehlt
       ? b.mitschriften
@@ -620,6 +663,16 @@ export function BesprechungAnsicht(): JSX.Element {
             ) : null}
             {b.praesentationen.map((p) => (
               <div key={`${p.dateiId}-${p.fassung}`} data-testid="besprechung-praesentation">
+                <h3
+                  data-testid="besprechung-praesentation-kopf"
+                  className="text-[13.5px] font-semibold text-ink"
+                >
+                  {t("besprechungen.praesentationKopf", {
+                    datei: p.dateiname ?? t("besprechungen.dateiUnbekannt"),
+                    kennung: p.dateiId,
+                    fassung: fassungKurz(p.fassung),
+                  })}
+                </h3>
                 <div className="mb-1 flex flex-wrap items-center gap-3 text-[12.5px] text-muted">
                   <span data-testid="besprechung-abgleich" data-status={p.abgleich.status}>
                     {t(`besprechungen.abgleich.${p.abgleich.status}`)}
@@ -639,7 +692,7 @@ export function BesprechungAnsicht(): JSX.Element {
                         data-testid="besprechung-folie-oeffnen"
                         data-datei={p.dateiId}
                         data-sld={f.sldId}
-                        onClick={() => zurFolie(p.dateiId, f.sldId, f.position, f.titel)}
+                        onClick={() => zurFolie(p.dateiId, f.sldId)}
                       >
                         {t("besprechungen.folie.oeffnen")}
                       </Button>
@@ -712,12 +765,11 @@ export function BesprechungAnsicht(): JSX.Element {
                 data-von={treffer.von}
                 className="text-[16px] font-semibold text-ink"
               >
-                {treffer.von === "folie"
-                  ? t("besprechungen.treffer.titelFolie", {
-                      position: treffer.position,
-                      titel: treffer.titel,
-                    })
-                  : t("besprechungen.treffer.titelStelle", { zeit: zeitText(treffer.zeitMs) })}
+                {treffer.von === "stelle"
+                  ? t("besprechungen.treffer.titelStelle", { zeit: zeitText(treffer.zeitMs) })
+                  : folieAktuell
+                    ? t("besprechungen.treffer.titelFolie", folieAktuell)
+                    : t("besprechungen.treffer.titelFolieOhneTitel")}
               </h2>
               <div aria-live="polite">
                 {liste.isPending ? (

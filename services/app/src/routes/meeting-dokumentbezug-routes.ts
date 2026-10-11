@@ -268,7 +268,7 @@ export function meetingDokumentbezugRoutes(
         eigen: z.eintrag.eigner === user.id,
         zeitbasis: z.bezug.meeting.zeitbasis,
         version: z.eintrag.version,
-        praesentationen: z.bezug.praesentationen(user.id),
+        praesentationen: await mitDateinamen(objects, z.bezug.praesentationen(user.id)),
         mitschriften: z.bezug.mitschriftenSicht(user.id),
         rueckmeldungen: z.bezug.alle(user.id),
       });
@@ -593,4 +593,22 @@ export function meetingDokumentbezugRoutes(
       }
     });
   };
+}
+
+/**
+ * Nacharbeit 9 (Bens Befund 1): der Dateiname jeder Präsentation, damit gleich benannte Folien
+ * verschiedener Dateien und Fassungen in der Auswahl unterscheidbar sind. Die Liste enthält nur
+ * Präsentationen, deren Quellobjekt der Nutzer gerade lesen darf (`praesentationen` filtert nach
+ * demselben Urteil); ein fehlendes Objekt ergibt `null`, keinen erfundenen Namen.
+ */
+async function mitDateinamen<T extends { quelleId: string }>(
+  objects: ObjectStore,
+  liste: T[],
+): Promise<(T & { dateiname: string | null })[]> {
+  const ergebnis: (T & { dateiname: string | null })[] = [];
+  for (const p of liste) {
+    const obj = await objects.read(p.quelleId);
+    ergebnis.push({ ...p, dateiname: obj?.ref.name ?? null });
+  }
+  return ergebnis;
 }

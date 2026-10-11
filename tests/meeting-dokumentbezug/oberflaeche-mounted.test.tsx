@@ -37,10 +37,11 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import { PPTX_MIME, VTT_MIME } from "../../apps/web/src/api/besprechungen";
 import i18n from "../../apps/web/src/i18n";
+import { verwerfeAlteInhalte } from "../../apps/web/src/lib/rechtekontext";
 import { BesprechungAnsicht } from "../../apps/web/src/pages/Besprechungen";
 import { Dokumentfragen } from "../../apps/web/src/pages/Dokumentfragen";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { NORD, VTT, pptx } from "./vorrichtung";
+import { NORD, SUED, VTT, pptx } from "./vorrichtung";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -208,16 +209,29 @@ async function dateiSetzen(selektor: string, datei: File): Promise<void> {
   });
 }
 
+/** Der Abfrage-Cache der gerade offenen Seite — für das Verwerfen beim Rechtekontextwechsel. */
+let abfragen: QueryClient;
+
+/** Leert eine Dateiauswahl (die Seite merkt sich sonst die zuletzt gewählte Datei). */
+async function dateiLeeren(selektor: string): Promise<void> {
+  const feld = el<HTMLInputElement>(selektor);
+  Object.defineProperty(feld, "files", { value: [], configurable: true });
+  await act(async () => {
+    feld.dispatchEvent(new Event("change", { bubbles: true }));
+    await durchlaufen();
+  });
+}
+
 async function seiteOeffnen(pfad: string): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  abfragen = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root?.render(
       createElement(
         QueryClientProvider,
-        { client: qc },
+        { client: abfragen },
         createElement(
           MemoryRouter,
           { initialEntries: [pfad] },
@@ -298,6 +312,23 @@ describe("BPA-16 · Rückmeldungen aus Folie und Gesprächsstelle auf der Seite 
       () => container.querySelectorAll('[data-testid="besprechung-folie-oeffnen"]').length === 3,
       "drei Folien der verbundenen Präsentation",
     );
+    // Nacharbeit 9: eine zweite Präsentation mit einer gleich benannten Folie
+    // („Umsatzentwicklung") — ohne Original.
+    await dateiSetzen(
+      '[data-testid="besprechung-datei-praesentation"]',
+      pptxDatei(await pptx(SUED), "sued.pptx"),
+    );
+    await dateiLeeren('[data-testid="besprechung-datei-original"]');
+    await klick('[data-testid="besprechung-praesentation-verbinden"]');
+    await bis(
+      () => container.querySelectorAll('[data-testid="besprechung-folie-oeffnen"]').length === 5,
+      "fünf Folien aus zwei Präsentationen",
+    );
+    const koepfe = Array.from(
+      container.querySelectorAll('[data-testid="besprechung-praesentation-kopf"]'),
+    ).map((k) => k.textContent ?? "");
+    expect(koepfe.some((k) => k.startsWith("nord-vortrag.pptx (Kennung "))).toBe(true);
+    expect(koepfe.some((k) => k.startsWith("sued.pptx (Kennung "))).toBe(true);
     await waehlen('[data-testid="besprechung-stufe"]', "intern");
     await dateiSetzen(
       '[data-testid="besprechung-datei-mitschrift"]',
@@ -309,8 +340,22 @@ describe("BPA-16 · Rückmeldungen aus Folie und Gesprächsstelle auf der Seite 
     const optionen = Array.from(
       el<HTMLSelectElement>('[data-testid="besprechung-zuordnung-folie"]').options,
     );
-    const folie2 = optionen.find((o) => o.textContent === "Folie 2: Umsatzentwicklung");
-    expect(folie2, "Folie 2 steht in der Zuordnungsauswahl").toBeDefined();
+    // Nacharbeit 9 (Befund 1): gleich benannte Folien sind an Datei, Kennung und Fassung
+    // unterscheidbar; Nummer und Titel stehen ergänzend dabei.
+    const gleichBenannt = optionen
+      .map((o) => o.textContent ?? "")
+      .filter((text) => text.endsWith("Folie 2: Umsatzentwicklung"));
+    expect(gleichBenannt).toHaveLength(2);
+    expect(new Set(gleichBenannt).size).toBe(2);
+    for (const text of gleichBenannt) {
+      expect(text).toMatch(/^(nord-vortrag|sued)\.pptx \(Kennung .+\) · Fassung [0-9a-f]{12} · /);
+    }
+    const folie2 = optionen.find(
+      (o) =>
+        o.textContent?.startsWith("nord-vortrag.pptx") &&
+        o.textContent.endsWith("Folie 2: Umsatzentwicklung"),
+    );
+    expect(folie2, "Folie 2 der Vortragskopie steht in der Zuordnungsauswahl").toBeDefined();
     await waehlen('[data-testid="besprechung-zuordnung-folie"]', folie2?.value ?? "");
     await klick('[data-testid="besprechung-zuordnung-speichern"]');
     const bearbeitenText = (): string =>
@@ -331,27 +376,32 @@ describe("BPA-16 · Rückmeldungen aus Folie und Gesprächsstelle auf der Seite 
       praesentationen: {
         dateiId: string;
         quelleId: string;
+        dateiname: string | null;
         abgleich: { originalQuelleId: string };
       }[];
     };
-    const kopieId = besprechung.praesentationen[0]?.quelleId ?? "";
-    const originalId = besprechung.praesentationen[0]?.abgleich.originalQuelleId ?? "";
+    const vortrag = besprechung.praesentationen.find((p) => p.dateiname === "nord-vortrag.pptx");
+    const kopieId = vortrag?.quelleId ?? "";
+    const originalId = vortrag?.abgleich.originalQuelleId ?? "";
     expect(kopieId).not.toBe("");
     expect(originalId).not.toBe(kopieId);
+    const folie257 = `[data-testid="besprechung-folie-oeffnen"][data-datei="${kopieId}"][data-sld="257"]`;
+    const titelSel = '[data-testid="besprechung-treffer-titel"]';
 
     // ---- B · der Teilnehmer: aus der Folie und aus der Gesprächsstelle öffnen -------------------
     cookie = teilnehmer.cookie;
     await seiteOeffnen(pfad);
     await bis(
-      () => container.querySelectorAll('[data-testid="besprechung-folie-oeffnen"]').length === 3,
+      () => container.querySelectorAll('[data-testid="besprechung-folie-oeffnen"]').length === 5,
       "Folien für den Teilnehmer",
     );
-    await klick('[data-testid="besprechung-folie-oeffnen"][data-sld="257"]');
+    await klick(folie257);
     await bis(
       () => container.querySelector('[data-testid="besprechung-rueckmeldung"]') !== null,
       "Rückmeldung aus der Folie",
     );
-    expect(el('[data-testid="besprechung-treffer-titel"]').getAttribute("data-von")).toBe("folie");
+    expect(el(titelSel).getAttribute("data-von")).toBe("folie");
+    expect(el(titelSel).textContent).toBe("Rückmeldungen zu Folie 2: Umsatzentwicklung");
     const ausFolie = el('[data-testid="besprechung-rueckmeldung"]');
     const rueckmeldungId = ausFolie.getAttribute("data-rueckmeldung");
     expect(ausFolie.textContent).toContain("Berechnungsgrundlage unter die Grafik");
@@ -396,12 +446,33 @@ describe("BPA-16 · Rückmeldungen aus Folie und Gesprächsstelle auf der Seite 
     );
 
     // ---- C · Rechteentzug ohne Neuladen der Seite -----------------------------------------------
-    await freigabeSetzen(vortragende, teilnehmer, "intern");
-    await klick('[data-testid="besprechung-folie-oeffnen"][data-sld="257"]');
+    // Die Folie ist geöffnet, die Überschrift nennt ihren Titel. Dann wird das Leserecht entzogen;
+    // die App verwirft daraufhin ihre Inhaltsabfragen (`verwerfeAlteInhalte`, dasselbe wie
+    // `RechtekontextWache`). Nacharbeit 9 (Befund 2): Die Auswahl selbst überlebt das — der Titel
+    // darf es nicht. Die Meetingmitgliedschaft bleibt bestehen.
+    await klick(folie257);
     await bis(
-      () => container.querySelector('[data-testid="besprechung-treffer-leer"]') !== null,
-      "aus der Folie nichts mehr",
+      () => el(titelSel).textContent === "Rückmeldungen zu Folie 2: Umsatzentwicklung",
+      "Überschrift mit Titel vor dem Entzug",
     );
+    await freigabeSetzen(vortragende, teilnehmer, "intern");
+    await act(async () => {
+      await verwerfeAlteInhalte(abfragen);
+      await durchlaufen();
+    });
+    await bis(
+      () => da('[data-testid="besprechung-treffer-leer"]'),
+      "aus der Folie nichts mehr (neu geholt mit aktuellen Rechten)",
+    );
+    await bis(
+      () =>
+        el(titelSel).textContent ===
+        "Rückmeldungen zu einer Folie, die du nicht (mehr) lesen darfst",
+      "Überschrift ohne Titel nach dem Entzug",
+    );
+    expect(el(titelSel).getAttribute("data-von")).toBe("folie");
+    expect(el('[data-testid="besprechung-folien"]').textContent).not.toContain("Umsatzentwicklung");
+    expect(container.textContent).not.toContain("nord-vortrag.pptx");
     await klick('[data-testid="besprechung-stelle-oeffnen"][data-stelle="r2"]');
     await bis(
       () => container.querySelector('[data-testid="besprechung-folie-gesperrt"]') !== null,
