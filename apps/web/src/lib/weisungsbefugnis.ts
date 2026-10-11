@@ -25,6 +25,30 @@ export function weisungsbefugtFuer(
 }
 
 /**
+ * Nacharbeit 14 (Ben B1): welche Weisung ist die aktuelle? Spiegel von `aktuelleWeisung`
+ * (services/app/src/weisung-und-freigabe.ts) — nur, um den richtigen Sichtungsweg anzubieten; der
+ * Server entscheidet mit derselben Regel. Jünger ist der Beleg, der später in der Kette steht;
+ * Altbestand ohne gebundenen Beleg fällt auf die Fassung zurück, bei Gleichstand gilt `eigene`.
+ */
+export function aktuelleWeisungsart(ko: {
+  weisung?: { fassung: number; beleg?: { auditSeq: number } } | undefined;
+  weisungsSichtung?: { auditSeq: number; koVersion: number } | undefined;
+}): "punktweise" | "eigene" | null {
+  const punktweise = ko.weisung;
+  const eigene = ko.weisungsSichtung;
+  if (!punktweise) {
+    return eigene ? "eigene" : null;
+  }
+  if (!eigene) {
+    return "punktweise";
+  }
+  if (punktweise.beleg) {
+    return punktweise.beleg.auditSeq > eigene.auditSeq ? "punktweise" : "eigene";
+  }
+  return punktweise.fassung > eigene.koVersion ? "punktweise" : "eigene";
+}
+
+/**
  * Entscheidung 19 · Nacharbeit 11 (Ben B1): die wählbaren Sichtenden. Nur Konten, die der Server
  * für DIESEN Eintrag als sichtungsfähig nennt (`sichtungsKandidaten` — sie lesen ihn mit ihrem
  * eigenen Zugang), und nie die weisende Person selbst. Fehlt die Liste, ist niemand wählbar: die

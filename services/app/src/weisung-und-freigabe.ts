@@ -216,6 +216,34 @@ export function offenePunkte(
   };
 }
 
+/**
+ * Nacharbeit 14 (Ben B1) — WELCHE WEISUNG IST DIE AKTUELLE?
+ *
+ * Ein Objekt kann beide Weisungswege durchlaufen haben: eine frühere eigene Weisung aus
+ * `weisung-validate` (`weisungsSichtung`) und danach eine Weisung mit punktweiser Entscheidung
+ * (`weisung`) — oder umgekehrt. Beide bleiben als Herkunft stehen; gesichtet wird die JÜNGERE
+ * Entscheidung. Jünger heißt: ihr Beleg steht später in der Protokollkette (`auditSeq`). Altbestand
+ * ohne gebundenen Beleg an der punktweisen Weisung fällt auf die Fassung zurück; bei Gleichstand
+ * bleibt der bisherige Weg (`eigene`).
+ */
+export function aktuelleWeisung(ko: {
+  weisung?: { fassung: number; beleg?: { auditSeq: number } } | undefined;
+  weisungsSichtung?: { auditSeq: number; koVersion: number } | undefined;
+}): "punktweise" | "eigene" | null {
+  const punktweise = ko.weisung;
+  const eigene = ko.weisungsSichtung;
+  if (!punktweise) {
+    return eigene ? "eigene" : null;
+  }
+  if (!eigene) {
+    return "punktweise";
+  }
+  if (punktweise.beleg) {
+    return punktweise.beleg.auditSeq > eigene.auditSeq ? "punktweise" : "eigene";
+  }
+  return punktweise.fassung > eigene.koVersion ? "punktweise" : "eigene";
+}
+
 export function sichtungsVermerk(wert: unknown): Ergebnis<string | undefined> {
   if (wert === undefined || wert === null) {
     return { ok: true, wert: undefined };

@@ -265,6 +265,8 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // dass das Tor am fremden vertraulichen Objekt vorher mit 404 greift.
     case "weisung":
       return { action, sichtung: { verantwortlich: "eva-sichtet", frist: "2099-12-31" } };
+    case "weisung-abschluss":
+      return { action };
     case "externe-freigabe":
       return {
         action,

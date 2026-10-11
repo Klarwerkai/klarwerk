@@ -7638,6 +7638,17 @@ export class KoService {
                   },
                 }
               : {}),
+            // Aufnahme gesamt-wissen-herkunft · Nacharbeit 14 (Ben B1): die Weisung mit punktweiser
+            // Entscheidung wird an GENAU ihren Beleg gebunden — so ist eindeutig, welche Weisung
+            // (diese oder eine frühere `weisungsSichtung`) die aktuelle ist. Beide bleiben stehen.
+            ...(state.herkunft?.weisung && updated.weisung
+              ? {
+                  weisung: {
+                    ...updated.weisung,
+                    beleg: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+                  },
+                }
+              : {}),
           };
           await this.repo.update(mitVerweis, tx);
           return { ko: mitVerweis, geschrieben: true, ref };

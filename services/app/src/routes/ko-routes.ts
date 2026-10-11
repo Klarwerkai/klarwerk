@@ -90,6 +90,7 @@ import {
   type Lesekontext,
   SICHTUNGS_HINDERNIS_TEXT,
   type SichtungsHindernis,
+  aktuelleWeisung,
   externeFreigabeEingabe,
   offenePunkte,
   sichtungsHindernis,
@@ -608,6 +609,8 @@ type KoAktion =
   // Entscheidung 27: die Übernahme einer externen Freigabe. Beide arbeiten AM Objekt unter `:id`
   // und passieren das Tor.
   | "weisung"
+  // Nacharbeit 14 (Ben B2): den unvollständigen Abschluss überstimmter Punkte nachholen.
+  | "weisung-abschluss"
   | "externe-freigabe";
 
 /**
@@ -704,6 +707,7 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   // Aufnahme gesamt-wissen-herkunft: wer ein Objekt nicht sehen darf, kann es weder anweisen
   // noch eine externe Freigabe daran übernehmen (Sichten: `weisung-sichten` oben).
   weisung: "tor",
+  "weisung-abschluss": "tor",
   "externe-freigabe": "tor",
 };
 
@@ -1202,6 +1206,126 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
   // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
   const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 · Nacharbeit 14 (Ben B2) — DER ABSCHLUSS ÜBERSTIMMTER
+  // PUNKTE IST WIEDERAUFNEHMBAR UND WIRD NIE STILL ALS ERFOLG GEMELDET.
+  // ==============================================================================================
+  //
+  // Die Weisung selbst ist mit ihrem Beleg geschrieben, bevor die Punkte abgeschlossen werden; ihre
+  // Liste `weisung.ueberstimmt` ist der DAUERHAFTE Auftrag. Je Punkt zwei Schritte, in dieser
+  // Reihenfolge: (1) den überstimmten Wissenspunkt schließen, (2) den Konflikt zugunsten der
+  // Weisung entscheiden. Scheitert (1), bleibt der Konflikt offen und der Punkt damit sichtbar;
+  // scheitert (2), ist der Punkt geschlossen und der Konflikt weiter offen. In jedem Fall lässt sich
+  // der Stand aus Objekt und Konflikt ablesen (`punktStand`), und `weisung-abschluss` holt genau die
+  // fehlenden Schritte nach — bereits erledigte werden nicht wiederholt.
+  interface UeberstimmterPunktStand {
+    conflictId: string;
+    koId: string | null;
+    punkt: "geschlossen" | "offen";
+    konflikt: "entschieden" | "offen";
+    fehler?: string;
+  }
+
+  async function punktStand(weisungsKoId: string, conflictId: string) {
+    const offen = (await conflicts.unresolved()).find((c) => c.id === conflictId);
+    const konflikt =
+      offen ?? (await conflicts.geloesteFuer([weisungsKoId])).find((c) => c.id === conflictId);
+    let gegenId: string | null = null;
+    if (konflikt) {
+      gegenId = konflikt.koA === weisungsKoId ? konflikt.koB : konflikt.koA;
+    }
+    const gegen = gegenId ? await ko.get(gegenId) : undefined;
+    const stand: UeberstimmterPunktStand = {
+      conflictId,
+      koId: gegenId,
+      punkt: gegen?.geschlossen ? "geschlossen" : "offen",
+      konflikt: konflikt && !offen ? "entschieden" : "offen",
+    };
+    return { stand, konflikt: offen };
+  }
+
+  async function punktAbschliessen(
+    weisungsKoId: string,
+    fassung: number,
+    conflictId: string,
+    actorId: string,
+  ): Promise<UeberstimmterPunktStand> {
+    const { stand, konflikt } = await punktStand(weisungsKoId, conflictId);
+    if (!stand.koId) {
+      return { ...stand, fehler: "Der überstimmte Punkt ist nicht mehr auffindbar." };
+    }
+    if (stand.punkt === "offen") {
+      try {
+        await ko.schliesseDurchWeisung(
+          stand.koId,
+          { durchKoId: weisungsKoId, conflictId },
+          actorId,
+        );
+        stand.punkt = "geschlossen";
+      } catch (err) {
+        // Ohne geschlossenen Punkt wird der Konflikt NICHT entschieden: er bleibt als offener,
+        // sichtbarer Punkt stehen, bis der Abschluss nachgeholt ist.
+        return { ...stand, fehler: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    if (stand.konflikt === "offen" && konflikt) {
+      try {
+        if (konflikt.type === "truth" && konflikt.status === "offen") {
+          await conflicts.escalate(conflictId, actorId);
+        }
+        await conflicts.resolve(
+          conflictId,
+          actorId,
+          `Durch Weisung überstimmt (Wissensobjekt ${weisungsKoId}, Fassung ${fassung}).`,
+          { art: "ueberstimmt", gilt: weisungsKoId },
+        );
+        stand.konflikt = "entschieden";
+      } catch (err) {
+        return { ...stand, fehler: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    return stand;
+  }
+
+  /**
+   * Antwort nach dem (Nach-)Abschluss: vollständig → 200; sonst 409
+   * `WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG` samt Stand je Punkt und ein dauerhafter Protokollvermerk
+   * (`ko.weisung-abschluss-unvollstaendig`). Die Weisung selbst bleibt gesetzt; nachgeholt wird über
+   * `action: "weisung-abschluss"`.
+   */
+  async function abschlussMelden(
+    reply: FastifyReply,
+    weisungsKoId: string,
+    actorId: string,
+    ergebnis: Record<string, unknown>,
+    punkte: readonly UeberstimmterPunktStand[],
+  ): Promise<void> {
+    const offen = punkte.filter((p) => p.punkt !== "geschlossen" || p.konflikt !== "entschieden");
+    if (offen.length === 0) {
+      reply.code(200).send({ ...ergebnis, ueberstimmt: punkte });
+      return;
+    }
+    await audit?.record({
+      actor: actorId,
+      action: "ko.weisung-abschluss-unvollstaendig",
+      target: weisungsKoId,
+      payload: {
+        offen: offen.map((p) => ({
+          conflictId: p.conflictId,
+          punkt: p.punkt,
+          konflikt: p.konflikt,
+        })),
+      },
+    });
+    reply.code(409).send({
+      ...ergebnis,
+      error: "WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG",
+      message:
+        "Die Weisung ist gesetzt, aber mindestens ein überstimmter Punkt ist noch nicht abgeschlossen. Holen Sie den Abschluss nach („Abschluss nachholen“); bereits erledigte Schritte werden nicht wiederholt.",
+      ueberstimmt: punkte,
+    });
+  }
 
   /**
    * Der EINE manuelle Anlageweg eines Konflikts — für `action: "conflict"` und für die
@@ -1749,10 +1873,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             .filter((k) => k.id !== user.id && sichtungsHindernisFuer(k, item, "") === null)
             .map((k) => k.id)
         : undefined;
+      // Nacharbeit 14 (Ben B2): ein unvollständiger Abschluss überstimmter Punkte bleibt am Objekt
+      // ablesbar — abgeleitet aus Weisung, Konflikten und Gegenpunkten, ohne Zwischenspeicher.
+      const weisungAbschlussOffen: string[] = [];
+      for (const conflictId of item.weisung?.ueberstimmt ?? []) {
+        const { stand } = await punktStand(item.id, conflictId);
+        if (stand.punkt !== "geschlossen" || stand.konflikt !== "entschieden") {
+          weisungAbschlussOffen.push(conflictId);
+        }
+      }
       reply.code(200).send({
         ...item,
         verifizierung,
         ...(sichtungsKandidaten ? { sichtungsKandidaten } : {}),
+        ...(weisungAbschlussOffen.length > 0 ? { weisungAbschlussOffen } : {}),
         ...(annahme ? { annahme } : {}),
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, eingaenge),
@@ -3454,36 +3588,54 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               reply.code(200).send({ ...entscheidung, ueberstimmt: [] });
               return;
             }
-            // Je überstimmtem Punkt: (1) der Konflikt wird zugunsten dieser Weisung entschieden —
-            // über den UNVERÄNDERTEN allgemeinen Konfliktweg; ein Wahrheitskonflikt durchläuft
-            // dabei seinen verbindlichen Eskalationsschritt (R-0215) durch die weisende Person;
-            // (2) der überstimmte Wissenspunkt wird geschlossen — nicht gelöscht.
-            const ueberstimmt: { conflictId: string; koId: string; geschlossen: boolean }[] = [];
+            // Je überstimmtem Punkt: (1) der überstimmte Wissenspunkt wird geschlossen — nicht
+            // gelöscht; (2) der Konflikt wird zugunsten dieser Weisung entschieden — über den
+            // UNVERÄNDERTEN allgemeinen Konfliktweg; ein Wahrheitskonflikt durchläuft dabei seinen
+            // verbindlichen Eskalationsschritt (R-0215) durch die weisende Person. Nacharbeit 14
+            // (Ben B2): ein Fehler wird gemeldet, nicht verschluckt, und ist nachholbar.
+            const ueberstimmt: UeberstimmterPunktStand[] = [];
             for (const punkt of zuUeberstimmen) {
-              let geschlossen = false;
-              try {
-                const konflikt = await conflicts.get(punkt.conflictId);
-                if (konflikt?.type === "truth" && konflikt.status === "offen") {
-                  await conflicts.escalate(punkt.conflictId, user.id);
-                }
-                await conflicts.resolve(
-                  punkt.conflictId,
-                  user.id,
-                  `Durch Weisung überstimmt (Wissensobjekt ${id}, Fassung ${objekt.version}).`,
-                  { art: "ueberstimmt", gilt: id },
-                );
-                await ko.schliesseDurchWeisung(
-                  punkt.gegen.id,
-                  { durchKoId: id, conflictId: punkt.conflictId },
-                  user.id,
-                );
-                geschlossen = true;
-              } catch {
-                geschlossen = false;
-              }
-              ueberstimmt.push({ conflictId: punkt.conflictId, koId: punkt.gegen.id, geschlossen });
+              ueberstimmt.push(
+                await punktAbschliessen(id, objekt.version, punkt.conflictId, user.id),
+              );
             }
-            reply.code(200).send({ ...entscheidung, ueberstimmt });
+            await abschlussMelden(reply, id, user.id, { ...entscheidung }, ueberstimmt);
+            return;
+          }
+          // R-0573 · Nacharbeit 14 (Ben B2): den unvollständigen Abschluss überstimmter Punkte
+          // nachholen. Nur die weisende Person, solange ihre Befugnis den Bereich noch deckt;
+          // bearbeitet wird ausschließlich, was in `weisung.ueberstimmt` steht und noch offen ist.
+          case "weisung-abschluss": {
+            const user = await guards.requirePermission("ko.read", request, reply);
+            if (!user) {
+              return;
+            }
+            const objekt = await ko.get(id);
+            const weisung = objekt?.weisung;
+            if (!objekt || !weisung || (weisung.ueberstimmt ?? []).length === 0) {
+              return badRequest(
+                "An diesem Wissensobjekt ist kein Abschluss überstimmter Punkte offen.",
+              );
+            }
+            if (weisung.von !== user.id) {
+              reply.code(403).send({
+                error: "WEISUNG_NICHT_EIGENE",
+                message: "Den Abschluss holt die Person nach, die die Weisung erteilt hat.",
+              });
+              return;
+            }
+            if (!weisungsbefugnisDeckt(await konten?.befugnisVon(user.id), objekt.category)) {
+              reply.code(403).send({
+                error: "WEISUNGSBEFUGNIS_FEHLT",
+                message: `Für den Bereich „${objekt.category}“ ist an Ihrem Konto keine Weisungsbefugnis (mehr) vermerkt.`,
+              });
+              return;
+            }
+            const punkte: UeberstimmterPunktStand[] = [];
+            for (const conflictId of weisung.ueberstimmt ?? []) {
+              punkte.push(await punktAbschliessen(id, weisung.fassung, conflictId, user.id));
+            }
+            await abschlussMelden(reply, id, user.id, { koId: id }, punkte);
             return;
           }
           // ======================================================================================
@@ -4546,13 +4698,24 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             // Integration Nacharbeit 12 (gesamt-wissen-herkunft, Entscheidung 19): EINE Aktion für
-            // beide Weisungswege. Trägt das Objekt eine Weisung mit punktweiser Entscheidung
-            // (`weisung`, gesetzt über `action: "weisung"`) und keine Sichtung aus
-            // `weisung-validate` (`weisungsSichtung`), sichtet die dort benannte Person einmal,
-            // mit optionalem Vermerk. Sonst gilt unverändert der Weg darunter.
+            // beide Weisungswege. Nacharbeit 14 (Ben B1): gesichtet wird die AKTUELLE Weisung — die
+            // mit dem jüngeren Beleg (`aktuelleWeisung`); eine frühere `weisungsSichtung` blockiert
+            // eine spätere punktweise Weisung nicht mehr. Ist die punktweise die aktuelle, sichtet
+            // die dort benannte Person einmal mit optionalem Vermerk; sonst gilt unverändert der
+            // Weg darunter.
             const vorher = await ko.get(id);
-            if (vorher?.weisung && !vorher.weisungsSichtung) {
+            if (vorher?.weisung && aktuelleWeisung(vorher) === "punktweise") {
               const weisung = vorher.weisung;
+              // Eine Sichtung MIT Ergebnis gilt der früheren eigenen Weisung — die ist nicht mehr
+              // die aktuelle. Abgelehnt statt still als Vermerk an der neuen verbucht.
+              if ((body.sichtung as { ergebnis?: unknown } | undefined)?.ergebnis !== undefined) {
+                reply.code(409).send({
+                  error: "WEISUNG_NICHT_AKTUELL",
+                  message:
+                    "Die zu sichtende Weisung ist inzwischen eine neuere Weisung mit punktweiser Entscheidung; sie wird ohne Ergebnis gesichtet.",
+                });
+                return;
+              }
               if (weisung.sichtung.verantwortlich !== user.id) {
                 reply.code(403).send({
                   error: "SICHTUNG_NICHT_ZUSTAENDIG",

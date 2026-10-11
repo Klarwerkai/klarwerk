@@ -66,6 +66,7 @@ wiederholt.
 | `user.weisungsbefugnis-set` | `bereiche` (Kategorienamen) oder `entfernt` | M |
 | `ko.weisung` (gesamt-wissen-herkunft: Weisung mit punktweiser Entscheidung) | `koVersion`, `bereich`, `sichtung` (`verantwortlich` als Kontokennung, `frist`), `bestehenGelassen`, `ueberstimmt` (Konfliktkennungen) | Z, M, K |
 | `ko.weisung-sichtung-vermerkt` | `weisungVon` (Kontokennung), `weisungAm`, `fassung` | K, M, Z |
+| `ko.weisung-abschluss-unvollstaendig` | `offen` (je Punkt `conflictId`, Stand `punkt`/`konflikt` aus geschlossener Menge) | K, Z |
 | `ko.durch-weisung-geschlossen` | `durchKoId`, `conflictId`, `von` (Kontokennung), `am`, `fassung` | K, M, Z |
 | `ko.externe-freigabe-uebernommen` | `koVersion`, `art`, `herausgeber`, `freigegebenAm`, `geltung`, `zustaendig` (Kontokennung) | Z, M, F (`herausgeber` ist eine freie Angabe, etwa ein Firmenname), K |
 | `lifecycle.handover` (Ziel: Kennung der ausscheidenden Person) | `from`, `to`, `transferred` (Anzahl je Art), `failed` (Art und Kennung, kein Inhalt) | K, Z |

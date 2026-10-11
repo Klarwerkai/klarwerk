@@ -25,6 +25,11 @@ export default {
     "weisung.marke.bestehenGelassen_other":
       "{{count}} betroffene Punkte ausdrücklich bestehen gelassen",
     "weisung.marke.sichten": "Als gesichtet bestätigen",
+    "weisung.marke.abschlussOffen_one":
+      "Abschluss unvollständig: {{count}} überstimmter Punkt ist noch nicht geschlossen bzw. entschieden",
+    "weisung.marke.abschlussOffen_other":
+      "Abschluss unvollständig: {{count}} überstimmte Punkte sind noch nicht geschlossen bzw. entschieden",
+    "weisung.marke.abschlussNachholen": "Abschluss nachholen",
     "weisung.menue.setzen": "Als Weisung gültig setzen",
     "weisung.dialog.titel": "Als Weisung gültig setzen",
     "weisung.dialog.erklaerung":
@@ -79,6 +84,11 @@ export default {
     "weisung.marke.bestehenGelassen_one": "{{count}} affected point explicitly kept",
     "weisung.marke.bestehenGelassen_other": "{{count}} affected points explicitly kept",
     "weisung.marke.sichten": "Confirm review",
+    "weisung.marke.abschlussOffen_one":
+      "Completion incomplete: {{count}} overruled point is not yet closed or decided",
+    "weisung.marke.abschlussOffen_other":
+      "Completion incomplete: {{count}} overruled points are not yet closed or decided",
+    "weisung.marke.abschlussNachholen": "Complete now",
     "weisung.menue.setzen": "Set as valid directive",
     "weisung.dialog.titel": "Set as valid directive",
     "weisung.dialog.erklaerung":
@@ -133,6 +143,11 @@ export default {
     "weisung.marke.bestehenGelassen_one": "{{count}} betrokken punt uitdrukkelijk behouden",
     "weisung.marke.bestehenGelassen_other": "{{count}} betrokken punten uitdrukkelijk behouden",
     "weisung.marke.sichten": "Beoordeling bevestigen",
+    "weisung.marke.abschlussOffen_one":
+      "Afronding onvolledig: {{count}} overstemd punt is nog niet gesloten of beslist",
+    "weisung.marke.abschlussOffen_other":
+      "Afronding onvolledig: {{count}} overstemde punten zijn nog niet gesloten of beslist",
+    "weisung.marke.abschlussNachholen": "Afronding inhalen",
     "weisung.menue.setzen": "Als geldige instructie vastleggen",
     "weisung.dialog.titel": "Als geldige instructie vastleggen",
     "weisung.dialog.erklaerung":

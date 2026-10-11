@@ -51,6 +51,13 @@ export interface VerifizierungsmarkeProps {
    */
   aufSichten?: () => void;
   sichtenLaeuft?: boolean;
+  /**
+   * Nacharbeit 14 (Ben B2): wie viele überstimmte Punkte noch nicht abgeschlossen sind
+   * (`weisungAbschlussOffen`). Steht dann als eigene Zeile da — nie als erledigt.
+   */
+  abschlussOffen?: number;
+  /** Nur für die weisende Person: den Abschluss nachholen (`weisung-abschluss`). */
+  aufAbschlussNachholen?: () => void;
 }
 
 /** Ein reines Datum (`JJJJ-MM-TT`) ohne Uhrzeit anzeigen; sonst Datum + Uhrzeit. */
@@ -76,6 +83,8 @@ export function Verifizierungsmarke({
   nameOf,
   aufSichten,
   sichtenLaeuft,
+  abschlussOffen,
+  aufAbschlussNachholen,
 }: VerifizierungsmarkeProps): JSX.Element {
   const { t, i18n } = useTranslation();
   const zeit = (iso: string | null | undefined): string =>
@@ -156,6 +165,15 @@ export function Verifizierungsmarke({
         text: t(satz, { name: nameOf(s.verantwortlich), frist: datum(s.frist) }),
       });
     }
+  }
+
+  // --- Abschluss überstimmter Punkte unvollständig (R-0573, Nacharbeit 14) -----------------------
+  const abschlussUnvollstaendig = abschlussOffen !== undefined && abschlussOffen > 0;
+  if (abschlussUnvollstaendig) {
+    zeilen.push({
+      schluessel: "abschluss_offen",
+      text: t("weisung.marke.abschlussOffen", { count: abschlussOffen }),
+    });
   }
 
   // --- Durch Weisung überstimmt (R-0573, Nacharbeit 11) -------------------------------------------
@@ -244,6 +262,17 @@ export function Verifizierungsmarke({
           className="mt-1"
         >
           {t("weisung.marke.sichten")}
+        </Button>
+      ) : null}
+      {abschlussUnvollstaendig && aufAbschlussNachholen ? (
+        <Button
+          variant="outline"
+          data-testid="ko-weisung-abschluss-nachholen"
+          disabled={sichtenLaeuft === true}
+          onClick={aufAbschlussNachholen}
+          className="mt-1"
+        >
+          {t("weisung.marke.abschlussNachholen")}
         </Button>
       ) : null}
     </section>

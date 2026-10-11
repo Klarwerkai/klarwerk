@@ -24,7 +24,7 @@
 // gesamt-peer-validierung (`User.weisungsbefugnis`, eine Bereichsliste, `"*"` = ganzes Unternehmen,
 // Beleg `user.weisungsbefugnis-set`). Der frühere eigene Vermerk dieses Auftrags ist darin
 // aufgegangen; diese Fälle fahren deshalb dessen Format.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 const KENNWORT = "secret123";
@@ -375,8 +375,9 @@ describe("R-0573 · überstimmte Punkte werden geschlossen, nicht gelöscht (Nac
     );
     expect(antwort.statusCode, antwort.body).toBe(200);
     expect(antwort.json().ueberstimmt).toEqual([
-      { conflictId: k1.id, koId: ueberstimmt.id, geschlossen: true },
+      { conflictId: k1.id, koId: ueberstimmt.id, punkt: "geschlossen", konflikt: "entschieden" },
     ]);
+    expect(await b.lesen(b.koepfe.anna, ko.id)).not.toHaveProperty("weisungAbschlussOffen");
 
     // Der überstimmte Wissenspunkt — erneut gelesen, nicht nur der Konfliktstatus.
     const nachher = await b.lesen(b.koepfe.anna, ueberstimmt.id);
@@ -674,5 +675,151 @@ describe("Entscheidung 27 · externe Freigabe übernehmen, interne Anwendbarkeit
       extern(b.bob.id, "wissen", { nachweis: "javascript:alert(1)" }),
     );
     expect(antwort.statusCode).toBe(400);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 14 · Ben B1 — DIE SICHTUNG GILT DER AKTUELLEN WEISUNG, AUCH NACH EINEM WEGWECHSEL.
+// ================================================================================================
+describe("Entscheidung 19 · Wechsel von weisung-validate zu weisung — gesichtet wird die aktuelle (Nacharbeit 14, Ben B1)", () => {
+  async function eigeneWeisungZuerst() {
+    const b = await buehne();
+    await b.befugnis(b.anna.id, ["Technik"]);
+    const ko = await b.objekt("Bolzen Q: 11 Nm");
+    const eigene = await b.put(b.koepfe.anna, ko.id, {
+      action: "weisung-validate",
+      sichtung: { verantwortlich: b.carla.id, frist: ZUKUNFT },
+      expectedVersion: ko.version,
+    });
+    expect(eigene.statusCode, eigene.body).toBe(200);
+    return { b, ko };
+  }
+
+  it("WW1 · nach einer früheren eigenen Weisung sichtet die für die punktweise Weisung benannte Person — die frühere Angabe bleibt stehen", async () => {
+    const { b, ko } = await eigeneWeisungZuerst();
+    const frueher = (await b.lesen(b.koepfe.anna, ko.id)).weisungsSichtung as { auditSeq: number };
+    expect(frueher).toBeDefined();
+
+    const punktweise = await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id));
+    expect(punktweise.statusCode, punktweise.body).toBe(200);
+    const gesetzt = await b.lesen(b.koepfe.anna, ko.id);
+    const beleg = (gesetzt.weisung as { beleg?: { auditSeq: number } }).beleg;
+    // Die neue Weisung ist an GENAU ihren Beleg gebunden — und der steht später in der Kette.
+    expect(beleg?.auditSeq).toBeGreaterThan(frueher.auditSeq);
+    expect(gesetzt.weisungsSichtung).toEqual(frueher);
+
+    // Derselbe Knopf wie in der Oberfläche: nur `action`, keine Angaben des älteren Wegs.
+    const gesichtet = await b.put(b.koepfe.bob, ko.id, { action: "weisung-sichten" });
+    expect(gesichtet.statusCode, gesichtet.body).toBe(200);
+    const nachher = await b.lesen(b.koepfe.bob, ko.id);
+    expect(nachher.weisung?.sichtung).toMatchObject({ gesichtetVon: b.bob.id });
+    // Die frühere Angabe bleibt als Herkunft erhalten und wurde NICHT bearbeitet.
+    expect(nachher.weisungsSichtung).toEqual(frueher);
+  });
+
+  it("WW2 · eine Sichtung mit Ergebnis für die frühere Weisung wird abgelehnt, nicht an der neuen verbucht", async () => {
+    const { b, ko } = await eigeneWeisungZuerst();
+    expect((await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id))).statusCode).toBe(200);
+    const alt = await b.put(b.koepfe.carla, ko.id, {
+      action: "weisung-sichten",
+      sichtung: { ergebnis: "bestaetigt" },
+      expectedVersion: ko.version,
+    });
+    expect(alt.statusCode).toBe(409);
+    expect(alt.json().error).toBe("WEISUNG_NICHT_AKTUELL");
+    const gelesen = await b.lesen(b.koepfe.anna, ko.id);
+    expect(gelesen.weisung?.sichtung).not.toHaveProperty("gesichtetAm");
+    expect(gelesen.weisungsSichtung).not.toHaveProperty("ergebnis");
+  });
+
+  it("WW3 · ohne spätere punktweise Weisung bleibt der Sichtungsweg aus weisung-validate unverändert", async () => {
+    const { b, ko } = await eigeneWeisungZuerst();
+    const gesichtet = await b.put(b.koepfe.carla, ko.id, {
+      action: "weisung-sichten",
+      sichtung: { ergebnis: "bestaetigt" },
+      expectedVersion: ko.version,
+    });
+    expect(gesichtet.statusCode, gesichtet.body).toBe(200);
+    expect((await b.lesen(b.koepfe.anna, ko.id)).weisungsSichtung).toMatchObject({
+      ergebnis: { art: "bestaetigt", von: b.carla.id },
+    });
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 14 · Ben B2 — EIN TEILFEHLER BEIM ABSCHLUSS WIRD GEMELDET UND IST NACHHOLBAR.
+// ================================================================================================
+describe("R-0573 · Abschluss überstimmter Punkte: sichtbarer, wiederaufnehmbarer Teilfehler (Nacharbeit 14, Ben B2)", () => {
+  async function einPunkt() {
+    const b = await buehne();
+    await b.befugnis(b.anna.id, ["Technik"]);
+    const ko = await b.objekt("Bolzen R: 16 Nm", "Technik", b.carla.id);
+    const alt = await b.objekt("Bolzen R handfest", "Technik", b.carla.id);
+    const k = await b.services.conflicts.create(
+      { koA: ko.id, koB: alt.id, type: "truth", description: "16 Nm gegen handfest" },
+      b.admin.id,
+    );
+    return { b, ko, alt, k };
+  }
+
+  it("AB1 · scheitert das Schließen des Punkts: 409 statt Erfolg, Konflikt bleibt offen, Stand am Objekt, Nachholen schließt ab", async () => {
+    const { b, ko, alt, k } = await einPunkt();
+    const schliessen = vi
+      .spyOn(b.services.ko, "schliesseDurchWeisung")
+      .mockRejectedValueOnce(new Error("Speicher kurz nicht erreichbar"));
+
+    const antwort = await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id, { ueberstimmen: [k.id] }));
+    expect(antwort.statusCode, antwort.body).toBe(409);
+    expect(antwort.json()).toMatchObject({
+      error: "WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG",
+      ueberstimmt: [{ conflictId: k.id, koId: alt.id, punkt: "offen", konflikt: "offen" }],
+    });
+    // Die Weisung IST gesetzt — der Teilfehler ist dauerhaft ablesbar und protokolliert.
+    const gesetzt = await b.lesen(b.koepfe.anna, ko.id);
+    expect(gesetzt.status).toBe("validiert");
+    expect(gesetzt.weisungAbschlussOffen).toEqual([k.id]);
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).toContain(k.id);
+    expect(await b.services.ko.get(alt.id)).not.toHaveProperty("geschlossen");
+    const vermerk = await b.services.audit.list({
+      action: "ko.weisung-abschluss-unvollstaendig",
+      target: ko.id,
+    });
+    expect(vermerk.map((e) => e.actor)).toEqual([b.anna.id]);
+
+    // Nur die weisende Person holt nach.
+    const fremd = await b.put(b.koepfe.carla, ko.id, { action: "weisung-abschluss" });
+    expect(fremd.statusCode).toBe(403);
+
+    schliessen.mockRestore();
+    const nachgeholt = await b.put(b.koepfe.anna, ko.id, { action: "weisung-abschluss" });
+    expect(nachgeholt.statusCode, nachgeholt.body).toBe(200);
+    expect(await b.services.ko.get(alt.id)).toHaveProperty("geschlossen.conflictId", k.id);
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).not.toContain(k.id);
+    expect(await b.lesen(b.koepfe.anna, ko.id)).not.toHaveProperty("weisungAbschlussOffen");
+  });
+
+  it("AB2 · scheitert die Konfliktentscheidung NACH dem Schließen: gemeldet, und das Nachholen schließt nicht doppelt", async () => {
+    const { b, ko, alt, k } = await einPunkt();
+    const entscheiden = vi
+      .spyOn(b.services.conflicts, "resolve")
+      .mockRejectedValueOnce(new Error("Konfliktablage kurz nicht erreichbar"));
+
+    const antwort = await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id, { ueberstimmen: [k.id] }));
+    expect(antwort.statusCode, antwort.body).toBe(409);
+    expect(antwort.json().ueberstimmt).toEqual([
+      expect.objectContaining({ conflictId: k.id, punkt: "geschlossen", konflikt: "offen" }),
+    ]);
+    expect(await b.services.ko.get(alt.id)).toHaveProperty("geschlossen.conflictId", k.id);
+    expect((await b.lesen(b.koepfe.anna, ko.id)).weisungAbschlussOffen).toEqual([k.id]);
+
+    entscheiden.mockRestore();
+    const schliessen = vi.spyOn(b.services.ko, "schliesseDurchWeisung");
+    const nachgeholt = await b.put(b.koepfe.anna, ko.id, { action: "weisung-abschluss" });
+    expect(nachgeholt.statusCode, nachgeholt.body).toBe(200);
+    // Der schon geschlossene Punkt wird nicht ein zweites Mal geschlossen.
+    expect(schliessen).not.toHaveBeenCalled();
+    schliessen.mockRestore();
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).not.toContain(k.id);
+    expect(await b.lesen(b.koepfe.anna, ko.id)).not.toHaveProperty("weisungAbschlussOffen");
   });
 });

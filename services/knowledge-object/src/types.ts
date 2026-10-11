@@ -1113,6 +1113,12 @@ export interface KoWeisung {
    * Fehlt das Feld (Weisungen vor Nacharbeit 11), wurde nichts überstimmt.
    */
   ueberstimmt?: string[];
+  /**
+   * Nacharbeit 14 (Ben B1): der Beleg `ko.weisung`, mit dem DIESE Weisung gesetzt wurde. Bindet die
+   * Sichtung an genau diese Entscheidung (gegenüber einer früheren `weisungsSichtung`). Fehlt bei
+   * Weisungen vor Nacharbeit 14.
+   */
+  beleg?: { auditSeq: number; auditHash: string };
   /** Entscheidung 19: die nachfolgende Sichtung — wer zuständig ist und bis wann. */
   sichtung: {
     verantwortlich: string;

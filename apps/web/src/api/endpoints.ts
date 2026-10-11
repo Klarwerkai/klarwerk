@@ -305,6 +305,8 @@ export type KoAction =
       duplicateAcknowledged?: true;
     }
   | { action: "weisung-sichten"; vermerk?: string }
+  // Nacharbeit 14 (Ben B2): den unvollständigen Abschluss überstimmter Punkte nachholen.
+  | { action: "weisung-abschluss" }
   // Entscheidung 27: externe Freigabe übernehmen, interne Anwendbarkeit ausdrücklich bestätigt.
   | {
       action: "externe-freigabe";

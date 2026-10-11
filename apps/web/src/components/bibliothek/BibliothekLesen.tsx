@@ -99,7 +99,11 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
-import { sichtungsAuswahl, weisungsbefugtFuer } from "../../lib/weisungsbefugnis";
+import {
+  aktuelleWeisungsart,
+  sichtungsAuswahl,
+  weisungsbefugtFuer,
+} from "../../lib/weisungsbefugnis";
 import { statusSchluessel } from "../../lib/wissensstatus";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
@@ -1209,6 +1213,17 @@ export function BibliothekLesen({
   const [entscheidungsFehler, setEntscheidungsFehler] = useState<string | null>(null);
   const [dubletteBestaetigen, setDubletteBestaetigen] = useState(false);
   const entscheidungAbgelehnt = (e: unknown): void => {
+    // Nacharbeit 14 (Ben B2): die Weisung IST gesetzt, ihr Abschluss aber unvollständig. Kein
+    // Erfolg und kein stiller Fehlschlag: der Stand wird neu geladen (die Marke zeigt den offenen
+    // Abschluss samt „Abschluss nachholen“), der Dialog schließt, die Meldung bleibt sichtbar.
+    if (e instanceof ApiError && e.code === "WEISUNG_ABSCHLUSS_UNVOLLSTAENDIG") {
+      invalidate();
+      setWeisungOffen(false);
+      setWeisungPunkte([]);
+      setEntscheidungsFehler(null);
+      push("error", e.message);
+      return;
+    }
     if (e instanceof ApiError) {
       if (e.code === "WEISUNG_PUNKTE_OFFEN" && Array.isArray(e.details.punkte)) {
         setWeisungPunkte(e.details.punkte as BetroffenerPunktAnzeige[]);
@@ -2988,13 +3003,27 @@ export function BibliothekLesen({
           ko={ko}
           nameOf={nameOf}
           sichtenLaeuft={herkunftsEntscheid.isPending}
-          // Integration Nacharbeit 12: liegt eine Sichtung aus `weisung-validate` vor, führt sie der
-          // Prüfablauf (`Pruefablauf.tsx`) — hier nur die Weisung mit punktweiser Entscheidung.
+          // Nacharbeit 14 (Ben B1): gesichtet wird die AKTUELLE Weisung. Ist sie die mit punktweiser
+          // Entscheidung, steht der Knopf hier — auch wenn früher eine Sichtung aus
+          // `weisung-validate` lief; ist es die eigene Weisung, führt sie der Prüfablauf.
           {...(ko.weisung &&
-          !ko.weisungsSichtung &&
+          aktuelleWeisungsart(ko) === "punktweise" &&
           !ko.weisung.sichtung.gesichtetAm &&
           user?.id === ko.weisung.sichtung.verantwortlich
             ? { aufSichten: () => herkunftsEntscheid.mutate({ action: "weisung-sichten" }) }
+            : {})}
+          // Nacharbeit 14 (Ben B2): ein unvollständiger Abschluss überstimmter Punkte steht an der
+          // Marke; die weisende Person holt ihn hier nach.
+          {...(ko.weisungAbschlussOffen && ko.weisungAbschlussOffen.length > 0
+            ? {
+                abschlussOffen: ko.weisungAbschlussOffen.length,
+                ...(ko.weisung && user?.id === ko.weisung.von
+                  ? {
+                      aufAbschlussNachholen: () =>
+                        herkunftsEntscheid.mutate({ action: "weisung-abschluss" }),
+                    }
+                  : {}),
+              }
             : {})}
         />
         {weisungOffen ? (

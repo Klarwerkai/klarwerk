@@ -589,6 +589,8 @@ export interface KoWeisung {
   bestehenGelassen: string[];
   /** R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte (Konfliktkennungen). */
   ueberstimmt?: string[];
+  /** Nacharbeit 14: der Beleg dieser Weisung — bindet die Sichtung an genau sie. */
+  beleg?: { auditSeq: number; auditHash: string };
   sichtung: {
     verantwortlich: string;
     frist: string;
@@ -841,6 +843,9 @@ export interface KnowledgeObject {
   // Nacharbeit 11 (Ben B1): nur an `GET /api/kos/:id` und nur für weisungsbefugte Lesende — die
   // Konten, die diesen Eintrag mit ihrem eigenen Zugang lesen und deshalb sichten können.
   sichtungsKandidaten?: string[];
+  // Nacharbeit 14 (Ben B2): nur an `GET /api/kos/:id` — überstimmte Punkte (Konfliktkennungen),
+  // deren Abschluss noch nicht vollständig ist. Fehlt das Feld, ist nichts offen.
+  weisungAbschlussOffen?: string[];
   // Nacharbeit 11 (Ben B2): durch eine Weisung überstimmt und geschlossen (nicht gelöscht).
   geschlossen?: { durchKoId: string; conflictId: string; von: string; am: string; fassung: number };
   /**

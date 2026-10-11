@@ -14,7 +14,11 @@ import { createElement } from "../../apps/web/node_modules/react";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import { Verifizierungsmarke } from "../../apps/web/src/components/trust/Verifizierungsmarke";
 import { WeisungDialog } from "../../apps/web/src/components/trust/WeisungDialog";
-import { sichtungsAuswahl, weisungsbefugtFuer } from "../../apps/web/src/lib/weisungsbefugnis";
+import {
+  aktuelleWeisungsart,
+  sichtungsAuswahl,
+  weisungsbefugtFuer,
+} from "../../apps/web/src/lib/weisungsbefugnis";
 import { renderMarkup, setLanguage } from "../../apps/web/src/test/render";
 import { repoPfad } from "../support/repoPfad";
 
@@ -250,5 +254,50 @@ describe("Nacharbeit 11 · Auswahl der Sichtenden und Entscheidung je betroffene
       }),
     );
     expect(html).toContain("Durch Weisung überstimmt und geschlossen am 11.10.2026");
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 14 · Ben B1/B2 — AKTUELLE WEISUNG UND UNVOLLSTÄNDIGER ABSCHLUSS AN DER OBERFLÄCHE.
+// ================================================================================================
+describe("Nacharbeit 14 · aktuelle Weisung und offener Abschluss", () => {
+  it("B1 · die jüngere Entscheidung ist die aktuelle — gebunden an ihren Beleg", () => {
+    const eigene = { auditSeq: 5, koVersion: 1 };
+    expect(aktuelleWeisungsart({ weisungsSichtung: eigene })).toBe("eigene");
+    expect(aktuelleWeisungsart({ weisung: { fassung: 1 } })).toBe("punktweise");
+    const spaeter = { fassung: 1, beleg: { auditSeq: 9 } };
+    const frueher = { fassung: 1, beleg: { auditSeq: 3 } };
+    expect(aktuelleWeisungsart({ weisung: spaeter, weisungsSichtung: eigene })).toBe("punktweise");
+    expect(aktuelleWeisungsart({ weisung: frueher, weisungsSichtung: eigene })).toBe("eigene");
+    // Altbestand ohne gebundenen Beleg: Gleichstand der Fassung lässt den bisherigen Weg gelten.
+    expect(aktuelleWeisungsart({ weisung: { fassung: 1 }, weisungsSichtung: eigene })).toBe(
+      "eigene",
+    );
+    expect(aktuelleWeisungsart({})).toBeNull();
+  });
+
+  it("B2 · die Marke nennt den offenen Abschluss und bietet das Nachholen nur mit Rückruf an", async () => {
+    await setLanguage("de");
+    const ohneKnopf = zeige({ weisung: WEISUNG });
+    expect(ohneKnopf).not.toContain('data-testid="ko-verifizierung-abschluss_offen"');
+    const html = renderMarkup(
+      createElement(Verifizierungsmarke, {
+        ko: { weisung: WEISUNG } as unknown as Marke,
+        nameOf,
+        abschlussOffen: 1,
+        aufAbschlussNachholen: () => undefined,
+      }),
+    );
+    expect(html).toContain("Abschluss unvollständig: 1 überstimmter Punkt");
+    expect(html).toContain('data-testid="ko-weisung-abschluss-nachholen"');
+    const nurAnzeige = renderMarkup(
+      createElement(Verifizierungsmarke, {
+        ko: { weisung: WEISUNG } as unknown as Marke,
+        nameOf,
+        abschlussOffen: 2,
+      }),
+    );
+    expect(nurAnzeige).toContain("2 überstimmte Punkte");
+    expect(nurAnzeige).not.toContain('data-testid="ko-weisung-abschluss-nachholen"');
   });
 });
