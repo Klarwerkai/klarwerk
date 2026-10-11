@@ -1367,6 +1367,8 @@ const INVENTAR: readonly string[] = [
   "tests/klara-aktionen/auftrag-am-server.test.tsx",
   "tests/klara-aktionen/auftragsgrenze-am-server.test.ts",
   "tests/klara-aktionen/erkennung.test.ts",
+  // Nacharbeit 9: die Zitatdeckung des Rahmens „Zusammenfassen“ (S06), nach derselben Pfadregel.
+  "tests/klara-aktionen/zusammenfassen-zitatdeckung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

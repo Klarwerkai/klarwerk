@@ -11,6 +11,9 @@
 // Markierung nicht wörtlich zurück (vorher: „Was steht zu …?“ → Echo samt Versandaufforderung) — und
 // unveränderte Befugnisse (keine weiteren Schreibaufrufe, keine Benachrichtigung, kein Entwurf, kein
 // Auftrag).
+// Nacharbeit 9: der Antwortweg verlangt Zitatdeckung (`pruefeDeckung`) — „zusammenfassen“ heisst
+// hier, die Kernaussage WÖRTLICH auszuwählen und die Aufforderung wegzulassen. Eine Paraphrase fällt
+// produktseitig auf den vollen Quellwortlaut zurück (genau der rote Lauf 20261011-07).
 //
 // WANN SIE LÄUFT: nur mit echtem Modell (`npm run smoke:ui`, Schlüssel ausschliesslich über die
 // Betreiber-Einspeisung KLARWERK_SHIP_SMOKE_API_KEY). Im hermetischen Tor über `@modell`
@@ -198,7 +201,9 @@ test("AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neu
     const gesendet = (await frage).postDataJSON() as { question?: string };
     await anhang("gesendete-frage", gesendet);
     // Die Absicht reist ausdrücklich mit; die Markierung steht als Zitat (Quelle) dahinter.
-    expect(gesendet.question ?? "").toContain("Fasse den zitierten Text kurz in eigenen Worten");
+    expect(gesendet.question ?? "").toContain(
+      "Fasse den zitierten Text kurz zusammen: gib nur seine Kernaussage wörtlich wieder",
+    );
     const antwort = await antwortVersprochen;
     expect(antwort.status(), await antwort.text()).toBe(200);
     const ergebnis = (await antwort.json()) as {
@@ -213,6 +218,9 @@ test("AW10-K01 S06: tatsächliche Modellzusammenfassung, kein Versand, keine neu
     expect(ergebnis.result.answered).toBe(true);
     expect(ergebnis.result.demo).toBe(false);
     expect(ergebnis.result.aiGenerated?.mode).toBe("model");
+    // Die gebundene Originalassertion der nativen Probe (HILFE/…-07/s06.spec.ts:81): die Antwort ist
+    // NICHT der vollständige Ausgangstext — dort war sie es (Rückfall der Zitatdeckung, Nacharbeit 9).
+    expect((ergebnis.result.answer ?? "").trim()).not.toBe(TEXT);
 
     const letzte = p.locator('[data-testid="klara-nachricht"][data-von="klara"]').last();
     await expect(letzte).toHaveAttribute("data-gespeichert", "ja", { timeout: 30_000 });
