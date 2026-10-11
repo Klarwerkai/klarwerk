@@ -31,12 +31,10 @@ export default {
     "gemeinsam.entwurf.stand": "Arbeitsstand {{revision}} auf Basis von Fassung {{version}}",
     "gemeinsam.entwurf.keiner": "Zu diesem Artikel ist noch kein gemeinsamer Entwurf offen.",
     "gemeinsam.entwurf.oeffnen": "Gemeinsamen Entwurf beginnen",
-    "gemeinsam.entwurf.reich":
-      "Dieser Artikel enthält Bilder, Tabellen oder Listen. Der gemeinsame Entwurf bearbeitet nur Titel und Absätze — bitte im Artikel selbst bearbeiten.",
     "gemeinsam.feld.titel": "Titel",
-    "gemeinsam.feld.text": "Text",
+    "gemeinsam.feld.text": "Inhalt",
     "gemeinsam.feld.hinweis":
-      "Abschnitte durch eine Leerzeile trennen. Änderungen an verschiedenen Abschnitten werden beim Speichern zusammengeführt.",
+      "Derselbe Editor wie am Artikel. Änderungen an verschiedenen Abschnitten (Absätze, Überschriften, Listen, Tabellen, Bilder) werden beim Speichern zusammengeführt.",
     "gemeinsam.anwesend.titel": "Gerade dabei",
     "gemeinsam.anwesend.du": "Du",
     "gemeinsam.anwesend.niemand": "Außer dir ist gerade niemand im Entwurf.",
@@ -50,6 +48,10 @@ export default {
     "gemeinsam.speicher.ohneRecht":
       "Du darfst diesen Artikel nicht mehr bearbeiten. Nichts wurde gespeichert; deine Eingabe bleibt hier stehen und lässt sich kopieren.",
     "gemeinsam.speicher.konflikt": "Nicht gespeichert — Konflikt. Entscheide unten je Stelle.",
+    "gemeinsam.speicher.konfliktErneut":
+      "Nicht gespeichert — Konflikt. Du hast inzwischen weitergeschrieben; speichere erneut, um die Konfliktstellen für deinen jetzigen Stand zu sehen.",
+    "gemeinsam.speicher.ersetzt":
+      "Nicht gespeichert — dieser Entwurf ist inzwischen übernommen oder durch einen neuen ersetzt. Deine Eingabe bleibt hier stehen und lässt sich kopieren.",
     "gemeinsam.speicher.zusammengefuehrt":
       "Gespeichert und mit den Änderungen von {{namen}} zusammengeführt — Arbeitsstand {{revision}}",
     "gemeinsam.speicher.fehler": "Nicht gespeichert: {{grund}}",
@@ -138,12 +140,10 @@ export default {
     "gemeinsam.entwurf.stand": "Working state {{revision}} based on version {{version}}",
     "gemeinsam.entwurf.keiner": "There is no open shared draft for this article yet.",
     "gemeinsam.entwurf.oeffnen": "Start shared draft",
-    "gemeinsam.entwurf.reich":
-      "This article contains images, tables or lists. The shared draft only edits the title and paragraphs — please edit in the article itself.",
     "gemeinsam.feld.titel": "Title",
-    "gemeinsam.feld.text": "Text",
+    "gemeinsam.feld.text": "Content",
     "gemeinsam.feld.hinweis":
-      "Separate sections with a blank line. Changes to different sections are merged when saving.",
+      "The same editor as in the article. Changes to different sections (paragraphs, headings, lists, tables, images) are merged when saving.",
     "gemeinsam.anwesend.titel": "Here right now",
     "gemeinsam.anwesend.du": "You",
     "gemeinsam.anwesend.niemand": "Nobody else is in the draft right now.",
@@ -156,6 +156,10 @@ export default {
     "gemeinsam.speicher.ohneRecht":
       "You may no longer edit this article. Nothing was saved; your input stays here and can be copied.",
     "gemeinsam.speicher.konflikt": "Not saved — conflict. Decide below for each place.",
+    "gemeinsam.speicher.konfliktErneut":
+      "Not saved — conflict. You have kept writing since; save again to see the conflicting places for your current state.",
+    "gemeinsam.speicher.ersetzt":
+      "Not saved — this draft has been adopted or replaced by a new one in the meantime. Your input stays here and can be copied.",
     "gemeinsam.speicher.zusammengefuehrt":
       "Saved and merged with the changes by {{namen}} — working state {{revision}}",
     "gemeinsam.speicher.fehler": "Not saved: {{grund}}",
@@ -242,12 +246,10 @@ export default {
     "gemeinsam.entwurf.stand": "Werkstand {{revision}} op basis van versie {{version}}",
     "gemeinsam.entwurf.keiner": "Voor dit artikel is nog geen gedeeld concept open.",
     "gemeinsam.entwurf.oeffnen": "Gedeeld concept starten",
-    "gemeinsam.entwurf.reich":
-      "Dit artikel bevat afbeeldingen, tabellen of lijsten. Het gedeelde concept bewerkt alleen titel en alinea's — bewerk het artikel zelf.",
     "gemeinsam.feld.titel": "Titel",
-    "gemeinsam.feld.text": "Tekst",
+    "gemeinsam.feld.text": "Inhoud",
     "gemeinsam.feld.hinweis":
-      "Scheid secties met een lege regel. Wijzigingen in verschillende secties worden bij het opslaan samengevoegd.",
+      "Dezelfde editor als in het artikel. Wijzigingen in verschillende secties (alinea's, koppen, lijsten, tabellen, afbeeldingen) worden bij het opslaan samengevoegd.",
     "gemeinsam.anwesend.titel": "Nu aanwezig",
     "gemeinsam.anwesend.du": "Jij",
     "gemeinsam.anwesend.niemand": "Behalve jij is er nu niemand in het concept.",
@@ -261,6 +263,10 @@ export default {
     "gemeinsam.speicher.ohneRecht":
       "Je mag dit artikel niet meer bewerken. Er is niets opgeslagen; je invoer blijft hier staan en kan worden gekopieerd.",
     "gemeinsam.speicher.konflikt": "Niet opgeslagen — conflict. Beslis hieronder per plek.",
+    "gemeinsam.speicher.konfliktErneut":
+      "Niet opgeslagen — conflict. Je hebt inmiddels verder geschreven; sla opnieuw op om de conflictplekken voor je huidige stand te zien.",
+    "gemeinsam.speicher.ersetzt":
+      "Niet opgeslagen — dit concept is inmiddels overgenomen of door een nieuw vervangen. Je invoer blijft hier staan en kan worden gekopieerd.",
     "gemeinsam.speicher.zusammengefuehrt":
       "Opgeslagen en samengevoegd met de wijzigingen van {{namen}} — werkstand {{revision}}",
     "gemeinsam.speicher.fehler": "Niet opgeslagen: {{grund}}",

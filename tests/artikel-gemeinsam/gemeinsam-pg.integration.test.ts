@@ -26,6 +26,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
+import { textAusRumpf } from "../../services/app/src/gemeinsamer-entwurf";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
 type App = ReturnType<typeof buildApp>;
@@ -114,9 +115,14 @@ describe("Gemeinsamer Artikelentwurf gegen echtes PostgreSQL", () => {
     const res = await (direkt as Pool).query<{
       offen: boolean;
       revision: number;
-      data: { stand: { text: string } };
+      data: { stand: { rumpf: string } };
     }>("SELECT offen, revision, data FROM gemeinsame_entwuerfe WHERE ko_id = $1", [koId]);
-    return res.rows.map((z) => ({ offen: z.offen, revision: z.revision, text: z.data.stand.text }));
+    // Gespeichert ist der HTML-Rumpf; verglichen wird sein Klartext (je Absatz eine Leerzeile).
+    return res.rows.map((z) => ({
+      offen: z.offen,
+      revision: z.revision,
+      text: textAusRumpf(z.data.stand.rumpf),
+    }));
   }
 
   beforeAll(async () => {
@@ -221,7 +227,7 @@ describe("Gemeinsamer Artikelentwurf gegen echtes PostgreSQL", () => {
     expect((await tabelle(koId)).filter((z) => z.offen)).toHaveLength(1);
 
     // --- P2 · gleichzeitig speichern über zwei Prozesse, verschiedene Abschnitte ----------------
-    const stand = (text: string) => ({ basisRevision: 1, titel: TITEL, text });
+    const stand = (text: string) => ({ entwurfId: idA, basisRevision: 1, titel: TITEL, text });
     const [sa, sb] = await Promise.all([
       api(a, anna, "PUT", pfad, stand(TEXT.replace(A1, A1_NEU))),
       api(b, bernd, "PUT", pfad, stand(TEXT.replace(A3, A3_NEU))),
@@ -234,11 +240,13 @@ describe("Gemeinsamer Artikelentwurf gegen echtes PostgreSQL", () => {
     // --- P2 · derselbe Abschnitt über zwei Prozesse: ein Gewinner, ein 409 -----------------------
     const [ka, kb] = await Promise.all([
       api(a, anna, "PUT", pfad, {
+        entwurfId: idA,
         basisRevision: 3,
         titel: TITEL,
         text: [A1_NEU, "Verwendet wird Fett der Klasse 3.", A3_NEU].join("\n\n"),
       }),
       api(b, bernd, "PUT", pfad, {
+        entwurfId: idA,
         basisRevision: 3,
         titel: TITEL,
         text: [A1_NEU, "Verwendet wird Öl.", A3_NEU].join("\n\n"),
@@ -275,6 +283,7 @@ describe("Gemeinsamer Artikelentwurf gegen echtes PostgreSQL", () => {
     ]);
     // Bernd war während des Neustarts weg und hält noch Stand 3 mit einer Ergänzung am Ende.
     const spaet = await api(d, berndD, "PUT", pfad, {
+      entwurfId: idA,
       basisRevision: 3,
       titel: TITEL,
       text: [A1_NEU, A2, A3_NEU, "Den Schmierplan abzeichnen."].join("\n\n"),

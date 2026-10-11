@@ -7,7 +7,9 @@ import {
   type EntwurfsStand,
   type GemeinsamerEntwurf,
   type GemeinsamerEntwurfDienst,
-  artikelText,
+  artikelStand,
+  rumpfAusText,
+  textAusRumpf,
   uebernahmeAenderung,
 } from "../gemeinsamer-entwurf";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -49,17 +51,24 @@ export interface GemeinsamRoutesDeps {
 type Weg = "direkt" | "vorschlag";
 
 interface SpeicherRumpf {
+  entwurfId?: unknown;
   basisRevision?: unknown;
   titel?: unknown;
+  /** Der Inhalt als HTML (einheitlicher Editor). */
+  rumpf?: unknown;
+  /** Ersatzweise Klartext, je Absatz durch eine Leerzeile getrennt. */
   text?: unknown;
+  basisStand?: unknown;
 }
 
 interface AngleichRumpf {
+  entwurfId?: unknown;
   revision?: unknown;
   aufgeloest?: unknown;
 }
 
 interface AbschlussRumpf {
+  entwurfId?: unknown;
   revision?: unknown;
   fassung?: unknown;
   vorschlagId?: unknown;
@@ -76,7 +85,8 @@ function ansicht(e: GemeinsamerEntwurf, betrachter: SessionUser) {
     revision: e.revision,
     basisVersion: e.basisVersion,
     titel: e.stand.titel,
-    text: e.stand.text,
+    rumpf: e.stand.rumpf,
+    text: textAusRumpf(e.stand.rumpf),
     geaendertAm: e.geaendertAm,
     geaendertVon: letzter?.nutzerName ?? "",
     beteiligte,
@@ -93,8 +103,18 @@ function ansicht(e: GemeinsamerEntwurf, betrachter: SessionUser) {
 }
 
 function lesefassung(ko: KnowledgeObject) {
-  const { text, rumpf } = artikelText(ko);
-  return { version: ko.version, status: ko.status, titel: ko.title, text, rumpf };
+  const { rumpf } = artikelStand(ko);
+  return {
+    version: ko.version,
+    status: ko.status,
+    titel: ko.title,
+    rumpf,
+    text: textAusRumpf(rumpf),
+  };
+}
+
+function kennung(wert: unknown): string | undefined {
+  return typeof wert === "string" && wert.length > 0 && wert.length <= 200 ? wert : undefined;
 }
 
 function wegFuer(user: SessionUser, ko: KnowledgeObject): Weg {
@@ -105,12 +125,19 @@ function ganzzahl(wert: unknown): number | undefined {
   return typeof wert === "number" && Number.isInteger(wert) && wert >= 1 ? wert : undefined;
 }
 
+/** `{ titel, rumpf }` (HTML) oder ersatzweise `{ titel, text }` (Klartext-Absätze). */
 function stand(wert: unknown): EntwurfsStand | undefined {
   if (typeof wert !== "object" || wert === null) {
     return undefined;
   }
-  const { titel, text } = wert as { titel?: unknown; text?: unknown };
-  return typeof titel === "string" && typeof text === "string" ? { titel, text } : undefined;
+  const { titel, rumpf, text } = wert as { titel?: unknown; rumpf?: unknown; text?: unknown };
+  if (typeof titel !== "string") {
+    return undefined;
+  }
+  if (typeof rumpf === "string") {
+    return { titel, rumpf };
+  }
+  return typeof text === "string" ? { titel, rumpf: rumpfAusText(text) } : undefined;
 }
 
 function entwurfsFehler(reply: FastifyReply, e: unknown): void {
@@ -159,7 +186,7 @@ export function gemeinsamRoutes(deps: GemeinsamRoutesDeps, guards: Guards): Fast
             aktuell: offen.basisVersion === ko.version,
             // Ein Vorschlag trägt keinen Titel — eine Titeländerung geht nur über den direkten Weg.
             titelGeht: weg === "direkt" || offen.stand.titel === ko.title,
-            aenderung: uebernahmeAenderung(offen.stand, leser.rumpf),
+            aenderung: uebernahmeAenderung(offen.stand),
           }
         : null,
     };
@@ -223,19 +250,28 @@ export function gemeinsamRoutes(deps: GemeinsamRoutesDeps, guards: Guards): Fast
         }
         const body = request.body ?? {};
         const basisRevision = ganzzahl(body.basisRevision);
-        const { titel, text } = body;
-        if (basisRevision === undefined || typeof titel !== "string" || typeof text !== "string") {
+        const entwurfId = kennung(body.entwurfId);
+        const eingabe = stand(body);
+        const basisStand = body.basisStand === undefined ? undefined : stand(body.basisStand);
+        if (
+          basisRevision === undefined ||
+          entwurfId === undefined ||
+          eingabe === undefined ||
+          (body.basisStand !== undefined && basisStand === undefined)
+        ) {
           reply.code(400).send({
             error: "BAD_REQUEST",
-            message: "basisRevision (Ganzzahl ab 1), titel und text werden gebraucht.",
+            message:
+              "entwurfId, basisRevision (Ganzzahl ab 1), titel und rumpf (oder text) werden gebraucht; basisStand ist { titel, rumpf }.",
           });
           return;
         }
         try {
           const ergebnis = await entwuerfe.speichere(ko.id, await nutzer(user), {
+            entwurfId,
             basisRevision,
-            titel,
-            text,
+            ...eingabe,
+            ...(basisStand === undefined ? {} : { basisStand }),
           });
           if (!ergebnis.unveraendert) {
             await beleg(user, ko.id, "gemeinsam.gespeichert", {
@@ -272,14 +308,16 @@ export function gemeinsamRoutes(deps: GemeinsamRoutesDeps, guards: Guards): Fast
         if (revision === undefined || (body.aufgeloest !== undefined && !aufgeloest)) {
           reply.code(400).send({
             error: "BAD_REQUEST",
-            message: "revision (Ganzzahl ab 1) wird gebraucht; aufgeloest ist { titel, text }.",
+            message: "revision (Ganzzahl ab 1) wird gebraucht; aufgeloest ist { titel, rumpf }.",
           });
           return;
         }
+        const entwurfId = kennung(body.entwurfId);
         try {
           const e = await entwuerfe.gleicheAn(ko, await nutzer(user), {
             revision,
             ...(aufgeloest ? { aufgeloest } : {}),
+            ...(entwurfId === undefined ? {} : { entwurfId }),
           });
           await beleg(user, ko.id, "gemeinsam.angeglichen", {
             entwurf: e.id,
@@ -318,11 +356,13 @@ export function gemeinsamRoutes(deps: GemeinsamRoutesDeps, guards: Guards): Fast
           });
           return;
         }
+        const entwurfId = kennung(body.entwurfId);
         try {
           const e = await entwuerfe.schliesseAb(ko, await nutzer(user), {
             revision,
             ...(fassung === undefined ? {} : { fassung }),
             ...(vorschlagId === undefined ? {} : { vorschlagId }),
+            ...(entwurfId === undefined ? {} : { entwurfId }),
           });
           const action = fassung === undefined ? "gemeinsam.eingereicht" : "gemeinsam.uebernommen";
           await beleg(user, ko.id, action, {

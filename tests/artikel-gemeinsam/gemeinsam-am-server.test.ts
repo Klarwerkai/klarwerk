@@ -105,6 +105,7 @@ interface Lage {
     revision: number;
     basisVersion: number;
     titel: string;
+    rumpf: string;
     text: string;
     geaendertAm: string;
     geaendertVon: string;
@@ -130,8 +131,33 @@ const lage = async (token: string, koId: string): Promise<Lage> => {
   return res.json() as Lage;
 };
 
-const speichern = (token: string, koId: string, basis: number, text: string, titel = TITEL) =>
-  api(token, "PUT", `/api/kos/${koId}/gemeinsam`, { basisRevision: basis, titel, text });
+/** Die Kennung des offenen Entwurfs — gelesen mit Pedis Konto (darf immer lesen). */
+const offeneKennung = async (koId: string): Promise<string> => {
+  const res = await api(pedi, "GET", `/api/kos/${koId}/gemeinsam`);
+  return (res.json() as Lage).entwurf?.id ?? "kein-offener-entwurf";
+};
+
+/**
+ * Speichert als Klartext (je Absatz eine Leerzeile) — der Server legt daraus Absätze an. Die
+ * Entwurfskennung ist seit Nacharbeit 5 Pflicht; ohne Angabe wird die des offenen Entwurfs genommen.
+ */
+const speichern = async (
+  token: string,
+  koId: string,
+  basis: number,
+  text: string,
+  titel = TITEL,
+  entwurfId?: string,
+) =>
+  api(token, "PUT", `/api/kos/${koId}/gemeinsam`, {
+    entwurfId: entwurfId ?? (await offeneKennung(koId)),
+    basisRevision: basis,
+    titel,
+    text,
+  });
+
+/** Ein Absatz, wie ihn der Sanitizer schreibt — die Einheit der Konfliktstellen. */
+const p = (s: string): string => `<p>${s}</p>`;
 
 const oeffnen = (token: string, koId: string) => api(token, "POST", `/api/kos/${koId}/gemeinsam`);
 
@@ -267,9 +293,9 @@ describe("S2 · gleichzeitige Änderungen (K2)", () => {
     expect(konflikt.teile.filter((t) => t.art === "konflikt")).toEqual([
       {
         art: "konflikt",
-        basis: [A2],
-        meine: [berndsA2],
-        deren: [annasA2],
+        basis: [p(A2)],
+        meine: [p(berndsA2)],
+        deren: [p(annasA2)],
       },
     ]);
     // Nichts geschrieben: am Server steht Annas Stand.
@@ -350,7 +376,11 @@ describe("S4 · der freigegebene Leserstand bleibt eindeutig (K4)", () => {
 
     const l = await lage(anna.token, koId);
     expect(l.weg).toBe("direkt");
-    expect(l.lesefassung).toMatchObject({ version: 1, text: TEXT, rumpf: "einfach" });
+    expect(l.lesefassung).toMatchObject({
+      version: 1,
+      text: TEXT,
+      rumpf: [p(A1), p(A2), p(A3)].join(""),
+    });
     const u = l.uebernahme;
     expect(u).toMatchObject({ revision: 2, basisVersion: 1, aktuell: true, titelGeht: true });
     const revise = await api(anna.token, "PUT", `/api/kos/${koId}`, {
@@ -592,5 +622,202 @@ describe("S7 · Gegenprobe", () => {
     const blind = await speichern(bernd.token, koId, 2, BERNDS);
     const text = (blind.json() as Lage).entwurf?.text ?? "";
     expect(() => pruefeBeideAenderungen(text)).toThrow();
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 5 (Ben) · Entwurfskennung, gesendeter Stand als Basis, reiche Artikel.
+// ================================================================================================
+
+const speichernRumpf = (token: string, koId: string, rumpf: Record<string, unknown>) =>
+  api(token, "PUT", `/api/kos/${koId}/gemeinsam`, { titel: TITEL, ...rumpf });
+
+describe("S8 · eine verspätete Anfrage aus einem abgeschlossenen Entwurf überschreibt nichts (Ben 2)", () => {
+  it("alter Entwurf übernommen, neuer begonnen: Speichern mit alter Kennung und Revision 1 → 409", async () => {
+    const koId = await artikel();
+    const alt = ((await oeffnen(anna.token, koId)).json() as Lage).entwurf?.id ?? "";
+    await speichern(anna.token, koId, 1, ANNAS);
+    const l = await lage(anna.token, koId);
+    const revise = await api(anna.token, "PUT", `/api/kos/${koId}`, {
+      action: "revise",
+      changes: l.uebernahme?.aenderung,
+      expectedVersion: l.uebernahme?.basisVersion,
+    });
+    expect(revise.statusCode, revise.body).toBe(200);
+    const fassung = (revise.json() as { version: number }).version;
+    const abschluss = await api(anna.token, "POST", `/api/kos/${koId}/gemeinsam/abschluss`, {
+      entwurfId: alt,
+      revision: l.uebernahme?.revision,
+      fassung,
+    });
+    expect(abschluss.statusCode, abschluss.body).toBe(200);
+
+    // Ein neuer Entwurf beginnt wieder bei Arbeitsstand 1.
+    const neu = ((await oeffnen(bernd.token, koId)).json() as Lage).entwurf;
+    expect(neu?.id).not.toBe(alt);
+    expect(neu?.revision).toBe(1);
+
+    // Die verspätete Anfrage aus dem alten Entwurf — gleiche Revision, andere Kennung.
+    const spaet = await speichern(bernd.token, koId, 1, BERNDS, TITEL, alt);
+    expect(spaet.statusCode).toBe(409);
+    expect((spaet.json() as { error: string }).error).toBe("ENTWURF_ERSETZT");
+    const danach = (await lage(anna.token, koId)).entwurf;
+    expect(danach?.id).toBe(neu?.id);
+    expect(danach?.revision).toBe(1);
+    expect(danach?.text).toBe(neu?.text);
+
+    // Ohne Kennung nimmt der Server gar nichts an.
+    const ohne = await api(bernd.token, "PUT", `/api/kos/${koId}/gemeinsam`, {
+      basisRevision: 1,
+      titel: TITEL,
+      text: BERNDS,
+    });
+    expect(ohne.statusCode).toBe(400);
+  });
+});
+
+describe("S9 · der gesendete Stand als Basis späterer Eingaben (Ben 1, Serverhälfte)", () => {
+  it("nach einem zusammengeführten Speichern bleibt Fremdes erhalten, wenn weitergeschrieben wurde", async () => {
+    const koId = await artikel();
+    const id = ((await oeffnen(anna.token, koId)).json() as Lage).entwurf?.id ?? "";
+    // Bernd speichert Abschnitt 3; Anna sendet (auf Stand 1) Abschnitt 1 — zusammengeführt zu 3.
+    await speichern(bernd.token, koId, 1, BERNDS);
+    const gesendet = { titel: TITEL, rumpf: [p(A1_NEU), p(A2), p(A3)].join("") };
+    const erste = await speichernRumpf(anna.token, koId, {
+      entwurfId: id,
+      basisRevision: 1,
+      rumpf: gesendet.rumpf,
+    });
+    expect(erste.statusCode, erste.body).toBe(200);
+    expect((erste.json() as Lage).entwurf?.revision).toBe(3);
+
+    // Während der Anfrage hat Anna weitergeschrieben (Abschnitt 2) — auf IHREM gesendeten Stand.
+    const a2Neu = "Vorher den Druck über Ventil Y langsam ablassen.";
+    const weiter = [p(A1_NEU), p(a2Neu), p(A3)].join("");
+    const zweite = await speichernRumpf(anna.token, koId, {
+      entwurfId: id,
+      basisRevision: 3,
+      rumpf: weiter,
+      basisStand: gesendet,
+    });
+    expect(zweite.statusCode, zweite.body).toBe(200);
+    const text = (zweite.json() as Lage).entwurf?.text ?? "";
+    expect(text).toContain(A1_NEU);
+    expect(text).toContain(a2Neu);
+    // Bernds Abschnitt 3 ist NICHT verloren.
+    expect(text).toContain(A3_NEU);
+  });
+
+  it("Gegenprobe: ohne basisStand wäre Bernds hinzugeführte Änderung still verloren", async () => {
+    const koId = await artikel();
+    const id = ((await oeffnen(anna.token, koId)).json() as Lage).entwurf?.id ?? "";
+    await speichern(bernd.token, koId, 1, BERNDS);
+    await speichernRumpf(anna.token, koId, {
+      entwurfId: id,
+      basisRevision: 1,
+      rumpf: [p(A1_NEU), p(A2), p(A3)].join(""),
+    });
+    const ohne = await speichernRumpf(anna.token, koId, {
+      entwurfId: id,
+      basisRevision: 3,
+      rumpf: [p(A1_NEU), p("Vorher langsam."), p(A3)].join(""),
+    });
+    expect((ohne.json() as Lage).entwurf?.text ?? "").not.toContain(A3_NEU);
+  });
+});
+
+describe("S10 · reiche Artikel werden gemeinsam bearbeitet, ihr Inhalt bleibt (Ben 3)", () => {
+  it("Überschrift, Liste und Tabelle bleiben; Änderungen an Liste und Absatz werden zusammengeführt", async () => {
+    const kopf = "<h2>Ablauf</h2>";
+    const liste = "<ul><li>Ventil Y öffnen</li><li>Druck prüfen</li></ul>";
+    const tabelle = "<table><tbody><tr><td>Druck</td><td>2 bar</td></tr></tbody></table>";
+    const res = await api(pedi, "POST", "/api/kos", {
+      confidentiality: "intern",
+      title: TITEL,
+      statement: TEXT,
+      bodyHtml: `${kopf}${p(A1)}${liste}${tabelle}${p(A3)}`,
+      type: "best_practice",
+      category: "Anlage 1",
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const koId = (res.json() as { id: string }).id;
+    const geoeffnet = await oeffnen(anna.token, koId);
+    expect(geoeffnet.statusCode, geoeffnet.body).toBe(201);
+    const e = (geoeffnet.json() as Lage).entwurf;
+    const basis = e?.rumpf ?? "";
+    expect(basis).toContain("<h2>Ablauf</h2>");
+    expect(basis).toContain("<li>Druck prüfen</li>");
+    expect(basis).toContain("<td>2 bar</td>");
+
+    // Anna ändert den Absatz, Bernd (auf derselben Basis) die Liste.
+    const annas = await speichernRumpf(anna.token, koId, {
+      entwurfId: e?.id,
+      basisRevision: 1,
+      rumpf: basis.replace(p(A1), p(A1_NEU)),
+    });
+    expect(annas.statusCode, annas.body).toBe(200);
+    const bernds = await speichernRumpf(bernd.token, koId, {
+      entwurfId: e?.id,
+      basisRevision: 1,
+      rumpf: basis.replace("<li>Druck prüfen</li>", "<li>Druck prüfen</li><li>Protokoll</li>"),
+    });
+    expect(bernds.statusCode, bernds.body).toBe(200);
+    const zusammen = (bernds.json() as Lage).entwurf?.rumpf ?? "";
+    expect(zusammen).toContain(p(A1_NEU));
+    expect(zusammen).toContain("<li>Protokoll</li>");
+    expect(zusammen).toContain("<h2>Ablauf</h2>");
+    expect(zusammen).toContain("<td>2 bar</td>");
+
+    // Übernahme über den bestehenden Weg: der Artikel trägt den vollständigen Rumpf.
+    const l = await lage(bernd.token, koId);
+    const revise = await api(bernd.token, "PUT", `/api/kos/${koId}`, {
+      action: "revise",
+      changes: l.uebernahme?.aenderung,
+      expectedVersion: l.uebernahme?.basisVersion,
+    });
+    expect(revise.statusCode, revise.body).toBe(200);
+    const fassung = (revise.json() as { version: number }).version;
+    const abschluss = await api(bernd.token, "POST", `/api/kos/${koId}/gemeinsam/abschluss`, {
+      entwurfId: e?.id,
+      revision: l.uebernahme?.revision,
+      fassung,
+    });
+    expect(abschluss.statusCode, abschluss.body).toBe(200);
+    const ko = (await api(vera.token, "GET", `/api/kos/${koId}`)).json() as { bodyHtml: string };
+    for (const teil of ["<h2>Ablauf</h2>", "<li>Protokoll</li>", "<td>2 bar</td>", A1_NEU]) {
+      expect(ko.bodyHtml).toContain(teil);
+    }
+  });
+
+  it("dieselbe Tabellenzelle verschieden geändert: Konflikt mit dem ganzen Tabellenblock", async () => {
+    const tabelle = "<table><tbody><tr><td>Druck</td><td>2 bar</td></tr></tbody></table>";
+    const res = await api(pedi, "POST", "/api/kos", {
+      confidentiality: "intern",
+      title: TITEL,
+      statement: TEXT,
+      bodyHtml: `${p(A1)}${tabelle}`,
+      type: "best_practice",
+      category: "",
+    });
+    const koId = (res.json() as { id: string }).id;
+    const e = ((await oeffnen(anna.token, koId)).json() as Lage).entwurf;
+    const basis = e?.rumpf ?? "";
+    await speichernRumpf(anna.token, koId, {
+      entwurfId: e?.id,
+      basisRevision: 1,
+      rumpf: basis.replace("2 bar", "3 bar"),
+    });
+    const konflikt = await speichernRumpf(bernd.token, koId, {
+      entwurfId: e?.id,
+      basisRevision: 1,
+      rumpf: basis.replace("2 bar", "1,5 bar"),
+    });
+    expect(konflikt.statusCode).toBe(409);
+    const stellen = (
+      konflikt.json() as { teile: Array<{ art: string; meine?: string[]; deren?: string[] }> }
+    ).teile.filter((t) => t.art === "konflikt");
+    expect(stellen).toHaveLength(1);
+    expect(stellen[0]?.meine?.[0]).toContain("1,5 bar");
+    expect(stellen[0]?.deren?.[0]).toContain("3 bar");
   });
 });

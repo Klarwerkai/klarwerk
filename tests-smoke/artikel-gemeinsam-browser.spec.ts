@@ -70,13 +70,18 @@ async function anmelden(browser: Browser, email: string): Promise<Page> {
   return page;
 }
 
-async function artikel(admin: Page, titel: string): Promise<string> {
+/** Ein reicher Artikel — Überschrift und Liste zwischen den Absätzen (Nacharbeit 5). */
+const UEBERSCHRIFT = "Ablauf am Ventil";
+const LISTENPUNKT = "Druckanzeige beobachten";
+const REICH = `<h2>${UEBERSCHRIFT}</h2><p>${A1}</p><ul><li>${LISTENPUNKT}</li></ul><p>${A2}</p><p>${A3}</p>`;
+
+async function artikel(admin: Page, titel: string, bodyHtml = REICH): Promise<string> {
   const res = await admin.request.post("/api/kos", {
     data: {
       confidentiality: "intern",
       title: titel,
       statement: TEXT,
-      bodyHtml: `<p>${A1}</p><p>${A2}</p><p>${A3}</p>`,
+      bodyHtml,
       type: "best_practice",
       category: "Betrieb",
     },
@@ -93,7 +98,37 @@ async function beleg(page: Page, name: string): Promise<void> {
 }
 
 const zustand = (p: Person) => p.page.getByTestId("gemeinsam-speicherstand");
-const textfeld = (p: Person) => p.page.getByTestId("gemeinsam-text");
+
+/** Das Inhaltsfeld des einheitlichen Editors auf der Seite „Gemeinsam bearbeiten". */
+const editorFeld = (p: Person) =>
+  p.page.locator('[data-testid="gemeinsam-editor"] [role="textbox"][contenteditable]').first();
+
+/** Die Absätze im Editor als Klartext, je Absatz eine Leerzeile. */
+async function absaetze(p: Person): Promise<string> {
+  return editorFeld(p).evaluate((el) =>
+    [...el.querySelectorAll("p")]
+      .map((a) => (a.textContent ?? "").trim())
+      .filter((a) => a.length > 0)
+      .join("\n\n"),
+  );
+}
+
+/** Ersetzt im Editor genau einen Absatz — Überschrift, Liste und Rest bleiben, wie sie sind. */
+async function ersetzeAbsatz(p: Person, alt: string, neu: string): Promise<void> {
+  await editorFeld(p).evaluate(
+    (el, [vorher, nachher]) => {
+      const absatz = [...el.querySelectorAll("p")].find((a) => a.textContent?.trim() === vorher);
+      if (!absatz) {
+        throw new Error(`Absatz nicht gefunden: ${vorher}`);
+      }
+      absatz.textContent = nachher;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    },
+    [alt, neu] as const,
+  );
+}
+
+const imEditor = (p: Person) => expect.poll(() => absaetze(p), { timeout: 15_000 });
 
 async function speichern(p: Person): Promise<void> {
   await p.page.getByTestId("gemeinsam-speichern").click();
@@ -136,7 +171,10 @@ test("K1/K2/K3: aus dem Artikelgespräch zum selben Entwurf — Anwesenheit, Zus
   await expect(entwurfBeiBert).toHaveAttribute("data-entwurf", entwurfId ?? "", {
     timeout: 15_000,
   });
-  await expect(textfeld(bert)).toHaveValue(TEXT);
+  await imEditor(bert).toBe(TEXT);
+  // Der reiche Inhalt steht im einheitlichen Editor — Überschrift und Liste inklusive.
+  await expect(editorFeld(bert).locator("h2")).toHaveText(UEBERSCHRIFT);
+  await expect(editorFeld(bert).locator("li")).toHaveText(LISTENPUNKT);
 
   // --- K3 · Anwesenheit und Speicherstand -------------------------------------------------------
   await expect(anna.page.getByTestId("gemeinsam-anwesend-satz")).toContainText(bert.name, {
@@ -147,9 +185,9 @@ test("K1/K2/K3: aus dem Artikelgespräch zum selben Entwurf — Anwesenheit, Zus
   await beleg(anna.page, "K3 Anna sieht Bert im Entwurf");
 
   // --- K2 · verschiedene Abschnitte -------------------------------------------------------------
-  await textfeld(bert).fill(TEXT.replace(A3, A3_NEU));
+  await ersetzeAbsatz(bert, A3, A3_NEU);
   await expect(zustand(bert)).toHaveAttribute("data-zustand", "ungespeichert");
-  await textfeld(anna).fill(TEXT.replace(A1, A1_NEU));
+  await ersetzeAbsatz(anna, A1, A1_NEU);
   await speichern(anna);
   await expect(zustand(anna)).toHaveAttribute("data-zustand", "gespeichert", { timeout: 15_000 });
   await expect(bert.page.getByTestId("gemeinsam-fremd")).toContainText(anna.name, {
@@ -159,16 +197,17 @@ test("K1/K2/K3: aus dem Artikelgespräch zum selben Entwurf — Anwesenheit, Zus
   await speichern(bert);
   await expect(zustand(bert)).toHaveAttribute("data-zustand", "gespeichert", { timeout: 15_000 });
   await expect(zustand(bert)).toContainText(anna.name);
-  await expect(textfeld(bert)).toHaveValue([A1_NEU, A2, A3_NEU].join("\n\n"));
-  await expect(textfeld(anna)).toHaveValue([A1_NEU, A2, A3_NEU].join("\n\n"), { timeout: 15_000 });
+  await imEditor(bert).toBe([A1_NEU, A2, A3_NEU].join("\n\n"));
+  await imEditor(anna).toBe([A1_NEU, A2, A3_NEU].join("\n\n"));
+  await expect(editorFeld(bert).locator("li")).toHaveText(LISTENPUNKT);
   await beleg(bert.page, "K2 zusammengeführt — beide Änderungen im Text");
 
   // --- K2 · derselbe Abschnitt: Konflikt mit Wahl -------------------------------------------------
   const zusammen = [A1_NEU, A2, A3_NEU].join("\n\n");
   const berts = "Vorher den Druck über Ventil Z ablassen.";
   const annas = "Vorher den Druck VOLLSTÄNDIG ablassen.";
-  await textfeld(bert).fill(zusammen.replace(A2, berts));
-  await textfeld(anna).fill(zusammen.replace(A2, annas));
+  await ersetzeAbsatz(bert, A2, berts);
+  await ersetzeAbsatz(anna, A2, annas);
   await speichern(anna);
   await expect(zustand(anna)).toHaveAttribute("data-zustand", "gespeichert", { timeout: 15_000 });
   await speichern(bert);
@@ -176,14 +215,14 @@ test("K1/K2/K3: aus dem Artikelgespräch zum selben Entwurf — Anwesenheit, Zus
   await expect(konflikt).toBeVisible({ timeout: 15_000 });
   await expect(konflikt.getByTestId("gemeinsam-konflikt-meine")).toContainText(berts);
   await expect(konflikt.getByTestId("gemeinsam-konflikt-deren")).toContainText(annas);
-  await expect(textfeld(bert)).toHaveValue(zusammen.replace(A2, berts));
+  await imEditor(bert).toBe(zusammen.replace(A2, berts));
   await beleg(bert.page, "K2 Konflikt an derselben Stelle — beide Fassungen sichtbar");
   await bert.page.getByTestId("gemeinsam-wahl-beide").click();
   await bert.page.getByTestId("gemeinsam-konflikt-uebernehmen").click();
   await speichern(bert);
   await expect(zustand(bert)).toHaveAttribute("data-zustand", "gespeichert", { timeout: 15_000 });
   const loesung = [A1_NEU, annas, berts, A3_NEU].join("\n\n");
-  await expect(textfeld(anna)).toHaveValue(loesung, { timeout: 15_000 });
+  await imEditor(anna).toBe(loesung);
   await beleg(anna.page, "K2 Lösung bei Anna angekommen");
 });
 
@@ -201,21 +240,22 @@ test("K4/K5/K6: Lesefassung bleibt, Verbindungsabbruch hält die Eingabe, Übern
 
   await bert.page.goto(`/wissen/${koId}/gemeinsam`);
   await bert.page.getByTestId("gemeinsam-oeffnen").click();
-  await expect(textfeld(bert)).toHaveValue(TEXT, { timeout: 15_000 });
+  await imEditor(bert).toBe(TEXT);
 
   // --- K5 · Verbindungsabbruch: die Eingabe bleibt -----------------------------------------------
-  await textfeld(bert).fill(TEXT.replace(A3, A3_NEU));
+  await ersetzeAbsatz(bert, A3, A3_NEU);
   await bert.page.context().setOffline(true);
   await speichern(bert);
   await expect(zustand(bert)).toHaveAttribute("data-zustand", "unterbrochen", { timeout: 15_000 });
-  await expect(textfeld(bert)).toHaveValue(TEXT.replace(A3, A3_NEU));
+  await imEditor(bert).toBe(TEXT.replace(A3, A3_NEU));
   await beleg(bert.page, "K5 Verbindung unterbrochen — Eingabe steht noch da");
   await bert.page.context().setOffline(false);
   await bert.page.reload();
   await expect(bert.page.getByTestId("gemeinsam-wiederhergestellt")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(textfeld(bert)).toHaveValue(TEXT.replace(A3, A3_NEU));
+  await imEditor(bert).toBe(TEXT.replace(A3, A3_NEU));
+  await expect(editorFeld(bert).locator("h2")).toHaveText(UEBERSCHRIFT);
   await speichern(bert);
   await expect(zustand(bert)).toHaveAttribute("data-zustand", "gespeichert", { timeout: 15_000 });
   await beleg(bert.page, "K5 nach Neuladen wiederhergestellt und gespeichert");
@@ -242,11 +282,17 @@ test("K4/K5/K6: Lesefassung bleibt, Verbindungsabbruch hält die Eingabe, Übern
   const frisch = await anmelden(browser, anna.email);
   await frisch.goto(`/wissen/${koId}`);
   await expect(frisch.getByText(A3_NEU).first()).toBeVisible({ timeout: 15_000 });
+  // Der reiche Inhalt hat die gemeinsame Bearbeitung vollständig überstanden.
+  await expect(frisch.getByRole("heading", { name: UEBERSCHRIFT }).first()).toBeVisible();
+  await expect(frisch.getByText(LISTENPUNKT).first()).toBeVisible();
   const ko = (await (await frisch.request.get(`/api/kos/${koId}`)).json()) as {
     version: number;
+    bodyHtml: string;
     history: Array<{ version: number; author: string }>;
   };
   expect(ko.version).toBe(2);
+  expect(ko.bodyHtml).toContain(`<h2>${UEBERSCHRIFT}</h2>`);
+  expect(ko.bodyHtml).toContain(`<li>${LISTENPUNKT}</li>`);
   expect(ko.history[ko.history.length - 1]).toMatchObject({ version: 2, author: bert.id });
   await beleg(frisch, "K6 frische Anmeldung liest die übernommene Fassung");
 });

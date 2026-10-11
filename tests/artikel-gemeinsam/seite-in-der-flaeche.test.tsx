@@ -20,6 +20,10 @@
 //   F6 (K4/K6) Lesefassung bleibt bis zur Übernahme; die Übernahme macht die neue Fassung über den
 //              bestehenden Weg; die Seite meldet den Abschluss.
 //   F7         DE/EN/NL: die Sätze stehen in der Sprache der Fläche, kein Schlüssel bleibt roh.
+//   F8 (K2/K5) Nacharbeit 5: eine verzögerte Speicherantwort überschreibt keine Zwischeneingabe.
+//   F9 (K2/K5) Nacharbeit 5: Speichern auf einem ersetzten Entwurf schreibt nichts, Eingabe bleibt.
+//
+// Der Inhalt wird seit Nacharbeit 5 im EINHEITLICHEN Editor (`RichTextEditor`) bearbeitet.
 //
 // BENANNTE PRÜFLÜCKEN: Speicherablagen, jsdom (kein Layout), ein Prozess. Echte Browser zeigt
 // `tests-smoke/artikel-gemeinsam-browser.spec.ts`, PostgreSQL mit zwei App-Prozessen
@@ -62,11 +66,18 @@ let bernd = { id: "", token: "" };
 let flaechenToken = "";
 /** Verbindung der Fläche: aus heisst, jeder Aufruf scheitert wie ohne Netz. */
 let offline = false;
+/** Hält einen Speichervorgang der Fläche an, bis der Test ihn freigibt (verzögerte Antwort). */
+let speicherTor: Promise<void> | null = null;
 
 function transportEinhaengen(): void {
   globalThis.fetch = (async (eingabe: unknown, init?: RequestInit) => {
     if (offline) {
       throw new TypeError("Failed to fetch");
+    }
+    const istSpeichern =
+      (init?.method ?? "GET").toUpperCase() === "PUT" && String(eingabe).endsWith("/gemeinsam");
+    if (istSpeichern && speicherTor !== null) {
+      await speicherTor;
     }
     const kopf: Record<string, string> = {};
     if (init?.headers) {
@@ -136,12 +147,23 @@ async function artikelMitEntwurf(): Promise<string> {
   return koId;
 }
 
-const amServer = async (koId: string): Promise<{ revision: number; text: string }> => {
+const amServer = async (
+  koId: string,
+): Promise<{ id: string; revision: number; text: string; rumpf: string }> => {
   const lage = (await api(pedi, "GET", `/api/kos/${koId}/gemeinsam`)).json() as {
-    entwurf: { revision: number; text: string };
+    entwurf: { id: string; revision: number; text: string; rumpf: string };
   };
   return lage.entwurf;
 };
+
+/** Anna speichert über den Draht (Klartext-Absätze), mit der Kennung des offenen Entwurfs. */
+const annaSpeichert = async (koId: string, basisRevision: number, text: string) =>
+  api(anna.token, "PUT", `/api/kos/${koId}/gemeinsam`, {
+    entwurfId: (await amServer(koId)).id,
+    basisRevision,
+    titel: TITEL,
+    text,
+  });
 
 let container: HTMLDivElement | null = null;
 let root: ReturnType<typeof createRoot> | null = null;
@@ -247,22 +269,35 @@ async function klick(testId: string): Promise<void> {
   await act(flush);
 }
 
-function feld(): HTMLTextAreaElement {
-  const f = suche("gemeinsam-text");
-  if (!(f instanceof HTMLTextAreaElement)) {
-    throw new Error("Das Textfeld steht nicht auf der Fläche");
+/**
+ * Das Inhaltsfeld des EINHEITLICHEN Editors (`RichTextEditor`) auf dieser Seite — derselbe Weg wie
+ * `tests/editor-einheitlich/bearbeiten-einheitlich-mounted.test.tsx` (`inhaltSetzen`).
+ */
+function feld(): HTMLElement {
+  const f = document.body.querySelector<HTMLElement>(
+    `[data-testid="gemeinsam-editor"] [role="textbox"][aria-label="${i18n.t("editor.bodyLabel")}"]`,
+  );
+  if (!f) {
+    throw new Error("Das Inhaltsfeld des Editors steht nicht auf der Fläche");
   }
   return f;
 }
 
+/** Der Inhalt im Editor als Klartext, je Absatz eine Leerzeile — vergleichbar mit `TEXT`. */
+const imFeld = (): string =>
+  [...feld().querySelectorAll("p")]
+    .map((absatz) => (absatz.textContent ?? "").trim())
+    .filter((a) => a.length > 0)
+    .join("\n\n");
+
+/** Tippt Absätze in den Editor: Inhalt setzen und das Eingabeereignis auslösen. */
 async function tippen(wert: string): Promise<void> {
   const ziel = feld();
-  const setzer = Object.getOwnPropertyDescriptor(
-    window.HTMLTextAreaElement.prototype,
-    "value",
-  )?.set;
   await act(async () => {
-    setzer?.call(ziel, wert);
+    ziel.innerHTML = wert
+      .split("\n\n")
+      .map((a) => `<p>${a}</p>`)
+      .join("");
     ziel.dispatchEvent(new Event("input", { bubbles: true }));
     await flush();
   });
@@ -275,6 +310,7 @@ const zustand = (): string | null =>
 beforeEach(async () => {
   app = buildApp(buildServices());
   offline = false;
+  speicherTor = null;
   transportEinhaengen();
   window.sessionStorage.clear();
   await app.inject({
@@ -308,7 +344,7 @@ describe("F1 · derselbe Entwurf, wer dabei ist, was gespeichert ist (K1/K3)", (
     await mount(koId);
     await bis(() => suche("gemeinsam-entwurf") !== null, "der Entwurf steht da");
     expect(suche("gemeinsam-entwurf")?.getAttribute("data-entwurf")).toBe(entwurfId);
-    expect(feld().value).toBe(TEXT);
+    expect(imFeld()).toBe(TEXT);
     expect(zustand()).toBe("gespeichert");
     expect(text(suche("gemeinsam-speicherstand"))).toContain("Anna Beispiel");
     await bis(
@@ -341,27 +377,23 @@ describe("F2 · verschiedene Abschnitte werden zusammengeführt (K2)", () => {
   it("die Fläche meldet Annas Stand; Speichern führt zusammen — beides im Feld und am Server", async () => {
     const koId = await artikelMitEntwurf();
     await mount(koId);
-    await bis(() => suche("gemeinsam-text") !== null, "das Textfeld steht da");
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
     await tippen(TEXT.replace(A3, A3_NEU));
     expect(zustand()).toBe("ungespeichert");
-    const anna2 = await api(anna.token, "PUT", `/api/kos/${koId}/gemeinsam`, {
-      basisRevision: 1,
-      titel: TITEL,
-      text: TEXT.replace(A1, A1_NEU),
-    });
+    const anna2 = await annaSpeichert(koId, 1, TEXT.replace(A1, A1_NEU));
     expect(anna2.statusCode).toBe(200);
     await bis(() => suche("gemeinsam-fremd") !== null, "Annas neuer Stand wird gemeldet");
     expect(text(suche("gemeinsam-fremd"))).toContain("Anna Beispiel");
     // Die eigene Eingabe wurde NICHT durch Annas Stand ersetzt.
-    expect(feld().value).toContain(A3_NEU);
+    expect(imFeld()).toContain(A3_NEU);
 
     await klick("gemeinsam-speichern");
     await bis(() => zustand() === "gespeichert", "gespeichert");
     expect(text(suche("gemeinsam-speicherstand"))).toBe(
       i18n.t("gemeinsam.speicher.zusammengefuehrt", { namen: "Anna Beispiel", revision: 3 }),
     );
-    expect(feld().value).toContain(A1_NEU);
-    expect(feld().value).toContain(A3_NEU);
+    expect(imFeld()).toContain(A1_NEU);
+    expect(imFeld()).toContain(A3_NEU);
     const server = await amServer(koId);
     expect(server.revision).toBe(3);
     expect(server.text).toBe([A1_NEU, A2, A3_NEU].join("\n\n"));
@@ -372,15 +404,11 @@ describe("F3 · derselbe Abschnitt: konkret lösbarer Konflikt (K2)", () => {
   it("nichts überschrieben, Bernds Text bleibt; „Beide behalten“ und Speichern legen die Lösung ab", async () => {
     const koId = await artikelMitEntwurf();
     await mount(koId);
-    await bis(() => suche("gemeinsam-text") !== null, "das Textfeld steht da");
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
     const berndsA2 = "Vorher den Druck über Ventil Z ablassen.";
     const annasA2 = "Vorher den Druck VOLLSTÄNDIG ablassen.";
     await tippen(TEXT.replace(A2, berndsA2));
-    await api(anna.token, "PUT", `/api/kos/${koId}/gemeinsam`, {
-      basisRevision: 1,
-      titel: TITEL,
-      text: TEXT.replace(A2, annasA2),
-    });
+    await annaSpeichert(koId, 1, TEXT.replace(A2, annasA2));
     await klick("gemeinsam-speichern");
     await bis(() => suche("gemeinsam-konflikt") !== null, "der Konflikt steht da");
     expect(zustand()).toBe("konflikt");
@@ -394,7 +422,7 @@ describe("F3 · derselbe Abschnitt: konkret lösbarer Konflikt (K2)", () => {
     expect(deren).toContain("Anna Beispiel");
     // Nichts überschrieben: am Server steht Annas Stand, im Feld Bernds Text.
     expect((await amServer(koId)).text).toBe(TEXT.replace(A2, annasA2));
-    expect(feld().value).toBe(TEXT.replace(A2, berndsA2));
+    expect(imFeld()).toBe(TEXT.replace(A2, berndsA2));
     // Ohne Entscheidung lässt sich nichts übernehmen.
     expect((suche("gemeinsam-konflikt-uebernehmen") as HTMLButtonElement).disabled).toBe(true);
 
@@ -402,7 +430,7 @@ describe("F3 · derselbe Abschnitt: konkret lösbarer Konflikt (K2)", () => {
     await klick("gemeinsam-konflikt-uebernehmen");
     expect(suche("gemeinsam-konflikt")).toBeNull();
     const loesung = [A1, annasA2, berndsA2, A3].join("\n\n");
-    expect(feld().value).toBe(loesung);
+    expect(imFeld()).toBe(loesung);
     await klick("gemeinsam-speichern");
     await bis(() => zustand() === "gespeichert", "gespeichert");
     expect((await amServer(koId)).text).toBe(loesung);
@@ -413,27 +441,23 @@ describe("F4 · Verbindungsabbruch und Wiederaufnahme (K5)", () => {
   it("unterbrochen → Text bleibt; nach Neuladen steht die Eingabe wieder da und wird gespeichert", async () => {
     const koId = await artikelMitEntwurf();
     await mount(koId);
-    await bis(() => suche("gemeinsam-text") !== null, "das Textfeld steht da");
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
     await tippen(TEXT.replace(A3, A3_NEU));
     offline = true;
     await klick("gemeinsam-speichern");
     await bis(() => zustand() === "unterbrochen", "die Fläche sagt „unterbrochen“");
     expect(text(suche("gemeinsam-speicherstand"))).toBe(i18n.t("gemeinsam.speicher.unterbrochen"));
-    expect(feld().value).toContain(A3_NEU);
+    expect(imFeld()).toContain(A3_NEU);
     expect((await amServer(koId)).revision).toBe(1);
 
     // Inzwischen speichert Anna oben; dann lädt Bernd die Seite neu (Netz wieder da).
-    await api(anna.token, "PUT", `/api/kos/${koId}/gemeinsam`, {
-      basisRevision: 1,
-      titel: TITEL,
-      text: TEXT.replace(A1, A1_NEU),
-    });
+    await annaSpeichert(koId, 1, TEXT.replace(A1, A1_NEU));
     await unmount();
     offline = false;
     qc = neuerQueryClient();
     await mount(koId);
     await bis(() => suche("gemeinsam-wiederhergestellt") !== null, "Eingabe wiederhergestellt");
-    expect(feld().value).toContain(A3_NEU);
+    expect(imFeld()).toContain(A3_NEU);
     expect(zustand()).toBe("ungespeichert");
     await klick("gemeinsam-speichern");
     await bis(() => zustand() === "gespeichert", "gespeichert");
@@ -446,7 +470,7 @@ describe("F5 · Rechteentzug mitten im Bearbeiten (K5)", () => {
   it("keine Rechte mehr: nichts gespeichert, Text bleibt, Kopieren steht bereit", async () => {
     const koId = await artikelMitEntwurf();
     await mount(koId);
-    await bis(() => suche("gemeinsam-text") !== null, "das Textfeld steht da");
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
     await tippen(TEXT.replace(A3, A3_NEU));
     expect((await api(pedi, "PUT", `/api/users/${bernd.id}`, { role: "viewer" })).statusCode).toBe(
       200,
@@ -454,7 +478,7 @@ describe("F5 · Rechteentzug mitten im Bearbeiten (K5)", () => {
     await klick("gemeinsam-speichern");
     await bis(() => zustand() === "ohneRecht", "die Fläche sagt „keine Rechte mehr“");
     expect(text(suche("gemeinsam-speicherstand"))).toBe(i18n.t("gemeinsam.speicher.ohneRecht"));
-    expect(feld().value).toContain(A3_NEU);
+    expect(imFeld()).toContain(A3_NEU);
     expect(suche("gemeinsam-kopieren")?.tagName).toBe("BUTTON");
     expect((await amServer(koId)).revision).toBe(1);
   }, 30_000);
@@ -464,7 +488,7 @@ describe("F6 · Lesefassung bis zur Übernahme, dann die neue Fassung (K4/K6)", 
   it("Speichern ändert den Artikel nicht; „Als neue Fassung übernehmen“ schon — über den bestehenden Weg", async () => {
     const koId = await artikelMitEntwurf();
     await mount(koId);
-    await bis(() => suche("gemeinsam-text") !== null, "das Textfeld steht da");
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
     const lese = suche("gemeinsam-lesefassung-satz");
     expect(lese?.getAttribute("data-version")).toBe("1");
     await tippen(TEXT.replace(A3, A3_NEU));
@@ -497,6 +521,84 @@ describe("F6 · Lesefassung bis zur Übernahme, dann die neue Fassung (K4/K6)", 
       () => suche("gemeinsam-lesefassung-satz")?.getAttribute("data-version") === "2",
       "die Lesefassung zeigt Fassung 2",
     );
+  }, 30_000);
+});
+
+describe("F8 · verzögerte Speicherantwort mit Zwischeneingabe (Nacharbeit 5, Ben 1)", () => {
+  it("die Antwort quittiert nur den gesendeten Stand; Weitergeschriebenes bleibt und wird danach zusammengeführt", async () => {
+    const koId = await artikelMitEntwurf();
+    await mount(koId);
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
+    await tippen(TEXT.replace(A3, A3_NEU));
+    let freigeben: () => void = () => undefined;
+    speicherTor = new Promise<void>((weiter) => {
+      freigeben = weiter;
+    });
+    await klick("gemeinsam-speichern");
+    expect(zustand()).toBe("laeuft");
+
+    // Während die Anfrage hängt: Anna speichert oben, Bernd schreibt in der Mitte weiter.
+    expect((await annaSpeichert(koId, 1, TEXT.replace(A1, A1_NEU))).statusCode).toBe(200);
+    const a2Neu = "Vorher den Druck über Ventil Y langsam ablassen.";
+    await tippen([A1, a2Neu, A3_NEU].join("\n\n"));
+
+    speicherTor = null;
+    freigeben();
+    await bis(() => zustand() !== "laeuft", "die Speicherantwort ist angekommen");
+    // Die spätere Eingabe ist NICHT überschrieben und nicht als gespeichert ausgegeben.
+    expect(zustand()).toBe("ungespeichert");
+    expect(imFeld()).toContain(a2Neu);
+    expect(window.sessionStorage.getItem(`klarwerk.gemeinsam.${koId}`) ?? "").toContain(a2Neu);
+    // Am Server: der gesendete Stand, zusammengeführt mit Annas Änderung.
+    expect((await amServer(koId)).text).toBe([A1_NEU, A2, A3_NEU].join("\n\n"));
+
+    // Das nächste Speichern führt die Zwischeneingabe zusammen — ohne Annas Änderung zu verlieren.
+    await klick("gemeinsam-speichern");
+    await bis(() => zustand() === "gespeichert", "gespeichert");
+    const ergebnis = [A1_NEU, a2Neu, A3_NEU].join("\n\n");
+    expect((await amServer(koId)).text).toBe(ergebnis);
+    expect(imFeld()).toBe(ergebnis);
+    expect(window.sessionStorage.getItem(`klarwerk.gemeinsam.${koId}`)).toBeNull();
+  }, 30_000);
+});
+
+describe("F9 · der Entwurf ist inzwischen übernommen und ersetzt (Nacharbeit 5, Ben 2)", () => {
+  it("Speichern mit dem alten Entwurf schreibt nichts; die Eingabe bleibt mit Kopieren", async () => {
+    const koId = await artikelMitEntwurf();
+    await mount(koId);
+    await bis(() => suche("gemeinsam-editor") !== null, "der Editor steht da");
+    await tippen(TEXT.replace(A3, A3_NEU));
+
+    // Anna übernimmt den Entwurf und beginnt einen neuen (wieder Arbeitsstand 1).
+    const lage = (await api(anna.token, "GET", `/api/kos/${koId}/gemeinsam`)).json() as {
+      entwurf: { id: string };
+      uebernahme: { revision: number; basisVersion: number; aenderung: Record<string, unknown> };
+    };
+    const revise = await api(anna.token, "PUT", `/api/kos/${koId}`, {
+      action: "revise",
+      changes: lage.uebernahme.aenderung,
+      expectedVersion: lage.uebernahme.basisVersion,
+    });
+    expect(revise.statusCode).toBe(200);
+    const abschluss = await api(anna.token, "POST", `/api/kos/${koId}/gemeinsam/abschluss`, {
+      entwurfId: lage.entwurf.id,
+      revision: lage.uebernahme.revision,
+      fassung: (revise.json() as { version: number }).version,
+    });
+    expect(abschluss.statusCode).toBe(200);
+    expect((await api(anna.token, "POST", `/api/kos/${koId}/gemeinsam`)).statusCode).toBe(201);
+    const neu = await amServer(koId);
+
+    await klick("gemeinsam-speichern");
+    await bis(() => zustand() === "ersetzt", "die Fläche sagt „ersetzt“");
+    expect(text(suche("gemeinsam-speicherstand"))).toBe(i18n.t("gemeinsam.speicher.ersetzt"));
+    expect(imFeld()).toContain(A3_NEU);
+    expect(suche("gemeinsam-kopieren")?.tagName).toBe("BUTTON");
+    // Der neue Entwurf ist unberührt.
+    const danach = await amServer(koId);
+    expect(danach.id).toBe(neu.id);
+    expect(danach.revision).toBe(1);
+    expect(danach.text).not.toContain(A3_NEU);
   }, 30_000);
 });
 

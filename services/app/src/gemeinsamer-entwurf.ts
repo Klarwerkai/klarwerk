@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
+import { sanitizeHtml } from "../../structure";
 
 // ================================================================================================
 // ARTIKEL-GEMEINSAM (produkt:20261007:artikel-gemeinsam) · DER GEMEINSAME ENTWURF EINES ARTIKELS.
@@ -29,15 +30,20 @@ import type { Pool } from "pg";
 //     Speichervorgänge gleichzeitig, gewinnt einer, und der andere wird gegen den neuen Stand
 //     erneut zusammengeführt.
 //
-// ABSCHNITT = ein durch eine Leerzeile getrennter Absatz des Artikeltextes. Der Titel ist ein
-// eigener Wert mit derselben Regel. Ein Artikel, dessen Rumpf mehr trägt als Absätze (Bilder,
-// Tabellen, Listen, Überschriften), wird hier NICHT gemeinsam bearbeitet
-// (`ENTWURF_REICHER_INHALT`): das Zurückschreiben als Absätze würde diesen Inhalt still entfernen.
+// INHALT = der HTML-Rumpf des Artikels, so wie ihn der einheitliche Editor (`RichTextEditor`)
+// schreibt — mit Überschriften, Listen, Tabellen, Bildern und Formatierung. ABSCHNITT = ein Block
+// der obersten Ebene dieses Rumpfs (Absatz, Überschrift, Liste, Tabelle, Bild …). Jeder Rumpf geht
+// vor dem Zerlegen durch DENSELBEN Sanitizer wie der Artikel selbst (`sanitizeHtml`), damit gleicher
+// Inhalt gleiche Zeichen ergibt. Der Titel ist ein eigener Wert mit derselben Regel.
+//
+// NACHARBEIT 5 (Ben): bis hierher bearbeitete der Entwurf nur Klartext-Absätze in einer eigenen
+// Textarea und schloss Artikel mit Bildern, Listen oder Tabellen aus. Das ist aufgehoben: jeder
+// Artikel lässt sich gemeinsam bearbeiten, sein Inhalt bleibt vollständig erhalten.
 
-/** Titel und Text eines Arbeitsstands; `text` normalisiert (Abschnitte, je eine Leerzeile). */
+/** Titel und Inhalt eines Arbeitsstands; `rumpf` ist kanonisches, sanitisiertes HTML. */
 export interface EntwurfsStand {
   titel: string;
-  text: string;
+  rumpf: string;
 }
 
 export type EntwurfsZustand = "offen" | "uebernommen" | "eingereicht";
@@ -145,54 +151,118 @@ function verschluessele(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Ein Rumpf aus nichts als Absätzen mit Klartext und Zeilenumbrüchen. */
-const EINFACHER_RUMPF = /^(?:\s*<p>(?:[^<]|<br\s*\/?>)*<\/p>)*\s*$/i;
+/** Elemente ohne Schlussmarke — sie öffnen keine Ebene. */
+const LEERE_ELEMENTE = new Set(["br", "img", "hr", "wbr", "col", "source", "input"]);
 
-export type RumpfArt = "keiner" | "einfach" | "reich";
+/** Dieselbe Tag-Erkennung wie der Sanitizer (Attributwerte in Anführungszeichen dürfen `>` tragen). */
+const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
 
 /**
- * Der Text eines Artikels, wie ihn der Entwurf bearbeitet — und welche Art Rumpf er hat. Ohne
- * Rumpf ist es die Aussage; bei einem einfachen Rumpf sind es seine Absätze; ein reicher Rumpf
- * wird nicht zerlegt (`reich`), weil sein Zurückschreiben Inhalt entfernen würde.
+ * Zerlegt einen (sanitisierten) HTML-Rumpf in seine Blöcke der obersten Ebene. Text, der auf der
+ * obersten Ebene ausserhalb eines Elements steht, wird zu einem eigenen Block.
  */
-export function artikelText(ko: { statement: string; bodyHtml?: string | null }): {
-  text: string;
-  rumpf: RumpfArt;
-} {
-  const rumpf = typeof ko.bodyHtml === "string" ? ko.bodyHtml : "";
-  if (rumpf.trim().length === 0) {
-    return { text: normalisiereText(ko.statement), rumpf: "keiner" };
+export function bloecke(html: string): string[] {
+  const raus: string[] = [];
+  let tiefe = 0;
+  let start = 0;
+  const re = new RegExp(TAG.source, "g");
+  let m: RegExpExecArray | null = re.exec(html);
+  while (m !== null) {
+    const zu = m[1] === "/";
+    const name = (m[2] ?? "").toLowerCase();
+    const selbst = LEERE_ELEMENTE.has(name) || (m[3] ?? "").trimEnd().endsWith("/");
+    if (tiefe === 0 && !zu) {
+      const davor = html.slice(start, m.index).trim();
+      if (davor.length > 0) {
+        raus.push(davor);
+      }
+      if (selbst) {
+        raus.push(html.slice(m.index, re.lastIndex));
+        start = re.lastIndex;
+      } else {
+        start = m.index;
+        tiefe = 1;
+      }
+    } else if (!selbst) {
+      tiefe = zu ? Math.max(0, tiefe - 1) : tiefe + 1;
+      if (zu && tiefe === 0) {
+        raus.push(html.slice(start, re.lastIndex));
+        start = re.lastIndex;
+      }
+    }
+    m = re.exec(html);
   }
-  if (!EINFACHER_RUMPF.test(rumpf)) {
-    return { text: normalisiereText(ko.statement), rumpf: "reich" };
+  const rest = html.slice(start).trim();
+  if (rest.length > 0) {
+    raus.push(rest);
   }
-  const absaetze: string[] = [];
-  for (const treffer of rumpf.matchAll(/<p>((?:[^<]|<br\s*\/?>)*)<\/p>/gi)) {
-    absaetze.push(entschluessele((treffer[1] ?? "").replace(/<br\s*\/?>/gi, "\n")));
-  }
-  return { text: normalisiereText(absaetze.join("\n\n")), rumpf: "einfach" };
+  return raus;
 }
 
-/** Der Rumpf zu einem Entwurfstext — je Abschnitt ein Absatz, Zeilenumbrüche als `<br>`. */
+/** Der kanonische Rumpf: sanitisiert wie am Artikel, Blöcke ohne Zwischenraum aneinander. */
+export function normalisiereRumpf(html: string): string {
+  return bloecke(sanitizeHtml(html)).join("");
+}
+
+/** Der Rumpf zu einem Klartext — je Abschnitt ein Absatz, Zeilenumbrüche als `<br>`. */
 export function rumpfAusText(text: string): string {
-  return abschnitte(text)
-    .map((a) => `<p>${verschluessele(a).replace(/\n/g, "<br>")}</p>`)
-    .join("");
+  return normalisiereRumpf(
+    abschnitte(text)
+      .map((a) => `<p>${verschluessele(a).replace(/\n/g, "<br>")}</p>`)
+      .join(""),
+  );
+}
+
+/** Der Klartext eines Blocks — für Aussage, Anzeige und Vergleich. */
+function blockText(block: string): string {
+  return entschluessele(
+    block
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|h[1-6]|li|blockquote|div|figcaption|caption|th|td|tr)>/gi, "\n")
+      .replace(/<[^>]*>/g, ""),
+  )
+    .split("\n")
+    .map((z) => z.trim())
+    .filter((z) => z.length > 0)
+    .join("\n");
+}
+
+/** Der Klartext eines Rumpfs: je Block ein Absatz, eine Leerzeile dazwischen. */
+export function textAusRumpf(rumpf: string): string {
+  return bloecke(rumpf)
+    .map(blockText)
+    .filter((t) => t.length > 0)
+    .join("\n\n");
 }
 
 /**
- * Was die Übernahme an `PUT /api/kos/:id` schickt (`action: "revise"` bzw. `"propose"`). Hat der
- * Artikel einen einfachen Rumpf, wird er mitgeschrieben — sonst läse der Leser weiter den alten.
+ * Der Inhalt eines Artikels, wie ihn der Entwurf bearbeitet: sein Rumpf (kanonisiert). Ein Artikel
+ * ohne Rumpf trägt seine Aussage als Absätze.
  */
-export function uebernahmeAenderung(
-  stand: EntwurfsStand,
-  rumpf: RumpfArt,
-): { title: string; statement: string; bodyHtml?: string } {
-  return {
-    title: stand.titel,
-    statement: stand.text,
-    ...(rumpf === "einfach" ? { bodyHtml: rumpfAusText(stand.text) } : {}),
-  };
+export function artikelRumpf(ko: { statement: string; bodyHtml?: string | null }): string {
+  const rumpf = typeof ko.bodyHtml === "string" ? ko.bodyHtml : "";
+  return rumpf.trim().length > 0 ? normalisiereRumpf(rumpf) : rumpfAusText(ko.statement);
+}
+
+/** Der Stand eines Artikels — Titel und kanonischer Rumpf. */
+export function artikelStand(ko: {
+  title: string;
+  statement: string;
+  bodyHtml?: string | null;
+}): EntwurfsStand {
+  return { titel: ko.title, rumpf: artikelRumpf(ko) };
+}
+
+/**
+ * Was die Übernahme an `PUT /api/kos/:id` schickt (`action: "revise"` bzw. `"propose"`): Titel,
+ * der vollständige Rumpf und dessen Klartext als Aussage.
+ */
+export function uebernahmeAenderung(stand: EntwurfsStand): {
+  title: string;
+  statement: string;
+  bodyHtml: string;
+} {
+  return { title: stand.titel, statement: textAusRumpf(stand.rumpf), bodyHtml: stand.rumpf };
 }
 
 // ================================================================================================
@@ -412,15 +482,11 @@ export function fuehreStaendeZusammen(
   deren: EntwurfsStand,
 ): StandZusammenfuehrung {
   const titel = fuehreWertZusammen(basis.titel, meine.titel, deren.titel);
-  const text = fuehreZusammen(
-    abschnitte(basis.text),
-    abschnitte(meine.text),
-    abschnitte(deren.text),
-  );
-  if ("wert" in titel && text.ergebnis !== null) {
-    return { ok: true, stand: { titel: titel.wert, text: text.ergebnis.join("\n\n") } };
+  const inhalt = fuehreZusammen(bloecke(basis.rumpf), bloecke(meine.rumpf), bloecke(deren.rumpf));
+  if ("wert" in titel && inhalt.ergebnis !== null) {
+    return { ok: true, stand: { titel: titel.wert, rumpf: inhalt.ergebnis.join("") } };
   }
-  return { ok: false, titel: "konflikt" in titel ? titel.konflikt : null, teile: text.teile };
+  return { ok: false, titel: "konflikt" in titel ? titel.konflikt : null, teile: inhalt.teile };
 }
 
 // ================================================================================================
@@ -576,6 +642,7 @@ export interface EntwurfsArtikel {
     author: string;
     baseVersion: number;
     statement: string;
+    bodyHtml?: string | null;
     status: string;
   }>;
 }
@@ -616,16 +683,8 @@ export class GemeinsamerEntwurfDienst {
     if (vorhanden) {
       return { entwurf: vorhanden, neu: false };
     }
-    const { text, rumpf } = artikelText(ko);
-    if (rumpf === "reich") {
-      throw new EntwurfsFehler(
-        409,
-        "ENTWURF_REICHER_INHALT",
-        "Dieser Artikel enthält mehr als Absätze (etwa Bilder, Tabellen oder Listen). Der gemeinsame Entwurf bearbeitet nur Titel und Absätze und würde diesen Inhalt beim Übernehmen entfernen — bitte im Artikel selbst bearbeiten.",
-      );
-    }
     const am = this.jetzt();
-    const stand: EntwurfsStand = { titel: ko.title, text };
+    const stand = artikelStand(ko);
     const entwurf: GemeinsamerEntwurf = {
       id: this.neueKennung(),
       koId: ko.id,
@@ -644,50 +703,57 @@ export class GemeinsamerEntwurfDienst {
   /**
    * Speichert einen Arbeitsstand. Beruht er auf dem aktuellen, wird er geschrieben; sonst wird er
    * mit dem inzwischen gespeicherten zusammengeführt. Ein Konflikt schreibt nichts (409).
+   *
+   * NACHARBEIT 5 (Ben): `entwurfId` ist Pflicht. Ein neuer Entwurf beginnt wieder bei Arbeitsstand
+   * 1 — ohne die Kennung hätte eine verspätete Anfrage aus einem abgeschlossenen Entwurf den neuen
+   * bei gleicher Nummer still überschrieben. Jetzt: 409 `ENTWURF_ERSETZT`, nichts geschrieben.
+   *
+   * `basisStand` (optional) ist der Stand, auf dem die Eingabe WIRKLICH beruht, wenn er keinem
+   * gespeicherten Arbeitsstand gleicht: der Client hat einen Stand gesendet, der zusammengeführt
+   * wurde, und danach weitergeschrieben. Dann ist der gesendete Stand die Basis — sonst gingen die
+   * hinzugeführten fremden Änderungen beim nächsten Speichern verloren. Er verleiht keine Rechte,
+   * die `basisRevision` nicht schon gibt: eine Basis gleich dem aktuellen Stand ist ein direktes
+   * Schreiben, wie es jeder Aufruf mit der aktuellen Revision ohnehin darf.
    */
   async speichere(
     koId: string,
     nutzer: EntwurfsNutzer,
-    eingabe: { basisRevision: number; titel: string; text: string },
+    eingabe: {
+      entwurfId: string;
+      basisRevision: number;
+      titel: string;
+      rumpf: string;
+      basisStand?: EntwurfsStand;
+    },
   ): Promise<{ entwurf: GemeinsamerEntwurf; zusammengefuehrt: boolean; unveraendert: boolean }> {
-    const meine: EntwurfsStand = {
-      titel: eingabe.titel.trim(),
-      text: normalisiereText(eingabe.text),
-    };
-    if (meine.titel.length === 0) {
-      throw new EntwurfsFehler(400, "ENTWURF_OHNE_TITEL", "Der Titel darf nicht leer sein.");
-    }
-    if (meine.text.length === 0) {
-      throw new EntwurfsFehler(400, "ENTWURF_OHNE_TEXT", "Der Text darf nicht leer sein.");
-    }
-    if (
-      meine.text.length > ENTWURF_TEXT_MAX ||
-      abschnitte(meine.text).length > ENTWURF_ABSCHNITTE_MAX
-    ) {
-      throw new EntwurfsFehler(400, "ENTWURF_ZU_GROSS", "Der Entwurf ist zu groß.");
-    }
+    const meine = this.pruefeStand({ titel: eingabe.titel, rumpf: eingabe.rumpf });
+    const basisStand =
+      eingabe.basisStand === undefined
+        ? undefined
+        : {
+            titel: eingabe.basisStand.titel.trim(),
+            rumpf: normalisiereRumpf(eingabe.basisStand.rumpf),
+          };
     for (let versuch = 0; versuch < SCHREIBVERSUCHE; versuch++) {
-      const e = await this.offenOder404(koId);
+      const e = await this.offenGenau(koId, eingabe.entwurfId);
       if (eingabe.basisRevision > e.revision || eingabe.basisRevision < 1) {
         throw new EntwurfsFehler(400, "ENTWURF_BASIS_UNGUELTIG", "Unbekannter Arbeitsstand.");
       }
       let neu: EntwurfsStand;
       let zusammengefuehrt = false;
-      if (eingabe.basisRevision === e.revision) {
+      if (eingabe.basisRevision === e.revision && basisStand === undefined) {
         neu = meine;
       } else {
-        const basis = e.staende.find((s) => s.revision === eingabe.basisRevision)?.stand ?? {
-          titel: "",
-          text: "",
-        };
+        const gespeichert = e.staende.find((s) => s.revision === eingabe.basisRevision)?.stand;
+        const basis = basisStand ?? gespeichert ?? { titel: "", rumpf: "" };
         const ergebnis = fuehreStaendeZusammen(basis, meine, e.stand);
         if (!ergebnis.ok) {
           throw this.konflikt(e, eingabe.basisRevision, ergebnis);
         }
         neu = ergebnis.stand;
-        zusammengefuehrt = true;
+        zusammengefuehrt = eingabe.basisRevision !== e.revision;
       }
-      if (neu.titel === e.stand.titel && neu.text === e.stand.text) {
+      if (neu.titel === e.stand.titel && neu.rumpf === e.stand.rumpf) {
         return { entwurf: e, zusammengefuehrt, unveraendert: true };
       }
       const art = zusammengefuehrt ? "zusammengefuehrt" : "gespeichert";
@@ -711,37 +777,19 @@ export class GemeinsamerEntwurfDienst {
   async gleicheAn(
     ko: EntwurfsArtikel,
     nutzer: EntwurfsNutzer,
-    eingabe: { revision: number; aufgeloest?: EntwurfsStand },
+    eingabe: { revision: number; aufgeloest?: EntwurfsStand; entwurfId?: string },
   ): Promise<GemeinsamerEntwurf> {
-    const e = await this.offenOder404(ko.id);
+    const e = await this.offenGenau(ko.id, eingabe.entwurfId);
     if (eingabe.revision !== e.revision) {
       throw this.veraltet(e);
     }
     if (ko.version === e.basisVersion) {
       return e;
     }
-    const { text, rumpf } = artikelText(ko);
-    if (rumpf === "reich") {
-      throw new EntwurfsFehler(
-        409,
-        "ENTWURF_REICHER_INHALT",
-        "Die aktuelle Lesefassung enthält mehr als Absätze; der gemeinsame Entwurf kann sie nicht aufnehmen.",
-      );
-    }
-    const lesefassung: EntwurfsStand = { titel: ko.title, text };
+    const lesefassung = artikelStand(ko);
     let neu: EntwurfsStand;
     if (eingabe.aufgeloest) {
-      neu = {
-        titel: eingabe.aufgeloest.titel.trim(),
-        text: normalisiereText(eingabe.aufgeloest.text),
-      };
-      if (neu.titel.length === 0 || neu.text.length === 0) {
-        throw new EntwurfsFehler(
-          400,
-          "ENTWURF_OHNE_TEXT",
-          "Titel und Text dürfen nicht leer sein.",
-        );
-      }
+      neu = this.pruefeStand(eingabe.aufgeloest);
     } else {
       const ergebnis = fuehreStaendeZusammen(e.basis, e.stand, lesefassung);
       if (!ergebnis.ok) {
@@ -769,7 +817,7 @@ export class GemeinsamerEntwurfDienst {
       letzter.fassung = ko.version;
     }
     if (!(await this.ablage.schreibe(naechste, e.revision))) {
-      throw this.veraltet(await this.offenOder404(ko.id));
+      throw this.veraltet(await this.offenGenau(ko.id));
     }
     return naechste;
   }
@@ -783,10 +831,10 @@ export class GemeinsamerEntwurfDienst {
   async schliesseAb(
     ko: EntwurfsArtikel,
     nutzer: EntwurfsNutzer,
-    eingabe: { revision: number; fassung?: number; vorschlagId?: string },
+    eingabe: { revision: number; fassung?: number; vorschlagId?: string; entwurfId?: string },
   ): Promise<GemeinsamerEntwurf> {
     for (let versuch = 0; versuch < SCHREIBVERSUCHE; versuch++) {
-      const e = await this.offenOder404(ko.id);
+      const e = await this.offenGenau(ko.id, eingabe.entwurfId);
       const uebernommen = e.staende.find((s) => s.revision === eingabe.revision)?.stand;
       if (!uebernommen || eingabe.revision > e.revision) {
         throw new EntwurfsFehler(400, "ENTWURF_BASIS_UNGUELTIG", "Unbekannter Arbeitsstand.");
@@ -795,12 +843,11 @@ export class GemeinsamerEntwurfDienst {
       const am = this.jetzt();
       const weiter = eingabe.revision !== e.revision;
       if (eingabe.fassung !== undefined) {
-        const artikel = artikelText(ko);
         const belegt =
           ko.version === eingabe.fassung &&
           ko.history.some((h) => h.version === eingabe.fassung && h.author === nutzer.id) &&
           ko.title === uebernommen.titel &&
-          artikel.text === uebernommen.text;
+          artikelRumpf(ko) === uebernommen.rumpf;
         if (!belegt) {
           throw new EntwurfsFehler(
             409,
@@ -835,7 +882,9 @@ export class GemeinsamerEntwurfDienst {
           vorschlag !== undefined &&
           vorschlag.author === nutzer.id &&
           vorschlag.baseVersion === e.basisVersion &&
-          vorschlag.statement === uebernommen.text;
+          vorschlag.statement === textAusRumpf(uebernommen.rumpf) &&
+          typeof vorschlag.bodyHtml === "string" &&
+          normalisiereRumpf(vorschlag.bodyHtml) === uebernommen.rumpf;
         if (!belegt) {
           throw new EntwurfsFehler(
             409,
@@ -874,12 +923,46 @@ export class GemeinsamerEntwurfDienst {
     throw new EntwurfsFehler(409, "ENTWURF_KONKURRENZ", "Zu viele gleichzeitige Speichervorgänge.");
   }
 
-  private async offenOder404(koId: string): Promise<GemeinsamerEntwurf> {
+  /**
+   * Der offene Entwurf — und, wenn eine Kennung genannt ist, genau DIESER. Nennt die Anfrage einen
+   * Entwurf, der inzwischen übernommen, eingereicht oder durch einen neuen ersetzt ist, wird sie mit
+   * 409 `ENTWURF_ERSETZT` abgewiesen; der Client behält seine Eingabe.
+   */
+  private async offenGenau(koId: string, entwurfId?: string): Promise<GemeinsamerEntwurf> {
     const e = await this.ablage.offener(koId);
+    if (entwurfId !== undefined && e?.id !== entwurfId) {
+      throw new EntwurfsFehler(
+        409,
+        "ENTWURF_ERSETZT",
+        "Dieser Entwurf ist abgeschlossen oder durch einen neuen ersetzt. Nichts wurde gespeichert — deine Eingabe bleibt erhalten.",
+        { aktuell: e ? { id: e.id, revision: e.revision } : null },
+      );
+    }
     if (!e) {
       throw new EntwurfsFehler(404, "ENTWURF_FEHLT", "Zu diesem Artikel ist kein Entwurf offen.");
     }
     return e;
+  }
+
+  /** Prüft und kanonisiert einen eingereichten Stand (Titel getrimmt, Rumpf sanitisiert). */
+  private pruefeStand(eingabe: EntwurfsStand): EntwurfsStand {
+    const stand: EntwurfsStand = {
+      titel: eingabe.titel.trim(),
+      rumpf: normalisiereRumpf(eingabe.rumpf),
+    };
+    if (stand.titel.length === 0) {
+      throw new EntwurfsFehler(400, "ENTWURF_OHNE_TITEL", "Der Titel darf nicht leer sein.");
+    }
+    if (stand.rumpf.length === 0) {
+      throw new EntwurfsFehler(400, "ENTWURF_OHNE_TEXT", "Der Inhalt darf nicht leer sein.");
+    }
+    if (
+      stand.rumpf.length > ENTWURF_TEXT_MAX ||
+      bloecke(stand.rumpf).length > ENTWURF_ABSCHNITTE_MAX
+    ) {
+      throw new EntwurfsFehler(400, "ENTWURF_ZU_GROSS", "Der Entwurf ist zu groß.");
+    }
+    return stand;
   }
 
   private mitStand(
@@ -936,7 +1019,13 @@ export class GemeinsamerEntwurfDienst {
         titel: ergebnis.titel,
         teile: ergebnis.teile,
         basisRevision,
-        aktuell: { revision: e.revision, titel: e.stand.titel, text: e.stand.text },
+        aktuell: {
+          id: e.id,
+          revision: e.revision,
+          titel: e.stand.titel,
+          rumpf: e.stand.rumpf,
+          text: textAusRumpf(e.stand.rumpf),
+        },
         seitherVon: seither,
       },
     );

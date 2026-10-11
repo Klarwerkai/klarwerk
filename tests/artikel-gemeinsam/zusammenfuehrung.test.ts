@@ -8,17 +8,19 @@
 //   Z3  derselbe Abschnitt gleich geändert → einmal, kein Konflikt (K2)
 //   Z4  Einfügen und Löschen an verschiedenen Stellen → beides (K2)
 //   Z5  Titel: eine Seite ändert → übernommen; beide verschieden → Konflikt (K2)
-//   Z6  Artikeltext ↔ Rumpf: einfacher Rumpf hin und zurück unverändert; reicher Rumpf wird
-//       erkannt und nicht zerlegt (K4, kein stilles Entfernen)
+//   Z6  Artikelinhalt als HTML-Rumpf (Nacharbeit 5): Klartext hin und zurück unverändert; reiche
+//       Rümpfe werden in Blöcke zerlegt, bleiben vollständig und lassen sich zusammenführen (K2/K4)
 //   Z7  Gegenprobe: ein „Zusammenführen", das blind die eigene Fassung nimmt, besteht Z1 nicht.
 import { describe, expect, it } from "vitest";
 import {
-  abschnitte,
-  artikelText,
+  artikelRumpf,
+  bloecke,
   fuehreStaendeZusammen,
   fuehreWertZusammen,
   fuehreZusammen,
+  normalisiereRumpf,
   rumpfAusText,
+  textAusRumpf,
   uebernahmeAenderung,
 } from "../../services/app/src/gemeinsamer-entwurf";
 
@@ -121,56 +123,75 @@ describe("Z5 · der Titel", () => {
     expect(fuehreWertZusammen("Ventil X", "A", "B")).toEqual({
       konflikt: { basis: "Ventil X", meine: "A", deren: "B" },
     });
-    const text = BASIS.join("\n\n");
+    const rumpf = rumpfAusText(BASIS.join("\n\n"));
     const stand = fuehreStaendeZusammen(
-      { titel: "Ventil X", text },
-      { titel: "A", text },
-      { titel: "B", text },
+      { titel: "Ventil X", rumpf },
+      { titel: "A", rumpf },
+      { titel: "B", rumpf },
     );
     expect(stand.ok).toBe(false);
   });
 });
 
-describe("Z6 · Artikeltext und Rumpf", () => {
-  it("ohne Rumpf ist die Aussage der Text; Abschnitte werden normalisiert", () => {
-    const t = artikelText({ statement: "Erster Satz.\n\n\n  Zweiter Satz.  ", bodyHtml: null });
-    expect(t).toEqual({ text: "Erster Satz.\n\nZweiter Satz.", rumpf: "keiner" });
-    expect(abschnitte(t.text)).toHaveLength(2);
+describe("Z6 · Artikelinhalt als HTML-Rumpf (Nacharbeit 5: einheitlicher Editor)", () => {
+  it("ohne Rumpf wird die Aussage zu Absätzen; der Klartext bleibt dabei gleich", () => {
+    const rumpf = artikelRumpf({
+      statement: "Erster Satz.\n\n\n  Zweiter Satz.  ",
+      bodyHtml: null,
+    });
+    expect(bloecke(rumpf)).toHaveLength(2);
+    expect(textAusRumpf(rumpf)).toBe("Erster Satz.\n\nZweiter Satz.");
   });
 
-  it("ein einfacher Rumpf geht hin und zurück unverändert — mit Sonderzeichen und Umbruch", () => {
+  it("Klartext mit Sonderzeichen und Umbruch geht über den Rumpf unverändert hin und zurück", () => {
     const text = 'Druck < 2 bar & „sicher“.\nZweite Zeile.\n\nNächster Absatz mit "Zitat".';
     const rumpf = rumpfAusText(text);
-    expect(rumpf).toBe(
-      [
-        "<p>Druck &lt; 2 bar &amp; „sicher“.<br>Zweite Zeile.</p>",
-        "<p>Nächster Absatz mit &quot;Zitat&quot;.</p>",
-      ].join(""),
-    );
-    expect(artikelText({ statement: "egal", bodyHtml: rumpf })).toEqual({ text, rumpf: "einfach" });
-    // Auch die Schreibweise `<br />` und numerische Entitäten werden gelesen.
-    const anders = artikelText({ statement: "", bodyHtml: "<p>a<br />b &#39;c&#x27;</p>" });
-    expect(anders.text).toBe("a\nb 'c'");
-    expect(uebernahmeAenderung({ titel: "T", text }, "einfach")).toEqual({
+    expect(bloecke(rumpf)).toHaveLength(2);
+    expect(textAusRumpf(rumpf)).toBe(text);
+    // Derselbe Inhalt ergibt dieselben Zeichen — gleich, ob er schon kanonisch war oder nicht.
+    expect(normalisiereRumpf(rumpf)).toBe(rumpf);
+    expect(uebernahmeAenderung({ titel: "T", rumpf })).toEqual({
       title: "T",
       statement: text,
       bodyHtml: rumpf,
     });
-    expect(uebernahmeAenderung({ titel: "T", text }, "keiner")).toEqual({
-      title: "T",
-      statement: text,
-    });
   });
 
-  it("ein reicher Rumpf (Bild, Liste, Überschrift) wird erkannt und nicht zerlegt", () => {
-    for (const rumpf of [
-      '<p>Text</p><img src="/api/objects/x/raw">',
-      "<ul><li>a</li></ul>",
-      "<h2>Kopf</h2><p>Text</p>",
-      "<p><strong>fett</strong></p>",
-    ]) {
-      expect(artikelText({ statement: "Aussage", bodyHtml: rumpf }).rumpf).toBe("reich");
-    }
+  it("ein reicher Rumpf (Überschrift, Liste, Tabelle, Formatierung) wird in Blöcke zerlegt und bleibt vollständig", () => {
+    const roh = [
+      "<h2>Kopf</h2>",
+      "<p>Text mit <strong>fett</strong> und <em>kursiv</em>.</p>",
+      "<ul><li>a</li><li>b</li></ul>",
+      "<table><tbody><tr><td>x</td><td>y</td></tr></tbody></table>",
+    ].join("\n");
+    const rumpf = normalisiereRumpf(roh);
+    const teile = bloecke(rumpf);
+    expect(teile).toHaveLength(4);
+    expect(teile[0]).toContain("Kopf");
+    expect(teile[1]).toContain("<strong>fett</strong>");
+    expect(teile[2]).toContain("<li>b</li>");
+    expect(teile[3]).toContain("<td>y</td>");
+    expect(teile.join("")).toBe(rumpf);
+    expect(artikelRumpf({ statement: "Aussage", bodyHtml: roh })).toBe(rumpf);
+  });
+
+  it("verschachtelte Listen sind EIN Block; leere Elemente (Zeilenumbruch, Bild) zerlegen nichts", () => {
+    const html = "<ul><li>a<ul><li>a1</li></ul></li><li>b</li></ul><p>x<br>y</p>";
+    expect(bloecke(html)).toEqual([
+      "<ul><li>a<ul><li>a1</li></ul></li><li>b</li></ul>",
+      "<p>x<br>y</p>",
+    ]);
+  });
+
+  it("Änderungen an Liste und Absatz eines reichen Rumpfs werden zusammengeführt", () => {
+    const basis = ["<h2>Kopf</h2>", "<p>Text.</p>", "<ul><li>a</li></ul>"];
+    const meine = ["<h2>Kopf</h2>", "<p>Text, ergänzt.</p>", "<ul><li>a</li></ul>"];
+    const deren = ["<h2>Kopf</h2>", "<p>Text.</p>", "<ul><li>a</li><li>b</li></ul>"];
+    expect(fuehreZusammen(basis, meine, deren).ergebnis).toEqual([
+      "<h2>Kopf</h2>",
+      "<p>Text, ergänzt.</p>",
+      "<ul><li>a</li><li>b</li></ul>",
+    ]);
   });
 });
 

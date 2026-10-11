@@ -32,6 +32,9 @@ export interface GemeinsamerEntwurf {
   revision: number;
   basisVersion: number;
   titel: string;
+  /** Der Inhalt als HTML — derselbe Rumpf, den der einheitliche Editor schreibt. */
+  rumpf: string;
+  /** Der Klartext dieses Rumpfs (Anzeige, Vergleich). */
   text: string;
   geaendertAm: string;
   geaendertVon: string;
@@ -46,8 +49,8 @@ export interface GemeinsamLage {
     version: number;
     status: string;
     titel: string;
+    rumpf: string;
     text: string;
-    rumpf: "keiner" | "einfach" | "reich";
   };
   /** `vorschlag`: freigegebener Artikel ohne Freigaberecht — die Übernahme wird ein Vorschlag. */
   weg: "direkt" | "vorschlag";
@@ -57,7 +60,7 @@ export interface GemeinsamLage {
     /** Beruht der Entwurf auf der jetzt gültigen Fassung? Sonst erst angleichen. */
     aktuell: boolean;
     titelGeht: boolean;
-    aenderung: { title: string; statement: string; bodyHtml?: string };
+    aenderung: { title: string; statement: string; bodyHtml: string };
   } | null;
 }
 
@@ -75,8 +78,22 @@ export type KonfliktTeil =
 export interface KonfliktDetails {
   titel: { basis: string; meine: string; deren: string } | null;
   teile: KonfliktTeil[];
-  aktuell: { revision: number; titel?: string; text?: string };
+  aktuell: { revision: number; id?: string; titel?: string; rumpf?: string; text?: string };
   seitherVon?: string[];
+}
+
+/** Titel und Inhalt (HTML) eines Arbeitsstands. */
+export interface EntwurfsStand {
+  titel: string;
+  rumpf: string;
+}
+
+/** Was ein Speichervorgang schickt. `basisStand` nur, wenn die Eingabe auf einem gesendeten,
+ * inzwischen zusammengeführten Stand beruht (s. Seite). */
+export interface SpeicherEingabe extends EntwurfsStand {
+  entwurfId: string;
+  basisRevision: number;
+  basisStand?: EntwurfsStand;
 }
 
 const pfad = (koId: string) => `/kos/${encodeURIComponent(koId)}/gemeinsam`;
@@ -84,16 +101,20 @@ const pfad = (koId: string) => `/kos/${encodeURIComponent(koId)}/gemeinsam`;
 export const gemeinsamApi = {
   lage: (koId: string) => api.get<GemeinsamLage>(pfad(koId)),
   oeffnen: (koId: string) => api.post<GemeinsamLage>(pfad(koId)),
-  speichern: (koId: string, eingabe: { basisRevision: number; titel: string; text: string }) =>
+  speichern: (koId: string, eingabe: SpeicherEingabe) =>
     api.put<GemeinsamGespeichert>(pfad(koId), eingabe),
-  angleichen: (koId: string, revision: number, aufgeloest?: { titel: string; text: string }) =>
+  angleichen: (koId: string, entwurfId: string, revision: number, aufgeloest?: EntwurfsStand) =>
     api.post<GemeinsamLage>(`${pfad(koId)}/angleichen`, {
+      entwurfId,
       revision,
       ...(aufgeloest ? { aufgeloest } : {}),
     }),
   abschluss: (
     koId: string,
-    eingabe: { revision: number; fassung: number } | { revision: number; vorschlagId: string },
+    eingabe: { entwurfId: string; revision: number } & (
+      | { fassung: number }
+      | { vorschlagId: string }
+    ),
   ) => api.post<GemeinsamLage>(`${pfad(koId)}/abschluss`, eingabe),
   /** Die Übernahme über den BESTEHENDEN Schreibweg: neue Fassung mit `expectedVersion`. */
   uebernehmen: (koId: string, u: Uebernahme) =>
@@ -108,7 +129,7 @@ export const gemeinsamApi = {
       action: "propose",
       proposal: {
         statement: u.aenderung.statement,
-        ...(u.aenderung.bodyHtml ? { bodyHtml: u.aenderung.bodyHtml } : {}),
+        bodyHtml: u.aenderung.bodyHtml,
         baseVersion: u.basisVersion,
         origin: "klarwerk_web",
       },
@@ -126,18 +147,4 @@ export function eingereichterVorschlag(ko: KnowledgeObject, u: Uebernahme): stri
       p.statement === u.aenderung.statement,
   );
   return passend[passend.length - 1]?.id;
-}
-
-/** Die Abschnitte eines Textes — dieselbe Regel wie am Server (Leerzeile trennt). */
-export function abschnitteVon(text: string): string[] {
-  return text
-    .replace(/\r\n?/g, "\n")
-    .split(/\n[ \t]*\n/)
-    .map((a) => a.trim())
-    .filter((a) => a.length > 0);
-}
-
-/** Der normalisierte Text — wie ihn der Server speichert. */
-export function normalisiert(text: string): string {
-  return abschnitteVon(text).join("\n\n");
 }

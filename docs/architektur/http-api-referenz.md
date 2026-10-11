@@ -191,10 +191,10 @@ herabgestuft werden (409 `mutability`).
 | `PUT` | `/api/kos/:id/bearbeitungen/:sitzung` | `ko.create`, sichtbar | — | 200 `{ jetzt, …Takt, bearbeitung }` | 404; 400 `BAD_REQUEST` (Sitzungskennung ungültig) |
 | `DELETE` | `/api/kos/:id/bearbeitungen/:sitzung` | `ko.create`, sichtbar | — | 200 `{ beendet }` | 404; 400 `BAD_REQUEST` (Sitzungskennung ungültig) |
 | `GET` | `/api/kos/:id/gemeinsam` | `ko.create`, sichtbar | — | 200 `{ entwurf, abgeschlossen, lesefassung, weg, uebernahme }` | 404 |
-| `POST` | `/api/kos/:id/gemeinsam` | `ko.create`, sichtbar | — | 201 neuer Entwurf, 200 vorhandener offener Entwurf (Lage wie GET) | 404; 409 `ENTWURF_REICHER_INHALT` |
-| `PUT` | `/api/kos/:id/gemeinsam` | `ko.create`, sichtbar | Rumpf `{ basisRevision, titel, text }` | 200 Lage mit `zusammengefuehrt`, `unveraendert` | 400; 404 `ENTWURF_FEHLT`; 409 `ENTWURF_KONFLIKT` (je Stelle Basis/eigene/gespeicherte Fassung, nichts geschrieben) |
-| `POST` | `/api/kos/:id/gemeinsam/angleichen` | `ko.create`, sichtbar | Rumpf `{ revision, aufgeloest? }` | 200 Lage auf der neuen Lesefassung | 400; 404; 409 `ENTWURF_VERALTET`, `ENTWURF_ANGLEICH_KONFLIKT` |
-| `POST` | `/api/kos/:id/gemeinsam/abschluss` | `ko.create`, sichtbar | Rumpf `{ revision, fassung }` oder `{ revision, vorschlagId }` | 200 Lage (Entwurf übernommen/eingereicht, oder offen mit späteren Änderungen) | 400; 404; 409 `ENTWURF_ABSCHLUSS_UNBELEGT` |
+| `POST` | `/api/kos/:id/gemeinsam` | `ko.create`, sichtbar | — | 201 neuer Entwurf, 200 vorhandener offener Entwurf (Lage wie GET) | 404 |
+| `PUT` | `/api/kos/:id/gemeinsam` | `ko.create`, sichtbar | Rumpf `{ entwurfId, basisRevision, titel, rumpf (HTML) \| text, basisStand? }` | 200 Lage mit `zusammengefuehrt`, `unveraendert` | 400; 404 `ENTWURF_FEHLT`; 409 `ENTWURF_KONFLIKT` (je Stelle Basis/eigene/gespeicherte Fassung, nichts geschrieben), `ENTWURF_ERSETZT` (Entwurf abgeschlossen/ersetzt, nichts geschrieben) |
+| `POST` | `/api/kos/:id/gemeinsam/angleichen` | `ko.create`, sichtbar | Rumpf `{ revision, aufgeloest?, entwurfId? }` | 200 Lage auf der neuen Lesefassung | 400; 404; 409 `ENTWURF_VERALTET`, `ENTWURF_ANGLEICH_KONFLIKT` |
+| `POST` | `/api/kos/:id/gemeinsam/abschluss` | `ko.create`, sichtbar | Rumpf `{ revision, fassung }` oder `{ revision, vorschlagId }`, jeweils mit `entwurfId?` | 200 Lage (Entwurf übernommen/eingereicht, oder offen mit späteren Änderungen) | 400; 404; 409 `ENTWURF_ABSCHLUSS_UNBELEGT` |
 | `GET` | `/api/kos/:id/provenance` | `ko.read`, sichtbar (Schalter `KLARWERK_PROVENANCE_ENABLED`) | — | 200 Herkunftsgraph | 404 |
 | `GET` | `/api/kos/:id/neighbors` | `ko.read`, sichtbar | — | 200 Nachbarn im Wissensnetz | 404 |
 

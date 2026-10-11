@@ -21,28 +21,40 @@
 //
 // DIE ÜBERNAHME läuft über den bestehenden Schreibweg des Artikels (`PUT /api/kos/:id`): `revise`
 // mit `expectedVersion` oder — bei einem freigegebenen Artikel ohne Freigaberecht — `propose`.
+//
+// NACHARBEIT 5 (Ben):
+//   · Der Inhalt wird im EINHEITLICHEN Editor (`RichTextEditor`) bearbeitet — derselbe wie am
+//     Artikel; Bilder, Listen, Tabellen und Formatierung bleiben erhalten.
+//   · Jeder Speichervorgang nennt die Entwurfskennung; ein abgeschlossener oder ersetzter Entwurf
+//     nimmt nichts mehr an, und die Eingabe bleibt stehen.
+//   · Was WÄHREND eines Speichervorgangs getippt wird, wird von der späteren Antwort nicht
+//     überschrieben: quittiert wird nur der gesendete Stand. Spätere Eingaben bleiben samt Sicherung
+//     und werden beim nächsten Speichern gegen den gesendeten Stand zusammengeführt (`basisStand`).
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
   type EntwurfsSchritt,
+  type EntwurfsStand,
   type GemeinsamLage,
   type GemeinsamerEntwurf,
   type KonfliktDetails,
   type KonfliktTeil,
   eingereichterVorschlag,
   gemeinsamApi,
-  normalisiert,
 } from "../api/gemeinsam";
+import { RichTextEditor } from "../components/RichTextEditor";
+import { SanitizedHtml } from "../components/SanitizedHtml";
 import {
   Bearbeitungshinweis,
   useEigeneBearbeitung,
 } from "../components/bibliothek/Bearbeitungshinweis";
 import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { formatKoTimestamp } from "../lib/koDates";
+import { sanitizeHtml } from "../lib/richText";
 
 /** So oft fragt die Seite nach dem gespeicherten Stand — fremdes Speichern kommt zeitnah an. */
 const ABRUF_MS = 5_000;
@@ -52,12 +64,19 @@ const KNOPF_LINK = "text-[12.5px] font-semibold text-brand-text hover:underline"
 const lageSchluessel = (koId: string): readonly unknown[] => ["gemeinsam", koId];
 const lokalSchluessel = (koId: string): string => `klarwerk.gemeinsam.${koId}`;
 
-/** Die ungespeicherte Eingabe, wie sie dieses Fenster festhält. */
-interface LokaleEingabe {
+/**
+ * Worauf die Eingabe beruht: der Entwurf, sein Arbeitsstand und — nur nach einem gesendeten,
+ * inzwischen zusammengeführten Stand mit späteren Eingaben — dieser gesendete Stand.
+ */
+interface Basis {
   entwurfId: string;
-  basisRevision: number;
-  titel: string;
-  text: string;
+  revision: number;
+  stand?: EntwurfsStand;
+}
+
+/** Die ungespeicherte Eingabe, wie sie dieses Fenster festhält. */
+interface LokaleEingabe extends EntwurfsStand {
+  basis: Basis;
 }
 
 function leseLokal(koId: string): LokaleEingabe | null {
@@ -67,10 +86,10 @@ function leseLokal(koId: string): LokaleEingabe | null {
       return null;
     }
     const wert = JSON.parse(roh) as Partial<LokaleEingabe>;
-    return typeof wert.entwurfId === "string" &&
-      typeof wert.basisRevision === "number" &&
+    return typeof wert.basis?.entwurfId === "string" &&
+      typeof wert.basis.revision === "number" &&
       typeof wert.titel === "string" &&
-      typeof wert.text === "string"
+      typeof wert.rumpf === "string"
       ? (wert as LokaleEingabe)
       : null;
   } catch {
@@ -90,7 +109,15 @@ function schreibeLokal(koId: string, eingabe: LokaleEingabe | null): void {
   }
 }
 
-type Speicherlage = "ruhe" | "laeuft" | "unterbrochen" | "ohneRecht" | "konflikt" | "fehler";
+type Speicherlage =
+  | "ruhe"
+  | "laeuft"
+  | "unterbrochen"
+  | "ohneRecht"
+  | "konflikt"
+  | "konfliktErneut"
+  | "ersetzt"
+  | "fehler";
 type Wahl = "meine" | "deren" | "beide";
 
 interface OffenerKonflikt {
@@ -120,8 +147,8 @@ function gewaehlt(wahl: Wahl, meine: string[], deren: string[]): string[] {
   return [...deren, ...meine.filter((a) => !deren.includes(a))];
 }
 
-/** Baut aus Konflikt und Entscheidungen den Text — `null`, solange eine Stelle offen ist. */
-function aufgeloest(k: OffenerKonflikt): { titel: string | null; text: string } | null {
+/** Baut aus Konflikt und Entscheidungen den Inhalt — `null`, solange eine Stelle offen ist. */
+function aufgeloest(k: OffenerKonflikt): { titel: string | null; rumpf: string } | null {
   const stellen = k.details.teile.filter((t) => t.art === "konflikt").length;
   if (Object.keys(k.wahl).length < stellen || (k.details.titel !== null && k.titelWahl === null)) {
     return null;
@@ -143,8 +170,12 @@ function aufgeloest(k: OffenerKonflikt): { titel: string | null; text: string } 
         : k.titelWahl === "meine"
           ? k.details.titel.meine
           : `${k.details.titel.meine} / ${k.details.titel.deren}`;
-  return { titel, text: abschnitte.join("\n\n") };
+  return { titel, rumpf: abschnitte.join("") };
 }
+
+/** Gleicher Stand? Titel und Inhalt Zeichen für Zeichen. */
+const gleicherStand = (a: EntwurfsStand, b: EntwurfsStand): boolean =>
+  a.titel === b.titel && a.rumpf === b.rumpf;
 
 /**
  * Stabile React-Schlüssel aus dem Inhalt: gleiche Texte bekommen ihre Vorkommensnummer dazu, damit
@@ -171,9 +202,11 @@ function Abschnitte({ liste, leer }: { liste: string[]; leer: string }): JSX.Ele
   return (
     <div className="space-y-1">
       {mitSchluessel(liste).map(({ schluessel, nr }) => (
-        <p key={schluessel} className="whitespace-pre-wrap text-[12.5px] text-text">
-          {liste[nr]}
-        </p>
+        <SanitizedHtml
+          key={schluessel}
+          html={liste[nr] ?? ""}
+          className="prose-kw text-[12.5px] text-text"
+        />
       ))}
     </div>
   );
@@ -359,7 +392,6 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const titelFeld = useId();
-  const textFeld = useId();
   const abfrage = useQuery({
     queryKey: lageSchluessel(koId),
     queryFn: () => gemeinsamApi.lage(koId),
@@ -370,10 +402,14 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
   const lage: GemeinsamLage | undefined = abfrage.data;
   const entwurf = lage?.entwurf ?? null;
 
-  const [basis, setBasis] = useState<{ entwurfId: string; revision: number } | null>(null);
+  const [basis, setBasis] = useState<Basis | null>(null);
   const [titel, setTitel] = useState("");
-  const [text, setText] = useState("");
+  const [rumpf, setRumpf] = useState("");
   const [geaendert, setGeaendert] = useState(false);
+  // Die Eingabe JETZT — gelesen, wenn eine Speicherantwort ankommt (die Closure kennt nur den
+  // Stand beim Absenden).
+  const eingabeRef = useRef<EntwurfsStand>({ titel, rumpf });
+  eingabeRef.current = { titel, rumpf };
   const [speicherlage, setSpeicherlage] = useState<Speicherlage>("ruhe");
   const [fehlergrund, setFehlergrund] = useState("");
   const [zusammengefuehrt, setZusammengefuehrt] = useState<string[] | null>(null);
@@ -407,53 +443,78 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
   const uebernimm = (e: GemeinsamerEntwurf): void => {
     setBasis({ entwurfId: e.id, revision: e.revision });
     setTitel(e.titel);
-    setText(e.text);
+    setRumpf(e.rumpf);
     setGeaendert(false);
   };
 
   // Ein neuer Stand vom Server: ohne eigene Änderung wird er übernommen; mit eigener Änderung
   // bleibt die Eingabe stehen und wird beim Speichern zusammengeführt. Beim ersten Stand eines
-  // Entwurfs wird eine ungespeicherte Eingabe dieses Fensters wiederhergestellt.
+  // Entwurfs wird eine ungespeicherte Eingabe dieses Fensters wiederhergestellt. Ist der Entwurf,
+  // auf dem die Eingabe beruht, inzwischen ersetzt, bleibt sie stehen und die Fläche sagt es.
   // biome-ignore lint/correctness/useExhaustiveDependencies: Auslöser ist der neue Stand.
   useEffect(() => {
     if (!entwurf) {
       return;
     }
-    if (basis === null || basis.entwurfId !== entwurf.id) {
+    if (basis === null) {
       const lokal = leseLokal(koId);
+      if (lokal !== null && lokal.basis.entwurfId !== entwurf.id) {
+        // Die gesicherte Eingabe gehört zu einem früheren Entwurf: sie bleibt sichtbar erhalten.
+        setBasis(lokal.basis);
+        setTitel(lokal.titel);
+        setRumpf(lokal.rumpf);
+        setGeaendert(true);
+        setSpeicherlage("ersetzt");
+        return;
+      }
       if (
         lokal !== null &&
-        lokal.entwurfId === entwurf.id &&
-        lokal.basisRevision <= entwurf.revision &&
-        (lokal.titel !== entwurf.titel || normalisiert(lokal.text) !== entwurf.text)
+        lokal.basis.revision <= entwurf.revision &&
+        !gleicherStand(lokal, { titel: entwurf.titel, rumpf: entwurf.rumpf })
       ) {
-        setBasis({ entwurfId: entwurf.id, revision: lokal.basisRevision });
+        setBasis(lokal.basis);
         setTitel(lokal.titel);
-        setText(lokal.text);
+        setRumpf(lokal.rumpf);
         setGeaendert(true);
-        setWiederhergestellt(lokal.basisRevision);
+        setWiederhergestellt(lokal.basis.revision);
         return;
       }
       schreibeLokal(koId, null);
       uebernimm(entwurf);
       return;
     }
-    if (!geaendert && entwurf.revision !== basis.revision && konflikt === null) {
+    if (basis.entwurfId !== entwurf.id) {
+      if (geaendert) {
+        setSpeicherlage("ersetzt");
+      } else {
+        uebernimm(entwurf);
+      }
+      return;
+    }
+    if (
+      !geaendert &&
+      entwurf.revision !== basis.revision &&
+      konflikt === null &&
+      speicherlage !== "laeuft"
+    ) {
       uebernimm(entwurf);
     }
   }, [entwurf?.id, entwurf?.revision]);
 
-  // Jede ungespeicherte Eingabe steht zusätzlich in diesem Fenster.
+  // Jede ungespeicherte Eingabe steht zusätzlich in diesem Fenster — samt dem, worauf sie beruht.
   useEffect(() => {
     if (basis !== null && geaendert) {
-      schreibeLokal(koId, {
-        entwurfId: basis.entwurfId,
-        basisRevision: basis.revision,
-        titel,
-        text,
-      });
+      schreibeLokal(koId, { basis, titel, rumpf });
     }
-  }, [koId, basis, geaendert, titel, text]);
+  }, [koId, basis, geaendert, titel, rumpf]);
+
+  /** Eine Eingabe im Editor zählt nur, wenn sie den Inhalt wirklich ändert. */
+  const inhaltGeaendert = (html: string): void => {
+    if (sanitizeHtml(html) !== sanitizeHtml(rumpf)) {
+      setRumpf(html);
+      setGeaendert(true);
+    }
+  };
 
   const neueLage = (l: GemeinsamLage): void => {
     qc.setQueryData(lageSchluessel(koId), l);
@@ -472,11 +533,7 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
     try {
       neueLage(await gemeinsamApi.oeffnen(koId));
     } catch (e) {
-      setOeffnenFehler(
-        e instanceof ApiError && e.code === "ENTWURF_REICHER_INHALT"
-          ? t("gemeinsam.entwurf.reich")
-          : fehlerText(e),
-      );
+      setOeffnenFehler(fehlerText(e));
     } finally {
       setOeffnet(false);
     }
@@ -486,22 +543,50 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
     if (basis === null || speicherlage === "laeuft") {
       return;
     }
+    // Der GESENDETE Stand — getrennt von allem, was während der Anfrage noch getippt wird.
+    const gesendet: EntwurfsStand = { titel, rumpf };
     const seit = basis.revision;
     setSpeicherlage("laeuft");
     setZusammengefuehrt(null);
     try {
-      const antwort = await gemeinsamApi.speichern(koId, { basisRevision: seit, titel, text });
+      const antwort = await gemeinsamApi.speichern(koId, {
+        entwurfId: basis.entwurfId,
+        basisRevision: seit,
+        ...gesendet,
+        ...(basis.stand === undefined ? {} : { basisStand: basis.stand }),
+      });
       neueLage(antwort);
-      if (antwort.entwurf) {
-        setZusammengefuehrt(antwort.zusammengefuehrt ? fremdeSeit(antwort.entwurf, seit) : null);
-        uebernimm(antwort.entwurf);
+      const e = antwort.entwurf;
+      if (e) {
+        setZusammengefuehrt(antwort.zusammengefuehrt ? fremdeSeit(e, seit) : null);
+        if (gleicherStand(eingabeRef.current, gesendet)) {
+          // Nichts mehr getippt: der bestätigte Stand ist der ganze Stand.
+          uebernimm(e);
+          schreibeLokal(koId, null);
+        } else {
+          // Während der Anfrage weitergeschrieben: quittiert ist nur der gesendete Stand. Die
+          // spätere Eingabe bleibt stehen (samt Sicherung) und beruht jetzt auf dem neuen
+          // Arbeitsstand; hat der Server dabei Fremdes hinzugeführt, ist der gesendete Stand die
+          // Basis des nächsten Zusammenführens.
+          const bestaetigt: EntwurfsStand = { titel: e.titel, rumpf: e.rumpf };
+          setBasis({
+            entwurfId: e.id,
+            revision: e.revision,
+            ...(gleicherStand(bestaetigt, gesendet) ? {} : { stand: gesendet }),
+          });
+        }
       }
-      schreibeLokal(koId, null);
       setWiederhergestellt(null);
       setKonflikt(null);
       setSpeicherlage("ruhe");
     } catch (e) {
       if (e instanceof ApiError && e.code === "ENTWURF_KONFLIKT") {
+        if (!gleicherStand(eingabeRef.current, gesendet)) {
+          // Die Konfliktstellen gelten für den gesendeten Stand, nicht für die spätere Eingabe —
+          // sie werden beim nächsten Speichern für den jetzigen Stand neu bestimmt.
+          setSpeicherlage("konfliktErneut");
+          return;
+        }
         setKonflikt({
           art: "speichern",
           details: e.details as unknown as KonfliktDetails,
@@ -509,6 +594,10 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
           titelWahl: null,
         });
         setSpeicherlage("konflikt");
+        return;
+      }
+      if (e instanceof ApiError && e.code === "ENTWURF_ERSETZT") {
+        setSpeicherlage("ersetzt");
         return;
       }
       if (e instanceof ApiError && [401, 403].includes(e.status)) {
@@ -549,11 +638,13 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
     }
     if (konflikt.art === "speichern") {
       // Die Lösung steht danach im Feld und beruht auf dem jetzt gespeicherten Stand.
-      setBasis((b) => (b === null ? b : { ...b, revision: konflikt.details.aktuell.revision }));
+      setBasis((b) =>
+        b === null ? b : { entwurfId: b.entwurfId, revision: konflikt.details.aktuell.revision },
+      );
       if (loesung.titel !== null) {
         setTitel(loesung.titel);
       }
-      setText(loesung.text);
+      setRumpf(loesung.rumpf);
       setGeaendert(true);
       setKonflikt(null);
       setSpeicherlage("ruhe");
@@ -564,9 +655,9 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
     }
     try {
       neueLage(
-        await gemeinsamApi.angleichen(koId, konflikt.details.aktuell.revision, {
+        await gemeinsamApi.angleichen(koId, entwurf.id, konflikt.details.aktuell.revision, {
           titel: loesung.titel ?? entwurf.titel,
-          text: loesung.text,
+          rumpf: loesung.rumpf,
         }),
       );
       setKonflikt(null);
@@ -581,7 +672,7 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
     }
     setUebernahmeFehler(null);
     try {
-      neueLage(await gemeinsamApi.angleichen(koId, entwurf.revision));
+      neueLage(await gemeinsamApi.angleichen(koId, entwurf.id, entwurf.revision));
     } catch (e) {
       if (e instanceof ApiError && e.code === "ENTWURF_ANGLEICH_KONFLIKT") {
         setKonflikt({
@@ -599,9 +690,10 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
 
   const uebernehmen = async (): Promise<void> => {
     const u = lage?.uebernahme;
-    if (!lage || !u || geaendert || !u.aktuell || !u.titelGeht) {
+    if (!lage || !u || !entwurf || geaendert || !u.aktuell || !u.titelGeht) {
       return;
     }
+    const entwurfId = entwurf.id;
     setUebernahme("laeuft");
     setUebernahmeFehler(null);
     setUebernahmeWeiter(null);
@@ -610,6 +702,7 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
       if (lage.weg === "direkt") {
         const ko = await gemeinsamApi.uebernehmen(koId, u);
         ergebnis = await gemeinsamApi.abschluss(koId, {
+          entwurfId,
           revision: u.revision,
           fassung: ko.version,
         });
@@ -619,7 +712,11 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
         if (vorschlagId === undefined) {
           throw new ApiError(409, "VORSCHLAG_FEHLT", t("gemeinsam.seite.fehler"));
         }
-        ergebnis = await gemeinsamApi.abschluss(koId, { revision: u.revision, vorschlagId });
+        ergebnis = await gemeinsamApi.abschluss(koId, {
+          entwurfId,
+          revision: u.revision,
+          vorschlagId,
+        });
       }
       neueLage(ergebnis);
       if (ergebnis.entwurf !== null) {
@@ -640,7 +737,8 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
   };
 
   const kopieren = (): void => {
-    void navigator.clipboard?.writeText(`${titel}\n\n${text}`).then(
+    const klartext = new DOMParser().parseFromString(rumpf, "text/html").body.textContent ?? "";
+    void navigator.clipboard?.writeText(`${titel}\n\n${klartext}`).then(
       () => setKopiert(true),
       () => setKopiert(false),
     );
@@ -698,6 +796,10 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
         return t("gemeinsam.speicher.ohneRecht");
       case "konflikt":
         return t("gemeinsam.speicher.konflikt");
+      case "konfliktErneut":
+        return t("gemeinsam.speicher.konfliktErneut");
+      case "ersetzt":
+        return t("gemeinsam.speicher.ersetzt");
       case "fehler":
         return t("gemeinsam.speicher.fehler", { grund: fehlergrund });
       default:
@@ -760,24 +862,27 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
           ) : (
             <p className="text-[13px] text-muted">{t("gemeinsam.entwurf.keiner")}</p>
           )}
-          {lesefassung.rumpf === "reich" ? (
-            <p data-testid="gemeinsam-reich" className="mt-2 text-[12.5px] text-muted">
-              {t("gemeinsam.entwurf.reich")}
-            </p>
-          ) : (
-            <Button
-              type="button"
-              variant="primary"
-              data-testid="gemeinsam-oeffnen"
-              className="mt-3"
-              disabled={oeffnet}
-              onClick={() => void oeffnen()}
-            >
-              {lage.abgeschlossen
-                ? t("gemeinsam.abgeschlossen.neu")
-                : t("gemeinsam.entwurf.oeffnen")}
-            </Button>
-          )}
+          {geaendert ? (
+            // Die Eingabe gehörte zu einem Entwurf, der inzwischen abgeschlossen ist: sie bleibt.
+            <div data-testid="gemeinsam-ersetzt" className="mt-2 space-y-2">
+              <p role="alert" className="text-[12.5px] text-text">
+                {t("gemeinsam.speicher.ersetzt")}
+              </p>
+              <Button type="button" data-testid="gemeinsam-kopieren" onClick={kopieren}>
+                {t("gemeinsam.kopieren")}
+              </Button>
+            </div>
+          ) : null}
+          <Button
+            type="button"
+            variant="primary"
+            data-testid="gemeinsam-oeffnen"
+            className="mt-3"
+            disabled={oeffnet}
+            onClick={() => void oeffnen()}
+          >
+            {lage.abgeschlossen ? t("gemeinsam.abgeschlossen.neu") : t("gemeinsam.entwurf.oeffnen")}
+          </Button>
           {oeffnenFehler !== null ? (
             <p role="alert" className="mt-2 text-[12.5px] text-trust-crit-text">
               {oeffnenFehler}
@@ -850,21 +955,15 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
                 setGeaendert(true);
               }}
             />
-            <label htmlFor={textFeld} className="mt-3 block text-[12.5px] font-semibold text-text">
+            <p className="mt-3 block text-[12.5px] font-semibold text-text">
               {t("gemeinsam.feld.text")}
-            </label>
+            </p>
             <p className="text-[12px] text-muted">{t("gemeinsam.feld.hinweis")}</p>
-            <textarea
-              id={textFeld}
-              data-testid="gemeinsam-text"
-              value={text}
-              rows={12}
-              onChange={(e) => {
-                setText(e.target.value);
-                setGeaendert(true);
-              }}
-              className="mt-1 w-full rounded-input border border-hairline bg-surface px-3 py-2 text-sm text-text outline-none focus:border-ink/30"
-            />
+            {/* Derselbe einheitliche Editor wie am Artikel — Bilder, Listen, Tabellen und
+                Formatierung bleiben erhalten. */}
+            <div data-testid="gemeinsam-editor" className="mt-1">
+              <RichTextEditor value={rumpf} onChange={inhaltGeaendert} documentTitle={titel} />
+            </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Button
                 type="button"
@@ -884,7 +983,9 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
                 {speichersatz}
               </p>
             </div>
-            {speicherlage === "ohneRecht" || speicherlage === "unterbrochen" ? (
+            {speicherlage === "ohneRecht" ||
+            speicherlage === "unterbrochen" ||
+            speicherlage === "ersetzt" ? (
               <div className="mt-2 flex items-center gap-3">
                 <Button type="button" data-testid="gemeinsam-kopieren" onClick={kopieren}>
                   {t("gemeinsam.kopieren")}
