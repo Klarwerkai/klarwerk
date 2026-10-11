@@ -364,6 +364,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "Add-in-Basis/Bundle-Serving (nur bei KLARWERK_ADDON_API); öffentlich, keine Daten.",
   },
+  // R-0570 · Entscheidung zu Frage 14 (11.10.2026): „Firmenwissen authentifiziert; anonyme Demo nur
+  // öffentlich/fiktiv." Die zwei Vorführungswege (services/app/src/routes/vorfuehrung-routes.ts)
+  // sind BEWUSST öffentlich und BEWUSST nur lesend (GET). Sie liefern ausschliesslich den festen,
+  // erfundenen Bestand aus `vorfuehrung/inhalte.ts` und berühren den Wissensspeicher nicht;
+  // abgegrenzt gemessen in `tests/vorfuehrung-anonym/`.
+  "GET /api/vorfuehrung": {
+    protection: "public",
+    reason:
+      "Anonyme Vorführung (R-0570/Frage 14): nur erfundene Beispielinhalte, kein Wissensspeicher; " +
+      "Vorgabe aus (KLARWERK_VORFUEHRUNG_ANONYM) → 404.",
+  },
+  "GET /api/vorfuehrung/frage": {
+    protection: "public",
+    reason:
+      "Fragen ohne Anmeldung an die Vorführung: Suche NUR im festen erfundenen Bestand, kein Modell, " +
+      "kein Wissensspeicher; Vorgabe aus → 404.",
+  },
   // R-1165: der Wildcard-Handler daneben. Bis hierher stand hier, er werde „vom URL-Scanner (kein `*`
   // in der Zeichenklasse) nicht als eigene Zeile erfasst" — die Route war damit in der Prüfliste
   // nicht vorhanden. `scanAllRoutes()` überspringt sie weiterhin (sein Ergebnis speist die
@@ -1415,6 +1432,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },
+  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Folgenvorschau lesen + Bestandsreset ausführen.
+  // Dieselbe Schranke wie der Werksreset; die Ausführung verlangt zusätzlich zweimal das Passwort,
+  // das Häkchen und die unveränderte Vorschaukennung (`admin-routes.ts`).
+  "GET /api/admin/bestandsreset": { protection: "users.manage" },
+  "POST /api/admin/bestandsreset": { protection: "users.manage" },
   // JOB 4025 (KUNDENBETRIEB-BACKUP): die LESENDE Sicherungsauskunft. Dieselbe Schranke wie jeder
   // andere Weg in `admin-routes.ts`, und das ist hier keine Formsache: die Antwort nennt den
   // ABSOLUTEN Pfad des Sicherungsverzeichnisses, die Namen der Dumps samt Zeitstempel und ihre

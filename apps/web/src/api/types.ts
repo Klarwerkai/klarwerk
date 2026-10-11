@@ -4013,7 +4013,10 @@ export type FeatureName =
   // AUFTRAG-mega64 Block A: das Demodaten-Laden. Vorgabe AUS, fail-closed — ein Werkzeug, das
   // Konten anlegt, ist keine Grundausstattung. Ohne diesen Schalter existiert die Route nicht
   // (services/app/src/routes/admin-routes.ts), und der Knopf erscheint deshalb auch nicht.
-  | "demodaten";
+  | "demodaten"
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung mit erfundenen Inhalten. Vorgabe AUS;
+  // steht auch in der Teilmenge VOR der Anmeldung, weil sie sich nur an Unangemeldete richtet.
+  | "vorfuehrung";
 
 // AUFTRAG-mega61: `Partial`, weil ein UNANGEMELDETER Aufrufer nur die Teilmenge bekommt, deren
 // Fläche vor der Anmeldung erreichbar ist (rechtsseiten, hinweisbanner). Ein fehlender Schlüssel
@@ -4250,6 +4253,56 @@ export interface Schutzwege {
   restore: RestoreDrillBefund | SchutzwegUnbekannt;
   export: ExportBefund | SchutzwegUnbekannt;
   papierkorb: PapierkorbBefund | SchutzwegUnbekannt;
+}
+
+// ==================================================================================================
+// AUFNAHME 20260922 · GESAMT-BESTANDSRESET — der Drahtvertrag des administrativen Aufrufs.
+// ==================================================================================================
+//
+// Gegenstück: `services/app/src/bestandsreset-dienst.ts` (Vorschau, Befund) und
+// `services/app/src/routes/admin-routes.ts` (`GET|POST /api/admin/bestandsreset`).
+
+export type BestandsresetZustand =
+  | "RUNNING"
+  | "OK"
+  | "ROLLED_BACK"
+  | "ROLLED_BACK_BY_CRASH"
+  | "COMMITTED_AUDIT_MISSING"
+  | "INCONSISTENT";
+
+export interface BestandsresetBefund {
+  zustand: BestandsresetZustand;
+  /** Steht der Bestand noch auf seinem Stand vor dem Reset? `undefined` = nicht aussagbar. */
+  bestandIstP0?: boolean;
+  erfolgMeldbar: boolean;
+  begruendung: string;
+}
+
+export interface BestandsresetVorschau {
+  geloescht: { tabelle: string; zeilen: number }[];
+  wissensobjekte: number;
+  papierkorb: number;
+  erhalten: { konten: number; begriffe: number };
+  /** Muss beim Ausführen unverändert zurückgegeben werden — sonst läuft nichts. */
+  kennung: string;
+}
+
+export type BestandsresetAuskunft =
+  | { verfuegbar: false }
+  | { verfuegbar: true; vorschau: BestandsresetVorschau; letzterLauf: BestandsresetBefund | null };
+
+export interface BestandsresetAuftrag {
+  passwort: string;
+  passwortWiederholung: string;
+  folgenBestaetigt: boolean;
+  vorschauKennung: string;
+}
+
+export interface BestandsresetErgebnis {
+  ok: true;
+  laufId: string;
+  befund: BestandsresetBefund;
+  protokolliert: boolean;
 }
 
 // ==================================================================================================

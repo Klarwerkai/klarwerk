@@ -260,6 +260,7 @@ import {
   InMemoryBearbeitungsRepo,
   PgBearbeitungsRepo,
 } from "./bearbeitungshinweis";
+import { type BestandsresetDienst, pgBestandsresetDienst } from "./bestandsreset-dienst";
 // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
 // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import {
@@ -470,6 +471,7 @@ import {
   scimSchluessel,
   verzeichnisRoutes,
 } from "./routes/verzeichnis-routes";
+import { vorfuehrungRoutes } from "./routes/vorfuehrung-routes";
 // produkt:20261007:templates-default — Vorlagen, Standards, Space-Vorgaben, Nutzung, Begriffe.
 import { vorlagenRoutes } from "./routes/vorlagen-routes";
 import { wissensauskunftRoutes } from "./routes/wissensauskunft-routes";
@@ -784,6 +786,13 @@ export interface AppServices {
    * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt Ergebnisse beim Neustart zu verlieren.
    */
   verstaendnisfragen: VerstaendnisfragenRepo;
+  /**
+   * Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Bestandsreset (Folgenvorschau
+   * und Ausführung über `fuehreBestandsresetAus`). NUR im Postgres-Betrieb gesetzt. Ohne Datenbank
+   * fehlt er absichtlich: ein Reset, der nur den Speicher leerte, wäre im Desktop-Journal beim
+   * nächsten Neustart wieder da — die Route sagt dann ehrlich „nicht verfügbar".
+   */
+  bestandsreset?: BestandsresetDienst;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1319,6 +1328,9 @@ export function assembleServices(
     unternehmen?: UnternehmenRepo;
     // Verständnisfragen: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     verstaendnisfragen?: VerstaendnisfragenRepo;
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): gesetzt nur von `buildPgServices` (roher Pool).
+    // Eine Speicherfassung gibt es bewusst nicht — s. `bestandsreset` in `AppServices`.
+    bestandsreset?: BestandsresetDienst;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1770,6 +1782,8 @@ export function assembleServices(
     verstaendnisfragen:
       opts.verstaendnisfragen ??
       new InMemoryVerstaendnisfragenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): nur mit Datenbank — ohne Injektion fehlt er.
+    ...(opts.bestandsreset ? { bestandsreset: opts.bestandsreset } : {}),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -2288,6 +2302,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Verständnisfragen: Fragensatzversionen und Ergebnisse überleben Neuladen, Neustart und
       // Deploy (`VERSTAENDNISFRAGEN_SCHEMA`, angelegt von `migrate()`).
       verstaendnisfragen: new PgVerstaendnisfragenRepo(pool),
+      // Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Aufruf des Resets. Er
+      // bekommt den ROHEN Pool — die zweite benannte Ausnahme aus dem Kopf dieser Funktion.
+      bestandsreset: pgBestandsresetDienst(rohPool),
     },
   );
 }
@@ -5114,6 +5131,10 @@ export function buildApp(
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
   app.register(featuresRoutes(guards));
+  // R-0570 / Entscheidung zu Frage 14: die anonyme Vorführung — erfundene Inhalte, ohne Anmeldung,
+  // ohne jeden Zugriff auf den Wissensspeicher. Immer registriert; der Schalter entscheidet über den
+  // Inhalt (Vorgabe aus → 404), Begründung im Kopf von vorfuehrung-routes.ts.
+  app.register(vorfuehrungRoutes());
   // JOB 3510: die EINE Auskunft über das Erscheinungsbild dieser Instanz — und der Adminweg, der es
   // umschaltet. Sie ist wie die Schalterauskunft darüber SELBST nicht geschaltet: Eine Marke, die
   // man erst freischalten müsste, ließe die Vorführinstanz beim ersten Laden ungefärbt. Die

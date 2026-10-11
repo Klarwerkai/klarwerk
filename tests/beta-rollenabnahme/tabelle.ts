@@ -513,6 +513,19 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
       "Der Werksreset. Er löscht die gesamte Instanz — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
   },
   {
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2). Dieselbe Lage wie der Werksreset darüber, aus
+    // zwei Gründen: die Bühne läuft im Speicher, wo es diesen Weg absichtlich nicht gibt (409) —
+    // ein Gelingen ist hier also gar nicht herstellbar —, und gelänge er, löschte er den Bestand,
+    // gegen den die Lesezeilen messen. Tor und Gelingen sind gegen echtes Postgres gemessen:
+    // `tests/db-tx/bestandsreset-e9-pg.integration.test.ts` (P4) und
+    // `services/app/src/routes/admin-bestandsreset.test.ts` (Rollen).
+    methode: "POST",
+    pfad: "/api/admin/bestandsreset",
+    art: "zurueckgestellt",
+    grund:
+      "Der Bestandsreset. Auf der Speicherbühne gibt es ihn absichtlich nicht (409), und gelänge er, löschte er den Bestand, gegen den die übrigen Zeilen messen.",
+  },
+  {
     methode: "POST",
     pfad: "/api/admin/lesevarianten/laden",
     art: "zurueckgestellt",
@@ -670,6 +683,16 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/admin/factory-reset",
     belegstelle: "services/app/src/routes/admin-routes.ts:280",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): die Folgenvorschau. Eine reine Lesetür; auf der
+    // Speicherbühne antwortet der Admin 200 `{ verfuegbar: false }` — gemessen wird die TÜR.
+    gruppe: "adminRoutes",
+    methode: "GET",
+    pfad: "/api/admin/bestandsreset",
+    belegstelle: "services/app/src/routes/admin-routes.ts:1029",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -1471,6 +1494,28 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser — aber nur, wenn ein Token mitkommt",
     erwartet: OEFFENTLICH(
       "Ohne Token antwortet die Route bewusst mit der TEILMENGE, deren Flächen vor der Anmeldung erreichbar sind (Impressum, Datenschutz) — `features-routes.ts:40-58`. Ein ABGELAUFENER Token bleibt ein 401 und wird nicht stillschweigend herabgestuft; das ist der Unterschied zu einer offenen Route.",
+    ),
+  },
+  // R-0570 · Entscheidung zu Frage 14: die anonyme Vorführung. Öffentlich für jeden Akteur, weil sie
+  // ausschliesslich erfundene Inhalte trägt; der Wissensspeicher ist von hier aus nicht erreichbar.
+  {
+    gruppe: "vorfuehrungRoutes",
+    methode: "GET",
+    pfad: "/api/vorfuehrung",
+    belegstelle: "services/app/src/routes/vorfuehrung-routes.ts:38",
+    tor: "keines — erfundene Vorführinhalte",
+    erwartet: OEFFENTLICH(
+      "Entscheidung zu Frage 14 (11.10.2026): anonyme Vorführung nur mit erfundenen Inhalten aus `vorfuehrung/inhalte.ts`, ohne Zugriff auf den Wissensspeicher. Auf dieser Bühne ist der Schalter aus — die Tür ist registriert und antwortet 404 ohne Inhalt.",
+    ),
+  },
+  {
+    gruppe: "vorfuehrungRoutes",
+    methode: "GET",
+    pfad: "/api/vorfuehrung/frage",
+    belegstelle: "services/app/src/routes/vorfuehrung-routes.ts:48",
+    tor: "keines — Suche im festen erfundenen Bestand",
+    erwartet: OEFFENTLICH(
+      "Fragen ohne Anmeldung an die Vorführung (Frage 14): gesucht wird nur im festen erfundenen Bestand, kein Modell und kein Wissensspeicher. Auf dieser Bühne ist der Schalter aus — 404 ohne Inhalt.",
     ),
   },
   {
