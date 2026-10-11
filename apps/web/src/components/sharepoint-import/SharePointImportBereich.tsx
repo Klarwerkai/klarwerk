@@ -222,7 +222,7 @@ export function SharePointImportBereich({
   });
   const eigene = useQuery({
     queryKey: ["sharepoint-testbibliothek"],
-    queryFn: sharepointApi.testbibliothek,
+    queryFn: () => sharepointApi.testbibliothek(),
     enabled: testbibliothekFrage,
     retry: false,
   });

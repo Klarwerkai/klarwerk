@@ -31,10 +31,10 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "../../apps/web/node_modules/@tanstack/react-query";
-import { type ReactNode, act, createElement } from "../../apps/web/node_modules/react";
+import { Fragment, type ReactNode, act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
-import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { AuthProvider, useSession } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
@@ -222,12 +222,27 @@ async function warteBis(bedingung: () => boolean, was: string): Promise<void> {
   throw new Error(`Zustand nie erreicht: ${was} — sichtbar: ${text().slice(0, 400)}`);
 }
 
+// App.tsx montiert geschützte Inhalte erst nach der Sitzungsabfrage. Ohne diese Grenze würde
+// der Test vor /auth/me mit der vorläufigen Preview-Rolle "experte" auch als Admin anfragen.
+function BeiBestaetigterSitzung({ children }: { children: ReactNode }): JSX.Element | null {
+  const sitzung = useSession();
+  if (sitzung.isLoading || sitzung.signOutFailed || !sitzung.user) {
+    return null;
+  }
+  return createElement(Fragment, null, children);
+}
+
 async function montiere(inhalt: ReactNode): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const router = createElement(MemoryRouter, null, createElement(NavGuardProvider, null, inhalt));
+  const angemeldet = createElement(BeiBestaetigterSitzung, null, inhalt);
+  const router = createElement(
+    MemoryRouter,
+    null,
+    createElement(NavGuardProvider, null, angemeldet),
+  );
   const toast = createElement(ToastProvider, null, router);
   const rolle = createElement(RoleProvider, null, toast);
   const auth = createElement(AuthProvider, null, rolle);
@@ -238,7 +253,9 @@ async function montiere(inhalt: ReactNode): Promise<void> {
 }
 
 const erfassungsbereich = (): ReactNode =>
-  createElement(SharePointImportBereich, { nurTestbibliothek: true });
+  createElement<{ nurTestbibliothek?: boolean }>(SharePointImportBereich, {
+    nurTestbibliothek: true,
+  });
 
 async function klick(el: Element | null): Promise<void> {
   if (!(el instanceof HTMLElement)) {
