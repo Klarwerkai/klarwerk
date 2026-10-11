@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { Role } from "../../auth";
 import { can } from "../../rbac";
+import type { Bereichsmarken } from "./firmenbereich";
 
 // ================================================================================================
 // SPACES — ARBEITSRÄUME MIT ZWECK, MITGLIEDERN, VERANTWORTLICHKEIT UND RECHTEN.
@@ -101,13 +102,30 @@ export interface SpaceEingabe {
   regeln?: string;
   /** Der Firmenkontext; fehlt er (Fassungen vor diesem Auftrag), gilt `firma`. */
   kontext?: SpaceKontext;
-  /** Nur bei `kontext: "partner"`: der Name des Partners. */
+  /**
+   * Nur bei `kontext: "partner"`: der Name des Partners. produkt:20261011:peter-p14 liest daraus
+   * die freigegebenen PARTNERBEREICHE des Firmenfilters (`partnerbereiche`, `firmenbereich.ts`) —
+   * eine Einordnung, KEIN Recht: wer die Inhalte lesen darf, entscheiden Zugang und Mitglieder.
+   */
   partner?: string;
+  /**
+   * produkt:20261011:peter-p14 (Bens Befund 3, Nacharbeit 5) — das ausdrücklich vergebene,
+   * BEREICHSGEBUNDENE EXISTENZRECHT (Peters Antwort 25: „Existenzhinweise nur mit ausdrücklichem
+   * Recht; sonst allgemeine Meldung unabhängig von geheimen Treffern"). Konto-Kennungen, die
+   * erfahren dürfen, DASS es in diesem Space zu ihrer Suche passendes Wissen gibt — ohne Titel,
+   * Inhalt, Zahl oder Kennung (`existenzhinweis.ts`). Es ist KEIN Leserecht und öffnet nichts;
+   * wer die Inhalte lesen darf, entscheiden weiter Zugang und Mitglieder. Fehlt das Feld: niemand.
+   */
+  existenz?: string[];
 }
 
-/** Der Kontext eines Space — `firma`, wenn eine ältere Fassung keinen trägt. */
-export function kontextVon(space: Pick<SpaceEingabe, "kontext">): SpaceKontext {
-  return space.kontext ?? "firma";
+/**
+ * Der Kontext eines Space — `firma`, wenn eine ältere Fassung keinen trägt. Eine Fassung aus den
+ * P14-Kandidaten vor der Zusammenführung trägt nur den Partnernamen (ohne `kontext`): sie war als
+ * Partnerbereich angelegt und bleibt es.
+ */
+export function kontextVon(space: Pick<SpaceEingabe, "kontext" | "partner">): SpaceKontext {
+  return space.kontext ?? (space.partner ? "partner" : "firma");
 }
 
 /**
@@ -196,6 +214,8 @@ export const SPACE_GRENZEN = {
   gruppe: 60,
   regeln: 2_000,
   begruendung: 1_000,
+  partner: 80,
+  existenz: 200,
 } as const;
 
 /** Der Vorgang einer Fassung — auch für Fassungen, die das Feld noch nicht tragen. */
@@ -378,9 +398,13 @@ export function pruefeSpaceEingabe(
       "Der Kontext ist „firma“, „partner“ oder „oeffentlich“.",
     );
   }
+  // produkt:20261011:peter-p14: ein Partnername ist Text (oder fehlt / `null`); anderes ist ungültig.
+  if (r.partner !== undefined && r.partner !== null && typeof r.partner !== "string") {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Der Partnerbereich nennt den Namen des Partners.");
+  }
   const partner = text(r.partner);
   if (kontext === "partner") {
-    if (!partner || partner.length > SPACE_GRENZEN.name) {
+    if (!partner || partner.length > SPACE_GRENZEN.partner) {
       throw new SpaceFehler(
         "SPACE_UNGUELTIG",
         "Ein Partnerbereich braucht den Namen des Partners.",
@@ -401,6 +425,21 @@ export function pruefeSpaceEingabe(
       "Öffentliche Quellen sind für alle mit Leserecht offen.",
     );
   }
+  // P14 · Existenzrecht: wie Mitglieder nur echte Konten; doppelte Nennung wird zusammengefasst.
+  const rohExistenz = r.existenz ?? [];
+  if (!Array.isArray(rohExistenz) || rohExistenz.length > SPACE_GRENZEN.existenz) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Das Existenzrecht ist keine gültige Kontoliste.");
+  }
+  const existenz: string[] = [];
+  for (const eintrag of rohExistenz) {
+    const nutzer = text(eintrag);
+    if (!nutzer || !konten.has(nutzer)) {
+      throw new SpaceFehler("SPACE_UNGUELTIG", "Das Existenzrecht nennt kein bestehendes Konto.");
+    }
+    if (!existenz.includes(nutzer)) {
+      existenz.push(nutzer);
+    }
+  }
   return {
     name,
     zweck,
@@ -411,9 +450,50 @@ export function pruefeSpaceEingabe(
     ...(gebunden.length > 0 ? { teams: gebunden } : {}),
     ...(gruppe ? { gruppe } : {}),
     ...(regeln ? { regeln } : {}),
-    kontext: kontext as SpaceKontext,
+    // Nur ein GENANNTER Kontext wird Teil der Fassung; ohne Angabe gilt `firma` (`kontextVon`).
+    ...(r.kontext !== undefined ? { kontext: kontext as SpaceKontext } : {}),
     ...(kontext === "partner" ? { partner } : {}),
+    ...(existenz.length > 0 ? { existenz } : {}),
   };
+}
+
+/**
+ * produkt:20261011:peter-p14 — die Kennungen der freigegebenen Partnerbereiche des Firmenfilters:
+ * Spaces im Kontext `partner` (aufnahme:20260922:gesamt-wissensprojekte). Ein Partnername ohne
+ * diesen Kontext kann eine Fassung nicht tragen (`pruefeSpaceEingabe`); gezählt wird der Kontext.
+ */
+export function partnerbereiche(spaces: readonly SpaceFassung[]): Set<string> {
+  return new Set(spaces.filter((s) => kontextVon(s) === "partner").map((s) => s.id));
+}
+
+/**
+ * Bens Befund (Nacharbeit 8, AC01): die Bereichsmarken für die EINE Bereichsableitung
+ * (`firmenbereichVon`/`firmenTrim`) — Partner- UND öffentliche Spaces, beide über `kontextVon`.
+ */
+export function bereichsmarken(spaces: readonly SpaceFassung[]): Bereichsmarken {
+  return {
+    partner: partnerbereiche(spaces),
+    oeffentlich: new Set(spaces.filter((s) => kontextVon(s) === "oeffentlich").map((s) => s.id)),
+  };
+}
+
+/**
+ * P14 · Existenzrecht — die Spaces, für die dieser Mensch AUSDRÜCKLICH das Existenzrecht hat, deren
+ * Inhalte er aber NICHT lesen darf. Wer lesen darf, findet die Treffer in der Suche selbst; ein
+ * Hinweis wäre dort nur eine zweite Ausgabe derselben Sache.
+ */
+export function existenzbereiche(
+  spaces: readonly SpaceFassung[],
+  nutzerId: string,
+): Pick<SpaceFassung, "id" | "name">[] {
+  return spaces
+    .filter(
+      (s) =>
+        nutzerId.length > 0 &&
+        (s.existenz ?? []).includes(nutzerId) &&
+        !darfSpaceInhalteLesen(s, nutzerId),
+    )
+    .map((s) => ({ id: s.id, name: s.name }));
 }
 
 /** Eine Begründung für Archivieren/Wiederaufnehmen — bereinigt, oder `SpaceFehler`. */

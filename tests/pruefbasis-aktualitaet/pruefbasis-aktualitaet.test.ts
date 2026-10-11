@@ -196,19 +196,30 @@ describe("K2 · eine Änderung macht den fertigen Nachweis sichtbar überholt", 
     expect(gelesen?.aiCheck?.ueberholt).toBe(true);
   });
 
-  it("bens Befund 1 · eine VERGLEICHSQUELLE ändert sich nach dem Lauf → der Nachweis ist überholt", async () => {
+  // produkt:20261011:peter-p14 · B-07: der Bestandsteil bindet den Nachweis weiter (gespeichert und
+  // im INTERNEN Abgleich wirksam), erscheint aber in keiner Lesefassung — eine Änderung an einem
+  // anderen, womöglich unsichtbaren Objekt verriete sich sonst am sichtbaren Bit.
+  it("bens Befund 1 · eine VERGLEICHSQUELLE ändert sich nach dem Lauf → der interne Abgleich sieht den Nachweis überholt", async () => {
     const { ko } = neuerDienst();
     const vergleich = await anlegen(ko, "Vergleich", "Die Pumpe wird monatlich entlueftet.");
     const fertig = await objektMitFertigemNachweis(ko);
     // Gleicher Text der Vergleichsquelle, nur eine neue Fassung — genügt.
     await ko.revise(vergleich.id, { statement: vergleich.statement }, "pedi");
-    expect((await ko.get(fertig.id))?.aiCheck?.ueberholt).toBe(true);
+    const intern = (await ko.listMitBestandsabgleich()).find((k) => k.id === fertig.id);
+    expect(intern?.aiCheck?.ueberholt).toBe(true);
+    expect(
+      (await ko.get(fertig.id))?.aiCheck?.ueberholt,
+      "Lesefassung ohne Bestand",
+    ).toBeUndefined();
     const { ko: ko2 } = neuerDienst();
     await objektMitFertigemNachweis(ko2, "Erster");
     const zweiter = await objektMitFertigemNachweis(ko2, "Zweiter");
     // Ein Zugang zum Vergleichsbestand ändert den Auswahlkontext.
     await anlegen(ko2, "Neu", "Ein neues Objekt im Pool.");
-    expect((await ko2.get(zweiter.id))?.aiCheck?.ueberholt).toBe(true);
+    const intern2 = (await ko2.listMitBestandsabgleich()).find((k) => k.id === zweiter.id);
+    expect(intern2?.aiCheck?.ueberholt).toBe(true);
+    expect((await ko2.get(zweiter.id))?.aiCheck?.ueberholt).toBeUndefined();
+    expect((await ko2.list()).find((k) => k.id === zweiter.id)?.aiCheck?.ueberholt).toBeUndefined();
   });
 
   it("die Anzeige-Libs lesen überholt nie als aktuell", () => {
