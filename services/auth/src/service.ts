@@ -258,6 +258,45 @@ export class AuthService {
     return users.map(toPublic);
   }
 
+  // Aufnahme gesamt-wissen-herkunft (K3): WELCHE KENNUNGEN GEHÖRTEN EINEM GELÖSCHTEN KONTO?
+  //
+  // Nach `deleteUser` fehlt das Konto im Verzeichnis, und jede Autorenzeile, die darauf zeigt, sagte
+  // „Unbekannte Person" — dieselbe Auskunft wie für eine Kennung, die nie ein Konto war. Der Beleg,
+  // dass es ein Konto WAR, steht im Prüfprotokoll (`user.delete`, Ziel = Kennung). Geliefert werden
+  // NUR Kennungen, nie der Name von damals: den sieht weiter nur die Verwalteransicht (N-0027).
+  // Eine Kennung, die heute (wieder) ein Konto ist, gilt nicht als gelöscht. Ohne verdrahtetes
+  // Protokoll gibt es keinen Beleg und damit keine gelöschten Kennungen.
+  async listDeletedUserIds(): Promise<string[]> {
+    if (!this.audit) {
+      return [];
+    }
+    const vermerke = await this.audit.list({ action: "user.delete" });
+    if (vermerke.length === 0) {
+      return [];
+    }
+    const bestehend = new Set((await this.users.list()).map((u) => u.id));
+    const geloescht = new Set<string>();
+    for (const vermerk of vermerke) {
+      if (vermerk.target && !bestehend.has(vermerk.target)) {
+        geloescht.add(vermerk.target);
+      }
+    }
+    return [...geloescht];
+  }
+
+  /** Gibt es dieses Konto (heute)? Für Zuständigkeiten, die auf ein Konto zeigen müssen. */
+  async kontoBesteht(userId: string): Promise<boolean> {
+    return (await this.users.findById(userId)) !== undefined;
+  }
+
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18 (Integration Nacharbeit 12): die
+  // Weisungsbefugnis steht am Konto (`User.weisungsbefugnis`, vergeben über `setWeisungsbefugnis`,
+  // Aufnahme gesamt-peer-validierung). Lesen für Wege, die nur die Kennung kennen — fehlt der
+  // Vermerk oder das Konto, ist niemand weisungsbefugt, gleich welche Rolle.
+  async weisungsbefugnisVon(userId: string): Promise<Weisungsbefugnis | undefined> {
+    return (await this.users.findById(userId))?.weisungsbefugnis;
+  }
+
   // FR-AUTH-01 (erstes Konto = Admin) + FR-AUTH-02 (Selbstregistrierung, gesperrt bis Freigabe).
   //
   // Aufnahme gesamt-auditprotokoll:aktionsabdeckung (R-0607 Nutzerverwaltung, Bens Befund
