@@ -358,6 +358,14 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Veröffentlichung — darfSehen vor dem Veröffentlichen, sonst 404.",
   },
+  "GET /api/kos/:id/veroeffentlichung/zustellung/:vermerkId": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-12 — Zustellstatus nur zu einem Eintrag, den der Freigebende sehen darf.",
+  },
+  "POST /api/kos/:id/veroeffentlichung/zustellung/:vermerkId/fortsetzen": {
+    urteil: "PRAEDIKAT",
+    grund: "ADMIN-12 — darfSehen vor der Wiederaufnahme des Versands, sonst 404.",
+  },
   // --- R-1644: Wissensauskunft zum Zeitpunkt -------------------------------------------------------
   // Trägt Titel und Kernaussage der damals geltenden Fassung; darfSehen vor jeder Antwort.
   "GET /api/kos/:id/wissensauskunft": {
@@ -1028,6 +1036,29 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/admin/richtlinien/:id/fassungen": {
     urteil: "KEIN_KO_INHALT",
     grund: "ADMIN-15 — Antwort ist die neue Richtlinienfassung samt Wirkung.",
+  },
+  // ADMIN-12 · Kommunikationsregeln (kommunikation-routes.ts). Regelfassungen und persönliche
+  // Abwahlen liegen in einer eigenen Ablage (`kommunikationsregeln.ts`); kein Feld dieser Antworten
+  // stammt aus einem Wissensobjekt.
+  "GET /api/kommunikation/regeln": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Ereigniskatalog, Kanalzustand und Unternehmensvorgabe, kein Bestand.",
+  },
+  "PUT /api/admin/kommunikation/regeln": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Antwort ist dieselbe Übersicht wie der Leseweg; users.manage im Rumpf.",
+  },
+  "GET /api/admin/kommunikation/fassungen": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Fassungen der Unternehmensvorgabe samt Namen der Ändernden.",
+  },
+  "GET /api/meldungsregeln/meine": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — die eigenen Meldungseinstellungen je Ereignis.",
+  },
+  "PUT /api/meldungsregeln/meine": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "ADMIN-12 — Antwort sind die eigenen Meldungseinstellungen.",
   },
   // Firmenwörterbuch (begriffe-routes.ts): Katalogeinträge und Hinweise. Kein Feld stammt aus
   // einem Wissensobjekt — der Abgleich liest nur den Katalog und den mitgesendeten Text.
@@ -2899,7 +2930,9 @@ const AUSGAENGE: Record<string, Ausgangseintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund:
       "Mailversand: Kontotexte (Rücksetzen, Freigabe) und bei der Prüfzuweisung nur die Kennung " +
-      "des Objekts an die zugewiesene Person (notify.ts) — kein Titel, keine Aussage.",
+      "des Objekts an die zugewiesene Person (notify.ts) — kein Titel, keine Aussage. ADMIN-12: " +
+      "bei einer Veröffentlichung mit eingeschalteter Mailvorgabe Kennung und Fassung an Konten, " +
+      "die den Eintrag zum Versandzeitpunkt lesen dürfen (kommunikationsregeln.ts, mailsVersenden).",
   },
   "services/confluence/src/rest-client.ts::mitFrist#1": {
     urteil: "KEIN_KO_INHALT",

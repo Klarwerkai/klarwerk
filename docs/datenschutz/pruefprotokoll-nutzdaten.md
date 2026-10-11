@@ -129,6 +129,8 @@ am Konflikt, **nicht** im Protokoll.
 | `unternehmensprofil.geaendert` | `vorherVersion`, `version`, `akzent`, `nameGeaendert`, `logoGeaendert`, `uebernommenAus` | Z — weder Name noch Logodatei stehen im Protokoll |
 | `richtlinie.veroeffentlicht` | `fassung`, `anforderung`, `rollen`, `gueltigAb`, `betroffen`, ggf. `erneut`, `bisherigeHandlungen` | Z, M — der Richtlinientext steht **nicht** im Protokoll |
 | `richtlinie.handlung` | `fassung`, `handlung` (Akteur = die handelnde Person) | Z — dieselbe Angabe steht im Handlungsprotokoll der Richtlinie |
+| `kommunikationsregeln.geaendert` (ADMIN-12) | `vorherVersion`, `version`, `aenderungen` (je Ereignis, Feld, vorher, nachher — Werte aus geschlossenen Mengen) | Z — keine Inhalte, keine Empfänger |
+| `meldungsregel.persoenlich` (ADMIN-12) | `ereignis`, `abgewaehlt` (Akteur und Ziel = die Person selbst) | Z |
 | `external.policy.set` | `stage` | Z |
 | `reasoner.ki-freigabe` | `vorher`, `nachher` (Freigabestand) | Z |
 | `reasoner.zweitmeinung`, `reasoner.zweitmeinung-nicht-wirksam` (R-0305/R-1099) | `vorher`, `nachher` (`openai`/`anthropic`/`local`/`aus`) | Z |

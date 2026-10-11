@@ -3935,6 +3935,18 @@ export interface Notification {
   // produkt:20261010:wissenskreislauf-schliessen: Unterart und Lücke einer `luecke`-Meldung.
   lueckenArt?: "geloest" | "rueckfrage" | "rueckfrage_beantwortet" | "zurueckgewiesen";
   gapId?: string;
+  // ADMIN-12: die tägliche Zusammenfassung gewöhnlicher Veröffentlichungen eines Tages (ohne `koId`).
+  zusammenfassung?: {
+    tag: string;
+    anzahl: number;
+    eintraege: Array<{
+      vermerkId: string;
+      koId: string;
+      title: string;
+      fassung: number;
+      art: "neu" | "aktualisierung";
+    }>;
+  };
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
