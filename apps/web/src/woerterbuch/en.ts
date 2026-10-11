@@ -365,6 +365,7 @@ const en: typeof de = {
   "audit.action.user_role_change": "Role changed",
   "audit.action.user_approve": "Account approved",
   "audit.action.user_account_corrected": "Account details corrected",
+  "audit.action.user_freigabe_set": "Clearance level changed",
   "audit.action.auth_login": "Signed in",
   "audit.action.auth_logout": "Signed out",
   "audit.action.notice_acknowledged": "Notice acknowledged",

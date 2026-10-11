@@ -21,6 +21,9 @@ export function spaceFehlerSchluessel(fehler: unknown): string {
   if (fehler.code === "SPACE_NICHT_LEER") {
     return "spaces.loeschen.nichtLeer";
   }
+  if (fehler.code === "EXISTENZRECHT_FEHLT") {
+    return "spaces.loeschen.existenzrecht";
+  }
   // ADMIN-07
   if (fehler.code === "SPACE_ARCHIVIERT") {
     return "spaces.fehler.archiviert";
@@ -295,12 +298,12 @@ export interface RegelSicht {
 export interface Loeschvorschau {
   space: { id: string; name: string; version: number };
   artikel: { id: string; title: string; version: number }[];
-  weitereVerborgen: number;
+  /** Nur Papierkorbartikel, die der Betrachter lesen dürfte (gesamt-leserechte, Nacharbeit 31). */
   imPapierkorb: number;
   ansichten: number;
   mitglieder: number;
   darfLoeschen: boolean;
-  grund: "SPACE_NICHT_LEER" | null;
+  grund: "SPACE_NICHT_LEER" | "EXISTENZRECHT_FEHLT" | null;
 }
 
 const pfad = (id: string): string => `/spaces/${encodeURIComponent(id)}`;

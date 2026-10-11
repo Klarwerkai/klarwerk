@@ -16,14 +16,16 @@
 //
 // DREI STELLEN, DREI ZUGÄNGE — und warum der dritte anders aussieht:
 //   E  unbekannte Entwurfskennung   → `GET /api/drafts/:id` → 404 NOT_FOUND  (DRAFT_NOT_FOUND)
-//   F  fremder, lebender Entwurf    → `GET /api/drafts/:id` → 403 FORBIDDEN  (DRAFT_NOT_VISIBLE)
+//   F  fremder, lebender Entwurf    → `GET /api/drafts/:id` → 404 NOT_FOUND  (DRAFT_NOT_FOUND —
+//      seit aufnahme:20260922:gesamt-leserechte, R-0239/J24; vorher 403 DRAFT_NOT_VISIBLE)
 //   G  fremder Pool-Entwurf, Verfügen → `PUT /api/drafts/:id/pool` → 403 FORBIDDEN (PERMISSION_DENIED)
 // R-1349 (Aufnahme gesamt-aufruferwaechter): G fuhr bis hierher den `requirePermission`-preHandler
 // aus `services/rbac/src/guard.ts` auf einer eigenen Fastify-Instanz, weil er im Produkt keinen
 // Aufrufer hatte. Der Baustein ist entfernt. `PERMISSION_DENIED` entsteht im Produkt an genau einer
 // Stelle — `requireVisibleDraft(…, { nurAutor: true })` in `services/app/src/routes/capture-routes.ts`
 // —, wenn jemand einen fremden Pool-Entwurf SIEHT, aber über ihn verfügen will. G misst jetzt diese
-// echte Route: die Fremde versucht, den Pool-Entwurf der Eignerin zurückzunehmen.
+// echte Route: die Fremde versucht, den Pool-Entwurf der Eignerin zurückzunehmen. Den Pool-Entwurf
+// SIEHT sie (`entwurfSichtbarFuer`: Pool und `ko.create`), deshalb 403 und nicht die 404 aus F.
 //
 // H1–H3 HALTEN DEN DRAHT NACH AUSSEN FEST. Status und `error`-Code sind Vertrag und ändern sich
 // NICHT, weil der Satz übersetzt wird: `toEqual` statt `toMatchObject`, damit auch ein
@@ -151,7 +153,7 @@ beforeAll(async () => {
   tokenFremde = await anmelden("fremde@q9entwurf.test");
 
   // `canSeeDraft` trennt nach EIGENTUM, nicht nach Recht: beide Konten tragen `ko.create`, nur
-  // eines legt den Entwurf an. Ohne diesen Unterschied gäbe es den 403-Fall gar nicht.
+  // eines legt den Entwurf an. Ohne diesen Unterschied gäbe es den F-Fall gar nicht.
   const angelegt = await app.inject({
     method: "POST",
     url: "/api/drafts",
@@ -171,7 +173,7 @@ beforeAll(async () => {
   eigeneKennung = (angelegt.json() as { id: string }).id;
 
   // G: ein ZWEITER Entwurf der Eignerin, den sie bewusst in den Pool gibt. Der erste bleibt privat,
-  // sonst wäre F (fremder Entwurf → DRAFT_NOT_VISIBLE) nicht mehr zu erreichen.
+  // sonst wäre F (fremder Entwurf → wie unbekannt, DRAFT_NOT_FOUND) nicht mehr zu erreichen.
   const imPool = await app.inject({
     method: "POST",
     url: "/api/drafts",
@@ -246,42 +248,45 @@ describe("E · `Entwurf nicht gefunden.` spricht die Sprache der Sitzung", () =>
 // ------------------------------------------------------------------------------------------------
 // F · DER FREMDE ENTWURF
 // ------------------------------------------------------------------------------------------------
-describe("F · `Entwurf nicht verfuegbar.` spricht die Sprache der Sitzung", () => {
-  it("F1 EN · fremder Entwurf: 403 FORBIDDEN mit englischem Satz", async () => {
-    const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, "en");
-    expect(antwort.status).toBe(403);
-    expect(antwort.koerper.error).toBe("FORBIDDEN");
-    expect(antwort.koerper.message).toBe("This draft is not available to you.");
-    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.en);
-    expect(String(antwort.koerper.message)).not.toMatch(/Entwurf|verfuegbar|Unerwarteter/);
+// aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.2026: „404"): bis hierher
+// antwortete dieser Fall 403 FORBIDDEN mit eigenem Satz („Entwurf nicht verfuegbar.") — die
+// Auskunft, dass es den fremden Entwurf GIBT. Jetzt ist er für die Fremde nicht vorhanden: Status,
+// Code und Satz sind in JEDER Sprache zeichengleich mit der unbekannten Kennung aus E. Gemessen wird
+// deshalb gegen die E-Antwort derselben Sprache, nicht gegen einen zweiten Satz.
+describe("F · ein fremder Entwurf antwortet wie ein unbekannter — in jeder Sprache", () => {
+  it("F1 EN · fremder Entwurf: dieselbe Antwort wie die unbekannte Kennung", async () => {
+    const fremd = await entwurfsabruf(tokenFremde, eigeneKennung, "en");
+    const unbekannt = await entwurfsabruf(tokenFremde, UNBEKANNT, "en");
+    expect(fremd).toEqual(unbekannt);
+    expect(fremd.status).toBe(404);
   });
 
-  it("F2 NL · fremder Entwurf: 403 FORBIDDEN mit niederländischem Satz", async () => {
-    const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, "nl");
-    expect(antwort.status).toBe(403);
-    expect(antwort.koerper.error).toBe("FORBIDDEN");
-    expect(antwort.koerper.message).toBe("Dit concept is niet voor jou beschikbaar.");
-    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.nl);
-    expect(String(antwort.koerper.message)).not.toMatch(/Entwurf|verfuegbar|Unerwarteter/);
+  it("F2 NL · fremder Entwurf: dieselbe Antwort wie die unbekannte Kennung", async () => {
+    const fremd = await entwurfsabruf(tokenFremde, eigeneKennung, "nl");
+    const unbekannt = await entwurfsabruf(tokenFremde, UNBEKANNT, "nl");
+    expect(fremd).toEqual(unbekannt);
+    expect(fremd.status).toBe(404);
   });
 
-  it("F3 DE · fremder Entwurf: zeichengleicher deutscher Wortlaut", async () => {
+  it("F3 DE · fremder Entwurf: zeichengleicher deutscher Wortlaut der unbekannten Kennung", async () => {
     for (const sprache of [undefined, "de", "fr"]) {
       const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, sprache);
-      expect(antwort.status, String(sprache)).toBe(403);
+      expect(antwort.status, String(sprache)).toBe(404);
       expect(antwort.koerper, String(sprache)).toEqual({
-        error: "FORBIDDEN",
-        message: "Entwurf nicht verfuegbar.",
+        error: "NOT_FOUND",
+        message: "Entwurf nicht gefunden.",
       });
     }
   });
 
-  it("F4 · es sind ZWEI Sätze und nicht einer doppelt — in jeder Sprache", async () => {
-    // Ohne diesen Fall bliebe ein Katalog grün, in dem beide Schlüssel denselben Text tragen: die
-    // Unterscheidung „gibt es nicht" gegen „gehört jemand anderem" wäre für den Menschen weg.
-    for (const sprache of ["de", "en", "nl"] as const) {
-      expect(MELDUNGEN.DRAFT_NOT_FOUND[sprache]).not.toBe(MELDUNGEN.DRAFT_NOT_VISIBLE[sprache]);
-    }
+  it("F4 · die Eignerin sieht ihren Entwurf weiterhin — die 404 gilt nur dem fremden Blick", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/drafts/${eigeneKennung}`,
+      headers: { authorization: `Bearer ${tokenEignerin}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("Kesselhaus Nordstrang Schmierstellenliste 3956");
   });
 });
 
@@ -345,12 +350,14 @@ describe("H · Status und Fehlercode bleiben buchstäblich stehen", () => {
     }
   });
 
-  it("H2 · der Draht des fremden Entwurfs bleibt 403 FORBIDDEN in allen drei Sprachen", async () => {
+  // aufnahme:20260922:gesamt-leserechte: der Draht des fremden Entwurfs ist mit R-0239 bewusst
+  // verschoben worden (403 FORBIDDEN → 404 NOT_FOUND) — und bleibt danach ebenso buchstäblich stehen.
+  it("H2 · der Draht des fremden Entwurfs ist 404 NOT_FOUND in allen drei Sprachen", async () => {
     for (const sprache of ["de", "en", "nl"]) {
       const antwort = await entwurfsabruf(tokenFremde, eigeneKennung, sprache);
-      expect(antwort.status, sprache).toBe(403);
+      expect(antwort.status, sprache).toBe(404);
       expect(Object.keys(antwort.koerper).sort(), sprache).toEqual(["error", "message"]);
-      expect(antwort.koerper.error, sprache).toBe("FORBIDDEN");
+      expect(antwort.koerper.error, sprache).toBe("NOT_FOUND");
     }
   });
 
@@ -386,20 +393,20 @@ describe("I · der Dokumentweg spricht dieselben zwei Sätze in der Sprache der 
     expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_FOUND.nl);
   });
 
-  it("I3 EN · Dokumentweg mit fremdem Entwurf: 403 FORBIDDEN mit englischem Satz", async () => {
-    const antwort = await dokumentweg(tokenFremde, eigeneKennung, "en");
-    expect(antwort.status).toBe(403);
-    expect(antwort.koerper.error).toBe("FORBIDDEN");
-    expect(antwort.koerper.message).toBe("This draft is not available to you.");
-    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.en);
+  // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): wie in F antwortet der fremde
+  // Entwurf auch am Dokumentweg zeichengleich mit der unbekannten Kennung derselben Sprache.
+  it("I3 EN · Dokumentweg mit fremdem Entwurf: dieselbe Antwort wie die unbekannte Kennung", async () => {
+    const fremd = await dokumentweg(tokenFremde, eigeneKennung, "en");
+    const unbekannt = await dokumentweg(tokenFremde, UNBEKANNT, "en");
+    expect(fremd).toEqual(unbekannt);
+    expect(fremd.status).toBe(404);
   });
 
-  it("I4 NL · Dokumentweg mit fremdem Entwurf: 403 FORBIDDEN mit niederländischem Satz", async () => {
-    const antwort = await dokumentweg(tokenFremde, eigeneKennung, "nl");
-    expect(antwort.status).toBe(403);
-    expect(antwort.koerper.error).toBe("FORBIDDEN");
-    expect(antwort.koerper.message).toBe("Dit concept is niet voor jou beschikbaar.");
-    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_NOT_VISIBLE.nl);
+  it("I4 NL · Dokumentweg mit fremdem Entwurf: dieselbe Antwort wie die unbekannte Kennung", async () => {
+    const fremd = await dokumentweg(tokenFremde, eigeneKennung, "nl");
+    const unbekannt = await dokumentweg(tokenFremde, UNBEKANNT, "nl");
+    expect(fremd).toEqual(unbekannt);
+    expect(fremd.status).toBe(404);
   });
 
   it("I5 DE · Dokumentweg: zeichengleicher deutscher Wortlaut, Draht unverändert", async () => {
@@ -413,10 +420,10 @@ describe("I · der Dokumentweg spricht dieselben zwei Sätze in der Sprache der 
         message: "Entwurf nicht gefunden.",
       });
       const fremd = await dokumentweg(tokenFremde, eigeneKennung, sprache);
-      expect(fremd.status, String(sprache)).toBe(403);
+      expect(fremd.status, String(sprache)).toBe(404);
       expect(fremd.koerper, String(sprache)).toEqual({
-        error: "FORBIDDEN",
-        message: "Entwurf nicht verfuegbar.",
+        error: "NOT_FOUND",
+        message: "Entwurf nicht gefunden.",
       });
     }
   });

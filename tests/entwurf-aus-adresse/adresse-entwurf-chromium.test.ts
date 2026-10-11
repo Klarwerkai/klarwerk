@@ -31,7 +31,7 @@
 //   A1 gültige Kennung   — echter Entwurf, echter Server.
 //   A2 gelöschte Kennung — echte 404 des echten Servers (eine Kennung, die es nie gab;
 //                          `capture-routes.ts:85` antwortet „Entwurf nicht gefunden.").
-//   A3 fremde Kennung    — die 403 des Servers (`capture-routes.ts:89`) wird am NETZRAND
+//   A3 fremde Kennung    — die Serverantwort (seit R-0239: 404 wie unbekannt) wird am NETZRAND
 //                          eingespeist, mit dem Wortlaut der Route. Grund, ausdrücklich benannt:
 //                          die Bühne hat GENAU EINEN Anmelder, und ihr Durchgriff setzt für jeden
 //                          `/api`-Aufruf dessen Token (h3-blatt-buehne.ts). Ein zweiter Eigentümer
@@ -69,10 +69,14 @@ const LADE_SATZ = "Der Entwurf konnte nicht geladen werden.";
 
 /** Eine Kennung, die es auf diesem Server nie gab (A2). Form wie eine echte UUID. */
 const GELOESCHTE_KENNUNG = "1ec48b98-0320-445e-a7de-25c8ecd21b98";
-/** Die Kennung, für die der Netzrand die 403 des Servers liefert (A3). */
+/** Die Kennung, für die der Netzrand die Serverantwort auf eine fremde Kennung liefert (A3). */
 const FREMDE_KENNUNG = "7a3f0c21-9b4e-4d55-8f10-2c6b8e4a1d99";
-/** Der Wortlaut der Route für eine fremde Kennung (`capture-routes.ts:89`). */
-const FREMD_SATZ = "Entwurf nicht verfuegbar.";
+/**
+ * Der Wortlaut der Route für eine fremde Kennung. aufnahme:20260922:gesamt-leserechte (R-0239,
+ * J24 „404"): seither zeichengleich mit der unbekannten Kennung — 404 „Entwurf nicht gefunden.",
+ * nicht mehr 403 „Entwurf nicht verfuegbar." (`requireVisibleDraft`).
+ */
+const FREMD_SATZ = "Entwurf nicht gefunden.";
 /** Der Wortlaut der Route für eine unbekannte Kennung (`capture-routes.ts:85`). */
 const UNBEKANNT_SATZ = "Entwurf nicht gefunden.";
 /** Der Satz der Fehlergrenze (`i18n.ts:541`) — er darf stehen, eine leere Fläche nicht. */
@@ -195,11 +199,12 @@ beforeAll(async () => {
   if (buehne.fehler !== null) {
     return;
   }
-  // Die 403 des Servers für die fremde Kennung — am Netzrand, mit dem Wortlaut der Route.
+  // Die Antwort des Servers für die fremde Kennung — am Netzrand, mit Status und Wortlaut der
+  // Route (seit R-0239: 404 NOT_FOUND wie für eine unbekannte Kennung).
   await buehne.seite.route(`${ORIGIN}/api/drafts/${FREMDE_KENNUNG}`, async (route) => {
     await route.fulfill({
-      status: 403,
-      body: JSON.stringify({ error: "FORBIDDEN", message: FREMD_SATZ }),
+      status: 404,
+      body: JSON.stringify({ error: "NOT_FOUND", message: FREMD_SATZ }),
       headers: { "content-type": "application/json" },
     });
   });

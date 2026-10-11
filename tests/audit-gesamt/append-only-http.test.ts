@@ -35,6 +35,7 @@ import { baueFrischeBuehne, schliesseBuehnen } from "../beta-rollenabnahme/buehn
 
 afterEach(async () => {
   await schliesseBuehnen();
+  delete process.env.KLARWERK_AUDIT_KETTENEINSICHT;
 });
 
 const METHODEN = ["POST", "PUT", "PATCH", "DELETE"] as const;
@@ -147,6 +148,10 @@ describe("FR-AUD-02 · kein Produktcode ändert oder löscht Zeilen in audit (st
 describe("R-0613 · Export der Kette mit Kopf (HTTP)", () => {
   it("liefert Einträge, Prüfbericht und Kopf — und hängt den Abruf als audit.exported an", async () => {
     const b = await baueFrischeBuehne();
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 28, Ben): die unveränderte Kette geht nur an
+    // ein Konto mit ausdrücklich erteilter Ketteneinsicht (Betriebseinstellung) — die Form hängt
+    // nie am Bestand. Ohne sie bekäme die Controllerin eine Leseansicht, keinen Kettenexport.
+    process.env.KLARWERK_AUDIT_KETTENEINSICHT = b.konto.controller.id;
     const controller = { authorization: `Bearer ${b.sitzung.controller}` };
     const vorher = await b.services.audit.list();
 
@@ -195,6 +200,8 @@ describe("R-0613 · Export der Kette mit Kopf (HTTP)", () => {
 
   it("eine nachträglich geänderte Exportdatei fällt beim Nachrechnen auf", async () => {
     const b = await baueFrischeBuehne();
+    // Nacharbeit 28 (Ben): der Kettenexport braucht die ausdrücklich erteilte Ketteneinsicht.
+    process.env.KLARWERK_AUDIT_KETTENEINSICHT = b.konto.admin.id;
     const admin = { authorization: `Bearer ${b.sitzung.admin}` };
     const datei = (
       await b.app.inject({ method: "GET", url: "/api/audit/export", headers: admin })

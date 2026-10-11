@@ -10,6 +10,9 @@ export {
   InMemoryAuditRepo,
   type AuditRepo,
   auditSeiteTrifft,
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): `namensbelegeAus` auch für den Seitenweg
+  // der Leseransicht (services/app/src/routes/audit-routes.ts) — dieselbe Regel, kein Nachbau.
+  namensbelegeAus,
   // Aufnahme gesamt-wissen-herkunft (R-0228): die benannten Entscheidungsereignisse für die
   // Verifizierungsmarke (services/app/src/verifizierungsmarke.ts).
   VALIDATION_DECISION_ACTIONS,
