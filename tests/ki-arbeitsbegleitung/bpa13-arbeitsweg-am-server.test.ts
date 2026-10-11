@@ -40,6 +40,7 @@ type App = ReturnType<typeof buildApp>;
 let services: AppServices;
 let app: App;
 let codexBasis = "";
+let adminToken = "";
 let vera = { id: "", token: "" };
 let erik = { id: "", token: "" };
 let preis: KnowledgeObject;
@@ -122,7 +123,7 @@ beforeEach(async () => {
     url: "/api/auth/register",
     payload: { name: "Ada Admin", email: "ada@bpa13.test", password: "secret123" },
   });
-  const adminToken = await anmelden("ada@bpa13.test");
+  adminToken = await anmelden("ada@bpa13.test");
   vera = await konto(adminToken, "viewer", "vera@bpa13.test", "Vera Viewer");
   erik = await konto(adminToken, "experte", "erik@bpa13.test", "Erik Experte");
   preis = await services.ko.create({
@@ -132,6 +133,9 @@ beforeEach(async () => {
     type: "best_practice",
     category: "Preise",
     author: "ada",
+    // Ausdrücklich eingestuft: eine FEHLENDE Stufe ist ungeklärt und für eine Betrachterin
+    // unsichtbar (`schutzrang`, Entscheidung 16) — die Gegenprobe dazu steht in S14-5.
+    confidentiality: "intern",
   });
   beta = await services.ko.create({
     title: "Kalkulation Projekt Beta",
@@ -139,6 +143,7 @@ beforeEach(async () => {
     type: "best_practice",
     category: "Preise",
     author: "ada",
+    confidentiality: "intern",
   });
 });
 
@@ -356,6 +361,30 @@ describe("S14-4 · Codex-Auftrag: echte, begrenzte Dateiwirkung im synthetischen
   });
 });
 
+describe("S14-5 · eine Quelle ohne Einstufung bleibt in geschützter Klärung (G05)", () => {
+  it("auch sichtbar und ausdrücklich freigegeben geht ihr Text nicht hinaus", async () => {
+    const ungeklaert = await services.ko.create({
+      title: "Notiz ohne Einstufung",
+      statement: "UNGEKLAERTER INHALT Wartungsfenster Dienstag.",
+      type: "best_practice",
+      category: "Preise",
+      author: "ada",
+    });
+    // Die Administratorin darf sie sehen (Freigaberang 1) — die Frage ist allein der Ausgang.
+    const gid = await gespraech(adminToken);
+    const a = await bereite(adminToken, gid, {
+      quellen: [ungeklaert.id],
+      freigegebeneQuellen: [ungeklaert.id],
+    });
+    expect(a.prompt).not.toContain("UNGEKLAERTER INHALT");
+    expect(a.ausgelassen).toContainEqual({
+      quelleId: ungeklaert.id,
+      titel: "Notiz ohne Einstufung",
+      grund: "schutzstufe_unbekannt",
+    });
+  });
+});
+
 // ------------------------------------------------------------------------------------------------
 // Der API-Weg am Dienst — mit einer ATTRAPPE statt eines Anbieters (kein realer Lauf).
 // ------------------------------------------------------------------------------------------------
@@ -370,6 +399,7 @@ describe("API-Weg am Dienst (Attrappe): Sendestand vor dem Aufruf, Fehler, Wiede
     measures: [],
     version: 3,
     author: "ada",
+    confidentiality: "intern",
   } as unknown as KnowledgeObject;
 
   function aufbau(antworten: Array<"ok" | "fehler">) {

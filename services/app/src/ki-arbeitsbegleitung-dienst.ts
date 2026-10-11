@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { type KnowledgeObject, isConfidential } from "../../knowledge-object";
+import type { KnowledgeObject } from "../../knowledge-object";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
 import {
@@ -255,11 +255,15 @@ function aussagen(wert: unknown, feld: string): KiAussage[] {
   });
 }
 
-/** Schutzstufe aus der vorhandenen Einstufung — eine unbekannte Stufe bleibt `unbekannt` (G05). */
+/**
+ * Schutzstufe aus der vorhandenen Einstufung. Eine FEHLENDE oder unbekannte Stufe ist ungeklärt —
+ * dieselbe Lesart wie `schutzrang` in `sichtbarkeit.ts` (Entscheidung 16) — und bleibt nach G05 in
+ * geschützter Klärung: `unbekannt` geht in keinen externen Weg.
+ */
 function schutzstufe(ko: KnowledgeObject): KiQuelle["schutzstufe"] {
-  const c = ko.confidentiality;
-  if (c === undefined || c === "intern") return ko.oeffentlich === true ? "oeffentlich" : "intern";
-  if (isConfidential(c)) return "vertraulich";
+  const c: unknown = ko.confidentiality;
+  if (c === "intern") return ko.oeffentlich === true ? "oeffentlich" : "intern";
+  if (c === "vertraulich" || c === "streng_vertraulich") return "vertraulich";
   return "unbekannt";
 }
 
@@ -568,7 +572,10 @@ export class KiArbeitsbegleitungDienst {
         offen,
       );
       if (!gefunden.neu) {
-        halter.e = liste.find((e) => e.job.jobId === gefunden.job.jobId);
+        const vorhanden = liste.find((e) => e.job.jobId === gefunden.job.jobId);
+        if (vorhanden) {
+          halter.e = vorhanden;
+        }
         return liste;
       }
       halter.e = {
@@ -884,7 +891,10 @@ export class KiArbeitsbegleitungDienst {
         e.auftrag.offenePunkte,
       );
       if (!gefunden.neu) {
-        halter.e = liste.find((x) => x.job.jobId === gefunden.job.jobId);
+        const vorhanden = liste.find((x) => x.job.jobId === gefunden.job.jobId);
+        if (vorhanden) {
+          halter.e = vorhanden;
+        }
         return liste;
       }
       halter.e = {
