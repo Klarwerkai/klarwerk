@@ -31,7 +31,7 @@ Status-Pills: Validiert / In Prüfung / Konflikt / ✦ Reasoner.
 ## Logo
 
 Zielscheibe (Ring + Punkt) auf heller Kachel + Wortmarke KLARWERK (Versalien, gesperrt),
-Untertitel „Reasoning System". Nie drehen/verzerren/umfärben; Mindestgröße 24 px digital.
+Untertitel „Knowledge OS" (Entscheidung 53, 11.10.2026; vorher „Reasoning System"). Nie drehen/verzerren/umfärben; Mindestgröße 24 px digital.
 
 ## Bildwelt & Video (Kurzform)
 

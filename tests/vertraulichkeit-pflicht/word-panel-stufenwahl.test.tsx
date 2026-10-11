@@ -269,6 +269,35 @@ describe("R-0632 · die drei Stufen im Panel, je ein Klick, bis zum gespeicherte
     }
   });
 
+  // Peters Entscheidung 55 (11.10.2026): EINE primäre Einreichaktion, die Vertraulichkeit als
+  // optionale Auswahl mit verständlichem Standard. Gemessen am ausgelieferten Panel: die Stufen
+  // tragen nie die Primärbetonung von „Senden“; ohne Wahl nennt ein Satz den Standard, ohne dass ein
+  // Knopf gedrückt dargestellt wird; nach einer Wahl verschwindet der Satz, die Wahl zeigt
+  // `aria-pressed`. Gesendet wird ohne Wahl weiterhin keine Stufe (P0/M0, N11 unverändert).
+  it("E55 · eine primäre Aktion; die Stufe ist eine Auswahl, ohne Wahl steht der Standard da", async () => {
+    await ladeTaskpane();
+    const primaer = () =>
+      [...document.querySelectorAll("button.primary")].map((b) => b.id).filter((id) => id !== "");
+    const standard = el("capture-stufe-standard");
+    expect(standard.textContent).toBe(wortlaut("captureStufeStandard"));
+    expect(standard.hidden, "ohne Wahl muss der Standard sichtbar sein").toBe(false);
+    for (const s of STUFEN) {
+      expect(el(`capture-stufe-${s}`).className).toBe("ghost");
+      expect(el(`capture-stufe-${s}`).getAttribute("aria-pressed")).toBe("false");
+    }
+    expect(primaer().filter((id) => id.startsWith("capture-stufe-"))).toEqual([]);
+
+    el("capture-stufe-vertraulich").click();
+    expect(standard.hidden, "nach einer Wahl gilt die Wahl, nicht mehr der Standardsatz").toBe(
+      true,
+    );
+    for (const s of STUFEN) {
+      expect(el(`capture-stufe-${s}`).className, `${s} ist nach der Wahl primär`).toBe("ghost");
+    }
+    expect(el("capture-stufe-vertraulich").getAttribute("aria-pressed")).toBe("true");
+    expect(primaer().filter((id) => id.startsWith("capture-stufe-"))).toEqual([]);
+  });
+
   for (const stufe of STUFEN) {
     it(`P · ${stufe}: ein Klick, regulär eingereicht — gespeichert exakt „${stufe}“, origin word_addin`, async () => {
       await ladeTaskpane();

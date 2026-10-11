@@ -171,7 +171,9 @@ describe("JOB 3577 M · die Anmeldemaske trägt die Firmen-CI mit", () => {
     const form = grundform as { panel: string; kompakt: string };
     for (const [name, html] of Object.entries(form)) {
       expect(html, `${name}: die Produktidentität`).toContain("KLARWERK");
-      expect(html, `${name}: der Untertitel`).toContain("Reasoning System");
+      // R-0882 · Entscheidung 53 (11.10.2026): der Untertitel heisst „Knowledge OS".
+      expect(html, `${name}: der Untertitel`).toContain("Knowledge OS");
+      expect(html, `${name}: der alte Untertitel`).not.toContain("Reasoning System");
       expect(html, `${name}: ein Bild ohne bekannten Markenstand`).not.toContain("<img");
       expect(html, `${name}: ein Platzhalter für das Logo`).not.toContain("auth-firmenlogo");
       expect(html, `${name}: ein Skelett`).not.toMatch(/animate-pulse|skeleton/i);
@@ -187,7 +189,7 @@ describe("JOB 3577 M · die Anmeldemaske trägt die Firmen-CI mit", () => {
     expect(img?.getAttribute("alt"), "der Alternativtext kommt aus BRAND_LOGO_ALT").toBe(LOGO_ALT);
     // NEBEN, NICHT ANSTELLE — Pedis Auflage, ausführbar gemacht.
     expect(panel().textContent).toContain("KLARWERK");
-    expect(panel().textContent).toContain("Reasoning System");
+    expect(panel().textContent).toContain("Knowledge OS");
     // Die Domainzeile bleibt unangetastet.
     expect(panel().textContent).toContain("klarwerk.ai");
   });
@@ -203,7 +205,7 @@ describe("JOB 3577 M · die Anmeldemaske trägt die Firmen-CI mit", () => {
     expect(img?.getAttribute("src")).toBe(LOGO_PFAD);
     expect(img?.getAttribute("alt")).toBe(LOGO_ALT);
     expect(kompakt().textContent).toContain("KLARWERK");
-    expect(kompakt().textContent).toContain("Reasoning System");
+    expect(kompakt().textContent).toContain("Knowledge OS");
   });
 
   it("M3 · das Mounten löst KEINEN eigenen Abruf nach dem Markenstand aus", async () => {

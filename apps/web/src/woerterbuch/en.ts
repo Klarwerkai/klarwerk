@@ -19,7 +19,7 @@ const en: typeof de = {
   "extpage.help.scope.body":
     "External hits are research support, not verified knowledge: nothing is imported automatically or validated by colleagues. If the admin has disabled external lookup, the area stays empty.",
   "app.name": "KLARWERK",
-  "app.subtitle": "Reasoning System",
+  "app.subtitle": "Knowledge OS",
   "app.staleBundle":
     "A new version of the app is available — please reload the page (Cmd+R or Ctrl+R).",
   "version.neu.hinweis": "New version available",

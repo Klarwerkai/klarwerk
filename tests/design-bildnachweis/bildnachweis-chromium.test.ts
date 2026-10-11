@@ -984,6 +984,46 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
   }, 90_000);
 
   // ----------------------------------------------------------------------------------------------
+  // Nacharbeit 25 · Peters Entscheidung 54 (11.10.2026): die Entwurfsaktion des Blatts heisst
+  // „Als Entwurf speichern", ihre Rückmeldung „Als Entwurf gespeichert: …" (vorher „Entwurf sichern"
+  // / „Entwurf gesichert: …").
+  //   b16-blatt-als-entwurf-speichern.png — /erfassen nach dem Speichern: Knopf und Rückmeldung
+  // Läuft VOR B11/B12; nach dem Speichern ist das Blatt nicht mehr ungesichert.
+  // ----------------------------------------------------------------------------------------------
+  it("B16 · Blatt: der Knopf heisst „Als Entwurf speichern“, die Rückmeldung „Als Entwurf gespeichert“", async () => {
+    expect(fehler2).toBeNull();
+    const s = (stand2 as H4Stand).seite;
+    await s.goto(`${ORIGIN}/erfassen`, { waitUntil: "load", timeout: 60_000 });
+    await warte2('[data-testid="blatt-entwurf-sichern"]');
+    await warte2('[data-testid="blatt-titel"]:not([disabled])');
+    await s.click('[data-testid="blatt-titel"]');
+    await s.keyboard.type("Bildnachweis Begriffe");
+    await s.click('[data-testid="blatt-text"] [role="textbox"]');
+    await s.keyboard.type("Der Knopf heisst jetzt Als Entwurf speichern.");
+    const knopf = await s.evaluate<string>(
+      fn(
+        `() => (document.querySelector('[data-testid="blatt-entwurf-sichern"]').innerText || '').trim()`,
+      ),
+    );
+    expect(knopf).toBe("Als Entwurf speichern");
+    await s.click('[data-testid="blatt-entwurf-sichern"]');
+    await warte2('[data-testid="blatt-entwurf-gespeichert"]');
+    const zeile = await s.evaluate<string>(
+      fn(`() => {
+        const z = document.querySelector('[data-testid="blatt-entwurf-gespeichert"]');
+        z.scrollIntoView({ block: 'center' });
+        return (z.innerText || '').trim();
+      }`),
+    );
+    console.info(`R-1399 · B16 · Knopf „${knopf}“ · Rückmeldung „${zeile}“`);
+    expect(zeile.startsWith("Als Entwurf gespeichert: Bildnachweis Begriffe")).toBe(true);
+    expect(zeile).not.toContain("gesichert");
+    await s.screenshot({ path: bild("b16-blatt-als-entwurf-speichern") });
+    console.info(`R-1399 · Bild ${bild("b16-blatt-als-entwurf-speichern")}`);
+    expect((stand2 as H4Stand).seitenfehler).toEqual([]);
+  }, 90_000);
+
+  // ----------------------------------------------------------------------------------------------
   // Ben, Nacharbeit 18 · die zwei Foto-/Interview-Plaketten an der gebauten Erfassungsfläche:
   //   b11-foto-befund-ki.png          — /erfassen?weg=interview, Foto gewählt, „Bild auswerten“
   //                                     → Plakette „KI-Vorschlag“ (FotoInterviewStart.tsx)

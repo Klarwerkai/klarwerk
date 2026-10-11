@@ -131,7 +131,8 @@ const PROVEN = {
 };
 
 // Kein \b-Anker: `textContent` klebt die Plaketten aneinander.
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026): das Statuswort heisst „Fachlich bestätigt" statt „Gesichert".
+const GESICHERT = "Fachlich bestätigt";
 
 function ko(): Record<string, unknown> {
   return {

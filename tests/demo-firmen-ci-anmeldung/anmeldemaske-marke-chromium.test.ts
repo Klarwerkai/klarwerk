@@ -404,9 +404,9 @@ const MESSE = `([wurzel, immerWahr]) => {
     panel: sicht('[data-testid="auth-brand-panel"]'),
     compact: sicht('[data-testid="auth-brand-compact"]'),
     klarwerk: box ? box.textContent.indexOf("KLARWERK") >= 0 : false,
-    reasoning: box ? box.textContent.indexOf("Reasoning System") >= 0 : false,
+    reasoning: box ? box.textContent.indexOf("Knowledge OS") >= 0 : false,
     klarwerkWort: r(wortknoten(box, "KLARWERK")),
-    reasoningWort: r(wortknoten(box, "Reasoning System")),
+    reasoningWort: r(wortknoten(box, "Knowledge OS")),
   };
 }`;
 
@@ -469,9 +469,11 @@ function mussGemaltSein(k: Zusehen | null, wo: string, was: string): void {
  */
 function produktidentitaet(m: Messung, wo: string): void {
   expect(m.klarwerk, `${wo}: KLARWERK fehlt`).toBe(true);
-  expect(m.reasoning, `${wo}: „Reasoning System" fehlt`).toBe(true);
+  // R-0882 · Entscheidung 53 (11.10.2026): der Untertitel heisst „Knowledge OS" (vorher „Reasoning
+  // System"); die Feldnamen `reasoning*` bleiben, damit die Messung lesbar zu älteren Läufen bleibt.
+  expect(m.reasoning, `${wo}: „Knowledge OS" fehlt`).toBe(true);
   mussGemaltSein(m.klarwerkWort, wo, "der Schriftzug KLARWERK");
-  mussGemaltSein(m.reasoningWort, wo, 'der Untertitel „Reasoning System"');
+  mussGemaltSein(m.reasoningWort, wo, 'der Untertitel „Knowledge OS"');
 }
 
 /** Die weisse Platte des KLARWERK-Zeichens — 36 × 36 px und wirklich zu sehen. */

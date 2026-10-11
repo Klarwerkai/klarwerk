@@ -11,7 +11,7 @@ Markenwerte: **Belastbar · Industriell · Klar · Ehrlich.** Substanz vor Effek
 
 ## Logo
 
-Zielscheibe (konzentrischer Ring + Punkt) auf heller, abgerundeter Kachel; Wortmarke KLARWERK in Versalien, weit gesperrt, Untertitel „Reasoning System". Schutzraum = halbe Bildmarken-Höhe ringsum. Mindestgröße digital 24 px / Print 8 mm — darunter nur Bildmarke. Verboten: drehen, verzerren, umfärben, unruhiger Grund.
+Zielscheibe (konzentrischer Ring + Punkt) auf heller, abgerundeter Kachel; Wortmarke KLARWERK in Versalien, weit gesperrt, Untertitel „Knowledge OS" (Peters Entscheidung 53 vom 11.10.2026, R-0882; vorher „Reasoning System"). Schutzraum = halbe Bildmarken-Höhe ringsum. Mindestgröße digital 24 px / Print 8 mm — darunter nur Bildmarke. Verboten: drehen, verzerren, umfärben, unruhiger Grund.
 
 ## Farben (verbindlich)
 

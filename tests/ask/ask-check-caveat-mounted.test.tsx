@@ -170,7 +170,8 @@ afterEach(() => {
 // Kein \b-Anker: `textContent` klebt die Plaketten aneinander („GesichertEvidenz: Gesichert“),
 // eine Wortgrenze gäbe es dort nie. Geprüft wird das WORT in seiner Anzeigeform (großes G) —
 // beiläufige Kleinschreibung in Fließtext („nicht als gesichert eingestuft“) ist keine Behauptung.
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026): das Statuswort heisst „Fachlich bestätigt" statt „Gesichert".
+const GESICHERT = "Fachlich bestätigt";
 
 async function copyToClipboard(container: HTMLElement): Promise<string> {
   const copied: string[] = [];

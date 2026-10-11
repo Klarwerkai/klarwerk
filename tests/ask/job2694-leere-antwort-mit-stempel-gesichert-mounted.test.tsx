@@ -146,7 +146,8 @@ async function mountAsk(): Promise<{ container: HTMLElement; unmount: () => void
 }
 
 // Kein Wortgrenzen-Anker: `textContent` klebt Plaketten aneinander (mega33 A4, dieselbe Messung).
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026): das Statuswort heisst „Fachlich bestätigt" statt „Gesichert".
+const GESICHERT = "Fachlich bestätigt";
 
 function werkzeugKnopf(container: HTMLElement, key: string): HTMLButtonElement | undefined {
   return Array.from(container.querySelectorAll("button")).find((b) =>

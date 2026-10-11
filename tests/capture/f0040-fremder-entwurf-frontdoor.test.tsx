@@ -339,9 +339,9 @@ async function entwurfslisteAufklappen(): Promise<void> {
 
 /** Der Speichern-Knopf der Vordertuer, ueber seinen sichtbaren Text gefunden. */
 function speichernKnopf(): HTMLButtonElement {
-  // JOB 3062 · H3: Der Knopf heisst auf dem Blatt „Entwurf sichern" (`erfassen.entwurfSichern`).
-  // Derselbe Weg (`fd.saveDraft`), dasselbe Verhalten — nur das Wort ist kürzer.
-  return knopfMitNamen("Entwurf sichern");
+  // JOB 3062 · H3: Der Knopf auf dem Blatt (`erfassen.entwurfSichern`) heisst seit Peters
+  // Entscheidung 54 (11.10.2026) „Als Entwurf speichern". Derselbe Weg (`fd.saveDraft`).
+  return knopfMitNamen("Als Entwurf speichern");
 }
 
 /**

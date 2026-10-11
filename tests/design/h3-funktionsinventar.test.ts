@@ -261,9 +261,10 @@ const INVENTAR: Zeile[] = [
   {
     funktion: "Entwurf speichern",
     fundstelle: "CaptureFrontDoor.tsx:1595",
-    ort: "Knopf „Entwurf sichern“",
+    // Peters Entscheidung 54 (11.10.2026) löst die H3-Beschriftung „Entwurf sichern" ab.
+    ort: "Knopf „Als Entwurf speichern“",
     menue: null,
-    text: "Entwurf sichern",
+    text: "Als Entwurf speichern",
   },
   {
     funktion: "Einreichen",

@@ -26,7 +26,9 @@ import i18n from "../../apps/web/src/i18n";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // Anzeigeform mit großem G — beiläufige Kleinschreibung im Fließtext ist keine Behauptung.
-const GESICHERT = "Gesichert";
+// Peters Entscheidung 54 (11.10.2026, R-1044): das Statuswort heisst „Fachlich bestätigt" statt
+// „Gesichert" (Verwechslung mit Datensicherung). Geprüft wird weiter DAS Statuswort.
+const GESICHERT = "Fachlich bestätigt";
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -83,9 +85,9 @@ describe("mega34 C1 · im KO-Detail steht die Zahl, nicht das Wort", () => {
   });
 
   it("C2 · die Skala bleibt unangetastet — die Übersetzung existiert weiter", () => {
-    // Umbenannt wird nichts. Vier Tage vor einem Test, dessen Frage „versteht man das?“ lautet,
-    // wird kein neues Vokabular in drei Sprachen eingeführt. Der Schlüssel bleibt, er erscheint
-    // in dieser Ansicht nur nicht mehr.
+    // Der Schlüssel bleibt, er erscheint in dieser Ansicht nur nicht mehr. Sein deutscher Wortlaut
+    // ist seit Peters Entscheidung 54 (11.10.2026) „Fachlich bestätigt" — die damalige Zurückhaltung
+    // („kein neues Vokabular vier Tage vor dem Test") ist durch diese jüngere Entscheidung abgelöst.
     expect(i18n.t("quality.assured")).toBe(GESICHERT);
     expect(i18n.t("quality.reliable")).toBeTruthy();
     expect(i18n.t("quality.preliminary")).toBeTruthy();

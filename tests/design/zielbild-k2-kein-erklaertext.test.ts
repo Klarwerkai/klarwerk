@@ -167,8 +167,23 @@ describe.runIf(zielbildDa)(
           "knopf:#capture-dokument-link",
           // JOB 3506 K2b: `knopf:#capture-mehr-btn` stand hier, solange das „?“ in der Flaeche
           // sass. Es ist weg — nicht verborgen; T4 misst den Nachweis.
+          // Peters Entscheidung 55 (11.10.2026) praezisiert die Ein-Knopf-Vorlage: EINE primaere
+          // Einreichaktion, die Vertraulichkeit als OPTIONALE Auswahl mit verstaendlichem Standard.
+          // Dazu gehoeren die Gruppenbeschriftung, drei neutrale Wahlknoepfe (R-0632) und der
+          // Standardsatz — beide Beschriftungen halten die 40-Zeichen-Regel (oben `verstoesse`).
+          "beschriftung:#capture-stufe-titel",
+          "beschriftung:#capture-stufe-standard",
+          "knopf:#capture-stufe-intern",
+          "knopf:#capture-stufe-vertraulich",
+          "knopf:#capture-stufe-streng_vertraulich",
         ].sort(),
       );
+      // Entscheidung 55: genau EINE primaere Aktion in der Flaeche — „Senden". Die gewaehlte oder
+      // nicht gewaehlte Stufe ist nie primaer betont.
+      const primaer = await lies<string[]>(
+        "() => Array.from(document.querySelectorAll('#section-capture button.primary')).map((b) => b.id)",
+      );
+      expect(primaer).toEqual(["send-btn"]);
       const beschriftungen = traeger.filter((t) => t.rolle === "beschriftung").map((t) => t.text);
       // In Dokumentordnung: der KA7-Pruefstand steht an der Markierungskarte (nach
       // #capture-ergebnis), die Feldbeschriftung „Titel" darunter. Der KA7-Wortlaut steht hier
@@ -179,7 +194,13 @@ describe.runIf(zielbildDa)(
         "Keine frische Prüfung",
         wort("de", "captureTitleLabel"),
         wort("de", "captureBereichLabel"),
+        wort("de", "captureStufeLabel"),
+        // Ohne Wahl nennt der Satz den geltenden Standard (N11) — kein Knopf ist dafuer gedrueckt.
+        wort("de", "captureStufeStandard"),
       ]);
+      for (const sprache of ["de", "en", "nl"] as const) {
+        expect(wort(sprache, "captureStufeStandard").length).toBeLessThanOrEqual(GRENZE);
+      }
       // JOB 3555 K2b: die vier Lagensaetze der Bereich-Zeile sind Feldwerte, keine Erklaersaetze —
       // und bleiben in allen drei Sprachen unter der Grenze dieses Auftrags.
       for (const sprache of ["de", "en", "nl"] as const) {
@@ -213,9 +234,17 @@ describe.runIf(zielbildDa)(
       expect(saetze(status[0]?.text ?? "")).toBe(1);
       expect(status[0]?.text).toBe(wort("de", "sendTooLarge"));
       const knoepfe = traeger.filter((t) => t.rolle === "knopf").map((t) => t.sel);
-      // JOB 3506 K2b: ohne das „?“ sind es drei — Senden, Textlink, „Erneut senden“.
+      // JOB 3506 K2b: ohne das „?“ sind es drei — Senden, Textlink, „Erneut senden“. Dazu seit
+      // Entscheidung 55 die drei optionalen Wahlknoepfe der Vertraulichkeit (keine Aktion).
       expect(knoepfe.sort()).toEqual(
-        ["#send-btn", "#capture-dokument-link", "#send-status-btn"].sort(),
+        [
+          "#send-btn",
+          "#capture-dokument-link",
+          "#send-status-btn",
+          "#capture-stufe-intern",
+          "#capture-stufe-vertraulich",
+          "#capture-stufe-streng_vertraulich",
+        ].sort(),
       );
       // Der Fehlersatz ist zustandsgebunden: die 40-Zeichen-Regel gilt fuer Beschriftungen; er ist
       // als EIN Satz + EIN Knopf begrenzt (§5.6) und geht mit dem naechsten Senden wieder weg.

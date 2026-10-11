@@ -1568,7 +1568,7 @@
         // Bestand (die Route sieht nur die Sicht des Fragenden, category-routes.ts:9-11), „Fehler"
         // sagt Fehler statt Leere. Die Zeile bleibt in jeder Lage sichtbar, Senden bleibt moeglich.
         captureBereichLabel: "Bereich",
-        captureStufeLabel: "Vertraulichkeit", captureStufeIntern: "Öffentlich-intern", captureStufeVertraulich: "Vertraulich", captureStufeStreng: "Streng vertraulich",
+        captureStufeLabel: "Vertraulichkeit", captureStufeIntern: "Öffentlich-intern", captureStufeVertraulich: "Vertraulich", captureStufeStreng: "Streng vertraulich", captureStufeStandard: "Ohne Auswahl gilt: Öffentlich-intern",
         captureBereichWahl: "Bereich wählen",
         captureBereichLaedt: "Wird geladen …",
         captureBereichLeer: "Noch kein Bereich in deinem Bestand",
@@ -2030,7 +2030,7 @@
         // JOB 3555 K2b: „Area" ist der Begriff, den dieses Panel fuer `category` schon fuehrt
         // (bestandBereich: „Area: {bereich}") — kein zweites Wort fuer dieselbe Sache.
         captureBereichLabel: "Area",
-        captureStufeLabel: "Confidentiality", captureStufeIntern: "Internal", captureStufeVertraulich: "Confidential", captureStufeStreng: "Strictly confidential",
+        captureStufeLabel: "Confidentiality", captureStufeIntern: "Internal", captureStufeVertraulich: "Confidential", captureStufeStreng: "Strictly confidential", captureStufeStandard: "Without a choice: Internal",
         captureBereichWahl: "Choose area",
         captureBereichLaedt: "Loading …",
         captureBereichLeer: "No area in your knowledge yet",
@@ -2369,7 +2369,7 @@
         captureTitleLabel: "Titel",
         // JOB 3555 K2b: „Gebied" wie in bestandBereich („Gebied: {bereich}").
         captureBereichLabel: "Gebied",
-        captureStufeLabel: "Vertrouwelijkheid", captureStufeIntern: "Intern", captureStufeVertraulich: "Vertrouwelijk", captureStufeStreng: "Strikt vertrouwelijk",
+        captureStufeLabel: "Vertrouwelijkheid", captureStufeIntern: "Intern", captureStufeVertraulich: "Vertrouwelijk", captureStufeStreng: "Strikt vertrouwelijk", captureStufeStandard: "Zonder keuze geldt: Intern",
         captureBereichWahl: "Gebied kiezen",
         captureBereichLaedt: "Wordt geladen …",
         captureBereichLeer: "Nog geen gebied in jouw bestand",
@@ -2796,11 +2796,13 @@
     // Die im Panel per Klick gewaehlte Stufe ("" = nicht gewaehlt; nur die drei Werte gehen hinaus).
     var CAPTURE_STUFEN = ["intern", "vertraulich", "streng_vertraulich"], captureStufeWahl = "";
     function captureStufeGewaehlt() { return CAPTURE_STUFEN.indexOf(captureStufeWahl) >= 0 ? captureStufeWahl : ""; }
+    // Entscheidung 55 (11.10.2026): EINE Primaeraktion (Senden); die Stufe ist eine optionale Auswahl — Knoepfe bleiben `ghost`, die Wahl zeigt `aria-pressed` (taskpane.css), ohne Wahl nennt #capture-stufe-standard den Standard (N11, keine Stufe gesendet, kein Knopf gedrueckt dargestellt).
     function renderCaptureStufe() { // `aria-pressed` ist die Auskunft, nicht die Farbe
       CAPTURE_STUFEN.forEach(function (s) {
         var k = document.getElementById("capture-stufe-" + s), an = captureStufeGewaehlt() === s;
-        if (k) { k.setAttribute("aria-pressed", an ? "true" : "false"); k.className = an ? "primary" : "ghost"; }
+        if (k) { k.setAttribute("aria-pressed", an ? "true" : "false"); k.className = "ghost"; }
       });
+      var standard = document.getElementById("capture-stufe-standard"); if (standard) { standard.hidden = captureStufeGewaehlt() !== ""; }
     }
 
     function updateSendState() {
