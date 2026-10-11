@@ -1438,6 +1438,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },
+  // P08-AC05 (Nacharbeit 4): die zweimalige SSO-Wiederanmeldung des Firmenresets — Start (Umleitung
+  // zum Anbieter) und Rückruf/Abbruch. Dieselbe Schranke wie der Reset selbst.
+  "GET /api/admin/factory-reset/sso/start": { protection: "users.manage" },
+  "POST /api/admin/factory-reset/sso": { protection: "users.manage" },
   // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Folgenvorschau lesen + Bestandsreset ausführen.
   // Dieselbe Schranke wie der Werksreset; die Ausführung verlangt zusätzlich zweimal das Passwort,
   // das Häkchen und die unveränderte Vorschaukennung (`admin-routes.ts`).

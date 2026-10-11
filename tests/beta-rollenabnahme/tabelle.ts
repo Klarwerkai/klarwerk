@@ -510,7 +510,22 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/admin/factory-reset",
     art: "zurueckgestellt",
     grund:
-      "Der Werksreset. Er löscht die gesamte Instanz — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
+      "Der Werksreset. Er löscht den Bestand und beendet alle Anmeldungen (P08: Konten bleiben, ihre Sitzungen nicht) — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
+  },
+  // PETER-20261011-P08 · AC05 (Nacharbeit 4): die zweimalige SSO-Wiederanmeldung des Firmenresets.
+  {
+    methode: "GET",
+    pfad: "/api/admin/factory-reset/sso/start",
+    art: "baulich",
+    grund:
+      "Startet eine SSO-Wiederanmeldung für den Firmenreset und existiert fachlich nur im Desktop-Journalbetrieb. Auf der Speicherbühne dieser Abnahme gibt es den Werksreset nicht — dort antwortet die Tür auch dem Admin mit 403 aus der Verfügbarkeitsprüfung, und eine Rollenzeile könnte das Rechtetor davon nicht unterscheiden. Tor (anonym 401, Controller 403), Verfügbarkeit und Ablauf misst `tests/firmenreset-p08/firmenreset-sso.test.ts` am Desktop-Journal.",
+  },
+  {
+    methode: "POST",
+    pfad: "/api/admin/factory-reset/sso",
+    art: "baulich",
+    grund:
+      "Rückruf und Abbruch der SSO-Wiederanmeldung des Firmenresets; nur im Desktop-Journalbetrieb vorhanden. Auf der Speicherbühne antwortet sie auch dem Admin mit 403 aus der Verfügbarkeitsprüfung, ein gültiger Rückruf verlangt zudem einen einmaligen Anbietercode, der sich nicht als feste Nutzlast führen lässt. Tor, Einmaligkeit, Sitzungsbindung und passende Identität misst `tests/firmenreset-p08/firmenreset-sso.test.ts`.",
   },
   {
     // Aufnahme gesamt-bestandsreset (Nacharbeit 2). Dieselbe Lage wie der Werksreset darüber, aus
