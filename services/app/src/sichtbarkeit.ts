@@ -1275,9 +1275,11 @@ const STUFE_FUER_UNBEKANNT: Confidentiality = "vertraulich";
  *
  * Ben-Befund AC08 (Nacharbeit 6) — DER HOCHGELADENE DOKUMENTSTAND. Auch die bearbeitete Präsentation
  * selbst trägt `privatQuelle`, sobald sie hochgeladen ist — so ist sie geschützt, wenn der Lauf vor
- * der Übernahme anhält oder die Übernahme scheitert. Ist sie ÜBERNOMMEN (sie hängt am Quellartikel
- * oder die Belegkette der Quelle nennt sie), ist sie ein gewöhnlicher Anhang: dann `undefined`, und
- * es gilt unverändert `beurteileAnhang` — der kontrollierte Übergang in den Dokumentzugriffsweg.
+ * der Übernahme anhält oder die Übernahme scheitert. Ist sie ÜBERNOMMEN (sie hängt am AKTIVEN
+ * Quellartikel oder dessen Belegkette nennt sie), ist sie ein gewöhnlicher Anhang: dann `undefined`,
+ * und es gilt unverändert `beurteileAnhang` — der kontrollierte Übergang in den Dokumentzugriffsweg.
+ * Liegt die Quelle im Papierkorb, gibt es diesen Übergang nicht (Nacharbeit 8): dann gilt auch für
+ * den übernommenen Stand die Regel oben — Eigentümer, Rechte an der gelöschten Quelle, Kennzeichnung.
  *
  * `undefined` heisst: kein (oder kein privates mehr) Folgeprodukt — dann gilt `beurteileAnhang`.
  */
@@ -1298,16 +1300,17 @@ export async function privatesFolgeprodukt(
   const aktiv = await quellen.ko(quelleId);
   const geloescht = aktiv ? undefined : await quellen.papierkorb?.(quelleId);
   const traeger = aktiv ?? geloescht;
-  // Übernommen? Dann ist es ein Anhang des Quellartikels und kein privates Folgeprodukt mehr.
-  if (traeger) {
-    if ((traeger.attachments ?? []).some((a) => a.objectId === objectId)) {
+  // Übernommen? Dann ist es ein Anhang des Quellartikels und kein privates Folgeprodukt mehr —
+  // aber NUR, solange die Quelle AKTIV ist. Ben-Befund Nacharbeit 8: liegt die Quelle im Papierkorb,
+  // findet der gewöhnliche Anhangsweg keinen aktiven Träger und fiele auf „Hochladender + Stufe"
+  // zurück — ohne Blick auf die Rechte an der gelöschten Quelle. Deshalb bleibt bei gelöschter
+  // Quelle auch der übernommene Stand hier: Eigentümer, Rechte an den Fakten der gelöschten Quelle,
+  // Kennzeichnung. (Die Belegkette liest `KoService.evidenceOf` ohnehin nur an aktiven Objekten.)
+  if (aktiv) {
+    if ((aktiv.attachments ?? []).some((a) => a.objectId === objectId)) {
       return undefined;
     }
-    // Die Belegkette nur an einer AKTIVEN Quelle: `KoService.evidenceOf` verlangt ein aktives Objekt
-    // und wirft für den Papierkorb (Nacharbeit 7: 500 statt Urteil). Bei gelöschter Quelle zählt
-    // allein ihr Anhang; ein früher übernommener, inzwischen ersetzter Stand bleibt dann privat —
-    // die strengere Seite, nie die offenere.
-    if (aktiv && (await quellen.belege(quelleId)).some((b) => b.objectId === objectId)) {
+    if ((await quellen.belege(quelleId)).some((b) => b.objectId === objectId)) {
       return undefined;
     }
   }

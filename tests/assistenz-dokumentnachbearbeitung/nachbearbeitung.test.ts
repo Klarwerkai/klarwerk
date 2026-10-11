@@ -992,7 +992,15 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
       });
       expect(r.status).toBe(200);
       const handout = r.body.folgeprodukte.find((f) => f.art === "handout")?.objectId ?? "";
-      return { koId, handout };
+      // Der ÜBERNOMMENE Präsentationsstand (Fassung 2), hochgeladen von Anna.
+      const dokument = r.body.objectId ?? "";
+      expect((await w.objekte.metadata(dokument))?.lifecycle).toMatchObject({
+        owner: "anna",
+        privatQuelle: koId,
+      });
+      // Solange die Quelle aktiv ist: gewöhnlicher Anhang des internen Artikels.
+      expect((await liesObjekt(w, "anna", dokument)).status).toEqual([200, 200]);
+      return { koId, handout, dokument };
     };
     const geloescht = await handoutVon("n10-geloescht");
     const entzogen = await handoutVon("n10-entzogen");
@@ -1012,6 +1020,11 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
     // Niemand sonst — auch nach der Löschung nicht.
     expect((await liesObjekt(w, "bert", geloescht.handout)).status).toEqual([404, 404]);
     expect((await liesObjekt(w, "chef", geloescht.handout)).status).toEqual([404, 404]);
+    // Der übernommene Stand derselben gelöschten Quelle: ebenso gekennzeichnet nur für Anna.
+    const dokumentNachLoeschung = await liesObjekt(w, "anna", geloescht.dokument);
+    expect(dokumentNachLoeschung.status).toEqual([200, 200]);
+    expect(dokumentNachLoeschung.roh.headers["x-klarwerk-quelle"]).toBe(kennzeichen);
+    expect((await liesObjekt(w, "chef", geloescht.dokument)).status).toEqual([404, 404]);
 
     // 2 · RECHTEENTZUG, danach gelöscht: die Rechte gelten an der gelöschten Quelle weiter.
     await w.ko.setConfidentiality(entzogen.koId, "vertraulich", "chef");
@@ -1019,10 +1032,17 @@ describe("BPA-17 · Präsentation nach der Besprechung nachbearbeiten", () => {
     const nachEntzug = await liesObjekt(w, "anna", entzogen.handout);
     expect(nachEntzug.status).toEqual([404, 404]);
     expect(nachEntzug.meta.headers["x-klarwerk-quelle"]).toBeUndefined();
+    // Ben-Befund Nacharbeit 8: Übernahme → Rechteentzug → Quellenlöschung. Auch der ÜBERNOMMENE
+    // Präsentationsstand bleibt für Anna gesperrt — Objekt-GET und Rohdatenabruf —, obwohl sie ihn
+    // hochgeladen hat; ebenso für alle anderen.
+    expect((await liesObjekt(w, "anna", entzogen.dokument)).status).toEqual([404, 404]);
+    expect((await liesObjekt(w, "bert", entzogen.dokument)).status).toEqual([404, 404]);
+    expect((await liesObjekt(w, "chef", entzogen.dokument)).status).toEqual([404, 404]);
 
     // 3 · ENDGÜLTIG ENTFERNT (Papierkorb geleert): keine Rechtegrundlage mehr — gesperrt.
     await w.ko.purgeTrashed(geloescht.koId, "chef");
     expect(await w.ko.papierkorbFassungVon(geloescht.koId)).toBeUndefined();
     expect((await liesObjekt(w, "anna", geloescht.handout)).status).toEqual([404, 404]);
+    expect((await liesObjekt(w, "anna", geloescht.dokument)).status).toEqual([404, 404]);
   });
 });
