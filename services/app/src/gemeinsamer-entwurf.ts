@@ -435,10 +435,29 @@ export function fuehreZusammen(
     const d = fassung(gruppe, "deren", gVon, gBis);
     const vonMir = gruppe.some((b) => b.seite === "meine");
     const vonIhnen = gruppe.some((b) => b.seite === "deren");
+    const vorher = basis.slice(gVon, gBis);
     if (!(vonMir && vonIhnen) || gleich(m, d)) {
       geloest(vonMir ? m : d);
+    } else if (vorher.length > 1 && m.length === vorher.length && d.length === vorher.length) {
+      // NACHARBEIT 8: gleich viele Abschnitte auf allen drei Seiten — die Gruppe ist nur deshalb
+      // eine, weil zusammenhängende Änderungen einer Seite zu EINEM Bereich verschmelzen (z. B.
+      // Abschnitt 2 und 3 hier, nur Abschnitt 2 dort). Dann wird Abschnitt für Abschnitt
+      // entschieden: verschiedene Abschnitte werden zusammengeführt, nur dieselbe Stelle bleibt
+      // Konflikt — sonst stünde die unabhängige Änderung mit im Konflikt und „Beide behalten"
+      // brächte den alten Abschnitt zurück.
+      vorher.forEach((alt, k) => {
+        const mk = m[k] as string;
+        const dk = d[k] as string;
+        if (mk === alt || mk === dk) {
+          geloest([dk]);
+        } else if (dk === alt) {
+          geloest([mk]);
+        } else {
+          teile.push({ art: "konflikt", basis: [alt], meine: [mk], deren: [dk] });
+        }
+      });
     } else {
-      teile.push({ art: "konflikt", basis: basis.slice(gVon, gBis), meine: m, deren: d });
+      teile.push({ art: "konflikt", basis: vorher, meine: m, deren: d });
     }
     pos = gBis;
   }

@@ -101,6 +101,20 @@ describe("Z4b · benachbarte Abschnitte ohne gemeinsamen Anker (Nacharbeit 2, Be
     expect(fuehreZusammen(BASIS, deren, meine).ergebnis).toEqual(z.ergebnis);
   });
 
+  it("Nacharbeit 8: eine Seite ändert Abschnitt 2 und 3, die andere nur Abschnitt 2 — nur Abschnitt 2 ist Konflikt", () => {
+    const annas = "Schritt 1: Druck VOLLSTÄNDIG ablassen.";
+    const bernds = "Schritt 1: Druck über Ventil Z ablassen.";
+    const z = fuehreZusammen(BASIS, [B0, bernds, B2_BERND], [B0, annas, B2]);
+    expect(z.teile).toEqual([
+      { art: "geloest", abschnitte: [B0] },
+      { art: "konflikt", basis: [B1], meine: [bernds], deren: [annas] },
+      { art: "geloest", abschnitte: [B2_BERND] },
+    ]);
+    // Und ohne Konflikt am selben Abschnitt wird alles zusammengeführt.
+    const ohne = fuehreZusammen(BASIS, [B0, bernds, B2_BERND], [B0, bernds, B2]);
+    expect(ohne.ergebnis).toEqual([B0, bernds, B2_BERND]);
+  });
+
   it("zwei verschiedene Einfügungen an derselben Stelle bleiben ein Konflikt", () => {
     const z = fuehreZusammen(BASIS, [B0, "A neu.", B1, B2], [B0, "B neu.", B1, B2]);
     expect(z.ergebnis).toBeNull();
