@@ -260,6 +260,7 @@ import {
   InMemoryBearbeitungsRepo,
   PgBearbeitungsRepo,
 } from "./bearbeitungshinweis";
+import { type BestandsresetDienst, pgBestandsresetDienst } from "./bestandsreset-dienst";
 // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
 // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import {
@@ -784,6 +785,13 @@ export interface AppServices {
    * Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt Ergebnisse beim Neustart zu verlieren.
    */
   verstaendnisfragen: VerstaendnisfragenRepo;
+  /**
+   * Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Bestandsreset (Folgenvorschau
+   * und Ausführung über `fuehreBestandsresetAus`). NUR im Postgres-Betrieb gesetzt. Ohne Datenbank
+   * fehlt er absichtlich: ein Reset, der nur den Speicher leerte, wäre im Desktop-Journal beim
+   * nächsten Neustart wieder da — die Route sagt dann ehrlich „nicht verfügbar".
+   */
+  bestandsreset?: BestandsresetDienst;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -1319,6 +1327,9 @@ export function assembleServices(
     unternehmen?: UnternehmenRepo;
     // Verständnisfragen: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     verstaendnisfragen?: VerstaendnisfragenRepo;
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): gesetzt nur von `buildPgServices` (roher Pool).
+    // Eine Speicherfassung gibt es bewusst nicht — s. `bestandsreset` in `AppServices`.
+    bestandsreset?: BestandsresetDienst;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1770,6 +1781,8 @@ export function assembleServices(
     verstaendnisfragen:
       opts.verstaendnisfragen ??
       new InMemoryVerstaendnisfragenRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    // Aufnahme gesamt-bestandsreset (Nacharbeit 2): nur mit Datenbank — ohne Injektion fehlt er.
+    ...(opts.bestandsreset ? { bestandsreset: opts.bestandsreset } : {}),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -2288,6 +2301,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Verständnisfragen: Fragensatzversionen und Ergebnisse überleben Neuladen, Neustart und
       // Deploy (`VERSTAENDNISFRAGEN_SCHEMA`, angelegt von `migrate()`).
       verstaendnisfragen: new PgVerstaendnisfragenRepo(pool),
+      // Aufnahme gesamt-bestandsreset (Nacharbeit 2): der administrative Aufruf des Resets. Er
+      // bekommt den ROHEN Pool — die zweite benannte Ausnahme aus dem Kopf dieser Funktion.
+      bestandsreset: pgBestandsresetDienst(rohPool),
     },
   );
 }
