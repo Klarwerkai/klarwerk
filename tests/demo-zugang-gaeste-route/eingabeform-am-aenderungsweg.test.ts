@@ -434,6 +434,23 @@ describe("JOB 3780 · der Änderungsweg prüft die Form von role, approve und pa
     expect(await k.audit.list({ action: "user.approve", target: neuling.id })).toEqual([]);
   });
 
+  it("K3b (P05 · B-10) — `{approve:false}` am FREIGEGEBENEN Konto wird abgelehnt statt 204 ohne Wirkung", async () => {
+    // Bis .913 antwortete der Endpunkt 204 und das Konto blieb unverändert freigegeben — der Admin
+    // hielt es für gesperrt. Eine Freigabe-Rücknahme gibt es hier nicht; abgelehnt wird VOR jedem
+    // Schreiben, auch eine mitgeschickte Rolle bleibt unverändert.
+    const { k, app } = await baueDraht();
+    const { gast } = await adminUndGast(k);
+    const sitzung = await token(app, "admin@x.de");
+    const rolleVorher = (await ausDerListe(app, sitzung, gast.id))?.role;
+
+    const antwort = await verwalte(app, sitzung, gast.id, { approve: false, role: "admin" });
+
+    expect(antwort.statusCode, antwort.body).toBe(403);
+    expect((await ausDerListe(app, sitzung, gast.id))?.approved).toBe(true);
+    expect((await ausDerListe(app, sitzung, gast.id))?.role).toBe(rolleVorher);
+    expect(await k.audit.list({ action: "user.role-change", target: gast.id })).toEqual([]);
+  });
+
   it("K4 — ein ausreichend langes Passwort wird weiterhin gesetzt, und der Gast meldet sich damit an", async () => {
     const { k, app } = await baueDraht();
     const { gast } = await adminUndGast(k);

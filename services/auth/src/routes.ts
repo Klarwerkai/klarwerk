@@ -1813,6 +1813,18 @@ export function authRoutes(
         if (approve !== undefined && typeof approve !== "boolean") {
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
+        // P05 (B-10): `{approve:false}` an einem FREIGEGEBENEN Konto sieht aus wie „Freigabe
+        // zurücknehmen / sperren" — das gibt es an diesem Endpunkt nicht, und bis hierher antwortete
+        // er 204 ohne jede Wirkung. Der Admin hielt das Konto für gesperrt. Jetzt abgelehnt, VOR jedem
+        // Schreiben; die lokale Sperre ist die Befristung (`accessExpiresAt`), die SSO/SCIM übersteht.
+        // Am noch nicht freigegebenen Konto bleibt `false` die verstandene Aussage „nicht freigeben"
+        // (K3 in tests/demo-zugang-gaeste-route/eingabeform-am-aenderungsweg.test.ts).
+        if (
+          approve === false &&
+          (await service.listUsers()).some((u) => u.id === id && u.approved)
+        ) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
         if (
           accessExpiresAt !== undefined &&
           accessExpiresAt !== null &&

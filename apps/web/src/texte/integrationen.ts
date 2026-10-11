@@ -142,7 +142,7 @@ export default {
     "integrationen.liste.detail.grund": "Grund",
     "integrationen.liste.detail.abgleich": "Quellabgleich",
     "integrationen.liste.detail.abgleichZahlen":
-      "{{entfernt}} entfernt · {{zurueck}} zurückgeholt · {{ungeprueft}} ungeprüft",
+      "{{entfernt}} in der Quelle gelöscht (Kopie bleibt) · {{zurueck}} zurückgeholt · {{ungeprueft}} ungeprüft",
     "integrationen.liste.nichtFestgehalten": "nicht festgehalten",
     "integrationen.liste.keiner": "keiner",
     "integrationen.liste.hilfe.laeuft":
@@ -300,7 +300,7 @@ export default {
     "integrationen.liste.detail.grund": "Reason",
     "integrationen.liste.detail.abgleich": "Source reconciliation",
     "integrationen.liste.detail.abgleichZahlen":
-      "{{entfernt}} removed · {{zurueck}} restored · {{ungeprueft}} unchecked",
+      "{{entfernt}} deleted at source (copy kept) · {{zurueck}} restored · {{ungeprueft}} unchecked",
     "integrationen.liste.nichtFestgehalten": "not recorded",
     "integrationen.liste.keiner": "none",
     "integrationen.liste.hilfe.laeuft":
@@ -457,7 +457,7 @@ export default {
     "integrationen.liste.detail.grund": "Reden",
     "integrationen.liste.detail.abgleich": "Bronvergelijking",
     "integrationen.liste.detail.abgleichZahlen":
-      "{{entfernt}} verwijderd · {{zurueck}} teruggehaald · {{ungeprueft}} niet gecontroleerd",
+      "{{entfernt}} in de bron verwijderd (kopie blijft) · {{zurueck}} teruggehaald · {{ungeprueft}} niet gecontroleerd",
     "integrationen.liste.nichtFestgehalten": "niet vastgelegd",
     "integrationen.liste.keiner": "geen",
     "integrationen.liste.hilfe.laeuft":

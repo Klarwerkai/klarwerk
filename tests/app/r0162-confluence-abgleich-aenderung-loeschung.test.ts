@@ -8,7 +8,8 @@
 //
 // ÄNDERUNG: höhere sourceVersion → neuer Kandidat → Annehmen revidiert DASSELBE Wissensobjekt.
 // LÖSCHUNG: fehlt eine Seite im VOLLSTÄNDIGEN Lauf und bestätigt die Quelle das je Id (404 oder
-// nicht mehr `current`), wandert das Wissensobjekt in den Papierkorb — wiederherstellbar.
+// nicht mehr `current`), bleibt das Wissensobjekt erhalten und der Anker trägt den Vermerk
+// `sourceRemovedAt` (P05, Peters Entscheidung 11.10.2026; bis .913 Papierkorb).
 // Die Gegenfälle pinnen, dass „fehlt in der Liste" allein nie etwas löscht.
 import { describe, expect, it, vi } from "vitest";
 import { runConfluenceImport } from "../../services/app/src/confluence-import";
@@ -125,6 +126,12 @@ async function traeger(d: Dienst, externalId: string) {
   );
 }
 
+/** P05: der Löschvermerk am Anker `externalId` des (einzigen) Trägers. */
+async function vermerk(d: Dienst, externalId: string): Promise<string | undefined> {
+  const [ko] = await traeger(d, externalId);
+  return ko?.sources?.find((s) => s.externalId === externalId)?.sourceRemovedAt;
+}
+
 /** Ausgangsbestand: p1 und p2 aus Space K sind importiert und angenommen. */
 async function bestand() {
   const d = dienst();
@@ -171,10 +178,13 @@ describe("R-0162 · Änderungen der Quelle werden beim nächsten Abgleich nachge
   });
 });
 
-describe("R-0162 · Löschungen der Quelle werden beim nächsten Abgleich nachgezogen", () => {
-  it("L1: eine in der Quelle gelöschte Seite legt ihr Wissensobjekt in den Papierkorb", async () => {
+// P05 (Peters Entscheidung 11.10.2026, B-01): eine gewöhnliche Quellenlöschung erhält die
+// übernommene Kopie mit Herkunft, Fassung und Historie und vermerkt die Quelle als nicht mehr
+// erreichbar. Früher (L1–L4 bis .913) wanderte das Objekt in den Papierkorb.
+describe("R-0162/P05 · Löschungen der Quelle werden vermerkt, die Kopie bleibt", () => {
+  it("L1: eine in der Quelle gelöschte Seite behält ihr Wissensobjekt und vermerkt die Quelle", async () => {
     const d = await bestand();
-    const [p2] = await traeger(d, "p2");
+    const [vorher] = await traeger(d, "p2");
     const { adapter, einzelabrufe } = adapterFuer({
       liste: [seite("p1", "Pumpe warten")],
       jeId: { p2: 404 },
@@ -182,17 +192,32 @@ describe("R-0162 · Löschungen der Quelle werden beim nächsten Abgleich nachge
     const lauf = await abgleich(d, adapter);
 
     expect(lauf.removalChecked).toBe(true);
-    expect(lauf.removed).toBe(1);
+    expect(lauf.removed).toBe(0);
+    expect(lauf.removalKept).toBe(1);
     expect(lauf.removalOpen).toBe(0);
-    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("removed");
-    // Gegenprobe genau für die fehlende Seite, nicht für die vorhandene.
+    const eintrag = lauf.perPage.find((p) => p.ref === "p2");
+    expect(eintrag?.status).toBe("kept");
+    expect(eintrag?.note).toContain("Kopie bleibt");
+    // Gegenprobe genau EINMAL für die fehlende Seite (der Quellabgleich nutzt die Antwort mit).
     expect(einzelabrufe).toEqual(["p2"]);
-    expect(await traeger(d, "p2")).toHaveLength(0);
+    expect(lauf.sourceSync?.removed).toEqual([
+      { externalId: "p2", koIds: [vorher?.id], marked: true },
+    ]);
+
+    // Kopie, Inhalt, Fassung und Herkunft bleiben; nichts liegt im Papierkorb.
+    const [nachher] = await traeger(d, "p2");
+    expect(nachher?.id).toBe(vorher?.id);
+    expect(nachher?.title).toBe("Filter");
+    expect(nachher?.statement).toBe(vorher?.statement);
+    expect(nachher?.bodyHtml).toBe(vorher?.bodyHtml);
+    expect(nachher?.version).toBe(vorher?.version);
+    const anker = nachher?.sources?.find((s) => s.externalId === "p2");
+    expect(anker?.sourceVersion).toBe(1);
+    expect(anker?.spaceKey).toBe("K");
+    expect(anker?.sourceRemovedAt).toBeTruthy();
+    expect(await d.koService.trashed()).toHaveLength(0);
+    expect(await d.koService.get(vorher?.id ?? "")).toBeTruthy();
     expect(await traeger(d, "p1")).toHaveLength(1);
-    // Wiederherstellbar: Papierkorb, keine Endlöschung.
-    const papierkorb = await d.koService.trashed();
-    expect(papierkorb.map((t) => t.id)).toEqual([p2?.id]);
-    expect(papierkorb[0]?.deletedBy).toBe("r0162@test");
   });
 
   it("L2: eine archivierte/getrashte Seite (status ≠ current) gilt ebenfalls als gelöscht", async () => {
@@ -202,28 +227,80 @@ describe("R-0162 · Löschungen der Quelle werden beim nächsten Abgleich nachge
       jeId: { p2: seite("p2", "Filter", 1, "trashed") },
     });
     const lauf = await abgleich(d, adapter);
-    expect(lauf.removed).toBe(1);
-    expect(await traeger(d, "p2")).toHaveLength(0);
+    expect(lauf.removed).toBe(0);
+    expect(lauf.removalKept).toBe(1);
+    expect(await vermerk(d, "p2")).toBeTruthy();
+    expect(await d.koService.trashed()).toHaveLength(0);
   });
 
-  it("L3: der nächste Abgleich nach der Löschung ist ruhig (kein zweites Nachziehen)", async () => {
+  it("L3: der nächste Abgleich nach der Löschung ist ruhig (keine Nachfrage, kein zweiter Vermerk)", async () => {
     const d = await bestand();
     const quelle = { liste: [seite("p1", "Pumpe warten")], jeId: { p2: 404 as const } };
-    await abgleich(d, adapterFuer(quelle).adapter);
-    const zweiter = await abgleich(d, adapterFuer(quelle).adapter);
+    const erster = await abgleich(d, adapterFuer(quelle).adapter);
+    expect(erster.sourceSync?.removed[0]?.marked).toBe(true);
+    const vermerkt = await vermerk(d, "p2");
+
+    const { adapter, einzelabrufe } = adapterFuer(quelle);
+    const zweiter = await abgleich(d, adapter);
+    expect(einzelabrufe).toEqual([]);
     expect(zweiter.removed).toBe(0);
+    expect(zweiter.removalKept).toBe(0);
     expect(zweiter.removalOpen).toBe(0);
-    expect(await d.koService.trashed()).toHaveLength(1);
+    expect(zweiter.sourceSync?.removed).toEqual([]);
+    // Der ursprüngliche Vermerk bleibt mit seinem Zeitpunkt stehen.
+    expect(await vermerk(d, "p2")).toBe(vermerkt);
+    expect(await d.koService.trashed()).toHaveLength(0);
   });
 
   it("L4: der Probelauf meldet die Löschung, schreibt aber nichts", async () => {
     const d = await bestand();
     const { adapter } = adapterFuer({ liste: [seite("p1", "Pumpe warten")], jeId: { p2: 404 } });
     const lauf = await abgleich(d, adapter, true);
-    expect(lauf.removed).toBe(1);
-    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("removed");
-    expect(await traeger(d, "p2")).toHaveLength(1);
+    expect(lauf.removed).toBe(0);
+    expect(lauf.removalKept).toBe(1);
+    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("kept");
+    expect(lauf.sourceSync?.removed[0]?.marked).toBe(false);
+    expect(await vermerk(d, "p2")).toBeUndefined();
     expect(await d.koService.trashed()).toHaveLength(0);
+  });
+
+  it("L5: taucht die Seite wieder auf, wird der Vermerk aufgehoben — dasselbe Objekt", async () => {
+    const d = await bestand();
+    const [vorher] = await traeger(d, "p2");
+    const geloescht = { liste: [seite("p1", "Pumpe warten")], jeId: { p2: 404 as const } };
+    await abgleich(d, adapterFuer(geloescht).adapter);
+    expect(await vermerk(d, "p2")).toBeTruthy();
+
+    const wieder = { liste: [seite("p1", "Pumpe warten"), seite("p2", "Filter")] };
+    const lauf = await abgleich(d, adapterFuer(wieder).adapter);
+    expect(lauf.sourceSync?.restored).toEqual([
+      { externalId: "p2", koIds: [vorher?.id], cleared: true },
+    ]);
+    const [nachher] = await traeger(d, "p2");
+    expect(nachher?.id).toBe(vorher?.id);
+    expect(await vermerk(d, "p2")).toBeUndefined();
+  });
+
+  it("L6: eine gesonderte Löschung (Person/Lizenz) bleibt ein eigener, befugter Weg — der Abgleich greift nicht ein", async () => {
+    // P05: der Abgleich ist keine Löschbefugnis. Muss die Kopie aus anderem Grund weg
+    // (personenbezogene oder Lizenzlöschung), geht das über den regulären Löschweg mit eigenem
+    // Akteur und Audit — und der nächste Abgleich holt sie weder zurück noch löscht er etwas.
+    const d = await bestand();
+    const [vorher] = await traeger(d, "p2");
+    const quelle = { liste: [seite("p1", "Pumpe warten")], jeId: { p2: 404 as const } };
+    await abgleich(d, adapterFuer(quelle).adapter);
+    expect(await d.koService.trashed()).toHaveLength(0);
+
+    await d.koService.delete(vorher?.id ?? "", "datenschutz@test", { forceTrash: true });
+    const papierkorb = await d.koService.trashed();
+    expect(papierkorb.map((t) => t.id)).toEqual([vorher?.id]);
+    expect(papierkorb[0]?.deletedBy).toBe("datenschutz@test");
+
+    const danach = await abgleich(d, adapterFuer(quelle).adapter);
+    expect(danach.removed).toBe(0);
+    expect(danach.removalKept).toBe(0);
+    expect(await traeger(d, "p2")).toHaveLength(0);
+    expect((await d.koService.trashed()).map((t) => t.deletedBy)).toEqual(["datenschutz@test"]);
   });
 });
 

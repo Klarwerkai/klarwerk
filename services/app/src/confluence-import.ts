@@ -27,9 +27,9 @@ import {
 // KEINE stillen Auto-KOs, alles landet ausschließlich als Kandidat. Never block: eine fehlerhafte Seite
 // wird als `failed` verbucht, der Lauf läuft weiter. Ehrliche Zusammenfassung je Seite.
 
-// R-0162: "removed" = die Seite ist in der Quelle gelöscht und das Wissensobjekt wurde in den
-// Papierkorb gelegt (bzw. würde es im Probelauf); "kept" = in der Quelle gelöscht, das Objekt
-// bleibt aber, weil es weitere Quellen trägt oder zwischenzeitlich überarbeitet wurde.
+// R-0162: "removed" = in der Quelle gelöscht, offener Importkandidat abgelehnt (bzw. würde es im
+// Probelauf); "kept" = in der Quelle gelöscht, das übernommene Objekt bleibt (P05) und trägt den
+// Vermerk „Quelle nicht mehr erreichbar".
 export type ImportPageStatus = "imported" | "skipped" | "failed" | "removed" | "kept";
 
 export interface ImportRunSummary {
@@ -66,10 +66,10 @@ export interface ImportRunSummary {
     belegNachgetragen: number;
     unvollstaendigeSeiten: string[];
   };
-  // R-0162 (Abgleich): in der Quelle gelöschte Seiten, deren Wissensobjekt in den Papierkorb
-  // gelegt wurde (bei dryRun: gelegt WÜRDE). Wiederherstellbar über den Papierkorb.
+  // R-0162 (Abgleich): früher in den Papierkorb gelegte Wissensobjekte. Seit P05 (Peters
+  // Entscheidung 11.10.2026) immer 0 — das Feld bleibt für bestehende Leser der Bilanz.
   removed: number;
-  // R-0162: in der Quelle gelöscht, Objekt bleibt BEWUSST — es trägt weitere Quellen.
+  // R-0162/P05: in der Quelle gelöscht, übernommenes Objekt bleibt BEWUSST erhalten.
   removalKept: number;
   // R-0162 (Nacharbeit, bens Befund 4): OFFENE Importkandidaten einer in der Quelle gelöschten
   // Seite, die abgelehnt wurden (bei dryRun: abgelehnt WÜRDEN) — sonst entstünde aus dem
@@ -140,10 +140,9 @@ export function traegtNichtErmittelteLeser(item: unknown): boolean {
 //   3. Die Reaktion ist ein VERMERK am Herkunftsanker (`sourceRemovedAt`), protokolliert im
 //      Audit. Das Wissensobjekt wird weder gelöscht noch revidiert noch herabgestuft — Wissen
 //      verschwindet in Klara nie still, auch nicht, weil es in der Quelle verschwand.
-//      ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist
-//      seither die des Abgleich-Auftrags (`reconcileRemovals`, Papierkorb, solange das Objekt keine
-//      weitere Quelle trägt). Er läuft VOR diesem Abgleich; der Vermerk hier trifft deshalb nur
-//      Objekte, die stehen geblieben sind.
+//      ZUSAMMENFÜHRUNG (Nacharbeit 4): `reconcileRemovals` läuft VOR diesem Abgleich. Seit Peters
+//      Entscheidung P05 (11.10.2026) legt er kein Objekt mehr in den Papierkorb — der Vermerk hier
+//      ist wieder die einzige Reaktion auf eine bestätigte Löschung eines übernommenen Objekts.
 //   4. Im Probelauf (dryRun) wird gemeldet, was vermerkt WÜRDE, und nichts geschrieben.
 //   5. (Runde 3) „Gelöscht" heisst NUR: die Einzelnachfrage antwortete 404 (oder, seit der
 //      Zusammenführung, ein ausdrücklicher Lösch-/Archivstatus — `adapter.isGoneAtSource`). Eine
@@ -921,10 +920,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         }
       : await reconcileRemovals(deps, items, collectFailed, perPage, quellAuskunft);
 
-  // ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist die
-  // des Abgleich-Auftrags oben (Papierkorb, solange das Objekt keine weitere Quelle trägt). DANACH
-  // läuft der Quellabgleich dieser Lieferung: er liest nur noch AKTIVE Objekte, vermerkt also nur
-  // dort `sourceRemovedAt`, wo das Objekt stehen geblieben ist — damit sein Rücklink nichts mehr
+  // ZUSAMMENFÜHRUNG (Nacharbeit 4, P05): der Abgleich-Auftrag oben lehnt offene Kandidaten ab und
+  // lässt übernommene Objekte stehen. DANACH läuft der Quellabgleich dieser Lieferung: er liest
+  // AKTIVE Objekte und vermerkt `sourceRemovedAt` — damit ihr Rücklink nichts mehr
   // verspricht (R-0131) —, hebt Vermerke wieder auf (Wiederauftauchen) und zieht Anhänge und
   // Leserestriktion unveränderter Seiten nach (s. `quellAbgleich`, `nachzug`).
   const sourceSync = await quellAbgleich(
@@ -996,9 +994,10 @@ function anhangsNotiz(
 // GEGENPROBE: die Quelle wird je Id gefragt (adapter.isGoneAtSource) — fehlt die Seite nur in der
 // Liste, liefert sie aber je Id noch, bleibt alles, wie es ist. Scheitert die Gegenprobe, wird
 // nichts geändert und die Seite als offen gemeldet.
-// WIRKUNG: das Wissensobjekt wandert in den PAPIERKORB (forceTrash, nie Endlöschung, mit
-// expectedVersion) — wiederherstellbar, auditiert über ko.deleted. Trägt das Objekt weitere
-// Quellen, bleibt es stehen ("kept"): es hat dann noch eine Grundlage außerhalb dieser Seite.
+// WIRKUNG (P05, Peters Entscheidung 11.10.2026): das Wissensobjekt BLEIBT ("kept") — mit Inhalt,
+// Herkunft, Fassung und Historie. Den Vermerk „Quelle nicht mehr erreichbar" (`sourceRemovedAt`,
+// Audit ko.source-removed-in-origin) setzt der anschließende Quellabgleich. Früher wanderte es in
+// den Papierkorb (B-01); ein Quellenabgleich ist keine Löschbefugnis für eine gültige Kopie.
 // OFFENE KANDIDATEN (Nacharbeit, bens Befund 4): auch ein noch nicht angenommener Kandidat dieses
 // Providers und Space zählt — sein gespeichertes Item würde beim Annehmen sonst ohne erneuten
 // Quellenabgleich zum Wissensobjekt. Nach bestätigter Löschung wird ein Kandidat im Status "neu"
@@ -1060,7 +1059,9 @@ async function reconcileRemovals(
   for (const ko of await deps.koService.list()) {
     for (const s of ko.sources ?? []) {
       const key = ownKey(s);
-      if (!key || !s.externalId || seenKeys.has(key)) {
+      // P05: ein bereits als gelöscht vermerkter Anker ist erledigt — keine erneute Nachfrage je
+      // Lauf (dieselbe Regel wie im Quellabgleich). Sein Wiederauftauchen erkennt `wiederDa`.
+      if (!key || !s.externalId || s.sourceRemovedAt || seenKeys.has(key)) {
         continue;
       }
       const entry = eintrag(key, s.externalId);
@@ -1080,7 +1081,8 @@ async function reconcileRemovals(
     eintrag(key, c.item.externalId).candidates.push(c);
   }
 
-  let removed = 0;
+  // P05: seit Peters Entscheidung legt der Abgleich kein Wissensobjekt mehr in den Papierkorb.
+  const removed = 0;
   let removalKept = 0;
   let candidatesRejected = 0;
   let removalOpen = 0;
@@ -1157,45 +1159,22 @@ async function reconcileRemovals(
       handled.add(ko.id);
       const weitereQuellen = (ko.sources ?? []).some((s) => {
         const key = ownKey(s);
-        return !key || !goneKeys.has(key);
+        return !key || (!goneKeys.has(key) && !s.sourceRemovedAt);
       });
-      if (weitereQuellen) {
-        removalKept += 1;
-        perPage.push({
-          ref: externalId,
-          status: "kept",
-          note: "in der Quelle gelöscht — Wissensobjekt trägt weitere Quellen und bleibt",
-        });
-        continue;
-      }
-      if (deps.dryRun) {
-        removed += 1;
-        perPage.push({
-          ref: externalId,
-          status: "removed",
-          note: "in der Quelle gelöscht — würde in den Papierkorb gelegt",
-        });
-        continue;
-      }
-      try {
-        await deps.koService.delete(ko.id, deps.actor, {
-          forceTrash: true,
-          expectedVersion: ko.version,
-        });
-        removed += 1;
-        perPage.push({
-          ref: externalId,
-          status: "removed",
-          note: "in der Quelle gelöscht — Wissensobjekt in den Papierkorb gelegt",
-        });
-      } catch (err) {
-        removalOpen += 1;
-        perPage.push({
-          ref: externalId,
-          status: "kept",
-          note: `in der Quelle gelöscht — nicht nachgezogen (${err instanceof Error ? err.name : "unknown"})`,
-        });
-      }
+      // P05 (Peters Entscheidung 11.10.2026, B-01): die übernommene Kopie bleibt mit Herkunft,
+      // Fassung und Historie nutzbar — auch ohne weitere Quelle. Der Quellabgleich danach vermerkt
+      // am Anker `sourceRemovedAt` (Quelle nicht mehr erreichbar). Rechteentzug sowie
+      // personenbezogene und Lizenzlöschung laufen über ihre eigenen Wege, nie über diesen Abgleich.
+      removalKept += 1;
+      perPage.push({
+        ref: externalId,
+        status: "kept",
+        note: weitereQuellen
+          ? "in der Quelle gelöscht — Wissensobjekt trägt weitere Quellen und bleibt"
+          : deps.dryRun
+            ? "in der Quelle gelöscht — übernommene Kopie bliebe erhalten, Quelle würde als nicht mehr erreichbar vermerkt"
+            : "in der Quelle gelöscht — übernommene Kopie bleibt mit Herkunft erhalten, Quelle als nicht mehr erreichbar vermerkt",
+      });
     }
   }
   return { removed, removalKept, candidatesRejected, removalOpen, removalChecked: true };

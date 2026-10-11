@@ -360,6 +360,20 @@ bestätigten Löschung ein AKTIVES, nur vermerktes Objekt erwarten (z. B. `runde
 `abgleich.test.ts`), widersprechen mains maßgeblicher Papierkorb-Regel aus R-0162 (ausgegliedert) und
 können rot werden; sie sind dann dem Abgleich-Auftrag zuzuordnen, nicht hier umzudeuten.
 
+**P05 (Peters Entscheidung 11.10.2026, Befund CLAUDE-20261011-B-01):** die Papierkorb-Regel aus
+R-0162 ist aufgehoben. Eine gewöhnliche, bestätigte Quellenlöschung erhält die übernommene Kopie
+mit Inhalt, Herkunft, Fassung und Historie (`reconcileRemovals` meldet `kept`, legt nichts mehr in
+den Papierkorb; `removed` bleibt für bestehende Leser und ist 0). Der Quellabgleich danach vermerkt
+`sourceRemovedAt` am Anker (Audit `ko.source-removed-in-origin`), die Oberfläche zeigt die Quelle als
+nicht mehr erreichbar, der Antwortweg liefert den Auszug nicht mehr als Beleg aus
+(`herkunft_entfernt`). Offene, noch nicht angenommene Kandidaten der gelöschten Seite werden weiter
+abgelehnt. Ein Quellenabgleich ist keine Löschbefugnis: Rechteentzug, personenbezogene Löschung und
+Lizenzgrenze laufen über ihre eigenen Wege (Hochstufung/Löschweg mit eigenem Akteur). Die oben
+genannten Fälle (`runde3.test.ts` N2/N4, der erste Löschfall in `abgleich.test.ts`) gelten damit
+wieder. Offen und NICHT Teil von P05: zwei weitere Fälle in `abgleich.test.ts` verwenden
+Adapter-Attrappen ohne `isGoneAtSource` (unvollständig gelesener Bereich, gescheiterte
+Einzelnachfrage) und erwarten einen Quellabgleich, den ein solcher Adapter nicht trägt.
+
 **Nacharbeit 5 (Integration mit main `52b0f80e`):** sieben Konfliktdateien, beide Seiten erhalten.
 main bringt die Lieferung des ausgegliederten Anhangs-Auftrags (R-0163): Anhangsliste je Seite
 (`listAttachments`, Rückgabe `truncated`), Dateiinhalte (`downloadAttachment`, `fetchAttachment`,
