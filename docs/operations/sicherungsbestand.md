@@ -77,6 +77,56 @@ ist — nächstem Schritt. Der Abruf selbst steht als `admin.sicherungen.gelesen
   Ein belegtes Ziel endet mit 20, bevor etwas eingespielt wird — die Produktion wird von der Probe
   nie überschrieben.
 
+## Sicherungsumfang je Bereich und Wissenspaket (produkt:20261010:poc-wiederherstellung-export)
+
+*Stand 11.10.2026, Fassung `1.0.0-beta.1.899` (Basis `906282fd2`).*
+
+**Umfang je Bereich.** Was im Dump liegt, was bewusst nicht und was es in dieser Fassung gar nicht
+gibt, steht einmal als Daten in `services/app/src/sicherungsumfang.ts` und unter
+*System → Sicherung* als Abschnitt „Sicherungsumfang je Bereich" (`GET /api/admin/sicherungen`,
+Feld `umfang`). Die Auskunft ist an die laufende Fassung gebunden (Version aus `package.json`, Commit
+aus `KLARWERK_BUILD_COMMIT`, Zahl der Tabellen aus `migrate()`).
+
+| Bereich | Einordnung | Ablage | Wiederherstellungsfolge |
+| --- | --- | --- | --- |
+| Datenbanksicherung | im Dump | alle Tabellen aus `migrate()` | ganze Datenbank in eine leere Ziel-DB |
+| Anhangsdateien (Originalbytes) | im Dump, eigens gezählt | `objects` (Bytes) + `ko_evidence` (Zuordnung) — dieselbe Datenbank, keine zweite Objektablage | Byte für Byte zurück (Drill Glied 7b) |
+| Assistenzprofil (Name, Avatar-Kennung, Bewegung) | im Dump | `assistenz_profile` | gehört wieder genau dem Konto; Motivbild kommt aus der Anwendung |
+| Persönliche Klara-Gespräche | im Dump | `klara_gespraeche` | nur das Konto selbst liest sie |
+| Interaktionsgedächtnis | im Dump | `interaktions_gedaechtnis` | inzwischen abgelaufene Einträge löscht der Aufräumlauf |
+| Klara-Sitzungen und Zustimmungen | im Dump | `klara_sessions`, `klara_session_consents` | abgelaufene Sitzungen werden abgeräumt |
+| Avatar-Motive (Bilddateien) | ausgeschlossen | Anwendungspaket (`apps/web`) | kommen mit derselben Fassung; unbekannte Kennung → neutrale Ersatzgrafik |
+| Eigene/generierte Avatarbilder | nicht vorhanden | — | nichts gesichert, kein Beleg |
+| Persönliche Aufgabenlisten | nicht vorhanden | — | nichts gesichert; der letzte Schritt liegt im Gespräch |
+| Speicher im Browser | ausgeschlossen | Gerät der Person | neu anmelden; Geräteeinstellungen bleiben im Browser |
+
+**Getrennt erfasst und kein rückwirkender Beleg.** Der Drill schreibt die privaten Assistenzspeicher
+als eigene Kategorie `vergleich.assistenz` ins Protokoll. Belegt heißt ein Bereich nur, wenn die
+letzte Probe grün war UND jede seiner Tabellen mit beiden Zahlen gleich im Protokoll steht. Ein
+Protokoll aus einer älteren Drillfassung ohne diese Kategorie lässt die Assistenzbereiche bei
+„nicht gemessen". Die persönlichen Klara-Gespräche stehen seit diesem Auftrag auch im Dateninventar
+(`klaragespraeche`).
+
+**Wissenspaket.** In der Bibliothek unter *… → Export* gibt es das Format „Wissenspaket (ZIP mit
+Fassungen und Anhängen)" (`GET /api/library/export?format=paket`). Dieselbe Grundmenge wie jeder
+Export (validiert, Vertrauliches nur mit Prüfrecht, Sichtregel inkl. Space) und derselbe
+Auditeintrag `library.export` (Format `paket`). Inhalt: `LIESMICH.md`, `MANIFEST.json` (Beiträge,
+Fassungen, Anhänge, Quellen, Beziehungen, Verantwortung, Freigabe, Rechte, SHA-256 jeder Datei),
+`zuordnungen.csv`, je Beitrag `aktuell.md`, `beitrag.json`, `fassungen/v<n>.md` (AKTUELL/HISTORISCH)
+und die Originalanhänge. Eine früher vertrauliche Fassung und ein Anhang ohne gespeicherte Stufe
+gehen nur an, wer Vertrauliches exportieren darf. Nicht enthalten (und im Paket so benannt):
+nicht validierte Beiträge, Entwürfe, Papierkorb, persönliche Assistenzdaten, Konten und
+Anmeldedaten, Auditkette, Anhangsdateien früherer Fassungen.
+
+**Abnahmeprobe.** `tests/wiederherstellung-export/zusammenhang.integration.test.ts` fährt an einem
+fiktiven, zusammenhängenden Bestand (zwei geschlossene Spaces, fünf Rollen, Fassungen, Anhang,
+Quelle, Verantwortung, Freigabe, Beziehungen, Assistenzprofile, Gespräch) das unveränderte
+`backup.sh` und `restore-drill.sh` in eine leere Datenbank, vergleicht Quelle und Ziel, die
+Privatdaten je Konto und das Wissenspaket jeder Rolle, misst die Dauer des Drills und legt
+Vergleichsbericht, Drillprotokoll und lesbare Exportstichproben unter
+`test-results/poc-wiederherstellung-export/` ab. Beschädigte (Exit 11) und unvollständige
+(Exit 22) Sicherungen enden dort mit Protokoll; die Quelle bleibt unverändert.
+
 ## Was ausdrücklich NICHT erfüllt ist — Restarbeit und externe Voraussetzungen
 
 Diese Punkte sind **offen** und werden von keiner Anzeige als erfüllt ausgegeben:
@@ -115,3 +165,11 @@ Diese Punkte sind **offen** und werden von keiner Anzeige als erfüllt ausgegebe
    Sicherung. Wer Schreibzugriff auf das Verzeichnis hat, kann sie ändern; die Verwaltung prüft
    Form und rechnet die Vergleichszahlen nach, kann aber eine von Hand geschriebene Datei nicht von
    einer echten unterscheiden.
+10. **produkt:20261010:poc-wiederherstellung-export — offen.** Belegt ist die Probe ausschließlich
+    in einer isolierten Umgebung mit fiktiven Daten. Offen bleiben: eine Probe am Sicherungsbestand
+    der veröffentlichten Instanz (in eine eigene, leere Datenbank, durch den Betrieb), die Sicherung
+    der nativen PostgreSQL selbst (Punkte 4–5), die reale fachliche PoC-Verantwortung, Vertretung
+    und Schlussabnahme (keine Person benannt), eine Öffnungsprobe des Wissenspakets durch einen
+    Menschen auf einem Kundenrechner sowie ein eigener Export der persönlichen Assistenzdaten für
+    das Konto selbst (das Wissenspaket enthält sie bewusst nicht). Die Interaktionsgedächtnis- und
+    Sitzungstabellen werden in der Probe mitgezählt, aber ohne eigene Einträge angelegt.

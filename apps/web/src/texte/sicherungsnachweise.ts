@@ -49,7 +49,7 @@ export default {
     // Exportdatei.
     "sicherungsnachweise.export.titel": "Exportdatei",
     "sicherungsnachweise.export.umfang":
-      "Bibliothek als JSON, Markdown, MediaWiki oder HTML (validierte Wissensobjekte; vertrauliche nur mit Prüfrecht) und die Auditkette als JSON.",
+      "Bibliothek als JSON, Markdown, MediaWiki, HTML oder Wissenspaket (ZIP mit allen Fassungen, Originalanhängen und Verzeichnis) — validierte Wissensobjekte, vertrauliche nur mit Prüfrecht — und die Auditkette als JSON.",
     "sicherungsnachweise.export.aufbewahrung":
       "Die Datei liegt beim Empfänger. Der Server behält keine Kopie; er protokolliert nur den Abruf.",
     "sicherungsnachweise.export.zustaendig":
@@ -156,6 +156,55 @@ export default {
       "Die Probe lief durch, aber nicht jeder Vergleich ist gemessen. Die offenen Punkte stehen oben; bis sie gemessen sind, ist die Wiederherstellung nur teilweise belegt.",
     "sicherungsnachweise.restore.schritt.unbekannt":
       "Den Restore-Drill gegen eine eigene, leere Datenbank fahren (scripts/backup/restore-drill.sh). Bis dahin ist keine Wiederherstellung belegt.",
+    // produkt:20261010:poc-wiederherstellung-export — private Assistenzspeicher und Umfang je Bereich.
+    "sicherungsnachweise.restore.kat.assistenz": "Private Assistenzspeicher",
+    "sicherungsnachweise.restore.nachweis.assistenz": "Vergleich private Assistenzspeicher",
+    "sicherungsnachweise.bereiche.titel": "Sicherungsumfang je Bereich",
+    "sicherungsnachweise.bereiche.fassung":
+      "Gebunden an KLARWERK {{version}} (Commit {{commit}}). Die Datenbanksicherung enthält alle {{tabellen}} Tabellen dieser Fassung; die Anhangsdateien liegen in derselben Datenbank — eine zweite Objektablage gibt es nicht.",
+    "sicherungsnachweise.bereiche.tabellen": "Tabellen: {{liste}}",
+    "sicherungsnachweise.bereiche.zustand.im_dump": "in der Datenbanksicherung",
+    "sicherungsnachweise.bereiche.zustand.ausgeschlossen": "bewusst nicht in der Sicherung",
+    "sicherungsnachweise.bereiche.zustand.nicht_vorhanden":
+      "in dieser Fassung nicht vorhanden — nichts gesichert",
+    "sicherungsnachweise.bereiche.beleg.belegt":
+      "Letzte Wiederherstellungsprobe: zurückgekommen, Zeilen wie in der Sicherung.",
+    "sicherungsnachweise.bereiche.beleg.abweichend": "Letzte Wiederherstellungsprobe: weicht ab.",
+    "sicherungsnachweise.bereiche.beleg.nicht_gemessen":
+      "Letzte Wiederherstellungsprobe: für diesen Bereich nicht gemessen — kein Wiederherstellungsbeleg.",
+    "sicherungsnachweise.bereiche.beleg.kein_beleg":
+      "Keine Wiederherstellung über die Datenbanksicherung.",
+    "sicherungsnachweise.bereiche.datenbank.titel": "Datenbanksicherung (pg_dump)",
+    "sicherungsnachweise.bereiche.datenbank.text":
+      "Die ganze Produktdatenbank: Beiträge mit allen Fassungen, Quellen, Beziehungen, Verantwortung, Freigaben, Spaces, Konten mit Rollen und das Auditprotokoll.",
+    "sicherungsnachweise.bereiche.anhangsbytes.titel": "Anhangsdateien (Originalbytes)",
+    "sicherungsnachweise.bereiche.anhangsbytes.text":
+      "Die Originaldateien liegen in der Objektablage derselben Datenbank und sind Teil des Dumps — eigens gezählt samt ihrer Zuordnung zum Beitrag.",
+    "sicherungsnachweise.bereiche.assistenzprofil.titel":
+      "Persönliches Assistenzprofil (Name, Avatar, Bewegung)",
+    "sicherungsnachweise.bereiche.assistenzprofil.text":
+      "Je Konto der gewählte Name und die Kennung des Motivs. Nach einer Wiederherstellung gehört das Profil wieder genau diesem Konto; das Motivbild selbst kommt aus der Anwendung.",
+    "sicherungsnachweise.bereiche.gespraeche.titel": "Persönliche Klara-Gespräche",
+    "sicherungsnachweise.bereiche.gespraeche.text":
+      "Nachrichten, Objektbezug und der zuletzt begonnene Schritt je Konto. Nur das Konto selbst sieht sie — auch nach einer Wiederherstellung.",
+    "sicherungsnachweise.bereiche.gedaechtnis.titel": "Interaktionsgedächtnis",
+    "sicherungsnachweise.bereiche.gedaechtnis.text":
+      "Gemerkte Fragen und Antworten je Konto mit Verfallsfrist. Folge einer Wiederherstellung: Einträge, deren Frist inzwischen abgelaufen ist, löscht der Aufräumlauf danach endgültig.",
+    "sicherungsnachweise.bereiche.sitzungen.titel": "Klara-Sitzungen und KI-Zustimmungen",
+    "sicherungsnachweise.bereiche.sitzungen.text":
+      "Sitzung und Zustimmung je Konto. Folge einer Wiederherstellung: abgelaufene Sitzungen räumt die Anwendung danach ab; eine Zustimmung gilt nur für ihre Sitzung.",
+    "sicherungsnachweise.bereiche.avatarmotive.titel": "Avatar-Motive (Bilddateien)",
+    "sicherungsnachweise.bereiche.avatarmotive.text":
+      "Grund: Die dreizehn Motive gehören zum Anwendungspaket, nicht zu den Nutzerdaten. Folge: Sie kommen mit derselben Anwendungsfassung zurück; ein gespeichertes Motiv, das es dort nicht gibt, erscheint als neutrale Ersatzgrafik.",
+    "sicherungsnachweise.bereiche.eigeneavatare.titel": "Eigene oder generierte Avatarbilder",
+    "sicherungsnachweise.bereiche.eigeneavatare.text":
+      "Diese Fassung bietet weder Hochladen noch Generieren eines eigenen Avatars. Es wird nichts gesichert und kein Sicherungsbeleg dafür ausgegeben.",
+    "sicherungsnachweise.bereiche.aufgaben.titel": "Persönliche Aufgabenlisten",
+    "sicherungsnachweise.bereiche.aufgaben.text":
+      "Diese Fassung hat keine eigene Ablage für persönliche Aufgaben. Der zuletzt begonnene Schritt eines Gesprächs liegt im Gespräch selbst.",
+    "sicherungsnachweise.bereiche.endgeraet.titel": "Speicher im Browser",
+    "sicherungsnachweise.bereiche.endgeraet.text":
+      "Grund: Sitzungscookie und lokale Einstellungen liegen im Gerät der Person, nicht auf dem Server. Folge: Nach einer Wiederherstellung meldet man sich neu an; Geräteeinstellungen bleiben, wie sie im Browser waren.",
   },
   en: {
     "audit.action.admin_sicherungen_gelesen": "Backup information read",
@@ -185,7 +234,7 @@ export default {
     "sicherungsnachweise.unbekannt.protokoll_unlesbar": "The log was not readable.",
     "sicherungsnachweise.export.titel": "Export file",
     "sicherungsnachweise.export.umfang":
-      "Library as JSON, Markdown, MediaWiki or HTML (validated knowledge objects; confidential ones only with review rights) and the audit chain as JSON.",
+      "Library as JSON, Markdown, MediaWiki, HTML or knowledge package (ZIP with all versions, original attachments and an index) — validated knowledge objects, confidential ones only with review rights — and the audit chain as JSON.",
     "sicherungsnachweise.export.aufbewahrung":
       "The file stays with the recipient. The server keeps no copy; it only records the download.",
     "sicherungsnachweise.export.zustaendig":
@@ -285,6 +334,53 @@ export default {
       "The test passed, but not every comparison was measured. The open points are listed above; until they are measured, the restore is only partially proven.",
     "sicherungsnachweise.restore.schritt.unbekannt":
       "Run the restore drill against a separate, empty database (scripts/backup/restore-drill.sh). Until then, no restore is proven.",
+    "sicherungsnachweise.restore.kat.assistenz": "Private assistant data",
+    "sicherungsnachweise.restore.nachweis.assistenz": "private assistant data comparison",
+    "sicherungsnachweise.bereiche.titel": "Backup scope by area",
+    "sicherungsnachweise.bereiche.fassung":
+      "Bound to KLARWERK {{version}} (commit {{commit}}). The database backup contains all {{tabellen}} tables of this version; attachment files are stored in the same database — there is no second object store.",
+    "sicherungsnachweise.bereiche.tabellen": "Tables: {{liste}}",
+    "sicherungsnachweise.bereiche.zustand.im_dump": "in the database backup",
+    "sicherungsnachweise.bereiche.zustand.ausgeschlossen": "deliberately not in the backup",
+    "sicherungsnachweise.bereiche.zustand.nicht_vorhanden":
+      "does not exist in this version — nothing backed up",
+    "sicherungsnachweise.bereiche.beleg.belegt":
+      "Last restore test: came back, rows as in the backup.",
+    "sicherungsnachweise.bereiche.beleg.abweichend": "Last restore test: differs.",
+    "sicherungsnachweise.bereiche.beleg.nicht_gemessen":
+      "Last restore test: not measured for this area — no restore evidence.",
+    "sicherungsnachweise.bereiche.beleg.kein_beleg": "Not restored from the database backup.",
+    "sicherungsnachweise.bereiche.datenbank.titel": "Database backup (pg_dump)",
+    "sicherungsnachweise.bereiche.datenbank.text":
+      "The whole product database: posts with all versions, sources, relationships, responsibility, approvals, spaces, accounts with roles and the audit log.",
+    "sicherungsnachweise.bereiche.anhangsbytes.titel": "Attachment files (original bytes)",
+    "sicherungsnachweise.bereiche.anhangsbytes.text":
+      "The original files are kept in the object store of the same database and are part of the dump — counted separately together with their assignment to the post.",
+    "sicherungsnachweise.bereiche.assistenzprofil.titel":
+      "Personal assistant profile (name, avatar, motion)",
+    "sicherungsnachweise.bereiche.assistenzprofil.text":
+      "Per account the chosen name and the motif identifier. After a restore the profile belongs to exactly this account again; the motif image itself comes from the application.",
+    "sicherungsnachweise.bereiche.gespraeche.titel": "Personal Klara conversations",
+    "sicherungsnachweise.bereiche.gespraeche.text":
+      "Messages, object reference and the last step started, per account. Only the account itself sees them — also after a restore.",
+    "sicherungsnachweise.bereiche.gedaechtnis.titel": "Interaction memory",
+    "sicherungsnachweise.bereiche.gedaechtnis.text":
+      "Remembered questions and answers per account with an expiry period. Consequence of a restore: entries whose period has expired in the meantime are permanently deleted by the clean-up run afterwards.",
+    "sicherungsnachweise.bereiche.sitzungen.titel": "Klara sessions and AI consents",
+    "sicherungsnachweise.bereiche.sitzungen.text":
+      "Session and consent per account. Consequence of a restore: expired sessions are cleaned up by the application afterwards; a consent applies only to its session.",
+    "sicherungsnachweise.bereiche.avatarmotive.titel": "Avatar motifs (image files)",
+    "sicherungsnachweise.bereiche.avatarmotive.text":
+      "Reason: the thirteen motifs belong to the application package, not to user data. Consequence: they come back with the same application version; a stored motif that does not exist there is shown as a neutral placeholder.",
+    "sicherungsnachweise.bereiche.eigeneavatare.titel": "Own or generated avatar images",
+    "sicherungsnachweise.bereiche.eigeneavatare.text":
+      "This version offers neither uploading nor generating an own avatar. Nothing is backed up and no backup evidence is issued for it.",
+    "sicherungsnachweise.bereiche.aufgaben.titel": "Personal task lists",
+    "sicherungsnachweise.bereiche.aufgaben.text":
+      "This version has no separate store for personal tasks. The last step started in a conversation is kept in the conversation itself.",
+    "sicherungsnachweise.bereiche.endgeraet.titel": "Browser storage",
+    "sicherungsnachweise.bereiche.endgeraet.text":
+      "Reason: the session cookie and local settings are kept on the person's device, not on the server. Consequence: after a restore you sign in again; device settings stay as they were in the browser.",
   },
   nl: {
     "audit.action.admin_sicherungen_gelesen": "Back-upinformatie gelezen",
@@ -315,7 +411,7 @@ export default {
     "sicherungsnachweise.unbekannt.protokoll_unlesbar": "Het logboek was niet leesbaar.",
     "sicherungsnachweise.export.titel": "Exportbestand",
     "sicherungsnachweise.export.umfang":
-      "Bibliotheek als JSON, Markdown, MediaWiki of HTML (gevalideerde kennisobjecten; vertrouwelijke alleen met controlerecht) en de auditketen als JSON.",
+      "Bibliotheek als JSON, Markdown, MediaWiki, HTML of kennispakket (ZIP met alle versies, originele bijlagen en een overzicht) — gevalideerde kennisobjecten, vertrouwelijke alleen met controlerecht — en de auditketen als JSON.",
     "sicherungsnachweise.export.aufbewahrung":
       "Het bestand blijft bij de ontvanger. De server bewaart geen kopie; hij legt alleen de download vast.",
     "sicherungsnachweise.export.zustaendig":
@@ -416,5 +512,52 @@ export default {
       "De proef is doorlopen, maar niet elke vergelijking is gemeten. De open punten staan hierboven; tot ze gemeten zijn, is het herstel maar gedeeltelijk aangetoond.",
     "sicherungsnachweise.restore.schritt.unbekannt":
       "De herstelproef tegen een eigen, lege database uitvoeren (scripts/backup/restore-drill.sh). Tot dan is geen herstel aangetoond.",
+    "sicherungsnachweise.restore.kat.assistenz": "Privégegevens van de assistent",
+    "sicherungsnachweise.restore.nachweis.assistenz": "vergelijking privégegevens van de assistent",
+    "sicherungsnachweise.bereiche.titel": "Omvang van de back-up per onderdeel",
+    "sicherungsnachweise.bereiche.fassung":
+      "Gebonden aan KLARWERK {{version}} (commit {{commit}}). De databaseback-up bevat alle {{tabellen}} tabellen van deze versie; bijlagebestanden staan in dezelfde database — een tweede objectopslag is er niet.",
+    "sicherungsnachweise.bereiche.tabellen": "Tabellen: {{liste}}",
+    "sicherungsnachweise.bereiche.zustand.im_dump": "in de databaseback-up",
+    "sicherungsnachweise.bereiche.zustand.ausgeschlossen": "bewust niet in de back-up",
+    "sicherungsnachweise.bereiche.zustand.nicht_vorhanden":
+      "bestaat niet in deze versie — niets geback-upt",
+    "sicherungsnachweise.bereiche.beleg.belegt":
+      "Laatste herstelproef: teruggekomen, rijen zoals in de back-up.",
+    "sicherungsnachweise.bereiche.beleg.abweichend": "Laatste herstelproef: wijkt af.",
+    "sicherungsnachweise.bereiche.beleg.nicht_gemessen":
+      "Laatste herstelproef: voor dit onderdeel niet gemeten — geen herstelbewijs.",
+    "sicherungsnachweise.bereiche.beleg.kein_beleg": "Geen herstel via de databaseback-up.",
+    "sicherungsnachweise.bereiche.datenbank.titel": "Databaseback-up (pg_dump)",
+    "sicherungsnachweise.bereiche.datenbank.text":
+      "De hele productdatabase: bijdragen met alle versies, bronnen, relaties, verantwoordelijkheid, vrijgaven, spaces, accounts met rollen en het auditlog.",
+    "sicherungsnachweise.bereiche.anhangsbytes.titel": "Bijlagebestanden (originele bytes)",
+    "sicherungsnachweise.bereiche.anhangsbytes.text":
+      "De originele bestanden staan in de objectopslag van dezelfde database en horen bij de dump — apart geteld samen met hun koppeling aan de bijdrage.",
+    "sicherungsnachweise.bereiche.assistenzprofil.titel":
+      "Persoonlijk assistentprofiel (naam, avatar, beweging)",
+    "sicherungsnachweise.bereiche.assistenzprofil.text":
+      "Per account de gekozen naam en de aanduiding van het motief. Na een herstel hoort het profiel weer bij precies dit account; de afbeelding van het motief komt uit de applicatie.",
+    "sicherungsnachweise.bereiche.gespraeche.titel": "Persoonlijke Klara-gesprekken",
+    "sicherungsnachweise.bereiche.gespraeche.text":
+      "Berichten, objectverwijzing en de laatst begonnen stap per account. Alleen het account zelf ziet ze — ook na een herstel.",
+    "sicherungsnachweise.bereiche.gedaechtnis.titel": "Interactiegeheugen",
+    "sicherungsnachweise.bereiche.gedaechtnis.text":
+      "Onthouden vragen en antwoorden per account met een vervaltermijn. Gevolg van een herstel: items waarvan de termijn inmiddels is verlopen, verwijdert de opruimronde daarna definitief.",
+    "sicherungsnachweise.bereiche.sitzungen.titel": "Klara-sessies en AI-toestemmingen",
+    "sicherungsnachweise.bereiche.sitzungen.text":
+      "Sessie en toestemming per account. Gevolg van een herstel: verlopen sessies ruimt de applicatie daarna op; een toestemming geldt alleen voor haar sessie.",
+    "sicherungsnachweise.bereiche.avatarmotive.titel": "Avatarmotieven (afbeeldingen)",
+    "sicherungsnachweise.bereiche.avatarmotive.text":
+      "Reden: de dertien motieven horen bij het applicatiepakket, niet bij de gebruikersgegevens. Gevolg: ze komen terug met dezelfde applicatieversie; een opgeslagen motief dat daar niet bestaat, verschijnt als neutrale vervangende afbeelding.",
+    "sicherungsnachweise.bereiche.eigeneavatare.titel": "Eigen of gegenereerde avatarafbeeldingen",
+    "sicherungsnachweise.bereiche.eigeneavatare.text":
+      "Deze versie biedt geen uploaden en geen genereren van een eigen avatar. Er wordt niets geback-upt en er wordt geen back-upbewijs voor afgegeven.",
+    "sicherungsnachweise.bereiche.aufgaben.titel": "Persoonlijke takenlijsten",
+    "sicherungsnachweise.bereiche.aufgaben.text":
+      "Deze versie heeft geen eigen opslag voor persoonlijke taken. De laatst begonnen stap van een gesprek staat in het gesprek zelf.",
+    "sicherungsnachweise.bereiche.endgeraet.titel": "Opslag in de browser",
+    "sicherungsnachweise.bereiche.endgeraet.text":
+      "Reden: de sessiecookie en lokale instellingen staan op het apparaat van de persoon, niet op de server. Gevolg: na een herstel meldt men zich opnieuw aan; apparaatinstellingen blijven zoals ze in de browser waren.",
   },
 } satisfies Textmodul;

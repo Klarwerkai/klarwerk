@@ -211,8 +211,13 @@ schreibe_protokoll() {
     printf '"beitraege":%s},' "$(vergleich_json "" kos ko_versions)"
     printf '"anhaenge":%s,"belegeOhneAnhang":%s},' "$(vergleich_json "$anhang_zusatz" objects ko_evidence)" "$waisen"
     printf '"beziehungen":%s},' "$(vergleich_json "" ko_kanten ko_kanten_beitrag)"
-    printf '"rechte":%s,"rollenDump":%s,"rollenDatenbank":%s}' "$(vergleich_json "$rechte_zusatz" users)" \
+    printf '"rechte":%s,"rollenDump":%s,"rollenDatenbank":%s},' "$(vergleich_json "$rechte_zusatz" users)" \
       "$(json_text_oder_null "$ROLLEN_DUMP")" "$(json_text_oder_null "$ROLLEN_DB")"
+    # produkt:20261010:poc-wiederherstellung-export — die privaten Assistenzspeicher als EIGENE
+    # Kategorie, getrennt von Beitraegen und Anhangsbytes. Dieselbe Tabellenliste wie
+    # `assistenzTabellen()` in services/app/src/sicherungsumfang.ts (gehalten von
+    # tests/wiederherstellung-export/sicherungsumfang.test.ts).
+    printf '"assistenz":%s}' "$(vergleich_json "" assistenz_profile klara_gespraeche interaktions_gedaechtnis klara_sessions klara_session_consents)"
     printf '},"wissensnachweis":%s}\n' "$(json_text_oder_null "$WISSENSNACHWEIS")"
   } > "$arbeitsname" 2>/dev/null || ! mv -f "$arbeitsname" "$PROTOKOLL" 2>/dev/null; then
     rm -f "$arbeitsname" 2>/dev/null || true
