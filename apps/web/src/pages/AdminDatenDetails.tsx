@@ -14,13 +14,14 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useAuditSeite, useDirectory, useFeatures, useUsers } from "../api/hooks";
 import type {
+  BestandsresetZustand,
   DemoPackageInfo,
   DemoPackageResult,
   DemoPackageTextDto,
@@ -860,7 +861,7 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
       {/* Die Hülle steht davor: „In dieser Installation nicht verfügbar" ist eine TATSACHENAUSSAGE
           und darf nur aus einer erfolgreichen Antwort stammen — nicht aus einem gescheiterten
           Abruf, der nichts über die Installation weiß. */}
-      <Abfragehuelle abfrage={factoryResetStatus}>
+      <Abfragehuelle abfrage={factoryResetStatus} testId="huelle-werksreset">
         {(stand) => (
           <>
             {stand.available !== true ? (
@@ -1032,7 +1033,256 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
           </>
         )}
       </Abfragehuelle>
+      <BestandsresetAbschnitt />
     </Detailkarte>
+  );
+}
+
+/** Der Lauf in Worten — die sechs Zustände des Auditautomaten auf vier Aussagen für Menschen. */
+function bestandsresetZustandKey(zustand: BestandsresetZustand): string {
+  switch (zustand) {
+    case "OK":
+      return "bestandsreset.zustand.ok";
+    case "ROLLED_BACK":
+    case "ROLLED_BACK_BY_CRASH":
+      return "bestandsreset.zustand.zurueck";
+    case "RUNNING":
+      return "bestandsreset.zustand.laeuft";
+    default:
+      return "bestandsreset.zustand.unklar";
+  }
+}
+
+/**
+ * AUFNAHME 20260922 · GESAMT-BESTANDSRESET — der administrative Aufruf (Nacharbeit 2).
+ *
+ * Peters Entscheidung vom 11.10.: Konten und Firmenwörterbuch bleiben; vor dem Löschen die
+ * Folgenvorschau, zweimal das Passwort und ein Häkchen. Der Abschnitt wohnt in der Karte
+ * Werkseinstellungen — eine eigene Karte bräuchte eine neue Kennung im Navigationsinventar, das
+ * die Ziele der Vorlage festzählt (`tests/admin-navigation/inventar.test.tsx`).
+ *
+ * Die Vorschau ist verbindlich: der Knopf schickt ihre `kennung` mit, und der Server führt nur aus,
+ * wenn der Bestand noch genau der gezeigte ist. Die Oberfläche hält den Knopf gesperrt, bis beide
+ * Passworteingaben übereinstimmen und das Häkchen gesetzt ist; der Server prüft dasselbe noch
+ * einmal, denn die Oberfläche ist nicht die Sicherung.
+ */
+function BestandsresetAbschnitt(): JSX.Element {
+  const { t } = useTranslation();
+  const { push } = useToast();
+  const qc = useQueryClient();
+  const status = useQuery({
+    queryKey: ["admin", "bestandsreset"],
+    queryFn: endpoints.admin.bestandsreset.status,
+  });
+  const [offen, setOffen] = useState(false);
+  const [passwort, setPasswort] = useState("");
+  const [wiederholung, setWiederholung] = useState("");
+  const [haken, setHaken] = useState(false);
+  // Nacharbeit 7 (BEN): die Kennung der Vorschau, für die die Bestätigung gilt — festgehalten beim
+  // Öffnen des Formulars. Ändert sich die angezeigte Vorschau danach (etwa durch eine automatische
+  // Aktualisierung), ist die Bestätigung hinfällig: Passwörter und Häkchen werden geleert, und der
+  // Knopf schickt nie eine Kennung, die der Mensch nicht bestätigt hat.
+  const [bestaetigt, setBestaetigt] = useState<string | null>(null);
+  const [vorschauGeaendert, setVorschauGeaendert] = useState(false);
+  const aktuelleKennung = status.data?.verfuegbar ? status.data.vorschau.kennung : null;
+  useEffect(() => {
+    if (
+      offen &&
+      bestaetigt !== null &&
+      aktuelleKennung !== null &&
+      aktuelleKennung !== bestaetigt
+    ) {
+      setPasswort("");
+      setWiederholung("");
+      setHaken(false);
+      setBestaetigt(aktuelleKennung);
+      setVorschauGeaendert(true);
+    }
+  }, [offen, bestaetigt, aktuelleKennung]);
+  const oeffnen = (kennung: string): void => {
+    setBestaetigt(kennung);
+    setVorschauGeaendert(false);
+    setOffen(true);
+  };
+  const schliessen = (): void => {
+    setOffen(false);
+    setPasswort("");
+    setWiederholung("");
+    setHaken(false);
+    setBestaetigt(null);
+    setVorschauGeaendert(false);
+  };
+  const ausfuehren = useMutation({
+    mutationFn: (vorschauKennung: string) =>
+      endpoints.admin.bestandsreset.ausfuehren({
+        passwort,
+        passwortWiederholung: wiederholung,
+        folgenBestaetigt: haken,
+        vorschauKennung,
+      }),
+    onSuccess: () => {
+      schliessen();
+      push("success", t("bestandsreset.fertig"));
+      void qc.invalidateQueries({ queryKey: ["admin", "bestandsreset"] });
+      void qc.invalidateQueries({ queryKey: ["kos"] });
+    },
+    onError: (e) => {
+      setPasswort("");
+      setWiederholung("");
+      if (e instanceof ApiError && e.code === "INVALID_PASSWORD") {
+        push("error", t("bestandsreset.falsch"));
+        return;
+      }
+      if (e instanceof ApiError && e.code === "VORSCHAU_VERALTET") {
+        setHaken(false);
+        push("error", t("bestandsreset.veraltet"));
+        void qc.invalidateQueries({ queryKey: ["admin", "bestandsreset"] });
+        return;
+      }
+      push("error", e instanceof ApiError ? e.message : t("bestandsreset.fehler"));
+      void qc.invalidateQueries({ queryKey: ["admin", "bestandsreset"] });
+    },
+  });
+  const ungleich = passwort !== "" && wiederholung !== "" && passwort !== wiederholung;
+  const bereit =
+    passwort !== "" &&
+    passwort === wiederholung &&
+    haken &&
+    bestaetigt !== null &&
+    bestaetigt === aktuelleKennung &&
+    !ausfuehren.isPending;
+
+  return (
+    <div
+      data-testid="abschnitt-bestandsreset"
+      className="mt-4 space-y-2 border-t border-hairline pt-3"
+    >
+      <p className="text-[13.5px] font-semibold text-text">{t("bestandsreset.titel")}</p>
+      <p className="text-[12.5px] leading-snug text-muted">{t("bestandsreset.erklaerung")}</p>
+      <Abfragehuelle abfrage={status} testId="huelle-bestandsreset">
+        {(stand) => (
+          <>
+            <p className="text-[12.5px] text-muted-2">{t("bestandsreset.erhaltenHinweis")}</p>
+            {!stand.verfuegbar ? (
+              <p className="text-[12.5px] text-muted-2">{t("bestandsreset.nichtVerfuegbar")}</p>
+            ) : (
+              <>
+                <div
+                  data-testid="bestandsreset-vorschau"
+                  className="space-y-1 rounded-card border border-hairline bg-page px-3 py-2.5"
+                >
+                  <span className="block text-[12.5px] font-semibold text-text">
+                    {t("bestandsreset.vorschauTitel")}
+                  </span>
+                  <p className="text-[12.5px] text-trust-crit-text">
+                    {t("bestandsreset.wissensobjekte", {
+                      anzahl: stand.vorschau.wissensobjekte,
+                      papierkorb: stand.vorschau.papierkorb,
+                    })}
+                  </p>
+                  <p className="text-[12.5px] text-text">
+                    {t("bestandsreset.erhalten", {
+                      konten: stand.vorschau.erhalten.konten,
+                      begriffe: stand.vorschau.erhalten.begriffe,
+                    })}
+                  </p>
+                  <details className="text-[12px] text-muted">
+                    <summary className="cursor-pointer">{t("bestandsreset.tabellen")}</summary>
+                    <ul className="mt-1 space-y-0.5">
+                      {stand.vorschau.geloescht.map((z) => (
+                        <li key={z.tabelle}>
+                          <code>{z.tabelle}</code>: {z.zeilen}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </div>
+                <p className="text-[12px] text-muted-2">
+                  {stand.letzterLauf
+                    ? t("bestandsreset.letzterLauf", {
+                        zustand: t(bestandsresetZustandKey(stand.letzterLauf.zustand)),
+                      })
+                    : t("bestandsreset.keinLauf")}
+                </p>
+                {!offen ? (
+                  <button
+                    type="button"
+                    onClick={() => oeffnen(stand.vorschau.kennung)}
+                    className="inline-flex items-center gap-1.5 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                  >
+                    <Trash2 size={14} />
+                    {t("bestandsreset.starten")}
+                  </button>
+                ) : (
+                  <div className="space-y-2.5 rounded-card border border-trust-crit-text/40 bg-trust-crit-bg px-4 py-3.5">
+                    {vorschauGeaendert ? (
+                      <p
+                        data-testid="bestandsreset-vorschau-geaendert"
+                        className="text-[12.5px] font-semibold text-trust-crit-text"
+                      >
+                        {t("bestandsreset.vorschauGeaendert")}
+                      </p>
+                    ) : null}
+                    <Field label={t("bestandsreset.passwort")}>
+                      <TextInput
+                        type="password"
+                        value={passwort}
+                        autoComplete="current-password"
+                        onChange={(e) => setPasswort(e.target.value)}
+                      />
+                    </Field>
+                    <Field label={t("bestandsreset.passwortWiederholung")}>
+                      <TextInput
+                        type="password"
+                        value={wiederholung}
+                        autoComplete="off"
+                        onChange={(e) => setWiederholung(e.target.value)}
+                      />
+                    </Field>
+                    {ungleich ? (
+                      <p className="text-[12px] text-trust-crit-text">
+                        {t("bestandsreset.ungleich")}
+                      </p>
+                    ) : null}
+                    <label className="flex items-start gap-2 text-[12.5px] text-trust-crit-text">
+                      <input
+                        type="checkbox"
+                        checked={haken}
+                        onChange={(e) => setHaken(e.target.checked)}
+                        className="mt-0.5 accent-brand"
+                      />
+                      <span>{t("bestandsreset.checkbox")}</span>
+                    </label>
+                    <div className="flex items-center gap-3 pt-0.5">
+                      <button
+                        type="button"
+                        className="text-[12px] font-semibold text-muted hover:text-text"
+                        onClick={schliessen}
+                      >
+                        {t("bestandsreset.abbrechen")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!bereit}
+                        className="inline-flex items-center gap-1 rounded-btn bg-trust-crit-text px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                        onClick={() => {
+                          if (bestaetigt !== null) {
+                            ausfuehren.mutate(bestaetigt);
+                          }
+                        }}
+                      >
+                        <AlertTriangle size={13} />
+                        {t("bestandsreset.ausfuehren")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </Abfragehuelle>
+    </div>
   );
 }
 

@@ -33,6 +33,9 @@ import type {
   AuditVerifyReport,
   BearbeitungsLage,
   BearbeitungsMeldung,
+  BestandsresetAuftrag,
+  BestandsresetAuskunft,
+  BestandsresetErgebnis,
   BeziehungSetzenBody,
   BeziehungWiderrufBody,
   BusFactorEntry,
@@ -1460,6 +1463,14 @@ export const endpoints = {
     // Bestätigung und zwei Passworteingaben des Admins.
     factoryReset: (auftrag: FirmenresetAuftrag) =>
       api.post<{ ok: boolean }>("/admin/factory-reset", auftrag),
+    // Aufnahme gesamt-bestandsreset (Peters Entscheidung vom 11.10.): Wissensbestand samt
+    // Papierkorb zurücksetzen, Konten und Firmenwörterbuch bleiben. Erst die Folgenvorschau (GET),
+    // dann die Ausführung mit ihrer Kennung, zweimal Passwort und Häkchen (POST).
+    bestandsreset: {
+      status: () => api.get<BestandsresetAuskunft>("/admin/bestandsreset"),
+      ausfuehren: (auftrag: BestandsresetAuftrag) =>
+        api.post<BestandsresetErgebnis>("/admin/bestandsreset", auftrag),
+    },
     // IC-2 (Import-Cockpit): READ-ONLY Erkundung „was ist da" VOR jedem Import. Schreibt nichts —
     // liefert nur die aggregierte Landkarte (Mengen/Autoren/Themen/Zeitraum) + truncated.
     import: {

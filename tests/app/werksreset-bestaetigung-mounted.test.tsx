@@ -51,6 +51,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     admin: {
       factoryResetStatus: d.status,
       factoryReset: d.factoryReset,
+      // Seit der Integration mit main (gesamt-bestandsreset) wohnt in derselben Karte der
+      // Postgres-Bestandsreset. Im Desktopbetrieb dieses Prüfstands ist er nicht verfügbar — so
+      // beantwortet, rendert er weder Passwortfelder noch Knöpfe neben dem Werksreset.
+      bestandsreset: {
+        status: vi.fn(async () => ({ verfuegbar: false })),
+        ausfuehren: vi.fn(),
+      },
     },
   },
 }));
