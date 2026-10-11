@@ -26329,10 +26329,10 @@ index 14a149f88..000000000
 -  };
 -}
 diff --git b/services/app/src/routes/audit-routes.ts a/services/app/src/routes/audit-routes.ts
-index 6e37c3b98..f23c51e1c 100644
+index 5e58d179a..f23c51e1c 100644
 --- b/services/app/src/routes/audit-routes.ts
 +++ a/services/app/src/routes/audit-routes.ts
-@@ -1,674 +1,26 @@
+@@ -1,695 +1,26 @@
  import type { FastifyPluginAsync } from "fastify";
 -import {
 -  type AuditEntry,
@@ -26385,9 +26385,10 @@ index 6e37c3b98..f23c51e1c 100644
 -// Stufe: was `darfSehen` vorenthält, liegt an Spaces UND am persönlichen Freigabeniveau.
 -// Eingeschränkt ist deshalb, wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand
 -// und jeder Space, den die Kette je genannt hat) ODER keinen Freigaberang 2 („streng vertraulich",
--// `freigaberang`) hat. Das hängt nur an Spaces, Mitgliedschaft und dem eigenen Niveau — nicht
--// daran, ob es gerade verborgene Vorgänge gibt. Ein uneingeschränkter Leser bekommt das Protokoll
--// unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
+-// `freigaberang`) hat ODER (Ben, Nacharbeit 24) dem nach der Objektprüfung irgendein Objekt oder
+-// Befund verborgen bleibt — etwa durch eine Leserliste aus der Quelle (`quellrechte.leser`) oder
+-// ein endgelöschtes Objekt, dessen Quellschutz nicht belegt ist. Nur wer tatsächlich alles lesen
+-// darf, bekommt das Protokoll unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
 -//
 -// WAS EIN EINGESCHRÄNKTER LESER BEKOMMT — eine Leseransicht, die nichts von verborgenen Vorgängen
 -// abhängen lässt:
@@ -26451,8 +26452,12 @@ index 6e37c3b98..f23c51e1c 100644
 -  if (!quelle) {
 -    return { eingeschraenkt: true, verborgen: new Set(), ziele: new Set(), alles: true };
 -  }
--  // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe.
--  const ausKette = new Map<string, { spaceId?: string | null; author?: string; stufe?: string }>();
+-  // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe — und ob die
+-  // Endlöschung festhielt, dass KEINE Leserliste aus der Quelle bestand (`quellfrei`, Nacharbeit 24).
+-  const ausKette = new Map<
+-    string,
+-    { spaceId?: string | null; author?: string; stufe?: string; quellfrei?: boolean }
+-  >();
 -  const spaces = new Set<string>(await quelle.spaceKennungen());
 -  const befundKos = new Map<string, Set<string>>();
 -  for (const e of kette) {
@@ -26470,8 +26475,16 @@ index 6e37c3b98..f23c51e1c 100644
 -          }
 -        }
 -      }
--      if (e.action === "ko.confidentiality" && typeof e.payload.level === "string") {
+-      if (
+-        (e.action === "ko.confidentiality" || e.action === "ko.quellrechte") &&
+-        typeof e.payload.level === "string"
+-      ) {
 -        g.stufe = e.payload.level;
+-      }
+-      if (e.action === "ko.purged") {
+-        // Nur ein ausdrückliches `false` belegt „keine Quellleser“; fehlt die Angabe (Altbeleg),
+-        // ist der Schutz unbekannt — und unbekannt gibt nichts frei.
+-        g.quellfrei = e.payload.quellbeschraenkt === false;
 -      }
 -      ausKette.set(e.target, g);
 -    }
@@ -26483,11 +26496,9 @@ index 6e37c3b98..f23c51e1c 100644
 -      befundKos.set(e.target, kos);
 -    }
 -  }
--  const lesbar = user.spaceLesbar;
--  const eingeschraenkt = freigaberang(user) < 2 || [...spaces].some((s) => lesbar?.has(s) !== true);
--  if (!eingeschraenkt) {
--    return UNEINGESCHRAENKT;
--  }
+-  // Nacharbeit 24 (Ben): die Objektprüfung läuft für JEDEN Leser, auch mit Freigaberang 2 und allen
+-  // Spaces — eine Leserliste aus der Quelle kann ihn trotzdem ausschließen. Uneingeschränkt ist nur,
+-  // wem danach tatsächlich nichts verborgen ist.
 -  const verborgen = new Set<string>();
 -  const aktuell = new Map((await quelle.sichtbarkeitsfaktenAller()).map((f) => [f.id, f]));
 -  for (const [id, fakten] of aktuell) {
@@ -26500,7 +26511,12 @@ index 6e37c3b98..f23c51e1c 100644
 -      continue;
 -    }
 -    // Endgültig gelöscht: die Kette weiß, wo es zuletzt lag. Die Stufe gilt als streng, wo sie
--    // nicht belegt ist — für Leser mit `ko.validate` ändert das nichts, für alle anderen schließt es.
+-    // nicht belegt ist. Ob eine Leserliste aus der Quelle bestand, weiß nur der Löschbeleg
+-    // (`quellbeschraenkt`); ist „keine“ nicht belegt, bleibt das Objekt verborgen (Nacharbeit 24).
+-    if (g.quellfrei !== true) {
+-      verborgen.add(id);
+-      continue;
+-    }
 -    const fakten: SichtbarkeitsFakten = {
 -      ...(g.spaceId ? { spaceId: g.spaceId } : {}),
 -      confidentiality: (g.stufe ?? "streng_vertraulich") as SichtbarkeitsFakten["confidentiality"],
@@ -26523,6 +26539,11 @@ index 6e37c3b98..f23c51e1c 100644
 -    if (!zuzuordnen || [...kos].some((k) => verborgen.has(k))) {
 -      verborgen.add(befund);
 -    }
+-  }
+-  const lesbar = user.spaceLesbar;
+-  const spaceFehlt = [...spaces].some((s) => lesbar?.has(s) !== true);
+-  if (freigaberang(user) >= 2 && !spaceFehlt && verborgen.size === 0) {
+-    return UNEINGESCHRAENKT;
 -  }
 -  const ziele = new Set<string>([
 -    ...aktuell.keys(),
@@ -46884,7 +46905,7 @@ index 87aa76cbc..000000000
 -  };
 -}
 diff --git b/services/app/src/sichtbarkeit.ts a/services/app/src/sichtbarkeit.ts
-index c6d668430..01fad81f5 100644
+index 4f6a63dc8..01fad81f5 100644
 --- b/services/app/src/sichtbarkeit.ts
 +++ a/services/app/src/sichtbarkeit.ts
 @@ -24,28 +24,23 @@
@@ -46929,7 +46950,7 @@ index c6d668430..01fad81f5 100644
  import { type Confidentiality, isConfidential, sqlDeletedAtLeer } from "../../knowledge-object";
  import { can } from "../../rbac";
  import type { SessionUser } from "./http";
-@@ -56,111 +51,29 @@ import type { SessionUser } from "./http";
+@@ -56,115 +51,29 @@ import type { SessionUser } from "./http";
  export interface SichtbarkeitsFakten {
    confidentiality?: Confidentiality | null | undefined;
    author?: string | null | undefined;
@@ -47013,12 +47034,14 @@ index c6d668430..01fad81f5 100644
   * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
   * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
 - *
-- * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER VOR STUFE. Trägt das Objekt
-- * eine Leserliste aus der Quelle, entscheidet NUR sie: wer in Confluence lesen darf, liest in Klara,
-- * sonst niemand — kein `ko.validate`-Inhaber und auch NICHT der annehmende Autor (Ben, Nacharbeit 3:
-- * ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff, den die Quelle ihm
-- * verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht „offen". Ohne Liste gilt
-- * die Regel oben unverändert.
+- * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER UND STUFE. Trägt das Objekt
+- * eine Leserliste aus der Quelle, ist sie eine zusätzliche NOTWENDIGE Bedingung: wer in Confluence
+- * nicht lesen darf, liest in Klara nicht — kein `ko.validate`-Inhaber und auch NICHT der annehmende
+- * Autor (Ben, Nacharbeit 3: ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff,
+- * den die Quelle ihm verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht
+- * „offen". Wer gelistet ist, durchläuft danach die Regel oben (Space, Rang oder Autorschaft) —
+- * die Liste ersetzt das persönliche Freigabeniveau nicht (aufnahme:20260922:gesamt-leserechte,
+- * Ben Nacharbeit 24, Entscheidung 15).
 - *
 - * PFLICHT FÜR JEDE PROJEKTION: wer Sichtbarkeitsfakten verkürzt weiterreicht, muss `quellrechte`
 - * mitnehmen (Gesamtanweisung, Papierkorb). Ohne sie fiele das Objekt auf die Stufenregel zurück.
@@ -47030,12 +47053,14 @@ index c6d668430..01fad81f5 100644
 -  if (!spaceErlaubt(user, ko.spaceId)) {
 -    return false;
 -  }
--  // R-0549 (main): eine Leserliste aus der Quelle entscheidet allein. Nacharbeit 20 (Integration
--  // main) übernimmt diesen Vorrang unverändert; ob Quellleser zusätzlich den Freigaberang brauchen,
--  // ist nicht entschieden (docs/entscheidungen/gesamt-leserechte.md).
+-  // R-0549 (main): eine Leserliste aus der Quelle ist eine NOTWENDIGE Bedingung — wer nicht darin
+-  // steht, liest nicht (auch nicht der annehmende Autor, Ben Nacharbeit 3). Sie ERSETZT aber die
+-  // Stufenprüfung nicht (Ben, Nacharbeit 24; Entscheidung 15 „persönliches Freigabeniveau PLUS
+-  // Objekt-/Gruppenrechte“): ein gelistetes Konto braucht zusätzlich den Freigaberang wie jeder
+-  // andere Leser. Dieselbe Regel steht im SQL-Prädikat (`sqlSichtbarkeitFuer`).
 -  const leser = ko.quellrechte?.leser;
--  if (Array.isArray(leser)) {
--    return user.id.length > 0 && leser.includes(user.id);
+-  if (Array.isArray(leser) && !(user.id.length > 0 && leser.includes(user.id))) {
+-    return false;
 +  if (!isConfidential(ko.confidentiality)) {
 +    return true;
    }
@@ -47050,7 +47075,7 @@ index c6d668430..01fad81f5 100644
  }
  
  /**
-@@ -196,72 +109,6 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter
+@@ -200,72 +109,6 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter
    return (ko) => darfSehen(user, ko);
  }
  
@@ -47123,7 +47148,7 @@ index c6d668430..01fad81f5 100644
  // ================================================================================================
  // AUFTRAG-BASIC-380 — DIESELBE ENTSCHEIDUNG, EINE EBENE TIEFER: ALS SQL, VOR DEM `LIMIT`.
  // ================================================================================================
-@@ -287,10 +134,10 @@ export async function darfKandidatSehen(
+@@ -291,10 +134,10 @@ export async function darfKandidatSehen(
  // Prädikat entsteht deshalb HIER, neben `darfSehen`, und wird INJIZIERT — an genau derselben Naht,
  // an der heute schon `sichtbar: sichtbarkeitsfilterFuer(user)` in die Analytics reist.
  //
@@ -47138,7 +47163,7 @@ index c6d668430..01fad81f5 100644
  //
  // ================================================================================================
  // DIE BENANNTEN GRENZEN DIESER ÜBERSETZUNG — BITTE NICHT ÜBERLESEN.
-@@ -302,10 +149,9 @@ export async function darfKandidatSehen(
+@@ -306,10 +149,9 @@ export async function darfKandidatSehen(
  //     er ist historischer Beleg und veraltet naturgemäß, sobald eine Stufe erhöht wird. Eine
  //     Höherstufung muss SOFORT wirken, nicht nach dem nächsten Projektionsbau.
  //
@@ -47152,7 +47177,7 @@ index c6d668430..01fad81f5 100644
  //
  // (3) DER PAPIERKORB WIRD ÜBER `deleted_at_key IS NULL` GEPRÜFT, ergänzt um `sqlDeletedAtLeer`.
  //     Der Schreibweg setzt `deletedAt` ausschließlich auf einen ISO-Zeitpunkt und ENTFERNT das Feld
-@@ -314,9 +160,9 @@ export async function darfKandidatSehen(
+@@ -318,9 +160,9 @@ export async function darfKandidatSehen(
  //     (AUFNAHME 20260922, BEN 4359 Befund B2). Seitdem wertet SQL die in JavaScript falschen
  //     JSON-Werte (null, "", false, 0) wie `!ko.deletedAt` als lebend.
  //
@@ -47165,7 +47190,7 @@ index c6d668430..01fad81f5 100644
  //     (tests/security/380-trim-paritaet.integration.test.ts) fährt beide Formen über alle
  //     Kombinationen aus Stufe × Autorschaft × Rolle gegen ein echtes Postgres — Mengengleichheit,
  //     nicht Stichprobe.
-@@ -330,55 +176,30 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
+@@ -334,56 +176,30 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
    // Die beiden EINZIGEN Fakten, die `darfSehen` über den Betrachter braucht. Sie werden hier
    // EINMAL erhoben und danach nicht mehr befragt — ein Cursor oder eine Folgeseite, die sie später
    // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
@@ -47202,10 +47227,11 @@ index c6d668430..01fad81f5 100644
        //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
        //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
        //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
--      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, gilt NUR
--      //     sie — wörtlich der erste Zweig von `darfSehen`, OHNE Autorausnahme (Nacharbeit 3).
--      //     Dieselbe Kennung `autor` ist auch der Betrachter; ein leerer Betrachter steht in keiner
--      //     Liste (normalisiert).
+-      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, muss der
+-      //     Betrachter ZUSÄTZLICH darin stehen — wörtlich der Quellzweig von `darfSehen`; die Liste
+-      //     ersetzt Rang und Autorschaft nicht (Ben, Nacharbeit 24), und wer nicht gelistet ist,
+-      //     liest auch als Autor nicht (Nacharbeit 3). Dieselbe Kennung `autor` ist auch der
+-      //     Betrachter; ein leerer Betrachter steht in keiner Liste (normalisiert).
 -      const istAutor =
 -        `(COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
 -        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
@@ -47215,10 +47241,10 @@ index c6d668430..01fad81f5 100644
          `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
 -        ` AND (CASE WHEN jsonb_typeof(${leser}) = 'array'` +
 -        ` THEN (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text))` +
--        ` ELSE (${schutz} <= ${freigabe}::int` +
+-        ` ELSE true END) AND (${schutz} <= ${freigabe}::int` +
 -        // Zusammenführung (Nacharbeit 23): die Space-Bedingung (main) als UND hinter Quellleser-/
 -        // Stufenregel — Zeile für Zeile wie `darfSehen`.
--        ` OR ${istAutor}) END)${spaceBedingung})`
+-        ` OR ${istAutor})${spaceBedingung})`
 +        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
 +        ` OR ${rolle}::boolean` +
 +        ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
@@ -47231,7 +47257,7 @@ index c6d668430..01fad81f5 100644
      // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
      // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
      trifftZu(ko): boolean {
-@@ -611,12 +432,11 @@ export async function feldFreigabe(
+@@ -616,12 +432,11 @@ export async function feldFreigabe(
      if (!ko || !darfSehen(user, ko)) {
        return false;
      }
@@ -47247,7 +47273,7 @@ index c6d668430..01fad81f5 100644
    };
    return { a: await erlaubt(koA), b: await erlaubt(koB) };
  }
-@@ -672,14 +492,7 @@ export interface KonfliktFelder {
+@@ -677,14 +492,7 @@ export interface KonfliktFelder {
    koA: string;
    koB: string;
    description: string;
@@ -47263,7 +47289,7 @@ index c6d668430..01fad81f5 100644
  }
  
  export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
-@@ -701,20 +514,10 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
+@@ -706,20 +514,10 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
      return konflikt;
    }
    const detector = konflikt.detector;
@@ -47285,7 +47311,7 @@ index c6d668430..01fad81f5 100644
      redacted: true,
    };
  }
-@@ -762,8 +565,7 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
+@@ -767,8 +565,7 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
  // ZWEI ÄNDERUNGEN, und die zweite ist die wichtigere:
  //
  //   1. Die Trägersuche kennt jetzt alle fünf Orte, an denen eine Referenz stehen kann — dieselbe
@@ -47295,7 +47321,7 @@ index c6d668430..01fad81f5 100644
  //   2. Der TRÄGERLOSE Fall ist fail-closed: eine FEHLENDE Stufe ist keine Aussage „intern",
  //      sondern „unbekannt" — und Unbekanntes wird nicht ausgeliefert. Sichtbar bleibt es nur für
  //      die, die auch ein vertrauliches Objekt sehen dürften: den Hochladenden selbst (das
-@@ -887,16 +689,12 @@ export interface AnhangEntwurf {
+@@ -892,16 +689,12 @@ export interface AnhangEntwurf {
    bodyHtml?: string | null | undefined;
    /** Belegstellen-Originale und Ankerdokumente (`pendingSources`, `anchorDocuments`). */
    objectIds?: readonly (string | null | undefined)[] | undefined;
@@ -47314,7 +47340,7 @@ index c6d668430..01fad81f5 100644
   */
  export interface AnhangQuellen {
    /**
-@@ -1089,7 +887,7 @@ function zuordnungInFassung(
+@@ -1094,7 +887,7 @@ function zuordnungInFassung(
   * Darf dieser Mensch diesen Anhang sehen? (G2 — der Anhang erbt die Stufe seines Objekts.)
   *
   * `traeger` ist der AKTUELLE Bestand der Wissensobjekte; der Aufrufer liefert ihn, damit diese
@@ -47323,7 +47349,7 @@ index c6d668430..01fad81f5 100644
   */
  export interface AnhangUrteil {
    /** Darf dieser Mensch die Bytes bekommen? */
-@@ -1112,55 +910,9 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
+@@ -1117,55 +910,9 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
    return typeof entwurf.bodyHtml === "string" && entwurf.bodyHtml.includes(objectId);
  }
  
@@ -47382,7 +47408,7 @@ index c6d668430..01fad81f5 100644
  function entwurfGehoert(entwurf: AnhangEntwurf, wer: string | null | undefined): boolean {
    return (
      typeof wer === "string" &&
-@@ -1305,7 +1057,7 @@ async function beurteileAnhangKern(
+@@ -1310,7 +1057,7 @@ async function beurteileAnhangKern(
      // sein `objectIds` nur ein frei geliefertes Feld — die reinste Form der Behauptung.
      funde.push({
        nachgewiesen: entwurfGehoert(entwurf, hochladender),
@@ -81318,7 +81344,7 @@ index 8d2ae247c..91adb140e 100644
  /** Der Index: Begriff -> die anderen Begriffe derselben Zuordnung. Einmal gebaut, nicht je Abfrage. */
  const ZUORDNUNGS_INDEX: ReadonlyMap<string, readonly string[]> = (() => {
 diff --git b/services/knowledge-object/src/service.ts a/services/knowledge-object/src/service.ts
-index 15cf7804d..925f1d4a8 100644
+index 35dba4e0f..925f1d4a8 100644
 --- b/services/knowledge-object/src/service.ts
 +++ a/services/knowledge-object/src/service.ts
 @@ -6,9 +6,6 @@ import type { TxContext } from "../../db-tx";
@@ -83426,7 +83452,7 @@ index 15cf7804d..925f1d4a8 100644
          .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
        query.vorInhaltsabruf,
      );
-@@ -5195,58 +4145,11 @@ export class KoService {
+@@ -5195,72 +4145,19 @@ export class KoService {
      }
    }
  
@@ -83483,9 +83509,24 @@ index 15cf7804d..925f1d4a8 100644
 -    extraPayload: Record<string, unknown>,
 -    papierkorb?: KoPapierkorbBedingung,
    ): Promise<void> {
+-    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24): der Beleg hält fest, OB das Objekt
+-    // eine Leserliste aus der Quelle trug — nur ein Ja/Nein, keine Kennungen. Nach der Endlöschung
+-    // ist das die einzige Schutzinformation, die das Auditprotokoll noch über das Objekt hat; fehlt
+-    // sie (Altbelege), gilt das Objekt dort als unklar geschützt und bleibt verborgen.
+-    const vorher = await this.repo.findById(id);
+-    const quellbeschraenkt = Array.isArray(vorher?.quellrechte?.leser);
      // 1) Cleanup ZUERST — schlägt es fehl, bleibt das KO bestehen (kein Delete, kein Audit). S. (A) oben.
      await this.onPurge?.(id, actor);
-@@ -5298,7 +4201,7 @@ export class KoService {
+     const auditInput = {
+       actor,
+       action: "ko.purged" as const,
+       target: id,
+-      payload: { reason, ...extraPayload, quellbeschraenkt },
++      payload: { reason, ...extraPayload },
+     };
+     const audit = this.audit;
+     // ============================================================================================
+@@ -5304,7 +4201,7 @@ export class KoService {
      if (this.withTx && audit) {
        await this.withTx(async (tx) => {
          const beitrag = await beitragAus(tx);
@@ -83494,7 +83535,7 @@ index 15cf7804d..925f1d4a8 100644
          await audit.record({ ...auditInput, payload: { ...auditInput.payload, ...beitrag } }, tx);
        });
        // G27: der abgeleitete Suchindex folgt der Endlöschung. NACH dem Commit und bewusst
-@@ -5312,18 +4215,9 @@ export class KoService {
+@@ -5318,18 +4215,9 @@ export class KoService {
      // Kompositionen ohne echte Datenbank erreichbar (InMemory, Dev-Journal); wo es keine
      // Transaktionsgrenze gibt, behauptet dieser Vertrag auch keine. Der Haken läuft trotzdem —
      // sonst bliebe in genau diesen Kompositionen ein verwaistes Folgeartefakt stehen.
@@ -83514,7 +83555,7 @@ index 15cf7804d..925f1d4a8 100644
      await this.searchProjections.removeByKo(id).catch(() => undefined);
    }
  
-@@ -5344,21 +4238,10 @@ export class KoService {
+@@ -5350,21 +4238,10 @@ export class KoService {
      for (const ko of await this.repo.list({})) {
        if (ko.deletedAt && this.trashExpiry(ko.deletedAt) <= nowMs) {
          try {
@@ -83538,7 +83579,7 @@ index 15cf7804d..925f1d4a8 100644
          }
        }
      }
-@@ -5368,29 +4251,6 @@ export class KoService {
+@@ -5374,36 +4251,6 @@ export class KoService {
    // Papierkorb-Ansicht (Admin): nur Metadaten, jüngste Löschung zuerst.
    // SCRUM-523 P.3 (WP2): reine Leseansicht — löst KEINE Endlöschung mehr aus. Abgelaufene Einträge sind
    // an ihrem `expiresAt` (Vergangenheit) ehrlich erkennbar, bis ein expliziter runTrashSweep sie entfernt.
@@ -83547,6 +83588,8 @@ index 15cf7804d..925f1d4a8 100644
 -   * Objekts — auch im Papierkorb — und sonst nichts: Kennung, führender Space, Stufe, Autor. Das
 -   * Auditprotokoll nennt Objekte auch nach dem Löschen; ob ein Leser sie sehen darf, entscheidet
 -   * die Route mit `darfSehen` gegen genau diese Fakten. Kein Titel, kein Inhalt, keine Lesefassung.
+-   * Nacharbeit 24 (Ben): dazu die Leserliste aus der Quelle (`quellrechte.leser`) — ohne sie fiele
+-   * ein Objekt mit Quellbeschränkung im Protokoll auf die bloße Stufenregel zurück.
 -   */
 -  async sichtbarkeitsfaktenAller(): Promise<
 -    {
@@ -83554,21 +83597,26 @@ index 15cf7804d..925f1d4a8 100644
 -      spaceId?: string;
 -      confidentiality: KnowledgeObject["confidentiality"];
 -      author: string;
+-      quellrechte?: { leser: readonly string[] };
 -    }[]
 -  > {
 -    const all = await this.repo.list({});
--    return all.map((k) => ({
--      id: k.id,
--      ...(typeof k.spaceId === "string" ? { spaceId: k.spaceId } : {}),
--      confidentiality: k.confidentiality,
--      author: k.author,
--    }));
+-    return all.map((k) => {
+-      const leser = k.quellrechte?.leser;
+-      return {
+-        id: k.id,
+-        ...(typeof k.spaceId === "string" ? { spaceId: k.spaceId } : {}),
+-        confidentiality: k.confidentiality,
+-        author: k.author,
+-        ...(Array.isArray(leser) ? { quellrechte: { leser: [...leser] } } : {}),
+-      };
+-    });
 -  }
 -
    async trashed(): Promise<TrashedKo[]> {
      const all = await this.repo.list({});
      return all
-@@ -5436,7 +4296,7 @@ export class KoService {
+@@ -5449,7 +4296,7 @@ export class KoService {
    async restore(id: string, actor = "system"): Promise<KnowledgeObject> {
      const ko = await this.repo.findById(id);
      if (!ko?.deletedAt) {
@@ -83577,7 +83625,7 @@ index 15cf7804d..925f1d4a8 100644
      }
      const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
      // Auftrag gesamt-dubletten-rueckzug: das Zurückholen läuft über denselben benannten Weg wie
-@@ -5444,27 +4304,12 @@ export class KoService {
+@@ -5457,27 +4304,12 @@ export class KoService {
      // Entscheidung Pedi (entscheidung:43017d60): das Wiederherstellen stellt NUR den eigenen Beitrag
      // wieder her. Es trägt deshalb keinen Aufräumbeitrag: ein durch den Rückzug geschlossener
      // Dublettenbefund bleibt geschlossen (keine Wiederöffnung), die Gegenseite bleibt unangetastet.
@@ -83611,7 +83659,7 @@ index 15cf7804d..925f1d4a8 100644
      return this.lesefassung(restored as KnowledgeObject);
    }
  
-@@ -5474,11 +4319,9 @@ export class KoService {
+@@ -5487,11 +4319,9 @@ export class KoService {
    async purgeTrashed(id: string, actor = "system"): Promise<void> {
      const ko = await this.repo.findById(id);
      if (!ko?.deletedAt) {
@@ -83625,7 +83673,7 @@ index 15cf7804d..925f1d4a8 100644
    }
  
    // SCRUM-161: read-only Zugriff auf die in SCRUM-159 persistierten Voll-Snapshots.
-@@ -5488,23 +4331,6 @@ export class KoService {
+@@ -5501,23 +4331,6 @@ export class KoService {
      return this.versions?.listByKo(id) ?? [];
    }
  
@@ -83649,7 +83697,7 @@ index 15cf7804d..925f1d4a8 100644
    // SCRUM-160: minimaler read-only Zugriff für Service-Vertrag/Tests. UI bleibt außerhalb Scope.
    async evidenceOf(id: string) {
      await this.require(id);
-@@ -5620,7 +4446,6 @@ export class KoService {
+@@ -5633,7 +4446,6 @@ export class KoService {
          "measures",
          "bodyHtml",
          "asset",
@@ -83657,7 +83705,7 @@ index 15cf7804d..925f1d4a8 100644
          "sources",
        ] as const
      ).filter((feld) => changes[feld] !== undefined);
-@@ -5797,21 +4622,7 @@ export class KoService {
+@@ -5810,21 +4622,7 @@ export class KoService {
      id: string,
      changes: ReviseMitHerkunft,
      author: string,
@@ -83680,7 +83728,7 @@ index 15cf7804d..925f1d4a8 100644
    ): Promise<KnowledgeObject> {
      if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
        throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
-@@ -5866,7 +4677,6 @@ export class KoService {
+@@ -5879,7 +4677,6 @@ export class KoService {
          // JOB 2704 D1: der Beleg läuft auf dem Transaktionsclient der Revision (tx aus mutateKoTx,
          // undefined ohne withTx) — er committet und verschwindet mit ihr.
          audit: async (tx) => {
@@ -83688,7 +83736,7 @@ index 15cf7804d..925f1d4a8 100644
            await this.audit?.record(
              {
                actor: author,
-@@ -5876,17 +4686,6 @@ export class KoService {
+@@ -5889,17 +4686,6 @@ export class KoService {
              },
              tx,
            );
@@ -83706,7 +83754,7 @@ index 15cf7804d..925f1d4a8 100644
          },
        };
      });
-@@ -5943,22 +4742,8 @@ export class KoService {
+@@ -5956,22 +4742,8 @@ export class KoService {
      const nextStatement =
        changes.statement ??
        (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
@@ -83730,7 +83778,7 @@ index 15cf7804d..925f1d4a8 100644
        title: changes.title ?? ko.title,
        statement: nextStatement,
        bodyHtml: nextBody,
-@@ -6031,22 +4816,16 @@ export class KoService {
+@@ -6044,22 +4816,16 @@ export class KoService {
        // von `append` nie ersetzt (repo.ts:468). Der einzige Fall, in dem überhaupt Zeichen
        // verschwinden, ist eine Kennung aus reinem Leerraum — sie konnte nie eine Information
        // tragen.
@@ -83757,7 +83805,7 @@ index 15cf7804d..925f1d4a8 100644
    }
  
    // ==============================================================================================
-@@ -6181,16 +4960,13 @@ export class KoService {
+@@ -6194,16 +4960,13 @@ export class KoService {
        return {
          updated,
          value: { ko: updated, proposal },
@@ -83781,7 +83829,7 @@ index 15cf7804d..925f1d4a8 100644
          },
        };
      });
-@@ -6523,8 +5299,6 @@ export class KoService {
+@@ -6536,8 +5299,6 @@ export class KoService {
            captionTexts: searchCaptionTexts(nextBody),
            // JOB 3111 · B1b: der dritte Schreibrand (Dokumentinhalt übernehmen) setzt beide Felder.
            imageNames: searchImageNames(nextBody),
@@ -83790,7 +83838,7 @@ index 15cf7804d..925f1d4a8 100644
            version,
            trust: 0, // Revisions-Semantik unverändert: Bewertungen der Vorversion zählen nicht mehr.
            status: "offen", // muss neu validiert werden
-@@ -6535,23 +5309,22 @@ export class KoService {
+@@ -6548,23 +5309,22 @@ export class KoService {
              { version, at, author, note: "überarbeitet (Dokumentinhalt übernommen)" },
            ],
          };
@@ -83821,7 +83869,7 @@ index 15cf7804d..925f1d4a8 100644
            snapshotWritten = this.versions !== undefined;
          }
          // G27: die Projektion der jetzt gültigen Version entsteht in DERSELBEN
-@@ -6560,91 +5333,60 @@ export class KoService {
+@@ -6573,91 +5333,60 @@ export class KoService {
          // Operation bindet nur Anker und Belegstellen) und die Version dieselbe; dann greift die
          // Append-only-Regel, `insert` ist ein No-op und die bestehende, gültige Projektion bleibt
          // unangetastet. Genau diese Unterscheidung trägt die Meldung.
@@ -83958,7 +84006,7 @@ index 15cf7804d..925f1d4a8 100644
        } catch (err) {
          // Vollständige Rücknahme: Snapshot entfernen (falls geschrieben) und den Inhalt auf den
          // Vorzustand zurücksetzen — inklusive `appendOps`, sodass eine Wiederholung den Vorgang
-@@ -6678,9 +5420,6 @@ export class KoService {
+@@ -6691,9 +5420,6 @@ export class KoService {
          throw err;
        }
      });
@@ -83968,7 +84016,7 @@ index 15cf7804d..925f1d4a8 100644
      return this.lesefassungWert(commit);
    }
  
-@@ -6780,50 +5519,29 @@ export class KoService {
+@@ -6793,50 +5519,29 @@ export class KoService {
          opts.meldeMetadatenstand?.(unveraendert.projection.metadataRevision);
          return before;
        }
@@ -84037,7 +84085,7 @@ index 15cf7804d..925f1d4a8 100644
          return updated;
        } catch (err) {
          // Kompensation: der autoritative Stand geht zurück, und die Projektion wird auf DIESEN
-@@ -6880,20 +5598,6 @@ export class KoService {
+@@ -6893,20 +5598,6 @@ export class KoService {
      });
    }
  
@@ -84058,7 +84106,7 @@ index 15cf7804d..925f1d4a8 100644
    // JOB 4251: `opts` ist der bedingte Schreibzugriff auf die Einordnung (s. `EinordnungsBedingung`).
    // Er ist optional, und ohne ihn ist dieser Aufruf Zeichen für Zeichen der bisherige.
    async updateCategory(
-@@ -6906,12 +5610,7 @@ export class KoService {
+@@ -6919,12 +5610,7 @@ export class KoService {
        id,
        actor,
        { action: "ko.category-changed", grund: "ko.updateCategory" },
@@ -84072,7 +84120,7 @@ index 15cf7804d..925f1d4a8 100644
        opts,
      );
    }
-@@ -6962,310 +5661,6 @@ export class KoService {
+@@ -6975,310 +5661,6 @@ export class KoService {
      });
    }
  
@@ -84383,7 +84431,7 @@ index 15cf7804d..925f1d4a8 100644
    // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.
    // Ein offener WAHRHEITSKONFLIKT gegen ein VALIDIERTES KO darf serverseitig nicht so tun, als sei das
    // KO unverändert voll vertrauenswürdig: Status validiert → offen (review-pflichtig) und Trust
-@@ -7285,26 +5680,13 @@ export class KoService {
+@@ -7298,26 +5680,13 @@ export class KoService {
      const previousTrust = ko.trust;
      const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
      const updated: KnowledgeObject = { ...ko, status: "offen", trust };
@@ -84417,7 +84465,7 @@ index 15cf7804d..925f1d4a8 100644
      return updated;
    }
  
-@@ -7330,135 +5712,6 @@ export class KoService {
+@@ -7343,135 +5712,6 @@ export class KoService {
      return this.lesefassung(ergebnis);
    }
  
@@ -84553,7 +84601,7 @@ index 15cf7804d..925f1d4a8 100644
    // ==============================================================================================
    // W3-C (KW-W3-19, Pedi 03.08.) — DEN VERWEIS AUF DIE ENTSCHEIDUNG FESTHALTEN.
    // ==============================================================================================
-@@ -7519,52 +5772,6 @@ export class KoService {
+@@ -7532,52 +5772,6 @@ export class KoService {
      return trust;
    }
  
@@ -84606,7 +84654,7 @@ index 15cf7804d..925f1d4a8 100644
    // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.
    async setAuthor(id: string, author: string, actor = "system"): Promise<KnowledgeObject> {
      return this.mutateKo(id, (ko) => {
-@@ -7572,75 +5779,13 @@ export class KoService {
+@@ -7585,75 +5779,13 @@ export class KoService {
        return {
          updated,
          value: updated,
@@ -84689,7 +84737,7 @@ index 15cf7804d..925f1d4a8 100644
          },
        };
      });
-@@ -7694,7 +5839,6 @@ export class KoService {
+@@ -7707,7 +5839,6 @@ export class KoService {
          action: "ko.deleted",
          payload: { trash: true },
          beitrag: hook ? (tx) => hook(id, actor, tx, { zurueckgezogenVon }) : undefined,
@@ -84697,7 +84745,7 @@ index 15cf7804d..925f1d4a8 100644
        },
      );
    }
-@@ -7731,21 +5875,11 @@ export class KoService {
+@@ -7744,21 +5875,11 @@ export class KoService {
    // Papierkorb absichtlich sieht (neben `trashed`, `restore`, `eigeneRuecknahmeVon`); einziger
    // Aufrufer ist der Grabstein eines zurückgezogenen Dublettenbefunds (overlap-routes.ts), der
    // damit prüft, ob der Betrachter die zurückgezogene Seite sehen durfte. Endgelöscht → nichts.
@@ -84723,7 +84771,7 @@ index 15cf7804d..925f1d4a8 100644
    }
  
    private async imRuecknahmeVorgang(
-@@ -7755,11 +5889,9 @@ export class KoService {
+@@ -7768,11 +5889,9 @@ export class KoService {
        action: "ko.deleted" | "ko.restored";
        payload: Record<string, unknown>;
        beitrag: RuecknahmeBeitrag | undefined;
@@ -84736,7 +84784,7 @@ index 15cf7804d..925f1d4a8 100644
      const beleg = (zusatz: Record<string, unknown>) => {
        const gesamt = { ...payload, ...zusatz };
        return {
-@@ -7779,24 +5911,13 @@ export class KoService {
+@@ -7792,24 +5911,13 @@ export class KoService {
          await this.repo.update(neu, tx);
          await audit.record(beleg(zusatz), tx);
        });
@@ -84764,7 +84812,7 @@ index 15cf7804d..925f1d4a8 100644
    }
  
    // ==============================================================================================
-@@ -7830,203 +5951,6 @@ export class KoService {
+@@ -7843,203 +5951,6 @@ export class KoService {
      return this.searchProjections.find(ko.id, ko.version);
    }
  

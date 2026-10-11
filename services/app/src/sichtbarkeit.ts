@@ -133,12 +133,14 @@ function istAutor(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
  * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
  * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
  *
- * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER VOR STUFE. Trägt das Objekt
- * eine Leserliste aus der Quelle, entscheidet NUR sie: wer in Confluence lesen darf, liest in Klara,
- * sonst niemand — kein `ko.validate`-Inhaber und auch NICHT der annehmende Autor (Ben, Nacharbeit 3:
- * ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff, den die Quelle ihm
- * verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht „offen". Ohne Liste gilt
- * die Regel oben unverändert.
+ * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER UND STUFE. Trägt das Objekt
+ * eine Leserliste aus der Quelle, ist sie eine zusätzliche NOTWENDIGE Bedingung: wer in Confluence
+ * nicht lesen darf, liest in Klara nicht — kein `ko.validate`-Inhaber und auch NICHT der annehmende
+ * Autor (Ben, Nacharbeit 3: ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff,
+ * den die Quelle ihm verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht
+ * „offen". Wer gelistet ist, durchläuft danach die Regel oben (Space, Rang oder Autorschaft) —
+ * die Liste ersetzt das persönliche Freigabeniveau nicht (aufnahme:20260922:gesamt-leserechte,
+ * Ben Nacharbeit 24, Entscheidung 15).
  *
  * PFLICHT FÜR JEDE PROJEKTION: wer Sichtbarkeitsfakten verkürzt weiterreicht, muss `quellrechte`
  * mitnehmen (Gesamtanweisung, Papierkorb). Ohne sie fiele das Objekt auf die Stufenregel zurück.
@@ -150,12 +152,14 @@ export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
   if (!spaceErlaubt(user, ko.spaceId)) {
     return false;
   }
-  // R-0549 (main): eine Leserliste aus der Quelle entscheidet allein. Nacharbeit 20 (Integration
-  // main) übernimmt diesen Vorrang unverändert; ob Quellleser zusätzlich den Freigaberang brauchen,
-  // ist nicht entschieden (docs/entscheidungen/gesamt-leserechte.md).
+  // R-0549 (main): eine Leserliste aus der Quelle ist eine NOTWENDIGE Bedingung — wer nicht darin
+  // steht, liest nicht (auch nicht der annehmende Autor, Ben Nacharbeit 3). Sie ERSETZT aber die
+  // Stufenprüfung nicht (Ben, Nacharbeit 24; Entscheidung 15 „persönliches Freigabeniveau PLUS
+  // Objekt-/Gruppenrechte“): ein gelistetes Konto braucht zusätzlich den Freigaberang wie jeder
+  // andere Leser. Dieselbe Regel steht im SQL-Prädikat (`sqlSichtbarkeitFuer`).
   const leser = ko.quellrechte?.leser;
-  if (Array.isArray(leser)) {
-    return user.id.length > 0 && leser.includes(user.id);
+  if (Array.isArray(leser) && !(user.id.length > 0 && leser.includes(user.id))) {
+    return false;
   }
   if (schutzrang(ko.confidentiality) <= freigaberang(user)) {
     return true;
@@ -359,10 +363,11 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
       //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
-      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, gilt NUR
-      //     sie — wörtlich der erste Zweig von `darfSehen`, OHNE Autorausnahme (Nacharbeit 3).
-      //     Dieselbe Kennung `autor` ist auch der Betrachter; ein leerer Betrachter steht in keiner
-      //     Liste (normalisiert).
+      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, muss der
+      //     Betrachter ZUSÄTZLICH darin stehen — wörtlich der Quellzweig von `darfSehen`; die Liste
+      //     ersetzt Rang und Autorschaft nicht (Ben, Nacharbeit 24), und wer nicht gelistet ist,
+      //     liest auch als Autor nicht (Nacharbeit 3). Dieselbe Kennung `autor` ist auch der
+      //     Betrachter; ein leerer Betrachter steht in keiner Liste (normalisiert).
       const istAutor =
         `(COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
         ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
@@ -372,10 +377,10 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
         ` AND (CASE WHEN jsonb_typeof(${leser}) = 'array'` +
         ` THEN (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text))` +
-        ` ELSE (${schutz} <= ${freigabe}::int` +
+        ` ELSE true END) AND (${schutz} <= ${freigabe}::int` +
         // Zusammenführung (Nacharbeit 23): die Space-Bedingung (main) als UND hinter Quellleser-/
         // Stufenregel — Zeile für Zeile wie `darfSehen`.
-        ` OR ${istAutor}) END)${spaceBedingung})`
+        ` OR ${istAutor})${spaceBedingung})`
       );
     },
     params: spaces ? [rang, betrachter, spaces] : [rang, betrachter],

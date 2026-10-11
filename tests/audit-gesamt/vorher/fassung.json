@@ -1,6 +1,6 @@
 {
   "zweck": "Produktstand VOR der Behebung für tests/audit-gesamt/vorher-nachher.integration.test.ts",
-  "kandidat_beim_erzeugen": "f1586d84759871c7d6224c7ddfd240a72c9e0f7b zusammengeführt mit main 343d4b241 (aufnahme:20260922:gesamt-leserechte Nacharbeit 23: Konflikt in services/app/src/seed-demo.ts aufgelöst; main brachte dazu demo-content.ts), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
+  "kandidat_beim_erzeugen": "587318d7eb00486b0c352ff60f8c546f209f45f3 + Arbeitsstand aufnahme:20260922:gesamt-leserechte Nacharbeit 24 (sichtbarkeit.ts: Quellleser UND Freigaberang, auch im SQL; audit-routes.ts: Objektprüfung samt Quellrechten für jeden Leser; knowledge-object/src/service.ts: Quellrechte in den Sichtbarkeitsfakten, `quellbeschraenkt` im Löschbeleg), erzeugt aus dem Arbeitsbaum vor der Kandidatbildung",
   "erzeugungshinweis": "Nacharbeit 15 hatte vor der Formatierung erzeugt; die Kandidatbildung formatierte audit-routes.ts (Aufrufketten zusammengezogen), der Patch passte nicht mehr. Patch nur vom formatierten Stand erzeugen.",
   "vorher_hauptstand": "6c576c7014302bc85b86af85c50794e0aefe7d64",
   "vorher_beschreibung": "integrierter Hauptstand ohne die Behebung dieses Auftrags (erster Elternteil des Integrations-Merges 46f89d12 ist die Arbeitssicherung, zweiter 6c576c70 der Hauptstand)",

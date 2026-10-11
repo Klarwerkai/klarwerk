@@ -573,3 +573,107 @@ describe("K6 · die Integritätsprüfung nennt ihren Zeitpunkt", () => {
     expect((rot.json() as { ok: boolean }).ok).toBe(false);
   });
 });
+
+// ================================================================================================
+// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 24) — QUELLRECHTE IM PROTOKOLL.
+// ================================================================================================
+//
+// Freigaberang 2 und alle Spaces genügten bis hierher für die UNVERÄNDERTE Kette. Ein Objekt, das
+// eine Leserliste aus der Quelle trägt, stand damit für einen ausgeschlossenen Leser mit Kennung,
+// Vorgängen und Zählwerten im Protokoll. Jetzt läuft die Objektprüfung (samt Quellrechten) für
+// JEDEN Leser; uneingeschränkt ist nur, wem danach nichts verborgen bleibt. Und ein endgelöschtes
+// Objekt, dessen Quellschutz nicht belegt ist, gibt nichts frei.
+describe("Nacharbeit 24 · Quellrechte und unbelegter Schutz im Prüfprotokoll", () => {
+  const QUELLOBJEKT = "ko-quelle-lea";
+  const GELOESCHT_ALT = "ko-geloescht-alt";
+  const GELOESCHT_NEU = "ko-geloescht-neu";
+
+  async function quellbuehne() {
+    const repo = new InMemoryAuditRepo();
+    let uhr = Date.parse("2026-10-01T08:00:00.000Z");
+    const audit = new AuditService({ repo, now: () => uhr });
+    const eintraege: AuditInput[] = [
+      { actor: "u-anna", action: "ko.created", target: "ko-offen" },
+      { actor: "u-anna", action: "ko.created", target: QUELLOBJEKT },
+      { actor: "u-anna", action: "ko.revised", target: QUELLOBJEKT, payload: { version: 2 } },
+      { actor: "u-anna", action: "ko.created", target: GELOESCHT_ALT },
+      // Altbeleg: die Endlöschung sagt nichts über Quellrechte.
+      { actor: "u-admin", action: "ko.purged", target: GELOESCHT_ALT, payload: { reason: "x" } },
+      { actor: "u-anna", action: "ko.created", target: GELOESCHT_NEU },
+      {
+        actor: "u-admin",
+        action: "ko.purged",
+        target: GELOESCHT_NEU,
+        payload: { reason: "hard", quellbeschraenkt: false },
+      },
+    ];
+    for (const e of eintraege) {
+      uhr += 60_000;
+      await audit.record(e);
+    }
+    const objekte: Record<string, AuditObjektFakten> = {
+      "ko-offen": { title: OFFEN, author: "u-anna", confidentiality: "intern" },
+      [QUELLOBJEKT]: {
+        title: "Quellseite nur für Lea (fiktiv)",
+        author: "u-anna",
+        confidentiality: "intern",
+        quellrechte: { leser: ["u-lea"] },
+      },
+    };
+    const quelle: AuditLeseQuelle = {
+      sichtbarkeitsfaktenAller: async () =>
+        Object.entries(objekte).map(([id, f]) => ({ id, ...f })),
+      spaceKennungen: async () => [],
+      befundZuordnungen: async () => [],
+    };
+    const app = Fastify();
+    app.register(
+      auditRoutes(audit, testTuer(), [], { get: async (id: string) => objekte[id] }, quelle),
+    );
+    await app.ready();
+    offen.push(app);
+    return app;
+  }
+
+  const STRENG = {
+    "x-test-rolle": "admin",
+    "x-test-konto": "u-admin",
+    "x-test-freigabe": "streng_vertraulich",
+  };
+  const LEA_STRENG = { ...STRENG, "x-test-konto": "u-lea" };
+
+  it("Rang 2 ohne Quellrecht: das Quellobjekt fehlt in Liste, Seite, Export und Prüfbericht", async () => {
+    const app = await quellbuehne();
+    for (const url of ["/api/audit", "/api/audit/seite", "/api/audit/export"]) {
+      const res = await app.inject({ method: "GET", url, headers: STRENG });
+      expect(res.statusCode, url).toBe(200);
+      expect(res.body, url).not.toContain(QUELLOBJEKT);
+      expect(res.body, url).toContain("ko-offen");
+    }
+    const exp = await app.inject({ method: "GET", url: "/api/audit/export", headers: STRENG });
+    expect((exp.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");
+    const bericht = await app.inject({ method: "GET", url: "/api/audit/verify", headers: STRENG });
+    expect(bericht.json()).toMatchObject({ kette: false });
+    const befunde = await app.inject({
+      method: "GET",
+      url: `/api/audit/ko/${QUELLOBJEKT}/findings`,
+      headers: STRENG,
+    });
+    expect(befunde.json()).toEqual({ ids: [] });
+  });
+
+  it("ein Altbeleg ohne Angabe zum Quellschutz gibt das gelöschte Objekt nicht frei; ein belegter schon", async () => {
+    const app = await quellbuehne();
+    const liste = await app.inject({ method: "GET", url: "/api/audit", headers: LEA_STRENG });
+    expect(liste.statusCode).toBe(200);
+    // Lea steht in der Leserliste: das Quellobjekt sieht sie.
+    expect(liste.body).toContain(QUELLOBJEKT);
+    // Der Altbeleg trägt keine Schutzinformation — verborgen, auch für Rang 2.
+    expect(liste.body).not.toContain(GELOESCHT_ALT);
+    // Gegenprobe: „keine Quellleser“ ist belegt — das gelöschte Objekt bleibt nachvollziehbar.
+    expect(liste.body).toContain(GELOESCHT_NEU);
+    // Und weil etwas verborgen ist, ist auch ihr Export eine Ansicht, keine Kette.
+    const exp = await app.inject({ method: "GET", url: "/api/audit/export", headers: LEA_STRENG });
+    expect((exp.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");
+  });
+});

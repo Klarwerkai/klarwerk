@@ -80,11 +80,17 @@ Meldung „verweigert". Fremder Inhalt wird dabei nicht gelesen.
 
 Beide fachlichen Stände sind erhalten; wo sie sich widersprachen, gilt die engere Regel. Im Einzelnen:
 
-- **Quellleser vor Stufe (R-0549, main) × Variante B:** trägt ein Objekt eine Leserliste aus der
-  Quelle, entscheidet weiter allein sie (wie in main); ohne Liste gilt Variante B. **Offen:** ob ein
-  Quellleser zusätzlich den Freigaberang braucht (ein gelisteter Leser ohne persönliches Niveau
-  liest heute ein vertrauliches Quellobjekt). Das ist eine Produktentscheidung und hier nicht
-  getroffen.
+- **Quellleser (R-0549, main) × Variante B:** Stand Nacharbeit 20 entschied die Leserliste allein.
+  **Seit Nacharbeit 24 (Ben, gestützt auf Entscheidung 15 „persönliches Freigabeniveau PLUS
+  Objekt-/Gruppenrechte“):** die Liste ist eine zusätzliche notwendige Bedingung; ein gelistetes Konto
+  braucht außerdem den Freigaberang der Stufe (oder ist Autor UND gelistet). Wer nicht gelistet ist,
+  liest weiterhin nicht, auch nicht als Autor. Dieselbe Regel steht im SQL-Prädikat. Belege:
+  `confluence-leserechte-quellgetreu` S1/S1b, `quellleser-trim-paritaet` P1 (Parität über alle Niveaus)
+  und P2 (gelistet mit Niveau „intern“ → verborgen).
+- **Prüfprotokoll × Quellrechte (Nacharbeit 24):** die Sichtbarkeitsfakten tragen die Leserliste; die
+  Objektprüfung läuft für jeden Leser, uneingeschränkt ist nur, wem danach nichts verborgen bleibt.
+  Der Löschbeleg `ko.purged` hält fest, ob eine Leserliste bestand (`quellbeschraenkt`, ohne
+  Kennungen); ein endgelöschtes Objekt ohne diese Angabe (Altbelege) bleibt im Protokoll verborgen.
 - **Prüfprotokoll (ADMIN-03, main) × Leseransicht:** main brachte den Seitenweg `GET /api/audit/seite`,
   den Prüfzeitpunkt `checkedAt` und die Schwärzung von Inhaltsfeldern (`audit-sicht.ts`). Für einen
   eingeschränkten Leser gilt zuerst die Leseransicht dieses Auftrags (Einträge zu Verborgenem fehlen,

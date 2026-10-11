@@ -50,9 +50,10 @@ export interface AuditLeseQuelle {
 // Stufe: was `darfSehen` vorenthält, liegt an Spaces UND am persönlichen Freigabeniveau.
 // Eingeschränkt ist deshalb, wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand
 // und jeder Space, den die Kette je genannt hat) ODER keinen Freigaberang 2 („streng vertraulich",
-// `freigaberang`) hat. Das hängt nur an Spaces, Mitgliedschaft und dem eigenen Niveau — nicht
-// daran, ob es gerade verborgene Vorgänge gibt. Ein uneingeschränkter Leser bekommt das Protokoll
-// unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
+// `freigaberang`) hat ODER (Ben, Nacharbeit 24) dem nach der Objektprüfung irgendein Objekt oder
+// Befund verborgen bleibt — etwa durch eine Leserliste aus der Quelle (`quellrechte.leser`) oder
+// ein endgelöschtes Objekt, dessen Quellschutz nicht belegt ist. Nur wer tatsächlich alles lesen
+// darf, bekommt das Protokoll unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
 //
 // WAS EIN EINGESCHRÄNKTER LESER BEKOMMT — eine Leseransicht, die nichts von verborgenen Vorgängen
 // abhängen lässt:
@@ -116,8 +117,12 @@ async function leselage(
   if (!quelle) {
     return { eingeschraenkt: true, verborgen: new Set(), ziele: new Set(), alles: true };
   }
-  // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe.
-  const ausKette = new Map<string, { spaceId?: string | null; author?: string; stufe?: string }>();
+  // Die Geschichte jedes Objekts aus der Kette: letzter Space, Autor, letzte Stufe — und ob die
+  // Endlöschung festhielt, dass KEINE Leserliste aus der Quelle bestand (`quellfrei`, Nacharbeit 24).
+  const ausKette = new Map<
+    string,
+    { spaceId?: string | null; author?: string; stufe?: string; quellfrei?: boolean }
+  >();
   const spaces = new Set<string>(await quelle.spaceKennungen());
   const befundKos = new Map<string, Set<string>>();
   for (const e of kette) {
@@ -135,8 +140,16 @@ async function leselage(
           }
         }
       }
-      if (e.action === "ko.confidentiality" && typeof e.payload.level === "string") {
+      if (
+        (e.action === "ko.confidentiality" || e.action === "ko.quellrechte") &&
+        typeof e.payload.level === "string"
+      ) {
         g.stufe = e.payload.level;
+      }
+      if (e.action === "ko.purged") {
+        // Nur ein ausdrückliches `false` belegt „keine Quellleser“; fehlt die Angabe (Altbeleg),
+        // ist der Schutz unbekannt — und unbekannt gibt nichts frei.
+        g.quellfrei = e.payload.quellbeschraenkt === false;
       }
       ausKette.set(e.target, g);
     }
@@ -148,11 +161,9 @@ async function leselage(
       befundKos.set(e.target, kos);
     }
   }
-  const lesbar = user.spaceLesbar;
-  const eingeschraenkt = freigaberang(user) < 2 || [...spaces].some((s) => lesbar?.has(s) !== true);
-  if (!eingeschraenkt) {
-    return UNEINGESCHRAENKT;
-  }
+  // Nacharbeit 24 (Ben): die Objektprüfung läuft für JEDEN Leser, auch mit Freigaberang 2 und allen
+  // Spaces — eine Leserliste aus der Quelle kann ihn trotzdem ausschließen. Uneingeschränkt ist nur,
+  // wem danach tatsächlich nichts verborgen ist.
   const verborgen = new Set<string>();
   const aktuell = new Map((await quelle.sichtbarkeitsfaktenAller()).map((f) => [f.id, f]));
   for (const [id, fakten] of aktuell) {
@@ -165,7 +176,12 @@ async function leselage(
       continue;
     }
     // Endgültig gelöscht: die Kette weiß, wo es zuletzt lag. Die Stufe gilt als streng, wo sie
-    // nicht belegt ist — für Leser mit `ko.validate` ändert das nichts, für alle anderen schließt es.
+    // nicht belegt ist. Ob eine Leserliste aus der Quelle bestand, weiß nur der Löschbeleg
+    // (`quellbeschraenkt`); ist „keine“ nicht belegt, bleibt das Objekt verborgen (Nacharbeit 24).
+    if (g.quellfrei !== true) {
+      verborgen.add(id);
+      continue;
+    }
     const fakten: SichtbarkeitsFakten = {
       ...(g.spaceId ? { spaceId: g.spaceId } : {}),
       confidentiality: (g.stufe ?? "streng_vertraulich") as SichtbarkeitsFakten["confidentiality"],
@@ -188,6 +204,11 @@ async function leselage(
     if (!zuzuordnen || [...kos].some((k) => verborgen.has(k))) {
       verborgen.add(befund);
     }
+  }
+  const lesbar = user.spaceLesbar;
+  const spaceFehlt = [...spaces].some((s) => lesbar?.has(s) !== true);
+  if (freigaberang(user) >= 2 && !spaceFehlt && verborgen.size === 0) {
+    return UNEINGESCHRAENKT;
   }
   const ziele = new Set<string>([
     ...aktuell.keys(),
