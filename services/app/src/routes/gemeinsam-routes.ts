@@ -110,6 +110,9 @@ function lesefassung(ko: KnowledgeObject) {
     titel: ko.title,
     rumpf,
     text: textAusRumpf(rumpf),
+    // Die Stufe des Artikels — die Fläche gibt sie an KI-Wege des Editors (Bildbeschreibung)
+    // weiter, wie der Artikeleditor selbst. Fehlt sie, gilt dort fail-safe „vertraulich".
+    vertraulichkeit: ko.confidentiality ?? null,
   };
 }
 

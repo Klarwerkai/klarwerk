@@ -4,7 +4,7 @@
 // Die Gestalt ist die des Servers (`services/app/src/gemeinsamer-entwurf.ts`); sie steht hier ein
 // zweites Mal, weil die Web-App keine Servertypen importiert. Geändert wird beides gemeinsam.
 import { api } from "./client";
-import type { KnowledgeObject } from "./types";
+import type { Confidentiality, KnowledgeObject } from "./types";
 
 export type EntwurfsZustand = "offen" | "uebernommen" | "eingereicht";
 
@@ -51,6 +51,8 @@ export interface GemeinsamLage {
     titel: string;
     rumpf: string;
     text: string;
+    /** Die Vertraulichkeitsstufe des Artikels (für die KI-Wege des Editors). */
+    vertraulichkeit?: Confidentiality | null;
   };
   /** `vorschlag`: freigegebener Artikel ohne Freigaberecht — die Übernahme wird ein Vorschlag. */
   weg: "direkt" | "vorschlag";

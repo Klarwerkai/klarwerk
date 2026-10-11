@@ -46,6 +46,7 @@ import {
   eingereichterVorschlag,
   gemeinsamApi,
 } from "../api/gemeinsam";
+import { ImageDescribeProvider } from "../app/ImageDescribeContext";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { SanitizedHtml } from "../components/SanitizedHtml";
 import {
@@ -54,6 +55,7 @@ import {
 } from "../components/bibliothek/Bearbeitungshinweis";
 import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import { formatKoTimestamp } from "../lib/koDates";
+import { draftProvenance } from "../lib/reasonerProvenance";
 import { sanitizeHtml } from "../lib/richText";
 
 /** So oft fragt die Seite nach dem gespeicherten Stand — fremdes Speichern kommt zeitnah an. */
@@ -961,9 +963,15 @@ export function GemeinsamerEntwurfSeite(): JSX.Element {
             <p className="text-[12px] text-muted">{t("gemeinsam.feld.hinweis")}</p>
             {/* Derselbe einheitliche Editor wie am Artikel — Bilder, Listen, Tabellen und
                 Formatierung bleiben erhalten. */}
-            <div data-testid="gemeinsam-editor" className="mt-1">
-              <RichTextEditor value={rumpf} onChange={inhaltGeaendert} documentTitle={titel} />
-            </div>
+            {/* Wie am Artikeleditor (`BibliothekLesen`): die Bildbeschreibung des Editors läuft mit
+                der Stufe und Kennung DIESES Artikels — fehlt die Stufe, fail-safe „vertraulich". */}
+            <ImageDescribeProvider
+              provenance={draftProvenance(lesefassung.vertraulichkeit ?? undefined, koId)}
+            >
+              <div data-testid="gemeinsam-editor" className="mt-1">
+                <RichTextEditor value={rumpf} onChange={inhaltGeaendert} documentTitle={titel} />
+              </div>
+            </ImageDescribeProvider>
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <Button
                 type="button"
