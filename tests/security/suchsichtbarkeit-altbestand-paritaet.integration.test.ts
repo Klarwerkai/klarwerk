@@ -414,9 +414,11 @@ describe("Aufnahme 20260922 · Suchsichtbarkeit bei Altdaten — Speicher gegen 
       }
       // Nicht trivial: ungetrimmt stehen sie ganz vorn und würden Deckel 1 füllen.
       expect((await ungetrimmt(s, BEGRIFF_ALT))[0]).toBe(p.id("autorLeer"));
-      // Der Betrachter OHNE Kennung bekommt genau die „jeder"-Fälle, bei Deckel 1 die erste Altstufe.
+      // Der Betrachter OHNE Kennung bekommt genau die „jeder"-Fälle. Seit Entscheidung 16
+      // (aufnahme:20260922:gesamt-leserechte) sind die Altstufen ungeklärt und geschützt — bei
+      // Deckel 1 steht deshalb die ausdrücklich interne Kontrolle vorn, keine Altstufe mehr.
       expect(await treffer(s, { id: OHNE_KENNUNG, role: "experte" }, BEGRIFF_ALT, 1)).toEqual([
-        p.id("stufeFehlt"),
+        p.id("kontrolleIntern"),
       ]);
     }
   });

@@ -361,6 +361,7 @@ const nl: typeof de = {
   "audit.action.user_role_change": "Rol gewijzigd",
   "audit.action.user_approve": "Account vrijgegeven",
   "audit.action.user_account_corrected": "Accountgegevens gecorrigeerd",
+  "audit.action.user_freigabe_set": "Vrijgaveniveau gewijzigd",
   "audit.action.auth_login": "Aangemeld",
   "audit.action.auth_logout": "Afgemeld",
   "audit.action.notice_acknowledged": "Kennisgeving bevestigd",
