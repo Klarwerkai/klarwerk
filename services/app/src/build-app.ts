@@ -4825,6 +4825,8 @@ export function buildApp(
         explanations: new AnswerExplanationService({
           answerSnapshots: services.answerSnapshots,
           ko: services.ko,
+          // R-0293: die heutige Konfliktlage je Beleg — derselbe Dienst wie an der Ask-Route.
+          conflicts: services.conflicts,
         }),
       },
       guards,
