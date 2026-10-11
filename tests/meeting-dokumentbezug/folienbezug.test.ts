@@ -1,15 +1,20 @@
 // ================================================================================================
 // BPA-16 · GESPRÄCHSAUSSAGEN MIT FOLIEN UND DOKUMENTSTELLEN VERBINDEN (produkt:20261011:
-// assistenz-meeting-dokumentbezug) — die Kriterien K1..K10 am echten Bindungsmodul.
+// assistenz-meeting-dokumentbezug) — die Kriterien K1..K10 am Bindungsmodul.
 // ================================================================================================
 //
 // Vorrichtung (BPA-S17, nur synthetische Daten): zwei Präsentationen „Nord" und „Süd" mit gleich
 // benannten Folien („Umsatzentwicklung"), eine WebVTT-Mitschrift mit Rückmeldungen, Rücksprung,
-// umsortierte Fassung, präsentierte Kopie, später geändertes Original. Die Dateien werden hier
-// als OOXML-PresentationML gebaut und durch DENSELBEN Leser (`foliensatzLesen`) gelesen wie im
-// Produkt; zusätzlich liest K10 die unabhängig erzeugte Referenzdatei `tests/fixtures/
-// d3-referenz.pptx`. Eine Datei aus einer echten PowerPoint-Installation und ein Live-Meeting-
-// host sind das NICHT — das bleibt in der Rückgabe offen benannt.
+// umsortierte Fassung, präsentierte Kopie (gleiche und eigene Dateikennung), eingebundene Bilder
+// und später geändertes Original. Die Dateien werden hier als OOXML-PresentationML gebaut und
+// durch DENSELBEN Leser (`foliensatzLesen`) gelesen wie im Produkt; zusätzlich liest K10 die
+// unabhängig erzeugte Referenzdatei `tests/fixtures/d3-referenz.pptx`. Den Weg über die echte App
+// (Objektspeicher, Rechte, Ablage, Routen) misst `bedienweg.test.ts`. Eine Datei aus einer echten
+// PowerPoint-Installation und ein Live-Meetinghost sind beides NICHT.
+//
+// Nacharbeit 2 (Bens Befunde): referenzierte Grafikbestandteile im Inhaltsvergleich (K3/K8),
+// Kopie und Original mit verschiedenen Dateikennungen (K3/K8/K9) und Rechte auf JEDEM Zugriffspfad
+// — klaeren, kopieAbgleich, aenderung, historie (K6/K7).
 import { readFileSync } from "node:fs";
 import JSZip from "jszip";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -17,117 +22,22 @@ import {
   BindungsFehler,
   type Foliensatz,
   FoliensatzFehler,
-  type Gespraechsstelle,
   MeetingDokumentbezug,
   type Rechtepruefung,
+  type RueckmeldungsArt,
+  type RueckmeldungsSicht,
   foliensatzLesen,
   webvttLesen,
 } from "../../services/app/src/meeting-dokumentbezug";
 import { repoPfad } from "../support/repoPfad";
-
-const NS =
-  'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
-  'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
-  'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
-const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-
-interface Folie {
-  sldId: number;
-  titel: string;
-  inhalt: string;
-  versteckt?: boolean;
-  notiz?: string;
-}
-
-function form(typ: string, text: string): string {
-  return `<p:sp><p:nvSpPr><p:cNvPr id="2" name="${typ}"/><p:cNvSpPr/><p:nvPr><p:ph type="${typ}"/></p:nvPr></p:nvSpPr><p:txBody><a:bodyPr/><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp>`;
-}
-
-/** Baut eine .pptx. Der Teilname einer Folie hängt an ihrer sldId, nicht an der Reihenfolge. */
-async function pptx(folien: Folie[]): Promise<Uint8Array> {
-  const zip = new JSZip();
-  const datum = new Date("2026-10-11T00:00:00Z");
-  const ablegen = (pfad: string, xml: string): void => {
-    zip.file(pfad, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${xml}`, {
-      date: datum,
-    });
-  };
-  ablegen(
-    "[Content_Types].xml",
-    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>',
-  );
-  const ids = folien.map((f) => `<p:sldId id="${f.sldId}" r:id="rId${f.sldId}"/>`).join("");
-  ablegen(
-    "ppt/presentation.xml",
-    `<p:presentation ${NS}><p:sldIdLst>${ids}</p:sldIdLst></p:presentation>`,
-  );
-  const rels = folien
-    .map(
-      (f) =>
-        `<Relationship Id="rId${f.sldId}" Type="${REL}/slide" Target="slides/slide${f.sldId}.xml"/>`,
-    )
-    .join("");
-  ablegen(
-    "ppt/_rels/presentation.xml.rels",
-    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`,
-  );
-  for (const f of folien) {
-    const show = f.versteckt ? ' show="0"' : "";
-    ablegen(
-      `ppt/slides/slide${f.sldId}.xml`,
-      `<p:sld ${NS}${show}><p:cSld><p:spTree>${form("title", f.titel)}${form("body", f.inhalt)}</p:spTree></p:cSld></p:sld>`,
-    );
-    if (f.notiz) {
-      ablegen(
-        `ppt/slides/_rels/slide${f.sldId}.xml.rels`,
-        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/notesSlide" Target="../notesSlides/notesSlide${f.sldId}.xml"/></Relationships>`,
-      );
-      ablegen(
-        `ppt/notesSlides/notesSlide${f.sldId}.xml`,
-        `<p:notes ${NS}><p:cSld><p:spTree>${form("sldImg", "")}${form("body", f.notiz)}</p:spTree></p:cSld></p:notes>`,
-      );
-    }
-  }
-  return zip.generateAsync({ type: "uint8array" });
-}
-
-const NORD: Folie[] = [
-  { sldId: 256, titel: "Quartal Nord", inhalt: "Überblick" },
-  { sldId: 257, titel: "Umsatzentwicklung", inhalt: "Grafik Nord 2025" },
-  {
-    sldId: 258,
-    titel: "Margenreserve",
-    inhalt: "Nur intern",
-    versteckt: true,
-    notiz: "MARGE-GEHEIM-4711 nicht vortragen",
-  },
-];
-const SUED: Folie[] = [
-  { sldId: 256, titel: "Quartal Süd", inhalt: "Überblick", notiz: "NOTIZ-SUED-0815" },
-  { sldId: 257, titel: "Umsatzentwicklung", inhalt: "Grafik Süd 2025" },
-];
-
-const VTT = `WEBVTT
-
-r1
-00:01:05.000 --> 00:01:09.000
-<v Sprecherin A>Bei dieser Grafik fehlt die Berechnungsgrundlage.</v>
-
-r2
-00:02:05.000 --> 00:02:09.500
-<v Sprecher B>Hier fehlt die Quelle der Zahlen.</v>
-
-r3
-00:02:15.000 --> 00:02:18.000
-<v Sprecherin A>Den Überblick bitte kürzen.</v>
-`;
+import { type Folie, NORD, SUED, VTT, pptx } from "./vorrichtung";
 
 const ZEITBASIS = "aufnahme-1";
+const MITSCHRIFT = "vtt-1";
 
 interface Lage {
   nord: Foliensatz;
   sued: Foliensatz;
-  stellen: Gespraechsstelle[];
   rechte: Record<string, Set<string>>;
   pruefung: Rechtepruefung;
 }
@@ -143,34 +53,22 @@ function rechtepruefung(rechte: Record<string, Set<string>>): Rechtepruefung {
 }
 
 async function lage(): Promise<Lage> {
+  const dateien = ["nord", "sued", "sued-kopie"];
   const rechte: Record<string, Set<string>> = {
     eigner: new Set([
       "meeting:m1",
-      "dok:nord",
-      "dok:sued",
-      "versteckt:nord",
-      "notizen:nord",
-      "notizen:sued",
+      ...dateien.flatMap((d) => [`dok:${d}`, `versteckt:${d}`, `notizen:${d}`]),
     ]),
-    leser: new Set(["meeting:m1", "dok:nord", "dok:sued"]),
+    leser: new Set(["meeting:m1", "dok:nord", "dok:sued", "dok:sued-kopie"]),
     nurMeeting: new Set(["meeting:m1"]),
-    fremd: new Set(["dok:nord"]),
+    fremd: new Set(["dok:nord", "dok:sued", "versteckt:nord", "notizen:nord"]),
   };
   return {
     nord: await foliensatzLesen("nord", await pptx(NORD)),
     sued: await foliensatzLesen("sued", await pptx(SUED)),
-    stellen: webvttLesen(VTT),
     rechte,
     pruefung: rechtepruefung(rechte),
   };
-}
-
-function stelle(l: Lage, id: string): Gespraechsstelle {
-  const s = l.stellen.find((x) => x.id === id);
-  if (!s) {
-    throw new Error(`Stelle ${id} fehlt`);
-  }
-  return s;
 }
 
 function host(satz: Foliensatz, sldId: string, zeitMs: number) {
@@ -184,17 +82,37 @@ function host(satz: Foliensatz, sldId: string, zeitMs: number) {
   };
 }
 
-/** Meeting mit beiden Decks (präsentiert = Original), Nord → Süd → Nord. */
-function meeting(l: Lage, ocrErlaubt = true): MeetingDokumentbezug {
+function leeresMeeting(l: Lage, ocrErlaubt = true): MeetingDokumentbezug {
   const verbindung = { meetingId: "m1", zeitbasis: ZEITBASIS, ocrErlaubt };
   const m = new MeetingDokumentbezug(verbindung, l.pruefung);
-  m.verbinden(l.nord, l.nord);
-  m.verbinden(l.sued, l.sued);
-  m.folienwechsel(host(l.nord, "256", 0));
-  m.folienwechsel(host(l.sued, "257", 60_000));
-  m.folienwechsel(host(l.nord, "257", 120_000));
-  m.folienwechsel(host(l.nord, "256", 130_000));
+  m.mitschriftVerbinden("eigner", {
+    id: MITSCHRIFT,
+    zeitbasis: ZEITBASIS,
+    stellen: webvttLesen(VTT),
+  });
   return m;
+}
+
+/** Meeting mit beiden Decks (präsentiert = Original), Nord → Süd → Nord → Rücksprung. */
+function meeting(l: Lage, ocrErlaubt = true): MeetingDokumentbezug {
+  const m = leeresMeeting(l, ocrErlaubt);
+  m.verbinden("eigner", l.nord, l.nord);
+  m.verbinden("eigner", l.sued, l.sued);
+  m.folienwechsel("eigner", host(l.nord, "256", 0));
+  m.folienwechsel("eigner", host(l.sued, "257", 60_000));
+  m.folienwechsel("eigner", host(l.nord, "257", 120_000));
+  m.folienwechsel("eigner", host(l.nord, "256", 130_000));
+  return m;
+}
+
+function melde(
+  m: MeetingDokumentbezug,
+  stelleId: string,
+  art: RueckmeldungsArt,
+  text: string,
+  nutzer = "eigner",
+): RueckmeldungsSicht {
+  return m.rueckmeldung(nutzer, { mitschriftId: MITSCHRIFT, stelleId, art, text });
 }
 
 let l: Lage;
@@ -203,26 +121,21 @@ beforeEach(async () => {
 });
 
 describe("K1 · richtige Datei, Fassung, Folie und Zeitstelle trotz gleicher Folientitel", () => {
-  it("bindet zwei gleichlautende Rückmeldungen an verschiedene Decks", () => {
+  it("bindet zwei Rückmeldungen an gleich benannte Folien verschiedener Decks", () => {
     const m = meeting(l);
-    const sued = m.rueckmeldung({
-      stelle: stelle(l, "r1"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Berechnungsgrundlage ergänzen",
+    const sued = melde(m, "r1", "vorschlag", "Berechnungsgrundlage ergänzen");
+    const nord = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
+    expect(sued.status).toBe("gebunden");
+    expect(sued.folie).toMatchObject({
+      lesbar: true,
+      dateiId: "sued",
+      fassung: l.sued.fassung,
+      sldId: "257",
+      titel: "Umsatzentwicklung",
     });
-    const nord = m.rueckmeldung({
-      stelle: stelle(l, "r2"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Zahlenquelle ergänzen",
-    });
-    expect(sued.bindung.status).toBe("gebunden");
-    expect(sued.bindung.ziel).toEqual({ dateiId: "sued", fassung: l.sued.fassung, sldId: "257" });
     expect(sued.stelle).toMatchObject({ id: "r1", startMs: 65_000, sprecher: "Sprecherin A" });
-    expect(nord.bindung.ziel).toEqual({ dateiId: "nord", fassung: l.nord.fassung, sldId: "257" });
-    expect(sued.bindung.praesentiert?.titel).toBe("Umsatzentwicklung");
-    expect(nord.bindung.praesentiert?.titel).toBe("Umsatzentwicklung");
+    expect(nord.folie).toMatchObject({ dateiId: "nord", fassung: l.nord.fassung, sldId: "257" });
+    expect(nord.folie).toMatchObject({ titel: "Umsatzentwicklung" });
     expect(l.nord.fassung).not.toBe(l.sued.fassung);
   });
 });
@@ -230,85 +143,64 @@ describe("K1 · richtige Datei, Fassung, Folie und Zeitstelle trotz gleicher Fol
 describe("K2 · Rücksprung und Umsortieren; Foliennummer ist keine Identität", () => {
   it("Rücksprung bindet an die zurückgesprungene Folie", () => {
     const m = meeting(l);
-    const r = m.rueckmeldung({
-      stelle: stelle(l, "r3"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Überblick kürzen",
-    });
-    expect(r.bindung.ziel?.sldId).toBe("256");
-    expect(r.bindung.ziel?.dateiId).toBe("nord");
+    const r = melde(m, "r3", "vorschlag", "Überblick kürzen");
+    expect(r.folie).toMatchObject({ dateiId: "nord", sldId: "256" });
   });
 
   it("umsortierte Fassung behält die Folienkennung, die Position ist nur Anzeige", async () => {
     const m = meeting(l);
-    const vorher = m.rueckmeldung({
-      stelle: stelle(l, "r2"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Zahlenquelle ergänzen",
-    });
+    const vorher = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
     const umsortiert = await foliensatzLesen("nord", await pptx([NORD[1]!, NORD[0]!, NORD[2]!]));
     expect(umsortiert.fassung).not.toBe(l.nord.fassung);
     expect(umsortiert.folien[0]).toMatchObject({ sldId: "257", position: 1 });
     expect(umsortiert.folien[0]?.inhaltHash).toBe(l.nord.folien[1]?.inhaltHash);
-    m.verbinden(umsortiert);
-    m.folienwechsel(host(umsortiert, "257", 200_000));
-    const nachher = m.rueckmeldung({
-      stelle: { id: "r9", startMs: 205_000, endMs: 207_000, sprecher: null, text: "noch einmal" },
-      zeitbasis: ZEITBASIS,
-      art: "offene_frage",
-      text: "Welche Zahlen gelten?",
-    });
-    expect(nachher.bindung.ziel?.sldId).toBe("257");
-    expect(nachher.bindung.praesentiert?.position).toBe(1);
-    expect(vorher.bindung.praesentiert?.position).toBe(2);
+    m.verbinden("eigner", umsortiert);
+    m.folienwechsel("eigner", host(umsortiert, "257", 200_000));
+    const nachher = melde(m, "r9", "offene_frage", "Welche Zahlen gelten?");
+    expect(nachher.folie).toMatchObject({ sldId: "257", position: 1 });
+    expect(vorher.folie).toMatchObject({ sldId: "257", position: 2 });
     const ausFolie = m.ausFolie("leser", "nord", "257").map((s) => s.id);
     expect(ausFolie).toEqual([vorher.id, nachher.id]);
   });
 
   it("ein Wechsel mit bloßer Foliennummer bleibt in Klärung und adressiert nichts", () => {
     const m = meeting(l);
-    m.folienwechsel({ quelle: "nummer", zeitMs: 300_000, zeitbasis: ZEITBASIS, position: 2 });
-    const r = m.rueckmeldung({
-      stelle: { id: "r10", startMs: 301_000, endMs: 302_000, sprecher: null, text: "Folie zwei" },
+    m.folienwechsel("eigner", {
+      quelle: "nummer",
+      zeitMs: 300_000,
       zeitbasis: ZEITBASIS,
-      art: "beschlossene_korrektur",
-      text: "Achse beschriften",
+      position: 2,
     });
-    expect(r.bindung).toMatchObject({ status: "klaerung_noetig", grund: "nur_foliennummer" });
-    expect(r.bindung.ziel).toBeNull();
-    expect(m.aenderung(r.id)).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
+    const r = melde(m, "r10", "beschlossene_korrektur", "Achse beschriften");
+    expect(r).toMatchObject({ status: "klaerung_noetig", grund: "nur_foliennummer", folie: null });
+    expect(r.aenderung).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
   });
 
   it("abweichende Zeitbasis wird nicht verrechnet, sondern geklärt", () => {
     const m = meeting(l);
-    const r = m.rueckmeldung({
-      stelle: stelle(l, "r1"),
+    m.mitschriftVerbinden("eigner", {
+      id: "vtt-2",
       zeitbasis: "aufnahme-2",
+      stellen: webvttLesen(VTT),
+    });
+    const r = m.rueckmeldung("eigner", {
+      mitschriftId: "vtt-2",
+      stelleId: "r1",
       art: "vorschlag",
       text: "Berechnungsgrundlage ergänzen",
     });
-    expect(r.bindung).toMatchObject({ status: "klaerung_noetig", grund: "zeitbasis_abweichend" });
+    expect(r).toMatchObject({ status: "klaerung_noetig", grund: "zeitbasis_abweichend" });
   });
 });
 
 describe("K3 · präsentierte Kopie und Original", () => {
   it("ohne zugängliches Original: ungeklärt, kein Originalzugriff, keine Adressierung", () => {
-    const m = new MeetingDokumentbezug(
-      { meetingId: "m1", zeitbasis: ZEITBASIS, ocrErlaubt: false },
-      l.pruefung,
-    );
-    expect(m.verbinden(l.sued)).toEqual({ status: "ungeklaert", originalZugriff: false });
-    m.folienwechsel(host(l.sued, "257", 60_000));
-    const r = m.rueckmeldung({
-      stelle: stelle(l, "r1"),
-      zeitbasis: ZEITBASIS,
-      art: "beschlossene_korrektur",
-      text: "Berechnungsgrundlage ergänzen",
-    });
-    expect(r.bindung.status).toBe("gebunden");
-    expect(m.aenderung(r.id)).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
+    const m = leeresMeeting(l, false);
+    expect(m.verbinden("eigner", l.sued)).toEqual({ status: "ungeklaert", originalZugriff: false });
+    m.folienwechsel("eigner", host(l.sued, "257", 60_000));
+    const r = melde(m, "r1", "beschlossene_korrektur", "Berechnungsgrundlage ergänzen");
+    expect(r.status).toBe("gebunden");
+    expect(r.aenderung).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
   });
 
   it("abweichende Kopie: nur inhaltsgleiche Folien adressieren das Original", async () => {
@@ -316,76 +208,130 @@ describe("K3 · präsentierte Kopie und Original", () => {
       "sued",
       await pptx([SUED[0]!, { ...SUED[1]!, inhalt: "Grafik Süd 2025 (Vortragsfassung)" }]),
     );
-    const m = new MeetingDokumentbezug(
-      { meetingId: "m1", zeitbasis: ZEITBASIS, ocrErlaubt: false },
-      l.pruefung,
-    );
-    const abgleich = m.verbinden(kopie, l.sued);
+    const m = leeresMeeting(l, false);
+    const abgleich = m.verbinden("eigner", kopie, l.sued);
     expect(abgleich).toMatchObject({ status: "abweichend", abweichendeFolien: ["257"] });
-    m.folienwechsel(host(kopie, "257", 60_000));
-    m.folienwechsel(host(kopie, "256", 120_000));
-    const abw = m.rueckmeldung({
-      stelle: stelle(l, "r1"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Grundlage ergänzen",
-    });
-    const gleich = m.rueckmeldung({
-      stelle: stelle(l, "r2"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Quelle ergänzen",
-    });
-    expect(abw.bindung.ziel?.fassung).toBe(kopie.fassung);
-    expect(m.aenderung(abw.id)).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
-    expect(m.aenderung(gleich.id)).toMatchObject({
+    m.folienwechsel("eigner", host(kopie, "257", 60_000));
+    m.folienwechsel("eigner", host(kopie, "256", 120_000));
+    const abw = melde(m, "r1", "vorschlag", "Grundlage ergänzen");
+    const gleich = melde(m, "r2", "vorschlag", "Quelle ergänzen");
+    expect(abw.folie).toMatchObject({ fassung: kopie.fassung });
+    expect(abw.aenderung).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
+    expect(gleich.aenderung).toMatchObject({
       status: "offen",
       ziel: { dateiId: "sued", fassung: l.sued.fassung, sldId: "256" },
     });
   });
 
-  it("identische Fassung wird als identisch verbunden", () => {
-    const m = new MeetingDokumentbezug(
-      { meetingId: "m1", zeitbasis: ZEITBASIS, ocrErlaubt: false },
-      l.pruefung,
+  it("Befund 2: ein geändertes eingebundenes Bild bei gleichem Folien-XML ist eine Abweichung", async () => {
+    const kopie = await foliensatzLesen(
+      "sued",
+      await pptx([SUED[0]!, { ...SUED[1]!, bild: "BALKEN-SUED-V2" }]),
     );
-    expect(m.verbinden(l.nord, l.nord)).toMatchObject({
+    expect(kopie.folien[1]?.vergleichbar).toBe(true);
+    expect(kopie.folien[1]?.inhaltHash).not.toBe(l.sued.folien[1]?.inhaltHash);
+    const m = leeresMeeting(l, false);
+    expect(m.verbinden("eigner", kopie, l.sued)).toMatchObject({
+      status: "abweichend",
+      abweichendeFolien: ["257"],
+      unvergleichbareFolien: [],
+    });
+    m.folienwechsel("eigner", host(kopie, "257", 60_000));
+    const r = melde(m, "r1", "vorschlag", "Grundlage ergänzen");
+    expect(r.aenderung).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
+  });
+
+  it("Befund 2: ein extern verknüpftes Bild macht die Folie nicht vergleichbar — zur Prüfung", async () => {
+    const extern: Folie = { ...SUED[1]!, externesBild: "https://bilder.example.test/b.png" };
+    const original = await foliensatzLesen("sued", await pptx([SUED[0]!, extern]));
+    const kopie = await foliensatzLesen(
+      "sued-kopie",
+      await pptx([{ ...SUED[0]!, inhalt: "Überblick (Kopie)" }, extern]),
+    );
+    expect(original.folien[1]?.vergleichbar).toBe(false);
+    const m = leeresMeeting(l, false);
+    expect(m.verbinden("eigner", kopie, original)).toMatchObject({
+      status: "abweichend",
+      abweichendeFolien: ["256"],
+      unvergleichbareFolien: ["257"],
+    });
+    m.folienwechsel("eigner", host(kopie, "257", 60_000));
+    const r = melde(m, "r1", "vorschlag", "Grundlage ergänzen");
+    expect(r.aenderung).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
+  });
+
+  it("Befund 4: Kopie mit eigener Dateikennung adressiert das gespeicherte Original", async () => {
+    const kopie = await foliensatzLesen("sued-kopie", await pptx(SUED, "kopie"));
+    const m = leeresMeeting(l, false);
+    expect(m.verbinden("eigner", kopie, l.sued)).toMatchObject({
+      status: "inhaltsgleich",
+      originalDateiId: "sued",
+      originalFassung: l.sued.fassung,
+    });
+    m.folienwechsel("eigner", host(kopie, "257", 60_000));
+    const r = melde(m, "r1", "vorschlag", "Grundlage ergänzen");
+    expect(r.folie).toMatchObject({ dateiId: "sued-kopie", sldId: "257" });
+    expect(r.aenderung).toMatchObject({
+      status: "offen",
+      ziel: { dateiId: "sued", fassung: l.sued.fassung, sldId: "257" },
+    });
+    // Aus der Folie erreichbar — über die Kopie UND über das Original.
+    expect(m.ausFolie("eigner", "sued-kopie", "257").map((s) => s.id)).toEqual([r.id]);
+    expect(m.ausFolie("eigner", "sued", "257").map((s) => s.id)).toEqual([r.id]);
+  });
+
+  it("identische Fassung wird als identisch verbunden", () => {
+    const m = leeresMeeting(l, false);
+    expect(m.verbinden("eigner", l.nord, l.nord)).toMatchObject({
       status: "identisch",
       originalZugriff: true,
     });
+  });
+
+  it("Befund 3: ohne Leserecht am Original ist der Abgleich ungeklärt; ohne Meetingrecht keiner", async () => {
+    const kopie = await foliensatzLesen("sued-kopie", await pptx(SUED, "kopie"));
+    const m = leeresMeeting(l, false);
+    m.verbinden("eigner", kopie, l.sued);
+    l.rechte.leser?.delete("dok:sued");
+    expect(m.kopieAbgleich("leser", "sued-kopie", kopie.fassung)).toEqual({
+      status: "ungeklaert",
+      originalZugriff: false,
+    });
+    const eignerAbgleich = JSON.stringify(m.kopieAbgleich("eigner", "sued-kopie", kopie.fassung));
+    expect(eignerAbgleich).not.toContain("Quartal");
+    expect(() => m.kopieAbgleich("fremd", "sued-kopie", kopie.fassung)).toThrow(BindungsFehler);
+    expect(() => m.verbinden("nurMeeting", kopie, l.sued)).toThrow(BindungsFehler);
   });
 });
 
 describe("K4 · unsichere Bildschirm-/OCR-Zuordnung", () => {
   it("verlangt Klärung mit konkreten Kandidaten und adressiert keine Änderung", () => {
     const m = meeting(l);
-    m.folienwechsel({
+    m.folienwechsel("eigner", {
       quelle: "ocr",
       zeitMs: 400_000,
       zeitbasis: ZEITBASIS,
       bildschirmtext: "UMSATZENTWICKLUNG  Grafik 2025",
     });
-    const r = m.rueckmeldung({
-      stelle: { id: "r11", startMs: 401_000, endMs: 404_000, sprecher: null, text: "Grafik" },
-      zeitbasis: ZEITBASIS,
-      art: "beschlossene_korrektur",
-      text: "Berechnungsgrundlage ergänzen",
-    });
-    expect(r.bindung).toMatchObject({
+    const r = melde(m, "r11", "beschlossene_korrektur", "Berechnungsgrundlage ergänzen");
+    expect(r).toMatchObject({
       status: "klaerung_noetig",
       grund: "bildschirmtext_unsicher",
-      ziel: null,
+      folie: null,
     });
-    expect(r.bindung.kandidaten.map((k) => `${k.dateiId}/${k.sldId}`).sort()).toEqual([
+    expect(r.kandidaten.map((k) => `${k.dateiId}/${k.sldId}`).sort()).toEqual([
       "nord/257",
       "sued/257",
     ]);
-    const ae = m.aenderung(r.id);
-    expect(ae).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
-    expect(() => m.ausgefuehrt(ae!.id)).toThrow(BindungsFehler);
+    expect(r.aenderung).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
+    expect(() => m.ausgefuehrt("eigner", r.aenderung!.id)).toThrow(BindungsFehler);
 
-    m.klaeren(r.id, { dateiId: "sued", fassung: l.sued.fassung, sldId: "257" }, "leser");
-    expect(m.aenderung(r.id)).toMatchObject({
+    const geklaert = m.klaeren("leser", r.id, {
+      dateiId: "sued",
+      fassung: l.sued.fassung,
+      sldId: "257",
+    });
+    expect(geklaert.aenderung).toMatchObject({
       status: "offen",
       ziel: { dateiId: "sued", sldId: "257" },
     });
@@ -393,73 +339,48 @@ describe("K4 · unsichere Bildschirm-/OCR-Zuordnung", () => {
 
   it("bei „Keine KI“ wird kein Bildschirmtext angenommen", () => {
     const m = meeting(l, false);
-    expect(() =>
-      m.folienwechsel({ quelle: "ocr", zeitMs: 1, zeitbasis: ZEITBASIS, bildschirmtext: "x" }),
-    ).toThrow(/Keine KI/);
+    const ocr = { quelle: "ocr" as const, zeitMs: 1, zeitbasis: ZEITBASIS, bildschirmtext: "x" };
+    expect(() => m.folienwechsel("eigner", ocr)).toThrow(/Keine KI/);
   });
 });
 
 describe("K5 · Korrektur, Vorschlag, verworfener Vorschlag und KI-Empfehlung bleiben getrennt", () => {
   it("jede Art behält ihre Kennung, Herkunft und ihren Status", () => {
     const m = meeting(l);
-    const s = stelle(l, "r1");
-    const korrektur = m.rueckmeldung({
-      stelle: s,
-      zeitbasis: ZEITBASIS,
-      art: "beschlossene_korrektur",
-      text: "Quelle unter die Grafik",
-    });
-    const vorschlag = m.rueckmeldung({
-      stelle: s,
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Balken statt Linie",
-    });
-    const verworfen = m.rueckmeldung({
-      stelle: s,
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Farben ändern",
-    });
-    const ki = m.rueckmeldung({
-      stelle: s,
-      zeitbasis: ZEITBASIS,
-      art: "ki_empfehlung",
-      text: "Fußnote mit Berechnungsweg",
-    });
-    const frage = m.rueckmeldung({
-      stelle: s,
-      zeitbasis: ZEITBASIS,
-      art: "offene_frage",
-      text: "Welche Basis gilt?",
-    });
-    m.verwerfen(verworfen.id);
+    const korrektur = melde(m, "r1", "beschlossene_korrektur", "Quelle unter die Grafik");
+    const vorschlag = melde(m, "r1", "vorschlag", "Balken statt Linie");
+    const verworfen = melde(m, "r1", "vorschlag", "Farben ändern");
+    const ki = melde(m, "r1", "ki_empfehlung", "Fußnote mit Berechnungsweg");
+    const frage = melde(m, "r1", "offene_frage", "Welche Basis gilt?");
+    m.verwerfen("leser", verworfen.id);
 
     expect(m.sicht("leser", korrektur.id)).toMatchObject({
       art: "beschlossene_korrektur",
       herkunft: "gespraech",
+      aenderung: { art: "beschlossene_korrektur" },
     });
-    expect(m.sicht("leser", vorschlag.id)).toMatchObject({ art: "vorschlag" });
-    expect(m.sicht("leser", verworfen.id)).toMatchObject({ art: "verworfener_vorschlag" });
-    expect(m.sicht("leser", ki.id)).toMatchObject({ art: "ki_empfehlung", herkunft: "ki" });
-    expect(m.aenderung(korrektur.id)?.art).toBe("beschlossene_korrektur");
-    expect(m.aenderung(vorschlag.id)).toMatchObject({ art: "vorschlag", status: "offen" });
-    expect(m.aenderung(verworfen.id)).toMatchObject({ status: "verworfen", ziel: null });
-    expect(m.aenderung(ki.id)).toMatchObject({ art: "ki_empfehlung", status: "offen" });
-    expect(m.aenderung(frage.id)).toBeUndefined();
-    expect(() => m.verwerfen(ki.id)).toThrow(BindungsFehler);
+    expect(m.sicht("leser", vorschlag.id)).toMatchObject({
+      art: "vorschlag",
+      aenderung: { art: "vorschlag", status: "offen" },
+    });
+    expect(m.sicht("leser", verworfen.id)).toMatchObject({
+      art: "verworfener_vorschlag",
+      aenderung: { status: "verworfen", ziel: null },
+    });
+    expect(m.sicht("leser", ki.id)).toMatchObject({
+      art: "ki_empfehlung",
+      herkunft: "ki",
+      aenderung: { art: "ki_empfehlung", status: "offen" },
+    });
+    expect(m.sicht("leser", frage.id)).toMatchObject({ art: "offene_frage", aenderung: null });
+    expect(() => m.verwerfen("leser", ki.id)).toThrow(BindungsFehler);
   });
 });
 
 describe("K6 · erreichbar aus Folie und Zeitstelle, mit aktuellen Rechten", () => {
   it("findet die Rückmeldung von beiden Seiten und sperrt nach Rechteentzug", () => {
     const m = meeting(l);
-    const r = m.rueckmeldung({
-      stelle: stelle(l, "r1"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Berechnungsgrundlage ergänzen",
-    });
+    const r = melde(m, "r1", "vorschlag", "Berechnungsgrundlage ergänzen");
     expect(m.ausFolie("leser", "sued", "257").map((s) => s.id)).toEqual([r.id]);
     expect(m.ausZeitstelle("leser", 67_000).map((s) => s.id)).toEqual([r.id]);
     expect(m.sicht("leser", r.id)?.stelle).toMatchObject({ id: "r1", startMs: 65_000 });
@@ -467,11 +388,28 @@ describe("K6 · erreichbar aus Folie und Zeitstelle, mit aktuellen Rechten", () 
     l.rechte.leser?.delete("dok:sued");
     expect(m.ausFolie("leser", "sued", "257")).toEqual([]);
     expect(m.sicht("leser", r.id)?.folie).toEqual({ lesbar: false });
+    // Befund 3: auch das Änderungsziel ist ohne Dokumentrecht verborgen.
+    expect(m.aenderung("leser", r.id)).toMatchObject({ ziel: null, zielVerborgen: true });
 
     l.rechte.leser?.delete("meeting:m1");
     expect(m.sicht("leser", r.id)).toBeNull();
     expect(m.ausZeitstelle("leser", 67_000)).toEqual([]);
+    expect(m.aenderung("leser", r.id)).toBeNull();
+    expect(m.historie("leser", r.id)).toEqual([]);
+  });
+
+  it("Befund 3: Dokumentrecht ohne Meetingrecht klärt nichts und erfährt nichts", () => {
+    const m = meeting(l);
+    const r = melde(m, "r1", "vorschlag", "Berechnungsgrundlage ergänzen");
+    const ziel = { dateiId: "nord", fassung: l.nord.fassung, sldId: "257" };
+    expect(() => m.klaeren("fremd", r.id, ziel)).toThrow(BindungsFehler);
+    expect(() => m.verwerfen("fremd", r.id)).toThrow(BindungsFehler);
+    expect(() => melde(m, "r2", "vorschlag", "x", "fremd")).toThrow(BindungsFehler);
+    expect(() => m.folienwechsel("fremd", host(l.nord, "256", 1))).toThrow(BindungsFehler);
     expect(m.sicht("fremd", r.id)).toBeNull();
+    expect(m.aenderung("fremd", r.id)).toBeNull();
+    expect(m.historie("fremd", r.id)).toEqual([]);
+    expect(m.sicht("eigner", r.id)?.version).toBe(1);
   });
 });
 
@@ -484,26 +422,16 @@ describe("K7 · versteckte Folie und Sprechernotiz nicht aus Meetingmitgliedscha
     });
 
     const m = meeting(l);
-    m.folienwechsel(host(l.nord, "258", 500_000));
-    m.folienwechsel(host(l.sued, "256", 600_000));
-    const aufVersteckt = m.rueckmeldung({
-      stelle: { id: "r12", startMs: 501_000, endMs: 503_000, sprecher: null, text: "Marge" },
-      zeitbasis: ZEITBASIS,
-      art: "offene_frage",
-      text: "Stimmt die Reserve?",
-    });
-    const aufNotiz = m.rueckmeldung({
-      stelle: { id: "r13", startMs: 601_000, endMs: 603_000, sprecher: null, text: "Süd" },
-      zeitbasis: ZEITBASIS,
-      art: "offene_frage",
-      text: "Was steht in den Notizen?",
-    });
+    m.folienwechsel("eigner", host(l.nord, "258", 500_000));
+    m.folienwechsel("eigner", host(l.sued, "256", 600_000));
+    const aufVersteckt = melde(m, "r12", "offene_frage", "Stimmt die Reserve?");
+    const aufNotiz = melde(m, "r13", "offene_frage", "Was steht in den Notizen?");
 
     for (const nutzer of ["nurMeeting", "leser"]) {
       const a = m.sicht(nutzer, aufVersteckt.id);
       const b = m.sicht(nutzer, aufNotiz.id);
       expect(a?.folie).toEqual({ lesbar: false });
-      const text = JSON.stringify([a, b]);
+      const text = JSON.stringify([a, b, m.praesentationen(nutzer)]);
       expect(text).not.toContain("MARGE-GEHEIM");
       expect(text).not.toContain("Margenreserve");
       expect(text).not.toContain("NOTIZ-SUED");
@@ -517,61 +445,43 @@ describe("K7 · versteckte Folie und Sprechernotiz nicht aus Meetingmitgliedscha
     expect(m.sicht("eigner", aufNotiz.id)?.folie).toMatchObject({ notizen: "NOTIZ-SUED-0815" });
   });
 
-  it("OCR-Kandidaten und Klärung zeigen die versteckte Folie nur mit Recht", () => {
+  it("OCR-Kandidaten, Klärung und Historie zeigen die versteckte Folie nur mit Recht", () => {
     const m = meeting(l);
-    m.folienwechsel({
+    m.folienwechsel("eigner", {
       quelle: "ocr",
       zeitMs: 700_000,
       zeitbasis: ZEITBASIS,
       bildschirmtext: "Margenreserve",
     });
-    const r = m.rueckmeldung({
-      stelle: { id: "r14", startMs: 701_000, endMs: 702_000, sprecher: null, text: "x" },
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Reserve prüfen",
-    });
+    const r = melde(m, "r14", "vorschlag", "Reserve prüfen");
     expect(m.sicht("leser", r.id)?.kandidaten).toEqual([]);
     expect(m.sicht("eigner", r.id)?.kandidaten).toEqual([
       { dateiId: "nord", sldId: "258", titel: "Margenreserve" },
     ]);
     const ziel = { dateiId: "nord", fassung: l.nord.fassung, sldId: "258" };
-    expect(() => m.klaeren(r.id, ziel, "leser")).toThrow(BindungsFehler);
-    expect(() => m.klaeren(r.id, ziel, "nurMeeting")).toThrow(BindungsFehler);
+    expect(() => m.klaeren("leser", r.id, ziel)).toThrow(BindungsFehler);
+    expect(() => m.klaeren("nurMeeting", r.id, ziel)).toThrow(BindungsFehler);
+    // Der Eigner klärt; die Historie zeigt dem Leser danach weder Titel noch Kandidaten.
+    expect(m.klaeren("eigner", r.id, ziel).folie).toMatchObject({ titel: "Margenreserve" });
+    expect(JSON.stringify(m.historie("leser", r.id))).not.toContain("Margenreserve");
+    expect(JSON.stringify(m.sicht("leser", r.id))).not.toContain("Margenreserve");
+    expect(m.aenderung("leser", r.id)).toMatchObject({ ziel: null, zielVerborgen: true });
   });
 });
 
 describe("K8 · nachträgliche Dokumentänderung: Fassungsabgleich ohne Inhaltsvererbung", () => {
   it("historische Aussage bleibt an der präsentierten Fassung", async () => {
     const m = meeting(l);
-    const geaendert = m.rueckmeldung({
-      stelle: stelle(l, "r2"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Zahlenquelle ergänzen",
-    });
-    const gleich = m.rueckmeldung({
-      stelle: stelle(l, "r3"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Überblick kürzen",
-    });
-    m.folienwechsel(host(l.nord, "258", 500_000));
-    const entfernt = m.rueckmeldung({
-      stelle: { id: "r15", startMs: 501_000, endMs: 502_000, sprecher: null, text: "x" },
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Reserve streichen",
-    });
+    const geaendert = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
+    const gleich = melde(m, "r3", "vorschlag", "Überblick kürzen");
+    m.folienwechsel("eigner", host(l.nord, "258", 500_000));
+    const entfernt = melde(m, "r15", "vorschlag", "Reserve streichen");
 
     const neu = await foliensatzLesen(
       "nord",
-      await pptx([
-        NORD[0]!,
-        { ...NORD[1]!, titel: "Umsatz neu", inhalt: "Grafik Nord 2026 mit Quelle" },
-      ]),
+      await pptx([NORD[0]!, { ...NORD[1]!, titel: "Umsatz neu", inhalt: "Grafik 2026" }]),
     );
-    const abgleich = m.fassungsabgleich(neu);
+    const abgleich = m.fassungsabgleich("eigner", neu);
     const stand = Object.fromEntries(abgleich.map((e) => [e.rueckmeldungId, e.stand]));
     expect(stand).toEqual({
       [geaendert.id]: "geaendert",
@@ -581,80 +491,163 @@ describe("K8 · nachträgliche Dokumentänderung: Fassungsabgleich ohne Inhaltsv
 
     const sicht = m.sicht("eigner", geaendert.id);
     expect(sicht?.folie).toMatchObject({ fassung: l.nord.fassung, titel: "Umsatzentwicklung" });
-    expect(m.aenderung(geaendert.id)).toMatchObject({ status: "fassung_pruefen", ziel: null });
-    expect(m.aenderung(entfernt.id)).toMatchObject({ status: "fassung_pruefen", ziel: null });
-    expect(m.aenderung(gleich.id)).toMatchObject({
+    expect(sicht?.aenderung).toMatchObject({ status: "fassung_pruefen", ziel: null });
+    expect(m.aenderung("eigner", entfernt.id)).toMatchObject({
+      status: "fassung_pruefen",
+      ziel: null,
+    });
+    expect(m.aenderung("eigner", gleich.id)).toMatchObject({
       status: "offen",
       ziel: { fassung: neu.fassung, sldId: "256" },
     });
+  });
+
+  it("Befund 2: nur das eingebundene Bild geändert → geaendert, nicht still neu adressiert", async () => {
+    const m = meeting(l);
+    const r = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
+    expect(r.aenderung).toMatchObject({ status: "offen" });
+    const neu = await foliensatzLesen(
+      "nord",
+      await pptx([NORD[0]!, { ...NORD[1]!, bild: "BALKEN-NORD-V2" }, NORD[2]!]),
+    );
+    expect(m.fassungsabgleich("eigner", neu)).toContainEqual({
+      rueckmeldungId: r.id,
+      sldId: "257",
+      stand: "geaendert",
+    });
+    expect(m.aenderung("eigner", r.id)).toMatchObject({ status: "fassung_pruefen", ziel: null });
+  });
+
+  it("Befund 2: neue Fassung mit externem Bild → nicht_vergleichbar, zur Prüfung", async () => {
+    const m = meeting(l);
+    const r = melde(m, "r2", "vorschlag", "Zahlenquelle ergänzen");
+    const neu = await foliensatzLesen(
+      "nord",
+      await pptx([NORD[0]!, { ...NORD[1]!, externesBild: "https://bilder.example.test/n.png" }]),
+    );
+    expect(m.fassungsabgleich("eigner", neu)).toContainEqual({
+      rueckmeldungId: r.id,
+      sldId: "257",
+      stand: "nicht_vergleichbar",
+    });
+    expect(m.aenderung("eigner", r.id)).toMatchObject({ status: "fassung_pruefen", ziel: null });
+  });
+
+  it("Befund 4: geändertes Original erfasst auch Bindungen an die Kopie mit eigener Kennung", async () => {
+    const kopie = await foliensatzLesen("sued-kopie", await pptx(SUED, "kopie"));
+    const m = leeresMeeting(l, false);
+    m.verbinden("eigner", kopie, l.sued);
+    m.folienwechsel("eigner", host(kopie, "257", 60_000));
+    m.folienwechsel("eigner", host(kopie, "256", 120_000));
+    const geaendert = melde(m, "r1", "vorschlag", "Grundlage ergänzen");
+    const gleich = melde(m, "r2", "vorschlag", "Quelle ergänzen");
+    expect(geaendert.aenderung).toMatchObject({ status: "offen", ziel: { dateiId: "sued" } });
+
+    const neu = await foliensatzLesen(
+      "sued",
+      await pptx([SUED[0]!, { ...SUED[1]!, inhalt: "Grafik Süd 2026" }]),
+    );
+    const stand = Object.fromEntries(
+      m.fassungsabgleich("eigner", neu).map((e) => [e.rueckmeldungId, e.stand]),
+    );
+    expect(stand).toEqual({ [geaendert.id]: "geaendert", [gleich.id]: "unveraendert" });
+    expect(m.aenderung("eigner", geaendert.id)).toMatchObject({
+      status: "fassung_pruefen",
+      ziel: null,
+    });
+    expect(m.aenderung("eigner", gleich.id)).toMatchObject({
+      status: "offen",
+      ziel: { dateiId: "sued", fassung: neu.fassung, sldId: "256" },
+    });
+    expect(m.sicht("eigner", geaendert.id)?.folie).toMatchObject({
+      dateiId: "sued-kopie",
+      fassung: kopie.fassung,
+    });
+  });
+
+  it("Befund 3: Fassungsabgleich verlangt Meeting- und Dokumentrecht", async () => {
+    const m = meeting(l);
+    const neu = await foliensatzLesen("nord", await pptx(NORD.slice(0, 2)));
+    expect(() => m.fassungsabgleich("fremd", neu)).toThrow(BindungsFehler);
+    expect(() => m.fassungsabgleich("nurMeeting", neu)).toThrow(BindungsFehler);
   });
 });
 
 describe("K9 · Klärung/Korrektur aktualisiert nur offene Änderungen, ohne Dublette", () => {
   it("bindet offene Objekte neu, lässt Ausgeführtes stehen und bleibt idempotent", () => {
     const m = meeting(l);
-    const ausgefuehrt = m.rueckmeldung({
-      stelle: stelle(l, "r2"),
-      zeitbasis: ZEITBASIS,
-      art: "beschlossene_korrektur",
-      text: "Zahlenquelle ergänzen",
-    });
-    const offen = m.rueckmeldung({
-      stelle: stelle(l, "r2"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Legende vergrößern",
-    });
-    const unbeteiligt = m.rueckmeldung({
-      stelle: stelle(l, "r1"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Berechnungsgrundlage ergänzen",
-    });
-    m.ausgefuehrt(`ae-${ausgefuehrt.id}`);
-    const unbeteiligtVorher = m.aenderung(unbeteiligt.id);
+    const ausgefuehrt = melde(m, "r2", "beschlossene_korrektur", "Zahlenquelle ergänzen");
+    const offen = melde(m, "r2", "vorschlag", "Legende vergrößern");
+    const unbeteiligt = melde(m, "r1", "vorschlag", "Berechnungsgrundlage ergänzen");
+    m.ausgefuehrt("eigner", ausgefuehrt.aenderung!.id);
+    const unbeteiligtVorher = m.aenderung("eigner", unbeteiligt.id);
     const anzahl = m.aenderungenAnzahl();
     const korrekt = { dateiId: "sued", fassung: l.sued.fassung, sldId: "257" };
 
-    m.klaeren(ausgefuehrt.id, korrekt, "leser");
-    m.klaeren(offen.id, korrekt, "leser");
-    m.klaeren(offen.id, korrekt, "leser");
+    m.klaeren("leser", ausgefuehrt.id, korrekt);
+    m.klaeren("leser", offen.id, korrekt);
+    m.klaeren("leser", offen.id, korrekt);
 
-    expect(m.aenderung(ausgefuehrt.id)).toMatchObject({
+    expect(m.aenderung("eigner", ausgefuehrt.id)).toMatchObject({
       status: "ausgefuehrt",
       ziel: { dateiId: "nord", sldId: "257" },
       bindungVersion: 1,
     });
-    expect(m.historie(ausgefuehrt.id)).toHaveLength(1);
-    expect(m.historie(ausgefuehrt.id)[0]?.ziel).toMatchObject({ dateiId: "nord", sldId: "257" });
-    expect(m.aenderung(offen.id)).toMatchObject({
+    expect(m.historie("eigner", ausgefuehrt.id)).toHaveLength(1);
+    expect(m.historie("eigner", ausgefuehrt.id)[0]?.folie).toMatchObject({
+      dateiId: "nord",
+      sldId: "257",
+    });
+    expect(m.aenderung("eigner", offen.id)).toMatchObject({
       status: "offen",
       ziel: korrekt,
       bindungVersion: 2,
     });
-    expect(m.historie(offen.id)).toHaveLength(1);
-    expect(m.sicht("leser", offen.id)?.folie).toMatchObject({ dateiId: "sued", sldId: "257" });
-    expect(m.aenderung(unbeteiligt.id)).toEqual(unbeteiligtVorher);
+    expect(m.historie("eigner", offen.id)).toHaveLength(1);
+    expect(m.sicht("leser", offen.id)).toMatchObject({
+      version: 2,
+      geklaertVon: "leser",
+      folie: { dateiId: "sued", sldId: "257" },
+    });
+    expect(m.aenderung("eigner", unbeteiligt.id)).toEqual(unbeteiligtVorher);
     expect(m.aenderungenAnzahl()).toBe(anzahl);
 
-    const nochmal = m.rueckmeldung({
-      stelle: stelle(l, "r2"),
-      zeitbasis: ZEITBASIS,
-      art: "vorschlag",
-      text: "Legende  vergrößern",
-    });
+    const nochmal = melde(m, "r2", "vorschlag", "Legende  vergrößern");
     expect(nochmal.id).toBe(offen.id);
     expect(m.aenderungenAnzahl()).toBe(anzahl);
   });
+
+  it("Befund 4: Klärung auf eine Kopie mit eigener Kennung adressiert deren Original", async () => {
+    const kopie = await foliensatzLesen("sued-kopie", await pptx(SUED, "kopie"));
+    const m = meeting(l);
+    m.verbinden("eigner", kopie, l.sued);
+    m.folienwechsel("eigner", {
+      quelle: "ocr",
+      zeitMs: 400_000,
+      zeitbasis: ZEITBASIS,
+      bildschirmtext: "Umsatzentwicklung",
+    });
+    const r = melde(m, "r11", "vorschlag", "Grundlage ergänzen");
+    const sicht = m.klaeren("eigner", r.id, {
+      dateiId: "sued-kopie",
+      fassung: kopie.fassung,
+      sldId: "257",
+    });
+    expect(sicht.aenderung).toMatchObject({
+      status: "offen",
+      ziel: { dateiId: "sued", fassung: l.sued.fassung, sldId: "257" },
+    });
+  });
 });
 
-describe("K10 · reales Format und Zuordnungsgrenze", () => {
-  it("liest PresentationML: sldId, Reihenfolge, Titel, versteckt, Notiz", () => {
+describe("K10 · reales Format, Zuordnungsgrenze und dauerhafter Zustand", () => {
+  it("liest PresentationML: sldId, Reihenfolge, Titel, versteckt, Notiz, Bestandteile", () => {
     expect(l.nord.folien.map((f) => [f.sldId, f.position, f.titel, f.versteckt])).toEqual([
       ["256", 1, "Quartal Nord", false],
       ["257", 2, "Umsatzentwicklung", false],
       ["258", 3, "Margenreserve", true],
     ]);
+    expect(l.nord.folien.every((f) => f.vergleichbar)).toBe(true);
     expect(l.nord.fassung).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -671,7 +664,7 @@ describe("K10 · reales Format und Zuordnungsgrenze", () => {
   });
 
   it("liest WebVTT-Mitschriften mit Kennung, Zeit und Sprecher", () => {
-    expect(l.stellen).toEqual([
+    expect(webvttLesen(VTT).slice(0, 2)).toEqual([
       {
         id: "r1",
         startMs: 65_000,
@@ -686,17 +679,10 @@ describe("K10 · reales Format und Zuordnungsgrenze", () => {
         sprecher: "Sprecher B",
         text: "Hier fehlt die Quelle der Zahlen.",
       },
-      {
-        id: "r3",
-        startMs: 135_000,
-        endMs: 138_000,
-        sprecher: "Sprecherin A",
-        text: "Den Überblick bitte kürzen.",
-      },
     ]);
   });
 
-  it("weist Nicht-PPTX, Archive ohne Präsentation und Nicht-WebVTT ab", async () => {
+  it("weist Nicht-PPTX, Archive ohne Präsentation, Nicht-WebVTT und fremde Stellen ab", async () => {
     await expect(foliensatzLesen("x", new TextEncoder().encode("kein zip"))).rejects.toThrow(
       FoliensatzFehler,
     );
@@ -706,27 +692,34 @@ describe("K10 · reales Format und Zuordnungsgrenze", () => {
       foliensatzLesen("x", await leer.generateAsync({ type: "uint8array" })),
     ).rejects.toThrow(/presentation\.xml/);
     expect(() => webvttLesen("00:00:01.000 --> 00:00:02.000\nText")).toThrow(FoliensatzFehler);
+    expect(() => melde(meeting(l), "gibt-es-nicht", "vorschlag", "x")).toThrow(BindungsFehler);
   });
 
   it("Bildschirmansicht allein ist kein Originaldateiadapter", () => {
-    const m = new MeetingDokumentbezug(
-      { meetingId: "m1", zeitbasis: ZEITBASIS, ocrErlaubt: true },
-      l.pruefung,
-    );
-    m.folienwechsel({
+    const m = leeresMeeting(l);
+    m.folienwechsel("eigner", {
       quelle: "ocr",
       zeitMs: 0,
       zeitbasis: ZEITBASIS,
       bildschirmtext: "Umsatzentwicklung",
     });
-    const r = m.rueckmeldung({
-      stelle: stelle(l, "r1"),
-      zeitbasis: ZEITBASIS,
-      art: "beschlossene_korrektur",
-      text: "Berechnungsgrundlage ergänzen",
-    });
-    expect(r.bindung).toMatchObject({ status: "klaerung_noetig", kandidaten: [], ziel: null });
-    expect(m.aenderung(r.id)).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
-    expect(() => m.folienwechsel(host(l.nord, "257", 10))).toThrow(/nicht verbundene Fassung/);
+    const r = melde(m, "r1", "beschlossene_korrektur", "Berechnungsgrundlage ergänzen");
+    expect(r).toMatchObject({ status: "klaerung_noetig", kandidaten: [], folie: null });
+    expect(r.aenderung).toMatchObject({ status: "wartet_auf_klaerung", ziel: null });
+    expect(() => m.folienwechsel("eigner", host(l.nord, "257", 10))).toThrow(
+      /nicht verbundene Fassung/,
+    );
+  });
+
+  it("der gespeicherte Zustand ergibt nach dem Wiederherstellen dieselben Sichten", () => {
+    const m = meeting(l);
+    const r = melde(m, "r1", "vorschlag", "Berechnungsgrundlage ergänzen");
+    const json = JSON.parse(JSON.stringify(m.zustand()));
+    const wieder = MeetingDokumentbezug.ausZustand(json, l.pruefung);
+    expect(wieder.sicht("leser", r.id)).toEqual(m.sicht("leser", r.id));
+    expect(wieder.ausFolie("leser", "sued", "257").map((s) => s.id)).toEqual([r.id]);
+    // Der Zustand ist eine Kopie: Änderungen daran wirken nicht zurück.
+    json.meldungen[0].text = "verändert";
+    expect(m.sicht("leser", r.id)?.text).toBe("Berechnungsgrundlage ergänzen");
   });
 });
