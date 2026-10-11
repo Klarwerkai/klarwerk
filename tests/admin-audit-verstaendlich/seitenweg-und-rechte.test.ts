@@ -38,6 +38,8 @@ import {
   type AuditInput,
   AuditService,
   InMemoryAuditRepo,
+  hashEntryFuerVersion,
+  verifyChain,
 } from "../../services/audit";
 import { type Role, istFreigabestufe } from "../../services/auth";
 import { can } from "../../services/rbac";
@@ -393,6 +395,16 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
 
   it("mit Ketteneinsicht: der Export ist die vollständige Kette — Kopf und Prüfbericht wie gespeichert", async () => {
     const b = await buehne();
+    // Nacharbeit 29 (Ben): ein Inhaltsbeleg zu einem Objekt im Papierkorb — genau der Eintrag, den
+    // die Schwärzung verändern würde. Im Kettenexport muss er unverändert und nachrechenbar sein.
+    const KATEGORIE = "Kategorie im Papierkorb (fiktiv)";
+    await b.audit.record({
+      actor: "u-anna",
+      action: "ko.category-changed",
+      target: "ko-papierkorb",
+      payload: { vorher: "Alt", nachher: KATEGORIE },
+    });
+    const gespeichert = await b.repo.all();
     const exp = await b.app.inject({
       method: "GET",
       url: "/api/audit/export",
@@ -401,18 +413,26 @@ describe("K5 · Rechte — Audit, Seite, Export und Rücklinks", () => {
     expect(exp.statusCode).toBe(200);
     const datei = exp.json() as {
       count: number;
-      geschwaerzt: number;
       head: { seq: number; hash: string };
       inspection: { ok: boolean };
       entries: (AuditEntry & { geschwaerzt?: string[] })[];
     };
-    // Wer den Space lesen darf, sieht die Titelkopie; nichts ist geschwärzt.
-    expect(datei.geschwaerzt).toBe(0);
-    expect(datei.count).toBe(KETTE.length);
+    // Die Einträge sind die gespeicherten — Feld für Feld, ohne Schwärzung, und rechnen nach.
+    expect(datei.entries).toEqual(gespeichert);
+    expect(datei.entries.some((e) => e.geschwaerzt !== undefined)).toBe(false);
+    expect(verifyChain(datei.entries)).toBe(true);
+    for (const e of datei.entries) {
+      const { hash, ...material } = e;
+      expect(hashEntryFuerVersion(material)).toBe(hash);
+    }
+    expect(datei.count).toBe(gespeichert.length);
     expect(datei.inspection.ok).toBe(true);
     expect(datei.entries.find((e) => e.seq === 5)?.payload.koTitle).toBe(GEHEIM);
-    const original = (await b.repo.all()).find((e) => e.seq === KETTE.length);
-    expect(datei.head).toEqual({ seq: original?.seq, hash: original?.hash });
+    const letzter = gespeichert.at(-1);
+    expect(datei.head).toEqual({ seq: letzter?.seq, hash: letzter?.hash });
+    // Die Redaktion steht ausschließlich in der getrennten Leseansicht: dort fehlt die Kategorie.
+    const liste = await b.app.inject({ method: "GET", url: "/api/audit", headers: VOLL });
+    expect(liste.body).not.toContain(KATEGORIE);
     // Gegenprobe (Nacharbeit 28): volles Leserecht OHNE Ketteneinsicht bekommt die Leseansicht.
     const ansicht = await b.app.inject({ method: "GET", url: "/api/audit/export", headers: VOLL });
     expect((ansicht.json() as { format: string }).format).toBe("klarwerk-audit-ansicht");

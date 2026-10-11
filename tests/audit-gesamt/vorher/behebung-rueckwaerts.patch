@@ -14207,6 +14207,71 @@ index 04be865b6..24e10c549 100644
    };
  
    const requirePermission = async (
+diff --git b/services/app/src/impact.ts a/services/app/src/impact.ts
+index ebc7c82d9..a868b8e4b 100644
+--- b/services/app/src/impact.ts
++++ a/services/app/src/impact.ts
+@@ -5,18 +5,10 @@ import type { Sichtbarkeitsfilter } from "./sichtbarkeit";
+ // FR-ANA-02: Wirkungs-Dashboard — zwei Kernmetriken über Zeit.
+ export interface ImpactReport {
+   validatedTotal: number;
+-  // R-0750/R-1741: Schlüssel = Wochenstart (Montag, YYYY-MM-DD) des PRÜFZEITPUNKTS `validatedAt` —
+-  // die Woche, in der das Objekt validiert wurde, nicht die seiner Erfassung.
+-  validatedByWeek: Record<string, number>;
+-  // Heute validierte Objekte OHNE belegten Prüfzeitpunkt (Altbestand vor dem Feld, Seed-Daten).
+-  // Sie zählen in `validatedTotal`, aber in keine Woche — zeitlich unbekannt, nicht geraten.
+-  validatedUnknownWeek: number;
++  validatedByWeek: Record<string, number>; // Schlüssel = Wochenstart (Montag, YYYY-MM-DD)
+   askTotal: number;
+   answeredWithoutGap: number;
+   answerRate: number; // Anteil beantworteter Fragen ohne Wissenslücke (0..1)
+-  // R-0723/R-0750: die Antwortquote im Wochenverlauf. Schlüssel = Wochenstart des Audit-Zeitpunkts
+-  // der Frage; die Quote je Woche rechnet der Leser aus beiden Zählern (keine gerundete Zahl hier).
+-  askByWeek: Record<string, { asked: number; answeredWithoutGap: number }>;
+ }
+ 
+ // Wochenstart (Montag, UTC) als stabiler Gruppierungs-Schlüssel.
+@@ -42,39 +34,21 @@ export async function impactReport(
+   const kos = (await ko.list({})).filter(opts.sichtbar);
+   const validated = kos.filter((entry) => entry.status === "validiert");
+   const validatedByWeek: Record<string, number> = {};
+-  let validatedUnknownWeek = 0;
+   for (const entry of validated) {
+-    const geprueft = entry.validatedAt ? Date.parse(entry.validatedAt) : Number.NaN;
+-    if (Number.isNaN(geprueft)) {
+-      validatedUnknownWeek += 1;
+-      continue;
+-    }
+-    const key = weekKey(new Date(geprueft).toISOString());
++    const key = weekKey(entry.createdAt);
+     validatedByWeek[key] = (validatedByWeek[key] ?? 0) + 1;
+   }
+ 
+   const asks = await audit.list({ action: "ask.query" });
+   const askTotal = asks.length;
+   const answeredWithoutGap = asks.filter((entry) => entry.payload.answered === true).length;
+-  const askByWeek: ImpactReport["askByWeek"] = {};
+-  for (const entry of asks) {
+-    const key = weekKey(entry.at);
+-    const bucket = askByWeek[key] ?? { asked: 0, answeredWithoutGap: 0 };
+-    bucket.asked += 1;
+-    if (entry.payload.answered === true) {
+-      bucket.answeredWithoutGap += 1;
+-    }
+-    askByWeek[key] = bucket;
+-  }
+ 
+   return {
+     validatedTotal: validated.length,
+     validatedByWeek,
+-    validatedUnknownWeek,
+     askTotal,
+     answeredWithoutGap,
+     answerRate: askTotal > 0 ? answeredWithoutGap / askTotal : 0,
+-    askByWeek,
+   };
+ }
+ 
 diff --git b/services/app/src/import-befunde.ts a/services/app/src/import-befunde.ts
 deleted file mode 100644
 index 7af4c5f3c..000000000
@@ -26816,10 +26881,10 @@ index 14a149f88..000000000
 -  };
 -}
 diff --git b/services/app/src/routes/audit-routes.ts a/services/app/src/routes/audit-routes.ts
-index 4aea03f1e..f23c51e1c 100644
+index 52559c4b7..f23c51e1c 100644
 --- b/services/app/src/routes/audit-routes.ts
 +++ a/services/app/src/routes/audit-routes.ts
-@@ -1,714 +1,26 @@
+@@ -1,717 +1,26 @@
  import type { FastifyPluginAsync } from "fastify";
 -import {
 -  type AuditEntry,
@@ -27490,10 +27555,15 @@ index 4aea03f1e..f23c51e1c 100644
 -    // FR-AUD-02: unter `/api/audit` gibt es ausschließlich GET-Wege. Ein POST/PUT/PATCH/
 -    // DELETE ist nirgends registriert — `tests/audit-gesamt/append-only-http.test.ts` misst das.
 -    //
--    // produkt:20261009:admin-audit-verstaendlich: auch die Datei schwärzt Inhaltsfelder zu Objekten,
--    // die der Exportierende nicht öffnen darf (`geschwaerzt` je Eintrag, Anzahl im Kopf). Kopf und
--    // `inspection` beschreiben weiter die VOLLSTÄNDIGE Kette; ein geschwärzter Eintrag lässt sich in
--    // der Datei deshalb nicht nachrechnen, und genau das sagt sein `geschwaerzt`.
+-    // produkt:20261009:admin-audit-verstaendlich: die LESERANSICHT schwärzt Inhaltsfelder zu Objekten,
+-    // die der Exportierende nicht öffnen darf (`geschwaerzt` je Eintrag, Anzahl im Kopf).
+-    //
+-    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 29): der KETTENEXPORT schwärzt NICHT. Er
+-    // geht nur an ein Konto mit ausdrücklich erteilter Ketteneinsicht und liefert das gespeicherte
+-    // Hashmaterial unverändert — sonst wären Einträge mit entfernten Feldern (etwa ein
+-    // `ko.category-changed` nach Löschung seines Objekts) unter unverändertem Kopf und `inspection`
+-    // nicht mehr nachrechenbar. Jede Redaktion steht ausschließlich in der getrennten Leseransicht.
+-    // Welche Form ein Konto bekommt, hängt weiter allein an der Ketteneinsicht, nie am Bestand.
 -    app.get("/api/audit/export", async (request, reply) => {
 -      const user = await guards.requirePermission("ko.validate", request, reply);
 -      if (!user) {
@@ -27504,13 +27574,11 @@ index 4aea03f1e..f23c51e1c 100644
 -      const lage = await leselage(user, quelle, vorher);
 -      if (!lage.eingeschraenkt) {
 -        const datei = await audit.exportChain(user.id);
--        const entries = await Promise.all(datei.entries.map((e) => sicht.eintrag(e)));
--        const geschwaerzt = entries.filter((e) => e.geschwaerzt !== undefined).length;
 -        const stempel = datei.exportedAt.replace(/[:.]/g, "-");
 -        reply
 -          .header("content-disposition", `attachment; filename="klarwerk-audit-${stempel}.json"`)
 -          .code(200)
--          .send({ ...datei, entries, geschwaerzt });
+-          .send(datei);
 -        return;
 -      }
 -      // Die Ansicht entsteht aus der Kette VOR ihrem eigenen Beleg — wie beim Kettenexport.
@@ -81990,6 +82058,43 @@ index 057cff309..a64fc0ab9 100644
      gleicheFolge(a.reviewers, b.reviewers) &&
      gleicheFolge(a.validators, b.validators)
    );
+diff --git b/services/knowledge-object/src/pruefzeitpunkt.ts a/services/knowledge-object/src/pruefzeitpunkt.ts
+deleted file mode 100644
+index 8c96c2991..000000000
+--- b/services/knowledge-object/src/pruefzeitpunkt.ts
++++ /dev/null
+@@ -1,31 +0,0 @@
+-// ================================================================================================
+-// R-0750 / R-1741 (Aufnahme gesamt-kennzahlen) — DER PRÜFZEITPUNKT EINER FASSUNG.
+-// ================================================================================================
+-//
+-// Die Wirkungsmessung „wie viel Wissen wird je Woche geprüft" braucht den Zeitpunkt der Prüfung,
+-// nicht den der Erfassung. Bis hierher kannte das Objekt nur `createdAt`; ein im Oktober geprüftes,
+-// im Juni erfasstes Objekt erhöhte rückwirkend eine Juniwoche.
+-//
+-// EINE REGEL, an jedem Schreibrand des Status angewandt (Bewertung, Admin-Validierung, Überarbeiten
+-// mit und ohne Freigabe, Dokumentübernahme, Wahrheitskonflikt):
+-//   · nachher nicht „validiert"                  → kein Prüfzeitpunkt (die Prüfung gilt nicht mehr)
+-//   · Übergang nach „validiert" oder neue Freigabe → Prüfzeitpunkt = jetzt
+-//   · bleibt „validiert" (weitere grüne Stimme)    → der bisherige Zeitpunkt bleibt — auch wenn er
+-//     fehlt: Altbestand wird nicht nachträglich auf „jetzt" datiert.
+-import type { KnowledgeObject } from "./types";
+-
+-export function mitPruefzeitpunkt(
+-  vorher: KnowledgeObject,
+-  nachher: KnowledgeObject,
+-  at: string,
+-  neueFreigabe = false,
+-): KnowledgeObject {
+-  if (nachher.status !== "validiert") {
+-    const { validatedAt: _entfaellt, ...ohne } = nachher;
+-    return ohne;
+-  }
+-  if (neueFreigabe || vorher.status !== "validiert") {
+-    return { ...nachher, validatedAt: at };
+-  }
+-  return nachher;
+-}
 diff --git b/services/knowledge-object/src/repo-pg.ts a/services/knowledge-object/src/repo-pg.ts
 index 54ea8967d..af50a1a0f 100644
 --- b/services/knowledge-object/src/repo-pg.ts
@@ -82931,7 +83036,7 @@ index 8d2ae247c..91adb140e 100644
  /** Der Index: Begriff -> die anderen Begriffe derselben Zuordnung. Einmal gebaut, nicht je Abfrage. */
  const ZUORDNUNGS_INDEX: ReadonlyMap<string, readonly string[]> = (() => {
 diff --git b/services/knowledge-object/src/service.ts a/services/knowledge-object/src/service.ts
-index 5cd4656e5..925f1d4a8 100644
+index 6923cc9b6..925f1d4a8 100644
 --- b/services/knowledge-object/src/service.ts
 +++ a/services/knowledge-object/src/service.ts
 @@ -6,9 +6,6 @@ import type { TxContext } from "../../db-tx";
@@ -82996,10 +83101,12 @@ index 5cd4656e5..925f1d4a8 100644
  // AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
  import {
    bestandsStempelVon,
-@@ -89,18 +60,14 @@ import {
+@@ -89,20 +60,14 @@ import {
    mitPruefstand,
    pruefbasisVon,
  } from "./pruefbasis";
+-// R-0750/R-1741: Prüfzeitpunkt der geltenden Fassung, an jedem Statuswechsel.
+-import { mitPruefzeitpunkt } from "./pruefzeitpunkt";
 -import {
 -  type EvidenceRepo,
 -  type KoCandidateQuery,
@@ -83022,7 +83129,7 @@ index 5cd4656e5..925f1d4a8 100644
  // G27: die revisionsgebundene Suchprojektion — reine Ableitung (search-projection.ts) und ihre
  // Persistenz (search-projection-repo.ts). Warum es sie gibt, steht im Kopf der Ableitungsdatei.
  import {
-@@ -129,136 +96,32 @@ import {
+@@ -131,136 +96,32 @@ import {
  import { confirmedSourceAnchor } from "./source-anchor";
  // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
  import { safeSourceUrl, sanitizeSources } from "./source-url";
@@ -83159,7 +83266,7 @@ index 5cd4656e5..925f1d4a8 100644
  /**
   * AUFTRAG-mega21 Block A — WER FRAGT, UND MIT WELCHEM INHALT.
   *
-@@ -285,7 +148,6 @@ export interface CreateOperationRequester {
+@@ -287,7 +148,6 @@ export interface CreateOperationRequester {
   * DIESELBE ABSENDUNG IST DAHER: gleicher Schlüssel · gleicher Verfasser · gleicher Text · gleicher
   * Antwortbezug. Der Bezug gehört dazu, weil dieselben Worte an einem anderen Faden eine andere
   * Aussage sind. Fehlender und leerer Bezug sind dabei dasselbe — beides heisst „Wurzelbeitrag".
@@ -83167,7 +83274,7 @@ index 5cd4656e5..925f1d4a8 100644
   */
  function gleicheAbsendung(
    vorhanden: KoComment,
-@@ -293,14 +155,12 @@ function gleicheAbsendung(
+@@ -295,14 +155,12 @@ function gleicheAbsendung(
    text: string,
    replyTo: string | undefined,
    clientKey: string,
@@ -83183,7 +83290,7 @@ index 5cd4656e5..925f1d4a8 100644
    );
  }
  
-@@ -354,11 +214,12 @@ export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
+@@ -356,11 +214,12 @@ export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
  // Muster und dieselbe Größenordnung wie der Fußnoten-Backfill der Bibliothek
  // (SEARCH_BACKFILL_LIMIT_PER_QUERY = 20): die Suche darf nie zum Bestands-Durchlauf werden, und
  // der Rest wird von der nächsten Anfrage bzw. vom ausdrücklichen Lauf abgearbeitet (konvergiert).
@@ -83200,7 +83307,7 @@ index 5cd4656e5..925f1d4a8 100644
  
  // Der Schwung des UNGEDECKELTEN Abgleichs. Groß genug, dass der Bestand in wenigen Runden
  // abgearbeitet ist; endlich, damit eine einzelne Abfrage nicht unbegrenzt Zeilen zieht.
-@@ -428,19 +289,9 @@ const RUECKNAHME_VORAB_FRIST_MS = 2000;
+@@ -430,19 +289,9 @@ const RUECKNAHME_VORAB_FRIST_MS = 2000;
  // audit.record durch — KEIN Pg-Typ in dieser Signatur.
  export type WithTx = <T>(fn: (tx: TxContext) => Promise<T>) => Promise<T>;
  
@@ -83220,7 +83327,7 @@ index 5cd4656e5..925f1d4a8 100644
    // SCRUM-159: optionales Versions-Repo. Ist es gesetzt, werden bei create/revise
    // vollständige, unveränderliche Snapshots geschrieben (Knowledge-OS-Foundation).
    versions?: KoVersionRepo;
-@@ -463,12 +314,6 @@ export interface KoServiceDeps {
+@@ -465,12 +314,6 @@ export interface KoServiceDeps {
    // Überschneidungen, Embedding-Vektor) nicht verwaisen. Als injizierte Funktion — KEIN Import über die
    // Modulgrenze; die App (Composition-Root) verdrahtet conflicts/overlaps/Embedding-Cleanup dahinter.
    onPurge?: (koId: string, actor: string) => Promise<void>;
@@ -83233,7 +83340,7 @@ index 5cd4656e5..925f1d4a8 100644
    // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
    withTx?: WithTx;
    // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): die Klammer des Rücknahme-Wegs
-@@ -508,10 +353,6 @@ export interface KoServiceDeps {
+@@ -510,10 +353,6 @@ export interface KoServiceDeps {
    // Autorschaft.
    ruecknahmeFrist?: number;
    onError?: (context: string, error: unknown) => void;
@@ -83244,7 +83351,7 @@ index 5cd4656e5..925f1d4a8 100644
  }
  
  /**
-@@ -558,9 +399,6 @@ export interface CreateKoInput {
+@@ -560,9 +399,6 @@ export interface CreateKoInput {
    // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
    // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
    domain?: string | null;
@@ -83254,7 +83361,7 @@ index 5cd4656e5..925f1d4a8 100644
    author: string;
    conditions?: string[];
    measures?: string[];
-@@ -568,21 +406,10 @@ export interface CreateKoInput {
+@@ -570,21 +406,10 @@ export interface CreateKoInput {
    confidence?: number;
    neededValidations?: number;
    asset?: string | null;
@@ -83276,7 +83383,7 @@ index 5cd4656e5..925f1d4a8 100644
    // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg des Entwurfs, aus dem dieses KO entsteht.
    // Bewusst ein VERWEIS auf die Wertmenge am Modell statt einer zweiten Aufzaehlung — so koennen
    // Eingabe und Objekt nicht auseinanderlaufen. Die Pruefung ist bereits am Entwurf gefallen
-@@ -610,9 +437,6 @@ export interface CreateKoInput {
+@@ -612,9 +437,6 @@ export interface CreateKoInput {
    // (Entwurfs-Promote aus dem Word-Zusatz, JSON-Import ohne externalId) setzen ihn; die
    // öffentlichen Schreibrouten verwerfen das Feld wie `importedVia`.
    dokumentHerkunft?: KnowledgeObject["dokumentHerkunft"];
@@ -83286,7 +83393,7 @@ index 5cd4656e5..925f1d4a8 100644
    // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
    // die die Verantwortung schon kennen.
    //
-@@ -647,12 +471,7 @@ export interface ReviseKoInput {
+@@ -649,12 +471,7 @@ export interface ReviseKoInput {
    // wie beim Anlegen. Feld ist `null` → Kennung bewusst entfernt. Deshalb wird unten auf
    // `!== undefined` geprüft und nicht mit `??` gearbeitet: bei `??` wäre „entfernen" nicht
    // ausdrückbar. Dieselbe Bauform wie `bodyHtml` daneben.
@@ -83299,7 +83406,7 @@ index 5cd4656e5..925f1d4a8 100644
  }
  
  // ==============================================================================================
-@@ -792,40 +611,6 @@ function normalizeDomain(domain: string | null | undefined): string | undefined
+@@ -794,40 +611,6 @@ function normalizeDomain(domain: string | null | undefined): string | undefined
    return wert.length > 0 ? wert : undefined;
  }
  
@@ -83340,7 +83447,7 @@ index 5cd4656e5..925f1d4a8 100644
  // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
  // HTML ableiten, falls leer (statement bleibt führende Plaintext-Kurzfassung).
  function cleanBody(bodyHtml: string | null | undefined): string | null {
-@@ -932,14 +717,7 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
+@@ -934,14 +717,7 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
   */
  const HASH_PRUEFBLOCK = 100;
  
@@ -83355,7 +83462,7 @@ index 5cd4656e5..925f1d4a8 100644
    private readonly repo: KoRepo;
    private readonly audit: AuditService | undefined;
    private readonly versions: KoVersionRepo | undefined;
-@@ -952,8 +730,6 @@ export class KoService {
+@@ -954,8 +730,6 @@ export class KoService {
    // SCRUM-523 P.3 (WP2): Purge-Aufräum-Hook. Spät bindbar (setPurgeCleanup), da die Composition-Root
    // conflicts/overlaps/Embedding-Cleanup erst NACH dem KoService erstellt (Reihenfolge in assembleServices).
    private onPurge: ((koId: string, actor: string) => Promise<void>) | undefined;
@@ -83364,7 +83471,7 @@ index 5cd4656e5..925f1d4a8 100644
    // JOB 1104 (S0-TX): der transaktionsgebundene Haken. Ebenfalls spät bindbar, aus demselben Grund.
    private onPurgeTx: PurgeTxCleanup | undefined;
    // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
-@@ -962,11 +738,6 @@ export class KoService {
+@@ -964,11 +738,6 @@ export class KoService {
    // JOB 3071 R3: Frist und Fehlerkanal der Rücknahme-Vorablesung (s. KoServiceDeps).
    private readonly ruecknahmeFrist: number;
    private readonly onError: (context: string, error: unknown) => void;
@@ -83376,7 +83483,7 @@ index 5cd4656e5..925f1d4a8 100644
    // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
    // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
    // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
-@@ -974,7 +745,6 @@ export class KoService {
+@@ -976,7 +745,6 @@ export class KoService {
    private readonly koWriteLocks = new Map<string, Promise<unknown>>();
  
    constructor(deps: KoServiceDeps) {
@@ -83384,7 +83491,7 @@ index 5cd4656e5..925f1d4a8 100644
      this.repo = deps.repo;
      this.audit = deps.audit;
      this.versions = deps.versions;
-@@ -998,17 +768,8 @@ export class KoService {
+@@ -1000,17 +768,8 @@ export class KoService {
      this.onError =
        deps.onError ??
        ((context, error) => {
@@ -83403,7 +83510,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    // SCRUM-523 P.3 (WP2): den Purge-Aufräum-Hook spät verdrahten (die App erstellt conflicts/overlaps/
-@@ -1017,29 +778,6 @@ export class KoService {
+@@ -1019,29 +778,6 @@ export class KoService {
      this.onPurge = hook;
    }
  
@@ -83433,7 +83540,7 @@ index 5cd4656e5..925f1d4a8 100644
    // JOB 1104 (S0-TX): den transaktionsgebundenen Haken spät verdrahten — exakt analog zu
    // `setPurgeCleanup`, und mit derselben Einschränkung: NUR EIN Hook. Wer etwas hinzufügt, tut es
    // in der Kompositionswurzel sichtbar; es gibt bewusst keinen Registrierungsmechanismus, der
-@@ -1067,79 +805,27 @@ export class KoService {
+@@ -1069,79 +805,27 @@ export class KoService {
    // kein Interleave IM Prozess) UND optimistisch auf DB-Ebene (repo.update macht Compare-and-Set auf
    // rowVersion → ein veralteter fremder Write kann nichts überschreiben, auch prozessübergreifend).
    // `apply` bekommt das FRISCH gelesene KO und liefert das aktualisierte KO + Rückgabewert + optionalen
@@ -83519,7 +83626,7 @@ index 5cd4656e5..925f1d4a8 100644
    // SCRUM-507 R3: transaktionaler MEHRSCHRITT-Mutationspfad (persist + Snapshot + Audit + Status als EINE
    // Einheit). Anders als mutateKo (Single-Step, Audit-vor-Write) braucht die Revision einen Versions-
    // Snapshot NACH der Persistenz. Per-KO serialisiert (withKoLock) + rowVersion-CAS (repo.update).
-@@ -1190,15 +876,7 @@ export class KoService {
+@@ -1192,15 +876,7 @@ export class KoService {
      },
    ): Promise<T> {
      // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
@@ -83536,7 +83643,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    private async mutateKoTxRoh<T>(
-@@ -1213,18 +891,6 @@ export class KoService {
+@@ -1215,18 +891,6 @@ export class KoService {
      return this.withKoLock(id, async () => {
        const before = await this.require(id);
        const { updated, value, snapshot, audit } = build(before);
@@ -83555,7 +83662,7 @@ index 5cd4656e5..925f1d4a8 100644
        if (this.withTx) {
          // JOB 2704 D1: die vier Schritte in EINER Transaktion — Reihenfolge wie im Fallback unten,
          // ohne Kompensation (s. o.). Jeder Fehler verlässt den Transaktionskörper; withPgTx rollt
-@@ -1244,10 +910,6 @@ export class KoService {
+@@ -1246,10 +910,6 @@ export class KoService {
        await this.repo.update(updated);
        let snapshotWritten = false;
        let projectionWritten = false;
@@ -83566,7 +83673,7 @@ index 5cd4656e5..925f1d4a8 100644
        try {
          // 2) Nachgelagert: erst Snapshot, dann Audit. Ein Fehler in EINEM Schritt rollt ALLES zurück.
          // G27: die Suchprojektion der NEUEN Version entsteht in DIESER Klammer — sie ist damit
-@@ -1261,9 +923,6 @@ export class KoService {
+@@ -1263,9 +923,6 @@ export class KoService {
              projectionWritten = geschrieben;
            });
          }
@@ -83576,7 +83683,7 @@ index 5cd4656e5..925f1d4a8 100644
          await audit?.();
          return value;
        } catch (err) {
-@@ -1280,60 +939,12 @@ export class KoService {
+@@ -1282,60 +939,12 @@ export class KoService {
              .remove(updated.id, updated.version, { ruecknahme: true })
              .catch(() => undefined);
          }
@@ -83638,7 +83745,7 @@ index 5cd4656e5..925f1d4a8 100644
    // SCRUM-507 R3: setzt den KO-Inhalt auf `before` zurück. Der vorangegangene Persist hat rowVersion um
    // 1 erhöht; um den INHALT wiederherzustellen, wird mit der jetzt gültigen rowVersion (before+1)
    // geschrieben (CAS passt) → Inhalt = before. rowVersion ist nur ein Concurrency-Token (klettert),
-@@ -1512,13 +1123,7 @@ export class KoService {
+@@ -1514,13 +1123,7 @@ export class KoService {
        return offen;
      }
      const bekannt = new Set(offen);
@@ -83653,7 +83760,7 @@ index 5cd4656e5..925f1d4a8 100644
        if (bekannt.has(id)) {
          continue;
        }
-@@ -2282,11 +1887,11 @@ export class KoService {
+@@ -2284,11 +1887,11 @@ export class KoService {
  
    // SCRUM-160: Evidence-Records append-only schreiben. No-op ohne Evidence-Repo;
    // bestehende KO-Flows bleiben dadurch rückwärtskompatibel.
@@ -83667,7 +83774,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    /**
-@@ -2437,9 +2042,6 @@ export class KoService {
+@@ -2439,9 +2042,6 @@ export class KoService {
        // `CreateKoInput`. Er entsteht mit dem Objekt, im SELBEN Insert — es gibt keinen Augenblick,
        // in dem der Schlüssel ohne seinen Eigentümer im Bestand steht.
        createOperation?: KoCreateOperation;
@@ -83677,7 +83784,7 @@ index 5cd4656e5..925f1d4a8 100644
      },
    ): Promise<KnowledgeObject> {
      if (!KNOWLEDGE_TYPES.includes(input.type)) {
-@@ -2461,18 +2063,6 @@ export class KoService {
+@@ -2463,18 +2063,6 @@ export class KoService {
      if (needed < 1 || needed > 5) {
        throw new KoError("INVALID_NEEDED", "Nötige Validierungen müssen zwischen 1 und 5 liegen.");
      }
@@ -83696,7 +83803,7 @@ index 5cd4656e5..925f1d4a8 100644
      const at = new Date(this.now()).toISOString();
      const bodyHtml = cleanBody(input.bodyHtml);
      // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
-@@ -2480,25 +2070,6 @@ export class KoService {
+@@ -2482,25 +2070,6 @@ export class KoService {
        input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
      // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
      const domain = normalizeDomain(input.domain);
@@ -83722,7 +83829,7 @@ index 5cd4656e5..925f1d4a8 100644
      const ko: KnowledgeObject = {
        id: this.genId(),
        title: input.title,
-@@ -2510,8 +2081,6 @@ export class KoService {
+@@ -2512,8 +2081,6 @@ export class KoService {
        // JOB 3111 · B1b: dieselbe Zusage für die Benennungen — ein Objekt, das nach dieser Regel
        // gespeichert wird, trägt BEIDE Suchfelder immer (auch [] bei „keine Bilder/keine alt-Texte").
        imageNames: searchImageNames(bodyHtml),
@@ -83731,7 +83838,7 @@ index 5cd4656e5..925f1d4a8 100644
        conditions: input.conditions ?? [],
        measures: input.measures ?? [],
        type: input.type,
-@@ -2519,7 +2088,6 @@ export class KoService {
+@@ -2521,7 +2088,6 @@ export class KoService {
        // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
        // Ableitung aus der Kategorie.
        ...(domain ? { domain } : {}),
@@ -83739,7 +83846,7 @@ index 5cd4656e5..925f1d4a8 100644
        tags: input.tags ?? [],
        confidence: input.confidence ?? 0,
        trust: 0,
-@@ -2534,11 +2102,7 @@ export class KoService {
+@@ -2536,11 +2102,7 @@ export class KoService {
        // Vorher legte der Dienst sie roh ab; getrimmt hat allein der Browser. Jeder browserfreie
        // Weg (Word-Add-in, Import, Seed, API) erzeugte damit eine zweite Schreibweise derselben
        // Anlage — und `sameAsset` (conflicts/detect.ts:126) vergleicht zeichengenau.
@@ -83752,7 +83859,7 @@ index 5cd4656e5..925f1d4a8 100644
        // JOB 3076 (Q1) — DIE STUFE NUR SPEICHERN, WENN SIE JEMAND MITBRINGT. ABLÖSUNG VON SCRUM-415.
        //
        // BIS HIERHER GALT (SCRUM-415): „nur speichern, wenn tatsächlich vertraulich" — die Bedingung
-@@ -2565,8 +2129,9 @@ export class KoService {
+@@ -2567,8 +2129,9 @@ export class KoService {
        // zu benutzen. Wer das zurückdreht, macht V1 in
        // tests/vertraulichkeit-intern/explizit-intern-ueberlebt.test.ts rot; wer stattdessen einen
        // Default einführt, V2.
@@ -83764,7 +83871,7 @@ index 5cd4656e5..925f1d4a8 100644
        ...(input.demoSeed ? { demoSeed: true } : {}),
        // JOB 679 / D2 (K1.2, Weg A): die Herkunft nur setzen, wenn der Entwurf eine MITBRINGT —
        // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
-@@ -2580,19 +2145,18 @@ export class KoService {
+@@ -2582,19 +2145,18 @@ export class KoService {
        ...(input.importedVia ? { importedVia: input.importedVia } : {}),
        // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
        ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
@@ -83787,7 +83894,7 @@ index 5cd4656e5..925f1d4a8 100644
        createdAt: at,
        history: [{ version: 1, at, author: input.author, note: "erstellt" }],
        comments: [],
-@@ -2603,29 +2167,7 @@ export class KoService {
+@@ -2605,29 +2167,7 @@ export class KoService {
        // SCRUM-527 (WP2): jede übernommene Quell-URL durch die Allowlist (nur absolute http/https).
        sources: sanitizeSources([...(input.sources ?? []), ...(extras?.sources ?? [])]),
      };
@@ -83818,7 +83925,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    // ============================================================================================
-@@ -2653,16 +2195,7 @@ export class KoService {
+@@ -2655,16 +2195,7 @@ export class KoService {
    async create(
      input: CreateKoInput,
      operation?: { id: string; actor: string; fingerprint: string },
@@ -83835,7 +83942,7 @@ index 5cd4656e5..925f1d4a8 100644
      if (operation) {
        const createOperationId = normalizeCreateOperationId(operation.id);
        const actor = operation.actor.trim();
-@@ -2675,19 +2208,14 @@ export class KoService {
+@@ -2677,19 +2208,14 @@ export class KoService {
        // Eine Wiederholung liefert das BESTEHENDE Objekt — samt Lesefassung seines Nachweises.
        return this.lesefassung(
          await this.withKoLock(`create-op:${createOperationId}`, () =>
@@ -83860,7 +83967,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    /**
-@@ -2698,7 +2226,6 @@ export class KoService {
+@@ -2700,7 +2226,6 @@ export class KoService {
      input: CreateKoInput,
      createOperationId: string,
      requester: CreateOperationRequester,
@@ -83868,7 +83975,7 @@ index 5cd4656e5..925f1d4a8 100644
    ): Promise<KnowledgeObject> {
      // DER NACHSCHLAG VOR ALLEM VERÄNDERLICHEN — er SCHREIBT NICHTS. Eine unbekannte Kennung liefert
      // `undefined`, und der volle, ungekürzte Weg läuft weiter.
-@@ -2714,17 +2241,13 @@ export class KoService {
+@@ -2716,17 +2241,13 @@ export class KoService {
          state: "committed",
          at: new Date(this.now()).toISOString(),
        },
@@ -83888,7 +83995,7 @@ index 5cd4656e5..925f1d4a8 100644
        if (err instanceof KoError && err.code === "CREATE_ANCHOR_TAKEN") {
          const raced = await this.adoptCreatedKo(createOperationId, requester);
          if (raced) {
-@@ -2733,80 +2256,15 @@ export class KoService {
+@@ -2735,80 +2256,15 @@ export class KoService {
        }
        throw err;
      }
@@ -83974,7 +84081,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    /**
-@@ -2823,20 +2281,16 @@ export class KoService {
+@@ -2825,20 +2281,16 @@ export class KoService {
     * gemessen in `tests/demo-erster-nutzerweg/befund-promote-verliert-die-herkunft.test.ts`. Damit
     * hing die Antwort auf „woher stammt dieser Satz?" an der Tür, durch die das Objekt gekommen war.
     */
@@ -84002,7 +84109,7 @@ index 5cd4656e5..925f1d4a8 100644
      // JOB 4137: DIE BELEGKETTE, an derselben Stelle wie Snapshot und Projektion und aus denselben
      // Tatsachen wie der Dokumentweg (`erstanlageBelege`). `ko.createdAt` und nicht `this.now()`:
      // die Zeile gehört zur ANLAGE dieses Objekts und trägt deren Zeitpunkt — genau wie die Zeilen
-@@ -2852,16 +2306,16 @@ export class KoService {
+@@ -2854,16 +2306,16 @@ export class KoService {
        ko.createdAt,
        this.anhangJeQuelleAusAnker(ko),
      )) {
@@ -84025,7 +84132,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    /**
-@@ -3062,58 +2516,12 @@ export class KoService {
+@@ -3064,58 +2516,12 @@ export class KoService {
          at,
        },
      });
@@ -84085,7 +84192,7 @@ index 5cd4656e5..925f1d4a8 100644
        if (err instanceof KoError && err.code === "CREATE_ANCHOR_TAKEN") {
          const raced = await this.adoptCreatedKo(createOperationId, requester);
          if (raced) {
-@@ -3122,7 +2530,64 @@ export class KoService {
+@@ -3124,7 +2530,64 @@ export class KoService {
        }
        throw err;
      }
@@ -84151,7 +84258,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    /**
-@@ -3553,9 +3018,7 @@ export class KoService {
+@@ -3555,9 +3018,7 @@ export class KoService {
      // sich auf einen Aufrufer-Cast zu verlassen. Ungültig → INVALID_CONFIDENTIALITY (→ 400).
      level: unknown,
      actor: string,
@@ -84162,7 +84269,7 @@ index 5cd4656e5..925f1d4a8 100644
    ): Promise<KnowledgeObject> {
      // SCRUM-509: ungültige/fehlende Stufe wird NICHT still auf „intern" normalisiert (fail-open) —
      // sie wird abgelehnt. Fail-safe an der Datenschicht (Belt zur Route).
-@@ -3565,24 +3028,6 @@ export class KoService {
+@@ -3567,24 +3028,6 @@ export class KoService {
      return this.mutateKo(id, (ko) => {
        const previous = normalizeConfidentiality(ko.confidentiality);
        const downgrade = isConfidentialityDowngrade(previous, level);
@@ -84187,7 +84294,7 @@ index 5cd4656e5..925f1d4a8 100644
        // SCRUM-509 R2/R3: Downgrade-Autorisierung gegen die GERADE gelesene Stufe (atomar). R3 FAIL-SAFE:
        // fehlt `mayDowngrade`, gilt es als NICHT erlaubt (`!opts...`) — ein Downgrade rutscht nie aus einem
        // fehlenden Recht durch, auch bei programmatischen Aufrufern.
-@@ -3592,120 +3037,16 @@ export class KoService {
+@@ -3594,120 +3037,16 @@ export class KoService {
            "Das Herabstufen der Vertraulichkeit erfordert eine Prüfer-/Admin-Rolle.",
          );
        }
@@ -84311,7 +84418,7 @@ index 5cd4656e5..925f1d4a8 100644
            });
          },
        };
-@@ -3735,7 +3076,7 @@ export class KoService {
+@@ -3737,7 +3076,7 @@ export class KoService {
      if (!next) {
        throw new KoError(
          "INVALID_OWNERSHIP",
@@ -84320,7 +84427,7 @@ index 5cd4656e5..925f1d4a8 100644
        );
      }
      return this.mutateKo(id, (ko) => {
-@@ -3744,175 +3085,44 @@ export class KoService {
+@@ -3746,175 +3085,44 @@ export class KoService {
        return {
          updated,
          value: updated,
@@ -84522,7 +84629,7 @@ index 5cd4656e5..925f1d4a8 100644
      actor: string,
    ): Promise<KnowledgeObject | undefined> {
      return this.withKoLock(id, async () => {
-@@ -3928,24 +3138,13 @@ export class KoService {
+@@ -3930,24 +3138,13 @@ export class KoService {
          return ko;
        }
        const updated: KnowledgeObject = { ...ko, ownership: next };
@@ -84554,7 +84661,7 @@ index 5cd4656e5..925f1d4a8 100644
        return updated;
      });
    }
-@@ -3979,27 +3178,14 @@ export class KoService {
+@@ -3981,27 +3178,14 @@ export class KoService {
    // KENNUNG UND ZEITPUNKT ENTSTEHEN EINMAL, VOR DEM ERSTEN VERSUCH: ein Wiederholversuch mit neuer
    // Kennung könnte denselben Beitrag zweimal in den Bestand legen, wenn der erste Schreibvorgang
    // doch noch durchging.
@@ -84583,7 +84690,7 @@ index 5cd4656e5..925f1d4a8 100644
      const neu: KoComment = {
        id: this.genId(),
        author,
-@@ -4007,7 +3193,6 @@ export class KoService {
+@@ -4009,7 +3193,6 @@ export class KoService {
        at: new Date(this.now()).toISOString(),
        ...(replyTo ? { replyTo } : {}),
        ...(clientKey ? { clientKey } : {}),
@@ -84591,7 +84698,7 @@ index 5cd4656e5..925f1d4a8 100644
      };
  
      const versuch = async (): Promise<{ ko: KnowledgeObject; geschrieben: boolean }> => {
-@@ -4021,35 +3206,9 @@ export class KoService {
+@@ -4023,35 +3206,9 @@ export class KoService {
        // wer nach einer verlorenen Antwort seinen Text nachbesserte und erneut sendete, bekam ein
        // HTTP 200 über den ALTEN Beitrag, während der neue nirgends landete (BEN, Runde 4).
        // Dieselbe Absendung heisst: derselbe Verfasser, derselbe Text, derselbe Antwortbezug.
@@ -84628,7 +84735,7 @@ index 5cd4656e5..925f1d4a8 100644
        if (replyTo && !bestand.some((c) => c.id === replyTo)) {
          throw new KoError(
            "COMMENT_NOT_FOUND",
-@@ -4058,16 +3217,7 @@ export class KoService {
+@@ -4060,16 +3217,7 @@ export class KoService {
        }
        const comment: KoComment = { ...neu, koVersion: ko.version };
        const updated: KnowledgeObject = { ...ko, comments: [...bestand, comment] };
@@ -84646,7 +84753,7 @@ index 5cd4656e5..925f1d4a8 100644
        return { ko: updated, geschrieben: true };
      };
  
-@@ -4082,6 +3232,9 @@ export class KoService {
+@@ -4084,6 +3232,9 @@ export class KoService {
        // bereits im Bestand und wird mitgenommen — er verschwindet nicht.
        ergebnis = await versuch();
      }
@@ -84656,7 +84763,7 @@ index 5cd4656e5..925f1d4a8 100644
      return this.lesefassung(ergebnis.ko);
    }
  
-@@ -4117,16 +3270,13 @@ export class KoService {
+@@ -4119,16 +3270,13 @@ export class KoService {
        return {
          updated,
          value: updated,
@@ -84680,7 +84787,7 @@ index 5cd4656e5..925f1d4a8 100644
          },
        };
      });
-@@ -4165,34 +3315,21 @@ export class KoService {
+@@ -4167,34 +3315,21 @@ export class KoService {
        ...ko,
        attachments: [...(ko.attachments ?? []), attachment],
      };
@@ -84730,7 +84837,7 @@ index 5cd4656e5..925f1d4a8 100644
      // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
      return this.lesefassung(updated);
    }
-@@ -4268,141 +3405,6 @@ export class KoService {
+@@ -4270,141 +3405,6 @@ export class KoService {
      }
    }
  
@@ -84872,7 +84979,7 @@ index 5cd4656e5..925f1d4a8 100644
    /**
     * R-0163 (Nacharbeit 7): trägt fehlende Belege ÜBERNOMMENER Anhänge nach — je Anhang mit
     * Herkunft (`quelle`) und `objectId`, zu dem die Belegkette keinen `attachment`-Eintrag mit
-@@ -4454,13 +3456,8 @@ export class KoService {
+@@ -4456,13 +3456,8 @@ export class KoService {
        ...ko,
        attachments: (ko.attachments ?? []).filter((a) => a.id !== attachmentId),
      };
@@ -84888,7 +84995,7 @@ index 5cd4656e5..925f1d4a8 100644
      return this.lesefassung(updated);
    }
  
-@@ -4491,12 +3488,6 @@ export class KoService {
+@@ -4493,12 +3488,6 @@ export class KoService {
        excerpt?: string | null;
        provider?: string | null;
        objectId?: string | null;
@@ -84901,7 +85008,7 @@ index 5cd4656e5..925f1d4a8 100644
      },
    ): Promise<KnowledgeObject> {
      const label = input.label?.trim() ?? "";
-@@ -4521,45 +3512,25 @@ export class KoService {
+@@ -4523,45 +3512,25 @@ export class KoService {
        // weggelassenes Feld ist dasselbe wie am Altbestand, und die Fläche liest beides als „keine
        // Datei" (`quellennachweis`).
        ...(anchor ? { objectId: anchor } : {}),
@@ -84962,7 +85069,7 @@ index 5cd4656e5..925f1d4a8 100644
      // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
      return this.lesefassung(updated);
    }
-@@ -4570,13 +3541,8 @@ export class KoService {
+@@ -4572,13 +3541,8 @@ export class KoService {
        ...ko,
        sources: (ko.sources ?? []).filter((s) => s.id !== sourceId),
      };
@@ -84978,7 +85085,7 @@ index 5cd4656e5..925f1d4a8 100644
      return this.lesefassung(updated);
    }
  
-@@ -4675,16 +3641,6 @@ export class KoService {
+@@ -4677,16 +3641,6 @@ export class KoService {
      return ko && !ko.deletedAt ? ko.version : undefined;
    }
  
@@ -84995,7 +85102,7 @@ index 5cd4656e5..925f1d4a8 100644
    // ==============================================================================================
    // JOB 3071 — DIE EINE PAPIERKORBFÄHIGE AUSKUNFT: HAT DER AUTOR SELBST ZURÜCKGEZOGEN?
    // ==============================================================================================
-@@ -4912,12 +3868,6 @@ export class KoService {
+@@ -4914,12 +3868,6 @@ export class KoService {
          imageNames = searchImageNames(ko.bodyHtml);
          nachladen = !(await this.repo.setImageNames(id, imageNames)) || nachladen;
        }
@@ -85008,7 +85115,7 @@ index 5cd4656e5..925f1d4a8 100644
        if (nachladen) {
          const fresh = await this.repo.findById(id);
          return {
-@@ -5076,9 +4026,7 @@ export class KoService {
+@@ -5078,9 +4026,7 @@ export class KoService {
      // D5: deren Stempel liest nach `listByIds` weiter — die Sperre reist mit (s. `pruefbestandStempel`).
      return this.lesefassungen(
        kos
@@ -85019,7 +85126,7 @@ index 5cd4656e5..925f1d4a8 100644
          .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
        query.vorInhaltsabruf,
      );
-@@ -5197,72 +4145,19 @@ export class KoService {
+@@ -5199,72 +4145,19 @@ export class KoService {
      }
    }
  
@@ -85093,7 +85200,7 @@ index 5cd4656e5..925f1d4a8 100644
      };
      const audit = this.audit;
      // ============================================================================================
-@@ -5306,7 +4201,7 @@ export class KoService {
+@@ -5308,7 +4201,7 @@ export class KoService {
      if (this.withTx && audit) {
        await this.withTx(async (tx) => {
          const beitrag = await beitragAus(tx);
@@ -85102,7 +85209,7 @@ index 5cd4656e5..925f1d4a8 100644
          await audit.record({ ...auditInput, payload: { ...auditInput.payload, ...beitrag } }, tx);
        });
        // G27: der abgeleitete Suchindex folgt der Endlöschung. NACH dem Commit und bewusst
-@@ -5320,18 +4215,9 @@ export class KoService {
+@@ -5322,18 +4215,9 @@ export class KoService {
      // Kompositionen ohne echte Datenbank erreichbar (InMemory, Dev-Journal); wo es keine
      // Transaktionsgrenze gibt, behauptet dieser Vertrag auch keine. Der Haken läuft trotzdem —
      // sonst bliebe in genau diesen Kompositionen ein verwaistes Folgeartefakt stehen.
@@ -85122,7 +85229,7 @@ index 5cd4656e5..925f1d4a8 100644
      await this.searchProjections.removeByKo(id).catch(() => undefined);
    }
  
-@@ -5352,21 +4238,10 @@ export class KoService {
+@@ -5354,21 +4238,10 @@ export class KoService {
      for (const ko of await this.repo.list({})) {
        if (ko.deletedAt && this.trashExpiry(ko.deletedAt) <= nowMs) {
          try {
@@ -85146,7 +85253,7 @@ index 5cd4656e5..925f1d4a8 100644
          }
        }
      }
-@@ -5376,36 +4251,6 @@ export class KoService {
+@@ -5378,36 +4251,6 @@ export class KoService {
    // Papierkorb-Ansicht (Admin): nur Metadaten, jüngste Löschung zuerst.
    // SCRUM-523 P.3 (WP2): reine Leseansicht — löst KEINE Endlöschung mehr aus. Abgelaufene Einträge sind
    // an ihrem `expiresAt` (Vergangenheit) ehrlich erkennbar, bis ein expliziter runTrashSweep sie entfernt.
@@ -85183,7 +85290,7 @@ index 5cd4656e5..925f1d4a8 100644
    async trashed(): Promise<TrashedKo[]> {
      const all = await this.repo.list({});
      return all
-@@ -5451,7 +4296,7 @@ export class KoService {
+@@ -5453,7 +4296,7 @@ export class KoService {
    async restore(id: string, actor = "system"): Promise<KnowledgeObject> {
      const ko = await this.repo.findById(id);
      if (!ko?.deletedAt) {
@@ -85192,7 +85299,7 @@ index 5cd4656e5..925f1d4a8 100644
      }
      const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
      // Auftrag gesamt-dubletten-rueckzug: das Zurückholen läuft über denselben benannten Weg wie
-@@ -5459,27 +4304,12 @@ export class KoService {
+@@ -5461,27 +4304,12 @@ export class KoService {
      // Entscheidung Pedi (entscheidung:43017d60): das Wiederherstellen stellt NUR den eigenen Beitrag
      // wieder her. Es trägt deshalb keinen Aufräumbeitrag: ein durch den Rückzug geschlossener
      // Dublettenbefund bleibt geschlossen (keine Wiederöffnung), die Gegenseite bleibt unangetastet.
@@ -85226,7 +85333,7 @@ index 5cd4656e5..925f1d4a8 100644
      return this.lesefassung(restored as KnowledgeObject);
    }
  
-@@ -5489,11 +4319,9 @@ export class KoService {
+@@ -5491,11 +4319,9 @@ export class KoService {
    async purgeTrashed(id: string, actor = "system"): Promise<void> {
      const ko = await this.repo.findById(id);
      if (!ko?.deletedAt) {
@@ -85240,7 +85347,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    // SCRUM-161: read-only Zugriff auf die in SCRUM-159 persistierten Voll-Snapshots.
-@@ -5503,23 +4331,6 @@ export class KoService {
+@@ -5505,23 +4331,6 @@ export class KoService {
      return this.versions?.listByKo(id) ?? [];
    }
  
@@ -85264,7 +85371,7 @@ index 5cd4656e5..925f1d4a8 100644
    // SCRUM-160: minimaler read-only Zugriff für Service-Vertrag/Tests. UI bleibt außerhalb Scope.
    async evidenceOf(id: string) {
      await this.require(id);
-@@ -5635,7 +4446,6 @@ export class KoService {
+@@ -5637,7 +4446,6 @@ export class KoService {
          "measures",
          "bodyHtml",
          "asset",
@@ -85272,7 +85379,7 @@ index 5cd4656e5..925f1d4a8 100644
          "sources",
        ] as const
      ).filter((feld) => changes[feld] !== undefined);
-@@ -5812,21 +4622,7 @@ export class KoService {
+@@ -5814,21 +4622,7 @@ export class KoService {
      id: string,
      changes: ReviseMitHerkunft,
      author: string,
@@ -85295,7 +85402,7 @@ index 5cd4656e5..925f1d4a8 100644
    ): Promise<KnowledgeObject> {
      if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
        throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
-@@ -5881,7 +4677,6 @@ export class KoService {
+@@ -5883,7 +4677,6 @@ export class KoService {
          // JOB 2704 D1: der Beleg läuft auf dem Transaktionsclient der Revision (tx aus mutateKoTx,
          // undefined ohne withTx) — er committet und verschwindet mit ihr.
          audit: async (tx) => {
@@ -85303,7 +85410,7 @@ index 5cd4656e5..925f1d4a8 100644
            await this.audit?.record(
              {
                actor: author,
-@@ -5891,17 +4686,6 @@ export class KoService {
+@@ -5893,17 +4686,6 @@ export class KoService {
              },
              tx,
            );
@@ -85321,7 +85428,7 @@ index 5cd4656e5..925f1d4a8 100644
          },
        };
      });
-@@ -5958,22 +4742,8 @@ export class KoService {
+@@ -5960,22 +4742,8 @@ export class KoService {
      const nextStatement =
        changes.statement ??
        (changes.bodyHtml !== undefined && nextBody ? htmlToPlainText(nextBody) : ko.statement);
@@ -85345,7 +85452,7 @@ index 5cd4656e5..925f1d4a8 100644
        title: changes.title ?? ko.title,
        statement: nextStatement,
        bodyHtml: nextBody,
-@@ -6046,91 +4816,16 @@ export class KoService {
+@@ -6048,96 +4816,16 @@ export class KoService {
        // von `append` nie ersetzt (repo.ts:468). Der einzige Fall, in dem überhaupt Zeichen
        // verschwinden, ist eine Kennung aus reinem Leerraum — sie konnte nie eine Information
        // tragen.
@@ -85357,7 +85464,12 @@ index 5cd4656e5..925f1d4a8 100644
      };
 -    // R-0658: dieselbe Schutzdatenprüfung wie beim Anlegen, an der neuen Fassung — eine
 -    // Überarbeitung mit Schutzdaten setzt die Quarantäne, eine ohne hebt sie auf.
--    const geprueft = mitSchutzdatenBefund(fassung, at);
+-    // R-0750: eine Freigabe in derselben Bewegung ist die Prüfung DIESER Fassung (Zeitpunkt jetzt);
+-    // ohne Freigabe ist die Fassung offen und trägt keinen Prüfzeitpunkt mehr.
+-    const geprueft = mitSchutzdatenBefund(
+-      mitPruefzeitpunkt(ko, fassung, at, wirkendeFreigabe !== undefined),
+-      at,
+-    );
      if (!wirkendeFreigabe) {
 -      return geprueft;
 +      return fassung;
@@ -85441,7 +85553,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    // ==============================================================================================
-@@ -6197,18 +4892,10 @@ export class KoService {
+@@ -6204,18 +4892,10 @@ export class KoService {
              { actor, action: "ko.revised", target: id, payload: { version } },
              tx,
            );
@@ -85462,7 +85574,7 @@ index 5cd4656e5..925f1d4a8 100644
          },
        };
      });
-@@ -6240,19 +4927,8 @@ export class KoService {
+@@ -6247,19 +4927,8 @@ export class KoService {
        clearBody?: boolean;
        baseVersion: number;
        origin?: string;
@@ -85482,7 +85594,7 @@ index 5cd4656e5..925f1d4a8 100644
      const statement = input.statement.trim();
      if (statement.length === 0) {
        // Ein leerer Vorschlag ist kein Vorschlag — und als Übernahme wäre er eine Löschung.
-@@ -6279,28 +4955,18 @@ export class KoService {
+@@ -6286,28 +4955,18 @@ export class KoService {
          ...(input.clearBody === true ? { clearBody: true } : {}),
          status: "offen",
          ...(input.origin ? { origin: input.origin } : {}),
@@ -85518,7 +85630,7 @@ index 5cd4656e5..925f1d4a8 100644
          },
        };
      });
-@@ -6326,14 +4992,9 @@ export class KoService {
+@@ -6333,14 +4992,9 @@ export class KoService {
      id: string,
      proposalId: string,
      actor: string,
@@ -85534,7 +85646,7 @@ index 5cd4656e5..925f1d4a8 100644
      return this.mutateKoTx(id, (ko) => {
        this.pruefeErwarteteVersion(ko, opts.expectedVersion);
        const offen = ko.proposals ?? [];
-@@ -6357,43 +5018,6 @@ export class KoService {
+@@ -6364,43 +5018,6 @@ export class KoService {
          );
        }
        const entschiedenAm = new Date(this.now()).toISOString();
@@ -85578,7 +85690,7 @@ index 5cd4656e5..925f1d4a8 100644
        if (entscheidung === "ablehnen") {
          const abgelehnt: KoProposal = {
            ...vorschlag,
-@@ -6416,11 +5040,7 @@ export class KoService {
+@@ -6423,11 +5040,7 @@ export class KoService {
                  actor,
                  action: "ko.proposal-rejected",
                  target: id,
@@ -85591,7 +85703,7 @@ index 5cd4656e5..925f1d4a8 100644
                },
                tx,
              );
-@@ -6466,23 +5086,15 @@ export class KoService {
+@@ -6473,23 +5086,15 @@ export class KoService {
              },
              tx,
            );
@@ -85617,7 +85729,7 @@ index 5cd4656e5..925f1d4a8 100644
          },
        };
      });
-@@ -6687,8 +5299,6 @@ export class KoService {
+@@ -6694,8 +5299,6 @@ export class KoService {
            captionTexts: searchCaptionTexts(nextBody),
            // JOB 3111 · B1b: der dritte Schreibrand (Dokumentinhalt übernehmen) setzt beide Felder.
            imageNames: searchImageNames(nextBody),
@@ -85626,7 +85738,7 @@ index 5cd4656e5..925f1d4a8 100644
            version,
            trust: 0, // Revisions-Semantik unverändert: Bewertungen der Vorversion zählen nicht mehr.
            status: "offen", // muss neu validiert werden
-@@ -6699,23 +5309,22 @@ export class KoService {
+@@ -6706,25 +5309,22 @@ export class KoService {
              { version, at, author, note: "überarbeitet (Dokumentinhalt übernommen)" },
            ],
          };
@@ -85635,6 +85747,8 @@ index 5cd4656e5..925f1d4a8 100644
 -        // beim Anlegen und Überarbeiten, VOR Commit und Projektion. Ein übernommener Text mit
 -        // Schutzdaten setzt die Quarantäne, einer ohne hebt eine bestehende auf.
 -        committed = mitSchutzdatenBefund(committed, at);
+-        // R-0750: die übernommene Fassung ist offen — ihr gilt kein Prüfzeitpunkt der Vorfassung.
+-        committed = mitPruefzeitpunkt(before, committed, at);
        }
  
        // ---- DER COMMIT: GENAU EIN SCHREIBVORGANG ---------------------------------------------
@@ -85657,7 +85771,7 @@ index 5cd4656e5..925f1d4a8 100644
            snapshotWritten = this.versions !== undefined;
          }
          // G27: die Projektion der jetzt gültigen Version entsteht in DERSELBEN
-@@ -6724,91 +5333,60 @@ export class KoService {
+@@ -6733,91 +5333,60 @@ export class KoService {
          // Operation bindet nur Anker und Belegstellen) und die Version dieselbe; dann greift die
          // Append-only-Regel, `insert` ist ein No-op und die bestehende, gültige Projektion bleibt
          // unangetastet. Genau diese Unterscheidung trägt die Meldung.
@@ -85794,7 +85908,7 @@ index 5cd4656e5..925f1d4a8 100644
        } catch (err) {
          // Vollständige Rücknahme: Snapshot entfernen (falls geschrieben) und den Inhalt auf den
          // Vorzustand zurücksetzen — inklusive `appendOps`, sodass eine Wiederholung den Vorgang
-@@ -6842,9 +5420,6 @@ export class KoService {
+@@ -6851,9 +5420,6 @@ export class KoService {
          throw err;
        }
      });
@@ -85804,7 +85918,7 @@ index 5cd4656e5..925f1d4a8 100644
      return this.lesefassungWert(commit);
    }
  
-@@ -6944,50 +5519,29 @@ export class KoService {
+@@ -6953,50 +5519,29 @@ export class KoService {
          opts.meldeMetadatenstand?.(unveraendert.projection.metadataRevision);
          return before;
        }
@@ -85873,7 +85987,7 @@ index 5cd4656e5..925f1d4a8 100644
          return updated;
        } catch (err) {
          // Kompensation: der autoritative Stand geht zurück, und die Projektion wird auf DIESEN
-@@ -7044,20 +5598,6 @@ export class KoService {
+@@ -7053,20 +5598,6 @@ export class KoService {
      });
    }
  
@@ -85894,7 +86008,7 @@ index 5cd4656e5..925f1d4a8 100644
    // JOB 4251: `opts` ist der bedingte Schreibzugriff auf die Einordnung (s. `EinordnungsBedingung`).
    // Er ist optional, und ohne ihn ist dieser Aufruf Zeichen für Zeichen der bisherige.
    async updateCategory(
-@@ -7070,12 +5610,7 @@ export class KoService {
+@@ -7079,12 +5610,7 @@ export class KoService {
        id,
        actor,
        { action: "ko.category-changed", grund: "ko.updateCategory" },
@@ -85908,7 +86022,7 @@ index 5cd4656e5..925f1d4a8 100644
        opts,
      );
    }
-@@ -7126,594 +5661,60 @@ export class KoService {
+@@ -7135,609 +5661,60 @@ export class KoService {
      });
    }
  
@@ -86300,12 +86414,17 @@ index 5cd4656e5..925f1d4a8 100644
 -        : { trust: Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY) };
 -      const trust = neu.trust;
 -      const { vertrauensGrundlage: _bisher, ...ohneGrundlage } = ko;
--      const updated: KnowledgeObject = {
--        ...ohneGrundlage,
--        status: "offen",
--        trust,
--        ...(neu.grundlage ? { vertrauensGrundlage: { trust, ...neu.grundlage } } : {}),
--      };
+-      // R-0750: der Rückfall auf „offen" nimmt den Prüfzeitpunkt weg (`pruefzeitpunkt.ts`).
+-      const updated: KnowledgeObject = mitPruefzeitpunkt(
+-        ko,
+-        {
+-          ...ohneGrundlage,
+-          status: "offen",
+-          trust,
+-          ...(neu.grundlage ? { vertrauensGrundlage: { trust, ...neu.grundlage } } : {}),
+-        },
+-        new Date(this.now()).toISOString(),
+-      );
 -      await this.schreibeMitBeleg(
 -        (tx) => this.repo.update(updated, tx),
 -        async (tx) => {
@@ -86345,7 +86464,11 @@ index 5cd4656e5..925f1d4a8 100644
 -      if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
 -        return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
 -      }
--      const updated = { ...ko, trust: state.trust, status: state.status };
+-      const updated = mitPruefzeitpunkt(
+-        ko,
+-        { ...ko, trust: state.trust, status: state.status },
+-        new Date(this.now()).toISOString(),
+-      );
 -      await this.repo.update(updated);
 -      return updated;
 -    });
@@ -86444,16 +86567,22 @@ index 5cd4656e5..925f1d4a8 100644
 -        const bisherigeAnnahme =
 -          state.annahme || widerruf ? undefined : await this.belegteAnnahmeAusVerweis(ko);
 -        const { vertrauensGrundlage: _bisher, annahmeRef: _annahme, ...ohneGrundlage } = ko;
--        const updated: KnowledgeObject = {
--          ...ohneGrundlage,
--          ...(ko.annahmeRef && !widerruf ? { annahmeRef: ko.annahmeRef } : {}),
--          trust: state.trust,
--          status: state.status,
--          ...(state.grundlage
--            ? { vertrauensGrundlage: { trust: state.trust, ...state.grundlage } }
--            : {}),
--          ...(bisherigeAnnahme ? { annahmeRef: bisherigeAnnahme } : {}),
--        };
+-        // R-0750: der Übergang nach „validiert" bekommt HIER, unter demselben Lock, seinen
+-        // Prüfzeitpunkt; ein Rückfall auf „offen" nimmt ihn weg.
+-        const updated: KnowledgeObject = mitPruefzeitpunkt(
+-          ko,
+-          {
+-            ...ohneGrundlage,
+-            ...(ko.annahmeRef && !widerruf ? { annahmeRef: ko.annahmeRef } : {}),
+-            trust: state.trust,
+-            status: state.status,
+-            ...(state.grundlage
+-              ? { vertrauensGrundlage: { trust: state.trust, ...state.grundlage } }
+-              : {}),
+-            ...(bisherigeAnnahme ? { annahmeRef: bisherigeAnnahme } : {}),
+-          },
+-          new Date(this.now()).toISOString(),
+-        );
 -        const schritte = async (tx?: TxContext) => {
 -          await this.repo.update(updated, tx);
 -          const ref = await beleg(tx);
@@ -86550,7 +86679,7 @@ index 5cd4656e5..925f1d4a8 100644
    //
    // WARUM DAS EIN EIGENER SCHREIBVORGANG IST UND NICHT EIN FELD AN `setValidationState`. Der
    // Verweis besteht aus `seq` und `hash` eines Auditeintrags, und beide vergibt das Auditrepository
-@@ -7771,52 +5772,6 @@ export class KoService {
+@@ -7795,52 +5772,6 @@ export class KoService {
      return trust;
    }
  
@@ -86603,7 +86732,7 @@ index 5cd4656e5..925f1d4a8 100644
    // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.
    async setAuthor(id: string, author: string, actor = "system"): Promise<KnowledgeObject> {
      return this.mutateKo(id, (ko) => {
-@@ -7824,75 +5779,13 @@ export class KoService {
+@@ -7848,75 +5779,13 @@ export class KoService {
        return {
          updated,
          value: updated,
@@ -86686,7 +86815,7 @@ index 5cd4656e5..925f1d4a8 100644
          },
        };
      });
-@@ -7946,7 +5839,6 @@ export class KoService {
+@@ -7970,7 +5839,6 @@ export class KoService {
          action: "ko.deleted",
          payload: { trash: true },
          beitrag: hook ? (tx) => hook(id, actor, tx, { zurueckgezogenVon }) : undefined,
@@ -86694,7 +86823,7 @@ index 5cd4656e5..925f1d4a8 100644
        },
      );
    }
-@@ -7983,21 +5875,11 @@ export class KoService {
+@@ -8007,21 +5875,11 @@ export class KoService {
    // Papierkorb absichtlich sieht (neben `trashed`, `restore`, `eigeneRuecknahmeVon`); einziger
    // Aufrufer ist der Grabstein eines zurückgezogenen Dublettenbefunds (overlap-routes.ts), der
    // damit prüft, ob der Betrachter die zurückgezogene Seite sehen durfte. Endgelöscht → nichts.
@@ -86720,7 +86849,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    private async imRuecknahmeVorgang(
-@@ -8007,11 +5889,9 @@ export class KoService {
+@@ -8031,11 +5889,9 @@ export class KoService {
        action: "ko.deleted" | "ko.restored";
        payload: Record<string, unknown>;
        beitrag: RuecknahmeBeitrag | undefined;
@@ -86733,7 +86862,7 @@ index 5cd4656e5..925f1d4a8 100644
      const beleg = (zusatz: Record<string, unknown>) => {
        const gesamt = { ...payload, ...zusatz };
        return {
-@@ -8031,24 +5911,13 @@ export class KoService {
+@@ -8055,24 +5911,13 @@ export class KoService {
          await this.repo.update(neu, tx);
          await audit.record(beleg(zusatz), tx);
        });
@@ -86761,7 +86890,7 @@ index 5cd4656e5..925f1d4a8 100644
    }
  
    // ==============================================================================================
-@@ -8082,203 +5951,6 @@ export class KoService {
+@@ -8106,203 +5951,6 @@ export class KoService {
      return this.searchProjections.find(ko.id, ko.version);
    }
  
@@ -87443,7 +87572,7 @@ index 86aa7beba..000000000
 -  return `sha256:${hex}`;
 -}
 diff --git b/services/knowledge-object/src/types.ts a/services/knowledge-object/src/types.ts
-index 63681a402..0351bc0a6 100644
+index ebc5fb67e..0351bc0a6 100644
 --- b/services/knowledge-object/src/types.ts
 +++ a/services/knowledge-object/src/types.ts
 @@ -1,6 +1,4 @@
@@ -87961,7 +88090,7 @@ index 63681a402..0351bc0a6 100644
    createdAt: string;
    history: HistoryEntry[];
    comments: KoComment[];
-@@ -953,9 +544,6 @@ export interface KnowledgeObject {
+@@ -953,20 +544,11 @@ export interface KnowledgeObject {
    // Kommentar (der trägt keinen entschiedenen Zustand), sondern ein eigener Datensatz mit
    // Urheber, Grundlage, Zustand und Entscheidung.
    proposals?: KoProposal[];
@@ -87971,7 +88100,18 @@ index 63681a402..0351bc0a6 100644
    attachments: KoAttachment[];
    sources: KoSource[];
    // Demodaten-Merker (Pedi 02.07.): vom Seed gesetzt, überlebt Bearbeitungen/Versionen —
-@@ -1002,12 +590,6 @@ export interface KnowledgeObject {
+   // damit Demo-Bestand sichtbar bleibt und komplett entfernt werden kann.
+   demoSeed?: boolean;
+-  // R-0750/R-1741 (Aufnahme gesamt-kennzahlen): WANN die geltende Fassung validiert wurde — der
+-  // Prüfzeitpunkt, getrennt vom Erfassungszeitpunkt `createdAt`. Gesetzt beim Übergang nach
+-  // „validiert" (und bei jeder Freigabe einer neuen Fassung), entfernt beim Rückfall auf „offen"
+-  // (`pruefzeitpunkt.ts`). Altbestand, der schon vor diesem Feld validiert war, hat es nicht: sein
+-  // Prüfzeitpunkt ist UNBEKANNT und wird nicht aus `createdAt` geraten.
+-  validatedAt?: string;
+   // WP-SHIP8-CLOSE-3/4 (bens ROT-1, 1A/1B/1C): STABILER Idempotenzanker des Import-Accepts — die
+   // Id des Review-KANDIDATEN, aus dem dieses KO entstand. Bewusst der Kandidat (stabil über alle
+   // Claim-Vorgänge/Retries hinweg), NICHT die je Claim wechselnde opId: nur so erzwingt der
+@@ -1008,12 +590,6 @@ export interface KnowledgeObject {
    // Quellsystem und wird nie als solche ausgegeben. Nur Serverpfade setzen das Feld; die
    // öffentlichen Schreibrouten verwerfen es. Additiv im JSONB, keine Migration, kein Backfill.
    dokumentHerkunft?: DokumentHerkunft;
@@ -87984,7 +88124,7 @@ index 63681a402..0351bc0a6 100644
    // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Status der HINTERGRUND-KI-Prüfung nach dem Einreichen —
    // additiv im JSONB, keine Migration; Altbestand ohne Feld = kein Prüf-Job. Die Ergebnis-Signale
    // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den
-@@ -1053,28 +635,6 @@ export interface KnowledgeObject {
+@@ -1059,28 +635,6 @@ export interface KnowledgeObject {
    // Frist automatisch endgültig entfernt. Demo-Daten landen NIE hier (immer hart).
    deletedAt?: string;
    deletedBy?: string;
@@ -88013,7 +88153,7 @@ index 63681a402..0351bc0a6 100644
  }
  
  // SCRUM-422: Papierkorb-Zeile für den Admin — nur Metadaten, keine Inhalte.
-@@ -1185,9 +745,6 @@ export type KoErrorCode =
+@@ -1191,9 +745,6 @@ export type KoErrorCode =
    | "INVALID_TYPE"
    | "INVALID_NEEDED"
    | "INVALID_SOURCE"
@@ -88023,7 +88163,7 @@ index 63681a402..0351bc0a6 100644
    // SCRUM-421: ungültige Upload-Grenzen (Admin-Einstellung).
    | "INVALID_UPLOAD_LIMITS"
    // SCRUM-509: ungültige Vertraulichkeitsstufe (kein stilles Normalisieren auf „intern").
-@@ -1197,9 +754,6 @@ export type KoErrorCode =
+@@ -1203,9 +754,6 @@ export type KoErrorCode =
    // ein Löschen darf nicht die Nebenwirkung eines Tippfehlers sein (fail-closed, wie
    // INVALID_CONFIDENTIALITY daneben).
    | "INVALID_OWNERSHIP"
@@ -90856,7 +90996,7 @@ index 1e7dd906a..6c8805af5 100644
    MetricsInput,
    BusFactorLike,
 diff --git b/services/management/src/metrics.ts a/services/management/src/metrics.ts
-index 2da3737e8..94a770e1c 100644
+index 946e44c4c..94a770e1c 100644
 --- b/services/management/src/metrics.ts
 +++ a/services/management/src/metrics.ts
 @@ -7,11 +7,7 @@ import type {
@@ -90880,7 +91020,16 @@ index 2da3737e8..94a770e1c 100644
    ValuationFacts,
  } from "./types";
  
-@@ -289,227 +283,26 @@ export function recommendations(input: MetricsInput): Recommendation[] {
+@@ -72,8 +66,6 @@ export function overview(input: MetricsInput, capitalScore: number): Overview {
+     avgTrust: avgTrustOf(input.kos),
+     healthScore: capitalScore,
+     healthBand: bandForScore(capitalScore),
+-    // Der Feld-Merker des Seeds (Pedi 02.07.) überlebt Bearbeitungen; der Tag allein nicht.
+-    demoKos: input.kos.filter((k) => k.demoSeed === true).length,
+   };
+ }
+ 
+@@ -291,227 +283,26 @@ export function recommendations(input: MetricsInput): Recommendation[] {
    return out;
  }
  
@@ -91115,7 +91264,7 @@ index 2da3737e8..94a770e1c 100644
  // FE-MGMT-02: Pilot 30/60/90 — echte Zähler je Fenster aus createdAt.
  export function pilot(input: MetricsInput): PilotWindow[] {
    return [30, 60, 90].map((days) => {
-@@ -523,11 +316,8 @@ export function pilot(input: MetricsInput): PilotWindow[] {
+@@ -525,11 +316,8 @@ export function pilot(input: MetricsInput): PilotWindow[] {
    });
  }
  
@@ -91128,7 +91277,7 @@ index 2da3737e8..94a770e1c 100644
    return {
      overview: overview(input, capital.score),
      capital,
-@@ -536,9 +326,7 @@ export function computeSnapshot(
+@@ -538,9 +326,7 @@ export function computeSnapshot(
      maturity: maturity(input, capital.score),
      priorities: priorities(input),
      recommendations: recommendations(input),
@@ -91400,7 +91549,7 @@ index be29e4ddb..9fd3e4840 100644
  
    // ==============================================================================================
 diff --git b/services/management/src/types.ts a/services/management/src/types.ts
-index 51bd86f32..703348063 100644
+index 2cf4e6346..703348063 100644
 --- b/services/management/src/types.ts
 +++ a/services/management/src/types.ts
 @@ -26,8 +26,6 @@ export interface MetricsInput {
@@ -91412,7 +91561,17 @@ index 51bd86f32..703348063 100644
  }
  
  export type Band = "gut" | "mittel" | "kritisch";
-@@ -124,101 +122,11 @@ export interface Recommendation {
+@@ -41,9 +39,6 @@ export interface Overview {
+   avgTrust: number;
+   healthScore: number;
+   healthBand: Band;
+-  // R-0736/R-0755: wie viele der gezählten Objekte den Demodaten-Merker tragen. Die Zahlen bleiben
+-  // dieselben; die Fläche kann damit aber sagen, dass Beispielbestand darin steckt.
+-  demoKos: number;
+ }
+ 
+ export interface ScorePart {
+@@ -127,101 +122,11 @@ export interface Recommendation {
    count: number;
  }
  
@@ -91517,7 +91676,7 @@ index 51bd86f32..703348063 100644
  }
  
  export interface PilotWindow {
-@@ -236,9 +144,6 @@ export interface ManagementSnapshot {
+@@ -239,9 +144,6 @@ export interface ManagementSnapshot {
    maturity: Maturity;
    priorities: CategoryPriority[];
    recommendations: Recommendation[];

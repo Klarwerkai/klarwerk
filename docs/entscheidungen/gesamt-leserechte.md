@@ -93,7 +93,9 @@ Beide fachlichen Stände sind erhalten; wo sie sich widersprachen, gilt die enge
   (`KLARWERK_AUDIT_KETTENEINSICHT`, Kontokennungen), das IMMER die vollständige, nachrechenbare Kette
   erhält (R-0613). **Offen (Betreiber-/Produktentscheidung):** wer die Ketteneinsicht bekommt; ohne
   Eintrag hat sie niemand, und die vollständige Kette gibt es dann über die Oberfläche nicht. Beleg:
-  `seitenweg-und-rechte` „gleicher sichtbarer Bestand ⇒ gleiche Antworten“.
+  `seitenweg-und-rechte` „gleicher sichtbarer Bestand ⇒ gleiche Antworten“. Seit Nacharbeit 29
+  schwärzt der Kettenexport nicht mehr: er liefert das gespeicherte Hashmaterial unverändert,
+  Schwärzung steht nur in der Leseansicht.
 - **Prüfprotokoll × Quellrechte (Nacharbeit 24):** die Sichtbarkeitsfakten tragen die Leserliste; die
   Objektprüfung läuft für jeden Leser, uneingeschränkt ist nur, wem danach nichts verborgen bleibt.
   Der Löschbeleg `ko.purged` hält fest, ob eine Leserliste bestand (`quellbeschraenkt`, ohne

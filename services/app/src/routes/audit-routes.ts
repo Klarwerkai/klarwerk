@@ -664,10 +664,15 @@ export function auditRoutes(
     // FR-AUD-02: unter `/api/audit` gibt es ausschließlich GET-Wege. Ein POST/PUT/PATCH/
     // DELETE ist nirgends registriert — `tests/audit-gesamt/append-only-http.test.ts` misst das.
     //
-    // produkt:20261009:admin-audit-verstaendlich: auch die Datei schwärzt Inhaltsfelder zu Objekten,
-    // die der Exportierende nicht öffnen darf (`geschwaerzt` je Eintrag, Anzahl im Kopf). Kopf und
-    // `inspection` beschreiben weiter die VOLLSTÄNDIGE Kette; ein geschwärzter Eintrag lässt sich in
-    // der Datei deshalb nicht nachrechnen, und genau das sagt sein `geschwaerzt`.
+    // produkt:20261009:admin-audit-verstaendlich: die LESERANSICHT schwärzt Inhaltsfelder zu Objekten,
+    // die der Exportierende nicht öffnen darf (`geschwaerzt` je Eintrag, Anzahl im Kopf).
+    //
+    // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 29): der KETTENEXPORT schwärzt NICHT. Er
+    // geht nur an ein Konto mit ausdrücklich erteilter Ketteneinsicht und liefert das gespeicherte
+    // Hashmaterial unverändert — sonst wären Einträge mit entfernten Feldern (etwa ein
+    // `ko.category-changed` nach Löschung seines Objekts) unter unverändertem Kopf und `inspection`
+    // nicht mehr nachrechenbar. Jede Redaktion steht ausschließlich in der getrennten Leseransicht.
+    // Welche Form ein Konto bekommt, hängt weiter allein an der Ketteneinsicht, nie am Bestand.
     app.get("/api/audit/export", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) {
@@ -678,13 +683,11 @@ export function auditRoutes(
       const lage = await leselage(user, quelle, vorher);
       if (!lage.eingeschraenkt) {
         const datei = await audit.exportChain(user.id);
-        const entries = await Promise.all(datei.entries.map((e) => sicht.eintrag(e)));
-        const geschwaerzt = entries.filter((e) => e.geschwaerzt !== undefined).length;
         const stempel = datei.exportedAt.replace(/[:.]/g, "-");
         reply
           .header("content-disposition", `attachment; filename="klarwerk-audit-${stempel}.json"`)
           .code(200)
-          .send({ ...datei, entries, geschwaerzt });
+          .send(datei);
         return;
       }
       // Die Ansicht entsteht aus der Kette VOR ihrem eigenen Beleg — wie beim Kettenexport.
