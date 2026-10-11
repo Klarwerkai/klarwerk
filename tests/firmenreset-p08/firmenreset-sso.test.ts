@@ -38,6 +38,9 @@ function attrappe() {
   const gesehen = new Map<string, string>(); // state → nonce
   const codes = new Map<string, { nonce: string; sub: string; iss: string }>();
   let zaehler = 0;
+  // Ben (Nacharbeit 6): eine angezogene Bremse hält das Einlösen beim Anbieter an, bis der Test sie
+  // löst — so lässt sich ein Abbruch GENAU in die Wartezeit des Rückrufs legen.
+  let bremse: { angekommen: () => void; los: Promise<void> } | null = null;
   const anbieter: OidcProvider = {
     autoProvision: true,
     config: {} as OidcConfig,
@@ -46,6 +49,12 @@ function attrappe() {
       return `${ISS}/authorize?state=${encodeURIComponent(state)}&nonce=${encodeURIComponent(nonce)}`;
     },
     exchange: async (code) => {
+      if (bremse) {
+        const b = bremse;
+        bremse = null;
+        b.angekommen();
+        await b.los;
+      }
       if (!codes.has(code)) {
         throw new Error("invalid_grant");
       }
@@ -69,6 +78,19 @@ function attrappe() {
   };
   return {
     anbieter,
+    /** Hält das nächste Einlösen an; `angekommen` erfüllt sich, sobald es wartet. */
+    bremsen(): { angekommen: Promise<void>; loesen: () => void } {
+      let angekommen = (): void => undefined;
+      let loesen = (): void => undefined;
+      const da = new Promise<void>((ok) => {
+        angekommen = ok;
+      });
+      const los = new Promise<void>((ok) => {
+        loesen = ok;
+      });
+      bremse = { angekommen, los };
+      return { angekommen: da, loesen };
+    },
     /** Die Wiederanmeldung beim Anbieter: liefert den Code für diesen `state`. */
     anmelden(state: string, identitaet: { sub: string; iss?: string } = ADMIN): string {
       const nonce = gesehen.get(state);
@@ -251,6 +273,58 @@ describe("P08 · K5 · K6 · ohne zwei passende Wiederanmeldungen keine Löschun
     const res = await ausfuehren(f, (await status(f)).vorschau.kennung);
     expect(res.statusCode).toBe(403);
     expect(bytes(f.journal)).toBe(vorher);
+    expect(f.beendet()).toBe(0);
+  });
+
+  // Ben (Nacharbeit 6): ein Abbruch WÄHREND der Anbieter antwortet. Der Rückruf hat seinen Vorgang
+  // da schon entnommen; erst die Abbruch-Epoche macht ihn unwirksam. Geprüft für Schritt 1 und für
+  // Schritt 2 (dort war vorher schon ein Schritt bestätigt).
+  for (const n of [1, 2] as const) {
+    it(`Abbruch während der Anbieterantwort von Schritt ${n}: der verspätete Rückruf bestätigt nichts`, async () => {
+      const f = await ssoTestfirma();
+      if (n === 2) {
+        expect((await schritt(f, 1)).json()).toEqual({ bestaetigt: 1 });
+      }
+      const state = stateAus((await starte(f, n)).headers.location as string);
+      const code = f.idp.anmelden(state);
+      const bremse = f.idp.bremsen();
+      const laufend = rueckruf(f, code, state);
+      await bremse.angekommen;
+      const abbruch = await f.app.inject({
+        method: "POST",
+        url: "/api/admin/factory-reset/sso",
+        headers: f.headers,
+        payload: { verwerfen: true },
+      });
+      expect(abbruch.json()).toEqual({ bestaetigt: 0 });
+      bremse.loesen();
+      const spaet = await laufend;
+      expect(spaet.statusCode).toBe(409);
+      expect(spaet.json().error).toBe("SSO_VORGANG_UNBEKANNT");
+      expect((await status(f)).sso.bestaetigt).toBe(0);
+      const vorher = bytes(f.journal);
+      const reset = await ausfuehren(f, (await status(f)).vorschau.kennung);
+      expect(reset.statusCode).toBe(403);
+      expect(reset.json().error).toBe("SSO_WIEDERANMELDUNG_ERFORDERLICH");
+      expect(bytes(f.journal)).toBe(vorher);
+      expect(f.beendet()).toBe(0);
+    });
+  }
+
+  it("ein während der Anbieterantwort eingelöster Reset lässt den verspäteten Rückruf leer ausgehen", async () => {
+    const f = await ssoTestfirma();
+    await schritt(f, 1);
+    const state = stateAus((await starte(f, 2)).headers.location as string);
+    const code = f.idp.anmelden(state);
+    const bremse = f.idp.bremsen();
+    const laufend = rueckruf(f, code, state);
+    await bremse.angekommen;
+    // Ausführung mit nur einem Schritt: abgewiesen, und das Einlösen verbraucht die Bestätigung.
+    const kennung = (await status(f)).vorschau.kennung as string;
+    expect((await ausfuehren(f, kennung)).statusCode).toBe(403);
+    bremse.loesen();
+    expect((await laufend).statusCode).toBe(409);
+    expect((await status(f)).sso.bestaetigt).toBe(0);
     expect(f.beendet()).toBe(0);
   });
 

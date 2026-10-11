@@ -64,12 +64,22 @@ interface Vorgang {
   nonce: string;
   verifier: string;
   bis: number;
+  /** Die Abbruch-Epoche der Sitzung beim Start (s. `epochen`). */
+  epoche: number;
 }
 
 interface Bestaetigung {
   userId: string;
   schritte: number;
   bis: number;
+}
+
+/** Der Rückruf gehört (nicht mehr) zu einem offenen Vorgang dieser Sitzung. */
+function unbekannt(): FirmenresetSsoFehler {
+  return new FirmenresetSsoFehler(
+    "SSO_VORGANG_UNBEKANNT",
+    "Diese SSO-Wiederanmeldung gehört nicht zu einem offenen Firmenreset dieser Sitzung. Es wurde nichts bestätigt.",
+  );
 }
 
 export function sitzungsSchluessel(token: string): string {
@@ -79,6 +89,15 @@ export function sitzungsSchluessel(token: string): string {
 export class FirmenresetSso {
   private readonly vorgaenge = new Map<string, Vorgang>();
   private readonly bestaetigungen = new Map<string, Bestaetigung>();
+  /**
+   * Ben (Nacharbeit 6): die ABBRUCH-EPOCHE je Sitzung. Ein Rückruf entnimmt seinen Vorgang, BEVOR er
+   * auf den Anbieter wartet — ein Abbruch in dieser Wartezeit fände ihn nicht mehr in `vorgaenge`.
+   * Deshalb zählt jeder Abbruch (`verwerfen`, auch über `einloesen` und ein unpassendes Konto) die
+   * Epoche der Sitzung hoch, und ein Rückruf setzt seine Bestätigung nur, wenn die Epoche UNMITTELBAR
+   * vor dem Speichern noch die seines Starts ist. Ein verspäteter Rückruf nach einem Abbruch bestätigt
+   * damit nichts mehr.
+   */
+  private readonly epochen = new Map<string, number>();
 
   constructor(
     private readonly anbieter: OidcProvider | undefined,
@@ -123,6 +142,7 @@ export class FirmenresetSso {
       nonce,
       verifier,
       bis: this.jetzt() + FIRMENRESET_SSO_GUELTIG_MS,
+      epoche: this.epoche(sitzung),
     });
     const ziel = new URL(
       this.anbieter.authorizeUrl({ state, nonce, codeChallenge: codeChallengeS256(verifier) }),
@@ -151,12 +171,10 @@ export class FirmenresetSso {
       !vorgang ||
       vorgang.bis <= this.jetzt() ||
       vorgang.userId !== userId ||
-      vorgang.sitzung !== sitzung
+      vorgang.sitzung !== sitzung ||
+      vorgang.epoche !== this.epoche(sitzung)
     ) {
-      throw new FirmenresetSsoFehler(
-        "SSO_VORGANG_UNBEKANNT",
-        "Diese SSO-Wiederanmeldung gehört nicht zu einem offenen Firmenreset dieser Sitzung. Es wurde nichts bestätigt.",
-      );
+      throw unbekannt();
     }
     if (!this.anbieter) {
       throw new FirmenresetSsoFehler(
@@ -176,6 +194,11 @@ export class FirmenresetSso {
         "SSO_ANMELDUNG_FEHLGESCHLAGEN",
         "Die SSO-Wiederanmeldung ist fehlgeschlagen. Es wurde nichts bestätigt und nichts gelöscht.",
       );
+    }
+    // Nach dem Warten auf den Anbieter: wurde inzwischen abgebrochen (oder eingelöst), zählt dieser
+    // Rückruf nicht mehr — gleich, was der Anbieter gemeldet hat.
+    if (vorgang.epoche !== this.epoche(sitzung)) {
+      throw unbekannt();
     }
     if (!konto.oidcIssuer || iss !== konto.oidcIssuer || sub !== konto.oidcSubject) {
       this.verwerfen(sitzung);
@@ -201,8 +224,9 @@ export class FirmenresetSso {
     return bisher + 1;
   }
 
-  /** Abbruch: offene Vorgänge und Bestätigung dieser Sitzung verfallen. */
+  /** Abbruch: offene UND gerade laufende Vorgänge sowie die Bestätigung dieser Sitzung verfallen. */
   verwerfen(sitzung: string): void {
+    this.epochen.set(sitzung, this.epoche(sitzung) + 1);
     this.bestaetigungen.delete(sitzung);
     for (const [state, v] of this.vorgaenge) {
       if (v.sitzung === sitzung) {
@@ -216,6 +240,10 @@ export class FirmenresetSso {
     const vollstaendig = this.bestaetigt(userId, sitzung) >= 2;
     this.verwerfen(sitzung);
     return vollstaendig;
+  }
+
+  private epoche(sitzung: string): number {
+    return this.epochen.get(sitzung) ?? 0;
   }
 
   private aufraeumen(): void {
