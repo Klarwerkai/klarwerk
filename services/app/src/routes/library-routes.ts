@@ -48,6 +48,7 @@ import {
   sichtbarkeitsfilterFuer,
   sqlSichtbarkeitFuer,
 } from "../sichtbarkeit";
+import { type WissenspaketQuellen, baueWissenspaket } from "../wissenspaket";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -775,6 +776,8 @@ export function libraryRoutes(
   detection?: ImportDetectionDeps,
   // R-0773: optional — ohne Ablage (Teilaufbauten in Tests) bleibt die Suche wie bisher.
   nulltreffer?: NulltrefferRepo,
+  // produkt:20261010:poc-wiederherstellung-export: optional — ohne Quellen kein Format `paket`.
+  paket?: WissenspaketQuellen,
 ): FastifyPluginAsync {
   return async (app) => {
     // R-0773: die EIGENEN Suchen ohne Treffer. Nur die eigene Liste — ein Suchbegriff ist Freitext
@@ -984,12 +987,49 @@ export function libraryRoutes(
       // validierte Artikel geschlossener Spaces an Nichtmitglieder aus. Hier im Rumpf erhoben (wie
       // `/api/graph`), damit die Entscheidung an der Route selbst ausgeführt wird.
       const sichtbar = sichtbarkeitsfilterFuer(user);
-      const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
+      const opts = (format: "json" | "markdown" | "mediawiki" | "html" | "paket") => ({
         includeConfidential,
         sichtbar,
         ...(ids ? { ids } : {}),
         beleg: { actor: user.id, format },
       });
+      // produkt:20261010:poc-wiederherstellung-export (PV-01-04/05): das Wissenspaket — dieselbe
+      // Grundmenge und derselbe Beleg (`library.export`, Format `paket`) wie jedes andere Format;
+      // dazu Fassungen, Originalanhänge und das Verzeichnis (`wissenspaket.ts`). Ohne verdrahtete
+      // Quellen (Teilaufbauten) gibt es dieses Format nicht.
+      if (request.query.format === "paket") {
+        if (!paket) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Format nicht verfügbar." });
+          return;
+        }
+        try {
+          const jetzt = new Date();
+          const { zip } = await baueWissenspaket(
+            {
+              betrachter: user,
+              betrachterName: (await paket.personen()).get(user.id) ?? null,
+              vertraulichErlaubt: includeConfidential,
+              beitraege: await library.exportJson(opts("paket")),
+              auswahl: ids,
+              jetzt,
+            },
+            paket,
+          );
+          const stempel = jetzt.toISOString().slice(0, 19).replace(/[-:]/g, "");
+          reply
+            .header("content-type", "application/zip")
+            .header("cache-control", "no-store")
+            .header(
+              "content-disposition",
+              `attachment; filename="klarwerk-wissenspaket-${stempel}Z.zip"`,
+            )
+            .code(200)
+            .send(zip);
+        } catch (error) {
+          sendError(reply, error);
+        }
+        return;
+      }
       if (request.query.format === "markdown") {
         reply
           .header("content-type", "text/markdown; charset=utf-8")

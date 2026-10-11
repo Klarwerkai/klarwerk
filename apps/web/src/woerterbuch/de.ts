@@ -4618,6 +4618,7 @@ const de = {
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Druck/PDF)",
+  "lib.format.paket": "Wissenspaket (ZIP mit Fassungen und Anhängen)",
   // ==============================================================================================
   // JOB 1119 (D-002) — DAS SUCHFELD SAGT OHNE TIPPEN, WORIN ES SUCHT.
   // ==============================================================================================

@@ -78,7 +78,7 @@ wirklich endet.
 | `sicherung` | Dateiname des geprobten Dumps |
 | `pruefsumme` | `passt` / `abweichend` / `fehlt` / `ungueltig` / `nicht_geprueft` und der nachgerechnete Hash |
 | `ziel` | der isolierte Zielname (`RESTORE_DB`) |
-| `vergleich` | vier Kategorien mit Dump- und Datenbankzahl je Tabelle: **Beiträge** (`kos`, `ko_versions`), **Anhänge** (`objects`, `ko_evidence`, dazu `belegeOhneAnhang` aus Glied 7b), **Beziehungen** (`ko_kanten`, `ko_kanten_beitrag`), **Rechte** (`users`, dazu die Rollenverteilung aus Glied 3b) |
+| `vergleich` | vier Kategorien mit Dump- und Datenbankzahl je Tabelle: **Beiträge** (`kos`, `ko_versions`), **Anhänge** (`objects`, `ko_evidence`, dazu `belegeOhneAnhang` aus Glied 7b), **Beziehungen** (`ko_kanten`, `ko_kanten_beitrag`), **Rechte** (`users`, dazu die Rollenverteilung aus Glied 3b) — und seit produkt:20261010:poc-wiederherstellung-export die fünfte, getrennte Kategorie **Assistenz** (`assistenz_profile`, `klara_gespraeche`, `interaktions_gedaechtnis`, `klara_sessions`, `klara_session_consents`). Ein älteres Protokoll ohne sie gilt für die Assistenzbereiche als *nicht gemessen*; die Verwaltung gibt dafür keinen rückwirkenden Beleg aus. Eine Abweichung darin ist ein Widerspruch. |
 | `wissensnachweis` | der Satz aus Glied 7b oder `null` |
 
 Was nicht gemessen wurde, steht als `null` bzw. `nicht_gemessen` darin — nie als 0.

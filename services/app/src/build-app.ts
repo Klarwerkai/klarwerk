@@ -278,6 +278,7 @@ import {
   PgConfluenceImportSchalterRepo,
 } from "./confluence-import-schalter";
 import { registerHerkunftspruefung } from "./csrf";
+import { schemas } from "./db";
 import { ladeDienstSchluessel, matchDienstRoute } from "./dienst-schluessel";
 import {
   type SemanticPrefilter,
@@ -475,6 +476,7 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
+import { tabellenDerStufen } from "./sicherungsumfang";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 // produkt:20261007:spaces — die versionierten Arbeitsräume; im Postgres-Betrieb haltbar.
@@ -528,6 +530,7 @@ import {
   PgMitgelesenRepo,
   WissensempfehlungDienst,
 } from "./wissensempfehlung";
+import type { WissenspaketQuellen } from "./wissenspaket";
 // R-0554 / R-2128: die Wissensübergabe beim Ausscheiden (Kompositionswurzel, vier Module).
 import { Wissensuebergabe } from "./wissensuebergabe";
 
@@ -4703,6 +4706,25 @@ export function buildApp(
       mcpRoutes({ weiterleiten: (anfrage) => app.inject(anfrage), version: buildVersion() }),
     );
   }
+  // produkt:20261010:poc-wiederherstellung-export: das Wissenspaket (Format `paket`) — dieselben
+  // Bestände wie die Einzelwege: Fassungen und Objektablage des KO-Dienstes, der Leseweg der
+  // Beziehungen mit der Sichtregel des Betrachters, Namen der Konten (ohne Adresse) und Spaces.
+  const kantenLesen = new KantenLeseService({ repo: services.kanten, kos: services.ko });
+  const wissenspaketQuellen: WissenspaketQuellen = {
+    beitrag: (id) => services.ko.get(id),
+    fassungen: (id) => services.ko.versionsOf(id),
+    objekt: (objectId) => services.objects.read(objectId),
+    beziehungen: (id, sichtbar) => kantenLesen.kantenFuer(id, { sichtbar }),
+    personen: async () => {
+      const konten = await services.auth.listUsers();
+      return new Map(konten.map((u): [string, string] => [u.id, u.name]));
+    },
+    spaces: async () => {
+      const spaces = await services.spaces.aktuelle();
+      return new Map(spaces.map((s): [string, string] => [s.id, s.name]));
+    },
+    produkt: { version: buildVersion(), commit: buildCommit() },
+  };
   // SCRUM-470 (S6): Erkennung nach Import-Accept — dasselbe Deps-Bündel wie der Promote-Pfad.
   // Greift nur bei KLARWERK_CONFLUENCE_IMPORT=1 (Default AUS → heutiges Verhalten).
   app.register(
@@ -4719,6 +4741,7 @@ export function buildApp(
       },
       // R-0773: erfolglose Suchen je Person.
       services.nulltreffer,
+      wissenspaketQuellen,
     ),
   );
   app.register(categoryRoutes(services.ko, guards));
@@ -5185,7 +5208,14 @@ export function buildApp(
       }),
     ),
   );
-  app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
+  // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset. produkt:20261010:poc-wiederherstellung-export: der
+  // Sicherungsumfang unter „System → Sicherung" ist an diese Fassung und ihre Migration gebunden.
+  app.register(
+    adminRoutes(services, guards, opts.factoryReset, {
+      produkt: { version: buildVersion(), commit: buildCommit() },
+      tabellenImDump: tabellenDerStufen(schemas).length,
+    }),
+  );
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
   // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
   // AUFTRAG-mega46 Block F: Die Prüfung stand hier als dritte Kopie derselben Regel und kommt jetzt

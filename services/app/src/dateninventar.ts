@@ -439,6 +439,29 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    // produkt:20261010:poc-wiederherstellung-export — die persönlichen Klara-Gespräche
+    // (`services/app/src/klara-gespraech.ts`, produkt:20261008:klara-basis) standen bis hierher in
+    // keiner Datenart, obwohl `migrate()` sie anlegt. Der Sicherungsumfang ordnet sie ausdrücklich zu
+    // (`sicherungsumfang.ts`); hier steht, was sie sind und wie sie heute gelöscht werden.
+    id: "klaragespraeche",
+    name: "Persönliche Klara-Gespräche",
+    inhalt:
+      "Je Konto die Gespräche mit Klara: Nachrichten (Frage, Hilfe, Antworttext mit Antwortkennung und Quellenangaben), Objektbezug je Nachricht, der zuletzt bewusst begonnene Schritt mit Stand und der Zeitpunkt der Einwilligung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; Frage- und Antworttext sind Freitext und können sensible Angaben enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["klara_gespraeche"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto löscht ein Gespräch selbst (DELETE /api/me/klara/gespraeche/:id); auch Administratoren lesen fremde Gespräche nicht.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Nur das Konto selbst sieht seine Gespräche (eigene Fläche); die Verwaltung hat bewusst keinen Zugriff, deshalb stehen sie nicht in der auch von ihr erstellbaren Auskunftsdatei.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:
