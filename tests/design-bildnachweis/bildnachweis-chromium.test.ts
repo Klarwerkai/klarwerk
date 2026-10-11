@@ -718,6 +718,12 @@ describe("R-1399 · Sichtnachweis: Lesetexte aus dem Hauptstand auf 11 px", () =
             type: "best_practice",
             category: "Instandhaltung",
             author: fremdId,
+            // Nacharbeit 38: seit aufnahme:20260922:gesamt-leserechte (Entscheidung 16) ist eine
+            // FEHLENDE Stufe „ungeklärt“ und wie vertraulich geschützt. Dann gibt `feldFreigabe`
+            // die Inhalte nur dem Autor frei, der Server liefert das Paar `redacted`, und der
+            // Assistent zeigt zu Recht die Sperre „redigiert“ statt „Weiter“. Gemessen werden soll
+            // aber der Schritt „Inhalte“ — also ausdrücklich eingestuft wie normales Wissen.
+            confidentiality: "intern",
           } as never)) as { id: string };
           return ko.id;
         };
