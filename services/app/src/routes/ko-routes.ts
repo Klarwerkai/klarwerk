@@ -1175,6 +1175,30 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     await guards.requireUser(request, reply);
   };
 
+  // ============================================================================================
+  // R-0676 · DIE ANLEGEWEGE: ERST DAS RECHT, DANN DER KÖRPER.
+  // ============================================================================================
+  //
+  // `POST /api/kos` und `POST /api/kos/from-document` prüften `ko.create` erst im Handler — also
+  // nachdem Fastify den Körper (Vorgabe 1 MiB) gelesen und geparst hatte. Ein Anonymer oder ein
+  // Konto ohne Anlegerecht bekam damit eine Formkritik seines JSON (400), bevor jemand fragte, ob
+  // er überhaupt anlegen darf. Hier steht dasselbe Recht, das der Handler verlangt, VOR dem Parsen.
+  //
+  // WARUM DAS RECHT UND NICHT NUR DIE ANMELDUNG (anders als `requireAuthedBeforeParse` oben): beide
+  // Routen kennen genau EIN Recht, unabhängig vom Körper. Es gibt hier keine Aktion, deren Recht
+  // erst aus dem Körper folgte — also nichts, was ein früheres Urteil verfälschen könnte.
+  //
+  // WARUM ALS BENANNTER HELFER UND NICHT INLINE: der Routenscanner (`tests/security/routeGuardAudit.ts`)
+  // zählt `requirePermission("…")`-Literale im Routenblock. Ein zweites Literal dort machte aus
+  // `ko.create` scheinbar eine `action-dispatched`-Route. Der Handler behält seine eigene Prüfung
+  // (Defense-in-Depth, und er braucht ohnehin den Nutzer).
+  const requireKoCreateBeforeParse = async (
+    request: Parameters<Guards["requirePermission"]>[1],
+    reply: Parameters<Guards["requirePermission"]>[2],
+  ): Promise<void> => {
+    await guards.requirePermission("ko.create", request, reply);
+  };
+
   // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
   // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
   const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
@@ -1489,6 +1513,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   }
 
   return async (app) => {
+    // R-0676: der Rechte-Riegel VOR dem Parsen für `POST /api/kos/from-document`. Er hängt hier am
+    // Plugin und nicht als Routenoption, weil die Kopfzeile dieser Route sonst umbricht und Biome
+    // den ganzen Handler eine Stufe tiefer einrückt (Nacharbeit 5). Die Wirkung ist dieselbe: ein
+    // `onRequest`-Hook, der vor dem Body-Parsing läuft und den Lebenszyklus mit gesendeter Absage
+    // beendet. `POST /api/kos` trägt denselben Helfer als Routenoption (unten).
+    app.addHook("onRequest", async (request, reply) => {
+      if (request.method === "POST" && request.routeOptions.url === "/api/kos/from-document") {
+        await requireKoCreateBeforeParse(request, reply);
+      }
+    });
+
     // ============================================================================================
     // JOB 2009 · D2 — H3 BEKOMMT SEINEN LESER. Datei und Zeile dieses Aufrufs sind der Beleg.
     // ============================================================================================
@@ -1806,6 +1841,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
 
     app.post<{ Body: Omit<CreateKoInput, "author"> & { reviewerIds?: string[] } }>(
       "/api/kos",
+      { onRequest: requireKoCreateBeforeParse },
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
         if (!user) {
