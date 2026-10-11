@@ -16,10 +16,11 @@ import {
   entferneDemoPaket,
   ladeDemoPaket,
 } from "../example-packages/demo-pakete";
-import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
+import { type FactoryReset, FirmenresetFehler, factoryResetUnavailable } from "../factory-reset";
 // AUFTRAG-mega64 Block A: der Betriebsschalter für das Demodaten-Laden — dieselbe eine Wahrheit,
 // aus der auch GET /api/features antwortet (mega46 F).
 import { schalterAn } from "../feature-flags";
+import type { BegriffeRepo } from "../firmenwoerterbuch";
 import type { Guards } from "../http";
 import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
 import { type Produktfassung, type UmfangAuskunft, umfangAuskunft } from "../sicherungsumfang";
@@ -708,13 +709,61 @@ function umfangFuer(lage: UmfangLage, wege: Schutzwege): UmfangAuskunft {
   return umfangAuskunft(lage.produkt, lage.tabellenImDump, gemessen, r.zustand === "erfolg");
 }
 
+// ==================================================================================================
+// PETER-20261011-P08 · DIE VORSCHAU DES FIRMENRESETS (AC02).
+// ==================================================================================================
+//
+// Konkrete Mengen statt „ALLE Daten": was entfällt (Wissensobjekte samt Papierkorb, offene Fragen,
+// alle übrigen gespeicherten Einträge mit den Namen ihrer Ablagen) und was bleibt (Benutzerkonten,
+// Firmenwörterbuch, Prüfprotokoll). Die KENNUNG wird ZUERST gebildet: schreibt jemand, während die
+// Mengen gezählt werden, passt die Kennung nicht mehr und die Ausführung löscht nichts
+// (`VORSCHAU_VERALTET`) — die Vorschau kann nie zu wenig versprechen.
+export interface FirmenresetVorschau {
+  kennung: string;
+  entfernt: {
+    wissensobjekte: number;
+    offeneFragen: number;
+    weitereEintraege: number;
+    ablagen: string[];
+  };
+  erhalten: { benutzerkonten: number; woerterbuch: number; protokolleintraege: number };
+}
+
+/** Ablagen, deren Menge die Vorschau schon als eigene Zeile nennt. */
+const EIGENE_ZEILE = ["koRepo", "gaps"];
+
+async function firmenresetVorschau(
+  services: DemoSeedServices & { begriffe?: BegriffeRepo },
+  factoryReset: FactoryReset,
+): Promise<FirmenresetVorschau> {
+  const journal = await factoryReset.vorschau();
+  const weitere = Object.entries(journal.entfernt).filter(
+    ([ablage, n]) => n > 0 && !EIGENE_ZEILE.includes(ablage),
+  );
+  return {
+    kennung: journal.kennung,
+    entfernt: {
+      wissensobjekte: (await services.ko.listEinschliesslichPapierkorb()).length,
+      offeneFragen: (await services.ask.listGaps()).length,
+      weitereEintraege: weitere.reduce((summe, [, n]) => summe + n, 0),
+      ablagen: weitere.map(([ablage]) => ablage).sort(),
+    },
+    erhalten: {
+      benutzerkonten: (await services.auth.listUsers()).length,
+      woerterbuch: services.begriffe ? (await services.begriffe.aktuelle()).length : 0,
+      protokolleintraege: journal.erhalten.auditRepo ?? 0,
+    },
+  };
+}
+
 // SCRUM-181: admin-geschützte Aktion, um eine LEERE Instanz mit Demodaten sichtbar zu machen.
 // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
 // Pedi 05.07.: zusätzlich der Werksreset (Factory-Settings) — nur im Desktop/Dev-Modus verfügbar.
 export function adminRoutes(
   // WP-B6: die Beispielpaket-Route braucht zusätzlich das (optionale) Audit — build-app reicht die
   // vollen AppServices, die das strukturell erfüllen; direkte Test-Aufrufer bleiben kompatibel.
-  services: DemoSeedServices & { audit?: AuditService },
+  // P08: `begriffe` zählt die Vorschau des Firmenresets (erhaltene Wörterbucheinträge).
+  services: DemoSeedServices & { audit?: AuditService; begriffe?: BegriffeRepo },
   guards: Guards,
   factoryReset: FactoryReset = factoryResetUnavailable,
   umfangLage?: UmfangLage,
@@ -965,17 +1014,35 @@ export function adminRoutes(
 
     // Pedi 05.07. (Beta): Verfügbarkeit des Werksresets. Die Oberfläche blendet den Knopf nur ein,
     // wenn er im aktuellen Betriebsmodus (Desktop/Dev-Journal) überhaupt möglich ist.
+    // P08-AC02: ist er verfügbar, trägt dieselbe Auskunft die Vorschau — konkrete Mengen dessen, was
+    // entfällt und was bleibt, und die Kennung, die die Ausführung zurückverlangt. Lesend; dieselbe
+    // Schranke wie bisher (`users.manage`, nur die Rolle admin).
     app.get("/api/admin/factory-reset", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
       }
-      reply.code(200).send({ available: factoryReset.available });
+      if (!factoryReset.available) {
+        reply.code(200).send({ available: false });
+        return;
+      }
+      reply
+        .code(200)
+        .send({ available: true, vorschau: await firmenresetVorschau(services, factoryReset) });
     });
 
-    // Pedi 05.07. (Beta): Werksreset ausführen — ALLE lokalen Daten löschen und das Programm
-    // beenden; der nächste Start beginnt mit der Ersteinrichtung (erster Anwender = Admin).
-    // Nur im Desktop/Dev-Modus möglich (sonst 403), damit produktive Daten nie betroffen sind.
+    // Pedi 05.07. (Beta): Werksreset ausführen und das Programm beenden. Nur im Desktop/Dev-Modus
+    // möglich (sonst 403), damit produktive Daten nie betroffen sind.
+    //
+    // PETER-20261011-P08 (Firmenreset): Konten und Firmenwörterbuch bleiben erhalten. Die Ausführung
+    // verlangt, in dieser Reihenfolge, und bricht beim ersten Fehlen OHNE jede Löschung ab:
+    //   AC01  das administrative Resetrecht (`users.manage` = Rolle admin) und den Desktopbetrieb;
+    //   AC05  ein Konto mit lokalem Passwort — ein reines SSO-Konto bräuchte zwei passende
+    //         SSO-Wiederanmeldungen, und die gibt es auf diesem Weg nicht: abgewiesen, nichts gelöscht;
+    //   AC02  die Kennung der Vorschau, die der Admin gesehen hat;
+    //   AC04  die bewusst gesetzte Checkbox (`bestaetigt: true`, nichts anderes zählt);
+    //   AC05  zwei Passwortbestätigungen, JEDE einzeln geprüft;
+    //   AC07  einen unveränderten Bestand seit der Vorschau und keinen zweiten laufenden Reset.
     app.post("/api/admin/factory-reset", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
@@ -989,22 +1056,57 @@ export function adminRoutes(
         });
         return;
       }
-      // SCRUM-450: Re-Authentifizierung. Der Werksreset löscht ALLE Daten unwiderruflich —
-      // „angemeldet als Admin" allein reicht nicht, der Admin muss sein Passwort bestätigen.
-      // So kann ein offener/übernommener Admin-Tab den Reset nicht ohne Passwort auslösen.
-      const body = (request.body ?? {}) as { password?: unknown };
-      const password = typeof body.password === "string" ? body.password : "";
-      if (!password || !(await services.auth.verifyUserPassword(user.id, password))) {
-        reply.code(401).send({
-          error: "INVALID_PASSWORD",
-          message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+      if (!(await services.auth.hatLokalesPasswort(user.id))) {
+        reply.code(403).send({
+          error: "SSO_WIEDERANMELDUNG_ERFORDERLICH",
+          message:
+            "Dieses Konto meldet sich über SSO an. Der Firmenreset verlangt dafür zwei passende SSO-Wiederanmeldungen; dieser Weg ist hier nicht eingerichtet. Es wurde nichts gelöscht.",
         });
         return;
       }
-      // Erst antworten (damit die Oberfläche die Bestätigung erhält), dann Bestand löschen und
-      // den Prozess beenden. Der Reset läuft bewusst NACH dem Flush der Antwort.
+      const body = (request.body ?? {}) as {
+        kennung?: unknown;
+        bestaetigt?: unknown;
+        passwort1?: unknown;
+        passwort2?: unknown;
+      };
+      if (typeof body.kennung !== "string" || body.kennung.length === 0) {
+        reply.code(400).send({
+          error: "VORSCHAU_FEHLT",
+          message: "Ohne bestätigte Vorschau wird nichts gelöscht.",
+        });
+        return;
+      }
+      if (body.bestaetigt !== true) {
+        reply.code(400).send({
+          error: "BESTAETIGUNG_FEHLT",
+          message: "Die Bestätigung der Folgen ist nicht gesetzt. Es wurde nichts gelöscht.",
+        });
+        return;
+      }
+      // SCRUM-450 / P08-AC05: Re-Authentifizierung, zweimal. „Angemeldet als Admin" allein reicht
+      // nicht — ein offener oder übernommener Admin-Tab kann den Reset so nicht auslösen.
+      for (const eingabe of [body.passwort1, body.passwort2]) {
+        const passwort = typeof eingabe === "string" ? eingabe : "";
+        if (!passwort || !(await services.auth.verifyUserPassword(user.id, passwort))) {
+          reply.code(401).send({
+            error: "INVALID_PASSWORD",
+            message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+          });
+          return;
+        }
+      }
+      try {
+        await factoryReset.run({ kennung: body.kennung, durch: user.id });
+      } catch (error) {
+        if (error instanceof FirmenresetFehler) {
+          reply.code(409).send({ error: error.code, message: error.message });
+          return;
+        }
+        throw error;
+      }
+      // Das Journal ist ersetzt; der Prozess beendet sich kurz nach dieser Antwort.
       reply.code(200).send({ ok: true });
-      void factoryReset.run();
     });
 
     // ==========================================================================================

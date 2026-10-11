@@ -25,6 +25,7 @@ import type {
   DemoPackageResult,
   DemoPackageTextDto,
   DemoSeedResult,
+  FirmenresetAuftrag,
 } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
@@ -778,8 +779,14 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
 }
 
 /**
- * Pedi 05.07. (Beta): Werksreset — nur im Desktop/Dev-Modus. Löscht ALLE Daten und beendet das
+ * Pedi 05.07. (Beta): Werksreset — nur im Desktop/Dev-Modus. Entfernt den Bestand und beendet das
  * Programm. Doppelte Rückfrage plus Re-Authentifizierung (SCRUM-450).
+ *
+ * PETER-20261011-P08 (Firmenreset): Stufe 1 zeigt die VORSCHAU des Servers (was entfällt, was
+ * bleibt — Konten und Firmenwörterbuch bleiben), verlangt die bewusst gesetzte Checkbox und zwei
+ * Passworteingaben; erst dann kommt die große Warnung. Ausgeführt wird mit der Kennung genau der
+ * gezeigten Vorschau — hat sich der Bestand inzwischen bewegt, löscht der Server nichts und die
+ * Karte lädt die Vorschau neu.
  *
  * JOB 3065: Die Karte gibt es jetzt IMMER (die Zeile davor nennt die Verfügbarkeit als Wert) —
  * ist der Weg in dieser Installation nicht vorhanden, sagt die Karte genau das, statt zu fehlen.
@@ -791,30 +798,43 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
     queryKey: ["factory-reset-status"],
     queryFn: endpoints.admin.factoryResetStatus,
   });
-  // Zwei-Stufen-Bestätigung: "" (aus) → "armed" (Passwort + erste Rückfrage) → "confirm" (Warnung).
+  // Zwei-Stufen-Bestätigung: "" (aus) → "armed" (Vorschau, Checkbox, zwei Passwörter) → "confirm"
+  // (Warnung).
   const [factoryStep, setFactoryStep] = useState<"" | "armed" | "confirm">("");
   const [factoryPw, setFactoryPw] = useState("");
+  const [factoryPw2, setFactoryPw2] = useState("");
+  const [bestaetigt, setBestaetigt] = useState(false);
+  const [geseheneKennung, setGeseheneKennung] = useState("");
   const [factoryDone, setFactoryDone] = useState(false);
+  const leeren = (): void => {
+    setFactoryPw("");
+    setFactoryPw2("");
+    setBestaetigt(false);
+    setGeseheneKennung("");
+  };
   const cancelFactory = (): void => {
     setFactoryStep("");
-    setFactoryPw("");
+    leeren();
   };
   const factoryReset = useMutation({
-    mutationFn: (password: string) => endpoints.admin.factoryReset(password),
+    mutationFn: (auftrag: FirmenresetAuftrag) => endpoints.admin.factoryReset(auftrag),
     onSuccess: () => {
       // Der Server beendet sich unmittelbar danach — die Oberfläche zeigt einen Neustart-Hinweis.
       setFactoryStep("");
-      setFactoryPw("");
+      leeren();
       setFactoryDone(true);
       push("success", t("adm.factoryDone"));
     },
-    // SCRUM-450: Falsches Passwort → zurück zur Eingabe (Passwort leeren) mit klarer Meldung.
-    // R-0537: nur `INVALID_PASSWORD` heißt „falsches Passwort"; jede andere Absage (etwa 403 „nur
-    // Desktop" oder eine abgelaufene Sitzung) nennt ihren eigenen Grund, statt fälschlich das
-    // Passwort zu beschuldigen.
+    // SCRUM-450: Falsches Passwort → zurück zur Eingabe (Passwörter und Checkbox leeren) mit klarer
+    // Meldung. R-0537: nur `INVALID_PASSWORD` heißt „falsches Passwort"; jede andere Absage (etwa
+    // 403 „nur Desktop", 409 „Vorschau veraltet" oder eine abgelaufene Sitzung) nennt ihren eigenen
+    // Grund, statt fälschlich das Passwort zu beschuldigen.
     onError: (e) => {
       setFactoryStep("armed");
-      setFactoryPw("");
+      leeren();
+      if (e instanceof ApiError && e.code === "VORSCHAU_VERALTET") {
+        void factoryResetStatus.refetch();
+      }
       if (e instanceof ApiError && e.code === "INVALID_PASSWORD") {
         push("error", t("adm.factory.wrongPassword"));
         return;
@@ -852,24 +872,97 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
             ) : factoryStep === "" ? (
               <button
                 type="button"
-                onClick={() => setFactoryStep("armed")}
+                onClick={() => {
+                  setFactoryStep("armed");
+                  // Die Vorschau zeigt den Stand JETZT, nicht den beim Öffnen der Karte.
+                  void factoryResetStatus.refetch();
+                }}
                 className="inline-flex items-center gap-1.5 rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
               >
                 <RotateCcw size={14} />
                 {t("adm.factory.button")}
               </button>
             ) : factoryStep === "armed" ? (
-              // SCRUM-450: Stufe 1 — Passwort-Bestätigung (Re-Authentifizierung).
+              // SCRUM-450 / P08: Stufe 1 — Vorschau, bewusste Checkbox und zwei Passworteingaben.
               <div className="space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5">
                 <span className="block text-[12.5px] font-semibold text-text">
                   {t("adm.factory.confirm1")}
                 </span>
+                <div data-testid="firmenreset-vorschau" className="grid gap-2 sm:grid-cols-2">
+                  <div data-vorschau="entfernt">
+                    <p className="text-[12px] font-semibold text-trust-crit-text">
+                      {t("adm.factory.vorschau.entfernt")}
+                    </p>
+                    <ul className="mt-0.5 list-disc pl-4 text-[12px] text-text">
+                      <li>
+                        {t("adm.factory.vorschau.kos", {
+                          anzahl: stand.vorschau.entfernt.wissensobjekte,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.fragen", {
+                          anzahl: stand.vorschau.entfernt.offeneFragen,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.weitere", {
+                          anzahl: stand.vorschau.entfernt.weitereEintraege,
+                          ablagen:
+                            stand.vorschau.entfernt.ablagen.length > 0
+                              ? stand.vorschau.entfernt.ablagen.join(", ")
+                              : "—",
+                        })}
+                      </li>
+                      <li>{t("adm.factory.vorschau.anmeldungen")}</li>
+                    </ul>
+                  </div>
+                  <div data-vorschau="erhalten">
+                    <p className="text-[12px] font-semibold text-text">
+                      {t("adm.factory.vorschau.erhalten")}
+                    </p>
+                    <ul className="mt-0.5 list-disc pl-4 text-[12px] text-text">
+                      <li>
+                        {t("adm.factory.vorschau.konten", {
+                          anzahl: stand.vorschau.erhalten.benutzerkonten,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.woerterbuch", {
+                          anzahl: stand.vorschau.erhalten.woerterbuch,
+                        })}
+                      </li>
+                      <li>
+                        {t("adm.factory.vorschau.protokoll", {
+                          anzahl: stand.vorschau.erhalten.protokolleintraege,
+                        })}
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <label className="flex items-start gap-2 text-[12.5px] text-text">
+                  <input
+                    type="checkbox"
+                    data-testid="firmenreset-bestaetigt"
+                    className="mt-0.5"
+                    checked={bestaetigt}
+                    onChange={(e) => setBestaetigt(e.target.checked)}
+                  />
+                  {t("adm.factory.checkbox")}
+                </label>
                 <Field label={t("adm.factory.passwordLabel")}>
                   <TextInput
                     type="password"
                     value={factoryPw}
                     autoComplete="current-password"
                     onChange={(e) => setFactoryPw(e.target.value)}
+                  />
+                </Field>
+                <Field label={t("adm.factory.password2Label")}>
+                  <TextInput
+                    type="password"
+                    value={factoryPw2}
+                    autoComplete="current-password"
+                    onChange={(e) => setFactoryPw2(e.target.value)}
                   />
                 </Field>
                 <div className="flex items-center gap-3">
@@ -882,9 +975,16 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                   </button>
                   <button
                     type="button"
-                    disabled={factoryPw.trim().length === 0}
+                    disabled={
+                      !bestaetigt || factoryPw.trim().length === 0 || factoryPw2.trim().length === 0
+                    }
                     className="text-[12px] font-semibold text-trust-crit-text disabled:opacity-40"
-                    onClick={() => setFactoryStep("confirm")}
+                    onClick={() => {
+                      // Festgehalten wird die Kennung der Vorschau, die in DIESEM Augenblick zu
+                      // sehen ist — ein späteres Nachladen im Hintergrund ändert sie nicht still.
+                      setGeseheneKennung(stand.available ? stand.vorschau.kennung : "");
+                      setFactoryStep("confirm");
+                    }}
                   >
                     {t("adm.factory.continue")}
                   </button>
@@ -914,7 +1014,14 @@ export function WerkseinstellungenDetail({ onZurueck }: { onZurueck: () => void 
                     type="button"
                     disabled={factoryReset.isPending}
                     className="inline-flex items-center gap-1 rounded-btn bg-trust-crit-text px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
-                    onClick={() => factoryReset.mutate(factoryPw)}
+                    onClick={() =>
+                      factoryReset.mutate({
+                        kennung: geseheneKennung,
+                        bestaetigt: true,
+                        passwort1: factoryPw,
+                        passwort2: factoryPw2,
+                      })
+                    }
                   >
                     <Power size={13} />
                     {t("adm.factory.execute")}

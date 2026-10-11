@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "./build-app";
+import { type FactoryReset, FirmenresetFehler } from "./factory-reset";
 
 // SCRUM-181: admin-geschützte Demo-Seed-Route.
 describe("SCRUM-181: POST /api/admin/demo-seed", () => {
@@ -102,10 +103,29 @@ describe("SCRUM-181: POST /api/admin/demo-seed", () => {
 // Verfügbarkeitsflag). Der eigentliche Prozess-Abbruch wird über die injizierte Fähigkeit getestet
 // (kein echtes process.exit im Test).
 describe("Pedi 05.07.: /api/admin/factory-reset", () => {
-  async function adminApp(factoryReset?: {
-    available: boolean;
-    run: () => Promise<void>;
-  }) {
+  // P08: die Fähigkeit trägt eine Vorschau mit Kennung; die Ausführung verlangt sie zurück.
+  const KENNUNG = "k-p08";
+  function faehigkeit(onRun: () => void): FactoryReset {
+    return {
+      available: true,
+      vorschau: async () => ({
+        kennung: KENNUNG,
+        entfernt: { drafts: 1 },
+        erhalten: { users: 1 },
+      }),
+      run: async () => {
+        onRun();
+      },
+    };
+  }
+  const vollstaendig = {
+    kennung: KENNUNG,
+    bestaetigt: true,
+    passwort1: "secret123",
+    passwort2: "secret123",
+  };
+
+  async function adminApp(factoryReset?: FactoryReset) {
     const app = buildApp(buildServices(), factoryReset ? { factoryReset } : {});
     await app.inject({
       method: "POST",
@@ -140,26 +160,27 @@ describe("Pedi 05.07.: /api/admin/factory-reset", () => {
     expect(post.statusCode).toBe(403);
   });
 
-  it("mit Fähigkeit + korrektem Passwort → verfügbar, POST löst den Reset aus", async () => {
+  it("mit Fähigkeit + vollständiger Bestätigung → verfügbar mit Vorschau, POST löst den Reset aus", async () => {
     let ran = false;
-    const { app, headers } = await adminApp({
-      available: true,
-      run: async () => {
+    const { app, headers } = await adminApp(
+      faehigkeit(() => {
         ran = true;
-      },
-    });
+      }),
+    );
     const status = await app.inject({
       method: "GET",
       url: "/api/admin/factory-reset",
       headers,
     });
     expect(status.json().available).toBe(true);
+    expect(status.json().vorschau.kennung).toBe(KENNUNG);
+    expect(status.json().vorschau.erhalten.benutzerkonten).toBe(1);
 
     const post = await app.inject({
       method: "POST",
       url: "/api/admin/factory-reset",
       headers,
-      payload: { password: "secret123" },
+      payload: vollstaendig,
     });
     expect(post.statusCode).toBe(200);
     expect(post.json().ok).toBe(true);
@@ -167,41 +188,83 @@ describe("Pedi 05.07.: /api/admin/factory-reset", () => {
     expect(ran).toBe(true);
   });
 
-  // SCRUM-450: Re-Authentifizierung. Falsches Passwort darf den unwiderruflichen Reset NIE auslösen.
-  it("mit Fähigkeit, aber falschem Passwort → 401 und Reset NICHT ausgelöst", async () => {
+  // SCRUM-450 / P08-AC05: Re-Authentifizierung, zweimal. Ein falsches Passwort — gleich an welcher
+  // Stelle — darf den unwiderruflichen Reset NIE auslösen.
+  it("mit Fähigkeit, aber falschem erstem oder zweitem Passwort → 401 und Reset NICHT ausgelöst", async () => {
     let ran = false;
-    const { app, headers } = await adminApp({
-      available: true,
-      run: async () => {
+    const { app, headers } = await adminApp(
+      faehigkeit(() => {
         ran = true;
-      },
-    });
-    const post = await app.inject({
-      method: "POST",
-      url: "/api/admin/factory-reset",
-      headers,
-      payload: { password: "voellig-falsch" },
-    });
-    expect(post.statusCode).toBe(401);
+      }),
+    );
+    for (const payload of [
+      { ...vollstaendig, passwort1: "voellig-falsch" },
+      { ...vollstaendig, passwort2: "voellig-falsch" },
+    ]) {
+      const post = await app.inject({
+        method: "POST",
+        url: "/api/admin/factory-reset",
+        headers,
+        payload,
+      });
+      expect(post.statusCode).toBe(401);
+    }
     expect(ran).toBe(false);
   });
 
   // SCRUM-450: fehlendes Passwort wird ebenso abgelehnt (kein „nur angemeldet reicht").
   it("mit Fähigkeit, aber ohne Passwort → 401 und Reset NICHT ausgelöst", async () => {
     let ran = false;
-    const { app, headers } = await adminApp({
-      available: true,
-      run: async () => {
+    const { app, headers } = await adminApp(
+      faehigkeit(() => {
         ran = true;
+      }),
+    );
+    const post = await app.inject({
+      method: "POST",
+      url: "/api/admin/factory-reset",
+      headers,
+      payload: { kennung: KENNUNG, bestaetigt: true },
+    });
+    expect(post.statusCode).toBe(401);
+    expect(ran).toBe(false);
+  });
+
+  // P08-AC04: ohne bewusst gesetzte Checkbox kein Reset — auch mit richtigen Passwörtern.
+  it("mit Fähigkeit, aber ohne Bestätigung der Folgen → 400 und Reset NICHT ausgelöst", async () => {
+    let ran = false;
+    const { app, headers } = await adminApp(
+      faehigkeit(() => {
+        ran = true;
+      }),
+    );
+    const post = await app.inject({
+      method: "POST",
+      url: "/api/admin/factory-reset",
+      headers,
+      payload: { ...vollstaendig, bestaetigt: "ja" },
+    });
+    expect(post.statusCode).toBe(400);
+    expect(post.json().error).toBe("BESTAETIGUNG_FEHLT");
+    expect(ran).toBe(false);
+  });
+
+  // P08-AC07: meldet die Fähigkeit eine veraltete Vorschau, antwortet die Route 409 mit dem Code.
+  it("veraltete Vorschau → 409 VORSCHAU_VERALTET", async () => {
+    const reset = faehigkeit(() => undefined);
+    const { app, headers } = await adminApp({
+      ...reset,
+      run: async () => {
+        throw new FirmenresetFehler("VORSCHAU_VERALTET", "Der Bestand hat sich geändert.");
       },
     });
     const post = await app.inject({
       method: "POST",
       url: "/api/admin/factory-reset",
       headers,
-      payload: {},
+      payload: vollstaendig,
     });
-    expect(post.statusCode).toBe(401);
-    expect(ran).toBe(false);
+    expect(post.statusCode).toBe(409);
+    expect(post.json().error).toBe("VORSCHAU_VERALTET");
   });
 });

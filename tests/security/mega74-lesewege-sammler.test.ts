@@ -729,10 +729,12 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Admin; Titel zugeordneter Paketobjekte.",
   },
+  // P08: im Desktopbetrieb trägt die Auskunft die Firmenreset-Vorschau — nur Mengen und
+  // Ablagenamen, kein Inhalt eines Wissensobjekts.
   "GET /api/admin/factory-reset": {
     urteil: "KURATORENTOR",
     recht: "users.manage",
-    grund: "Admin.",
+    grund: "Admin; Mengen der Firmenreset-Vorschau.",
   },
   // JOB 4025 (KUNDENBETRIEB-BACKUP): die Sicherungsauskunft. Sie gibt Dateinamen, Zeitstempel,
   // Größen und Prüfsummen aus dem Sicherungsverzeichnis heraus — KEINEN Inhalt eines

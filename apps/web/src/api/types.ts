@@ -4077,6 +4077,33 @@ export interface SicherungsEintrag {
   folgeNummer: number | null;
 }
 
+/**
+ * PETER-20261011-P08 — die Vorschau des Firmenresets, wie `GET /api/admin/factory-reset` sie im
+ * Desktopbetrieb mitliefert (services/app/src/routes/admin-routes.ts, `FirmenresetVorschau`).
+ */
+export interface FirmenresetVorschau {
+  /** Die Ausführung verlangt genau diese Kennung zurück; hat sich der Bestand bewegt, löscht sie nichts. */
+  kennung: string;
+  entfernt: {
+    wissensobjekte: number;
+    offeneFragen: number;
+    weitereEintraege: number;
+    ablagen: string[];
+  };
+  erhalten: { benutzerkonten: number; woerterbuch: number; protokolleintraege: number };
+}
+
+export type FirmenresetStatus =
+  | { available: false }
+  | { available: true; vorschau: FirmenresetVorschau };
+
+export interface FirmenresetAuftrag {
+  kennung: string;
+  bestaetigt: true;
+  passwort1: string;
+  passwort2: string;
+}
+
 export type SicherungenAuskunft = (
   | {
       zustand: "gelesen";

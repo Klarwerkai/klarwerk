@@ -520,7 +520,7 @@ export const NICHT_ABGENOMMEN: Nichtabnahme[] = [
     pfad: "/api/admin/factory-reset",
     art: "zurueckgestellt",
     grund:
-      "Der Werksreset. Er löscht die gesamte Instanz — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
+      "Der Werksreset. Er löscht den Bestand und beendet alle Anmeldungen (P08: Konten bleiben, ihre Sitzungen nicht) — an einer Bühne, die vier angemeldete Prüfkonten trägt, wäre jede folgende Zeile danach bedeutungslos.",
   },
   {
     methode: "POST",

@@ -123,6 +123,10 @@ const STATUS_BY_CODE: Record<string, number> = {
   // Auffangwert 400. Der Code bleibt sichtbar, damit der Aufrufer „ungewiss" von „gescheitert"
   // unterscheiden kann; die Meldung ist ein fester Satz ohne Ursache, Pfad oder Kennung.
   JOURNAL_AUSGANG_UNGEWISS: 503,
+  // PETER-20261011-P08 (AC07): ein Schreibvorgang traf auf den laufenden Firmenreset im
+  // Desktop-Journal (dev-persist.ts, `FirmenresetSchreibsperre`). Nicht gespeichert, kein
+  // Eingabefehler → 503 mit festem Satz.
+  FIRMENRESET_LAEUFT: 503,
 };
 
 // G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1): Fehlercodes, die REIN INTERN sind — technische

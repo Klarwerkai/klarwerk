@@ -1101,21 +1101,34 @@ const de = {
     "Diese Kennwörter wurden gerade zufällig erzeugt und werden NUR HIER angezeigt. Der Server bewahrt sie nicht auf und kann sie nicht wiederholen. Notiere oder gib sie jetzt weiter — nach einem Neuladen dieser Seite sind sie weg, und die Konten brauchen dann einen Kennwort-Reset.",
   "adm.factory.title": "Werkseinstellungen",
   "adm.factory.help":
-    "Setzt die lokale Instanz vollständig zurück: alle Wissensobjekte, Anwender, Konflikte, Lücken und Einstellungen werden gelöscht. Danach beendet sich das Programm; beim nächsten Start beginnt die Ersteinrichtung und der erste Anwender wird wieder Admin. Nur in der lokalen Desktop-Version verfügbar.",
+    "Setzt den Bestand der lokalen Instanz zurück: Wissensobjekte, offene Fragen, Konflikte, Entwürfe und Einstellungen werden gelöscht, alle Anmeldungen enden. Benutzerkonten, Firmenwörterbuch und Prüfprotokoll bleiben erhalten. Danach beendet sich das Programm; nach dem Neustart meldest du dich mit deinem bestehenden Konto an. Nur in der lokalen Desktop-Version verfügbar.",
   "adm.factory.hint":
-    "Für wiederholte Tests: alles löschen und das Programm beenden. Nach dem Neustart ist wieder alles wie bei der ersten Einrichtung.",
+    "Für wiederholte Tests: den Bestand löschen und das Programm beenden. Konten und Firmenwörterbuch bleiben.",
   "adm.factory.button": "Auf Werkseinstellungen zurücksetzen",
-  "adm.factory.confirm1": "Wirklich ALLE Daten löschen und das Programm beenden?",
+  "adm.factory.confirm1": "Prüfe, was entfernt wird und was erhalten bleibt.",
+  "adm.factory.vorschau.entfernt": "Wird entfernt",
+  "adm.factory.vorschau.erhalten": "Bleibt erhalten",
+  "adm.factory.vorschau.kos": "{{anzahl}} Wissensobjekte (auch im Papierkorb)",
+  "adm.factory.vorschau.fragen": "{{anzahl}} offene Fragen",
+  "adm.factory.vorschau.weitere": "{{anzahl}} weitere gespeicherte Einträge aus: {{ablagen}}",
+  "adm.factory.vorschau.anmeldungen":
+    "Alle Anmeldungen enden; Einstellungen gehen auf den Standard zurück",
+  "adm.factory.vorschau.konten": "{{anzahl}} Benutzerkonten (samt zweitem Faktor)",
+  "adm.factory.vorschau.woerterbuch": "{{anzahl}} Einträge im Firmenwörterbuch",
+  "adm.factory.vorschau.protokoll": "{{anzahl}} Einträge im Prüfprotokoll",
+  "adm.factory.checkbox":
+    "Ich habe die Vorschau gelesen und will genau diesen Bestand unwiderruflich entfernen.",
   "adm.factory.passwordLabel": "Zur Bestätigung dein Admin-Passwort",
+  "adm.factory.password2Label": "Admin-Passwort ein zweites Mal",
   "adm.factory.confirm2": "Letzte Warnung: Dieser Schritt ist unwiderruflich.",
   "adm.factory.warnBody":
-    "ALLE Wissensobjekte, Konten und Einstellungen werden gelöscht und das Programm beendet. Das lässt sich nicht rückgängig machen.",
+    "Der Bestand aus der Vorschau wird gelöscht und das Programm beendet. Benutzerkonten, Firmenwörterbuch und Prüfprotokoll bleiben. Das lässt sich nicht rückgängig machen.",
   "adm.factory.wrongPassword": "Falsches Passwort — der Werksreset wurde nicht ausgeführt.",
   "adm.factory.cancel": "Abbrechen",
   "adm.factory.continue": "Weiter",
   "adm.factory.execute": "Zurücksetzen & beenden",
   "adm.factory.restartHint":
-    "Zurückgesetzt. Das Programm wird beendet — bitte die KLARWERK-App neu starten. Der erste Anwender wird dann wieder Admin.",
+    "Zurückgesetzt. Das Programm wird beendet — bitte die KLARWERK-App neu starten und mit dem bestehenden Konto anmelden.",
   "adm.factoryDone": "Werksreset ausgelöst — das Programm wird beendet.",
   "capture.tellResetQ": "Text und Anhänge wirklich verwerfen?",
   "capture.diktatListening": "Aufnahme läuft — sprich einfach, der Text erscheint unten im Feld.",
@@ -7714,7 +7727,7 @@ const de = {
     "Zwei Knöpfe, zwei verschiedene Bestände: „Demodaten laden“ legt den allgemeinen Demo-Bestand an, der Paketknopf darunter lädt genau das benannte Demopaket. Legt der allgemeine Lauf neue Konten an, stehen deren Einmalkennwörter genau einmal hier — ein Neuladen verliert sie, der Server nennt sie kein zweites Mal. „Alle Demodaten entfernen“ räumt beides zugleich weg, auch die Bausteine des Pakets. Das Demo-Erscheinungsbild ganz unten wechselt nur Logo und Farben, für alle Anwender dieser Installation; es lädt und löscht keine Daten.",
   "seitenhilfe.admin.werk.titel": "Werkseinstellungen",
   "seitenhilfe.admin.werk.text":
-    "Der Werksreset löscht alle Daten und beendet danach den Server; die Anwendung muss von Hand neu gestartet werden. Deshalb zwei Stufen: erst dein eigenes Passwort, dann die ausdrückliche Warnung. Es gibt ihn nicht in jeder Installation — steht hier „In dieser Installation nicht verfügbar“, ist der Weg auf diesem Server nicht eingebaut, und daran ändert kein Schalter etwas. Nur die Vorführdaten wirst du stattdessen unter Vorführdaten los.",
+    "Der Werksreset löscht den Bestand und beendet danach den Server; die Anwendung muss von Hand neu gestartet werden. Benutzerkonten, Firmenwörterbuch und Prüfprotokoll bleiben erhalten. Deshalb zwei Stufen: erst die Vorschau mit Bestätigungshaken und zweimal dein eigenes Passwort, dann die ausdrückliche Warnung. Es gibt ihn nicht in jeder Installation — steht hier „In dieser Installation nicht verfügbar“, ist der Weg auf diesem Server nicht eingebaut, und daran ändert kein Schalter etwas. Nur die Vorführdaten wirst du stattdessen unter Vorführdaten los.",
   "seitenhilfe.admin.papierkorb.titel": "Papierkorb",
   "seitenhilfe.admin.papierkorb.text":
     "Gelöschte Wissensobjekte liegen hier zwischen. Je Eintrag stehen der Mensch, der gelöscht hat, das Datum und die Zahl der verbleibenden Tage. „Wiederherstellen“ holt das Objekt zurück in die Bibliothek; „Endgültig löschen“ fragt einmal nach und ist danach nicht mehr rückgängig zu machen. Tust du nichts, entfernt der Server den Eintrag nach Ablauf der Frist von selbst — beim nächsten Aufräumlauf, nicht auf die Minute genau.",

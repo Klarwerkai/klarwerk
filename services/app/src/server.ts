@@ -6,8 +6,8 @@ import { migrateAuthTokensAtRest } from "../../auth";
 import { WISSENSSPRINT_TAKT_MS } from "../../management";
 import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
-import { buildDevPersistServices } from "./dev-persist";
-import { waehleWerksreset } from "./factory-reset";
+import { JournalSchreibsperre, buildDevPersistServices } from "./dev-persist";
+import { waehleWerksreset } from "./firmenreset-journal";
 import { HINTERGRUNDLAUF_INTERVAL_MS, type HintergrundlaufBericht } from "./hintergrundpruefung";
 import { starteHintergrundpruefung } from "./hintergrundpruefung-start";
 import { bindeInstanzVorMigration } from "./instanzbindung";
@@ -160,13 +160,16 @@ async function start(): Promise<void> {
   // Konfiguration und `KLARWERK_TLS_PFLICHT=1` ohne Zertifikat brechen den Start hier ab, bevor
   // eine Verbindung zur Datenbank entsteht (transport-tls.ts).
   const tls = leseTransportTls(process.env);
+  // P08-AC07: EINE Schreibsperre für Journal und Firmenreset — während der Reset das Journal
+  // ersetzt, weisen alle journalierten Ablagen Schreibvorgänge ab.
+  const schreibsperre = new JournalSchreibsperre();
   const services = databaseUrl
     ? await pgServices(databaseUrl)
     : journal
-      ? await buildDevPersistServices(journal)
+      ? await buildDevPersistServices(journal, schreibsperre)
       : buildServices();
-  // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL), s. factory-reset.ts.
-  const factoryReset = waehleWerksreset({ databaseUrl, journal });
+  // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL), s. firmenreset-journal.ts.
+  const factoryReset = waehleWerksreset({ databaseUrl, journal, sperre: schreibsperre });
   // R-0609 · Bens B13: der Aufräumlauf der Klara-Sitzungen (Nachtrag fehlender Endeinträge des
   // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
   let klaraAufraeumLauf: (() => Promise<number>) | undefined;

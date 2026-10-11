@@ -817,21 +817,33 @@ const en: typeof de = {
     "These passwords were just generated at random and are shown HERE ONLY. The server does not keep them and cannot repeat them. Write them down or pass them on now — reloading this page loses them, and the accounts will then need a password reset.",
   "adm.factory.title": "Factory settings",
   "adm.factory.help":
-    "Fully resets the local instance: all knowledge objects, users, conflicts, gaps and settings are deleted. The program then quits; on the next start the initial setup runs and the first user becomes admin again. Only available in the local desktop version.",
+    "Resets the content of the local instance: knowledge objects, open questions, conflicts, drafts and settings are deleted, all sign-ins end. User accounts, the company dictionary and the audit trail are kept. The program then quits; after the restart you sign in with your existing account. Only available in the local desktop version.",
   "adm.factory.hint":
-    "For repeated testing: wipe everything and quit the program. After a restart it's all fresh, just like first setup.",
+    "For repeated testing: delete the content and quit the program. Accounts and the company dictionary are kept.",
   "adm.factory.button": "Reset to factory settings",
-  "adm.factory.confirm1": "Really delete ALL data and quit the program?",
+  "adm.factory.confirm1": "Check what will be removed and what will be kept.",
+  "adm.factory.vorschau.entfernt": "Will be removed",
+  "adm.factory.vorschau.erhalten": "Will be kept",
+  "adm.factory.vorschau.kos": "{{anzahl}} knowledge objects (including the trash)",
+  "adm.factory.vorschau.fragen": "{{anzahl}} open questions",
+  "adm.factory.vorschau.weitere": "{{anzahl}} further stored entries from: {{ablagen}}",
+  "adm.factory.vorschau.anmeldungen": "All sign-ins end; settings return to their defaults",
+  "adm.factory.vorschau.konten": "{{anzahl}} user accounts (including second factor)",
+  "adm.factory.vorschau.woerterbuch": "{{anzahl}} company dictionary entries",
+  "adm.factory.vorschau.protokoll": "{{anzahl}} audit trail entries",
+  "adm.factory.checkbox":
+    "I have read the preview and want to irreversibly remove exactly this content.",
   "adm.factory.passwordLabel": "Confirm with your admin password",
+  "adm.factory.password2Label": "Admin password a second time",
   "adm.factory.confirm2": "Final warning: this step cannot be undone.",
   "adm.factory.warnBody":
-    "ALL knowledge objects, accounts and settings will be deleted and the program will quit. This cannot be undone.",
+    "The content shown in the preview will be deleted and the program will quit. User accounts, the company dictionary and the audit trail are kept. This cannot be undone.",
   "adm.factory.wrongPassword": "Wrong password — the factory reset was not performed.",
   "adm.factory.cancel": "Cancel",
   "adm.factory.continue": "Continue",
   "adm.factory.execute": "Reset & quit",
   "adm.factory.restartHint":
-    "Reset done. The program is quitting — please restart the KLARWERK app. The first user will become admin again.",
+    "Reset done. The program is quitting — please restart the KLARWERK app and sign in with your existing account.",
   "adm.factoryDone": "Factory reset triggered — the program is quitting.",
   "capture.tellResetQ": "Really discard text and attachments?",
   "capture.diktatListening": "Recording — just speak; the text appears in the field below.",
@@ -6021,7 +6033,7 @@ const en: typeof de = {
     "Two buttons, two different stocks: “Load demo data” creates the general demo stock, the package button below it loads exactly the named demo package. If the general run creates new accounts, their one-time passwords appear here exactly once — a reload loses them, the server will not name them a second time. “Remove all demo data” clears both at once, including the package's building blocks. The demo appearance at the very bottom only switches logo and colours, for every user of this installation; it loads and deletes no data.",
   "seitenhilfe.admin.werk.titel": "Factory reset",
   "seitenhilfe.admin.werk.text":
-    "The factory reset deletes all data and then shuts the server down; the application has to be restarted by hand. Hence two stages: first your own password, then the explicit warning. It does not exist in every installation — if this card says “Not available in this installation”, the path is not built into this server, and no switch changes that. Demo data alone is what you remove under demo and sample data instead.",
+    "The factory reset deletes the content and then shuts the server down; the application has to be restarted by hand. User accounts, the company dictionary and the audit trail are kept. Hence two stages: first the preview with a confirmation tick and your own password twice, then the explicit warning. It does not exist in every installation — if this card says “Not available in this installation”, the path is not built into this server, and no switch changes that. Demo data alone is what you remove under demo and sample data instead.",
   "seitenhilfe.admin.papierkorb.titel": "Recycle bin",
   "seitenhilfe.admin.papierkorb.text":
     "Deleted knowledge objects rest here. Each entry names the person who deleted it, the date and the number of days left. “Restore” brings the object back into the library; “Delete permanently” asks once and cannot be undone afterwards. If you do nothing, the server removes the entry by itself once the deadline passes — at the next cleanup run, not to the minute.",
