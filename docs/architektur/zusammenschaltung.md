@@ -141,6 +141,7 @@ im Postgres-Betrieb schon.
 | `confluenceImportSchalter` | `InMemoryConfluenceImportSchalterRepo` (Betreiberschalter des Confluence-Imports) | `PgConfluenceImportSchalterRepo` |
 | `bearbeitungen` | Speicherfassung mit Prozessuhr | `PgBearbeitungsRepo` |
 | `officeAblage` | `SpeicherOfficeAblage` (kein Neustartschutz) | `PgOfficeAblage` |
+| `meetingBezuege` | `SpeicherMeetingBezugAblage` (BPA-16, kein Neustartschutz) | `PgMeetingBezugAblage` |
 | `uebersetzungen` | `InMemoryUebersetzungRepo` (im Betrieb gepflegte Oberflächentexte und angelegte Sprachen, R-1034) | `PgUebersetzungRepo` |
 | `bestandsreset` | keiner — ohne Datenbank gibt es den Bestandsreset absichtlich nicht (Route: „nicht verfügbar") | `pgBestandsresetDienst(rohPool)` (Folgenvorschau + `fuehreBestandsresetAus`) |
 

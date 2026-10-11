@@ -387,6 +387,12 @@ import {
   stapelRahmen,
 } from "./log-positivliste";
 import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
+// BPA-16: Meeting-/Folienbezüge — im Postgres-Betrieb haltbar (`PgMeetingBezugAblage`).
+import {
+  type MeetingBezugAblage,
+  PgMeetingBezugAblage,
+  SpeicherMeetingBezugAblage,
+} from "./meeting-dokumentbezug-ablage";
 import { makeAssignmentNotifier } from "./notify";
 import { type OfficeAblage, PgOfficeAblage, SpeicherOfficeAblage } from "./office-ablage";
 import { leseOfficeEditorUmgebung } from "./office-artikel";
@@ -457,6 +463,7 @@ import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
 import { mcpRoutes } from "./routes/mcp-routes";
 import { mediaRoutes } from "./routes/media-routes";
+import { meetingDokumentbezugRoutes } from "./routes/meeting-dokumentbezug-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
 import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
@@ -766,6 +773,13 @@ export interface AppServices {
    * Betrieb `PgOfficeAblage`, damit ein als „gesichert" angezeigter Stand einen Neustart überlebt.
    */
   officeAblage: OfficeAblage;
+  /**
+   * BPA-16 (produkt:20261011:assistenz-meeting-dokumentbezug): Meetingbezüge — verbundene
+   * Präsentationsfassungen, Mitschriften, Rückmeldungen und Änderungsobjekte. Aus demselben Grund
+   * wie `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgMeetingBezugAblage`; ohne
+   * Datenbank die Speicherfassung, die einen Neustart nicht überlebt.
+   */
+  meetingBezuege: MeetingBezugAblage;
   /**
    * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
    * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
@@ -1336,6 +1350,8 @@ export function assembleServices(
     // Office im Artikel: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die
     // Speicherfassung, die einen Neustart nicht überlebt.
     officeAblage?: OfficeAblage;
+    // BPA-16: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    meetingBezuege?: MeetingBezugAblage;
     // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
     kenntnisnahmen?: KenntnisnahmeRepo;
     // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
@@ -1797,6 +1813,8 @@ export function assembleServices(
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
     // Office im Artikel: Postgres, wenn injiziert, sonst im Speicher.
     officeAblage: opts.officeAblage ?? new SpeicherOfficeAblage(),
+    // BPA-16: Meetingbezüge — Postgres, wenn injiziert, sonst im Speicher.
+    meetingBezuege: opts.meetingBezuege ?? new SpeicherMeetingBezugAblage(),
     // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
     // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
     // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
@@ -2319,6 +2337,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // Office im Artikel: Editor-Sitzungen und gesicherte Konfliktstände überleben Neustart und
       // Deploy (`OFFICE_ABLAGE_SCHEMA`).
       officeAblage: new PgOfficeAblage(pool),
+      // BPA-16: Meetingbezüge überleben Neustart und Deploy (`MEETING_DOKUMENTBEZUG_SCHEMA`).
+      meetingBezuege: new PgMeetingBezugAblage(pool),
       // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
       kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
       // Veröffentlichung: die Zustellungen überleben Neuladen, Neuanmeldung und Neustart.
@@ -5225,6 +5245,9 @@ export function buildApp(
     // Ein Traeger FRISCH — `KoService.get` liefert fuer den Papierkorb `undefined`, zeichengleich
     // mit dem Trim in `list`.
     ko: (koId) => services.ko.get(koId),
+    // BPA-17 (G05): die Quelle IM PAPIERKORB, nur für private Folgeprodukte — eine gewöhnliche
+    // Löschung hebt die berechtigt erzeugte Kopie nicht auf; Rechte gelten an ihren Fakten weiter.
+    papierkorb: (koId) => services.ko.papierkorbFassungVon(koId),
     // Der Schreibstand aus der ABLAGE (Pg: Zeile `ko_schreibstand`; Speicher: geteiltes Objekt des
     // Bestands) — der Kandidaten-Speicher verwirft damit jeden Eintrag, sobald irgendwo, auch in
     // einem anderen Prozess, ein Traeger entstanden oder verschwunden sein kann. Ohne diese Quelle
@@ -5255,6 +5278,14 @@ export function buildApp(
   };
   app.register(objectRoutes(services.objects, guards, anhangQuellen));
   app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
+  // BPA-16: Gesprächsaussagen mit Folien verbinden. Präsentationen und Mitschriften kommen aus
+  // DEMSELBEN Objektspeicher und werden mit DENSELBEN Herkünften beurteilt wie `/api/objects/:id`.
+  app.register(
+    meetingDokumentbezugRoutes(
+      { ablage: services.meetingBezuege, objects: services.objects, quellen: anhangQuellen },
+      guards,
+    ),
+  );
   // aufnahme:20260922:gesamt-leserechte: der SCORM-Export liest Bilder aus DEMSELBEN Speicher und
   // bekommt deshalb dieselben Herkünfte für die Anhangsregel — keine zweite Aufzählung.
   app.register(

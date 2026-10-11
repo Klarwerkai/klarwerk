@@ -602,6 +602,23 @@ export const DATENINVENTAR: readonly Datenart[] = [
     },
   },
   {
+    id: "meeting-dokumentbezuege",
+    name: "Meetingbezüge: Folien und Gesprächsstellen",
+    inhalt:
+      "Je Meetingbezug: Titel, Kennung des Eigners und der Teilnehmer, verbundene Präsentationsfassungen (Dateikennung, Fassung, Folienkennung, Folientitel, Sprechernotiz), Folienwechsel, verbundene Mitschriften (Zeitstelle, Sprecherbezeichnung, Gesprächstext), Rückmeldungen mit Zuordnungshistorie und Änderungsobjekte.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Kennungen von Eigner und Teilnehmern, Sprecherbezeichnungen und Gesprächstext der Mitschrift.",
+    ablage: { ort: DATENBANK, tabellen: ["meeting_dokumentbezuege"] },
+    taetigkeit: "wissen",
+    loeschung: "Mit dem Bestandsreset; kein eigener Löschweg in dieser Fassung.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund: "Im Meetingbezug selbst für Eigner und Teilnehmer einsehbar.",
+    },
+  },
+  {
     id: "lesevarianten",
     name: "Lesevarianten (gekennzeichnete Übersetzungen)",
     inhalt: "Übersetzte Lesefassungen von Wissensobjekten und Import-Kandidaten.",
