@@ -9,18 +9,22 @@ export interface ExternalStagePill {
   hintKey: string;
 }
 
+// R-0908: der Hinweis kommt aus `texte/websuche.ts` — der frühere Wert von `topbar.external.hint`
+// endete auf dem Fachwort „Reasoner", das die übrige Kopfzeile längst „KI-Modell" nennt.
+const HINWEIS_KEY = "websuche.hinweis";
+
 export function externalStagePill(stage: ExternalKnowledgeStage | undefined): ExternalStagePill {
   switch (stage) {
     case "blocked":
       return {
         tone: "neutral",
         labelKey: "topbar.external.blocked",
-        hintKey: "topbar.external.hint",
+        hintKey: HINWEIS_KEY,
       };
     case "open":
-      return { tone: "warn", labelKey: "topbar.external.open", hintKey: "topbar.external.hint" };
+      return { tone: "warn", labelKey: "topbar.external.open", hintKey: HINWEIS_KEY };
     // search_on_click / search_attach: beide sind „Suche" (die Anhängen-Nuance lebt im Admin/Tooltip).
     default:
-      return { tone: "warn", labelKey: "topbar.external.search", hintKey: "topbar.external.hint" };
+      return { tone: "warn", labelKey: "topbar.external.search", hintKey: HINWEIS_KEY };
   }
 }

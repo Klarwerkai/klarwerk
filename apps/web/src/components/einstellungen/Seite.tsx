@@ -26,14 +26,30 @@ export interface Reiter {
   label: string;
 }
 
+/**
+ * ADMIN-01 (produkt:20261009:admin-verwaltung-uebersicht): der Einstieg über den Themen — die
+ * Startseite der Verwaltung. Er ist KEIN Thema: er trägt deshalb nicht `data-einst="reiter"`
+ * (die Themenzahl misst der Smoke gegen `ADMIN_SECTIONS`), sondern eine eigene Marke; sein Name
+ * steht in einem Label-Träger.
+ */
+export interface Starteintrag {
+  label: string;
+  aktiv: boolean;
+  onOeffnen: () => void;
+}
+
 export function Reiterspalte({
   reiter,
   aktiv,
   onWechsel,
+  start,
 }: {
   reiter: readonly Reiter[];
   aktiv: string;
   onWechsel: (id: string) => void;
+  // `| undefined`: `EinstellungenSeite` reicht ihren optionalen Wert unverändert durch
+  // (`exactOptionalPropertyTypes`).
+  start?: Starteintrag | undefined;
 }): JSX.Element {
   return (
     // Schmal: eine umbrechende Leiste über die volle Breite — jeder Reiter bleibt ganz sichtbar und
@@ -43,6 +59,20 @@ export function Reiterspalte({
       data-einst="reiterspalte"
       className="flex w-full flex-row flex-wrap gap-1 sm:w-[200px] sm:shrink-0 sm:flex-col"
     >
+      {start ? (
+        <button
+          type="button"
+          data-einst="start"
+          data-testid="reiter-uebersicht"
+          aria-pressed={start.aktiv}
+          onClick={start.onOeffnen}
+          // Derselbe Ton wie ein Reiter; der Zustand hängt am `aria-pressed` selbst — EIN Merkmal
+          // trägt Bedeutung und Darstellung, die Klassenkette bleibt statisch lesbar.
+          className="rounded-[9px] border border-transparent px-3.5 py-2.5 text-left text-[14px] text-muted-2 hover:text-text aria-[pressed=true]:border-hairline aria-[pressed=true]:bg-surface aria-[pressed=true]:font-semibold aria-[pressed=true]:text-text"
+        >
+          <span data-einst="label">{start.label}</span>
+        </button>
+      ) : null}
       {reiter.map((r) => (
         <button
           key={r.id}
@@ -70,6 +100,7 @@ export function EinstellungenSeite({
   reiter,
   aktiv,
   onWechsel,
+  start,
   children,
 }: {
   titel: string;
@@ -82,6 +113,8 @@ export function EinstellungenSeite({
   reiter?: readonly Reiter[];
   aktiv?: string;
   onWechsel?: (id: string) => void;
+  /** Optionaler Einstieg vor den Themen (nur die Verwaltung führt eine Startseite). */
+  start?: Starteintrag;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -100,7 +133,7 @@ export function EinstellungenSeite({
           und oben ausgerichtet. */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
         {reiter && aktiv !== undefined && onWechsel ? (
-          <Reiterspalte reiter={reiter} aktiv={aktiv} onWechsel={onWechsel} />
+          <Reiterspalte reiter={reiter} aktiv={aktiv} onWechsel={onWechsel} start={start} />
         ) : null}
         <div data-einst="spalte" className="flex min-w-0 flex-1 flex-col gap-5">
           {children}

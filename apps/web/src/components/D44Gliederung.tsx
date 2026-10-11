@@ -13,6 +13,7 @@
 
 import type { JSX } from "react";
 import { useTranslation } from "react-i18next";
+import { leerzustandsZeile } from "./EmptyStateCtas";
 // Die Logik heisst `d44Struktur` und NICHT `d44Gliederung`: Dieses Dateisystem ist
 // case-insensitiv, und `d44Gliederung.ts` neben `D44Gliederung.tsx` loeste den Import auf DIESE
 // Datei auf — ein Selbstbezug, der als `undefined` beim Rendern ankam (gemessen).
@@ -67,13 +68,19 @@ export function D44Gliederung({ bodyHtml }: D44GliederungProps): JSX.Element | n
     //
     // Die `className` ist ein reines Literal, weil `mega47-modale-flaechen-sammler` jede
     // unaufloesbare Klassenbindung zaehlt und ihre Zahl pinnt.
+    //
+    // R-0956 (Nacharbeit 7): die leere Gliederung ordnet in den Wissenskreis ein und nennt den
+    // nächsten Schritt (Überschriften setzen) — als Geschwister, der Hinweis selbst bleibt.
     return (
-      <p
-        data-testid="d44-keine-ueberschriften"
-        className="mb-2 rounded-btn border border-hairline bg-page px-2.5 py-2 text-[12.5px] text-muted"
-      >
-        {t(D44_TEXTSCHLUESSEL.leer)}
-      </p>
+      <>
+        <p
+          data-testid="d44-keine-ueberschriften"
+          className="mb-2 rounded-btn border border-hairline bg-page px-2.5 py-2 text-[12.5px] text-muted"
+        >
+          {t(D44_TEXTSCHLUESSEL.leer)}
+        </p>
+        {leerzustandsZeile(t, "gliederung")}
+      </>
     );
   }
 

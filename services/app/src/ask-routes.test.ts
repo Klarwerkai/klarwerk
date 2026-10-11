@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
 import { ModelCapacityError } from "../../reasoner";
 import { buildApp, buildServices } from "./build-app";
-import { askRoutes } from "./routes/ask-routes";
+import { askRoutes, klaraAusfuehrungRoutes } from "./routes/ask-routes";
 
 // SCRUM-242: Ask-/Fragen-Workflow über die ECHTEN HTTP-Routen absichern (kein Service-Direktaufruf,
 // keine Repo-Manipulation). Frage via POST /api/ask (ko.read) → { result: AnswerResult, gap }.
@@ -11,7 +11,8 @@ import { askRoutes } from "./routes/ask-routes";
 // helpful (Trust +2, gedeckelt). Bewusst OHNE Demo-Seed, damit das Matching kontrollierbar ist.
 describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   async function adminApp() {
-    const app = buildApp(buildServices());
+    const services = buildServices();
+    const app = buildApp(services);
     await app.inject({
       method: "POST",
       url: "/api/auth/register",
@@ -22,7 +23,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
       url: "/api/auth/login",
       payload: { email: "a@x.de", password: "secret123" },
     });
-    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+    return { app, services, headers: { authorization: `Bearer ${login.json().token}` } };
   }
 
   async function createKo(
@@ -98,8 +99,19 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
   });
 
   it("Helpful erhöht Trust nachvollziehbar (+2); unbelegte KO-ID wird abgewiesen", async () => {
-    const { app, headers } = await adminApp();
-    const koId = await createKo(app, headers); // unbewertet → Trust 0
+    const { app, services, headers } = await adminApp();
+    const koId = await createKo(app, headers); // needed=1
+    // R-0278 (Nacharbeit 3) und R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg
+    // antwortet nur noch aus geprüftem Wissen — ein unbewertetes KO liefert keine Antwort und damit
+    // keinen Receipt. Bis
+    // hierher stand das KO auf Trust 0; ein voll validiertes stünde auf dem Deckel 99, an dem +2
+    // unsichtbar wäre. „Validiert mit Vorbehalt" (⚠️ + ✅ bei needed=1, trust.ts) ergibt Trust 50 —
+    // so bleibt der Schritt von genau +2 messbar.
+    await services.validation.rate(koId, "pruefer-vorbehalt", "warn");
+    await services.validation.rate(koId, "pruefer-gruen", "up");
+    const vorher = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
+    expect(vorher.json().status).toBe("validiert");
+    expect(vorher.json().trust).toBe(50);
 
     // FUNKE-FIX P0 (bens ROT-1): das „Danke" verlangt den Answer-Receipt aus einem echten
     // Antwortvorgang. Wir fragen passend zum KO, damit die Antwort GENAU dieses KO ausliefert.
@@ -116,7 +128,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
     expect(helpful.statusCode).toBe(204);
 
     const ko = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers });
-    expect(ko.json().trust).toBe(2); // FR-ASK-04: +2
+    expect(ko.json().trust).toBe(52); // FR-ASK-04: +2
 
     // Unbelegte/fremd gewählte KO-ID (gültiger Receipt, aber anderes KO) → 403 (nicht wirksam).
     const unbelegt = await app.inject({
@@ -159,7 +171,7 @@ describe("SCRUM-242: Ask-Workflow (HTTP end-to-end)", () => {
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): der Wissenslücken-FREITEXT wird end-to-end
 // adressatengerecht behandelt — /api/gaps/summary liefert NUR Zahlen; /api/gaps redigiert den
-// Fragetext für Unberechtigte und zeigt ihn Ersteller/Assignee/Detail-Rolle.
+// Fragetext für Unberechtigte und zeigt ihn Ersteller/Assignee (R-0585: kein Rollenrecht mehr).
 describe("FUNKE-FIX2 P0: Wissenslücken-Freitext adressatengerecht (HTTP)", () => {
   async function loginToken(
     app: ReturnType<typeof buildApp>,
@@ -238,11 +250,41 @@ describe("FUNKE-FIX2 P0: Wissenslücken-Freitext adressatengerecht (HTTP)", () =
     expect(gaps[0].redacted).toBeUndefined();
   });
 
-  it("/api/gaps: Detail-Rolle (Admin, ko.validate) → Volltext", async () => {
-    const { app, admin, question } = await setup();
-    const res = await app.inject({ method: "GET", url: "/api/gaps", headers: admin.headers });
-    const gaps = res.json();
-    expect(gaps[0].question).toBe(question);
+  // R-0585 (Auftrag gesamt-datenschutz-voreinstellung): „sieht nur er selbst und der Zuständige".
+  // Bis hierher stand hier „Detail-Rolle (Admin, ko.validate) → Volltext". Das Rollenrecht ist
+  // entfernt: der Admin ist weder Fragender noch Zuständiger und bekommt die redigierte Sicht —
+  // bis er sich die Lücke zuweist (der Weg, auf dem man zuständig wird).
+  it("/api/gaps: Admin mit ko.validate, aber unzuständig → redigiert; nach Zuweisung → Volltext", async () => {
+    const { app, admin, question, gapId } = await setup();
+    const vorher = await app.inject({ method: "GET", url: "/api/gaps", headers: admin.headers });
+    expect(vorher.json()[0].question).toBe("");
+    expect(vorher.json()[0].redacted).toBe(true);
+    expect(vorher.payload).not.toContain(question);
+
+    const zuweisen = await app.inject({
+      method: "PUT",
+      url: `/api/gaps/${gapId}`,
+      headers: admin.headers,
+      payload: { expertId: admin.id },
+    });
+    expect(zuweisen.statusCode).toBe(200);
+    const nachher = await app.inject({ method: "GET", url: "/api/gaps", headers: admin.headers });
+    expect(nachher.json()[0].question).toBe(question);
+    expect(nachher.json()[0].redacted).toBeUndefined();
+  });
+
+  it("/api/gaps: Assignee (anderer Experte) → Volltext, Ersteller weiterhin auch", async () => {
+    const { app, admin, ex1, ex2, question, gapId } = await setup();
+    await app.inject({
+      method: "PUT",
+      url: `/api/gaps/${gapId}`,
+      headers: admin.headers,
+      payload: { expertId: ex2.id },
+    });
+    const zustaendig = await app.inject({ method: "GET", url: "/api/gaps", headers: ex2.headers });
+    expect(zustaendig.json()[0].question).toBe(question);
+    const fragender = await app.inject({ method: "GET", url: "/api/gaps", headers: ex1.headers });
+    expect(fragender.json()[0].question).toBe(question);
   });
 });
 
@@ -254,7 +296,8 @@ describe("FUNKE-FIX2 P0: Wissenslücken-Freitext adressatengerecht (HTTP)", () =
 // (401/403 im onRequest-Hook).
 describe("SCRUM-498 B1: /api/ask Eingabe-Härtung (gültige Hülle)", () => {
   async function adminApp() {
-    const app = buildApp(buildServices());
+    const services = buildServices();
+    const app = buildApp(services);
     await app.inject({
       method: "POST",
       url: "/api/auth/register",
@@ -265,7 +308,7 @@ describe("SCRUM-498 B1: /api/ask Eingabe-Härtung (gültige Hülle)", () => {
       url: "/api/auth/login",
       payload: { email: "a@x.de", password: "secret123" },
     });
-    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+    return { app, services, headers: { authorization: `Bearer ${login.json().token}` } };
   }
 
   it("Parent-Verhalten: {} → 200 und {question:''} → 200 (leere/fehlende Frage bleibt zulässig)", async () => {
@@ -529,6 +572,8 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
     };
   }
 
+  // R-0700: der Klara-Ask läuft über Klaras EIGENEN Zugang (`/api/klara/sessions/{id}/execute`).
+  // Der eingefrorene Optionssatz ist derselbe — die Enge ist mit dem Zugang umgezogen, nicht gelockert.
   it("KA4-S1 (SNAPSHOT): der Klara-Ask ohne Einwilligung trägt exakt validatedOnly + retrievalOnly", async () => {
     const { app, gesehen } = mitSpion();
     const auth = await adminHeaders(app);
@@ -536,9 +581,9 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
 
     const res = await app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${sitzung.sessionId}/execute`,
       headers: sitzung.headers,
-      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+      payload: { question: "Wie entlüfte ich die Pumpe?" },
     });
 
     expect(res.statusCode).toBe(200);
@@ -566,7 +611,7 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
 
     await app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${sitzung.sessionId}/execute`,
       headers: sitzung.headers,
       payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
     });
@@ -601,6 +646,56 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
       headers: sitzung.headers,
     });
     expect(res.statusCode).toBe(409);
+  });
+
+  it("KA4-S4 · R-0700: dieselbe Sitzung am ALLGEMEINEN Frageweg — abgewiesen, der Dienst wird nicht gefragt", async () => {
+    const { app, gesehen } = mitSpion();
+    const auth = await adminHeaders(app);
+    const sitzung = await klaraSitzung(app, auth);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: sitzung.headers,
+      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(gesehen).toHaveLength(0);
+  });
+
+  it("KA4-S5 · gesamt-dokumenterzeugung: die Recherche des Anleitungsblocks (Frage + Faden, ohne Klara-Feld) läuft durch — die alte Form mit questionSource nicht", async () => {
+    // Genau der Körper, den `anleitungRecherche` (apps/web/public/word-addin/anleitung.js) schickt:
+    // getippte Frage, Gesprächsfaden, Sprache — keine Klara-Kopfzeile, kein Klara-Feld.
+    const { app, gesehen } = mitSpion();
+    const { authorization } = await adminHeaders(app);
+    const panel = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { authorization },
+      payload: {
+        question: "Was gilt für die Ventilwartung?",
+        thread: ["Ich muss eine Betriebsmitteilung schreiben."],
+        locale: "de",
+      },
+    });
+    expect(panel.statusCode, panel.body).toBe(200);
+    expect(gesehen.map((g) => g.question)).toEqual(["Was gilt für die Ventilwartung?"]);
+    // Gegenprobe: die Form vor R-0700 (questionSource: "manual") wird abgewiesen.
+    const alt = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { authorization },
+      payload: {
+        question: "Was gilt für die Ventilwartung?",
+        questionSource: "manual",
+        thread: [],
+        locale: "de",
+      },
+    });
+    expect(alt.statusCode).toBe(400);
+    expect(alt.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(gesehen).toHaveLength(1);
   });
 });
 
@@ -638,7 +733,14 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
    * Eine minimale App mit genau dieser Route. `guards` gibt einen Sitzungsnutzer zurück; der
    * Ask-Dienst ist ein Spion, der den Optionssatz festhält, statt zu antworten.
    */
-  async function routeMit(pruefer: unknown) {
+  // R-0700: die Matrix fährt Klaras EIGENEN Zugang (`klaraAusfuehrungRoutes`). Das Tor bekommt dort
+  // zusätzlich die Bindungsprüfung `pruefeBindung`; sie gelingt hier, solange ein Fall nicht
+  // ausdrücklich etwas anderes verlangt. Der allgemeine Weg ist mitregistriert, damit derselbe
+  // Aufbau zeigt, dass er die Bindung abweist.
+  async function routeMit(
+    pruefer: Record<string, unknown> | undefined,
+    pruefeBindung: () => Promise<unknown> = async () => undefined,
+  ) {
     const gesehen: unknown[] = [];
     const ask = {
       // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
@@ -661,34 +763,35 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
         };
       },
     };
+    const guards = {
+      requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+      requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+    } as never;
+    const basis = {
+      ask: ask as never,
+      ko: { get: async () => undefined } as never,
+      conflicts: { unresolved: async () => [] } as never,
+    };
     const app = Fastify();
+    app.register(askRoutes(basis, guards));
     app.register(
-      askRoutes(
-        {
-          ask: ask as never,
-          ko: { get: async () => undefined } as never,
-          conflicts: { unresolved: async () => [] } as never,
-          klaraSessions: pruefer as never,
-        },
-        {
-          requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
-          requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
-        } as never,
+      klaraAusfuehrungRoutes(
+        { ...basis, klaraSessions: { ...(pruefer ?? {}), pruefeBindung } as never },
+        guards,
       ),
     );
     await app.ready();
     return { app, gesehen };
   }
 
-  const frage = (app: FastifyInstance, headers: Record<string, string>) =>
+  const frage = (app: FastifyInstance, headers: Record<string, string>, pfadSitzung = "sess-1") =>
     app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: `/api/klara/sessions/${pfadSitzung}/execute`,
       headers,
       // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
       payload: {
         question: "Wie entlüfte ich die Pumpe?",
-        mode: "retrieval-only",
         questionSource: "manual",
       },
     });
@@ -723,7 +826,7 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     verschlossenSichtbarFuer: expect.any(Function),
   };
 
-  it("KA4-P1: `erlaubt: true` für exakt diese Bindung → die Enge entfällt", async () => {
+  it("KA4-P1: `erlaubt: true` für exakt diese Bindung → das Modell öffnet, der Prüfstand bleibt", async () => {
     let gesehenBindung: unknown = null;
     const { app, gesehen } = await routeMit({
       pruefeExterneAusfuehrung: async (sessionId: string, bindung: unknown) => {
@@ -733,8 +836,8 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     });
     const res = await frage(app, BINDUNG);
     expect(res.statusCode).toBe(200);
-    // Der normale Answerweg: KEINE erzwungenen Flags mehr.
-    expect(gesehen[0]).toBe(null);
+    // Der Modellweg: `retrievalOnly` entfällt, `validatedOnly` bleibt (R-0278, Nacharbeit 3).
+    expect(gesehen[0]).toEqual({ validatedOnly: true });
     // Und die Bindung wird VOLLSTÄNDIG durchgereicht — Sitzung UND Dokument, nicht nur eines.
     expect(gesehenBindung).toEqual({
       sessionId: "sess-1",
@@ -767,7 +870,10 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     await app.close();
   });
 
-  it("KA4-N3: fehlende Kopfzeilen → gar keine Torbefragung, unveränderte Enge", async () => {
+  // R-0700: am eigenen Zugang ist eine unvollständige Zuordnung KEINE Enge, sondern GAR KEINE
+  // Antwort. Instanz und Dokument sind Pflicht; fehlt eine, wird weder das Tor noch der Fragedienst
+  // gefragt, und die Absage ist generisch (404).
+  it("KA4-N3: fehlende Instanz- oder Dokumentkopfzeile → 404, weder Tor noch Fragedienst", async () => {
     let gefragt = 0;
     const { app, gesehen } = await routeMit({
       pruefeExterneAusfuehrung: async () => {
@@ -775,13 +881,43 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
         return { erlaubt: true };
       },
     });
-    // Jede der drei Angaben einzeln weggelassen — jede für sich muss die Freigabe verhindern.
-    await frage(app, { "x-klara-instance": "inst-1", "x-klara-document": "doc-s-1" });
-    await frage(app, { "x-klara-session": "sess-1", "x-klara-document": "doc-s-1" });
-    await frage(app, { "x-klara-session": "sess-1", "x-klara-instance": "inst-1" });
-    await frage(app, {});
+    const antworten = [
+      await frage(app, { "x-klara-session": "sess-1", "x-klara-document": "doc-s-1" }),
+      await frage(app, { "x-klara-session": "sess-1", "x-klara-instance": "inst-1" }),
+      await frage(app, {}),
+    ];
+    expect(antworten.map((r) => r.statusCode)).toEqual([404, 404, 404]);
     expect(gefragt, "ohne vollständige Bindung wird das Tor gar nicht erst gefragt").toBe(0);
-    expect(gesehen).toEqual([ENGE, ENGE, ENGE, ENGE]);
+    expect(gesehen).toEqual([]);
+    await app.close();
+  });
+
+  it("KA4-N3b: die Sitzung steht im PFAD — eine fehlende Sitzungskopfzeile ist kein Mangel", async () => {
+    let gesehenSitzung: unknown = null;
+    const { app } = await routeMit({
+      pruefeExterneAusfuehrung: async (sessionId: string) => {
+        gesehenSitzung = sessionId;
+        return { erlaubt: false };
+      },
+    });
+    const res = await frage(app, { "x-klara-instance": "inst-1", "x-klara-document": "doc-s-1" });
+    expect(res.statusCode).toBe(200);
+    expect(gesehenSitzung).toBe("sess-1");
+    await app.close();
+  });
+
+  it("KA4-N3c: eine abweichende Sitzungskopfzeile ist dieselbe Absage wie eine fremde Sitzung", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => {
+        gefragt += 1;
+        return { erlaubt: true };
+      },
+    });
+    const res = await frage(app, { ...BINDUNG, "x-klara-session": "sess-anders" }, "sess-1");
+    expect(res.statusCode).toBe(404);
+    expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
     await app.close();
   });
 
@@ -793,20 +929,69 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
         return { erlaubt: true };
       },
     });
-    await frage(app, {
-      "x-klara-session": "  ",
-      "x-klara-instance": "inst-1",
+    const res = await frage(app, {
+      "x-klara-session": "sess-1",
+      "x-klara-instance": "  ",
       "x-klara-document": "doc-s-1",
     });
+    expect(res.statusCode).toBe(404);
     expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
+    await app.close();
+  });
+
+  it("KA4-N4b: die Sitzungsbindung trägt nicht (fremd/abgelaufen) → 404, kein Fragedienst", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit(
+      {
+        pruefeExterneAusfuehrung: async () => {
+          gefragt += 1;
+          return { erlaubt: true };
+        },
+      },
+      async () => {
+        throw Object.assign(new Error("Keine gültige Klara-Sitzung."), { code: "NOT_FOUND" });
+      },
+    );
+    const res = await frage(app, BINDUNG);
+    expect(res.statusCode).toBe(404);
+    expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
+    await app.close();
+  });
+
+  it("KA4-N5: ein Tor ohne Freigabeprüfung → unveränderte Enge (mega76-Bauart)", async () => {
+    const { app, gesehen } = await routeMit(undefined);
+    await frage(app, BINDUNG);
     expect(gesehen[0]).toEqual(ENGE);
     await app.close();
   });
 
-  it("KA4-N5: gar kein Tor verdrahtet → unveränderte Enge (mega76-Bauart)", async () => {
-    const { app, gesehen } = await routeMit(undefined);
-    await frage(app, BINDUNG);
-    expect(gesehen[0]).toEqual(ENGE);
+  it("KA4-N8 · R-0700: der allgemeine Frageweg weist dieselbe Bindung ab und fragt niemanden", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => {
+        gefragt += 1;
+        return { erlaubt: true };
+      },
+    });
+    const mitBindung = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: BINDUNG,
+      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+    });
+    const mitFeld = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      payload: { question: "Wie entlüfte ich die Pumpe?", questionSource: "selection" },
+    });
+    expect(mitBindung.statusCode).toBe(400);
+    expect(mitBindung.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(mitFeld.statusCode).toBe(400);
+    expect(mitFeld.json().error).toBe("KLARA_EIGENER_WEG");
+    expect(gefragt).toBe(0);
+    expect(gesehen).toEqual([]);
     await app.close();
   });
 
@@ -817,7 +1002,7 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     });
     await app.inject({
       method: "POST",
-      url: "/api/ask",
+      url: "/api/klara/sessions/sess-1/execute",
       headers: BINDUNG,
       payload: {
         question: "Wie entlüfte ich die Pumpe?",
@@ -835,6 +1020,95 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     const { app, gesehen } = await routeMit({ pruefeExterneAusfuehrung: async () => ({}) });
     await frage(app, BINDUNG);
     expect(gesehen[0]).toEqual(ENGE);
+    await app.close();
+  });
+});
+
+// ================================================================================================
+// R-0700 × R-0310 (Integration mit main 37d286f3): DIE ABSATZ-BELEGE REISEN AUF BEIDEN ZUGÄNGEN.
+// ================================================================================================
+//
+// main gibt `/api/ask` das Feld `absaetze` neben `result` mit; das Word-Panel liest es
+// (`askAbsaetzeLesen`). Mit Sitzung fragt das Panel seit R-0700 über Klaras EIGENEN Zugang — fehlte
+// das Feld dort, fiele das Panel still auf den Stand „älterer Server" zurück. Beide Zugänge laufen
+// durch `antwortLauf`; dieselbe Antwort ergibt dieselbe Zuordnung.
+describe("R-0700 × R-0310 · `absaetze` an Klaras Zugang wie am allgemeinen Frageweg", () => {
+  async function aufbau() {
+    const ask = {
+      kiStand: () => undefined,
+      kiSperreVorFrage: () => undefined,
+      kiSperreVorAuslieferung: () => undefined,
+      ask: async () => ({
+        result: {
+          answered: true,
+          knowledgeClass: "validiert",
+          answer: "Ventil schließen [1].\n\nFrei erfunden.",
+          sources: ["ko-1"],
+          citedSources: ["ko-1"],
+          steps: [],
+          trust: 1,
+        },
+        gap: null,
+      }),
+    };
+    const guards = {
+      requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+      requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+    } as never;
+    const basis = {
+      ask: ask as never,
+      ko: { get: async () => undefined } as never,
+      conflicts: { unresolved: async () => [] } as never,
+    };
+    const app = Fastify();
+    app.register(askRoutes(basis, guards));
+    app.register(
+      klaraAusfuehrungRoutes(
+        {
+          ...basis,
+          klaraSessions: {
+            pruefeBindung: async () => undefined,
+            pruefeExterneAusfuehrung: async () => ({ erlaubt: false }),
+          } as never,
+        },
+        guards,
+      ),
+    );
+    await app.ready();
+    return app;
+  }
+
+  const ERWARTET = [
+    { text: "Ventil schließen [1].", quellen: ["ko-1"] },
+    { text: "Frei erfunden.", quellen: [] },
+  ];
+
+  it("A1: Klaras Zugang liefert die Zuordnung", async () => {
+    const app = await aufbau();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/klara/sessions/sess-1/execute",
+      headers: {
+        "x-klara-session": "sess-1",
+        "x-klara-instance": "inst-1",
+        "x-klara-document": "doc-s-1",
+      },
+      payload: { question: "Wie schließe ich das Ventil?", questionSource: "manual" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().absaetze).toEqual(ERWARTET);
+    await app.close();
+  });
+
+  it("A2: der allgemeine Frageweg liefert dieselbe Zuordnung (Gegenprobe)", async () => {
+    const app = await aufbau();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      payload: { question: "Wie schließe ich das Ventil?" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().absaetze).toEqual(ERWARTET);
     await app.close();
   });
 });

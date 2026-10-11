@@ -1,4 +1,10 @@
 import type { TxContext } from "../../db-tx";
+import { inSchutzdatenQuarantaene } from "./schutzdaten";
+import {
+  buildSearchProjection,
+  normalizeSearchFragment,
+  normalizeSearchTerms,
+} from "./search-projection";
 import {
   type AiCheck,
   type EvidenceRecord,
@@ -85,6 +91,17 @@ export interface KoCandidateQuery {
   vorInhaltsabruf?: () => void;
 }
 
+/**
+ * Aufnahme gesamt-papierkorb: die Bedingung einer Endlöschung aus dem Papierkorb (s. `KoRepo.delete`).
+ * `rowVersion` ist der Stand, den der Löschende gelesen hat (fehlend = 0, wie im CAS von `update`).
+ */
+export interface KoPapierkorbBedingung {
+  rowVersion: number;
+}
+
+/** Die eine Meldung, wenn die Bedingung nicht (mehr) gilt — derselbe Wortlaut wie `restore`. */
+export const NICHT_IM_PAPIERKORB = "Wissensobjekt nicht im Papierkorb.";
+
 export interface KoRepo {
   /**
    * JOB 2706 D1 (Review R2-30, Neubau nach 2685 D5): der SCHREIBSTAND des Bestands — eine
@@ -166,7 +183,14 @@ export interface KoRepo {
   // Zweck: der Purge-Chokepoint (KoService.purgeKo) kann delete() UND audit.record() in DERSELBEN
   // echten DB-Transaktion laufen lassen (beide committen oder beide rollbacken). InMemoryKoRepo
   // ignoriert den Parameter (dort ist Atomarität trivial, kein I/O-Fenster).
-  delete(id: string, tx?: TxContext): Promise<void>;
+  //
+  // Aufnahme gesamt-papierkorb (Bens Befund, Nacharbeit 2): `papierkorb` macht die Endlöschung AUS
+  // DEM PAPIERKORB zu einer Entscheidung IN DER LÖSCHENDEN ANWEISUNG — gelöscht wird nur, wenn das
+  // Objekt noch im Papierkorb liegt UND seine `rowVersion` die gelesene ist. Ein zwischenzeitliches
+  // Wiederherstellen (oder Wiederherstellen und erneutes Löschen) erhöht die `rowVersion` über den
+  // CAS in `update`; die Löschung trifft dann 0 Zeilen und wirft NOT_FOUND. Ohne Bedingung
+  // (delete({hard}), Demodaten) unverändert.
+  delete(id: string, tx?: TxContext, papierkorb?: KoPapierkorbBedingung): Promise<void>;
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): ATOMARER Trust-Inkrement für das „Danke". Erhöht den Trust
   // um `step`, gedeckelt bei `maxTrust` (LEAST) — OHNE Read-modify-write eines vorab gelesenen
   // Absolutwerts, damit zwei gleichzeitige Danke verschiedener Nutzer BEIDE zählen (kein Lost-Update).
@@ -465,7 +489,10 @@ export class InMemoryKoRepo implements KoRepo {
   update(ko: KnowledgeObject, _tx?: TxContext): Promise<void> {
     const cur = this.items.get(ko.id);
     const expected = ko.rowVersion ?? 0;
-    if (cur && (cur.rowVersion ?? 0) !== expected) {
+    // Aufnahme gesamt-papierkorb: Spiegel von Pg — ein UPDATE legt nie an. Ein Objekt, das schon
+    // geschrieben war (rowVersion > 0) und inzwischen endgelöscht ist, kommt über diesen Weg nicht
+    // zurück (verlorenes Wiederherstellen gegen die Endlöschung).
+    if ((!cur && expected > 0) || (cur && (cur.rowVersion ?? 0) !== expected)) {
       return Promise.reject(
         new KoError("STALE_WRITE", "Nebenläufige Änderung — bitte erneut lesen und anwenden."),
       );
@@ -492,7 +519,15 @@ export class InMemoryKoRepo implements KoRepo {
 
   // SCRUM-523 P.3 (WP-A3): konsistent zu PgKoRepo.delete — 0 gelöschte Zeilen (KO bereits weg,
   // wiederholter/konkurrierender Purge) wirft NOT_FOUND statt still zu no-op'en.
-  delete(id: string, _tx?: TxContext): Promise<void> {
+  // Aufnahme gesamt-papierkorb: Spiegel der Pg-Bedingung — synchron geprüft und gelöscht, kein
+  // await dazwischen.
+  delete(id: string, _tx?: TxContext, papierkorb?: KoPapierkorbBedingung): Promise<void> {
+    if (papierkorb) {
+      const cur = this.items.get(id);
+      if (!cur?.deletedAt || (cur.rowVersion ?? 0) !== papierkorb.rowVersion) {
+        return Promise.reject(new KoError("NOT_FOUND", NICHT_IM_PAPIERKORB));
+      }
+    }
     if (!this.items.delete(id)) {
       return Promise.reject(new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden."));
     }
@@ -713,6 +748,78 @@ export interface KoVersionRepo {
   // Rollback eines noch nicht committeten Mehrschritt-Mutations (mutateKoTx). Im Normalbetrieb bleibt
   // die Versionshistorie append-only; kein Live-Pfad ruft remove für eine committete Version auf.
   remove(koId: string, version: number): Promise<void>;
+  /**
+   * R-1630 / R-2176: die Kennungen der Objekte, von denen mindestens eine BIS `bisAt` geschriebene
+   * Fassung einen der Suchbegriffe trägt — nach Zahl der getroffenen Begriffe geordnet, gedeckelt.
+   *
+   * Wozu: der Antwortvergleich findet sonst nur, was die HEUTIGE Suchprojektion trifft. Wurde ein
+   * Begriff seither aus einem Objekt entfernt, fehlte genau die Fassung, die damals geantwortet
+   * hätte. Gesucht wird auf DERSELBEN normalisierten Textgrundlage wie der Antwortweg
+   * (`fassungsSuchtext`). Es kommen nur KENNUNGEN zurück; welche Fassung zum Stichtag gilt und
+   * ob sie Grundlage sein darf, entscheidet der Aufrufer an Verlauf, Abbild und Prüfprotokoll.
+   *
+   * OPTIONAL: handgeschriebene Testdoppel bleiben gültig; ohne Methode gibt es keine Nachsuche.
+   */
+  findKoIdsInFassungen?(query: FassungsSuche): Promise<string[]>;
+}
+
+/** Die Nachsuche über Fassungen bis zu einem Zeitpunkt (`KoVersionRepo.findKoIdsInFassungen`). */
+export interface FassungsSuche {
+  /** Inhaltsterme; sie laufen durch `normalizeSearchTerms`. Treffer ist ein Teilstring. */
+  readonly terms: readonly string[];
+  /** ISO-Zeitpunkt: nur Fassungen mit `at <= bisAt` zählen. */
+  readonly bisAt: string;
+  readonly limit: number;
+}
+
+/**
+ * BEN (Nacharbeit 6): der durchsuchte Text einer Fassung — DIESELBE Grundlage wie der Antwortweg.
+ *
+ * Der Inhalt kommt aus `buildSearchProjection` (Titel, Aussage, Bildunterschriften, sichtbarer
+ * Dokumenttext; Zeichenreferenzen dekodiert, NFKC, unsichtbare Zeichen entfernt). Der Antwortweg
+ * baut seine Grundlage aus derselben Funktion (`AskService.antwortAusFassungen`); ein „V&#101;ntil"
+ * im Dokumentkörper ist damit hier wie dort „Ventil". Kategorie und Schlagwörter kommen nach
+ * derselben Normalisierung dazu, weil die Kandidatensuche sie ebenfalls trifft. Eine Fassung in
+ * Schutzdaten-Quarantäne liefert keinen Text — wie die Suche sie auslässt.
+ */
+export function fassungsSuchtext(ko: KnowledgeObject, at: string): string {
+  if (inSchutzdatenQuarantaene(ko)) {
+    return "";
+  }
+  const metadaten = [ko.category, ...(ko.tags ?? [])].map(normalizeSearchFragment).join(" ");
+  return `${buildSearchProjection(ko, at).searchText}\n${metadaten}`.toLowerCase();
+}
+
+/**
+ * Die eine Trefferregel beider Adapter: je Objekt die höchste Zahl getroffener Begriffe über seine
+ * Fassungen bis `bisAt`. `treffer` wird fortgeschrieben, damit der PostgreSQL-Adapter seitenweise
+ * lesen kann.
+ */
+export function zaehleFassungstreffer(
+  treffer: Map<string, number>,
+  fassung: KoVersionSnapshot,
+  terms: readonly string[],
+  bisAt: string,
+): void {
+  if (!(Date.parse(fassung.at) <= Date.parse(bisAt))) {
+    return;
+  }
+  const text = fassungsSuchtext(fassung.snapshot, fassung.at);
+  const zahl = terms.filter((t) => text.includes(t)).length;
+  if (zahl > (treffer.get(fassung.koId) ?? 0)) {
+    treffer.set(fassung.koId, zahl);
+  }
+}
+
+/** Die Ordnung beider Adapter: mehr Treffer zuerst, bei Gleichstand die Kennung, gedeckelt. */
+export function ordneFassungstreffer(
+  treffer: ReadonlyMap<string, number>,
+  limit: number,
+): string[] {
+  return [...treffer.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, limit)
+    .map(([koId]) => koId);
 }
 
 export class InMemoryKoVersionRepo implements KoVersionRepo {
@@ -744,6 +851,21 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
       this.schreibstand.geaendert();
     }
     return Promise.resolve();
+  }
+
+  // R-1630 / R-2176: dieselbe Regel wie der PostgreSQL-Adapter (s. Interface).
+  findKoIdsInFassungen(query: FassungsSuche): Promise<string[]> {
+    const terms = normalizeSearchTerms(query.terms);
+    if (terms.length === 0 || query.limit <= 0) {
+      return Promise.resolve([]);
+    }
+    const treffer = new Map<string, number>();
+    for (const byVersion of this.items.values()) {
+      for (const fassung of byVersion.values()) {
+        zaehleFassungstreffer(treffer, fassung, terms, query.bisAt);
+      }
+    }
+    return Promise.resolve(ordneFassungstreffer(treffer, query.limit));
   }
 }
 

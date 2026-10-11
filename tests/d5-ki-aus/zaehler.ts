@@ -87,8 +87,13 @@ function inFrage(): boolean {
  */
 export function frageAnfragenMarkieren(app: FastifyInstance): void {
   app.addHook("onRequest", (request, _reply, done) => {
-    const pfad = request.url.split("?")[0];
-    if (request.method === "POST" && (pfad === "/api/ask" || pfad === "/api/reasoner")) {
+    const pfad = request.url.split("?")[0] ?? "";
+    // R-0700: Klaras eigener Ausführungszugang ist der dritte Frage-Eingang.
+    const klaraAusfuehrung = /^\/api\/klara\/sessions\/[^/]+\/execute$/.test(pfad);
+    if (
+      request.method === "POST" &&
+      (pfad === "/api/ask" || pfad === "/api/reasoner" || klaraAusfuehrung)
+    ) {
       frageKontext.run({ frage: true }, done);
       return;
     }

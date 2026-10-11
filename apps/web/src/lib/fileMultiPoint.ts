@@ -5,7 +5,7 @@
 // (b) mehrere bestätigte Punkte VOR der Übernahme zu EINEM Eintrag zusammenführen — der Eintrag
 // trägt ALLE Belegstellen (Body-Abschnitte je Punkt; add-source je Punkt über die SCRUM-408-
 // Warteliste). Nichts wird automatisch gespeichert; jeder Weg ist ein bewusster Klick.
-import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types";
+import type { DraftPayload, ExtractedPoint } from "../api/types";
 import { type ExtractSectionLocale, extractSectionsHtml } from "./bodyExtract";
 
 // Ein bestätigter Punkt → EIN Entwurf im bestehenden Draft-Format. Der Quellenvermerk
@@ -22,31 +22,10 @@ export function draftPayloadFromPoint(
   };
 }
 
-// Mehrere bestätigte Punkte → EIN zusammengeführter Wizard-Entwurf (StructureResult).
-// Titel = erster Punkt; Kernaussage = Kurzfassungen der Punkte. Die Belegstellen kommen
-// über extractSectionsHtml in den Body; die Quellen je Punkt vermerkt der Aufrufer
-// (fileSourcePayload → Warteliste/add-source). Unter 2 Punkten gibt es nichts zu mergen.
-export function mergedDraftFromPoints(
-  points: readonly ExtractedPoint[],
-  demo: boolean,
-): StructureResult | null {
-  const first = points[0];
-  if (points.length < 2 || first === undefined) {
-    return null;
-  }
-  return {
-    title: first.title,
-    statement: points
-      .map((p) => p.summary.trim())
-      .filter((s) => s.length > 0)
-      .join(" "),
-    conditions: [],
-    measures: [],
-    tags: [],
-    confidence: 0,
-    demo,
-  };
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `mergedDraftFromPoints` (mehrere Punkte →
+// EIN Wizard-Entwurf). Erfassen führt gewählte Punkte über den Knopf „Verbinden" zusammen:
+// `mergeSelectedPoints` → `mergeSelectedIntoOne` (`lib/captureFromFile.ts`, R-0991 Nr. 27). Der
+// Baustein rief niemand und ist entfernt.
 
 // Entwürfe EINZELN anlegen — ein Teilfehler kippt nicht den ganzen Stapel (SCRUM-374-Muster);
 // fehlgeschlagene Punkte werden ehrlich (per Titel) zurückgemeldet.

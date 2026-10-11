@@ -3,9 +3,6 @@
 // Lernpfad) — keine neue Task-Engine, keine Fake-Aufgaben. Kategorien bleiben getrennt (nicht
 // vermischt), aber handlungsnah. Reine Funktionen → testbar ohne DOM.
 import type { Conflict, Gap, KnowledgeObject } from "../api/types";
-// AUFTRAG-mega39 BLOCK A: die EINE Rollenquelle. Dieselbe, aus der Sidebar und Router ihre
-// „darf diese Rolle dorthin?"-Entscheidung ziehen — kein zweites Register (s. unten).
-import { ALL_ITEMS, type Role, roleAllows } from "../app/navigation";
 
 export type WorkSeverity = "critical" | "today" | "later";
 
@@ -56,11 +53,8 @@ export function buildWorkOverview(signals: WorkSignals): WorkOverviewItem[] {
   })).filter((i) => i.count > 0);
 }
 
-// SCRUM-271: bester nächster Einstieg aus der vorhandenen Arbeitsübersicht — KEINE neue Engine,
-// keine neue Datenquelle. Deterministisch: kritisch vor heute vor später, innerhalb derselben
-// Dringlichkeit bleibt die bestehende Reihenfolge (stabile Sortierung). Null, wenn keine Signale.
-const SEVERITY_RANK: Record<WorkSeverity, number> = { critical: 0, today: 1, later: 2 };
-
+// SCRUM-271: der „beste nächste Einstieg" aus der Arbeitsübersicht (die Geschichte darunter erklärt,
+// wie er rollenbewusst wurde — und warum es ihn seit JOB 3064 H5 nicht mehr gibt).
 // ================================================================================================
 // AUFTRAG-mega38 BLOCK G3 — WER DARF DAS ÜBERHAUPT?
 // ================================================================================================
@@ -91,27 +85,16 @@ const SEVERITY_RANK: Record<WorkSeverity, number> = { critical: 0, today: 1, lat
 // von ihnen — Risiko-Board, Validierung, Konflikte und Lebenszyklus (auch der Lernpfad) sind
 // vollständig Controller-Oberflächen. Für Viewer und Experte entfällt die Empfehlung damit ganz;
 // die Zahlen in der Liste darunter bleiben unverändert sichtbar.
-export function canActOn(to: string, role: Role): boolean {
-  const ziel = ALL_ITEMS.find((i) => i.path === to);
-  // Fail-closed: ein Ziel, das die Navigationsquelle nicht kennt, kann niemand als erlaubt belegen —
-  // und eine unbelegte Empfehlung ist genau der Fehler, den dieser Block beendet.
-  return ziel ? roleAllows(ziel, role) : false;
-}
-
-// `role` ist bewusst OPTIONAL: ohne Rolle bleibt das alte, rollenblinde Verhalten (die Aufgaben-
-// seite nutzt es so). Nur wer eine Rolle mitgibt, bekommt die gefilterte Empfehlung.
-export function primaryWorkItem(
-  items: readonly WorkOverviewItem[],
-  role?: Role,
-): WorkOverviewItem | null {
-  const erlaubt = role === undefined ? items : items.filter((i) => canActOn(i.to, role));
-  if (erlaubt.length === 0) {
-    return null;
-  }
-  return (
-    [...erlaubt].sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])[0] ?? null
-  );
-}
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier standen `canActOn` und `primaryWorkItem` — die
+// hervorgehobene Einstiegszeile über der Arbeitsliste, rollengefiltert gegen `roleAllows`. Seit
+// JOB 3064 H5 gibt es diese Zeile nicht mehr: das Zielbild zieht Empfehlung und Liste zu EINER
+// Karte „FÜR DICH" zusammen (`components/start/forYou.ts`), die selbst nach Dringlichkeit reiht —
+// eine zweite Hervorhebung derselben Sache wäre die Doppelung, die mega38 G2 beseitigt hat. Beide
+// hatten danach keinen Produktaufrufer und sind entfernt, mit ihnen der mega39-Prüfstand, der allein
+// sie maß. Ob „FÜR DICH" Arbeitszeilen für Ziele zeigen soll, die die Rolle nicht öffnen darf, ist
+// damit nicht entschieden: mega39 hielt die Zahlen der Liste ausdrücklich für alle sichtbar und
+// filterte nur die Empfehlung. Diese Frage beantwortet dieser Auftrag nicht.
 
 // Signale aus den vorhandenen Rohdaten ableiten (echte Service-Reads, kein Backend-Umbau).
 export function workSignalsFrom(input: {

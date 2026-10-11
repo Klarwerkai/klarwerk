@@ -142,5 +142,48 @@ export function importAccessRoutes(
       }
       reply.code(200).send(await zugang.sharepointZugangsstatus());
     });
+
+    // R-0170 — DIESELBE AUSKUNFT FÜR JIRA, aus demselben Grund VOR dem Schalter
+    // `KLARWERK_JIRA_IMPORT`: nur so kann sie „in dieser Installation nicht eingeschaltet" melden.
+    // Dieselbe Rechtebindung, derselbe Vertrag: kein Wert, keine Maske, kein Aufruf an Jira.
+    app.get("/api/import/jira/zugang", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await zugang.jiraZugangsstatus());
+    });
+
+    // ==========================================================================================
+    // ADMIN-02 — DER VERBINDUNGSTEST FÜR SHAREPOINT. BEWUSST GESTARTET, LESEND.
+    // ==========================================================================================
+    //
+    // Die Auskunft darüber ruft die Gegenstelle nie; dieser Weg tut es GENAU EINMAL, und nur auf
+    // ausdrücklichen Wunsch eines Administrators. Er liest eine Listenseite des Wurzelordners (nur
+    // Merkmale) und hält das Ergebnis im Prüfprotokoll fest — kein Kandidat, kein Lauf, kein
+    // Wissensobjekt. Er steht VOR dem Schalter wie die Auskunft, damit er „ausgeschaltet" und
+    // „nicht eingerichtet" als Ergebnis melden kann, ohne dass ein Abruf hinausgeht.
+    //
+    // 200 auch für ein negatives Ergebnis: der Test ist gelungen, wenn er ein Ergebnis hat. Der
+    // Statuscode beschreibt den Aufruf, nicht die Gegenstelle (dieselbe Regel wie in
+    // `sharepoint-import-routes.ts`). Die Antwort trägt nur feste Wörter, Zeitpunkt und Dauer.
+    app.post("/api/import/sharepoint/verbindungstest", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await zugang.sharepointVerbindungstest(user.id));
+    });
+
+    // ADMIN-02 — DERSELBE VERBINDUNGSTEST FÜR CONFLUENCE. Dieselbe Tür, dieselbe Antwortform; der
+    // Abruf liest eine Seite des konfigurierten Space (`limit=1`, ohne Inhalt). Er steht wie die
+    // Auskunft VOR dem Schalter, damit „ausgeschaltet" ohne Abruf als Ergebnis kommt.
+    app.post("/api/import/confluence/verbindungstest", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await zugang.confluenceVerbindungstest(user.id));
+    });
   };
 }

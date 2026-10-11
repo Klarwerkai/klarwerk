@@ -21,15 +21,20 @@
 // sind die wartenden Eintraege weg. Es gibt keinen Cron und keine Nachfuelllogik — das WAERE der
 // dauerhafte Store, und der ist ausdruecklich nicht Gegenstand dieses Durchgangs.
 //
+// NACHTRAG (Aufnahme gesamt-suchindex-aktualitaet, R-0470): die oben offen gelassene Anschlusswahl
+// ist getroffen — `build-app.ts` reiht über `KoService.setAenderungsNachlauf` jede gespeicherte
+// Objektänderung ein, und der Eintrag ist `reindexKoForDuplicatePrefilter` (duplicate-detection.ts).
+// Die Schlange selbst ist unverändert und lebt weiter nur im Speicher. Die Neustart-Grenze oben
+// schliesst seit Nacharbeit 3 der Abgleich beim Start (`nachfuehrungNachStart`) gegen den
+// dauerhaften Vektorspeicher (`PgEmbeddingStore`): was beim Absturz wartete, wird neu eingereiht.
+//
 // WAS EIN REINDEX IST, WEISS DIESE DATEI NICHT. Sie bekommt ihn als Abhaengigkeit herein. Das ist
 // keine Bequemlichkeit, sondern die Scopegrenze in Codeform: Wer die Reindexfunktion mitbringt,
 // entscheidet auch, woher die Kennungen kommen — und diese Entscheidung ist nicht freigegeben.
 
-/**
- * GENAU EIN Eintrag gleichzeitig. Als benannte Konstante und nicht als Zahl im Code, damit die
- * Zusage einen Namen hat — dieselbe Form wie `AI_CHECK_CONCURRENCY` beim Nachbarn.
- */
-export const REINDEX_CONCURRENCY = 1;
+// GENAU EIN Eintrag gleichzeitig — die Zusage steht als Wächterzeile in `pumpe` (s. dort).
+// R-1349: die Konstante `REINDEX_CONCURRENCY` (= 1) las niemand, auch dieses Modul nicht; sie ist
+// entfernt. Die Serialität misst `reindex-queue.test.ts` am Verhalten.
 
 export interface ReindexQueueDeps {
   /** Was mit EINEM Eintrag geschieht. Bringt der Aufrufer mit; die Schlange kennt den Inhalt nicht. */
