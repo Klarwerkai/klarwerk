@@ -10,11 +10,16 @@
 //     Detailabruf, Liste, Suche und Klara. Diese Datei filtert nie mit einer eigenen Auslegung.
 //   · Verschieben: Schreibrecht im Quell- und im Zielspace (ohne Quellspace: Autor, Verantwortliche
 //     oder `ko.validate`) — und nur mit der Grundlage einer Rechtevorschau, die noch stimmt.
+//   · Löschen (aufnahme:20260922:gesamt-wissensprojekte): wer bearbeiten darf, nach einer
+//     Löschvorschau und nur, wenn KEIN Artikel (auch keiner im Papierkorb) den Space noch als
+//     führenden Space trägt. Sonst bliebe an ihm eine Kennung ohne Space, und `darfSehen` verbärge
+//     ihn fail-closed vor allen — ein stiller Verlust. Die Artikel gehen vorher über den
+//     gewöhnlichen Spacewechsel mit Rechtevorschau hinaus; das Löschen selbst bewegt keinen.
 //
 // EIN UNSICHTBARER SPACE ODER ARTIKEL IST 404, NICHT 403: eine Absage, die seine Existenz bestätigt,
 // wäre schon eine Auskunft.
 import { createHash, randomUUID } from "node:crypto";
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import type { AuthService, PublicUser } from "../../../auth";
 import {
@@ -34,9 +39,11 @@ import {
   zugriffsuebersicht,
 } from "../space-verwaltung";
 import {
+  SPACE_KONTEXTE,
   type SpaceEingabe,
   type SpaceFassung,
   SpaceFehler,
+  type SpaceKontext,
   type SpacesRepo,
   darfInSpaceSchreiben,
   darfSpaceBearbeiten,
@@ -44,6 +51,8 @@ import {
   darfSpaceSehen,
   eigenesSpaceRecht,
   istArchiviert,
+  istGeloescht,
+  kontextVon,
   lesbareSpaces,
   pruefeBegruendung,
   pruefeSpaceEingabe,
@@ -90,10 +99,28 @@ interface ArtikelZeile {
   tags: string[];
   spaceId: string | null;
   spaceName: string | null;
+  /** Firmenkontext des führenden Space; ohne Space `firma` (eigene Firmeninstanz). */
+  kontext: SpaceKontext;
+  partner: string | null;
 }
 
 function nichtGefunden(reply: FastifyReply, was: "Space" | "Wissensobjekt"): void {
   reply.code(404).send({ error: "NOT_FOUND", message: `${was} nicht gefunden.` });
+}
+
+/** `undefined` = kein Filter, sonst ein gültiger Kontext oder `UNGUELTIG`. */
+function kontextAus(roh: string | undefined): SpaceKontext | "UNGUELTIG" | undefined {
+  if (roh === undefined || roh === "") {
+    return undefined;
+  }
+  return SPACE_KONTEXTE.includes(roh as SpaceKontext) ? (roh as SpaceKontext) : "UNGUELTIG";
+}
+
+function kontextFehler(reply: FastifyReply): void {
+  reply.code(400).send({
+    error: "KONTEXT_UNGUELTIG",
+    message: "Erwartet wird kontext=firma, partner oder oeffentlich.",
+  });
 }
 
 function fehler(reply: FastifyReply, e: unknown): void {
@@ -134,9 +161,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return (await konten()).map((u) => ({ id: u.id, name: u.name, role: u.role }));
   }
 
+  /** Die jüngste Fassung — `undefined`, wenn es den Space nicht gibt oder er gelöscht ist. */
   async function aktuellerSpace(id: string): Promise<SpaceFassung | undefined> {
     const fassungen = await dienste.spaces.fassungen(id);
-    return fassungen[fassungen.length - 1];
+    const letzte = fassungen[fassungen.length - 1];
+    return istGeloescht(letzte) ? undefined : letzte;
   }
 
   async function alleTeams(): Promise<TeamFassung[]> {
@@ -161,6 +190,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     const team = (id: string) => teams.find((t) => t.id === id);
     return {
       ...space,
+      kontext: kontextVon(space),
+      partner: space.partner ?? null,
       verantwortlichName: n.get(space.verantwortlich) ?? null,
       mitglieder: space.mitglieder.map((m) => ({ ...m, name: n.get(m.nutzer) ?? null })),
       // produkt:20261009:admin-teams: die Teambindungen und — getrennt von den direkten
@@ -195,7 +226,10 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
 
   function zeile(ko: KnowledgeObject, spaces: readonly SpaceFassung[]): ArtikelZeile {
     const spaceId = typeof ko.spaceId === "string" ? ko.spaceId : null;
+    const space = spaceId ? spaces.find((s) => s.id === spaceId) : undefined;
     return {
+      kontext: space ? kontextVon(space) : "firma",
+      partner: space?.partner ?? null,
       id: ko.id,
       version: ko.version,
       title: ko.title,
@@ -395,12 +429,266 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     return typeof z === "string" && z.length > 0 ? z : undefined;
   }
 
+  interface Loeschvorschau {
+    space: { id: string; name: string; version: number };
+    /** Artikel mit diesem führenden Space, die der Betrachter sieht — mit Titel, zum Verschieben. */
+    artikel: { id: string; title: string; version: number }[];
+    /** Weitere Artikel mit diesem führenden Space, die der Betrachter nicht sieht — nur die Zahl. */
+    weitereVerborgen: number;
+    /** Artikel im Papierkorb mit diesem führenden Space — nur die Zahl. */
+    imPapierkorb: number;
+    /** Was mit dem Space verschwindet: seine gespeicherten Ansichten und Mitgliedschaften. */
+    ansichten: number;
+    mitglieder: number;
+    darfLoeschen: boolean;
+    grund: "SPACE_NICHT_LEER" | null;
+  }
+
+  /**
+   * Die Folgen einer Löschung — für die Vorschau UND unmittelbar vor dem Schreiben. Gezählt wird
+   * über den GESAMTEN Bestand samt Papierkorb, denn auch ein verborgener oder gelöschter Artikel
+   * verlöre seinen Space. Titel bekommt nur, wer den Artikel sehen darf.
+   */
+  async function loeschLage(space: SpaceFassung, user: SessionUser): Promise<Loeschvorschau> {
+    const fuehrend = (await dienste.ko.listEinschliesslichPapierkorb()).filter(
+      (k) => k.spaceId === space.id,
+    );
+    const aktiv = fuehrend.filter((k) => !k.deletedAt);
+    const sichtbar = aktiv.filter((k) => darfSehen(user, k));
+    const leer = fuehrend.length === 0;
+    return {
+      space: { id: space.id, name: space.name, version: space.version },
+      artikel: sichtbar
+        .map((k) => ({ id: k.id, title: k.title, version: k.version }))
+        .sort((a, b) => a.title.localeCompare(b.title)),
+      weitereVerborgen: aktiv.length - sichtbar.length,
+      imPapierkorb: fuehrend.length - aktiv.length,
+      ansichten: space.ansichten.length,
+      mitglieder: space.mitglieder.length,
+      darfLoeschen: leer,
+      grund: leer ? null : "SPACE_NICHT_LEER",
+    };
+  }
+
+  /** Space für Löschvorschau und Löschung: 404 wie überall, 403 ohne Bearbeitungsrecht. */
+  async function loeschbarerSpace(
+    id: string,
+    user: SessionUser,
+    reply: FastifyReply,
+  ): Promise<SpaceFassung | undefined> {
+    const aktuell = await aktuellerSpace(id);
+    if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+      nichtGefunden(reply, "Space");
+      return undefined;
+    }
+    if (!darfSpaceBearbeiten(aktuell, user)) {
+      reply.code(403).send({
+        error: "FORBIDDEN",
+        message: "Nur die Spacezuständigen oder die Kontoverwaltung löschen diesen Space.",
+      });
+      return undefined;
+    }
+    return aktuell;
+  }
+
+  /**
+   * Die Löschung — nur unter `dienste.spaces.exklusiv` aufzurufen. Prüfung (Recht, Version, kein
+   * führender Artikel) und Löschvermerk liegen in derselben Sperre wie jeder Spacewechsel; ein
+   * Wechsel in diesen Space kann also weder zwischen Prüfung und Vermerk geschehen noch danach (der
+   * Space fehlt dann in `aktuelle()`).
+   */
+  async function fuehreLoeschungAus(
+    id: string,
+    gesehen: unknown,
+    user: SessionUser,
+    reply: FastifyReply,
+  ): Promise<void> {
+    const aktuell = await loeschbarerSpace(id, user, reply);
+    if (!aktuell) {
+      return;
+    }
+    if (typeof gesehen !== "number") {
+      reply.code(400).send({
+        error: "VERSION_FEHLT",
+        message: "Die zuletzt gesehene Version des Space fehlt.",
+      });
+      return;
+    }
+    const lage = await loeschLage(aktuell, user);
+    if (gesehen !== aktuell.version) {
+      reply.code(409).send({
+        error: "VERSION_VERALTET",
+        message: "Der Space wurde inzwischen geändert. Bitte die neue Vorschau prüfen.",
+        vorschau: lage,
+      });
+      return;
+    }
+    if (!lage.darfLoeschen) {
+      reply.code(409).send({
+        error: "SPACE_NICHT_LEER",
+        message: "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
+        vorschau: lage,
+      });
+      return;
+    }
+    const am = jetzt().toISOString();
+    const vermerk: SpaceFassung = {
+      ...aktuell,
+      version: aktuell.version + 1,
+      geaendertVon: user.id,
+      geaendertAm: am,
+      geloeschtAm: am,
+    };
+    // Ein paralleler Bearbeiter (PUT, ausserhalb der Sperre) kann dieselbe Version belegt haben.
+    if (!(await dienste.spaces.lege(vermerk))) {
+      reply.code(409).send({
+        error: "VERSION_VERALTET",
+        message: "Der Space wurde inzwischen geändert. Bitte neu laden.",
+      });
+      return;
+    }
+    await dienste.audit?.record({
+      actor: user.id,
+      action: "space.geloescht",
+      target: aktuell.id,
+      payload: {
+        vorherVersion: aktuell.version,
+        version: vermerk.version,
+        ansichten: aktuell.ansichten.length,
+        mitglieder: aktuell.mitglieder.length,
+      },
+    });
+    reply.code(200).send({ id: aktuell.id, version: vermerk.version, geloescht: true });
+  }
+
+  /** Der Spacewechsel — nur unter `dienste.spaces.exklusiv` aufzurufen. */
+  async function fuehreWechselAus(
+    rumpf: unknown,
+    user: SessionUser,
+    reply: FastifyReply,
+    log: FastifyBaseLogger,
+  ): Promise<void> {
+    const body = (rumpf ?? {}) as {
+      koId?: unknown;
+      basis?: {
+        quelleId?: unknown;
+        quelleVersion?: unknown;
+        zielId?: unknown;
+        zielVersion?: unknown;
+        grundlage?: unknown;
+      };
+    };
+    const ko = await sichtbaresKo(user, body.koId);
+    if (!ko) {
+      nichtGefunden(reply, "Wissensobjekt");
+      return;
+    }
+    const ziel = zielAus(rumpf);
+    if (ziel === undefined) {
+      reply.code(400).send({
+        error: "ZIEL_FEHLT",
+        message: "Erwartet wird zielSpaceId (Kennung oder null für „ohne Space“).",
+      });
+      return;
+    }
+    if (!body.basis || typeof body.basis !== "object") {
+      reply.code(400).send({
+        error: "VORSCHAU_FEHLT",
+        message: "Ein Spacewechsel braucht die Grundlage der bestätigten Rechtevorschau.",
+      });
+      return;
+    }
+    const v = await vorschau(ko, ziel, user);
+    if (v === "ZIEL_UNBEKANNT") {
+      nichtGefunden(reply, "Space");
+      return;
+    }
+    const basis = body.basis;
+    // Nacharbeit 3 (Ben, K4): die Vorschau ist an ihr ZIEL gebunden, nicht nur an Versionen. Zwei
+    // Spaces können dieselbe Versionsnummer tragen; ohne die Kennung ginge ein Wechsel nach B mit
+    // der Rechtewirkung von A durch. Fehlt `zielId` in der Grundlage, gilt sie als nicht passend.
+    const stimmt =
+      "zielId" in basis &&
+      (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
+      (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
+      (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
+      (basis.zielVersion ?? null) === (v.ziel?.version ?? null) &&
+      // ADMIN-07 Nacharbeit 3 (Ben, K4): und an die wirksame Rechtelage. Wer zwischen Vorschau und
+      // Bestätigung über ein Team hinzukam oder ging, ändert die Grundlage — dann 409 mit der
+      // neuen Vorschau statt eines Wechsels mit unangezeigten Berechtigten.
+      basis.grundlage === v.grundlage;
+    if (!stimmt) {
+      reply.code(409).send({
+        error: "VORSCHAU_VERALTET",
+        message:
+          "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
+        vorschau: v,
+      });
+      return;
+    }
+    if (!v.darfAusfuehren) {
+      reply.code(403).send({ error: "FORBIDDEN", message: v.grund ?? "Nicht erlaubt." });
+      return;
+    }
+    try {
+      const nachher = await dienste.ko.setLeadingSpace(ko.id, ziel, user.id, v.quelle?.id ?? null);
+      // R-0571: wer laut Unternehmensverzeichnis für die Prüfung im NEUEN Space zuständig ist,
+      // wird Prüfende(r) dieses Objekts — ohne Handpflege; die offenen Verzeichnis-Zuweisungen aus
+      // dem alten Space werden zurückgezogen (Hand-Zuweisungen und erledigte Prüfungen bleiben).
+      // Nicht die Autorin, und nicht für ein bereits validiertes Objekt (ein Umzug ist kein neuer
+      // Prüfanlass). Scheitert der Abgleich, bleibt der Wechsel bestehen und die Antwort sagt es.
+      const zustaendigkeit = dienste.pruefzustaendigkeit;
+      let pruefzuweisung: string[] | "fehlgeschlagen" = [];
+      if (zustaendigkeit) {
+        try {
+          pruefzuweisung = (await zustaendigkeit.abgleichen(nachher.id, user.id)) ?? [];
+        } catch (fehlerWert) {
+          log.warn(
+            { err: fehlerWert, event: "pruefzustaendigkeit" },
+            "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
+          );
+          pruefzuweisung = "fehlgeschlagen";
+        }
+      }
+      await dienste.freigaberegelAnwenden?.(nachher.id, user.id).catch((fehlerWert) => {
+        log.warn(
+          { err: fehlerWert, event: "freigaberegel" },
+          "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
+        );
+      });
+      reply.code(200).send({
+        koId: nachher.id,
+        version: nachher.version,
+        author: nachher.author,
+        historyEintraege: nachher.history.length,
+        spaceId: typeof nachher.spaceId === "string" ? nachher.spaceId : null,
+        vorschau: v,
+        ...(zustaendigkeit ? { pruefzuweisung } : {}),
+      });
+    } catch (e) {
+      if ((e as { code?: unknown }).code === "SPACE_STAND_VERALTET") {
+        reply.code(409).send({
+          error: "VORSCHAU_VERALTET",
+          message: "Der Space dieses Artikels hat sich inzwischen geändert.",
+        });
+        return;
+      }
+      sendError(reply, e);
+    }
+  }
+
   return async (app) => {
     // Die Spaces, die dieser Mensch sehen darf — mit seinem Recht und der Zahl SEINER sichtbaren
     // Artikel darin (keine Gesamtzahl: die wäre eine Auskunft über Unsichtbares).
-    app.get("/api/spaces", async (request, reply) => {
+    // `?kontext=firma|partner|oeffentlich` grenzt auf einen Firmenkontext ein (Firmenfilter).
+    app.get<{ Querystring: { kontext?: string } }>("/api/spaces", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
+        return;
+      }
+      const kontext = kontextAus(request.query.kontext);
+      if (kontext === "UNGUELTIG") {
+        kontextFehler(reply);
         return;
       }
       const spaces = await dienste.spaces.aktuelle();
@@ -409,6 +697,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       const teams = await alleTeams();
       const sichtbar = spaces
         .filter((s) => darfSpaceSehen(s, user))
+        .filter((s) => kontext === undefined || kontextVon(s) === kontext)
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
         .map((s) => ({
           ...spaceSicht(s, user, n, teams),
@@ -421,6 +710,42 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         darfBestandZuordnen: can(user.role, "users.manage"),
       });
     });
+
+    // Der Firmenfilter über Artikel: alle für den Betrachter sichtbaren Artikel eines Kontexts —
+    // `firma` (eigene Firmeninstanz, auch ohne Space), `partner` (optional `&partner=` für genau
+    // einen Partner) oder `oeffentlich`. Die Berechtigung prüft `darfSehen` je Zeile: Inhalte eines
+    // Partnerbereichs erscheinen nur für ausdrücklich berechtigte Konten. Die Liste der Partner nennt
+    // nur Bereiche, die der Betrachter selbst sehen darf.
+    app.get<{ Querystring: { kontext?: string; partner?: string } }>(
+      "/api/spaces/artikel",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const kontext = kontextAus(request.query.kontext);
+        if (kontext === undefined || kontext === "UNGUELTIG") {
+          kontextFehler(reply);
+          return;
+        }
+        const partner = request.query.partner?.trim() || null;
+        const spaces = await dienste.spaces.aktuelle();
+        const zeilen = (await sichtbareArtikel(user))
+          .map((k) => zeile(k, spaces))
+          .filter((z) => z.kontext === kontext && (!partner || z.partner === partner))
+          .sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+        const partnerBereiche = [
+          ...new Set(
+            spaces
+              .filter((s) => kontextVon(s) === "partner" && darfSpaceSehen(s, user))
+              .map((s) => s.partner ?? ""),
+          ),
+        ]
+          .filter((p) => p.length > 0)
+          .sort((a, b) => a.localeCompare(b));
+        reply.code(200).send({ kontext, partner, artikel: zeilen, partnerBereiche });
+      },
+    );
 
     // Die Konten, die als Zuständige oder Mitglieder wählbar sind — Kennung, Name, Rolle; keine
     // Mailadressen.
@@ -458,7 +783,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       }
       const fassungen = await dienste.spaces.fassungen(request.params.id);
       const aktuell = fassungen[fassungen.length - 1];
-      if (!aktuell || !darfSpaceSehen(aktuell, user)) {
+      if (!aktuell || istGeloescht(aktuell) || !darfSpaceSehen(aktuell, user)) {
         nichtGefunden(reply, "Space");
         return;
       }
@@ -610,6 +935,39 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       },
     );
 
+    // Die Folgen einer Löschung — schreibt nichts.
+    app.post<{ Params: { id: string } }>(
+      "/api/spaces/:id/loeschung/vorschau",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const space = await loeschbarerSpace(request.params.id, user, reply);
+        if (!space) {
+          return;
+        }
+        reply.code(200).send(await loeschLage(space, user));
+      },
+    );
+
+    // Die Löschung selbst — eine weitere Fassung mit Löschvermerk. `version` nennt die Fassung, deren
+    // Vorschau bestätigt wurde. Trägt noch ein Artikel den Space, wird nichts geschrieben.
+    app.post<{ Params: { id: string }; Body: unknown }>(
+      "/api/spaces/:id/loeschung",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const gesehen = (request.body as { version?: unknown } | null)?.version;
+        // Prüfen und Schreiben unter derselben Sperre wie jeder Spacewechsel (`exklusiv`).
+        await dienste.spaces.exklusiv(() =>
+          fuehreLoeschungAus(request.params.id, gesehen, user, reply),
+        );
+      },
+    );
+
     // Die Artikel eines Space — ohne `ansicht` die, deren FÜHRENDER Space er ist; mit `ansicht` die
     // gespeicherte Ansicht (Tag) über alle Spaces. In beiden Fällen nur, was `darfSehen` erlaubt,
     // und immer dasselbe Objekt: Kennung und Fassung wie `GET /api/kos/:id`.
@@ -737,118 +1095,11 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       if (!user) {
         return;
       }
-      const body = (request.body ?? {}) as {
-        koId?: unknown;
-        basis?: {
-          quelleId?: unknown;
-          quelleVersion?: unknown;
-          zielId?: unknown;
-          zielVersion?: unknown;
-          grundlage?: unknown;
-        };
-      };
-      const ko = await sichtbaresKo(user, body.koId);
-      if (!ko) {
-        nichtGefunden(reply, "Wissensobjekt");
-        return;
-      }
-      const ziel = zielAus(request.body);
-      if (ziel === undefined) {
-        reply.code(400).send({
-          error: "ZIEL_FEHLT",
-          message: "Erwartet wird zielSpaceId (Kennung oder null für „ohne Space“).",
-        });
-        return;
-      }
-      if (!body.basis || typeof body.basis !== "object") {
-        reply.code(400).send({
-          error: "VORSCHAU_FEHLT",
-          message: "Ein Spacewechsel braucht die Grundlage der bestätigten Rechtevorschau.",
-        });
-        return;
-      }
-      const v = await vorschau(ko, ziel, user);
-      if (v === "ZIEL_UNBEKANNT") {
-        nichtGefunden(reply, "Space");
-        return;
-      }
-      const basis = body.basis;
-      // Nacharbeit 3 (Ben, K4): die Vorschau ist an ihr ZIEL gebunden, nicht nur an Versionen. Zwei
-      // Spaces können dieselbe Versionsnummer tragen; ohne die Kennung ginge ein Wechsel nach B mit
-      // der Rechtewirkung von A durch. Fehlt `zielId` in der Grundlage, gilt sie als nicht passend.
-      const stimmt =
-        "zielId" in basis &&
-        (basis.zielId ?? null) === (v.ziel?.id ?? null) &&
-        (basis.quelleId ?? null) === (v.quelle?.id ?? null) &&
-        (basis.quelleVersion ?? null) === (v.quelle?.version ?? null) &&
-        (basis.zielVersion ?? null) === (v.ziel?.version ?? null) &&
-        // ADMIN-07 Nacharbeit 3 (Ben, K4): und an die wirksame Rechtelage. Wer zwischen Vorschau und
-        // Bestätigung über ein Team hinzukam oder ging, ändert die Grundlage — dann 409 mit der
-        // neuen Vorschau statt eines Wechsels mit unangezeigten Berechtigten.
-        basis.grundlage === v.grundlage;
-      if (!stimmt) {
-        reply.code(409).send({
-          error: "VORSCHAU_VERALTET",
-          message:
-            "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
-          vorschau: v,
-        });
-        return;
-      }
-      if (!v.darfAusfuehren) {
-        reply.code(403).send({ error: "FORBIDDEN", message: v.grund ?? "Nicht erlaubt." });
-        return;
-      }
-      try {
-        const nachher = await dienste.ko.setLeadingSpace(
-          ko.id,
-          ziel,
-          user.id,
-          v.quelle?.id ?? null,
-        );
-        // R-0571: wer laut Unternehmensverzeichnis für die Prüfung im NEUEN Space zuständig ist,
-        // wird Prüfende(r) dieses Objekts — ohne Handpflege; die offenen Verzeichnis-Zuweisungen aus
-        // dem alten Space werden zurückgezogen (Hand-Zuweisungen und erledigte Prüfungen bleiben).
-        // Nicht die Autorin, und nicht für ein bereits validiertes Objekt (ein Umzug ist kein neuer
-        // Prüfanlass). Scheitert der Abgleich, bleibt der Wechsel bestehen und die Antwort sagt es.
-        const zustaendigkeit = dienste.pruefzustaendigkeit;
-        let pruefzuweisung: string[] | "fehlgeschlagen" = [];
-        if (zustaendigkeit) {
-          try {
-            pruefzuweisung = (await zustaendigkeit.abgleichen(nachher.id, user.id)) ?? [];
-          } catch (fehlerWert) {
-            request.log.warn(
-              { err: fehlerWert, event: "pruefzustaendigkeit" },
-              "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
-            );
-            pruefzuweisung = "fehlgeschlagen";
-          }
-        }
-        await dienste.freigaberegelAnwenden?.(nachher.id, user.id).catch((fehlerWert) => {
-          request.log.warn(
-            { err: fehlerWert, event: "freigaberegel" },
-            "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
-          );
-        });
-        reply.code(200).send({
-          koId: nachher.id,
-          version: nachher.version,
-          author: nachher.author,
-          historyEintraege: nachher.history.length,
-          spaceId: typeof nachher.spaceId === "string" ? nachher.spaceId : null,
-          vorschau: v,
-          ...(zustaendigkeit ? { pruefzuweisung } : {}),
-        });
-      } catch (e) {
-        if ((e as { code?: unknown }).code === "SPACE_STAND_VERALTET") {
-          reply.code(409).send({
-            error: "VORSCHAU_VERALTET",
-            message: "Der Space dieses Artikels hat sich inzwischen geändert.",
-          });
-          return;
-        }
-        sendError(reply, e);
-      }
+      // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 4, Bens Befund): Artikel lesen,
+      // Vorschau prüfen und schreiben unter derselben Sperre wie jede Spacelöschung. Quelle und Ziel
+      // können so zwischen Prüfung und Schreiben nicht gelöscht werden — und eine Rücknahme, die
+      // ungeprüft in einen inzwischen gelöschten Quellspace zurückschriebe, gibt es nicht mehr.
+      await dienste.spaces.exklusiv(() => fuehreWechselAus(request.body, user, reply, request.log));
     });
 
     // ==============================================================================================
@@ -1107,73 +1358,77 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         return;
       }
       const body = (request.body ?? {}) as { regeln?: unknown; grundlage?: unknown };
-      const p = await plan(user, body.regeln);
-      if (typeof p === "string") {
-        reply.code(400).send({ error: "REGELN_UNGUELTIG", message: p });
-        return;
-      }
-      if (typeof body.grundlage !== "string") {
-        reply.code(400).send({
-          error: "VORSCHAU_FEHLT",
-          message: "Die Bestandszuordnung braucht die bestätigte Bilanz.",
-        });
-        return;
-      }
-      if (body.grundlage !== p.grundlage) {
-        reply.code(409).send({
-          error: "VORSCHAU_VERALTET",
-          message: "Bestand oder Rechte haben sich seit der Bilanz geändert. Bitte neu prüfen.",
-          vorschau: p,
-        });
-        return;
-      }
-      const zugeordnet: { koId: string; zielSpaceId: string }[] = [];
-      const fehlgeschlagen: { koId: string; grund: string }[] = [];
-      for (const z of p.zuordnungen) {
-        try {
-          // `erwartet: null` — nur, wer noch OHNE Space ist; ein paralleler Wechsel bleibt stehen.
-          await dienste.ko.setLeadingSpace(z.koId, z.zielSpaceId, user.id, null);
-          zugeordnet.push({ koId: z.koId, zielSpaceId: z.zielSpaceId });
-          await dienste.pruefzustaendigkeit?.abgleichen(z.koId, user.id).catch((fehlerWert) => {
-            request.log.warn(
-              { err: fehlerWert, event: "pruefzustaendigkeit" },
-              "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
-            );
-          });
-          await dienste.freigaberegelAnwenden?.(z.koId, user.id).catch((fehlerWert) => {
-            request.log.warn(
-              { err: fehlerWert, event: "freigaberegel" },
-              "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
-            );
-          });
-        } catch (e) {
-          fehlgeschlagen.push({
-            koId: z.koId,
-            grund:
-              (e as { code?: unknown }).code === "SPACE_STAND_VERALTET"
-                ? "zwischenzeitlich_geaendert"
-                : "fehler",
-          });
+      // aufnahme:20260922:gesamt-wissensprojekte: Bilanz und Zuordnung unter derselben Sperre wie
+      // Spacewechsel und Spacelöschung — kein Zielspace kann dazwischen gelöscht werden.
+      await dienste.spaces.exklusiv(async () => {
+        const p = await plan(user, body.regeln);
+        if (typeof p === "string") {
+          reply.code(400).send({ error: "REGELN_UNGUELTIG", message: p });
+          return;
         }
-      }
-      const protokoll = {
-        regeln: p.regeln.map((r) => ({ tag: r.tag, zielSpaceId: r.zielSpaceId })),
-        bilanz: {
-          ...p.bilanz,
-          zugeordnet: zugeordnet.length,
-          fehlgeschlagen: fehlgeschlagen.length,
-        },
-        zugeordnet,
-        ausnahmen: p.ausnahmen.map((a) => ({ koId: a.koId, art: a.art, ziele: a.ziele })),
-        fehlgeschlagen,
-      };
-      await dienste.audit?.record({
-        actor: user.id,
-        action: "space.bestand-zugeordnet",
-        target: "spaces-bestand",
-        payload: protokoll,
+        if (typeof body.grundlage !== "string") {
+          reply.code(400).send({
+            error: "VORSCHAU_FEHLT",
+            message: "Die Bestandszuordnung braucht die bestätigte Bilanz.",
+          });
+          return;
+        }
+        if (body.grundlage !== p.grundlage) {
+          reply.code(409).send({
+            error: "VORSCHAU_VERALTET",
+            message: "Bestand oder Rechte haben sich seit der Bilanz geändert. Bitte neu prüfen.",
+            vorschau: p,
+          });
+          return;
+        }
+        const zugeordnet: { koId: string; zielSpaceId: string }[] = [];
+        const fehlgeschlagen: { koId: string; grund: string }[] = [];
+        for (const z of p.zuordnungen) {
+          try {
+            // `erwartet: null` — nur, wer noch OHNE Space ist; ein paralleler Wechsel bleibt stehen.
+            await dienste.ko.setLeadingSpace(z.koId, z.zielSpaceId, user.id, null);
+            zugeordnet.push({ koId: z.koId, zielSpaceId: z.zielSpaceId });
+            await dienste.pruefzustaendigkeit?.abgleichen(z.koId, user.id).catch((fehlerWert) => {
+              request.log.warn(
+                { err: fehlerWert, event: "pruefzustaendigkeit" },
+                "Prüfzuständige aus dem Verzeichnis konnten nicht zugewiesen werden",
+              );
+            });
+            await dienste.freigaberegelAnwenden?.(z.koId, user.id).catch((fehlerWert) => {
+              request.log.warn(
+                { err: fehlerWert, event: "freigaberegel" },
+                "Freigaberegel des Zielspace konnte nicht sofort angewendet werden",
+              );
+            });
+          } catch (e) {
+            fehlgeschlagen.push({
+              koId: z.koId,
+              grund:
+                (e as { code?: unknown }).code === "SPACE_STAND_VERALTET"
+                  ? "zwischenzeitlich_geaendert"
+                  : "fehler",
+            });
+          }
+        }
+        const protokoll = {
+          regeln: p.regeln.map((r) => ({ tag: r.tag, zielSpaceId: r.zielSpaceId })),
+          bilanz: {
+            ...p.bilanz,
+            zugeordnet: zugeordnet.length,
+            fehlgeschlagen: fehlgeschlagen.length,
+          },
+          zugeordnet,
+          ausnahmen: p.ausnahmen.map((a) => ({ koId: a.koId, art: a.art, ziele: a.ziele })),
+          fehlgeschlagen,
+        };
+        await dienste.audit?.record({
+          actor: user.id,
+          action: "space.bestand-zugeordnet",
+          target: "spaces-bestand",
+          payload: protokoll,
+        });
+        reply.code(200).send({ ...protokoll, ausnahmen: p.ausnahmen });
       });
-      reply.code(200).send({ ...protokoll, ausnahmen: p.ausnahmen });
     });
 
     // Die dokumentierten Bestandszuordnungen — prüfbar auch nach Reload. Nur Kennungen, keine Titel.

@@ -20,6 +20,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from "testcontainer
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
+import { PgSpacesRepo } from "../../services/app/src/spaces";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
 type App = ReturnType<typeof buildApp>;
@@ -277,6 +278,85 @@ describe("Spaces gegen echtes PostgreSQL", () => {
       const detail = await zweite.inject({ method: "GET", url: `/api/kos/${koId}`, headers: kopf });
       expect(detail.statusCode, wer).toBe(404);
       expect(detail.body).not.toContain(WORT);
+    }
+  });
+
+  // aufnahme:20260922:gesamt-wissensprojekte — der Löschvermerk ist eine weitere Zeile. `aktuelle()`
+  // muss erst die jüngste Fassung wählen und DANN den Vermerk auswerten; sonst träte Fassung 1
+  // eines gelöschten Space wieder an seine Stelle. Gemessen über zwei Pools (Neustart).
+  it("ein gelöschter Space fehlt in aktuelle() — auch nach dem Neustart; sein Verlauf bleibt", async () => {
+    const id = `geloescht-${Date.now()}`;
+    const basis = {
+      id,
+      name: "Altprojekt",
+      zweck: "Wird gelöscht.",
+      verantwortlich: "konto-1",
+      zugang: "alle" as const,
+      mitglieder: [],
+      ansichten: [],
+      angelegtVon: "konto-1",
+      angelegtAm: "2026-10-08T08:00:00.000Z",
+      geaendertVon: "konto-1",
+      geaendertAm: "2026-10-08T08:00:00.000Z",
+    };
+    const erster = createPool(url);
+    try {
+      const repo = new PgSpacesRepo(erster);
+      expect(await repo.lege({ ...basis, version: 1 })).toBe(true);
+      expect((await repo.aktuelle()).map((s) => s.id)).toContain(id);
+      const vermerk = { ...basis, version: 2, geloeschtAm: "2026-10-08T09:00:00.000Z" };
+      expect(await repo.lege(vermerk)).toBe(true);
+      expect((await repo.aktuelle()).map((s) => s.id)).not.toContain(id);
+      // Nacharbeit 6: der Löschvermerk ist endgültig — eine weitere Fassung wird nicht geschrieben.
+      expect(await repo.lege({ ...basis, version: 3 })).toBe(false);
+    } finally {
+      await erster.end();
+    }
+    const zweiter = createPool(url);
+    try {
+      const repo = new PgSpacesRepo(zweiter);
+      expect((await repo.aktuelle()).map((s) => s.id)).not.toContain(id);
+      const verlauf = await repo.fassungen(id);
+      expect(verlauf.map((f) => [f.version, f.geloeschtAm ?? null])).toEqual([
+        [1, null],
+        [2, "2026-10-08T09:00:00.000Z"],
+      ]);
+    } finally {
+      await zweiter.end();
+    }
+  });
+
+  // Nacharbeit 4 (Bens Befund): Spacewechsel und Spacelöschung laufen unter `exklusiv`. Zwei Repos
+  // an ZWEI Pools stehen für zwei App-Prozesse an derselben Datenbank — die prozessweite
+  // Warteschlange allein trennte sie nicht, erst die Datenbanksperre.
+  it("exklusiv schliesst zwei Prozesse an derselben Datenbank gegenseitig aus", async () => {
+    const poolA = createPool(url);
+    const poolB = createPool(url);
+    try {
+      const a = new PgSpacesRepo(poolA);
+      const b = new PgSpacesRepo(poolB);
+      const ablauf: string[] = [];
+      let zweite: Promise<void> | undefined;
+      await a.exklusiv(async () => {
+        ablauf.push("a-beginn");
+        zweite = b.exklusiv(async () => {
+          ablauf.push("b");
+        });
+        await new Promise((fertig) => setTimeout(fertig, 300));
+        ablauf.push("a-ende");
+      });
+      await zweite;
+      expect(ablauf).toEqual(["a-beginn", "a-ende", "b"]);
+      // Auch nach einem Fehler in der Arbeit ist die Sperre wieder frei.
+      await expect(
+        a.exklusiv(async () => {
+          throw new Error("Probe");
+        }),
+      ).rejects.toThrow("Probe");
+      expect(await b.exklusiv(async () => "frei")).toBe("frei");
+    } finally {
+      await poolA.end();
+      await poolB.end();
     }
   });
 });
