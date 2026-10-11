@@ -1,7 +1,9 @@
 // SCRUM-415: Vertraulichkeitsstufen je Wissensobjekt — reine, testbare Helfer (kein Zustand).
 // „intern" ist der Standard (Öffentlich-intern, keine Einschränkung). „vertraulich" und
 // „streng_vertraulich" gelten als vertraulich: solche KOs gehen NIE in externe Kontexte
-// (Output Factory/Export). Fehlt das Feld ganz (Alt-KOs), gilt ebenfalls „intern".
+// (Output Factory/Export). Fehlt das Feld ganz (Alt-KOs), legen DIESE Helfer „intern" aus — für
+// die Sichtbarkeit gilt das nicht mehr (Entscheidung 16, `schutzrang` in services/app/src/
+// sichtbarkeit.ts: ungeklärt = geschützt).
 import type { Confidentiality } from "./types";
 
 export const CONFIDENTIALITY_LEVELS: readonly Confidentiality[] = [
@@ -66,11 +68,12 @@ export function isConfidential(level: Confidentiality | undefined | null): boole
 // falsch für eine AUSKUNFT: sie behauptete eine Einstufung, die nie jemand gesetzt hat. Dieselbe
 // Zeile zieht `classificationValueOf` (search-projection.ts:160-172) mit derselben Begründung.
 //
-// DIE BENANNTE GRENZE: DIES IST EINE AUSKUNFT, KEIN TOR. Für den ZUGRIFF gilt weiterhin und
-// unverändert `darfSehen`/`sichtbareFuer` (services/app/src/sichtbarkeit.ts), und DORT gilt eine
-// fehlende Stufe weiter als „intern" (ebd. :39-43: „eine zweite Auslegung derselben Stufe wäre
-// genau die zweite Wahrheit"). Hier wird nichts verschärft und nichts gelockert; hier wird nur
-// BENANNT, was der Bestand hergibt. Jeder Aufrufer wendet die Auskunft deshalb NACH seinem Tor an.
+// DIE BENANNTE GRENZE: DIES IST EINE AUSKUNFT, KEIN TOR. Für den ZUGRIFF gilt `darfSehen`/
+// `sichtbareFuer` (services/app/src/sichtbarkeit.ts), und DORT ist eine fehlende oder unbekannte
+// Stufe seit aufnahme:20260922:gesamt-leserechte, Nacharbeit 19 (Entscheidung 16 vom 11.10.2026)
+// UNGEKLÄRT und wie vertraulich geschützt (`schutzrang`). `normalizeConfidentiality` und
+// `isConfidential` hier bleiben Anzeige- und Egress-Hilfen; über die Sichtbarkeit entscheiden sie
+// nicht. Jeder Aufrufer wendet die Auskunft NACH seinem Tor an.
 
 /**
  * WOHER die ausgegebene Stufe stammt.

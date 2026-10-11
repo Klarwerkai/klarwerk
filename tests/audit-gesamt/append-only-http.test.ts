@@ -147,6 +147,14 @@ describe("FR-AUD-02 · kein Produktcode ändert oder löscht Zeilen in audit (st
 describe("R-0613 · Export der Kette mit Kopf (HTTP)", () => {
   it("liefert Einträge, Prüfbericht und Kopf — und hängt den Abruf als audit.exported an", async () => {
     const b = await baueFrischeBuehne();
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): die unveränderte Kette geht
+    // nur an, wer alles lesen darf — also mit persönlichem Freigabeniveau „streng vertraulich".
+    // Ohne es bekäme die Controllerin eine Leseransicht (audit-routes.ts), keinen Kettenexport.
+    await b.services.auth.setFreigabe(
+      b.konto.controller.id,
+      "streng_vertraulich",
+      b.konto.admin.id,
+    );
     const controller = { authorization: `Bearer ${b.sitzung.controller}` };
     const vorher = await b.services.audit.list();
 
@@ -195,6 +203,8 @@ describe("R-0613 · Export der Kette mit Kopf (HTTP)", () => {
 
   it("eine nachträglich geänderte Exportdatei fällt beim Nachrechnen auf", async () => {
     const b = await baueFrischeBuehne();
+    // Nacharbeit 19 (Variante B): der Kettenexport braucht das Niveau „streng vertraulich".
+    await b.services.auth.setFreigabe(b.konto.admin.id, "streng_vertraulich", b.konto.admin.id);
     const admin = { authorization: `Bearer ${b.sitzung.admin}` };
     const datei = (
       await b.app.inject({ method: "GET", url: "/api/audit/export", headers: admin })

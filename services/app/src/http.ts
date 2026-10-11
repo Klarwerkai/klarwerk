@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { type AuthService, type Role, meldung, sprache } from "../../auth";
+import { type AuthService, type Freigabestufe, type Role, meldung, sprache } from "../../auth";
 import { type Permission, can } from "../../rbac";
 import { dienstSitzungsnutzer } from "./dienst-schluessel";
 
@@ -17,6 +17,12 @@ export interface SessionUser {
    * Feld (ein Aufbau ohne Spaces), ist kein Objekt mit führendem Space sichtbar — fail-closed.
    */
   spaceLesbar?: ReadonlySet<string>;
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche
+   * Freigabeniveau aus dem Konto. Ausgewertet allein in `sichtbarkeit.ts` (`freigaberang`); fehlt
+   * es, gilt dort die Übergangsregel.
+   */
+  freigabe?: Freigabestufe;
 }
 
 /** Erhebt je Anfrage die lesbaren Spaces eines angemeldeten Kontos (s. `SessionUser.spaceLesbar`). */
@@ -241,12 +247,16 @@ export function makeGuards(
         .send({ error: "UNAUTHENTICATED", message: meldung("NOT_SIGNED_IN", sprache(request)) });
       return undefined;
     }
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau reist mit,
+    // je Anfrage frisch aus dem Konto — ein Entzug wirkt damit beim nächsten Abruf.
+    const freigabe = user.freigabe ? { freigabe: user.freigabe } : {};
     if (!opts.spaceLesbar) {
-      return { id: user.id, role: user.role };
+      return { id: user.id, role: user.role, ...freigabe };
     }
     return {
       id: user.id,
       role: user.role,
+      ...freigabe,
       spaceLesbar: await opts.spaceLesbar({ id: user.id, role: user.role }),
     };
   };

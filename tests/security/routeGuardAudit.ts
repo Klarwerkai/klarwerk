@@ -483,7 +483,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/klara/ai-status": { protection: "ko.read" },
   // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerung. `ko.read`, weil sie Kennungen und
   // Fassungen von Wissensobjekten zeigt; die Eigentumspruefung liegt zusaetzlich im Dienst.
-  "GET /api/klara/answers/:answerId/explanation": { protection: "ko.read" },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): Sperre je Beleg nach Lesepolicy.
+  "GET /api/klara/answers/:answerId/explanation": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // (b) Registriert die Zuordnung autoritativ und vergibt die opake documentContextId. Legt nur
   // Sitzungsmetadaten an, liest und schreibt kein KO.
   "POST /api/klara/sessions": { protection: "ko.read" },
@@ -526,7 +530,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["sichtbareFuer", "darfSehen"],
   },
-  "GET /api/library/export": { protection: "ko.read" },
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): Export zusätzlich nach Lesepolicy.
+  "GET /api/library/export": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // aufnahme:20260922:gesamt-leserechte: diese drei Wege fahren bereits `darfSehen` je Zeile
   // (library-routes.ts); die Prüfliste nennt es jetzt mit.
   "POST /api/library/import": { protection: "ko.create", zeilenrecht: ["darfSehen"] },

@@ -333,9 +333,8 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/kos/:id/provenance": { urteil: "PRAEDIKAT", grund: "Block F — Zentrum + Gegenseite." },
   // --- Egress-Wege, die im Dienst filtern ----------------------------------------------------
   "GET /api/library/export": {
-    urteil: "KURATORENTOR",
-    recht: "ko.validate",
-    grund: "SCRUM-506 — includeConfidential als Datum (library-routes.ts:172).",
+    urteil: "PRAEDIKAT",
+    grund: "Nacharbeit 19 — sichtbarkeitsfilterFuer neben includeConfidential (Variante B).",
   },
   // aufnahme:20260922:gesamt-leserechte: die vier Ausgabewege tragen jetzt die Lesepolicy des
   // Betrachters (vorher nur die Stufe am Objekt — Spaces galten nicht, und die SCORM-Prüfung nannte
@@ -683,9 +682,9 @@ const REGISTER: Record<string, Eintrag> = {
   // sondern ein gefilterter: der Dienst prueft das Eigentum an der Antwort und schwaerzt
   // vertrauliche Belege je Leser.
   "GET /api/klara/answers/:answerId/explanation": {
-    urteil: "DIENST_FILTERT",
+    urteil: "PRAEDIKAT",
     grund:
-      "services/app/src/services/answer-explanation.ts — gehoertNutzer() als Eigentumstor, isConfidential() schwaerzt je Beleg.",
+      "answer-explanation.ts — gehoertNutzer() als Eigentumstor, sichtbarkeitsfilterFuer schwaerzt je Beleg (Nacharbeit 19).",
   },
   "GET /api/klara/ai-status": {
     urteil: "KEIN_KO_INHALT",

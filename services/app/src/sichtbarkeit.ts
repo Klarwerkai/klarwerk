@@ -24,23 +24,28 @@
 // gemacht. Beides wäre eine neue Modulkante für eine Frage, die eine Routen-Frage ist.
 //
 // ================================================================================================
-// DIE BENANNTE GRENZE — BITTE NICHT ÜBERLESEN.
+// aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) — VARIANTE B UND UNGEKLÄRTE STUFEN.
 // ================================================================================================
 //
-// `isConfidential` behandelt `vertraulich` und `streng_vertraulich` GLEICH (confidentiality.ts:41).
-// Dieses Prädikat erbt das bewusst. Wir ZEIGEN drei Stufen und SCHÜTZEN zwei davon identisch:
-// für die Sichtbarkeit macht `streng_vertraulich` heute keinen Unterschied zu `vertraulich`.
+// Bis hierher stand an dieser Stelle „Pedis Variante A": `vertraulich` und `streng_vertraulich`
+// wurden gleich geschützt, `ko.validate` öffnete beide, und eine fehlende Stufe galt als „intern".
+// Beides ist abgelöst durch die Entscheidungen vom 11.10.2026
+// (QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011.json):
 //
-// Das ist Pedis Variante A und ausdrücklich so gewollt — nicht ein übersehener Fall. Eine dritte
-// Schutzstufe wäre eine Freigabestufe je Nutzer (Variante B): ein Feld am Nutzer, eine
-// Verwaltungsfläche, eine Wanderung und eine zweite Achse neben der Rolle. Das ist NICHT
-// entschieden. Wer hier heimlich eine Rangprüfung einbaut, baut Variante B durch die Hintertür.
+//   · Entscheidung 15 — Variante B: „persönliches Freigabeniveau plus Objekt-/Gruppenrechte".
+//     Jedes Objekt hat einen SCHUTZRANG (intern 0 · vertraulich 1 · streng vertraulich 2), jeder
+//     Mensch einen FREIGABERANG aus seinem persönlichen Niveau (`SessionUser.freigabe`, gesetzt in
+//     der Nutzerverwaltung). Sichtbar ist, was Space-Recht UND Rang erlauben — oder der Autor
+//     selbst. Die Rolle öffnet keine Stufe mehr.
+//   · Entscheidung 16 — eine FEHLENDE, NULL- oder UNBEKANNTE Stufe ist „ungeklärt" und wird wie
+//     `vertraulich` geschützt, bis jemand einstuft. Ausdrücklich „intern" ist seit JOB 3076
+//     gespeichert und damit von „nie eingestuft" unterscheidbar.
 //
-// Ebenfalls Grenze: eine UNBEKANNTE Stufe gilt als „intern" (also sichtbar), weil
-// `isConfidential` das so auslegt. Das ist hier bewusst NICHT strenger gefasst, denn eine zweite
-// Auslegung derselben Stufe wäre genau die zweite Wahrheit, gegen die diese Datei gebaut ist.
-// Getragen wird das davon, dass die Schreibwege nur geprüfte Werte durchlassen
-// (`isValidConfidentiality` an der Upload-Grenze, SCRUM-509 am Änderungsweg).
+// DIE ÜBERGANGSREGEL (`freigaberang`): ein Konto OHNE gesetztes Niveau bekommt Rang 1, wenn seine
+// Rolle `ko.validate` trägt (Controller/Admin, die ungeklärte Objekte einstufen müssen), sonst 0.
+// „Streng vertraulich" öffnet sie NIE — dafür braucht es immer ein ausdrücklich gesetztes Niveau.
+// Diese Übergangsregel ist eine Festlegung dieser Umsetzung, keine der Entscheidungen; sie steht
+// in docs/entscheidungen/gesamt-leserechte.md zur Bestätigung.
 import { type Confidentiality, isConfidential, sqlDeletedAtLeer } from "../../knowledge-object";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
@@ -77,11 +82,48 @@ function spaceErlaubt(user: SessionUser, spaceId: unknown): boolean {
 }
 
 /**
+ * Schutzrang einer Objektstufe: intern 0 · vertraulich 1 · streng vertraulich 2. Jede andere
+ * Angabe — fehlend, `null`, unbekannt — ist UNGEKLÄRT und zählt wie vertraulich (Entscheidung 16).
+ */
+export function schutzrang(stufe: unknown): number {
+  if (stufe === "intern") {
+    return 0;
+  }
+  if (stufe === "streng_vertraulich") {
+    return 2;
+  }
+  return 1;
+}
+
+/**
+ * Freigaberang eines Menschen: das persönliche Niveau, wenn gesetzt (Entscheidung 15), sonst die
+ * Übergangsregel aus dem Dateikopf — nie Rang 2 ohne ausdrückliche Freigabe.
+ */
+export function freigaberang(user: SessionUser): number {
+  if (user.freigabe === "intern") {
+    return 0;
+  }
+  if (user.freigabe === "vertraulich") {
+    return 1;
+  }
+  if (user.freigabe === "streng_vertraulich") {
+    return 2;
+  }
+  return can(user.role, "ko.validate") ? 1 : 0;
+}
+
+function istAutor(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
+  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
+  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+}
+
+/**
  * Darf dieser Mensch dieses Wissensobjekt sehen?
  *
- * Die Regel (SCRUM-506, erweitert um den Autor):
- *   - nicht vertraulich  → jeder mit `ko.read` (die Route prüft das vorher)
- *   - vertraulich        → nur `ko.validate` (Controller/Admin) ODER der Autor selbst
+ * Die Regel (Variante B, Nacharbeit 19):
+ *   - der führende Space muss lesbar sein (Gruppenrecht, s. `spaceErlaubt`), UND
+ *   - der Schutzrang des Objekts liegt nicht über seinem Freigaberang, ODER er ist der Autor.
  *
  * Die Autor-Ausnahme ist keine Erfindung dieses Auftrags: dieselbe Zeile trägt bereits das Löschen
  * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
@@ -91,15 +133,10 @@ export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
   if (!spaceErlaubt(user, ko.spaceId)) {
     return false;
   }
-  if (!isConfidential(ko.confidentiality)) {
+  if (schutzrang(ko.confidentiality) <= freigaberang(user)) {
     return true;
   }
-  if (can(user.role, "ko.validate")) {
-    return true;
-  }
-  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
-  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
-  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+  return istAutor(user, ko);
 }
 
 /**
@@ -160,10 +197,10 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 // Prädikat entsteht deshalb HIER, neben `darfSehen`, und wird INJIZIERT — an genau derselben Naht,
 // an der heute schon `sichtbar: sichtbarkeitsfilterFuer(user)` in die Analytics reist.
 //
-// WARUM DAS ÜBERHAUPT GEHT: der Rollenanteil von `darfSehen` ist ein EINZIGER Boolescher Wert
-// (`can(user.role, "ko.validate")`), der Autoranteil eine einzige Zeichenkette (`user.id`). Mehr
-// braucht die Regel nicht — deshalb lässt sie sich vollständig als Prädikat über drei Spalten
-// ausdrücken, ohne dass die Datenbank etwas über Rollen wissen müsste.
+// WARUM DAS ÜBERHAUPT GEHT: der Betrachteranteil von `darfSehen` ist EINE Zahl (der Freigaberang
+// 0/1/2, `freigaberang` — seit Nacharbeit 19 statt eines Booleans aus der Rolle), der Autoranteil
+// eine einzige Zeichenkette (`user.id`). Mehr braucht die Regel nicht — deshalb lässt sie sich
+// vollständig als Prädikat ausdrücken, ohne dass die Datenbank etwas über Rollen wissen müsste.
 //
 // ================================================================================================
 // DIE BENANNTEN GRENZEN DIESER ÜBERSETZUNG — BITTE NICHT ÜBERLESEN.
@@ -175,9 +212,10 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 //     er ist historischer Beleg und veraltet naturgemäß, sobald eine Stufe erhöht wird. Eine
 //     Höherstufung muss SOFORT wirken, nicht nach dem nächsten Projektionsbau.
 //
-// (2) DIE STUFENGRENZE IST ZEICHENGENAU `normalizeConfidentiality` (confidentiality.ts:15-17), und
-//     zwar nicht hier, sondern in der generierten Spalte (KO_SICHTBARKEIT_SCHEMA). Damit gibt es
-//     den CASE genau einmal, in der Datenbank, statt abschreibbar in jeder Abfrage.
+// (2) DIE STUFENGRENZE IST ZEICHENGENAU `schutzrang` (s. o.) und liest die ROHE Stufe aus `data`.
+//     Bis Nacharbeit 19 stand sie in der generierten Spalte `confidentiality_key`, die eine
+//     unbekannte Stufe als 'intern' auslegt — für die Sichtbarkeit seit Entscheidung 16 falsch.
+//     Die Spalte bleibt für andere Leser bestehen; dieses Prädikat benutzt sie nicht mehr.
 //
 // (3) DER PAPIERKORB WIRD ÜBER `deleted_at_key IS NULL` GEPRÜFT, ergänzt um `sqlDeletedAtLeer`.
 //     Der Schreibweg setzt `deletedAt` ausschließlich auf einen ISO-Zeitpunkt und ENTFERNT das Feld
@@ -186,9 +224,9 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 //     (AUFNAHME 20260922, BEN 4359 Befund B2). Seitdem wertet SQL die in JavaScript falschen
 //     JSON-Werte (null, "", false, 0) wie `!ko.deletedAt` als lebend.
 //
-// (4) HIER WIRD NICHTS VERSCHÄRFT UND NICHTS GELOCKERT. Die drei Stufen bleiben drei, zwei werden
-//     weiter identisch geschützt (Pedis Variante A, s. Kopf), eine unbekannte Stufe gilt weiter als
-//     „intern", und ein leerer Autor ist weiter KEINE Autorschaft. Der Paritätstest
+// (4) HIER WIRD NICHTS ANDERS AUSGELEGT ALS IN `darfSehen`: drei Stufen mit drei Rängen
+//     (Variante B, s. Kopf), eine ungeklärte Stufe zählt wie vertraulich, und ein leerer Autor ist
+//     weiter KEINE Autorschaft. Der Paritätstest
 //     (tests/security/380-trim-paritaet.integration.test.ts) fährt beide Formen über alle
 //     Kombinationen aus Stufe × Autorschaft × Rolle gegen ein echtes Postgres — Mengengleichheit,
 //     nicht Stichprobe.
@@ -202,7 +240,8 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
   // Die beiden EINZIGEN Fakten, die `darfSehen` über den Betrachter braucht. Sie werden hier
   // EINMAL erhoben und danach nicht mehr befragt — ein Cursor oder eine Folgeseite, die sie später
   // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
-  const darfVertraulich = can(user.role, "ko.validate");
+  // Nacharbeit 19 (Variante B): statt „darf vertraulich" der Freigaberang 0/1/2.
+  const rang = freigaberang(user);
   const betrachter = user.id;
   // produkt:20261007:spaces — die lesbaren Spaces reisen als DRITTER Parameter, aber nur, wenn der
   // Betrachter sie trägt. Ohne sie bleibt die Parameterliste die bisherige, und das Prädikat lässt
@@ -211,8 +250,14 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
 
   return {
     sql(spaltenTraeger: string, abPlatzhalter: number): string {
-      const rolle = `$${abPlatzhalter}`;
+      const freigabe = `$${abPlatzhalter}`;
       const autor = `$${abPlatzhalter + 1}`;
+      // Zeichengleich `schutzrang`: aus der ROHEN Stufe im Datensatz, nicht aus der generierten
+      // Spalte `confidentiality_key` — die legt eine unbekannte Stufe auf 'intern' aus
+      // (KO_SICHTBARKEIT_SCHEMA), Entscheidung 16 verlangt das Gegenteil.
+      const stufe = `${spaltenTraeger}.data->>'confidentiality'`;
+      const faelle = "WHEN 'intern' THEN 0 WHEN 'streng_vertraulich' THEN 2 ELSE 1";
+      const schutz = `(CASE ${stufe} ${faelle} END)`;
       // Zeichengleich `spaceErlaubt`: nur eine Zeichenkette in `spaceId` ist ein führender Space.
       const ohneSpace = `jsonb_typeof(${spaltenTraeger}.data->'spaceId') IS DISTINCT FROM 'string'`;
       const spaceBedingung = spaces
@@ -220,21 +265,19 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
         : ` AND ${ohneSpace}`;
       // Zeile für Zeile dieselbe Regel wie `darfSehen`, plus der Papierkorb davor:
       //   · nicht getrasht,
-      //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
-      //   · `ko.validate`                             ⇒ auch vertraulich/streng_vertraulich,
+      //   · Schutzrang ≤ Freigaberang (Variante B; ungeklärt zählt 1),
       //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
       return (
         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
-        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
-        ` OR ${rolle}::boolean` +
+        ` AND (${schutz} <= ${freigabe}::int` +
         ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
         ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
         ` AND ${spaltenTraeger}.author_key = ${autor}))${spaceBedingung})`
       );
     },
-    params: spaces ? [darfVertraulich, betrachter, spaces] : [darfVertraulich, betrachter],
+    params: spaces ? [rang, betrachter, spaces] : [rang, betrachter],
     // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
     // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
     trifftZu(ko): boolean {
@@ -467,11 +510,12 @@ export async function feldFreigabe(
     if (!ko || !darfSehen(user, ko)) {
       return false;
     }
-    if (!isConfidential(ko.confidentiality)) {
+    // Nacharbeit 19: nur ausdrücklich „intern" ist frei kopierbarer Inhalt — eine ungeklärte Stufe
+    // wird wie vertraulich behandelt (Entscheidung 16), dieselbe Grenze wie `schutzrang`.
+    if (schutzrang(ko.confidentiality) === 0) {
       return true;
     }
-    // Leerer/fehlender Autor ist KEINE Autorschaft — dieselbe Zeile wie in `darfSehen:74-76`.
-    return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+    return istAutor(user, ko);
   };
   return { a: await erlaubt(koA), b: await erlaubt(koB) };
 }

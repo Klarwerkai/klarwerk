@@ -138,6 +138,16 @@ async function buehne(opts: { mitGeschuetztem: boolean }) {
     Object.values(ids).every((x) => x.length > 0),
     JSON.stringify(ids),
   ).toBe(true);
+  // Nacharbeit 19 (Variante B): Mia ist die Leserin mit VOLLER Einsicht — dafür braucht sie neben
+  // der Mitgliedschaft das persönliche Niveau „streng vertraulich". Ada bleibt bei der
+  // Übergangsregel (Rang 1) und ist damit ohnehin eingeschränkt.
+  const freigabe = await app.inject({
+    method: "PUT",
+    url: `/api/users/${ids.mia}`,
+    headers: ada,
+    payload: { freigabe: "streng_vertraulich" },
+  });
+  expect(freigabe.statusCode, freigabe.body).toBe(200);
 
   // Das offene Objekt steht in jedem Aufbau.
   const offenId = await objektMitAnker(

@@ -3840,7 +3840,7 @@ index 08bfc10ba..fc8936858 100644
  
  // Weg 3 (B6): bettet ein frisch angelegtes KO ein und legt es im Vektor-Store ab, damit KÜNFTIGE
 diff --git b/services/app/src/example-packages/demo-pakete.ts a/services/app/src/example-packages/demo-pakete.ts
-index dd8b55689..f252d9ebd 100644
+index 51f70f3db..f252d9ebd 100644
 --- b/services/app/src/example-packages/demo-pakete.ts
 +++ a/services/app/src/example-packages/demo-pakete.ts
 @@ -522,11 +522,6 @@ async function schliesseFolgeeintraege(
@@ -3855,6 +3855,16 @@ index dd8b55689..f252d9ebd 100644
        await services.conflicts.resolve(konflikt.id, actor, grund);
        ergebnis.closedConflicts += 1;
      } catch (ursache) {
+@@ -603,9 +598,6 @@ async function anlegen(
+     neededValidations: 1,
+     // Der Gesamt-Purge (DELETE /api/admin/demo-seed) nimmt das Paket weiterhin mit.
+     demoSeed: true,
+-    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Entscheidung 16): ohne Stufe gälte das
+-    // Paketobjekt als ungeklärt und bliebe eingeschränkt; Beispielwissen ist firmenintern.
+-    confidentiality: "intern",
+   });
+   await freigeben(services, ko.id, actor);
+ }
 diff --git b/services/app/src/factory-reset.ts a/services/app/src/factory-reset.ts
 index 0a374b945..125d59b31 100644
 --- b/services/app/src/factory-reset.ts
@@ -4428,18 +4438,19 @@ index e963fbac8..000000000
 -  }
 -}
 diff --git b/services/app/src/http.ts a/services/app/src/http.ts
-index a4e2a04e5..24e10c549 100644
+index 6d644dbf7..24e10c549 100644
 --- b/services/app/src/http.ts
 +++ a/services/app/src/http.ts
 @@ -1,7 +1,6 @@
  import type { FastifyReply, FastifyRequest } from "fastify";
- import { type AuthService, type Role, meldung, sprache } from "../../auth";
+-import { type AuthService, type Freigabestufe, type Role, meldung, sprache } from "../../auth";
++import { type AuthService, type Role, meldung, sprache } from "../../auth";
  import { type Permission, can } from "../../rbac";
 -import { dienstSitzungsnutzer } from "./dienst-schluessel";
  
  // Gemeinsamer HTTP-Baustein der App: Auth-Guard, RBAC-Guard und einheitliches
  // Fehler-Mapping für alle modulübergreifenden Routen (FR-RBAC-04: serverseitig).
-@@ -11,17 +10,8 @@ const SESSION_COOKIE = "kw_session";
+@@ -11,23 +10,8 @@ const SESSION_COOKIE = "kw_session";
  export interface SessionUser {
    id: string;
    role: Role;
@@ -4449,6 +4460,12 @@ index a4e2a04e5..24e10c549 100644
 -   * Feld (ein Aufbau ohne Spaces), ist kein Objekt mit führendem Space sichtbar — fail-closed.
 -   */
 -  spaceLesbar?: ReadonlySet<string>;
+-  /**
+-   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche
+-   * Freigabeniveau aus dem Konto. Ausgewertet allein in `sichtbarkeit.ts` (`freigaberang`); fehlt
+-   * es, gilt dort die Übergangsregel.
+-   */
+-  freigabe?: Freigabestufe;
  }
  
 -/** Erhebt je Anfrage die lesbaren Spaces eines angemeldeten Kontos (s. `SessionUser.spaceLesbar`). */
@@ -4457,7 +4474,7 @@ index a4e2a04e5..24e10c549 100644
  export interface Guards {
    requireUser(request: FastifyRequest, reply: FastifyReply): Promise<SessionUser | undefined>;
    requirePermission(
-@@ -216,20 +206,11 @@ export function sendError(reply: FastifyReply, error: unknown): void {
+@@ -222,20 +206,11 @@ export function sendError(reply: FastifyReply, error: unknown): void {
    reply.code(INTERNAL_ERROR_STATUS).send(internalErrorBody(reply.request));
  }
  
@@ -4479,16 +4496,20 @@ index a4e2a04e5..24e10c549 100644
      const token = tokenFromRequest(request);
      const user = token ? await auth.authenticate(token) : undefined;
      if (!user) {
-@@ -241,14 +222,7 @@ export function makeGuards(
+@@ -247,18 +222,7 @@ export function makeGuards(
          .send({ error: "UNAUTHENTICATED", message: meldung("NOT_SIGNED_IN", sprache(request)) });
        return undefined;
      }
+-    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau reist mit,
+-    // je Anfrage frisch aus dem Konto — ein Entzug wirkt damit beim nächsten Abruf.
+-    const freigabe = user.freigabe ? { freigabe: user.freigabe } : {};
 -    if (!opts.spaceLesbar) {
--      return { id: user.id, role: user.role };
+-      return { id: user.id, role: user.role, ...freigabe };
 -    }
 -    return {
 -      id: user.id,
 -      role: user.role,
+-      ...freigabe,
 -      spaceLesbar: await opts.spaceLesbar({ id: user.id, role: user.role }),
 -    };
 +    return { id: user.id, role: user.role };
@@ -8153,10 +8174,10 @@ index 44f49fad0..000000000
 -  }
 -}
 diff --git b/services/app/src/routes/ask-routes.ts a/services/app/src/routes/ask-routes.ts
-index ab4c9e490..a87e0a0e1 100644
+index b584fa0cf..a87e0a0e1 100644
 --- b/services/app/src/routes/ask-routes.ts
 +++ a/services/app/src/routes/ask-routes.ts
-@@ -2,24 +2,16 @@ import type { FastifyPluginAsync } from "fastify";
+@@ -2,26 +2,18 @@ import type { FastifyPluginAsync } from "fastify";
  import {
    AskError,
    type AskService,
@@ -8180,8 +8201,11 @@ index ab4c9e490..a87e0a0e1 100644
  import { type Guards, type SessionUser, sendError } from "../http";
 -import type { KlaraAufgabe } from "../services/klara-session-service";
  // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
- import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+-import { schutzrang, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
++import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
  
+ // SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
+ // HÜLLE eines Requests:
 @@ -74,27 +66,6 @@ const askBodySchema = {
      // Dokumenttext (Bens Befund B1, Runde 2: ältere Fenster melden nichts). Begründung an
      // `frageAusDokument`.
@@ -8442,7 +8466,7 @@ index ab4c9e490..a87e0a0e1 100644
          // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
          // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
          // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
-@@ -743,36 +571,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -743,41 +571,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
              ))
                ? { dokumenttextFreigegeben: true as const }
                : {};
@@ -8474,13 +8498,18 @@ index ab4c9e490..a87e0a0e1 100644
 -            grundlage = sichtbarkeitsfilterFuer(betrachter);
 -          } else {
 -            const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
--            grundlage = (ko) => typeof ko.spaceId !== "string" || offen.has(ko.spaceId);
+-            // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): ein Schlüssel hat kein
+-            // persönliches Freigabeniveau — Rang 0, also nur ausdrücklich „intern" (Entscheidung
+-            // 15/16). Eine ungeklärte Stufe geht nicht an ihn.
+-            grundlage = (ko) =>
+-              schutzrang(ko.confidentiality) === 0 &&
+-              (typeof ko.spaceId !== "string" || offen.has(ko.spaceId));
 -          }
 +          const mitMarkierung = markierung ? { ...opts, ...markierung, ...dokumenttextFeld } : opts;
            // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest oben). Jede Prüfung bis zur
            // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet
            // die Frage, und zwar auch dann, wenn sie VOR dem Dienst (Einwilligungsprüfung) stand.
-@@ -785,11 +584,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -790,11 +584,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
              // Zwischen dieser Prüfung und dem Einstieg in `ask.ask` (der dort seine eigene Epoche
              // liest, bevor er zum ersten Mal wartet) liegt kein `await` — also kein Fenster.
              ask.kiSperreVorFrage(kiBeginn);
@@ -8493,7 +8522,7 @@ index ab4c9e490..a87e0a0e1 100644
              // D5: `evidenceFor` liest die Quellobjekte und die offenen Konflikte nach — vor JEDEM
              // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
              // einmal, bevor irgendetwas davon hinausgeht.
-@@ -811,11 +606,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -816,11 +606,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
            // KW-KA4: NUR eine serverbestätigte Einwilligung für exakt diese Sitzung UND dieses
            // Dokument hebt die Enge auf. Ohne sie fällt der Ablauf in den unveränderten Zweig
            // darunter — Zeile für Zeile derselbe wie vor KA4.
@@ -8505,7 +8534,7 @@ index ab4c9e490..a87e0a0e1 100644
              (await ka4Freigabe(
                deps.klaraSessions,
                request.headers,
-@@ -848,15 +639,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -853,15 +639,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
            return;
          }
          // WP-KLARA-ASK-FIX (bens Fix 1, P0-Kern): "retrieval-only" — der Modus des Word-Add-ins
@@ -8523,7 +8552,7 @@ index ab4c9e490..a87e0a0e1 100644
          // Wissensluecke wird weiter vermerkt (Session-Nutzer, bestehende gap-Semantik) — darauf
          // baut der Offene-Frage-Weg des Panels. Konsole ohne mode: byte-identisches Verhalten.
          // R-0639, Bens Befund B2 (Runde 2): die Einwilligungs- und Dokumenttext-Prüfung hängt NICHT
-@@ -913,22 +702,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -918,22 +702,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
          // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
          // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
          // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
@@ -8547,7 +8576,7 @@ index ab4c9e490..a87e0a0e1 100644
        },
      );
  
-@@ -953,59 +727,6 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -958,59 +727,6 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
        },
      );
  
@@ -8607,7 +8636,7 @@ index ab4c9e490..a87e0a0e1 100644
      // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler — KEIN Fragetext. Die Startseite
      // nutzt AUSSCHLIESSLICH diesen Endpunkt (kein Volltext-Fetch der Lücken mehr auf /start).
      app.get("/api/gaps/summary", async (request, reply) => {
-@@ -1017,30 +738,25 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -1022,30 +738,25 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
      });
  
      // FUNKE-FIX2 P0 (bens Erforderlich 2): Detail-Endpunkt liefert den Fragetext ADRESSATENGERECHT.
@@ -8647,7 +8676,7 @@ index ab4c9e490..a87e0a0e1 100644
      }>("/api/gaps/:id", async (request, reply) => {
        const user = await guards.requirePermission("ko.assign", request, reply);
        if (!user) {
-@@ -1060,16 +776,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
+@@ -1065,16 +776,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
          }
          // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).
          if (request.body.close === true || request.body.action === "close") {
@@ -8666,10 +8695,10 @@ index ab4c9e490..a87e0a0e1 100644
          }
          if (request.body.expertId) {
 diff --git b/services/app/src/routes/audit-routes.ts a/services/app/src/routes/audit-routes.ts
-index b8bee9885..f23c51e1c 100644
+index acfc7023a..f23c51e1c 100644
 --- b/services/app/src/routes/audit-routes.ts
 +++ a/services/app/src/routes/audit-routes.ts
-@@ -1,393 +1,26 @@
+@@ -1,394 +1,26 @@
  import type { FastifyPluginAsync } from "fastify";
 -import {
 -  type AuditEntry,
@@ -8680,7 +8709,7 @@ index b8bee9885..f23c51e1c 100644
 -} from "../../../audit";
 -import type { Guards, SessionUser } from "../http";
 -import { LESEVARIANTEN_LADE_AKTION, LESEVARIANTEN_LADE_PROTOKOLLFELDER } from "../lesevarianten";
--import { type SichtbarkeitsFakten, darfSehen } from "../sichtbarkeit";
+-import { type SichtbarkeitsFakten, darfSehen, freigaberang } from "../sichtbarkeit";
 -
 -/** Wer die Befunde (Konflikte, Überschneidungen) eines Objekts kennt — nur deren Kennungen. */
 -export interface BefundKennungen {
@@ -8702,12 +8731,13 @@ index b8bee9885..f23c51e1c 100644
 -// aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13–15) — DAS PROTOKOLL NACH LESERECHT.
 -// ================================================================================================
 -//
--// WER IST EINGESCHRÄNKT. Jeder Leser dieser Routen hat `ko.validate` und sieht damit auch
--// Vertrauliches; was ihm `darfSehen` vorenthält, liegt allein an Spaces. Eingeschränkt ist deshalb,
--// wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand und jeder Space, den die
--// Kette je genannt hat). Das hängt nur an Spaces und Mitgliedschaft — nicht daran, ob es gerade
--// verborgene Vorgänge gibt. Ein uneingeschränkter Leser bekommt das Protokoll unverändert: Liste,
--// Prüfbericht und die nachrechenbare Kette (R-0613).
+-// WER IST EINGESCHRÄNKT. Seit Variante B (Nacharbeit 19) öffnet `ko.validate` nicht mehr jede
+-// Stufe: was `darfSehen` vorenthält, liegt an Spaces UND am persönlichen Freigabeniveau.
+-// Eingeschränkt ist deshalb, wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand
+-// und jeder Space, den die Kette je genannt hat) ODER keinen Freigaberang 2 („streng vertraulich",
+-// `freigaberang`) hat. Das hängt nur an Spaces, Mitgliedschaft und dem eigenen Niveau — nicht
+-// daran, ob es gerade verborgene Vorgänge gibt. Ein uneingeschränkter Leser bekommt das Protokoll
+-// unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
 -//
 -// WAS EIN EINGESCHRÄNKTER LESER BEKOMMT — eine Leseransicht, die nichts von verborgenen Vorgängen
 -// abhängen lässt:
@@ -8803,7 +8833,7 @@ index b8bee9885..f23c51e1c 100644
 -    }
 -  }
 -  const lesbar = user.spaceLesbar;
--  const eingeschraenkt = [...spaces].some((s) => lesbar?.has(s) !== true);
+-  const eingeschraenkt = freigaberang(user) < 2 || [...spaces].some((s) => lesbar?.has(s) !== true);
 -  if (!eingeschraenkt) {
 -    return UNEINGESCHRAENKT;
 -  }
@@ -11880,6 +11910,31 @@ index 4cce7569d..000000000
 -    );
 -  };
 -}
+diff --git b/services/app/src/routes/klara-answer-explanation-routes.ts a/services/app/src/routes/klara-answer-explanation-routes.ts
+index a3ae296ba..c9c5634d3 100644
+--- b/services/app/src/routes/klara-answer-explanation-routes.ts
++++ a/services/app/src/routes/klara-answer-explanation-routes.ts
+@@ -32,7 +32,6 @@ import type {
+   AnswerExplanationLeser,
+   AnswerExplanationService,
+ } from "../services/answer-explanation";
+-import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+ 
+ export interface KlaraAnswerExplanationDeps {
+   readonly explanations: AnswerExplanationService;
+@@ -96,12 +95,9 @@ export function klaraAnswerExplanationRoutes(
+         }
+         // Die Vertraulichkeitsstufe wird an EINER Stelle ausgelegt — hier, aus der Rolle. Der
+         // Dienst wendet sie an, statt sie ein zweites Mal zu bilden.
+-        // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): die Rolle allein öffnet keine Stufe
+-        // mehr — es entscheidet die Lesepolicy (persönliches Freigabeniveau, ungeklärte Stufen).
+         const leser: AnswerExplanationLeser = {
+           userId: user.id,
+           darfVertraulich: user.role === "admin" || user.role === "controller",
+-          darfSehen: sichtbarkeitsfilterFuer(user),
+         };
+         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
+         if (ergebnis.kind === "NOT_FOUND") {
 diff --git b/services/app/src/routes/klara-session-routes.ts a/services/app/src/routes/klara-session-routes.ts
 index 217a9a12f..fa059d64d 100644
 --- b/services/app/src/routes/klara-session-routes.ts
@@ -12417,7 +12472,7 @@ index e296c7125..bc69179d4 100644
          },
          paket,
 diff --git b/services/app/src/routes/library-routes.ts a/services/app/src/routes/library-routes.ts
-index 37a71371a..b87769e8b 100644
+index 17da32825..b87769e8b 100644
 --- b/services/app/src/routes/library-routes.ts
 +++ a/services/app/src/routes/library-routes.ts
 @@ -243,8 +243,7 @@ export function direktimportAntwort(
@@ -12430,14 +12485,19 @@ index 37a71371a..b87769e8b 100644
  }
  
  // ================================================================================================
-@@ -894,24 +893,19 @@ export function libraryRoutes(
+@@ -894,29 +893,19 @@ export function libraryRoutes(
        // Pfade. Vertrauliche KOs nur für Berechtigte — hier an ko.validate gebunden (Controller/
        // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
        // nur die validierten, nicht-vertraulichen KOs.
 -      const includeConfidential = can(user.role, "ko.validate");
+-      // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): `ko.validate` allein öffnet nicht mehr
+-      // jede Stufe — die Lesepolicy des Exportierenden (persönliches Freigabeniveau, ungeklärte
+-      // Stufen, Spaces) begrenzt den Export zusätzlich.
+-      const sichtbar = sichtbarkeitsfilterFuer(user);
 -      // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
 -      const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
 -        includeConfidential,
+-        sichtbar,
 -        beleg: { actor: user.id, format },
 -      });
 +      const opts = { includeConfidential: can(user.role, "ko.validate") };
@@ -12458,7 +12518,7 @@ index 37a71371a..b87769e8b 100644
          return;
        }
        if (request.query.format === "html") {
-@@ -919,10 +913,10 @@ export function libraryRoutes(
+@@ -924,10 +913,10 @@ export function libraryRoutes(
          reply
            .header("content-type", "text/html; charset=utf-8")
            .code(200)
@@ -14544,10 +14604,257 @@ index c921272fd..2bfa79868 100644
      // Gelesen wird die RAW-Response, weil helmet seine Header dort ablegt (derselbe Befund wie bei
      // X-Frame-Options oben); geschrieben wird über `reply.header`, das beim Senden gewinnt.
 diff --git b/services/app/src/seed-demo.ts a/services/app/src/seed-demo.ts
-index 79a4e0c0f..52739082a 100644
+index e13570925..52739082a 100644
 --- b/services/app/src/seed-demo.ts
 +++ a/services/app/src/seed-demo.ts
-@@ -998,11 +998,6 @@ export async function purgeDemoSeed(
+@@ -326,12 +326,6 @@ async function buildDemoContent(
+   const erikId = actors.expertId;
+   // SCRUM-487: lokalisierte Titel/Aussagen/Konflikt-Texte (Kategorien/Tags bleiben sprachneutral).
+   const t = demoTexts(locale);
+-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Entscheidung 16): ein Objekt OHNE Stufe
+-  // gilt jetzt als ungeklärt und bleibt eingeschränkt. Der Demo-Bestand ist synthetisch und
+-  // firmenintern gedacht (s. Vortest-Block unten: „auf intern normalisiert") — er trägt das
+-  // ausdrücklich. Eine mitgebrachte Stufe (vertraulich, streng vertraulich) geht vor.
+-  const anlegen = (eingabe: Parameters<KoService["create"]>[0]) =>
+-    ko.create({ confidentiality: "intern", ...eingabe });
+ 
+   // SCRUM-308: eindeutiger Herkunfts-Tag für Demo-/Seed-Wissen (kein neues Datenmodell, keine
+   // Migration — nur ein zusätzlicher Tag im vorhandenen tags-Feld). Muss mit dem FE-Konstanten
+@@ -340,7 +334,7 @@ async function buildDemoContent(
+   // (DEMO_TAG jetzt modulweit — siehe oben; hier bewusst keine zweite Definition.)
+ 
+   // --- Wissensobjekte (verschiedene Kategorien, Arten, Trust, Tags) ---
+-  const koValid = await anlegen({
++  const koValid = await ko.create({
+     demoSeed: true,
+     title: t.koValid.title,
+     statement: t.koValid.statement,
+@@ -354,7 +348,7 @@ async function buildDemoContent(
+     neededValidations: 2,
+     asset: "ANL-01",
+   });
+-  const koOpen = await anlegen({
++  const koOpen = await ko.create({
+     demoSeed: true,
+     title: t.koOpen.title,
+     statement: t.koOpen.statement,
+@@ -365,7 +359,7 @@ async function buildDemoContent(
+     confidence: 40,
+     neededValidations: 2,
+   });
+-  const koWarm = await anlegen({
++  const koWarm = await ko.create({
+     demoSeed: true,
+     title: t.koWarm.title,
+     statement: t.koWarm.statement,
+@@ -376,7 +370,7 @@ async function buildDemoContent(
+     confidence: 55,
+     neededValidations: 2,
+   });
+-  const koNoWarm = await anlegen({
++  const koNoWarm = await ko.create({
+     demoSeed: true,
+     title: t.koNoWarm.title,
+     statement: t.koNoWarm.statement,
+@@ -389,7 +383,7 @@ async function buildDemoContent(
+   });
+   // SCRUM-492: zweiter Showcase-Konflikt (Firmenwagenfarbe blau ↔ rot) als reproduzierbarer
+   // Demo-Bestand. Zwei echte, gegensätzliche Farb-Vorgaben — der klassische „direkt unvereinbar"-Fall.
+-  const koCarBlau = await anlegen({
++  const koCarBlau = await ko.create({
+     demoSeed: true,
+     title: t.koCarBlau.title,
+     statement: t.koCarBlau.statement,
+@@ -400,7 +394,7 @@ async function buildDemoContent(
+     confidence: 60,
+     neededValidations: 2,
+   });
+-  const koCarRot = await anlegen({
++  const koCarRot = await ko.create({
+     demoSeed: true,
+     title: t.koCarRot.title,
+     statement: t.koCarRot.statement,
+@@ -411,7 +405,7 @@ async function buildDemoContent(
+     confidence: 60,
+     neededValidations: 2,
+   });
+-  const koFilter = await anlegen({
++  const koFilter = await ko.create({
+     demoSeed: true,
+     title: t.koFilter.title,
+     statement: t.koFilter.statement,
+@@ -430,7 +424,7 @@ async function buildDemoContent(
+   // Wortwahl bewusst OHNE Überschneidung zur Demo-Wissenslücken-Frage („Schichtwechsel…",
+   // s. u.): sonst fände der deterministische Reasoner eine Pseudo-Antwort und die
+   // Demo-Lücke entstünde nicht mehr (Seed-Test fängt das ab).
+-  const koPflege = await anlegen({
++  const koPflege = await ko.create({
+     demoSeed: true,
+     title: t.koPflege.title,
+     statement: t.koPflege.statement,
+@@ -443,7 +437,7 @@ async function buildDemoContent(
+     confidence: 70,
+     neededValidations: 2,
+   });
+-  const koKanzlei = await anlegen({
++  const koKanzlei = await ko.create({
+     demoSeed: true,
+     title: t.koKanzlei.title,
+     statement: t.koKanzlei.statement,
+@@ -454,7 +448,7 @@ async function buildDemoContent(
+     confidence: 75,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koVerein.title,
+     statement: t.koVerein.statement,
+@@ -465,7 +459,7 @@ async function buildDemoContent(
+     confidence: 50,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koWasser.title,
+     statement: t.koWasser.statement,
+@@ -483,7 +477,7 @@ async function buildDemoContent(
+   // purge-bar). Wortwahl weiterhin OHNE Inhaltstoken der Demo-Wissenslücken-Frage
+   // (schwankt/Dosierwert/Linie/jedem/Schichtwechsel) — sonst fände der deterministische
+   // Reasoner eine Pseudo-Antwort und die Demo-Lücke entstünde nicht mehr (Seed-Test prüft).
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koSchweiss.title,
+     statement: t.koSchweiss.statement,
+@@ -496,7 +490,7 @@ async function buildDemoContent(
+     confidence: 55,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koPresse.title,
+     statement: t.koPresse.statement,
+@@ -507,7 +501,7 @@ async function buildDemoContent(
+     confidence: 25,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koNacht.title,
+     statement: t.koNacht.statement,
+@@ -518,7 +512,7 @@ async function buildDemoContent(
+     confidence: 20,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koVergleich.title,
+     statement: t.koVergleich.statement,
+@@ -529,7 +523,7 @@ async function buildDemoContent(
+     confidence: 20,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koDreh.title,
+     statement: t.koDreh.statement,
+@@ -540,7 +534,7 @@ async function buildDemoContent(
+     confidence: 60,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koNotstrom.title,
+     statement: t.koNotstrom.statement,
+@@ -551,7 +545,7 @@ async function buildDemoContent(
+     confidence: 50,
+     neededValidations: 2,
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koSchalt.title,
+     statement: t.koSchalt.statement,
+@@ -576,7 +570,7 @@ async function buildDemoContent(
+   //      („intern"), die Kopplung Vertraulichkeit × Anhang war damit nicht vorführbar.
+   // Der Wächter dafür ist tests/app/mega59-vortest-bestand.test.ts; ohne ihn fiele genau das beim
+   // nächsten Umbau still wieder heraus.
+-  const koLieferantFrei = await anlegen({
++  const koLieferantFrei = await ko.create({
+     demoSeed: true,
+     title: t.koLieferantFrei.title,
+     statement: t.koLieferantFrei.statement,
+@@ -589,7 +583,7 @@ async function buildDemoContent(
+     confidence: 70,
+     neededValidations: 2,
+   });
+-  const koLieferantSchutz = await anlegen({
++  const koLieferantSchutz = await ko.create({
+     demoSeed: true,
+     title: t.koLieferantSchutz.title,
+     statement: t.koLieferantSchutz.statement,
+@@ -602,7 +596,7 @@ async function buildDemoContent(
+     // Die mittlere Stufe — sichtbar in der Facette, und dieses Objekt trägt zusätzlich den Anhang.
+     confidentiality: "vertraulich",
+   });
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koGeheim.title,
+     statement: t.koGeheim.statement,
+@@ -615,7 +609,7 @@ async function buildDemoContent(
+     // Die höchste Stufe — ohne sie hat die Vertraulichkeits-Facette nur zwei von drei Werten.
+     confidentiality: "streng_vertraulich",
+   });
+-  const koWartung = await anlegen({
++  const koWartung = await ko.create({
+     demoSeed: true,
+     title: t.koWartung.title,
+     statement: t.koWartung.statement,
+@@ -633,7 +627,7 @@ async function buildDemoContent(
+   // Alle demoSeed → der chirurgische Purge (KO.demoSeed) erfasst sie samt Folge-Einträgen.
+   // Duplikatpaar: zwei sehr ähnliche, eigenständige Aussagen → zwei echte KOs. Die eigentliche
+   // Duplikat-KENNZEICHNUNG entsteht unten über die echte Erkennung (nicht vorgeformt).
+-  const koReifenA = await anlegen({
++  const koReifenA = await ko.create({
+     demoSeed: true,
+     title: t.koReifenA.title,
+     statement: t.koReifenA.statement,
+@@ -644,7 +638,7 @@ async function buildDemoContent(
+     confidence: 45,
+     neededValidations: 2,
+   });
+-  const koReifenB = await anlegen({
++  const koReifenB = await ko.create({
+     demoSeed: true,
+     title: t.koReifenB.title,
+     statement: t.koReifenB.statement,
+@@ -656,7 +650,7 @@ async function buildDemoContent(
+     neededValidations: 2,
+   });
+   // stale-date-Seite: Jahres-Token (2019) steht wörtlich in der Aussage → sichtbar veraltet.
+-  const koStale = await anlegen({
++  const koStale = await ko.create({
+     demoSeed: true,
+     title: t.koStale.title,
+     statement: t.koStale.statement,
+@@ -676,7 +670,7 @@ async function buildDemoContent(
+     provider: "Intern",
+   });
+   // Unbelegter Claim: bauchgefuehl, bewusst OHNE Quelle/Beleg (kein addSource).
+-  await anlegen({
++  await ko.create({
+     demoSeed: true,
+     title: t.koUnbacked.title,
+     statement: t.koUnbacked.statement,
+@@ -1004,11 +998,6 @@ export async function purgeDemoSeed(
        // HIER STAND DER FEHLER: `.catch(() => undefined)` und danach unbedingtes `+= 1`. Der
        // Zähler wurde also gerade dann erhöht, wenn die Auflösung NICHT stattgefunden hatte.
        try {
@@ -14719,6 +15026,35 @@ index 3950c65e6..a3ea7060e 100644
 +  process.stderr.write(`Serverstart fehlgeschlagen: ${String(error)}\n`);
    process.exit(1);
  });
+diff --git b/services/app/src/services/answer-explanation.ts a/services/app/src/services/answer-explanation.ts
+index e4124433e..6f3a0735a 100644
+--- b/services/app/src/services/answer-explanation.ts
++++ a/services/app/src/services/answer-explanation.ts
+@@ -39,12 +39,6 @@ export interface AnswerExplanationDeps {
+ export interface AnswerExplanationLeser {
+   readonly userId: string;
+   readonly darfVertraulich: boolean;
+-  /**
+-   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): die Lesepolicy des Lesers
+-   * (`sichtbarkeitsfilterFuer`). Ist sie da, entscheidet SIE über die Sperre — persönliches
+-   * Freigabeniveau, ungeklärte Stufen, Spaces; `darfVertraulich` gilt dann nicht mehr.
+-   */
+-  readonly darfSehen?: (objekt: KnowledgeObject) => boolean;
+ }
+ 
+ export class AnswerExplanationService {
+@@ -93,10 +87,7 @@ export class AnswerExplanationService {
+         verschwunden.add(ref.knowledgeObjectId);
+         continue;
+       }
+-      const gesperrt = leser.darfSehen
+-        ? !leser.darfSehen(objekt)
+-        : isConfidential(objekt.confidentiality) && !leser.darfVertraulich;
+-      if (gesperrt) {
++      if (isConfidential(objekt.confidentiality) && !leser.darfVertraulich) {
+         gesperrteObjekte.add(ref.knowledgeObjectId);
+       }
+     }
 diff --git b/services/app/src/services/import-access-service.ts a/services/app/src/services/import-access-service.ts
 index d58c713ad..9a0011f0d 100644
 --- b/services/app/src/services/import-access-service.ts
@@ -15437,10 +15773,52 @@ index 6a9ef7688..feb16c673 100644
    private ablauf(createdAtMs: number, lastActivityMs: number): string {
      return new Date(
 diff --git b/services/app/src/sichtbarkeit.ts a/services/app/src/sichtbarkeit.ts
-index fe1505e98..01fad81f5 100644
+index d070161b4..01fad81f5 100644
 --- b/services/app/src/sichtbarkeit.ts
 +++ a/services/app/src/sichtbarkeit.ts
-@@ -51,29 +51,6 @@ import type { SessionUser } from "./http";
+@@ -24,28 +24,23 @@
+ // gemacht. Beides wäre eine neue Modulkante für eine Frage, die eine Routen-Frage ist.
+ //
+ // ================================================================================================
+-// aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) — VARIANTE B UND UNGEKLÄRTE STUFEN.
++// DIE BENANNTE GRENZE — BITTE NICHT ÜBERLESEN.
+ // ================================================================================================
+ //
+-// Bis hierher stand an dieser Stelle „Pedis Variante A": `vertraulich` und `streng_vertraulich`
+-// wurden gleich geschützt, `ko.validate` öffnete beide, und eine fehlende Stufe galt als „intern".
+-// Beides ist abgelöst durch die Entscheidungen vom 11.10.2026
+-// (QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011.json):
++// `isConfidential` behandelt `vertraulich` und `streng_vertraulich` GLEICH (confidentiality.ts:41).
++// Dieses Prädikat erbt das bewusst. Wir ZEIGEN drei Stufen und SCHÜTZEN zwei davon identisch:
++// für die Sichtbarkeit macht `streng_vertraulich` heute keinen Unterschied zu `vertraulich`.
+ //
+-//   · Entscheidung 15 — Variante B: „persönliches Freigabeniveau plus Objekt-/Gruppenrechte".
+-//     Jedes Objekt hat einen SCHUTZRANG (intern 0 · vertraulich 1 · streng vertraulich 2), jeder
+-//     Mensch einen FREIGABERANG aus seinem persönlichen Niveau (`SessionUser.freigabe`, gesetzt in
+-//     der Nutzerverwaltung). Sichtbar ist, was Space-Recht UND Rang erlauben — oder der Autor
+-//     selbst. Die Rolle öffnet keine Stufe mehr.
+-//   · Entscheidung 16 — eine FEHLENDE, NULL- oder UNBEKANNTE Stufe ist „ungeklärt" und wird wie
+-//     `vertraulich` geschützt, bis jemand einstuft. Ausdrücklich „intern" ist seit JOB 3076
+-//     gespeichert und damit von „nie eingestuft" unterscheidbar.
++// Das ist Pedis Variante A und ausdrücklich so gewollt — nicht ein übersehener Fall. Eine dritte
++// Schutzstufe wäre eine Freigabestufe je Nutzer (Variante B): ein Feld am Nutzer, eine
++// Verwaltungsfläche, eine Wanderung und eine zweite Achse neben der Rolle. Das ist NICHT
++// entschieden. Wer hier heimlich eine Rangprüfung einbaut, baut Variante B durch die Hintertür.
+ //
+-// DIE ÜBERGANGSREGEL (`freigaberang`): ein Konto OHNE gesetztes Niveau bekommt Rang 1, wenn seine
+-// Rolle `ko.validate` trägt (Controller/Admin, die ungeklärte Objekte einstufen müssen), sonst 0.
+-// „Streng vertraulich" öffnet sie NIE — dafür braucht es immer ein ausdrücklich gesetztes Niveau.
+-// Diese Übergangsregel ist eine Festlegung dieser Umsetzung, keine der Entscheidungen; sie steht
+-// in docs/entscheidungen/gesamt-leserechte.md zur Bestätigung.
++// Ebenfalls Grenze: eine UNBEKANNTE Stufe gilt als „intern" (also sichtbar), weil
++// `isConfidential` das so auslegt. Das ist hier bewusst NICHT strenger gefasst, denn eine zweite
++// Auslegung derselben Stufe wäre genau die zweite Wahrheit, gegen die diese Datei gebaut ist.
++// Getragen wird das davon, dass die Schreibwege nur geprüfte Werte durchlassen
++// (`isValidConfidentiality` an der Upload-Grenze, SCRUM-509 am Änderungsweg).
+ import { type Confidentiality, isConfidential, sqlDeletedAtLeer } from "../../knowledge-object";
+ import { can } from "../../rbac";
+ import type { SessionUser } from "./http";
+@@ -56,87 +51,29 @@ import type { SessionUser } from "./http";
  export interface SichtbarkeitsFakten {
    confidentiality?: Confidentiality | null | undefined;
    author?: string | null | undefined;
@@ -15467,22 +15845,125 @@ index fe1505e98..01fad81f5 100644
 -    return true;
 -  }
 -  return user.spaceLesbar?.has(spaceId) === true;
+-}
+-
+-/**
+- * Schutzrang einer Objektstufe: intern 0 · vertraulich 1 · streng vertraulich 2. Jede andere
+- * Angabe — fehlend, `null`, unbekannt — ist UNGEKLÄRT und zählt wie vertraulich (Entscheidung 16).
+- */
+-export function schutzrang(stufe: unknown): number {
+-  if (stufe === "intern") {
+-    return 0;
+-  }
+-  if (stufe === "streng_vertraulich") {
+-    return 2;
+-  }
+-  return 1;
+-}
+-
+-/**
+- * Freigaberang eines Menschen: das persönliche Niveau, wenn gesetzt (Entscheidung 15), sonst die
+- * Übergangsregel aus dem Dateikopf — nie Rang 2 ohne ausdrückliche Freigabe.
+- */
+-export function freigaberang(user: SessionUser): number {
+-  if (user.freigabe === "intern") {
+-    return 0;
+-  }
+-  if (user.freigabe === "vertraulich") {
+-    return 1;
+-  }
+-  if (user.freigabe === "streng_vertraulich") {
+-    return 2;
+-  }
+-  return can(user.role, "ko.validate") ? 1 : 0;
+-}
+-
+-function istAutor(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+-  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
+-  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
+-  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
  }
  
  /**
-@@ -88,9 +65,6 @@ function spaceErlaubt(user: SessionUser, spaceId: unknown): boolean {
+  * Darf dieser Mensch dieses Wissensobjekt sehen?
+  *
+- * Die Regel (Variante B, Nacharbeit 19):
+- *   - der führende Space muss lesbar sein (Gruppenrecht, s. `spaceErlaubt`), UND
+- *   - der Schutzrang des Objekts liegt nicht über seinem Freigaberang, ODER er ist der Autor.
++ * Die Regel (SCRUM-506, erweitert um den Autor):
++ *   - nicht vertraulich  → jeder mit `ko.read` (die Route prüft das vorher)
++ *   - vertraulich        → nur `ko.validate` (Controller/Admin) ODER der Autor selbst
+  *
+  * Die Autor-Ausnahme ist keine Erfindung dieses Auftrags: dieselbe Zeile trägt bereits das Löschen
+  * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
   * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
   */
  export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
 -  if (!spaceErlaubt(user, ko.spaceId)) {
 -    return false;
--  }
-   if (!isConfidential(ko.confidentiality)) {
++  if (!isConfidential(ko.confidentiality)) {
++    return true;
+   }
+-  if (schutzrang(ko.confidentiality) <= freigaberang(user)) {
++  if (can(user.role, "ko.validate")) {
      return true;
    }
-@@ -204,20 +178,11 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
+-  return istAutor(user, ko);
++  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
++  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
++  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+ }
+ 
+ /**
+@@ -197,10 +134,10 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter
+ // Prädikat entsteht deshalb HIER, neben `darfSehen`, und wird INJIZIERT — an genau derselben Naht,
+ // an der heute schon `sichtbar: sichtbarkeitsfilterFuer(user)` in die Analytics reist.
+ //
+-// WARUM DAS ÜBERHAUPT GEHT: der Betrachteranteil von `darfSehen` ist EINE Zahl (der Freigaberang
+-// 0/1/2, `freigaberang` — seit Nacharbeit 19 statt eines Booleans aus der Rolle), der Autoranteil
+-// eine einzige Zeichenkette (`user.id`). Mehr braucht die Regel nicht — deshalb lässt sie sich
+-// vollständig als Prädikat ausdrücken, ohne dass die Datenbank etwas über Rollen wissen müsste.
++// WARUM DAS ÜBERHAUPT GEHT: der Rollenanteil von `darfSehen` ist ein EINZIGER Boolescher Wert
++// (`can(user.role, "ko.validate")`), der Autoranteil eine einzige Zeichenkette (`user.id`). Mehr
++// braucht die Regel nicht — deshalb lässt sie sich vollständig als Prädikat über drei Spalten
++// ausdrücken, ohne dass die Datenbank etwas über Rollen wissen müsste.
+ //
+ // ================================================================================================
+ // DIE BENANNTEN GRENZEN DIESER ÜBERSETZUNG — BITTE NICHT ÜBERLESEN.
+@@ -212,10 +149,9 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter
+ //     er ist historischer Beleg und veraltet naturgemäß, sobald eine Stufe erhöht wird. Eine
+ //     Höherstufung muss SOFORT wirken, nicht nach dem nächsten Projektionsbau.
+ //
+-// (2) DIE STUFENGRENZE IST ZEICHENGENAU `schutzrang` (s. o.) und liest die ROHE Stufe aus `data`.
+-//     Bis Nacharbeit 19 stand sie in der generierten Spalte `confidentiality_key`, die eine
+-//     unbekannte Stufe als 'intern' auslegt — für die Sichtbarkeit seit Entscheidung 16 falsch.
+-//     Die Spalte bleibt für andere Leser bestehen; dieses Prädikat benutzt sie nicht mehr.
++// (2) DIE STUFENGRENZE IST ZEICHENGENAU `normalizeConfidentiality` (confidentiality.ts:15-17), und
++//     zwar nicht hier, sondern in der generierten Spalte (KO_SICHTBARKEIT_SCHEMA). Damit gibt es
++//     den CASE genau einmal, in der Datenbank, statt abschreibbar in jeder Abfrage.
+ //
+ // (3) DER PAPIERKORB WIRD ÜBER `deleted_at_key IS NULL` GEPRÜFT, ergänzt um `sqlDeletedAtLeer`.
+ //     Der Schreibweg setzt `deletedAt` ausschließlich auf einen ISO-Zeitpunkt und ENTFERNT das Feld
+@@ -224,9 +160,9 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter
+ //     (AUFNAHME 20260922, BEN 4359 Befund B2). Seitdem wertet SQL die in JavaScript falschen
+ //     JSON-Werte (null, "", false, 0) wie `!ko.deletedAt` als lebend.
+ //
+-// (4) HIER WIRD NICHTS ANDERS AUSGELEGT ALS IN `darfSehen`: drei Stufen mit drei Rängen
+-//     (Variante B, s. Kopf), eine ungeklärte Stufe zählt wie vertraulich, und ein leerer Autor ist
+-//     weiter KEINE Autorschaft. Der Paritätstest
++// (4) HIER WIRD NICHTS VERSCHÄRFT UND NICHTS GELOCKERT. Die drei Stufen bleiben drei, zwei werden
++//     weiter identisch geschützt (Pedis Variante A, s. Kopf), eine unbekannte Stufe gilt weiter als
++//     „intern", und ein leerer Autor ist weiter KEINE Autorschaft. Der Paritätstest
+ //     (tests/security/380-trim-paritaet.integration.test.ts) fährt beide Formen über alle
+ //     Kombinationen aus Stufe × Autorschaft × Rolle gegen ein echtes Postgres — Mengengleichheit,
+ //     nicht Stichprobe.
+@@ -240,44 +176,30 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
+   // Die beiden EINZIGEN Fakten, die `darfSehen` über den Betrachter braucht. Sie werden hier
+   // EINMAL erhoben und danach nicht mehr befragt — ein Cursor oder eine Folgeseite, die sie später
    // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
-   const darfVertraulich = can(user.role, "ko.validate");
+-  // Nacharbeit 19 (Variante B): statt „darf vertraulich" der Freigaberang 0/1/2.
+-  const rang = freigaberang(user);
++  const darfVertraulich = can(user.role, "ko.validate");
    const betrachter = user.id;
 -  // produkt:20261007:spaces — die lesbaren Spaces reisen als DRITTER Parameter, aber nur, wenn der
 -  // Betrachter sie trägt. Ohne sie bleibt die Parameterliste die bisherige, und das Prädikat lässt
@@ -15491,8 +15972,15 @@ index fe1505e98..01fad81f5 100644
  
    return {
      sql(spaltenTraeger: string, abPlatzhalter: number): string {
-       const rolle = `$${abPlatzhalter}`;
+-      const freigabe = `$${abPlatzhalter}`;
++      const rolle = `$${abPlatzhalter}`;
        const autor = `$${abPlatzhalter + 1}`;
+-      // Zeichengleich `schutzrang`: aus der ROHEN Stufe im Datensatz, nicht aus der generierten
+-      // Spalte `confidentiality_key` — die legt eine unbekannte Stufe auf 'intern' aus
+-      // (KO_SICHTBARKEIT_SCHEMA), Entscheidung 16 verlangt das Gegenteil.
+-      const stufe = `${spaltenTraeger}.data->>'confidentiality'`;
+-      const faelle = "WHEN 'intern' THEN 0 WHEN 'streng_vertraulich' THEN 2 ELSE 1";
+-      const schutz = `(CASE ${stufe} ${faelle} END)`;
 -      // Zeichengleich `spaceErlaubt`: nur eine Zeichenkette in `spaceId` ist ein führender Space.
 -      const ohneSpace = `jsonb_typeof(${spaltenTraeger}.data->'spaceId') IS DISTINCT FROM 'string'`;
 -      const spaceBedingung = spaces
@@ -15500,21 +15988,45 @@ index fe1505e98..01fad81f5 100644
 -        : ` AND ${ohneSpace}`;
        // Zeile für Zeile dieselbe Regel wie `darfSehen`, plus der Papierkorb davor:
        //   · nicht getrasht,
-       //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
-@@ -231,10 +196,10 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
-         ` OR ${rolle}::boolean` +
+-      //   · Schutzrang ≤ Freigaberang (Variante B; ungeklärt zählt 1),
++      //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
++      //   · `ko.validate`                             ⇒ auch vertraulich/streng_vertraulich,
+       //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
+       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
+       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
+       return (
+         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
+-        ` AND (${schutz} <= ${freigabe}::int` +
++        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
++        ` OR ${rolle}::boolean` +
          ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
          ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
 -        ` AND ${spaltenTraeger}.author_key = ${autor}))${spaceBedingung})`
 +        ` AND ${spaltenTraeger}.author_key = ${autor})))`
        );
      },
--    params: spaces ? [darfVertraulich, betrachter, spaces] : [darfVertraulich, betrachter],
+-    params: spaces ? [rang, betrachter, spaces] : [rang, betrachter],
 +    params: [darfVertraulich, betrachter],
      // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
      // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
      trifftZu(ko): boolean {
-@@ -527,14 +492,7 @@ export interface KonfliktFelder {
+@@ -510,12 +432,11 @@ export async function feldFreigabe(
+     if (!ko || !darfSehen(user, ko)) {
+       return false;
+     }
+-    // Nacharbeit 19: nur ausdrücklich „intern" ist frei kopierbarer Inhalt — eine ungeklärte Stufe
+-    // wird wie vertraulich behandelt (Entscheidung 16), dieselbe Grenze wie `schutzrang`.
+-    if (schutzrang(ko.confidentiality) === 0) {
++    if (!isConfidential(ko.confidentiality)) {
+       return true;
+     }
+-    return istAutor(user, ko);
++    // Leerer/fehlender Autor ist KEINE Autorschaft — dieselbe Zeile wie in `darfSehen:74-76`.
++    return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+   };
+   return { a: await erlaubt(koA), b: await erlaubt(koB) };
+ }
+@@ -571,14 +492,7 @@ export interface KonfliktFelder {
    koA: string;
    koB: string;
    description: string;
@@ -15530,7 +16042,7 @@ index fe1505e98..01fad81f5 100644
  }
  
  export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
-@@ -556,20 +514,10 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
+@@ -600,20 +514,10 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
      return konflikt;
    }
    const detector = konflikt.detector;
@@ -15552,7 +16064,7 @@ index fe1505e98..01fad81f5 100644
      redacted: true,
    };
  }
-@@ -741,11 +689,6 @@ export interface AnhangEntwurf {
+@@ -785,11 +689,6 @@ export interface AnhangEntwurf {
    bodyHtml?: string | null | undefined;
    /** Belegstellen-Originale und Ankerdokumente (`pendingSources`, `anchorDocuments`). */
    objectIds?: readonly (string | null | undefined)[] | undefined;
@@ -15564,7 +16076,7 @@ index fe1505e98..01fad81f5 100644
  }
  
  /**
-@@ -967,55 +910,9 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
+@@ -1011,55 +910,9 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
    return typeof entwurf.bodyHtml === "string" && entwurf.bodyHtml.includes(objectId);
  }
  
@@ -15623,7 +16135,7 @@ index fe1505e98..01fad81f5 100644
  function entwurfGehoert(entwurf: AnhangEntwurf, wer: string | null | undefined): boolean {
    return (
      typeof wer === "string" &&
-@@ -1160,7 +1057,7 @@ async function beurteileAnhangKern(
+@@ -1204,7 +1057,7 @@ async function beurteileAnhangKern(
      // sein `objectIds` nur ein frei geliefertes Feld — die reinste Form der Behauptung.
      funde.push({
        nachgewiesen: entwurfGehoert(entwurf, hochladender),
@@ -17246,6 +17758,18 @@ index 2cd9f540f..e2f4dab3b 100644
 -    return result;
 -  }
  }
+diff --git b/services/auth/index.ts a/services/auth/index.ts
+index f80855cac..1f74fdfda 100644
+--- b/services/auth/index.ts
++++ a/services/auth/index.ts
+@@ -53,5 +53,5 @@ export {
+ export { MELDUNGEN, meldung } from "./src/meldungen";
+ export type { Meldungsschluessel, Sprache } from "./src/meldungen";
+ export { sprache } from "./src/routes";
+-export { AuthError, istFreigabestufe } from "./src/types";
+-export type { Role, User, PublicUser, Session, AuthErrorCode, Freigabestufe } from "./src/types";
++export { AuthError } from "./src/types";
++export type { Role, User, PublicUser, Session, AuthErrorCode } from "./src/types";
 diff --git b/services/auth/src/meldungen.ts a/services/auth/src/meldungen.ts
 index b4912ed55..a8e6b02d5 100644
 --- b/services/auth/src/meldungen.ts
@@ -17418,10 +17942,31 @@ index becb62733..4a73d2120 100644
        if (now - entry.windowStartedAt >= this.windowMs) {
          this.entries.delete(key);
 diff --git b/services/auth/src/repo-pg.ts a/services/auth/src/repo-pg.ts
-index bc92b916a..2b5cba8a0 100644
+index 55ead4f2b..2b5cba8a0 100644
 --- b/services/auth/src/repo-pg.ts
 +++ a/services/auth/src/repo-pg.ts
-@@ -88,11 +88,6 @@ CREATE TABLE IF NOT EXISTS password_resets (
+@@ -2,7 +2,7 @@ import type { Pool } from "pg";
+ import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
+ import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
+ import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
+-import { type Role, type Session, type User, istFreigabestufe } from "./types";
++import type { Role, Session, User } from "./types";
+ 
+ // Postgres-Adapter für auth. Das Modul besitzt seine Tabellen (keine geteilten Tabellen).
+ export const AUTH_SCHEMA = `
+@@ -42,11 +42,6 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject text;
+ -- Bestandskonto eine Befristung andichten — und da die Spalte den Zugang SPERRT, waere das keine
+ -- kosmetische Unsauberkeit, sondern ein Aussperren der ganzen Instanz bei der naechsten Migration.
+ ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at text;
+--- aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche Freigabeniveau.
+--- NULL-bar und OHNE Vorgabewert: „nicht gesetzt" ist ein gültiger Zustand und heißt „Übergangsregel"
+--- (services/app/src/sichtbarkeit.ts). Ein Vorgabewert würde jedem Bestandskonto eine Freigabe
+--- andichten, die niemand erteilt hat.
+-ALTER TABLE users ADD COLUMN IF NOT EXISTS freigabe text;
+ -- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
+ -- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
+ -- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
+@@ -93,11 +88,6 @@ CREATE TABLE IF NOT EXISTS password_resets (
  // diese Zeile eine Annahme mit benanntem Restrisiko — nach dem Muster, das `docs/TEAM6_UPDATE.md`
  // fuer `pg_trgm` bereits verwendet.
  //
@@ -17433,11 +17978,63 @@ index bc92b916a..2b5cba8a0 100644
  // ZUSAETZLICH faehrt der
  // AuthService uebergangsweise Dual-Read (Hash zuerst, dann Klartext mit In-Place-Rehashing, s.
  // findSessionDualRead): selbst ein Rolling-Deploy mit kurzzeitigem Altprozess erzeugt damit KEIN
+@@ -156,8 +146,6 @@ interface UserRow {
+   // nicht, und `toUser` faellt dann auf „nicht befristet" zurueck. Das ist fuer sie richtig: eine
+   // fehlende Spalte darf keinen Zugang sperren.
+   access_expires_at?: string | null;
+-  // Nacharbeit 19: optional getypt aus demselben Grund — vor der Migration fehlt die Spalte.
+-  freigabe?: string | null;
+ }
+ 
+ function toUser(row: UserRow): User {
+@@ -192,9 +180,6 @@ function toUser(row: UserRow): User {
+     ...(row.access_expires_at === null || row.access_expires_at === undefined
+       ? {}
+       : { accessExpiresAt: row.access_expires_at }),
+-    // Nacharbeit 19: nur ein bekannter Wert ist ein Niveau. Alles andere (NULL, leer, unbekannt)
+-    // heißt „nicht gesetzt" — und damit Übergangsregel, nie eine höhere Freigabe.
+-    ...(istFreigabestufe(row.freigabe) ? { freigabe: row.freigabe } : {}),
+   };
+ }
+ 
+@@ -303,7 +288,7 @@ export class PgUserRepo implements UserRepo {
+   async update(user: User, tx?: TxContext): Promise<void> {
+     const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+     await ziel.query(
+-      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,oidc_issuer=$11,oidc_subject=$12,access_expires_at=$13,freigabe=$14 WHERE id=$1",
++      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,oidc_issuer=$11,oidc_subject=$12,access_expires_at=$13 WHERE id=$1",
+       [
+         user.id,
+         user.name,
+@@ -327,8 +312,6 @@ export class PgUserRepo implements UserRepo {
+         // SET-Liste, liesse sich eine einmal gesetzte Befristung nie mehr entfernen, und ein Gast
+         // waere dauerhaft ausgesperrt.
+         user.accessExpiresAt ?? null,
+-        // Nacharbeit 19: `?? null` — über genau diesen Weg wird ein Niveau auch wieder ENTZOGEN.
+-        user.freigabe ?? null,
+       ],
+     );
+   }
 diff --git b/services/auth/src/routes.ts a/services/auth/src/routes.ts
-index 6183864e0..390d34d10 100644
+index 2695c8031..390d34d10 100644
 --- b/services/auth/src/routes.ts
 +++ a/services/auth/src/routes.ts
-@@ -1027,14 +1027,11 @@ export function authRoutes(
+@@ -6,13 +6,7 @@ import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
+ import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
+ import { LoginRateLimiter } from "./rate-limit";
+ import { type AuthService, istLesbaresAblaufdatum } from "./service";
+-import {
+-  AuthError,
+-  type AuthErrorCode,
+-  type PublicUser,
+-  type Role,
+-  istFreigabestufe,
+-} from "./types";
++import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
+ 
+ const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
+   EMAIL_TAKEN: 409,
+@@ -1033,14 +1027,11 @@ export function authRoutes(
          // Behoben ist das an seiner Ursache (`service.approveUser` schreibt eine Kopie), nicht
          // durch eine zweite Aufräumstelle hier — die hätte denselben Fehler nur später gemacht.
          // ────────────────────────────────────────────────────────────────────────────────────
@@ -17457,11 +18054,67 @@ index 6183864e0..390d34d10 100644
          let user: PublicUser = created;
          try {
            // `null` und „fehlt" laufen hier gemeinsam vorbei: beide heissen „unbefristet", und für
+@@ -1171,9 +1162,6 @@ export function authRoutes(
+         approve?: unknown;
+         password?: unknown;
+         accessExpiresAt?: unknown;
+-        // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau —
+-        // eine der drei Stufen, oder `null` zum Entziehen (Übergangsregel).
+-        freigabe?: unknown;
+       };
+     }>("/api/users/:id", async (request, reply) => {
+       const admin = await requireAdmin(request, reply);
+@@ -1181,7 +1169,7 @@ export function authRoutes(
+         return;
+       }
+       const { id } = request.params;
+-      const { role, approve, password, accessExpiresAt, freigabe } = request.body;
++      const { role, approve, password, accessExpiresAt } = request.body;
+       try {
+         // ────────────────────────────────────────────────────────────────────────────────────────
+         // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
+@@ -1225,10 +1213,6 @@ export function authRoutes(
+         ) {
+           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+         }
+-        // Nacharbeit 19: nur eine bekannte Stufe oder `null` — dieselbe Form-Wache wie oben.
+-        if (freigabe !== undefined && freigabe !== null && !istFreigabestufe(freigabe)) {
+-          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+-        }
+         let user: PublicUser | undefined;
+         if (approve === true) {
+           user = await service.approveUser(id, admin.id);
+@@ -1252,9 +1236,6 @@ export function authRoutes(
+             admin.id,
+           );
+         }
+-        if (freigabe !== undefined) {
+-          user = await service.setFreigabe(id, freigabe === null ? undefined : freigabe, admin.id);
+-        }
+         if (user) {
+           reply.code(200).send(user);
+         } else {
 diff --git b/services/auth/src/service.ts a/services/auth/src/service.ts
-index 8ceb3c1d3..c3ca44fd7 100644
+index 4e547f70b..c3ca44fd7 100644
 --- b/services/auth/src/service.ts
 +++ a/services/auth/src/service.ts
-@@ -222,14 +222,7 @@ export class AuthService {
+@@ -10,14 +10,7 @@ import {
+   type SessionRepo,
+   type UserRepo,
+ } from "./repo";
+-import {
+-  AuthError,
+-  type Freigabestufe,
+-  type PublicUser,
+-  type Role,
+-  type Session,
+-  type User,
+-} from "./types";
++import { AuthError, type PublicUser, type Role, type Session, type User } from "./types";
+ 
+ const MIN_PASSWORD_LENGTH = 8;
+ const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 Tage
+@@ -229,14 +222,7 @@ export class AuthService {
    }
  
    // FR-AUTH-01 (erstes Konto = Admin) + FR-AUTH-02 (Selbstregistrierung, gesperrt bis Freigabe).
@@ -17477,7 +18130,7 @@ index 8ceb3c1d3..c3ca44fd7 100644
      if (input.password.length < MIN_PASSWORD_LENGTH) {
        throw new AuthError("WEAK_PASSWORD", "WEAK_PASSWORD" satisfies Meldungsschluessel);
      }
-@@ -252,33 +245,14 @@ export class AuthService {
+@@ -259,33 +245,14 @@ export class AuthService {
      if ((await this.users.count()) === 0) {
        const admin: User = { ...base, role: "admin", approved: true };
        if (await this.users.tryClaimBootstrapAdmin(admin)) {
@@ -17511,7 +18164,35 @@ index 8ceb3c1d3..c3ca44fd7 100644
    // FR-AUTH-03: Login nur mit korrekten, freigegebenen Daten; FR-AUTH-05: Hash-Prüfung.
    async login(input: LoginInput): Promise<{ token: string; user: PublicUser }> {
      const user = await this.users.findByEmail(input.email);
-@@ -1105,11 +1079,6 @@ export class AuthService {
+@@ -467,27 +434,6 @@ export class AuthService {
+    * bedeutet. Was der Mensch sieht, ist an BEIDEN Wegen dasselbe (G6); der zu grobe Code darunter
+    * bleibt als offener Punkt benannt, statt still zu einer zweiten Auslegung zu werden.
+    */
+-  /**
+-   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche Freigabeniveau
+-   * setzen oder (`undefined`) entziehen. Wirkt beim nächsten Abruf: die Sitzung liest das Konto je
+-   * Anfrage neu (`makeGuards`). Vor dem Schreiben steht der Vermerk mit altem und neuem Niveau.
+-   */
+-  async setFreigabe(
+-    userId: string,
+-    freigabe: Freigabestufe | undefined,
+-    actorId: string,
+-  ): Promise<PublicUser> {
+-    const user = await this.requireUser(userId);
+-    const { freigabe: vorher, ...ohneFreigabe } = user;
+-    const aktualisiert: User = freigabe === undefined ? ohneFreigabe : { ...user, freigabe };
+-    await this.gemeinsamSchreiben(async (tx) => {
+-      const vermerk = { vorher: vorher ?? null, nachher: freigabe ?? null };
+-      await this.record(actorId, "user.freigabe-set", userId, vermerk, tx);
+-      await this.users.update(aktualisiert, tx);
+-    });
+-    return toPublic(aktualisiert);
+-  }
+-
+   async setAccessExpiry(
+     userId: string,
+     expiresAt: string | undefined,
+@@ -1133,11 +1079,6 @@ export class AuthService {
    // ist geschützt (kein Selbst-Aussperren des Systems).
    async deleteUser(userId: string, actorId: string): Promise<void> {
      const user = await this.requireUser(userId);
@@ -17523,7 +18204,7 @@ index 8ceb3c1d3..c3ca44fd7 100644
      // JOB 3784: Prüfung UND Schreiben in EINEM Rahmen — s. UserRepo.withAdminGuard.
      await this.users.withAdminGuard(async (tx) => {
        if (user.role === "admin" && user.approved && (await this.isLastApprovedAdmin(userId, tx))) {
-@@ -1118,10 +1087,7 @@ export class AuthService {
+@@ -1146,10 +1087,7 @@ export class AuthService {
        await this.users.delete(userId, tx);
      });
      await this.sessions.deleteByUser(userId);
@@ -17535,6 +18216,40 @@ index 8ceb3c1d3..c3ca44fd7 100644
    }
  
    // SCRUM-443: Ist dieser Nutzer der letzte freigegebene Admin? (Grundlage des Last-Admin-Schutzes.)
+diff --git b/services/auth/src/types.ts a/services/auth/src/types.ts
+index 06e525649..1103823c8 100644
+--- b/services/auth/src/types.ts
++++ a/services/auth/src/types.ts
+@@ -1,17 +1,5 @@
+ export type Role = "viewer" | "experte" | "controller" | "admin";
+ 
+-/**
+- * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) — DAS PERSÖNLICHE FREIGABENIVEAU (Variante B,
+- * Entscheidung 15 vom 11.10.2026: „persönliches Freigabeniveau plus Objekt-/Gruppenrechte").
+- * Bis zu welcher Vertraulichkeitsstufe dieser Mensch Wissensobjekte lesen darf. Dieselben drei
+- * Werte wie die Stufe am Objekt; eigener Typ, weil `auth` das Datenmodell nicht importiert.
+- */
+-export type Freigabestufe = "intern" | "vertraulich" | "streng_vertraulich";
+-
+-export function istFreigabestufe(wert: unknown): wert is Freigabestufe {
+-  return wert === "intern" || wert === "vertraulich" || wert === "streng_vertraulich";
+-}
+-
+ export interface User {
+   id: string;
+   name: string;
+@@ -61,11 +49,6 @@ export interface User {
+   // Ablauf einer Sitzung: `Session.expiresAt` hat seine eigene, unberuehrte Bedeutung — zwei
+   // Ablaufbegriffe, die sich vermischen, waeren der eigentliche Fehler.
+   accessExpiresAt?: string;
+-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau, gesetzt von
+-  // der Verwaltung (`PUT /api/users/:id`, Feld `freigabe`). OPTIONAL: fehlt es, gilt die
+-  // Übergangsregel in `services/app/src/sichtbarkeit.ts` (`freigaberang`) — sie öffnet NIE
+-  // „streng vertraulich"; das braucht immer ein ausdrücklich gesetztes Niveau.
+-  freigabe?: Freigabestufe;
+ }
+ 
+ export interface Session {
 diff --git b/services/capture/index.ts a/services/capture/index.ts
 index b88fc2e31..89eec7836 100644
 --- b/services/capture/index.ts
@@ -21662,6 +22377,39 @@ index 3b3daff46..8c39f96fb 100644
    KoSource,
    KoSourceKind,
    KoSourceRestrictions,
+diff --git b/services/knowledge-object/src/confidentiality.ts a/services/knowledge-object/src/confidentiality.ts
+index 66f822008..8c1b0ea49 100644
+--- b/services/knowledge-object/src/confidentiality.ts
++++ a/services/knowledge-object/src/confidentiality.ts
+@@ -1,9 +1,7 @@
+ // SCRUM-415: Vertraulichkeitsstufen je Wissensobjekt — reine, testbare Helfer (kein Zustand).
+ // „intern" ist der Standard (Öffentlich-intern, keine Einschränkung). „vertraulich" und
+ // „streng_vertraulich" gelten als vertraulich: solche KOs gehen NIE in externe Kontexte
+-// (Output Factory/Export). Fehlt das Feld ganz (Alt-KOs), legen DIESE Helfer „intern" aus — für
+-// die Sichtbarkeit gilt das nicht mehr (Entscheidung 16, `schutzrang` in services/app/src/
+-// sichtbarkeit.ts: ungeklärt = geschützt).
++// (Output Factory/Export). Fehlt das Feld ganz (Alt-KOs), gilt ebenfalls „intern".
+ import type { Confidentiality } from "./types";
+ 
+ export const CONFIDENTIALITY_LEVELS: readonly Confidentiality[] = [
+@@ -68,12 +66,11 @@ export function isConfidential(level: Confidentiality | undefined | null): boole
+ // falsch für eine AUSKUNFT: sie behauptete eine Einstufung, die nie jemand gesetzt hat. Dieselbe
+ // Zeile zieht `classificationValueOf` (search-projection.ts:160-172) mit derselben Begründung.
+ //
+-// DIE BENANNTE GRENZE: DIES IST EINE AUSKUNFT, KEIN TOR. Für den ZUGRIFF gilt `darfSehen`/
+-// `sichtbareFuer` (services/app/src/sichtbarkeit.ts), und DORT ist eine fehlende oder unbekannte
+-// Stufe seit aufnahme:20260922:gesamt-leserechte, Nacharbeit 19 (Entscheidung 16 vom 11.10.2026)
+-// UNGEKLÄRT und wie vertraulich geschützt (`schutzrang`). `normalizeConfidentiality` und
+-// `isConfidential` hier bleiben Anzeige- und Egress-Hilfen; über die Sichtbarkeit entscheiden sie
+-// nicht. Jeder Aufrufer wendet die Auskunft NACH seinem Tor an.
++// DIE BENANNTE GRENZE: DIES IST EINE AUSKUNFT, KEIN TOR. Für den ZUGRIFF gilt weiterhin und
++// unverändert `darfSehen`/`sichtbareFuer` (services/app/src/sichtbarkeit.ts), und DORT gilt eine
++// fehlende Stufe weiter als „intern" (ebd. :39-43: „eine zweite Auslegung derselben Stufe wäre
++// genau die zweite Wahrheit"). Hier wird nichts verschärft und nichts gelockert; hier wird nur
++// BENANNT, was der Bestand hergibt. Jeder Aufrufer wendet die Auskunft deshalb NACH seinem Tor an.
+ 
+ /**
+  * WOHER die ausgegebene Stufe stammt.
 diff --git b/services/knowledge-object/src/geltung.ts a/services/knowledge-object/src/geltung.ts
 deleted file mode 100644
 index 5b224180d..000000000
@@ -25564,7 +26312,7 @@ index 62735e419..000000000
 -  };
 -}
 diff --git b/services/library-analytics/src/service.ts a/services/library-analytics/src/service.ts
-index 29de2da9c..86ca03be6 100644
+index 340dae0ef..86ca03be6 100644
 --- b/services/library-analytics/src/service.ts
 +++ a/services/library-analytics/src/service.ts
 @@ -22,7 +22,6 @@ import {
@@ -25594,7 +26342,7 @@ index 29de2da9c..86ca03be6 100644
    InMemoryCandidateRepo,
    MAX_SOURCE_VERSION,
    importProviderKey,
-@@ -81,14 +72,6 @@ import {
+@@ -81,20 +72,6 @@ import {
  export const EXPORT_NO_CHECK_NOTE =
    "Hinweis: Diese Ausgabe trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
  
@@ -25604,12 +26352,18 @@ index 29de2da9c..86ca03be6 100644
 -  ids?: readonly string[];
 -  includeConfidential?: boolean;
 -  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
+-  /**
+-   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): die Lesepolicy des Exportierenden
+-   * (`sichtbarkeitsfilterFuer`) — persönliches Freigabeniveau, ungeklärte Stufen, Spaces. Sie tritt
+-   * NEBEN `includeConfidential`, nie an seine Stelle: exportiert wird nur, was beide zulassen.
+-   */
+-  sichtbar?: (ko: KnowledgeObject) => boolean;
 -}
 -
  export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
  
  // AUFTRAG-mega68: Deckel der Nachbarschafts-Auskunft. 12 Nachbarn füllen die Detailseiten-Fläche,
-@@ -680,13 +663,6 @@ export interface LibraryServiceDeps {
+@@ -686,13 +663,6 @@ export interface LibraryServiceDeps {
     * unterscheidet genau daran (`apps/web/src/api/types.ts`, `Graph.kuratierteKanten`).
     */
    kanten?: KuratierteKantenLeser;
@@ -25623,7 +26377,7 @@ index 29de2da9c..86ca03be6 100644
  }
  
  /**
-@@ -707,33 +683,11 @@ function increment(map: Record<string, number>, key: string): void {
+@@ -713,33 +683,11 @@ function increment(map: Record<string, number>, key: string): void {
    map[key] = (map[key] ?? 0) + 1;
  }
  
@@ -25659,7 +26413,7 @@ index 29de2da9c..86ca03be6 100644
  export function sanitizeImportConfidentiality(raw: unknown): Confidentiality | undefined {
    if (raw === undefined || raw === null) {
      return undefined;
-@@ -924,11 +878,9 @@ export class LibraryService {
+@@ -930,11 +878,9 @@ export class LibraryService {
    // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
    // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
    private readonly kanten: KuratierteKantenLeser | undefined;
@@ -25672,7 +26426,7 @@ index 29de2da9c..86ca03be6 100644
    private readonly externalSources: ExternalSourceRepo | undefined;
    // R-0169 (Nacharbeit 5): die interne Dokumentakte; `undefined` = nicht verdrahtet (s. Deps).
    private readonly dokumente: DokumentaktenService | undefined;
-@@ -943,7 +895,6 @@ export class LibraryService {
+@@ -949,7 +895,6 @@ export class LibraryService {
      this.externalUpsert = deps.externalUpsert ?? false;
      this.annahmeWartezeitMs = deps.annahmeWartezeitMs ?? ANNAHME_WARTEZEIT_MS;
      this.kanten = deps.kanten;
@@ -25680,7 +26434,7 @@ index 29de2da9c..86ca03be6 100644
      this.externalSources = deps.externalSources;
      this.dokumente = deps.dokumente;
    }
-@@ -1004,14 +955,6 @@ export class LibraryService {
+@@ -1010,14 +955,6 @@ export class LibraryService {
      return confidentiality === undefined ? item : { ...item, confidentiality };
    }
  
@@ -25695,7 +26449,7 @@ index 29de2da9c..86ca03be6 100644
    // SCRUM-116: JSON-Re-Import erzeugt Review-Kandidaten (keine stille Bulk-Anlage).
    //
    // ==============================================================================================
-@@ -1066,9 +1009,8 @@ export class LibraryService {
+@@ -1072,9 +1009,8 @@ export class LibraryService {
      rawItems: readonly ImportItem[],
      actor = "system",
      pruefeDublette?: DublettenPruefung,
@@ -25707,7 +26461,7 @@ index 29de2da9c..86ca03be6 100644
    ): Promise<ImportCandidate[]> {
      // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
      // WP-IC-PAKET-1d (bens sammel9-ROT): ZENTRALE Codec-Erzeugungsregel. Dies ist DIE eine Stelle,
-@@ -1082,9 +1024,7 @@ export class LibraryService {
+@@ -1088,9 +1024,7 @@ export class LibraryService {
        const { [DATEIWEG_VERMERK]: _clientVermerk, ...ohneVermerk } = item as ImportItem &
          Record<string, unknown>;
        return {
@@ -25718,7 +26472,7 @@ index 29de2da9c..86ca03be6 100644
          textCodec: "decoded",
          // NACHARBEIT 3 (bens F1): auch ein Eintrag mit Quellverweis ohne Kennung trägt den Vermerk.
          // NACHARBEIT 5 (R-0169): und JEDER über den Dateiweg eingereichte Eintrag — auch einer ganz
-@@ -1105,11 +1045,6 @@ export class LibraryService {
+@@ -1111,11 +1045,6 @@ export class LibraryService {
          await this.pruefeAktenEintrag(item);
        }
      }
@@ -25730,7 +26484,7 @@ index 29de2da9c..86ca03be6 100644
      const pruefung = erzwingeDublettenpruefung(pruefeDublette);
      const existing = await this.koService.list();
      // Pass 1: exakter Schlüssel → getroffener Partner. Der ERSTE Träger eines Schlüssels gewinnt,
-@@ -1354,14 +1289,11 @@ export class LibraryService {
+@@ -1360,14 +1289,11 @@ export class LibraryService {
          }
        }
      }
@@ -25746,7 +26500,7 @@ index 29de2da9c..86ca03be6 100644
      });
      return persisted;
    }
-@@ -1756,9 +1688,6 @@ export class LibraryService {
+@@ -1762,9 +1688,6 @@ export class LibraryService {
          "Kandidat wurde bereits bearbeitet oder wird gerade bearbeitet.",
        );
      }
@@ -25756,7 +26510,7 @@ index 29de2da9c..86ca03be6 100644
      // Erst NACH erfolgreicher KO-Erzeugung gesetzt — steuert den Fehlerpfad (s. Kopfkommentar (4)).
      let createdKoId: string | null = null;
      let resolved: ImportCandidate | undefined;
-@@ -1813,10 +1742,7 @@ export class LibraryService {
+@@ -1819,10 +1742,7 @@ export class LibraryService {
        // nie sanitisiert. Unmittelbar VOR acceptToKo erneut sanitisieren — sonst würde ein
        // ungültiger Altwert im Re-Sync-Ranking auf „intern" normalisiert (fail-open) bzw. bei
        // der Erstanlage hart abgelehnt. Das bereinigte Item wird MIT persistiert.
@@ -25768,7 +26522,7 @@ index 29de2da9c..86ca03be6 100644
        // NACHARBEIT 2 (bens F1, Hauptstand): über den Dateiweg eingereichte Quellangaben
        // bleiben erhalten.
        const ausgang = await this.acceptToKo(
-@@ -1863,7 +1789,7 @@ export class LibraryService {
+@@ -1869,7 +1789,7 @@ export class LibraryService {
      ): Promise<ClaimResolution> => {
        const mitbewerber = await this.mitbewerberNebenAnlage(candidate, eigeneKoId, pruefeDublette);
        if (mitbewerber === undefined) {
@@ -25777,7 +26531,7 @@ index 29de2da9c..86ca03be6 100644
          if (this.ankerWeg(candidate)) {
            neuerBefund = { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } };
          }
-@@ -2096,8 +2022,6 @@ export class LibraryService {
+@@ -2102,8 +2022,6 @@ export class LibraryService {
      // BEDINGT gelöscht (clearAuditPending: nur die eigene eventId); wirft es, bleibt sie stehen
      // und die API-Antwort weist den Schwebezustand ehrlich aus. Zusätzlich LAUTES, PII-freies
      // Log (dieselbe Semantik wie Cleanup-Regel 5).
@@ -25786,7 +26540,7 @@ index 29de2da9c..86ca03be6 100644
      let auditRecorded = false;
      try {
        // recordOnce false (ein paralleler Nachzug war schneller) zählt als gesichert — der Beleg
-@@ -2204,23 +2128,6 @@ export class LibraryService {
+@@ -2210,23 +2128,6 @@ export class LibraryService {
    // bleibt es bei der exakten Form.
    async recoverStaleReviewClaims(
      pruefeDublette?: DublettenPruefung,
@@ -25810,7 +26564,7 @@ index 29de2da9c..86ca03be6 100644
    ): Promise<{ completed: number; released: number }> {
      const nowMs = this.now();
      const stale = (await this.candidates.all()).filter(
-@@ -2716,7 +2623,7 @@ export class LibraryService {
+@@ -2722,7 +2623,7 @@ export class LibraryService {
    // Hauptstand-Integration: `weg` (R-0139/R-0169, Auftrag herkunft-identitaet) und `sperreGilt`
    // stehen nebeneinander; ein verweigerter Anker-Treffer am direkten Weg kommt als `koId: ""`.
    private async acceptToKo(
@@ -25819,7 +26573,7 @@ index 29de2da9c..86ca03be6 100644
      actor: string,
      candidateId?: string,
      // R-0139 / R-0169: welcher Importweg hier anlegt (Begründung an `ImportWeg`).
-@@ -2755,11 +2662,6 @@ export class LibraryService {
+@@ -2761,11 +2662,6 @@ export class LibraryService {
      // gleich), einschliesslich des Falls „beide ohne externalId".
      const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
        ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(item.provider, externalId);
@@ -25831,7 +26585,7 @@ index 29de2da9c..86ca03be6 100644
      const anker = externalId ? await this.sucheAnkerKo(matchesAnchor) : undefined;
      // NACHARBEIT 2 (bens F3): am direkten Weg entscheidet das Recht am Zielobjekt, BEVOR adoptiert,
      // eine Kennung zurückgegeben, eingestuft oder überarbeitet wird. Ein getrashtes Ziel ist dort nie
-@@ -2834,13 +2736,8 @@ export class LibraryService {
+@@ -2840,13 +2736,8 @@ export class LibraryService {
        // Importstufe wird respektiert. Ziel = die höhere aus (aktueller Stufe, Import-Boden) → nie ein
        // Downgrade über Re-Sync. Der Upgrade läuft durch setConfidentiality (transaktional: Lock + CAS +
        // Audit) und wird von der nachfolgenden revise() nicht angetastet.
@@ -25846,7 +26600,7 @@ index 29de2da9c..86ca03be6 100644
        const target =
          confidentialityRank(importFloor) > confidentialityRank(currentConf)
            ? importFloor
-@@ -2858,26 +2755,9 @@ export class LibraryService {
+@@ -2864,26 +2755,9 @@ export class LibraryService {
        if (incoming > current) {
          // bens F3: nur der Anker DESSELBEN Providers wird fortgeschrieben — ein gleichnamiger
          // Anker eines anderen Providers am selben KO bliebe unangetastet.
@@ -25875,7 +26629,7 @@ index 29de2da9c..86ca03be6 100644
          ];
          // ==========================================================================================
          // AUFTRAG-mega82 BLOCK A — WER IMPORTIERT, HANDELT. WER IM IMPORT GENANNT WIRD, HANDELT NICHT.
-@@ -2969,18 +2849,18 @@ export class LibraryService {
+@@ -2975,18 +2849,18 @@ export class LibraryService {
          author: actor,
          ...quellautorVon(item),
          tags: item.tags ?? [],
@@ -25899,7 +26653,7 @@ index 29de2da9c..86ca03be6 100644
            : weg.quellverweisOhneKennung && hatQuellverweis(item)
              ? { sources: [this.quellverweis(item, actor)] }
              : this.originalquelleOhneAnker(item, actor)),
-@@ -3146,171 +3026,6 @@ export class LibraryService {
+@@ -3152,171 +3026,6 @@ export class LibraryService {
      return undefined;
    }
  
@@ -26071,7 +26825,7 @@ index 29de2da9c..86ca03be6 100644
    // ==============================================================================================
    // JOB 3081 — DIE EINE ANKER-SUCHE, UND SIE SIEHT DEN PAPIERKORB.
    // ==============================================================================================
-@@ -3362,39 +3077,6 @@ export class LibraryService {
+@@ -3368,39 +3077,6 @@ export class LibraryService {
    // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
    // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
    // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
@@ -26111,7 +26865,7 @@ index 29de2da9c..86ca03be6 100644
    // R-0180 (bens F2): die Originalquelle eines Imports OHNE wirksame externe Kennung. Nur eine
    // sichere URL (`safeSourceUrl`: absolut, http/https) wird übernommen — eine verworfene URL
    // erzeugt KEINE Quelle (eine leere Quellenzeile wäre eine Herkunftsbehauptung ohne Inhalt).
-@@ -3425,20 +3107,11 @@ export class LibraryService {
+@@ -3431,20 +3107,11 @@ export class LibraryService {
  
    // R-0169: `sourceRecordId` = die festgeschriebene Quellrevision dieser Fassung (falls verdrahtet).
    private buildSource(
@@ -26133,7 +26887,7 @@ index 29de2da9c..86ca03be6 100644
      return {
        ...(sourceRecordId ? { sourceRecordId } : {}),
        id: this.genId(),
-@@ -3454,20 +3127,7 @@ export class LibraryService {
+@@ -3460,20 +3127,7 @@ export class LibraryService {
        // (KO-seitig weiterhin so genanntes) spaceKey-Container-Label — der Match läuft NUR über externalId.
        ...(item.externalId ? { externalId: item.externalId } : {}),
        ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
@@ -26154,7 +26908,7 @@ index 29de2da9c..86ca03be6 100644
        // package:confluence (K6): die Lese-Einschränkung der Quelle zu DIESER Fassung — als Kopie,
        // damit keine spätere Änderung am Kandidaten den gespeicherten Anker mitverändert. Erst-
        // anlage und Re-Sync (neue Quellversion) laufen beide hierdurch; eine geänderte Einschränkung
-@@ -3634,14 +3294,11 @@ export class LibraryService {
+@@ -3640,14 +3294,11 @@ export class LibraryService {
      opts: { trim?: KoSichtbarkeitstrim } = {},
    ): Promise<KnowledgeObject[]> {
      const q = query.trim().toLowerCase();
@@ -26170,7 +26924,7 @@ index 29de2da9c..86ca03be6 100644
      }
      // G27 R1 (Entscheidung 04 §5): HIER STAND DER GEDECKELTE NACHZUG — ersatzlos entfallen.
      // Der reguläre Suchpfad darf funktional nicht mehr von ihm abhängen; er ist Wartung, nicht
-@@ -3691,7 +3348,7 @@ export class LibraryService {
+@@ -3697,7 +3348,7 @@ export class LibraryService {
      const out: KnowledgeObject[] = [];
      for (const ko of list) {
        const hit = treffer.get(ko.id);
@@ -26179,7 +26933,7 @@ index 29de2da9c..86ca03be6 100644
          continue;
        }
        // WP-BILD-1e/1g: das Fußnotenfeld reist im Treffer mit — der Client kennzeichnet damit die
-@@ -3724,34 +3381,20 @@ export class LibraryService {
+@@ -3730,36 +3381,20 @@ export class LibraryService {
    // die Output Factory (services/output): NUR validierte KOs (nicht-validierte nie im regulären
    // Export) und KEINE vertraulichen KOs — außer der Aufrufer ist berechtigt (includeConfidential,
    // in der Route an ko.validate gebunden: Controller/Admin). Fail-closed by default.
@@ -26194,10 +26948,12 @@ index 29de2da9c..86ca03be6 100644
 +  ): Promise<KnowledgeObject[]> {
      const list = await this.koService.list({ status: "validiert" });
      const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
--    const items = opts.includeConfidential
+-    const stufeErlaubt = opts.includeConfidential
 +    return opts.includeConfidential
        ? scoped
        : scoped.filter((ko) => !isConfidential(ko.confidentiality));
+-    const sichtbar = opts.sichtbar;
+-    const items = sichtbar ? stufeErlaubt.filter((ko) => sichtbar(ko)) : stufeErlaubt;
 -    if (opts.beleg) {
 -      await this.audit?.record({
 -        actor: opts.beleg.actor,
@@ -26222,7 +26978,7 @@ index 29de2da9c..86ca03be6 100644
      const items = await this.exportJson(opts);
      // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz steht VOR dem ersten Inhalt. Er stand in
      // allen vier Ausgabewegen hinter dem gesamten Dokument — bei einem langen Export liest ihn
-@@ -3765,7 +3408,10 @@ export class LibraryService {
+@@ -3773,7 +3408,10 @@ export class LibraryService {
    }
  
    // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
@@ -26234,7 +26990,7 @@ index 29de2da9c..86ca03be6 100644
      const items = await this.exportJson(opts);
      // mega31 B: Exportkopf mit dem Warnsatz, VOR dem ersten Wissensobjekt (s. exportMediaWiki).
      const body = items
-@@ -3792,7 +3438,10 @@ export class LibraryService {
+@@ -3800,7 +3438,10 @@ export class LibraryService {
    }
  
    // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
@@ -26246,7 +27002,7 @@ index 29de2da9c..86ca03be6 100644
      const items = await this.exportJson(opts);
      const esc = (s: string): string =>
        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-@@ -4023,8 +3672,8 @@ export class LibraryService {
+@@ -4031,8 +3672,8 @@ export class LibraryService {
          author: actor,
          ...quellautorVon(item),
          tags: item.tags ?? [],
@@ -26257,7 +27013,7 @@ index 29de2da9c..86ca03be6 100644
          // ==========================================================================================
          // JOB 4293 — DER DIREKTE IMPORTWEG VERLOR DEN DOKUMENTTEXT, UND ZWAR ALS EINZIGER.
          // ==========================================================================================
-@@ -4506,173 +4155,4 @@ export class LibraryService {
+@@ -4514,173 +4155,4 @@ export class LibraryService {
      }
      return { total: list.length, byStatus, byType, byCategory };
    }

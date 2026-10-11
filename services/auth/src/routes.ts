@@ -6,7 +6,13 @@ import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
 import { type AuthService, istLesbaresAblaufdatum } from "./service";
-import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
+import {
+  AuthError,
+  type AuthErrorCode,
+  type PublicUser,
+  type Role,
+  istFreigabestufe,
+} from "./types";
 
 const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
   EMAIL_TAKEN: 409,
@@ -1165,6 +1171,9 @@ export function authRoutes(
         approve?: unknown;
         password?: unknown;
         accessExpiresAt?: unknown;
+        // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau —
+        // eine der drei Stufen, oder `null` zum Entziehen (Übergangsregel).
+        freigabe?: unknown;
       };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
@@ -1172,7 +1181,7 @@ export function authRoutes(
         return;
       }
       const { id } = request.params;
-      const { role, approve, password, accessExpiresAt } = request.body;
+      const { role, approve, password, accessExpiresAt, freigabe } = request.body;
       try {
         // ────────────────────────────────────────────────────────────────────────────────────────
         // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
@@ -1216,6 +1225,10 @@ export function authRoutes(
         ) {
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
+        // Nacharbeit 19: nur eine bekannte Stufe oder `null` — dieselbe Form-Wache wie oben.
+        if (freigabe !== undefined && freigabe !== null && !istFreigabestufe(freigabe)) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
         let user: PublicUser | undefined;
         if (approve === true) {
           user = await service.approveUser(id, admin.id);
@@ -1238,6 +1251,9 @@ export function authRoutes(
             accessExpiresAt === null ? undefined : accessExpiresAt,
             admin.id,
           );
+        }
+        if (freigabe !== undefined) {
+          user = await service.setFreigabe(id, freigabe === null ? undefined : freigabe, admin.id);
         }
         if (user) {
           reply.code(200).send(user);

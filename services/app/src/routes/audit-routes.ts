@@ -8,7 +8,7 @@ import {
 } from "../../../audit";
 import type { Guards, SessionUser } from "../http";
 import { LESEVARIANTEN_LADE_AKTION, LESEVARIANTEN_LADE_PROTOKOLLFELDER } from "../lesevarianten";
-import { type SichtbarkeitsFakten, darfSehen } from "../sichtbarkeit";
+import { type SichtbarkeitsFakten, darfSehen, freigaberang } from "../sichtbarkeit";
 
 /** Wer die Befunde (Konflikte, Überschneidungen) eines Objekts kennt — nur deren Kennungen. */
 export interface BefundKennungen {
@@ -30,12 +30,13 @@ export interface AuditLeseQuelle {
 // aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 13–15) — DAS PROTOKOLL NACH LESERECHT.
 // ================================================================================================
 //
-// WER IST EINGESCHRÄNKT. Jeder Leser dieser Routen hat `ko.validate` und sieht damit auch
-// Vertrauliches; was ihm `darfSehen` vorenthält, liegt allein an Spaces. Eingeschränkt ist deshalb,
-// wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand und jeder Space, den die
-// Kette je genannt hat). Das hängt nur an Spaces und Mitgliedschaft — nicht daran, ob es gerade
-// verborgene Vorgänge gibt. Ein uneingeschränkter Leser bekommt das Protokoll unverändert: Liste,
-// Prüfbericht und die nachrechenbare Kette (R-0613).
+// WER IST EINGESCHRÄNKT. Seit Variante B (Nacharbeit 19) öffnet `ko.validate` nicht mehr jede
+// Stufe: was `darfSehen` vorenthält, liegt an Spaces UND am persönlichen Freigabeniveau.
+// Eingeschränkt ist deshalb, wer mindestens einen bekannten Space nicht lesen darf (Space-Bestand
+// und jeder Space, den die Kette je genannt hat) ODER keinen Freigaberang 2 („streng vertraulich",
+// `freigaberang`) hat. Das hängt nur an Spaces, Mitgliedschaft und dem eigenen Niveau — nicht
+// daran, ob es gerade verborgene Vorgänge gibt. Ein uneingeschränkter Leser bekommt das Protokoll
+// unverändert: Liste, Prüfbericht und die nachrechenbare Kette (R-0613).
 //
 // WAS EIN EINGESCHRÄNKTER LESER BEKOMMT — eine Leseransicht, die nichts von verborgenen Vorgängen
 // abhängen lässt:
@@ -131,7 +132,7 @@ async function leselage(
     }
   }
   const lesbar = user.spaceLesbar;
-  const eingeschraenkt = [...spaces].some((s) => lesbar?.has(s) !== true);
+  const eingeschraenkt = freigaberang(user) < 2 || [...spaces].some((s) => lesbar?.has(s) !== true);
   if (!eingeschraenkt) {
     return UNEINGESCHRAENKT;
   }

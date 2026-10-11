@@ -895,9 +895,14 @@ export function libraryRoutes(
       // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
       // nur die validierten, nicht-vertraulichen KOs.
       const includeConfidential = can(user.role, "ko.validate");
+      // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): `ko.validate` allein öffnet nicht mehr
+      // jede Stufe — die Lesepolicy des Exportierenden (persönliches Freigabeniveau, ungeklärte
+      // Stufen, Spaces) begrenzt den Export zusätzlich.
+      const sichtbar = sichtbarkeitsfilterFuer(user);
       // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
       const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
         includeConfidential,
+        sichtbar,
         beleg: { actor: user.id, format },
       });
       if (request.query.format === "markdown") {

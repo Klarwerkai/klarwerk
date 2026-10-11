@@ -21,7 +21,7 @@ import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
-import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { schutzrang, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
 // HÜLLE eines Requests:
@@ -771,7 +771,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             grundlage = sichtbarkeitsfilterFuer(betrachter);
           } else {
             const offen = (await deps.offeneSpaces?.()) ?? new Set<string>();
-            grundlage = (ko) => typeof ko.spaceId !== "string" || offen.has(ko.spaceId);
+            // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): ein Schlüssel hat kein
+            // persönliches Freigabeniveau — Rang 0, also nur ausdrücklich „intern" (Entscheidung
+            // 15/16). Eine ungeklärte Stufe geht nicht an ihn.
+            grundlage = (ko) =>
+              schutzrang(ko.confidentiality) === 0 &&
+              (typeof ko.spaceId !== "string" || offen.has(ko.spaceId));
           }
           // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest oben). Jede Prüfung bis zur
           // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet

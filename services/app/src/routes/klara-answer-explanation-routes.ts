@@ -32,6 +32,7 @@ import type {
   AnswerExplanationLeser,
   AnswerExplanationService,
 } from "../services/answer-explanation";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 export interface KlaraAnswerExplanationDeps {
   readonly explanations: AnswerExplanationService;
@@ -95,9 +96,12 @@ export function klaraAnswerExplanationRoutes(
         }
         // Die Vertraulichkeitsstufe wird an EINER Stelle ausgelegt — hier, aus der Rolle. Der
         // Dienst wendet sie an, statt sie ein zweites Mal zu bilden.
+        // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): die Rolle allein öffnet keine Stufe
+        // mehr — es entscheidet die Lesepolicy (persönliches Freigabeniveau, ungeklärte Stufen).
         const leser: AnswerExplanationLeser = {
           userId: user.id,
           darfVertraulich: user.role === "admin" || user.role === "controller",
+          darfSehen: sichtbarkeitsfilterFuer(user),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
         if (ergebnis.kind === "NOT_FOUND") {

@@ -39,6 +39,12 @@ export interface AnswerExplanationDeps {
 export interface AnswerExplanationLeser {
   readonly userId: string;
   readonly darfVertraulich: boolean;
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): die Lesepolicy des Lesers
+   * (`sichtbarkeitsfilterFuer`). Ist sie da, entscheidet SIE über die Sperre — persönliches
+   * Freigabeniveau, ungeklärte Stufen, Spaces; `darfVertraulich` gilt dann nicht mehr.
+   */
+  readonly darfSehen?: (objekt: KnowledgeObject) => boolean;
 }
 
 export class AnswerExplanationService {
@@ -87,7 +93,10 @@ export class AnswerExplanationService {
         verschwunden.add(ref.knowledgeObjectId);
         continue;
       }
-      if (isConfidential(objekt.confidentiality) && !leser.darfVertraulich) {
+      const gesperrt = leser.darfSehen
+        ? !leser.darfSehen(objekt)
+        : isConfidential(objekt.confidentiality) && !leser.darfVertraulich;
+      if (gesperrt) {
         gesperrteObjekte.add(ref.knowledgeObjectId);
       }
     }

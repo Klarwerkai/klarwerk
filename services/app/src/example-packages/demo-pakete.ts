@@ -603,6 +603,9 @@ async function anlegen(
     neededValidations: 1,
     // Der Gesamt-Purge (DELETE /api/admin/demo-seed) nimmt das Paket weiterhin mit.
     demoSeed: true,
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Entscheidung 16): ohne Stufe gälte das
+    // Paketobjekt als ungeklärt und bliebe eingeschränkt; Beispielwissen ist firmenintern.
+    confidentiality: "intern",
   });
   await freigeben(services, ko.id, actor);
 }

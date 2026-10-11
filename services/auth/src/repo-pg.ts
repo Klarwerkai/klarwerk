@@ -2,7 +2,7 @@ import type { Pool } from "pg";
 import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
-import type { Role, Session, User } from "./types";
+import { type Role, type Session, type User, istFreigabestufe } from "./types";
 
 // Postgres-Adapter für auth. Das Modul besitzt seine Tabellen (keine geteilten Tabellen).
 export const AUTH_SCHEMA = `
@@ -42,6 +42,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject text;
 -- Bestandskonto eine Befristung andichten — und da die Spalte den Zugang SPERRT, waere das keine
 -- kosmetische Unsauberkeit, sondern ein Aussperren der ganzen Instanz bei der naechsten Migration.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at text;
+-- aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche Freigabeniveau.
+-- NULL-bar und OHNE Vorgabewert: „nicht gesetzt" ist ein gültiger Zustand und heißt „Übergangsregel"
+-- (services/app/src/sichtbarkeit.ts). Ein Vorgabewert würde jedem Bestandskonto eine Freigabe
+-- andichten, die niemand erteilt hat.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS freigabe text;
 -- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
 -- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
 -- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
@@ -151,6 +156,8 @@ interface UserRow {
   // nicht, und `toUser` faellt dann auf „nicht befristet" zurueck. Das ist fuer sie richtig: eine
   // fehlende Spalte darf keinen Zugang sperren.
   access_expires_at?: string | null;
+  // Nacharbeit 19: optional getypt aus demselben Grund — vor der Migration fehlt die Spalte.
+  freigabe?: string | null;
 }
 
 function toUser(row: UserRow): User {
@@ -185,6 +192,9 @@ function toUser(row: UserRow): User {
     ...(row.access_expires_at === null || row.access_expires_at === undefined
       ? {}
       : { accessExpiresAt: row.access_expires_at }),
+    // Nacharbeit 19: nur ein bekannter Wert ist ein Niveau. Alles andere (NULL, leer, unbekannt)
+    // heißt „nicht gesetzt" — und damit Übergangsregel, nie eine höhere Freigabe.
+    ...(istFreigabestufe(row.freigabe) ? { freigabe: row.freigabe } : {}),
   };
 }
 
@@ -293,7 +303,7 @@ export class PgUserRepo implements UserRepo {
   async update(user: User, tx?: TxContext): Promise<void> {
     const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
     await ziel.query(
-      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,oidc_issuer=$11,oidc_subject=$12,access_expires_at=$13 WHERE id=$1",
+      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,oidc_issuer=$11,oidc_subject=$12,access_expires_at=$13,freigabe=$14 WHERE id=$1",
       [
         user.id,
         user.name,
@@ -317,6 +327,8 @@ export class PgUserRepo implements UserRepo {
         // SET-Liste, liesse sich eine einmal gesetzte Befristung nie mehr entfernen, und ein Gast
         // waere dauerhaft ausgesperrt.
         user.accessExpiresAt ?? null,
+        // Nacharbeit 19: `?? null` — über genau diesen Weg wird ein Niveau auch wieder ENTZOGEN.
+        user.freigabe ?? null,
       ],
     );
   }

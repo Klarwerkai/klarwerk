@@ -53,5 +53,5 @@ export {
 export { MELDUNGEN, meldung } from "./src/meldungen";
 export type { Meldungsschluessel, Sprache } from "./src/meldungen";
 export { sprache } from "./src/routes";
-export { AuthError } from "./src/types";
-export type { Role, User, PublicUser, Session, AuthErrorCode } from "./src/types";
+export { AuthError, istFreigabestufe } from "./src/types";
+export type { Role, User, PublicUser, Session, AuthErrorCode, Freigabestufe } from "./src/types";

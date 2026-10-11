@@ -13,7 +13,14 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 //
 // NICHT HIER: die externe KI. R-0633 sagt ausdrücklich, sie „folgt ihrer eigenen Freigaberegel" —
 // der Export ist kein KI-Weg, und diese Datei behauptet über KI-Aufrufe nichts.
-async function aufbau() {
+//
+// aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) — VERTRAGSKORREKTUR DURCH ENTSCHEIDUNG 15.
+// Variante B: nicht die Rolle, sondern das persönliche Freigabeniveau öffnet „streng vertraulich".
+// R-0633 gilt deshalb für Admin und Controller MIT diesem Niveau (der Aufbau setzt es über die
+// Nutzerverwaltung); OHNE es bekommen sie „vertraulich", nicht „streng" (eigene Gegenprobe unten).
+// Und Entscheidung 16: ein Objekt ohne Stufe ist ungeklärt — das offene Objekt ist deshalb
+// ausdrücklich „intern" eingestuft, sonst sähe der Experte es zu Recht nicht.
+async function aufbau(opts: { mitFreigabe?: boolean } = { mitFreigabe: true }) {
   const services = buildServices();
   const app = buildApp(services);
   await app.inject({
@@ -30,6 +37,7 @@ async function aufbau() {
     return { authorization: `Bearer ${res.json().token}` };
   };
   const admin = await anmelden("r0633-admin@x.de");
+  const konten: string[] = [];
   for (const role of ["controller", "experte"] as const) {
     const angelegt = await app.inject({
       method: "POST",
@@ -38,6 +46,21 @@ async function aufbau() {
       payload: { name: role, email: `r0633-${role}@x.de`, password: "secret123", role },
     });
     expect(angelegt.statusCode, angelegt.body).toBe(201);
+    if (role === "controller") {
+      konten.push((angelegt.json() as { id: string }).id);
+    }
+  }
+  if (opts.mitFreigabe) {
+    const adminId = (await services.auth.listUsers()).find((u) => u.role === "admin")?.id;
+    for (const id of [adminId, ...konten]) {
+      const res = await app.inject({
+        method: "PUT",
+        url: `/api/users/${id}`,
+        headers: admin,
+        payload: { freigabe: "streng_vertraulich" },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+    }
   }
 
   const ko = services.ko;
@@ -49,6 +72,7 @@ async function aufbau() {
       category: "Anlage 1",
       author: "admin",
       tags: [],
+      confidentiality: "intern",
     });
   const offen = await anlegen("Ventil entlasten");
   await ko.setValidationState(offen.id, { trust: 80, status: "validiert" });
@@ -90,6 +114,16 @@ describe("R-0633 · Export validierter vertraulicher und streng vertraulicher Te
       ]);
     });
   }
+
+  it("GEGENPROBE Variante B: ohne persönliches Niveau nur „vertraulich“, nicht „streng“", async () => {
+    const ctx = await aufbau({ mitFreigabe: false });
+    for (const rolle of ["admin", "controller"] as const) {
+      expect(await exportTitel(ctx.app, ctx[rolle]), rolle).toEqual([
+        "Schichtplan Leitwarte",
+        "Ventil entlasten",
+      ]);
+    }
+  });
 
   it("GEGENPROBE experte: keine der beiden vertraulichen Stufen im Export", async () => {
     const ctx = await aufbau();

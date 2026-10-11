@@ -87,6 +87,12 @@ interface ExportOptionen {
   ids?: readonly string[];
   includeConfidential?: boolean;
   beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): die Lesepolicy des Exportierenden
+   * (`sichtbarkeitsfilterFuer`) — persönliches Freigabeniveau, ungeklärte Stufen, Spaces. Sie tritt
+   * NEBEN `includeConfidential`, nie an seine Stelle: exportiert wird nur, was beide zulassen.
+   */
+  sichtbar?: (ko: KnowledgeObject) => boolean;
 }
 
 export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
@@ -3732,9 +3738,11 @@ export class LibraryService {
   async exportJson(opts: ExportOptionen = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.list({ status: "validiert" });
     const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
-    const items = opts.includeConfidential
+    const stufeErlaubt = opts.includeConfidential
       ? scoped
       : scoped.filter((ko) => !isConfidential(ko.confidentiality));
+    const sichtbar = opts.sichtbar;
+    const items = sichtbar ? stufeErlaubt.filter((ko) => sichtbar(ko)) : stufeErlaubt;
     if (opts.beleg) {
       await this.audit?.record({
         actor: opts.beleg.actor,

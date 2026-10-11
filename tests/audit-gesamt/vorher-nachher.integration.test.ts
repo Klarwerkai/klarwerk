@@ -195,7 +195,21 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit
       payload: { email: "vn@x.de", password: "secret123" },
     });
     expect(login.statusCode, login.body).toBe(200);
-    return { name, db, pa, a, b, headers: { authorization: `Bearer ${login.json().token}` } };
+    const headers = { authorization: `Bearer ${login.json().token}` };
+    // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): die unveränderte Kette geht
+    // nur an, wer alles lesen darf. Der Admin bekommt deshalb das persönliche Niveau „streng
+    // vertraulich" — die Vorher-Fassungen kennen das Feld nicht und lassen es unbeachtet.
+    const konto = reg.json() as { id?: string; user?: { id: string } };
+    const kontoId = konto.id ?? konto.user?.id;
+    expect(kontoId, reg.body).toBeTruthy();
+    const freigabe = await a.inject({
+      method: "PUT",
+      url: `/api/users/${kontoId}`,
+      headers,
+      payload: { freigabe: "streng_vertraulich" },
+    });
+    expect([200, 204], freigabe.body).toContain(freigabe.statusCode);
+    return { name, db, pa, a, b, headers };
   }
 
   beforeAll(async () => {

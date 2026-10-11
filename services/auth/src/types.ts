@@ -1,5 +1,17 @@
 export type Role = "viewer" | "experte" | "controller" | "admin";
 
+/**
+ * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) — DAS PERSÖNLICHE FREIGABENIVEAU (Variante B,
+ * Entscheidung 15 vom 11.10.2026: „persönliches Freigabeniveau plus Objekt-/Gruppenrechte").
+ * Bis zu welcher Vertraulichkeitsstufe dieser Mensch Wissensobjekte lesen darf. Dieselben drei
+ * Werte wie die Stufe am Objekt; eigener Typ, weil `auth` das Datenmodell nicht importiert.
+ */
+export type Freigabestufe = "intern" | "vertraulich" | "streng_vertraulich";
+
+export function istFreigabestufe(wert: unknown): wert is Freigabestufe {
+  return wert === "intern" || wert === "vertraulich" || wert === "streng_vertraulich";
+}
+
 export interface User {
   id: string;
   name: string;
@@ -49,6 +61,11 @@ export interface User {
   // Ablauf einer Sitzung: `Session.expiresAt` hat seine eigene, unberuehrte Bedeutung — zwei
   // Ablaufbegriffe, die sich vermischen, waeren der eigentliche Fehler.
   accessExpiresAt?: string;
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): das persönliche Freigabeniveau, gesetzt von
+  // der Verwaltung (`PUT /api/users/:id`, Feld `freigabe`). OPTIONAL: fehlt es, gilt die
+  // Übergangsregel in `services/app/src/sichtbarkeit.ts` (`freigaberang`) — sie öffnet NIE
+  // „streng vertraulich"; das braucht immer ein ausdrücklich gesetztes Niveau.
+  freigabe?: Freigabestufe;
 }
 
 export interface Session {
