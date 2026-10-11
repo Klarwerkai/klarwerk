@@ -583,6 +583,8 @@ export interface KoWeisung {
   bereich: string;
   fassung: number;
   bestehenGelassen: string[];
+  /** R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte (Konfliktkennungen). */
+  ueberstimmt?: string[];
   sichtung: {
     verantwortlich: string;
     frist: string;
@@ -824,6 +826,11 @@ export interface KnowledgeObject {
   // weder als Weisung gesetzt noch aus einer externen Freigabe übernommen.
   weisung?: KoWeisung;
   externeFreigabe?: KoExterneFreigabe;
+  // Nacharbeit 11 (Ben B1): nur an `GET /api/kos/:id` und nur für weisungsbefugte Lesende — die
+  // Konten, die diesen Eintrag mit ihrem eigenen Zugang lesen und deshalb sichten können.
+  sichtungsKandidaten?: string[];
+  // Nacharbeit 11 (Ben B2): durch eine Weisung überstimmt und geschlossen (nicht gelöscht).
+  geschlossen?: { durchKoId: string; conflictId: string; von: string; am: string; fassung: number };
   // R-0082: ab zwei Anlagen trägt `assets` die Liste und `asset` spiegelt die erste; eine einzelne
   // Anlage (und Altbestand) steht nur in `asset`. Gelesen wird beides über `anlagenVon`.
   asset: string | null;

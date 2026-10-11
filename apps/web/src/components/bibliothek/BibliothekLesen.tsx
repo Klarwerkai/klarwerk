@@ -99,7 +99,7 @@ import {
   latestValidationFeedback,
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
-import { weisungsbefugtFuer } from "../../lib/weisungsbefugnis";
+import { sichtungsAuswahl, weisungsbefugtFuer } from "../../lib/weisungsbefugnis";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
@@ -2976,8 +2976,10 @@ export function BibliothekLesen({
         {weisungOffen ? (
           <WeisungDialog
             bereich={ko.category}
-            konten={(Array.isArray(verzeichnis.data) ? verzeichnis.data : []).filter(
-              (k) => k.id !== user?.id,
+            konten={sichtungsAuswahl(
+              Array.isArray(verzeichnis.data) ? verzeichnis.data : [],
+              ko.sichtungsKandidaten,
+              user?.id,
             )}
             punkte={weisungPunkte}
             laeuft={herkunftsEntscheid.isPending}
@@ -2987,6 +2989,7 @@ export function BibliothekLesen({
                 action: "weisung",
                 sichtung: { verantwortlich: eingabe.verantwortlich, frist: eingabe.frist },
                 bestehenLassen: eingabe.bestehenLassen,
+                ueberstimmen: eingabe.ueberstimmen,
                 ...(dubletteBestaetigen ? { duplicateAcknowledged: true as const } : {}),
               })
             }

@@ -33,8 +33,13 @@ export default {
     "weisung.dialog.waehlen": "Person wählen",
     "weisung.dialog.punkteTitel": "Betroffene Punkte — jeden einzeln entscheiden",
     "weisung.dialog.punktHinweis":
-      "Überstimmen Sie einen Punkt über die Konfliktentscheidung (er wird geschlossen, nicht gelöscht) — oder lassen Sie ihn hier ausdrücklich bestehen.",
+      "Überstimmen Sie einen Punkt (er wird geschlossen, nicht gelöscht; Inhalt und Herkunft bleiben) — oder lassen Sie ihn ausdrücklich bestehen.",
     "weisung.dialog.punktBestehen": "bleibt bestehen",
+    "weisung.dialog.punktUeberstimmen": "überstimmen und schließen",
+    "weisung.dialog.keineKandidaten":
+      "Niemand außer Ihnen kann diesen Eintrag lesen und sichten. Klären Sie erst den Zugang (Space, Vertraulichkeit).",
+    "weisung.geschlossen.hinweis":
+      "Durch Weisung überstimmt und geschlossen am {{zeit}} — gilt nicht mehr. Inhalt, Fassungen und Herkunft bleiben erhalten.",
     "weisung.dialog.setzen": "Weisung setzen",
     "weisung.dialog.abbrechen": "Abbrechen",
     "weisung.dialog.fehltAngabe": "Bitte Person und Frist der Sichtung angeben.",
@@ -94,8 +99,13 @@ export default {
     "weisung.dialog.waehlen": "Choose a person",
     "weisung.dialog.punkteTitel": "Affected points — decide each one",
     "weisung.dialog.punktHinweis":
-      "Overrule a point through the conflict decision (it is closed, not deleted) — or keep it here explicitly.",
+      "Overrule a point (it is closed, not deleted; content and source remain) — or keep it explicitly.",
     "weisung.dialog.punktBestehen": "stays in place",
+    "weisung.dialog.punktUeberstimmen": "overrule and close",
+    "weisung.dialog.keineKandidaten":
+      "Nobody but you can read and review this entry. Clarify access first (space, confidentiality).",
+    "weisung.geschlossen.hinweis":
+      "Overruled by directive and closed on {{zeit}} — no longer applies. Content, versions and source are kept.",
     "weisung.dialog.setzen": "Set directive",
     "weisung.dialog.abbrechen": "Cancel",
     "weisung.dialog.fehltAngabe": "Please name the reviewer and the due date.",
@@ -155,8 +165,13 @@ export default {
     "weisung.dialog.waehlen": "Persoon kiezen",
     "weisung.dialog.punkteTitel": "Betrokken punten — elk afzonderlijk beslissen",
     "weisung.dialog.punktHinweis":
-      "Overstem een punt via de conflictbeslissing (het wordt gesloten, niet verwijderd) — of behoud het hier uitdrukkelijk.",
+      "Overstem een punt (het wordt gesloten, niet verwijderd; inhoud en herkomst blijven) — of behoud het uitdrukkelijk.",
     "weisung.dialog.punktBestehen": "blijft bestaan",
+    "weisung.dialog.punktUeberstimmen": "overstemmen en sluiten",
+    "weisung.dialog.keineKandidaten":
+      "Niemand behalve u kan dit item lezen en beoordelen. Regel eerst de toegang (space, vertrouwelijkheid).",
+    "weisung.geschlossen.hinweis":
+      "Door instructie overstemd en gesloten op {{zeit}} — geldt niet meer. Inhoud, versies en herkomst blijven bewaard.",
     "weisung.dialog.setzen": "Instructie vastleggen",
     "weisung.dialog.abbrechen": "Annuleren",
     "weisung.dialog.fehltAngabe": "Geef de beoordelaar en de termijn op.",

@@ -297,6 +297,8 @@ export type KoAction =
       action: "weisung";
       sichtung: { verantwortlich: string; frist: string };
       bestehenLassen?: string[];
+      // R-0573 · Nacharbeit 11: ausdrücklich überstimmte Punkte — sie werden geschlossen.
+      ueberstimmen?: string[];
       duplicateAcknowledged?: true;
     }
   | { action: "weisung-sichten"; vermerk?: string }

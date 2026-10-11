@@ -982,6 +982,17 @@ export interface KnowledgeObject {
   // Kommentare und Historie mit): es bleibt dauerhaft lesbar und nennt den verbleibenden Artikel.
   // Additiv im JSONB, keine Migration; fehlt das Feld, ist das Objekt in nichts aufgegangen.
   mergedInto?: KoMergedInto;
+  // ============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 (Nacharbeit 11, Ben B2) — DURCH WEISUNG ÜBERSTIMMT.
+  // ============================================================================================
+  //
+  // „Überstimmte Punkte werden geschlossen, nicht gelöscht." Gesetzt ausschließlich über
+  // `KoService.schliesseDurchWeisung`, wenn eine befugte Weisung diesen Punkt ausdrücklich
+  // überstimmt hat. Inhalt, Fassung, Historie, Autor, Originalautor und Herkunft bleiben
+  // unverändert; das Objekt bleibt lesbar, ist aber — wie ein aufgegangener Artikel — kein
+  // Suchtreffer und kein Antwortkandidat mehr. Additiv im JSONB; fehlt das Feld, ist nichts
+  // geschlossen.
+  geschlossen?: KoGeschlossen;
 }
 
 /**
@@ -999,10 +1010,16 @@ export interface KoWeisung {
   fassung: number;
   /**
    * R-0573: die betroffenen bestehenden Punkte (offene Konflikte), die die weisende Person einzeln
-   * gesehen und ausdrücklich BESTEHEN gelassen hat. Überstimmt wird ausschließlich über die
-   * Konfliktentscheidung je Punkt — geschlossen, nicht gelöscht; diese Weisung löscht nichts.
+   * gesehen und ausdrücklich BESTEHEN gelassen hat. Sie bleiben unverändert.
    */
   bestehenGelassen: string[];
+  /**
+   * R-0573 · Nacharbeit 11: die Punkte (Konfliktkennungen), die die weisende Person ausdrücklich
+   * ÜBERSTIMMT hat. Je Punkt wird der Konflikt zugunsten dieser Weisung entschieden und der
+   * überstimmte Wissenspunkt geschlossen (`KnowledgeObject.geschlossen`) — nicht gelöscht.
+   * Fehlt das Feld (Weisungen vor Nacharbeit 11), wurde nichts überstimmt.
+   */
+  ueberstimmt?: string[];
   /** Entscheidung 19: die nachfolgende Sichtung — wer zuständig ist und bis wann. */
   sichtung: {
     verantwortlich: string;
@@ -1053,6 +1070,19 @@ export interface KoMergedInto {
   overlapId: string;
   at: string;
   by: string;
+}
+
+/** R-0573: wodurch ein Wissenspunkt geschlossen wurde (s. `KnowledgeObject.geschlossen`). */
+export interface KoGeschlossen {
+  /** Das Wissensobjekt, dessen Weisung diesen Punkt überstimmt hat. */
+  durchKoId: string;
+  /** Der entschiedene Konflikt zwischen beiden. */
+  conflictId: string;
+  /** Die weisende Person (Kennung). */
+  von: string;
+  am: string;
+  /** Die Fassung DIESES Objekts, die geschlossen wurde. */
+  fassung: number;
 }
 
 // SCRUM-422: Papierkorb-Zeile für den Admin — nur Metadaten, keine Inhalte.

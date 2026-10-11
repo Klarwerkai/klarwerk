@@ -598,6 +598,8 @@ export class ValidationService {
       bereich: string;
       sichtung: { verantwortlich: string; frist: string };
       bestehenGelassen: readonly string[];
+      /** R-0573 · Nacharbeit 11: die ausdrücklich überstimmten Punkte (Konfliktkennungen). */
+      ueberstimmt?: readonly string[];
     },
   ): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
@@ -612,6 +614,9 @@ export class ValidationService {
       bereich: eingabe.bereich,
       fassung: geleseneFassung,
       bestehenGelassen: [...eingabe.bestehenGelassen],
+      ...(eingabe.ueberstimmt && eingabe.ueberstimmt.length > 0
+        ? { ueberstimmt: [...eingabe.ueberstimmt] }
+        : {}),
       sichtung: { verantwortlich: eingabe.sichtung.verantwortlich, frist: eingabe.sichtung.frist },
     };
     return this.entscheideOhnePeerPruefung(koId, actorId, ko, {
@@ -621,6 +626,7 @@ export class ValidationService {
         bereich: eingabe.bereich,
         sichtung: weisung.sichtung,
         bestehenGelassen: weisung.bestehenGelassen,
+        ueberstimmt: weisung.ueberstimmt ?? [],
       },
       herkunft: { weisung },
     });

@@ -13,9 +13,12 @@
 //   Entscheidung 19 · unmittelbar gültig, nachfolgend zuständig gesichtet → Verantwortliche und
 //                     Frist sind PFLICHT beim Setzen; sichten darf nur die benannte Person.
 //   R-0573          · vorher jeden betroffenen bestehenden Punkt einzeln sehen und je Punkt
-//                     entscheiden → offene Konflikte müssen entschieden ODER ausdrücklich als
-//                     „bleibt bestehen" benannt sein; überstimmt wird nur über die
-//                     Konfliktentscheidung (geschlossen, nicht gelöscht).
+//                     entscheiden → jeder offene Konflikt muss ausdrücklich als „überstimmen"
+//                     oder „bleibt bestehen" benannt sein. Überstimmen entscheidet den Konflikt
+//                     zugunsten der Weisung UND schließt den überstimmten Wissenspunkt (nicht
+//                     gelöscht; Autor, Herkunft und Fassungen bleiben) — Nacharbeit 11, Ben B2.
+//   Entscheidung 19 · (Ben B1) die benannte Person muss das Objekt mit ihrem tatsächlichen
+//                     Lesekontext lesen können → `sichtungsHindernis`.
 //   Entscheidung 27 · externe Freigabe und Herkunft übernehmen, interne Geltung und Zuständigkeit
 //                     bestätigen, keine pauschale zweite Inhaltsprüfung → `externeFreigabeEingabe`.
 
@@ -55,6 +58,20 @@ function zeitpunkt(wert: unknown): { roh: string; ms: number; nurTag: boolean } 
 export interface WeisungsEingabe {
   sichtung: { verantwortlich: string; frist: string };
   bestehenLassen: string[];
+  /**
+   * R-0573 · Nacharbeit 11: die betroffenen Punkte (Konfliktkennungen), die die weisende Person
+   * ausdrücklich ÜBERSTIMMT. Jeder davon wird nach dem Setzen der Weisung entschieden (Vorrang
+   * dieser Weisung) und der überstimmte Wissenspunkt geschlossen — nicht gelöscht.
+   */
+  ueberstimmen: string[];
+}
+
+function konfliktListe(wert: unknown, name: string): Ergebnis<string[]> {
+  const liste = wert ?? [];
+  if (!Array.isArray(liste) || liste.some((k) => typeof k !== "string" || k.length === 0)) {
+    return { ok: false, fehler: `${name} muss eine Liste von Konfliktkennungen sein.` };
+  }
+  return { ok: true, wert: [...new Set(liste as string[])] };
 }
 
 /**
@@ -63,7 +80,7 @@ export interface WeisungsEingabe {
  * wäre keine. Die Frist muss in der Zukunft liegen (ein Tag zählt bis zu seinem Ende).
  */
 export function weisungEingabe(
-  body: { sichtung?: unknown; bestehenLassen?: unknown },
+  body: { sichtung?: unknown; bestehenLassen?: unknown; ueberstimmen?: unknown },
   weisend: string,
   jetzt: number,
 ): Ergebnis<WeisungsEingabe> {
@@ -93,17 +110,80 @@ export function weisungEingabe(
   if (bis.ms + (bis.nurTag ? TAG_MS : 0) <= jetzt) {
     return { ok: false, fehler: "Die Frist der Sichtung muss in der Zukunft liegen." };
   }
-  const liste = body.bestehenLassen ?? [];
-  if (!Array.isArray(liste) || liste.some((k) => typeof k !== "string" || k.length === 0)) {
-    return { ok: false, fehler: "bestehenLassen muss eine Liste von Konfliktkennungen sein." };
+  const bestehen = konfliktListe(body.bestehenLassen, "bestehenLassen");
+  if (!bestehen.ok) {
+    return bestehen;
+  }
+  const ueberstimmen = konfliktListe(body.ueberstimmen, "ueberstimmen");
+  if (!ueberstimmen.ok) {
+    return ueberstimmen;
+  }
+  // Je Punkt EINE Entscheidung: ein Punkt kann nicht zugleich bestehen bleiben und überstimmt sein.
+  if (ueberstimmen.wert.some((k) => bestehen.wert.includes(k))) {
+    return {
+      ok: false,
+      fehler: "Ein Punkt kann nicht zugleich überstimmt und bestehen gelassen werden.",
+    };
   }
   return {
     ok: true,
     wert: {
       sichtung: { verantwortlich: wer, frist: bis.roh },
-      bestehenLassen: [...new Set(liste as string[])],
+      bestehenLassen: bestehen.wert,
+      ueberstimmen: ueberstimmen.wert,
     },
   };
+}
+
+// ------------------------------------------------------------------------------------------------
+// Entscheidung 19 · Nacharbeit 11 (Ben B1) — KANN DIE BENANNTE PERSON ÜBERHAUPT SICHTEN?
+// ------------------------------------------------------------------------------------------------
+
+/** Der tatsächliche Lesekontext eines Kontos — so, wie `makeGuards` ihn für dessen Anfrage bildet. */
+export interface Lesekontext {
+  /** Zugangsstand wie in `verantwortung.ts` (`zugangsstand`). */
+  zugang: "aktiv" | "befristet" | "abgelaufen" | "gesperrt" | "geloescht";
+  /** Ende eines befristeten Zugangs (ISO), falls gesetzt. */
+  zugangEndet?: string;
+  /** Darf das Konto DIESES Objekt lesen — dieselbe Regel `darfSehen` wie das Sichtbarkeitstor. */
+  darfLesen: boolean;
+}
+
+export type SichtungsHindernis = "UNBEKANNT" | "NICHT_AKTIV" | "ENDET_VOR_FRIST" | "SIEHT_NICHT";
+
+export const SICHTUNGS_HINDERNIS_TEXT: Record<SichtungsHindernis, string> = {
+  UNBEKANNT: "Die für die Sichtung verantwortliche Person ist kein Konto dieses Systems.",
+  NICHT_AKTIV:
+    "Die für die Sichtung verantwortliche Person hat keinen aktiven Zugang (gesperrt oder abgelaufen).",
+  ENDET_VOR_FRIST:
+    "Der Zugang der für die Sichtung verantwortlichen Person endet vor der Frist der Sichtung.",
+  SIEHT_NICHT:
+    "Die für die Sichtung verantwortliche Person darf dieses Wissensobjekt nicht lesen und könnte es deshalb nicht sichten. Eine Weisung erweitert keine Leserechte — erst Zugang klären (Space, Vertraulichkeit).",
+};
+
+/**
+ * Sichten kann nur, wer sich anmelden kann (bis zur Frist) und das Objekt über DASSELBE
+ * Sichtbarkeitstor erreicht, das auch `weisung-sichten` schützt. Das Tor wird dafür nicht
+ * gelockert; die ungeeignete Benennung wird vor dem Schreiben abgelehnt.
+ */
+export function sichtungsHindernis(
+  kontext: Lesekontext | undefined,
+  frist: string,
+): SichtungsHindernis | null {
+  if (!kontext || kontext.zugang === "geloescht") {
+    return "UNBEKANNT";
+  }
+  if (kontext.zugang !== "aktiv" && kontext.zugang !== "befristet") {
+    return "NICHT_AKTIV";
+  }
+  if (kontext.zugang === "befristet" && kontext.zugangEndet !== undefined) {
+    const ende = Date.parse(kontext.zugangEndet);
+    const bis = zeitpunkt(frist);
+    if (bis && !Number.isNaN(ende) && ende < bis.ms + (bis.nurTag ? TAG_MS : 0)) {
+      return "ENDET_VOR_FRIST";
+    }
+  }
+  return kontext.darfLesen ? null : "SIEHT_NICHT";
 }
 
 /** Ein offener Konflikt, an dem das Objekt beteiligt ist — wie ihn die Route vorlegt. */
@@ -115,7 +195,8 @@ export interface BetroffenerPunkt {
 
 /**
  * R-0573 — JEDER BETROFFENE PUNKT EINZELN. Offene Konflikte dieses Objekts, deren Gegenseite die
- * weisende Person sehen darf, müssen in `bestehenLassen` benannt sein; sonst wird nicht gewiesen,
+ * weisende Person sehen darf, müssen in `bestehenLassen` oder `ueberstimmen` benannt sein; sonst
+ * wird nicht gewiesen,
  * und die Antwort legt jeden noch offenen Punkt einzeln vor. Ist eine Gegenseite für sie NICHT
  * sichtbar, kann sie über diesen Punkt nicht entscheiden — dann wird ebenfalls nicht gewiesen
  * (fail-closed), ohne die verborgene Gegenseite zu nennen.
@@ -123,8 +204,9 @@ export interface BetroffenerPunkt {
 export function offenePunkte(
   betroffen: readonly (BetroffenerPunkt & { sichtbar: boolean })[],
   bestehenLassen: readonly string[],
+  ueberstimmen: readonly string[] = [],
 ): { verborgen: number; offen: BetroffenerPunkt[] } {
-  const benannt = new Set(bestehenLassen);
+  const benannt = new Set([...bestehenLassen, ...ueberstimmen]);
   return {
     verborgen: betroffen.filter((p) => !p.sichtbar).length,
     offen: betroffen

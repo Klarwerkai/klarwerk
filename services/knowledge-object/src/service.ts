@@ -7565,6 +7565,51 @@ export class KoService {
   }
 
   // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 (Nacharbeit 11, Ben B2) — ÜBERSTIMMT, GESCHLOSSEN.
+  // ==============================================================================================
+  //
+  // „Überstimmte Punkte werden geschlossen, nicht gelöscht." Es ändert sich NUR das Feld
+  // `geschlossen` — keine Inhaltsfassung, kein Text, kein Status, kein Autor, kein Originalautor,
+  // keine Herkunft, keine Historie. Das Objekt bleibt im Bestand und lesbar. Bauform wie
+  // `markMergedInto`: per Objekt serialisiert, Beleg im selben Schritt. Ein bereits geschlossener
+  // Punkt wird nicht ein zweites Mal geschlossen (der erste Vermerk bleibt die Auskunft). WER das
+  // darf, entscheidet der Aufrufer (die Weisungsroute) — dieser Dienst kennt keine Rechte.
+  async schliesseDurchWeisung(
+    id: string,
+    eintrag: { durchKoId: string; conflictId: string },
+    actor: string,
+  ): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (ko.geschlossen) {
+        throw new KoError("KO_STALE", "Dieser Wissenspunkt ist bereits geschlossen.");
+      }
+      const geschlossen = {
+        durchKoId: eintrag.durchKoId,
+        conflictId: eintrag.conflictId,
+        von: actor,
+        am: new Date(this.now()).toISOString(),
+        fassung: ko.version,
+      };
+      const updated: KnowledgeObject = { ...ko, geschlossen };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.durch-weisung-geschlossen",
+              target: id,
+              payload: geschlossen,
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
   // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4, Ben K1) — EINE ANLAGE ZUORDNEN.
   // ==============================================================================================
   //

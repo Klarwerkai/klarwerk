@@ -42,7 +42,7 @@ const KI_TEXT: Record<KiPruefzustand, string> = {
 
 export interface VerifizierungsmarkeProps {
   ko: Pick<KnowledgeObject, "verifizierung" | "aiCheck"> &
-    Partial<Pick<KnowledgeObject, "weisung" | "externeFreigabe" | "version">>;
+    Partial<Pick<KnowledgeObject, "weisung" | "externeFreigabe" | "version" | "geschlossen">>;
   nameOf: NameResolver;
   /**
    * Entscheidung 19: nur gesetzt, wenn die angemeldete Person die benannte Verantwortliche einer
@@ -156,6 +156,14 @@ export function Verifizierungsmarke({
         text: t(satz, { name: nameOf(s.verantwortlich), frist: datum(s.frist) }),
       });
     }
+  }
+
+  // --- Durch Weisung überstimmt (R-0573, Nacharbeit 11) -------------------------------------------
+  if (ko.geschlossen) {
+    zeilen.push({
+      schluessel: "geschlossen",
+      text: t("weisung.geschlossen.hinweis", { zeit: zeit(ko.geschlossen.am) }),
+    });
   }
 
   // --- Externe Freigabe (Entscheidung 27) --------------------------------------------------------

@@ -8,9 +8,11 @@ import { Button } from "../ui";
 //
 // Präsentational wie die übrigen Bauteile unter `trust/`: Konten, betroffene Punkte und Rückrufe
 // kommen von der Lesefläche. Pflicht sind die verantwortliche Person der Sichtung und die Frist
-// (Entscheidung 19). Hat der Server betroffene Punkte vorgelegt (409 `WEISUNG_PUNKTE_OFFEN`),
-// stehen sie hier EINZELN — jeder lässt sich ausdrücklich bestehen lassen; überstimmt wird über die
-// Konfliktentscheidung, nicht hier. Ob die Weisung gilt, entscheidet allein der Server.
+// (Entscheidung 19). Zur Wahl stehen nur Konten, die der Server als sichtungsfähig nennt (sie
+// lesen den Eintrag mit ihrem eigenen Zugang — Nacharbeit 11, Ben B1). Hat der Server betroffene
+// Punkte vorgelegt (409 `WEISUNG_PUNKTE_OFFEN`), stehen sie hier EINZELN — jeder wird ausdrücklich
+// bestehen gelassen oder überstimmt; ein überstimmter Punkt wird geschlossen, nicht gelöscht
+// (Ben B2). Ob die Weisung gilt, entscheidet allein der Server.
 
 export interface BetroffenerPunktAnzeige {
   conflictId: string;
@@ -18,14 +20,21 @@ export interface BetroffenerPunktAnzeige {
   titel: string;
 }
 
+type PunktEntscheidung = "bestehen" | "ueberstimmen";
+
 export interface WeisungDialogProps {
   bereich: string;
-  /** Wählbare Konten für die Sichtung — ohne die weisende Person selbst. */
+  /** Wählbare Konten für die Sichtung — nur sichtungsfähige, ohne die weisende Person selbst. */
   konten: readonly { id: string; name: string }[];
   punkte: readonly BetroffenerPunktAnzeige[];
   laeuft: boolean;
   fehler: string | null;
-  aufSetzen: (eingabe: { verantwortlich: string; frist: string; bestehenLassen: string[] }) => void;
+  aufSetzen: (eingabe: {
+    verantwortlich: string;
+    frist: string;
+    bestehenLassen: string[];
+    ueberstimmen: string[];
+  }) => void;
   aufAbbrechen: () => void;
 }
 
@@ -41,20 +50,16 @@ export function WeisungDialog({
   const { t } = useTranslation();
   const [verantwortlich, setVerantwortlich] = useState("");
   const [frist, setFrist] = useState("");
-  const [bestehen, setBestehen] = useState<ReadonlySet<string>>(new Set());
+  const [entscheidungen, setEntscheidungen] = useState<ReadonlyMap<string, PunktEntscheidung>>(
+    new Map(),
+  );
   const [hinweis, setHinweis] = useState<string | null>(null);
 
-  const umschalten = (conflictId: string): void => {
-    setBestehen((alt) => {
-      const neu = new Set(alt);
-      if (neu.has(conflictId)) {
-        neu.delete(conflictId);
-      } else {
-        neu.add(conflictId);
-      }
-      return neu;
-    });
+  const entscheiden = (conflictId: string, wahl: PunktEntscheidung): void => {
+    setEntscheidungen((alt) => new Map(alt).set(conflictId, wahl));
   };
+  const mit = (wahl: PunktEntscheidung): string[] =>
+    [...entscheidungen].filter(([, w]) => w === wahl).map(([k]) => k);
 
   return (
     // Nacharbeit 7: ein eingebetteter, beschrifteter Bereich unter der Prüfmarke — kein modales
@@ -83,6 +88,11 @@ export function WeisungDialog({
           ))}
         </select>
       </label>
+      {konten.length === 0 ? (
+        <p data-testid="weisung-keine-kandidaten" className="text-muted-2">
+          {t("weisung.dialog.keineKandidaten")}
+        </p>
+      ) : null}
       <label className="flex flex-col gap-1">
         <span className="font-medium text-muted">{t("weisung.dialog.frist")}</span>
         <input
@@ -100,17 +110,29 @@ export function WeisungDialog({
           <ul className="space-y-1">
             {punkte.map((p) => (
               <li key={p.conflictId}>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    data-testid={`weisung-punkt-${p.conflictId}`}
-                    checked={bestehen.has(p.conflictId)}
-                    onChange={() => umschalten(p.conflictId)}
-                  />
-                  <span>
-                    {p.titel} — {t("weisung.dialog.punktBestehen")}
-                  </span>
-                </label>
+                <fieldset className="space-y-0.5">
+                  <legend>{p.titel}</legend>
+                  <label className="mr-3 inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name={`weisung-punkt-${p.conflictId}`}
+                      data-testid={`weisung-punkt-${p.conflictId}`}
+                      checked={entscheidungen.get(p.conflictId) === "bestehen"}
+                      onChange={() => entscheiden(p.conflictId, "bestehen")}
+                    />
+                    <span>{t("weisung.dialog.punktBestehen")}</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name={`weisung-punkt-${p.conflictId}`}
+                      data-testid={`weisung-punkt-ueberstimmen-${p.conflictId}`}
+                      checked={entscheidungen.get(p.conflictId) === "ueberstimmen"}
+                      onChange={() => entscheiden(p.conflictId, "ueberstimmen")}
+                    />
+                    <span>{t("weisung.dialog.punktUeberstimmen")}</span>
+                  </label>
+                </fieldset>
               </li>
             ))}
           </ul>
@@ -132,7 +154,12 @@ export function WeisungDialog({
               return;
             }
             setHinweis(null);
-            aufSetzen({ verantwortlich, frist, bestehenLassen: [...bestehen] });
+            aufSetzen({
+              verantwortlich,
+              frist,
+              bestehenLassen: mit("bestehen"),
+              ueberstimmen: mit("ueberstimmen"),
+            });
           }}
         >
           {t("weisung.dialog.setzen")}

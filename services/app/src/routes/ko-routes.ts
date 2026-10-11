@@ -87,12 +87,46 @@ import { verifizierungFuer } from "../verifizierungsmarke";
 import type { EinreichEntscheid, VorlagenEinreichungPort } from "../vorlagen";
 import {
   type BetroffenerPunkt,
+  type Lesekontext,
+  SICHTUNGS_HINDERNIS_TEXT,
+  type SichtungsHindernis,
   externeFreigabeEingabe,
   offenePunkte,
+  sichtungsHindernis,
   sichtungsVermerk,
   weisungEingabe,
 } from "../weisung-und-freigabe";
 import { dublettenTor } from "./validation-routes";
+
+/** Nacharbeit 11 (Ben B1): ein Konto mit seinem tatsächlichen Lesekontext. */
+export interface KontoLesekontext {
+  id: string;
+  zugang: Lesekontext["zugang"];
+  zugangEndet?: string;
+  sitzung: SessionUser;
+}
+
+/**
+ * Entscheidung 19 · Ben B1: kann dieses Konto DIESES Objekt sichten? Gelesen wird mit DERSELBEN
+ * Regel wie am Sichtbarkeitstor (`darfSehen`) und der Sitzungssicht des Kontos selbst — nicht mit
+ * der der weisenden Person. Das Tor wird nicht gelockert.
+ */
+function sichtungsHindernisFuer(
+  konto: KontoLesekontext | undefined,
+  objekt: KnowledgeObject,
+  frist: string,
+): SichtungsHindernis | null {
+  return sichtungsHindernis(
+    konto
+      ? {
+          zugang: konto.zugang,
+          ...(konto.zugangEndet ? { zugangEndet: konto.zugangEndet } : {}),
+          darfLesen: darfSehen(konto.sitzung, objekt),
+        }
+      : undefined,
+    frist,
+  );
+}
 
 /** produkt:20261007:templates-default — die Absage der Einreichprüfung, wörtlich weitergegeben. */
 function sendeVorlagenAbsage(
@@ -148,6 +182,12 @@ export interface KoRoutesDeps {
   konten?: {
     befugnisVon(userId: string): Promise<{ bereiche: string[]; gesamt: boolean } | undefined>;
     kontoBesteht(userId: string): Promise<boolean>;
+    /**
+     * Nacharbeit 11 (Ben B1): der TATSÄCHLICHE Lesekontext eines Kontos — Zugangsstand und die
+     * Sitzungssicht, die `makeGuards` für dessen eigene Anfrage bilden würde (Rolle, lesbare
+     * Spaces). Ohne Verdrahtung ist niemand als Sichtende benennbar (fail-closed).
+     */
+    lesekontexte(): Promise<KontoLesekontext[]>;
   };
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
@@ -734,12 +774,15 @@ interface PutBody {
    * Aufnahme gesamt-wissen-herkunft. Alles `unknown`, gelesen in `weisung-und-freigabe.ts`:
    *   `sichtung`        — an `weisung`: `{ verantwortlich, frist }` (Entscheidung 19, Pflicht);
    *   `bestehenLassen`  — an `weisung`: Konfliktkennungen, die ausdrücklich bestehen bleiben (R-0573);
+   *   `ueberstimmen`    — an `weisung`: Konfliktkennungen, die ausdrücklich überstimmt werden; der
+   *                       überstimmte Punkt wird geschlossen, nicht gelöscht (R-0573, Nacharbeit 11);
    *   `vermerk`         — an `weisung-sichten`: ein freier Satz zur Sichtung;
    *   `externeFreigabe` — an `externe-freigabe`: Herkunft der externen Freigabe und die Bestätigung
    *                       der internen Anwendbarkeit (Entscheidung 27).
    */
   sichtung?: unknown;
   bestehenLassen?: unknown;
+  ueberstimmen?: unknown;
   vermerk?: unknown;
   externeFreigabe?: unknown;
   /**
@@ -1556,9 +1599,22 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Grenzen in ../verifizierungsmarke.ts.
       const verifizierung = await verifizierungFuer(item, audit);
       const eingaenge = await anzeigestatusEingaengeFuer(user, item);
+      // Entscheidung 19 · Nacharbeit 11 (Ben B1): wer hier eine Weisung setzen darf, bekommt die
+      // Konten, die DIESES Objekt mit ihrem eigenen Lesekontext lesen und deshalb sichten können —
+      // nur Kennungen (Namen löst das Verzeichnis), ohne die weisende Person. Für alle anderen
+      // fehlt das Feld; die Route der Weisung prüft unabhängig davon noch einmal.
+      const sichtungsKandidaten = befugnisDecktBereich(
+        await konten?.befugnisVon(user.id),
+        item.category,
+      )
+        ? ((await konten?.lesekontexte()) ?? [])
+            .filter((k) => k.id !== user.id && sichtungsHindernisFuer(k, item, "") === null)
+            .map((k) => k.id)
+        : undefined;
       reply.code(200).send({
         ...item,
         verifizierung,
+        ...(sichtungsKandidaten ? { sichtungsKandidaten } : {}),
         ...discloseConfidentiality(item.confidentiality),
         ...discloseDisplayStatus(item, eingaenge),
         ...discloseFrische(item, Date.now(), eingaenge, await ko.gelernteHalbwertszeiten()),
@@ -3155,12 +3211,22 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!eingabe.ok) {
               return badRequest(eingabe.fehler);
             }
-            if (!(await konten?.kontoBesteht(eingabe.wert.sichtung.verantwortlich))) {
-              return badRequest(
-                "Die für die Sichtung verantwortliche Person ist kein Konto dieses Systems.",
-              );
+            // Nacharbeit 11 (Ben B1): nicht nur „gibt es das Konto", sondern „kann es sichten" —
+            // mit seinem EIGENEN Lesekontext gegen dieselbe Regel wie das Sichtbarkeitstor.
+            const sichtende = (await konten?.lesekontexte())?.find(
+              (k) => k.id === eingabe.wert.sichtung.verantwortlich,
+            );
+            const hindernis = sichtungsHindernisFuer(sichtende, objekt, eingabe.wert.sichtung.frist);
+            if (hindernis) {
+              reply.code(400).send({
+                error: "SICHTUNG_NICHT_MOEGLICH",
+                grund: hindernis,
+                message: SICHTUNGS_HINDERNIS_TEXT[hindernis],
+              });
+              return;
             }
-            const betroffen: (BetroffenerPunkt & { sichtbar: boolean })[] = [];
+            type Punkt = BetroffenerPunkt & { sichtbar: boolean; gegen?: KnowledgeObject };
+            const betroffen: Punkt[] = [];
             for (const konflikt of await conflicts.unresolved()) {
               if (konflikt.koA !== id && konflikt.koB !== id) {
                 continue;
@@ -3173,9 +3239,34 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                 koId: sichtbar ? gegenId : "",
                 titel: sichtbar && gegen ? gegen.title : "",
                 sichtbar,
+                ...(sichtbar && gegen ? { gegen } : {}),
               });
             }
-            const lage = offenePunkte(betroffen, eingabe.wert.bestehenLassen);
+            // R-0573 · Nacharbeit 11 (Ben B2): überstimmt werden kann nur ein betroffener, für die
+            // weisende Person sichtbarer Punkt — und nur in ihrem fachlichen Bereich: Überstimmen
+            // schließt den Punkt, und das ist eine Weisung über DIESEN Punkt.
+            const zuUeberstimmen: { conflictId: string; gegen: KnowledgeObject }[] = [];
+            for (const kennung of eingabe.wert.ueberstimmen) {
+              const punkt = betroffen.find((p) => p.conflictId === kennung);
+              if (!punkt?.sichtbar || !punkt.gegen) {
+                return badRequest(
+                  "Ein zu überstimmender Punkt ist kein offener, für Sie sichtbarer Punkt dieses Wissensobjekts.",
+                );
+              }
+              if (!befugnisDecktBereich(befugnis, punkt.gegen.category)) {
+                reply.code(403).send({
+                  error: "WEISUNGSBEFUGNIS_FEHLT",
+                  message: `Den Punkt „${punkt.gegen.title}“ (Bereich „${punkt.gegen.category}“) können Sie nicht überstimmen: für diesen Bereich ist an Ihrem Konto keine Weisungsbefugnis vermerkt.`,
+                });
+                return;
+              }
+              zuUeberstimmen.push({ conflictId: kennung, gegen: punkt.gegen });
+            }
+            const lage = offenePunkte(
+              betroffen,
+              eingabe.wert.bestehenLassen,
+              eingabe.wert.ueberstimmen,
+            );
             if (lage.verborgen > 0) {
               reply.code(409).send({
                 error: "WEISUNG_PUNKT_VERBORGEN",
@@ -3188,7 +3279,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               reply.code(409).send({
                 error: "WEISUNG_PUNKTE_OFFEN",
                 message:
-                  "Zu diesem Wissensobjekt bestehen offene Punkte. Entscheiden Sie jeden einzeln — überstimmen über die Konfliktentscheidung oder ausdrücklich bestehen lassen. Die Weisung wurde nicht gesetzt.",
+                  "Zu diesem Wissensobjekt bestehen offene Punkte. Entscheiden Sie jeden einzeln — überstimmen oder ausdrücklich bestehen lassen. Die Weisung wurde nicht gesetzt.",
                 punkte: lage.offen,
               });
               return;
@@ -3206,15 +3297,50 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             const betroffeneKennungen = new Set(betroffen.map((p) => p.conflictId));
-            reply.code(200).send(
-              await validation.weisungSetzen(id, user.id, {
-                bereich: objekt.category,
-                sichtung: eingabe.wert.sichtung,
-                bestehenGelassen: eingabe.wert.bestehenLassen.filter((k) =>
-                  betroffeneKennungen.has(k),
-                ),
-              }),
-            );
+            const entscheidung = await validation.weisungSetzen(id, user.id, {
+              bereich: objekt.category,
+              sichtung: eingabe.wert.sichtung,
+              bestehenGelassen: eingabe.wert.bestehenLassen.filter((k) =>
+                betroffeneKennungen.has(k),
+              ),
+              ueberstimmt: zuUeberstimmen.map((p) => p.conflictId),
+            });
+            // Verfehlter Compare-and-Set: die Weisung wurde NICHT geschrieben — dann wird auch
+            // nichts überstimmt und nichts geschlossen.
+            if (entscheidung.validationDecisionRef === null) {
+              reply.code(200).send({ ...entscheidung, ueberstimmt: [] });
+              return;
+            }
+            // Je überstimmtem Punkt: (1) der Konflikt wird zugunsten dieser Weisung entschieden —
+            // über den UNVERÄNDERTEN allgemeinen Konfliktweg; ein Wahrheitskonflikt durchläuft
+            // dabei seinen verbindlichen Eskalationsschritt (R-0215) durch die weisende Person;
+            // (2) der überstimmte Wissenspunkt wird geschlossen — nicht gelöscht.
+            const ueberstimmt: { conflictId: string; koId: string; geschlossen: boolean }[] = [];
+            for (const punkt of zuUeberstimmen) {
+              let geschlossen = false;
+              try {
+                const konflikt = await conflicts.get(punkt.conflictId);
+                if (konflikt?.type === "truth" && konflikt.status === "offen") {
+                  await conflicts.escalate(punkt.conflictId, user.id);
+                }
+                await conflicts.resolve(
+                  punkt.conflictId,
+                  user.id,
+                  `Durch Weisung überstimmt (Wissensobjekt ${id}, Fassung ${objekt.version}).`,
+                  { art: "ueberstimmt", gilt: id },
+                );
+                await ko.schliesseDurchWeisung(
+                  punkt.gegen.id,
+                  { durchKoId: id, conflictId: punkt.conflictId },
+                  user.id,
+                );
+                geschlossen = true;
+              } catch {
+                geschlossen = false;
+              }
+              ueberstimmt.push({ conflictId: punkt.conflictId, koId: punkt.gegen.id, geschlossen });
+            }
+            reply.code(200).send({ ...entscheidung, ueberstimmt });
             return;
           }
           // Entscheidung 19: die nachfolgende Sichtung — nur die beim Setzen benannte Person.

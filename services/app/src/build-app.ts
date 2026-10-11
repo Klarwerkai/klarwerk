@@ -515,7 +515,7 @@ import {
   UnternehmenDienst,
   type UnternehmenRepo,
 } from "./unternehmensprofil";
-import { verantwortungBeiAnlage } from "./verantwortung";
+import { sitzungVon, verantwortungBeiAnlage, zugangsstand } from "./verantwortung";
 import {
   InMemoryNachfolgeRepo,
   type NachfolgeRepo,
@@ -4211,6 +4211,18 @@ export function buildApp(
         konten: {
           befugnisVon: (userId) => services.auth.weisungsbefugnisVon(userId),
           kontoBesteht: (userId) => services.auth.kontoBesteht(userId),
+          // Nacharbeit 11 (Ben B1): der Lesekontext jedes Kontos aus DENSELBEN Quellen wie
+          // `makeGuards` (Kontenliste, aktuelle Spaces) — die Sicht des Kontos selbst.
+          lesekontexte: async () => {
+            const spaces = await services.spaces.aktuelle();
+            const jetzt = Date.now();
+            return (await services.auth.listUsers()).map((konto) => ({
+              id: konto.id,
+              zugang: zugangsstand(konto, jetzt),
+              ...(konto.accessExpiresAt ? { zugangEndet: konto.accessExpiresAt } : {}),
+              sitzung: sitzungVon(konto, spaces),
+            }));
+          },
         },
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,

@@ -9,7 +9,9 @@
 //   Entscheidung 19 · „Unmittelbar gültige befugte Weisung mit nachfolgender zuständiger
 //                     Sichtung."                                          → W2, W4, S1–S3
 //   R-0573          · jeden betroffenen bestehenden Punkt einzeln entscheiden; überstimmte Punkte
-//                     werden geschlossen, nicht gelöscht                  → P1–P3
+//                     werden geschlossen, nicht gelöscht                  → P1–P3, P4–P7
+//   Entscheidung 19 · (Nacharbeit 11, Ben B1) die Sichtende muss das Objekt selbst lesen können
+//                                                                       → SB1–SB3
 //   K1/K4           · die befugte Herkunft bleibt, der Originalautor wird nicht umgeschrieben → W2
 //   Entscheidung 27 · „Externe Freigabe und Provenienz übernehmen; interne Anwendbarkeit klären ohne
 //                     pauschale zweite Inhaltsprüfung"; Wissensübernahme (R-0164) und ganzes
@@ -332,6 +334,237 @@ describe("R-0573 · jeder betroffene bestehende Punkt einzeln — geschlossen wi
     expect(antwort.json().error).toBe("WEISUNG_PUNKT_VERBORGEN");
     expect(antwort.body).not.toContain("Vertrauliche Gegenanweisung");
     expect(antwort.body).not.toContain(geheim.id);
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 11 · Ben B2 — ÜBERSTIMMEN SCHLIESST DEN WISSENSPUNKT, BESTEHENLASSEN NICHT.
+// ================================================================================================
+describe("R-0573 · überstimmte Punkte werden geschlossen, nicht gelöscht (Nacharbeit 11, Ben B2)", () => {
+  async function zweiPunkte() {
+    const b = await buehne();
+    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    const ko = await b.objekt("Bolzen W: 14 Nm", "Technik", b.carla.id);
+    const ueberstimmt = await b.objekt("Bolzen W handfest", "Technik", b.carla.id);
+    const bleibt = await b.objekt("Bolzen W Sonderfall Kälte");
+    const k1 = await b.services.conflicts.create(
+      { koA: ko.id, koB: ueberstimmt.id, type: "truth", description: "14 Nm gegen handfest" },
+      b.admin.id,
+    );
+    const k2 = await b.services.conflicts.create(
+      { koA: bleibt.id, koB: ko.id, type: "truth", description: "Kälte gegen 14 Nm" },
+      b.admin.id,
+    );
+    return { b, ko, ueberstimmt, bleibt, k1, k2 };
+  }
+
+  it("P4 · der überstimmte Punkt ist geschlossen; Inhalt, Fassungen, Autor und Herkunft bleiben — der bestehen gelassene bleibt unverändert", async () => {
+    const { b, ko, ueberstimmt, bleibt, k1, k2 } = await zweiPunkte();
+    const vorher = await b.services.ko.get(ueberstimmt.id);
+    const fassungenVorher = await b.holen(b.koepfe.anna, `/api/kos/${ueberstimmt.id}/versions`);
+    const bleibtVorher = await b.services.ko.get(bleibt.id);
+
+    const antwort = await b.put(
+      b.koepfe.anna,
+      ko.id,
+      weisung(b.bob.id, { ueberstimmen: [k1.id], bestehenLassen: [k2.id] }),
+    );
+    expect(antwort.statusCode, antwort.body).toBe(200);
+    expect(antwort.json().ueberstimmt).toEqual([
+      { conflictId: k1.id, koId: ueberstimmt.id, geschlossen: true },
+    ]);
+
+    // Der überstimmte Wissenspunkt — erneut gelesen, nicht nur der Konfliktstatus.
+    const nachher = await b.lesen(b.koepfe.anna, ueberstimmt.id);
+    expect(nachher.geschlossen).toMatchObject({
+      durchKoId: ko.id,
+      conflictId: k1.id,
+      von: b.anna.id,
+      fassung: vorher?.version,
+    });
+    // Geschlossen, nicht gelöscht: lesbar, nicht im Papierkorb, Inhalt und Herkunft unverändert.
+    expect(nachher).not.toHaveProperty("deletedAt");
+    expect(nachher.title).toBe(vorher?.title);
+    expect(nachher.statement).toBe(vorher?.statement);
+    expect(nachher.version).toBe(vorher?.version);
+    expect(nachher.author).toBe(b.carla.id);
+    expect(nachher.originalAuthor).toBe(b.carla.id);
+    expect(nachher.status).toBe(vorher?.status);
+    expect(nachher.history).toEqual(vorher?.history);
+    const fassungenNachher = await b.holen(b.koepfe.anna, `/api/kos/${ueberstimmt.id}/versions`);
+    expect(fassungenNachher.json()).toEqual(fassungenVorher.json());
+
+    // Der Konflikt ist zugunsten der Weisung entschieden (Vorrang), über den allgemeinen Weg.
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).not.toContain(k1.id);
+    const entschieden = (await b.services.conflicts.vorrangFuerKo(ueberstimmt.id)).find(
+      (c) => c.id === k1.id,
+    );
+    expect(entschieden).toMatchObject({
+      status: "geloest",
+      decidedBy: b.anna.id,
+      vorrang: { art: "ueberstimmt", vorrangKo: ko.id, nachrangKo: ueberstimmt.id },
+    });
+
+    // Der bestehen gelassene Punkt: unverändert, sein Konflikt offen.
+    const bleibtNachher = await b.services.ko.get(bleibt.id);
+    for (const feld of [
+      "status",
+      "version",
+      "title",
+      "statement",
+      "author",
+      "originalAuthor",
+      "history",
+    ] as const) {
+      expect(bleibtNachher?.[feld], feld).toEqual(bleibtVorher?.[feld]);
+    }
+    expect(bleibtNachher).not.toHaveProperty("geschlossen");
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).toContain(k2.id);
+
+    // Herkunft der Weisung nennt beide Entscheidungen; der Abschluss steht im Prüfprotokoll.
+    expect((await b.lesen(b.koepfe.anna, ko.id)).weisung).toMatchObject({
+      ueberstimmt: [k1.id],
+      bestehenGelassen: [k2.id],
+    });
+    const abschluss = await b.services.audit.list({
+      action: "ko.durch-weisung-geschlossen",
+      target: ueberstimmt.id,
+    });
+    expect(abschluss.map((e) => e.actor)).toEqual([b.anna.id]);
+  });
+
+  it("P5 · ein Punkt kann nicht zugleich überstimmt und bestehen gelassen werden — nichts geschrieben", async () => {
+    const { b, ko, ueberstimmt, k1, k2 } = await zweiPunkte();
+    const antwort = await b.put(
+      b.koepfe.anna,
+      ko.id,
+      weisung(b.bob.id, { ueberstimmen: [k1.id], bestehenLassen: [k1.id, k2.id] }),
+    );
+    expect(antwort.statusCode).toBe(400);
+    expect((await b.lesen(b.koepfe.anna, ko.id)).status).toBe("offen");
+    expect(await b.services.ko.get(ueberstimmt.id)).not.toHaveProperty("geschlossen");
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).toContain(k1.id);
+  });
+
+  it("P6 · überstimmt wird nur im eigenen fachlichen Bereich — sonst wird gar nicht gewiesen", async () => {
+    const b = await buehne();
+    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    const ko = await b.objekt("Bolzen V: 9 Nm");
+    const fremd = await b.objekt("Haftung bei Bolzen", "Recht");
+    const k = await b.services.conflicts.create(
+      { koA: ko.id, koB: fremd.id, type: "truth", description: "Technik gegen Recht" },
+      b.admin.id,
+    );
+    const antwort = await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id, { ueberstimmen: [k.id] }));
+    expect(antwort.statusCode).toBe(403);
+    expect(antwort.json().error).toBe("WEISUNGSBEFUGNIS_FEHLT");
+    expect((await b.lesen(b.koepfe.anna, ko.id)).status).toBe("offen");
+    expect(await b.services.ko.get(fremd.id)).not.toHaveProperty("geschlossen");
+    expect((await b.services.conflicts.unresolved()).map((c) => c.id)).toContain(k.id);
+  });
+
+  it("P7 · Abgrenzung: eine gewöhnliche Konfliktentscheidung außerhalb des Weisungswegs schließt keinen Punkt", async () => {
+    const b = await buehne();
+    const a = await b.objekt("Allgemein A");
+    const c = await b.objekt("Allgemein C");
+    const k = await b.services.conflicts.create(
+      { koA: a.id, koB: c.id, type: "truth", description: "A gegen C" },
+      b.admin.id,
+    );
+    await b.services.conflicts.escalate(k.id, b.carla.id);
+    const vorrang = { art: "ueberstimmt", gilt: a.id } as const;
+    await b.services.conflicts.resolve(k.id, b.carla.id, "A gilt", vorrang);
+    expect(await b.services.ko.get(c.id)).not.toHaveProperty("geschlossen");
+    expect(await b.services.ko.get(a.id)).not.toHaveProperty("geschlossen");
+  });
+});
+
+// ================================================================================================
+// Nacharbeit 11 · Ben B1 — SICHTEN KANN NUR, WER DAS OBJEKT SELBST LESEN DARF.
+// ================================================================================================
+describe("Entscheidung 19 · die Sichtende muss das Objekt mit ihrem eigenen Lesekontext lesen können (Nacharbeit 11, Ben B1)", () => {
+  async function vertraulicheBuehne() {
+    const b = await buehne();
+    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    const viktor = await b.services.auth.register({
+      name: "Viktor Viewer",
+      email: "viktor@weisung.de",
+      password: KENNWORT,
+    });
+    await b.services.auth.approveUser(viktor.id, b.admin.id);
+    await b.services.auth.changeRole(viktor.id, "viewer", b.admin.id);
+    const login = await b.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "viktor@weisung.de", password: KENNWORT },
+    });
+    const viktorKopf = { authorization: `Bearer ${(login.json() as { token: string }).token}` };
+    const ko = await b.services.ko.create({
+      title: "Vertrauliche Prüfanweisung Presse",
+      statement: "Nur intern: Prüfdruck 220 bar.",
+      type: "best_practice",
+      category: "Technik",
+      author: b.anna.id,
+      confidentiality: "vertraulich",
+    });
+    return { b, viktor, viktorKopf, ko };
+  }
+
+  it("SB1 · ein Konto ohne Leserecht wird schon beim Setzen abgelehnt — kein Weisungszustand, kein Beleg", async () => {
+    const { b, viktor, viktorKopf, ko } = await vertraulicheBuehne();
+    const antwort = await b.put(b.koepfe.anna, ko.id, weisung(viktor.id));
+    expect(antwort.statusCode, antwort.body).toBe(400);
+    expect(antwort.json()).toMatchObject({
+      error: "SICHTUNG_NICHT_MOEGLICH",
+      grund: "SIEHT_NICHT",
+    });
+    const gelesen = await b.lesen(b.koepfe.anna, ko.id);
+    expect(gelesen.status).toBe("offen");
+    expect(gelesen).not.toHaveProperty("weisung");
+    expect(await b.services.audit.list({ action: "ko.weisung", target: ko.id })).toEqual([]);
+    // Das Sichtbarkeitstor bleibt unverändert: für ihn weder Inhalt noch Sichtungsweg.
+    const fremdLesen = await b.holen(viktorKopf, `/api/kos/${ko.id}`);
+    expect(fremdLesen.statusCode).toBe(404);
+    expect(fremdLesen.body).not.toContain("Prüfdruck");
+    const fremdSichten = await b.put(viktorKopf, ko.id, { action: "weisung-sichten" });
+    expect(fremdSichten.statusCode).toBe(404);
+    expect(fremdSichten.body).not.toContain("Prüfdruck");
+  });
+
+  it("SB2 · die Auswahl nennt nur Konten, die das Objekt lesen können — eine geeignete Person weist zu, liest und sichtet einmal", async () => {
+    const { b, viktor, ko } = await vertraulicheBuehne();
+    const gelesen = await b.lesen(b.koepfe.anna, ko.id);
+    const kandidaten = gelesen.sichtungsKandidaten as string[];
+    expect(kandidaten).toContain(b.carla.id);
+    expect(kandidaten).toContain(b.admin.id);
+    expect(kandidaten).not.toContain(viktor.id);
+    expect(kandidaten).not.toContain(b.bob.id); // Experte: kein Leserecht auf Vertrauliches
+    expect(kandidaten).not.toContain(b.anna.id); // nicht die weisende Person selbst
+    // Wer keine Weisung setzen darf, bekommt die Liste nicht.
+    expect(await b.lesen(b.koepfe.carla, ko.id)).not.toHaveProperty("sichtungsKandidaten");
+
+    const gesetzt = await b.put(b.koepfe.anna, ko.id, weisung(b.carla.id));
+    expect(gesetzt.statusCode, gesetzt.body).toBe(200);
+    expect((await b.lesen(b.koepfe.carla, ko.id)).status).toBe("validiert");
+    const gesichtet = await b.put(b.koepfe.carla, ko.id, { action: "weisung-sichten" });
+    expect(gesichtet.statusCode, gesichtet.body).toBe(200);
+    const nochmal = await b.put(b.koepfe.carla, ko.id, { action: "weisung-sichten" });
+    expect(nochmal.statusCode).toBe(409);
+  });
+
+  it("SB3 · ein nicht freigegebenes Konto kann nicht sichten und wird abgelehnt", async () => {
+    const b = await buehne();
+    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    const gesperrt = await b.services.auth.register({
+      name: "Gerd Gesperrt",
+      email: "gerd@weisung.de",
+      password: KENNWORT,
+    });
+    const ko = await b.objekt("Presse G");
+    const antwort = await b.put(b.koepfe.anna, ko.id, weisung(gesperrt.id));
+    expect(antwort.statusCode).toBe(400);
+    expect(antwort.json().grund).toBe("NICHT_AKTIV");
+    expect((await b.lesen(b.koepfe.anna, ko.id)).status).toBe("offen");
   });
 });
 
