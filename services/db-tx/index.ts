@@ -66,6 +66,7 @@ export {
   pruefbefehl,
 } from "./src/idle-in-transaction";
 export {
+  BESTANDSRESET_SCHEMA,
   type BestandsresetBefund,
   type BestandsresetLauf,
   type BestandsresetStatus,
@@ -74,7 +75,6 @@ export {
   SQL_COMMITMERKMAL_SETZEN,
   SQL_LAUF_ANLEGEN,
   SQL_LETZTER_LAUF,
-  SQL_SCHEMA_BESTANDSRESET,
   bestandsresetBefund,
   letzterBestandsresetLauf,
   loeseBestandsresetAuf,
