@@ -183,16 +183,20 @@ async function vorrichtung(): Promise<Lage> {
     d0.folge.some((p) => p.startsWith("belege.")),
     `Kalibrierung: der Antwortbeleg wurde nicht gezählt — ${d0.folge.join(" → ")}`,
   ).toBe(true);
-  // Der Konfliktabruf der Route liest danach beide Konfliktseiten für die Versionsprüfung.
+  // Der Konfliktabruf der Route liest danach beide Konfliktseiten für die Versionsprüfung — und,
+  // weil der Konflikt an die aktuellen Fassungen gebunden und damit offen ist, die Gegenseite des
+  // tragenden Eintrags über denselben Leseweg (R-0321, `konfliktGegenseiten` in ask-routes.ts).
+  // produkt:20261011:peter-p14 · Nacharbeit 3: am Kandidaten 1fa5b19 gezählt — nach `konflikte.all`
+  // stehen drei `ko.findById`; die Tafel der Haltefälle unten trägt den fünften Zugriff mit.
   const nachKonflikten = d0.folge.slice(d0.folge.indexOf("konflikte.all") + 1);
   expect(
     d0.folge.includes("konflikte.all") ? nachKonflikten : d0.folge,
-    `Kalibrierung: die Versionsprüfung des Konfliktabrufs las die beiden Seiten nicht — ${d0.folge.join(" → ")}`,
-  ).toEqual(["ko.findById", "ko.findById"]);
+    `Kalibrierung: die Versionsprüfung des Konfliktabrufs las die beiden Seiten und die Gegenseite nicht — ${d0.folge.join(" → ")}`,
+  ).toEqual(["ko.findById", "ko.findById", "ko.findById"]);
   expect(
     d0.folge.filter((p) => p === "ko.findById").length,
-    `Kalibrierung: die Haltefälle zählen ko.findById 1 (Dokumenttext), 2 (Quelle der Route), 3–4 (Konfliktseiten) — ${d0.folge.join(" → ")}`,
-  ).toBe(4);
+    `Kalibrierung: die Haltefälle zählen ko.findById 1 (Dokumenttext), 2 (Quelle der Route), 3–4 (Konfliktseiten), 5 (Gegenseite) — ${d0.folge.join(" → ")}`,
+  ).toBe(5);
   expect(d0.antwortweg, "Kalibrierung: der Antwortweg wurde nicht gezählt").toBeGreaterThan(0);
   expect(d0.modell, "Kalibrierung: der Modelldraht hat nicht generiert").toBeGreaterThan(0);
   return {
@@ -543,7 +547,17 @@ const HALTEFAELLE: readonly Haltefall[] = [
     punkt: "ko.findById",
     mal: 4,
     nurRoute: true,
-    wo: "nach der Versionsprüfung, vor der Auslieferung",
+    wo: "nach der Versionsprüfung, vor dem Lesen der Konflikt-Gegenseite",
+    sperre: ["auslieferung"],
+    naechster: { lesen: /^ko\.findById$/ },
+  },
+  // P14 · Nacharbeit 3: der offene, versionsgebundene Konflikt lässt die Route die Gegenseite des
+  // tragenden Eintrags lesen (R-0321) — erst danach wird ausgeliefert.
+  {
+    punkt: "ko.findById",
+    mal: 5,
+    nurRoute: true,
+    wo: "nach dem Lesen der Konflikt-Gegenseite, vor der Auslieferung",
     sperre: ["auslieferung"],
     naechster: { ausgeliefert: true },
   },

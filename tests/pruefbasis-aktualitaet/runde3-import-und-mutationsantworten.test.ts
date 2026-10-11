@@ -15,6 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { aiCheckCardState } from "../../apps/web/src/lib/aiCheckStatusCard";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
+import { hintergrundArt } from "../../services/app/src/hintergrundpruefung";
 import { InMemoryKoRepo, type KnowledgeObject, KoService } from "../../services/knowledge-object";
 import type { ConflictJudgeOutcome, DuplicateJudgeOutcome } from "../../services/reasoner";
 
@@ -162,43 +163,62 @@ describe("B1 · synchrone Import-Annahme: die Basis wird VOR dem Lauf gebunden",
     }
   });
 
-  it("Vergleichsquelle während des Urteils neu gefasst (gleicher Text) → überholt, Abruf reiht ein, Wiederholung gilt", async () => {
+  // produkt:20261011:peter-p14 · B-07 (Prüfnachtrag, releasehindernd): die Drift einer ANDEREN
+  // Vergleichsquelle ist eine Bestandsänderung. Sie bleibt in der gespeicherten Basis gebunden und
+  // macht den Nachweis INTERN überholt (`listMitBestandsabgleich`, Hintergrundabgleich) — in keiner
+  // Lesefassung, keiner Wiederholungsantwort und keiner Prüfliste darf sie sichtbar werden, sonst
+  // verriete sie Änderungen an Einträgen, die der Leser nicht sehen darf. Bens Runde-3-Befund
+  // („verschwand aus dem Nachweis") bleibt damit geschlossen: die Basis ist die START-Basis, der
+  // Abgleich erkennt die Drift, und der ausdrückliche Vollabgleich bindet neu.
+  it("Vergleichsquelle während des Urteils neu gefasst (gleicher Text) → intern überholt, Vollabgleich bindet neu", async () => {
     const lauf = await importLauf(true);
     try {
       expect(lauf.urteile()).toBeGreaterThan(0);
       expect((await lauf.services.ko.get(lauf.vergleichId))?.version, "Fassung 2").toBe(2);
       const ko = (await lauf.services.ko.get(lauf.koId)) as KnowledgeObject;
       expect(ko.aiCheck?.status).toBe("done");
-      expect(ko.aiCheck?.ueberholt, "das Ergebnis gilt für Fassung 1 der Vergleichsquelle").toBe(
-        true,
-      );
       // Die gespeicherte Basis ist die START-Basis, nicht die Endbasis.
       expect(ko.aiCheck?.basis).not.toEqual(await lauf.services.ko.aktuellePruefbasis(ko));
+      const intern = (await lauf.services.ko.listMitBestandsabgleich()).find(
+        (k) => k.id === lauf.koId,
+      );
+      const grund = "das Ergebnis gilt für Fassung 1 der Vergleichsquelle";
+      expect(intern?.aiCheck?.ueberholt, grund).toBe(true);
+      // B-07: die Lesefassung trägt die Bestandsdrift nicht.
+      expect(ko.aiCheck?.ueberholt).toBeUndefined();
 
-      // Wiederholung wird angenommen (kein AI_CHECK_NOT_RETRYABLE).
+      // Die schlichte Wiederholung beurteilt nach der Lesefassung — sie verrät die Drift nicht.
       const worker = lauf.services.aiCheckWorker;
       expect(worker).toBeDefined();
-      const retry = await lauf.app.inject({
+      const schlicht = await lauf.app.inject({
         method: "POST",
         url: `/api/kos/${lauf.koId}/ai-check`,
         headers: lauf.headers,
       });
-      expect(retry.statusCode).toBe(200);
+      expect(schlicht.statusCode).toBe(409);
+      // Der ausdrückliche Vollabgleich wird angenommen und bindet an den jetzigen Bestand.
+      const voll = await lauf.app.inject({
+        method: "POST",
+        url: `/api/kos/${lauf.koId}/ai-check`,
+        headers: lauf.headers,
+        payload: { umfang: "vollstaendig" },
+      });
+      expect(voll.statusCode, voll.body).toBe(200);
       // Kein Doppelauftrag: höchstens EIN Job für dieses Objekt steht an oder läuft.
       expect(worker?.queuedCount()).toBeLessThanOrEqual(1);
       await worker?.idle();
       const erneuert = (await lauf.services.ko.get(lauf.koId)) as KnowledgeObject;
       expect(erneuert.aiCheck?.status).toBe("done");
       expect(erneuert.aiCheck?.ueberholt).toBeUndefined();
+      expect(erneuert.aiCheck?.basis).toEqual(await lauf.services.ko.aktuellePruefbasis(erneuert));
     } finally {
       await lauf.app.close();
     }
   });
 
-  it("Vergleichsquelle während des Urteils neu gefasst → die Prüfliste reiht den Lauf beim Abruf ein", async () => {
+  it("Vergleichsquelle während des Urteils neu gefasst → der Hintergrundabgleich nimmt den Lauf auf, die Prüfliste verrät nichts", async () => {
     const lauf = await importLauf(true);
     try {
-      const worker = lauf.services.aiCheckWorker;
       const board = await lauf.app.inject({
         method: "GET",
         url: "/api/validation/board",
@@ -207,14 +227,15 @@ describe("B1 · synchrone Import-Annahme: die Basis wird VOR dem Lauf gebunden",
       expect(board.statusCode).toBe(200);
       const zeile = (board.json() as KnowledgeObject[]).find((k) => k.id === lauf.koId);
       expect(zeile, "das importierte Objekt steht in der Prüfliste").toBeDefined();
-      expect(zeile?.aiCheck?.status, "nicht mehr als fertig und aktuell").toBe("pending");
-      await worker?.idle();
-      // Der eingereihte Lauf hat wirklich stattgefunden: der Nachweis ist neu gebunden, an die
-      // jetzige Fassung der Vergleichsquelle.
-      const erneuert = (await lauf.services.ko.get(lauf.koId)) as KnowledgeObject;
-      expect(erneuert.aiCheck?.status).toBe("done");
-      expect(erneuert.aiCheck?.ueberholt).toBeUndefined();
-      expect(erneuert.aiCheck?.basis).toEqual(await lauf.services.ko.aktuellePruefbasis(erneuert));
+      // B-07: die Prüfliste reiht wegen einer Bestandsänderung NICHT beim Lesen ein — der Status
+      // eines sichtbaren Eintrags kippte sonst an einer unsichtbaren Änderung.
+      expect(zeile?.aiCheck?.status).toBe("done");
+      expect(zeile?.aiCheck?.ueberholt).toBeUndefined();
+      // Der Hintergrundabgleich sieht die Drift und nimmt das Objekt als „abgleich" auf.
+      const intern = (await lauf.services.ko.listMitBestandsabgleich()).find(
+        (k) => k.id === lauf.koId,
+      ) as KnowledgeObject;
+      expect(hintergrundArt(intern, Date.now())).toBe("abgleich");
     } finally {
       await lauf.app.close();
     }
