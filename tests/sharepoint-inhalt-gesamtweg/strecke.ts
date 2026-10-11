@@ -598,21 +598,58 @@ export function warteAufSichtbar(
 }
 
 /** Warten, bis dieser SATZ sichtbar dasteht — Wortlaut und Darstellung in einem. */
-export function warteAufSichtbarenSatz(
+export async function warteAufSichtbarenSatz(
   seite: Seite,
   selektor: string,
   soll: string,
   was: string,
   frist = 60_000,
 ): Promise<void> {
-  return warte(
-    seite,
-    SICHTBAR_MIT_SATZ,
-    `${was} steht sichtbar da („${soll}")`,
-    [selektor, soll],
-    frist,
-  );
+  try {
+    await warte(
+      seite,
+      SICHTBAR_MIT_SATZ,
+      `${was} steht sichtbar da („${soll}")`,
+      [selektor, soll],
+      frist,
+    );
+  } catch (fehler) {
+    // gesamt-nutzerverwaltung · Nacharbeit 12 — DIE LAUFDIAGNOSE, NICHT EINE WEICHERE BEDINGUNG.
+    // Frist, Bedingung und Sollwert bleiben unverändert. `warte` legt nur die ersten 1600 Zeichen des
+    // Seitentexts bei; auf `/import` endet das vor dem SharePoint-Bereich, und zweimal blieb offen,
+    // WARUM der Satz zur Lage 403 nicht kam. Diese Zeilen legen genau das bei, was die Frage
+    // beantwortet: den Sichtbefund des gesuchten Knotens, den Text des SharePoint-Bereichs, das
+    // aktive Element, die Lage des Graph-Doubles und seine letzten Abrufe.
+    const lies = <T>(quelle: string, arg?: unknown): Promise<T | null> =>
+      seite.evaluate<T>(fn(quelle), arg).catch(() => null);
+    const befund = await lies<Sichtbefund>(SICHTBARKEIT, selektor);
+    const bereich = (await lies<string>(SHAREPOINT_BEREICH_TEXT)) ?? "<nicht lesbar>";
+    const aktiv = (await lies<string>(AKTIVES_ELEMENT)) ?? "<nicht lesbar>";
+    const diagnose = [
+      `Sichtbefund ${selektor}: ${JSON.stringify(befund)}`,
+      `Aktives Element: ${aktiv}`,
+      `Graph-Lage: ${doppel.lage} · letzte Graph-Abrufe: ${JSON.stringify(doppel.graphAufrufe.slice(-6))}`,
+      `SharePoint-Bereich:\n${bereich}`,
+    ].join("\n");
+    const ursprung = fehler instanceof Error ? fehler.message : String(fehler);
+    throw new Error(`${ursprung}\n\nDIAGNOSE (Nacharbeit 12):\n${diagnose}`);
+  }
 }
+
+/** Der ganze Text der Karte, die „Liste neu laden“ trägt — der SharePoint-Bereich auf `/import`. */
+const SHAREPOINT_BEREICH_TEXT = `() => {
+  const knopf = document.querySelector('[data-testid="sharepoint-neu-laden"]');
+  const karte = knopf ? knopf.closest("[id]") : null;
+  return karte ? (karte.innerText || "").slice(0, 3000) : "<kein SharePoint-Bereich mit Neu-laden-Knopf>";
+}`;
+
+/** Welches Element gerade den Fokus hat — mit Kennung und Text, gekürzt. */
+const AKTIVES_ELEMENT = `() => {
+  const a = document.activeElement;
+  if (!a) { return "(nichts)"; }
+  const id = a.getAttribute("data-testid") || a.id || "";
+  return "<" + a.tagName.toLowerCase() + "> " + id + " " + (a.textContent || "").trim().slice(0, 80);
+}`;
 
 /**
  * Wie viele Prüfkarten tragen diesen Titel SICHTBAR? Die Frage aus Lieferung 3 (f).
