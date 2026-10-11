@@ -227,6 +227,35 @@ describe("P05-AC08 · Vorzeichen sind ein bedeutungstragender Unterschied (Ben, 
   });
 });
 
+describe("P05-AC08 · Groß-/Kleinschreibung trägt Bedeutung (Ben, Nacharbeit 6)", () => {
+  // Bis Kandidat 6bc37e1a glich der Wortlautvergleich die Schreibung an; „10 mW" und „10 MW"
+  // galten als gleich, die abweichende bestätigte Quelle wurde übersprungen.
+  const MILLI = "Maximale Leistung am Hubtisch-Antrieb: 10 mW.";
+  const MEGA = "Maximale Leistung am Hubtisch-Antrieb: 10 MW.";
+
+  it("G8 sonst gleiche bestätigte Aussagen mit 10 mW und 10 MW: beide sichtbar, Rückfrage, nicht gesichert", async () => {
+    const a = await aufbau();
+    const milli = await a.anlegen("Hubtisch-Antrieb Leistung (Notiz A)", MILLI);
+    const mega = await a.anlegen("Hubtisch-Antrieb Leistung (Notiz B)", MEGA);
+    await a.bestaetigen(milli);
+    await a.bestaetigen(mega);
+
+    const { result, gap } = await a.ask.ask(
+      "Welche maximale Leistung hat der Hubtisch-Antrieb?",
+      "viewer",
+    );
+    expect(result.answered).toBe(true);
+    expect(gap).toBeNull();
+    const text = result.answer ?? "";
+    expect(text).toContain(`: ${MILLI}`);
+    expect(text).toContain(`: ${MEGA}`);
+    expect(text).toContain("Ohne KI-Modell fand keine Widerspruchsprüfung statt");
+    expect(text).toContain("Rückfrage: Welche dieser Quellen gilt für Ihren Fall?");
+    expect(result.knowledgeClass).not.toBe("gesichert");
+    expect([...result.citedSources].sort()).toEqual([milli, mega].sort());
+  });
+});
+
 describe("P05-AC08 · Gegenfälle", () => {
   it("G4 zwei bestätigte Quellen mit gleichem Wortlaut: keine Gegenüberstellung", async () => {
     const a = await aufbau();

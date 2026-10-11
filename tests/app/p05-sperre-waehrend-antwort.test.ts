@@ -15,6 +15,8 @@
 //       409 ohne Wortlaut, Titel und Kennung; das Konto bleibt angemeldet.
 //   S5  danach weder über eine erneute Frage noch über den Objektabruf wiederverwendbar.
 //   S6  Kalibrierung: Entzug an einer nicht herangezogenen Quelle hält die Antwort nicht auf.
+//   S7  (Ben, Nacharbeit 6) gesonderte Löschung der Wissenskopie WÄHREND der Verarbeitung: 409.
+//   S8  Abgrenzung: gewöhnliche Quellenlöschung (nur Vermerk am Anker, Kopie bleibt) → 200.
 // NICHT gemessen: ein echter Modellaufruf (ohne KI-Freigabe läuft der deterministische Ersatz) und
 // die Hintergrundjobs/Gespräche des Rechteentzugsauftrags (rechteentzug-gespraeche-belege).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -202,5 +204,80 @@ describe("P05-AC03 · Leserechtsentzug während einer laufenden Antwort", () => 
     const res = await fragen(headers);
     expect(res.statusCode, res.body).toBe(200);
     expect(res.json().result.answer).toContain(AUSSAGE);
+  });
+});
+
+// Ben, Nacharbeit 6 — P05-AC06 gegen AC01: eine GESONDERTE Löschung der Wissenskopie (etwa
+// personenbezogen oder Lizenz) während der Antwort sperrt die Ausgabe; eine GEWÖHNLICHE
+// Quellenlöschung (die externe Quelle ist nur unerreichbar, die Kopie bleibt) sperrt sie nicht.
+describe("P05 · Löschung der Wissenskopie während einer laufenden Antwort", () => {
+  it("S7 Kopie WÄHREND der Verarbeitung in den Papierkorb gelegt: keine Ausgabe, kein Wortlaut", async () => {
+    const headers = await anmelden();
+    const original = services.ask.ask.bind(services.ask);
+    const verarbeitet = vi.spyOn(services.ask, "ask").mockImplementation(async (...args) => {
+      const out = await original(...args);
+      // Die Antwort ist fertig — jetzt wird die Wissenskopie gesondert gelöscht.
+      await services.ko.delete(koId, "datenschutz@p05.test", { forceTrash: true });
+      return out;
+    });
+
+    const res = await fragen(headers);
+    expect(verarbeitet).toHaveBeenCalledTimes(1);
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error).toBe("QUELLRECHTE_GEAENDERT");
+    expect(res.body).not.toContain(AUSSAGE);
+    expect(res.body).not.toContain(TITEL);
+    expect(res.body).not.toContain(koId);
+    expect(res.body).not.toContain("receipt");
+    expect((await services.ko.trashed()).map((t) => t.id)).toContain(koId);
+  });
+
+  it("S8 Abgrenzung: gewöhnliche Quellenlöschung während der Verarbeitung — Kopie bleibt, Antwort geht hinaus", async () => {
+    const kopie = await services.ko.create({
+      title: "Spezialpresse SPX9 Hydraulik entlüften",
+      statement: "Beim Entlüften der Spezialpresse SPX9 die Hydraulik drucklos halten.",
+      type: "best_practice",
+      category: "Instandhaltung",
+      author: adminId,
+      sources: [
+        {
+          id: "anker-p05",
+          label: "Confluence-Seite SPX9",
+          url: null,
+          excerpt: null,
+          kind: "external",
+          peerValidated: false,
+          provider: "confluence",
+          externalId: "P-SPX9",
+          spaceKey: "K",
+          sourceVersion: 1,
+        },
+      ],
+    });
+    for (let i = 0; i < kopie.neededValidations; i++) {
+      await services.validation.rate(kopie.id, `pruefer-k-${i}`, "up");
+    }
+    const headers = await anmelden();
+    const original = services.ask.ask.bind(services.ask);
+    let vermerkt = false;
+    vi.spyOn(services.ask, "ask").mockImplementation(async (...args) => {
+      const out = await original(...args);
+      // Die externe Quelle verschwindet — der Abgleich vermerkt das nur am Anker (P05-AC02).
+      vermerkt = await services.ko.markSourceRemoved(
+        kopie.id,
+        { provider: "confluence", externalId: "P-SPX9" },
+        new Date().toISOString(),
+        "abgleich@p05.test",
+      );
+      return out;
+    });
+
+    const res = await fragen(headers);
+    expect(vermerkt).toBe(true);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json().result.answered).toBe(true);
+    const kopieNachher = await services.ko.get(kopie.id);
+    const anker = kopieNachher?.sources?.find((s) => s.externalId === "P-SPX9");
+    expect(typeof anker?.sourceRemovedAt).toBe("string");
   });
 });

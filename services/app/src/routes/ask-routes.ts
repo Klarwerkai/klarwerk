@@ -1147,16 +1147,17 @@ async function antwortLauf(
   // Antwort den Server nicht: jede herangezogene Quelle wird mit dem AKTUELLEN Stand des Objekts und
   // des Nutzers gegen dieselbe Sichtregel gehalten, Vertrauliches fällt wie im Fragedienst immer
   // heraus. Die Absage nennt keine Quelle und keinen Inhalt.
-  // Nacharbeit 5: geurteilt wird nur über eine Quelle, die der Lesedienst LIEFERT. Eine nicht
-  // gelieferte Quelle ist keine Rechteänderung — Löschung hat in P05 ihren eigenen Weg (AC01/AC06),
-  // und Aufbauten ohne Objektbestand (`ko.get` → undefined, ask-routes.test.ts R-0700 × R-0310)
-  // behalten ihren Vertrag.
+  // Nacharbeit 6 (Ben): auch eine WÄHREND der Verarbeitung verschwundene Wissenskopie sperrt — in
+  // den Papierkorb gelegt (`ko.get` liefert dann nichts) oder endgelöscht, etwa durch eine gesonderte
+  // personenbezogene oder Lizenzlöschung (P05-AC06). Davon zu unterscheiden ist die nur
+  // UNERREICHBARE externe Quelle einer gewöhnlichen Quellenlöschung (P05-AC01/AC02): dort bleibt die
+  // Kopie bestehen, trägt nur den Vermerk `sourceRemovedAt` am Anker und wird weiter ausgeliefert.
   // Grenze, benannt: zwischen dieser Lesung und dem Senden liegt kein weiteres Warten; ein Entzug
   // NACH dem Senden wirkt auf die nächste Anfrage (Beleg- und Frageweg prüfen am Eingang).
   const herangezogen = [...new Set([...out.result.sources, ...out.result.citedSources])];
   for (const id of herangezogen) {
     const jetzt = await deps.ko.get(id);
-    if (jetzt && (isConfidential(jetzt.confidentiality) || !sichtJetzt(jetzt))) {
+    if (!jetzt || isConfidential(jetzt.confidentiality) || !sichtJetzt(jetzt)) {
       reply.code(409).send({
         error: "QUELLRECHTE_GEAENDERT",
         message:
