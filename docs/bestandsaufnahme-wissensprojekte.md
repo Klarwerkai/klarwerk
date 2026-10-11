@@ -87,6 +87,24 @@ löschen) und Spaces der einzige Bestand mit dieser Form sind.
    - Textschlüssel des Firmenfilters heißen jetzt `spaces.firmenfilter.*`, weil main
      `spaces.filter.*` für seine Suchleiste belegt; der Kontextfilter ändert nur `kontext` in der
      Adresse und lässt main's Filter stehen.
+9. **Vorlagen-Einreichung gegen Spacelöschung (Nacharbeit 8, Bens reproduzierter Befund).**
+   Vorher: Nach erfolgreicher Vorlagenprüfung gelöschter Partner-Space → Anlage 201 ohne Space,
+   für Nichtmitglieder lesbar und im Firmenkontext; Nutzungsbeleg mit gelöschtem Space. Jetzt:
+   - Mit gewähltem Space laufen Vorlagenprüfung, Anlage, Space-Zuordnung und Nutzungsbeleg unter
+     derselben Sperre wie die Spacelöschung — an allen drei Aufrufern des gemeinsamen Ports
+     (`POST /api/kos`, `POST /api/kos/from-document`, Promote `POST /api/drafts/:id/promote`;
+     Port-Methoden `sperre` und `halte` in `services/app/src/vorlagen.ts`).
+   - Gewinnt die Löschung vorher, antwortet die Prüfung `409 SPACE_GELOESCHT` (für wen den Space
+     sehen durfte); es entsteht nichts. Sonst wartet die Löschung, findet den Beitrag im Space und
+     wird abgelehnt.
+   - Der Space wird VOR dem Nutzungsbeleg gesetzt. Misslingt die Zuordnung dennoch, nimmt der
+     Port die Anlage hart zurück und der Aufrufer antwortet `409 VORLAGE_SPACE_KONFLIKT` — kein
+     breiter sichtbarer Restartikel, kein Beleg. An `from-document` und Promote steht dieser
+     Schritt deshalb vor dem Verwerfen bzw. Verbrauch des Entwurfs; der Entwurf bleibt erhalten.
+   - Gegenprobe: `tests/wissensprojekte/vorlagen-loeschkonflikt.test.ts` — Bens Reproduktion
+     (Kontrolle und Konflikt K mit seinen Sollwerten) plus V (Löschung vorher) und Z (Zuordnung
+     scheitert). Der Konfliktfall von `from-document` und Promote ist nicht eigens reproduziert;
+     dort greift derselbe Port, ihre Regression läuft über `tests/vorlagen/vorlagen-api.test.ts`.
 
 Die Regel „erst verschieben, dann löschen“ (kein Mitlöschen, kein Sammelverschieben beim Löschen)
 ist **meine vorläufige Regel**, keine Nutzerentscheidung. Grund: ein Sammelwechsel änderte die
