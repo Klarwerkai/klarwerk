@@ -528,6 +528,7 @@ PFLICHTTABELLEN=(
   management_category_profiles
   management_retirement_horizons
   verantwortung_nachfolge
+  assistenz_profile
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

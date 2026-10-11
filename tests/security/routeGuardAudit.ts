@@ -963,6 +963,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/me/klara/gespraeche/:id/schritt": { protection: "auth" },
   "PUT /api/me/klara/gespraeche/:id/einwilligung": { protection: "auth" },
   "DELETE /api/me/klara/gespraeche/:id": { protection: "auth" },
+  // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das EIGENE Konto
+  // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
+  "GET /api/me/assistenz": { protection: "auth" },
+  "PUT /api/me/assistenz": { protection: "auth" },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },

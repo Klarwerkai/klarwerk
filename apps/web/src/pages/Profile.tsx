@@ -1,7 +1,7 @@
 // JOB 3065 H6 — DAS PROFIL IN DERSELBEN ZEILENKARTE WIE DIE EINSTELLUNGEN.
 //
 // Kein Kicker, keine Einleitung: Name (Wert = Rolle), E-Mail, Kontodaten berichtigen, Sprache,
-// Passwort ändern, die eigene Wirkung und das Abmelden — jede Zeile mit ihrem Wert.
+// Meine Assistenz, Passwort ändern, die eigene Wirkung und das Abmelden — jede Zeile mit ihrem Wert.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,6 +13,9 @@ import { useSession } from "../app/AuthContext";
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — Zahlen nur über eigene Beiträge.
 import { MyImpactNumbers } from "../components/FunkeCards";
 import { istAktiv } from "../components/SprachSchalter";
+// produkt:20261010:assistenz-name-avatar: „Meine Assistenz" — Name und Motiv der eigenen Assistenz.
+import { AssistenzFormular } from "../components/assistenz/AssistenzFormular";
+import { AvatarBild } from "../components/assistenz/AvatarBild";
 // Betroffenenrechte (R-0663, R-0661): „Meine Daten" und der eigene Löschantrag.
 import { LoeschantragDetail, MeineDatenDetail } from "../components/datenschutz/MeineDaten";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
@@ -20,6 +23,11 @@ import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { EinstellungenSeite } from "../components/einstellungen/Seite";
 import { Zeile, Zeilenkarte } from "../components/einstellungen/Zeilenkarte";
 import { Avatar, Button, Field, TextInput } from "../components/ui";
+import {
+  ladeAssistenzProfil,
+  useAssistenzAnzeige,
+  useAssistenzStand,
+} from "../lib/assistenzProfil";
 import { abonniereAngelegteSprachen, angelegteSprachen } from "../lib/instanzSprachen";
 import { OBERFLAECHEN_SPRACHEN as SPRACHEN } from "../lib/sprachregister";
 import { useSeitenhilfeAnmeldung } from "../shell/SeitenhilfeContext";
@@ -532,15 +540,62 @@ function ZweiFaktorDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element
 
 const ZWEI_FAKTOR_KEY = ["auth", "second-factor"] as const;
 
+// ================================================================================================
+// produkt:20261010:assistenz-name-avatar — MEINE ASSISTENZ: Name und Motiv jederzeit ändern.
+// Einstellungen → Persönliche Einstellungen (/profil) → „Meine Assistenz".
+// ================================================================================================
+function MeineAssistenzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
+  const { t } = useTranslation();
+  const { user } = useSession();
+  const stand = useAssistenzStand();
+  return (
+    <Detailkarte
+      titel={t("assistenz.einstellungen.titel")}
+      onZurueck={onZurueck}
+      testId="detail-assistenz"
+    >
+      <p className="text-[13px] text-muted">{t("assistenz.einstellungen.intro")}</p>
+      {stand.status === "fehler" ? (
+        <div role="alert" className="space-y-2 text-[12.5px] text-trust-crit-text">
+          <p>{t("assistenz.laden.fehler")}</p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (user) {
+                void ladeAssistenzProfil(user.id);
+              }
+            }}
+          >
+            {t("assistenz.laden.wiederholen")}
+          </Button>
+        </div>
+      ) : null}
+      {stand.status === "bereit" ? <AssistenzFormular modus="aendern" /> : null}
+    </Detailkarte>
+  );
+}
+
 export function Profile(): JSX.Element {
   const { t } = useTranslation();
   const { user, signOut } = useSession();
   const [busy, setBusy] = useState(false);
   // R-0582: Rücksprung aus der SSO-Bestätigung (`/profil?kontodaten=sso`) öffnet die Karte wieder.
-  const ausSso = new URLSearchParams(useLocation().search).get("kontodaten") === "sso";
+  const suche = new URLSearchParams(useLocation().search);
+  const ausSso = suche.get("kontodaten") === "sso";
+  // produkt:20261010:assistenz-name-avatar: `/profil?bereich=assistenz` öffnet „Meine Assistenz".
+  const zurAssistenz = suche.get("bereich") === "assistenz";
   const [detail, setDetail] = useState<
-    null | "passwort" | "wirkung" | "kontodaten" | "zweifaktor" | "meineDaten" | "loeschantrag"
-  >(ausSso ? "kontodaten" : null);
+    | null
+    | "passwort"
+    | "wirkung"
+    | "kontodaten"
+    | "zweifaktor"
+    | "meineDaten"
+    | "loeschantrag"
+    | "assistenz"
+  >(ausSso ? "kontodaten" : zurAssistenz ? "assistenz" : null);
+  const assistenz = useAssistenzAnzeige();
+  const assistenzStand = useAssistenzStand();
   const zweiFaktor = useQuery({ queryKey: ZWEI_FAKTOR_KEY, queryFn: authApi.secondFactorStatus });
   const zurueck = (): void => setDetail(null);
   // JOB 3742 · DIE SEITENHILFE DIESER FLÄCHE — und warum hier der HAKEN steht und nicht der
@@ -565,6 +620,7 @@ export function Profile(): JSX.Element {
       {detail === "zweifaktor" ? <ZweiFaktorDetail onZurueck={zurueck} /> : null}
       {detail === "meineDaten" ? <MeineDatenDetail onZurueck={zurueck} /> : null}
       {detail === "loeschantrag" ? <LoeschantragDetail onZurueck={zurueck} /> : null}
+      {detail === "assistenz" ? <MeineAssistenzDetail onZurueck={zurueck} /> : null}
       {detail === null ? (
         <Zeilenkarte>
           <Zeile
@@ -581,6 +637,26 @@ export function Profile(): JSX.Element {
             testId="zeile-kontodaten"
           />
           <Zeile label={t("prof.language")} steuerung={<SprachWahl />} testId="zeile-sprache" />
+          <Zeile
+            label={t("assistenz.einstellungen.titel")}
+            vorn={
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-page">
+                <AvatarBild
+                  motiv={assistenz.motiv}
+                  alt=""
+                  ersatzBeschriftung=""
+                  className="h-8 w-8 rounded-full"
+                />
+              </span>
+            }
+            wert={
+              assistenzStand.antwort?.einrichtungOffen === false
+                ? assistenz.anzeigename
+                : t("assistenz.einstellungen.offen")
+            }
+            onOeffnen={() => setDetail("assistenz")}
+            testId="zeile-assistenz"
+          />
           <Zeile
             label={t("prof.passwordTitle")}
             onOeffnen={() => setDetail("passwort")}

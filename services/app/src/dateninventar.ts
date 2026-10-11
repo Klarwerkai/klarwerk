@@ -364,6 +364,27 @@ export const DATENINVENTAR: readonly Datenart[] = [
     selbstauskunft: { enthalten: true },
   },
   {
+    // produkt:20261010:assistenz-name-avatar — das persönliche Assistenzprofil
+    // (`services/app/src/assistenz-profil.ts`), eine Zeile je Konto.
+    id: "assistenzprofil",
+    name: "Persönliches Assistenzprofil",
+    inhalt:
+      "Je Konto der selbst gewählte Anzeigename der Assistenz, die Kennung des gewählten Motivs, die Bewegungseinstellung und der Zeitpunkt der abgeschlossenen Ersteinrichtung.",
+    personenbezug: "ja",
+    personenbezugGrund:
+      "Gehört genau einem Konto; der Anzeigename ist Freitext der Person und kann Persönliches enthalten.",
+    ablage: { ort: DATENBANK, tabellen: ["assistenz_profile"] },
+    taetigkeit: "fragen",
+    loeschung:
+      "Das Konto ändert Name und Motiv selbst unter „Meine Assistenz“; ein eigener Löschweg der Zeile ist nicht gebaut.",
+    frist: BETREIBERFRIST,
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Das Konto sieht und ändert sein Profil jederzeit selbst unter „Meine Assistenz“; ein eigener Abschnitt der Selbstauskunft ist noch nicht gebaut.",
+    },
+  },
+  {
     id: "lernpfade",
     name: "Lernpfade und Fortschritt",
     inhalt:

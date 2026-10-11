@@ -51,31 +51,31 @@ export default {
     "klaravorschlag.fehler.uebersetzung":
       "Die Markierung stammt aus der Leseübersetzung von „{{titel}}“. Übernommen werden kann nur ins Original – markiere dort.",
     "klaravorschlag.fehler.keinRecht":
-      "Du darfst „{{titel}}“ nicht bearbeiten. Klara hat nichts geändert.",
+      "Du darfst „{{titel}}“ nicht bearbeiten. {{assistenz}} hat nichts geändert.",
     "klaravorschlag.fehler.nichtGefunden":
-      "Der markierte Wortlaut steht nicht mehr in Kernaussage oder Inhalt von „{{titel}}“. Klara hat nichts geändert.",
+      "Der markierte Wortlaut steht nicht mehr in Kernaussage oder Inhalt von „{{titel}}“. {{assistenz}} hat nichts geändert.",
     "klaravorschlag.fehler.formatierung":
       "Die Markierung reicht über eine Formatierung (z. B. fett oder einen Verweis). Markiere innerhalb eines gleich formatierten Abschnitts oder ändere die Stelle im Editor selbst.",
     "klaravorschlag.fehler.keinEditor":
-      "Der Editor dieses Beitrags hat nicht geantwortet. Klara hat nichts geändert.",
+      "Der Editor dieses Beitrags hat nicht geantwortet. {{assistenz}} hat nichts geändert.",
     "klaravorschlag.fehler.formatiertMehrdeutig":
-      "Der markierte Wortlaut steht auch an einer formatierten Stelle im Inhalt (z. B. fett oder mit Verweis). Klara kann nicht sicher sagen, welche Stelle gemeint ist, und hat nichts geändert – ändere die Stelle im Editor selbst.",
+      "Der markierte Wortlaut steht auch an einer formatierten Stelle im Inhalt (z. B. fett oder mit Verweis). {{assistenz}} kann nicht sicher sagen, welche Stelle gemeint ist, und hat nichts geändert – ändere die Stelle im Editor selbst.",
     "klaravorschlag.rueckfrage.keinObjekt":
-      "Wohin soll der Vorschlag? Die Markierung stammt von „{{seite}}“ und gehört zu keinem Beitrag, den Klara bearbeiten kann. Übernimm den Text selbst, wo er hingehört.",
+      "Wohin soll der Vorschlag? Die Markierung stammt von „{{seite}}“ und gehört zu keinem Beitrag, den {{assistenz}} bearbeiten kann. Übernimm den Text selbst, wo er hingehört.",
     "klaravorschlag.rueckfrage.anderesObjekt":
-      "Der Vorschlag gehört zu „{{titel}}“, geöffnet ist „{{offen}}“. Klara ändert nicht das falsche Objekt – öffne „{{titel}}“ und übernimm dort.",
+      "Der Vorschlag gehört zu „{{titel}}“, geöffnet ist „{{offen}}“. {{assistenz}} ändert nicht das falsche Objekt – öffne „{{titel}}“ und übernimm dort.",
     "klaravorschlag.rueckfrage.nichtOffen":
       "Der Vorschlag gehört zu „{{titel}}“, dieser Beitrag ist gerade nicht geöffnet. Öffne ihn und übernimm dort.",
     "klaravorschlag.rueckfrage.stellen":
       "Der markierte Wortlaut steht {{anzahl}}-mal im Beitrag. Welche Stelle meinst du?",
     "klaravorschlag.rueckfrage.veraltet":
-      "Der Beitrag hat sich seit deiner Auswahl geändert – Klara hat nichts geändert. Der Wortlaut steht jetzt {{anzahl}}-mal darin. Welche Stelle meinst du?",
+      "Der Beitrag hat sich seit deiner Auswahl geändert – {{assistenz}} hat nichts geändert. Der Wortlaut steht jetzt {{anzahl}}-mal darin. Welche Stelle meinst du?",
     "klaravorschlag.bedienhilfe.umformulieren":
-      "„Umformulieren“: Klara schlägt für den markierten Text eine klarere Formulierung vor (derselbe Formulierungsweg wie die KI-Hilfe im Editor) und zeigt Original und Vorschlag nebeneinander. Am Beitrag ändert sich dabei nichts.",
+      "„Umformulieren“: {{assistenz}} schlägt für den markierten Text eine klarere Formulierung vor (derselbe Formulierungsweg wie die KI-Hilfe im Editor) und zeigt Original und Vorschlag nebeneinander. Am Beitrag ändert sich dabei nichts.",
     "klaravorschlag.bedienhilfe.uebernehmen":
-      "„Übernehmen“ setzt den Vorschlag in die Bearbeitungsfassung des Beitrags im Editor. Dauerhaft wird er erst, wenn du dort speicherst oder einreichst – Klara liest danach nach, was gespeichert ist.",
+      "„Übernehmen“ setzt den Vorschlag in die Bearbeitungsfassung des Beitrags im Editor. Dauerhaft wird er erst, wenn du dort speicherst oder einreichst – {{assistenz}} liest danach nach, was gespeichert ist.",
     "klaravorschlag.bedienhilfe.rueckfrage":
-      "Steht der Wortlaut mehrmals im Beitrag, fragt Klara nach der Stelle. Ist ein anderer Beitrag geöffnet oder fehlt dir das Bearbeitungsrecht, ändert Klara nichts und sagt warum.",
+      "Steht der Wortlaut mehrmals im Beitrag, fragt {{assistenz}} nach der Stelle. Ist ein anderer Beitrag geöffnet oder fehlt dir das Bearbeitungsrecht, ändert {{assistenz}} nichts und sagt warum.",
     "klaravorschlag.bedienhilfe.notiz":
       "„Notizentwurf“ legt einen Entwurf mit Rücklink zur Stelle an; er bleibt in dieser Sitzung.",
     "klaravorschlag.notiz.titel": "Notizentwurf",
@@ -124,31 +124,31 @@ export default {
     "klaravorschlag.fehler.uebersetzung":
       "The selection comes from the reading translation of “{{titel}}”. Changes can only be applied to the original – select there.",
     "klaravorschlag.fehler.keinRecht":
-      "You are not allowed to edit “{{titel}}”. Klara changed nothing.",
+      "You are not allowed to edit “{{titel}}”. {{assistenz}} changed nothing.",
     "klaravorschlag.fehler.nichtGefunden":
-      "The selected wording is no longer in the key statement or content of “{{titel}}”. Klara changed nothing.",
+      "The selected wording is no longer in the key statement or content of “{{titel}}”. {{assistenz}} changed nothing.",
     "klaravorschlag.fehler.formatierung":
       "The selection spans a formatting change (e.g. bold or a link). Select within one evenly formatted passage or change it in the editor yourself.",
     "klaravorschlag.fehler.keinEditor":
-      "The editor of this article did not respond. Klara changed nothing.",
+      "The editor of this article did not respond. {{assistenz}} changed nothing.",
     "klaravorschlag.fehler.formatiertMehrdeutig":
-      "The selected wording also occurs at a formatted passage in the content (e.g. bold or a link). Klara cannot tell for sure which passage is meant and changed nothing – change it in the editor yourself.",
+      "The selected wording also occurs at a formatted passage in the content (e.g. bold or a link). {{assistenz}} cannot tell for sure which passage is meant and changed nothing – change it in the editor yourself.",
     "klaravorschlag.rueckfrage.keinObjekt":
-      "Where should the suggestion go? The selection comes from “{{seite}}” and belongs to no article Klara can edit. Copy the text where it belongs yourself.",
+      "Where should the suggestion go? The selection comes from “{{seite}}” and belongs to no article {{assistenz}} can edit. Copy the text where it belongs yourself.",
     "klaravorschlag.rueckfrage.anderesObjekt":
-      "The suggestion belongs to “{{titel}}”, but “{{offen}}” is open. Klara does not change the wrong object – open “{{titel}}” and apply it there.",
+      "The suggestion belongs to “{{titel}}”, but “{{offen}}” is open. {{assistenz}} does not change the wrong object – open “{{titel}}” and apply it there.",
     "klaravorschlag.rueckfrage.nichtOffen":
       "The suggestion belongs to “{{titel}}”, which is not open right now. Open it and apply it there.",
     "klaravorschlag.rueckfrage.stellen":
       "The selected wording occurs {{anzahl}} times in the article. Which passage do you mean?",
     "klaravorschlag.rueckfrage.veraltet":
-      "The article has changed since your choice – Klara changed nothing. The wording now occurs {{anzahl}} times. Which passage do you mean?",
+      "The article has changed since your choice – {{assistenz}} changed nothing. The wording now occurs {{anzahl}} times. Which passage do you mean?",
     "klaravorschlag.bedienhilfe.umformulieren":
-      "“Rephrase”: Klara suggests clearer wording for the selected text (the same wording path as the AI help in the editor) and shows original and suggestion side by side. The article does not change.",
+      "“Rephrase”: {{assistenz}} suggests clearer wording for the selected text (the same wording path as the AI help in the editor) and shows original and suggestion side by side. The article does not change.",
     "klaravorschlag.bedienhilfe.uebernehmen":
-      "“Apply” puts the suggestion into the article’s working version in the editor. It only becomes permanent when you save or submit there – Klara then checks what was saved.",
+      "“Apply” puts the suggestion into the article’s working version in the editor. It only becomes permanent when you save or submit there – {{assistenz}} then checks what was saved.",
     "klaravorschlag.bedienhilfe.rueckfrage":
-      "If the wording occurs more than once, Klara asks which passage you mean. If another article is open or you lack editing rights, Klara changes nothing and says why.",
+      "If the wording occurs more than once, {{assistenz}} asks which passage you mean. If another article is open or you lack editing rights, {{assistenz}} changes nothing and says why.",
     "klaravorschlag.bedienhilfe.notiz":
       "“Note draft” creates a draft with a link back to the passage; it stays in this session.",
     "klaravorschlag.notiz.titel": "Note draft",
@@ -198,31 +198,31 @@ export default {
     "klaravorschlag.fehler.uebersetzung":
       "De markering komt uit de leesvertaling van „{{titel}}”. Overnemen kan alleen in het origineel – markeer daar.",
     "klaravorschlag.fehler.keinRecht":
-      "Je mag „{{titel}}” niet bewerken. Klara heeft niets gewijzigd.",
+      "Je mag „{{titel}}” niet bewerken. {{assistenz}} heeft niets gewijzigd.",
     "klaravorschlag.fehler.nichtGefunden":
-      "De gemarkeerde tekst staat niet meer in kernuitspraak of inhoud van „{{titel}}”. Klara heeft niets gewijzigd.",
+      "De gemarkeerde tekst staat niet meer in kernuitspraak of inhoud van „{{titel}}”. {{assistenz}} heeft niets gewijzigd.",
     "klaravorschlag.fehler.formatierung":
       "De markering loopt over een opmaak heen (bijv. vet of een link). Markeer binnen een gelijk opgemaakte passage of wijzig de plek zelf in de editor.",
     "klaravorschlag.fehler.keinEditor":
-      "De editor van dit artikel heeft niet geantwoord. Klara heeft niets gewijzigd.",
+      "De editor van dit artikel heeft niet geantwoord. {{assistenz}} heeft niets gewijzigd.",
     "klaravorschlag.fehler.formatiertMehrdeutig":
-      "De gemarkeerde tekst staat ook op een opgemaakte plek in de inhoud (bijv. vet of met een link). Klara kan niet zeker zeggen welke plek bedoeld is en heeft niets gewijzigd – wijzig de plek zelf in de editor.",
+      "De gemarkeerde tekst staat ook op een opgemaakte plek in de inhoud (bijv. vet of met een link). {{assistenz}} kan niet zeker zeggen welke plek bedoeld is en heeft niets gewijzigd – wijzig de plek zelf in de editor.",
     "klaravorschlag.rueckfrage.keinObjekt":
-      "Waar moet het voorstel heen? De markering komt van „{{seite}}” en hoort bij geen artikel dat Klara kan bewerken. Neem de tekst zelf over waar hij hoort.",
+      "Waar moet het voorstel heen? De markering komt van „{{seite}}” en hoort bij geen artikel dat {{assistenz}} kan bewerken. Neem de tekst zelf over waar hij hoort.",
     "klaravorschlag.rueckfrage.anderesObjekt":
-      "Het voorstel hoort bij „{{titel}}”, geopend is „{{offen}}”. Klara wijzigt niet het verkeerde object – open „{{titel}}” en neem het daar over.",
+      "Het voorstel hoort bij „{{titel}}”, geopend is „{{offen}}”. {{assistenz}} wijzigt niet het verkeerde object – open „{{titel}}” en neem het daar over.",
     "klaravorschlag.rueckfrage.nichtOffen":
       "Het voorstel hoort bij „{{titel}}”, dat artikel is nu niet geopend. Open het en neem het daar over.",
     "klaravorschlag.rueckfrage.stellen":
       "De gemarkeerde tekst staat {{anzahl}} keer in het artikel. Welke plek bedoel je?",
     "klaravorschlag.rueckfrage.veraltet":
-      "Het artikel is sinds je keuze gewijzigd – Klara heeft niets gewijzigd. De tekst staat er nu {{anzahl}} keer in. Welke plek bedoel je?",
+      "Het artikel is sinds je keuze gewijzigd – {{assistenz}} heeft niets gewijzigd. De tekst staat er nu {{anzahl}} keer in. Welke plek bedoel je?",
     "klaravorschlag.bedienhilfe.umformulieren":
-      "„Herformuleren”: Klara stelt voor de gemarkeerde tekst een duidelijkere formulering voor (dezelfde formuleringsroute als de AI-hulp in de editor) en toont origineel en voorstel naast elkaar. Het artikel verandert daarbij niet.",
+      "„Herformuleren”: {{assistenz}} stelt voor de gemarkeerde tekst een duidelijkere formulering voor (dezelfde formuleringsroute als de AI-hulp in de editor) en toont origineel en voorstel naast elkaar. Het artikel verandert daarbij niet.",
     "klaravorschlag.bedienhilfe.uebernehmen":
-      "„Overnemen” zet het voorstel in de werkversie van het artikel in de editor. Blijvend wordt het pas als je daar opslaat of indient – Klara leest daarna na wat er is opgeslagen.",
+      "„Overnemen” zet het voorstel in de werkversie van het artikel in de editor. Blijvend wordt het pas als je daar opslaat of indient – {{assistenz}} leest daarna na wat er is opgeslagen.",
     "klaravorschlag.bedienhilfe.rueckfrage":
-      "Staat de tekst meerdere keren in het artikel, dan vraagt Klara welke plek je bedoelt. Is een ander artikel geopend of mis je bewerkingsrechten, dan wijzigt Klara niets en zegt waarom.",
+      "Staat de tekst meerdere keren in het artikel, dan vraagt {{assistenz}} welke plek je bedoelt. Is een ander artikel geopend of mis je bewerkingsrechten, dan wijzigt {{assistenz}} niets en zegt waarom.",
     "klaravorschlag.bedienhilfe.notiz":
       "„Notitieconcept” maakt een concept met een link terug naar de passage; het blijft in deze sessie.",
     "klaravorschlag.notiz.titel": "Notitieconcept",

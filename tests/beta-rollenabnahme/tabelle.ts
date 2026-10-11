@@ -1549,6 +1549,28 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // produkt:20261010:assistenz-name-avatar — das eigene Assistenzprofil. Beide Türen prüfen nur die
+  // Anmeldung; das Konto kommt aus der Sitzung. ZUSTANDSFREI GEFAHREN: die Lesetür liefert das
+  // eigene (leere) Profil; die Schreibtür trägt ein unbekanntes Motiv und endet in 400, BEVOR etwas
+  // geschrieben wird. Die Wirkung (Schreiben, Fremdkonto 403) misst
+  // `tests/assistenz-profil/profil-am-server.test.ts`.
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "GET",
+    pfad: "/api/me/assistenz",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:81",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
+    gruppe: "assistenzProfilRoutes",
+    methode: "PUT",
+    pfad: "/api/me/assistenz",
+    belegstelle: "services/app/src/routes/assistenz-profil-routes.ts:98",
+    tor: "requireUser",
+    payload: { avatar: "gibt-es-nicht" },
+    erwartet: ANGEMELDET,
+  },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
   // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {
