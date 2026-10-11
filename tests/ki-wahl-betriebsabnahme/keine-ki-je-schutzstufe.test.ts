@@ -240,10 +240,21 @@ describe("Antwort 29 · Anbieterwahl je Schutzstufe — gespeichert, wiedergeles
     expect(gespeichert.statusCode, gespeichert.body).toBe(200);
     expect(gespeichert.json().taskConfig.zweitmeinung).toBe("local");
 
+    // Ein passender Wissenseintrag: ohne Grundlage fragt `answer` grundsätzlich kein Modell
+    // (`provider-model.ts`, FR-RSN-03) — dann wären beide Zählungen null und nichts gemessen.
+    const grundlage = [
+      {
+        id: "ko-anlage-pruefen",
+        title: "Anlage prüfen",
+        statement: "Die Anlage wird vor dem Start vom Mitarbeiter geprüft.",
+        status: "validiert" as const,
+        trust: 0.9,
+      },
+    ];
     let vorher = modellRufe.length;
     const vertraulich = await services.reasoner.answerMitZweitmeinung(
       "Wie wird die Anlage geprüft?",
-      [],
+      grundlage,
       "de",
       true,
     );
@@ -259,7 +270,7 @@ describe("Antwort 29 · Anbieterwahl je Schutzstufe — gespeichert, wiedergeles
     vorher = modellRufe.length;
     const offen = await services.reasoner.answerMitZweitmeinung(
       "Wie wird die Anlage geprüft?",
-      [],
+      grundlage,
       "de",
       false,
     );
@@ -267,8 +278,10 @@ describe("Antwort 29 · Anbieterwahl je Schutzstufe — gespeichert, wiedergeles
       modellRufe.slice(vorher).filter((u) => u === LOKAL_URL).length,
       "GEGENPROBE: ohne Sperre der Stufe fragt der Lauf das Modell",
     ).toBeGreaterThan(0);
-    const grund = offen.zweitmeinung.status === "nicht_moeglich" ? offen.zweitmeinung.grund : null;
-    expect(grund, "GEGENPROBE: die Sperre griff auch ohne „Keine KI“").not.toBe("nicht_freigegeben");
+    const zweit = offen.zweitmeinung;
+    const grund = zweit.status === "nicht_moeglich" ? zweit.grund : null;
+    const hinweis = "GEGENPROBE: die Sperre griff auch ohne „Keine KI“";
+    expect(grund, hinweis).not.toBe("nicht_freigegeben");
   });
 });
 
