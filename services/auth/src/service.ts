@@ -15,6 +15,7 @@ import {
 import { neuesTotpGeheimnis, otpauthAdresse, pruefeTotp } from "./totp";
 import {
   AuthError,
+  type Freigabestufe,
   type PublicUser,
   type Role,
   type Session,
@@ -775,6 +776,27 @@ export class AuthService {
    * bedeutet. Was der Mensch sieht, ist an BEIDEN Wegen dasselbe (G6); der zu grobe Code darunter
    * bleibt als offener Punkt benannt, statt still zu einer zweiten Auslegung zu werden.
    */
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19, Variante B): das persönliche Freigabeniveau
+   * setzen oder (`undefined`) entziehen. Wirkt beim nächsten Abruf: die Sitzung liest das Konto je
+   * Anfrage neu (`makeGuards`). Vor dem Schreiben steht der Vermerk mit altem und neuem Niveau.
+   */
+  async setFreigabe(
+    userId: string,
+    freigabe: Freigabestufe | undefined,
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const { freigabe: vorher, ...ohneFreigabe } = user;
+    const aktualisiert: User = freigabe === undefined ? ohneFreigabe : { ...user, freigabe };
+    await this.gemeinsamSchreiben(async (tx) => {
+      const vermerk = { vorher: vorher ?? null, nachher: freigabe ?? null };
+      await this.record(actorId, "user.freigabe-set", userId, vermerk, tx);
+      await this.users.update(aktualisiert, tx);
+    });
+    return toPublic(aktualisiert);
+  }
+
   async setAccessExpiry(
     userId: string,
     expiresAt: string | undefined,
