@@ -4171,12 +4171,27 @@ export function buildApp(
     ablage: services.vorlagen,
     spaces: services.spaces,
     audit: services.audit,
+    // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): Prüfung, Anlage und
+    // Zuordnung laufen gemeinsam unter `sperre` → `exklusiv` (dieselbe Sperre wie Spacewechsel und
+    // Spacelöschung). `inSpaceLegen` nimmt deshalb selbst keine Sperre mehr (sie wäre verschachtelt)
+    // und WIRFT, statt einen Beitrag still ohne Space stehen zu lassen; der Port nimmt die Anlage
+    // dann über `anlageZuruecknehmen` zurück.
+    exklusiv: <T>(arbeit: () => Promise<T>) => services.spaces.exklusiv(arbeit),
     inSpaceLegen: async (koId, spaceId, akteur) => {
       const ko = await services.ko.get(koId);
-      if (!ko || ko.spaceId === spaceId) {
+      if (!ko) {
+        throw new Error("Der Beitrag ist nicht (mehr) vorhanden.");
+      }
+      if (ko.spaceId === spaceId) {
         return;
       }
+      if (!(await services.spaces.aktuelle()).some((s) => s.id === spaceId)) {
+        throw new Error("Der gewählte Space ist nicht (mehr) vorhanden.");
+      }
       await services.ko.setLeadingSpace(koId, spaceId, akteur, null);
+    },
+    anlageZuruecknehmen: async (koId, akteur) => {
+      await services.ko.delete(koId, akteur, { hard: true });
     },
   });
   app.register(
