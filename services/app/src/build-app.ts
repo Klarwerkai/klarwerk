@@ -30,6 +30,7 @@ import {
   InMemorySecondFactorRepo,
   InMemorySessionRepo,
   InMemoryUserRepo,
+  type OidcProvider,
   type PasswordResetRepo,
   PgPasswordResetRepo,
   PgSecondFactorRepo,
@@ -293,6 +294,7 @@ import {
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
+import { FirmenresetSso } from "./firmenreset-sso";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
@@ -3155,6 +3157,10 @@ export function buildApp(
   // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
   opts: {
     factoryReset?: FactoryReset;
+    // P08-AC05: der SSO-Anbieter für die zweimalige Wiederanmeldung des Firmenresets. Ohne Angabe
+    // derselbe Anbieter wie für die Anmeldung (`createOidcProviderFromEnv`); Tests setzen eine
+    // Attrappe, weil kein Anbieter erreichbar ist.
+    firmenresetOidc?: OidcProvider;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
     // R-2057: TLS am App-Port (`transport-tls.ts`). Nur `server.ts` reicht es durch; ohne Option
@@ -5356,10 +5362,16 @@ export function buildApp(
   // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset. produkt:20261010:poc-wiederherstellung-export: der
   // Sicherungsumfang unter „System → Sicherung" ist an diese Fassung und ihre Migration gebunden.
   app.register(
-    adminRoutes(services, guards, opts.factoryReset, {
-      produkt: { version: buildVersion(), commit: buildCommit() },
-      tabellenImDump: tabellenDerStufen(schemas).length,
-    }),
+    adminRoutes(
+      services,
+      guards,
+      opts.factoryReset,
+      {
+        produkt: { version: buildVersion(), commit: buildCommit() },
+        tabellenImDump: tabellenDerStufen(schemas).length,
+      },
+      new FirmenresetSso(opts.firmenresetOidc ?? createOidcProviderFromEnv()),
+    ),
   );
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
   // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
