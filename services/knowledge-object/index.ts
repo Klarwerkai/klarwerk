@@ -486,6 +486,9 @@ export type {
   KoCreateOperationState,
   // R-1107: der Verweis eines aufgegangenen Artikels auf den verbleibenden.
   KoMergedInto,
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27.
+  KoWeisung,
+  KoExterneFreigabe,
   // AW06-K02: die Kontoregel einer Annahme (Entscheidungsbeleg und Leseweg).
   Kontoregel,
   KoSource,
