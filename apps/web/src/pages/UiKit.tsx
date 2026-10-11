@@ -105,7 +105,7 @@ export function UiKit(): JSX.Element {
           {BENANNTE_STUFEN.map((s) => (
             <li key={s.klasse} data-testid="bausteine-stufe" className="flex items-baseline gap-3">
               <span className="w-44 shrink-0 font-mono text-klein text-muted-2">
-                {s.klasse} · {s.px}px
+                {t("bausteine.schrift.stufe", { klasse: s.klasse, px: s.px })}
               </span>
               {/* Die Klassen stehen wörtlich in `lib/schriftskala.ts` — Tailwind liest sie dort. */}
               <span className={`${s.klasse} text-text`}>{t(s.verwendungKey)}</span>
@@ -116,7 +116,7 @@ export function UiKit(): JSX.Element {
         <ul className="space-y-1">
           {ZIELBILD_GROESSEN_PX.map((px) => (
             <li key={px} className={`text-text ${ZIELBILD_KLASSEN[px] ?? ""}`}>
-              {px}px · KLARWERK
+              {t("bausteine.schrift.muster", { px })}
             </li>
           ))}
         </ul>

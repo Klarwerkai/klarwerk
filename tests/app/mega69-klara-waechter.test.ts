@@ -3142,7 +3142,15 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // c3da73f9…). Im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel GEMESSEN („Received",
     // HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log) und unverändert übernommen; die
     // Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "c3da73f9507f3a2781db3fd160744e7786bbd94dadaa945859f68fc8758083d7";
+    // AUFNAHME gesamt-design-abgleich (Peters Entscheidung 55, 11.10.2026): PIN BEWUSST AKTUALISIERT
+    // (c3da73f9… -> ea46e0c0…). Auslieferungsfolgen, jede geprüft: die Stufenknöpfe tragen nicht mehr
+    // `primary`, sondern bleiben `ghost` mit Auswahlrahmen (taskpane.css); NEU ein Satz
+    // #capture-stufe-standard mit einem Wörterbuchschlüssel je Sprache (`captureStufeStandard`).
+    // Kein Abrufziel, keine Nutzlast (ohne Wahl weiterhin keine Stufe, N11), keine CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. Im Prüflauf zu Kandidat 09f84e0e GEMESSEN („Received",
+    // HISTORIE/nacharbeit-27/PRUEFUNG/entscheidungen-53-55-texte-und-panel.log) und unverändert
+    // übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "ea46e0c0c313b5dbb881065accc3f7bd9f786fb20203a73401f2c2cef3a5f7d0";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

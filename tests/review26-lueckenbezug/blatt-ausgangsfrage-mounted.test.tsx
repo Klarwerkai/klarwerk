@@ -211,8 +211,10 @@ describe("REVIEW26 Lückenbezug · Lücke → Wissen erfassen → Blatt mit Ausg
     await act(flush);
 
     expect(feld("blatt"), seitentext().slice(0, 500)).not.toBeNull();
-    expect(feld("blatt-ausgangsfrage-text")?.textContent).toBe(FRAGE);
-    expect(feld("blatt-ausgangsfrage")?.textContent).toContain("Aus offener Wissenslücke");
+    // Seit der Integration mit main (N-0084) steht die Frage in main's Fläche — in
+    // Anführungszeichen und mit der Beschriftung „Ausgangsfrage der Wissenslücke".
+    expect(feld("blatt-ausgangsfrage-text")?.textContent).toBe(`„${FRAGE}“`);
+    expect(feld("blatt-ausgangsfrage")?.textContent).toContain(i18n.t("gap.ausgangsfrage"));
     expect(davor(feld("blatt-ausgangsfrage"), feld("blatt-titel"))).toBe(true);
     expect(davor(feld("blatt-ausgangsfrage"), feld("blatt-text"))).toBe(true);
     // Bezug, nicht Inhalt: Titel und Text gehören weiter dem Menschen.
@@ -275,7 +277,7 @@ describe("REVIEW26 Lückenbezug · Lücke → Wissen erfassen → Blatt mit Ausg
     expect((feld("blatt-titel") as HTMLInputElement | null)?.value).toBe(TITEL);
     expect(feld("blatt-text")?.textContent ?? "").toContain("Nullpunkt am HMI");
     expect(feld("blatt-text")?.textContent ?? "").not.toContain(FRAGE);
-    expect(feld("blatt-ausgangsfrage-text")?.textContent).toBe(FRAGE);
+    expect(feld("blatt-ausgangsfrage-text")?.textContent).toBe(`„${FRAGE}“`);
     expect(davor(feld("blatt-ausgangsfrage"), feld("blatt-titel"))).toBe(true);
   });
 });

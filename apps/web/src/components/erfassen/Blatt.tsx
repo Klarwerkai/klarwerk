@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -410,7 +410,14 @@ function BlattAusgangsfrage({ gapId }: { gapId: string }): JSX.Element | null {
       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-2">
         {t("gap.ausgangsfrage")}
       </div>
-      <p className="mt-1 break-words text-[14px] leading-snug text-text">„{frage}“</p>
+      {/* REVIEW26 „Lückenbezug" (K19): eigene Kennung für den Wortlaut — die Gegenprobe
+          `review26-lueckenbezug` und Bild B7 lesen ihn hier. */}
+      <p
+        data-testid="blatt-ausgangsfrage-text"
+        className="mt-1 break-words text-[14px] leading-snug text-text"
+      >
+        „{frage}“
+      </p>
     </section>
   );
 }
@@ -457,22 +464,6 @@ export function Blatt({
       <span className="break-words text-text">{thema}</span>
     </p>
   ) : null;
-
-  // REVIEW26 „Lückenbezug" (K19): „Wissen erfassen" an einer Lücke öffnet `/erfassen?gap=<id>`.
-  // Bis hierher wertete nur der alte Arbeitsraum die Kennung aus — das Blatt, das diese Adresse
-  // zeigt, startete ohne die Frage, die beantwortet werden soll. Aufgelöst wird über DENSELBEN
-  // Weg wie dort (`resolveGapQuestion`): nur aus der serverseitig berechtigungsgefilterten Liste;
-  // eine redigierte oder unbekannte Lücke ergibt `null`, und dann steht hier nichts. Geladen wird
-  // die Liste nur, wenn die Adresse eine Kennung trägt (Schlüssel wie `useGaps`, also aus dem
-  // Cache, wenn man von `/risiko` kommt). Die Frage steht ÜBER dem Blatt und wird nicht in den
-  // Text geschrieben — ein fortgesetzter Entwurf behält seinen Inhalt unverändert.
-  const gapId = readGapId(searchParams);
-  const gapListe = useQuery({
-    queryKey: ["gaps"],
-    queryFn: () => endpoints.gaps.list(),
-    enabled: gapId !== null,
-  });
-  const ausgangsfrage = resolveGapQuestion(gapId, gapListe.data);
 
   // ---- Inhalt des Blattes ----------------------------------------------------------------------
   const [title, setTitle] = useState("");
@@ -3551,24 +3542,6 @@ export function Blatt({
           // Blatt wäre dann Rand statt Blatt. Ein Pages-Blatt behält seinen Rand nicht um jeden Preis.
           className="flex min-h-[60vh] flex-grow flex-col gap-[22px] rounded-t-[14px] border border-hairline bg-surface px-6 pt-[56px] shadow-tile sm:px-[72px]"
         >
-          {/* REVIEW26 „Lückenbezug": die Frage, auf die dieses Blatt antwortet — nur berechtigt
-              aufgelöst (siehe `ausgangsfrage` oben), sonst steht hier nichts. */}
-          {ausgangsfrage ? (
-            <div
-              data-testid="blatt-ausgangsfrage"
-              className="rounded-[10px] border border-dashed border-hairline bg-page px-4 py-3"
-            >
-              <div className="text-micro font-semibold uppercase text-muted-2">
-                {t("capture.gapContextTitle")}
-              </div>
-              <blockquote
-                data-testid="blatt-ausgangsfrage-text"
-                className="mt-1 text-[15px] leading-snug text-text"
-              >
-                {ausgangsfrage}
-              </blockquote>
-            </div>
-          ) : null}
           <div className="relative">
             <input
               ref={titelFeldRef}

@@ -48,9 +48,7 @@ export function FassungsGegenueberstellung({
     <dl className="mt-2 grid gap-2" data-bib-fassung-nebeneinander>
       {gegenueber.felder.map((f) => (
         <div key={f.feld} data-bib-fassung-vergleich-feld={f.feld}>
-          <dt className="font-mono text-klein text-muted-2">
-            {t(`ko.snapshotField.${f.feld}`)}
-          </dt>
+          <dt className="font-mono text-klein text-muted-2">{t(`ko.snapshotField.${f.feld}`)}</dt>
           {/* NEBENEINANDER ab schmaler Tablettbreite; auf dem Telefon wieder untereinander, weil
               zwei Spalten dort jeden Bericht auf ein paar Wörter je Zeile drücken. */}
           <dd className="mt-0.5 grid gap-2 text-[12.5px] text-text sm:grid-cols-2">
@@ -58,18 +56,14 @@ export function FassungsGegenueberstellung({
               data-bib-vergleich-alt={f.feld}
               className="min-w-0 rounded-btn border border-hairline px-2 py-1.5"
             >
-              <span className="mr-1 font-mono text-klein text-muted-2">
-                {`v${gegenueber.von}`}
-              </span>
+              <span className="mr-1 font-mono text-klein text-muted-2">{`v${gegenueber.von}`}</span>
               {lesbar(f.feld, f.alt)}
             </div>
             <div
               data-bib-vergleich-neu={f.feld}
               className="min-w-0 rounded-btn border border-hairline px-2 py-1.5"
             >
-              <span className="mr-1 font-mono text-klein text-muted-2">
-                {`v${gegenueber.bis}`}
-              </span>
+              <span className="mr-1 font-mono text-klein text-muted-2">{`v${gegenueber.bis}`}</span>
               {lesbar(f.feld, f.neu)}
             </div>
           </dd>

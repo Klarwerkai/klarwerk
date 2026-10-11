@@ -55,7 +55,10 @@ function woerterbuch(sprache: Sprache): string {
   return HTML.slice(start, ende);
 }
 export function wort(sprache: Sprache, key: string, vars: Record<string, string> = {}): string {
-  const m = new RegExp(`^\\s*${key}:\\s*"([^"]*)"`, "m").exec(woerterbuch(sprache));
+  // Ein Schlüssel steht am Zeilenanfang ODER nach einem Komma in derselben Zeile — `taskpane.js`
+  // führt einige Gruppen zeilensparend (Zeilenschranke B3), z. B. die vier Stufenschlüssel plus
+  // `captureStufeStandard` (Entscheidung 55). Gesucht wird weiterhin der GANZE Schlüsselname.
+  const m = new RegExp(`(?:^\\s*|,\\s+)${key}:\\s*"([^"]*)"`, "m").exec(woerterbuch(sprache));
   if (m === null) {
     throw new Error(`${sprache}.${key} fehlt im Woerterbuch`);
   }

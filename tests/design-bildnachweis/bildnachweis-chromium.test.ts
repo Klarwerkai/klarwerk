@@ -583,13 +583,14 @@ describe("R-1399 · Sichtnachweis: Exportumfang, Kenntnisnahme, Werksreset-Rück
     );
     console.info(`R-1399 · B7 · ${JSON.stringify(m)}`);
     expect(m.adresse).toBe(`/erfassen?gap=${encodeURIComponent(gapId)}`);
-    expect(m.frage).toBe(LUECKEN_FRAGE);
+    expect(m.frage).toBe(`„${LUECKEN_FRAGE}“`);
     expect(m.ueberTitel).toBe(true);
     expect(m.ueberText).toBe(true);
     // Die Frage ist Bezug, nicht Inhalt: Titel und Text des Blattes bleiben die des Menschen.
     expect(m.titel).toBe("");
     expect(m.imText).toBe(false);
-    await ausschnitt('[data-testid="blatt"]', "b7-luecke-erfassen-ausgangsfrage");
+    // Seit main (N-0084) steht die Frage ÜBER dem Blatt in dessen Hülle — das Bild nimmt die Hülle.
+    await ausschnitt('[data-testid="blatt-huelle"]', "b7-luecke-erfassen-ausgangsfrage");
     expect((stand as H4Stand).seitenfehler).toEqual([]);
   }, 120_000);
 });

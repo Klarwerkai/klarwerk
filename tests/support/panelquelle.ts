@@ -452,8 +452,13 @@ export const PANEL_WV_VERWEIS = `<script src="${PANEL_WV_DATEI}?v=__KW_FASSUNG__
  * GEMESSEN im Prüflauf zu Kandidat 61ea0cad am ZUSAMMENGEFÜHRTEN Panel (`1e57e17c…`, „Received" von
  * E2, HISTORIE/nacharbeit-94/PRUEFUNG/panel-pins-und-tor.log; vorher `05ff5c13…`) und unverändert
  * übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFNAHME gesamt-design-abgleich (Peters Entscheidung 55, 11.10.2026): Stufenknöpfe neutral,
+ * Standardsatz #capture-stufe-standard samt Wörterbuchschlüssel je Sprache. GEMESSEN im Prüflauf zu
+ * Kandidat 09f84e0e (`df3a2076…`, „Received" von E2,
+ * HISTORIE/nacharbeit-27/PRUEFUNG/entscheidungen-53-55-texte-und-panel.log; vorher `1e57e17c…`)
+ * und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "1e57e17c9fe02ca6f04d94e5846ee8a0d98fd794";
+export const PANEL_VOR_SCHNITT_BLOB = "df3a2076291907c5ed286204b457d21864269ded";
 
 export interface PanelTeile {
   html: string;

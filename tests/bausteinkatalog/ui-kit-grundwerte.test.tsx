@@ -103,9 +103,25 @@ describe("Bausteinkatalog /ui-kit · Grundwerte", () => {
   });
 
   it("G4 · die Vertrauensbausteine stehen weiter da", () => {
-    const text = mount().textContent ?? "";
-    for (const titel of ["Status-Pills", "Wissensarten", "Herkunftszeile"]) {
-      expect(text, titel).toContain(titel);
+    const flaeche = mount();
+    const text = flaeche.textContent ?? "";
+    // Seit der Integration mit main (R-1169) kommen die Überschriften aus `texte/beschriftung.ts`
+    // („Status-Pills" heißt dort „Statusanzeigen"). Geprüft wird der Katalogwortlaut, nicht ein
+    // zweiter, hart getippter.
+    for (const schluessel of [
+      "beschriftung.uikit.status",
+      "beschriftung.uikit.konfidenz",
+      "beschriftung.uikit.wissensarten",
+      "beschriftung.uikit.kiKennung",
+      "beschriftung.uikit.herkunft",
+    ]) {
+      expect(text, schluessel).toContain(i18n.t(schluessel));
+    }
+    for (const kennung of ["status", "konfidenz", "wissensarten", "ki", "herkunft"]) {
+      expect(
+        flaeche.querySelector(`[data-testid="bausteine-abschnitt-${kennung}"]`),
+        kennung,
+      ).not.toBeNull();
     }
   });
 
