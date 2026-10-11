@@ -18,7 +18,7 @@
 // dasselbe `trim()`-Kriterium, das die Aufrufer schon vorher benutzt haben — die Änderung betrifft
 // NUR den leeren Fall beim Aktualisieren, nicht was als „Inhalt" zählt.
 import { decodeHtmlEntities } from "./htmlEntities";
-import { FLAT_BODY_TAGS } from "./richText";
+import { FLAT_BODY_TAGS, insertImageSrcHtml, isSafeImgSrc } from "./richText";
 
 export const CLEARED_DRAFT_BODY_HTML = "";
 
@@ -701,4 +701,33 @@ export function draftBodyFromText(segments: readonly DraftBodySegment[], text: s
   });
 
   return raus.map((e) => e.html).join("");
+}
+
+// ================================================================================================
+// FR-CAP-04 — FOTOS AM HANDY: DERSELBE BODY, DEN DER DESKTOP-EDITOR SCHREIBT.
+// ================================================================================================
+//
+// Ein Entwurf kennt kein eigenes Anhangsfeld (`DraftPayload`); Bilder eines Entwurfs leben im
+// `bodyHtml` — der Desktop-Editor bettet sie als verkleinertes JPEG-`data:image` ein
+// (`RichTextEditor.insertImageFile` → `fileToThumbDataUrl` → `insertImageSrcHtml`). Das Handy nimmt
+// GENAU diesen Weg und keinen zweiten: der Desktop öffnet den Entwurf und hat die Fotos im Editor,
+// und am Handy stehen sie beim Fortsetzen als feste Blöcke `[[n: bild: …]]` (JOB 3377), die keine
+// Textänderung verliert.
+//
+// Der Text steht DAVOR, als neue Absätze (`draftBodyFromText` ohne Altsegmente — derselbe Weg, auf
+// dem ein am Handy eingefügter Absatz entsteht). Ohne ihn zeigte das Fortsetzen am Handy nur die
+// Platzhalter, und die Notiz stünde in einem Feld, das die Fläche dann gar nicht mehr zeigt.
+//
+// Hinein kommt nur, was die zentrale Bildgrenze des Sanitizers durchlässt (`isSafeImgSrc`,
+// richText.ts) — alles andere fällt hier schon heraus, statt still am Server.
+export interface DraftBodyFoto {
+  readonly name: string;
+  readonly dataUrl: string;
+}
+
+export function draftBodyMitFotos(text: string, fotos: readonly DraftBodyFoto[]): string {
+  const bilder = fotos
+    .filter((f) => isSafeImgSrc(f.dataUrl))
+    .map((f) => `<p>${insertImageSrcHtml(f.dataUrl, f.name)}</p>`);
+  return draftBodyFromText([], text) + bilder.join("");
 }

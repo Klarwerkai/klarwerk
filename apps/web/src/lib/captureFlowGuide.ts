@@ -5,52 +5,14 @@
 //
 // KEIN Multi-Step-Wizard mit Backend-State, KEIN Score/Gamification, KEINE neue Architektur, kein RAG.
 // Reine i18n-/Datenbeschreibung → testbar ohne DOM. Ehrlichkeit bleibt: erst nach Prüfung gesichert.
-
-export type CaptureFlowStepId = "raw" | "studio" | "review";
-
-export interface CaptureFlowStep {
-  id: CaptureFlowStepId;
-  labelKey: string;
-  hintKey: string;
-  // Der empfohlene Hauptweg-Schritt (Studio als großer Strukturier-Arbeitsraum). Genau EINER.
-  recommended?: boolean;
-}
-
-// Der empfohlene Hauptweg-Schritt (Studio) als benannte Konstante — so bleibt der Rückgabetyp von
-// recommendedFlowStep() definit (kein Index-Zugriff/undefined unter noUncheckedIndexedAccess).
-const RAW_STEP: CaptureFlowStep = {
-  id: "raw",
-  labelKey: "capture.flow.step.raw.label",
-  hintKey: "capture.flow.step.raw.hint",
-};
-const STUDIO_STEP: CaptureFlowStep = {
-  id: "studio",
-  labelKey: "capture.flow.step.studio.label",
-  hintKey: "capture.flow.step.studio.hint",
-  recommended: true,
-};
-const REVIEW_STEP: CaptureFlowStep = {
-  id: "review",
-  labelKey: "capture.flow.step.review.label",
-  hintKey: "capture.flow.step.review.hint",
-};
-
-// Feste Reihenfolge = der geführte Weg. Das Studio ist bewusst als empfohlener Mittelschritt markiert
-// (AG-12: Studio soll der naheliegende Hauptweg sein, nicht ein versteckter Zusatz).
-export const CAPTURE_FLOW_STEPS: readonly CaptureFlowStep[] = [RAW_STEP, STUDIO_STEP, REVIEW_STEP];
-
-export function captureFlowSteps(): readonly CaptureFlowStep[] {
-  return CAPTURE_FLOW_STEPS;
-}
-
-export function captureFlowStepLabelKey(id: CaptureFlowStepId): string {
-  return `capture.flow.step.${id}.label`;
-}
-
-// Der empfohlene Hauptweg-Schritt (genau einer) — für „Empfohlen"-Hervorhebung am Studio-Einstieg.
-export function recommendedFlowStep(): CaptureFlowStep {
-  return STUDIO_STEP;
-}
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier standen zusätzlich die Schritt-Tabelle
+// `CAPTURE_FLOW_STEPS` (rohwissen → studio → prüfen, samt Typen) und ihre Zugriffe
+// `captureFlowSteps()`, `captureFlowStepLabelKey(id)` und `recommendedFlowStep()`. Keiner davon
+// hatte einen Produktleser — die Erfassung führt seit `lib/captureWizard.ts`
+// (erzählen/verfeinern/fertig, R-0991 Nr. 12). Sie sind entfernt. Geblieben sind die Texte unten,
+// die `pages/Capture.tsx` liest. Die Wörterbuchschlüssel der Schritte bleiben stehen: der
+// Textbestand ist durch `tests/i18n-textmodule/bestand-unveraendert.test.ts` Wert für Wert festgehalten.
 
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (kein Doppel-Literal).
 // - railKicker: kurze Überschrift der Weg-Leiste („So gehst du vor").

@@ -109,9 +109,11 @@ describe("JOB 3116 · R6 — kein Abzeichen ohne Auskunft, keine erfundene Kennu
       m.abzeichen,
       "Ein Altbestand-Kandidat mit `duplicate: true` traegt weiterhin das Dubletten-Abzeichen — die Abloesung gilt nur fuer den Papierkorb-Fall.",
     ).toContain("Dublette");
+    // R-0908: das Erzeugt-Abzeichen heißt seit der Aufnahme gesamt-sprache-begriffe
+    // „Wissensobjekt angelegt" (`fachwort.fund.angelegt`), vorher „KO erzeugt".
     expect(
       m.abzeichen,
       "Und ein angenommener Kandidat OHNE Wiederverwendungs-Befund weiterhin das Erzeugt-Abzeichen.",
-    ).toContain("KO erzeugt");
+    ).toContain("Wissensobjekt angelegt");
   });
 });

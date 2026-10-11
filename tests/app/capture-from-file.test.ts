@@ -12,7 +12,6 @@ import {
   MAX_SOURCE_EXCERPT,
   advanceFileQueue,
   buildFileQueue,
-  createWholeDocumentDraft,
   currentQueuePoint,
   draftFromPoint,
   fileSourcePayload,
@@ -153,26 +152,10 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(payload.measures).toEqual([]);
   });
 
-  it("ruft den Draft-Client genau einmal auf und keinen KO-/Validate-Pfad", async () => {
-    const created: unknown[] = [];
-    const result = await createWholeDocumentDraft(
-      {
-        fileName: "gesamt.pdf",
-        text: "Ein ganzer Dokumenttext.",
-        locale: "de",
-      },
-      async (payload) => {
-        created.push(payload);
-        return { id: "draft-1" };
-      },
-    );
-
-    expect(result).toEqual({ id: "draft-1" });
-    expect(created).toHaveLength(1);
-    expect(String((created[0] as { bodyHtml?: string }).bodyHtml)).toContain(
-      "Quelle: gesamt.pdf, gesamtes Dokument",
-    );
-  });
+  // R-1349 (Aufnahme gesamt-aufruferwaechter): Der Fall „ruft den Draft-Client genau einmal auf"
+  // prüfte die Hülle `createWholeDocumentDraft`, die kein Produktweg rief; sie ist entfernt.
+  // Erfassen baut die Ladung über `wholeDocumentDraftPayload` (oben gemessen) und legt den Entwurf
+  // selbst an — dass dabei Draft-Create und Extract-Pfad getrennt bleiben, misst der Fall unten.
 
   it("Capture rendert den Importart-Toggle und trennt Draft-Create vom Extract-Pfad", () => {
     const captureSource = readFileSync(
@@ -206,8 +189,10 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource.indexOf("CAPTURE_FILE_TEXT.importModeLabel")).toBeLessThan(
       captureSource.indexOf("<CaptureFileImport"),
     );
+    // Auftrag import-meldungen, Nacharbeit 2 (R-0120): die Ablehnung reist mit laufender Nummer,
+    // damit die jüngste Ursache gewinnt — gepinnt sind weiterhin ALLE drei Eigenschaften.
     expect(captureSource).toMatch(
-      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\}\s*\/>/,
+      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\?\.text \?\? null\}\s+importMeldungNr=\{fileImportMeldung\?\.nr\}\s*\/>/,
     );
     expect(captureSource).not.toContain(
       "fileWholeDraft = useMutation({\n    mutationFn: () => endpoints.ko.create",

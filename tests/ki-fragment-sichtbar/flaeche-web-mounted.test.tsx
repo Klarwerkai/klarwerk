@@ -22,6 +22,8 @@ const bestand = vi.hoisted(() => ({
   extraktNote: null as string | null,
   /** Wie viele Punkte der Lauf liefert (R2: die Zustandswechsel brauchen 2 und 3). */
   extraktPunkte: 1,
+  /** R-0157/R-1070: der Hinweis auf nie gelesene Dokumentteile (`ungelesenerRest`). */
+  extraktUngelesen: null as string | null,
 }));
 
 const BEFUND = {
@@ -72,6 +74,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
           note: bestand.extraktNote,
           demo: false,
           ...(bestand.extraktAbgeschnitten ? { abgeschnitten: BEFUND } : {}),
+          ...(bestand.extraktUngelesen ? { ungelesenerRest: bestand.extraktUngelesen } : {}),
         })),
       },
       ask: {
@@ -229,6 +232,7 @@ beforeEach(() => {
   bestand.extraktAbgeschnitten = false;
   bestand.extraktNote = null;
   bestand.extraktPunkte = 1;
+  bestand.extraktUngelesen = null;
 });
 
 afterEach(async () => {
@@ -359,6 +363,44 @@ describe("JOB 3366 · T3b · die Fläche Erfassen (KI-Punkte aus Datei)", () => 
     await bisZurPunkteliste("de");
     expect(container.querySelector('[data-testid="capture-abgeschnitten"]')).toBeNull();
     expect(container.textContent).toContain(bestand.extraktNote);
+  });
+});
+
+// R-0157/R-1070 · Nacharbeit 1 (Befund HILFE-89dd18fb): der belegte Anbieter-Abbruch löst nur die
+// ABGELEITETE Verarbeitungswarnung ab. Dass Teile des Dokuments nie gelesen wurden (Dokument- oder
+// Punktedeckel), ist eine eigene Tatsache und bleibt neben dem Anbieter-Hinweis stehen.
+describe("R-0157/R-1070 · Erfassen: ungelesene Dokumentteile bleiben neben dem Abbruchhinweis sichtbar", () => {
+  for (const locale of ["de", "en"] as const) {
+    for (const cap of ["document", "points"] as const) {
+      it(`${locale}: Anbieterabbruch + ${cap}`, async () => {
+        bestand.extraktAbgeschnitten = true;
+        bestand.extraktNote =
+          locale === "de"
+            ? `Hinweis: Ausgewertet wurden nur die ersten ${cap === "document" ? "60.000 von 64.000" : "8.000 von 24.000"} Zeichen${cap === "points" ? " (die Liste hat ihre Grenze von 20 Punkten erreicht)" : ""} — der Rest des Dokuments wurde nicht geprüft.`
+            : `Note: only the first ${cap === "document" ? "60,000 of 64,000" : "8,000 of 24,000"} characters were analysed${cap === "points" ? " (the list reached its limit of 20 points)" : ""} — the rest of the document was not examined.`;
+        bestand.extraktUngelesen = bestand.extraktNote;
+        await bisZurPunkteliste(locale);
+        expect(container.querySelector('[data-testid="capture-abgeschnitten"]')?.textContent).toBe(
+          satz(locale),
+        );
+        expect(container.textContent).toContain(bestand.extraktNote);
+      });
+    }
+  }
+
+  it("Verarbeitungswarnung + Rest: die Ableitung weicht dem Anbieter-Hinweis, der Rest bleibt", async () => {
+    const verarbeitung = "Hinweis: Ein Teil des Dokuments konnte nicht verarbeitet werden.";
+    const rest =
+      "Hinweis: Ausgewertet wurden nur die ersten 60.000 von 64.000 Zeichen — der Rest des Dokuments wurde nicht geprüft.";
+    bestand.extraktAbgeschnitten = true;
+    bestand.extraktNote = `${verarbeitung} ${rest}`;
+    bestand.extraktUngelesen = rest;
+    await bisZurPunkteliste("de");
+    expect(container.querySelector('[data-testid="capture-abgeschnitten"]')?.textContent).toBe(
+      satz("de"),
+    );
+    expect(container.textContent).toContain(rest);
+    expect(container.textContent).not.toContain(verarbeitung);
   });
 });
 

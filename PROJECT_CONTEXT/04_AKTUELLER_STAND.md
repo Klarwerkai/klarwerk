@@ -7,6 +7,48 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 09.10.2026 — Erfassen: unklaren Speichervorgang fortschreiben, Wiederholung sichtbar erklären
+
+Auftrag `arbeit:erfassen-doppelklick-entscheidungen-20261001` (Pedis Entscheidungen vom 30.09.,
+jeweils Option A). **Stand: Code und Tests geschrieben, nicht ausgeführt; reale Chromium-/
+PostgreSQL-Messung und Gegenprobe gegen `bf9fcf1c` stehen aus.**
+
+- **entscheidung:14ce8681:** Die „Verbleibende Grenze“ aus dem Abschnitt vom 29.09. (geänderter
+  Inhalt nach verlorener Antwort ⇒ zweiter Entwurf) entfällt. Ein unklar gebliebener Anlagevorgang
+  (Formular `eintragVorgangRef`, Datei `ganzdokumentOffenRef`) behält seinen Schlüssel auch bei
+  geändertem Inhalt (`anlageVorgangWiederholen`, `lib/createOperation.ts`) und schickt
+  `fortschreiben: true`. `CaptureService.createDraftVorgang` schreibt dann denselben Entwurf fort
+  (`anlageFortschreiben`, Vergleich-und-Tausch) — nur, solange er noch den Stand dieses Vorgangs
+  trägt; anderswo bearbeitet oder nicht mehr vorhanden ⇒ weiterhin 409
+  `IDEMPOTENCY_PAYLOAD_MISMATCH`, der Client lässt den Schlüssel dann fallen. Ohne `fortschreiben`
+  (Offline-Warteschlange, Mobil, Word) unverändert. Eine neu eingelesene Datei beendet den offenen
+  Vorgang nicht mehr; Verwerfen und Öffnen eines anderen Entwurfs schon.
+- **entscheidung:8b909a1e:** `POST /api/drafts` trägt bei 200 das Transportfeld `anlage`
+  („bestehend“/„fortgeschrieben“). Das Erfassen-Formular zeigt dann statt der Erfolgsmeldung den
+  Hinweis `capture.bereitsGespeichert*` (de/en/nl) mit Verweis auf den Eintrag
+  (`data-testid="capture-bereits-gespeichert"`) und wechselt nicht ins Blatt.
+- **Abgleich Einreichen (`submitOperationRef`, mega20–22):** dort entsteht bei geändertem Inhalt
+  kein stiller zweiter Eintrag (409 mit sichtbarem Neustart-Angebot) — nicht verändert. Auch der
+  eigene Speicherweg des Blattes (`Blatt.tsx`, `saveOperationRef`) ist nicht Teil dieses Auftrags
+  und unverändert.
+- **Tests:** `tests/entwurf-verlassen/anlage-fortschreiben-route.test.ts` (S1–S5),
+  `erfassen-doppelklick-echte-api-mounted.test.tsx` (E1–E7, A2/A3/A6 angepasst),
+  `erfassen-doppelklick-mounted.test.tsx` (V5/V6, V1–V4 angepasst), `anlage-vorgang.test.ts`;
+  Chromium + PostgreSQL: `speicherknopf-ganzdokument-pg-im-browser.integration.test.ts` Q7–Q9
+  (Q3/Q5 um den Hinweis ergänzt).
+
+## 08.10.2026 — Aufnahme „Negativwissen-Hinweis“ (R-1629, Roadmap 2.3)
+
+- `POST /api/knowledge/check` weist ähnliche Einträge der Wissensart `negativwissen` gesondert aus
+  (`negativwissen[]`: Titel, gekürzte Begründung, Fundort; höchstens 3). Dieselbe Vorauswahl,
+  Sichtbarkeitsregel, Vertraulichkeitssperre und Schwelle wie `similar`, kein Modell. Das Feld fehlt
+  ohne Treffer. Vertrag am Ende von `services/app/src/knowledge-check.ts`.
+- Das Blatt zeigt den Hinweis offen über dem Vorschau-Chip (`components/erfassen/NegativwissenHinweis.tsx`,
+  Texte `apps/web/src/texte/negativwissen.ts`), auch wenn die Widerspruchsprüfung „pending“ bleibt.
+  Er blockiert nichts.
+- Prüfstand: `tests/negativwissen-hinweis/` (Auskunft + gemountetes Blatt, jsdom). Eine Messung im
+  echten Browser und eine fachliche Abnahme mit echtem Negativwissen-Bestand stehen aus.
+
 ## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Runde 1 + Nacharbeit Runden 2 und 3)
 
 - Abgleich aller zugeordneten Anliegen (R-0612 … V9, MR-SELECT-1) mit Fassungen und Belegen:
@@ -55,6 +97,39 @@
   Der Browserlauf selbst steht im Linux-Tor aus.
 - Per Pedi-Entscheidung `622a6ae6` (Option B) liegen R-0455, R-0928, R-0939, R-1012 und R-1675 im
   Folgeauftrag `…-quellen`. Abgleich: `tests/erstnutzerfuehrung/README.md`.
+
+## 01.10.2026 — Gesamt-KI-Einwilligung, Lauf 1: Prüfprotokoll der Zustimmung (Teilstand)
+
+Auftrag `aufnahme:20260922:gesamt-ki-einwilligung`, Lauf 1 Runde 1. Bestandsabgleich der Kriterien
+ergab: KA4/Einwilligung je Dokument, aktives Fragen und gemerktes Nein, Word-Einwilligungskarte,
+Schalter `KLARA_EXTERNAL_EXECUTION_MIGRATED = true` (JOB 3079), Kostenhinweis nur bei
+`billable`, serverseitige Entwurfsstufe/`draftId`, N11b, Datenklassen im Dialog und
+Richtlinienbindung waren bereits gebaut. **Neu (R-0609):** Jede Erteilung und jedes Ende einer
+Klara-Zustimmung (Widerruf, Ablauf, Entwertung, Schliessen, Umbinden, Zweitgrant) steht im
+append-only Prüfprotokoll (`klara.consent.granted` / `klara.consent.ended`, `KlaraSessionService`
+→ `services/audit`), mit Wer, Dokumentkontext, Anbieter, Modell, Datenklassen, Richtlinienfassung,
+Erteilung, Ablauf und Endzeitpunkt. Dazu überholte Kommentare zum Schalter bereinigt (R-1533).
+
+**Runde 2 (Bens B1–B3):** Der Erteilungseintrag wird VOR dem Speichern geschrieben (scheitert er,
+entsteht keine Zustimmung; verliert das Speichern danach, folgt `ended`/`nicht_wirksam`). Endeinträge
+sind genau-einmal je Zustimmung (`recordOnce`) und werden bei Protokollausfall vom nächsten
+Sitzungszugriff aus der Zeile nachgetragen (`laden`); ein Zweitgrant beendet die erste Zustimmung
+in einem eigenen Übergang. Das Ausführungstor prüft jetzt die AUFGABE: eine an `answer` gebildete
+Zustimmung trägt eine andere Aufgabe (oder `global` für die Urteile) nur, wenn sie an denselben
+Anbieter geht (`task_provider_mismatch`); die Anbieterkarte je Aufgabe steht in der
+Konfigurationsversion, ein Wechsel entwertet die Zustimmung. Neu im Reasoner-Status:
+`effectiveAnbieterGlobal`. Tests: `services/app/src/services/klara-consent-protokoll.test.ts`,
+`tests/app/einwilligung-anbieter-je-aufgabe.test.ts`.
+
+**Runde 3 (Bens B2–B4 aus Runde 2):** `raeumeAbgelaufeneAuf` trägt vor dem Löschen jeden fehlenden
+Endeintrag aus den Zeilen nach (Repo: `findExpiredSessionIds`); scheitert das, wird nichts
+gelöscht. Neue Klara-Anbieterbindung `services/reasoner/src/anbieterbindung.ts`
+(AsyncLocalStorage): die fünf Routen mit Einwilligungstor öffnen je Anfrage einen Rahmen, das Tor
+(`ka4Entscheidung`, Zuruf-Prüfer) hält den zugestimmten Anbieter darin fest, und der Reasoner lässt
+beim Kettenbau (`chainForChoice`) nur diesen Cloud-Anbieter zu; der Zuruf-Modellclient prüft
+dasselbe. Ein Anbieterwechsel zwischen Tor und Lauf erreicht damit nichts mehr. Die Reasoner-Route
+meldet die Anbieterabweichung als eigenen Grund `provider_mismatch` statt als Einstufung.
+**Nicht abgenommen; PostgreSQL-Lauf steht aus.**
 
 ## 30.09.2026 — Erfassen-Doppelklick, Lauf 6: Blattwechsel erst nach dem Datei-Anteil (Teilstand)
 
@@ -222,6 +297,14 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
 - Offen zur Entscheidung u. a.: Wortlaut „Vordertür-Entwurf geöffnet“ u. a. technische
   Beschriftungen, unsichtbar gesetzte Felder des Blatts (`statement`, `type`, `category`),
   Leertextfarbe `#9AA2B1` (K2b, gesperrt „nicht vor der Vorführung“).
+  Nachtrag `k2b-konkreter-rest`: Sperrbedingung durch LIVE 3801/4337 erfüllt; `--hint` existiert,
+  `#capture-leer` nutzt `--muted`. Rest und Kontrastentscheidung:
+  `docs/entscheidungen/k2b-erfassen-leertextfarbe.md`.
+- Nachtrag 09.10.2026, Teil (e) `belegnachweis`: Pedis Antworten vom 01.10. sind je Punkt mit
+  Kennung eingetragen. Unsichtbare Felder und Quellen-Panel bleiben im Arbeitsraum
+  (`entscheidung:1ec691b0-…`); damit ist die Entscheidung zu `statement`/`type`/`category` gefallen.
+  Ergebnis, Fassung und Beleg je Punkt stehen im Abschnitt „Abschlussnachweis“ der README. N-0068
+  steht dort als „geliefert, Abnahme offen“, nicht als erfüllt.
 
 ## 30.09.2026 — Fragen: Arbeit fortsetzen (Pedi 28.09.2026, Ergänzung 1, Prio 3)
 

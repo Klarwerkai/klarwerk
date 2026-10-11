@@ -13,13 +13,19 @@
 // `meldung(...)` im Quelltext steht, ist kein Nutzen; dass drei Sprachen aus der Route kommen, ist
 // einer. Vorbild des Aufbaus: `tests/q9-serverfehlertexte/server.test.ts:14-21`.
 //
-// DER FEHLERCODE AUF DEM DRAHT IST MITGEPINNT (`UNAUTHENTICATED` bzw. `INVALID_CREDENTIALS`) und
-// der Status ebenso: die Übersetzung darf den Vertrag nach außen nicht nebenbei verschieben.
+// DER FEHLERCODE AUF DEM DRAHT IST MITGEPINNT (`UNAUTHENTICATED`) und der Status ebenso: die
+// Übersetzung darf den Vertrag nach außen nicht nebenbei verschieben.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Der zweite Wächter, `requirePermission` aus
+// `services/rbac/src/guard.ts`, hatte im Produkt keinen Aufrufer und ist entfernt; mit ihm der Block
+// R2, der ihn auf einer eigenen Fastify-Instanz fuhr. Sein 401 `INVALID_CREDENTIALS` entstand an
+// keiner echten Route. Den 403-Satz `PERMISSION_DENIED` misst jetzt
+// `tests/q9-entwurfsfehler/entwurfsfehler-sprachfaelle.test.ts` (G) an der Route, die ihn im Produkt
+// sendet.
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeGuards } from "../../services/app/src/http";
 import type { AuthService } from "../../services/auth";
-import { requirePermission } from "../../services/rbac";
 
 /**
  * Der Sprachvertrag aus JOB 3415, wie ihn `tests/q9-serverfehlertexte/server.test.ts:8-12` fährt:
@@ -82,16 +88,6 @@ function guardProbe(sprache?: string) {
   }, sprache);
 }
 
-/** R2: der RBAC-Guard aus `services/rbac`, mit `resolveRole → undefined`. */
-function rbacProbe(sprache?: string) {
-  return draht((instanz) => {
-    instanz.get("/probe", {
-      preHandler: requirePermission("users.manage", () => undefined),
-      handler: async (_request, reply) => reply.send({ durchgelassen: true }),
-    });
-  }, sprache);
-}
-
 afterEach(async () => {
   await app?.close();
   app = undefined;
@@ -136,66 +132,4 @@ describe("R1 · der Auth-Guard von services/app antwortet in der gewählten Spra
     await guardProbe("en");
     expect(authenticateAufrufe).toBe(0);
   });
-});
-
-describe("R2 · der RBAC-Guard von services/rbac antwortet in der gewählten Sprache", () => {
-  it("EN: 401 INVALID_CREDENTIALS mit englischem Volltext", async () => {
-    const res = await rbacProbe("en");
-    expect(res.status).toBe(401);
-    // Der Draht-Code bleibt `INVALID_CREDENTIALS`, obwohl der Katalogschlüssel `NOT_SIGNED_IN`
-    // heißt. Auftrag §10.2: eine Codeänderung ist eine Vertragsänderung nach außen und braucht
-    // eine eigene Erhebung der Verbraucher — sie ist ausdrücklich NICHT Teil dieser Runde.
-    expect(res.koerper.error).toBe("INVALID_CREDENTIALS");
-    sprachvertrag(res.koerper.message, "You are not signed in.");
-  });
-
-  it("NL: 401 INVALID_CREDENTIALS mit niederländischem Volltext", async () => {
-    const res = await rbacProbe("nl");
-    expect(res.status).toBe(401);
-    expect(res.koerper.error).toBe("INVALID_CREDENTIALS");
-    sprachvertrag(res.koerper.message, "Je bent niet aangemeld.");
-  });
-
-  it.each([undefined, "de", "fr"])(
-    "Rückfall DE bei %s: unveränderter deutscher Wortlaut",
-    async (sprache) => {
-      const res = await rbacProbe(sprache);
-      expect(res.status).toBe(401);
-      expect(res.koerper).toEqual({ error: "INVALID_CREDENTIALS", message: "Nicht angemeldet." });
-    },
-  );
-
-  // JOB 3956 · DIE FOLGEZEILE IST EINGELÖST. Bis hierher hielt dieser Fall fest, dass die 403
-  // dieses Wächters BEWUSST deutsch bleibt: für „Keine Berechtigung." gab es keinen
-  // Katalogschlüssel, und `services/auth/src/meldungen.ts` gehörte JOB 3562. Beides ist überholt —
-  // `PERMISSION_DENIED` steht im Katalog, `guard.ts` löst darüber auf. Der Fall wird deshalb auf
-  // den ERREICHTEN Zustand gesetzt und nicht gelöscht: was er vorher als Halbheit festhielt, hält
-  // er jetzt als Zusage. Der DEUTSCHE Rückfall steht eine Zeile tiefer, zeichengleich wie zuvor.
-  it("die 403 antwortet auf Englisch — die Folgezeile aus JOB 3568 ist eingelöst", async () => {
-    const res = await draht((instanz) => {
-      instanz.get("/probe", {
-        preHandler: requirePermission("users.manage", () => "viewer"),
-        handler: async (_request, reply) => reply.send({ durchgelassen: true }),
-      });
-    }, "en");
-    expect(res.status).toBe(403);
-    expect(res.koerper.error).toBe("FORBIDDEN");
-    sprachvertrag(res.koerper.message, "You do not have permission.");
-  });
-
-  it.each([undefined, "de", "fr"])(
-    "die 403 fällt bei %s auf den unveränderten deutschen Wortlaut zurück",
-    async (sprache) => {
-      // Der Wächter gegen die eigene Ablösung: der deutsche Satz ist zeichengleich mit dem Literal,
-      // das bis JOB 3956 in `guard.ts` stand — Fehlercode und Status ebenso.
-      const res = await draht((instanz) => {
-        instanz.get("/probe", {
-          preHandler: requirePermission("users.manage", () => "viewer"),
-          handler: async (_request, reply) => reply.send({ durchgelassen: true }),
-        });
-      }, sprache);
-      expect(res.status).toBe(403);
-      expect(res.koerper).toEqual({ error: "FORBIDDEN", message: "Keine Berechtigung." });
-    },
-  );
 });

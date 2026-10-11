@@ -109,6 +109,7 @@ describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz"
       payload: { name: "Admin", email: "a@job972c.test", password: "geheim12345" },
     });
     const admin = await login(app, "a@job972c.test", "geheim12345");
+    const kontoIds: Record<string, string> = {};
     for (const [email, role] of [
       ["c@job972c.test", "controller"],
       ["v@job972c.test", "viewer"],
@@ -122,6 +123,7 @@ describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz"
       if (res.statusCode !== 201) {
         throw new Error(`Konto ${email} nicht angelegt: ${res.statusCode} ${res.body}`);
       }
+      kontoIds[email] = (res.json() as { id: string }).id;
     }
     const controller = await login(app, "c@job972c.test", "geheim12345");
     const leser = await login(app, "v@job972c.test", "geheim12345");
@@ -163,6 +165,47 @@ describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz"
       } as never,
       "heuristik" as never,
     );
+
+    // aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidung 15): `ko.validate` allein ist
+    // Freigaberang 1 — die Controllerin OHNE persönliches Niveau darf handeln, sieht das streng
+    // vertrauliche Paar aber nicht. Genau diesen Akteur schloss die Annahme oben aus. Seither prüfen
+    // die Aktionen das Paar vorab: für sie antwortet jede Aktion am vorhandenen Paar exakt wie an
+    // einem erfundenen, und nichts wird geschrieben.
+    for (const aktion of AKTIONEN) {
+      const vorhanden = await app.inject({
+        method: "POST",
+        url: `/api/duplicates/${eintrag.id}/${aktion}`,
+        headers: controller,
+        payload: RUMPF[aktion],
+      });
+      const erfunden = await app.inject({
+        method: "POST",
+        url: `/api/duplicates/gibt-es-nicht-0000/${aktion}`,
+        headers: controller,
+        payload: RUMPF[aktion],
+      });
+      expect(
+        `${vorhanden.statusCode}|${vorhanden.body}`,
+        `Controller ohne Niveau, Aktion ${aktion}: vorhanden=${vorhanden.statusCode}`,
+      ).toBe(`${erfunden.statusCode}|${erfunden.body}`);
+    }
+    expect((await dienste.overlaps.get(eintrag.id))?.status).toBe(eintrag.status);
+    const ohneNiveau = await app.inject({
+      method: "GET",
+      url: `/api/duplicates/${eintrag.id}`,
+      headers: controller,
+    });
+    expect(ohneNiveau.statusCode, `Controller ohne Niveau: ${ohneNiveau.statusCode}`).toBe(404);
+
+    // Mit persönlichem Niveau „streng vertraulich“ (gesetzt von der Verwaltung) gilt die Zusage
+    // wieder: wer handeln darf, sieht das Paar auch.
+    const niveau = await app.inject({
+      method: "PUT",
+      url: `/api/users/${kontoIds["c@job972c.test"]}`,
+      headers: admin,
+      payload: { freigabe: "streng_vertraulich" },
+    });
+    expect(niveau.statusCode, niveau.body).toBe(200);
 
     // HAELFTE 1 — wer handeln darf, sieht das Paar auch. Damit kann er nichts erfahren, was er
     // nicht ohnehin sehen duerfte.

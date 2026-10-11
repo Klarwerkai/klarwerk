@@ -296,15 +296,28 @@ describe("JOB 3488 · der Vorschau-Aufklapper in Chromium (gebaute Seite)", () =
     expect(wiederOffen.gewaehlt).toBe(ersteId);
     expect(wiederOffen.adresse).toBe("/bibliothek");
 
-    // 6. Der nächste Tab erreicht den Zeilenknopf des ZWEITEN Treffers — die Reihenfolge je
-    //    Treffer ist also Zeilenknopf, dann Umschalter, dann der nächste Treffer.
+    // 6. R-0959 (Aufnahme 20260922, gesamt-bibliothek-loeschen): wer löschen darf, hat am Treffer
+    //    wieder einen Papierkorb. Er steht im DOM HINTER dem Umschalter, damit Schritt 1–5 unverändert
+    //    gelten, und ist der DRITTE Halt DESSELBEN Treffers. Der Prüfstand meldet sich als erster
+    //    Nutzer an (Admin) und ist Autor beider Einträge (`../design/h4-harness.ts`) — der Papierkorb
+    //    MUSS hier also da sein; fehlte er, wäre das ein Befund, kein Sonderfall.
+    await taste("Tab");
+    const aufPapierkorb = await aktiv();
+    console.info(`R-0959 · C4 Tab zum Papierkorb: ${JSON.stringify(aufPapierkorb)}`);
+    expect(aufPapierkorb?.marke).toBe("bib-zeile-loeschen");
+    expect(aufPapierkorb?.blockId).toBe(ersteId);
+    expect(aufPapierkorb?.expanded).toBe("false");
+
+    // 7. Der nächste Tab erreicht den Zeilenknopf des ZWEITEN Treffers — die Reihenfolge je
+    //    Treffer ist also Zeilenknopf, Umschalter, (für Berechtigte) Papierkorb, dann der nächste
+    //    Treffer.
     await taste("Tab");
     const zweite = await aktiv();
     console.info(`JOB 3488 · C4 Tab zum zweiten Treffer: ${JSON.stringify(zweite)}`);
     expect(zweite?.marke).toBe("bib-zeile");
     expect(zweite?.bibId).toBe(stand?.koOffenId);
 
-    // 7. Und Enter auf der ZEILE wählt weiterhin — genau diesen Eintrag.
+    // 8. Und Enter auf der ZEILE wählt weiterhin — genau diesen Eintrag.
     await taste("Enter");
     await seite().waitForTimeout(400);
     const gewaehlt = await messen("C4 nach Enter auf der Zeile");

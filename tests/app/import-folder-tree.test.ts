@@ -20,13 +20,13 @@ import {
   groupRowsTree,
   setRowsSelected,
 } from "../../apps/web/src/lib/importSelectView";
-import { DEMO_CORPUS, DEMO_SPACE_KEY, corpusImportItems } from "../../services/app/src/demo-corpus";
 import {
   confluenceSourcePath,
   mapConfluencePageToImportItem,
 } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { toPreviewEntry } from "../../services/library-analytics/src/select";
+import { DEMO_CORPUS, DEMO_SPACE_KEY, corpusImportItems } from "../demo-korpus/demo-corpus";
 
 function page(over: Partial<ConfluencePage> & { id: string; title: string }): ConfluencePage {
   return { ...over } as ConfluencePage;

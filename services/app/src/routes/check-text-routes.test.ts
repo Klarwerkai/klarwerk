@@ -528,14 +528,17 @@ const fakeGuards = {
 async function stage2App(
   seed: KnowledgeObject[] = [mkKo("v2", TEXT_MITTEL), mkKo("noise", "völlig anderer inhalt hier")],
   ka4?: Ka4Freigabepruefer,
+  // Auftrag gesamt-ki-freigaberegeln: zusätzliche Auskünfte des Reasoners (zweite Adminfreigabe).
+  reasonerZusatz: Record<string, unknown> = {},
 ) {
   const repo = new InMemoryOverlapRepo();
   const { prefilter, embed } = spyPrefilter([{ id: "v2" }]);
   const { ko } = fakeKo(seed);
-  const judgeDuplicate = vi.fn(async () => teilweiseVerdict);
+  const judgeDuplicate = vi.fn(async (..._args: unknown[]) => teilweiseVerdict);
   const reasoner = {
     judgeDuplicate,
     judgeConflict: vi.fn(async () => null),
+    ...reasonerZusatz,
   } as unknown as Reasoner;
   const app = Fastify();
   await app.register(
@@ -614,6 +617,73 @@ describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", 
     expect(judgeDuplicate).not.toHaveBeenCalled(); // kein Cloud-Judge
     expect(embed).not.toHaveBeenCalled(); // kein Embedder-Egress
     expect(res.json().note).toBeTruthy(); // ehrlicher Hinweis auf den deterministischen Rückfall
+  });
+
+  // Auftrag gesamt-ki-freigaberegeln (Ben Nacharbeit 2): die zweite zentrale Adminfreigabe öffnet den
+  // tiefen Zweig auch für Vertrauliches — die Einstufung reist mit (4. Argument), damit Kern und
+  // Chokepoint dieselbe Freigabe noch einmal fragen. Gegenprobe zum Fall direkt darüber.
+  it("want:'deep' + vertraulicher Draft MIT zweiter Adminfreigabe → Judge mit Einstufung, kein Rückfall", async () => {
+    const { app, embed, judgeDuplicate } = await stage2App(undefined, undefined, {
+      vertraulicheAusleitungFreigegeben: () => true,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: {
+        text: TEXT_IDENTISCH,
+        want: "deep",
+        source: "draft",
+        confidentiality: "vertraulich",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).toHaveBeenCalled();
+    expect(judgeDuplicate.mock.calls[0]?.[3]).toBe(true);
+    expect(embed).toHaveBeenCalled();
+    expect(String(res.json().note ?? "")).not.toContain(VERTRAULICH_HINWEIS);
+  });
+
+  it("die Freigabeauskunft sagt NEIN → derselbe vertrauliche Draft bleibt deterministisch", async () => {
+    const { app, judgeDuplicate } = await stage2App(undefined, undefined, {
+      vertraulicheAusleitungFreigegeben: () => false,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: {
+        text: TEXT_IDENTISCH,
+        want: "deep",
+        source: "draft",
+        confidentiality: "vertraulich",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled();
+    expect(res.json().note).toContain(VERTRAULICH_HINWEIS);
+  });
+
+  it("Klara-Bindung OHNE Dokumentzustimmung sperrt den tiefen Zweig trotz zweiter Adminfreigabe", async () => {
+    const ablehnend = {
+      pruefeExterneAusfuehrung: async () => ({ erlaubt: false, grund: "kein_consent" }),
+      pruefeDokumenttextFreigabe: async () => ({ erlaubt: false, grund: "kein_consent" }),
+    } as unknown as Ka4Freigabepruefer;
+    const { app, embed, judgeDuplicate } = await stage2App(undefined, ablehnend, {
+      vertraulicheAusleitungFreigegeben: () => true,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      headers: {
+        "x-klara-session": "sitzung-1",
+        "x-klara-instance": "instanz-1",
+        "x-klara-document": "dokument-1",
+      },
+      payload: { text: TEXT_IDENTISCH, want: "deep", source: "draft", confidentiality: "intern" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(judgeDuplicate).not.toHaveBeenCalled();
+    expect(embed).not.toHaveBeenCalled();
+    expect(res.json().note).toContain(VERTRAULICH_HINWEIS);
   });
 
   // Fail-safe: fehlt die Herkunft ganz (z. B. Alt-Add-in), gilt der Text als vertraulich.
@@ -938,6 +1008,11 @@ describe("N11b: Word-Riegel mit realem KA4-Dienst", () => {
           // gesperrt (`klara-policy.ts`, `=== true`). Diese Attrappe stellt einen Betrieb dar,
           // in dem allein die Dokumentzustimmung entscheidet — die Adminfreigabe gehört dazu.
           zentralFreigegeben: true,
+          // NACHGEFÜHRT DURCH Auftrag gesamt-ki-einwilligung (Bens B3): die Urteile folgen der
+          // globalen Wahl, die Zustimmung wird an `answer` gebildet. Sie trägt die Urteile nur,
+          // wenn beide an DENSELBEN Anbieter gehen — ohne Karte trägt sie ausschliesslich
+          // `answer`. Diese Attrappe stellt den gleichen Anbieter für beide ausdrücklich her.
+          aufgabenAnbieter: { answer: "anthropic", global: "anthropic" },
         }),
       });
       const session = await dienst.createSession("u1", "instance-1", {

@@ -53,9 +53,15 @@ describe("Fehlersatz · jede Lage bekommt ihren Satz", () => {
     const speichern = new FrontDoorSaveTimeoutError();
     for (const fehler of [client, speichern]) {
       expect(erfassenFehlerSchluessel(fehler)).toBe("einstieg.fehler.frist");
-      expect(erfassenFehlersatz(fehler, tIn("en"), "x")).toBe(tIn("en")("einstieg.fehler.frist"));
-      expect(erfassenFehlersatz(fehler, tIn("en"), "x")).not.toContain("clientseitig");
+      for (const sprache of SPRACHEN) {
+        const satz = erfassenFehlersatz(fehler, tIn(sprache), "x");
+        expect(satz).toBe(tIn(sprache)("einstieg.fehler.frist"));
+        expect(satz).not.toContain("clientseitig");
+        expect(satz).not.toBe("einstieg.fehler.frist");
+      }
     }
+    // Drei Sprachen, drei verschiedene Sätze — kein stiller deutscher Rückfall.
+    expect(new Set(SPRACHEN.map((s) => tIn(s)("einstieg.fehler.frist"))).size).toBe(3);
   });
 
   it("F4 · Gegenprobe: eine fachliche Servermeldung gewinnt weiter (JOB 2690 F5)", () => {
@@ -79,7 +85,10 @@ describe("Fehlersatz · jede Lage bekommt ihren Satz", () => {
 /** Die Hilfetexte, die Knöpfe oder Wege des Blattes beim Namen nennen. */
 const HILFE_MIT_ZITAT = [
   "chelp.wizardSteps.body",
-  "chelp.saveDraftHelp.body",
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben: der angezeigte Text zu „Entwurf speichern" steht
+  // seither unter diesem Schlüssel (`lib/captureHelp.ts`); `chelp.saveDraftHelp.body` liest keine
+  // Fläche mehr.
+  "entwurfspool.saveDraftHelp.body",
   "chelp.discardHelp.body",
   "fd.whatOnSaveBody",
   "einstieg.knopf.entwurf",
@@ -141,4 +150,48 @@ describe("R-1000 · die Hilfe nennt nur, was auf dem Blatt steht", () => {
       }
     });
   }
+});
+
+// ------------------------------------------------------------------------------------------------
+// Antwort 54 (Peter, 11.10.2026) — DIE RÜCKFRAGEN BEIM FORMULARWECHSEL SPRECHEN WIE DER KNOPF
+// ------------------------------------------------------------------------------------------------
+// Ben, Nacharbeit 32: der Knopf heisst „Als Entwurf speichern“, die Rückfragen vor dem Wechsel ins
+// Formular (`Blatt.tsx`, window.confirm/alert) sagten noch „als Entwurf sichern“, „Sichern“ und
+// „gesicherter Stand“. Geprüft wird der deutsche Wortlaut, wie i18next ihn ausliefert.
+describe("Antwort 54 · Rückfragen beim Formularwechsel und Knopfbeschreibungen", () => {
+  const de = tIn("de");
+  const RUECKFRAGEN = [
+    "einstieg.formular.sichernFrage",
+    "einstieg.formular.nachtragFrage",
+    "einstieg.formular.vorschlagOffen",
+    "einstieg.formular.ohneSichernFrage",
+  ] as const;
+
+  it("B1 · kein „sichern“/„gesichert“ mehr — weder in den Rückfragen noch an den zwei Knöpfen", () => {
+    const alle = [...RUECKFRAGEN, "einstieg.knopf.entwurf", "einstieg.knopf.einreichen"];
+    for (const schluessel of alle) {
+      expect(de(schluessel), schluessel).not.toBe(schluessel);
+      expect(de(schluessel), schluessel).not.toMatch(/sicher(n|ns|t|te|ten)\b/i);
+    }
+  });
+
+  it("B2 · die Aktion trägt den Namen des Knopfs, ihre Aussagen bleiben", () => {
+    const knopf = de("erfassen.entwurfSichern");
+    expect(knopf).toBe("Als Entwurf speichern");
+    expect(de("einstieg.knopf.entwurf").startsWith(`${knopf}:`)).toBe(true);
+    // Die Frage vor dem Wechsel nennt die Aktion beim Namen und behält „nichts geht verloren“.
+    expect(de("einstieg.formular.sichernFrage")).toContain("als Entwurf speichern");
+    expect(de("einstieg.formular.sichernFrage")).toContain("ungespeicherten Änderungen");
+    expect(de("einstieg.formular.sichernFrage")).toContain("nichts geht verloren");
+    // Nachtrag: die neuen Änderungen werden ebenfalls als Entwurf gespeichert.
+    expect(de("einstieg.formular.nachtragFrage")).toContain("als Entwurf speichern");
+    expect(de("einstieg.formular.nachtragFrage")).toContain("nichts geht verloren");
+    // Fehlerfall: das Formular zeigt den zuletzt gespeicherten Stand, das Blatt bleibt.
+    expect(de("einstieg.formular.ohneSichernFrage")).toContain("zuletzt gespeicherten Stand");
+    expect(de("einstieg.formular.ohneSichernFrage")).toContain("Dein Blatt bleibt unverändert");
+    // Offener Vorschlag: Speichern übernimmt ihn nicht.
+    expect(de("einstieg.formular.vorschlagOffen")).toContain("Speichern übernimmt ihn nicht");
+    // Der Status nach dem Einreichen heisst wie der Wissensstatus.
+    expect(de("einstieg.knopf.einreichen")).toContain("nicht als fachlich bestätigt");
+  });
 });

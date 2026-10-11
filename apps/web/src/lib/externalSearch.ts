@@ -14,6 +14,11 @@ export interface SourcePayload {
   excerpt: string;
   /** Nur Anzeige. Wird nie an add-source geschickt und dort auch nicht gelesen. */
   provider: string;
+  /**
+   * REF-01: der Abrufbeleg des Servers. Er geht unverändert an add-source; der Server prüft ihn
+   * (Signatur, Adresse, Inhalt) und übernimmt nur dann die Abrufzeit. Fehlt er, fehlt das Feld.
+   */
+  abrufbeleg?: string;
 }
 
 const MAX_EXCERPT = 300;
@@ -25,10 +30,11 @@ export function toSourcePayload(result: ExternalResult): SourcePayload {
     url: result.url.trim(),
     excerpt: result.snippet.trim().slice(0, MAX_EXCERPT),
     provider: result.provider.trim(),
+    ...(result.abrufbeleg ? { abrufbeleg: result.abrufbeleg } : {}),
   };
 }
 
-// Ein Treffer ist anhängbar, wenn er einen Titel hat (Label-Pflichtfeld serverseitig).
-export function isAttachable(result: ExternalResult): boolean {
-  return result.title.trim().length > 0;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `isAttachable` („anhängbar nur mit Titel").
+// Der Server verwirft Treffer ohne Titel, bevor sie die Fläche erreichen
+// (`services/external-search/src/wikipedia.ts`, R-0991 Nr. 26); die Prüfung rief niemand und ist
+// entfernt.

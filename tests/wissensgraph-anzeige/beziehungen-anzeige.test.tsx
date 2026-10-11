@@ -297,7 +297,8 @@ describe("R1 · Art, Richtung und der Satz, der ohne Vorwissen stimmt", () => {
   it("die fachlichen Grenzen stehen an der Kante: widerspricht ist kein Beweis", async () => {
     stand.p.kanten = kanteWiderspricht();
     const b = await montiere();
-    expect(b.text()).toContain(i18n.t("wb.grenze.widerspricht"));
+    // R-1176 (gesamt-sprache-begriffe): der Grenzsatz zitiert die Beziehungsart zeichengleich.
+    expect(b.text()).toContain(i18n.t("knopfzitat.wb.widerspricht"));
     // Und die Konfliktnummer der Beziehung (version 3) wird dem Menschen NICHT angeboten.
     expect(b.finde("wb-kante")?.textContent ?? "").not.toMatch(/Version\s*3|Fassung\s*3\b/);
     b.unmount();

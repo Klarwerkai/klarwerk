@@ -39,7 +39,11 @@ import {
   matchEffectiveSearchDocument,
   parseClassificationSnapshot,
 } from "../../services/knowledge-object";
-import { bodytextNachziehen, zaehleBetroffene } from "../../tools/bodytext-nachziehen";
+import {
+  bodytextNachziehen,
+  exitCodeFuer,
+  zaehleBetroffene,
+} from "../../tools/bodytext-nachziehen";
 
 // Das Prüfwort steht AUSSCHLIESSLICH im bodyHtml (D1 §2). K1 sichert das mit eigenen Expects ab.
 const FLIESSTEXTWORT = "Splitterschutzverriegelung";
@@ -231,6 +235,8 @@ describe("JOB 2614 · Bestandsreparatur: Trockenlauf zählt, der Nachzug reparie
     expect(trocken.offenV1).toBe(1);
     expect(trocken.reconcile).toBeUndefined();
     expect(trocken.nachher).toBeUndefined();
+    expect(trocken.ergebnis).toBe("trockenlauf");
+    expect(exitCodeFuer(trocken)).toBe(0);
     // Wirklich nichts geschrieben: die Zeile ist unverändert Fassung 1 mit leerem Text.
     const unveraendert = await dienst.searchProjectionOf(alt.id);
     expect(unveraendert?.projectionVersion).toBe(1);
@@ -241,6 +247,8 @@ describe("JOB 2614 · Bestandsreparatur: Trockenlauf zählt, der Nachzug reparie
     const lauf = await bodytextNachziehen(dienst, { ausfuehren: true });
     expect(lauf.reconcile?.differenz).toBe(0);
     expect(lauf.nachher?.betroffen).toBe(0);
+    expect(lauf.ergebnis).toBe("vollstaendig");
+    expect(exitCodeFuer(lauf)).toBe(0);
     const repariert = await dienst.searchProjectionOf(alt.id);
     expect(repariert?.projectionVersion).toBe(SEARCH_PROJECTION_VERSION);
     expect(repariert?.bodyText).toContain(FLIESSTEXTWORT);
@@ -282,6 +290,64 @@ describe("JOB 2614 · Bestandsreparatur: Trockenlauf zählt, der Nachzug reparie
     const zaehlung = await zaehleBetroffene(dienst);
     expect(zaehlung.kos).toBe(2);
     expect(zaehlung.betroffen).toBe(1);
+  });
+});
+
+// ================================================================================================
+// R-1410 (BEFUND 19) — DER FEHLERFALL, DEN DER NORMALWEG NICHT ERFASST
+// ================================================================================================
+//
+// Eine Zeile in GELTENDER Fassung mit leerem Text, obwohl das Objekt `bodyHtml` trägt: für den
+// Nachzug (`missingActive`) ist sie erledigt, `ensureSearchArtifacts` lässt sie append-only stehen.
+// Vorher stand der Rest nur im Bericht und das Werkzeug endete mit 0. Jetzt bindet die Gegenprobe
+// das Ergebnis: Rest → „rest" und Exit 1; erst der ausdrückliche Rebuild schliesst den Fall.
+describe("R-1410 · der Normalweg lässt einen Rest — das Werkzeug meldet ihn als Fehlschlag", () => {
+  async function leerInGeltenderFassung() {
+    const repo = new InMemoryKoRepo();
+    const projections = new InMemoryKoSearchProjectionRepo(repo);
+    const dienst = new KoService({
+      repo,
+      versions: new InMemoryKoVersionRepo(),
+      searchProjections: projections,
+    });
+    const alt = altbestand({ id: "leer-in-v2" });
+    await repo.insert(alt);
+    await projections.insert({
+      ...buildSearchProjection(alt, KO_CREATED_AT),
+      bodyText: "",
+      contentHash: "leer-hash",
+    });
+    return { dienst, alt };
+  }
+
+  it("Trockenlauf sagt den Rest voraus; der Nachzug endet mit „rest“ und Exit 1; der Rebuild schliesst ihn", async () => {
+    const { dienst, alt } = await leerInGeltenderFassung();
+    expect((await dienst.searchProjectionOf(alt.id))?.projectionVersion).toBe(
+      SEARCH_PROJECTION_VERSION,
+    );
+
+    const trocken = await bodytextNachziehen(dienst, { ausfuehren: false });
+    expect(trocken.vorher.leerTrotzBodyHtml).toBe(1);
+    expect(trocken.nichtErfasst).toBe(1);
+    expect(exitCodeFuer(trocken)).toBe(0);
+    // Mit --rebuild sagt der Trockenlauf keinen Rest voraus — der Rebuild erfasst die Sorte.
+    const mitRebuild = await bodytextNachziehen(dienst, { ausfuehren: false, rebuild: true });
+    expect(mitRebuild.nichtErfasst).toBe(0);
+
+    // DER NORMALWEG: die Zeile bleibt leer — und das Werkzeug sagt das nicht mehr nur im Bericht.
+    const lauf = await bodytextNachziehen(dienst, { ausfuehren: true });
+    expect(lauf.nachher?.leerTrotzBodyHtml).toBe(1);
+    expect((await dienst.searchProjectionOf(alt.id))?.bodyText).toBe("");
+    expect(lauf.nichtErfasst).toBe(1);
+    expect(lauf.ergebnis).toBe("rest");
+    expect(exitCodeFuer(lauf)).toBe(1);
+
+    // DIE ESKALATION: der ausdrückliche Rebuild füllt den Text; die Gegenprobe zählt null.
+    const rebuild = await bodytextNachziehen(dienst, { ausfuehren: true, rebuild: true });
+    expect(rebuild.nachher?.betroffen).toBe(0);
+    expect(rebuild.ergebnis).toBe("vollstaendig");
+    expect(exitCodeFuer(rebuild)).toBe(0);
+    expect((await dienst.searchProjectionOf(alt.id))?.bodyText).toContain(FLIESSTEXTWORT);
   });
 });
 

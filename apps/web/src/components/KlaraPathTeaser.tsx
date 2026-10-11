@@ -23,10 +23,10 @@ export function KlaraPathTeaser({ surface }: { surface: KlaraPathSurface }): JSX
         </span>
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai">
+            <span className="font-mono text-klein font-semibold uppercase tracking-wider text-ai">
               {t("klara.path.kicker")}
             </span>
-            <span className="rounded-pill border border-ai/25 bg-surface px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase tracking-wide text-ai">
+            <span className="rounded-pill border border-ai/25 bg-surface px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wide text-ai">
               {t("klara.path.soon")}
             </span>
           </div>
@@ -53,6 +53,15 @@ export function KlaraPathTeaser({ surface }: { surface: KlaraPathSurface }): JSX
           >
             {t("klara.path.helpLink")}
           </Link>
+          {/* N-0042: die benannte Anlaufstelle für den Word-Zugang — der Supportweg dieser
+              Installation, den die Hilfeseite oben zeigt. Bewusst KEIN zweiter Link und keine
+              Verfügbarkeitsbehauptung (JOB 3144: genau ein Weg zur Hilfe). */}
+          <p
+            data-testid="klara-path-anlaufstelle"
+            className="mt-1 max-w-2xl text-[12px] leading-relaxed text-muted"
+          >
+            {t("wordvorschau.anlaufstelle")}
+          </p>
         </div>
       </div>
     </aside>

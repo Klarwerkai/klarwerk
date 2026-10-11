@@ -479,8 +479,9 @@ describe("JOB 2692 C — der KA4-Riegel auf dem Reasoner-Weg", () => {
 
   /**
    * Die Freigabe hebt den Riegel — messbar nur mit einem Tor, das `erlaubt:true` liefern kann. Das
-   * echte Tor kann das heute nicht (`KLARA_EXTERNAL_EXECUTION_MIGRATED = false`, klara-policy.ts),
-   * deshalb hier ein Doppel des Tors an den ECHTEN Routen und ECHTEN Guards; alles andere ist echt.
+   * echte Tor konnte das bei Entstehung nicht (`KLARA_EXTERNAL_EXECUTION_MIGRATED` stand bis JOB
+   * 3079, 05.09.2026, auf `false`); hier steht deshalb ein Doppel des Tors an den ECHTEN Routen und
+   * ECHTEN Guards, alles andere ist echt. Die echte Kette misst `tests/klara-freigabe/`.
    */
   async function appMitTor(
     services: Dienste,

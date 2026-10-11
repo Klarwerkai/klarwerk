@@ -199,7 +199,7 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
     pruefeVolltextZusage(befund, plan);
   });
 
-  it("N2b · die konservative Einstufung des Importwegs bleibt — sie wird NICHT angeglichen", async () => {
+  it("N2b · die Einstufung des Importziels folgt dem Übernahme-Standard „intern“ (N11)", async () => {
     const instanzen = await neuesPaar();
     const befund = await fahreDenRundlauf(instanzen, {
       titel: `${TITEL} · Einstufung`,
@@ -207,15 +207,16 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
       volltext: volltextHtml(),
       tags: TAGS,
     });
-    // Die Quelle ist „intern", das Ziel „vertraulich": der Re-Import ist ein Bulk-Pfad und stuft
-    // ohne Governance-Signal konservativ ein (SCRUM-509 R3). Die Abweichung ist DOKUMENTIERT und
-    // wird ausdrücklich nicht durch Absenken eines Schutzes „behoben" (Auftrag § 5.8/§ 10). Dieser
-    // Fall ist der Riegel dagegen: wer sie angleicht, macht ihn rot.
+    // NACHGEFÜHRT (Auftrag gesamt-vertraulichkeit-erfassung, N11): Bis hierher stufte der Re-Import
+    // ohne Governance-Signal konservativ „vertraulich" ein (SCRUM-509 R3), und dieser Fall hielt
+    // das als Riegel fest. Pedis jüngere Entscheidung 23 (05.09.2026) setzt den Übernahme-Standard
+    // auf „intern"; vertraulich wird nur, was ausdrücklich so geliefert wird. Der Riegel misst jetzt
+    // die neue Regel — und er bleibt ein Riegel: ein stilles „vertraulich" macht ihn rot.
     expect(befund.quellExport.confidentiality).toBe("intern");
     expect(
       befund.zielKo.confidentiality,
-      `${JOB}: die Einstufung des Importziels wurde abgesenkt.`,
-    ).toBe("vertraulich");
+      `${JOB}: das Importziel trägt nicht den Übernahme-Standard „intern“.`,
+    ).toBe("intern");
   });
 
   it("N3 · derselbe Inhaltsvertrag auf dem direkten API-Weg POST /api/library/import", async () => {

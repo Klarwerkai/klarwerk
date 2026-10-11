@@ -8,7 +8,12 @@ import {
   isHumanOverlapCloseReason,
   normalizeOverlapSettings,
 } from "../../../conflicts";
-import { type Guards, sendError } from "../http";
+import {
+  type ZusammenfuehrungsDeps,
+  fuehreZusammen,
+  leseZusammenfuehrungsAuftrag,
+} from "../dubletten-zusammenfuehrung";
+import { type Guards, type SessionUser, sendError } from "../http";
 import {
   type KoSichtbarkeitsZugang,
   feldFreigabe,
@@ -40,10 +45,29 @@ export interface OverlapRoutesDeps {
   // Seiten sehen durfte. Optional und fail-closed: fehlt er, bleibt der Nachweis bei dem, der
   // selbst abgeschlossen hat (Q7/JOB 3450) — enger, nie weiter.
   papierkorb?: KoSichtbarkeitsZugang;
+  // R-1107 (Aufnahme gesamt-dublettenvergleich): was das Zusammenführen ausser Befund und
+  // Sichtbarkeit braucht — den Wissensobjekt-Dienst und den Nachlauf einer neuen Fassung. Die
+  // Kompositionswurzel verdrahtet ihn immer; Einzelaufbauten ohne ihn bekommen die Tür gar nicht
+  // (keine Tür, die halb verdrahtet antwortet).
+  zusammenfuehrung?: Omit<ZusammenfuehrungsDeps, "overlaps" | "kos">;
 }
 
 export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { overlaps, settings, audit, kos, papierkorb } = deps;
+  const { overlaps, settings, audit, kos, papierkorb, zusammenfuehrung } = deps;
+
+  // aufnahme:20260922:gesamt-leserechte (Variante B, Entscheidung 15): `ko.validate` öffnet nicht
+  // mehr jede Stufe — eine Controllerin ohne persönliches Freigabeniveau darf die Aktionen unten
+  // ausführen, sieht aber ein streng vertrauliches Paar nicht. Damit gäbe es genau den Akteur, „der
+  // handeln darf, ohne sehen zu dürfen“ (JOB 972 D3). Ein Paar, das sie nicht sieht, antwortet
+  // deshalb auf jede Aktion wie ein unbekanntes (derselbe Fehler wie `requireOpen` im Dienst) —
+  // bevor irgendetwas geschrieben wird.
+  async function sichtbaresPaarOderUnbekannt(user: SessionUser, id: string): Promise<void> {
+    const entry = await overlaps.get(id);
+    if (entry && !(await paarSichtbar(user, entry.koA, entry.koB, kos))) {
+      throw new OverlapError("NOT_FOUND", "Überschneidung nicht gefunden.");
+    }
+  }
+
   return async (app) => {
     app.get("/api/duplicates", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -178,6 +202,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
             .send(await overlaps.dismiss(request.params.id, user.id, request.body?.note));
@@ -196,6 +221,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
             .send(await overlaps.keepSeparate(request.params.id, user.id, request.body?.note));
@@ -229,9 +255,10 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
     //  · Ein fehlender/unbekannter Zielzustand ist ein 400 (INVALID_STATUS ist in `http.ts`
     //    absichtlich nicht auf einen Sonderstatus abgebildet), kein stiller 200.
     //
-    // Existenz-Leck (JOB 972 D3, Prüflücke 6): dieselbe Lage wie bei den drei Aktionen darüber —
-    // `ko.validate` ist zugleich einer der beiden Sichtwege der Paaransicht, ein Akteur, der
-    // handeln darf ohne sehen zu dürfen, existiert nicht. Darum wie dort ohne `paarSichtbar`.
+    // Existenz-Leck (JOB 972 D3, Prüflücke 6): dieselbe Lage wie bei den Aktionen darüber. Bis
+    // Variante B war `ko.validate` zugleich ein Sichtweg der Paaransicht; seither öffnet es
+    // „streng vertraulich“ nur mit persönlichem Niveau — deshalb wie dort `paarSichtbar` vorab
+    // (`sichtbaresPaarOderUnbekannt`, aufnahme:20260922:gesamt-leserechte).
     app.post<{
       Params: { id: string };
       Body: { status?: string; reason?: string; note?: string } | null;
@@ -241,6 +268,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
         return;
       }
       try {
+        await sichtbaresPaarOderUnbekannt(user, request.params.id);
         const { status, reason, note } = request.body ?? {};
         // Leerer/nur-weisser Vermerk ist KEIN Vermerk — sonst stünde im Protokoll ein Grund,
         // der aus einem versehentlich fokussierten Feld stammt.
@@ -267,6 +295,42 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
       }
     });
 
+    // ==========================================================================================
+    // R-1107 / R-0201 / R-0565 (Aufnahme gesamt-dublettenvergleich) — ZUSAMMENFÜHREN.
+    // ==========================================================================================
+    //
+    // Der vierte Schritt des Assistenten: der Mensch hat Führungsartikel, Felder und Quellen
+    // gewählt, die Vorschau gesehen und gibt frei. Das Tor ist dasselbe kuratorische Recht wie an
+    // den drei Abschlüssen darüber (`ko.validate`); was darüber hinaus gilt — kein Autor einer der
+    // beiden Seiten, Einsicht in beide Inhalte, derselbe Space, unveränderte Fassungen —, prüft
+    // `fuehreZusammen` vor jedem Schreibschritt (`dubletten-zusammenfuehrung.ts`).
+    if (zusammenfuehrung) {
+      app.post<{ Params: { id: string }; Body: unknown }>(
+        "/api/duplicates/:id/merge",
+        async (request, reply) => {
+          const user = await guards.requirePermission("ko.validate", request, reply);
+          if (!user) {
+            return;
+          }
+          try {
+            const auftrag = leseZusammenfuehrungsAuftrag(request.body);
+            reply
+              .code(200)
+              .send(
+                await fuehreZusammen(
+                  { ...zusammenfuehrung, overlaps, kos },
+                  user,
+                  request.params.id,
+                  auftrag,
+                ),
+              );
+          } catch (error) {
+            sendError(reply, error);
+          }
+        },
+      );
+    }
+
     // „Als verwandt verlinken" — kein Duplikat, aber sachlich verbunden.
     app.post<{ Params: { id: string }; Body: { note?: string } | null }>(
       "/api/duplicates/:id/link-related",
@@ -276,6 +340,7 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           return;
         }
         try {
+          await sichtbaresPaarOderUnbekannt(user, request.params.id);
           reply
             .code(200)
             .send(await overlaps.linkRelated(request.params.id, user.id, request.body?.note));

@@ -16,12 +16,15 @@ import {
   type KoAnhangsquelle,
   KoError,
   type KoFilter,
+  // AUFNAHME 20260922 · confluence-import-rechte: die Leserechte der Quelle am Objekt.
+  type KoQuellrechte,
   type KoService,
   // AUFTRAG-BASIC-380: der injizierte Sicherheitstrim — nur durchgereicht, nie ausgelegt.
   type KoSichtbarkeitstrim,
   type KoSource,
   confidentialityRank,
   gelieferteDokumentId,
+  inSchutzdatenQuarantaene,
   isConfidential,
   isValidConfidentiality,
   normalizeConfidentiality,
@@ -32,9 +35,17 @@ import {
 // `services/wissensnetz/index.ts`; es ist eine reine Namensableitung, kein Zugang zum Lesemodell.
 import { themenVon } from "../../wissensnetz";
 import {
+  type ImportLaufAuftrag,
+  type ImportLaufBindung,
+  ausgangDerEntscheidung,
+  leseLaufBindung,
+} from "./laufbindung";
+import { type ImportItemMitQuellangaben, saeubereQuellangaben } from "./quellangaben";
+import {
   type CandidateRepo,
   type ClaimResolution,
   type ExternalSourceRepo,
+  type ImportRunRepo,
   InMemoryCandidateRepo,
   MAX_SOURCE_VERSION,
   importProviderKey,
@@ -77,10 +88,75 @@ export const EXPORT_NO_CHECK_NOTE =
 interface ExportOptionen {
   ids?: readonly string[];
   includeConfidential?: boolean;
-  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
+  /**
+   * produkt:20261007:spaces:admin-20261009 (ADMIN-07, K3): die Sichtregel des Betrachters
+   * (`darfSehen` aus der Route). Sie tritt NEBEN Stufe und Status — ein Objekt aus einem
+   * geschlossenen Space verlässt das Haus über den Export nur für dessen Mitglieder.
+   * aufnahme:20260922:gesamt-leserechte (Nacharbeit 19): dieselbe Regel trägt seit Variante B auch
+   * das persönliche Freigabeniveau und die ungeklärten Stufen — exportiert wird nur, was Stufe UND
+   * Sichtregel zulassen.
+   */
+  sichtbar?: (ko: KnowledgeObject) => boolean;
+  // produkt:20261010:poc-wiederherstellung-export: `paket` ist das ZIP mit Fassungen, Originalanhängen
+  // und Verzeichnis (services/app/src/wissenspaket.ts). Dieselbe Grundmenge, derselbe Beleg.
+  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" | "paket" };
 }
 
-export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
+// aufnahme:20260922:gesamt-wissen-export (R-0706): die Quellen eines Objekts, wie die drei
+// menschlichen Ausgaben sie nennen. Der JSON-Export trägt `sources` ohnehin am Objekt; Markdown,
+// MediaWiki und HTML warfen sie bisher weg — wer die Datei erhielt, sah nicht, worauf eine Aussage
+// beruht. Genannt werden Bezeichnung, Anbieter und Adresse; Leserechte der Quelle
+// (`sourceRestrictions`, `readRestriction`) sind Herkunftsangaben für Klarwerk und gehen nicht mit.
+// Die Adresse kommt nur mit, wenn sie http(s) ist — eine andere Form hat die Ablage ohnehin
+// neutralisiert (`sanitizeSources`), hier wird nur nichts Neues behauptet.
+interface ExportQuelle {
+  label: string;
+  provider: string | null;
+  url: string | null;
+  entfernt: boolean;
+  /**
+   * aufnahme:20260922:gesamt-externe-quellen-kennzeichnung (R-0205): die Quelle ist NICHT
+   * peer-validiert und trägt deshalb auch in der Ausgabe „Stufe 2" und „Extern · ungeprüft".
+   * Fail-closed wie die Anzeige (`ExterneQuelleKennung`): nur `peerValidated === true` bleibt ohne
+   * Kennzeichnung — ein fehlendes Feld (Altbestand) ist keine Unbedenklichkeitsbescheinigung.
+   */
+  ungeprueft: boolean;
+}
+
+const EXPORT_QUELLEN_UEBERSCHRIFT = "Quellen";
+const EXPORT_QUELLE_ENTFERNT = "Quellseite gelöscht";
+// R-0205: dieselben Wörter wie an den Quellenflächen der App (`externequelle.stufe`,
+// `ko.sourceExternUnchecked`). Die Textausgaben sind deutsch wie ihr Warnsatz oben.
+const EXPORT_QUELLE_STUFE = "Stufe 2";
+const EXPORT_QUELLE_HERKUNFT = "Extern · ungeprüft";
+const EXPORT_QUELLE_KENNZEICHNUNG = `${EXPORT_QUELLE_STUFE} · ${EXPORT_QUELLE_HERKUNFT}`;
+
+function exportQuellen(ko: KnowledgeObject): ExportQuelle[] {
+  return (ko.sources ?? []).map((s) => ({
+    label: s.label,
+    provider: s.provider && s.provider !== s.label ? s.provider : null,
+    url: s.url && /^https?:\/\//i.test(s.url) ? s.url : null,
+    entfernt: Boolean(s.sourceRemovedAt),
+    ungeprueft: s.peerValidated !== true,
+  }));
+}
+
+function quellenText(q: ExportQuelle): string {
+  const teile = [q.provider ? `${q.label} (${q.provider})` : q.label];
+  if (q.url) {
+    teile.push(q.url);
+  }
+  if (q.ungeprueft) {
+    teile.push(EXPORT_QUELLE_KENNZEICHNUNG);
+  }
+  if (q.entfernt) {
+    teile.push(EXPORT_QUELLE_ENTFERNT);
+  }
+  return teile.join(" — ");
+}
+
+// R-1349: `SEARCH_BACKFILL_LIMIT_PER_QUERY` (= 20) ist entfernt. Seit G27 R1 stößt kein Suchweg den
+// Nachzug mehr an (s. `search`), und die Wartungsläufe nehmen ihren eigenen Schwung.
 
 // AUFTRAG-mega68: Deckel der Nachbarschafts-Auskunft. 12 Nachbarn füllen die Detailseiten-Fläche,
 // ohne sie zu überladen (der Entwurf zeichnet ~10); alles darüber weist `truncated`/`total`
@@ -451,6 +527,13 @@ export const REVIEW_CLAIM_LEASE_MS = 10 * 60_000;
 // der wartende Claim läuft dabei nie ab.
 const ANNAHME_WARTEZEIT_MS = 30_000;
 
+// confluence-import-rechte (Nacharbeit 8, F2): der Rechteabgleich eines Kandidaten nimmt denselben
+// Claim wie eine Review-Aktion. Hält ihn gerade jemand anderes, wird bis zu so oft so lange
+// gewartet — eine Review-Aktion dauert Sekundenbruchteile; bleibt der Claim länger fremd, scheitert
+// der Abgleich sichtbar (CONFLICT), statt den Kandidaten an der Aktion vorbei zu schreiben.
+const KANDIDAT_RECHTE_VERSUCHE = 10;
+const KANDIDAT_RECHTE_WARTEZEIT_MS = 50;
+
 // Lease abgelaufen? Ein unlesbares/fehlendes claimedAt zählt defensiv als abgelaufen (Muster
 // shouldReEnqueueAiCheck: lieber einmal zu viel recovern als still liegen lassen — die Recovery
 // selbst ist per opId-CAS gegen laufende Operationen abgesichert).
@@ -612,6 +695,10 @@ function anhangsquelle(provider: string | undefined, anhang: ImportAnhang): KoAn
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
+  // Aufnahme gesamt-wissen-herkunft (R-0298 / FR-LIF-04): Kennung → sichtbarer Autorentext für die
+  // Herkunftszeile der Text-Exporte (Leseregel des Verzeichnisses, services/app/src/autorennamen.ts).
+  // Ohne Angabe bleibt es bei den Kennungen — so wie vor diesem Auftrag.
+  autorenNamen?: (ids: readonly string[]) => Promise<ReadonlyMap<string, string>>;
   // R-0163: legt die Anhänge eines übernommenen Eintrags am Wissensobjekt an. Ohne Port werden
   // keine Anhänge übernommen — und das wird je Annahme auditiert, nicht verschwiegen.
   anhaenge?: AnhangsUebernahme;
@@ -671,6 +758,81 @@ export interface LibraryServiceDeps {
    * unterscheidet genau daran (`apps/web/src/api/types.ts`, `Graph.kuratierteKanten`).
    */
   kanten?: KuratierteKantenLeser;
+  /**
+   * AUFNAHME 20260922 · confluence-import-rechte (R-0549): bildet die Mailadressen der Quellleser
+   * auf Klara-Konten ab (Kennungen). Die Kompositionswurzel verdrahtet das Benutzerverzeichnis.
+   * OHNE Verdrahtung ist keine Zuordnung möglich — eine beschränkte Seite bekommt dann eine LEERE
+   * Leserliste (nur der annehmende Autor sieht sie), nie eine offene.
+   */
+  quellLeserAufloesen?: (emails: readonly string[]) => Promise<string[]>;
+  /**
+   * R-0142 (Lauf 5, Bens B7): die Laufdomäne, in die eine Entscheidung über einen laufgebundenen
+   * Kandidaten ihre Elementreferenz schreibt. Optional: ohne Verdrahtung entsteht keine Bindung,
+   * und alles bleibt wie vorher (`laufbindung.ts`). Die Quellrevisionen kommen aus demselben
+   * `externalSources` wie für R-0169 (oben).
+   */
+  importRuns?: ImportRunRepo;
+}
+
+/**
+ * AUFNAHME 20260922 · confluence-import-rechte — die Quellrechte, die ein Adapter am Eintrag
+ * mitliefert (`quellrechte`, s. services/confluence/src/mapper.ts). Wie `originalAuthor` ein
+ * zusätzliches Feld neben dem eingefrorenen `ImportItem` und deshalb hier als FREMD gelesen: nur eine
+ * gültige Stufe und eine Liste aus Texten zählen, alles andere ergibt `undefined` (= keine
+ * Quellrechte, Bestandsverhalten).
+ *
+ * VERTRAUEN: das Feld setzen nur die Quell-Adapter auf dem Server. Die öffentlichen Importrouten
+ * entfernen es aus dem Rumpf (`ohneQuellrechte`, services/app/src/routes/library-routes.ts), bevor
+ * ein Eintrag diesen Dienst erreicht.
+ */
+interface EintragsQuellrechte {
+  stufe: Confidentiality;
+  emails?: string[];
+  // Nacharbeit 3 (Befund F4): der Quellstand, zu dem diese Rechte gelten — die Seitenversion des
+  // Eintrags und der Zeitpunkt, an dem der Adapter die Rechte nachgesehen hat.
+  version?: number;
+  beobachtetAm?: string;
+  // Nacharbeit 6 (Befund F3): der Leserkreis konnte nicht vollständig gelesen werden (Gruppen-
+  // abruf abgebrochen oder über der technischen Grenze). Die Leser sind dann eine Untermenge.
+  leserUnvollstaendig?: true;
+}
+
+// Nacharbeit 8 (Befund F1): die frühere Vorabprüfung `gleicheQuellLage` stand hier und übersprang
+// bei gleicher Lage den Objekt-Write ganz — damit blieb der ältere Beobachtungszeitpunkt stehen.
+// Die Entscheidung fällt jetzt allein unter der Objektsperre (`KoService.setQuellrechte`).
+
+function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
+  const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+  if (roh === null || typeof roh !== "object") {
+    return undefined;
+  }
+  const { stufe, emails, beobachtetAm, leserUnvollstaendig } = roh as {
+    stufe?: unknown;
+    emails?: unknown;
+    beobachtetAm?: unknown;
+    leserUnvollstaendig?: unknown;
+  };
+  if (!isValidConfidentiality(stufe)) {
+    return undefined;
+  }
+  const stand = {
+    ...(typeof item.sourceVersion === "number" ? { version: item.sourceVersion } : {}),
+    ...(typeof beobachtetAm === "string" && !Number.isNaN(Date.parse(beobachtetAm))
+      ? { beobachtetAm }
+      : {}),
+    ...(leserUnvollstaendig === true ? { leserUnvollstaendig: true as const } : {}),
+  };
+  if (emails === undefined) {
+    return { stufe, ...stand };
+  }
+  if (!Array.isArray(emails)) {
+    return undefined;
+  }
+  return {
+    stufe,
+    emails: emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0),
+    ...stand,
+  };
 }
 
 /**
@@ -691,11 +853,33 @@ function increment(map: Record<string, number>, key: string): void {
   map[key] = (map[key] ?? 0) + 1;
 }
 
+// ================================================================================================
+// N11 · DER ÜBERNAHME-STANDARD IST „INTERN" — ABLÖSUNG VON SCRUM-509 R3/R4 FÜR DAS FEHLENDE SIGNAL.
+// ================================================================================================
+//
+// Pedi, Entscheidung 23 vom 05.09.2026: „Es ist nicht vertraulich … externe KI ist überall
+// erlaubt". Vertraulich wird nur, was der Mensch so markiert oder die Quelle restringiert. JOB 3089
+// hat das nur am Confluence-Mapper umgesetzt; der Import-Kern setzte eine fehlende Stufe an BEIDEN
+// Anlagewegen (Kandidaten-Accept, `importJson`) und beim Re-Sync weiter auf „vertraulich". Ab hier
+// gilt an allen drei Stellen dieser eine Wert — als ECHTE, gespeicherte Einstufung „intern", nicht
+// als leeres Feld, damit die Anzeige nicht „nicht eingestuft" sagt.
+//
+// WAS UNVERÄNDERT BLEIBT: ein ungültiger, aber GESETZTER Wert wird weiter restriktiv „vertraulich"
+// (`sanitizeImportConfidentiality`) — das ist kein fehlendes Signal, sondern ein kaputtes. Ein
+// mitgeliefertes „vertraulich"/„streng_vertraulich" wird nie abgesenkt.
+//
+// QUELLENWIDERSPRUCH, SICHTBAR GEHALTEN: Der Auftrag nennt im Nutzen „ohne Stufe bleibt vertraulich"
+// und R-0632 einen Word-Standard „vertraulich". N11 ist die jüngere, ausdrücklich dokumentierte
+// Entscheidung zum Übernahme-Standard; sie gilt hier. Für Erfassen und Word gilt sie NICHT als
+// stille Stufe — dort bleibt die ausdrückliche Wahl Pflicht (Q3, N-0017).
+const UEBERNAHME_STANDARD: Confidentiality = "intern";
+
 // SCRUM-515: Runtime-Validierung der Vertraulichkeit an der Import-Ingest-Grenze. Fremd-Payload (HTTP-
 // Body ODER Quell-Adapter) ist untrusted: ein GESETZTER, aber ungültiger/unbekannter Wert wird
 // RESTRIKTIV auf „vertraulich" gezogen (NIE intern) — der Import scheitert weder hart noch stuft er
-// still herab. FEHLT der Wert ganz, bleibt er undefined (acceptToKo/importJson stufen dann fail-safe auf
-// „vertraulich", R3/R4). Der einzige Ort, an dem eine rohe confidentiality in den Import-Kern eintritt.
+// still herab. FEHLT der Wert ganz, bleibt er undefined (acceptToKo/importJson setzen dann den
+// Übernahme-Standard „intern", N11). Der einzige Ort, an dem eine rohe confidentiality in den
+// Import-Kern eintritt.
 export function sanitizeImportConfidentiality(raw: unknown): Confidentiality | undefined {
   if (raw === undefined || raw === null) {
     return undefined;
@@ -886,16 +1070,24 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  private readonly quellLeserAufloesen:
+    | ((emails: readonly string[]) => Promise<string[]>)
+    | undefined;
+  // R-0142 (Lauf 5): die Laufdomäne (s. `LibraryServiceDeps.importRuns`).
+  private readonly importRuns: ImportRunRepo | undefined;
   // R-0163: s. `LibraryServiceDeps.anhaenge`.
   private readonly anhaenge: AnhangsUebernahme | undefined;
-  // R-0169: Schreibweg der Quellrevisionen; `undefined` = nicht verdrahtet (s. Deps).
+  // R-0169 / R-0142: Schreibweg der Quellrevisionen; `undefined` = nicht verdrahtet (s. Deps).
   private readonly externalSources: ExternalSourceRepo | undefined;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte; `undefined` = nicht verdrahtet (s. Deps).
   private readonly dokumente: DokumentaktenService | undefined;
+  // R-0298: s. `LibraryServiceDeps.autorenNamen`; `undefined` = Kennungen wie bisher.
+  private readonly autorenNamen: LibraryServiceDeps["autorenNamen"];
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
     this.audit = deps.audit;
+    this.autorenNamen = deps.autorenNamen;
     this.anhaenge = deps.anhaenge;
     this.candidates = deps.candidates ?? new InMemoryCandidateRepo();
     this.genId = deps.genId ?? (() => randomUUID());
@@ -903,8 +1095,52 @@ export class LibraryService {
     this.externalUpsert = deps.externalUpsert ?? false;
     this.annahmeWartezeitMs = deps.annahmeWartezeitMs ?? ANNAHME_WARTEZEIT_MS;
     this.kanten = deps.kanten;
+    this.quellLeserAufloesen = deps.quellLeserAufloesen;
+    this.importRuns = deps.importRuns;
     this.externalSources = deps.externalSources;
     this.dokumente = deps.dokumente;
+  }
+
+  /**
+   * AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte des Eintrags als Objektrechte —
+   * Mailadressen werden ERST HIER, beim Annehmen, auf Klara-Konten abgebildet. Was sich nicht
+   * zuordnen lässt, fällt weg; eine beschränkte Seite bleibt damit beschränkt (leere Liste).
+   */
+  private async objektQuellrechte(item: ImportItem): Promise<KoQuellrechte | undefined> {
+    const quelle = quellrechteVon(item);
+    if (!quelle) {
+      return undefined;
+    }
+    const stand = {
+      ...(quelle.version !== undefined ? { version: quelle.version } : {}),
+      ...(quelle.beobachtetAm !== undefined ? { beobachtetAm: quelle.beobachtetAm } : {}),
+      ...(quelle.leserUnvollstaendig ? { leserUnvollstaendig: true as const } : {}),
+    };
+    if (quelle.emails === undefined) {
+      return { stufe: quelle.stufe, ...stand };
+    }
+    const leser =
+      quelle.emails.length > 0 && this.quellLeserAufloesen
+        ? await this.quellLeserAufloesen(quelle.emails)
+        : [];
+    return { stufe: quelle.stufe, leser, ...stand };
+  }
+
+  /**
+   * confluence-import-rechte (Ben, Nacharbeit 6, Befund F1): die Quellrechte eines Kandidaten,
+   * DIESELBE Abbildung wie beim Annehmen — für die Sichtbarkeitsgrenze der Warteschlange
+   * (`darfKandidatSehen`, services/app/src/sichtbarkeit.ts). `undefined` = der Eintrag trägt keine.
+   */
+  async quellrechteFuerKandidat(item: unknown): Promise<KoQuellrechte | undefined> {
+    if (item === null || typeof item !== "object") {
+      return undefined;
+    }
+    return this.objektQuellrechte(item as ImportItem);
+  }
+
+  /** Nacharbeit 6 (Befund F1): EIN Kandidat zu einer Kennung — für die Sichtprüfung vor der Annahme. */
+  async importKandidat(id: string): Promise<ImportCandidate | undefined> {
+    return this.candidates.findById(id);
   }
 
   /**
@@ -963,6 +1199,14 @@ export class LibraryService {
     return confidentiality === undefined ? item : { ...item, confidentiality };
   }
 
+  // R-0549/R-0163: dieselbe Ingest-Grenze für die Quellangaben. Der JSON-Eingang nimmt `ImportItem`s
+  // von Clients an; Leserestriktion und Anhänge sind dort Behauptungen und werden deshalb auf Form
+  // und Menge begrenzt (nur Zeichenketten, gedeckelte Länge und Anzahl, URLs erst in buildSources
+  // über `safeSourceUrl`). Nichts davon verleiht ein Recht.
+  private withSanitizedIngest(item: ImportItem): ImportItemMitQuellangaben {
+    return saeubereQuellangaben(this.withSanitizedConfidentiality(item));
+  }
+
   // SCRUM-116: JSON-Re-Import erzeugt Review-Kandidaten (keine stille Bulk-Anlage).
   //
   // ==============================================================================================
@@ -1017,8 +1261,9 @@ export class LibraryService {
     rawItems: readonly ImportItem[],
     actor = "system",
     pruefeDublette?: DublettenPruefung,
-    // NACHARBEIT 2 (bens F1): nur die Dateiroute setzt das — Begründung an `DATEIWEG_VERMERK`.
-    opts: { quellangabenEingereicht?: boolean } = {},
+    // NACHARBEIT 2 (bens F1): nur die Dateiroute setzt `quellangabenEingereicht` — Begründung an
+    // `DATEIWEG_VERMERK`. R-0142 (Lauf 5): `lauf` = der Importlauf, in dessen Namen eingereiht wird.
+    opts: { quellangabenEingereicht?: boolean; lauf?: ImportLaufAuftrag } = {},
   ): Promise<ImportCandidate[]> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
     // WP-IC-PAKET-1d (bens sammel9-ROT): ZENTRALE Codec-Erzeugungsregel. Dies ist DIE eine Stelle,
@@ -1032,7 +1277,9 @@ export class LibraryService {
       const { [DATEIWEG_VERMERK]: _clientVermerk, ...ohneVermerk } = item as ImportItem &
         Record<string, unknown>;
       return {
-        ...this.withSanitizedConfidentiality(ohneVermerk as ImportItem),
+        // R-0549/R-0163/R-0142: dieselbe Ingest-Grenze wie überall (Vertraulichkeit UND
+        // Quellangaben; eine mitgeschickte Laufbindung wird hier verworfen).
+        ...this.withSanitizedIngest(ohneVermerk as ImportItem),
         textCodec: "decoded",
         // NACHARBEIT 3 (bens F1): auch ein Eintrag mit Quellverweis ohne Kennung trägt den Vermerk.
         // NACHARBEIT 5 (R-0169): und JEDER über den Dateiweg eingereichte Eintrag — auch einer ganz
@@ -1052,6 +1299,11 @@ export class LibraryService {
         // NACHARBEIT 5 (R-0169): mitgebrachte Dokumentkennung und Art VOR jeder Einreihung.
         await this.pruefeAktenEintrag(item);
       }
+    }
+    // R-0142 (Lauf 5): im Namen eines Laufs eingereiht → Quellrevision festhalten und binden. Erst
+    // NACH den Eintragsprüfungen oben: ein abgewiesener Eintrag hinterlässt keine Revision.
+    if (opts.lauf) {
+      await this.bindeAnLauf(items, opts.lauf);
     }
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
@@ -1297,11 +1549,14 @@ export class LibraryService {
         }
       }
     }
+    // Aufnahme gesamt-auditprotokoll:aktionsabdeckung (Bens Befund, Nacharbeit 2): der Eintrag nennt
+    // die tatsächlich gespeicherten Kandidaten — sonst wäre aus dem Importbeleg nicht bestimmbar,
+    // welche Objekte er betrifft. Nur Kennungen, kein Inhalt.
     await this.audit?.record({
       actor,
       action: "import.candidates-created",
       target: "library",
-      payload: { count: persisted.length },
+      payload: { count: persisted.length, candidateIds: persisted.map((c) => c.id) },
     });
     return persisted;
   }
@@ -1348,11 +1603,15 @@ export class LibraryService {
     // WP-SHIP8-CLOSE-8 (bens ROT-1): Kandidaten mit schwebendem Aktionsbeleg (auditPending) —
     // das bedingte DELETE lässt sie stehen (einziger Träger des Belegs); hier ehrlich beziffert.
     auditPendingCandidates: number;
+    // Aufnahme gesamt-bestandsbereinigung (R-0124): die erkannten Doppel-Kandidaten der Queue
+    // (`duplicate: true`) — Teil der Zielmenge, in Vorschau UND Bilanz eigens beziffert.
+    duplicateIds: Set<string>;
   }> {
     const candidates = await this.candidates.all();
     const candidateIds = candidates.map((c) => c.id);
     const candidateStatuses = new Map(candidates.map((c) => [c.id, c.status as string]));
     const auditPendingCandidates = candidates.filter((c) => c.auditPending !== undefined).length;
+    const duplicateIds = new Set(candidates.filter((c) => c.duplicate).map((c) => c.id));
     const openClaims = new Set(
       candidates.filter((c) => c.status === "in_bearbeitung").map((c) => c.id),
     );
@@ -1367,6 +1626,7 @@ export class LibraryService {
       targets: provenance.filter((ko) => !claimProtected(ko)),
       claimedKos: provenance.filter(claimProtected).length,
       auditPendingCandidates,
+      duplicateIds,
     };
   }
 
@@ -1384,8 +1644,11 @@ export class LibraryService {
     // lässt sie fail-closed stehen; hier vorab ehrlich beziffert (nicht im Digest: die Ids
     // bleiben Teil der Zielmenge, nur das DELETE verweigert sie).
     auditPendingCandidates: number;
+    // Aufnahme gesamt-bestandsbereinigung (R-0124): davon erkannte Doppel-Kandidaten (Teilmenge
+    // von `candidates`; nicht im Digest — die Ids sind es schon).
+    duplicateCandidates: number;
   }> {
-    const { candidateIds, targets, claimedKos, auditPendingCandidates } =
+    const { candidateIds, targets, claimedKos, auditPendingCandidates, duplicateIds } =
       await this.cleanupTargets();
     return {
       candidates: candidateIds.length,
@@ -1396,6 +1659,7 @@ export class LibraryService {
       ),
       claimedKos,
       auditPendingCandidates,
+      duplicateCandidates: duplicateIds.size,
     };
   }
 
@@ -1434,6 +1698,10 @@ export class LibraryService {
     // DELETE fail-closed verschont und hier ehrlich beziffert (wie claimedKos BEWUSST kein
     // skipped-Eintrag; ein späterer Lauf räumt sie nach gelungenem Beleg-Nachzug ab).
     auditPendingCandidates: number;
+    // Aufnahme gesamt-bestandsbereinigung (R-0124): wie viele der tatsächlich entfernten
+    // Kandidaten (Teilmenge von removedCandidates) erkannte Doppel-Kandidaten waren — gezählt aus
+    // dem Ergebnis des bedingten DELETE, nicht aus der Vorschau.
+    removedDuplicateCandidates: number;
   }> {
     // WP-SHIP8-CLOSE-9 (bens Korrektur 1): KEIN Write vor erfolgreicher Digest-Validierung —
     // auch nicht der best-effort Beleg-Retry. Reihenfolge zwingend:
@@ -1456,7 +1724,8 @@ export class LibraryService {
     //  (3) Kandidatenzustand für die Delete-Versuche NEU lesen — der Retry ändert keine Ids/
     //      Stati/KO-Ziele (der bestätigte Digest bleibt stabil); jede SONSTIGE parallele Drift
     //      bricht auch hier fail-closed ab (die KO-Phase unten hat noch nichts geschrieben).
-    const { candidateIds, candidateStatuses, targets, claimedKos } = await this.cleanupTargets();
+    const { candidateIds, candidateStatuses, targets, claimedKos, duplicateIds } =
+      await this.cleanupTargets();
     if (
       cleanupDigest(
         candidateIds,
@@ -1520,6 +1789,7 @@ export class LibraryService {
     // ein Accept im letzten Fenster zwischen Re-Read und Delete verliert nie — der Kandidat
     // überlebt und steht ehrlich in der Bilanz.
     let removedCandidates = 0;
+    let removedDuplicateCandidates = 0;
     if (skipped.length === 0) {
       const preRead = new Map((await this.candidates.all()).map((c) => [c.id, c.status as string]));
       const attempts: { id: string; status: string }[] = [];
@@ -1542,6 +1812,7 @@ export class LibraryService {
       }
       const removedIds = attempts.length > 0 ? await this.candidates.removeByIds(attempts) : [];
       removedCandidates = removedIds.length;
+      removedDuplicateCandidates = removedIds.filter((id) => duplicateIds.has(id)).length;
       // Ehrliche Bilanz für alles, was das BEDINGTE Delete NICHT entfernt hat: der Status hat
       // sich seit der Bestätigung geändert. Für die Begründung den echten Zustand nachlesen
       // (best-effort — ohne Nachlesen konservativ „zwischenzeitlich bearbeitet").
@@ -1598,6 +1869,7 @@ export class LibraryService {
           newCandidates,
           claimedKos,
           auditPendingCandidates,
+          removedDuplicateCandidates,
         },
       });
     } catch (err) {
@@ -1617,6 +1889,7 @@ export class LibraryService {
       newCandidates,
       claimedKos,
       auditPendingCandidates,
+      removedDuplicateCandidates,
     };
   }
 
@@ -1696,6 +1969,9 @@ export class LibraryService {
         "Kandidat wurde bereits bearbeitet oder wird gerade bearbeitet.",
       );
     }
+    // R-0142 (Lauf 5): die Laufbindung JETZT lesen — `resolveClaim` ersetzt das Item unten durch
+    // seine gesäuberte Fassung, und die Säuberung entfernt jede Bindung (`laufbindung.ts`).
+    const laufBindung = leseLaufBindung(candidate.item);
     // Erst NACH erfolgreicher KO-Erzeugung gesetzt — steuert den Fehlerpfad (s. Kopfkommentar (4)).
     let createdKoId: string | null = null;
     let resolved: ImportCandidate | undefined;
@@ -1750,7 +2026,10 @@ export class LibraryService {
       // nie sanitisiert. Unmittelbar VOR acceptToKo erneut sanitisieren — sonst würde ein
       // ungültiger Altwert im Re-Sync-Ranking auf „intern" normalisiert (fail-open) bzw. bei
       // der Erstanlage hart abgelehnt. Das bereinigte Item wird MIT persistiert.
-      const item = this.withSanitizedConfidentiality(candidate.item);
+      // R-0549/R-0163: dieselbe Ingest-Grenze wie beim Einreihen (Quellangaben eingeschlossen).
+      // R-0142 (Lauf 5): die Bindung bleibt am persistierten Kandidaten nachvollziehbar, und
+      // (Lauf 5 R3, Bens B11) der Herkunftsanker trägt den Lauf GENAU dieser Annahme.
+      const item = this.mitLaufBindung(this.withSanitizedIngest(candidate.item), laufBindung);
       // NACHARBEIT 2 (bens F1, Hauptstand): über den Dateiweg eingereichte Quellangaben
       // bleiben erhalten.
       const ausgang = await this.acceptToKo(
@@ -1797,7 +2076,7 @@ export class LibraryService {
     ): Promise<ClaimResolution> => {
       const mitbewerber = await this.mitbewerberNebenAnlage(candidate, eigeneKoId, pruefeDublette);
       if (mitbewerber === undefined) {
-        const item = this.withSanitizedConfidentiality(candidate.item);
+        const item = this.mitLaufBindung(this.withSanitizedIngest(candidate.item), laufBindung);
         if (this.ankerWeg(candidate)) {
           neuerBefund = { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } };
         }
@@ -2030,6 +2309,8 @@ export class LibraryService {
     // BEDINGT gelöscht (clearAuditPending: nur die eigene eventId); wirft es, bleibt sie stehen
     // und die API-Antwort weist den Schwebezustand ehrlich aus. Zusätzlich LAUTES, PII-freies
     // Log (dieselbe Semantik wie Cleanup-Regel 5).
+    // R-0142 (Lauf 5): die Entscheidung als Elementreferenz des Laufs (nur laufgebundene Kandidaten).
+    await this.vermerkeEntscheidungImLauf(candidate, laufBindung, resolved);
     let auditRecorded = false;
     try {
       // recordOnce false (ein paralleler Nachzug war schneller) zählt als gesichert — der Beleg
@@ -2135,6 +2416,23 @@ export class LibraryService {
   // (Satzzeichen, Groß-/Kleinschreibung), nicht nur einen wortgleichen. Ohne sie (Altaufrufer)
   // bleibt es bei der exakten Form.
   async recoverStaleReviewClaims(
+    pruefeDublette?: DublettenPruefung,
+  ): Promise<{ completed: number; released: number }> {
+    const ergebnis = await this.vollendeHaengendeClaims(pruefeDublette);
+    // R-0142 (Lauf 5 R3, Bens B12/B13): nach der Wiederaufnahme — und auch, wenn nichts hing —
+    // fehlende Elementreferenzen entschiedener, laufgebundener Kandidaten nachziehen. Ein Fehler
+    // hier bricht weder die Wiederaufnahme noch das Laden der Warteschlange.
+    await this.zieheLaufReferenzenNach().catch((err: unknown) => {
+      process.stderr.write(
+        `[KLARWERK] Nachzug der Elementreferenzen gescheitert (fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }).\n`,
+      );
+    });
+    return ergebnis;
+  }
+
+  private async vollendeHaengendeClaims(
     pruefeDublette?: DublettenPruefung,
   ): Promise<{ completed: number; released: number }> {
     const nowMs = this.now();
@@ -2327,6 +2625,121 @@ export class LibraryService {
       return undefined;
     }
     return this.gleicheAnhaengeAb(anker.ko.id, item, actor);
+  }
+
+  /**
+   * confluence-import-rechte (Ben, Nacharbeit 6, Befund F2) — DER RECHTEABGLEICH EINER SEITE
+   * UNVERÄNDERTER INHALTSVERSION.
+   *
+   * Confluence zählt die Seitenversion bei einer reinen Rechteänderung nicht hoch. Der
+   * Bereichsabgleich übersprang solche Seiten deshalb als „unverändert" — eine inzwischen auf Lea
+   * beschränkte Seite blieb in Klara für die bisherigen Leser offen. Hier werden die FRISCH
+   * erhobenen Quellrechte nachgezogen, an zwei Stellen und beide geschützt:
+   *   1. am LEBENDEN Objekt dieses Ankers über `setQuellrechte` — Aktualitätsschutz unter dem
+   *      Objekt-Lock (ältere Version oder frühere Beobachtung ändern nichts);
+   *   2. an OFFENEN Kandidaten (`neu`) derselben Quelle und Version: ihr Eintrag trägt danach die
+   *      neuere Beobachtung, damit eine spätere Annahme sie nicht verdrängt.
+   * Ein Objekt im Papierkorb und ein abgeschlossener Kandidat werden nicht angefasst.
+   *
+   * Nacharbeit 8 (Ben, Befunde F1/F2) — GLEICHLAUF:
+   *   · Das Objekt entscheidet ALLEIN unter seiner Sperre (`setQuellrechte`): Aktualitätsvergleich
+   *     und Fortschreiben in einem Schritt, auch bei gleicher Lage (dann nur der Zeitpunkt). Eine
+   *     Vorabprüfung hier außerhalb der Sperre gibt es nicht mehr.
+   *   · Ein Kandidat wird nie mehr als Ganzes zurückgeschrieben. Der Abgleich nimmt ihn über DENSELBEN
+   *     atomaren Claim wie eine Review-Aktion (`claim`: nur aus `neu`), prüft den Zeitpunkt am frisch
+   *     geclaimten Stand und gibt ihn über `resolveClaim` mit `status: neu` und den neuen Rechten
+   *     zurück. Eine Annahme, die dazwischenkommt, bekommt den Claim nicht — und ein Kandidat, den
+   *     eine Review-Aktion hält oder abgeschlossen hat, wird nicht angefasst.
+   *   · Kandidaten zuerst, dann das Objekt: wird ein Kandidat während des Wartens angenommen, findet
+   *     der Objektschritt danach das neue Objekt.
+   */
+  async gleicheQuellrechteFuerAnkerAb(
+    item: ImportItem,
+    actor: string,
+  ): Promise<{ objekt: boolean; kandidaten: number }> {
+    const quelle = quellrechteVon(item);
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!quelle || !externalId) {
+      return { objekt: false, kandidaten: 0 };
+    }
+    const gesucht = ankerSchluessel(item.provider, externalId);
+    let kandidaten = 0;
+    const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+    for (const kandidat of await this.candidates.all()) {
+      if (
+        !isOpenReviewStatus(kandidat.status) ||
+        ankerSchluessel(kandidat.item.provider, kandidat.item.externalId) !== gesucht ||
+        kandidat.item.sourceVersion !== item.sourceVersion
+      ) {
+        continue;
+      }
+      if (await this.kandidatRechteNachziehen(kandidat.id, quelle, roh)) {
+        kandidaten += 1;
+      }
+    }
+    let objekt = false;
+    const anker = await this.sucheAnkerKo(
+      (s) => ankerSchluessel(s.provider, s.externalId) === gesucht,
+    );
+    if (anker?.art === "aktiv") {
+      const rechte = await this.objektQuellrechte(item);
+      if (rechte) {
+        await this.koService.setQuellrechte(anker.ko.id, rechte, actor);
+        objekt = true;
+      }
+    }
+    return { objekt, kandidaten };
+  }
+
+  /**
+   * Nacharbeit 8 (Befund F2): die Rechte EINES offenen Kandidaten atomar nachziehen — über
+   * `claim`/`resolveClaim`, die beiden bedingten Schreibwege der Ablage (Pg: UPDATE … WHERE
+   * status='neu' bzw. WHERE status='in_bearbeitung' AND opId=…). Hält gerade eine andere Operation
+   * den Claim (Review-Aktion, zweiter Abgleich), wird kurz gewartet und neu versucht; ist der
+   * Kandidat danach abgeschlossen oder verschwunden, bleibt er unangetastet. Bleibt er über alle
+   * Versuche in fremder Bearbeitung, scheitert der Abgleich ehrlich (`CONFLICT`) — der
+   * Bereichsimport führt die Seite dann als nicht abgeglichen.
+   */
+  private async kandidatRechteNachziehen(
+    id: string,
+    quelle: EintragsQuellrechte,
+    roh: unknown,
+  ): Promise<boolean> {
+    for (let versuch = 0; versuch < KANDIDAT_RECHTE_VERSUCHE; versuch += 1) {
+      const opId = `quellrechte:${randomUUID()}`;
+      const gehalten = await this.candidates.claim(id, opId, new Date(this.now()).toISOString());
+      if (gehalten) {
+        const alt = quellrechteVon(gehalten.item);
+        const aelterOderGleich =
+          alt?.beobachtetAm !== undefined &&
+          quelle.beobachtetAm !== undefined &&
+          Date.parse(alt.beobachtetAm) >= Date.parse(quelle.beobachtetAm);
+        const item = aelterOderGleich
+          ? undefined
+          : ({ ...gehalten.item, confidentiality: quelle.stufe, quellrechte: roh } as ImportItem);
+        const zurueck = await this.candidates.resolveClaim(
+          id,
+          opId,
+          item ? { status: "neu", item } : { status: "neu" },
+        );
+        if (!zurueck) {
+          throw new LibraryError(
+            "CONFLICT",
+            "Importkandidat: Claim des Rechteabgleichs verloren — Leserechte nicht nachgezogen.",
+          );
+        }
+        return item !== undefined;
+      }
+      const jetzt = await this.candidates.findById(id);
+      if (!jetzt || !isOpenReviewStatus(jetzt.status)) {
+        return false; // abgeschlossen oder entfernt — nicht anfassen
+      }
+      await new Promise((weiter) => setTimeout(weiter, KANDIDAT_RECHTE_WARTEZEIT_MS));
+    }
+    throw new LibraryError(
+      "CONFLICT",
+      "Importkandidat ist in Bearbeitung — Leserechte nicht nachgezogen.",
+    );
   }
 
   /**
@@ -2631,7 +3044,7 @@ export class LibraryService {
   // Hauptstand-Integration: `weg` (R-0139/R-0169, Auftrag herkunft-identitaet) und `sperreGilt`
   // stehen nebeneinander; ein verweigerter Anker-Treffer am direkten Weg kommt als `koId: ""`.
   private async acceptToKo(
-    item: ImportItem,
+    item: ImportItemMitQuellangaben,
     actor: string,
     candidateId?: string,
     // R-0139 / R-0169: welcher Importweg hier anlegt (Begründung an `ImportWeg`).
@@ -2670,6 +3083,11 @@ export class LibraryService {
     // gleich), einschliesslich des Falls „beide ohne externalId".
     const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
       ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(item.provider, externalId);
+    // R-0163: eine Anhangsquelle gehört zu diesem Anker, wenn sie denselben Provider und als
+    // `attachmentOf` dieselbe Quell-Id trägt (derselbe injektive Schlüssel wie der Anker selbst).
+    const gehoertZuAnker = (s: { attachmentOf?: string; provider?: string | null }): boolean =>
+      s.attachmentOf !== undefined &&
+      ankerSchluessel(s.provider, s.attachmentOf) === ankerSchluessel(item.provider, externalId);
     const anker = externalId ? await this.sucheAnkerKo(matchesAnchor) : undefined;
     // NACHARBEIT 2 (bens F3): am direkten Weg entscheidet das Recht am Zielobjekt, BEVOR adoptiert,
     // eine Kennung zurückgegeben, eingestuft oder überarbeitet wird. Ein getrashtes Ziel ist dort nie
@@ -2744,28 +3162,62 @@ export class LibraryService {
       // Importstufe wird respektiert. Ziel = die höhere aus (aktueller Stufe, Import-Boden) → nie ein
       // Downgrade über Re-Sync. Der Upgrade läuft durch setConfidentiality (transaktional: Lock + CAS +
       // Audit) und wird von der nachfolgenden revise() nicht angetastet.
+      //
+      // N11 (Pedi, Entscheidung 23 vom 05.09.2026): OHNE Signal ist der Boden „intern" — also KEINE
+      // Anhebung. Bis hierher hob ein Re-Sync ohne Signal still auf „vertraulich"; vertraulich wird
+      // aber nur, was der Mensch so markiert oder die Quelle restringiert. Ein Downgrade bleibt
+      // unverändert ausgeschlossen (Ziel = die höhere Stufe), eine explizit höhere Importstufe gilt.
+      //
+      // AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 2, Befund F2): liefert die
+      // Quelle ihre Rechte mit, gleicht `setQuellrechte` ab — Leser immer nach der Quelle, die Stufe
+      // nach der Quelle, solange seit dem letzten Abgleich kein Mensch eingestuft hat (dann auch
+      // nach unten: eine aufgehobene Confluence-Beschränkung macht das Objekt wieder intern). Eine
+      // ausdrücklich menschliche Einstufung wird dort weiter nur angehoben. Ohne Quellrechte gilt
+      // der Bestandszweig darunter (mit dem N11-Boden) unverändert.
+      const quellrechte = await this.objektQuellrechte(item);
       const currentConf = normalizeConfidentiality(existing.confidentiality);
-      const importFloor: Confidentiality = item.confidentiality ?? "vertraulich";
+      const importFloor: Confidentiality = item.confidentiality ?? UEBERNAHME_STANDARD;
       const target =
         confidentialityRank(importFloor) > confidentialityRank(currentConf)
           ? importFloor
           : currentConf;
-      if (target !== currentConf) {
+      if (quellrechte) {
+        // Bens Grenzbeobachtung Runde 3: die Frage steht vor JEDER Mutation dieses Zweigs.
+        await sperreGilt();
+        await this.koService.setQuellrechte(existing.id, quellrechte, actor);
+      } else if (target !== currentConf) {
         // Bens Grenzbeobachtung Runde 3: die Frage steht vor JEDER Mutation dieses Zweigs.
         await sperreGilt();
         // AUFTRAG-mega82 Block A: der Akteur dieser Mutation ist der ANNEHMENDE, nie `item.author`.
         // Der Wert steht im Prüfprotokoll dieses Upgrades; ein aus dem Rumpf gelieferter Name
         // machte dort einen Ungeprüften zum Handelnden. Begründung in voller Länge an der revise()
         // weiter unten — es ist dieselbe Regel, und beide Stellen tragen sie gemeinsam.
-        await this.koService.setConfidentiality(existing.id, target, actor);
+        await this.koService.setConfidentiality(existing.id, target, actor, { durchImport: true });
       }
 
       if (incoming > current) {
         // bens F3: nur der Anker DESSELBEN Providers wird fortgeschrieben — ein gleichnamiger
         // Anker eines anderen Providers am selben KO bliebe unangetastet.
+        // R-0163: die Anhangsquellen DERSELBEN Seite werden mit dem Anker ersetzt, nicht gehäuft —
+        // ein in der Quelle entfernter Anhang verschwindet so auch am Objekt.
+        // R-0169: der neue Anker zeigt auf die eben festgeschriebene Revision dieser Fassung.
+        const neu = this.buildSources(item, actor, incoming, revision);
+        // R-0163 (Runde 3): trägt das Item nur eine TEILLISTE der Anhänge
+        // (`sourceAttachmentsIncomplete`), wird keine bestehende Anhangsquelle entfernt — nur die
+        // gelieferten ersetzen ihre Vorgänger (gleiche Anhangs-Id). Eine Teilantwort ist kein
+        // Beleg dafür, dass ein Anhang in der Quelle verschwunden ist.
+        const gelieferteAnhaenge = new Set(
+          neu.map((s) => s.attachment?.externalId).filter((a): a is string => !!a),
+        );
+        const behalten = (s: KoSource): boolean =>
+          item.sourceAttachmentsIncomplete === true &&
+          gehoertZuAnker(s) &&
+          !gelieferteAnhaenge.has(s.attachment?.externalId ?? "");
         const nextSources = [
-          ...existing.sources.filter((s) => !matchesAnchor(s)),
-          this.buildSource(item, actor, incoming, revision),
+          ...existing.sources.filter(
+            (s) => !matchesAnchor(s) && (!gehoertZuAnker(s) || behalten(s)),
+          ),
+          ...neu,
         ];
         // ==========================================================================================
         // AUFTRAG-mega82 BLOCK A — WER IMPORTIERT, HANDELT. WER IM IMPORT GENANNT WIRD, HANDELT NICHT.
@@ -2824,6 +3276,8 @@ export class LibraryService {
     // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte gehen im SELBEN Insert mit.
+    const erstRechte = await this.objektQuellrechte(item);
     // R-0169: die erste Quellfassung als unveränderliche Revision, VOR dem Objekt — scheitert die
     // Anlage danach, bleibt die Revision als Tatsache stehen und wird beim Wiederholen über ihre
     // Revisionsidentität wiedergefunden (`insertIfAbsent` → `findByRevision`), nie verdoppelt.
@@ -2842,7 +3296,7 @@ export class LibraryService {
     await sperreGilt();
     let ko: KnowledgeObject;
     try {
-      ko = await this.koService.create({
+      const anlage: Parameters<KoService["create"]>[0] = {
         title: item.title,
         statement: item.statement,
         type: item.type,
@@ -2857,18 +3311,18 @@ export class LibraryService {
         author: actor,
         ...quellautorVon(item),
         tags: item.tags ?? [],
-        // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
-        // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
-        // Freigabe aus Cloud/Export heraus.
-        confidentiality: item.confidentiality ?? "vertraulich",
+        // N11 löst SCRUM-509 R3 ab (Begründung an `UEBERNAHME_STANDARD`): fehlt das Signal, gilt
+        // ausdrücklich „intern"; ein mitgeliefertes „vertraulich"/„streng_vertraulich" bleibt.
+        confidentiality: item.confidentiality ?? UEBERNAHME_STANDARD,
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
         // R-0180 (bens F2): die ORIGINALQUELLE haengt nicht mehr am Anker-Strang. Mit wirksamer
         // externalId entsteht wie bisher der Herkunfts-Anker (Re-Sync-Schluessel) — seit R-0169
         // samt festgeschriebener Quellrevision; OHNE sie bleibt eine mitgelieferte Quelle trotzdem
         // am Objekt: im Dateiweg als Verweis aus URL/Anbieter (`quellverweis`, NACHARBEIT 3), sonst
         // als sichere URL (`originalquelleOhneAnker`) — beide bewusst OHNE Anker-Felder.
+        // R-0163: mit dem Anker reisen die Anhangsquellen der Seite (`buildSources`).
         ...(externalId
-          ? { sources: [this.buildSource(item, actor, firstVersion, ersteRevision)] }
+          ? { sources: this.buildSources(item, actor, firstVersion, ersteRevision) }
           : weg.quellverweisOhneKennung && hatQuellverweis(item)
             ? { sources: [this.quellverweis(item, actor)] }
             : this.originalquelleOhneAnker(item, actor)),
@@ -2885,7 +3339,8 @@ export class LibraryService {
         importedVia: weg.importedVia,
         // NACHARBEIT 5 (R-0169): aus welcher Fassung der internen Akte diese Aussage stammt.
         ...(aktenHerkunft ? { dokumentHerkunft: aktenHerkunft } : {}),
-      });
+      };
+      ko = await this.koService.create(anlage, undefined, erstRechte);
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
       // Anker trotz werfendem create (Unique-Kollision ODER Insert gelungen + Snapshot/Audit
@@ -3034,6 +3489,174 @@ export class LibraryService {
     return undefined;
   }
 
+  /**
+   * R-0163 (Lauf 5, Bens B9-Rest): ob die Anhangsliste dieses Items NACH der Eingangsgrenze als
+   * unvollständig gilt — dieselbe Säuberung wie beim Einreihen und Angleichen. Eine erst hier
+   * entstandene Marke (Deckel `MAX_QUELL_ANHAENGE`, verworfene Einträge) fehlte sonst im Lauf.
+   */
+  importAttachmentsIncomplete(item: ImportItem): boolean {
+    return this.withSanitizedIngest(item).sourceAttachmentsIncomplete === true;
+  }
+
+  /**
+   * R-0163 (Lauf 2): ANHÄNGE NACHZIEHEN OHNE NEUE SEITENFASSUNG. Confluence erhöht die Fassung
+   * einer Seite nicht zwingend, wenn nur ein Anhang dazukommt, ersetzt wird oder verschwindet. Der
+   * Bereichsimport reiht eine unveränderte Fassung zu Recht nicht erneut als Kandidat ein — die
+   * Anhangsquellen am Objekt blieben dann aber stehen, wie sie waren.
+   *
+   * Die Regel: trägt ein AKTIVES Objekt den Anker dieses Items in GENAU der gelieferten Fassung,
+   * werden seine Anhangsquellen an die gelieferte Liste angeglichen — wie beim Re-Sync
+   * (`acceptToKo`): vollständige Liste ersetzt, Teilliste (`sourceAttachmentsIncomplete`) ersetzt
+   * nur die gelieferten und entfernt nichts. Unveränderte Anhangsquellen behalten Kennung und
+   * Zeitpunkt. Inhalt, Stufe und Fassung bleiben unberührt; ein Objekt im Papierkorb wird nicht
+   * angefasst (JOB 3081). `undefined`, wenn es nichts anzugleichen gibt.
+   */
+  async syncImportAttachments(
+    item: ImportItem,
+    actor: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ koId: string; added: string[]; removed: string[] } | undefined> {
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!externalId) {
+      return undefined;
+    }
+    const sauber = this.withSanitizedIngest(item);
+    const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
+      ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(sauber.provider, externalId);
+    const gehoertZuAnker = (s: { attachmentOf?: string; provider?: string | null }): boolean =>
+      s.attachmentOf !== undefined &&
+      ankerSchluessel(s.provider, s.attachmentOf) === ankerSchluessel(sauber.provider, externalId);
+    const anker = await this.sucheAnkerKo(matchesAnchor);
+    if (anker?.art !== "aktiv") {
+      return undefined;
+    }
+    const ko = anker.ko;
+    const current = ko.sources.find(matchesAnchor)?.sourceVersion ?? 0;
+    if ((sauber.sourceVersion ?? current) !== current) {
+      return undefined; // höhere Fassung → Kandidatenweg; niedrigere → nichts
+    }
+    const bisher = ko.sources.filter(gehoertZuAnker);
+    const geliefert = this.buildSources(sauber, actor, current)
+      .slice(1)
+      .map(
+        (neu) =>
+          bisher.find(
+            (alt) =>
+              alt.attachment?.externalId === neu.attachment?.externalId &&
+              alt.label === neu.label &&
+              (alt.url ?? null) === (neu.url ?? null) &&
+              alt.attachment?.mime === neu.attachment?.mime &&
+              alt.attachment?.size === neu.attachment?.size,
+          ) ?? neu,
+      );
+    const gelieferteKennungen = new Set(geliefert.map((s) => s.attachment?.externalId));
+    const naechste =
+      sauber.sourceAttachmentsIncomplete === true
+        ? [
+            ...bisher.filter((s) => !gelieferteKennungen.has(s.attachment?.externalId)),
+            ...geliefert,
+          ]
+        : geliefert;
+    // Anhangsquellen tragen den Provider des Items (`buildSources`) — derselbe Wert grenzt hier ab.
+    const ergebnis = await this.koService.replaceSourceAttachments(
+      ko.id,
+      { provider: sauber.provider ?? null, externalId },
+      naechste,
+      actor,
+      opts,
+    );
+    return ergebnis ? { koId: ko.id, ...ergebnis } : undefined;
+  }
+
+  /**
+   * R-0162 / R-0549 (Lauf 3 R2, Bens B5): QUELLRESTRIKTION NACHZIEHEN OHNE NEUE SEITENFASSUNG.
+   * Confluence erhöht die Fassung einer Seite nicht, wenn nur ihre Leserestriktion geändert wird.
+   * Der Bereichsimport überspringt eine unveränderte Fassung zu Recht als Kandidat — die Restriktion
+   * am Anker und die daraus abgeleitete Vertraulichkeit blieben dann aber veraltet.
+   *
+   * Die Regel (vorläufig, s. docs/bestandsaufnahme-confluence-import.md): trägt ein AKTIVES Objekt
+   * den Anker in GENAU der gelieferten Fassung,
+   *   1. wird die Restriktion am Anker auf den Stand der Quelle gebracht (auch: entfernt, wenn die
+   *      Seite jetzt offen ist) — eine Herkunftsangabe, protokolliert im Audit;
+   *   2. wird die Vertraulichkeit HERAUFGESETZT, wenn die Quelle jetzt eine strengere Stufe ergibt
+   *      (offen → restringiert: `intern` → `vertraulich`), über `setConfidentiality` mit Audit;
+   *   3. wird sie NIE automatisch HERABGESETZT: ob eine jetzt offene Seite in Klara `intern` werden
+   *      darf, entscheidet ein Mensch mit Herabstufungsrecht — ein Objekt kann seit dem Import auch
+   *      von Hand vertraulich gesetzt worden sein.
+   * Papierkorb-Objekte bleiben unberührt. `undefined`, wenn es nichts nachzuziehen gibt.
+   */
+  async syncImportRestriction(
+    item: ImportItem,
+    actor: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<
+    { koId: string; restrictionChanged: boolean; raisedTo: Confidentiality | null } | undefined
+  > {
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!externalId) {
+      return undefined;
+    }
+    const sauber = this.withSanitizedIngest(item);
+    const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
+      ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(sauber.provider, externalId);
+    const anker = await this.sucheAnkerKo(matchesAnchor);
+    if (anker?.art !== "aktiv") {
+      return undefined;
+    }
+    const ko = anker.ko;
+    const quelle = ko.sources.find(matchesAnchor);
+    const current = quelle?.sourceVersion ?? 0;
+    if ((sauber.sourceVersion ?? current) !== current) {
+      return undefined; // höhere Fassung → Kandidatenweg; niedrigere → nichts
+    }
+    const form = (r: { groups: string[]; users: string[] } | undefined) =>
+      r && (r.groups.length > 0 || r.users.length > 0)
+        ? JSON.stringify([[...new Set(r.groups)].sort(), [...new Set(r.users)].sort()])
+        : null;
+    const restrictionChanged = form(quelle?.readRestriction) !== form(sauber.sourceReadRestriction);
+    const ziel = sauber.confidentiality;
+    const raisedTo =
+      ziel !== undefined &&
+      confidentialityRank(ziel) > confidentialityRank(normalizeConfidentiality(ko.confidentiality))
+        ? ziel
+        : null;
+    if (!restrictionChanged && raisedTo === null) {
+      return undefined;
+    }
+    if (!opts.dryRun) {
+      // Lauf 3 R3 (Bens B10): geschrieben wird am GEFUNDENEN Anker mit SEINEM gespeicherten
+      // Provider — nicht mit dem des Items. Ein Altanker ohne Provider zählt bei der Suche als
+      // Confluence (`ankerSchluessel`); die Schreibmethode vergleicht den Provider wörtlich und fand
+      // ihn mit „Confluence" nie.
+      const anchorRef = {
+        provider: quelle?.provider ?? null,
+        externalId: quelle?.externalId ?? externalId,
+      };
+      if (restrictionChanged) {
+        const geschrieben = await this.koService.replaceSourceReadRestriction(
+          ko.id,
+          anchorRef,
+          sauber.sourceReadRestriction,
+          actor,
+        );
+        // Ein gemeldeter Nachzug muss ein gespeicherter sein: schreibt die Methode nichts, obwohl
+        // der Vergleich eine Änderung ergab, ist das ein Fehler — der Lauf führt die Seite dann in
+        // `syncFailed`, statt „nachgezogen" zu melden.
+        if (!geschrieben) {
+          throw new Error("Quellrestriktion am Anker nicht geschrieben.");
+        }
+      }
+      if (raisedTo !== null) {
+        // Heraufsetzen braucht kein Herabstufungsrecht (`setConfidentiality`, SCRUM-509).
+        // confluence-import-rechte (Zusammenführung Nacharbeit 14): diese Anhebung kommt aus der
+        // Quelle, nicht von einem Menschen — `durchImport`, sonst würde sie als menschliche
+        // Einstufung vermerkt und die Stufe folgte der Quelle nie wieder (R-2197).
+        await this.koService.setConfidentiality(ko.id, raisedTo, actor, { durchImport: true });
+      }
+    }
+    return { koId: ko.id, restrictionChanged, raisedTo };
+  }
+
   // ==============================================================================================
   // JOB 3081 — DIE EINE ANKER-SUCHE, UND SIE SIEHT DEN PAPIERKORB.
   // ==============================================================================================
@@ -3085,6 +3708,39 @@ export class LibraryService {
   // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
   // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
   // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
+  // R-0163: der Herkunftsanker UND je Anhang eine eigene Quelle. Anhänge tragen keine eigene
+  // `externalId` (sonst hielte der Re-Sync-Anker sie für Seiten), sondern `attachmentOf`.
+  // R-0169: `sourceRecordId` reist an den Anker (nicht an die Anhänge).
+  private buildSources(
+    item: ImportItemMitQuellangaben,
+    actor: string,
+    effectiveVersion: number,
+    sourceRecordId?: string,
+  ): KoSource[] {
+    const anker = this.buildSource(item, actor, effectiveVersion, sourceRecordId);
+    const at = anker.at;
+    const anhaenge: KoSource[] = item.externalId
+      ? (item.sourceAttachments ?? []).map((a) => ({
+          id: this.genId(),
+          label: a.name,
+          url: safeSourceUrl(a.url),
+          excerpt: null,
+          kind: "external" as const,
+          peerValidated: false,
+          provider: item.provider ?? null,
+          attachmentOf: item.externalId as string,
+          attachment: {
+            externalId: a.externalId,
+            ...(a.mime ? { mime: a.mime } : {}),
+            ...(typeof a.size === "number" ? { size: a.size } : {}),
+          },
+          author: anker.author,
+          at,
+        }))
+      : [];
+    return [anker, ...anhaenge];
+  }
+
   // R-0180 (bens F2): die Originalquelle eines Imports OHNE wirksame externe Kennung. Nur eine
   // sichere URL (`safeSourceUrl`: absolut, http/https) wird übernommen — eine verworfene URL
   // erzeugt KEINE Quelle (eine leere Quellenzeile wäre eine Herkunftsbehauptung ohne Inhalt).
@@ -3115,11 +3771,20 @@ export class LibraryService {
 
   // R-0169: `sourceRecordId` = die festgeschriebene Quellrevision dieser Fassung (falls verdrahtet).
   private buildSource(
-    item: ImportItem,
+    item: ImportItemMitQuellangaben,
     actor: string,
     effectiveVersion: number,
     sourceRecordId?: string,
   ): KoSource {
+    // aufnahme:20260922:confluence-import-hierarchie (R-0153): die Elternkette endete bisher am
+    // Kandidaten — das angenommene Wissensobjekt kam flach an. Sie reist jetzt mit dem Anker, denn
+    // nur dort ist sie eindeutig einer Quelle zugeordnet (dasselbe KO kann mehrere Anker tragen).
+    // Gleiche Zurückhaltung wie toPreviewEntry: leere Segmente fallen weg, bleibt nichts, fehlt das
+    // Feld. Beim Re-Sync baut derselbe Aufruf den Anker neu — eine verschobene Seite trägt danach
+    // ihre neue Kette.
+    const sourcePath = (item.sourcePath ?? [])
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
     return {
       ...(sourceRecordId ? { sourceRecordId } : {}),
       id: this.genId(),
@@ -3135,7 +3800,20 @@ export class LibraryService {
       // (KO-seitig weiterhin so genanntes) spaceKey-Container-Label — der Match läuft NUR über externalId.
       ...(item.externalId ? { externalId: item.externalId } : {}),
       ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
+      // R-0549: die Leserestriktion der Quelle als Herkunftsangabe (keine Berechtigung).
+      ...(item.sourceReadRestriction
+        ? {
+            readRestriction: {
+              groups: [...item.sourceReadRestriction.groups],
+              users: [...item.sourceReadRestriction.users],
+            },
+          }
+        : {}),
+      // R-0153 (main, confluence-import-hierarchie): die Elternkette am Anker.
+      ...(sourcePath.length > 0 ? { sourcePath } : {}),
       sourceVersion: effectiveVersion,
+      // R-0142 (Lauf 5 R3, Bens B11): der Lauf der Annahme, die diesen Anker schreibt.
+      ...(item.importRun ? { importRunId: item.importRun.importId } : {}),
       // package:confluence (K6): die Lese-Einschränkung der Quelle zu DIESER Fassung — als Kopie,
       // damit keine spätere Änderung am Kandidaten den gespeicherten Anker mitverändert. Erst-
       // anlage und Re-Sync (neue Quellversion) laufen beide hierdurch; eine geänderte Einschränkung
@@ -3278,8 +3956,8 @@ export class LibraryService {
   // §5 stellt das klar: der Backfill ist Optimierung, nicht Migration und nicht Readiness, und der
   // reguläre Suchpfad darf funktional nicht von ihm abhängen. Vollständigkeit verantwortet jetzt
   // das Readiness Gate der Suchprojektion; der Altbestand wird über den ausdrücklichen Reconcile-
-  // bzw. Rebuild-Weg fertig. Die Konstante SEARCH_BACKFILL_LIMIT_PER_QUERY bleibt die Schwunggröße
-  // dieser Wartungsläufe.
+  // bzw. Rebuild-Weg fertig. (R-1349: die frühere Konstante SEARCH_BACKFILL_LIMIT_PER_QUERY las kein
+  // Wartungslauf; sie ist entfernt.)
   // ================================================================================================
   // AUFTRAG-BASIC-380 — DER TRIM WIRD DURCHGEREICHT, NICHT AUSGELEGT.
   // ================================================================================================
@@ -3302,11 +3980,14 @@ export class LibraryService {
     opts: { trim?: KoSichtbarkeitstrim } = {},
   ): Promise<KnowledgeObject[]> {
     const q = query.trim().toLowerCase();
+    // R-0658: ein Objekt in Schutzdaten-Quarantäne gehört nicht zum durchsuchbaren Bestand — weder
+    // in der Bestandsliste noch als Treffer (auch nicht über Kategorie/Schlagwort).
+    const durchsuchbar = (ko: KnowledgeObject): boolean => !inSchutzdatenQuarantaene(ko);
     if (!q) {
       // Leere Suchzeile = „zeig den Bestand", keine Textabfrage — unverändert. Und genau dieser
       // Weg ist der teuerste (kein Suchbegriff grenzt vorher ein), also der, an dem der Trim in
       // der Datenquelle am meisten zählt.
-      return this.koService.listForSearch(filter, opts.trim);
+      return (await this.koService.listForSearch(filter, opts.trim)).filter(durchsuchbar);
     }
     // G27 R1 (Entscheidung 04 §5): HIER STAND DER GEDECKELTE NACHZUG — ersatzlos entfallen.
     // Der reguläre Suchpfad darf funktional nicht mehr von ihm abhängen; er ist Wartung, nicht
@@ -3356,7 +4037,7 @@ export class LibraryService {
     const out: KnowledgeObject[] = [];
     for (const ko of list) {
       const hit = treffer.get(ko.id);
-      if (!hit) {
+      if (!hit || !durchsuchbar(ko)) {
         continue;
       }
       // WP-BILD-1e/1g: das Fußnotenfeld reist im Treffer mit — der Client kennzeichnet damit die
@@ -3397,9 +4078,11 @@ export class LibraryService {
   async exportJson(opts: ExportOptionen = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.list({ status: "validiert" });
     const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
-    const items = opts.includeConfidential
+    const gestuft = opts.includeConfidential
       ? scoped
       : scoped.filter((ko) => !isConfidential(ko.confidentiality));
+    const sichtbar = opts.sichtbar;
+    const items = sichtbar ? gestuft.filter((ko) => sichtbar(ko)) : gestuft;
     if (opts.beleg) {
       await this.audit?.record({
         actor: opts.beleg.actor,
@@ -3416,15 +4099,51 @@ export class LibraryService {
     return items;
   }
 
+  // R-0298 / FR-LIF-04: EINE Auflösung je Export über alle Autoren- und Originalautorenkennungen.
+  // Ohne verdrahtete Auflösung bleibt die Kennung (Bestandsverhalten).
+  private async autorTexte(items: readonly KnowledgeObject[]): Promise<(id: string) => string> {
+    if (!this.autorenNamen || items.length === 0) {
+      return (id) => id;
+    }
+    const texte = await this.autorenNamen(items.flatMap((ko) => [ko.author, ko.originalAuthor]));
+    return (id) => texte.get(id) ?? id;
+  }
+
   async exportMediaWiki(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
+    const name = await this.autorTexte(items);
+    // Aufnahme gesamt-wissen-herkunft (R-0298): auch der Wiki-Export trägt je Objekt die
+    // Autorenzeile — bis hierher war er der einzige Textexport ganz ohne Herkunft.
+    const autor = (ko: KnowledgeObject): string =>
+      ko.author === ko.originalAuthor
+        ? name(ko.author)
+        : `${name(ko.author)} (urspr. ${name(ko.originalAuthor)})`;
     // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz steht VOR dem ersten Inhalt. Er stand in
     // allen vier Ausgabewegen hinter dem gesamten Dokument — bei einem langen Export liest ihn
     // dort niemand, und die Vorgabe „wo ein Leser ihn sieht" war damit nicht erfüllt. Die
     // Wiederholung am Ende bleibt (sie kostet nichts und trifft den, der von hinten liest).
+    // R-0706: die Quellen stehen als eigener Unterabschnitt unter der Aussage.
+    const abschnitt = (ko: KnowledgeObject): string => {
+      const quellen = exportQuellen(ko);
+      const kopf = `== ${ko.title} ==\n${ko.statement}\n\n''Autor: ${autor(ko)}''`;
+      if (quellen.length === 0) {
+        return kopf;
+      }
+      const liste = quellen
+        .map((q) => {
+          const text = q.provider ? `${q.label} (${q.provider})` : q.label;
+          const verweis = q.url ? `[${q.url} ${text}]` : text;
+          // R-0205: die Kennzeichnung steht AUSSERHALB des Verweises — sie ist eine Aussage über
+          // die Quelle, kein Teil ihres Namens.
+          const kennung = q.ungeprueft ? ` — ${EXPORT_QUELLE_KENNZEICHNUNG}` : "";
+          return `* ${verweis}${kennung}${q.entfernt ? ` — ${EXPORT_QUELLE_ENTFERNT}` : ""}`;
+        })
+        .join("\n");
+      return `${kopf}\n=== ${EXPORT_QUELLEN_UEBERSCHRIFT} ===\n${liste}`;
+    };
     return [
       `''${EXPORT_NO_CHECK_NOTE}''`,
-      items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n"),
+      items.map(abschnitt).join("\n\n"),
       `''${EXPORT_NO_CHECK_NOTE}''`,
     ].join("\n\n");
   }
@@ -3432,6 +4151,7 @@ export class LibraryService {
   // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
   async exportMarkdown(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
+    const name = await this.autorTexte(items);
     // mega31 B: Exportkopf mit dem Warnsatz, VOR dem ersten Wissensobjekt (s. exportMediaWiki).
     const body = items
       .map((ko) => {
@@ -3442,10 +4162,19 @@ export class LibraryService {
         if (ko.measures.length > 0) {
           lines.push("", "**Vorgehen**", ...ko.measures.map((m) => `- ${m}`));
         }
+        // R-0706: die Quellen der Aussage reisen mit.
+        const quellen = exportQuellen(ko);
+        if (quellen.length > 0) {
+          lines.push(
+            "",
+            `**${EXPORT_QUELLEN_UEBERSCHRIFT}**`,
+            ...quellen.map((q) => `- ${quellenText(q)}`),
+          );
+        }
         const author =
           ko.author === ko.originalAuthor
-            ? ko.author
-            : `${ko.author} (urspr. ${ko.originalAuthor})`;
+            ? name(ko.author)
+            : `${name(ko.author)} (urspr. ${name(ko.originalAuthor)})`;
         lines.push(
           "",
           `_${ko.type} · ${ko.category} · Trust ${ko.trust} · ${ko.status} · Autor: ${author}_`,
@@ -3459,9 +4188,31 @@ export class LibraryService {
   // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
   async exportHtml(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
+    const name = await this.autorTexte(items);
     const esc = (s: string): string =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const escAttr = (s: string): string => esc(s).replace(/"/g, "&quot;");
     const li = (xs: readonly string[]): string => xs.map((x) => `<li>${esc(x)}</li>`).join("");
+    // R-0706: die Quellen als eigene Liste — auch im Browserdruck sichtbar (die Adresse steht
+    // ausgeschrieben neben dem Verweis, weil ein Link auf Papier nichts mehr zeigt).
+    const quellenHtml = (ko: KnowledgeObject): string => {
+      const quellen = exportQuellen(ko);
+      if (quellen.length === 0) {
+        return "";
+      }
+      const zeilen = quellen
+        .map((q) => {
+          const text = esc(q.provider ? `${q.label} (${q.provider})` : q.label);
+          const verweis = q.url ? `<a href="${escAttr(q.url)}">${text}</a> — ${esc(q.url)}` : text;
+          // R-0205: zwei Etiketten als lesbarer Text — auch im Browserdruck sichtbar.
+          const kennung = q.ungeprueft
+            ? ` — <span class="kennung">${esc(EXPORT_QUELLE_STUFE)}</span> · <span class="kennung">${esc(EXPORT_QUELLE_HERKUNFT)}</span>`
+            : "";
+          return `<li>${verweis}${kennung}${q.entfernt ? ` — ${esc(EXPORT_QUELLE_ENTFERNT)}` : ""}</li>`;
+        })
+        .join("");
+      return `<p><strong>${EXPORT_QUELLEN_UEBERSCHRIFT}</strong></p><ul class="quellen">${zeilen}</ul>`;
+    };
     const articles = items
       .map((ko) => {
         const conditions = ko.conditions.length
@@ -3472,9 +4223,9 @@ export class LibraryService {
           : "";
         const author =
           ko.author === ko.originalAuthor
-            ? esc(ko.author)
-            : `${esc(ko.author)} (urspr. ${esc(ko.originalAuthor)})`;
-        return `<article><h2>${esc(ko.title)}</h2><p class="meta">${esc(ko.type)} · ${esc(ko.category)} · Trust ${ko.trust} · ${esc(ko.status)}</p><p>${esc(ko.statement)}</p>${conditions}${measures}<p class="src">Autor: ${author}</p></article>`;
+            ? esc(name(ko.author))
+            : `${esc(name(ko.author))} (urspr. ${esc(name(ko.originalAuthor))})`;
+        return `<article><h2>${esc(ko.title)}</h2><p class="meta">${esc(ko.type)} · ${esc(ko.category)} · Trust ${ko.trust} · ${esc(ko.status)}</p><p>${esc(ko.statement)}</p>${conditions}${measures}${quellenHtml(ko)}<p class="src">Autor: ${author}</p></article>`;
       })
       .join("\n");
     const style =
@@ -3688,8 +4439,8 @@ export class LibraryService {
         author: actor,
         ...quellautorVon(item),
         tags: item.tags ?? [],
-        // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
-        confidentiality: item.confidentiality ?? "vertraulich",
+        // N11: derselbe Übernahme-Standard wie im Accept-Pfad (s. `UEBERNAHME_STANDARD`).
+        confidentiality: item.confidentiality ?? UEBERNAHME_STANDARD,
         // ==========================================================================================
         // JOB 4293 — DER DIREKTE IMPORTWEG VERLOR DEN DOKUMENTTEXT, UND ZWAR ALS EINZIGER.
         // ==========================================================================================
@@ -4170,5 +4921,174 @@ export class LibraryService {
       increment(byCategory, ko.category);
     }
     return { total: list.length, byStatus, byType, byCategory };
+  }
+
+  /**
+   * R-0142 (Lauf 5): das gesäuberte Item einer Annahme samt der VOR dem Säubern gelesenen
+   * Laufbindung — die Säuberung entfernt jede Bindung (`laufbindung.ts`), die Annahme muss sie für
+   * Herkunftsanker (`importRunId`) und persistierten Kandidaten aber behalten.
+   */
+  private mitLaufBindung(
+    item: ImportItemMitQuellangaben,
+    laufBindung: ImportLaufBindung | undefined,
+  ): ImportItemMitQuellangaben {
+    return laufBindung ? { ...item, importRun: laufBindung } : item;
+  }
+
+  /**
+   * R-0142 (Lauf 5, Bens B7): hält je Item die Quellrevision fest und bindet es an den Lauf
+   * (`laufbindung.ts`). Ohne Revisionsablage bleibt `sourceRecordId` `null` — die Bindung an den
+   * Lauf entsteht trotzdem.
+   *
+   * Zusammenführung mit R-0169: geschrieben wird über DENSELBEN Weg wie bei der Annahme
+   * (`quellrevisionFestschreiben` — gleicher `sourceSystem`-Schlüssel, gleicher Inhaltsabdruck).
+   * Ein zweiter Schreiber mit eigener Lesart hätte eine Revision hinterlassen, an der die spätere
+   * Annahme mit CONFLICT scheitert. Scheitert das Festschreiben hier (z. B. dieselbe Fassung ist
+   * schon mit anderem Inhalt festgeschrieben), wird trotzdem eingereiht und gebunden — ohne
+   * `sourceRecordId`; die Annahme stellt denselben Konflikt dann nach ihrer eigenen Regel fest.
+   */
+  private async bindeAnLauf(items: ImportItem[], lauf: ImportLaufAuftrag): Promise<void> {
+    const start = lauf.ordinal ?? 0;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) {
+        continue;
+      }
+      let sourceRecordId: string | null = null;
+      if (item.externalId && typeof item.sourceVersion === "number") {
+        try {
+          sourceRecordId =
+            (await this.quellrevisionFestschreiben(item, item.sourceVersion)) ?? null;
+        } catch (err) {
+          process.stderr.write(
+            `[KLARWERK] Quellrevision beim Einreihen nicht festgeschrieben (fehler=${
+              err instanceof Error ? err.name : "unknown"
+            }) — Kandidat ohne Revisionsverweis gebunden.\n`,
+          );
+        }
+      }
+      (item as ImportItemMitQuellangaben).importRun = {
+        importId: lauf.importId,
+        ordinal: start + i,
+        sourceRecordId,
+      };
+    }
+  }
+
+  /**
+   * R-0142 (Lauf 5, Bens B7): schreibt nach einer Entscheidung die Elementreferenz in den Lauf des
+   * Kandidaten — `CREATED`, `BOUND` oder `SKIPPED` (`ausgangDerEntscheidung`). Eine Rückfrage
+   * (`info`) entscheidet nichts und schreibt nichts. Idempotent über `(importId, ordinal)`.
+   *
+   * Die Entscheidung selbst ist zu diesem Zeitpunkt schon persistiert. Scheitert das Schreiben,
+   * bleibt die Bindung am entschiedenen Kandidaten stehen, und `zieheLaufReferenzenNach` holt die
+   * Referenz beim nächsten Laden der Prüfwarteschlange nach (Lauf 5 R3, Bens B12).
+   */
+  private async vermerkeEntscheidungImLauf(
+    candidate: ImportCandidate,
+    bindung: ImportLaufBindung | undefined,
+    resolved: ImportCandidate,
+  ): Promise<void> {
+    if (!bindung) {
+      return;
+    }
+    try {
+      await this.schreibeLaufReferenz(candidate.id, bindung, resolved.status, resolved.koId);
+    } catch (err) {
+      process.stderr.write(
+        `[KLARWERK] Elementreferenz des Importlaufs nicht geschrieben (kandidat=${candidate.id}, fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }) — der Nachzug beim Laden der Prüfwarteschlange holt sie nach.\n`,
+      );
+    }
+  }
+
+  /**
+   * Die EINE Stelle, die eine Elementreferenz baut — für die Entscheidung, die Wiederaufnahme und
+   * den Nachzug gleich. `CREATED` nur, wenn das Objekt den Stempel GENAU dieses Kandidaten trägt
+   * (gesucht inklusive Papierkorb, wie die Wiederaufnahme). Wirft bei einem Schreib- ODER
+   * Herkunftslesefehler — dann bleibt die Referenz aus, bis der Nachzug sie richtig schreibt.
+   */
+  private async schreibeLaufReferenz(
+    candidateId: string,
+    bindung: ImportLaufBindung,
+    status: ImportCandidate["status"],
+    koIdRoh: string | null | undefined,
+  ): Promise<boolean> {
+    if (!this.importRuns || (status !== "angenommen" && status !== "abgelehnt")) {
+      return false;
+    }
+    const koId = status === "angenommen" ? (koIdRoh ?? null) : null;
+    // Lauf 5 R4 (Bens B14): ein LESEFEHLER der Herkunftsabfrage ist kein fehlender Stempel. Er wird
+    // nicht abgefangen — es entsteht dann KEINE Referenz (statt einer falschen `BOUND`), und der
+    // Nachzug (`zieheLaufReferenzenNach`) schreibt sie beim nächsten Laden mit dem richtigen
+    // Ausgang. `undefined` heisst hier ausschliesslich: kein Objekt trägt diesen Stempel.
+    const gestempelt = koId ? await this.koService.findByImportCandidateId(candidateId) : undefined;
+    const neu = await this.importRuns.appendItemRefs([
+      {
+        importId: bindung.importId,
+        ordinal: bindung.ordinal,
+        sourceRecordId: bindung.sourceRecordId,
+        candidateItemId: candidateId,
+        knowledgeObjectId: koId,
+        itemOutcome: ausgangDerEntscheidung(koId, gestempelt?.id === koId),
+        itemFailureCode: null,
+      },
+    ]);
+    return neu > 0;
+  }
+
+  /**
+   * R-0142 (Lauf 5 R3, Bens B12/B13): DER NACHZUG DER ELEMENTREFERENZEN.
+   *
+   * Jede gespeicherte Entscheidung (`angenommen`/`abgelehnt`) über einen laufgebundenen Kandidaten
+   * muss eine Referenz im Lauf haben — auch wenn das Schreiben direkt nach der Entscheidung
+   * scheiterte (B12) oder die Annahme erst von `recoverStaleReviewClaims` vollendet wurde (B13).
+   * Gelesen wird je Lauf EINMAL (`listItemRefs`), geschrieben nur, was fehlt; die Ablage ist über
+   * `(importId, ordinal)` ohnehin idempotent. Ein Fehler betrifft nur seinen Lauf und wird laut
+   * protokolliert; der nächste Nachzug versucht es erneut. Rückgabe: Zahl neu geschriebener Referenzen.
+   */
+  async zieheLaufReferenzenNach(): Promise<number> {
+    if (!this.importRuns) {
+      return 0;
+    }
+    const jeLauf = new Map<string, { kandidat: ImportCandidate; bindung: ImportLaufBindung }[]>();
+    for (const kandidat of await this.candidates.all()) {
+      if (kandidat.status !== "angenommen" && kandidat.status !== "abgelehnt") {
+        continue;
+      }
+      const bindung = leseLaufBindung(kandidat.item);
+      if (!bindung) {
+        continue;
+      }
+      const liste = jeLauf.get(bindung.importId) ?? [];
+      liste.push({ kandidat, bindung });
+      jeLauf.set(bindung.importId, liste);
+    }
+    let geschrieben = 0;
+    for (const [importId, eintraege] of jeLauf) {
+      try {
+        const vorhanden = new Set(
+          (await this.importRuns.listItemRefs(importId)).map((r) => r.ordinal),
+        );
+        for (const { kandidat, bindung } of eintraege) {
+          if (vorhanden.has(bindung.ordinal)) {
+            continue;
+          }
+          if (
+            await this.schreibeLaufReferenz(kandidat.id, bindung, kandidat.status, kandidat.koId)
+          ) {
+            geschrieben += 1;
+          }
+        }
+      } catch (err) {
+        process.stderr.write(
+          `[KLARWERK] Nachzug der Elementreferenzen gescheitert (lauf=${importId}, fehler=${
+            err instanceof Error ? err.name : "unknown"
+          }) — der nächste Nachzug versucht es erneut.\n`,
+        );
+      }
+    }
+    return geschrieben;
   }
 }

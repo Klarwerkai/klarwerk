@@ -321,21 +321,23 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
       url: `/api/drafts/${adminDraft.json().id}`,
       headers: erikHeaders,
     });
-    expect(erikReadsAdmin.statusCode).toBe(403);
+    // aufnahme:20260922:gesamt-leserechte (R-0239, J24 „404"): ein fremder Entwurf antwortet wie
+    // ein nicht vorhandener — 404 statt 403, damit seine Existenz nicht erfragbar ist.
+    expect(erikReadsAdmin.statusCode).toBe(404);
 
     const adminReadsErik = await app.inject({
       method: "GET",
       url: `/api/drafts/${erikDraft.json().id}`,
       headers: adminHeaders,
     });
-    expect(adminReadsErik.statusCode).toBe(403);
+    expect(adminReadsErik.statusCode).toBe(404);
 
     await app.close();
   });
 
   it("FR-ANA-02: Wirkungs-Dashboard zählt Antwortquote ohne Lücke", async () => {
     const { app, headers } = await adminApp();
-    await app.inject({
+    const angelegt = await app.inject({
       method: "POST",
       url: "/api/kos",
       headers,
@@ -345,8 +347,18 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",
         category: "Anlage 1",
+        neededValidations: 1,
       },
     });
+    // R-0278 (Nacharbeit 3) / R-0584 (Auftrag gesamt-datenschutz-voreinstellung): beantwortbar ist
+    // eine Frage nur aus geprüftem Wissen — das KO wird über die echte Bewertung validiert.
+    const bewertet = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${angelegt.json().id}`,
+      headers,
+      payload: { action: "rate", verdict: "up" },
+    });
+    expect(bewertet.statusCode).toBe(200);
 
     // Eine beantwortbare Frage und eine ohne belastbares Wissen (→ Lücke).
     await app.inject({
@@ -367,6 +379,12 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
     expect(impact.json().askTotal).toBe(2);
     expect(impact.json().answeredWithoutGap).toBe(1);
     expect(impact.json().answerRate).toBeCloseTo(0.5);
+    // R-0723/R-0750: die Antwortquote im Wochenverlauf — beide Fragen fallen in die laufende Woche
+    // (Montag, UTC), und die Wochenzähler ergeben zusammen genau die Gesamtzahlen.
+    const montag = new Date();
+    montag.setUTCDate(montag.getUTCDate() - ((montag.getUTCDay() + 6) % 7));
+    const woche = montag.toISOString().slice(0, 10);
+    expect(impact.json().askByWeek).toEqual({ [woche]: { asked: 2, answeredWithoutGap: 1 } });
     await app.close();
   });
 });

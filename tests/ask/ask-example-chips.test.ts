@@ -41,7 +41,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
     );
     expect(chips).toEqual([
       { kind: "ko", title: "Ventil entlasten" },
-      { kind: "example", questionKey: "ask.example.dosing", expectation: "gap" },
+      { kind: "example", questionKey: "beispielfragen.pflege", expectation: "gap" },
     ]);
   });
 
@@ -58,7 +58,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
     );
     expect(chips).toEqual([
       { kind: "ko", title: "Ventil entlasten" },
-      { kind: "example", questionKey: "ask.example.dosing", expectation: "gap" },
+      { kind: "example", questionKey: "beispielfragen.pflege", expectation: "gap" },
     ]);
   });
 
@@ -96,7 +96,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
     );
     expect(chips[chips.length - 1]).toEqual({
       kind: "example",
-      questionKey: "ask.example.dosing",
+      questionKey: "beispielfragen.pflege",
       expectation: "gap",
     });
   });

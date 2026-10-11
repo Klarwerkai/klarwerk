@@ -29,7 +29,7 @@
 // DIE SUCH- UND SORTIER-BEDIENUNG STEHT HIER NUR EINMAL (`steuerung` unten) und wird von beiden
 // Flächen gezeigt — samt der gemeinsamen Merkschlüssel: wer im Arbeitsraum nach „Ventil" sucht,
 // findet im Editor denselben Filter vor, sichtbar im Feld, nicht heimlich.
-import { ChevronDown, RotateCcw, Trash2 } from "lucide-react";
+import { ChevronDown, FolderOpen, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Draft } from "../api/types";
 import { draftTitle } from "../lib/draftForm";
@@ -46,15 +46,14 @@ import {
 } from "../lib/draftListView";
 import { formatKoTimestamp } from "../lib/koDates";
 import { usePersistentEnum, usePersistentString } from "../lib/usePersistentValue";
+import { HelpTip } from "./HelpTip";
 import { Button, Card, SectionLabel } from "./ui";
 
-// Ehrlicher, lokalisierbarer Zeitstempel (dieselbe Darstellung wie zuvor inline in Capture).
-function formatDraftTimestamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value || "unbekannt";
-  }
-  return new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(date);
+// Ehrlicher, lokalisierter Zeitstempel. R-1010: dieselbe Zeitregel wie das Datum neben dem Titel
+// (`formatKoTimestamp`) statt fest „de-DE" — zwei Schreibweisen desselben Werts in einer Zeile wären
+// genau die Uneinheitlichkeit, die der Auftrag abschafft. Der Ausweichwert bleibt unverändert.
+function formatDraftTimestamp(value: string, locale: string): string {
+  return formatKoTimestamp(value, locale) ?? (value || "unbekannt");
 }
 
 // Ersteller-Name über das Directory (Fallback = Id, nie ein erfundener Name).
@@ -152,6 +151,21 @@ interface CaptureDraftListBasis {
   discardPending: boolean;
   onDiscard: (id: string) => void;
   onResume: (draft: Draft) => void;
+  /**
+   * Aufnahme entwurf-in-gemeinsamen-pool-geben (Pedi, entscheidung:297afc57): die Kennung des
+   * angemeldeten Menschen. An einem FREMDEN Pool-Entwurf (`imPool` und anderer `originalAuthor`)
+   * steht damit weder Löschen noch der Pool-Knopf — sehen und fortsetzen ja, verfügen nein. Ein
+   * privater Entwurf in dieser Liste ist immer der eigene (der Server gibt fremde private gar nicht
+   * heraus). Fehlt die Kennung, gilt jeder Pool-Entwurf als fremd (fail-closed).
+   */
+  nutzerKennung?: string | undefined;
+  /**
+   * Die bewusste Handlung des Autors: einen eigenen Entwurf in den gemeinsamen Pool geben (`true`)
+   * oder zurücknehmen (`false`). Ohne Rückruf steht der Knopf nicht da — er erscheint dort, wo die
+   * Fläche ihn anbietet („Meine Entwürfe").
+   */
+  onPoolUmschalten?: ((id: string, imPool: boolean) => void) | undefined;
+  poolPending?: boolean | undefined;
 }
 
 export interface CaptureDraftListArbeitsraumProps extends CaptureDraftListBasis {
@@ -234,7 +248,27 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
     discardPending,
     onDiscard,
     onResume,
+    nutzerKennung,
+    onPoolUmschalten,
+    poolPending,
   } = props;
+
+  // Pool-Auftrag (297afc57): ein Entwurf, den jemand ANDERES in den Pool gegeben hat. Eine Funktion
+  // und kein Bauteil — sie entscheidet nur, was an der Zeile steht.
+  //
+  // FAIL-CLOSED (Nacharbeit 1, gemessen in tests/entwurf-pool/pool-oberflaeche-mounted.test.tsx):
+  // Solange die eigene Kennung noch nicht feststeht (die Sitzungsabfrage läuft nach der Liste ein),
+  // gilt ein Pool-Entwurf als fremd — Löschen und Pool-Knopf erscheinen erst, wenn feststeht, dass
+  // er dem Angemeldeten gehört. Vorher stand der Löschknopf an Annas Pool-Entwurf bei Otto, bis
+  // seine Sitzung geladen war.
+  const fremderPoolEntwurf = (d: Draft): boolean =>
+    d.imPool === true && d.originalAuthor !== "" && d.originalAuthor !== nutzerKennung;
+  // Wort und Folge des Pool-Knopfs: was er jetzt tut, hängt davon ab, ob der Entwurf schon im Pool
+  // liegt.
+  const poolTexte = (d: Draft): { wort: string; folge: string } =>
+    d.imPool
+      ? { wort: "entwurfspool.aktion.nehmen", folge: "entwurfspool.aktion.nehmenFolge" }
+      : { wort: "entwurfspool.aktion.geben", folge: "entwurfspool.aktion.gebenFolge" };
 
   const totalCount = drafts.length;
   if (totalCount === 0) {
@@ -291,7 +325,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
         </select>
       ) : null}
       <label className="inline-flex items-center gap-1.5">
-        <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+        <span className="font-mono text-klein uppercase tracking-wider text-muted-2">
           {t("capture.draftSortLabel")}
         </span>
         <select
@@ -393,19 +427,29 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                         {editingId === d.id ? (
                           <span
                             data-testid="blatt-entwurf-eintrag-offen"
-                            className="font-mono text-[10px] uppercase text-ai"
+                            className="font-mono text-klein uppercase text-ai"
                           >
                             {t("capture.editingBadge")}
                           </span>
                         ) : null}
                         {highlightId === d.id ? (
-                          <span className="font-mono text-[10px] uppercase text-trust-pos-text">
+                          <span className="font-mono text-klein uppercase text-trust-pos-text">
                             {t("capture.draftJustSaved")}
+                          </span>
+                        ) : null}
+                        {/* Pool-Auftrag (R-2099): ein geteilter Entwurf sagt es an der Zeile. */}
+                        {d.imPool ? (
+                          <span
+                            data-testid="entwurfsliste-eintrag-pool"
+                            className="font-mono text-klein uppercase text-ai"
+                          >
+                            {t("entwurfspool.marke")}
                           </span>
                         ) : null}
                       </span>
                     </button>
-                    {confirmDiscardId === d.id ? null : (
+                    {/* Pool-Auftrag (297afc57): einen fremden Pool-Entwurf löscht nur sein Autor. */}
+                    {confirmDiscardId === d.id || fremderPoolEntwurf(d) ? null : (
                       <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
                     )}
                   </div>
@@ -484,13 +528,23 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                     {draftTitle(d, fallbackTitle)}
                   </span>
                   {editingId === d.id ? (
-                    <span className="ml-2 font-mono text-[10px] uppercase text-ai">
+                    <span className="ml-2 font-mono text-klein uppercase text-ai">
                       {t("capture.editingBadge")}
                     </span>
                   ) : null}
                   {highlightId === d.id ? (
-                    <span className="ml-2 font-mono text-[10px] uppercase text-trust-pos-text">
+                    <span className="ml-2 font-mono text-klein uppercase text-trust-pos-text">
                       {t("capture.draftJustSaved")}
+                    </span>
+                  ) : null}
+                  {/* Pool-Auftrag (R-2099): ein geteilter Entwurf sagt es an der Zeile; WER ihn
+                      geteilt hat, steht darunter als Ersteller (`capture.draftCreatorMeta`). */}
+                  {d.imPool ? (
+                    <span
+                      data-testid="entwurfsliste-eintrag-pool"
+                      className="ml-2 font-mono text-klein uppercase text-ai"
+                    >
+                      {t("entwurfspool.marke")}
                     </span>
                   ) : null}
                 </div>
@@ -511,7 +565,7 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                   </span>
                   <span>
                     {t("capture.draftSavedMeta", {
-                      date: formatDraftTimestamp(d.updatedAt || d.createdAt),
+                      date: formatDraftTimestamp(d.updatedAt || d.createdAt, i18n.language),
                     })}
                   </span>
                   <span>{t("capture.draftStatusMeta")}</span>
@@ -539,10 +593,36 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                     onClick={() => onResume(d)}
                     className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
                   >
-                    <RotateCcw size={13} />
+                    {/* K33: Öffnen/Fortsetzen trägt überall das Öffnen-Symbol — der Kreispfeil
+                        steht für Zurücksetzen (Werks-/Demodaten) und hiess hier das Gegenteil. */}
+                    <FolderOpen size={13} />
                     {t("capture.resume")}
                   </button>
-                  <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
+                  {/* ====================================================================
+                      Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06) — DIE
+                      BEWUSSTE HANDLUNG DES AUTORS, an genau dieser einen Zeile.
+                      ====================================================================
+                      Ein echter `<button>`: Tab erreicht ihn, Enter und Leertaste lösen ihn
+                      aus. Das Wort sagt, was geschieht („In den Pool geben" / „Aus dem Pool
+                      nehmen"), `title` und Beschreibung sagen die Folge. An einem fremden
+                      Pool-Entwurf steht er nicht (297afc57). */}
+                  {onPoolUmschalten && !fremderPoolEntwurf(d) ? (
+                    <button
+                      type="button"
+                      data-testid="entwurfsliste-pool"
+                      data-entwurf-pool={d.id}
+                      disabled={poolPending === true}
+                      title={t(poolTexte(d).folge)}
+                      onClick={() => onPoolUmschalten(d.id, d.imPool !== true)}
+                      className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                    >
+                      {t(poolTexte(d).wort)}
+                    </button>
+                  ) : null}
+                  {/* Pool-Auftrag (297afc57): einen fremden Pool-Entwurf löscht nur sein Autor. */}
+                  {fremderPoolEntwurf(d) ? null : (
+                    <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
+                  )}
                 </>
               )}
             </li>
@@ -561,13 +641,13 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
       <div data-testid="entwuerfe-liste" className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin ? (
-            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
               {props.scopeLabel}
             </span>
           ) : null}
           <span
             data-testid="entwurfsliste-anzahl"
-            className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+            className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2"
           >
             {totalCount}
           </span>
@@ -584,17 +664,23 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
+          {/* R-0888 (gesamt-hilfen, Nacharbeit 13): die Abschnittserklärung in der Seitenhilfe —
+              berichtigt um den gemeinsamen Pool (Begründung in `texte/abschnittshilfe.ts`). */}
+          <HelpTip
+            title={t("capture.resumeTitle")}
+            body={t("abschnittshilfe.capture.resumeTitle")}
+          />
           {/* AUFTRAG-mega38 BLOCK J4: die Reichweiten-Plakette ist eine ADMIN-Auskunft. Für alle
               anderen stand dort „Meine Entwürfe" neben einer Überschrift, die schon „Entwürfe
               fortsetzen" heisst — doppelt gesagt und im Admin-Fall („ADMIN-ANSICHT: ALLE
               ENTWÜRFE") schlicht nicht ihre Angelegenheit. Sie erscheint nur noch, wo sie etwas
               unterscheidet. */}
           {isAdmin ? (
-            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
               {scopeLabel}
             </span>
           ) : null}
-          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-klein font-semibold uppercase text-muted-2">
             {totalCount}
           </span>
         </div>

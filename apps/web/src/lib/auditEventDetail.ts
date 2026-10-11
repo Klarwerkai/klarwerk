@@ -97,8 +97,23 @@ export interface DetailZeile {
   readonly valueKey?: string;
   /** Die Kennung — sie bleibt IMMER erreichbar, auch wenn ein Name danebensteht. */
   readonly id?: string;
-  /** Nur bei `kind: "id"`: warum hier kein Name steht. */
+  /**
+   * Bei `kind: "id"`: warum hier kein Name steht. Bei `kind: "text"` nur für einen Namen aus dem
+   * Protokoll, dessen Konto im frisch geladenen Verzeichnis fehlt („Konto nicht mehr vorhanden").
+   */
   readonly hinweisKey?: string;
+  /**
+   * produkt:20261009:admin-audit-verstaendlich (K3) — WOHER EIN NAME STAMMT, bei `kind: "text"`
+   * mit wörtlichem Namen:
+   *
+   *   gespeichert .. im Eintrag selbst gespeichert (`actorName`/`targetName`) — der Stand von damals;
+   *   protokoll .... von einem ANDEREN Eintrag derselben Kette gespeichert (etwa bei der Löschung);
+   *   verzeichnis .. HEUTE aus dem Verzeichnis aufgelöst — der Eintrag selbst kennt keinen Namen.
+   *
+   * Die Fläche kennzeichnet die beiden letzten, damit ein heute aufgelöster Name nie wie ein
+   * historisch gespeicherter aussieht.
+   */
+  readonly herkunft?: "gespeichert" | "protokoll" | "verzeichnis";
 }
 
 /** Die vier gültigen Rollenwerte (`services/auth/src/routes.ts`, Rollennamen aus JOB 3124). */
@@ -117,8 +132,13 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
   "auth.login",
   "auth.logout",
   "notice.acknowledged",
+  // R-0582: Berichtigung von Name/E-Mail — `correctAccountData(userId, …)`.
+  "user.account-corrected",
   "user.approve",
+  "user.created",
   "user.delete",
+  // R-0556: Anlage, Sperre und Rollenwechsel aus dem Unternehmensverzeichnis (Ziel: das Konto).
+  "user.directory-sync",
   "user.oidc-linked",
   "user.oidc-linked-unverified",
   "user.oidc-provisioned",
@@ -128,6 +148,12 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
   "user.role-change",
   "user.role-claim-missing",
   "user.role-synced",
+  // produkt:20261009:admin-audit-verstaendlich: mit dem Basisstand hinzugekommen — jeder dieser
+  // Aufrufe in `services/auth/src/service.ts` schreibt die Kontokennung als Ziel.
+  "auth.second-factor-failed",
+  "user.second-factor-enabled",
+  "user.second-factor-disabled",
+  "user.directory-sync",
 ]);
 
 /**
@@ -137,11 +163,97 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
  */
 const SYSTEM_AKTEUR = "system";
 
+/**
+ * produkt:20261009:admin-audit-verstaendlich (K1): ein Dienstschlüssel handelt als Akteur
+ * `dienst:<id>` (`services/app/src/dienst-schluessel.ts`). Er ist kein Konto und steht deshalb nie im
+ * Verzeichnis — als Konto gelesen hieße er dauerhaft „Konto nicht mehr vorhanden", was nie stimmt.
+ */
+const DIENST_PRAEFIX = "dienst:";
+
 /** Die Antwort von `GET /api/directory` als Zuordnung über die Kennung — nie über die Position. */
 export function verzeichnisNamen(
   eintraege: readonly { id: string; name: string }[] | undefined,
 ): ReadonlyMap<string, string> {
   return new Map((eintraege ?? []).map((e) => [e.id, e.name]));
+}
+
+/**
+ * Verwalteransicht (N-0027, „gelöschte Konten weiterhin benennen"): die Namen, die das Protokoll
+ * SELBST über Konten gespeichert hat — `actorName` zum Akteur, `targetName` zum Kontoziel.
+ *
+ * Ein gelöschtes Konto steht in keinem Verzeichnis mehr. Seit `user.delete` und `user.role-change`
+ * den Namen von damals mitschreiben, kennt die Kette ihn aber — und damit lässt sich auch eine
+ * frühere Anmeldung desselben Kontos benennen. Zugeordnet wird ausschließlich über die Kennung
+ * (Regel 1); bei mehreren Einträgen gilt der jüngste.
+ */
+export function protokollNamen(
+  eintraege: readonly AuditEreignis[] | undefined,
+): ReadonlyMap<string, string> {
+  const namen = new Map<string, string>();
+  for (const e of eintraege ?? []) {
+    const payload = e.payload ?? {};
+    const akteurName = textfeld(payload, "actorName");
+    if (akteurName !== undefined && e.actor !== "" && e.actor !== SYSTEM_AKTEUR) {
+      namen.set(e.actor, akteurName);
+    }
+    const zielName = textfeld(payload, "targetName");
+    if (zielName !== undefined && e.target !== "" && KONTO_ZIEL_AKTIONEN.has(e.action)) {
+      namen.set(e.target, zielName);
+    }
+  }
+  return namen;
+}
+
+/**
+ * produkt:20261009:admin-audit-verstaendlich (K1, Bens Befund Nacharbeit 3) — WELCHE KENNUNGEN
+ * NACHWEISLICH KONTEN WAREN.
+ *
+ * Das Fehlen im heutigen Verzeichnis allein belegt keine frühere Kontoexistenz. Ein Kontobeleg ist
+ * ein Eintrag des Kontodienstes mit dieser Kennung als ZIEL (`KONTO_ZIEL_AKTIONEN`: Anlage,
+ * Anmeldung, Rollenwechsel, Löschung …) oder ein Name, den die Kette zu ihr als Konto gespeichert
+ * hat. Nur mit einem solchen Beleg sagt die Fläche „Konto nicht mehr vorhanden"; ohne ihn heißt die
+ * Kennung „unbekannte Kennung" (`auditprotokoll.detail.unbekannt`). Bloßes Auftreten als Akteur
+ * zählt NICHT — daraus folgt nicht, welche Art Identität dahinterstand.
+ */
+export function kontoBelege(eintraege: readonly AuditEreignis[] | undefined): ReadonlySet<string> {
+  const belegt = new Set<string>();
+  for (const e of eintraege ?? []) {
+    if (e.target !== "" && KONTO_ZIEL_AKTIONEN.has(e.action)) {
+      belegt.add(e.target);
+    }
+    if (
+      e.actor !== "" &&
+      e.actor !== SYSTEM_AKTEUR &&
+      textfeld(e.payload ?? {}, "actorName") !== undefined
+    ) {
+      belegt.add(e.actor);
+    }
+  }
+  return belegt;
+}
+
+/**
+ * produkt:20261009:admin-audit-verstaendlich (K1): Namen, die zu MEHR ALS EINER Kennung gehören —
+ * aus dem Verzeichnis und aus den von der Kette gespeicherten Namen zusammen. Steht ein solcher Name
+ * in einer Spalte, zeigt die Fläche eine Kurzkennung daneben, damit zwei „Anna Meier“ unterscheidbar
+ * bleiben. Zugeordnet wird auch hier nur über die Kennung.
+ */
+export function mehrdeutigeNamen(
+  ...quellen: readonly ReadonlyMap<string, string>[]
+): ReadonlySet<string> {
+  const kennungenJeName = new Map<string, Set<string>>();
+  for (const quelle of quellen) {
+    for (const [id, name] of quelle) {
+      const schluessel = name.trim();
+      if (schluessel === "") {
+        continue;
+      }
+      const ids = kennungenJeName.get(schluessel) ?? new Set<string>();
+      ids.add(id);
+      kennungenJeName.set(schluessel, ids);
+    }
+  }
+  return new Set([...kennungenJeName].filter(([, ids]) => ids.size > 1).map(([name]) => name));
 }
 
 /** Ein Zeichenkettenfeld aus der Nutzlast — leer oder falsch getippt zählt als nicht vorhanden. */
@@ -156,13 +268,37 @@ function kontoZeile(
   id: string,
   gespeicherterName: string | undefined,
   verzeichnis: VerzeichnisLage,
+  protokoll: ReadonlyMap<string, string>,
+  istKonto: boolean,
 ): DetailZeile {
   if (gespeicherterName !== undefined) {
     // Der Stand von DAMALS schlägt jedes heutige Verzeichnis — und kennt keinen Ladezustand.
-    return { labelKey, kind: "text", value: gespeicherterName, ...(id === "" ? {} : { id }) };
+    return {
+      labelKey,
+      kind: "text",
+      value: gespeicherterName,
+      herkunft: "gespeichert",
+      ...(id === "" ? {} : { id }),
+    };
   }
   if (id === "") {
     return { labelKey, kind: "missing" };
+  }
+  const heutigerName = verzeichnis.art === "geladen" ? verzeichnis.namen.get(id) : undefined;
+  const protokollName = protokoll.get(id);
+  if (protokollName !== undefined && (heutigerName === undefined || heutigerName.trim() === "")) {
+    // Das heutige Verzeichnis kennt die Kennung nicht (oder ist noch nicht da) — ein anderer
+    // Eintrag der Kette hat den Namen aber gespeichert. Die Löschaussage bleibt an Regel 2
+    // gebunden: nur bei erfolgreich und abgeschlossen geladenem Verzeichnis.
+    const belegtWeg = verzeichnis.art === "geladen" && verzeichnis.stand === "frisch";
+    return {
+      labelKey,
+      kind: "text",
+      value: protokollName,
+      id,
+      herkunft: "protokoll",
+      ...(belegtWeg ? { hinweisKey: "audit.detail.accountGone" } : {}),
+    };
   }
   if (verzeichnis.art === "laedt") {
     return { labelKey, kind: "id", id, hinweisKey: "audit.detail.nameLoading" };
@@ -172,7 +308,8 @@ function kontoZeile(
   }
   const name = verzeichnis.namen.get(id);
   if (name !== undefined && name.trim() !== "") {
-    return { labelKey, kind: "text", value: name, id };
+    // K3: der HEUTIGE Name — der Eintrag selbst hat keinen gespeichert. Die Herkunft reist mit.
+    return { labelKey, kind: "text", value: name, id, herkunft: "verzeichnis" };
   }
   if (verzeichnis.stand === "laeuftNach") {
     // Bestand sichtbar, aber die aktuelle Antwort ist noch unterwegs — sie kann die Kennung
@@ -183,7 +320,11 @@ function kontoZeile(
     // Bestand da, aber nicht aktuell: der Name ist unbekannt, das Konto deshalb nicht abwesend.
     return { labelKey, kind: "id", id, hinweisKey: "audit.detail.nameUnavailable" };
   }
-  // Erst HIER ist die negative Aussage belegt: erfolgreich UND abgeschlossen geladen, Kennung fehlt.
+  // Erfolgreich UND abgeschlossen geladen, Kennung fehlt. „Konto nicht mehr vorhanden" nur mit
+  // Kontobeleg (Bens Befund Nacharbeit 3) — sonst ist die Identität schlicht unbekannt.
+  if (!istKonto) {
+    return { labelKey, kind: "id", id, hinweisKey: "auditprotokoll.detail.unbekannt" };
+  }
   return { labelKey, kind: "id", id, hinweisKey: "audit.detail.accountGone" };
 }
 
@@ -221,27 +362,45 @@ function rollenZeile(labelKey: string, wert: string | undefined): DetailZeile {
 export function auditEventDetail(
   eintrag: AuditEreignis,
   verzeichnis: VerzeichnisLage,
+  protokoll: ReadonlyMap<string, string> = new Map(),
+  belege: ReadonlySet<string> = new Set(),
 ): DetailZeile[] {
   const payload = eintrag.payload ?? {};
-  const akteur =
+  // Kontobelege: aus der Kette (`kontoBelege` über Seite und Namensbelege), aus gespeicherten
+  // Namen — und aus diesem Eintrag selbst (ein Kontovorgang belegt sein Ziel als Konto).
+  const ausEintrag = kontoBelege([eintrag]);
+  const istKonto = (id: string): boolean =>
+    belege.has(id) || protokoll.has(id) || ausEintrag.has(id);
+  const akteur: DetailZeile =
     eintrag.actor === SYSTEM_AKTEUR
-      ? ({
+      ? {
           labelKey: "audit.detail.actor",
           kind: "text",
           valueKey: "audit.detail.systemActor",
-        } as const)
-      : kontoZeile(
-          "audit.detail.actor",
-          eintrag.actor,
-          textfeld(payload, "actorName"),
-          verzeichnis,
-        );
+        }
+      : eintrag.actor.startsWith(DIENST_PRAEFIX)
+        ? {
+            labelKey: "audit.detail.actor",
+            kind: "text",
+            valueKey: "auditprotokoll.akteur.dienst",
+            id: eintrag.actor,
+          }
+        : kontoZeile(
+            "audit.detail.actor",
+            eintrag.actor,
+            textfeld(payload, "actorName"),
+            verzeichnis,
+            protokoll,
+            istKonto(eintrag.actor),
+          );
   const ziel = KONTO_ZIEL_AKTIONEN.has(eintrag.action)
     ? kontoZeile(
         "audit.detail.target",
         eintrag.target,
         textfeld(payload, "targetName"),
         verzeichnis,
+        protokoll,
+        istKonto(eintrag.target),
       )
     : objektZeile(eintrag.target);
   const zeilen: DetailZeile[] = [akteur, ziel];

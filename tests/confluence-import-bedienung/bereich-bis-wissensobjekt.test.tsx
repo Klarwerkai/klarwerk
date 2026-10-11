@@ -116,8 +116,13 @@ async function lies<T>(buehne: Buehne, url: string): Promise<T> {
 }
 
 /** Bühne über DIESEM Bereich bauen und die Lauf-Karte einhängen. */
-async function montiere(ergebnisseiten: ConfluencePage[][]): Promise<Buehne> {
-  b = await baueBuehne({ fetchFn: confluenceInstanz({ ergebnisseiten }).fetchFn });
+async function montiere(
+  ergebnisseiten: ConfluencePage[][],
+  quellrechte: { kontoEmails?: Record<string, string>; gruppen?: Record<string, unknown[]> } = {},
+): Promise<Buehne> {
+  b = await baueBuehne({
+    fetchFn: confluenceInstanz({ ergebnisseiten, ...quellrechte }).fetchFn,
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -269,7 +274,15 @@ interface KoQuelle {
 
 describe("package:confluence · konkrete Quellrestriktionen am Quellenanker", () => {
   it("Benutzer und Gruppe unterscheidbar am Anker, offene Seite ohne", async () => {
-    const buehne = await montiere(RECHTE_BEREICH);
+    // confluence-import-rechte (R-0549): wer eine beschränkte Seite in Confluence nicht lesen darf,
+    // sieht sie in Klara auch in der Prüfwarteschlange nicht — auch kein Admin. Damit der Admin
+    // dieser Bühne 202 und 203 prüfen und annehmen kann, ist er in der Quelle berechtigt: das Konto
+    // `quelle-u1` trägt seine Mailadresse, und er ist Mitglied von `quelle-hr`. Die Quellkennungen
+    // am Anker (unten) bleiben genau die der Quelle.
+    const buehne = await montiere(RECHTE_BEREICH, {
+      kontoEmails: { "quelle-u1": "admin@kw-bedienung.test" },
+      gruppen: { "quelle-hr": [{ accountId: "quelle-admin", email: "admin@kw-bedienung.test" }] },
+    });
 
     const lauf = await bereichImportieren(buehne);
     expect(lauf.status).toBe("COMPLETED");

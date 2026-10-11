@@ -5,6 +5,7 @@
 import type { KnowledgeObject } from "../api/types";
 import type { DisplayStatus } from "../components/trust/types";
 import { deriveStatus } from "./displayStatus";
+import { WISSENSSTATUS_BESTAETIGT } from "./wissensstatus";
 
 export type TrustBand = "low" | "mid" | "high";
 export type ReviewWorkState = "new" | "assigned" | "inReview" | "validated";
@@ -66,7 +67,8 @@ export function reviewWorkView(ko: KnowledgeObject): ReviewWorkView {
   if (ko.status === "validiert") {
     return {
       state: "validated",
-      labelKey: "val.reviewState.validated",
+      // Nutzerentscheid Antwort 54: „Fachlich bestätigt" (lib/wissensstatus.ts).
+      labelKey: WISSENSSTATUS_BESTAETIGT,
       hintKey: "val.reviewHint.validated",
       tone: "pos",
     };

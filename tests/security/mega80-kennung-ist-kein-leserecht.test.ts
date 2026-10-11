@@ -188,6 +188,12 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0431 (K2): das Fachgebiet — dieselbe Torregel wie `category`.
     case "domain":
       return { action, domain: "Instandhaltung" };
+    // R-1631 (gesamt-anlagenzugang): Bauteile/Materialien/Geltungskontext — dieselbe Torregel.
+    case "anlagenkontext":
+      return { action, anlagenkontext: { bauteile: ["BT-4711"] } };
+    // R-1632 / R-1633: die Geltung — dieselbe Torregel wie `domain`.
+    case "geltung":
+      return { action, geltung: { ebene: "werk", werk: "Werk Nord" } };
     case "confidentiality":
       return { action, level: "intern" };
     // JOB 557: die Verantwortung am Objekt benennen. Eine fachlich gültige Mindestnutzlast —
@@ -195,6 +201,24 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // soll dieser Wächter nicht vorwegnehmen.
     case "ownership":
       return { action, ownership: { owner: "eva-eigentuemerin" } };
+    // R-0507: der Eigentümer gibt zurück — trägt nichts ausser der Aktion. Ob der Anfragende der
+    // Eigentümer IST, entscheidet der Dienst (`NOT_OWNER`); das Tor davor muss vorher greifen.
+    case "ownership-release":
+      return { action };
+    // R-0507: die Eigentümerfreigabe — ob der Anfragende Eigentümer ist, entscheidet der Dienst.
+    case "owner-validate":
+      return { action };
+    // Aufnahme gesamt-peer-validierung (Antworten 18/19): die Weisung und ihre Sichtung. Ob der
+    // Anfragende Weisungsbefugnis hat bzw. die benannte Person ist, entscheidet der Zweig/Dienst.
+    // Ben, Nacharbeit 11: beide tragen PFLICHT die gelesene Fassung (`expectedVersion`).
+    case "weisung-validate":
+      return {
+        action,
+        sichtung: { verantwortlich: "verantwortliche-person", frist: "2099-12-31" },
+        expectedVersion: 1,
+      };
+    case "weisung-sichten":
+      return { action, sichtung: { ergebnis: "bestaetigt" }, expectedVersion: 1 };
     case "conflict":
       return {
         action,
@@ -223,6 +247,37 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, commentId: "beitrag-mega80" };
     case "revalidate":
       return { action };
+    // aufnahme:20260922:gesamt-wissen-frische: erneute Prüfung anstossen, Nachbarn markieren,
+    // „Stimmt weiterhin" — alle drei tragen nichts ausser der Aktion.
+    case "request-revalidation":
+    case "neighbors-changed":
+    case "confirm-fresh":
+      return { action };
+    // R-0652: Schutzbedarf „öffentlich" — die Mindestnutzlast ist der Wahrheitswert.
+    case "schutz-oeffentlich":
+      return { action, oeffentlich: true };
+    // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
+    case "helpful":
+      return { action };
+    // Aufnahme gesamt-wissen-herkunft (Entscheidungen 18/19 und 27): fachlich gültige
+    // Mindestnutzlasten. Ob der Anfragende weisen, sichten oder übernehmen DARF (Befugnis am Konto,
+    // benannte Verantwortliche, `ko.validate`), entscheidet der Zweig — dieser Wächter prüft nur,
+    // dass das Tor am fremden vertraulichen Objekt vorher mit 404 greift.
+    case "weisung":
+      return { action, sichtung: { verantwortlich: "eva-sichtet", frist: "2099-12-31" } };
+    case "weisung-abschluss":
+      return { action };
+    case "externe-freigabe":
+      return {
+        action,
+        externeFreigabe: {
+          art: "wissen",
+          herausgeber: "Hersteller aus mega80",
+          freigegebenAm: "2026-01-15",
+          zustaendig: "eva-zustaendig",
+          anwendbarBestaetigt: true,
+        },
+      };
     default:
       throw new Error(`Keine Nutzlast hinterlegt für Aktion "${action}" — Test unvollständig.`);
   }

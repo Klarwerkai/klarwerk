@@ -49,6 +49,7 @@ import {
   QuellenChipInhalt,
   chipPunkt,
 } from "../../components/fragen/Quellenplaketten";
+import { ANTWORT_MENUEPUNKTE } from "../../components/fragen/antwortMenue";
 import { FRAGEN_ZIEL } from "../../components/fragen/ziele";
 import { AntwortText } from "../../components/start/AntwortText";
 import { OverflowMenu } from "../../components/start/OverflowMenu";
@@ -59,6 +60,7 @@ import { attributeSources } from "../../lib/askCitedSources";
 import { conflictAwareSourceRefs } from "../../lib/askView";
 import { anzeigestatusAus } from "../../lib/displayStatus";
 import { useAiAvailable } from "../../lib/useAiAvailable";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import type { TutorialDemoProps, TutorialUebergangProps } from "../typen";
 
 /** Takt der Tippvorführung je Zeichen (ms). */
@@ -133,7 +135,7 @@ function demoZeile(
     throw new Error("Demo-Quelle ohne Zeile");
   }
   const stand = anzeigestatusAus(ko, { konflikt: ref.conflictLimited }).status;
-  const standWort = t(`status.${stand}`, {});
+  const standWort = t(statusSchluessel(stand), {});
   return {
     ...ref,
     verwendung: unsicher ? "unbekannt" : "verwendet",
@@ -181,7 +183,7 @@ function DemoAntwortKarte({
   const [menueHinweis, setMenueHinweis] = useState(false);
   return (
     <Card className="relative mt-0 flex flex-col gap-3 !rounded-[14px] border-hairline px-5 py-4 shadow-tile">
-      <span className="self-start rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+      <span className="self-start rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
         {uebung
           ? t("tutorial.fragen.demo.uebungsantwort")
           : t("tutorial.fragen.demo.beispielantwort")}
@@ -241,11 +243,7 @@ function DemoAntwortKarte({
           label={t("ask.menu.label")}
           testId="tutorial-demo-menue"
           griffRef={griffRef}
-          punkte={[
-            { id: "print", label: t("ask.export.print") },
-            { id: "download", label: t("ask.export.download") },
-            { id: "mehr", label: t("ask.menu.mehr") },
-          ]}
+          punkte={ANTWORT_MENUEPUNKTE.map((p) => ({ id: p.id, label: t(p.labelKey) }))}
           onWahl={(id) => {
             if (id === "mehr") {
               setMenueHinweis(false);
@@ -268,7 +266,7 @@ function DemoAntwortKarte({
           {lage.begleitung}
           <div data-tutorial-demo="fragen" className="tutorial-demo">
             <p className="mb-2 flex flex-wrap items-center gap-2 text-[11.5px] text-muted-2">
-              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-ai">
+              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase tracking-wider text-ai">
                 {t("tutorial.demo.kennzeichen")}
               </span>
               {t("tutorial.fragen.demo.mehrHinweis")}
@@ -342,7 +340,7 @@ function DemoLuecke(): JSX.Element {
     <Card className="mt-0 border-dashed">
       <span
         data-tutorial-ziel={FRAGEN_ZIEL.luecke}
-        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text"
+        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-klein font-semibold uppercase text-trust-warn-text"
       >
         {t("ask.gapBadge")}
       </span>

@@ -4,7 +4,8 @@
 // ================================================================================================
 //
 // Maßgeblich ist Pedis Entscheidung vom 05.09.2026 zu M3 „Haben wir das schon?“: der Treffer nennt
-// seinen Prüfstand „noch nicht geprüft“ bzw. „Validiert“. Das Word-Panel zeigt das seit JOB 3093;
+// seinen Prüfstand „noch nicht geprüft“ bzw. „Validiert“ (seit Antwort 54 vom 11.10.2026:
+// „Fachlich bestätigt“). Das Word-Panel zeigt das seit JOB 3093;
 // die Live-Zone im Web sagte für denselben Zustand „Offen“. Die ältere Quelle R-0240 („zu prüfen“)
 // ist damit abgelöst.
 //
@@ -27,9 +28,12 @@ import { type KlaraPanel, createKlaraPanel, reply } from "../app/klara-panel-fix
 
 type Sprache = "de" | "en" | "nl";
 
-/** Der vereinbarte Wortlaut — EINE Tabelle für beide Flächen. */
+/**
+ * Der vereinbarte Wortlaut — EINE Tabelle für beide Flächen. Nutzerentscheid Antwort 54
+ * (11.10.2026): der validierte Zustand heisst auf Deutsch „Fachlich bestätigt"; EN/NL unverändert.
+ */
 const WORTLAUT: Record<Sprache, Record<KoStatus, string>> = {
-  de: { offen: "noch nicht geprüft", validiert: "Validiert" },
+  de: { offen: "noch nicht geprüft", validiert: "Fachlich bestätigt" },
   en: { offen: "not yet reviewed", validiert: "Validated" },
   nl: { offen: "nog niet beoordeeld", validiert: "Gevalideerd" },
 };

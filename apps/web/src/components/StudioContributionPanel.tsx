@@ -4,6 +4,9 @@
 //  - was ihn noch stärker machen würde (Hinweise, keine Blocker).
 // Reine Anzeige auf Basis des DOM-freien studioContribution-Helfers. KEIN Score, keine Punkte,
 // keine Validierung — Status/Trust bleiben unverändert maßgeblich.
+// R-0936: Titel, Stand und Schlussnote sprechen nur über den TEXT, nie über die Person
+// (Textmodul `texte/tragfaehigkeit.ts`); gemessen in
+// `tests/inhaltsqualitaet-studio/tragfaehigkeit-mounted.test.tsx`.
 import { useTranslation } from "react-i18next";
 import type { AttachmentLike } from "../lib/editorAttachmentContext";
 import { editorContentQuality } from "../lib/editorContentQuality";
@@ -26,11 +29,15 @@ export function StudioContributionPanel({
   const contribution = studioContribution(editorContentQuality({ bodyHtml, attachments }));
 
   return (
-    <div className="rounded-card border border-hairline bg-page p-2.5">
+    <div
+      data-testid="studio-tragfaehigkeit"
+      data-level={contribution.level}
+      className="rounded-card border border-hairline bg-page p-2.5"
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11.5px] font-semibold text-ink">{t("studio.contrib.title")}</span>
+        <span className="text-[11.5px] font-semibold text-ink">{t("tragfaehigkeit.titel")}</span>
         <span
-          className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${LEVEL_TONE[contribution.tone]}`}
+          className={`rounded-pill px-2 py-0.5 font-mono text-klein font-semibold uppercase ${LEVEL_TONE[contribution.tone]}`}
         >
           {t(contribution.levelLabelKey)}
         </span>
@@ -39,7 +46,7 @@ export function StudioContributionPanel({
 
       {contribution.strengths.length > 0 ? (
         <div className="mt-2">
-          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-trust-pos-text">
+          <p className="text-klein font-semibold uppercase tracking-wide text-trust-pos-text">
             {t("studio.contrib.strengthsTitle")}
           </p>
           <ul className="mt-1 flex flex-col gap-0.5">
@@ -57,7 +64,7 @@ export function StudioContributionPanel({
 
       {contribution.suggestions.length > 0 ? (
         <div className="mt-2">
-          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-2">
+          <p className="text-klein font-semibold uppercase tracking-wide text-muted-2">
             {t("studio.contrib.suggestionsTitle")}
           </p>
           <ul className="mt-1 flex flex-col gap-0.5">
@@ -73,9 +80,9 @@ export function StudioContributionPanel({
         </div>
       ) : null}
 
-      {/* Leichtgewichtiger Wertbeitrag — warum dieser Beitrag zählt (ehrlich: erst nach Prüfung gesichert). */}
+      {/* R-0936: ehrliche Grenze — Text statt Person, erst nach Prüfung gesichert. */}
       <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">
-        {t("studio.contrib.valueNote")}
+        {t("tragfaehigkeit.textNichtPerson")}
       </p>
     </div>
   );

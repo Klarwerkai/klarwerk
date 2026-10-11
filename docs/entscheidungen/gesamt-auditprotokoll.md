@@ -171,3 +171,20 @@ Nutzerverwaltung `user.*` (u. a. `user.role-change` mit Vor-/Nachrolle und Namen
   Betrieb.
 - **package:audit** ist laut Auftrag ein Planvorschlag ohne zugeordnete Nutzerquelle; umgesetzt ist
   nur der Hilfetext, keine Zertifizierungsaussage.
+
+## Teil 3 — Verwalteransicht (`aufnahme:20260922:gesamt-auditprotokoll:verwalteransicht`)
+
+Abgleich mit dem vorhandenen Stand vor der Umsetzung: Gesamtzahl, Knopf „Integrität prüfen",
+Hilfetext zum Qualitätsbezug (`adm.sich.qualityNote`) und die Kette am Objekt (`koAuditEvents`)
+waren geliefert und bleiben unverändert. Offen waren zwei Punkte aus N-0027:
+
+| Lücke | Lieferung | Beleg |
+| --- | --- | --- |
+| Kennungen standen inline neben jedem Namen, die Beschriftung war eine Liste je Eintrag | Prüfprotokoll als Tabelle mit beschrifteten Spalten (Zeitpunkt, Ereignis, Ausgeführt von, Betroffen, Rolle vorher, Rolle nachher, Technische Angaben) und Überschrift „Die N jüngsten Aktionen von insgesamt M". Kontokennungen, Eintragsnummer und Prüfwert stehen eingeklappt unter „Kennungen anzeigen" (`TechnikAngaben`); nur ein Objektziel behält seine Kennung in der Spalte, weil es sonst nichts benennt | `tests/audit-rollenwechsel/pruefprotokoll-anzeige.test.tsx` (V1, V2, V5), `tests/seitenhilfe-admin/protokollhilfe-geladene-zustaende.test.tsx` |
+| `user.delete` speicherte keinen Namen — ein gelöschtes Konto war nur noch eine Kennung | `AuthService.deleteUser` schreibt `targetName` und `actorName`. `protokollNamen` sammelt die in der Kette gespeicherten Namen über die Kennung; frühere Einträge desselben Kontos werden damit benannt. „Konto nicht mehr vorhanden" bleibt an ein frisch geladenes Verzeichnis gebunden | `tests/audit-rollenwechsel/rollenwechsel-payload.test.ts` (5, 6), `apps/web/src/lib/auditEventDetail.test.ts` (p1–p6), `pruefprotokoll-anzeige.test.tsx` (V3, V4) |
+
+Grenzen: Einträge, die vor dieser Lieferung geschrieben wurden und deren Konto ohne gespeicherten
+Namen gelöscht wurde, bleiben „Konto nicht mehr vorhanden" mit Kennung — nachträglich angereichert
+wird nichts. Den Namen im Löschvermerk zu behalten, ist eine Aufbewahrungsfrage (R-0670) und wird
+dort entschieden. Die Kettenprüfung baut auf dem Integritätskern auf. Dessen PostgreSQL-Nachweis
+ist laut `entscheidung:f43fa030` gesperrt; er ist nicht Teil dieser Lieferung.

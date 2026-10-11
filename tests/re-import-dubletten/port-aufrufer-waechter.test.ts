@@ -83,6 +83,20 @@ interface Nennung {
   readonly art: "aufruf" | "verweis";
   /** Nur bei `aufruf` — bei einem Verweis ist die Argumentzahl gar nicht bekannt. */
   readonly argumente: number | null;
+  /**
+   * Lauf 5 (R-0142): steht an der Port-Stelle WÖRTLICH `undefined` (oder `void …`)? Dann ist die
+   * Argumentzahl erreicht, der Port aber nicht übergeben — seit `createImportCandidates` ein viertes
+   * Argument (die Laufbindung) kennt, ist genau das die Form eines portlosen Aufrufs mit Lauf.
+   */
+  readonly portLeer?: boolean;
+}
+
+/** Ist dieser Ausdruck ein wörtlich leerer Wert (`undefined`, `void 0`)? */
+function istWoertlichLeer(ausdruck: ts.Expression | undefined): boolean {
+  return (
+    ausdruck !== undefined &&
+    ((ts.isIdentifier(ausdruck) && ausdruck.text === "undefined") || ts.isVoidExpression(ausdruck))
+  );
 }
 
 /** Trägt diese Nennung den Namen NUR als Deklaration (Methode, Signatur)? Dann ist sie keine Nutzung. */
@@ -126,6 +140,9 @@ function nennungenIn(quelle: Quelle): Nennung[] {
       zeile: zeileVon(quelle.ast, knoten),
       art: istAufruf ? "aufruf" : "verweis",
       argumente: istAufruf ? (ruf as ts.CallExpression).arguments.length : null,
+      portLeer: istAufruf
+        ? istWoertlichLeer((ruf as ts.CallExpression).arguments[MIT_PORT_AB - 1])
+        : false,
     });
   };
   const gehe = (n: ts.Node): void => {
@@ -140,7 +157,9 @@ function nennungenIn(quelle: Quelle): Nennung[] {
 
 /** Eine Nennung ist in Ordnung, wenn sie ein Aufruf MIT Port ist. Alles andere ist ein Fund. */
 function ohnePort(nennung: Nennung): boolean {
-  return nennung.art !== "aufruf" || (nennung.argumente ?? 0) < MIT_PORT_AB;
+  return (
+    nennung.art !== "aufruf" || (nennung.argumente ?? 0) < MIT_PORT_AB || nennung.portLeer === true
+  );
 }
 
 function alleNennungen(): { nennungen: Nennung[]; leseFehler: string[] } {
@@ -284,6 +303,20 @@ describe("JOB 3050 · W — keine Nennung von createImportCandidates ohne Dublet
     expect(gefunden[0]?.art).toBe("aufruf");
     expect(gefunden[0]?.argumente).toBe(2);
     expect(gefunden[0]?.zeile, "Die Meldung nennt die Zeile.").toBe(3);
+    expect(gefunden.filter(ohnePort)).toHaveLength(1);
+  });
+
+  it("W3c · KALIBRIERUNG: ein wörtliches `undefined` an der Port-Stelle ist KEIN Port", () => {
+    // Lauf 5 (R-0142): vier Argumente, der dritte leer — die Zahl allein hielte das für „mit Port".
+    const gefunden = nennungenIn(
+      erfundeneQuelle("services/app/src/dritter-aufbau.ts", [
+        "async function mitLauf(library: L, items: I[]) {",
+        "  return library.createImportCandidates(items, 'system', undefined, { importId: 'x' });",
+        "}",
+      ]),
+    );
+    expect(gefunden).toHaveLength(1);
+    expect(gefunden[0]?.argumente).toBe(4);
     expect(gefunden.filter(ohnePort)).toHaveLength(1);
   });
 

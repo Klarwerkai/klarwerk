@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { MELDUNGEN } from "../../services/auth/src/meldungen";
 
 // SCRUM-443 (Berater-Audit, kritisch vor VIP): der VIP wird per Erstanmeldung Admin. Die
 // verdrahteten Routen müssen Selbst-Aussperrung verhindern — FR-RBAC-03 + Last-Admin-Schutz.
@@ -37,6 +38,45 @@ describe("SCRUM-443: Last-Admin-/Selbst-Entzug-Schutz (verdrahtete Routen)", () 
       payload: { role: "viewer" },
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  // FR-RBAC-03 getrennt vom Last-Admin-Schutz: mit nur einem Admin weist der Fall oben auch die
+  // Letzter-Admin-Regel ab. Mit einem zweiten aktiven Admin greift allein der Selbstschutz — und
+  // der Befund H7 („Regel definiert, aber nirgends aufgerufen") wäre hier rot. Die Gegenprobe
+  // zeigt, dass keine stärkere Sperre daraus geworden ist: den ANDEREN Admin herabzustufen geht.
+  it("FR-RBAC-03: Selbst-Entzug wird auch mit zweitem aktivem Admin abgewiesen, Rolle bleibt", async () => {
+    const { app, admin, adminId } = await setup();
+    const zweit = await app.inject({
+      method: "POST",
+      url: "/api/users",
+      headers: admin.headers,
+      payload: { name: "Zweit", email: "zweit@x.de", password: "secret123", role: "admin" },
+    });
+    const zweitId = zweit.json().id as string;
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/users/${adminId}`,
+      headers: admin.headers,
+      payload: { role: "viewer" },
+    });
+    expect(res.statusCode, res.body).toBe(403);
+    expect(res.json().message).toBe(MELDUNGEN.SELF_DEMOTION_FORBIDDEN.de);
+    const nachher = await app.inject({ method: "GET", url: "/api/users", headers: admin.headers });
+    const rollen = new Map(
+      (nachher.json() as { id: string; role: string }[]).map((u) => [u.id, u.role]),
+    );
+    expect(rollen.get(adminId), "der Server hat nichts geändert").toBe("admin");
+    expect(rollen.get(zweitId)).toBe("admin");
+
+    const gegenprobe = await app.inject({
+      method: "PUT",
+      url: `/api/users/${zweitId}`,
+      headers: admin.headers,
+      payload: { role: "controller" },
+    });
+    expect(gegenprobe.statusCode, gegenprobe.body).toBe(200);
+    expect(gegenprobe.json().role).toBe("controller");
   });
 
   it("Der letzte aktive Admin kann per Route nicht gelöscht werden (403)", async () => {

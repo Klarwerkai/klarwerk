@@ -146,4 +146,36 @@ describe("JOB 3140 · der Rollenwechsel speichert alte Rolle und beide Namen", (
     expect((await juengster(audit, "user.approve")).payload).toEqual({});
     expect((await juengster(audit, "auth.login")).payload).toEqual({});
   });
+
+  // Verwalteransicht (N-0027): „gelöschte Konten weiterhin benennen". Nach dem Löschen kennt kein
+  // Verzeichnis den Namen mehr — der Vermerk der Löschung muss ihn deshalb selbst tragen.
+  it("5 die Löschung speichert den Namen des gelöschten Kontos und des Handelnden", async () => {
+    const ada = await service.register({
+      name: "Ada Admin",
+      email: "ada@x.de",
+      password: "secret123",
+    });
+    const tom = await service.register({
+      name: "Tom Test",
+      email: "tom@x.de",
+      password: "secret123",
+    });
+    await service.deleteUser(tom.id, ada.id);
+
+    const eintrag = await juengster(audit, "user.delete");
+    expect(eintrag.actor).toBe(ada.id);
+    expect(eintrag.target).toBe(tom.id);
+    expect(eintrag.payload).toEqual({ targetName: "Tom Test", actorName: "Ada Admin" });
+    expect((await audit.verifyReport()).ok).toBe(true);
+  });
+
+  it("6 eine abgewiesene Löschung (letzter Admin) hinterlässt keinen Vermerk", async () => {
+    const ada = await service.register({
+      name: "Ada Admin",
+      email: "ada@x.de",
+      password: "secret123",
+    });
+    await expect(service.deleteUser(ada.id, ada.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await audit.list({ action: "user.delete" })).toHaveLength(0);
+  });
 });

@@ -29,7 +29,7 @@
 // KANN, bevor der Health-Check rot wurde. Die Unsicherheit fällt damit auf die sichere Seite.
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -420,7 +420,29 @@ function hauptlauf(argv) {
   return VERTRAG_AUFRUF;
 }
 
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// JOB B4-INSEL-RELEASE — DER AUFRUF ÜBER `current` IST DER AUFRUF.
+//
+// Bis hierher stand an dieser Stelle `resolve(process.argv[1]) === fileURLToPath(import.meta.url)`.
+// `resolve` löst keinen Symlink auf, `import.meta.url` dagegen ist immer der echte Ort. Der
+// dokumentierte Weg ruft diese Datei aber über `…/Klarwerk_Insel/current/scripts/insel/` — und
+// `current` IST ein Symlink (auf macOS zusätzlich `/tmp` → `/private/tmp`). Gemessen am echt
+// gebauten Paket: JEDER Aufruf aus `update-einspielen.sh` und `rueckfall.sh` endete mit Exit 0 und
+// tat nichts. Die Vertragsprüfung ließ damit jedes Paket durch, `SCHEMA-STAND` wurde nie
+// geschrieben, und `app-version` blieb leer — der Rückfall nach einem Startfehler meldete deshalb
+// „Version nicht belegbar" und das Update Exit 9, obwohl die Vorversion wieder antwortete.
+// Verglichen werden jetzt beide Orte nach dem Auflösen aller Symlinks.
+function echterOrt(pfad) {
+  try {
+    return realpathSync(pfad);
+  } catch {
+    return resolve(pfad);
+  }
+}
+
+if (
+  process.argv[1] !== undefined &&
+  echterOrt(process.argv[1]) === echterOrt(fileURLToPath(import.meta.url))
+) {
   try {
     process.exitCode = hauptlauf(process.argv.slice(2));
   } catch (fehler) {

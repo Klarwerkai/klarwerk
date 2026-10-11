@@ -231,6 +231,7 @@ describe("SCRUM-510 WP2: runConfluenceImport", () => {
     // Fake-Library: reiht 3 Items ein, persistiert aber nur die ersten 2 (das dritte kollidiert atomar).
     const fakeLibrary = {
       listImportCandidates: async () => [],
+      importAttachmentsIncomplete: () => false,
       createImportCandidates: async (batch: readonly ImportItem[]) =>
         batch.slice(0, batch.length - 1).map((it, i) => ({
           id: `c-${i}`,

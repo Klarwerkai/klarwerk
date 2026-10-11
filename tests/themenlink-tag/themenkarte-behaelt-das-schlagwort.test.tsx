@@ -195,6 +195,7 @@ import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-rou
 import { readLibraryViews } from "../../apps/web/src/lib/libraryFacets";
 import { Library } from "../../apps/web/src/pages/Library";
 import {
+  leseTitel,
   listenZaehler,
   menueOeffnen,
   menueSchliessen,
@@ -614,5 +615,105 @@ describe("JOB 3115 · F10 — ein Bestands-Erstfehler ohne Zwischenspeicher sagt
     expect(zeilenTitel(container).sort()).toEqual(JUNGE_TITEL);
     expect(listenZaehler(container), "die Prüfung wurde nicht nachgeholt").toBe(2);
     expect(filterMenueText()).toMatch(/·\s*1$/);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// L1–L4 — UX-02 · LESEWAHL BEI VERZÖGERTEM BESTAND (`docs/entscheidungen/ux02-lesewahl.md`)
+// ------------------------------------------------------------------------------------------------
+// F9/F10 messen die LISTE. Diese Fälle messen dieselben zwei Lagen an der LESEFLÄCHE: die
+// ausdrückliche Wahl aus der Adresse bleibt sichtbar, eine automatische Vorwahl entsteht erst mit
+// einer zeichnenden Liste. Parametername und Kennungen stehen als eigene Sollwerte hier, s. (D).
+const EINTRAG_PARAM = "eintrag";
+const lesetitelVon = (id: string): string => {
+  const k = JUNG.find((x) => x.id === id);
+  if (!k) {
+    throw new Error(`Sollwert ${id} fehlt im Bestand`);
+  }
+  return k.title;
+};
+
+describe("UX-02 · L1/L2 — offener Bestandsabruf: die ausdrückliche Wahl bleibt, die Vorwahl wartet", () => {
+  it("L1: ohne Wahl in der Adresse steht während des Wartens KEIN Bericht rechts — danach die Vorwahl", async () => {
+    const oeffnen = torAufmachen();
+    await montiere(
+      `/bibliothek?${TAG_PARAM}=${encodeURIComponent(SCHLAGWORT)}`,
+      bestandImSpeicher(ALT, 60_000),
+    );
+
+    expect(zeilenTitel(container)).toEqual([]);
+    expect(
+      leseTitel(container),
+      "rechts steht ein Bericht, den weder der Mensch noch die Liste gewählt hat",
+    ).toBeNull();
+    expect(adressWert(EINTRAG_PARAM), "eine Vorwahl ist keine Wahl des Menschen").toBeNull();
+
+    await act(async () => {
+      oeffnen();
+    });
+    await ruhe();
+
+    const zeilen = zeilenTitel(container);
+    expect(zeilen.slice().sort()).toEqual(JUNGE_TITEL);
+    expect(leseTitel(container), "die Vorwahl kehrt mit der Liste nicht zurück").toBe(zeilen[0]);
+    expect(adressWert(EINTRAG_PARAM)).toBeNull();
+  });
+
+  it("L2: eine ausdrückliche Wahl steht schon WÄHREND des Wartens rechts — und bleibt danach dieselbe", async () => {
+    const oeffnen = torAufmachen();
+    await montiere(
+      `/bibliothek?${TAG_PARAM}=${encodeURIComponent(SCHLAGWORT)}&${EINTRAG_PARAM}=n2`,
+      bestandImSpeicher(ALT, 60_000),
+    );
+
+    expect(zeilenTitel(container)).toEqual([]);
+    expect(
+      leseTitel(container),
+      "die ausdrücklich adressierte Wahl wurde vom Listenbestand abhängig gemacht",
+    ).toBe(lesetitelVon("n2"));
+    expect(
+      da("bib-lesen-ausserhalb"),
+      "„nicht unter den Treffern“ ohne geprüfte Auswahl ist eine Aussage ohne Grundlage",
+    ).toBe(false);
+
+    await act(async () => {
+      oeffnen();
+    });
+    await ruhe();
+
+    expect(zeilenTitel(container).sort()).toEqual(JUNGE_TITEL);
+    expect(leseTitel(container)).toBe(lesetitelVon("n2"));
+    expect(adressWert(EINTRAG_PARAM)).toBe("n2");
+  });
+});
+
+describe("UX-02 · L3/L4 — Bestands-Erstfehler: Listenfehler links, die Lesefläche erfindet nichts", () => {
+  it("L3: ohne Wahl kein Bericht neben dem Listenfehler — nach dem Wiederholen die Vorwahl", async () => {
+    lage.kosScheitert = true;
+    await montiere(`/bibliothek?${TAG_PARAM}=${encodeURIComponent(SCHLAGWORT)}`);
+
+    const erneut = listenFehlerKnopf();
+    expect(erneut).not.toBeNull();
+    expect(leseTitel(container), "neben dem Listenfehler steht ein Rückfall-Bericht").toBeNull();
+
+    lage.kosScheitert = false;
+    await act(async () => {
+      erneut?.click();
+    });
+    await ruhe();
+
+    expect(zeilenTitel(container).sort()).toEqual(JUNGE_TITEL);
+    expect(leseTitel(container)).toBe(zeilenTitel(container)[0]);
+  });
+
+  it("L4: eine ausdrückliche Wahl bleibt neben dem Listenfehler lesbar", async () => {
+    lage.kosScheitert = true;
+    await montiere(
+      `/bibliothek?${TAG_PARAM}=${encodeURIComponent(SCHLAGWORT)}&${EINTRAG_PARAM}=n1`,
+    );
+
+    expect(listenFehlerKnopf()).not.toBeNull();
+    expect(leseTitel(container)).toBe(lesetitelVon("n1"));
+    expect(adressWert(EINTRAG_PARAM)).toBe("n1");
   });
 });

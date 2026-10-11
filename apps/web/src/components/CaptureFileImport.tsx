@@ -46,11 +46,20 @@ export interface CaptureFileImportProps {
    * `null` = keine Ablehnung aus dem Import-Weg.
    */
   importMeldung?: string | null;
+  /**
+   * NACHARBEIT 2 (R-0120): die laufende Nummer der Ablehnung. Erst sie macht eine zweite,
+   * wortgleiche Ablehnung (zweimal „zu groß") zu einem NEUEN Ereignis, das einen inzwischen
+   * gesetzten Kachelhinweis ablöst. Ohne Nummer zählt nur ein geänderter Text als neu.
+   */
+  // `| undefined` ausdrücklich: Capture reicht `fileImportMeldung?.nr` durch, und das Projekt prüft
+  // mit `exactOptionalPropertyTypes` (ohne Ablehnung gibt es keine Nummer).
+  importMeldungNr?: number | undefined;
 }
 
 export function CaptureFileImport({
   onExtractFile,
   importMeldung = null,
+  importMeldungNr,
 }: CaptureFileImportProps): JSX.Element {
   const { t } = useTranslation();
   // Referenz auf den BESTEHENDEN Datei-Dialog des „Aus Datei"-Imports. Eine aktive Kachel öffnet ihn
@@ -68,7 +77,18 @@ export function CaptureFileImport({
   // Die jüngste Ursache gewinnt: Wer eine neue Ablehnung auslöst, hört DIESE — und nicht noch
   // einmal die vorige. Das ist derselbe Griff, mit dem AUFTRAG-1840 die erste Doppelung
   // aufgelöst hat (ein Träger statt zweier), nur eine Ebene höher.
-  const [meldung, setMeldung] = useState<string | null>(null);
+  //
+  // NACHARBEIT 2 (R-0120): „jüngste Ursache" galt bis hierher nur in EINE Richtung — `meldung ??
+  // importMeldung` liess die eigene Meldung IMMER vorgehen. Ein Kachelhinweis, gefolgt von einer
+  // Größenablehnung beim Speichern, verdeckte die Ablehnung vollständig. Jetzt merkt sich die eigene
+  // Meldung, welche Import-Ablehnung beim Setzen galt; kommt danach eine neue, ist die eigene älter
+  // und tritt zurück. Abgeleitet beim Rendern, ohne Effekt: kein Zwischenbild mit dem alten Satz.
+  const importStand = importMeldung === null ? null : `${importMeldungNr ?? 0}:${importMeldung}`;
+  const [eigene, setEigene] = useState<{ text: string; ueber: string | null } | null>(null);
+  const setMeldung = (text: string | null): void => {
+    setEigene(text === null ? null : { text, ueber: importStand });
+  };
+  const meldung = eigene !== null && eigene.ueber === importStand ? eigene.text : null;
 
   // Block A: eine per Drop abgelegte Datei durch DENSELBEN onExtractFile-Seam speisen — kein zweiter
   // Pfad. Nicht unterstützte Typen (detectFileKind === "unsupported") werden ehrlich abgelehnt.
@@ -142,7 +162,7 @@ export function CaptureFileImport({
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
-        className={`mb-2 w-full cursor-pointer rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40 ${
+        className={`mb-2 w-full cursor-pointer rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand-text ${
           dragOver ? "border-brand bg-brand/5 text-text" : "border-hairline text-muted"
         }`}
       >
@@ -169,7 +189,7 @@ export function CaptureFileImport({
           // der Compiler die Auszeichnung an.
           data-wegziel={WEGZIEL_DATEI}
           onClick={openFileDialog}
-          className="rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
+          className="rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand-text"
         >
           {t(CAPTURE_FILE_TEXT.pick)}
         </button>

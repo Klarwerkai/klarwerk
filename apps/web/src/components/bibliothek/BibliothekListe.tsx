@@ -1,11 +1,13 @@
-import { Languages, Search } from "lucide-react";
+import { Languages, Search, Trash2 } from "lucide-react";
 import { type ReactNode, type UIEvent, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
 import type { KoPreviewSource } from "../../lib/koPreview";
 import { useLesevariante } from "../../lib/lesevariante";
+import { statusSchluessel } from "../../lib/wissensstatus";
+import { leerzustandsRahmen } from "../EmptyStateCtas";
 import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
-import { cx } from "../ui";
+import { Button, cx } from "../ui";
 import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from "./zustand";
 
 // ==================================================================================================
@@ -183,6 +185,33 @@ export interface BibMarkierung {
   readonly onLeeren: () => void;
 }
 
+// ================================================================================================
+// R-0959 · LÖSCHEN DIREKT AUS DER TREFFERLISTE — DIE LISTE ZEICHNET, DIE FLÄCHE ENTSCHEIDET.
+// ================================================================================================
+// Bis v0.9.32 trug die Trefferzeile einen Papierkorb mit Inline-Rückfrage (SCRUM-401, Layout
+// SCRUM-419). Beim Umbau zur Fläche (JOB 3063) ist er weggefallen, ohne in der Umzugstabelle von
+// `BibliothekFlaeche.tsx` aufzutauchen; gelöscht wurde seitdem nur noch über das „…"-Menü des
+// GELESENEN Eintrags. Hier steht er wieder — als Geschwister des Zeilenknopfs (kein Knopf im Knopf).
+//
+// DIE RÜCKFRAGE IST EINE RUHIGE ZEILE UNTER DEM TREFFER, KEIN DIALOG: sie steht genau dort, wo
+// geklickt wurde (der Befund aus JOB 3637 — eine Rückfrage ausserhalb des Blicks „tut nichts" —
+// kann hier baulich nicht entstehen), sie sperrt den Rest der Liste nicht, und sie nimmt die
+// Bauform der Prüfliste auf (Frage · Behalten · Ja, löschen; `pages/Validation.tsx`). Die Liste
+// kennt weder Rechte noch Aufruf: `darf`, `laeuft` und `fehler` kommen von der Fläche.
+export interface BibZeilenLoeschen {
+  /** Darf der angemeldete Mensch DIESEN Beitrag löschen? Ohne Recht kein Papierkorb. */
+  readonly darf: (id: string) => boolean;
+  /** Die Zeile, deren Rückfrage gerade offen ist — höchstens eine. */
+  readonly offen: string | null;
+  /** Der Löschaufruf läuft: beide Knöpfe der Rückfrage sind gesperrt. */
+  readonly laeuft: boolean;
+  /** Der Grund eines ECHTEN Fehlschlags (nicht 404), am Bedienort; sonst `null`. */
+  readonly fehler: string | null;
+  readonly onFragen: (id: string) => void;
+  readonly onBehalten: () => void;
+  readonly onLoeschen: (id: string) => void;
+}
+
 export function BibliothekListe({
   q,
   onQ,
@@ -203,9 +232,12 @@ export function BibliothekListe({
   onNachladen,
   leerAktion,
   leerRaum,
+  leerFilter = null,
   lage,
   ansicht = "liste",
   markierung = null,
+  antwort = null,
+  loeschen = null,
 }: {
   q: string;
   onQ: (wert: string) => void;
@@ -251,6 +283,10 @@ export function BibliothekListe({
   // R-0446: WORIN nichts gefunden wurde (und ggf. der Weg in den anderen Bestand). Steht nur unter
   // „Nichts gefunden." — der Bestandssatz „Noch keine Einträge." braucht keinen Suchraum.
   leerRaum: ReactNode;
+  // SPEICHERN-ERHOLUNG (Ausbauliste Punkt 6): WELCHE Filter den Nulltreffer verursachen und der
+  // direkte Weg, sie zurückzusetzen. Der Aufrufer kennt die Filter (s. `menues`); die Liste gibt
+  // ihnen nur den Ort unter „Nichts gefunden.". `null` = kein aktiver Filter, dann steht nichts da.
+  leerFilter?: ReactNode;
   // JOB 3335: die Lage auf der Fläche — s. `LAGE_KLASSE` oben. Der Aufrufer weiss, welches Band
   // gilt; diese Datei weiss, wie breit sie darin ist.
   lage: BibListenLage;
@@ -258,6 +294,11 @@ export function BibliothekListe({
   // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
   ansicht?: BibAnsicht;
   markierung?: BibMarkierung | null;
+  // R-0429 Slice 2: der Antwortbereich „Von der KI verdichtet" (`BibliothekAntwort.tsx`). Er steht
+  // ÜBER den Treffern und getrennt von ihnen; der Aufrufer setzt ihn nur, solange gesucht wird.
+  antwort?: ReactNode;
+  // R-0959: der Papierkorb je Treffer samt ruhiger Rückfrage. Ohne ihn zeichnet die Liste keinen.
+  loeschen?: BibZeilenLoeschen | null;
 }): JSX.Element {
   const { t } = useTranslation();
   const spur = useRef<HTMLDivElement | null>(null);
@@ -270,6 +311,35 @@ export function BibliothekListe({
       onNachladen();
     }
   });
+
+  // R-0959: öffnet sich die Rückfrage einer Zeile, geht der Fokus auf „Behalten" — der bewahrende
+  // Knopf, damit ein versehentliches Enter nichts löscht. Schliesst sie über „Behalten", kehrt er
+  // auf den Papierkorb derselben Zeile zurück, statt im Nichts zu landen. Gesucht wird über die
+  // Marken in der Spur; die Liste hält dafür keinen Ref je Zeile. Die Kennung wird am Attribut
+  // verglichen und nicht in den Selektor geschrieben — sie ist eine fremde Zeichenkette, und
+  // `CSS.escape` ist nicht überall da (dieselbe Vorsicht wie `MehrAbschnitte.tsx`).
+  const zeileLoeschbar = (id: string): boolean => loeschen?.darf(id) ?? false;
+  const offeneLoeschung = loeschen?.offen ?? null;
+  const vorherOffen = useRef<string | null>(null);
+  useEffect(() => {
+    const el = spur.current;
+    const vorher = vorherOffen.current;
+    vorherOffen.current = offeneLoeschung;
+    if (!el || vorher === offeneLoeschung) {
+      return;
+    }
+    const zuZeile = (marke: string, id: string): HTMLElement | undefined =>
+      [...el.querySelectorAll<HTMLElement>(`[data-testid="${marke}"]`)].find(
+        (k) => k.dataset.bibId === id,
+      );
+    if (offeneLoeschung !== null) {
+      zuZeile("bib-zeile-loeschen-rueckfrage", offeneLoeschung)
+        ?.querySelector<HTMLElement>("[data-zeile-behalten]")
+        ?.focus();
+    } else if (vorher !== null) {
+      zuZeile("bib-zeile-loeschen", vorher)?.focus();
+    }
+  }, [offeneLoeschung]);
 
   const beiScroll = (e: UIEvent<HTMLDivElement>): void => {
     if (amListenende(e.currentTarget)) {
@@ -298,7 +368,7 @@ export function BibliothekListe({
             data-testid="bib-suchfeld"
             className="flex min-w-0 flex-1 items-center gap-2 rounded-btn border border-hairline bg-page px-3 py-2"
           >
-            <Search size={15} aria-hidden className="shrink-0 text-muted" />
+            <Search size={15} strokeWidth={1.8} aria-hidden className="shrink-0 text-muted" />
             <label htmlFor="bib-suche" className="sr-only">
               {t("lib.searchLabel")}
             </label>
@@ -309,14 +379,17 @@ export function BibliothekListe({
               onChange={(e) => onQ(e.target.value)}
               placeholder={t("lib.searchLabel")}
               data-testid="bib-suche"
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-[#9AA2B1]"
+              // WCAG 1.4.3 (Audit nacharbeit-6): das Mockup-Grau #9AA2B1 maß als Platzhalter auf der
+              // Seitenfläche 2,3–2,4:1. Wie auf Start und Fragen (zielbild-h5) nimmt das Produkt
+              // Tinte-2 (`muted`), die in beiden Themen ≥ 4,5:1 erreicht.
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-text outline-none placeholder:text-muted"
             />
           </div>
           {menues.punkte}
         </div>
         <div className="flex items-center justify-between gap-2">
           {/* Ein echtes `fieldset` statt `role="group"` — die im Haus getroffene Entscheidung
-              (`LibraryScopeBar.tsx:159`, `RichTextEditor.tsx:1826`): die Gruppe bekommt ihren
+              (`RichTextEditor.tsx:1826`): die Gruppe bekommt ihren
               Namen aus dem Element plus `aria-label`, nicht aus einem ARIA-Nachbau. */}
           <fieldset
             data-testid="bib-segment"
@@ -339,7 +412,7 @@ export function BibliothekListe({
                       : "text-muted",
                   )}
                 >
-                  {s === "alle" ? t("lib.segment.alle") : t(`status.${s}`)}
+                  {s === "alle" ? t("lib.segment.alle") : t(statusSchluessel(s))}
                 </button>
               );
             })}
@@ -350,6 +423,8 @@ export function BibliothekListe({
           </div>
         </div>
       </div>
+
+      {antwort}
 
       {/* JOB 3063 R6: der Hinweis „Stand von <Zeit> · Auffrischung fehlgeschlagen" — die zweite
           Hälfte der Zusage aus REGELN §7 und Auftrag §9. Die Zeilen bleiben stehen (dafür sorgt
@@ -380,6 +455,46 @@ export function BibliothekListe({
         </div>
       ) : null}
 
+      {/* ==========================================================================================
+          JOB 3531 · Q6d — OFFLINE SAGT DIE LISTE, WAS MIT IHR IST. NICHTS ÜBER DEN BESTAND.
+          ==========================================================================================
+          HIER STAND BIS JOB 3531 NICHTS. Der Zweig `pausiert` war seit JOB 3099 aus dem
+          Leerzustand ausgenommen (zu Recht — s. den Leerzweig in der Spur), und an seine Stelle trat
+          Schweigen: eine leere Fläche, aus der niemand ablesen kann, ob gesucht wurde, ob es nichts
+          gibt oder ob die Verbindung fehlt.
+
+          WAS DER SATZ SAGEN DARF UND WAS NICHT: Er ist eine Aussage über die MASCHINE („ohne
+          Verbindung kann gerade nicht gesucht werden"), nie eine über den Bestand. Offline geht
+          gar kein Ruf hinaus — über Treffer weiss diese Fläche nichts, und genau das steht da.
+          Dazu die Zusage, dass es von selbst weitergeht (N-0036): der Abruf ist ANGEHALTEN, nicht
+          gescheitert. Deshalb entsteht hier auch KEIN Knopf — ein „Erneut versuchen" wäre eine
+          Handlung ohne Wirkung; der Wiederholungsknopf bleibt, wo er hingehört, im Zweig `fehler`.
+          Der Suchtext bleibt unangetastet im Feld (`q` oben), denn die Suche läuft mit dem Netz von
+          selbst weiter.
+
+          AUFTRAG gesamt-suchfehler (N-0036 „für assistive Technik ankündigen"): bis hierher stand der
+          Block als stummes `<div>` IN der Spur; die Gegenprüfung vom 06.09. fand „keine
+          Status-/Alert-/Live-Region". Die Bauform ist die des Hauses (`AuffrischungHinweis.tsx`,
+          `MehrAbschnitte.tsx`): ein `<output aria-live="polite">`. Anders als dort steht die Region
+          hier IMMER, nur ihr Inhalt hängt an `pausiert` — ein Vorleseprogramm meldet zuverlässig nur
+          Änderungen in einer Region, die schon vor der Änderung im Baum stand; eine mit dem Satz
+          zusammen eingefügte Region bleibt je nach Programm stumm. Sie steht ÜBER der Spur und nicht
+          darin, weil die Spur in der Kartenansicht ein Raster ist und eine leere Region dort eine
+          leere Zelle samt Abstand belegen würde. `polite` und nicht `assertive`: der Satz unterbricht
+          niemanden beim Tippen, er folgt danach. */}
+      <output aria-live="polite" data-testid="bib-offline-ansage" className="block shrink-0">
+        {!laedt && !fehler && pausiert ? (
+          <span data-testid="bib-offline" className="block px-4 py-3">
+            <span className="block text-[12.5px] leading-relaxed text-muted">
+              {t("lib.liste.offline")}
+            </span>
+            <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">
+              {t("lib.liste.offlineWeiter")}
+            </span>
+          </span>
+        ) : null}
+      </output>
+
       {/* JOB 3335: die Marke trägt die Rollspur nach aussen — die Fläche merkt sich beim Einklappen
           der Liste (Tablet) deren Rollstand und stellt ihn beim Ausklappen wieder her; dafür muss
           sie das rollende Element finden, ohne seine Klassen zu kennen. */}
@@ -409,33 +524,8 @@ export function BibliothekListe({
             </button>
           </div>
         ) : null}
-        {/* ==========================================================================================
-            JOB 3531 · Q6d — OFFLINE SAGT DIE LISTE, WAS MIT IHR IST. NICHTS ÜBER DEN BESTAND.
-            ==========================================================================================
-            HIER STAND BIS JOB 3531 NICHTS. Der Zweig `pausiert` war seit JOB 3099 aus dem
-            Leerzustand ausgenommen (zu Recht — s. unten), und an seine Stelle trat Schweigen: eine
-            leere Fläche, aus der niemand ablesen kann, ob gesucht wurde, ob es nichts gibt oder ob
-            die Verbindung fehlt. Der Kommentar an dieser Stelle nannte den fehlenden Satz als
-            RESTSCHULD und begründete sie mit einer Sperre auf `apps/web/src/i18n.ts` (belegt von
-            JOB 3079/3095). Diese Sperre ist weg, die Restschuld ist damit eingelöst und ihre
-            Begründung nicht mehr wahr; sie steht deshalb nicht daneben, sondern ist ersetzt.
-
-            WAS DER SATZ SAGEN DARF UND WAS NICHT: Er ist eine Aussage über die MASCHINE („ohne
-            Verbindung kann gerade nicht gesucht werden"), nie eine über den Bestand. Offline geht
-            gar kein Ruf hinaus — über Treffer weiss diese Fläche nichts, und genau das steht da.
-            Dazu die Zusage, dass es von selbst weitergeht (N-0036): der Abruf ist ANGEHALTEN, nicht
-            gescheitert. Deshalb entsteht hier auch KEIN Knopf — ein „Erneut versuchen" wäre eine
-            Handlung ohne Wirkung; der Wiederholungsknopf bleibt, wo er hingehört, im Zweig `fehler`
-            darüber. Der Suchtext bleibt unangetastet im Feld (`q` oben), denn die Suche läuft mit
-            dem Netz von selbst weiter. */}
-        {!laedt && !fehler && pausiert ? (
-          <div data-testid="bib-offline" className="px-4 py-3">
-            <p className="text-[12.5px] leading-relaxed text-muted">{t("lib.liste.offline")}</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-              {t("lib.liste.offlineWeiter")}
-            </p>
-          </div>
-        ) : null}
+        {/* Der Offline-Satz (Lage `pausiert`) steht seit Auftrag gesamt-suchfehler nicht mehr hier,
+            sondern in der Live-Region `bib-offline-ansage` über der Spur — s. die Begründung dort. */}
         {/* ==========================================================================================
             JOB 3099 · Q6c — DER LEERZUSTAND VERLANGT EINEN ERFOLGREICHEN ABRUF.
             ==========================================================================================
@@ -443,8 +533,8 @@ export function BibliothekListe({
             samt Angebot, den Eintrag neu zu erfassen. Er darf deshalb nur nach einem erfolgreichen
             Abruf entstehen. Die dritte Lage `pausiert` (offline angehalten) war bis JOB 3099 keiner
             der beiden alten Zweige — und fiel damit in den Leerzweig. Sie hat seit JOB 3531 ihren
-            eigenen Zweig direkt darüber; `!pausiert` hält die beiden auseinander, damit nie beide
-            Aussagen zugleich dastehen.
+            eigenen Zweig (heute die Live-Region `bib-offline-ansage` über der Spur); `!pausiert`
+            hält die beiden auseinander, damit nie beide Aussagen zugleich dastehen.
 
             ==========================================================================================
             JOB 3788 — WELCHER DER ZWEI SÄTZE GILT, ENTSCHEIDET DIE FLÄCHE. NICHT MEHR DAS SUCHFELD.
@@ -468,6 +558,10 @@ export function BibliothekListe({
             <p className="text-[12.5px] leading-relaxed text-muted">
               {eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
             </p>
+            {/* R-0956 (Ben, Nacharbeit 7): der WIRKLICH leere Bestand ordnet in den Wissenskreis ein
+                — gemeinsamer Rahmen, ohne zweiten Knopf: der nächste Schritt ist `leerAktion` unten.
+                Der eingegrenzte Bestand (Filter/Suche) bekommt sie nicht; dort ist nichts leer. */}
+            {eingegrenzt ? null : leerzustandsRahmen(t, "library", [], () => null)}
             {/* Der erste Absatz bleibt der Satz selbst (Tests lesen `bib-leer p`); die Ortsangabe
                 folgt als eigener Block darunter. */}
             {eingegrenzt ? (
@@ -476,6 +570,14 @@ export function BibliothekListe({
                 className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-relaxed text-muted"
               >
                 {leerRaum}
+              </div>
+            ) : null}
+            {eingegrenzt && leerFilter ? (
+              <div
+                data-testid="bib-leer-filter"
+                className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-relaxed text-muted"
+              >
+                {leerFilter}
               </div>
             ) : null}
             <div className="mt-2">{leerAktion}</div>
@@ -526,6 +628,8 @@ export function BibliothekListe({
                   ? "overflow-hidden rounded-card border border-hairline"
                   : "border-b border-hairline-soft",
                 p.id === gewaehlt ? "bg-[#FDEADD]" : "hover:bg-hairline-soft",
+                // R-0959: der Papierkorb sitzt oben rechts im Block (s. unten).
+                zeileLoeschbar(p.id) ? "relative" : "",
                 // Im Auswahlmodus ein Raster: Häkchen links über beide Reihen, Zeilenknopf und
                 // Aufklapper rechts — ohne zusätzliche Hülle, die Liste ohne Auswahl bleibt DOM-gleich.
                 markierung ? "grid grid-cols-[auto_minmax(0,1fr)]" : "",
@@ -551,7 +655,12 @@ export function BibliothekListe({
                 data-bib-id={p.id}
                 aria-current={p.id === gewaehlt ? "true" : undefined}
                 onClick={() => onWaehle(p.id)}
-                className="group flex w-full items-start gap-2.5 border-inherit bg-inherit px-4 py-3 text-left outline-none"
+                className={cx(
+                  "group flex w-full items-start gap-2.5 border-inherit bg-inherit px-4 py-3 text-left outline-none",
+                  // R-0959: rechts Platz für den Papierkorb, damit er keinen Titel überdeckt. Nur
+                  // das RECHTE Polster — die gemessenen Zeilenmaße (oben/links, V10) bleiben.
+                  zeileLoeschbar(p.id) ? "pr-11" : "",
+                )}
               >
                 <span
                   aria-hidden
@@ -598,6 +707,72 @@ export function BibliothekListe({
                 source={{ ...p.vorschau, id: p.id }}
                 className="-mt-2 pb-3 pl-[34px] pr-4"
               />
+              {/* R-0959: der Papierkorb — nur für Berechtigte, ruhig in der Textfarbe der Meta-Zeile;
+                  die Warnfarbe trägt erst der bestätigende Knopf der Rückfrage. Er öffnet nichts und
+                  wechselt keine Auswahl, er fragt nur.
+                  WARUM ER IM DOM HINTER DEM AUFKLAPPER STEHT, obwohl er oben rechts sitzt: die
+                  Tastenfolge je Treffer bleibt Zeilenknopf → Vorschau-Umschalter, wie JOB 3488 sie
+                  festgelegt hat, und der Papierkorb kommt als DRITTER Halt desselben Treffers dazu
+                  — vor dem nächsten Treffer. Geschwister, kein Knopf im Knopf. */}
+              {loeschen?.darf(p.id) ? (
+                <button
+                  type="button"
+                  data-testid="bib-zeile-loeschen"
+                  data-bib-id={p.id}
+                  aria-label={t("zeilenloeschen.knopf", { titel: p.titel })}
+                  title={t("ko.deleteButton")}
+                  aria-expanded={loeschen.offen === p.id}
+                  disabled={loeschen.laeuft}
+                  onClick={() => loeschen.onFragen(p.id)}
+                  className="absolute right-2 top-2.5 rounded-btn p-1.5 text-muted outline-none hover:bg-hairline-soft hover:text-text focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-45"
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
+              ) : null}
+              {/* R-0959: die ruhige Zeile. Sie steht UNTER dem Treffer, über die volle Breite des
+                  Blocks (im Auswahlraster über beide Spalten), mit einer Haarlinie statt eines
+                  Kastens. Die Frage ist umbruchfähig (`min-w-0 flex-1`), damit ein langer Text die
+                  Knöpfe nicht wegdrückt (Pedis Layout-Befund vom 04.07., gehalten vom Sammler in
+                  `tests/app/mega45-loeschbestaetigung-sammler.test.ts`). `aria-busy` trägt den
+                  laufenden Aufruf; der Fehlergrund steht hier und bleibt, statt als Meldung zu
+                  verfallen — dieselbe Regel wie an der Rückfrage der Lesefläche. */}
+              {loeschen?.offen === p.id ? (
+                <div
+                  data-testid="bib-zeile-loeschen-rueckfrage"
+                  data-bib-id={p.id}
+                  aria-busy={loeschen.laeuft}
+                  className="col-span-full border-t border-hairline-soft px-4 py-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-text">
+                      {t("ko.deleteQ")}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      data-zeile-behalten=""
+                      disabled={loeschen.laeuft}
+                      onClick={loeschen.onBehalten}
+                    >
+                      {t("ko.deleteKeep")}
+                    </Button>
+                    <Button
+                      variant="danger"
+                      disabled={loeschen.laeuft}
+                      onClick={() => loeschen.onLoeschen(p.id)}
+                    >
+                      {t("ko.deleteYes")}
+                    </Button>
+                  </div>
+                  {loeschen.fehler ? (
+                    <p
+                      data-testid="bib-zeile-loeschen-fehler"
+                      className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                    >
+                      {loeschen.fehler}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ),
         )}

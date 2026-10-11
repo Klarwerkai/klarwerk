@@ -23,7 +23,6 @@ import {
   gruppeAngehalten,
   gruppeVeraltet,
   isGroupError,
-  isGroupLoaded,
   isGroupLoading,
   isGroupStale,
   naechsterFristablauf,
@@ -114,10 +113,10 @@ describe("JOB 3808 · O6f · das neue Feld ändert keine der vorhandenen Antwort
   ];
 
   for (const fall of faelle) {
-    it(`O6f · ${fall.name} ⇒ Phase, Stale und die drei Prädikate bleiben gleich`, () => {
+    it(`O6f · ${fall.name} ⇒ Phase, Stale und die Prädikate bleiben gleich`, () => {
       expect(groupLoadPhase(fall.mit)).toBe(groupLoadPhase(fall.ohne));
       expect(isGroupStale(fall.mit)).toBe(isGroupStale(fall.ohne));
-      expect(isGroupLoaded(fall.mit)).toBe(isGroupLoaded(fall.ohne));
+      // R-1349: `isGroupLoaded` ist entfernt (kein Produktleser) — „geladen" ist die Phase oben.
       expect(isGroupLoading(fall.mit)).toBe(isGroupLoading(fall.ohne));
       expect(isGroupError(fall.mit)).toBe(isGroupError(fall.ohne));
     });

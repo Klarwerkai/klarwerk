@@ -281,7 +281,7 @@ async function bisZurGeladenenDatei(s: SeiteMitDialogUndRoute, entwurfId: string
     VERLASSEN_KNOPF,
   );
   expect(
-    await s.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.fTitle")),
+    await s.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.wizard.titleLabel")),
     "das Titelfeld des Expertenformulars war nicht auffindbar",
   ).toBe(true);
   await s.fill(TITELMARKE, "");

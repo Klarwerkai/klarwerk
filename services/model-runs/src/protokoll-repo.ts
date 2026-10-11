@@ -1,3 +1,4 @@
+import { nurGelisteteLauffelder } from "./positivliste";
 import { type Preisliste, mitKosten } from "./preisliste";
 import type { ModelRunRepo } from "./repo";
 import type { ModelRunRecord } from "./types";
@@ -8,6 +9,7 @@ import type { ModelRunRecord } from "./types";
 //
 // Ein Mantel um das eigentliche Protokoll-Repo, den die Kompositionswurzel einmal anlegt. Damit gilt
 // für JEDEN Schreiber (Reasoner, künftige Wege) dasselbe, ohne dass einer es vergessen kann:
+//   0. nur Felder der Positivliste (`positivliste.ts`, R-0623) werden übernommen;
 //   1. die Kosten werden aus Verbrauch × Preisliste berechnet und MIT dem Preisstand gespeichert;
 //   2. nach dem Speichern geht eine strukturierte Logzeile `ki_lauf` an die Logsenke — dieselben
 //      Metadaten wie der Datensatz, ohne Fehlertext, Anfragenden und Gegenstand (die gehören in das
@@ -83,7 +85,8 @@ export class ProtokollModelRunRepo implements ModelRunRepo {
   }
 
   async append(record: ModelRunRecord): Promise<void> {
-    const lauf = mitKosten(record, this.preisliste);
+    // R-0623: nur Felder der Positivliste werden erhoben — vor Kosten, Speicher und Logzeile.
+    const lauf = mitKosten(nurGelisteteLauffelder(record), this.preisliste);
     await this.inner.append(lauf);
     try {
       this.log?.(kiLaufLogzeile(lauf));
@@ -103,5 +106,20 @@ export class ProtokollModelRunRepo implements ModelRunRepo {
     return this.inner
       .recent(limit)
       .then((alle) => alle.filter((r) => r.startedAt >= von && r.startedAt < bis));
+  }
+
+  // Betroffenenrechte (R-0663): reicht den Leseweg je Person durch. Kennt die innere Ablage ihn
+  // nicht, wird der ganze Bestand gelesen und gefiltert — vollständig statt gekappt.
+  vonAkteur(actor: string): Promise<ModelRunRecord[]> {
+    if (this.inner.vonAkteur) {
+      return this.inner.vonAkteur(actor);
+    }
+    return this.inner
+      .recent(Number.MAX_SAFE_INTEGER)
+      .then((alle) =>
+        alle
+          .filter((r) => actor.length > 0 && r.actor === actor)
+          .sort((a, b) => a.startedAt.localeCompare(b.startedAt)),
+      );
   }
 }

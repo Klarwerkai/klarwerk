@@ -24,23 +24,28 @@
 // gemacht. Beides wäre eine neue Modulkante für eine Frage, die eine Routen-Frage ist.
 //
 // ================================================================================================
-// DIE BENANNTE GRENZE — BITTE NICHT ÜBERLESEN.
+// aufnahme:20260922:gesamt-leserechte (Nacharbeit 19) — VARIANTE B UND UNGEKLÄRTE STUFEN.
 // ================================================================================================
 //
-// `isConfidential` behandelt `vertraulich` und `streng_vertraulich` GLEICH (confidentiality.ts:41).
-// Dieses Prädikat erbt das bewusst. Wir ZEIGEN drei Stufen und SCHÜTZEN zwei davon identisch:
-// für die Sichtbarkeit macht `streng_vertraulich` heute keinen Unterschied zu `vertraulich`.
+// Bis hierher stand an dieser Stelle „Pedis Variante A": `vertraulich` und `streng_vertraulich`
+// wurden gleich geschützt, `ko.validate` öffnete beide, und eine fehlende Stufe galt als „intern".
+// Beides ist abgelöst durch die Entscheidungen vom 11.10.2026
+// (QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011.json):
 //
-// Das ist Pedis Variante A und ausdrücklich so gewollt — nicht ein übersehener Fall. Eine dritte
-// Schutzstufe wäre eine Freigabestufe je Nutzer (Variante B): ein Feld am Nutzer, eine
-// Verwaltungsfläche, eine Wanderung und eine zweite Achse neben der Rolle. Das ist NICHT
-// entschieden. Wer hier heimlich eine Rangprüfung einbaut, baut Variante B durch die Hintertür.
+//   · Entscheidung 15 — Variante B: „persönliches Freigabeniveau plus Objekt-/Gruppenrechte".
+//     Jedes Objekt hat einen SCHUTZRANG (intern 0 · vertraulich 1 · streng vertraulich 2), jeder
+//     Mensch einen FREIGABERANG aus seinem persönlichen Niveau (`SessionUser.freigabe`, gesetzt in
+//     der Nutzerverwaltung). Sichtbar ist, was Space-Recht UND Rang erlauben — oder der Autor
+//     selbst. Die Rolle öffnet keine Stufe mehr.
+//   · Entscheidung 16 — eine FEHLENDE, NULL- oder UNBEKANNTE Stufe ist „ungeklärt" und wird wie
+//     `vertraulich` geschützt, bis jemand einstuft. Ausdrücklich „intern" ist seit JOB 3076
+//     gespeichert und damit von „nie eingestuft" unterscheidbar.
 //
-// Ebenfalls Grenze: eine UNBEKANNTE Stufe gilt als „intern" (also sichtbar), weil
-// `isConfidential` das so auslegt. Das ist hier bewusst NICHT strenger gefasst, denn eine zweite
-// Auslegung derselben Stufe wäre genau die zweite Wahrheit, gegen die diese Datei gebaut ist.
-// Getragen wird das davon, dass die Schreibwege nur geprüfte Werte durchlassen
-// (`isValidConfidentiality` an der Upload-Grenze, SCRUM-509 am Änderungsweg).
+// DIE ÜBERGANGSREGEL (`freigaberang`): ein Konto OHNE gesetztes Niveau bekommt Rang 1, wenn seine
+// Rolle `ko.validate` trägt (Controller/Admin, die ungeklärte Objekte einstufen müssen), sonst 0.
+// „Streng vertraulich" öffnet sie NIE — dafür braucht es immer ein ausdrücklich gesetztes Niveau.
+// Diese Übergangsregel ist eine Festlegung dieser Umsetzung, keine der Entscheidungen; sie steht
+// in docs/entscheidungen/gesamt-leserechte.md zur Bestätigung.
 import { type Confidentiality, isConfidential, sqlDeletedAtLeer } from "../../knowledge-object";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
@@ -51,29 +56,115 @@ import type { SessionUser } from "./http";
 export interface SichtbarkeitsFakten {
   confidentiality?: Confidentiality | null | undefined;
   author?: string | null | undefined;
+  // AUFNAHME 20260922 · confluence-import-rechte (R-0549): die Leser aus der Quelle. Optional in
+  // der Mindestform — eine Projektion ohne das Feld fällt auf die Stufenregel zurück (s. Grenze
+  // an `darfSehen`).
+  quellrechte?: { leser?: readonly string[] | undefined } | null | undefined;
+  /** produkt:20261007:spaces — der führende Space; fehlt er, gilt allein Stufe + Autor. */
+  spaceId?: unknown;
+}
+
+// ================================================================================================
+// produkt:20261007:spaces — DER FÜHRENDE SPACE IST EINE ZWEITE, UNABHÄNGIGE BEDINGUNG (UND).
+// ================================================================================================
+//
+// Trägt ein Objekt eine `spaceId` (Zeichenkette), sieht es nur, wessen `spaceLesbar` diese Kennung
+// enthält. Die Bedingung tritt NEBEN die Stufenregel, nie an ihre Stelle: ein vertrauliches Objekt
+// in einem offenen Space bleibt vertraulich, ein internes Objekt in einem geschlossenen Space bleibt
+// geschlossen. Kein Rollen-Durchgriff (auch `ko.validate` öffnet keinen fremden Space) und keine
+// Autor-Ausnahme: der führende Space bestimmt die Rechte — wer ihn wechselt, sieht die Folge vorher
+// in der Rechtevorschau (`routes/spaces-routes.ts`).
+//
+// FAIL-CLOSED: fehlt `spaceLesbar` am Betrachter (ein Aufbau ohne Spaces) oder ist die Kennung
+// unbekannt, bleibt das Objekt verborgen. Ein Objekt ohne `spaceId` — der gesamte Bestand vor
+// diesem Auftrag — ist von dieser Bedingung nicht berührt.
+function spaceErlaubt(user: SessionUser, spaceId: unknown): boolean {
+  if (typeof spaceId !== "string") {
+    return true;
+  }
+  return user.spaceLesbar?.has(spaceId) === true;
+}
+
+/**
+ * Schutzrang einer Objektstufe: intern 0 · vertraulich 1 · streng vertraulich 2. Jede andere
+ * Angabe — fehlend, `null`, unbekannt — ist UNGEKLÄRT und zählt wie vertraulich (Entscheidung 16).
+ */
+export function schutzrang(stufe: unknown): number {
+  if (stufe === "intern") {
+    return 0;
+  }
+  if (stufe === "streng_vertraulich") {
+    return 2;
+  }
+  return 1;
+}
+
+/**
+ * Freigaberang eines Menschen: das persönliche Niveau, wenn gesetzt (Entscheidung 15), sonst die
+ * Übergangsregel aus dem Dateikopf — nie Rang 2 ohne ausdrückliche Freigabe.
+ */
+export function freigaberang(user: SessionUser): number {
+  if (user.freigabe === "intern") {
+    return 0;
+  }
+  if (user.freigabe === "vertraulich") {
+    return 1;
+  }
+  if (user.freigabe === "streng_vertraulich") {
+    return 2;
+  }
+  return can(user.role, "ko.validate") ? 1 : 0;
+}
+
+function istAutor(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
+  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
+  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
 }
 
 /**
  * Darf dieser Mensch dieses Wissensobjekt sehen?
  *
- * Die Regel (SCRUM-506, erweitert um den Autor):
- *   - nicht vertraulich  → jeder mit `ko.read` (die Route prüft das vorher)
- *   - vertraulich        → nur `ko.validate` (Controller/Admin) ODER der Autor selbst
+ * Die Regel (Variante B, Nacharbeit 19):
+ *   - der führende Space muss lesbar sein (Gruppenrecht, s. `spaceErlaubt`), UND
+ *   - der Schutzrang des Objekts liegt nicht über seinem Freigaberang, ODER er ist der Autor.
  *
  * Die Autor-Ausnahme ist keine Erfindung dieses Auftrags: dieselbe Zeile trägt bereits das Löschen
  * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
  * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
+ *
+ * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER UND STUFE. Trägt das Objekt
+ * eine Leserliste aus der Quelle, ist sie eine zusätzliche NOTWENDIGE Bedingung: wer in Confluence
+ * nicht lesen darf, liest in Klara nicht — kein `ko.validate`-Inhaber und auch NICHT der annehmende
+ * Autor (Ben, Nacharbeit 3: ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff,
+ * den die Quelle ihm verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht
+ * „offen". Wer gelistet ist, durchläuft danach die Regel oben (Space, Rang oder Autorschaft) —
+ * die Liste ersetzt das persönliche Freigabeniveau nicht (aufnahme:20260922:gesamt-leserechte,
+ * Ben Nacharbeit 24, Entscheidung 15).
+ *
+ * PFLICHT FÜR JEDE PROJEKTION: wer Sichtbarkeitsfakten verkürzt weiterreicht, muss `quellrechte`
+ * mitnehmen (Gesamtanweisung, Papierkorb). Ohne sie fiele das Objekt auf die Stufenregel zurück.
  */
 export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
-  if (!isConfidential(ko.confidentiality)) {
+  // Zusammenführung (Nacharbeit 23): der führende Space ist eine UNABHÄNGIGE UND-Bedingung — er gilt
+  // vor jeder weiteren Regel, auch vor den Quelllesern (ein Quellleser ohne Space-Leserecht liest
+  // nicht; die Quellleser öffnen keinen fremden Space).
+  if (!spaceErlaubt(user, ko.spaceId)) {
+    return false;
+  }
+  // R-0549 (main): eine Leserliste aus der Quelle ist eine NOTWENDIGE Bedingung — wer nicht darin
+  // steht, liest nicht (auch nicht der annehmende Autor, Ben Nacharbeit 3). Sie ERSETZT aber die
+  // Stufenprüfung nicht (Ben, Nacharbeit 24; Entscheidung 15 „persönliches Freigabeniveau PLUS
+  // Objekt-/Gruppenrechte“): ein gelistetes Konto braucht zusätzlich den Freigaberang wie jeder
+  // andere Leser. Dieselbe Regel steht im SQL-Prädikat (`sqlSichtbarkeitFuer`).
+  const leser = ko.quellrechte?.leser;
+  if (Array.isArray(leser) && !(user.id.length > 0 && leser.includes(user.id))) {
+    return false;
+  }
+  if (schutzrang(ko.confidentiality) <= freigaberang(user)) {
     return true;
   }
-  if (can(user.role, "ko.validate")) {
-    return true;
-  }
-  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
-  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
-  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+  return istAutor(user, ko);
 }
 
 /**
@@ -105,8 +196,83 @@ export function sichtbareFuer<T extends SichtbarkeitsFakten>(
  */
 export type Sichtbarkeitsfilter = (ko: SichtbarkeitsFakten) => boolean;
 
-export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter {
+// produkt:20261011:peter-p14 — `eingrenzung` (der Firmenfilter, `firmenbereich.ts`) tritt als UND
+// HINTER `darfSehen`: sie kann die Menge nur verkleinern, nie erweitern. Sie steht hier und nicht an
+// jeder Route, damit jede Übergabe ein Aufruf DIESER Entscheidung bleibt.
+export function sichtbarkeitsfilterFuer(
+  user: SessionUser,
+  eingrenzung?: Sichtbarkeitsfilter,
+): Sichtbarkeitsfilter {
+  if (eingrenzung) {
+    return (ko) => darfSehen(user, ko) && eingrenzung(ko);
+  }
   return (ko) => darfSehen(user, ko);
+}
+
+/**
+ * R-1175 (aufnahme:20260922:gesamt-rechte-inventar) — DER BETRACHTER EINES SCHLÜSSELS.
+ *
+ * Ein Add-in- oder Dienst-Schlüssel ist kein Konto. Bis hierher entschied `/api/ask` für ihn mit
+ * einer eigenen Zeile („ohne Space oder offener Space"), also NICHT mit der einen Entscheidung.
+ * Jetzt fragt auch dieser Weg `darfSehen` — mit einem Betrachter, der so wenig darf wie möglich:
+ * Rolle `viewer` (kein `ko.validate`, also nichts Vertrauliches), KEINE Kennung (leer ist nach
+ * `darfSehen` nie Autorschaft) und als lesbare Spaces genau die offenen. Das Ergebnis ist dieselbe
+ * Menge wie die alte Zeile, enger nur um Vertrauliches, das der Zweig ohnehin verwirft.
+ *
+ * aufnahme:20260922:gesamt-leserechte (Nacharbeit 20): mit Variante B hat dieser Betrachter den
+ * Freigaberang 0 (kein persönliches Niveau, kein `ko.validate`) — er sieht nur ausdrücklich
+ * `intern` Eingestuftes; eine ungeklärte Stufe bleibt ihm verborgen (Entscheidung 16).
+ */
+export function schluesselBetrachter(offeneSpaces: ReadonlySet<string>): SessionUser {
+  return { id: "", role: "viewer", spaceLesbar: offeneSpaces };
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 6, Befund F1) — DIE WARTESCHLANGE.
+// ================================================================================================
+//
+// Ein Importkandidat trägt Titel und Volltext seiner Quellseite. Die Warteschlange verlangt nur
+// `ko.read` — ohne diese Grenze las jeder Leser eine in Confluence auf Lea beschränkte Seite dort,
+// bevor (und nachdem) sie in Klara angenommen war. DIESELBE Regel wie am Objekt, keine Ausnahme für
+// `ko.validate`:
+//   · ANGENOMMEN (`koId`) und das Objekt lebt → `darfSehen` am Objekt: seine Quellrechte sind die
+//     aktuellen (ein späterer Abgleich hat sie womöglich schon nachgezogen).
+//   · sonst die Quellrechte des Eintrags selbst, auf Klara-Konten abgebildet — dieselbe Abbildung
+//     wie beim Annehmen.
+//   · ein Eintrag OHNE Quellrechte (Dateiweg, andere Quellen) bleibt, wie er war: die Warteschlange
+//     ist für ihn eine Prüffläche für jeden mit `ko.read`.
+export interface KandidatenRechtequelle {
+  /** Die Quellrechte eines Eintrags als Objektrechte — `undefined` = der Eintrag trägt keine. */
+  quellrechteFuerKandidat(item: unknown): Promise<{ leser?: readonly string[] } | undefined>;
+  /** Das lebende Objekt hinter einer Kennung (Papierkorb ausgeblendet). */
+  wissensobjektFuerSicht(koId: string): Promise<SichtbarkeitsFakten | undefined>;
+}
+
+export async function darfKandidatSehen(
+  user: SessionUser,
+  kandidat: { item: unknown; koId: string | null },
+  quelle: KandidatenRechtequelle,
+): Promise<boolean> {
+  const rechte = await quelle.quellrechteFuerKandidat(kandidat.item);
+  if (rechte === undefined) {
+    return true;
+  }
+  if (kandidat.koId) {
+    const ko = await quelle.wissensobjektFuerSicht(kandidat.koId);
+    if (ko) {
+      return darfSehen(user, ko);
+    }
+  }
+  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 22): ein Kandidat ist (noch) kein
+  // Wissensobjekt und trägt keine Stufe. Ohne Leserliste (in der Quelle offen) bleibt er, wie ein
+  // Eintrag ohne Quellrechte, Prüffläche für jeden mit `ko.read` — die fehlende Stufe darf hier
+  // nicht als „ungeklärt“ (Entscheidung 16) gelesen werden, sonst sperrte Variante B jede offene
+  // Seite. Mit Liste entscheidet allein sie (R-0549). Die Einstufung beim Import selbst ist laut
+  // Entscheidung 16 ein eigener Arbeitsauftrag.
+  if (!Array.isArray(rechte.leser)) {
+    return true;
+  }
+  return darfSehen(user, { quellrechte: rechte });
 }
 
 // ================================================================================================
@@ -134,10 +300,10 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 // Prädikat entsteht deshalb HIER, neben `darfSehen`, und wird INJIZIERT — an genau derselben Naht,
 // an der heute schon `sichtbar: sichtbarkeitsfilterFuer(user)` in die Analytics reist.
 //
-// WARUM DAS ÜBERHAUPT GEHT: der Rollenanteil von `darfSehen` ist ein EINZIGER Boolescher Wert
-// (`can(user.role, "ko.validate")`), der Autoranteil eine einzige Zeichenkette (`user.id`). Mehr
-// braucht die Regel nicht — deshalb lässt sie sich vollständig als Prädikat über drei Spalten
-// ausdrücken, ohne dass die Datenbank etwas über Rollen wissen müsste.
+// WARUM DAS ÜBERHAUPT GEHT: der Betrachteranteil von `darfSehen` ist EINE Zahl (der Freigaberang
+// 0/1/2, `freigaberang` — seit Nacharbeit 19 statt eines Booleans aus der Rolle), der Autoranteil
+// eine einzige Zeichenkette (`user.id`). Mehr braucht die Regel nicht — deshalb lässt sie sich
+// vollständig als Prädikat ausdrücken, ohne dass die Datenbank etwas über Rollen wissen müsste.
 //
 // ================================================================================================
 // DIE BENANNTEN GRENZEN DIESER ÜBERSETZUNG — BITTE NICHT ÜBERLESEN.
@@ -149,9 +315,10 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 //     er ist historischer Beleg und veraltet naturgemäß, sobald eine Stufe erhöht wird. Eine
 //     Höherstufung muss SOFORT wirken, nicht nach dem nächsten Projektionsbau.
 //
-// (2) DIE STUFENGRENZE IST ZEICHENGENAU `normalizeConfidentiality` (confidentiality.ts:15-17), und
-//     zwar nicht hier, sondern in der generierten Spalte (KO_SICHTBARKEIT_SCHEMA). Damit gibt es
-//     den CASE genau einmal, in der Datenbank, statt abschreibbar in jeder Abfrage.
+// (2) DIE STUFENGRENZE IST ZEICHENGENAU `schutzrang` (s. o.) und liest die ROHE Stufe aus `data`.
+//     Bis Nacharbeit 19 stand sie in der generierten Spalte `confidentiality_key`, die eine
+//     unbekannte Stufe als 'intern' auslegt — für die Sichtbarkeit seit Entscheidung 16 falsch.
+//     Die Spalte bleibt für andere Leser bestehen; dieses Prädikat benutzt sie nicht mehr.
 //
 // (3) DER PAPIERKORB WIRD ÜBER `deleted_at_key IS NULL` GEPRÜFT, ergänzt um `sqlDeletedAtLeer`.
 //     Der Schreibweg setzt `deletedAt` ausschließlich auf einen ISO-Zeitpunkt und ENTFERNT das Feld
@@ -160,9 +327,9 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 //     (AUFNAHME 20260922, BEN 4359 Befund B2). Seitdem wertet SQL die in JavaScript falschen
 //     JSON-Werte (null, "", false, 0) wie `!ko.deletedAt` als lebend.
 //
-// (4) HIER WIRD NICHTS VERSCHÄRFT UND NICHTS GELOCKERT. Die drei Stufen bleiben drei, zwei werden
-//     weiter identisch geschützt (Pedis Variante A, s. Kopf), eine unbekannte Stufe gilt weiter als
-//     „intern", und ein leerer Autor ist weiter KEINE Autorschaft. Der Paritätstest
+// (4) HIER WIRD NICHTS ANDERS AUSGELEGT ALS IN `darfSehen`: drei Stufen mit drei Rängen
+//     (Variante B, s. Kopf), eine ungeklärte Stufe zählt wie vertraulich, und ein leerer Autor ist
+//     weiter KEINE Autorschaft. Der Paritätstest
 //     (tests/security/380-trim-paritaet.integration.test.ts) fährt beide Formen über alle
 //     Kombinationen aus Stufe × Autorschaft × Rolle gegen ein echtes Postgres — Mengengleichheit,
 //     nicht Stichprobe.
@@ -176,30 +343,56 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
   // Die beiden EINZIGEN Fakten, die `darfSehen` über den Betrachter braucht. Sie werden hier
   // EINMAL erhoben und danach nicht mehr befragt — ein Cursor oder eine Folgeseite, die sie später
   // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
-  const darfVertraulich = can(user.role, "ko.validate");
+  // Nacharbeit 19 (Variante B): statt „darf vertraulich" der Freigaberang 0/1/2.
+  const rang = freigaberang(user);
   const betrachter = user.id;
+  // produkt:20261007:spaces — die lesbaren Spaces reisen als DRITTER Parameter, aber nur, wenn der
+  // Betrachter sie trägt. Ohne sie bleibt die Parameterliste die bisherige, und das Prädikat lässt
+  // jedes Objekt mit führendem Space weg (dieselbe fail-closed-Richtung wie `spaceErlaubt`).
+  const spaces = user.spaceLesbar ? [...user.spaceLesbar] : undefined;
 
   return {
     sql(spaltenTraeger: string, abPlatzhalter: number): string {
-      const rolle = `$${abPlatzhalter}`;
+      const freigabe = `$${abPlatzhalter}`;
       const autor = `$${abPlatzhalter + 1}`;
+      // Zeichengleich `schutzrang`: aus der ROHEN Stufe im Datensatz, nicht aus der generierten
+      // Spalte `confidentiality_key` — die legt eine unbekannte Stufe auf 'intern' aus
+      // (KO_SICHTBARKEIT_SCHEMA), Entscheidung 16 verlangt das Gegenteil.
+      const stufe = `${spaltenTraeger}.data->>'confidentiality'`;
+      const faelle = "WHEN 'intern' THEN 0 WHEN 'streng_vertraulich' THEN 2 ELSE 1";
+      const schutz = `(CASE ${stufe} ${faelle} END)`;
+      // Zeichengleich `spaceErlaubt`: nur eine Zeichenkette in `spaceId` ist ein führender Space.
+      const ohneSpace = `jsonb_typeof(${spaltenTraeger}.data->'spaceId') IS DISTINCT FROM 'string'`;
+      const spaceBedingung = spaces
+        ? ` AND (${ohneSpace} OR ${spaltenTraeger}.data->>'spaceId' = ANY($${abPlatzhalter + 2}::text[]))`
+        : ` AND ${ohneSpace}`;
       // Zeile für Zeile dieselbe Regel wie `darfSehen`, plus der Papierkorb davor:
       //   · nicht getrasht,
-      //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
-      //   · `ko.validate`                             ⇒ auch vertraulich/streng_vertraulich,
+      //   · Schutzrang ≤ Freigaberang (Variante B; ungeklärt zählt 1),
       //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
+      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, muss der
+      //     Betrachter ZUSÄTZLICH darin stehen — wörtlich der Quellzweig von `darfSehen`; die Liste
+      //     ersetzt Rang und Autorschaft nicht (Ben, Nacharbeit 24), und wer nicht gelistet ist,
+      //     liest auch als Autor nicht (Nacharbeit 3). Dieselbe Kennung `autor` ist auch der
+      //     Betrachter; ein leerer Betrachter steht in keiner Liste (normalisiert).
+      const istAutor =
+        `(COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
+        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
+        ` AND ${spaltenTraeger}.author_key = ${autor})`;
+      const leser = `${spaltenTraeger}.data->'quellrechte'->'leser'`;
       return (
         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
-        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
-        ` OR ${rolle}::boolean` +
-        ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
-        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
-        ` AND ${spaltenTraeger}.author_key = ${autor})))`
+        ` AND (CASE WHEN jsonb_typeof(${leser}) = 'array'` +
+        ` THEN (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text))` +
+        ` ELSE true END) AND (${schutz} <= ${freigabe}::int` +
+        // Zusammenführung (Nacharbeit 23): die Space-Bedingung (main) als UND hinter Quellleser-/
+        // Stufenregel — Zeile für Zeile wie `darfSehen`.
+        ` OR ${istAutor})${spaceBedingung})`
       );
     },
-    params: [darfVertraulich, betrachter],
+    params: spaces ? [rang, betrachter, spaces] : [rang, betrachter],
     // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
     // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
     trifftZu(ko): boolean {
@@ -432,11 +625,12 @@ export async function feldFreigabe(
     if (!ko || !darfSehen(user, ko)) {
       return false;
     }
-    if (!isConfidential(ko.confidentiality)) {
+    // Nacharbeit 19: nur ausdrücklich „intern" ist frei kopierbarer Inhalt — eine ungeklärte Stufe
+    // wird wie vertraulich behandelt (Entscheidung 16), dieselbe Grenze wie `schutzrang`.
+    if (schutzrang(ko.confidentiality) === 0) {
       return true;
     }
-    // Leerer/fehlender Autor ist KEINE Autorschaft — dieselbe Zeile wie in `darfSehen:74-76`.
-    return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+    return istAutor(user, ko);
   };
   return { a: await erlaubt(koA), b: await erlaubt(koB) };
 }
@@ -492,7 +686,14 @@ export interface KonfliktFelder {
   koA: string;
   koB: string;
   description: string;
-  detector?: { rationale?: string; quotes?: { a: string; b: string } } | undefined;
+  detector?:
+    | {
+        rationale?: string;
+        quotes?: { a: string; b: string };
+        // R-0263: Klaras vorgeschlagener Geltungsbereich ist Modelltext über den Inhalt.
+        vorschlag?: { geltungsbereich?: string } | undefined;
+      }
+    | undefined;
 }
 
 export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
@@ -514,10 +715,20 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
     return konflikt;
   }
   const detector = konflikt.detector;
+  // R-0263 (Aufnahme gesamt-konfliktklassifikation): Klaras vorgeschlagener Geltungsbereich ist
+  // Modelltext über den Inhalt beider Seiten — er geht den Weg von `rationale`. Art und Seite des
+  // Vorschlags bleiben stehen: sie sagen nicht mehr als die Existenz des Konflikts selbst.
+  const vorschlag = detector?.vorschlag;
+  const vorschlagSicht =
+    vorschlag?.geltungsbereich !== undefined
+      ? { vorschlag: { ...vorschlag, geltungsbereich: "" } }
+      : {};
   return {
     ...konflikt,
     description: "",
-    ...(detector ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" } } } : {}),
+    ...(detector
+      ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" }, ...vorschlagSicht } }
+      : {}),
     redacted: true,
   };
 }
@@ -565,7 +776,8 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
 // ZWEI ÄNDERUNGEN, und die zweite ist die wichtigere:
 //
 //   1. Die Trägersuche kennt jetzt alle fünf Orte, an denen eine Referenz stehen kann — dieselbe
-//      Aufzählung wie in object-references.ts, dort für den Datenverlust, hier für den Schutz.
+//      Aufzählung wie im Waisenlauf (`datenintegritaet.ts`), dort für den Datenverlust, hier für
+//      den Schutz.
 //   2. Der TRÄGERLOSE Fall ist fail-closed: eine FEHLENDE Stufe ist keine Aussage „intern",
 //      sondern „unbekannt" — und Unbekanntes wird nicht ausgeliefert. Sichtbar bleibt es nur für
 //      die, die auch ein vertrauliches Objekt sehen dürften: den Hochladenden selbst (das
@@ -659,6 +871,11 @@ export function redigiereKonflikt<T extends KonfliktFelder>(
 export interface AnhangTraeger extends SichtbarkeitsFakten {
   /** Die Kennung des Trägers — ohne sie lässt sich seine Geschichte nicht befragen. */
   id: string;
+  /**
+   * R-0095: der Titel des Trägers — nur für den sichtbaren Rückverweis vom Anhang auf sein
+   * Wissensobjekt (`GET /api/objects/:id/traeger`). Kein Urteilsfakt; `KnowledgeObject` trägt ihn.
+   */
+  title?: string | undefined;
   /** `author` ist der URHEBER DER ZUORDNUNG (serverseitig), nicht der Autor des Objekts. */
   attachments?:
     | readonly { objectId?: string | undefined; author?: string | null | undefined }[]
@@ -689,12 +906,16 @@ export interface AnhangEntwurf {
   bodyHtml?: string | null | undefined;
   /** Belegstellen-Originale und Ankerdokumente (`pendingSources`, `anchorDocuments`). */
   objectIds?: readonly (string | null | undefined)[] | undefined;
+  /**
+   * Pool-Auftrag (R-2099): der Autor hat den Entwurf bewusst in den gemeinsamen Pool gegeben.
+   * Nur `true` zählt; fehlend, `false` oder jeder andere Wert ist der private Standardfall.
+   */
+  imPool?: boolean | undefined;
 }
 
 /**
  * Die Quellen, die die Trägersuche befragt. BEWUSST als Funktionen injiziert und nicht als Module
- * importiert — dasselbe Muster und dieselbe Begründung wie `ObjectReferenceSources`: der
- * Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
+ * importiert: der Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
  */
 export interface AnhangQuellen {
   /**
@@ -887,7 +1108,7 @@ function zuordnungInFassung(
  * Darf dieser Mensch diesen Anhang sehen? (G2 — der Anhang erbt die Stufe seines Objekts.)
  *
  * `traeger` ist der AKTUELLE Bestand der Wissensobjekte; der Aufrufer liefert ihn, damit diese
- * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (Muster `ObjectReferenceSources`).
+ * Entscheidung ohne eigene Persistenzkenntnis testbar bleibt (injizierte Quellen, s. oben).
  */
 export interface AnhangUrteil {
   /** Darf dieser Mensch die Bytes bekommen? */
@@ -922,7 +1143,30 @@ function entwurfNenntObjekt(entwurf: AnhangEntwurf, objectId: string): boolean {
 // den Anhang-Leseweg noch den vollständigen privaten Inhalt bekam, während die Entwurfsroute ihm
 // 403 gab. Einzige Ausnahme: herrenloser Altbestand ohne `originalAuthor` gehört niemandem; ihn
 // erreicht nur die Verwaltung (sonst käme an ihn niemand mehr heran).
+//
+// AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06, Pedi `debbb8e8` „Beides"): DIESELBE
+// Regel bekommt genau EINE zweite, ausdrückliche Bedingung — der Autor hat diesen Entwurf bewusst in
+// den gemeinsamen Pool gegeben (`imPool === true`). Dann sieht ihn jeder Schreibberechtigte
+// (`ko.create`, dieselbe Berechtigung, die jede Entwurfsroute verlangt). Keine Rollenausnahme: ohne
+// die Handlung des Autors öffnet weder `admin` noch `lastEditor` einen Entwurf. Weil die Anhänge
+// dieselbe Funktion fragen, öffnet der Pool sie im selben Zug — und ein privater Entwurf bleibt auf
+// beiden Wegen zu.
 export function entwurfSichtbarFuer(
+  user: Pick<SessionUser, "id" | "role">,
+  entwurf: Pick<AnhangEntwurf, "originalAuthor" | "imPool">,
+): boolean {
+  if (autorenrechtAmEntwurf(user, entwurf)) {
+    return true;
+  }
+  return entwurf.imPool === true && can(user.role, "ko.create");
+}
+
+// Pool-Auftrag (Pedi, entscheidung:297afc57): Sehen und Fortsetzen ist nicht dasselbe wie Verfügen.
+// EINREICHEN, LÖSCHEN (samt Papierkorb) und das TEILEN selbst bleiben beim Autor — für einen Pool-
+// Entwurf genauso wie für einen privaten. Das ist der bisherige Kern von `entwurfSichtbarFuer`, jetzt
+// unter eigenem Namen, damit die Routen „darf sehen" und „darf verfügen" auseinanderhalten können.
+// Keine zweite Sichtbarkeitsregel: `entwurfSichtbarFuer` ruft genau diese Funktion.
+export function autorenrechtAmEntwurf(
   user: Pick<SessionUser, "id" | "role">,
   entwurf: Pick<AnhangEntwurf, "originalAuthor">,
 ): boolean {

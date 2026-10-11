@@ -38,9 +38,29 @@ const KIND_KEY: Record<ChainDeviationKind, string> = {
   unchecked: "adm.sich.verify.kind.unchecked",
 };
 
+/** Ein lesbarer Prüfzeitpunkt — oder `undefined`, wenn keiner da ist oder er unlesbar ist. */
+function pruefzeitpunkt(report: AuditVerifyReport): string | undefined {
+  const roh = report.checkedAt;
+  return typeof roh === "string" && Number.isFinite(Date.parse(roh)) ? roh : undefined;
+}
+
 export function auditVerifyView(report: AuditVerifyReport): AuditVerifyView {
   if (report.ok) {
-    return { tone: "ok", key: "adm.sich.verify.ok", params: { count: report.count } };
+    // produkt:20261009:admin-audit-verstaendlich (K6): GRÜN NUR MIT ZEITPUNKT. Ein „ok" ohne
+    // Prüfzeitpunkt ist kein Nachweis — wann geprüft wurde, ist Teil der Aussage. Die Fläche sagt
+    // dann ehrlich, dass ein Zeitpunkt fehlt, und bietet keinen Haken an.
+    const zeitpunkt = pruefzeitpunkt(report);
+    if (zeitpunkt === undefined) {
+      return { tone: "warn", key: "auditprotokoll.pruefung.ohneZeitpunkt", params: {} };
+    }
+    // Ein eigener Schlüssel mit {{zeitpunkt}}: `adm.sich.verify.ok` bleibt als Bestandstext
+    // unverändert (tests/i18n-textmodule/bestand-unveraendert.test.ts), wird hier aber nicht mehr
+    // benutzt — ein Haken ohne Zeitpunkt soll nirgends mehr entstehen können.
+    return {
+      tone: "ok",
+      key: "auditprotokoll.pruefung.ok",
+      params: { count: report.count, zeitpunkt },
+    };
   }
 
   // GELB: kein einziger Verkettungsbruch, und JEDE Nutzdaten-Abweichung ist durch eine Umordnung

@@ -211,6 +211,26 @@ wahrscheinlich ist. Die Postgres-Variante mit echtem `pg_dump` **gegen eine echt
 zusätzlich in `tests/insel-update/update-postgres.integration.test.ts`
 (`npm run test:integration`, sichtbarer Skip ohne Datenbank oder ohne `postgresql-client`).
 
+**Am echten Paket gefahren (Journalbetrieb).** `tests/insel-auslieferung/` baut mit
+`scripts/insel/build-current-release.mjs` echte ZIPs (Vorgänger `1.0.0-beta.1.580`, aktuelle
+Korrekturausgabe, eine beim Start scheiternde und eine als nicht umkehrbar markierte Variante),
+überträgt sie in eine leere Zielumgebung ohne Repo und fährt dort genau die Befehle dieses
+Abschnitts: `install.command`, `…/current/scripts/insel/update-einspielen.sh <zip>`, den
+automatischen Rückfall und `rueckfall.sh` — mit eigenem Start und mit einem echten launchd-Agenten
+(`kickstart -k`, nur macOS). Ein echtes Chromium meldet sich an, importiert eine DOCX und liest
+Inhalt, Quellenvermerk und Originaldatei nach Update und Rückfall wieder. Geprüft werden dabei
+Prozess und Port von außen (`lsof`), die Health-Version, die Sicherung dieses Laufs samt Prüfsumme
+und der unveränderte Journalbestand. **Dieser Lauf behauptet nichts über PostgreSQL** und keinen
+Mac-Studio- oder Kundenbetrieb; er läuft in einer Wegwerf-Zielumgebung auf dem Prüfrechner. Er ist
+nicht Teil von `tools/check` (Aufruf und Werkzeuge: `scripts/insel/README.md`).
+
+Dabei gefunden und behoben: über `current` gerufen (der dokumentierte Weg), tat
+`schema-vertrag.mjs` bis zu dieser Korrektur **nichts** und endete mit Exit 0 — keine wirksame
+Vertragsprüfung, kein `SCHEMA-STAND`, und der Rückfall nach einem Startfehler endete mit Exit 9
+(„Version nicht belegbar"), obwohl die Vorversion wieder lief. Ein Update, das noch von einer
+älteren Fassung aus eingespielt wird, läuft mit deren Skript und damit dieses eine Mal noch ohne
+wirksame Vertragsprüfung.
+
 ### 6.2 Cloud / Coolify — Verfahren, nicht Zustand
 
 **Backup (vor Update):**
@@ -287,6 +307,10 @@ Klarwerk ist **anbieteragnostisch**: ohne `ANTHROPIC_API_KEY` läuft der **deter
 4. **Kommunizieren:** Stakeholder/Pedi informieren; bei DSGVO-Relevanz Meldepflichten prüfen.
 5. **Nacharbeit:** Ursache dokumentieren, Gate/Checkliste ergänzen (Harness-Correction-Gedanke), erst dann erneut ausrollen.
 
+> **Insel:** Dieser Pfad ist auf Cloud/Coolify zugeschnitten. Für die Insel ist ein Sicherheitsupdate
+> **weder signiert noch geprobt**, und der heutige Umschaltweg unterbricht den Betrieb. Sollablauf,
+> Abweichung vom Ziel „ohne Unterbrechung" und die offenen Entscheidungen stehen in `docs/operations/insel-hausbetrieb-anforderungen.md` §4.
+
 ---
 
 ## 12. Offene Betreiberpflichten / Nicht-Ziele
@@ -295,6 +319,8 @@ Klarwerk ist **anbieteragnostisch**: ohne `ANTHROPIC_API_KEY` läuft der **deter
 - **Backup-Restore-Probe** regelmäßig tatsächlich durchführen (nicht nur dokumentiert).
 - **Monitoring/Alerting** (Uptime, Fehlerraten) einrichten — Hosting-/Ops-Aufgabe.
 - **Termine + namentliche Rollen** für Wartungsfenster festlegen.
+- **Insel-Hausbetrieb** (Offline-Installationsmaterial, Hardwareübersicht, signierte Aktualisierung,
+  Lizenzierung, Datenträgeraustausch): konkretisiert, nicht gebaut — `docs/operations/insel-hausbetrieb-anforderungen.md`.
 - Keine neue Runtime/Infrastruktur, keine Modellinstallation in diesem Runbook.
 
 ---

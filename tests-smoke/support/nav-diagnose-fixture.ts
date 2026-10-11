@@ -1,5 +1,7 @@
+import { relative } from "node:path";
 import { type ConsoleMessage, type Request, type Response, test as basis } from "@playwright/test";
 import { installiereNavDiagnose } from "./nav-diagnose";
+import { laufEnde } from "./nav-diagnose-lauf";
 
 export { expect } from "@playwright/test";
 
@@ -84,12 +86,18 @@ export const test = basis.extend<{ navDiagnose: undefined }>({
         page.off("requestfailed", fehlgeschlagen);
         page.off("pageerror", seitenfehler);
         await Promise.all(offen);
-        log("test-ende", { status: info.status, pfad: new URL(page.url()).pathname });
+        // Endadresse und Laufkennung in derselben Zeile: Trace/Screenshot desselben
+        // Testergebnisses sind darüber eindeutig diesem Mitschnitt zugeordnet.
+        // Die Ablage ist der Ordner, in den Playwright Trace und Screenshot DIESES Tests schreibt.
+        log("test-ende", laufEnde(info, page.url(), relative(process.cwd(), info.outputDir)));
         const body = zeilen.join("\n");
         await info.attach("navigation-diagnose.jsonl", {
           body,
           contentType: "application/x-ndjson",
         });
+        // Die Schlusszeile steht auch bei Grün im Tor-Log (eine Zeile, ohne Inhalte): so ist der
+        // Lauf im vollcheck-Protokoll belegt, selbst wenn die Anhänge nicht mitarchiviert werden.
+        console.log(`KW-NAV-DIAG-ENDE ${zeilen[zeilen.length - 1] ?? ""}`);
         if (info.status !== info.expectedStatus) console.log(`KW-NAV-DIAG\n${body}`);
       }
     },

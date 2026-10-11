@@ -19,9 +19,12 @@
 //   E0 · Kalibrierung: ohne Eingriff wird gesichert, kein roter Kasten.
 //   E1 · R-0080: Zahl statt Titel → 400 vom Server → übersetzter Satz, kein `draftPayload`, Text
 //        bleibt, kein Entwurf entsteht — in DE, EN und NL.
-//   E2 · R-1002: Rumpf über 5 MiB → 413 vom Server → „zu lang", nicht „fehlgeschlagen".
+//   E2 · R-1002: Rumpf über 5 MiB → 413 vom Server → „zu lang", nicht „fehlgeschlagen" — DE, EN, NL.
 //   E3 · R-0084: beide Knöpfe tragen ihre Folge als aufgelöste Beschreibung — DE, EN, NL.
-//   E4 · R-0084: nach dem Einreichen steht der Fokus auf der Erfolgszeile.
+//   E4 · R-0084: nach dem Einreichen steht der Fokus auf der Erfolgszeile — DE, EN, NL.
+//   E5 · Zeitüberschreitung (`fehlerfaelle`, Kriterium 2): die Anlage kommt nicht zurück → nach der
+//        Speicherfrist der übersetzte Fristsatz, Eingabe bleibt — DE, EN, NL. Gefälscht ist hier
+//        nur das Ausbleiben der Antwort (die Brücke hält die Anfrage fest), nicht der Satz.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
@@ -31,6 +34,9 @@ const bruecke = vi.hoisted(() => ({
   token: "",
   /** Verändert die nächste Anlage `POST /api/drafts`, bevor sie beim Server ankommt. */
   anlageUmbauen: null as null | ((rumpf: Record<string, unknown>) => Record<string, unknown>),
+  /** Hält die nächste Anlage `POST /api/drafts` fest: sie erreicht den Server nie und kommt nie zurück. */
+  anlageHalten: false,
+  gehalten: 0,
   antworten: [] as { method: string; url: string; status: number }[],
 }));
 
@@ -73,6 +79,10 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import {
+  FRONT_DOOR_SAVE_TIMEOUT_MESSAGE,
+  FRONT_DOOR_SAVE_TIMEOUT_MS,
+} from "../../apps/web/src/lib/captureFrontDoor";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -108,6 +118,11 @@ function brueckeAufbauen(): void {
       headers.authorization = `Bearer ${bruecke.token}`;
     }
     let body = init.body;
+    if (method === "POST" && /\/api\/drafts$/.test(url) && bruecke.anlageHalten) {
+      bruecke.anlageHalten = false;
+      bruecke.gehalten += 1;
+      return new Promise(() => {});
+    }
     if (method === "POST" && /\/api\/drafts$/.test(url) && bruecke.anlageUmbauen && body) {
       body = JSON.stringify(bruecke.anlageUmbauen(JSON.parse(body) as Record<string, unknown>));
       bruecke.anlageUmbauen = null;
@@ -132,6 +147,8 @@ async function serverStarten(): Promise<void> {
   bruecke.app = buildApp(buildServices()) as unknown as typeof bruecke.app;
   bruecke.token = "";
   bruecke.anlageUmbauen = null;
+  bruecke.anlageHalten = false;
+  bruecke.gehalten = 0;
   bruecke.antworten = [];
   await bruecke.app.inject({
     method: "POST",
@@ -291,6 +308,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   if (root) {
     act(() => root?.unmount());
     root = null;
@@ -337,25 +355,60 @@ describe("Erfassungseinstieg · der rote Kasten sagt den richtigen Satz (R-0080,
     });
   }
 
-  it("E2 · Rumpf über der Servergrenze → Server 413 → „zu lang“, nicht „fehlgeschlagen“", async () => {
-    await i18n.changeLanguage("en");
-    await blattOeffnen();
-    await blattFuellen();
-    const zuGross = `<p>${"x".repeat(6 * 1024 * 1024)}</p>`;
-    bruecke.anlageUmbauen = (rumpf) => ({ ...rumpf, bodyHtml: zuGross });
-    await sichern();
+  for (const sprache of SPRACHEN) {
+    it(`E2 · ${sprache}: Rumpf über der Servergrenze → Server 413 → „zu lang“, nicht „fehlgeschlagen“`, async () => {
+      await i18n.changeLanguage(sprache);
+      await blattOeffnen();
+      await blattFuellen();
+      const zuGross = `<p>${"x".repeat(6 * 1024 * 1024)}</p>`;
+      bruecke.anlageUmbauen = (rumpf) => ({ ...rumpf, bodyHtml: zuGross });
+      await sichern();
 
-    const anlage = bruecke.antworten.filter(
-      (a) => a.method === "POST" && /\/api\/drafts$/.test(a.url),
-    );
-    expect(anlage.map((a) => a.status)).toEqual([413]);
-    expect(lage()).toContain(i18n.t("einstieg.fehler.zuLang"));
-    expect(lage()).not.toContain(i18n.t("fd.errSaveFailed"));
-    // Kein deutscher Serversatz in der englischen Sitzung.
-    expect(lage()).not.toMatch(/zu gross|Uebernahme/);
-    expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(TITEL);
-    expect(await entwuerfeAmServer()).toHaveLength(0);
-  });
+      const anlage = bruecke.antworten.filter(
+        (a) => a.method === "POST" && /\/api\/drafts$/.test(a.url),
+      );
+      expect(anlage.map((a) => a.status)).toEqual([413]);
+      expect(lage()).toContain(i18n.t("einstieg.fehler.zuLang"));
+      expect(lage()).not.toContain(i18n.t("fd.errSaveFailed"));
+      // Nicht der Serversatz (deutsch, „Uebernahme"), sondern der Satz der Sitzungssprache.
+      expect(lage()).not.toMatch(/zu gross|Uebernahme/);
+      expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(TITEL);
+      expect(await entwuerfeAmServer()).toHaveLength(0);
+    });
+  }
+
+  for (const sprache of SPRACHEN) {
+    it(`E5 · ${sprache}: die Anlage kommt nicht zurück → nach der Speicherfrist der Fristsatz, Eingabe bleibt`, async () => {
+      await i18n.changeLanguage(sprache);
+      await blattOeffnen();
+      await blattFuellen();
+      bruecke.anlageHalten = true;
+
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await sichern();
+      // Die Anfrage hängt wirklich — sonst mäße der Satz eine andere Lage.
+      expect(bruecke.gehalten).toBe(1);
+      expect(lage()).not.toContain(i18n.t("einstieg.fehler.frist"));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(FRONT_DOOR_SAVE_TIMEOUT_MS + 100);
+        await flush();
+      });
+      vi.useRealTimers();
+      await act(flush);
+
+      expect(lage(), `kein Fristsatz. Sichtbar: ${seitentext().slice(0, 600)}`).toContain(
+        i18n.t("einstieg.fehler.frist"),
+      );
+      expect(lage()).not.toContain(i18n.t("fd.errSaveFailed"));
+      // Die interne (deutsche) Meldung des Fehlerobjekts erscheint in keiner Sprache.
+      expect(seitentext()).not.toContain(FRONT_DOOR_SAVE_TIMEOUT_MESSAGE);
+      expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(TITEL);
+      expect(seitentext()).toContain("Nullpunkt am HMI");
+      expect(container.querySelector('[data-testid="blatt-entwurf-gespeichert"]')).toBeNull();
+      expect(await entwuerfeAmServer()).toHaveLength(0);
+    });
+  }
 });
 
 describe("Erfassungseinstieg · Entwurf und Einreichen erklären ihre Folge (R-0084)", () => {
@@ -379,21 +432,23 @@ describe("Erfassungseinstieg · Entwurf und Einreichen erklären ihre Folge (R-0
     });
   }
 
-  it("E4 · nach dem Einreichen steht der Fokus auf der Erfolgszeile, nicht auf dem leeren Blatt", async () => {
-    await i18n.changeLanguage("de");
-    await blattOeffnen();
-    await blattFuellen();
-    await stufeWaehlen();
-    const einreichen = element('[data-testid="blatt-einreichen"]', HTMLButtonElement);
-    einreichen.focus();
-    await klick(einreichen);
+  for (const sprache of SPRACHEN) {
+    it(`E4 · ${sprache}: nach dem Einreichen steht der Fokus auf der Erfolgszeile, nicht auf dem leeren Blatt`, async () => {
+      await i18n.changeLanguage(sprache);
+      await blattOeffnen();
+      await blattFuellen();
+      await stufeWaehlen();
+      const einreichen = element('[data-testid="blatt-einreichen"]', HTMLButtonElement);
+      einreichen.focus();
+      await klick(einreichen);
 
-    const zeile = container.querySelector('[data-testid="blatt-lage"]');
-    expect(lage(), `kein Erfolg. Sichtbar: ${seitentext().slice(0, 600)}`).toContain(
-      i18n.t("erfassen.eingereicht"),
-    );
-    expect(document.activeElement).toBe(zeile);
-    // Gegenprobe: das Blatt ist wirklich leer geräumt — der Sprung ist also nötig.
-    expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe("");
-  });
+      const zeile = container.querySelector('[data-testid="blatt-lage"]');
+      expect(lage(), `kein Erfolg. Sichtbar: ${seitentext().slice(0, 600)}`).toContain(
+        i18n.t("erfassen.eingereicht"),
+      );
+      expect(document.activeElement).toBe(zeile);
+      // Gegenprobe: das Blatt ist wirklich leer geräumt — der Sprung ist also nötig.
+      expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe("");
+    });
+  }
 });

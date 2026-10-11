@@ -11,7 +11,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { ImportCleanupPreview, ImportCleanupResult } from "../api/types";
-import { IMPORT_CLEANUP_TEXT } from "../lib/importCleanup";
+import { AUFRAEUM_DOPPEL_TEXT, IMPORT_CLEANUP_TEXT } from "../lib/importCleanup";
 import { Button, Card, SectionLabel } from "./ui";
 
 export function ImportCleanup(): JSX.Element {
@@ -97,6 +97,10 @@ export function ImportCleanup(): JSX.Element {
               m: preview.importedKos,
             })}
           </p>
+          {/* Aufnahme gesamt-bestandsbereinigung (R-0124): Doppel-Kandidaten immer beziffert, auch 0. */}
+          <p className="text-[12.5px] text-text">
+            · {t(AUFRAEUM_DOPPEL_TEXT.vorschau, { n: preview.duplicateCandidates })}
+          </p>
           {/* WP-SHIP8-CLOSE-4 (bens ROT-1C): KOs laufender Review-Aktionen sind nie Zielmenge. */}
           {preview.claimedKos > 0 ? (
             <p className="text-[12.5px] text-trust-warn-text">
@@ -135,6 +139,8 @@ export function ImportCleanup(): JSX.Element {
       {result !== null ? (
         <ul className="space-y-0.5 text-[12.5px] text-text">
           <li>· {t(IMPORT_CLEANUP_TEXT.doneCandidates, { n: result.removedCandidates })}</li>
+          {/* Aufnahme gesamt-bestandsbereinigung (R-0124): Doppel-Kandidaten immer beziffert, auch 0. */}
+          <li>· {t(AUFRAEUM_DOPPEL_TEXT.bilanz, { n: result.removedDuplicateCandidates })}</li>
           <li>· {t(IMPORT_CLEANUP_TEXT.doneKos, { n: result.trashedKos })}</li>
           {result.skipped.length > 0 ? (
             <li className="text-trust-warn-text">

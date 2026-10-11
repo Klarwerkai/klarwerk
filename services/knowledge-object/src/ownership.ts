@@ -73,13 +73,16 @@ export function normalizeOwnership(value: unknown): KnowledgeOwnership | null {
   }
   const roh = value as Record<string, unknown>;
   const owner = kennung(roh.owner);
+  // gesamt-dokumenterzeugung (R-0337): die verantwortliche Rolle — dieselbe Normalform wie `owner`.
+  const ownerRole = kennung(roh.ownerRole);
   const reviewers = liste(roh.reviewers);
   const validators = liste(roh.validators);
-  if (owner === null && reviewers.length === 0 && validators.length === 0) {
+  if (owner === null && ownerRole === null && reviewers.length === 0 && validators.length === 0) {
     return null;
   }
   return {
     ...(owner !== null ? { owner } : {}),
+    ...(ownerRole !== null ? { ownerRole } : {}),
     reviewers,
     validators,
   };
@@ -129,6 +132,7 @@ export function sameOwnership(a: KnowledgeOwnership | null, b: KnowledgeOwnershi
     x.length === y.length && x.every((wert, i) => wert === y[i]);
   return (
     a.owner === b.owner &&
+    a.ownerRole === b.ownerRole &&
     gleicheFolge(a.reviewers, b.reviewers) &&
     gleicheFolge(a.validators, b.validators)
   );

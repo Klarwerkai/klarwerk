@@ -193,3 +193,74 @@ describe("JOB 1131 · confluenceSourcePath — Ahnenkette ohne leere Segmente", 
     expect(mapConfluencePageToImportItem(einer, OPTS).sourcePath).toEqual(["Handbuch"]);
   });
 });
+
+// ================================================================================================
+// R-0182 / R-0649 — DIE QUELLRESTRIKTIONEN, JEDER FALL FÜR SICH
+// ================================================================================================
+//
+// Der Rest lautete: „Explizit leere, Benutzer- und Gruppen-Quellrestriktionen unabhängig prüfen."
+// Bisher stand „nur Benutzer" und „nur Gruppe" je in einer anderen Datei, und der leere Fall war
+// nur mit beiden Listen leer gemessen. Hier steht jede Form einzeln, mit ihrer Stufe nach
+// Entscheidung 23 (restringiert → vertraulich, sonst intern) — auch die Formen, in denen Confluence
+// eine der beiden Listen gar nicht mitliefert.
+describe("R-0182/R-0649: jede Form der Leserestriktion einzeln", () => {
+  const mit = (restrictions: ConfluencePage["restrictions"]): ConfluencePage => ({
+    id: "R-1",
+    title: "Seite",
+    body: { storage: { value: "<p>Text.</p>" } },
+    ...(restrictions ? { restrictions } : {}),
+  });
+  const leer = { results: [] as unknown[] };
+  const person = { results: [{ type: "known", accountId: "a-1" }] as unknown[] };
+  const gruppe = { results: [{ type: "group", name: "confluence-hr" }] as unknown[] };
+
+  const faelle: [string, ConfluencePage["restrictions"], "vertraulich" | "intern"][] = [
+    [
+      "ausdrücklich leer (beide Listen leer)",
+      { read: { restrictions: { user: leer, group: leer } } },
+      "intern",
+    ],
+    [
+      "nur Benutzer, Gruppenliste leer",
+      { read: { restrictions: { user: person, group: leer } } },
+      "vertraulich",
+    ],
+    [
+      "nur Benutzer, Gruppenliste fehlt",
+      { read: { restrictions: { user: person } } },
+      "vertraulich",
+    ],
+    [
+      "nur Gruppe, Benutzerliste leer",
+      { read: { restrictions: { user: leer, group: gruppe } } },
+      "vertraulich",
+    ],
+    [
+      "nur Gruppe, Benutzerliste fehlt",
+      { read: { restrictions: { group: gruppe } } },
+      "vertraulich",
+    ],
+    [
+      "Benutzer UND Gruppe",
+      { read: { restrictions: { user: person, group: gruppe } } },
+      "vertraulich",
+    ],
+  ];
+
+  for (const [name, restrictions, stufe] of faelle) {
+    it(`${name} → ${stufe}`, () => {
+      const seite = mit(restrictions);
+      expect(isPageRestricted(seite)).toBe(stufe === "vertraulich");
+      expect(confluenceGovernanceConfidentiality(seite)).toBe(stufe);
+      expect(mapConfluencePageToImportItem(seite, OPTS).confidentiality).toBe(stufe);
+    });
+  }
+
+  // BENANNT, NICHT ENTSCHIEDEN: fehlt der Restriktions-Expand ganz, gilt die Seite heute als
+  // „intern" — dieselbe Stufe wie „ausdrücklich leer". Das ist der Stand seit JOB 3089 und wird
+  // hier nur festgehalten, damit eine Änderung bewusst geschieht (offene Frage in
+  // docs/bestandsaufnahme-confluence-import.md, Abschnitt R-0182/R-0649).
+  it("Restriktionsangabe fehlt ganz → heute intern (festgehaltener Ist-Stand)", () => {
+    expect(confluenceGovernanceConfidentiality(mit(undefined))).toBe("intern");
+  });
+});

@@ -7,6 +7,7 @@ import {
   containsMappedIpv4Space,
   isAddonEndpointPath,
   isCatchAllTrustEntry,
+  isHopCountTrustProxy,
   isValidTrustEntry,
   resolveTrustProxy,
 } from "./addon-auth-throttle";
@@ -88,9 +89,14 @@ describe("SCRUM-490 R3 (B2): resolveTrustProxy", () => {
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "*" })).toBe(false);
   });
 
-  it("Zahl → Hop-Count", () => {
-    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "1" })).toBe(1);
-    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(2);
+  // GHSA-3m5p-2c4r-xxw2: bis hierher ergab eine Zahl eine Hop-Anzahl. Sie ist am Proxy vorbei
+  // spoofbar und wird seit tests/fastify-restbewertung wie ein Blanket-Wert verworfen.
+  it("Zahl (Hop-Anzahl) → false (spoofbar am Proxy vorbei)", () => {
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "1" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(false);
+    expect(isHopCountTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(true);
+    expect(isHopCountTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.1" })).toBe(false);
+    expect(isHopCountTrustProxy({})).toBe(false);
   });
 
   it("IP/Subnetz(e) → Liste (nur diese Adressen vertrauen)", () => {
@@ -127,9 +133,9 @@ describe("SCRUM-490 R4 (B2): resolveTrustProxy lehnt Catch-all ab", () => {
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "0.0.0.0/0, ::/0" })).toBe(false);
   });
 
-  it("explizites Subnetz + Hop-Count bleiben weiter gültig (kein Regress)", () => {
+  it("explizites Subnetz bleibt weiter gültig (kein Regress); Hop-Anzahl verworfen (GHSA-3m5p)", () => {
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "172.16.0.0/12" })).toEqual(["172.16.0.0/12"]);
-    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(2);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(false);
   });
 });
 
@@ -230,7 +236,7 @@ describe("SCRUM-490 R6 (B2): trustProxy Containment + Validierung", () => {
     }
   });
 
-  it("enge Netze + Hop-Count bleiben gültig (kein Regress)", () => {
+  it("enge Netze bleiben gültig (kein Regress); Hop-Anzahl verworfen (GHSA-3m5p)", () => {
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "::ffff:10.0.0.0/104" })).toEqual([
       "::ffff:10.0.0.0/104",
     ]);
@@ -240,7 +246,7 @@ describe("SCRUM-490 R6 (B2): trustProxy Containment + Validierung", () => {
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "fd00::/8" })).toEqual(["fd00::/8"]);
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2001:db8::/32" })).toEqual(["2001:db8::/32"]);
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "172.16.0.0/12" })).toEqual(["172.16.0.0/12"]);
-    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(2);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(false);
   });
 
   it("gemischt: ben-Durchrutscher verworfen, explizites Subnetz bleibt", () => {

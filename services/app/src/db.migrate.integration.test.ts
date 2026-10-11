@@ -15,6 +15,7 @@ import {
   KLARA_SESSION_CONFLICT_MESSAGE,
   KLARA_SESSION_INACTIVITY_MS,
   KLARA_SINGLE_TENANT_ID,
+  KLARA_TOUCH_MINDESTABSTAND_MS,
   type KlaraBindung,
   type KlaraPolicyQuelle,
   KlaraSessionService,
@@ -952,7 +953,11 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         const { sessionId, bindung, documentContextId } = await aufsetzen(b.dienst, "r1", true);
 
         const halt = repoA.haltAn("touchSession");
-        const laufendA = a.dienst.getSession(sessionId, bindung);
+        // Ohne vorgestellte Uhr ueberspraenge die Touch-Drossel (JOB 2688 D1) den Write, und die
+        // Haltestelle wuerde nie erreicht (Bens B9). Wie in Race 4: A kommt nach der Mindestpause.
+        a.vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const laufendA = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         const nach = await b.dienst.rebindDocumentContext(sessionId, bindung, {
@@ -1051,7 +1056,8 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         const halt = repoA.haltAn("touchSession");
         // Die Uhr von A steht spaeter: sein Touch WUERDE die Frist verlaengern, wenn er durchkaeme.
         a.vorspulen(60_000);
-        const laufendA = a.dienst.getSession(sessionId, bindung);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const laufendA = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         await b.dienst.closeSession(sessionId, bindung);
@@ -1207,7 +1213,10 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         const { sessionId, bindung } = await aufsetzen(b.dienst, "r9", true);
 
         const halt = repoA.haltAn("touchSession");
-        const statusP = a.dienst.getSession(sessionId, bindung);
+        // Bens B9: ohne vorgestellte Uhr ueberspringt die Touch-Drossel den Write (s. Race 1).
+        a.vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const statusP = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         await b.dienst.revokeConsent(sessionId, bindung);
@@ -1235,7 +1244,10 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         const { sessionId, bindung } = await aufsetzen(b.dienst, "r10", false);
 
         const halt = repoA.haltAn("touchSession");
-        const statusP = a.dienst.getSession(sessionId, bindung);
+        // Bens B9: ohne vorgestellte Uhr ueberspringt die Touch-Drossel den Write (s. Race 1).
+        a.vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS);
+        // R-0777: der Touch liegt nur noch auf dem Aktivitaetsweg — dort laeuft dieses Rennen.
+        const statusP = a.dienst.meldeAktivitaet(sessionId, bindung);
         await halt.erreicht;
 
         await b.dienst.grantConsent(sessionId, bindung);
@@ -1529,13 +1541,26 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
 
     it("R6B-5 · das Tor unterscheidet Zustimmungsproblem und Blockade der Aufloesung", async () => {
       await mitPools(async (_pool, _repoA, repoB) => {
+        // Bens B10: `external_not_migrated` ist seit JOB 3079 nicht mehr erreichbar
+        // (`KLARA_EXTERNAL_EXECUTION_MIGRATED = true`). Die Blockade der Aufloesung, die es heute
+        // gibt, ist die fehlende zentrale Freigabe (JOB 3767: nur `true` gibt frei) — sie wird hier
+        // ausdruecklich konfiguriert statt vom fehlenden Feld geerbt.
         const b = dienstMit(repoB, "r6b5");
+        b.umkonfigurieren({ zentralFreigegeben: false });
         const { sessionId, bindung } = await aufsetzen(b.dienst, "r6b5", true);
         const tor = await b.dienst.pruefeExterneAusfuehrung(sessionId, bindung);
         // Die Zustimmung DECKT; geblockt wird die Auflösung selbst.
         expect(tor.erlaubt).toBe(false);
         expect(tor.erlaubt === false && tor.deckung.gedeckt).toBe(true);
-        expect(tor.erlaubt === false && tor.grund).toBe("external_not_migrated");
+        expect(tor.erlaubt === false && tor.grund).toBe("policy_incomplete");
+
+        // GEGENPROBE: dieselbe Lage MIT zentraler Freigabe — dann traegt dieselbe Zustimmung, und
+        // das Tor oeffnet. Die Sperre oben haengt also an der Freigabe, nicht an der Zustimmung.
+        const g = dienstMit(repoB, "r6b5g");
+        g.umkonfigurieren({ zentralFreigegeben: true });
+        const frei = await aufsetzen(g.dienst, "r6b5g", true);
+        const offen = await g.dienst.pruefeExterneAusfuehrung(frei.sessionId, frei.bindung);
+        expect(offen.erlaubt).toBe(true);
       });
     });
 

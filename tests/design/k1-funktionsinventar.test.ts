@@ -989,7 +989,10 @@ const LAGEN: Record<LageName, Lage> = {
     async stellen() {
       await zurRuhe("browser");
       const b = f("browser");
-      await askRoute("browser", antwortMit({ sources: [b.koId, ...b.weitereIds] }));
+      // Aufnahme 20260922 (R-0325): Chips und „+n" zeigen nur TRAGENDE Quellen — die Lage braucht
+      // deshalb drei tragende, nicht drei herangezogene.
+      const alle = [b.koId, ...b.weitereIds];
+      await askRoute("browser", antwortMit({ sources: alle, citedSources: alle }));
       await frageStellen(b.seite);
     },
     async abraeumen() {

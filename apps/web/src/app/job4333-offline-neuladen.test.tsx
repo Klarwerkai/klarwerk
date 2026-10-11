@@ -622,7 +622,7 @@ describe("JOB 4333: Neuladen ohne Netz — die eigene Arbeit bleibt sichtbar", (
       "auf dem Reiter Fragen fehlt der Satz über den gesperrten Serverinhalt",
     ).toBe(i18n.t("mob.sitzung.nurLokal"));
     expect(
-      container.querySelector(`input[placeholder="${i18n.t("ask.placeholder")}"]`),
+      container.querySelector(`input[placeholder="${i18n.t("beispielfragen.platzhalter")}"]`),
       "die Frage kann trotz unbeantworteter Sitzung gestellt werden",
     ).toBeNull();
   });

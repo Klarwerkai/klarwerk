@@ -263,9 +263,36 @@ describe("JOB 3110 · M2b · der gebaute Server kennt den Memo-Weg", () => {
     expect(res.statusCode, JSON.stringify(res.json())).toBe(200);
     const body = res.json() as ZurufAntwort;
     expect(body.entwurf).toBe(MEMO);
-    expect(body.herkunft).toEqual([
-      { koId: k.koId, titel: KO_TITEL, stufe: "validiert", version: 1 },
-    ]);
+    expect(body.herkunft).toHaveLength(1);
+    expect(body.herkunft[0]).toMatchObject({
+      koId: k.koId,
+      titel: KO_TITEL,
+      stufe: "validiert",
+      version: 1,
+      marke: "Q1",
+    });
+    // gesamt-dokumenterzeugung (Nacharbeit 7, R-0337/R-1739): an der ECHTEN Verdrahtung reisen alle
+    // Pflichtangaben je Quelle mit — die Feldmenge ist exakt, die Werte stammen aus Objekt und Audit
+    // dieses Laufs (Zeitstempel), deshalb hier nach Form statt nach Wert.
+    expect(Object.keys(body.herkunft[0] ?? {}).sort()).toEqual(
+      [
+        "fassungVom",
+        "geltungsbereich",
+        "koId",
+        "letztePruefungAm",
+        "marke",
+        "stufe",
+        "titel",
+        "trust",
+        "unsicherheiten",
+        "verantwortlich",
+        "verantwortlicheRolle",
+        "version",
+      ].sort(),
+    );
+    expect(typeof body.herkunft[0]?.trust).toBe("number");
+    expect(Array.isArray(body.herkunft[0]?.unsicherheiten)).toBe(true);
+    expect(Array.isArray(body.passagen)).toBe(true);
     // Anbieter und Modell kommen aus der Aufloesung, gegen die das ECHTE Tor geprueft hat.
     expect(body.anbieter).toBe(ANBIETER);
     expect(body.modell).toBe(MODELL_LABEL);

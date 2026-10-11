@@ -396,6 +396,10 @@ describe("JOB 3029 · U1(1) — der Block bildet die zwei Knöpfe auf ihre Erkl�
 // Autorin sieht ihn ja selbst, und bis Lauf :3 sahen ihn auch Administratoren. Seit Entscheidung
 // Pedi `debbb8e8` ist ein Entwurf privat (`canSeeDraft`: nur die Autorin), der Satz sagt es genau so.
 // Die Bedeutung für Erstnutzer (andere sehen ihn nicht, keine Prüfung, keine Antwort) bleibt.
+//
+// Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Satz geht weiter („…, solange du ihn
+// nicht bewusst teilst") und steht unter `entwurfspool.saveDraftHelp.body` (`captureHelp`); die
+// tragende Aussage hier ist unverändert, denn ohne die bewusste Handlung gilt sie weiter.
 const KERNAUSSAGEN: readonly string[] = [
   "Ein Entwurf ist NICHT eingereicht: Nur du siehst ihn",
   "Ab jetzt ist es für andere sichtbar",
@@ -423,7 +427,7 @@ for (const flaeche of FLAECHEN) {
         "auf dieser Fläche steht kein Entscheidungsknopf",
       ).toBeGreaterThan(0);
       const text = norm(block().textContent ?? "");
-      expect(text).toContain(norm(de("chelp.saveDraftHelp.body")));
+      expect(text).toContain(norm(de(captureHelp("saveDraftHelp").bodyKey)));
       expect(text).toContain(norm(de("chelp.submitReview.body")));
       expect(text).toContain(norm(de("chelp.saveDraftHelp.title")));
       expect(text).toContain(norm(de("chelp.submitReview.title")));
@@ -482,7 +486,7 @@ for (const flaeche of FLAECHEN) {
           expect(
             text,
             "ein Fragezeichen-Popover an der Knopfgruppe zeigt weiterhin die Entwurfs-Erklärung",
-          ).not.toContain(norm(de("chelp.saveDraftHelp.body")));
+          ).not.toContain(norm(de(captureHelp("saveDraftHelp").bodyKey)));
           expect(
             text,
             "ein Fragezeichen-Popover an der Knopfgruppe zeigt weiterhin die Einreich-Erklärung",
@@ -508,7 +512,7 @@ describe("JOB 3029 · U1(8) — der Block steht beim allerersten Besuch", () => 
     await flaecheErzaehlSchritt();
     expect(bloecke().length).toBe(1);
     const text = norm(block().textContent ?? "");
-    expect(text).toContain(norm(de("chelp.saveDraftHelp.body")));
+    expect(text).toContain(norm(de(captureHelp("saveDraftHelp").bodyKey)));
     expect(text).toContain(norm(de("chelp.submitReview.body")));
   });
 });

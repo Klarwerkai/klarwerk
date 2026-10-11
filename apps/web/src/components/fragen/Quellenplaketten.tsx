@@ -33,7 +33,7 @@ export const VERWENDUNG_HINWEIS: Record<Verwendung, string> = {
   unbekannt: "ask.attribution.unclear.hint",
 };
 
-const PLAKETTE = "shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase";
+const PLAKETTE = "shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-klein font-semibold uppercase";
 const TON_TRAGEND = "bg-trust-pos-bg text-trust-pos-text";
 const TON_ANGESEHEN = "bg-hairline-soft text-muted-2";
 const TON_UNKLAR = "bg-page text-muted-2";
@@ -194,7 +194,9 @@ export function QuellenChipInhalt({
           className="shrink-0 text-muted-2"
         />
       )}
-      <span className="text-[12px] font-semibold text-text">
+      {/* R-1026 (Aufnahme 20260922 · antwort-quellenanzeige): auch auf dem Telefon bleibt der Titel
+          lesbar — ein langer Titel ohne Umbruchstelle bricht um, statt über den Rand zu laufen. */}
+      <span className="min-w-0 text-[12px] font-semibold text-text [overflow-wrap:anywhere]">
         {nummer > 0 ? `${nummer} · ${label}` : label}
       </span>
       {/* Die Verwendungsauskunft AM CHIP, NACH dem Titel: die Chipform „n · Titel“ ist gepinnt

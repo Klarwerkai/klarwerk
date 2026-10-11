@@ -39,7 +39,9 @@ export default {
       "Meldungen konnten gerade nicht geladen werden. Die Anzahl ungelesener Meldungen ist unbekannt.",
     "fe002.meldungenNeu_one": "{{count}} neu",
     "fe002.meldungenNeu_other": "{{count}} neu",
-    "fe002.paletteHinweis": "Seiten und Bereiche öffnen. Inhalte finden Sie über „Wissen suchen“.",
+    // R-0893 (gesamt-schnellwahl): ab zwei Zeichen zeigt die Palette auch Wissenseinträge.
+    "fe002.paletteHinweis":
+      "Seiten und Bereiche öffnen, ab zwei Zeichen auch Wissenseinträge. Alle Inhalte finden Sie über „Wissen suchen“.",
   },
   en: {
     "fe002.arbeitsbereiche": "Work areas",
@@ -59,7 +61,8 @@ export default {
       "Notifications could not be loaded right now. The number of unread notifications is unknown.",
     "fe002.meldungenNeu_one": "{{count}} new",
     "fe002.meldungenNeu_other": "{{count}} new",
-    "fe002.paletteHinweis": "Open pages and areas. To find content, use “Search knowledge”.",
+    "fe002.paletteHinweis":
+      "Open pages and areas; from two characters on, knowledge entries too. To find all content, use “Search knowledge”.",
   },
   nl: {
     "fe002.arbeitsbereiche": "Werkgebieden",
@@ -79,6 +82,7 @@ export default {
       "Meldingen konden nu niet worden geladen. Het aantal ongelezen meldingen is onbekend.",
     "fe002.meldungenNeu_one": "{{count}} nieuw",
     "fe002.meldungenNeu_other": "{{count}} nieuw",
-    "fe002.paletteHinweis": "Pagina's en gebieden openen. Inhoud vindt u via „Kennis zoeken”.",
+    "fe002.paletteHinweis":
+      "Pagina's en gebieden openen, vanaf twee tekens ook kennisitems. Alle inhoud vindt u via „Kennis zoeken”.",
   },
 } satisfies Textmodul;

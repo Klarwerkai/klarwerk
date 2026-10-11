@@ -9,10 +9,14 @@ import JSZip from "jszip";
 // (`docx.ts:1-4`), und `mammoth` löst NUR von dort aus auf (`apps/web/package.json:23`; im
 // Wurzelpaket fehlt es — gemessen in JOB 2613 D3). Eine Kopie hier wäre ein zweiter
 // Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
-import { extractDocxRich, isDocxDocumentLike } from "../../../../apps/web/src/lib/docx";
+import {
+  MAX_INLINE_BODY_HTML_BYTES,
+  extractDocxRich,
+  isDocxDocumentLike,
+} from "../../../../apps/web/src/lib/docx";
 // JOB 3956 (Q9): der Meldungskatalog und die EINE Lesestelle des Sprachkopfes — derselbe Zugang,
-// den `services/app/src/http.ts:2` und `services/rbac/src/guard.ts:2` schon nehmen. Kein zweiter
-// Katalog und keine eigene Sprachermittlung in diesem Modul.
+// den `services/app/src/http.ts:2` schon nimmt (der RBAC-Wächter ist seit R-1349 entfernt).
+// Kein zweiter Katalog und keine eigene Sprachermittlung in diesem Modul.
 import { meldung, sprache } from "../../../auth";
 import {
   type CaptureService,
@@ -27,10 +31,12 @@ import {
   alsSchreibpatch,
   createOperationFingerprint,
   gelieferteDokumentId,
+  inSchutzdatenQuarantaene,
+  isValidConfidentiality,
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
 // Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
-import { kernaussageAusHtml, kernaussageAusKlartext } from "../../../structure";
+import { kernaussageAusHtml, kernaussageAusKlartext, sanitizeHtml } from "../../../structure";
 import type { ValidationService } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
@@ -40,7 +46,12 @@ import { type Guards, type SessionUser, sendError } from "../http";
 // ausdrücklich DOM- UND paketfrei gehalten, damit der Browser denselben Kern nutzen kann.
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
-import { entwurfSichtbarFuer } from "../sichtbarkeit";
+import { autorenrechtAmEntwurf, entwurfSichtbarFuer } from "../sichtbarkeit";
+import {
+  VORLAGE_SPACE_KONFLIKT_TEXT,
+  type VorlagenEinreichungPort,
+  VorlagenSpaceFehler,
+} from "../vorlagen";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
@@ -61,8 +72,22 @@ import { entwurfSichtbarFuer } from "../sichtbarkeit";
 // Lauf :3 Runde 3 (Ben B1-R): die Regel selbst steht in `sichtbarkeit.ts` (`entwurfSichtbarFuer`),
 // weil der Anhang-Leseweg (`GET /api/objects/:id/raw`) dieselbe braucht. Diese Funktion bleibt der
 // Name, unter dem die Entwurfsrouten und die Composition-Root sie rufen.
+//
+// AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06): die oben angekündigte zweite,
+// ausdrückliche Bedingung steht jetzt IN `entwurfSichtbarFuer` — ein Entwurf, den sein Autor bewusst
+// in den gemeinsamen Pool gegeben hat, ist für jeden Schreibberechtigten sichtbar und fortsetzbar
+// (Liste, Einzelabruf, Speichern, nächster Schritt, Anhänge). Ohne diese Handlung bleibt alles wie
+// oben beschrieben.
 export function canSeeDraft(user: SessionUser, draft: Draft): boolean {
   return entwurfSichtbarFuer(user, draft);
+}
+
+// Pool-Auftrag (Pedi, entscheidung:297afc57): Sehen und Fortsetzen ist nicht Verfügen. EINREICHEN
+// (Promote und Dokumentübernahme), LÖSCHEN, der PAPIERKORB und das TEILEN selbst bleiben beim Autor
+// — auch bei einem Pool-Entwurf. Für einen privaten Entwurf ist das dieselbe Menge wie
+// `canSeeDraft`; der Unterschied entsteht erst durch den Pool.
+export function canManageDraft(user: SessionUser, draft: Draft): boolean {
+  return autorenrechtAmEntwurf(user, draft);
 }
 
 // ================================================================================================
@@ -133,6 +158,12 @@ function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
  * Codeänderung wäre eine Vertragsänderung nach aussen und braucht eine eigene Erhebung der
  * Verbraucher. Nur `message` wechselt die Quelle.
  *
+ * aufnahme:20260922:gesamt-leserechte: genau diese Vertragsänderung ist seither erfolgt, und nur
+ * für den NICHT SICHTBAREN Entwurf (403 `DRAFT_NOT_VISIBLE` → 404 `DRAFT_NOT_FOUND`, Begründung an
+ * der Stelle unten). Erhoben: die Weboberfläche reicht den Serversatz durch (`ladeFehlerMeldung`)
+ * und kennt für Entwürfe keinen eigenen 403-Zweig; das Word-Panel wertet 403 nur am Anlegen aus,
+ * nicht am Laden. Das 403 `PERMISSION_DENIED` für einen SICHTBAREN fremden Pool-Entwurf bleibt.
+ *
  * `request` KOMMT ALS PARAMETER HEREIN und wird nicht aus `reply` gezogen (`reply.request` gäbe es):
  * Fastify füllt `reply.request` zwar, aber der Weg über den ausdrücklichen Parameter macht an JEDER
  * der fünf Aufrufstellen sichtbar, dass diese Funktion den Sprachkopf der ANFRAGE liest. Ein
@@ -146,18 +177,31 @@ async function requireVisibleDraft(
   user: SessionUser,
   reply: FastifyReply,
   request: FastifyRequest,
+  opts: { nurAutor?: boolean } = {},
 ): Promise<Draft | undefined> {
   const draft = await capture.getDraft(id);
-  if (!draft) {
+  // aufnahme:20260922:gesamt-leserechte (R-0239, Entscheidung J24 vom 13.08.2026: „Maskiert,
+  // Prueferrolle getrennt, aktive Benachrichtigung, 404"): ein Entwurf, den dieser Mensch nicht
+  // sehen darf, gibt es für ihn nicht. Bis hierher antwortete dieser Zweig 403 FORBIDDEN mit eigenem
+  // Satz („gibt es, du darfst nicht") — genau die Existenzauskunft, die die Entscheidung ausschliesst
+  // („403 verraet, dass der Entwurf existiert"). Jetzt Status, Code und Satz zeichengleich wie für
+  // eine unbekannte Kennung; dieselbe Richtung wie der Papierkorb unten und die Wissensobjekte
+  // (`ko-routes.ts`, mega80). Der Preis steht in der Entscheidung selbst: gegenüber einem
+  // Berechtigten, der sich in der Kennung irrt, ist „nicht gefunden" die ehrliche Antwort; wer einen
+  // fremden PRIVATEN Entwurf aufruft, erfährt nicht mehr, dass es ihn gibt.
+  if (!draft || !canSeeDraft(user, draft)) {
     reply
       .code(404)
       .send({ error: "NOT_FOUND", message: meldung("DRAFT_NOT_FOUND", sprache(request)) });
     return undefined;
   }
-  if (!canSeeDraft(user, draft)) {
+  // Pool-Auftrag (297afc57): wer einen fremden Pool-Entwurf SIEHT, darf ihn noch nicht einreichen
+  // oder löschen. Der Satz ist der vorhandene Rechtesatz (`PERMISSION_DENIED`), nicht
+  // `DRAFT_NOT_VISIBLE` — der Entwurf IST für ihn verfügbar, es fehlt das Recht an dieser Handlung.
+  if (opts.nurAutor && !canManageDraft(user, draft)) {
     reply
       .code(403)
-      .send({ error: "FORBIDDEN", message: meldung("DRAFT_NOT_VISIBLE", sprache(request)) });
+      .send({ error: "FORBIDDEN", message: meldung("PERMISSION_DENIED", sprache(request)) });
     return undefined;
   }
   return draft;
@@ -170,10 +214,11 @@ async function requireVisibleDraft(
  * aus zwei verschiedenen Sichten (`getDraft` gibt einen getrashten Entwurf ausdrücklich NICHT
  * heraus). Das PRÄDIKAT ist dasselbe und kein zweites — `canSeeDraft`, derselbe Aufruf.
  *
- * DIE ANTWORT IST EINE ANDERE, und zwar bewusst: 404 AUCH DANN, wenn der Entwurf existiert und nur
- * jemand anderem gehört. `requireVisibleDraft` unterscheidet an dieser Stelle 404 von 403, weil ein
- * LEBENDER fremder Entwurf ein Gegenüber hat, mit dem man reden kann („gibt es, du darfst nicht").
- * Ein GELÖSCHTER hat das nicht: Vor diesem Auftrag war seine Kennung nach dem Löschen schlicht
+ * DIE ANTWORT: 404 AUCH DANN, wenn der Entwurf existiert und nur jemand anderem gehört.
+ * (aufnahme:20260922:gesamt-leserechte: `requireVisibleDraft` unterschied hier früher 404 von 403
+ * für einen LEBENDEN fremden Entwurf; seit R-0239/J24 antwortet auch er 404 — die Begründung unten
+ * gilt für beide.) Ein GELÖSCHTER Entwurf hat kein Gegenüber: Vor diesem Auftrag war seine
+ * Kennung nach dem Löschen schlicht
  * nicht mehr auffindbar. Hielte der Papierkorb sie mit 403 am Leben, wäre über ihn erfragbar, dass
  * es einen fremden Entwurf gegeben hat — der Papierkorb hätte eine Auskunft HINZUGEFÜGT, und genau
  * das verbietet §4.5. Es ist dieselbe Richtung, in die mega80 die Wissensobjekte gebracht hat
@@ -186,7 +231,9 @@ async function requireVisibleTrashedDraft(
   reply: FastifyReply,
 ): Promise<Draft | undefined> {
   const draft = await capture.findTrashedDraft(id);
-  if (!draft || !canSeeDraft(user, draft)) {
+  // Pool-Auftrag (297afc57): der Papierkorb gehört dem, der löschen darf — dem Autor. Ein Pool-
+  // Entwurf im Papierkorb ist für den Pool nicht vorhanden.
+  if (!draft || !canManageDraft(user, draft)) {
     reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht im Papierkorb." });
     return undefined;
   }
@@ -256,6 +303,125 @@ function docxDraftTooLargeErrorHandler(
   });
 }
 
+// ================================================================================================
+// AUFNAHME gesamt-bildbudget (R-0013, R-0025, R-0412, M5c-b-R2) — DIE OBERGRENZE DES ENTWURFS, DEN
+// DER ADD-IN-WEG SPEICHERT.
+// ================================================================================================
+//
+// JOB 3400 verkleinert jedes Bild EINZELN. Eine Grenze für das GANZE Dokument gab es danach weiter
+// nicht: ein Word-Dokument mit vielen Fotos — oder mit einem Bild, das die Ableitung im Original
+// lässt (`eingabe-zu-gross`, bis 32 MiB) — legte einen Entwurf an, der größer ist als das, was
+// Speichern (`PUT /api/drafts/:id`) und Einreichen (`POST /api/drafts/:id/promote`) annehmen
+// (DRAFTS_BODY_LIMIT, 5 MiB). Anlegen ging, Einreichen scheiterte mit 413 — genau R-0025.
+//
+// KEINE DRITTE ZAHL: es gelten die Grenzen, die die anderen Importwege schon haben.
+//   · Umfang: `MAX_INLINE_BODY_HTML_BYTES` (3,5 MB, docx.ts) — Browser-Import und Panel
+//     (`WORD_ADDIN_BODY_BUDGET_BYTES`) halten `bodyHtml` unter derselben Kante, abgeleitet vom
+//     5-MiB-Deckel mit Rand für Titel, Aussage und JSON-Escaping.
+//   · Anzahl: 60 Bilder je Word-Dokument — dieselbe Zahl wie `WORD_ADDIN_MAX_BILDER` im Panel.
+//
+// GEMESSEN WIRD NACH DER VERKLEINERUNG, an dem `bodyHtml`, das gespeichert würde. Greift eine
+// Grenze, entsteht KEIN Entwurf und es wird KEIN Bild weggelassen; die Antwort nennt die Grenze und
+// beide Zahlen. Das ist der Unterschied zur „Notbremse" `imageBudgetBytes`, die überzählige Bilder
+// still weglässt (BEN 3229 R2: „das Bild ist restlos weg").
+//
+// NACHARBEIT 2 (BEN): DIE ROHGRÖSSE ALLEIN SICHERT R-0025 NICHT. Gezählt wurde nur das unkodierte
+// `bodyHtml`. Über die Leitung geht beim Speichern und Einreichen aber JSON — und JSON verdoppelt
+// jeden Backslash und jedes Anführungszeichen (der Sanitizer erhält beide, sanitize.ts:157). Drei
+// Millionen Backslashes und ein kleines Bild blieben unter 3,5 MB und brauchten serialisiert über
+// 6 MB: Anlegen ging, Speichern und Einreichen rissen den 5-MiB-Deckel. Deshalb gilt zusätzlich
+// eine dritte Grenze, gemessen an dem, was wirklich reist: der GESÄUBERTE Stand (so, wie `createDraft`
+// ihn speichert) als `JSON.stringify({ draftPayload })` — der Rumpf des Einreichens — plus ein
+// benannter Rand für das, was erst danach dazukommt.
+export const DOCX_BILDER_MAX_ANZAHL = 60;
+export const DOCX_ENTWURF_MAX_BYTES = MAX_INLINE_BODY_HTML_BYTES;
+export const DOCX_BILDGRENZE = "DOCX_BILDGRENZE";
+
+/**
+ * Rand im Einreich-Rumpf für Felder, die NACH der Übernahme dazukommen: Typ, Bereich, Schlagworte,
+ * Bedingungen, Maßnahmen, Quellen und Prüfer aus dem Editor (je durch `DRAFT_LIMITS` gedeckelt)
+ * sowie `operationId` und `expectedUpdatedAt` des Einreichens.
+ */
+export const DOCX_EINREICH_RAND_BYTES = 256 * 1024;
+
+/** Größter serialisierter Einreich-Rumpf, den der Dokument-Weg anlegt — Deckel minus Rand. */
+export const DOCX_EINREICH_RUMPF_MAX_BYTES = DRAFTS_BODY_LIMIT - DOCX_EINREICH_RAND_BYTES;
+
+/** Welche Grenze griff — geprüft in dieser Reihenfolge: Anzahl, Umfang, serialisierter Rumpf. */
+export type DocxGrenzart = "anzahl" | "umfang" | "rumpf";
+
+export interface DocxBildgrenzeGerissen {
+  error: typeof DOCX_BILDGRENZE;
+  grenze: DocxGrenzart;
+  message: string;
+  draftCreated: false;
+  imageTransfer: "not_completed";
+  imagesTotal: number;
+  maxImages: number;
+  bodyBytes: number;
+  maxBodyBytes: number;
+  /** Bytes von `JSON.stringify({ draftPayload })` des gesäuberten Stands. */
+  requestBytes: number;
+  maxRequestBytes: number;
+}
+
+// Wie `docxZuGrossMessage`: der Satz nennt die Grenze, die WIRKLICH galt, und was jetzt zu tun ist.
+function docxBildgrenzeMessage(grenze: DocxGrenzart, bilder: number, bytes: number): string {
+  if (grenze === "anzahl") {
+    return `Das Dokument enthaelt ${bilder} Bilder; uebernommen werden hoechstens ${DOCX_BILDER_MAX_ANZAHL} Bilder je Word-Dokument. Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger Bildern oder in Teilen erneut senden.`;
+  }
+  if (grenze === "umfang") {
+    return `Das Dokument ist auch nach dem Verkleinern der Bilder zu gross fuer einen Entwurf (${alsMib(bytes)}, erlaubt sind ${alsMib(DOCX_ENTWURF_MAX_BYTES)}). Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger oder kleineren Bildern oder in Teilen erneut senden.`;
+  }
+  return `Der Entwurf aus diesem Dokument waere beim Speichern und Einreichen zu gross (${alsMib(bytes)} mit Kodierung, erlaubt sind ${alsMib(DOCX_EINREICH_RUMPF_MAX_BYTES)}). Es wurde kein Entwurf angelegt und kein Bild weggelassen. Bitte mit weniger Text, weniger oder kleineren Bildern oder in Teilen erneut senden.`;
+}
+
+/**
+ * `null` = alle drei Grenzen gehalten; sonst die Antwort, mit der die Route ablehnt.
+ *
+ * `gespeichert` ist der Stand, wie `createDraft` ihn ablegen würde — mit GESÄUBERTEM `bodyHtml`.
+ * Gemessen wird daran, nicht an der Rohfassung: was der Sanitizer verwirft, reist nie mit.
+ */
+export function pruefeDocxBildgrenzen(
+  bilder: number,
+  gespeichert: DraftPayload,
+): DocxBildgrenzeGerissen | null {
+  const bytes = Buffer.byteLength(gespeichert.bodyHtml ?? "", "utf8");
+  const rumpfBytes = Buffer.byteLength(JSON.stringify({ draftPayload: gespeichert }), "utf8");
+  let grenze: DocxGrenzart;
+  if (bilder > DOCX_BILDER_MAX_ANZAHL) {
+    grenze = "anzahl";
+  } else if (bytes > DOCX_ENTWURF_MAX_BYTES) {
+    grenze = "umfang";
+  } else if (rumpfBytes > DOCX_EINREICH_RUMPF_MAX_BYTES) {
+    grenze = "rumpf";
+  } else {
+    return null;
+  }
+  return {
+    error: DOCX_BILDGRENZE,
+    grenze,
+    message: docxBildgrenzeMessage(grenze, bilder, grenze === "rumpf" ? rumpfBytes : bytes),
+    draftCreated: false,
+    imageTransfer: "not_completed",
+    imagesTotal: bilder,
+    maxImages: DOCX_BILDER_MAX_ANZAHL,
+    bodyBytes: bytes,
+    maxBodyBytes: DOCX_ENTWURF_MAX_BYTES,
+    requestBytes: rumpfBytes,
+    maxRequestBytes: DOCX_EINREICH_RUMPF_MAX_BYTES,
+  };
+}
+
+/**
+ * N11 (Pedi, Entscheidung 23 vom 05.09.2026): der Übernahme-Standard einer Word-Dokumentübernahme
+ * ohne ausdrückliche Einstufung — derselbe Wert wie im Import-Kern (`UEBERNAHME_STANDARD`,
+ * services/library-analytics). Gilt für beide Word-Übernahmewege beim Neuanlegen: das ganze
+ * Dokument (`POST /api/drafts/from-docx`) und die Markierung (`POST /api/drafts` mit
+ * `origin: "word_addin"`, Nacharbeit 11). Manuelle Entwürfe und Altentwürfe bleiben unberührt.
+ */
+const WORD_UEBERNAHME_STANDARD = "intern" as const;
+
 /** Was das Panel schickt: die `.docx` als Base64 plus die Angaben, die es ohnehin kennt. */
 export interface DocxDraftRequest {
   /** Dateiname, für Titel und Formatprüfung. */
@@ -264,6 +430,12 @@ export interface DocxDraftRequest {
   data: string;
   /** Titelvorschlag des Panels; ohne ihn wird der Dateiname genommen. */
   title?: string;
+  /**
+   * R-0632: die im Panel mit einem Klick GEWÄHLTE Stufe. Fehlt sie, entsteht der Entwurf wie
+   * bisher ohne Stufe — „nicht gewählt" wird nicht als Wahl ausgegeben, und das Einreichen fragt
+   * danach (Q3). Ein gesetzter, aber unbekannter Wert wird mit 400 abgewiesen, nie geraten.
+   */
+  confidentiality?: unknown;
   /** R-0169 (Nacharbeit 5): die im Word-Dokument gespeicherte Dokumentkennung, falls vorhanden. */
   dokumentId?: string;
 }
@@ -723,6 +895,8 @@ export type DraftCreateRequest = DraftPayload & {
   operationId?: string;
   expectedOwner?: string;
   dokumentId?: string;
+  /** entscheidung:14ce8681: einen unklar gebliebenen Vorgang mit geändertem Inhalt fortschreiben. */
+  fortschreiben?: boolean;
 };
 
 /**
@@ -801,6 +975,12 @@ export interface CaptureRoutesDeps {
    * Optional wie die Abhängigkeiten darüber; ohne sie bleibt der Word-Weg exakt wie vorher.
    */
   dokumente?: DokumentaktenService | undefined;
+  /**
+   * produkt:20261007:templates-default — dieselbe Einreichprüfung wie an `POST /api/kos`
+   * (Pflichtfelder der Vorlage, Space-Vorgaben, gepflegte Begriffe) und danach der Vermerk von
+   * Vorlage und Fassung. Speichern bleibt frei; geprüft wird erst beim Promote.
+   */
+  vorlagenEinreichung?: VorlagenEinreichungPort | undefined;
 }
 
 // ================================================================================================
@@ -997,8 +1177,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       // entscheidet, wer welchen Entwurf sieht. Die Vorfilterung ist eine Ersparnis, keine zweite
       // Regel — liefe sie je auseinander, faengt der Aufruf unten es ab. Eine Sichtbarkeitsregel
       // zu ersetzen, um Bytes zu sparen, waere der falsche Handel.
+      //
+      // Pool-Auftrag (R-2099): `mitPool` holt die bewusst geteilten Entwürfe dazu — wieder aus der
+      // Ablage gefiltert. Ob sie dieser Mensch sieht, entscheidet danach dieselbe eine Regel.
       const geprueft = await capture.listDraftsForResume(
         user.role === "admin" ? undefined : user.id,
+        { mitPool: true },
       );
       reply.code(200).send(
         visibleDraftsFor(
@@ -1047,6 +1231,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           expectedOwner: rohEigentuemer,
           // R-0169 (Nacharbeit 5): Transport wie `operationId`, nie Payload.
           dokumentId: rohDokumentId,
+          // entscheidung:14ce8681: Transport wie `operationId`, nie Payload.
+          fortschreiben: rohFortschreiben,
           ...nutzlast
         } = request.body ?? {};
         const gestalt = validateDraftPayloadShape(nutzlast);
@@ -1071,8 +1257,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // JOB 4249 R7 — UND SIE SPRICHT DIE SPRACHE DER SITZUNG. In Runde 6 stand der Satz hier als
         // deutsches Literal; der Q9-Wächter (`tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`)
         // hat ihn im Tor gefunden und damit genau das getan, wofür er gebaut ist. Er gehört in den
-        // Katalog — es ist derselbe Weg, den `DRAFT_NOT_FOUND` und `DRAFT_NOT_VISIBLE` zwölf Zeilen
-        // weiter oben schon gehen, keine zweite Auslegung und kein Sonderfall.
+        // Katalog — es ist derselbe Weg, den `DRAFT_NOT_FOUND` in `requireVisibleDraft` schon geht,
+        // keine zweite Auslegung und kein Sonderfall.
         const erwarteterEigentuemer =
           typeof rohEigentuemer === "string" && rohEigentuemer.trim().length > 0
             ? rohEigentuemer.trim()
@@ -1099,6 +1285,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           sendeUnbekannteDokumentkennung(reply);
           return;
         }
+        // N11 (BEN, Nacharbeit 11): auch die Übernahme einer Word-MARKIERUNG ist eine Übernahme aus
+        // Word — ohne ausdrückliche Panelwahl gilt derselbe Übernahme-Standard wie an `/from-docx`.
+        // Nur beim NEU Anlegen: manuelle Entwürfe (ohne Word-Herkunft) und bereits gespeicherte,
+        // unklassifizierte Altentwürfe bleiben ohne Vorbelegung (Q3, N-0017/UX-05).
+        const neuerEntwurf: DraftPayload =
+          ausWord && gestalt.payload.confidentiality === undefined
+            ? { ...gestalt.payload, confidentiality: WORD_UEBERNAHME_STANDARD }
+            : gestalt.payload;
         try {
           // JOB 2697: DIE ROUTE ÜBERSETZT NUR. Sie trifft keine eigene Entscheidung über
           // Wiederholung oder Konflikt und führt kein eigenes Register — der Dienst hat
@@ -1107,11 +1301,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `IDEMPOTENCY_PAYLOAD_MISMATCH` aus dem Dienst und wird von `sendError` auf 409
           // abgebildet (`http.ts:65`). Ohne Kennung ist `angelegt` immer `true` — der
           // Bestandspfad antwortet unverändert mit 201.
-          const { draft, angelegt } = await capture.createDraftVorgang(
+          // entscheidung:14ce8681 (Option A): `fortschreiben` erlaubt dem Dienst, einen unklar
+          // gebliebenen ersten Vorgang mit dem geänderten Inhalt fortzuschreiben, statt mit 409 zu
+          // antworten. Nur ein ausdrückliches `true` zählt; alles andere ist der Bestandsweg.
+          const { draft, angelegt, fortgeschrieben } = await capture.createDraftVorgang(
             // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
-            mitKanonischerAussage(gestalt.payload),
+            mitKanonischerAussage(neuerEntwurf),
             user.id,
             vorgangsId,
+            { fortschreiben: rohFortschreiben === true },
           );
           // R-0169 (Nacharbeit 5): ein Word-Entwurf wird an eine Fassung gebunden.
           // NACHARBEIT 8 (bens F2): nicht mehr nur beim NEU angelegten Entwurf. Scheiterte das
@@ -1125,7 +1323,17 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             ausWord && !draft.dokumentHerkunft
               ? await anWordDokumentBinden({ capture, dokumente }, draft, dokumentId, user.id)
               : draft;
-          reply.code(angelegt ? 201 : 200).send(antwort);
+          // entscheidung:8b909a1e (Option A): die Oberfläche soll sagen können „war bereits
+          // gespeichert, kein zweiter Eintrag". Der Statuscode allein erreicht sie nicht (der Client
+          // liefert nur den Rumpf aus), deshalb steht die Auskunft als TRANSPORTFELD neben dem
+          // Entwurf — nur bei einer Wiederholung, nie im gespeicherten Dokument.
+          reply
+            .code(angelegt ? 201 : 200)
+            .send(
+              angelegt
+                ? antwort
+                : { ...antwort, anlage: fortgeschrieben ? "fortgeschrieben" : "bestehend" },
+            );
         } catch (error) {
           sendError(reply, error);
         }
@@ -1167,12 +1375,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           name,
           data,
           title,
+          confidentiality,
           dokumentId: rohDokumentId,
         } = request.body ?? ({} as DocxDraftRequest);
         if (typeof data !== "string" || data.length === 0) {
           reply
             .code(400)
             .send({ error: "BAD_REQUEST", message: "Es wurden keine Dokumentbytes uebergeben." });
+          return;
+        }
+        // R-0632: dieselbe Schärfe wie die Gestaltprüfung von `POST /api/drafts`
+        // (`draft-payload-schema.ts`) — gültig oder abgewiesen, vor jeder Umwandlung.
+        if (confidentiality !== undefined && !isValidConfidentiality(confidentiality)) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "confidentiality muss intern, vertraulich oder streng_vertraulich sein.",
+          });
           return;
         }
         // R-0169 (Nacharbeit 5): dasselbe Tor wie an POST /api/drafts — vor jeder Umwandlung.
@@ -1305,10 +1523,41 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             statement: kernaussageAusKlartext(reich.text) || titelVorschlag || "",
             bodyHtml,
             origin: "word_addin",
+            // R-0632 / N11 (BEN, Nacharbeit 10): die ausdrückliche Wahl aus dem Panel gilt. OHNE Wahl
+            // gilt für diese ÜBERNAHME eines Word-Dokuments der Übernahme-Standard „intern" — Pedis
+            // jüngere Entscheidung 23 (05.09.2026) für Word-/Dateiübernahmen, gespeichert als echte
+            // Stufe und damit bis zum KI-Egress wirksam. ABGEGRENZT: das manuelle Erfassen (Blatt,
+            // Arbeitsraum, `POST /api/drafts`) behält seine Pflicht zur ausdrücklichen Wahl (Q3,
+            // N-0017/UX-05) — dort wird nichts vorbelegt.
+            confidentiality: isValidConfidentiality(confidentiality)
+              ? confidentiality
+              : WORD_UEBERNAHME_STANDARD,
             // JOB 512 (R5): die Zahl der Bilder in der QUELLDATEI, vor jedem Budgetabzug. Der
             // Client entscheidet damit fail-closed, ob etwas verloren ging.
             sourceImageCount: quellbilder,
           };
+          // AUFNAHME gesamt-bildbudget: die Obergrenzen des Dokuments (s. `pruefeDocxBildgrenzen`)
+          // VOR `createDraft` — ein Entwurf, der beim Speichern oder Einreichen an 413 scheitern
+          // würde, entsteht gar nicht erst, und der Aufrufer erfährt, welche Grenze griff. Gemessen
+          // am gesäuberten Stand — derselbe Schritt wie `sanitizeDraftPayload` in createDraft
+          // (capture/src/service.ts), der einen leeren Rumpf unberührt lässt.
+          const gerissen = pruefeDocxBildgrenzen(quellbilder, {
+            ...payload,
+            bodyHtml: bodyHtml.trim() ? sanitizeHtml(bodyHtml) : bodyHtml,
+          });
+          if (gerissen) {
+            request.log.warn(
+              {
+                grenze: gerissen.grenze,
+                bilder: quellbilder,
+                bytes: gerissen.bodyBytes,
+                rumpf: gerissen.requestBytes,
+              },
+              "docx-bildgrenze-gerissen",
+            );
+            reply.code(413).send(gerissen);
+            return;
+          }
           // R-0169 (Nacharbeit 5): der neu angelegte Entwurf wird an die Fassung seines
           // Word-Dokuments gebunden (Akte neu, wenn das Dokument noch keine Kennung trägt).
           const draft = await anWordDokumentBinden(
@@ -1366,7 +1615,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       }
       // AUFTRAG-mega20 Block D: DAS FORTSETZEN LÄUFT ÜBER DIE ANKERPRÜFUNG.
       //
-      // `requireVisibleDraft` bleibt die SICHTBARKEITS-Entscheidung (404/403) und wird davon nicht
+      // `requireVisibleDraft` bleibt die SICHTBARKEITS-Entscheidung (404) und wird davon nicht
       // berührt. Was hier dazukommt, ist die INHALTS-Entscheidung: beruft sich der Entwurf auf ein
       // gesichertes Original, das es nicht mehr gibt, kommt sein Body NICHT zurück — sonst stünde
       // übernommener Dokumenttext ohne Herkunft im Editor und ließe sich von dort einreichen.
@@ -1424,6 +1673,34 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         }
         const schritt = await capture.naechsterSchrittFuerEntwurf(request.params.id);
         reply.code(200).send(schritt ? { naechsterSchritt: schritt } : {});
+      },
+    );
+
+    // ============================================================================================
+    // R-1133 — DIE DUPLIKATSFRAGE ÜBER DEN TECHNISCHEN ENTWURFSINDEX.
+    // ============================================================================================
+    //
+    // Welche anderen Entwürfe tragen genau denselben Inhalt? Beantwortet über den Inhaltshash des
+    // Index (`CaptureService.entwuerfeMitGleichemInhalt`), nicht über einen Rumpfvergleich.
+    //
+    // DIESELBE BERECHTIGUNG UND DIESELBE SICHTBARKEIT wie die übrigen Entwurfsrouten: erst
+    // `requireVisibleDraft` für den gefragten Entwurf, dann `canSeeDraft` für JEDEN Treffer — ein
+    // fremder privater Entwurf erscheint nicht, auch nicht als Zahl. Reine Lesung: die Antwort
+    // führt Kennung und Titel und entscheidet nichts.
+    app.get<{ Params: { id: string } }>(
+      "/api/drafts/:id/gleicher-inhalt",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+          return;
+        }
+        const antwort = await capture.entwuerfeMitGleichemInhalt(request.params.id, (draft) =>
+          canSeeDraft(user, draft),
+        );
+        reply.code(200).send(antwort);
       },
     );
 
@@ -1518,7 +1795,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         const geloescht = await capture.listTrashedDrafts(
           user.role === "admin" ? undefined : user.id,
         );
-        reply.code(200).send(geloescht.filter((draft) => canSeeDraft(user, draft)));
+        // Pool-Auftrag (297afc57): der Papierkorb zeigt, was dieser Mensch löschen durfte — nur
+        // eigene Entwürfe (und dem Admin herrenlosen Altbestand), nie fremde Pool-Entwürfe.
+        reply.code(200).send(geloescht.filter((draft) => canManageDraft(user, draft)));
       } catch (error) {
         sendError(reply, error);
       }
@@ -1530,7 +1809,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         return;
       }
       try {
-        // DIESELBE 404/403-UNTERSCHEIDUNG WIE `requireVisibleDraft`, nur auf dem Papierkorb: Wer
+        // DIESELBE 404-ANTWORT WIE `requireVisibleDraft`, nur auf dem Papierkorb: Wer
         // ihn nicht sehen darf, erfährt auch hier nicht, dass es ihn gibt. `requireVisibleDraft`
         // selbst ist hier NICHT brauchbar — es liest über `getDraft`, und das gibt einen
         // getrashten Entwurf bewusst nicht heraus.
@@ -1562,13 +1841,64 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       }
     });
 
+    // ============================================================================================
+    // AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06, Pedi `debbb8e8` „Beides").
+    // ============================================================================================
+    //
+    // DIE BEWUSSTE HANDLUNG DES AUTORS: `{ imPool: true }` gibt genau diesen einen Entwurf in den
+    // gemeinsamen Pool, `{ imPool: false }` nimmt ihn zurück. Ohne diesen Aufruf ist und bleibt jeder
+    // Entwurf privat. Nur der Autor darf das (`nurAutor`, entscheidung:297afc57); ein anderer
+    // Schreibberechtigter bekommt für einen fremden Pool-Entwurf 403, für einen privaten 404 wie
+    // für eine unbekannte Kennung (R-0239). Ein Rumpf ohne Wahrheitswert ist ein Eingabefehler (400)
+    // und wird geprüft, bevor überhaupt ein Entwurf gelesen wird.
+    //
+    // KEIN ZWEITER SPEICHER: das Feld steht am Entwurf derselben Ablage (`Draft.imPool`); Liste,
+    // Editor und Anhänge lesen es über dieselbe eine Regel (`entwurfSichtbarFuer`).
+    app.put<{ Params: { id: string }; Body: { imPool?: unknown } | null }>(
+      "/api/drafts/:id/pool",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        const imPool = request.body?.imPool;
+        // Der Satz kommt aus dem Katalog in der Sprache der Sitzung (Q9-Wächter,
+        // `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`: kein Meldungsliteral an
+        // dieser Fläche). Nacharbeit 1: hier stand das Literal „imPool: true | false".
+        if (typeof imPool !== "boolean") {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: meldung("DRAFT_POOL_INVALID", sprache(request)),
+          });
+          return;
+        }
+        try {
+          if (
+            !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+              nurAutor: true,
+            }))
+          ) {
+            return;
+          }
+          reply.code(200).send(await capture.entwurfInPool(request.params.id, imPool));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
     app.delete<{ Params: { id: string } }>("/api/drafts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
       try {
-        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+        // Pool-Auftrag (297afc57): Löschen bleibt beim Autor, auch bei einem Pool-Entwurf.
+        if (
+          !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+            nurAutor: true,
+          }))
+        ) {
           return;
         }
         // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
@@ -1726,7 +2056,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
           // Wie in ko-routes: die Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
           // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
-          if (!aiCheckWorker) {
+          // R-0658: dieselbe Regel wie am direkten Einreichen (`ko-routes.ts`) — ein Objekt in
+          // Schutzdaten-Quarantäne geht nicht in die KI-Prüfung, auch nicht bei der Wiederholung.
+          if (!aiCheckWorker || inSchutzdatenQuarantaene(stand)) {
             return undefined;
           }
           if (stand.aiCheck) {
@@ -1744,6 +2076,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           aiCheckWorker.enqueue(koId, vermerkt?.aiCheck?.koVersion);
           return vermerkt;
         };
+        // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): mit gewähltem Space hält der
+        // Promote von der Vorlagenprüfung bis zur Zuordnung dieselbe Sperre wie die Spacelöschung.
+        let spaceSperreFrei: (() => void) | undefined;
         try {
           const body = request.body ?? {};
           const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
@@ -1784,11 +2119,20 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               const nachgeholt = await nacharbeiten(replay.id, body.reviewerIds);
               // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt.
               reply.code(200).send(nachgeholt ?? replay);
-              await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
+              // R-0658: ein Objekt in Schutzdaten-Quarantäne kommt nicht in die Ähnlichkeitsablage.
+              if (!inSchutzdatenQuarantaene(replay)) {
+                await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
+              }
               return;
             }
           }
-          if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+          // Pool-Auftrag (297afc57): Einreichen bleibt beim Autor, auch bei einem Pool-Entwurf —
+          // geprüft VOR jedem Schreiben, ein abgewiesener Aufruf ändert weder Entwurf noch Bestand.
+          if (
+            !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+              nurAutor: true,
+            }))
+          ) {
             return;
           }
           // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
@@ -1819,6 +2163,24 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             await capture.requireFresh(request.params.id, expectedUpdatedAt);
           }
           const input = await capture.toKoInput(request.params.id);
+          // produkt:20261007:templates-default: dieselbe Einreichprüfung wie an `POST /api/kos`,
+          // gegen den GESPEICHERTEN Vorlagenbezug (der mitgeschickte Stand ist oben schon gemischt).
+          // Scheitert sie, bleibt der Entwurf mit allen Werten stehen — es entsteht nichts.
+          const rohBezug = (await capture.getDraft(request.params.id))?.payload.vorlage;
+          spaceSperreFrei = await deps.vorlagenEinreichung?.halte(rohBezug);
+          const vorlagenEntscheid = await deps.vorlagenEinreichung?.pruefe(
+            rohBezug,
+            { bodyHtml: input.bodyHtml, category: input.category, tags: input.tags },
+            user,
+          );
+          if (vorlagenEntscheid && !vorlagenEntscheid.ok) {
+            reply.code(vorlagenEntscheid.status).send({
+              error: vorlagenEntscheid.error,
+              message: vorlagenEntscheid.message,
+              ...(vorlagenEntscheid.befunde ? { befunde: vorlagenEntscheid.befunde } : {}),
+            });
+            return;
+          }
           // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
           // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
           // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
@@ -1840,13 +2202,48 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Prüfung und Historie. Deshalb der eigene Weg `entwurfVerbraucht` (hart) und nicht
           // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
           // dazu führen, dass der Entwurf aus der Liste verschwindet.
+          // produkt:20261007:templates-default: Vorlage/Fassung vermerken, ggf. in den gewählten
+          // Space legen. Eine Nacharbeit: scheitert sie, steht das Objekt trotzdem, und die Antwort
+          // sagt es (`vorlagenVermerk`).
+          // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8): AUSNAHME ist die Space-
+          // Zuordnung — misslingt sie, ist die Anlage zurückgenommen, die Antwort 409, und der
+          // Entwurf bleibt bestehen (deshalb steht dieser Schritt VOR dem Verbrauch des Entwurfs).
+          let vorlagenVermerk: "fehlgeschlagen" | undefined;
+          if (vorlagenEntscheid?.ok && vorlagenEntscheid.bezug) {
+            try {
+              await deps.vorlagenEinreichung?.vermerke(created.id, vorlagenEntscheid.bezug, user);
+            } catch (fehlerWert) {
+              if (fehlerWert instanceof VorlagenSpaceFehler) {
+                reply.code(409).send({
+                  error: fehlerWert.code,
+                  message: VORLAGE_SPACE_KONFLIKT_TEXT,
+                });
+                return;
+              }
+              request.log.warn({ err: fehlerWert, event: "vorlagen-vermerk" }, "Vorlagenvermerk");
+              vorlagenVermerk = "fehlgeschlagen";
+            }
+          }
+          // Der Beitrag trägt seinen Space — die übrigen Nacharbeiten brauchen die Sperre nicht.
+          spaceSperreFrei?.();
           await capture.entwurfVerbraucht(request.params.id);
-          const submitted = (await nacharbeiten(created.id, body.reviewerIds)) ?? created;
-          reply.code(201).send(submitted);
+          // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
+          // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
+          // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
+          const inQuarantaene = inSchutzdatenQuarantaene(created);
+          // Nur wenn der Vermerk den Space gesetzt hat, wird neu gelesen — sonst wie bisher.
+          const imSpace = vorlagenEntscheid?.ok && Boolean(vorlagenEntscheid.bezug?.spaceId);
+          const submitted =
+            (await nacharbeiten(created.id, body.reviewerIds)) ??
+            (imSpace ? await ko.get(created.id) : undefined) ??
+            created;
+          reply.code(201).send(vorlagenVermerk ? { ...submitted, vorlagenVermerk } : submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          if (!inQuarantaene) {
+            await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          }
         } catch (error) {
           // JOB 2684 D1: ein veralteter Stand ist ein Konflikt, kein Eingabefehler — 409, und es ist
           // NICHTS entstanden (der Vergleich steht vor `continueDraft` und vor `ko.create`).
@@ -1854,6 +2251,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             return;
           }
           sendError(reply, error);
+        } finally {
+          spaceSperreFrei?.();
         }
       },
     );

@@ -26,7 +26,7 @@
 // `anzeigelage` den Fall „Daten UND Fehler" ausdrücklich und macht daraus keinen Fehlerzustand
 // ohne Inhalt.
 
-import type { AnweisungLesestand, AnweisungStand } from "../../api/types";
+import type { AnweisungEntscheidung, AnweisungLesestand, AnweisungStand } from "../../api/types";
 
 export type Anzeigelage =
   | { readonly art: "laden" }
@@ -193,12 +193,16 @@ export function mengenSchluessel(werte: readonly string[] | null): {
 // (`alsVorgelegt`, `alsEntschieden`, `nurAenderbar`; Rechte `ko.create` und `ko.validate`). Eine
 // zweite Person wird nirgends verlangt, weil keine Kontoregel sie vorsieht.
 //
-// WAS NICHT FESTGEHALTEN IST, WIRD NICHT ERFUNDEN: der Server speichert bei einer Entscheidung nicht,
-// WER entschieden hat. Die Prüfangaben sagen das ausdrücklich. Zeitpunkt und Fassung einer FREIGABE
-// sind dagegen belegt: eine freigegebene Anleitung nimmt keinen Schreibzugriff mehr an
-// (`nurAenderbar`), also ist ihr `geaendertAm` der Augenblick der Freigabe und ihre `version` die
-// freigegebene Fassung. Nach einer Ablehnung darf weiter geändert werden — dort ist `geaendertAm`
-// nicht mehr der Zeitpunkt der Ablehnung und wird deshalb auch nicht als solcher gezeigt.
+// WAS NICHT FESTGEHALTEN IST, WIRD NICHT ERFUNDEN: Entscheidungen VOR dem Auftrag STATUS-FREIGABE
+// (produkt:20261007) tragen keine Person. Die Prüfangaben sagen das dann ausdrücklich. Zeitpunkt und
+// Fassung einer solchen FREIGABE sind trotzdem belegt: eine freigegebene Anleitung nimmt keinen
+// Schreibzugriff mehr an (`nurAenderbar`), also ist ihr `geaendertAm` der Augenblick der Freigabe und
+// ihre `version` die freigegebene Fassung. Nach einer Ablehnung darf weiter geändert werden — dort
+// ist `geaendertAm` nicht mehr der Zeitpunkt der Ablehnung und wird deshalb nicht als solcher gezeigt.
+//
+// STATUS-FREIGABE · seit diesem Auftrag hält der Server die Entscheidung fest (`entscheidung`: wer,
+// wann, welche Fassung). Gezeigt wird sie NUR, wenn sie zum Stand passt (angenommen ↔ entschieden,
+// abgelehnt ↔ abgelehnt) — sonst gilt sie als nicht festgehalten, und es greift der Satz oben.
 
 export interface Freigaberechte {
   /** `ko.create` — vorlegen und überarbeiten. */
@@ -215,6 +219,8 @@ export interface Freigabeeingabe {
   readonly abschnitte: number;
   /** Sieht der Betrachter nicht alle Abschnitte, kann er weder vorlegen noch entscheiden. */
   readonly unvollstaendig: boolean;
+  /** Die vom Server festgehaltene letzte Entscheidung; fehlt sie, ist keine festgehalten. */
+  readonly entscheidung?: AnweisungEntscheidung | undefined;
 }
 
 export interface Freigabeanzeige {
@@ -229,7 +235,27 @@ export interface Freigabeanzeige {
     readonly schluessel: string;
     /** `null` = nicht festgehalten — die Anzeige sagt das, statt eine Zeit zu zeigen. */
     readonly am: string | null;
+    /** Nur bei festgehaltener Entscheidung: die Kontokennung der entscheidenden Person. */
+    readonly von?: string;
+    /** Nur bei festgehaltener Entscheidung: die Fassung, über die entschieden wurde. */
+    readonly nummer?: number;
   } | null;
+}
+
+/** Passt die festgehaltene Entscheidung zum Stand? Sonst ist sie für diese Anzeige nicht festgehalten. */
+function passendeEntscheidung(eingabe: Freigabeeingabe): AnweisungEntscheidung | null {
+  const e = eingabe.entscheidung;
+  if (!e || e.von.trim().length === 0) {
+    return null;
+  }
+  if (eingabe.stand === "entschieden" && e.ergebnis === "angenommen") {
+    // Eine freigegebene Anleitung ändert sich nicht mehr: die Fassung MUSS die jetzige sein.
+    return e.version === eingabe.version ? e : null;
+  }
+  if (eingabe.stand === "abgelehnt" && e.ergebnis === "abgelehnt") {
+    return e;
+  }
+  return null;
 }
 
 function naechsterSchritt(eingabe: Freigabeeingabe, rechte: Freigaberechte): string {
@@ -261,8 +287,18 @@ function naechsterSchritt(eingabe: Freigabeeingabe, rechte: Freigaberechte): str
 
 /** Status, Bedeutung, nächster Schritt und Prüfangaben — für Übersicht UND Detail. */
 export function freigabeanzeige(eingabe: Freigabeeingabe, rechte: Freigaberechte): Freigabeanzeige {
-  const pruefung =
-    eingabe.stand === "entschieden"
+  const festgehalten = passendeEntscheidung(eingabe);
+  const pruefung = festgehalten
+    ? {
+        schluessel:
+          festgehalten.ergebnis === "angenommen"
+            ? "statusfreigabe.anleitung.freigegebenVon"
+            : "statusfreigabe.anleitung.abgelehntVon",
+        am: festgehalten.am,
+        von: festgehalten.von,
+        nummer: festgehalten.version,
+      }
+    : eingabe.stand === "entschieden"
       ? { schluessel: "fe001.status.pruefung.freigegeben", am: eingabe.geaendertAm }
       : eingabe.stand === "abgelehnt"
         ? { schluessel: "fe001.status.pruefung.abgelehnt", am: null }

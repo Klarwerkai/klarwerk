@@ -93,7 +93,33 @@ APP_BASE_URL=
 # OIDC_ISSUER=
 # OIDC_AUDIENCE=
 # OIDC_JWKS_URI=
+# OIDC_AUTHORIZE_URL=
+# OIDC_TOKEN_URL=
+# OIDC_CLIENT_ID=
+# OIDC_REDIRECT_URI=
+# OIDC_CLIENT_SECRET=
 # OIDC_AUTOPROVISION=
+# OIDC_ROLE_CLAIM=
+# OIDC_GROUP_ADMIN=
+# OIDC_GROUP_CONTROLLER=
+# OIDC_GROUP_EXPERTE=
+# OIDC_REQUIRE_EMAIL_VERIFIED=
+# OIDC_SESSION_TTL_HOURS=
+# KLARWERK_SSO_ONLY=
+# SAML_IDP_ENTITY_ID=
+# SAML_IDP_SSO_URL=
+# SAML_IDP_CERT=
+# SAML_SP_ENTITY_ID=
+# SAML_ACS_URL=
+# SAML_AUTOPROVISION=
+# SAML_ATTR_EMAIL=
+# SAML_ATTR_NAME=
+# SAML_ATTR_GROUPS=
+# SAML_GROUP_ADMIN=
+# SAML_GROUP_CONTROLLER=
+# SAML_GROUP_EXPERTE=
+# KLARWERK_SCIM_TOKEN=
+# KLARWERK_PRUEFZUSTAENDIGKEIT=
 # KLARWERK_M365_MANDANTEN=
 ```
 
@@ -226,7 +252,97 @@ Nach dem Start steht im Protokoll entweder
 oder je verworfenem Eintrag eine Warnung mit Grund. Einzelheiten und die Live-Abnahme:
 `docs/operations/word-web-hostabnahme.md`.
 
+### 2.7 Eine Firma je Instanz — die Datenbank gehört genau einer Anlage
+
+Jede Firma bekommt ihre **eigene** Instanz mit **eigener** Datenbank; auch Tochter- oder
+Schwestergesellschaften teilen sich keine. Mehrere Instanzen dürfen auf derselben Hardware laufen
+(getrennte VMs), aber nie gegen dieselbe Datenbank.
+
+Die Anwendung erzwingt das selbst: Beim ersten Start gegen eine Datenbank trägt sie den Hostnamen
+aus `APP_BASE_URL` in die Tabelle `instanz_bindung` ein. Startet danach eine Instanz mit einem
+**anderen** Hostnamen gegen dieselbe `DATABASE_URL`, bricht der Start ab, bevor eine einzige
+Anfrage angenommen wird:
+
+```
+Serverstart fehlgeschlagen: InstanzbindungError (code OHNE_CODE, herkunft services/app/src/instanzbindung.ts:…) — …
+```
+
+Schema und Port zählen nicht: `http://` statt `https://` oder ein anderer Port derselben Adresse
+ist dieselbe Anlage. Einen Schalter, der die Prüfung abschaltet, gibt es absichtlich nicht.
+
+Die Prüfung läuft **vor** allen übrigen Migrationen: eine fremde Anlage legt an der Datenbank einer
+anderen höchstens die Bindungstabelle an (falls sie fehlt) und ändert sonst nichts am Schema —
+auch nicht bei abweichendem Softwarestand. Ist `APP_BASE_URL` gesetzt, aber keine lesbare Adresse
+mit Hostnamen (Tippfehler, fehlendes `https://`), bricht der Start mit
+`Serverstart fehlgeschlagen: InstanzadresseError …` ab, statt ungebunden zu laufen.
+
+Die Startfehlerzeile nennt nur Fehlertyp, Code und Quelltextstelle, nie die Meldung. Welche Anlage
+die Datenbank für sich hält, zeigt die Datenbank selbst:
+
+```
+docker compose -f docker-compose.prod.yml exec db psql -U klarwerk -d klarwerk_prod -c "SELECT anlage, gebunden_am FROM instanz_bindung;"
+```
+
+**Selbstbedienung ist kein Mehrkundenweg.** Eine Selbstbedienungsbereitstellung neuer Firmen gibt es
+im Produkt heute nicht (die Selbstregistrierung `KLARWERK_SELF_REGISTRATION` legt nur Konten
+**innerhalb** dieser Instanz an). Kommt sie später, muss sie je Firma eine neue Instanz mit eigener
+Datenbank anlegen — die Bindung oben verhindert technisch, dass eine zweite Firma in eine
+vorhandene Datenbank gelegt wird.
+
+**Bewusster Umzug derselben Firma auf eine neue Adresse:** Instanz stoppen, die Bindung
+ausdrücklich lösen und mit der neuen `APP_BASE_URL` starten — der nächste Start bindet neu:
+
+```
+docker compose -f docker-compose.prod.yml exec db psql -U klarwerk -d klarwerk_prod -c "DELETE FROM instanz_bindung;"
+```
+
+Dasselbe gilt nach dem Einspielen einer Sicherung unter einer anderen Adresse. Gehütet von
+`tests/instanztrennung/zwei-anlagen-eine-datenbank-pg.integration.test.ts`.
+
 ---
+
+### 2.7 Optional: Firmen-Login (OIDC oder SAML), „nur Firmen-Login" und Verzeichnispflege
+
+Der Firmen-Login ist nur aktiv, wenn **alle sieben** Werte stehen: `OIDC_ISSUER`, `OIDC_AUDIENCE`,
+`OIDC_JWKS_URI`, `OIDC_AUTHORIZE_URL`, `OIDC_TOKEN_URL`, `OIDC_CLIENT_ID` und `OIDC_REDIRECT_URI`
+(öffentliche Adresse dieser Instanz + `/sso/callback`). Die Compose-Datei reicht jeden davon durch.
+Fehlt nur ein Teil, ist SSO aus, und der Startbericht im Protokoll nennt **jeden fehlenden Namen**
+(„SSO ist unvollständig konfiguriert …").
+
+Die Rolle in Klara kommt aus den Gruppen des Anmeldedienstes: `OIDC_ROLE_CLAIM` (Vorgabe `roles`)
+nennt das Token-Feld, `OIDC_GROUP_ADMIN`, `OIDC_GROUP_CONTROLLER` und `OIDC_GROUP_EXPERTE` die
+Gruppennamen. Ohne Gruppe wird niemand per SSO Administrator. `OIDC_AUTOPROVISION=true` legt
+unbekannte Mitarbeiter beim ersten Anmelden selbst an.
+
+`KLARWERK_SSO_ONLY=1` schaltet die Anmeldung mit Passwort ab — Anmelden, Registrieren, „Passwort
+vergessen" und Zurücksetzen antworten dann 403, die Anmeldeseite zeigt nur noch den Firmen-Login.
+Die Sperre gilt **immer**, auch solange weder OIDC noch SAML vollständig eingerichtet ist: dann
+kommt niemand herein. Die Anmeldeseite und die 403 sagen das ausdrücklich („der Firmen-Login ist
+noch nicht eingerichtet"), und der Startbericht nennt die fehlenden Werte. Schalter deshalb erst
+setzen, wenn der Firmen-Login steht. Einzige Ausnahme: die Ersteinrichtung einer Instanz ohne ein
+einziges Konto.
+
+**SAML statt OIDC.** Verlangt der Konzern das ältere Verfahren, stehen statt der OIDC-Werte fünf
+SAML-Werte: `SAML_IDP_ENTITY_ID`, `SAML_IDP_SSO_URL`, `SAML_IDP_CERT` (Signaturzertifikat aus den
+Anbieter-Metadaten, PEM oder Base64), `SAML_SP_ENTITY_ID` und `SAML_ACS_URL` (öffentliche Adresse +
+`/api/auth/saml/acs`). Die Metadaten dieser Instanz für die Einrichtung beim Anbieter liefert
+`/api/auth/saml/metadata`. Rollen kommen über `SAML_ATTR_GROUPS` und `SAML_GROUP_ADMIN`,
+`SAML_GROUP_CONTROLLER`, `SAML_GROUP_EXPERTE`. Die Assertion muss signiert sein; verschlüsselte
+Assertions und vom Anbieter selbst angestossene Anmeldungen werden abgelehnt.
+
+**Verzeichnispflege (SCIM).** Mit `KLARWERK_SCIM_TOKEN` (mindestens 32 Zeichen) pflegt das
+Unternehmensverzeichnis die Konten selbst: Eintritt legt an, Austritt sperrt (Sitzungen enden sofort,
+das Konto bleibt mit seinen Spuren bestehen), ein Wechsel passt die Rolle an. In Entra ID trägt man
+als Mandanten-URL die öffentliche Adresse + `/scim/v2` und als geheimes Token diesen Wert ein; die
+Gruppen kommen über App-Rollen (SCIM-Attribut `roles`) und werden mit denselben Namen wie
+`OIDC_GROUP_*` auf Rollen abgebildet. `KLARWERK_PRUEFZUSTAENDIGKEIT=QM-Pruefung=space-qm` macht die
+Mitglieder einer Verzeichnisgruppe zu Prüfenden für die Objekte in diesem Space. Das gilt auch für
+Objekte, die schon dort liegen: Nach jeder Änderung aus dem Verzeichnis (Eintritt, Austritt,
+Gruppenwechsel) und bei jedem Space-Wechsel gleicht Klara die daraus abgeleiteten offenen
+Zuweisungen ab. Von Hand vergebene Zuweisungen und erledigte Prüfungen bleiben bestehen. Scheitert
+dabei etwas (etwa der Mailversand), bleibt die Änderung aus dem Verzeichnis trotzdem gültig. Klara
+wiederholt den Abgleich nach einer Minute und beim nächsten Start, bis alle Benachrichtigungen
+zugestellt sind.
 
 ## 3. Der Start
 
@@ -395,6 +511,7 @@ Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicheru
 | Jeder Besucher landet auf einer fremden Website | Ihre Instanz läuft unter `app.<etwas>` und `CANONICAL_HOST` **ist auf `<etwas>` gesetzt** — die Umleitung entsteht durch das Setzen, nicht durch die Vorgabe (§2.2, Zeile 4 der Messtabelle). | Die Zeile `CANONICAL_HOST=` aus der `.env` **entfernen** (nicht leeren) und die Instanz neu starten. |
 | Im Protokoll steht `Datenhaltung: In-Memory` statt `Postgres` | Die Anwendung hat keine gültige `DATABASE_URL` bekommen. Alles, was Sie eingeben, ist beim nächsten Neustart weg. | Sofort stoppen, `POSTGRES_PASSWORD`/`DATABASE_URL` prüfen, neu starten. |
 | Der Start bricht mit `COOKIE_SECURE=false ist in Produktion nicht erlaubt` ab | Das Secure-Flag wurde abzuschalten versucht (§5). Auf **diesem** Weg kann das nicht aus der `.env` kommen — die Compose-Datei schreibt `true` fest (§2.4); es kommt dann aus einer geänderten Compose-Datei oder einem anderen Betriebsweg. | Den Wert wieder auf `true` stellen und TLS davorsetzen. |
+| Der Start bricht mit `Serverstart fehlgeschlagen: InstanzbindungError …` ab | Die Datenbank ist an eine andere Adresse gebunden (welche, zeigt `SELECT anlage FROM instanz_bindung;`, §2.7) — entweder teilt sich diese Instanz die Datenbank mit einer anderen Anlage, oder dieselbe Firma ist umgezogen (§2.7). | Andere Anlage: eigene Datenbank einrichten, **nie** die Bindung lösen. Bewusster Umzug: Bindung lösen wie in §2.7. |
 | Der Start bricht mit `KLARWERK-Start abgebrochen: … Pflichtwert(e)` ab | Der Startvertrag der Anwendung — er nennt **alle** fehlenden Namen auf einmal. | Alle genannten Werte nachtragen. |
 | Nach dem Start ist der Port nicht erreichbar | Die Instanz horcht auf 3001; ein Proxy oder eine Firewall trifft einen anderen Port. | Proxy auf 3001 richten; siehe `docs/operations/server-hardening-readiness.md`. |
 | Die Ersteinrichtung ist schon weg (409) | Jemand war schneller — oder Sie haben sie bereits durchgeführt. | Wenn Sie es nicht waren: Instanz sofort vom Netz nehmen, Datenbank verwerfen, neu aufsetzen und §4 einhalten. |
@@ -414,8 +531,10 @@ Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicheru
   übersprungener Lauf ist kein bestandener.
   Auf dem Prüfplatz misst die Strecke aus §9 denselben Abbruch am echten `up` (K6a) — dort ohne
   Übersprung.
-- SSO/OIDC, eine echte Microsoft-365-Anbindung, SMTP im Echtbetrieb, Skalierung und Monitoring sind
-  eigene Themen und hier bewusst nicht beschrieben.
+- Die Anbindung an einen **echten** Anmeldedienst (Entra ID o. ä.) ist nicht gemessen; §2.7
+  beschreibt die Werte, nicht die Einrichtung beim Anbieter. Eine echte Microsoft-365-Anbindung,
+  SMTP im Echtbetrieb, Skalierung und Monitoring sind eigene Themen und hier bewusst nicht
+  beschrieben.
 
 ---
 

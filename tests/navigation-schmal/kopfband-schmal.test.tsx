@@ -97,6 +97,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { canSee, kopfbandItems } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
+import { aktuellePlattform, kuerzelText } from "../../apps/web/src/lib/tastenkuerzel";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
 import { SCHMAL_GEHEZU_QUERY } from "../../apps/web/src/shell/Kopfband";
 import { NARROW_QUERY } from "../../apps/web/src/shell/useMediaQuery";
@@ -368,7 +369,9 @@ describe("JOB 3525 · C · Tablet-Band (768 px): „Gehe zu …“ steht OBEN, d
     const knopf = geheZuOben();
     expect(knopf, "„Gehe zu …“ steht auf 768 px nicht oben").not.toBeNull();
     expect(knopf?.textContent).toContain(i18n.t("fe002.seiteFinden"));
-    expect(knopf?.textContent, "das Kürzel fehlt am Knopf").toContain("⌘K");
+    expect(knopf?.textContent, "das Kürzel fehlt am Knopf").toContain(
+      kuerzelText("K", i18n.language, aktuellePlattform()),
+    );
   });
 
   it("der beschriftete Menü-Knopf trägt die ganze Navigation — kein Punkt ist fort", async () => {

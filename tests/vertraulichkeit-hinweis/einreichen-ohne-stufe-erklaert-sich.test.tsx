@@ -142,8 +142,12 @@ function brueckeAufbauen(): void {
   };
 }
 
+let dienste: ReturnType<typeof buildServices>;
+let nutzerId = "";
+
 async function serverStarten(): Promise<void> {
   const services = buildServices();
+  dienste = services;
   bruecke.app = buildApp(services) as unknown as typeof bruecke.app;
   bruecke.token = "";
   bruecke.requests = [];
@@ -157,19 +161,26 @@ async function serverStarten(): Promise<void> {
     url: "/api/auth/login",
     payload: { email: "pedi@job3114.test", password: "geheim12345" },
   });
-  bruecke.token = (JSON.parse(login.body) as { token: string }).token;
+  const angemeldet = JSON.parse(login.body) as { token: string; user: { id: string } };
+  bruecke.token = angemeldet.token;
+  nutzerId = angemeldet.user.id;
 }
 
-/** Ein Entwurf ueber die ECHTE Route, ohne Stufe — der Fall aus Befund R-1560. */
+/**
+ * Ein gespeicherter Entwurf ohne Stufe — der Fall aus Befund R-1560.
+ *
+ * NACHGEFUEHRT (Nacharbeit 11, N11): eine NEUE Word-Markierung ohne Panelwahl legt die Route seither
+ * mit dem Uebernahme-Standard „intern" an. Der Befund betrifft den bereits GESPEICHERTEN Entwurf
+ * ohne Stufe — er entsteht deshalb als Altentwurf unmittelbar ueber den Dienst. Fortsetzen,
+ * Hinweis und Einreichen laufen unveraendert ueber Flaeche und Route.
+ */
 async function entwurfOhneStufeAnlegen(): Promise<string> {
-  const res = await bruecke.app.inject({
-    method: "POST",
-    url: "/api/drafts",
-    headers: { authorization: `Bearer ${bruecke.token}`, "content-type": "application/json" },
-    payload: { title: TITEL, bodyHtml: KOERPER, origin: "word_addin" },
-  });
-  expect(res.statusCode, `Entwurf nicht angelegt: ${res.body.slice(0, 300)}`).toBe(201);
-  const id = (JSON.parse(res.body) as { id: string }).id;
+  const id = (
+    await dienste.capture.createDraft(
+      { title: TITEL, bodyHtml: KOERPER, origin: "word_addin" },
+      nutzerId,
+    )
+  ).id;
   const geladen = await bruecke.app.inject({
     method: "GET",
     url: `/api/drafts/${id}`,

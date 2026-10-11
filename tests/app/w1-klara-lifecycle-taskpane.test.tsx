@@ -20,6 +20,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { istFrageAufruf } from "../support/frageweg";
 import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -626,11 +627,13 @@ describe("AUFTRAG-26 BEFUND 2: ein gescheiterter Widerruf sperrt sofort fail-saf
     el("klara-consent-revoke").click();
     await leerlauf();
 
-    const vorher = aufrufe.filter((a) => a.url === "/api/ask").length;
+    // R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — gezählt werden BEIDE Ziele,
+    // sonst wäre „keine Frage ging hinaus" schon deshalb wahr, weil sie anderswohin ginge.
+    const vorher = aufrufe.filter((a) => istFrageAufruf(a.url)).length;
     (el("ask-input") as HTMLTextAreaElement | HTMLInputElement).value = "Was gilt hier?";
     el("ask-btn").click();
     await leerlauf();
-    expect(aufrufe.filter((a) => a.url === "/api/ask").length, "Eine Frage ging hinaus").toBe(
+    expect(aufrufe.filter((a) => istFrageAufruf(a.url)).length, "Eine Frage ging hinaus").toBe(
       vorher,
     );
   });
@@ -1058,8 +1061,11 @@ describe("AUFTRAG-26 BEFUND 7: der vorhandene Weg bleibt unveraendert", () => {
     (el("ask-input") as HTMLInputElement).value = "Wie ist der Ablauf?";
     el("ask-btn").click();
     await leerlauf();
-    const ask = aufrufe.filter((a) => a.url === "/api/ask");
+    // R-0700: mit registrierter Sitzung geht die Frage an Klaras eigenen Zugang — die Sitzung steht
+    // im Pfad, der Körper ist derselbe wie bisher.
+    const ask = aufrufe.filter((a) => istFrageAufruf(a.url));
     expect(ask.length).toBe(1);
+    expect(ask[0]?.url).toBe("/api/klara/sessions/sess-1/execute");
     expect((ask[0]?.body as Record<string, unknown>).mode).toBe("retrieval-only");
   });
 
@@ -1435,10 +1441,32 @@ describe("JOB 1151 KA3: die Karte kommt auf Anlass — und nimmt nie den Cursor"
     doc.setSelectedDataAsync = () => {
       schreibversuche.push("setSelectedDataAsync");
     };
+    // Aufnahme 20260922 (gesamt-bestandsblick, Runde 2): KA3 liest vor dem Bestandsblick nach der
+    // Schreibruhe das Dokument NEU (KA1-Begriffsbild zum aktuellen Stand, Bens Befund 1). Ein
+    // `Word.run` ist deshalb kein Schreibversuch mehr an sich. Die Attrappe fuehrt den Rueckruf
+    // aus und trennt: die drei Lesezugriffe von `readWholeDocument` (`body.load`, `body.getHtml`,
+    // `context.sync`) sind erlaubt, JEDER andere Zugriff auf Dokument oder Koerper wird als
+    // Schreibversuch gezaehlt. Die Zusicherung „KA3 fasst keinen Schreibweg an" bleibt so scharf.
+    const lesend = new Set(["body", "text", "load", "getHtml", "then"]);
+    const schreibend = (wo: string, ziel: Record<string, unknown>) =>
+      new Proxy(ziel, {
+        get(t, name) {
+          if (typeof name === "string" && !lesend.has(name)) {
+            schreibversuche.push(`${wo}.${name}`);
+          }
+          return Reflect.get(t, name);
+        },
+      });
     (window as unknown as { Word?: unknown }).Word = {
-      run: () => {
-        schreibversuche.push("Word.run");
-        return Promise.resolve();
+      run: (rueckruf: (kontext: unknown) => unknown) => {
+        const body = schreibend("body", {
+          text: "Homeoffice Anweisung Reisekosten Dienstreise Genehmigung Fahrtkosten",
+          load: () => undefined,
+          getHtml: () => ({ value: "<p>Homeoffice Anweisung Reisekosten</p>" }),
+        });
+        const dokument = schreibend("document", { body });
+        const kontext = { document: dokument, sync: () => Promise.resolve() };
+        return Promise.resolve().then(() => rueckruf(kontext));
       },
       InsertLocation: { replace: "replace" },
     };

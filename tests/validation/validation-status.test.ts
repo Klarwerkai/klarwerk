@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AuditEntry, KnowledgeObject } from "../../apps/web/src/api/types";
-import {
-  deriveDisplayStatus,
-  isReturnedForRework,
-  returnedToAuthor,
-} from "../../apps/web/src/lib/validationStatus";
+import { deriveStatus as deriveDisplayStatus } from "../../apps/web/src/lib/displayStatus";
+import { isReturnedForRework, returnedToAuthor } from "../../apps/web/src/lib/validationStatus";
 
 const ko = (p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject =>
   ({
@@ -46,6 +43,9 @@ const ev = (
     hash: "",
   }) as AuditEntry;
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): gemessen an `displayStatus.ts::deriveStatus`, der
+// Ableitung, die die Flächen rufen — die Zweitfassung `validationStatus.ts::deriveDisplayStatus`
+// hatte keinen Produktleser und ist entfernt. Der lokale Name hält die Fälle unverändert lesbar.
 describe("SCRUM-125: konsistente Display-Ableitung", () => {
   it("offen ohne Zuweisung → offen; mit Zuweisung → pruefung", () => {
     expect(deriveDisplayStatus(ko({ id: "K1" }))).toBe("offen");

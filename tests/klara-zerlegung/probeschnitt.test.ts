@@ -42,7 +42,7 @@
 //     TCP und keine Browser-Ursprungsprüfung.
 //   · Kein echtes office.js. Der Word-Zustand wird von einer Attrappe gestellt, die jeden
 //     Office-Zugriff mitschreibt — sie ist in beiden Fassungen dieselbe.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -58,7 +58,15 @@ import {
   KLARA_TASKPANE_PFAD,
   registerWebStatic,
 } from "../../services/app/src/web-static";
-import { PANEL_CSS_VERWEIS, PANEL_JS_VERWEIS } from "../support/panelquelle";
+import {
+  PANEL_CSS_VERWEIS,
+  PANEL_JS_VERWEIS,
+  PANEL_MARKE_VERWEIS,
+  PANEL_WV_VERWEIS,
+  markeAbschnitt,
+  wortvergleichAbschnitt,
+} from "../support/panelquelle";
+import { repoPfad } from "../support/repoPfad";
 import {
   type Fingerabdruck,
   type Lauf,
@@ -70,15 +78,19 @@ import {
   type Block,
   CSS_DATEI,
   JS_DATEI,
+  MARKE_DATEI,
   type Probeschnitt,
   RUECKWEG_DATEI,
+  WV_DATEI,
   bloeckeVon,
   bytes,
   echterSchnitt,
   inline,
+  markeQuelle,
   rueckwegQuelle,
   schneideDrei,
   taskpaneQuelle,
+  wortvergleichQuelle,
   zeilen,
 } from "./zerlegung";
 
@@ -87,10 +99,44 @@ const CSS_PFAD = `/word-addin/${CSS_DATEI}`;
 const JS_PFAD = `/word-addin/${JS_DATEI}`;
 /** JOB 3667 R8: die zweite Datei der ECHTEN Auslieferung — kein Ergebnis dieses Schnitts. */
 const RUECKWEG_PFAD = `/word-addin/${RUECKWEG_DATEI}`;
+/**
+ * Zerlegungsauftrag Bestandsblick: eine weitere Datei der ECHTEN Auslieferung (Block KW-MARKE,
+ * geladen unmittelbar nach `taskpane.js`). Im VORHER-Dokument steht ihr Abschnitt am Ende des
+ * Inline-Skripts; NACHHER kommt er aus der eigenen Datei.
+ */
+const MARKE_PFAD = `/word-addin/${MARKE_DATEI}`;
+/**
+ * R-0336/R-0708: nach derselben Regel der Block KW-WORDVERGLEICH (geladen unmittelbar nach
+ * `taskpane.js`, vor `marke.js`). VORHER steht sein Abschnitt inline, NACHHER kommt er aus der Datei.
+ */
+const WV_PFAD = `/word-addin/${WV_DATEI}`;
+/**
+ * AUFTRAG firmenwoerterbuch: der Block KW-BEGRIFFE. Er ist KEIN Teil des Schnitts — beide Fassungen
+ * verweisen auf ihn hinter `marke.js` und holen ihn gleich. Er liegt deshalb wie `rueckweg.js`
+ * immer bei.
+ */
+const BEGRIFFE_DATEI = "begriffe.js";
+const BEGRIFFE_PFAD = `/word-addin/${BEGRIFFE_DATEI}`;
+const BEGRIFFE_QUELLE = readFileSync(
+  repoPfad(`apps/web/public/word-addin/${BEGRIFFE_DATEI}`),
+  "utf8",
+);
+/**
+ * AUFTRAG gesamt-dokumenterzeugung: der Block KW-ANLEITUNG — dieselbe Lage wie KW-BEGRIFFE. Kein
+ * Teil des Schnitts, beide Fassungen verweisen im Kopf auf ihn und holen ihn gleich.
+ */
+const ANLEITUNG_DATEI = "anleitung.js";
+const ANLEITUNG_PFAD = `/word-addin/${ANLEITUNG_DATEI}`;
+const ANLEITUNG_QUELLE = readFileSync(
+  repoPfad(`apps/web/public/word-addin/${ANLEITUNG_DATEI}`),
+  "utf8",
+);
 
 /** VORHER: das Fenster als EIN Dokument (byte-gleich zum Basisstand, s. `schnitt-echt.test.ts`). */
 const QUELLE = taskpaneQuelle();
 const RUECKWEG_QUELLE = rueckwegQuelle();
+const MARKE_QUELLE = markeQuelle();
+const WV_QUELLE = wortvergleichQuelle();
 /** NACHHER: die drei Dateien, wie sie im Baum liegen. */
 const SCHNITT: Probeschnitt = echterSchnitt();
 
@@ -109,6 +155,10 @@ afterAll(() => {
  * Datei der echten Auslieferung — `taskpane.html` lädt sie in beiden Fassungen gleich. Fehlte sie,
  * verglichen die Fälle unten zwei Fenster OHNE Rückweg, und der Unterschied, den sie messen wollen,
  * wäre von einem ReferenceError überdeckt.
+ *
+ * Zerlegungsauftrag Bestandsblick: aus demselben Grund liegt `marke.js` immer dabei. Das
+ * VORHER-Dokument verweist nicht auf sie (der Abschnitt steht dort inline) und lädt sie nicht.
+ * R-0336/R-0708: ebenso `wortvergleich.js`.
  */
 function dist(dateien: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "kw-probeschnitt-"));
@@ -117,6 +167,10 @@ function dist(dateien: Record<string, string>): string {
   writeFileSync(join(dir, "index.html"), "<!doctype html><title>SPA</title>");
   for (const [name, inhalt] of Object.entries({
     [RUECKWEG_DATEI]: RUECKWEG_QUELLE,
+    [MARKE_DATEI]: MARKE_QUELLE,
+    [WV_DATEI]: WV_QUELLE,
+    [BEGRIFFE_DATEI]: BEGRIFFE_QUELLE,
+    [ANLEITUNG_DATEI]: ANLEITUNG_QUELLE,
     ...dateien,
   })) {
     writeFileSync(join(dir, "word-addin", name), inhalt);
@@ -144,6 +198,11 @@ async function auslieferung(distPfad: string): Promise<FastifyInstance> {
 /** Der Verweis, so wie ihn der mechanische Probeschnitt setzt — ohne Cachekennung. */
 const MECH_CSS_VERWEIS = `<link rel="stylesheet" href="${CSS_DATEI}" />`;
 const MECH_JS_VERWEIS = `<script src="${JS_DATEI}"></script>`;
+/**
+ * Was an der Stelle des mechanischen Skriptverweises in der echten Seite steht: `taskpane.js` und
+ * (R-0336/R-0708, dieselbe Zeile) `wortvergleich.js`, in der Zeile danach `marke.js`.
+ */
+const SKRIPT_VERWEISE = `${PANEL_JS_VERWEIS}${PANEL_WV_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`;
 
 // ================================================================================================
 // A — DER SCHNITT SELBST: mechanisch, verlustfrei, an derselben Stelle.
@@ -162,13 +221,20 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     // Zeilen der Tags und steht jetzt auf der Verweiszeile).
     const mechanisch = schneideDrei(QUELLE);
     expect(mechanisch.css).toBe(`\n${SCHNITT.css}  `);
-    expect(mechanisch.js).toBe(`\n${SCHNITT.js}  `);
+    // Zerlegungsauftrag Bestandsblick: das Skript des Originals endet mit dem Abschnitt KW-MARKE,
+    // der jetzt in `marke.js` liegt — zeichengleich, direkt hinter `taskpane.js`.
+    // R-0336/R-0708: davor der Abschnitt KW-WORDVERGLEICH aus `wortvergleich.js`, ebenso
+    // zeichengleich.
+    const abschnitte = `${wortvergleichAbschnitt(WV_QUELLE)}${markeAbschnitt(MARKE_QUELLE)}`;
+    expect(mechanisch.js).toBe(`\n${SCHNITT.js}${abschnitte}  `);
     // Die Rest-Seite unterscheidet sich vom mechanischen Schnitt GENAU in der Cachekennung an den
-    // zwei Verweisen. Ersatz über eine Funktion, nicht über eine Zeichenkette: `String.replace`
-    // würde darin `$&` auswerten (die erste Fassung dieses Falls ist daran rot geworden).
+    // zwei Verweisen — und im Verweis auf `marke.js` in der Zeile danach. Ersatz über eine
+    // Funktion, nicht über eine Zeichenkette: `String.replace` würde darin `$&` auswerten (die
+    // erste Fassung dieses Falls ist daran rot geworden). R-0336/R-0708: dazu der Verweis auf
+    // `wortvergleich.js`, in derselben Zeile hinter `taskpane.js`.
     const mitKennung = mechanisch.html
       .replace(MECH_CSS_VERWEIS, () => PANEL_CSS_VERWEIS)
-      .replace(MECH_JS_VERWEIS, () => PANEL_JS_VERWEIS);
+      .replace(MECH_JS_VERWEIS, () => SKRIPT_VERWEISE);
     expect(mitKennung).toBe(SCHNITT.html);
   });
 
@@ -181,6 +247,9 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     // `rueckweg.js` stand schon in der Quelle (s. schnittflaechen.test.ts B1). Er steht hier, damit
     // die Zahl der Verweise nicht unbemerkt wächst: wer einen vierten anlegt, sieht diese Stelle.
     expect(SCHNITT.html).toContain(`<script src="${RUECKWEG_DATEI}?v=`);
+    // Zerlegungsauftrag Bestandsblick: der vierte, unmittelbar hinter `taskpane.js`.
+    // R-0336/R-0708: dazwischen, in der Zeile von `taskpane.js`, der auf `wortvergleich.js`.
+    expect(SCHNITT.html).toContain(SKRIPT_VERWEISE);
     // Kein Inline-Code mehr in der Seite — und office.js steht unverändert davor.
     expect(SCHNITT.html).not.toContain("<style>");
     expect(SCHNITT.html).not.toContain("<script>");
@@ -196,14 +265,26 @@ describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", 
     // seit R-1611 dieselbe Kennung an den Verweisen auf `taskpane.css` und `taskpane.js`. Alle
     // stempelt derselbe `stempleFassung`-Lauf; keiner darf in die geschnittenen Dateien wandern,
     // denn die gehen NICHT durch die Stempelroute (sie kämen roh beim Browser an).
-    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(5);
+    // Zerlegungsauftrag Bestandsblick: FÜNF Vorkommen — dazu die Kennung am Verweis auf `marke.js`.
+    // AUFTRAG firmenwoerterbuch: SECHS — dazu die Kennung am Verweis auf `begriffe.js`.
+    // AUFTRAG gesamt-dokumenterzeugung: SIEBEN — dazu die Kennung am Verweis auf `anleitung.js`.
+    // R-0336/R-0708: SIEBEN — dazu die Kennung am Verweis auf `wortvergleich.js`.
+    // INTEGRATION beider (Nacharbeit 70): ACHT — beide Verweise stehen im Fenster.
+    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(9);
+    expect(SCHNITT.html).toContain(`${WV_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(SCHNITT.html).toContain(`${BEGRIFFE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(SCHNITT.html).toContain(`${ANLEITUNG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(ANLEITUNG_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(SCHNITT.html).toContain(`content="${KLARA_FASSUNG_PLATZHALTER}"`);
     expect(SCHNITT.html).toContain(`${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.html).toContain(`${CSS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.html).toContain(`${JS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(SCHNITT.html).toContain(`${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.js).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(SCHNITT.css).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(RUECKWEG_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+    expect(MARKE_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+    expect(WV_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
   });
 });
 
@@ -322,14 +403,28 @@ describe("R-1611 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
     const skriptquellen = [...SCHNITT.html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
     expect(skriptquellen).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
+      // AUFTRAG firmenwoerterbuch: der Block KW-BEGRIFFE, relativ und gleichherkünftig, im Kopf.
+      `${BEGRIFFE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
+      // AUFTRAG gesamt-dokumenterzeugung: der Block KW-ANLEITUNG, nach derselben Regel.
+      `${ANLEITUNG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       `${JS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
+      // R-0336/R-0708: der Block KW-WORDVERGLEICH, relativ und gleichherkünftig.
+      `${WV_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
+      `${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
     ]);
     const stilquellen = [
       ...SCHNITT.html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
     ].map((m) => m[1]);
     expect(stilquellen).toEqual([`${CSS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`]);
-    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI]) {
+    for (const ref of [
+      JS_DATEI,
+      CSS_DATEI,
+      RUECKWEG_DATEI,
+      MARKE_DATEI,
+      ANLEITUNG_DATEI,
+      WV_DATEI,
+    ]) {
       expect(ref, `${ref} ist nicht relativ`).not.toMatch(/^[a-z]+:|^\/\//);
     }
   });
@@ -438,17 +533,27 @@ describe("R-1611 · D — derselbe Startzustand, vor dem Schnitt wie nach dem Sc
     // JOB 3667 R8: `rueckweg.js` holen BEIDE Fassungen, denn sie steht schon in der Quelle. Verglichen
     // wird die SORTIERTE Menge: die Reihenfolge, in der jsdom seine Ressourcen anfordert, ist keine
     // Zusage dieses Falls.
+    // AUFTRAG firmenwoerterbuch: `begriffe.js` holen ebenfalls BEIDE Fassungen.
+    // AUFTRAG gesamt-dokumenterzeugung: ebenso `anleitung.js`.
     expect([...original.geholt].sort()).toEqual(
       [
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
+        `http://localhost${BEGRIFFE_PFAD}?v=${FASSUNG}`,
+        `http://localhost${ANLEITUNG_PFAD}?v=${FASSUNG}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
     );
+    // Zerlegungsauftrag Bestandsblick: nachher kommt `marke.js` dazu — vorher stand ihr Abschnitt
+    // inline, und genau dort holt das Original sie nicht. R-0336/R-0708: ebenso `wortvergleich.js`.
     expect([...geschnitten.geholt].sort()).toEqual(
       [
         `http://localhost${CSS_PFAD}?v=${FASSUNG}`,
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
         `http://localhost${JS_PFAD}?v=${FASSUNG}`,
+        `http://localhost${WV_PFAD}?v=${FASSUNG}`,
+        `http://localhost${MARKE_PFAD}?v=${FASSUNG}`,
+        `http://localhost${BEGRIFFE_PFAD}?v=${FASSUNG}`,
+        `http://localhost${ANLEITUNG_PFAD}?v=${FASSUNG}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
     );
@@ -490,7 +595,9 @@ describe("R-1611 · D — derselbe Startzustand, vor dem Schnitt wie nach dem Sc
     expect(ohneJs.geholt).toContain(`http://localhost${JS_PFAD}?v=${FASSUNG}`);
     expect(ohneJs.abdruck.fehler.join(" ")).toContain("taskpane.js");
     // Das Panel ist ohne sein Skript stumm: keine Netzaufrufe, keine Office-Zugriffe.
-    expect(ohneJs.abdruck.netzaufrufe).toEqual([]);
+    // Zerlegungsauftrag Bestandsblick: AUSGENOMMEN ist genau der eine Abruf von `marke.js` — die
+    // Datei liegt bei und hängt nicht an `taskpane.js`. Nichts sonst.
+    expect(ohneJs.abdruck.netzaufrufe.filter((a) => a !== "GET /api/branding")).toEqual([]);
     expect(ohneJs.abdruck.officeBindungen).toEqual([]);
   });
 

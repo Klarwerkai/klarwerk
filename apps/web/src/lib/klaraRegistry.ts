@@ -6,9 +6,9 @@
 import { CAPTURE_HELP_TOPICS } from "./captureHelp";
 import { FAQ_CONTENT } from "./faqContent";
 import { HELP_TOPICS } from "./helpTopics";
-import { REVIEW_HELP_TOPICS } from "./reviewHelp";
+import { REVIEW_HELP_ROUTE, REVIEW_HELP_TOPICS } from "./reviewHelp";
 
-export type KlaraKind = "page" | "field" | "topic" | "faq";
+export type KlaraKind = "page" | "field" | "topic" | "faq" | "artikel";
 
 export interface KlaraEntry {
   // Stabile ID mit Quell-Präfix: page:<id> | cap:<id> | rev:<id> | topic:<id>.
@@ -103,7 +103,14 @@ export const KLARA_PAGES: readonly KlaraPage[] = [
 // Sektions-Erklärungen (Berater-Lieferung 05.07., shelp.*): je Abschnitts-Überschrift EIN
 // Erklärtext. Titel = die Überschrift selbst; route = wo der Abschnitt lebt. Diese Einträge
 // sind zugleich Teil der KI-Wissensdatenbank (Klara Stufe 2) und Ziel der data-help-Anker.
-const KLARA_SECTIONS: readonly { key: string; route: string }[] = [
+// `bodyKey` nur, wo der Text vom Schema `shelp.<key>` abweicht (eingefrorener Altwert, berichtigte
+// Fassung in einem Textmodul) — dann sagen Seitenhilfe und Klara dasselbe.
+//
+// R-0908: `titel` nur dort, wo die Fläche ihre Überschrift inzwischen aus `texte/fachwort.ts`
+// liest. Kennung (`sec:<key>`) und Erklärtext (`shelp.<key>`) bleiben am alten Schlüssel; Klara
+// zeigt dieselbe Überschrift wie die Fläche, statt „Reasoner-Läufe" oder „Evidence-Index".
+type KlaraSektion = { key: string; route: string; bodyKey?: string; titel?: string };
+const KLARA_SECTIONS: readonly KlaraSektion[] = [
   { key: "adm.seedTitle", route: "/admin" },
   { key: "adm.createTitle", route: "/admin" },
   { key: "adm.auditTitle", route: "/admin" },
@@ -111,7 +118,13 @@ const KLARA_SECTIONS: readonly { key: string; route: string }[] = [
   { key: "ana.weekly", route: "/analytics" },
   { key: "ask.steps", route: "/fragen" },
   { key: "ask.sources", route: "/fragen" },
-  { key: "capture.resumeTitle", route: "/erfassen" },
+  // Nacharbeit 15 (Ben): dieselbe berichtigte Fassung wie an der Fläche (`CaptureDraftList.tsx`) —
+  // `shelp.capture.resumeTitle` kannte den gemeinsamen Entwurfspool nicht.
+  {
+    key: "capture.resumeTitle",
+    route: "/erfassen",
+    bodyKey: "abschnittshilfe.capture.resumeTitle",
+  },
   { key: "ext.title", route: "/erfassen" },
   { key: "extpage.resultsTitle", route: "/extern" },
   { key: "ko.statement", route: "/bibliothek" },
@@ -148,13 +161,13 @@ const KLARA_SECTIONS: readonly { key: string; route: string }[] = [
   { key: "mgmt.recommendations", route: "/kapital" },
   { key: "mgmt.priorities", route: "/kapital" },
   { key: "mgmt.pilot", route: "/kapital" },
-  { key: "mrun.title", route: "/kapital" },
-  { key: "rcfg.title", route: "/kapital" },
-  { key: "evx.title", route: "/kapital" },
-  { key: "prov.title", route: "/kapital" },
-  { key: "readiness.title", route: "/kapital" },
-  { key: "kos.hintsTitle", route: "/kapital" },
-  { key: "evFresh.title", route: "/kapital" },
+  { key: "mrun.title", route: "/kapital", titel: "fachwort.kiLaeufe.titel" },
+  { key: "rcfg.title", route: "/kapital", titel: "fachwort.kiEinstellung.titel" },
+  { key: "evx.title", route: "/kapital", titel: "fachwort.belegIndex.titel" },
+  { key: "prov.title", route: "/kapital", titel: "fachwort.herkunft.titel" },
+  { key: "readiness.title", route: "/kapital", titel: "fachwort.bereitschaft.titel" },
+  { key: "kos.hintsTitle", route: "/kapital", titel: "fachwort.qm.titel" },
+  { key: "evFresh.title", route: "/kapital", titel: "fachwort.belegFrische.titel" },
 ] as const;
 
 // Alle Klara-Einträge — Seiten zuerst, dann Feld-Hilfen, dann Sektions-Erklärungen, dann Kapitel.
@@ -178,13 +191,14 @@ export function allKlaraEntries(): readonly KlaraEntry[] {
     kind: "field",
     titleKey: t.titleKey,
     bodyKey: t.bodyKey,
-    route: "/validierung",
+    // Nacharbeit 13: dorthin, wo die Handlung heute lebt (`REVIEW_HELP_ROUTE`, `lib/reviewHelp.ts`).
+    route: REVIEW_HELP_ROUTE[t.id] ?? "/validierung",
   }));
   const sections: KlaraEntry[] = KLARA_SECTIONS.map((s) => ({
     id: `sec:${s.key}`,
     kind: "field",
-    titleKey: s.key,
-    bodyKey: `shelp.${s.key}`,
+    titleKey: s.titel ?? s.key,
+    bodyKey: s.bodyKey ?? `shelp.${s.key}`,
     route: s.route,
   }));
   const topics: KlaraEntry[] = HELP_TOPICS.map((t) => ({
@@ -237,6 +251,10 @@ export function allFaqEntries(language: string): ResolvedKlaraEntry[] {
     body: f.answer,
   }));
 }
+
+// Die Bibliotheksartikel (R-0890 / R-0935, Art „artikel“) stehen NICHT hier, sondern in
+// `lib/klaraBibliothek.ts`: diese Registry liegt im ersten geladenen Brocken, die Artikel werden
+// erst beim Öffnen des Panels nachgeladen (Deckel R-0801).
 
 // Kleine Synonym-Karte für die tolerante Suche: Alltagswort → Wortstamm aus den Hilfetexten.
 // Bewusst klein und wartbar; wächst mit echten Anwenderfragen (Hilfe-Lücken-Schleife).
@@ -308,11 +326,22 @@ export function searchKlara(
 // Freigaben?") enthalten Füllwörter, die die strikte Jedes-Wort-Suche leer laufen lassen.
 // Hier zählt stattdessen, WIE VIELE Suchwörter (oder Synonym-Stämme) ein Eintrag trifft —
 // die besten k Einträge werden der KI als einzige Antwort-Grundlage mitgegeben.
-export function rankKlara(
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): hier stand `rankKlara(entries, query,
+// limit)`, die reine Registry-Rangliste. Das Produkt ruft sie nicht mehr; `askAi` nimmt
+// `klaraGrundlage` (unten), und die ist ohne Bibliotheksauszüge zeichengleich mit ihr. Die
+// Prüfstände messen dieselbe Rangliste deshalb am Produktweg (`tests/support/klara-rangfolge.ts`).
+
+interface BewerteterEintrag {
+  entry: ResolvedKlaraEntry;
+  score: number;
+}
+
+// Die Wortdeckung hinter der Rangliste, mit Punktzahl — `klaraGrundlage` braucht sie zum Abwägen.
+function bewerteKlara(
   entries: readonly ResolvedKlaraEntry[],
   query: string,
-  limit = 6,
-): ResolvedKlaraEntry[] {
+): readonly BewerteterEintrag[] {
   const q = normalizeForSearch(query);
   const tokens = q.split(" ").filter((tok) => tok.length > 2);
   if (tokens.length === 0) {
@@ -329,5 +358,43 @@ export function rankKlara(
     })
     .filter((s) => s.score > 0);
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit).map((s) => s.entry);
+  return scored;
+}
+
+// R-0943 (Nacharbeit 7, Ben): höchstens so viele Bibliotheksauszüge kommen in die KI-Grundlage.
+export const BIBLIOTHEK_PLAETZE = 3;
+
+// R-0943 · Die KI-Grundlage aus Registry + FAQ (`bestand`) UND Bibliotheksauszügen
+// (`lib/klaraBibliothek.ts`). Die Registry-Rangliste bleibt, wie sie war; die besten Auszüge
+// (höchstens `BIBLIOTHEK_PLAETZE`) kommen dazu:
+//   · ist noch Platz unter `limit`, füllen sie ihn;
+//   · ist kein Platz, verdrängt ein Auszug nur einen Eintrag, der WENIGER Suchwörter trifft als er,
+//     und dann den schwächsten — NIE eine FAQ-Antwort. So bleibt jede FAQ-Antwort, die heute in den
+//     zwölf Schnipseln steht, auch drin (`tests/app/f0304-klara-assistenzflaeche.test.tsx`).
+// Ohne passenden Auszug ist das Ergebnis zeichengleich mit der reinen Registry-Rangliste
+// (`bewerteKlara(bestand, query)`, die besten `limit`).
+export function klaraGrundlage(
+  bestand: readonly ResolvedKlaraEntry[],
+  auszuege: readonly ResolvedKlaraEntry[],
+  query: string,
+  limit = 12,
+): ResolvedKlaraEntry[] {
+  const grundlage = bewerteKlara(bestand, query).slice(0, limit);
+  for (const auszug of bewerteKlara(auszuege, query).slice(0, BIBLIOTHEK_PLAETZE)) {
+    if (grundlage.length < limit) {
+      grundlage.push(auszug);
+      continue;
+    }
+    const verdraengbar = grundlage
+      .map((s, index) => ({ s, index }))
+      .filter(({ s }) => s.entry.kind !== "faq" && s.entry.kind !== "artikel")
+      .filter(({ s }) => s.score < auszug.score);
+    if (verdraengbar.length === 0) {
+      break; // die Auszüge sind absteigend sortiert — die folgenden verdrängen erst recht nichts
+    }
+    const schwaechster = verdraengbar.reduce((a, b) => (b.s.score <= a.s.score ? b : a));
+    grundlage.splice(schwaechster.index, 1);
+    grundlage.push(auszug);
+  }
+  return grundlage.map((s) => s.entry);
 }

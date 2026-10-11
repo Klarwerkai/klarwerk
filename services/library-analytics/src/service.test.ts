@@ -256,25 +256,52 @@ describe("LibraryService", () => {
     expect(await ctx.koService.list()).toHaveLength(3);
   });
 
-  // SCRUM-509 R3: Import ist ein Bulk-Pfad → konservativ. Fehlt die Stufe, gilt „vertraulich"
-  // (NICHT still intern) — importierter Fremdinhalt bleibt aus Cloud/Export heraus, bis freigegeben.
-  it("SCRUM-509 R3: JSON-Import ohne Stufe → vertraulich (nicht intern)", async () => {
+  // N11 (Pedi, Entscheidung 23 vom 05.09.2026) LÖST SCRUM-509 R3 FÜR DAS FEHLENDE SIGNAL AB: der
+  // Übernahme-Standard ist „intern" — als gespeicherte Einstufung, nicht als leeres Feld.
+  // Vertraulich bleibt nur, was ausdrücklich so geliefert wird (Fälle darunter).
+  it("N11: JSON-Import ohne Stufe → ausdrücklich intern (nicht vertraulich, nicht leer)", async () => {
     await ctx.library.importJson(
       [{ title: "Fremd", statement: "Importiert.", type: "best_practice", category: "Anlage 9" }],
       "import",
       OHNE_AEHNLICHKEIT,
     );
     const imported = (await ctx.koService.list()).find((k) => k.title === "Fremd");
-    expect(imported?.confidentiality).toBe("vertraulich");
+    expect(imported?.confidentiality).toBe("intern");
   });
 
-  it("SCRUM-509 R3: Confluence-Accept ohne Stufe → vertraulich", async () => {
+  it("N11: Confluence-Accept ohne Stufe → ausdrücklich intern", async () => {
     const [cand] = await ctx.library.createImportCandidates([confItem({ externalId: "PX" })]);
     await ctx.library.reviewImportCandidate(cand!.id, "accept", "controller");
     const imported = (await ctx.koService.list()).find((k) =>
       (k.sources ?? []).some((s) => s.externalId === "PX"),
     );
-    expect(imported?.confidentiality).toBe("vertraulich");
+    expect(imported?.confidentiality).toBe("intern");
+  });
+
+  it("N11 GEGENPROBE: JSON-Import MIT vertraulich/streng_vertraulich bleibt unverändert", async () => {
+    await ctx.library.importJson(
+      [
+        {
+          title: "Fremd V",
+          statement: "Vertraulich importiert.",
+          type: "best_practice",
+          category: "Anlage 9",
+          confidentiality: "vertraulich",
+        },
+        {
+          title: "Fremd S",
+          statement: "Streng vertraulich importiert.",
+          type: "best_practice",
+          category: "Anlage 9",
+          confidentiality: "streng_vertraulich",
+        },
+      ],
+      "import",
+      OHNE_AEHNLICHKEIT,
+    );
+    const liste = await ctx.koService.list();
+    expect(liste.find((k) => k.title === "Fremd V")?.confidentiality).toBe("vertraulich");
+    expect(liste.find((k) => k.title === "Fremd S")?.confidentiality).toBe("streng_vertraulich");
   });
 
   it("SCRUM-510 (WP3): gleiche (externalId, sourceVersion) im selben Import → nur EIN Kandidat persistiert", async () => {
@@ -390,8 +417,8 @@ describe("LibraryService", () => {
   });
 
   // SCRUM-509 R4: Import-Vertrag auch beim Re-Sync vollständig — nur Anheben, explizit höhere Stufe
-  // respektiert, kein Downgrade. Gleiche fail-safe-Klassifikation wie der Create-Import (R3).
-  it("SCRUM-509 R4: Re-Sync eines internen KO mit neuem externem Inhalt → mind. vertraulich (nur Anheben)", async () => {
+  // respektiert, kein Downgrade. N11: ohne Signal ist der Boden „intern" — also KEIN stilles Anheben.
+  it("N11/R4: Re-Sync eines internen KO mit neuem externem Inhalt OHNE Signal → bleibt intern", async () => {
     const [c1] = await ctx.library.createImportCandidates([
       confItem({
         externalId: "R4a",
@@ -405,14 +432,14 @@ describe("LibraryService", () => {
     // „intern" wird als Default NICHT persistiert (Feld bleibt undefined) — effektive Stufe = intern.
     expect(ko1.confidentiality ?? "intern").toBe("intern");
 
-    // Re-Sync mit NEUEM externem Inhalt, OHNE explizite Stufe → konservativer Boden „vertraulich" hebt an.
+    // Re-Sync mit NEUEM externem Inhalt, OHNE explizite Stufe → Boden „intern" (N11), kein Anheben.
     const [c2] = await ctx.library.createImportCandidates([
       confItem({ externalId: "R4a", sourceVersion: 2, statement: "Neuer externer Stand." }),
     ]);
     const r2 = await ctx.library.reviewImportCandidate(c2!.id, "accept");
     expect(r2.koId).toBe(r1.koId);
     const ko2 = (await ctx.koService.list()).find((k) => k.id === r1.koId)!;
-    expect(ko2.confidentiality).toBe("vertraulich"); // angehoben, NIE still intern gelassen
+    expect(ko2.confidentiality ?? "intern").toBe("intern"); // kein stilles Anheben ohne Signal
     expect(ko2.statement).toBe("Neuer externer Stand.");
   });
 
@@ -769,7 +796,7 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
     expect(sanitizeImportConfidentiality("geheim")).toBe("vertraulich");
     expect(sanitizeImportConfidentiality(42)).toBe("vertraulich");
     expect(sanitizeImportConfidentiality({})).toBe("vertraulich");
-    // fehlend → undefined (downstream fail-safe stuft dann auf vertraulich):
+    // fehlend → undefined (downstream gilt dann der Übernahme-Standard „intern", N11):
     expect(sanitizeImportConfidentiality(undefined)).toBeUndefined();
     expect(sanitizeImportConfidentiality(null)).toBeUndefined();
   });
@@ -838,7 +865,7 @@ describe("SCRUM-510 R2b: quellneutraler Upsert (Fake-2.-Adapter, keine Confluenc
     const r1 = await library.reviewImportCandidate(c1!.id, "accept", "importer");
     const ko1 = (await koService.list()).find((k) => k.id === r1.koId)!;
     expect(ko1.sources.some((s) => s.externalId === "JIRA-42")).toBe(true); // Anker über externalId
-    expect(ko1.confidentiality).toBe("vertraulich"); // fail-safe (kein Governance-Signal)
+    expect(ko1.confidentiality).toBe("intern"); // N11: Übernahme-Standard ohne Governance-Signal
 
     // Re-Sync über externalId (höhere Version) → dasselbe KO, Inhalt aktualisiert, Stufe NICHT gesenkt.
     const [c2] = await library.createImportCandidates(
@@ -862,7 +889,7 @@ describe("SCRUM-510 R2b: quellneutraler Upsert (Fake-2.-Adapter, keine Confluenc
     );
     expect(kos).toHaveLength(1);
     expect(kos[0]?.statement).toBe("Stand 2."); // Inhalt aktualisiert
-    expect(kos[0]?.confidentiality).toBe("vertraulich"); // kein Downgrade über Re-Sync
+    expect(kos[0]?.confidentiality).toBe("intern"); // N11: kein stilles Anheben, kein Downgrade
   });
 });
 

@@ -208,8 +208,11 @@ describe("uxpol3: Capture-Dateityp-Seam (echte Produktionskomponente gemountet)"
     // Form mit genau EINER Eigenschaft. Seit dieser Scheibe reicht Capture zusätzlich
     // `importMeldung` durch — der Weg, auf dem eine abgewiesene Datei überhaupt erst ANGESAGT wird
     // (Befund BEN: „Abweisung fehlt in allen Live-Regionen"). Gepinnt sind jetzt BEIDE.
+    // Auftrag import-meldungen, Nacharbeit 2 (R-0120): NACHGEFÜHRT, nicht gelockert. Die Ablehnung
+    // reist jetzt als Text MIT laufender Nummer, damit die jüngste Ursache gewinnt — gepinnt sind
+    // weiterhin ALLE durchgereichten Eigenschaften, jetzt drei.
     expect(src).toMatch(
-      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\}\s*\/>/,
+      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\?\.text \?\? null\}\s+importMeldungNr=\{fileImportMeldung\?\.nr\}\s*\/>/,
     );
   });
 });

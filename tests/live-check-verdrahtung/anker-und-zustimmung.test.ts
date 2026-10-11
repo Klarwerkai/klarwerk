@@ -142,12 +142,13 @@ describe("K3 · Dokumentzustimmung (BEN-Korrekturpflicht 3)", () => {
     await starte({ ka4: { erlaubt: true } });
     expect(await frage(NICHT_EINGESTUFT, KLARA_BINDUNG)).toEqual({ status: "done", judge: 1 });
     // Und sie kam aus dem echten Riegel, nicht aus einem Vorgabewert: der Prüfer wurde mit der
-    // Bindung dieser Anfrage befragt.
-    expect(server.pruefeExterneAusfuehrung).toHaveBeenCalledWith("s-1", {
-      actorId: "u1",
-      addinInstanceId: "i-1",
-      documentContextId: "d-1",
-    });
+    // Bindung dieser Anfrage befragt — und mit der Aufgabe, die das Modell gleich ruft (die
+    // Urteile folgen der globalen Wahl, Auftrag gesamt-ki-einwilligung, Bens B3).
+    expect(server.pruefeExterneAusfuehrung).toHaveBeenCalledWith(
+      "s-1",
+      { actorId: "u1", addinInstanceId: "i-1", documentContextId: "d-1" },
+      "global",
+    );
   });
 
   it("K3b · NEGATIVE KONTROLLE: dieselbe Anfrage ohne Einwilligung wird nicht geprüft", async () => {

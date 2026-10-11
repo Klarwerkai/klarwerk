@@ -68,7 +68,7 @@ function ko(
   } as unknown as KnowledgeObject;
 }
 
-const lage = vi.hoisted(() => ({ kos: [] as unknown[] }));
+const lage = vi.hoisted(() => ({ kos: [] as unknown[], verzeichnis: [] as unknown[] }));
 
 // TEILMOCK: die Lesefläche zieht über ihre Abschnitte weitere Haken, die mit der Zeitangabe nichts
 // zu tun haben. Überschrieben wird nur, was dieser Test wirklich steuert.
@@ -80,7 +80,7 @@ vi.mock("../api/hooks", async (importOriginal) => {
     ...echt,
     useKos: () => ok(lage.kos),
     useLibrarySearch: () => ok(lage.kos),
-    useDirectory: leer,
+    useDirectory: () => ok(lage.verzeichnis),
     useConflicts: leer,
     useKo: (id: string) =>
       ok((lage.kos as { id: string }[]).find((k) => k.id === id) ?? lage.kos[0] ?? null),
@@ -142,6 +142,7 @@ afterEach(() => {
   });
   container.remove();
   lage.kos = [];
+  lage.verzeichnis = [];
 });
 
 /** Die Meta-Zeile der Lesefläche, als Text. Fehlt sie, ist das ein Fehler und keine „0 Treffer". */
@@ -219,6 +220,28 @@ describe("JOB 528 · Bibliothek — die Erstellzeit steht in der Meta-Zeile der 
     // Der Unterschied zwischen beiden Zeilen ist GENAU das Datum — nicht mehr und nicht weniger.
     expect(`${undatiert} · ${erwartet}`).toBe(datiert);
     expect(container.textContent).not.toContain("1970");
+  });
+
+  it("F8 · R-0921-Ausbau: neben Datum und Uhrzeit steht der ERSTELLER — auch nach einer Übertragung", () => {
+    // Dieselbe Regel wie die Validierungskarte (`Validation.tsx`: `originalAuthor` vor `author`).
+    // Vorher stand hier `author` — nach einer Übertragung also der neue Autor neben der Erstellzeit.
+    lage.verzeichnis = [
+      { id: "u-ersteller", name: "Erika Erstellerin" },
+      { id: "u-neu", name: "Nora Neuautorin" },
+    ];
+    mount([ko({ id: "a", createdAt: ISO, originalAuthor: "u-ersteller", author: "u-neu" })]);
+    const zeile = metaZeile();
+    expect(zeile).toContain("Erika Erstellerin");
+    expect(zeile).not.toContain("Nora Neuautorin");
+    // Ersteller und Erstellzeit stehen als benachbarte Glieder: „… · Ersteller · Datum".
+    const datum = String(formatKoTimestamp(ISO, i18n.language));
+    expect(zeile.endsWith(` · Erika Erstellerin · ${datum}`)).toBe(true);
+  });
+
+  it("F8b · ohne `originalAuthor` (Altbestand) fällt die Zeile auf `author` zurück", () => {
+    lage.verzeichnis = [{ id: "u-alt", name: "Alfred Altbestand" }];
+    mount([ko({ id: "a", createdAt: ISO, originalAuthor: undefined, author: "u-alt" })]);
+    expect(metaZeile()).toContain("Alfred Altbestand");
   });
 
   it("F7 · KALIBRIERUNG — beide Einträge stehen wirklich in der Liste", () => {

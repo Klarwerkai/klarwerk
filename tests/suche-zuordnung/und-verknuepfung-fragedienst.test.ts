@@ -85,6 +85,80 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     );
   });
 
+  it("R-0278-Nacharbeit: „dient“, „hoch“, „many“ sind Fragegerüst — die Sachbegriffe bleiben gebunden", () => {
+    const faelle: Array<[string, string, string[]]> = [
+      ["Wozu dient der Schnellstartknopf NOTSTART-4?", "dient", ["Schnellstartknopf"]],
+      ["Wie hoch ist das Nachspannmoment an der Presse?", "hoch", ["Nachspannmoment", "Presse"]],
+      ["How many days does the customer have to report a defect?", "many", ["customer", "defect"]],
+    ];
+    for (const [frage, geruest, sache] of faelle) {
+      const gebunden = undVerknuepfteFragebegriffe(frage);
+      expect(gebunden, frage).not.toContain(queryTokens(geruest)[0]);
+      for (const wort of sache) {
+        expect(gebunden, frage).toContain(queryTokens(wort)[0]);
+      }
+    }
+  });
+
+  it("R-0278-Nacharbeit 3: gebunden ist die Sachfrage — nicht Anweisungssätze, nicht der Fundortrahmen", () => {
+    // Pedis Freitagsfrage (P-ASK-C02), wörtlich.
+    const lang =
+      "In the fictional Advisor ICT demo data, what is the standard invoice payment period? Answer in English and cite the stored source. If the sources disagree, say so rather than choosing silently.";
+    expect(undVerknuepfteFragebegriffe(lang)).toEqual(
+      queryTokens("standard invoice payment period"),
+    );
+    // Anweisungssätze neben einem Fragesatz binden nicht — der Fragesatz bleibt voll gebunden.
+    expect(undVerknuepfteFragebegriffe(`${FRAGE} Antworte kurz und nenne die Quelle.`)).toEqual(
+      queryTokens("Temperatur Ventil F3"),
+    );
+    // Ein Rahmen, der den DATENBESTAND benennt, bindet nicht …
+    expect(undVerknuepfteFragebegriffe("Im Wissensbestand, wo stehen die Urlaubszeiten?")).toEqual(
+      queryTokens("Urlaubszeiten"),
+    );
+    // … ein Rahmen, der eine SACHE benennt, bleibt gebunden (Nacharbeit 5, ben) — gleich mit
+    // welcher Präposition.
+    expect(undVerknuepfteFragebegriffe("Bei Ventil F3, welche Temperatur gilt?")).toEqual(
+      expect.arrayContaining(queryTokens("Ventil F3 Temperatur")),
+    );
+    expect(undVerknuepfteFragebegriffe("Im Kessel K7, welche maximale Temperatur gilt?")).toEqual(
+      expect.arrayContaining(queryTokens("Kessel K7 maximale Temperatur")),
+    );
+    expect(undVerknuepfteFragebegriffe("Im Handbuch, wo stehen die Urlaubszeiten?")).toEqual(
+      expect.arrayContaining(queryTokens("Handbuch Urlaubszeiten")),
+    );
+    // Ein Kontextsatz ohne „?" ist keine Antwortanweisung — seine Sache bleibt gebunden.
+    expect(
+      undVerknuepfteFragebegriffe("Es geht um Ventil F3. Welche maximale Temperatur gilt?"),
+    ).toEqual(expect.arrayContaining(queryTokens("Ventil F3 maximale Temperatur")));
+    // Nacharbeit 7 (ben): auch IN einem Anweisungssatz bleibt die Sache gebunden; nur das formale
+    // Anweisungswort fällt („Nenne") — und „Werte" fragt nach dem Wert (Fragegerüst).
+    const anweisungMitSache = "Nenne nur Werte für Ventil F3. Welche maximale Temperatur gilt?";
+    expect(undVerknuepfteFragebegriffe(anweisungMitSache)).toEqual(
+      queryTokens("Ventil F3 maximale Temperatur"),
+    );
+    // Nacharbeit 7 (ben): im Rahmen fällt nur das Bestandswort („Daten"), Kessel K7 bleibt.
+    const rahmenMitSache = "In den Kessel K7 Daten, welche maximale Temperatur gilt?";
+    expect(undVerknuepfteFragebegriffe(rahmenMitSache)).toEqual(
+      queryTokens("Kessel K7 maximale Temperatur"),
+    );
+    // Ohne Fragesatz bleibt die ganze Eingabe gebunden (bens Fall, unverändert).
+    expect(undVerknuepfteFragebegriffe("Ventil F3 Temperatur")).toEqual(
+      queryTokens("Ventil F3 Temperatur"),
+    );
+  });
+
+  it("R-0278-Nacharbeit 3: „payment period“ trifft „due date“ nur über die deklarierte Entsprechung", () => {
+    const frage = "What is the standard invoice payment period?";
+    const relevanz = zugeordneteSuchterme(queryTokens(frage));
+    const c02 = "Standard invoice due date Standard invoices are due 30 calendar days.";
+    expect(decktAlleFragebegriffe(frage, c02, relevanz)).toBe(true);
+    // Gegenprobe: ohne Relevanztext fehlt die Zahlungsfrist — die Bindung bleibt scharf.
+    expect(decktAlleFragebegriffe(frage, c02)).toBe(false);
+    // Fachfremd bleibt fachfremd: eine Rechnungsvorlage ohne Frist trägt nicht.
+    const vorlage = "Standard invoice template Use the standard invoice layout for all customers.";
+    expect(decktAlleFragebegriffe(frage, vorlage, relevanz)).toBe(false);
+  });
+
   it("eine deklarierte Entsprechung zählt als derselbe Begriff — sonst nicht", () => {
     const frage = "Wo finde ich die Urlaubsregelungen im Handbuch?";
     const text = "Abwesenheiten Die Urlaubszeiten stehen im Handbuch.";
@@ -93,6 +167,80 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     // Gegenprobe: ohne Relevanztext fehlt „Urlaubsregelung", die Quelle ist unvollständig.
     expect(decktAlleFragebegriffe(frage, text)).toBe(false);
   });
+});
+
+describe("R-0278-Nacharbeit 5 · Kontext- und Rahmensätze binden ihre Sache (ben)", () => {
+  const FAELLE = [
+    {
+      name: "Kontextsatz",
+      frage: "Es geht um Ventil F3. Welche maximale Temperatur gilt?",
+      passend: {
+        title: "Ventil F3",
+        statement: "Die maximale Temperatur am Ventil F3 ist 80 Grad.",
+      },
+      fremd: { title: "Ventil F4", statement: "Die maximale Temperatur am Ventil F4 ist 95 Grad." },
+    },
+    {
+      name: "Im-Rahmen",
+      frage: "Im Kessel K7, welche maximale Temperatur gilt?",
+      passend: {
+        title: "Kessel K7",
+        statement: "Die maximale Temperatur im Kessel K7 ist 120 Grad.",
+      },
+      fremd: {
+        title: "Kessel K8",
+        statement: "Die maximale Temperatur im Kessel K8 ist 140 Grad.",
+      },
+    },
+    // Nacharbeit 7 (ben): ein Anweisungssatz mit Sache — nur „Nenne" ist formal, F3 bleibt gebunden.
+    {
+      name: "Anweisungssatz mit Sache",
+      frage: "Nenne nur Werte für Ventil F3. Welche maximale Temperatur gilt?",
+      passend: {
+        title: "Ventil F3",
+        statement: "Die maximale Temperatur am Ventil F3 ist 80 Grad.",
+      },
+      fremd: { title: "Ventil F4", statement: "Die maximale Temperatur am Ventil F4 ist 95 Grad." },
+    },
+    // Nacharbeit 7 (ben): ein Rahmen, der auf ein Bestandswort endet, aber eine Sache trägt — nur
+    // „Daten" ist Bestand, Kessel K7 bleibt gebunden.
+    {
+      name: "Bestandswort-Rahmen mit Sache",
+      frage: "In den Kessel K7 Daten, welche maximale Temperatur gilt?",
+      passend: {
+        title: "Kessel K7",
+        statement: "Die maximale Temperatur im Kessel K7 ist 120 Grad.",
+      },
+      fremd: {
+        title: "Kessel K8",
+        statement: "Die maximale Temperatur im Kessel K8 ist 140 Grad.",
+      },
+    },
+  ] as const;
+
+  for (const fall of FAELLE) {
+    it(`NEGATIV ${fall.name}: eine Quelle zu einem ANDEREN Gegenstand trägt nicht`, async () => {
+      const { ko, ask } = await stapel();
+      const fremd = (await ko.create({ ...VORLAGE, ...fall.fremd })).id;
+      for (const opts of [{ retrievalOnly: true }, {}]) {
+        const out = await ask.ask(fall.frage, "nutzer-1", "de", opts);
+        expect(out.result.answered, JSON.stringify(opts)).toBe(false);
+        expect(out.result.sources, JSON.stringify(opts)).not.toContain(fremd);
+      }
+    });
+
+    it(`POSITIV ${fall.name}: die Quelle zum genannten Gegenstand trägt — die fremde nicht`, async () => {
+      const { ko, ask } = await stapel();
+      const fremd = (await ko.create({ ...VORLAGE, ...fall.fremd })).id;
+      const passend = (await ko.create({ ...VORLAGE, ...fall.passend })).id;
+      for (const opts of [{ retrievalOnly: true }, {}]) {
+        const out = await ask.ask(fall.frage, "nutzer-1", "de", opts);
+        expect(out.result.answered, JSON.stringify(opts)).toBe(true);
+        expect(out.result.sources, JSON.stringify(opts)).toEqual([passend]);
+        expect(out.result.sources, JSON.stringify(opts)).not.toContain(fremd);
+      }
+    });
+  }
 });
 
 describe("R-0473 · UND im regulären Fragedienst", () => {
@@ -121,6 +269,17 @@ describe("R-0473 · UND im regulären Fragedienst", () => {
     const out = await ask.ask("Ventil F3 Temperatur", "nutzer-1", "de", { retrievalOnly: true });
     expect(out.result.answered).toBe(false);
     expect(out.result.sources).not.toContain(teil);
+  });
+
+  it("R-0278-Nacharbeit, NEGATIV: „Wie hoch …“ öffnet die Bindung nicht — „Temperatur“ fehlt weiter", async () => {
+    const { ko, ask } = await stapel();
+    const teil = (await ko.create({ ...VORLAGE, ...TEIL })).id;
+    const frage = "Wie hoch ist die Temperatur am Ventil F3?";
+    for (const opts of [{ retrievalOnly: true }, {}]) {
+      const out = await ask.ask(frage, "nutzer-1", "de", opts);
+      expect(out.result.answered, JSON.stringify(opts)).toBe(false);
+      expect(out.result.sources, JSON.stringify(opts)).not.toContain(teil);
+    }
   });
 
   // Nacharbeit 3 (ben, K8): klein geschrieben und mit dem fehlenden Begriff am Satzanfang, jeweils

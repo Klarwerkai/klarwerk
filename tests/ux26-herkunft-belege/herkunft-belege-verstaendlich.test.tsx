@@ -398,6 +398,64 @@ describe("JOB 3384 · UX-26 — die Herkunftskette spricht Deutsch, der Leerstan
   });
 
   // ----------------------------------------------------------------------------------------------
+  // FALL 1d — DIE HERKUNFTSBELEGE DES QUELLABGLEICHS (Verwalteransicht, Bens Befund Nacharbeit 5)
+  // ----------------------------------------------------------------------------------------------
+  // `services/knowledge-object/src/service.ts` schreibt seit dem Confluence-Import vier Belege mit
+  // dem Objekt als Ziel. Ohne Schlüssel stand in der Objektspur „ko source removed in origin“.
+  const QUELLABGLEICH = [
+    "ko.source-removed-in-origin",
+    "ko.source-restored-in-origin",
+    "ko.source-attachments-synced",
+    "ko.source-restriction-synced",
+  ];
+
+  for (const sprache of ["de", "en"] as const) {
+    it(`1d · ${sprache.toUpperCase()}: die vier Quellabgleich-Belege tragen in der Objektspur ihren Namen`, async () => {
+      box.ereignisse = QUELLABGLEICH.map((code, i) => ereignis(code, i + 1));
+      await i18n.changeLanguage(sprache);
+      await mount();
+      const kette = await oeffne("herkunftskette");
+      for (const code of QUELLABGLEICH) {
+        const key = `audit.action.${code.replace(/[.-]/g, "_")}`;
+        const name = i18n.t(key);
+        expect(name, `${sprache}: ${key} fehlt`).not.toBe(key);
+        expect(
+          text(kette),
+          `${sprache}: ${code} steht nicht mit Namen in der Objektspur`,
+        ).toContain(name);
+        const knoten = satzKnoten(kette, name);
+        expect(knoten, `${sprache}: ${code} steht nicht als eigener Knoten`).not.toBeNull();
+        pruefeSichtbar(knoten as HTMLElement, kette);
+        expect(text(kette), `${sprache}: Humanisierung von ${code}`).not.toContain(
+          code.replace(/[._-]/g, " "),
+        );
+        expect(text(kette), `${sprache}: roher Code ${code}`).not.toContain(code);
+      }
+    });
+  }
+
+  it("1e · die vier Quellabgleich-Codes haben in DE, EN und NL je einen eigenen Namen", async () => {
+    for (const sprache of ["de", "en", "nl"]) {
+      await i18n.changeLanguage(sprache);
+      for (const code of QUELLABGLEICH) {
+        const key = `audit.action.${code.replace(/[.-]/g, "_")}`;
+        const wert = i18n.t(key);
+        expect(wert, `${sprache}: ${key} fehlt`).not.toBe(key);
+        expect(wert, `${sprache}: ${key} trägt die Humanisierung`).not.toBe(
+          code.replace(/[._-]/g, " "),
+        );
+      }
+    }
+    // EN ist eine eigene Fassung, nicht der deutsche Text (E50d).
+    await i18n.changeLanguage("en");
+    const en = i18n.t("audit.action.ko_source_removed_in_origin");
+    await i18n.changeLanguage("de");
+    expect(en).not.toBe(i18n.t("audit.action.ko_source_removed_in_origin"));
+    // Der Fall braucht keine gemountete Fläche — aber `afterEach` hängt an ihr.
+    await mount();
+  });
+
+  // ----------------------------------------------------------------------------------------------
   // FALL 2 — DER RÜCKFALL LEBT (Lieferung 2, letzter Satz)
   // ----------------------------------------------------------------------------------------------
   it("2 · ein unvorhergesehener Code erscheint humanisiert, nicht als roher Punktcode", async () => {

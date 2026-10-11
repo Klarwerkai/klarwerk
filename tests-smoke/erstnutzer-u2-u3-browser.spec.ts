@@ -12,10 +12,10 @@
 //   · U2 — „unklar, wo die Suche ist und worauf sie sich bezieht“: Bibliothek und Entwürfe sind zwei
 //     Suchwelten. Gemessen wird, dass jede Fläche ihren Suchraum nennt, dass ein Nulltreffer weiterführt
 //     und dass von der Entwurfswelt ein benannter Weg in die Bibliothek führt.
-//   · U3 — „Navigation nicht selbsterklärend, ‚Meine Aufgaben‘ sagt nicht, was es meint“: Gemessen wird
-//     der Weg Start → Zahnrad → „Weitere Bereiche“ → „Meine Aufgaben“ und dass die Seitenhilfe dort
-//     sagt, was gemeint ist. Die Kopfband-Punkte tragen dabei keinen nativen Tooltip (Pedi 04.09.:
-//     Erklärung hinter das Zahnrad, nicht ins Sichtfeld).
+//   · U3 — „Navigation nicht selbsterklärend, ‚Meine Aufgaben‘ sagt nicht, was es meint“: seit der
+//     Gesamt-Navigation 20260922 in `gesamt-navigation-u3-browser.spec.ts` (heutiger Weg
+//     „Arbeitsbereiche“ → „Offene Aufgaben“ samt Seitenhilfe; vorher hier: Zahnrad → „Weitere
+//     Bereiche“ → „Meine Aufgaben“).
 //
 // Die erwarteten Texte stehen hier wörtlich (DE ist die Standardsprache des Smoke-Browsers). Die
 // Quelle ist `apps/web/src/i18n.ts`: `lib.searchLabel`, `lib.liste.leerSuche`, `lib.liste.erfassen`,
@@ -110,50 +110,5 @@ test("U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt i
   }
 });
 
-test("U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist", async ({
-  page,
-}) => {
-  await ensureLoggedIn(page);
-  await page.goto("/start");
-  const kopfband = page.getByTestId("kopfband");
-  await expect(kopfband).toBeVisible({ timeout: 15_000 });
-
-  // Kein nativer Tooltip an den Kopfband-Punkten: der Name ist die Beschriftung.
-  const punkte = kopfband.locator("a.kw-kopfband-punkt");
-  await expect(punkte.first()).toBeVisible();
-  const attribute = await punkte.evaluateAll((links) =>
-    links.map((a) => ({
-      href: a.getAttribute("href"),
-      title: a.hasAttribute("title"),
-      beschrieben: a.hasAttribute("aria-describedby"),
-    })),
-  );
-  for (const a of attribute) {
-    expect(a.title, `${a.href} trägt einen Tooltip`).toBe(false);
-    expect(a.beschrieben, `${a.href} trägt aria-describedby`).toBe(false);
-  }
-
-  // Der Weg: Zahnrad → „Weitere Bereiche“ → „Meine Aufgaben“.
-  await page.getByTestId("kopfband-zahnrad").click();
-  await expect(page.getByTestId("zahnrad-menue")).toBeVisible();
-  await page.getByTestId("zahnrad-weitere-bereiche").click();
-  const aufgaben = page.getByTestId("bereich-aufgaben");
-  await expect(aufgaben).toContainText("Meine Aufgaben");
-  await aufgaben.click();
-  await expect(page).toHaveURL(/\/aufgaben(?:[?#]|$)/);
-  const seite = page.getByTestId("page-aufgaben");
-  await expect(seite).toBeVisible({ timeout: 15_000 });
-  await expect(seite.getByRole("heading", { level: 1 })).toHaveText("Meine Aufgaben");
-
-  // Die Erklärung steht nicht im Sichtfeld, sondern auf Abruf in der Seitenhilfe. Der
-  // Routenwechsel hat das Menü geschlossen (`ZahnradMenue.tsx`); es wird neu geöffnet.
-  await expect(page.getByTestId("zahnrad-menue")).toHaveCount(0);
-  await expect(page.getByTestId("seitenhilfe-liste")).toHaveCount(0);
-  await page.getByTestId("kopfband-zahnrad").click();
-  await page.getByTestId("zahnrad-seitenhilfe").click();
-  const hilfe = page.getByTestId("seitenhilfe-liste");
-  await expect(hilfe).toBeVisible();
-  await expect(hilfe).toContainText("Meine Aufgaben");
-  await expect(hilfe).toContainText("Hier steht deine eigene Arbeit an einer Stelle");
-  await expect(hilfe).toContainText("Nächster Schritt: die oberste Zeile anklicken");
-});
+// U3 ist umgezogen (Aufnahme 20260922 · Gesamt-Navigation, R-1813): `gesamt-navigation-u3-browser.spec.ts`
+// misst den heutigen Weg „Arbeitsbereiche → Offene Aufgaben“. Diese Datei trägt nur noch U2.

@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import {
   type BestandsresetBefund,
   SQL_ABSCHLUSS_SETZEN,
@@ -80,20 +80,74 @@ export class BestandsresetGesperrtError extends Error {
 // Bestandsreset zugleich eine Werksrückstellung, die niemand bestellt hat; (c) das Audit,
 // einschließlich der Laufakte des Resets selbst — ein Vorgang, der seine eigene Spur mitlöscht,
 // ist nicht nachweisbar, und die Nachweisbarkeit ist der ganze Zweck von JOB 596.
+//
+// AUFNAHME 20260922 (gesamt-bestandsreset, E9): Seit `60b951b8` sind wissensgebundene Tabellen
+// dazugekommen, die die Liste nicht kannte — Gesamtanweisungen samt gebundener KO-Fassungen,
+// Dokumentfassungen, Kenntnisnahmen, Bearbeitungshinweise und der Quellabgleich je Importlauf.
+// Blieben sie stehen, sähe die Testerin nach dem Reset Anweisungen und Kenntnisnahmen über Objekte,
+// die es nicht mehr gibt — genau der Schutt, den E9 wegräumen soll. Mit ihnen gibt es zwei weitere
+// Ordnungszwänge (`kenntnisnahme_empfaenger → kenntnisnahme_anforderungen`; die Gesamtanweisung
+// kaskadiert ohnehin). BEWUSST NICHT in der Liste: `ko_schreibstand` (Ein-Zeilen-Zähler, s. unten)
+// und `begriffe_fassungen` — das Firmenwörterbuch bleibt, so entschieden von Peter am 11.10.
+// (Fachhilfe, Frage 59: „Konten und Firmenwörterbuch standardmäßig erhalten").
 export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
-  // Der eine echte Ordnungszwang: das Kind vor dem Elternteil.
+  // Die Ordnungszwänge: das Kind vor dem Elternteil.
   "import_run_item_refs",
+  "import_run_source_sync",
   "import_runs",
+  "kenntnisnahme_empfaenger",
+  "kenntnisnahme_anforderungen",
+  "gesamtanweisung_staende",
+  "gesamtanweisung_bausteine",
+  "gesamtanweisungen",
+  "dokument_fassungen",
+  "ko_bearbeitungen",
   "import_candidates",
   "external_source_records",
   // Projektionen und Ableitungen vor ihren Quellen — nicht erzwungen, aber die ehrliche Reihenfolge.
   "ko_search_projections",
   "ko_metadata_projections",
-  "ko_projection_control",
+  // `ko_projection_control` steht hier BEWUSST NICHT mehr (Nacharbeit 2). Sie ist keine Ableitung,
+  // sondern die EINE Steuerzeile der Suche (`key='singleton'`): Zustand, aktive Generation,
+  // Integritätsmarker. Jeder spätere Zustandswechsel ist ein `UPDATE … WHERE key=…` — ohne die
+  // Zeile träfe er nichts, und die Suche bliebe bis zu einem Neustart samt neuer Freigabe
+  // abgeschaltet. Sie bleibt stehen wie die Einstellungen; Projektionen und Wissensobjekte gehen
+  // in derselben Transaktion, ihr Gleichstand (beide leer) bleibt damit erhalten.
   "ko_overlaps",
+  // Nacharbeit 7 (BEN): Abgleich mit dem Schema nach der Integration mit main. Diese Tabellen hängen
+  // über `ko_id` (bzw. Objektpaar, Anhang oder Fragensatz) an Wissensobjekten, OHNE Fremdschlüssel-
+  // kaskade auf `kos` — ein Reset ohne sie ließe Ableitungen, Beziehungen und Arbeitsstände
+  // gelöschter Objekte zurück. Welche Tabelle bewusst bleibt und warum, hält der PostgreSQL-Beleg
+  // (`tests/db-tx/bestandsreset-e9-pg.integration.test.ts`, P1) gegen das tatsächlich migrierte
+  // Schema fest: eine neue Tabelle ist dort rot, bis sie einer der beiden Seiten zugeordnet ist.
+  //   Ableitungen des Texts und des Lesens:
+  "ko_embeddings",
+  "ko_mitgelesen",
+  "lesevarianten",
+  //   kuratierte Beziehungen (Wiederholschlüssel vor dem Aggregat):
+  "ko_kanten_beitrag",
+  "ko_kanten",
+  //   Arbeitsstände an Objekt und Anhang:
+  "gemeinsame_entwuerfe",
+  "office_gesichert",
+  "office_sitzungen",
+  //   Zustellungen einer Veröffentlichung:
+  "veroeffentlichung_zustellungen",
+  "meldung_zustellstatus",
+  //   Verständnisfragen zu einer Wissensfassung (Versuche vor ihren Fragensätzen):
+  "verstaendnis_versuche",
+  "verstaendnis_fragensaetze",
   "ko_evidence",
+  // aufnahme:20260922:gesamt-wissen-frische: der aus den Fassungen gelernte Halbwertszeit-Verlauf —
+  // abgeleitet aus dem Wissen, fällt mit ihm (dieselbe Begründung wie `conflict_pair_memory`).
+  "ko_halbwertszeit_beobachtungen",
   "ko_versions",
   "conflicts",
+  // Prüfung-Gedächtnis (R-1103/R-1105): aus dem Wissen abgeleitet, fällt mit ihm.
+  "conflict_pair_memory",
+  // Paarpflichten (G2): an Aussagen und ihre Stände gebunden, fallen mit dem Wissen.
+  "conflict_pair_obligations",
+  "conflict_pair_obligation_runs",
   "answer_snapshots",
   "answer_records",
   "gaps",
@@ -101,6 +155,9 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "assignments",
   "lifecycle_progress",
   "lifecycle_pending",
+  // produkt:20261010:aenderungsfolgen-sichtbar: Stand-Hochwassermarke und verarbeitete Signale —
+  // an die Merker gebunden, fallen mit ihnen.
+  "lifecycle_verlauf",
   "lifecycle_paths",
   "lifecycle_couplings",
   "klara_session_consents",
@@ -111,6 +168,25 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "objects",
   "kos",
 ];
+
+// DER SCHREIBSTAND ZÄHLT AUCH DEN RESET. `ko_schreibstand` ist der instanzweite Zähler, an dem
+// gecachte Lesebilder (Anhangträger, `anhangStand`) erkennen, dass sich der Bestand geändert hat
+// (s. KO_SCHREIBSTAND_TABELLE_DDL in knowledge-object/src/repo-pg.ts). Löschte der Reset die KOs,
+// ohne ihn zu erhöhen, bliebe ein Bild über gelöschtem Wissen gültig. Die Zeile wird deshalb nicht
+// gelöscht, sondern in DERSELBEN Transaktion erhöht wie die Löschungen — wörtlich dieselbe Anweisung
+// wie beim fachlichen Schreiben.
+export const SQL_SCHREIBSTAND_ERHOEHEN =
+  "UPDATE ko_schreibstand SET stand = stand + 1 WHERE id = 1";
+
+/**
+ * Nacharbeit 7 (BEN): eine Prüfung, die IN der Nutzdatentransaktion läuft — nach dem Erwerb der
+ * exklusiven Sperre und vor der ersten Löschung. Ab diesem Punkt weist die Kapselung (`gatedPool`)
+ * jeden Schreiber ab; was die Prüfung sieht, ist also genau der Bestand, den die Löschungen treffen.
+ * Wirft sie, wird zurückgerollt und der Lauf als `ROLLED_BACK` abgeschlossen — es ist nichts gelöscht.
+ */
+export interface BestandsresetOptionen {
+  readonly vorDemLoeschen?: (client: PoolClient) => Promise<void>;
+}
 
 /**
  * Führt einen Bestandsreset aus und gibt den belastbaren Abschlusszustand zurück.
@@ -124,6 +200,7 @@ export async function fuehreBestandsresetAus(
   rohPool: Pool,
   laufId: string,
   loeschgraph: readonly string[] = BESTANDSRESET_LOESCHGRAPH,
+  optionen: BestandsresetOptionen = {},
 ): Promise<BestandsresetBefund> {
   const client = await rohPool.connect();
   try {
@@ -139,12 +216,14 @@ export async function fuehreBestandsresetAus(
       if (!sperre.rows[0]?.erworben) {
         throw new BestandsresetGesperrtError();
       }
+      await optionen.vorDemLoeschen?.(client);
       for (const tabelle of loeschgraph) {
         // Die Tabellennamen stammen aus einer Konstante dieses Moduls, nie aus einer Eingabe —
         // deshalb ist die Interpolation hier zulässig. Ein Bezeichner kann ohnehin nicht als
         // Parameter gebunden werden.
         await client.query(`DELETE FROM ${tabelle}`);
       }
+      await client.query(SQL_SCHREIBSTAND_ERHOEHEN);
       // DIE LETZTE ANWEISUNG. Ihre Stellung ist der Auditvertrag.
       await client.query(SQL_COMMITMERKMAL_SETZEN, [laufId]);
       await client.query("COMMIT");

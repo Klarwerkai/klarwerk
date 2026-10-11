@@ -15,7 +15,11 @@ export const BERICHT_V2_TEXT = "Aktuelle Anweisung: Spuelgang mit 80 Grad und Di
 export const BERICHT_V2 = `<p>${BERICHT_V2_TEXT}</p>`;
 
 /** Der Bestand, den das Netz-Doppel ausliefert. Wird je Fall vor dem Aufbau gesetzt. */
-export const netz = { fassungen: [] as KoVersionSnapshot[] };
+export const netz = {
+  fassungen: [] as KoVersionSnapshot[],
+  /** Kennungen, die der Lebenszyklus als „Revalidierung fällig" meldet (R-1749). Vorgabe: keine. */
+  pflege: [] as string[],
+};
 
 /** Der aktuelle Stand des Wissensobjekts — die Fassung, die NICHT historisch ist. */
 export function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
@@ -89,7 +93,7 @@ export function endpointsDoppel(): Record<string, unknown> {
       duplicateSignal: { list: leer },
       audit: { list: leer },
       directory: { list: async () => [{ id: "u1", name: "Eva" }] },
-      lifecycle: { pending: leer, linked: leer, couplingsFor: leer },
+      lifecycle: { pending: async () => [...netz.pflege], linked: leer, couplingsFor: leer },
       external: { policy: async () => ({ stage: "blocked", enabled: false }) },
       uploadLimits: { get: async () => ({ maxAttachments: 8, maxAttachmentBytes: 20000000 }) },
       reasoner: {

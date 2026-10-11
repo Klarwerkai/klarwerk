@@ -88,7 +88,7 @@ import {
   sharepointFehlerlage,
 } from "../../../sharepoint";
 import type { Guards } from "../http";
-import { sanitizeLogText } from "../log-sanitize";
+import { inhaltsfreieFehlerkennung } from "../log-positivliste";
 
 export interface SharePointImportRouteDeps {
   library: LibraryService;
@@ -152,7 +152,8 @@ const MELDUNG: Record<string, string> = {
 
 function warne(log: FastifyBaseLogger, stelle: string, err: unknown): void {
   log.warn(
-    { stelle, fehler: sanitizeLogText(err instanceof Error ? err.message : String(err)) },
+    // R-0623: statt des freien Fehlertexts die inhaltsfreie Fehlerkennung.
+    { stelle, fehler: inhaltsfreieFehlerkennung(err) },
     `sharepoint-import: ${stelle} fehlgeschlagen`,
   );
 }
@@ -382,6 +383,36 @@ const OHNE_INHALT = ["leer", "zu-gross", "unlesbar"] as const;
 
 function istOhneInhalt(art: SharePointInhaltsbefund): art is (typeof OHNE_INHALT)[number] {
   return (OHNE_INHALT as readonly string[]).includes(art);
+}
+
+/**
+ * R-0144 — DER LAUFCODE, WENN DAS DATENVOLUMEN NICHT REICHTE.
+ *
+ * Eine Datei über der Inhaltskante (`zu-gross`) macht den Lauf `PARTIAL`. Den Grund nannte bis
+ * hierher nur die Antwort dieses Aufrufs (`ohneInhalt`); der gespeicherte Lauf, den man später über
+ * `GET /api/admin/import/runs/:importId` liest, trug `failureCode: null`. Jetzt trägt er diesen Code
+ * und einen Satz mit der Anzahl — ohne Dateinamen und ohne Kennung.
+ *
+ * KEIN WIDERSPRUCH ZU JOB 4232 („es entsteht kein neuer Fehlercode"): dort geht es um die
+ * HTTP-Ausgänge der Türen, und die bleiben unverändert. Dies ist ein Code AM LAUF, in derselben Art
+ * wie `CONFLUENCE_RESPONSE_TOO_LARGE` beim Confluence-Lauf. `leer` und `unlesbar` sind keine Grenze
+ * von Zeit oder Volumen und bekommen deshalb keinen.
+ */
+const LAUF_INHALT_ZU_GROSS = "SHAREPOINT_CONTENT_TOO_LARGE";
+
+function volumengrund(
+  ohneInhalt: readonly { befund: (typeof OHNE_INHALT)[number] }[],
+): { failureCode: string; failureReason: string } | null {
+  const zuGross = ohneInhalt.filter((o) => o.befund === "zu-gross").length;
+  if (zuGross === 0) {
+    return null;
+  }
+  return {
+    failureCode: LAUF_INHALT_ZU_GROSS,
+    failureReason: sanitizeImportFailureReason(
+      `${zuGross} Datei(en) über der Inhaltsgrenze nicht übernommen.`,
+    ),
+  };
 }
 
 export function sharepointImportRoutes(deps: SharePointImportRouteDeps): FastifyPluginAsync {
@@ -836,7 +867,17 @@ async function fuehreUebernahmeAus(
           bereitsInQueue += 1;
           continue;
         }
-        const angelegt = await deps.library.createImportCandidates([item], userId);
+        // R-0144 / R-0701: an die Kennung dieser Übernahme gebunden, Ordnung = Position der Kennung
+        // im Auftrag — derselbe Weg wie Confluence `/apply` (`laufbindung.ts`). Damit hält der Lauf
+        // je Datei die Quellrevision fest, und die Entscheidung schreibt ihre Elementreferenz, die
+        // `GET /api/admin/import/runs/:importId/result` liest. Tragfähig erst, seit der Quellstand in
+        // die Revisionsidentität passt (`services/sharepoint/src/mapper.ts`, Kopf).
+        const angelegt = await deps.library.createImportCandidates(
+          [item],
+          userId,
+          undefined,
+          lauf !== null ? { lauf: { importId: lauf, ordinal: ids.indexOf(id) } } : {},
+        );
         if (angelegt.length > 0) {
           eingereiht += 1;
           // JOB 4125: Stand dieser Übernahme gegen den Stand des Vorgangs, der zu DERSELBEN
@@ -894,6 +935,7 @@ async function fuehreUebernahmeAus(
       {
         status: laufStatus,
         completedAt: new Date().toISOString(),
+        ...(volumengrund(ohneInhalt) ?? {}),
         counters: uebernahmeZaehler(bilanz),
       },
       log,

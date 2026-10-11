@@ -270,7 +270,28 @@ async function lauf(modus: Modus): Promise<{ code: number; ausgabe: string }> {
       code = r.code;
       ausgabe = r.stdout + r.stderr;
     }
-    console.log(ausgabe);
+    // AUFNAHME 20260922 · ZERLEGUNG-AUFRAEUMEN (03.10.2026): VOM NEGATIVLAUF GEHEN NUR NOCH SEINE
+    // ABBAUZEILEN HINAUS. Seine Unterlaufausgabe traegt ABSICHTLICH die Vitest-Zeilen
+    // `FAIL abbau-0.test.ts` und `FAIL abbau-1.test.ts` — die Wegwerfdateien aus `mitProbedateien()`
+    // unter `mkdtempSync`. Genau diese zwei Zeilen standen im roten Vollcheck
+    // pa-1790499744-198b9217 als Befund ohne Repositorypfad (im Repository gibt es keine solche
+    // Datei), und schon vorher in JEDEM Volllauf, auch in den bestandenen
+    // (`docs/belege/fe-002/C2-DIAGNOSE.md`, `CAPTURE-FALL12-DIAGNOSE.md`). Sie sind kein Befund: der
+    // Lauf MUSS rot sein, und der Fall „dauerhaft fehlender Abschluss" prueft genau das. Was bei
+    // einem echten Fehler zu sehen sein muss, steht in den Meldungen seiner Vergleiche.
+    // Weitergereicht werden nur die Zeilen, die `abbauzeilen()` erhebt — sie tragen alle das
+    // Probenetikett, und `tests/tor-chromium-abbau/probe-beschriftet-sich-als-probe.test.ts` F5a
+    // misst genau sie an der Ausgabe dieser Datei. Die gruenen Laeufe bleiben vollstaendig sichtbar.
+    if (modus.fehlend === true) {
+      console.log(
+        [
+          `${PROBE_PRAEFIX}Negativlauf (exit=${code}, erwartet 1) — nur seine Abbauzeilen:`,
+          ...abbauzeilen(klartext(ausgabe)),
+        ].join("\n"),
+      );
+    } else {
+      console.log(ausgabe);
+    }
     return { code, ausgabe };
   });
 }

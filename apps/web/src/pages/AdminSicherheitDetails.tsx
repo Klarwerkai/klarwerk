@@ -6,16 +6,27 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // Auskunft über den Zustand des Hauses und lebt deshalb als Zeile „Bereitschaft" unter Sicherheit
 // weiter — mit derselben Checkliste, denselben Quellen und demselben Druckknopf.
 import { Download, Printer, ShieldCheck } from "lucide-react";
-import { Fragment, useMemo, useRef } from "react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useAnalytics, useAudit, useDirectory, useValidationBoard } from "../api/hooks";
+import { useAnalytics, useAuditSeite, useDirectory, useValidationBoard } from "../api/hooks";
+import { useSession } from "../app/AuthContext";
 import { useToast } from "../app/ToastContext";
 // JOB 3670: die Seitenhilfe dieser drei Karten — je Karte ein eigener Text, weil es drei
 // Bildschirme sind. `HelpTip` rendert nichts; er meldet beim Sammler an, das Zahnrad listet.
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
+import { BetroffenenrechteVerwaltung } from "../components/datenschutz/Verwaltung";
 import { Abfragehuelle, Fehlerbox } from "../components/einstellungen/Abfragehuelle";
+import {
+  AuditFilterLeiste,
+  AuditLeer,
+  AuditSeitenleiste,
+  AuditTabelle,
+  useAuditAdressfilter,
+  useVerzeichnislage,
+} from "../components/einstellungen/Auditprotokoll";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Bereitschaftstandhinweis } from "../components/einstellungen/bereitschaftstandhinweis";
 import {
@@ -25,13 +36,8 @@ import {
   wertBefund,
 } from "../components/einstellungen/zeilenWert";
 import { Button } from "../components/ui";
-import { auditActionLabel } from "../lib/auditAction";
-import {
-  type DetailZeile,
-  type VerzeichnisLage,
-  auditEventDetail,
-  verzeichnisNamen,
-} from "../lib/auditEventDetail";
+import { KONTO_AUDIT_AKTIONEN } from "../lib/adminForms";
+import { auditAnfrage, zeitpunktMitZone } from "../lib/auditFilter";
 import { type AuditVerifyTone, auditVerifyView } from "../lib/auditVerifyState";
 import { SECURITY_POINTS } from "../lib/securityStatements";
 import { type ReadinessTone, readinessRows } from "../lib/vipReadiness";
@@ -53,6 +59,25 @@ const AUDIT_VERIFY_TONE_CLASS: Record<AuditVerifyTone, string> = {
   crit: "bg-trust-crit-bg text-trust-crit-text",
 };
 
+// produkt:20261009:admin-audit-verstaendlich: die Vorgänge, nach denen das Prüfprotokoll filtern
+// lässt — Beiträge, Konten und Anmeldung, der Kettenexport. Nur Namen von Vorgängen, nie Objekte.
+const PROTOKOLL_AKTIONEN: readonly string[] = [
+  "ko.created",
+  "ko.revised",
+  "ko.deleted",
+  "ko.restored",
+  "ko.purged",
+  "ko.admin-validated",
+  "ko.rated",
+  "ko.returned-to-owner",
+  "ko.confidentiality",
+  "ko.ownership",
+  "ko.category-changed",
+  "ko.tags-changed",
+  ...KONTO_AUDIT_AKTIONEN,
+  "audit.exported",
+];
+
 // SCRUM-440: nur den markierten Auszug drucken — eine Body-Klasse isoliert den Druck (via CSS),
 // damit normales Strg+P auf anderen Seiten unberührt bleibt. Klasse nach dem Druck wieder entfernen.
 function printExtract(): void {
@@ -73,36 +98,6 @@ function DruckKnopf(): JSX.Element {
 }
 
 /**
- * JOB 3140 (UX-11): der Wert einer Detailzeile — reiner Text, kein Bedienelement.
- *
- * Drei Formen, drei Bedeutungen: ein Wert; eine Kennung mit dem GRUND, warum kein Name danebensteht;
- * oder die ehrliche Auskunft „nicht gespeichert". Welche davon gilt, entscheidet
- * `lib/auditEventDetail.ts` — hier wird nur gerendert. Die Kennung bleibt in jeder Form lesbar
- * (monospace, kleiner): sie beherrscht die Zeile nicht mehr, verschwindet aber auch nicht.
- */
-function DetailWert({ zeile }: { zeile: DetailZeile }): JSX.Element {
-  const { t } = useTranslation();
-  if (zeile.kind === "missing") {
-    return <span className="italic text-muted-2">{t("audit.detail.notStored")}</span>;
-  }
-  return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-      {zeile.kind === "text" ? (
-        <span className="text-text">{zeile.valueKey ? t(zeile.valueKey) : zeile.value}</span>
-      ) : null}
-      {/* JOB 3140 R2: der Hinweis steht NUR da, wenn es einen gibt. Ein Objektziel (`ko.created`
-          & Co.) trägt seine Kennung ohne jede Aussage über ein Konto — kein leerer Kursivrest. */}
-      {zeile.hinweisKey === undefined ? null : (
-        <span className="italic text-muted-2">{t(zeile.hinweisKey)}</span>
-      )}
-      {zeile.id === undefined ? null : (
-        <span className="truncate font-mono text-[10.5px] text-muted-2">{zeile.id}</span>
-      )}
-    </span>
-  );
-}
-
-/**
  * SCRUM-432 (Pedi 03.07., VIP-Investor): das hash-verkettete Prüfprotokoll.
  * AUFTRAG-mega15 Block A: die Texte behaupten keine Unveränderbarkeit — belegbar ist die
  * Prüfbarkeit (s. tests/app/chain-claims.test.ts).
@@ -118,40 +113,20 @@ function DetailWert({ zeile }: { zeile: DetailZeile }): JSX.Element {
  * der `Abfragehuelle` und kann die Karte deshalb weder blockieren noch in einen Fehlerzustand
  * zwingen. Sein Zustand wird über dasselbe Modell gelesen wie jede Einstellungszeile
  * (`zeilenWert.ts`) und als Lage an `auditEventDetail` gereicht — damit die Tatsachenaussage
- * „Konto nicht mehr vorhanden" nur aus einer erfolgreichen, frischen Antwort entstehen kann.
+ * „Konto nicht mehr vorhanden" nur aus einer erfolgreichen, frischen Antwort entstehen kann
+ * (`useVerzeichnislage`, drei Lagen — JOB 3140 R2).
+ *
+ * produkt:20261009:admin-audit-verstaendlich (ADMIN-03): die Karte liest die Kette SEITENWEISE
+ * (`GET /api/audit/seite`, jüngste zuerst) statt der Gesamtliste, gefiltert nach Person, Vorgang,
+ * Betroffenem und Zeitraum aus der Adresse. Darstellung, Filter und Blättern teilt sie mit der
+ * Auth-Ansicht (`components/einstellungen/Auditprotokoll.tsx`).
  */
 export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { push } = useToast();
-  const audit = useAudit();
-  const verzeichnisAbfrage = useDirectory();
-  const online = useIstOnline();
-  const verzeichnisLage = abfragelage(verzeichnisAbfrage, online);
-  const verzeichnisBefund = wertBefund(verzeichnisLage, null);
-  const verzeichnisDaten = verzeichnisAbfrage.data;
-  const verzeichnisLaeuft = verzeichnisLage.laeuft;
-  const verzeichnisVeraltet = verzeichnisBefund.nichtAktualisiert;
-  const verzeichnis: VerzeichnisLage = useMemo(() => {
-    if (verzeichnisBefund.art === "laedt") {
-      return { art: "laedt" };
-    }
-    if (verzeichnisBefund.art === "fehler" || verzeichnisBefund.art === "offline") {
-      return { art: "nichtAbrufbar" };
-    }
-    return {
-      art: "geladen",
-      namen: verzeichnisNamen(verzeichnisDaten),
-      // JOB 3140 R2 (BENs Korrekturpflicht 2) — DREI LAGEN, NICHT ZWEI.
-      //
-      // Bis hierher stand hier `frisch: !nichtAktualisiert`. `nichtAktualisiert` meint aber
-      // ausschließlich „Auffrischung GESCHEITERT oder ruht" (`zeilenWert.ts:93`). Eine LAUFENDE
-      // Auffrischung ist beides nicht — und trotzdem ist der sichtbare Bestand dann der ALTE aus
-      // dem Zwischenspeicher. BENs Messung: 60 s alter, leerer Bestand mit ausstehender Antwort
-      // zeigte „Konto nicht mehr vorhanden", während das Konto in der laufenden Antwort steht.
-      // Deshalb entscheidet jetzt auch `laeuft` mit; belegt ist das Fehlen erst danach.
-      stand: verzeichnisVeraltet ? "veraltet" : verzeichnisLaeuft ? "laeuftNach" : "frisch",
-    };
-  }, [verzeichnisBefund.art, verzeichnisVeraltet, verzeichnisLaeuft, verzeichnisDaten]);
+  const filter = useAuditAdressfilter();
+  const audit = useAuditSeite(auditAnfrage(filter.werte, filter.vor));
+  const verzeichnis = useVerzeichnislage(useDirectory());
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — echte Verifikation statt Aussage.
   const verifyAudit = useMutation({
     mutationFn: () => endpoints.audit.verify(),
@@ -189,6 +164,10 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.auditHelp") },
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.auditIntro") },
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.qualityNote") },
+          {
+            titel: t("auditprotokoll.spalte.technik"),
+            text: t("auditprotokoll.technik.hilfe"),
+          },
         ]}
       >
         {/* JOB 3670: AUSSERHALB der Hülle — der Erklärtext gilt auch, während die Kette noch lädt
@@ -222,15 +201,24 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
           title={t("seitenhilfe.admin.protokoll.titel")}
           body={t("seitenhilfe.admin.protokoll.text")}
         />
+        {/* produkt:20261009:admin-audit-verstaendlich: die Filter stehen AUSSERHALB der Hülle — auch
+            wenn eine Seite nicht abrufbar ist (etwa ein unlesbarer Zeitraum aus der Adresse), bleibt
+            der Weg zurück zu einer gültigen Auswahl offen. */}
+        <AuditFilterLeiste
+          filter={filter}
+          verzeichnis={verzeichnis}
+          aktionen={PROTOKOLL_AKTIONEN}
+          idPraefix="pruefprotokoll-filter"
+        />
         <Abfragehuelle abfrage={audit}>
-          {(entries) => {
-            const recent = entries.slice(-12).reverse();
+          {(seite) => {
             return (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
-                    {t("adm.sich.auditCount", { count: entries.length })}
-                  </span>
+                  {/* produkt:20261009:admin-audit-verstaendlich: die grüne Zählmarke „n Einträge in
+                      der Kette" ist entfallen. Sie zählte die geladene Gesamtliste, die es nicht
+                      mehr gibt — und ein grünes Schild ohne Prüfung las sich wie ein Nachweis (K6).
+                      Grün steht nur noch am Ergebnis einer Prüfung MIT Zeitpunkt. */}
                   {/* SCRUM-439: Knopf print-versteckt, Ergebnis bleibt sichtbar. */}
                   <Button
                     variant="outline"
@@ -245,6 +233,12 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                   {verifyAudit.data
                     ? (() => {
                         const view = auditVerifyView(verifyAudit.data);
+                        // K6: der Prüfzeitpunkt in der Zeitzone dessen, der liest.
+                        const zeitpunkt = view.params.zeitpunkt;
+                        const gelesen =
+                          typeof zeitpunkt === "string"
+                            ? zeitpunktMitZone(zeitpunkt, i18n.language)
+                            : undefined;
                         return (
                           <span
                             data-testid="audit-verify-result"
@@ -254,6 +248,7 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                             {t(view.key, {
                               ...view.params,
                               ...(view.kindKey ? { kind: t(view.kindKey) } : {}),
+                              ...(gelesen ? { zeitpunkt: gelesen } : {}),
                             })}
                           </span>
                         );
@@ -280,38 +275,26 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                     })}
                   </p>
                 ) : null}
-                {recent.length === 0 ? (
-                  <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>
+                {/* K5: die Datei sagt selbst, wie viele Einträge für diesen Betrachter geschwärzt
+                    wurden — die Fläche wiederholt es, statt es zu verschweigen. */}
+                {(exportAudit.data?.geschwaerzt ?? 0) > 0 ? (
+                  <p data-testid="audit-export-geschwaerzt" className="text-[11.5px] text-muted">
+                    {t("auditprotokoll.export.geschwaerzt", {
+                      count: exportAudit.data?.geschwaerzt ?? 0,
+                    })}
+                  </p>
+                ) : null}
+                {seite.entries.length === 0 ? (
+                  <>
+                    <AuditLeer filter={filter} leerKey="adm.auditEmpty" />
+                    {leerzustandsZeile(t, "verwaltung")}
+                  </>
                 ) : (
-                  <div className="divide-y divide-hairline">
-                    {recent.map((e) => (
-                      <div key={e.seq} data-audit-eintrag={e.seq} className="py-2 text-[12.5px]">
-                        <span className="font-mono text-[11px] text-muted-2">
-                          {new Date(e.at).toLocaleString()}
-                        </span>
-                        {/* Beschriftungsliste statt Spaltenreihe: erst die Beschriftung sagt, wer
-                            wer ist. Reiner Text — kein Tabstopp, kein Bedienelement. */}
-                        <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-0.5">
-                          <dt className="text-[11.5px] text-muted-2">{t("audit.detail.event")}</dt>
-                          <dd
-                            data-audit-zeile="audit.detail.event"
-                            className="min-w-0 font-semibold text-text"
-                          >
-                            {auditActionLabel(e.action, t)}
-                          </dd>
-                          {auditEventDetail(e, verzeichnis).map((zeile) => (
-                            <Fragment key={zeile.labelKey}>
-                              <dt className="text-[11.5px] text-muted-2">{t(zeile.labelKey)}</dt>
-                              <dd data-audit-zeile={zeile.labelKey} className="min-w-0 text-muted">
-                                <DetailWert zeile={zeile} />
-                              </dd>
-                            </Fragment>
-                          ))}
-                        </dl>
-                      </div>
-                    ))}
-                  </div>
+                  // Verwalteransicht (N-0027): beschriftete Spalten — jetzt als gemeinsame
+                  // Darstellung mit der Auth-Ansicht (`Auditprotokoll.tsx`).
+                  <AuditTabelle seite={seite} verzeichnis={verzeichnis} />
                 )}
+                <AuditSeitenleiste seite={seite} filter={filter} />
               </>
             );
           }}
@@ -324,6 +307,7 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
 /** SCRUM-432/444: Datenschutz & Sicherheit — nur echte Systemeigenschaften, keine Versprechen. */
 export function DatenschutzDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element {
   const { t } = useTranslation();
+  const { user } = useSession();
   return (
     <div className="print-area">
       <Detailkarte
@@ -334,8 +318,9 @@ export function DatenschutzDetail({ onZurueck }: { onZurueck: () => void }): JSX
         hilfe={[{ titel: t("adm.sich.dataTitle"), text: t("adm.sich.dataHelp") }]}
       >
         {/* JOB 3670: „einstellen lässt sich hier nichts" ist der ehrliche Kern dieser Karte — sie
-            rendert eine feste Liste (`lib/securityStatements.ts`) und den Abgrenzungskasten,
-            kein einziges Bedienelement ausser dem Drucken. */}
+            rendert eine feste Liste (`lib/securityStatements.ts`) und den Abgrenzungskasten.
+            Betroffenenrechte: darunter stehen für Verwalter die Löschanträge, die Auskunft und das
+            Verarbeitungsverzeichnis — Handlungen und Downloads, weiterhin keine Einstellung. */}
         <HelpTip
           title={t("seitenhilfe.admin.datenschutz.titel")}
           body={t("seitenhilfe.admin.datenschutz.text")}
@@ -358,6 +343,10 @@ export function DatenschutzDetail({ onZurueck }: { onZurueck: () => void }): JSX
         <p className="rounded-card border border-hairline bg-page px-3 py-2 text-[11px] leading-relaxed text-muted-2">
           {t("adm.sich.evidenceNote")}
         </p>
+        {/* Betroffenenrechte (R-0583, R-0661, R-0667, R-1645): Löschanträge mit Frist, Auskunft je
+            Konto, Verarbeitungsverzeichnis und Dateninventar. Nur für Konten, die Konten löschen
+            dürfen — dieselbe Schranke wie die Routen (`users.manage`). */}
+        {user?.role === "admin" ? <BetroffenenrechteVerwaltung /> : null}
       </Detailkarte>
     </div>
   );
@@ -593,7 +582,7 @@ export function BereitschaftDetail({
             hinge die Hilfe im Erfolgszweig, wäre sie genau dann weg. */}
         <HelpTip
           title={t("seitenhilfe.admin.bereitschaft.titel")}
-          body={t("seitenhilfe.admin.bereitschaft.text")}
+          body={t("knopfzitat.admin.bereitschaft")}
         />
         {/* AUFTRAG-mega3 Block B (bens D9): dauerhaft gescheiterte tragende Quelle ⇒ ehrlicher
             Fehlerzustand mit Wiederholen; Stale-Daten bleiben sichtbar, aber markiert. */}

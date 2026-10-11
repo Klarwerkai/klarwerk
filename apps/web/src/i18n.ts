@@ -3,6 +3,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { sprachAusEintritt } from "./lib/htmlLang";
 import { sprachNachlader } from "./lib/sprachNachlader";
+import { OBERFLAECHEN_SPRACHEN, ladeWeitereSprache } from "./lib/sprachregister";
 import { gespeicherteSprache } from "./lib/sprachwahl";
 import {
   type Textmodul,
@@ -31,6 +32,12 @@ import { nl } from "./woerterbuch/nl";
 //
 // Im Quelltext — und damit in jedem Vitest-Lauf und im Entwicklungsserver — liegen weiterhin alle
 // drei Sprachen sofort vor; der Nachlader (`lib/sprachNachlader.ts`) wird dann nie gefragt.
+//
+// R-0997 / FR-I18N-02: `en`/`nl` sind hier nur noch der Sonderfall des Produktionsschnitts, keine
+// Grenze der Sprachmenge mehr. Welche Sprachen die Oberfläche kann, kommt aus den Ressourcen
+// (`lib/sprachregister.ts`, `OBERFLAECHEN_SPRACHEN`): jede weitere `woerterbuch/<kürzel>.ts` wird
+// nachgeladen (`ladeWeitereSprache` in `nachladen` unten), und Textmodulvertrag wie Zusammenführung
+// laufen über genau diese Menge. Eine neue Sprache braucht keine Zeile in dieser Datei.
 type NachladbareSprache = "en" | "nl";
 type Woerterbuch = typeof de;
 
@@ -60,11 +67,12 @@ const NACHLADEN: Partial<Record<NachladbareSprache, () => Promise<Woerterbuch>>>
 // nach dem Ausliefern. Die tragenden stehen in `tests/i18n-textmodule/` (Tor) und im Plugin
 // `textmodul-vertrag` in `apps/web/vite.config.ts` (Produktbuild).
 const textmodule = import.meta.glob<Textmodul>("./texte/*.ts", { eager: true, import: "default" });
-const textmodulFehler = pruefeTextmodule(textmodule, new Set(Object.keys(de)));
+const basis = new Set(Object.keys(de));
+const textmodulFehler = pruefeTextmodule(textmodule, basis, OBERFLAECHEN_SPRACHEN);
 if (textmodulFehler.length > 0) {
   throw new Error(`Textmodule verletzen ihren Vertrag:\n${textmodulFehler.join("\n")}`);
 }
-const modulTexte = fuehreTextmoduleZusammen(textmodule);
+const modulTexte = fuehreTextmoduleZusammen(textmodule, OBERFLAECHEN_SPRACHEN);
 
 function istNachladbar(sprache: string): sprache is NachladbareSprache {
   return sprache === "en" || sprache === "nl";
@@ -79,7 +87,8 @@ function vorliegend(sprache: NachladbareSprache) {
 /** Holt ein fehlendes Bündel nach; die Textmodule derselben Sprache kommen dazu wie oben. */
 function nachladen(sprache: string): Promise<Record<string, string>> | undefined {
   if (!istNachladbar(sprache)) {
-    return undefined;
+    // R-0997: jede weitere, über `woerterbuch/` angemeldete Sprache — sonst nichts (Rückfall).
+    return ladeWeitereSprache(sprache, modulTexte[sprache]);
   }
   const zusatz = modulTexte[sprache];
   return NACHLADEN[sprache]?.().then((paket) => ({ ...paket, ...zusatz }));
@@ -115,6 +124,10 @@ export const sprachBereit = i18n
     lng: sprachAusEintritt() ?? gespeicherteSprache(),
     fallbackLng: "de",
     interpolation: { escapeValue: false },
+    // R-1034: im Betrieb gepflegte Texte kommen NACH dem ersten Zeichnen vom Server
+    // (`lib/textpflege.ts`). Ohne diese Bindung zeichnete React sie erst beim nächsten
+    // Sprachwechsel; mit ihr erscheint die Anpassung sofort.
+    react: { bindI18nStore: "added" },
   });
 
 export default i18n;

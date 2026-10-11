@@ -33,20 +33,92 @@ export function addonAuthThrottleConfigFromEnv(
   };
 }
 
+// R-0601 (DS19): einspritzbare Uhr und einspritzbarer Zeitgeber für das Aufräumen OHNE weiteren
+// Fehlversuch (Tests). Default: `Date.now` und `setTimeout`, abgekoppelt per `unref`.
+export interface AddonAuthThrottleZeit {
+  jetzt?: () => number;
+  planen?: (lauf: () => void, verzoegerungMs: number) => void;
+}
+
+function planeAbgekoppelt(lauf: () => void, verzoegerungMs: number): void {
+  const zeitgeber = setTimeout(lauf, verzoegerungMs) as unknown as { unref?: () => void };
+  zeitgeber.unref?.();
+}
+
 export class AddonAuthAttemptThrottle {
   private readonly hits = new Map<string, number[]>();
+  // R-0601 (DS19): Zeitpunkt des letzten Aufräumlaufs über ALLE IPs (s. registerFailure).
+  private lastSweepAt: number | undefined;
+  private readonly jetzt: () => number;
+  private readonly planen: (lauf: () => void, verzoegerungMs: number) => void;
+  // R-0601: höchstens EIN geplanter Aufräumlauf; er plant sich nach Bedarf neu.
+  private ablaufGeplant = false;
 
-  constructor(private readonly config: AddonAuthThrottleConfig) {}
+  constructor(
+    private readonly config: AddonAuthThrottleConfig,
+    zeit: AddonAuthThrottleZeit = {},
+  ) {
+    this.jetzt = zeit.jetzt ?? (() => Date.now());
+    this.planen = zeit.planen ?? planeAbgekoppelt;
+  }
+
+  // R-0601: wie viele IP-Adressen gerade im Speicher liegen. Nur Auskunft.
+  get size(): number {
+    return this.hits.size;
+  }
 
   // Registriert einen Fehlversuch für `ip` und meldet, ob er noch ERLAUBT ist (unter dem Limit).
   // false → über dem Limit → der Aufrufer antwortet 429. Alte Einträge außerhalb des Fensters werden
   // verworfen (Sliding-Window). Nur fehlgeschlagene Versuche kommen hier an (der Aufrufer filtert).
+  //
+  // R-0601 (DS19): bis hierher wurde nur die Liste DER anfragenden IP gekürzt — jede andere IP blieb
+  // mit ihren Zeitstempeln für die Laufzeit des Prozesses in der Map. Jetzt verwirft ein Aufräumlauf
+  // höchstens einmal je Fenster alle IPs, deren jüngster Versuch außerhalb des Fensters liegt — und
+  // ein Zeitgeber auf den frühesten Ablauf tut dasselbe, wenn KEIN weiterer Fehlversuch kommt.
   registerFailure(ip: string, now: number): boolean {
     const win = this.config.windowMs;
+    if (this.lastSweepAt === undefined || now - this.lastSweepAt >= win) {
+      this.raeumeAb(now);
+    }
     const recent = (this.hits.get(ip) ?? []).filter((t) => now - t < win);
     recent.push(now);
     this.hits.set(ip, recent);
+    this.planeAblauf(now);
     return recent.length <= this.config.max;
+  }
+
+  // Verwirft jede IP, deren jüngster Versuch außerhalb des Fensters liegt.
+  private raeumeAb(now: number): void {
+    const win = this.config.windowMs;
+    this.lastSweepAt = now;
+    for (const [bekannt, zeiten] of this.hits) {
+      if (!zeiten.some((t) => now - t < win)) {
+        this.hits.delete(bekannt);
+      }
+    }
+  }
+
+  // R-0601: plant den Aufräumlauf auf den frühesten Ablauf (jüngster Versuch einer IP + Fenster).
+  // Ein zu früher Lauf löscht nichts im Fenster — er prüft dieselbe Bedingung wie `raeumeAb`.
+  private planeAblauf(now: number): void {
+    if (this.ablaufGeplant || this.hits.size === 0) {
+      return;
+    }
+    const win = this.config.windowMs;
+    let fruehesterAblauf = Number.POSITIVE_INFINITY;
+    for (const zeiten of this.hits.values()) {
+      fruehesterAblauf = Math.min(fruehesterAblauf, Math.max(...zeiten) + win);
+    }
+    this.ablaufGeplant = true;
+    this.planen(
+      () => {
+        this.ablaufGeplant = false;
+        const jetzt = this.jetzt();
+        this.raeumeAb(jetzt);
+        this.planeAblauf(jetzt);
+      },
+      Math.max(0, fruehesterAblauf - now),
+    );
   }
 
   retryAfterSeconds(): number {
@@ -81,15 +153,20 @@ export function isAddonEndpointPath(rawUrl: string | undefined): boolean {
 
 // SCRUM-490 R3 (B2, Fix 4): trustProxy GEZIELT — request.ip soll die ECHTE Client-IP sein, aber NIE
 // blanket (sonst wird X-Forwarded-For spoofbar → die IP-Drossel wertlos). KLARWERK_TRUST_PROXY:
-//  - Zahl N        → vertraue den letzten N Proxy-Hops (nur setzen, wenn die feste Hop-Anzahl bekannt ist).
 //  - IP/Subnetz(e) → vertraue NUR diesen Adressen (komma-separiert), z. B. dem Traefik-/Coolify-Hop.
 //  - unset / "true"/"false"/"*" → KEIN Vertrauen (konservativ; request.ip = Socket-Peer). Blanket-Werte
 //    werden BEWUSST als „kein Vertrauen" behandelt — XFF wird nie blind geglaubt.
+//  - Zahl N (Hop-Anzahl) → ebenfalls KEIN Vertrauen (s. GHSA-3m5p-2c4r-xxw2 unten).
 // SCRUM-490 R4 (B2, Fix 2): auch Catch-all-CIDRs (0.0.0.0/0, ::/0, jede /0-Maske, unspecified-Adressen)
 // werden als Blanket abgelehnt — ein „vertraue alle Adressen"-Subnetz ist genauso spoofbar wie true.
+// GHSA-3m5p-2c4r-xxw2 (fastify >=5.8.3 <5.12.1): Eine Hop-Anzahl vertraut dem Socket-Peer, egal wer
+// er ist. Erreicht ein Client den Ursprung direkt am Proxy vorbei, bestimmt sein eigener
+// X-Forwarded-For-Kopf request.ip — und damit den Schlüssel jeder IP-Drossel. Die Hop-Anzahl wird
+// deshalb nicht mehr an Fastify gereicht — auf jeder fastify-Version, nicht erst nach einer Hebung.
+// Bewertung und Gegenproben: tests/fastify-restbewertung/.
 export function resolveTrustProxy(
   env: Record<string, string | undefined> = process.env,
-): boolean | number | string[] {
+): boolean | string[] {
   const raw = env.KLARWERK_TRUST_PROXY?.trim();
   if (!raw) {
     return false;
@@ -98,9 +175,8 @@ export function resolveTrustProxy(
   if (lowered === "true" || lowered === "false" || lowered === "*") {
     return false; // Blanket-Vertrauen ist verboten (spoofbar)
   }
-  const n = Number(raw);
-  if (Number.isInteger(n) && n > 0) {
-    return n; // fester Hop-Count
+  if (isHopCountTrustProxy(env)) {
+    return false; // Hop-Anzahl ist verboten (spoofbar am Proxy vorbei)
   }
   // Liste von IPs/Subnetzen. R6: jeder Eintrag wird zuerst STRIKT validiert (isValidTrustEntry: node:net
   // .isIP + Zone-ID-/Präfix-Prüfung) — ungültige/malformte Einträge werden verworfen (KEIN Fastify-
@@ -115,6 +191,19 @@ export function resolveTrustProxy(
     .filter((s) => s.length > 0 && isValidTrustEntry(s) && !isCatchAllTrustEntry(s))
     .map(canonicalizeTrustEntry);
   return list.length > 0 ? list : false;
+}
+
+// GHSA-3m5p-2c4r-xxw2: erkennt eine als Hop-Anzahl gemeinte Einstellung (positive ganze Zahl), damit
+// der Aufbau sie verwerfen UND im Log benennen kann, statt sie still zu ignorieren.
+export function isHopCountTrustProxy(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.KLARWERK_TRUST_PROXY?.trim();
+  if (!raw) {
+    return false;
+  }
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0;
 }
 
 // R7: kanonische Neuzusammensetzung eines bereits validierten Eintrags — reine Adresse ODER

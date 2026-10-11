@@ -4,6 +4,8 @@ import {
   type VerzeichnisLage,
   type VerzeichnisStand,
   auditEventDetail,
+  kontoBelege,
+  protokollNamen,
   verzeichnisNamen,
 } from "./auditEventDetail";
 
@@ -77,7 +79,10 @@ describe("auditEventDetail", () => {
     expect(zeile(zeilen, "audit.detail.target")).toMatchObject({ kind: "text", value: "Tom Test" });
   });
 
-  it("b unbekannte Kennung → Kennung + „nicht mehr vorhanden“, NIE ein fremder Name", () => {
+  // produkt:20261009:admin-audit-verstaendlich (Bens Befund Nacharbeit 3): „nicht mehr vorhanden“
+  // nur mit Kontobeleg. Das Ziel eines Kontovorgangs IST belegt; ein bloßer Akteur ohne Namen oder
+  // Kontovorgang ist eine unbekannte Kennung — bis ein Beleg aus der Kette dazukommt.
+  it("b fehlende Kennung → mit Kontobeleg „nicht mehr vorhanden“, ohne „unbekannt“; NIE ein fremder Name", () => {
     const alt: AuditEreignis = {
       action: "user.role-change",
       actor: "geloescht-1",
@@ -86,16 +91,37 @@ describe("auditEventDetail", () => {
     };
     // Das Verzeichnis ist erfolgreich geladen und kennt GENAU EINE, andere Person.
     const zeilen = auditEventDetail(alt, GELADEN({ "lebt-1": "Lea Lebt" }));
+    expect(zeile(zeilen, "audit.detail.target")).toMatchObject({
+      kind: "id",
+      id: "geloescht-2",
+      hinweisKey: "audit.detail.accountGone",
+    });
+    expect(zeile(zeilen, "audit.detail.actor")).toMatchObject({
+      kind: "id",
+      id: "geloescht-1",
+      hinweisKey: "auditprotokoll.detail.unbekannt",
+    });
     for (const key of ["audit.detail.actor", "audit.detail.target"]) {
-      const z = zeile(zeilen, key);
-      expect(z.kind).toBe("id");
-      expect(z).toMatchObject({ hinweisKey: "audit.detail.accountGone" });
-      expect(z.value).toBeUndefined();
+      expect(zeile(zeilen, key).value).toBeUndefined();
     }
-    expect(zeile(zeilen, "audit.detail.actor").id).toBe("geloescht-1");
-    expect(zeile(zeilen, "audit.detail.target").id).toBe("geloescht-2");
     // Der harte Teil: der eine vorhandene Name darf NIRGENDS auftauchen.
     expect(JSON.stringify(zeilen)).not.toContain("Lea Lebt");
+    // Belegt die Kette den Akteur als Konto (etwa seine frühere Anmeldung), gilt die Löschaussage.
+    const anmeldung: AuditEreignis = {
+      action: "auth.login",
+      actor: "geloescht-1",
+      target: "geloescht-1",
+      payload: {},
+    };
+    const mitBeleg = auditEventDetail(
+      alt,
+      GELADEN({ "lebt-1": "Lea Lebt" }),
+      new Map(),
+      kontoBelege([anmeldung]),
+    );
+    expect(zeile(mitBeleg, "audit.detail.actor")).toMatchObject({
+      hinweisKey: "audit.detail.accountGone",
+    });
   });
 
   it("b2 „nicht mehr vorhanden“ setzt eine erfolgreiche Verzeichnisantwort voraus (§9)", () => {
@@ -297,7 +323,9 @@ describe("auditEventDetail", () => {
       "auth.login",
       "auth.logout",
       "notice.acknowledged",
+      "user.account-corrected",
       "user.approve",
+      "user.created",
       "user.delete",
       "user.oidc-linked",
       "user.oidc-linked-unverified",
@@ -333,6 +361,95 @@ describe("auditEventDetail", () => {
       valueKey: "audit.detail.systemActor",
     });
     expect(JSON.stringify(zeilen)).not.toContain("accountGone");
+  });
+
+  // Verwalteransicht (N-0027): „gelöschte Konten weiterhin benennen".
+  describe("protokollNamen · die Kette benennt Konten, die kein Verzeichnis mehr kennt", () => {
+    const LOESCHUNG: AuditEreignis = {
+      action: "user.delete",
+      actor: "a-1",
+      target: "weg-1",
+      payload: { targetName: "Gerd Gelöscht", actorName: "Ada Admin" },
+    };
+    const LOGIN_WEG: AuditEreignis = {
+      action: "auth.login",
+      actor: "weg-1",
+      target: "weg-1",
+      payload: {},
+    };
+
+    it("p1 Akteur- und Kontozielnamen werden über die Kennung gesammelt", () => {
+      const namen = protokollNamen([LOESCHUNG, ROLLENWECHSEL]);
+      expect(namen.get("weg-1")).toBe("Gerd Gelöscht");
+      expect(namen.get("a-1")).toBe("Ada Admin");
+      expect(namen.get("t-1")).toBe("Tom Test");
+    });
+
+    it("p2 ein Objektziel und der Akteur „system“ liefern keinen Kontonamen", () => {
+      const namen = protokollNamen([
+        { action: "ko.created", actor: "a-1", target: "ko-1", payload: { targetName: "Objekt" } },
+        {
+          action: "gap.created",
+          actor: "system",
+          target: "l-1",
+          payload: { actorName: "Maschine" },
+        },
+      ]);
+      expect(namen.has("ko-1")).toBe(false);
+      expect(namen.has("system")).toBe(false);
+    });
+
+    it("p3 der jüngste gespeicherte Name gilt", () => {
+      const umbenannt: AuditEreignis = { ...ROLLENWECHSEL, payload: { targetName: "Tom Neu" } };
+      expect(protokollNamen([ROLLENWECHSEL, umbenannt]).get("t-1")).toBe("Tom Neu");
+    });
+
+    it("p4 frisches Verzeichnis ohne die Kennung: Name aus der Kette UND „nicht mehr vorhanden“", () => {
+      const zeilen = auditEventDetail(
+        LOGIN_WEG,
+        GELADEN({ "lebt-1": "Lea Lebt" }),
+        protokollNamen([LOESCHUNG]),
+      );
+      expect(zeile(zeilen, "audit.detail.actor")).toEqual({
+        labelKey: "audit.detail.actor",
+        kind: "text",
+        value: "Gerd Gelöscht",
+        id: "weg-1",
+        hinweisKey: "audit.detail.accountGone",
+        // produkt:20261009:admin-audit-verstaendlich (K3): der Name stammt aus einem ANDEREN
+        // Eintrag der Kette — die Zeile sagt das, statt ihn wie einen eigenen auszugeben.
+        herkunft: "protokoll",
+      });
+      expect(JSON.stringify(zeilen)).not.toContain("Lea Lebt");
+    });
+
+    it("p5 ohne belastbares Verzeichnis: Name aus der Kette, keine Löschaussage (§9)", () => {
+      for (const lage of [
+        { art: "laedt" } as const,
+        { art: "nichtAbrufbar" } as const,
+        GELADEN({}, "laeuftNach"),
+        GELADEN({}, "veraltet"),
+      ]) {
+        const zeilen = auditEventDetail(LOGIN_WEG, lage, protokollNamen([LOESCHUNG]));
+        expect(zeile(zeilen, "audit.detail.actor")).toMatchObject({
+          kind: "text",
+          value: "Gerd Gelöscht",
+        });
+        expect(JSON.stringify(zeilen)).not.toContain("accountGone");
+      }
+    });
+
+    it("p6 das heutige Verzeichnis schlägt den Namen aus einem ANDEREN Eintrag", () => {
+      const zeilen = auditEventDetail(
+        LOGIN_WEG,
+        GELADEN({ "weg-1": "Gerd Heute" }),
+        protokollNamen([LOESCHUNG]),
+      );
+      expect(zeile(zeilen, "audit.detail.actor")).toMatchObject({
+        kind: "text",
+        value: "Gerd Heute",
+      });
+    });
   });
 
   it("g verzeichnisNamen macht aus der Antwort eine Zuordnung über die Kennung", () => {

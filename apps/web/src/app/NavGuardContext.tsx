@@ -14,7 +14,6 @@ import { useTranslation } from "react-i18next";
 import {
   Link,
   type LinkProps,
-  NavLink,
   type NavLinkProps,
   type NavigateOptions,
   type To,
@@ -723,8 +722,9 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
 //
 // Diese drei Bauteile sind die eine Stelle, durch die Shell-Navigation läuft. Wer künftig einen Link
 // oder ein `navigate` in der Shell braucht, nimmt sie — und ist damit automatisch geschützt. Der
-// Schnitt ist bewusst so gewählt, dass er die AUFRUFSEITE nicht umbaut: `GuardedNavLink` hat die
-// Signatur von `NavLink`, `GuardedLink` die von `Link`, `useGuardedNavigate` die von `useNavigate`.
+// Schnitt ist bewusst so gewählt, dass er die AUFRUFSEITE nicht umbaut: `GuardedLink` hat die
+// Signatur von `Link`, `useGuardedNavigate` die von `useNavigate` (die frühere `NavLink`-Fassung
+// `GuardedNavLink` ist mit R-1349 entfernt, s. unten).
 // Ein Austausch ist damit ein Import-Wechsel, kein Umschreiben — und genau deshalb wird er gemacht.
 //
 // Vorbild ist die bereits richtige `NavRow` in Sidebar.tsx: Modifikator-Klicks (neuer Tab/Fenster)
@@ -804,25 +804,10 @@ function useGuardedLinkClick(
   };
 }
 
-export function GuardedNavLink({
-  to,
-  onClick,
-  replace,
-  state,
-  preventScrollReset,
-  relative,
-  target,
-  ...rest
-}: NavLinkProps): JSX.Element {
-  const handleClick = useGuardedLinkClick(
-    to,
-    navigateOptionsFrom({ replace, state, preventScrollReset, relative }),
-    target,
-    onClick,
-  );
-  return <NavLink {...rest} to={to} target={target} onClick={handleClick} />;
-}
-
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `GuardedNavLink` (die `NavLink`-Fassung). Ihr
+// letzter Aufrufer war die Nutzerzeile der Seitenleiste; seit JOB 3060 H1 navigiert die Hülle
+// ausschließlich über `GuardedLink`, und die Aktivauszeichnung hat EINE Regel (JOB 562) — eine
+// `NavLink`-Hülle brächte ihre eigene zweite mit. Sie ist entfernt.
 export function GuardedLink({
   to,
   onClick,

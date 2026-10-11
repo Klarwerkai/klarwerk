@@ -64,11 +64,25 @@ async function zweiterNutzer(
   return { authorization: `Bearer ${login.json().token}` };
 }
 
-/** Legt ein belegfaehiges Wissensobjekt an und stellt die Frage, die es trifft. */
+/**
+ * Legt ein belegfaehiges Wissensobjekt an und stellt die Frage, die es trifft.
+ *
+ * R-0584 (Auftrag gesamt-datenschutz-voreinstellung): der Frageweg antwortet nur aus geprüftem
+ * Wissen — „belegfähig" heisst deshalb validiert. Bewertet wird über die echte Route; ein Konto
+ * ohne `ko.validate` (Rolle experte) braucht dafür einen `pruefer`.
+ */
 async function frageMitBeleg(
   app: ReturnType<typeof buildApp>,
   auth: Record<string, string>,
-  opts: { vertraulich?: boolean } = {},
+  // `frager`: wer die Frage stellt (und damit die Antwort besitzt). Ohne Angabe derselbe, der das
+  // Objekt anlegt. Antwortbeleg-Nacharbeit 6: ein Schwaerzungsfall braucht einen Frager, der NICHT
+  // Autor ist — sonst darf er sein eigenes vertrauliches Objekt nach `darfSehen` ohnehin lesen.
+  // `pruefer` (R-0584): wer bewertet, falls das anlegende Konto kein `ko.validate` hat.
+  opts: {
+    vertraulich?: boolean;
+    pruefer?: Record<string, string>;
+    frager?: Record<string, string>;
+  } = {},
 ) {
   const ko = await app.inject({
     method: "POST",
@@ -82,15 +96,26 @@ async function frageMitBeleg(
       // JOB 3429 (Q3 c): der Schreibweg verlangt die Stufe — der nicht-vertrauliche Zweig sagt
       // deshalb ausdrücklich „intern" statt gar nichts. Die Aussage des Falls bleibt dieselbe.
       confidentiality: opts.vertraulich ? "vertraulich" : "intern",
+      neededValidations: 1,
     },
   });
   if (ko.statusCode !== 201) {
     throw new Error(`KO nicht angelegt: ${ko.statusCode} ${ko.body}`);
   }
+  // R-0278 (Nacharbeit 3) / R-0584: belegfähig ist nur noch, was validiert ist.
+  const bewertung = await app.inject({
+    method: "PUT",
+    url: `/api/kos/${ko.json().id}`,
+    headers: opts.pruefer ?? auth,
+    payload: { action: "rate", verdict: "up" },
+  });
+  if (bewertung.statusCode !== 200) {
+    throw new Error(`KO nicht validiert: ${bewertung.statusCode} ${bewertung.body}`);
+  }
   const ask = await app.inject({
     method: "POST",
     url: "/api/ask",
-    headers: auth,
+    headers: opts.frager ?? auth,
     payload: { question: "Was tun bei Ueberdruck am Ventil?" },
   });
   if (ask.statusCode !== 200) {
@@ -208,7 +233,7 @@ describe("W3-C · GET /api/klara/answers/:answerId/explanation", () => {
     const systemKonto = { authorization: `Bearer ${login.json().token}` };
 
     // (1) SEINE EIGENE Antwort — der Fall, den D3 verlor.
-    const eigene = await frageMitBeleg(app, systemKonto);
+    const eigene = await frageMitBeleg(app, systemKonto, { pruefer: auth });
     expect(eigene.answerId, "der Antwortlauf muss eine Kennung ausweisen").not.toBeNull();
     const eigeneErklaerung = await erklaerung(app, systemKonto, String(eigene.answerId));
     expect(
@@ -408,14 +433,18 @@ describe("W3-C · GET /api/klara/answers/:answerId/explanation", () => {
     });
 
     it("REDACTED · 200, state OK, Zeilen geschwaerzt — und KEINE geschuetzte Kennung im Rumpf", async () => {
-      // Der Eigentuemer ist bewusst ein `experte`: `darfVertraulich` gilt laut Route nur fuer
-      // `admin` und `controller`. Und die Quelle wird ERST NACH der Antwort gesperrt — vorher
-      // haette `dropConfidential` sie gar nicht in den Beleg gelassen.
+      // Der Eigentuemer der Antwort ist bewusst ein `experte` (kein `ko.validate`) und NICHT Autor
+      // der Quelle — Antwortbeleg-Nacharbeit 6: nach der zentralen Regel `darfSehen` darf ein Autor
+      // sein eigenes vertrauliches Objekt lesen; ein echter Schwaerzungsfall braucht deshalb einen
+      // fremden Autor. Die Quelle wird ERST NACH der Antwort gesperrt — vorher haette
+      // `dropConfidential` sie gar nicht in den Beleg gelassen.
       const services = buildServices();
       const app = buildApp(services);
       const auth = await admin(app, "tab2@x.de");
       const experte = await zweiterNutzer(app, auth, "experte541@x.de");
-      const { koId, answerId } = await frageMitBeleg(app, experte);
+      // Die Quelle legt der Admin an und bewertet sie (R-0584: nur geprüftes Wissen antwortet);
+      // gefragt hat der Experte — er ist weder Autor noch hat er `ko.validate`.
+      const { koId, answerId } = await frageMitBeleg(app, auth, { frager: experte });
 
       await services.ko.setConfidentiality(koId, "vertraulich", "anna");
       const res = await erklaerung(app, experte, String(answerId));

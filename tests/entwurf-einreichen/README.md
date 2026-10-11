@@ -393,7 +393,7 @@ PostgreSQL-Integrationstests (`altbeleg-und-bildbilanz-pg.integration`,
 | P-ENTWUERFE-VERWALTEN, priority:ENTWUERFE-VERWALTEN | geliefert | JOB 3426 LIVE `1.0.0-beta.1.256`; laut Quelle „REST: nichts“. Doppelte Quellenfassung. |
 | P-ENTWUERFE-MENUEPUNKT, priority:ENTWUERFE-MENUEPUNKT | geliefert | JOB 3503 LIVE `1.0.0-beta.1.270`. Editor-Aufklapper und Zahnradzugang ausdrücklich nicht geliefert (auftragsgemäß). |
 | priority:D1 (Zugang von Start und Erfassen, benanntes Mehr-Menü, Lade-/Leer-/Fehlerzustand) | geliefert | JOB 3266 LIVE `1.0.0-beta.1.183`, `tests/d1-meine-entwuerfe/`. |
-| R-2099, FR-CAP-06 (gemeinsamer Pool, Autoranzeige) | **nicht gebaut**, eigener Auftrag (Entscheidung `debbb8e8`), siehe A3 | Seit Lauf `:3` Runde 2: `canSeeDraft` — jede Rolle sieht nur eigene Entwürfe (Ausnahme: herrenloser Altbestand für die Verwaltung). `entwurf-ist-privat.test.ts`, `tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`. |
+| R-2099, FR-CAP-06 (gemeinsamer Pool, Autoranzeige) | **nicht gebaut**, eigener Auftrag (Entscheidung `debbb8e8`), siehe A3 — inzwischen geliefert, s. Nachtrag A3 | Seit Lauf `:3` Runde 2: `canSeeDraft` — jede Rolle sieht nur eigene Entwürfe (Ausnahme: herrenloser Altbestand für die Verwaltung). `entwurf-ist-privat.test.ts`, `tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`. |
 | R-2149 (Einreichen, MUSS) | geliefert | Siehe R-0036, R-0058. |
 
 ## Verbindliche Abgrenzung der offenen Kriterien (Ben F4)
@@ -436,6 +436,10 @@ Entscheidung Pedis und kein offener Rest dieses Auftrags.
   * *Abgrenzung:* Ein Pool für alle Schreibberechtigten wäre eine Rechteausweitung und bräuchte
     eine neue Entscheidung Pedis. Er ist hier nicht gebaut und gilt nicht als offener Rest dieses
     Auftrags.
+  * *Nachtrag:* Der Pool ist inzwischen als eigener Auftrag gebaut
+    (`aufnahme:20260922:entwurf-in-gemeinsamen-pool-geben`, Pedi `297afc57`): ein Entwurf bleibt
+    privat, bis sein Autor ihn bewusst in den Pool gibt. Belege: `tests/entwurf-pool/`. Die
+    Erklärung zu „Entwurf speichern“ steht seither unter `entwurfspool.saveDraftHelp.body`.
 * **A4 — N-0002 „Entwürfe-Bereich in Meine Ablage“.**
   * *Quellen:* Jünger ist P-ENTWUERFE-MENUEPUNKT (Pedi 10.09. 06:48, JOB 3503, `deefd049`): ein
     eigener Kopfband-Punkt „Meine Entwürfe“ mit eigener Übersicht wie die Bibliothek.

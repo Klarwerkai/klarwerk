@@ -185,6 +185,16 @@ const ACHSEN: Achse[] = [
 // aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
+  // ARBEITSWEGE AM SELBEN ARTIKEL (produkt:20261007:arbeitswege-objekt): Klara nennt Seite, Kennung
+  // und Fassung aus derselben Quelle wie „Fragen". Die Datei montiert `KlaraAssistant` und kommt
+  // über die Inhaltsachse `komponente` herein; „klara" steht NICHT im Pfad, K5 bleibt deshalb
+  // unverändert. NICHT GEMESSEN, sondern aus den Achsen abgeleitet: in dieser Lieferung wurde kein
+  // Testlauf gestartet; der Prüflauf ist der Beleg.
+  "tests/arbeitswege-objekt/assistentin-fragen-objektbezug-mounted.test.tsx",
+  // Nacharbeit 3 desselben Auftrags: die Prüfflächen-Probe montiert `KlaraAssistant` jetzt neben
+  // der Seite (Klara nennt den gezeigten bzw. verlangten Beitrag) — Achse `komponente`, „klara"
+  // nicht im Pfad, K5 unverändert. Aus den Achsen abgeleitet, kein eigener Testlauf.
+  "tests/arbeitswege-objekt/pruefen-objektbezug-mounted.test.tsx",
   // JOB 3502 ADMIN-KI-FREIGABE VERBRAUCHER: Klara und der Word-Weg folgen der zentralen
   // Adminfreigabe. Beide Pfade tragen „klara" im PFAD (das Verzeichnis war im Auftrag §4
   // abschliessend vorgegeben) und kommen deshalb ueber die NAMENSachse herein — sie zaehlen in K5.
@@ -203,6 +213,14 @@ const INVENTAR: readonly string[] = [
   // K2 hat beide gemeldet; keine traegt „klara" im Pfad, sie kommen ueber die Achse `taskpane`.
   "tests/addin-bildbilanz/bildbilanz-im-panel.test.ts",
   "tests/addin-bildbilanz/bildbilanz-woerterbuch.test.ts",
+  // AUFNAHME 20260922 GESAMT-BILDBUDGET: die Obergrenze des Dokument-Wegs (`/api/drafts/from-docx`)
+  // und ihr Gleichlauf mit den Grenzen des Aufgabenfensters (Fall C1 liest `taskpane.js`). Kein
+  // „klara" im Pfad — die Datei kommt über die Achse `taskpane`. Aus der Achsenregel abgeleitet,
+  // nicht gemessen (kein Testlauf in diesem Durchgang; der Cloud-Lauf ist der Beleg).
+  "tests/m5c-b-bildbudget/dokumentgrenze.test.ts",
+  // Nacharbeit 3 (R-0021): die textbedingte 413 des Dokument-Wegs am gemounteten Panel. Kommt über
+  // die Achse `komponente` (`KlaraPanel` aus der Fixture); aus der Achsenregel abgeleitet.
+  "tests/m5c-b-bildbudget/panel-rumpfgrenze.test.ts",
   // JOB 3281 WORD-VERGLEICH: der Vertragsblock an der ausgelieferten Datei und die drei
   // ausfuehrenden Pruefungen des Absatzvergleichs. K2 hat alle vier gemeldet; keine traegt
   // „klara" im Pfad — sie kommen ueber die Achse `taskpane` herein, also genau ueber den blinden
@@ -215,6 +233,12 @@ const INVENTAR: readonly string[] = [
   // (Codex-Vorpruefung R2). Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
   // Achse `taskpane` herein — dieselbe Lage wie die drei darueber.
   "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts",
+  // Auftrag „Geschriebene Behauptungen gegen den Wissensbestand prüfen" (R-0336/R-0708): „Markierung
+  // prüfen" und die Zustimmung zum noch nicht validierten Bestand am laufenden Fenster. Kein „klara"
+  // im Pfad, kein „taskpane" im Text — sie kommt über die Achse `komponente` (`KlaraPanel`) herein;
+  // K5 bleibt unverändert. NICHT GEMESSEN, SONDERN AUS DEN ACHSENMUSTERN ABGELEITET: in dieser Bahn
+  // wurde kein Test gestartet; ob K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/word-vergleich/behauptung-und-zustimmung.test.ts",
   // JOB 3667 (WORD-RUECKWEG): der Weg aus Word ZURUECK auf dasselbe Wissensobjekt, gemessen am
   // laufenden Aufgabenfenster. Auch diese Datei traegt „klara" nirgends im Pfad und kommt ueber die
   // Achse `taskpane` herein — dieselbe Lage wie die vier darueber. Der zweite Beleg desselben Jobs
@@ -330,6 +354,13 @@ const INVENTAR: readonly string[] = [
   "services/app/src/routes/addin-static-routes.test.ts",
   "services/app/src/routes/klara-ai-routes.test.ts",
   "services/app/src/services/klara-session-service.test.ts",
+  // Auftrag gesamt-ki-einwilligung (R-0609): das Prüfprotokoll jeder Zustimmungserteilung und
+  // jedes Endes — Klara-Regression im engsten Sinn (dieselbe Sitzungsgrenze wie die Datei darüber).
+  "services/app/src/services/klara-consent-protokoll.test.ts",
+  // Derselbe Auftrag (Bens B13/B14): der Auslöser des Aufräumlaufs, der fehlende Endeinträge des
+  // Prüfprotokolls nachträgt, bevor Sitzungen gelöscht werden — einmal ohne, einmal mit PostgreSQL.
+  "services/app/src/klara-aufraeumen.test.ts",
+  "services/app/src/klara-aufraeumen-pg.integration.test.ts",
   "services/app/src/web-static.test.ts",
   "services/reasoner/src/klara-policy.test.ts",
   // JOB 3337 (ADMIN-NAVIGATION): zwei neue Dateien, von der Achse `palette` gefunden (Muster
@@ -415,6 +446,15 @@ const INVENTAR: readonly string[] = [
   // Aufgabenfenster und misst Pedis Auflage am VERHALTEN — Inhaltsachse `taskpane`, deshalb
   // verlangt K2 diesen Eintrag. Nachgefuehrt in JOB 1571 D9, nachdem K2 ihn gemeldet hat.
   "tests/app/ka3-fokusverhalten.test.tsx",
+  // Aufnahme 20260922 (gesamt-bestandsblick, Runde 2): der Wirkungsnachweis, dass der
+  // Bestandsblick mit dem Begriffsbild des AKTUELLEN Dokuments fragt (verzoegertes Lesen,
+  // geaenderter Text). Inhaltsachse `taskpane`; K2 hat ihn gemeldet.
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx",
+  // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main`, die eine der Achsen treffen.
+  // GEMESSEN, NICHT GESETZT: K2 meldete genau diese zwei Pfade als `neu im Baum, aber nicht im
+  // gepinnten Inventar`; erst danach wurden diese Zeilen angefasst.
+  "tests/app/stage2-gate-mounted.test.tsx",
+  "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",
   "tests/app/klara-ai-status-contract.test.ts",
@@ -525,6 +565,17 @@ const INVENTAR: readonly string[] = [
   // Seitenfenster (verständlicher Satz, Wiederanmeldung im Panel, Arbeit geht weiter) — fährt
   // `taskpane.html` über die Fixture. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/office-web-anmeldung/sitzungsablauf-im-seitenfenster.test.tsx",
+  // Word-Host-Gesamtweg (Nacharbeit 3, Realhostbeleg 05.10.2026): der COOP-Kopf der Dialogseite am
+  // echten Fastify-Draht — nennt das Taskpane als Gegenpfad, deshalb von der Achse `taskpane`
+  // gefunden; kein „klara" im Pfad, K5 unverändert. Abgelesen am Achsenmuster, nicht gemessen: der
+  // Prüflauf am Kandidaten 26e86268 hat dieses Inventar nicht gefahren, wohl aber `schnitt-pins` A2
+  // mit genau diesem Pfad gemeldet.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 7, Realhostbeleg 06.10.2026): der Auswahlzugriff des Fragenwegs
+  // (`Word.run` zuerst, mit Frist) am ganzen Fenster über `createKlaraPanel` — von der Achse
+  // `komponente` gefunden (Typ `KlaraPanel`); kein „klara" im Pfad, K5 unverändert. Abgelesen am
+  // Achsenmuster, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts",
   // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
   // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
   // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`
@@ -1282,6 +1333,35 @@ const INVENTAR: readonly string[] = [
   // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
   // Inventar` mit genau diesem Pfad.
   "tests/capture/aufrufer-waechter.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 8): `word-panel-stufenwahl.test.tsx` (R-0632, Stufenwahl im
+  // Word-Panel) stammt aus dem Bestand, nicht aus diesem Auftrag, und ist unverändert — sie fährt
+  // das Fenster und nennt `taskpane`, Achse `taskpane`; kein „klara" im Pfad, K5 bleibt bei 71.
+  // GEMESSEN, NICHT GESETZT: der Prüflauf am Kandidaten e48905fd meldete K2 `neu im Baum, aber
+  // nicht im gepinnten Inventar` mit genau diesem Pfad; erst danach wurde diese Zeile angefasst.
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-SCHNELLWAHL (R-0893/R-1669): der neue Prüfstand montiert
+  // `CommandPalette` über die Griffe von `tests/navigationsnamen/vorrichtung.tsx`
+  // (`paletteOeffnen`, `paletteTippen`) und trifft damit die Achse `palette` — dieselbe Klasse wie
+  // die `navigationsnamen`-Dateien oben. Kein „klara" im Pfad, K5 bleibt unverändert. NICHT
+  // GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob
+  // K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/schnellwahl/wissen-in-der-schnellwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-DOKUMENTERZEUGUNG (Pedi 28.09., Anleitung in Word): der Prüfstand des
+  // Blocks KW-ANLEITUNG fährt `anleitung.js` am Word-Panel und im Teil R den Rückweg über das
+  // Aufgabenfenster — er nennt `taskpane.html`, Achse `taskpane`. Kein „klara" im Pfad, K5 bleibt
+  // unverändert. NICHT GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn startet keine Tests.
+  "tests/anleitung-word/anleitung-word.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-HILFEN (R-0942): der neue Prüfstand montiert `KlaraAssistant` und
+  // misst Auslöserzustand, Fokussprung beim Öffnen und die bedingte Fokusrückkehr — Achse
+  // `komponente`. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt unverändert. NICHT GEMESSEN,
+  // SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob K2 mit
+  // diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/hilfe-ausklappflaeche/ausklappflaeche-fokus-mounted.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-HILFEN (R-0941, Nacharbeit 3): der Prüfstand montiert
+  // `KlaraAssistant` und misst das konkrete Beispiel am aktiven Element, im Zeige-Modus und beim
+  // Vorlesen — Achse `komponente`. Kein „klara" im Pfad: K5 bleibt unverändert. NICHT GEMESSEN,
+  // SONDERN AUS DER QUELLE ABGELEITET (die Bahn startet keine Tests).
+  "tests/hilfe-elementbeispiel/elementbeispiel-mounted.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1619,7 +1699,15 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // (Den Schritt für `abgleich-belege` hatte der Folgeauftrag gesamt-erstnutzerfuehrung-quellen
     // in seiner Nacharbeit 4 gleichlautend als 69 -> 70 gezählt; zusammen mit `schnitt-echt` ergibt
     // die Vereinigung beider Stände 71 — die Datei zählt nur einmal.)
-    expect(nurName.length).toBe(71);
+    // Auftrag gesamt-ki-einwilligung (R-0609), Integration mit main: drei Testdateien dieses
+    // Auftrags tragen „klara" im PFAD und fehlen auf main — `services/app/src/services/klara-consent-
+    // protokoll.test.ts` (im eigenen Zweig gemessen 68 -> 69, `expected 69 to be 68`),
+    // `services/app/src/klara-aufraeumen.test.ts` und `services/app/src/klara-aufraeumen-pg.
+    // integration.test.ts` (Bens B13/B14). Auf den Stand von main (71) kommen sie hinzu: 71 -> 74.
+    // NICHT GEMESSEN, sondern aus der Pfadregel abgeleitet (in dieser Nacharbeit wurde kein Testlauf
+    // gestartet; der Cloud-Lauf ist der Beleg). Die beiden `klara-aufraeumen`-Dateien fehlten im
+    // eigenen Zweig auch im Inventar (K2) — mit dieser Nacharbeit nachgeführt.
+    expect(nurName.length).toBe(74);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

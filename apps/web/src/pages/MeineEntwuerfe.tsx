@@ -3,10 +3,13 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts } from "../api/hooks";
+import { useSession } from "../app/AuthContext";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { CaptureDraftList } from "../components/CaptureDraftList";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
+import { formatKoTimestamp } from "../lib/koDates";
 
 // ==================================================================================================
 // JOB 3503 · ENTWUERFE-MENUEPUNKT — DIE EIGENE ÜBERSICHT DER ENTWÜRFE.
@@ -53,12 +56,13 @@ import { HelpTip } from "../components/HelpTip";
 // `blatt-entwuerfe-fehler`), und es sind dieselben zwei Textschlüssel — kein zweites Wort für
 // dieselbe Störung.
 export function MeineEntwuerfe(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { push } = useToast();
   const qc = useQueryClient();
   const navigate = useGuardedNavigate();
   const drafts = useDrafts();
   const directory = useDirectory();
+  const { user } = useSession();
   const [confirmDiscardId, setConfirmDiscardId] = useState<string | null>(null);
 
   // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT. Der
@@ -93,12 +97,39 @@ export function MeineEntwuerfe(): JSX.Element {
     },
   });
 
+  // ================================================================================================
+  // AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06) — DIE BEWUSSTE HANDLUNG.
+  // ================================================================================================
+  // „In den Pool geben" / „Aus dem Pool nehmen" an der eigenen Zeile: `PUT /api/drafts/<id>/pool`,
+  // danach denselben Bestand `["drafts"]` für ungültig erklären — kein zweiter Speicher, keine
+  // zweite Liste. Fremde Pool-Entwürfe tragen den Knopf nicht (nur der Autor darf das, und der
+  // Server weist jeden anderen ab). Bei einem Fehler bleibt der Stand stehen, den der Server zuletzt
+  // bestätigt hat.
+  const poolUmschalten = useMutation({
+    mutationFn: ({ id, imPool }: { id: string; imPool: boolean }) =>
+      endpoints.drafts.pool(id, imPool),
+    onSuccess: (_entwurf, { imPool }) => {
+      void qc.invalidateQueries({ queryKey: ["drafts"] });
+      push(
+        "success",
+        t(imPool ? "entwurfspool.quittung.gegeben" : "entwurfspool.quittung.genommen"),
+      );
+    },
+    onError: (e: unknown) => push("error", e instanceof Error ? e.message : t("state.error")),
+  });
+
   // Der Weg in den Editor ist der VORHANDENE eine Weg: die Kennung steht in der Adresse, und
   // `Blatt.tsx` lädt sie über `resumeDraftId` (`?draft=…`). Kein zweiter Ladeweg, kein
   // Zwischenzustand, der unterwegs verloren gehen könnte. Über den Ungespeichert-Wächter, weil der
   // Klick diese Seite wirklich verlässt.
-  const entwurfOeffnen = (id: string): void => {
-    navigate(`/erfassen?draft=${encodeURIComponent(id)}`);
+  // BILDSCHIRMABLÄUFE: ein Entwurf mit übernommenem Ablauf öffnet in seiner Schrittbearbeitung —
+  // dort stehen Reihenfolge, Bilder und Herkunft, die das Blatt nicht kennt.
+  const entwurfOeffnen = (id: string, mitAblauf = false): void => {
+    navigate(
+      mitAblauf
+        ? `/erfassen/ablauf?entwurf=${encodeURIComponent(id)}`
+        : `/erfassen?draft=${encodeURIComponent(id)}`,
+    );
   };
 
   // ================================================================================================
@@ -161,12 +192,9 @@ export function MeineEntwuerfe(): JSX.Element {
     },
   });
 
-  const zeitpunkt = (wert: string): string => {
-    const datum = new Date(wert);
-    return Number.isNaN(datum.getTime())
-      ? wert
-      : new Intl.DateTimeFormat("de-DE", { dateStyle: "short", timeStyle: "short" }).format(datum);
-  };
+  // R-1010: dieselbe Zeitregel wie die Entwurfsliste daneben (`formatKoTimestamp`), in der Sprache
+  // der Oberfläche statt fest „de-DE"; ein unlesbarer Wert bleibt wie bisher als Rohwert stehen.
+  const zeitpunkt = (wert: string): string => formatKoTimestamp(wert, i18n.language) ?? wert;
 
   // Nie ein erfundener Name: ohne Eintrag im Verzeichnis steht die Kennung da, und ohne bekannten
   // Löschenden steht nur der Zeitpunkt — „unbekannt" ist etwas anderes als „leer".
@@ -192,7 +220,12 @@ export function MeineEntwuerfe(): JSX.Element {
           `HelpTip` rendert NICHTS im Sichtfeld (`components/HelpTip.tsx:11`) — er meldet Titel und
           Text bei der Seitenhilfe an. Die Fläche von JOB 3503/3668 bleibt Zeile für Zeile, wie sie
           war. */}
-      <HelpTip title={t("seitenhilfe.entwuerfe.title")} body={t("seitenhilfe.entwuerfe.body")} />
+      {/* Aufnahme entwurf-in-gemeinsamen-pool-geben: die Seitenhilfe nennt den gemeinsamen Pool und
+          steht deshalb unter neuem Stamm (`texte/entwurfspool.ts`). */}
+      <HelpTip
+        title={t("entwurfspool.seitenhilfe.title")}
+        body={t("entwurfspool.seitenhilfe.body")}
+      />
 
       {/* Der wahre Suchraum, bevor gesucht wird — dieselben zwei Sätze wie im Arbeitsraum
           (AUFTRAG-BASIC-u2). Seit `debbb8e8` sieht jede Rolle nur ihre eigenen Entwürfe, der Satz
@@ -212,6 +245,17 @@ export function MeineEntwuerfe(): JSX.Element {
           </GuardedLink>
         </div>
       ) : null}
+
+      {/* BILDSCHIRMABLÄUFE: der Einstieg in die Übernahme eines aufgezeichneten Ablaufs. */}
+      <div className="mb-2">
+        <GuardedLink
+          to="/erfassen/ablauf"
+          data-testid="entwuerfe-ablauf-uebernehmen"
+          className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+        >
+          {t("ablauf.einstieg")}
+        </GuardedLink>
+      </div>
 
       {laedt ? (
         <p data-testid="entwuerfe-laedt" className="text-[12.5px] text-muted">
@@ -238,6 +282,7 @@ export function MeineEntwuerfe(): JSX.Element {
       {leer ? (
         <div data-testid="entwuerfe-leer" className="space-y-2">
           <p className="text-[12.5px] text-muted">{t("erfassen.entwuerfe.keine")}</p>
+          {leerzustandsZeile(t, "entwuerfe")}
           {/* Ein Leerzustand ohne Weg ist eine Sackgasse — derselbe Knopf, den die Bibliothek in
               ihrem Leerzustand zeigt (`lib.liste.erfassen`), und dasselbe Ziel. */}
           <GuardedLink
@@ -267,7 +312,12 @@ export function MeineEntwuerfe(): JSX.Element {
         onConfirmDiscard={setConfirmDiscardId}
         discardPending={entwurfLoeschen.isPending}
         onDiscard={(id) => entwurfLoeschen.mutate(id)}
-        onResume={(d) => entwurfOeffnen(d.id)}
+        onResume={(d) => entwurfOeffnen(d.id, Boolean(d.payload.ablauf))}
+        // Pool-Auftrag: wer angemeldet ist, entscheidet, welche Zeilen „eigene" sind — nur sie
+        // tragen Löschen und den Pool-Knopf (297afc57).
+        nutzerKennung={user?.id}
+        onPoolUmschalten={(id, imPool) => poolUmschalten.mutate({ id, imPool })}
+        poolPending={poolUmschalten.isPending}
       />
 
       {/* Der Weg zurück. Er steht UNTER der Liste und nicht neben ihr: der Papierkorb ist die
@@ -311,9 +361,13 @@ export function MeineEntwuerfe(): JSX.Element {
           {/* Der Bestand bleibt STEHEN, wenn nur die Auffrischung scheitert (REGELN §7): die
                 Fehlerzeile tritt NEBEN die Liste, nicht an ihre Stelle. */}
           {geloescht.length === 0 && !papierkorb.isLoading && !papierkorb.isError ? (
-            <p data-testid="entwuerfe-papierkorb-leer" className="text-[12.5px] text-muted">
-              {t("adm.trash.empty")}
-            </p>
+            <>
+              <p data-testid="entwuerfe-papierkorb-leer" className="text-[12.5px] text-muted">
+                {t("adm.trash.empty")}
+              </p>
+              {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+              {leerzustandsZeile(t, "entwuerfe")}
+            </>
           ) : null}
 
           <ul className="space-y-2">

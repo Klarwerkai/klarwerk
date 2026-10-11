@@ -72,8 +72,13 @@ interface Antwort {
  *   "nie"    — `onReady` merkt den Rückruf und ruft ihn NIE, `context.ui` kommt nicht. Nur die
  *              Frist beendet die Ungewissheit; sie braucht gefälschte Zeitgeber.
  *   "kein"   — gar kein `window.Office` (Direktaufruf im Browser, Rückfallfenster).
+ *
+ * WORD-HOST-GESAMTWEG (Realhostbeleg 05.10.2026, `Sys.ArgumentNullException … conversationId`):
+ * office.js lädt, aber die Verbindung zum Office-Fenster kommt nicht zustande.
+ *   "ohneVerbindung" — `onReady` meldet sich, `context.ui` trägt aber kein `messageParent`.
+ *   "wirft"          — `messageParent` ist da und wirft beim Aufruf (Transport ohne Gegenstelle).
  */
-type Bereitschaft = "sofort" | "spaet" | "nie" | "kein";
+type Bereitschaft = "sofort" | "spaet" | "nie" | "kein" | "ohneVerbindung" | "wirft";
 
 interface Lauf {
   aufrufe: Aufruf[];
@@ -181,12 +186,22 @@ function fahre(optionen: {
   const bereitschaft: Bereitschaft = optionen.office ?? "sofort";
   const ui = {
     messageParent: (nachricht: string): void => {
+      if (bereitschaft === "wirft") {
+        throw new Error("Sys.ArgumentNullException: Value cannot be null. conversationId");
+      }
       nachrichten.push(nachricht);
     },
   };
+  const ohneSchnittstelle = {} as typeof ui;
+  const sofortBereit = bereitschaft === "sofort" || bereitschaft === "wirft";
   const office: { context: { ui?: typeof ui }; onReady?: (cb: () => void) => void } = {
-    context: bereitschaft === "sofort" ? { ui } : {},
+    context: {},
   };
+  if (sofortBereit) {
+    office.context.ui = ui;
+  } else if (bereitschaft === "ohneVerbindung") {
+    office.context.ui = ohneSchnittstelle;
+  }
   let gemerkt: (() => void) | null = null;
   let onReadyAufrufe = 0;
   if (bereitschaft === "kein") {
@@ -194,7 +209,7 @@ function fahre(optionen: {
   } else {
     office.onReady = (cb: () => void): void => {
       onReadyAufrufe += 1;
-      if (bereitschaft === "sofort") {
+      if (sofortBereit || bereitschaft === "ohneVerbindung") {
         cb();
         return;
       }
@@ -543,6 +558,50 @@ describe("JOB 4076 · S4 · die Dialogseite gibt die Anmeldung an das Seitenfens
     expect(lauf.formularSichtbar()).toBe(false);
   });
 
+  // WORD-HOST-GESAMTWEG · REALHOSTBELEG 05.10.2026: „Signed in“, aber nichts kam im Seitenfenster an
+  // (`conversationId` null). Ursache war der Kopf `Cross-Origin-Opener-Policy: same-origin` der
+  // Dialogseite (Gegenprobe am Draht: `tests/office-web-anmeldung/dialog-opener-kopf.test.ts`).
+  // Hier steht, was die Seite in genau dieser Lage SAGT: angemeldet ja, übergeben nein.
+  it("O5 — Anmeldung gelingt, Office meldet sich aber OHNE Verbindung: nichts gesendet, kein Erfolg behauptet", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung(), office: "ohneVerbindung" });
+    await lauf.flush();
+    lauf.tippe("email", "gast@x.de");
+    lauf.tippe("kennwort", "secret123");
+    lauf.klick("anmelden");
+    await lauf.flush();
+    expect(lauf.aufrufe.map((a) => `${a.methode} ${a.url}`)).toContain("POST /api/auth/login");
+    expect(lauf.nachrichten).toEqual([]);
+    // Ohne Gegenstelle wird auch kein Übergabecode geholt, der ungenutzt verfiele.
+    expect(lauf.aufrufe.map((a) => a.url)).not.toContain("/api/auth/office-handover");
+    keinErfolgsversprechen(lauf.lage());
+    expect(lauf.lage()).toMatch(/Anmelden|Sign in|Aanmelden/);
+  });
+
+  it("O6 — die Übergabe wirft (Transport ohne Gegenstelle): Fehlersatz statt „Übergeben“, neuer Versuch möglich", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung(), office: "wirft" });
+    await lauf.flush();
+    lauf.tippe("email", "gast@x.de");
+    lauf.tippe("kennwort", "secret123");
+    lauf.klick("anmelden");
+    await lauf.flush();
+    expect(lauf.nachrichten).toEqual([]);
+    keinErfolgsversprechen(lauf.lage());
+    expect(lauf.stelle("lage").className).toContain("err");
+    expect(lauf.formularSichtbar()).toBe(true);
+    expect(lauf.stelle("anmelden").disabled).toBe(false);
+  });
+
+  it("O7 — KONTROLLPROBE zu O5/O6: mit Verbindung geht genau EIN Code hinaus, und erst dann „Übergeben“", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung(), office: "sofort" });
+    await lauf.flush();
+    lauf.tippe("email", "gast@x.de");
+    lauf.tippe("kennwort", "secret123");
+    lauf.klick("anmelden");
+    await lauf.flush();
+    expect(lauf.nachrichten).toHaveLength(1);
+    expect(lauf.stelle("lage").className).toContain("ok");
+  });
+
   it("S4c — der Code steht in keinem Speicher, keinem Cookie und keiner Adresse", async () => {
     const vorher = globals.window.location.href;
     const lauf = fahre({ routen: routenOhneSitzung() });
@@ -581,5 +640,73 @@ describe("JOB 4076 · S4 · die Dialogseite gibt die Anmeldung an das Seitenfens
     lauf.klick("anmelden");
     await lauf.flush();
     expect(lauf.nachrichten).toEqual([]);
+  });
+});
+
+// ================================================================================================
+// AUFNAHME gesamt-sso · R-0541 / R-0560 — DAS DIALOGFENSTER FOLGT DEM SCHALTER „NUR FIRMEN-LOGIN".
+// ================================================================================================
+// Ben (Nacharbeit 2): das Fenster bot bei abgeschaltetem Kennwort weiter E-Mail und Kennwort an,
+// und jeder Versuch endete in einer 403. Gemessen an der AUSGEFÜHRTEN Seite.
+describe("R-0541 · das Word-Anmeldefenster bei abgeschaltetem Kennwort", () => {
+  function kennwortwegSichtbar(lauf: Lauf): boolean {
+    return !lauf.stelle("passwortweg").className.includes("hidden");
+  }
+
+  it("F1 — nur Firmen-Login mit OIDC: kein Kennwortfeld, der SSO-Knopf und die Erklärung stehen da", async () => {
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": {
+          status: 200,
+          koerper: { needsSetup: false, oidcEnabled: true, passwordLoginEnabled: false },
+        },
+      }),
+    });
+    await lauf.flush();
+    expect(lauf.formularSichtbar()).toBe(true);
+    expect(kennwortwegSichtbar(lauf)).toBe(false);
+    expect(lauf.ssoSichtbar()).toBe(true);
+    lauf.klick("lang-de");
+    expect(lauf.lage()).toContain("nur der Firmen-Login");
+    // Kein Kennwortaufruf ist hinausgegangen.
+    expect(lauf.aufrufe.map((a) => a.url)).not.toContain("/api/auth/login");
+  });
+
+  it("F2 — nur Firmen-Login mit SAML: der SAML-Knopf steht da und führt in den SAML-Weg zurück ins Fenster", async () => {
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": {
+          status: 200,
+          koerper: { needsSetup: false, samlEnabled: true, passwordLoginEnabled: false },
+        },
+      }),
+    });
+    await lauf.flush();
+    expect(kennwortwegSichtbar(lauf)).toBe(false);
+    expect(lauf.ssoSichtbar()).toBe(false);
+    expect(lauf.stelle("saml").className).not.toContain("hidden");
+    expect(quelle()).toContain('"/api/auth/saml/start?ziel=word-addin"');
+  });
+
+  it("F3 — Kennwort aus, Firmen-Login fehlt: kein Feld, und der Satz sagt, dass die IT ihn einrichten muss", async () => {
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": {
+          status: 200,
+          koerper: { needsSetup: false, oidcEnabled: false, passwordLoginEnabled: false },
+        },
+      }),
+    });
+    await lauf.flush();
+    expect(kennwortwegSichtbar(lauf)).toBe(false);
+    expect(lauf.ssoSichtbar()).toBe(false);
+    lauf.klick("lang-de");
+    expect(lauf.lage()).toContain("noch nicht eingerichtet");
+  });
+
+  it("F4 — GEGENPROBE: ohne die Angabe (älterer Server) bleibt das Kennwortfeld", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung() });
+    await lauf.flush();
+    expect(kennwortwegSichtbar(lauf)).toBe(true);
   });
 });

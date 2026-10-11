@@ -4,11 +4,13 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { EnrichResult, ExternalKnowledgeStage, ExternalResult } from "../api/types";
+import { REASONER_ENTWURF_FLAECHE } from "../lib/kiHerkunft";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 import { safeHttpUrl } from "../lib/safeUrl";
 import { ExternalUrlText } from "./ExternalUrlText";
 import { HelpTip } from "./HelpTip";
 import { RoleLink } from "./RoleLink";
+import { ErgebnisStufeMarke } from "./trust/ErgebnisStufeMarke";
 import { Button, SectionLabel, TextInput } from "./ui";
 
 // SCRUM-426 (Pedi 03.07.): Public-KI-Anreicherung im Rohwissen-Erfassen + Studio.
@@ -86,7 +88,7 @@ export function PublicAiEnrichPanel({
             `experte`; `/admin` verlangt `admin`. */}
         <RoleLink
           to="/admin"
-          className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai"
+          className="mt-1.5 inline-flex items-center gap-1 font-mono text-klein font-semibold uppercase tracking-wider text-ai"
           hoverClassName="hover:underline"
         >
           {(erreichbar) => (
@@ -187,10 +189,13 @@ export function PublicAiEnrichPanel({
         enriched.demo || enriched.text.trim().length === 0 ? (
           <p className="text-[12px] text-muted-2">{t("enrich.noModel")}</p>
         ) : (
-          <div className="rounded-card border border-hairline bg-surface p-2.5">
-            <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+          // R-1020 / R-1695: dieser Text hat ein Modell geschrieben (`demo: false`, nicht leer) —
+          // Entwurfsfläche und Beschriftung „Reasoner-Entwurf, nicht validiert".
+          <div className={`rounded-card p-2.5 ${REASONER_ENTWURF_FLAECHE}`}>
+            <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
               {externLabel}
             </span>
+            <ErgebnisStufeMarke stufe="entwurf" className="mb-1 ml-1.5" />
             <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
               {enriched.text}
             </p>
@@ -210,7 +215,7 @@ export function PublicAiEnrichPanel({
             <li key={r.url} className="rounded-card border border-hairline bg-surface p-2.5">
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+                  <span className="mb-1 inline-block rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-klein font-semibold uppercase text-ai">
                     {externLabel}
                   </span>
                   <div className="text-[13px] font-medium text-text">{r.title}</div>
@@ -219,7 +224,7 @@ export function PublicAiEnrichPanel({
                   ) : null}
                   <ExternalUrlText
                     url={r.url}
-                    className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                    className="block truncate font-mono text-klein text-ai hover:underline"
                   />
                 </div>
                 <Button variant="ghost" onClick={() => takeWeb(r)}>

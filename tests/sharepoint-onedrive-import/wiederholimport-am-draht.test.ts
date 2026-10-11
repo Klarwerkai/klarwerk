@@ -56,7 +56,9 @@ const DATEI_URL =
 /** Der erste Stand der Quelldatei. */
 const STAND_ERST = "2026-09-10T08:30:00Z";
 /** Derselbe Weg, den der Mapper geht — hier zur ERWARTUNG, nicht als zweite Umrechnung im Produkt. */
-const sekunden = (iso: string): number => Math.floor(Date.parse(iso) / 1000);
+// R-0144: der Mapper zählt den Quellstand in Sekunden seit 2025-01-01 (`sharepointQuellstand`).
+const quellstand = (iso: string): number =>
+  Math.max(1, Math.floor((Date.parse(iso) - Date.UTC(2025, 0, 1)) / 1000));
 
 /**
  * Der stellbare Zustand der Quelle. `beforeEach` setzt ihn zurück; nur W2 hebt ihn an — und zwar
@@ -236,7 +238,7 @@ describe("JOB 4125 · W1 — dieselbe unveränderte Datei ein zweites Mal übern
     // DER ZURÜCKGELESENE BESTAND — hier entscheidet sich die Zusage, nicht an den Zählern oben.
     const offen = await vorgaenge(app, headers);
     expect(offen, "genau EIN Vorgang zu dieser Quelldatei, kein Doppelbestand").toHaveLength(1);
-    expect(offen[0]?.item.sourceVersion).toBe(sekunden(STAND_ERST));
+    expect(offen[0]?.item.sourceVersion).toBe(quellstand(STAND_ERST));
   });
 
   // ------------------------------------------------------------------------------------------------
@@ -316,7 +318,7 @@ describe("JOB 4125 · W2 — die Quelldatei hat sich geändert", () => {
     expect(erst.imported).toBe(1);
     const vorher = await vorgaenge(app, headers);
     expect(vorher).toHaveLength(1);
-    expect(vorher[0]?.item.sourceVersion).toBe(sekunden(STAND_ERST));
+    expect(vorher[0]?.item.sourceVersion).toBe(quellstand(STAND_ERST));
 
     // Die Quelle ändert sich — genau so, wie SharePoint es täte: späterer Zeitpunkt, neuer Inhalt.
     geaendertAm = "2026-09-14T17:05:00Z";
@@ -338,10 +340,10 @@ describe("JOB 4125 · W2 — die Quelldatei hat sich geändert", () => {
     const nachher = await vorgaenge(app, headers);
     const staende = nachher.map((k) => k.item.sourceVersion);
     expect(staende, "der neue Stand steht wirklich in der Warteschlange").toContain(
-      sekunden(geaendertAm),
+      quellstand(geaendertAm),
     );
-    expect(sekunden(geaendertAm)).toBeGreaterThan(sekunden(STAND_ERST));
-    const neuster = nachher.find((k) => k.item.sourceVersion === sekunden(geaendertAm));
+    expect(quellstand(geaendertAm)).toBeGreaterThan(quellstand(STAND_ERST));
+    const neuster = nachher.find((k) => k.item.sourceVersion === quellstand(geaendertAm));
     expect(neuster?.item.statement, "und er trägt den NEUEN Inhalt").toBe(beschreibung);
 
     // KEIN ZWEITER BESTAND: Beide Vorgänge angenommen ergeben GENAU EIN Wissensobjekt zu dieser
@@ -354,7 +356,7 @@ describe("JOB 4125 · W2 — die Quelldatei hat sich geändert", () => {
     expect(
       nachher.map((k) => k.item.sourceVersion),
       "Vorbedingung dieses Falls: der ältere Vorgang steht vorn",
-    ).toEqual([sekunden(STAND_ERST), sekunden(geaendertAm)]);
+    ).toEqual([quellstand(STAND_ERST), quellstand(geaendertAm)]);
     for (const vorgang of nachher) {
       await nimmAn(app, headers, vorgang.id);
     }
@@ -365,7 +367,7 @@ describe("JOB 4125 · W2 — die Quelldatei hat sich geändert", () => {
     ).toHaveLength(1);
     const anker = objekte[0]?.sources.find((q) => q.externalId === DATEI_ID);
     expect(anker?.sourceVersion, "und der Bestand trägt den SPÄTEREN Quellstand").toBe(
-      sekunden(geaendertAm),
+      quellstand(geaendertAm),
     );
     expect(objekte[0]?.statement).toBe(beschreibung);
   });
@@ -391,8 +393,8 @@ describe("JOB 4125 · W2 — die Quelldatei hat sich geändert", () => {
     await uebernimm(app, headers);
 
     const offen = await vorgaenge(app, headers);
-    const neuster = offen.find((k) => k.item.sourceVersion === sekunden(geaendertAm));
-    const aelterer = offen.find((k) => k.item.sourceVersion === sekunden(STAND_ERST));
+    const neuster = offen.find((k) => k.item.sourceVersion === quellstand(geaendertAm));
+    const aelterer = offen.find((k) => k.item.sourceVersion === quellstand(STAND_ERST));
     if (!neuster || !aelterer) {
       throw new Error("Vorbedingung verletzt: es stehen nicht beide Stände in der Warteschlange.");
     }
@@ -415,7 +417,7 @@ describe("JOB 4125 · W2 — die Quelldatei hat sich geändert", () => {
     expect(
       objekte[0]?.sources.find((q) => q.externalId === DATEI_ID)?.sourceVersion,
       "und der Anker trägt weiterhin den SPÄTEREN Quellstand",
-    ).toBe(sekunden(geaendertAm));
+    ).toBe(quellstand(geaendertAm));
   });
 
   // ------------------------------------------------------------------------------------------------
@@ -444,7 +446,7 @@ describe("JOB 4125 · W2 — die Quelldatei hat sich geändert", () => {
     expect(
       offen.map((k) => k.item.sourceVersion).sort((a, b) => (a ?? 0) - (b ?? 0)),
       "Ist-Zustand: alter und neuer Stand stehen beide offen in der Prüfung",
-    ).toEqual([sekunden(STAND_ERST), sekunden(geaendertAm)]);
+    ).toEqual([quellstand(STAND_ERST), quellstand(geaendertAm)]);
   });
 });
 
@@ -542,7 +544,7 @@ describe("JOB 4125 · W3 — Wiederholimport an einer bereits angenommenen Quell
     expect(zwischen.statement, "und kein stiller Inhaltswechsel").toBe(vorher.statement);
     const offen = (await vorgaenge(app, headers)).filter((k) => k.status === "neu");
     expect(offen, "was entstanden ist, ist ein Vorgang").toHaveLength(1);
-    expect(offen[0]?.item.sourceVersion).toBe(sekunden(geaendertAm));
+    expect(offen[0]?.item.sourceVersion).toBe(quellstand(geaendertAm));
 
     // (2) ERST DIE ANNAHME DURCH DEN MENSCHEN aktualisiert — gezielt, in dasselbe Objekt.
     expect(await nimmAn(app, headers, offen[0]?.id as string)).toBe(koId);
@@ -554,7 +556,7 @@ describe("JOB 4125 · W3 — Wiederholimport an einer bereits angenommenen Quell
     const objekte = await objekteMitAnker(app, headers);
     expect(objekte, "und es ist kein zweites Objekt entstanden").toHaveLength(1);
     expect(objekte[0]?.sources.find((q) => q.externalId === DATEI_ID)?.sourceVersion).toBe(
-      sekunden(geaendertAm),
+      quellstand(geaendertAm),
     );
   });
 });

@@ -56,7 +56,7 @@ export const OBERGRUPPEN: readonly Obergruppe[] = [
 /**
  * Jedes der 21 Navigationsziele in genau einer Obergruppe — abgeschrieben aus der Tabelle der
  * Vorlage, nicht erfunden (JOB 3503 hat „Meine Entwürfe" ergänzt; es arbeitet, wo erfasst wird):
- *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Meine Aufgaben, Themenkarte,
+ *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Offene Aufgaben, Themenkarte,
  *              Externes Wissen
  *   Qualität   Prüfen, Konflikte, Doppelungen, Risiken und Wissenslücken, Lebenszyklus
  *   Verwaltung alle Admin-Ziele (Einstellungen, Analytics & Audit, Auswertungen, Import,
@@ -147,6 +147,10 @@ export function isAdminDetailId(value: string): boolean {
   }
   if (value.startsWith("nutzer:")) {
     return NUTZER_KENNUNG.test(value.slice("nutzer:".length));
+  }
+  // ADMIN-06: `team:<id>` — dieselbe Formregel wie ein Konto; ob es das Team gibt, sagt die Karte.
+  if (value.startsWith("team:")) {
+    return NUTZER_KENNUNG.test(value.slice("team:".length));
   }
   return ADMIN_DETAILS.some((d) => d.id === value);
 }

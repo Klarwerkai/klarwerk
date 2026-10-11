@@ -1,0 +1,45 @@
+<!doctype html>
+<!--
+  ENTWURF · NICHT FREIGEGEBEN — R-1033 „Weiterentwurf der nächsten Zielbild-Flächen", Fläche
+  „Mobilansicht des Panels": das Klara-Word-Panel auf der schmalsten getragenen Breite (320 px —
+  dieselbe Untergrenze, die tests/ki-palette-320 und die Rückfrage-Schmalfälle messen). Gehört nach
+  Pedis Freigabe in den Freigabe-Canvas; bis dahin wird NICHTS dagegen gemessen.
+
+  SELBER STIL: Farben, Radien, Knopf- und Chipmaße stehen wörtlich in den freigegebenen Klara-Vorlagen;
+  Antworttext-Größe und einzelne Abstände sind Entwurfswerte, mit der Freigabe zu bestätigen
+  (Anker aus tests/design/zielbild-k1-ruhe.test.ts, zielbild-k1-antwort.test.ts,
+  zielbild-k2-erfassen.test.ts): Kopf-Polster 14px 16px 10px, „Klara" 15px/650, Umschalter #EEEAE3 ·
+  Radius 9px · Polster 2px, Karte Rand 1px #E9E5DE · Radius 10px, Knopf #C2500A auf #FFFFFF · 14px/600 ·
+  Radius 10px, Quellen-Chip #FAF8F5 · Radius 8px, Fußnote 10px #9C5009. Was sich gegenüber der
+  360-px-Fassung ändert, ist nur die Breite: Seitenränder 16px → 12px, der Umschalter bricht nicht um,
+  Chips laufen in eine zweite Zeile statt abgeschnitten zu werden. Kein Erklärtext im Sichtfeld (K1).
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Klara · Mobilansicht · Entwurf</title>
+</head>
+<body style="margin: 0; background: #FAF8F5; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #1A2233;">
+  <div style="width: 320px; min-height: 640px; background: #FFFFFF; border-right: 1px solid #E9E5DE; display: flex; flex-direction: column;">
+    <header style="padding: 14px 12px 10px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="font-size: 15px; font-weight: 650;">Klara</span>
+      <span style="font-size: 13px; color: #525B6B;">⚙</span>
+    </header>
+    <div style="margin: 0 12px; display: flex; background: #EEEAE3; border-radius: 9px; padding: 2px;">
+      <span style="flex: 1; text-align: center; background: #FFFFFF; border-radius: 9px; padding: 6px 0; font-size: 13px; font-weight: 600;">Fragen</span>
+      <span style="flex: 1; text-align: center; padding: 6px 0; font-size: 13px; color: #525B6B;">Erfassen</span>
+    </div>
+    <div style="margin: 10px 12px 0; border: 1px solid #E9E5DE; border-radius: 10px; padding: 12px 14px;">
+      <div style="font-size: 12px; color: #525B6B;">Wie lagern wir Ersatzteile für Linie 4?</div>
+      <p style="font-size: 15px; line-height: 1.55; margin: 8px 0 0;">Ersatzteile für Linie 4 liegen im Regal R-12, sortiert nach Baugruppe<sup style="font-size: 10px; color: #9C5009; font-weight: 700;">1</sup>.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #E9E5DE;">
+        <span style="background: #FAF8F5; border: 1px solid #E9E5DE; border-radius: 8px; padding: 5px 9px; font-size: 12px; font-weight: 600;">1 Lagerordnung Werk 2</span>
+      </div>
+    </div>
+    <div style="margin-top: auto; padding: 12px;">
+      <div style="border: 1px solid #E9E5DE; border-radius: 10px; padding: 12px 14px; font-size: 14px; color: #525B6B;">Frage an das Firmenwissen …</div>
+      <button style="margin-top: 8px; width: 100%; padding: 13px 0; font-size: 14px; font-weight: 600; border: 0; border-radius: 10px; background: #C2500A; color: #FFFFFF;">Fragen</button>
+    </div>
+  </div>
+</body>
+</html>
