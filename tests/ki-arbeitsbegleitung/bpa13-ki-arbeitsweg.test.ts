@@ -16,13 +16,17 @@ import {
   type KiArbeitsbereich,
   type KiErgebnis,
   type KiFreigabelage,
+  type KiJob,
   type KiQuelle,
+  type KiWegErgebnis,
   baueKontextpaket,
   klassifiziereBeleg,
   nimmAntwortAn,
   nimmJobWiederAuf,
   pruefeAnbieterweg,
   pruefeCodexErgebnis,
+  pruefePaketAktuell,
+  pruefeUebergabe,
   quelleDarfHinaus,
   starteOderFindeJob,
   stoppeJob,
@@ -138,6 +142,31 @@ const API_ADAPTER: KiAdapter = {
   version: "adapter-1.0",
   geprueftAm: "2026-10-11T12:00:00.000Z",
 };
+
+/**
+ * Nacharbeit 2: wie im Produkt — vor JEDER Übergabe Weg UND gebundenes Paket frisch prüfen. Die
+ * Quellen und die Lage sind die AKTUELLEN; ohne Angabe die unveränderten Bestandsdaten.
+ */
+function frisch(
+  job: KiJob,
+  weg: KiWegErgebnis,
+  quellen: readonly KiQuelle[] = QUELLEN,
+  lage: KiFreigabelage = LAGE,
+) {
+  return pruefeUebergabe(job, weg, pruefePaketAktuell(paket(), quellen, lage));
+}
+
+/** Erstsendung über den Produktweg: nur mit Freigabe aus der frischen Prüfung. */
+function sende(job: KiJob) {
+  const p = frisch(job, {
+    erlaubt: true,
+    faehigkeit: job.faehigkeit,
+    anbieter: job.anbieter,
+    modell: "m",
+  });
+  if (!p.erlaubt) throw new Error(`Freigabe erwartet: ${p.text}`);
+  return vermerkeSendung(job, p.freigabe);
+}
 
 describe("K1 · natürlicher Auftrag → verständlicher, gebundener Prompt", () => {
   it("enthält Ziel, Projekt, Dokumentfassung, Quellenstand und Ergebnisformat", () => {
@@ -360,10 +389,29 @@ describe("K4 · Keine KI sperrt automatische UND manuelle Übermittlung samt Fol
       lage: keineKi,
       adapter: [],
     });
-    const w = nimmJobWiederAuf(unterbrochen, jetztGesperrt, { erneutSendenBestaetigt: true });
+    const w = nimmJobWiederAuf(unterbrochen, frisch(unterbrochen, jetztGesperrt), {
+      erneutSendenBestaetigt: true,
+    });
     expect(w.senden).toBe(false);
     expect(w.job.sendungen).toBe(0);
     expect(w.text).toContain("Keine KI");
+  });
+
+  it("auch die Erstübergabe eines vorbereiteten Auftrags bekommt keine Freigabe", () => {
+    const erlaubt = {
+      erlaubt: true,
+      faehigkeit: "prompt_manuell",
+      anbieter: "Claude",
+      modell: null,
+    } as const;
+    const { job } = starteOderFindeJob([], paket(), erlaubt);
+    const jetzt = pruefeAnbieterweg({
+      gewaehlterAnbieter: "Claude",
+      faehigkeit: "prompt_manuell",
+      lage: keineKi,
+      adapter: [],
+    });
+    expect(frisch(job, jetzt)).toMatchObject({ erlaubt: false, grund: "weg_gesperrt" });
   });
 });
 
@@ -401,6 +449,24 @@ describe("K5 · Fähigkeiten ehrlich ausgewiesen; MCP-Status ist keine Chatsteue
         faehigkeit: "codex_auftrag",
         lage: { ...LAGE, erlaubteAnbieter: ["Claude", "Codex"] },
         adapter: [stub],
+      }),
+    ).toMatchObject({ erlaubt: false, sperre: "faehigkeit_nicht_verbunden" });
+  });
+
+  it("eingerichtet, aber ohne reale Probe: „ungeprüft“ — und der API-Weg bleibt zu", () => {
+    const eingerichtet: KiAdapter = { faehigkeit: "api", anbieter: "Claude", version: "m-1" };
+    const u = weiseFaehigkeitenAus([eingerichtet], false);
+    expect(u.faehigkeiten.find((f) => f.faehigkeit === "api")).toMatchObject({
+      status: "ungeprueft",
+      anbieter: "Claude",
+    });
+    expect(
+      pruefeAnbieterweg({
+        gewaehlterAnbieter: "Claude",
+        faehigkeit: "api",
+        lage: LAGE,
+        adapter: [eingerichtet],
+        resolution: aufloesung(true),
       }),
     ).toMatchObject({ erlaubt: false, sperre: "faehigkeit_nicht_verbunden" });
   });
@@ -445,7 +511,7 @@ describe("K7 · späte oder fremde Antwort behält ihren Ursprung", () => {
 
   function gesendeterJob() {
     const { job } = starteOderFindeJob([], paket(), weg);
-    return vermerkeSendung(job).job;
+    return sende(job).job;
   }
 
   it("nach Dokumentwechsel: Bezug bleibt beim Ursprung, neues Dokument bleibt unberührt", () => {
@@ -509,16 +575,25 @@ describe("K8 · Unterbrechung und Wiederaufnahme ohne Doppeljob oder Zweitverbra
     const zweit = starteOderFindeJob([erst.job], p, weg);
     expect(erst.neu).toBe(true);
     expect(zweit).toEqual({ job: erst.job, neu: false });
-    const s1 = vermerkeSendung(erst.job);
-    const s2 = vermerkeSendung(s1.job);
+    const s1 = sende(erst.job);
+    const s2 = sende(s1.job);
     expect([s1.senden, s2.senden, s2.job.sendungen]).toEqual([true, false, 1]);
+  });
+
+  it("ohne Freigabe aus der frischen Prüfung gibt es keine Erstsendung", () => {
+    const { job } = starteOderFindeJob([], paket(), weg);
+    const fremd = starteOderFindeJob([], paket(), { ...weg, anbieter: "ChatGPT" }).job;
+    const p = frisch(fremd, { ...weg, anbieter: "ChatGPT" });
+    if (!p.erlaubt) throw new Error("Freigabe für den fremden Job erwartet");
+    // Die Freigabe eines ANDEREN Jobs öffnet diesen nicht.
+    expect(vermerkeSendung(job, p.freigabe)).toEqual({ job, senden: false });
   });
 
   it("Wiederaufnahme erhält Ziel, Teilstand und offene Punkte und sendet nicht erneut", () => {
     const { job } = starteOderFindeJob([], paket(), weg, ["Bestandskunden?"]);
-    const gesendet = vermerkeSendung(job).job;
+    const gesendet = sende(job).job;
     const pause = unterbrecheJob(gesendet, "Teil 1 fertig");
-    const w = nimmJobWiederAuf(pause, weg);
+    const w = nimmJobWiederAuf(pause, frisch(pause, weg));
     expect(w.senden).toBe(false);
     expect(w.job).toMatchObject({
       jobId: job.jobId,
@@ -532,18 +607,93 @@ describe("K8 · Unterbrechung und Wiederaufnahme ohne Doppeljob oder Zweitverbra
 
   it("Providerfehler: erneut senden nur mit Bestätigung; nie still an anderen Anbieter", () => {
     const { job } = starteOderFindeJob([], paket(), weg);
-    const fehler = vermerkeFehler(vermerkeSendung(job).job, "HTTP 529 überlastet");
-    expect(nimmJobWiederAuf(fehler, weg).senden).toBe(false);
+    const fehler = vermerkeFehler(sende(job).job, "HTTP 529 überlastet");
+    expect(nimmJobWiederAuf(fehler, frisch(fehler, weg)).senden).toBe(false);
     const anders = { ...weg, anbieter: "ChatGPT" } as const;
-    expect(nimmJobWiederAuf(fehler, anders, { erneutSendenBestaetigt: true }).senden).toBe(false);
-    const bestaetigt = nimmJobWiederAuf(fehler, weg, { erneutSendenBestaetigt: true });
+    expect(
+      nimmJobWiederAuf(fehler, frisch(fehler, anders), { erneutSendenBestaetigt: true }).senden,
+    ).toBe(false);
+    const bestaetigt = nimmJobWiederAuf(fehler, frisch(fehler, weg), {
+      erneutSendenBestaetigt: true,
+    });
     expect([bestaetigt.senden, bestaetigt.job.sendungen]).toEqual([true, 2]);
   });
 
   it("ein nie gesendeter unterbrochener Job wird genau einmal gesendet", () => {
     const { job } = starteOderFindeJob([], paket(), weg);
-    const w = nimmJobWiederAuf(unterbrecheJob(job), weg);
+    const pause = unterbrecheJob(job);
+    const w = nimmJobWiederAuf(pause, frisch(pause, weg));
     expect([w.senden, w.job.sendungen, w.job.status]).toEqual([true, 1, "gesendet"]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Nacharbeit 2 (Ben, AC03/G04/G17): Entzug ZWISCHEN Vorbereitung und Übergabe
+// ------------------------------------------------------------------------------------------------
+
+describe("K3/K8 · Entzug zwischen Vorbereitung und (Wieder-)Übergabe sperrt die Übergabe", () => {
+  const weg = {
+    erlaubt: true,
+    faehigkeit: "prompt_manuell",
+    anbieter: "Claude",
+    modell: null,
+  } as const;
+  const mit = (aenderung: Partial<KiQuelle>) =>
+    QUELLEN.map((q) => (q.quelleId === "q-preis" ? { ...q, ...aenderung } : q));
+
+  function vorbereitet(): KiJob {
+    return starteOderFindeJob([], paket(), weg).job;
+  }
+
+  it("Leserecht entzogen: weder Erstübergabe noch Wiederaufnahme, auch nicht mit Bestätigung", () => {
+    const job = vorbereitet();
+    const entzogen = mit({ lesbar: false });
+    const erst = frisch(job, weg, entzogen);
+    expect(erst).toMatchObject({ erlaubt: false, grund: "paket_veraltet" });
+    if (!erst.erlaubt) {
+      expect(erst.paket).toMatchObject({
+        aktuell: false,
+        gruende: [{ quelleId: "q-preis", grund: "entzogen" }],
+      });
+      // Für die entzogene Quelle steht nur die Kennung da, die schon im Paket war — kein Titel.
+      expect(JSON.stringify(erst)).not.toContain("Titel q-preis");
+    }
+
+    const gesendet = sende(job).job;
+    const pause = unterbrecheJob(gesendet);
+    const w = nimmJobWiederAuf(pause, frisch(pause, weg, entzogen), {
+      erneutSendenBestaetigt: true,
+    });
+    expect([w.senden, w.job.sendungen]).toEqual([false, 1]);
+  });
+
+  it("Dokumentfreigabe geschlossen, Schutzstufe angehoben oder neue Fassung: gesperrt", () => {
+    const job = vorbereitet();
+    const faelle: ReadonlyArray<[Partial<KiQuelle>, string]> = [
+      [{ dokumentfreigabe: "geschlossen" }, "dokumentfreigabe_geschlossen"],
+      [{ dokumentfreigabe: "fehlt" }, "dokumentfreigabe_fehlt"],
+      [{ schutzstufe: "vertraulich" }, "vertraulich"],
+      [{ schutzstufe: "unbekannt" }, "schutzstufe_unbekannt"],
+      [{ fassung: "v8" }, "fassung_geaendert"],
+      [
+        {
+          abschnitte: [
+            { abschnittId: "a1", text: "Listenpreis 120 EUR je Lizenz.", gesperrt: true },
+            { abschnittId: "a2", text: "Interne Marge 42 %.", gesperrt: true },
+          ],
+        },
+        "passage_gesperrt",
+      ],
+    ];
+    for (const [aenderung, grund] of faelle) {
+      const p = frisch(job, weg, mit(aenderung));
+      expect(p, grund).toMatchObject({ erlaubt: false, grund: "paket_veraltet" });
+      if (!p.erlaubt) expect(p.paket?.aktuell === false && p.paket.gruende[0]?.grund).toBe(grund);
+    }
+  });
+
+  it("unverändert bleibt die Übergabe erlaubt — die Sperre hängt am Entzug, nicht am Zufall", () => {
+    expect(frisch(vorbereitet(), weg)).toMatchObject({ erlaubt: true });
   });
 });
 
@@ -590,6 +740,70 @@ describe("K9 · zwei KI-Ergebnisse gegen Originalquellen vergleichen", () => {
       werte: ["12 Monate", "24 Monate"],
     });
     expect(nach.support?.status).toBe("nur_einseitig");
+    // Die Bestätigung ist bis zur Passage nachvollziehbar.
+    expect(nach.listenpreis?.fundstellen).toEqual([
+      { quelleId: "q-preis", fassung: "v7", abschnittId: "a1" },
+    ]);
+  });
+
+  it("GEGENFALL (Ben): zwei gleiche FALSCHE Werte mit vorhandener Quelle bleiben unbestätigt", () => {
+    const p = paket();
+    const falsch = (anbieter: string, quellen: string[]): KiErgebnis => ({
+      jobId: `kj_${anbieter}`,
+      anbieter,
+      modell: null,
+      antwortFassung: "r1",
+      aussagen: [{ thema: "Listenpreis", wert: "150 EUR", quellen }],
+    });
+    const [zeile] = vergleicheKiErgebnisse(
+      p,
+      falsch("Claude", ["q-preis"]),
+      falsch("ChatGPT", ["q-preis"]),
+    );
+    expect(zeile).toMatchObject({
+      status: "quelle_genannt_unbestaetigt",
+      genannteQuellen: ["q-preis"],
+      belegteQuellen: [],
+      fundstellen: [],
+    });
+    expect(zeile?.text).toContain("dort steht dieser Wert nicht");
+    expect(zeile?.text).toContain("Übereinstimmung ist keine Bestätigung");
+  });
+
+  it("eine genannte FREMDE Fassung bestätigt nichts, auch wenn der Wert passt", () => {
+    const p = paket();
+    const mitFassung = (anbieter: string, zitat: string): KiErgebnis => ({
+      jobId: `kj_${anbieter}`,
+      anbieter,
+      modell: null,
+      antwortFassung: "r1",
+      aussagen: [{ thema: "Listenpreis", wert: "120 EUR", quellen: [zitat] }],
+    });
+    const [alt] = vergleicheKiErgebnisse(
+      p,
+      mitFassung("Claude", "q-preis@v6"),
+      mitFassung("ChatGPT", "q-preis@v6"),
+    );
+    expect(alt?.status).toBe("quelle_genannt_unbestaetigt");
+    const [passend] = vergleicheKiErgebnisse(
+      p,
+      mitFassung("Claude", "q-preis@v7"),
+      mitFassung("ChatGPT", "q-preis"),
+    );
+    expect(passend?.status).toBe("quelle_belegt");
+  });
+
+  it("die gesperrte Passage ist kein Beleg — sie war nie im Paket", () => {
+    const p = paket();
+    const marge = (anbieter: string): KiErgebnis => ({
+      jobId: `kj_${anbieter}`,
+      anbieter,
+      modell: null,
+      antwortFassung: "r1",
+      aussagen: [{ thema: "Marge", wert: "42 %", quellen: ["q-preis"] }],
+    });
+    const [zeile] = vergleicheKiErgebnisse(p, marge("Claude"), marge("ChatGPT"));
+    expect(zeile?.status).toBe("quelle_genannt_unbestaetigt");
   });
 });
 
@@ -627,6 +841,6 @@ describe("K10 · realer Adapterlauf getrennt von Entwurf, Übergabe und Simulati
     const weg = { erlaubt: true, faehigkeit: "api", anbieter: "Claude", modell: "m" } as const;
     const { job } = starteOderFindeJob([], paket(), weg);
     expect(stoppeJob(job).text).toContain("nichts an einen Anbieter gesendet");
-    expect(stoppeJob(vermerkeSendung(job).job).text).toContain("nicht zurückholen");
+    expect(stoppeJob(sende(job).job).text).toContain("nicht zurückholen");
   });
 });

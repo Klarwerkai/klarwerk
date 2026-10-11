@@ -1017,6 +1017,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/me/klara/gespraeche/:id/schritt": { protection: "auth" },
   "PUT /api/me/klara/gespraeche/:id/einwilligung": { protection: "auth" },
   "DELETE /api/me/klara/gespraeche/:id": { protection: "auth" },
+  // produkt:20261011:assistenz-ki-arbeitsbegleitung (BPA-13): KI-Aufträge am EIGENEN Gespräch —
+  // Konto aus der Sitzung, fremd und unbekannt 404, Quellen nur nach `sichtbarkeitsfilterFuer`.
+  // Die Verbindungsprobe ist ein echter Modellaufruf und trägt das Recht der vorhandenen Probe.
+  "GET /api/me/klara/ki-faehigkeiten": { protection: "auth" },
+  "POST /api/me/klara/ki-verbindung/:anbieter/pruefen": { protection: "users.manage" },
+  "GET /api/me/klara/gespraeche/:id/ki-auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/uebergabe": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/ergebnis": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/unterbrechen": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/stopp": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/freigabe-schliessen": {
+    protection: "auth",
+  },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/neu-binden": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-auftraege/:jobId/codex": { protection: "auth" },
+  "POST /api/me/klara/gespraeche/:id/ki-vergleich": { protection: "auth" },
   // produkt:20261010:assistenz-name-avatar: das eigene Assistenzprofil — nur das EIGENE Konto
   // (user.id aus der Sitzung); eine fremde Kontokennung in Rumpf oder Adresse ergibt 403.
   "GET /api/me/assistenz": { protection: "auth" },

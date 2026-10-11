@@ -169,6 +169,18 @@ export interface KiAusgelassen {
   readonly abschnittId?: string | undefined;
 }
 
+/**
+ * Nacharbeit 2 (Ben, AC09/AC03): der WORTLAUT, der tatsächlich ins Paket ging — je Abschnitt mit
+ * Quelle und Fassung. Gegen ihn wird eine KI-Aussage abgeglichen (`vergleicheKiErgebnisse`) und
+ * vor jeder Übergabe geprüft, ob die Quelle noch genau so hinaus darf (`pruefePaketAktuell`).
+ */
+export interface KiPassage {
+  readonly quelleId: string;
+  readonly fassung: string;
+  readonly abschnittId: string;
+  readonly text: string;
+}
+
 export interface KiKontextpaket {
   /** Stabile Kennung aus Bindung, Quellenstand und Inhalt — gleicher Stand, gleiche Kennung. */
   readonly paketId: string;
@@ -182,6 +194,7 @@ export interface KiKontextpaket {
    * (G05: weder Titel noch Trefferzahl).
    */
   readonly ausgelassen: readonly KiAusgelassen[];
+  readonly passagen: readonly KiPassage[];
   readonly prompt: string;
 }
 
@@ -231,6 +244,7 @@ export function baueKontextpaket(
 
   const quellenstand: KiQuellenstand[] = [];
   const ausgelassen: KiAusgelassen[] = [];
+  const passagen: KiPassage[] = [];
   const bloecke: string[] = [];
 
   for (const q of quellen) {
@@ -260,6 +274,14 @@ export function baueKontextpaket(
       }
     }
     if (abschnitte.length === 0) continue;
+    for (const a of abschnitte) {
+      passagen.push({
+        quelleId: q.quelleId,
+        fassung: q.fassung,
+        abschnittId: a.abschnittId,
+        text: a.text.trim(),
+      });
+    }
     quellenstand.push({
       quelleId: q.quelleId,
       fassung: q.fassung,
@@ -306,8 +328,99 @@ export function baueKontextpaket(
       ergebnisformat: auftrag.ergebnisformat,
       quellenstand,
       ausgelassen,
+      passagen,
       prompt,
     },
+  };
+}
+
+// ------------------------------------------------------------------------------------------------
+// Nacharbeit 2 (Ben, AC03/G04/G17) — das gebundene Paket vor JEDER Übergabe neu prüfen
+// ------------------------------------------------------------------------------------------------
+
+export type KiPaketGrund =
+  | KiAusschlussGrund
+  /** Kein aktuelles Leserecht mehr, Quelle gelöscht oder einem anderen Bereich zugeordnet. */
+  | "entzogen"
+  /** Die Quelle hat seit dem Paketbau eine neue Fassung — das Paket muss neu gebunden werden. */
+  | "fassung_geaendert"
+  /** Ein übergebener Abschnitt fehlt jetzt oder hat einen anderen Wortlaut. */
+  | "abschnitt_geaendert";
+
+export type KiPaketPruefung =
+  | { readonly aktuell: true; readonly paketId: string }
+  | {
+      readonly aktuell: false;
+      readonly paketId: string;
+      readonly gruende: ReadonlyArray<{ readonly quelleId: string; readonly grund: KiPaketGrund }>;
+      readonly text: string;
+    };
+
+/**
+ * Prüft das GEBUNDENE Paket gegen den AKTUELLEN Stand der Quellen — mit denselben Regeln wie beim
+ * Bau (`quelleDarfHinaus`, Leserecht, Bereich, Projekt, gesperrte Passage), Quelle für Quelle und
+ * Abschnitt für Abschnitt. Ein Rechteentzug, eine geschlossene oder fehlende Dokumentfreigabe, eine
+ * höhere Schutzstufe oder eine neue Fassung zwischen Vorbereitung und Übergabe sperrt die Übergabe.
+ *
+ * Es wird NICHTS still angepasst: ein verändertes Paket muss der Nutzer ausdrücklich neu binden
+ * (neues Paket, neue Kennung, neuer Job). Für unlesbar gewordene Quellen nennt die Prüfung nur die
+ * Kennung, die ohnehin schon im Paket des Nutzers stand — keinen neuen Titel (G05).
+ */
+export function pruefePaketAktuell(
+  paket: Pick<KiKontextpaket, "paketId" | "bindung" | "quellenstand" | "passagen">,
+  quellen: readonly KiQuelle[],
+  lage: Pick<KiFreigabelage, "vertraulichFreigegeben">,
+): KiPaketPruefung {
+  const bereich = paket.bindung;
+  const gruende: Array<{ quelleId: string; grund: KiPaketGrund }> = [];
+  for (const stand of paket.quellenstand) {
+    const q = quellen.find((x) => x.quelleId === stand.quelleId);
+    if (
+      !q ||
+      !q.lesbar ||
+      q.mandantId !== bereich.mandantId ||
+      q.arbeitsbereichId !== bereich.arbeitsbereichId
+    ) {
+      gruende.push({ quelleId: stand.quelleId, grund: "entzogen" });
+      continue;
+    }
+    if (q.projektId !== bereich.projektId) {
+      gruende.push({ quelleId: stand.quelleId, grund: "anderes_projekt" });
+      continue;
+    }
+    const hinaus = quelleDarfHinaus(q, lage);
+    if (!hinaus.erlaubt) {
+      gruende.push({ quelleId: stand.quelleId, grund: hinaus.grund });
+      continue;
+    }
+    if (q.fassung !== stand.fassung) {
+      gruende.push({ quelleId: stand.quelleId, grund: "fassung_geaendert" });
+      continue;
+    }
+    for (const abschnittId of stand.abschnittIds) {
+      const jetzt = q.abschnitte.find((a) => a.abschnittId === abschnittId);
+      const damals = paket.passagen.find(
+        (p) => p.quelleId === stand.quelleId && p.abschnittId === abschnittId,
+      );
+      if (!jetzt || !damals || jetzt.text.trim() !== damals.text) {
+        gruende.push({ quelleId: stand.quelleId, grund: "abschnitt_geaendert" });
+        break;
+      }
+      if (jetzt.gesperrt === true) {
+        gruende.push({ quelleId: stand.quelleId, grund: "passage_gesperrt" });
+        break;
+      }
+    }
+  }
+  if (gruende.length === 0) return { aktuell: true, paketId: paket.paketId };
+  return {
+    aktuell: false,
+    paketId: paket.paketId,
+    gruende,
+    text:
+      "Seit der Vorbereitung haben sich Rechte, Freigaben oder Inhalte der Quellen geändert. " +
+      "Klara übergibt dieses Paket nicht. " +
+      "Du kannst den Auftrag mit dem aktuellen Stand neu binden.",
   };
 }
 
@@ -334,6 +447,8 @@ export interface KiAdapter {
 export type KiFaehigkeitsstatus =
   | "verfuegbar"
   | "verbunden"
+  /** Nacharbeit 2: eingerichtet, aber noch ohne reale Probe — kein Funktionsnachweis. */
+  | "ungeprueft"
   | "nur_simulation"
   | "nicht_eingerichtet";
 
@@ -368,6 +483,7 @@ const MANUELL_HINWEIS = "Du überträgst den Prompt selbst; Klara sieht den frem
 const MANUELL_AUSWEG = "Du kannst den Prompt manuell übergeben.";
 const KEIN_STILLER_WECHSEL = "Klara wechselt nicht still — bitte Anbieter bewusst wählen.";
 const AN_QUELLE_PRUEFEN = "bitte an der Originalquelle prüfen.";
+const UNBESTAETIGT = "Übereinstimmung ist keine Bestätigung.";
 
 export function weiseFaehigkeitenAus(
   adapter: readonly KiAdapter[],
@@ -384,7 +500,8 @@ export function weiseFaehigkeitenAus(
   ];
   for (const f of ["api", "browser_begleitung", "codex_auftrag"] as const) {
     const echt = adapter.find((a) => a.faehigkeit === f && a.simulation !== true && a.geprueftAm);
-    const stub = adapter.find((a) => a.faehigkeit === f);
+    const stub = adapter.find((a) => a.faehigkeit === f && a.simulation === true);
+    const ungeprueft = adapter.find((a) => a.faehigkeit === f && a.simulation !== true);
     if (echt) {
       faehigkeiten.push({
         faehigkeit: f,
@@ -394,6 +511,14 @@ export function weiseFaehigkeitenAus(
         text:
           `${FAEHIGKEIT_NAME[f]}: verbunden mit ${echt.anbieter} (${echt.version}), ` +
           `zuletzt geprüft ${echt.geprueftAm}.`,
+      });
+    } else if (ungeprueft) {
+      faehigkeiten.push({
+        faehigkeit: f,
+        status: "ungeprueft",
+        anbieter: ungeprueft.anbieter,
+        version: ungeprueft.version,
+        text: `${FAEHIGKEIT_NAME[f]}: eingerichtet, aber noch nicht real geprüft. ${MANUELL_AUSWEG}`,
       });
     } else if (stub) {
       faehigkeiten.push({
@@ -465,6 +590,8 @@ export function pruefeAnbieterweg(input: {
   readonly adapter: readonly KiAdapter[];
   /** Für `api`: die aktuelle Klara-Auflösung aus `KlaraSessionService.statusFor`. */
   readonly resolution?: KlaraResolution | undefined;
+  /** Für `api` ohne Klara-Sitzung: die frisch gelesene Bindung (hat Vorrang vor `resolution`). */
+  readonly apiBindung?: KiApiBindung | undefined;
 }): KiWegErgebnis {
   const { gewaehlterAnbieter, faehigkeit, lage } = input;
   const sperre = (s: KiWegSperre, text: string): KiWegErgebnis => ({
@@ -510,33 +637,52 @@ export function pruefeAnbieterweg(input: {
   if (faehigkeit !== "api") {
     return { erlaubt: true, faehigkeit, anbieter: gewaehlterAnbieter, modell: null };
   }
-  const r = input.resolution;
-  if (!r || !r.executionAllowed || r.effectiveMode !== "external") {
-    const grund = r?.blockedReason ? ` (${r.blockedReason})` : "";
+  const b =
+    input.apiBindung ?? (input.resolution ? apiBindungAusResolution(input.resolution) : undefined);
+  if (!b || !b.ausfuehrbar || b.anbieter === null) {
+    const grund = b?.sperrgrund ? ` (${b.sperrgrund})` : "";
     return sperre("ausfuehrung_gesperrt", `Die direkte Ausführung ist gerade gesperrt${grund}.`);
   }
-  if (r.provider !== gewaehlterAnbieter) {
+  if (b.anbieter !== gewaehlterAnbieter) {
     return sperre(
       "anbieter_abweichend",
-      `Gewählt ist ${gewaehlterAnbieter}, eingerichtet ist ${r.provider}. ${KEIN_STILLER_WECHSEL}`,
+      `Gewählt ist ${gewaehlterAnbieter}, eingerichtet ist ${b.anbieter}. ${KEIN_STILLER_WECHSEL}`,
     );
   }
-  return { erlaubt: true, faehigkeit, anbieter: r.provider, modell: r.model };
+  return { erlaubt: true, faehigkeit, anbieter: b.anbieter, modell: b.modell };
+}
+
+/**
+ * Nacharbeit 2: die TATSÄCHLICHE Bindung des API-Wegs, unabhängig davon, woher sie kommt. Im
+ * Word-Weg ist es die Klara-Auflösung (`KlaraResolution`), im Web-Gespräch die wirksame
+ * Anbieterzuordnung des Reasoners für die Aufgabe, über die der Auftrag läuft
+ * (`ki-arbeitsbegleitung-dienst.ts`). Beide werden hier nur GELESEN, nie nachgerechnet.
+ */
+export interface KiApiBindung {
+  readonly ausfuehrbar: boolean;
+  /** Der Anbieter, an den der API-Weg JETZT wirklich ginge — `null`: keiner. */
+  readonly anbieter: string | null;
+  readonly modell: string | null;
+  readonly sperrgrund: string | null;
+}
+
+export function apiBindungAusResolution(r: KlaraResolution): KiApiBindung {
+  const ausfuehrbar = r.executionAllowed && r.effectiveMode === "external";
+  return {
+    ausfuehrbar,
+    anbieter: ausfuehrbar ? r.provider : null,
+    modell: ausfuehrbar ? r.model : null,
+    sperrgrund: r.blockedReason,
+  };
 }
 
 // ------------------------------------------------------------------------------------------------
 // AC06 — Codex-/Programmierauftrag
 // ------------------------------------------------------------------------------------------------
 
-/** Aktionen, die ein Programmierauftrag NIE bekommt — Codeerzeugung ist keine Betriebsvollmacht. */
-export const KI_CODEX_VERBOTENE_AKTIONEN = Object.freeze([
-  "deploy",
-  "shell",
-  "install",
-  "push",
-  "publish",
-  "loeschen",
-] as const);
+// Ein Programmierauftrag bekommt KEINE Betriebsaktion — weder Deployment noch Shell, Installation,
+// Push, Veröffentlichung oder Löschen. Codeerzeugung ist keine Betriebsvollmacht; deshalb lehnt
+// `pruefeCodexErgebnis` JEDE angeforderte Aktion ab, auch eine unbekannte (keine Positivliste).
 
 export interface KiCodexAuftrag {
   readonly paketId: string;
@@ -611,7 +757,9 @@ export type KiJobStatus =
   | "unterbrochen"
   | "antwort_erhalten"
   | "fehler"
-  | "gestoppt";
+  | "gestoppt"
+  /** Nacharbeit 2: ausdrücklich durch einen neu gebundenen Auftrag ersetzt (`ersetztDurch`). */
+  | "ersetzt";
 
 export interface KiJob {
   readonly jobId: string;
@@ -625,6 +773,97 @@ export interface KiJob {
   readonly offenePunkte: readonly string[];
   readonly teilergebnis?: string | undefined;
   readonly fehler?: string | undefined;
+  readonly ersetztDurch?: string | undefined;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Nacharbeit 2 (Ben, AC03/G04/G17) — keine Übergabe ohne frische Prüfung von Weg UND Paket
+// ------------------------------------------------------------------------------------------------
+
+const FREIGABE_MARKE: unique symbol = Symbol("ki-uebergabe-freigabe");
+
+/**
+ * Der Nachweis, dass UNMITTELBAR vor dieser Übergabe Weg und Paket frisch geprüft wurden. Er ist
+ * nur über `pruefeUebergabe` zu bekommen; `vermerkeSendung` und `nimmJobWiederAuf` verlangen ihn.
+ * Damit gibt es keinen Sendeweg — Erst-, Wiederholungs- oder manuelle Übergabe —, der die
+ * Neuprüfung überspringt.
+ */
+export interface KiUebergabeFreigabe {
+  readonly [FREIGABE_MARKE]: true;
+  readonly jobId: string;
+  readonly paketId: string;
+  readonly anbieter: string;
+  readonly faehigkeit: KiFaehigkeit;
+}
+
+export type KiUebergabePruefung =
+  | { readonly erlaubt: true; readonly freigabe: KiUebergabeFreigabe }
+  | {
+      readonly erlaubt: false;
+      readonly grund: "weg_gesperrt" | "anbieter_abweichend" | "paket_veraltet" | "paket_fremd";
+      readonly text: string;
+      readonly paket?: KiPaketPruefung | undefined;
+    };
+
+/**
+ * Vor JEDER Übergabe: der frisch geprüfte Weg (`pruefeAnbieterweg`) und das frisch geprüfte,
+ * gebundene Paket (`pruefePaketAktuell`). Beide müssen jetzt tragen, und beide müssen zu genau
+ * diesem Job gehören.
+ */
+export function pruefeUebergabe(
+  job: KiJob,
+  aktuellerWeg: KiWegErgebnis,
+  paket: KiPaketPruefung,
+): KiUebergabePruefung {
+  if (!aktuellerWeg.erlaubt) {
+    return { erlaubt: false, grund: "weg_gesperrt", text: aktuellerWeg.text };
+  }
+  if (aktuellerWeg.anbieter !== job.anbieter || aktuellerWeg.faehigkeit !== job.faehigkeit) {
+    return {
+      erlaubt: false,
+      grund: "anbieter_abweichend",
+      text: `Dieser Auftrag gehört zu ${job.anbieter}. Klara wechselt den Anbieter nicht still.`,
+    };
+  }
+  if (paket.paketId !== job.paketId) {
+    return {
+      erlaubt: false,
+      grund: "paket_fremd",
+      text: "Die Prüfung gehört nicht zum Paket dieses Auftrags.",
+    };
+  }
+  if (!paket.aktuell) {
+    return { erlaubt: false, grund: "paket_veraltet", text: paket.text, paket };
+  }
+  return {
+    erlaubt: true,
+    freigabe: {
+      [FREIGABE_MARKE]: true,
+      jobId: job.jobId,
+      paketId: job.paketId,
+      anbieter: job.anbieter,
+      faehigkeit: job.faehigkeit,
+    },
+  };
+}
+
+function freigabePasst(job: KiJob, f: KiUebergabeFreigabe): boolean {
+  return (
+    f[FREIGABE_MARKE] === true &&
+    f.jobId === job.jobId &&
+    f.paketId === job.paketId &&
+    f.anbieter === job.anbieter &&
+    f.faehigkeit === job.faehigkeit
+  );
+}
+
+/**
+ * Ein verändertes Paket ausdrücklich neu binden: der alte Job wird `ersetzt` und verweist auf den
+ * neuen. Nichts wird still in einen laufenden Job übernommen.
+ */
+export function ersetzeJob(alt: KiJob, neu: KiJob): KiJob {
+  if (alt.jobId === neu.jobId) return alt;
+  return { ...alt, status: "ersetzt", ersetztDurch: neu.jobId };
 }
 
 /** Idempotenzschlüssel: gleiches Paket, gleicher Anbieter, gleiche Fähigkeit → derselbe Job. */
@@ -665,14 +904,24 @@ export function starteOderFindeJob(
   };
 }
 
-/** Sendung vermerken. Ein bereits gesendeter oder beantworteter Job wird nicht erneut gesendet. */
-export function vermerkeSendung(job: KiJob): { readonly job: KiJob; readonly senden: boolean } {
-  if (job.status !== "vorbereitet") return { job, senden: false };
+/**
+ * Erstsendung vermerken — nur mit einer Freigabe aus `pruefeUebergabe` für GENAU diesen Job. Ein
+ * bereits gesendeter oder beantworteter Job wird nicht erneut gesendet.
+ */
+export function vermerkeSendung(
+  job: KiJob,
+  freigabe: KiUebergabeFreigabe,
+): { readonly job: KiJob; readonly senden: boolean } {
+  if (job.status !== "vorbereitet" || !freigabePasst(job, freigabe)) return { job, senden: false };
   return { job: { ...job, status: "gesendet", sendungen: job.sendungen + 1 }, senden: true };
 }
 
+function istAbgeschlossen(job: KiJob): boolean {
+  return job.status === "antwort_erhalten" || job.status === "gestoppt" || job.status === "ersetzt";
+}
+
 export function unterbrecheJob(job: KiJob, teilergebnis?: string): KiJob {
-  if (job.status === "antwort_erhalten" || job.status === "gestoppt") return job;
+  if (istAbgeschlossen(job)) return job;
   return {
     ...job,
     status: "unterbrochen",
@@ -682,7 +931,7 @@ export function unterbrecheJob(job: KiJob, teilergebnis?: string): KiJob {
 
 /** Providerfehler vermerken — der Job bleibt mit Ziel, Stand und offenen Punkten erhalten. */
 export function vermerkeFehler(job: KiJob, fehler: string): KiJob {
-  if (job.status === "antwort_erhalten" || job.status === "gestoppt") return job;
+  if (istAbgeschlossen(job)) return job;
   return { ...job, status: "fehler", fehler };
 }
 
@@ -691,28 +940,25 @@ export function vermerkeFehler(job: KiJob, fehler: string): KiJob {
  * gesendet, wird NICHT erneut gesendet — eine weitere Sendung (zweiter Verbrauch) gibt es nur mit
  * ausdrücklicher Bestätigung `erneutSendenBestaetigt`.
  *
- * AC04/G12: `aktuellerWeg` ist das FRISCHE Ergebnis von `pruefeAnbieterweg` zum Zeitpunkt der
- * Wiederaufnahme. Ist der Weg inzwischen gesperrt (etwa „Keine KI") oder zeigt er auf einen
- * anderen Anbieter, wird nichts gesendet — auch kein Folgeschritt eines älteren Auftrags.
+ * AC04/G12 und Nacharbeit 2 (AC03/G17): `pruefung` ist das FRISCHE Ergebnis von `pruefeUebergabe`
+ * zum Zeitpunkt der Wiederaufnahme — Weg UND gebundenes Paket. Ist der Weg inzwischen gesperrt
+ * (etwa „Keine KI"), zeigt er auf einen anderen Anbieter oder wurde einer Quelle das Leserecht
+ * entzogen bzw. ihre Dokumentfreigabe geschlossen, wird nichts gesendet — auch kein Folgeschritt.
  */
 export function nimmJobWiederAuf(
   job: KiJob,
-  aktuellerWeg: KiWegErgebnis,
+  pruefung: KiUebergabePruefung,
   optionen: { readonly erneutSendenBestaetigt?: boolean } = {},
 ): { readonly job: KiJob; readonly senden: boolean; readonly text: string } {
   if (job.status !== "unterbrochen" && job.status !== "fehler") {
     return { job, senden: false, text: "Der Auftrag läuft bereits oder ist abgeschlossen." };
   }
-  if (!aktuellerWeg.erlaubt) return { job, senden: false, text: aktuellerWeg.text };
-  if (aktuellerWeg.anbieter !== job.anbieter || aktuellerWeg.faehigkeit !== job.faehigkeit) {
-    return {
-      job,
-      senden: false,
-      text: `Dieser Auftrag gehört zu ${job.anbieter}. Klara wechselt den Anbieter nicht still.`,
-    };
+  if (!pruefung.erlaubt) return { job, senden: false, text: pruefung.text };
+  if (!freigabePasst(job, pruefung.freigabe)) {
+    return { job, senden: false, text: "Die Prüfung gehört nicht zu diesem Auftrag." };
   }
   if (job.sendungen === 0) {
-    const weiter = vermerkeSendung({ ...job, status: "vorbereitet" });
+    const weiter = vermerkeSendung({ ...job, status: "vorbereitet" }, pruefung.freigabe);
     return { ...weiter, text: "Der Auftrag wird jetzt gesendet." };
   }
   if (optionen.erneutSendenBestaetigt === true) {
@@ -720,6 +966,18 @@ export function nimmJobWiederAuf(
       job: { ...job, status: "gesendet", sendungen: job.sendungen + 1 },
       senden: true,
       text: "Der Auftrag wird auf deinen Wunsch erneut gesendet; das kann erneut Verbrauch erzeugen.",
+    };
+  }
+  // Nach einem Providerfehler wartet keine Antwort mehr — der Stand bleibt „fehler", damit ein
+  // bestätigtes erneutes Senden möglich bleibt. Nach einer Unterbrechung wartet der Auftrag auf
+  // die Antwort der bereits erfolgten Übergabe.
+  if (job.status === "fehler") {
+    return {
+      job,
+      senden: false,
+      text:
+        "Der letzte Versuch ist fehlgeschlagen. Erneutes Senden nur auf deinen ausdrücklichen " +
+        "Wunsch — das kann erneut Verbrauch erzeugen.",
     };
   }
   return {
@@ -792,12 +1050,18 @@ export function nimmAntwortAn(
   if (antwort.anbieter !== job.anbieter) return { angenommen: false, grund: "anbieter_abweichend" };
 
   const ursprung = job.bindung;
+  const ersetzt = job.status === "ersetzt";
   const gleichesDokument =
     (antwort.zielDokumentId ?? ursprung.dokumentId) === ursprung.dokumentId &&
     aktuell.dokumentId === ursprung.dokumentId;
-  const zielPasst = gleichesDokument && aktuell.dokumentFassung === ursprung.dokumentFassung;
+  const zielPasst =
+    !ersetzt && gleichesDokument && aktuell.dokumentFassung === ursprung.dokumentFassung;
   let hinweis: string | null = null;
-  if (!gleichesDokument) {
+  if (ersetzt) {
+    hinweis =
+      "Dieser Auftrag wurde inzwischen neu gebunden. " +
+      "Die Antwort bleibt beim alten Stand sichtbar und wird nicht übernommen.";
+  } else if (!gleichesDokument) {
     hinweis =
       "Diese Antwort gehört zu einem anderen Dokument. Klara ändert das aktuelle Dokument nicht.";
   } else if (!zielPasst) {
@@ -807,7 +1071,7 @@ export function nimmAntwortAn(
   }
   return {
     angenommen: true,
-    job: { ...job, status: "antwort_erhalten", teilergebnis: antwort.inhalt },
+    job: { ...job, status: ersetzt ? "ersetzt" : "antwort_erhalten", teilergebnis: antwort.inhalt },
     bezug: ursprung,
     paketId: job.paketId,
     anwendbar: zielPasst,
@@ -823,7 +1087,10 @@ export interface KiAussage {
   /** Fachlicher Gegenstand, an dem zwei Ergebnisse verglichen werden. */
   readonly thema: string;
   readonly wert: string;
-  /** Von der KI genannte Quellenkennungen. */
+  /**
+   * Von der KI genannte Quellen: `quelleId` oder `quelleId@fassung`. Eine Nennung ist nur eine
+   * BEHAUPTUNG der KI — bestätigt wird erst durch den Abgleich mit der Originalpassage.
+   */
   readonly quellen: readonly string[];
 }
 
@@ -836,21 +1103,40 @@ export interface KiErgebnis {
 }
 
 export type KiVergleichsstatus =
-  /** Beide sagen dasselbe UND mindestens eine genannte Originalquelle liegt im Paket. */
+  /**
+   * Beide sagen dasselbe UND der Wert steht wörtlich in einer Originalpassage einer genannten
+   * Quelle in genau der Fassung des Pakets. Nur dieser Status ist eine Quellenbestätigung.
+   */
   | "quelle_belegt"
-  /** Beide sagen dasselbe, aber keine im Paket vorhandene Originalquelle trägt es. */
+  /**
+   * Beide sagen dasselbe und nennen eine Quelle aus dem Paket — aber deren Originalpassage trägt
+   * den Wert nicht (abweichend, widersprechend oder andere Fassung). Unbestätigt.
+   */
+  | "quelle_genannt_unbestaetigt"
+  /** Beide sagen dasselbe, aber sie nennen keine Quelle aus dem Paket. Unbestätigt. */
   | "nur_uebereinstimmung"
   /** Fachlicher Unterschied zwischen den Ergebnissen. */
   | "unterschied"
   /** Nur eines der Ergebnisse äussert sich. */
   | "nur_einseitig";
 
+/** Die Fundstelle eines bestätigten Werts — nachvollziehbar bis zur Passage. */
+export interface KiFundstelle {
+  readonly quelleId: string;
+  readonly fassung: string;
+  readonly abschnittId: string;
+}
+
 export interface KiVergleichszeile {
   readonly thema: string;
   readonly status: KiVergleichsstatus;
   readonly werte: readonly [string | null, string | null];
-  /** Nur Quellen, die tatsächlich im Paket stehen — erfundene Kennungen fallen heraus. */
+  /** Genannte Quellen, die im Paket stehen — eine NENNUNG, noch keine Bestätigung. */
+  readonly genannteQuellen: readonly string[];
+  /** Genannte Quellen, deren Originalpassage den Wert in der Paketfassung wörtlich trägt. */
   readonly belegteQuellen: readonly string[];
+  readonly fundstellen: readonly KiFundstelle[];
+  /** Genannte Kennungen, die nicht im Paket stehen (erfunden oder fremd). */
   readonly unbekannteQuellen: readonly string[];
   readonly text: string;
 }
@@ -859,25 +1145,67 @@ function norm(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** `quelleId` oder `quelleId@fassung` zerlegen. */
+function zitat(roh: string): { readonly quelleId: string; readonly fassung: string | null } {
+  const at = roh.lastIndexOf("@");
+  return at > 0
+    ? { quelleId: roh.slice(0, at).trim(), fassung: roh.slice(at + 1).trim() }
+    : { quelleId: roh.trim(), fassung: null };
+}
+
 /**
- * AC09 — zwei Ergebnisse gegen die Originalquellen des Pakets vergleichen. Übereinstimmung zweier
- * Modelle ist KEIN unabhängiger Quellenbeleg (G19): ohne Originalquelle aus dem Paket bleibt eine
- * gemeinsame Aussage `nur_uebereinstimmung`.
+ * AC09 — zwei Ergebnisse gegen die Originalquellen des Pakets vergleichen.
+ *
+ * Nacharbeit 2 (Ben, AC09/G19): Quellennennung und bestätigte Aussage sind getrennt.
+ * `quelle_belegt` gibt es nur, wenn der übereinstimmende Wert WÖRTLICH (Gross-/Kleinschreibung
+ * und Leerraum normalisiert) in einer Originalpassage einer genannten Quelle steht, und zwar in der Fassung, die
+ * im Paket war. Nennt die KI eine abweichende Fassung, zählt die Nennung nicht. Übereinstimmung
+ * zweier Modelle allein ist KEIN Quellenbeleg — auch nicht, wenn sie eine Paketquelle nennen.
+ *
+ * Der Abgleich ist bewusst wörtlich und damit streng: eine sinngleiche Umformulierung bleibt
+ * unbestätigt und muss an der genannten Fundstelle vom Menschen geprüft werden.
  */
 export function vergleicheKiErgebnisse(
-  paket: Pick<KiKontextpaket, "quellenstand">,
+  paket: Pick<KiKontextpaket, "quellenstand" | "passagen">,
   a: KiErgebnis,
   b: KiErgebnis,
 ): readonly KiVergleichszeile[] {
-  const imPaket = new Set(paket.quellenstand.map((q) => q.quelleId));
+  const fassungImPaket = new Map(paket.quellenstand.map((q) => [q.quelleId, q.fassung]));
   const themen = [...new Set([...a.aussagen, ...b.aussagen].map((x) => norm(x.thema)))];
   return themen.map((thema) => {
     const xa = a.aussagen.find((x) => norm(x.thema) === thema);
     const xb = b.aussagen.find((x) => norm(x.thema) === thema);
-    const genannt = [...new Set([...(xa?.quellen ?? []), ...(xb?.quellen ?? [])])];
-    const belegteQuellen = genannt.filter((q) => imPaket.has(q));
-    const unbekannteQuellen = genannt.filter((q) => !imPaket.has(q));
+    const zitate = [...(xa?.quellen ?? []), ...(xb?.quellen ?? [])].map(zitat);
+    const genannteQuellen = [
+      ...new Set(zitate.filter((z) => fassungImPaket.has(z.quelleId)).map((z) => z.quelleId)),
+    ];
+    const unbekannteQuellen = [
+      ...new Set(zitate.filter((z) => !fassungImPaket.has(z.quelleId)).map((z) => z.quelleId)),
+    ];
     const werte = [xa?.wert ?? null, xb?.wert ?? null] as const;
+    const fundstellen: KiFundstelle[] = [];
+    if (xa && xb && norm(xa.wert) === norm(xb.wert) && norm(xa.wert).length > 0) {
+      const gesucht = norm(xa.wert);
+      for (const z of zitate) {
+        const fassung = fassungImPaket.get(z.quelleId);
+        if (fassung === undefined || (z.fassung !== null && z.fassung !== fassung)) continue;
+        for (const p of paket.passagen) {
+          if (p.quelleId !== z.quelleId || p.fassung !== fassung) continue;
+          if (!norm(p.text).includes(gesucht)) continue;
+          const schon = fundstellen.some(
+            (f) => f.quelleId === p.quelleId && f.abschnittId === p.abschnittId,
+          );
+          if (!schon) {
+            fundstellen.push({
+              quelleId: p.quelleId,
+              fassung: p.fassung,
+              abschnittId: p.abschnittId,
+            });
+          }
+        }
+      }
+    }
+    const belegteQuellen = [...new Set(fundstellen.map((f) => f.quelleId))];
     let status: KiVergleichsstatus;
     let text: string;
     if (!xa || !xb) {
@@ -886,17 +1214,91 @@ export function vergleicheKiErgebnisse(
     } else if (norm(xa.wert) !== norm(xb.wert)) {
       status = "unterschied";
       text = `${a.anbieter} und ${b.anbieter} unterscheiden sich fachlich — ${AN_QUELLE_PRUEFEN}`;
-    } else if (belegteQuellen.length > 0) {
+    } else if (fundstellen.length > 0) {
       status = "quelle_belegt";
-      text = `Übereinstimmend und durch ${belegteQuellen.join(", ")} belegt.`;
+      const orte = fundstellen.map((f) => `${f.quelleId} (Fassung ${f.fassung}, ${f.abschnittId})`);
+      text = `Übereinstimmend und wörtlich belegt in ${orte.join(", ")}.`;
+    } else if (genannteQuellen.length > 0) {
+      status = "quelle_genannt_unbestaetigt";
+      const genannt = genannteQuellen.join(", ");
+      text = `Beide KIs nennen ${genannt}, aber dort steht dieser Wert nicht. ${UNBESTAETIGT}`;
     } else {
       status = "nur_uebereinstimmung";
-      text =
-        "Beide KIs sagen dasselbe, aber keine Originalquelle belegt es. " +
-        "Übereinstimmung ist keine Bestätigung.";
+      text = `Beide KIs sagen dasselbe, aber keine Originalquelle belegt es. ${UNBESTAETIGT}`;
     }
-    return { thema, status, werte, belegteQuellen, unbekannteQuellen, text };
+    return {
+      thema,
+      status,
+      werte,
+      genannteQuellen,
+      belegteQuellen,
+      fundstellen,
+      unbekannteQuellen,
+      text,
+    };
   });
+}
+
+// ------------------------------------------------------------------------------------------------
+// Nacharbeit 2 — der Eintrag im BESTEHENDEN Verlauf (Klara-Gespräch, `klara-gespraech.ts`)
+// ------------------------------------------------------------------------------------------------
+
+/** Eine angenommene Antwort, gebunden an ihren Ursprung (AC07). */
+export interface KiAntwortEintrag {
+  readonly am: string;
+  readonly inhalt: string;
+  readonly anbieter: string;
+  readonly modell: string | null;
+  readonly weg: "api" | "manuell";
+  readonly paketId: string;
+  readonly anwendbar: boolean;
+  readonly hinweis: string | null;
+}
+
+/** Ein Beleg dieses Auftrags (AC10), mit Zeitpunkt. */
+export interface KiBelegEintrag extends KiBeleg {
+  readonly am: string;
+  readonly anbieterAnfrageId: string | null;
+  readonly modell: string | null;
+}
+
+/** Die tatsächliche Dateiwirkung eines Programmierauftrags (AC06). */
+export interface KiCodexWirkungEintrag {
+  readonly am: string;
+  readonly geschrieben: ReadonlyArray<{
+    readonly pfad: string;
+    readonly art: "anlegen" | "aendern";
+    readonly bytes: number;
+    readonly sha256: string;
+  }>;
+  readonly abgelehnt: ReadonlyArray<{ readonly pfad: string; readonly grund: string }>;
+  readonly abgelehnteAktionen: readonly string[];
+}
+
+/**
+ * Ein KI-Auftrag im Verlauf: Auftrag, ausdrücklich freigegebene Quellen, das gebundene Paket, der
+ * Jobstand, Antworten, Belege und eine etwaige Dateiwirkung. Er gehört zum Gespräch — und damit
+ * genau einem Konto — und wird mit dem Gespräch gelöscht.
+ */
+export interface KiAuftragEintrag {
+  readonly auftrag: {
+    readonly ziel: string;
+    readonly ergebnisformat: KiErgebnisformat;
+    readonly offenePunkte: readonly string[];
+  };
+  /** Die vom Nutzer gewählten Quellen (Kennungen). */
+  readonly quellen: readonly string[];
+  /** Dokumentbezogene Freigabe in diesem Auftrag: diese Quellen dürfen hinaus. */
+  readonly freigegebeneQuellen: readonly string[];
+  /** Ausdrücklich zurückgenommene Freigaben — für diesen Auftrag geschlossen. */
+  readonly geschlosseneQuellen: readonly string[];
+  readonly paket: KiKontextpaket;
+  readonly job: KiJob;
+  readonly antworten: readonly KiAntwortEintrag[];
+  readonly belege: readonly KiBelegEintrag[];
+  readonly codexWirkungen: readonly KiCodexWirkungEintrag[];
+  readonly angelegtAm: string;
+  readonly geaendertAm: string;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -912,7 +1314,11 @@ export type KiBelegklasse =
 export interface KiBelegEreignis {
   readonly faehigkeit: KiFaehigkeit;
   readonly adapter?: KiAdapter | undefined;
-  /** Kennung der Anfrage beim Anbieter, aus dessen Antwort — nicht lokal erzeugt. */
+  /**
+   * Ergebniskennung des TATSÄCHLICHEN Laufs: die Kennung des Eintrags im Modelllauf-Protokoll
+   * (`services/model-runs`), der Anbieter, Modell und den von der Modell-API gemeldeten Verbrauch
+   * trägt. Nie eine im Dienst erfundene Kennung.
+   */
   readonly anbieterAnfrageId?: string | undefined;
   /** Gemessener Verbrauch laut Anbieterantwort (z. B. Token). */
   readonly verbrauch?: { readonly einheit: string; readonly menge: number } | undefined;
