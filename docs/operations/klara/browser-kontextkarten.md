@@ -236,6 +236,15 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     über den regulären Lieferweg nach `main` (Merge durch die Liefersteuerung). Danach werden die
     zwei Anschlussstellen eingesetzt, dann folgen Bau, Einrichtung und der reale AC10-Rundweg
     durch die Führung.
+  - Stand Nacharbeit 14: unverändert blockiert. `ff96149e` ist weiterhin kein Vorfahr des
+    Kandidaten (`git merge-base --is-ancestor`, Exit 1). Es fehlt der Merge durch die
+    Liefersteuerung, keine weitere Produktarbeit dieser Bahn. Sobald der Merge vorliegt, sind
+    diese Schritte nötig:
+    1. Im Host `quelle.anmelden(...)`/`quelle.anmelden(nil)` an die Anmeldemeldung der Webfläche
+       `/begleiter` anschließen.
+    2. `quelle.beiAenderung` an die Kartenanzeige der Webfläche anschließen, wobei `nil` die
+       Anzeige leert.
+    3. `quelle.beobachten()` beim Start aufrufen.
 
   Der Server-Sitzungsweg bleibt daneben angeschlossen. Er trägt Erklärung und Belege; der
   Begleiter bekommt die gebundene Karte.
