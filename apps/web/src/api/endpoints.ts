@@ -411,6 +411,21 @@ export type KoAction =
   // R-0507: der benannte Eigentümer gibt inhaltlich frei (Recht `ko.validate`, sonst 403).
   // ADMIN-09: `expectedVersion` = die geprüfte Fassung (in Spaces mit Freigaberegel Pflicht).
   | { action: "owner-validate"; duplicateAcknowledged?: true; expectedVersion?: number }
+  // Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis am Konto)
+  // samt Sichtung, und die Sichtung durch die benannte verantwortliche Person.
+  // Beide tragen PFLICHT die gelesene Fassung (`expectedVersion`, sonst 400; weicht sie ab, 409
+  // `KO_STALE` mit `currentVersion` — es wird nichts entschieden).
+  | {
+      action: "weisung-validate";
+      sichtung: { verantwortlich: string; frist: string };
+      expectedVersion: number;
+      duplicateAcknowledged?: true;
+    }
+  | {
+      action: "weisung-sichten";
+      sichtung: { ergebnis: "bestaetigt" | "widerrufen" };
+      expectedVersion: number;
+    }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -481,12 +496,15 @@ export type KoAction =
         clearBody?: true;
         baseVersion: number;
         origin?: string;
+        /** package:pruefablauf: die benannte Prüfperson; der Server prüft ihr Freigaberecht. */
+        pruefer?: string;
       };
     }
   | {
       action: "decide-proposal";
       proposalId: string;
-      decision: "uebernehmen" | "ablehnen";
+      /** `rueckfrage` entscheidet nichts: der Vorschlag bleibt offen, `note` ist die Frage. */
+      decision: "uebernehmen" | "ablehnen" | "rueckfrage";
       note?: string;
       expectedVersion?: number;
     }
@@ -1269,6 +1287,11 @@ export const endpoints = {
       draftId?: string;
     }) => api.post<ObjectRef>("/objects", input),
     read: (id: string) => api.get<ObjectContent>(`/objects/${id}`),
+    // R-0095: der Rückverweis vom Anhang — die lesbaren Wissensobjekte, die ihn tragen.
+    traeger: (id: string) =>
+      api.get<{ traeger: { id: string; title: string }[] }>(
+        `/objects/${encodeURIComponent(id)}/traeger`,
+      ),
   },
   // SCRUM-382: Video-/Audio-Analyse — Transkript serverseitig (Schlüssel bleibt im Backend).
   media: {
@@ -1653,6 +1676,10 @@ export const endpoints = {
     // R-0582: der Admin berichtigt Name und E-Mail — dieselbe Route, die Antwort ist der neue Stand.
     correct: (id: string, name: string, email: string) =>
       api.put<PublicUser>(`/users/${id}`, { name, email }),
+    // Aufnahme gesamt-peer-validierung (Antwort 18): die fachliche Weisungsbefugnis vergeben
+    // (Bereiche) oder entziehen (`null`) — dieselbe Route, die Antwort ist der neue Stand.
+    setWeisungsbefugnis: (id: string, bereiche: string[] | null) =>
+      api.put<PublicUser>(`/users/${id}`, { weisungsbefugnis: bereiche }),
   },
   // ==============================================================================================
   // JOB 4154 · WIKI-GESAMTANWEISUNG — NEUN ADRESSEN, UND JEDE SCHREIBENDE TRÄGT DEN GELESENEN STAND.

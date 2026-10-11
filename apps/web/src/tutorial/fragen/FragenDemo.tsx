@@ -60,6 +60,7 @@ import { attributeSources } from "../../lib/askCitedSources";
 import { conflictAwareSourceRefs } from "../../lib/askView";
 import { anzeigestatusAus } from "../../lib/displayStatus";
 import { useAiAvailable } from "../../lib/useAiAvailable";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import type { TutorialDemoProps, TutorialUebergangProps } from "../typen";
 
 /** Takt der Tippvorführung je Zeichen (ms). */
@@ -134,7 +135,7 @@ function demoZeile(
     throw new Error("Demo-Quelle ohne Zeile");
   }
   const stand = anzeigestatusAus(ko, { konflikt: ref.conflictLimited }).status;
-  const standWort = t(`status.${stand}`, {});
+  const standWort = t(statusSchluessel(stand), {});
   return {
     ...ref,
     verwendung: unsicher ? "unbekannt" : "verwendet",

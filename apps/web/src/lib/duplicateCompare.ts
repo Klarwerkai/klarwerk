@@ -1,6 +1,7 @@
 import type { CandidateSource, Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
 import { LEAD_METRIC_TEXT, type LeadMetric, overlapDetectorInfo } from "./duplicateBoard";
 import { htmlToPlainText } from "./richText";
+import { statusSchluessel } from "./wissensstatus";
 
 export type CompareTone = "green" | "yellow" | "red";
 export type CompareScoreSource = "detector" | "heuristic" | "mixed";
@@ -216,7 +217,7 @@ function hintsText(ko: KnowledgeObject): string {
 function trustStatusText(ko: KnowledgeObject, t: Translate): string {
   return t("dcmp.trustStatus", {
     trust: ko.trust,
-    status: t(`status.${ko.status}`),
+    status: t(statusSchluessel(ko.status)),
     needed: ko.neededValidations,
   });
 }

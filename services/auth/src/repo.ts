@@ -1,5 +1,5 @@
 import type { TxContext } from "../../db-tx";
-import type { Session, User } from "./types";
+import type { Session, User, Weisungsbefugnis } from "./types";
 
 // Persistenz-Schnittstellen. Die In-Memory-Implementierung dient Tests und Dev;
 // der Postgres-Adapter (Testcontainers-Integrationstests) folgt, sobald Docker bereitsteht.
@@ -69,6 +69,17 @@ export interface UserRepo {
    * schreibt die eigene Spalte hier — getrennt von `update`, dessen Spaltenliste unverändert bleibt.
    */
   setzeVerzeichnisGruppen?(id: string, gruppen: readonly string[], tx?: TxContext): Promise<void>;
+  /**
+   * Aufnahme gesamt-peer-validierung (Antwort 18): die Weisungsbefugnis eines Kontos festschreiben
+   * oder (`undefined`) entfernen. OPTIONAL aus demselben Grund wie `setzeVerzeichnisGruppen`: die
+   * Speicherablage hält das ganze Konto; die Datenbank schreibt die eigene Spalte — getrennt von
+   * `update`, dessen Spaltenliste unverändert bleibt.
+   */
+  setzeWeisungsbefugnis?(
+    id: string,
+    befugnis: Weisungsbefugnis | undefined,
+    tx?: TxContext,
+  ): Promise<void>;
 }
 
 export interface SessionRepo {

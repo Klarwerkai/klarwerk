@@ -237,6 +237,8 @@ function standSatz(stand: number): string {
 }
 const WORT = (schluessel: string): string =>
   String(i18n.getResource("de", "translation", schluessel));
+/** Nutzerentscheid Antwort 54: der validierte Zustand heisst sichtbar „Fachlich bestätigt". */
+const BESTAETIGT = "pruefablauf.wissensstatus.validiert";
 /** Der Zähler trägt einen Plural — er muss durch die Übersetzung, nicht an ihr vorbei. */
 const GEZAEHLT = (n: number): string => i18n.t("lib.liste.eintraege", { count: n });
 
@@ -265,7 +267,7 @@ describe("JOB 3072 R2 · BEN-1 — die Suche frischt auf, der KO-Bestand nicht",
   it("BEN-1 · nach erfolgreicher Suchauffrischung folgen Wort und Ton dem NEUEN Objekt", () => {
     mount();
     expect(zeilenTitel("k-wandel")).toBe("Erste Fassung");
-    expect(zeilenWort("k-wandel")).toBe(WORT("status.validiert"));
+    expect(zeilenWort("k-wandel")).toBe(WORT(BESTAETIGT));
     expect(zeilenTon("k-wandel")).toBe("pos");
 
     // Die Suche antwortet neu — neues Objekt, anderer Kern-Enum. Der KO-Bestand ist Zeichen für
@@ -374,7 +376,7 @@ describe("JOB 3072 R2 · BEN-2 — die Statusquelle scheitert, die Suche nicht",
     neuZeichnen();
 
     expect(hinweisTexte()).toHaveLength(0);
-    expect(zeilenWort("k-alt")).toBe(WORT("status.validiert"));
+    expect(zeilenWort("k-alt")).toBe(WORT(BESTAETIGT));
     expect(zaehler()).toBe(GEZAEHLT(1));
   });
 
@@ -504,7 +506,7 @@ describe("JOB 3072 R4 · BEN-3 — der Weg zurück zur Frische, und das Schweige
 
     expect(hinweisTexte()).toHaveLength(0);
     expect(erneutKnoepfe()).toHaveLength(0);
-    expect(zeilenWort("k-alt")).toBe(WORT("status.validiert"));
+    expect(zeilenWort("k-alt")).toBe(WORT(BESTAETIGT));
     expect(zaehler()).toBe(GEZAEHLT(1));
   });
 

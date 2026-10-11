@@ -109,6 +109,8 @@ const VERBOTENE_WOERTER = [
   "Gecontroleerd",
   "validiert",
   "Validiert",
+  // Antwort 54 (11.10.2026): der sichtbare Name des validierten Zustands — ebenso ausgeschlossen.
+  "Fachlich bestätigt",
 ] as const;
 
 // Dieselbe Menge als EIN Muster — BEWUSST OHNE Wortgrenzen, und das ist gemessen, nicht erwogen:

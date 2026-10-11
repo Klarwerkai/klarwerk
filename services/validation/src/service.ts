@@ -1,6 +1,6 @@
 import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
-import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
+import type { KnowledgeObject, KoFilter, KoService, Kontoregel } from "../../knowledge-object";
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
 import { ownershipOf, responsibleKindOf, responsibleOf } from "../../knowledge-object";
@@ -10,7 +10,16 @@ import {
   type ValidationSettingsRepo,
   normalizeDefaultNeeded,
 } from "./settings";
-import { TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
+import {
+  type KonfliktArt,
+  PRUEFER_GEWICHT,
+  TRUST_MAX,
+  type ValidationOutcome,
+  computeOutcome,
+  prueferStufe,
+  quellenArtVon,
+  vertrauenNachWahrheitskonflikt,
+} from "./trust";
 import type { Assignment, Rating } from "./types";
 import { ValidationError, type Verdict } from "./types";
 
@@ -30,11 +39,15 @@ function ratingVersion(r: { koVersion?: number }): number {
  */
 function pruefeErwarteteFassung(aktuell: number, erwartet: number | undefined): void {
   if (erwartet !== undefined && erwartet !== aktuell) {
-    throw new ValidationError(
-      "KO_STALE",
-      `Das Wissensobjekt wurde inzwischen überarbeitet (jetzt Fassung ${aktuell}, geprüft wurde Fassung ${erwartet}). Es wurde nichts entschieden.`,
-    );
+    throw veralteteFassung(aktuell, erwartet);
   }
+}
+
+function veralteteFassung(aktuell: number, erwartet: number): ValidationError {
+  return new ValidationError(
+    "KO_STALE",
+    `Das Wissensobjekt wurde inzwischen überarbeitet (jetzt Fassung ${aktuell}, geprüft wurde Fassung ${erwartet}). Es wurde nichts entschieden.`,
+  );
 }
 
 export interface AssignmentSummary {
@@ -200,6 +213,10 @@ export interface ValidationServiceDeps {
   // SCRUM-395: persistierte Admin-Einstellung „Standard-Prüferanzahl" (optional —
   // ohne Repo gilt der feste Fallback aus settings.ts).
   settings?: ValidationSettingsRepo;
+  // R-0256: die Arten der OFFENEN Konflikte eines Objekts, damit die Neuberechnung beim Bewerten die
+  // Konfliktwirkung je Art trägt, statt sie wegzurechnen. Optional — ohne Verdrahtung gilt die
+  // reine Stimmenformel wie bisher (Test-Doubles, Werkzeuge).
+  offeneKonfliktArten?: (koId: string) => Promise<KonfliktArt[]>;
 }
 
 export class ValidationService {
@@ -209,6 +226,7 @@ export class ValidationService {
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly settings: ValidationSettingsRepo | undefined;
+  private readonly offeneKonfliktArten: ((koId: string) => Promise<KonfliktArt[]>) | undefined;
 
   constructor(deps: ValidationServiceDeps) {
     this.koService = deps.koService;
@@ -217,6 +235,7 @@ export class ValidationService {
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.settings = deps.settings;
+    this.offeneKonfliktArten = deps.offeneKonfliktArten;
   }
 
   // SCRUM-395: Standard-Prüferanzahl für neue Einreichungen — Admin-Wert, sonst Fallback 3.
@@ -280,23 +299,57 @@ export class ValidationService {
       vorherige: Rating | undefined;
       all: Rating[];
       outcome: ValidationOutcome;
+      grundlage: { ohneKonflikte: number; konflikte: KonfliktArt[] };
+      /** AW06-K02: die zur Entscheidung geltende Freigabezahl der bewerteten Fassung. */
+      benoetigt: number;
       zuweisung: Assignment | undefined;
     }
     let stand: Stimmenlage | undefined;
-    const lese = async (): Promise<Stimmenlage> => {
+    // `aktuell` ist das Objekt, wie die Klammer es unter dem KO-Lock gelesen hat (ohne: das oben
+    // gelesene). Seine Belegstellen bestimmen die Quellenarten (R-0256).
+    //
+    // Aufnahme gesamt-peer-validierung (Ben, Nacharbeit 1): AUCH DER KONFLIKTBESTAND UND DIE
+    // PRÜFERFAHRUNG WERDEN HIER GELESEN — je Versuch, unter dem KO-Lock. Vorher kam der
+    // Konfliktbestand einmal VOR der Klammer; ein in der Lücke angelegter Wahrheitskonflikt fehlte,
+    // und die Bewertung schrieb „99" über dessen Strafe, auch im erneuten Versuch nach STALE_WRITE.
+    // Keine rekursive Sperre: die Konfliktabfrage liest Fassungen über `aktuelleFassungVon`
+    // (ungesperrt), die Erfahrung kommt aus dem Bewertungsspeicher. `markTruthConflictReview` nimmt
+    // seinerseits denselben Lock und wartet daher, bis diese Klammer geschrieben hat.
+    const lese = async (aktuell: KnowledgeObject = ko): Promise<Stimmenlage> => {
       const bisher = await this.ratings.listByKo(koId);
       const vorherige = bisher.find((r) => r.userId === userId);
       const all = vorherige
         ? bisher.map((r) => (r.userId === userId ? bewertung : r))
         : [...bisher, bewertung];
       // Nur Bewertungen der aktuell bewerteten Version zählen (stale Vorversions-Bewertungen ausgeschlossen).
-      const currentVotes = all
-        .filter((r) => ratingVersion(r) === ratedVersion)
-        .map((r) => r.verdict);
+      const current = all.filter((r) => ratingVersion(r) === ratedVersion);
+      const [offeneKonflikte, erfahrung] = await Promise.all([
+        this.offeneKonfliktArten?.(koId) ?? Promise.resolve([] as KonfliktArt[]),
+        this.ratings.fruehereBewertungen?.(
+          current.map((r) => r.userId),
+          koId,
+        ) ?? Promise.resolve(new Map<string, number>()),
+      ]);
+      // R-0254: jede Stimme mit dem Gewicht der Prüferstufe ihrer Person.
+      const stimmen = current.map((r) => ({
+        verdict: r.verdict,
+        gewicht: PRUEFER_GEWICHT[prueferStufe(erfahrung.get(r.userId) ?? 0)],
+      }));
+      const quellenArten = (aktuell.sources ?? []).map(quellenArtVon);
       stand = {
         vorherige,
         all,
-        outcome: computeOutcome(currentVotes, ko.neededValidations),
+        outcome: computeOutcome(stimmen, aktuell.neededValidations, {
+          offeneKonflikte,
+          quellenArten,
+        }),
+        // Ben, Nacharbeit 3: die Grundlage desselben Werts — ohne Konflikte und die eingerechneten
+        // Arten —, damit die Wahrheitskonflikt-Folge nicht ein zweites Mal abzieht.
+        grundlage: {
+          ohneKonflikte: computeOutcome(stimmen, aktuell.neededValidations, { quellenArten }).trust,
+          konflikte: [...new Set(offeneKonflikte)],
+        },
+        benoetigt: aktuell.neededValidations,
         zuweisung: await this.assignments.find(koId, userId),
       };
       return stand;
@@ -305,7 +358,7 @@ export class ValidationService {
     // Rücknahme für den Weg OHNE Transaktion: was `beleg` unten geschrieben hat, rückwärts zurück.
     const rueckwaerts: Array<() => Promise<void>> = [];
     const beleg = async (tx?: TxContext): Promise<ValidationDecisionRefWert> => {
-      const { vorherige, zuweisung } = stand ?? (await lese());
+      const { vorherige, zuweisung, benoetigt } = stand ?? (await lese());
       await this.ratings.upsert(bewertung, tx);
       rueckwaerts.push(async () => {
         if (vorherige) {
@@ -318,12 +371,21 @@ export class ValidationService {
       // eine spaetere Suche nach „dem passenden Eintrag" ist ausdruecklich verboten.
       // `koVersion` reist bewusst im Payload mit: die Entscheidung gilt fuer die BEWERTETE Fassung,
       // und nur so kann ein Leser spaeter `WRONG_SUBJECT` von „passt" unterscheiden.
+      //
+      // AW06-K02 (Ben, Nacharbeit 4): der Beleg nennt auch die KONTOREGEL, unter der diese Stimme
+      // zählt — der Bewertungsweg mit der Freigabezahl, die für die bewertete Fassung GALT. Der
+      // heutige Objektzustand könnte das nicht ersetzen: die Zahl lässt sich später ändern.
       const eintrag = await this.audit?.record(
         {
           actor: userId,
           action: "ko.rated",
           target: koId,
-          payload: { verdict, koVersion: ratedVersion },
+          payload: {
+            verdict,
+            koVersion: ratedVersion,
+            kontoregel: "peer-pruefung" satisfies Kontoregel,
+            benoetigt,
+          },
         },
         tx,
       );
@@ -373,10 +435,15 @@ export class ValidationService {
     // Compare-and-Set; ein zwischenzeitliches `revise` erbt den Verweis nicht.
     const { geschrieben, ref } = await this.koService.setValidationStateMitBeleg(
       koId,
-      async () => {
+      async (aktuell) => {
         rueckwaerts.length = 0;
-        const { outcome } = await lese();
-        return { trust: outcome.trust, status: outcome.status };
+        const { outcome, grundlage } = await lese(aktuell);
+        // AW06-K02 (Ben, Nacharbeit 7): die ANNAHME ist die grüne Stimme, mit der die Fassung nach
+        // „validiert" übergeht. Eine weitere Stimme an der schon validierten Fassung — grün oder
+        // gelb — verdrängt sie nicht; eine gelbe wird nie zur Annahme.
+        const annahme =
+          verdict === "up" && outcome.status === "validiert" && aktuell.status !== "validiert";
+        return { trust: outcome.trust, status: outcome.status, grundlage, annahme };
       },
       { expectedVersion: ratedVersion, beiVersionswechsel: "nurBeleg" },
       beleg,
@@ -435,7 +502,8 @@ export class ValidationService {
       ref,
     } = await this.koService.setValidationStateMitBeleg(
       koId,
-      async () => ({ trust: TRUST_MAX, status: "validiert" }),
+      // AW06-K02: die Admin-Freigabe ist eine ausdrückliche Annahme dieser Fassung.
+      async () => ({ trust: TRUST_MAX, status: "validiert", annahme: true }),
       { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
       async (tx) =>
         refAus(
@@ -444,7 +512,11 @@ export class ValidationService {
               actor: actorId,
               action: "ko.admin-validated",
               target: koId,
-              payload: { koVersion: geleseneFassung },
+              // AW06-K02: die direkte Annahme durch ein Konto mit Freigaberecht.
+              payload: {
+                koVersion: geleseneFassung,
+                kontoregel: "direktannahme" satisfies Kontoregel,
+              },
             },
             tx,
           ),
@@ -487,6 +559,16 @@ export class ValidationService {
       status: "validiert",
       validationDecisionRef: referenz,
     };
+  }
+
+  /**
+   * Ben, Nacharbeit 3 — die Folge eines neuen Wahrheitskonflikts für EIN Objekt: validiert → offen,
+   * Vertrauenswert aus derselben Grundlage wie die Bewertung (`vertrauenNachWahrheitskonflikt`).
+   * Unter dem KO-Lock wie die Bewertungsklammer; ein schon eingerechneter Wahrheitskonflikt wird
+   * nicht ein zweites Mal abgezogen. Offene oder fehlende Objekte bleiben unberührt.
+   */
+  async wahrheitskonfliktFolge(koId: string, actor: string): Promise<KnowledgeObject | undefined> {
+    return this.koService.markTruthConflictReview(koId, actor, vertrauenNachWahrheitskonflikt);
   }
 
   // ==============================================================================================
@@ -540,7 +622,19 @@ export class ValidationService {
         if (ownershipOf(frisch)?.owner !== actorId) {
           throw nichtEigentuemer();
         }
-        return { trust: frisch.trust, status: "validiert" };
+        // Aufnahme gesamt-peer-validierung (Integration mit R-0507): der Wert bleibt — dann bleibt
+        // auch seine Grundlage, sofern sie zu genau diesem Wert gehört. Sonst rechnete eine spätere
+        // Wahrheitskonflikt-Folge einen schon eingerechneten Konflikt ein zweites Mal ein.
+        const g = frisch.vertrauensGrundlage;
+        return {
+          trust: frisch.trust,
+          status: "validiert",
+          // AW06-K02: auch die Eigentümerfreigabe ist eine ausdrückliche Annahme.
+          annahme: true,
+          ...(g && g.trust === frisch.trust
+            ? { grundlage: { ohneKonflikte: g.ohneKonflikte, konflikte: g.konflikte } }
+            : {}),
+        };
       },
       { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
       async (tx) =>
@@ -550,7 +644,11 @@ export class ValidationService {
               actor: actorId,
               action: "ko.owner-validated",
               target: koId,
-              payload: { koVersion: geleseneFassung },
+              // AW06-K02: auch diese Annahme nennt ihre Kontoregel.
+              payload: {
+                koVersion: geleseneFassung,
+                kontoregel: "eigentuemerfreigabe" satisfies Kontoregel,
+              },
             },
             tx,
           ),
@@ -567,6 +665,222 @@ export class ValidationService {
     }
     await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
     // Die Antwort aus dem TATSÄCHLICH gespeicherten Stand — nicht aus dem Vorab-Lesen.
+    return {
+      ...votes,
+      trust: gespeichert.trust,
+      status: gespeichert.status,
+      validationDecisionRef: ref,
+    };
+  }
+
+  // ==============================================================================================
+  // ANTWORTEN 18/19 (Nutzerentscheid 11.10.2026) — DIE UNMITTELBAR GÜLTIGE WEISUNG.
+  // ==============================================================================================
+  //
+  // Wer eine fachliche Weisungsbefugnis für den Bereich trägt, stellt eine EIGENE Weisung
+  // unmittelbar gültig ein. Die Befugnis steht am Konto, nicht in der Rolle; `deckt` ist ihre Regel
+  // (`weisungsbefugnisDeckt` in services/auth), von der Route übergeben — validation hängt nicht von
+  // auth ab. Derselbe Schreibweg wie `ownerValidate`: Compare-and-Set gegen die gelesene Fassung,
+  // Zustand und Beleg in einer Klammer, Vertrauen aus den Stimmen (eine Weisung ist eine
+  // Entscheidung, keine zusätzliche Evidenz). Dazu bindet die Klammer die nachfolgende Sichtung —
+  // verantwortliche Person und Frist — an genau diesen Beleg.
+  //
+  // UNTER DEM KO-LOCK geprüft (frisch gelesen): die Weisung ist die eigene (`author`) und der
+  // Bereich des Objekts liegt in der Befugnis. Eine Kategorieänderung zwischen Vorab-Lesen und
+  // Schreiben erhöht die Inhaltsfassung nicht — der Compare-and-Set sähe sie nicht.
+  //
+  // Ben, Nacharbeit 11:
+  //   · FASSUNGSBINDUNG (AW06-K02): `erwarteteFassung` ist die Fassung, die der Mensch gelesen hat.
+  //     Weicht sie ab — beim Lesen oder bis zum Schreiben —, wird nichts entschieden (KO_STALE).
+  //   · KONFLIKT (Antwort 19: gültig, „solange kein … Konflikt vorliegt"): ein offener
+  //     Wahrheitskonflikt am Objekt verhindert die Weisung (CONFLICT). Er wird über den bestehenden
+  //     Konfliktweg entschieden; danach ist die Weisung wieder möglich.
+  async weisungValidate(
+    koId: string,
+    actorId: string,
+    weisung: {
+      deckt: (bereich: string) => boolean;
+      verantwortlich: string;
+      frist: string;
+      erwarteteFassung: number;
+    },
+  ): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    pruefeErwarteteFassung(ko.version, weisung.erwarteteFassung);
+    const pruefe = (frisch: KnowledgeObject): string => {
+      if (frisch.author !== actorId) {
+        throw new ValidationError(
+          "NOT_OWNER",
+          "Unmittelbar gültig einstellen lässt sich nur die eigene Weisung.",
+        );
+      }
+      const bereich = (frisch.category ?? "").trim();
+      if (!weisung.deckt(bereich)) {
+        throw new ValidationError(
+          "FORBIDDEN",
+          "Für diesen Bereich ist an Ihrem Konto keine Weisungsbefugnis eingetragen.",
+        );
+      }
+      return bereich;
+    };
+    pruefe(ko);
+    if (weisung.verantwortlich === actorId) {
+      throw new ValidationError(
+        "INVALID",
+        "Die Sichtung übernimmt eine andere Person als die Weisungsgeberin.",
+      );
+    }
+    const geleseneFassung = ko.version;
+    let bereich = "";
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async (frisch) => {
+        bereich = pruefe(frisch);
+        const offen = (await this.offeneKonfliktArten?.(koId)) ?? [];
+        if (offen.includes("truth")) {
+          throw new ValidationError(
+            "CONFLICT",
+            "Zu diesem Wissensobjekt ist ein Wahrheitskonflikt offen. Die Weisung gilt erst, wenn er entschieden ist. Es wurde nichts entschieden.",
+          );
+        }
+        const g = frisch.vertrauensGrundlage;
+        return {
+          trust: frisch.trust,
+          status: "validiert",
+          annahme: true,
+          weisung: {
+            erteiltVon: actorId,
+            bereich,
+            verantwortlich: weisung.verantwortlich,
+            frist: weisung.frist,
+          },
+          ...(g && g.trust === frisch.trust
+            ? { grundlage: { ohneKonflikte: g.ohneKonflikte, konflikte: g.konflikte } }
+            : {}),
+        };
+      },
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.weisung-validated",
+              target: koId,
+              payload: {
+                koVersion: geleseneFassung,
+                kontoregel: "weisung" satisfies Kontoregel,
+                bereich,
+                sichtung: { verantwortlich: weisung.verantwortlich, frist: weisung.frist },
+              },
+            },
+            tx,
+          ),
+        ),
+    );
+    if (!geschrieben) {
+      // Die Fassung hat sich zwischen Lesen und Schreiben bewegt: keine Entscheidung.
+      throw veralteteFassung(gespeichert.version, geleseneFassung);
+    }
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+    await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
+    return {
+      ...votes,
+      trust: gespeichert.trust,
+      status: gespeichert.status,
+      validationDecisionRef: ref,
+    };
+  }
+
+  /**
+   * Antwort 19 — DIE NACHFOLGENDE SICHTUNG. Nur die benannte verantwortliche Person sichtet, und nur
+   * die offene Sichtung der gültig gesetzten Fassung. `bestaetigt` lässt die Weisung stehen;
+   * `widerrufen` nimmt sie zurück: Status offen, die Annahme der Fassung entfällt, das Vertrauen
+   * bleibt, wie es die Stimmen ergeben. Beleg `ko.weisung-gesichtet` (mit `ergebnis`).
+   *
+   * Ben, Nacharbeit 11: die Sichtung ist an die gelesene Fassung gebunden (`erwarteteFassung`,
+   * sonst KO_STALE), und die benannte Person muss die Befugnis JETZT noch haben — `darf` ist das
+   * aktuelle Kontourteil (freigegeben, Prüfrecht oder Weisungsbefugnis für den Bereich), geprüft
+   * gegen den frisch gelesenen Bereich. Ist sie entzogen, wird nichts entschieden (FORBIDDEN).
+   */
+  async weisungSichten(
+    koId: string,
+    actorId: string,
+    ergebnis: "bestaetigt" | "widerrufen",
+    opts: { erwarteteFassung: number; darf: (bereich: string) => boolean },
+  ): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    pruefeErwarteteFassung(ko.version, opts.erwarteteFassung);
+    const pruefe = (frisch: KnowledgeObject): void => {
+      const s = frisch.weisungsSichtung;
+      if (!s || s.koVersion !== frisch.version || s.ergebnis || frisch.status !== "validiert") {
+        throw new ValidationError(
+          "INVALID",
+          "Zu dieser Fassung ist keine Weisung offen zu sichten.",
+        );
+      }
+      if (s.verantwortlich !== actorId) {
+        throw new ValidationError(
+          "FORBIDDEN",
+          "Sichten kann nur die für diese Weisung benannte verantwortliche Person.",
+        );
+      }
+      if (!opts.darf((frisch.category ?? "").trim())) {
+        throw new ValidationError(
+          "FORBIDDEN",
+          "Ihrem Konto fehlt inzwischen das Prüfrecht oder die Weisungsbefugnis für diesen Bereich. Es wurde nichts entschieden.",
+        );
+      }
+    };
+    pruefe(ko);
+    const geleseneFassung = ko.version;
+    const am = new Date().toISOString();
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async (frisch) => {
+        pruefe(frisch);
+        const g = frisch.vertrauensGrundlage;
+        return {
+          trust: frisch.trust,
+          status: ergebnis === "widerrufen" ? "offen" : "validiert",
+          sichtung: { art: ergebnis, von: actorId, am },
+          ...(g && g.trust === frisch.trust
+            ? { grundlage: { ohneKonflikte: g.ohneKonflikte, konflikte: g.konflikte } }
+            : {}),
+        };
+      },
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.weisung-gesichtet",
+              target: koId,
+              payload: { koVersion: geleseneFassung, ergebnis },
+            },
+            tx,
+          ),
+        ),
+    );
+    if (!geschrieben) {
+      throw veralteteFassung(gespeichert.version, geleseneFassung);
+    }
+    const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
     return {
       ...votes,
       trust: gespeichert.trust,

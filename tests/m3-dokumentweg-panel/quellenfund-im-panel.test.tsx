@@ -224,7 +224,8 @@ describe("JOB 3243 · M3c-UI · der Quellenfund im ausgelieferten Aufgabenfenste
     await fragen(p);
     const fund = p.text("#quellenfund-liste");
     expect(p.text("#quellenfund-stand")).toBe("Quellenfund im Volltext (2):");
-    expect(fund).toContain("Validiert");
+    // Antwort 54 (11.10.2026): der validierte Wissensstatus heisst „Fachlich bestätigt".
+    expect(fund).toContain("Fachlich bestätigt");
     // Ein Prüfstand, den die Route nicht liefert, heisst ehrlich „Status unbekannt" —
     // kein Platzhalter, kein stilles Hochstufen.
     expect(fund).toContain("Status unbekannt");
