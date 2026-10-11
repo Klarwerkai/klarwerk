@@ -172,6 +172,7 @@ async function firmaA(optionen: { modell?: boolean } = {}) {
       { nutzer: ids.erik, recht: "schreiben" },
     ],
     ansichten: [],
+    kontext: "partner",
     partner: "Alpha GmbH",
   };
   const alpha = await space(app, k.carla, alphaEingabe);
@@ -182,6 +183,7 @@ async function firmaA(optionen: { modell?: boolean } = {}) {
     zugang: "mitglieder",
     mitglieder: [],
     ansichten: [],
+    kontext: "partner",
     partner: "Beta AG",
   });
   const werkstatt = await space(app, k.carla, {
@@ -254,9 +256,11 @@ async function firmaB() {
     name: "Partner Alpha",
     zweck: "Austausch der Firma B mit derselben Partnerfirma.",
     verantwortlich: n.get("Bodo Admin") ?? "",
-    zugang: "alle",
+    // Ein Partnerbereich ist nie für alle offen (gesamt-wissensprojekte); Bodo liest als Zuständiger.
+    zugang: "mitglieder",
     mitglieder: [],
     ansichten: [],
+    kontext: "partner",
     partner: "Alpha GmbH",
   });
   const eigen = await eintrag(app, bodo, "FirmaB");
@@ -588,10 +592,11 @@ describe("K6 · Rechtekontext und Widerruf wirken mit der nächsten Anfrage", ()
       method: "PUT",
       url: `/api/spaces/${a.spaces.alpha}`,
       headers: a.k.carla,
-      payload: { ...a.alphaEingabe, version: 1, partner: null },
+      // Seit der Zusammenführung mit main: Rückkehr zur eigenen Firma über den Kontext.
+      payload: { ...a.alphaEingabe, version: 1, kontext: "firma", partner: null },
     });
     expect(aufheben.statusCode, aufheben.body).toBe(200);
-    expect(aufheben.json().partner).toBeUndefined();
+    expect(aufheben.json()).toMatchObject({ kontext: "firma", partner: null });
     expect(await liste(a, a.k.erik, "firmenbereich=partner")).toEqual([]);
     expect(await liste(a, a.k.erik, "firmenbereich=eigen")).toEqual(["E1", "E2", "P1"]);
   });
@@ -908,6 +913,7 @@ describe("K2/K3/K6 · das bereichsgebundene Existenzrecht", () => {
     zugang: "mitglieder",
     mitglieder: [],
     ansichten: [],
+    kontext: "partner",
     partner: "Beta AG",
     version,
     ...extra,

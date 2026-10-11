@@ -12,8 +12,8 @@
 // Anlage (`tests/mandanten-isolation`), die Datenbank nur für diese Anlage.
 //
 // DIE DREI BEREICHE werden aus dem BESTAND abgeleitet, nie aus der Anfrage:
-//   · `partner`     — der führende Space ist ausdrücklich als Partnerbereich markiert
-//                     (`SpaceEingabe.partner`, gepflegt von Spacezuständigen/Kontoverwaltung).
+//   · `partner`     — der führende Space steht ausdrücklich im Kontext `partner`
+//                     (`SpaceEingabe.kontext`/`partner`, `spaces.ts` · `partnerbereiche`).
 //   · `oeffentlich` — Schutzbedarf „öffentlich" am Objekt (`KnowledgeObject.oeffentlich`, nur bei
 //                     interner Stufe wirksam — dieselbe Lesart wie `KoService.setOeffentlich`).
 //   · `eigen`       — alles andere: das Wissen der eigenen Firma.

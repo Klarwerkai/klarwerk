@@ -6,7 +6,14 @@ export {
   auditSeitengroesse,
 } from "./src/service";
 export type { AuditServiceDeps, AuditChainExport } from "./src/service";
-export { InMemoryAuditRepo, type AuditRepo, auditSeiteTrifft } from "./src/repo";
+export {
+  InMemoryAuditRepo,
+  type AuditRepo,
+  auditSeiteTrifft,
+  // Aufnahme gesamt-wissen-herkunft (R-0228): die benannten Entscheidungsereignisse für die
+  // Verifizierungsmarke (services/app/src/verifizierungsmarke.ts).
+  VALIDATION_DECISION_ACTIONS,
+} from "./src/repo";
 // aufnahme:20260922:gesamt-dokumenterzeugung (R-0337): die Output Factory liest das Prüfdatum über
 // denselben geprüften Leseweg wie jeder andere Verbraucher eines Validierungsnachweises.
 export {

@@ -30,6 +30,7 @@ import {
   InMemorySecondFactorRepo,
   InMemorySessionRepo,
   InMemoryUserRepo,
+  type OidcProvider,
   type PasswordResetRepo,
   PgPasswordResetRepo,
   PgSecondFactorRepo,
@@ -256,6 +257,7 @@ import {
   InMemoryAssistenzProfilRepo,
   PgAssistenzProfilRepo,
 } from "./assistenz-profil";
+import { autorenNamenAus } from "./autorennamen";
 import {
   type BearbeitungsRepo,
   InMemoryBearbeitungsRepo,
@@ -294,6 +296,7 @@ import {
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
+import { FirmenresetSso } from "./firmenreset-sso";
 // Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 // (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
@@ -521,7 +524,7 @@ import {
   UnternehmenDienst,
   type UnternehmenRepo,
 } from "./unternehmensprofil";
-import { verantwortungBeiAnlage } from "./verantwortung";
+import { sitzungVon, verantwortungBeiAnlage, zugangsstand } from "./verantwortung";
 import {
   InMemoryNachfolgeRepo,
   type NachfolgeRepo,
@@ -1602,9 +1605,28 @@ export function assembleServices(
   const objects = new ObjectStore({ repo: repos.objects });
   // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
   const dokumente = new DokumentaktenService({ repo: repos.dokumente });
+  // Aufnahme gesamt-wissen-herkunft (R-0298): der Kontodienst entsteht eine Stufe früher, weil
+  // Bibliotheksexport und Output Factory die Autorennamen über ihn auflösen — DIESELBE Instanz, die
+  // unten als `auth` zurückgegeben wird, kein zweiter Kontobestand.
+  const auth = new AuthService({
+    users: repos.users,
+    sessions: repos.sessions,
+    resetTokens: repos.resetTokens,
+    secondFactors: repos.secondFactors,
+    audit,
+    // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
+    canChangeRole,
+    // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
+    // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
+    // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
+    // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
+    ...(opts.withTx ? { withTx: opts.withTx } : {}),
+  });
+  const autorenNamen = autorenNamenAus(auth);
   const library = new LibraryService({
     koService: ko,
     dokumente,
+    autorenNamen,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
@@ -1801,20 +1823,9 @@ export function assembleServices(
     // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
     dokumente,
     ko,
-    auth: new AuthService({
-      users: repos.users,
-      sessions: repos.sessions,
-      resetTokens: repos.resetTokens,
-      secondFactors: repos.secondFactors,
-      audit,
-      // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
-      canChangeRole,
-      // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
-      // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
-      // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
-      // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
-      ...(opts.withTx ? { withTx: opts.withTx } : {}),
-    }),
+    // Aufnahme gesamt-wissen-herkunft: oben gebaut (s. `autorenNamen`), hier unverändert gereicht —
+    // mit dem zweiten Faktor (R-0562).
+    auth,
     // AUFTRAG-mega20 Block D: die Ankerprüfung des Entwurfs bekommt ihre Auflösung HIER — capture
     // kennt den Objektspeicher nicht (Modulgrenze), die Composition-Root kennt beide. Dieselbe
     // Bewegung wie bei `koConfidentiality` für die Medien-Analyse.
@@ -1913,8 +1924,9 @@ export function assembleServices(
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     // gesamt-dokumenterzeugung (R-0337): dieselbe Auditablage, damit das Prüfdatum je Quelle aus
-    // dem Validierungsnachweis belegt werden kann.
-    output: new OutputService({ koService: ko, audit: repos.auditRepo }),
+    // dem Validierungsnachweis belegt werden kann. Aufnahme gesamt-wissen-herkunft (R-0298):
+    // sichtbare Autorennamen im Ausgabedokument.
+    output: new OutputService({ koService: ko, audit: repos.auditRepo, autorenNamen }),
     auditLeser: repos.auditRepo,
     // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
     // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
@@ -3163,6 +3175,10 @@ export function buildApp(
   // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
   opts: {
     factoryReset?: FactoryReset;
+    // P08-AC05: der SSO-Anbieter für die zweimalige Wiederanmeldung des Firmenresets. Ohne Angabe
+    // derselbe Anbieter wie für die Anmeldung (`createOidcProviderFromEnv`); Tests setzen eine
+    // Attrappe, weil kein Anbieter erreichbar ist.
+    firmenresetOidc?: OidcProvider;
     log?: { senke?: LogSenke; stufe?: string };
     klaraAufraeumen?: (lauf: () => Promise<number>) => void;
     // R-2057: TLS am App-Port (`transport-tls.ts`). Nur `server.ts` reicht es durch; ohne Option
@@ -4197,12 +4213,27 @@ export function buildApp(
     ablage: services.vorlagen,
     spaces: services.spaces,
     audit: services.audit,
+    // aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund): Prüfung, Anlage und
+    // Zuordnung laufen gemeinsam unter `sperre` → `exklusiv` (dieselbe Sperre wie Spacewechsel und
+    // Spacelöschung). `inSpaceLegen` nimmt deshalb selbst keine Sperre mehr (sie wäre verschachtelt)
+    // und WIRFT, statt einen Beitrag still ohne Space stehen zu lassen; der Port nimmt die Anlage
+    // dann über `anlageZuruecknehmen` zurück.
+    exklusiv: <T>(arbeit: () => Promise<T>) => services.spaces.exklusiv(arbeit),
     inSpaceLegen: async (koId, spaceId, akteur) => {
       const ko = await services.ko.get(koId);
-      if (!ko || ko.spaceId === spaceId) {
+      if (!ko) {
+        throw new Error("Der Beitrag ist nicht (mehr) vorhanden.");
+      }
+      if (ko.spaceId === spaceId) {
         return;
       }
+      if (!(await services.spaces.aktuelle()).some((s) => s.id === spaceId)) {
+        throw new Error("Der gewählte Space ist nicht (mehr) vorhanden.");
+      }
       await services.ko.setLeadingSpace(koId, spaceId, akteur, null);
+    },
+    anlageZuruecknehmen: async (koId, akteur) => {
+      await services.ko.delete(koId, akteur, { hard: true });
     },
   });
   // produkt:20261011:peter-p14 — die als Partnerbereich markierten Spaces, je Anfrage frisch aus
@@ -4243,6 +4274,26 @@ export function buildApp(
         // die Lesevarianten-Routen benutzen, keine zweite. Das Original selbst bleibt unberührt:
         // die Variante tritt als eigenes Feld daneben, nie an die Stelle eines KO-Feldes.
         lesevarianten: services.lesevarianten,
+        // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: Befugnis und Konto kommen
+        // aus DEMSELBEN Kontodienst wie die Anmeldung — kein zweiter Kontobestand. Die Befugnis ist
+        // seit der Integration (Nacharbeit 12) DIESELBE wie an `weisungskonto` unten
+        // (`User.weisungsbefugnis`, Aufnahme gesamt-peer-validierung).
+        konten: {
+          befugnisVon: (userId) => services.auth.weisungsbefugnisVon(userId),
+          kontoBesteht: (userId) => services.auth.kontoBesteht(userId),
+          // Nacharbeit 11 (Ben B1): der Lesekontext jedes Kontos aus DENSELBEN Quellen wie
+          // `makeGuards` (Kontenliste, aktuelle Spaces) — die Sicht des Kontos selbst.
+          lesekontexte: async () => {
+            const spaces = await services.spaces.aktuelle();
+            const jetzt = Date.now();
+            return (await services.auth.listUsers()).map((konto) => ({
+              id: konto.id,
+              zugang: zugangsstand(konto, jetzt),
+              ...(konto.accessExpiresAt ? { zugangEndet: konto.accessExpiresAt } : {}),
+              sitzung: sitzungVon(konto, spaces),
+            }));
+          },
+        },
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,
         // WP-SUBMIT-ASYNC: Prüf-Job-Vermerk + Hintergrund-Worker statt synchroner Erkennung.
@@ -5375,10 +5426,16 @@ export function buildApp(
   // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset. produkt:20261010:poc-wiederherstellung-export: der
   // Sicherungsumfang unter „System → Sicherung" ist an diese Fassung und ihre Migration gebunden.
   app.register(
-    adminRoutes(services, guards, opts.factoryReset, {
-      produkt: { version: buildVersion(), commit: buildCommit() },
-      tabellenImDump: tabellenDerStufen(schemas).length,
-    }),
+    adminRoutes(
+      services,
+      guards,
+      opts.factoryReset,
+      {
+        produkt: { version: buildVersion(), commit: buildCommit() },
+        tabellenImDump: tabellenDerStufen(schemas).length,
+      },
+      new FirmenresetSso(opts.firmenresetOidc ?? createOidcProviderFromEnv()),
+    ),
   );
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
   // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.

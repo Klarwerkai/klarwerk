@@ -59,6 +59,8 @@ import {
   type HalbwertszeitVerlaufRepo,
   InMemoryHalbwertszeitVerlauf,
 } from "./halbwertszeit-verlauf";
+// R-1355: die Herkunftsangaben des Wissensobjekts entstehen an genau einer Stelle.
+import { herkunftsmerkmaleBeiAnlage, urheberschaftBeiAnlage } from "./herkunft";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,
@@ -2529,8 +2531,8 @@ export class KoService {
       status: "offen",
       version: 1,
       // WP-SAMMEL21-FIX (Fix 4): abweichender Wissensträger nur, wenn explizit gesetzt (Import).
-      originalAuthor: input.originalAuthor?.trim() ? input.originalAuthor : input.author,
-      author: input.author,
+      // R-1355: die Regel steht an EINER Stelle (./herkunft.ts) und wird am Quelltext geprüft.
+      ...urheberschaftBeiAnlage(input),
       neededValidations: needed,
       assignments: [],
       // JOB 593 (Option A, N5): die kanonische Anlagenkennung entsteht HIER in ihrer Normalform.
@@ -2575,14 +2577,12 @@ export class KoService {
       // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
       // Default: ein KO ohne Herkunft bleibt ein KO ohne Herkunft, und genau das liest die
       // Oberflaeche als „unbekannt" statt als „Vordertuer".
-      ...(input.origin ? { origin: input.origin } : {}),
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
-      ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
       // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
-      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
       // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
-      ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
+      // R-1355: alle vier entstehen an EINER Stelle (./herkunft.ts), in derselben Reihenfolge.
+      ...herkunftsmerkmaleBeiAnlage(input),
       // R-0632 (Nacharbeit 10): die Herabstufungssperre — dieselbe Bauform, kein stiller Default.
       ...(input.stufeNurAnheben === true ? { stufeNurAnheben: true as const } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
@@ -7574,11 +7574,17 @@ export class KoService {
   // geworfen. Runde 3 (BEN-R2-B2): hatte der Schritt schon Auditeinträge angehängt (etwa `ko.rated`
   // vor einem gescheiterten `ko.returned-to-*`), bleiben sie stehen — die Kette ist append-only —,
   // und `ko.change-rolled-back` nennt sie danach ausdrücklich als zurückgenommen.
+  //
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: `zustand` darf zusätzlich die
+  // Herkunft der Entscheidung liefern (`weisung` bzw. `externeFreigabe`). Sie wird im SELBEN ersten
+  // Schreibvorgang gesetzt wie Status und Vertrauen — also gemeinsam mit dem Beleg oder gar nicht.
+  // Andere Felder kann `zustand` nicht setzen.
   async setValidationStateMitBeleg(
     id: string,
     zustand: (ko: KnowledgeObject) => Promise<{
       trust: number;
       status: KoStatus;
+      herkunft?: Pick<KnowledgeObject, "weisung" | "externeFreigabe">;
       // R-0256: die Grundlage dieses Werts (s. `KnowledgeObject.vertrauensGrundlage`). Fehlt sie,
       // wird eine frühere entfernt — sie gälte sonst für einen Wert, den dieser Weg ersetzt.
       grundlage?: { ohneKonflikte: number; konflikte: string[] };
@@ -7648,6 +7654,12 @@ export class KoService {
               ? { vertrauensGrundlage: { trust: state.trust, ...state.grundlage } }
               : {}),
             ...(bisherigeAnnahme ? { annahmeRef: bisherigeAnnahme } : {}),
+            // Aufnahme gesamt-wissen-herkunft: die Herkunft der Entscheidung (Weisung mit
+            // punktweiser Entscheidung bzw. externe Freigabe) im selben ersten Schreibvorgang.
+            ...(state.herkunft?.weisung ? { weisung: state.herkunft.weisung } : {}),
+            ...(state.herkunft?.externeFreigabe
+              ? { externeFreigabe: state.herkunft.externeFreigabe }
+              : {}),
           },
           new Date(this.now()).toISOString(),
         );
@@ -7686,6 +7698,17 @@ export class KoService {
                   weisungsSichtung: {
                     ...updated.weisungsSichtung,
                     ergebnis: { ...state.sichtung, auditSeq: ref.auditSeq },
+                  },
+                }
+              : {}),
+            // Aufnahme gesamt-wissen-herkunft · Nacharbeit 14 (Ben B1): die Weisung mit punktweiser
+            // Entscheidung wird an GENAU ihren Beleg gebunden — so ist eindeutig, welche Weisung
+            // (diese oder eine frühere `weisungsSichtung`) die aktuelle ist. Beide bleiben stehen.
+            ...(state.herkunft?.weisung && updated.weisung
+              ? {
+                  weisung: {
+                    ...updated.weisung,
+                    beleg: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
                   },
                 }
               : {}),
@@ -7796,6 +7819,105 @@ export class KoService {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
     return trust;
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 19 — DIE NACHFOLGENDE SICHTUNG EINER WEISUNG.
+  // ==============================================================================================
+  //
+  // „Unmittelbar gültige befugte Weisung mit nachfolgender zuständiger Sichtung." Gesichtet wird
+  // von genau der Person, die beim Setzen als verantwortlich benannt wurde — die Route prüft das
+  // vorab, diese Stelle noch einmal unter dem Objekt-Lock (zwischen beiden könnte eine neue Weisung
+  // gesetzt worden sein). Die Sichtung ändert WEDER Status noch Vertrauen noch Fassung: die Weisung
+  // bleibt gültig, solange kein Widerruf oder Konflikt vorliegt; sie hält nur fest, wer sie wann
+  // gesehen hat. Eine zweite Sichtung derselben Weisung wird abgelehnt, nicht überschrieben.
+  async weisungSichten(id: string, actor: string, vermerk?: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const weisung = ko.weisung;
+      if (!weisung || weisung.sichtung.verantwortlich !== actor || weisung.sichtung.gesichtetAm) {
+        throw new KoError(
+          "KO_STALE",
+          "Die Weisung an diesem Wissensobjekt ist nicht (mehr) von Ihnen zu sichten.",
+        );
+      }
+      const am = new Date(this.now()).toISOString();
+      const text = vermerk?.trim();
+      const updated: KnowledgeObject = {
+        ...ko,
+        weisung: {
+          ...weisung,
+          sichtung: {
+            ...weisung.sichtung,
+            gesichtetVon: actor,
+            gesichtetAm: am,
+            ...(text ? { vermerk: text } : {}),
+          },
+        },
+      };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              // Integration Nacharbeit 12: eigener Name — `ko.weisung-gesichtet` ist die Sichtungs-
+              // ENTSCHEIDUNG aus gesamt-peer-validierung (mit Verweis); dies ist der Sichtungsvermerk
+              // der Weisung mit punktweiser Entscheidung (ohne Statuswirkung, ohne Verweis).
+              action: "ko.weisung-sichtung-vermerkt",
+              target: id,
+              payload: { weisungVon: weisung.von, weisungAm: weisung.am, fassung: weisung.fassung },
+            },
+            tx,
+          );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · R-0573 (Nacharbeit 11, Ben B2) — ÜBERSTIMMT, GESCHLOSSEN.
+  // ==============================================================================================
+  //
+  // „Überstimmte Punkte werden geschlossen, nicht gelöscht." Es ändert sich NUR das Feld
+  // `geschlossen` — keine Inhaltsfassung, kein Text, kein Status, kein Autor, kein Originalautor,
+  // keine Herkunft, keine Historie. Das Objekt bleibt im Bestand und lesbar. Bauform wie
+  // `markMergedInto`: per Objekt serialisiert, Beleg im selben Schritt. Ein bereits geschlossener
+  // Punkt wird nicht ein zweites Mal geschlossen (der erste Vermerk bleibt die Auskunft). WER das
+  // darf, entscheidet der Aufrufer (die Weisungsroute) — dieser Dienst kennt keine Rechte.
+  async schliesseDurchWeisung(
+    id: string,
+    eintrag: { durchKoId: string; conflictId: string },
+    actor: string,
+  ): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      if (ko.geschlossen) {
+        throw new KoError("KO_STALE", "Dieser Wissenspunkt ist bereits geschlossen.");
+      }
+      const geschlossen = {
+        durchKoId: eintrag.durchKoId,
+        conflictId: eintrag.conflictId,
+        von: actor,
+        am: new Date(this.now()).toISOString(),
+        fassung: ko.version,
+      };
+      const updated: KnowledgeObject = { ...ko, geschlossen };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.durch-weisung-geschlossen",
+              target: id,
+              payload: geschlossen,
+            },
+            tx,
+          );
+        },
+      };
+    });
   }
 
   // ==============================================================================================

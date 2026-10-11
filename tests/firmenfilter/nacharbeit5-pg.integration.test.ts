@@ -171,6 +171,7 @@ describe("P14 · Nacharbeit 5 gegen echtes PostgreSQL", () => {
           zugang: "mitglieder",
           mitglieder,
           ansichten: [],
+          kontext: "partner",
           partner,
         },
       });

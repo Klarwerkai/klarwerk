@@ -274,6 +274,21 @@ export const LESEN =
   "([sel, eig]) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).getPropertyValue(eig) : null; }";
 
 /**
+ * Die EINE Browser-Startstelle dieser Datei — `starte` und `oeffneChromium` teilen sie, damit der
+ * Torgraph (`tests/tor-inventar/browser-gruppe.ts`) hier weiter genau einen Start findet.
+ */
+async function chromiumStarten(): Promise<Browser> {
+  const require = createRequire(import.meta.url);
+  const { chromium } = require("playwright") as {
+    chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
+  };
+  return chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+  });
+}
+
+/**
  * Startet die echte App in Chromium, meldet einen Admin an und öffnet `pfad`.
  * `warteAuf` ist ein Selektor, der beweist, dass die Seite wirklich steht.
  */
@@ -343,14 +358,7 @@ export async function starte(
       await vorbereiten(app);
     }
 
-    const require = createRequire(import.meta.url);
-    const { chromium } = require("playwright") as {
-      chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
-    };
-    stand.browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-    });
+    stand.browser = await chromiumStarten();
     stand.version = stand.browser.version();
     const seite = await stand.browser.newPage({ viewport: { width: breite, height: hoehe } });
     stand.seite = seite;
@@ -650,6 +658,27 @@ export async function setzeSprache(
       ? `${kopf} hat die Seite die Sprache nicht angewandt (${erwartet}, ${anker}, ${gelesen}).`
       : `${kopf} war der ${anker} überhaupt nicht da (${erwartet}, ${gelesen}) — lastabhaengig: die Seite ist nicht fertig geworden, über die FLÄCHE ist damit nichts gesagt.`,
   );
+}
+
+/**
+ * PETER-20261011-P08 (Nacharbeit 4) · CHROMIUM GEGEN EINEN ECHTEN, SEPARAT GESTARTETEN SERVER.
+ *
+ * `starte` oben reicht `/api/*` an eine im Testprozess gebaute App weiter. Der Bedienweg des
+ * Firmenresets braucht dagegen den ECHTEN Serverprozess im Desktop-Journalbetrieb — der Reset
+ * beendet ihn, und der Neustart ist ein neuer Prozess. Diese Funktion öffnet deshalb nur den
+ * Browser; die Seite lädt alles (Oberfläche und API) unmittelbar vom Server unter `basis`.
+ * Dieselben Startargumente wie `starte`, damit die Browser-Startstelle EINE bleibt
+ * (`tests/tor-inventar/browser-gruppe.ts`).
+ */
+export async function oeffneChromium(
+  breite = 1280,
+  hoehe = 900,
+): Promise<{ seite: Seite; schliessen: () => Promise<void>; seitenfehler: string[] }> {
+  const browser = await chromiumStarten();
+  const seite = await browser.newPage({ viewport: { width: breite, height: hoehe } });
+  const seitenfehler: string[] = [];
+  seite.on("pageerror", (e) => seitenfehler.push(String(e).slice(0, 200)));
+  return { seite, schliessen: () => browser.close(), seitenfehler };
 }
 
 export async function beende(stand: Stand): Promise<void> {

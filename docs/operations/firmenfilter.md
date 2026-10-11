@@ -12,7 +12,7 @@ Jeder Bereich wird aus dem Bestand abgeleitet (`services/app/src/firmenbereich.t
 
 | Bereich | Bedingung am Wissensobjekt |
 |---|---|
-| `partner` | Der führende Space ist als Partnerbereich markiert (`partner` = Name der Partnerfirma). |
+| `partner` | Der führende Space steht im Kontext `partner` (mit Namen des Partners). |
 | `oeffentlich` | Der Eintrag ist als öffentlich gekennzeichnet (`schutz-oeffentlich`). Das wirkt nur bei interner Stufe. |
 | `eigen` | Für alle anderen Einträge. |
 
@@ -20,7 +20,9 @@ Ein Eintrag in einem Partnerbereich zählt immer als Partnerwissen, auch wenn er
 
 ## Partnerbereich einrichten
 
-Ein Space wird als Partnerbereich geführt, wenn bei Anlage oder Pflege `partner: "<Name der Partnerfirma>"` gesetzt ist (`POST`/`PUT /api/spaces`). Dafür gelten dieselben Rechte wie für jede Spacepflege: Spacezuständige oder Kontoverwaltung. Fehlt `partner` bei der Pflege, bleibt die Marke unverändert. `partner: null` entfernt sie.
+Ein Space wird als Partnerbereich geführt, wenn bei Anlage oder Pflege `kontext: "partner"` und `partner: "<Name des Partners>"` gesetzt sind (`POST`/`PUT /api/spaces`). Das ist der Space-Kontext aus `aufnahme:20260922:gesamt-wissensprojekte`; der Firmenfilter liest ihn mit. Dafür gelten dieselben Rechte wie für jede Spacepflege: Spacezuständige oder Kontoverwaltung. Es gelten die Kontextregeln: ein Partnerbereich braucht einen Namen und ist nie für alle offen (`SPACE_KONTEXT_ZUGANG`). Ein Partnername ohne diesen Kontext ist ungültig.
+
+Nennt eine Pflege `kontext` nicht, bleibt der Kontext unverändert. Bleibt es ein Partnerbereich und fehlt `partner`, bleibt auch der Name. Zurück zur eigenen Firma geht es mit `kontext: "firma"`. Fassungen aus früheren P14-Kandidaten mit Partnernamen, aber ohne `kontext`, gelten als Partnerbereich.
 
 Wer die Inhalte lesen darf, bestimmen weiterhin Zugang und Mitglieder des Space. Die Marke öffnet nichts. Auch die Administration bekommt dadurch keinen Durchgriff.
 
@@ -79,6 +81,8 @@ Peters Antwort 25: Existenzhinweise nur mit ausdrücklichem Recht, sonst eine al
 - **Grenzen des Rechts:** Gezählt wird nur, was das Konto als Leser genau dieses Space sehen dürfte. Stufe und Quellleser gelten weiter. Ohne Recht ist die Antwort immer `{ "hinweise": [] }`, gleich ob es einen verborgenen Treffer gibt.
 
 ## Grenzen
+
+- Zwei Formen „öffentlich": Der Firmenfilter (`firmenbereich=oeffentlich`) zählt Einträge mit der Öffentlich-Marke am Objekt. `GET /api/spaces/artikel?kontext=oeffentlich` (gesamt-wissensprojekte) zählt Einträge in Spaces mit Kontext `oeffentlich`. Ein Eintrag in einem öffentlichen Space ohne Objektmarke heißt im Firmenfilter `eigen`. Welche Lesart maßgeblich ist, ist nicht entschieden. Beide sind nur Einordnungen und vergeben keine Rechte.
 
 - Eine Bedienfläche für den Bereichswechsel in der Bibliothek ist nicht gebaut. Der Filter ist über die API und die Web-API-Typen nutzbar.
 - Auch für Existenzrecht und Existenzhinweise gibt es keine Bedienfläche. Beides ist nur über die API nutzbar.

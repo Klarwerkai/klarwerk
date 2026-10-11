@@ -1204,6 +1204,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/spaces/:id": { protection: "ko.read" },
   "POST /api/spaces/verschiebung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/spaces/verschiebung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // aufnahme:20260922:gesamt-wissensprojekte: Löschen wie Bearbeiten (Zuständige/Kontoverwaltung,
+  // sonst 403); Titel betroffener Artikel nur, wenn `darfSehen` sie freigibt, sonst nur die Zahl.
+  "POST /api/spaces/:id/loeschung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Firmenfilter (Frage 51): Artikel je Firmen-/Partner-/öffentlichem Kontext, je Zeile getrimmt.
+  "GET /api/spaces/artikel": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  "POST /api/spaces/:id/loeschung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // produkt:20261009:admin-teams: wählbare Teams für die Spacepflege (ohne Mitgliedernamen).
   "GET /api/spaces/teams": { protection: "ko.read" },
   // produkt:20261007:spaces:admin-20261009 (ADMIN-07): Zugriffsherkunft lesen wie den Space;
@@ -1413,6 +1419,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Pedi 05.07. (Beta): Werksreset — Verfügbarkeit lesen + ausführen, beides nur Nutzerverwaltung.
   "GET /api/admin/factory-reset": { protection: "users.manage" },
   "POST /api/admin/factory-reset": { protection: "users.manage" },
+  // P08-AC05 (Nacharbeit 4): die zweimalige SSO-Wiederanmeldung des Firmenresets — Start (Umleitung
+  // zum Anbieter) und Rückruf/Abbruch. Dieselbe Schranke wie der Reset selbst.
+  "GET /api/admin/factory-reset/sso/start": { protection: "users.manage" },
+  "POST /api/admin/factory-reset/sso": { protection: "users.manage" },
   // Aufnahme gesamt-bestandsreset (Nacharbeit 2): Folgenvorschau lesen + Bestandsreset ausführen.
   // Dieselbe Schranke wie der Werksreset; die Ausführung verlangt zusätzlich zweimal das Passwort,
   // das Häkchen und die unveränderte Vorschaukennung (`admin-routes.ts`).

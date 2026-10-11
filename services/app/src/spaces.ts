@@ -59,6 +59,25 @@ export interface SpaceAnsicht {
   tag: string;
 }
 
+// ================================================================================================
+// aufnahme:20260922:gesamt-wissensprojekte — DER FIRMENFILTER ALS KONTEXT EINES SPACE.
+// ================================================================================================
+//
+// Pedis Entscheidung (Frage 51, 11.10.2026): „Firmenfilter als serverseitig berechtigter Firmen-/
+// Partner-/öffentlicher Kontext“ — eigene Firmeninstanz, ausdrücklich erlaubte Partnerbereiche und
+// öffentliche Quellen klar unterscheiden. Ausgearbeitet am bestehenden Space:
+//   · `firma`       — Inhalte der eigenen Firmeninstanz. Vorgabe; auch jeder Space ohne Angabe und
+//                     jeder Artikel ohne Space gehört hierher. Zugang wie bisher frei wählbar.
+//   · `partner`     — ein Bereich für EINEN benannten Partner (`partner`). Nur AUSDRÜCKLICH
+//                     berechtigte Konten (Mitglieder, Zuständige) lesen ihn: Zugang `alle` ist
+//                     unzulässig. Kein Rollen-Durchgriff (dieselbe Regel wie jeder geschlossene Space).
+//   · `oeffentlich` — öffentliche Quellen. Für alle mit Leserecht offen: Zugang `mitglieder` ist
+//                     unzulässig, sonst wäre „öffentlich“ eine falsche Auskunft.
+// Die Sicht entscheidet weiterhin allein `darfSehen` (`../sichtbarkeit`) über den führenden Space;
+// der Kontext ist die Einordnung, nach der gefiltert wird, und legt die zulässigen Zugänge fest.
+export const SPACE_KONTEXTE = ["firma", "partner", "oeffentlich"] as const;
+export type SpaceKontext = (typeof SPACE_KONTEXTE)[number];
+
 export interface SpaceEingabe {
   name: string;
   zweck: string;
@@ -80,11 +99,12 @@ export interface SpaceEingabe {
   gruppe?: string;
   /** Die Spaceregeln in Worten: was hineingehört, wie gepflegt wird. Rechte stehen NICHT hier. */
   regeln?: string;
+  /** Der Firmenkontext; fehlt er (Fassungen vor diesem Auftrag), gilt `firma`. */
+  kontext?: SpaceKontext;
   /**
-   * produkt:20261011:peter-p14 — der Name der Partnerfirma, wenn dieser Space ausdrücklich als
-   * freigegebener PARTNERBEREICH geführt wird (Firmenfilter, `firmenbereich.ts`). Eine Marke für den
-   * Filter, KEIN Recht: wer die Inhalte lesen darf, entscheiden weiter Zugang und Mitglieder.
-   * Fehlt das Feld, gehört der Space zur eigenen Firma.
+   * Nur bei `kontext: "partner"`: der Name des Partners. produkt:20261011:peter-p14 liest daraus
+   * die freigegebenen PARTNERBEREICHE des Firmenfilters (`partnerbereiche`, `firmenbereich.ts`) —
+   * eine Einordnung, KEIN Recht: wer die Inhalte lesen darf, entscheiden Zugang und Mitglieder.
    */
   partner?: string;
   /**
@@ -96,6 +116,15 @@ export interface SpaceEingabe {
    * wer die Inhalte lesen darf, entscheiden weiter Zugang und Mitglieder. Fehlt das Feld: niemand.
    */
   existenz?: string[];
+}
+
+/**
+ * Der Kontext eines Space — `firma`, wenn eine ältere Fassung keinen trägt. Eine Fassung aus den
+ * P14-Kandidaten vor der Zusammenführung trägt nur den Partnernamen (ohne `kontext`): sie war als
+ * Partnerbereich angelegt und bleibt es.
+ */
+export function kontextVon(space: Pick<SpaceEingabe, "kontext" | "partner">): SpaceKontext {
+  return space.kontext ?? (space.partner ? "partner" : "firma");
 }
 
 /**
@@ -144,6 +173,12 @@ export interface SpaceFassung extends SpaceEingabe {
   geaendertVon: string;
   geaendertAm: string;
   /**
+   * aufnahme:20260922:gesamt-wissensprojekte — gesetzt nur an der LETZTEN Fassung eines gelöschten
+   * Space (Löschvermerk). Die Fassungen davor bleiben unverändert stehen; `aktuelle()` führt einen
+   * so vermerkten Space nicht mehr.
+   */
+  geloeschtAm?: string;
+  /**
    * ADMIN-07: archiviert — Inhalte bleiben für die bisherigen Leser lesbar, aber nichts wird mehr
    * hinein- oder herausbewegt und der Space wird nicht mehr gepflegt, bis er wiederaufgenommen
    * ist. Fehlt in Fassungen von vor ADMIN-07: dann aktiv.
@@ -160,6 +195,11 @@ export interface SpaceFassung extends SpaceEingabe {
    * übrigen Pflegewege übernehmen sie unverändert in die nächste Fassung.
    */
   freigabe?: FreigabeRegel;
+}
+
+/** Trägt diese Fassung den Löschvermerk? */
+export function istGeloescht(fassung: SpaceFassung | undefined): boolean {
+  return typeof fassung?.geloeschtAm === "string";
 }
 
 export const SPACE_GRENZEN = {
@@ -350,16 +390,39 @@ export function pruefeSpaceEingabe(
   if (regeln.length > SPACE_GRENZEN.regeln) {
     throw new SpaceFehler("SPACE_UNGUELTIG", "Die Spaceregeln sind zu lang.");
   }
-  // produkt:20261011:peter-p14: leer oder `null` heisst „eigene Firma"; anderes als Text ist ungültig.
-  if (r.partner !== undefined && r.partner !== null && typeof r.partner !== "string") {
+  const kontext = r.kontext ?? "firma";
+  if (!SPACE_KONTEXTE.includes(kontext as SpaceKontext)) {
     throw new SpaceFehler(
       "SPACE_UNGUELTIG",
-      "Der Partnerbereich nennt den Namen der Partnerfirma.",
+      "Der Kontext ist „firma“, „partner“ oder „oeffentlich“.",
     );
   }
+  // produkt:20261011:peter-p14: ein Partnername ist Text (oder fehlt / `null`); anderes ist ungültig.
+  if (r.partner !== undefined && r.partner !== null && typeof r.partner !== "string") {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Der Partnerbereich nennt den Namen des Partners.");
+  }
   const partner = text(r.partner);
-  if (partner.length > SPACE_GRENZEN.partner) {
-    throw new SpaceFehler("SPACE_UNGUELTIG", "Der Name der Partnerfirma ist zu lang.");
+  if (kontext === "partner") {
+    if (!partner || partner.length > SPACE_GRENZEN.partner) {
+      throw new SpaceFehler(
+        "SPACE_UNGUELTIG",
+        "Ein Partnerbereich braucht den Namen des Partners.",
+      );
+    }
+    if (zugang === "alle") {
+      throw new SpaceFehler(
+        "SPACE_KONTEXT_ZUGANG",
+        "Ein Partnerbereich ist nur für ausdrücklich berechtigte Mitglieder offen.",
+      );
+    }
+  } else if (partner) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Einen Partner nennt nur ein Partnerbereich.");
+  }
+  if (kontext === "oeffentlich" && zugang !== "alle") {
+    throw new SpaceFehler(
+      "SPACE_KONTEXT_ZUGANG",
+      "Öffentliche Quellen sind für alle mit Leserecht offen.",
+    );
   }
   // P14 · Existenzrecht: wie Mitglieder nur echte Konten; doppelte Nennung wird zusammengefasst.
   const rohExistenz = r.existenz ?? [];
@@ -386,14 +449,19 @@ export function pruefeSpaceEingabe(
     ...(gebunden.length > 0 ? { teams: gebunden } : {}),
     ...(gruppe ? { gruppe } : {}),
     ...(regeln ? { regeln } : {}),
-    ...(partner ? { partner } : {}),
+    kontext: kontext as SpaceKontext,
+    ...(kontext === "partner" ? { partner } : {}),
     ...(existenz.length > 0 ? { existenz } : {}),
   };
 }
 
-/** produkt:20261011:peter-p14 — die Kennungen der als Partnerbereich markierten Spaces. */
+/**
+ * produkt:20261011:peter-p14 — die Kennungen der freigegebenen Partnerbereiche des Firmenfilters:
+ * Spaces im Kontext `partner` (aufnahme:20260922:gesamt-wissensprojekte). Ein Partnername ohne
+ * diesen Kontext kann eine Fassung nicht tragen (`pruefeSpaceEingabe`); gezählt wird der Kontext.
+ */
 export function partnerbereiche(spaces: readonly SpaceFassung[]): Set<string> {
-  return new Set(spaces.filter((s) => typeof s.partner === "string").map((s) => s.id));
+  return new Set(spaces.filter((s) => kontextVon(s) === "partner").map((s) => s.id));
 }
 
 /**
@@ -554,22 +622,50 @@ export function eigenesSpaceRecht(
 // ================================================================================================
 
 export interface SpacesRepo {
-  /** Je Space die jüngste Fassung. */
+  /** Je Space die jüngste Fassung — ohne gelöschte Spaces (Löschvermerk an der jüngsten Fassung). */
   aktuelle(): Promise<SpaceFassung[]>;
-  /** Alle Fassungen eines Space, aufsteigend nach Version — leer, wenn es ihn nicht gibt. */
+  /**
+   * Alle Fassungen eines Space, aufsteigend nach Version — leer, wenn es ihn nicht gibt. Bei einem
+   * gelöschten Space ist die letzte Fassung der Löschvermerk.
+   */
   fassungen(id: string): Promise<SpaceFassung[]>;
-  /** Legt eine neue Fassung ab. `false`, wenn es diese Version schon gibt (paralleler Schreiber). */
+  /**
+   * Legt eine neue Fassung ab. `false`, wenn es diese Version schon gibt (paralleler Schreiber) oder
+   * der Space gelöscht ist (der Löschvermerk ist endgültig).
+   */
   lege(fassung: SpaceFassung): Promise<boolean>;
+  /**
+   * aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 4, Bens Befund) — führt `arbeit` exklusiv
+   * gegen jede andere `exklusiv`-Arbeit aus. Spacewechsel und Spacelöschung prüfen UND schreiben
+   * darunter, sodass zwischen Prüfung und Schreiben weder Quelle noch Ziel gelöscht und kein Artikel
+   * in einen zu löschenden Space gelegt werden kann. Eine Rücknahme im Nachhinein gibt es nicht mehr.
+   */
+  exklusiv<T>(arbeit: () => Promise<T>): Promise<T>;
+}
+
+/** Eine prozessweite Warteschlange: jede Arbeit beginnt erst, wenn die vorige beendet ist. */
+function warteschlange(): <T>(arbeit: () => Promise<T>) => Promise<T> {
+  let kette: Promise<unknown> = Promise.resolve();
+  return <T>(arbeit: () => Promise<T>): Promise<T> => {
+    const lauf = kette.then(arbeit);
+    kette = lauf.catch(() => undefined);
+    return lauf;
+  };
 }
 
 export class InMemorySpacesRepo implements SpacesRepo {
   private readonly zeilen = new Map<string, SpaceFassung[]>();
+  private readonly reihe = warteschlange();
+
+  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+    return this.reihe(arbeit);
+  }
 
   aktuelle(): Promise<SpaceFassung[]> {
     const raus: SpaceFassung[] = [];
     for (const liste of this.zeilen.values()) {
       const letzte = liste[liste.length - 1];
-      if (letzte) {
+      if (letzte && !istGeloescht(letzte)) {
         raus.push(structuredClone(letzte));
       }
     }
@@ -582,7 +678,8 @@ export class InMemorySpacesRepo implements SpacesRepo {
 
   lege(fassung: SpaceFassung): Promise<boolean> {
     const liste = this.zeilen.get(fassung.id) ?? [];
-    if (liste.some((f) => f.version === fassung.version)) {
+    // Der Löschvermerk ist endgültig: auf einen gelöschten Space folgt keine Fassung mehr.
+    if (liste.some((f) => f.version === fassung.version || istGeloescht(f))) {
       return Promise.resolve(false);
     }
     liste.push(structuredClone(fassung));
@@ -596,6 +693,8 @@ export class InMemorySpacesRepo implements SpacesRepo {
  * Die Tabelle der Fassungen. REIN ADDITIV UND WIEDERHOLBAR: `CREATE TABLE IF NOT EXISTS`, kein
  * DROP, kein DELETE, kein UPDATE, kein Fremdschlüssel, kein Seed. Der zusammengesetzte
  * Primärschlüssel ist die Nebenläufigkeitsregel (zweiter Schreiber derselben Version → 409).
+ * Auch das Löschen eines Space ist eine weitere Zeile (Löschvermerk `geloeschtAm` im JSON), kein
+ * DELETE — der Verlauf bleibt nachlesbar.
  */
 export const SPACES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS spaces_fassungen (
@@ -612,14 +711,52 @@ interface FassungsZeile {
   data: SpaceFassung;
 }
 
+/** Schlüssel der Datenbanksperre für Spacewechsel und Spacelöschung (`pg_advisory_lock`). */
+export const SPACES_SPERRE = "746120091801";
+
 export class PgSpacesRepo implements SpacesRepo {
+  private readonly reihe = warteschlange();
+
   constructor(private readonly pool: Pool) {}
 
+  /**
+   * Erst die prozessweite Warteschlange, dann die Datenbanksperre: so hält je Prozess höchstens eine
+   * wartende Arbeit eine Verbindung, und mehrere App-Prozesse an derselben Datenbank schliessen sich
+   * ebenfalls aus. Die Arbeit selbst nutzt gewöhnliche Pool-Verbindungen.
+   */
+  exklusiv<T>(arbeit: () => Promise<T>): Promise<T> {
+    return this.reihe(async () => {
+      const verbindung = await this.pool.connect();
+      try {
+        await verbindung.query("SELECT pg_advisory_lock($1::bigint)", [SPACES_SPERRE]);
+      } catch (e) {
+        verbindung.release(true);
+        throw e;
+      }
+      try {
+        return await arbeit();
+      } finally {
+        try {
+          await verbindung.query("SELECT pg_advisory_unlock($1::bigint)", [SPACES_SPERRE]);
+          verbindung.release();
+        } catch {
+          // Endet die Sitzung, gibt PostgreSQL die Sperre selbst frei.
+          verbindung.release(true);
+        }
+      }
+    });
+  }
+
   async aktuelle(): Promise<SpaceFassung[]> {
+    // Erst die jüngste Fassung je Space, DANN der Löschvermerk — sonst träte eine ältere Fassung
+    // eines gelöschten Space wieder an seine Stelle.
     const res = await this.pool.query<FassungsZeile>(
-      `SELECT DISTINCT ON (space_id) data
-         FROM spaces_fassungen
-        ORDER BY space_id, version DESC`,
+      `SELECT data FROM (
+         SELECT DISTINCT ON (space_id) data
+           FROM spaces_fassungen
+          ORDER BY space_id, version DESC
+       ) AS juengste
+       WHERE NOT (data ? 'geloeschtAm')`,
     );
     return res.rows.map((z) => z.data);
   }
@@ -633,9 +770,14 @@ export class PgSpacesRepo implements SpacesRepo {
   }
 
   async lege(fassung: SpaceFassung): Promise<boolean> {
+    // Der Löschvermerk ist endgültig: auf einen gelöschten Space folgt keine Fassung mehr — sonst
+    // belebte etwa eine Freigaberegel- oder Archivfassung den Space still wieder.
     const res = await this.pool.query(
       `INSERT INTO spaces_fassungen(space_id, version, data, geaendert_von, geaendert_am)
-       VALUES($1,$2,$3,$4,$5)
+       SELECT $1::text, $2::integer, $3::jsonb, $4::text, $5::timestamptz
+        WHERE NOT EXISTS (
+          SELECT 1 FROM spaces_fassungen WHERE space_id=$1::text AND data ? 'geloeschtAm'
+        )
        ON CONFLICT (space_id, version) DO NOTHING`,
       [
         fassung.id,

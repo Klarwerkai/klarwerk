@@ -28,6 +28,7 @@ import { useDirectory } from "../../api/hooks";
 import type { KnowledgeObject, KoProposal } from "../../api/types";
 import { useToast } from "../../app/ToastContext";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { aktuelleWeisungsart } from "../../lib/weisungsbefugnis";
 import { Button } from "../ui";
 
 type NameOf = (id: string) => string;
@@ -272,10 +273,13 @@ function kalendertag(tag: string, sprache: string): string {
       });
 }
 
+// Integration gesamt-wissen-herkunft · Nacharbeit 14: eine spätere Weisung mit punktweiser
+// Entscheidung (`weisung`) macht diese Sichtung zur früheren (`aktuelleWeisungsart`).
 type WeisungsObjekt = Pick<
   KnowledgeObject,
   "id" | "author" | "category" | "status" | "version" | "weisungsSichtung"
->;
+> &
+  Partial<Pick<KnowledgeObject, "weisung">>;
 
 /**
  * Antworten 18/19 — DIE UNMITTELBAR GÜLTIGE WEISUNG UND IHRE SICHTUNG.
@@ -318,7 +322,13 @@ export function Weisung({
     onError: (e) => weisungsFehler(e, qc, ko.id, push, t("state.error")),
   });
 
-  const s = ko.weisungsSichtung?.koVersion === ko.version ? ko.weisungsSichtung : undefined;
+  // Nacharbeit 14 (gesamt-wissen-herkunft, Ben B1): ist eine spätere Weisung mit punktweiser
+  // Entscheidung die aktuelle, wird diese frühere Sichtung nicht mehr angeboten — gesichtet wird
+  // dann an der Prüfmarke (der Server lehnt eine Sichtung mit Ergebnis hier ab).
+  const s =
+    ko.weisungsSichtung?.koVersion === ko.version && aktuelleWeisungsart(ko) === "eigene"
+      ? ko.weisungsSichtung
+      : undefined;
   const ueberfaellig = s !== undefined && !s.ergebnis && s.frist < heute;
   const fristSchluessel = ueberfaellig
     ? "pruefablauf.sichtung.ueberfaellig"

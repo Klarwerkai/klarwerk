@@ -54,12 +54,19 @@ describe("K1 · drei unterscheidbare Bereiche, abgeleitet aus dem Bestand", () =
     const basis = { name: "Alpha", zweck: "Partnerwissen", verantwortlich: "u-carla" };
     const pruefe = (zusatz: Record<string, unknown>) =>
       pruefeSpaceEingabe({ ...basis, ...zusatz }, konten);
+    // Zusammenführung mit main (gesamt-wissensprojekte): der Partnerbereich ist der Kontext
+    // `partner` samt Namen; ein Name ohne diesen Kontext ist ungültig, und er ist nie für alle offen.
+    const partner = { kontext: "partner" };
     expect(pruefe({}).partner).toBeUndefined();
-    expect(pruefe({ partner: "  Alpha GmbH " }).partner).toBe("Alpha GmbH");
+    expect(pruefe({}).kontext).toBe("firma");
+    expect(pruefe({ ...partner, partner: "  Alpha GmbH " }).partner).toBe("Alpha GmbH");
     expect(pruefe({ partner: null }).partner).toBeUndefined();
     expect(pruefe({ partner: "" }).partner).toBeUndefined();
-    expect(() => pruefe({ partner: 7 })).toThrow();
-    expect(() => pruefe({ partner: "x".repeat(81) })).toThrow();
+    expect(() => pruefe({ partner: "Alpha GmbH" })).toThrow();
+    expect(() => pruefe({ ...partner })).toThrow();
+    expect(() => pruefe({ ...partner, partner: 7 })).toThrow();
+    expect(() => pruefe({ ...partner, partner: "x".repeat(81) })).toThrow();
+    expect(() => pruefe({ ...partner, partner: "Alpha GmbH", zugang: "alle" })).toThrow();
     const stempel = {
       version: 1,
       angelegtVon: "u-carla",
@@ -67,9 +74,12 @@ describe("K1 · drei unterscheidbare Bereiche, abgeleitet aus dem Bestand", () =
       geaendertVon: "u-carla",
       geaendertAm: "2026-10-11T08:00:00.000Z",
     };
-    const alpha = { ...pruefe({ partner: "Alpha GmbH" }), ...stempel, id: "s-alpha" };
+    const alpha = { ...pruefe({ ...partner, partner: "Alpha GmbH" }), ...stempel, id: "s-alpha" };
     const werkstatt = { ...pruefe({}), ...stempel, id: "s-werkstatt" };
-    expect([...partnerbereiche([alpha, werkstatt])]).toEqual(["s-alpha"]);
+    // Eine Fassung aus den P14-Kandidaten vor der Zusammenführung: Name ohne `kontext`.
+    const { kontext: _ohne, ...altEingabe } = pruefe({});
+    const altPartner = { ...altEingabe, partner: "Gamma KG", ...stempel, id: "s-gamma" };
+    expect([...partnerbereiche([alpha, werkstatt, altPartner])]).toEqual(["s-alpha", "s-gamma"]);
   });
 });
 
