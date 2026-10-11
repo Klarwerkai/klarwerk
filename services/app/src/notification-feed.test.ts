@@ -38,8 +38,65 @@ describe("buildNotifications", () => {
       ],
     });
 
-    expect(items.map((i) => i.id)).toEqual(["gap-g1", "con-c1"]);
+    // R-0894: der eskalierte Konflikt steht als eigene Art mit eigener Kennung im Feed.
+    expect(items.map((i) => i.id)).toEqual(["gap-g1", "esc-c1"]);
+    expect(items[1]?.kind).toBe("escalation");
     expect(items.some((i) => i.id === "gap-g2")).toBe(false);
+  });
+
+  it("R-0894: Eskalation ist eine eigene Art mit neuer Kennung; offener Konflikt bleibt `conflict`", () => {
+    const basis = {
+      koA: "a",
+      koB: "b",
+      type: "truth" as const,
+      description: "Widerspruch",
+      secondOpinion: null,
+      decidedBy: null,
+      decision: null,
+      createdAt: "2026-06-01T00:00:00Z",
+    };
+    const items = buildNotifications({
+      conflicts: [
+        { ...basis, id: "c1", status: "offen" },
+        { ...basis, id: "c2", status: "eskaliert" },
+        { ...basis, id: "c3", status: "zweitmeinung" },
+      ],
+      gaps: [],
+    });
+    expect(items.map((i) => [i.id, i.kind])).toEqual([
+      ["con-c1", "conflict"],
+      ["esc-c2", "escalation"],
+      ["con-c3", "conflict"],
+    ]);
+    // Redigiert bleibt redigiert — auch als Eskalation kein Konflikttext.
+    const redigiert = buildNotifications({
+      conflicts: [{ ...basis, id: "c4", status: "eskaliert", description: "", redacted: true }],
+      gaps: [],
+    });
+    expect(redigiert[0]).toMatchObject({
+      id: "esc-c4",
+      kind: "escalation",
+      title: "",
+      redacted: true,
+    });
+  });
+
+  it("R-0894: Rückgabe zur Nacharbeit ist eine eigene Art; jede Rückgabe hat eine eigene Kennung", () => {
+    const items = buildNotifications({
+      conflicts: [],
+      gaps: [],
+      assignments: [
+        { koId: "ko-1", title: "Presse P2", at: "2026-06-10T00:00:00Z", rueckgabe: true },
+        { koId: "ko-2", title: "Lager", at: "2026-06-02T00:00:00Z" },
+      ],
+    });
+    expect(items[0]).toMatchObject({
+      id: "ret-ko-1-2026-06-10T00:00:00Z",
+      kind: "return",
+      title: "Presse P2",
+      koId: "ko-1",
+    });
+    expect(items[1]).toMatchObject({ id: "assign-ko-2", kind: "assignment" });
   });
 
   it("SCRUM-363: persönliche offene Zuweisungen erscheinen als eigene Kategorie (mit koId)", () => {

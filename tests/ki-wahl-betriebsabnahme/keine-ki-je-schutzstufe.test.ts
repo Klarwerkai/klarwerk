@@ -21,6 +21,8 @@
 //        vertraulich → null Aufrufe (fail-safe: „Keine KI" einer vertraulichen Stufe gewinnt);
 //        nicht vertraulich → das Modell wird gefragt.
 //   S5 · Zurücknehmen (`proSchutzstufe: null`) gibt die vertrauliche Stufe wieder frei.
+//   S7 · (Nacharbeit 8, nach der Integration der Zweitmeinung aus main) „Keine KI" sperrt auch den
+//        gelenkten zweiten Lauf; nicht vertraulich wird weiter gefragt.
 // ENTSCHEIDUNG Antwort 13 (über BEN): normale Anwender sehen den tatsächlich arbeitenden Dienst je
 // Aufgabe, seine Verfügbarkeit und Einschränkungen:
 //   S6 · `GET /api/reasoner/ausfuehrung` für einen Angemeldeten OHNE Adminrecht: je Aufgabe der
@@ -223,6 +225,50 @@ describe("Antwort 29 · Anbieterwahl je Schutzstufe — gespeichert, wiedergeles
     expect(zurueck.statusCode, zurueck.body).toBe(200);
     expect((await konfig()).taskConfig.proSchutzstufe).toBeUndefined();
     expect((await korrigieren("vertraulich")).rufe).toBe(1);
+  });
+
+  it("S7 · „Keine KI“ sperrt auch die Zweitmeinung (R-0305 aus main): vertraulich null Aufrufe, nicht vertraulich gefragt", async () => {
+    // Nach der Integration mit main (Nacharbeit 8): die Zweitmeinung lenkt ihren zweiten Lauf über
+    // eine eigene Kette (`lenkung.kette`) an `laufKette` vorbei. Ohne eigene Prüfung erreichte ein
+    // vertraulicher Text dort das gewählte Zweitmodell, obwohl die Stufe „Keine KI“ trägt.
+    const gespeichert = await zuordnen({
+      global: "local",
+      perTask: {},
+      proSchutzstufe: KEINE_KI_VERTRAULICH,
+      zweitmeinung: "local",
+    });
+    expect(gespeichert.statusCode, gespeichert.body).toBe(200);
+    expect(gespeichert.json().taskConfig.zweitmeinung).toBe("local");
+
+    let vorher = modellRufe.length;
+    const vertraulich = await services.reasoner.answerMitZweitmeinung(
+      "Wie wird die Anlage geprüft?",
+      [],
+      "de",
+      true,
+    );
+    expect(
+      modellRufe.slice(vorher).filter((u) => u === LOKAL_URL).length,
+      "ein vertraulicher Text erreichte trotz „Keine KI“ ein Modell (erste oder zweite Meinung)",
+    ).toBe(0);
+    expect(vertraulich.zweitmeinung).toEqual({
+      status: "nicht_moeglich",
+      grund: "nicht_freigegeben",
+    });
+
+    vorher = modellRufe.length;
+    const offen = await services.reasoner.answerMitZweitmeinung(
+      "Wie wird die Anlage geprüft?",
+      [],
+      "de",
+      false,
+    );
+    expect(
+      modellRufe.slice(vorher).filter((u) => u === LOKAL_URL).length,
+      "GEGENPROBE: ohne Sperre der Stufe fragt der Lauf das Modell",
+    ).toBeGreaterThan(0);
+    const grund = offen.zweitmeinung.status === "nicht_moeglich" ? offen.zweitmeinung.grund : null;
+    expect(grund, "GEGENPROBE: die Sperre griff auch ohne „Keine KI“").not.toBe("nicht_freigegeben");
   });
 });
 

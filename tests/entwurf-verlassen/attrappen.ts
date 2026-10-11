@@ -136,6 +136,10 @@ let neuZaehler = 0;
  * `CaptureService.createDraftVorgang`: derselbe Schlüssel mit demselben Inhalt liefert den schon
  * angelegten Entwurf, mit anderem Inhalt `IDEMPOTENCY_PAYLOAD_MISMATCH`; ohne Schlüssel legt jede
  * Anlage neu an.
+ *
+ * entscheidung:14ce8681/8b909a1e: mit `fortschreiben` schreibt ein anderer Inhalt denselben Entwurf
+ * fort, und jede Antwort ohne Neuanlage trägt `anlage` („bestehend"/„fortgeschrieben") — wie die
+ * Route `POST /api/drafts`.
  */
 const vorgaenge = new Map<string, { id: string; abdruck: string }>();
 
@@ -151,21 +155,34 @@ export function lasseNaechsteAnlageAntwortVerlorenGehen(): void {
   naechsteAntwortVerloren = true;
 }
 
-export const draftsCreate = vi.fn(async (payload: unknown, operationId?: string) => {
+/** Eine Antwort ohne Neuanlage — derselbe Entwurf, mit der Auskunft der Route (`anlage`). */
+function ohneNeuanlage(id: string, anlage: "bestehend" | "fortgeschrieben"): unknown {
+  return { ...(JSON.parse(JSON.stringify(server.bestand[id])) as object), anlage };
+}
+
+type Weiter = [expectedOwner?: string, opts?: { fortschreiben?: boolean }];
+
+export const draftsCreate = vi.fn(async (payload: unknown, operationId?: string, ...w: Weiter) => {
+  const opts = w[1];
   await anlageBremse.passiere();
   if (createFehlerTitel.has(titelAus(payload))) {
     throw new Error(`Anlage abgelehnt: ${titelAus(payload)}`);
   }
   const abdruck = JSON.stringify(payload);
   const bekannt = operationId ? vorgaenge.get(operationId) : undefined;
-  if (bekannt) {
-    if (bekannt.abdruck !== abdruck) {
+  if (operationId && bekannt) {
+    if (bekannt.abdruck === abdruck) {
+      return ohneNeuanlage(bekannt.id, "bestehend");
+    }
+    if (!opts?.fortschreiben) {
       throw Object.assign(new Error("IDEMPOTENCY_PAYLOAD_MISMATCH"), {
         status: 409,
         code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
       });
     }
-    return JSON.parse(JSON.stringify(server.bestand[bekannt.id])) as unknown;
+    server.bestand[bekannt.id] = { ...(server.bestand[bekannt.id] as object), payload };
+    vorgaenge.set(operationId, { id: bekannt.id, abdruck });
+    return ohneNeuanlage(bekannt.id, "fortgeschrieben");
   }
   neuZaehler += 1;
   const id = `neu-${neuZaehler}`;

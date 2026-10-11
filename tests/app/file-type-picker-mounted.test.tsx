@@ -12,7 +12,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { FileTypePicker } from "../../apps/web/src/components/FileTypePicker";
 import { ImportSourceGallery } from "../../apps/web/src/components/ImportSourceGallery";
 import i18n from "../../apps/web/src/i18n";
-import { FILE_SOURCES } from "../../apps/web/src/lib/importSourceGallery";
+import { FILE_SOURCES, fileSourcesForSurface } from "../../apps/web/src/lib/importSourceGallery";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -108,6 +108,20 @@ describe("FileTypePicker — aktiv löst echten Fluss aus, bald/geplant nie (Ehr
   });
 
   it("(c) „geplant“-Kachel löst KEINEN Import aus und zeigt den eigenen Hinweis", () => {
+    // R-0179 (Nacharbeit 3): NACHGEFÜHRT. Auf `/import` ist keine Dateikachel mehr geplant (Excel
+    // liest der Importkasten selbst). Geplant bleibt Excel im Erfassen — dasselbe Bauteil, dieselbe
+    // Kachel; geprüft wird dort unverändert dieselbe Ehrlichkeitszusage.
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    mount(
+      createElement(FileTypePicker, {
+        sources: fileSourcesForSurface("capture"),
+        onActivate: (id: string) => activated.push(id),
+        collapsePlanned: false,
+      }),
+    );
     act(() => {
       tile("planned").click();
     });

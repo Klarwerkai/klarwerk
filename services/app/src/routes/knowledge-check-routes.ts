@@ -5,6 +5,7 @@ import { type Confidentiality, type KoService, isConfidential } from "../../../k
 import { type Reasoner, imBindungsrahmen } from "../../../reasoner";
 import type { Guards } from "../http";
 import { checkKnowledge } from "../knowledge-check";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 import { type Ka4Freigabepruefer, ka4Freigabe, klaraBindungVorhanden } from "./ask-routes";
 import { classifyProvenanceConfidential, ohneEinstufung } from "./reasoner-routes";
 
@@ -178,6 +179,9 @@ export function knowledgeCheckRoutes(deps: KnowledgeCheckRouteDeps): FastifyPlug
         ko: deps.ko,
         conflicts: deps.conflicts,
         judge,
+        // produkt:20261007:spaces: ähnliche Artikel und Widersprüche nur aus dem, was dieser Mensch
+        // sehen darf (Stufe, Autor, führender Space) — die eine Regel aus `../sichtbarkeit`.
+        sichtbar: sichtbarkeitsfilterFuer(user),
       });
       reply.code(200).send(result);
     });

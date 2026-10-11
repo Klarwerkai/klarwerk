@@ -26,7 +26,6 @@ export {
 } from "./src/image-validation";
 export {
   DeterministicProvider,
-  keywordSelect,
   type ReasonerProvider,
   // SCRUM-360 / AG-03: begrenzte, status-/trust-bewusste Top-K-Kandidatenauswahl.
   DEFAULT_TOP_K,
@@ -68,6 +67,7 @@ export {
   // PMO-FEA-0006: DOM-freies Extract-Parsing inkl. G-2-Belegstellen-Gate (testbar).
   parseExtractResponse,
   excerptFoundInDocument,
+  findExcerptInDocument,
   MAX_EXTRACT_POINTS,
   MAX_EXCERPT_LENGTH,
   MAX_EXTRACT_DOCUMENT_LENGTH,
@@ -96,7 +96,10 @@ export {
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): technische On-Prem-Begrenzung der „lokalen" URL —
   // nur Loopback bzw. explizit freigegebene private Origins gelten als vertraulichkeits-tauglich.
   isConfirmedLocalOrigin,
+  // AW-12: interner Embedding-Weg — entsteht NUR für eine bestätigte On-Prem-Adresse (kein Egress).
+  createLocalEmbeddingClientFromEnv,
 } from "./src/model-client";
+export type { LokalerEmbeddingClient } from "./src/model-client";
 // WP-D10 (Fix 3): typisierte Modellfehler + Klassifizierung (timeout|http|network|parse) — nur
 // Metadaten (Status/Dauer), keine Credentials, kein Prompt-/Antwortinhalt.
 export {
@@ -117,6 +120,18 @@ export {
   withModelSlot,
   resetModelSemaphoreForTests,
 } from "./src/model-concurrency";
+// R-1646: die Ausgangsprüfung — der anonymisierte ausgehende Text wartet am Chokepoint auf die
+// Freigabe eines Controllers. Die App schaltet sie ein und stellt die Prüfroute bereit.
+export {
+  Ausgangspruefung,
+  AusgangAbgelehntFehler,
+  ausgangspruefungAusEnv,
+  setzeAusgangspruefung,
+  type AnonymisierungsArt,
+  type AusgangsAbschnitt,
+  type AusgangsEntscheidung,
+  type OffeneAusgangspruefung,
+} from "./src/ausgangspruefung";
 // SCRUM-386: kundeneigene KI-Assist-Presets (Admin verwaltet; Palette zeigt sie allen Rollen).
 export {
   ASSIST_PRESETS_SCHEMA,
@@ -150,6 +165,7 @@ export type {
   ReasonerLocale,
   AnswerResult,
   AnswerStep,
+  ArgumentationsGlied,
   StructureResult,
   AssistResult,
   ConflictJudgeResult,
@@ -169,6 +185,8 @@ export type {
   GroupCandidatesResult,
   ImportCriteriaResult,
   InterviewResult,
+  InterviewOptions,
+  InterviewNodeId,
   ReasonerStatus,
   ReasonerConfigStatus,
   ReasonerConfigMode,
@@ -179,10 +197,20 @@ export type {
   // KI-WAHL-BETRIEBSABNAHME · Antwort 29/13: Schutzstufen und die Ausführungsauskunft je Aufgabe.
   ReasonerSchutzstufe,
   ReasonerAusfuehrung,
+  // R-0305/R-1099: die Zweitmeinung — `services/ask` reicht ihr Ergebnis an die Route weiter.
+  ReasonerZweitmeinungWahl,
+  ZweitmeinungAbweichung,
+  ZweitmeinungAntwort,
+  ZweitmeinungErgebnis,
+  ZweitmeinungGrund,
+  ZweitmeinungStufe,
 } from "./src/types";
 // KI-WAHL-BETRIEBSABNAHME · Antwort 29: die Route setzt die serverseitig bestimmte Schutzstufe eines
 // Laufs; der Reasoner liest sie direkt vor der Kettenbildung (`schutzstufe-kontext.ts`).
 export { imSchutzstufenRahmen, setzeSchutzstufe } from "./src/schutzstufe-kontext";
+// R-0305/R-1099: die benannten Wahlen (Schreibweg) und der reine Abgleich.
+export { REASONER_ZWEITMEINUNG_WAHLEN } from "./src/types";
+export { genannteZahlen, vergleicheAntworten } from "./src/zweitmeinung";
 // mega26 Block A: der Laufkontext ist Teil der ÖFFENTLICHEN Reasoner-Fläche — ein gebundener
 // Aufrufer (heute die extract-Route) muss ihn bilden können, ohne model-runs direkt zu kennen.
 export type { ModelRunContext, ModelRunSubject } from "../model-runs";
@@ -213,7 +241,6 @@ export {
   resolveKlaraPolicy,
   klaraPolicyVersion,
   klaraConfigurationVersion,
-  KLARA_MODES,
   KLARA_RESOLUTION_TTL_MS,
   KLARA_EXTERNAL_EXECUTION_MIGRATED,
   // R-0639: der Dokumenttext als eigene Klasse mit eigenem Riegel — gelesen im App-Layer
@@ -246,6 +273,8 @@ export {
   bindeAnbieter,
   bindeZustimmung,
   anbieterZugelassen,
+  // gesamt-ki-freigaberegeln (Ben Nacharbeit 3): die Herkunftssperre einer Anfrage.
+  sperreAusleitung,
   // R-0590 · Ben nacharbeit-1: der gesperrte Ausweichweg — die App bildet ihn auf 409 mit Grund ab.
   KlaraAusweichwegGesperrtFehler,
   type KlaraAusweichwegGrund,

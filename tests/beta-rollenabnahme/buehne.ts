@@ -68,6 +68,8 @@ const SCHALTER: Record<string, string> = {
   // Zugangsdaten werden BEWUSST nicht gesetzt: die Abnahme misst das Rechtetor, nicht die Quelle,
   // und ohne Adapter antwortet die Route vor jedem Effekt.
   KLARWERK_SHAREPOINT_IMPORT: "1",
+  // R-0170: dasselbe für die drei Jira-Import-Routen — ohne Zugangsdaten, also 503 vor jedem Effekt.
+  KLARWERK_JIRA_IMPORT: "1",
   KLARWERK_PROVENANCE_ENABLED: "1",
   // Kein Schalter über einer GRUPPE, sondern über einer einzelnen Route — und gemessen an dieser
   // Bühne: `GET /api/analytics/expertise` prüft den Schalter VOR dem Rechtetor
@@ -76,6 +78,10 @@ const SCHALTER: Record<string, string> = {
   // die Zeile misst dann die Abwesenheit der Route, nicht die Wirkung des Tors. Mit dem Schalter
   // misst sie das einzige Recht (`ko.assign`), das sonst in keiner Zeile der Tabelle vorkäme.
   KLARWERK_EXPERT_MATCHING: "1",
+  // R-0556: die Verzeichnispflege (SCIM) entsteht nur mit einem Verzeichnisschlüssel. Er ist KEIN
+  // Rollenrecht — gemessen wird hier, dass keine der fünf Sitzungen ihn ersetzt (alle 401). Der
+  // Wert ist ein Prüfwert dieser Bühne, kein Geheimnis.
+  KLARWERK_SCIM_TOKEN: "rollenabnahme-verzeichnisschluessel-nur-fuer-die-buehne",
 };
 
 export interface Buehne {

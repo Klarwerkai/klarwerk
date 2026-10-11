@@ -83,13 +83,29 @@ import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
 const Analytics = lazy(() => import("./pages/Analytics").then((m) => ({ default: m.Analytics })));
 const Ask = lazy(() => import("./pages/Ask").then((m) => ({ default: m.Ask })));
+// R-0443 (Aufnahme gesamt-hilfen): die Seite „So arbeitet Klarwerk“ — nachgeladen wie jede andere.
+const Arbeitsweise = lazy(() =>
+  import("./pages/Arbeitsweise").then((m) => ({ default: m.Arbeitsweise })),
+);
+// R-1646: die Ausgangsprüfung — nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Ausgangspruefung = lazy(() =>
+  import("./pages/Ausgangspruefung").then((m) => ({ default: m.Ausgangspruefung })),
+);
 const Capture = lazy(() => import("./pages/Capture").then((m) => ({ default: m.Capture })));
 const CaptureFrontDoor = lazy(() =>
   import("./pages/CaptureFrontDoor").then((m) => ({ default: m.CaptureFrontDoor })),
 );
 const Conflicts = lazy(() => import("./pages/Conflicts").then((m) => ({ default: m.Conflicts })));
+const Dokumentfragen = lazy(() =>
+  import("./pages/Dokumentfragen").then((m) => ({ default: m.Dokumentfragen })),
+);
 const DuplicateCompare = lazy(() =>
   import("./pages/DuplicateCompare").then((m) => ({ default: m.DuplicateCompare })),
+);
+// R-1107 (Aufnahme gesamt-dublettenvergleich): der Zusammenführen-Assistent — nachgeladen wie jede
+// andere Seite (Regel oben, JOB 3503).
+const DuplicateMerge = lazy(() =>
+  import("./pages/DuplicateMerge").then((m) => ({ default: m.DuplicateMerge })),
 );
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
@@ -107,20 +123,43 @@ const ExternalKnowledge = lazy(() =>
 // daneben in einen zweiten Ordner zu legen hiesse, den Bereich an zwei Orten zu führen. Für die
 // Aufteilung des Bündels ändert das nichts: `tests/erstladezeit/` erhebt seine Sollmenge aus den
 // `lazy`-Zeilen DIESER Datei, nicht aus dem Verzeichnisnamen.
+const Firmenwoerterbuch = lazy(() =>
+  import("./pages/Firmenwoerterbuch").then((m) => ({ default: m.Firmenwoerterbuch })),
+);
 const GesamtanweisungBereich = lazy(() =>
   import("./components/gesamtanweisung/GesamtanweisungBereich").then((m) => ({
     default: m.GesamtanweisungBereich,
   })),
 );
 const Help = lazy(() => import("./pages/Help").then((m) => ({ default: m.Help })));
+// R-0920: die Ergebnisadresse eines Importlaufs — nachgeladen wie jede andere Seite.
+const ImportLauf = lazy(() =>
+  import("./pages/ImportLauf").then((m) => ({ default: m.ImportLauf })),
+);
+// KLARA-VORSCHAU (produkt:20261007:klara-vorschau): der dokumentierte Einstieg `/klara-vorschau`.
+const KlaraVorschauSeite = lazy(() =>
+  import("./pages/KlaraVorschau").then((m) => ({ default: m.KlaraVorschauSeite })),
+);
 const KnowledgeDetail = lazy(() =>
   import("./pages/KnowledgeDetail").then((m) => ({ default: m.KnowledgeDetail })),
 );
 const KnowledgeIntake = lazy(() =>
   import("./pages/KnowledgeIntake").then((m) => ({ default: m.KnowledgeIntake })),
 );
+// ADMIN-12: Meldungen und Kanäle — nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Kommunikation = lazy(() =>
+  import("./pages/Kommunikation").then((m) => ({ default: m.Kommunikation })),
+);
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
+// produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke — nachgeladen wie
+// jede andere Seite (Regel oben, JOB 3503).
+const LueckeVorgang = lazy(() =>
+  import("./pages/LueckeVorgang").then((m) => ({ default: m.LueckeVorgang })),
+);
 const Lifecycle = lazy(() => import("./pages/Lifecycle").then((m) => ({ default: m.Lifecycle })));
+const LiveWallBeamer = lazy(() =>
+  import("./pages/LiveWallBeamer").then((m) => ({ default: m.LiveWallBeamer })),
+);
 // JOB 3503: nachgeladen wie jede andere Seite — die Regel oben kennt keine Ausnahme, und der
 // Wächter `tests/erstladezeit/` erhebt seine Sollmenge aus dem Dateisystem.
 const MeineEntwuerfe = lazy(() =>
@@ -136,7 +175,26 @@ const PlaceholderPage = lazy(() =>
   import("./pages/PlaceholderPage").then((m) => ({ default: m.PlaceholderPage })),
 );
 const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
+// ADMIN-10: Qualitätsaufgaben und Rückmeldungen — nachgeladen wie jede andere Seite (JOB 3503).
+const Qualitaetsaufgaben = lazy(() =>
+  import("./pages/Qualitaetsaufgaben").then((m) => ({ default: m.Qualitaetsaufgaben })),
+);
+// ADMIN-15: interne Richtlinien (alle Konten) und ihre Verwaltung samt Unternehmensprofil —
+// nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Richtlinien = lazy(() =>
+  import("./pages/Richtlinien").then((m) => ({ default: m.Richtlinien })),
+);
 const Risk = lazy(() => import("./pages/Risk").then((m) => ({ default: m.Risk })));
+// produkt:20261007:spaces: nachgeladen wie jede andere Seite (Regel oben, JOB 3503).
+const Spaces = lazy(() => import("./pages/Spaces").then((m) => ({ default: m.Spaces })));
+// produkt:20261007:interner-chat: nachgeladen wie jede andere Seite.
+const Chat = lazy(() => import("./pages/Chat").then((m) => ({ default: m.Chat })));
+// produkt:20261007:artikel-gemeinsam: der gemeinsame Entwurf eines Artikels.
+const GemeinsamerEntwurf = lazy(() =>
+  import("./pages/GemeinsamerEntwurf").then((m) => ({ default: m.GemeinsamerEntwurfSeite })),
+);
+// produkt:20261007:templates-default: Vorlagen, Standard, Space-Vorgaben, Begriffspflege.
+const Vorlagen = lazy(() => import("./pages/Vorlagen").then((m) => ({ default: m.Vorlagen })));
 const Start = lazy(() => import("./pages/Start").then((m) => ({ default: m.Start })));
 const Capital = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Capital })));
 const GraphView = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.GraphView })));
@@ -145,6 +203,9 @@ const ImportReview = lazy(() =>
 );
 const Output = lazy(() => import("./pages/Stufe2").then((m) => ({ default: m.Output })));
 const UiKit = lazy(() => import("./pages/UiKit").then((m) => ({ default: m.UiKit })));
+const Unternehmen = lazy(() =>
+  import("./pages/Unternehmen").then((m) => ({ default: m.Unternehmen })),
+);
 const Validation = lazy(() =>
   import("./pages/Validation").then((m) => ({ default: m.Validation })),
 );
@@ -184,6 +245,7 @@ const PAGES: Record<string, ComponentType> = {
   konflikte: Conflicts,
   duplikate: Duplicates,
   duplicateCompare: DuplicateComparePage,
+  duplicateMerge: DuplicateMerge,
   conflictCompare: ConflictComparePage,
   risiko: Risk,
   lebenszyklus: Lifecycle,
@@ -191,6 +253,8 @@ const PAGES: Record<string, ComponentType> = {
   admin: Admin,
   output: Output,
   import: ImportReview,
+  // R-0920: `/import/lauf/:importId` (bewachter Eintrag `importLauf` in `app/navigation.ts`).
+  importLauf: ImportLauf,
   graph: GraphView,
   // JOB 2600 D1: die Themenkarte auf der bestehenden Oberflaeche.
   wissensnetz: Wissensnetz,
@@ -265,11 +329,25 @@ export function AppRoutes(): JSX.Element {
           <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
         ))}
         <Route path="/wissen/:id" element={<KnowledgeDetail />} />
+        {/* produkt:20261007:artikel-gemeinsam: derselbe Entwurf für alle Bearbeitenden, erreichbar
+            aus dem Artikelgespräch und dem Artikel. Ohne `Guarded`, wie `/wissen/:id`: die Türen
+            dahinter fordern `ko.create` und Sichtbarkeit am Server (`gemeinsam-routes.ts`). */}
+        <Route path="/wissen/:id/gemeinsam" element={<GemeinsamerEntwurf />} />
+        {/* produkt:20261010:wissenskreislauf-schliessen: der Vorgang einer Wissenslücke für
+            Fragende und Fachzuständige. Ohne `Guarded`, wie `/wissen/:id`: die Beteiligung prüft
+            der Server (`GET /api/gaps/:id/vorgang`, 404 für Unbeteiligte). Erreichbar aus der
+            Glocke und aus der Fragenseite. */}
+        <Route path="/luecke/:id" element={<LueckeVorgang />} />
         {/* R-0928 / R-1675 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen): die vier kurzen
             thematischen Einstiege vor den Vollfunktionen (`pages/Einstieg.tsx`, `lib/einstiege.ts`).
             OHNE `Guarded`: die Ansicht erklärt nur und öffnet nichts; das Rollen-Tor sitzt an ihrer
             Übergabe (`RoleLink`) und am Ziel selbst. Ein unbekanntes Thema führt auf die Startseite. */}
         <Route path="/einstieg/:thema" element={<Einstieg />} />
+        {/* R-0443 (Aufnahme gesamt-hilfen): „So arbeitet Klarwerk“ — wie das Wissensnetz aufgebaut
+            ist und wie gearbeitet wird. OHNE `Guarded`, wie `/einstieg/:thema`: die Seite erklärt
+            und öffnet nichts; ihre Wege laufen über `RoleLink`, und die Daten dahinter fordern
+            `ko.read` am Server (`/api/graph`). Einstieg: oben auf der Hilfeseite. */}
+        <Route path="/so-arbeitet-klarwerk" element={<Arbeitsweise />} />
         {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
             Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
         <Route path="/erfassen/neu" element={<KnowledgeIntake />} />
@@ -298,6 +376,81 @@ export function AppRoutes(): JSX.Element {
             `services/app/src/routes/gesamtanweisung-routes.ts`), gemessen in
             `tests/wiki-gesamtanweisung-abnahme/a1-tuer-in-der-gebauten-app.test.ts`. */}
         <Route path="/gesamtanweisungen/:id" element={<GesamtanweisungBereich />} />
+        {/* Firmenwörterbuch: Nachschlagen und Pflege des Begriffskatalogs. Ohne `Guarded`, wie
+            `/wissen/:id`: die Türen dahinter fordern ihr Recht am Server (`ko.read` zum Lesen,
+            `ko.validate` zum Pflegen, `services/app/src/routes/begriffe-routes.ts`). Erreichbar
+            aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
+            dieser Lieferung. */}
+        <Route path="/begriffe" element={<Firmenwoerterbuch />} />
+        {/* KLARA-VORSCHAU: Einstieg und fiktiver Artikel. Ohne `Guarded` und ohne Serverabruf —
+            die Seite zeigt nur Demodaten und schaltet Klara für die Sitzung ein
+            (docs/klara/klara-vorschau.md). Eigene Fehlergrenze: ein Fehler nimmt die Hülle nicht mit. */}
+        <Route
+          path="/klara-vorschau"
+          element={
+            <ErrorBoundary key="klara-vorschau">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/klara-vorschau/artikel/:id"
+          element={
+            <ErrorBoundary key="klara-vorschau-artikel">
+              <KlaraVorschauSeite />
+            </ErrorBoundary>
+          }
+        />
+        {/* R-0740: die Live-Wand als Beamer-Ansicht. Ohne `Guarded`, wie `/wissen/:id`: die Tür
+            dahinter fordert ihr Recht am Server (`ko.read`, `services/app/src/routes/
+            livewall-routes.ts`) und filtert nach den Sichtrechten der angemeldeten Person.
+            Erreichbar aus dem Blatt „Was gerade passiert". */}
+        <Route path="/livewall" element={<LiveWallBeamer />} />
+        {/* R-1646 · Ausgangsprüfung: der ausgehende Text vor der Freigabe. Ohne `Guarded`, wie
+            `/begriffe`: die Türen dahinter fordern `ko.validate` am Server
+            (`services/app/src/routes/ausgangspruefung-routes.ts`). */}
+        <Route path="/ausgangspruefung" element={<Ausgangspruefung />} />
+        {/* Spaces (produkt:20261007:spaces): Arbeitsräume und ihre Inhalte. Ohne `Guarded`, wie
+            `/begriffe`: die Türen dahinter fordern ihr Recht am Server (`ko.read`, `ko.validate`
+            zum Anlegen, Zuständigkeit/Schreibrecht am Space, `services/app/src/routes/
+            spaces-routes.ts`). Erreichbar über die Spacezeile jedes Artikels und über Klara. */}
+        <Route path="/spaces" element={<Spaces />} />
+        <Route path="/spaces/:id" element={<Spaces />} />
+        {/* Interner Chat (produkt:20261007:interner-chat). Ohne `Guarded`, wie `/spaces`: die
+            Türen dahinter fordern ihr Recht am Server (`ko.read`, `ko.create` für die
+            Wissensübernahme; Teilnahme, Space- und Artikelrecht je Gespräch,
+            `services/app/src/routes/chat-routes.ts`). Erreichbar über das Konto-Menü, den
+            Gesprächsknopf an Artikel und Space und Klaras „Als Nachricht entwerfen". */}
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/chat/:id" element={<Chat />} />
+        {/* produkt:20261007:templates-default: Vorlagen. Ohne `Guarded`, wie `/spaces`: die Türen
+            dahinter fordern ihr Recht am Server (`ko.read`, `ko.create`, Spacezuständigkeit,
+            `users.manage` für Verwaltung und Begriffspflege, `vorlagen-routes.ts`). Erreichbar aus
+            der Vorlagenwahl im Editor und aus der Verwaltung („Spaces und Wissensordnung"). */}
+        <Route path="/vorlagen" element={<Vorlagen />} />
+        {/* R-0347: Fragen an ein hochgeladenes Dokument. Ohne `Guarded` und ohne Server-Tür: die
+            Fläche liest die Datei im Browser und sendet nichts (`pages/Dokumentfragen.tsx`).
+            Erreichbar von der Fragen-Seite; im Menü markiert die Präfixregel „Fragen". */}
+        <Route path="/fragen/dokument" element={<Dokumentfragen />} />
+        {/* ADMIN-15: Unternehmensprofil und interne Richtlinien. Ohne `Guarded`, wie `/begriffe`:
+            die Türen dahinter fordern ihr Recht am Server (`requireUser` zum Lesen und für die
+            eigene Kenntnisnahme/Zustimmung, `users.manage` für die Verwaltung,
+            `services/app/src/routes/unternehmen-routes.ts`). Erreichbar über das Konto-Menü
+            (`/richtlinien`) und die Verwaltung unter „System" (`/unternehmen`). */}
+        <Route path="/richtlinien" element={<Richtlinien />} />
+        <Route path="/unternehmen" element={<Unternehmen />} />
+        {/* ADMIN-12: Meldungen und Kanäle. Ohne `Guarded`, wie `/richtlinien`: die Türen dahinter
+            fordern ihr Recht am Server (`requireUser` für Übersicht und eigene Einstellungen,
+            `users.manage` für die Unternehmensvorgaben, `services/app/src/routes/
+            kommunikation-routes.ts`). Erreichbar über das Profil und die Verwaltung
+            („Kommunikation"). */}
+        <Route path="/kommunikation" element={<Kommunikation />} />
+        {/* ADMIN-10: Qualitätsaufgaben und Rückmeldungen. Ohne `Guarded`, wie `/unternehmen`: die
+            Türen dahinter fordern `users.manage` am Server und filtern jede Zeile über den
+            Sichtbarkeitsfilter (`services/app/src/routes/qualitaetsaufgaben-routes.ts`). Ohne
+            Recht zeigt die Seite den Hinweis „der Verwaltung vorbehalten". Erreichbar aus der
+            Verwaltung, Gruppe „Qualität". */}
+        <Route path="/qualitaetsaufgaben" element={<Qualitaetsaufgaben />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />

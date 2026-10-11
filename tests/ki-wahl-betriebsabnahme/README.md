@@ -128,6 +128,17 @@ Bereichs; umgesetzt ist sie nach BENs Wortlaut.
 gesetzt wird sie über den Adminweg `PUT /api/reasoner/config`. Wege ohne serverseitig bestimmte Stufe
 (z. B. `/api/ask`, Textprüfung) folgen der Bit-Regel, nicht der exakten Stufe.
 
+**Integration mit main (Nacharbeit 8):** main brachte parallel die Zweitmeinung (R-0305/R-1099) mit
+eigenem Konfigurationsfeld `zweitmeinung` und gelenkter Kette (`lenkung.kette`), den Wissens-Fragebaum
+im Interview (`imageContext`, `options`, R-0604-Kennzeichnung) und die KI-Bremse im Blatt. Aufgelöst
+so, dass beides gilt: `proSchutzstufe` und `zweitmeinung` stehen nebeneinander in Typen, Normalisierung,
+Ablage und Schreibweg; `zweitmeinung` ist in der Feldliste von `PUT /api/reasoner/config` erlaubt (sonst
+wiese die 400-Prüfung dieser Runde den Zweitmeinungs-Schreibweg ab). `runTask` nimmt eine gelenkte Kette
+unverändert, sonst `laufKette`. **Konkrete Auswirkung geschlossen:** die gelenkte Kette ginge an der
+Stufenregel vorbei — `zweitmeinungsModell` meldet deshalb `nicht_freigegeben`, wenn die Stufe des Laufs
+„Keine KI“ trägt (Beleg S7: vertraulich 0 Modellaufrufe, nicht vertraulich gefragt). Das Interview
+liefert weiter `fallbackReason` (N-0087) und trägt die KI-Marke nur bei echter Modellantwort (R-0604).
+
 ## Belegabgleich EDITOR09 — Nachtrag (Nacharbeit 6)
 
 Ergänzt `EDITOR09-BELEGABGLEICH.json` und `EDITOR-ORTSBELEG-20261007/` im Auftragsordner; beide

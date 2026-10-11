@@ -38,9 +38,10 @@ import { importRunStateView } from "../lib/importResultView";
 import { koLabel } from "../lib/koLabel";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { AiCostHint } from "./AiCostHint";
-import { AiGeneratedNotice } from "./AiGeneratedNotice";
+import { AiSurfaceNotice } from "./AiGeneratedNotice";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
 // Meilenstein-Meldungen an die Schritt-Leiste.
+import { ImportLaufLink } from "./ImportLaufLink";
 import { ImportStepHeading, useReportImportStage, useRewindImportStage } from "./ImportStepper";
 // JOB 3357: der vorhandene Zustandsrenderer des Laufs — benutzt, nicht nachgebaut (Auftrag §7).
 import { RunStateBanner } from "./confluence-import/RunStateBanner";
@@ -235,8 +236,14 @@ const IMPORT_GROUPS_RUN_TEXT = {
   outcomeOffline: "imp.groups.runOutcomeOffline",
 } as const;
 
-/** Der Ausgang GENAU EINES Laufs. Wird nur gerendert, wenn eine Kennung vorliegt. */
-function LaufAusgang({ importId }: { importId: string }): JSX.Element {
+/**
+ * Der Ausgang GENAU EINES Laufs. Wird nur gerendert, wenn eine Kennung vorliegt.
+ *
+ * R-0920: exportiert, weil die eigene Ergebnisadresse eines Laufs (`pages/ImportLauf.tsx`) GENAU
+ * diesen Ausgang zeigt — dieselben Lagen (lädt, gelesen, nicht abrufbar, ausgesetzt, alter Stand),
+ * dieselben Sätze. Ein Nachbau dort wäre die zweite Wahrheit über denselben Lauf.
+ */
+export function LaufAusgang({ importId }: { importId: string }): JSX.Element {
   const { t } = useTranslation();
   const lauf = useImportRun(importId);
   const akte = lauf.data;
@@ -387,6 +394,8 @@ function LaufKennungen({
       </ul>
       {/* Der Ausgang gehört zum ZULETZT gelaufenen — das ist der, nach dem gerade gefragt wird. */}
       {letzte !== null ? <LaufAusgang importId={letzte} /> : null}
+      {/* R-0920: der Weg auf die eigene Ergebnisadresse dieses Laufs. */}
+      {letzte !== null ? <ImportLaufLink importId={letzte} /> : null}
     </div>
   );
 }
@@ -686,9 +695,11 @@ export function ImportGroups({
             <p className="mt-1.5 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.needSelection)}</p>
           ) : null}
           {/* AUFTRAG-mega61 Block E: der Gruppierungsschritt ruft ein Modell und hatte weder die
-              Modellangabe noch einen dauerhaften Hinweis — nur Badges NACH dem Lauf. */}
+              Modellangabe noch einen dauerhaften Hinweis — nur Badges NACH dem Lauf.
+              R-0603/R-0604: der Satz steht am Knopf, VOR dem Lauf — also der Flächensatz, nicht
+              „von KI erzeugt". Ob ein Modell gruppiert hat, sagen die Badges nach dem Lauf. */}
           <p className="mt-1.5">
-            <AiGeneratedNotice />{" "}
+            <AiSurfaceNotice />{" "}
             {/* AUFTRAG-mega62 Block F: der Gruppierungslauf geht über den ganzen gewählten Stapel
                 und ist damit der teuerste Klick dieser Fläche — der Halbsatz gehört an den Knopf,
                 nicht hinter das Ergebnis. */}

@@ -186,9 +186,9 @@ export default {
     "fe001.status.bedeutung.abgelehnt":
       "Abgelehnt – nicht freigegeben. Eine Person mit Prüfrecht hat die vorgelegte Fassung nicht angenommen.",
     "fe001.status.pruefung.freigegeben":
-      "Freigegeben wurde Stand {{nummer}} am {{zeit}}. Wer freigegeben hat, wird bisher nicht festgehalten.",
+      "Freigegeben wurde Stand {{nummer}} am {{zeit}}. Wer freigegeben hat, ist für diese ältere Freigabe nicht festgehalten.",
     "fe001.status.pruefung.abgelehnt":
-      "Wer abgelehnt hat und wann, wird bisher nicht festgehalten.",
+      "Wer abgelehnt hat und wann, ist für diese ältere Entscheidung nicht festgehalten.",
     "fe001.status.schritt.vorlegen":
       "Lesefassung prüfen und die Anleitung mit „Vorlegen“ zur Entscheidung einreichen.",
     "fe001.status.schritt.abschnitteFehlen":
@@ -371,8 +371,9 @@ export default {
     "fe001.status.bedeutung.abgelehnt":
       "Rejected – not approved. A person with review rights did not accept the submitted version.",
     "fe001.status.pruefung.freigegeben":
-      "State {{nummer}} was approved on {{zeit}}. Who approved it is not recorded so far.",
-    "fe001.status.pruefung.abgelehnt": "Who rejected it and when is not recorded so far.",
+      "State {{nummer}} was approved on {{zeit}}. Who approved it is not recorded for this earlier approval.",
+    "fe001.status.pruefung.abgelehnt":
+      "Who rejected it and when is not recorded for this earlier decision.",
     "fe001.status.schritt.vorlegen":
       "Check the reading version and hand in the instruction for decision with “Submit”.",
     "fe001.status.schritt.abschnitteFehlen":
@@ -562,9 +563,9 @@ export default {
     "fe001.status.bedeutung.abgelehnt":
       "Afgewezen – niet goedgekeurd. Een persoon met beoordelingsrecht heeft de voorgelegde versie niet aangenomen.",
     "fe001.status.pruefung.freigegeben":
-      "Stand {{nummer}} is goedgekeurd op {{zeit}}. Wie heeft goedgekeurd, wordt tot nu toe niet vastgelegd.",
+      "Stand {{nummer}} is goedgekeurd op {{zeit}}. Wie heeft goedgekeurd, is voor deze eerdere goedkeuring niet vastgelegd.",
     "fe001.status.pruefung.abgelehnt":
-      "Wie heeft afgewezen en wanneer, wordt tot nu toe niet vastgelegd.",
+      "Wie heeft afgewezen en wanneer, is voor deze eerdere beslissing niet vastgelegd.",
     "fe001.status.schritt.vorlegen":
       "Leesversie controleren en de instructie met „Voorleggen” ter beslissing indienen.",
     "fe001.status.schritt.abschnitteFehlen":

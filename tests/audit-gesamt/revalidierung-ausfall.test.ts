@@ -85,14 +85,16 @@ async function welt() {
 describe("Re-Validierung · Fassung, Merker und Beleg gehören zusammen", () => {
   it("Erfolgsfall: ko.revised und ko.revalidated für dieselbe Fassung, Merker weg", async () => {
     const w = await welt();
-    const bestaetigt = await w.lifecycle.confirmStillValid(w.ko.id, "carla");
+    // produkt:20261010:aenderungsfolgen-sichtbar (Nacharbeit 4): ein offener Fall wird nur mit
+    // seinem angezeigten Stand abgeschlossen; der Beleg nennt ihn.
+    const bestaetigt = await w.lifecycle.confirmStillValid(w.ko.id, "carla", 1);
     expect(bestaetigt.version).toBe(2);
     expect(await w.lifecycle.pendingRevalidation()).not.toContain(w.ko.id);
     const belege = await w.audit.list({ target: w.ko.id });
     const reval = belege.find((e) => e.action === "ko.revalidated");
     const revised = belege.find((e) => e.action === "ko.revised");
     expect(reval?.actor).toBe("carla");
-    expect(reval?.payload).toEqual({ pendingCleared: true, version: 2 });
+    expect(reval?.payload).toEqual({ pendingCleared: true, geprueftStand: 1, version: 2 });
     expect(revised?.payload).toEqual({ version: 2 });
     // Direkt hintereinander — derselbe Audit-Schritt.
     expect((reval?.seq ?? 0) - (revised?.seq ?? 0)).toBe(1);
@@ -102,7 +104,7 @@ describe("Re-Validierung · Fassung, Merker und Beleg gehören zusammen", () => 
   it("Ausfall NUR beim ko.revalidated-Beleg: Fehler, Fassung bleibt 1, Merker bleibt, kein ko.revalidated", async () => {
     const w = await welt();
     w.scharf.an = true;
-    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla", 1)).rejects.toThrow(
       "AUDIT_UNAVAILABLE",
     );
     expect((await w.koService.get(w.ko.id))?.version).toBe(1);
@@ -123,18 +125,18 @@ describe("Re-Validierung · Fassung, Merker und Beleg gehören zusammen", () => 
 
     // Nach dem Ausfall gelingt die Bestätigung regulär — und erst dann ist der Merker weg.
     w.scharf.an = false;
-    const bestaetigt = await w.lifecycle.confirmStillValid(w.ko.id, "carla");
+    const bestaetigt = await w.lifecycle.confirmStillValid(w.ko.id, "carla", 1);
     expect(bestaetigt.version).toBe(2);
     expect(await w.lifecycle.pendingRevalidation()).not.toContain(w.ko.id);
     expect((await w.audit.list({ action: "ko.revalidated" })).map((e) => e.payload)).toEqual([
-      { pendingCleared: true, version: 2 },
+      { pendingCleared: true, geprueftStand: 1, version: 2 },
     ]);
   });
 
   it("Runde 3 · Ausfall NUR beim Löschen des Merkers: nichts geschieht, und nichts wird behauptet", async () => {
     const w = await welt();
     w.merkerAus.an = true;
-    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla", 1)).rejects.toThrow(
       "CLEAR_UNAVAILABLE",
     );
     expect((await w.koService.get(w.ko.id))?.version).toBe(1);
@@ -151,7 +153,7 @@ describe("Re-Validierung · Fassung, Merker und Beleg gehören zusammen", () => 
     const w = await welt();
     const vorher = (await w.audit.list({ target: w.ko.id })).map((e) => e.action);
     w.merkerAus.nachher = true;
-    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
+    await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla", 1)).rejects.toThrow(
       "CLEAR_REPLY_LOST",
     );
     expect((await w.koService.get(w.ko.id))?.version).toBe(1);
@@ -164,7 +166,7 @@ describe("Re-Validierung · Fassung, Merker und Beleg gehören zusammen", () => 
 
   it("Lauf 2 · ohne vorherigen Merker setzt ein Ausfall keinen neuen", async () => {
     const w = await welt();
-    await w.lifecycle.confirmStillValid(w.ko.id, "carla");
+    await w.lifecycle.confirmStillValid(w.ko.id, "carla", 1);
     w.scharf.an = true;
     await expect(w.lifecycle.confirmStillValid(w.ko.id, "carla")).rejects.toThrow(
       "AUDIT_UNAVAILABLE",
@@ -174,11 +176,12 @@ describe("Re-Validierung · Fassung, Merker und Beleg gehören zusammen", () => 
 
   it("Runde 3 · ohne offenen Merker sagt der Beleg pendingCleared: false", async () => {
     const w = await welt();
-    await w.lifecycle.confirmStillValid(w.ko.id, "carla");
+    await w.lifecycle.confirmStillValid(w.ko.id, "carla", 1);
+    // Ohne offenen Fall bleibt die reine Gültigkeitsbestätigung ohne Stand möglich.
     const zweite = await w.lifecycle.confirmStillValid(w.ko.id, "carla");
     expect(zweite.version).toBe(3);
     expect((await w.audit.list({ action: "ko.revalidated" })).map((e) => e.payload)).toEqual([
-      { pendingCleared: true, version: 2 },
+      { pendingCleared: true, geprueftStand: 1, version: 2 },
       { pendingCleared: false, version: 3 },
     ]);
   });

@@ -5,7 +5,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 // an JEDEN angemeldeten Nutzer — ein e2e-Bypass des Gap-Sichtbarkeitsvertrags (/api/gaps redigierte
 // korrekt, die global gemountete Glocke nicht). Hier wird am ECHTEN HTTP-Endpunkt gepinnt: die
 // Gap-Ableitung läuft durch denselben zentralen Vertrag (gap-visibility.redactGapForViewer) —
-// Fragetext NUR für Owner/Assignee/Detail-Rolle (ko.validate); für alle anderen kommt der Text im
+// Fragetext NUR für Owner/Assignee (R-0585: kein Rollenrecht mehr); für alle anderen kommt der Text im
 // GESAMTEN Payload nicht vor (Volltext-Ausschluss über die ganze Antwort, nicht nur ein Feld).
 describe("FUNKE-FIX3 P0 (bens Blocker B): /api/notifications redigiert Gap-Fragetexte je Betrachter", () => {
   const QUESTION = "Wie kalibriere ich das Quantenflux Aggregat ZZZ?";
@@ -83,11 +83,18 @@ describe("FUNKE-FIX3 P0 (bens Blocker B): /api/notifications redigiert Gap-Frage
     expect(gapItem.redacted).toBeUndefined();
   });
 
-  it("Detail-Rolle (Admin, ko.validate) sieht den Fragetext in der Glocke", async () => {
+  // R-0585 (Auftrag gesamt-datenschutz-voreinstellung): „sieht nur er selbst und der Zuständige".
+  // Bis hierher sah die Detail-Rolle (Admin, ko.validate) jeden Fragetext in der Glocke. Das
+  // Rollenrecht ist entfernt — der unzuständige Admin bekommt denselben redigierten Eintrag wie
+  // jeder andere Fremde, und zwar im GESAMTEN Payload.
+  it("Admin mit ko.validate, aber unzuständig: Fragetext kommt in der Glocke NICHT vor", async () => {
     const { app, admin, gapId } = await setup();
     const res = await feed(app, admin.headers);
+    expect(res.payload).not.toContain(QUESTION);
+    expect(res.payload).not.toContain("Quantenflux");
     const gapItem = res.json().find((n: { id: string }) => n.id === `gap-${gapId}`);
-    expect(gapItem.title).toBe(QUESTION);
+    expect(gapItem.title).toBe("");
+    expect(gapItem.redacted).toBe(true);
   });
 
   it("Assignee sieht den Fragetext erst NACH der Zuweisung (vorher redigiert)", async () => {
