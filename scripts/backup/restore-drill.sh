@@ -540,6 +540,7 @@ PFLICHTTABELLEN=(
   meldung_zustellstatus
   verstaendnis_fragensaetze
   verstaendnis_versuche
+  meeting_dokumentbezuege
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

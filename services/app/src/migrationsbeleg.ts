@@ -244,6 +244,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // ADDITIV, nachgezählt: zwei `CREATE TABLE IF NOT EXISTS` und drei `CREATE INDEX IF NOT EXISTS`,
   // kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "VERSTAENDNISFRAGEN_SCHEMA", risiko: "ADDITIV" },
+  // BPA-16: die Meetingbezüge. ADDITIV, nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein
+  // `CREATE INDEX IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "MEETING_DOKUMENTBEZUG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

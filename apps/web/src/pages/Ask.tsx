@@ -3302,6 +3302,16 @@ export function Ask(): JSX.Element {
         </Link>{" "}
         · {t("dokumentfragen.einstiegHinweis")}
       </p>
+      {/* BPA-16: der Weg zu Rückmeldungen aus einer Besprechung — zur Folie und zur Gesprächsstelle. */}
+      <p data-testid="ask-besprechungen-einstieg" className="text-[12.5px] text-muted">
+        <Link
+          to="/besprechungen"
+          className="font-semibold text-brand-text underline-offset-2 hover:underline"
+        >
+          {t("besprechungen.einstieg")}
+        </Link>{" "}
+        · {t("besprechungen.einstiegHinweis")}
+      </p>
 
       {/* ============================================================================================
           „MEHR" — DASSELBE SEITENBLATT, WENN ES (NOCH) KEINE ANTWORT GIBT.
