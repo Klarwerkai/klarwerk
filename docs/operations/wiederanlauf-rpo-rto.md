@@ -104,8 +104,14 @@ wiederholte Mail, Freigabe oder Friständerung durch Replay.*
 Umgesetzt als Schalter am bestehenden Serverstart (`services/app/src/wiederanlauf.ts`):
 
 ```bash
-KLARWERK_WIEDERANLAUF=restore-20261011 <üblicher Start der Anwendung gegen die wiederhergestellte Datenbank>
+KLARWERK_WIEDERANLAUF=restore-20261011 \
+KLARWERK_WIEDERANLAUF_SICHERUNG=klarwerk-20261011T031500Z.dump \
+  <üblicher Start der Anwendung gegen die wiederhergestellte Datenbank>
 ```
+
+`KLARWERK_WIEDERANLAUF_SICHERUNG` nennt die eingespielte Sicherung — ihren Dateinamen aus
+`backup.sh` (auch mit Pfad) oder, für Sicherungen ohne diesen Namen, eine UTC-Zeit
+(`2026-10-11T03:15:00Z`). Ein ungültiger Wert bricht den Start ab.
 
 1. **Außenaktionen gestoppt.** Mit dem Schalter starten Wissensereignis-Meldungen
    (`KLARWERK_WEBHOOKS`), Hintergrundprüfung (Modellvergleiche) und Lückenerkennung **nicht**. Die
@@ -123,13 +129,16 @@ KLARWERK_WIEDERANLAUF=restore-20261011 <üblicher Start der Anwendung gegen die 
    Office-Zugriffe antworten mit `503 WIEDERANLAUF`. Offen bleiben Anmeldung, `/health`, der
    Verzeichnisabgleich (SCIM — führt Entzüge des Identitätsanbieters nach) und alles für Konten mit
    `users.manage`.
-4. **Nachführen** — mit den vorhandenen Verwaltungswegen, für alles **nach dem Datenstand**
-   (`GET /api/admin/wiederanlauf` nennt ihn; maßgeblich für das Alter ist der Sicherungsstand im
-   Dateinamen der Sicherung): Konto sperren/Rolle ändern (`PUT /api/users/:id`), Konto entfernen,
-   Space-Mitgliedschaft, Beitrag in den Papierkorb (`DELETE /api/kos/:id`). Quellen dafür liegen
-   außerhalb der wiederhergestellten Datenbank: Identitätsanbieter/Austritte, bearbeitete
-   Löschanträge, Tickets. Der Datenstand ist der jüngste Eintrag der wiederhergestellten Kette;
-   lief ein Drill gegen dasselbe Ziel, ist es dessen Anmeldung.
+4. **Nachführen** — mit den vorhandenen Verwaltungswegen, für alles **nach dem Sicherungsstand**
+   (`GET /api/admin/wiederanlauf`, Feld `nachfuehrungsgrenze.sicherungsstand`): Konto
+   sperren/Rolle ändern (`PUT /api/users/:id`), Konto entfernen, Space-Mitgliedschaft, Beitrag in
+   den Papierkorb (`DELETE /api/kos/:id`). Quellen dafür liegen außerhalb der wiederhergestellten
+   Datenbank: Identitätsanbieter/Austritte, bearbeitete Löschanträge, Tickets. Die Grenze ist
+   **ausschließlich** der Sicherungsstand aus `KLARWERK_WIEDERANLAUF_SICHERUNG` — nie ein
+   Auditzeitpunkt: nach einem Drill gegen dasselbe Ziel wäre der jüngste Eintrag dessen Anmeldung,
+   und alles zwischen Sicherung und Drill fiele aus der Nachführung. Der erste bekannte Stand wird mit
+   dem Wiederanlauf in der Kette festgehalten und gilt auch nach einem Neustart. Ist er unbekannt,
+   zeigt die Auskunft `null` und die Freigabe endet mit `409 SICHERUNGSSTAND_UNBEKANNT`.
 5. **Freigabe** (`POST /api/admin/wiederanlauf/freigabe`, nur `users.manage`) mit allen vier
    Bestätigungen `integritaet`, `rechteentzuege`, `loeschmarkierungen`, `aussenaktionen`. Die
    Anwendung prüft die Auditkette selbst — mit der Regel des Drills (Kettenbrüche, unerklärte und

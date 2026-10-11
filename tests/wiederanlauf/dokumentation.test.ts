@@ -89,7 +89,7 @@ describe("P09 · Unterlage Datenverlust und Wiederanlauf", () => {
     // Die neuen Betriebsmeldungen bleiben im Protokoll lesbar (Log-Positivliste).
     for (const satz of [
       "Wiederanlauf restore-20261011: Außenaktionen gestoppt (wissensereignisse, hintergrundpruefung, lueckenerkennung). Nach der Freigabe ohne KLARWERK_WIEDERANLAUF neu starten.",
-      "Wiederanlauf restore-20261011: Sperre aktiv bis zur Freigabe, Datenstand 2026-10-11T09:00:00.000Z, Replay-Grenze: 1 Meldungen unterdrückt, 2 offene Zustellungen geschlossen.",
+      "Wiederanlauf restore-20261011: Sperre aktiv bis zur Freigabe, Sicherungsstand 2026-10-11T09:00:00.000Z, Replay-Grenze: 1 Meldungen unterdrückt, 2 offene Zustellungen geschlossen.",
     ]) {
       expect(gelisteteMeldung(satz)).toBe(satz);
     }

@@ -12,6 +12,7 @@ import {
   AKTION_WIEDERANLAUF_FREIGEGEBEN,
   FREIGABE_BESTAETIGUNGEN,
   registriereWiederanlauf,
+  sicherungsstandAus,
 } from "../../services/app/src/wiederanlauf";
 import {
   KENNUNG_HEADER,
@@ -425,11 +426,22 @@ describe("P09 · isolierter Wiederanlauf mit gemessener Dauer und gemessenem Dat
     // ----------------------------------------------------------------------------------------------
     // 5. WIEDERANLAUF — Sperre, Nachführung über die vorhandenen Wege, Freigabe.
     // ----------------------------------------------------------------------------------------------
+    // Ben, Nacharbeit 2: der jüngste Eintrag im Ziel ist jetzt die Anmeldung des Drills — die
+    // Nachführungsgrenze darf er nicht sein. Sie kommt aus dem Namen der eingespielten Sicherung.
+    const drillAnmeldung = (await zielPool.query<{ at: string }>("SELECT max(at) AS at FROM audit"))
+      .rows[0]?.at;
+    const loeschungInQuelle = (
+      await quellPool.query<{ at: string }>(
+        "SELECT max(at) AS at FROM audit WHERE action = 'ko.deleted'",
+      )
+    ).rows[0]?.at;
+    expect(loeschungInQuelle, "Löschung in der Kette der Quelle").toBeTruthy();
+    expect(drillAnmeldung, "Einträge im Ziel").toBeTruthy();
     const wiederanlaufStart = Date.now();
     const zielServices = buildPgServices(zielPool);
     const zielApp = buildApp(zielServices);
     const lage = registriereWiederanlauf(zielApp, {
-      wiederanlauf: { kennung: KENNUNG },
+      wiederanlauf: { kennung: KENNUNG, sicherungsstand: sicherungsstandAus(dump) },
       audit: zielServices.audit,
       auth: zielServices.auth,
       quellen: quellenVon(zielServices),
@@ -439,6 +451,14 @@ describe("P09 · isolierter Wiederanlauf mit gemessener Dauer und gemessenem Dat
     const zielAnna = await anmelden(zielApp, KONTEN.anna.email);
     const zielCarl = await anmelden(zielApp, KONTEN.carl.email);
     const zielVera = await anmelden(zielApp, KONTEN.vera.email);
+    const auskunft = await zielApp.inject({ url: "/api/admin/wiederanlauf", headers: zielAdmin });
+    const lageVorher = auskunft.json() as { nachfuehrungsgrenze: { sicherungsstand: string } };
+    const grenze0 = lageVorher.nachfuehrungsgrenze;
+    expect(grenze0.sicherungsstand).toBe(sicherungsstand.toISOString());
+    // Löschung und Drill-Anmeldung liegen NACH der Grenze — die Löschung gehört zur Nachführung.
+    expect(String(loeschungInQuelle) > grenze0.sicherungsstand, "Löschung nach Grenze").toBe(true);
+    expect(String(drillAnmeldung) > grenze0.sicherungsstand, "Drill nach Grenze").toBe(true);
+    expect(grenze0.sicherungsstand).not.toBe(drillAnmeldung);
     // Vor der Freigabe: weder das gelöschte Objekt noch die entzogenen Rechte sind erreichbar.
     const status = async (url: string, kopf: Record<string, string>) =>
       (await zielApp.inject({ url, headers: kopf })).statusCode;

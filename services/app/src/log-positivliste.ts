@@ -430,7 +430,7 @@ export const MELDUNGEN: readonly string[] = [
   "Klara-Aufräumlauf ({wert}) übersprungen",
   // produkt:20261011:peter-p09 — server.ts und wiederanlauf.ts (Wiederanlauf nach einem Restore).
   "Wiederanlauf {wert}: Außenaktionen gestoppt ({liste}). Nach der Freigabe ohne KLARWERK_WIEDERANLAUF neu starten.",
-  "Wiederanlauf {wert}: {bezeichnung}, Datenstand {wert}, Replay-Grenze: {zahl} Meldungen unterdrückt, {zahl} offene Zustellungen geschlossen.",
+  "Wiederanlauf {wert}: {bezeichnung}, Sicherungsstand {wert}, Replay-Grenze: {zahl} Meldungen unterdrückt, {zahl} offene Zustellungen geschlossen.",
 ];
 
 function vorlageAlsMuster(vorlage: string): RegExp {

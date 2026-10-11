@@ -44,6 +44,8 @@ import {
 export const WIEDERANLAUF_ENV = "KLARWERK_WIEDERANLAUF";
 export const AKTION_WIEDERANLAUF_BEGONNEN = "wiederanlauf.begonnen";
 export const AKTION_WIEDERANLAUF_FREIGEGEBEN = "wiederanlauf.freigegeben";
+/** Nachtrag des Sicherungsstands, wenn der erste Start ihn nicht kannte. */
+export const AKTION_WIEDERANLAUF_SICHERUNGSSTAND = "wiederanlauf.sicherungsstand";
 export const WIEDERANLAUF_AKTEUR = "system:wiederanlauf";
 export const WIEDERANLAUF_PFAD = "/api/admin/wiederanlauf";
 
@@ -75,14 +77,48 @@ export const FREIGABE_BESTAETIGUNGEN = [
 ] as const;
 export type FreigabeBestaetigung = (typeof FREIGABE_BESTAETIGUNGEN)[number];
 
+/**
+ * Ben, Nacharbeit 2 (P09-AC05): DIE NACHFÜHRUNGSGRENZE IST DER SICHERUNGSSTAND — nie ein Auditzeitpunkt.
+ * Bis hierher galt der jüngste Eintrag der wiederhergestellten Kette als „Datenstand". Lief vorher der
+ * Restore-Drill gegen dasselbe Ziel, war das dessen Anmeldung: wer „seit dem Datenstand" nachführte,
+ * übersah Löschungen und Entzüge zwischen Sicherung und Drill. Der Stand kommt deshalb ausschließlich
+ * aus der Sicherung selbst — dem Dateinamen von `backup.sh` (`klarwerk-<UTC>.dump`, auch mit Pfad oder
+ * Folgenummer) oder einer ausdrücklichen UTC-Zeitangabe für Sicherungen ohne diesen Namen.
+ */
+export const SICHERUNGSSTAND_ENV = "KLARWERK_WIEDERANLAUF_SICHERUNG";
+
+const DUMPNAME = /(?:^|\/)klarwerk-(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z(?:_\d+)?\.dump$/;
+const UTC_ZEIT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z$/;
+
+/** Der Sicherungsstand als ISO-Zeitpunkt (UTC) — oder ein Wurf, wenn die Angabe keiner ist. */
+export function sicherungsstandAus(roh: string): string {
+  const wert = roh.trim();
+  const name = DUMPNAME.exec(wert);
+  const iso = name
+    ? `${name[1]}-${name[2]}-${name[3]}T${name[4]}:${name[5]}:${name[6]}Z`
+    : UTC_ZEIT.test(wert)
+      ? wert
+      : undefined;
+  const zeit = iso === undefined ? Number.NaN : Date.parse(iso);
+  if (Number.isNaN(zeit)) {
+    throw new Error(
+      `${SICHERUNGSSTAND_ENV} ist weder ein Sicherungsname von backup.sh (klarwerk-<UTC>.dump) noch eine UTC-Zeitangabe.`,
+    );
+  }
+  return new Date(zeit).toISOString();
+}
+
 export interface Wiederanlauf {
   kennung: string;
+  /** Sicherungsstand (ISO, UTC) — die Nachführungsgrenze. Fehlt er, gibt es keine Freigabe. */
+  sicherungsstand?: string | undefined;
 }
 
 /**
  * Liest den Schalter. Nicht gesetzt → `undefined`, der Start bleibt wie bisher. Ein Wert, der keine
  * Kennung ist, bricht den Start ab: ein Wiederanlauf, der still als Normalstart liefe, wäre genau der
- * Fall, den der Schalter verhindern soll.
+ * Fall, den der Schalter verhindern soll. Ein ungültiger Sicherungsstand bricht ebenso ab; ein
+ * fehlender lässt den Start in der Sperre zu, aber keine Freigabe.
  */
 export function leseWiederanlauf(
   env: Record<string, string | undefined> = process.env,
@@ -96,7 +132,8 @@ export function leseWiederanlauf(
       `${WIEDERANLAUF_ENV} ist keine gültige Kennung (Buchstaben, Ziffern, . _ : -, höchstens 64 Zeichen).`,
     );
   }
-  return { kennung: roh };
+  const sicherung = env[SICHERUNGSSTAND_ENV]?.trim();
+  return { kennung: roh, sicherungsstand: sicherung ? sicherungsstandAus(sicherung) : undefined };
 }
 
 // GET-Auskünfte ohne Bestandsinhalt, die die Anmeldeseite braucht (dieselben, die JOB 4015 als
@@ -150,20 +187,32 @@ export function registriereWiederanlauf(
   const guards = makeGuards(deps.auth);
   let freigegeben = false;
   let grenze: WiederanlaufGrenze | undefined;
-  let datenstand: string | null = null;
+  // Die Nachführungsgrenze: AUSSCHLIESSLICH der Sicherungsstand (s. `SICHERUNGSSTAND_ENV`). Kein
+  // Auditzeitpunkt ersetzt ihn — unbekannt bleibt unbekannt, und dann gibt es keine Freigabe.
+  let sicherungsstand: string | null = deps.wiederanlauf.sicherungsstand ?? null;
 
   app.addHook("onReady", async () => {
-    // Der Datenstand ist der jüngste Eintrag der wiederhergestellten Kette — gelesen, BEVOR der
-    // Wiederanlauf selbst etwas anhängt. Ein zweiter Start derselben Kennung liest ihn aus dem
-    // Beginn-Eintrag, sonst wäre es der eigene Eintrag des ersten Starts.
+    // DAUERHAFT: steht der Stand schon im Beginn-Eintrag dieses Wiederanlaufs, gilt er — auch nach
+    // einem Neustart mit anderer oder fehlender Angabe. Erst ein unbekannter Stand nimmt die Angabe
+    // dieses Starts an (und hält sie im Nachtrag fest).
     const begonnen = (await deps.audit.list({ action: AKTION_WIEDERANLAUF_BEGONNEN })).find(
       (e) => e.eventId === `${AKTION_WIEDERANLAUF_BEGONNEN}:${kennung}`,
     );
-    if (begonnen) {
-      datenstand =
-        typeof begonnen.payload.datenstand === "string" ? begonnen.payload.datenstand : null;
-    } else {
-      datenstand = (await deps.audit.page({ limit: 1 })).entries[0]?.at ?? null;
+    const nachtrag = (await deps.audit.list({ action: AKTION_WIEDERANLAUF_SICHERUNGSSTAND })).find(
+      (e) => e.eventId === `${AKTION_WIEDERANLAUF_SICHERUNGSSTAND}:${kennung}`,
+    );
+    const festgehalten = [begonnen, nachtrag]
+      .map((e) => e?.payload.sicherungsstand)
+      .find((wert): wert is string => typeof wert === "string");
+    if (festgehalten) {
+      sicherungsstand = festgehalten;
+    } else if (begonnen && sicherungsstand) {
+      await deps.audit.recordOnce(`${AKTION_WIEDERANLAUF_SICHERUNGSSTAND}:${kennung}`, {
+        actor: WIEDERANLAUF_AKTEUR,
+        action: AKTION_WIEDERANLAUF_SICHERUNGSSTAND,
+        target: "wiederanlauf",
+        payload: { kennung, sicherungsstand },
+      });
     }
     freigegeben = (await deps.audit.list({ action: AKTION_WIEDERANLAUF_FREIGEGEBEN })).some(
       (e) => e.eventId === `${AKTION_WIEDERANLAUF_FREIGEGEBEN}:${kennung}`,
@@ -179,7 +228,7 @@ export function registriereWiederanlauf(
       target: "wiederanlauf",
       payload: {
         kennung,
-        datenstand,
+        sicherungsstand,
         gestoppt: GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id),
         replayGrenze: {
           unterdrueckt: grenze.unterdrueckt.length,
@@ -189,7 +238,7 @@ export function registriereWiederanlauf(
     });
     // Satz und Werte nach der Log-Positivliste (`log-positivliste.ts`).
     deps.log?.info(
-      `Wiederanlauf ${kennung}: ${freigegeben ? "bereits freigegeben" : "Sperre aktiv bis zur Freigabe"}, Datenstand ${datenstand ?? "unbekannt"}, Replay-Grenze: ${grenze.unterdrueckt.length} Meldungen unterdrückt, ${grenze.geschlossen.length} offene Zustellungen geschlossen.`,
+      `Wiederanlauf ${kennung}: ${freigegeben ? "bereits freigegeben" : "Sperre aktiv bis zur Freigabe"}, Sicherungsstand ${sicherungsstand ?? "unbekannt"}, Replay-Grenze: ${grenze.unterdrueckt.length} Meldungen unterdrückt, ${grenze.geschlossen.length} offene Zustellungen geschlossen.`,
     );
   });
 
@@ -234,6 +283,14 @@ export function registriereWiederanlauf(
         });
         return;
       }
+      // Ohne Sicherungsstand gibt es keine Grenze, gegen die „nachgeführt" bestätigt werden könnte.
+      if (!sicherungsstand) {
+        reply.code(409).send({
+          error: "SICHERUNGSSTAND_UNBEKANNT",
+          message: `Der Sicherungsstand ist unbekannt — die Nachführung hat keine Grenze. Mit ${SICHERUNGSSTAND_ENV}=<Sicherungsname oder UTC-Zeit> neu starten.`,
+        });
+        return;
+      }
       const bericht = await deps.audit.verifyReport();
       const integritaet = {
         eintraege: bericht.count,
@@ -258,7 +315,12 @@ export function registriereWiederanlauf(
         actor: user.id,
         action: AKTION_WIEDERANLAUF_FREIGEGEBEN,
         target: "wiederanlauf",
-        payload: { kennung, bestaetigt: [...FREIGABE_BESTAETIGUNGEN], integritaet, datenstand },
+        payload: {
+          kennung,
+          bestaetigt: [...FREIGABE_BESTAETIGUNGEN],
+          integritaet,
+          nachfuehrungsgrenze: sicherungsstand,
+        },
       });
       freigegeben = true;
       reply.code(200).send(await auskunft());
@@ -279,7 +341,8 @@ export function registriereWiederanlauf(
     return {
       kennung,
       zustand: freigegeben ? "freigegeben" : "gesperrt",
-      datenstand,
+      // Alles NACH diesem Zeitpunkt fehlt dem Bestand und ist nachzuführen. `null` = unbekannt.
+      nachfuehrungsgrenze: { sicherungsstand },
       schritte: FREIGABE_BESTAETIGUNGEN,
       gestoppt: GESTOPPTE_AUSSENAKTIONEN.map((a) => ({
         ...a,
@@ -295,7 +358,9 @@ export function registriereWiederanlauf(
         : null,
       naechsterSchritt: freigegeben
         ? `Ohne ${WIEDERANLAUF_ENV} neu starten — erst dann laufen die gestoppten Außenaktionen wieder, ab der Replay-Grenze.`
-        : "Integrität prüfen, Rechteentzüge und Löschmarkierungen seit dem Datenstand nachführen, Außenaktionen prüfen, dann freigeben.",
+        : sicherungsstand
+          ? `Integrität prüfen, Rechteentzüge und Löschmarkierungen seit dem Sicherungsstand ${sicherungsstand} nachführen, Außenaktionen prüfen, dann freigeben.`
+          : `Sicherungsstand unbekannt — mit ${SICHERUNGSSTAND_ENV}=<Sicherungsname oder UTC-Zeit> neu starten; ohne ihn keine Freigabe.`,
     };
   }
 

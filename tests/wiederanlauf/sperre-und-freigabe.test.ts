@@ -21,10 +21,12 @@ import { type AppServices, buildApp, buildServices } from "../../services/app/sr
 import {
   AKTION_WIEDERANLAUF_BEGONNEN,
   AKTION_WIEDERANLAUF_FREIGEGEBEN,
+  AKTION_WIEDERANLAUF_SICHERUNGSSTAND,
   FREIGABE_BESTAETIGUNGEN,
   type WiederanlaufDeps,
   leseWiederanlauf,
   registriereWiederanlauf,
+  sicherungsstandAus,
 } from "../../services/app/src/wiederanlauf";
 import {
   type App,
@@ -53,15 +55,20 @@ async function quelle(): Promise<{ services: AppServices; b: Bestand }> {
   return { services, b };
 }
 
+/** Ein fester, vergangener Sicherungsstand für die Fälle, die nicht ihn selbst prüfen. */
+const SICHERUNG = "2026-10-11T03:15:00.000Z";
+
 async function imWiederanlauf(
   services: AppServices,
   kennung: string,
-  audit: WiederanlaufDeps["audit"] = services.audit,
+  optionen: { audit?: WiederanlaufDeps["audit"]; sicherungsstand?: string | undefined } = {
+    sicherungsstand: SICHERUNG,
+  },
 ): Promise<App> {
   const app = buildApp(services);
   registriereWiederanlauf(app, {
-    wiederanlauf: { kennung },
-    audit,
+    wiederanlauf: { kennung, sicherungsstand: optionen.sicherungsstand },
+    audit: optionen.audit ?? services.audit,
     auth: services.auth,
     quellen: quellenVon(services),
   });
@@ -140,12 +147,11 @@ describe("P09-AC05 · Wiederanlauf: Sperre, Nachführung, Freigabe", () => {
         { id: "lueckenerkennung" },
       ],
     });
-    // Der Datenstand ist der jüngste Eintrag der Kette VOR dem Wiederanlauf.
+    // Die Nachführungsgrenze ist der angegebene Sicherungsstand, festgehalten im Beginn-Eintrag.
     const begonnen = await services.audit.list({ action: AKTION_WIEDERANLAUF_BEGONNEN });
     expect(begonnen).toHaveLength(1);
-    expect(typeof begonnen[0]?.payload.datenstand).toBe("string");
-    const datenstand = begonnen[0]?.payload.datenstand;
-    expect((lage.json() as { datenstand: string }).datenstand).toBe(datenstand);
+    expect(begonnen[0]?.payload.sicherungsstand).toBe(SICHERUNG);
+    expect(lage.json()).toMatchObject({ nachfuehrungsgrenze: { sicherungsstand: SICHERUNG } });
     expect(await statusVon(app, "/api/admin/wiederanlauf", kopf.anna)).toBe(403);
     await app.close();
   });
@@ -260,7 +266,10 @@ describe("P09-AC05 · Wiederanlauf: Sperre, Nachführung, Freigabe", () => {
         uncheckedDeviations: 0,
       }),
     }) as WiederanlaufDeps["audit"];
-    const app = await imWiederanlauf(services, "probe-s4", kaputt);
+    const app = await imWiederanlauf(services, "probe-s4", {
+      audit: kaputt,
+      sicherungsstand: SICHERUNG,
+    });
     const admin = await anmelden(app, KONTEN.admin.email);
     const anna = await anmelden(app, KONTEN.anna.email);
     const res = await app.inject({
@@ -286,5 +295,110 @@ describe("P09-AC05 · Wiederanlauf: Sperre, Nachführung, Freigabe", () => {
       /KLARWERK_WIEDERANLAUF/,
     );
     expect(() => leseWiederanlauf({ KLARWERK_WIEDERANLAUF: "x".repeat(65) })).toThrow();
+    // Der Sicherungsstand: Dateiname von backup.sh (auch mit Pfad/Folgenummer) oder UTC-Zeit.
+    const mit = (sicherung: string) =>
+      leseWiederanlauf({ KLARWERK_WIEDERANLAUF: "r", KLARWERK_WIEDERANLAUF_SICHERUNG: sicherung });
+    expect(mit("/data/backups/klarwerk-20261011T031500Z_02.dump")?.sicherungsstand).toBe(SICHERUNG);
+    expect(mit("klarwerk-20261011T031500Z.dump")?.sicherungsstand).toBe(SICHERUNG);
+    expect(mit("2026-10-11T03:15:00Z")?.sicherungsstand).toBe(SICHERUNG);
+    expect(leseWiederanlauf({ KLARWERK_WIEDERANLAUF: "r" })?.sicherungsstand).toBeUndefined();
+    const ungueltig = ["gestern", "klarwerk-2026.dump", "2026-10-11 03:15", "2026-13-40T99:00Z"];
+    for (const falsch of ungueltig) {
+      expect(() => mit(falsch), falsch).toThrow(/KLARWERK_WIEDERANLAUF_SICHERUNG/);
+    }
+    expect(sicherungsstandAus("klarwerk-20261011T031500Z.dump")).toBe(SICHERUNG);
+  });
+
+  // ==============================================================================================
+  // Ben, Nacharbeit 2 (P09-AC05): die Nachführungsgrenze ist der Sicherungsstand, nie ein späterer
+  // Auditzeitpunkt — Ablauf Sicherung → Löschung/Entzug → Drill-Anmeldung → Wiederanlauf.
+  // ==============================================================================================
+  it("S6 · Grenze = Sicherungsstand, auch wenn Löschung, Entzug und Drill-Anmeldung danach in der Kette stehen", async () => {
+    const { services, b } = await quelle();
+    const sicherung = new Date().toISOString(); // hier wird gesichert
+    await new Promise((r) => setTimeout(r, 10));
+    // Nach der Sicherung: Löschung und Rechteentzug in der Quelle …
+    const quellApp = buildApp(services);
+    const admin = await anmelden(quellApp, KONTEN.admin.email);
+    expect(await statusVon(quellApp, `/api/kos/${b.offenId}`, admin, "DELETE")).toBe(204);
+    const entzug = await quellApp.inject({
+      method: "PUT",
+      url: `/api/users/${b.kennung.carl}`,
+      headers: admin,
+      payload: { role: "viewer" },
+    });
+    expect(entzug.statusCode, entzug.body).toBe(200);
+    // … dann die Anmeldung des Restore-Drills — der jüngste Eintrag vor dem Wiederanlauf.
+    await anmelden(quellApp, KONTEN.admin.email);
+    await services.audit.record({
+      actor: b.kennung.admin,
+      action: "probe.drill-anmeldung",
+      target: "drill",
+    });
+    await quellApp.close();
+    const juengster = (await services.audit.page({ limit: 1 })).entries[0]?.at ?? "";
+    const loeschung = (await services.audit.list({ action: "ko.deleted" })).at(-1)?.at ?? "";
+    expect(loeschung > sicherung, "Löschung liegt nach der Sicherung").toBe(true);
+    expect(juengster > loeschung, "Drill-Anmeldung liegt nach der Löschung").toBe(true);
+
+    const app = await imWiederanlauf(services, "probe-s6", { sicherungsstand: sicherung });
+    const verwaltung = await anmelden(app, KONTEN.admin.email);
+    const lage = await app.inject({ url: "/api/admin/wiederanlauf", headers: verwaltung });
+    const auskunft = lage.json() as { nachfuehrungsgrenze: { sicherungsstand: string } };
+    const grenze = auskunft.nachfuehrungsgrenze.sicherungsstand;
+    // Die Grenze ist die Sicherung — Löschung und Entzug liegen danach und gehören zur Nachführung.
+    expect(grenze).toBe(sicherung);
+    expect(grenze < loeschung).toBe(true);
+    expect(grenze).not.toBe(juengster);
+    expect((lage.json() as { naechsterSchritt: string }).naechsterSchritt).toContain(sicherung);
+    await app.close();
+
+    // DAUERHAFT: ein Neustart ohne Angabe behält die festgehaltene Grenze.
+    const neustart = await imWiederanlauf(services, "probe-s6", { sicherungsstand: undefined });
+    const verwaltung2 = await anmelden(neustart, KONTEN.admin.email);
+    const nochmal = await neustart.inject({ url: "/api/admin/wiederanlauf", headers: verwaltung2 });
+    expect(nochmal.json()).toMatchObject({ nachfuehrungsgrenze: { sicherungsstand: sicherung } });
+    const frei = await statusVon(
+      neustart,
+      "/api/admin/wiederanlauf/freigabe",
+      verwaltung2,
+      "POST",
+      ALLE_BESTAETIGT,
+    );
+    expect(frei).toBe(200);
+    const eintrag = (await services.audit.list({ action: AKTION_WIEDERANLAUF_FREIGEGEBEN }))[0];
+    expect(eintrag?.payload.nachfuehrungsgrenze).toBe(sicherung);
+    await neustart.close();
+  });
+
+  it("S7 · unbekannter Sicherungsstand: kein Ersatz aus der Kette, keine Freigabe — bis er angegeben ist", async () => {
+    const { services } = await quelle();
+    const app = await imWiederanlauf(services, "probe-s7", { sicherungsstand: undefined });
+    const admin = await anmelden(app, KONTEN.admin.email);
+    const anna = await anmelden(app, KONTEN.anna.email);
+    const lage = await app.inject({ url: "/api/admin/wiederanlauf", headers: admin });
+    // Die Kette hat Einträge — trotzdem keine Auditzeit als Grenze.
+    expect(await services.audit.kopfSeq()).toBeGreaterThan(0);
+    expect(lage.json()).toMatchObject({ nachfuehrungsgrenze: { sicherungsstand: null } });
+    const freigabe = await app.inject({
+      method: "POST",
+      url: "/api/admin/wiederanlauf/freigabe",
+      headers: admin,
+      payload: ALLE_BESTAETIGT,
+    });
+    expect(freigabe.statusCode).toBe(409);
+    expect(freigabe.json()).toMatchObject({ error: "SICHERUNGSSTAND_UNBEKANNT" });
+    expect(await statusVon(app, "/api/kos", anna)).toBe(503);
+    expect(await services.audit.list({ action: AKTION_WIEDERANLAUF_FREIGEGEBEN })).toEqual([]);
+    await app.close();
+
+    // Neustart derselben Kennung MIT Angabe: der Stand wird nachgetragen, dann ist Freigabe möglich.
+    const neustart = await imWiederanlauf(services, "probe-s7", { sicherungsstand: SICHERUNG });
+    const admin2 = await anmelden(neustart, KONTEN.admin.email);
+    const freigabe2 = "/api/admin/wiederanlauf/freigabe";
+    expect(await statusVon(neustart, freigabe2, admin2, "POST", ALLE_BESTAETIGT)).toBe(200);
+    const nachtrag = await services.audit.list({ action: AKTION_WIEDERANLAUF_SICHERUNGSSTAND });
+    expect(nachtrag.map((e) => e.payload.sicherungsstand)).toEqual([SICHERUNG]);
+    await neustart.close();
   });
 });
