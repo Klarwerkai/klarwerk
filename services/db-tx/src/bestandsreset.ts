@@ -131,6 +131,8 @@ export const BESTANDSRESET_LOESCHGRAPH: readonly string[] = [
   "gemeinsame_entwuerfe",
   "office_gesichert",
   "office_sitzungen",
+  //   BPA-16: Meetingbezüge — an Dateiobjekte (`objects`, unten) gebunden, fallen mit ihnen.
+  "meeting_dokumentbezuege",
   //   Zustellungen einer Veröffentlichung:
   "veroeffentlichung_zustellungen",
   "meldung_zustellstatus",
