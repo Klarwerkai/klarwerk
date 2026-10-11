@@ -35,6 +35,7 @@ import {
   anzeigestatusAnker,
   anzeigestatusAus,
 } from "../../lib/displayStatus";
+import { conflictKnowledge } from "../../lib/effectiveAnswer";
 import {
   type FacetGroupConfig,
   clearFacetSelection,
@@ -132,6 +133,7 @@ import { Modal } from "../Modal";
 import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
+import { ANTWORT_MINDESTLAENGE, BibliothekAntwort } from "./BibliothekAntwort";
 import { BibliothekLesen } from "./BibliothekLesen";
 import {
   BIB_ANSICHTEN,
@@ -2131,6 +2133,20 @@ export function BibliothekFlaeche({
           posten={posten}
           gewaehlt={gewaehltEffektiv}
           onWaehle={waehle}
+          // R-0429 Slice 2 (Peter, Frage 52): der KI-Antwortbereich über den Treffern — nur solange
+          // gesucht wird, und je Suchbegriff neu (`key`). Er hängt am ENTPRELLTEN Begriff, damit
+          // nicht jeder Tastenanschlag ein neues Angebot zeichnet.
+          antwort={
+            debouncedQ.trim().length >= ANTWORT_MINDESTLAENGE ? (
+              <BibliothekAntwort
+                key={debouncedQ.trim()}
+                frage={debouncedQ.trim()}
+                bestand={all.data ?? []}
+                konflikte={conflictKnowledge(conflicts)}
+                onQuelle={waehle}
+              />
+            ) : null
+          }
           laedt={query.isLoading || keimWartet}
           // JOB 3034 R2 (nachgezogen): ein gescheiterter ABRUF ohne Bestand ist ein echter Fehler;
           // scheitert nur die AUFFRISCHUNG eines schon geholten Bestands, bleiben die Zeilen stehen
