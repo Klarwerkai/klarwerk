@@ -2494,6 +2494,13 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "DraftStaleError",
   "ExternalSearchError",
   "FencingVeraltetError",
+  // Instanztrennung (R-0597/R-0860): die beiden Startabbrüche der Instanzbindung
+  // (`services/app/src/instanzbindung.ts`). ENTSCHEIDUNG: die Namen dürfen ins Protokoll — sie sind
+  // die Betriebsauskunft „diese Datenbank gehört einer anderen Anlage“ bzw. „APP_BASE_URL fehlt
+  // oder ist unlesbar“. Ohne sie stünde der Abbruch als `UNBEKANNT` in der Startfehlerzeile und wäre
+  // von einem Absturz nicht zu unterscheiden. Die Meldung (mit den Hostnamen) bleibt unterdrückt.
+  "InstanzadresseError",
+  "InstanzbindungError",
   // R-0170: der EINE Fehlertyp des Jira-Moduls (`services/jira/src/rest-client.ts`). ENTSCHEIDUNG:
   // der Name darf ins Protokoll — dieselbe Klasse Betriebsauskunft wie `SharePointRequestError`
   // weiter unten: die Lage steckt im Feld `lage`, die Meldung ist ein fester Satz ohne Host,

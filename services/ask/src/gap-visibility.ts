@@ -1,5 +1,5 @@
 import type { ReasonerLocale } from "../../reasoner";
-import { istFragender } from "./gap-vorgang";
+import { istFragender, rueckfragePersoenlichFuer } from "./gap-vorgang";
 import type { Gap, GapBelegbedarf, GapPriority } from "./types";
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): adressatengerechte Sichtbarkeit des Wissenslücken-
@@ -38,7 +38,10 @@ export interface GapView {
   // fachlich gelöst oder administrativ zurückgenommen. In BEIDEN Zweigen: die Art verrät keinen
   // Inhalt, und ohne sie stünde eine Rücknahme in der Liste wie eine Lösung. Fehlt bei offenen
   // Lücken und bei Altbestand ohne festgehaltenen Abschluss.
-  abschlussArt?: "fachlich" | "administrativ";
+  abschlussArt?: "fachlich" | "administrativ" | "zurueckgewiesen";
+  // produkt:20261010:antwort-beanstandung-korrektur: die Lücke ist eine beanstandete Antwortaussage.
+  // In BEIDEN Zweigen — die Art ist kein Inhalt; die Aussage selbst steht nie in dieser Sicht.
+  beanstandung?: true;
   // Nur in der berechtigten Sicht: eine Rückfrage an die Fragenden ist unbeantwortet.
   rueckfrageOffen?: true;
   // Nur in der berechtigten Sicht: der Betrachter ist einer der Fragenden (Ersteller oder Wiederholer).
@@ -81,13 +84,17 @@ export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView 
     ...(gap.locale ? { locale: gap.locale } : {}),
     ...(typeof gap.askCount === "number" ? { askCount: gap.askCount } : {}),
     ...(gap.status === "geschlossen" && gap.abschluss ? { abschlussArt: gap.abschluss.art } : {}),
+    ...(gap.beanstandung ? { beanstandung: true as const } : {}),
   };
   if (authorized) {
     return {
       ...base,
       question: gap.question,
       ...(gap.belegbedarf?.length ? { belegbedarf: [...gap.belegbedarf] } : {}),
-      ...((gap.rueckfragen ?? []).some((r) => r.antwort === undefined)
+      // Bei einer Beanstandung nur für die zuständige Person und den Adressaten der Rückfrage.
+      ...((gap.rueckfragen ?? []).some(
+        (r) => r.antwort === undefined && rueckfragePersoenlichFuer(gap, r, viewer.viewerId),
+      )
         ? { rueckfrageOffen: true as const }
         : {}),
       ...(fragend ? { eigeneFrage: true as const } : {}),

@@ -219,6 +219,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
   // Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "VORLAGEN_SCHEMA", risiko: "ADDITIV" },
+  // Instanztrennung: die eine Bindungszeile Datenbank → Anlage. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "INSTANZBINDUNG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**
