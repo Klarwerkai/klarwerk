@@ -197,11 +197,20 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     Brücke (`BrowserBruecke/Sources/KlaraBrowserKarte`). Sie gibt eine Karte nur frei, wenn
     Nutzer (`nutzer`) und Konto (`mandant` = Klarwerk-Server) passen und die Karte zur aktuellen
     Anmeldesitzung gehört.
-  - **So ist die Sitzungsbindung umgesetzt (Nacharbeit 12):** Die Brücke vermerkt beim Ablegen
-    `uebergebenAm`. Der Verbraucher gibt nur Karten frei, die nach dem Beginn der aktuellen
-    Anmeldesitzung übergeben wurden; beide Zeitpunkte stammen von der Uhr dieses Macs. Jede neue
-    Anmeldung, auch eine neue Sitzung desselben Nutzers am selben Server, sperrt damit jede schon
-    abgelegte Karte, bis eine frische Übergabe kommt. Abmeldung und Kontowechsel leeren ebenso.
+  - **So ist die Sitzungsbindung umgesetzt (Nacharbeit 13, ersetzt den Zeitvergleich aus
+    Nacharbeit 12):**
+    - Jede Anmeldung im Verbraucher erzeugt eine neue zufällige **Sitzungsmarke**. Der
+      Verbraucher legt sie neben der Karte ab (`begleitersitzung`, 0600). Bei der Abmeldung wird
+      sie gelöscht.
+    - Die Brücke liest die Marke zu Beginn jeder Verbindung. Sie legt eine Karte nur ab, wenn
+      genau diese Marke beim Ablegen noch gilt, und schreibt die Marke in die Karte.
+    - Der Verbraucher gibt nur Karten mit der **aktuellen** Marke frei.
+    - Eine verspätete Übergabe aus Sitzung A nach dem Wechsel zu B trägt die Marke von A. Sie wird
+      deshalb schon von der Brücke abgelehnt. Liegt sie trotzdem in der Ablage, gibt der
+      Verbraucher sie in keinem Leseweg frei (`anmelden`, Dateibeobachter, `aktuell()`). Das gilt
+      auch bei gleichem Nutzer und Server und unabhängig von Zeitstempeln.
+    - Abmeldung und Kontowechsel sperren ebenso. Schlägt das Ablegen der Marke fehl, gilt keine
+      Marke und damit keine Karte.
   - Dieselbe eine Prüfung (`aktuell()`) benutzen `anmelden`, die Rückmeldung und der
     Dateibeobachter.
   - Keine Karte gibt es außerdem nach dem Löschen durch `verwerfen`/`widerrufen` und bei einer

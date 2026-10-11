@@ -15,8 +15,9 @@
 //      seiner Fassung und der macOS-Fassung — die Erweiterung verwirft jede andere Antwort.
 //
 // WAS ER TUT
-//   · `karte`: nimmt GENAU die gebundene Karte an (nur für den Nutzer aus `hallo`), legt sie für den
-//     Begleiter ab — nur lesbar für dieses macOS-Konto (0600) — und quittiert Folge und Fassung.
+//   · `karte`: nimmt GENAU die gebundene Karte an (nur für den Nutzer aus `hallo` und nur unter der
+//     Begleitersitzung, die zu Beginn der Verbindung galt), legt sie mit dieser Sitzungsmarke für
+//     den Begleiter ab — nur lesbar für dieses macOS-Konto (0600) — und quittiert Folge und Fassung.
 //   · `verwerfen`: die Karte gilt in der Erweiterung nicht mehr — sofort weg, Verbindung bleibt.
 //   · `widerrufen` oder Ende der Verbindung: verwirft die abgelegte Karte und endet.
 //   Er liest keine Seiten, macht keine Bildschirmaufnahme, hat kein Mikrofon und spricht mit keinem
@@ -56,10 +57,25 @@ func verwerfen() {
   try? FileManager.default.removeItem(at: ablage)
 }
 
-func ablegen(_ karte: [String: Any]) -> Bool {
-  // Der Übergabezeitpunkt (Uhr dieses Macs): der Begleiter gibt eine Karte nur frei, wenn sie NACH
-  // dem Beginn seiner aktuellen Anmeldesitzung übergeben wurde (KlaraBrowserKarte).
+/// Die Sitzungsmarke des Begleiters (KlaraBrowserKarte schreibt sie bei jeder Anmeldung neu und
+/// löscht sie bei der Abmeldung). Nur eine Datei dieses macOS-Kontos mit 0600 gilt.
+let markenDatei = ablage.deletingLastPathComponent().appendingPathComponent("begleitersitzung")
+
+func aktuelleMarke() -> String? {
+  guard
+    let werte = try? FileManager.default.attributesOfItem(atPath: markenDatei.path),
+    let besitzer = werte[.ownerAccountID] as? NSNumber, besitzer.uint32Value == getuid(),
+    let rechte = werte[.posixPermissions] as? NSNumber, (rechte.intValue & 0o077) == 0,
+    let text = try? String(contentsOf: markenDatei, encoding: .utf8)
+  else { return nil }
+  let marke = text.trimmingCharacters(in: .whitespacesAndNewlines)
+  return marke.range(of: "^[A-Za-z0-9-]{16,64}$", options: .regularExpression) != nil ? marke : nil
+}
+
+/// Legt die Karte ab — gebunden an die Sitzungsmarke, unter der DIESE Verbindung begann.
+func ablegen(_ karte: [String: Any], marke: String) -> Bool {
   var abgelegt = karte
+  abgelegt["sitzungsmarke"] = marke
   abgelegt["uebergebenAm"] = Date().timeIntervalSince1970
   guard let daten = try? JSONSerialization.data(withJSONObject: abgelegt) else { return false }
   let ordner = ablage.deletingLastPathComponent()
@@ -110,15 +126,21 @@ schreiben([
   "macos": ProcessInfo.processInfo.operatingSystemVersionString,
 ])
 
+// Die Übergabegeneration dieser Verbindung: die Sitzungsmarke des Begleiters zu Beginn.
+let verbindungsMarke = aktuelleMarke()
+
 // 3 · Karten annehmen, bis widerrufen wird oder die Verbindung endet.
 while let nachricht = lesen() {
   switch nachricht["typ"] as? String {
   case "karte":
+    // Nur unter einer angemeldeten Begleitersitzung, und nur, wenn es NOCH dieselbe ist wie zu
+    // Beginn dieser Verbindung. Eine verspätete Übergabe nach einem Sitzungswechsel wird abgelehnt.
     guard
       nachricht["nutzer"] as? String == nutzer,
       let folge = nachricht["folge"] as? Int,
       let kartenFassung = nachricht["fassung"] as? String,
-      ablegen(nachricht)
+      let marke = verbindungsMarke, aktuelleMarke() == marke,
+      ablegen(nachricht, marke: marke)
     else {
       schreiben(["typ": "abgelehnt"])
       continue

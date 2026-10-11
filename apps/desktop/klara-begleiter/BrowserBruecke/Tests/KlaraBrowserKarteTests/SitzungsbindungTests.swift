@@ -1,5 +1,5 @@
-// BPA-01 AC10 (nacharbeit-12) — die Sitzungsbindung des Kartenverbrauchers.
-// Ausführen auf dem Mac: `swift test` im Ordner `BrowserBruecke`.
+// BPA-01 AC10 (nacharbeit-13) — die Sitzungsbindung des Kartenverbrauchers über die Sitzungsmarke.
+// Ausführen auf einem Mac mit Xcode-Werkzeugen: `swift test` im Ordner `BrowserBruecke`.
 import Foundation
 import XCTest
 
@@ -8,7 +8,6 @@ import XCTest
 final class SitzungsbindungTests: XCTestCase {
   private var ordner: URL!
   private var ablage: URL!
-  private var jetzt: Double = 1_000
 
   override func setUpWithError() throws {
     ordner = FileManager.default.temporaryDirectory
@@ -21,72 +20,80 @@ final class SitzungsbindungTests: XCTestCase {
     try? FileManager.default.removeItem(at: ordner)
   }
 
-  private func ablegen(nutzer: String = "nutzer-a", uebergebenAm: Double, rechte: Int = 0o600) throws {
-    let karte: [String: Any] = [
+  /// So legt die Brücke ab: mit der Marke, die zu Beginn IHRER Verbindung galt.
+  private func ablegen(marke: String?, nutzer: String = "nutzer-a", rechte: Int = 0o600) throws {
+    var karte: [String: Any] = [
       "typ": "karte", "folge": 3, "fassung": "f1-abc", "nutzer": nutzer,
       "mandant": "https://app.klarwerk.ai", "url": "https://shop.beispiel.test/v-17",
       "titel": "Ventil V-17", "auswahl": "V-17 16 bar", "erfasstAm": "2026-10-11T14:00:00Z",
-      "uebergebenAm": uebergebenAm,
+      "uebergebenAm": Date().timeIntervalSince1970,
     ]
+    if let marke { karte["sitzungsmarke"] = marke }
     try JSONSerialization.data(withJSONObject: karte).write(to: ablage)
     try FileManager.default.setAttributes([.posixPermissions: rechte], ofItemAtPath: ablage.path)
   }
 
-  private func quelle() -> BrowserKartenQuelle {
-    BrowserKartenQuelle(ablage: ablage, uhr: { [unowned self] in self.jetzt })
+  private func anmeldung(_ sitzung: String) -> BegleiterAnmeldung {
+    BegleiterAnmeldung(nutzer: "nutzer-a", mandant: "https://app.klarwerk.ai", sitzung: sitzung)
   }
 
-  private let peter = BegleiterAnmeldung(
-    nutzer: "nutzer-a", mandant: "https://app.klarwerk.ai", sitzung: "s-1")
-
-  func testKarteAusFrueherSitzungBleibtGesperrt() throws {
-    try ablegen(uebergebenAm: 900)  // vor der Anmeldung abgelegt
-    let q = quelle()
-    q.anmelden(peter)
-    XCTAssertNil(q.aktuell())
+  func testDieMarkeLiegtGeschuetztFuerDieBrueckeBereit() throws {
+    let q = BrowserKartenQuelle(ablage: ablage)
+    q.anmelden(anmeldung("s-1"))
+    let gelesen = try String(contentsOf: q.markenDatei, encoding: .utf8)
+    XCTAssertEqual(gelesen, q.sitzungsmarke)
+    let rechte = try FileManager.default.attributesOfItem(atPath: q.markenDatei.path)[
+      .posixPermissions] as? NSNumber
+    XCTAssertEqual((rechte?.intValue ?? 0) & 0o077, 0)
+    q.anmelden(nil)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: q.markenDatei.path))
   }
 
-  func testNeueSitzungDesselbenNutzersSperrtDieAlteKarte() throws {
-    let q = quelle()
+  func testVerspaeteteUebergabeAusFruehererSitzungWirdVerworfen() throws {
+    let q = BrowserKartenQuelle(ablage: ablage)
     var gemeldet: [BrowserKarte?] = []
     q.beiAenderung = { gemeldet.append($0) }
-    q.anmelden(peter)
-    jetzt = 1_100
-    try ablegen(uebergebenAm: 1_050)
-    q.anmelden(peter)  // dieselbe Anmeldung: nur neu prüfen (wie der Dateibeobachter)
+    q.anmelden(anmeldung("s-1"))
+    let markeA = try XCTUnwrap(q.sitzungsmarke)
+    try ablegen(marke: markeA)
+    q.anmelden(anmeldung("s-1"))  // dieselbe Anmeldung: nur neu prüfen (wie der Dateibeobachter)
     XCTAssertNotNil(q.aktuell())
-    XCTAssertNotNil(gemeldet.last ?? nil)
-    // Neue Sitzung, gleicher Nutzer, gleicher Server: die alte Karte erscheint NICHT wieder.
-    jetzt = 1_200
-    let zweite = BegleiterAnmeldung(
-      nutzer: "nutzer-a", mandant: "https://app.klarwerk.ai", sitzung: "s-2")
-    q.anmelden(zweite)
+
+    // Wechsel zu Sitzung B — gleicher Nutzer, gleicher Server.
+    q.anmelden(anmeldung("s-2"))
+    let markeB = try XCTUnwrap(q.sitzungsmarke)
+    XCTAssertNotEqual(markeA, markeB)
     XCTAssertNil(q.aktuell())
     XCTAssertNil(gemeldet.last ?? nil)
-    // Erst eine frische Übergabe in dieser Sitzung gilt wieder.
-    try ablegen(uebergebenAm: 1_250)
-    XCTAssertEqual(q.aktuell()?.uebergebenAm, 1_250)
-  }
 
-  func testFremderNutzerAbmeldungUndUnsichereDateiGebenNichtsFrei() throws {
-    let q = quelle()
-    q.anmelden(peter)
-    try ablegen(nutzer: "nutzer-b", uebergebenAm: 1_050)
+    // Die VERSPÄTETE Übergabe aus A wird jetzt erst abgelegt — mit neuem Zeitstempel, aber der
+    // Marke ihrer Verbindung. Sie gilt in KEINEM Leseweg.
+    try ablegen(marke: markeA)
     XCTAssertNil(q.aktuell())
-    try ablegen(uebergebenAm: 1_050, rechte: 0o644)
-    XCTAssertNil(q.aktuell())
-    try ablegen(uebergebenAm: 1_050)
+    q.anmelden(anmeldung("s-2"))
+    XCTAssertNil(gemeldet.last ?? nil)
+
+    // Erst eine Übergabe unter B gilt.
+    try ablegen(marke: markeB)
     XCTAssertNotNil(q.aktuell())
-    q.anmelden(nil)
-    XCTAssertNil(q.aktuell())
   }
 
-  func testGeloeschteKarteIstKeineKarte() throws {
-    let q = quelle()
-    q.anmelden(peter)
-    try ablegen(uebergebenAm: 1_050)
+  func testOhneMarkeFremderNutzerUnsichereDateiUndAbmeldungGebenNichtsFrei() throws {
+    let q = BrowserKartenQuelle(ablage: ablage)
+    q.anmelden(anmeldung("s-1"))
+    let marke = try XCTUnwrap(q.sitzungsmarke)
+    try ablegen(marke: nil)
+    XCTAssertNil(q.aktuell())
+    try ablegen(marke: marke, nutzer: "nutzer-b")
+    XCTAssertNil(q.aktuell())
+    try ablegen(marke: marke, rechte: 0o644)
+    XCTAssertNil(q.aktuell())
+    try ablegen(marke: marke)
     XCTAssertNotNil(q.aktuell())
     try FileManager.default.removeItem(at: ablage)  // `verwerfen` / `widerrufen` der Brücke
+    XCTAssertNil(q.aktuell())
+    try ablegen(marke: marke)
+    q.anmelden(nil)
     XCTAssertNil(q.aktuell())
   }
 }

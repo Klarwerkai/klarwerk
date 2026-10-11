@@ -19,6 +19,9 @@ spricht mit ihr nur über stdin/stdout. Es gibt keinen offenen Port und keinen l
   beendet sich ohne Lesen, wenn sie fehlt oder nicht passt.
 - Eine Karte wird nur für den Nutzer aus `hallo` angenommen und nur für dieses macOS-Konto lesbar
   abgelegt (`~/Library/Application Support/Klarwerk/Begleiter/browserkontext.json`, 0600).
+- Jede Karte ist an die Sitzungsmarke des Begleiters gebunden, die zu Beginn der Verbindung galt
+  (`begleitersitzung`, 0600, von `KlaraBrowserKarte` bei jeder Anmeldung neu geschrieben). Hat
+  die Sitzung inzwischen gewechselt, lehnt die Brücke die Karte ab.
 - Anmeldung, Schlüssel und Seiteninhalte jenseits der Karte erreichen die Brücke nie.
 
 ## Verhältnis zu den Begleiter-Kandidaten

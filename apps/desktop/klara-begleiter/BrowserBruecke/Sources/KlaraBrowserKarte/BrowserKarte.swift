@@ -8,11 +8,13 @@
 //
 //   · Nutzer:  `nutzer` der Karte == angemeldeter Klarwerk-Nutzer des Begleiters;
 //   · Konto:   `mandant` der Karte == Klarwerk-Server, an dem der Begleiter angemeldet ist;
-//   · Sitzung: eine Karte gilt nur, wenn die Brücke sie NACH dem Beginn der aktuellen
-//              Anmeldesitzung übergeben hat (`uebergebenAm` > Sitzungsbeginn, beides die Uhr dieses
-//              Macs). Jede neue Anmeldung — auch eine neue Sitzung desselben Nutzers am selben
-//              Server —, jede Abmeldung und jeder Kontowechsel leert sie sofort und SPERRT jede
-//              schon abgelegte Karte, bis eine frische Übergabe kommt (nacharbeit-12);
+//   · Sitzung: jede Anmeldung bekommt eine neue zufällige SITZUNGSMARKE, die hier neben der Karte
+//              abgelegt wird (`begleitersitzung`, 0600; bei Abmeldung gelöscht). Die Brücke liest
+//              sie zu Beginn jeder Verbindung und legt eine Karte nur ab, wenn genau diese Marke noch
+//              gilt — und schreibt sie in die Karte. Freigegeben wird nur eine Karte mit der
+//              AKTUELLEN Marke. Eine neue Sitzung (auch desselben Nutzers am selben Server), eine
+//              Abmeldung oder ein Kontowechsel sperrt damit alte Karten UND verspätete Übergaben
+//              aus der früheren Sitzung (nacharbeit-13);
 //   · Fassung: Folge und Fassung müssen vorhanden sein; was nicht passt, ist keine Karte.
 //
 // Gelöscht oder unlesbar heisst: KEINE Karte (nie die zuletzt gesehene). Die Datei muss diesem
@@ -63,9 +65,10 @@ public final class BrowserKartenQuelle {
   private var beobachter: DispatchSourceFileSystemObject?
   private var ordnerKennung: Int32 = -1
   private var zuletzt: BrowserKarte?
-  /// Beginn der aktuellen Anmeldesitzung; `nil` = abgemeldet. Nur danach übergebene Karten gelten.
-  private var sitzungsBeginn: Double?
-  private let uhr: () -> Double
+  /// Die Marke der aktuellen Anmeldesitzung; `nil` = abgemeldet. Nur Karten mit ihr gelten.
+  private(set) var sitzungsmarke: String?
+  /// Hier liest die Brücke die Marke (neben der Karte).
+  let markenDatei: URL
 
   public static var standardAblage: URL {
     FileManager.default.homeDirectoryForCurrentUser
@@ -73,32 +76,37 @@ public final class BrowserKartenQuelle {
       .appendingPathComponent("browserkontext.json")
   }
 
-  public init(
-    ablage: URL = BrowserKartenQuelle.standardAblage,
-    uhr: @escaping () -> Double = { Date().timeIntervalSince1970 }
-  ) {
+  public init(ablage: URL = BrowserKartenQuelle.standardAblage) {
     self.ablage = ablage
-    self.uhr = uhr
+    self.markenDatei = ablage.deletingLastPathComponent().appendingPathComponent("begleitersitzung")
   }
 
   deinit { anhalten() }
 
-  /// Neue Anmeldung, neue Sitzung, Abmeldung (`nil`) oder Kontowechsel: die bisherige Karte gilt
-  /// nicht mehr. Eine schon abgelegte Karte bleibt GESPERRT, bis die Brücke eine frische übergibt —
-  /// auch wenn Nutzer und Server gleich bleiben.
+  /// Neue Anmeldung, neue Sitzung, Abmeldung (`nil`) oder Kontowechsel: neue Sitzungsmarke (bzw.
+  /// keine). Alte Karten und verspätete Übergaben aus der früheren Sitzung tragen die alte Marke
+  /// und bleiben gesperrt — auch wenn Nutzer und Server gleich bleiben.
   public func anmelden(_ neu: BegleiterAnmeldung?) {
     if neu != anmeldung {
       anmeldung = neu
-      sitzungsBeginn = neu == nil ? nil : uhr()
+      if neu == nil {
+        sitzungsmarke = nil
+        try? FileManager.default.removeItem(at: markenDatei)
+      } else {
+        let marke = UUID().uuidString
+        // Erst die Marke ablegen, dann gelten lassen: schlägt das Ablegen fehl, gilt KEINE Marke.
+        sitzungsmarke = markeAblegen(marke) ? marke : nil
+      }
     }
-    // Dieselbe Prüfung wie überall: vor dem Sitzungsbeginn übergebene Karten bleiben gesperrt.
+    // Dieselbe Prüfung wie überall.
     melde(aktuell())
   }
 
   /// Die freigegebene Karte — oder `nil`, wenn keine da ist oder sie nicht zur Anmeldung UND zur
-  /// Sitzung passt. Diese eine Prüfung benutzen `anmelden`, `beobachten` und der Dateibeobachter.
+  /// aktuellen Sitzungsmarke passt. Diese eine Prüfung benutzen `anmelden`, `beobachten` und der
+  /// Dateibeobachter.
   public func aktuell() -> BrowserKarte? {
-    guard let anmeldung, let beginn = sitzungsBeginn, sicherAbgelegt(),
+    guard let anmeldung, let marke = sitzungsmarke, sicherAbgelegt(ablage),
       let daten = try? Data(contentsOf: ablage),
       daten.count <= 1_048_576,
       let roh = (try? JSONSerialization.jsonObject(with: daten)) as? [String: Any],
@@ -109,10 +117,10 @@ public final class BrowserKartenQuelle {
       let mandant = roh["mandant"] as? String, mandant == anmeldung.mandant,
       let url = roh["url"] as? String,
       let auswahl = roh["auswahl"] as? String,
-      // Sitzungsbindung: nur eine Übergabe NACH dem Beginn dieser Anmeldesitzung.
-      let uebergebenAm = (roh["uebergebenAm"] as? NSNumber)?.doubleValue,
-      uebergebenAm > beginn
+      // Sitzungsbindung: nur eine Übergabe unter GENAU der aktuellen Sitzungsmarke.
+      roh["sitzungsmarke"] as? String == marke
     else { return nil }
+    let uebergebenAm = (roh["uebergebenAm"] as? NSNumber)?.doubleValue ?? 0
     return BrowserKarte(
       folge: folge,
       fassung: fassung,
@@ -154,9 +162,25 @@ public final class BrowserKartenQuelle {
     beobachter = nil
   }
 
-  /// Nur eine Datei dieses macOS-Kontos, die niemand sonst lesen kann, ist eine Karte.
-  private func sicherAbgelegt() -> Bool {
-    guard let werte = try? FileManager.default.attributesOfItem(atPath: ablage.path),
+  /// Die Sitzungsmarke ablegen — nur für dieses macOS-Konto lesbar (0600), atomar.
+  private func markeAblegen(_ marke: String) -> Bool {
+    let ordner = markenDatei.deletingLastPathComponent()
+    do {
+      try FileManager.default.createDirectory(
+        at: ordner, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+      try Data(marke.utf8).write(to: markenDatei, options: [.atomic])
+      try FileManager.default.setAttributes(
+        [.posixPermissions: 0o600], ofItemAtPath: markenDatei.path)
+      return true
+    } catch {
+      try? FileManager.default.removeItem(at: markenDatei)
+      return false
+    }
+  }
+
+  /// Nur eine Datei dieses macOS-Kontos, die niemand sonst lesen kann, gilt.
+  private func sicherAbgelegt(_ datei: URL) -> Bool {
+    guard let werte = try? FileManager.default.attributesOfItem(atPath: datei.path),
       let besitzer = werte[.ownerAccountID] as? NSNumber,
       let rechte = werte[.posixPermissions] as? NSNumber
     else { return false }
