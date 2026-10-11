@@ -18,7 +18,9 @@
 //   N6  Der Kontext wird nur geladen, wenn das Konto jedes Objekt sehen darf; sonst ohne Hinweis.
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE,
   type AdapterAntwort,
+  type AdapterKontext,
   type AuftragsEintrag,
   type FaehigkeitsAdapter,
   FaehigkeitsAusfuehrung,
@@ -26,6 +28,7 @@ import {
   type Faehigkeitsbindung,
   Faehigkeitsregistry,
   type Faehigkeitsvertrag,
+  GEKUERZT_MELDUNG,
   LAUF_FRIST_MS,
   ProfilFaehigkeitsAblage,
   bindungsFingerabdruck,
@@ -432,7 +435,7 @@ describe("N4 · gespeicherte Ergebnisse nur mit aktuellen Rechten", () => {
     await a.fuehreAus(b);
     expect(await a.auftrag("erik", b.auftragId)).toBeNull();
     expect(await a.auftraege("erik")).toEqual([]);
-    expect(a.brecheAb("erik", b.auftragId)).toBe(false);
+    expect(await a.brecheAb("erik", b.auftragId)).toBe(false);
   });
 });
 
@@ -470,5 +473,193 @@ describe("N6 · der Kontext wird mit den Rechten des Kontos geladen", () => {
       confidentiality: "vertraulich",
     });
     expect(await ladeKontext(deps(), ada, ["ko-1"])).toBeNull();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Ben Nacharbeit 5 — Befunde 2 bis 4.
+//
+//   N7  Vor jedem abhängigen Unterschritt gelten die AKTUELLEN Kontextrechte und -fassungen; die
+//       tatsächlich weitergegebenen Daten werden gegen die Grenzen des Empfängers geprüft.
+//   N8  Die Aufbewahrungsgrenze entfernt Ergebnisinhalte, nicht die Auftragsidentität: eine
+//       Wiederholung einer alten Kennung löst keine zweite Wirkung aus.
+//   N9  Ein Abbruch ist dauerhaft: ein wartender Auftrag startet auch in einem anderen Prozess nicht,
+//       ein laufender startet keinen abhängigen Unterschritt mehr.
+// ------------------------------------------------------------------------------------------------
+
+const KETTE: Faehigkeitsvertrag = {
+  ...SUCHE,
+  id: "test-kette",
+  zwecke: ["kette"],
+  unterschritte: [{ id: "nachsuche", datenempfaenger: SUCHE.datenempfaenger, modell: false }],
+};
+
+function baueKette(
+  instanz: string,
+  fuehreAus: (k: AdapterKontext) => Promise<AdapterAntwort>,
+): FaehigkeitsAusfuehrung {
+  const registry = new Faehigkeitsregistry();
+  registry.registriere(KETTE);
+  registry.installiereAdapter({
+    faehigkeitId: KETTE.id,
+    fassung: KETTE.fassung,
+    transport: "ersatz",
+    fuehreAus: (_eingabe, k) => fuehreAus(k),
+  });
+  return new FaehigkeitsAusfuehrung({
+    registry,
+    lage: produktFaehigkeitsLage({ reasoner, externeWissensabfrage: policy }),
+    geheimnisse: { hole: () => null },
+    ablage: new ProfilFaehigkeitsAblage(profile),
+    kontext: produktKontextPruefung(deps()),
+    instanz,
+  });
+}
+
+describe("N7 · abhängige Unterschritte mit aktuellen Rechten, Fassungen und Empfängergrenzen", () => {
+  let nachsuche: number;
+  beforeEach(() => {
+    nachsuche = 0;
+  });
+
+  it("Rechteentzug während des Adapters sperrt den folgenden Unterschritt", async () => {
+    const a = baueKette("A", async (k) => {
+      wissen.set("ko-1", {
+        ...(wissen.get("ko-1") as WissenEintrag),
+        confidentiality: "vertraulich",
+      });
+      await k.unterschritt("nachsuche", async () => {
+        nachsuche += 1;
+      });
+      return TREFFER;
+    });
+    const r = await a.fuehreAus(await binde(a, auftrag({ zweck: "kette", kontext: [KONTEXT_KO] })));
+    expect(r.stand).toBe("gesperrt");
+    expect(r.voraussetzungen.map((v) => v.art)).toContain("kontextrecht");
+    expect(nachsuche).toBe(0);
+  });
+
+  it("eine während des Adapters geänderte Kontextfassung sperrt den Unterschritt", async () => {
+    const a = baueKette("A", async (k) => {
+      wissen.set("ko-1", { ...(wissen.get("ko-1") as WissenEintrag), version: 2 });
+      await k.unterschritt("nachsuche", async () => {
+        nachsuche += 1;
+      });
+      return TREFFER;
+    });
+    const r = await a.fuehreAus(await binde(a, auftrag({ zweck: "kette", kontext: [KONTEXT_KO] })));
+    expect(r.voraussetzungen.map((v) => v.art)).toContain("kontext_geaendert");
+    expect(r.stand).not.toBe("erfolgreich");
+    expect(nachsuche).toBe(0);
+  });
+
+  it("weitergegebene Daten mit geschütztem Kontextinhalt gehen nicht an den externen Empfänger", async () => {
+    wissen.set("ko-2", {
+      confidentiality: "intern",
+      author: "bert",
+      version: 1,
+      title: "Wartungsplan",
+      statement: "Das Wartungsintervall beträgt 400 Stunden laut Hausnorm",
+    });
+    const ko2 = { kennung: "ko-2", fassung: "1", schutz: "intern" as const, text: "x" };
+    let daten: Record<string, string> = { q: "Wartungsintervall beträgt 400 Stunden" };
+    const a = baueKette("A", async (k) => {
+      await k.unterschritt(
+        "nachsuche",
+        async () => {
+          nachsuche += 1;
+        },
+        daten,
+      );
+      return TREFFER;
+    });
+    const leck = await a.fuehreAus(await binde(a, auftrag({ zweck: "kette", kontext: [ko2] })));
+    expect(leck.stand).toBe("gesperrt");
+    expect(leck.voraussetzungen.map((v) => v.art)).toContain("vertraulich");
+    expect(JSON.stringify(leck)).not.toContain("400 Stunden");
+    expect(nachsuche).toBe(0);
+
+    daten = { q: "Kreiselpumpe Herstellerangaben" };
+    const neutral = await a.fuehreAus(await binde(a, auftrag({ zweck: "kette", kontext: [ko2] })));
+    expect(neutral.stand).toBe("erfolgreich");
+    expect(nachsuche).toBe(1);
+  });
+});
+
+describe("N8 · Aufbewahrungsgrenze ohne Verlust der Auftragsidentität", () => {
+  it("die älteste Kennung bleibt erkannt — gekürzt, ohne zweite Wirkung", async () => {
+    let uhr = Date.parse("2026-10-11T08:00:00.000Z");
+    const a = baue("A", () => {
+      uhr += 1_000;
+      return uhr;
+    });
+    const bindungen: Faehigkeitsbindung[] = [];
+    for (let i = 0; i <= AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE; i++) {
+      const b = await binde(a, auftrag({}));
+      bindungen.push(b);
+      expect((await a.fuehreAus(b)).stand).toBe("erfolgreich");
+    }
+    expect(suchaufrufe).toBe(AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE + 1);
+    const gespeichert = (await profile.hole("ada"))?.faehigkeitsAuftraege ?? [];
+    expect(gespeichert).toHaveLength(AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE + 1);
+    const erste = bindungen[0] as Faehigkeitsbindung;
+    const alt = gespeichert.find((e) => e.auftragId === erste.auftragId);
+    expect(alt?.gekuerzt).toBe(true);
+    expect(alt?.ergebnis?.eintraege).toEqual([]);
+    expect(alt?.bindung.eingabe).toEqual({});
+    expect(alt?.fingerabdruck).toBe(bindungsFingerabdruck(erste));
+
+    const wieder = await a.fuehreAus(erste);
+    expect(wieder.wiederholt).toBe(true);
+    expect(wieder.stand).toBe("erfolgreich");
+    expect(wieder.meldung).toBe(GEKUERZT_MELDUNG);
+    expect(suchaufrufe).toBe(AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE + 1);
+  });
+});
+
+describe("N9 · dauerhafter Abbruch", () => {
+  it("ein wartender Auftrag, abgebrochen von einem anderen Prozess, startet nirgends mehr", async () => {
+    const einsteller = baue("prozess-einsteller");
+    const b = await binde(einsteller, auftrag({}));
+    await einsteller.starteImHintergrund(b);
+    // Ein zweiter Prozess ohne lokalen Lauf vermerkt den Abbruch dauerhaft.
+    expect(await baue("prozess-abbruch").brecheAb("ada", b.auftragId)).toBe(true);
+    // Ein dritter Prozess arbeitet die Warteschlange ab (Wiederanlauf).
+    const [r] = await baue("prozess-neu").arbeiteWarteschlangeAb();
+    expect(r?.stand).toBe("abgebrochen");
+    expect(suchaufrufe).toBe(0);
+    expect(await profile.kontenMitOffenenFaehigkeitsauftraegen()).toEqual([]);
+    // Der Abbruch ist für diese Kennung endgültig.
+    const wieder = await baue("prozess-vier").fuehreAus(b);
+    expect(wieder.stand).toBe("abgebrochen");
+    expect(suchaufrufe).toBe(0);
+    // Ein fertiger oder unbekannter Auftrag ist nicht abbrechbar.
+    expect(await baue("prozess-vier").brecheAb("ada", b.auftragId)).toBe(false);
+    expect(await baue("prozess-vier").brecheAb("ada", "gibt-es-nicht")).toBe(false);
+  });
+
+  it("ein in Prozess A laufender Auftrag, abgebrochen in Prozess B, startet keinen Unterschritt", async () => {
+    let weiter: () => void = () => undefined;
+    const bereit = new Promise<void>((r) => {
+      weiter = r;
+    });
+    let nachsuche = 0;
+    const a = baueKette("prozess-a", async (k) => {
+      await bereit;
+      await k.unterschritt("nachsuche", async () => {
+        nachsuche += 1;
+      });
+      return TREFFER;
+    });
+    const b = await binde(a, auftrag({ zweck: "kette" }));
+    const lauf = a.fuehreAus(b);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(await baueKette("prozess-b", async () => TREFFER).brecheAb("ada", b.auftragId)).toBe(
+      true,
+    );
+    weiter();
+    const r = await lauf;
+    expect(r.stand).toBe("abgebrochen");
+    expect(nachsuche).toBe(0);
   });
 });

@@ -34,7 +34,9 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
   const [werte, setWerte] = useState<Record<string, string>>({});
   const [vorbereitung, setVorbereitung] = useState<FaehigkeitsVorbereitung | null>(null);
   const [ergebnis, setErgebnis] = useState<FaehigkeitsErgebnis | null>(null);
-  const [auftragId, setAuftragId] = useState<string>(neueAuftragId);
+  // Kennung und Fingerabdruck der ANGEZEIGTEN Vorschau — ausgeführt wird nur genau diese Bindung.
+  const [auftragId, setAuftragId] = useState<string | null>(null);
+  const [fingerabdruck, setFingerabdruck] = useState<string | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const zweck = f.zwecke[0] ?? "";
@@ -44,9 +46,15 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
     setErgebnis(null);
     setLaeuft(true);
     try {
-      const a = await faehigkeitenApi.vorschau({ zweck, gewaehlt: f.id, eingabe: werte });
+      const a = await faehigkeitenApi.vorschau({
+        zweck,
+        gewaehlt: f.id,
+        eingabe: werte,
+        auftragId: neueAuftragId(),
+      });
       setVorbereitung(a.vorbereitung);
-      setAuftragId(neueAuftragId());
+      setAuftragId(a.auftragId);
+      setFingerabdruck(a.fingerabdruck);
     } catch (e) {
       setFehler(grundAus(e));
     } finally {
@@ -55,6 +63,9 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
   };
 
   const ausfuehren = async (): Promise<void> => {
+    if (!auftragId || !fingerabdruck) {
+      return;
+    }
     setFehler(null);
     setLaeuft(true);
     try {
@@ -63,10 +74,14 @@ function Aufruf({ f }: { f: FaehigkeitsEintrag }): JSX.Element {
         gewaehlt: f.id,
         eingabe: werte,
         auftragId,
+        vorschauFingerabdruck: fingerabdruck,
       });
       setVorbereitung(a.vorbereitung);
       setErgebnis(a.ergebnis);
     } catch (e) {
+      // 409: die Bindung hat sich seit der Vorschau geändert — erst die neue Vorschau prüfen.
+      setVorbereitung(null);
+      setFingerabdruck(null);
       setFehler(grundAus(e));
     } finally {
       setLaeuft(false);

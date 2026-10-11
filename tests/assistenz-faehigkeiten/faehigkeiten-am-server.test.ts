@@ -110,6 +110,18 @@ const auf = (wer: string, methode: "GET" | "PUT" | "POST", url: string, payload?
     ...(payload === undefined ? {} : { payload: payload as Record<string, unknown> }),
   });
 
+/** Vorschau MIT Auftragskennung, dann genau diese Bindung bestätigt ausführen. */
+async function vorschauUndAusfuehren(wer: string, auftrag: Record<string, unknown>) {
+  const v = await auf(wer, "POST", "/api/me/faehigkeiten/vorschau", auftrag);
+  expect(v.statusCode, v.body).toBe(200);
+  const fingerabdruck = (v.json() as { fingerabdruck: string | null }).fingerabdruck;
+  return auf(wer, "POST", "/api/me/faehigkeiten/auftraege", {
+    ...auftrag,
+    bestaetigt: true,
+    vorschauFingerabdruck: fingerabdruck,
+  });
+}
+
 interface Uebersicht {
   faehigkeiten: {
     id: string;
@@ -203,11 +215,15 @@ describe("F2 · Vorschau, bestätigte Ausführung und eigene Aufträge", () => {
     expect(ohneBestaetigung.statusCode).toBe(400);
     expect(aufrufe).toBe(0);
 
-    const lauf = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+    const ohneFingerabdruck = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
       ...auftrag,
       auftragId: "f2-auftrag",
       bestaetigt: true,
     });
+    expect(ohneFingerabdruck.statusCode).toBe(400);
+    expect(aufrufe).toBe(0);
+
+    const lauf = await vorschauUndAusfuehren(erik.token, { ...auftrag, auftragId: "f2-auftrag" });
     expect(lauf.statusCode, lauf.body).toBe(200);
     const ergebnis = (
       lauf.json() as { ergebnis: { stand: string; transport: string; ruecklink: unknown } }
@@ -221,11 +237,7 @@ describe("F2 · Vorschau, bestätigte Ausführung und eigene Aufträge", () => {
     expect(aufrufe).toBe(1);
 
     // Dieselbe Kennung erneut: gespeichertes Ergebnis, keine zweite Wirkung.
-    const wieder = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
-      ...auftrag,
-      auftragId: "f2-auftrag",
-      bestaetigt: true,
-    });
+    const wieder = await vorschauUndAusfuehren(erik.token, { ...auftrag, auftragId: "f2-auftrag" });
     expect((wieder.json() as { ergebnis: { wiederholt: boolean } }).ergebnis.wiederholt).toBe(true);
     expect(aufrufe).toBe(1);
 
@@ -281,11 +293,36 @@ describe("F3 · die Lage kommt aus dem laufenden Server", () => {
 
   it("gesperrte externe Wissensabfrage sperrt die externe Fähigkeit vor jedem Aufruf", async () => {
     await services.externalKnowledge.setStage("blocked");
-    const r = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+    const r = await vorschauUndAusfuehren(erik.token, {
       zweck: "server_recherche",
       eingabe: { suchbegriff: "x" },
       auftragId: "f3-gesperrt",
+    });
+    // Ohne Bindung gibt es keinen Fingerabdruck — und damit keine Ausführung.
+    expect(r.statusCode).toBe(400);
+    const vorschau = await auf(erik.token, "POST", "/api/me/faehigkeiten/vorschau", {
+      zweck: "server_recherche",
+      eingabe: { suchbegriff: "x" },
+      auftragId: "f3-gesperrt",
+    });
+    expect(vorschau.statusCode).toBe(200);
+    const body = vorschau.json() as {
+      vorbereitung: { voraussetzungen: { art: string }[] };
+      fingerabdruck: string | null;
+    };
+    expect(body.fingerabdruck).toBeNull();
+    expect(body.vorbereitung.voraussetzungen.map((x) => x.art)).toContain("freigabe_extern");
+    expect(aufrufe).toBe(0);
+  });
+
+  it("auch mit einem (fremden) Fingerabdruck läuft eine gesperrte Fähigkeit nicht", async () => {
+    await services.externalKnowledge.setStage("blocked");
+    const r = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+      zweck: "server_recherche",
+      eingabe: { suchbegriff: "x" },
+      auftragId: "f3-gesperrt-2",
       bestaetigt: true,
+      vorschauFingerabdruck: "0".repeat(64),
     });
     expect(r.statusCode).toBe(200);
     const body = r.json() as {
@@ -339,12 +376,11 @@ describe("F4 · Favorit und bestätigte Routine über HTTP", () => {
     ).toEqual([]);
 
     // Die bestätigte Routine läuft ohne Einzelrückfrage im erlaubten Kontext …
-    const lauf = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+    const lauf = await vorschauUndAusfuehren(erik.token, {
       zweck: "server_recherche",
       eingabe: { suchbegriff: "x" },
       ausloeser: "routine",
       auftragId: "f4-routine-1",
-      bestaetigt: true,
     });
     expect((lauf.json() as { ergebnis: { stand: string } }).ergebnis.stand).toBe("erfolgreich");
 
@@ -372,11 +408,10 @@ describe("F4 · Favorit und bestätigte Routine über HTTP", () => {
 
 describe("F5 · Aufträge sperren das Assistenzprofil nicht", () => {
   it("nach einem Auftrag ist die Einrichtung offen und ohne Konflikt speicherbar", async () => {
-    await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+    await vorschauUndAusfuehren(erik.token, {
       zweck: "server_recherche",
       eingabe: { suchbegriff: "x" },
       auftragId: "f5-auftrag",
-      bestaetigt: true,
     });
     const vorher = await auf(erik.token, "GET", "/api/me/assistenz");
     expect(vorher.json()).toEqual({ profil: null, einrichtungOffen: true });
@@ -389,11 +424,10 @@ describe("F5 · Aufträge sperren das Assistenzprofil nicht", () => {
     });
     expect(speichern.statusCode, speichern.body).toBe(200);
     // Ein weiterer Auftrag ändert die bestätigte Profilfassung nicht.
-    await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+    await vorschauUndAusfuehren(erik.token, {
       zweck: "server_recherche",
       eingabe: { suchbegriff: "y" },
       auftragId: "f5-auftrag-2",
-      bestaetigt: true,
     });
     const aendern = await auf(erik.token, "PUT", "/api/me/assistenz", {
       name: "Mia 2",
@@ -416,6 +450,84 @@ describe("F6 · Arbeitsbereichskontext nur mit Leserecht", () => {
     });
     expect(r.statusCode).toBe(404);
     expect(r.body).not.toContain("ko-gibt-es-nicht");
+    expect(aufrufe).toBe(0);
+  });
+});
+
+describe("F7 · ausgeführt wird nur die angezeigte Vorschau (AC03/G04)", () => {
+  const AUFTRAG = {
+    zweck: "server_recherche",
+    gewaehlt: "server-testsuche",
+    eingabe: { suchbegriff: "Kreiselpumpe" },
+    auftragId: "f7-auftrag",
+  };
+
+  async function vorschau(): Promise<string> {
+    const v = await auf(erik.token, "POST", "/api/me/faehigkeiten/vorschau", AUFTRAG);
+    const body = v.json() as { auftragId: string; fingerabdruck: string | null };
+    expect(body.auftragId).toBe("f7-auftrag");
+    expect(body.fingerabdruck).toMatch(/^[0-9a-f]{64}$/);
+    return body.fingerabdruck as string;
+  }
+
+  it("andere Eingabe als in der Vorschau → 409, keine Wirkung", async () => {
+    const fp = await vorschau();
+    const r = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+      ...AUFTRAG,
+      eingabe: { suchbegriff: "etwas anderes" },
+      bestaetigt: true,
+      vorschauFingerabdruck: fp,
+    });
+    expect(r.statusCode).toBe(409);
+    expect((r.json() as { grund: string }).grund).toBe("vorschau_veraltet");
+    expect(aufrufe).toBe(0);
+  });
+
+  it("Vertrag nach der Vorschau geändert → 409; die neue Vorschau ist dann ausführbar", async () => {
+    const fp = await vorschau();
+    const registry = services.faehigkeiten?.registry;
+    registry?.registriere({ ...EXTERN, grenzen: { ...EXTERN.grenzen, maxTreffer: 4 } });
+    registry?.installiereAdapter({
+      faehigkeitId: EXTERN.id,
+      fassung: EXTERN.fassung,
+      transport: "ersatz",
+      fuehreAus: async () => {
+        aufrufe += 1;
+        return TREFFER;
+      },
+    });
+    const alt = await auf(erik.token, "POST", "/api/me/faehigkeiten/auftraege", {
+      ...AUFTRAG,
+      bestaetigt: true,
+      vorschauFingerabdruck: fp,
+    });
+    expect(alt.statusCode).toBe(409);
+    expect(aufrufe).toBe(0);
+    const neu = await vorschauUndAusfuehren(erik.token, AUFTRAG);
+    expect((neu.json() as { ergebnis: { stand: string } }).ergebnis.stand).toBe("erfolgreich");
+    expect(aufrufe).toBe(1);
+  });
+
+  it("ein dauerhaft wartender Hintergrundauftrag lässt sich über HTTP abbrechen und startet nicht", async () => {
+    // Abarbeitung in diesem Test nicht anstoßen: der Auftrag bleibt `wartet`.
+    const fp = await vorschau();
+    const ablage = services.faehigkeiten;
+    expect(ablage).toBeDefined();
+    const v = await auf(erik.token, "POST", "/api/me/faehigkeiten/vorschau", AUFTRAG);
+    expect((v.json() as { fingerabdruck: string }).fingerabdruck).toBe(fp);
+    const vb = (v.json() as { vorbereitung: { bindung: unknown } }).vorbereitung.bindung;
+    await ablage?.starteImHintergrund(
+      vb as Parameters<NonNullable<typeof ablage>["starteImHintergrund"]>[0],
+    );
+    const ab = await auf(
+      erik.token,
+      "POST",
+      "/api/me/faehigkeiten/auftraege/f7-auftrag/abbrechen",
+      {},
+    );
+    expect((ab.json() as { abgebrochen: boolean }).abgebrochen).toBe(true);
+    const [r] = (await ablage?.arbeiteWarteschlangeAb()) ?? [];
+    expect(r?.stand).toBe("abgebrochen");
     expect(aufrufe).toBe(0);
   });
 });

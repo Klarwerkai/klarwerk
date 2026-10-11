@@ -119,6 +119,16 @@ export function produktKontextPruefung(
       }
       return null;
     },
+    async lade(nutzer, kontext) {
+      const user = await betrachter(deps, nutzer);
+      return user
+        ? ladeKontext(
+            deps,
+            user,
+            kontext.map((k) => k.kennung),
+          )
+        : null;
+    },
   };
 }
 

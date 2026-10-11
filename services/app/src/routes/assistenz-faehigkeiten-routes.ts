@@ -8,6 +8,7 @@ import {
   type Faehigkeitsauftrag,
   type Faehigkeitsergebnis,
   type KontextTeil,
+  bindungsFingerabdruck,
 } from "../assistenz-faehigkeiten";
 import { type Guards, type SessionUser, sendError, tokenFromRequest } from "../http";
 
@@ -269,8 +270,16 @@ export function assistenzFaehigkeitenRoutes(
           abweisen(reply, a.status, a.message);
           return;
         }
+        const vorbereitung = await ausfuehrung.bereiteVor(a.auftrag);
         reply.header("cache-control", "no-store");
-        reply.code(200).send({ vorbereitung: await ausfuehrung.bereiteVor(a.auftrag) });
+        // AC03/G04: Die Ausführung ist nur für GENAU diese Bindung zulässig — Kennung und
+        // Fingerabdruck gehen mit der Bestätigung zurück (`POST …/auftraege`).
+        reply.code(200).send({
+          vorbereitung,
+          auftragId: a.auftrag.auftragId,
+          fingerabdruck:
+            vorbereitung.art === "gebunden" ? bindungsFingerabdruck(vorbereitung.bindung) : null,
+        });
       } catch (fehler) {
         sendError(reply, fehler);
       }
@@ -298,6 +307,15 @@ export function assistenzFaehigkeitenRoutes(
         );
         return;
       }
+      const angezeigt = r.vorschauFingerabdruck;
+      if (typeof angezeigt !== "string" || !/^[0-9a-f]{64}$/.test(angezeigt)) {
+        abweisen(
+          reply,
+          400,
+          "Die Ausführung braucht den Fingerabdruck der bestätigten Vorschau (vorschauFingerabdruck).",
+        );
+        return;
+      }
       try {
         const a = await auftragAus(deps, request, user);
         if (!a.ok) {
@@ -307,6 +325,20 @@ export function assistenzFaehigkeitenRoutes(
         const v = await ausfuehrung.bereiteVor(a.auftrag);
         if (v.art !== "gebunden") {
           reply.code(200).send({ vorbereitung: v, ergebnis: null });
+          return;
+        }
+        // AC03/G04: ausgeführt wird nur die Bindung, die angezeigt und bestätigt wurde. Hat sich
+        // seitdem Vertrag, Adapterfassung, Eingabe, Datenweg oder eine Kontextfassung geändert,
+        // weicht der Fingerabdruck ab — dann keine Wirkung, sondern eine neue Vorschau.
+        if (bindungsFingerabdruck(v.bindung) !== angezeigt) {
+          reply.code(409).send({
+            error: "CONFLICT",
+            grund: "vorschau_veraltet",
+            message:
+              "Seit der Vorschau hat sich die Fähigkeit, die Eingabe oder der Arbeitsbereichskontext geändert. Bitte die neue Vorschau prüfen und erneut bestätigen.",
+            vorbereitung: v,
+            fingerabdruck: bindungsFingerabdruck(v.bindung),
+          });
           return;
         }
         await audit.record({
@@ -370,7 +402,7 @@ export function assistenzFaehigkeitenRoutes(
           return;
         }
         try {
-          const abgebrochen = ausfuehrung.brecheAb(user.id, request.params.id);
+          const abgebrochen = await ausfuehrung.brecheAb(user.id, request.params.id);
           reply.header("cache-control", "no-store");
           reply.code(200).send({ abgebrochen });
         } catch (fehler) {

@@ -94,10 +94,16 @@ export const faehigkeitenApi = {
     api.post("/me/faehigkeiten/vormerkungen", v),
   deaktivieren: (faehigkeitId: string): Promise<{ vormerkungen: FaehigkeitsVormerkungSicht[] }> =>
     api.post(`/me/faehigkeiten/vormerkungen/${encodeURIComponent(faehigkeitId)}/deaktivieren`),
-  vorschau: (a: FaehigkeitsAuftragEingabe): Promise<{ vorbereitung: FaehigkeitsVorbereitung }> =>
-    api.post("/me/faehigkeiten/vorschau", a),
-  ausfuehren: (
+  vorschau: (
     a: FaehigkeitsAuftragEingabe & { auftragId: string },
+  ): Promise<{
+    vorbereitung: FaehigkeitsVorbereitung;
+    auftragId: string;
+    fingerabdruck: string | null;
+  }> => api.post("/me/faehigkeiten/vorschau", a),
+  /** Führt GENAU die angezeigte Vorschau aus; weicht die Bindung ab, antwortet der Server 409. */
+  ausfuehren: (
+    a: FaehigkeitsAuftragEingabe & { auftragId: string; vorschauFingerabdruck: string },
   ): Promise<{ vorbereitung: FaehigkeitsVorbereitung; ergebnis: FaehigkeitsErgebnis | null }> =>
     api.post("/me/faehigkeiten/auftraege", { ...a, bestaetigt: true }),
 };

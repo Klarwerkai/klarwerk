@@ -220,8 +220,16 @@ export interface AdapterKontext {
   readonly signal: AbortSignal;
   /** Der Zugang aus dem sicheren Credentialweg — nur hier, nie in Vorschau, Ergebnis oder Log. */
   geheimnis(): string | null;
-  /** Führt einen DEKLARIERTEN Unterschritt aus; davor gilt die aktuelle Lage erneut. */
-  unterschritt<T>(id: string, arbeit: () => Promise<T>): Promise<T>;
+  /**
+   * Führt einen DEKLARIERTEN Unterschritt aus. Davor gelten erneut: dauerhafter Abbruch, aktuelle
+   * Lage, aktuelle Konto- und Kontextrechte samt gebundener Kontextfassung und — gegen die Grenzen
+   * dieses Empfängers — die tatsächlich weitergegebenen `daten` (ohne Angabe: die gebundene Eingabe).
+   */
+  unterschritt<T>(
+    id: string,
+    arbeit: () => Promise<T>,
+    daten?: Readonly<Record<string, string>>,
+  ): Promise<T>;
 }
 
 export interface AdapterAntwort {
@@ -435,6 +443,12 @@ export interface KontextPruefung {
     kontext: Faehigkeitsbindung["kontext"],
     anlass: "ausfuehrung" | "rueckgabe",
   ): Promise<Voraussetzung | null>;
+  /**
+   * Der AKTUELLE Inhalt der gebundenen Kontextobjekte — nur, wenn das Konto jedes sehen darf, sonst
+   * `null`. Dient allein der Prüfung weitergegebener Daten vor einem externen Unterschritt; er wird
+   * weder gebunden noch gespeichert noch gesendet.
+   */
+  lade?(nutzer: string, kontext: Faehigkeitsbindung["kontext"]): Promise<KontextTeil[] | null>;
 }
 
 function woerter(t: string): string[] {
@@ -636,7 +650,10 @@ export type Anspruch =
       readonly ergebnis: Faehigkeitsergebnis;
       readonly bindung: Faehigkeitsbindung;
     }
-  | { readonly art: "anderer_auftrag" };
+  | { readonly art: "anderer_auftrag" }
+  /** Der Auftrag wurde vor dem Start dauerhaft abgebrochen; er ist jetzt beansprucht, um das zu
+   *  vermerken, und startet nicht. */
+  | { readonly art: "abgebrochen"; readonly versuch: number };
 
 export type AuftragsZustand = "wartet" | "laeuft" | "fertig";
 
@@ -655,6 +672,17 @@ export interface AuftragsEintrag {
   readonly instanz: string | null;
   readonly seit: string;
   readonly ergebnis: Faehigkeitsergebnis | null;
+  /**
+   * Der Nutzer hat den Auftrag abgebrochen. Dauerhaft: ein wartender Auftrag startet danach nicht
+   * mehr, ein laufender startet keinen abhängigen Unterschritt — auch in einem anderen Prozess.
+   */
+  readonly abbruch?: boolean;
+  /**
+   * Ergebnisinhalt und Eingabe sind nach der Aufbewahrungsgrenze entfernt. Die Auftrags- und
+   * Wirkungsidentität (Kennung, Fingerabdruck, Stand, Wirkungskennung) bleibt erhalten — eine
+   * Wiederholung derselben Kennung löst deshalb keine zweite Wirkung aus.
+   */
+  readonly gekuerzt?: boolean;
 }
 
 /**
@@ -671,28 +699,60 @@ export interface FaehigkeitsAblage {
   kontenMitOffenenAuftraegen(): Promise<readonly string[]>;
 }
 
-/** Abgeschlossene Aufträge, die je Konto aufbewahrt werden (die ältesten fallen heraus). */
+/**
+ * Abgeschlossene Aufträge, deren ERGEBNISINHALT je Konto aufbewahrt wird. Ältere behalten nur ihre
+ * Identität (`gekuerzt`) — Ergebnisaufbewahrung und Dublettenschutz sind getrennt.
+ */
 export const AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE = 30;
 
 /** Ein `laeuft` eines ANDEREN Prozesses gilt nach dieser Frist als unterbrochen (Neustart, Absturz). */
 export const LAUF_FRIST_MS = 15 * 60_000;
 
-function kuerze(liste: readonly AuftragsEintrag[]): AuftragsEintrag[] {
-  const fertig = liste
-    .filter((e) => e.zustand === "fertig")
-    .sort((a, b) => b.seit.localeCompare(a.seit))
-    .slice(0, AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE);
-  return liste.filter((e) => e.zustand !== "fertig" || fertig.includes(e));
+export const GEKUERZT_MELDUNG =
+  "Der Ergebnisinhalt ist nach der Aufbewahrungsgrenze entfernt; der Auftrag wird nicht erneut ausgeführt.";
+
+/** Nur Ergebnisinhalt und Eingabe fallen weg — Kennung, Fingerabdruck, Stand und Wirkung bleiben. */
+function kuerzeEintrag(e: AuftragsEintrag): AuftragsEintrag {
+  if (e.gekuerzt) {
+    return e;
+  }
+  return {
+    ...e,
+    bindung: { ...e.bindung, eingabe: {} },
+    ergebnis: e.ergebnis
+      ? {
+          ...e.ergebnis,
+          eintraege: [],
+          verworfen: 0,
+          fremdeAnweisungen: 0,
+          meldung: GEKUERZT_MELDUNG,
+        }
+      : null,
+    gekuerzt: true,
+  };
 }
 
-/** Ohne Wirkung gescheiterte Läufe dürfen unter derselben Kennung erneut versucht werden. */
+function kuerze(liste: readonly AuftragsEintrag[]): AuftragsEintrag[] {
+  const behalten = new Set(
+    liste
+      .filter((e) => e.zustand === "fertig")
+      .sort((a, b) => b.seit.localeCompare(a.seit))
+      .slice(0, AUFBEWAHRTE_ABGESCHLOSSENE_AUFTRAEGE)
+      .map((e) => e.auftragId),
+  );
+  return liste.map((e) =>
+    e.zustand === "fertig" && !behalten.has(e.auftragId) ? kuerzeEintrag(e) : e,
+  );
+}
+
+/**
+ * Ohne Wirkung gescheiterte Läufe dürfen unter derselben Kennung erneut versucht werden. Ein vom
+ * Nutzer abgebrochener Auftrag nicht: der Abbruch ist endgültig für diese Kennung.
+ */
 function wiederholbar(e: Faehigkeitsergebnis): boolean {
   return (
     e.wirkungKennung === null &&
-    (e.stand === "fehlgeschlagen" ||
-      e.stand === "gesperrt" ||
-      e.stand === "voraussetzung_fehlt" ||
-      e.stand === "abgebrochen")
+    (e.stand === "fehlgeschlagen" || e.stand === "gesperrt" || e.stand === "voraussetzung_fehlt")
   );
 }
 
@@ -914,6 +974,20 @@ export class FaehigkeitsAusfuehrung {
         };
       }
       const versuch = e.versuch + 1;
+      if (e.abbruch) {
+        // Dauerhaft abgebrochen (auch aus einem anderen Prozess): beanspruchen, nicht starten.
+        const markiert: AuftragsEintrag = {
+          ...e,
+          zustand: "laeuft",
+          versuch,
+          instanz: this.instanz,
+          seit: stempel,
+        };
+        return {
+          neu: liste.map((x) => (x.auftragId === e.auftragId ? markiert : x)),
+          wert: { art: "abgebrochen", versuch },
+        };
+      }
       const geaendert: AuftragsEintrag = {
         ...e,
         zustand: "laeuft",
@@ -1344,14 +1418,39 @@ export class FaehigkeitsAusfuehrung {
     };
   }
 
-  /** Bricht einen eigenen laufenden Auftrag ab; abhängige Unterschritte starten danach nicht mehr. */
-  brecheAb(nutzer: string, auftragId: string): boolean {
+  /**
+   * Bricht einen eigenen wartenden oder laufenden Auftrag ab. Der Abbruch wird DAUERHAFT vermerkt:
+   * ein wartender Auftrag startet nicht mehr (auch nicht nach Neustart oder in einem anderen
+   * Prozess), ein laufender startet keinen abhängigen Unterschritt. `false`, wenn es keinen offenen
+   * eigenen Auftrag dieser Kennung gibt.
+   */
+  async brecheAb(nutzer: string, auftragId: string): Promise<boolean> {
+    const vermerkt = await this.aendereAuftraege<boolean>(nutzer, (liste) => {
+      const e = liste.find((x) => x.auftragId === auftragId);
+      if (!e || e.zustand === "fertig") {
+        return { neu: null, wert: false };
+      }
+      if (e.abbruch) {
+        return { neu: null, wert: true };
+      }
+      return {
+        neu: liste.map((x) => (x.auftragId === auftragId ? { ...x, abbruch: true } : x)),
+        wert: true,
+      };
+    });
     const c = this.laufend.get(FaehigkeitsAusfuehrung.schluessel(nutzer, auftragId));
-    if (!c) {
-      return false;
+    if (c) {
+      c.abort();
+      return true;
     }
-    c.abort();
-    return true;
+    return vermerkt;
+  }
+
+  /** Steht für diesen Auftrag ein dauerhafter Abbruch? */
+  private async abbruchVermerkt(nutzer: string, auftragId: string): Promise<boolean> {
+    return (await this.deps.ablage.liste(nutzer)).some(
+      (x) => x.auftragId === auftragId && x.abbruch === true,
+    );
   }
 
   /**
@@ -1473,6 +1572,15 @@ export class FaehigkeitsAusfuehrung {
       }
       return { ...anspruch.ergebnis, wiederholt: true };
     }
+    if (anspruch.art === "abgebrochen") {
+      const r = this.ergebnis(bindung, {
+        stand: "abgebrochen",
+        meldung: "Der Auftrag wurde abgebrochen, bevor er startete; es wurde nichts ausgeführt.",
+        versuch: anspruch.versuch,
+      });
+      await this.schreibeErgebnis(bindung.nutzer, r);
+      return r;
+    }
     const versuch = anspruch.versuch;
     const wiederaufnahme = anspruch.wiederaufnahme;
 
@@ -1522,6 +1630,13 @@ export class FaehigkeitsAusfuehrung {
     if (!adapter) {
       return abschluss({ stand: "voraussetzung_fehlt", meldung: "Kein Adapter installiert." });
     }
+    // Ein Abbruch, der nach dem Beanspruchen dauerhaft vermerkt wurde, gilt vor jeder Wirkung.
+    if (await this.abbruchVermerkt(bindung.nutzer, bindung.auftragId)) {
+      return abschluss({
+        stand: "abgebrochen",
+        meldung: "Der Auftrag wurde abgebrochen, bevor er startete; es wurde nichts ausgeführt.",
+      });
+    }
     const steuerung = new AbortController();
     const laufSchluessel = FaehigkeitsAusfuehrung.schluessel(bindung.nutzer, bindung.auftragId);
     this.laufend.set(laufSchluessel, steuerung);
@@ -1529,7 +1644,11 @@ export class FaehigkeitsAusfuehrung {
       auftragId: bindung.auftragId,
       signal: steuerung.signal,
       geheimnis: () => geheimnis,
-      unterschritt: async <T>(id: string, arbeit: () => Promise<T>): Promise<T> => {
+      unterschritt: async <T>(
+        id: string,
+        arbeit: () => Promise<T>,
+        daten?: Readonly<Record<string, string>>,
+      ): Promise<T> => {
         if (steuerung.signal.aborted) {
           throw new Abgebrochen();
         }
@@ -1539,14 +1658,47 @@ export class FaehigkeitsAusfuehrung {
             { art: "registrierung", text: `Unterschritt „${id}" ist im Vertrag nicht deklariert.` },
           ]);
         }
+        // Ein dauerhafter Abbruch (auch aus einem anderen Prozess) stoppt jeden abhängigen Schritt.
+        if (await this.abbruchVermerkt(bindung.nutzer, bindung.auftragId)) {
+          steuerung.abort();
+          throw new Abgebrochen();
+        }
         const jetzt = await this.deps.lage({ mandant: bindung.mandant, nutzer: bindung.nutzer });
-        const sperren = pruefeSchritt(
-          u.datenempfaenger,
-          u.modell,
-          v.hoechsteSchutzstufe,
-          jetzt,
-          null,
-          [],
+        const sperren: Voraussetzung[] = [];
+        // G04/G05: die AKTUELLEN Konto- und Kontextrechte und die gebundenen Kontextfassungen —
+        // ein Rechteentzug während des Adapters sperrt den folgenden Unterschritt.
+        if (this.deps.kontext) {
+          const k = await this.deps.kontext.pruefe(bindung.nutzer, bindung.kontext, "ausfuehrung");
+          if (k) {
+            sperren.push(k);
+          }
+        }
+        // Die TATSÄCHLICH weitergegebenen Daten gegen die Grenzen genau dieses Empfängers: ohne
+        // Angabe die gebundene Eingabe. Geprüft wird gegen den aktuellen Kontextinhalt; lässt er
+        // sich für einen externen Empfänger nicht laden, geht nichts hinaus.
+        const weiter = daten ?? bindung.eingabe;
+        let texte: readonly KontextTeil[] = [];
+        if (u.datenempfaenger.art === "extern" && bindung.kontext.length > 0) {
+          const laden = this.deps.kontext?.lade?.bind(this.deps.kontext);
+          const geladen = laden ? await laden(bindung.nutzer, bindung.kontext) : null;
+          if (geladen === null) {
+            sperren.push({
+              art: "vertraulich",
+              text: `Der Arbeitsbereichskontext ist für die Prüfung nicht verfügbar; nichts geht an ${u.datenempfaenger.anbieterName}.`,
+            });
+          } else {
+            texte = geladen;
+          }
+        }
+        sperren.push(
+          ...pruefeSchritt(
+            u.datenempfaenger,
+            u.modell,
+            v.hoechsteSchutzstufe,
+            jetzt,
+            weiter,
+            texte,
+          ),
         );
         if (sperren.length > 0) {
           throw new SchrittGesperrt(sperren);

@@ -719,8 +719,8 @@ describe("K8 · Fehler, Teilergebnis, Abbruch und Wiederholung", () => {
     const b = await binde(auftrag({}));
     const lauf = ausfuehrung.fuehreAus(b);
     await new Promise((r) => setTimeout(r, 5));
-    expect(ausfuehrung.brecheAb("konto-erik", b.auftragId)).toBe(false);
-    expect(ausfuehrung.brecheAb(b.nutzer, b.auftragId)).toBe(true);
+    expect(await ausfuehrung.brecheAb("konto-erik", b.auftragId)).toBe(false);
+    expect(await ausfuehrung.brecheAb(b.nutzer, b.auftragId)).toBe(true);
     const r = await lauf;
     expect(r.stand).toBe("abgebrochen");
     await new Promise((r2) => setTimeout(r2, 40));
