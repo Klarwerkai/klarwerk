@@ -182,9 +182,24 @@ async function assistenzFragen(seite: Page, frage: string): Promise<AskKoerper> 
   return (await antwort.json()) as AskKoerper;
 }
 
+/**
+ * Ein offenes Assistenzgespräch bleibt über Seitenwechsel offen und liegt als modaler Bereich über
+ * der Seite (gemessen: es fängt den Klick auf die Glocke ab). Wie ein Mensch schließt die Probe es,
+ * bevor sie außerhalb der Assistenz weiterarbeitet — so auch `klara-kontext-artikel-browser.spec.ts`.
+ */
+async function assistenzSchliessen(seite: Page): Promise<void> {
+  await expect(seite.getByTestId("klara-figur")).toBeAttached({ timeout: 15_000 });
+  const gespraech = seite.getByTestId("klara-gespraech");
+  if (await gespraech.isVisible()) {
+    await seite.getByTestId("klara-schliessen").click();
+    await expect(gespraech).toHaveCount(0);
+  }
+}
+
 async function vorgangOeffnen(seite: Page, gapId: string): Promise<void> {
   await seite.goto(`/luecke/${gapId}`);
   await expect(seite.getByTestId("luecke-vorgang-stand")).toBeVisible({ timeout: 15_000 });
+  await assistenzSchliessen(seite);
 }
 
 const zeile = (seite: Page, titel: string) =>
@@ -572,6 +587,8 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       [],
       async (hilfe) => {
         await frida.goto("/start");
+        await expect(workspaceMarker(frida)).toBeVisible({ timeout: 15_000 });
+        await assistenzSchliessen(frida);
         await frida.getByTestId("kopfband-meldungen").click();
         const geloest = frida
           .locator(
@@ -602,6 +619,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
     await schritt(protokoll, "3 Quellenänderung", "Meldung (Carla)", carla, [], async () => {
       await carla.goto("/lebenszyklus");
       await expect(carla.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
+      await assistenzSchliessen(carla);
       const melden = carla.getByTestId("pruefen-anlage");
       await melden.locator("summary").click();
       await melden.locator("input").nth(0).fill(POC_ANLAGE);
