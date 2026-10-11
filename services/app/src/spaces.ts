@@ -39,6 +39,25 @@ export interface SpaceAnsicht {
   tag: string;
 }
 
+// ================================================================================================
+// aufnahme:20260922:gesamt-wissensprojekte — DER FIRMENFILTER ALS KONTEXT EINES SPACE.
+// ================================================================================================
+//
+// Pedis Entscheidung (Frage 51, 11.10.2026): „Firmenfilter als serverseitig berechtigter Firmen-/
+// Partner-/öffentlicher Kontext“ — eigene Firmeninstanz, ausdrücklich erlaubte Partnerbereiche und
+// öffentliche Quellen klar unterscheiden. Ausgearbeitet am bestehenden Space:
+//   · `firma`       — Inhalte der eigenen Firmeninstanz. Vorgabe; auch jeder Space ohne Angabe und
+//                     jeder Artikel ohne Space gehört hierher. Zugang wie bisher frei wählbar.
+//   · `partner`     — ein Bereich für EINEN benannten Partner (`partner`). Nur AUSDRÜCKLICH
+//                     berechtigte Konten (Mitglieder, Zuständige) lesen ihn: Zugang `alle` ist
+//                     unzulässig. Kein Rollen-Durchgriff (dieselbe Regel wie jeder geschlossene Space).
+//   · `oeffentlich` — öffentliche Quellen. Für alle mit Leserecht offen: Zugang `mitglieder` ist
+//                     unzulässig, sonst wäre „öffentlich“ eine falsche Auskunft.
+// Die Sicht entscheidet weiterhin allein `darfSehen` (`../sichtbarkeit`) über den führenden Space;
+// der Kontext ist die Einordnung, nach der gefiltert wird, und legt die zulässigen Zugänge fest.
+export const SPACE_KONTEXTE = ["firma", "partner", "oeffentlich"] as const;
+export type SpaceKontext = (typeof SPACE_KONTEXTE)[number];
+
 export interface SpaceEingabe {
   name: string;
   zweck: string;
@@ -48,6 +67,15 @@ export interface SpaceEingabe {
   zugang: SpaceZugang;
   mitglieder: SpaceMitglied[];
   ansichten: SpaceAnsicht[];
+  /** Der Firmenkontext; fehlt er (Fassungen vor diesem Auftrag), gilt `firma`. */
+  kontext?: SpaceKontext;
+  /** Nur bei `kontext: "partner"`: der Name des Partners. */
+  partner?: string;
+}
+
+/** Der Kontext eines Space — `firma`, wenn eine ältere Fassung keinen trägt. */
+export function kontextVon(space: Pick<SpaceEingabe, "kontext">): SpaceKontext {
+  return space.kontext ?? "firma";
 }
 
 /** Eine gespeicherte, unveränderliche Fassung eines Space. */
@@ -195,7 +223,46 @@ export function pruefeSpaceEingabe(roh: unknown, konten: ReadonlySet<string>): S
     vergeben.add(id);
     ansichten.push({ id, name: ansichtName, tag });
   }
-  return { name, zweck, verantwortlich, zugang: zugang as SpaceZugang, mitglieder, ansichten };
+  const kontext = r.kontext ?? "firma";
+  if (!SPACE_KONTEXTE.includes(kontext as SpaceKontext)) {
+    throw new SpaceFehler(
+      "SPACE_UNGUELTIG",
+      "Der Kontext ist „firma“, „partner“ oder „oeffentlich“.",
+    );
+  }
+  const partner = text(r.partner);
+  if (kontext === "partner") {
+    if (!partner || partner.length > SPACE_GRENZEN.name) {
+      throw new SpaceFehler(
+        "SPACE_UNGUELTIG",
+        "Ein Partnerbereich braucht den Namen des Partners.",
+      );
+    }
+    if (zugang === "alle") {
+      throw new SpaceFehler(
+        "SPACE_KONTEXT_ZUGANG",
+        "Ein Partnerbereich ist nur für ausdrücklich berechtigte Mitglieder offen.",
+      );
+    }
+  } else if (partner) {
+    throw new SpaceFehler("SPACE_UNGUELTIG", "Einen Partner nennt nur ein Partnerbereich.");
+  }
+  if (kontext === "oeffentlich" && zugang !== "alle") {
+    throw new SpaceFehler(
+      "SPACE_KONTEXT_ZUGANG",
+      "Öffentliche Quellen sind für alle mit Leserecht offen.",
+    );
+  }
+  return {
+    name,
+    zweck,
+    verantwortlich,
+    zugang: zugang as SpaceZugang,
+    mitglieder,
+    ansichten,
+    kontext: kontext as SpaceKontext,
+    ...(kontext === "partner" ? { partner } : {}),
+  };
 }
 
 // ================================================================================================

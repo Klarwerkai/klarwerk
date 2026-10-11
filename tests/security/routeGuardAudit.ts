@@ -782,6 +782,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // aufnahme:20260922:gesamt-wissensprojekte: Löschen wie Bearbeiten (Zuständige/Kontoverwaltung,
   // sonst 403); Titel betroffener Artikel nur, wenn `darfSehen` sie freigibt, sonst nur die Zahl.
   "POST /api/spaces/:id/loeschung/vorschau": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  // Firmenfilter (Frage 51): Artikel je Firmen-/Partner-/öffentlichem Kontext, je Zeile getrimmt.
+  "GET /api/spaces/artikel": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   "POST /api/spaces/:id/loeschung": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
 
   // --- Hauptverantwortung übergeben (verantwortung-routes.ts, produkt:20261007:ownership-uebergabe)

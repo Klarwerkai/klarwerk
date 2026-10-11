@@ -32,9 +32,11 @@ import { can } from "../../../rbac";
 import { type Guards, type SessionUser, sendError } from "../http";
 import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 import {
+  SPACE_KONTEXTE,
   type SpaceEingabe,
   type SpaceFassung,
   SpaceFehler,
+  type SpaceKontext,
   type SpacesRepo,
   darfInSpaceSchreiben,
   darfSpaceBearbeiten,
@@ -42,6 +44,7 @@ import {
   darfSpaceSehen,
   eigenesSpaceRecht,
   istGeloescht,
+  kontextVon,
   lesbareSpaces,
   pruefeSpaceEingabe,
 } from "../spaces";
@@ -65,10 +68,28 @@ interface ArtikelZeile {
   tags: string[];
   spaceId: string | null;
   spaceName: string | null;
+  /** Firmenkontext des führenden Space; ohne Space `firma` (eigene Firmeninstanz). */
+  kontext: SpaceKontext;
+  partner: string | null;
 }
 
 function nichtGefunden(reply: FastifyReply, was: "Space" | "Wissensobjekt"): void {
   reply.code(404).send({ error: "NOT_FOUND", message: `${was} nicht gefunden.` });
+}
+
+/** `undefined` = kein Filter, sonst ein gültiger Kontext oder `UNGUELTIG`. */
+function kontextAus(roh: string | undefined): SpaceKontext | "UNGUELTIG" | undefined {
+  if (roh === undefined || roh === "") {
+    return undefined;
+  }
+  return SPACE_KONTEXTE.includes(roh as SpaceKontext) ? (roh as SpaceKontext) : "UNGUELTIG";
+}
+
+function kontextFehler(reply: FastifyReply): void {
+  reply.code(400).send({
+    error: "KONTEXT_UNGUELTIG",
+    message: "Erwartet wird kontext=firma, partner oder oeffentlich.",
+  });
 }
 
 function fehler(reply: FastifyReply, e: unknown): void {
@@ -100,6 +121,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
   function spaceSicht(space: SpaceFassung, user: SessionUser, n: Map<string, string>) {
     return {
       ...space,
+      kontext: kontextVon(space),
+      partner: space.partner ?? null,
       verantwortlichName: n.get(space.verantwortlich) ?? null,
       mitglieder: space.mitglieder.map((m) => ({ ...m, name: n.get(m.nutzer) ?? null })),
       eigenesRecht: eigenesSpaceRecht(space, user),
@@ -114,7 +137,10 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
 
   function zeile(ko: KnowledgeObject, spaces: readonly SpaceFassung[]): ArtikelZeile {
     const spaceId = typeof ko.spaceId === "string" ? ko.spaceId : null;
+    const space = spaceId ? spaces.find((s) => s.id === spaceId) : undefined;
     return {
+      kontext: space ? kontextVon(space) : "firma",
+      partner: space?.partner ?? null,
       id: ko.id,
       version: ko.version,
       title: ko.title,
@@ -474,9 +500,15 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
   return async (app) => {
     // Die Spaces, die dieser Mensch sehen darf — mit seinem Recht und der Zahl SEINER sichtbaren
     // Artikel darin (keine Gesamtzahl: die wäre eine Auskunft über Unsichtbares).
-    app.get("/api/spaces", async (request, reply) => {
+    // `?kontext=firma|partner|oeffentlich` grenzt auf einen Firmenkontext ein (Firmenfilter).
+    app.get<{ Querystring: { kontext?: string } }>("/api/spaces", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
+        return;
+      }
+      const kontext = kontextAus(request.query.kontext);
+      if (kontext === "UNGUELTIG") {
+        kontextFehler(reply);
         return;
       }
       const spaces = await dienste.spaces.aktuelle();
@@ -484,6 +516,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       const n = await namen();
       const sichtbar = spaces
         .filter((s) => darfSpaceSehen(s, user))
+        .filter((s) => kontext === undefined || kontextVon(s) === kontext)
         .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
         .map((s) => ({
           ...spaceSicht(s, user, n),
@@ -491,6 +524,42 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         }));
       reply.code(200).send({ spaces: sichtbar, darfAnlegen: can(user.role, "ko.validate") });
     });
+
+    // Der Firmenfilter über Artikel: alle für den Betrachter sichtbaren Artikel eines Kontexts —
+    // `firma` (eigene Firmeninstanz, auch ohne Space), `partner` (optional `&partner=` für genau
+    // einen Partner) oder `oeffentlich`. Die Berechtigung prüft `darfSehen` je Zeile: Inhalte eines
+    // Partnerbereichs erscheinen nur für ausdrücklich berechtigte Konten. Die Liste der Partner nennt
+    // nur Bereiche, die der Betrachter selbst sehen darf.
+    app.get<{ Querystring: { kontext?: string; partner?: string } }>(
+      "/api/spaces/artikel",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const kontext = kontextAus(request.query.kontext);
+        if (kontext === undefined || kontext === "UNGUELTIG") {
+          kontextFehler(reply);
+          return;
+        }
+        const partner = request.query.partner?.trim() || null;
+        const spaces = await dienste.spaces.aktuelle();
+        const zeilen = (await sichtbareArtikel(user))
+          .map((k) => zeile(k, spaces))
+          .filter((z) => z.kontext === kontext && (!partner || z.partner === partner))
+          .sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+        const partnerBereiche = [
+          ...new Set(
+            spaces
+              .filter((s) => kontextVon(s) === "partner" && darfSpaceSehen(s, user))
+              .map((s) => s.partner ?? ""),
+          ),
+        ]
+          .filter((p) => p.length > 0)
+          .sort((a, b) => a.localeCompare(b));
+        reply.code(200).send({ kontext, partner, artikel: zeilen, partnerBereiche });
+      },
+    );
 
     // Die Konten, die als Zuständige oder Mitglieder wählbar sind — Kennung, Name, Rolle; keine
     // Mailadressen.

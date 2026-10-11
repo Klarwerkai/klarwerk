@@ -15,6 +15,9 @@ export function spaceFehlerSchluessel(fehler: unknown): string {
   if (fehler.code === "VERSION_VERALTET") {
     return "spaces.fehler.veraltet";
   }
+  if (fehler.code === "SPACE_KONTEXT_ZUGANG") {
+    return "spaces.fehler.kontextZugang";
+  }
   if (fehler.code === "SPACE_NICHT_LEER") {
     return "spaces.loeschen.nichtLeer";
   }
@@ -27,6 +30,9 @@ export function spaceFehlerSchluessel(fehler: unknown): string {
 export type SpaceZugang = "alle" | "mitglieder";
 export type SpaceRecht = "lesen" | "schreiben";
 export type EigenesSpaceRecht = "zustaendig" | "schreiben" | "lesen" | "verwalten" | "keins";
+/** Firmenfilter (Frage 51): eigene Firmeninstanz, Partnerbereich, öffentliche Quellen. */
+export type SpaceKontext = "firma" | "partner" | "oeffentlich";
+export const SPACE_KONTEXTE: readonly SpaceKontext[] = ["firma", "partner", "oeffentlich"];
 
 export interface SpaceAnsicht {
   id: string;
@@ -41,6 +47,8 @@ export interface SpaceEingabe {
   zugang: SpaceZugang;
   mitglieder: { nutzer: string; recht: SpaceRecht }[];
   ansichten: { id?: string; name: string; tag: string }[];
+  kontext: SpaceKontext;
+  partner?: string;
 }
 
 export interface SpaceSicht {
@@ -53,6 +61,8 @@ export interface SpaceSicht {
   zugang: SpaceZugang;
   mitglieder: { nutzer: string; recht: SpaceRecht; name: string | null }[];
   ansichten: SpaceAnsicht[];
+  kontext: SpaceKontext;
+  partner: string | null;
   angelegtVon: string;
   angelegtAm: string;
   geaendertVon: string;
@@ -78,6 +88,8 @@ export interface ArtikelZeile {
   tags: string[];
   spaceId: string | null;
   spaceName: string | null;
+  kontext: SpaceKontext;
+  partner: string | null;
 }
 
 export interface ArtikelKontext {
@@ -138,7 +150,20 @@ export interface Loeschvorschau {
 const pfad = (id: string): string => `/spaces/${encodeURIComponent(id)}`;
 
 export const spacesApi = {
-  liste: () => api.get<{ spaces: SpaceSicht[]; darfAnlegen: boolean }>("/spaces"),
+  liste: (kontext?: SpaceKontext) =>
+    api.get<{ spaces: SpaceSicht[]; darfAnlegen: boolean }>(
+      `/spaces${kontext ? `?kontext=${kontext}` : ""}`,
+    ),
+  // Firmenfilter: die sichtbaren Artikel eines Kontexts; der Server prüft die Berechtigung je Zeile.
+  kontextArtikel: (kontext: SpaceKontext, partner?: string) =>
+    api.get<{
+      kontext: SpaceKontext;
+      partner: string | null;
+      artikel: ArtikelZeile[];
+      partnerBereiche: string[];
+    }>(
+      `/spaces/artikel?kontext=${kontext}${partner ? `&partner=${encodeURIComponent(partner)}` : ""}`,
+    ),
   konten: () => api.get<{ konten: SpaceKonto[] }>("/spaces/konten"),
   eintrag: (id: string) =>
     api.get<{

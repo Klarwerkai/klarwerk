@@ -651,6 +651,10 @@ const REGISTER: Record<string, Eintrag> = {
   },
   // aufnahme:20260922:gesamt-wissensprojekte: Titel betroffener Artikel nur über `darfSehen`;
   // verborgene und Papierkorb-Artikel nur als Zahl.
+  "GET /api/spaces/artikel": {
+    urteil: "PRAEDIKAT",
+    grund: "Firmenfilter: Artikel je Kontext, nur sichtbare.",
+  },
   "POST /api/spaces/:id/loeschung/vorschau": {
     urteil: "PRAEDIKAT",
     grund: "Löschfolgen: Titel nur sichtbarer Artikel, sonst Zahl.",

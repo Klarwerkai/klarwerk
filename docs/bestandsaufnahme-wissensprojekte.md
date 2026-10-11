@@ -1,4 +1,4 @@
-# Bestandsaufnahme Wissensprojekte — Stand 09.10.2026
+# Bestandsaufnahme Wissensprojekte — Stand 11.10.2026
 
 Auftrag `aufnahme:20260922:gesamt-wissensprojekte` (Revision 1), Basis `13bf9f2bd` =
 `1.0.0-beta.1.785`. Zugeordnet ist genau ein Originalpunkt: **`package:projekte`** („Wissensprojekte
@@ -37,7 +37,7 @@ löschen) und Spaces der einzige Bestand mit dieser Form sind.
 | **Auswirkung auf Artikel wird vorab erklärt** | **dieser Lauf** | `POST /api/spaces/:id/loeschung/vorschau` und Löschkarte auf `/spaces/:id`; `space-loeschen.test.ts` L2, Smoke |
 | **Verknüpfungen bleiben konsistent** | **dieser Lauf** | Löschen nur ohne führende Artikel (auch Papierkorb), Gegenprüfung bei gleichzeitigem Spacewechsel; `space-loeschen.test.ts` L3; PostgreSQL: `spaces-pg.integration.test.ts` (zweiter Fall) |
 | Projektfilter stimmen | geliefert, nach Löschung **dieser Lauf** nachgemessen | Artikel je Space, gespeicherte Ansicht (Tag), Spaceliste mit Zähler: `spaces-api.test.ts` K2/K3; nach einer Löschung: `space-loeschen.test.ts` L4 |
-| Firmenfilter stimmen | **ungeklärt** | s. Widerspruch 2 |
+| **Firmenfilter stimmen** | **Nacharbeit 5** (nach Pedis Entscheidung Frage 51) | Kontext je Space (`firma`/`partner`/`oeffentlich`) mit serverseitig erzwungenem Zugang; Filter `GET /api/spaces/artikel?kontext=…[&partner=…]` und `GET /api/spaces?kontext=…`, Filterleiste auf `/spaces`; `tests/wissensprojekte/firmenfilter.test.ts` F1–F4, `tests-smoke/wissensprojekte-firmenfilter.spec.ts`. Fassung und grüner Lauf stehen noch aus. |
 
 ## Was dieser Lauf ändert
 
@@ -68,8 +68,10 @@ löschen) und Spaces der einzige Bestand mit dieser Form sind.
    „Space löschen“ für Berechtigte öffnet die Folgenkarte; der Bestätigungsknopf ist gesperrt,
    solange Artikel den Space tragen, die sichtbaren sind verlinkt. Nach der Löschung zeigt die
    Übersicht eine Bestätigung.
-6. **Rechtematrix** um beide Routen ergänzt (`tests/security/routeGuardAudit.ts`,
-   `tests/security/mega74-lesewege-sammler.test.ts`).
+6. **Rechtematrix** um die Routen ergänzt (`tests/security/routeGuardAudit.ts`,
+   `tests/security/mega74-lesewege-sammler.test.ts`), in Nacharbeit 5 auch
+   `GET /api/spaces/artikel`.
+7. **Firmenfilter (Nacharbeit 5)** — s. Widerspruch 2.
 
 Die Regel „erst verschieben, dann löschen“ (kein Mitlöschen, kein Sammelverschieben beim Löschen)
 ist **meine vorläufige Regel**, keine Nutzerentscheidung. Grund: ein Sammelwechsel änderte die
@@ -80,16 +82,37 @@ Sichtbarkeit vieler Artikel auf einmal und bräuchte je Artikel die bestehende R
 1. **Begriff.** Die Quelle spricht von „Projekten“, das Produkt kennt „Spaces“. Die Zuordnung ist
    abgeleitet (s. oben). Ist mit „Wissensprojekt“ etwas anderes gemeint, gilt diese Lieferung nur
    für Spaces.
-2. **Firmenfilter.** Das Produkt führt keine Firmen als Daten: je Organisation gibt es eine eigene
-   Instanz (Entscheidung 03.07.2026, `PROJECT_CONTEXT/09_ENTSCHEIDUNGEN.md`: „jede Organisation“,
-   eigener Server je Kunde). Ein Filter nach Firmen innerhalb einer Instanz hat damit keinen
-   Gegenstand. Nicht zu verwechseln: der Confluence-„Firmenfilter“ gehört zu `package:confluence`
-   (gesonderter Auftrag, `docs/bestandsaufnahme-confluence-import.md`), die nicht montierte
-   Ortszeile „gesamtes Unternehmen“ (`apps/web/src/components/LibraryScopeBar.tsx`) zu einer offenen
-   Ownerentscheidung (PLAN PRO 378 §9). Beides ist hier nicht bearbeitet. **Damit ist das
-   Kriterium „Firmenfilter stimmen“ weder erfüllt noch belegt, und es ist auch nicht ausdrücklich
-   ersetzt.** Ob es entfällt, auf einen anderen Filter zielt oder eine Firmenentität verlangt, ist
-   eine offene Entscheidung für Pedi; dieser Auftrag wählt sie nicht selbst.
+2. **Firmenfilter — durch Pedis Entscheidung vom 11.10.2026 geklärt.**
+   *Damaliger Stand (bis Nacharbeit 4, überholt):* Das Produkt führt keine Firmen als Daten (eine
+   Instanz je Organisation, Entscheidung 03.07.2026); der Filter hatte keinen Gegenstand, die
+   Bedeutung war eine offene Entscheidung.
+   *Jetzt:* Frage 51 (`QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011.json`, `human_decisions[0]`;
+   Original `FRAGEN_AN_PETER_ORIGINAL.md:408–414`): „Firmenfilter als serverseitig berechtigter
+   Firmen-/Partner-/öffentlicher Kontext“ — eigene Firmeninstanz, ausdrücklich erlaubte
+   Partnerbereiche und öffentliche Quellen klar unterscheiden; Antwort „deine empfehlung, arbeite es
+   aus“. Die Detail-Ausarbeitung `LAGEBILD_UND_FIRMENFILTER` ist laut Quelle nur ein Vorschlag und
+   wurde **nicht** übernommen (keine zusätzliche API- oder Sicherheitsmatrix daraus).
+   *Ausarbeitung (meine, im bestehenden Space-Weg):*
+   - Jeder Space trägt einen Kontext: `firma` (Vorgabe; auch Altbestand ohne Angabe und Artikel
+     ohne Space), `partner` mit genau einem Partnernamen, `oeffentlich`.
+   - Partnerbereiche sind **nur** für ausdrücklich berechtigte Konten (Mitglieder, Zuständige)
+     lesbar: der Server lehnt Zugang `alle` ab (`SPACE_KONTEXT_ZUGANG`); kein Rollen-Durchgriff,
+     auch nicht für die Kontoverwaltung. Öffentliche Quellen sind für alle mit Leserecht offen
+     (Zugang `mitglieder` abgelehnt).
+   - Der Filter (`GET /api/spaces/artikel?kontext=…`, optional `&partner=…`) liefert nur, was
+     `darfSehen` dem Betrachter je Artikel erlaubt; die Partnerliste nennt nur sichtbare Bereiche.
+     `GET /api/spaces?kontext=…` grenzt die Spaceliste ein. Auf `/spaces` stehen dafür vier
+     Schaltflächen (Alle, Eigene Firma, Partnerbereich, Öffentliche Quellen) mit Artikelliste.
+   - Gegenproben an konkreten Fällen: `tests/wissensprojekte/firmenfilter.test.ts` — F1 eigene
+     Inhalte (ohne Space, offen, geschlossen), F2 erlaubter Partner erscheint, fremder Partner nicht
+     (auch nicht per Partnername, Detailabruf oder als Admin), F3 öffentliche Quellen für alle, F4
+     serverseitige Kontextregeln und Altbestand; Oberfläche:
+     `tests-smoke/wissensprojekte-firmenfilter.spec.ts`.
+   *Noch offen:* der grüne Prüflauf und die Fassung dieser Nacharbeit. Unverändert getrennt bleiben
+   der Confluence-„Firmenfilter“ (`package:confluence`) und die nicht montierte Ortszeile
+   „gesamtes Unternehmen“ (`LibraryScopeBar.tsx`, PLAN PRO 378 §9). Einen Partnerzugang für
+   Konten einer fremden Firma (eigene Anmeldung des Partners) baut dieser Auftrag nicht; berechtigt
+   werden Konten dieser Instanz.
 3. **Herkunft der Kriterien.** Laut Quelle Planvorschläge ohne zugeordnete Nutzerquelle; der
    historische Satz „Löschen als offen gemeldet“ ist kein Prüfbeleg.
 4. **Lieferbeleg mit Fassung.** Die Fassungsnummer dieses Laufs vergibt der Starter; der

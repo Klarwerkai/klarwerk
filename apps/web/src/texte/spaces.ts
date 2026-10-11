@@ -89,6 +89,21 @@ export default {
     "spaces.vorschau.veraltet":
       "Die Rechtelage hat sich seit der Vorschau geändert. Bitte die neue Vorschau prüfen.",
     "spaces.vorschau.erfolg": "Der Space wurde gewechselt. Fassung und Historie sind unverändert.",
+    "spaces.feld.kontext": "Kontext",
+    "spaces.feld.partner": "Partner",
+    "spaces.kontext.firma": "Eigene Firma",
+    "spaces.kontext.partner": "Partnerbereich",
+    "spaces.kontext.oeffentlich": "Öffentliche Quellen",
+    "spaces.kontextPartnerName": "Partnerbereich: {{partner}}",
+    "spaces.kontextHinweis.partner":
+      "Ein Partnerbereich ist nur für ausdrücklich berechtigte Mitglieder und die Zuständigkeit offen — nie für alle.",
+    "spaces.kontextHinweis.oeffentlich": "Öffentliche Quellen sind für alle mit Leserecht offen.",
+    "spaces.filter.titel": "Firmenfilter",
+    "spaces.filter.alle": "Alle Spaces",
+    "spaces.filter.artikel": "Artikel im Kontext „{{kontext}}“, die du sehen darfst",
+    "spaces.filter.allePartner": "Alle Partner, die du sehen darfst",
+    "spaces.fehler.kontextZugang":
+      "Dieser Kontext erlaubt diesen Zugang nicht: Partnerbereiche nur für Mitglieder, öffentliche Quellen für alle.",
     "spaces.loeschen.knopf": "Space löschen",
     "spaces.loeschen.titel": "Space löschen — die Folgen vorab",
     "spaces.loeschen.folgen":
@@ -201,6 +216,21 @@ export default {
     "spaces.vorschau.veraltet":
       "Access has changed since the preview. Please review the new preview.",
     "spaces.vorschau.erfolg": "The space was changed. Version and history are unchanged.",
+    "spaces.feld.kontext": "Context",
+    "spaces.feld.partner": "Partner",
+    "spaces.kontext.firma": "Own company",
+    "spaces.kontext.partner": "Partner area",
+    "spaces.kontext.oeffentlich": "Public sources",
+    "spaces.kontextPartnerName": "Partner area: {{partner}}",
+    "spaces.kontextHinweis.partner":
+      "A partner area is open only to explicitly authorised members and the owner — never to everyone.",
+    "spaces.kontextHinweis.oeffentlich": "Public sources are open to everyone with read access.",
+    "spaces.filter.titel": "Company filter",
+    "spaces.filter.alle": "All spaces",
+    "spaces.filter.artikel": "Articles in the context “{{kontext}}” you may see",
+    "spaces.filter.allePartner": "All partners you may see",
+    "spaces.fehler.kontextZugang":
+      "This context does not allow this access: partner areas for members only, public sources for everyone.",
     "spaces.loeschen.knopf": "Delete space",
     "spaces.loeschen.titel": "Delete space — the consequences first",
     "spaces.loeschen.folgen":
@@ -313,6 +343,21 @@ export default {
     "spaces.vorschau.veraltet":
       "De toegang is sinds de voorvertoning gewijzigd. Controleer de nieuwe voorvertoning.",
     "spaces.vorschau.erfolg": "De space is gewijzigd. Versie en historie zijn ongewijzigd.",
+    "spaces.feld.kontext": "Context",
+    "spaces.feld.partner": "Partner",
+    "spaces.kontext.firma": "Eigen bedrijf",
+    "spaces.kontext.partner": "Partnerruimte",
+    "spaces.kontext.oeffentlich": "Openbare bronnen",
+    "spaces.kontextPartnerName": "Partnerruimte: {{partner}}",
+    "spaces.kontextHinweis.partner":
+      "Een partnerruimte is alleen open voor uitdrukkelijk bevoegde leden en de verantwoordelijke — nooit voor iedereen.",
+    "spaces.kontextHinweis.oeffentlich": "Openbare bronnen zijn open voor iedereen met leesrecht.",
+    "spaces.filter.titel": "Bedrijfsfilter",
+    "spaces.filter.alle": "Alle spaces",
+    "spaces.filter.artikel": "Artikelen in de context „{{kontext}}” die je mag zien",
+    "spaces.filter.allePartner": "Alle partners die je mag zien",
+    "spaces.fehler.kontextZugang":
+      "Deze context staat deze toegang niet toe: partnerruimtes alleen voor leden, openbare bronnen voor iedereen.",
     "spaces.loeschen.knopf": "Space verwijderen",
     "spaces.loeschen.titel": "Space verwijderen — eerst de gevolgen",
     "spaces.loeschen.folgen":
