@@ -49,6 +49,14 @@ import type { IntervalHandle } from "./trash-sweep-scheduler";
 // wieder auf und zählt die Versuche weiter. Zugestellt wird damit mindestens einmal: Ein Neustart
 // zwischen erfolgreicher Antwort und Abschlusseintrag oder zwei gleichzeitig neu gestartete Instanzen
 // können eine Meldung doppelt senden — der Empfänger erkennt sie an derselben `kennung`.
+//
+// WIEDERANLAUF NACH EINEM RESTORE (produkt:20261011:peter-p09, P09-AC06). Eine Sicherung ist älter als
+// der Ausfall. Was zwischen Sicherung und Ausfall zugestellt wurde, fehlt der wiederhergestellten
+// Kette: ein offener Vorgang würde wieder aufgenommen, ein schon gemeldeter Zustand neu erkannt — und
+// ein zweites Mal hinausgeschickt. `setzeWiederanlaufGrenze` hält deshalb im Wiederanlauf (vor jeder
+// Außenaktion) fest, was der wiederhergestellte Bestand ableiten lässt, und schließt jeden offenen
+// Vorgang als abgebrochen. Über die Grenze hinweg gilt damit „höchstens einmal": was hinter ihr liegt,
+// geht nicht ein zweites Mal hinaus; was davor nie zugestellt war, steht namentlich in der Grenze.
 
 export const WISSENSEREIGNISSE = [
   "wissen.validiert",
@@ -67,6 +75,9 @@ export const AKTION_ZUGESTELLT = "wissensereignis.zugestellt";
 export const AKTION_GESCHEITERT = "wissensereignis.zustellung-gescheitert";
 export const AKTION_ABGEBROCHEN = "wissensereignis.zustellung-abgebrochen";
 export const AKTION_VERSUCH = "wissensereignis.zustellversuch";
+export const AKTION_WIEDERANLAUF_GRENZE = "wissensereignis.wiederanlauf-grenze";
+/** `grund` der Vorgänge, die die Wiederanlauf-Grenze geschlossen hat. */
+export const GRUND_WIEDERANLAUF = "wiederanlauf-grenze";
 const ABSCHLUSS_AKTIONEN = [AKTION_ZUGESTELLT, AKTION_GESCHEITERT, AKTION_ABGEBROCHEN] as const;
 
 export const SIGNATUR_HEADER = "x-klarwerk-signatur";
@@ -387,6 +398,16 @@ function zahl(wert: unknown): number {
   return typeof wert === "number" && Number.isFinite(wert) ? wert : 0;
 }
 
+function fuegeKennungenHinzu(ziel: Set<string>, liste: unknown): void {
+  if (Array.isArray(liste)) {
+    for (const k of liste) {
+      if (typeof k === "string") {
+        ziel.add(k);
+      }
+    }
+  }
+}
+
 export class WissensereignisMelder {
   private readonly deps: WissensereignisMelderDeps;
   private readonly zusteller: Zusteller;
@@ -442,13 +463,10 @@ export class WissensereignisMelder {
       grundstand = (await this.deps.audit.list({ action: AKTION_GRUNDSTAND }))[0];
     }
     const bekannt = new Set<string>();
-    const ausGrundstand = grundstand?.payload.kennungen;
-    if (Array.isArray(ausGrundstand)) {
-      for (const k of ausGrundstand) {
-        if (typeof k === "string") {
-          bekannt.add(k);
-        }
-      }
+    fuegeKennungenHinzu(bekannt, grundstand?.payload.kennungen);
+    // P09-AC06: jede Wiederanlauf-Grenze ist ein weiterer Grundstand — was sie festhält, ist bekannt.
+    for (const grenze of await this.deps.audit.list({ action: AKTION_WIEDERANLAUF_GRENZE })) {
+      fuegeKennungenHinzu(bekannt, grenze.payload.kennungen);
     }
     const erkannteEintraege = await this.deps.audit.list({ action: AKTION_ERKANNT });
     for (const eintrag of erkannteEintraege) {
@@ -674,6 +692,138 @@ export class WissensereignisMelder {
       .record({ actor: MELDER_AKTEUR, action, target: this.zielVon(eintrag), payload })
       .catch((error) => this.deps.log?.warn(`Prüfprotokoll für ${action}: ${String(error)}`));
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Wiederanlauf-Grenze (produkt:20261011:peter-p09, P09-AC06)
+// ------------------------------------------------------------------------------------------------
+
+/** Eindeutige Kennung der Grenze eines Wiederanlaufs (`recordOnce`). */
+export function grenzKennung(wiederanlauf: string): string {
+  return `${AKTION_WIEDERANLAUF_GRENZE}:${wiederanlauf}`;
+}
+
+export interface WiederanlaufGrenze {
+  wiederanlauf: string;
+  /** `false`: die Grenze dieses Wiederanlaufs stand schon in der Kette (zweiter Start). */
+  neuGesetzt: boolean;
+  /** Alle Ereignisse, die der wiederhergestellte Bestand ableiten lässt — ab hier bekannt. */
+  kennungen: string[];
+  /**
+   * Davon die, die bis zur Grenze NICHT als erkannt in der Kette standen. Sie können vor dem Ausfall
+   * schon gemeldet worden sein; die Kette weiß es nicht mehr. Sie gehen nicht hinaus — wer sie
+   * braucht, gleicht sie mit dem Empfänger ab.
+   */
+  unterdrueckt: string[];
+  /** Zustellvorgänge ohne Abschluss, die die Grenze als abgebrochen geschlossen hat. */
+  geschlossen: { ziel: string; kennung: string }[];
+  /** Der letzte bestätigte Ausführungspunkt: jüngste Zustellung im wiederhergestellten Bestand. */
+  letzteBestaetigteZustellung: string | null;
+}
+
+function zeichenketten(liste: unknown): string[] {
+  return Array.isArray(liste) ? liste.filter((k): k is string => typeof k === "string") : [];
+}
+
+/**
+ * Setzt die Grenze im Wiederanlauf — VOR jeder Außenaktion und genau einmal je Wiederanlauf.
+ * Geschrieben wird zuerst jeder Abschluss, zuletzt die Grenze selbst: bricht der Lauf dazwischen ab,
+ * findet der nächste Start keine Grenze und setzt sie vollständig neu (Abschlüsse über `recordOnce`).
+ */
+export async function setzeWiederanlaufGrenze(deps: {
+  quellen: WissensereignisQuellen;
+  audit: Pick<AuditService, "list" | "recordOnce">;
+  wiederanlauf: string;
+}): Promise<WiederanlaufGrenze> {
+  const { audit, wiederanlauf } = deps;
+  const kennungDerGrenze = grenzKennung(wiederanlauf);
+  const grenzen = await audit.list({ action: AKTION_WIEDERANLAUF_GRENZE });
+  const vorhanden = grenzen.find((e) => e.eventId === kennungDerGrenze);
+  if (vorhanden) {
+    const p = vorhanden.payload;
+    return {
+      wiederanlauf,
+      neuGesetzt: false,
+      kennungen: zeichenketten(p.kennungen),
+      unterdrueckt: zeichenketten(p.unterdrueckt),
+      geschlossen: Array.isArray(p.geschlossen)
+        ? (p.geschlossen as { ziel: string; kennung: string }[])
+        : [],
+      letzteBestaetigteZustellung:
+        typeof p.letzteBestaetigteZustellung === "string" ? p.letzteBestaetigteZustellung : null,
+    };
+  }
+
+  const bekannt = new Set<string>();
+  for (const g of await audit.list({ action: AKTION_GRUNDSTAND })) {
+    fuegeKennungenHinzu(bekannt, g.payload.kennungen);
+  }
+  for (const g of grenzen) {
+    fuegeKennungenHinzu(bekannt, g.payload.kennungen);
+  }
+  const erkannt = await audit.list({ action: AKTION_ERKANNT });
+  for (const e of erkannt) {
+    if (e.eventId) {
+      bekannt.add(e.eventId);
+    }
+  }
+  const kennungen = befundeAus(await ladeStand(deps.quellen)).map((b) => b.kennung);
+  const unterdrueckt = kennungen.filter((k) => !bekannt.has(k));
+
+  const abgeschlossen = new Set<string>();
+  let letzteBestaetigteZustellung: string | null = null;
+  for (const action of ABSCHLUSS_AKTIONEN) {
+    for (const e of await audit.list({ action })) {
+      if (e.eventId) {
+        abgeschlossen.add(e.eventId);
+      }
+      if (
+        action === AKTION_ZUGESTELLT &&
+        (letzteBestaetigteZustellung === null || e.at > letzteBestaetigteZustellung)
+      ) {
+        letzteBestaetigteZustellung = e.at;
+      }
+    }
+  }
+  const geschlossen: { ziel: string; kennung: string }[] = [];
+  for (const e of erkannt) {
+    if (!e.eventId) {
+      continue;
+    }
+    for (const ziel of zeichenketten(e.payload.ziele)) {
+      const schluessel = abschlussKennung(ziel, e.eventId);
+      if (abgeschlossen.has(schluessel)) {
+        continue;
+      }
+      await audit.recordOnce(schluessel, {
+        actor: MELDER_AKTEUR,
+        action: AKTION_ABGEBROCHEN,
+        target: e.target,
+        payload: {
+          ziel,
+          ereignis: e.payload.ereignis,
+          kennung: e.eventId,
+          grund: GRUND_WIEDERANLAUF,
+          wiederanlauf,
+        },
+      });
+      geschlossen.push({ ziel, kennung: e.eventId });
+    }
+  }
+  await audit.recordOnce(kennungDerGrenze, {
+    actor: MELDER_AKTEUR,
+    action: AKTION_WIEDERANLAUF_GRENZE,
+    target: "wissensereignisse",
+    payload: { wiederanlauf, kennungen, unterdrueckt, geschlossen, letzteBestaetigteZustellung },
+  });
+  return {
+    wiederanlauf,
+    neuGesetzt: true,
+    kennungen,
+    unterdrueckt,
+    geschlossen,
+    letzteBestaetigteZustellung,
+  };
 }
 
 export interface MelderHandle {

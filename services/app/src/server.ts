@@ -24,8 +24,15 @@ import { klartextWarnung, leseTransportTls } from "./transport-tls";
 import { resolveTrashSweepIntervalMs, startTrashSweepScheduler } from "./trash-sweep-scheduler";
 import { registerWebStatic } from "./web-static";
 import {
+  GESTOPPTE_AUSSENAKTIONEN,
+  WIEDERANLAUF_ENV,
+  leseWiederanlauf,
+  registriereWiederanlauf,
+} from "./wiederanlauf";
+import {
   WEBHOOKS_TAKT_ENV,
   WissensereignisMelder,
+  type WissensereignisQuellen,
   ladeWebhookZiele,
   resolveWebhookTaktMs,
   starteWissensereignisMelder,
@@ -131,6 +138,9 @@ async function start(): Promise<void> {
   // JOB 3655 Runde 1. In Nicht-Produktion prüft der Vertrag nichts (s. `fehlendePflichtwerte`),
   // Entwicklung und Desktopbetrieb bleiben unberührt.
   pruefeStartvertrag(process.env);
+  // produkt:20261011:peter-p09: Wiederanlauf nach einem Restore (`wiederanlauf.ts`). Ein ungültiger
+  // Wert bricht hier ab — ein Wiederanlauf darf nie still als Normalstart laufen.
+  const wiederanlauf = leseWiederanlauf(process.env);
   // EINE Quelle der Wahrheit (ben-Review ROT-1): DATABASE_URL genau hier am Rand normalisieren
   // (trim; leer/whitespace → undefined). Derselbe Wert speist ALLE vier Verwendungen — Guard,
   // Pg-vs-InMemory/Journal-Verzweigung, Factory-Reset-Erkennung und Modus-Log — sodass Guard-Entscheid
@@ -182,6 +192,22 @@ async function start(): Promise<void> {
     },
   });
   await configureWebDelivery(app);
+  // Dieselben Lesewege für den Melder und für die Replay-Grenze des Wiederanlaufs.
+  const wissensereignisQuellen: WissensereignisQuellen = {
+    wissensobjekte: () => services.ko.list({}),
+    revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
+    offeneWidersprueche: () => services.conflicts.unresolved(),
+    wissensobjekt: (id) => services.ko.get(id),
+  };
+  if (wiederanlauf) {
+    registriereWiederanlauf(app, {
+      wiederanlauf,
+      audit: services.audit,
+      auth: services.auth,
+      quellen: wissensereignisQuellen,
+      log: { info: (t) => app.log.warn(t) },
+    });
+  }
   const port = Number(process.env.PORT ?? "3001");
   // SCRUM-525 P.5 (WP3-Batch3): die wirksame KI-Zuordnung (Policy) MUSS feststehen, BEVOR der Server
   // Requests annimmt — sonst gäbe es kurz nach dem Neustart ein Fenster mit Default-„auto". Daher VOR
@@ -313,7 +339,8 @@ async function start(): Promise<void> {
   }
   // AUFNAHME 20260922 · gesamt-pruefung-hintergrund (R-1111/R-1125): gescheiterte und überholte
   // Prüfungen nachholen — beim Start (verlorene Warteschlange) und danach periodisch, gedeckelt.
-  if (hintergrundLauf) {
+  // Im Wiederanlauf gestoppt (Modellvergleiche; ihr Tagesverbrauch nach der Sicherung fehlt der Kette).
+  if (hintergrundLauf && !wiederanlauf) {
     starteHintergrundpruefung({
       lauf: hintergrundLauf,
       intervalMs: HINTERGRUNDLAUF_INTERVAL_MS,
@@ -342,6 +369,14 @@ async function start(): Promise<void> {
     onSwept: gedaechtnisGeloescht("periodisch"),
     onError: (error) => app.log.warn({ err: error }, "Gedächtnis-Aufräumlauf übersprungen"),
   });
+  // produkt:20261011:peter-p09: im Wiederanlauf starten die Außenaktionen unten NICHT. Sie laufen
+  // erst nach der Freigabe und einem Neustart ohne den Schalter — ab der Replay-Grenze.
+  if (wiederanlauf) {
+    app.log.warn(
+      `Wiederanlauf ${wiederanlauf.kennung}: Außenaktionen gestoppt (${GESTOPPTE_AUSSENAKTIONEN.map((a) => a.id).join(", ")}). Nach der Freigabe ohne ${WIEDERANLAUF_ENV} neu starten.`,
+    );
+    return;
+  }
   // R-1657 (Nacharbeit 2): „KLARWERK analysiert regelmäßig …" — die Lückenerkennung über den
   // Reasoner läuft im eigenen Takt über die vorgemerkten Betrachtersichten (services/management,
   // `wissenssprintLauf`). Intervall aus KLARWERK_WISSENSSPRINT_INTERVAL_MS, Vorgabe 15 min,
@@ -369,12 +404,7 @@ async function start(): Promise<void> {
     // R-1349: derselbe Name wie im Modul (`WEBHOOKS_TAKT_ENV`), nicht eine zweite Schreibweise.
     const melderTakt = resolveWebhookTaktMs(process.env[WEBHOOKS_TAKT_ENV]);
     const melder = new WissensereignisMelder({
-      quellen: {
-        wissensobjekte: () => services.ko.list({}),
-        revalidierungFaellig: () => services.lifecycle.pendingRevalidation(),
-        offeneWidersprueche: () => services.conflicts.unresolved(),
-        wissensobjekt: (id) => services.ko.get(id),
-      },
+      quellen: wissensereignisQuellen,
       audit: services.audit,
       ziele: webhooks.ziele,
       log: { warn: (t) => app.log.warn(t) },
