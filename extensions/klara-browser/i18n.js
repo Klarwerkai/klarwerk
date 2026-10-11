@@ -230,6 +230,25 @@ globalThis.KLARA_TEXT = {
       "Die Tabelle hat sich seit der Prüfung geändert. Es wurde nichts gespeichert; die neue Fassung steht zur Prüfung bereit.",
     technik_blocked: "Für diese Quelle ist das Leserecht entzogen. Es wurde nichts übernommen.",
     technik_failed: "Technische Daten konnten nicht übernommen werden.",
+    // Nacharbeit 5: weitere Belege, Quellenabgleich und die Wiederholung nach dem Einreichen.
+    technikArt: "Art dieses Belegs",
+    technikArtHtml: "Webseite",
+    technikArtDatenblatt: "Datenblatt (ausdrücklich gewählt)",
+    technikMerken: "Als weiteren Beleg merken",
+    technikAbgleichen: "Mit vorhandenem Wissen abgleichen",
+    technikSammlung: "Gemerkte weitere Belege",
+    technikLeeren: "Gemerkte Belege verwerfen",
+    technikBelege: "Geprüfte Belege",
+    technikAbgleich: "Betroffene Entwürfe und Wissen",
+    technikWissenOeffnen: "Vorhandenes Wissen öffnen",
+    technik_gemerkt:
+      "Beleg gemerkt. Jetzt die Tabelle des nächsten Belegs markieren und übernehmen; die Prüfung nimmt beide.",
+    technik_geleert: "Gemerkte Belege verworfen.",
+    technik_abgeglichen: "Quelle mit dem vorhandenen Wissen abgeglichen.",
+    technik_im_wissen:
+      "Diese Fassung ist bereits als Wissen übernommen, aber noch nicht fachlich freigegeben. Es wurde kein neuer Entwurf angelegt.",
+    technik_im_wissen_freigegeben:
+      "Diese Fassung ist bereits als fachlich freigegebenes Wissen übernommen. Es wurde kein neuer Entwurf angelegt.",
   },
   en: {
     language: "Language",
@@ -420,5 +439,23 @@ globalThis.KLARA_TEXT = {
       "The table changed since the check. Nothing was saved; the new version is ready for review.",
     technik_blocked: "Read access to this source has been revoked. Nothing was captured.",
     technik_failed: "Technical data could not be saved.",
+    technikArt: "Type of this evidence",
+    technikArtHtml: "Web page",
+    technikArtDatenblatt: "Data sheet (explicitly chosen)",
+    technikMerken: "Keep as additional evidence",
+    technikAbgleichen: "Compare with existing knowledge",
+    technikSammlung: "Additional evidence kept",
+    technikLeeren: "Discard kept evidence",
+    technikBelege: "Checked evidence",
+    technikAbgleich: "Affected drafts and knowledge",
+    technikWissenOeffnen: "Open existing knowledge",
+    technik_gemerkt:
+      "Evidence kept. Now select and capture the table of the next evidence; the check takes both.",
+    technik_geleert: "Kept evidence discarded.",
+    technik_abgeglichen: "Source compared with existing knowledge.",
+    technik_im_wissen:
+      "This version is already in knowledge but not yet reviewed. No new draft was created.",
+    technik_im_wissen_freigegeben:
+      "This version is already in reviewed knowledge. No new draft was created.",
   },
 };

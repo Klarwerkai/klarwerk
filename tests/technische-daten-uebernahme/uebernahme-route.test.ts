@@ -445,7 +445,12 @@ describe("BPA-02 · /api/technische-daten", () => {
     expect(nichtBerechtigt.statusCode, "nur die Fachprüfung entzieht Quellrechte").toBe(403);
     const entzug = await post(app, "quellenrechte", carla, { ...ort, zustand: "entzogen" });
     expect(entzug.statusCode, entzug.body).toBe(200);
-    expect(entzug.json()).toEqual({ zustand: "entzogen", wissensobjekte: 1, entwuerfe: 1 });
+    expect(entzug.json()).toEqual({
+      zustand: "entzogen",
+      wissensobjekte: 1,
+      weiterhinGesperrt: 0,
+      entwuerfe: 1,
+    });
 
     // Kopie, Lesen und Suche gesperrt — auch für die Autorin.
     const lesen = await app.inject({ method: "GET", url: `/api/kos/${wissen.id}`, headers: anna });
@@ -467,10 +472,205 @@ describe("BPA-02 · /api/technische-daten", () => {
     expect(spaet.json().error).toBe("QUELLE_GESPERRT");
 
     const erteilt = await post(app, "quellenrechte", carla, { ...ort, zustand: "erteilt" });
-    expect(erteilt.json()).toEqual({ zustand: "erteilt", wissensobjekte: 1, entwuerfe: 0 });
+    expect(erteilt.json()).toEqual({
+      zustand: "erteilt",
+      wissensobjekte: 1,
+      weiterhinGesperrt: 0,
+      entwuerfe: 0,
+    });
     const wieder = await app.inject({ method: "GET", url: `/api/kos/${wissen.id}`, headers: anna });
     expect(wieder.statusCode).toBe(200);
     expect((await post(app, "vorschau", anna, auftrag)).statusCode).toBe(200);
+  });
+
+  it("AC09 · Nacharbeit 5: Papierkorb, Wiederherstellen und erneutes Einreichen bleiben gesperrt; endgültiges Löschen bleibt möglich", async () => {
+    const { app, anna, bert, carla } = await aufbauen();
+    const v18 = await uebernehmen(app, bert, {
+      belege: [HTML_SEITE],
+      ziel: { objekt: "V-18" },
+      schutzklasse: "intern",
+    });
+    const v17 = await uebernehmen(app, bert, {
+      belege: [HTML_SEITE],
+      ziel: { objekt: "V-17" },
+      schutzklasse: "intern",
+    });
+    const idV18 = v18.json().entwurf.id as string;
+    const idV17 = v17.json().entwurf.id as string;
+    const ort = { url: HTML_SEITE.url, abschnitt: HTML_SEITE.abschnitt, anker: HTML_SEITE.anker };
+    const entzug = await post(app, "quellenrechte", carla, { ...ort, zustand: "entzogen" });
+    expect(entzug.json().entwuerfe).toBe(2);
+
+    // Papierkorb: der Eintrag steht da (endgültig löschbar), aber ohne jeden Inhalt.
+    const korb = await app.inject({ method: "GET", url: "/api/drafts/trash", headers: bert });
+    expect(korb.statusCode).toBe(200);
+    const eintraege = korb.json() as { id: string; payload: object; quellsperre?: boolean }[];
+    expect(eintraege.map((e) => e.id).sort()).toEqual([idV17, idV18].sort());
+    for (const e of eintraege) {
+      expect(e).toMatchObject({ quellsperre: true, payload: {} });
+    }
+    expect(korb.body).not.toContain("16 bar");
+    expect(korb.body).not.toContain("Technische Daten");
+
+    // Wiederherstellen gäbe den Inhalt zurück — gesperrt.
+    const zurueck = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${idV18}/restore`,
+      headers: bert,
+    });
+    expect(zurueck.statusCode).toBe(403);
+    expect(zurueck.json().error).toBe("QUELLE_GESPERRT");
+    expect(zurueck.body).not.toContain("16 bar");
+
+    // Erneutes Einreichen über eine Kopie derselben Belegstelle — gesperrt, kein Wissensobjekt.
+    const original = (
+      await app.inject({ method: "GET", url: "/api/drafts/trash", headers: anna })
+    ).json() as unknown[];
+    expect(original, "Anna hat keinen eigenen Papierkorbeintrag").toHaveLength(0);
+    const kopie = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: bert,
+      payload: {
+        title: "Abschrift V-18",
+        statement: "Abgeschrieben.",
+        type: "technik",
+        category: "Wartung",
+        confidentiality: "intern",
+        pendingSources: [
+          {
+            label: "V-Serie · Technische Daten",
+            url: `${HTML_SEITE.url}#technische-daten`,
+            excerpt: `Fassung sha256:${belegFassung(HTML_SEITE)} · Abschnitt: ${HTML_SEITE.abschnitt} · erfasst ${HTML_SEITE.abgerufenAm}`,
+            sourceProvider: "Webseite",
+          },
+        ],
+      },
+    });
+    expect(kopie.statusCode, kopie.body).toBe(201);
+    const einreichen = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${kopie.json().id}/promote`,
+      headers: bert,
+      payload: {},
+    });
+    expect(einreichen.statusCode).toBe(403);
+    expect(einreichen.json().error).toBe("QUELLE_GESPERRT");
+
+    // Gewöhnliches (endgültiges) Löschen bleibt erlaubt — es gibt nichts heraus.
+    const weg = await app.inject({
+      method: "DELETE",
+      url: `/api/drafts/trash/${idV17}`,
+      headers: bert,
+    });
+    expect(weg.statusCode).toBe(204);
+
+    // Nach Wiedererteilung: Inhalt im Papierkorb wieder da, Wiederherstellen geht.
+    await post(app, "quellenrechte", carla, { ...ort, zustand: "erteilt" });
+    const korbDanach = await app.inject({ method: "GET", url: "/api/drafts/trash", headers: bert });
+    expect(korbDanach.body).toContain("Technische Daten · V-18");
+    const wiederDa = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${idV18}/restore`,
+      headers: bert,
+    });
+    expect(wiederDa.statusCode).toBe(200);
+  });
+
+  it("AC09 · Nacharbeit 5: Wiedererteilung einer Quelle hebt die Sperre nicht auf, solange eine andere Herkunftsquelle gesperrt ist", async () => {
+    const { app, anna, bert, carla } = await aufbauen();
+    const res = await uebernehmen(app, anna, {
+      belege: [HTML_SEITE, DATENBLATT],
+      ziel: { objekt: "V-17" },
+      schutzklasse: "intern",
+    });
+    const wissen = await einreichen(app, anna, res.json().entwurf.id);
+    const html = { url: HTML_SEITE.url, abschnitt: HTML_SEITE.abschnitt, anker: HTML_SEITE.anker };
+    const blatt = { url: DATENBLATT.url, abschnitt: DATENBLATT.abschnitt };
+    await post(app, "quellenrechte", carla, { ...html, zustand: "entzogen" });
+    await post(app, "quellenrechte", carla, { ...blatt, zustand: "entzogen" });
+    const lesen = (wer: Kopf) =>
+      app.inject({ method: "GET", url: `/api/kos/${wissen.id}`, headers: wer });
+    expect([403, 404]).toContain((await lesen(anna)).statusCode);
+
+    const eins = await post(app, "quellenrechte", carla, { ...html, zustand: "erteilt" });
+    expect(eins.json()).toMatchObject({ wissensobjekte: 1, weiterhinGesperrt: 1 });
+    expect([403, 404], "das Datenblatt ist weiter gesperrt").toContain(
+      (await lesen(anna)).statusCode,
+    );
+    expect([403, 404]).toContain((await lesen(bert)).statusCode);
+
+    const zwei = await post(app, "quellenrechte", carla, { ...blatt, zustand: "erteilt" });
+    expect(zwei.json()).toMatchObject({ wissensobjekte: 1, weiterhinGesperrt: 0 });
+    expect((await lesen(anna)).statusCode).toBe(200);
+    expect((await lesen(bert)).statusCode).toBe(200);
+  });
+
+  it("AC09 · Nacharbeit 5: eine bestehende Leserbeschränkung überlebt Entzug und Wiedererteilung", async () => {
+    const { app, services, anna, bert, carla, annaId } = await aufbauen();
+    const res = await uebernehmen(app, anna, {
+      belege: [HTML_SEITE],
+      ziel: { objekt: "V-17" },
+      schutzklasse: "intern",
+    });
+    const wissen = await einreichen(app, anna, res.json().entwurf.id);
+    // Der Leserkreis kommt aus einem anderen Rechteweg (wie beim Import): nur Anna darf lesen.
+    await services.ko.setQuellrechte(
+      wissen.id,
+      { stufe: "intern", leser: [annaId], beobachtetAm: new Date().toISOString() },
+      annaId,
+    );
+    const lesen = (wer: Kopf) =>
+      app.inject({ method: "GET", url: `/api/kos/${wissen.id}`, headers: wer });
+    expect((await lesen(anna)).statusCode).toBe(200);
+    expect([403, 404]).toContain((await lesen(bert)).statusCode);
+
+    const ort = { url: HTML_SEITE.url, abschnitt: HTML_SEITE.abschnitt, anker: HTML_SEITE.anker };
+    await post(app, "quellenrechte", carla, { ...ort, zustand: "entzogen" });
+    expect([403, 404]).toContain((await lesen(anna)).statusCode);
+    await post(app, "quellenrechte", carla, { ...ort, zustand: "erteilt" });
+    expect((await lesen(anna)).statusCode, "Anna liest wieder").toBe(200);
+    expect([403, 404], "Bert bleibt ausgeschlossen").toContain((await lesen(bert)).statusCode);
+    expect((await services.ko.get(wissen.id))?.quellrechte?.leser).toEqual([annaId]);
+  });
+
+  it("AC08/AC09 · Nacharbeit 5: die Nichterreichbarkeit steht dauerhaft am Quellenbeleg des Wissensobjekts", async () => {
+    const { app, services, anna } = await aufbauen();
+    const res = await uebernehmen(app, anna, {
+      belege: [HTML_SEITE, DATENBLATT],
+      ziel: { objekt: "V-17" },
+      schutzklasse: "intern",
+    });
+    const wissen = await einreichen(app, anna, res.json().entwurf.id);
+    const quellen = async () =>
+      (await app.inject({ method: "GET", url: `/api/kos/${wissen.id}`, headers: anna })).json()
+        .sources as { url: string; sourceRemovedAt?: string }[];
+    expect((await quellen()).every((s) => !s.sourceRemovedAt)).toBe(true);
+
+    await post(app, "quellenabgleich", anna, { beleg: HTML_SEITE, zustand: "geloescht" });
+    const danach = await quellen();
+    const html = danach.find((s) => s.url === `${HTML_SEITE.url}#technische-daten`);
+    const blatt = danach.find((s) => s.url === DATENBLATT.url);
+    expect(html?.sourceRemovedAt, "Vermerk am betroffenen Beleg").toBeTruthy();
+    expect(blatt?.sourceRemovedAt, "der andere Beleg bleibt unberührt").toBeUndefined();
+    // Dauerhaft im Prüfprotokoll, mit der betroffenen Wissensfassung.
+    const protokoll = await services.audit.list({
+      action: QUELLENBEOBACHTUNG_AKTION,
+      target: wissen.id,
+    });
+    expect(protokoll.at(-1)?.payload).toMatchObject({
+      lage: "quelle_nicht_mehr_erreichbar",
+      wissensfassung: wissen.version,
+    });
+    // Ein zweiter gleicher Abgleich schreibt nichts Neues.
+    await post(app, "quellenabgleich", anna, { beleg: HTML_SEITE, zustand: "geloescht" });
+    expect(
+      await services.audit.list({ action: QUELLENBEOBACHTUNG_AKTION, target: wissen.id }),
+    ).toHaveLength(protokoll.length);
+    // Quelle wieder erreichbar (gleiche Fassung): der Vermerk fällt weg, auch das steht im Protokoll.
+    await post(app, "quellenabgleich", anna, { beleg: HTML_SEITE });
+    const wieder = await quellen();
+    expect(wieder.every((s) => !s.sourceRemovedAt)).toBe(true);
   });
 
   it("kein Wert für das Ziel: 422 mit Klärung, nichts gespeichert (AC04)", async () => {

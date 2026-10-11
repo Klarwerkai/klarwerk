@@ -83,6 +83,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import type { Quellenlage } from "../technische-daten-quellen";
 import { verifizierungFuer } from "../verifizierungsmarke";
 import {
   type EinreichEntscheid,
@@ -189,6 +190,11 @@ export interface KoRoutesDeps {
   // GELESEN und ausschliesslich als eigenes Feld NEBEN das Objekt gesetzt; kein KO-Feld wird
   // ersetzt, überschrieben oder umgeschrieben.
   lesevarianten?: LesevariantenRepo | undefined;
+  // BPA-02 (Nacharbeit 5): die beobachtete Lage der Quellen aus der Übernahme technischer Daten.
+  // OPTIONAL wie `lesevarianten`. Sie setzt am Detailabruf `sourceRemovedAt` an genau der
+  // Belegstelle, deren Abschnitt zuletzt als nicht mehr erreichbar beobachtet wurde — dasselbe Feld,
+  // das der Abgleich importierter Seiten setzt und die Oberfläche bereits zeigt. Kein neues Feld.
+  quellenlage?: Quellenlage | undefined;
   // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: was die Route über Konten wissen
   // muss — die Weisungsbefugnis am Konto und ob eine benannte Person ein Konto ist. OPTIONAL wie
   // `lesevarianten`: ohne Verdrahtung gibt es keine Befugnis, und jede Weisung wird abgelehnt
@@ -1914,8 +1920,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           weisungAbschlussOffen.push(conflictId);
         }
       }
+      // BPA-02: dieselbe Quellenliste, an beobachteten Webquellen um den Löschvermerk ergänzt.
+      const quellen = deps.quellenlage
+        ? await deps.quellenlage.fuer(item.id, item.sources ?? [])
+        : undefined;
       reply.code(200).send({
         ...item,
+        ...(quellen ? { sources: quellen } : {}),
         verifizierung,
         ...(sichtungsKandidaten ? { sichtungsKandidaten } : {}),
         ...(weisungAbschlussOffen.length > 0 ? { weisungAbschlussOffen } : {}),

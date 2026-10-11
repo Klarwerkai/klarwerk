@@ -568,33 +568,71 @@
     return null;
   }
   /**
-   * Der Beleg, wie der Server ihn verlangt: Adresse, Abschnitt, Erfassungszeit, Zellen.
-   * @param {import("./types").Tabelle} t @param {import("./types").Selection} s @param {string} am
+   * Der Beleg, wie der Server ihn verlangt: Art, Adresse, Abschnitt, Erfassungszeit, Zellen.
+   * @param {import("./types").TechnikQuelle} q @param {string} am
    * @returns {import("./types").Beleg}
    */
-  function beleg(t, s, am) {
+  function beleg(q, am) {
     return {
-      art: "html",
-      url: s.url,
-      abschnitt: t.abschnitt,
-      ...(t.anker ? { anker: t.anker } : {}),
-      titel: s.title.slice(0, 300),
+      art: q.art,
+      url: q.url,
+      abschnitt: q.tabelle.abschnitt,
+      ...(q.tabelle.anker ? { anker: q.tabelle.anker } : {}),
+      titel: q.titel.slice(0, 300),
       abgerufenAm: am,
-      kopf: t.kopf,
-      zeilen: t.zeilen,
+      kopf: q.tabelle.kopf,
+      zeilen: q.tabelle.zeilen,
     };
   }
+  /** Höchstens so viele Belege je Übernahme (dieselbe Grenze wie am Server). */
+  const TECHNIK_BELEGE = 5;
+  /** @param {unknown} art @returns {"html" | "datenblatt"} */
+  const belegArt = (art) => (art === "datenblatt" ? "datenblatt" : "html");
+  /** @param {import("./types").TechnikQuelle} q */
+  const ortVon = (q) => `${q.url}\n${q.tabelle.abschnitt}`;
+  /**
+   * Die Quelle der markierten Tabelle DIESER Übernahme, als Beleg der gewählten Art.
+   * @param {import("./types").Work} w @param {import("./types").Technik} t @param {unknown} art
+   * @returns {import("./types").TechnikQuelle}
+   */
+  function aktuelleQuelle(w, t, art) {
+    return {
+      tabId: w.selection.tabId,
+      url: w.selection.url,
+      titel: w.selection.title,
+      art: belegArt(art),
+      tabelle: t.tabelle,
+      erfasstAm: w.selection.capturedAt,
+    };
+  }
+  /**
+   * Die bewusst gemerkten weiteren Belege DIESES Kontos (z. B. ein verlinktes Datenblatt in einem
+   * anderen Tab) — gehören sie zu einem anderen Konto, gelten sie nicht.
+   * @param {Zustand} state @returns {import("./types").TechnikQuelle[]}
+   */
+  function gemerkte(state) {
+    const s = state.technikSammlung;
+    return s && state.auth && s.owner === state.auth.id ? s.quellen : [];
+  }
+  /** Die Lage einer Quelle, zweisprachig wie der Entwurfskörper. @type {Record<string, string>} */
+  const LAGE_TEXT = {
+    quelle_geaendert: "Quelle geändert / Source changed",
+    quelle_nicht_mehr_erreichbar: "Quelle nicht mehr erreichbar / Source no longer reachable",
+    unveraendert: "unverändert / unchanged",
+  };
   /**
    * Feste Wege zum Server, ohne Adresse aus Nachricht oder Seite. Antwortet auch bei 4xx mit dem
    * Rumpf: die Abweisungen dieses Weges (geänderte Quelle, gesperrte Quelle) tragen den nächsten
    * Schritt in sich.
-   * @param {"vorschau" | "uebernahme"} kind @param {import("./types").Auth} auth @param {object} body
+   * @param {"vorschau" | "uebernahme" | "abgleich"} kind @param {import("./types").Auth} auth
+   * @param {object} body
    * @returns {Promise<{ status: number, body: Record<string, unknown> }>}
    */
   async function technikApi(kind, auth, body) {
     const paths = {
       vorschau: "/api/technische-daten/vorschau",
       uebernahme: "/api/technische-daten/uebernahme",
+      abgleich: "/api/technische-daten/quellenabgleich",
     };
     if (!Object.hasOwn(paths, kind)) throw new Error("invalid_message");
     const response = await fetch(HOST + paths[kind], {
@@ -636,7 +674,12 @@
           normal = ` → ${zahl} ${text(n.einheit)} (${text(n.formel)})`;
         }
         const status = w.status === "uebernehmbar" ? "" : " · in Klärung";
-        return `${name || "?"} · ${text(w.merkmal)}: ${text(w.original)}${normal}${status}`;
+        // Getrennte Herkunft: jeder Wert nennt den Beleg, aus dem er stammt.
+        const h = /** @type {Record<string, unknown>} */ (w.herkunft ?? {});
+        const art = h.art === "datenblatt" ? "Datenblatt" : "Webseite";
+        const herkunft = text(h.abschnitt) ? ` · ${art} „${text(h.abschnitt)}“` : "";
+        const kern = `${name || "?"} · ${text(w.merkmal)}: ${text(w.original)}`;
+        return `${kern}${normal}${status}${herkunft}`;
       });
     });
     return {
@@ -669,10 +712,56 @@
      * @param {Record<string, unknown>} body
      */
     const verweigert = (body) => (body.error === "QUELLE_GESPERRT" ? "technik_blocked" : "denied");
+    const auth = state.auth;
     try {
+      // ==========================================================================================
+      // WEITERE BELEGE (AC05, Nacharbeit 5): ein ausdrücklich gewähltes Datenblatt oder eine zweite
+      // Seite wird in seinem eigenen Tab erfasst und hier GEMERKT — mit Tab, Adresse, Abschnitt und
+      // der gewählten Art. Die nächste Prüfung nimmt alle gemerkten Belege zusammen mit der
+      // aktuellen Tabelle; jeder bleibt ein eigener Beleg mit eigener Herkunft.
+      // ==========================================================================================
+      if (message.type === "technik_merken") {
+        const neu = aktuelleQuelle(w, t, message.art);
+        const bisher = gemerkte(state).filter((q) => ortVon(q) !== ortVon(neu));
+        const quellen = [...bisher, neu].slice(-(TECHNIK_BELEGE - 1));
+        await merke({ technikSammlung: { owner: auth.id, quellen } });
+        return view(/** @type {Zustand} */ (await read()), "technik_gemerkt");
+      }
+      if (message.type === "technik_leeren") {
+        await merke({ technikSammlung: null });
+        return view(/** @type {Zustand} */ (await read()), "technik_geleert");
+      }
+      // ==========================================================================================
+      // QUELLENPFLEGE (AC08/AC09, Nacharbeit 5): die gerade gelesene Tabelle mit dem vorhandenen
+      // Wissen abgleichen — eigene Entwürfe und sichtbare Wissensobjekte aus diesem Abschnitt.
+      // ==========================================================================================
+      if (message.type === "technik_abgleich") {
+        const jetzt = beleg(aktuelleQuelle(w, t, message.art), w.selection.capturedAt);
+        const antwort = await technikApi("abgleich", auth, { beleg: jetzt, zustand: "vorhanden" });
+        if (antwort.status === 401) return failure(state, new Error("expired"));
+        if (antwort.status !== 200) return view(state, "technik_failed", textAus(antwort.body));
+        /** @param {unknown} x @returns {Record<string, unknown>[]} */
+        const liste = (x) => (Array.isArray(x) ? x.filter((e) => e && typeof e === "object") : []);
+        const zeile = (/** @type {Record<string, unknown>} */ e) => {
+          const art = e.art === "wissensobjekt" ? "Wissen / Knowledge" : "Entwurf / Draft";
+          const fassung = typeof e.fassung === "number" ? ` · Fassung ${e.fassung}` : "";
+          const lage = LAGE_TEXT[String(e.lage)] ?? String(e.lage ?? "");
+          return `${art} „${String(e.titel ?? "").slice(0, 200)}“${fassung} · ${lage}`;
+        };
+        const abgleich = [...liste(antwort.body.betroffen), ...liste(antwort.body.unveraendert)]
+          .slice(0, 50)
+          .map(zeile);
+        await merke({ technik: { ...t, abgleich } });
+        return view(/** @type {Zustand} */ (await read()), "technik_abgeglichen");
+      }
       if (message.type === "technik_vorschau") {
-        const gelesen = beleg(t.tabelle, w.selection, w.selection.capturedAt);
-        const antwort = await technikApi("vorschau", state.auth, { belege: [gelesen], ziel });
+        const aktuell = aktuelleQuelle(w, t, message.art);
+        const quellen = [
+          ...gemerkte(state).filter((q) => ortVon(q) !== ortVon(aktuell)),
+          aktuell,
+        ].slice(-TECHNIK_BELEGE);
+        const belege = quellen.map((q) => beleg(q, q.erfasstAm));
+        const antwort = await technikApi("vorschau", auth, { belege, ziel });
         if (antwort.status === 401) return failure(state, new Error("expired"));
         if (antwort.status === 403) return view(state, verweigert(antwort.body));
         const vorschaubeleg = antwort.body.vorschaubeleg;
@@ -682,33 +771,48 @@
           technik: {
             ...t,
             ziel: { objekt, variante },
-            beleg: gelesen,
+            quellen,
+            belege,
             vorschaubeleg,
             ergebnis: ergebnis(antwort.body),
             entwurfId: null,
+            wissensobjektId: null,
+            imWissenFreigegeben: false,
           },
         });
         return view(/** @type {Zustand} */ (await read()), "technik_preview");
       }
-      // Übernahme: zuerst DENSELBEN Tab neu lesen. Andere Adresse → nichts wird gesendet.
-      if (!t.vorschaubeleg || !t.beleg) return view(state, "technik_none");
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: w.selection.tabId },
-        files: ["selection.js"],
-      });
-      const s = results[0]?.result;
-      if (!s || s.url !== w.selection.url) return view(state, "source_changed");
-      const frisch = wiedergefunden(s, t.tabelle.abschnitt);
-      if (!frisch) return view(state, "technik_changed");
-      // Die neue Lesung liegt immer NACH der geprüften — der Server verlangt genau das.
-      const am = Math.max(Date.now(), Date.parse(t.beleg.abgerufenAm) + 1);
-      const neu = beleg(frisch, w.selection, new Date(am).toISOString());
+      // Übernahme: zuerst JEDEN Beleg in SEINEM Tab neu lesen. Andere Adresse → nichts gesendet;
+      // Abschnitt nicht mehr da → nichts gesendet, die Leiste sagt es.
+      if (!t.vorschaubeleg || !t.belege || !t.quellen || t.quellen.length !== t.belege.length)
+        return view(state, "technik_none");
+      /** @type {import("./types").TechnikQuelle[]} */
+      const neueQuellen = [];
+      /** @type {import("./types").Beleg[]} */
+      const neueBelege = [];
+      for (let i = 0; i < t.quellen.length; i += 1) {
+        const q = /** @type {import("./types").TechnikQuelle} */ (t.quellen[i]);
+        const alt = /** @type {import("./types").Beleg} */ (t.belege[i]);
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: q.tabId },
+          files: ["selection.js"],
+        });
+        const s = results[0]?.result;
+        if (!s || s.url !== q.url) return view(state, "source_changed");
+        const frisch = wiedergefunden(s, q.tabelle.abschnitt);
+        if (!frisch) return view(state, "technik_changed");
+        // Die neue Lesung liegt immer NACH der geprüften — der Server verlangt genau das.
+        const am = new Date(Math.max(Date.now(), Date.parse(alt.abgerufenAm) + 1)).toISOString();
+        const neu = { ...q, tabelle: frisch, erfasstAm: am };
+        neueQuellen.push(neu);
+        neueBelege.push(beleg(neu, am));
+      }
       const schutz = SCHUTZKLASSEN.includes(message.schutzklasse ?? "")
         ? (message.schutzklasse ?? "")
         : "";
-      const antwort = await technikApi("uebernahme", state.auth, {
-        belege: [neu],
-        vorschauBelege: [t.beleg],
+      const antwort = await technikApi("uebernahme", auth, {
+        belege: neueBelege,
+        vorschauBelege: t.belege,
         vorschaubeleg: t.vorschaubeleg,
         ziel,
         ...(schutz ? { schutzklasse: schutz } : {}),
@@ -720,8 +824,8 @@
         await merke({
           technik: {
             ...t,
-            tabelle: frisch,
-            beleg: neu,
+            quellen: neueQuellen,
+            belege: neueBelege,
             vorschaubeleg: typeof v.vorschaubeleg === "string" ? v.vorschaubeleg : null,
             ergebnis: ergebnis(v),
             entwurfId: null,
@@ -729,10 +833,34 @@
         });
         return view(/** @type {Zustand} */ (await read()), "technik_changed");
       }
+      // AC06/AC10 (Nacharbeit 5, Ben): dieselbe Fassung ist schon als Wissensobjekt eingereicht —
+      // der Server legt keinen Entwurf an und nennt das Objekt. Das ist ein Erfolg, kein Fehler:
+      // die Leiste sagt den tatsächlichen Übernahmestand und bietet das Objekt zum Öffnen an.
+      const wissen = /** @type {Record<string, unknown>} */ (antwort.body.wissensobjekt ?? {});
+      const stand = /** @type {Record<string, unknown>} */ (antwort.body.stand ?? {});
+      if (antwort.status === 200 && DRAFT_ID.test(String(wissen.id ?? ""))) {
+        const freigegeben = stand.fachlicheFreigabe === "erteilt";
+        await merke({
+          technik: {
+            ...t,
+            entwurfId: null,
+            wissensobjektId: String(wissen.id),
+            imWissenFreigegeben: freigegeben,
+          },
+          technikSammlung: null,
+        });
+        return view(
+          /** @type {Zustand} */ (await read()),
+          freigegeben ? "technik_im_wissen_freigegeben" : "technik_im_wissen",
+        );
+      }
       const entwurf = /** @type {Record<string, unknown>} */ (antwort.body.entwurf ?? {});
       if (![200, 201].includes(antwort.status) || !DRAFT_ID.test(String(entwurf.id ?? "")))
         return view(state, "technik_failed", textAus(antwort.body));
-      await merke({ technik: { ...t, entwurfId: String(entwurf.id) } });
+      await merke({
+        technik: { ...t, entwurfId: String(entwurf.id), wissensobjektId: null },
+        technikSammlung: null,
+      });
       return view(/** @type {Zustand} */ (await read()), "technik_saved");
     } catch {
       return view(state, "technik_failed");
@@ -867,18 +995,34 @@
         : {}),
       // BPA-02: die markierte Tabelle DIESER Übernahme — sonst nichts. Der Link entsteht nur aus
       // der Kennung, die der Server für genau diese Übernahme bestätigt hat.
-      ...(tk ? { technik: technikSicht(tk) } : {}),
+      ...(tk ? { technik: technikSicht(tk, gemerkte(state)) } : {}),
     };
   }
-  /** @param {import("./types").Technik} tk @returns {import("./types").TechnikSicht} */
-  function technikSicht(tk) {
+  /** @param {import("./types").TechnikQuelle} q */
+  const quellZeile = (q) =>
+    `${q.art === "datenblatt" ? "Datenblatt" : "Webseite"} · ${q.tabelle.abschnitt} · ${q.url}`;
+  /**
+   * @param {import("./types").Technik} tk @param {import("./types").TechnikQuelle[]} sammlung
+   * @returns {import("./types").TechnikSicht}
+   */
+  function technikSicht(tk, sammlung) {
     return {
       abschnitt: tk.tabelle.abschnitt,
       ziel: tk.ziel,
       geprueft: Boolean(tk.vorschaubeleg),
+      belege: (tk.quellen ?? []).map(quellZeile),
+      sammlung: sammlung.map(quellZeile),
       ...(tk.ergebnis ? { ergebnis: tk.ergebnis } : {}),
+      ...(tk.abgleich ? { abgleich: tk.abgleich } : {}),
       ...(tk.entwurfId
         ? { link: `${HOST}/capture/frontdoor?draft=${encodeURIComponent(tk.entwurfId)}` }
+        : {}),
+      // Die erneute Übernahme fand dieselbe Fassung schon als Wissen — dorthin führt der Link.
+      ...(tk.wissensobjektId
+        ? {
+            wissenLink: `${HOST}/wissen/${encodeURIComponent(tk.wissensobjektId)}`,
+            imWissenFreigegeben: tk.imWissenFreigegeben === true,
+          }
         : {}),
     };
   }
@@ -1100,6 +1244,10 @@
         // BPA-02: technische Daten aus der markierten Tabelle prüfen und übernehmen.
         "technik_vorschau",
         "technik_uebernahme",
+        // Nacharbeit 5: weitere Belege merken/verwerfen und die Quelle mit dem Wissen abgleichen.
+        "technik_merken",
+        "technik_leeren",
+        "technik_abgleich",
       ].includes(message.type)
     )
       return { status: "invalid_message" };
@@ -1186,8 +1334,7 @@
     busy = true;
     try {
       const state = await read();
-      if (message.type === "technik_vorschau" || message.type === "technik_uebernahme")
-        return await technik(message, state);
+      if (message.type.startsWith("technik_")) return await technik(message, state);
       return await mutate(message, state);
     } finally {
       busy = false;
@@ -1741,10 +1888,14 @@
                       captureId: id,
                       tabelle,
                       ziel: { objekt: "", variante: "" },
-                      beleg: null,
+                      quellen: null,
+                      belege: null,
                       vorschaubeleg: null,
                       ergebnis: null,
+                      abgleich: null,
                       entwurfId: null,
+                      wissensobjektId: null,
+                      imWissenFreigegeben: false,
                     }
                   : null,
               });

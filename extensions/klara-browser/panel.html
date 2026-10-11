@@ -187,8 +187,19 @@
           <p class="source-line"><span data-i18n="technikAbschnitt"></span>: <span id="technik-abschnitt"></span></p>
           <label for="technik-objekt" data-i18n="technikObjekt"></label><input id="technik-objekt" maxlength="200" />
           <label for="technik-variante" data-i18n="technikVariante"></label><input id="technik-variante" maxlength="200" />
-          <div class="actions"><button type="button" id="technik-pruefen" data-i18n="technikPruefen"></button></div>
+          <!-- Nacharbeit 5: die Art DIESES Belegs. Ein verlinktes Datenblatt wird in seinem eigenen
+               Tab erfasst, hier als Datenblatt gemerkt und mit der nächsten Prüfung als eigener Beleg
+               geführt — getrennte Herkunft, Abweichung und Empfehlung kommen vom Server. -->
+          <label for="technik-art" data-i18n="technikArt"></label>
+          <select id="technik-art"><option value="html" data-i18n="technikArtHtml"></option><option value="datenblatt" data-i18n="technikArtDatenblatt"></option></select>
+          <div class="actions"><button type="button" id="technik-pruefen" data-i18n="technikPruefen"></button><button type="button" id="technik-merken" data-i18n="technikMerken"></button><button type="button" id="technik-abgleichen" data-i18n="technikAbgleichen"></button></div>
+          <div id="technik-sammlung-box" hidden>
+            <h3 data-i18n="technikSammlung"></h3><ul id="technik-sammlung"></ul>
+            <div class="actions"><button type="button" id="technik-leeren" data-i18n="technikLeeren"></button></div>
+          </div>
+          <div id="technik-abgleich-box" hidden><h3 data-i18n="technikAbgleich"></h3><ul id="technik-abgleich"></ul></div>
           <div id="technik-ergebnis" hidden>
+            <h3 data-i18n="technikBelege"></h3><ul id="technik-belege"></ul>
             <h3 data-i18n="technikWerte"></h3><ul id="technik-werte"></ul>
             <div id="technik-klaerungen-box" hidden><h3 data-i18n="technikKlaerungen"></h3><ul id="technik-klaerungen"></ul></div>
             <div id="technik-abweichungen-box" hidden><h3 data-i18n="technikAbweichungen"></h3><ul id="technik-abweichungen"></ul></div>
@@ -198,6 +209,7 @@
             <div class="actions"><button type="button" id="technik-uebernehmen" class="primary" data-i18n="technikUebernehmen"></button></div>
           </div>
           <p><a id="technik-open" target="_blank" rel="noopener noreferrer" data-i18n="openDraft" hidden></a></p>
+          <p><a id="technik-wissen" target="_blank" rel="noopener noreferrer" data-i18n="technikWissenOeffnen" hidden></a></p>
         </section>
       </div>
     </main>

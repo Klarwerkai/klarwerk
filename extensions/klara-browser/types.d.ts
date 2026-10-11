@@ -80,7 +80,7 @@ export type Work = {
 export type Tabelle = { abschnitt: string; anker: string; kopf: string[]; zeilen: string[][] };
 /** BPA-02: der Beleg, den `POST /api/technische-daten/*` verlangt. */
 export type Beleg = {
-  art: "html";
+  art: "html" | "datenblatt";
   url: string;
   abschnitt: string;
   anker?: string;
@@ -91,22 +91,48 @@ export type Beleg = {
 };
 /** BPA-02: was die Leiste von einer Serverauswertung zeigt — nur Texte. */
 export type TechnikErgebnis = { werte: string[]; klaerungen: string[]; abweichungen: string[] };
+/**
+ * BPA-02 (Nacharbeit 5): eine Quelle einer Übernahme — der Tab, in dem sie erfasst wurde, ihre
+ * Adresse, die gewählte Art (Webseite oder ausdrücklich gewähltes Datenblatt) und die Tabelle.
+ */
+export type TechnikQuelle = {
+  tabId: number;
+  url: string;
+  titel: string;
+  art: "html" | "datenblatt";
+  tabelle: Tabelle;
+  erfasstAm: string;
+};
 /** BPA-02: die markierte Tabelle einer Übernahme und ihr Prüfstand. */
 export type Technik = {
   captureId: string;
   tabelle: Tabelle;
   ziel: { objekt: string; variante: string };
-  beleg: Beleg | null;
+  /** Die Quellen der letzten Prüfung, in der Reihenfolge ihrer Belege. */
+  quellen: TechnikQuelle[] | null;
+  belege: Beleg[] | null;
   vorschaubeleg: string | null;
   ergebnis: TechnikErgebnis | null;
+  /** Ergebnis des letzten Quellenabgleichs, als Textzeilen. */
+  abgleich: string[] | null;
   entwurfId: string | null;
+  /** Die erneute Übernahme fand dieselbe Fassung schon als Wissensobjekt. */
+  wissensobjektId: string | null;
+  imWissenFreigegeben: boolean;
 };
+/** BPA-02 (Nacharbeit 5): bewusst gemerkte weitere Belege, gebunden an das angemeldete Konto. */
+export type TechnikSammlung = { owner: string; quellen: TechnikQuelle[] };
 export type TechnikSicht = {
   abschnitt: string;
   ziel: { objekt: string; variante: string };
   geprueft: boolean;
+  belege: string[];
+  sammlung: string[];
   ergebnis?: TechnikErgebnis;
+  abgleich?: string[];
   link?: string;
+  wissenLink?: string;
+  imWissenFreigegeben?: boolean;
 };
 export type State = {
   auth?: Auth | null;
@@ -115,6 +141,7 @@ export type State = {
   sourceChangedId?: string;
   pendingCapture?: boolean;
   technik?: Technik | null;
+  technikSammlung?: TechnikSammlung | null;
 };
 export type View = {
   status: string;
@@ -150,6 +177,8 @@ export type Message = {
   /** BPA-02: Erfassungsziel und Schutzklasse der technischen Daten (leer = unbekannt). */
   ziel?: { objekt?: string; variante?: string };
   schutzklasse?: string;
+  /** BPA-02 (Nacharbeit 5): die Art des aktuellen Belegs — `html` oder `datenblatt`. */
+  art?: string;
 };
 export type Payload = {
   title: string;

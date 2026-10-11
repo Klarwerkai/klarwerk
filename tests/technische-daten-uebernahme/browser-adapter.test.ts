@@ -21,7 +21,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { belegFassung } from "../../services/app/src/technische-daten";
 import { harness, read, verfahren } from "../klara-browser/harness";
 import { mount, schliesseFenster } from "../klara-browser/panel-dom";
-import { HTML_SEITE, geaendert } from "./fixture";
+import { DATENBLATT, HTML_SEITE, geaendert } from "./fixture";
 
 const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
   JSDOM: new (
@@ -93,6 +93,14 @@ async function bahn() {
     payload: { email: EMAIL, password: KENNWORT },
   });
   const kopf = { authorization: `Bearer ${anna.json().token}` };
+  // Öffentliche Belegadressen dürfen beim Einreichen nur auf dieser Stufe ans Wissensobjekt
+  // (bestehende Regel `decideExternalAttach`); A5 reicht ein.
+  await app.inject({
+    method: "PUT",
+    url: "/api/external/policy",
+    headers: kopf,
+    payload: { stage: "search_attach" },
+  });
   const pfade: string[] = [];
   const fetcher: typeof fetch = async (input, options) => {
     const url = new URL(String(input));
@@ -244,6 +252,135 @@ describe("BPA-02 · Browseradapter", () => {
       const versucht = await h.send({ type: "technik_vorschau", ziel: {} });
       expect(versucht.status).toBe("technik_none");
       expect(pfade.filter((p) => p === "/api/technische-daten/vorschau")).toHaveLength(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("A5 · Wiederholung nach dem Einreichen: die Leiste zeigt den Übernahmestand und öffnet das vorhandene Wissen", async () => {
+    const { app, h, kopf, pfade, entwuerfe } = await bahn();
+    try {
+      await h.capture();
+      await h.send({ type: "login", email: EMAIL, password: KENNWORT });
+      await h.send({ type: "technik_vorschau", ziel: { objekt: "V-17" } });
+      const erst = await h.send({
+        type: "technik_uebernahme",
+        ziel: { objekt: "V-17" },
+        schutzklasse: "intern",
+      });
+      expect(erst.status).toBe("technik_saved");
+      const [entwurf] = await entwuerfe();
+      const eingereicht = await app.inject({
+        method: "POST",
+        url: `/api/drafts/${entwurf?.id}/promote`,
+        headers: kopf,
+        payload: { draftPayload: { category: "Wartung" } },
+      });
+      expect(eingereicht.statusCode, eingereicht.body).toBe(201);
+      const koId = eingereicht.json().id as string;
+      const fassung = eingereicht.json().version as number;
+
+      // Quellenpflege aus der Leiste: die gelesene Tabelle mit dem vorhandenen Wissen abgleichen.
+      const abgleich = await h.send({ type: "technik_abgleich" });
+      expect(abgleich.status).toBe("technik_abgeglichen");
+      expect(abgleich.technik?.abgleich).toEqual([
+        `Wissen / Knowledge „Technische Daten · V-17“ · Fassung ${fassung} · unverändert / unchanged`,
+      ]);
+      expect(pfade).toContain("/api/technische-daten/quellenabgleich");
+
+      // Dieselbe Seite später noch einmal übernommen.
+      await h.send({ type: "recapture" });
+      await h.send({ type: "technik_vorschau", ziel: { objekt: "V-17" } });
+      const nochmal = await h.send({
+        type: "technik_uebernahme",
+        ziel: { objekt: "V-17" },
+        schutzklasse: "intern",
+      });
+      expect(nochmal.status, "kein Fehler, sondern der tatsächliche Stand").toBe(
+        "technik_im_wissen",
+      );
+      expect(nochmal.technik?.wissenLink).toBe(`https://app.klarwerk.ai/wissen/${koId}`);
+      expect(nochmal.technik?.imWissenFreigegeben).toBe(false);
+      expect(nochmal.technik?.link, "kein Entwurfslink").toBeUndefined();
+      expect(await entwuerfe(), "keine Dublette").toHaveLength(0);
+
+      // Die Leiste bietet genau dieses Objekt zum Öffnen an.
+      const view = await mount({ an: h });
+      await view.login();
+      expect(view.el("technik-wissen").hidden).toBe(false);
+      expect(view.el("technik-wissen").getAttribute("href")).toBe(
+        `https://app.klarwerk.ai/wissen/${koId}`,
+      );
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("A6 · ein ausdrücklich gewähltes Datenblatt in einem zweiten Tab wird als eigener Beleg derselben Übernahme geführt", async () => {
+    const { app, h, kopf, entwuerfe, seite } = await bahn();
+    try {
+      const blatt = {
+        text: "10",
+        url: DATENBLATT.url,
+        title: "Datenblatt V-Serie",
+        tabellen: [
+          {
+            abschnitt: DATENBLATT.abschnitt,
+            anker: "",
+            kopf: DATENBLATT.kopf,
+            zeilen: DATENBLATT.zeilen,
+          },
+        ],
+        tabelleGewaehlt: 0,
+      };
+      h.setTab(8, blatt);
+      // 1. Das Datenblatt in seinem Tab erfassen und als Datenblatt merken.
+      await h.listeners.action?.({ id: 8, url: DATENBLATT.url, title: blatt.title });
+      await h.send({ type: "login", email: EMAIL, password: KENNWORT });
+      const gemerkt = await h.send({ type: "technik_merken", art: "datenblatt" });
+      expect(gemerkt.status).toBe("technik_gemerkt");
+      expect(gemerkt.technik?.sammlung).toEqual([
+        `Datenblatt · ${DATENBLATT.abschnitt} · ${DATENBLATT.url}`,
+      ]);
+      // 2. Die Webseite im ersten Tab erfassen (offene Übernahme wird bewusst ersetzt).
+      await h.capture();
+      await h.send({ type: "recapture" });
+      const state = await h.send({ type: "state" });
+      expect(state.selection?.url).toBe(seite.url);
+
+      // 3. Prüfen: beide Belege, getrennte Herkunft, Abweichung mit Empfehlung und Grundlage.
+      const geprueft = await h.send({ type: "technik_vorschau", ziel: { objekt: "V-17" } });
+      expect(geprueft.status).toBe("technik_preview");
+      expect(geprueft.technik?.belege).toEqual([
+        `Datenblatt · ${DATENBLATT.abschnitt} · ${DATENBLATT.url}`,
+        `Webseite · ${ABSCHNITT} · ${HTML_SEITE.url}`,
+      ]);
+      const werte = geprueft.technik?.ergebnis?.werte.join("\n") ?? "";
+      expect(werte).toContain(`10 (bei 20 °C) · in Klärung · Datenblatt „${DATENBLATT.abschnitt}“`);
+      expect(werte).toContain(`16 bar ±0,5 bar · in Klärung · Webseite „${ABSCHNITT}“`);
+      const abweichungen = geprueft.technik?.ergebnis?.abweichungen ?? [];
+      expect(abweichungen).toHaveLength(2);
+      expect(abweichungen.join("\n")).toContain("Empfehlung: Datenblatt");
+      expect(abweichungen.join("\n")).toContain("nicht die Wahrscheinlichkeit");
+
+      // 4. Übernehmen: beide Tabs werden neu gelesen, ein Entwurf mit zwei getrennten Belegen.
+      const vorher = h.spuren.filter((s) => s === "scripting.executeScript").length;
+      const gesichert = await h.send({
+        type: "technik_uebernahme",
+        ziel: { objekt: "V-17" },
+        schutzklasse: "intern",
+      });
+      expect(gesichert.status).toBe("technik_saved");
+      expect(h.spuren.filter((s) => s === "scripting.executeScript").length).toBe(vorher + 2);
+      expect(gesichert.technik?.sammlung, "gemerkte Belege sind verbraucht").toEqual([]);
+      const [entwurf] = await entwuerfe();
+      const d = (
+        await app.inject({ method: "GET", url: `/api/drafts/${entwurf?.id}`, headers: kopf })
+      ).json();
+      expect(
+        d.payload.pendingSources.map((q: { sourceProvider: string }) => q.sourceProvider),
+      ).toEqual(["Datenblatt", "Webseite"]);
+      expect(d.payload.bodyHtml).toContain("Abweichende Belege");
     } finally {
       await app.close();
     }

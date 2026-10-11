@@ -70,7 +70,15 @@
   // Fläche; sie sind kein Ereignis. Der Test verlangt, dass diese vier Mengen zusammen jeden
   // Zustandstext abdecken — ein neuer Text ohne Ton ist rot, nicht still neutral.
   const TON = {
-    ok: ["saved", "updated", "logged_out", "technik_saved"],
+    ok: [
+      "saved",
+      "updated",
+      "logged_out",
+      "technik_saved",
+      // Nacharbeit 5: dieselbe Fassung steht schon im Wissen — ein Erfolg, kein Fehler.
+      "technik_im_wissen",
+      "technik_im_wissen_freigegeben",
+    ],
     crit: [
       // BPA-02: gesperrte Quelle und gescheiterte Übernahme der technischen Daten.
       "technik_blocked",
@@ -133,6 +141,9 @@
     ],
     "": [
       "technik_preview",
+      "technik_gemerkt",
+      "technik_geleert",
+      "technik_abgeglichen",
       "no_selection",
       "preview",
       "previewState",
@@ -226,6 +237,8 @@
     // und niemand die Zwischenablage freigibt, deren Inhalt danach abgewiesen würde.
     // BPA-02: Prüfen braucht Anmeldung und markierte Tabelle, Übernehmen zusätzlich eine Prüfung.
     $("technik-pruefen").disabled = busy || !next.user || !next.technik;
+    for (const id of ["technik-merken", "technik-abgleichen", "technik-leeren", "technik-art"])
+      $(id).disabled = busy || !next.user || !next.technik;
     $("technik-uebernehmen").disabled = busy || !next.user || next.technik?.geprueft !== true;
     for (const id of ["technik-objekt", "technik-variante", "technik-schutz"])
       $(id).disabled = busy;
@@ -433,6 +446,7 @@
       $("technik-objekt").value = tk.ziel.objekt;
       $("technik-variante").value = tk.ziel.variante;
       $("technik-schutz").value = "";
+      $("technik-art").value = "html";
       technikGeladen = next.captureId;
     }
     const e = tk.ergebnis;
@@ -442,10 +456,35 @@
     zeilenSetzen($("technik-abweichungen"), e?.abweichungen ?? []);
     $("technik-klaerungen-box").hidden = (e?.klaerungen.length ?? 0) === 0;
     $("technik-abweichungen-box").hidden = (e?.abweichungen.length ?? 0) === 0;
+    zeilenSetzen($("technik-belege"), tk.belege);
+    zeilenSetzen($("technik-sammlung"), tk.sammlung);
+    $("technik-sammlung-box").hidden = tk.sammlung.length === 0;
+    zeilenSetzen($("technik-abgleich"), tk.abgleich ?? []);
+    $("technik-abgleich-box").hidden = !tk.abgleich;
     const href = tk.link ? oeffnenLink(tk.link, language) : null;
     $("technik-open").removeAttribute("href");
     if (href) $("technik-open").setAttribute("href", href);
     $("technik-open").hidden = !href;
+    const wissen = tk.wissenLink ? wissenLink(tk.wissenLink) : null;
+    $("technik-wissen").removeAttribute("href");
+    if (wissen) $("technik-wissen").setAttribute("href", wissen);
+    $("technik-wissen").hidden = !wissen;
+  }
+  /**
+   * Nacharbeit 5: der Link auf ein vorhandenes Wissensobjekt — GENAU dieser Host und der Pfad
+   * `/wissen/<Kennung>`, ohne Abfrage und ohne Fragment. Alles andere wird kein `href`.
+   * @param {string} link @returns {string | null}
+   */
+  function wissenLink(link) {
+    let url;
+    try {
+      url = new URL(String(link));
+    } catch {
+      return null;
+    }
+    if (url.origin !== "https://app.klarwerk.ai" || url.search || url.hash) return null;
+    const treffer = /^\/wissen\/([\w-]{1,128})$/.exec(url.pathname);
+    return treffer ? `${url.origin}/wissen/${treffer[1]}` : null;
   }
   /** @returns {{ objekt: string, variante: string }} */
   const technikZiel = () => ({
@@ -735,7 +774,12 @@
   // BPA-02: Prüfen und Übernehmen der technischen Daten — zwei feste Nachrichten an den Worker.
   $("technik-pruefen").addEventListener("click", () => {
     if (busy || $("technik-pruefen").disabled) return;
-    void send({ type: "technik_vorschau", captureId: current.captureId, ziel: technikZiel() });
+    void send({
+      type: "technik_vorschau",
+      captureId: current.captureId,
+      ziel: technikZiel(),
+      art: $("technik-art").value,
+    });
   });
   $("technik-uebernehmen").addEventListener("click", () => {
     if (busy || $("technik-uebernehmen").disabled) return;
@@ -746,6 +790,16 @@
       schutzklasse: $("technik-schutz").value,
     });
   });
+  // Nacharbeit 5: weitere Belege merken/verwerfen und die Quelle mit dem Wissen abgleichen.
+  for (const [id, type] of [
+    ["technik-merken", "technik_merken"],
+    ["technik-leeren", "technik_leeren"],
+    ["technik-abgleichen", "technik_abgleich"],
+  ])
+    $(id).addEventListener("click", () => {
+      if (busy || $(id).disabled) return;
+      void send({ type, captureId: current.captureId, art: $("technik-art").value });
+    });
   $("save").addEventListener("click", () => {
     if (busy || $("save").disabled || !$("confirm").checked) return;
     $("confirm").checked = false;

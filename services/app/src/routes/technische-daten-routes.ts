@@ -22,6 +22,17 @@ import {
   uebernahmeAufbauen,
   uebernahmeKennung,
 } from "../technische-daten";
+import {
+  QUELLENBEOBACHTUNG_AKTION,
+  QUELLENRECHTE_AKTION,
+  QUELLRECHTE_VORHER_AKTION,
+  type QuellLage,
+  belegstellenGesperrt,
+  letzteBeobachtung,
+  quellKennungAus,
+  quellKennungVon,
+  quelleGesperrt,
+} from "../technische-daten-quellen";
 
 // ================================================================================================
 // BPA-02 · ÜBERNAHME TECHNISCHER DATEN — ÜBER DEN VORHANDENEN ENTWURFSDIENST.
@@ -65,10 +76,9 @@ const GESCHUETZTE_KLAERUNG: Schutzklasse = "streng_vertraulich";
 /** So lange gilt ein Vorschaubeleg; danach ist eine neue Vorschau nötig. */
 export const VORSCHAU_GUELTIG_MS = 30 * 60 * 1000;
 
-/** Prüfprotokoll: Rechtelage einer Quelle (Ziel = Quellkennung, Nutzlast ohne Adresse/Inhalt). */
-export const QUELLENRECHTE_AKTION = "technische-daten.quellenrechte";
-/** Prüfprotokoll: beobachtete Quellenlage an einem Entwurf oder Wissensobjekt. */
-export const QUELLENBEOBACHTUNG_AKTION = "technische-daten.quelle-beobachtet";
+// Die Protokollvorgänge und die Quellsperre wohnen in EINEM Modul, das auch die Entwurfs- und
+// Wissensrouten lesen (`../technische-daten-quellen.ts`). Hier nur weitergereicht.
+export { QUELLENBEOBACHTUNG_AKTION, QUELLENRECHTE_AKTION };
 
 const MELDUNG = {
   BELEG_FORM: "Der erfasste Abschnitt hat keine gültige Form.",
@@ -181,8 +191,7 @@ type QuellOrt = Pick<ErfassterAbschnitt, "url" | "abschnitt" | "anker">;
 
 /** Kennung einer Quelle im Prüfprotokoll: Hash über Adresse und Abschnitt, keine Klartextangabe. */
 export function quellKennung(q: QuellOrt): string {
-  const roh = `${belegAdresse(q)}\n${q.abschnitt}`;
-  return `technische-daten-quelle:${createHash("sha256").update(roh, "utf8").digest("hex")}`;
+  return quellKennungAus(belegAdresse(q), q.abschnitt);
 }
 
 /** Stammt diese Belegstelle (Entwurfsquelle oder Quellanker) aus genau diesem Abschnitt? */
@@ -190,8 +199,7 @@ function ausAbschnitt(
   s: { url?: string | null | undefined; excerpt?: string | null | undefined },
   q: QuellOrt,
 ): boolean {
-  const marke = `Abschnitt: ${q.abschnitt} · `;
-  return s.url === belegAdresse(q) && (s.excerpt ?? "").includes(marke);
+  return quellKennungVon(s) === quellKennung(q);
 }
 
 const LAGE = / · Lage: .*$/;
@@ -268,17 +276,20 @@ export function technischeDatenRoutes(
   /** Ist das Leserecht dieser Quelle entzogen? Maßgeblich ist der jüngste Rechtevermerk. */
   async function gesperrt(belege: QuellOrt[]): Promise<boolean> {
     for (const b of belege) {
-      const vermerke = await audit.list({
-        action: QUELLENRECHTE_AKTION,
-        target: quellKennung(b),
-      });
-      const juengster = vermerke.reduce<(typeof vermerke)[number] | undefined>(
-        (bisher, e) => (!bisher || e.seq > bisher.seq ? e : bisher),
-        undefined,
-      );
-      if (juengster?.payload.zustand === "entzogen") return true;
+      if (await quelleGesperrt(audit, quellKennung(b))) return true;
     }
     return false;
+  }
+
+  /** Der beim letzten Übergang in die Sperre festgehaltene Leserkreis — oder `null` (keiner). */
+  async function leserkreisVorDerSperre(koId: string): Promise<Record<string, unknown> | null> {
+    const eintraege = await audit.list({ action: QUELLRECHTE_VORHER_AKTION, target: koId });
+    const letzter = eintraege.reduce<(typeof eintraege)[number] | undefined>(
+      (bisher, e) => (!bisher || e.seq > bisher.seq ? e : bisher),
+      undefined,
+    );
+    const vorher = letzter?.payload.vorher;
+    return vorher && typeof vorher === "object" ? (vorher as Record<string, unknown>) : null;
   }
 
   /** Eingereichte Wissensobjekte mit einem Quellanker aus diesem Abschnitt — ohne Sichtfilter. */
@@ -539,8 +550,11 @@ export function technischeDatenRoutes(
     // jede Ableitung über dieselbe Regel. Entwürfe aus der Quelle gehen in den Papierkorb ihrer
     // Autorin (umkehrbar, kein Löschen). Der Rechtevermerk sperrt Vorschau und Übernahme, auch eine
     // laufende: die Übernahme prüft ihn unmittelbar vor dem Speichern.
-    // `erteilt`: die Leserkreis-Sperre wird aufgehoben (Quellrechte ohne Leserliste); Entwürfe im
-    // Papierkorb stellt ihre Autorin selbst wieder her.
+    // `erteilt`: die Sperre fällt NUR, wenn keine andere Herkunftsquelle des Objekts noch gesperrt
+    // ist (Nacharbeit 5, Ben). Dann gilt wieder der Leserkreis von VOR der ersten Sperre — er wurde
+    // beim Übergang in die Sperre festgehalten (`QUELLRECHTE_VORHER_AKTION`); eine bestehende
+    // Leserbeschränkung, etwa aus einem Confluence-Import, bleibt so erhalten. Entwürfe im Papierkorb
+    // stellt ihre Autorin selbst wieder her — erst jetzt lässt der Papierkorb es zu.
     app.post("/api/technische-daten/quellenrechte", async (request, reply) => {
       const user = await guards.requirePermission("ko.validate", request, reply);
       if (!user) return;
@@ -568,16 +582,41 @@ export function technischeDatenRoutes(
       try {
         const am = new Date(uhr()).toISOString();
         let wissensobjekte = 0;
+        let weiterhinGesperrt = 0;
         let entwuerfe = 0;
         for (const k of await wissenAusQuelle(q)) {
-          await ko.setQuellrechte(
-            k.id,
-            zustand === "entzogen"
-              ? { stufe: k.confidentiality ?? "intern", leser: [], beobachtetAm: am }
-              : { stufe: k.confidentiality ?? "intern", beobachtetAm: am },
-            user.id,
+          const stufe = k.confidentiality ?? "intern";
+          const quellen = k.sources ?? [];
+          const andereGesperrt = await belegstellenGesperrt(
+            audit,
+            quellen.filter((s) => !ausAbschnitt(s, q)),
           );
           wissensobjekte += 1;
+          if (zustand === "entzogen") {
+            // Übergang in die Sperre (noch keine Quelle des Objekts gesperrt): den bisherigen
+            // Leserkreis festhalten, bevor er durch „niemand" ersetzt wird.
+            if (!(await belegstellenGesperrt(audit, quellen))) {
+              await audit.record({
+                actor: user.id,
+                action: QUELLRECHTE_VORHER_AKTION,
+                target: k.id,
+                payload: { vorher: k.quellrechte ?? null },
+              });
+            }
+            await ko.setQuellrechte(k.id, { stufe, leser: [], beobachtetAm: am }, user.id);
+            continue;
+          }
+          if (andereGesperrt) {
+            // Eine andere Herkunftsquelle ist weiter gesperrt — die Sperre bleibt, wie sie ist.
+            weiterhinGesperrt += 1;
+            continue;
+          }
+          const vorher = await leserkreisVorDerSperre(k.id);
+          await ko.setQuellrechte(
+            k.id,
+            vorher ? { ...vorher, beobachtetAm: am } : { stufe, beobachtetAm: am },
+            user.id,
+          );
         }
         if (zustand === "entzogen") {
           for (const { draft } of await capture.listDraftsForResume(undefined, { mitPool: true })) {
@@ -591,10 +630,10 @@ export function technischeDatenRoutes(
           actor: user.id,
           action: QUELLENRECHTE_AKTION,
           target: quellKennung(q),
-          payload: { zustand, wissensobjekte, entwuerfe },
+          payload: { zustand, wissensobjekte, weiterhinGesperrt, entwuerfe },
         });
         // Nur Anzahlen — keine Kennungen oder Titel gesperrter Inhalte (P05/G05).
-        reply.code(200).send({ zustand, wissensobjekte, entwuerfe });
+        reply.code(200).send({ zustand, wissensobjekte, weiterhinGesperrt, entwuerfe });
       } catch (error) {
         sendError(reply, error);
       }
@@ -609,7 +648,7 @@ export function technischeDatenRoutes(
   ) {
     const aktuell = zustand === "vorhanden" ? belegFassung(beleg) : null;
     const am = new Date(uhr()).toISOString();
-    const lageVon = (erfasst: string | null) => {
+    const lageVon = (erfasst: string | null): QuellLage => {
       if (zustand === "geloescht") return "quelle_nicht_mehr_erreichbar";
       return erfasst === aktuell ? "unveraendert" : "quelle_geaendert";
     };
@@ -623,11 +662,13 @@ export function technischeDatenRoutes(
       }
       return null;
     };
+    const kennung = quellKennung(beleg);
     const protokolliere = (
       ziel: string,
       art: "entwurf" | "wissensobjekt",
-      lage: string,
+      lage: QuellLage,
       erfasst: string | null,
+      wissensfassung?: number,
     ) =>
       audit.record({
         actor: user.id,
@@ -635,10 +676,12 @@ export function technischeDatenRoutes(
         target: ziel,
         payload: {
           art,
-          quelle: quellKennung(beleg),
+          quelle: kennung,
           lage,
           erfassteFassung: erfasst,
           aktuelleFassung: aktuell,
+          // Die betroffene Wissensfassung — welche Fassung des Objekts aus dieser Quelle stammt.
+          ...(wissensfassung !== undefined ? { wissensfassung } : {}),
         },
       });
 
@@ -686,9 +729,17 @@ export function technischeDatenRoutes(
       const anker = (k.sources ?? []).find((s) => ausAbschnitt(s, beleg));
       const erfasst = fassungAusAuszug(anker?.excerpt ?? undefined);
       const lage = lageVon(erfasst);
-      if (lage !== "unveraendert") {
-        await lifecycle.requestRevalidation(k.id, user.id);
-        await protokolliere(k.id, "wissensobjekt", lage, erfasst);
+      // DIE LAGE STEHT DAUERHAFT AM OBJEKT (Nacharbeit 5, Ben): jeder Wechsel — auch zurück zu
+      // „unverändert", wenn die Quelle wieder da ist — wird mit der betroffenen Wissensfassung
+      // vermerkt. Die Detailansicht liest daraus den Vermerk am Quellenbeleg (`sourceRemovedAt`,
+      // `quellenMitLage`); ein Wechsel in eine Abweichung setzt zusätzlich den vorhandenen Merker.
+      const zuletzt = await letzteBeobachtung(audit, k.id, kennung);
+      const neueLage =
+        (zuletzt?.lage ?? "unveraendert") !== lage ||
+        (lage === "quelle_geaendert" && zuletzt?.aktuelleFassung !== aktuell);
+      if (neueLage) {
+        if (lage !== "unveraendert") await lifecycle.requestRevalidation(k.id, user.id);
+        await protokolliere(k.id, "wissensobjekt", lage, erfasst, k.version);
       }
       treffer.push({
         art: "wissensobjekt",
