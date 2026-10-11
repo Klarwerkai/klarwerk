@@ -16,6 +16,8 @@ import {
   type KoAnhangsquelle,
   KoError,
   type KoFilter,
+  // AUFNAHME 20260922 · confluence-import-rechte: die Leserechte der Quelle am Objekt.
+  type KoQuellrechte,
   type KoService,
   // AUFTRAG-BASIC-380: der injizierte Sicherheitstrim — nur durchgereicht, nie ausgelegt.
   type KoSichtbarkeitstrim,
@@ -92,7 +94,9 @@ interface ExportOptionen {
    * geschlossenen Space verlässt das Haus über den Export nur für dessen Mitglieder.
    */
   sichtbar?: (ko: KnowledgeObject) => boolean;
-  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
+  // produkt:20261010:poc-wiederherstellung-export: `paket` ist das ZIP mit Fassungen, Originalanhängen
+  // und Verzeichnis (services/app/src/wissenspaket.ts). Dieselbe Grundmenge, derselbe Beleg.
+  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" | "paket" };
 }
 
 // aufnahme:20260922:gesamt-wissen-export (R-0706): die Quellen eines Objekts, wie die drei
@@ -520,6 +524,13 @@ export const REVIEW_CLAIM_LEASE_MS = 10 * 60_000;
 // der wartende Claim läuft dabei nie ab.
 const ANNAHME_WARTEZEIT_MS = 30_000;
 
+// confluence-import-rechte (Nacharbeit 8, F2): der Rechteabgleich eines Kandidaten nimmt denselben
+// Claim wie eine Review-Aktion. Hält ihn gerade jemand anderes, wird bis zu so oft so lange
+// gewartet — eine Review-Aktion dauert Sekundenbruchteile; bleibt der Claim länger fremd, scheitert
+// der Abgleich sichtbar (CONFLICT), statt den Kandidaten an der Aktion vorbei zu schreiben.
+const KANDIDAT_RECHTE_VERSUCHE = 10;
+const KANDIDAT_RECHTE_WARTEZEIT_MS = 50;
+
 // Lease abgelaufen? Ein unlesbares/fehlendes claimedAt zählt defensiv als abgelaufen (Muster
 // shouldReEnqueueAiCheck: lieber einmal zu viel recovern als still liegen lassen — die Recovery
 // selbst ist per opId-CAS gegen laufende Operationen abgesichert).
@@ -741,12 +752,80 @@ export interface LibraryServiceDeps {
    */
   kanten?: KuratierteKantenLeser;
   /**
+   * AUFNAHME 20260922 · confluence-import-rechte (R-0549): bildet die Mailadressen der Quellleser
+   * auf Klara-Konten ab (Kennungen). Die Kompositionswurzel verdrahtet das Benutzerverzeichnis.
+   * OHNE Verdrahtung ist keine Zuordnung möglich — eine beschränkte Seite bekommt dann eine LEERE
+   * Leserliste (nur der annehmende Autor sieht sie), nie eine offene.
+   */
+  quellLeserAufloesen?: (emails: readonly string[]) => Promise<string[]>;
+  /**
    * R-0142 (Lauf 5, Bens B7): die Laufdomäne, in die eine Entscheidung über einen laufgebundenen
    * Kandidaten ihre Elementreferenz schreibt. Optional: ohne Verdrahtung entsteht keine Bindung,
    * und alles bleibt wie vorher (`laufbindung.ts`). Die Quellrevisionen kommen aus demselben
    * `externalSources` wie für R-0169 (oben).
    */
   importRuns?: ImportRunRepo;
+}
+
+/**
+ * AUFNAHME 20260922 · confluence-import-rechte — die Quellrechte, die ein Adapter am Eintrag
+ * mitliefert (`quellrechte`, s. services/confluence/src/mapper.ts). Wie `originalAuthor` ein
+ * zusätzliches Feld neben dem eingefrorenen `ImportItem` und deshalb hier als FREMD gelesen: nur eine
+ * gültige Stufe und eine Liste aus Texten zählen, alles andere ergibt `undefined` (= keine
+ * Quellrechte, Bestandsverhalten).
+ *
+ * VERTRAUEN: das Feld setzen nur die Quell-Adapter auf dem Server. Die öffentlichen Importrouten
+ * entfernen es aus dem Rumpf (`ohneQuellrechte`, services/app/src/routes/library-routes.ts), bevor
+ * ein Eintrag diesen Dienst erreicht.
+ */
+interface EintragsQuellrechte {
+  stufe: Confidentiality;
+  emails?: string[];
+  // Nacharbeit 3 (Befund F4): der Quellstand, zu dem diese Rechte gelten — die Seitenversion des
+  // Eintrags und der Zeitpunkt, an dem der Adapter die Rechte nachgesehen hat.
+  version?: number;
+  beobachtetAm?: string;
+  // Nacharbeit 6 (Befund F3): der Leserkreis konnte nicht vollständig gelesen werden (Gruppen-
+  // abruf abgebrochen oder über der technischen Grenze). Die Leser sind dann eine Untermenge.
+  leserUnvollstaendig?: true;
+}
+
+// Nacharbeit 8 (Befund F1): die frühere Vorabprüfung `gleicheQuellLage` stand hier und übersprang
+// bei gleicher Lage den Objekt-Write ganz — damit blieb der ältere Beobachtungszeitpunkt stehen.
+// Die Entscheidung fällt jetzt allein unter der Objektsperre (`KoService.setQuellrechte`).
+
+function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
+  const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+  if (roh === null || typeof roh !== "object") {
+    return undefined;
+  }
+  const { stufe, emails, beobachtetAm, leserUnvollstaendig } = roh as {
+    stufe?: unknown;
+    emails?: unknown;
+    beobachtetAm?: unknown;
+    leserUnvollstaendig?: unknown;
+  };
+  if (!isValidConfidentiality(stufe)) {
+    return undefined;
+  }
+  const stand = {
+    ...(typeof item.sourceVersion === "number" ? { version: item.sourceVersion } : {}),
+    ...(typeof beobachtetAm === "string" && !Number.isNaN(Date.parse(beobachtetAm))
+      ? { beobachtetAm }
+      : {}),
+    ...(leserUnvollstaendig === true ? { leserUnvollstaendig: true as const } : {}),
+  };
+  if (emails === undefined) {
+    return { stufe, ...stand };
+  }
+  if (!Array.isArray(emails)) {
+    return undefined;
+  }
+  return {
+    stufe,
+    emails: emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0),
+    ...stand,
+  };
 }
 
 /**
@@ -984,6 +1063,9 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  private readonly quellLeserAufloesen:
+    | ((emails: readonly string[]) => Promise<string[]>)
+    | undefined;
   // R-0142 (Lauf 5): die Laufdomäne (s. `LibraryServiceDeps.importRuns`).
   private readonly importRuns: ImportRunRepo | undefined;
   // R-0163: s. `LibraryServiceDeps.anhaenge`.
@@ -1003,9 +1085,52 @@ export class LibraryService {
     this.externalUpsert = deps.externalUpsert ?? false;
     this.annahmeWartezeitMs = deps.annahmeWartezeitMs ?? ANNAHME_WARTEZEIT_MS;
     this.kanten = deps.kanten;
+    this.quellLeserAufloesen = deps.quellLeserAufloesen;
     this.importRuns = deps.importRuns;
     this.externalSources = deps.externalSources;
     this.dokumente = deps.dokumente;
+  }
+
+  /**
+   * AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte des Eintrags als Objektrechte —
+   * Mailadressen werden ERST HIER, beim Annehmen, auf Klara-Konten abgebildet. Was sich nicht
+   * zuordnen lässt, fällt weg; eine beschränkte Seite bleibt damit beschränkt (leere Liste).
+   */
+  private async objektQuellrechte(item: ImportItem): Promise<KoQuellrechte | undefined> {
+    const quelle = quellrechteVon(item);
+    if (!quelle) {
+      return undefined;
+    }
+    const stand = {
+      ...(quelle.version !== undefined ? { version: quelle.version } : {}),
+      ...(quelle.beobachtetAm !== undefined ? { beobachtetAm: quelle.beobachtetAm } : {}),
+      ...(quelle.leserUnvollstaendig ? { leserUnvollstaendig: true as const } : {}),
+    };
+    if (quelle.emails === undefined) {
+      return { stufe: quelle.stufe, ...stand };
+    }
+    const leser =
+      quelle.emails.length > 0 && this.quellLeserAufloesen
+        ? await this.quellLeserAufloesen(quelle.emails)
+        : [];
+    return { stufe: quelle.stufe, leser, ...stand };
+  }
+
+  /**
+   * confluence-import-rechte (Ben, Nacharbeit 6, Befund F1): die Quellrechte eines Kandidaten,
+   * DIESELBE Abbildung wie beim Annehmen — für die Sichtbarkeitsgrenze der Warteschlange
+   * (`darfKandidatSehen`, services/app/src/sichtbarkeit.ts). `undefined` = der Eintrag trägt keine.
+   */
+  async quellrechteFuerKandidat(item: unknown): Promise<KoQuellrechte | undefined> {
+    if (item === null || typeof item !== "object") {
+      return undefined;
+    }
+    return this.objektQuellrechte(item as ImportItem);
+  }
+
+  /** Nacharbeit 6 (Befund F1): EIN Kandidat zu einer Kennung — für die Sichtprüfung vor der Annahme. */
+  async importKandidat(id: string): Promise<ImportCandidate | undefined> {
+    return this.candidates.findById(id);
   }
 
   /**
@@ -2493,6 +2618,121 @@ export class LibraryService {
   }
 
   /**
+   * confluence-import-rechte (Ben, Nacharbeit 6, Befund F2) — DER RECHTEABGLEICH EINER SEITE
+   * UNVERÄNDERTER INHALTSVERSION.
+   *
+   * Confluence zählt die Seitenversion bei einer reinen Rechteänderung nicht hoch. Der
+   * Bereichsabgleich übersprang solche Seiten deshalb als „unverändert" — eine inzwischen auf Lea
+   * beschränkte Seite blieb in Klara für die bisherigen Leser offen. Hier werden die FRISCH
+   * erhobenen Quellrechte nachgezogen, an zwei Stellen und beide geschützt:
+   *   1. am LEBENDEN Objekt dieses Ankers über `setQuellrechte` — Aktualitätsschutz unter dem
+   *      Objekt-Lock (ältere Version oder frühere Beobachtung ändern nichts);
+   *   2. an OFFENEN Kandidaten (`neu`) derselben Quelle und Version: ihr Eintrag trägt danach die
+   *      neuere Beobachtung, damit eine spätere Annahme sie nicht verdrängt.
+   * Ein Objekt im Papierkorb und ein abgeschlossener Kandidat werden nicht angefasst.
+   *
+   * Nacharbeit 8 (Ben, Befunde F1/F2) — GLEICHLAUF:
+   *   · Das Objekt entscheidet ALLEIN unter seiner Sperre (`setQuellrechte`): Aktualitätsvergleich
+   *     und Fortschreiben in einem Schritt, auch bei gleicher Lage (dann nur der Zeitpunkt). Eine
+   *     Vorabprüfung hier außerhalb der Sperre gibt es nicht mehr.
+   *   · Ein Kandidat wird nie mehr als Ganzes zurückgeschrieben. Der Abgleich nimmt ihn über DENSELBEN
+   *     atomaren Claim wie eine Review-Aktion (`claim`: nur aus `neu`), prüft den Zeitpunkt am frisch
+   *     geclaimten Stand und gibt ihn über `resolveClaim` mit `status: neu` und den neuen Rechten
+   *     zurück. Eine Annahme, die dazwischenkommt, bekommt den Claim nicht — und ein Kandidat, den
+   *     eine Review-Aktion hält oder abgeschlossen hat, wird nicht angefasst.
+   *   · Kandidaten zuerst, dann das Objekt: wird ein Kandidat während des Wartens angenommen, findet
+   *     der Objektschritt danach das neue Objekt.
+   */
+  async gleicheQuellrechteFuerAnkerAb(
+    item: ImportItem,
+    actor: string,
+  ): Promise<{ objekt: boolean; kandidaten: number }> {
+    const quelle = quellrechteVon(item);
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!quelle || !externalId) {
+      return { objekt: false, kandidaten: 0 };
+    }
+    const gesucht = ankerSchluessel(item.provider, externalId);
+    let kandidaten = 0;
+    const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+    for (const kandidat of await this.candidates.all()) {
+      if (
+        !isOpenReviewStatus(kandidat.status) ||
+        ankerSchluessel(kandidat.item.provider, kandidat.item.externalId) !== gesucht ||
+        kandidat.item.sourceVersion !== item.sourceVersion
+      ) {
+        continue;
+      }
+      if (await this.kandidatRechteNachziehen(kandidat.id, quelle, roh)) {
+        kandidaten += 1;
+      }
+    }
+    let objekt = false;
+    const anker = await this.sucheAnkerKo(
+      (s) => ankerSchluessel(s.provider, s.externalId) === gesucht,
+    );
+    if (anker?.art === "aktiv") {
+      const rechte = await this.objektQuellrechte(item);
+      if (rechte) {
+        await this.koService.setQuellrechte(anker.ko.id, rechte, actor);
+        objekt = true;
+      }
+    }
+    return { objekt, kandidaten };
+  }
+
+  /**
+   * Nacharbeit 8 (Befund F2): die Rechte EINES offenen Kandidaten atomar nachziehen — über
+   * `claim`/`resolveClaim`, die beiden bedingten Schreibwege der Ablage (Pg: UPDATE … WHERE
+   * status='neu' bzw. WHERE status='in_bearbeitung' AND opId=…). Hält gerade eine andere Operation
+   * den Claim (Review-Aktion, zweiter Abgleich), wird kurz gewartet und neu versucht; ist der
+   * Kandidat danach abgeschlossen oder verschwunden, bleibt er unangetastet. Bleibt er über alle
+   * Versuche in fremder Bearbeitung, scheitert der Abgleich ehrlich (`CONFLICT`) — der
+   * Bereichsimport führt die Seite dann als nicht abgeglichen.
+   */
+  private async kandidatRechteNachziehen(
+    id: string,
+    quelle: EintragsQuellrechte,
+    roh: unknown,
+  ): Promise<boolean> {
+    for (let versuch = 0; versuch < KANDIDAT_RECHTE_VERSUCHE; versuch += 1) {
+      const opId = `quellrechte:${randomUUID()}`;
+      const gehalten = await this.candidates.claim(id, opId, new Date(this.now()).toISOString());
+      if (gehalten) {
+        const alt = quellrechteVon(gehalten.item);
+        const aelterOderGleich =
+          alt?.beobachtetAm !== undefined &&
+          quelle.beobachtetAm !== undefined &&
+          Date.parse(alt.beobachtetAm) >= Date.parse(quelle.beobachtetAm);
+        const item = aelterOderGleich
+          ? undefined
+          : ({ ...gehalten.item, confidentiality: quelle.stufe, quellrechte: roh } as ImportItem);
+        const zurueck = await this.candidates.resolveClaim(
+          id,
+          opId,
+          item ? { status: "neu", item } : { status: "neu" },
+        );
+        if (!zurueck) {
+          throw new LibraryError(
+            "CONFLICT",
+            "Importkandidat: Claim des Rechteabgleichs verloren — Leserechte nicht nachgezogen.",
+          );
+        }
+        return item !== undefined;
+      }
+      const jetzt = await this.candidates.findById(id);
+      if (!jetzt || !isOpenReviewStatus(jetzt.status)) {
+        return false; // abgeschlossen oder entfernt — nicht anfassen
+      }
+      await new Promise((weiter) => setTimeout(weiter, KANDIDAT_RECHTE_WARTEZEIT_MS));
+    }
+    throw new LibraryError(
+      "CONFLICT",
+      "Importkandidat ist in Bearbeitung — Leserechte nicht nachgezogen.",
+    );
+  }
+
+  /**
    * R-0163: die EINE Abgleichregel für Anhänge.
    *
    * - ZUORDNUNG ÜBER DIE QUELLKENNUNG (`quelle.externalId` am Anhang), nicht über den Namen. Nur
@@ -2917,20 +3157,32 @@ export class LibraryService {
       // Anhebung. Bis hierher hob ein Re-Sync ohne Signal still auf „vertraulich"; vertraulich wird
       // aber nur, was der Mensch so markiert oder die Quelle restringiert. Ein Downgrade bleibt
       // unverändert ausgeschlossen (Ziel = die höhere Stufe), eine explizit höhere Importstufe gilt.
+      //
+      // AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 2, Befund F2): liefert die
+      // Quelle ihre Rechte mit, gleicht `setQuellrechte` ab — Leser immer nach der Quelle, die Stufe
+      // nach der Quelle, solange seit dem letzten Abgleich kein Mensch eingestuft hat (dann auch
+      // nach unten: eine aufgehobene Confluence-Beschränkung macht das Objekt wieder intern). Eine
+      // ausdrücklich menschliche Einstufung wird dort weiter nur angehoben. Ohne Quellrechte gilt
+      // der Bestandszweig darunter (mit dem N11-Boden) unverändert.
+      const quellrechte = await this.objektQuellrechte(item);
       const currentConf = normalizeConfidentiality(existing.confidentiality);
       const importFloor: Confidentiality = item.confidentiality ?? UEBERNAHME_STANDARD;
       const target =
         confidentialityRank(importFloor) > confidentialityRank(currentConf)
           ? importFloor
           : currentConf;
-      if (target !== currentConf) {
+      if (quellrechte) {
+        // Bens Grenzbeobachtung Runde 3: die Frage steht vor JEDER Mutation dieses Zweigs.
+        await sperreGilt();
+        await this.koService.setQuellrechte(existing.id, quellrechte, actor);
+      } else if (target !== currentConf) {
         // Bens Grenzbeobachtung Runde 3: die Frage steht vor JEDER Mutation dieses Zweigs.
         await sperreGilt();
         // AUFTRAG-mega82 Block A: der Akteur dieser Mutation ist der ANNEHMENDE, nie `item.author`.
         // Der Wert steht im Prüfprotokoll dieses Upgrades; ein aus dem Rumpf gelieferter Name
         // machte dort einen Ungeprüften zum Handelnden. Begründung in voller Länge an der revise()
         // weiter unten — es ist dieselbe Regel, und beide Stellen tragen sie gemeinsam.
-        await this.koService.setConfidentiality(existing.id, target, actor);
+        await this.koService.setConfidentiality(existing.id, target, actor, { durchImport: true });
       }
 
       if (incoming > current) {
@@ -3014,6 +3266,8 @@ export class LibraryService {
     // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte gehen im SELBEN Insert mit.
+    const erstRechte = await this.objektQuellrechte(item);
     // R-0169: die erste Quellfassung als unveränderliche Revision, VOR dem Objekt — scheitert die
     // Anlage danach, bleibt die Revision als Tatsache stehen und wird beim Wiederholen über ihre
     // Revisionsidentität wiedergefunden (`insertIfAbsent` → `findByRevision`), nie verdoppelt.
@@ -3032,7 +3286,7 @@ export class LibraryService {
     await sperreGilt();
     let ko: KnowledgeObject;
     try {
-      ko = await this.koService.create({
+      const anlage: Parameters<KoService["create"]>[0] = {
         title: item.title,
         statement: item.statement,
         type: item.type,
@@ -3075,7 +3329,8 @@ export class LibraryService {
         importedVia: weg.importedVia,
         // NACHARBEIT 5 (R-0169): aus welcher Fassung der internen Akte diese Aussage stammt.
         ...(aktenHerkunft ? { dokumentHerkunft: aktenHerkunft } : {}),
-      });
+      };
+      ko = await this.koService.create(anlage, undefined, erstRechte);
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
       // Anker trotz werfendem create (Unique-Kollision ODER Insert gelungen + Snapshot/Audit
@@ -3383,7 +3638,10 @@ export class LibraryService {
       }
       if (raisedTo !== null) {
         // Heraufsetzen braucht kein Herabstufungsrecht (`setConfidentiality`, SCRUM-509).
-        await this.koService.setConfidentiality(ko.id, raisedTo, actor);
+        // confluence-import-rechte (Zusammenführung Nacharbeit 14): diese Anhebung kommt aus der
+        // Quelle, nicht von einem Menschen — `durchImport`, sonst würde sie als menschliche
+        // Einstufung vermerkt und die Stufe folgte der Quelle nie wieder (R-2197).
+        await this.koService.setConfidentiality(ko.id, raisedTo, actor, { durchImport: true });
       }
     }
     return { koId: ko.id, restrictionChanged, raisedTo };

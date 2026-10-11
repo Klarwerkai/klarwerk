@@ -42,6 +42,46 @@ export interface VeroeffentlichungVorschau extends StandBasis {
   sichtbarkeit: { stufe: string | null; spaceId: string | null; leser: number };
   empfaenger: Array<{ id: string; name: string }>;
   kenntnisnahmen: { offen: number; ueberholt: number };
+  // ADMIN-12: die Wirkung jeder Wahl nach den geltenden Kommunikationsregeln.
+  meldungswirkung: Record<Meldungswahl, Meldungswirkung>;
+  mailEingerichtet: boolean;
+}
+
+export interface Meldungswirkung {
+  glocke: number;
+  sofort: number;
+  zusammenfassung: number;
+  abgewaehlt: number;
+  mail: number;
+}
+
+export type ZustellStatus = "angelegt" | "zugestellt" | "fehlgeschlagen" | "entfallen";
+
+export interface ZustellEmpfaenger {
+  id: string;
+  name: string;
+  glocke: "angelegt" | "zugestellt" | "gelesen" | null;
+  hinweis: "abgewaehlt" | "zusammenfassung" | null;
+  mail: {
+    status: ZustellStatus;
+    grund: "kein_zugriff" | "abgewaehlt" | "mailserver_abgelehnt" | null;
+  } | null;
+  kenntnisnahme: "ausstehend" | "bestaetigt" | "ueberfaellig" | "ueberholt" | null;
+}
+
+export interface ZustellAuskunft {
+  vermerkId: string;
+  fassung: number;
+  meldung: Meldungswahl;
+  am: string;
+  mailEingerichtet: boolean;
+  erfasst: boolean;
+  zaehlung: {
+    glocke: { angelegt: number; zugestellt: number; gelesen: number };
+    mail: { angelegt: number; zugestellt: number; fehlgeschlagen: number; entfallen: number };
+    kenntnisnahme: { offen: number; bestaetigt: number };
+  };
+  empfaenger: ZustellEmpfaenger[];
 }
 
 export type VeroeffentlichungAuskunft = VeroeffentlichungLeserStand | VeroeffentlichungVorschau;
@@ -49,13 +89,21 @@ export type VeroeffentlichungAuskunft = VeroeffentlichungLeserStand | Veroeffent
 export interface VeroeffentlichungErgebnis {
   vermerk: VeroeffentlichungVerlauf;
   kenntnisnahmen: { offen: number; ueberholt: number };
+  zustellung: ZustellAuskunft | null;
 }
 
+const pfad = (koId: string): string => `/kos/${encodeURIComponent(koId)}/veroeffentlichung`;
+
 export const veroeffentlichungApi = {
-  stand: (koId: string) =>
-    api.get<VeroeffentlichungAuskunft>(`/kos/${encodeURIComponent(koId)}/veroeffentlichung`),
+  stand: (koId: string) => api.get<VeroeffentlichungAuskunft>(pfad(koId)),
   veroeffentlichen: (koId: string, body: { fassung: number; meldung: Meldungswahl }) =>
-    api.post<VeroeffentlichungErgebnis>(`/kos/${encodeURIComponent(koId)}/veroeffentlichung`, body),
+    api.post<VeroeffentlichungErgebnis>(pfad(koId), body),
+  zustellung: (koId: string, vermerkId: string) =>
+    api.get<ZustellAuskunft>(`${pfad(koId)}/zustellung/${encodeURIComponent(vermerkId)}`),
+  fortsetzen: (koId: string, vermerkId: string) =>
+    api.post<ZustellAuskunft>(
+      `${pfad(koId)}/zustellung/${encodeURIComponent(vermerkId)}/fortsetzen`,
+    ),
 };
 
 /** Die maschinenlesbare Ursache einer Ablehnung (`grund`) — oder `null`. */

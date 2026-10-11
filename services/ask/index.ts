@@ -25,6 +25,17 @@ export {
   type AntwortMeldeGrund,
   type AntwortMeldungQuittung,
 } from "./src/antwort-meldung";
+// produkt:20261010:antwort-beanstandung-korrektur: die Beanstandung einer konkreten Aussage —
+// Regeln in `src/antwort-beanstandung.ts`, Schreibwege am `AskService`.
+export {
+  BEANSTANDUNG_BEGRUENDUNG_MAX,
+  BEANSTANDUNG_FRAGE,
+  beanstandungSicht,
+  istKorrektur,
+  leseBeanstandung,
+  type BeanstandungEingabe,
+  type BeanstandungSicht,
+} from "./src/antwort-beanstandung";
 export { PgGapRepo, ASK_SCHEMA } from "./src/repo-pg";
 // R-0773: erfolglose Suchen je Person (Begründung und Grenzen in `src/nulltreffer.ts`).
 export {
@@ -85,6 +96,7 @@ export {
   ANSWER_RECEIPT_TTL_MS,
   MIN_RECEIPT_SECRET_BYTES,
   ReceiptSecretError,
+  aussageFingerabdruck,
   parseConfiguredReceiptSecret,
   signAnswerReceipt,
   verifyAnswerReceipt,
@@ -98,6 +110,8 @@ export {
 export type {
   Gap,
   GapAbschluss,
+  GapBeanstandung,
+  GapBeanstandungMeldung,
   GapBelegbedarf,
   GapPriority,
   GapRueckfrage,

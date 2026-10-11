@@ -3558,6 +3558,7 @@ const en: typeof de = {
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (print/PDF)",
+  "lib.format.paket": "Knowledge package (ZIP with versions and attachments)",
   // JOB 1119 (D-002) — see the German entry for the finding and the measured search space.
   "lib.searchLabel": "Search the library",
   "lib.ownScope.label": "Scope",

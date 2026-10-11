@@ -30,6 +30,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
+  koQueryKey,
   useFolgepruefung,
   useKos,
   useLearningPath,
@@ -99,6 +100,17 @@ export function Lifecycle(): JSX.Element {
     found: boolean;
     stand?: number;
   } | null>(null);
+  // produkt:20261010:branchen-poc-arbeitswege (Ben, Nacharbeit 7): die Warteschlange setzt sich aus
+  // ZWEI Quellen zusammen — den Merkern (`["lifecycle"]`) und der Frische im Objektbestand
+  // (`faelligeKennungen(…, kos.data)`). Nach „Noch gültig“ wurde nur die erste neu geladen; der
+  // bestätigte Eintrag stand im zwischengespeicherten Bestand weiter als „validiert, fällig“ und
+  // blieb in der Liste, bis jemand die Seite neu lud. Beide Quellen und der Einzeleintrag (neue
+  // Fassung) werden deshalb gemeinsam neu gelesen.
+  const bestandNeuLaden = (id: string): void => {
+    void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+    void qc.invalidateQueries({ queryKey: ["kos"] });
+    void qc.invalidateQueries({ queryKey: koQueryKey(id) });
+  };
   const confirm = useMutation({
     // produkt:20261010:aenderungsfolgen-sichtbar: mit Stand, sobald er bekannt ist.
     // Nacharbeit 6 (Ben, K5): mit dem Stand reist die angezeigte Inhaltsfassung.
@@ -120,7 +132,7 @@ export function Lifecycle(): JSX.Element {
           : { action: "revalidate", stand, fassung },
       ),
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+      bestandNeuLaden(vars.id);
       setLastRevalidated({
         id: vars.id,
         title: vars.title,
@@ -132,14 +144,14 @@ export function Lifecycle(): JSX.Element {
     // blieb bis hierher still.
     // produkt:20261010:aenderungsfolgen-sichtbar: ein veralteter Stand ist kein Störfall — die
     // Meldung sagt, was geschah, und die Liste lädt den neuen Stand.
-    onError: (error) => {
+    onError: (error, vars) => {
       // Nacharbeit 6: auch eine inzwischen überarbeitete Inhaltsfassung (`KO_STALE`) ist ein
       // veralteter Stand — dieselbe Meldung, dasselbe Neuladen.
       if (
         error instanceof ApiError &&
         (error.code === "STAND_VERALTET" || error.code === "KO_STALE")
       ) {
-        void qc.invalidateQueries({ queryKey: ["lifecycle"] });
+        bestandNeuLaden(vars.id);
         push("error", t("folgepruefung.standVeraltet"));
         return;
       }

@@ -1,12 +1,20 @@
 // Reine, DOM-freie Export-Format-Logik für die Bibliothek (SCRUM-135 / FE-LIB-03).
-// Backend: GET /api/library/export?format=markdown|mediawiki|html (Default JSON), optional
+// Backend: GET /api/library/export?format=markdown|mediawiki|html|paket (Default JSON), optional
 // `ids=<a>,<b>` für eine Auswahl (aufnahme:20260922:gesamt-wissen-export, R-0681 / FR-LIB-02).
+// produkt:20261010:poc-wiederherstellung-export: `paket` ist das ZIP mit Fassungen,
+// Originalanhängen und Verzeichnis (`services/app/src/wissenspaket.ts`) — dieselbe Menge.
 import type { Confidentiality } from "../api/types";
 import { isConfidential } from "./confidentiality";
 
-export type ExportFormat = "json" | "markdown" | "mediawiki" | "html";
+export type ExportFormat = "json" | "markdown" | "mediawiki" | "html" | "paket";
 
-export const EXPORT_FORMATS: readonly ExportFormat[] = ["json", "markdown", "mediawiki", "html"];
+export const EXPORT_FORMATS: readonly ExportFormat[] = [
+  "json",
+  "markdown",
+  "mediawiki",
+  "html",
+  "paket",
+];
 
 interface ExportMeta {
   labelKey: string;
@@ -19,6 +27,7 @@ const META: Record<ExportFormat, ExportMeta> = {
   mediawiki: { labelKey: "lib.format.mediawiki", ext: "wiki" },
   // HTML ist bewusst Druck-/„print to PDF"-Ansicht, kein dedizierter PDF-Export.
   html: { labelKey: "lib.format.html", ext: "html" },
+  paket: { labelKey: "lib.format.paket", ext: "zip" },
 };
 
 // R-1349 (Aufnahme gesamt-aufruferwaechter): bis hierher ohne Produktleser — die Bibliothek setzte

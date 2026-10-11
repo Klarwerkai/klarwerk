@@ -17,8 +17,9 @@
 // Knopf; Mikrofon abgelehnt → ehrlicher Satz; „Aufnahme stoppen“ beendet das Zuhören jederzeit, und
 // das Schliessen der Fläche ebenso (Abbau = Stopp).
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { useDirectory } from "../../api/hooks";
+// produkt:20261010:assistenz-name-avatar: `t` mit dem persönlichen Namen (`{{assistenz}}`).
+import { useAssistenzT } from "../../lib/assistenzProfil";
 import { anfuegen, auftragsArt, klaerungen } from "../../lib/klaraSprache";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
 import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
@@ -99,6 +100,12 @@ export interface KlaraSprachSteuerung {
   moeglich: boolean;
   ios: boolean;
   laeuft: Aufnahmeart | null;
+  /**
+   * produkt:20261010:assistenz-name-avatar: `true` erst, wenn der Browser die Tonaufnahme bestätigt
+   * (`audiostart`) — nicht schon bei der Anforderung (`laeuft`), etwa während die Mikrofonberechtigung
+   * noch aussteht. Ende, Fehler, Stopp und Abbruch setzen es zurück. Grundlage für „Zuhören“ der Figur.
+   */
+  hoert: boolean;
   zwischen: string;
   hinweis: string | null;
   starten: (art: Aufnahmeart) => void;
@@ -117,10 +124,11 @@ export function useKlaraSprache(optionen: {
   /** Das Ziel im Augenblick des Sprechens. */
   ziel: () => SprachZiel;
 }): KlaraSprachSteuerung {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const moeglich = typeof window !== "undefined" && hasSpeechRecognition(window);
   const ios = typeof window !== "undefined" && istIosGeraet(window);
   const [laeuft, setLaeuft] = useState<Aufnahmeart | null>(null);
+  const [hoert, setHoert] = useState(false);
   const [zwischen, setZwischen] = useState("");
   const [hinweis, setHinweis] = useState<string | null>(null);
   const [auftrag, setAuftrag] = useState<GesprochenerAuftrag | null>(null);
@@ -137,12 +145,15 @@ export function useKlaraSprache(optionen: {
       rec.onresult = null;
       rec.onend = null;
       rec.onerror = null;
+      rec.onaudiostart = null;
+      rec.onaudioend = null;
       try {
         rec.stop();
       } catch {
         // schon beendet
       }
       setLaeuft(null);
+      setHoert(false);
       setZwischen("");
     }
   }, []);
@@ -177,6 +188,7 @@ export function useKlaraSprache(optionen: {
         }
         recRef.current = null;
         setLaeuft(null);
+        setHoert(false);
         setZwischen("");
         const tt = tRef.current;
         if (grund === "not-allowed" || grund === "service-not-allowed") {
@@ -218,10 +230,23 @@ export function useKlaraSprache(optionen: {
       return;
     }
     vorgang.rec = rec;
+    // produkt:20261010:assistenz-name-avatar: „Zuhören“ erst, wenn der Browser die Tonaufnahme
+    // bestätigt; Ereignisse eines abgelösten Rekorders ändern den neuen Lauf nicht.
+    rec.onaudiostart = () => {
+      if (recRef.current === vorgang.rec) {
+        setHoert(true);
+      }
+    };
+    rec.onaudioend = () => {
+      if (recRef.current === vorgang.rec) {
+        setHoert(false);
+      }
+    };
     if (art === "auftrag") {
       setAuftrag(null);
     }
     recRef.current = rec;
+    setHoert(false);
     try {
       rec.start();
     } catch {
@@ -249,6 +274,7 @@ export function useKlaraSprache(optionen: {
     moeglich,
     ios,
     laeuft,
+    hoert,
     zwischen,
     hinweis,
     starten,
@@ -263,7 +289,7 @@ export function useKlaraSprache(optionen: {
 // Die Leiste über dem Eingabefeld: Diktieren · Auftrag sprechen · Aufnahme stoppen · Vorlesen stoppen.
 // -------------------------------------------------------------------------------------------------
 export function KlaraSprachLeiste({ s }: { s: KlaraSprachSteuerung }): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const vorlesen = useKlaraVorlesen();
   return (
     <div data-testid="klara-sprache" className="w-full space-y-1">
@@ -406,7 +432,7 @@ function AuftragEntwurf({
   ausfuehrbar: ((text: string) => boolean) | undefined;
   ausfuehrungBereit: boolean;
 }): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const feldId = useId();
   const personen = useDirectory();
   const bezug = a.ziel.bekannt ? t("klarasprache.bezug", { ziel: zielText(a.ziel) }) : null;
@@ -577,7 +603,7 @@ function AuftragErgebnis({
   a: GesprochenerAuftrag;
   s: KlaraSprachSteuerung;
 }): JSX.Element | null {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const g = a.gesendet;
   if (!g) {
     return null;
@@ -640,7 +666,7 @@ function AuftragErgebnis({
 // Vorlesen: ein Knopf je Antwort, und die Einstellungen.
 // -------------------------------------------------------------------------------------------------
 export function VorlesenKnopf({ id, text }: { id: string; text: string }): JSX.Element | null {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useAssistenzT();
   const v = useKlaraVorlesen();
   if (!vorlesenMoeglich()) {
     return null;
@@ -660,7 +686,7 @@ export function VorlesenKnopf({ id, text }: { id: string; text: string }): JSX.E
 }
 
 export function KlaraSprachausgabe(): JSX.Element {
-  const { t } = useTranslation();
+  const { t } = useAssistenzT();
   const v = useKlaraVorlesen();
   const tempoId = useId();
   if (!vorlesenMoeglich()) {

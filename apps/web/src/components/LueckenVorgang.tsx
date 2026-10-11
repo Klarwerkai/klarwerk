@@ -5,9 +5,15 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useKos } from "../api/hooks";
-import type { GapRuecknahmeGrund, GapVorgang, GapVorgangEintrag } from "../api/types";
+import type {
+  GapBeanstandungSicht,
+  GapRuecknahmeGrund,
+  GapVorgang,
+  GapVorgangEintrag,
+} from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
+import { useAssistenzAnzeige } from "../lib/assistenzProfil";
 import { captureGapHref } from "../lib/captureFromGap";
 import { useAuthorName } from "../lib/useAuthorName";
 import { auftrittAus, useAssistenzProfil } from "./klara-vorschau/profil";
@@ -103,11 +109,19 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
   const eintraege = (bestand.data ?? []).map((k) => ({ id: k.id, title: k.title }));
   const klara = useKlaraZustand();
   // produkt:20261010:wissenskreislauf-schliessen (Ben, Nacharbeit 3): die persönliche Assistenzwahl.
-  const assistenzName = auftrittAus(useAssistenzProfil()).name ?? t("klaraprodukt.name.neutral");
+  // produkt:20261010:branchen-poc-arbeitswege: dieselbe Rangfolge wie die Figur (KlaraVorschau.tsx)
+  // — zuerst der am Konto gespeicherte Name (`lib/assistenzProfil.ts`), dann der Leseeinstieg
+  // `profil.ts`, sonst neutral. Vorher las diese Fläche nur den Leseeinstieg, den im Produkt niemand
+  // setzt: die Figur hieß „Nora“, die Erklärung am Vorgang „Deine Assistenz“.
+  const kontoAssistenz = useAssistenzAnzeige();
+  const leseeinstieg = auftrittAus(useAssistenzProfil());
+  const assistenzName = kontoAssistenz.name ?? leseeinstieg.name ?? t("klaraprodukt.name.neutral");
   const qc = useQueryClient();
   const { push } = useToast();
   const [rueckfrage, setRueckfrage] = useState("");
+  const [rueckfrageMeldung, setRueckfrageMeldung] = useState("");
   const [antwort, setAntwort] = useState("");
+  const [zurueckweisung, setZurueckweisung] = useState("");
   const datum = (iso: string) => new Date(iso).toLocaleDateString(i18n.language);
 
   // Jeder Schritt bekommt die neue Vorgangssicht zurück; Liste und Glocke werden nachgeladen.
@@ -150,7 +164,11 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
 
   return (
     <div className="space-y-2 text-[12px] text-text" data-phase={vorgang.phase}>
-      {vorgang.question ? <p className="font-medium">{vorgang.question}</p> : null}
+      {vorgang.beanstandung ? (
+        <BeanstandungBlock b={vorgang.beanstandung} datum={datum} />
+      ) : vorgang.question ? (
+        <p className="font-medium">{vorgang.question}</p>
+      ) : null}
       <div className="flex flex-wrap gap-1.5">
         {vorgang.rollen.map((r) => (
           <span
@@ -267,17 +285,36 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
         </form>
       ) : null}
 
-      {offen && zustaendig && !offeneRueckfrage ? (
+      {/* Bei einer Beanstandung geht jede Rückfrage an genau eine Meldung (Ben, Nacharbeit 2); ob für
+          diese Meldung schon eine offen ist, entscheidet der Server. */}
+      {offen && zustaendig && (vorgang.beanstandung || !offeneRueckfrage) ? (
         <form
           className="space-y-1"
           onSubmit={(e) => {
             e.preventDefault();
-            schritt.mutate(() => endpoints.gaps.rueckfrage(vorgang.id, rueckfrage));
+            const ziel = vorgang.beanstandung ? rueckfrageMeldung || undefined : undefined;
+            schritt.mutate(() => endpoints.gaps.rueckfrage(vorgang.id, rueckfrage, ziel));
           }}
         >
           <label className="block text-[11px] text-muted" htmlFor={`rueckfrage-${vorgang.id}`}>
             {t("lueckenvorgang.rueckfrageStellen")}
           </label>
+          {vorgang.beanstandung && vorgang.beanstandung.begruendungen.length > 1 ? (
+            <select
+              value={rueckfrageMeldung}
+              data-testid="luecke-rueckfrage-meldung"
+              aria-label={t("lueckenvorgang.rueckfrageMeldung")}
+              onChange={(e) => setRueckfrageMeldung(e.target.value)}
+              className="h-8 w-56 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted"
+            >
+              <option value="">{t("lueckenvorgang.rueckfrageMeldungWaehlen")}</option>
+              {vorgang.beanstandung.begruendungen.map((g) => (
+                <option key={g.meldungId} value={g.meldungId}>
+                  {g.meldungId}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <textarea
             id={`rueckfrage-${vorgang.id}`}
             data-testid="luecke-rueckfrage-text"
@@ -386,6 +423,52 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
           })}
         </p>
       ) : null}
+      {vorgang.abschluss?.art === "zurueckgewiesen" ? (
+        <div className="text-[11.5px]" data-testid="luecke-abschluss">
+          <p className="text-trust-warn-text">
+            {t("lueckenvorgang.abschluss.zurueckgewiesen", { datum: datum(vorgang.abschluss.at) })}
+          </p>
+          {vorgang.abschluss.begruendung ? (
+            <p data-testid="luecke-zurueckweisung-begruendung">{vorgang.abschluss.begruendung}</p>
+          ) : null}
+          {vorgang.abschluss.koId ? (
+            <Link
+              to={`/wissen/${vorgang.abschluss.koId}`}
+              className="font-semibold text-brand-text hover:underline"
+            >
+              {t("lueckenvorgang.zurueckweisungQuelle", { v: vorgang.abschluss.koVersion ?? "—" })}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+      {offen && vorgang.beanstandung && (zustaendig || verwaltend) ? (
+        <form
+          className="space-y-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            schritt.mutate(() => endpoints.gaps.zurueckweisen(vorgang.id, zurueckweisung));
+          }}
+        >
+          <label className="block text-[11px] text-muted" htmlFor={`zurueckweisen-${vorgang.id}`}>
+            {t("lueckenvorgang.zurueckweisen")}
+          </label>
+          <textarea
+            id={`zurueckweisen-${vorgang.id}`}
+            data-testid="luecke-zurueckweisen-text"
+            value={zurueckweisung}
+            onChange={(e) => setZurueckweisung(e.target.value)}
+            className="w-full rounded-input border border-hairline bg-surface px-2 py-1 text-[12px]"
+          />
+          <button
+            type="submit"
+            data-testid="luecke-zurueckweisen"
+            disabled={schritt.isPending || zurueckweisung.trim() === ""}
+            className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold disabled:opacity-50"
+          >
+            {t("lueckenvorgang.zurueckweisenSenden")}
+          </button>
+        </form>
+      ) : null}
       {vorgang.ergebnis ? (
         <EintragBlock
           titelKey="lueckenvorgang.ergebnis"
@@ -417,6 +500,69 @@ function VorgangInhalt({ vorgang }: { vorgang: GapVorgang }): JSX.Element {
           ))}
         </select>
       ) : null}
+    </div>
+  );
+}
+
+// produkt:20261010:antwort-beanstandung-korrektur: die beanstandete Aussage, wie der SERVER sie
+// diesem Betrachter freigibt (`beanstandungSicht`) — Melder: eigene Meldungen; zuständige Person:
+// Aussage und Begründungen ohne Melderkennung; zurückgehalten, wo der Zugriff auf eine Quelle fehlt.
+function BeanstandungBlock({
+  b,
+  datum,
+}: {
+  b: GapBeanstandungSicht;
+  datum: (iso: string) => string;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="space-y-1 rounded-btn border border-hairline px-2.5 py-1.5"
+      data-testid="luecke-beanstandung"
+    >
+      <div className="text-[11px] font-semibold text-muted-2">
+        {t("lueckenvorgang.beanstandung.titel")}
+      </div>
+      {b.aussageZurueckgehalten ? (
+        <p className="text-muted">{t("lueckenvorgang.beanstandung.zurueckgehalten")}</p>
+      ) : (
+        <p className="font-medium" data-testid="luecke-beanstandung-aussage">
+          „{b.aussage}“
+        </p>
+      )}
+      <p className="text-[11px] text-muted">
+        {b.quelleFehlt
+          ? t("lueckenvorgang.beanstandung.quelleFehlt")
+          : b.koId
+            ? t("lueckenvorgang.beanstandung.quelle", {
+                fassungen: b.fassungenDamals.join(", ") || "—",
+              })
+            : t("lueckenvorgang.beanstandung.quelleNichtZugaenglich")}{" "}
+        · {t("lueckenvorgang.beanstandung.meldungen", { count: b.meldungen })}
+      </p>
+      {b.koId ? (
+        <Link to={`/wissen/${b.koId}`} className="text-[11px] text-brand-text hover:underline">
+          {t("lueckenvorgang.beanstandung.quelleOeffnen")}
+        </Link>
+      ) : null}
+      {b.eigeneMeldungen.map((m) => (
+        <p key={m.meldungId} className="text-[11px]" data-testid="luecke-beanstandung-eigene">
+          {datum(m.at)} · {m.meldungId}
+          {m.koVersion !== null
+            ? ` · ${t("lueckenvorgang.eintrag.fassung", { v: m.koVersion })}`
+            : ""}{" "}
+          — {m.begruendung}
+        </p>
+      ))}
+      {b.begruendungen.map((g) => (
+        <p
+          key={`${g.at}-${g.text}`}
+          className="text-[11px]"
+          data-testid="luecke-beanstandung-grund"
+        >
+          {datum(g.at)} — {g.text}
+        </p>
+      ))}
     </div>
   );
 }

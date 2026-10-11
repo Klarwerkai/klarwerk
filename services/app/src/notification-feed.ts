@@ -122,6 +122,19 @@ export interface Notification {
   // `geloest` trägt `koId` den nutzbaren Wissenseintrag (Titel = dessen Titel).
   lueckenArt?: GapMeldung["art"];
   gapId?: string;
+  // ADMIN-12 (`kommunikationsregeln.ts`): die tägliche Zusammenfassung gewöhnlicher
+  // Veröffentlichungen eines Tages — eine Meldung `kind: "veroeffentlichung"` ohne `koId`.
+  zusammenfassung?: {
+    tag: string;
+    anzahl: number;
+    eintraege: Array<{
+      vermerkId: string;
+      koId: string;
+      title: string;
+      fassung: number;
+      art: "neu" | "aktualisierung";
+    }>;
+  };
 }
 
 // SCRUM-363 / AG-15: persönliche offene Review-Zuweisungen kommen als eigene Kategorie in den Feed.

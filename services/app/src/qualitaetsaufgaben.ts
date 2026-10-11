@@ -429,11 +429,25 @@ export async function ladeQualitaetsaufgaben(
   }
 
   // ── Wissenslücken: Fragetext nur nach dem vorhandenen Sichtbarkeitsvertrag ───────────────────
+  // produkt:20261010:antwort-beanstandung-korrektur: eine Beanstandung IST eine Lücke. Ihre
+  // Meldungen (`answer.reported`) werden hier EINMAL gezählt — als Einstiege des Lückenvorgangs, nicht
+  // ein zweites Mal als Rückmeldung; auch nach dem Abschluss erscheinen sie nicht wieder als offen.
+  const beanstandet = new Set<string>();
+  for (const g of luecken ?? []) {
+    for (const m of g.beanstandung?.meldungen ?? []) {
+      beanstandet.add(m.meldungId);
+    }
+  }
   for (const g of luecken ?? []) {
     if (g.status !== "offen") {
       continue;
     }
     const sicht = redactGapForViewer(g, { viewerId: user.id });
+    const quelle = g.beanstandung?.koId ? await sichtbar(g.beanstandung.koId) : undefined;
+    if (g.beanstandung?.koId && !quelle) {
+      // Dieselbe Zeilenregel wie überall hier: ein Objekt, das der Betrachter nicht sieht, fehlt.
+      continue;
+    }
     fuegeHinzu({
       schluessel: `luecke:${g.id}`,
       typ: "luecke",
@@ -441,13 +455,16 @@ export async function ladeQualitaetsaufgaben(
       ursprung: { art: "luecke", id: g.id },
       arbeitsweg: `/risiko?fall=${encodeURIComponent(g.id)}`,
       titel: sicht.redacted ? null : sicht.question,
-      inhalt: [],
-      spaces: [],
+      inhalt: quelle ? [inhaltVon(quelle)] : [],
+      spaces: quelle ? spaceVon(quelle) : [],
       zustaendig: g.assignee ? [{ ...person(g.assignee), art: "zugewiesen" }] : [],
       frist: null,
       ueberfaellig: false,
       seit: g.createdAt,
-      einstiege: ["risiko"],
+      einstiege: [
+        "risiko",
+        ...(g.beanstandung?.meldungen ?? []).map((m) => `rueckmeldung:${m.meldungId}`),
+      ],
     });
   }
 
@@ -456,6 +473,9 @@ export async function ladeQualitaetsaufgaben(
     const grund = m.payload.grund;
     const responsible = m.payload.responsible;
     if (!isAntwortMeldeGrund(grund) || typeof responsible !== "string") {
+      continue;
+    }
+    if (beanstandet.has(meldungId)) {
       continue;
     }
     const k = await sichtbar(m.target);

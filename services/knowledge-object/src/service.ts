@@ -155,12 +155,105 @@ import {
   type KoMergedInto,
   // JOB 3667 R2: der gebundene Änderungsvorschlag (Fall 2 der Accountregel).
   type KoProposal,
+  type KoQuellrechte,
   type KoRepairNote,
   type KoSource,
   type KoStatus,
   type KoVeroeffentlichung,
   type TrashedKo,
 } from "./types";
+
+/**
+ * AUFNAHME 20260922 · confluence-import-rechte — die EINE Prüfung der Quellrechte an der
+ * Persistenzgrenze. Eine unbekannte Stufe oder eine Leserliste mit Nicht-Text wird ABGELEHNT
+ * (`undefined`), nicht still repariert: eine reparierte Leserliste wäre eine erfundene Freigabe.
+ */
+export function normalizeQuellrechte(raw: unknown): KoQuellrechte | undefined {
+  if (raw === null || typeof raw !== "object") {
+    return undefined;
+  }
+  const { stufe, leser, version, beobachtetAm, leserUnvollstaendig } = raw as {
+    stufe?: unknown;
+    leser?: unknown;
+    version?: unknown;
+    beobachtetAm?: unknown;
+    leserUnvollstaendig?: unknown;
+  };
+  if (!isValidConfidentiality(stufe)) {
+    return undefined;
+  }
+  const gueltigeVersion =
+    typeof version === "number" && Number.isFinite(version) ? version : undefined;
+  if (version !== undefined && gueltigeVersion === undefined) {
+    return undefined;
+  }
+  const gueltigBeobachtet =
+    typeof beobachtetAm === "string" && !Number.isNaN(Date.parse(beobachtetAm))
+      ? beobachtetAm
+      : undefined;
+  if (beobachtetAm !== undefined && gueltigBeobachtet === undefined) {
+    return undefined;
+  }
+  if (leserUnvollstaendig !== undefined && leserUnvollstaendig !== true) {
+    return undefined;
+  }
+  const stand = {
+    ...(gueltigeVersion !== undefined ? { version: gueltigeVersion } : {}),
+    ...(gueltigBeobachtet !== undefined ? { beobachtetAm: gueltigBeobachtet } : {}),
+    // Nacharbeit 6: der Vermerk „Leserkreis nicht vollständig gelesen" (s. KoQuellrechte).
+    ...(leserUnvollstaendig === true ? { leserUnvollstaendig: true as const } : {}),
+  };
+  if (leser === undefined) {
+    return { stufe, ...stand };
+  }
+  if (!Array.isArray(leser) || !leser.every((id) => typeof id === "string")) {
+    return undefined;
+  }
+  const ids = (leser as string[]).map((id) => id.trim()).filter((id) => id.length > 0);
+  return { stufe, leser: [...new Set(ids)], ...stand };
+}
+
+/**
+ * Nacharbeit 8: tragen gespeicherte und eingehende Rechte dieselbe LAGE (Stufe, Leserkreis,
+ * Vollständigkeit)? Der Quellstand (`version`/`beobachtetAm`) gehört ausdrücklich nicht dazu.
+ */
+function gleicheQuellLage(gespeichert: KoQuellrechte | undefined, neu: KoQuellrechte): boolean {
+  if (!gespeichert || gespeichert.stufe !== neu.stufe) {
+    return false;
+  }
+  if (Boolean(gespeichert.leserUnvollstaendig) !== Boolean(neu.leserUnvollstaendig)) {
+    return false;
+  }
+  if (gespeichert.leser === undefined || neu.leser === undefined) {
+    return gespeichert.leser === neu.leser;
+  }
+  const alt = [...gespeichert.leser].sort();
+  const jetzt = [...neu.leser].sort();
+  return alt.length === jetzt.length && alt.every((id, i) => id === jetzt[i]);
+}
+
+/**
+ * confluence-import-rechte (Nacharbeit 3, Befund F4): sind die EINGEHENDEN Rechte älter als die
+ * gespeicherten? Ältere Quellversion ODER frühere Beobachtung — beides nur, wenn beide Seiten die
+ * Angabe tragen. Gleichstand ist nicht veraltet (der spätere Accept desselben Stands gewinnt).
+ */
+function quellrechteVeraltet(gespeichert: KoQuellrechte | undefined, neu: KoQuellrechte): boolean {
+  if (!gespeichert) {
+    return false;
+  }
+  if (gespeichert.version !== undefined && neu.version !== undefined) {
+    if (neu.version < gespeichert.version) {
+      return true;
+    }
+    if (neu.version > gespeichert.version) {
+      return false;
+    }
+  }
+  if (gespeichert.beobachtetAm !== undefined && neu.beobachtetAm !== undefined) {
+    return Date.parse(neu.beobachtetAm) < Date.parse(gespeichert.beobachtetAm);
+  }
+  return false;
+}
 
 /**
  * AUFTRAG-mega21 Block A — WER FRAGT, UND MIT WELCHEM INHALT.
@@ -2340,6 +2433,9 @@ export class KoService {
       // `CreateKoInput`. Er entsteht mit dem Objekt, im SELBEN Insert — es gibt keinen Augenblick,
       // in dem der Schlüssel ohne seinen Eigentümer im Bestand steht.
       createOperation?: KoCreateOperation;
+      // AUFNAHME 20260922 · confluence-import-rechte: die Leserechte der Quelle, im SELBEN Insert
+      // wie das Objekt — es gibt keinen Augenblick, in dem es ohne sie im Bestand steht.
+      quellrechte?: KoQuellrechte;
     },
   ): Promise<KnowledgeObject> {
     if (!KNOWLEDGE_TYPES.includes(input.type)) {
@@ -2492,6 +2588,7 @@ export class KoService {
       ...(extras?.createOperationId ? { createOperationId: extras.createOperationId } : {}),
       // AUFTRAG-mega21 Block A: Eigentümer, Inhaltsabdruck und Zustand — s. document-create.ts.
       ...(extras?.createOperation ? { createOperation: extras.createOperation } : {}),
+      ...(extras?.quellrechte ? { quellrechte: extras.quellrechte } : {}),
       createdAt: at,
       history: [{ version: 1, at, author: input.author, note: "erstellt" }],
       comments: [],
@@ -2552,7 +2649,16 @@ export class KoService {
   async create(
     input: CreateKoInput,
     operation?: { id: string; actor: string; fingerprint: string },
+    // AUFNAHME 20260922 · confluence-import-rechte: die Leserechte der Quelle — ein EIGENER
+    // Parameter und kein Feld in `CreateKoInput`, aus demselben Grund wie `operation`: die
+    // öffentlichen Schreibrouten reichen ihren Rumpf als `CreateKoInput` durch und könnten sich sonst
+    // selbst Leserechte schreiben. Nur der Import-Accept (library-analytics) übergibt ihn.
+    quellrechte?: KoQuellrechte,
   ): Promise<KnowledgeObject> {
+    const rechte = quellrechte === undefined ? undefined : normalizeQuellrechte(quellrechte);
+    if (quellrechte !== undefined && rechte === undefined) {
+      throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Quellrechte.");
+    }
     if (operation) {
       const createOperationId = normalizeCreateOperationId(operation.id);
       const actor = operation.actor.trim();
@@ -2565,14 +2671,19 @@ export class KoService {
       // Eine Wiederholung liefert das BESTEHENDE Objekt — samt Lesefassung seines Nachweises.
       return this.lesefassung(
         await this.withKoLock(`create-op:${createOperationId}`, () =>
-          this.createLocked(input, createOperationId, {
-            actor,
-            fingerprint: operation.fingerprint,
-          }),
+          this.createLocked(
+            input,
+            createOperationId,
+            {
+              actor,
+              fingerprint: operation.fingerprint,
+            },
+            rechte,
+          ),
         ),
       );
     }
-    return this.createPlain(input);
+    return this.createPlain(input, rechte);
   }
 
   /**
@@ -2583,6 +2694,7 @@ export class KoService {
     input: CreateKoInput,
     createOperationId: string,
     requester: CreateOperationRequester,
+    quellrechte?: KoQuellrechte,
   ): Promise<KnowledgeObject> {
     // DER NACHSCHLAG VOR ALLEM VERÄNDERLICHEN — er SCHREIBT NICHTS. Eine unbekannte Kennung liefert
     // `undefined`, und der volle, ungekürzte Weg läuft weiter.
@@ -2598,6 +2710,7 @@ export class KoService {
         state: "committed",
         at: new Date(this.now()).toISOString(),
       },
+      ...(quellrechte ? { quellrechte } : {}),
     });
     try {
       await this.schreibeErstanlage(ko, input.author, (tx, melde) =>
@@ -2619,8 +2732,12 @@ export class KoService {
     return ko;
   }
 
-  private async createPlain(input: CreateKoInput): Promise<KnowledgeObject> {
-    const ko = await this.buildCreatedKo(input);
+  private async createPlain(
+    input: CreateKoInput,
+    quellrechte?: KoQuellrechte,
+  ): Promise<KnowledgeObject> {
+    // confluence-import-rechte: die Quellrechte gehen im SELBEN Insert mit wie das Objekt.
+    const ko = await this.buildCreatedKo(input, quellrechte ? { quellrechte } : undefined);
     await this.schreibeErstanlage(ko, input.author, (tx, melde) =>
       this.finishCreated(ko, input.author, tx, melde),
     );
@@ -3432,7 +3549,9 @@ export class KoService {
     // sich auf einen Aufrufer-Cast zu verlassen. Ungültig → INVALID_CONFIDENTIALITY (→ 400).
     level: unknown,
     actor: string,
-    opts: { mayDowngrade?: boolean } = {},
+    // confluence-import-rechte (Nacharbeit 3): `durchImport` kennzeichnet den Anhebe-Altpfad des
+    // Import-Kerns. JEDER andere Aufruf ist eine menschliche Einstufung und wird als solche vermerkt.
+    opts: { mayDowngrade?: boolean; durchImport?: boolean } = {},
   ): Promise<KnowledgeObject> {
     // SCRUM-509: ungültige/fehlende Stufe wird NICHT still auf „intern" normalisiert (fail-open) —
     // sie wird abgelehnt. Fail-safe an der Datenschicht (Belt zur Route).
@@ -3473,10 +3592,24 @@ export class KoService {
       // eine Höherstufung nimmt die Marke mit weg, damit sie bei einer späteren Rückstufung nicht
       // ungeprüft wiederauflebt.
       const { oeffentlich: _marke, ...ohneMarke } = ko;
-      const updated: KnowledgeObject =
-        level === "intern"
-          ? { ...ko, confidentiality: level }
-          : { ...ohneMarke, confidentiality: level };
+      const basis: KnowledgeObject = level === "intern" ? ko : ohneMarke;
+      // confluence-import-rechte (Ben, Nacharbeit 3, Befund F5): die menschliche Entscheidung wird
+      // AUSDRÜCKLICH vermerkt. Bis hierher erkannte der Quellabgleich sie nur an einer abweichenden
+      // Stufe — setzte ein Mensch genau den Quellwert, galt das Objekt wieder als quellgeführt und
+      // wurde bei einer Quellfreigabe still herabgestuft.
+      const updated: KnowledgeObject = {
+        ...basis,
+        confidentiality: level,
+        ...(opts.durchImport
+          ? {}
+          : {
+              einstufungMenschlich: {
+                stufe: level,
+                von: actor,
+                am: new Date(this.now()).toISOString(),
+              },
+            }),
+      };
       return {
         updated,
         value: updated,
@@ -3490,6 +3623,86 @@ export class KoService {
             },
             tx,
           );
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // AUFNAHME 20260922 · confluence-import-rechte (R-0549, R-2197) — DER ABGLEICH MIT DER QUELLE.
+  // ==============================================================================================
+  //
+  // Der Re-Sync eines importierten Objekts hob die Stufe bisher nur an (SCRUM-509 R4). Damit blieb
+  // eine Seite, die NUR wegen ihrer Confluence-Beschränkung vertraulich war, vertraulich, nachdem die
+  // Quelle die Beschränkung aufgehoben hatte — „nicht restringiert" galt wieder als vertraulich.
+  //
+  // DIE REGEL (Nacharbeit 3, Befund F5): Hat ein Mensch das Objekt eingestuft
+  // (`einstufungMenschlich`, gesetzt von `setConfidentiality`), gehört die Stufe ihm — die Quelle
+  // hebt sie höchstens an. Sonst folgt ein quellgeführtes Objekt der Quelle, auch nach unten. Für
+  // Altbestand ohne Quellrechte ist die Herkunft der Stufe unbekannt; dort wird nur angehoben.
+  // Die LESER folgen immer der Quelle: sie sind keine Einstufung, sondern deren Recht.
+  //
+  // AKTUALITÄT (Nacharbeit 3, Befund F4): ein VERALTETER Kandidat darf neuere Rechte nicht
+  // zurücksetzen. Trägt der gespeicherte Stand eine höhere Quellversion oder eine spätere
+  // Beobachtung, bleibt das Objekt unverändert — geprüft hier, unter dem Objekt-Lock, gegen den
+  // GERADE gelesenen Stand. Confluence zählt die Seitenversion bei einer reinen Rechteänderung NICHT
+  // hoch; deshalb reicht die Version allein nicht, und die Beobachtungszeit steht daneben.
+  //
+  // Kein Recht wird hier geprüft: der einzige Aufrufer ist der Import-Accept, dessen Route
+  // `ko.validate` verlangt. Die öffentlichen Schreibrouten erreichen diesen Weg nicht.
+  async setQuellrechte(id: string, quelle: unknown, actor: string): Promise<KnowledgeObject> {
+    const next = normalizeQuellrechte(quelle);
+    if (!next) {
+      throw new KoError("INVALID_CONFIDENTIALITY", "Ungültige Quellrechte.");
+    }
+    return this.mutateKo(id, (ko) => {
+      if (quellrechteVeraltet(ko.quellrechte, next)) {
+        return { updated: ko, value: ko };
+      }
+      const previous = normalizeConfidentiality(ko.confidentiality);
+      const folgtQuelle = ko.quellrechte !== undefined && ko.einstufungMenschlich === undefined;
+      const gewuenscht: Confidentiality = folgtQuelle
+        ? next.stufe
+        : isConfidentialityDowngrade(previous, next.stufe)
+          ? previous
+          : next.stufe;
+      // Zusammenführung (Nacharbeit 23) mit mains Stufenregeln, die auch für die Quelle gelten:
+      // R-2180 — ein Negativwissen-Fall mit Bezug fällt nie unter seine Mindeststufe (die Quelle
+      // stuft dann nicht herab); R-0652 — eine Höherstufung über „intern" nimmt die Marke
+      // „öffentlich" mit weg, wie in `setConfidentiality`.
+      const level: Confidentiality = unterschreitetNegativwissenStufe(ko.negativwissen, gewuenscht)
+        ? previous
+        : gewuenscht;
+      const { oeffentlich: _marke, ...ohneMarke } = ko;
+      const basis: KnowledgeObject = level === "intern" ? ko : ohneMarke;
+      const quellrechte: KoQuellrechte = { ...next };
+      const updated: KnowledgeObject = { ...basis, confidentiality: level, quellrechte };
+      // Nacharbeit 8 (Ben, Befund F1): BLEIBT DIE LAGE GLEICH (Stufe, Leser, Vollständigkeit), wird
+      // trotzdem der neueste bestätigte Quellstand (`version`/`beobachtetAm`) fortgeschrieben — hier,
+      // unter derselben Objektsperre wie der Aktualitätsvergleich darüber. Sonst bliebe der ältere
+      // Zeitpunkt stehen, und ein verzögerter Abgleich mit einer FRÜHEREN Beobachtung (z. B. „offen")
+      // gälte als neuer und hebe eine eben bestätigte Beschränkung auf. Kein Protokolleintrag: es hat
+      // sich nichts an Rechten geändert, nur ihre Bestätigung.
+      if (level === previous && gleicheQuellLage(ko.quellrechte, next)) {
+        return { updated, value: updated };
+      }
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.quellrechte",
+            target: id,
+            // Nur die Anzahl der Leser — die Kennungen stehen am Objekt, nicht im Protokoll.
+            payload: {
+              level,
+              previous,
+              downgrade: isConfidentialityDowngrade(previous, level),
+              folgtQuelle,
+              leser: next.leser?.length ?? null,
+            },
+          });
         },
       };
     });
@@ -7410,11 +7623,21 @@ export class KoService {
   // Papierkorb absichtlich sieht (neben `trashed`, `restore`, `eigeneRuecknahmeVon`); einziger
   // Aufrufer ist der Grabstein eines zurückgezogenen Dublettenbefunds (overlap-routes.ts), der
   // damit prüft, ob der Betrachter die zurückgezogene Seite sehen durfte. Endgelöscht → nichts.
-  async papierkorbFakten(
-    id: string,
-  ): Promise<{ author: string; confidentiality: KnowledgeObject["confidentiality"] } | undefined> {
+  //
+  // AUFNAHME 20260922 · confluence-import-rechte: die Quellleser gehören zu diesen Fakten — ohne sie
+  // fiele ein quellbeschränktes Objekt hier auf die Stufenregel zurück.
+  async papierkorbFakten(id: string): Promise<
+    | {
+        author: string;
+        confidentiality: KnowledgeObject["confidentiality"];
+        quellrechte: KnowledgeObject["quellrechte"];
+      }
+    | undefined
+  > {
     const ko = await this.repo.findById(id);
-    return ko?.deletedAt ? { author: ko.author, confidentiality: ko.confidentiality } : undefined;
+    return ko?.deletedAt
+      ? { author: ko.author, confidentiality: ko.confidentiality, quellrechte: ko.quellrechte }
+      : undefined;
   }
 
   private async imRuecknahmeVorgang(

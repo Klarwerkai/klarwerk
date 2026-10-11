@@ -855,16 +855,31 @@ const GRUNDWERTE: readonly Startwert[] = [
     bereich: "Einbettung",
     pflicht: { art: "nie" },
     geheim: false,
-    wofuer: "Der Anbieter der Vektor-Einbettung.",
-    ohneIhn: "Es gilt der eingebaute Anbieter.",
+    vorgabe: "stub",
+    wofuer:
+      "Der Anbieter der Vektor-Einbettung: `stub` (Testersatz ohne Modell) oder `local` (internes Embedding-Modell am lokalen Server).",
+    ohneIhn: "Es gilt der Stub — lexikalische Testvektoren, kein Modell und kein Qualitätsbeleg.",
   },
   {
     name: "KLARWERK_EMBEDDING_DIM",
     bereich: "Einbettung",
     pflicht: { art: "nie" },
     geheim: false,
-    wofuer: "Die Dimension der Einbettung.",
-    ohneIhn: "Es gilt die eingebaute Dimension. Ein Wechsel entwertet vorhandene Vektoren.",
+    wofuer:
+      "Die Dimension der Einbettung. Bei `local` Pflicht und gleich der Ausgabelänge des Modells.",
+    ohneIhn:
+      "Beim Stub gilt die eingebaute Dimension; bei `local` entsteht kein Embedder. Ein Wechsel entwertet vorhandene Vektoren.",
+  },
+  {
+    // AW-12 (aufnahme:20260922:gesamt-kundenbetrieb): der interne Embedding-Weg.
+    name: "KLARWERK_LOCAL_EMBEDDING_MODEL",
+    bereich: "Einbettung",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      "Modellname des internen Embedding-Modells am lokalen Server (KLARWERK_LOCAL_LLM_URL), nur für eine bestätigte On-Prem-Adresse.",
+    ohneIhn:
+      "Kein interner Embedding-Weg; `local` liefert dann keinen Embedder, der Stub bleibt Testersatz.",
   },
   {
     name: "KLARWERK_EMBED_MAX_INFLIGHT",

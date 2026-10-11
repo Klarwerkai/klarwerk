@@ -82,6 +82,12 @@ wird nicht gegen das Original verglichen (sie trägt „aus der Leseübersetzung
 Einwilligung aus Klara 01 gilt weiter; das Mitschicken markierten Textes geschieht nur auf eine
 ausdrückliche Handlung hin, der Hinweis steht an der Markierung.
 
+## Persönlicher Name und Motiv (`produkt:20261010:assistenz-name-avatar`)
+
+Die Figur trägt den Namen und das Motiv, die die Person unter „Meine Assistenz“ gewählt hat; ohne
+gespeicherten Namen heißt sie neutral „Assistenz“. Einrichtung, Ändern, Bildpaket, Zustände der
+Figur und Grenzen: `docs/klara/assistenz-name-avatar.md`.
+
 ## Entwürfe und bewusste Übernahme (Klara 04, `produkt:20261008:klara-vorschlaege`)
 
 | Fähigkeit | Wie es tatsächlich geht |

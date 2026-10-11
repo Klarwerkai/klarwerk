@@ -23,6 +23,7 @@ import {
   spaceFehlerSchluessel,
   spacesApi,
 } from "../api/spaces";
+import { ChatGespraechKnopf } from "../components/ChatGespraechKnopf";
 import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { SpaceFreigaberegel } from "../components/SpaceFreigaberegel";
 import { SpaceArchiv, SpaceBestand, SpaceZugriff } from "../components/SpaceVerwaltung";
@@ -568,7 +569,7 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
           </output>
         ) : null}
         <SpaceKopf s={s} />
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <Button
             data-testid="space-verlauf-knopf"
             aria-expanded={verlauf}
@@ -576,6 +577,10 @@ function SpaceDetail({ id }: { id: string }): JSX.Element {
           >
             {t("spaces.detail.verlauf")}
           </Button>
+          {/* produkt:20261007:interner-chat: das Gespräch derer, die die Inhalte lesen dürfen. */}
+          {s.darfInhalteLesen ? (
+            <ChatGespraechKnopf ziel={{ art: "space", spaceId: s.id }} />
+          ) : null}
         </div>
         {verlauf ? (
           <ol data-testid="space-verlauf" className="mt-2 space-y-1 border-t border-hairline pt-2">

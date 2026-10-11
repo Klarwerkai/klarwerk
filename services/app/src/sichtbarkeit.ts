@@ -51,6 +51,10 @@ import type { SessionUser } from "./http";
 export interface SichtbarkeitsFakten {
   confidentiality?: Confidentiality | null | undefined;
   author?: string | null | undefined;
+  // AUFNAHME 20260922 · confluence-import-rechte (R-0549): die Leser aus der Quelle. Optional in
+  // der Mindestform — eine Projektion ohne das Feld fällt auf die Stufenregel zurück (s. Grenze
+  // an `darfSehen`).
+  quellrechte?: { leser?: readonly string[] | undefined } | null | undefined;
   /** produkt:20261007:spaces — der führende Space; fehlt er, gilt allein Stufe + Autor. */
   spaceId?: unknown;
 }
@@ -86,20 +90,38 @@ function spaceErlaubt(user: SessionUser, spaceId: unknown): boolean {
  * Die Autor-Ausnahme ist keine Erfindung dieses Auftrags: dieselbe Zeile trägt bereits das Löschen
  * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
  * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
+ *
+ * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER VOR STUFE. Trägt das Objekt
+ * eine Leserliste aus der Quelle, entscheidet NUR sie: wer in Confluence lesen darf, liest in Klara,
+ * sonst niemand — kein `ko.validate`-Inhaber und auch NICHT der annehmende Autor (Ben, Nacharbeit 3:
+ * ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff, den die Quelle ihm
+ * verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht „offen". Ohne Liste gilt
+ * die Regel oben unverändert.
+ *
+ * PFLICHT FÜR JEDE PROJEKTION: wer Sichtbarkeitsfakten verkürzt weiterreicht, muss `quellrechte`
+ * mitnehmen (Gesamtanweisung, Papierkorb). Ohne sie fiele das Objekt auf die Stufenregel zurück.
  */
 export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  // Zusammenführung (Nacharbeit 23): der führende Space ist eine UNABHÄNGIGE UND-Bedingung — er gilt
+  // vor jeder weiteren Regel, auch vor den Quelllesern (ein Quellleser ohne Space-Leserecht liest
+  // nicht; die Quellleser öffnen keinen fremden Space).
   if (!spaceErlaubt(user, ko.spaceId)) {
     return false;
   }
+  const leser = ko.quellrechte?.leser;
+  if (Array.isArray(leser)) {
+    return user.id.length > 0 && leser.includes(user.id);
+  }
+  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
+  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
+  const istAutor = typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
   if (!isConfidential(ko.confidentiality)) {
     return true;
   }
   if (can(user.role, "ko.validate")) {
     return true;
   }
-  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
-  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
-  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+  return istAutor;
 }
 
 /**
@@ -147,6 +169,45 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
  */
 export function schluesselBetrachter(offeneSpaces: ReadonlySet<string>): SessionUser {
   return { id: "", role: "viewer", spaceLesbar: offeneSpaces };
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 6, Befund F1) — DIE WARTESCHLANGE.
+// ================================================================================================
+//
+// Ein Importkandidat trägt Titel und Volltext seiner Quellseite. Die Warteschlange verlangt nur
+// `ko.read` — ohne diese Grenze las jeder Leser eine in Confluence auf Lea beschränkte Seite dort,
+// bevor (und nachdem) sie in Klara angenommen war. DIESELBE Regel wie am Objekt, keine Ausnahme für
+// `ko.validate`:
+//   · ANGENOMMEN (`koId`) und das Objekt lebt → `darfSehen` am Objekt: seine Quellrechte sind die
+//     aktuellen (ein späterer Abgleich hat sie womöglich schon nachgezogen).
+//   · sonst die Quellrechte des Eintrags selbst, auf Klara-Konten abgebildet — dieselbe Abbildung
+//     wie beim Annehmen.
+//   · ein Eintrag OHNE Quellrechte (Dateiweg, andere Quellen) bleibt, wie er war: die Warteschlange
+//     ist für ihn eine Prüffläche für jeden mit `ko.read`.
+export interface KandidatenRechtequelle {
+  /** Die Quellrechte eines Eintrags als Objektrechte — `undefined` = der Eintrag trägt keine. */
+  quellrechteFuerKandidat(item: unknown): Promise<{ leser?: readonly string[] } | undefined>;
+  /** Das lebende Objekt hinter einer Kennung (Papierkorb ausgeblendet). */
+  wissensobjektFuerSicht(koId: string): Promise<SichtbarkeitsFakten | undefined>;
+}
+
+export async function darfKandidatSehen(
+  user: SessionUser,
+  kandidat: { item: unknown; koId: string | null },
+  quelle: KandidatenRechtequelle,
+): Promise<boolean> {
+  const rechte = await quelle.quellrechteFuerKandidat(kandidat.item);
+  if (rechte === undefined) {
+    return true;
+  }
+  if (kandidat.koId) {
+    const ko = await quelle.wissensobjektFuerSicht(kandidat.koId);
+    if (ko) {
+      return darfSehen(user, ko);
+    }
+  }
+  return darfSehen(user, { quellrechte: rechte });
 }
 
 // ================================================================================================
@@ -239,13 +300,24 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
       //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
+      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, gilt NUR
+      //     sie — wörtlich der erste Zweig von `darfSehen`, OHNE Autorausnahme (Nacharbeit 3).
+      //     Dieselbe Kennung `autor` ist auch der Betrachter; ein leerer Betrachter steht in keiner
+      //     Liste (normalisiert).
+      const istAutor =
+        `(COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
+        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
+        ` AND ${spaltenTraeger}.author_key = ${autor})`;
+      const leser = `${spaltenTraeger}.data->'quellrechte'->'leser'`;
       return (
         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
-        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
+        ` AND (CASE WHEN jsonb_typeof(${leser}) = 'array'` +
+        ` THEN (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text))` +
+        ` ELSE (${spaltenTraeger}.confidentiality_key = 'intern'` +
         ` OR ${rolle}::boolean` +
-        ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
-        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
-        ` AND ${spaltenTraeger}.author_key = ${autor}))${spaceBedingung})`
+        // Zusammenführung (Nacharbeit 23): die Space-Bedingung (main) als UND hinter Quellleser-/
+        // Stufenregel — Zeile für Zeile wie `darfSehen`.
+        ` OR ${istAutor}) END)${spaceBedingung})`
       );
     },
     params: spaces ? [darfVertraulich, betrachter, spaces] : [darfVertraulich, betrachter],

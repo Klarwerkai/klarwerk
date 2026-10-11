@@ -781,10 +781,11 @@ export function ImportExplore(): JSX.Element {
       {/* WP-COCKPIT-LINIE Schritt 1: Quelle wählen. */}
       <ImportStepHeading step="source" />
 
-      {/* AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie „wo die Reise hingeht" — Systeme
-          (Confluence · JSON-Import aktiv; Jira · Word · PDF bald; SharePoint/Teams/Drive/… geplant)
-          + Dateien (JSON aktiv; Word/PDF bald; Excel/PowerPoint/CSV/OCR/Transkript geplant). NUR
-          aktive Kacheln loesen den echten, bestehenden Fluss aus: Confluence startet die READ-ONLY
+      {/* AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie „wo die Reise hingeht". Die Zustände
+          stehen NICHT hier, sondern allein in `lib/importSourceGallery.ts` (SYSTEM_SOURCES und die
+          aus `detectFileKind` abgeleiteten Dateikacheln, JOB 3190/3235/4086) — dort ist z. B.
+          Word/PDF als Datei „im Erfassen" und nur als Quellenanbindung „geplant". NUR aktive
+          Kacheln loesen den echten, bestehenden Fluss aus: Confluence startet die READ-ONLY
           Erkundung, JSON oeffnet den bestehenden Datei-Dialog. „bald"/„geplant" zeigen nur einen
           ehrlichen Hinweis — kein Import, kein Formular, kein Fortschritt. */}
       <div className="mt-2 pl-8" ref={galerieRef} onClickCapture={merkeRueckkehrpunkt}>
