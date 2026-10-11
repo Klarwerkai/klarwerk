@@ -87,6 +87,14 @@ export interface SpacesRouteDienste {
    * holt die nächste Entscheidung es serverseitig nach.
    */
   freigaberegelAnwenden?: (koId: string, akteur: string) => Promise<void>;
+  /**
+   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 32; Entscheidung 25): das AUSDRÜCKLICHE
+   * Existenzrecht eines Kontos — es darf erfahren, dass es Objekte gibt, die es nicht lesen darf.
+   * Nur wer es hat, kann einen Space löschen, dessen sichtbarer Bestand leer ist: ob die Löschung
+   * gelingt, hängt dann vom verborgenen Bestand ab. Fehlt die Angabe oder sagt sie nein, ist der
+   * Löschweg vom verborgenen Bestand unabhängig (s. `fuehreLoeschungAus`).
+   */
+  existenzrecht?: (konto: { id: string; email: string }) => boolean;
 }
 
 /** Eine Zeile in einer Space- oder Ansichtsliste: dasselbe Objekt, keine Kopie. */
@@ -443,7 +451,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     ansichten: number;
     mitglieder: number;
     darfLoeschen: boolean;
-    grund: "SPACE_NICHT_LEER" | null;
+    /**
+     * `EXISTENZRECHT_FEHLT` (Nacharbeit 32): der sichtbare Bestand ist leer, aber ohne
+     * ausdrückliches Existenzrecht hinge der Ausgang vom verborgenen Bestand ab — gelöscht wird
+     * dann nie, unabhängig davon, ob es verborgene Artikel gibt.
+     */
+    grund: "SPACE_NICHT_LEER" | "EXISTENZRECHT_FEHLT" | null;
   }
 
   /**
@@ -467,6 +480,12 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
     const lesbar = fuehrend.filter((k) => darfSehen(user, k));
     const sichtbar = lesbar.filter((k) => !k.deletedAt);
     const sichtbarLeer = lesbar.length === 0;
+    // Nacharbeit 32: beides hängt nur am Konto und am LESBAREN Bestand — nie am verborgenen.
+    const konto = dienste.existenzrecht
+      ? (await dienste.auth.listUsers()).find((u) => u.id === user.id)
+      : undefined;
+    const recht = konto !== undefined && dienste.existenzrecht?.(konto) === true;
+    const grund = !sichtbarLeer ? "SPACE_NICHT_LEER" : recht ? null : "EXISTENZRECHT_FEHLT";
     return {
       vorschau: {
         space: { id: space.id, name: space.name, version: space.version },
@@ -476,8 +495,8 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
         imPapierkorb: lesbar.length - sichtbar.length,
         ansichten: space.ansichten.length,
         mitglieder: space.mitglieder.length,
-        darfLoeschen: sichtbarLeer,
-        grund: sichtbarLeer ? null : "SPACE_NICHT_LEER",
+        darfLoeschen: grund === null,
+        grund,
       },
       verborgenBlockiert: fuehrend.length > lesbar.length,
     };
@@ -536,7 +555,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       });
       return;
     }
-    if (!vorschau.darfLoeschen) {
+    if (vorschau.grund === "SPACE_NICHT_LEER") {
       reply.code(409).send({
         error: "SPACE_NICHT_LEER",
         message: "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
@@ -544,9 +563,21 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       });
       return;
     }
-    // Nacharbeit 31 (Ben, Entscheidung 25): nur Artikel, die der Betrachter NICHT lesen darf,
-    // halten die Löschung auf. Die Löschung unterbleibt (kein Space ohne Artikel-Bezug), die Antwort
-    // ist eine allgemeine Meldung: kein Grund, keine Vorschau, keine Zahl, keine Kennung.
+    // Nacharbeit 32 (Ben; Entscheidung 25): ohne ausdrückliches Existenzrecht wird ein Space, dessen
+    // LESBARER Bestand leer ist, nie gelöscht — gleich, ob er leer ist oder nur verborgene Artikel
+    // führt. Antwort UND Folgezustand (der Space bleibt) sind damit vom verborgenen Bestand
+    // unabhängig; die Schutzprüfung gegen verwaiste Artikel bleibt unberührt.
+    if (vorschau.grund === "EXISTENZRECHT_FEHLT") {
+      reply.code(403).send({
+        error: "EXISTENZRECHT_FEHLT",
+        message:
+          "Diesen Space löscht, wer ausdrücklich erfahren darf, ob er noch Artikel führt. Bitte die Kontoverwaltung ansprechen.",
+      });
+      return;
+    }
+    // Nur mit Existenzrecht: halten Artikel, die der Betrachter NICHT lesen darf, die Löschung auf,
+    // unterbleibt sie (kein verwaister Artikel). Die Antwort darf das hier sagen (Existenzrecht),
+    // nennt aber weiter keinen Titel, keine Zahl und keine Kennung.
     if (verborgenBlockiert) {
       reply.code(409).send({
         error: "LOESCHUNG_NICHT_MOEGLICH",

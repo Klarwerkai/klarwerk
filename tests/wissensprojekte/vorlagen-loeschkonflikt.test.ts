@@ -209,6 +209,9 @@ it("K · Löschkonflikt: kein Firmenkontext-Rückfall und kein fremder Lesezugri
 
 it("V · Löschung vor der Einreichung: 409 SPACE_GELOESCHT, es entsteht nichts", async () => {
   const b = await buehne();
+  // gesamt-leserechte (Nacharbeit 32): leeren Space löscht nur, wer ausdrückliches Existenzrecht hat.
+  const vorher = process.env.KLARWERK_EXISTENZRECHT;
+  process.env.KLARWERK_EXISTENZRECHT = "admin@vorlagenrace.test";
   try {
     expect((await loeschen(b)).statusCode).toBe(200);
     const res = await anlegen(b);
@@ -218,6 +221,11 @@ it("V · Löschung vor der Einreichung: 409 SPACE_GELOESCHT, es entsteht nichts"
     expect(l.ko).toBeUndefined();
     expect(l.imFirmenfilter).toBe(false);
   } finally {
+    if (vorher === undefined) {
+      delete process.env.KLARWERK_EXISTENZRECHT;
+    } else {
+      process.env.KLARWERK_EXISTENZRECHT = vorher;
+    }
     await b.app.close();
   }
 });

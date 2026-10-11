@@ -99,9 +99,16 @@ Beide fachlichen Stände sind erhalten; wo sie sich widersprachen, gilt die enge
 - **Space-Löschung (Nacharbeit 31, Ben; Entscheidung 25):** Vorschau und Fehlerantworten nennen nur
   Lesbares (sichtbare Artikel, lesbare Papierkorbartikel); `weitereVerborgen` entfällt. Die
   Schutzprüfung über den Gesamtbestand bleibt; halten nur verborgene Artikel die Löschung auf, kommt
-  die allgemeine Meldung `LOESCHUNG_NICHT_MOEGLICH`. **Offen:** das verbleibende eine Bit
-  (gelöscht/nicht möglich) ließe sich nur mit einem „ausdrücklichen Existenzrecht“ sauber ordnen —
-  wer es bekommt, ist nicht entschieden.
+  die allgemeine Meldung `LOESCHUNG_NICHT_MOEGLICH`.
+- **Space-Löschung ohne Existenzrecht (Nacharbeit 32, Ben; Entscheidung 25):** das ausdrückliche
+  Existenzrecht vergibt der Betrieb je Konto (`KLARWERK_EXISTENZRECHT`, Kennung oder E-Mail; Vorgabe
+  leer = niemand; bei jedem Abruf frisch gelesen). Ohne es wird ein Space, dessen **lesbarer**
+  Bestand leer ist, nie gelöscht (403 `EXISTENZRECHT_FEHLT`, Vorschau `grund: EXISTENZRECHT_FEHLT`)
+  — gleich, ob er leer ist oder nur verborgene Artikel führt; Antwort und Folgezustand sind damit
+  vom verborgenen Bestand unabhängig. Nur mit Existenzrecht gilt der Ablauf von Nacharbeit 31
+  (gelöscht oder `LOESCHUNG_NICHT_MOEGLICH`). Die Schutzprüfung gegen verwaiste Artikel bleibt.
+  **Folge und offen:** ohne Vergabe kann niemand einen sichtbar leeren Space löschen; wer das Recht
+  bekommt, ist eine Betreiber-/Produktentscheidung (nicht getroffen).
 - **Prüfprotokoll × Quellrechte (Nacharbeit 24):** die Sichtbarkeitsfakten tragen die Leserliste; die
   Objektprüfung läuft für jeden Leser, uneingeschränkt ist nur, wem danach nichts verborgen bleibt.
   Der Löschbeleg `ko.purged` hält fest, ob eine Leserliste bestand (`quellbeschraenkt`, ohne

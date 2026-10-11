@@ -599,6 +599,10 @@ function SpaceLoeschen({ id, onAbbrechen }: { id: string; onAbbrechen: () => voi
           <p className="text-[12px] text-muted-2">{t("spaces.loeschen.bleibt")}</p>
           {v.darfLoeschen ? (
             <p data-testid="space-loeschen-leer">{t("spaces.loeschen.leer")}</p>
+          ) : v.grund === "EXISTENZRECHT_FEHLT" ? (
+            <output data-testid="space-loeschen-existenzrecht" className="block">
+              {t("spaces.loeschen.existenzrecht")}
+            </output>
           ) : (
             <output data-testid="space-loeschen-gesperrt" className="block space-y-1">
               <p className="font-semibold text-ink">{t("spaces.loeschen.nichtLeer")}</p>

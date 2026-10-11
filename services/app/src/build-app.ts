@@ -5281,6 +5281,13 @@ export function buildApp(
         teams: services.teams,
         // ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl sofort.
         freigaberegelAnwenden: (koId, akteur) => freigaberegeln.anwenden(koId, akteur),
+        // gesamt-leserechte (Nacharbeit 32, Entscheidung 25): das ausdrückliche Existenzrecht — vom
+        // Betrieb je Konto (Kennung oder E-Mail) vergeben, bei jedem Abruf frisch gelesen (Entzug
+        // wirkt sofort).
+        existenzrecht: ({ id, email }) =>
+          [...ketteneinsichtKonten(process.env.KLARWERK_EXISTENZRECHT)].some(
+            (k) => k === id || k.toLowerCase() === email.toLowerCase(),
+          ),
         // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
         // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
         // Verzeichnis-Zuweisung.

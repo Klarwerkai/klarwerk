@@ -1613,10 +1613,10 @@ index 4917d8c99..2856ea6ff 100644
   *
   * UND AUSDRÜCKLICH KEIN SEED. Eine vorbelegte Zeile hätte eine Versionszahl, und damit wäre
 diff --git b/services/app/src/build-app.ts a/services/app/src/build-app.ts
-index a06883799..2a5dcb570 100644
+index 0cca3acf9..2a5dcb570 100644
 --- b/services/app/src/build-app.ts
 +++ a/services/app/src/build-app.ts
-@@ -16,32 +16,24 @@ import {
+@@ -16,33 +16,24 @@ import {
    type GapRepo,
    InMemoryAnswerSnapshotRepo,
    InMemoryGapRepo,
@@ -1634,6 +1634,7 @@ index a06883799..2a5dcb570 100644
 -  InMemorySecondFactorRepo,
    InMemorySessionRepo,
    InMemoryUserRepo,
+-  type OidcProvider,
    type PasswordResetRepo,
    PgPasswordResetRepo,
 -  PgSecondFactorRepo,
@@ -1649,7 +1650,7 @@ index a06883799..2a5dcb570 100644
  } from "../../auth";
  import {
    CaptureError,
-@@ -52,35 +44,23 @@ import {
+@@ -53,35 +44,23 @@ import {
    validateDraftPayloadShape,
  } from "../../capture";
  import {
@@ -1686,7 +1687,7 @@ index a06883799..2a5dcb570 100644
  import {
    DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
    type ExternalKnowledgePolicyRepo,
-@@ -107,10 +87,8 @@ import {
+@@ -108,10 +87,8 @@ import {
    // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
    // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
    GesamtanweisungDienst,
@@ -1697,7 +1698,7 @@ index a06883799..2a5dcb570 100644
    InMemoryKoRepo,
    InMemoryKoVersionRepo,
    InMemoryUploadLimitsRepo,
-@@ -129,7 +107,6 @@ import {
+@@ -130,7 +107,6 @@ import {
    PgAnweisungRepo,
    PgDokumentaktenRepo,
    PgEvidenceRepo,
@@ -1705,7 +1706,7 @@ index a06883799..2a5dcb570 100644
    PgKantenRepo,
    PgKoRepo,
    PgKoSearchProjectionRepo,
-@@ -139,7 +116,6 @@ import {
+@@ -140,7 +116,6 @@ import {
    type UploadLimitsRepo,
    type WithTx,
    anweisungFehler,
@@ -1713,7 +1714,7 @@ index a06883799..2a5dcb570 100644
  } from "../../knowledge-object";
  import {
    type CandidateRepo,
-@@ -147,9 +123,11 @@ import {
+@@ -148,9 +123,11 @@ import {
    type ImportRunRepo,
    InMemoryCandidateRepo,
    InMemoryExternalSourceRepo,
@@ -1725,7 +1726,7 @@ index a06883799..2a5dcb570 100644
  } from "../../library-analytics";
  import {
    InMemoryLifecycleRepo,
-@@ -182,25 +160,17 @@ import {
+@@ -183,25 +160,17 @@ import {
    PgNotificationSeenRepo,
    createMailerFromEnv,
  } from "../../notifications";
@@ -1754,7 +1755,7 @@ index a06883799..2a5dcb570 100644
    type KlaraSessionRepo,
    ModelCapacityError,
    ModelProvider,
-@@ -209,12 +179,8 @@ import {
+@@ -210,12 +179,8 @@ import {
    PgReasonerPolicyRepo,
    Reasoner,
    type ReasonerPolicyRepo,
@@ -1767,7 +1768,7 @@ index a06883799..2a5dcb570 100644
  } from "../../reasoner";
  import {
    type AssignmentRepo,
-@@ -241,26 +207,15 @@ import {
+@@ -242,26 +207,15 @@ import {
    AddonAuthAttemptThrottle,
    addonAuthThrottleConfigFromEnv,
    isAddonEndpointPath,
@@ -1794,7 +1795,7 @@ index a06883799..2a5dcb570 100644
  // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
  // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
  import {
-@@ -268,8 +223,6 @@ import {
+@@ -269,8 +223,6 @@ import {
    InMemoryBrandingSettingsRepo,
    PgBrandingSettingsRepo,
  } from "./branding-settings";
@@ -1803,7 +1804,7 @@ index a06883799..2a5dcb570 100644
  import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
  // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
  // Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
-@@ -278,34 +231,11 @@ import {
+@@ -279,35 +231,11 @@ import {
    InMemoryConfluenceImportSchalterRepo,
    PgConfluenceImportSchalterRepo,
  } from "./confluence-import-schalter";
@@ -1823,6 +1824,7 @@ index a06883799..2a5dcb570 100644
  import { cappedEmbeddingProvider } from "./embed-concurrency";
  import type { FactoryReset } from "./factory-reset";
  import { schalterAn } from "./feature-flags";
+-import { FirmenresetSso } from "./firmenreset-sso";
 -// Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
 -// (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 -import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
@@ -1839,7 +1841,7 @@ index a06883799..2a5dcb570 100644
  import {
    type SessionUser,
    isInternalOnlyError,
-@@ -314,104 +244,30 @@ import {
+@@ -316,104 +244,30 @@ import {
    tokenFromRequest,
  } from "./http";
  import { impactReport } from "./impact";
@@ -1949,7 +1951,7 @@ index a06883799..2a5dcb570 100644
  // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): das seit JOB 4154 fertige, aber an keiner App
  // angemeldete Routen-Plugin der Gesamtanweisung. Hier — und nur hier — bekommt es seinen Aufrufer.
  import { gesamtanweisungRoutes } from "./routes/gesamtanweisung-routes";
-@@ -419,65 +275,34 @@ import { helpRoutes } from "./routes/help-routes";
+@@ -421,65 +275,34 @@ import { helpRoutes } from "./routes/help-routes";
  import { i18nRoutes } from "./routes/i18n-routes";
  import { impactRoutes } from "./routes/impact-routes";
  import { importAccessRoutes } from "./routes/import-access-routes";
@@ -2016,7 +2018,7 @@ index a06883799..2a5dcb570 100644
  // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
  // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
  import { stelleSuchprojektionBereit } from "./search-projection-startup";
-@@ -486,71 +311,13 @@ import { AnswerExplanationService } from "./services/answer-explanation";
+@@ -488,71 +311,13 @@ import { AnswerExplanationService } from "./services/answer-explanation";
  // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
  import { ImportAccessService } from "./services/import-access-service";
  import { KlaraSessionService } from "./services/klara-session-service";
@@ -2089,7 +2091,7 @@ index a06883799..2a5dcb570 100644
  
  // ================================================================================================
  // JOB 3776 — WO DER STARTVERTRAG GERUFEN WIRD: AM EINSTIEGSPUNKT. HIER NICHT MEHR.
-@@ -643,87 +410,6 @@ export interface AppServices {
+@@ -645,87 +410,6 @@ export interface AppServices {
     * In-Memory-Ablage, genau wie bei `lesevarianten` und `klaraSessions`.
     */
    brandingSettings: BrandingSettingsRepo;
@@ -2177,7 +2179,7 @@ index a06883799..2a5dcb570 100644
    /**
     * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
     * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
-@@ -739,60 +425,6 @@ export interface AppServices {
+@@ -741,60 +425,6 @@ export interface AppServices {
     * denselben Hinweis an derselben Datenbankuhr sehen.
     */
    bearbeitungen: BearbeitungsRepo;
@@ -2238,7 +2240,7 @@ index a06883799..2a5dcb570 100644
    /**
     * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
     * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
-@@ -821,35 +453,24 @@ export interface AppServices {
+@@ -823,35 +453,24 @@ export interface AppServices {
    answerSnapshots: AnswerSnapshotRepo;
    validation: ValidationService;
    conflicts: ConflictService;
@@ -2280,7 +2282,7 @@ index a06883799..2a5dcb570 100644
    media: MediaAnalysisService;
    // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
    modelRuns: ModelRunService;
-@@ -862,9 +483,6 @@ export interface AppServices {
+@@ -864,9 +483,6 @@ export interface AppServices {
    // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
    importRuns: ImportRunRepo;
    externalSources: ExternalSourceRepo;
@@ -2290,7 +2292,7 @@ index a06883799..2a5dcb570 100644
    // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
    dokumente: DokumentaktenService;
    mailer: Mailer;
-@@ -875,8 +493,6 @@ export interface AppServices {
+@@ -877,8 +493,6 @@ export interface AppServices {
    externalKnowledge: ExternalKnowledgePolicyRepo;
    // SCRUM-421: einstellbare Upload-Grenzen (persistiert), direkt für die KO-Routen.
    uploadLimits: UploadLimitsRepo;
@@ -2299,7 +2301,7 @@ index a06883799..2a5dcb570 100644
    // WP-D11: PPTX-Folien-Konverter (injizierbar — Tests nutzen einen Fake, keine soffice-Pflicht).
    slideConverter: SlideConverter;
    // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Von buildApp
-@@ -903,24 +519,15 @@ export interface AppRepos {
+@@ -905,24 +519,15 @@ export interface AppRepos {
    auditRepo: AuditRepo;
    koRepo: KoRepo;
    koVersions: KoVersionRepo;
@@ -2324,7 +2326,7 @@ index a06883799..2a5dcb570 100644
    // Berater-Konzept Duplikate 04.07. (Stufe D3b): Persistenz der Überschneidungs-Einträge.
    overlapRepo: OverlapRepo;
    // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
-@@ -934,7 +541,6 @@ export interface AppRepos {
+@@ -936,7 +541,6 @@ export interface AppRepos {
    // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
    importRuns: ImportRunRepo;
    externalSources: ExternalSourceRepo;
@@ -2332,7 +2334,7 @@ index a06883799..2a5dcb570 100644
    // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (eigene Tabelle).
    dokumente: DokumentaktenRepo;
    modelRuns: ModelRunRepo;
-@@ -950,8 +556,6 @@ export interface AppRepos {
+@@ -952,8 +556,6 @@ export interface AppRepos {
    externalKnowledge: ExternalKnowledgePolicyRepo;
    // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
    uploadLimits: UploadLimitsRepo;
@@ -2341,7 +2343,7 @@ index a06883799..2a5dcb570 100644
    /**
     * W1 Weg A: der Answer-Beleg-Schreibweg — und zwar HIER, nicht mehr als Option.
     *
-@@ -1275,62 +879,11 @@ export function assembleServices(
+@@ -1277,62 +879,11 @@ export function assembleServices(
      // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
      // andere Haltbarkeit, beide werden getrennt geprüft.
      brandingSettings?: BrandingSettingsRepo;
@@ -2404,7 +2406,7 @@ index a06883799..2a5dcb570 100644
      // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
      // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
      // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
-@@ -1348,27 +901,10 @@ export function assembleServices(
+@@ -1350,27 +901,10 @@ export function assembleServices(
      // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
      ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
    });
@@ -2432,7 +2434,7 @@ index a06883799..2a5dcb570 100644
      evidence: repos.evidence,
      // SCRUM-395: Standard-Prüferanzahl aus der Admin-Einstellung — als injizierte
      // Funktion (keine Modulgrenzen-Verletzung); null → Modul-Default 3.
-@@ -1378,8 +914,6 @@ export function assembleServices(
+@@ -1380,8 +914,6 @@ export function assembleServices(
      ...(opts.withTx ? { withTx: opts.withTx } : {}),
      ...(speicher ? { ruecknahmeKlammer: speicher.klammer } : {}),
      ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
@@ -2441,7 +2443,7 @@ index a06883799..2a5dcb570 100644
    });
    // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
    // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
-@@ -1455,54 +989,18 @@ export function assembleServices(
+@@ -1457,54 +989,18 @@ export function assembleServices(
                  ),
                );
              }
@@ -2496,7 +2498,7 @@ index a06883799..2a5dcb570 100644
      // W3-C1 (Auftrag 76): ab hier schreibt der Antwortweg wirklich einen Beleg.
      // W1 Weg A (Auftrag 143): das Repo kommt aus `repos.` — derselbe Satz, den die Dev-Persistenz
      // journaliert. Kein bedingter Key mehr: es ist immer da, und damit läuft der Beleg in JEDER
-@@ -1535,12 +1033,7 @@ export function assembleServices(
+@@ -1537,12 +1033,7 @@ export function assembleServices(
      repo: repos.conflictsRepo,
      audit,
      currentVersion: koVersion,
@@ -2509,7 +2511,7 @@ index a06883799..2a5dcb570 100644
    // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
    // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
    // `services/knowledge-object` nicht kennen (dependency-cruiser). Die Regel selbst wohnt im
-@@ -1567,16 +1060,14 @@ export function assembleServices(
+@@ -1569,16 +1060,14 @@ export function assembleServices(
    //
    // Hier stand „künftig: || jiraEnabled || …". Der Satz beschrieb einen Plan und ist mit
    // SharePoint/OneDrive eingelöst; als Kommentar STEHEN ZU BLEIBEN hiesse, dass die Zeile weiter
@@ -2531,7 +2533,7 @@ index a06883799..2a5dcb570 100644
    // JOB 4155 (WG-LUECKEN): DER KANTENBESTAND ENTSTEHT JETZT HIER, EINE STUFE FRÜHER — und zwar
    // GENAU EINMAL. Er stand bis hierher erst im `return`-Objekt weiter unten (`kanten:` dort), und
    // damit konnte ihn der `LibraryService` nicht bekommen, der davor gebaut wird. Ihn dort ein
-@@ -1607,22 +1098,6 @@ export function assembleServices(
+@@ -1609,22 +1098,6 @@ export function assembleServices(
      // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
      // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
      kanten: kantenBestand,
@@ -2554,7 +2556,7 @@ index a06883799..2a5dcb570 100644
      // R-0163: Anhänge und Bilder einer angenommenen Confluence-Seite — nur hinter demselben
      // Schalter wie der Import selbst; der Adapter entsteht je Annahme aus derselben Factory wie in
      // den Importrouten (Token bleibt in der Client-Closure).
-@@ -1637,9 +1112,7 @@ export function assembleServices(
+@@ -1639,9 +1112,7 @@ export function assembleServices(
          }
        : {}),
    });
@@ -2565,7 +2567,7 @@ index a06883799..2a5dcb570 100644
  
    // ==============================================================================================
    // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
-@@ -1661,41 +1134,9 @@ export function assembleServices(
+@@ -1663,41 +1134,9 @@ export function assembleServices(
    // SCRUM-506.
    policyNahtSchliessen((betrachter) => sichtbarkeitsfilterFuer(betrachter as never) as never);
  
@@ -2607,7 +2609,7 @@ index a06883799..2a5dcb570 100644
      klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
      // JOB 3326: die Lesevarianten-Ablage — Postgres, wenn injiziert, sonst im Speicher.
      lesevarianten: opts.lesevarianten ?? new InMemoryLesevariantenRepo(),
-@@ -1720,76 +1161,17 @@ export function assembleServices(
+@@ -1722,76 +1161,17 @@ export function assembleServices(
        opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
      // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
      brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
@@ -2684,7 +2686,7 @@ index a06883799..2a5dcb570 100644
      // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
      dokumente,
      ko,
-@@ -1797,7 +1179,6 @@ export function assembleServices(
+@@ -1799,7 +1179,6 @@ export function assembleServices(
        users: repos.users,
        sessions: repos.sessions,
        resetTokens: repos.resetTokens,
@@ -2692,7 +2694,7 @@ index a06883799..2a5dcb570 100644
        audit,
        // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
        canChangeRole,
-@@ -1893,9 +1274,14 @@ export function assembleServices(
+@@ -1895,9 +1274,14 @@ export function assembleServices(
      // braucht. Er ist DASSELBE Repo, das der Schreibweg oben benutzt — ein zweites waere ein
      // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
      answerSnapshots: repos.answerSnapshots,
@@ -2710,7 +2712,7 @@ index a06883799..2a5dcb570 100644
      conflicts,
      overlaps,
      // Pedi 04.07.: Schwellen-Repo direkt durchreichen (Routen + Duplikat-Erkennung nutzen es).
-@@ -1904,33 +1290,7 @@ export function assembleServices(
+@@ -1906,33 +1290,7 @@ export function assembleServices(
      // JOB 3363: dieselbe Kandidaten-Ablage, die `library` oben bekommen hat — kein zweiter Bestand.
      candidates: repos.candidates,
      // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
@@ -2745,7 +2747,7 @@ index a06883799..2a5dcb570 100644
      // SCRUM-120: Management/Kapital — stateless, aggregiert echte Live-Daten.
      management: new ManagementService({
        koService: ko,
-@@ -1967,21 +1327,6 @@ export function assembleServices(
+@@ -1969,21 +1327,6 @@ export function assembleServices(
        busFactor: (opts) => library.busFactor(opts),
        // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
        profiles: repos.managementProfiles,
@@ -2767,7 +2769,7 @@ index a06883799..2a5dcb570 100644
      }),
      // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
      externalSearch: createExternalSearchFromEnv(),
-@@ -1989,6 +1334,16 @@ export function assembleServices(
+@@ -1991,6 +1334,16 @@ export function assembleServices(
      i18n: new I18nService(),
      // SCRUM-121: interner Objekt-/Attachment-Speicher (In-Memory; Pg/Disk = Folge-Ticket).
      objects,
@@ -2784,7 +2786,7 @@ index a06883799..2a5dcb570 100644
      // JOB 2706 D1 (R2-30): nur, wenn das Repo die Traegersuche an der Datenquelle kann. Die
      // Methoden sind am `KoRepo` optional (Begruendung dort); hier werden sie durchgereicht, nicht
      // geraten. Ebenso der Schreibstand aus der Ablage.
-@@ -2007,11 +1362,7 @@ export function assembleServices(
+@@ -2009,11 +1362,7 @@ export function assembleServices(
        // vertrauliche Medien per Konstruktion (rejectsConfidential), analog cappedCloud beim Reasoner.
        // SCRUM-502 R8: gecappter Cloud-Transkriber aus der Factory (Egress-Wächter zwingend; roher
        // Client + Credential modul-intern, hier nicht erreichbar). Ohne Schlüssel → undefined (inaktiv).
@@ -2797,7 +2799,7 @@ index a06883799..2a5dcb570 100644
        // SCRUM-521 (WP2, nacht24): KO-Kontext für die Egress-Entscheidung — die Stufen ALLER KOs,
        // die das Objekt als Anhang tragen (restriktivste gewinnt im Service; ein „intern"
        // hochgeladenes Medium an einem vertraulichen KO bleibt vertraulich). Injizierte Auflösung,
-@@ -2024,13 +1375,6 @@ export function assembleServices(
+@@ -2026,13 +1375,6 @@ export function assembleServices(
          (await ko.list({}))
            .filter((k) => (k.attachments ?? []).some((a) => a.objectId === objectId))
            .map((k) => k.confidentiality ?? "intern"),
@@ -2811,7 +2813,7 @@ index a06883799..2a5dcb570 100644
      }),
      // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
      modelRuns: new ModelRunService({
-@@ -2047,8 +1391,6 @@ export function assembleServices(
+@@ -2049,8 +1391,6 @@ export function assembleServices(
      externalKnowledge: repos.externalKnowledge,
      // SCRUM-421: Upload-Grenzen-Repo direkt durchreichen (KO-Routen nutzen es + Audit).
      uploadLimits: repos.uploadLimits,
@@ -2820,7 +2822,7 @@ index a06883799..2a5dcb570 100644
      // WP-D11: PPTX-Folien → PNG (LibreOffice headless). In Tests/Dev ohne soffice meldet
      // available() ehrlich false (Route → 503); Tests injizieren einen Fake VOR buildApp.
      slideConverter: createSofficeSlideConverter(),
-@@ -2066,30 +1408,23 @@ export function inMemoryRepos(): AppRepos {
+@@ -2068,30 +1408,23 @@ export function inMemoryRepos(): AppRepos {
      auditRepo: new InMemoryAuditRepo(),
      koRepo: new InMemoryKoRepo(schreibstand),
      koVersions: new InMemoryKoVersionRepo(schreibstand),
@@ -2852,7 +2854,7 @@ index a06883799..2a5dcb570 100644
      dokumente: new InMemoryDokumentaktenRepo(),
      modelRuns: new InMemoryModelRunRepo(),
      notificationSeen: new InMemoryNotificationSeenRepo(),
-@@ -2098,7 +1433,6 @@ export function inMemoryRepos(): AppRepos {
+@@ -2100,7 +1433,6 @@ export function inMemoryRepos(): AppRepos {
      validationSettings: new InMemoryValidationSettingsRepo(),
      externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
      uploadLimits: new InMemoryUploadLimitsRepo(),
@@ -2860,7 +2862,7 @@ index a06883799..2a5dcb570 100644
      // W1 Weg A (Auftrag 143): der Answer-Beleg gehört in denselben Repo-Satz wie alles andere —
      // nur so umhüllt ihn die Dev-Persistenz und spielt ihn beim Start aus dem Journal zurück.
      answerSnapshots: new InMemoryAnswerSnapshotRepo(),
-@@ -2147,21 +1481,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2149,21 +1481,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
        auditRepo: new PgAuditRepo(pool),
        koRepo: new PgKoRepo(pool),
        koVersions: new PgKoVersionRepo(pool),
@@ -2882,7 +2884,7 @@ index a06883799..2a5dcb570 100644
        // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge persistent.
        overlapRepo: new PgOverlapRepo(pool),
        // Pedi 04.07.: Anzeige-Schwelle persistent.
-@@ -2174,10 +1502,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2176,10 +1502,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
        candidates: new PgCandidateRepo(pool),
        // W2-A/148: Laufdomaene persistent — ein Lauf muss einen Neustart ueberleben, sonst waere
        // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
@@ -2894,7 +2896,7 @@ index a06883799..2a5dcb570 100644
        // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
        dokumente: new PgDokumentaktenRepo(pool),
        // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
-@@ -2194,8 +1520,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2196,8 +1520,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
        externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
        // SCRUM-421: Upload-Grenzen persistent.
        uploadLimits: new PgUploadLimitsRepo(pool),
@@ -2903,7 +2905,7 @@ index a06883799..2a5dcb570 100644
        // W3-C1 (Auftrag 76): der Answer-Beleg gegen die echte Datenbank. Die Tabellen
        // `answer_records` und `answer_snapshots` stehen seit Freeze 61 im Migrationsweg.
        // W1 Weg A (Auftrag 143): er steht jetzt bei den übrigen Repos statt in den Optionen —
-@@ -2235,47 +1559,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2237,47 +1559,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
        // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
        // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
        brandingSettings: new PgBrandingSettingsRepo(pool),
@@ -2951,7 +2953,7 @@ index a06883799..2a5dcb570 100644
        // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
        // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
        confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
-@@ -2283,28 +1566,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2285,28 +1566,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
        // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
        // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
        bearbeitungen: new PgBearbeitungsRepo(pool),
@@ -2980,7 +2982,7 @@ index a06883799..2a5dcb570 100644
      },
    );
  }
-@@ -2312,27 +1573,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
+@@ -2314,27 +1573,15 @@ export function buildPgServices(rohPool: Pool): AppServices {
  // Weg 3: baut den semantischen Vorfilter NUR, wenn KLARWERK_DUP_PREFILTER=1|true gesetzt ist —
  // Standard AUS (heutiges „jeder gegen jeden" bleibt Default). Ohne einsatzbereiten Provider (z. B.
  // Modus cloud/local noch nicht verdrahtet) → ehrlich undefined statt Fake. topK aus
@@ -3013,7 +3015,7 @@ index a06883799..2a5dcb570 100644
    if (!embedder) {
      return undefined;
    }
-@@ -2340,11 +1589,7 @@ function createSemanticPrefilterFromEnv(
+@@ -2342,11 +1589,7 @@ function createSemanticPrefilterFromEnv(
    const topK = Number.isInteger(rawTopK) && rawTopK > 0 ? rawTopK : 25;
    // SCRUM-498 B2 (Fix): embed() durch den prozess-globalen Embed-Cap führen, damit der Prefilter den
    // Cap nicht umgeht. Bei Normallast (und mit dem Stub) ein No-Op → Prefilter-Verhalten bit-gleich.
@@ -3026,7 +3028,7 @@ index a06883799..2a5dcb570 100644
  }
  
  // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-/Embed-Cap-Überlauf (ModelCapacityError)
-@@ -2374,18 +1619,6 @@ export function modelBusyErrorHandler(
+@@ -2376,18 +1619,6 @@ export function modelBusyErrorHandler(
      });
      return;
    }
@@ -3045,7 +3047,7 @@ index a06883799..2a5dcb570 100644
    if (isInternalOnlyError(error)) {
      sendError(reply, error);
      return;
-@@ -2428,29 +1661,6 @@ export function buildCommit(env: NodeJS.ProcessEnv = process.env): string {
+@@ -2430,29 +1661,6 @@ export function buildCommit(env: NodeJS.ProcessEnv = process.env): string {
    return COMMIT_RE.test(roh) ? roh : BUILD_UNBEKANNT;
  }
  
@@ -3075,7 +3077,7 @@ index a06883799..2a5dcb570 100644
  // Einmal gelesen, dann gemerkt: die Datei ändert sich zur Laufzeit nicht, und /health soll keine
  // Plattenzugriffe pro Anfrage machen.
  let versionGemerkt: string | null = null;
-@@ -2597,10 +1807,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
+@@ -2599,10 +1807,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
    // Entscheidung: sein Name sagt nur „Confluence antwortete mit einem Fehlerstatus" — keine
    // Kennung, kein Host; die Meldung enthält allein die Statuszahl.
    "ConfluenceStatusError",
@@ -3086,7 +3088,7 @@ index a06883799..2a5dcb570 100644
    "DevPersistJournalReplayError",
    // R-0163 / K3 (Ben, Nacharbeit 15): der Fachfehler der Dokumentakte
    // (`services/knowledge-object/src/dokumentakte.ts`, R-0169). ENTSCHEIDUNG: der Name darf ins
-@@ -2612,18 +1818,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
+@@ -2614,18 +1818,6 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
    "DraftStaleError",
    "ExternalSearchError",
    "FencingVeraltetError",
@@ -3105,7 +3107,7 @@ index a06883799..2a5dcb570 100644
    "KlaraError",
    // JOB 4151: aus `services/knowledge-object/src/kanten-types.ts` — der Fachfehler der kuratierten
    // Beziehungen. ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt, wie jeder Nachbar hier,
-@@ -2633,7 +1827,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
+@@ -2635,7 +1827,7 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
    "KantenError",
    "KoError",
    "LibraryError",
@@ -3114,7 +3116,7 @@ index a06883799..2a5dcb570 100644
    // R-0163 / K3 (Ben, Nacharbeit 15): der Fehler eines ungültigen Management-Profils
    // (`services/management/src/profiles.ts`). ENTSCHEIDUNG: der Name darf ins Protokoll — nur der
    // Klassenname, keine Profilwerte.
-@@ -2711,8 +1905,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
+@@ -2713,8 +1905,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
    // rest-client.ts:87–88), die der Waechter unten nicht erhebt (ternaer zugewiesen) — gemeldet in
    // der Rueckgabe 2702, nicht eingetragen: Entscheidung beim Eigentuemer von 2661.
    "CONFLUENCE_TIMEOUT",
@@ -3123,7 +3125,7 @@ index a06883799..2a5dcb570 100644
    "CONSENT_MISSING",
    "CREATE_ANCHOR_TAKEN",
    "CREATE_REPAIR_REQUIRED",
-@@ -2741,10 +1933,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
+@@ -2743,10 +1933,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
    "EXTERNAL_ATTACH_BLOCKED",
    "EXTERNAL_SEARCH_FAILED",
    "FORBIDDEN",
@@ -3134,7 +3136,7 @@ index a06883799..2a5dcb570 100644
    "IDEMPOTENCY_PAYLOAD_MISMATCH",
    "IMPORT_ANCHOR_TAKEN",
    "INCOMPLETE",
-@@ -2819,10 +2007,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
+@@ -2821,10 +2007,6 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
    // trägt keine Nutzerdaten — er sagt, welcher Zweig lief, und genau dafür ist die Liste da.
    "REASONER_POLICY_ENV_LOCKED",
    "SEARCH_PROJECTION_NOT_READY",
@@ -3145,7 +3147,7 @@ index a06883799..2a5dcb570 100644
    // R-0163 (Bens Befund 3, beleg:2def0ac2): der Laufcode eines unvollständigen Anhangsabgleichs
    // (`routes/confluence-import-routes.ts`, `SOURCE_SYNC_INCOMPLETE`) — am gespeicherten Lauf als
    // `failureCode` und in der Warnzeile des Laufs. ENTSCHEIDUNG: darf ins Protokoll. Er trägt keine
-@@ -2926,12 +2110,23 @@ export function pfadOhneAbfrage(url: string): string {
+@@ -2928,12 +2110,23 @@ export function pfadOhneAbfrage(url: string): string {
   * FAIL-CLOSED: Nur ein Rahmen, der dem strengen Muster entspricht, wird übernommen; alles andere
   * ergibt `unbekannt`. Ein Stack aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen"
   * tragen. Die erste Stackzeile ist die MELDUNG selbst und wird nie betrachtet.
@@ -3173,7 +3175,7 @@ index a06883799..2a5dcb570 100644
  }
  
  /** Tiefer wird nicht abgestiegen — ein zyklisches Objekt darf den Logger nicht festfahren. */
-@@ -2986,26 +2181,13 @@ export function senkeUeberWert(
+@@ -2988,26 +2181,13 @@ export function senkeUeberWert(
    for (const [schluessel, inhalt] of Object.entries(wert)) {
      // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
      // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
@@ -3203,7 +3205,7 @@ index a06883799..2a5dcb570 100644
  // Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
  // Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
  // und die Logzeile ließ sich ihrem Trace nicht mehr zuordnen. Die Ausnahme ist so eng wie möglich:
-@@ -3020,44 +2202,6 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string
+@@ -3022,44 +2202,6 @@ function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string
    return TRACE_FELDER.has(schluessel) && typeof inhalt === "string" && TRACE_KENNUNG.test(inhalt);
  }
  
@@ -3248,7 +3250,7 @@ index a06883799..2a5dcb570 100644
  /**
   * Die Logkonfiguration — eine geschlossene Erlaubnisliste in drei Serializern.
   *
-@@ -3126,16 +2270,11 @@ export function baueLoggerOptionen(vorgabe?: {
+@@ -3128,16 +2270,11 @@ export function baueLoggerOptionen(vorgabe?: {
      // ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:184-192`): jeder Logaufruf läuft hier durch,
      // Meldungstext und Feldobjekt gleichermassen. Die einzige Stelle, an der ein selbstgebauter
      // Freitext noch abgefangen werden kann — die Serializer sehen ihn nie.
@@ -3266,7 +3268,7 @@ index a06883799..2a5dcb570 100644
          );
        },
      },
-@@ -3149,23 +2288,7 @@ export function buildApp(
+@@ -3151,27 +2288,7 @@ export function buildApp(
    //
    // JOB 2661: `log` ist der Prüfeinstieg für die Logsenke — ohne ihn ist der Logger derselbe,
    // er schreibt nur auf die Standardausgabe statt in einen lesbaren Puffer.
@@ -3276,6 +3278,10 @@ index a06883799..2a5dcb570 100644
 -  // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
 -  opts: {
 -    factoryReset?: FactoryReset;
+-    // P08-AC05: der SSO-Anbieter für die zweimalige Wiederanmeldung des Firmenresets. Ohne Angabe
+-    // derselbe Anbieter wie für die Anmeldung (`createOidcProviderFromEnv`); Tests setzen eine
+-    // Attrappe, weil kein Anbieter erreichbar ist.
+-    firmenresetOidc?: OidcProvider;
 -    log?: { senke?: LogSenke; stufe?: string };
 -    klaraAufraeumen?: (lauf: () => Promise<number>) => void;
 -    // R-2057: TLS am App-Port (`transport-tls.ts`). Nur `server.ts` reicht es durch; ohne Option
@@ -3291,7 +3297,7 @@ index a06883799..2a5dcb570 100644
  ): FastifyInstance {
    // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
    // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
-@@ -3185,15 +2308,7 @@ export function buildApp(
+@@ -3191,15 +2308,7 @@ export function buildApp(
    const app = Fastify({
      trustProxy: resolveTrustProxy(),
      logger: baueLoggerOptionen(opts.log),
@@ -3307,7 +3313,7 @@ index a06883799..2a5dcb570 100644
    // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
    // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
    // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
-@@ -3235,26 +2350,8 @@ export function buildApp(
+@@ -3241,26 +2350,8 @@ export function buildApp(
    // zweiter Weg, keine zweite Zustandsmaschine: `stelleSuchprojektionBereit` ist der EINE Einstieg
    // für App-Ready und `runSeed()`. Er wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht — die App
    // wird dann nie ready und die Suche bleibt fail-closed.
@@ -3334,7 +3340,7 @@ index a06883799..2a5dcb570 100644
      // JOB 3655 — DER STARTBERICHT. Er ist BEWUSST erst hier angesiedelt und BEWUSST nicht
      // start-entscheidend: ein Bericht ist kein Betriebsmittel. Scheitert der Bestandsbefund, sagt
      // er „unbekannt" (nie „leer") und der Start geht weiter. Die start-entscheidende Prüfung ist
-@@ -3286,35 +2383,21 @@ export function buildApp(
+@@ -3292,35 +2383,21 @@ export function buildApp(
      // wird dagegen zu `[redacted]`).
      app.log.info({ startvertrag: startbericht(process.env, bestand) }, "KLARWERK Startbericht");
    });
@@ -3372,7 +3378,7 @@ index a06883799..2a5dcb570 100644
    // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
    // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).
    // Flag AUS → gar nicht registriert → keine CORS-Header (exakt heutiges Verhalten). Kein
-@@ -3323,18 +2406,7 @@ export function buildApp(
+@@ -3329,18 +2406,7 @@ export function buildApp(
    // ben-Review SCRUM-490 (P2): (1) Origin fail-closed validieren — "*"/leer/malformed → gar kein CORS
    // (resolveAddonOrigin === null). (2) Scope über einen Delegator strikt auf die Add-on-Pfade begrenzen;
    // alle anderen Routen bekommen { origin: false } → keinerlei CORS-Header (nicht mehr app-weit).
@@ -3392,7 +3398,7 @@ index a06883799..2a5dcb570 100644
      // SCRUM-490 D2: request-lokaler Auth-Kontext. Der Add-on-Key wird hier GENAU EINMAL pro Request
      // validiert und der Principal (Capabilities ask.validated + checktext.validated) am Request
      // getragen; Rate-Limiter, allowList und
-@@ -3352,7 +2424,7 @@ export function buildApp(
+@@ -3358,7 +2424,7 @@ export function buildApp(
      // ausgenommen (Session-Pfad ungedrosselt).
      const authAttemptThrottle = new AddonAuthAttemptThrottle(addonAuthThrottleConfigFromEnv());
      app.addHook("onRequest", async (request, reply) => {
@@ -3401,7 +3407,7 @@ index a06883799..2a5dcb570 100644
        // SCRUM-490 R3/R4 (B2): Throttle für fehlgeschlagene Add-on-Auth-Versuche — VOR dem 401/Principal.
        //  Fix 3: ein UNGÜLTIGER Key zählt auf JEDER Route (kein 401/403-Gültigkeitsorakel, keine
        //         ungedrosselte Fremdroute); fehlende Auth zählt gegen die NORMALISIERTEN Add-on-Endpunkte
-@@ -3394,40 +2466,9 @@ export function buildApp(
+@@ -3400,40 +2466,9 @@ export function buildApp(
          }
        }
        if (auth.kind === "invalid") {
@@ -3443,7 +3449,7 @@ index a06883799..2a5dcb570 100644
        if (auth.kind === "valid") {
          request.authContext = { authKind: "addon", principal: auth.principal };
          // ben-Review: der kanonische routeOptions.url-Check allein reicht nicht — Fastify normalisiert
-@@ -3453,7 +2494,7 @@ export function buildApp(
+@@ -3459,7 +2494,7 @@ export function buildApp(
      // Enge (nur addon-Principal, gekeyt auf den Actor; Session-Requests exempt) steckt in
      // addonRateLimit(). Flag AUS → hier gar nicht registriert → /api/ask exakt wie heute.
      app.register(rateLimit, { global: false });
@@ -3452,7 +3458,7 @@ index a06883799..2a5dcb570 100644
      if (addonOrigin !== null) {
        app.register(
          cors,
-@@ -3476,41 +2517,9 @@ export function buildApp(
+@@ -3482,41 +2517,9 @@ export function buildApp(
      // SCRUM-490 H: das statische Klara-Add-in-Bundle unter /addin/* — NUR bei aktivem Flag. Traversal-
      // sicher (explizite Datei-Map), kein Directory-Listing, öffentlich lesbar (kein Key), berührt den
      // Add-on-Auth/Throttle-Pfad nicht und öffnet keinen neuen API-Weg. Flag AUS → nicht registriert → 404.
@@ -3495,7 +3501,7 @@ index a06883799..2a5dcb570 100644
    // JOB 1113 (JOB-947-B3): /health nennt jetzt zusätzlich VERSION und DEPLOY-COMMIT.
    //
    // JOB 947 nannte den Zustand davor K-VAKUUM: ein `/health`, das nur `{"status":"ok"}` liefert,
-@@ -3535,7 +2544,6 @@ export function buildApp(
+@@ -3541,7 +2544,6 @@ export function buildApp(
      status: "ok",
      version: buildVersion(),
      commit: buildCommit(),
@@ -3503,7 +3509,7 @@ index a06883799..2a5dcb570 100644
      ai: services.reasoner.publicStatus(),
      aiRuns: await kiLaeufe(),
    }));
-@@ -3561,18 +2569,6 @@ export function buildApp(
+@@ -3567,18 +2569,6 @@ export function buildApp(
      services.reasoner.refreshReachabilityIfStale();
      return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
    });
@@ -3522,7 +3528,7 @@ index a06883799..2a5dcb570 100644
  
    // ============================================================================================
    // W1 S4 — KLARA-STATUS, SITZUNG UND ZUSTIMMUNG (KW-S4-04 §13-100)
-@@ -3594,9 +2590,6 @@ export function buildApp(
+@@ -3600,9 +2590,6 @@ export function buildApp(
    // vorhandene gehoben und weitergereicht, nicht kopiert. Keine neue Ablage, keine neue Route.
    const klaraSessions = new KlaraSessionService({
      repo: services.klaraSessions,
@@ -3532,7 +3538,7 @@ index a06883799..2a5dcb570 100644
      policy: () => {
        const config = services.reasoner.configStatus();
        const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;
-@@ -3644,17 +2637,14 @@ export function buildApp(
+@@ -3650,17 +2637,14 @@ export function buildApp(
          // „fehlt" sperren gleich (Pedi 10.09. 21:25: „Im Zweifel gilt: gesperrt"). Hier wird sie
          // nicht ENTSCHIEDEN, sondern DURCHGEREICHT — die Entscheidungsstelle bleibt im Kern, und
          // eine zweite Sperre gibt es auch nach diesem Auftrag nicht. Der zweite Schalter der
@@ -3553,7 +3559,7 @@ index a06883799..2a5dcb570 100644
          effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
          cloudConfigured: gewaehlterAnbieter
            ? config.cloudProviders[gewaehlterAnbieter].configured
-@@ -3663,19 +2653,9 @@ export function buildApp(
+@@ -3669,19 +2653,9 @@ export function buildApp(
          providerLabel: antwortCloud?.name ?? config.provider,
          modelLabel: antwortCloud ? antwortCloud.name : config.model,
          localProviderLabel: config.localProvider,
@@ -3573,7 +3579,7 @@ index a06883799..2a5dcb570 100644
    app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
    // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
    // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
-@@ -3689,8 +2669,6 @@ export function buildApp(
+@@ -3695,8 +2669,6 @@ export function buildApp(
          ko: services.ko,
          lesevarianten: services.lesevarianten,
          kandidaten: services.candidates,
@@ -3582,7 +3588,7 @@ index a06883799..2a5dcb570 100644
          ...(services.audit ? { audit: services.audit } : {}),
        },
        guards,
-@@ -3707,12 +2685,7 @@ export function buildApp(
+@@ -3713,12 +2685,7 @@ export function buildApp(
    // (`services.zurufModell`); fehlt es, antwortet die Route ehrlich 503 `NO_FORMULIERER`.
    app.register(
      klaraZurufRoutes(
@@ -3596,7 +3602,7 @@ index a06883799..2a5dcb570 100644
        guards,
      ),
    );
-@@ -3720,239 +2693,18 @@ export function buildApp(
+@@ -3726,239 +2693,18 @@ export function buildApp(
    // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
    // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
    const resetBaseUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/reset` : undefined;
@@ -3838,7 +3844,7 @@ index a06883799..2a5dcb570 100644
    // ==============================================================================================
    // JOB 3066 — DAS AUFRÄUMEN DER BEFUNDE FÄHRT IN DER LÖSCHTRANSAKTION MIT.
    // ==============================================================================================
-@@ -4053,82 +2805,7 @@ export function buildApp(
+@@ -4059,82 +2805,7 @@ export function buildApp(
    // (duplicate-detection.ts:182-183). Was hier steht, ist idempotent und selbstheilend.
    services.ko.setPurgeCleanup(async (koId) => {
      await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
@@ -3921,7 +3927,7 @@ index a06883799..2a5dcb570 100644
    // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
    // laufende Erkennung (detectConflicts/detectDuplicates) — Concurrency 1, In-Process, PII-freies
    // Log. Ein von Tests vorab gesetzter services.aiCheckWorker (Spy) hat Vorrang.
-@@ -4146,60 +2823,6 @@ export function buildApp(
+@@ -4152,60 +2823,6 @@ export function buildApp(
        }),
      });
    services.aiCheckWorker = aiCheckWorker;
@@ -3982,7 +3988,7 @@ index a06883799..2a5dcb570 100644
    app.register(
      koRoutes(
        {
-@@ -4255,52 +2878,13 @@ export function buildApp(
+@@ -4261,52 +2878,13 @@ export function buildApp(
          // Lesemodell hereingereicht, das es aus der Policy-Naht holt (`lesemodell.ts:254`,
          // `policyNahtSchliessen` weiter unten). Hier reist nur der Bestand.
          kanten: new KantenLeseService({ repo: services.kanten, kos: services.ko }),
@@ -4037,7 +4043,7 @@ index a06883799..2a5dcb570 100644
                return { ok: false, reason: "forbidden" as const };
              }
              const input = await services.capture.toKoInput(draftId);
-@@ -4330,13 +2914,10 @@ export function buildApp(
+@@ -4336,13 +2914,10 @@ export function buildApp(
            // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
            applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
              const draft = await services.capture.getDraft(draftId);
@@ -4053,7 +4059,7 @@ index a06883799..2a5dcb570 100644
                return { ok: false, reason: "forbidden" as const };
              }
              // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG
-@@ -4452,17 +3033,11 @@ export function buildApp(
+@@ -4458,17 +3033,11 @@ export function buildApp(
      ),
    );
    app.register(
@@ -4076,7 +4082,7 @@ index a06883799..2a5dcb570 100644
    );
    // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
    // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.
-@@ -4477,28 +3052,6 @@ export function buildApp(
+@@ -4483,28 +3052,6 @@ export function buildApp(
    // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
    // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
    app.register(aiCheckCoverageRoutes(services.ko, guards));
@@ -4105,7 +4111,7 @@ index a06883799..2a5dcb570 100644
    // JOB 4151 (WG-PERSISTENZ): die kuratierten Beziehungen. Der Bestand kommt aus `services`
    // (Postgres oder Speicher, s. dort); `services.ko` erfüllt den SCHMALEN Port `KantenKoLeser`
    // (`kanten-service.ts:178-180`) — die Route kennt den KO-Dienst deshalb nicht als Ganzes. Die
-@@ -4518,139 +3071,6 @@ export function buildApp(
+@@ -4524,139 +3071,6 @@ export function buildApp(
        guards,
      ),
    );
@@ -4245,7 +4251,7 @@ index a06883799..2a5dcb570 100644
    // ==============================================================================================
    // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
    // ==============================================================================================
-@@ -4689,97 +3109,26 @@ export function buildApp(
+@@ -4695,97 +3109,26 @@ export function buildApp(
          audit: services.audit,
          kos: koSichtbarkeit,
          papierkorb: { get: (id: string) => services.ko.papierkorbFakten(id) },
@@ -4347,7 +4353,7 @@ index a06883799..2a5dcb570 100644
    // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
    // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
    // zweite Aufloesung.
-@@ -4816,9 +3165,7 @@ export function buildApp(
+@@ -4822,9 +3165,7 @@ export function buildApp(
    // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
    // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
    // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
@@ -4358,7 +4364,7 @@ index a06883799..2a5dcb570 100644
      app.register(
        checkTextRoutes(
          {
-@@ -4834,51 +3181,17 @@ export function buildApp(
+@@ -4840,51 +3181,17 @@ export function buildApp(
        ),
      );
    }
@@ -4418,7 +4424,7 @@ index a06883799..2a5dcb570 100644
    );
    app.register(categoryRoutes(services.ko, guards));
    app.register(outputRoutes(services.output, guards));
-@@ -4899,19 +3212,7 @@ export function buildApp(
+@@ -4905,19 +3212,7 @@ export function buildApp(
    );
    // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
    // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
@@ -4439,7 +4445,7 @@ index a06883799..2a5dcb570 100644
    app.register(
      notificationsRoutes(
        {
-@@ -4925,145 +3226,15 @@ export function buildApp(
+@@ -4931,145 +3226,15 @@ export function buildApp(
          seen: services.notificationSeen,
          // AUFTRAG-mega74 BLOCK D (G5): dieselbe Quelle wie Konflikte und Überschneidungen.
          kos: koSichtbarkeit,
@@ -4587,7 +4593,7 @@ index a06883799..2a5dcb570 100644
    // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
    // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
    // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
-@@ -5076,11 +3247,11 @@ export function buildApp(
+@@ -5082,11 +3247,11 @@ export function buildApp(
    app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
    // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
    // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
@@ -4602,7 +4608,7 @@ index a06883799..2a5dcb570 100644
    //
    // JOB 2021 (G8): EINE Aufzählung für BEIDE Wege in den Objektspeicher. `POST /api/media/analyze`
    // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
-@@ -5119,11 +3290,6 @@ export function buildApp(
+@@ -5125,11 +3290,6 @@ export function buildApp(
        (await services.capture.listDrafts()).map((draft) => ({
          originalAuthor: draft.originalAuthor,
          lastEditor: draft.lastEditor,
@@ -4614,7 +4620,7 @@ index a06883799..2a5dcb570 100644
          bodyHtml: draft.payload.bodyHtml,
          objectIds: [
            ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
-@@ -5133,27 +3299,11 @@ export function buildApp(
+@@ -5139,27 +3299,11 @@ export function buildApp(
    };
    app.register(objectRoutes(services.objects, guards, anhangQuellen));
    app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
@@ -4643,7 +4649,7 @@ index a06883799..2a5dcb570 100644
    // JOB 3510: die EINE Auskunft über das Erscheinungsbild dieser Instanz — und der Adminweg, der es
    // umschaltet. Sie ist wie die Schalterauskunft darüber SELBST nicht geschaltet: Eine Marke, die
    // man erst freischalten müsste, ließe die Vorführinstanz beim ersten Laden ungefärbt. Die
-@@ -5161,211 +3311,6 @@ export function buildApp(
+@@ -5167,218 +3311,6 @@ export function buildApp(
    app.register(
      brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
    );
@@ -4761,6 +4767,13 @@ index a06883799..2a5dcb570 100644
 -        teams: services.teams,
 -        // ADMIN-09: kommt ein Objekt in einen Space mit Freigaberegel, gilt deren Mindestzahl sofort.
 -        freigaberegelAnwenden: (koId, akteur) => freigaberegeln.anwenden(koId, akteur),
+-        // gesamt-leserechte (Nacharbeit 32, Entscheidung 25): das ausdrückliche Existenzrecht — vom
+-        // Betrieb je Konto (Kennung oder E-Mail) vergeben, bei jedem Abruf frisch gelesen (Entzug
+-        // wirkt sofort).
+-        existenzrecht: ({ id, email }) =>
+-          [...ketteneinsichtKonten(process.env.KLARWERK_EXISTENZRECHT)].some(
+-            (k) => k === id || k.toLowerCase() === email.toLowerCase(),
+-          ),
 -        // R-0571: wechselt ein Objekt den Space, folgen ihm die laut Verzeichnis Zuständigen —
 -        // neue werden zugewiesen und benachrichtigt, die des alten Space verlieren die offene
 -        // Verzeichnis-Zuweisung.
@@ -4855,23 +4868,29 @@ index a06883799..2a5dcb570 100644
    // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
    // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
    // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
-@@ -5384,14 +3329,7 @@ export function buildApp(
+@@ -5397,20 +3329,7 @@ export function buildApp(
        }),
      ),
    );
 -  // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset. produkt:20261010:poc-wiederherstellung-export: der
 -  // Sicherungsumfang unter „System → Sicherung" ist an diese Fassung und ihre Migration gebunden.
 -  app.register(
--    adminRoutes(services, guards, opts.factoryReset, {
--      produkt: { version: buildVersion(), commit: buildCommit() },
--      tabellenImDump: tabellenDerStufen(schemas).length,
--    }),
+-    adminRoutes(
+-      services,
+-      guards,
+-      opts.factoryReset,
+-      {
+-        produkt: { version: buildVersion(), commit: buildCommit() },
+-        tabellenImDump: tabellenDerStufen(schemas).length,
+-      },
+-      new FirmenresetSso(opts.firmenresetOidc ?? createOidcProviderFromEnv()),
+-    ),
 -  );
 +  app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
    // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
    // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
    // AUFTRAG-mega46 Block F: Die Prüfung stand hier als dritte Kopie derselben Regel und kommt jetzt
-@@ -5406,8 +3344,6 @@ export function buildApp(
+@@ -5425,8 +3344,6 @@ export function buildApp(
          reasoner: services.reasoner,
          // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
          importRuns: services.importRuns,
@@ -4880,7 +4899,7 @@ index a06883799..2a5dcb570 100644
          // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
          betreiberSchalter: services.confluenceImportSchalter,
        }),
-@@ -5418,32 +3354,11 @@ export function buildApp(
+@@ -5437,32 +3354,11 @@ export function buildApp(
    // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
    // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
    // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
@@ -4914,7 +4933,7 @@ index a06883799..2a5dcb570 100644
          guards,
        }),
      );
-@@ -5464,19 +3379,6 @@ export function buildApp(
+@@ -5483,19 +3379,6 @@ export function buildApp(
      );
    }
  
@@ -9172,10 +9191,18 @@ index 8a2698bef..4c399ff35 100644
 -  return umfang === "vollstaendig" ? Number.POSITIVE_INFINITY : DETECTION_CANDIDATE_CAP;
 -}
 diff --git b/services/app/src/dev-persist.ts a/services/app/src/dev-persist.ts
-index 89a4b69ea..62e731083 100644
+index 9159de39e..62e731083 100644
 --- b/services/app/src/dev-persist.ts
 +++ a/services/app/src/dev-persist.ts
-@@ -42,18 +42,12 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
+@@ -21,7 +21,6 @@ import { randomUUID } from "node:crypto";
+ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+ import { dirname } from "node:path";
+ import { type AppRepos, type AppServices, assembleServices, inMemoryRepos } from "./build-app";
+-import { type BegriffFassung, type BegriffeRepo, InMemoryBegriffeRepo } from "./firmenwoerterbuch";
+ import { journalZeileFuer, ohneVorgang } from "./speicher-vorgang";
+ 
+ // Eine Journal-Zeile: welches Repo, welche Methode, welche Argumente (JSON-serialisierbar —
+@@ -43,18 +42,12 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
    // sonst wäre er nach einem Dev-Neustart weg (pending-Erkennung/Badges würden lügen).
    koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck"],
    koVersions: ["append"],
@@ -9194,7 +9221,7 @@ index 89a4b69ea..62e731083 100644
    // R-0169 (Nacharbeit 5): die Fassungen der Dokumentakte überleben den Dev-Neustart.
    dokumente: ["insertFassung"],
    // SCRUM-504: der atomare Bootstrap-Claim ist eine Mutation (fügt den Admin ein) → muss journaliert
-@@ -62,20 +56,13 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
+@@ -63,20 +56,13 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
    users: ["insert", "update", "delete", "tryClaimBootstrapAdmin"],
    sessions: ["create", "delete", "deleteByUser"],
    resetTokens: ["create", "delete"],
@@ -9216,7 +9243,7 @@ index 89a4b69ea..62e731083 100644
    // SCRUM-507 R2: die Bewertung (inkl. koVersion) wird per upsert journaled; die Invalidierung ist
    // versionsgebunden (keine separate Löschung), daher kein weiterer Mutator nötig.
    ratings: ["upsert"],
-@@ -99,13 +86,6 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
+@@ -100,13 +86,6 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
    // (der zweite Lauf findet nichts Offenes mehr). Beweis der Wirkung nach dem Wiederaufbau:
    // tests/aufraeumen-atomar/geschlossen-bleibt-geschlossen-im-dev-journal.test.ts.
    conflictsRepo: ["insert", "update", "closeOpenForKo"],
@@ -9230,7 +9257,7 @@ index 89a4b69ea..62e731083 100644
    // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.
    overlapRepo: ["insert", "update", "closeOpenForKo"],
    // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
-@@ -113,17 +93,7 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
+@@ -114,17 +93,7 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
    // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
    // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
    managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
@@ -9249,7 +9276,7 @@ index 89a4b69ea..62e731083 100644
    objects: ["insert"],
    // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
    // sonst überleben so eingereihte Import-Kandidaten den Dev-Neustart nicht.
-@@ -158,9 +128,6 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
+@@ -159,9 +128,6 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
    externalKnowledge: ["setStage"],
    // SCRUM-421: Upload-Grenzen überleben den Neustart (letzter Set gewinnt).
    uploadLimits: ["set"],
@@ -9259,7 +9286,7 @@ index 89a4b69ea..62e731083 100644
    // ==============================================================================================
    // W1 WEG A (Pedi, Auftrag 143) — DER ANTWORTBELEG ÜBERLEBT DEN NEUSTART.
    // ==============================================================================================
-@@ -311,8 +278,10 @@ export function readJournalLines(file: string): JournalLine[] {
+@@ -312,8 +278,10 @@ export function readJournalLines(file: string): JournalLine[] {
    return lines;
  }
  
@@ -9272,7 +9299,12 @@ index 89a4b69ea..62e731083 100644
  
  // Journal in frische Repos zurückspielen — ausschließlich über die öffentlichen Interfaces.
  // Unbekannte Repo-/Methodennamen werden bewusst übersprungen (versionstolerant statt Crash).
-@@ -435,13 +404,6 @@ function journaled<T extends object>(
+@@ -432,18 +400,10 @@ function journaled<T extends object>(
+   write: (entry: JournalEntry) => void,
+   vorgangAbschluss: (zeilen: JournalEntry[]) => void,
+   waechter: Waechter,
+-  sperre: JournalSchreibsperre | undefined,
+ ): T {
    const mutators = MUTATING_METHODS[name];
    return new Proxy(repo, {
      get(target, prop, receiver) {
@@ -9286,6 +9318,201 @@ index 89a4b69ea..62e731083 100644
        const value = Reflect.get(target, prop, receiver);
        if (typeof value !== "function") {
          return value;
+@@ -459,9 +419,6 @@ function journaled<T extends object>(
+             : fn.apply(target, args);
+       }
+       return async (...args: unknown[]) => {
+-        // P08-AC07: steht der Firmenreset, wird die Mutation abgewiesen, BEVOR sie den Speicher
+-        // ändert — kein Schreibvorgang wird bestätigt, der danach nicht im Journal stünde.
+-        sperre?.pruefe();
+         await waechter.aufloesen();
+         const result = await fn.apply(target, args);
+         // Auftrag gesamt-dubletten-rueckzug (Runden 2/3, BEN-R3-1/-2): gehört der Aufruf zu einem
+@@ -727,7 +684,6 @@ export function journaledRepos(
+   rohesSchreiben: (entry: JournalEntry) => void,
+   restAmEnde = false,
+   lesen?: BestaetigungLesen,
+-  sperre?: JournalSchreibsperre,
+ ): AppRepos {
+   const { write, vorgangAbschluss, waechter } = mitBestaetigung(
+     mitNeuaufsatz(rohesSchreiben, restAmEnde),
+@@ -736,172 +692,25 @@ export function journaledRepos(
+   );
+   const wrapped = {} as Record<keyof AppRepos, object>;
+   for (const key of Object.keys(MUTATING_METHODS) as (keyof AppRepos)[]) {
+-    wrapped[key] = journaled(repos[key] as object, key, write, vorgangAbschluss, waechter, sperre);
++    wrapped[key] = journaled(repos[key] as object, key, write, vorgangAbschluss, waechter);
+   }
+   return wrapped as unknown as AppRepos;
+ }
+ 
+-// ================================================================================================
+-// PETER-20261011-P08 · FIRMENRESET IM DESKTOP-JOURNAL.
+-// ================================================================================================
+-//
+-// Drei Bausteine, die der Firmenreset (`factory-reset.ts`) braucht und die nur hier stehen können,
+-// weil nur diese Datei weiss, wie das Journal geschrieben und gelesen wird:
+-//
+-//   · die SCHREIBSPERRE (P08-AC07): ab dem Augenblick, in dem der Reset das Journal ersetzt, weist
+-//     jede journalierte Ablage Schreibvorgänge ab — vor der Mutation UND beim Anhängen. Ein Auftrag,
+-//     der während des Resets fertig wird (Hintergrundlauf, gleichzeitige Anfrage), bekommt einen
+-//     Fehler statt einer Bestätigung, und keine Zeile landet nach dem Reset im neuen Journal.
+-//   · das FIRMENWÖRTERBUCH IM JOURNAL (P08-AC03): bis hierher lag es im Desktopbetrieb nur im
+-//     Speicher und war nach jedem Neustart weg — „bleibt erhalten" wäre nach dem Reset-Neustart
+-//     unwahr gewesen. Es läuft jetzt als eigene Journalart `begriffe.lege` mit; `replayJournal`
+-//     kennt sie nicht (unbekannte Ablage → übersprungen), `buildDevPersistServices` spielt sie
+-//     getrennt zurück.
+-//   · der FILTER (P08-AC03): welche Zeilen ein Firmenreset stehen lässt.
+-
+-/** Die Journalart des Firmenwörterbuchs (nicht in `AppRepos`, s. build-app.ts `begriffe`). */
+-export const BEGRIFFE_ZEILE = { repo: "begriffe", method: "lege" } as const;
+-
+-/** Die Spur des Firmenresets im neuen Journal. Kein Repo trägt diesen Namen; das Replay übergeht sie. */
+-export const FIRMENRESET_ZEILE = { repo: "journal", method: "firmenreset" } as const;
+-
+-/**
+- * Was ein Firmenreset erhält: Konten (samt zweitem Faktor), Firmenwörterbuch und Prüfprotokoll.
+- * Eine Liste und kein `new Set(...)`: diese Datei lädt `build-app`, und eine Erzeugung auf Modulebene
+- * machte sie für den Einstiegspunkt-Wächter (tests/demo-zugang-start/vertrag-am-einstiegspunkt.test.ts)
+- * zum Prozessstart.
+- */
+-export const FIRMENRESET_ERHALTEN: readonly string[] = [
+-  "users",
+-  "secondFactors",
+-  "auditRepo",
+-  BEGRIFFE_ZEILE.repo,
+-];
+-
+-/** Ein Schreibvorgang traf auf einen laufenden Firmenreset. Fester Satz, keine Kennung. */
+-export class FirmenresetSchreibsperre extends Error {
+-  readonly code = "FIRMENRESET_LAEUFT";
+-
+-  constructor() {
+-    super(
+-      "Der Firmenreset läuft — dieser Schreibvorgang wurde nicht gespeichert. Bitte nach dem Neustart erneut versuchen.",
+-    );
+-    this.name = "FirmenresetSchreibsperre";
+-  }
+-}
+-
+-/** Die geteilte Sperre zwischen Journal (`buildDevPersistServices`) und Firmenreset. */
+-export class JournalSchreibsperre {
+-  private aktiv = false;
+-
+-  get gesperrt(): boolean {
+-    return this.aktiv;
+-  }
+-
+-  setzen(): void {
+-    this.aktiv = true;
+-  }
+-
+-  loesen(): void {
+-    this.aktiv = false;
+-  }
+-
+-  pruefe(): void {
+-    if (this.aktiv) {
+-      throw new FirmenresetSchreibsperre();
+-    }
+-  }
+-}
+-
+-/**
+- * Die Zeilen, die nach einem Firmenreset im Journal stehen bleiben — in ihrer Reihenfolge.
+- *
+- * Wirksame Rücknahme-Vorgänge (Vorgangszeile mit Bestätigung, ohne Widerruf — dieselbe Regel wie
+- * das Replay) werden aufgelöst: ihre Teilzeilen erhaltener Ablagen bleiben als Einzelzeilen an ihrer
+- * Stelle stehen. Sonst fiele etwa ein Prüfprotokolleintrag aus der Mitte der Kette, und das Replay
+- * der erhaltenen Kette bräche beim Neustart. Unwirksame Vorgänge, Bestätigungen, Widerrufe und alle
+- * Zeilen entfernter Ablagen entfallen.
+- */
+-export function firmenresetZeilen(
+-  lines: readonly JournalLine[],
+-  erhalten: readonly string[] = FIRMENRESET_ERHALTEN,
+-): JournalEntry[] {
+-  const wirksam = wirksamIn(lines);
+-  const raus: JournalEntry[] = [];
+-  for (const { entry } of lines) {
+-    if (istVorgangsZeile(entry)) {
+-      const vorgang = (entry as VorgangsEintrag).vorgang;
+-      if (typeof vorgang === "string" && wirksam(vorgang)) {
+-        raus.push(...(entry.args as JournalEntry[]).filter((t) => erhalten.includes(t.repo)));
+-      }
+-      continue;
+-    }
+-    if (erhalten.includes(entry.repo)) {
+-      raus.push(entry);
+-    }
+-  }
+-  return raus;
+-}
+-
+-/**
+- * Das Firmenwörterbuch mit Journal: erst die Zeile, dann die Ablage. Liefert `lege` beim Replay
+- * `false` (Version schon vergeben), ist die Zeile wirkungslos — in derselben Reihenfolge trifft das
+- * Replay deshalb denselben Stand wie die laufende Instanz.
+- */
+-function journaledBegriffe(
+-  repo: BegriffeRepo,
+-  write: (entry: JournalEntry) => void,
+-  sperre: JournalSchreibsperre,
+-): BegriffeRepo {
+-  return {
+-    aktuelle: () => repo.aktuelle(),
+-    fassungen: (id) => repo.fassungen(id),
+-    lege: async (fassung) => {
+-      sperre.pruefe();
+-      write({ repo: BEGRIFFE_ZEILE.repo, method: BEGRIFFE_ZEILE.method, args: [fassung] });
+-      return repo.lege(fassung);
+-    },
+-  };
+-}
+-
+ // Komposition „Dev-Persistenz": Journal laden → in In-Memory-Repos zurückspielen →
+ // Repos journalierend wrappen → identisch verdrahtete Service-Landschaft.
+ // append-only via appendFileSync: kein Rewrite der Datei bei jeder Mutation, crash-tolerant
+ // in Kombination mit dem defensiven Parser (s. o.).
+-// P08: `sperre` teilt der Start (server.ts) mit dem Firmenreset; ohne Angabe eine eigene.
+-export async function buildDevPersistServices(
+-  file: string,
+-  sperre: JournalSchreibsperre = new JournalSchreibsperre(),
+-): Promise<AppServices> {
++export async function buildDevPersistServices(file: string): Promise<AppServices> {
+   mkdirSync(dirname(file), { recursive: true });
+   const repos = inMemoryRepos();
+   // W1/N6: MIT Herkunftsangabe — nur so kann ein Replayfehler die echte physische Zeile nennen.
+-  const lines = readJournalLines(file);
+-  await replayJournal(repos, lines);
+-  const begriffe = new InMemoryBegriffeRepo();
+-  for (const { entry } of lines) {
+-    const [fassung] = entry.args;
+-    if (
+-      entry.repo === BEGRIFFE_ZEILE.repo &&
+-      entry.method === BEGRIFFE_ZEILE.method &&
+-      typeof fassung === "object" &&
+-      fassung !== null &&
+-      typeof (fassung as BegriffFassung).id === "string" &&
+-      typeof (fassung as BegriffFassung).version === "number"
+-    ) {
+-      await begriffe.lege(fassung as BegriffFassung);
+-    }
+-  }
++  await replayJournal(repos, readJournalLines(file));
+   const write = (entry: JournalEntry): void => {
+-    // P08-AC07: auch das Anhängen selbst prüft die Sperre — eine Mutation, die vor dem Reset begann
+-    // und erst danach schreiben will, landet nicht im neuen Journal.
+-    sperre.pruefe();
+     appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
+   };
+-  const geschrieben = mitNeuaufsatz(write, restAmEnde(file));
+   return assembleServices(
+-    journaledRepos(repos, geschrieben, false, bestaetigungInDatei(file), sperre),
+-    { begriffe: journaledBegriffe(begriffe, geschrieben, sperre) },
++    journaledRepos(repos, write, restAmEnde(file), bestaetigungInDatei(file)),
+   );
+ }
+ 
 diff --git b/services/app/src/dienst-schluessel.ts a/services/app/src/dienst-schluessel.ts
 deleted file mode 100644
 index 09f763405..000000000
@@ -10269,53 +10496,89 @@ index 7a0ff7084..f252d9ebd 100644
    await freigeben(services, ko.id, actor);
  }
 diff --git b/services/app/src/factory-reset.ts a/services/app/src/factory-reset.ts
-index 0a374b945..125d59b31 100644
+index 14601da72..125d59b31 100644
 --- b/services/app/src/factory-reset.ts
 +++ a/services/app/src/factory-reset.ts
-@@ -1,12 +1,10 @@
--import { writeFileSync } from "node:fs";
--
+@@ -1,71 +1,22 @@
  // Pedi 05.07. (Beta): „Werkseinstellungen zurücksetzen" — im Desktop/Dev-Journal-Modus den
- // kompletten lokalen Bestand löschen und den Prozess beenden. Nach dem Neustart ist das Journal
- // leer → Ersteinrichtung greift (der erste Anwender wird wieder Admin). Das ermöglicht wiederholtes
- // Testen ohne manuellen Aufwand.
+-// lokalen Bestand löschen und den Prozess beenden. Das ermöglicht wiederholtes Testen ohne
+-// manuellen Aufwand.
+-//
+-// PETER-20261011-P08 (Firmenreset): Konten und Firmenwörterbuch bleiben erhalten, vor der
+-// Ausführung steht eine Vorschau mit konkreten Mengen, und die Ausführung verlangt die Kennung
+-// genau dieser Vorschau zurück. Hat sich der Bestand seitdem bewegt (neuer Schreibvorgang,
+-// gleichzeitiger Auftrag), wird nichts gelöscht (`VORSCHAU_VERALTET`). Ein zweiter, gleichzeitiger
+-// Reset wird abgewiesen (`RESET_LAEUFT`).
++// kompletten lokalen Bestand löschen und den Prozess beenden. Nach dem Neustart ist das Journal
++// leer → Ersteinrichtung greift (der erste Anwender wird wieder Admin). Das ermöglicht wiederholtes
++// Testen ohne manuellen Aufwand.
  //
  // Sicherheitsriegel: Die Fähigkeit wird NUR verdrahtet, wenn die Desktop-Dev-Persistenz aktiv ist
--// (Journal-Datei vorhanden, siehe `waehleWerksreset` unten). In Produktion (Postgres) bleibt sie bewusst
+-// (Journal-Datei vorhanden, siehe `waehleWerksreset` in `firmenreset-journal.ts`). In Produktion
+-// (Postgres) bleibt sie bewusst unverfügbar — der Endpunkt antwortet dort mit „nicht verfügbar".
+-// So kann ein Werksreset niemals echte, produktive Kundendaten löschen.
+-//
+-// Diese Datei trägt nur den Vertrag. Die Journal-Umsetzung liegt in `firmenreset-journal.ts`, weil
+-// sie `dev-persist.ts` braucht und `dev-persist.ts` seinerseits `build-app.ts` einbindet — über
+-// `admin-routes.ts` hinge sonst ein Zyklus an dieser Datei (`npm run arch`, no-circular).
+-
+-/** Je Ablage die Zahl der Journaleinträge. */
+-export type JournalMengen = Record<string, number>;
+-
+-export interface ResetVorschau {
+-  /** Prüfsumme des Bestands zum Zeitpunkt der Vorschau; die Ausführung verlangt sie zurück. */
+-  kennung: string;
+-  /** Journaleinträge je Ablage, die der Reset entfernt. */
+-  entfernt: JournalMengen;
+-  /** Journaleinträge je Ablage, die der Reset stehen lässt (Konten, Wörterbuch, Prüfprotokoll). */
+-  erhalten: JournalMengen;
+-}
+-
+-export interface ResetAuftrag {
+-  /** Die Kennung der Vorschau, die der Admin gesehen und bestätigt hat. */
+-  kennung: string;
+-  /** Wer den Reset ausführt (Konto-ID) — steht in der Spur im neuen Journal. */
+-  durch: string;
+-}
+-
+-export type FirmenresetFehlerCode = "VORSCHAU_VERALTET" | "RESET_LAEUFT";
+-
+-/** Der Reset wurde NICHT ausgeführt; am Bestand hat sich nichts geändert. */
+-export class FirmenresetFehler extends Error {
+-  constructor(
+-    readonly code: FirmenresetFehlerCode,
+-    message: string,
+-  ) {
+-    super(message);
+-    this.name = "FirmenresetFehler";
+-  }
+-}
+-
 +// (Journal-Datei vorhanden, siehe server.ts). In Produktion (Postgres) bleibt sie bewusst
- // unverfügbar — der Endpunkt antwortet dort mit „nicht verfügbar". So kann ein Werksreset niemals
- // echte, produktive Kundendaten löschen.
++// unverfügbar — der Endpunkt antwortet dort mit „nicht verfügbar". So kann ein Werksreset niemals
++// echte, produktive Kundendaten löschen.
  export interface FactoryReset {
-@@ -23,29 +21,3 @@ export const factoryResetUnavailable: FactoryReset = {
+   // true nur im Desktop/Dev-Journal-Modus; sonst false (Endpunkt lehnt dann ab).
+   readonly available: boolean;
+-  // P08-AC02: was der Reset entfernen und was er erhalten würde. Ändert nichts.
+-  vorschau(): Promise<ResetVorschau>;
+-  // Entfernt den Bestand (Konten und Wörterbuch bleiben) und beendet den Prozess. Wirft
+-  // `FirmenresetFehler`, wenn die Vorschau nicht mehr stimmt oder schon ein Reset läuft — dann ist
+-  // nichts gelöscht.
+-  run(auftrag: ResetAuftrag): Promise<void>;
++  // Löscht den lokalen Bestand und beendet den Prozess (Neustart = Ersteinrichtung).
++  run(): Promise<void>;
+ }
+ 
+ // Standard außerhalb des Desktop/Dev-Modus: nicht verfügbar. Der Endpunkt gibt „forbidden" zurück.
+ export const factoryResetUnavailable: FactoryReset = {
+   available: false,
+-  vorschau: async () => {
+-    throw new Error("Factory-Reset ist in diesem Betriebsmodus nicht verfügbar.");
+-  },
+   run: async () => {
      throw new Error("Factory-Reset ist in diesem Betriebsmodus nicht verfügbar.");
    },
- };
--
--// R-1154 / R-0537: die Betriebsmodus-Entscheidung als EINE prüfbare Funktion (bis dahin inline in
--// server.ts und damit ungetestet). Mit DATABASE_URL ist der Werksreset IMMER unverfügbar — auch
--// wenn zusätzlich ein Journal konfiguriert ist —, ohne Journal (reiner In-Memory-Betrieb) ebenso.
--// Nur der Desktop/Dev-Journal-Modus bekommt die Fähigkeit: Journal leeren (nächster Start = leere
--// Instanz → needsSetup() → Ersteinrichtung, der erste Anwender wird wieder Admin), dann beenden.
--// `beenden` ist injizierbar, damit der Test den Weg ohne echtes process.exit durchlaufen kann.
--export function waehleWerksreset(opts: {
--  databaseUrl: string | undefined;
--  journal: string | undefined;
--  beenden?: () => void;
--}): FactoryReset {
--  const { databaseUrl, journal } = opts;
--  if (databaseUrl || !journal) {
--    return factoryResetUnavailable;
--  }
--  // Kurzer Aufschub, damit die HTTP-Antwort noch flusht, dann den Prozess beenden.
--  const beenden = opts.beenden ?? (() => setTimeout(() => process.exit(0), 250));
--  return {
--    available: true,
--    run: async () => {
--      writeFileSync(journal, "", "utf8");
--      beenden();
--    },
--  };
--}
 diff --git b/services/app/src/feature-flags.ts a/services/app/src/feature-flags.ts
 index ad7de0775..df8f95298 100644
 --- b/services/app/src/feature-flags.ts
@@ -10385,6 +10648,426 @@ index ad7de0775..df8f95298 100644
      return !(wert === "0" || wert === "false");
    }
    return wert === "1" || wert === "true";
+diff --git b/services/app/src/firmenreset-journal.ts a/services/app/src/firmenreset-journal.ts
+deleted file mode 100644
+index c3686137f..000000000
+--- b/services/app/src/firmenreset-journal.ts
++++ /dev/null
+@@ -1,146 +0,0 @@
+-import { createHash } from "node:crypto";
+-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+-import {
+-  FIRMENRESET_ERHALTEN,
+-  FIRMENRESET_ZEILE,
+-  type JournalEntry,
+-  JournalSchreibsperre,
+-  VORGANG_ZEILE,
+-  firmenresetZeilen,
+-  readJournalLines,
+-} from "./dev-persist";
+-import {
+-  type FactoryReset,
+-  FirmenresetFehler,
+-  type JournalMengen,
+-  factoryResetUnavailable,
+-} from "./factory-reset";
+-
+-// ================================================================================================
+-// PETER-20261011-P08 · DER FIRMENRESET AM DESKTOP-JOURNAL.
+-// ================================================================================================
+-//
+-// Bis hierher leerte der Werksreset das ganze Journal — Konten eingeschlossen — und beendete den
+-// Prozess; der nächste Start begann mit der Ersteinrichtung. Peters Entscheidung vom 11.10.: Konten
+-// und Firmenwörterbuch bleiben erhalten (P08-AC03). Deshalb wird das Journal nicht mehr geleert,
+-// sondern durch die Zeilen ersetzt, die `firmenresetZeilen` stehen lässt (Konten samt zweitem
+-// Faktor, Firmenwörterbuch, Prüfprotokoll), plus EINER Spurzeile des Resets.
+-//
+-// WIE DIE AUSFÜHRUNG KONSISTENT BLEIBT (P08-AC06/AC07) — alles in EINEM synchronen Block, in dem
+-// kein anderer Schreibvorgang dieses Prozesses dazwischenkommen kann:
+-//   1. läuft schon ein Reset → `RESET_LAEUFT`, nichts geändert;
+-//   2. Prüfsumme des Journals ≠ Kennung der bestätigten Vorschau → `VORSCHAU_VERALTET`, nichts
+-//      geändert (jemand hat seit der Vorschau geschrieben: der Admin hätte etwas anderes bestätigt);
+-//   3. Schreibsperre setzen — ab hier weist jede journalierte Ablage Schreibvorgänge ab;
+-//   4. neues Journal in eine Nachbardatei schreiben und per `rename` atomar ersetzen. Scheitert das,
+-//      steht das alte Journal unverändert, die Sperre wird gelöst und der Fehler gemeldet.
+-//   5. Prozess beenden; der Neustart spielt nur noch die erhaltenen Zeilen zurück.
+-
+-function inhaltVon(journal: string): string {
+-  return existsSync(journal) ? readFileSync(journal, "utf8") : "";
+-}
+-
+-function kennungVon(inhalt: string): string {
+-  return createHash("sha256").update(inhalt).digest("hex");
+-}
+-
+-/** Verwaltungszeilen des Journals selbst — sie sind kein Bestand und werden nicht gezählt. */
+-const VERWALTUNG: readonly string[] = [VORGANG_ZEILE.repo, FIRMENRESET_ZEILE.repo];
+-
+-/** Journaleinträge je Ablage, getrennt nach „entfällt" und „bleibt". */
+-export function firmenresetMengen(journal: string): {
+-  entfernt: JournalMengen;
+-  erhalten: JournalMengen;
+-} {
+-  const entfernt: JournalMengen = {};
+-  const erhalten: JournalMengen = {};
+-  for (const { entry } of readJournalLines(journal)) {
+-    const teile =
+-      entry.repo === VORGANG_ZEILE.repo && entry.method === VORGANG_ZEILE.method
+-        ? (entry.args as JournalEntry[])
+-        : [entry];
+-    for (const teil of teile) {
+-      if (typeof teil?.repo !== "string" || VERWALTUNG.includes(teil.repo)) {
+-        continue;
+-      }
+-      const ziel = FIRMENRESET_ERHALTEN.includes(teil.repo) ? erhalten : entfernt;
+-      ziel[teil.repo] = (ziel[teil.repo] ?? 0) + 1;
+-    }
+-  }
+-  return { entfernt, erhalten };
+-}
+-
+-/** Der Firmenreset an genau EINER Journaldatei. */
+-export function journalFirmenreset(opts: {
+-  journal: string;
+-  sperre: JournalSchreibsperre;
+-  beenden: () => void;
+-}): FactoryReset {
+-  const { journal, sperre, beenden } = opts;
+-  let laeuft = false;
+-  return {
+-    available: true,
+-    vorschau: async () => {
+-      // Prüfsumme und Mengen aus DEMSELBEN synchronen Block — dazwischen schreibt niemand.
+-      const kennung = kennungVon(inhaltVon(journal));
+-      return { kennung, ...firmenresetMengen(journal) };
+-    },
+-    run: async (auftrag) => {
+-      if (laeuft || sperre.gesperrt) {
+-        throw new FirmenresetFehler(
+-          "RESET_LAEUFT",
+-          "Es läuft bereits ein Firmenreset. Ein zweiter wurde nicht ausgeführt.",
+-        );
+-      }
+-      if (kennungVon(inhaltVon(journal)) !== auftrag.kennung) {
+-        throw new FirmenresetFehler(
+-          "VORSCHAU_VERALTET",
+-          "Der Bestand hat sich seit der Vorschau geändert. Es wurde nichts gelöscht — bitte die Vorschau neu laden und erneut bestätigen.",
+-        );
+-      }
+-      const { entfernt } = firmenresetMengen(journal);
+-      const bleibt = firmenresetZeilen(readJournalLines(journal));
+-      const spur: JournalEntry = {
+-        repo: FIRMENRESET_ZEILE.repo,
+-        method: FIRMENRESET_ZEILE.method,
+-        args: [{ am: new Date().toISOString(), durch: auftrag.durch, entfernt }],
+-      };
+-      laeuft = true;
+-      sperre.setzen();
+-      try {
+-        const neu = `${journal}.firmenreset-${process.pid}`;
+-        writeFileSync(neu, [...bleibt, spur].map((e) => `${JSON.stringify(e)}\n`).join(""), "utf8");
+-        renameSync(neu, journal);
+-      } catch (error) {
+-        sperre.loesen();
+-        laeuft = false;
+-        throw error;
+-      }
+-      beenden();
+-    },
+-  };
+-}
+-
+-// R-1154 / R-0537: die Betriebsmodus-Entscheidung als EINE prüfbare Funktion. Mit DATABASE_URL ist
+-// der Werksreset IMMER unverfügbar — auch wenn zusätzlich ein Journal konfiguriert ist —, ohne
+-// Journal (reiner In-Memory-Betrieb) ebenso. Nur der Desktop/Dev-Journal-Modus bekommt die
+-// Fähigkeit. `beenden` ist injizierbar, damit der Test den Weg ohne echtes process.exit
+-// durchlaufen kann; `sperre` teilt server.ts mit `buildDevPersistServices` (P08-AC07).
+-export function waehleWerksreset(opts: {
+-  databaseUrl: string | undefined;
+-  journal: string | undefined;
+-  beenden?: () => void;
+-  sperre?: JournalSchreibsperre;
+-}): FactoryReset {
+-  const { databaseUrl, journal } = opts;
+-  if (databaseUrl || !journal) {
+-    return factoryResetUnavailable;
+-  }
+-  // Kurzer Aufschub, damit die HTTP-Antwort noch flusht, dann den Prozess beenden.
+-  const beenden = opts.beenden ?? (() => setTimeout(() => process.exit(0), 250));
+-  return journalFirmenreset({
+-    journal,
+-    sperre: opts.sperre ?? new JournalSchreibsperre(),
+-    beenden,
+-  });
+-}
+diff --git b/services/app/src/firmenreset-sso.ts a/services/app/src/firmenreset-sso.ts
+deleted file mode 100644
+index cff207c24..000000000
+--- b/services/app/src/firmenreset-sso.ts
++++ /dev/null
+@@ -1,262 +0,0 @@
+-import { createHash } from "node:crypto";
+-import { type OidcProvider, codeChallengeS256, randomToken } from "../../auth";
+-
+-// ================================================================================================
+-// PETER-20261011-P08 · AC05 — DIE ZWEIMALIGE, PASSENDE SSO-WIEDERANMELDUNG FÜR DEN FIRMENRESET.
+-// ================================================================================================
+-//
+-// Ein Konto ohne lokales Passwort (reines SSO) kann sich nicht per Passwort bestätigen. Peters
+-// Entscheidung verlangt dafür eine „passende zweimalige SSO-Wiederanmeldung". Dieser Baustein trägt
+-// sie, und zwar AUSSCHLIESSLICH für den Firmenreset:
+-//
+-//   · ZWEI getrennte Rundreisen zum Anbieter, jede mit eigenem `state`, `nonce` und PKCE-Verifier,
+-//     in fester Reihenfolge (Schritt 2 erst nach bestätigtem Schritt 1). Der Anbieter wird mit
+-//     `prompt=login` und `max_age=0` zur erneuten Anmeldung aufgefordert.
+-//   · PASSEND heisst: das verifizierte ID-Token nennt GENAU die Identität (Aussteller, Subjekt), mit
+-//     der dieses Konto verknüpft ist. Meldet der Anbieter ein anderes Konto an, verfällt die ganze
+-//     Bestätigung.
+-//   · GEBUNDEN an Konto UND Sitzung: der Rückruf zählt nur in der Sitzung, die den Schritt begonnen
+-//     hat (gemerkt wird der Hash des Sitzungsmerkmals, nie das Merkmal selbst).
+-//   · KURZLEBIG und EINMALIG: Vorgänge und Bestätigung gelten fünf Minuten ab Schritt 1; die
+-//     Ausführung des Resets löst die Bestätigung ein — gelingt der Reset danach nicht, muss neu
+-//     bestätigt werden.
+-//   · KEINE neue Sitzung: anders als die Anmeldung legt der Rückruf hier kein Konto an und gibt kein
+-//     Sitzungsmerkmal aus. Er setzt nur die Bestätigung.
+-//
+-// Bewusst NICHT wiederverwendet: die Profil-Bestätigung (R-0582, `services/auth/src/routes.ts`).
+-// Sie ist eine private Ablage der Auth-Routen, gilt EINMAL für eine E-Mail-Berichtigung und läuft
+-// über den Anmelderückruf, der eine neue Sitzung ausgibt. Wiederverwendet sind ihre Bausteine aus
+-// der öffentlichen Schnittstelle des Auth-Moduls: `authorizeUrl`, `exchange`, `verify`, PKCE.
+-
+-/** Erkennungsmerkmal des `state` — die Rückrufseite reicht solche Rückrufe hierher statt zur Anmeldung. */
+-export const FIRMENRESET_SSO_PRAEFIX = "firmenreset.";
+-export const FIRMENRESET_SSO_GUELTIG_MS = 5 * 60 * 1000;
+-
+-export type SsoSchritt = 1 | 2;
+-
+-export type FirmenresetSsoFehlerCode =
+-  | "SSO_NICHT_EINGERICHTET"
+-  | "SSO_SCHRITT_UNGUELTIG"
+-  | "SSO_VORGANG_UNBEKANNT"
+-  | "SSO_ANMELDUNG_FEHLGESCHLAGEN"
+-  | "SSO_KONTO_PASST_NICHT";
+-
+-export class FirmenresetSsoFehler extends Error {
+-  constructor(
+-    readonly code: FirmenresetSsoFehlerCode,
+-    message: string,
+-  ) {
+-    super(message);
+-    this.name = "FirmenresetSsoFehler";
+-  }
+-}
+-
+-/** Die SSO-Identität, mit der das Konto verknüpft ist. */
+-export interface SsoIdentitaet {
+-  oidcIssuer?: string | undefined;
+-  oidcSubject?: string | undefined;
+-}
+-
+-interface Vorgang {
+-  userId: string;
+-  sitzung: string;
+-  schritt: SsoSchritt;
+-  nonce: string;
+-  verifier: string;
+-  bis: number;
+-  /** Die Abbruch-Epoche der Sitzung beim Start (s. `epochen`). */
+-  epoche: number;
+-}
+-
+-interface Bestaetigung {
+-  userId: string;
+-  schritte: number;
+-  bis: number;
+-}
+-
+-/** Der Rückruf gehört (nicht mehr) zu einem offenen Vorgang dieser Sitzung. */
+-function unbekannt(): FirmenresetSsoFehler {
+-  return new FirmenresetSsoFehler(
+-    "SSO_VORGANG_UNBEKANNT",
+-    "Diese SSO-Wiederanmeldung gehört nicht zu einem offenen Firmenreset dieser Sitzung. Es wurde nichts bestätigt.",
+-  );
+-}
+-
+-export function sitzungsSchluessel(token: string): string {
+-  return createHash("sha256").update(token).digest("hex");
+-}
+-
+-export class FirmenresetSso {
+-  private readonly vorgaenge = new Map<string, Vorgang>();
+-  private readonly bestaetigungen = new Map<string, Bestaetigung>();
+-  /**
+-   * Ben (Nacharbeit 6): die ABBRUCH-EPOCHE je Sitzung. Ein Rückruf entnimmt seinen Vorgang, BEVOR er
+-   * auf den Anbieter wartet — ein Abbruch in dieser Wartezeit fände ihn nicht mehr in `vorgaenge`.
+-   * Deshalb zählt jeder Abbruch (`verwerfen`, auch über `einloesen` und ein unpassendes Konto) die
+-   * Epoche der Sitzung hoch, und ein Rückruf setzt seine Bestätigung nur, wenn die Epoche UNMITTELBAR
+-   * vor dem Speichern noch die seines Starts ist. Ein verspäteter Rückruf nach einem Abbruch bestätigt
+-   * damit nichts mehr.
+-   */
+-  private readonly epochen = new Map<string, number>();
+-
+-  constructor(
+-    private readonly anbieter: OidcProvider | undefined,
+-    private readonly jetzt: () => number = Date.now,
+-  ) {}
+-
+-  get eingerichtet(): boolean {
+-    return this.anbieter !== undefined;
+-  }
+-
+-  /** Wie viele Schritte (0–2) für dieses Konto in dieser Sitzung gültig bestätigt sind. */
+-  bestaetigt(userId: string, sitzung: string): number {
+-    const b = this.bestaetigungen.get(sitzung);
+-    if (!b || b.userId !== userId || b.bis <= this.jetzt()) {
+-      return 0;
+-    }
+-    return b.schritte;
+-  }
+-
+-  /** Beginnt Schritt 1 oder 2 und liefert die Anmeldeadresse beim Anbieter. */
+-  starte(userId: string, sitzung: string, schritt: SsoSchritt): string {
+-    if (!this.anbieter) {
+-      throw new FirmenresetSsoFehler(
+-        "SSO_NICHT_EINGERICHTET",
+-        "In dieser Installation ist keine SSO-Anmeldung eingerichtet. Es wurde nichts gelöscht.",
+-      );
+-    }
+-    if (schritt !== this.bestaetigt(userId, sitzung) + 1) {
+-      throw new FirmenresetSsoFehler(
+-        "SSO_SCHRITT_UNGUELTIG",
+-        "Die SSO-Wiederanmeldungen laufen nacheinander: erst die erste, dann die zweite.",
+-      );
+-    }
+-    this.aufraeumen();
+-    const state = `${FIRMENRESET_SSO_PRAEFIX}${randomToken()}`;
+-    const nonce = randomToken();
+-    const verifier = randomToken();
+-    this.vorgaenge.set(state, {
+-      userId,
+-      sitzung,
+-      schritt,
+-      nonce,
+-      verifier,
+-      bis: this.jetzt() + FIRMENRESET_SSO_GUELTIG_MS,
+-      epoche: this.epoche(sitzung),
+-    });
+-    const ziel = new URL(
+-      this.anbieter.authorizeUrl({ state, nonce, codeChallenge: codeChallengeS256(verifier) }),
+-    );
+-    // Eine WIEDERanmeldung, kein stilles Durchwinken über eine bestehende Anbietersitzung.
+-    ziel.searchParams.set("prompt", "login");
+-    ziel.searchParams.set("max_age", "0");
+-    return ziel.toString();
+-  }
+-
+-  /**
+-   * Der Rückruf eines Schritts. Liefert die Zahl der jetzt bestätigten Schritte. Jeder Fehlschlag
+-   * wirft und setzt KEINE Bestätigung; ein fremdes Konto beim Anbieter verwirft auch Schritt 1.
+-   */
+-  async rueckruf(
+-    userId: string,
+-    sitzung: string,
+-    konto: SsoIdentitaet,
+-    code: string,
+-    state: string,
+-  ): Promise<number> {
+-    const vorgang = this.vorgaenge.get(state);
+-    // Einmalig: ein Rückruf verbraucht seinen Vorgang, ob er gelingt oder nicht.
+-    this.vorgaenge.delete(state);
+-    if (
+-      !vorgang ||
+-      vorgang.bis <= this.jetzt() ||
+-      vorgang.userId !== userId ||
+-      vorgang.sitzung !== sitzung ||
+-      vorgang.epoche !== this.epoche(sitzung)
+-    ) {
+-      throw unbekannt();
+-    }
+-    if (!this.anbieter) {
+-      throw new FirmenresetSsoFehler(
+-        "SSO_NICHT_EINGERICHTET",
+-        "In dieser Installation ist keine SSO-Anmeldung eingerichtet. Es wurde nichts gelöscht.",
+-      );
+-    }
+-    let iss: string;
+-    let sub: string;
+-    try {
+-      const idToken = await this.anbieter.exchange(code, vorgang.verifier);
+-      const claims = await this.anbieter.verify(idToken, vorgang.nonce);
+-      iss = claims.iss;
+-      sub = claims.sub;
+-    } catch {
+-      throw new FirmenresetSsoFehler(
+-        "SSO_ANMELDUNG_FEHLGESCHLAGEN",
+-        "Die SSO-Wiederanmeldung ist fehlgeschlagen. Es wurde nichts bestätigt und nichts gelöscht.",
+-      );
+-    }
+-    // Nach dem Warten auf den Anbieter: wurde inzwischen abgebrochen (oder eingelöst), zählt dieser
+-    // Rückruf nicht mehr — gleich, was der Anbieter gemeldet hat.
+-    if (vorgang.epoche !== this.epoche(sitzung)) {
+-      throw unbekannt();
+-    }
+-    if (!konto.oidcIssuer || iss !== konto.oidcIssuer || sub !== konto.oidcSubject) {
+-      this.verwerfen(sitzung);
+-      throw new FirmenresetSsoFehler(
+-        "SSO_KONTO_PASST_NICHT",
+-        "Beim Anbieter wurde ein anderes Konto angemeldet. Die Bestätigung ist verworfen; es wurde nichts gelöscht.",
+-      );
+-    }
+-    const bisher = this.bestaetigt(userId, sitzung);
+-    if (vorgang.schritt !== bisher + 1) {
+-      throw new FirmenresetSsoFehler(
+-        "SSO_SCHRITT_UNGUELTIG",
+-        "Die SSO-Wiederanmeldungen laufen nacheinander: erst die erste, dann die zweite.",
+-      );
+-    }
+-    const vorher = this.bestaetigungen.get(sitzung);
+-    this.bestaetigungen.set(sitzung, {
+-      userId,
+-      schritte: bisher + 1,
+-      // Beide Schritte innerhalb DERSELBEN Frist ab Schritt 1.
+-      bis: bisher === 0 || !vorher ? this.jetzt() + FIRMENRESET_SSO_GUELTIG_MS : vorher.bis,
+-    });
+-    return bisher + 1;
+-  }
+-
+-  /** Abbruch: offene UND gerade laufende Vorgänge sowie die Bestätigung dieser Sitzung verfallen. */
+-  verwerfen(sitzung: string): void {
+-    this.epochen.set(sitzung, this.epoche(sitzung) + 1);
+-    this.bestaetigungen.delete(sitzung);
+-    for (const [state, v] of this.vorgaenge) {
+-      if (v.sitzung === sitzung) {
+-        this.vorgaenge.delete(state);
+-      }
+-    }
+-  }
+-
+-  /** Löst die Bestätigung für die Ausführung ein: wahr nur bei zwei gültigen Schritten. Immer einmalig. */
+-  einloesen(userId: string, sitzung: string): boolean {
+-    const vollstaendig = this.bestaetigt(userId, sitzung) >= 2;
+-    this.verwerfen(sitzung);
+-    return vollstaendig;
+-  }
+-
+-  private epoche(sitzung: string): number {
+-    return this.epochen.get(sitzung) ?? 0;
+-  }
+-
+-  private aufraeumen(): void {
+-    const jetzt = this.jetzt();
+-    for (const [state, v] of this.vorgaenge) {
+-      if (v.bis <= jetzt) {
+-        this.vorgaenge.delete(state);
+-      }
+-    }
+-    for (const [sitzung, b] of this.bestaetigungen) {
+-      if (b.bis <= jetzt) {
+-        this.bestaetigungen.delete(sitzung);
+-      }
+-    }
+-  }
+-}
 diff --git b/services/app/src/firmenwoerterbuch.ts a/services/app/src/firmenwoerterbuch.ts
 deleted file mode 100644
 index e963fbac8..000000000
@@ -14088,7 +14771,7 @@ index 98bd93fea..000000000
 -  };
 -}
 diff --git b/services/app/src/http.ts a/services/app/src/http.ts
-index 04be865b6..24e10c549 100644
+index c5ba3a249..24e10c549 100644
 --- b/services/app/src/http.ts
 +++ a/services/app/src/http.ts
 @@ -1,8 +1,6 @@
@@ -14134,7 +14817,18 @@ index 04be865b6..24e10c549 100644
    INVALID_CREDENTIALS: 401,
    EMAIL_TAKEN: 409,
    // WP-SHIP8-FIX (bens F2): Aufräum-Bestätigung passt nicht mehr zur Vorschau-Zielmenge → Konflikt.
-@@ -179,27 +160,6 @@ export function isInternalOnlyError(error: unknown): boolean {
+@@ -129,10 +110,6 @@ const STATUS_BY_CODE: Record<string, number> = {
+   // Auffangwert 400. Der Code bleibt sichtbar, damit der Aufrufer „ungewiss" von „gescheitert"
+   // unterscheiden kann; die Meldung ist ein fester Satz ohne Ursache, Pfad oder Kennung.
+   JOURNAL_AUSGANG_UNGEWISS: 503,
+-  // PETER-20261011-P08 (AC07): ein Schreibvorgang traf auf den laufenden Firmenreset im
+-  // Desktop-Journal (dev-persist.ts, `FirmenresetSchreibsperre`). Nicht gespeichert, kein
+-  // Eingabefehler → 503 mit festem Satz.
+-  FIRMENRESET_LAEUFT: 503,
+ };
+ 
+ // G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1): Fehlercodes, die REIN INTERN sind — technische
+@@ -183,27 +160,6 @@ export function isInternalOnlyError(error: unknown): boolean {
    return INTERNAL_ONLY_CODES.has(String((error as { code: unknown }).code));
  }
  
@@ -14162,7 +14856,7 @@ index 04be865b6..24e10c549 100644
  /**
   * JOB 3568: `sendError` braucht die Anfrage, um den Sprachkopf zu lesen — und holt sie sich über
   * `reply.request` statt über einen zweiten Parameter. Der Grund ist gemessen und nicht gewählt:
-@@ -241,46 +201,16 @@ export function sendError(reply: FastifyReply, error: unknown): void {
+@@ -245,46 +201,16 @@ export function sendError(reply: FastifyReply, error: unknown): void {
        return;
      }
    }
@@ -14210,7 +14904,7 @@ index 04be865b6..24e10c549 100644
      const token = tokenFromRequest(request);
      const user = token ? await auth.authenticate(token) : undefined;
      if (!user) {
-@@ -292,18 +222,7 @@ export function makeGuards(
+@@ -296,18 +222,7 @@ export function makeGuards(
          .send({ error: "UNAUTHENTICATED", message: meldung("NOT_SIGNED_IN", sprache(request)) });
        return undefined;
      }
@@ -23970,7 +24664,7 @@ index f775b3e51..a0b618fde 100644
  export interface ReindexQueueDeps {
    /** Was mit EINEM Eintrag geschieht. Bringt der Aufrufer mit; die Schlange kennt den Inhalt nicht. */
 diff --git b/services/app/src/routes/admin-routes.ts a/services/app/src/routes/admin-routes.ts
-index c6425978e..8bbc5fd4a 100644
+index fa425ecf9..8bbc5fd4a 100644
 --- b/services/app/src/routes/admin-routes.ts
 +++ a/services/app/src/routes/admin-routes.ts
 @@ -1,17 +1,9 @@
@@ -23992,15 +24686,25 @@ index c6425978e..8bbc5fd4a 100644
  import { type ExampleLoadServices, examplePackage, loadExamplePackage } from "../example-packages";
  // JOB 3277: der paketbezogene Weg (wählen · laden · zurücksetzen · entfernen) — additiv neben
  // WP-B6, siehe Kopf von example-packages/demo-pakete.ts.
-@@ -29,7 +21,6 @@ import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
+@@ -23,15 +15,12 @@ import {
+   entferneDemoPaket,
+   ladeDemoPaket,
+ } from "../example-packages/demo-pakete";
+-import { type FactoryReset, FirmenresetFehler, factoryResetUnavailable } from "../factory-reset";
++import { type FactoryReset, factoryResetUnavailable } from "../factory-reset";
+ // AUFTRAG-mega64 Block A: der Betriebsschalter für das Demodaten-Laden — dieselbe eine Wahrheit,
+ // aus der auch GET /api/features antwortet (mega46 F).
  import { schalterAn } from "../feature-flags";
- import type { Guards } from "../http";
+-import { FirmenresetSso, FirmenresetSsoFehler, sitzungsSchluessel } from "../firmenreset-sso";
+-import type { BegriffeRepo } from "../firmenwoerterbuch";
+-import { type Guards, tokenFromRequest } from "../http";
++import type { Guards } from "../http";
  import { type DemoSeedServices, purgeDemoSeed, seedDemoForAdmin } from "../seed-demo";
 -import { type Produktfassung, type UmfangAuskunft, umfangAuskunft } from "../sicherungsumfang";
  // SCRUM-501 (nacht24): Demo-/Simulationskorpus DE/EN/NL — NICHT automatisch, nur über diesen
  // Admin-Weg (bzw. tools/seed-sim-corpus); Entfernen über den bestehenden Demo-Purge (demoSeed).
  import { loadSimCorpus } from "../sim-corpus";
-@@ -105,21 +96,10 @@ const REPO_WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".
+@@ -107,21 +96,10 @@ const REPO_WURZEL = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".
  
  /** Dieselbe Auflösung wie `backup.sh:34-36`; eine leere Variable gilt wie eine ungesetzte (`${VAR:-…}`). */
  function sicherungsVerzeichnis(): string {
@@ -24025,7 +24729,7 @@ index c6425978e..8bbc5fd4a 100644
  }
  
  /**
-@@ -206,526 +186,15 @@ async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag
+@@ -208,580 +186,15 @@ async function befundFuer(ort: string, datei: string): Promise<SicherungsEintrag
    };
  }
  
@@ -24538,33 +25242,295 @@ index c6425978e..8bbc5fd4a 100644
 -  return umfangAuskunft(lage.produkt, lage.tabellenImDump, gemessen, r.zustand === "erfolg");
 -}
 -
+-// ==================================================================================================
+-// PETER-20261011-P08 · DIE VORSCHAU DES FIRMENRESETS (AC02).
+-// ==================================================================================================
+-//
+-// Konkrete Mengen statt „ALLE Daten": was entfällt (Wissensobjekte samt Papierkorb, offene Fragen,
+-// alle übrigen gespeicherten Einträge mit den Namen ihrer Ablagen) und was bleibt (Benutzerkonten,
+-// Firmenwörterbuch, Prüfprotokoll). Die KENNUNG wird ZUERST gebildet: schreibt jemand, während die
+-// Mengen gezählt werden, passt die Kennung nicht mehr und die Ausführung löscht nichts
+-// (`VORSCHAU_VERALTET`) — die Vorschau kann nie zu wenig versprechen.
+-export interface FirmenresetVorschau {
+-  kennung: string;
+-  entfernt: {
+-    wissensobjekte: number;
+-    offeneFragen: number;
+-    weitereEintraege: number;
+-    ablagen: string[];
+-  };
+-  erhalten: { benutzerkonten: number; woerterbuch: number; protokolleintraege: number };
+-}
+-
+-/** Ablagen, deren Menge die Vorschau schon als eigene Zeile nennt. */
+-const EIGENE_ZEILE = ["koRepo", "gaps"];
+-
+-async function firmenresetVorschau(
+-  services: DemoSeedServices & { begriffe?: BegriffeRepo },
+-  factoryReset: FactoryReset,
+-): Promise<FirmenresetVorschau> {
+-  const journal = await factoryReset.vorschau();
+-  const weitere = Object.entries(journal.entfernt).filter(
+-    ([ablage, n]) => n > 0 && !EIGENE_ZEILE.includes(ablage),
+-  );
+-  return {
+-    kennung: journal.kennung,
+-    entfernt: {
+-      wissensobjekte: (await services.ko.listEinschliesslichPapierkorb()).length,
+-      offeneFragen: (await services.ask.listGaps()).length,
+-      weitereEintraege: weitere.reduce((summe, [, n]) => summe + n, 0),
+-      ablagen: weitere.map(([ablage]) => ablage).sort(),
+-    },
+-    erhalten: {
+-      benutzerkonten: (await services.auth.listUsers()).length,
+-      woerterbuch: services.begriffe ? (await services.begriffe.aktuelle()).length : 0,
+-      protokolleintraege: journal.erhalten.auditRepo ?? 0,
+-    },
+-  };
+-}
+-
  // SCRUM-181: admin-geschützte Aktion, um eine LEERE Instanz mit Demodaten sichtbar zu machen.
  // Kein Auto-Seed, kein anonymer Zugriff. Idempotent über den Empty-Guard im Seed selbst.
  // Pedi 05.07.: zusätzlich der Werksreset (Factory-Settings) — nur im Desktop/Dev-Modus verfügbar.
  export function adminRoutes(
    // WP-B6: die Beispielpaket-Route braucht zusätzlich das (optionale) Audit — build-app reicht die
    // vollen AppServices, die das strukturell erfüllen; direkte Test-Aufrufer bleiben kompatibel.
+-  // P08: `begriffe` zählt die Vorschau des Firmenresets (erhaltene Wörterbucheinträge).
 -  // Aufnahme gesamt-bestandsreset (Nacharbeit 2): `bestandsreset` setzt nur `buildPgServices`.
--  services: DemoSeedServices & { audit?: AuditService; bestandsreset?: BestandsresetDienst },
+-  services: DemoSeedServices & {
+-    audit?: AuditService;
+-    begriffe?: BegriffeRepo;
+-    bestandsreset?: BestandsresetDienst;
+-  },
 +  services: DemoSeedServices & { audit?: AuditService },
    guards: Guards,
    factoryReset: FactoryReset = factoryResetUnavailable,
 -  umfangLage?: UmfangLage,
+-  // P08-AC05: die zweimalige SSO-Wiederanmeldung des Firmenresets. Ohne Angabe ohne Anbieter.
+-  firmenresetSso: FirmenresetSso = new FirmenresetSso(undefined),
  ): FastifyPluginAsync {
    return async (app) => {
      // ==========================================================================================
-@@ -1015,126 +484,6 @@ export function adminRoutes(
-       void factoryReset.run();
+@@ -1029,144 +442,17 @@ export function adminRoutes(
+ 
+     // Pedi 05.07. (Beta): Verfügbarkeit des Werksresets. Die Oberfläche blendet den Knopf nur ein,
+     // wenn er im aktuellen Betriebsmodus (Desktop/Dev-Journal) überhaupt möglich ist.
+-    // P08-AC02: ist er verfügbar, trägt dieselbe Auskunft die Vorschau — konkrete Mengen dessen, was
+-    // entfällt und was bleibt, und die Kennung, die die Ausführung zurückverlangt. Lesend; dieselbe
+-    // Schranke wie bisher (`users.manage`, nur die Rolle admin).
+     app.get("/api/admin/factory-reset", async (request, reply) => {
+       const user = await guards.requirePermission("users.manage", request, reply);
+       if (!user) {
+         return;
+       }
+-      if (!factoryReset.available) {
+-        reply.code(200).send({ available: false });
+-        return;
+-      }
+-      // P08-AC05: wie sich DIESES Konto bestätigt — Passwort oder zweimalige SSO-Wiederanmeldung —
+-      // und wie viele SSO-Schritte in dieser Sitzung schon gültig bestätigt sind.
+-      const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+-      const ssoErforderlich = !(await services.auth.hatLokalesPasswort(user.id));
+-      reply.code(200).send({
+-        available: true,
+-        vorschau: await firmenresetVorschau(services, factoryReset),
+-        sso: {
+-          erforderlich: ssoErforderlich,
+-          eingerichtet: firmenresetSso.eingerichtet,
+-          bestaetigt: ssoErforderlich ? firmenresetSso.bestaetigt(user.id, sitzung) : 0,
+-        },
+-      });
++      reply.code(200).send({ available: factoryReset.available });
      });
  
+-    // P08-AC05: Schritt 1 bzw. 2 der SSO-Wiederanmeldung beginnen (Seitennavigation zum Anbieter).
+-    // Nur für Konten OHNE lokales Passwort, nur im Desktopbetrieb, nur in der eigenen Sitzung.
+-    app.get<{ Querystring: { schritt?: string } }>(
+-      "/api/admin/factory-reset/sso/start",
+-      async (request, reply) => {
+-        const user = await guards.requirePermission("users.manage", request, reply);
+-        if (!user) {
+-          return;
+-        }
+-        if (!factoryReset.available) {
+-          reply.code(403).send({
+-            error: "FORBIDDEN",
+-            message:
+-              "Werksreset ist nur in der lokalen Desktop-Version möglich (nicht im Server-/Produktivbetrieb).",
+-          });
+-          return;
+-        }
+-        if (await services.auth.hatLokalesPasswort(user.id)) {
+-          reply.code(409).send({
+-            error: "SSO_NICHT_VORGESEHEN",
+-            message: "Dieses Konto bestätigt den Firmenreset mit seinem Passwort.",
+-          });
+-          return;
+-        }
+-        const schritt = request.query.schritt === "2" ? 2 : request.query.schritt === "1" ? 1 : 0;
+-        if (schritt === 0) {
+-          reply.code(400).send({ error: "SSO_SCHRITT_UNGUELTIG", message: "Unbekannter Schritt." });
+-          return;
+-        }
+-        try {
+-          const ziel = firmenresetSso.starte(
+-            user.id,
+-            sitzungsSchluessel(tokenFromRequest(request) ?? ""),
+-            schritt,
+-          );
+-          reply.header("cache-control", "no-store");
+-          reply.redirect(ziel);
+-        } catch (fehler) {
+-          if (fehler instanceof FirmenresetSsoFehler) {
+-            reply.code(409).send({ error: fehler.code, message: fehler.message });
+-            return;
+-          }
+-          throw fehler;
+-        }
+-      },
+-    );
+-
+-    // P08-AC05/AC06: der Rückruf eines Schritts (die SPA-Rückrufseite reicht ihn mit code+state
+-    // hierher) — oder der Abbruch (`verwerfen: true`). Setzt nur die Bestätigung; keine Sitzung,
+-    // keine Löschung.
+-    app.post("/api/admin/factory-reset/sso", async (request, reply) => {
+-      const user = await guards.requirePermission("users.manage", request, reply);
+-      if (!user) {
+-        return;
+-      }
+-      if (!factoryReset.available) {
+-        reply.code(403).send({
+-          error: "FORBIDDEN",
+-          message:
+-            "Werksreset ist nur in der lokalen Desktop-Version möglich (nicht im Server-/Produktivbetrieb).",
+-        });
+-        return;
+-      }
+-      const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+-      const body = (request.body ?? {}) as { code?: unknown; state?: unknown; verwerfen?: unknown };
+-      if (body.verwerfen === true) {
+-        firmenresetSso.verwerfen(sitzung);
+-        reply.code(200).send({ bestaetigt: 0 });
+-        return;
+-      }
+-      if (typeof body.code !== "string" || typeof body.state !== "string") {
+-        reply.code(400).send({
+-          error: "SSO_VORGANG_UNBEKANNT",
+-          message: "Der Rückruf ist unvollständig. Es wurde nichts bestätigt.",
+-        });
+-        return;
+-      }
+-      const konto = (await services.auth.listUsers()).find((u) => u.id === user.id);
+-      try {
+-        const bestaetigt = await firmenresetSso.rueckruf(
+-          user.id,
+-          sitzung,
+-          { oidcIssuer: konto?.oidcIssuer, oidcSubject: konto?.oidcSubject },
+-          body.code,
+-          body.state,
+-        );
+-        reply.code(200).send({ bestaetigt });
+-      } catch (fehler) {
+-        if (fehler instanceof FirmenresetSsoFehler) {
+-          // Fehlgeschlagene oder unpassende Anmeldung: 401; Vorgang/Reihenfolge: 409.
+-          const abgewiesen = ["SSO_ANMELDUNG_FEHLGESCHLAGEN", "SSO_KONTO_PASST_NICHT"];
+-          const status = abgewiesen.includes(fehler.code) ? 401 : 409;
+-          reply.code(status).send({ error: fehler.code, message: fehler.message });
+-          return;
+-        }
+-        throw fehler;
+-      }
+-    });
+-
+-    // Pedi 05.07. (Beta): Werksreset ausführen und das Programm beenden. Nur im Desktop/Dev-Modus
+-    // möglich (sonst 403), damit produktive Daten nie betroffen sind.
+-    //
+-    // PETER-20261011-P08 (Firmenreset): Konten und Firmenwörterbuch bleiben erhalten. Die Ausführung
+-    // verlangt, in dieser Reihenfolge, und bricht beim ersten Fehlen OHNE jede Löschung ab:
+-    //   AC01  das administrative Resetrecht (`users.manage` = Rolle admin) und den Desktopbetrieb;
+-    //   AC02  die Kennung der Vorschau, die der Admin gesehen hat;
+-    //   AC04  die bewusst gesetzte Checkbox (`bestaetigt: true`, nichts anderes zählt);
+-    //   AC05  zwei Passwortbestätigungen, JEDE einzeln geprüft — oder, für ein Konto OHNE lokales
+-    //         Passwort, zwei gültige, passende SSO-Wiederanmeldungen dieser Sitzung (eingelöst und
+-    //         damit verbraucht);
+-    //   AC07  einen unveränderten Bestand seit der Vorschau und keinen zweiten laufenden Reset.
++    // Pedi 05.07. (Beta): Werksreset ausführen — ALLE lokalen Daten löschen und das Programm
++    // beenden; der nächste Start beginnt mit der Ersteinrichtung (erster Anwender = Admin).
++    // Nur im Desktop/Dev-Modus möglich (sonst 403), damit produktive Daten nie betroffen sind.
+     app.post("/api/admin/factory-reset", async (request, reply) => {
+       const user = await guards.requirePermission("users.manage", request, reply);
+       if (!user) {
+@@ -1180,183 +466,22 @@ export function adminRoutes(
+         });
+         return;
+       }
+-      const body = (request.body ?? {}) as {
+-        kennung?: unknown;
+-        bestaetigt?: unknown;
+-        passwort1?: unknown;
+-        passwort2?: unknown;
+-      };
+-      if (typeof body.kennung !== "string" || body.kennung.length === 0) {
+-        reply.code(400).send({
+-          error: "VORSCHAU_FEHLT",
+-          message: "Ohne bestätigte Vorschau wird nichts gelöscht.",
+-        });
+-        return;
+-      }
+-      if (body.bestaetigt !== true) {
+-        reply.code(400).send({
+-          error: "BESTAETIGUNG_FEHLT",
+-          message: "Die Bestätigung der Folgen ist nicht gesetzt. Es wurde nichts gelöscht.",
+-        });
+-        return;
+-      }
+-      // SCRUM-450 / P08-AC05: Re-Authentifizierung, zweimal. „Angemeldet als Admin" allein reicht
+-      // nicht — ein offener oder übernommener Admin-Tab kann den Reset so nicht auslösen.
+-      if (!(await services.auth.hatLokalesPasswort(user.id))) {
+-        // Reines SSO-Konto: statt der Passwörter die zwei Wiederanmeldungen DIESER Sitzung.
+-        const sitzung = sitzungsSchluessel(tokenFromRequest(request) ?? "");
+-        if (!firmenresetSso.einloesen(user.id, sitzung)) {
+-          reply.code(403).send({
+-            error: "SSO_WIEDERANMELDUNG_ERFORDERLICH",
+-            message:
+-              "Dieses Konto meldet sich über SSO an. Der Firmenreset verlangt zwei passende SSO-Wiederanmeldungen in dieser Sitzung. Es wurde nichts gelöscht.",
+-          });
+-          return;
+-        }
+-      } else {
+-        for (const eingabe of [body.passwort1, body.passwort2]) {
+-          const passwort = typeof eingabe === "string" ? eingabe : "";
+-          if (!passwort || !(await services.auth.verifyUserPassword(user.id, passwort))) {
+-            reply.code(401).send({
+-              error: "INVALID_PASSWORD",
+-              message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+-            });
+-            return;
+-          }
+-        }
+-      }
+-      try {
+-        await factoryReset.run({ kennung: body.kennung, durch: user.id });
+-      } catch (error) {
+-        if (error instanceof FirmenresetFehler) {
+-          reply.code(409).send({ error: error.code, message: error.message });
+-          return;
+-        }
+-        throw error;
+-      }
+-      // Das Journal ist ersetzt; der Prozess beendet sich kurz nach dieser Antwort.
+-      reply.code(200).send({ ok: true });
+-    });
+-
 -    // ==========================================================================================
 -    // AUFNAHME 20260922 · GESAMT-BESTANDSRESET — DER ADMINISTRATIVE AUFRUF (Nacharbeit 2).
 -    // ==========================================================================================
 -    //
 -    // Peters Entscheidung vom 11.10.: Konten und Firmenwörterbuch bleiben; Folgenvorschau,
--    // zweimalige Passworteingabe und ein Häkchen. Anders als der Werksreset darüber löscht dieser
--    // Weg NUR den Wissensbestand samt Papierkorb, läuft im Server-/Postgres-Betrieb und beendet
--    // nichts. Ohne Datenbank (Speicher, Desktop-Journal) gibt es ihn nicht: `verfuegbar: false`
+-    // zweimalige Passworteingabe und ein Häkchen. Anders als der Werksreset darüber (Desktop-Journal,
+-    // P08: entfernt den lokalen Bestand samt Einstellungen und Anmeldungen und beendet den Prozess)
+-    // löscht dieser Weg NUR den Wissensbestand samt Papierkorb, läuft im Server-/Postgres-Betrieb und
+-    // beendet nichts. Ohne Datenbank (Speicher, Desktop-Journal) gibt es ihn nicht: `verfuegbar: false`
 -    // bzw. 409 — ein Reset, der nur den Speicher leerte, wäre beim nächsten Neustart wieder da.
 -    //
 -    // GET liefert die Folgenvorschau samt ihrer Kennung und den Befund des letzten Laufs.
@@ -24606,12 +25572,19 @@ index c6425978e..8bbc5fd4a 100644
 -      // Wie beim Werksreset (SCRUM-450): ein offener Admin-Tab allein genügt nicht. Ein Konto ohne
 -      // eigenes Passwort (nur SSO) besteht diese Prüfung nicht — `verifyUserPassword` ist dort false.
 -      if (!(await services.auth.verifyUserPassword(user.id, freigabe.passwort))) {
--        reply.code(401).send({
--          error: "INVALID_PASSWORD",
++      // SCRUM-450: Re-Authentifizierung. Der Werksreset löscht ALLE Daten unwiderruflich —
++      // „angemeldet als Admin" allein reicht nicht, der Admin muss sein Passwort bestätigen.
++      // So kann ein offener/übernommener Admin-Tab den Reset nicht ohne Passwort auslösen.
++      const body = (request.body ?? {}) as { password?: unknown };
++      const password = typeof body.password === "string" ? body.password : "";
++      if (!password || !(await services.auth.verifyUserPassword(user.id, password))) {
+         reply.code(401).send({
+           error: "INVALID_PASSWORD",
 -          message: "Falsches Passwort. Der Bestandsreset wurde nicht ausgeführt.",
--        });
--        return;
--      }
++          message: "Falsches Passwort. Der Werksreset wurde nicht ausgeführt.",
+         });
+         return;
+       }
 -      const jetzt = await dienst.stand();
 -      if (jetzt.vorschau.kennung !== freigabe.vorschauKennung) {
 -        reply.code(409).send({
@@ -24675,12 +25648,14 @@ index c6425978e..8bbc5fd4a 100644
 -          befund: nachher?.letzterLauf ?? null,
 -        });
 -      }
--    });
--
++      // Erst antworten (damit die Oberfläche die Bestätigung erhält), dann Bestand löschen und
++      // den Prozess beenden. Der Reset läuft bewusst NACH dem Flush der Antwort.
++      reply.code(200).send({ ok: true });
++      void factoryReset.run();
+     });
+ 
      // ==========================================================================================
-     // JOB 4025 — GET /api/admin/sicherungen: liegt hier eine Sicherung, und trägt sie ihr Zeugnis?
-     // ==========================================================================================
-@@ -1159,21 +508,6 @@ export function adminRoutes(
+@@ -1383,21 +508,6 @@ export function adminRoutes(
        const verzeichnis = sicherungsVerzeichnis();
        const gelesenUtc = new Date().toISOString();
  
@@ -24702,7 +25677,7 @@ index c6425978e..8bbc5fd4a 100644
        // `Dirent<string>`, nicht `Awaited<ReturnType<typeof readdir>>`: `readdir` ist überladen, und
        // die Ableitung greift dort die Puffer-Überladung — `e.name` wäre dann ein `Buffer`.
        let eintraege: Dirent<string>[];
-@@ -1182,24 +516,14 @@ export function adminRoutes(
+@@ -1406,24 +516,14 @@ export function adminRoutes(
        } catch (fehler) {
          const code = (fehler as NodeJS.ErrnoException).code;
          if (code === "ENOENT") {
@@ -24728,7 +25703,7 @@ index c6425978e..8bbc5fd4a 100644
          });
          return;
        }
-@@ -1236,15 +560,7 @@ export function adminRoutes(
+@@ -1460,15 +560,7 @@ export function adminRoutes(
          const fb = b.folgeNummer ?? 0;
          return fa === fb ? b.datei.localeCompare(a.datei) : fb - fa;
        });
@@ -39195,10 +40170,10 @@ index 3a5bf840d..ad9b71d37 100644
        log,
 diff --git b/services/app/src/routes/spaces-routes.ts a/services/app/src/routes/spaces-routes.ts
 deleted file mode 100644
-index b784e062d..000000000
+index c9d4e8e9c..000000000
 --- b/services/app/src/routes/spaces-routes.ts
 +++ /dev/null
-@@ -1,1475 +0,0 @@
+@@ -1,1506 +0,0 @@
 -// ================================================================================================
 -// SPACES — PFLEGE, INHALTE JE SPACE UND ANSICHT, RECHTEVORSCHAU UND SPACEWECHSEL (`spaces.ts`).
 -// ================================================================================================
@@ -39288,6 +40263,14 @@ index b784e062d..000000000
 -   * holt die nächste Entscheidung es serverseitig nach.
 -   */
 -  freigaberegelAnwenden?: (koId: string, akteur: string) => Promise<void>;
+-  /**
+-   * aufnahme:20260922:gesamt-leserechte (Ben, Nacharbeit 32; Entscheidung 25): das AUSDRÜCKLICHE
+-   * Existenzrecht eines Kontos — es darf erfahren, dass es Objekte gibt, die es nicht lesen darf.
+-   * Nur wer es hat, kann einen Space löschen, dessen sichtbarer Bestand leer ist: ob die Löschung
+-   * gelingt, hängt dann vom verborgenen Bestand ab. Fehlt die Angabe oder sagt sie nein, ist der
+-   * Löschweg vom verborgenen Bestand unabhängig (s. `fuehreLoeschungAus`).
+-   */
+-  existenzrecht?: (konto: { id: string; email: string }) => boolean;
 -}
 -
 -/** Eine Zeile in einer Space- oder Ansichtsliste: dasselbe Objekt, keine Kopie. */
@@ -39644,7 +40627,12 @@ index b784e062d..000000000
 -    ansichten: number;
 -    mitglieder: number;
 -    darfLoeschen: boolean;
--    grund: "SPACE_NICHT_LEER" | null;
+-    /**
+-     * `EXISTENZRECHT_FEHLT` (Nacharbeit 32): der sichtbare Bestand ist leer, aber ohne
+-     * ausdrückliches Existenzrecht hinge der Ausgang vom verborgenen Bestand ab — gelöscht wird
+-     * dann nie, unabhängig davon, ob es verborgene Artikel gibt.
+-     */
+-    grund: "SPACE_NICHT_LEER" | "EXISTENZRECHT_FEHLT" | null;
 -  }
 -
 -  /**
@@ -39668,6 +40656,12 @@ index b784e062d..000000000
 -    const lesbar = fuehrend.filter((k) => darfSehen(user, k));
 -    const sichtbar = lesbar.filter((k) => !k.deletedAt);
 -    const sichtbarLeer = lesbar.length === 0;
+-    // Nacharbeit 32: beides hängt nur am Konto und am LESBAREN Bestand — nie am verborgenen.
+-    const konto = dienste.existenzrecht
+-      ? (await dienste.auth.listUsers()).find((u) => u.id === user.id)
+-      : undefined;
+-    const recht = konto !== undefined && dienste.existenzrecht?.(konto) === true;
+-    const grund = !sichtbarLeer ? "SPACE_NICHT_LEER" : recht ? null : "EXISTENZRECHT_FEHLT";
 -    return {
 -      vorschau: {
 -        space: { id: space.id, name: space.name, version: space.version },
@@ -39677,8 +40671,8 @@ index b784e062d..000000000
 -        imPapierkorb: lesbar.length - sichtbar.length,
 -        ansichten: space.ansichten.length,
 -        mitglieder: space.mitglieder.length,
--        darfLoeschen: sichtbarLeer,
--        grund: sichtbarLeer ? null : "SPACE_NICHT_LEER",
+-        darfLoeschen: grund === null,
+-        grund,
 -      },
 -      verborgenBlockiert: fuehrend.length > lesbar.length,
 -    };
@@ -39737,7 +40731,7 @@ index b784e062d..000000000
 -      });
 -      return;
 -    }
--    if (!vorschau.darfLoeschen) {
+-    if (vorschau.grund === "SPACE_NICHT_LEER") {
 -      reply.code(409).send({
 -        error: "SPACE_NICHT_LEER",
 -        message: "Der Space ist noch führender Space von Artikeln. Bitte sie zuerst verschieben.",
@@ -39745,9 +40739,21 @@ index b784e062d..000000000
 -      });
 -      return;
 -    }
--    // Nacharbeit 31 (Ben, Entscheidung 25): nur Artikel, die der Betrachter NICHT lesen darf,
--    // halten die Löschung auf. Die Löschung unterbleibt (kein Space ohne Artikel-Bezug), die Antwort
--    // ist eine allgemeine Meldung: kein Grund, keine Vorschau, keine Zahl, keine Kennung.
+-    // Nacharbeit 32 (Ben; Entscheidung 25): ohne ausdrückliches Existenzrecht wird ein Space, dessen
+-    // LESBARER Bestand leer ist, nie gelöscht — gleich, ob er leer ist oder nur verborgene Artikel
+-    // führt. Antwort UND Folgezustand (der Space bleibt) sind damit vom verborgenen Bestand
+-    // unabhängig; die Schutzprüfung gegen verwaiste Artikel bleibt unberührt.
+-    if (vorschau.grund === "EXISTENZRECHT_FEHLT") {
+-      reply.code(403).send({
+-        error: "EXISTENZRECHT_FEHLT",
+-        message:
+-          "Diesen Space löscht, wer ausdrücklich erfahren darf, ob er noch Artikel führt. Bitte die Kontoverwaltung ansprechen.",
+-      });
+-      return;
+-    }
+-    // Nur mit Existenzrecht: halten Artikel, die der Betrachter NICHT lesen darf, die Löschung auf,
+-    // unterbleibt sie (kein verwaister Artikel). Die Antwort darf das hier sagen (Existenzrecht),
+-    // nennt aber weiter keinen Titel, keine Zahl und keine Kennung.
 -    if (verborgenBlockiert) {
 -      reply.code(409).send({
 -        error: "LOESCHUNG_NICHT_MOEGLICH",
@@ -46693,7 +47699,7 @@ index 727b02e9e..000000000
 -  return auskunft;
 -}
 diff --git b/services/app/src/server.ts a/services/app/src/server.ts
-index 3a2180335..a3ea7060e 100644
+index fdd4cff02..a3ea7060e 100644
 --- b/services/app/src/server.ts
 +++ a/services/app/src/server.ts
 @@ -3,40 +3,18 @@ import { dirname, join } from "node:path";
@@ -46703,13 +47709,14 @@ index 3a2180335..a3ea7060e 100644
 -import { WISSENSSPRINT_TAKT_MS } from "../../management";
  import { buildApp, buildPgServices, buildServices } from "./build-app";
  import { createPool, migrate } from "./db";
- import { buildDevPersistServices } from "./dev-persist";
--import { waehleWerksreset } from "./factory-reset";
+-import { JournalSchreibsperre, buildDevPersistServices } from "./dev-persist";
+-import { waehleWerksreset } from "./firmenreset-journal";
 -import { HINTERGRUNDLAUF_INTERVAL_MS, type HintergrundlaufBericht } from "./hintergrundpruefung";
 -import { starteHintergrundpruefung } from "./hintergrundpruefung-start";
 -import { bindeInstanzVorMigration } from "./instanzbindung";
 -import { GedaechtnisDienst } from "./interaktionsgedaechtnis";
 -import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
++import { buildDevPersistServices } from "./dev-persist";
 +import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
  import { registerNoindexHook } from "./noindex-hook";
  import { registerSecurityHeaders } from "./security-headers";
@@ -46795,7 +47802,7 @@ index 3a2180335..a3ea7060e 100644
    // EINE Quelle der Wahrheit (ben-Review ROT-1): DATABASE_URL genau hier am Rand normalisieren
    // (trim; leer/whitespace → undefined). Derselbe Wert speist ALLE vier Verwendungen — Guard,
    // Pg-vs-InMemory/Journal-Verzweigung, Factory-Reset-Erkennung und Modus-Log — sodass Guard-Entscheid
-@@ -166,48 +144,15 @@ async function start(): Promise<void> {
+@@ -166,51 +144,15 @@ async function start(): Promise<void> {
    if (storageDecision.warning) {
      process.stderr.write(`${storageDecision.warning}\n`);
    }
@@ -46803,13 +47810,17 @@ index 3a2180335..a3ea7060e 100644
 -  // Konfiguration und `KLARWERK_TLS_PFLICHT=1` ohne Zertifikat brechen den Start hier ab, bevor
 -  // eine Verbindung zur Datenbank entsteht (transport-tls.ts).
 -  const tls = leseTransportTls(process.env);
+-  // P08-AC07: EINE Schreibsperre für Journal und Firmenreset — während der Reset das Journal
+-  // ersetzt, weisen alle journalierten Ablagen Schreibvorgänge ab.
+-  const schreibsperre = new JournalSchreibsperre();
    const services = databaseUrl
      ? await pgServices(databaseUrl)
      : journal
-       ? await buildDevPersistServices(journal)
+-      ? await buildDevPersistServices(journal, schreibsperre)
++      ? await buildDevPersistServices(journal)
        : buildServices();
--  // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL), s. factory-reset.ts.
--  const factoryReset = waehleWerksreset({ databaseUrl, journal });
+-  // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL), s. firmenreset-journal.ts.
+-  const factoryReset = waehleWerksreset({ databaseUrl, journal, sperre: schreibsperre });
 -  // R-0609 · Bens B13: der Aufräumlauf der Klara-Sitzungen (Nachtrag fehlender Endeinträge des
 -  // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
 -  let klaraAufraeumLauf: (() => Promise<number>) | undefined;
@@ -46847,7 +47858,7 @@ index 3a2180335..a3ea7060e 100644
    const port = Number(process.env.PORT ?? "3001");
    // SCRUM-525 P.5 (WP3-Batch3): die wirksame KI-Zuordnung (Policy) MUSS feststehen, BEVOR der Server
    // Requests annimmt — sonst gäbe es kurz nach dem Neustart ein Fenster mit Default-„auto". Daher VOR
-@@ -224,11 +169,8 @@ async function start(): Promise<void> {
+@@ -227,11 +169,8 @@ async function start(): Promise<void> {
      // die Log-Meldung darf das nicht suggerieren. Bis zum Neustart bleibt fail-closed=deterministic aktiv;
      // ein Admin kann die Zuordnung in der Zwischenzeit über die API neu setzen (setTaskConfig ist nicht
      // ENV-gesperrt, s. ReasonerPolicyLockedError).
@@ -46860,7 +47871,7 @@ index 3a2180335..a3ea7060e 100644
      );
    } else if (policy.source === "env") {
      app.log.info(
-@@ -262,31 +204,20 @@ async function start(): Promise<void> {
+@@ -265,31 +204,20 @@ async function start(): Promise<void> {
    // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
    const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
    app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);
@@ -46896,7 +47907,7 @@ index 3a2180335..a3ea7060e 100644
      });
    // SCRUM-523 P.3 (WP1-Batch3): zusätzlich PERIODISCH sweepen (nicht nur beim Start), damit abgelaufene
    // Einträge auch in langlaufenden Prozessen ohne Neustart endgültig verschwinden. Intervall aus der
-@@ -294,136 +225,19 @@ async function start(): Promise<void> {
+@@ -297,136 +225,19 @@ async function start(): Promise<void> {
    const sweepInterval = resolveTrashSweepIntervalMs(process.env.KLARWERK_TRASH_SWEEP_INTERVAL_MS);
    startTrashSweepScheduler({
      intervalMs: sweepInterval,
@@ -50149,7 +51160,7 @@ index 7ca613d1a..cbc91af41 100644
        if (typeof wert !== "function" || typeof prop !== "string") {
          return wert;
 diff --git b/services/app/src/start-vertrag.ts a/services/app/src/start-vertrag.ts
-index fabf5260b..7a8995fd3 100644
+index 7a673cafa..7a8995fd3 100644
 --- b/services/app/src/start-vertrag.ts
 +++ a/services/app/src/start-vertrag.ts
 @@ -80,13 +80,11 @@
@@ -50446,7 +51457,7 @@ index fabf5260b..7a8995fd3 100644
    },
    {
      name: "KLARWERK_EMBED_MAX_INFLIGHT",
-@@ -1085,125 +877,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -1085,136 +877,6 @@ const GRUNDWERTE: readonly Startwert[] = [
      wofuer: "Selbstregistrierung neuer Konten.",
      ohneIhn: "Konten legt nur ein Administrator an (nach der Ersteinrichtung).",
    },
@@ -50569,10 +51580,21 @@ index fabf5260b..7a8995fd3 100644
 -    ohneIhn:
 -      "Jedes Konto bekommt das Prüfprotokoll als Leseansicht nach seinem Leserecht; eine vollständige Kette gibt es über die Oberfläche nicht.",
 -  },
+-  // aufnahme:20260922:gesamt-leserechte (Nacharbeit 32; Entscheidung 25): ausdrückliches Existenzrecht.
+-  {
+-    name: "KLARWERK_EXISTENZRECHT",
+-    bereich: "Betrieb",
+-    pflicht: { art: "nie" },
+-    geheim: false,
+-    wofuer:
+-      "Kontokennungen oder E-Mail-Adressen (durch Komma getrennt) mit ausdrücklichem Existenzrecht: sie dürfen erfahren, dass es Objekte gibt, die sie nicht lesen dürfen — heute beim Löschen eines Space, dessen sichtbarer Bestand leer ist.",
+-    ohneIhn:
+-      "Ein Space, dessen für den Löschenden sichtbarer Bestand leer ist, lässt sich nicht löschen — sonst verriete der Ausgang verborgene Artikel.",
+-  },
    // ------------------------------------------------------------------------------- Externe Quellen
    {
      name: "EXTERNAL_SEARCH",
-@@ -1231,15 +904,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -1242,15 +904,6 @@ const GRUNDWERTE: readonly Startwert[] = [
      wofuer: "Adressen, die trotz externer Herkunft als INTERN gelten.",
      ohneIhn: "Keine Adresse gilt als intern.",
    },
@@ -50588,7 +51610,7 @@ index fabf5260b..7a8995fd3 100644
    // ------------------------------------------------------------------------------------ Add-in API
    {
      name: "KLARWERK_ADDON_API",
-@@ -1339,17 +1003,6 @@ const GRUNDWERTE: readonly Startwert[] = [
+@@ -1350,17 +1003,6 @@ const GRUNDWERTE: readonly Startwert[] = [
        "Die Hilfeseite benennt den Supportweg mit dem eingebauten Text der gewählten Sprache.",
    },
    // ------------------------------------------------------------------------------------- Sonstiges
@@ -50606,7 +51628,7 @@ index fabf5260b..7a8995fd3 100644
    {
      name: "KLARWERK_CONFLUENCE_BUDGET_MS",
      bereich: "Confluence-Import",
-@@ -1423,7 +1076,6 @@ export const STARTVERTRAG: readonly Startwert[] = [
+@@ -1434,7 +1076,6 @@ export const STARTVERTRAG: readonly Startwert[] = [
    ...GRUNDWERTE,
    ...CONFLUENCE_WERTE,
    ...SHAREPOINT_WERTE,
@@ -50614,7 +51636,7 @@ index fabf5260b..7a8995fd3 100644
    ...SCHALTER_WERTE,
  ];
  
-@@ -1701,48 +1353,6 @@ export function startbericht(
+@@ -1712,48 +1353,6 @@ export function startbericht(
        betrifft: oidcFehlt,
      });
    }
@@ -50663,7 +51685,7 @@ index fabf5260b..7a8995fd3 100644
    if (istAn(env.KLARWERK_ADDON_API) && !gesetzt(env.KLARWERK_ADDON_API_KEY)) {
      maengel.push({
        befund:
-@@ -1752,9 +1362,6 @@ export function startbericht(
+@@ -1763,9 +1362,6 @@ export function startbericht(
    }
    if (schalterAn("confluenceImport") && !confluence.usable) {
      const fehlend = confluence.vars.filter((v) => !v.present).map((v) => v.name);
