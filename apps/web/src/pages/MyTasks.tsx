@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
+  useAuthorTransfers,
   useConflicts,
   useGaps,
   useKos,
@@ -45,7 +46,12 @@ import {
   writeTaskFilterToParams,
 } from "../lib/taskViewState";
 import { useAuthorName } from "../lib/useAuthorName";
-import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCenter";
+import {
+  type WorkSeverity,
+  groupTasks,
+  severityForAuthorTransfer,
+  severityForType,
+} from "../lib/workCenter";
 
 // ================================================================================================
 // JOB 3064 · H5 — „MEINE AUFGABEN" IN DER ZEILENFORM DER STARTSEITE.
@@ -102,11 +108,14 @@ interface Task {
   localeTag?: string;
   // JOB 1111 / D-032: wie oft dieselbe Frage zu dieser Lücke geführt hat. Nur ab zwei.
   askCount?: number;
+  // R-0961: warum eine Autorenübergabe ansteht (Konto gelöscht, Zugang beendet, angefordert).
+  grundKey?: string;
 }
 
-// Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit).
-function task(input: Omit<Task, "severity">): Task {
-  return { ...input, severity: severityForType(input.typeKey) };
+// Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit). Die
+// Autorenübergabe bringt ihre Dringlichkeit selbst mit (`severityForAuthorTransfer`).
+function task(input: Omit<Task, "severity"> & { severity?: WorkSeverity }): Task {
+  return { ...input, severity: input.severity ?? severityForType(input.typeKey) };
 }
 
 /**
@@ -156,6 +165,8 @@ export function MyTasks(): JSX.Element {
   // (`GET /api/audit`, `ko.validate`). Daran scheiterte die Liste für Experten, während das
   // Kopfband sie zählte. Liste und Zahl rechnen jetzt serverseitig mit derselben Auswahl.
   const zurueckgegeben = useReturnedTasks();
+  // R-0961: die wartenden Autorenübergaben — nur für die Verwaltung (`null` für alle anderen).
+  const uebergaben = useAuthorTransfers();
   const kos = useKos();
   const { user } = useSession();
 
@@ -212,6 +223,21 @@ export function MyTasks(): JSX.Element {
         ...(authorOf(id) ? { author: authorOf(id) as KoAuthorParts } : {}),
       }),
     ),
+    // R-0961 (Peters Entscheidung 24): die wartende Autorenübergabe. Dringlichkeit „Heute", bei
+    // kritischem Wissen „Kritisch" (rechnet der Server). Der Absprung führt direkt zum Objekt; dort
+    // steht unter „Mehr" → „Provenienz" die Übergabe. Erledigt ist sie, sobald der Server sie nicht
+    // mehr liefert (nach `transfer-author`, s. `MehrAbschnitte.tsx`).
+    ...(uebergaben?.data ?? []).map((u) =>
+      task({
+        id: `at-${u.koId}`,
+        label: kosById.get(u.koId)?.title ?? u.koId,
+        typeKey: "task.authorTransfer",
+        to: `/wissen/${u.koId}`,
+        severity: severityForAuthorTransfer(u.kritisch),
+        grundKey: `task.authorTransfer.grund.${u.grund}`,
+        ...(authorOf(u.koId) ? { author: authorOf(u.koId) as KoAuthorParts } : {}),
+      }),
+    ),
     // FUNKE-FIX2 P0: ohne Detail-Berechtigung liefert der Server den Fragetext redigiert.
     // GAP-SPRACHHERKUNFT: der Fragetext behält die Sprache seiner Quelle; ein Etikett benennt sie.
     ...(gaps.data ?? []).filter(isOpenGap).map((g) => {
@@ -260,7 +286,15 @@ export function MyTasks(): JSX.Element {
   // die Liste oben gebaut ist. Zusammengehörig und atomar: erst wenn jede geliefert hat, darf über
   // den Bestand etwas ausgesagt werden. Ein gescheiterter Refetch bei vorhandenen Daten bleibt
   // `loaded` — die Liste bleibt sichtbar, sie schlägt nicht auf „Nichts offen." um.
-  const quellen = [board, conflicts, lifecycle, gaps, zurueckgegeben, kos];
+  const quellen = [
+    board,
+    conflicts,
+    lifecycle,
+    gaps,
+    zurueckgegeben,
+    kos,
+    ...(uebergaben ? [uebergaben] : []),
+  ];
   const ladephase = groupLoadPhase(quellen);
 
   // ==============================================================================================
@@ -407,7 +441,9 @@ export function MyTasks(): JSX.Element {
         aria-label={t("task.kicker")}
         className="mb-5 inline-flex flex-wrap rounded-btn border border-hairline bg-surface p-0.5"
       >
-        {TASK_FILTERS.map((f) => (
+        {/* R-0961: die Autorenübergabe ist eine Art der Verwaltung. Wer sie nicht ausführen darf,
+            bekommt keinen Filter für eine Art, die es für ihn nie gibt. */}
+        {TASK_FILTERS.filter((f) => f.key !== "authorTransfer" || uebergaben !== null).map((f) => (
           <button
             key={f.key}
             type="button"
@@ -558,6 +594,17 @@ export function MyTasks(): JSX.Element {
                                 ·
                               </span>
                               <span className="shrink-0">{t(it.review.labelKey)}</span>
+                            </>
+                          ) : null}
+                          {/* R-0961: warum die Autorenübergabe ansteht. */}
+                          {it.grundKey ? (
+                            <>
+                              <span aria-hidden="true" className="shrink-0">
+                                ·
+                              </span>
+                              <span data-testid="task-uebergabe-grund" className="shrink-0">
+                                {t(it.grundKey)}
+                              </span>
                             </>
                           ) : null}
                         </span>

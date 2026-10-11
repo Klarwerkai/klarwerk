@@ -40,6 +40,8 @@ const d = vi.hoisted(() => {
     lifecycle: sofortLeer(),
     // Autorenübergabe-Auftrag K3: die sechste Zählquelle (zurückgegebene Entwürfe), sofort leer.
     returned: { fn: vi.fn(async () => ({ open: 0 })) },
+    // R-0961: Admin-Sitzung — die wartenden Autorenübergaben, sofort leer.
+    uebergaben: { fn: vi.fn(async () => ({ open: 0 })) },
   };
 });
 
@@ -58,7 +60,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
-    me: { returnedSummary: d.returned.fn },
+    me: { returnedSummary: d.returned.fn, authorTransfersSummary: d.uebergaben.fn },
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     reasoner: {
@@ -186,6 +188,7 @@ const abrufe = (): number[] => [
   d.gaps.fn.mock.calls.length,
   d.lifecycle.fn.mock.calls.length,
   d.returned.fn.mock.calls.length,
+  d.uebergaben.fn.mock.calls.length,
 ];
 
 /** Alle fünf Quellen erfolgreich beantworten: Board mit 2 offenen Prüfungen, sonst leer. */

@@ -1,6 +1,14 @@
 // SCRUM-158: DOM-freie Aufgaben-Typ-Filter für „Meine Aufgaben". Leitet rein aus den
 // vorhandenen Task-typeKeys ab — keine neue Workflow-Semantik, keine Backend-Abfrage.
-export type TaskFilterKey = "all" | "validation" | "returned" | "conflict" | "gap" | "revalidation";
+export type TaskFilterKey =
+  | "all"
+  | "validation"
+  | "returned"
+  | "conflict"
+  | "gap"
+  | "revalidation"
+  // Autorenübergabe-Auftrag (R-0961): wartende Autorenübergaben (nur für Admins befüllt).
+  | "authorTransfer";
 
 export interface TaskLike {
   typeKey: string;
@@ -14,6 +22,7 @@ export const TASK_FILTERS: readonly { key: TaskFilterKey; typeKeys: readonly str
   { key: "conflict", typeKeys: ["task.conflict"] },
   { key: "gap", typeKeys: ["task.gap"] },
   { key: "revalidation", typeKeys: ["task.revalidation"] },
+  { key: "authorTransfer", typeKeys: ["task.authorTransfer"] },
 ];
 
 export function matchesTaskFilter(task: TaskLike, key: TaskFilterKey): boolean {

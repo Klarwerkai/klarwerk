@@ -174,6 +174,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `conflict` | `ko.validate` | `conflict` (antwortet 201) |
 | `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
 | `transfer-author` | `users.manage` | `newAuthor` |
+| `request-author-transfer` | `requireUser`; Autor des Objekts oder `users.manage` (sonst 403 `FORBIDDEN`) | — (Protokoll `ko.author-transfer-requested`) |
 | `revalidate` | `ko.create` | — |
 
 ### 3.4 Entwürfe und Erfassung (`captureRoutes`, `slidesRoutes`, `objectRoutes`, `mediaRoutes`)
@@ -303,6 +304,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
 | `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand | — |
 | `GET` | `/api/me/impact` | `requireUser` | — | 200 eigene Wirkung | — |
+| `GET` | `/api/me/author-transfers` | `users.manage` | — | 200 `[{ koId, grund, kritisch }]` — wartende Autorenübergaben | 403 |
+| `GET` | `/api/me/author-transfers/summary` | `users.manage` | — | 200 `{ open }` — Zahl der wartenden Autorenübergaben | 403 |
 | `GET` | `/api/me/returned-tasks` | `ko.read`, sichtbar | — | 200 `[{ koId, at, verdict }]` — an mich zurückgegebene Entwürfe | — |
 | `GET` | `/api/me/returned-tasks/summary` | `ko.read`, sichtbar | — | 200 `{ open }` — Zahl der an mich zurückgegebenen Entwürfe | — |
 | `GET` | `/api/gesamtanweisungen` | `ko.read` | — | 200 sichtbare Anweisungen | — |

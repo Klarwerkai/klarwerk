@@ -50,6 +50,7 @@ vi.mock("../../apps/web/src/api/hooks", async () => {
     useKos: () => quelle([]),
     useAudit: () => quelle([]),
     useReturnedTasks: () => quelle([]),
+    useAuthorTransfers: () => null,
     useConflicts: () => quelle(lage.conflicts),
     useLifecyclePending: () => quelle([]),
     useValidationBoard: () => quelle([]),

@@ -91,7 +91,12 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         summary: ok({ open: 0, total: 0, byPriority: {} }),
       },
       audit: { list: ok([]) },
-      me: { returnedTasks: ok([]) },
+      me: {
+        returnedTasks: ok([]),
+        // R-0961: die Sitzung ist Admin — die wartenden Autorenübergaben sind hier leer.
+        authorTransfers: ok([]),
+        authorTransfersSummary: ok({ open: 0 }),
+      },
       ko: { list: vi.fn(async () => daten.kos), act: ok({}) },
       directory: { list: ok([{ id: "u1", name: "Pia", email: "p@x.de", role: "admin" }]) },
       learningPaths: { byRole: ok(null), progress: ok([]), complete: ok({}) },

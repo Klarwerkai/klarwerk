@@ -152,10 +152,21 @@ const SEVERITY_BY_TYPE: Record<string, WorkSeverity> = {
   "task.validation": "today",
   "task.revalidation": "today",
   "task.gap": "later",
+  // Autorenübergabe-Auftrag (R-0961, Peters Entscheidung 24): Standard „Heute". Bei kritischem
+  // Wissen höher — das entscheidet `severityForAuthorTransfer` unten je Aufgabe.
+  "task.authorTransfer": "today",
 };
 
 export function severityForType(typeKey: string): WorkSeverity {
   return SEVERITY_BY_TYPE[typeKey] ?? "later";
+}
+
+/**
+ * Die Dringlichkeit einer wartenden Autorenübergabe: „Heute", bei kritischem Wissen „Kritisch".
+ * `kritisch` rechnet der Server aus dem gepflegten Bereichsprofil (`lib/autorenuebergabe.ts`).
+ */
+export function severityForAuthorTransfer(kritisch: boolean): WorkSeverity {
+  return kritisch ? "critical" : severityForType("task.authorTransfer");
 }
 
 export interface WorkGroups<T> {

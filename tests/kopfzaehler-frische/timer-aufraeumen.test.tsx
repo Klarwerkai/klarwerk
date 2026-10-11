@@ -30,6 +30,8 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLifecyclePending: quelle([]),
     // Autorenübergabe-Auftrag K3: die sechste Zählquelle (an mich zurückgegebene Entwürfe).
     useReturnedTasksSummary: quelle({ open: 0 }),
+    // R-0961: die wartenden Autorenübergaben gibt es nur für die Verwaltung — hier keine Quelle.
+    useAuthorTransfersSummary: () => null,
   };
 });
 

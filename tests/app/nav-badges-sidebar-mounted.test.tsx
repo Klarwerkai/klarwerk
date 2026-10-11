@@ -43,6 +43,8 @@ const d = vi.hoisted(() => {
     lifecycle: mk(),
     // Autorenübergabe-Auftrag K3: die sechste Quelle, an mich zurückgegebene Entwürfe.
     returned: mk(),
+    // R-0961: die wartenden Autorenübergaben — die Sitzung ist Admin, also fragt die Hülle sie ab.
+    uebergaben: { offen: 0 },
   };
 });
 
@@ -61,7 +63,10 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
-    me: { returnedSummary: d.returned.fn },
+    me: {
+      returnedSummary: d.returned.fn,
+      authorTransfersSummary: async () => ({ open: d.uebergaben.offen }),
+    },
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     // Das Zahnrad-Menü (Admin) trägt die Status-Zeilen — ihre Quellen sind hier nicht Gegenstand.
@@ -290,6 +295,28 @@ describe("JOB 690 D-019 → H1: die echte Hülle zählt alle fünf Aufgabenquell
     expect(d.returned.fn, "die Hülle fragt die sechste Zählquelle ab").toHaveBeenCalled();
     expect(badge("tasks", 1), "Rückgabe fehlt im Aufgaben-Zähler").not.toBeNull();
     expect(aufgabenZahl()).toBe("1");
+  });
+
+  // R-0961: die wartenden Autorenübergaben zählen für die Verwaltung im Aufgaben-Zähler mit.
+  it("(f) Admin: zwei wartende Autorenübergaben bei sonst leeren Quellen ⇒ der Zähler zeigt 2", async () => {
+    d.uebergaben.offen = 2;
+    try {
+      await mount();
+      await act(async () => {
+        d.board.resolve([]);
+        d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+        d.conflicts.resolve([]);
+        d.lifecycle.resolve([]);
+        d.duplicates.resolve([]);
+        d.returned.resolve({ open: 0 });
+        await flush();
+      });
+      await weitereBereicheOeffnen();
+      expect(badge("tasks", 2), "die wartenden Autorenübergaben fehlen im Zähler").not.toBeNull();
+      expect(aufgabenZahl()).toBe("2");
+    } finally {
+      d.uebergaben.offen = 0;
+    }
   });
 
   it("(e) solange die Rückgabe-Quelle lädt oder scheitert, steht keine Teilsumme", async () => {

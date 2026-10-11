@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSession } from "../app/AuthContext";
 // JOB 577: die kanonische Normalisierung von „nicht vorhanden / nicht sichtbar" (404) in den
 // Datenzustand `null`. Sie steht in einer eigenen Datei, weil sie ein VERTRAG ist und keine
 // Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
@@ -47,6 +48,42 @@ export const useReturnedTasks = () =>
     queryKey: ["me", "returned-tasks", "list"],
     queryFn: () => endpoints.me.returnedTasks(),
   });
+
+// ================================================================================================
+// AUTORENÜBERGABE-AUFTRAG (R-0961) — DIE WARTENDEN AUTORENÜBERGABEN, NUR FÜR DIE VERWALTUNG.
+// ================================================================================================
+//
+// Angezeigt werden sie nur Admins (`users.manage`): Nur sie dürfen übergeben, und nur ihnen
+// antwortet der Server (`aufgaben-zaehler-routes.ts`). Für alle anderen gibt es diese Quelle NICHT
+// (`null`), statt einer Abfrage, die mit 403 scheitert oder als abgeschaltete Abfrage ewig „lädt".
+// Beides hielte den Aufgaben-Zähler und die Seite in einem falschen Lade- oder Fehlerzustand.
+//
+// Gefragt wird die SITZUNGSrolle, nicht die Ansicht-als-Rolle: Die Abfrage richtet sich nach dem
+// Recht, das der Server prüft. Beide Schlüssel liegen unter `["me", "author-transfers"]`; wer
+// diesen Präfix entwertet, frischt Liste und Zahl gemeinsam auf.
+function useIstVerwaltung(): boolean {
+  return useSession().user?.role === "admin";
+}
+
+export function useAuthorTransfers() {
+  const verwaltung = useIstVerwaltung();
+  const abfrage = useQuery({
+    queryKey: ["me", "author-transfers", "list"],
+    queryFn: () => endpoints.me.authorTransfers(),
+    enabled: verwaltung,
+  });
+  return verwaltung ? abfrage : null;
+}
+
+export function useAuthorTransfersSummary() {
+  const verwaltung = useIstVerwaltung();
+  const abfrage = useQuery({
+    queryKey: ["me", "author-transfers", "summary"],
+    queryFn: () => endpoints.me.authorTransfersSummary(),
+    enabled: verwaltung,
+  });
+  return verwaltung ? abfrage : null;
+}
 export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],

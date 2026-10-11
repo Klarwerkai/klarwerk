@@ -1,15 +1,18 @@
-# Aufnahme 20260922 · Autorenübergabe als wartende Aufgabe — Quellenlage und offene Frage an Pedi
+# Aufnahme 20260922 · Autorenübergabe als wartende Aufgabe — Quellenlage, Entscheidung, Umsetzung
 
 Auftrag: `aufnahme:20260922:gesamt-aufgabenansicht:autorenuebergabe`, Revision 1. Folgeauftrag aus
 Pedis `entscheidung:8bace44d-d7b0-421a-83a5-b28cec95283d` (30.09.2026). Basis: `3264ad7d`
 (`1.0.0-beta.1.718`).
 
-Kurzfassung: Das Kriterium K2 verlangt, vor dem Bau festzuhalten, **was** eine Autorenübergabe als
-anstehende Aufgabe auslöst, **wem** sie angezeigt wird und **wann** sie als erledigt gilt. Zwei der
-drei Punkte lassen sich aus den Quellen ableiten. Der Auslöser lässt sich nicht ableiten. Nach K2 wird
-er deshalb nicht selbst entschieden, sondern unten als Frage mit Optionen an Pedi gestellt. Bis zur
-Antwort ist an der Aufgabenfläche und an `setAuthor` **nichts gebaut** worden. Am Kopfband ist in
-Nacharbeit 1 nur Bens Zählbefund behoben (siehe unten). Die Autorenaufgabe selbst ist das nicht.
+Kurzfassung:
+
+- K2 verlangt, vor dem Bau festzuhalten, **was** eine Autorenübergabe als anstehende Aufgabe
+  auslöst, **wem** sie angezeigt wird und **wann** sie als erledigt gilt.
+- Empfänger und Abschluss waren aus den Quellen ableitbar, der Auslöser nicht. Er ging deshalb als
+  Frage mit Optionen an Pedi (Abschnitt „Frage an Pedi“, jetzt **beantwortet**).
+- Peter hat am 11.10.2026 entschieden (Fragen 23 und 24, Abschnitt „Entscheidung“ unten).
+- Seit Nacharbeit 5 ist die wartende Autorenübergabe auf der Fläche gebaut (Abschnitt
+  „Nacharbeit 5“).
 
 ## Was die Quellen sagen
 
@@ -43,9 +46,43 @@ Was der Code heute kann (Quelleninspektion, Basis `3264ad7d`):
 |---|---|---|
 | **Wem** wird sie angezeigt? | **Ableitbar: Admins** (Recht `users.manage`), denn nur sie dürfen die Übergabe ausführen. Eine Aufgabe für andere Rollen endete am Rollentor. | BRIEF §10 und Rollenliste, Anforderungsbeschreibung §7.14 und R-Admin, `ko-routes.ts:3557` |
 | **Wann** gilt sie als erledigt? | **Ableitbar: sobald für dieses Objekt `setAuthor` ausgeführt ist.** Dann ist `author` geändert, `originalAuthor` bleibt, und das Audit `ko.author-transferred` steht. Dasselbe verlangt K3 („Nach ausgeführter Übergabe verschwindet die Aufgabe“). | Anforderungsbeschreibung §7.14, `service.ts:6297–6310`, Kriterium K3 |
-| **Was** löst sie aus? | **Nicht ableitbar.** Die einzige Angabe ist „bei Personalwechsel“. Woran das System einen Personalwechsel erkennen soll, steht in keiner Quelle, und einen Wartezustand gibt es im Code nicht. Jede der Optionen unten wäre eine eigene fachliche Festlegung. | — |
+| **Was** löst sie aus? | Bis 10.10. **nicht ableitbar** (nur „bei Personalwechsel“). Seit 11.10. **entschieden** durch Peter (Frage 24), siehe „Entscheidung“. | QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011, Frage 24 |
 
-## Frage an Pedi (vor dem Bau, K2)
+## Entscheidung (Peter, 11.10.2026) — Auslöser, Berechtigte, Anzeige, Priorität, Abschluss
+
+Quelle: `QUELLEN-FACHHILFE-PETER-ENTSCHEIDUNGEN-20261011.json` (Auftragsunterlagen), Faden
+`icloud/01a1254c-582a-76c2-895b-bbefc2c2553f`. Beide Antworten übernehmen die Empfehlung.
+
+- **Frage 23** — „Was passiert, wenn der Verantwortliche eines Wissensbereichs gelöscht wird oder
+  ausscheidet?“ Antwort: „deine empfehlung, das wissen gehoert der firma, nicht der person“.
+  Beschluss: Die Verantwortlichkeit wird übertragen. Firmenwissen bleibt der Firma, private Notizen
+  gesondert. Gemeinsam genutztes Wissen soll einen **erreichbaren** Verantwortlichen behalten.
+- **Frage 24** — „Wann entsteht eine wartende Autorenübergabe, wer darf sie verlangen und welche
+  Priorität erhält sie?“ Antwort: „deine empfaehlung“. Beschluss: Eine wartende Autorenübergabe
+  entsteht
+  - bei gelöschten oder dauerhaft ausgeschiedenen Autoren und
+  - auf ausdrückliche Anforderung von Autor oder zuständiger Verwaltungsrolle.
+
+  Standardpriorität ist „Heute“, bei kritischem Wissen höher.
+
+Abbildung auf den Bestand (Regel: `apps/web/src/lib/autorenuebergabe.ts`, eine Stelle für Server
+und Oberfläche):
+
+| Punkt | Umsetzung | Grund der Abbildung |
+|---|---|---|
+| **Auslöser „gelöscht“** | Der Autor des Objekts hat kein Konto mehr (`konto-geloescht`). | `deleteUser` lässt `author` stehen; ein fehlendes Konto ist genau „gelöscht“. |
+| **Auslöser „dauerhaft ausgeschieden“** | Das Konto besteht, aber sein Zugang ist abgelaufen (`accessExpiresAt` in der Vergangenheit, `zugang-beendet`). | Einen anderen Zustand „ausgeschieden“ kennt das System nicht. Ein abgelaufener Zugang heißt: kein erreichbarer Verantwortlicher (Frage 23). Der Ruhestandshorizont (24/36 Monate) ist eine Vorausschau und löst nichts aus. |
+| **Auslöser „ausdrückliche Anforderung“** | Neue Aktion `request-author-transfer` an `PUT /api/kos/:id`. Sie schreibt nur den Protokolleintrag `ko.author-transfer-requested`. Die Aufgabe steht an, solange danach kein `ko.author-transferred` folgt (`angefordert`). | Kein neues Datenfeld; dieselbe Bauart wie die Rückgaben (Zustand aus dem Protokoll). |
+| **Wer darf verlangen** | Der Autor des Objekts und wer `users.manage` trägt (Admin); sonst 403. | „Zuständige Verwaltungsrolle“ = die Rolle, die Konten und die Übergabe verwaltet. |
+| **Wem angezeigt** | Admins (`users.manage`): `GET /api/me/author-transfers` und `/summary`. Andere Rollen bekommen 403, und die Oberfläche fragt für sie gar nicht erst ab. | Nur Admins dürfen übergeben (`transfer-author`). |
+| **Priorität** | „Heute“. „Kritisch“, wenn das gepflegte Bereichsprofil der Kategorie die Kritikalität „hoch“ trägt (`management/src/profiles.ts`, Faktor `criticality`). | Die vorhandene, ausdrückliche Einschätzung „kritisches Wissen“ im Produkt; ohne Pflege gilt „Heute“. |
+| **Erledigt** | Durch die vorhandene Admin-Handlung `transfer-author` (`setAuthor`, Audit `ko.author-transferred`, unverändert). Danach zeigt `author` auf ein erreichbares Konto, und die Übergabe folgt dem Antrag. Die Aufgabe verschwindet aus Liste und Zahl. | K3. |
+
+## Frage an Pedi (vor dem Bau, K2) — **beantwortet am 11.10.2026 (siehe „Entscheidung“)**
+
+Die Frage bleibt hier im Wortlaut stehen. Peters Antwort übernimmt die Empfehlung aus Frage 24.
+Sie verbindet A und C und deckt mit „dauerhaft ausgeschieden“ den Kern von B ab. Sie schließt D aus
+und legt zusätzlich die Priorität fest.
 
 **Wann soll auf der Fläche „Offene Aufgaben“ eine Autorenübergabe als wartende Aufgabe für Admins
 erscheinen?**
@@ -81,10 +118,15 @@ Folgen für den Bau nach Option A oder B, zur Einschätzung:
 - R-0962 / D-003 (13.08.) beschreibt die Fläche mit fünf Arten ohne sie.
 - Der Satz unter der Überschrift (`apps/web/src/texte/aufgaben.ts`, `aufgaben.leitsatz`, DE/EN/NL)
   folgt R-0962 und nennt die fünf Arten.
-- Weil nichts gebaut wurde, stimmt der Satz **heute mit der tatsächlichen Fläche überein**.
-- Kommt die Autorenübergabe nach Pedis Antwort (A, B oder C) auf die Fläche, weicht der Satz von
-  R-0962 ab. Dann ist er in allen drei Sprachen mitzuändern, und die Abweichung zu D-003 wird als
-  Pedis Entscheidung vermerkt, nicht stillschweigend.
+- Bis Nacharbeit 4 war nichts gebaut, und der Satz stimmte mit der tatsächlichen Fläche überein.
+- **Seit Nacharbeit 5** steht die Autorenübergabe auf der Fläche. Der Satz nennt sie deshalb in allen
+  drei Sprachen als sechste Art, mit dem Zusatz, dass nur die Verwaltung sie sieht (DE: „… und – für
+  die Verwaltung – anstehende Autorenübergaben“).
+- Damit weicht er bewusst von D-003 (fünf Arten) ab. Die Abweichung ist Pedis Entscheidung
+  (`entscheidung:8bace44d`, 30.09.; Fragen 23/24, 11.10.) und im Kopf von `texte/aufgaben.ts`
+  vermerkt, nicht stillschweigend aufgelöst.
+- Belegt durch `tests/aufgaben-ansicht/gegenstand-statt-besitzer.test.tsx` (G2: die fünf Arten
+  stehen weiter da; G2b: die Autorenübergabe in DE/EN/NL).
 
 ## Nacharbeit 1 (07.10.2026): Zählgleichheit Kopfband und Liste (K3, Bens Befund)
 
@@ -216,9 +258,75 @@ Gegenprobe (`tests/aufgaben-ansicht/uebergabe-frischt-rueckgaben-auf.test.tsx`):
 - Für die Überarbeitung gibt es keine eigene Gegenprobe; dort ist die Änderung nur aus dem Quelltext
   begründet.
 
+## Nacharbeit 5 (Kandidat `85498be9`): die wartende Autorenübergabe ist gebaut (K1–K4)
+
+Anlass: Peters Entscheidung vom 11.10.2026 (siehe „Entscheidung“). Bens Befunde verlangten:
+
+- den Bau der wartenden Autorenübergabe;
+- die Dokumentation der Entscheidung, mit der alten Frage als beantwortet gekennzeichnet;
+- passende Prüfungen.
+
+Gebaut:
+
+- **Regel** `apps/web/src/lib/autorenuebergabe.ts` (rein, eine Stelle): Auslöser, Grund und
+  Dringlichkeit je Objekt.
+- **Server** `services/app/src/routes/aufgaben-zaehler-routes.ts`:
+  - `GET /api/me/author-transfers` → `[{ koId, grund, kritisch }]`;
+  - `GET /api/me/author-transfers/summary` → `{ open }`;
+  - beide nur `users.manage`. Grundlage sind die sichtbare Grundmenge wie `GET /api/kos`, die
+    Konten (`AuthService.listUsers`), das Protokoll und die Bereichsprofile.
+- **Antrag** `PUT /api/kos/:id` mit `action: "request-author-transfer"` (`ko-routes.ts`):
+  - Autor oder Admin, sonst 403;
+  - Protokoll `ko.author-transfer-requested`;
+  - `transfer-author`/`setAuthor` und das Audit `ko.author-transferred` bleiben unverändert.
+- **Fläche** `pages/MyTasks.tsx`:
+  - eigene Art „Autorenübergabe“ (`task.authorTransfer`), mit Grund in der Metazeile;
+  - Einordnung Heute bzw. Kritisch (`severityForAuthorTransfer`, `lib/workCenter.ts`);
+  - eigener Filter `?art=authorTransfer` (`lib/taskFilters.ts`), nur für die Verwaltung sichtbar;
+  - Absprung direkt zum Objekt (`/wissen/:id`), dort „Mehr“ → „Provenienz“ → Übergabe;
+  - Erklärsatz und Handlung in `lib/taskAction.ts`.
+- **Kopfband** `app/useNavBadges.ts`: Für die Verwaltung zählt die Zahl der wartenden Übergaben im
+  Aufgaben-Zähler mit. Für andere Rollen gibt es diese Quelle nicht (`null`), sie hält also weder
+  Lade- noch Fehlerzustand.
+- **Bedienung** `MehrAbschnitte.tsx`:
+  - Knopf „Übergabe anfordern“ für Autor und Admin.
+  - Übergabe und Antrag entwerten `["me", "author-transfers"]`. Liste und Zahl stimmen damit auch
+    beim unmittelbaren Rückweg innerhalb der Frischefrist.
+- **Texte** DE/EN/NL in `woerterbuch/*.ts`; Leitsatz in `texte/aufgaben.ts` (siehe
+  Quellenwiderspruch).
+- **Inventare**: Rollenabnahme, Guard-Audit, Lesewege-Sammler, HTTP-API-Referenz, mega80 (Antrag).
+
+Gegenproben:
+
+- `tests/aufgaben-ansicht/autorenuebergabe-aufgabe.test.ts` (HTTP), Fälle A1–A8:
+  - jeder Auslöser;
+  - wer verlangen darf;
+  - Anzeige nur für Admins;
+  - Priorität aus dem Bereichsprofil;
+  - Abschluss durch die vorhandene Übergabe samt Audit;
+  - gescheiterte Übergabe;
+  - in jedem Schritt Liste = Zahl.
+- `tests/aufgaben-ansicht/uebergabe-frischt-rueckgaben-auf.test.tsx`, Fälle U1–U3 (gemountet,
+  produktive Frischefrist, tatsächliche Übergabe):
+  - Art, Grund, „Heute“/„Kritisch“, Filter, Absprung;
+  - nach der Übergabe beim Rückweg aus Liste und Kopfband weg, Filter bleibt;
+  - gescheitert: bleibt stehen.
+- Zähler und Filter: `apps/web/src/app/useNavBadges.badges.test.ts`,
+  `tests/app/nav-badges-sidebar-mounted.test.tsx` (f), `tests/foundation/task-filters.test.ts`.
+
+Grenzen:
+
+- „Dauerhaft ausgeschieden“ ist auf den abgelaufenen Zugang abgebildet. Ein Ausscheiden ohne
+  Löschung und ohne Befristung kennt das System nicht; dafür steht der ausdrückliche Antrag offen.
+- „Kritisches Wissen“ ist die gepflegte Kritikalität „hoch“ des Bereichs. Ohne Pflege gilt „Heute“.
+- Den Antrag gibt es nur über den Knopf am Objekt und die API. Eine Aufgabe für die Person, die den
+  Antrag stellt, entsteht nicht; angezeigt wird sie der Verwaltung.
+
 ## Unverändert (K3, K4)
 
 - `setAuthor`, `transferAuthor`, die Route `transfer-author` und das Audit `ko.author-transferred`
   sind nicht angefasst. Die vorhandenen Tests dazu sind im Prüfplan dieses Auftrags aufgeführt.
-- Aufgabenfläche, Filter, Sortierung, Absprung und Rückweg (N-0015) sind nicht angefasst. Beleg sind
-  die vorhandenen Tests unter `tests/aufgaben-ansicht/` und `tests/app/work-center.test.ts`.
+- Die bestehenden Aufgabenarten, ihre Sortierung, Filter, Absprünge und der Rückweg (N-0015) sind
+  unverändert. Die Fläche ist nur um die sechste Art erweitert (Nacharbeit 5). Beleg sind die
+  vorhandenen Tests unter `tests/aufgaben-ansicht/` und `tests/app/work-center.test.ts`; ihre
+  Hook-Mocks kennen die neue Quelle als „nicht vorhanden“ (`null`, Expertensitzung).

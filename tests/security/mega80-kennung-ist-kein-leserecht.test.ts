@@ -204,6 +204,11 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, conflictId: "konflikt-mega80", decision: "Entschieden in mega80" };
     case "transfer-author":
       return { action, newAuthor: "irgendwer" };
+    // R-0961 (Autorenübergabe): der Antrag braucht keine weiteren Felder. Ob der Anfragende ihn
+    // stellen DARF (Autor oder `users.manage`), entscheidet der Zweig — dieser Wächter prüft nur,
+    // dass am fremden vertraulichen Objekt vorher 404 steht.
+    case "request-author-transfer":
+      return { action };
     // JOB 3667 R2 (WORD-RÜCKWEG): die drei Aktionen der Accountregel. Fachlich gültige
     // Mindestnutzlasten — ob der Anfragende sie ausführen DARF (`users.manage` bzw. `ko.create`),
     // entscheidet der jeweilige Zweig, und genau das soll dieser Wächter nicht vorwegnehmen. Er

@@ -908,7 +908,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "aufgabenZaehlerRoutes",
     methode: "GET",
     pfad: "/api/me/returned-tasks",
-    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:49",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:107",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
@@ -916,9 +916,26 @@ export const TABELLE: Zeile[] = [
     gruppe: "aufgabenZaehlerRoutes",
     methode: "GET",
     pfad: "/api/me/returned-tasks/summary",
-    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:58",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:116",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — nur für Admins, die sie ausführen.
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/author-transfers",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:91",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "aufgabenZaehlerRoutes",
+    methode: "GET",
+    pfad: "/api/me/author-transfers/summary",
+    belegstelle: "services/app/src/routes/aufgaben-zaehler-routes.ts:99",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
   },
   // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
   // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.

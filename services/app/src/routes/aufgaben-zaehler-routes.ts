@@ -1,5 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
+  UEBERGABE_REGEL_AKTIONEN,
+  type UebergabeBereich,
+  type UebergabeKonto,
+  anstehendeUebergaben,
+} from "../../../../apps/web/src/lib/autorenuebergabe";
+import {
   RUECKGABE_REGEL_AKTIONEN,
   returnedToAuthor,
 } from "../../../../apps/web/src/lib/validationStatus";
@@ -41,11 +47,63 @@ async function grundlage(
   return { kos, protokoll: protokoll.flat() };
 }
 
+// ================================================================================================
+// AUTORENÜBERGABE-AUFTRAG (R-0961, K1/K3) — DIE WARTENDEN AUTORENÜBERGABEN.
+// ================================================================================================
+//
+// Liste und Zahl der anstehenden Übergaben, aus derselben Regel (`lib/autorenuebergabe.ts`, Quelle
+// und Abbildung der Entscheidung stehen dort). Angezeigt werden sie den Admins (`users.manage`):
+//   · Nur sie dürfen die Übergabe ausführen (`transfer-author`, ko-routes.ts).
+//   · Nur sie dürfen die Kontolage lesen (`/api/users`).
+// Nichts davon verlässt den Server außer Kennung, Grund und Dringlichkeit; Titel und Autor holt die
+// Seite über `GET /api/kos`.
+export interface UebergabeQuellen {
+  /** Die Konten (vorhanden, mit Zugangsablauf) — `AuthService.listUsers`. */
+  konten: () => Promise<readonly UebergabeKonto[]>;
+  /** Die gepflegten Bereichsprofile (Kritikalität) — `ManagementService.listCategoryProfiles`. */
+  bereiche: () => Promise<readonly UebergabeBereich[]>;
+}
+
+async function uebergaben(
+  deps: { ko: Pick<KoService, "list">; audit: Pick<AuditService, "list"> } & UebergabeQuellen,
+  user: SessionUser,
+) {
+  const [kos, konten, protokoll, bereiche] = await Promise.all([
+    deps.ko.list({}, sqlSichtbarkeitFuer(user)),
+    deps.konten(),
+    Promise.all(UEBERGABE_REGEL_AKTIONEN.map((action) => deps.audit.list({ action }))),
+    deps.bereiche(),
+  ]);
+  return anstehendeUebergaben({
+    kos: sichtbareFuer(user, kos),
+    konten,
+    protokoll: protokoll.flat(),
+    bereiche,
+    jetzt: Date.now(),
+  });
+}
+
 export function aufgabenZaehlerRoutes(
-  deps: { ko: Pick<KoService, "list">; audit: Pick<AuditService, "list"> },
+  deps: { ko: Pick<KoService, "list">; audit: Pick<AuditService, "list"> } & UebergabeQuellen,
   guards: Guards,
 ): FastifyPluginAsync {
   return async (app) => {
+    app.get("/api/me/author-transfers", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send(await uebergaben(deps, user));
+    });
+
+    app.get("/api/me/author-transfers/summary", async (request, reply) => {
+      const user = await guards.requirePermission("users.manage", request, reply);
+      if (!user) {
+        return;
+      }
+      reply.code(200).send({ open: (await uebergaben(deps, user)).length });
+    });
+
     app.get("/api/me/returned-tasks", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {

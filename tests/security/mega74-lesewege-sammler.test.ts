@@ -510,6 +510,17 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "K3 — sichtbareFuer + sqlSichtbarkeitFuer über der Grundmenge, nur die Zahl.",
   },
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Übergaben — Kennung, Grund, Dringlichkeit.
+  "GET /api/me/author-transfers": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — wartende Autorenübergaben (koId, grund, kritisch); Admin.",
+  },
+  "GET /api/me/author-transfers/summary": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "R-0961 — nur die Zahl der wartenden Autorenübergaben; Admin.",
+  },
   "GET /api/me/returned-tasks": {
     urteil: "PRAEDIKAT",
     grund: "K3 — dieselbe Auswahl als Liste { koId, at, verdict }, nur eigene sichtbare Objekte.",

@@ -53,7 +53,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
-    me: { returnedSummary: d.returned.fn },
+    me: {
+      returnedSummary: d.returned.fn,
+      // R-0961: Admin-Sitzung — die wartenden Autorenübergaben, sofort leer.
+      authorTransfersSummary: vi.fn(async () => ({ open: 0 })),
+    },
     notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
     features: { get: vi.fn(async () => ({ features: {} })) },
     reasoner: {

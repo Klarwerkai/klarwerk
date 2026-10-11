@@ -679,6 +679,14 @@ const nl: typeof de = {
   "task.filter.conflict": "Conflicten",
   "task.filter.gap": "Kennishiaten",
   "task.filter.revalidation": "Hervalidatie",
+  "task.filter.authorTransfer": "Auteursoverdracht",
+  "task.authorTransfer": "Auteursoverdracht",
+  "task.authorTransfer.grund.konto-geloescht": "Auteursaccount verwijderd",
+  "task.authorTransfer.grund.zugang-beendet": "Toegang van de auteur beëindigd",
+  "task.authorTransfer.grund.angefordert": "Overdracht aangevraagd",
+  "task.action.authorTransfer": "Nieuwe auteur bepalen",
+  "task.explain.authorTransfer":
+    "Deze kennis heeft een bereikbare auteur nodig. Open het item, kies onder „Meer” → „Herkomst” de nieuwe auteur en draag over. Daarna is de taak afgerond; de oorspronkelijke auteur blijft vermeld.",
   "task.conflict": "Conflict",
   "task.validation": "Validatie",
   "task.revalidation": "Hervalidatie",
@@ -2723,6 +2731,10 @@ const nl: typeof de = {
   "ko.transferPick": "Nieuwe auteur kiezen …",
   "ko.transfer": "Overdragen",
   "ko.transferDone": "Auteur overgedragen. Oorspronkelijke auteur blijft zichtbaar.",
+  "ko.transferRequest": "Overdracht aanvragen",
+  "ko.transferRequestHint":
+    "Het beheer krijgt een openstaande taak „Auteursoverdracht” en bepaalt een nieuwe auteur.",
+  "ko.transferRequestDone": "Overdracht aangevraagd. Het beheer ziet die onder „Open taken”.",
   "ko.history": "Versies",
   "ko.evidenceTitle": "Bewijs",
   // JOB 3384 · UX-26 — s. die Begründung im deutschen Block.

@@ -42,4 +42,18 @@ describe("SCRUM-158: taskFilters", () => {
     // Summe der Typ-Filter = Gesamt (keine Aufgabe verschwindet unerklärt).
     expect(c.validation + c.returned + c.conflict + c.gap + c.revalidation).toBe(c.all);
   });
+
+  // R-0961: die wartende Autorenübergabe ist eine eigene, über den Filter auswählbare Art.
+  it("R-0961: der Filter „authorTransfer“ wählt genau die Autorenübergaben", () => {
+    const mitUebergabe: TaskLike[] = [...tasks, { typeKey: "task.authorTransfer" }];
+    const gefiltert = filterTasks(mitUebergabe, "authorTransfer");
+    expect(gefiltert).toEqual([{ typeKey: "task.authorTransfer" }]);
+    const c = countTasksByFilter(mitUebergabe);
+    expect(c.authorTransfer).toBe(1);
+    expect(c.all).toBe(7);
+    // Keine andere Art zählt sie mit.
+    expect(c.validation + c.returned + c.conflict + c.gap + c.revalidation + c.authorTransfer).toBe(
+      c.all,
+    );
+  });
 });

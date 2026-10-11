@@ -20,6 +20,7 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useKos: () => ok([]),
     useAudit: () => ok([]),
     useReturnedTasks: () => ok([]),
+    useAuthorTransfers: () => null,
     useConflicts: () => ok(lage.conflicts),
     useLifecyclePending: () => ok([]),
     useValidationBoard: () => ok([]),

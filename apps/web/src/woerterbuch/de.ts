@@ -960,6 +960,14 @@ const de = {
   "task.filter.conflict": "Konflikte",
   "task.filter.gap": "Wissenslücken",
   "task.filter.revalidation": "Revalidierung",
+  "task.filter.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer": "Autorenübergabe",
+  "task.authorTransfer.grund.konto-geloescht": "Autorenkonto gelöscht",
+  "task.authorTransfer.grund.zugang-beendet": "Zugang des Autors beendet",
+  "task.authorTransfer.grund.angefordert": "Übergabe angefordert",
+  "task.action.authorTransfer": "Neuen Autor bestimmen",
+  "task.explain.authorTransfer":
+    "Dieses Wissen braucht einen erreichbaren Autor. Öffne den Eintrag, wähle unter „Mehr“ → „Provenienz“ den neuen Autor und übertrage. Danach ist die Aufgabe erledigt; der Originalautor bleibt vermerkt.",
   "task.conflict": "Konflikt",
   "task.validation": "Validierung",
   "task.revalidation": "Re-Validierung",
@@ -3574,6 +3582,12 @@ const de = {
   "ko.transferPick": "Neuen Autor wählen …",
   "ko.transfer": "Übergeben",
   "ko.transferDone": "Autor übergeben. Originalautor bleibt sichtbar.",
+  // Autorenübergabe-Auftrag (R-0961): die Übergabe ausdrücklich verlangen (Autor oder Admin).
+  "ko.transferRequest": "Übergabe anfordern",
+  "ko.transferRequestHint":
+    "Die Verwaltung bekommt eine wartende Aufgabe „Autorenübergabe“ und bestimmt einen neuen Autor.",
+  "ko.transferRequestDone":
+    "Übergabe angefordert. Die Verwaltung sieht sie unter „Offene Aufgaben“.",
   "ko.history": "Versionen",
   "ko.evidenceTitle": "Evidenz",
   // ================================================================================================

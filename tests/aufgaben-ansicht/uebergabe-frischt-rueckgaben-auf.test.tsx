@@ -29,12 +29,16 @@
 //   R1  Übergabe gelingt: nach dem Rückweg ist die Rückgabe aus der Liste weg, die Zahl im
 //       Kopfband ist weg (echte 0), der Filter steht noch in der Adresse.
 //   R2  Übergabe scheitert: die eigene Rückgabe bleibt in Liste und Kopfband stehen.
+//   U1–U3  R-0961: die wartende Autorenübergabe selbst (Art, Grund, Einordnung, Filter, Absprung,
+//       Übergabe, Rückweg; Gegenfall „scheitert") — s. den Block am Dateiende.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TITEL = "Reinigung Spritzzone Linie 3";
 
 const netz = vi.hoisted(() => ({
   rueckgaben: [] as { koId: string; at: string; verdict: string }[],
+  // R-0961: die wartenden Autorenübergaben, wie sie der Server für die Verwaltung liefert.
+  uebergaben: [] as { koId: string; grund: string; kritisch: boolean }[],
   uebergabeScheitert: false,
   rufe: { liste: 0, zahl: 0, uebergabe: 0 },
 }));
@@ -76,6 +80,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
           author: body.newAuthor ?? "",
         };
         netz.rueckgaben = [];
+        // Und die wartende Autorenübergabe ist erledigt (`lib/autorenuebergabe.ts`).
+        netz.uebergaben = [];
         return globalThis.__k3UebergabeKo;
       },
     }),
@@ -88,6 +94,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         netz.rufe.zahl += 1;
         return { open: netz.rueckgaben.length };
       },
+      authorTransfers: async () => [...netz.uebergaben],
+      authorTransfersSummary: async () => ({ open: netz.uebergaben.length }),
     }),
     validation: gruppe({ board: leer }),
     gaps: gruppe({
@@ -203,7 +211,7 @@ const flush = async (): Promise<void> => {
   }
 };
 
-async function mount(): Promise<void> {
+async function mount(start = "/aufgaben?art=returned"): Promise<void> {
   globalThis.__k3UebergabeKo = ko();
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -227,7 +235,7 @@ async function mount(): Promise<void> {
                 null,
                 createElement(
                   MemoryRouter,
-                  { initialEntries: ["/aufgaben?art=returned"] },
+                  { initialEntries: [start] },
                   createElement(
                     Fragment,
                     null,
@@ -335,6 +343,7 @@ async function uebergebenUndZurueck(): Promise<void> {
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   netz.rueckgaben = [{ koId: "ko-1", at: "2026-10-07T08:00:00.000Z", verdict: "warn" }];
+  netz.uebergaben = [];
   netz.uebergabeScheitert = false;
   netz.rufe = { liste: 0, zahl: 0, uebergabe: 0 };
   // Wie `main.tsx`: dieselbe Frist als `staleTime`. Ohne sie wäre jede Antwort sofort veraltet,
@@ -388,6 +397,80 @@ describe("K3/K4: nach der Autorenübergabe stimmen Liste und Kopfband beim Rück
     expect(text(hauptflaeche()), "eine gescheiterte Übergabe hat die Rückgabe entfernt").toContain(
       TITEL,
     );
+    expect(aufgabenZahl(), "eine gescheiterte Übergabe hat die Zahl entfernt").toBe("1");
+  });
+});
+
+// ================================================================================================
+// R-0961 (K1/K3/K4) — DIE WARTENDE AUTORENÜBERGABE AUF DER FLÄCHE, AM SELBEN WEG GEMESSEN.
+// ================================================================================================
+//
+// Die Sitzung ist Admin (Verwaltung), die Rückgaben sind leer, der Server liefert EINE wartende
+// Übergabe für „ko-1". Gemessen werden:
+//   · die eigene Aufgabenart samt Grund,
+//   · die Einordnung (Heute, bei kritischem Wissen Kritisch),
+//   · der Filter in der Adresse und der direkte Absprung zum Objekt,
+//   · die Übergabe über die vorhandene Bedienung,
+//   · der Rückweg: Die Aufgabe ist weg, das Kopfband zählt sie nicht mehr, der Filter bleibt.
+describe("R-0961: die wartende Autorenübergabe auf der Aufgabenfläche", () => {
+  /** Der Kopf der Gruppe (Kritisch/Heute/Später), in der die Zeile steht. */
+  function gruppeDerZeile(zeile: Element): string {
+    return text(zeile.parentElement?.parentElement?.firstElementChild ?? null);
+  }
+
+  function uebergabeZeile(): Element | null {
+    const zeilen = [...container.querySelectorAll('main [data-testid="task-zeile"]')];
+    return zeilen.find((z) => text(z).includes(i18n.t("task.authorTransfer"))) ?? null;
+  }
+
+  it("U1 · eigene Aufgabe mit Grund, unter „Heute“, im Filter, mit Absprung — nach Übergabe weg", async () => {
+    netz.rueckgaben = [];
+    netz.uebergaben = [{ koId: "ko-1", grund: "konto-geloescht", kritisch: false }];
+    await mount("/aufgaben?art=authorTransfer");
+
+    const zeile = uebergabeZeile();
+    expect(zeile, "die wartende Autorenübergabe steht nicht auf der Fläche").not.toBeNull();
+    expect(text(zeile)).toContain(TITEL);
+    expect(text(zeile)).toContain(i18n.t("task.authorTransfer.grund.konto-geloescht"));
+    expect(gruppeDerZeile(zeile as Element)).toContain(i18n.t("task.today"));
+    // Der Filter ist auswählbar und gewählt, mit der Zahl 1.
+    const chips = [...container.querySelectorAll("main button[aria-pressed]")];
+    const chip = chips.find((b) => text(b).startsWith(i18n.t("task.filter.authorTransfer")));
+    expect(chip?.getAttribute("aria-pressed")).toBe("true");
+    expect(text(chip ?? null)).toBe(`${i18n.t("task.filter.authorTransfer")} 1`);
+    // Direkter Absprung zum Objekt.
+    expect(zeile?.querySelector("a")?.getAttribute("href")).toBe("/wissen/ko-1");
+    // Das Kopfband zählt sie (sonst ist alles leer).
+    expect(aufgabenZahl(), "das Kopfband zählt die wartende Übergabe nicht").toBe("1");
+
+    await uebergebenUndZurueck();
+
+    expect(ort.pathname).toBe("/aufgaben");
+    expect(ort.search, "der Filter ging beim Rückweg verloren").toBe("?art=authorTransfer");
+    expect(uebergabeZeile(), "die erledigte Übergabe steht noch auf der Fläche").toBeNull();
+    expect(aufgabenZahl(), "das Kopfband zählt die erledigte Übergabe noch").toBeNull();
+  });
+
+  it("U2 · kritisches Wissen: die Übergabe steht unter „Kritisch“", async () => {
+    netz.rueckgaben = [];
+    netz.uebergaben = [{ koId: "ko-1", grund: "angefordert", kritisch: true }];
+    await mount("/aufgaben");
+    const zeile = uebergabeZeile();
+    expect(zeile).not.toBeNull();
+    expect(gruppeDerZeile(zeile as Element)).toContain(i18n.t("task.critical"));
+    expect(text(zeile)).toContain(i18n.t("task.authorTransfer.grund.angefordert"));
+  });
+
+  it("U3 · Übergabe scheitert: die Aufgabe bleibt, das Kopfband zählt sie weiter", async () => {
+    netz.rueckgaben = [];
+    netz.uebergaben = [{ koId: "ko-1", grund: "zugang-beendet", kritisch: false }];
+    netz.uebergabeScheitert = true;
+    await mount("/aufgaben?art=authorTransfer");
+    expect(uebergabeZeile()).not.toBeNull();
+
+    await uebergebenUndZurueck();
+
+    expect(uebergabeZeile(), "Aufgabe nach gescheiterter Übergabe entfernt").not.toBeNull();
     expect(aufgabenZahl(), "eine gescheiterte Übergabe hat die Zahl entfernt").toBe("1");
   });
 });

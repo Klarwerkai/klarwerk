@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  useAuthorTransfersSummary,
   useConflicts,
   useDuplicates,
   useGapsSummary,
@@ -73,6 +74,11 @@ export function useNavBadges(): Record<string, NavBadge> {
   // nur die Zahl (`/summary`). Beide rechnet der Server mit DERSELBEN Auswahl
   // (`services/app/src/routes/aufgaben-zaehler-routes.ts`).
   const zurueckgegeben = useReturnedTasksSummary();
+  // Autorenübergabe-Auftrag (R-0961): die wartenden Autorenübergaben. Sie gibt es nur für die
+  // Verwaltung; für alle anderen ist die Quelle `null` und steht weder im Summanden noch in der
+  // Ladezustandsliste — sonst hielte eine nie gestellte Abfrage den Zähler im Ladezustand.
+  const uebergaben = useAuthorTransfersSummary();
+  const uebergabenQuellen = uebergaben ? [uebergaben] : [];
   // ==============================================================================================
   // JOB 3113 H1b — DIE UHR, DIE GENAU EINMAL SCHLÄGT.
   // ==============================================================================================
@@ -85,7 +91,15 @@ export function useNavBadges(): Record<string, NavBadge> {
   // Stand aufgeräumt (kein Leck, kein zweiter Timer). Ist nichts mehr zu befristen (noch kein
   // Erfolg, oder alles bereits abgelaufen), läuft gar kein Timer.
   const jetzt = Date.now();
-  const quellen = [board, conflicts, duplicates, gaps, lifecycle, zurueckgegeben];
+  const quellen = [
+    board,
+    conflicts,
+    duplicates,
+    gaps,
+    lifecycle,
+    zurueckgegeben,
+    ...uebergabenQuellen,
+  ];
   const naechsterAblauf = naechsterFristablauf(quellen, jetzt);
   const [, neuZeichnen] = useState(0);
   useEffect(() => {
@@ -121,6 +135,7 @@ export function useNavBadges(): Record<string, NavBadge> {
   );
   const lifecycleCount = lifecycle.data?.length ?? 0;
   const zurueckgegebenCount = zurueckgegeben.data?.open ?? 0;
+  const uebergabenCount = uebergaben?.data?.open ?? 0;
   return {
     // JOB 690 D-019: Board, offene Lücken, UNGELÖSTE Konflikte, Lebenszyklus-Fällige.
     // Autorenübergabe-Auftrag K3: dazu die an mich zurückgegebenen Entwürfe. Bis hierher fehlten
@@ -130,13 +145,21 @@ export function useNavBadges(): Record<string, NavBadge> {
     // ALLE QUELLEN STEHEN AUCH IN DER LADEZUSTANDSLISTE, nicht nur im Summanden. Das ist
     // kein Beiwerk: ohne sie zeigte der Badge eine zu kleine Zahl, während zwei Quellen noch
     // laden — eine stille Falschaussage statt eines ehrlichen Ladepunkts (mega2 Block C).
+    // R-0961: für die Verwaltung dazu die wartenden Autorenübergaben — dieselbe Serverregel wie die
+    // Liste der Aufgabenseite (`GET /api/me/author-transfers`).
     tasks: badge(
-      boardCount + (gaps.data?.open ?? 0) + offeneKonflikte + lifecycleCount + zurueckgegebenCount,
+      boardCount +
+        (gaps.data?.open ?? 0) +
+        offeneKonflikte +
+        lifecycleCount +
+        zurueckgegebenCount +
+        uebergabenCount,
       board,
       gaps,
       conflicts,
       lifecycle,
       zurueckgegeben,
+      ...uebergabenQuellen,
     ),
     validation: badge(boardCount, board),
     // JOB 690 D-019: derselbe Helfer — ein GELÖSTER Konflikt ist keine offene Arbeit und zählt

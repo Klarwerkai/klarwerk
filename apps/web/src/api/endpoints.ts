@@ -1,3 +1,4 @@
+import type { AnstehendeUebergabe } from "../lib/autorenuebergabe";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
@@ -324,6 +325,8 @@ export type KoAction =
     }
   | { action: "resolve-conflict"; conflictId: string; decision: string }
   | { action: "transfer-author"; newAuthor: string }
+  // R-0961: Autor oder Admin verlangen die Übergabe ausdrücklich (nur Protokolleintrag).
+  | { action: "request-author-transfer" }
   // AUFTRAG-mega15 Block B (bens SB-4): dieser Vertrag war schon richtig — falsch war der
   // Laufzeitpfad, der zusätzlich ein `provider` mitschickte, und der Server, der seine Stufen-
   // Sperre nach diesem Client-Feld ausrichtete. Beides ist jetzt aufgeräumt: die Herkunft leitet
@@ -837,6 +840,9 @@ export const endpoints = {
     // Rückgaben, ohne das ganze Protokoll (`/audit`, `ko.validate`) lesen zu dürfen.
     returnedTasks: () =>
       api.get<{ koId: string; at: string; verdict: string }[]>("/me/returned-tasks"),
+    // Autorenübergabe-Auftrag (R-0961): wartende Autorenübergaben (nur `users.manage`).
+    authorTransfers: () => api.get<AnstehendeUebergabe[]>("/me/author-transfers"),
+    authorTransfersSummary: () => api.get<{ open: number }>("/me/author-transfers/summary"),
   },
   // SCRUM-527: Live-Check eines Entwurfstextes (Ähnlichkeit/Widerspruch gegen den Bestand).
   //

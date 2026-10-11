@@ -127,6 +127,20 @@ describe("R-0962 · die Aufgabenfläche nennt ihren Gegenstand statt ihres Besit
     }
   });
 
+  // Autorenübergabe-Auftrag (R-0961): Pedis Entscheidung bringt die sechste Art auf die Fläche. Der
+  // Satz nennt sie in allen drei Sprachen, samt dem Zusatz, dass nur die Verwaltung sie sieht —
+  // die Abweichung von D-003 (fünf Arten) ist benannt, nicht stillschweigend.
+  it("G2b · der Satz nennt die Autorenübergabe als Art der Verwaltung — in DE/EN/NL", () => {
+    const erwartet: Record<(typeof SPRACHEN)[number], RegExp> = {
+      de: /für die Verwaltung.*Autorenübergaben/,
+      en: /for administrators.*author handovers/,
+      nl: /voor het beheer.*auteursoverdrachten/,
+    };
+    for (const sprache of SPRACHEN) {
+      expect(i18n.getFixedT(sprache)("aufgaben.leitsatz"), sprache).toMatch(erwartet[sprache]);
+    }
+  });
+
   it("G3 · auf /aufgaben steht der Satz direkt unter der Überschrift — in allen drei Sprachen", async () => {
     for (const sprache of SPRACHEN) {
       await i18n.changeLanguage(sprache);

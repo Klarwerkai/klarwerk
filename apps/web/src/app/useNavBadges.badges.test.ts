@@ -56,6 +56,9 @@ const q = vi.hoisted(() => {
     gaps: leer(),
     lifecycle: leer(),
     returned: leer(),
+    // R-0961: die wartenden Autorenübergaben. Nur für die Verwaltung eine Quelle; sonst `null`.
+    uebergaben: leer(),
+    verwaltung: { an: false },
   };
 });
 
@@ -66,6 +69,7 @@ vi.mock("../api/hooks", () => ({
   useGapsSummary: () => q.gaps,
   useLifecyclePending: () => q.lifecycle,
   useReturnedTasksSummary: () => q.returned,
+  useAuthorTransfersSummary: () => (q.verwaltung.an ? q.uebergaben : null),
 }));
 
 import { type NavBadge, useNavBadges } from "./useNavBadges";
@@ -106,11 +110,13 @@ beforeEach(() => {
     "gaps",
     "lifecycle",
     "returned",
+    "uebergaben",
   ] as const) {
     q[name].data = undefined;
     q[name].isError = false;
     q[name].refetch = () => {};
   }
+  q.verwaltung.an = false;
 });
 
 describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Aufgabenseite", () => {
@@ -238,5 +244,54 @@ describe("K3: der Aufgaben-Badge zählt die an mich zurückgegebenen Entwürfe m
     expect(badges.tasks?.state).toBe("error");
     badges.tasks?.refetch();
     expect(neuGeholt, "Wiederholen holt die Rückgabe-Quelle nicht neu").toHaveBeenCalledTimes(1);
+  });
+});
+
+// ================================================================================================
+// R-0961 — die wartenden Autorenübergaben im Aufgaben-Badge (nur für die Verwaltung).
+// ================================================================================================
+describe("R-0961: der Aufgaben-Badge zählt für die Verwaltung die wartenden Autorenübergaben", () => {
+  const sonstLeer = {
+    board: [],
+    gaps: { open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } },
+    conflicts: [],
+    lifecycle: [],
+    duplicates: [],
+    returned: { open: 0 },
+  };
+
+  it("Verwaltung: zwei wartende Übergaben, sonst alles leer ⇒ 2", () => {
+    q.verwaltung.an = true;
+    setze({ ...sonstLeer, uebergaben: { open: 2 } });
+    const badges = badgesLesen();
+    expect(badges.tasks?.count, "die wartenden Autorenübergaben fehlen im Badge").toBe(2);
+    expect(badges.tasks?.state).toBe("loaded");
+  });
+
+  it("Verwaltung: solange die Übergabe-Quelle lädt, steht keine zu kleine Zahl", () => {
+    q.verwaltung.an = true;
+    setze({ ...sonstLeer, board: [{ id: "k1" }] });
+    expect(badgesLesen().tasks?.state).toBe("loading");
+  });
+
+  it("Verwaltung: scheitert die Übergabe-Quelle, ist der Badge im Fehlerzustand und holt sie neu", () => {
+    q.verwaltung.an = true;
+    setze(sonstLeer);
+    q.uebergaben.isError = true;
+    const neuGeholt = vi.fn();
+    q.uebergaben.refetch = neuGeholt;
+    const badges = badgesLesen();
+    expect(badges.tasks?.state).toBe("error");
+    badges.tasks?.refetch();
+    expect(neuGeholt).toHaveBeenCalledTimes(1);
+  });
+
+  it("ohne Verwaltungsrecht gibt es die Quelle nicht: kein Ladezustand, keine Zahl daraus", () => {
+    setze({ ...sonstLeer, board: [{ id: "k1" }] });
+    // `uebergaben` hätte Daten — für Nicht-Admins liefert der Hook aber `null`.
+    q.uebergaben.data = { open: 5 };
+    const badges = badgesLesen();
+    expect(badges.tasks?.state).toBe("loaded");
+    expect(badges.tasks?.count).toBe(1);
   });
 });
