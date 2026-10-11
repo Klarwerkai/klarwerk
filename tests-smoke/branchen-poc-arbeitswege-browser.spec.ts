@@ -205,6 +205,25 @@ async function vorgangOeffnen(seite: Page, gapId: string): Promise<void> {
 const zeile = (seite: Page, titel: string) =>
   seite.getByTestId("pruefen-warteschlange-eintrag").filter({ hasText: titel });
 
+/**
+ * Nach „Noch gültig“: erst der Serverstand (der Fall ist geschlossen), dann die Liste neu laden.
+ * Gemessen (Nacharbeit 6): ohne Neuladen führt die Liste den eben bestätigten, noch ausgewählten
+ * Eintrag weiter, obwohl der Reiter „Erneut“ schon einen Fall weniger zählt.
+ */
+async function bestaetigtUndNeuGeladen(seite: Page, koId: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const r = await seite.request.get("/api/lifecycle/folgepruefung");
+        return ((await r.json()) as { koId: string }[]).map((f) => f.koId);
+      },
+      { timeout: 15_000, message: "die Folgeprüfung ist am Server nicht geschlossen" },
+    )
+    .not.toContain(koId);
+  await seite.reload();
+  await expect(seite.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
+}
+
 interface Ko {
   id: string;
   title: string;
@@ -634,7 +653,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       "3 Quellenänderung",
       "Folgeprüfung (Theo): Betroffenheit und Eintrag A",
       theo,
-      [],
+      ["Liste „Erneut“ führt den bestätigten, ausgewählten Eintrag bis zum Neuladen weiter"],
       async (hilfe) => {
         await theo.goto("/lebenszyklus");
         await expect(theo.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
@@ -652,6 +671,7 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
         hilfe.push("Begründung der Betroffenheit gelesen (Karte)");
         await bild(theo, info, "G3 · begründete Betroffenheit, Unbeteiligter fehlt");
         await theo.getByTestId("pruefen-knopf-noch-gueltig").click();
+        await bestaetigtUndNeuGeladen(theo, a.id);
         await expect(zeile(theo, a.title)).toHaveCount(0, { timeout: 15_000 });
         await expect(zeile(theo, b.title), "B bleibt offen").toBeVisible();
       },
@@ -708,12 +728,13 @@ test("Branchen-PoC · drei Arbeitsgeschichten mit getrennten Rollen im Browser, 
       "3 Quellenänderung",
       "Folgeprüfung (Theo): Eintrag B in neuer Fassung",
       theo,
-      [],
+      ["Liste „Erneut“ führt den bestätigten, ausgewählten Eintrag bis zum Neuladen weiter"],
       async () => {
         await theo.reload();
         await expect(theo.getByTestId("pruefen-flaeche")).toBeVisible({ timeout: 15_000 });
         await zeile(theo, b.title).click();
         await theo.getByTestId("pruefen-knopf-noch-gueltig").click();
+        await bestaetigtUndNeuGeladen(theo, b.id);
         await expect(zeile(theo, b.title)).toHaveCount(0, { timeout: 15_000 });
         await bild(theo, info, "G3 · beide Folgefälle geschlossen");
       },
