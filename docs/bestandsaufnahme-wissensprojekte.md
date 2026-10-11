@@ -151,6 +151,15 @@ Pfad — „POST /api/ask ist public“), `g10-herkunft-zentrum-vertraulich.test
 (`POST /api/duplicates/:id/merge` ohne Urteil). Die beiden neuen Löschrouten stehen in keiner dieser
 Fehlerlisten. Die Wächter bleiben unverändert; die Behebung gehört zu den jeweiligen Aufträgen.
 
+Nacharbeit 7 (Kandidat `c53e3378`, nach der Integration mit main): dieselben drei Wächter sind
+erneut rot, jetzt wegen neuer, nicht eingetragener Schnittstellen aus main, die dieser Auftrag nicht
+berührt — `office-routes.ts` (WOPI und `/api/kos/:id/office/*`, Ausgang `standardDiscovery`),
+`ask-routes.ts:1932` (`POST /api/gaps/:id/zurueckweisen`), `library-routes.ts:1154`
+(`GET /api/library/import/candidates/befunde`), `import-run-routes.ts:526` und der Ausgang
+`model-client.ts::einbetten`. Die Routen dieses Auftrags (Löschung, Löschvorschau, Firmenfilter)
+stehen in keiner Fehlerliste; alle übrigen Fälle dieser Dateien und alle Auftragsprüfungen waren
+grün (Draht 145 von 151 Fällen, nur die sechs Wächterfälle rot; PostgreSQL 4/4; Smoke 6/6).
+
 ## Nicht geprüft
 
 Mehrere echte Menschen mit verschiedenen Rechten in der Oberfläche (die Smoke-Suite kennt ein

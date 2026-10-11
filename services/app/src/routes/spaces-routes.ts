@@ -1099,9 +1099,7 @@ export function spacesRoutes(dienste: SpacesRouteDienste, guards: Guards): Fasti
       // Vorschau prüfen und schreiben unter derselben Sperre wie jede Spacelöschung. Quelle und Ziel
       // können so zwischen Prüfung und Schreiben nicht gelöscht werden — und eine Rücknahme, die
       // ungeprüft in einen inzwischen gelöschten Quellspace zurückschriebe, gibt es nicht mehr.
-      await dienste.spaces.exklusiv(() =>
-        fuehreWechselAus(request.body, user, reply, request.log),
-      );
+      await dienste.spaces.exklusiv(() => fuehreWechselAus(request.body, user, reply, request.log));
     });
 
     // ==============================================================================================
