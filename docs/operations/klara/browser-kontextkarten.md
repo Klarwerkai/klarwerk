@@ -236,10 +236,13 @@ Pedi-Auswahl bzw. deren Fehlen bleibt als historische Entscheidung erhalten.
     über den regulären Lieferweg nach `main` (Merge durch die Liefersteuerung). Danach werden die
     zwei Anschlussstellen eingesetzt, dann folgen Bau, Einrichtung und der reale AC10-Rundweg
     durch die Führung.
-  - Stand Nacharbeit 14: unverändert blockiert. `ff96149e` ist weiterhin kein Vorfahr des
-    Kandidaten (`git merge-base --is-ancestor`, Exit 1). Es fehlt der Merge durch die
-    Liefersteuerung, keine weitere Produktarbeit dieser Bahn. Sobald der Merge vorliegt, sind
-    diese Schritte nötig:
+  - **Stand Nacharbeit 15: AC10 ist technisch unvollständig.** Der Begleiteranschluss ist
+    bestellte, noch ausstehende Produktarbeit dieser Claude-Nacharbeit. Er hängt an einer
+    Voraussetzung: dem Merge von `ff96149e` und `345b4467` durch die reguläre Koordination.
+    `ff96149e` ist weiterhin kein Vorfahr des Kandidaten (`git merge-base --is-ancestor`,
+    Exit 1). Diese Bahn kann den Merge nicht selbst erzeugen.
+  - Nach dem Merge setzt diese Nacharbeit den Anschluss im Host ein und berichtigt diese
+    Dokumentation auf den tatsächlichen Stand:
     1. Im Host `quelle.anmelden(...)`/`quelle.anmelden(nil)` an die Anmeldemeldung der Webfläche
        `/begleiter` anschließen.
     2. `quelle.beiAenderung` an die Kartenanzeige der Webfläche anschließen, wobei `nil` die
