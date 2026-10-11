@@ -459,6 +459,156 @@ export class ValidationService {
     };
   }
 
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 — DIE BEFUGTE WEISUNG.
+  // ==============================================================================================
+  //
+  // R-0573: „Eine weisungsbefugte Person legt fest, was gilt: ihr Wissen geht ohne Vier-Augen-
+  // Prüfung als geprüft in den Bestand, mit der Herkunftsangabe Weisung von wem und wann."
+  // Entscheidung 18 verankert die Befugnis ausdrücklich am Konto mit fachlichem Bereich — das prüft
+  // die Kompositionswurzel (die Route), denn dieser Dienst kennt keine Konten. Hier steht, was mit
+  // dem Objekt geschieht: dieselbe Klammer wie `adminValidate` (Zustand, Beleg `ko.weisung` und
+  // Verweis gemeinsam oder gar nicht), an die gelesene Fassung gebunden, plus die Herkunft der
+  // Weisung samt der nach Entscheidung 19 nachfolgenden Sichtung (Verantwortliche, Frist).
+  //
+  // WAS SIE NICHT TUT: sie überstimmt keinen anderen Punkt und löscht nichts. Betroffene Punkte
+  // (offene Konflikte) hat die Route vorher einzeln vorgelegt; überstimmt wird ausschließlich über
+  // die Konfliktentscheidung je Punkt (geschlossen, nicht gelöscht). Was bestehen bleiben soll,
+  // steht namentlich in `bestehenGelassen`.
+  async weisungSetzen(
+    koId: string,
+    actorId: string,
+    eingabe: {
+      bereich: string;
+      sichtung: { verantwortlich: string; frist: string };
+      bestehenGelassen: readonly string[];
+    },
+  ): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const geleseneFassung = ko.version;
+    const am = new Date(this.now()).toISOString();
+    const weisung: NonNullable<KnowledgeObject["weisung"]> = {
+      von: actorId,
+      am,
+      bereich: eingabe.bereich,
+      fassung: geleseneFassung,
+      bestehenGelassen: [...eingabe.bestehenGelassen],
+      sichtung: { verantwortlich: eingabe.sichtung.verantwortlich, frist: eingabe.sichtung.frist },
+    };
+    return this.entscheideOhnePeerPruefung(koId, actorId, ko, {
+      action: "ko.weisung",
+      payload: {
+        koVersion: geleseneFassung,
+        bereich: eingabe.bereich,
+        sichtung: weisung.sichtung,
+        bestehenGelassen: weisung.bestehenGelassen,
+      },
+      herkunft: { weisung },
+    });
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 27 — EXTERNE FREIGABE ÜBERNEHMEN.
+  // ==============================================================================================
+  //
+  // „Externe Freigabe und Provenienz übernehmen; interne Anwendbarkeit klären ohne pauschale zweite
+  // Inhaltsprüfung." Die externe Freigabe (wer, wann, Kennung, Nachweis) bleibt als Herkunft am
+  // Objekt; intern bestätigt die prüfberechtigte Person Geltung (Bereich) und Zuständigkeit — und
+  // genau diese Bestätigung ist die Entscheidung, nicht eine erneute Kollegenprüfung des Inhalts.
+  // `art` trennt Wissensübernahme (R-0164) und ganzes Dokument als externe Referenz (R-0178).
+  async externeFreigabeUebernehmen(
+    koId: string,
+    actorId: string,
+    eingabe: Omit<
+      NonNullable<KnowledgeObject["externeFreigabe"]>,
+      "bestaetigtVon" | "bestaetigtAm" | "fassung"
+    >,
+  ): Promise<ValidationDecision> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const geleseneFassung = ko.version;
+    const externeFreigabe: NonNullable<KnowledgeObject["externeFreigabe"]> = {
+      ...eingabe,
+      bestaetigtVon: actorId,
+      bestaetigtAm: new Date(this.now()).toISOString(),
+      fassung: geleseneFassung,
+    };
+    return this.entscheideOhnePeerPruefung(koId, actorId, ko, {
+      action: "ko.externe-freigabe-uebernommen",
+      payload: {
+        koVersion: geleseneFassung,
+        art: eingabe.art,
+        herausgeber: eingabe.herausgeber,
+        freigegebenAm: eingabe.freigegebenAm,
+        geltung: eingabe.geltung,
+        zustaendig: eingabe.zustaendig,
+      },
+      herkunft: { externeFreigabe },
+    });
+  }
+
+  /**
+   * Die gemeinsame Hälfte von Weisung und externer Freigabe — dieselbe Bauform wie `adminValidate`:
+   * Compare-and-Set gegen die gelesene Fassung, Zustand + Herkunft + Beleg + Verweis in EINER
+   * Klammer, danach die tragende Identität in `validators`. Verfehlt der Compare-and-Set, wird
+   * NICHTS geschrieben und die Antwort trägt `validationDecisionRef: null`.
+   */
+  private async entscheideOhnePeerPruefung(
+    koId: string,
+    actorId: string,
+    ko: KnowledgeObject,
+    entscheidung: {
+      action: "ko.weisung" | "ko.externe-freigabe-uebernommen";
+      payload: Record<string, unknown>;
+      herkunft: Pick<KnowledgeObject, "weisung" | "externeFreigabe">;
+    },
+  ): Promise<ValidationDecision> {
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async () => ({ trust: TRUST_MAX, status: "validiert", herkunft: entscheidung.herkunft }),
+      { expectedVersion: ko.version, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: entscheidung.action,
+              target: koId,
+              payload: entscheidung.payload,
+            },
+            tx,
+          ),
+        ),
+    );
+    if (!geschrieben) {
+      const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
+      return {
+        ...votes,
+        trust: gespeichert.trust,
+        status: gespeichert.status,
+        validationDecisionRef: null,
+      };
+    }
+    await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
+    return {
+      up: ko.neededValidations,
+      warn: 0,
+      down: 0,
+      trust: TRUST_MAX,
+      status: "validiert",
+      validationDecisionRef: ref,
+    };
+  }
+
   // SCRUM-124: dedupliziert eine offene Zuweisung an den VERANTWORTLICHEN + Audit-Event.
   //
   // ==============================================================================================

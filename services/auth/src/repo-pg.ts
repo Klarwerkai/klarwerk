@@ -1,8 +1,14 @@
 import type { Pool } from "pg";
 import { type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
-import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
+import type {
+  PasswordResetRepo,
+  ResetToken,
+  SessionRepo,
+  UserRepo,
+  WeisungsbefugnisRepo,
+} from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
-import type { Role, Session, User } from "./types";
+import type { Role, Session, User, Weisungsbefugnis } from "./types";
 
 // Postgres-Adapter für auth. Das Modul besitzt seine Tabellen (keine geteilten Tabellen).
 export const AUTH_SCHEMA = `
@@ -60,6 +66,17 @@ CREATE TABLE IF NOT EXISTS password_resets (
   token text PRIMARY KEY,
   user_id text NOT NULL,
   expires_at bigint NOT NULL
+);
+-- Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto. ADDITIV — eine
+-- eigene Tabelle statt einer Spalte an users, damit kein bestehender Schreibweg der Konten berührt
+-- wird. Keine Zeile heißt „nicht weisungsbefugt"; einen Vorgabewert gibt es bewusst nicht, sonst
+-- wäre jedes Bestandskonto über Nacht weisungsbefugt.
+CREATE TABLE IF NOT EXISTS weisungsbefugnisse (
+  user_id text PRIMARY KEY,
+  bereiche jsonb NOT NULL,
+  gesamt boolean NOT NULL,
+  erteilt_von text NOT NULL,
+  erteilt_am text NOT NULL
 );
 `;
 
@@ -417,5 +434,60 @@ export class PgPasswordResetRepo implements PasswordResetRepo {
 
   async delete(token: string): Promise<void> {
     await this.pool.query("DELETE FROM password_resets WHERE token=$1", [token]);
+  }
+}
+
+interface WeisungsbefugnisRow {
+  user_id: string;
+  bereiche: unknown;
+  gesamt: boolean;
+  erteilt_von: string;
+  erteilt_am: string;
+}
+
+function zuBefugnis(row: WeisungsbefugnisRow): Weisungsbefugnis {
+  const bereiche = Array.isArray(row.bereiche)
+    ? row.bereiche.filter((b): b is string => typeof b === "string")
+    : [];
+  return { bereiche, gesamt: row.gesamt, erteiltVon: row.erteilt_von, erteiltAm: row.erteilt_am };
+}
+
+// Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto. Eine Zeile je
+// Konto; das Erteilen überschreibt die vorige Zeile vollständig (kein Zusammenführen von Bereichen
+// zweier Erteilungen — es gilt, was zuletzt ausdrücklich erteilt wurde).
+export class PgWeisungsbefugnisRepo implements WeisungsbefugnisRepo {
+  constructor(private readonly pool: Pool) {}
+
+  async get(userId: string): Promise<Weisungsbefugnis | undefined> {
+    const res = await this.pool.query<WeisungsbefugnisRow>(
+      "SELECT * FROM weisungsbefugnisse WHERE user_id=$1",
+      [userId],
+    );
+    return res.rows[0] ? zuBefugnis(res.rows[0]) : undefined;
+  }
+
+  async list(): Promise<Map<string, Weisungsbefugnis>> {
+    const res = await this.pool.query<WeisungsbefugnisRow>("SELECT * FROM weisungsbefugnisse");
+    return new Map(res.rows.map((row) => [row.user_id, zuBefugnis(row)]));
+  }
+
+  async set(userId: string, befugnis: Weisungsbefugnis): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO weisungsbefugnisse(user_id,bereiche,gesamt,erteilt_von,erteilt_am)
+       VALUES($1,$2::jsonb,$3,$4,$5)
+       ON CONFLICT (user_id) DO UPDATE SET bereiche=EXCLUDED.bereiche, gesamt=EXCLUDED.gesamt,
+         erteilt_von=EXCLUDED.erteilt_von, erteilt_am=EXCLUDED.erteilt_am`,
+      [
+        userId,
+        JSON.stringify(befugnis.bereiche),
+        befugnis.gesamt,
+        befugnis.erteiltVon,
+        befugnis.erteiltAm,
+      ],
+    );
+  }
+
+  async delete(userId: string): Promise<void> {
+    await this.pool.query("DELETE FROM weisungsbefugnisse WHERE user_id=$1", [userId]);
   }
 }

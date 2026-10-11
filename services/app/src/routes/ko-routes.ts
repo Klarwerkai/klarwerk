@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
-import { meldung, sprache } from "../../../auth";
+import { befugnisDecktBereich, meldung, sprache } from "../../../auth";
 import {
   type ConflictInput,
   type ConflictService,
@@ -77,6 +77,13 @@ import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten"
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 import { verifizierungFuer } from "../verifizierungsmarke";
+import {
+  type BetroffenerPunkt,
+  externeFreigabeEingabe,
+  offenePunkte,
+  sichtungsVermerk,
+  weisungEingabe,
+} from "../weisung-und-freigabe";
 import { dublettenTor } from "./validation-routes";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
@@ -114,6 +121,14 @@ export interface KoRoutesDeps {
   // GELESEN und ausschliesslich als eigenes Feld NEBEN das Objekt gesetzt; kein KO-Feld wird
   // ersetzt, überschrieben oder umgeschrieben.
   lesevarianten?: LesevariantenRepo | undefined;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: was die Route über Konten wissen
+  // muss — die Weisungsbefugnis am Konto und ob eine benannte Person ein Konto ist. OPTIONAL wie
+  // `lesevarianten`: ohne Verdrahtung gibt es keine Befugnis, und jede Weisung wird abgelehnt
+  // (fail-closed), statt aus der Rolle eine zu unterstellen.
+  konten?: {
+    befugnisVon(userId: string): Promise<{ bereiche: string[]; gesamt: boolean } | undefined>;
+    kontoBesteht(userId: string): Promise<boolean>;
+  };
   // Weg 3 (Feature-Flag): semantischer Vorfilter der Duplikat-Erkennung. Nur gesetzt, wenn aktiviert.
   semanticPrefilter?: SemanticPrefilter | undefined;
   // WP-SUBMIT-ASYNC (Pedis R3): In-Process-Worker der Hintergrund-KI-Prüfung. Optional (direkt
@@ -456,7 +471,13 @@ type KoAktion =
   | "revalidate"
   // R-0235 / R-0749: „Hat geholfen" am angewendeten Objekt — Bewährung, ausdrücklich keine
   // Prüfstimme. Arbeitet AM Objekt unter `:id` und passiert deshalb das Tor.
-  | "helpful";
+  | "helpful"
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19: die befugte Weisung und ihre
+  // nachfolgende Sichtung. Entscheidung 27: die Übernahme einer externen Freigabe. Alle drei
+  // arbeiten AM Objekt unter `:id` und passieren das Tor.
+  | "weisung"
+  | "weisung-sichten"
+  | "externe-freigabe";
 
 /**
  * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
@@ -519,6 +540,11 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   revalidate: "tor",
   // R-0235 / R-0749: nur wer das Objekt sehen darf, kann melden, dass es geholfen hat.
   helpful: "tor",
+  // Aufnahme gesamt-wissen-herkunft: wer ein Objekt nicht sehen darf, kann es weder anweisen,
+  // sichten noch eine externe Freigabe daran übernehmen.
+  weisung: "tor",
+  "weisung-sichten": "tor",
+  "externe-freigabe": "tor",
 };
 
 /** Die Grundmenge als Datum — der Wächter liest sie, statt sie noch einmal abzuschreiben. */
@@ -621,6 +647,18 @@ interface PutBody {
   /** R-0263: die Vorrang-Wahl an `resolve-conflict`. `unknown`, geprüft an der `case`. */
   vorrang?: unknown;
   newAuthor?: string;
+  /**
+   * Aufnahme gesamt-wissen-herkunft. Alles `unknown`, gelesen in `weisung-und-freigabe.ts`:
+   *   `sichtung`        — an `weisung`: `{ verantwortlich, frist }` (Entscheidung 19, Pflicht);
+   *   `bestehenLassen`  — an `weisung`: Konfliktkennungen, die ausdrücklich bestehen bleiben (R-0573);
+   *   `vermerk`         — an `weisung-sichten`: ein freier Satz zur Sichtung;
+   *   `externeFreigabe` — an `externe-freigabe`: Herkunft der externen Freigabe und die Bestätigung
+   *                       der internen Anwendbarkeit (Entscheidung 27).
+   */
+  sichtung?: unknown;
+  bestehenLassen?: unknown;
+  vermerk?: unknown;
+  externeFreigabe?: unknown;
   text?: string;
   /**
    * JOB 4146 (WIKI-DISKUSSION) — die drei Felder des Fadens. Alle `unknown`, weil sie aus dem Netz
@@ -902,6 +940,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     semanticPrefilter,
     aiCheckWorker,
     draftPromotion,
+    konten,
   } = deps;
   // JOB 4155: NICHT mitdestrukturiert, sondern unten als `deps.kanten` gelesen — so steht an der
   // Uebergabestelle, aus welchem Bündel der Port kommt, und ein fehlender Port ist dort sichtbar.
@@ -2821,6 +2860,188 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             reply.code(200).send(await validation.adminValidate(id, user.id));
+            return;
+          }
+          // ======================================================================================
+          // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 (R-0573, W10) — DIE WEISUNG.
+          // ======================================================================================
+          //
+          // Reihenfolge, und sie ist die Aussage: (1) die Befugnis kommt AUSSCHLIESSLICH vom
+          // Konto und muss den fachlichen Bereich (Kategorie) des Objekts decken — keine Rolle,
+          // auch `admin` nicht, ersetzt sie; (2) Verantwortliche und Frist der nachfolgenden
+          // Sichtung sind Pflicht; (3) jeder betroffene bestehende Punkt (offener Konflikt) muss
+          // einzeln entschieden oder ausdrücklich als „bleibt bestehen" benannt sein — sonst legt
+          // die Antwort die noch offenen Punkte einzeln vor; (4) dieselbe Dublettenbestätigung wie
+          // an den übrigen Freigabewegen. Erst dann schreibt der Validierungsdienst — Zustand,
+          // Herkunft, Beleg `ko.weisung` und Verweis in einer Klammer.
+          case "weisung": {
+            const user = await guards.requireUser(request, reply);
+            if (!user) {
+              return;
+            }
+            const objekt = await ko.get(id);
+            if (!objekt) {
+              reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+              return;
+            }
+            const befugnis = await konten?.befugnisVon(user.id);
+            if (!befugnisDecktBereich(befugnis, objekt.category)) {
+              reply.code(403).send({
+                error: "WEISUNGSBEFUGNIS_FEHLT",
+                message: `Für den Bereich „${objekt.category}“ ist an Ihrem Konto keine Weisungsbefugnis vermerkt. Eine Rolle allein verleiht sie nicht.`,
+              });
+              return;
+            }
+            const eingabe = weisungEingabe(body, user.id, Date.now());
+            if (!eingabe.ok) {
+              return badRequest(eingabe.fehler);
+            }
+            if (!(await konten?.kontoBesteht(eingabe.wert.sichtung.verantwortlich))) {
+              return badRequest(
+                "Die für die Sichtung verantwortliche Person ist kein Konto dieses Systems.",
+              );
+            }
+            const betroffen: (BetroffenerPunkt & { sichtbar: boolean })[] = [];
+            for (const konflikt of await conflicts.unresolved()) {
+              if (konflikt.koA !== id && konflikt.koB !== id) {
+                continue;
+              }
+              const gegenId = konflikt.koA === id ? konflikt.koB : konflikt.koA;
+              const gegen = await ko.get(gegenId);
+              const sichtbar = gegen !== undefined && darfSehen(user, gegen);
+              betroffen.push({
+                conflictId: konflikt.id,
+                koId: sichtbar ? gegenId : "",
+                titel: sichtbar && gegen ? gegen.title : "",
+                sichtbar,
+              });
+            }
+            const lage = offenePunkte(betroffen, eingabe.wert.bestehenLassen);
+            if (lage.verborgen > 0) {
+              reply.code(409).send({
+                error: "WEISUNG_PUNKT_VERBORGEN",
+                message:
+                  "Mindestens ein betroffener Punkt ist für Sie nicht sichtbar. Über ihn können Sie nicht entscheiden — die Weisung wurde nicht gesetzt.",
+              });
+              return;
+            }
+            if (lage.offen.length > 0) {
+              reply.code(409).send({
+                error: "WEISUNG_PUNKTE_OFFEN",
+                message:
+                  "Zu diesem Wissensobjekt bestehen offene Punkte. Entscheiden Sie jeden einzeln — überstimmen über die Konfliktentscheidung oder ausdrücklich bestehen lassen. Die Weisung wurde nicht gesetzt.",
+                punkte: lage.offen,
+              });
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "weisung",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            const betroffeneKennungen = new Set(betroffen.map((p) => p.conflictId));
+            reply.code(200).send(
+              await validation.weisungSetzen(id, user.id, {
+                bereich: objekt.category,
+                sichtung: eingabe.wert.sichtung,
+                bestehenGelassen: eingabe.wert.bestehenLassen.filter((k) =>
+                  betroffeneKennungen.has(k),
+                ),
+              }),
+            );
+            return;
+          }
+          // Entscheidung 19: die nachfolgende Sichtung — nur die beim Setzen benannte Person.
+          case "weisung-sichten": {
+            const user = await guards.requireUser(request, reply);
+            if (!user) {
+              return;
+            }
+            const objekt = await ko.get(id);
+            const weisung = objekt?.weisung;
+            if (!weisung) {
+              return badRequest(
+                "An diesem Wissensobjekt steht keine Weisung, die zu sichten wäre.",
+              );
+            }
+            if (weisung.sichtung.verantwortlich !== user.id) {
+              reply.code(403).send({
+                error: "SICHTUNG_NICHT_ZUSTAENDIG",
+                message:
+                  "Diese Weisung sichtet die Person, die beim Setzen als verantwortlich benannt wurde.",
+              });
+              return;
+            }
+            if (weisung.sichtung.gesichtetAm) {
+              reply.code(409).send({
+                error: "WEISUNG_BEREITS_GESICHTET",
+                message: "Diese Weisung ist bereits gesichtet.",
+              });
+              return;
+            }
+            const vermerk = sichtungsVermerk(body.vermerk);
+            if (!vermerk.ok) {
+              return badRequest(vermerk.fehler);
+            }
+            reply.code(200).send(await ko.weisungSichten(id, user.id, vermerk.wert));
+            return;
+          }
+          // ======================================================================================
+          // Aufnahme gesamt-wissen-herkunft · Entscheidung 27 (R-0164, R-0178) — EXTERNE FREIGABE.
+          // ======================================================================================
+          //
+          // Wer prüfen darf (`ko.validate`), bestätigt die INTERNE Anwendbarkeit — Geltung (der
+          // Bereich des Objekts) und Zuständigkeit (ein Konto) — und übernimmt die externe Freigabe
+          // samt Herkunft. Das ist die Entscheidung; eine zweite, pauschale Inhaltsprüfung durch
+          // Kolleginnen entfällt ausdrücklich. Als externe Referenz (das ganze Dokument, R-0178)
+          // muss das Dokument selbst am Objekt hängen.
+          case "externe-freigabe": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            const objekt = await ko.get(id);
+            if (!objekt) {
+              reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+              return;
+            }
+            const eingabe = externeFreigabeEingabe(body.externeFreigabe, Date.now());
+            if (!eingabe.ok) {
+              return badRequest(eingabe.fehler);
+            }
+            if (!(await konten?.kontoBesteht(eingabe.wert.zustaendig))) {
+              return badRequest("Die intern zuständige Person ist kein Konto dieses Systems.");
+            }
+            if (eingabe.wert.art === "referenz" && (objekt.attachments ?? []).length === 0) {
+              return badRequest(
+                "Ein ganzes Dokument als externe Referenz braucht das Dokument selbst als Anhang.",
+              );
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "externe-freigabe",
+                reply,
+              ))
+            ) {
+              return;
+            }
+            reply.code(200).send(
+              await validation.externeFreigabeUebernehmen(id, user.id, {
+                ...eingabe.wert,
+                geltung: objekt.category,
+              }),
+            );
             return;
           }
           case "revise": {

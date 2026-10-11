@@ -527,6 +527,50 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
 /** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
 export type SchutzdatenArt = "personalnummer" | "kontodaten";
 
+/**
+ * Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 — Spiegel von `KoWeisung`
+ * (services/knowledge-object/src/types.ts): wer das Objekt als Weisung gültig gesetzt hat, für
+ * welchen Bereich und welche Fassung, welche betroffenen Punkte ausdrücklich bestehen blieben, und
+ * die nachfolgende Sichtung (Verantwortliche, Frist, ggf. erledigt).
+ */
+export interface KoWeisung {
+  von: string;
+  am: string;
+  bereich: string;
+  fassung: number;
+  bestehenGelassen: string[];
+  sichtung: {
+    verantwortlich: string;
+    frist: string;
+    gesichtetVon?: string;
+    gesichtetAm?: string;
+    vermerk?: string;
+  };
+}
+
+/** Entscheidung 27 — Spiegel von `KoExterneFreigabe` (services/knowledge-object/src/types.ts). */
+export interface KoExterneFreigabe {
+  art: "wissen" | "referenz";
+  herausgeber: string;
+  freigabeKennung?: string;
+  freigegebenAm: string;
+  freigegebenVon?: string;
+  nachweis?: string;
+  geltung: string;
+  zustaendig: string;
+  bestaetigtVon: string;
+  bestaetigtAm: string;
+  fassung: number;
+}
+
+/** Entscheidung 18 — die Weisungsbefugnis am Konto (Spiegel von services/auth/src/types.ts). */
+export interface Weisungsbefugnis {
+  bereiche: string[];
+  gesamt: boolean;
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
 /** R-0228: Spiegel von `Verifizierung` in services/app/src/verifizierungsmarke.ts. */
 export interface KoVerifizierung {
   mensch:
@@ -535,7 +579,7 @@ export interface KoVerifizierung {
     | { stand: "nicht_abrufbar" }
     | {
         stand: "belegt";
-        art: "bewertung" | "verwalter" | "rueckgabe";
+        art: "bewertung" | "verwalter" | "rueckgabe" | "weisung" | "externe_freigabe";
         pruefer: string;
         zeitpunkt: string;
         fassung: number | null;
@@ -643,6 +687,10 @@ export interface KnowledgeObject {
   // `services/app/src/verifizierungsmarke.ts`. Nur `GET /api/kos/:id` liefert sie; fehlt das Feld,
   // ist sie in dieser Antwort NICHT ERHOBEN (Liste, Suche, Prüfbrett) — nicht „ungeprüft".
   verifizierung?: KoVerifizierung;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27 — fehlen sie, ist das Objekt
+  // weder als Weisung gesetzt noch aus einer externen Freigabe übernommen.
+  weisung?: KoWeisung;
+  externeFreigabe?: KoExterneFreigabe;
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -1620,6 +1668,9 @@ export interface PublicUser {
   // regulären Kontos (`services/auth/src/types.ts:42-45`). Das fehlende Feld bedeutet
   // „unbefristet" — es ist keine fehlende Auskunft, sondern eine.
   accessExpiresAt?: string;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: steht nur da, wenn sie erteilt ist. Fehlt
+  // sie, ist das Konto nicht weisungsbefugt — gleich welche Rolle es hat.
+  weisungsbefugnis?: Weisungsbefugnis;
 }
 
 // SCRUM-116/108: Import-/Source-Review-Kandidaten (JSON-Re-Import).

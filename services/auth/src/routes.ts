@@ -5,7 +5,7 @@ import { type Meldungsschluessel, type Sprache, meldung } from "./meldungen";
 import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, OidcUnreachableError, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
-import { type AuthService, istLesbaresAblaufdatum } from "./service";
+import { type AuthService, istLesbaresAblaufdatum, weisungsbefugnisForm } from "./service";
 import { AuthError, type AuthErrorCode, type PublicUser, type Role } from "./types";
 
 const STATUS_BY_CODE: Record<AuthErrorCode, number> = {
@@ -464,7 +464,10 @@ export function authRoutes(
     app.get("/api/auth/me", async (request, reply) => {
       const user = await requireUser(request, reply);
       if (user) {
-        reply.code(200).send(user);
+        // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die eigene Weisungsbefugnis reist mit —
+        // NUR wenn sie besteht. Ohne Vermerk bleibt die Antwort genau, wie sie war.
+        const befugnis = await service.weisungsbefugnisVon(user.id);
+        reply.code(200).send(befugnis ? { ...user, weisungsbefugnis: befugnis } : user);
       }
     });
 
@@ -864,7 +867,15 @@ export function authRoutes(
       if (!admin) {
         return;
       }
-      reply.code(200).send(await service.listUsers());
+      // Entscheidung 18: die Weisungsbefugnis je Konto, NUR wo sie besteht — Konten ohne Vermerk
+      // erscheinen unverändert.
+      const befugnisse = await service.alleWeisungsbefugnisse();
+      reply.code(200).send(
+        (await service.listUsers()).map((u) => {
+          const befugnis = befugnisse.get(u.id);
+          return befugnis ? { ...u, weisungsbefugnis: befugnis } : u;
+        }),
+      );
     });
 
     // Schlankes Verzeichnis (nur id + Anzeigename) für Anzeige (Autorennamen) und
@@ -1176,6 +1187,9 @@ export function authRoutes(
         approve?: unknown;
         password?: unknown;
         accessExpiresAt?: unknown;
+        // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto.
+        // Objekt `{ bereiche, gesamt }` erteilt, `null` entzieht, fehlend sagt nichts.
+        weisungsbefugnis?: unknown;
       };
     }>("/api/users/:id", async (request, reply) => {
       const admin = await requireAdmin(request, reply);
@@ -1183,7 +1197,7 @@ export function authRoutes(
         return;
       }
       const { id } = request.params;
-      const { role, approve, password, accessExpiresAt } = request.body;
+      const { role, approve, password, accessExpiresAt, weisungsbefugnis } = request.body;
       try {
         // ────────────────────────────────────────────────────────────────────────────────────────
         // DIE FORMWACHE — SIE STEHT VOR JEDEM SCHREIBVORGANG, ALLE VIER FELDER IN EINEM BLOCK.
@@ -1227,6 +1241,15 @@ export function authRoutes(
         ) {
           throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
         }
+        // Entscheidung 18: dieselbe Formwache, VOR jedem Schreibvorgang, mit derselben Regel, die
+        // auch der Dienst anwendet (`weisungsbefugnisForm`) — und mit demselben Fehlervertrag wie
+        // die Befristung daneben.
+        if (
+          weisungsbefugnis !== undefined &&
+          weisungsbefugnisForm(weisungsbefugnis) === "ungueltig"
+        ) {
+          throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
+        }
         let user: PublicUser | undefined;
         if (approve === true) {
           user = await service.approveUser(id, admin.id);
@@ -1249,6 +1272,16 @@ export function authRoutes(
             accessExpiresAt === null ? undefined : accessExpiresAt,
             admin.id,
           );
+        }
+        // Entscheidung 18: die Befugnis zuletzt — die Antwort trägt dann den Stand MIT ihr. Ein
+        // Aufruf nur mit diesem Feld antwortet mit dem Konto und seiner (neuen) Befugnis.
+        if (weisungsbefugnis !== undefined) {
+          const befugnis = await service.setzeWeisungsbefugnis(id, weisungsbefugnis, admin.id);
+          const konto = user ?? (await service.listUsers()).find((u) => u.id === id);
+          if (konto) {
+            reply.code(200).send(befugnis ? { ...konto, weisungsbefugnis: befugnis } : konto);
+            return;
+          }
         }
         if (user) {
           reply.code(200).send(user);

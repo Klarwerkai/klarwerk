@@ -6260,9 +6260,18 @@ export class KoService {
   // geworfen. Runde 3 (BEN-R2-B2): hatte der Schritt schon Auditeinträge angehängt (etwa `ko.rated`
   // vor einem gescheiterten `ko.returned-to-*`), bleiben sie stehen — die Kette ist append-only —,
   // und `ko.change-rolled-back` nennt sie danach ausdrücklich als zurückgenommen.
+  //
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: `zustand` darf zusätzlich die
+  // Herkunft der Entscheidung liefern (`weisung` bzw. `externeFreigabe`). Sie wird im SELBEN ersten
+  // Schreibvorgang gesetzt wie Status und Vertrauen — also gemeinsam mit dem Beleg oder gar nicht.
+  // Andere Felder kann `zustand` nicht setzen.
   async setValidationStateMitBeleg(
     id: string,
-    zustand: (ko: KnowledgeObject) => Promise<{ trust: number; status: KoStatus }>,
+    zustand: (ko: KnowledgeObject) => Promise<{
+      trust: number;
+      status: KoStatus;
+      herkunft?: Pick<KnowledgeObject, "weisung" | "externeFreigabe">;
+    }>,
     opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
     beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
     ruecknahme: () => Promise<void> = async () => undefined,
@@ -6297,7 +6306,15 @@ export class KoService {
           return { ko, geschrieben: false, ref };
         }
         const state = await zustand(ko);
-        const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
+        const updated: KnowledgeObject = {
+          ...ko,
+          trust: state.trust,
+          status: state.status,
+          ...(state.herkunft?.weisung ? { weisung: state.herkunft.weisung } : {}),
+          ...(state.herkunft?.externeFreigabe
+            ? { externeFreigabe: state.herkunft.externeFreigabe }
+            : {}),
+        };
         const schritte = async (tx?: TxContext) => {
           await this.repo.update(updated, tx);
           const ref = await beleg(tx);
@@ -6416,6 +6433,57 @@ export class KoService {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
     return trust;
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 19 — DIE NACHFOLGENDE SICHTUNG EINER WEISUNG.
+  // ==============================================================================================
+  //
+  // „Unmittelbar gültige befugte Weisung mit nachfolgender zuständiger Sichtung." Gesichtet wird
+  // von genau der Person, die beim Setzen als verantwortlich benannt wurde — die Route prüft das
+  // vorab, diese Stelle noch einmal unter dem Objekt-Lock (zwischen beiden könnte eine neue Weisung
+  // gesetzt worden sein). Die Sichtung ändert WEDER Status noch Vertrauen noch Fassung: die Weisung
+  // bleibt gültig, solange kein Widerruf oder Konflikt vorliegt; sie hält nur fest, wer sie wann
+  // gesehen hat. Eine zweite Sichtung derselben Weisung wird abgelehnt, nicht überschrieben.
+  async weisungSichten(id: string, actor: string, vermerk?: string): Promise<KnowledgeObject> {
+    return this.mutateKo(id, (ko) => {
+      const weisung = ko.weisung;
+      if (!weisung || weisung.sichtung.verantwortlich !== actor || weisung.sichtung.gesichtetAm) {
+        throw new KoError(
+          "KO_STALE",
+          "Die Weisung an diesem Wissensobjekt ist nicht (mehr) von Ihnen zu sichten.",
+        );
+      }
+      const am = new Date(this.now()).toISOString();
+      const text = vermerk?.trim();
+      const updated: KnowledgeObject = {
+        ...ko,
+        weisung: {
+          ...weisung,
+          sichtung: {
+            ...weisung.sichtung,
+            gesichtetVon: actor,
+            gesichtetAm: am,
+            ...(text ? { vermerk: text } : {}),
+          },
+        },
+      };
+      return {
+        updated,
+        value: updated,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.weisung-gesichtet",
+              target: id,
+              payload: { weisungVon: weisung.von, weisungAm: weisung.am, fassung: weisung.fassung },
+            },
+            tx,
+          );
+        },
+      };
+    });
   }
 
   // FR-LIF-02: Autor-Übergabe — current author ändert sich, originalAuthor bleibt erhalten.

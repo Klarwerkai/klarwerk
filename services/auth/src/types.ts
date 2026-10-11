@@ -59,6 +59,32 @@ export interface Session {
 
 export type PublicUser = Omit<User, "passwordSalt" | "passwordHash">;
 
+// ================================================================================================
+// Aufnahme gesamt-wissen-herkunft · Entscheidung 18 (Peter, 11.10.2026) — DIE WEISUNGSBEFUGNIS.
+// ================================================================================================
+//
+// „Ein ausdrückliches fachliches Weisungsrecht mit festgelegtem Geltungsbereich verwenden.
+// Administratorstatus allein soll diese Befugnis nicht verleihen. … sowie Geschäftsführung und alle
+// weisungsberechtigten Personen. Dieses muss mit in den User-Account eingearbeitet werden."
+//
+// DAHER EIN EIGENER VERMERK AM KONTO und KEINE Ableitung aus `role`: auch ein `admin` hat sie nur,
+// wenn sie ihm ausdrücklich erteilt wurde. `bereiche` sind die fachlichen Geltungsbereiche — die
+// Kategorien der Wissensobjekte, dieselbe Einteilung, an der auch die Bereichsprofile hängen.
+// `gesamt` ist die Geschäftsführung: weisungsbefugt für jeden Bereich, ebenfalls nur ausdrücklich.
+// Wer sie wann erteilt hat, bleibt am Vermerk stehen (und im Prüfprotokoll, `user.weisungsbefugnis`).
+//
+// Gespeichert in einer eigenen Tabelle des Moduls (`weisungsbefugnisse`, s. repo-pg.ts), gebunden
+// an die Kontokennung; die Antworten `GET /api/auth/me` und `GET /api/users` tragen das Feld nur,
+// wenn es besteht. Ein Konto ohne Vermerk ist nicht weisungsbefugt — fehlend heißt NEIN.
+export interface Weisungsbefugnis {
+  /** Die fachlichen Geltungsbereiche (Kategorien), für die Weisungen erteilt werden dürfen. */
+  bereiche: string[];
+  /** Geschäftsführung: weisungsbefugt für alle Bereiche. Nur ausdrücklich, nie aus der Rolle. */
+  gesamt: boolean;
+  erteiltVon: string;
+  erteiltAm: string;
+}
+
 export type AuthErrorCode =
   | "EMAIL_TAKEN"
   | "INVALID_CREDENTIALS"

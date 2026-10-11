@@ -26,12 +26,15 @@ import {
   InMemoryPasswordResetRepo,
   InMemorySessionRepo,
   InMemoryUserRepo,
+  InMemoryWeisungsbefugnisRepo,
   type PasswordResetRepo,
   PgPasswordResetRepo,
   PgSessionRepo,
   PgUserRepo,
+  PgWeisungsbefugnisRepo,
   type SessionRepo,
   type UserRepo,
+  type WeisungsbefugnisRepo,
   authRoutes,
   createOidcProviderFromEnv,
   sprache,
@@ -624,6 +627,10 @@ export interface AppRepos {
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens: PasswordResetRepo;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto. OPTIONAL,
+  // damit jeder bestehende Aufrufer, der seine Ablagen selbst zusammenstellt, unverändert baut —
+  // fehlt sie, hält der Kontodienst die Befugnisse im Speicher.
+  weisungsbefugnisse?: WeisungsbefugnisRepo;
   drafts: DraftRepo;
   gaps: GapRepo;
   ratings: RatingRepo;
@@ -1225,6 +1232,7 @@ export function assembleServices(
     users: repos.users,
     sessions: repos.sessions,
     resetTokens: repos.resetTokens,
+    ...(repos.weisungsbefugnisse ? { weisungsbefugnisse: repos.weisungsbefugnisse } : {}),
     audit,
     // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
     canChangeRole,
@@ -1607,6 +1615,7 @@ export function inMemoryRepos(): AppRepos {
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
     resetTokens: new InMemoryPasswordResetRepo(),
+    weisungsbefugnisse: new InMemoryWeisungsbefugnisRepo(),
     drafts: new InMemoryDraftRepo(),
     gaps: new InMemoryGapRepo(),
     ratings: new InMemoryRatingRepo(),
@@ -1682,6 +1691,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
       resetTokens: new PgPasswordResetRepo(pool),
+      weisungsbefugnisse: new PgWeisungsbefugnisRepo(pool),
       drafts: new PgDraftRepo(pool),
       gaps: new PgGapRepo(pool),
       ratings: new PgRatingRepo(pool),
@@ -3252,6 +3262,12 @@ export function buildApp(
         // die Lesevarianten-Routen benutzen, keine zweite. Das Original selbst bleibt unberührt:
         // die Variante tritt als eigenes Feld daneben, nie an die Stelle eines KO-Feldes.
         lesevarianten: services.lesevarianten,
+        // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: Befugnis und Konto kommen
+        // aus DEMSELBEN Kontodienst wie die Anmeldung — kein zweiter Kontobestand.
+        konten: {
+          befugnisVon: (userId) => services.auth.weisungsbefugnisVon(userId),
+          kontoBesteht: (userId) => services.auth.kontoBesteht(userId),
+        },
         // Weg 3 (Feature-Flag): semantischer Vorfilter (undefined = Default „jeder gegen jeden").
         semanticPrefilter,
         // WP-SUBMIT-ASYNC: Prüf-Job-Vermerk + Hintergrund-Worker statt synchroner Erkennung.

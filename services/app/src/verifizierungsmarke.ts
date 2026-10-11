@@ -28,7 +28,13 @@
 import { type AuditService, VALIDATION_DECISION_ACTIONS } from "../../audit";
 import type { KnowledgeObject } from "../../knowledge-object";
 
-export type VerifizierungsArt = "bewertung" | "verwalter" | "rueckgabe";
+export type VerifizierungsArt =
+  | "bewertung"
+  | "verwalter"
+  | "rueckgabe"
+  // Entscheidungen 18/19 und 27: die befugte Weisung und die übernommene externe Freigabe.
+  | "weisung"
+  | "externe_freigabe";
 
 export type MenschlichePruefung =
   /**
@@ -66,6 +72,12 @@ function artVon(action: string): VerifizierungsArt {
   }
   if (action === "ko.rated") {
     return "bewertung";
+  }
+  if (action === "ko.weisung") {
+    return "weisung";
+  }
+  if (action === "ko.externe-freigabe-uebernommen") {
+    return "externe_freigabe";
   }
   return "rueckgabe";
 }

@@ -229,6 +229,25 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0235 / R-0749: „Hat geholfen" am Objekt — trägt nichts ausser der Aktion.
     case "helpful":
       return { action };
+    // Aufnahme gesamt-wissen-herkunft (Entscheidungen 18/19 und 27): fachlich gültige
+    // Mindestnutzlasten. Ob der Anfragende weisen, sichten oder übernehmen DARF (Befugnis am Konto,
+    // benannte Verantwortliche, `ko.validate`), entscheidet der Zweig — dieser Wächter prüft nur,
+    // dass das Tor am fremden vertraulichen Objekt vorher mit 404 greift.
+    case "weisung":
+      return { action, sichtung: { verantwortlich: "eva-sichtet", frist: "2099-12-31" } };
+    case "weisung-sichten":
+      return { action };
+    case "externe-freigabe":
+      return {
+        action,
+        externeFreigabe: {
+          art: "wissen",
+          herausgeber: "Hersteller aus mega80",
+          freigegebenAm: "2026-01-15",
+          zustaendig: "eva-zustaendig",
+          anwendbarBestaetigt: true,
+        },
+      };
     default:
       throw new Error(`Keine Nutzlast hinterlegt für Aktion "${action}" — Test unvollständig.`);
   }

@@ -263,6 +263,30 @@ export type KoAction =
     }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate"; duplicateAcknowledged?: true }
+  // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 (R-0573): die befugte Weisung mit
+  // nachfolgender Sichtung; `bestehenLassen` nennt die betroffenen Punkte, die bestehen bleiben.
+  | {
+      action: "weisung";
+      sichtung: { verantwortlich: string; frist: string };
+      bestehenLassen?: string[];
+      duplicateAcknowledged?: true;
+    }
+  | { action: "weisung-sichten"; vermerk?: string }
+  // Entscheidung 27: externe Freigabe übernehmen, interne Anwendbarkeit ausdrücklich bestätigt.
+  | {
+      action: "externe-freigabe";
+      externeFreigabe: {
+        art: "wissen" | "referenz";
+        herausgeber: string;
+        freigabeKennung?: string;
+        freigegebenAm: string;
+        freigegebenVon?: string;
+        nachweis?: string;
+        zustaendig: string;
+        anwendbarBestaetigt: true;
+      };
+      duplicateAcknowledged?: true;
+    }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
@@ -1428,6 +1452,12 @@ export const endpoints = {
     //     zeigt nach dem Speichern den Stand von davor.
     setAccessExpiry: (id: string, accessExpiresAt: string | null) =>
       api.put<PublicUser>(`/users/${id}`, { accessExpiresAt }),
+    // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto — über
+    // DENSELBEN Verwaltungsweg wie Rolle und Befristung. Objekt erteilt, `null` entzieht.
+    setWeisungsbefugnis: (
+      id: string,
+      weisungsbefugnis: { bereiche: string[]; gesamt: boolean } | null,
+    ) => api.put<PublicUser>(`/users/${id}`, { weisungsbefugnis }),
   },
   // ==============================================================================================
   // JOB 4154 · WIKI-GESAMTANWEISUNG — NEUN ADRESSEN, UND JEDE SCHREIBENDE TRÄGT DEN GELESENEN STAND.

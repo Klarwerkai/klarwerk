@@ -17,6 +17,10 @@ export default {
     "verifizierung.mensch.verwalter":
       "Von {{name}} am {{zeit}} als gültig gekennzeichnet (Verwalter, ohne Gegenprüfung)",
     "verifizierung.mensch.rueckgabe": "Von {{name}} am {{zeit}} zur Nacharbeit zurückgegeben",
+    "verifizierung.mensch.weisung":
+      "Von {{name}} am {{zeit}} als Weisung gültig gesetzt (befugt, ohne Vier-Augen-Prüfung)",
+    "verifizierung.mensch.externe_freigabe":
+      "Externe Freigabe übernommen; interne Anwendbarkeit bestätigt von {{name}} am {{zeit}}",
     "verifizierung.mensch.fruehereFassung":
       "Die Prüfung galt Fassung v{{fassung}} — die heutige Fassung ist noch nicht geprüft.",
     "verifizierung.mensch.fassungUnbekannt":
@@ -41,6 +45,10 @@ export default {
     "verifizierung.mensch.verwalter":
       "Marked as valid by {{name}} on {{zeit}} (administrator, without peer review)",
     "verifizierung.mensch.rueckgabe": "Returned for rework by {{name}} on {{zeit}}",
+    "verifizierung.mensch.weisung":
+      "Set as valid directive by {{name}} on {{zeit}} (authorised, without peer review)",
+    "verifizierung.mensch.externe_freigabe":
+      "External approval adopted; applicability confirmed by {{name}} on {{zeit}}",
     "verifizierung.mensch.fruehereFassung":
       "The review applied to version v{{fassung}} — the current version has not been reviewed yet.",
     "verifizierung.mensch.fassungUnbekannt":
@@ -65,6 +73,10 @@ export default {
     "verifizierung.mensch.verwalter":
       "Door {{name}} op {{zeit}} als geldig gemarkeerd (beheerder, zonder tegencontrole)",
     "verifizierung.mensch.rueckgabe": "Door {{name}} op {{zeit}} teruggegeven voor herwerking",
+    "verifizierung.mensch.weisung":
+      "Door {{name}} op {{zeit}} als geldige instructie vastgelegd (bevoegd, zonder vier-ogencontrole)",
+    "verifizierung.mensch.externe_freigabe":
+      "Externe goedkeuring overgenomen; toepasbaarheid bevestigd door {{name}} op {{zeit}}",
     "verifizierung.mensch.fruehereFassung":
       "De controle gold versie v{{fassung}} — de huidige versie is nog niet gecontroleerd.",
     "verifizierung.mensch.fassungUnbekannt":

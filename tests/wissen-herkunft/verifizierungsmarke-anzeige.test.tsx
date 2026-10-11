@@ -190,7 +190,9 @@ describe("R-0228 · drei Sprachen und der Platz am Eintrag", () => {
       "utf8",
     );
     const kopfEnde = lesen.indexOf("</Menue>");
-    const marke = lesen.indexOf("<Verifizierungsmarke ko={ko} nameOf={nameOf} />");
+    // Nacharbeit 6: die Marke trägt seither zusätzlich den Sichtungsweg (Entscheidung 19) — gemessen
+    // wird deshalb der Anfang des Elements samt seinem Objekt, nicht mehr die ganze Zeile.
+    const marke = lesen.indexOf("<Verifizierungsmarke\n          ko={ko}");
     const mehr = lesen.indexOf("<MehrAbschnitte");
     expect(marke).toBeGreaterThan(kopfEnde);
     expect(marke).toBeLessThan(mehr);

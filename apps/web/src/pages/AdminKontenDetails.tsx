@@ -20,6 +20,7 @@ import { NAV_GROUPS, ROLES, type Role, roleAllows } from "../app/navigation";
 import { HelpTip } from "../components/HelpTip";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
+import { WeisungsbefugnisPflege } from "../components/einstellungen/WeisungsbefugnisPflege";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
 import { Button, Field, TextInput } from "../components/ui";
 import { isPasswordResetValid, newUserIssues, passwordRepeatMismatch } from "../lib/adminForms";
@@ -528,6 +529,10 @@ export function NutzerDetail({
                     </p>
                   )}
                 </div>
+
+                {/* Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis — am
+                    Konto, ausdrücklich, nie aus der Rolle. */}
+                <WeisungsbefugnisPflege nutzer={nutzer} />
               </>
             ) : (
               <button

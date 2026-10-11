@@ -7,6 +7,10 @@ export interface SessionUser {
   name?: string;
   email?: string;
   role: Role;
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die eigene Weisungsbefugnis, wie
+  // `GET /api/auth/me` sie mitschickt — nur wenn sie erteilt ist. Die Oberfläche bietet das Setzen
+  // einer Weisung danach an; ob es gilt, entscheidet allein der Server.
+  weisungsbefugnis?: { bereiche: string[]; gesamt: boolean };
 }
 
 export interface AuthStatus {

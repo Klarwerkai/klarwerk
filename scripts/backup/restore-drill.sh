@@ -287,10 +287,13 @@ fi
 # JOB 4309 wirklich migriert; ein Restore, der Kopf, Reihenfolge oder die festgehaltenen
 # Pruefstaende verloere, kaeme ohne sie mit Exit 0 durch. KEIN Kommentar INNERHALB der Klammern:
 # tests/backup-drill/pflichtsatz.ts liest den Inhalt als Wortliste bis zur ersten Klammer zu.
+# Aufnahme gesamt-wissen-herkunft (Entscheidung 18): `weisungsbefugnisse` gehoert zur Auth-Stufe —
+# ein Restore ohne sie liesse jede vermerkte Weisungsbefugnis verschwinden.
 PFLICHTTABELLEN=(
   users
   sessions
   password_resets
+  weisungsbefugnisse
   kos
   ko_schreibstand
   ko_versions
