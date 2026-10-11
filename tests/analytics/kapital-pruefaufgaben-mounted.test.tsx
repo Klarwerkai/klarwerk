@@ -55,6 +55,15 @@ const SNAPSHOT: ManagementSnapshot = {
   priorities: [],
   recommendations: [],
   house: [],
+  houseFlow: {
+    imported: 0,
+    importedValidated: 0,
+    inHouse: 4,
+    secured: 3,
+    floors: 0,
+    fragileFloors: 0,
+    outputReady: 3,
+  },
   pilot: [{ days: 30, created: 1, validated: 1 }],
 };
 

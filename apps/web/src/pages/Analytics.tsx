@@ -546,9 +546,7 @@ export function Analytics(): JSX.Element {
                   />
                   <Kpi
                     label={t("ana.impactRate")}
-                    value={
-                      bericht.askTotal > 0 ? formatRate(bericht.answerRate) : OHNE_GRUNDMENGE
-                    }
+                    value={bericht.askTotal > 0 ? formatRate(bericht.answerRate) : OHNE_GRUNDMENGE}
                     hint={
                       bericht.askTotal > 0
                         ? t("wkz.bestand.impactRate")
