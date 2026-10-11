@@ -42,8 +42,11 @@ function lauf(text: string, fett = false): string {
   return `<a:r><a:rPr lang="de-DE"${fett ? ' b="1"' : ""} dirty="0"/><a:t>${esc(text)}</a:t></a:r>`;
 }
 
+// Nacharbeit 5: der Formname trug früher `${ph}` — also rohes XML (`<p:ph type="title"/>`) in einem
+// Attributwert. Die Datei war damit nicht wohlgeformt; Collabora lud die Folien ohne Text und
+// speicherte sie leer zurück (H1 rot). Der Name ist jetzt ein schlichter Text.
 function platzhalter(id: number, ph: string, absaetze: string[]): string {
-  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${ph} ${id}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>${ph}</p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>${absaetze.join("")}</p:txBody></p:sp>`;
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Platzhalter ${id}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>${ph}</p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>${absaetze.join("")}</p:txBody></p:sp>`;
 }
 
 const titel = (t: string) => platzhalter(2, '<p:ph type="title"/>', [`<a:p>${lauf(t)}</a:p>`]);
