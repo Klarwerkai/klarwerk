@@ -19,6 +19,11 @@
 //
 // Gefahren wird der echte Weg: `buildServices`/`buildApp`, Anmeldung über die Route, Vergabe der
 // Befugnis über `PUT /api/users/:id`, Weisung/Sichtung/Übernahme über `PUT /api/kos/:id`.
+//
+// Integration Nacharbeit 12: die Befugnis ist seither EINE — die am Konto aus Aufnahme
+// gesamt-peer-validierung (`User.weisungsbefugnis`, eine Bereichsliste, `"*"` = ganzes Unternehmen,
+// Beleg `user.weisungsbefugnis-set`). Der frühere eigene Vermerk dieses Auftrags ist darin
+// aufgegangen; diese Fälle fahren deshalb dessen Format.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -112,23 +117,22 @@ describe("Entscheidung 18 · die Weisungsbefugnis steht am Konto — nicht in de
     const vorher = await b.holen(b.koepfe.anna, "/api/auth/me");
     expect("weisungsbefugnis" in vorher.json()).toBe(false);
 
-    const erteilt = await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    const erteilt = await b.befugnis(b.anna.id, ["Technik"]);
     expect(erteilt.statusCode, erteilt.body).toBe(200);
     expect(erteilt.json().weisungsbefugnis).toMatchObject({
       bereiche: ["Technik"],
-      gesamt: false,
       erteiltVon: b.admin.id,
     });
 
     const me = await b.holen(b.koepfe.anna, "/api/auth/me");
-    expect(me.json().weisungsbefugnis).toMatchObject({ bereiche: ["Technik"], gesamt: false });
+    expect(me.json().weisungsbefugnis).toMatchObject({ bereiche: ["Technik"] });
     const liste = await b.holen(b.koepfe.admin, "/api/users");
     const zeilen = liste.json() as { id: string; weisungsbefugnis?: unknown }[];
     expect(zeilen.find((u) => u.id === b.anna.id)?.weisungsbefugnis).toBeDefined();
     expect(zeilen.find((u) => u.id === b.bob.id)).not.toHaveProperty("weisungsbefugnis");
     // Im Prüfprotokoll steht, wer sie wem erteilt hat.
     const vermerk = await b.services.audit.list({
-      action: "user.weisungsbefugnis",
+      action: "user.weisungsbefugnis-set",
       target: b.anna.id,
     });
     expect(vermerk.map((e) => e.actor)).toEqual([b.admin.id]);
@@ -150,7 +154,7 @@ describe("Entscheidung 18 · die Weisungsbefugnis steht am Konto — nicht in de
 
   it("B4 · entzogen heißt: nicht mehr weisungsbefugt", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     expect((await b.befugnis(b.anna.id, null)).statusCode).toBe(200);
     const me = await b.holen(b.koepfe.anna, "/api/auth/me");
     expect("weisungsbefugnis" in me.json()).toBe(false);
@@ -160,7 +164,7 @@ describe("Entscheidung 18 · die Weisungsbefugnis steht am Konto — nicht in de
 
   it("B5 · Geschäftsführung: ausdrücklich „alle Bereiche“ — auch das nie aus der Rolle", async () => {
     const b = await buehne();
-    await b.befugnis(b.admin.id, { gesamt: true });
+    await b.befugnis(b.admin.id, ["*"]);
     const ko = await b.objekt("Vertragsprüfung", "Recht", b.admin.id);
     const antwort = await b.put(b.koepfe.admin, ko.id, weisung(b.bob.id));
     expect(antwort.statusCode, antwort.body).toBe(200);
@@ -168,7 +172,7 @@ describe("Entscheidung 18 · die Weisungsbefugnis steht am Konto — nicht in de
 
   it("B6 · mit dem Konto endet die Befugnis", async () => {
     const b = await buehne();
-    await b.befugnis(b.bob.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.bob.id, ["Technik"]);
     await b.services.auth.deleteUser(b.bob.id, b.admin.id);
     expect(await b.services.auth.weisungsbefugnisVon(b.bob.id)).toBeUndefined();
   });
@@ -177,7 +181,7 @@ describe("Entscheidung 18 · die Weisungsbefugnis steht am Konto — nicht in de
 describe("Entscheidungen 18/19 · die Weisung gilt sofort, trägt ihre befugte Herkunft und wird gesichtet", () => {
   it("W1 · nur im eigenen fachlichen Bereich (Groß-/Kleinschreibung zählt nicht)", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["technik"] });
+    await b.befugnis(b.anna.id, ["technik"]);
     const fremd = await b.objekt("Vertrag", "Recht");
     const abgelehnt = await b.put(b.koepfe.anna, fremd.id, weisung(b.bob.id));
     expect(abgelehnt.statusCode).toBe(403);
@@ -186,7 +190,7 @@ describe("Entscheidungen 18/19 · die Weisung gilt sofort, trägt ihre befugte H
 
   it("W2 · gültig ohne Vier-Augen-Prüfung, mit Herkunft „Weisung von wem, wann, Bereich“ — Originalautor unverändert", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Drehmoment Bolzen X", "Technik", b.carla.id);
     const antwort = await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id));
     expect(antwort.statusCode, antwort.body).toBe(200);
@@ -221,7 +225,7 @@ describe("Entscheidungen 18/19 · die Weisung gilt sofort, trägt ihre befugte H
 
   it("W3 · die Sichtung ist Pflicht: ohne Person, durch sich selbst oder mit vergangener Frist wird nicht gewiesen", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Presse C");
     const vergangen = {
       action: "weisung",
@@ -241,7 +245,7 @@ describe("Entscheidungen 18/19 · die Weisung gilt sofort, trägt ihre befugte H
 
   it("S1–S3 · gesichtet wird nur von der benannten Person, einmal — die Weisung bleibt gültig", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Presse D");
     expect((await b.put(b.koepfe.anna, ko.id, weisung(b.bob.id))).statusCode).toBe(200);
 
@@ -263,7 +267,7 @@ describe("Entscheidungen 18/19 · die Weisung gilt sofort, trägt ihre befugte H
     expect(typeof gelesen.weisung?.sichtung.gesichtetAm).toBe("string");
     expect(gelesen.status).toBe("validiert");
     expect(
-      (await b.services.audit.list({ action: "ko.weisung-gesichtet", target: ko.id })).map(
+      (await b.services.audit.list({ action: "ko.weisung-sichtung-vermerkt", target: ko.id })).map(
         (e) => e.actor,
       ),
     ).toEqual([b.bob.id]);
@@ -276,7 +280,7 @@ describe("Entscheidungen 18/19 · die Weisung gilt sofort, trägt ihre befugte H
 describe("R-0573 · jeder betroffene bestehende Punkt einzeln — geschlossen wird über den Konflikt, nicht gelöscht", () => {
   it("P1 · offene Punkte werden einzeln vorgelegt, und es wird nicht gewiesen", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Bolzen X: 10 Nm");
     const alt = await b.objekt("Alle Bolzen handfest");
     const konflikt = await b.services.conflicts.create(
@@ -294,7 +298,7 @@ describe("R-0573 · jeder betroffene bestehende Punkt einzeln — geschlossen wi
 
   it("P2 · ausdrücklich bestehen gelassen: gewiesen, der Punkt bleibt offen und unverändert", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Bolzen Y: 12 Nm");
     const alt = await b.objekt("Bolzen allgemein");
     const konflikt = await b.services.conflicts.create(
@@ -315,7 +319,7 @@ describe("R-0573 · jeder betroffene bestehende Punkt einzeln — geschlossen wi
 
   it("P3 · ein für die weisende Person unsichtbarer Punkt sperrt — ohne ihn zu nennen", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Bolzen Z");
     const geheim = await b.services.ko.create({
       title: "Vertrauliche Gegenanweisung",
@@ -343,7 +347,7 @@ describe("R-0573 · jeder betroffene bestehende Punkt einzeln — geschlossen wi
 describe("R-0573 · überstimmte Punkte werden geschlossen, nicht gelöscht (Nacharbeit 11, Ben B2)", () => {
   async function zweiPunkte() {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Bolzen W: 14 Nm", "Technik", b.carla.id);
     const ueberstimmt = await b.objekt("Bolzen W handfest", "Technik", b.carla.id);
     const bleibt = await b.objekt("Bolzen W Sonderfall Kälte");
@@ -448,7 +452,7 @@ describe("R-0573 · überstimmte Punkte werden geschlossen, nicht gelöscht (Nac
 
   it("P6 · überstimmt wird nur im eigenen fachlichen Bereich — sonst wird gar nicht gewiesen", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const ko = await b.objekt("Bolzen V: 9 Nm");
     const fremd = await b.objekt("Haftung bei Bolzen", "Recht");
     const k = await b.services.conflicts.create(
@@ -485,7 +489,7 @@ describe("R-0573 · überstimmte Punkte werden geschlossen, nicht gelöscht (Nac
 describe("Entscheidung 19 · die Sichtende muss das Objekt mit ihrem eigenen Lesekontext lesen können (Nacharbeit 11, Ben B1)", () => {
   async function vertraulicheBuehne() {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const viktor = await b.services.auth.register({
       name: "Viktor Viewer",
       email: "viktor@weisung.de",
@@ -554,7 +558,7 @@ describe("Entscheidung 19 · die Sichtende muss das Objekt mit ihrem eigenen Les
 
   it("SB3 · ein nicht freigegebenes Konto kann nicht sichten und wird abgelehnt", async () => {
     const b = await buehne();
-    await b.befugnis(b.anna.id, { bereiche: ["Technik"] });
+    await b.befugnis(b.anna.id, ["Technik"]);
     const gesperrt = await b.services.auth.register({
       name: "Gerd Gesperrt",
       email: "gerd@weisung.de",

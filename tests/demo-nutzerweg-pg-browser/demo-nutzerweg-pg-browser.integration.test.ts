@@ -793,7 +793,7 @@ describe("JOB 4337 S · der erste Nutzerweg der Demo im Browser, gegen echtes Po
         await gehe(seite, "/bibliothek", '[data-testid="bib-liste"]', "die Bibliothek steht");
         await sucheUndPruefeTreffer(seite, {
           koId: objekt,
-          statuswort: satz("status.validiert"),
+          statuswort: satz("pruefablauf.wissensstatus.validiert"),
           quellenzeile: persistierteQuellenzeile(DATEI_NAME),
           dokumentsatz: DOKUMENTSATZ,
           dateiname: DATEI_NAME,
@@ -886,7 +886,7 @@ describe("JOB 4337 S · der erste Nutzerweg der Demo im Browser, gegen echtes Po
       // ---- (d) DIESELBE Prüfung wie in S6 — Zeichen für Zeichen dieselbe Funktion -------------
       await sucheUndPruefeTreffer(seite, {
         koId: objekt,
-        statuswort: satz("status.validiert"),
+        statuswort: satz("pruefablauf.wissensstatus.validiert"),
         quellenzeile: persistierteQuellenzeile(DATEI_NAME),
         dokumentsatz: DOKUMENTSATZ,
         dateiname: DATEI_NAME,
@@ -971,7 +971,7 @@ describe("JOB 4337 S · der erste Nutzerweg der Demo im Browser, gegen echtes Po
         marke: string;
       } => ({
         koId: objekt,
-        statuswort: satz("status.validiert"),
+        statuswort: satz("pruefablauf.wissensstatus.validiert"),
         quellenzeile: persistierteQuellenzeile(DATEI_NAME),
         dokumentsatz: DOKUMENTSATZ,
         dateiname: DATEI_NAME,

@@ -1,42 +1,6 @@
 import type { TxContext } from "../../db-tx";
 import type { Session, User, Weisungsbefugnis } from "./types";
 
-/**
- * Entscheidung 18: die Weisungsbefugnis am Konto (Begründung an `Weisungsbefugnis`, types.ts).
- * Eine Zeile je Konto oder keine; „keine Zeile" heißt ausdrücklich „nicht weisungsbefugt".
- */
-export interface WeisungsbefugnisRepo {
-  get(userId: string): Promise<Weisungsbefugnis | undefined>;
-  list(): Promise<Map<string, Weisungsbefugnis>>;
-  set(userId: string, befugnis: Weisungsbefugnis): Promise<void>;
-  delete(userId: string): Promise<void>;
-}
-
-export class InMemoryWeisungsbefugnisRepo implements WeisungsbefugnisRepo {
-  private readonly zeilen = new Map<string, Weisungsbefugnis>();
-
-  get(userId: string): Promise<Weisungsbefugnis | undefined> {
-    const zeile = this.zeilen.get(userId);
-    return Promise.resolve(zeile ? { ...zeile, bereiche: [...zeile.bereiche] } : undefined);
-  }
-
-  list(): Promise<Map<string, Weisungsbefugnis>> {
-    return Promise.resolve(
-      new Map([...this.zeilen].map(([id, b]) => [id, { ...b, bereiche: [...b.bereiche] }])),
-    );
-  }
-
-  set(userId: string, befugnis: Weisungsbefugnis): Promise<void> {
-    this.zeilen.set(userId, { ...befugnis, bereiche: [...befugnis.bereiche] });
-    return Promise.resolve();
-  }
-
-  delete(userId: string): Promise<void> {
-    this.zeilen.delete(userId);
-    return Promise.resolve();
-  }
-}
-
 // Persistenz-Schnittstellen. Die In-Memory-Implementierung dient Tests und Dev;
 // der Postgres-Adapter (Testcontainers-Integrationstests) folgt, sobald Docker bereitsteht.
 export interface UserRepo {
@@ -105,6 +69,17 @@ export interface UserRepo {
    * schreibt die eigene Spalte hier — getrennt von `update`, dessen Spaltenliste unverändert bleibt.
    */
   setzeVerzeichnisGruppen?(id: string, gruppen: readonly string[], tx?: TxContext): Promise<void>;
+  /**
+   * Aufnahme gesamt-peer-validierung (Antwort 18): die Weisungsbefugnis eines Kontos festschreiben
+   * oder (`undefined`) entfernen. OPTIONAL aus demselben Grund wie `setzeVerzeichnisGruppen`: die
+   * Speicherablage hält das ganze Konto; die Datenbank schreibt die eigene Spalte — getrennt von
+   * `update`, dessen Spaltenliste unverändert bleibt.
+   */
+  setzeWeisungsbefugnis?(
+    id: string,
+    befugnis: Weisungsbefugnis | undefined,
+    tx?: TxContext,
+  ): Promise<void>;
 }
 
 export interface SessionRepo {

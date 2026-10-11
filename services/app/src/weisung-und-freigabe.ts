@@ -9,7 +9,8 @@
 // ruft sie; geschrieben wird ausschließlich über `ValidationService` bzw. `KoService`.
 //
 //   Entscheidung 18 · Weisungsbefugnis ausdrücklich am Konto, mit fachlichem Bereich; technische
-//                     Administration genügt nicht → `befugnisDecktBereich` (services/auth).
+//                     Administration genügt nicht → `weisungsbefugnisDeckt` (services/auth; seit
+//                     Nacharbeit 12 dieselbe Befugnis wie gesamt-peer-validierung, Antwort 18).
 //   Entscheidung 19 · unmittelbar gültig, nachfolgend zuständig gesichtet → Verantwortliche und
 //                     Frist sind PFLICHT beim Setzen; sichten darf nur die benannte Person.
 //   R-0573          · vorher jeden betroffenen bestehenden Punkt einzeln sehen und je Punkt

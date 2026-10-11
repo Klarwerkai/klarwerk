@@ -21,6 +21,7 @@ export default {
       "Von {{name}} am {{zeit}} als Weisung gültig gesetzt (befugt, ohne Vier-Augen-Prüfung)",
     "verifizierung.mensch.externe_freigabe":
       "Externe Freigabe übernommen; interne Anwendbarkeit bestätigt von {{name}} am {{zeit}}",
+    "verifizierung.mensch.weisung_sichtung": "Weisung gesichtet von {{name}} am {{zeit}}",
     "verifizierung.mensch.fruehereFassung":
       "Die Prüfung galt Fassung v{{fassung}} — die heutige Fassung ist noch nicht geprüft.",
     "verifizierung.mensch.fassungUnbekannt":
@@ -49,6 +50,7 @@ export default {
       "Set as valid directive by {{name}} on {{zeit}} (authorised, without peer review)",
     "verifizierung.mensch.externe_freigabe":
       "External approval adopted; applicability confirmed by {{name}} on {{zeit}}",
+    "verifizierung.mensch.weisung_sichtung": "Directive reviewed by {{name}} on {{zeit}}",
     "verifizierung.mensch.fruehereFassung":
       "The review applied to version v{{fassung}} — the current version has not been reviewed yet.",
     "verifizierung.mensch.fassungUnbekannt":
@@ -77,6 +79,7 @@ export default {
       "Door {{name}} op {{zeit}} als geldige instructie vastgelegd (bevoegd, zonder vier-ogencontrole)",
     "verifizierung.mensch.externe_freigabe":
       "Externe goedkeuring overgenomen; toepasbaarheid bevestigd door {{name}} op {{zeit}}",
+    "verifizierung.mensch.weisung_sichtung": "Instructie beoordeeld door {{name}} op {{zeit}}",
     "verifizierung.mensch.fruehereFassung":
       "De controle gold versie v{{fassung}} — de huidige versie is nog niet gecontroleerd.",
     "verifizierung.mensch.fassungUnbekannt":

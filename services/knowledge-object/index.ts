@@ -489,6 +489,8 @@ export type {
   // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27.
   KoWeisung,
   KoExterneFreigabe,
+  // AW06-K02: die Kontoregel einer Annahme (Entscheidungsbeleg und Leseweg).
+  Kontoregel,
   KoSource,
   KoSourceKind,
   KoSourceRestrictions,
@@ -510,4 +512,6 @@ export type {
   // produkt:20261007:veroeffentlichungsoptionen: der Vermerk einer Veröffentlichung samt Meldungswahl.
   KoVeroeffentlichung,
   VeroeffentlichungsMeldung,
+  // Antwort 19 (gesamt-peer-validierung): die Sichtung einer unmittelbar gültigen Weisung.
+  WeisungsSichtung,
 } from "./src/types";

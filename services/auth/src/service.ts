@@ -7,12 +7,10 @@ import { hashPassword, verifyPassword } from "./password";
 import {
   InMemoryPasswordResetRepo,
   InMemorySecondFactorRepo,
-  InMemoryWeisungsbefugnisRepo,
   type PasswordResetRepo,
   type SecondFactorRepo,
   type SessionRepo,
   type UserRepo,
-  type WeisungsbefugnisRepo,
 } from "./repo";
 import { neuesTotpGeheimnis, otpauthAdresse, pruefeTotp } from "./totp";
 import {
@@ -23,77 +21,6 @@ import {
   type User,
   type Weisungsbefugnis,
 } from "./types";
-
-/** Höchstzahl und Höchstlänge der Bereiche einer Weisungsbefugnis (Entscheidung 18). */
-const WEISUNG_BEREICHE_MAX = 50;
-const WEISUNG_BEREICH_MAX_LAENGE = 120;
-
-/** Normalform eines Bereichsnamens für den Vergleich mit der Kategorie eines Wissensobjekts. */
-export function bereichsSchluessel(bereich: string): string {
-  return bereich.trim().toLocaleLowerCase("de");
-}
-
-/**
- * Entscheidung 18: deckt die Befugnis den fachlichen Bereich (die Kategorie) eines Objekts? Ohne
- * Befugnis NIE — auch nicht für `admin`; die Rolle spielt hier keine Rolle.
- */
-export function befugnisDecktBereich(
-  befugnis: Pick<Weisungsbefugnis, "bereiche" | "gesamt"> | undefined,
-  bereich: string,
-): boolean {
-  if (!befugnis) {
-    return false;
-  }
-  if (befugnis.gesamt) {
-    return true;
-  }
-  const gesucht = bereichsSchluessel(bereich);
-  return gesucht.length > 0 && befugnis.bereiche.some((b) => bereichsSchluessel(b) === gesucht);
-}
-
-/**
- * Entscheidung 18: die FORM einer Befugnis-Eingabe — `null` heißt entziehen, ein Objekt erteilen.
- * Rein und ohne Ablage, damit die Route sie VOR jedem Schreibvorgang prüfen kann (ein halb
- * ausgeführter Aufruf wäre die schlechtere Hälfte). Abgelehnt wird, nicht still bereinigt: ein
- * Vermerk ohne Bereich und ohne `gesamt` wäre eine Befugnis für nichts und läse sich doch wie eine.
- */
-export function weisungsbefugnisForm(
-  eingabe: unknown,
-): { bereiche: string[]; gesamt: boolean } | null | "ungueltig" {
-  if (eingabe === null) {
-    return null;
-  }
-  if (typeof eingabe !== "object" || Array.isArray(eingabe)) {
-    return "ungueltig";
-  }
-  const roh = eingabe as { bereiche?: unknown; gesamt?: unknown };
-  if (roh.gesamt !== undefined && typeof roh.gesamt !== "boolean") {
-    return "ungueltig";
-  }
-  if (roh.bereiche !== undefined && !Array.isArray(roh.bereiche)) {
-    return "ungueltig";
-  }
-  const bereiche: string[] = [];
-  const gesehen = new Set<string>();
-  for (const b of (roh.bereiche as unknown[] | undefined) ?? []) {
-    if (typeof b !== "string" || b.trim().length === 0) {
-      return "ungueltig";
-    }
-    const name = b.trim();
-    if (name.length > WEISUNG_BEREICH_MAX_LAENGE) {
-      return "ungueltig";
-    }
-    if (!gesehen.has(bereichsSchluessel(name))) {
-      gesehen.add(bereichsSchluessel(name));
-      bereiche.push(name);
-    }
-  }
-  const gesamt = roh.gesamt === true;
-  if ((!gesamt && bereiche.length === 0) || bereiche.length > WEISUNG_BEREICHE_MAX) {
-    return "ungueltig";
-  }
-  return { bereiche, gesamt };
-}
 
 const MIN_PASSWORD_LENGTH = 8;
 // R-0562: Zwischen Passwort und Bestätigungscode liegt eine kurze, einmalige Anmeldeanfrage. Fünf
@@ -267,9 +194,6 @@ export interface AuthServiceDeps {
   genToken?: () => string;
   // SCRUM-443: injizierte Rollenwechsel-Regel (Default: nur Selbst-Entzug-Schutz).
   canChangeRole?: RoleChangePolicy;
-  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto. Ohne Angabe
-  // im Speicher (Tests, Dev) — dieselbe Bauform wie `resetTokens`.
-  weisungsbefugnisse?: WeisungsbefugnisRepo;
 }
 
 export interface RegisterInput {
@@ -299,7 +223,6 @@ export class AuthService {
   private readonly canChangeRolePolicy: RoleChangePolicy;
   // AUFTRAG-mega62 Block B: nur gesetzt, wenn die Kompositionswurzel einen echten Pg-Pool hat.
   private readonly withTx: WithTx | undefined;
-  private readonly weisungsbefugnisse: WeisungsbefugnisRepo;
   private readonly secondFactors: SecondFactorRepo;
   // R-0562: offene Anmeldeanfragen (Passwort geprüft, Code ausstehend) und begonnene
   // Einrichtungen. Bewusst im Arbeitsspeicher, wie die Übergabecodes in `routes.ts`: beide leben
@@ -312,7 +235,6 @@ export class AuthService {
   private readonly offeneEinrichtungen = new Map<string, { secret: string; expiresAt: number }>();
 
   constructor(deps: AuthServiceDeps) {
-    this.weisungsbefugnisse = deps.weisungsbefugnisse ?? new InMemoryWeisungsbefugnisRepo();
     this.users = deps.users;
     this.sessions = deps.sessions;
     this.audit = deps.audit;
@@ -367,57 +289,12 @@ export class AuthService {
     return (await this.users.findById(userId)) !== undefined;
   }
 
-  // ==============================================================================================
-  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18 — DIE WEISUNGSBEFUGNIS AM KONTO.
-  // ==============================================================================================
-  //
-  // Lesen: fehlt der Vermerk, ist das Konto nicht weisungsbefugt — gleich welche Rolle es hat.
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18 (Integration Nacharbeit 12): die
+  // Weisungsbefugnis steht am Konto (`User.weisungsbefugnis`, vergeben über `setWeisungsbefugnis`,
+  // Aufnahme gesamt-peer-validierung). Lesen für Wege, die nur die Kennung kennen — fehlt der
+  // Vermerk oder das Konto, ist niemand weisungsbefugt, gleich welche Rolle.
   async weisungsbefugnisVon(userId: string): Promise<Weisungsbefugnis | undefined> {
-    return this.weisungsbefugnisse.get(userId);
-  }
-
-  /** Alle erteilten Befugnisse, je Konto — für die Kontenliste der Verwaltung. */
-  async alleWeisungsbefugnisse(): Promise<Map<string, Weisungsbefugnis>> {
-    return this.weisungsbefugnisse.list();
-  }
-
-  /**
-   * Erteilen (Objekt) oder entziehen (`null`). Das Erteilen ist ein ausdrücklicher Akt einer
-   * Verwaltung (Route: `requireAdmin`) und steht im Prüfprotokoll (`user.weisungsbefugnis`); es
-   * folgt nie aus einer Rolle. Die Form wird hier geprüft, nicht an der Route — eine Stelle.
-   *
-   * Ungültige Eingaben werden abgelehnt, nicht still bereinigt: ein Vermerk ohne Bereich und ohne
-   * `gesamt` wäre eine Befugnis für nichts und läse sich trotzdem wie eine. Die Ablehnung trägt
-   * denselben Katalogsatz wie die übrigen Formfehler dieser Route (`INTERNAL`).
-   */
-  async setzeWeisungsbefugnis(
-    userId: string,
-    eingabe: unknown,
-    actorId: string,
-  ): Promise<Weisungsbefugnis | undefined> {
-    const form = weisungsbefugnisForm(eingabe);
-    if (form === "ungueltig") {
-      throw new AuthError("FORBIDDEN", "INTERNAL" satisfies Meldungsschluessel);
-    }
-    await this.requireUser(userId);
-    if (form === null) {
-      const vorher = await this.weisungsbefugnisse.get(userId);
-      await this.weisungsbefugnisse.delete(userId);
-      if (vorher) {
-        await this.record(actorId, "user.weisungsbefugnis", userId, { entzogen: true });
-      }
-      return undefined;
-    }
-    const { bereiche, gesamt } = form;
-    const befugnis: Weisungsbefugnis = {
-      bereiche,
-      gesamt,
-      erteiltVon: actorId,
-      erteiltAm: new Date(this.now()).toISOString(),
-    };
-    await this.weisungsbefugnisse.set(userId, befugnis);
-    await this.record(actorId, "user.weisungsbefugnis", userId, { bereiche, gesamt });
-    return befugnis;
+    return (await this.users.findById(userId))?.weisungsbefugnis;
   }
 
   // FR-AUTH-01 (erstes Konto = Admin) + FR-AUTH-02 (Selbstregistrierung, gesperrt bis Freigabe).
@@ -1541,6 +1418,44 @@ export class AuthService {
     await fn();
   }
 
+  /**
+   * Aufnahme gesamt-peer-validierung · Nutzerentscheid Antwort 18 (11.10.2026): die fachliche
+   * Weisungsbefugnis eines Kontos vergeben, ändern oder (`undefined`/leer) entziehen.
+   *
+   * Die Befugnis steht AM KONTO und nennt ihren Zuständigkeitsbereich. Sie ist ausdrücklich NICHT
+   * an die Rolle gebunden: ein Admin hat sie nur, wenn sie ihm wie jedem anderen vergeben wurde.
+   * Die Bereiche werden getrimmt und ohne Dubletten übernommen. Vermerk und Schreiben laufen
+   * gemeinsam (wo die Wurzel eine Transaktion hergibt), der Vermerk zuerst — wie `setAccessExpiry`.
+   */
+  async setWeisungsbefugnis(
+    userId: string,
+    bereiche: readonly string[] | undefined,
+    actorId: string,
+  ): Promise<PublicUser> {
+    const user = await this.requireUser(userId);
+    const sauber = [...new Set((bereiche ?? []).map((b) => b.trim()).filter((b) => b.length > 0))];
+    const { weisungsbefugnis: _bisher, ...ohneBefugnis } = user;
+    const befugnis: Weisungsbefugnis | undefined =
+      sauber.length > 0
+        ? { bereiche: sauber, erteiltVon: actorId, erteiltAm: new Date(this.now()).toISOString() }
+        : undefined;
+    const aktualisiert: User = befugnis
+      ? { ...ohneBefugnis, weisungsbefugnis: befugnis }
+      : ohneBefugnis;
+    await this.gemeinsamSchreiben(async (tx) => {
+      await this.record(
+        actorId,
+        "user.weisungsbefugnis-set",
+        userId,
+        befugnis ? { bereiche: befugnis.bereiche } : { entfernt: true },
+        tx,
+      );
+      await this.users.update(aktualisiert, tx);
+      await this.users.setzeWeisungsbefugnis?.(userId, befugnis, tx);
+    });
+    return toPublic(aktualisiert);
+  }
+
   // FR-RBAC-02 / FR-RBAC-03 + SCRUM-443: Rolle ändern — jetzt serverseitig geprüft.
   async changeRole(userId: string, role: Role, actorId: string): Promise<PublicUser> {
     const actor = await this.requireUser(actorId);
@@ -1773,9 +1688,6 @@ export class AuthService {
       await this.users.delete(userId, tx);
     });
     await this.sessions.deleteByUser(userId);
-    // Entscheidung 18: mit dem Konto endet seine Weisungsbefugnis. Die Weisungen, die es erteilt
-    // hat, bleiben unverändert an ihren Objekten stehen (Herkunft wird nicht umgeschrieben).
-    await this.weisungsbefugnisse.delete(userId);
     // R-0562: kein verwaistes TOTP-Geheimnis eines gelöschten Kontos in der Ablage.
     await this.secondFactors.delete(userId);
     await this.record(actorId, "user.delete", userId, {

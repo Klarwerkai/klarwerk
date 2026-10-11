@@ -34,6 +34,7 @@ import { executiveKpis } from "../lib/executiveKpis";
 import { type HealthBand, knowledgeHealth } from "../lib/knowledgeHealth";
 import { formatKoTimestamp } from "../lib/koDates";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
+import { WISSENSSTATUS_BESTAETIGT } from "../lib/wissensstatus";
 
 const BAND_TONE: Record<HealthBand, string> = {
   gut: "bg-trust-pos-bg text-trust-pos-text",
@@ -362,8 +363,9 @@ export function Analytics(): JSX.Element {
                   value={a.byStatus.offen ?? 0}
                   hint={t("wkz.bestand.offen")}
                 />
+                {/* Nutzerentscheid Antwort 54: „Fachlich bestätigt" (lib/wissensstatus.ts). */}
                 <Kpi
-                  label={t("status.validiert")}
+                  label={t(WISSENSSTATUS_BESTAETIGT)}
                   value={a.byStatus.validiert ?? 0}
                   hint={t("wkz.bestand.validiert")}
                 />

@@ -208,6 +208,17 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // R-0507: die Eigentümerfreigabe — ob der Anfragende Eigentümer ist, entscheidet der Dienst.
     case "owner-validate":
       return { action };
+    // Aufnahme gesamt-peer-validierung (Antworten 18/19): die Weisung und ihre Sichtung. Ob der
+    // Anfragende Weisungsbefugnis hat bzw. die benannte Person ist, entscheidet der Zweig/Dienst.
+    // Ben, Nacharbeit 11: beide tragen PFLICHT die gelesene Fassung (`expectedVersion`).
+    case "weisung-validate":
+      return {
+        action,
+        sichtung: { verantwortlich: "verantwortliche-person", frist: "2099-12-31" },
+        expectedVersion: 1,
+      };
+    case "weisung-sichten":
+      return { action, sichtung: { ergebnis: "bestaetigt" }, expectedVersion: 1 };
     case "conflict":
       return {
         action,
@@ -254,8 +265,6 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
     // dass das Tor am fremden vertraulichen Objekt vorher mit 404 greift.
     case "weisung":
       return { action, sichtung: { verantwortlich: "eva-sichtet", frist: "2099-12-31" } };
-    case "weisung-sichten":
-      return { action };
     case "externe-freigabe":
       return {
         action,

@@ -313,7 +313,7 @@ function herkunftSatz(): string {
   return i18n.t("editor.imageSearch.herkunft", {
     quelle: QUELLE,
     version: 3,
-    pruefstand: i18n.t("status.validiert"),
+    pruefstand: i18n.t("pruefablauf.wissensstatus.validiert"),
   });
 }
 
@@ -379,7 +379,7 @@ describe("JOB 3095 · U2 — die Übernahme steht in der GESPEICHERTEN Fassung",
     expect(herkunft?.textContent).toBe(herkunftSatz());
     expect(herkunft?.textContent).toContain(QUELLE);
     expect(herkunft?.textContent).toContain("3");
-    expect(herkunft?.textContent).toContain(i18n.t("status.validiert"));
+    expect(herkunft?.textContent).toContain(i18n.t("pruefablauf.wissensstatus.validiert"));
     // Der ursprüngliche Text ist noch da — eingefügt, nicht ersetzt.
     expect(koerper).toContain("Neuer Eintrag zur Wartung.");
   });

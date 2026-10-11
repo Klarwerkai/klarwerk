@@ -2,18 +2,19 @@
 // Aufnahme gesamt-wissen-herkunft · Entscheidung 18 — DECKT DIE EIGENE BEFUGNIS DIESEN BEREICH?
 // ================================================================================================
 //
-// Der Spiegel von `befugnisDecktBereich` (services/auth/src/service.ts) — nur, um die Weisung an
+// Der Spiegel von `weisungsbefugnisDeckt` (services/auth/src/types.ts) — nur, um die Weisung an
 // der Lesefläche anzubieten oder nicht. Er entscheidet NICHTS: der Server prüft dieselbe Regel beim
 // Setzen noch einmal und lehnt ab, wenn sie nicht greift. Ohne Vermerk am Konto: nie, gleich welche
-// Rolle — die Rolle allein verleiht die Befugnis nicht.
+// Rolle — die Rolle allein verleiht die Befugnis nicht. `*` ist das ganze Unternehmen
+// (Geschäftsführung, Integration Nacharbeit 12).
 export function weisungsbefugtFuer(
-  befugnis: { bereiche: readonly string[]; gesamt: boolean } | undefined,
+  befugnis: { bereiche: readonly string[] } | undefined,
   bereich: string,
 ): boolean {
   if (!befugnis) {
     return false;
   }
-  if (befugnis.gesamt) {
+  if (befugnis.bereiche.includes("*")) {
     return true;
   }
   const gesucht = bereich.trim().toLocaleLowerCase("de");

@@ -30,17 +30,14 @@ import {
   InMemorySecondFactorRepo,
   InMemorySessionRepo,
   InMemoryUserRepo,
-  InMemoryWeisungsbefugnisRepo,
   type PasswordResetRepo,
   PgPasswordResetRepo,
   PgSecondFactorRepo,
   PgSessionRepo,
   PgUserRepo,
-  PgWeisungsbefugnisRepo,
   type SecondFactorRepo,
   type SessionRepo,
   type UserRepo,
-  type WeisungsbefugnisRepo,
   authRoutes,
   createOidcProviderFromEnv,
   createSamlProviderFromEnv,
@@ -194,7 +191,7 @@ import {
 } from "../../object-store";
 import { type AuditLeser, LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
-import { can, canChangeRole } from "../../rbac";
+import { can, canChangeRole, canManageUsers } from "../../rbac";
 import {
   type AssistPresetRepo,
   Ausgangspruefung,
@@ -905,10 +902,6 @@ export interface AppRepos {
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens: PasswordResetRepo;
-  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto. OPTIONAL,
-  // damit jeder bestehende Aufrufer, der seine Ablagen selbst zusammenstellt, unverändert baut —
-  // fehlt sie, hält der Kontodienst die Befugnisse im Speicher.
-  weisungsbefugnisse?: WeisungsbefugnisRepo;
   // R-0562: der eigene zweite Faktor (TOTP) je Konto.
   secondFactors: SecondFactorRepo;
   drafts: DraftRepo;
@@ -1478,6 +1471,13 @@ export function assembleServices(
     audit,
     // SCRUM-395: persistierte Standard-Prüferanzahl (Admin pflegt sie über die Route).
     settings: repos.validationSettings,
+    // R-0256 (gesamt-peer-validierung): dieselbe Lesart von „offen" wie Board und Badge
+    // (`unresolved`, versionsgebunden). `conflicts` entsteht weiter unten; gelesen wird erst beim
+    // Bewerten, nach dem Aufbau.
+    offeneKonfliktArten: async (koId) =>
+      (await conflicts.unresolved())
+        .filter((c) => c.koA === koId || c.koB === koId)
+        .map((c) => c.type),
   });
   // Vorab erstellt, da das Management-Modul (SCRUM-120) deren Live-Daten aggregiert.
   // FUNKE-FIX P0 (bens ROT-1): optionales Answer-Receipt-Secret aus ENV — gesetzt für
@@ -1591,7 +1591,6 @@ export function assembleServices(
     sessions: repos.sessions,
     resetTokens: repos.resetTokens,
     secondFactors: repos.secondFactors,
-    ...(repos.weisungsbefugnisse ? { weisungsbefugnisse: repos.weisungsbefugnisse } : {}),
     audit,
     // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
     canChangeRole,
@@ -1801,7 +1800,7 @@ export function assembleServices(
     dokumente,
     ko,
     // Aufnahme gesamt-wissen-herkunft: oben gebaut (s. `autorenNamen`), hier unverändert gereicht —
-    // mit dem zweiten Faktor (R-0562) und der Weisungsbefugnis (Entscheidung 18).
+    // mit dem zweiten Faktor (R-0562).
     auth,
     // AUFTRAG-mega20 Block D: die Ankerprüfung des Entwurfs bekommt ihre Auflösung HIER — capture
     // kennt den Objektspeicher nicht (Modulgrenze), die Composition-Root kennt beide. Dieselbe
@@ -1890,6 +1889,7 @@ export function assembleServices(
     // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
     answerSnapshots: repos.answerSnapshots,
     // produkt:20261010:wissenskreislauf-schliessen: dieselbe Instanz, die der Ask-Dienst liest (oben).
+    // Sie trägt seit der Integration auch die Konfliktlesart von R-0256 (`offeneKonfliktArten`).
     validation,
     conflicts,
     overlaps,
@@ -2068,7 +2068,6 @@ export function inMemoryRepos(): AppRepos {
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
     resetTokens: new InMemoryPasswordResetRepo(),
-    weisungsbefugnisse: new InMemoryWeisungsbefugnisRepo(),
     secondFactors: new InMemorySecondFactorRepo(),
     drafts: new InMemoryDraftRepo(),
     gaps: new InMemoryGapRepo(),
@@ -2150,7 +2149,6 @@ export function buildPgServices(rohPool: Pool): AppServices {
       users: new PgUserRepo(pool),
       sessions: new PgSessionRepo(pool),
       resetTokens: new PgPasswordResetRepo(pool),
-      weisungsbefugnisse: new PgWeisungsbefugnisRepo(pool),
       secondFactors: new PgSecondFactorRepo(pool),
       drafts: new PgDraftRepo(pool),
       gaps: new PgGapRepo(pool),
@@ -4207,7 +4205,9 @@ export function buildApp(
         // die Variante tritt als eigenes Feld daneben, nie an die Stelle eines KO-Feldes.
         lesevarianten: services.lesevarianten,
         // Aufnahme gesamt-wissen-herkunft · Entscheidungen 18/19 und 27: Befugnis und Konto kommen
-        // aus DEMSELBEN Kontodienst wie die Anmeldung — kein zweiter Kontobestand.
+        // aus DEMSELBEN Kontodienst wie die Anmeldung — kein zweiter Kontobestand. Die Befugnis ist
+        // seit der Integration (Nacharbeit 12) DIESELBE wie an `weisungskonto` unten
+        // (`User.weisungsbefugnis`, Aufnahme gesamt-peer-validierung).
         konten: {
           befugnisVon: (userId) => services.auth.weisungsbefugnisVon(userId),
           kontoBesteht: (userId) => services.auth.kontoBesteht(userId),
@@ -4250,6 +4250,28 @@ export function buildApp(
         // Derselbe gekoppelte Kern wie das Antwortfeedback (Trust-Schritt + Audit, genau einmal je
         // Person und Objekt) — ko-routes bekommt nur diese eine Funktion, nicht den Ask-Dienst.
         hilfreich: (koId, actor) => services.ask.markKoHelpful(koId, actor),
+        // Aufnahme gesamt-peer-validierung (package:pruefablauf): die benannte Prüfperson eines
+        // Vorschlags muss ihn auch entscheiden können — freigegebenes Konto mit `users.manage`,
+        // dieselbe Rechtefrage wie an `decide-proposal`.
+        freigabeberechtigt: async (userId) => {
+          const person = (await services.auth.listUsers()).find((u) => u.id === userId);
+          return Boolean(person?.approved) && canManageUsers(person?.role ?? "viewer");
+        },
+        // Aufnahme gesamt-peer-validierung (Antworten 18/19): die am Konto vergebene
+        // Weisungsbefugnis — ausdrücklich NICHT aus der Rolle abgeleitet. `freigabeberechtigt`
+        // ist hier das Prüfrecht `ko.validate` (Antwort 21: Entscheidungen brauchen eigene Rechte);
+        // es entscheidet nur, wer die SICHTUNG übernehmen darf, nicht wer Weisungen erteilt.
+        weisungskonto: async (userId) => {
+          const person = (await services.auth.listUsers()).find((u) => u.id === userId);
+          if (!person) {
+            return undefined;
+          }
+          return {
+            aktiv: Boolean(person.approved),
+            weisungsbefugnis: person.weisungsbefugnis,
+            freigabeberechtigt: can(person.role, "ko.validate"),
+          };
+        },
         // produkt:20261007:templates-default: Pflichtangaben beim Einreichen, Vorlagennutzung danach.
         vorlagen: vorlagenPort,
         // ADMIN-09: der Prüfpunkt der Freigaberegel eines Space vor jeder Entscheidung.

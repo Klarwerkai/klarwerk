@@ -7,12 +7,10 @@ export interface SessionUser {
   name?: string;
   email?: string;
   role: Role;
-  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die eigene Weisungsbefugnis, wie
-  // `GET /api/auth/me` sie mitschickt — nur wenn sie erteilt ist. Die Oberfläche bietet das Setzen
-  // einer Weisung danach an; ob es gilt, entscheidet allein der Server.
-  weisungsbefugnis?: { bereiche: string[]; gesamt: boolean };
   // R-0582: verknüpfte SSO-Identität — dann bietet die Kontodatenkarte die SSO-Bestätigung an.
   oidcSubject?: string;
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene Weisungsbefugnis.
+  weisungsbefugnis?: { bereiche: string[]; erteiltVon: string; erteiltAm: string };
 }
 
 export interface AuthStatus {

@@ -27,7 +27,8 @@ import {
 // der Server die Bestätigung einer Dublette, die die Prüfkarte nie anzeigen darf.
 //
 // Verdrahtet im KO-Dispatcher (`ko-routes.ts`) an den Freigabewegen der Prüfkarte:
-// `rate` mit `verdict: "up"`, `admin-validate` und (R-0507) die Eigentümerfreigabe `owner-validate`.
+// `rate` mit `verdict: "up"`, `admin-validate` und (R-0507) die Eigentümerfreigabe `owner-validate`,
+// dazu (Antworten 18/19) die unmittelbar gültige Weisung `weisung-validate`.
 export const DUBLETTE_BESTAETIGUNG_FEHLT = "DUPLICATE_ACK_REQUIRED";
 export const DUBLETTE_BESTAETIGT_AUDIT = "ko.duplicate-acknowledged";
 
@@ -46,9 +47,15 @@ export async function dublettenTor(
   user: SessionUser,
   koId: string,
   kennzeichen: unknown,
-  // Aufnahme gesamt-wissen-herkunft: auch die befugte Weisung und die Übernahme einer externen
-  // Freigabe machen ein Objekt gültig — dieselbe Bestätigung einer offenen Dublette gilt dort.
-  weg: "rate" | "admin-validate" | "owner-validate" | "weisung" | "externe-freigabe",
+  // Aufnahme gesamt-wissen-herkunft: auch die befugte Weisung (beide Wege) und die Übernahme einer
+  // externen Freigabe machen ein Objekt gültig — dieselbe Dublettenbestätigung gilt dort.
+  weg:
+    | "rate"
+    | "admin-validate"
+    | "owner-validate"
+    | "weisung-validate"
+    | "weisung"
+    | "externe-freigabe",
   reply: FastifyReply,
 ): Promise<boolean> {
   const offen = (await deps.overlaps.unresolved()).filter(

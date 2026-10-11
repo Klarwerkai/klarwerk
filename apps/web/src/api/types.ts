@@ -89,6 +89,10 @@ export interface KoProposal {
   resultVersion?: number;
   /** Begründung der Entscheidung — bei einer Ablehnung die Auskunft, warum. */
   note?: string;
+  /** package:pruefablauf: die benannte Prüfperson (Kennung). */
+  pruefer?: string;
+  /** package:pruefablauf: Rückfragen an den Einreicher; der Vorschlag bleibt dabei offen. */
+  rueckfragen?: { von: string; at: string; text: string }[];
 }
 
 // SCRUM-129 / FR-KO-07: echte externe Quelle am Objekt (Stufe 2, nie peer-validiert).
@@ -609,10 +613,12 @@ export interface KoExterneFreigabe {
   fassung: number;
 }
 
-/** Entscheidung 18 — die Weisungsbefugnis am Konto (Spiegel von services/auth/src/types.ts). */
+/**
+ * Entscheidung 18 / Antwort 18 — die Weisungsbefugnis am Konto (Spiegel von
+ * services/auth/src/types.ts). `bereiche` sind Kategorien; `*` steht für das ganze Unternehmen.
+ */
 export interface Weisungsbefugnis {
   bereiche: string[];
-  gesamt: boolean;
   erteiltVon: string;
   erteiltAm: string;
 }
@@ -625,7 +631,13 @@ export interface KoVerifizierung {
     | { stand: "nicht_abrufbar" }
     | {
         stand: "belegt";
-        art: "bewertung" | "verwalter" | "rueckgabe" | "weisung" | "externe_freigabe";
+        art:
+          | "bewertung"
+          | "verwalter"
+          | "rueckgabe"
+          | "weisung"
+          | "externe_freigabe"
+          | "weisung_sichtung";
         pruefer: string;
         zeitpunkt: string;
         fassung: number | null;
@@ -831,6 +843,33 @@ export interface KnowledgeObject {
   sichtungsKandidaten?: string[];
   // Nacharbeit 11 (Ben B2): durch eine Weisung überstimmt und geschlossen (nicht gelöscht).
   geschlossen?: { durchKoId: string; conflictId: string; von: string; am: string; fassung: number };
+  /**
+   * AW06-K02: die Annahme DIESER Fassung, vom Server aus genau dem referenzierten Beleg gelesen —
+   * Fassung, Person, Zeitpunkt und die Kontoregel, die im Beleg steht (`null`: dort nicht
+   * festgehalten). Fehlt das Feld, gibt es für diese Fassung keine belegte Annahme.
+   */
+  annahme?: {
+    fassung: number;
+    person: string;
+    zeitpunkt: string;
+    kontoregel: string | null;
+    benoetigt?: number;
+  };
+  /**
+   * Antwort 19 (gesamt-peer-validierung): die Sichtung der unmittelbar gültig gesetzten Weisung —
+   * verantwortliche Person, Frist (JJJJ-MM-TT), gebunden an `koVersion`; `ergebnis` fehlt, solange
+   * nicht gesichtet ist.
+   */
+  weisungsSichtung?: {
+    auditSeq: number;
+    auditHash: string;
+    koVersion: number;
+    erteiltVon: string;
+    bereich: string;
+    verantwortlich: string;
+    frist: string;
+    ergebnis?: { art: "bestaetigt" | "widerrufen"; von: string; am: string; auditSeq: number };
+  };
   // R-0082: ab zwei Anlagen trägt `assets` die Liste und `asset` spiegelt die erste; eine einzelne
   // Anlage (und Altbestand) steht nur in `asset`. Gelesen wird beides über `anlagenVon`.
   asset: string | null;
@@ -2135,8 +2174,10 @@ export interface PublicUser {
   // regulären Kontos (`services/auth/src/types.ts:42-45`). Das fehlende Feld bedeutet
   // „unbefristet" — es ist keine fehlende Auskunft, sondern eine.
   accessExpiresAt?: string;
-  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: steht nur da, wenn sie erteilt ist. Fehlt
-  // sie, ist das Konto nicht weisungsbefugt — gleich welche Rolle es hat.
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die am Konto vergebene fachliche
+  // Weisungsbefugnis mit Zuständigkeitsbereichen (`*` = ganzes Unternehmen). Fehlt das Feld, hat
+  // das Konto keine — unabhängig von seiner Rolle. Seit der Integration (gesamt-wissen-herkunft,
+  // Nacharbeit 12) die EINE Befugnis auch für die Weisung mit punktweiser Entscheidung.
   weisungsbefugnis?: Weisungsbefugnis;
 }
 

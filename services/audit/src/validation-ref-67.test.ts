@@ -134,9 +134,11 @@ describe("W3-B/67 · die sechs Zustaende der Referenzpruefung (KW-W3-19)", () =>
   // ungueltig waere; der alte, weil jedes vor D8 geschriebene Ereignis ihn traegt und ein
   // Entfernen saemtliche Altbelege rueckwirkend entwerten wuerde.
   // Aufnahme gesamt-wissen-herkunft (Entscheidungen 18/19 und 27): zwei weitere benannte
-  // Entscheidungen — die befugte Weisung und die Übernahme einer externen Freigabe. Die Menge bleibt
-  // BENANNT; jede wird unten einzeln gegen `pruefeValidationDecisionRef` gefahren.
-  it("die erlaubte Action-Menge ist BENANNT und traegt genau die sechs Entscheidungen", () => {
+  // Entscheidungen — die befugte Weisung mit punktweiser Entscheidung und die Übernahme einer
+  // externen Freigabe. Aufnahme gesamt-peer-validierung (Antworten 18/19): dazu die unmittelbar
+  // gültige eigene Weisung und ihre Sichtung. Zusammen acht Namen; die Menge bleibt BENANNT, jede
+  // wird unten einzeln gegen `pruefeValidationDecisionRef` gefahren.
+  it("die erlaubte Action-Menge ist BENANNT und traegt genau die acht Entscheidungen", () => {
     expect([...VALIDATION_DECISION_ACTIONS].sort()).toEqual([
       "ko.admin-validated",
       "ko.externe-freigabe-uebernommen",
@@ -144,6 +146,8 @@ describe("W3-B/67 · die sechs Zustaende der Referenzpruefung (KW-W3-19)", () =>
       "ko.returned-to-author",
       "ko.returned-to-owner",
       "ko.weisung",
+      "ko.weisung-gesichtet",
+      "ko.weisung-validated",
     ]);
     for (const action of VALIDATION_DECISION_ACTIONS) {
       const e = eintrag({ action });

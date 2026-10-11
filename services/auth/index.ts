@@ -6,9 +6,6 @@ export { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./src/service";
 // JOB 2686 (R2-8): die Sitzungsdauer für SSO-Anmeldungen als eigener, prüfbarer Schalter.
 // Vorgabe ist das heutige Verhalten (14 Tage); die Zahl ist eine offene Frage bei Pedi.
 export { oidcSessionTtlMs } from "./src/service";
-// Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die EINE Regel, ob eine Befugnis einen
-// fachlichen Bereich deckt — die Weisungsroute benutzt sie, statt sie nachzubauen.
-export { befugnisDecktBereich } from "./src/service";
 export { migrateAuthTokensAtRest } from "./src/repo-pg";
 export { authRoutes, passwordLoginEnabled, ssoOnlyRequested } from "./src/routes";
 // R-0560: der SAML-Weg (Firmen-Login über das ältere Unternehmensverfahren).
@@ -34,21 +31,17 @@ export {
   InMemorySessionRepo,
   InMemoryPasswordResetRepo,
   InMemorySecondFactorRepo,
-  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto.
-  InMemoryWeisungsbefugnisRepo,
   type UserRepo,
   type SessionRepo,
   type PasswordResetRepo,
   type SecondFactor,
   type SecondFactorRepo,
-  type WeisungsbefugnisRepo,
 } from "./src/repo";
 export {
   PgUserRepo,
   PgSessionRepo,
   PgPasswordResetRepo,
   PgSecondFactorRepo,
-  PgWeisungsbefugnisRepo,
   AUTH_SCHEMA,
 } from "./src/repo-pg";
 // R-0562: das TOTP-Verfahren — exportiert, damit Prüfungen einen echten Code erzeugen können.
@@ -81,6 +74,10 @@ export { MELDUNGEN, meldung } from "./src/meldungen";
 export type { Meldungsschluessel, Sprache } from "./src/meldungen";
 export { sprache } from "./src/routes";
 export { AuthError } from "./src/types";
+// Aufnahme gesamt-peer-validierung (Antwort 18): die kontogebundene fachliche Weisungsbefugnis.
+// Seit der Integration (gesamt-wissen-herkunft, Nacharbeit 12) die EINE Befugnisregel auch für die
+// Weisung mit punktweiser Überstimmung — kein zweiter Vermerk, keine zweite Regel.
+export { WEISUNG_GANZES_UNTERNEHMEN, weisungsbefugnisDeckt } from "./src/types";
 export type {
   Role,
   User,

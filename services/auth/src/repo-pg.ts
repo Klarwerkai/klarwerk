@@ -7,7 +7,6 @@ import type {
   SecondFactorRepo,
   SessionRepo,
   UserRepo,
-  WeisungsbefugnisRepo,
 } from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
 import type { Role, Session, User, Weisungsbefugnis } from "./types";
@@ -53,6 +52,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS access_expires_at text;
 -- R-0556 / R-0571: die vom Unternehmensverzeichnis gemeldeten Gruppen (JSON-Liste). NULL-bar und
 -- ohne Vorgabe: ein Konto, das das Verzeichnis nie gesehen hat, trägt keine.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS verzeichnis_gruppen text;
+-- Aufnahme gesamt-peer-validierung (Antwort 18): die fachliche Weisungsbefugnis des Kontos mit
+-- Zuständigkeitsbereich (JSON). NULL-bar und ohne Vorgabe: kein Bestandskonto bekommt eine
+-- Befugnis, die niemand vergeben hat.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS weisungsbefugnis text;
 -- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
 -- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
 -- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
@@ -71,17 +74,6 @@ CREATE TABLE IF NOT EXISTS password_resets (
   token text PRIMARY KEY,
   user_id text NOT NULL,
   expires_at bigint NOT NULL
-);
--- Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto. ADDITIV — eine
--- eigene Tabelle statt einer Spalte an users, damit kein bestehender Schreibweg der Konten berührt
--- wird. Keine Zeile heißt „nicht weisungsbefugt"; einen Vorgabewert gibt es bewusst nicht, sonst
--- wäre jedes Bestandskonto über Nacht weisungsbefugt.
-CREATE TABLE IF NOT EXISTS weisungsbefugnisse (
-  user_id text PRIMARY KEY,
-  bereiche jsonb NOT NULL,
-  gesamt boolean NOT NULL,
-  erteilt_von text NOT NULL,
-  erteilt_am text NOT NULL
 );
 -- R-0562: der eigene zweite Faktor (TOTP) je Konto. Eigene Tabelle statt Spalten an users, damit
 -- kein Schreibweg, der das ganze Konto aus einem älteren Stand schreibt, ihn still entfernen kann.
@@ -183,6 +175,31 @@ interface UserRow {
   // fehlende Spalte darf keinen Zugang sperren.
   access_expires_at?: string | null;
   verzeichnis_gruppen?: string | null;
+  weisungsbefugnis?: string | null;
+}
+
+/** Antwort 18: eine unlesbare Spalte ist „keine Befugnis" — sie darf niemandem Weisungsrecht geben. */
+function weisungsbefugnisAus(roh: string | null | undefined): Weisungsbefugnis | undefined {
+  if (!roh) {
+    return undefined;
+  }
+  try {
+    const wert = JSON.parse(roh) as Partial<Weisungsbefugnis> | null;
+    if (
+      !wert ||
+      !Array.isArray(wert.bereiche) ||
+      typeof wert.erteiltVon !== "string" ||
+      typeof wert.erteiltAm !== "string"
+    ) {
+      return undefined;
+    }
+    const bereiche = wert.bereiche.filter((b): b is string => typeof b === "string");
+    return bereiche.length > 0
+      ? { bereiche, erteiltVon: wert.erteiltVon, erteiltAm: wert.erteiltAm }
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** R-0556: eine unlesbare Spalte ist „keine Gruppen" — sie darf niemandem Zuständigkeit geben. */
@@ -200,6 +217,7 @@ function gruppenAus(roh: string | null | undefined): string[] | undefined {
 
 function toUser(row: UserRow): User {
   const verzeichnisGruppen = gruppenAus(row.verzeichnis_gruppen);
+  const weisungsbefugnis = weisungsbefugnisAus(row.weisungsbefugnis);
   return {
     id: row.id,
     name: row.name,
@@ -232,6 +250,7 @@ function toUser(row: UserRow): User {
       ? {}
       : { accessExpiresAt: row.access_expires_at }),
     ...(verzeichnisGruppen ? { verzeichnisGruppen } : {}),
+    ...(weisungsbefugnis ? { weisungsbefugnis } : {}),
   };
 }
 
@@ -314,6 +333,19 @@ export class PgUserRepo implements UserRepo {
     await ziel.query("UPDATE users SET verzeichnis_gruppen=$2 WHERE id=$1", [
       id,
       JSON.stringify(gruppen),
+    ]);
+  }
+
+  // Aufnahme gesamt-peer-validierung (Antwort 18): die eigene Spalte, s. UserRepo.
+  async setzeWeisungsbefugnis(
+    id: string,
+    befugnis: Weisungsbefugnis | undefined,
+    tx?: TxContext,
+  ): Promise<void> {
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await ziel.query("UPDATE users SET weisungsbefugnis=$2 WHERE id=$1", [
+      id,
+      befugnis ? JSON.stringify(befugnis) : null,
     ]);
   }
 
@@ -476,61 +508,6 @@ export class PgPasswordResetRepo implements PasswordResetRepo {
 
   async delete(token: string): Promise<void> {
     await this.pool.query("DELETE FROM password_resets WHERE token=$1", [token]);
-  }
-}
-
-interface WeisungsbefugnisRow {
-  user_id: string;
-  bereiche: unknown;
-  gesamt: boolean;
-  erteilt_von: string;
-  erteilt_am: string;
-}
-
-function zuBefugnis(row: WeisungsbefugnisRow): Weisungsbefugnis {
-  const bereiche = Array.isArray(row.bereiche)
-    ? row.bereiche.filter((b): b is string => typeof b === "string")
-    : [];
-  return { bereiche, gesamt: row.gesamt, erteiltVon: row.erteilt_von, erteiltAm: row.erteilt_am };
-}
-
-// Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto. Eine Zeile je
-// Konto; das Erteilen überschreibt die vorige Zeile vollständig (kein Zusammenführen von Bereichen
-// zweier Erteilungen — es gilt, was zuletzt ausdrücklich erteilt wurde).
-export class PgWeisungsbefugnisRepo implements WeisungsbefugnisRepo {
-  constructor(private readonly pool: Pool) {}
-
-  async get(userId: string): Promise<Weisungsbefugnis | undefined> {
-    const res = await this.pool.query<WeisungsbefugnisRow>(
-      "SELECT * FROM weisungsbefugnisse WHERE user_id=$1",
-      [userId],
-    );
-    return res.rows[0] ? zuBefugnis(res.rows[0]) : undefined;
-  }
-
-  async list(): Promise<Map<string, Weisungsbefugnis>> {
-    const res = await this.pool.query<WeisungsbefugnisRow>("SELECT * FROM weisungsbefugnisse");
-    return new Map(res.rows.map((row) => [row.user_id, zuBefugnis(row)]));
-  }
-
-  async set(userId: string, befugnis: Weisungsbefugnis): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO weisungsbefugnisse(user_id,bereiche,gesamt,erteilt_von,erteilt_am)
-       VALUES($1,$2::jsonb,$3,$4,$5)
-       ON CONFLICT (user_id) DO UPDATE SET bereiche=EXCLUDED.bereiche, gesamt=EXCLUDED.gesamt,
-         erteilt_von=EXCLUDED.erteilt_von, erteilt_am=EXCLUDED.erteilt_am`,
-      [
-        userId,
-        JSON.stringify(befugnis.bereiche),
-        befugnis.gesamt,
-        befugnis.erteiltVon,
-        befugnis.erteiltAm,
-      ],
-    );
-  }
-
-  async delete(userId: string): Promise<void> {
-    await this.pool.query("DELETE FROM weisungsbefugnisse WHERE user_id=$1", [userId]);
   }
 }
 

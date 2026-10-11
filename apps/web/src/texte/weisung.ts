@@ -5,8 +5,9 @@
 //
 // Die Sätze, mit denen die Oberfläche zwei Wege zeigt, auf denen ein Eintrag ohne Vier-Augen-
 // Prüfung gültig wird — und zwar MIT ihrer Herkunft: die befugte Weisung samt nachfolgender
-// Sichtung und die übernommene externe Freigabe samt bestätigter interner Anwendbarkeit. Dazu die
-// Vergabe der Weisungsbefugnis am Konto (sie folgt nie aus einer Rolle).
+// Sichtung und die übernommene externe Freigabe samt bestätigter interner Anwendbarkeit. Die
+// Vergabe der Weisungsbefugnis am Konto pflegt seit der Integration (Nacharbeit 12) allein die
+// Kontenkarte aus Aufnahme gesamt-peer-validierung — ihre Texte stehen dort.
 import type { Textmodul } from "./intern/pruefung";
 
 export default {
@@ -67,18 +68,6 @@ export default {
     "weisung.extern.nachweis": "Nachweis: {{nachweis}}",
     "weisung.extern.bestaetigt":
       "Intern anwendbar bestätigt von {{name}} am {{zeit}} · Bereich „{{geltung}}“ · zuständig: {{zustaendig}}",
-    "weisung.admin.titel": "Weisungsbefugnis",
-    "weisung.admin.keine": "Keine Weisungsbefugnis. Eine Rolle allein verleiht sie nicht.",
-    "weisung.admin.gesamt": "Weisungsbefugt für alle Bereiche (Geschäftsführung)",
-    "weisung.admin.bereiche": "Weisungsbefugt für: {{bereiche}}",
-    "weisung.admin.erteilt": "erteilt am {{datum}}",
-    "weisung.admin.feldBereiche": "Bereiche (Kategorien, durch Komma getrennt)",
-    "weisung.admin.feldGesamt": "Alle Bereiche (Geschäftsführung)",
-    "weisung.admin.speichern": "Befugnis speichern",
-    "weisung.admin.entziehen": "Befugnis entziehen",
-    "weisung.admin.gespeichert": "Weisungsbefugnis gespeichert.",
-    "weisung.admin.entzogen": "Weisungsbefugnis entzogen.",
-    "weisung.admin.leer": "Bitte mindestens einen Bereich angeben oder „Alle Bereiche“ wählen.",
   },
   en: {
     "weisung.marke.gesetzt": "Directive by {{name}} on {{zeit}} · area “{{bereich}}”",
@@ -133,18 +122,6 @@ export default {
     "weisung.extern.nachweis": "Evidence: {{nachweis}}",
     "weisung.extern.bestaetigt":
       "Applicability confirmed by {{name}} on {{zeit}} · area “{{geltung}}” · responsible: {{zustaendig}}",
-    "weisung.admin.titel": "Authority to issue directives",
-    "weisung.admin.keine": "No authority to issue directives. A role alone does not grant it.",
-    "weisung.admin.gesamt": "May issue directives for all areas (management)",
-    "weisung.admin.bereiche": "May issue directives for: {{bereiche}}",
-    "weisung.admin.erteilt": "granted on {{datum}}",
-    "weisung.admin.feldBereiche": "Areas (categories, comma-separated)",
-    "weisung.admin.feldGesamt": "All areas (management)",
-    "weisung.admin.speichern": "Save authority",
-    "weisung.admin.entziehen": "Revoke authority",
-    "weisung.admin.gespeichert": "Authority to issue directives saved.",
-    "weisung.admin.entzogen": "Authority to issue directives revoked.",
-    "weisung.admin.leer": "Please name at least one area or choose “All areas”.",
   },
   nl: {
     "weisung.marke.gesetzt": "Instructie van {{name}} op {{zeit}} · gebied “{{bereich}}”",
@@ -199,17 +176,5 @@ export default {
     "weisung.extern.nachweis": "Bewijs: {{nachweis}}",
     "weisung.extern.bestaetigt":
       "Toepasbaarheid bevestigd door {{name}} op {{zeit}} · gebied “{{geltung}}” · verantwoordelijk: {{zustaendig}}",
-    "weisung.admin.titel": "Bevoegdheid tot instructies",
-    "weisung.admin.keine": "Geen bevoegdheid tot instructies. Een rol alleen geeft die niet.",
-    "weisung.admin.gesamt": "Bevoegd voor instructies in alle gebieden (directie)",
-    "weisung.admin.bereiche": "Bevoegd voor instructies in: {{bereiche}}",
-    "weisung.admin.erteilt": "verleend op {{datum}}",
-    "weisung.admin.feldBereiche": "Gebieden (categorieën, gescheiden door komma's)",
-    "weisung.admin.feldGesamt": "Alle gebieden (directie)",
-    "weisung.admin.speichern": "Bevoegdheid opslaan",
-    "weisung.admin.entziehen": "Bevoegdheid intrekken",
-    "weisung.admin.gespeichert": "Bevoegdheid tot instructies opgeslagen.",
-    "weisung.admin.entzogen": "Bevoegdheid tot instructies ingetrokken.",
-    "weisung.admin.leer": "Geef ten minste één gebied op of kies “Alle gebieden”.",
   },
 } satisfies Textmodul;

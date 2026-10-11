@@ -25,7 +25,7 @@ import { VermaechtnisBuch } from "../components/VermaechtnisBuch";
 import { UebergabeVorschauInhalt } from "../components/Wissensuebergabe";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
-import { WeisungsbefugnisPflege } from "../components/einstellungen/WeisungsbefugnisPflege";
+import { Weisungsbefugnis } from "../components/einstellungen/Weisungsbefugnis";
 import { freiheitenSchluessel, kiWahlFrei } from "../components/einstellungen/rollenFreiheiten";
 import { Button, Field, TextInput } from "../components/ui";
 import { isPasswordResetValid, newUserIssues, passwordRepeatMismatch } from "../lib/adminForms";
@@ -865,10 +865,11 @@ export function NutzerDetail({
                     </p>
                   )}
                 </div>
-
-                {/* Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis — am
-                    Konto, ausdrücklich, nie aus der Rolle. */}
-                <WeisungsbefugnisPflege nutzer={nutzer} />
+                {/* Antwort 18 (gesamt-peer-validierung): die fachliche Weisungsbefugnis am Konto —
+                    neben Rolle und Befristung, unabhängig von der Rolle. Seit der Integration
+                    (gesamt-wissen-herkunft, Nacharbeit 12) die EINE Befugnispflege für beide
+                    Weisungswege. */}
+                <Weisungsbefugnis nutzer={nutzer} />
               </>
             ) : (
               <button

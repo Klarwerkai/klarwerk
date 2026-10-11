@@ -100,6 +100,7 @@ import {
 } from "../../lib/validationFeedback";
 import { isReturnedForRework } from "../../lib/validationStatus";
 import { sichtungsAuswahl, weisungsbefugtFuer } from "../../lib/weisungsbefugnis";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import { AiAssistBox } from "../AiAssistBox";
 import { BodyExtractPanel } from "../BodyExtractPanel";
 import { BodyImageGallery } from "../BodyImageGallery";
@@ -137,6 +138,13 @@ import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis
 import { FassungsvergleichImEditor } from "./Fassungsvergleich";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
+import {
+  AnnahmeZeile,
+  EigeneVorschlaege,
+  PrueferWahl,
+  VorschlagRueckfragen,
+  Weisung,
+} from "./Pruefablauf";
 import { Wissensempfehlung } from "./Wissensempfehlung";
 import { fragenHref } from "./fragen";
 import { type ZustandsTon, zustandsTon } from "./zustand";
@@ -1134,6 +1142,10 @@ export function BibliothekLesen({
   const [speicherLage, setSpeicherLage] = useState<SpeicherLage | null>(null);
   const [sperreGemeldet, setSperreGemeldet] = useState(false);
   const [ablehnung, setAblehnung] = useState<{ id: string; grund: string } | null>(null);
+  // package:pruefablauf: die Rückfrage am Vorschlag (wie die Ablehnung: erst der Text, dann der
+  // Griff) und die benannte Prüfperson beim Einreichen (leer = keine bestimmte Person).
+  const [rueckfrage, setRueckfrage] = useState<{ id: string; text: string } | null>(null);
+  const [pruefer, setPruefer] = useState("");
   const appendOriginalRef = useRef<OriginalRefCache>({ ref: null });
   const [captionRequest, setCaptionRequest] = useState<{
     imageId: string;
@@ -1946,10 +1958,13 @@ export function BibliothekLesen({
       statement: string;
       bodyHtml: string;
       bestehenderRumpf: string | null;
+      pruefer?: string;
     }) =>
       endpoints.ko.act(koId, {
         action: "propose",
         proposal: {
+          // package:pruefablauf: nur, wenn jemand benannt ist — sonst bleibt der Vertrag wie bisher.
+          ...(v.pruefer ? { pruefer: v.pruefer } : {}),
           statement: v.statement,
           ...(v.bodyHtml.trim().length > 0
             ? { bodyHtml: v.bodyHtml }
@@ -2038,7 +2053,7 @@ export function BibliothekLesen({
   const entscheiden = useMutation({
     mutationFn: (v: {
       proposalId: string;
-      decision: "uebernehmen" | "ablehnen";
+      decision: "uebernehmen" | "ablehnen" | "rueckfrage";
       expectedVersion: number;
       note?: string;
     }) =>
@@ -2052,7 +2067,13 @@ export function BibliothekLesen({
     onSuccess: (antwort, v) => {
       invalidate();
       setAblehnung(null);
+      setRueckfrage(null);
       setErr(null);
+      // package:pruefablauf: die Rückfrage entscheidet nichts — der Satz sagt genau das.
+      if (v.decision === "rueckfrage") {
+        push("success", t("pruefablauf.rueckfrage.gespeichert"));
+        return;
+      }
       // STATUS-FREIGABE: die Entscheidung sagt, was jetzt gilt — „freigegeben" nur, wenn die
       // Serverantwort es trägt; abgelehnt heisst: der Eintrag bleibt, wie er war.
       const folge = vorschlagFolgeSatz(v.decision, speicherAntwortAus(antwort));
@@ -2760,7 +2781,7 @@ export function BibliothekLesen({
               PILLEN_TON[ton],
             )}
           >
-            {t(`status.${status}`)}
+            {t(statusSchluessel(status))}
           </span>
           <span
             data-testid="ko-vertraulichkeitsstufe"
@@ -2967,7 +2988,10 @@ export function BibliothekLesen({
           ko={ko}
           nameOf={nameOf}
           sichtenLaeuft={herkunftsEntscheid.isPending}
+          // Integration Nacharbeit 12: liegt eine Sichtung aus `weisung-validate` vor, führt sie der
+          // Prüfablauf (`Pruefablauf.tsx`) — hier nur die Weisung mit punktweiser Entscheidung.
           {...(ko.weisung &&
+          !ko.weisungsSichtung &&
           !ko.weisung.sichtung.gesichtetAm &&
           user?.id === ko.weisung.sichtung.verantwortlich
             ? { aufSichten: () => herkunftsEntscheid.mutate({ action: "weisung-sichten" }) }
@@ -3175,6 +3199,11 @@ export function BibliothekLesen({
             {t("ko.returnedBanner")}
           </p>
         ) : null}
+        {/* AW06-K02: die Annahme dieser Fassung samt Kontoregel — aus ihrem Beleg, vom Server. */}
+        <AnnahmeZeile annahme={ko.annahme} nameOf={nameOf} />
+        {/* Antworten 18/19: die eigene Weisung unmittelbar gültig einstellen (Weisungsbefugnis
+            am KONTO, nicht aus der Rolle) und ihre Sichtung durch die benannte Person. */}
+        <Weisung ko={ko} angemeldet={user?.id} befugnis={user?.weisungsbefugnis} nameOf={nameOf} />
 
         {/* WIKI-BEARBEITUNGSRESERVIERUNG: wer gerade (sonst noch) bearbeitet — im Lesen wie im
             Bearbeiten an derselben Stelle, direkt über dem Inhalt. Endet eine fremde Bearbeitung,
@@ -3497,6 +3526,7 @@ export function BibliothekLesen({
                       statement: edit.statement,
                       bodyHtml: edit.bodyHtml,
                       bestehenderRumpf: ko.bodyHtml ?? null,
+                      pruefer,
                     })
                   }
                 >
@@ -3550,6 +3580,13 @@ export function BibliothekLesen({
                       alt: String(edit.version),
                     })}
             </p>
+            {/* package:pruefablauf: die Änderung einer BENANNTEN Person zur Prüfung geben — nur, wo
+                eingereicht wird. Ob die Person freigeben darf, sagt der Server. Bewusst UNTER der
+                Aktionsleiste und ihrem Wirkungssatz (EDITOR-EINHEITLICH, U21): der Wechsel auf den
+                Einreichweg verschiebt vor der Leiste nichts. */}
+            {pruefwegAktiv ? (
+              <PrueferWahl wert={pruefer} onChange={setPruefer} eigeneId={user?.id} />
+            ) : null}
             {/* EDITOR-EINHEITLICH (K4): die nachträglich gemeldete Sperre — beide Sätze hier,
                 unter den Knöpfen, die an ihrer Stelle bleiben. Derselbe Wortlaut wie oben. */}
             {sperreNachFehler ? (
@@ -3777,6 +3814,7 @@ export function BibliothekLesen({
                           statement: edit.statement,
                           bodyHtml: edit.bodyHtml,
                           bestehenderRumpf: ko.bodyHtml ?? null,
+                          pruefer,
                         })
                       }
                       className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
@@ -3834,6 +3872,19 @@ export function BibliothekLesen({
                 Server (`PROPOSAL_OWN`); diese Fläche bietet nur nichts an, was sicher abgewiesen
                 würde. Ein ausgegrauter Knopf wäre die Scheinfunktion, ein fehlender ohne Satz ein
                 stilles Verschwinden. */}
+            {/* AW06-K04 (Ben, Nacharbeit 7): wer nicht entscheiden darf, bekommt die
+                Entscheidungsfläche weiter nicht (E17) — aber jetzt den Grund, statt sie wortlos zu
+                verlieren. Der Satz nennt auch die KI: sie nimmt nichts an. Die Weisungsbefugnis
+                (Antworten 18/19) ist ein eigener Weg am Konto — `Weisung` (Pruefablauf.tsx) zeigt
+                ihn nur dem befugten Autor; über fremde Vorschläge entscheidet sie nicht. */}
+            {!darfFreigeben && offeneVorschlaege.length > 0 ? (
+              <p
+                data-testid="bib-annahme-befugnis"
+                className="rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+              >
+                {t("pruefablauf.befugnis.keineAnnahme")}
+              </p>
+            ) : null}
             {darfFreigeben && offeneVorschlaege.length > 0 ? (
               <section
                 data-testid="bib-vorschlaege"
@@ -3868,6 +3919,14 @@ export function BibliothekLesen({
                           {t("ko.propose.fromVersion", { n: String(v.baseVersion) })}
                           {v.origin ? ` · ${v.origin}` : ""}
                         </p>
+                        {v.pruefer ? (
+                          <p
+                            data-testid="bib-vorschlag-pruefer"
+                            className="text-[11.5px] font-medium text-text"
+                          >
+                            {t("pruefablauf.pruefer.zugeordnet", { name: nameOf(v.pruefer) })}
+                          </p>
+                        ) : null}
                         <p
                           data-testid="bib-vorschlag-text"
                           className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-text"
@@ -3905,6 +3964,7 @@ export function BibliothekLesen({
                             />
                           )}
                         </div>
+                        <VorschlagRueckfragen vorschlag={v} nameOf={nameOf} />
                         {eigen ? (
                           <p
                             data-testid="bib-vorschlag-eigen"
@@ -3947,6 +4007,41 @@ export function BibliothekLesen({
                               </Button>
                             </div>
                           </div>
+                        ) : rueckfrage?.id === v.id ? (
+                          // package:pruefablauf: die Rückfrage SCHREIBT IHREN INHALT. Sie entscheidet
+                          // nichts — der Vorschlag bleibt offen, der Eintrag unverändert.
+                          <div className="mt-1.5 space-y-1.5">
+                            <textarea
+                              data-testid="bib-vorschlag-rueckfrage-text"
+                              value={rueckfrage.text}
+                              onChange={(e) => setRueckfrage({ id: v.id, text: e.target.value })}
+                              rows={2}
+                              className={textareaCls}
+                              placeholder={t("pruefablauf.rueckfrage.platzhalter")}
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                variant="ghost"
+                                data-testid="bib-vorschlag-rueckfrage-ab"
+                                disabled={
+                                  entscheiden.isPending || rueckfrage.text.trim().length === 0
+                                }
+                                onClick={() =>
+                                  entscheiden.mutate({
+                                    proposalId: v.id,
+                                    decision: "rueckfrage",
+                                    expectedVersion: ko.version,
+                                    note: rueckfrage.text,
+                                  })
+                                }
+                              >
+                                {t("pruefablauf.rueckfrage.senden")}
+                              </Button>
+                              <Button variant="ghost" onClick={() => setRueckfrage(null)}>
+                                {t("ko.cancelEdit")}
+                              </Button>
+                            </div>
+                          </div>
                         ) : (
                           <div className="mt-1.5 flex gap-2">
                             <Button
@@ -3973,6 +4068,17 @@ export function BibliothekLesen({
                             >
                               {t("ko.propose.reject")}
                             </Button>
+                            <Button
+                              variant="ghost"
+                              data-testid="bib-vorschlag-rueckfrage"
+                              disabled={entscheiden.isPending}
+                              onClick={() => {
+                                setAblehnung(null);
+                                setRueckfrage({ id: v.id, text: "" });
+                              }}
+                            >
+                              {t("pruefablauf.rueckfrage.knopf")}
+                            </Button>
                           </div>
                         )}
                       </li>
@@ -3981,6 +4087,15 @@ export function BibliothekLesen({
                 </ul>
               </section>
             ) : null}
+            {/* package:pruefablauf: der EINREICHER sieht den Status seiner Vorschläge — offen (mit
+                Rückfrage), übernommen (welche Fassung) oder abgelehnt (mit Begründung). Unabhängig
+                vom Freigaberecht: es geht um die eigene Einreichung. */}
+            <EigeneVorschlaege
+              vorschlaege={(ko.proposals ?? []).filter(
+                (p) => Boolean(user?.id) && p.author === user?.id,
+              )}
+              nameOf={nameOf}
+            />
             {/* JOB 3108 · UX-03 — DER KOPF SAGT, WO QUELLEN UND ANHÄNGE LIEGEN, UND FÜHRT HIN.
                 Zwei echte `<button>`: damit wirken Tabulator, Eingabe- und Leertaste ohne
                 `tabIndex`-Nachbau. Die Zahl steht IM Knopf, bei null die Leerfassung („keine") —

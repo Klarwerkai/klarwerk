@@ -34,7 +34,10 @@ export type VerifizierungsArt =
   | "rueckgabe"
   // Entscheidungen 18/19 und 27: die befugte Weisung und die übernommene externe Freigabe.
   | "weisung"
-  | "externe_freigabe";
+  | "externe_freigabe"
+  // Integration Nacharbeit 12 (gesamt-peer-validierung, Antwort 19): die Sichtung einer Weisung
+  // ist dort selbst eine Entscheidung mit Verweis — sie heißt nicht „Rückgabe".
+  | "weisung_sichtung";
 
 export type MenschlichePruefung =
   /**
@@ -73,8 +76,12 @@ function artVon(action: string): VerifizierungsArt {
   if (action === "ko.rated") {
     return "bewertung";
   }
-  if (action === "ko.weisung") {
+  // Beide Weisungswege (punktweise Entscheidung · eigene Weisung aus gesamt-peer-validierung).
+  if (action === "ko.weisung" || action === "ko.weisung-validated") {
     return "weisung";
+  }
+  if (action === "ko.weisung-gesichtet") {
+    return "weisung_sichtung";
   }
   if (action === "ko.externe-freigabe-uebernommen") {
     return "externe_freigabe";

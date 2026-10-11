@@ -148,9 +148,10 @@ describe("Entscheidung 27 · die externe Freigabe steht mit Herkunft und interne
 describe("Entscheidung 18 · die Lesefläche bietet die Weisung nur mit Befugnis am Konto an", () => {
   it("ohne Vermerk nie, mit Bereich nur dort, mit „alle Bereiche“ überall", () => {
     expect(weisungsbefugtFuer(undefined, "Technik")).toBe(false);
-    expect(weisungsbefugtFuer({ bereiche: ["technik "], gesamt: false }, "Technik")).toBe(true);
-    expect(weisungsbefugtFuer({ bereiche: ["Technik"], gesamt: false }, "Recht")).toBe(false);
-    expect(weisungsbefugtFuer({ bereiche: [], gesamt: true }, "Recht")).toBe(true);
+    expect(weisungsbefugtFuer({ bereiche: ["technik "] }, "Technik")).toBe(true);
+    expect(weisungsbefugtFuer({ bereiche: ["Technik"] }, "Recht")).toBe(false);
+    // Integration Nacharbeit 12: „alle Bereiche“ ist `*` (Antwort 18, gesamt-peer-validierung).
+    expect(weisungsbefugtFuer({ bereiche: ["*"] }, "Recht")).toBe(true);
   });
 
   it("das Angebot hängt an der Befugnis, nicht an der Rolle", () => {
