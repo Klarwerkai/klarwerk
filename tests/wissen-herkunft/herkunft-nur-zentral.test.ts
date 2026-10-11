@@ -130,6 +130,52 @@ function breitetVorhandenesAus(literal: ts.ObjectLiteralExpression): boolean {
   });
 }
 
+/**
+ * Nacharbeit 9 · die Übergabe eines ENTWURFS (`services/app/src/wissensuebergabe.ts`,
+ * `entwurfUebergeben`, R-0554): am `Draft` heißt `originalAuthor` „wem der Entwurf jetzt gehört“
+ * (Sichtbarkeit, „meine Entwürfe“), nicht Wissensträger. Die ursprüngliche Urheberin bleibt in
+ * `urheber` stehen und reist beim Einreichen als `originalAuthor` ans Wissensobjekt
+ * (`capture/src/service.ts`, `toKoInput`) — die Herkunft des späteren Objekts bleibt also erhalten.
+ * Ausgenommen ist deshalb NUR ein als `Draft` getyptes Literal, das `urheber` im selben Zug setzt.
+ * Ein Entwurf ohne `urheber` oder ein ungetyptes Literal bleibt ein Verstoß (Kalibrierung Z3).
+ */
+function istEntwurfsuebergabeMitUrheberin(literal: ts.ObjectLiteralExpression): boolean {
+  const eltern = literal.parent;
+  return (
+    ts.isVariableDeclaration(eltern) &&
+    eltern.type !== undefined &&
+    eltern.type.getText() === "Draft" &&
+    literal.properties.some((p) => eigenschaftsname(p) === "urheber")
+  );
+}
+
+/**
+ * Nacharbeit 9 · BENANNTE Ausnahmen von Z2, je Datei und wörtlichem Feld — keine Muster. Jede muss
+ * im Baum genau so noch vorkommen (sonst ist sie eine Leiche und fällt in „Ausnahmen treffen zu“).
+ */
+const BENANNTE_AUSNAHMEN: readonly {
+  datei: string;
+  regel: Fund["regel"];
+  text: string;
+  grund: string;
+}[] = [
+  {
+    datei: "services/app/src/verstaendnisfragen.ts",
+    regel: "Z2",
+    text: "originalAuthor: f.vorgelegtVon ?? f.geaendertVon",
+    grund:
+      "`beitragVon` bildet für das Mehr-Augen-Urteil eines FRAGENSATZES (kein Wissensobjekt) die " +
+      "Vergleichsform Autor/Erstautor; der Wert wird nur gelesen (`entscheidungsurteil`, " +
+      "`unabhaengigePruefer`) und erreicht nie ein Wissensobjekt.",
+  },
+];
+
+function istBenannteAusnahme(f: Fund): boolean {
+  return BENANNTE_AUSNAHMEN.some(
+    (a) => a.datei === f.datei && a.regel === f.regel && a.text === f.text,
+  );
+}
+
 function istRueckfall(wert: ts.Expression): boolean {
   if (ts.isParenthesizedExpression(wert)) {
     return istRueckfall(wert.expression);
@@ -161,7 +207,7 @@ function pruefeQuelle(datei: string, inhalt: string, imModul: boolean): Fund[] {
   };
   const besuche = (knoten: ts.Node): void => {
     if (ts.isObjectLiteralExpression(knoten)) {
-      const breitetAus = breitetVorhandenesAus(knoten);
+      const breitetAus = breitetVorhandenesAus(knoten) && !istEntwurfsuebergabeMitUrheberin(knoten);
       for (const element of knoten.properties) {
         const name = eigenschaftsname(element);
         if (name === undefined) {
@@ -206,9 +252,19 @@ function befundeAmBaum(): Fund[] {
 }
 
 describe("R-1355 · Herkunftsangaben entstehen an genau einer Stelle", () => {
-  const funde = befundeAmBaum();
+  const alleFunde = befundeAmBaum();
+  const funde = alleFunde.filter((f) => !istBenannteAusnahme(f));
   const lesbar = (regel: Fund["regel"]): string[] =>
     funde.filter((f) => f.regel === regel).map((f) => `${f.datei}:${f.zeile} ${f.text}`);
+
+  it("jede benannte Ausnahme trifft im Baum genau einmal zu (keine Leichen, keine Ausweitung)", () => {
+    for (const a of BENANNTE_AUSNAHMEN) {
+      const treffer = alleFunde.filter(
+        (f) => f.datei === a.datei && f.regel === a.regel && f.text === a.text,
+      );
+      expect(treffer.length, `${a.datei} ${a.text}`).toBe(1);
+    }
+  });
 
   it("Z1 · im Wissensobjekt-Modul setzt nur herkunft.ts eine Herkunftsangabe", () => {
     expect(lesbar("Z1"), "Herkunftsangabe außerhalb von herkunft.ts gesetzt").toEqual([]);
@@ -282,6 +338,39 @@ describe("R-1355 · Kalibrierung — jede Regel findet ihren eingeschleusten Ver
     // Ein bedingt eingestreutes frisches Literal ist kein bestehendes Objekt (Entwurfsanlage).
     const anlage = "const d = { originalAuthor: author, ...(w ? { sperre: true } : {}) };";
     expect(pruefeQuelle("x.ts", anlage, false)).toEqual([]);
+  });
+
+  it("Z3 · Nacharbeit 9: nur die Entwurfsübergabe MIT Urheberin ist ausgenommen", () => {
+    const mitUrheberin =
+      "const neu: Draft = { ...draft, originalAuthor: an, urheber: draft.urheber ?? draft.originalAuthor };";
+    expect(pruefeQuelle("x.ts", mitUrheberin, false)).toEqual([]);
+    // Ohne `urheber` ginge die Urheberin verloren — das bleibt ein Verstoß.
+    const ohneUrheberin = "const neu: Draft = { ...draft, originalAuthor: an };";
+    expect(pruefeQuelle("x.ts", ohneUrheberin, false).map((f) => f.regel)).toEqual(["Z3"]);
+    // Ein nicht als Draft getyptes Literal (etwa ein Wissensobjekt) bleibt ein Verstoß.
+    const ungetypt = "const neu = { ...ko, originalAuthor: an, urheber: ko.originalAuthor };";
+    expect(pruefeQuelle("x.ts", ungetypt, false).map((f) => f.regel)).toEqual(["Z3"]);
+    const alsKo = "const neu: KnowledgeObject = { ...ko, originalAuthor: an, urheber: x };";
+    expect(pruefeQuelle("x.ts", alsKo, false).map((f) => f.regel)).toEqual(["Z3"]);
+  });
+
+  it("die benannte Z2-Ausnahme gilt nur für genau diese Datei und genau dieses Feld", () => {
+    const [ausnahme] = BENANNTE_AUSNAHMEN;
+    const fund = {
+      datei: "services/app/src/anderes.ts",
+      zeile: 1,
+      regel: "Z2" as const,
+      text: ausnahme?.text ?? "",
+    };
+    expect(istBenannteAusnahme(fund)).toBe(false);
+    expect(istBenannteAusnahme({ ...fund, datei: ausnahme?.datei ?? "" })).toBe(true);
+    expect(
+      istBenannteAusnahme({
+        ...fund,
+        datei: ausnahme?.datei ?? "",
+        text: "originalAuthor: f.geaendertVon ?? f.vorgelegtVon",
+      }),
+    ).toBe(false);
   });
 });
 

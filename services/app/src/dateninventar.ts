@@ -119,6 +119,25 @@ export const DATENINVENTAR: readonly Datenart[] = [
       "Das Geheimnis liegt (wie bei TOTP nötig) lesbar in der Datenbank und ist wie ein Zugangsgeheimnis zu schützen.",
   },
   {
+    // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto.
+    id: "weisungsbefugnis",
+    name: "Weisungsbefugnis am Konto",
+    inhalt:
+      "Je Konto die ausdrücklich erteilte Weisungsbefugnis: fachliche Bereiche oder „alle Bereiche“, wer sie erteilt hat und wann.",
+    personenbezug: "ja",
+    personenbezugGrund: "Einem Konto zugeordnet; nennt zusätzlich die erteilende Person.",
+    ablage: { ort: DATENBANK, tabellen: ["weisungsbefugnisse"] },
+    taetigkeit: "konten",
+    loeschung:
+      "Entzug durch die Verwaltung (Prüfprotokoll `user.weisungsbefugnis`); mit der Kontolöschung entfernt. Bereits erteilte Weisungen bleiben als Herkunft an ihren Wissensobjekten stehen.",
+    frist: "Bis zum Entzug oder zur Löschung des Kontos.",
+    selbstauskunft: {
+      enthalten: false,
+      grund:
+        "Die eigene Befugnis liefert die eigene Kontoabfrage (`/api/auth/me`) mit; in den Export „Meine Daten“ ist sie noch nicht aufgenommen.",
+    },
+  },
+  {
     id: "wissensobjekte",
     name: "Wissensobjekte mit Fassungen, Verlauf und Kommentaren",
     inhalt:

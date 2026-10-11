@@ -55,12 +55,12 @@ import {
   halbwertszeitenAusVerlauf,
 } from "./frische";
 import { normalizeGeltung } from "./geltung";
-// R-1355: die Herkunftsangaben des Wissensobjekts entstehen an genau einer Stelle.
-import { herkunftsmerkmaleBeiAnlage, urheberschaftBeiAnlage } from "./herkunft";
 import {
   type HalbwertszeitVerlaufRepo,
   InMemoryHalbwertszeitVerlauf,
 } from "./halbwertszeit-verlauf";
+// R-1355: die Herkunftsangaben des Wissensobjekts entstehen an genau einer Stelle.
+import { herkunftsmerkmaleBeiAnlage, urheberschaftBeiAnlage } from "./herkunft";
 import {
   type KoMetadataProjection,
   metadataTextsEqual,

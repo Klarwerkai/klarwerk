@@ -65,6 +65,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // R-0562: der zweite Faktor überlebt den Dev-Neustart — sonst wäre er nach jedem Start still weg.
   // `claimStep` trägt den Schritt in den Argumenten; das Replay ist damit deterministisch.
   secondFactors: ["set", "delete", "claimStep"],
+  // Aufnahme gesamt-wissen-herkunft · Entscheidung 18: die Weisungsbefugnis am Konto überlebt den
+  // Dev-Neustart. `set` ersetzt je Konto vollständig, `delete` entzieht — das Replay ist exakt.
+  weisungsbefugnisse: ["set", "delete"],
   // R-0169 (Nacharbeit 8, bens Befund zum Neustartrundlauf): `insertIfOperationAbsent` (Anlage mit
   // Vorgangskennung, der Word-Weg) und `updateWennStand` (Fortsetzen und das Binden der
   // Dokumentfassung, `CaptureService.dokumentHerkunftBinden`) sind Mutationen. Ohne sie verlor ein
