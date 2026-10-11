@@ -144,7 +144,10 @@ describe("K5 · Nulltreffer: aktive Filter sichtbar, direkt zurücksetzbar, Such
     expect(zeile, "die aktiven Filter stehen nicht am Nulltreffer").not.toBeNull();
     expect(text(zeile)).toContain(i18n.t("erholung.filter.aktiv"));
     expect(angaben()).toEqual(["zeitraum", "zustand"]);
-    expect(text(zeile)).toContain(`${i18n.t("lib.segment.label")}: ${i18n.t("status.validiert")}`);
+    // Nutzerentscheid Antwort 54 (11.10.2026): der Zustand heisst sichtbar „Fachlich bestätigt".
+    expect(text(zeile)).toContain(
+      `${i18n.t("lib.segment.label")}: ${i18n.t("pruefablauf.wissensstatus.validiert")}`,
+    );
     expect(text(zeile)).toContain(`${i18n.t("lib.facet.rangeLabel")}: 2020-01-01`);
     const knopf = zuruecksetzen();
     expect(knopf?.getAttribute("type")).toBe("button");

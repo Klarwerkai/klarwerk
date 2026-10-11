@@ -50,6 +50,13 @@ const ZERSTOEREND: { ort: string; datei: string; labelKey: string }[] = [
     datei: "components/bibliothek/BibliothekLesen.tsx",
     labelKey: "ko.deleteYes",
   },
+  // R-0959: der Papierkorb ist an die Trefferzeile zurückgekehrt — eine zweite Stelle desselben
+  // Löschwegs (am Treffer statt am gelesenen Eintrag), mit derselben Warnfarbe.
+  {
+    ort: "Wissensobjekt löschen (Trefferzeile der Bibliothek)",
+    datei: "components/bibliothek/BibliothekListe.tsx",
+    labelKey: "ko.deleteYes",
+  },
   {
     ort: "Erfassen — Entwurf verwerfen",
     datei: "pages/Capture.tsx",
@@ -131,6 +138,7 @@ describe("SCRUM-412: die Warnfarbe klebt am zerstörenden Knopf", () => {
     const neutrale: { datei: string; labelKey: string }[] = [
       { datei: "app/NavGuardContext.tsx", labelKey: "nav.guard.stay" },
       { datei: "components/bibliothek/BibliothekLesen.tsx", labelKey: "ko.deleteKeep" },
+      { datei: "components/bibliothek/BibliothekListe.tsx", labelKey: "ko.deleteKeep" },
       { datei: "components/KnowledgeInputStudio.tsx", labelKey: "studio.confirmDiscard.keep" },
       { datei: "pages/Capture.tsx", labelKey: "CAPTURE_WIZARD_TEXT.discardKeep" },
     ];

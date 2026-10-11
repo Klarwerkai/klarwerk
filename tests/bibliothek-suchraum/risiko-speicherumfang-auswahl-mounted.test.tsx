@@ -307,11 +307,11 @@ describe("K16 · Risiko-Sortierung mit erhobenem Zustand und Konfliktkenntnis", 
     risikoWaehlen();
     expect(zeilenIds()).toEqual(["a", "b"]);
     expect(zeilenMeta("a")).toContain(String(i18n.t("status.revalidierung")));
-    expect(zeilenMeta("b")).toContain(String(i18n.t("status.validiert")));
+    expect(zeilenMeta("b")).toContain(String(i18n.t("pruefablauf.wissensstatus.validiert")));
 
     lage.bestand = [A, B];
     neuZeichnen();
-    expect(zeilenMeta("a")).toContain(String(i18n.t("status.validiert")));
+    expect(zeilenMeta("a")).toContain(String(i18n.t("pruefablauf.wissensstatus.validiert")));
     expect(zeilenIds(), "beide freigegeben: Vertrauen 20 vor 90").toEqual(["b", "a"]);
   });
 
@@ -326,7 +326,7 @@ describe("K16 · Risiko-Sortierung mit erhobenem Zustand und Konfliktkenntnis", 
 
     lage.konflikte = [{ id: "c1", koA: "a", koB: "x", status: "geloest", type: "fact" }];
     neuZeichnen();
-    expect(zeilenMeta("a")).toContain(String(i18n.t("status.validiert")));
+    expect(zeilenMeta("a")).toContain(String(i18n.t("pruefablauf.wissensstatus.validiert")));
     expect(zeilenIds(), "Konflikt gelöst: Vertrauen 20 vor 90").toEqual(["b", "a"]);
   });
 });
