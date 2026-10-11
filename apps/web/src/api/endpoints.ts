@@ -1504,7 +1504,10 @@ export const endpoints = {
           alreadyRunning: false,
         };
       },
-      run: (importId: string) => api.get<ImportRunRecord>(`/admin/import/runs/${importId}`),
+      // R-0920: die Kennung kommt seit `/import/lauf/:importId` auch aus der Adresszeile — kodiert,
+      // damit ein getippter Wert nie aus seinem Pfadsegment herausfällt.
+      run: (importId: string) =>
+        api.get<ImportRunRecord>(`/admin/import/runs/${encodeURIComponent(importId)}`),
       // ADMIN-02: die Importliste — die jüngsten Läufe, jüngster zuerst.
       runs: (limit = 50) => api.get<ImportRunListe>(`/admin/import/runs?limit=${limit}`),
       // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts — Quellrevision, Lauf, Ausgang.
