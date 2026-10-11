@@ -12,12 +12,9 @@
 // neben dem Tokenstrom mit — niemals als zweites Token.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeRef } from "../../services/reasoner";
-import {
-  DeterministicProvider,
-  keywordSelect,
-  queryTokens,
-  rankCandidates,
-} from "../../services/reasoner";
+import { DeterministicProvider, queryTokens, rankCandidates } from "../../services/reasoner";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 function ref(id: string, title: string, statement: string): KnowledgeRef {
   return { id, title, statement, status: "validiert", trust: 70 };

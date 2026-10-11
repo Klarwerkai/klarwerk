@@ -5,6 +5,7 @@ import { type ComparisonJudgement, type DetectionCoverage, comparisonOutcome } f
 import {
   type ConflictVerdict,
   type DetectSubject,
+  type GeltungsKollisionsRegel,
   autoDescription,
   coreText,
   decideFromVerdict,
@@ -88,6 +89,16 @@ function entscheidungsBeleg(
   return { koIds: [conflict.koA, conflict.koB], resolutionReason };
 }
 
+// R-1662: hat ein Mensch diesen Konflikt abgeschlossen — entschieden oder als Fehlalarm? Genau die
+// zwei Ausgänge, die `entscheidungsBeleg` protokolliert. Altbestand ohne Grund: nur mit einem
+// benannten Entscheider, der nicht das System ist.
+function menschlichAbgeschlossen(c: Conflict): boolean {
+  if (c.resolutionReason !== undefined) {
+    return c.resolutionReason === "decided" || c.resolutionReason === "dismissed";
+  }
+  return typeof c.decidedBy === "string" && c.decidedBy.length > 0 && c.decidedBy !== "system";
+}
+
 /**
  * R-0263: die Wahl des Menschen gegen GENAU diesen Konflikt prüfen und als Beziehung ablegen.
  * `gilt` muss eine der beiden Seiten sein — ein Vorrang über einen dritten Punkt oder ein ganzes
@@ -135,7 +146,8 @@ export class ConflictService {
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[conflicts] ${context}:`, error);
+        // R-0623: nur die Fehlerklasse — Meldung und Stack können Inhalte tragen.
+        console.error(`[conflicts] ${context}: ${error instanceof Error ? error.name : "unknown"}`);
       });
   }
 
@@ -441,6 +453,13 @@ export class ConflictService {
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
       coverage?: DetectionCoverage;
+      // AUFNAHME 20260922 · R-1124: true = ohne fachlichen Vorfilter (jedes Bestandsobjekt ist
+      // Kandidat). Zusammen mit `cap = ∞` der gewählte Vollabgleich; ohne Angabe wie bisher.
+      vollabgleich?: boolean;
+      // R-1632 / R-1633: geben BEIDE Seiten eine Geltung an und liegt sie verschieden, ist ein
+      // erkannter Widerspruch ein Kontext- bzw. Rollenkonflikt statt eines Wahrheitskonflikts
+      // (Regel in knowledge-object `geltungsKollision`). Ohne Regel: Bestandsverhalten.
+      geltungsKollision?: GeltungsKollisionsRegel;
     } = {},
   ): Promise<Conflict[]> {
     // AUFTRAG-mega29 B2 (bens M28-2): der Deckel begrenzt, was GEPRÜFT wird — nicht, was
@@ -448,7 +467,12 @@ export class ConflictService {
     // sortierte) Liste geholt und der Deckel erst in der Schleife über die tatsächlichen Vergleiche
     // gezogen. Ein Paar mit bereits offenem Befund kostet damit nur seinen Rang, keinen Prüfplatz.
     const cap = options.cap ?? 8;
-    const ranked = selectCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    const ranked = selectCandidates(
+      subject,
+      pool,
+      Number.POSITIVE_INFINITY,
+      options.vollabgleich !== true,
+    );
     const coverage = options.coverage;
     if (coverage) {
       coverage.available = pool.filter((c) => c.refId !== subject.refId).length;
@@ -456,6 +480,9 @@ export class ConflictService {
     if (ranked.length === 0) {
       return [];
     }
+    // AUFNAHME 20260922 · Hintergrundabgleich (R-1111): dass ein menschlich geschlossenes Paar bei
+    // unveränderten Fassungen nicht neu angelegt wird, leistet `menschlichAbgeschlossen` (R-1105)
+    // unten — hier bleibt `open` die Menge der ungelösten Konflikte.
     const alle = await this.repo.all();
     const open = alle.filter((c) => c.status !== "geloest");
     // D-AISTATE PAKET 4 (bens V5): Paar-Dedupe nur für die AKTUELLE Versionskombination. Ein Befund zu
@@ -609,16 +636,26 @@ export class ConflictService {
         // R-0263: Klaras Vorschlag Widerspruch/Präzisierung, auf die zwei Punkte abgebildet.
         ...(vorschlag ? { vorschlag } : {}),
       };
+      // R-1632 / R-1633: ein Widerspruch zweier Punkte mit VERSCHIEDENER Geltung ist ein
+      // Kontext- (anderer Ort) bzw. Rollenkonflikt (gleicher Ort, andere Rolle) — beide Aussagen
+      // können in ihrem Bereich gelten. Die Beschreibung nennt beide Geltungen. Nur „truth" wird
+      // umgeordnet; ein Versionskonflikt („ueberholt") bleibt, was er ist.
+      const kollision =
+        decision.type === "truth"
+          ? (options.geltungsKollision?.(subject.geltung, cand.geltung) ?? null)
+          : null;
       // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
       // ehrliche Grenze der Absicherung s. createAutoVersionBound.
       const conflict = await this.createAutoVersionBound(
         {
           koA: subject.refId,
           koB: cand.refId,
-          type: decision.type,
+          type: kollision ? kollision.art : decision.type,
           // R-0252: unabhängig von `type` eingeordnet (detect.ts `arbeitsartAusUrteil`).
           ...(decision.arbeitsart ? { arbeitsart: decision.arbeitsart } : {}),
-          description: autoDescription(verdict),
+          description: kollision
+            ? `${autoDescription(verdict)} ${kollision.vermerk}`
+            : autoDescription(verdict),
           ...(subject.version !== undefined ? { koAVersion: subject.version } : {}),
           ...(cand.version !== undefined ? { koBVersion: cand.version } : {}),
         },
@@ -842,6 +879,25 @@ export class ConflictService {
   // das Protokoll, das diese Kennungen ohnehin als Ziel führt.
   async idsForKo(koId: string): Promise<string[]> {
     return (await this.repo.all()).filter((c) => c.koA === koId || c.koB === koId).map((c) => c.id);
+  }
+
+  // R-1662 (geführter Weg vom Problem zur Lösung, Prüfpunkt 5 „gelöste Konflikte"): die von einem
+  // MENSCHEN abgeschlossenen Konflikte, an denen eines der genannten Objekte beteiligt ist. Ein
+  // systemischer Abschluss (`superseded`, `participant_deleted`, `withdrawn`, `edited_no_conflict`)
+  // ist keine fachliche Lösung und bleibt draussen. Altbestand ohne `resolutionReason` zählt nur mit
+  // einem benannten Entscheider. Kein Versionsfilter: ein gelöster Befund ist ein Grabstein und
+  // bleibt lesbar (s. `get`). Die Sichtbarkeit zieht die Route (`sichtbarePaare`).
+  async geloesteFuer(koIds: readonly string[]): Promise<Conflict[]> {
+    const gesucht = new Set(koIds);
+    if (gesucht.size === 0) {
+      return [];
+    }
+    return (await this.repo.all()).filter(
+      (c) =>
+        c.status === "geloest" &&
+        (gesucht.has(c.koA) || gesucht.has(c.koB)) &&
+        menschlichAbgeschlossen(c),
+    );
   }
 
   // R-0263: die festgelegten Vorrang-Beziehungen, an denen dieser Punkt beteiligt ist — aus den

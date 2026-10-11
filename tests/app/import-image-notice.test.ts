@@ -1,87 +1,14 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { importImageNotice } from "../../apps/web/src/lib/captureFromFile";
 
-// WP-D1d/WP-D1e (Fix 1): PURE Auswahl der ehrlichen Bild-Meldung aus expliziten Zählern
-// (compressed/dropped) + originalAttached. „Original im Anhang" NUR bei echtem Anhang-Erfolg; sonst
-// weggelassene = verloren. WP-D1e führt zusätzlich `kept` (= total − dropped) als eigenen Platzhalter:
-// tatsächlich übernommene Bilder werden benannt, statt bei compressed=0 irreführend „0 komprimiert" zu lesen.
-
-describe("WP-D1e: importImageNotice (Zähler kept/compressed/dropped + Anhang-Kopplung)", () => {
-  it("kein Bild → keine Meldung", () => {
-    expect(importImageNotice({ total: 0, compressed: 0, dropped: 0, originalAttached: true })).toBe(
-      null,
-    );
-  });
-
-  it("komprimiert behalten + Anhang ok → imagesKept (kept = total)", () => {
-    expect(
-      importImageNotice({ total: 5, compressed: 5, dropped: 0, originalAttached: true }),
-    ).toEqual({
-      key: "capture.file.imagesKept",
-      params: { kept: 5, compressed: 5, dropped: 0 },
-    });
-  });
-
-  it("komprimiert + einige weggelassen + Anhang ok → imagesKeptDropped (kept = total − dropped)", () => {
-    expect(
-      importImageNotice({ total: 8, compressed: 5, dropped: 3, originalAttached: true }),
-    ).toEqual({
-      key: "capture.file.imagesKeptDropped",
-      params: { kept: 5, compressed: 5, dropped: 3 },
-    });
-  });
-
-  it("Anhang FEHLGESCHLAGEN, keine weggelassen → imagesNoOriginal (kein Anhang-Hinweis)", () => {
-    expect(
-      importImageNotice({ total: 4, compressed: 4, dropped: 0, originalAttached: false }),
-    ).toEqual({
-      key: "capture.file.imagesNoOriginal",
-      params: { kept: 4, compressed: 4, dropped: 0 },
-    });
-  });
-
-  it("Anhang FEHLGESCHLAGEN + weggelassen → imagesLost (verlorene Bilder benannt)", () => {
-    expect(
-      importImageNotice({ total: 6, compressed: 4, dropped: 2, originalAttached: false }),
-    ).toEqual({
-      key: "capture.file.imagesLost",
-      params: { kept: 4, compressed: 4, dropped: 2 },
-    });
-  });
-
-  // WP-D1e (Fix 1, Kern): alle Bilder unverändert BEHALTEN (klein/leicht) — total>0, compressed=0,
-  // dropped=0. Bisher las die Meldung irreführend „0 Bilder komprimiert"; jetzt nennt kept die 4.
-  it("alle unveraendert behalten (compressed=0, dropped=0) → kept = total statt irrefuehrender Null", () => {
-    expect(
-      importImageNotice({ total: 4, compressed: 0, dropped: 0, originalAttached: true }),
-    ).toEqual({
-      key: "capture.file.imagesKept",
-      params: { kept: 4, compressed: 0, dropped: 0 },
-    });
-  });
-
-  // WP-D1e (Fix 1): Teilkompression 0 < compressed < kept — beide Zahlen bleiben getrennt.
-  it("Teilkompression (0 < compressed < kept) → getrennte Zähler", () => {
-    expect(
-      importImageNotice({ total: 5, compressed: 2, dropped: 0, originalAttached: true }),
-    ).toEqual({
-      key: "capture.file.imagesKept",
-      params: { kept: 5, compressed: 2, dropped: 0 },
-    });
-  });
-
-  // WP-D1e (Fix 1): Encoder-Fallback (kein Re-Encode möglich) — compressed=0, aber die Bilder sind
-  // übernommen. Auch OHNE Anhang wird kept benannt (nicht „0 komprimiert" ohne Bezug).
-  it("Encoder-Fallback (compressed=0) ohne Anhang → imagesNoOriginal mit kept", () => {
-    expect(
-      importImageNotice({ total: 3, compressed: 0, dropped: 0, originalAttached: false }),
-    ).toEqual({
-      key: "capture.file.imagesNoOriginal",
-      params: { kept: 3, compressed: 0, dropped: 0 },
-    });
-  });
-});
+// WP-D1d/WP-D1e (Fix 1): die ehrliche Bild-Meldung aus expliziten Zählern (kept/compressed/dropped)
+// + Anhang-Erfolg. „Original im Anhang" NUR bei echtem Anhang-Erfolg; sonst weggelassene = verloren.
+//
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Der erste Block dieser Datei prüfte `importImageNotice`,
+// die Meldungswahl auf der alten `imageInfo`-Bilanz. Seit JOB 513/D3B wählt der Arbeitsraum über den
+// Bildtransfer-Vertrag (`imageTransferSummary`, gemessen in `tests/capture/wp-d9b-image-budget.test.ts`);
+// die alte Wahl hatte keinen Produktaufrufer und ist entfernt, mit ihr jener Block. Die Texte selbst
+// liest der Vertrag weiter — sie bleiben hier gemessen.
 
 describe("WP-D1e: Meldungstexte sind ehrlich (DE/EN/NL)", () => {
   const attached = ["capture.file.imagesKept", "capture.file.imagesKeptDropped"];

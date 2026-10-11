@@ -49,7 +49,7 @@ export function SsoCallback(): JSX.Element {
           <span className="leading-tight">
             <span className="block text-[15px] font-bold tracking-[2px]">KLARWERK</span>
             <span className="block font-mono text-[10px] uppercase tracking-[1.5px] text-white/50">
-              Reasoning System
+              {t("app.subtitle")}
             </span>
           </span>
         </div>
@@ -57,7 +57,8 @@ export function SsoCallback(): JSX.Element {
           <p className="text-xl font-semibold leading-snug">{t("auth.tagline")}</p>
           <p className="mt-3 text-sm text-white/60">{t("auth.taglineSub")}</p>
         </div>
-        <div className="font-mono text-[11px] text-white/40">klarwerk.ai</div>
+        {/* WCAG 1.4.3: Weiß/40 auf Ink ~3,7:1 — Weiß/60 ~6,4:1, wie in BrandPanel.tsx. */}
+        <div className="font-mono text-[11px] text-white/60">klarwerk.ai</div>
       </div>
 
       <div className="flex flex-1 items-center justify-center p-6">

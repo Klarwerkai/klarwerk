@@ -103,7 +103,7 @@ function alleZiele(): ReturnType<typeof direktzugangZiele> {
 }
 
 describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () => {
-  it("A0 · KALIBRIERUNG: der Griff in den Quelltext greift die 18 Kennungen der Vorlage", () => {
+  it("A0 · KALIBRIERUNG: der Griff in den Quelltext greift die 21 Kennungen der Vorlage", () => {
     const kennungen = kennungenAusQuelltext();
     // Die Vorlage nannte 17. Weniger hieße: der Griff hat den Switch verfehlt (und alles Folgende
     // wäre über einer zu kleinen Menge trivial grün).
@@ -112,8 +112,30 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     // Auskunft über das Sicherungsverzeichnis unter „System" (`lib/adminSections.ts`,
     // `pages/AdminBetriebDetails.tsx`). Sie ist damit auch im Direktzugang und über die Adresse
     // erreichbar; A1/A3 messen das gleich mit.
-    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(18);
-    for (const pflicht of ["nutzer:", "rolle:", "ki", "demo", "werk", "papierkorb", "audit"]) {
+    //
+    // ADMIN-16 (produkt:20261009:admin-demo-diagnose): 18 → 20. Neu sind `pakete` und `testimporte`
+    // — die bisherigen Kästen der Importseite, jetzt als Karten unter „Vorführdaten".
+    //
+    // ADMIN-06 (produkt:20261009:admin-teams): 20 → 22. Neu sind `teams` (Teamliste und Anlegen)
+    // und das dynamische `team:` (ein einzelnes Team, wie `nutzer:`).
+    //
+    // R-1034 / FR-I18N-02: 22 → 23. Die neue Kennung ist `uebersetzungen` — die Pflege der
+    // Oberflächentexte unter „System" (`components/einstellungen/UebersetzungsPflege.tsx`).
+    expect(kennungen, `gefunden: ${kennungen.join(" · ")}`).toHaveLength(23);
+    for (const pflicht of [
+      "nutzer:",
+      "rolle:",
+      "team:",
+      "teams",
+      "ki",
+      "demo",
+      "pakete",
+      "testimporte",
+      "werk",
+      "papierkorb",
+      "audit",
+      "uebersetzungen",
+    ]) {
       expect(kennungen).toContain(pflicht);
     }
   });
@@ -147,8 +169,9 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     const ziele = alleZiele();
     const statisch = kennungenAusQuelltext().filter((k) => !k.endsWith(":"));
     const fehlend = statisch.filter((k) => !ziele.some((z) => z.path === adminHref(sekt(k), k)));
-    // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0).
-    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(16);
+    // JOB 4025: 15 → 16 (die neue Kennung `sicherung`, siehe A0). ADMIN-16: 16 → 18.
+    // ADMIN-06: 18 → 19 (`teams`). R-1034: 19 → 20 (die neue Kennung `uebersetzungen`, siehe A0).
+    expect(statisch, "der Griff fand keine statische Kennung").toHaveLength(20);
     expect(fehlend, `kein direktes Ziel: ${fehlend.join(" · ")}`).toEqual([]);
   });
 
@@ -163,7 +186,10 @@ describe("JOB 3337 · A · der Bestand ist vollständig und adressierbar", () =>
     // Der Doppelpunkt ist der Unterschied: `detail=nutzerNeu` ist die (unbedenkliche) Karte
     // „Nutzer hinzufügen", `detail=nutzer%3A<id>` wäre eine benannte Person.
     const dynamisch = alleZiele().filter(
-      (z) => z.path.includes("detail=nutzer%3A") || z.path.includes("detail=rolle%3A"),
+      (z) =>
+        z.path.includes("detail=nutzer%3A") ||
+        z.path.includes("detail=rolle%3A") ||
+        z.path.includes("detail=team%3A"),
     );
     expect(dynamisch.map((z) => z.label)).toEqual([]);
   });

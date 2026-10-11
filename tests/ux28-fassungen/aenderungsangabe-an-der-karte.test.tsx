@@ -60,7 +60,8 @@ describe("JOB 3475 · A — eine sichtbare Berichtsänderung heißt nicht „kei
     netz.fassungen = [fassung(1, { bodyHtml: MIT_RAUM }), fassung(2, { bodyHtml: OHNE_RAUM })];
     await flaecheMitFassungen();
 
-    expect(text(karte(1))).toContain(i18n.t("ko.snapshotInitial"));
+    // N-0057: der Satz heißt seither „Erste gespeicherte Version" (texte/fassungsangabe.ts).
+    expect(text(karte(1))).toContain(i18n.t("fassungsangabe.ersteFassung"));
     expect(text(karte(1)), "die Ausgangsfassung erfindet einen Vorgänger-Diff").not.toContain(
       i18n.t("ko.snapshotField.bodyHtml"),
     );

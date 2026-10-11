@@ -32,6 +32,7 @@ import type {
   AnswerExplanationLeser,
   AnswerExplanationService,
 } from "../services/answer-explanation";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 export interface KlaraAnswerExplanationDeps {
   readonly explanations: AnswerExplanationService;
@@ -98,6 +99,8 @@ export function klaraAnswerExplanationRoutes(
         const leser: AnswerExplanationLeser = {
           userId: user.id,
           darfVertraulich: user.role === "admin" || user.role === "controller",
+          // R-1175: daneben die EINE Sichtbarkeitsentscheidung (Space, Autorschaft).
+          sichtbar: sichtbarkeitsfilterFuer(user),
         };
         const ergebnis = await deps.explanations.erklaere(request.params.answerId, leser);
         if (ergebnis.kind === "NOT_FOUND") {

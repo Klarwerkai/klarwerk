@@ -115,7 +115,7 @@ describe("mega39 B · die Shell hat keine Navigationsquelle, die am Wächter vor
       }
     }
     // Die Fehlermeldung nennt Datei UND Bezeichner — der nächste Umbau weiss sofort, was zu tun ist:
-    // GuardedLink/GuardedNavLink/useGuardedNavigate aus app/NavGuardContext.
+    // GuardedLink/useGuardedNavigate aus app/NavGuardContext (GuardedNavLink ist seit R-1349 entfernt).
     expect(verstoesse).toEqual([]);
   });
 

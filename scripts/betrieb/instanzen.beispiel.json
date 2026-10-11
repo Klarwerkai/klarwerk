@@ -1,0 +1,22 @@
+{
+  "kanaele": {
+    "stabil": { "version": "1.0.0-beta.1.752" },
+    "pilot": { "version": "1.0.0-beta.1.753" }
+  },
+  "instanzen": [
+    {
+      "kennung": "kunde-a",
+      "firma": "Kunde A GmbH",
+      "modell": "kundeninstanz",
+      "adresse": "https://wissen.kunde-a.example",
+      "kanal": "stabil"
+    },
+    {
+      "kennung": "kunde-b",
+      "firma": "Kunde B AG",
+      "modell": "kundeninstanz",
+      "adresse": "https://wissen.kunde-b.example",
+      "kanal": "pilot"
+    }
+  ]
+}

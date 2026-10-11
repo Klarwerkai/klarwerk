@@ -58,7 +58,6 @@ import {
   InMemoryKoSearchProjectionRepo,
   InMemoryKoVersionRepo,
   KoService,
-  S2_ERWEITERUNG_GRENZE,
   SUCH_ZUORDNUNGEN,
 } from "../../services/knowledge-object";
 import { PgKoSearchProjectionRepo } from "../../services/knowledge-object/src/search-projection-repo-pg";
@@ -310,7 +309,6 @@ describe("N2 · F4 — ohne passende Zuordnung ändert sich nichts", () => {
       "frist",
       "urlaubszei",
     ]);
-    expect(S2_ERWEITERUNG_GRENZE.entferntTerme).toBe(false);
   });
 
   it("F4c · die Markierung behält ihren Platz VOR den ergänzten Termen", async () => {
@@ -339,10 +337,8 @@ describe("N2 · F5 — kein Modell, kein Embedder, kein Netz", () => {
     // Retrieval-Weg — kein `embed`, kein `assistText`, kein `probe`, kein Modellzugang.
     expect(m.reasonerAufrufe).toEqual(["answerRetrievalOnly"]);
     expect(m.reasonerAufrufe).not.toContain("embed");
-    // Und die Zusicherung der Erweiterung selbst, gelesen statt behauptet.
-    expect(S2_ERWEITERUNG_GRENZE.brauchtNetz).toBe(false);
-    expect(S2_ERWEITERUNG_GRENZE.ruehrtVorfilterAn).toBe(false);
-    expect(S2_ERWEITERUNG_GRENZE.leitetAb).toBe(false);
+    // R-1349: Hier stand zusätzlich das Ablesen der Konstante `S2_ERWEITERUNG_GRENZE`. Sie las kein
+    // Produktweg, und ihr Ablesen belegte nur, was in ihr stand; gemessen wird die Grenze oben.
   });
 
   it("F5b · nichts wird abgeleitet — nur deklarierte Wörter treffen", async () => {
