@@ -20,6 +20,8 @@
 // — Zeile `flex-wrap: nowrap`, Wert-Träger `flex-shrink: 0`, Beschriftung `overflow: hidden;
 // text-overflow: ellipsis; white-space: nowrap` — und verlangt, dass die Messung dann WIEDER rot
 // wird. Ein Test, der auch mit dem alten Verhalten grün bliebe, misst die falsche Sache.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { fn } from "../design/h6-chromium";
 import {
@@ -28,9 +30,38 @@ import {
   beendeBuehne,
   setzeBreite,
   setzeSprache,
+  setzeTheme,
   starteBuehne,
   wechsleKonto,
 } from "./schmal-buehne";
+
+// ================================================================================================
+// R-0582 · BEN-BEFUND NACHARBEIT 3 — DIE RESTFÄLLE AUS JOB 3117: „KLASSISCH" UND DIE ECHTEN ZUSÄTZE.
+// ================================================================================================
+//
+// JOB 3117 hat nur „Modern" gemessen und nannte zwei Fälle offen (archiv/3117/runde-1/ben.md):
+//   · die Darstellung „Klassisch" — sie ist weiter wählbar (`apps/web/src/lib/designTheme.ts`,
+//     Konto-Menü „Darstellung"). Gemessen unten in K1–K3, an derselben gebauten Seite.
+//   · die echten Zusätze des Zustandsmodells („Stand von …", „nicht aktualisiert",
+//     `components/einstellungen/Zeilenkarte.tsx:33-47`). Auf /profil entstehen sie heute NICHT: die
+//     Profilzeilen setzen ihren Wert unmittelbar aus der Sitzung (`pages/Profile.tsx`, kein
+//     `useWertText`) — Z0 hält diesen Befund am Quelltext fest. Die Zeile ist aber DIESELBE wie in
+//     den Einstellungen, wo die Zusätze vorkommen; Z1 setzt deshalb genau ihren Wortlaut an Name und
+//     E-Mail und misst in beiden Darstellungen, dass auch dann nichts gekürzt wird.
+const WURZEL = resolve(__dirname, "..", "..");
+const DE_QUELLE = readFileSync(resolve(WURZEL, "apps/web/src/woerterbuch/de.ts"), "utf8");
+/** Der deutsche Katalogtext eines Schlüssels — aus der Quelle, nicht abgeschrieben. */
+function katalog(schluessel: string): string {
+  const treffer = new RegExp(`"${schluessel.replace(/\./g, "\\.")}":\\s*"([^"]*)"`).exec(DE_QUELLE);
+  if (!treffer?.[1]) {
+    throw new Error(`Katalogtext ${schluessel} nicht gefunden`);
+  }
+  return treffer[1];
+}
+/** Der Zusatz genau so, wie `useWertText` ihn an den Wert hängt: „ · Stand von 12:34 · nicht …". */
+const ZUSATZ = ` · ${katalog("einst.wert.stand").replace("{{zeit}}", "12:34")} · ${katalog(
+  "einst.wert.nichtAktualisiert",
+)}`;
 
 /** Das Konto der Gegenprüfung N-0030 — Wort für Wort, damit die Zahlen vergleichbar bleiben. */
 const KONTO_BELEG: Konto = { name: "Codex Abnahme", email: "codex-abnahme@demo.klarwerk" };
@@ -40,7 +71,14 @@ const KONTO_LANG: Konto = {
   email: "maximiliane.schweighofer-brandenburg@abnahme.klarwerk.example",
 };
 
-const ZEILEN = ["zeile-name", "zeile-email", "zeile-sprache", "zeile-passwort"] as const;
+// R-0582: „Kontodaten berichtigen" ist eine neue Zeile derselben Karte — sie misst mit.
+const ZEILEN = [
+  "zeile-name",
+  "zeile-email",
+  "zeile-kontodaten",
+  "zeile-sprache",
+  "zeile-passwort",
+] as const;
 type ZeilenId = (typeof ZEILEN)[number];
 
 interface Mass {
@@ -158,6 +196,23 @@ const ALTER_VERTRAG = `([an, testIds]) => {
   return null;
 }`;
 
+/** In der Seite: den Zusatz an den Wert von Name und E-Mail hängen (wie `useWertText`). */
+const MIT_ZUSATZ = `(zusatz) => {
+  for (const id of ['zeile-name', 'zeile-email']) {
+    const wert = document.querySelector('[data-testid="' + id + '"] [data-einst="wert"]');
+    if (wert) { wert.textContent = wert.textContent + zusatz; }
+  }
+  return null;
+}`;
+
+async function mitZusatz(buehne: Buehne): Promise<void> {
+  const seite = buehne.seite;
+  if (seite === null) {
+    throw new Error(`Bühne steht nicht: ${buehne.fehler ?? "unbekannt"}`);
+  }
+  await seite.evaluate<null>(fn(MIT_ZUSATZ), ZUSATZ);
+}
+
 async function miss(buehne: Buehne): Promise<Messung> {
   const seite = buehne.seite;
   if (seite === null) {
@@ -225,6 +280,14 @@ describe("JOB 3117 UX-13 · Profil bei 320 px — gemessen an der gebauten Seite
   let mLangDe: Messung | null = null;
   let mLangEn: Messung | null = null;
   let mLangGegenprobe: Messung | null = null;
+  // R-0582 · Restfälle: Klassisch (lang, Beleg, Gegenprobe) und die Zusätze in beiden Darstellungen.
+  let themeKlassisch = "";
+  let themeModernZurueck = "";
+  let mKlassischLang: Messung | null = null;
+  let mKlassischGegenprobe: Messung | null = null;
+  let mKlassischZusatz: Messung | null = null;
+  let mKlassischBeleg: Messung | null = null;
+  let mModernZusatz: Messung | null = null;
 
   beforeAll(async () => {
     buehne = await starteBuehne(KONTO_BELEG, 320, 740);
@@ -250,6 +313,23 @@ describe("JOB 3117 UX-13 · Profil bei 320 px — gemessen an der gebauten Seite
     await mitAltemVertrag(buehne, false);
     await setzeSprache(buehne, "en");
     mLangEn = await miss(buehne);
+    // K) Dieselbe Seite in „Klassisch", 320 px, Deutsch — erst das lange Konto samt Gegenprobe und
+    //    echtem Zusatz, dann das Konto des Belegs N-0030.
+    await setzeSprache(buehne, "de");
+    themeKlassisch = await setzeTheme(buehne, "classic");
+    mKlassischLang = await miss(buehne);
+    await mitAltemVertrag(buehne, true);
+    mKlassischGegenprobe = await miss(buehne);
+    await mitAltemVertrag(buehne, false);
+    await mitZusatz(buehne);
+    mKlassischZusatz = await miss(buehne);
+    await wechsleKonto(buehne, KONTO_BELEG);
+    mKlassischBeleg = await miss(buehne);
+    // Z) Zurück auf „Modern", langes Konto, derselbe echte Zusatz.
+    themeModernZurueck = await setzeTheme(buehne, "modern");
+    await wechsleKonto(buehne, KONTO_LANG);
+    await mitZusatz(buehne);
+    mModernZusatz = await miss(buehne);
     console.info(
       `JOB 3117 UX-13 · Chromium ${buehne.version} · Theme ${buehne.theme} · 320px E-Mail-Label ` +
         `${JSON.stringify(m320?.zeilen["zeile-email"].label.clientWidth)}/${JSON.stringify(
@@ -384,6 +464,7 @@ describe("JOB 3117 UX-13 · Profil bei 320 px — gemessen an der gebauten Seite
       // Der Name DARF hier umbrechen — er ist länger als die Zeile. Die feste Beschriftung nicht:
       // sie passt, und dann bricht die Zeile um, nicht das Wort.
       beschriftungEinzeilig(m, "zeile-email");
+      beschriftungEinzeilig(m, "zeile-kontodaten");
       beschriftungEinzeilig(m, "zeile-sprache");
       beschriftungEinzeilig(m, "zeile-passwort");
       expect(m.documentWidth, `${sprache}: horizontaler Überlauf`).toBe(320);
@@ -404,5 +485,68 @@ describe("JOB 3117 UX-13 · Profil bei 320 px — gemessen an der gebauten Seite
   it("G3 · Gegenprobe im langen Fall: der alte Vertrag kürzt hier wieder Name und Beschriftung", () => {
     beschriftungGekuerzt(mLangGegenprobe as Messung, "zeile-name");
     beschriftungGekuerzt(mLangGegenprobe as Messung, "zeile-email");
+  });
+
+  // ---- R-0582 · Restfälle aus JOB 3117 ------------------------------------------------------------
+  /** Die gemeinsame Aussage für jede 320-px-Messung: nichts gekürzt, nichts quer gescrollt. */
+  function nichtsGekuerzt(m: Messung, fall: string): void {
+    expect(m.fehlt, `${fall}: Zeile fehlt`).toBeNull();
+    expect(m.viewportWidth, `${fall}: Breite`).toBe(320);
+    expect(m.documentWidth, `${fall}: horizontaler Überlauf`).toBe(320);
+    for (const id of ZEILEN) {
+      beschriftungVollstaendig(m, id);
+    }
+    const fest = ["zeile-email", "zeile-kontodaten", "zeile-sprache", "zeile-passwort"] as const;
+    for (const id of fest) {
+      beschriftungEinzeilig(m, id);
+    }
+    for (const id of ["zeile-name", "zeile-email"] as const) {
+      const w = m.zeilen[id].wert as Mass;
+      expect(w, `${fall} · ${id}: Wert fehlt`).not.toBeNull();
+      expect(
+        w.scrollWidth,
+        `${fall} · ${id}: Wert „${w.text}" gekürzt — ${w.scrollWidth} > ${w.clientWidth}`,
+      ).toBeLessThanOrEqual(w.clientWidth);
+    }
+  }
+
+  it("K1 · Klassisch, 320 px: die Darstellung ist wirklich gewechselt, langes Konto und Beleg-Konto ungekürzt", () => {
+    expect(buehne?.fehler, "Bühne").toBeNull();
+    // Klassisch heißt „kein Wurzel-Attribut" (`designTheme.ts:41-53`) — sonst wäre es Modern.
+    expect(themeKlassisch).toBe("classic (kein Attribut)");
+    nichtsGekuerzt(mKlassischLang as Messung, "Klassisch · lang");
+    nichtsGekuerzt(mKlassischBeleg as Messung, "Klassisch · Beleg N-0030");
+    expect((mKlassischLang as Messung).zeilen["zeile-name"].beschriftung.text).toBe(
+      KONTO_LANG.name,
+    );
+    expect((mKlassischBeleg as Messung).zeilen["zeile-email"].wert?.text).toBe(KONTO_BELEG.email);
+    expect(buehne?.seitenfehler).toEqual([]);
+  });
+
+  it("K2 · Gegenprobe in Klassisch: der alte Vertrag kürzt auch hier wieder", () => {
+    beschriftungGekuerzt(mKlassischGegenprobe as Messung, "zeile-name");
+    beschriftungGekuerzt(mKlassischGegenprobe as Messung, "zeile-email");
+  });
+
+  it("Z0 · auf /profil entsteht heute kein Zustandszusatz: die Werte kommen unmittelbar aus der Sitzung", () => {
+    const profil = readFileSync(resolve(WURZEL, "apps/web/src/pages/Profile.tsx"), "utf8");
+    // Wer den Zusatz einführt, macht diesen Fall rot — und misst dann Z1 als echten Weg statt als
+    // gesetzten Text.
+    expect(profil).not.toContain("useWertText");
+    expect(profil).toContain('wert={user?.email ?? "—"}');
+  });
+
+  it("Z1 · der echte Zusatz an Name und E-Mail bricht um statt zu kürzen — Klassisch und Modern", () => {
+    expect(ZUSATZ).toBe(" · Stand von 12:34 · nicht aktualisiert");
+    expect(themeModernZurueck).toBe("modern");
+    for (const [fall, m] of [
+      ["Klassisch · Zusatz", mKlassischZusatz as Messung],
+      ["Modern · Zusatz", mModernZusatz as Messung],
+    ] as const) {
+      expect(m.zeilen["zeile-email"].wert?.text, `${fall}: Zusatz steht am Wert`).toBe(
+        `${KONTO_LANG.email}${ZUSATZ}`,
+      );
+      nichtsGekuerzt(m, fall);
+    }
   });
 });

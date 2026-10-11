@@ -22,6 +22,6 @@ export const PROOF_CHAIN: readonly ProofBeat[] = [
   { id: "verify", n: 3, labelKey: "demo.proof.verify" },
 ];
 
-export function proofChain(): readonly ProofBeat[] {
-  return PROOF_CHAIN;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `proofChain()`, das die Tabelle oben
+// zurückgab. Der Start liest `PROOF_CHAIN` unmittelbar (`components/start/StartPanel.tsx`); der
+// Zugriff rief niemand und ist entfernt.

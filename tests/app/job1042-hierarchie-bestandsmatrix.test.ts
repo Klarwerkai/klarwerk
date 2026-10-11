@@ -108,8 +108,9 @@ const MATRIX: Record<string, Rolle> = {
   "services/library-analytics/src/select.ts": "projektion",
   "apps/web/src/api/types.ts": "zieltyp",
   "apps/web/src/lib/importSelectView.ts": "anzeige",
-  "services/app/src/demo-corpus.ts": "fixture",
   // ---- Tests ----
+  // R-1349: der Demo-Korpus lag bis dahin unter services/app/src, ohne dass ein Produktweg ihn lud.
+  "tests/demo-korpus/demo-corpus.ts": "fixture",
   "tests/app/confluence-ancestors-expand.test.ts": "test",
   // JOB 1132 D1 (18.08.2026): der nicht importierte Elternteil (JOB 931 T8/B2) und die vier
   // Zustaende der Lauf-Route. Traegt die Begriffe, weil er `sourcePath`-Ketten fuehrt.

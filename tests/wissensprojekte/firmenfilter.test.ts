@@ -131,6 +131,7 @@ async function hinein(b: Buehne, kopf: Kopf, koId: string, zielSpaceId: string):
         quelleVersion: vj.quelle?.version ?? null,
         zielId: vj.ziel?.id ?? null,
         zielVersion: vj.ziel?.version ?? null,
+        grundlage: vj.grundlage,
       },
     },
   });

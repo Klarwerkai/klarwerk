@@ -49,13 +49,10 @@ import { FAQ_CONTENT } from "../../apps/web/src/lib/faqContent";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
 import { ISO_HELP_TOPICS } from "../../apps/web/src/lib/helpTopics.iso";
 import {
-  type Auslassung,
   BIBLIOTHEK_GRUPPEN,
   BIBLIOTHEK_TEILE,
   FUNKTIONS_ARTIKEL,
-  GLIEDERUNG,
   HILFE_BIBLIOTHEK,
-  artikelText,
 } from "../../apps/web/src/lib/hilfeBibliothek";
 import { allBibliothekEntries, bibliothekAuszuege } from "../../apps/web/src/lib/klaraBibliothek";
 import {
@@ -63,13 +60,16 @@ import {
   allFaqEntries,
   allKlaraEntries,
   klaraGrundlage,
-  rankKlara,
   resolveKlaraEntries,
   searchKlara,
 } from "../../apps/web/src/lib/klaraRegistry";
 import { Help } from "../../apps/web/src/pages/Help";
 import { ROLE_PERMISSIONS } from "../../services/rbac/src/policy";
 import { SPRACHEN, funde } from "../hilfe-faq-sammlung/wortwahl";
+// R-1349 (Aufnahme gesamt-aufruferwaechter, Nacharbeit 7): Gliederung und Artikeltext waren Exporte
+// im Produkt, die nur dieser Wächter las; die Rangliste kommt über den Produktweg `klaraGrundlage`.
+import { type Auslassung, GLIEDERUNG, artikelText } from "../support/hilfe-gliederung";
+import { rankKlara } from "../support/klara-rangfolge";
 import { repoPfad } from "../support/repoPfad";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

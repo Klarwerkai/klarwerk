@@ -72,6 +72,21 @@ löschen) und Spaces der einzige Bestand mit dieser Form sind.
    `tests/security/mega74-lesewege-sammler.test.ts`), in Nacharbeit 5 auch
    `GET /api/spaces/artikel`.
 7. **Firmenfilter (Nacharbeit 5)** — s. Widerspruch 2.
+8. **Integration mit main (Nacharbeit 6).** Main brachte zu Spaces Teams, Archivieren/Wiederaufnehmen,
+   Bestandszuordnung, Freigaberegeln und Vorlagen. Beide Seiten sind erhalten; an den Berührungen gilt:
+   - Der Spacewechsel trägt main's Bindung an die wirksame Rechtelage (`grundlage`),
+     Prüfzuständigkeit und Freigaberegel — und läuft weiter vollständig unter der Sperre.
+   - Auch die Bestandszuordnung (`POST /api/spaces/bestand/zuordnung`) und das Ablegen eines
+     neuen Beitrags im gewählten Space (Vorlagen-Einreichung, `build-app.ts`) setzen den führenden
+     Space unter derselben Sperre; ein inzwischen gelöschter Zielspace wird nicht belegt.
+   - Der Löschvermerk ist endgültig: `lege` schreibt auf einen gelöschten Space keine weitere
+     Fassung (Speicher und PostgreSQL). So belebt weder Archiv, Freigaberegel, Vorlagenänderung
+     noch Bearbeiten einen gelöschten Space still wieder; Freigaberegel- und Vorlagenwege
+     behandeln ihn wie einen fehlenden.
+   - Der Team-Wrapper `TeamAufloesendeSpaces` reicht die Sperre an die Ablage durch.
+   - Textschlüssel des Firmenfilters heißen jetzt `spaces.firmenfilter.*`, weil main
+     `spaces.filter.*` für seine Suchleiste belegt; der Kontextfilter ändert nur `kontext` in der
+     Adresse und lässt main's Filter stehen.
 
 Die Regel „erst verschieben, dann löschen“ (kein Mitlöschen, kein Sammelverschieben beim Löschen)
 ist **meine vorläufige Regel**, keine Nutzerentscheidung. Grund: ein Sammelwechsel änderte die

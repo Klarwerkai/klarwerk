@@ -373,23 +373,22 @@ describe("JOB 3222 · der reale Bildweg (describeImage) am 256er-Budget", () => 
 
     vi.unstubAllGlobals();
 
-    // Ein einziges Denk-Token mehr: die Ausgabe wird MITTEN IM SATZ gekappt und kommt trotzdem an
-    // (nicht-leerer Inhalt geht seit AUFTRAG-mega18 Block E bewusst durch — die Extract-Rettung
-    // lebt davon). FÜR DEN BILDWEG HEISST DAS: eine halbe Bildunterschrift ist möglich und wird
-    // NICHT als Fehler gemeldet. Das ist die Restgrenze des 256er-Budgets, hier gemessen statt
-    // vermutet; sie steht als REST in der Rückgabe und wird hier NICHT durch eine Anhebung verdeckt.
+    // Ein einziges Denk-Token mehr: die Ausgabe wird MITTEN IM SATZ gekappt (nicht-leerer Inhalt
+    // geht am Chokepoint seit AUFTRAG-mega18 Block E bewusst durch — die Extract-Rettung lebt davon).
+    // Bis R-0046 kam auf dem BILDWEG damit „Ein Rohrbogen mit Flansch an einer Wandhalterun" als
+    // Vorschlag an. Seit R-0046 wertet `describeImage` die Abbruch-Spur aus (wie assist, JOB 3276
+    // R3): das Fragment wird ein Fehler mit dem gesendeten Feld und der Zahl, kein Vorschlag. Das
+    // 256er-Budget selbst bleibt unverändert — die Grenze wird gemeldet, nicht durch Anhebung verdeckt.
     anbieterMitBudgetrechnung({
       denkToken: BILDWEG_BUDGET - 29,
       ausgabeToken: 30,
       ausgabe: voll,
     });
     const gekappt = await beschreibeBild();
-    const text = (gekappt.ergebnis as { text: string | null }).text;
-    expect(text).not.toBeNull();
-    expect(text).not.toBe(voll);
-    expect(voll.startsWith(text ?? "")).toBe(true);
-    // Wörtlich, damit die Restgrenze in der Rückgabe zitierbar ist und nicht gerundet wird:
-    // die Unterschrift endet mitten im Wort, und der Weg meldet das nicht.
-    expect(text).toBe("Ein Rohrbogen mit Flansch an einer Wandhalterun");
+    expect(gekappt.ergebnis).toBeInstanceOf(ModelEmptyResponseError);
+    expect((gekappt.ergebnis as ModelEmptyResponseError).reason).toBe("truncated");
+    expect(meldung(gekappt.ergebnis)).toContain(
+      `max_completion_tokens=${BILDWEG_BUDGET}, finish_reason=length`,
+    );
   });
 });

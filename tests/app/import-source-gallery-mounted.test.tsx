@@ -11,7 +11,8 @@ import i18n from "../../apps/web/src/i18n";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const RANK: Record<string, number> = { active: 0, soon: 1, planned: 2 };
+// ADMIN-02: „available" (SharePoint ohne Auskunft) steht zwischen aktiv und bald.
+const RANK: Record<string, number> = { active: 0, available: 1, soon: 2, planned: 3 };
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -87,7 +88,8 @@ describe("ic7: Galerie rendert alle drei Zustandsklassen in Reihenfolge", () => 
     // Zwei Galerien (Systeme + Dateien) — jede fuer sich aktiv→bald→geplant. Da beide hintereinander
     // gerendert werden, pruefen wir die Ordnung je data-id-Gruppe ueber die bekannten Kacheln.
     // JOB 4086: SharePoint steht jetzt bei den aktiven, nicht mehr am Ende bei den geplanten.
-    const systemIds = ["confluence", "json", "sharepoint", "jira", "word-sys", "pdf-sys", "teams"];
+    // ADMIN-02 Nacharbeit 2: Confluence steht ohne Auskunft bei „verfügbar", also hinter JSON.
+    const systemIds = ["json", "confluence", "sharepoint", "jira", "word-sys", "pdf-sys", "teams"];
     const ranks = systemIds.map((id) => RANK[tileById(id).getAttribute("data-state") ?? ""] ?? 99);
     const sorted = [...ranks].sort((a, b) => a - b);
     expect(ranks).toEqual(sorted);
@@ -96,11 +98,15 @@ describe("ic7: Galerie rendert alle drei Zustandsklassen in Reihenfolge", () => 
   it("Badges tragen TEXT (nicht nur Farbe) — barrierearm", async () => {
     await i18n.changeLanguage("de");
     mount();
-    expect(tileById("confluence").textContent).toContain("aktiv");
-    // JOB 4086: SharePoint IST jetzt aktiv — die gedeckte Aussage misst
-    // `tests/sharepoint-onedrive-import/katalog-sagt-die-wahrheit.test.ts` an Schalter, Route und
-    // Modul; hier steht nur, dass das Badge es auch sagt.
-    expect(tileById("sharepoint").textContent).toContain("aktiv");
+    // ADMIN-02 Nacharbeit 2 — NACHGEFÜHRT: dasselbe für Confluence; „aktiv" trägt nur noch JSON.
+    expect(tileById("confluence").textContent).toContain("verfügbar");
+    expect(tileById("confluence").textContent).not.toContain("aktiv");
+    expect(tileById("json").textContent).toContain("aktiv");
+    // ADMIN-02 — NACHGEFÜHRT: ohne Zugangsauskunft sagt die SharePoint-Kachel „verfügbar", nicht
+    // „aktiv". Gebaut ist sie (Schalter, Route, Modul — `katalog-sagt-die-wahrheit.test.ts`); ob sie
+    // in dieser Installation eingerichtet ist, weiss nur die Auskunft.
+    expect(tileById("sharepoint").textContent).toContain("verfügbar");
+    expect(tileById("sharepoint").textContent).not.toContain("aktiv");
     expect(tileById("jira").textContent).toContain("bald");
     expect(tileById("teams").textContent).toContain("geplant");
   });

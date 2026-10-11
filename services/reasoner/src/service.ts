@@ -12,6 +12,8 @@ import {
   sanitizeModelRunContext,
   traceFuerLauf,
 } from "../../model-runs";
+// R-0702: die Herkunft je KI-Zugang aus der zentralen Zugangsverwaltung (statt im Browser geraten).
+import { modellWissensstand, zugangHerkunft } from "./anbieter-herkunft";
 import {
   KlaraAusweichwegGesperrtFehler,
   anbieterZugelassen,
@@ -68,15 +70,21 @@ import type {
   GroupCandidateInput,
   GroupCandidatesResult,
   ImportCriteriaResult,
+  InterviewOptions,
   InterviewResult,
   JudgeFailure,
   KnowledgeRef,
+  LueckenBereich,
+  LueckenUrteilOutcome,
   ReasonerAktiveWahl,
+  ReasonerBetreiberKarte,
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
   ReasonerConfigStatus,
   ReasonerKiAbschaltung,
   ReasonerKiFreigabe,
+  ReasonerKiLage,
+  ReasonerKiVerfuegbarkeit,
   ReasonerLegacyChoice,
   ReasonerLocale,
   ReasonerPolicyMigration,
@@ -90,11 +98,22 @@ import type {
   ReasonerTaskConfigEingabe,
   ReasonerTaskMap,
   ReasonerWahlMigration,
+  ReasonerZweitmeinungWahl,
   Relevanztext,
   StructureResult,
+  ZweitmeinungAntwort,
+  ZweitmeinungErgebnis,
+  ZweitmeinungGrund,
+  ZweitmeinungStufe,
 } from "./types";
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter als Aufzählung und ihr lesbarer Name.
-import { REASONER_CLOUD_ANBIETER, REASONER_CLOUD_ANBIETER_NAME } from "./types";
+import {
+  REASONER_CLOUD_ANBIETER,
+  REASONER_CLOUD_ANBIETER_NAME,
+  REASONER_ZWEITMEINUNG_WAHLEN,
+} from "./types";
+// R-0305/R-1099: der reine Abgleich zweier Antworten.
+import { vergleicheAntworten } from "./zweitmeinung";
 
 // SCRUM-525 P.5 (WP-C): Befund 3(a) — eine per Deploy-ENV gesetzte Policy (KLARWERK_REASONER_POLICY)
 // ist eine bewusste, deklarative Vorgabe des Deploys; sie darf NICHT still von einem Admin-Schreibpfad
@@ -337,6 +356,10 @@ function erzeugnisAus(task: ModelRunTask, ergebnis: unknown): ModelRunErzeugnis 
     case "duplicate":
       [art, anzahl] = ["urteil", 1];
       break;
+    // R-1657: ein Urteil je beurteiltem Bereich.
+    case "gaps":
+      [art, anzahl] = ["urteil", anzahlListe(ergebnis)];
+      break;
     case "probe":
       return undefined;
   }
@@ -483,6 +506,30 @@ export const MAX_GROUP_CANDIDATES = 200;
 // `fallbackReason === "confidential"` ZUERST (titel-vorschlag.ts:139) — ein vertrauliches Bild darf
 // über den Umweg eines Titels keine Aussage erzeugen. Wer diese Funktion vor dem Setzen von
 // `fallbackReason` aufruft, hebelt genau diese Prüfung aus.
+// R-0604 (G22, mega83 A) — DIE EINE REGEL DER HERKUNFTSMARKE EINER ANTWORT: gesetzt nur, wenn
+// wirklich ein Modell geantwortet hat. Der deterministische Rückfall stellt Sätze aus geprüftem
+// Wissen regelbasiert zusammen; ihn „von KI erzeugt" zu nennen, war die Falschaussage aus G22.
+// Ben (Nacharbeit 17): `answer` und beide Antworten der Zweitmeinung gehen durch genau diese
+// Funktion — kein Weg setzt die Marke an ihr vorbei.
+function mitHerkunftsmarke(ergebnis: AnswerResult): AnswerResult {
+  return ergebnis.demo ? ergebnis : { ...ergebnis, aiGenerated: aiGeneratedMark("answer", false) };
+}
+
+// R-0305/R-1099: eine Modellantwort, wie sie gegenübergestellt UND verglichen wird. Dieselbe
+// Quellenpflicht wie im Fragedienst (SCRUM-490 R2 A2): „beantwortet" ohne Quelle ist keine belegte
+// Antwort und steht als ehrliche Leer-Antwort da. Die Herkunftsmarke reist nur mit, wenn sie da ist.
+function gegenueberstellbar(ergebnis: AnswerResult): ZweitmeinungAntwort {
+  const belegt = ergebnis.answered && ergebnis.sources.length > 0;
+  return {
+    answered: belegt,
+    answer: belegt ? ergebnis.answer : null,
+    sources: ergebnis.sources,
+    citedSources: belegt ? ergebnis.citedSources : [],
+    demo: ergebnis.demo,
+    ...(ergebnis.aiGenerated ? { aiGenerated: ergebnis.aiGenerated } : {}),
+  };
+}
+
 function mitTitelVorschlag(ergebnis: DescribeImageResult): DescribeImageResult {
   const vorschlag = titelVorschlag(ergebnis);
   return vorschlag.grund === "abgeleitet" ? { ...ergebnis, titelVorschlag: vorschlag } : ergebnis;
@@ -507,7 +554,14 @@ function clone(config: ReasonerTaskConfig): ReasonerTaskConfig {
     // tragen bewusst KEINE Freigabe; dass sie hier trotzdem kopiert würde, ist die Zusage für jeden
     // anderen Aufrufer und nicht der Weg, auf dem eine Vorgabe hereinkäme.
     ...(config.kiFreigabe ? { kiFreigabe: { ...config.kiFreigabe } } : {}),
+    // R-0305/R-1099: die Wahl der Zweitmeinung reist aus demselben Grund mit.
+    ...(config.zweitmeinung ? { zweitmeinung: config.zweitmeinung } : {}),
   };
+}
+
+// R-0305/R-1099: nur die benannten Wahlen zählen; alles andere ist ein Eingabefehler, kein „aus".
+function istZweitmeinungWahl(wert: unknown): wert is ReasonerZweitmeinungWahl {
+  return (REASONER_ZWEITMEINUNG_WAHLEN as readonly unknown[]).includes(wert);
 }
 
 // ================================================================================================
@@ -1306,6 +1360,8 @@ export class Reasoner {
   private normalizeTaskConfig(
     next: ReasonerTaskConfigEingabe,
     bisher?: ReasonerKiFreigabe | undefined,
+    // R-0305/R-1099: die bisherige Wahl der Zweitmeinung — dieselbe Regel wie `bisher`.
+    bisherZweitmeinung?: ReasonerZweitmeinungWahl | undefined,
   ): {
     config: ReasonerTaskConfig;
     migration: ReasonerPolicyMigration | undefined;
@@ -1339,8 +1395,25 @@ export class Reasoner {
       next.kiFreigabe === undefined
         ? normalisiereKiFreigabe(bisher)
         : normalisiereKiFreigabe(next.kiFreigabe);
+    // R-0305/R-1099: weglassen = unverändert, `null` = aus, sonst nur eine benannte Wahl.
+    if (
+      next.zweitmeinung !== undefined &&
+      next.zweitmeinung !== null &&
+      !istZweitmeinungWahl(next.zweitmeinung)
+    ) {
+      throw new Error("Ungültige Wahl für die Zweitmeinung.");
+    }
+    let zweitmeinung = bisherZweitmeinung;
+    if (next.zweitmeinung !== undefined) {
+      zweitmeinung = next.zweitmeinung ?? undefined;
+    }
     return {
-      config: { global: global.wahl, perTask, ...(kiFreigabe ? { kiFreigabe } : {}) },
+      config: {
+        global: global.wahl,
+        perTask,
+        ...(kiFreigabe ? { kiFreigabe } : {}),
+        ...(zweitmeinung ? { zweitmeinung } : {}),
+      },
       migration: migriert ? migration : undefined,
     };
   }
@@ -1360,7 +1433,12 @@ export class Reasoner {
     }
     // JOB 3549: der bisherige Freigabestand wird durchgereicht — ein Speichern der ZUORDNUNG ohne
     // Rumpf-Feld `kiFreigabe` lässt die Freigabe, wie sie war (weder gelöscht noch erteilt).
-    const normalized = this.normalizeTaskConfig(next, this.taskConfig.kiFreigabe); // wirft bei Ungültigem, bevor irgendetwas passiert
+    // R-0305/R-1099: ebenso die Wahl der Zweitmeinung.
+    const normalized = this.normalizeTaskConfig(
+      next,
+      this.taskConfig.kiFreigabe,
+      this.taskConfig.zweitmeinung,
+    ); // wirft bei Ungültigem, bevor irgendetwas passiert
     await this.policyRepo.set(normalized.config); // ZUERST persistieren …
     this.taskConfig = normalized.config; // … Laufzeit erst nach erfolgreichem Write
     this.migration = normalized.migration;
@@ -1484,11 +1562,19 @@ export class Reasoner {
     // bestehenden (positionalen) Aufrufe unverändert bleiben. Ohne Kontext bleibt der Datensatz
     // exakt wie bisher — ein ungebundener Aufrufer schreibt keine leeren Felder.
     context?: ModelRunContext,
+    // R-0305/R-1099: die Zweitmeinung. `kette` ersetzt die Kette der Aufgabe durch GENAU die
+    // übergebenen Glieder (dort: das gewählte Zweitmodell, ohne deterministischen Ersatz — ein
+    // Ersatz wäre keine zweite Einschätzung). `beantwortetVon` meldet das Glied, das geantwortet
+    // hat. Ohne Angabe ist der Lauf Zeile für Zeile der bisherige.
+    lenkung?: {
+      kette?: readonly ReasonerProvider[];
+      beantwortetVon?: (provider: ReasonerProvider) => void;
+    },
   ): Promise<T> {
     const startedAt = new Date().toISOString();
     // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
     const kiBeginn = this.kiAbschaltEpoche;
-    const chain = this.providerChain(task, confidential);
+    const chain = lenkung?.kette ? [...lenkung.kette] : this.providerChain(task, confidential);
     let lastError: unknown;
     // JOB 3036: das zuletzt WIRKLICH GERUFENE Modell. Nur der Fehler-Datensatz unten liest es — ein
     // gescheiterter Lauf soll sagen, an welchem Modell er gescheitert ist, statt von einem rein
@@ -1661,6 +1747,7 @@ export class Reasoner {
           },
           context,
         );
+        lenkung?.beantwortetVon?.(provider);
         return result;
       } catch (err) {
         // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
@@ -2014,6 +2101,28 @@ export class Reasoner {
     return this.providerReachability(this.kanteVon(cloud)) !== "unreachable";
   }
 
+  // ==============================================================================================
+  // R-0305/R-1099 (Ben, Nacharbeit 2) — KANN DIE ZWEITMEINUNG GELD KOSTEN?
+  // ==============================================================================================
+  //
+  // `taskBillable("answer")` kennt nur die Kette des Antwortwegs. Die Gegenüberstellung fragt
+  // zusätzlich das separat gewählte Zweitmodell (`answerMitZweitmeinung`). Ist das ein externer
+  // Anbieter, kann der Klick auch bei lokaler Erstantwort kostenpflichtig sein. Dieselbe Lesart wie
+  // `taskBillable`: eine MÖGLICHKEIT für den allgemeinen (nicht vertraulichen) Fall — eingerichtet,
+  // freigegeben (`oeffentlicheKiErlaubt`) und Kante nicht zuletzt unerreichbar. Nur ein Boolean,
+  // kein Anbietername (vip2-gate).
+  private zweitmeinungBillable(): boolean {
+    const wahl = this.taskConfig.zweitmeinung;
+    if (wahl === undefined || wahl === "local") {
+      return false;
+    }
+    const provider = this.cloudProvider(wahl);
+    if (!provider || !this.oeffentlicheKiErlaubt(false)) {
+      return false;
+    }
+    return this.providerReachability(this.kanteVon(provider)) !== "unreachable";
+  }
+
   // D-AISTATE PAKET 3 (bens V4, 23.07.): zusätzlich eine ABSTRAKTE per-Task-Nutzbarkeitskarte
   // `tasks: { [task]: boolean }` — NUR true/false je Aufgabe, KEIN Provider-/Modellname (die bleiben
   // der Admin-Sicht vorbehalten, vip2-gate). true = für die Aufgabe ist ein echtes Modell (cloud|local)
@@ -2027,6 +2136,7 @@ export class Reasoner {
     reachable: ReasonerReachability;
     tasks: ReasonerTaskMap;
     billable: ReasonerTaskMap;
+    zweitmeinungBillable: boolean;
     kiAbgeschaltet: boolean;
     extern: "blockiert" | "frei" | "frei_vertraulich";
   } {
@@ -2038,6 +2148,8 @@ export class Reasoner {
       tasks: aufgabenKarte((task) => this.taskModelUsable(task)),
       // AUFTRAG-mega67 BLOCK G: kostet ein Klick auf DIESE Aufgabe wirklich Geld? (s. taskBillable)
       billable: aufgabenKarte((task) => this.taskBillable(task)),
+      // R-0305/R-1099: kann das gewählte Zweitmodell einen Klick kostenpflichtig machen?
+      zweitmeinungBillable: this.zweitmeinungBillable(),
       // D5: nur ein Boolean — die Fragefläche unterscheidet damit „vom Administrator abgeschaltet"
       // von „kein Modell nutzbar" (Störung), ohne einen Anbieter- oder Modellnamen zu erfahren.
       kiAbgeschaltet: this.kiAbschaltung().abgeschaltet,
@@ -2049,6 +2161,100 @@ export class Reasoner {
         : this.oeffentlicheKiErlaubt(false)
           ? "frei"
           : "blockiert",
+    };
+  }
+
+  // ==============================================================================================
+  // R-0599 / R-0299 · WELCHE KI ARBEITET GERADE — UND WER BETREIBT SIE?
+  // ==============================================================================================
+  //
+  // Gemessen an der Aufgabe, um die es den Menschen geht: dem ANTWORTEN (`answer`).
+  //
+  // Ben nacharbeit-7: MODUS, ANBIETER UND MODELL KOMMEN AUS EINER QUELLE — der TATSÄCHLICH
+  // freigegebenen Ausführungskette (`providerChain`, gegated durch Adminfreigabe, Vertraulichkeit
+  // und Abschaltung), nicht aus der Anzeige der Wahl (`effectiveAnbieterFor`, JOB 3549, die die
+  // Freigabe absichtlich übergeht). Vorher fragte `effectiveFor` die echte Kette und
+  // `effectiveAnbieterFor` die Anzeige — bei „auto" mit Cloud UND lokalem Modell, aber ohne
+  // Cloud-Freigabe, begann die Ausführung lokal und die Kopfzeile behauptete „extern".
+  //
+  // UND MIT DEM ERREICHBARKEITSBEFUND, den der Server schon führt (`providerReachability`) — aber
+  // für DASSELBE Glied, das die Ausführung zuerst ruft. Ben nacharbeit-9: `runTask` versucht das erste
+  // Modellglied der Kette bei JEDEM Lauf erneut, auch nach einem negativen Befund; nur wenn es dann
+  // wieder scheitert, fällt der Lauf weiter. Die Anzeige darf deshalb keinen lokalen oder
+  // regelbasierten Weg als feststehend behaupten (das tat Nacharbeit 8, indem sie unerreichbare
+  // Glieder übersprang), sondern nennt das Glied, an das der nächste Lauf die Inhalte zuerst sendet,
+  // mit seinem letzten Befund — auch wenn der „zuletzt nicht erreichbar" lautet.
+  private antwortAufloesung(): {
+    zugang: ReasonerCloudAnbieter | "local" | null;
+    provider: ReasonerProvider | null;
+    verfuegbarkeit: ReasonerKiVerfuegbarkeit | null;
+  } {
+    if (this.kiAbschaltung().abgeschaltet) {
+      return { zugang: null, provider: null, verfuegbarkeit: null };
+    }
+    // Dieselbe Kette, dasselbe erste Modellglied wie `runTask` — ohne einen Filter, den die
+    // Ausführung nicht kennt.
+    const erstes = this.providerChain("answer").find((p) => p !== this.fallback);
+    if (!erstes) {
+      return { zugang: null, provider: null, verfuegbarkeit: null };
+    }
+    const kante = this.kanteVon(erstes);
+    const lage = this.providerReachability(kante);
+    return {
+      zugang: kante,
+      provider: erstes,
+      verfuegbarkeit:
+        lage === "active" ? "erreichbar" : lage === "unreachable" ? "unerreichbar" : "ungeprueft",
+    };
+  }
+
+  /** R-0599: die KI-Lage für jeden angemeldeten Nutzer — ohne Modellnamen, ohne Schlüssel. */
+  kiLage(): ReasonerKiLage {
+    const { zugang, verfuegbarkeit } = this.antwortAufloesung();
+    if (zugang === null) {
+      return {
+        modus: "keine",
+        anbieter: null,
+        anbieterName: null,
+        herkunft: null,
+        verfuegbarkeit,
+      };
+    }
+    const herkunft = zugangHerkunft()[zugang];
+    if (zugang === "local") {
+      return { modus: "intern", anbieter: "local", anbieterName: null, herkunft, verfuegbarkeit };
+    }
+    return {
+      modus: "extern",
+      anbieter: zugang,
+      anbieterName: REASONER_CLOUD_ANBIETER_NAME[zugang],
+      herkunft,
+      verfuegbarkeit,
+    };
+  }
+
+  /** R-0299: Betreiber, Modell, Herkunft und Wissensstand des gerade antwortenden Modells. */
+  private betreiberKarte(): ReasonerBetreiberKarte {
+    const { zugang, provider, verfuegbarkeit } = this.antwortAufloesung();
+    if (zugang === null || provider === null) {
+      return {
+        zugang: null,
+        betreiber: null,
+        modell: null,
+        herkunft: null,
+        wissensstand: null,
+        verfuegbarkeit,
+      };
+    }
+    // Das Modell DESSELBEN Glieds, das die Lage bestimmt — nicht das eines anderen Zugangs.
+    const modell = provider.modelName?.() ?? null;
+    return {
+      zugang,
+      betreiber: zugang === "local" ? null : REASONER_CLOUD_ANBIETER_NAME[zugang],
+      modell,
+      herkunft: zugangHerkunft()[zugang],
+      wissensstand: modellWissensstand(modell),
+      verfuegbarkeit,
     };
   }
 
@@ -2111,6 +2317,10 @@ export class Reasoner {
         openai: this.cloudStatus("openai"),
         anthropic: this.cloudStatus("anthropic"),
       },
+      // R-0702: Herkunft je Zugang mit Nachweisstufe — nur Angaben, nie ein Schlüssel.
+      herkunft: zugangHerkunft(),
+      // R-0299: Betreiber und Wissensstand des gerade antwortenden Modells.
+      betreiber: this.betreiberKarte(),
       autoAnbieter: this.vorgabeAnbieter() ?? null,
       ...(this.migration ? { migration: this.migration } : {}),
       persisted: this.policySource === "db",
@@ -2213,13 +2423,12 @@ export class Reasoner {
       },
       confidential,
     );
-    // AUFTRAG-mega61 Block F: die Kennzeichnung an BEIDEN Rückgabewegen dieser Methode — der
-    // frühen (Modell hat geantwortet) und der späten (deterministischer Rückfall mit Ursache).
-    // Genau solche zwei Ausgänge sind der Grund, warum die Kennzeichnung zentral gesetzt wird und
-    // nicht in den Providern.
-    const kennzeichnung = aiGeneratedMark("describe", result.demo);
+    // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern.
+    // R-0604 (G22, mega83 A): NUR auf dem frühen Rückgabeweg — dort hat ein Modell geantwortet.
+    // Der späte Weg (deterministischer Rückfall mit Ursache) liefert ohnehin keinen Text; bis hierher
+    // trug er trotzdem „von KI erzeugt". Im Zweifel wird die Kennzeichnung aus-, nicht eingeschaltet.
     if (!result.demo) {
-      return mitTitelVorschlag({ ...result, aiGenerated: kennzeichnung });
+      return mitTitelVorschlag({ ...result, aiGenerated: aiGeneratedMark("describe", false) });
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
@@ -2237,7 +2446,7 @@ export class Reasoner {
     // JOB 1164 D1: der Vorschlag entsteht aus dem VOLLSTÄNDIGEN Ergebnis — `fallbackReason` gehört
     // dazu und wird erst hier gesetzt. Würde er vorher abgeleitet, sähe die Ableitung kein
     // `confidential` und der Egress-Ausschluss käme als „demo" heraus. Die Reihenfolge ist Absicht.
-    return mitTitelVorschlag({ ...result, fallbackReason, aiGenerated: kennzeichnung });
+    return mitTitelVorschlag({ ...result, fallbackReason });
   }
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
@@ -2376,7 +2585,139 @@ export class Reasoner {
     // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
     // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
     // Stellen wären drei Gelegenheiten, sie zu vergessen.
-    return { ...result, aiGenerated: aiGeneratedMark("answer", result.demo) };
+    // R-0604 (G22, mega83 A): gesetzt wird sie aber nur, wenn wirklich ein Modell geantwortet hat.
+    // Der deterministische Rückfall stellt Sätze aus geprüftem Wissen regelbasiert zusammen — ihn
+    // „von KI erzeugt" zu nennen, war genau die Falschaussage aus G22.
+    return mitHerkunftsmarke(result);
+  }
+
+  // ==============================================================================================
+  // AUFNAHME 20260922 (R-0305, R-1099) — DIESELBE FRAGE, ZWEI MODELLE, NEBENEINANDER.
+  // ==============================================================================================
+  //
+  // Die erste Antwort entsteht GENAU wie bei `answer` (Kette der Aufgabe, Kennzeichnung, Protokoll).
+  // Die zweite bekommt dieselbe Frage, denselben Kontext, dieselbe Vertraulichkeit und denselben
+  // Relevanztext — aber von dem Modell, das der Administrator für die Zweitmeinung gewählt hat, und
+  // NUR von ihm (`lenkung.kette`). Beide Läufe gehen durch `runTask`: KI-Abschaltung,
+  // Anbieterbindung, Vertraulichkeitsriegel und Laufprotokoll gelten für den zweiten wie für den
+  // ersten, ohne zweite Auslegung.
+  //
+  // UNABHÄNGIG HEISST: ein anderes Glied als das, das die erste Antwort geliefert hat. Hat dasselbe
+  // Modell beide Male gearbeitet, wird kein zweiter Lauf gemacht und das gesagt — eine Wiederholung
+  // als Zweitmeinung auszugeben, wäre genau der „eine Weg", vor dem R-0305 schützen soll.
+  //
+  // Scheitert der zweite Lauf, bleibt die erste Antwort gültig; der Grund steht im Ergebnis. Nur die
+  // KI-Abschaltung bricht das Ganze ab — sie gilt für die Frage, nicht für einen Lauf.
+  async answerMitZweitmeinung(
+    question: string,
+    context: readonly KnowledgeRef[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+    runContext?: ModelRunContext,
+    relevanz?: Relevanztext,
+    dokumenttext?: string,
+  ): Promise<{ erste: AnswerResult; zweitmeinung: ZweitmeinungErgebnis }> {
+    const frage = (p: ReasonerProvider): Promise<AnswerResult> =>
+      dokumenttext === undefined
+        ? p.answer(question, context, locale, confidential, relevanz)
+        : p.answer(question, context, locale, confidential, relevanz, dokumenttext);
+    // Ein Behälter statt `let`: die Zuweisung geschieht im Rückruf, und eine Variable verengte der
+    // Typprüfer danach fälschlich auf `undefined`.
+    const ersterLauf: { provider?: ReasonerProvider } = {};
+    const ersteRoh = await this.runTask("answer", locale, frage, confidential, runContext, {
+      beantwortetVon: (p) => {
+        ersterLauf.provider = p;
+      },
+    });
+    const ersterProvider = ersterLauf.provider;
+    // Ben (Nacharbeit 17): dieselbe Regel wie `answer` (R-0604) — die KI-Marke NUR, wenn wirklich
+    // ein Modell geantwortet hat; der deterministische Rückfall wird nicht „von KI erzeugt" genannt.
+    const erste = mitHerkunftsmarke(ersteRoh);
+    const nicht = (grund: ZweitmeinungGrund) => ({
+      erste,
+      zweitmeinung: { status: "nicht_moeglich" as const, grund },
+    });
+    const wahl = this.zweitmeinungsModell(confidential);
+    if ("grund" in wahl) {
+      return nicht(wahl.grund);
+    }
+    if (ersterProvider === undefined || ersterProvider === wahl.provider) {
+      return nicht("nicht_unabhaengig");
+    }
+    let zweiteRoh: AnswerResult;
+    try {
+      zweiteRoh = await this.runTask("answer", locale, frage, confidential, runContext, {
+        kette: [wahl.provider],
+      });
+    } catch (fehler) {
+      if (fehler instanceof KiAbgeschaltetFehler) {
+        throw fehler;
+      }
+      return nicht("fehlgeschlagen");
+    }
+    // Ben (Nacharbeit 17): Vergleich und Gegenüberstellung beziehen sich auf DASSELBE Paar — die
+    // beiden Modellantworten, wie sie verglichen wurden. Die erste wird deshalb HIER festgehalten
+    // und mitgeliefert (`zweitmeinung.erste`): der Fragedienst kann die Antwort danach noch
+    // zuschneiden (R-0346, Ergänzungen aus Voraussetzungen), und diese Ergänzung darf weder in den
+    // Abgleich noch in Spalte A geraten. Sie steht außerhalb des Vergleichs an der Antwort selbst.
+    const ersteVerglichen = gegenueberstellbar(erste);
+    const zweite = gegenueberstellbar(mitHerkunftsmarke(zweiteRoh));
+    const abweichungen = vergleicheAntworten(ersteVerglichen, zweite);
+    return {
+      erste,
+      zweitmeinung: {
+        status: "verglichen",
+        ersteStufe: this.stufeVon(ersterProvider),
+        zweiteStufe: this.stufeVon(wahl.provider),
+        erste: ersteVerglichen,
+        zweite,
+        abweichend: abweichungen.length > 0,
+        abweichungen,
+      },
+    };
+  }
+
+  // R-0305/R-1099: welches Modell die Zweitmeinung geben darf — oder warum keines. Jede Prüfung ist
+  // dieselbe, die auch der Kettenbau anwendet (`chainForChoice`); es gibt keine zweite Auffassung.
+  private zweitmeinungsModell(
+    confidential: boolean,
+  ): { provider: ReasonerProvider } | { grund: ZweitmeinungGrund } {
+    const wahl = this.taskConfig.zweitmeinung;
+    if (wahl === undefined) {
+      return { grund: "nicht_eingerichtet" };
+    }
+    // Eine Klara-Anbieterbindung lässt nur ihren Anbieter zu — jedes andere Glied wäre ein
+    // Ausweichweg, den niemand freigegeben hat (`runTask`, R-0590).
+    const gebunden = confidential ? undefined : gebundenerAnbieter();
+    if (wahl === "local") {
+      if (!this.usingSecondary()) {
+        return { grund: "nicht_verfuegbar" };
+      }
+      if (confidential && this.secondary.rejectsConfidential?.() === true) {
+        return { grund: "nicht_freigegeben" };
+      }
+      return gebunden === undefined ? { provider: this.secondary } : { grund: "nicht_freigegeben" };
+    }
+    const provider = this.cloudProvider(wahl);
+    if (!provider) {
+      return { grund: "nicht_verfuegbar" };
+    }
+    if (!this.oeffentlicheKiErlaubt(confidential) || !anbieterZugelassen(wahl)) {
+      return { grund: "nicht_freigegeben" };
+    }
+    if (gebunden !== undefined && gebunden !== wahl) {
+      return { grund: "nicht_freigegeben" };
+    }
+    return { provider };
+  }
+
+  // R-0305/R-1099: die Stufe eines Glieds für die Gegenüberstellung — kein Anbieter- oder
+  // Modellname (WP-VIP2-GATE-2).
+  private stufeVon(provider: ReasonerProvider): ZweitmeinungStufe {
+    if (provider === this.fallback) {
+      return "deterministic";
+    }
+    return this.anbieterVon(provider) === undefined ? "local" : "cloud";
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der
@@ -2514,15 +2855,18 @@ export class Reasoner {
     confidential = false,
     // R-1624: optionaler, vom Menschen bestätigter Bildbefund → Foto-Fragenfolge.
     imageContext?: string,
+    // AUFNAHME 20260922 · WISSEN-INTERVIEW: Fragebaum / Lücken-Thema (ohne Angabe wie bisher).
+    options: InterviewOptions = {},
   ): Promise<InterviewResult> {
     const result = await this.runTask(
       "interview",
       locale,
-      (p) => p.interview(answers, locale, confidential, imageContext),
+      (p) => p.interview(answers, locale, confidential, imageContext, options),
       confidential,
     );
-    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.
-    return { ...result, aiGenerated: aiGeneratedMark("interview", result.demo) };
+    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet. R-0604: nur, wenn ein
+    // Modell sie erzeugt hat; die festen Fragen des deterministischen Rückfalls sind keine KI.
+    return result.demo ? result : { ...result, aiGenerated: aiGeneratedMark("interview", false) };
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).
@@ -2982,6 +3326,76 @@ export class Reasoner {
     confidential = false,
   ): Promise<DuplicateJudgeResult | null> {
     return (await this.judgeDuplicateOutcome(coreA, coreB, locale, confidential)).verdict;
+  }
+
+  // R-1657 (ROADMAP 9.3): „Lückenerkennung über Reasoner". Dieselbe Bauform wie
+  // judgeConflictOutcome: die Kette der globalen Wahl (judgeProviders), vertraulich ⇒ die Cloud fällt
+  // vor jedem Aufruf heraus, genau ein Lauf `gaps` im Protokoll je Urteil mit Modellversuch, und ein
+  // unterscheidbarer Ausgang (Urteil ODER Ursache). Ohne Modell urteilt hier NIEMAND — der Aufrufer
+  // zeigt dann seine benannte Regel und sagt, dass sie gilt.
+  async judgeKnowledgeGapsOutcome(
+    bereiche: readonly LueckenBereich[],
+    locale: ReasonerLocale = "de",
+    confidential = false,
+  ): Promise<LueckenUrteilOutcome> {
+    if (bereiche.length === 0) {
+      return { urteile: [] };
+    }
+    let failure: JudgeFailure | undefined;
+    let providerFailure: ModelFailureInfo | undefined;
+    let attempted = false;
+    const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    const startedAt = new Date().toISOString();
+    const lb = new Laufbuch();
+    for (const provider of providers) {
+      if (!provider.judgeKnowledgeGaps) {
+        continue;
+      }
+      attempted = true;
+      const urteilen = provider.judgeKnowledgeGaps.bind(provider);
+      try {
+        const result = await lb.versuch(
+          provider,
+          () => urteilen(bereiche, locale, confidential),
+          this.pruefungenFuer(provider, confidential),
+        );
+        if (result) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+            status: "success",
+            erzeugt: erzeugnisAus("gaps", result),
+          });
+          return { urteile: result, provider: provider.name };
+        }
+        lb.vermerke(provider, "Antwort unverwertbar");
+        failure = failure ?? "model-error";
+      } catch (err) {
+        if (err instanceof ModelCapacityError) {
+          await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, { status: "error" });
+          throw err;
+        }
+        if (err instanceof Error && err.name === "ConfidentialEgressError") {
+          failure = failure ?? "confidential";
+          continue;
+        }
+        failure = failure ?? Reasoner.judgeFailureOf(err);
+        providerFailure = providerFailure ?? classifyModelFailure(err);
+      }
+    }
+    if (!attempted) {
+      return {
+        urteile: null,
+        failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
+      };
+    }
+    await this.protokolliereLaufbuch("gaps", locale, startedAt, lb, {
+      status: "error",
+      ursache: failure ?? "model-error",
+    });
+    return {
+      urteile: null,
+      failure: failure ?? "model-error",
+      ...(providerFailure ? { providerFailure } : {}),
+    };
   }
 
   // SCRUM-167: select bleibt synchron (reines Keyword-Ranking, kein Modell-/Netzaufruf).

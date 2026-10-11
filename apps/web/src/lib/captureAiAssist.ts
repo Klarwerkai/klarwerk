@@ -33,9 +33,10 @@ export function assistActionHelpKey(action: AssistAction): string {
   return `capture.ai.help.${action}`;
 }
 
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Neben dem Typ stand die Liste `ASSIST_APPLY_MODES`.
+// Niemand las sie — die Vorschlagsbox (`components/AiAssistBox.tsx`) setzt ihre zwei Knöpfe einzeln
+// und reicht den Modus über diesen Typ weiter. Die Liste ist entfernt; der Typ trägt die Menge.
 export type AssistApplyMode = "replace" | "append";
-
-export const ASSIST_APPLY_MODES: readonly AssistApplyMode[] = ["replace", "append"];
 
 // Bewusste Übernahme des KI-Vorschlags: „replace" ersetzt den Text, „append" hängt ihn an (mit
 // Leerzeile). Reine Funktion — kein Auto-Submit, keine Mutation. „discard" wird in der UI behandelt

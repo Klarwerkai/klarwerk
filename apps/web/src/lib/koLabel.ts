@@ -21,9 +21,6 @@ export function koLabel(title: string | null | undefined, koId: string): string 
   return getrimmt.length > 0 ? getrimmt : koId;
 }
 
-// Trägt diese Zeile ihren Titel, oder ist sie auf den Rückfall zurückgefallen? Die Flächen brauchen
-// die Unterscheidung, um die Kennung NUR dann zusätzlich zu zeigen, wenn sie nicht schon der
-// Haupttext ist — sonst stünde dieselbe Zeichenfolge zweimal in derselben Zeile.
-export function hatTitel(title: string | null | undefined): boolean {
-  return (title ?? "").trim().length > 0;
-}
+// R-1349 (Aufnahme gesamt-aufruferwaechter): Hier stand `hatTitel` („Kennung nur zusätzlich zeigen,
+// wenn ein Titel führt"). Beide Flächen führen die Kennung inzwischen immer nachrangig im Tooltip
+// (`pages/Stufe2.tsx`, R-0991 Nr. 38) — die Unterscheidung brauchte niemand mehr; sie ist entfernt.

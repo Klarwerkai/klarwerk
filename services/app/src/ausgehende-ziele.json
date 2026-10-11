@@ -22,7 +22,7 @@
     },
     {
       "kennung": "ki-lokal",
-      "zweck": "Lokales Modell des Betreibers (OpenAI-kompatibel)",
+      "zweck": "Lokales Modell des Betreibers (OpenAI-kompatibel): Sprachmodell und internes Embedding-Modell (KLARWERK_LOCAL_EMBEDDING_MODEL, nur fuer eine bestaetigte interne Adresse)",
       "dateien": ["services/reasoner/src/model-client.ts"],
       "hosts": [],
       "umgebung": ["KLARWERK_LOCAL_LLM_URL", "KLARWERK_LOCAL_LLM_ALLOWED_ORIGINS"],

@@ -44,6 +44,7 @@ import type {
   Themenkarte,
   Themenknoten,
 } from "../api/types";
+import { leerzustandsZeile } from "../components/EmptyStateCtas";
 import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { textbreite } from "../lib/graphLayout";
@@ -761,9 +762,13 @@ function Seitenleiste({ thema, name }: { thema: string; name: string }): JSX.Ele
           </p>
         ) : null}
         {objekte !== undefined && objekte.length === 0 ? (
-          <p data-testid="leiste-leer" className="text-sm text-muted">
-            {t("wissensnetz.leiste.leer")}
-          </p>
+          <>
+            <p data-testid="leiste-leer" className="text-sm text-muted">
+              {t("wissensnetz.leiste.leer")}
+            </p>
+            {/* R-0956 (Nacharbeit 7): die leere Liste ordnet in den Wissenskreis ein. */}
+            {leerzustandsZeile(t, "wissensnetz")}
+          </>
         ) : null}
         {(objekte ?? []).slice(0, LEISTE_KARTEN).map((o) => {
           const datum = datumVon(o.createdAt, i18n.language);
@@ -1484,7 +1489,7 @@ function Umschalter({
     );
   };
   return (
-    // Ein echtes <fieldset> statt `role="group"` (wie `LibraryScopeBar.tsx:159`): die Gruppe
+    // Ein echtes <fieldset> statt `role="group"` (wie `BibliothekListe.tsx`): die Gruppe
     // bekommt ihren Namen aus dem Element plus `aria-label`, nicht aus einem ARIA-Nachbau — der
     // Linter erzwingt das ueber `a11y/useSemanticElements`.
     <fieldset
@@ -1750,6 +1755,7 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
       <>
         <Card interactive={false}>
           <p className="text-sm text-muted">{t("wissensnetz.leer")}</p>
+          {leerzustandsZeile(t, "wissensnetz")}
           {hinweis !== null ? (
             <p data-testid="netz-auffrischung-hinweis" className="mt-2 text-micro text-muted">
               {hinweis}

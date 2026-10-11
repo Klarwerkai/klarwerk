@@ -345,7 +345,11 @@ describe("JOB 3109 UX-09 · von der echten Route bis zum Leseweg der gesperrten 
     expect(chips.length, "die Antwort zeigt keine Quelle").toBeGreaterThan(0);
     const chip = chips[0] as HTMLElement;
     expect(chip.tagName, "der Quellen-Chip ist kein Link").toBe("A");
-    expect(chip.getAttribute("href")).toBe(`/wissen/${id}`);
+    // Aufnahme 20260922 (R-0326): der Chip einer TRAGENDEN Quelle führt an ihre Belegstelle — die
+    // zitierte Passage reist als Textanker mit; der Pfad bleibt das Wissensobjekt.
+    const ziel = new URL(chip.getAttribute("href") ?? "", "https://klarwerk.test");
+    expect(ziel.pathname).toBe(`/wissen/${id}`);
+    expect(ziel.searchParams.get("stelle")).toBe(SATZ_A);
     await bruecke.app.close();
   });
 

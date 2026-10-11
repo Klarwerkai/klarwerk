@@ -17,6 +17,17 @@ import { cx } from "./ui";
 type Filter = "all" | MgmtPriorityFlag;
 const FILTER: readonly Filter[] = ["all", "busFactorOne", "stale", "highProtection"];
 
+// R-0908: „Bus-Faktor 1" stand unerklärt auf Filter und Markierung. Der Filter nennt jetzt zuerst,
+// was es heißt („Nur eine Person …"), und behält das Fachwort in Klammern; die Texte stehen in
+// `texte/fachwort.ts`. Die übrigen Filter und Markierungen kommen unverändert aus `mgmt.prio.*`.
+function filterKey(f: Filter): string {
+  return f === "busFactorOne" ? "fachwort.einzelperson.filter" : `mgmt.prio.filter.${f}`;
+}
+
+function flagKey(fl: MgmtPriorityFlag): string {
+  return fl === "busFactorOne" ? "fachwort.einzelperson.markierung" : `mgmt.prio.flag.${fl}`;
+}
+
 /** Faktoren, für die in KEINER Zeile Eingangsdaten vorliegen — in der Reihenfolge der Quelle. */
 function ohneDatenUeberall(priorities: readonly MgmtPriority[]): MgmtPriorityFactorKey[] {
   const erste = priorities[0];
@@ -64,7 +75,7 @@ export function WissensPriorisierung({
                 : "border-hairline bg-page text-muted hover:text-ink",
             )}
           >
-            {t(`mgmt.prio.filter.${f}`)}
+            {t(filterKey(f))}
           </button>
         ))}
       </fieldset>
@@ -91,7 +102,7 @@ export function WissensPriorisierung({
                     data-flag={fl}
                     className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text"
                   >
-                    {t(`mgmt.prio.flag.${fl}`)}
+                    {t(flagKey(fl))}
                   </span>
                 ))}
                 <span

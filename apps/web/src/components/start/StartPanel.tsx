@@ -22,12 +22,14 @@ import {
 import { knowledgeCapital } from "../../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../../lib/knowledgeGuidance";
+import { formatKoTimestamp } from "../../lib/koDates";
 import { useNetzOnline } from "../../lib/netzzustand";
 import { PROOF_CHAIN } from "../../lib/proofChain";
 import { START_HELP_TOPICS } from "../../lib/startHelp";
 import { START_ORIENTATION_TEXT } from "../../lib/startOrientation";
 import { stufe2FeatureLabelKeys } from "../../lib/stufe2Hint";
 import { AdminFirstRunCard } from "../AdminFirstRunCard";
+import { leerzustandsZeile } from "../EmptyStateCtas";
 import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../FunkeCards";
 import { KlaraPathTeaser } from "../KlaraPathTeaser";
 import { RoleLink } from "../RoleLink";
@@ -372,7 +374,10 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 {t("start.livewall.saved")}
               </div>
               {daten.saved.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("start.livewall.savedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-1">
                   {daten.saved.map((s) => (
@@ -389,10 +394,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                         <StatusPill status={s.status} />
                       </span>
                       <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
-                        {new Date(s.at).toLocaleString(
-                          i18n.language.startsWith("en") ? "en-GB" : "de-DE",
-                          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
-                        )}
+                        {formatKoTimestamp(s.at, i18n.language)}
                       </span>
                     </li>
                   ))}
@@ -404,7 +406,10 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                 {t("start.livewall.helped")}
               </div>
               {daten.helped.length === 0 ? (
-                <p className="text-[12.5px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                <>
+                  <p className="text-[12.5px] text-muted">{t("start.livewall.helpedEmpty")}</p>
+                  {leerzustandsZeile(t, "start")}
+                </>
               ) : (
                 <ul className="space-y-1">
                   {daten.helped.map((h) => (
@@ -417,10 +422,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                         {() => h.title}
                       </RoleLink>
                       <span className="shrink-0 font-mono text-[10.5px] text-muted-2">
-                        {new Date(h.at).toLocaleString(
-                          i18n.language.startsWith("en") ? "en-GB" : "de-DE",
-                          { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" },
-                        )}
+                        {formatKoTimestamp(h.at, i18n.language)}
                       </span>
                     </li>
                   ))}

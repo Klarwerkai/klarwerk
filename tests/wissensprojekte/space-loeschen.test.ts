@@ -152,6 +152,8 @@ async function verschieben(b: Buehne, koId: string, zielSpaceId: string | null) 
         quelleVersion: vj.quelle?.version ?? null,
         zielId: vj.ziel?.id ?? null,
         zielVersion: vj.ziel?.version ?? null,
+        // ADMIN-07 (aus main): die Übernahme ist zusätzlich an die wirksame Rechtelage gebunden.
+        grundlage: vj.grundlage,
       },
     },
   });
@@ -164,6 +166,7 @@ interface Grundlage {
   quelleVersion: number | null;
   zielId: string | null;
   zielVersion: number | null;
+  grundlage: string;
 }
 
 /** Die Grundlage einer Rechtevorschau, so wie die Oberfläche sie für die Übernahme mitschickt. */
@@ -181,6 +184,7 @@ async function grundlage(b: Buehne, koId: string, zielSpaceId: string | null): P
     quelleVersion: vj.quelle?.version ?? null,
     zielId: vj.ziel?.id ?? null,
     zielVersion: vj.ziel?.version ?? null,
+    grundlage: vj.grundlage,
   };
 }
 
@@ -442,6 +446,34 @@ describe("L3 · Verknüpfungen bleiben konsistent", () => {
     expect((await lies(b, b.k.erik, `/api/kos/${koId}`)).json().spaceId).toBeUndefined();
     // Keine Rücknahme mehr: der Space bleibt bei Fassung 2 (Löschvermerk), keine Fassung 3.
     expect(await b.services.spaces.fassungen(b.werkstatt.id)).toHaveLength(2);
+    await keineWaise(b);
+  });
+
+  // Nacharbeit 6 (Integration mit main): neue Schreibwege auf Spaces — Archiv, Freigaberegel,
+  // Vorlagen — legen neue Fassungen. Keiner darf einen gelöschten Space still wiederbeleben.
+  it("der Löschvermerk ist endgültig: keine neue Fassung, kein Archivweg auf den gelöschten Space", async () => {
+    const b = await buehne();
+    expect((await loeschen(b, b.k.lea, b.werkstatt.id, 1)).statusCode).toBe(200);
+    const [eins] = await b.services.spaces.fassungen(b.werkstatt.id);
+    expect(eins).toBeDefined();
+    if (!eins) {
+      return;
+    }
+    const wiederbelebt = await b.services.spaces.lege({
+      ...eins,
+      version: 3,
+      geaendertAm: "2026-10-12T08:00:00.000Z",
+    });
+    expect(wiederbelebt, "auf den Löschvermerk folgt keine Fassung").toBe(false);
+    expect((await b.services.spaces.aktuelle()).map((s) => s.id)).not.toContain(b.werkstatt.id);
+    expect(await b.services.spaces.fassungen(b.werkstatt.id)).toHaveLength(2);
+    const archiv = await b.app.inject({
+      method: "POST",
+      url: `/api/spaces/${b.werkstatt.id}/archivierung/vorschau`,
+      headers: b.k.lea,
+      payload: {},
+    });
+    expect(archiv.statusCode).toBe(404);
     await keineWaise(b);
   });
 

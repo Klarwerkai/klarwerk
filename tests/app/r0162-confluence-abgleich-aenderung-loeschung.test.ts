@@ -12,10 +12,10 @@
 // Die Gegenfälle pinnen, dass „fehlt in der Liste" allein nie etwas löscht.
 import { describe, expect, it, vi } from "vitest";
 import { runConfluenceImport } from "../../services/app/src/confluence-import";
-import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { InMemoryCandidateRepo, LibraryService } from "../../services/library-analytics";
+import { adapterFromConfig } from "../support/confluence-adapter";
 
 function antwort(status: number, body: unknown): Response {
   return {

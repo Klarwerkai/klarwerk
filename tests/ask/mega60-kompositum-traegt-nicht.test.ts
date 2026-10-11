@@ -22,7 +22,9 @@
 // mega57, angewandt auf einen neuen Treffertyp.
 import { describe, expect, it } from "vitest";
 import type { KnowledgeRef } from "../../services/reasoner";
-import { keywordSelect, queryTokens, rankCandidates } from "../../services/reasoner";
+import { queryTokens, rankCandidates } from "../../services/reasoner";
+// R-1349: der zweite Auswahlweg ist entfernt; `keywordSelect` misst die Menge am Produktweg.
+import { keywordSelect } from "../support/auswahlweg";
 
 function ref(
   id: string,

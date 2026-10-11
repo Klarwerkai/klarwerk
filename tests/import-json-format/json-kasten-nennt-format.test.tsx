@@ -205,8 +205,9 @@ describe("UX-20: JSON-Kasten und echter Dateifluss", () => {
     expect(container.querySelector<HTMLInputElement>(`#${JSON_UPLOAD_INPUT_ID}`)?.disabled).toBe(
       true,
     );
+    // R-0179 (Nacharbeit 3): NACHGEFÜHRT — derselbe Eingang nimmt JSON und Excel, sonst nichts.
     expect(container.querySelector<HTMLInputElement>(`#${JSON_UPLOAD_INPUT_ID}`)?.accept).toBe(
-      ".json,application/json",
+      ".json,application/json,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     expect(container.textContent).toContain("negativwissen");
     expect(container.querySelector("textarea")?.value).toContain('"title"');

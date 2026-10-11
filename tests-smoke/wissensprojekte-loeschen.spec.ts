@@ -36,6 +36,7 @@ async function wechsel(request: APIRequestContext, koId: string, zielSpaceId: st
   const vj = (await v.json()) as {
     quelle: { id: string; version: number } | null;
     ziel: { id: string; version: number } | null;
+    grundlage: string;
   };
   const res = await request.post("/api/spaces/verschiebung", {
     data: {
@@ -46,6 +47,7 @@ async function wechsel(request: APIRequestContext, koId: string, zielSpaceId: st
         quelleVersion: vj.quelle?.version ?? null,
         zielId: vj.ziel?.id ?? null,
         zielVersion: vj.ziel?.version ?? null,
+        grundlage: vj.grundlage,
       },
     },
   });

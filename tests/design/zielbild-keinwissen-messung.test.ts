@@ -76,7 +76,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
-import { type KlaraPanel, createKlaraPanel } from "../app/klara-panel-fixture";
+import { type KlaraPanel, createKlaraPanel, istFrageAufruf } from "../app/klara-panel-fixture";
 import { type Bruecke, bruecke } from "../library/job2703-bruecke";
 
 // ================================================================================================
@@ -1367,7 +1367,8 @@ describe.runIf(zielbildDa)(
             }
           }
         }
-        if (method === "POST" && url === "/api/ask") {
+        // R-0700: mit Sitzung fragt das Panel über Klaras eigenen Zugang — derselbe Körper.
+        if (method === "POST" && istFrageAufruf(url)) {
           const frage = String(
             (JSON.parse(String(init?.body ?? "{}")) as { question?: string }).question ?? "",
           );
@@ -1401,7 +1402,7 @@ describe.runIf(zielbildDa)(
     });
 
     it("K0 · Kalibrierung: die echte App hat /api/ask beantwortet, das Panel steht in der Luecke — kein stiller Null-Treffer", () => {
-      expect(b.aufrufe.some((c) => c.method === "POST" && c.url === "/api/ask")).toBe(true);
+      expect(b.aufrufe.some((c) => c.method === "POST" && istFrageAufruf(c.url))).toBe(true);
       expect(askFragen).toEqual([FRAGE]);
       expect(basis[M.blockSichtbar], "der Lueckenzustand ist nicht erreicht").toBe("ja");
       expect(basis[M.antwort], "Antwortblock und Luecke zugleich").toBe("nein");

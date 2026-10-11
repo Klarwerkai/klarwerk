@@ -111,6 +111,28 @@ describe("R-0842 · angemeldete Sitzungen werden gebremst", () => {
     expect(liste.statusCode, "eine Leseroute ohne Modell wurde mitgebremst").toBe(200);
   });
 
+  // R-0700 (Integration mit R-0842): Klaras Fragen laufen über den eigenen Zugang — sie dürfen die
+  // Bremse nicht umgehen und teilen sich das Kontingent desselben Kontos mit `/api/ask`. Gezählt wird
+  // beim Eingang, vor der Sitzungsprüfung; ohne Klara-Köpfe antwortet der Zugang deshalb erst 404
+  // (keine Sitzungszuordnung) und dann 429.
+  it("S4b · Klaras eigener Zugang zählt in dasselbe Kontingent wie die Frage", async () => {
+    process.env.KLARWERK_KI_ANFRAGEN_MAX = "2";
+    const app = buildApp(buildServices());
+    const token = await anmelden(app, "admin@klara-bremse.de");
+    const klara = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/klara/sessions/ohne-sitzung/execute",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { question: "Wie wird die Pumpe P-1 angefahren?" },
+      });
+    expect((await frage(app, token)).statusCode).toBe(200);
+    expect((await klara()).statusCode).toBe(404);
+    const gebremst = await klara();
+    expect(gebremst.statusCode).toBe(429);
+    expect(gebremst.json().error).toBe("KI_ANFRAGEN_GEBREMST");
+  });
+
   it("S5 · anonyme Anfragen zählen nicht — sie bekommen weiter das 401 der Route", async () => {
     process.env.KLARWERK_KI_ANFRAGEN_MAX = "1";
     const app = buildApp(buildServices());
@@ -142,6 +164,8 @@ describe("R-0842 · angemeldete Sitzungen werden gebremst", () => {
   it("S7 · die gebremsten Routen sind die modellgestützten — nicht nur der Word-Zusatz", () => {
     expect(KI_ROUTEN.map((r) => `${r.methode} ${r.pfad}`)).toEqual([
       "POST /api/ask",
+      // R-0700: Klaras eigener Ausführungszugang trägt die Klara-Fragen, die vorher /api/ask nahmen.
+      "POST /api/klara/sessions/:sessionId/execute",
       "POST /api/reasoner",
       "POST /api/reasoner/describe",
       "POST /api/reasoner/enrich",
@@ -149,6 +173,7 @@ describe("R-0842 · angemeldete Sitzungen werden gebremst", () => {
       "POST /api/kos/:id/ai-check",
       "POST /api/help/explain",
       "POST /api/media/analyze",
+      "POST /api/media/transcribe",
     ]);
   });
 });

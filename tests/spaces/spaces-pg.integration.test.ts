@@ -207,6 +207,7 @@ describe("Spaces gegen echtes PostgreSQL", () => {
           quelleVersion: null,
           zielId: space.id,
           zielVersion: v.json().ziel.version,
+          grundlage: v.json().grundlage,
         },
       },
     });
@@ -306,6 +307,8 @@ describe("Spaces gegen echtes PostgreSQL", () => {
       const vermerk = { ...basis, version: 2, geloeschtAm: "2026-10-08T09:00:00.000Z" };
       expect(await repo.lege(vermerk)).toBe(true);
       expect((await repo.aktuelle()).map((s) => s.id)).not.toContain(id);
+      // Nacharbeit 6: der Löschvermerk ist endgültig — eine weitere Fassung wird nicht geschrieben.
+      expect(await repo.lege({ ...basis, version: 3 })).toBe(false);
     } finally {
       await erster.end();
     }

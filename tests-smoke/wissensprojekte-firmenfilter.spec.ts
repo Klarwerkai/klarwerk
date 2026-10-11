@@ -68,7 +68,7 @@ test.describe("Wissensprojekte · Firmenfilter in der echten App", () => {
       data: { koId: ko.id, zielSpaceId: spaceId },
     });
     expect(v.status(), await v.text()).toBe(200);
-    const vj = (await v.json()) as { ziel: { id: string; version: number } };
+    const vj = (await v.json()) as { ziel: { id: string; version: number }; grundlage: string };
     const wechsel = await page.request.post("/api/spaces/verschiebung", {
       data: {
         koId: ko.id,
@@ -78,6 +78,7 @@ test.describe("Wissensprojekte · Firmenfilter in der echten App", () => {
           quelleVersion: null,
           zielId: vj.ziel.id,
           zielVersion: vj.ziel.version,
+          grundlage: vj.grundlage,
         },
       },
     });

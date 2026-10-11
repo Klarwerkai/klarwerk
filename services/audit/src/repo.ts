@@ -1,6 +1,60 @@
 import type { TxContext } from "../../db-tx";
 import { hashEntryFuerVersion, verifyChain } from "./chain";
-import type { AuditEntry, AuditFilter } from "./types";
+import type { AuditEntry, AuditFilter, AuditSeitenFilter } from "./types";
+
+// produkt:20261009:admin-audit-verstaendlich — DIE REGEL DES SEITENWEGS, als Erweiterung der einen
+// Filterregel unten: `actor`/`action`/`target` exakt wie `auditFilterTrifft`, dazu `actions` (ODER;
+// eine leere Liste heißt „kein Filter") und der Zeitraum über `at`. `at` ist ein ISO-Zeitpunkt in
+// UTC (`toISOString()`), deshalb genügt der Zeichenkettenvergleich — dieselbe Ordnung wie in SQL
+// (`at text`). Speicherablage, Dienst-Rückfall und `repo-pg.ts` meinen damit dieselbe Menge.
+export function auditSeiteTrifft(entry: AuditEntry, filter: AuditSeitenFilter): boolean {
+  return (
+    auditFilterTrifft(entry, filter) &&
+    (!filter.actions || filter.actions.length === 0 || filter.actions.includes(entry.action)) &&
+    (!filter.from || entry.at >= filter.from) &&
+    (!filter.to || entry.at < filter.to)
+  );
+}
+
+/** Ein Vorgang des Kontodienstes — sein Ziel ist eine Kontokennung (Kontobeleg). */
+export function istKontoAktion(action: string): boolean {
+  return (
+    action.startsWith("user.") || action.startsWith("auth.") || action === "notice.acknowledged"
+  );
+}
+
+/**
+ * produkt:20261009:admin-audit-verstaendlich (Bens Befund Nacharbeit 3) — DIE BEGRENZTEN BELEGE.
+ *
+ * Je Kennung höchstens drei Einträge, jeweils der JÜNGSTE: gespeicherter Akteursname,
+ * gespeicherter Zielname und Kontovorgang mit dieser Kennung als Ziel. Ergebnis aufsteigend nach
+ * `seq`, ohne Doppelungen. Dieselbe Menge wie `AUDIT_NAMENSBELEGE_SQL` (repo-pg.ts).
+ */
+export function namensbelegeAus(
+  eintraege: readonly AuditEntry[],
+  ids: readonly string[],
+): AuditEntry[] {
+  const gesucht = new Set(ids);
+  const akteurname = new Map<string, AuditEntry>();
+  const zielname = new Map<string, AuditEntry>();
+  const konto = new Map<string, AuditEntry>();
+  for (const e of eintraege) {
+    if (gesucht.has(e.actor) && e.payload.actorName !== undefined) {
+      akteurname.set(e.actor, e);
+    }
+    if (gesucht.has(e.target) && e.payload.targetName !== undefined) {
+      zielname.set(e.target, e);
+    }
+    if (gesucht.has(e.target) && istKontoAktion(e.action)) {
+      konto.set(e.target, e);
+    }
+  }
+  const nachSeq = new Map<number, AuditEntry>();
+  for (const e of [...akteurname.values(), ...zielname.values(), ...konto.values()]) {
+    nachSeq.set(e.seq, e);
+  }
+  return [...nachSeq.values()].sort((a, b) => a.seq - b.seq);
+}
 
 // JOB 2698 D1 (Review-Befund R2-32): DIE EINE FILTERREGEL des Protokolls — leer/fehlend heißt „kein
 // Filter", gesetzt heißt exakte Gleichheit (Groß-/Kleinschreibung zählt). Sie stand bis 2698 nur in
@@ -61,6 +115,26 @@ export interface AuditRepo {
   findBy?(filter: AuditFilter): Promise<AuditEntry[]>;
   /** JOB 2698 D1: „gibt es mindestens einen Eintrag?" — ein EXISTS, kein Laden. */
   existsBy?(filter: AuditFilter): Promise<boolean>;
+  /**
+   * produkt:20261009:admin-audit-verstaendlich — DER SEITENWEG: höchstens `limit` Einträge, die
+   * `auditSeiteTrifft` erfüllen und `seq < before` haben (fehlt `before`: keine Grenze), absteigend
+   * nach `seq`. Auf PostgreSQL ein `ORDER BY seq DESC LIMIT` über den Primärschlüssel.
+   *
+   * OPTIONAL aus demselben Grund wie `findBy`: fehlt sie, fällt `AuditService.page` auf `all()` plus
+   * dieselbe Regel zurück — derselbe Vertrag, nur teurer.
+   */
+  findPage?(
+    filter: AuditSeitenFilter,
+    before: number | undefined,
+    limit: number,
+  ): Promise<AuditEntry[]>;
+  /**
+   * produkt:20261009:admin-audit-verstaendlich — die Einträge, die zu einer der Kennungen einen
+   * Namen GESPEICHERT haben: `actor` in `ids` mit `payload.actorName`, oder `target` in `ids` mit
+   * `payload.targetName`. Aufsteigend nach `seq`. Grundlage dafür, dass eine Seite gelöschte Konten
+   * weiter mit dem Namen benennt, den die Kette selbst kennt — ohne die ganze Kette zu laden.
+   */
+  findNamensbelege?(ids: readonly string[]): Promise<AuditEntry[]>;
   /**
    * W3-B (KW-W3-19): DER PUNKTZUGRIFF ueber die Sequenz — der EINZIGE zugelassene Leseweg fuer
    * eine `validationDecisionRef`.
@@ -339,6 +413,27 @@ export class InMemoryAuditRepo implements AuditRepo {
 
   existsBy(filter: AuditFilter): Promise<boolean> {
     return Promise.resolve(this.entries.some((e) => auditFilterTrifft(e, filter)));
+  }
+
+  // produkt:20261009:admin-audit-verstaendlich: rückwärts vom Ende der Kette — dieselbe Reihenfolge
+  // wie `ORDER BY seq DESC`, und es wird nur so weit gelesen, wie die Seite reicht.
+  findPage(
+    filter: AuditSeitenFilter,
+    before: number | undefined,
+    limit: number,
+  ): Promise<AuditEntry[]> {
+    const seite: AuditEntry[] = [];
+    for (let i = this.entries.length - 1; i >= 0 && seite.length < limit; i--) {
+      const e = this.entries[i] as AuditEntry;
+      if ((before === undefined || e.seq < before) && auditSeiteTrifft(e, filter)) {
+        seite.push(e);
+      }
+    }
+    return Promise.resolve(seite);
+  }
+
+  findNamensbelege(ids: readonly string[]): Promise<AuditEntry[]> {
+    return Promise.resolve(namensbelegeAus(this.entries, ids));
   }
 
   last(_tx?: TxContext): Promise<AuditEntry | undefined> {
