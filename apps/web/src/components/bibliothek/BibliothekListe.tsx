@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { CONF_TONE_CLASS, type ConfidentialityTone } from "../../lib/confidentiality";
 import type { KoPreviewSource } from "../../lib/koPreview";
 import { useLesevariante } from "../../lib/lesevariante";
+import { statusSchluessel } from "../../lib/wissensstatus";
 import { leerzustandsRahmen } from "../EmptyStateCtas";
 import { KoSummaryDisclosure } from "../KoSummaryDisclosure";
 import { Button, cx } from "../ui";
@@ -411,7 +412,7 @@ export function BibliothekListe({
                       : "text-muted",
                   )}
                 >
-                  {s === "alle" ? t("lib.segment.alle") : t(`status.${s}`)}
+                  {s === "alle" ? t("lib.segment.alle") : t(statusSchluessel(s))}
                 </button>
               );
             })}
