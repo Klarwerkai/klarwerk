@@ -66,6 +66,21 @@ export interface DemoTexts {
   koLieferantSchutz: KoText;
   koGeheim: KoText;
   koWartung: KoText;
+  // Aufnahme 20260922 · gesamt-demo-erklaermodus (R-1660, Schaufenster-Modus): die beiden Fälle der
+  // Roadmap-Quelle („Schweißnaht V1/V2/V3, Lager-Fall Karl/Tom").
+  //  · Schweißnaht V1/V2/V3 sind die drei FASSUNGEN desselben Lernkurven-Objekts: V1 und V2 stehen
+  //    hier, V3 ist `koSchweiss` (unverändert). Der Seed legt V1 an und überarbeitet zweimal über
+  //    den echten Überarbeitungsweg — die Lernkurve steht damit im Fassungsverlauf, nicht in drei
+  //    Objekten.
+  //  · Lager-Fall Karl/Tom: Karl (Instandhaltung, bald im Ruhestand) hat erfasst, woran er erkennt,
+  //    dass das Hauptlager der Presse 3 getauscht werden muss; Tom, sein Nachfolger, stellt dazu die
+  //    Frage `lagerFrage`. Karl und Tom sind Personen der Geschichte, keine angelegten Konten.
+  // Wortwahl ohne Inhaltstoken der Demo-Wissenslücken-Frage (s. seed-demo.ts), sonst entstünde die
+  // Demo-Lücke nicht mehr.
+  koSchweissV1: KoText;
+  koSchweissV2: KoText;
+  koLagerKarl: KoText;
+  lagerFrage: string;
   gapQuestion: string;
   warmConflict: ConflictText;
   carConflict: ConflictText;
@@ -246,6 +261,26 @@ const de: DemoTexts = {
     conditions: ["Förderband länger als vier Wochen im Betrieb"],
     measures: ["Tragrollen sichtprüfen", "Befund im Wartungsplan eintragen"],
   },
+  koSchweissV1: {
+    title: "Schweißnaht Baugruppe 7: auffällig viel Nacharbeit, Ursache offen.",
+    statement:
+      "Die Naht an Baugruppe 7 muss häufig nachgearbeitet werden; Poren zeigen sich vor allem an kalten Werkstücken. Eine Ursache ist noch nicht belegt.",
+  },
+  koSchweissV2: {
+    title: "Schweißnaht Baugruppe 7: kalte Werkstücke vor dem Schweißen anwärmen.",
+    statement:
+      "Erster Versuch der Spätschicht: kalte Werkstücke vor dem Schweißen kurz anwärmen. Die Poren werden seltener; die richtige Temperatur ist noch nicht festgelegt.",
+    conditions: ["Werkstück fühlt sich kalt an"],
+    measures: ["Werkstück kurz anwärmen"],
+  },
+  koLagerKarl: {
+    title: "Lager-Fall Presse 3: woran Karl erkennt, dass das Hauptlager getauscht werden muss",
+    statement:
+      "Karl aus der Instandhaltung geht bald in Rente. Vor Arbeitsbeginn legt er die Hand auf das Gehäuse des Hauptlagers der Presse 3: ist es deutlich wärmer als handwarm und brummt es dumpf, tauscht er das Lager in der nächsten Pause. Seit er so vorgeht, ist das Lager nie im laufenden Betrieb ausgefallen. Tom, sein Nachfolger, findet diesen Griff hier, ohne Karl fragen zu müssen.",
+    conditions: ["Gehäuse deutlich wärmer als handwarm", "dumpfes Brummen im Hauptlager"],
+    measures: ["Lager in der nächsten Pause tauschen", "Tausch im Wartungsplan eintragen"],
+  },
+  lagerFrage: "Woran erkenne ich, dass das Hauptlager der Presse 3 getauscht werden muss?",
   gapQuestion: "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
   warmConflict: {
     description:
@@ -445,6 +480,29 @@ const en: DemoTexts = {
     conditions: ["Conveyor in operation for more than four weeks"],
     measures: ["Visually check the carrying rollers", "Record the finding in the maintenance plan"],
   },
+  koSchweissV1: {
+    title: "Weld seam on assembly 7: unusually much rework, cause unknown.",
+    statement:
+      "The seam on assembly 7 often has to be reworked; pores appear mainly on cold workpieces. No cause has been proven yet.",
+  },
+  koSchweissV2: {
+    title: "Weld seam on assembly 7: warm up cold workpieces before welding.",
+    statement:
+      "First trial by the late team: briefly warm up cold workpieces before welding. Pores become rarer; the right temperature has not been fixed yet.",
+    conditions: ["Workpiece feels cold"],
+    measures: ["Briefly warm up the workpiece"],
+  },
+  koLagerKarl: {
+    title: "Bearing case press 3: how Karl tells that the main bearing must be replaced",
+    statement:
+      "Karl from maintenance retires soon. Before work starts he puts his hand on the housing of the main bearing of press 3: if it is clearly warmer than hand-warm and hums dully, he replaces the bearing in the next break. Since he has worked like this, the bearing has never failed during operation. Tom, his successor, finds this check here without having to ask Karl.",
+    conditions: ["Housing clearly warmer than hand-warm", "dull hum in the main bearing"],
+    measures: [
+      "Replace the bearing in the next break",
+      "Record the replacement in the maintenance plan",
+    ],
+  },
+  lagerFrage: "How can I tell that the main bearing of press 3 must be replaced?",
   gapQuestion: "Why does the dosing value on line L4 fluctuate after every shift change?",
   warmConflict: {
     description:
@@ -640,6 +698,29 @@ const nl: DemoTexts = {
     conditions: ["Transportband langer dan vier weken in bedrijf"],
     measures: ["Draagrollen visueel controleren", "Bevinding in het onderhoudsplan vastleggen"],
   },
+  koSchweissV1: {
+    title: "Lasnaad module 7: opvallend veel nawerk, oorzaak onbekend.",
+    statement:
+      "De naad van module 7 moet vaak worden nagewerkt; poriën verschijnen vooral bij koude werkstukken. Een oorzaak is nog niet aangetoond.",
+  },
+  koSchweissV2: {
+    title: "Lasnaad module 7: koude werkstukken voor het lassen opwarmen.",
+    statement:
+      "Eerste proef van de late dienst: koude werkstukken voor het lassen kort opwarmen. De poriën worden zeldzamer; de juiste temperatuur ligt nog niet vast.",
+    conditions: ["Werkstuk voelt koud aan"],
+    measures: ["Werkstuk kort opwarmen"],
+  },
+  koLagerKarl: {
+    title: "Lagergeval pers 3: waaraan Karl ziet dat het hoofdlager vervangen moet worden",
+    statement:
+      "Karl van onderhoud gaat binnenkort met pensioen. Voor het werk begint legt hij zijn hand op het huis van het hoofdlager van pers 3: is het duidelijk warmer dan handwarm en bromt het dof, dan vervangt hij het lager in de volgende pauze. Sinds hij zo werkt, is het lager nooit tijdens bedrijf uitgevallen. Tom, zijn opvolger, vindt deze controle hier zonder Karl te hoeven vragen.",
+    conditions: ["Huis duidelijk warmer dan handwarm", "dof gebrom in het hoofdlager"],
+    measures: [
+      "Het lager in de volgende pauze vervangen",
+      "De vervanging in het onderhoudsplan vastleggen",
+    ],
+  },
+  lagerFrage: "Waaraan zie ik dat het hoofdlager van pers 3 vervangen moet worden?",
   gapQuestion: "Waarom schommelt de doseerwaarde op lijn L4 na elke ploegwisseling?",
   warmConflict: {
     description:

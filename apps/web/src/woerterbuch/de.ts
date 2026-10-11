@@ -4675,6 +4675,16 @@ const de = {
   "lib.liste.offline": "Ohne Verbindung kann gerade nicht gesucht werden.",
   "lib.liste.offlineWeiter":
     "Sobald die Verbindung wieder steht, wird die Suche von selbst fortgesetzt.",
+  // R-0429 Slice 2 (Peter, Frage 52): der KI-Antwortbereich über den Treffern. „Von der KI
+  // verdichtet" und „Gefunden" sind die zwei Seiten der Trennung, die der Berater verlangt.
+  "lib.antwort.titel": "Von der KI verdichtet",
+  "lib.antwort.anfordern": "Antwort aus den Quellen",
+  "lib.antwort.laeuft": "Die KI liest die Quellen …",
+  "lib.antwort.ausblenden": "Ausblenden",
+  "lib.antwort.einblenden": "Einblenden",
+  "lib.antwort.quellen": "Quellen",
+  "lib.antwort.quelleN": "Quelle {{n}}",
+  "lib.antwort.gefunden": "Gefunden",
   // JOB 3335 · UX-21: der Schalter „Trefferliste" des Lese-Tablets (760–899 px). Die Beschriftung
   // nennt den ZUSTAND, den ein Klick herstellt — kein Symbol allein, kein Erklärsatz (H4).
   "lib.lesemodus.listeEinblenden": "Trefferliste einblenden",
@@ -5128,6 +5138,24 @@ const de = {
   // sichtbar angeboten." Der Server führt den Lauf und schickt seine Kennung mit; die Bilanz nennt
   // sie ab jetzt, samt Ausgang aus der Laufakte. Der Ausgang selbst spricht das Vokabular der
   // Lauf-Kachel (`w2.run.*`) — dieselbe Sache, dieselben Worte.
+  // R-0920: die eigene Ergebnisadresse eines Importlaufs (`pages/ImportLauf.tsx`).
+  "imp.lauf.oeffnen": "Ergebnisseite dieses Laufs öffnen",
+  "imp.lauf.titel": "Ergebnis eines Importlaufs",
+  "imp.lauf.lead":
+    "Diese Seite zeigt genau einen Lauf, so wie der Server ihn festhält. Ihre Adresse lässt sich neu laden und weitergeben.",
+  "imp.lauf.kennung": "Lauf-Kennung",
+  "imp.lauf.ausgang": "Ausgang",
+  "imp.lauf.nichtGefunden":
+    "Zu dieser Kennung kennt der Server keinen Lauf. Über Zustand und Zähler wird deshalb nichts gesagt.",
+  "imp.lauf.zaehler.gesamt": "Elemente insgesamt",
+  "imp.lauf.zaehler.angelegt": "Neu angelegt",
+  "imp.lauf.zaehler.gebunden": "An Bestehendes gebunden",
+  "imp.lauf.zaehler.uebersprungen": "Übersprungen",
+  "imp.lauf.zaehler.gescheitert": "Gescheitert",
+  "imp.lauf.gestartet": "Gestartet",
+  "imp.lauf.beendet": "Beendet",
+  "imp.lauf.nochNichtBeendet": "Noch nicht beendet",
+  "imp.lauf.zurueck": "Zurück zum Import",
   "imp.groups.runHeading": "Lauf dieser Übernahme",
   "imp.groups.runIdLabel": "Lauf-Kennung",
   "imp.groups.runCall": "Aufruf {{n}}",
