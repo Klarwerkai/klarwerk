@@ -70,3 +70,7 @@ diesen einen Fall nachgeführt (Version 14).
   Meldung. Hervorgehobene Zustellungen werden immer geliefert, gewöhnliche die jüngsten 100 je Konto
   (`VEROEFFENTLICHUNG_MELDUNGEN_FENSTER`); stille erzeugen keine Zustellung.
 * Keine echte Nutzerbeobachtung, ob die Erklärung verstanden wird.
+* Nachtrag ADMIN-12 (`produkt:20261007:veroeffentlichungsoptionen:admin-20261009`): persönliche
+  Abwahl, tägliche Zusammenfassung, Mail bei eingerichtetem SMTP und Zustellstatus bauen auf
+  diesem Weg auf — siehe `tests/kommunikationsregeln/README.md`. Die Aussage „Keine E-Mail bei
+  Veröffentlichung" oben gilt für die Werksvorgabe weiter.

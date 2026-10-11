@@ -69,6 +69,47 @@ export default {
     "veroeffentlichung.meldungAktualisierung": "Aktualisiert",
     "veroeffentlichung.meldungWichtig": "Wichtig",
     "veroeffentlichung.meldungArt": "Veröffentlichung",
+    "veroeffentlichung.regel.titel": "Nach den Kommunikationsregeln:",
+    "veroeffentlichung.regel.sofort": "{{anzahl}} Person(en) sofort in der Glocke",
+    "veroeffentlichung.regel.zusammenfassung":
+      "{{anzahl}} Person(en) in der täglichen Zusammenfassung (ab dem Folgetag)",
+    "veroeffentlichung.regel.abgewaehlt":
+      "{{anzahl}} Person(en) haben diese Meldung abgewählt und bekommen keine",
+    "veroeffentlichung.regel.mail": "{{anzahl}} davon zusätzlich per Mail",
+    "veroeffentlichung.regel.mailNichtEingerichtet": "Mail: nicht eingerichtet",
+    "veroeffentlichung.regel.link": "Die Regeln stehen im Profil unter „Meldungen und Kanäle“.",
+    "veroeffentlichung.zustellung.zeigen": "Zustellstatus",
+    "veroeffentlichung.zustellung.verbergen": "Zustellstatus schließen",
+    "veroeffentlichung.zustellung.laedt": "Zustellstatus wird geladen …",
+    "veroeffentlichung.zustellung.glocke":
+      "Glocke: {{angelegt}} angelegt · {{zugestellt}} zugestellt · {{gelesen}} gelesen",
+    "veroeffentlichung.zustellung.mail":
+      "Mail: {{angelegt}} angelegt · {{zugestellt}} vom Mailserver angenommen · {{fehlgeschlagen}} fehlgeschlagen · {{entfallen}} entfallen",
+    "veroeffentlichung.zustellung.kenntnisnahme":
+      "Kenntnisnahme dieser Fassung: {{bestaetigt}} bestätigt · {{offen}} offen",
+    "veroeffentlichung.zustellung.belegt":
+      "„Zugestellt“ heißt: soweit belegt — die Glocke hat die Meldung ausgeliefert bzw. der Mailserver hat die Mail angenommen.",
+    "veroeffentlichung.zustellung.leer": "Niemand wurde benachrichtigt.",
+    "veroeffentlichung.zustellung.nichtErfasst":
+      "Für diese Veröffentlichung ist kein Zustellstatus erfasst (vor Einführung der Kommunikationsregeln).",
+    "veroeffentlichung.zustellung.fortsetzen": "Versand fortsetzen",
+    "veroeffentlichung.zustellung.person.glocke": "Glocke",
+    "veroeffentlichung.zustellung.person.mail": "Mail",
+    "veroeffentlichung.zustellung.person.kenntnisnahme": "Kenntnisnahme",
+    "veroeffentlichung.zustellung.status.angelegt": "angelegt",
+    "veroeffentlichung.zustellung.status.zugestellt": "zugestellt",
+    "veroeffentlichung.zustellung.status.gelesen": "gelesen",
+    "veroeffentlichung.zustellung.status.fehlgeschlagen": "fehlgeschlagen",
+    "veroeffentlichung.zustellung.status.entfallen": "entfallen",
+    "veroeffentlichung.zustellung.status.ausstehend": "offen",
+    "veroeffentlichung.zustellung.status.bestaetigt": "bestätigt",
+    "veroeffentlichung.zustellung.status.ueberfaellig": "überfällig",
+    "veroeffentlichung.zustellung.status.ueberholt": "überholt",
+    "veroeffentlichung.zustellung.hinweis.abgewaehlt": "abgewählt",
+    "veroeffentlichung.zustellung.hinweis.zusammenfassung": "wartet auf die Zusammenfassung",
+    "veroeffentlichung.zustellung.grund.kein_zugriff": "kein Zugriff mehr",
+    "veroeffentlichung.zustellung.grund.abgewaehlt": "abgewählt",
+    "veroeffentlichung.zustellung.grund.mailserver_abgelehnt": "Mailserver hat abgelehnt",
   },
   en: {
     "veroeffentlichung.titel": "Publication",
@@ -129,6 +170,48 @@ export default {
     "veroeffentlichung.meldungAktualisierung": "Updated",
     "veroeffentlichung.meldungWichtig": "Important",
     "veroeffentlichung.meldungArt": "Publication",
+    "veroeffentlichung.regel.titel": "Under the communication rules:",
+    "veroeffentlichung.regel.sofort": "{{anzahl}} person(s) immediately in the bell",
+    "veroeffentlichung.regel.zusammenfassung":
+      "{{anzahl}} person(s) in the daily summary (from the next day)",
+    "veroeffentlichung.regel.abgewaehlt":
+      "{{anzahl}} person(s) turned this notification off and receive none",
+    "veroeffentlichung.regel.mail": "{{anzahl}} of them also by email",
+    "veroeffentlichung.regel.mailNichtEingerichtet": "Email: not set up",
+    "veroeffentlichung.regel.link":
+      "The rules are in your profile under “Notifications and channels”.",
+    "veroeffentlichung.zustellung.zeigen": "Delivery status",
+    "veroeffentlichung.zustellung.verbergen": "Close delivery status",
+    "veroeffentlichung.zustellung.laedt": "Loading delivery status …",
+    "veroeffentlichung.zustellung.glocke":
+      "Bell: {{angelegt}} created · {{zugestellt}} delivered · {{gelesen}} read",
+    "veroeffentlichung.zustellung.mail":
+      "Email: {{angelegt}} created · {{zugestellt}} accepted by the mail server · {{fehlgeschlagen}} failed · {{entfallen}} dropped",
+    "veroeffentlichung.zustellung.kenntnisnahme":
+      "Acknowledgement of this version: {{bestaetigt}} confirmed · {{offen}} open",
+    "veroeffentlichung.zustellung.belegt":
+      "“Delivered” means: as far as evidenced — the bell has delivered the notification or the mail server has accepted the email.",
+    "veroeffentlichung.zustellung.leer": "Nobody was notified.",
+    "veroeffentlichung.zustellung.nichtErfasst":
+      "No delivery status was recorded for this publication (before the communication rules were introduced).",
+    "veroeffentlichung.zustellung.fortsetzen": "Resume delivery",
+    "veroeffentlichung.zustellung.person.glocke": "Bell",
+    "veroeffentlichung.zustellung.person.mail": "Email",
+    "veroeffentlichung.zustellung.person.kenntnisnahme": "Acknowledgement",
+    "veroeffentlichung.zustellung.status.angelegt": "created",
+    "veroeffentlichung.zustellung.status.zugestellt": "delivered",
+    "veroeffentlichung.zustellung.status.gelesen": "read",
+    "veroeffentlichung.zustellung.status.fehlgeschlagen": "failed",
+    "veroeffentlichung.zustellung.status.entfallen": "dropped",
+    "veroeffentlichung.zustellung.status.ausstehend": "open",
+    "veroeffentlichung.zustellung.status.bestaetigt": "confirmed",
+    "veroeffentlichung.zustellung.status.ueberfaellig": "overdue",
+    "veroeffentlichung.zustellung.status.ueberholt": "superseded",
+    "veroeffentlichung.zustellung.hinweis.abgewaehlt": "turned off",
+    "veroeffentlichung.zustellung.hinweis.zusammenfassung": "waiting for the summary",
+    "veroeffentlichung.zustellung.grund.kein_zugriff": "no longer has access",
+    "veroeffentlichung.zustellung.grund.abgewaehlt": "turned off",
+    "veroeffentlichung.zustellung.grund.mailserver_abgelehnt": "rejected by the mail server",
   },
   nl: {
     "veroeffentlichung.titel": "Publicatie",
@@ -189,5 +272,46 @@ export default {
     "veroeffentlichung.meldungAktualisierung": "Bijgewerkt",
     "veroeffentlichung.meldungWichtig": "Belangrijk",
     "veroeffentlichung.meldungArt": "Publicatie",
+    "veroeffentlichung.regel.titel": "Volgens de communicatieregels:",
+    "veroeffentlichung.regel.sofort": "{{anzahl}} persoon/personen direct in de bel",
+    "veroeffentlichung.regel.zusammenfassung":
+      "{{anzahl}} persoon/personen in de dagelijkse samenvatting (vanaf de volgende dag)",
+    "veroeffentlichung.regel.abgewaehlt":
+      "{{anzahl}} persoon/personen hebben deze melding uitgezet en krijgen er geen",
+    "veroeffentlichung.regel.mail": "{{anzahl}} daarvan ook per e-mail",
+    "veroeffentlichung.regel.mailNichtEingerichtet": "E-mail: niet ingericht",
+    "veroeffentlichung.regel.link": "De regels staan in je profiel onder „Meldingen en kanalen”.",
+    "veroeffentlichung.zustellung.zeigen": "Bezorgstatus",
+    "veroeffentlichung.zustellung.verbergen": "Bezorgstatus sluiten",
+    "veroeffentlichung.zustellung.laedt": "Bezorgstatus wordt geladen …",
+    "veroeffentlichung.zustellung.glocke":
+      "Bel: {{angelegt}} aangemaakt · {{zugestellt}} bezorgd · {{gelesen}} gelezen",
+    "veroeffentlichung.zustellung.mail":
+      "E-mail: {{angelegt}} aangemaakt · {{zugestellt}} door de mailserver aangenomen · {{fehlgeschlagen}} mislukt · {{entfallen}} vervallen",
+    "veroeffentlichung.zustellung.kenntnisnahme":
+      "Kennisname van deze versie: {{bestaetigt}} bevestigd · {{offen}} open",
+    "veroeffentlichung.zustellung.belegt":
+      "„Bezorgd” betekent: voor zover aangetoond — de bel heeft de melding afgeleverd of de mailserver heeft de e-mail aangenomen.",
+    "veroeffentlichung.zustellung.leer": "Niemand is op de hoogte gebracht.",
+    "veroeffentlichung.zustellung.nichtErfasst":
+      "Voor deze publicatie is geen bezorgstatus vastgelegd (vóór de invoering van de communicatieregels).",
+    "veroeffentlichung.zustellung.fortsetzen": "Verzending hervatten",
+    "veroeffentlichung.zustellung.person.glocke": "Bel",
+    "veroeffentlichung.zustellung.person.mail": "E-mail",
+    "veroeffentlichung.zustellung.person.kenntnisnahme": "Kennisname",
+    "veroeffentlichung.zustellung.status.angelegt": "aangemaakt",
+    "veroeffentlichung.zustellung.status.zugestellt": "bezorgd",
+    "veroeffentlichung.zustellung.status.gelesen": "gelezen",
+    "veroeffentlichung.zustellung.status.fehlgeschlagen": "mislukt",
+    "veroeffentlichung.zustellung.status.entfallen": "vervallen",
+    "veroeffentlichung.zustellung.status.ausstehend": "open",
+    "veroeffentlichung.zustellung.status.bestaetigt": "bevestigd",
+    "veroeffentlichung.zustellung.status.ueberfaellig": "te laat",
+    "veroeffentlichung.zustellung.status.ueberholt": "achterhaald",
+    "veroeffentlichung.zustellung.hinweis.abgewaehlt": "uitgezet",
+    "veroeffentlichung.zustellung.hinweis.zusammenfassung": "wacht op de samenvatting",
+    "veroeffentlichung.zustellung.grund.kein_zugriff": "geen toegang meer",
+    "veroeffentlichung.zustellung.grund.abgewaehlt": "uitgezet",
+    "veroeffentlichung.zustellung.grund.mailserver_abgelehnt": "door de mailserver geweigerd",
   },
 } satisfies Textmodul;
