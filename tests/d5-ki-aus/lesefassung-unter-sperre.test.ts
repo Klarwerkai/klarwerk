@@ -57,38 +57,43 @@ function sperreAb(ab: number) {
   };
 }
 
+// produkt:20261011:peter-p14 · B-07: Seit die Lesefassung den Bestandsstempel nicht mehr enthält
+// (pruefbasis.ts, Abschnitt B-07), liest `get` nach dem Objekt GAR NICHTS mehr — weder Schreibstand
+// noch Bestand. Die D5-Zusage („nach der Sperre wird nichts gelesen") gilt damit strenger als
+// vorher. Den Bestand liest nur noch der interne Abgleich (`listMitBestandsabgleich`).
 describe("D5 · KI aus — die Lesefassung liest nur unter der Sperre", () => {
-  it("ohne gemerkten Stempel: Sperre vor Objekt, vor Schreibstand und vor dem Bestand", async () => {
+  it("die Sperre steht vor dem Objekt; danach liest die Lesefassung weder Schreibstand noch Bestand", async () => {
     const { service, list, stand } = await aufbau();
     const s = sperreAb(Number.POSITIVE_INFINITY);
     const ko = await service.get("ko-a", s.pruefen);
     expect(ko?.id).toBe("ko-a");
-    expect(s.aufrufe()).toBe(3);
-    expect(stand).toHaveBeenCalledTimes(1);
-    expect(list).toHaveBeenCalledTimes(1);
-  });
-
-  it("abgeschaltet nach dem Objekt: weder Schreibstand noch Bestand werden gelesen", async () => {
-    const { service, list, stand } = await aufbau();
-    const s = sperreAb(2);
-    await expect(service.get("ko-a", s.pruefen)).rejects.toThrow("KI_ABGESCHALTET");
+    // KALIBRIERUNG: der Nachweis ohne gespeicherte Basis wird als überholt gelesen — die
+    // Lesefassung wurde also gebildet, nur ohne Bestandszugriff.
+    expect(ko?.aiCheck?.ueberholt).toBe(true);
+    expect(s.aufrufe()).toBe(1);
     expect(stand).not.toHaveBeenCalled();
     expect(list).not.toHaveBeenCalled();
   });
 
-  it("abgeschaltet nach dem Schreibstand: der Bestand wird nicht gelesen", async () => {
-    const { service, list, stand } = await aufbau();
-    const s = sperreAb(3);
+  it("abgeschaltet vor dem Objekt: nichts wird gelesen", async () => {
+    const { repo, service, list, stand } = await aufbau();
+    const objekt = vi.spyOn(repo, "findById");
+    const s = sperreAb(1);
     await expect(service.get("ko-a", s.pruefen)).rejects.toThrow("KI_ABGESCHALTET");
-    expect(stand).toHaveBeenCalledTimes(1);
+    expect(objekt).not.toHaveBeenCalled();
+    expect(stand).not.toHaveBeenCalled();
     expect(list).not.toHaveBeenCalled();
   });
 
-  it("Gegenprobe: ohne Sperre liest `get` wie bisher Schreibstand und Bestand", async () => {
+  it("Gegenprobe: nur der interne Abgleich liest Schreibstand und Bestand", async () => {
     const { service, list, stand } = await aufbau();
     await service.get("ko-a");
+    expect(stand).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+    const intern = await service.listMitBestandsabgleich();
+    expect(intern.map((k) => k.id)).toEqual(["ko-a"]);
     expect(stand).toHaveBeenCalledTimes(1);
-    expect(list).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalled();
   });
 
   it("`aktuelleFassungVon` = `get(id)?.version`, ohne Lesefassung; getrasht und unbekannt → undefined", async () => {

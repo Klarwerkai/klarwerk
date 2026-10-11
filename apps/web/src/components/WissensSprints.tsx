@@ -81,7 +81,7 @@ export function WissensSprints({
                 {s.source ? (
                   <span
                     data-testid="sprint-quelle"
-                    className="ml-2 rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] uppercase text-muted-2"
+                    className="ml-2 rounded-pill bg-page px-2 py-0.5 font-mono text-klein uppercase text-muted-2"
                   >
                     {t(`wissenssprints.quelle.${s.source}`)}
                   </span>

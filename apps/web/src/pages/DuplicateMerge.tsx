@@ -563,7 +563,7 @@ function FeldWahl({
                 className="mt-1"
               />
               <span className="min-w-0">
-                <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                <span className="block font-mono text-klein uppercase tracking-wider text-muted-2">
                   {t(`dublettenvergleich.seite.${seite}`)}
                 </span>
                 <span className="block whitespace-pre-wrap text-[13px] text-text">
@@ -574,7 +574,7 @@ function FeldWahl({
                     data-testid={`fliesstext-${seite}`}
                     className="mt-2 block border-t border-hairline pt-2"
                   >
-                    <span className="block font-mono text-[10px] uppercase text-muted-2">
+                    <span className="block font-mono text-klein uppercase text-muted-2">
                       {t("dublettenvergleich.feld.fliesstext")}
                     </span>
                     {rumpf[seite]?.trim() ? (

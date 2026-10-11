@@ -14,7 +14,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       <p className="text-[12.5px] leading-relaxed text-muted">{ko.statement}</p>
       {ko.conditions.length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.conditions")}
           </div>
           <ul className="list-disc pl-4 text-[12px] text-text">
@@ -26,7 +26,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       ) : null}
       {ko.measures.length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.measures")}
           </div>
           <ul className="list-disc pl-4 text-[12px] text-text">
@@ -38,7 +38,7 @@ export function KoView({ ko }: { ko: KnowledgeObject }): JSX.Element {
       ) : null}
       {(ko.sources ?? []).length > 0 ? (
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+          <div className="font-mono text-klein uppercase tracking-wider text-muted-2">
             {t("con.sources")}
           </div>
           <ul className="space-y-1">

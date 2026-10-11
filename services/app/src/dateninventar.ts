@@ -710,9 +710,10 @@ export const DATENINVENTAR: readonly Datenart[] = [
     id: "spaces",
     name: "Arbeitsräume (Spaces)",
     inhalt:
-      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, anlegender und ändernder Kennung.",
+      "Fassungen der Arbeitsräume mit Name, Zweck, zuständiger Person, Mitgliedern samt Recht, Ansichten, Firmenkontext (eigene Firma, Partner, öffentlich) samt Namen des Partners, Konten mit Existenzrecht, anlegender und ändernder Kennung.",
     personenbezug: "ja",
-    personenbezugGrund: "Kennungen der zuständigen Person, der Mitglieder und der Bearbeiter.",
+    personenbezugGrund:
+      "Kennungen der zuständigen Person, der Mitglieder, der Konten mit Existenzrecht und der Bearbeiter.",
     ablage: { ort: DATENBANK, tabellen: ["spaces_fassungen"] },
     taetigkeit: "wissen",
     loeschung: "Kein Löschweg — jede Fassung bleibt zuordenbar.",

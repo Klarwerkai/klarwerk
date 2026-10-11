@@ -526,7 +526,7 @@ export function SharePointImportBereich(): JSX.Element | null {
                               data-testid={`sharepoint-inhaltstyp-${datei.id}`}
                               data-inhaltstyp={datei.inhaltstyp}
                               data-gemessen={gemessen ?? ""}
-                              className="shrink-0 rounded-btn bg-trust-pos-bg px-1.5 py-0.5 text-[10.5px] text-trust-pos-text"
+                              className="shrink-0 rounded-btn bg-trust-pos-bg px-1.5 py-0.5 text-klein text-trust-pos-text"
                             >
                               {t(inhaltKey)}
                             </span>
@@ -535,7 +535,7 @@ export function SharePointImportBereich(): JSX.Element | null {
                               data-testid={`sharepoint-inhaltstyp-${datei.id}`}
                               data-inhaltstyp={datei.inhaltstyp}
                               data-gemessen={gemessen ?? ""}
-                              className="shrink-0 rounded-btn bg-hairline-soft px-1.5 py-0.5 text-[10.5px] text-muted-2"
+                              className="shrink-0 rounded-btn bg-hairline-soft px-1.5 py-0.5 text-klein text-muted-2"
                             >
                               {t(inhaltKey)}
                             </span>
@@ -543,7 +543,7 @@ export function SharePointImportBereich(): JSX.Element | null {
                           {/* Kein Platzhalter-Datum: steht kein lesbarer Stand in der Quelle,
                               steht hier nichts. */}
                           {stand !== null ? (
-                            <span className="shrink-0 font-mono text-[10px] text-muted-2">
+                            <span className="shrink-0 font-mono text-klein text-muted-2">
                               {t("imp.sharepoint.stand", { zeit: stand })}
                             </span>
                           ) : null}
@@ -615,7 +615,7 @@ export function SharePointImportBereich(): JSX.Element | null {
               data-testid="sharepoint-ergebnis"
               className="mt-3 rounded-card border border-hairline bg-page px-3 py-2"
             >
-              <span className="block font-mono text-[9.5px] font-semibold uppercase tracking-wide text-muted-2">
+              <span className="block font-mono text-klein font-semibold uppercase tracking-wide text-muted-2">
                 {t("imp.sharepoint.ergebnisTitel")}
               </span>
               {/* ADMIN-02 — DIE BILANZ ZUERST: vollständig oder teilweise, mit dem nächsten Schritt.
@@ -668,7 +668,7 @@ export function SharePointImportBereich(): JSX.Element | null {
                         </span>
                       ) : null}
                       {stand !== null ? (
-                        <span className="ml-2 font-mono text-[10px] text-muted-2">
+                        <span className="ml-2 font-mono text-klein text-muted-2">
                           {t("imp.sharepoint.stand", { zeit: stand })}
                         </span>
                       ) : null}

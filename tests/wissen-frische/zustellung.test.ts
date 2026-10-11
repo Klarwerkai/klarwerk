@@ -149,6 +149,8 @@ describe("R-1636 · der Dienst lernt die Halbwertszeit aus der Fassungsfolge", (
       type: "technik",
       category: "Hydraulik",
       author: "anna",
+      // P14 · B-07: gelernt wird nur an Einträgen, die jedes Konto lesen darf (ausdrücklich intern).
+      confidentiality: "intern",
     });
     for (const druck of [181, 182, 183]) {
       uhr.jetzt += 40 * TAG;
