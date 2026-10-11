@@ -151,7 +151,12 @@ export function loeseBestandsresetAuf(
 // DIE ANWEISUNGEN.
 // ================================================================================================
 
-export const SQL_SCHEMA_BESTANDSRESET = `
+// AUFNAHME 20260922 (gesamt-bestandsreset, Nacharbeit 2): Die Laufakte ist jetzt eine reguläre
+// Migrationsstufe (`services/app/src/db.ts`, `schemas`). Bis hierher hieß sie
+// `SQL_SCHEMA_BESTANDSRESET` und lief in keinem `migrate()` — der Reset konnte auf einer frisch
+// migrierten Instanz nicht einmal seinen ersten Schritt schreiben. Der Name endet jetzt auf
+// `_SCHEMA`, damit der Wächter in `db.migrate.test.ts` sie sieht.
+export const BESTANDSRESET_SCHEMA = `
 CREATE TABLE IF NOT EXISTS bestandsreset_laeufe (
   id                  text PRIMARY KEY,
   status              text NOT NULL CHECK (status IN ('RUNNING','OK','ROLLED_BACK')),
