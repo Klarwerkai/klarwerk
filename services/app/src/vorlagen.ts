@@ -18,6 +18,7 @@ import {
   darfSpaceBearbeiten,
   darfSpaceInhalteLesen,
   istArchiviert,
+  istGeloescht,
 } from "./spaces";
 
 // ================================================================================================
@@ -1706,21 +1707,64 @@ export interface EinreichInhalt {
   tags?: readonly string[] | undefined;
 }
 
+/**
+ * aufnahme:20260922:gesamt-wissensprojekte — der gewählte Space konnte dem frisch angelegten
+ * Beitrag nicht zugeordnet werden. Der Port hat die Anlage dann bereits zurückgenommen (es bleibt
+ * kein breiter sichtbarer Beitrag ohne Space); der Aufrufer meldet einen Konflikt statt 201.
+ */
+export const VORLAGE_SPACE_KONFLIKT_TEXT =
+  "Der gewählte Space konnte nicht zugeordnet werden; es wurde nichts angelegt. Bitte erneut einreichen.";
+
+export class VorlagenSpaceFehler extends Error {
+  readonly code = "VORLAGE_SPACE_KONFLIKT";
+  constructor(readonly ursache: unknown) {
+    super("Der gewählte Space konnte dem Beitrag nicht zugeordnet werden.");
+    this.name = "VorlagenSpaceFehler";
+  }
+}
+
 export interface VorlagenEinreichungPort {
   pruefe(
     bezug: unknown,
     inhalt: EinreichInhalt,
     nutzer: VorlagenNutzer,
   ): Promise<EinreichEntscheid>;
-  /** Nach der Anlage: Bezug vermerken und — bei einem gewählten Space — dort ablegen. */
+  /**
+   * Nach der Anlage: bei einem gewählten Space ZUERST dort ablegen, dann den Bezug vermerken.
+   * Scheitert die Ablage, nimmt der Port die Anlage zurück und wirft `VorlagenSpaceFehler`.
+   */
   vermerke(koId: string, bezug: VorlagenBezug | null, nutzer: VorlagenNutzer): Promise<void>;
+  /**
+   * aufnahme:20260922:gesamt-wissensprojekte (Nacharbeit 8, Bens Befund) — nennt der rohe Bezug
+   * einen Space, läuft `arbeit` (Prüfung, Anlage, `vermerke`) unter derselben Sperre wie
+   * Spacewechsel und Spacelöschung. Eine Löschung gewinnt dann entweder VOR der Prüfung (409
+   * `SPACE_GELOESCHT`, nichts entsteht) oder wartet bis nach der Zuordnung (der Space trägt den
+   * Beitrag, die Löschung wird abgelehnt). Ohne Space läuft `arbeit` unverändert.
+   */
+  sperre<T>(bezug: unknown, arbeit: () => Promise<T>): Promise<T>;
+  /**
+   * Dieselbe Sperre für lange Anlagewege (`from-document`, Promote): sie gilt ab der Rückkehr bis
+   * zum Aufruf der zurückgegebenen Freigabe — im `finally` des Aufrufers. Ohne Space: sofort frei.
+   */
+  halte(bezug: unknown): Promise<() => void>;
 }
 
 export interface VorlagenDienstDeps {
   ablage: VorlagenAblage;
-  spaces: { aktuelle(): Promise<SpaceFassung[]> };
-  /** Legt das frische Objekt in den gewählten Space (`KoService.setLeadingSpace`, erwartet: ohne). */
+  /** `fassungen` erkennt einen gelöschten Space (Löschvermerk) — optional für schlanke Aufbauten. */
+  spaces: {
+    aktuelle(): Promise<SpaceFassung[]>;
+    fassungen?(id: string): Promise<SpaceFassung[]>;
+  };
+  /**
+   * Legt das frische Objekt in den gewählten Space (`KoService.setLeadingSpace`, erwartet: ohne).
+   * Wird unter `sperre` aufgerufen und nimmt selbst keine Sperre; wirft, wenn es nicht gelingt.
+   */
   inSpaceLegen?: (koId: string, spaceId: string, akteur: string) => Promise<void>;
+  /** Die Sperre der Spaces-Ablage (`SpacesRepo.exklusiv`). */
+  exklusiv?: <T>(arbeit: () => Promise<T>) => Promise<T>;
+  /** Nimmt eine frische Anlage vollständig zurück, wenn ihr gewählter Space nicht gesetzt werden kann. */
+  anlageZuruecknehmen?: (koId: string, akteur: string) => Promise<void>;
   /** Derselbe Prüfprotokolldienst wie an den übrigen Routen — kein nachgebauter Typ. */
   audit?: AuditService;
   jetzt?: () => Date;
@@ -1748,7 +1792,50 @@ export async function spaceVorgabe(
 
 export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichungPort {
   const jetzt = deps.jetzt ?? (() => new Date());
+
+  /** Trägt der Space den Löschvermerk, und durfte dieser Mensch ihn zuletzt sehen? */
+  async function geloeschtUndSichtbar(spaceId: string, nutzer: VorlagenNutzer): Promise<boolean> {
+    const fassungen = (await deps.spaces.fassungen?.(spaceId)) ?? [];
+    if (!istGeloescht(fassungen.at(-1))) {
+      return false;
+    }
+    const zuletzt = fassungen.filter((f) => !istGeloescht(f)).at(-1);
+    return Boolean(
+      zuletzt &&
+        (darfSpaceInhalteLesen(zuletzt, nutzer.id) || darfSpaceBearbeiten(zuletzt, nutzer)),
+    );
+  }
+
+  function mitSpace(roh: unknown): boolean {
+    const bezug = bezugAus(roh);
+    return bezug !== null && bezug !== "ungueltig" && Boolean(bezug.spaceId);
+  }
+
   return {
+    sperre<T>(roh: unknown, arbeit: () => Promise<T>): Promise<T> {
+      return mitSpace(roh) && deps.exklusiv ? deps.exklusiv(arbeit) : arbeit();
+    },
+
+    async halte(roh) {
+      const exklusiv = deps.exklusiv;
+      if (!mitSpace(roh) || !exklusiv) {
+        return () => undefined;
+      }
+      let freigeben: () => void = () => undefined;
+      const frei = new Promise<void>((weiter) => {
+        freigeben = weiter;
+      });
+      // Scheitert schon das Nehmen der Sperre (etwa die Datenbank), kommt der Fehler hier an,
+      // statt dass der Aufrufer endlos wartet.
+      await new Promise<void>((gehalten, gescheitert) => {
+        exklusiv(async () => {
+          gehalten();
+          await frei;
+        }).catch(gescheitert);
+      });
+      return freigeben;
+    },
+
     async pruefe(roh, inhalt, nutzer) {
       const bezug = bezugAus(roh);
       if (bezug === "ungueltig") {
@@ -1779,6 +1866,16 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
       let space: SpaceFassung | undefined;
       if (bezug?.spaceId) {
         space = spaces.find((s) => s.id === bezug.spaceId);
+        // aufnahme:20260922:gesamt-wissensprojekte: ein inzwischen GELÖSCHTER Space ist für den,
+        // der ihn sehen durfte, ein erkennbarer Konflikt — kein stiller Rückfall auf „ohne Space“.
+        if (!space && (await geloeschtUndSichtbar(bezug.spaceId, nutzer))) {
+          return {
+            ok: false,
+            status: 409,
+            error: "SPACE_GELOESCHT",
+            message: "Der gewählte Space wurde gelöscht. Bitte einen anderen Space wählen.",
+          };
+        }
         if (
           !space ||
           !(darfSpaceInhalteLesen(space, nutzer.id) || darfSpaceBearbeiten(space, nutzer))
@@ -1835,6 +1932,17 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
       if (!bezug) {
         return;
       }
+      // Erst der Space, dann der Beleg: ein Beitrag mit gewähltem Space darf nie ohne ihn — also
+      // breiter sichtbar als gewählt — stehen bleiben. Scheitert die Ablage, wird die Anlage
+      // zurückgenommen, und es entsteht auch kein Nutzungsbeleg.
+      if (bezug.spaceId && deps.inSpaceLegen) {
+        try {
+          await deps.inSpaceLegen(koId, bezug.spaceId, nutzer.id);
+        } catch (ursache) {
+          await deps.anlageZuruecknehmen?.(koId, nutzer.id);
+          throw new VorlagenSpaceFehler(ursache);
+        }
+      }
       const vorlage = (await vorlagenFassungen(deps.ablage, bezug.id)).find(
         (f) => f.version === bezug.version,
       );
@@ -1851,9 +1959,6 @@ export function vorlagenEinreichung(deps: VorlagenDienstDeps): VorlagenEinreichu
       };
       // Eine Wiederholung desselben Vorgangs findet den Eintrag schon vor — er bleibt, wie er ist.
       await deps.ablage.lege("nutzung", koId, eintrag);
-      if (bezug.spaceId && deps.inSpaceLegen) {
-        await deps.inSpaceLegen(koId, bezug.spaceId, nutzer.id);
-      }
       await deps.audit?.record({
         actor: nutzer.id,
         action: "vorlage.verwendet",
