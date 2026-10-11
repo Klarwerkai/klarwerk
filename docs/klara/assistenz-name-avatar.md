@@ -60,13 +60,16 @@ Vorgabe: `ANIMATIONSZUSTAENDE.json` des Bildpakets. Die Figur trägt einen von n
 | --- | --- | --- |
 | bereit | nichts läuft | neue Aktion |
 | warten | Anfrage gesendet, Antwort steht aus | Antwort, Fehler, Stopp |
-| nachdenken | nur bei gemeldeter laufender Verarbeitung — der Frageweg meldet heute keine solche Phase, der Zustand wird deshalb nicht angezeigt | — |
+| nachdenken | die am Server abgelegte Frage wird am Frageweg bearbeitet (assistenz-avatarzustaende) | Antwort, Fehler, Stopp |
 | zuhören | Browser bestätigt die Tonaufnahme (`audiostart`) — nicht schon beim Start oder während die Mikrofonberechtigung aussteht | `audioend`, Ende, Fehler (auch verweigerte Berechtigung), Stopp, Schließen |
 | sprechen | Sprachausgabe hat tatsächlich begonnen (`start`, nach Pause `resume`) — nicht schon bei der Anforderung | `end`, `error`, `pause`, Stopp; späte Ereignisse einer abgelösten Ausgabe zählen nicht |
 | ratlos | Entscheidung bzw. Rückfrage der Person nötig | Person entscheidet |
-| freude | Antwort beantwortet und gespeichert, Profil gespeichert | nach 2,4 s von selbst |
-| fehler | Anfrage oder Speichern fehlgeschlagen | Wiederholen, Abbrechen, neue Aktion |
+| freude | Antwort mit Grundlage beantwortet und gespeichert, Profil gespeichert | nach 2,4 s von selbst |
+| fehler | Anfrage oder Speichern fehlgeschlagen, Antwort ohne geprüfte Quelle, fehlende Angabe | Wiederholen, Abbrechen, neue Aktion |
 | pause | Figur verkleinert, Anfrage gestoppt | neue Aktion, Öffnen |
+
+Ergänzt durch `produkt:20261010:assistenz-avatarzustaende` (Fehlerarten, Aktionskennung, Vorschau):
+`docs/klara/assistenz-avatarzustaende.md`.
 
 Darstellung (`index.css`) nach `style_variants`: „expressiv“ (Original, Lichtwesen, Roboter, Eule,
 Fuchs, Pinguin, Wolke, Kompass) mit kleinen Gesten der Figur — Atmen, Schweben, Neigen, Nicken,

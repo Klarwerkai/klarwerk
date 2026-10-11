@@ -502,6 +502,37 @@ body.klara-inspect * {
 .klara-figur[data-stil="expressiv"][data-zustand="fehler"] .klara-mimik {
   filter: saturate(0.85);
 }
+/* produkt:20261010:assistenz-avatarzustaende — STATISCHER Lichtausdruck der sachlichen Objekte: auch
+   ohne Bewegung (System oder eigene Wahl) zeigt jedes Objekt seinen Zustand ruhig — etwas heller
+   beim Warten, Zuhören und Sprechen, ein stiller Lichtsaum beim Nachdenken, eine leichte Neigung
+   bei der Rückfrage, aufgehellt bei Freude. Keine Gesichter, keine Bewegung. Läuft eine Bewegung
+   (Block unten), überlagert sie diesen Ruhewert nur, solange sie läuft. */
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="warten"] .klara-motiv {
+  filter: brightness(1.05);
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="nachdenken"] .klara-motiv {
+  filter: drop-shadow(0 0 4px rgb(255 255 255 / 0.55));
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="zuhoeren"] .klara-motiv,
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="sprechen"] .klara-motiv {
+  filter: brightness(1.09);
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="ratlos"] .klara-motiv {
+  transform: rotate(-3deg);
+}
+.klara-figur[data-stil="zurueckhaltend"][data-zustand="freude"] .klara-motiv {
+  filter: brightness(1.12);
+}
+/* Fehlerarten (`data-fehlerart`): eine fehlende geprüfte Quelle oder eine fehlende Angabe der Person
+   ist kein technischer Fehlschlag — kaum gedimmt und statt des Absinkens (Bewegungsblock unten) eine
+   einmalige fragende Neigung; der Text an der Figur nennt den Unterschied. Nie ein erschrockener
+   oder vorwurfsvoller Ausdruck. */
+.klara-figur[data-fehlerart="quelle"][data-zustand="fehler"] .klara-motiv,
+.klara-figur[data-fehlerart="eingabe"][data-zustand="fehler"] .klara-motiv,
+.klara-figur[data-fehlerart="quelle"][data-zustand="fehler"] .klara-mimik,
+.klara-figur[data-fehlerart="eingabe"][data-zustand="fehler"] .klara-mimik {
+  filter: brightness(0.96);
+}
 /* Mimik der acht Motive mit Gesicht (`components/assistenz/AvatarMimik.tsx`): Lider und Mund bzw.
    Schnabelspalt liegen deckungsgleich über dem unveränderten Bild und sind ruhend unsichtbar. Der
    STATISCHE Ausdruck je Zustand gilt auch bei reduzierter Bewegung; Lidschlag und Mundbewegung
@@ -596,6 +627,25 @@ body.klara-inspect * {
   .klara-figur[data-stil="expressiv"][data-zustand="fehler"]:not([data-bewegung="reduziert"])
     .klara-mimik {
     animation: kw-assistenz-absinken 0.7s ease-out 1 forwards;
+  }
+  /* assistenz-avatarzustaende: fehlende Quelle / fehlende Angabe — fragende Neigung statt Absinken. */
+  .klara-figur[data-fehlerart="quelle"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-motiv,
+  .klara-figur[data-fehlerart="quelle"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-mimik,
+  .klara-figur[data-fehlerart="eingabe"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-motiv,
+  .klara-figur[data-fehlerart="eingabe"][data-stil="expressiv"][data-zustand="fehler"]:not(
+      [data-bewegung="reduziert"]
+    )
+    .klara-mimik {
+    animation: kw-assistenz-neigen-klein 0.9s ease-out 1 forwards;
   }
   /* Mimik — Lidschlag, langsamer Lidwechsel beim Nachdenken, Mund/Schnabel beim Sprechen */
   .klara-mimik:not([data-bewegung="reduziert"]) .klara-mimik-lid {
